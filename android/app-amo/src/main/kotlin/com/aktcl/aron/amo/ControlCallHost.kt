@@ -96,9 +96,7 @@ fun ControlCallHost(
                             opening = true
                             scope.launch {
                                 // tso-manual X4a (R-W-11, A3 ask 11): the lock text, not a fix and a generic failed commit
-                                if (day.routeLocked(r.outlet.routeId)) { lockNotice = true; opening = false; return@launch }
-                                day.routeId = r.outlet.routeId
-                                runCatching { day.visitFlow.open(ControlCall.visitOutlet(r.outlet, kind)) }
+                                if (!day.openCall(r.outlet, kind)) { lockNotice = true; opening = false; return@launch }
                                 opening = false; step = CcStep.CHECK
                             }
                         }
@@ -111,7 +109,7 @@ fun ControlCallHost(
                     // stored): the lock text instead of the generic failed commit and its retry
                     val failed = st as? VisitUiState.CommitFailed
                     var lockedOut by remember(failed) { mutableStateOf(false) }
-                    LaunchedEffect(failed) { lockedOut = failed != null && day.routeLocked(failed.outlet.routeId) }
+                    LaunchedEffect(failed) { lockedOut = day.refusedByLock(failed) }
                     if (lockedOut) AmoDayLockDialog(day, onOk = { day.routeId = null; step = CcStep.OUTLET })
                     VisitCheckContent(
                         st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { step = CcStep.FORCE },

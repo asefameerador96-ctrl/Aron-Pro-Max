@@ -63,10 +63,11 @@ fun AmoSaleHost(
     val kit = day.sale
     // tso-manual X4a (R-W-11): the lock arrived while this call was open and refused its sale: nothing was stored or printed.
     // The lock text replaces the sale (and its "save failed" dialog); OK ends the call on the phone when its route is closed.
+    // Only this call's own refusal shows here (fix round), and it is cleared after the call has ended and the screen moved on.
     val scope = rememberCoroutineScope()
-    val lockRefused by kit.lockRefused.collectAsState()
-    if (lockRefused) {
-        AmoDayLockDialog(day, onOk = { scope.launch { kit.clearLockRefusal(); if (kit.endCallIfDayFinal()) onCallEnded() else onDone() } })
+    val refused by kit.lockRefused.collectAsState()
+    if (refused == v.visitUuid) {
+        AmoDayLockDialog(day, onOk = { scope.launch { kit.afterSaleRefusal(onCallEnded, onDone) } })
         return
     }
     var already by remember(v.visitUuid) { mutableStateOf<Boolean?>(null) }
@@ -97,7 +98,9 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { kit.prepare(); vm.refresh() }
     // tso-manual X4a (R-W-11): the push day_final_submitted pulls the delta; Mark Paid and Edit follow the lock while on screen
-    LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { vm.refresh() } }
+    var pulls by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { pulls++; vm.refresh() } }
+    val dayLock = day.dayLock.collectAsState().value
     BackHandler(enabled = st.selected != null || history != null) { if (history != null) history = null else vm.open("") }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         val sel = st.selected
@@ -106,10 +109,11 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
             h != null -> SaleHistoryScreen(h, offlineBanner = true, skuName = kit::skuName, skuCategory = kit::skuCategoryCode)
             sel == null -> MemoMenuScreen(st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
             else -> {
-                // an edit is a new memo on the memo's route: on a route closed by Final Submit it is disabled with the lock text
+                // an edit is a new memo on the memo's route: on a route closed by Final Submit it is disabled with the lock text;
+                // checked again on every applied push pull and lock refresh (fix round), not only when Mark Paid's own check changes
                 var editLocked by remember(sel.memo.memoUuid) { mutableStateOf(false) }
-                LaunchedEffect(sel.memo.memoUuid, st.dayLocked) { editLocked = kit.editLocked(sel.memo.memoUuid) }
-                val closed = day.dayLock.collectAsState().value?.closedRouteIds?.size ?: 0
+                LaunchedEffect(sel.memo.memoUuid, st.dayLocked, pulls, dayLock) { editLocked = kit.editLocked(sel.memo.memoUuid) }
+                val closed = dayLock?.closedRouteIds?.size ?: 0
                 MemoDetailView(
                     sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid, skuCategory = kit::skuCategoryCode,
                     editDisabledReason = if (editLocked) stringResource(R.string.amo_lock_body, com.aktcl.aron.core.ui.localizedNumber(closed.coerceAtLeast(1).toLong())) else null,
@@ -123,8 +127,21 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
             }
         }
     }
-    // tso-manual X4a: a Mark Paid the lock refused (nothing stored)
+    // tso-manual X4a: a Mark Paid the lock refused (nothing stored); fix round: or the supervisor day's Sales Submit refused it
     if (st.lockRefused) AmoDayLockDialog(day, onOk = vm::dismissLockRefusal)
+    if (st.submitRefused) AmoMarkPaidSubmittedDialog(onOk = vm::dismissLockRefusal)
+}
+
+/**
+ * tso-manual X4a (fix round): a Mark Paid refused because the day's sales are already submitted (the button was drawn before
+ * the submit landed): "Mark paid" and the Sales Submit screen's own "already submitted" words, bn and en; nothing was stored.
+ */
+@Composable
+fun AmoMarkPaidSubmittedDialog(onOk: () -> Unit) {
+    com.aktcl.aron.core.ui.aron.AronDialog(
+        stringResource(com.aktcl.aron.feature.memo.R.string.memo_mark_paid), stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_blocked_done),
+        stringResource(AmoR.string.amo_ok), onConfirm = onOk, onDismiss = onOk,
+    )
 }
 
 /** Sales Summary with its printed copy (F-SR-036); the print needs no connection and never blocks anything. */
@@ -183,11 +200,11 @@ fun AmoEditHost(day: AmoDay, memoUuid: String, onDone: () -> Unit) {
     // tso-manual X4a (R-W-11): an edit on a route closed by Final Submit is not started (no fix is taken) and says why;
     // one the lock refuses at the save shows the same text, nothing stored or printed
     var locked by remember(memoUuid) { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val lockRefused by kit.lockRefused.collectAsState()
+    val refused by kit.lockRefused.collectAsState()
     LaunchedEffect(memoUuid) { kit.prepare(); if (kit.editLocked(memoUuid)) locked = true else denied = kit.prepareEdit(memoUuid); checked = true }
-    if (locked || lockRefused) {
-        AmoDayLockDialog(day, onOk = { scope.launch { kit.clearLockRefusal(); onDone() } })
+    // only this edit's own refusal (fix round); cleared after leaving, so the edit's "save failed" never shows in between
+    if (locked || refused == memoUuid) {
+        AmoDayLockDialog(day, onOk = { onDone(); kit.clearLockRefusal() })
         return
     }
     val r = reason

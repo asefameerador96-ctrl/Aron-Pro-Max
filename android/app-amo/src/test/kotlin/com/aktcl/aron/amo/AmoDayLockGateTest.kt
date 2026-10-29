@@ -62,8 +62,8 @@ import java.io.File
  * tso-manual X4a (R-W-11, A3 asks 1 and 11, D-TSO-MAN-31): the AMO's control, joint and sale calls on a route closed by its
  * zone's Final Submit, through the production pieces the AMO kit wires ([AmoLockGate], SaleFlow and SaleCommitter with
  * memo numbering, [VisitCloser]) on a real database: a sale saved in a call open when the lock arrived is refused before
- * anything is stored or printed, a close or a skip writes nothing and never throws, Mark Paid follows the collection's
- * route, and another route of the zone stays open. The Home banner and the refusal text are checked through
+ * anything is stored or printed, a close or a skip writes nothing and never throws, a collection on the closed route is
+ * refused, and another route of the zone stays open. The Home banner and the refusal text are checked through
  * [AmoDayLockWords], the words [amoDayLockBanners] and [AmoDayLockDialog] draw.
  */
 @RunWith(AndroidJUnit4::class)
@@ -129,7 +129,7 @@ class AmoDayLockGateTest {
         )
         // as AmoSaleKit's printSource: the stored memo through the production memo store; counted, so a refused sale shows none
         val source = MemoPrintSource { uuid -> loads++; PrintMapping.memo(RoomMemoStore(db).memos(date).first { it.memoUuid == uuid }, PrintNames({ "S$it" }, { "O$it" }, "amo", "r")) }
-        AmoLockGate.saveAndPrint(SaleCommitStep(flow, source)::invoke, printing, refused)
+        AmoLockGate.saveAndPrint(SaleCommitStep(flow, source)::invoke, printing) { refused.value = true }
     }
 
     @Test fun aSaleSavedAfterTheLockArrivedIsRefusedAndAnotherRouteStillSells() {
@@ -173,13 +173,17 @@ class AmoDayLockGateTest {
         assertNull(runBlocking { FinalSubmitLock.callToRestore(db, date) { it.visitKind.startsWith("amo_") } })
     }
 
-    /** AmoSaleKit's markPaidLocked: the lock for the collection's meta, whose route is the open call's (none outside a call). */
-    @Test fun markPaidFollowsTheCollectionsRoute() {
+    /**
+     * The repository's side of Mark Paid: a collection that carries the closed route is refused, a routeless one is not.
+     * Fix round: this does not prove the AMO screen's wiring (the kit now collects on the memo's call route through
+     * VisitDueCollectionWriter); AmoKitLockTest proves that on a real AmoDay.
+     */
+    @Test fun aCollectionOnTheClosedRouteIsRefusedAndARoutelessOneIsNot() {
         finalSubmitted()
-        val inCall = runBlocking { FinalSubmitLock.refuses(db, meta(route), "due_collection") }
-        val outsideACall = runBlocking { FinalSubmitLock.refuses(db, meta(null), "due_collection") }
-        assertTrue("hidden in a call on the closed route", inCall)
-        assertFalse("shown outside a call", outsideACall)
+        assertTrue(runBlocking { FinalSubmitLock.refuses(db, meta(route), "due_collection") })
+        assertFalse("the lock never applies to a routeless record", runBlocking { FinalSubmitLock.refuses(db, meta(null), "due_collection") })
+        assertFalse(runBlocking { repo.acceptsDueCollection(meta(route)) })
+        assertTrue(runBlocking { repo.acceptsDueCollection(meta(null)) })
         fun due(m: CaptureMeta) = DueCollectionEntity(ClientIds.newUuid(), m, 50001, ClientIds.newUuid(), "amo334001-261026-001", date, 50_000, false, 120_000)
         val refused = due(meta(route))
         assertThrows(RouteDayFinalSubmittedException::class.java) { runBlocking { repo.recordDueCollection(refused) } }

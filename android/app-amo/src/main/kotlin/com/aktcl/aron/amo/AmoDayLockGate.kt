@@ -17,7 +17,6 @@ import com.aktcl.aron.core.printing.flow.MemoPrinting
 import com.aktcl.aron.core.printing.flow.SaveAndPrint
 import com.aktcl.aron.feature.outlet.OpenVisit
 import com.aktcl.aron.feature.outlet.VisitSession
-import kotlinx.coroutines.flow.MutableStateFlow
 import com.aktcl.aron.feature.amo.R as AmoR
 
 /**
@@ -28,15 +27,16 @@ import com.aktcl.aron.feature.amo.R as AmoR
  */
 internal object AmoLockGate {
     /**
-     * The sale's Save and Print with the lock named: a commit refused by the lock sets [refused] and is rethrown, so
-     * [SaveAndPrint] stops at SaveFailed before the print step (nothing prints); the host shows the lock text in its place.
+     * The sale's Save and Print with the lock named: a commit refused by the lock calls [onRefused] (the kit keeps which
+     * sale or edit was refused) and is rethrown, so [SaveAndPrint] stops at SaveFailed before the print step (nothing
+     * prints); the host of that sale or edit shows the lock text in its place.
      */
-    fun saveAndPrint(commit: suspend () -> CommittedMemo, printing: MemoPrinting, refused: MutableStateFlow<Boolean>): SaveAndPrint =
+    fun saveAndPrint(commit: suspend () -> CommittedMemo, printing: MemoPrinting, onRefused: () -> Unit): SaveAndPrint =
         SaveAndPrint({
             try {
                 commit()
             } catch (e: RouteDayFinalSubmittedException) {
-                refused.value = true
+                onRefused()
                 throw e
             }
         }, printing)
@@ -66,6 +66,32 @@ internal object AmoLockGate {
             false
         }
 }
+
+/**
+ * tso-manual X4a (R-W-11, A3 ask 11, fix round): the outlet pick of a control, joint or sale call ([kind]). False when
+ * [outlet]'s route is closed by its zone's Final Submit: no fix is read, the day takes no route and nothing is stored; the
+ * host shows the lock text. Otherwise the day takes that route and the visit flow opens the call (it reads the fix and
+ * commits; its state says how that went).
+ */
+internal suspend fun AmoDay.openCall(outlet: com.aktcl.aron.core.database.entity.OutletEntity, kind: String): Boolean {
+    if (routeLocked(outlet.routeId)) return false
+    routeId = outlet.routeId
+    runCatching { visitFlow.open(com.aktcl.aron.feature.amo.ControlCall.visitOutlet(outlet, kind)) }
+    return true
+}
+
+/**
+ * tso-manual X4a (R-W-11, fix round): true when [state] is a call commit the Final Submit lock refused (the lock landed while
+ * the fix was read; nothing was stored). The check step shows the lock text, not the generic retry.
+ */
+internal suspend fun AmoDay.refusedByLock(state: com.aktcl.aron.feature.outlet.VisitUiState?): Boolean =
+    (state as? com.aktcl.aron.feature.outlet.VisitUiState.CommitFailed)?.let { routeLocked(it.outlet.routeId) } ?: false
+
+/**
+ * tso-manual X4a (fix round): which sale or memo edit a refused save belongs to, so only its own host shows the lock text:
+ * the edited memo's uuid for an edit, else the call's visit uuid.
+ */
+internal fun refusalKey(draft: com.aktcl.aron.feature.sale.domain.SaleDraft): String = draft.edit?.supersedesMemoUuid ?: draft.visitUuid
 
 /**
  * The lock text where a capture on a closed route was refused (a new control, joint or sale call, a sale save, Mark Paid,

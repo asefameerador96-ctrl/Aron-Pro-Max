@@ -122,6 +122,11 @@ dependencies {
 
     testImplementation(libs.junit4)
     testImplementation(libs.robolectric)
+    testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.ext.junit)
+    // tso-manual X4a: the day-lock host tests compose the hosts with the test rule, as app-sr's; no test manifest (an
+    // exported test activity would fail AppCoexistenceTest)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
 }
