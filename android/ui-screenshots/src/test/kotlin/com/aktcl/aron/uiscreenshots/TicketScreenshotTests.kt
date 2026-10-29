@@ -3,37 +3,19 @@ package com.aktcl.aron.uiscreenshots
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.test.core.app.ApplicationProvider
 import com.aktcl.aron.contract.SupportTicketEventPayload
 import com.aktcl.aron.contract.SupportTicketPayload
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
-import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronTheme
 import com.aktcl.aron.core.ui.GlassTier
 import com.aktcl.aron.core.ui.LocalAronLook
@@ -65,6 +47,9 @@ import com.aktcl.aron.feature.tickets.TicketRules
 import com.aktcl.aron.feature.tickets.TicketSnapshot
 import com.aktcl.aron.feature.tickets.TicketSource
 import com.aktcl.aron.feature.tickets.TicketTab
+import com.aktcl.aron.feature.tso.TsoFrame
+import com.aktcl.aron.feature.tso.TsoNav
+import com.aktcl.aron.feature.tso.TsoScreen
 import com.aktcl.aron.rules.TicketCounts
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -78,9 +63,11 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * Goldens of the Tickets screens (tso-manual A2; screenshots 11 to 18 of the owner's TSO manual) in bn, en and at 200 %
- * font, plus the offline, empty, open-thread and Sunlight states. The TSO top bar here is a stand-in drawn in this test
- * (navy, grey round back button, green-to-yellow title) until lane A1's TsoFrame is on the branch; the ticket content is
- * the module's own. Record on Linux only: `./gradlew :android:ui-screenshots:testDebugUnitTest -Proborazzi.record=true
+ * font, plus the offline, empty, open-thread and Sunlight states. Every screen is drawn in the frame the TSO host passes
+ * (app-tso TicketsHost.kt: `TsoFrame(title, nav, homeButton = false)`, lane A1's top bar; s8 gives 11 to 18 no Home
+ * button), so the goldens recorded after A1's shell is merged show the real bar. The night page is a stand-in until A1's
+ * `AronLook.TsoNight` is on this branch (one line, [night]). Screenshot 10 (the drawer's Tickets group) is A1's
+ * TsoChrome golden. Record on Linux only: `./gradlew :android:ui-screenshots:testDebugUnitTest -Proborazzi.record=true
  * --tests '*TicketScreenshotTests*'`.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -110,22 +97,14 @@ class TicketScreenshotTests {
         rule.onRoot().captureRoboImage("${recordTo ?: goldens}/$name.png", roborazziOptions = options)
     }
 
-    /** Stand-in for the TSO top bar of screenshots 11 to 17 (A1 owns the real one). */
-    private val tsoFrame: TicketFrame = { title, content ->
-        val look = LocalAronLook.current
-        Column(Modifier.fillMaxSize().background(if (look.sunlight) look.page else Color(0xFF03103A))) {
-            Box(Modifier.fillMaxWidth().height(76.dp).padding(horizontal = 16.dp)) {
-                Box(Modifier.align(Alignment.CenterStart).size(52.dp).clip(CircleShape).background(Color(0xFF43516E)), contentAlignment = Alignment.Center) {
-                    Icon(AronIcons.ChevronRight, contentDescription = null, tint = Color.White, modifier = Modifier.size(30.dp).rotate(180f))
-                }
-                Text(
-                    title, Modifier.align(Alignment.Center),
-                    style = TextStyle(brush = Brush.horizontalGradient(listOf(Color(0xFF6EE7A0), Color(0xFFE8E35A))), fontSize = 22.sp, fontWeight = FontWeight.Bold),
-                )
-            }
-            Box(Modifier.weight(1f)) { content() }
-        }
+    private object NoNav : TsoNav {
+        override fun open(screen: TsoScreen, arg: String?) = Unit
+        override fun back() = Unit
+        override fun home() = Unit
     }
+
+    /** The TSO host's frame for the ticket screens, exactly as app-tso TicketsHost.kt builds it (tso-manual A2 step 3). */
+    private val tsoFrame: TicketFrame = { title, content -> TsoFrame(title, NoNav, homeButton = false) { content() } }
 
     // ---- fixtures: screenshot 11 to 14 (the vendor's INC0107xx numbers, display only)
 
@@ -216,6 +195,7 @@ class TicketScreenshotTests {
     @Test @Config(fontScale = 2.0f) fun list_200_en() = shot("tickets_list_200_en", AppLanguage.EN) { TicketListScreen(TicketListState(dashboardDeps()), tsoFrame, {}) }
     @Test fun list_resolved_en() = shot("tickets_list_resolved_en", AppLanguage.EN) { TicketListScreen(TicketListState(dashboardDeps(), TicketTab.RESOLVED), tsoFrame, {}) }
     @Test fun list_resolved_bn() = shot("tickets_list_resolved_bn", AppLanguage.BN) { TicketListScreen(TicketListState(dashboardDeps(), TicketTab.RESOLVED), tsoFrame, {}) }
+    @Test @Config(fontScale = 2.0f) fun list_resolved_200_bn() = shot("tickets_list_resolved_200_bn", AppLanguage.BN) { TicketListScreen(TicketListState(dashboardDeps(), TicketTab.RESOLVED), tsoFrame, {}) }
     @Test fun list_no_match_en() = shot("tickets_list_no_match_en", AppLanguage.EN) { TicketListScreen(TicketListState(dashboardDeps(), TicketTab.ALL, "zzz"), tsoFrame, {}) }
 
     // ---- 14 details
@@ -245,10 +225,15 @@ class TicketScreenshotTests {
         QuickTicketScreen(dashboardDeps(), tsoFrame, {}, {}, initialSheet = TicketRules.newDraft("00000000-0000-4000-8000-0000000000q1", TicketOrigin.QUICK, "login_otp"))
     }
 
+    @Test @Config(fontScale = 2.0f) fun quick_sheet_200_en() = shot("tickets_quick_sheet_200_en", AppLanguage.EN) {
+        QuickTicketScreen(dashboardDeps(), tsoFrame, {}, {}, initialSheet = TicketRules.newDraft("00000000-0000-4000-8000-0000000000q1", TicketOrigin.QUICK, "outlet_related"))
+    }
+
     // ---- 17, 18 create ticket
     @Test fun create_en() = shot("tickets_create_en", AppLanguage.EN) { CreateTicketScreen(dashboardDeps(), tsoFrame, {}) }
     @Test fun create_bn() = shot("tickets_create_bn", AppLanguage.BN) { CreateTicketScreen(dashboardDeps(), tsoFrame, {}) }
     @Test @Config(fontScale = 2.0f) fun create_200_en() = shot("tickets_create_200_en", AppLanguage.EN) { CreateTicketScreen(dashboardDeps(), tsoFrame, {}) }
     @Test fun issue_types_en() = shot("tickets_issue_types_en", AppLanguage.EN) { CreateTicketScreen(dashboardDeps(), tsoFrame, {}, issueListOpen = true) }
     @Test fun issue_types_bn() = shot("tickets_issue_types_bn", AppLanguage.BN) { CreateTicketScreen(dashboardDeps(), tsoFrame, {}, issueListOpen = true) }
+    @Test @Config(fontScale = 2.0f) fun issue_types_200_bn() = shot("tickets_issue_types_200_bn", AppLanguage.BN) { CreateTicketScreen(dashboardDeps(), tsoFrame, {}, issueListOpen = true) }
 }
