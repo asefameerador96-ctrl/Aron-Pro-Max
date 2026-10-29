@@ -65,6 +65,21 @@ class GeoSnapshotRaceTest {
     }
 
     @Test
+    fun afterAnInvalidationACallerThatCannotGetTheReloadLockLoadsOnItsOwnAndSeesTheEdit() {
+        val geo = GeoRepository(fresh.db, clock, lockWaitMs = 50)
+        val held = java.util.concurrent.CountDownLatch(1); val release = java.util.concurrent.CountDownLatch(1)
+        var first = true
+        geo.afterLoad = { if (first) { first = false; held.countDown(); release.await(20, java.util.concurrent.TimeUnit.SECONDS) } }
+        val reloader = Thread { geo.snapshot() }.also { it.start() }   // holds the reload lock between its read and its install
+        try {
+            assertTrue(held.await(10, java.util.concurrent.TimeUnit.SECONDS), "the reload is in progress")
+            exec("INSERT INTO app.zone (code, name, territory_id) VALUES ('Z2','Zone2', $t1)"); geo.invalidate()
+            // Not served the entry of the reload in progress (nothing is cached), not blocked beyond the wait: it loads alone and reads the edit.
+            assertEquals(2, geo.snapshot().geo.zoneTerritory.size)
+        } finally { release.countDown(); reloader.join(10_000) }
+    }
+
+    @Test
     fun theGeographyIsReadInOneStatementAndMatchesTheTables() {
         val statements = java.util.concurrent.atomic.AtomicInteger()
         fresh.db.jdbi.setSqlLogger(object : org.jdbi.v3.core.statement.SqlLogger {

@@ -53,7 +53,8 @@ class HouseDedupTest {
         val zMir = id("zone", "Z-MIR")
         assertEquals(b, env.geo.geo().zoneHouse[zMir], "the snapshot is warm and holds the old house")
         val seenAtInvalidate = java.util.concurrent.CopyOnWriteArrayList<String?>()   // every call counts: one before the commit would show the old house
-        env.geo.onInvalidate = { seenAtInvalidate += env.sql("SELECT house_id FROM app.zone WHERE code = 'Z-MIR'") }   // another connection: only committed rows are visible to it
+        // Read on ANOTHER THREAD: Jdbi reuses the calling thread's open handle, so a read on the request thread would join the merge transaction and see its uncommitted rows.
+        env.geo.onInvalidate = { seenAtInvalidate += java.util.concurrent.CompletableFuture.supplyAsync { env.sql("SELECT house_id FROM app.zone WHERE code = 'Z-MIR'") }.get(10, java.util.concurrent.TimeUnit.SECONDS) }
         val r = sendA1(HttpMethod.Post, "/admin/geo/house/merge", admin, """{"keep_id":$a,"merge_ids":[$b,$c],"change_reason":"$reason"}""", ifMatch = v)
         assertEquals(HttpStatusCode.OK, r.status, r.toString())
         assertEquals("inactive", env.sql("SELECT status FROM app.house WHERE id = $b")); assertEquals("inactive", env.sql("SELECT status FROM app.house WHERE id = $c"))

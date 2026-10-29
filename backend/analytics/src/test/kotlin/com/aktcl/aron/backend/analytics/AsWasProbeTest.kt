@@ -92,7 +92,7 @@ class AsWasProbeTest {
             release.countDown(); t1.join(20_000); t2.join(20_000)
             assertEquals("t/t/t", a); assertEquals(a, b)
             assertEquals(1, queries.get(), "the overlapping probe took the running one's answer instead of scanning the history tables again")
-        } finally { AsWasSql.probeHook = null; AsWasSql.probeJoinHook = null }
+        } finally { release.countDown(); AsWasSql.probeHook = null; AsWasSql.probeJoinHook = null }
     }
 
     @Test
