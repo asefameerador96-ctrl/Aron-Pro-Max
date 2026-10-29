@@ -66,8 +66,11 @@ fun TsoApp(
     screens: Map<TsoScreen, TsoScreenContent> = emptyMap(),
     /** Unread inbox items for the bell's badge (0 hides it); the host reads it on Dashboard open and pull-to-refresh, never on a timer. */
     unread: Int = 0,
-    /** tso-manual A1: a screen to open on the Dashboard now (a tapped push notice: the inbox or the tickets); then [onOpenRequestHandled]. */
-    openRequest: TsoScreen? = null,
+    /**
+     * tso-manual A1, X4b (R-W-12 (1)): what a tapped push notice opens (the inbox, or the tickets through the host's
+     * `TicketPush.open`), applied once on the Dashboard; then [onOpenRequestHandled].
+     */
+    openRequest: TsoOpenRequest? = null,
     onOpenRequestHandled: () -> Unit = {},
 ) {
     val nav = rememberSaveable(saver = TsoNavState.Saver) { TsoNavState() }
@@ -75,9 +78,10 @@ fun TsoApp(
     val scope = rememberCoroutineScope()
     var askLogout by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(openRequest) {
-        val s = openRequest ?: return@LaunchedEffect
+        val r = openRequest ?: return@LaunchedEffect
         drawer.close()
-        nav.openFromDrawer(s) // on the Dashboard, as a drawer row: back returns to the Dashboard
+        nav.home() // on the Dashboard, as a drawer row: back returns to the Dashboard
+        r.open(nav)
         onOpenRequestHandled()
     }
     BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }

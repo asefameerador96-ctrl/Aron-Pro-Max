@@ -253,7 +253,7 @@ class TsoShellTest {
                             TsoScreen.DASHBOARD to { _, _ -> Text("dashboard", Modifier.testTag("t_dashboard")) },
                             TsoScreen.NOTIFICATIONS to frame(TsoScreen.NOTIFICATIONS, "Inbox", "t_inbox"),
                         ),
-                        openRequest = TsoScreen.NOTIFICATIONS, onOpenRequestHandled = { handled++ },
+                        openRequest = TsoOpenRequest.of(TsoScreen.NOTIFICATIONS), onOpenRequestHandled = { handled++ },
                     )
                 }
             }
@@ -264,5 +264,44 @@ class TsoShellTest {
         compose.onNodeWithTag(TsoKitTags.HOME).assertDoesNotExist() // s8: the inbox has no Home button
         systemBack()
         compose.onNodeWithTag("t_dashboard").assertIsDisplayed()
+    }
+
+    // tso-manual X4b (R-W-12 (1)): a request that arrives while another screen is open (onNewIntent) empties the stack first,
+    // opens its screen with its argument, and back returns to the Dashboard
+    @Test fun aPushRequestWhileAScreenIsOpenLandsOnTheDashboardWithItsArgument() {
+        val request = androidx.compose.runtime.mutableStateOf<TsoOpenRequest?>(null)
+        val args = mutableListOf<String?>()
+        val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                TsoLoginTheme(AppLanguage.EN, loggedOut = false) {
+                    TsoApp(
+                        user, "2026-10-29", BundleStatus.Ready("b-1", "2026-10-29"), "0.1.0 (1)", {}, {},
+                        screens = mapOf(
+                            TsoScreen.DASHBOARD to { _, _ -> Text("dashboard", Modifier.testTag("t_dashboard")) },
+                            TsoScreen.MY_TEAM to frame(TsoScreen.MY_TEAM, "My Team", "t_team", next = TsoScreen.RETAILER),
+                            TsoScreen.RETAILER to frame(TsoScreen.RETAILER, "Retailer", "t_retailer"),
+                            TsoScreen.TICKET_DASHBOARD to { nav, arg ->
+                                androidx.compose.runtime.SideEffect { args += arg }
+                                TsoFrame("Ticket Dashboard", nav, homeButton = false) { Text("tickets:$arg", Modifier.testTag("t_tickets")) }
+                            },
+                        ),
+                        openRequest = request.value, onOpenRequestHandled = { request.value = null },
+                    )
+                }
+            }
+        }
+        compose.waitForIdle()
+        openDrawer(); tap("periphery"); tap("my_team")
+        compose.onNodeWithTag("t_team-next").performClick(); compose.waitForIdle()
+        compose.onNodeWithTag("t_retailer").assertIsDisplayed()
+        compose.runOnIdle { request.value = TsoOpenRequest { it.open(TsoScreen.TICKET_DASHBOARD, "ticket_updated") } }
+        compose.waitForIdle()
+        compose.onNodeWithTag("t_tickets").assertIsDisplayed()
+        compose.onNodeWithText("tickets:ticket_updated").assertExists()
+        assertTrue(args.isNotEmpty() && args.all { it == "ticket_updated" })
+        assertEquals(null, request.value) // handled once
+        systemBack()
+        compose.onNodeWithTag("t_dashboard").assertIsDisplayed() // not My Team or Retailer: the stack was emptied first
     }
 }

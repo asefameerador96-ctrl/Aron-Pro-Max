@@ -67,8 +67,12 @@ import com.aktcl.aron.feature.tso.TsoFrame
 import com.aktcl.aron.feature.tso.TsoNav
 import com.aktcl.aron.feature.tso.TsoScreen
 import com.aktcl.aron.feature.tso.TsoScreenContent
+import com.aktcl.aron.core.sync.push.PushNotice
+import com.aktcl.aron.core.sync.push.PushNotices
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
@@ -112,16 +116,22 @@ class TicketsHostDeps(val host: TsoHost) {
 fun ticketScreens(deps: TicketsHostDeps): Map<TsoScreen, TsoScreenContent> = mapOf<TsoScreen, TsoScreenContent>(
     TsoScreen.TICKET_DASHBOARD to { nav, arg ->
         WithTickets(deps) { d ->
+            val state = rememberTicketDashboardState(d)
+            RefreshOnTicketPush { state.load(refresh = true) } // tso-manual X4b (R-W-12 (1))
             TicketDashboardScreen(
-                rememberTicketDashboardState(d), ticketFrame(nav),
+                state, ticketFrame(nav),
                 onOpen = { nav.open(TsoScreen.TICKET_DETAIL, it) }, onSeeAll = { nav.open(TsoScreen.TICKET_LIST) }, onQuick = { nav.open(TsoScreen.TICKET_QUICK) },
                 // opened from a ticket push (TicketPush.open): read online even when the kept copy is fresh
-                refreshOnOpen = arg == TicketPush.REASON,
+                refreshOnOpen = TicketPush.refreshOnOpen(arg),
             )
         }
     },
     TsoScreen.TICKET_LIST to { nav, _ ->
-        WithTickets(deps) { d -> TicketListScreen(rememberTicketListState(d), ticketFrame(nav), onOpen = { nav.open(TsoScreen.TICKET_DETAIL, it) }) }
+        WithTickets(deps) { d ->
+            val state = rememberTicketListState(d)
+            RefreshOnTicketPush { state.load(refresh = true) } // tso-manual X4b (R-W-12 (1))
+            TicketListScreen(state, ticketFrame(nav), onOpen = { nav.open(TsoScreen.TICKET_DETAIL, it) })
+        }
     },
     TsoScreen.TICKET_QUICK to { nav, _ ->
         WithTickets(deps) { d -> QuickTicketScreen(d, ticketFrame(nav), onCreate = { nav.open(TsoScreen.TICKET_CREATE) }, onSubmitted = { TicketNav.afterSave(nav) }) }
@@ -131,7 +141,11 @@ fun ticketScreens(deps: TicketsHostDeps): Map<TsoScreen, TsoScreenContent> = map
     },
     TsoScreen.TICKET_DETAIL to { nav, arg ->
         if (arg == null) LaunchedEffect(Unit) { nav.back() } // a detail without its ticket (never opened so): back
-        else WithTickets(deps) { d -> TicketDetailScreen(rememberTicketDetailState(d, arg), ticketFrame(nav)) }
+        else WithTickets(deps) { d ->
+            val state = rememberTicketDetailState(d, arg)
+            RefreshOnTicketPush { state.load() } // tso-manual X4b (R-W-12 (1))
+            TicketDetailScreen(state, ticketFrame(nav))
+        }
     },
 )
 
@@ -149,8 +163,24 @@ object TicketNav {
 object TicketPush {
     const val REASON = "ticket_updated"
 
-    /** The screen a tapped push opens, or null when the push is not a ticket push. */
-    fun target(reason: String?): TsoScreen? = if (reason?.trim() == REASON) TsoScreen.TICKET_DASHBOARD else null
+    /**
+     * The screen a tapped push opens, or null when the push is not a ticket push: the push reason, or the open extra
+     * [PushNotices.OPEN_TICKETS] that A1's push layer puts on the notification's launch intent (tso-manual X4b).
+     */
+    fun target(reason: String?): TsoScreen? = when (reason?.trim()) {
+        REASON, PushNotices.OPEN_TICKETS -> TsoScreen.TICKET_DASHBOARD
+        else -> null
+    }
+
+    /** The Ticket Dashboard opened by [open] reads online even when its kept copy is fresh (D-A2-30). */
+    fun refreshOnOpen(arg: String?): Boolean = arg == REASON
+
+    /**
+     * tso-manual X4b (R-W-12 (1)): the pushes that make a ticket screen on show read again. `ticket_updated` is the ticket
+     * reason; B1 sends a desk update with reason `notification` today (`Inbox.PUSH_REASON`, R-W-06), which arrives as
+     * [PushNotice.InboxUpdated]. No polling: one read per push, only while a ticket screen is shown.
+     */
+    fun refreshes(notice: PushNotice): Boolean = notice == PushNotice.TicketUpdated || notice == PushNotice.InboxUpdated
 
     /**
      * Opens the screen of a tapped push through [nav] (A1's tap handler calls this): the Ticket Dashboard with the reason as
@@ -160,6 +190,26 @@ object TicketPush {
         val screen = target(reason) ?: return false
         nav.open(screen, REASON)
         return true
+    }
+}
+
+/**
+ * tso-manual X4b (R-W-12 (1)): while a ticket screen is composed, every push of [TicketPush.refreshes] runs [refresh] once
+ * (the screen's own read: kept copy, then online); leaving the screen stops listening. A failed read keeps what is shown.
+ */
+@Composable
+internal fun RefreshOnTicketPush(arrived: Flow<PushNotice> = PushNotices.arrived, refresh: suspend () -> Unit) {
+    val latest by rememberUpdatedState(refresh)
+    LaunchedEffect(arrived) {
+        arrived.filter { TicketPush.refreshes(it) }.collect {
+            try {
+                latest()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // the state already shows its offline line; the next push or a pull tries again
+            }
+        }
     }
 }
 

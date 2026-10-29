@@ -126,5 +126,9 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.ext.junit)
+    // tso-manual X4b: TicketPushNavigationTest composes TsoApp with the test rule; no test manifest (its exported activity
+    // would fail AppCoexistenceTest), the host activity is registered with Robolectric's package manager (as SrFrameTest)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
     implementation(project(":android:feature-tickets")) // tso-manual A2: the Tickets screens (TicketsHost.kt, TicketApi.kt)
 }
