@@ -185,3 +185,33 @@ describe("the mock operation (web/mock fixture of queryNationalLoginSubmitUsers)
     expect(zone.body.items[0]!.dep_name).toBe("Gulshan Zone 1");
   });
 });
+
+// tso-manual X3 (R-W-13 (8)): the "list cut, narrow the filter" note shows exactly when the server says `truncated`, on that tab
+// only, in en and bn; it stands in place of the login note and survives a picked route (the cut is the filter's, not the route's).
+describe("the truncated note on the page (R-W-13 (8))", () => {
+  const cutPage = (tab: string) => (tab === "not_uploaded" ? page({ tab: "not_uploaded", truncated: true, route_count: 2412, items: Array.from({ length: 2000 }, (_, i) => row({ route_id: i + 1, route_name: `Route ${i + 1}` })) }) : page({ tab: "not_logged_in", truncated: false }));
+  it("en: the note on the cut tab only, naming the rows shown", async () => {
+    h.stub({ method: "POST", path: PATH, fn: (c) => ({ status: 200, body: cutPage(c.query.tab!) }) });
+    await as("dmo1", "dmo-pass-1", "DMO", dmoScope);
+    const m = await render();
+    expect(m).toContain('data-testid="truncated-not-uploaded"');
+    expect(m).not.toContain('data-testid="truncated-not-logged-in"');
+    expect(plain(m)).toContain("The list is cut at 2,000 rows. Narrow the filter (a territory or a zone) to see every row.");
+    expect(await render({ territory: "334", route: "10233" })).toContain('data-testid="truncated-not-uploaded"'); // a picked route keeps it
+  });
+  it("bn: the same note in Bangla with Bengali digits", async () => {
+    h.stub({ method: "POST", path: PATH, fn: (c) => ({ status: 200, body: cutPage(c.query.tab!) }) });
+    await as("dmo1", "dmo-pass-1", "DMO", dmoScope);
+    locale.v = "bn";
+    const m = await render();
+    expect(m).toContain('data-testid="truncated-not-uploaded"');
+    const t = plain(m);
+    expect(t).toContain("তালিকাটি ২,০০০ সারিতে কাটা হয়েছে। সব সারি দেখতে ফিল্টার ছোট করুন (একটি টেরিটরি বা জোন)।");
+    expect(t).not.toContain("The list is cut");
+  });
+  it("a list that is not cut never shows it, whatever its length", async () => {
+    h.stub({ method: "POST", path: PATH, fn: (c) => ({ status: 200, body: page({ tab: c.query.tab as LoginUsers["tab"], truncated: false, route_count: 2000, items: Array.from({ length: 2000 }, (_, i) => row({ route_id: i + 1 })) }) }) });
+    await as("dmo1", "dmo-pass-1", "DMO", dmoScope);
+    expect(await render()).not.toContain("truncated-");
+  });
+});
