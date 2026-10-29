@@ -107,7 +107,7 @@ class ReportEngine(
                 // As was: the zones the selected nodes had on the dates of the period (D-REPORTS-NODEASWAS-01), then narrowed by the reach below.
                 val members = memberZones(h, col, ids.distinct(), from, to)
                 // Every selected node, each by itself: a node that exists and lies inside today's reach (D-LEAD-REPORT-SELECTOR-01: scope only; one with no member in the period reads no rows).
-                if (!members.allowed(if (reach.national) null else reach.zoneIds, ids.distinct())) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected geography is outside your reach")
+                if (!members.allowed(reach, ids.distinct())) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected geography is outside your reach")
                 val sel = members.zones
                 zones = if (zones == null) sel else zones.intersect(sel.toSet()).toList()
             }

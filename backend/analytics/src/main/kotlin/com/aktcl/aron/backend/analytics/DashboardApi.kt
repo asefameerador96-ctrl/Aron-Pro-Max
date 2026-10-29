@@ -270,7 +270,7 @@ class DashboardService(
         // As was (D-REPORTS-NODEASWAS-01): the zones the node had on any date of the window, not the zones it has now, so a drill-down on an old
         // date reads the node as it was. Window never changed: the current structure answers (the plain path, the old SQL).
         val members = if (lv.col == null || multi) null else memberZones(h, lv.col, listOf(node.second), from, to)
-        if (members != null && !members.allowed(if (reach.national) null else reach.zoneIds, listOf(node.second))) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
+        if (members != null && !members.allowed(reach, listOf(node.second))) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
         val nodeZones: List<Long> = members?.readable(if (reach.national) null else reach.zoneIds) ?: emptyList()
         val eff = when {
             multi -> ZoneScope(false, reach.zoneIds.toList().ifEmpty { listOf(-1L) })
