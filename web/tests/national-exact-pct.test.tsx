@@ -158,6 +158,32 @@ describe("route-map bars by the Sales-card rule (R-W-13 (5))", () => {
     }
     expect(n).toBeGreaterThan(50);
   });
+  // X3 fix round (checker, low): R-W-06 (3) says the bar and the Sales card are one rule, so the bar follows the corpus's own s4.2
+  // `sales_card` fixtures (a real W): whole percent = round_half_up(100 x a x W / t) = (200 a W + t) div 2t, and a dash exactly where
+  // the card's ring prints one (a null, t null or 0, W = 0). Today: cigarette 2, bidi 288, lighter 0, match 0, three dashes.
+  it("agrees with the corpus's s4.2 Sales-card fixtures (a, t, W), dash where the card's ring is a dash", () => {
+    const cards = (JSON.parse(readFileSync(resolve(__dirname, "../../contract/fixtures/kpi-format-corpus.json"), "utf8")) as { sales_card: { a: number | null; t: number | null; w: number; ring_tenths: number | null; note: string }[] }).sales_card;
+    expect(cards.length).toBeGreaterThanOrEqual(7);
+    const seen = { whole: 0, dash: 0 };
+    for (const e of cards) {
+      const got = pctWholeSalesCard(e.a, e.t === null ? null : `${e.t}.000`, e.w);
+      if (e.ring_tenths === null) {
+        expect(got, e.note).toBeNull();
+        // the bar's `sales` is never null on the wire; with a sent target member the bar prints the card's dash, not the bp
+        if (e.a !== null) expect(routeBarText("en", { pct_bp: 10450, sales: e.a, monthly_target_qty: e.t === null ? null : `${e.t}.000`, working_days: e.w }), e.note).toBe("—");
+        seen.dash++;
+        continue;
+      }
+      const a = BigInt(e.a!), t = BigInt(e.t!), w = BigInt(e.w);
+      expect(got, e.note).toBe(Number((200n * a * w + t) / (2n * t)));
+      expect(routeBarText("en", { pct_bp: null, sales: e.a!, monthly_target_qty: `${e.t}.000`, working_days: e.w }), e.note).toBe(`${got}%`); // the bp is not read
+      seen.whole++;
+    }
+    expect(seen).toEqual({ whole: 4, dash: 3 });
+    const at = (note: string) => cards.find((e) => e.note.startsWith(note))!;
+    const p = (e: { a: number | null; t: number | null; w: number }) => pctWholeSalesCard(e.a, e.t === null ? null : `${e.t}.000`, e.w);
+    expect([p(at("s4.2 Sales Cigarette")), p(at("s4.2 Sales Bidi")), p(at("s4.2 Sales Lighter")), p(at("s4.2 Sales Match"))]).toEqual([2, 288, 0, 0]);
+  });
   it("routeBarText: the Sales-card rule when both members are sent, else the daily-target path, else the bp", () => {
     const x = { pct_bp: 10450, sales: 30, daily_target: "28.708" };
     expect(routeBarText("en", { ...x, monthly_target_qty: "689.000", working_days: 24 })).toBe("104%");
@@ -244,5 +270,25 @@ describe("channel legends from the counts (R-W-13 (6))", () => {
   it("a card with nothing to divide by prints a dash for each share", () => {
     const empty: ChannelSlice = { ...stamp, denominator: 0, channels: [{ code: "GT", value: 0, share_bp: null }] };
     expect(legend(html(<ChannelCallsCard slot={ok(empty)} locale="en" />), "ch-calls-GT")).toContain("(—)");
+  });
+  // X3 fix round (checker, low): the rings divide by the legend's denominator, so with unclassified calls the picture and the printed
+  // shares agree (before, the rings divided by the listed channels and made a full 100 % while the legend said less).
+  /** Each coloured ring's arc as a fraction of its circle (dash length over circumference), outermost first. */
+  const arcs = (m: string) => [...(/data-testid="channel-radial"[\s\S]*?<\/svg>/.exec(m)?.[0] ?? "").matchAll(/stroke-dasharray="([\d.]+) ([\d.]+)"/g)].map((a) => Number(a[1]) / Number(a[2]));
+  it("By Channel Successful Call: each ring's arc is the legend's share, unclassified calls included", () => {
+    // 500 + 500 listed, 1,000 unclassified: each channel is 25.0 % in the legend, so each arc is a quarter turn (not a half)
+    const half: ChannelSlice = { ...stamp, denominator: 2000, channels: [{ code: "GT", value: 500, share_bp: 2500 }, { code: "DCC", value: 500, share_bp: 2500 }] };
+    const m = html(<ChannelCallsCard slot={ok(half)} locale="en" />);
+    expect(legend(m, "ch-calls-GT")).toContain("(25.0%)");
+    expect(legend(m, "ch-calls-DCC")).toContain("(25.0%)");
+    const a = arcs(m);
+    expect(a).toHaveLength(2);
+    for (const f of a) expect(f).toBeCloseTo(0.25, 6);
+    // the fixture above: 29 and 1,100 listed of 1,186 (57 unclassified), so the arcs add up to 1,129 / 1,186 of a turn, not a full one
+    const b = arcs(html(<ChannelCallsCard slot={ok(calls)} locale="en" />));
+    expect(b.reduce((s, f) => s + f, 0)).toBeCloseTo(1129 / 1186, 6);
+    // a 0 denominator draws the pale tracks only
+    const none: ChannelSlice = { ...stamp, denominator: 0, channels: [{ code: "GT", value: 0, share_bp: null }] };
+    expect(arcs(html(<ChannelCallsCard slot={ok(none)} locale="en" />))).toEqual([]);
   });
 });

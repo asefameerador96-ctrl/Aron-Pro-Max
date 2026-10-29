@@ -62,9 +62,22 @@ describe("(2) the leave decision note allows 500 characters (DecisionRequest.not
   it("a 400-character English note passes (the old proxy cap was 300)", async () => {
     expect((await post(decisionBody(L1, "reject", "x".repeat(400)))).status).toBe(200);
   });
+  // X3 fix round (checker, low): the mock refuses a note over 500 itself, so a bare 400 cannot tell who refused. The BFF's own
+  // problem carries no `errors` (the mock's names `/note` too_long), and an API stub that would accept the note is never reached.
   it("501 characters are refused at the BFF before the API; the leave stays pending", async () => {
-    expect((await post({ leave_uuid: L1, decision: "reject", note: "x".repeat(501) })).status).toBe(400);
+    const r = await post({ leave_uuid: L1, decision: "reject", note: "x".repeat(501) });
+    expect(r.status).toBe(400);
+    const p = (await r.json()) as { code?: string; errors?: unknown };
+    expect(p.code).toBe("ERR_VALIDATION");
+    expect(p.errors).toBeUndefined(); // the API's refusal would be errors: [{ pointer: "/note", code: "too_long" }]
     expect(h.mock.state.dash.leave.find((l) => l.leave_uuid === L1)?.status).toBe("pending");
+  });
+  it("501 characters never reach the API, even one that would take them", async () => {
+    h.stub({ method: "POST", path: /^\/v1\/leave\/[0-9a-f-]{36}\/decision$/, fn: () => ({ status: 200, body: { leave_uuid: L1, status: "rejected" } }) });
+    expect((await post({ leave_uuid: L1, decision: "reject", note: "ক".repeat(501) })).status).toBe(400);
+    expect(h.calls().filter((c) => c.path.startsWith("/v1/leave/"))).toEqual([]);
+    expect((await post({ leave_uuid: L1, decision: "reject", note: "ক".repeat(500) })).status).toBe(200); // the stub is live
+    expect(h.calls().filter((c) => c.path.startsWith("/v1/leave/"))).toHaveLength(1);
   });
   it("the page's hint names 500, in en and bn", () => {
     expect(t("en", "tsoman.leave.note_hint", { n: formatNumber("en", NOTE_MAX) })).toBe("Up to 500 characters, kept with the decision.");
