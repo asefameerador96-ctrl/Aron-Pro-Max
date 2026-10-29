@@ -10,6 +10,12 @@ import com.aktcl.aron.feature.tso.TsoDashCard
 import com.aktcl.aron.feature.tso.TsoDashboards
 import com.aktcl.aron.feature.tso.notifications.TsoInboxes
 import com.aktcl.aron.feature.tso.targets.TargetNodeKey
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 
@@ -109,11 +115,12 @@ class TsoApi(private val client: AronApiClient, private val dir: java.io.File) {
             },
             decode = { b, _ -> b },
         )
+        // the kept copies are files: written, listed, deleted and read on the IO pool, never on the caller's (main) thread
         return when {
-            r is ApiResult.Success -> { if (key != null) remember(key, r.value); TsoFetch.Fresh(r.value) }
-            r is ApiResult.Failure && (r.httpStatus == 403 || r.httpStatus == 404 || r.httpStatus == 501) -> { if (key != null) file(key).delete(); TsoFetch.Gone }
+            r is ApiResult.Success -> { if (key != null) withContext(Dispatchers.IO) { remember(key, r.value) }; TsoFetch.Fresh(r.value) }
+            r is ApiResult.Failure && (r.httpStatus == 403 || r.httpStatus == 404 || r.httpStatus == 501) -> { if (key != null) withContext(Dispatchers.IO) { file(key).delete() }; TsoFetch.Gone }
             key == null -> TsoFetch.Unavailable
-            else -> cached(key)
+            else -> withContext(Dispatchers.IO) { cached(key) }
         }
     }
 
@@ -144,5 +151,53 @@ class TsoApi(private val client: AronApiClient, private val dir: java.io.File) {
         const val INBOX_PAGE = 50
         val JSON = "application/json".toMediaType()
         const val MAX_FILES = 60; const val MAX_COPY_CHARS = 400_000; const val MAX_AGE_MS = 3L * 24 * 3600 * 1000
+    }
+}
+
+/**
+ * tso-manual A1: one read per key at a time, and every caller waits for it. A call for a key that is being read joins that read
+ * (a double pull, the bell tapped while the Dashboard reads the inbox) and returns when its answer is in the model; another key reads
+ * in parallel (a tab switch, another node). The read runs in [scope], the signed-in day's scope, not in the caller's: a screen that
+ * leaves (a tab switch, back, the bell) only stops waiting and the answer still lands; the logout cancels the scope. A failed read
+ * throws to every caller and frees its key. [busy] is compose state, so a screen's refresh indicator follows its own key.
+ */
+class TsoReadFlights<K : Any>(private val scope: CoroutineScope) {
+    private val running = HashMap<K, Deferred<Exception?>>()
+    private val busy = androidx.compose.runtime.mutableStateListOf<K>()
+
+    /** True while [key] is being read. */
+    fun isBusy(key: K): Boolean = key in busy
+
+    /** True while any key that [match] accepts is being read. */
+    fun anyBusy(match: (K) -> Boolean): Boolean = busy.any(match)
+
+    /** Reads [key] with [read], or joins the read of [key] already running. */
+    suspend fun run(key: K, read: suspend () -> Unit) {
+        val flight = running[key]?.takeIf { it.isActive } ?: start(key, read)
+        flight.await()?.let { throw it }
+    }
+
+    private fun start(key: K, read: suspend () -> Unit): Deferred<Exception?> {
+        // LAZY: the key is registered before the read can finish, so the completion below always finds it
+        val flight = scope.async(start = CoroutineStart.LAZY) {
+            try {
+                read()
+                null
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                e // to the callers, never to the day's scope (one failed read must not cancel the others)
+            }
+        }
+        running[key] = flight
+        busy += key
+        flight.invokeOnCompletion {
+            if (running[key] === flight) {
+                running.remove(key)
+                busy.remove(key)
+            }
+        }
+        flight.start()
+        return flight
     }
 }

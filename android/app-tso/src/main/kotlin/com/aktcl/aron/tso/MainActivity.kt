@@ -214,17 +214,19 @@ class MainActivity : ComponentActivity() {
                                     mediaFor = { mediaShell.componentsFor(s.user.userId) { components.trustedClock.businessDate().toString() } },
                                 )
                             }
-                            // tso-manual A1: one read client per user for the Dashboard, Target Status and the bell inbox
+                            // tso-manual A1: one read client per user for the Dashboard, Target Status and the bell inbox; their reads run in
+                            // this sign-in's scope (a screen that leaves stops waiting, the read still lands; the logout cancels them)
                             val api = remember(host) { TsoApi(host.components.apiClient, host.context, host.userId) }
-                            val inbox = remember(host) { TsoInboxModel(api, TsoDashboardModel.prefs(host.context, host.userId)) }
+                            val readScope = androidx.compose.runtime.rememberCoroutineScope()
+                            val inbox = remember(host) { TsoInboxModel(api, TsoDashboardModel.prefs(host.context, host.userId), readScope) }
                             // D-TSO-MAN-26: a push `notification` (or `ticket_updated`) re-reads the bell; no polling
                             LaunchedEffect(inbox) {
                                 com.aktcl.aron.core.sync.push.PushNotices.arrived.collect { n ->
                                     if (n == com.aktcl.aron.core.sync.push.PushNotice.InboxUpdated || n == com.aktcl.aron.core.sync.push.PushNotice.TicketUpdated) inbox.refresh()
                                 }
                             }
-                            val dashboard = remember(host) { dashboardScreens(host, api, inbox) }
-                            val targets = remember(host) { targetScreens(host, api) }
+                            val dashboard = remember(host) { dashboardScreens(host, api, inbox, readScope) }
+                            val targets = remember(host) { targetScreens(host, api, readScope) }
                             val inboxScreen = remember(host) { inboxScreens(host, inbox) }
                             val openRequest by pushOpen.collectAsStateWithLifecycle()
                             val areas = remember(host) { areaScreens(AreasHostDeps(host)) }

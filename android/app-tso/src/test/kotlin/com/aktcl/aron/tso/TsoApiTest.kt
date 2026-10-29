@@ -12,7 +12,13 @@ import com.aktcl.aron.feature.tso.ChannelMode
 import com.aktcl.aron.feature.tso.LoginSubmitTab
 import com.aktcl.aron.feature.tso.TsoDashCard
 import com.aktcl.aron.feature.tso.TsoFailure
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Response
@@ -47,6 +53,8 @@ class TsoApiTest {
     /** What the fake server answers next: status code by path (default 200). */
     private val status = mutableMapOf<String, Int>()
     private var transportDown = false
+    /** Requests held until released: a request whose "path?query" contains the key waits on its latch (a slow 2G read). */
+    private val holds = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CountDownLatch>()
 
     private fun answer(path: String): String = when {
         path.endsWith("/sales") -> """{"date":"2026-10-29","till_time":true,"as_of":"2026-10-29T08:30:00Z","last_updated_at":null,"working_days":25,"cards":[{"category_code":"cigarette","base_unit":"stick","total_sales":40,"daily_target":"1680.000","sales_so_far":40,"remaining":"1640.000","achievement_pct_bp":238,"target_routes":5,"monthly_target_qty":42000}]}"""
@@ -66,6 +74,7 @@ class TsoApiTest {
             if (transportDown) throw java.io.IOException("offline")
             val body = r.body?.let { b -> Buffer().also { b.writeTo(it) }.readUtf8() }.orEmpty()
             seen += Seen(r.method, r.url.encodedPath, r.url.query, body)
+            holds.entries.firstOrNull { (k, _) -> "${r.url.encodedPath}?${r.url.query}".contains(k) }?.value?.await(10, java.util.concurrent.TimeUnit.SECONDS)
             val code = status[r.url.encodedPath] ?: 200
             Response.Builder().request(r).protocol(Protocol.HTTP_1_1).code(code).message("x").header("X-Aron-Api", "1")
                 .body((if (code == 200) answer(r.url.encodedPath) else """{"type":"about:blank","title":"x","status":$code,"code":"ERR_FORBIDDEN"}""").toResponseBody()).build()
@@ -76,7 +85,11 @@ class TsoApiTest {
         })
     }
 
-    private fun model(api: TsoApi, prefs: android.content.SharedPreferences? = null) = TsoDashboardModel(api, { "2026-10-29" }, prefs)
+    /** A model whose reads run in the test's scope (the day's scope in the app). */
+    private fun CoroutineScope.model(api: TsoApi, prefs: android.content.SharedPreferences? = null, now: () -> Long = { 0L }, day: () -> String = { "2026-10-29" }) =
+        TsoDashboardModel(api, day, prefs, this, nowMs = now)
+
+    private suspend fun until(what: String, cond: () -> Boolean) = withTimeout(10_000) { while (!cond()) delay(5) }.also { assertTrue(what, cond()) }
 
     @Test fun everyCardIsANationalPostWithOnlyTheDateAndNeverTheSummary() = runBlocking {
         val m = model(TsoApi(client(), tmp.newFolder("c")))
@@ -120,7 +133,7 @@ class TsoApiTest {
         assertEquals(TsoFailure.OFFLINE, s.cpr.failure)
         assertEquals(3L, s.cpr.value!!.successfulCalls)
         // another day has no copy
-        val other = TsoDashboardModel(TsoApi(client(), dir), { "2026-10-30" }, null)
+        val other = TsoDashboardModel(TsoApi(client(), dir), { "2026-10-30" }, null, this)
         other.load()
         assertNull(other.state!!.sales.value)
         assertEquals(TsoFailure.OFFLINE, other.state!!.sales.failure)
@@ -142,7 +155,7 @@ class TsoApiTest {
         assertNotNull(again.state!!.sales.value)
     }
 
-    @Test fun theChannelChoiceIsKeptInTheUsersUiPreferences() {
+    @Test fun theChannelChoiceIsKeptInTheUsersUiPreferences() = runBlocking {
         val ctx = ApplicationProvider.getApplicationContext<Context>()
         val prefs = TsoDashboardModel.prefs(ctx, 42)
         val a = model(TsoApi(client(), tmp.newFolder("c")), prefs)
@@ -154,9 +167,78 @@ class TsoApiTest {
         assertTrue(java.io.File(ctx.applicationInfo.dataDir, "shared_prefs/aron_ui_42.xml").let { prefs.edit().commit(); it.exists() })
     }
 
-    @Test fun nothingReadsWithoutBeingAsked() {
+    @Test fun nothingReadsWithoutBeingAsked() = runBlocking {
         TsoApi(client(), tmp.newFolder("c"))
         model(TsoApi(client(), tmp.newFolder("d")))
         assertTrue("constructing the api or the model reads nothing", seen.isEmpty())
+    }
+
+    // ---- tso-manual A1 fix round: one read per key, joined; a screen or tab that leaves never strands the next read --------------
+
+    @Test fun aTabSwitchDuringASlowReadStillReadsTheNewTabAndTheFirstAnswerLands() = runBlocking {
+        val slow = java.util.concurrent.CountDownLatch(1)
+        holds["tab=not_logged_in"] = slow
+        try {
+            val m = model(TsoApi(client(), tmp.newFolder("c")))
+            val firstTab = launch { m.loadUsers(LoginSubmitTab.NOT_LOGGED_IN) } // LaunchedEffect(usersTab) of Not Logged In
+            until("the first tab's read reached the server") { seen.any { it.query == "tab=not_logged_in" } }
+            assertTrue(m.usersRefreshing)
+            // the tap on Not Uploaded: the old effect is cancelled, the new one reads its tab
+            firstTab.cancel()
+            m.usersTab = LoginSubmitTab.NOT_UPLOADED
+            m.loadUsers(LoginSubmitTab.NOT_UPLOADED)
+            assertNotNull("the new tab has its rows", m.users[LoginSubmitTab.NOT_UPLOADED]?.value)
+            assertFalse("and no spinner", m.usersRefreshing)
+            // the slow answer was not thrown away: it lands when the server answers
+            slow.countDown()
+            until("the first tab's answer lands") { m.users[LoginSubmitTab.NOT_LOGGED_IN] != null }
+            m.usersTab = LoginSubmitTab.NOT_LOGGED_IN
+            assertFalse(m.usersRefreshing)
+            assertEquals(1, seen.count { it.query == "tab=not_logged_in" })
+        } finally {
+            slow.countDown()
+        }
+    }
+
+    @Test fun aSecondPullWhileTheCardsReadWaitsForThatReadAndNeverDoublesIt() = runBlocking {
+        val slow = java.util.concurrent.CountDownLatch(1)
+        holds["/national/sales?"] = slow
+        try {
+            val m = model(TsoApi(client(), tmp.newFolder("c")))
+            val first = launch { m.load() }
+            until("the sales read reached the server") { seen.any { it.path.endsWith("/sales") } }
+            assertTrue(m.refreshing)
+            val second = async { m.load(); m.state } // the second pull
+            yield()
+            assertTrue("still reading: the second pull waits", second.isActive)
+            slow.countDown()
+            first.join()
+            assertNotNull("the second pull returns with the figures", second.await()?.sales?.value)
+            assertFalse(m.refreshing)
+            assertEquals("one read of each card", TsoDashCard.entries.size, seen.size)
+        } finally {
+            slow.countDown()
+        }
+    }
+
+    @Test fun theDashboardShownAgainWithinAMinuteKeepsItsReadAndAPullAlwaysReads() = runBlocking {
+        var now = 1_000_000L
+        var day = "2026-10-29"
+        val m = model(TsoApi(client(), tmp.newFolder("c")), now = { now }, day = { day })
+        val cards = TsoDashCard.entries.size
+        m.show()
+        assertEquals(cards, seen.size)
+        now += 30_000L
+        m.show() // back from Login & Bikroy Joma Status within the minute: no read
+        assertEquals(cards, seen.size)
+        now += 31_000L
+        m.show() // a minute later: read again
+        assertEquals(2 * cards, seen.size)
+        m.load() // pull-to-refresh always reads
+        assertEquals(3 * cards, seen.size)
+        day = "2026-10-30"
+        m.show() // a new business day reads
+        assertEquals(4 * cards, seen.size)
+        assertTrue(seen.takeLast(cards).all { it.body == """{"date":"2026-10-30"}""" })
     }
 }

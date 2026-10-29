@@ -12,7 +12,12 @@ import com.aktcl.aron.feature.tso.TsoScreen
 import com.aktcl.aron.feature.tso.notifications.TsoInboxPage
 import com.aktcl.aron.feature.tso.notifications.TsoInboxes
 import com.aktcl.aron.feature.tso.notifications.TsoNotification
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Response
@@ -45,6 +50,8 @@ class TsoInboxTest {
     private val seen = java.util.concurrent.CopyOnWriteArrayList<Seen>()
     private var transportDown = false
     private var readStatus = 200
+    /** Requests held until released: a request whose "METHOD path" equals the key waits on its latch (a slow 2G read). */
+    private val holds = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CountDownLatch>()
 
     /** The fake server's inbox: ids 3 (unread), 2 (unread), 1 (read). */
     private val readAt = mutableMapOf(3L to null, 2L to null, 1L to "2026-10-28T10:00:00Z")
@@ -64,6 +71,7 @@ class TsoInboxTest {
             if (transportDown) throw java.io.IOException("offline")
             val body = r.body?.let { b -> Buffer().also { b.writeTo(it) }.readUtf8() }.orEmpty()
             seen += Seen(r.method, r.url.encodedPath, r.url.query, body)
+            holds["${r.method} ${r.url.encodedPath}"]?.await(10, java.util.concurrent.TimeUnit.SECONDS)
             val (code, answer) = when {
                 r.url.encodedPath == "/v1/me/notifications/read" -> {
                     if (readStatus == 200) {
@@ -84,7 +92,8 @@ class TsoInboxTest {
     }
 
     private val prefs by lazy { ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("aron_ui_77", Context.MODE_PRIVATE).also { it.edit().clear().commit() } }
-    private fun model(dir: java.io.File = tmp.newFolder("c")) = TsoInboxModel(TsoApi(client(), dir), prefs)
+    /** A model whose reads run in the test's scope (the day's scope in the app). */
+    private fun CoroutineScope.model(dir: java.io.File = tmp.newFolder("c")) = TsoInboxModel(TsoApi(client(), dir), prefs, this)
 
     @Test fun theBellIsTheServersUnreadCountAndNothingReadsWithoutACall() = runBlocking {
         val m = model()
@@ -160,10 +169,38 @@ class TsoInboxTest {
 
     @Test fun theDashboardReadsTheBellWithItsCards() = runBlocking {
         val api = TsoApi(client(), tmp.newFolder("c"))
-        val inbox = TsoInboxModel(api, prefs)
-        TsoDashboardModel(api, { "2026-10-29" }, null, alsoOnLoad = { inbox.refresh() }).load()
+        val inbox = TsoInboxModel(api, prefs, this)
+        TsoDashboardModel(api, { "2026-10-29" }, null, this, alsoOnLoad = { inbox.refresh() }).load()
         assertEquals(1, seen.count { it.path == "/v1/me/notifications" })
         assertEquals(2, inbox.unread)
+    }
+
+    @Test fun theBellTappedWhileTheDashboardReadsTheInboxJoinsThatReadAndMarksTheNewestId() = runBlocking {
+        val slow = java.util.concurrent.CountDownLatch(1)
+        holds["GET /v1/me/notifications"] = slow
+        try {
+            val api = TsoApi(client(), tmp.newFolder("c"))
+            val inbox = TsoInboxModel(api, prefs, this)
+            val dashboard = TsoDashboardModel(api, { "2026-10-29" }, null, this, alsoOnLoad = { inbox.refresh() })
+            val dashboardScreen = launch { dashboard.load() } // the Dashboard's LaunchedEffect
+            withTimeout(10_000) { while (seen.none { it.path == "/v1/me/notifications" }) delay(5) }
+            assertTrue("the bell's read is running", inbox.refreshing)
+            // the bell: the Dashboard leaves the composition (its effect is cancelled) and the inbox opens
+            dashboardScreen.cancel()
+            val inboxScreen = launch { inbox.open() }
+            yield()
+            assertTrue("the inbox waits for the read in flight", inboxScreen.isActive)
+            slow.countDown()
+            inboxScreen.join()
+            assertEquals("one page read, joined, not two", 1, seen.count { it.method == "GET" && it.path == "/v1/me/notifications" })
+            assertEquals("the newest id is marked read", """{"up_to_id":3}""", seen.single { it.path == "/v1/me/notifications/read" }.body)
+            assertEquals(listOf(3L, 2L, 1L), inbox.page!!.value!!.items.map { it.id })
+            assertEquals(0, inbox.unread)
+            assertNull(inbox.pendingUpTo)
+            assertFalse(inbox.refreshing)
+        } finally {
+            slow.countDown()
+        }
     }
 
     // ---- the pure parts ------------------------------------------------------------------------------------------------------

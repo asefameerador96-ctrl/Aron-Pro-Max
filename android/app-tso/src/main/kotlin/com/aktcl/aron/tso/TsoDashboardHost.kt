@@ -25,6 +25,7 @@ import com.aktcl.aron.feature.tso.TsoLoginSubmitStatusContent
 import com.aktcl.aron.feature.tso.TsoNav
 import com.aktcl.aron.feature.tso.TsoScreen
 import com.aktcl.aron.feature.tso.TsoScreenContent
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -56,60 +57,71 @@ fun dashboardStateOf(fetches: Map<TsoDashCard, TsoFetch>, businessDate: String):
 
 /**
  * The Dashboard and Login & Bikroy Joma Status of one signed-in TSO (D-TSO-MAN-09, 12, 14, 41). Kept for the whole signed-in day
- * (one per [TsoHost]), so coming back to the Dashboard shows the last figures while it reads again. Reads happen only when a screen
- * opens and on pull-to-refresh, never on a timer; the cards are read in parallel, each with its own cache key. The ▸ choice of the
- * channel card is kept in this user's `aron_ui_<id>` preferences, which logout wipes (SH-17).
+ * (one per [TsoHost]), so coming back to the Dashboard shows the last figures. Reads happen only when a screen opens and on
+ * pull-to-refresh, never on a timer: the Dashboard shown again within [freshForMs] of its last read of the same day keeps that read
+ * ([show]); a pull always reads ([load]). The cards are read in parallel, each with its own cache key. Every read runs once per key in
+ * the signed-in day's [scope] ([TsoReadFlights]): a second call joins it, and a screen or tab that leaves does not cancel it. The ▸
+ * choice of the channel card is kept in this user's `aron_ui_<id>` preferences, which logout wipes (SH-17).
  */
 class TsoDashboardModel(
     private val api: TsoApi,
     private val today: () -> String,
     private val prefs: SharedPreferences?,
+    /** The signed-in day's scope: the reads run in it (see [TsoReadFlights]). */
+    scope: CoroutineScope,
     /** tso-manual A1: read with the cards on open and pull-to-refresh (the bell's unread count, D-TSO-MAN-26); a failure never stops the cards. */
     private val alsoOnLoad: suspend () -> Unit = {},
+    /** Trusted now (epoch ms), for the freshness window of [show]. */
+    private val nowMs: () -> Long = System::currentTimeMillis,
+    private val freshForMs: Long = 60_000L,
 ) {
+    private val cards = TsoReadFlights<Unit>(scope)
+    private val usersFlights = TsoReadFlights<LoginSubmitTab>(scope)
+    private var lastRead: Pair<String, Long>? = null
+
     var state: TsoDashboardState? by mutableStateOf(null)
         private set
-    var refreshing: Boolean by mutableStateOf(false)
-        private set
+    /** True while the cards are being read. */
+    val refreshing: Boolean get() = cards.isBusy(Unit)
     var channelMode: ChannelMode by mutableStateOf(runCatching { ChannelMode.valueOf(prefs?.getString(KEY_CHANNEL, null) ?: "") }.getOrDefault(ChannelMode.STD))
         private set
 
     var usersTab: LoginSubmitTab by mutableStateOf(LoginSubmitTab.NOT_LOGGED_IN)
     val users = mutableStateMapOf<LoginSubmitTab, CardLoad<LoginSubmitUsers>>()
-    var usersRefreshing: Boolean by mutableStateOf(false)
-        private set
+    /** True while the selected tab is being read (another tab's read never shows on this one). */
+    val usersRefreshing: Boolean get() = usersFlights.isBusy(usersTab)
 
     fun toggleChannel() {
         channelMode = if (channelMode == ChannelMode.STD) ChannelMode.CALLS else ChannelMode.STD
         prefs?.edit()?.putString(KEY_CHANNEL, channelMode.name)?.apply()
     }
 
-    /** Reads every card once (a second call while one runs is ignored: a double pull never doubles the reads). */
-    suspend fun load() {
-        if (refreshing) return
-        refreshing = true
-        try {
+    /** The Dashboard is shown (first open, or back from another screen): reads unless the last read of today is under [freshForMs] old. */
+    suspend fun show() {
+        val last = lastRead
+        val recent = last != null && last.first == today() && nowMs() - last.second in 0 until freshForMs
+        if (state == null || !recent) load()
+    }
+
+    /**
+     * Reads every card once (a second call while one runs waits for that read: a double pull never doubles the reads), and the bell
+     * beside it ([alsoOnLoad], its own read: the cards do not wait for it and a failure there never stops them).
+     */
+    suspend fun load() = coroutineScope {
+        launch {
+            try { alsoOnLoad() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        }
+        cards.run(Unit) {
             val day = today()
-            coroutineScope {
-                launch {
-                    try { alsoOnLoad() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
-                }
-                val fetches = TsoDashCard.entries.map { c -> c to async { api.card(c, day) } }.associate { (c, d) -> c to d.await() }
-                state = dashboardStateOf(fetches, day) // the cards show without waiting for the bell
-            }
-        } finally {
-            refreshing = false
+            val fetches = coroutineScope { TsoDashCard.entries.map { c -> c to async { api.card(c, day) } }.associate { (c, d) -> c to d.await() } }
+            state = dashboardStateOf(fetches, day)
+            lastRead = day to nowMs()
         }
     }
 
-    suspend fun loadUsers(tab: LoginSubmitTab) {
-        if (usersRefreshing) return
-        usersRefreshing = true
-        try {
-            users[tab] = api.loginSubmitUsers(tab, today()).toLoad(TsoDashboards::users)
-        } finally {
-            usersRefreshing = false
-        }
+    /** Reads one tab (a tab switch while another tab reads starts its own read; the other answer still lands). */
+    suspend fun loadUsers(tab: LoginSubmitTab) = usersFlights.run(tab) {
+        users[tab] = api.loginSubmitUsers(tab, today()).toLoad(TsoDashboards::users)
     }
 
     companion object {
@@ -124,7 +136,7 @@ class TsoDashboardModel(
 @Composable
 fun TsoDashboardHost(model: TsoDashboardModel, nav: TsoNav) {
     val scope = rememberCoroutineScope()
-    LaunchedEffect(model) { model.load() }
+    LaunchedEffect(model) { model.show() }
     TsoDashboardContent(
         model.state, model.refreshing, model.channelMode,
         onRefresh = { scope.launch { model.load() } },
@@ -148,10 +160,10 @@ fun TsoLoginStatusHost(model: TsoDashboardModel, nav: TsoNav) {
 
 /**
  * A1's host map: the Dashboard and Login & Bikroy Joma Status, sharing one model for the signed-in user; [inbox] (the bell) is read
- * with the cards on open and pull-to-refresh.
+ * with the cards on open and pull-to-refresh; [scope] is the signed-in day's scope the reads run in.
  */
-fun dashboardScreens(host: TsoHost, api: TsoApi = TsoApi(host.components.apiClient, host.context, host.userId), inbox: TsoInboxModel? = null): Map<TsoScreen, TsoScreenContent> {
-    val model = TsoDashboardModel(api, host.today, TsoDashboardModel.prefs(host.context, host.userId), alsoOnLoad = { inbox?.refresh() })
+fun dashboardScreens(host: TsoHost, api: TsoApi, inbox: TsoInboxModel?, scope: CoroutineScope): Map<TsoScreen, TsoScreenContent> {
+    val model = TsoDashboardModel(api, host.today, TsoDashboardModel.prefs(host.context, host.userId), scope, alsoOnLoad = { inbox?.refresh() }, nowMs = host.nowMs)
     return mapOf(
         TsoScreen.DASHBOARD to { nav, _ -> TsoDashboardHost(model, nav) },
         TsoScreen.LOGIN_SUBMIT_STATUS to { nav, _ -> TsoLoginStatusHost(model, nav) },
