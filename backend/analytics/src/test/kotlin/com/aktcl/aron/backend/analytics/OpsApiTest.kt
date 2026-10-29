@@ -245,12 +245,21 @@ class OpsApiTest : ReportFixture() {
         // D-LEAD-REPORT-SELECTOR-01: a non-national caller learns nothing from the refusal: zone 2 is real but not zone 1's TSO's, 999999 is no node; both are the same 403.
         suspend fun refusal(path: String, level: String, node: Long): Pair<HttpStatusCode, JsonObject> =
             get(11, Role.TSO, "/v1/dashboards/$path${if ('?' in path) "&" else "?"}level=$level&node_id=$node").let { it.status to it.obj() }
-        val z2Id = z2
+        fun nodeId(sql: String) = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery(sql).mapTo(Long::class.java).one() }
+        // Every level: the zone outside the reach, and the territory, division and wing that hold zone 2 as well as the caller's zone 1 (a node that still holds a zone the caller cannot see).
+        val real = mapOf(
+            "zone" to z2,
+            "territory" to nodeId("SELECT territory_id FROM app.zone WHERE id = $z1"),
+            "division" to nodeId("SELECT t.division_id FROM app.zone z JOIN app.territory t ON t.id = z.territory_id WHERE z.id = $z1"),
+            "wing" to nodeId("SELECT d.wing_id FROM app.zone z JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id WHERE z.id = $z1"),
+        )
         for (path in listOf("summary?from=2026-10-04&to=2026-10-04", "geo-validation?from=2026-10-04&to=2026-10-04", "login-submit?business_date=2026-10-04", "flagged-memos?from=2026-10-04&to=2026-10-04", "sync-health?business_date=2026-10-04")) {
-            val real = refusal(path, "zone", z2Id); val unknown = refusal(path, "zone", 999_999)
-            assertEquals(HttpStatusCode.Forbidden, real.first, "$path: a real zone outside the reach")
-            assertEquals(HttpStatusCode.Forbidden, unknown.first, "$path: no such zone")
-            assertEquals(unknown.second.s("code"), real.second.s("code"), path); assertEquals(unknown.second.s("detail"), real.second.s("detail"), "$path: the same body")
+            for ((level, outside) in real) {
+                val out = refusal(path, level, outside); val unknown = refusal(path, level, 999_999)
+                assertEquals(HttpStatusCode.Forbidden, out.first, "$path $level: a real node holding a zone outside the reach")
+                assertEquals(HttpStatusCode.Forbidden, unknown.first, "$path $level: no such node")
+                assertEquals(unknown.second.s("code"), out.second.s("code"), "$path $level"); assertEquals(unknown.second.s("detail"), out.second.s("detail"), "$path $level: the same body")
+            }
             assertEquals(HttpStatusCode.OK, get(11, Role.TSO, "/v1/dashboards/$path${if ('?' in path) "&" else "?"}level=zone&node_id=$z1").status, "$path: the caller's own zone still answers")
         }
     }

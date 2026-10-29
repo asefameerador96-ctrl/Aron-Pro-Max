@@ -156,7 +156,7 @@ object RouteBsrCprReport : ReportHandler {
                    round(100.0 * rt.sc / nullif(rt.t, 0), 2) AS cpr_pct, rt.memos::int AS active_memos, br.bm::int AS brand_memos,
                    round(100.0 * br.bm / nullif(rt.memos, 0), 2) AS bsr_pct
               FROM rt JOIN br ON br.route_id = rt.route_id JOIN dw.dim_geo g ON g.route_id = rt.route_id
-              JOIN LATERAL (SELECT name AS brand_name FROM app.product_node WHERE id = br.brand_id) p ON true
+              JOIN LATERAL (SELECT coalesce((SELECT name FROM app.product_node WHERE id = br.brand_id), 'n' || br.brand_id) AS brand_name) p ON true
             """,
             prodBinds,
         )

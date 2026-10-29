@@ -32,7 +32,8 @@ internal class ScopedNode(val ref: NodeRefDto, val zones: List<Long>?, val route
  */
 internal class NodeMembers(
     private val windowById: Map<Long, Set<Long>>, private val currentById: Map<Long, Set<Long>>, val plain: Boolean,
-    /** The ids that exist today as a node of the level asked for (a node with no zone at all still exists). */ private val known: Set<Long> = windowById.keys + currentById.keys,
+    /** The ids that exist today as a node of the level asked for (a node with no zone at all still exists). */ private val known: Set<Long>,
+    /** For each node, itself and its ancestors today as (level, id): a node with no zone is the caller's when one of these is one of the caller's top nodes. */ private val chain: Map<Long, Set<Pair<String, Long>>> = emptyMap(),
 ) {
     /** The zones the nodes had on any date of the window. */
     val zones: List<Long> = windowById.values.flatten().distinct()
@@ -41,11 +42,24 @@ internal class NodeMembers(
      * refused alike (no existence leak); a node inside the reach that has no member in the window is allowed and reads no rows. Inside the reach means: every
      * zone the node has TODAY is in the reach (a node that still holds a zone the caller cannot see is not theirs: 403 as before the history existed); a node
      * that holds no zone today (its zones moved out) is the caller's when one of the zones it had in the window is. A national caller reaches every node.
+     * A node with no zone today and none in the window (a new or emptied node) is the caller's when it, or an ancestor of it, is one of the caller's top
+     * nodes (the reach carries zones only, so the parent chain is what ties an empty node to a division or wing scope).
      * A zone that has since LEFT a node is not held against the caller (their own territory after a zone moved out must stay readable for a window that
      * began before the move); it is simply cut from the read, see [readable].
      */
-    fun allowed(reachZones: Set<Long>?, ids: Collection<Long>): Boolean = ids.all { id ->
-        id in known && (reachZones == null || currentById[id].orEmpty().let { cur -> if (cur.isNotEmpty()) cur.all { it in reachZones } else windowById[id].orEmpty().any { it in reachZones } })
+    fun allowed(reach: Reach, ids: Collection<Long>): Boolean {
+        val reachZones: Set<Long>? = if (reach.national) null else reach.zoneIds
+        val tops = reach.topNodes.map { it.type to it.id }.toSet()
+        return ids.all { id ->
+            id in known && (reachZones == null || currentById[id].orEmpty().let { cur ->
+                val win = windowById[id].orEmpty()
+                when {
+                    cur.isNotEmpty() -> cur.all { it in reachZones }
+                    win.isNotEmpty() -> win.any { it in reachZones }
+                    else -> chain[id].orEmpty().any { it in tops }
+                }
+            })
+        }
     }
     /** The zones to read: the nodes' members of the window, never wider than the reach. */
     fun readable(reachZones: Set<Long>?): List<Long> = if (reachZones == null) zones else zones.filter { it in reachZones }
@@ -71,7 +85,19 @@ internal fun memberZones(h: Handle, col: String, ids: List<Long>, from: LocalDat
     val plain = col == "zone_id" || AsWasSql.probe(h, from).geo
     val window = if (plain) current else rows("SELECT DISTINCT zn.zone_id, zn.$col FROM ${AsWasSql.zoneAll("zn", ":f", ":t")} WHERE zn.$col = ANY(:ids)", true)
     val known = h.createQuery("SELECT id FROM app.${col.removeSuffix("_id")} WHERE id = ANY(:ids)").bindArray("ids", Long::class.javaObjectType, ids).mapTo(Long::class.javaObjectType).set()
-    return NodeMembers(window, current, plain, known)
+    // The node and its ancestors, for a node that holds no zone at all.
+    val chainSql = when (col) {
+        "wing_id" -> "SELECT w.id, 'wing', w.id FROM app.wing w WHERE w.id = ANY(:ids)"
+        "division_id" -> "SELECT d.id, 'division', d.id FROM app.division d WHERE d.id = ANY(:ids) UNION ALL SELECT d.id, 'wing', d.wing_id FROM app.division d WHERE d.id = ANY(:ids)"
+        "territory_id" -> "SELECT t.id, 'territory', t.id FROM app.territory t WHERE t.id = ANY(:ids) UNION ALL SELECT t.id, 'division', t.division_id FROM app.territory t WHERE t.id = ANY(:ids) " +
+            "UNION ALL SELECT t.id, 'wing', d.wing_id FROM app.territory t JOIN app.division d ON d.id = t.division_id WHERE t.id = ANY(:ids)"
+        else -> "SELECT z.id, 'zone', z.id FROM app.zone z WHERE z.id = ANY(:ids) UNION ALL SELECT z.id, 'territory', z.territory_id FROM app.zone z WHERE z.id = ANY(:ids) " +
+            "UNION ALL SELECT z.id, 'division', t.division_id FROM app.zone z JOIN app.territory t ON t.id = z.territory_id WHERE z.id = ANY(:ids) " +
+            "UNION ALL SELECT z.id, 'wing', d.wing_id FROM app.zone z JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id WHERE z.id = ANY(:ids)"
+    }
+    val chain = h.createQuery(chainSql).bindArray("ids", Long::class.javaObjectType, ids)
+        .map { rs, _ -> rs.getLong(1) to (rs.getString(2) to rs.getLong(3)) }.list().groupBy({ it.first }, { it.second }).mapValues { it.value.toSet() }
+    return NodeMembers(window, current, plain, known, chain)
 }
 
 private val GEO_COLUMNS = mapOf("wing" to ("wing_id" to "wing_name"), "division" to ("division_id" to "division_name"), "territory" to ("territory_id" to "territory_name"), "zone" to ("zone_id" to "zone_name"))
@@ -114,7 +140,7 @@ internal fun resolveScopedNode(
     val members = if (from != null && to != null) memberZones(h, col, listOf(id), from, to)
     else h.createQuery("SELECT DISTINCT zone_id FROM dw.dim_geo WHERE $col = :id").bind("id", id).mapTo(Long::class.java).list().let { NodeMembers(mapOf(id to it.toSet()), mapOf(id to it.toSet()), true, h.createQuery("SELECT id FROM app.$lv WHERE id = :id").bind("id", id).mapTo(Long::class.javaObjectType).set()) }
     val reachZones = if (reach.national) null else reach.zoneIds
-    if (!members.allowed(reachZones, listOf(id))) throw out
+    if (!members.allowed(reach, listOf(id))) throw out
     val zones = members.readable(reachZones)
     val name = h.createQuery("SELECT name FROM app.$lv WHERE id = :id").bind("id", id).mapTo(String::class.java).first()
     return ScopedNode(NodeRefDto(lv, id, null, name), zones)
