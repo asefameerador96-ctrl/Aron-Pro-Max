@@ -10,10 +10,11 @@
     <string name="tso_leave_not_accepted_reason">গৃহীত হয়নি: %1$s</string>
     <string name="tso_leave_held">পর্যালোচনার জন্য আটকে আছে</string>
     <string name="tso_leave_held_reason">পর্যালোচনার জন্য আটকে আছে: %1$s</string>
-    <string name="tso_leave_refused_window">তারিখটি অনুমোদিত সময়ের বাইরে</string>
-    <string name="tso_leave_refused_duplicate">একই আবেদন আগেই পাঠানো হয়েছে</string>
-    <string name="tso_leave_refused_not_allowed">এই তারিখের জন্য আবেদন করা যাবে না</string>
-    <string name="tso_leave_refused_invalid">আবেদনটি অসম্পূর্ণ</string>
+    <!-- R-W-10 (LV-16): চারটি ছুটির কোডের নিজস্ব লেখা; অন্য কোডে বান্ডেলের কারণ দেখায় -->
+    <string name="tso_leave_refused_window">প্রথম দিনটি অনুমোদিত সময়সীমার বাইরে</string>
+    <string name="tso_leave_refused_overlap">আগে আবেদন করা একটি ছুটির সাথে দিন মিলে যাচ্ছে</string>
+    <string name="tso_leave_refused_not_tso">শুধু টিএসও ছুটির আবেদন করতে পারেন</string>
+    <string name="tso_leave_refused_unknown_type">ছুটির ধরনটি চেনা যায়নি; নতুন ডেটা নামিয়ে নিন</string>
     <string name="tso_leave_refused_other">সার্ভার এটি গ্রহণ করেনি</string>
     <string name="tso_leave_err_date_missing">তারিখ বাছাই করুন</string>
     <string name="tso_leave_applied_toast">ছুটির আবেদন সংরক্ষিত হয়েছে। ফোন অনলাইনে এলে পাঠানো হবে।</string>

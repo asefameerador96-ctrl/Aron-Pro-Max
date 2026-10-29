@@ -11,10 +11,11 @@
     <string name="tso_leave_not_accepted_reason">Not accepted: %1$s</string>
     <string name="tso_leave_held">Held for review</string>
     <string name="tso_leave_held_reason">Held for review: %1$s</string>
-    <string name="tso_leave_refused_window">the date is outside the allowed window</string>
-    <string name="tso_leave_refused_duplicate">the same application was already sent</string>
-    <string name="tso_leave_refused_not_allowed">you cannot apply for this date</string>
-    <string name="tso_leave_refused_invalid">the application is incomplete</string>
+    <!-- R-W-10 (LV-16): leave texts of the four leave refusal codes; any other code shows the bundle's reason text -->
+    <string name="tso_leave_refused_window">the first day is outside the allowed window</string>
+    <string name="tso_leave_refused_overlap">it overlaps a leave already applied for</string>
+    <string name="tso_leave_refused_not_tso">only a TSO may apply for leave</string>
+    <string name="tso_leave_refused_unknown_type">the leave type is not recognised; download fresh data</string>
     <string name="tso_leave_refused_other">the server did not accept it</string>
     <string name="tso_leave_err_date_missing">Pick the date</string>
     <string name="tso_leave_applied_toast">Leave application saved. It is sent when the phone is online.</string>

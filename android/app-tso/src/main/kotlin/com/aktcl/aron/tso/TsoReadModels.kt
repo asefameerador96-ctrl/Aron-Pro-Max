@@ -87,9 +87,11 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
          * The mirror rows written with each queued application (same transaction as the outbox row). A row the server refused
          * on sync (outbox state rejected) carries its outcome code, so the card says "Not accepted: <reason>" (D-TSO-MAN-33);
          * one the server holds for review (outbox state quarantined, e.g. scope_out_of_reach) says "Held for review: <reason>".
+         * A code without a leave text is worded by the stored bundle's `reason_texts` (R-W-10), so it reads offline too.
          */
         override suspend fun unsent(): List<com.aktcl.aron.feature.tso.leave.LeaveItem> = runCatching {
             val box = databases.of(userId).outboxDao()
+            val reasons = com.aktcl.aron.feature.tso.leave.LeaveReasonTexts.parse(runCatching { meta(userId).section("reason_texts") }.getOrNull())
             meta(userId).metaWithPrefix(LEAVE_MIRROR).mapNotNull { LeaveJson.parseUnsent(it.value) }.map { item ->
                 val row = runCatching { box.byClientUuid(item.leaveUuid) }.getOrNull()
                 val answer = when (row?.state) {
@@ -97,7 +99,7 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
                     com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED -> com.aktcl.aron.feature.tso.leave.LeaveSyncAnswer.HELD
                     else -> null
                 }
-                item.answered(answer, row?.lastCode)
+                item.answered(answer, row?.lastCode, reasons)
             }
         }.getOrDefault(emptyList())
 

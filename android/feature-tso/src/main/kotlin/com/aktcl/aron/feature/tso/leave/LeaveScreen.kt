@@ -31,8 +31,10 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronTokens
+import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.localizedNumber
@@ -135,16 +137,18 @@ private fun pill(item: LeaveItem): Pair<String, TsoPillTone> {
     }
 }
 
+/** The reason after "Not accepted:" or "Held for review:": a leave text for the four leave codes, else the bundle's text of the code (R-W-10). */
 @Composable
-private fun refusalText(code: String?): String = stringResource(
-    when (LeaveRefusal.of(code)) {
-        LeaveRefusal.DATE_WINDOW -> R.string.tso_leave_refused_window
-        LeaveRefusal.DUPLICATE -> R.string.tso_leave_refused_duplicate
-        LeaveRefusal.NOT_ALLOWED -> R.string.tso_leave_refused_not_allowed
-        LeaveRefusal.INVALID -> R.string.tso_leave_refused_invalid
-        LeaveRefusal.OTHER -> R.string.tso_leave_refused_other
-    },
-)
+private fun refusalText(item: LeaveItem): String {
+    val bangla = LocalAppLanguage.current == AppLanguage.BN
+    return when (LeaveRefusal.of(item.refusalCode)) {
+        LeaveRefusal.OUT_OF_WINDOW -> stringResource(R.string.tso_leave_refused_window)
+        LeaveRefusal.OVERLAP -> stringResource(R.string.tso_leave_refused_overlap)
+        LeaveRefusal.NOT_TSO -> stringResource(R.string.tso_leave_refused_not_tso)
+        LeaveRefusal.UNKNOWN_TYPE -> stringResource(R.string.tso_leave_refused_unknown_type)
+        LeaveRefusal.OTHER -> item.refusalReason?.of(bangla) ?: stringResource(R.string.tso_leave_refused_other)
+    }
+}
 
 @Composable
 private fun LeaveCard(item: LeaveItem) {
@@ -166,11 +170,11 @@ private fun LeaveCard(item: LeaveItem) {
                 Text(stringResource(R.string.tso_leave_reason_line, item.reason), style = MaterialTheme.typography.bodyLarge, fontStyle = FontStyle.Italic, color = look.ink)
                 when {
                     item.refusalCode != null && item.held -> Text(
-                        stringResource(R.string.tso_leave_held_reason, refusalText(item.refusalCode)), Modifier.testTag(LeaveTags.held(item.leaveUuid)),
+                        stringResource(R.string.tso_leave_held_reason, refusalText(item)), Modifier.testTag(LeaveTags.held(item.leaveUuid)),
                         style = MaterialTheme.typography.bodyMedium, color = look.inkMuted,
                     )
                     item.refusalCode != null -> Text(
-                        stringResource(R.string.tso_leave_not_accepted_reason, refusalText(item.refusalCode)), Modifier.testTag(LeaveTags.refused(item.leaveUuid)),
+                        stringResource(R.string.tso_leave_not_accepted_reason, refusalText(item)), Modifier.testTag(LeaveTags.refused(item.leaveUuid)),
                         style = MaterialTheme.typography.bodyMedium, color = look.red,
                     )
                     !item.sent -> Text(stringResource(R.string.tso_leave_not_sent), Modifier.testTag(LeaveTags.unsent(item.leaveUuid)), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
