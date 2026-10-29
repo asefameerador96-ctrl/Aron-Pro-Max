@@ -171,9 +171,10 @@ class TicketHarness : AutoCloseable {
             setBody(io.ktor.http.content.ByteArrayContent(gz, ContentType.Application.Json))
         }
         assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
-        val acks = json(r.bodyAsText())["acks"]!!.jsonArray.map { it.jsonObject }.associateBy { it["client_uuid"]!!.jsonPrimitive.content }
-        return records.map { rec ->
-            val a = acks.getValue(rec["client_uuid"]!!.jsonPrimitive.content)
+        // One ack per record in the order sent (lane X2: by position, so a record sent twice in one batch keeps both answers).
+        val acks = json(r.bodyAsText())["acks"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(records.map { it["client_uuid"]!!.jsonPrimitive.content }, acks.map { it["client_uuid"]!!.jsonPrimitive.content }, "acks in the order sent")
+        return acks.map { a ->
             a["status"]!!.jsonPrimitive.content + ((a["code"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { " $it" } ?: "")
         }
     }
