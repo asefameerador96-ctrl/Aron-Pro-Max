@@ -143,7 +143,7 @@ class ScopeLeakAcrossEndpointsTest {
             world.otherPathValues["request_uuid"] = otherRequestUuid
             world.otherPathValues["task_uuid"] = otherTaskUuid
             for ((param, type) in listOf("leave_uuid" to "leave_application", "exception_uuid" to "day_exception", "feedback_uuid" to "feedback")) {
-                generatedUuids[type]?.let { world.otherPathValues[param] = it }
+                (generatedUuids[type] ?: seededUuids[type])?.let { world.otherPathValues[param] = it } // tso-manual B3: the TSO's seeded leave and feedback
             }
             fun rowId(sql: String) = h.createQuery(sql).mapTo(Long::class.java).findOne().orElse(null)?.toString()
             rowId("SELECT max(id) FROM app.entry_unlock WHERE reason LIKE 'LKX%'")?.let { world.otherPathValues["unlock_id"] = it }
@@ -210,6 +210,7 @@ class ScopeLeakAcrossEndpointsTest {
         fun uuid() = java.util.UUID.randomUUID().toString()
         val task = uuid(); val request = uuid(); val plan = uuid(); val planOutlet = uuid()
         val entry = uuid(); val directive = uuid(); val adjustment = uuid()
+        val leave = uuid(); val feedback = uuid() // tso-manual B3
         otherRequestUuid = request; otherTaskUuid = task
         val outlet = p.outlets.first()
         val zone = h.createQuery("SELECT zone_id FROM app.outlet WHERE id = :o").bind("o", outlet).mapTo(Long::class.java).one()
@@ -231,13 +232,19 @@ class ScopeLeakAcrossEndpointsTest {
                    VALUES ('online', ${p.deviceId}, '$day'::date, '$at'::timestamptz, '${ApiWorld.APP_VERSION}', true, 'dev', false, true, false, false, true, 0, 80, '{"note":"LKX seeded status"}'::jsonb)""",
             )
             h.execute("INSERT INTO app.dues_adjustment (client_uuid, outlet_id, kind, amount_mtk, reason, created_by) VALUES ('$adjustment'::uuid, $outlet, 'correction', 1000, 'LKX seeded adjustment', ${p.userId})")
+            // tso-manual B3: leave and feedback are the TSO's own records (an SR's is held scope_out_of_reach on sync,
+            // D-TSO-MAN-33, 36), so the other division's rows are its TSO's fixtures.
+            val tso = "(SELECT id FROM app.app_user WHERE username = 'lkxtso1001')"
+            h.execute("INSERT INTO app.leave_application ($base, leave_type_code, from_date, days, reason) VALUES ('$leave'::uuid, '$leave'::uuid, '$day'::date, $tso, '$at'::timestamptz, 1, 'casual', '$day'::date, 1, 'LKX seeded leave')")
+            h.execute("INSERT INTO app.feedback ($base, category_code, title, description) VALUES ('$feedback'::uuid, '$feedback'::uuid, '$day'::date, $tso, '$at'::timestamptz, 1, 'suggestion', 'LKX seeded feedback', 'LKX seeded feedback')")
+            seededUuids["leave_application"] = leave; seededUuids["feedback"] = feedback
             h.execute("INSERT INTO app.entry_unlock (scope_type, scope_id, from_date, to_date, reason, expires_at, created_by) VALUES ('zone', $zone, '$day'::date, '$day'::date, 'LKX seeded unlock', now() + interval '1 day', ${p.userId})")
             // DMO and WM read enrolment tokens of their zones (D-AUTHZ-ENROL-READ): one of the other division's zone.
             h.execute("INSERT INTO app.enrolment_token (token_sha256, token_prefix, flavour, lockdown_level, max_uses, zone_id, expires_at, created_by) VALUES (sha256(convert_to('$entry', 'UTF8')), 'LKXtok', 'sr', 'dev', 1, $zone, now() + interval '1 day', ${p.userId})")
         } finally {
             h.execute("SET session_replication_role = origin")
         }
-        return listOf(task, request, plan, planOutlet, entry, directive, adjustment)
+        return listOf(task, request, plan, planOutlet, entry, directive, adjustment, leave, feedback)
     }
 
     /**
@@ -259,6 +266,8 @@ class ScopeLeakAcrossEndpointsTest {
     private lateinit var otherTaskUuid: String
     /** Client uuids of the generated records the server accepted, by type. */
     private val generatedUuids = HashMap<String, String>()
+    /** tso-manual B3: the other division's TSO leave and feedback rows seeded by [seedOtherRows], by record type. */
+    private val seededUuids = HashMap<String, String>()
 
     /** Logs [p] in and delivers one selling day until every record is acknowledged. */
     private suspend fun HttpClient.sellADay(p: SyncPhone, seed: Int) {

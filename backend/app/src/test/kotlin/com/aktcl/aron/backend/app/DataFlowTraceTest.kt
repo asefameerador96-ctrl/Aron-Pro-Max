@@ -547,16 +547,26 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
     @Test
     @Order(12)
     fun hop12ALateSaleAfterFinalSubmitIsAcceptedAndCountedOnce() {
-        h("12 Late sale after Final Submit (accept and flag, never reopens, counted once)")
+        h("12 Late sale after Final Submit (held after_final_submit, accepted by the admin, never reopens, counted once)")
         val c10 = pick("cigarette", 10)
         val m = Memo(outletByCode("GUL2-005"), "GUL2-005", listOf(Line(c10, 3)), paidShare = 100, minute = 160)
         val recs = recordsOf(sr, m, gulPins.getValue(m.outlet), 100, 100, 5)
         recs.groupingBy { it.path("type").asText() }.eachCount().forEach { (t, n) -> sr.counts.merge(t, n, Int::plus) }
         sr.memos += m
+        // tso-manual B3 (contract 1.10.0, D-TSO-MAN-31; was accept-and-flag, D-55): captured before the zone-day's Final
+        // Submit, it is held after_final_submit (out of the figures) until an ADMIN accepts it on the quarantine page.
         val a = send(sr, recs, uuid())
-        hop("late sale statuses", "statuses" to acks(a).distinct(), "expected" to listOf("accepted"))
+        hop("late sale statuses", "statuses" to acks(a).distinct(), "expected" to listOf("quarantined"))
         val b = send(sr, recs, uuid())
-        hop("late sale again", "statuses" to acks(b).distinct(), "expected" to listOf("duplicate"))
+        hop("late sale again", "statuses" to acks(b).distinct(), "expected" to listOf("quarantined"))
+        val admin = login("admin1001", "web", null)
+        while (true) {
+            val id = sql("SELECT min(id)::text FROM app.sync_quarantine WHERE code = 'after_final_submit' AND status = 'open' AND business_date = DATE '$day'") ?: break
+            val r = postJson("/v1/admin/quarantine/$id/resolve", admin, """{"action":"accept","reason":"late sale checked with the SR"}""")
+            hop("admin accepts the held late sale", "status" to r.status.value, "expected" to 200)
+        }
+        val c = send(sr, recs, uuid())
+        hop("late sale after the accept", "statuses" to acks(c).distinct(), "expected" to listOf("duplicate"))
         runWorker()
         val ar = rows("SELECT day_state, active_memo_count, gross_mtk, late_rows_after_final FROM dw.agg_daily_route WHERE business_date = DATE '$day' AND route_id = $gulRouteId").single()
         val active = sr.memos.filter { it.lines.isNotEmpty() && !it.voided }
@@ -570,6 +580,10 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         val expected = sortedMapOf<String, Long>()
         for (x in sr.memos.filter { it.lines.isNotEmpty() && !it.voided } + lkxMemos) for (l in x.lines) expected.merge(l.sku.category, l.qtyBase, Long::plus)
         hop("national sales cards include the late sale once", "dashboard" to s2, "device truth" to expected, hard = false)
+        // tso-manual B3 (D-TSO-MAN-29, 31): hops 14 and 15 sell again on this route-day; under the day lock those sales would
+        // be held, so an ADMIN reopens the zone-day (audited) and they run on an open day as before.
+        val ro = postJson("/v1/day/reopen", admin, """{"zone_id":$zGul,"business_date":"$day","reason":"trace: the edge hops sell after the late sale"}""")
+        hop("ADMIN reopens the zone-day for the edge hops", "status" to ro.status.value, "expected" to 200)
     }
 
 

@@ -85,6 +85,7 @@ fun main() {
             com.aktcl.aron.backend.sync.RetentionJob(workerDb).start()
             com.aktcl.aron.backend.masterdata.OutletRequestLapseJob(workerDb).start()
             com.aktcl.aron.backend.notify.InboxPruneJob(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start() // tso-manual B1
+            com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env)).let { c -> com.aktcl.aron.backend.sync.AutoFinalSubmitJob(workerDb, c, com.aktcl.aron.backend.masterdata.SqlReachResolver(workerDb, com.aktcl.aron.backend.masterdata.GeoRepository(workerDb)), com.aktcl.aron.backend.notify.PushNotifier(workerDb, c, settings.fcmServiceAccountJson?.let { com.aktcl.aron.backend.notify.FcmPushSender(it) })).start() } // tso-manual B3: midnight auto Final Submit and start-up catch-up (D-TSO-MAN-30)
             log.info("aron worker started (aggregation, risk signals, route-day planning, bundle pre-generation, geo re-check sweep, retention, outlet request lapse)")
             Thread.currentThread().join()
         }

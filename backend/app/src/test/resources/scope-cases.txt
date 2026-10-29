@@ -227,3 +227,5 @@ GET /v1/dashboards/targets -> case TargetAchievementTest#aNodeOutsideTheReachIs4
 POST /v1/dashboards/national/brand-cpr -> case BrandCprTest#overHttpTheScopeComesFromTheTokenAndTheClientCannotWidenIt
 POST /v1/dashboards/national/segment-share -> case SegmentShareTest#overHttpTheScopeComesFromTheTokenAndTheClientCannotWidenIt
 POST /v1/dashboards/national/login-submit/users -> case LoginSubmitUsersTest#overHttpTheScopeComesFromTheTokenAndTheClientCannotWidenIt
+# tso-manual B3
+POST /v1/day/reopen -> case DayApiTest#reopenIsAuditedIdempotentAndBoundToRoleWindowAndReach

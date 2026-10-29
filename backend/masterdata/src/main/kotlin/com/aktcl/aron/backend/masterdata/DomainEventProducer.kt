@@ -81,5 +81,23 @@ class DomainEventProducer : RecordHandler {
                 "INSERT INTO app.domain_event (event_type, payload_version, aggregate_type, aggregate_id, business_date, payload, source_client_uuid) " +
                     "VALUES (:type, 1, 'support_ticket', :agg, :bd, CAST(:p AS jsonb), CAST(:src AS uuid))",
             ).bind("type", type).bind("agg", ticketUuid).bind("bd", businessDate).bind("p", payload.toString()).bind("src", source).execute()
+
+        /**
+         * Event types written by a service path rather than by a record's first store (append-only; the catalogue row is
+         * `app.domain_event_type`, the payload docs/data-events.md v1). Each is written in its fact's own transaction.
+         */
+        val SERVICE_TYPES: Set<String> = setOf(
+            // tso-manual B3 (D-TSO-MAN-38): the zone-day close and reopen (backend:sync DayService, AutoFinalSubmitJob) and the leave decision (LeaveDecided)
+            "zone_day.final_submitted", "zone_day.reopened", "leave.decided",
+        )
+
+        /** One outbox row of a [SERVICE_TYPES] event (payload_version 1) on the caller's handle and transaction. */
+        fun emitService(h: Handle, eventType: String, aggregateType: String, aggregateId: String, businessDate: java.time.LocalDate, sourceUuid: String?, payload: kotlinx.serialization.json.JsonObject) {
+            require(eventType in SERVICE_TYPES) { "$eventType is not a service event type" }
+            h.createUpdate(
+                "INSERT INTO app.domain_event (event_type, payload_version, aggregate_type, aggregate_id, business_date, payload, source_client_uuid) " +
+                    "VALUES (:t, 1, :at, :a, :d, CAST(:p AS jsonb), CAST(:s AS uuid))",
+            ).bind("t", eventType).bind("at", aggregateType).bind("a", aggregateId).bind("d", businessDate).bind("p", payload.toString()).bind("s", sourceUuid).execute()
+        }
     }
 }

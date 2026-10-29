@@ -249,23 +249,33 @@ object OnlineOfflineReport : ReportHandler {
     )
 }
 
-/** `task-planner`: tasks assigned and their state in the period, for the outlets in reach. */
+/**
+ * `task-planner`: tasks assigned and their state in the period, for the outlets in reach. tso-manual B3 (XA-02): also
+ * who assigned it, the task type's label, the task's route (the one named at creation, else its outlet's) and the
+ * comment (the task's description, e.g. the TSO's Assign Task comment), in the web catalogue's column order.
+ */
 object TaskPlannerReport : ReportHandler {
     override val definition = definition(
         "task-planner", "Task Planner", "field_force", "task",
         listOf(
-            col("business_date", "Date", "date"), col("task_type_code", "Type", "string"), col("title", "Task", "string"), col("assignee", "Assignee", "string"),
-            col("outlet_code", "Outlet code", "string"), col("outlet_name", "Outlet", "string"), col("due_date", "Due", "date"), col("status", "Status", "string"),
-            col("resolved_at", "Resolved at", "timestamp"),
+            col("business_date", "Date", "date", bn = "তারিখ"), col("task_type_code", "Type", "string", bn = "ধরন"), col("label", "Label", "string", bn = "লেবেল"),
+            col("title", "Task", "string", bn = "কাজ"), col("assigned_by", "Assigned by", "string", bn = "যিনি দিয়েছেন"), col("assignee", "Assignee", "string", bn = "যাকে দেওয়া"),
+            col("route", "Route", "string", bn = "রুট"), col("outlet_code", "Outlet code", "string", bn = "আউটলেট কোড"), col("outlet_name", "Outlet", "string", bn = "আউটলেট"),
+            col("due_date", "Due", "date", bn = "শেষ তারিখ"), col("status", "Status", "string", bn = "অবস্থা"), col("comment", "Comment", "string", bn = "মন্তব্য"),
+            col("resolved_at", "Resolved at", "timestamp", bn = "সমাধানের সময়"),
         ),
         listOf("period", "geo", "outlet_code"),
     )
 
     override fun spec(ctx: ReportContext) = SqlSpec(
         """
-        SELECT t.business_date, t.task_type_code, t.title, u.username AS assignee, o.outlet_code, o.outlet_name, t.due_date, t.status,
+        SELECT t.business_date, t.task_type_code,
+               coalesce((SELECT ci.label_en FROM app.code_list_item ci WHERE ci.list_key = 'task_type' AND ci.code = t.task_type_code
+                          ORDER BY (ci.valid_from <= t.business_date AND (ci.valid_to IS NULL OR ci.valid_to > t.business_date)) DESC, ci.valid_from DESC LIMIT 1), t.task_type_code) AS label,
+               t.title, cr.username AS assigned_by, u.username AS assignee, rg.route_name AS route, o.outlet_code, o.outlet_name, t.due_date, t.status, t.description AS comment,
                CASE WHEN t.status = 'completed' THEN t.status_changed_at END AS resolved_at
           FROM app.task t JOIN dw.dim_outlet o ON o.outlet_id = t.outlet_id LEFT JOIN app.app_user u ON u.id = t.assignee_user_id
+          LEFT JOIN app.app_user cr ON cr.id = t.user_id LEFT JOIN dw.dim_geo rg ON rg.route_id = coalesce(t.route_id, o.route_id)
          WHERE t.voided_at IS NULL AND ${ctx.dateClause("t.business_date")} AND ${ctx.zoneClause("o.zone_id")} AND ${ctx.routeClause("coalesce(o.route_id, -1)")}
            AND (CAST(:ocode AS text) IS NULL OR o.outlet_code = :ocode)
         """,
@@ -307,5 +317,7 @@ object ReportHandlers {
     val all: List<ReportHandler> = listOf(RouteMemoReport, StdMemoReport, SrEfficiencyReport, RouteStdReport, RouteBsrCprReport, ByOutletReport, ByOutletByDayReport, OnlineOfflineReport, TaskPlannerReport, ByRouteGeoCaptureReport, MemoNumberGapsReport, SuspiciousLocationReport,
         DataEntryLogReport, FinalSubmitLogReport, FinalSubmitStatusReport, GigoReport, DssReport, DsRrsReport, TsoTopSheetReport, DailyTrackingReport, LeaderboardReport,
         AmoCallReport, SrOutletsReport, DiscountReport, FreeSampleReport, SalesSummaryReport,
-        QcReport, SettlementReport, RouteQcReport, RetailerListReport, SkuListReport, GeofenceCalibrationReport)
+        QcReport, SettlementReport, RouteQcReport, RetailerListReport, SkuListReport, GeofenceCalibrationReport,
+        TsoVisitLogReport, // tso-manual B3 (XA-03, R-F-12)
+    )
 }
