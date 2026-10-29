@@ -1,5 +1,14 @@
 # backend-reports lane status
 
+## Session 9 (2026-10-29): candidate 0 (reach cache vs live node members), D-REPORTS-REACH-GEO-01
+
+| Slice | State |
+|---|---|
+| Candidate 0 (lead's blocking 1 + 2) | code e9bed80a: `GeoRepository.version()` in the `SqlReachResolver` cache key; tests StaleReachDashboardTest, AsWasNodeScopeTest (M3c, M5, M6); Opus checker CONFIRMED (round 1, no defects); mutants stale-reach, M3c, M5, M6a, M6b each fail their test |
+| Candidate 1 (checker non-blocking 1-5) | next; item 5 asymmetry (zone that joined a node) is an owner question (lead row AA): document only |
+
+Checker notes, not blocking, carried to candidate 1: (1) a TTL reload that starts before an admin commit can write its old snapshot back after `invalidate()` (pre-existing; fix: generation number checked before storing); (2) other `GeoRepository` instances (Main.kt export and bundle workers, a second API instance) see a geography edit within 60 s, not at once; (3) `HouseDedup.kt:82` changes `zone.house_id` without `geo.invalidate()`; (4) any geography edit empties the reach cache for all users (stale keys stay until the 50k clear); (5) `reach()` calls `geo()` on every call, so concurrent callers at TTL expiry each reload.
+
 ## HANDOVER 7 -> 8 (2026-10-28 ~15:10 UTC, session 7 at ~410k): candidate 3 (the read half of as-was) is pushed, candidate 4 is next
 
 **State.** Branch `lane/backend-reports` code head is `cd7c679c0` plus the probe-test commit that follows it (see the lead's gate message for the final sha) (INT 3b416b31 merged, plus the read half); lane CI run 40708504135 is the gate. Candidate 3 = D-REPORTS-ASWAS-02: `AsWasSql.kt` (geo, zone, product, productAll, outlet) used by NationalDashboard, NationalMaps, DailyTrackingApi (SKU), DashboardApi summary and ReportHandlersB; tests `AsWasReadTest` (8 scenarios incl. TSO scope, fast path, per-dimension probe) and the NationalDashboardTest fixtures (they drop the master history their own edits create). Opus checker: round 1 FAIL (per-row lateral 25x-600x slower; vacuous tests), round 2 FAIL (probe too coarse, outlet timeline 28x; label sources; route-less zones), round 3 FAIL (DashboardService cache made the dashboard assertions vacuous; probe counted edits no read uses): all fixed, mutation-checked (breaking `AsWasSql.zone()` now fails `aZoneMovedToAnotherTerritory...`); round 3 also surfaced a real defect once the test bit (brand/segment names read current `dw.dim_product`, so an old-date brand that lost its SKUs dropped out): names now come from `app.product_node` by id (DashboardApi, ReportHandlersA/B). No fourth checker round was run on `cd7c679c0`; the lead gates it.
