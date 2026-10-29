@@ -19,7 +19,7 @@ object LeaveTypes {
     private val CODE = Regex("^[a-z][a-z0-9_]{1,40}$")
 
     /** The manual's three types, used only when the bundle sends no `leave_type` list. Labels come from the app's strings. */
-    val DEFAULT: List<LeaveType> = listOf(LeaveType("casual", "Casual", null, 1), LeaveType("sick", "Sick", null, 2), LeaveType("earn", "Earn", null, 3))
+    val DEFAULT: List<LeaveType> = listOf(LeaveType("casual", "Casual", null, 1), LeaveType("sick", "Sick", null, 2), LeaveType("earn", "Earn", null, 3)) // i18n-ignore: identity labels only; the screen shows R.string.tso_leave_type_* for these
 
     /** The `leave_type` list of the bundle section `code_lists` in sort order; bad items are dropped; empty when absent or unreadable. */
     fun parse(codeLists: String?): List<LeaveType> = runCatching {
