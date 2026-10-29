@@ -135,6 +135,7 @@ class NationalDashboardTest {
         AggregationWorker(fresh.db, AronClock { now }).runUntilIdle()
         assertEquals(1, svc.finalSubmit(national(), all).final_submitted)                  // the worker stamps nothing any more
         sql("INSERT INTO app.final_submit (client_uuid, zone_id, business_date, submitted_by, submitted_at, via) VALUES ('00000000-0000-4000-8000-0000000000f9', $z1, DATE '2026-10-04', NULL, TIMESTAMPTZ '2026-10-04 18:00Z', 'job')")
+        rebuild()                                                                          // the job's submit dirties the zone-day; the worker projects it
         val f = svc.finalSubmit(national(), all)
         assertEquals(2, f.final_submitted); assertEquals(0, f.remaining); assertEquals(10000, f.submit_pct_bp)
         val auto = fresh.db.jdbi.withHandle<List<Boolean>, Exception> { it.createQuery("SELECT auto_submitted FROM dw.agg_daily_zone WHERE business_date = '2026-10-04' ORDER BY zone_id").mapTo(Boolean::class.java).list() }

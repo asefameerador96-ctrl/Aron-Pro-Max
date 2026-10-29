@@ -37,9 +37,15 @@ internal fun pctBp(n: Long, d: Long): Int? = if (d <= 0) null else Percent.bp(n,
  */
 internal const val NATIONAL_ROUTE_SET = "a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr'"
 
-/** A zone-day is final-submitted when it has a live `app.final_submit` row, the midnight job's included (D-TSO-MAN-30). [zone] and [date] are SQL. */
-internal fun liveFinalSubmitSql(zone: String, date: String) =
-    "EXISTS (SELECT 1 FROM app.final_submit f WHERE f.zone_id = $zone AND f.business_date = $date AND f.reopened_at IS NULL)"
+/**
+ * A zone-day is final-submitted when its zone-day projection holds a Final Submit time (D-TSO-MAN-30). With the dw-only midnight
+ * stamp removed, `dw.agg_daily_zone.final_submitted_at` is rebuilt only from the live `app.final_submit` rows (the first one with
+ * `reopened_at` NULL, the midnight job's `via = 'job'` rows included; [DashboardSummaries.rebuildZoneDay]), and a submit, a reopen
+ * or the job dirties the zone-day through its route-days. One formula for the national card and the summary, read from the summary
+ * tables like every other card. [zone] and [date] are SQL.
+ */
+internal fun zoneSubmittedSql(zone: String, date: String) =
+    "EXISTS (SELECT 1 FROM dw.agg_daily_zone fz WHERE fz.zone_id = $zone AND fz.business_date = $date AND fz.final_submitted_at IS NOT NULL)"
 
 /** A non-negative thousandths value as the contract's Decimal3 ("150.000"). */
 internal fun decimal3(thousandths: Long): String = "${thousandths / 1000}.${(thousandths % 1000).toString().padStart(3, '0')}"
@@ -412,16 +418,16 @@ class NationalDashboardService(
             ensureReady(h)
             val asWas = AsWasSql.probe(h, date)
             val total = sql.bind(h.createQuery("SELECT count(DISTINCT g.zone_id) FROM dw.dim_geo g WHERE g.status = 'active' ${sql.geo}")).mapTo(Long::class.java).one().toInt()
-            // D-TSO-MAN-30: a service zone (a route-day of the national route set) is submitted when it has a live app.final_submit row, the
-            // midnight job's included; the dw-only stamp is gone, so this % and the summary's are one formula.
+            // D-TSO-MAN-30: a service zone (a route-day of the national route set) counts as submitted by its live app.final_submit rows (the
+            // midnight job's included) through the zone-day projection; the dw-only stamp is gone, so this % and the summary's are one formula.
             val (service, submitted) = sql.bind(h.createQuery(
                 """
                 WITH svc AS (SELECT DISTINCT a.zone_id FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWas.geo)}
                               WHERE a.business_date = :d AND $NATIONAL_ROUTE_SET ${sql.geo})
-                SELECT count(*), count(*) FILTER (WHERE ${liveFinalSubmitSql("svc.zone_id", "CAST(:d AS date)")}) FROM svc
+                SELECT count(*), count(*) FILTER (WHERE ${zoneSubmittedSql("svc.zone_id", "CAST(:d AS date)")}) FROM svc
                 """,
             ).bind("d", date)).map { rs, _ -> rs.getInt(1) to rs.getInt(2) }.one()
-            val m = meta(h, date, listOf("agg_daily_route"))
+            val m = meta(h, date, listOf("agg_daily_zone", "agg_daily_route"))
             NationalFinalSubmit(m.date, m.till, m.asOf, m.last, total, service, submitted, service - submitted, pctBp(submitted.toLong(), service.toLong()))
         }
     }

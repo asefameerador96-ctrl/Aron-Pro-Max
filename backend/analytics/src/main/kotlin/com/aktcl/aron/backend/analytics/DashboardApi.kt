@@ -83,7 +83,7 @@ internal fun pct(n: Long, d: Long): Double? =
 /**
  * The national route set's figures of one group (D-TSO-MAN-09): target routes, successful logins, Bikroy Joma, target outlets,
  * successful calls and completed (geo-valid) calls of normal SR route-days, planned, not excused; plus the service zone-days and
- * those with a live `app.final_submit` row (D-TSO-MAN-30). The same rows and rules as the national cards, so the summary and the
+ * those final-submitted by their live `app.final_submit` rows through the zone-day projection (D-TSO-MAN-30). The same rows and rules as the national cards, so the summary and the
  * TSO dashboard print the same figures (TsoDashboardParityTest).
  */
 private class SetFigures(val tr: Long = 0, val lr: Long = 0, val sr: Long = 0, val tout: Long = 0, val sc: Long = 0, val calls: Long = 0, val geoCalls: Long = 0, val zt: Int = 0, val zf: Int = 0)
@@ -312,7 +312,7 @@ class DashboardService(
             "count(DISTINCT (zone_id, business_date)) FILTER (WHERE is_target_route AND zone_final_submitted) zf"
         val days = if (ns.routeOnly) "SELECT $routeSums FROM dw.v_route_day" else "SELECT $sums FROM dw.agg_daily_zone"
         val inScope = ns.clause("zone_id", "route_id")
-        // D-TSO-MAN-09/30 (tso-manual B2): login, CPR, geo and final submit come from the national route set and the live Final Submit rows.
+        // D-TSO-MAN-09/30 (tso-manual B2): login, CPR, geo and final submit come from the national route set and the zone-day Final Submit (live rows).
         val kpis = h.q("$days WHERE business_date BETWEEN :f AND :t AND $inScope") { it.map { rs, _ -> kpisOf(rs) }.one() }
             .withSet(setFigures(h, ns, from, to, asWas, null)[0L] ?: SetFigures())
         val asOf = h.q("SELECT max(updated_at) FROM ${if (ns.routeOnly) "dw.v_route_day" else "dw.agg_daily_zone"} WHERE business_date BETWEEN :f AND :t AND $inScope") {
@@ -429,7 +429,7 @@ class DashboardService(
     /**
      * [SetFigures] per [group] (an SQL column over the as-was geography `g`, null for the node's total keyed 0): the national
      * route set's route-days of the node and dates, read like the national cards (`dw.agg_daily_route`, D-TSO-MAN-09), and their
-     * service zone-days with a live `app.final_submit` row (D-TSO-MAN-30).
+     * service zone-days final-submitted by their live `app.final_submit` rows ([zoneSubmittedSql], D-TSO-MAN-30).
      */
     private fun setFigures(h: Handle, ns: NodeScope, from: LocalDate, to: LocalDate, asWas: AsWasSql.Plain, group: String?): Map<Long, SetFigures> {
         val login = DashboardSummaries.successfulLoginSql(h)
@@ -442,7 +442,7 @@ class DashboardService(
             r AS (SELECT k, count(*) tr, count(*) FILTER (WHERE ok) lr, count(*) FILTER (WHERE ok AND sub) sr, coalesce(sum(target_outlets), 0) tout,
                          coalesce(sum(successful_calls), 0) sc, coalesce(sum(completed_calls), 0) cc, coalesce(sum(completed_geo_valid_calls), 0) cgv
                     FROM s GROUP BY k),
-            z AS (SELECT k, count(*) zt, count(*) FILTER (WHERE ${liveFinalSubmitSql("d.zone_id", "d.business_date")}) zf
+            z AS (SELECT k, count(*) zt, count(*) FILTER (WHERE ${zoneSubmittedSql("d.zone_id", "d.business_date")}) zf
                     FROM (SELECT DISTINCT k, zone_id, business_date FROM s) d GROUP BY k)
             SELECT r.k, r.tr, r.lr, r.sr, r.tout, r.sc, r.cc, r.cgv, coalesce(z.zt, 0) zt, coalesce(z.zf, 0) zf FROM r LEFT JOIN z ON z.k = r.k
             """,
