@@ -39,14 +39,42 @@ a banner (D-TSO-MAN-31).
 
 ## My Periphery
 
-- **My Team:** zone → live SR locations on a map (last synced fixes).
-- **Retailer:** zone + radius (50 / 100 / 300 m) → outlets around the TSO's current location on a map.
+Screenshots 28 and 29, D-TSO-MAN-34. Both are drawer rows of their own (My Team, Retailer); each has the Home button.
+
+- **My Team ("My Teams"):** zone dropdown on top, then an interactive map (zoom, pan, tap a pin; tilt and rotation off,
+  no my-location layer) of the SRs' **last synced non-mock fixes**, never live tracking and no locate ping (constraint 3,
+  D-170). Pins in route order with a legend "route: count"; each bubble says "Last seen HH:mm (n min ago) · source"
+  (check-in, visit, check-out, on the move); a fix older than `cfg.tso.team_location_max_age_min` (120) is greyed; an SR
+  with mock fixes today carries the chip "Mock GPS today: n" (`TeamLocation.mock_fixes_today`). Read on open and on
+  Refresh only; offline the last answer and the list stay with "as of".
+- **Retailer ("Outlets"):** Zone and Radius dropdowns side by side (radii from `cfg.tso.periphery_radius_options_m`,
+  50 / 100 / 300 by default); the map shows the outlets inside the radius circle around the TSO's own fix (green pin).
+  One balanced-power fix is taken when the screen opens, when the zone or radius is picked and on the refresh icon,
+  never a stream. Online the server answers (`GET /v1/outlets/nearby`, reach from the token); offline the phone works
+  the answer out from the bundle with the server's rule (active, coordinates confirmed, route set, zone, haversine ≤ r,
+  distance rounded to 0.1 m, nearest first, ties by outlet id) and says so. Pins show the distance in whole metres
+  (rounded). A mock fix is flagged and a fix outside Bangladesh is never sent.
+- The maps load only while their screen is open (D-TSO-MAN-34 amends D-08 for the TSO; the AMO stays on the lite map).
 
 ## My Call (TSO market visit plan)
 
-- **Set Plan:** date, zone, route → Show Outlet → multi-select outlets (name, code, cluster, owner, phone) → Set Plan.
-- **My Visit Plan:** date, zone, route → Visit Plan Outlets tabs Pending / Completed (outlet card: code e.g. DHK-344-011, owner, contact, channel, cluster).
-- **Visit:** "Visit Query" questionnaire to the retailer (Does the SR visit regularly? Does the SR print memos regularly?) + "Delegate task?" Yes/No → Submit; Assign Task (type e.g. Irregular Visit, date, comment) → Assign. → `call_assessment(kind=retailer_questionnaire)`, `task`.
+Screenshots 31 to 38, D-TSO-MAN-35. My Visit Plan and Set Plan are drawer rows of their own; every screen has the Home
+button. The system back and the on-screen back always go to the same place (CR-4).
+
+- **Set Plan:** Select Date (today by default, up to `cfg.tso.plan_max_days_ahead` days ahead, 60), Select Zone (chosen
+  when there is one), Select Route (dropdowns) → Show Outlet ("Choose a route" without one) → **Select Outlets**: cards
+  "name / code | cluster / owner | phone" with a tick, the outlets already planned for that date ticked (a second save is
+  a union), Select all (kept as an improvement) → Set Plan: queued on the phone (`visit_plan` with `route_id`,
+  `visit_plan_outlet`; deterministic uuids), a toast, back to the form. Back: Select Outlets → form → out.
+- **My Visit Plan:** Select Date (today), Select Zone, Select Route → Show Outlet → **Visit Plan Outlets**: Pending and
+  Completed tabs without counts; "No Outlets Found" for an empty tab or no plan; the 5-line card "Code, Owner, Contact,
+  Channel (`GT Channel`), Cluster". A pending card opens the **Visit Query**: the questions of the seeded
+  `retailer_questionnaire` (two free-text questions, Bangla from screenshot 37, English from the manual; answers optional,
+  at most 1000 characters), "Do you want to delegate the task?" Yes / No (No by default), Submit → `call_assessment` +
+  answers, the outlet moves to Completed at once. Yes goes on to **Assign Task**: the outlet card (Outlet Name, Cluster,
+  Route), the task type dropdown (active `task_type` items, labels not codes), the due date (today), the comment → Assign
+  Task → `task` for the route's SR (never a free pick; "SR Not Set" blocks it), a toast, back to the outlets. Back: Visit
+  Query and Assign Task → outlets → form → out.
 
 ## Target Status
 
@@ -54,7 +82,16 @@ a banner (D-TSO-MAN-31).
 
 ## My Feedback
 
-Category (e.g. Suggestion), Title, Description, image from gallery → Save.
+Screenshot 43, D-TSO-MAN-36. Two drawer rows: Add new feedback and My feedback (the own list, an improvement).
+
+- **Create New Feedback:** "Feedback Category" as a vertical list from the code list (suggestion and feedback; D-197
+  superseded), "Enter title", "Descriptions" / "Enter description", **Browse Gallery** (one picture from the phone's
+  gallery through the system photo picker, no storage permission, compressed and EXIF-free like a camera photo; at most
+  `cfg.feedback.max_images`, 0..1; no camera on this form), Save. Save queues the feedback on the phone at once (offline
+  included), shows a toast and goes back; the picture is claimed for the feedback by Save, so a removed picture or an
+  abandoned form never uploads.
+- **My feedback:** title, status pill, category and the business date; "Not sent yet" for a row still in the outbox;
+  "Add new feedback" at the bottom.
 
 ## Notes for the rebuild
 
