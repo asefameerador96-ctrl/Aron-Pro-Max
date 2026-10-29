@@ -6,6 +6,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
@@ -83,6 +85,17 @@ class TsoAreaScreenshotTests {
         rule.waitForIdle()
         if (recordTo == null && System.getProperty("roborazzi.test.record") != "true") assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
         rule.onRoot().captureRoboImage("${recordTo ?: goldens}/$name.png", roborazziOptions = options)
+    }
+
+    /** A shot with a dropdown open (screenshots 29 and 32): [open] taps the field, and the whole screen is captured with the popup window. */
+    @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
+    private fun menuShot(name: String, language: AppLanguage, openTag: String, content: @Composable () -> Unit) {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
+        rule.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language, dark = false, sunlight = false, tier = GlassTier.B, reducedMotion = true) { content() } } }
+        rule.waitForIdle()
+        rule.onNodeWithTag(openTag).performClick(); rule.waitForIdle()
+        if (recordTo == null && System.getProperty("roborazzi.test.record") != "true") assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
+        com.github.takahirom.roborazzi.captureScreenRoboImage("${recordTo ?: goldens}/$name.png", roborazziOptions = options)
     }
 
     // ---- leave
@@ -231,4 +244,110 @@ class TsoAreaScreenshotTests {
     // ---- menu hubs (sr/outlet-menu.png look)
     @Test fun my_call_hub_bn() = shot("tso_my_call_hub_bn", AppLanguage.BN) { com.aktcl.aron.feature.tso.mycall.MyCallHub({}, {}, {}) }
     @Test fun periphery_hub_en() = shot("tso_periphery_hub_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.periphery.PeripheryHub({}, {}, {}) }
+
+    // ---- tso-manual A3 step 2: screenshots 28, 29 (My Periphery), 31 to 38 (My Call) and 43 (feedback); D-TSO-MAN-34, 35, 36
+    private val banani = 41L
+    private val teamNow = 1_792_212_000_000L // 2026-10-26 10:40 Dhaka
+    private val teamSrc = object : com.aktcl.aron.feature.tso.periphery.PeripherySource {
+        override suspend fun zones() = listOf(banani)
+        override suspend fun nearby(lat: Double, lng: Double, radiusM: Int, zoneId: Long?): com.aktcl.aron.feature.tso.periphery.Stamped<com.aktcl.aron.feature.tso.periphery.Nearby>? = null
+        override suspend fun team(zoneId: Long?, date: String) = com.aktcl.aron.feature.tso.periphery.Stamped(listOf(
+            com.aktcl.aron.feature.tso.periphery.TeamMember(7, "SR - Testing Banani", listOf(4), 23.7937, 90.4066, teamNow - 18 * 60_000, "visit"),
+            com.aktcl.aron.feature.tso.periphery.TeamMember(8, "SR - Testing Banani 2", listOf(5), 23.7939, 90.4071, teamNow - 150 * 60_000, "check_in", mockFixesToday = 2),
+            com.aktcl.aron.feature.tso.periphery.TeamMember(9, "AKT Management", listOf(10), null, null, null, null),
+        ), "15:33", false)
+        override suspend fun routeCodes() = mapOf(4L to "Apsis Route", 5L to "Apsis Route 2", 10L to "akt-mgmt")
+        override suspend fun bundleOutlets(zoneId: Long?) = (1L..6L).map {
+            com.aktcl.aron.feature.tso.periphery.BundleOutlet(it, "DHK-344-00$it", "outlet name $it", 23.7937 + it * 0.0001, 90.4066 + it * 0.00005, 4, banani, true, true, "Apsis Cluster", "GT", null)
+        }
+    }
+    private val names = mapOf(banani to "Banani - Test")
+    @Composable private fun named(content: @Composable () -> Unit) = CompositionLocalProvider(com.aktcl.aron.feature.tso.LocalZoneNames provides names) { content() }
+    private fun teamState() = com.aktcl.aron.feature.tso.periphery.TeamState(teamSrc) { "2026-10-26" }
+    @Composable private fun team() = named { com.aktcl.aron.feature.tso.periphery.TeamScreen(teamState(), online = { false }, nowMs = { teamNow }, userKey = "s28", onBack = {}) }
+    private fun retailer() = com.aktcl.aron.feature.tso.periphery.RetailerState(teamSrc, { "15:34" }) { com.aktcl.aron.feature.tso.periphery.FixResult.Ok(23.7937, 90.4066, 8.0, false) }
+    @Composable private fun outletsScreen(st: com.aktcl.aron.feature.tso.periphery.RetailerState) = named { com.aktcl.aron.feature.tso.periphery.RetailerScreen(st, online = { false }, nowMs = { teamNow }, userKey = "s29", onBack = {}, findOnOpen = true) }
+
+    @Test fun pe_s28_en() = shot("tso_pe_s28_en", AppLanguage.EN) { team() }
+    @Test fun pe_s28_bn() = shot("tso_pe_s28_bn", AppLanguage.BN) { team() }
+    @Test @Config(fontScale = 2.0f) fun pe_s28_200_bn() = shot("tso_pe_s28_200_bn", AppLanguage.BN) { team() }
+    @Test fun pe_s29_en() = shot("tso_pe_s29_en", AppLanguage.EN) { outletsScreen(retailer()) }
+    @Test fun pe_s29_bn() = shot("tso_pe_s29_bn", AppLanguage.BN) { outletsScreen(retailer()) }
+    @Test fun pe_s29_radius_en() = menuShot("tso_pe_s29_radius_en", AppLanguage.EN, com.aktcl.aron.feature.tso.periphery.PeripheryTags.RADIUS) { outletsScreen(retailer()) }
+    @Test @Config(fontScale = 2.0f) fun pe_s29_200_en() = shot("tso_pe_s29_200_en", AppLanguage.EN) { outletsScreen(retailer()) }
+
+    private val apsisRoutes = listOf(
+        PlanRoute(4, "R-1", "Apsis Route", banani, null, RouteSr(7, "SR - Testing Banani")), PlanRoute(5, "R-2", "Apsis Route 2", banani, null, RouteSr(8, "SR - Testing Banani 2")),
+        PlanRoute(6, "R-3", "Apsis Route 3", banani, null, null), PlanRoute(7, "R-4", "Apsis Route 4", banani, null, null), PlanRoute(10, "MG", "akt-mgmt", banani, null, null),
+    )
+    private val apsisOutlets = listOf(
+        PlanOutlet(1, "DHK-344-001", "outlet name 1", null, "customer name 1", "Apsis Cluster", "1913654091", "GT"),
+        PlanOutlet(2, "DHK-344-002", "outlet 2", null, "customer name 3", "Apsis Cluster", "01984872193", "GT"),
+        PlanOutlet(3, "DHK-344-003", "outlet name 3", null, "customer name 3", "Apsis Cluster", "1913654093", "GT"),
+        PlanOutlet(4, "DHK-344-004", "outlet name 4", null, "Rifat", "Apsis Cluster", "1913654094", "GT"),
+        PlanOutlet(5, "DHK-344-005", "Moin Store", null, "Moin", "Apsis Cluster", "01913654095", "GT"),
+        PlanOutlet(10, "DHK-344-010", "outlet name 10", null, "customer name 10", "Apsis Cluster", "01787782457", "GT"),
+        PlanOutlet(11, "DHK-344-011", "outlet name 11", null, "customer name 11", "Apsis Cluster", "1913654101", "GT"),
+    )
+    private fun apsis(plans: List<VisitPlanItem>) = object : PlanSource {
+        override suspend fun routes() = apsisRoutes
+        override suspend fun outlets(routeId: Long) = apsisOutlets
+        override suspend fun plans(date: String) = plans
+        override suspend fun locallyDone(planUuid: String) = emptySet<Long>()
+        override suspend fun taskPending(planUuid: String) = emptySet<Long>()
+    }
+    private val d26 = "2026-10-26"
+    private fun setPlan(route: Boolean = true) = SetPlanState(apsis(emptyList()), { 1 }, { d26 }).also { runBlocking { it.loadRoutes(); if (route) it.pickRoute(4) } }
+    @Test fun mc_s31_en() = shot("tso_mc_s31_en", AppLanguage.EN) { named { SetPlanScreen(setPlan(), onBack = {}) } }
+    @Test fun mc_s31_bn() = shot("tso_mc_s31_bn", AppLanguage.BN) { named { SetPlanScreen(setPlan(), onBack = {}) } }
+    @Test @Config(fontScale = 2.0f) fun mc_s31_200_bn() = shot("tso_mc_s31_200_bn", AppLanguage.BN) { named { SetPlanScreen(setPlan(), onBack = {}) } }
+    @Test fun mc_s32_en() = menuShot("tso_mc_s32_en", AppLanguage.EN, com.aktcl.aron.feature.tso.mycall.MyCallTags.ROUTE) { named { SetPlanScreen(setPlan(route = false), onBack = {}) } }
+    private fun outletsPicked(vararg ids: Long) = setPlan().also { st -> runBlocking { st.showOutlets() }; ids.forEach { st.toggle(it) } }
+    @Test fun mc_s33_en() = shot("tso_mc_s33_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.mycall.SelectOutletsScreen(outletsPicked(), onBack = {}, onSaved = {}) }
+    @Test fun mc_s33_selected_bn() = shot("tso_mc_s33_selected_bn", AppLanguage.BN) { com.aktcl.aron.feature.tso.mycall.SelectOutletsScreen(outletsPicked(1), onBack = {}, onSaved = {}) }
+    @Test @Config(fontScale = 2.0f) fun mc_s33_200_en() = shot("tso_mc_s33_200_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.mycall.SelectOutletsScreen(outletsPicked(1), onBack = {}, onSaved = {}) }
+    private fun visitPlan(plans: List<VisitPlanItem>, route: Boolean = true, show: Boolean = false, tab: Int = 0) =
+        com.aktcl.aron.feature.tso.mycall.VisitPlanState(apsis(plans)) { d26 }.also { runBlocking { it.loadRoutes(); if (route) it.pickRoute(5); if (show) it.show(); it.tab(tab) } }
+    @Test fun mc_s34_en() = shot("tso_mc_s34_en", AppLanguage.EN) { named { com.aktcl.aron.feature.tso.mycall.VisitPlanScreen(visitPlan(emptyList(), route = false), onShow = {}, onBack = {}) } }
+    @Test fun mc_s34_bn() = shot("tso_mc_s34_bn", AppLanguage.BN) { named { com.aktcl.aron.feature.tso.mycall.VisitPlanScreen(visitPlan(emptyList(), route = false), onShow = {}, onBack = {}) } }
+    @Test fun mc_s35_pending_en() = shot("tso_mc_s35_pending_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.mycall.VisitPlanOutletsScreen(visitPlan(emptyList(), show = true), { _, _, _ -> }, { _, _, _ -> }, onBack = {}) }
+    @Test fun mc_s35_completed_bn() = shot("tso_mc_s35_completed_bn", AppLanguage.BN) { com.aktcl.aron.feature.tso.mycall.VisitPlanOutletsScreen(visitPlan(emptyList(), show = true, tab = 1), { _, _, _ -> }, { _, _, _ -> }, onBack = {}) }
+    private val plan36 = listOf(VisitPlanItem("p36", d26, 5, listOf(PlannedOutlet(11, PlanStatus.PENDING))))
+    @Test fun mc_s36_en() = shot("tso_mc_s36_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.mycall.VisitPlanOutletsScreen(visitPlan(plan36, show = true), { _, _, _ -> }, { _, _, _ -> }, onBack = {}) }
+    @Test fun mc_s36_bn() = shot("tso_mc_s36_bn", AppLanguage.BN) { com.aktcl.aron.feature.tso.mycall.VisitPlanOutletsScreen(visitPlan(plan36, show = true), { _, _, _ -> }, { _, _, _ -> }, onBack = {}) }
+    @Test @Config(fontScale = 2.0f) fun mc_s36_200_bn() = shot("tso_mc_s36_200_bn", AppLanguage.BN) { com.aktcl.aron.feature.tso.mycall.VisitPlanOutletsScreen(visitPlan(plan36, show = true), { _, _, _ -> }, { _, _, _ -> }, onBack = {}) }
+    private val seeded = Rubric(3, 1, listOf(
+        Criterion(1, "SR আপনার দোকান নিয়মিত ভিজিট করে?", "Does the SR visit your shop regularly?", text = true),
+        Criterion(2, "SR নিয়মিত মেমো প্রিন্ট করে দেয়?", "Does the SR give you a printed memo regularly?", text = true),
+    ))
+    @Test fun mc_s37_en() = shot("tso_mc_s37_en", AppLanguage.EN) { VisitQueryScreen(VisitQueryState(seeded, "p36", 11, 5) { true }, "outlet name 11", onDone = {}, onBack = {}) }
+    @Test fun mc_s37_bn() = shot("tso_mc_s37_bn", AppLanguage.BN) { VisitQueryScreen(VisitQueryState(seeded, "p36", 11, 5) { true }, "outlet name 11", onDone = {}, onBack = {}) }
+    @Test @Config(fontScale = 2.0f) fun mc_s37_200_bn() = shot("tso_mc_s37_200_bn", AppLanguage.BN) { VisitQueryScreen(VisitQueryState(seeded, "p36", 11, 5) { true }, "outlet name 11", onDone = {}, onBack = {}) }
+    private fun task38() = com.aktcl.aron.feature.tso.mycall.AssignTaskState(
+        listOf(com.aktcl.aron.feature.tso.mycall.TaskType("oos", null, "OOS", 1), com.aktcl.aron.feature.tso.mycall.TaskType("irregular_visit", null, "Irregular Visit", 3)),
+        apsisRoutes[1], 11, { true }, { "2026-04-28" },
+    ).also { it.pickType("irregular_visit") }
+    @Test fun mc_s38_en() = shot("tso_mc_s38_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.mycall.AssignTaskScreen(task38(), onDone = {}, outlet = apsisOutlets.last()) }
+    @Test fun mc_s38_bn() = shot("tso_mc_s38_bn", AppLanguage.BN) { com.aktcl.aron.feature.tso.mycall.AssignTaskScreen(task38(), onDone = {}, outlet = apsisOutlets.last()) }
+    @Test @Config(fontScale = 2.0f) fun mc_s38_200_en() = shot("tso_mc_s38_200_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.mycall.AssignTaskScreen(task38(), onDone = {}, outlet = apsisOutlets.last()) }
+
+    private val fbCats = listOf(FeedbackCategory("suggestion", null, "Suggestion", 1), FeedbackCategory("feedback", null, "Feedback", 2))
+    private val gallery = object : com.aktcl.aron.feature.tso.feedback.FeedbackPhotos {
+        override suspend fun take(photoUuid: String): String? = null
+        override suspend fun discard(photoUuid: String) = Unit
+    }
+    private fun fb43() = FeedbackFormState({ _, _, _ -> true }, fbCats, { "x" }, gallery, 1)
+    @Test fun fb_s43_en() = shot("tso_fb_s43_en", AppLanguage.EN) { FeedbackFormScreen(fb43(), onBack = {}, photosEnabled = true) }
+    @Test fun fb_s43_bn() = shot("tso_fb_s43_bn", AppLanguage.BN) { FeedbackFormScreen(fb43(), onBack = {}, photosEnabled = true) }
+    @Test @Config(fontScale = 2.0f) fun fb_s43_200_bn() = shot("tso_fb_s43_200_bn", AppLanguage.BN) { FeedbackFormScreen(fb43(), onBack = {}, photosEnabled = true) }
+    @Test fun fb_s43_filled_en() = shot("tso_fb_s43_filled_en", AppLanguage.EN) {
+        val st = fb43(); st.edit { it.copy(categoryCode = "feedback", title = "Zone names on the map", description = "Show the zone names on My Team.", photoUuid = "p1") }
+        FeedbackFormScreen(st, onBack = {}, photosEnabled = true)
+    }
+    @Test fun fb_list_en() = shot("tso_fb_list_en", AppLanguage.EN) {
+        FeedbackListScreen(FeedbackListState(fb(listOf(
+            FeedbackItem("a", "suggestion", "Faster sync on 2G", "d", "2026-10-25T04:00:00Z", FeedbackStatus.NEW, businessDate = "2026-10-25"),
+            FeedbackItem("b", "feedback", "Zone names on the map", "d", "2026-10-20T04:00:00Z", FeedbackStatus.RESOLVED, businessDate = "2026-10-20"),
+        ))), fbCats, onBack = {}, onNew = {})
+    }
 }
