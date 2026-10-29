@@ -1051,3 +1051,7 @@
 ### 06:40 UTC 2026-10-29 — morning pass (lead)
 - docs/status/morning-2026-10-29.md written (trains 54–60, rulings, lesson, sessions, usage, plan, owner rows). Platform counts at 06:33: lead 369k/1M; integrator 22 185k (USD 3.7, trains 53–60); backend-reports #9 **398k** (USD 19.7) → READY TO RECYCLE after its follow-up push: told to push part B to `lane/backend-reports-wip-partb` and write HANDOVER 9 → 10; session 10 from lane/backend-reports when it passes ~430k. rate_limit_info on every session: seven_day `allowed_warning`, reset 2026-11-03 18:00 UTC.
 - Opus slot: db #14 after the current checker (one Opus actor at a time after the 05:45 cap). Evening report one-shot created for 15:00 UTC. Reconciler nightly pass: a Haiku reader is checking deploy #293's logs for reconcile evidence; hand-off filed in the morning file (smoke prints the reconcile row).
+
+### 06:48 UTC 2026-10-29 — lane check (lead)
+- Train 60 INT ci 40828937780 (#1691) **success** 06:23 → 06:45: 22 min wall, the first run with the two analytics shards and the aggregator (down from 32–40 min). Deploy in flight; health still 348a094a; the 07:21 check-in verifies the landing (worker --0000132 or the designed no-op) and records.
+- backend-reports #9: lane head still ac30e09e (follow-up commit pending); part B preserved on `lane/backend-reports-wip-partb` 4b38d2d1 (branch exists). Lead's Opus checker on ac30e09e running; lane run 40829009917 (#1692) in flight. No owner message. Nothing else to act on.
