@@ -151,7 +151,9 @@ class DailyTrackingTest : ReportFixture() {
             h.execute("UPDATE app.route SET zone_id = $z2 WHERE id = $r4")
         }
         assertEquals(HttpStatusCode.Forbidden, act(11, Role.TSO, body("6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status, "the old zone's TSO no longer reaches the route")
-        assertEquals(HttpStatusCode.Created, act(14, Role.TSO, body("7f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status, "the new zone's TSO does")
+        val ok = act(14, Role.TSO, body("7f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4))
+        assertEquals(HttpStatusCode.Created, ok.status, "the new zone's TSO does")
+        assertEquals(setOf(14L), Json.parseToJsonElement(ok.bodyAsText()).jsonObject["notified_user_ids"]!!.jsonArray.map { it.jsonPrimitive.content.toLong() }.toSet(), "the nudge goes to the live zone's users")
     }
 
     @Test

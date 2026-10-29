@@ -102,6 +102,19 @@ class AsWasNodeScopeTest {
     }
 
     @Test
+    fun aDivisionPlusAHouseTopNodeIsTheWholeReachForTheRouteList() {
+        // Two dashboard-level top nodes of different types (house counts too): the whole reach, not the division's members.
+        val d1 = id("SELECT division_id FROM app.territory WHERE id = $t1"); val w1 = id("SELECT wing_id FROM app.division WHERE id = $d1")
+        exec("INSERT INTO app.division (code, name, wing_id) VALUES ('D9','Div9', $w1)")
+        exec("INSERT INTO app.territory (code, name, division_id) VALUES ('T9','Terr9', (SELECT id FROM app.division WHERE code = 'D9'))")
+        exec("INSERT INTO app.zone (code, name, territory_id) VALUES ('Z9','Zone9', (SELECT id FROM app.territory WHERE code = 'T9'))")
+        val z9 = id("SELECT id FROM app.zone WHERE code = 'Z9'")
+        val caller = Reach(5, Role.TSO, day, false, setOf(z1, z2, z9), emptySet(), false, listOf(ReachNode("division", d1), ReachNode("house", 424242)))
+        val scoped = fresh.db.jdbi.withHandle<ScopedNode, Exception> { resolveScopedNode(it, caller, null, null, from = day) }
+        assertEquals(setOf(z1, z2, z9), scoped.zones!!.toSet(), "the whole reach, labelled with the first top node")
+    }
+
+    @Test
     fun aNodeWithNoZoneAtAllIsTheCallersOnlyThroughItsParentChain() {
         // A new, empty territory under T1's division: no zone today, none in the window. The reach carries zones only, so the parent chain is what ties it to a scope node.
         val d1 = id("SELECT division_id FROM app.territory WHERE id = $t1"); val w1 = id("SELECT wing_id FROM app.division WHERE id = $d1")

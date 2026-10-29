@@ -89,6 +89,37 @@ class ReportBatchATest : ReportFixture() {
         assertEquals(100.0, o.rows().single { it.str("route_code") == "R1" && it.str("brand_name") == "n$b1" }.num("bsr_pct"))
     }
 
+    private fun nodeId(sql: String) = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery(sql).mapTo(Long::class.java).one() }
+    private fun exec(sql: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(sql); Aggregator.refreshDimensions(it); DashboardSummaries.refreshDimensions(it) }
+
+    @Test
+    fun theBrandQualificationFollowsTheProductTreeOfEachDayAndOnlyThenPaysForIt() = app {
+        // D-REPORTS-ASWAS-05: a brand qualifies for a category selection by the product tree as it was on the row's date.
+        AsWasSql.probeTtlMs = 0
+        try {
+            val cat = nodeId("SELECT id FROM app.product_node WHERE level = 'category' AND code = 'CAT'")
+            suspend fun rows(category: Long) = run(10, Role.ANALYST, "route-bsr-cpr", body(""","category":[$category]""")).result().rows().map { it.str("route_code") + "/" + it.str("brand_name") }.sorted()
+            fun probe() = fresh.db.jdbi.withHandle<AsWasSql.Plain, Exception> { AsWasSql.probe(it, day) }
+            // Plain window: nothing in the product tree changed since the report date, so today's list answers (the cheap form) and the rows are the same as the as-was form's.
+            assertEquals(true, probe().product, "no product-history period closed since the window began")
+            val plainRows = rows(cat)
+            assertEquals(4, plainRows.size)
+            assertEquals(run(10, Role.ANALYST, "route-bsr-cpr").result().rows().map { it.str("route_code") + "/" + it.str("brand_name") }.sorted(), plainRows, "the category holds every brand of the fixture")
+            val asWasForm = fresh.db.jdbi.withHandle<Int, Exception> { h ->
+                h.createQuery("SELECT count(*) FROM dw.agg_daily_route_brand b WHERE b.business_date = DATE '2026-10-04' AND EXISTS (SELECT 1 FROM ${AsWasSql.productAll("pp", "DATE '2026-10-04'", "DATE '2026-10-04'")} WHERE pp.brand_id = b.brand_id AND pp.category_id = $cat AND pp.as_from <= b.business_date AND pp.as_to > b.business_date)").mapTo(Int::class.java).one()
+            }
+            assertEquals(plainRows.size, asWasForm, "plain window: the as-was and the today form qualify the same brand-days")
+            // BrandTwo moves today to a segment of a NEW category: for the report date it still belongs to CAT, and the new category did not hold it then.
+            exec("INSERT INTO app.product_node (level, code, name) VALUES ('category','CAT2','Cigars')")
+            exec("INSERT INTO app.product_node (level, code, name, parent_id) VALUES ('segment','SEG2','Luxury',(SELECT id FROM app.product_node WHERE code = 'CAT2'))")
+            exec("UPDATE app.product_node SET parent_id = (SELECT id FROM app.product_node WHERE code = 'SEG2') WHERE code = 'B2'")
+            val cat2 = nodeId("SELECT id FROM app.product_node WHERE code = 'CAT2'")
+            assertEquals(false, probe().product, "a product-history period closed after the window began")
+            assertEquals(plainRows, rows(cat), "the brand that LOST the category today still counts on the old date")
+            assertEquals(emptyList(), rows(cat2), "the brand that GAINED the category today did not hold it on the old date")
+        } finally { AsWasSql.probeTtlMs = 20_000 }
+    }
+
     @Test
     fun cprAndBsrPerRouteAndBrand() = app {
         val o = run(10, Role.ANALYST, "route-bsr-cpr").result()
