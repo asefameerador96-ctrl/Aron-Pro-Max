@@ -112,11 +112,14 @@ class ReportEngine(
                 zones = if (zones == null) sel else zones.intersect(sel.toSet()).toList()
             }
             if (geo.route.isNotEmpty()) {
-                val rows = h.createQuery("SELECT route_id, zone_id FROM dw.dim_geo WHERE route_id = ANY(:ids)").bindArray("ids", Long::class.javaObjectType, geo.route)
+                // A route is in the zone(s) it had on the dates of the period (app.route_zone_history), not only the zone it has today: a route that moved
+                // is still its old zone's for an old period. Rows are read by zone and route both, so a route never widens the reach.
+                val rows = h.createQuery("SELECT DISTINCT route_id, zone_id FROM app.route_zone_history WHERE route_id = ANY(:ids) AND daterange(valid_from, valid_to, '[)') && daterange(:f, :t, '[]')")
+                    .bindArray("ids", Long::class.javaObjectType, geo.route).bind("f", from).bind("t", to)
                     .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
-                val inReach = rows.filter { (r, z) -> (zones == null || z in zones!!) && (routes == null || r in routes!!) }
+                val inReach = rows.filter { (r, z) -> (zones == null || z in zones!!) && (routes == null || r in routes!!) }.map { it.first }.distinct()
                 if (inReach.size != geo.route.distinct().size) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected route is outside your reach")
-                routes = inReach.map { it.first }
+                routes = inReach
             }
         }
         if (zones != null && zones.isEmpty()) zones = listOf(-1L)   // an empty reach reads nothing, never "everything"

@@ -196,6 +196,32 @@ class AsWasNodeScopeTest {
     }
 
     @Test
+    fun geoValidationSignalsAndMismatchFollowTheZoneChainOfEachDayAcrossAMove() {
+        // Z2's visits of day 1 were re-checked by the server and disagreed with the device; Z2 raised one signal on each day.
+        exec("UPDATE dw.fact_visit SET server_verdict = 'out_of_range', device_verdict = 'in_range' WHERE zone_id = $z2 AND visit_kind = 'sr_call' AND NOT voided")
+        exec("INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, zone_id, score, status, config_version) VALUES " +
+            "('GEO_MOCK', 2, DATE '$day', 'visit', 's1', $z2, 20, 'open', 1), ('GEO_MOCK', 2, DATE '$day2', 'visit', 's2', $z2, 20, 'open', 1)")
+        moveZ2()
+        exec("UPDATE app.zone_history SET valid_to = DATE '$day2' WHERE zone_id = $z2 AND territory_id = $t1 AND valid_to IS NOT NULL")
+        exec("UPDATE app.zone_history SET valid_from = DATE '$day2' WHERE zone_id = $z2 AND territory_id = $t2")
+        val old = geo(day, day2); val new = geo(day, day2, node = t2)
+        assertTrue((old.geo_mismatch_pct ?: 0.0) > 0.0, "T1 had Z2's re-checked visits on day 1")
+        assertEquals(null, new.geo_mismatch_pct, "T2 had Z2 from day 2 only, and nothing was checked then")
+        assertEquals(1, old.signals_by_code["GEO_MOCK"], "T1: the signal Z2 raised while it was T1's")
+        assertEquals(1, new.signals_by_code["GEO_MOCK"], "T2: the signal of day 2")
+    }
+
+    @Test
+    fun theLoginSubmitListsPlaceARouteInTheZoneItHadOnThatDate() {
+        // R3 (Z2) is reassigned to Z1 today: on the fixture date it is still Z2's route.
+        exec("UPDATE app.route SET zone_id = $z1 WHERE code = 'R3'")
+        val ops = OpsService(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults(), AronClock { now })
+        fun routes(s: LoginSubmitStatus) = (s.not_logged_in + s.logged_in_not_submitted + s.submitted + s.exceptions).map { it.route_code }.toSet()
+        assertEquals(setOf("R3"), routes(ops.loginSubmit(national, dash(), day, "zone", z2)), "Z2 had R3 that day")
+        assertEquals(setOf("R1", "R2"), routes(ops.loginSubmit(national, dash(), day, "zone", z1)), "Z1 did not")
+    }
+
+    @Test
     fun syncHealthOfATsoWhoseZoneLeftTheirTerritoryAnswersWhileTheDimensionStillLags() {
         // The move is only in app.zone (dw.dim_geo is rebuilt by the projector, up to minutes later), as in production right after an admin edit.
         fresh.db.jdbi.useHandle<Exception> {
