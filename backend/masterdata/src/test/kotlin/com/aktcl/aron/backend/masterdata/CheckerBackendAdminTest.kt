@@ -28,11 +28,25 @@ class CheckerBackendAdminTest {
 
     private fun leave(id: String, from: String, days: Int) = """{"leave_uuid":"$id","leave_type_code":"casual","from_date":"$from","days":$days,"reason":"Family"}"""
 
+    // tso-manual B3 (D-TSO-MAN-33): overlapping leave is refused only with cfg.leave.block_overlap (default false), read
+    // by LeaveRules on the request's own handle, so the switch is a cfg_value row (closed again after the test).
+    private fun overlapBlock(on: Boolean) = if (on) {
+        env.exec(
+            "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
+                "SELECT 'cfg.leave.block_overlap', 'global', 0, 'true'::jsonb, TIMESTAMPTZ '2026-01-01T00:00:00Z', max(config_version), 'test: overlap block on' FROM app.cfg_version",
+        )
+    } else {
+        env.exec("UPDATE app.cfg_value SET effective_to = now() WHERE key = 'cfg.leave.block_overlap' AND scope_type = 'global' AND effective_to IS NULL")
+    }
+
     @Test
     fun overlappingLeaveOfTheSameTsoIsRefused() = env.app {
         assertEquals(HttpStatusCode.Created, sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), leave(ckUuid(), "2027-08-01", 5)).status)
-        val r = sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), leave(ckUuid(), "2027-08-03", 5))
-        assertTrue(r.status.value in 400..409, "overlapping leave accepted: ${r.status}")
+        overlapBlock(true)
+        try {
+            val r = sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), leave(ckUuid(), "2027-08-03", 5))
+            assertTrue(r.status.value in 400..409, "overlapping leave accepted: ${r.status}")
+        } finally { overlapBlock(false) }
     }
 
     @Test
