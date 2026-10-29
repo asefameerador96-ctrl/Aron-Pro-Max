@@ -129,6 +129,22 @@ class AsWasReadTest {
     }
 
     @Test
+    fun aBrandMovedToAnotherSegmentKeepsItsOldSegmentOnTheOldDateAndASegmentWithoutANodeKeepsItsMoney() {
+        val all = Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList())
+        fun segs() = dash().summary(all, null, null, day, day).by_segment.map { Triple(it.code, it.name, it.net_mtk) }
+        val before = segs()
+        assertEquals(listOf("Premium"), before.map { it.second }, "one segment, by its name")
+        exec("INSERT INTO app.product_node (level, code, name, parent_id) VALUES ('segment','SEG2','Standard',(SELECT id FROM app.product_node WHERE level='category'))")
+        exec("UPDATE app.product_node SET parent_id = (SELECT id FROM app.product_node WHERE code = 'SEG2') WHERE code = 'B2'")
+        assertEquals(before, segs(), "B2 sits under the new segment today; the old date still shows both brands under the old one")
+        val seg = id("SELECT id FROM app.product_node WHERE code = 'SEG'")
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("SET session_replication_role = replica"); h.execute("DELETE FROM app.product_node WHERE id = $seg"); h.execute("SET session_replication_role = DEFAULT") }
+        val gone = segs()
+        assertEquals(before.sumOf { it.third }, gone.sumOf { it.third }, "no segment's money dropped out")
+        assertEquals("n$seg", gone.single { it.first == seg.toString() }.second)
+    }
+
+    @Test
     fun anOutletMovedToAnotherChannelTodayKeepsItsOldChannelOnTheOldDate() {
         val before = screens(f()); val channelsBefore = dash().summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).by_channel.map { it.code to it.net_mtk }
         assertTrue(channelsBefore.isNotEmpty())
