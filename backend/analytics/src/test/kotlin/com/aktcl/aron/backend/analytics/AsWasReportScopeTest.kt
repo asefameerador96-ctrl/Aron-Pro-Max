@@ -113,6 +113,23 @@ class AsWasReportScopeTest : ReportFixture() {
         assertEquals(HttpStatusCode.Forbidden, run(14, Role.TSO, "route-std", sel).status, "and not zone 2's")
     }
 
+    @Test
+    fun aRouteOutsideTheReachZonesIsRefusedLikeAnUnknownIdAssignedOrNot() = app {
+        val r3 = id("SELECT id FROM app.route WHERE code = 'R3'")   // zone 2's route; user 11 reaches zone 1 only
+        val sel = body(""","geo":{"route":[$r3]}""")
+        val outOfReach = run(11, Role.TSO, "route-std", sel)
+        val unknown = run(11, Role.TSO, "route-std", body(""","geo":{"route":[999999]}"""))
+        assertEquals(HttpStatusCode.Forbidden, outOfReach.status, "a route in a zone the caller does not reach")
+        assertEquals(HttpStatusCode.Forbidden, unknown.status)
+        assertEquals(unknown.problemBody(), outOfReach.problemBody(), "the same body: no existence leak")
+        // The same route ASSIGNED to the caller (reach.routeIds) but outside the zones of the reach is refused the same way (lead, 2026-10-29): the report selector judges
+        // the zones, an assignment does not widen them.
+        reaches[11] = com.aktcl.aron.backend.platform.Reach(11, Role.TSO, day, false, setOf(z1), setOf(r3), false, listOf(com.aktcl.aron.backend.platform.ReachNode("zone", z1)))
+        val assigned = run(11, Role.TSO, "route-std", sel)
+        assertEquals(HttpStatusCode.Forbidden, assigned.status, "assigned route outside the reach zones")
+        assertEquals(unknown.problemBody(), assigned.problemBody(), "the same body as an unknown id")
+    }
+
     /** The refusal as a client sees it, minus what differs per request. */
     private suspend fun io.ktor.client.statement.HttpResponse.problemBody(): Pair<String?, String?> =
         kotlinx.serialization.json.Json.parseToJsonElement(this.bodyAsText()).let { it.jsonObject["code"]?.jsonPrimitive?.content to it.jsonObject["detail"]?.jsonPrimitive?.content }

@@ -241,6 +241,21 @@ class OpsApiTest : ReportFixture() {
     /** docs/24 s4.6: a parked row turned final "is listed on the quarantine page"; listQuarantine: "Rejected and quarantined records". */
 
     @Test
+    fun aNodeOutOfReachAndAnUnknownNodeAnswerTheSameBodyOnEveryNodePath() = app {
+        // D-LEAD-REPORT-SELECTOR-01: a non-national caller learns nothing from the refusal: zone 2 is real but not zone 1's TSO's, 999999 is no node; both are the same 403.
+        suspend fun refusal(path: String, level: String, node: Long): Pair<HttpStatusCode, JsonObject> =
+            get(11, Role.TSO, "/v1/dashboards/$path${if ('?' in path) "&" else "?"}level=$level&node_id=$node").let { it.status to it.obj() }
+        val z2Id = z2
+        for (path in listOf("summary?from=2026-10-04&to=2026-10-04", "geo-validation?from=2026-10-04&to=2026-10-04", "login-submit?business_date=2026-10-04", "flagged-memos?from=2026-10-04&to=2026-10-04", "sync-health?business_date=2026-10-04")) {
+            val real = refusal(path, "zone", z2Id); val unknown = refusal(path, "zone", 999_999)
+            assertEquals(HttpStatusCode.Forbidden, real.first, "$path: a real zone outside the reach")
+            assertEquals(HttpStatusCode.Forbidden, unknown.first, "$path: no such zone")
+            assertEquals(unknown.second.s("code"), real.second.s("code"), path); assertEquals(unknown.second.s("detail"), real.second.s("detail"), "$path: the same body")
+            assertEquals(HttpStatusCode.OK, get(11, Role.TSO, "/v1/dashboards/$path${if ('?' in path) "&" else "?"}level=zone&node_id=$z1").status, "$path: the caller's own zone still answers")
+        }
+    }
+
+    @Test
     fun theBrandRolesAreRefusedAtThePortalGateAndTheHandlerChecksFailClosed() = app {
         fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.app_user (id, username, full_name, role, must_change_password) OVERRIDING SYSTEM VALUE VALUES (15, 'user15', 'User 15', 'BRAND', false)") }
         reaches[15] = com.aktcl.aron.backend.platform.Reach(15, Role.BRAND, day, true, emptySet(), emptySet(), false, emptyList())

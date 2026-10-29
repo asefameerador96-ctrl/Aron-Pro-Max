@@ -113,7 +113,7 @@ class ReportEngine(
             }
             if (geo.route.isNotEmpty()) {
                 // D-REPORTS-NODEASWAS-05/-06, ruling D-LEAD-REPORT-SELECTOR-01. A refusal is for SCOPE only: an unknown id or a route outside the caller's reach
-                // (today's reach: one of the zones it has or had in the period is in it, or it is one of the caller's routes) is 403, the same answer for both.
+                // (today's reach: one of the zones it has or had in the period, or the zone it has today, is in the reach; an assignment in reach.routeIds does not widen the zones) is 403, the same answer for both.
                 // A route inside the reach that was not in the selected zones during the period is a 200 with no rows.
                 val ids = geo.route.distinct()
                 val known = h.createQuery("SELECT id FROM app.route WHERE id = ANY(:ids)").bindArray("ids", Long::class.javaObjectType, ids).mapTo(Long::class.javaObjectType).set()
@@ -130,7 +130,7 @@ class ReportEngine(
                     .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
                 val reachZones = if (reach.national) null else reach.zoneIds
                 fun inReach(r: Long) = (routes == null || r in routes!!) &&
-                    (reachZones == null || r in reach.routeIds || rows[r].orEmpty().any { it in reachZones } || nowZone[r]?.let { it in reachZones } == true)
+                    (reachZones == null || rows[r].orEmpty().any { it in reachZones } || nowZone[r]?.let { it in reachZones } == true)
                 if (ids.any { it !in known || !inReach(it) }) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected route is outside your reach")
                 val sel = ids.filter { r -> rows[r].orEmpty().any { zones == null || it in zones!! } }
                 routes = sel.ifEmpty { NO_ROUTE }   // in reach but not in the selected zones during the period: no rows, never "everything"
