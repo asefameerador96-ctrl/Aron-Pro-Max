@@ -37,11 +37,6 @@ internal object TsoBundleReads {
         PlanOutlet(it.outletId, it.code, it.name, it.nameBn, it.ownerName, it.clusterName.takeIf { c -> c.isNotBlank() }, it.contactNumber?.takeIf { p -> p.isNotBlank() }, it.channel.takeIf { c -> c.isNotBlank() })
     }
 
-    /** The routes of the bundle without their SR ([PlanRoute.sr] null): the last resort when neither the bundle nor a read names it. */
-    fun routes(rows: List<RouteEntity>): List<PlanRoute> = rows.filter { it.status == "active" }.map {
-        PlanRoute(it.routeId, it.code, it.name, it.zoneId, it.displayLabel)
-    }
-
     /**
      * What a stored route snapshot says about its SR (contract 1.10.0 `RouteSnapshot.sr_user_id` / `sr_name`, R-W-06 (4)): the
      * route's SR on the bundle date, the same SR `GET /v1/routes` names. [carried] is false when the snapshot has neither member
@@ -62,16 +57,30 @@ internal object TsoBundleReads {
         return SrInBundle(true, RouteSr(id, name))
     }
 
+    /** One active route of the bundle; [carried] says whether its snapshot names the SR ([PlanRoute.sr], null when vacant). */
+    data class BundleRoute(val route: PlanRoute, val carried: Boolean)
+
     /**
-     * tso-manual X4b (R-W-12 (9)): the bundle's routes with their SR, so Set Plan, My Visit Plan and Assign Task work offline and
-     * read nothing. Null when no active route carries the SR members (an older server): the caller then reads `GET /v1/routes`,
-     * as before. A route whose own snapshot lacks them while others carry them is vacant (the server sends both for a named SR).
+     * tso-manual X4b (R-W-12 (9), fix round D-X4b-08): the bundle's active routes, each with what its own snapshot says about its
+     * SR, so Set Plan, My Visit Plan and Assign Task work offline and read nothing. A route whose snapshot lacks the members is
+     * not carried (an older server, a delta from a mixed version): its SR is null here and the caller fills it from the online
+     * read, or the last one kept, before calling it vacant. Null when the bundle has no active route.
      */
-    fun routesWithSr(rows: List<RouteEntity>, extrasOf: (Long) -> String?): List<PlanRoute>? {
+    fun routesWithSr(rows: List<RouteEntity>, extrasOf: (Long) -> String?): List<BundleRoute>? {
         val active = rows.filter { it.status == "active" }
         if (active.isEmpty()) return null
-        val srs = active.associate { it.routeId to srOf(extrasOf(it.routeId)) }
-        if (srs.values.none { it.carried }) return null
-        return active.map { PlanRoute(it.routeId, it.code, it.name, it.zoneId, it.displayLabel, srs[it.routeId]?.sr) }
+        return active.map { r ->
+            val s = srOf(extrasOf(r.routeId))
+            BundleRoute(PlanRoute(r.routeId, r.code, r.name, r.zoneId, r.displayLabel, s.sr), s.carried)
+        }
+    }
+
+    /**
+     * The offline answer when some route's snapshot does not carry its SR: the bundle where it does, the last online read
+     * ([lastRead], by route id) for the others; a route that neither names is vacant ("SR Not Set": no task can be queued for it).
+     */
+    fun fill(bundle: List<BundleRoute>, lastRead: List<PlanRoute>?): List<PlanRoute> {
+        val read = lastRead.orEmpty().associateBy { it.id }
+        return bundle.map { b -> if (b.carried) b.route else b.route.copy(sr = read[b.route.id]?.sr) }
     }
 }

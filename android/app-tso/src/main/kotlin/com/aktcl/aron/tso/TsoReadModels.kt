@@ -234,23 +234,31 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
     fun plan(userId: Long): com.aktcl.aron.feature.tso.mycall.PlanSource = object : com.aktcl.aron.feature.tso.mycall.PlanSource {
         private val J = com.aktcl.aron.feature.tso.mycall.PlanJson
 
+        /**
+         * tso-manual X4b (R-W-12 (9); fix round, D-X4b-08): the routes with their SR, in this order. (1) An online read younger
+         * than 30 minutes is newer than the bundle, so it wins and a mid-day SR change shows (no request). (2) The bundle's
+         * routes when every route's snapshot carries its SR (`sr_user_id` / `sr_name`, R-W-06): offline, no request. (3) A route
+         * whose snapshot does not carry it: the online read (`GET /v1/routes`, kept 30 minutes). (4) Offline: the bundle where it
+         * carries the SR, the last online read kept for the others; a route neither names is vacant.
+         */
         override suspend fun routes(): List<com.aktcl.aron.feature.tso.mycall.PlanRoute>? {
-            // tso-manual X4b (R-W-12 (9)): the bundle's routes name their SR (sr_user_id / sr_name, R-W-06): offline, no request
-            bundleRoutesWithSr()?.let { return it }
-            // an older bundle without them: the online read (kept 30 minutes) names the SR, as before
             cacheFresh(userId, "routes", REFERENCE_TTL_MS)?.let { c -> J.parseRoutes(c)?.let { return it } }
+            val bundle = bundleRoutesWithSr()
+            if (bundle != null && bundle.all { it.carried }) return bundle.map { it.route }
             val fresh = getPages("/v1/routes")?.map { J.parseRoutes(it) ?: return@map null }
             if (fresh != null && fresh.none { it == null }) {
                 val all = fresh.filterNotNull().flatten().distinctBy { it.id }
                 cachePut(userId, "routes", J.routesToCache(all), asOfNow()); return all
             }
-            cacheGet(userId, "routes")?.let { c -> J.parseRoutes(c.first)?.let { return it } }
-            // nothing online and nothing cached: the routes of the bundle (no SR names there)
-            return runCatching { TsoBundleReads.routes(meta(userId).routesFor(env.businessDate())) }.getOrNull()?.takeIf { it.isNotEmpty() }
+            val last = cacheGet(userId, "routes")?.let { c -> J.parseRoutes(c.first) }
+            if (bundle != null && bundle.any { it.carried }) return TsoBundleReads.fill(bundle, last)
+            last?.let { return it }
+            // nothing online and nothing kept: the routes of the bundle (no SR names there)
+            return bundle?.map { it.route }?.takeIf { it.isNotEmpty() }
         }
 
-        /** The stored bundle's routes of the business date (trusted time) with the SR of each route's snapshot; null when none carries it. */
-        private suspend fun bundleRoutesWithSr(): List<com.aktcl.aron.feature.tso.mycall.PlanRoute>? = runCatching {
+        /** The stored bundle's active routes of the business date (trusted time), each with what its snapshot says about its SR. */
+        private suspend fun bundleRoutesWithSr(): List<TsoBundleReads.BundleRoute>? = runCatching {
             val db = databases.of(userId)
             val rows = db.referenceDao().routesFor(env.businessDate())
             if (rows.isEmpty()) return@runCatching null
