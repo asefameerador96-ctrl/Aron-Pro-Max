@@ -82,6 +82,41 @@ class GeoSnapshotRaceTest {
     }
 
     @Test
+    fun anOldGenerationEntryIsNeverServedWhileAnotherReloadHoldsTheLock() {
+        val geo = GeoRepository(fresh.db, clock, lockWaitMs = 50)
+        // The edit commits and invalidates after the load passed its staleness check: the old-generation snapshot is installed AFTER the invalidation cleared the cache.
+        geo.beforeInstall = { exec("INSERT INTO app.zone (code, name, territory_id) VALUES ('Z2','Zone2', $t1)"); geo.invalidate() }
+        var answer: java.util.concurrent.CompletableFuture<Int>? = null
+        geo.afterInstall = {
+            // The reload still holds the lock and the cache holds the old-generation entry: a caller must not be served it.
+            if (answer == null) answer = java.util.concurrent.CompletableFuture.supplyAsync { geo.snapshot().geo.zoneTerritory.size }
+            assertEquals(2, answer!!.get(5, java.util.concurrent.TimeUnit.SECONDS))
+        }
+        geo.snapshot()
+    }
+
+    @Test
+    fun anExpiredEntryIsServedWhileAReloadHoldsTheLockButOnlyUpToTwiceTheTtl() {
+        var now = Instant.parse("2026-10-04T12:00:00Z")
+        val geo = GeoRepository(fresh.db, AronClock { now }, ttlMs = 60_000, lockWaitMs = 50)
+        geo.snapshot()                                               // installed at t0
+        exec("INSERT INTO app.zone (code, name, territory_id) VALUES ('Z2','Zone2', $t1)")   // no invalidation: a TTL-only expiry
+        val held = java.util.concurrent.CountDownLatch(1); val release = java.util.concurrent.CountDownLatch(1)
+        var first = true
+        geo.afterLoad = { if (first) { first = false; held.countDown(); release.await(20, java.util.concurrent.TimeUnit.SECONDS) } }
+        now = now.plusSeconds(90)                                    // expired, younger than twice the TTL
+        val reloader = Thread { geo.snapshot() }.also { it.start() } // holds the lock while its reload is "failing"
+        try {
+            assertTrue(held.await(10, java.util.concurrent.TimeUnit.SECONDS))
+            val within = java.util.concurrent.CompletableFuture.supplyAsync { geo.snapshot().geo.zoneTerritory.size }
+            assertEquals(1, within.get(5, java.util.concurrent.TimeUnit.SECONDS), "younger than twice the TTL: the expired entry answers at once")
+            now = now.plusSeconds(60)                                // 150 s old: past twice the TTL
+            val past = java.util.concurrent.CompletableFuture.supplyAsync { geo.snapshot().geo.zoneTerritory.size }
+            assertEquals(2, past.get(5, java.util.concurrent.TimeUnit.SECONDS), "past twice the TTL: it loads on its own and reads the edit")
+        } finally { release.countDown(); reloader.join(10_000) }
+    }
+
+    @Test
     fun theGeographyIsReadInOneStatementAndMatchesTheTables() {
         val statements = java.util.concurrent.atomic.AtomicInteger()
         fresh.db.jdbi.setSqlLogger(object : org.jdbi.v3.core.statement.SqlLogger {
@@ -106,7 +141,7 @@ class GeoSnapshotRaceTest {
             val smallDb = com.aktcl.aron.backend.platform.Database(small)
             val geo = GeoRepository(smallDb, AronClock { now })
             geo.snapshot()                                  // warm
-            now = now.plusSeconds(120)                      // past the TTL: an expired entry, no edit since
+            now = now.plusSeconds(90)                       // past the TTL, younger than twice the TTL: an expired entry, no edit since
             val ready = java.util.concurrent.CountDownLatch(2); val go = java.util.concurrent.CountDownLatch(1)
             val waited = java.util.concurrent.ConcurrentHashMap<String, Long>()
             val holders = (1..2).map { n ->

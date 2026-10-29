@@ -1,6 +1,8 @@
 # backend-reports lane status
 
-## Session 10 (2026-10-29): candidate 4 = part B (in progress)
+## Session 10 (2026-10-29): candidate 4 = part B (pushed, lane run 40849512378)
+
+**Candidate 5 (selector, branch `lane/backend-reports-wip-sel10`, after candidate 4 is confirmed):** D-REPORTS-NODEASWAS-07 (node + route selectors refuse on scope only, -2 sentinel), D-REPORTS-BRANDSCOPE-03 (handler-level brand checks, `dashboardHandlers`), docs/requests/backend-reports-zone-move-day-disagreement.md. AsWasNodeScopeTest 13, AsWasReportScopeTest 6, OpsApiTest 11 green; mutants killed (windowById non-empty, NO_ROUTE -1, delete requireBrandScope, delete refuseBrandCaller). Full suites + Opus checker pending.
 
 State: partb branch merged with INT 61 (0ead5e3f). Full `:backend:masterdata:test :backend:analytics:test` GREEN on the merged tree (92 classes, 46 min, before the checker-round test fixes); the touched classes re-run green after them (GeoSnapshotRaceTest 6, HouseDedupTest 1, AsWasProbeTest 5, AsWasReportScopeTest 6). Opus checker round 1: HELD one item (HouseDedupTest pin did not bite: Jdbi reuses the thread handle), fixed with a mutant (invalidate inside the transaction) that now fails; added the wait-path test (mutant: wait for the lock) and made AsWasReportScopeTest's analyst assertion check the status before `.result()`; D-REPORTS-REACH-GEO-06. Next after the push: selector candidate (D-LEAD-REPORT-SELECTOR-01, node + route together, -2 sentinel), handler-level refuseBrandCaller/requireBrandScope tests, docs/requests zone-move-day note, HANDOVER 8->9 leftovers B, D, E, F, G, REBUILD-01.
 

@@ -493,37 +493,40 @@ internal fun refuseBrandCaller(role: Role) {
 }
 
 fun Route.dashboardRoutes(d: DashboardDeps) {
-    authenticated(d.guard) {
-        get("/dashboards/summary") {
-            val p = call.principal
-            if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
-            val q = call.request.queryParameters
-            val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
-            fun date(n: String, default: LocalDate) = q[n]?.let { s ->
-                runCatching { LocalDate.parse(s) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value")))
-            } ?: default
-            val from = date("from", today)
-            val to = date("to", from)
-            val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
-            val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
-            val brandIds = d.brands.brandIds(p.userId, p.role)
-            requireBrandScope(p.role, brandIds)
-            call.respond(d.service.summary(reach, q["level"], nodeId, from, to, brandIds))
-        }
-        get("/dashboards/geo-validation") {
-            val p = call.principal
-            if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
-            val q = call.request.queryParameters
-            val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
-            fun date(n: String, default: LocalDate) = q[n]?.let { s ->
-                runCatching { LocalDate.parse(s) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value")))
-            } ?: default
-            val from = date("from", today)
-            val to = date("to", from)
-            val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
-            refuseBrandCaller(p.role)
-            val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
-            call.respond(d.service.geoValidation(reach, q["level"], nodeId, from, to))
-        }
+    authenticated(d.guard) { dashboardHandlers(d) }
+}
+
+/** The handlers without the guard (a test mounts them with a principal of its own, past the portal gate, to prove the handler's own role checks). */
+internal fun Route.dashboardHandlers(d: DashboardDeps) {
+    get("/dashboards/summary") {
+        val p = call.principal
+        if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
+        val q = call.request.queryParameters
+        val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
+        fun date(n: String, default: LocalDate) = q[n]?.let { s ->
+            runCatching { LocalDate.parse(s) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value")))
+        } ?: default
+        val from = date("from", today)
+        val to = date("to", from)
+        val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
+        val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
+        val brandIds = d.brands.brandIds(p.userId, p.role)
+        requireBrandScope(p.role, brandIds)
+        call.respond(d.service.summary(reach, q["level"], nodeId, from, to, brandIds))
+    }
+    get("/dashboards/geo-validation") {
+        val p = call.principal
+        if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
+        val q = call.request.queryParameters
+        val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
+        fun date(n: String, default: LocalDate) = q[n]?.let { s ->
+            runCatching { LocalDate.parse(s) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value")))
+        } ?: default
+        val from = date("from", today)
+        val to = date("to", from)
+        val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
+        refuseBrandCaller(p.role)
+        val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
+        call.respond(d.service.geoValidation(reach, q["level"], nodeId, from, to))
     }
 }

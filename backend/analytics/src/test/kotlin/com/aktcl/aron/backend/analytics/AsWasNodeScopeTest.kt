@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 /**
  * A requested node is the node as it was on the dates asked (D-REPORTS-NODEASWAS-01), on real PostgreSQL 16: after a zone moves to another
  * territory, a drill-down on an old date reads the territory as it was then (the zones it had, the figures it had), the new territory has no
- * members on that date (403), a period that straddles the move counts each day by the territory the zone had that day, and the reach still bounds it.
+ * members on that date (200, no rows: D-REPORTS-NODEASWAS-07), a period that straddles the move counts each day by the territory the zone had that day, and the reach still bounds it.
  */
 class AsWasNodeScopeTest {
     private val day = LocalDate.parse("2026-10-04")   // the fixture's own date, not the dev seed's
@@ -82,8 +82,11 @@ class AsWasNodeScopeTest {
         assertEquals(before.by_brand, after.by_brand); assertEquals(before.by_category, after.by_category)
         assertEquals(beforeGeo, geo(), "geo-validation reads the same node")
         for (child in after.children) assertEquals(child.kpis, dash().summary(national, "zone", child.node.id, day, day).kpis, "every listed child can be opened")
-        val e = assertFailsWith<ApiProblem> { terr(node = t2) }
-        assertEquals(ProblemCode.ERR_FORBIDDEN, e.code, "the new territory had no zone on that date")
+        // D-LEAD-REPORT-SELECTOR-01: a node inside the reach that held no zone on that date is 200 with nothing in it, not a refusal; an id that is no node is the refusal.
+        val empty = terr(node = t2)
+        assertEquals(0L, empty.kpis.gross_mtk, "the new territory had no zone on that date: nothing in it")
+        assertTrue(empty.children.isEmpty())
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(node = 999_999L) }.code, "an id that is no territory")
     }
 
     @Test
@@ -101,7 +104,8 @@ class AsWasNodeScopeTest {
         assertEquals(dash().geoValidation(national, "zone", z1, day, day).visits, dash().geoValidation(tso, "territory", t1, day, day).visits, "geo-validation cuts the same way")
         // Never wider than the reach: a node that held nothing of the caller's on that date is refused.
         val other = Reach(4, Role.TSO, day, false, setOf(z2), emptySet(), false, listOf(ReachNode("zone", z2)))
-        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(node = t2, reach = other) }.code, "T2 had no zone on that date")
+        assertEquals(0L, terr(node = t2, reach = other).kpis.gross_mtk, "T2 is inside this caller's reach today (it holds Z2 only) and had no zone on that date: 200, nothing in it")
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(node = t1, reach = other) }.code, "T1 still holds Z1, which this caller cannot see: outside the reach, refused")
         assertEquals(63_000L, terr(reach = Reach(3, Role.TSO, day, false, setOf(z1, z2), emptySet(), false, listOf(ReachNode("territory", t1)))).kpis.gross_mtk)
     }
 
@@ -154,14 +158,14 @@ class AsWasNodeScopeTest {
 
     @Test
     fun aNodeThatLostEveryZoneHasNoMembersFromThenOnAndKeepsThemBefore() {
-        // Both zones left T1 for T2 on day 2: T1 has no member from then on (403), still has both before it, and T2 has none on day 1.
+        // Both zones left T1 for T2 on day 2: T1 has no member from then on (200, no rows), still has both before it, and T2 has none on day 1.
         moveZ2()
         exec("UPDATE app.zone SET territory_id = $t2 WHERE code = 'Z1'")
         exec("UPDATE app.zone_history SET valid_to = DATE '$day2' WHERE zone_id IN ($z1, $z2) AND territory_id = $t1 AND valid_to IS NOT NULL")
         exec("UPDATE app.zone_history SET valid_from = DATE '$day2' WHERE zone_id IN ($z1, $z2) AND territory_id = $t2")
-        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(day2, day2, t1) }.code, "T1 had no zone on day 2")
+        assertEquals(0L, terr(day2, day2, t1).kpis.gross_mtk, "T1 had no zone on day 2: 200, nothing in it (D-LEAD-REPORT-SELECTOR-01)")
         assertTrue(terr(day, day2, t1).kpis.gross_mtk > 0, "but it had both on day 1")
-        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(day, day, t2) }.code, "and T2 had none on day 1")
+        assertEquals(0L, terr(day, day, t2).kpis.gross_mtk, "and T2 had none on day 1: 200, nothing in it")
         // T1 holds nothing today, so only its members of the window can tie it to a reach: a caller who reached none of them is refused like an unknown id.
         val stranger = Reach(9, Role.TSO, day, false, setOf(999_999L), emptySet(), false, listOf(ReachNode("zone", 999_999L)))
         assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(day, day, t1, stranger) }.code)
@@ -192,7 +196,8 @@ class AsWasNodeScopeTest {
         val old = ops.loginSubmit(national, dash(), day, "territory", t1)
         assertEquals(setOf("R1", "R2", "R3"), routes(old), "the routes of the zones T1 had that day")
         assertEquals(setOf(z1, z2), old.zones.map { it.zone_id }.toSet(), "the Final Submit zones too")
-        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { ops.loginSubmit(national, dash(), day, "territory", t2) }.code, "T2 had no zone that day")
+        assertEquals(emptySet(), routes(ops.loginSubmit(national, dash(), day, "territory", t2)), "T2 had no zone that day: 200, no routes (D-LEAD-REPORT-SELECTOR-01)")
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { ops.loginSubmit(national, dash(), day, "territory", 999_999L) }.code, "an id that is no territory")
     }
 
     @Test
@@ -253,10 +258,11 @@ class AsWasNodeScopeTest {
         moveZ2()
         // T2 did not exist on the fixture date: every endpoint that takes a node and a date must say so, none may read today's structure.
         val c = AronClock { now }
-        val e1 = assertFailsWith<ApiProblem> { FlaggedMemos(fresh.db).page(national, day, day, "territory", t2, null, 10, null) }
-        assertEquals(ProblemCode.ERR_OUT_OF_SCOPE, e1.code)
-        val e2 = assertFailsWith<ApiProblem> { DailyTrackingService(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults(), c).page(national, day, "territory", t2, 10, null) }
-        assertEquals(ProblemCode.ERR_FORBIDDEN, e2.code)
+        // D-LEAD-REPORT-SELECTOR-01: the node is real and in the national reach, so each answers 200 with no rows; an id that is no node is the refusal.
+        assertEquals(0, FlaggedMemos(fresh.db).page(national, day, day, "territory", t2, null, 10, null).items.size)
+        assertEquals(0, DailyTrackingService(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults(), c).page(national, day, "territory", t2, 10, null).items.size)
+        assertEquals(ProblemCode.ERR_OUT_OF_SCOPE, assertFailsWith<ApiProblem> { FlaggedMemos(fresh.db).page(national, day, day, "territory", 999_999L, null, 10, null) }.code)
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { DailyTrackingService(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults(), c).page(national, day, "territory", 999_999L, 10, null) }.code)
         // The old territory still answers on that date: both zones' routes for a national caller, only the caller's own zone for a TSO of zone 1.
         FlaggedMemos(fresh.db).page(national, day, day, "territory", t1, null, 10, null)
         val tracking = DailyTrackingService(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults(), c)
