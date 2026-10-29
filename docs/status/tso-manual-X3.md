@@ -10,7 +10,7 @@ Owned: `web/` and this file; nothing outside `web/` was changed.
 | Item | What | Proving test |
 |---|---|---|
 | R-W-13 (1) icon | `MENU_ICON["admin-tickets"] = "inbox"` in `web/src/components/kit/icons.tsx` as ruled. The sidebar does not read `MENU_ICON` (no caller of `menuIcon` exists); it draws `web/src/components/nav-icons.tsx` `BY_ID`, so that map gets an `inbox` line glyph (original geometry, 24 px grid, 1.75 stroke) and `"admin-tickets": "inbox"` too (D-X3-01); before, the entry drew the fallback dot | `tso-integration-web.test.tsx` "(1) the Tickets entry's icon" (menu id, both maps, the NavLink draws the inbox path beside "Tickets" / "টিকিট") |
-| R-W-13 (2) leave note | `NOTE_MAX` 300 -> 500 (`leave-rows.ts`); the BFF (`web/src/app/api/bff/leave-decision/route.ts`) now takes `.max(NOTE_MAX)` from it, so page, proxy and `DecisionRequest.note` maxLength 500 are one number; the page's textarea `maxLength` and its hint follow | `tso-integration-web.test.tsx` "(2) …": NOTE_MAX equals the contract's maxLength (read from `contract/openapi.yaml`); 500 Bangla characters stored through the BFF and the mock; 400 English characters pass; 501 refused at the BFF (400, leave stays pending); hint "Up to 500 characters" en, "সর্বোচ্চ ৫০০ অক্ষর" bn. Existing `leave-applicant.test.tsx` (NOTE_MAX-relative) still green |
+| R-W-13 (2) leave note | `NOTE_MAX` 300 -> 500 (`leave-rows.ts`); the BFF (`web/src/app/api/bff/leave-decision/route.ts`) now takes `.max(NOTE_MAX)` from it, so page, proxy and `DecisionRequest.note` maxLength 500 are one number; the page's textarea `maxLength` and its hint follow | `tso-integration-web.test.tsx` "(2) …": NOTE_MAX equals the contract's maxLength (read from `contract/openapi.yaml`); 500 Bangla characters stored through the BFF and the mock; 400 English characters pass; 501 refused at the BFF (400, leave stays pending; until the fix round this only showed a 400, which the mock's own cap also gives: now the BFF's problem without a `/note` pointer, and an accepting API stub never called); hint "Up to 500 characters" en, "সর্বোচ্চ ৫০০ অক্ষর" bn. Existing `leave-applicant.test.tsx` (NOTE_MAX-relative) still green |
 | R-W-13 (3) Submit | `finalSubmitButton(role, preview)` in `web/src/lib/admin/ops.ts`: `preview.can_submit` when sent, else the TSO-only rule (`FINAL_SUBMIT_BUTTON_ROLES`) for an older server; never for a role the team-op proxy does not forward (`day.final-submit`: TSO, DMO, WM). `final-submit-page.tsx` passes it to the view; `already_submitted` stays the view's own check. A delegated DMO or WM opens the page (`FINAL_SUBMIT_PAGE_ROLES`, unchanged) and now gets the button | `final-submit-roles.test.tsx`: the delegate case end to end (WM and DMO with `can_submit: true` see the form, the proxy forwards, the API's 200 passes through), `can_submit: false` for DMO/WM and for a TSO hides it, an older server keeps TSO only, ADMIN/SUPERADMIN never (even with true), already submitted hides it, bn ("ফাইনাল সাবমিট"), the pure rule matrix |
 | R-W-13 (4) till-date % | `fmt.ts tillDatePctText(locale, row)`: `pctBp(bp, 2)` whenever `tilldate_target_achievement_bp` is sent (a sent null prints "—"); the deprecated float only when the bp member is absent. Used by TSO Daily Tracking and by the Daily Tracking table's Achievement column (D-X3-02). Mock sends the bp (integer, half up) and the float as bp / 100 | `tso-daily-tracking.test.tsx`: every corpus `percent` entry noted "s4.2" and every `details` (s4.3) entry prints the corpus's bp text in en and bn (the float beside it ignored); null bp -> "—" even with a float; absent bp -> the float ("87.50%", "৮৭.৫০%"); no second rounding (4342 -> 43.42%, 245 -> 2.45%, 123456 -> 1,234.56%); the page (bp over float; fallback row; bn "১০৪.৯৪%"); the table column (en, bn) |
 | R-W-13 (5) route bars | `fmt.ts pctWholeSalesCard(sales, monthly, W)` = round_half_up(100 x sales x W / monthly) once, monthly (Decimal3) read exactly as thousandths, BigInt inside; null for W = 0, no or 0 target, bad input. `routeBarText`: that rule when `monthly_target_qty` and `working_days` are both sent; else W1's exact sales-over-Decimal3-daily-target path; else the bp at 0 dp. `types.ts` / `server.ts` carry the two members; the route-map page prints through `routeBarText` (the bp still draws the bar). Mock sends monthly "26000.000" and W 26 | `national-exact-pct.test.tsx` "route-map bars by the Sales-card rule": 30 / "689.000" / W 24 -> 104 (the daily "28.708" path and the bp 10450 both give 105), 12 / 101 / 21 -> 250 (daily path 249), X1's 50 / 1991 / 27 -> 68, nulls; agrees with the corpus `whole` on every `percent` entry at W = 1; precedence of the three paths; the rendered page in en and bn ("104%", "১০৪%", W = 0 "—", an older entry "2%"). `national-server.test.ts`: the adapter carries both members, undefined from an older server |
@@ -113,3 +113,37 @@ DMO, `/tso-daily-tracking`, a route map and the national dashboard there and che
 Rerun on `4564d8dcd` (the four code commits plus this file's first version; the only later commit adds this section):
 `cd web && npm run typecheck` exit 0; `npm run lint` exit 0; `npm test` 156 files, 1960 passed, 1 skipped, 0 failed;
 `python3 tools/ci/money-float-scan.py` 13/13 allowed, 0 open, exit 0.
+
+## Fix round
+
+The independent checker passed the lane with no high or medium defect and three lows. All three are fixed; each new test fails
+without its fix (mutations added to the session scratchpad's `x3-mutate.mjs`, run with the argument `fix`, which runs only them).
+
+| Finding (low) | Fix | Proving test | Without the fix |
+|---|---|---|---|
+| 1. "501 refused at the BFF" was unproven: the mock also refuses a note over 500 with its own 400, so lifting the BFF cap left the test green | Test only (the BFF code was right). The 501 test now also checks the problem is the BFF's (`code` ERR_VALIDATION, no `errors`; the mock's names `/note` too_long); a second test stubs `POST /v1/leave/{uuid}/decision` with an API that would accept, sends 501 Bangla characters (400, the stub never called), then 500 (200, called once, so the stub is live) | `tso-integration-web.test.tsx` "501 characters are refused at the BFF before the API; the leave stays pending", "501 characters never reach the API, even one that would take them" | `.max(NOTE_MAX)` removed from `route.ts`: 2 failed |
+| 2. The By Channel Successful Call rings divided by the listed channels while the legend divides by `total + unclassified` | `ChannelRadial` takes `denominator` (the card passes `d.denominator`, as `ChannelPie` gets it for its labels); each arc is `value / denominator`, capped at a full turn, none when the denominator is 0 (`channel-charts.tsx`, `cards.tsx`) | `national-exact-pct.test.tsx` "By Channel Successful Call: each ring's arc is the legend's share, unclassified calls included": 500 + 500 listed, 1,000 unclassified -> legends "(25.0%)", each arc a quarter turn (was a half); the R-W-13 (6) fixture's arcs add to 1,129 / 1,186; denominator 0 -> no arc | the old division by the listed rows: 1 failed |
+| 3. The route-map bar rule was never checked against the corpus's own s4.2 `sales_card` fixtures (a real W) | Test only. A loop over every `corpus.sales_card` entry: `pctWholeSalesCard(a, "t.000", W)` = (200·a·W + t) div 2t, null exactly where `ring_tenths` is null (a null, t null, W = 0), and `routeBarText` prints the same (the bp not read; a dash even with a bp sent); 4 whole and 3 dash entries; today cigarette 2, bidi 288, lighter 0, match 0 | `national-exact-pct.test.tsx` "agrees with the corpus's s4.2 Sales-card fixtures (a, t, W), dash where the card's ring is a dash" | the bar truncating instead of half up: 1 failed; W = 0 giving 0 instead of a dash: 1 failed (both with `-t` on the new test alone) |
+
+Seen, not changed (not raised by the checker): the By Channel STD pie's slice geometry still divides by its listed rows, while its
+labels divide by `total` (the Sales (Cigarette) total). They agree while every cigarette sale has a channel (the mandatory
+channel); a residual would need a grey "unlisted" slice, a design call for the lead, not a cheap fix.
+
+Goldens: none added or changed. The mock sends `unclassified: 0`, so the ring fix does not move a pixel of
+`national-grid-chromium-linux.png`; ask 2 above stands as it was.
+
+## Verify (fix round)
+
+Run on the fix-round head (`b6d891725` code, `a5c077e5a` tests; this file's update is the only later commit):
+
+| Command | Result |
+|---|---|
+| `npx vitest run tests/tso-integration-web.test.tsx tests/national-exact-pct.test.tsx` | 2 files, 30 passed |
+| `node <scratchpad>/x3-mutate.mjs fix` (4 mutations, each restoring the file) | 4 killed, 0 survived: fix1 2 failed, fix2 1, fix3 truncation 1, fix3 W = 0 1 |
+| `npm run typecheck` | `tsc --noEmit` exit 0 |
+| `npm run lint` | `eslint .` exit 0 |
+| `npm test` (whole web) | 156 files, 1963 passed, 1 skipped, 0 failed, exit 0 (+3 tests on 1960: the stubbed-API 501 case, the ring arcs, the corpus Sales-card loop) |
+| `python3 tools/ci/money-float-scan.py` (repo root) | 13/13 allowed, 0 open, exit 0 |
+| `python3 tools/ci/kpi-format-corpus.py --check` (repo root) | "up to date (300 seeded cases plus the s4 fixtures; oracle reproduces the contract)", exit 0 |
+
+Not run: Playwright e2e (Linux runner), a live browser, Gradle (no Kotlin touched).
