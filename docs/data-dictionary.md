@@ -207,13 +207,13 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.agg_restatement_log`](#dwagg_restatement_log) | table | worker | SERVER | audit | none | Restatement log (docs/16 s8.6-s8.7): one row per aggregate key whose figures changed on a closed business date, with the old and new figures and why. Append-only. |
 | [`dw.dim_date`](#dwdim_date) | table | db | REFERENCE | master | none | Calendar dimension keyed by date with week, month, quarter and holiday attributes. |
 | [`dw.dim_geo`](#dwdim_geo) | table | worker | SERVER | master | none | Route-level geography dimension flattened through zone, territory, division and wing. |
-| [`dw.dim_geo_version`](#dwdim_geo_version) | table | db | SERVER | master | none | One row is a version of geo valid over [valid_from, valid_to) (SCD2), kept by a trigger on dw.dim_geo. |
+| [`dw.dim_geo_version`](#dwdim_geo_version) | table | db | SERVER | master | none | One row is a version of geo valid over [valid_from, valid_to) (SCD2): dated by the app history (dw.rekey_dim_versions, V0123), else by the projector write on dw.dim_geo. |
 | [`dw.dim_outlet`](#dwdim_outlet) | table | worker | SERVER | master | none | Outlet dimension for reports. |
-| [`dw.dim_outlet_version`](#dwdim_outlet_version) | table | db | SERVER | master | none | One row is a version of outlet valid over [valid_from, valid_to) (SCD2), kept by a trigger on dw.dim_outlet. |
+| [`dw.dim_outlet_version`](#dwdim_outlet_version) | table | db | SERVER | master | none | One row is a version of outlet valid over [valid_from, valid_to) (SCD2): dated by the app history (dw.rekey_dim_versions, V0123), else by the projector write on dw.dim_outlet. |
 | [`dw.dim_product`](#dwdim_product) | table | worker | SERVER | master | none | SKU dimension flattened through variant, brand, segment and category. |
-| [`dw.dim_product_version`](#dwdim_product_version) | table | db | SERVER | master | none | One row is a version of product valid over [valid_from, valid_to) (SCD2), kept by a trigger on dw.dim_product. |
+| [`dw.dim_product_version`](#dwdim_product_version) | table | db | SERVER | master | none | One row is a version of product valid over [valid_from, valid_to) (SCD2): dated by the app history (dw.rekey_dim_versions, V0123), else by the projector write on dw.dim_product. |
 | [`dw.dim_user`](#dwdim_user) | table | backend:analytics | SERVER | master | none | One row is the current state of a user for reporting (role, designation, home zone, status); no names or contacts. |
-| [`dw.dim_user_version`](#dwdim_user_version) | table | db | SERVER | master | none | One row is a version of user valid over [valid_from, valid_to) (SCD2), kept by a trigger on dw.dim_user. |
+| [`dw.dim_user_version`](#dwdim_user_version) | table | db | SERVER | master | none | One row is a version of user valid over [valid_from, valid_to) (SCD2): dated by the app history (dw.rekey_dim_versions, V0123), else by the projector write on dw.dim_user. |
 | [`dw.fact_activity`](#dwfact_activity) | partitioned table | backend:analytics | SERVER | telemetry | none | One row is one screen or action event from a phone's activity log. |
 | [`dw.fact_attendance`](#dwfact_attendance) | table | worker | SERVER | event_fact | personal | One row per user and business date with the day's check-in and check-out and their fixes, filled by the worker from attendance_event. |
 | [`dw.fact_consent`](#dwfact_consent) | table | backend:analytics | SERVER | audit | none | One row is a user's acceptance of a policy version (employee-location notice and other policies). |
@@ -5517,7 +5517,7 @@ Keys: `PRIMARY KEY (route_id)`
 
 ## dw.dim_geo_version
 
-One row is a version of geo valid over [valid_from, valid_to) (SCD2), kept by a trigger on dw.dim_geo.
+One row is a version of geo valid over [valid_from, valid_to) (SCD2): dated by the app history (dw.rekey_dim_versions, V0123), else by the projector write on dw.dim_geo.
 
 `owner: db | capture: SERVER | retention: master | pii: none` · table
 
@@ -5575,7 +5575,7 @@ Keys: `PRIMARY KEY (outlet_id)`
 
 ## dw.dim_outlet_version
 
-One row is a version of outlet valid over [valid_from, valid_to) (SCD2), kept by a trigger on dw.dim_outlet.
+One row is a version of outlet valid over [valid_from, valid_to) (SCD2): dated by the app history (dw.rekey_dim_versions, V0123), else by the projector write on dw.dim_outlet.
 
 `owner: db | capture: SERVER | retention: master | pii: none` · table
 
@@ -5632,7 +5632,7 @@ Keys: `PRIMARY KEY (sku_id)`
 
 ## dw.dim_product_version
 
-One row is a version of product valid over [valid_from, valid_to) (SCD2), kept by a trigger on dw.dim_product.
+One row is a version of product valid over [valid_from, valid_to) (SCD2): dated by the app history (dw.rekey_dim_versions, V0123), else by the projector write on dw.dim_product.
 
 `owner: db | capture: SERVER | retention: master | pii: none` · table
 
@@ -5684,7 +5684,7 @@ Keys: `PRIMARY KEY (user_id)`
 
 ## dw.dim_user_version
 
-One row is a version of user valid over [valid_from, valid_to) (SCD2), kept by a trigger on dw.dim_user.
+One row is a version of user valid over [valid_from, valid_to) (SCD2): dated by the app history (dw.rekey_dim_versions, V0123), else by the projector write on dw.dim_user.
 
 `owner: db | capture: SERVER | retention: master | pii: none` · table
 

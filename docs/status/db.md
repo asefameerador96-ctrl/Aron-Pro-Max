@@ -2,6 +2,22 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## Session 14, 2026-10-29 (lane/db; INT 78ffb242 = train 60 merged)
+
+| Job | State | What |
+|---|---|---|
+| **item 1: dim version re-key** (backend-reports request; lead plan approval 07:08 with 4 conditions) | candidate 1 (V0123). Opus checker: round 1 FAIL (1 blocker: a trigger-run rekey deleted keys that facts held), round 2 PASS (should-fixes taken), round 3 on the final diff. Mutations: key match on valid_to, agreement rule off, re-stamp off, single-statement INSERT, active-only house; each one is caught | V0123 `dw.rekey_dim_versions` / `dw.restamp_fact_keys` / statement-level `dw.dim_versions_follow`; versions dated by the V0119 history, keys kept while id, start and versioned columns are unchanged; btree `(id, valid_from)` lookups. Answer `docs/requests/db-backend-reports-dim-version-rekey-answer.md` (includes the fact-writer race ask for backend-analytics). Loadgen timings are in D-DB-DIM-REKEY-01. View contract unchanged (1.2) |
+| **item 2: geo version** | built locally (V0124 `app.geo_version`, statement-level bump on wing/division/territory/house/zone/route, owner-guarded; `GeoVersionTest`); next candidate after candidate 1's train | answer note for backend-reports to follow with it |
+| **item 3: BI row scope** | design note drafted (one login per audience, `dw.bi_login` registry mapped to a portal user's scope, `dw.v_*` filtered for `bi_reader` members only, contract 1.3); goes to the lead/infra before code | V0125 planned |
+
+**Next free migration: V0124** (V0124 and V0125 are reserved by items 2 and 3, still local). View contract **1.2**.
+
+**Lessons (session 14).**
+- PostgreSQL 16.15, GiST: a statement that searched a GiST exclusion index for rows it then inserted into the same table lost index entries after rolled-back runs; REINDEX fixed it. Write version tables by surrogate key after a separate read. Reproduction recipe: the round-1 form `INSERT ... SELECT FROM periods WHERE NOT EXISTS (SELECT FROM <version table> ...)` (D-DB-DIM-REKEY-01), an outlet-only refresh in a rolled-back transaction, then again; count through the index with seqscan/bitmapscan off.
+- A plpgsql CTE fed by a set-returning function is estimated at one row: at 30k ids the anti-join went quadratic. Materialize into an analyzed temp table.
+- `./gradlew --stop` stops the daemon, but a `;`-chained background suite then starts its next module: kill the chain's shell first, or Postgres runs out of connections ("too many clients").
+- In a test transaction `now()` is fixed, so "unchanged" also needs ctid (an UPDATE moves it).
+
 ## HANDOVER (session 13 -> session 14), 2026-10-28 ~03:00 UTC, lane/db 1defc0c7 (+ this docs-only commit)
 
 **State.** lane/db = INT 83f0fec8 (train 44: V0119 master history, V0120 registry pruning, both deployed on dev) +
