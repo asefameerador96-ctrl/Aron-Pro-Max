@@ -482,3 +482,35 @@ fun AronNoticeCard(text: String, modifier: Modifier = Modifier, action: String? 
         if (action != null && onAction != null) AronTextButton(action, onAction)
     }
 }
+
+// tso-manual A1: the TSO top bar (D-TSO-MAN-13, screenshots 8, 17, 24, 39)
+/**
+ * The top bar of every TSO screen opened from the drawer: on the navy page (no gradient band), the grey round back button at the
+ * start ([NightBackButton], shown when [onBack] is set; [backLabel] is its TalkBack name), the green-to-yellow gradient [title]
+ * centred ([NightTitle], two lines at most), and an optional [trailing] slot at the end. In Sunlight the page is light and a 2 dp ink
+ * rule closes the bar.
+ */
+@Composable
+fun AronNightTopBar(
+    title: String,
+    modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null,
+    backLabel: String? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    val look = LocalAronLook.current
+    val n = look.nightRoles
+    Box(
+        modifier
+            .fillMaxWidth()
+            .background(n.page)
+            .then(if (n.solid) Modifier.drawBehind { drawRect(n.ink, Offset(0f, size.height - 2.dp.toPx()), Size(size.width, 2.dp.toPx())) } else Modifier)
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .heightIn(min = 76.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        if (onBack != null) NightBackButton(onBack, backLabel ?: "", Modifier.align(Alignment.CenterStart))
+        NightTitle(title, Modifier.align(Alignment.Center).padding(horizontal = 60.dp))
+        if (trailing != null) Box(Modifier.align(Alignment.CenterEnd)) { trailing() }
+    }
+}

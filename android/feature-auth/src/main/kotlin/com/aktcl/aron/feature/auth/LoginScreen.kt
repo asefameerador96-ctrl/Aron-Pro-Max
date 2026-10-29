@@ -57,8 +57,17 @@ fun LoginScreen(
     onEnrol: (() -> Unit)? = null,
     sunlight: Boolean = false,
     onSunlight: ((Boolean) -> Unit)? = null,
+    /** [LoginVariant.Tso] draws the TSO screen of screenshot 5 (D-TSO-MAN-15); the TSO app never reaches the OTP step (D-AUTH-TSO-NOBIND). */
+    variant: LoginVariant = LoginVariant.Standard,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    if (variant == LoginVariant.Tso && state.bindToken == null) {
+        TsoLoginContent(
+            state, viewModel::onUsernameChange, viewModel::onPasswordChange, viewModel::onTogglePasswordVisible, viewModel::onSubmit,
+            onLanguageSelect, onEnrol,
+        )
+        return
+    }
     if (state.bindToken != null) {
         androidx.activity.compose.BackHandler(onBack = viewModel::onOtpBack)
         OtpContent(
@@ -146,6 +155,12 @@ fun LoginContent(
             AuthFooter(localizedDigits(stringResource(R.string.auth_version, versionName)), Modifier.testTag(LoginTags.VERSION))
         }
     }
+}
+
+/** The message of a login attempt on its notice card (shared by both variants). */
+@Composable
+internal fun LoginMessageCard(message: LoginMessage, modifier: Modifier = Modifier) {
+    AuthBanner(messageText(message), modifier, kind = bannerKind(message))
 }
 
 /** Danger only for a wrong password or a refusal; a lock, a rate limit, an update or a bind step warn; never-online is the offline note. */

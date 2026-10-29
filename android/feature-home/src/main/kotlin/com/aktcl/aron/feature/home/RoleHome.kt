@@ -134,6 +134,7 @@ object RoleHomes {
         const val TEAM = "team"; const val OUTLET = "outlet"; const val SALES_SUBMIT = "sales_submit"; const val REPORT = "report"
     }
 
+    /** Former TSO tile ids; kept as icon ids for the TSO area frames (no tile Home any more, D-TSO-MAN-14). */
     object TsoTile {
         const val DASHBOARD = "dashboard"; const val LEAVE = "leave"; const val FINAL_SUBMIT = "final_submit"; const val PERIPHERY = "periphery"
         const val MY_CALL = "my_call"; const val FEEDBACK = "feedback"; const val DEVICE_OTP = "device_otp"
@@ -154,7 +155,10 @@ object RoleHomes {
         RoleTile(AmoTile.REPORT, R.string.rh_amo_report, AronIcons.Trend, badges[AmoTile.REPORT] ?: 0, RoleTileGroup.DayClose),
     )
 
-    /** TSO tiles in docs/08 drawer order (the six drawer items, 3 x 2), then Device OTP, which opens the "read it on the web" page; Target Status is deferred (docs/27). */
+    // tso-manual A1: the TSO tile catalogue is retired (D-TSO-MAN-14): the TSO app opens on the Dashboard with the drawer and no
+    // longer calls tsoTiles(). It stays, deprecated, only for the shared role-home goldens (RoleHomeShot, ScreenshotTests), which
+    // are not A1's files; their owner retires those two cases and then this function (ask in docs/status/tso-manual-A1.md).
+    @Deprecated("Retired for TSO (D-TSO-MAN-14): the TSO app has a drawer, not a tile Home. Kept for the shared role-home goldens only.")
     fun tsoTiles(badges: Map<String, Int> = emptyMap()): List<RoleTile> = listOf(
         RoleTile(TsoTile.DASHBOARD, R.string.rh_tso_dashboard, AronIcons.Dashboard, badges[TsoTile.DASHBOARD] ?: 0, RoleTileGroup.Today),
         RoleTile(TsoTile.LEAVE, R.string.rh_tso_leave, AronIcons.Leave, badges[TsoTile.LEAVE] ?: 0, RoleTileGroup.Today),

@@ -147,7 +147,7 @@
     <string name="tso_dash_sales_of">Sales (%1$s)</string>
     <string name="tso_dash_lakh">Lakh</string>
     <string name="tso_dash_crore">Cr</string>
-    <string name="tso_dash_cpr">Live CPR</string>
+    <string name="tso_dash_cpr">CPR</string>
     <string name="tso_dash_x_of_y">%1$s of %2$s</string>
     <string name="tso_dash_cpr_labels">Successful calls of target outlets</string>
     <string name="tso_dash_channel_std">By Channel STD</string>
@@ -156,8 +156,8 @@
     <string name="tso_dash_volume">Volume</string>
     <string name="tso_dash_brand_ratio">By Brand Call/Memo Ratio</string>
     <string name="tso_dash_no_sales">No sales yet.</string>
-    <string name="tso_dash_login_submit">Login and Bikroy Joma status</string>
-    <string name="tso_dash_login_status">Login status</string>
+    <string name="tso_dash_login_submit">Login &amp; Bikroy Joma Status</string>
+    <string name="tso_dash_login_status">Login Status</string>
     <string name="tso_dash_submit_status">Submit status</string>
     <string name="tso_dash_no_login">No login figures yet.</string>
     <string name="tso_dash_not_logged_in">Not logged in (%1$s)</string>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- tso-manual A1 (D-TSO-MAN-26, 31): push reasons notification, ticket_updated, day_final_submitted. -->
+    <string name="push_channel_updates">আপডেট</string>
+    <string name="push_channel_day">দিনের অবস্থা</string>
+    <string name="push_inbox_title">নতুন নোটিফিকেশন</string>
+    <string name="push_inbox_body">আপনার একটি নতুন নোটিফিকেশন এসেছে। দেখতে চাপুন।</string>
+    <string name="push_ticket_title">টিকিট আপডেট হয়েছে</string>
+    <string name="push_ticket_body">সাপোর্ট আপনার একটি টিকিট আপডেট করেছে। টিকিট দেখতে চাপুন।</string>
+    <string name="push_day_title">দিন বন্ধ হয়েছে</string>
+    <string name="push_day_body">আপনার জোনের ফাইনাল সাবমিট হয়েছে। ওই দিনের নতুন বিক্রি বন্ধ; প্রিন্ট করা যাবে।</string>
+</resources>

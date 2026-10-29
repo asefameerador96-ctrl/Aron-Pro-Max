@@ -32,9 +32,14 @@ class DatabaseLogoutPorts(
         LogoutFlow.databaseFiles(context.getDatabasePath("x").parentFile!!, userId) +
             LogoutFlow.mediaDir(context.filesDir, userId) +
             // Per-user preference files of the feature lanes (e.g. aron-stock-guard-<id>).
-            File(context.applicationInfo.dataDir, "shared_prefs").listFiles { f -> f.name.endsWith("-$userId.xml") }.orEmpty()
+            File(context.applicationInfo.dataDir, "shared_prefs").listFiles { f -> f.name.endsWith("-$userId.xml") }.orEmpty() +
+            // tso-manual A1 (SH-17, D-TSO-MAN-37): this user's UI preferences (Sunlight, the dashboard's channel choice)
+            uiPreferences(File(context.applicationInfo.dataDir, "shared_prefs"), userId)
 
     companion object {
+        /** `aron_ui_<id>.xml`, the per-user UI preferences (core-ui SunlightPreference, the TSO dashboard): wiped with the user (SH-17). */
+        fun uiPreferences(sharedPrefsDir: File, userId: Long): File = File(sharedPrefsDir, "aron_ui_$userId.xml")
+
         /** Everything but `acked`: a row the server has not accepted is still the phone's to keep. */
         val UNSENT_STATES = listOf("pending", "in_flight", "quarantined", "rejected")
     }

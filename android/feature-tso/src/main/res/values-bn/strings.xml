@@ -147,7 +147,7 @@
     <string name="tso_dash_sales_of">বিক্রি (%1$s)</string>
     <string name="tso_dash_lakh">লাখ</string>
     <string name="tso_dash_crore">কোটি</string>
-    <string name="tso_dash_cpr">লাইভ সিপিআর</string>
+    <string name="tso_dash_cpr">সিপিআর</string>
     <string name="tso_dash_x_of_y">%2$s এর মধ্যে %1$s</string>
     <string name="tso_dash_cpr_labels">টার্গেট আউটলেটের মধ্যে সফল কল</string>
     <string name="tso_dash_channel_std">চ্যানেল অনুযায়ী এসটিডি</string>
@@ -156,8 +156,8 @@
     <string name="tso_dash_volume">পরিমাণ</string>
     <string name="tso_dash_brand_ratio">ব্র্যান্ড অনুযায়ী কল/মেমো অনুপাত</string>
     <string name="tso_dash_no_sales">এখনও কোনো বিক্রি নেই।</string>
-    <string name="tso_dash_login_submit">লগইন ও বিক্রয় জমার অবস্থা</string>
-    <string name="tso_dash_login_status">লগইনের অবস্থা</string>
+    <string name="tso_dash_login_submit">লগইন ও বিক্রয় জমা স্ট্যাটাস</string>
+    <string name="tso_dash_login_status">লগইন স্ট্যাটাস</string>
     <string name="tso_dash_submit_status">জমার অবস্থা</string>
     <string name="tso_dash_no_login">এখনও লগইনের তথ্য নেই।</string>
     <string name="tso_dash_not_logged_in">লগইন করেননি (%1$s)</string>

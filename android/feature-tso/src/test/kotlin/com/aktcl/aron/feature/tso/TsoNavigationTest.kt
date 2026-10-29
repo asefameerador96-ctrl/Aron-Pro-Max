@@ -43,6 +43,7 @@ import com.aktcl.aron.feature.tso.mycall.VisitPlanItem
 import com.aktcl.aron.feature.tso.password.CpOutcome
 import com.aktcl.aron.feature.tso.periphery.FixResult
 import com.aktcl.aron.feature.tso.periphery.Nearby
+import com.aktcl.aron.feature.tso.periphery.PeripheryDeps
 import com.aktcl.aron.feature.tso.periphery.PeripheryTags
 import com.aktcl.aron.feature.tso.periphery.PeripherySource
 import com.aktcl.aron.feature.tso.periphery.Stamped
@@ -54,8 +55,9 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 /**
- * End to end through the TSO shell with every host dependency present: every Home tile and every drawer entry opens a REAL
- * screen (no placeholder, no dead tile) and the Home button comes back. The dashboard is supplied through the host `screens` map as the app does.
+ * End to end through the TSO shell with every host dependency present: every drawer entry that has an area screen today opens a REAL
+ * screen (no placeholder) and back returns to the Dashboard (D-TSO-MAN-14). The dashboard is supplied through the host `screens` map
+ * as the app does.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34])
@@ -99,23 +101,47 @@ class TsoNavigationTest {
 
     private var back: androidx.activity.OnBackPressedDispatcher? = null
 
-    /** The system back: every screen but Home returns to Home (the top-bar chevron calls the same path). */
+    /** The system back: every drawer screen returns to the Dashboard (the top-bar back button calls the same path). */
     private fun goHome() { compose.runOnUiThread { back!!.onBackPressed() }; compose.waitForIdle() }
+
+    /** The drawer path of each screen: the group to expand (if any) and the row. */
+    private val drawerPath = mapOf(
+        TsoScreen.LEAVE to listOf("leave"), TsoScreen.FINAL_SUBMIT to listOf("final_submit"), TsoScreen.MY_TEAM to listOf("periphery", "my_team"),
+        TsoScreen.MY_VISIT_PLAN to listOf("my_call", "visit_plan"), TsoScreen.FEEDBACK_LIST to listOf("feedback", "feedback_list"),
+    )
+
+    private fun openFromDrawer(screen: TsoScreen) {
+        compose.onNodeWithTag(TsoShellTags.MENU).performClick(); compose.waitForIdle()
+        if (screen == TsoScreen.SETTINGS) { compose.onNodeWithTag(TsoShellTags.GEAR).performScrollTo().performClick(); compose.waitForIdle(); return }
+        val path = drawerPath.getValue(screen)
+        fun click(id: String) { compose.onNodeWithTag(TsoShellTags.row(id), useUnmergedTree = true).performScrollTo().performClick(); compose.waitForIdle() }
+        // the drawer keeps the last open group: expand only when the row is not shown yet
+        if (path.size == 2 && compose.onAllNodesWithTag(TsoShellTags.row(path[1]), useUnmergedTree = true).fetchSemanticsNodes().isEmpty()) click(path[0])
+        click(path.last())
+    }
 
     private fun show() {
         val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
         compose.setContent {
             CompositionLocalProvider(LocalContext provides context) {
-                AronTheme(AppLanguage.EN) {
+                TsoLoginTheme(AppLanguage.EN, loggedOut = false) {
                     back = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+                    // the area screens as the app's AreasHost wires them (one entry per former Home tile until A3 splits the hubs)
+                    val today = { "2026-10-17" }
+                    val myCall = MyCallDeps(plan, { 0 }, { true }, { true }, { null }, { emptyList() })
                     TsoApp(
                         user, "2026-10-17", BundleStatus.Ready("b-1", "2026-10-17"), "0.1.0 (1)", {}, {},
-                        leave = leave, leaveQueue = { _, _ -> true }, today = { "2026-10-17" },
-                        feedback = feedback, feedbackQueue = { _, _, _ -> true },
-                        myCall = MyCallDeps(plan, { 0 }, { true }, { true }, { null }, { emptyList() }),
-                        finalSubmit = fs, periphery = periphery, userId = 7,
                         changePassword = { _, _ -> CpOutcome.Ok }, support = { _ -> Text("support", Modifier_testTag("tso_nav_support")) },
-                        screens = mapOf(TsoScreen.DASHBOARD to { _ -> Text("dashboard", Modifier_testTag("tso_nav_dashboard")) }),
+                        screens = mapOf<TsoScreen, TsoScreenContent>(
+                            TsoScreen.DASHBOARD to { _, _ -> Text("dashboard", Modifier_testTag("tso_nav_dashboard")) },
+                            TsoScreen.LEAVE to { nav, _ -> com.aktcl.aron.feature.tso.leave.LeaveFlow(leave, { _, _ -> true }, user.username, today, { nav.back() }) },
+                            TsoScreen.FINAL_SUBMIT to { nav, _ -> com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitFlow(fs, user.username, 7, today, { nav.back() }) },
+                            TsoScreen.MY_TEAM to { nav, _ -> com.aktcl.aron.feature.tso.periphery.PeripheryFlow(periphery, user.username, today, { nav.back() }) },
+                            TsoScreen.MY_VISIT_PLAN to { nav, _ -> com.aktcl.aron.feature.tso.mycall.MyCallFlow(myCall, user.username, today, { nav.back() }) },
+                            TsoScreen.FEEDBACK_LIST to { nav, _ ->
+                                com.aktcl.aron.feature.tso.feedback.FeedbackFlow(feedback, { _, _, _ -> true }, null, user.username, { java.time.Instant.now().toString() }, { nav.back() })
+                            },
+                        ),
                     )
                 }
             }
@@ -127,26 +153,29 @@ class TsoNavigationTest {
 
     /** The tag of the real screen of each destination (never the placeholder's RoleHomeTags.EMPTY). */
     private val realScreenTag = mapOf(
-        TsoScreen.DASHBOARD to "tso_nav_dashboard", TsoScreen.LEAVE to LeaveTags.APPLY, TsoScreen.FINAL_SUBMIT to FsTags.GET, TsoScreen.PERIPHERY to PeripheryTags.TEAM,
-        TsoScreen.MY_CALL to MyCallTags.SET_PLAN, TsoScreen.FEEDBACK to FeedbackTags.NEW, TsoScreen.SETTINGS to TsoSettingsTags.CHANGE_PASSWORD,
+        TsoScreen.DASHBOARD to "tso_nav_dashboard", TsoScreen.LEAVE to LeaveTags.APPLY, TsoScreen.FINAL_SUBMIT to FsTags.GET, TsoScreen.MY_TEAM to PeripheryTags.TEAM,
+        TsoScreen.MY_VISIT_PLAN to MyCallTags.SET_PLAN, TsoScreen.FEEDBACK_LIST to FeedbackTags.NEW, TsoScreen.SETTINGS to TsoSettingsTags.CHANGE_PASSWORD,
     )
 
     private fun assertRealScreen(screen: TsoScreen) {
         try { compose.waitUntil(5_000) { compose.onAllNodesWithTagCount(realScreenTag.getValue(screen)) > 0 } } catch (e: androidx.compose.ui.test.ComposeTimeoutException) { throw AssertionError("no real screen for $screen (" + realScreenTag.getValue(screen) + ")\n" + compose.onRoot().printToString().take(1500), e) }
         compose.onNodeWithTag(RoleHomeTags.EMPTY).assertDoesNotExist()
+        compose.onNodeWithTag(TsoShellTags.PLACEHOLDER).assertDoesNotExist()
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onAllNodesWithTagCount(tag: String) =
         onAllNodesWithTag(tag).fetchSemanticsNodes().size
 
-    @Test fun everyHomeTileOpensARealScreenAndHomeComesBack() {
+    private val screensWithAreas = listOf(TsoScreen.LEAVE, TsoScreen.FINAL_SUBMIT, TsoScreen.MY_TEAM, TsoScreen.MY_VISIT_PLAN, TsoScreen.FEEDBACK_LIST, TsoScreen.SETTINGS)
+
+    @Test fun everyDrawerScreenWithAnAreaOpensARealScreenAndBackReturnsToTheDashboard() {
         show()
-        for (tile in RoleHomes.tsoTiles().filter { it.id != RoleHomes.TsoTile.DEVICE_OTP }) {
-            val screen = TsoScreen.of(tile)
-            compose.onNodeWithTag(RoleHomeTags.tile(tile.id)).performScrollTo().performClick()
+        assertRealScreen(TsoScreen.DASHBOARD)
+        for (screen in screensWithAreas) {
+            openFromDrawer(screen)
             assertRealScreen(screen)
             goHome()
-            compose.onNodeWithTag(HomeTags.HEADER).assertIsDisplayed()
+            compose.onNodeWithTag("tso_nav_dashboard").assertIsDisplayed()
         }
     }
 
@@ -154,14 +183,14 @@ class TsoNavigationTest {
         show()
         val problems = mutableListOf<String>()
         fun sweep(where: String) { compose.waitForIdle(); compose.a11yProblems().forEach { problems += "$where: $it" } }
-        sweep("home")
-        for (tile in RoleHomes.tsoTiles().filter { it.id != RoleHomes.TsoTile.DEVICE_OTP }) {
-            val screen = TsoScreen.of(tile)
-            compose.onNodeWithTag(RoleHomeTags.tile(tile.id)).performScrollTo().performClick()
+        sweep("dashboard")
+        compose.onNodeWithTag(TsoShellTags.MENU).performClick(); sweep("drawer"); goHome()
+        for (screen in screensWithAreas) {
+            openFromDrawer(screen)
             assertRealScreen(screen)
             sweep(screen.name)
             goHome()
         }
-        assertEquals("accessibility problems:\n" + problems.joinToString("\n"), emptyList<String>(), problems)
+        assertEquals("accessibility problems: " + problems.joinToString("; "), emptyList<String>(), problems)
     }
 }

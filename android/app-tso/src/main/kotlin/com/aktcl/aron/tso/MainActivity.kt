@@ -62,7 +62,8 @@ class MainActivity : ComponentActivity() {
     private val packshotProvider by lazy { com.aktcl.aron.core.ui.aron.BitmapPackshotProvider(skuPackshots::bitmap, skuPackshots::cached) }
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
-    private val readModels by lazy { TsoReadModels(components, databases, TsoOutbox(applicationContext, components, databases, scheduler)) }
+    private val outbox by lazy { TsoOutbox(applicationContext, components, databases, scheduler) }
+    private val readModels by lazy { TsoReadModels(components, databases, outbox) }
     private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
 
     /** F-SYS-020: an update check on every resume (throttled to 12 h inside, cached offline). */
@@ -92,6 +93,25 @@ class MainActivity : ComponentActivity() {
         activityLog.flushSoon(id) // the log's own scope: onDestroy right after must not cancel the write
     }
 
+    /** tso-manual A1: the screen a tapped push notice asks for (the inbox or the ticket dashboard); TsoApp opens it on the Dashboard. */
+    private val pushOpen = kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.feature.tso.TsoScreen?>(null)
+
+    private fun takePushIntent(intent: android.content.Intent?) {
+        val screen = when (com.aktcl.aron.core.sync.push.PushNotices.opens(intent)) {
+            com.aktcl.aron.core.sync.push.PushNotices.OPEN_INBOX -> com.aktcl.aron.feature.tso.TsoScreen.NOTIFICATIONS
+            com.aktcl.aron.core.sync.push.PushNotices.OPEN_TICKETS -> com.aktcl.aron.feature.tso.TsoScreen.TICKET_DASHBOARD
+            else -> return
+        }
+        intent?.removeExtra(com.aktcl.aron.core.sync.push.PushNotices.EXTRA_OPEN) // a recreate must not open it again
+        pushOpen.value = screen
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        takePushIntent(intent)
+    }
+
     private fun isOnline(): Boolean {
         val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return false
         val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
@@ -111,6 +131,7 @@ class MainActivity : ComponentActivity() {
         val language = AppLocale.current(this)
         val onLanguageSelect: (AppLanguage) -> Unit = { if (AppLocale.set(this, it)) recreate() }
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
+        if (savedInstanceState == null) takePushIntent(intent)
         setContent {
             // PARITY-SPEC s2.6: pack pictures of the Stock and Sale rows (thumbnail cache, then the dev-only bundled art).
             androidx.compose.runtime.CompositionLocalProvider(com.aktcl.aron.core.ui.aron.LocalPackshotProvider provides packshotProvider) {
@@ -129,7 +150,8 @@ class MainActivity : ComponentActivity() {
                 Box(Modifier.fillMaxSize().aronPageBackground()) {
                     when (val s = state) {
                         SessionState.Restoring -> Unit // AUD-PERF-05: the background is the splash for the few ms of the restore
-                        SessionState.LoggedOut -> com.aktcl.aron.feature.auth.EnrolmentGate(
+                        // tso-manual A1 (SH-17): the login form lives in the logged-out phase's own store (a fresh form after every logout)
+                        SessionState.LoggedOut -> com.aktcl.aron.core.ui.SessionPhaseScope(signedInKey = null) { com.aktcl.aron.feature.auth.EnrolmentGate(
                             // Enrolment (docs/24 s10.4) before the first login of a new install; never in a signed-in day.
                             status = { com.aktcl.aron.feature.auth.EnrolStatus(deviceEnrolment.enrolled(), deviceEnrolment.pending(), deviceEnrolment.refusedCode()) },
                             submit = deviceEnrolment::submit,
@@ -139,9 +161,12 @@ class MainActivity : ComponentActivity() {
                         ) { onEnrol ->
                             // The bind step (OTP from /device-otp) follows the first login of an enrolled phone.
                             val vm = viewModel { LoginViewModel(components.session::login).also { it.bind = components.session::bindDevice } }
-                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol, sunlight = sunlight, onSunlight = { on -> sunlight = on; devicePref.enabled = on })
-                        }
-                        is SessionState.Active -> {
+                            // tso-manual A1: the TSO login of screenshot 5 (D-TSO-MAN-15); the sun switch and the version are in Settings
+                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol, sunlight = sunlight, onSunlight = { on -> sunlight = on; devicePref.enabled = on }, variant = com.aktcl.aron.feature.auth.LoginVariant.Tso)
+                        } }
+                        // tso-manual A1 (SH-17): every retained screen state of the day lives in this sign-in's own store; the logged-out
+                        // phase that follows a logout clears it (SessionPhaseScope). The activity's store is never cleared.
+                        is SessionState.Active -> com.aktcl.aron.core.ui.SessionPhaseScope(signedInKey = s.user.userId.toString()) {
                             // F-SYS-022: TSO is refused while anything is unsent, then wipes this user's data.
                             val logoutFlow = remember(s.user.userId) { shellLogout.flow(AppRole.TSO, s.user.userId) }
                             var unsent by remember { mutableStateOf<Int?>(null) }
@@ -161,7 +186,11 @@ class MainActivity : ComponentActivity() {
                                                     is LogoutResult.WipeIncomplete -> Toast.makeText(this@MainActivity, SystemR.string.logout_wipe_incomplete, Toast.LENGTH_LONG).show()
                                                     else -> Unit
                                                 }
-                                                if (r !is LogoutResult.Refused) uid?.let { java.io.File(cacheDir, "tso_api_$it").deleteRecursively() }
+                                                if (r !is LogoutResult.Refused) {
+                                                    uid?.let { java.io.File(cacheDir, "tso_api_$it").deleteRecursively() }
+                                                    // SH-17: the retained screen state of the day went with the sign-in's store (SessionPhaseScope);
+                                                    // never clear the activity's store here: the login form is already on screen and holds its ViewModel.
+                                                }
                                             }
                                         }
                                         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -173,10 +202,35 @@ class MainActivity : ComponentActivity() {
                             }
                             // The bundle head check of Day 1 stays the source of the status row; nothing on Home waits for it.
                             // F-SYS-030: this user's camera and photo queue; the overlay is drawn once at the top of the day
-                            val media by androidx.compose.runtime.produceState<com.aktcl.aron.core.media.MediaComponents?>(null, s.user.userId) {
+                            val mediaState = androidx.compose.runtime.produceState<com.aktcl.aron.core.media.MediaComponents?>(null, s.user.userId) {
                                 value = runCatching { mediaShell.componentsFor(s.user.userId) { components.trustedClock.businessDate().toString() } }.getOrNull()
                             }
-                            media?.let { com.aktcl.aron.core.media.CameraCaptureOverlay(it.camera) }
+                            mediaState.value?.let { com.aktcl.aron.core.media.CameraCaptureOverlay(it.camera) }
+                            // a1-stubs: one host per signed-in user; the lanes' hosts build their ports from it (A2 TicketsHost, A3 AreasHost)
+                            val host = remember(s.user.userId) {
+                                TsoHost(
+                                    applicationContext, components, databases, outbox, readModels, s.user.userId, s.user.username,
+                                    online = { isOnline() }, media = { mediaState.value },
+                                    mediaFor = { mediaShell.componentsFor(s.user.userId) { components.trustedClock.businessDate().toString() } },
+                                )
+                            }
+                            // tso-manual A1: one read client per user for the Dashboard, Target Status and the bell inbox; their reads run in
+                            // this sign-in's scope (a screen that leaves stops waiting, the read still lands; the logout cancels them)
+                            val api = remember(host) { TsoApi(host.components.apiClient, host.context, host.userId) }
+                            val readScope = androidx.compose.runtime.rememberCoroutineScope()
+                            val inbox = remember(host) { TsoInboxModel(api, TsoDashboardModel.prefs(host.context, host.userId), readScope) }
+                            // D-TSO-MAN-26: a push `notification` (or `ticket_updated`) re-reads the bell; no polling
+                            LaunchedEffect(inbox) {
+                                com.aktcl.aron.core.sync.push.PushNotices.arrived.collect { n ->
+                                    if (n == com.aktcl.aron.core.sync.push.PushNotice.InboxUpdated || n == com.aktcl.aron.core.sync.push.PushNotice.TicketUpdated) inbox.refresh()
+                                }
+                            }
+                            val dashboard = remember(host) { dashboardScreens(host, api, inbox, readScope) }
+                            val targets = remember(host) { targetScreens(host, api, readScope) }
+                            val inboxScreen = remember(host) { inboxScreens(host, inbox) }
+                            val openRequest by pushOpen.collectAsStateWithLifecycle()
+                            val areas = remember(host) { areaScreens(AreasHostDeps(host)) }
+                            val tickets = remember(host) { ticketScreens(TicketsHostDeps(host)) }
                             val vm = viewModel(key = "home-" + s.user.userId) {
                                 HomePlaceholderViewModel(System::currentTimeMillis) { components.syncApi.bundle() }
                             }
@@ -212,42 +266,15 @@ class MainActivity : ComponentActivity() {
                                 onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                 onUpdate = { updateShell.openPage() },
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
-                                // the dashboard origin from the build config (aron.webBaseUrl); empty until it is configured
-                                webOrigin = BuildConfig.WEB_BASE_URL.ifEmpty { null },
-                                leave = remember(s.user.userId) { readModels.leave(s.user.userId) },
-                                leaveQueue = remember(s.user.userId) { readModels.leaveQueue(s.user.userId) },
-                                today = { components.trustedClock.businessDate().toString() },
-                                feedback = remember(s.user.userId) { readModels.feedback(s.user.userId) },
-                                feedbackQueue = remember(s.user.userId) { readModels.feedbackQueue(s.user.userId) { mediaShell.componentsFor(s.user.userId) { components.trustedClock.businessDate().toString() } } },
-                                feedbackPhotos = media?.let { readModels.feedbackPhotos(it) },
-                                userId = s.user.userId,
                                 changePassword = remember { readModels.changePassword() },
                                 support = { back ->
                                     com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.set_support), onBack = back) }) { SupportHost(systemShell, s.user.userId, versionName) }
                                 },
-                                periphery = remember(s.user.userId) {
-                                    com.aktcl.aron.feature.tso.PeripheryDeps(
-                                        readModels.periphery(s.user.userId, readModels.plan(s.user.userId)), readModels.fix(applicationContext),
-                                        online = { isOnline() }, nowMs = { components.trustedClock.nowMs() },
-                                    )
-                                },
-                                finalSubmit = remember(s.user.userId) { readModels.finalSubmit(s.user.userId, readModels.plan(s.user.userId)) },
-                                myCall = remember(s.user.userId) {
-                                    val src = readModels.plan(s.user.userId)
-                                    com.aktcl.aron.feature.tso.mycall.MyCallDeps(
-                                        src, readModels.planQueue(s.user.userId, src), readModels.queryQueue(s.user.userId), readModels.taskQueue(s.user.userId),
-                                        { readModels.rubric(s.user.userId) }, { readModels.taskTypes(s.user.userId) },
-                                    )
-                                },
-                                nowIso = { java.time.Instant.ofEpochMilli(components.trustedClock.nowMs()).toString() },
-                                screens = mapOf<com.aktcl.aron.feature.tso.TsoScreen, @androidx.compose.runtime.Composable (() -> Unit) -> Unit>(
-                                    com.aktcl.aron.feature.tso.TsoScreen.DASHBOARD to { back ->
-                                        val api = remember(s.user.userId) { TsoApi(components.apiClient, applicationContext, s.user.userId) }
-                                        // The business day follows the trusted clock at every recomposition, not the device clock at start.
-                                        val day = com.aktcl.aron.rules.BusinessDate.of(components.trustedClock.nowMs()).toString()
-                                        TsoDashboardHost(api, day, back)
-                                    },
-                                ),
+                                // A1: the Dashboard (root) and Login & Bikroy Joma Status; A3 areas; A2 tickets
+                                screens = dashboard + targets + inboxScreen + areas + tickets, // tso-manual A1: Target Status, inbox
+                                unread = inbox.unread,
+                                openRequest = openRequest,
+                                onOpenRequestHandled = { pushOpen.value = null },
                             ) } }
                             }
                         }
@@ -257,4 +284,34 @@ class MainActivity : ComponentActivity() {
         }
         }
     }
+}
+
+/**
+ * What every feature host of the signed-in TSO day can use (A1 dashboard, targets and inbox; A2 [ticketScreens]; A3
+ * [areaScreens]), built once per signed-in user by [MainActivity]. A host builds its ports from these handles, so a lane
+ * never edits MainActivity to wire a screen.
+ */
+class TsoHost(
+    val context: Context,
+    val components: SessionComponents,
+    val databases: com.aktcl.aron.core.database.UserDatabases,
+    /** The one TSO outbox (records and local mirror rows in one transaction, idempotent by client uuid). */
+    val outbox: TsoOutbox,
+    val readModels: TsoReadModels,
+    val userId: Long,
+    /** The login name: part of every retained screen-state key, so a shared phone never hands one rep's state to the next. */
+    val userKey: String,
+    /** Validated connectivity right now (asked on demand: no listener, no polling). */
+    val online: () -> Boolean,
+    /** This user's camera and photo queue once ready, else null; a compose state read, so a screen recomposes when it lands. */
+    val media: () -> com.aktcl.aron.core.media.MediaComponents?,
+    /** This user's camera and photo queue, created on demand (outside composition). */
+    val mediaFor: suspend () -> com.aktcl.aron.core.media.MediaComponents,
+) {
+    /** Dhaka business date `YYYY-MM-DD` from trusted time. */
+    val today: () -> String = { components.trustedClock.businessDate().toString() }
+    /** Trusted epoch milliseconds. */
+    val nowMs: () -> Long = { components.trustedClock.nowMs() }
+    /** Trusted now as RFC 3339. */
+    val nowIso: () -> String = { java.time.Instant.ofEpochMilli(components.trustedClock.nowMs()).toString() }
 }
