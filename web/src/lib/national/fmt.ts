@@ -123,11 +123,48 @@ export function pctText(locale: Locale, v: number | null | undefined, decimals: 
 
 /** A percentage the server already sends at two decimals (DailyTrackingRow.tilldate_target_achievement_pct, "0 to 100 with 2
  *  decimals"), printed at that precision without a second rounding: 87.5 -> "87.50%", 104.94 -> "104.94%"; null or not a
- *  finite number -> "—". The value is moved to basis points once (exact for a two-decimal figure) and printed by pctText. */
+ *  finite number -> "—". The value is moved to basis points once (exact for a two-decimal figure) and printed by pctText.
+ *  tso-manual X3: only the fallback of tillDatePctText for a server that does not send the bp. */
 export function pct2dpText(locale: Locale, v: number | null | undefined): string {
   if (typeof v !== "number" || !Number.isFinite(v)) return DASH;
   const bp = Math.round(v * 100);
   return Number.isSafeInteger(bp) ? pctText(locale, bp, 2) : DASH;
+}
+
+/** tso-manual X3 (R-W-13 (4), R-W-06 (2)): the till-date % of a DailyTrackingRow, printed once at two decimals. The integer
+ *  `tilldate_target_achievement_bp` (pctBp at 2 dp: the bp is already at that precision, so nothing is rounded here) whenever the
+ *  server sends the member, a null bp included ("—": no cigarette target, n = 0 or T' = 0). Only an answer without the member (a
+ *  server before the integration round) falls back to the deprecated two-decimal float `tilldate_target_achievement_pct`. */
+export function tillDatePctText(locale: Locale, row: { tilldate_target_achievement_bp?: number | null; tilldate_target_achievement_pct?: number | null }): string {
+  return row.tilldate_target_achievement_bp !== undefined ? pctBp(locale, row.tilldate_target_achievement_bp, 2) : pct2dpText(locale, row.tilldate_target_achievement_pct);
+}
+
+/** tso-manual X3 (R-W-13 (5), R-W-06 (3)): whole percent of a route's sales against its daily target by the Sales-card rule,
+ *  round_half_up(100 * sales * W / monthly) ONCE, with the monthly target (a contract Decimal3) read exactly as thousandths and
+ *  BigInt inside. Null ("—") when W = 0 (R-F-13), without a target, with a 0 target, or for an input that is not a non-negative
+ *  integer. 30 sold against "689.000" at W 24 is 104.4993 %: 104, where the 3-dp daily target "28.708" and the bp 10450 both give 105. */
+export function pctWholeSalesCard(sales: number | null | undefined, monthly: string | null | undefined, w: number | null | undefined): number | null {
+  const a = nat(sales);
+  const ww = nat(w);
+  const m = thousandths(monthly);
+  if (a === null || ww === null || ww === 0n || m === null || m === 0n) return null;
+  return exact((2n * 100n * 1_000n * a * ww + m) / (2n * m));
+}
+
+/** The printed text of one Target vs Achievement bar of the route map, rounded once: the Sales-card rule from `monthly_target_qty`
+ *  and `working_days` when the server sends both (contract 1.10.0); else sales over the Decimal3 daily target (W1's exact path,
+ *  D-W1-20); else, from a server without `sales` or `daily_target`, the bp at no decimal as before. */
+export function routeBarText(locale: Locale, x: { pct_bp: number | null; sales?: number; daily_target?: string | null; monthly_target_qty?: string | null; working_days?: number }): string {
+  if (x.sales !== undefined && x.monthly_target_qty !== undefined && x.working_days !== undefined) return pctText(locale, pctWholeSalesCard(x.sales, x.monthly_target_qty, x.working_days), 0);
+  if (x.sales !== undefined && x.daily_target !== undefined) return pctText(locale, pctWholeOverDecimal3(x.sales, x.daily_target), 0);
+  return pctBp(locale, x.pct_bp, 0);
+}
+
+/** tso-manual X3 (R-W-13 (6), R-W-06): a channel's share printed once from the counts, one decimal: tenths(value, denominator).
+ *  The denominator is the card's: By Channel Calls divides by `total` + `unclassified`, By Channel STD by `total`; never the
+ *  server's rounded `share_pct_bp` again. A 0 denominator prints "—". */
+export function channelShareText(locale: Locale, value: number, denominator: number): string {
+  return pctText(locale, pctTenths(value, denominator), 1);
 }
 
 /** A quantity n / d (d = 1 for a total, working days for a daily target), one decimal half up: "40.0", "999.0"; from 1,000.0 in

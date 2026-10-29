@@ -289,13 +289,19 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
 
   if (path === "/v1/dashboards/daily-tracking") {
     const rows = routesInScope(user.scope.nodes);
+    // tso-manual X3 (contract 1.10.0, R-W-06 (2)): the integer bp, round_half_up(10000 n / d) once, and the deprecated float as bp / 100
+    // (null exactly when the bp is null). The seed stands in visited / target outlets for the server's A / T'.
+    const tillDate = (n: number, d: number) => {
+      const bp = d > 0 ? Math.floor((20_000 * n + d) / (2 * d)) : null;
+      return { tilldate_target_achievement_bp: bp, tilldate_target_achievement_pct: bp === null ? null : bp / 100 };
+    };
     const bucket = (r: SeedRoute): Schemas["DailyTrackingRow"]["bucket"] => {
       if (r.exception) return "exception";
       if (r.state === "not_started") return "not_logged_in";
       const p = pct(r.visited, r.target_outlets) ?? 0;
       return p >= 100 ? "ge_100" : p >= 90 ? "from_90" : p >= 80 ? "from_80" : "below_80";
     };
-    const items: Schemas["DailyTrackingRow"][] = rows.map((r) => ({ route_id: r.route_id, route_name: r.route_name, zone_id: r.zone_id, user_id: r.user_id, user_name: r.user_name, state: r.state === "not_started" ? "not_started" : r.state === "final_submitted" ? "final_submitted" : r.state === "sales_submitted" ? "sales_submitted" : "in_field", target_outlets: r.target_outlets, visited_outlets: r.visited, successful_calls: r.successful, active_memo_count: r.memos, net_mtk: r.net_mtk, tilldate_target_achievement_pct: pct(r.visited, r.target_outlets), by_category: routeCategories(r), bucket: bucket(r) }));
+    const items: Schemas["DailyTrackingRow"][] = rows.map((r) => ({ route_id: r.route_id, route_name: r.route_name, zone_id: r.zone_id, user_id: r.user_id, user_name: r.user_name, state: r.state === "not_started" ? "not_started" : r.state === "final_submitted" ? "final_submitted" : r.state === "sales_submitted" ? "sales_submitted" : "in_field", target_outlets: r.target_outlets, visited_outlets: r.visited, successful_calls: r.successful, active_memo_count: r.memos, net_mtk: r.net_mtk, ...tillDate(r.visited, r.target_outlets), by_category: routeCategories(r), bucket: bucket(r) }));
     const cnt = (b: Schemas["DailyTrackingRow"]["bucket"]) => items.filter((i) => i.bucket === b).length;
     const body: Schemas["DailyTrackingPage"] = { as_of: asOf, business_date: x.url.searchParams.get("business_date") ?? SEED_DATE, items, next_cursor: null, comparator: { business_date: "2026-10-06", as_of_time: "17:00", buckets: { ge_100: cnt("ge_100") + 1, from_90: cnt("from_90"), from_80: cnt("from_80"), below_80: cnt("below_80"), exception: cnt("exception"), not_logged_in: cnt("not_logged_in") } } };
     return send(200, body), true;
