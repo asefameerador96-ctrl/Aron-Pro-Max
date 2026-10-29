@@ -188,6 +188,60 @@ class TicketWriteReplayTest {
         assertEquals(1, rows().size)
     }
 
+    /** The photo port as TicketsHostDeps builds it: the real media store, the record check on the real outbox. */
+    private fun photoPort() = MediaTicketPhotos({ media() }, { media() }, { 3 }) { device().holds(it) }
+
+    @Test fun aPhotoRemovedAfterAClaimWhoseCommitFailedIsNeverSentWithTheRetry() = runBlocking {
+        val kept = "1b6c1d5e-4b7a-4c2e-9f10-2b1c3d4e5f6a"
+        val removed = "1b6c1d5e-4b7a-4c2e-9f10-2b1c3d4e5f6b"
+        staged(kept)
+        staged(removed)
+        // both photos are claimed, then the commit fails (full disk) before any row is written
+        val full = device { photo, ref -> media().attach(photo, ref, stamp = null); if (photo == removed) throw java.io.IOException("disk full") }
+        try { saveTicket(full, photos = listOf(kept, removed)); fail("the commit failed") } catch (_: java.io.IOException) { }
+        assertTrue(rows().isEmpty())
+        assertEquals(MediaState.ATTACHED, media().store.get(removed)!!.state)
+
+        // the form still shows both; the rep removes one (TicketFormState.removePhoto -> discard): the claimed photo of a
+        // record that was never saved is dropped, not kept for the retry
+        photoPort().discard(removed)
+        assertNull(media().store.get(removed))
+
+        // the retry saves the ticket with the other photo only
+        assertTrue(saveTicket(device(), photos = listOf(kept)))
+        assertEquals(1, rowsOf(RecordType.SUPPORT_TICKET).size)
+        assertEquals(MediaRef("support", "support_ticket", ticketUuid), media().store.get(kept)!!.ref)
+        assertNull("the removed picture can never upload: it is gone", media().store.get(removed))
+        assertEquals(listOf(kept), media().store.all().map { it.mediaUuid })
+
+        // a photo of a saved record is never dropped, whatever the form says
+        photoPort().discard(kept)
+        assertEquals(MediaState.ATTACHED, media().store.get(kept)!!.state)
+    }
+
+    @Test fun aFormLeftAfterAKilledSaveDropsItsClaimedPhotosAndKeepsOtherRecordsPhotos() = runBlocking {
+        val photo = "1b6c1d5e-4b7a-4c2e-9f10-2b1c3d4e5f6c"
+        val onlyStaged = "1b6c1d5e-4b7a-4c2e-9f10-2b1c3d4e5f6d"
+        val visitPhoto = "1b6c1d5e-4b7a-4c2e-9f10-2b1c3d4e5f6e"
+        staged(photo)
+        staged(onlyStaged)
+        staged(visitPhoto)
+        media().attach(visitPhoto, MediaRef("outlet_capture", "visit", "7c6c1d5e-4b7a-4c2e-9f10-2b1c3d4e5f60"), stamp = null)
+        val killed = device { p, ref -> media().attach(p, ref, stamp = null); throw kotlinx.coroutines.CancellationException("killed") }
+        try { saveTicket(killed, photos = listOf(photo)); fail("killed") } catch (_: kotlinx.coroutines.CancellationException) { }
+
+        relaunch()
+        // the rep leaves the restored form without saving: every photo it lists is dropped (claimed or only staged)
+        photoPort().discard(photo)
+        photoPort().discard(onlyStaged)
+        assertNull(media().store.get(photo))
+        assertNull(media().store.get(onlyStaged))
+        // a photo claimed by another feature's record is never touched by the ticket port
+        photoPort().discard(visitPhoto)
+        assertEquals(MediaState.ATTACHED, media().store.get(visitPhoto)!!.state)
+        assertTrue(rows().isEmpty())
+    }
+
     @Test fun aPurgedUuidIsNeverQueuedAgain() = runBlocking {
         sql("INSERT INTO purged_uuid(client_uuid, purged_at) VALUES (?, ?)", ticketUuid, "2026-10-20T00:00:00.000Z")
         assertFalse(saveTicket(device()))
@@ -308,6 +362,7 @@ class TicketWriteReplayTest {
         assertTrue(snap.complete)
         assertEquals(listOf("INC100001", "INC100000"), snap.tickets.map { it.number })
         assertEquals(1_792_928_040_000L, snap.asOfMs) // the server's own stamp
+        assertEquals("the phone's read time, for the fresh-copy rule (D-A2-30)", nowMs, snap.readAtMs)
         assertEquals(2L, snap.summary!!.total)
 
         // the requests: three GETs, the page size and the cursor only (never a user, zone or scope id)
@@ -327,7 +382,10 @@ class TicketWriteReplayTest {
         assertEquals(snap.tickets, copy.tickets)
         assertEquals(snap.summary, copy.summary)
         assertEquals(snap.asOfMs, copy.asOfMs)
+        assertEquals(snap.readAtMs, copy.readAtMs)
         assertTrue(copy.complete)
+        // a copy kept before the read time was recorded reads back without one (never fresh: the next open reads)
+        assertNull(TicketCopy.decode(TicketCopy.encode(listOf("""{"items":[],"next_cursor":null}"""), null, true, 5L))!!.readAtMs)
         assertEquals(setOf(TicketDevice.TICKET_MIRROR + other), mirror(TicketDevice.TICKET_MIRROR).keys)
 
         // a page that fails half way keeps the old copy whole
@@ -399,7 +457,7 @@ class TicketWriteReplayTest {
 
     @Test fun thePhotoPortCapIsTheConfiguredLimitClamped() {
         var cfg = 2
-        val photos = MediaTicketPhotos({ null }, { error("no media in this test") }) { cfg }
+        val photos = MediaTicketPhotos({ null }, { error("no media in this test") }, maxNow = { cfg })
         assertEquals(2, photos.max)
         cfg = 7; assertEquals(3, photos.max)
         cfg = -1; assertEquals(0, photos.max)
@@ -423,6 +481,19 @@ class TicketWriteReplayTest {
         }
         TicketNav.afterSave(nav)
         assertEquals(listOf("back", "open:TICKET_LIST"), calls)
+
+        // A1's tap handler: the Ticket Dashboard opens with the reason, so it reads online even with a fresh copy
+        calls.clear()
+        val args = mutableListOf<String?>()
+        val nav2 = object : TsoNav {
+            override fun open(screen: TsoScreen, arg: String?) { calls += "open:$screen"; args += arg }
+            override fun back() { calls += "back" }
+            override fun home() { calls += "home" }
+        }
+        assertTrue(TicketPush.open(nav2, "ticket_updated"))
+        assertFalse(TicketPush.open(nav2, "task_assigned"))
+        assertEquals(listOf("open:TICKET_DASHBOARD"), calls)
+        assertEquals(listOf<String?>(TicketPush.REASON), args)
         assertNotNull(TicketDevice.delivery(null))
     }
 }

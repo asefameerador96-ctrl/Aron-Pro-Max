@@ -33,6 +33,7 @@ import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.core.media.GalleryImportException
 import com.aktcl.aron.core.media.MediaComponents
 import com.aktcl.aron.core.media.MediaRef
+import com.aktcl.aron.core.media.MediaState
 import com.aktcl.aron.core.media.rememberGalleryPicker
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.feature.tickets.CreateTicketScreen
@@ -94,7 +95,7 @@ class TicketsHostDeps(val host: TsoHost) {
     /** `cfg.support.ticket_max_photos` (0..3, default 3), read from the bundle each time a ticket screen opens. */
     val maxPhotos: MutableIntState = mutableIntStateOf(TicketLimits.PHOTOS_MAX)
 
-    val photos: TicketPhotos by lazy { MediaTicketPhotos(host.media, host.mediaFor) { maxPhotos.intValue } }
+    val photos: TicketPhotos by lazy { MediaTicketPhotos(host.media, host.mediaFor, { maxPhotos.intValue }) { device.holds(it) } }
 
     /** One [TicketDeps] for the user: the screens' states are keyed on it, so it never changes identity. */
     val deps: TicketDeps by lazy { TicketDeps(HostTicketSource(api, device, host.nowMs), device, photos, now = host.nowMs) }
@@ -109,11 +110,13 @@ class TicketsHostDeps(val host: TsoHost) {
  * uuid as its argument. SUPPORT_UPLOAD stays A1's (Settings > PDA to Support).
  */
 fun ticketScreens(deps: TicketsHostDeps): Map<TsoScreen, TsoScreenContent> = mapOf<TsoScreen, TsoScreenContent>(
-    TsoScreen.TICKET_DASHBOARD to { nav, _ ->
+    TsoScreen.TICKET_DASHBOARD to { nav, arg ->
         WithTickets(deps) { d ->
             TicketDashboardScreen(
                 rememberTicketDashboardState(d), ticketFrame(nav),
                 onOpen = { nav.open(TsoScreen.TICKET_DETAIL, it) }, onSeeAll = { nav.open(TsoScreen.TICKET_LIST) }, onQuick = { nav.open(TsoScreen.TICKET_QUICK) },
+                // opened from a ticket push (TicketPush.open): read online even when the kept copy is fresh
+                refreshOnOpen = arg == TicketPush.REASON,
             )
         }
     },
@@ -148,6 +151,16 @@ object TicketPush {
 
     /** The screen a tapped push opens, or null when the push is not a ticket push. */
     fun target(reason: String?): TsoScreen? = if (reason?.trim() == REASON) TsoScreen.TICKET_DASHBOARD else null
+
+    /**
+     * Opens the screen of a tapped push through [nav] (A1's tap handler calls this): the Ticket Dashboard with the reason as
+     * its argument, so it reads online even when its kept copy is fresh (D-A2-30). False when the push is not a ticket push.
+     */
+    fun open(nav: TsoNav, reason: String?): Boolean {
+        val screen = target(reason) ?: return false
+        nav.open(screen, REASON)
+        return true
+    }
 }
 
 @Composable
@@ -189,8 +202,9 @@ class HostTicketSource(private val api: TicketApi, private val device: TicketDev
             is TicketApi.Read.Refused -> { withContext(Dispatchers.IO) { api.forgetList() }; return null }
             TicketApi.Read.Unavailable -> return null
         }
-        val snap = TicketCopy.snapshot(pages, summary, complete, now()) ?: return null
-        withContext(Dispatchers.IO) { api.keepList(TicketCopy.encode(pages, summary, complete, snap.asOfMs)) }
+        val readAt = now()
+        val snap = TicketCopy.snapshot(pages, summary, complete, readAt)?.copy(readAtMs = readAt) ?: return null
+        withContext(Dispatchers.IO) { api.keepList(TicketCopy.encode(pages, summary, complete, snap.asOfMs, readAt)) }
         // the server has these now: their "not sent yet" rows are done (an unread refused one stays)
         device.dropTicketMirrors(snap.tickets.map { it.uuid })
         return snap
@@ -220,10 +234,13 @@ class HostTicketSource(private val api: TicketApi, private val device: TicketDev
  *
  * A save is idempotent by its client uuid: a uuid the outbox holds (or held, purged after its ack) changes nothing and
  * answers false. Otherwise the photos are claimed for the record first (media purpose `support`, ref_type
- * `support_ticket` / `support_ticket_event`, the photo layer's claim is idempotent and final), then the outbox row and the
- * mirror row `tso.unsent.ticket.<uuid>` (`tso.unsent.ticket_event.<uuid>`) are written in ONE transaction and a debounced
- * sync is asked for. A kill between the claim and the commit leaves claimed photos and no row; the form keeps its uuid,
- * so the retry claims nothing new and commits the one row.
+ * `support_ticket` / `support_ticket_event`, the photo layer's claim is idempotent; the media layer's rule is to claim
+ * before the record commits), then the outbox row and the mirror row `tso.unsent.ticket.<uuid>`
+ * (`tso.unsent.ticket_event.<uuid>`) are written in ONE transaction, and a debounced sync is asked for. The claim is NOT
+ * in that transaction: a failed commit (full disk) or a kill between the claim and the commit leaves claimed photos and
+ * no row. Such a photo never uploads (MediaUploader waits for a record it has seen and drops an unseen one after
+ * `pending_photo_grace_days`); the form keeps its uuid, so the retry commits the one row; and a photo the rep removes or
+ * leaves meanwhile is dropped by [MediaTicketPhotos.discard], which checks [holds].
  */
 class TicketDevice(
     private val databases: UserDatabases,
@@ -241,10 +258,15 @@ class TicketDevice(
 
     private suspend fun save(type: RecordType, uuid: String, payload: JsonObject, photos: List<String>, owner: PhotoOwner, key: String, mirror: String): Boolean {
         require(photos.size <= TicketLimits.PHOTOS_MAX) { "at most ${TicketLimits.PHOTOS_MAX} photos per ticket or comment" }
-        val rows = db().outboxDao()
-        if (rows.byClientUuid(uuid) != null || rows.anyPurged(listOf(uuid))) return false
+        if (holds(uuid)) return false
         for (p in photos.distinct()) claim(p, MediaRef(MEDIA_PURPOSE, owner.refType, owner.refUuid))
         return outbox.enqueueAll(userId, listOf(TsoOutbox.Rec(type, uuid, payload)), mirrors = listOf(key to mirror)) > 0
+    }
+
+    /** True when the record [uuid] is saved: the outbox holds it, or held it (purged after its ack). */
+    suspend fun holds(uuid: String): Boolean {
+        val rows = db().outboxDao()
+        return rows.byClientUuid(uuid) != null || rows.anyPurged(listOf(uuid))
     }
 
     /** The unsent tickets and events, each with its delivery from the outbox row (D-A2-15). */
@@ -332,6 +354,8 @@ class MediaTicketPhotos(
     private val media: () -> MediaComponents?,
     private val mediaFor: suspend () -> MediaComponents,
     private val maxNow: () -> Int,
+    /** True when the ticket record (ticket or event uuid) is saved ([TicketDevice.holds]); unknown keeps a claimed photo. */
+    private val recordSaved: suspend (recordUuid: String) -> Boolean = { true },
 ) : TicketPhotos {
     override val max: Int get() = maxNow().coerceIn(0, TicketLimits.PHOTOS_MAX)
 
@@ -375,8 +399,28 @@ class MediaTicketPhotos(
         PhotoResult.Failed(MediaR.string.media_gallery_failed)
     }
 
+    /**
+     * A staged photo is dropped. A photo already claimed for a ticket record that was never saved (the save failed or was
+     * killed between the claim and the commit, [TicketDevice]) is dropped too, so a picture the rep removed is never sent
+     * with the retry (D-TSO-MAN-23). A photo of a saved record, or of anything but a ticket, is kept.
+     */
     override suspend fun discard(photoUuid: String) {
-        try { store().discard(photoUuid) } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+        try {
+            val m = store()
+            if (m.discard(photoUuid)) return
+            val item = m.store.get(photoUuid) ?: return
+            val ref = item.ref ?: return
+            if (item.state != MediaState.ATTACHED || ref.purpose != TicketDevice.MEDIA_PURPOSE || ref.refType !in TICKET_REF_TYPES) return
+            if (recordSaved(ref.refClientUuid)) return
+            m.store.deleteIf(photoUuid) { it.state == MediaState.ATTACHED && it.ref == ref }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+        }
+    }
+
+    private companion object {
+        val TICKET_REF_TYPES = setOf(PhotoOwner.ticket("").refType, PhotoOwner.event("").refType)
     }
 
     @Composable

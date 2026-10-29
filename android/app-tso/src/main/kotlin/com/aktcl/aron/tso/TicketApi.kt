@@ -10,6 +10,7 @@ import com.aktcl.aron.feature.tickets.TicketSnapshot
 import com.aktcl.aron.feature.tickets.TicketWire
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -126,19 +127,21 @@ class TicketApi(private val client: AronApiClient, private val dir: File, privat
 
 /**
  * The kept copy of the own tickets: the raw pages and the summary exactly as the server sent them (so the screens' one
- * mapping, [TicketWire], reads both the fresh answer and the copy), whether every page was read, and the "as of" time.
+ * mapping, [TicketWire], reads both the fresh answer and the copy), whether every page was read, the "as of" time and the
+ * phone's trusted time of the read (`read_at_ms`, D-A2-30; absent in a copy kept before it, which is then never fresh).
  */
 object TicketCopy {
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun encode(pages: List<String>, summary: String?, complete: Boolean, asOfMs: Long): String = JsonObject(
-        mapOf(
-            "v" to JsonPrimitive(1),
-            "as_of_ms" to JsonPrimitive(asOfMs),
-            "complete" to JsonPrimitive(complete),
-            "pages" to JsonArray(pages.map { json.parseToJsonElement(it) }),
-            "summary" to (summary?.let { json.parseToJsonElement(it) } ?: JsonNull),
-        ),
+    fun encode(pages: List<String>, summary: String?, complete: Boolean, asOfMs: Long, readAtMs: Long? = null): String = JsonObject(
+        buildMap<String, JsonElement> {
+            put("v", JsonPrimitive(1))
+            put("as_of_ms", JsonPrimitive(asOfMs))
+            if (readAtMs != null) put("read_at_ms", JsonPrimitive(readAtMs))
+            put("complete", JsonPrimitive(complete))
+            put("pages", JsonArray(pages.map { json.parseToJsonElement(it) }))
+            put("summary", summary?.let { json.parseToJsonElement(it) } ?: JsonNull)
+        },
     ).toString()
 
     /** The snapshot of [pages] and [summary]; the summary's own `as_of` wins over [fallbackAsOfMs]. Null when no page decodes. */
@@ -156,6 +159,7 @@ object TicketCopy {
         val summary = o["summary"]?.takeUnless { it is JsonNull }?.toString()
         val complete = (o["complete"] as? JsonPrimitive)?.booleanOrNull ?: false
         val asOf = (o["as_of_ms"] as JsonPrimitive).longOrNull ?: return null
-        snapshot(pages, summary, complete, asOf)?.let { it.copy(asOfMs = asOf) }
+        val readAt = (o["read_at_ms"] as? JsonPrimitive)?.longOrNull
+        snapshot(pages, summary, complete, asOf)?.let { it.copy(asOfMs = asOf, readAtMs = readAt) }
     }.getOrNull()
 }
