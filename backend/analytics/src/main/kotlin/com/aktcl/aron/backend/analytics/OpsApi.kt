@@ -224,6 +224,7 @@ class OpsService(
         val summary = dashboards.summary(reach, level, nodeId, date, date)
         val days = db.readJdbi.withHandle<List<LoginDay>, Exception> { h ->
             val node = resolveScopedNode(h, reach, level, nodeId, from = date)
+            val asWas = AsWasSql.probe(h, date)   // a route is in the zone it had on the date (route_zone_history), not the zone it has now
             val login = DashboardSummaries.successfulLoginSql(h, "ag")   // Successful Login = login AND download AND check-in (D-REPORTS-LOGIN-01)
             node.bind(
                 h.createQuery(
@@ -231,7 +232,7 @@ class OpsService(
                     SELECT rd.*, g.route_code, g.route_name, au.username AS assigned_username, au.full_name AS assigned_user_full_name,
                            coalesce(($login), false) AS login_ok,
                            EXISTS (SELECT 1 FROM app.day_exception e WHERE e.status = 'approved' AND e.voided_at IS NULL AND rd.route_id = ANY (e.route_ids) AND rd.business_date BETWEEN e.from_date AND e.to_date) AS excused
-                      FROM app.route_day rd JOIN dw.dim_geo g ON g.route_id = rd.route_id LEFT JOIN app.app_user au ON au.id = rd.assigned_user_id
+                      FROM app.route_day rd ${AsWasSql.geo("g", "rd.route_id", "rd.business_date", lo = ":d", hi = ":d", plain = asWas.geo)} LEFT JOIN app.app_user au ON au.id = rd.assigned_user_id
                       LEFT JOIN dw.agg_daily_route ag ON ag.route_id = rd.route_id AND ag.business_date = rd.business_date
                      WHERE rd.business_date = :d AND rd.planned AND ${node.clause("g.zone_id", "g.route_id")} ORDER BY g.route_code
                     """,

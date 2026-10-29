@@ -45,6 +45,7 @@ class OpsApiTest : ReportFixture() {
     override fun mount(r: Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {
         val dash = DashboardService(fresh.db, clock)
         r.opsRoutes(OpsDeps(OpsService(fresh.db, RegistryDefaults(), clock), dash, reach, guard, clock))
+        r.dashboardRoutes(DashboardDeps(dash, reach, guard, clock))   // the portal gate in front of it is what the BRAND test below exercises
     }
 
     private suspend fun ApplicationTestBuilder.get(uid: Long, role: Role, path: String): HttpResponse = client.get(path) { bearerAuth(TestTokens.web(uid, role)) }
@@ -222,4 +223,22 @@ class OpsApiTest : ReportFixture() {
     }
 
     /** docs/24 s4.6: a parked row turned final "is listed on the quarantine page"; listQuarantine: "Rejected and quarantined records". */
+
+    @Test
+    fun theBrandRolesAreRefusedAtThePortalGateAndTheHandlerChecksFailClosed() = app {
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.app_user (id, username, full_name, role, must_change_password) OVERRIDING SYSTEM VALUE VALUES (15, 'user15', 'User 15', 'BRAND', false)") }
+        reaches[15] = com.aktcl.aron.backend.platform.Reach(15, Role.BRAND, day, true, emptySet(), emptySet(), false, emptyList())
+        // Today the portal gate closes both dashboard routes to BRAND (PortalLevels.BRAND_ROUTES); opening one is the lead's and authz's call.
+        for (path in listOf("summary", "geo-validation")) {
+            val r = get(15, Role.BRAND, "/v1/dashboards/$path?from=2026-10-04&to=2026-10-04")
+            assertEquals(HttpStatusCode.Forbidden, r.status, path)
+            assertEquals("not available at this portal level", r.obj().s("detail"))
+        }
+        assertEquals(HttpStatusCode.OK, get(10, Role.ANALYST, "/v1/dashboards/geo-validation?from=2026-10-04&to=2026-10-04").status)
+        // Defence in depth, if the gate is ever opened: a BRAND user without brands and any BRAND on geo-validation are refused by the handler itself.
+        assertEquals(com.aktcl.aron.contract.ProblemCode.ERR_FORBIDDEN, kotlin.test.assertFailsWith<com.aktcl.aron.backend.platform.ApiProblem> { requireBrandScope(Role.BRAND, null) }.code)
+        requireBrandScope(Role.BRAND, emptySet()); requireBrandScope(Role.BRAND, setOf(1L)); requireBrandScope(Role.TSO, null)
+        assertEquals(com.aktcl.aron.contract.ProblemCode.ERR_FORBIDDEN, kotlin.test.assertFailsWith<com.aktcl.aron.backend.platform.ApiProblem> { refuseBrandCaller(Role.BRAND) }.code)
+        refuseBrandCaller(Role.TSO); refuseBrandCaller(Role.ANALYST)
+    }
 }
