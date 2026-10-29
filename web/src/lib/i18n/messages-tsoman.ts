@@ -150,12 +150,13 @@ const pairs = {
   "tsoman.role.AMO": ["AMO", "এএমও"],
 
   // --- step 2. FS-14: reopen a zone-day (D-TSO-MAN-29) ---
-  "tsoman.reopen.window_hint": ["Administrators only, within {n} days of the business date. The zone's figures are rebuilt and the zone must be final-submitted again.", "শুধু অ্যাডমিন, ব্যবসার তারিখের {n} দিনের মধ্যে। জোনের হিসাব নতুন করে তৈরি হয় এবং জোনটি আবার ফাইনাল সাবমিট করতে হয়।"],
+  "tsoman.reopen.window_hint": ["Administrators only, and only within the reopen window after the business date (a setting on the server). The zone's figures are rebuilt and the zone must be final-submitted again.", "শুধু অ্যাডমিন, এবং শুধু ব্যবসার তারিখের পরে পুনরায় খোলার সময়সীমার মধ্যে (সার্ভারের একটি সেটিং)। জোনের হিসাব নতুন করে তৈরি হয় এবং জোনটি আবার ফাইনাল সাবমিট করতে হয়।"],
   "tsoman.reopen.reason_hint": ["10 to 500 characters, kept in the audit log.", "১০ থেকে ৫০০ অক্ষর, অডিট লগে থাকে।"],
   "tsoman.reopen.reason_short": ["At least 10 characters.", "কমপক্ষে ১০ অক্ষর।"],
   "tsoman.reopen.future": ["A future day cannot be reopened.", "ভবিষ্যতের দিন খোলা যায় না।"],
   "tsoman.reopen.window": ["This day is outside the reopen window.", "এই দিনটি পুনরায় খোলার সময়সীমার বাইরে।"],
   "tsoman.reopen.confirm": ["Reopen zone {zone} for {date}? Its figures are rebuilt and the zone must be final-submitted again.", "{date} তারিখের জোন {zone} পুনরায় খুলবেন? হিসাব নতুন করে তৈরি হবে এবং জোনটি আবার ফাইনাল সাবমিট করতে হবে।"],
+  "tsoman.reopen.window_n": ["This day is outside the reopen window of {n} days.", "এই দিনটি {n} দিনের পুনরায় খোলার সময়সীমার বাইরে।"],
   "tsoman.reopen.done": ["Zone {zone} for {date} is reopened ({at}). The action is in the audit log.", "{date} তারিখের জোন {zone} পুনরায় খোলা হয়েছে ({at})। কাজটি অডিট লগে আছে।"],
   "tsoman.reopen.retry": ["No answer from the server. Send again: the same request is repeated, never applied twice.", "সার্ভার থেকে উত্তর আসেনি। আবার পাঠান: একই অনুরোধ আবার যাবে, দুবার কার্যকর হবে না।"],
   "error.ERR_DAY_NOT_FINAL_SUBMITTED": ["This zone-day is not final-submitted, so there is nothing to reopen.", "এই জোন-দিনটি ফাইনাল সাবমিট হয়নি, তাই খোলার কিছু নেই।"],

@@ -1,7 +1,10 @@
 // tso-manual W1 (build contract docs/requests/tso-manual-build-2026-10.md s5 W1, step 2): the mock of the contract 1.10.0
 // operations the web reads or writes beyond the support desk (mock/tickets.ts):
 // - POST /v1/day/reopen (D-TSO-MAN-29): ADMIN and SUPERADMIN (cfg.day.reopen_roles default), reason 10..500, window 3 days
-//   (cfg.day.reopen_window_days), idempotent by the optional client_uuid (same body: the first result; other body: 409).
+//   (cfg.day.reopen_window_days), idempotent by the optional client_uuid (same caller and zone-day: the first result; else 409).
+//   The answers and their order follow B3's DayService.reopen (tso-man/B3): body 400 `invalid_value`, then the caller's replay,
+//   the role (403), the zone in reach (403 ERR_OUT_OF_SCOPE), the window (409 ERR_REQUEST_STATE with
+//   context.reopen_window_days, a future day included), then a live close (409 ERR_DAY_NOT_FINAL_SUBMITTED).
 // - GET /v1/me/notifications and POST /v1/me/notifications/read (D-TSO-MAN-26): own rows only, newest first, read up to an id.
 // - POST /v1/dashboards/national/login-submit/users (D-TSO-MAN-12): computed from the seeded day of mock/seed.ts, so the drill
 //   page (whose geo ids are the seed's) and this list agree; called from mock/national.ts.
@@ -14,7 +17,7 @@ import type { Ctx } from "./tables";
 type Inbox = Schemas["NotificationItem"];
 
 export interface TsoManStore {
-  /** client_uuid -> the canonical request and the first result of that reopen. */
+  /** client_uuid -> the caller and zone-day it was used for (hashed) and the first result of that reopen. */
   reopens: Map<string, { fingerprint: string; result: Schemas["DayReopenResult"] }>;
   /** zone-days ("<zone>:<date>") reopened and not submitted again: a second reopen is 409 ERR_DAY_NOT_FINAL_SUBMITTED. */
   reopened: Set<string>;
@@ -27,11 +30,6 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00
 const isDate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const chars = (s: unknown) => (typeof s === "string" ? Array.from(s.trim()).length : -1);
-function canonical(v: unknown): string {
-  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
-  if (v && typeof v === "object") return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonical((v as Record<string, unknown>)[k])}`).join(",")}}`;
-  return JSON.stringify(v);
-}
 
 const PHOTO = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" fill="#6b4f2b"/><circle cx="48" cy="40" r="18" fill="#e8c27a"/></svg>')}`;
 
@@ -71,27 +69,26 @@ export async function handleTsoManual(s: TsoManStore, ctx: Ctx, me: TsoManCaller
   const invalid = (pointer: string, code = "invalid") => done(400, problem(400, "ERR_VALIDATION", { errors: [{ pointer, code }] }));
 
   if (path === "/v1/day/reopen" && method === "POST") {
-    if (me.role !== "ADMIN" && me.role !== "SUPERADMIN") return done(403, problem(403, "ERR_FORBIDDEN"));
     const b = (await ctx.readJson(req)) as Record<string, unknown> | undefined;
     if (!b || typeof b !== "object" || Array.isArray(b)) return done(400, problem(400, "ERR_MALFORMED_JSON"));
     const extra = Object.keys(b).find((k) => !["zone_id", "business_date", "reason", "client_uuid"].includes(k));
     if (extra) return invalid(`/${extra}`, "unknown_member");
-    if (typeof b.zone_id !== "number" || !Number.isSafeInteger(b.zone_id) || b.zone_id < 1) return invalid("/zone_id");
-    if (!isDate(b.business_date)) return invalid("/business_date");
+    if (b.client_uuid !== undefined && (typeof b.client_uuid !== "string" || !UUID_V4.test(b.client_uuid))) return invalid("/client_uuid", "invalid_value");
+    if (typeof b.zone_id !== "number" || !Number.isSafeInteger(b.zone_id) || b.zone_id < 1) return invalid("/zone_id", "invalid_value");
+    if (!isDate(b.business_date)) return invalid("/business_date", "invalid_value");
     const n = chars(b.reason);
-    if (n < 10) return invalid("/reason", n < 0 ? "required" : "too_short");
-    if (n > 500) return invalid("/reason", "too_long");
-    if (b.client_uuid !== undefined && (typeof b.client_uuid !== "string" || !UUID_V4.test(b.client_uuid))) return invalid("/client_uuid");
-    const print = createHash("sha256").update(`${me.user_id}|${canonical(b)}`).digest("hex");
+    if (n < 10 || n > 500) return invalid("/reason", "invalid_value");
+    // B3 (reopenReplay): the caller's own reopen of the same zone-day answers as stored; another zone-day or user is 409
+    const print = createHash("sha256").update(`${me.user_id}|${b.zone_id}|${b.business_date}`).digest("hex");
     const uuid = b.client_uuid as string | undefined;
     if (uuid) {
       const prior = s.reopens.get(uuid);
       if (prior) return prior.fingerprint === print ? done(200, prior.result) : done(409, problem(409, "ERR_CONFLICT", { detail: "client_uuid was used by another reopen" }));
     }
+    if (me.role !== "ADMIN" && me.role !== "SUPERADMIN") return done(403, problem(403, "ERR_FORBIDDEN"));
+    if (!ZONE_IDS.has(b.zone_id)) return done(403, problem(403, "ERR_OUT_OF_SCOPE"));
     const age = daysBetween(b.business_date, dhakaToday());
-    if (age < 0) return invalid("/business_date");
-    if (age > REOPEN_WINDOW_DAYS) return invalid("/business_date", "window");
-    if (!ZONE_IDS.has(b.zone_id)) return done(404, problem(404, "ERR_NOT_FOUND"));
+    if (age < 0 || age > REOPEN_WINDOW_DAYS) return done(409, problem(409, "ERR_REQUEST_STATE", { detail: `the zone-day is outside the reopen window of ${REOPEN_WINDOW_DAYS} days`, context: { reopen_window_days: REOPEN_WINDOW_DAYS } }));
     const key = `${b.zone_id}:${b.business_date}`;
     if (s.reopened.has(key)) return done(409, problem(409, "ERR_DAY_NOT_FINAL_SUBMITTED"));
     s.reopened.add(key);

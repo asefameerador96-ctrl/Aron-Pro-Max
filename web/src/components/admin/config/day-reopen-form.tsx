@@ -7,6 +7,9 @@
 //   resend after a lost answer replays the first result instead of reopening twice;
 // - any answer (2xx or 4xx) settles the key, and a changed zone, date or reason is a new request with a new key, so a lost
 //   answer for one zone-day is never replayed as another.
+// The window refusal is shown on the date field (`reopenRefusal`): B3 answers 409 ERR_REQUEST_STATE with
+// context.reopen_window_days (DayService.reopen); a 400 ERR_VALIDATION with pointer /business_date and code `window` is read
+// the same way. The window's length is the server's, so the hint names no number; the refusal names it when the server sends it.
 import { useRouter } from "next/navigation";
 import { useRef, useState, type FormEvent } from "react";
 import { useI18n } from "@/components/i18n-provider";
@@ -79,7 +82,35 @@ const FIELD_TEXT: Record<ReopenProblem, MessageKey> = {
 };
 const SERVER_CODES: readonly string[] = ["required", "invalid", "too_short", "too_long", "window"];
 
-export function DayReopenForm({ zone, date, today, windowDays = 3, testId = "reopen-form" }: { zone: string; date: string; today: string; windowDays?: number; testId?: string }) {
+/** A refusal (4xx) as the form shows it: the field problems, the window's length when the server sent it, and the code. */
+export interface ReopenRefusal {
+  fields: Partial<Record<ReopenField, ReopenProblem>>;
+  windowDays: number | null;
+  code: string | undefined;
+}
+interface ProblemBody {
+  code?: unknown;
+  errors?: unknown;
+  context?: unknown;
+}
+
+/** Reads a 4xx answer of POST /v1/day/reopen. Outside the window: 409 ERR_REQUEST_STATE (B3, with context.reopen_window_days)
+ *  or 400 ERR_VALIDATION /business_date `window`, both on the date field. Field errors by pointer; an unknown code is "invalid". */
+export function reopenRefusal(status: number, data: ProblemBody | null | undefined): ReopenRefusal {
+  const code = typeof data?.code === "string" ? data.code : undefined;
+  const fields: ReopenRefusal["fields"] = {};
+  const ctx = data?.context && typeof data.context === "object" ? (data.context as Record<string, unknown>).reopen_window_days : undefined;
+  const windowDays = typeof ctx === "number" && Number.isSafeInteger(ctx) && ctx >= 0 ? ctx : null;
+  if (status === 409 && code === "ERR_REQUEST_STATE") fields.business_date = "window";
+  for (const err of Array.isArray(data?.errors) ? (data.errors as { pointer?: unknown; code?: unknown }[]) : []) {
+    const name = (typeof err?.pointer === "string" ? err.pointer : "").replace(/^\/?(body[./])?/, "");
+    if (name !== "zone_id" && name !== "business_date" && name !== "reason") continue;
+    fields[name] = (typeof err.code === "string" && SERVER_CODES.includes(err.code) ? err.code : "invalid") as ReopenProblem;
+  }
+  return { fields, windowDays, code };
+}
+
+export function DayReopenForm({ zone, date, today, testId = "reopen-form" }: { zone: string; date: string; today: string; testId?: string }) {
   const { t, problem, locale, dateTime, number } = useI18n();
   const router = useRouter();
   const [values, setValues] = useState<ReopenValues>({ zone, date, reason: "" });
@@ -105,7 +136,7 @@ export function DayReopenForm({ zone, date, today, windowDays = 3, testId = "reo
     inFlight.current = true;
     setBusy(true);
     let status: number | null = null;
-    let data: { data?: Partial<Schemas["DayReopenResult"]> | null; code?: string; errors?: { pointer: string; code: string }[] } = {};
+    let data: { data?: Partial<Schemas["DayReopenResult"]> | null } & ProblemBody = {};
     try {
       const res = await fetch("/api/bff/admin-op", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ op: "day.reopen", body, reason }) });
       status = res.status;
@@ -127,20 +158,18 @@ export function DayReopenForm({ zone, date, today, windowDays = 3, testId = "reo
       setBanner({ kind: "error", text: t("tsoman.reopen.retry") });
       return;
     }
-    const fieldErrors: Partial<Record<ReopenField, string>> = {};
-    for (const err of data.errors ?? []) {
-      const name = err.pointer.replace(/^\/?(body[./])?/, "") as ReopenField;
-      if (name === "zone_id" || name === "business_date" || name === "reason") fieldErrors[name] = t(FIELD_TEXT[(SERVER_CODES.includes(err.code) ? err.code : "invalid") as ReopenProblem]);
-    }
-    setErrors(fieldErrors);
-    setBanner({ kind: "error", text: problem(data.code) });
+    const refusal = reopenRefusal(status, data);
+    // the window refusal names the server's window when it is sent ("…window of 3 days"), in place of the generic problem text
+    const windowText = refusal.windowDays === null ? t("tsoman.reopen.window") : t("tsoman.reopen.window_n", { n: number(refusal.windowDays) });
+    setErrors(Object.fromEntries(Object.entries(refusal.fields).map(([k, c]) => [k, c === "window" ? windowText : t(FIELD_TEXT[c])])));
+    setBanner({ kind: "error", text: refusal.fields.business_date === "window" ? windowText : problem(refusal.code) });
   }
 
   const set = (name: keyof ReopenValues, v: string) => setValues((s) => ({ ...s, [name]: v }));
   const reasonLength = codePoints(values.reason);
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm" data-testid={testId}>
-      <p className="text-sm text-slate-600" data-testid="reopen-window">{t("tsoman.reopen.window_hint", { n: windowDays })}</p>
+      <p className="text-sm text-slate-600" data-testid="reopen-window">{t("tsoman.reopen.window_hint")}</p>
       <Field label={t("cfgc.col.zone")} htmlFor="reopen-zone" required error={errors.zone_id}>
         <input id="reopen-zone" name="zone_id" type="text" inputMode="numeric" value={values.zone} onChange={(e) => set("zone", e.target.value)} maxLength={15} aria-invalid={errors.zone_id ? true : undefined} className={inputClass} />
       </Field>

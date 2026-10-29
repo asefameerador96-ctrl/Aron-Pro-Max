@@ -5,7 +5,7 @@
 // cfg.day.reopen_window_days). The BFF runs against the contract mock (mock/tso-manual.ts).
 import { describe, expect, it, vi } from "vitest";
 import { DayControlView } from "@/components/admin/config/day-control-view";
-import { DayReopenForm, reopenBody, reopenKey, reopenProblems, reopenSignature, settle, REOPEN_REASON_MAX } from "@/components/admin/config/day-reopen-form";
+import { DayReopenForm, reopenBody, reopenKey, reopenProblems, reopenRefusal, reopenSignature, settle, REOPEN_REASON_MAX } from "@/components/admin/config/day-reopen-form";
 import { OPS } from "@/lib/admin/ops";
 import { businessDate } from "@/lib/i18n";
 import { admin, op, setupMock, support, tso } from "./helpers/harness";
@@ -80,7 +80,9 @@ describe("the form on /admin/day", () => {
     expect(m).toContain('value="3341"');
     expect(m).toContain('value="2026-10-28"');
     expect(m).toContain(`max="${today}"`);
-    expect(text(m)).toContain("Administrators only, within 3 days of the business date.");
+    // the window's length is the server's (cfg.day.reopen_window_days): the hint names no number (fix round)
+    expect(text(m)).toContain("Administrators only, and only within the reopen window after the business date");
+    expect(text(m)).not.toMatch(/within \d+ days/);
     expect(m).toContain('name="reason"');
     expect(html(<DayControlView {...base} canWrite={false} />)).not.toContain("reopen-form");
   });
@@ -89,6 +91,25 @@ describe("the form on /admin/day", () => {
     expect(m).toContain("শুধু অ্যাডমিন");
     expect(m).toContain("(০/৫০০)");
     expect(m).toContain("পুনরায় খুলুন");
+  });
+});
+
+describe("refusals as the form shows them (fix round: B3's answers)", () => {
+  it("409 ERR_REQUEST_STATE is the window refusal on the date field, with the server's window when sent", () => {
+    expect(reopenRefusal(409, { code: "ERR_REQUEST_STATE", context: { reopen_window_days: 5 } })).toEqual({ fields: { business_date: "window" }, windowDays: 5, code: "ERR_REQUEST_STATE" });
+    expect(reopenRefusal(409, { code: "ERR_REQUEST_STATE" })).toEqual({ fields: { business_date: "window" }, windowDays: null, code: "ERR_REQUEST_STATE" });
+    expect(reopenRefusal(409, { code: "ERR_REQUEST_STATE", context: { reopen_window_days: "3" } }).windowDays).toBeNull();
+  });
+  it("the 400 shape (pointer /business_date, code window) is read the same way", () => {
+    expect(reopenRefusal(400, { code: "ERR_VALIDATION", errors: [{ pointer: "/business_date", code: "window" }] }).fields).toEqual({ business_date: "window" });
+  });
+  it("B3's body errors (code invalid_value) land on their field as invalid; other pointers are ignored", () => {
+    expect(reopenRefusal(400, { code: "ERR_VALIDATION", errors: [{ pointer: "/reason", code: "invalid_value" }, { pointer: "/client_uuid", code: "invalid_value" }, { pointer: "body.zone_id", code: "too_long" }] }).fields).toEqual({ reason: "invalid", zone_id: "too_long" });
+  });
+  it("other refusals have no field: the banner shows the problem text", () => {
+    expect(reopenRefusal(409, { code: "ERR_DAY_NOT_FINAL_SUBMITTED" })).toEqual({ fields: {}, windowDays: null, code: "ERR_DAY_NOT_FINAL_SUBMITTED" });
+    expect(reopenRefusal(403, { code: "ERR_OUT_OF_SCOPE" }).fields).toEqual({});
+    expect(reopenRefusal(400, null)).toEqual({ fields: {}, windowDays: null, code: undefined });
   });
 });
 
@@ -123,11 +144,20 @@ describe("the op through the BFF and the contract mock", () => {
     expect(second.status).toBe(409);
     expect((await second.json()).code).toBe("ERR_DAY_NOT_FINAL_SUBMITTED");
   });
-  it("outside the 3-day window: 400 with the business_date pointer and code window", async () => {
+  it("outside the 3-day window: 409 ERR_REQUEST_STATE with context.reopen_window_days, as B3 answers (DayService.reopen)", async () => {
     const r = await op(await admin(), { op: "day.reopen", body: body({ business_date: daysAgo(4) }), reason: REASON });
-    expect(r.status).toBe(400);
-    expect((await r.json()).errors).toEqual([{ pointer: "/business_date", code: "window" }]);
+    expect(r.status).toBe(409);
+    const p = await r.json();
+    expect(p).toMatchObject({ code: "ERR_REQUEST_STATE", context: { reopen_window_days: 3 } });
+    // the form shows it on the date field with the server's window, never the generic "This request is already closed."
+    expect(reopenRefusal(409, p)).toEqual({ fields: { business_date: "window" }, windowDays: 3, code: "ERR_REQUEST_STATE" });
     expect((await op(await admin(), { op: "day.reopen", body: body({ business_date: daysAgo(3), client_uuid: U2 }), reason: REASON })).status).toBe(200);
+  });
+  it("a zone outside the caller's reach is 403 ERR_OUT_OF_SCOPE (B3); a future day is outside the window", async () => {
+    const out = await op(await admin(), { op: "day.reopen", body: body({ zone_id: 999_999 }), reason: REASON });
+    expect([out.status, (await out.json()).code]).toEqual([403, "ERR_OUT_OF_SCOPE"]);
+    const future = await op(await admin(), { op: "day.reopen", body: body({ business_date: "2999-01-01", client_uuid: U2 }), reason: REASON });
+    expect([future.status, (await future.json()).code]).toEqual([409, "ERR_REQUEST_STATE"]);
   });
   it("a short reason never reaches the API; SUPPORT and TSO are refused at the BFF", async () => {
     expect((await op(await admin(), { op: "day.reopen", body: body(), reason: "too short" })).status).toBe(400);
