@@ -556,6 +556,6 @@ internal fun TicketBar(pct: Long, modifier: Modifier = Modifier) {
     }
 }
 
-internal fun hueFill(page: Color, hue: Color, amount: Float): Color = lerp(page, hue, amount)
+internal fun hueFill(page: Color, hue: Color, fraction: Float): Color = lerp(page, hue, fraction)
 
 internal fun helpBrush(p: TicketPalette): Brush = Brush.horizontalGradient(listOf(p.helpStart, p.helpEnd))
