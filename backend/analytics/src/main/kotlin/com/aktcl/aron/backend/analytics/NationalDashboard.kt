@@ -51,6 +51,22 @@ internal const val NATIONAL_ROUTE_SET = "a.planned AND NOT a.exception_approved 
 internal fun zoneSubmittedSql(zone: String, date: String) =
     "EXISTS (SELECT 1 FROM dw.agg_daily_zone fz WHERE fz.zone_id = $zone AND fz.business_date = $date AND fz.final_submitted_at IS NOT NULL AND NOT fz.auto_submitted)"
 
+/**
+ * The Sales-card rule (D-TSO-MAN-08/10, R-F-13), one function for the national Sales card and the route map's Target vs
+ * Achievement card (lead ruling R-W-06, tso-manual X2): from the integers T (the monthly target in base units) and W (the working
+ * days), the daily target round_half_up(1000 T / W) in thousandths, rounded once; null without a target or when W = 0.
+ */
+internal fun dailyTargetThousandths(monthly: Long?, w: Long): Long? =
+    if (monthly == null || w == 0L) null else Math.addExact(Math.multiplyExact(2_000L, monthly), w) / Math.multiplyExact(2L, w)
+
+/**
+ * The Sales-card rule's achievement (R-W-06): round_half_up(10000 A W / T) once, by [Percent.bp] from the integers A (sales),
+ * W and T, never A over the rounded daily target; uncapped. Null without a target, when W = 0, and when T = 0 (Percent.bp's 0
+ * denominator).
+ */
+internal fun salesAchievementBp(sales: Long, w: Long, monthly: Long?): Long? =
+    if (monthly == null || w == 0L) null else Percent.bp(Math.multiplyExact(sales, w), monthly)
+
 /** A non-negative thousandths value as the contract's Decimal3 ("150.000"). */
 internal fun decimal3(thousandths: Long): String = "${thousandths / 1000}.${(thousandths % 1000).toString().padStart(3, '0')}"
 
@@ -247,11 +263,11 @@ class NationalDashboardService(
                 // Contract 1.10.0, D-TSO-MAN-08/10, R-F-13: every figure from the integers T, A, W, each rounded once; W = 0 gives no daily
                 // target and no ring ("—"). The daily target is round_half_up(1000 T / W) thousandths; the ring is exact:
                 // round_half_up(10000 A W / T), never A over the rounded daily target.
-                val daily = if (monthly == null || w == 0L) null else Math.addExact(Math.multiplyExact(2_000L, monthly), w) / Math.multiplyExact(2L, w)
+                val daily = dailyTargetThousandths(monthly, w)
                 NationalSalesCard(
                     category_code = cat, base_unit = unit, total_sales = total, daily_target = daily?.let(::decimal3), sales_so_far = total,
                     remaining = daily?.let { decimal3(maxOf(it - Math.multiplyExact(total, 1_000L), 0L)) },
-                    achievement_pct_bp = if (monthly == null || w == 0L) null else Percent.bp(Math.multiplyExact(total, w), monthly),
+                    achievement_pct_bp = salesAchievementBp(total, w, monthly),
                     target_routes = tgt?.second ?: 0, monthly_target_qty = monthly,
                 )
             }

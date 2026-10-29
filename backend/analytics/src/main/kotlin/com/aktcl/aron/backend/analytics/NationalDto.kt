@@ -117,7 +117,13 @@ data class RouteMapOutlet(
 )
 
 @Serializable
-data class TargetVsAchievement(val category_code: String, val base_unit: String, val daily_target: String?, val sales: Long, val achievement_pct_bp: Long?)
+data class TargetVsAchievement(
+    val category_code: String, val base_unit: String, val daily_target: String?, val sales: Long, val achievement_pct_bp: Long?,
+    /** R-W-06 (tso-manual X2): T, the route's monthly target for the category in base units as Decimal3 ("<n>.000"); null without a target. */
+    val monthly_target_qty: String?,
+    /** R-W-06: W at the route's zone (0..31), always sent; 0 gives no daily target and no bp (R-F-13). */
+    val working_days: Int,
+)
 
 @Serializable
 data class RouteMapCpr(val target_outlets: Int, val successful_calls: Int, val geo_validated: Int, val cpr_pct_bp: Int?)
