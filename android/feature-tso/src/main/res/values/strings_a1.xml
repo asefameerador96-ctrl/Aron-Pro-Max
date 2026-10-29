@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lane A1 (build contract s5): drawer, chrome, dashboard and target strings. Bangla twin in values-bn/strings_a1.xml. -->
+<resources>
+    <string name="tso_drawer_tickets">Tickets</string>
+    <string name="tso_drawer_target_status">Target Status</string>
+    <string name="tso_chrome_notifications">Notifications</string>
+</resources>

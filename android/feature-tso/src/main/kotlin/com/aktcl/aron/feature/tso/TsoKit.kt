@@ -1,6 +1,33 @@
 package com.aktcl.aron.feature.tso
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -51,6 +78,258 @@ fun TsoFrame(
         bottomButtons = bottomBar,
         content = content,
     )
+}
+
+/**
+ * The frame of every TSO screen opened through [TsoNav] (build contract s5 A1): the top bar with the title and the back
+ * button ([onBack], by default [TsoNav.back]), the Home button when [homeButton] (the s8 FAB column: Y screens pass true),
+ * and [bottomBar] docked under the content. a1-stubs gives it a minimal working body in the current look; A1's styling
+ * step draws the TsoNight bar, the grey round back button and the HomeFab without changing this signature.
+ */
+@Composable
+fun TsoFrame(
+    title: String,
+    nav: TsoNav,
+    homeButton: Boolean,
+    bottomBar: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit = { nav.back() },
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val buttons: (@Composable RowScope.() -> Unit)? = if (bottomBar == null) null else { { bottomBar() } }
+    AronScaffold(
+        modifier = modifier,
+        topBar = { AronTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back)) },
+        bottomButtons = buttons,
+    ) {
+        content()
+        if (homeButton) TsoHomeButton({ nav.home() }, Modifier.align(Alignment.BottomEnd).padding(16.dp))
+    }
+}
+
+/** Test tags of the TSO kit. */
+object TsoKitTags {
+    const val HOME = "tso_kit_home"
+    fun segment(index: Int) = "tso_kit_segment_$index"
+    fun pill(index: Int) = "tso_kit_pill_$index"
+}
+
+/** The round Home button (FAB) of a [TsoFrame]; returns to the root. Minimal body until A1's `aron/HomeFab.kt`. */
+@Composable
+private fun TsoHomeButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    val label = stringResource(R.string.tso_chrome_home)
+    Box(
+        modifier
+            .testTag(TsoKitTags.HOME)
+            .size(56.dp)
+            .clip(CircleShape)
+            .background(look.purple)
+            .clickable(role = Role.Button, onClickLabel = label, onClick = onClick)
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(com.aktcl.aron.core.ui.AronIcons.Dashboard, contentDescription = null, tint = look.onBar)
+    }
+}
+
+/** The colour of a [TsoGradientButton]: Lime (Final Submit and plan actions), Blue (Submit ticket), Cyan (Login). */
+enum class TsoButtonStyle { Lime, Blue, Cyan }
+
+/**
+ * A full-width gradient action button (screenshots 5, 17, 24, 31). A busy button is not pressable. Minimal body in the
+ * current look's gradients; A1's styling step takes the TsoNight gradients and the 7:1 text contrast.
+ */
+@Composable
+fun TsoGradientButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    style: TsoButtonStyle = TsoButtonStyle.Blue,
+    enabled: Boolean = true,
+    busy: Boolean = false,
+) {
+    val look = LocalAronLook.current
+    val on = enabled && !busy
+    val brush = when {
+        !on -> SolidColor(look.disabledFill)
+        style == TsoButtonStyle.Lime -> Brush.horizontalGradient(listOf(look.goStart, look.goEnd))
+        style == TsoButtonStyle.Cyan -> Brush.horizontalGradient(listOf(look.printStart, look.printEnd))
+        else -> Brush.horizontalGradient(listOf(look.barStart, look.barEnd))
+    }
+    Box(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(brush)
+            .clickable(enabled = on, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = if (on) look.onBar else look.disabledText, textAlign = TextAlign.Center)
+    }
+}
+
+/**
+ * A TSO content card (Target Status, tickets, dashboard cards). [glow] marks the highlighted card of a screen; [onClick]
+ * makes the whole card one button. Minimal body on the kit card; A1's styling step draws the TsoNight gradient and glow.
+ */
+@Composable
+fun TsoCard(
+    modifier: Modifier = Modifier,
+    glow: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val look = LocalAronLook.current
+    AronCard(if (glow) modifier.border(1.dp, look.purple, RoundedCornerShape(com.aktcl.aron.core.ui.AronLook.CardRadius)) else modifier, onClick = onClick, content = content)
+}
+
+/**
+ * A text field with its label ABOVE it (never in the outline notch) and a placeholder inside (screenshots 5, 17, 20, 43).
+ * TalkBack names the field by [label] (or [placeholder] when there is no label). Minimal body on a Material outlined field; A1's
+ * styling step draws the TsoNight glow outline.
+ */
+@Composable
+fun TsoGlowField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    placeholder: String? = null,
+    enabled: Boolean = true,
+    singleLine: Boolean = true,
+    minLines: Int = 1,
+    isError: Boolean = false,
+    supportingText: String? = null,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+) {
+    val look = LocalAronLook.current
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (label != null) Text(label, style = MaterialTheme.typography.labelLarge, color = look.ink)
+        OutlinedTextField(
+            value, onValueChange, modifier.fillMaxWidth().semantics { (label ?: placeholder)?.let { contentDescription = it } },
+            enabled = enabled, singleLine = singleLine, minLines = minLines, isError = isError,
+            placeholder = if (placeholder == null) null else { { Text(placeholder, color = look.inkMuted) } },
+            supportingText = if (supportingText == null) null else { { Text(supportingText, color = if (isError) look.red else look.inkMuted) } },
+            keyboardOptions = keyboardOptions, visualTransformation = visualTransformation,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = look.card, unfocusedContainerColor = look.card, disabledContainerColor = look.card,
+                focusedTextColor = look.ink, unfocusedTextColor = look.ink, disabledTextColor = look.inkMuted,
+                focusedBorderColor = look.purple, unfocusedBorderColor = look.underline, cursorColor = look.purple,
+            ),
+        )
+    }
+}
+
+/**
+ * A closed field that opens a list of [options] (issue type, leave type, route, zone levels; screenshots 17, 21, 23, 32):
+ * the label above, the chosen option's text (or [placeholder]) and a chevron. Choosing calls [onSelect] and closes the
+ * list. Minimal body on a Material dropdown menu; A1's styling step moves it to core-ui `aron/AronDropdown.kt`.
+ */
+@Composable
+fun <T> TsoDropdownField(
+    options: List<T>,
+    selected: T?,
+    onSelect: (T) -> Unit,
+    optionLabel: (T) -> String,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    placeholder: String = "",
+    enabled: Boolean = true,
+) {
+    val look = LocalAronLook.current
+    var open by remember { mutableStateOf(false) }
+    val shown = selected?.let(optionLabel)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (label != null) Text(label, style = MaterialTheme.typography.labelLarge, color = look.ink)
+        Box {
+            Row(
+                modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(look.card)
+                    .border(1.dp, look.underline, RoundedCornerShape(12.dp))
+                    .clickable(enabled = enabled, role = Role.DropdownList, onClickLabel = label) { open = true }
+                    // TalkBack reads the field's name and what it holds now ("Issue type, Login OTP issue")
+                    .semantics { contentDescription = listOfNotNull(label, shown ?: placeholder.ifEmpty { null }).joinToString(", ") }
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(shown ?: placeholder, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = if (shown != null) look.ink else look.inkMuted)
+                Icon(com.aktcl.aron.core.ui.AronIcons.ChevronRight, contentDescription = null, tint = look.inkMuted)
+            }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                options.forEach { o ->
+                    DropdownMenuItem(text = { Text(optionLabel(o)) }, onClick = { open = false; onSelect(o) })
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Two or more equal tabs in one bar (Monthly Target / Till Date Target, screenshots 39 to 42): the selected one filled.
+ * Each tab is a selectable Tab for TalkBack. Minimal body; A1's styling step takes the TsoNight green fill and glow.
+ */
+@Composable
+fun TsoSegmentedTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    Row(modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).border(1.dp, look.underline, RoundedCornerShape(12.dp))) {
+        labels.forEachIndexed { i, l ->
+            val on = i == selected
+            Box(
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp)
+                    .background(if (on) look.goStart else look.card)
+                    .selectable(selected = on, role = Role.Tab, onClick = { onSelect(i) })
+                    .testTag(TsoKitTags.segment(i))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) { Text(l, style = MaterialTheme.typography.titleSmall, color = if (on) look.onBar else look.ink) }
+        }
+    }
+}
+
+/**
+ * A scrolling row of pill tabs (All / New / In Progress / Resolved / Closed, screenshots 12 and 13): the selected pill
+ * filled. Minimal body; A1's styling step takes the TsoNight blue fill.
+ */
+@Composable
+fun TsoPillTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    Row(modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        labels.forEachIndexed { i, l ->
+            val on = i == selected
+            Box(
+                Modifier
+                    .heightIn(min = 48.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(if (on) look.purple else look.card)
+                    .selectable(selected = on, role = Role.Tab, onClick = { onSelect(i) })
+                    .testTag(TsoKitTags.pill(i))
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text(l, style = MaterialTheme.typography.labelLarge, color = if (on) look.onBar else look.ink) }
+        }
+    }
+}
+
+/** What a [TsoStatusPill] says by colour; the words always carry the meaning. */
+enum class TsoPillTone { Neutral, Info, Success, Warning, Danger }
+
+/** A small status chip (P1 - Highest, RESOLVED, Pending; screenshots 12 to 14, 35). Minimal body; A1's styling step takes the TsoNight chips. */
+@Composable
+fun TsoStatusPill(text: String, modifier: Modifier = Modifier, tone: TsoPillTone = TsoPillTone.Neutral) {
+    val look = LocalAronLook.current
+    val ink = when (tone) { TsoPillTone.Danger -> look.red; TsoPillTone.Success -> look.goStart; TsoPillTone.Warning -> look.amber; TsoPillTone.Info -> look.purple; TsoPillTone.Neutral -> look.inkMuted }
+    Box(modifier.clip(RoundedCornerShape(50)).border(1.dp, ink, RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 4.dp)) {
+        Text(text, style = MaterialTheme.typography.labelMedium, color = ink)
+    }
 }
 
 /** One docked action: the label, what it does, whether it can be pressed. */

@@ -62,7 +62,8 @@ class MainActivity : ComponentActivity() {
     private val packshotProvider by lazy { com.aktcl.aron.core.ui.aron.BitmapPackshotProvider(skuPackshots::bitmap, skuPackshots::cached) }
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
-    private val readModels by lazy { TsoReadModels(components, databases, TsoOutbox(applicationContext, components, databases, scheduler)) }
+    private val outbox by lazy { TsoOutbox(applicationContext, components, databases, scheduler) }
+    private val readModels by lazy { TsoReadModels(components, databases, outbox) }
     private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
 
     /** F-SYS-020: an update check on every resume (throttled to 12 h inside, cached offline). */
@@ -173,10 +174,20 @@ class MainActivity : ComponentActivity() {
                             }
                             // The bundle head check of Day 1 stays the source of the status row; nothing on Home waits for it.
                             // F-SYS-030: this user's camera and photo queue; the overlay is drawn once at the top of the day
-                            val media by androidx.compose.runtime.produceState<com.aktcl.aron.core.media.MediaComponents?>(null, s.user.userId) {
+                            val mediaState = androidx.compose.runtime.produceState<com.aktcl.aron.core.media.MediaComponents?>(null, s.user.userId) {
                                 value = runCatching { mediaShell.componentsFor(s.user.userId) { components.trustedClock.businessDate().toString() } }.getOrNull()
                             }
-                            media?.let { com.aktcl.aron.core.media.CameraCaptureOverlay(it.camera) }
+                            mediaState.value?.let { com.aktcl.aron.core.media.CameraCaptureOverlay(it.camera) }
+                            // a1-stubs: one host per signed-in user; the lanes' hosts build their ports from it (A2 TicketsHost, A3 AreasHost)
+                            val host = remember(s.user.userId) {
+                                TsoHost(
+                                    applicationContext, components, databases, outbox, readModels, s.user.userId, s.user.username,
+                                    online = { isOnline() }, media = { mediaState.value },
+                                    mediaFor = { mediaShell.componentsFor(s.user.userId) { components.trustedClock.businessDate().toString() } },
+                                )
+                            }
+                            val areas = remember(host) { areaScreens(AreasHostDeps(host)) }
+                            val tickets = remember(host) { ticketScreens(TicketsHostDeps(host)) }
                             val vm = viewModel(key = "home-" + s.user.userId) {
                                 HomePlaceholderViewModel(System::currentTimeMillis) { components.syncApi.bundle() }
                             }
@@ -214,40 +225,18 @@ class MainActivity : ComponentActivity() {
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
                                 // the dashboard origin from the build config (aron.webBaseUrl); empty until it is configured
                                 webOrigin = BuildConfig.WEB_BASE_URL.ifEmpty { null },
-                                leave = remember(s.user.userId) { readModels.leave(s.user.userId) },
-                                leaveQueue = remember(s.user.userId) { readModels.leaveQueue(s.user.userId) },
-                                today = { components.trustedClock.businessDate().toString() },
-                                feedback = remember(s.user.userId) { readModels.feedback(s.user.userId) },
-                                feedbackQueue = remember(s.user.userId) { readModels.feedbackQueue(s.user.userId) { mediaShell.componentsFor(s.user.userId) { components.trustedClock.businessDate().toString() } } },
-                                feedbackPhotos = media?.let { readModels.feedbackPhotos(it) },
-                                userId = s.user.userId,
                                 changePassword = remember { readModels.changePassword() },
                                 support = { back ->
                                     com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.set_support), onBack = back) }) { SupportHost(systemShell, s.user.userId, versionName) }
                                 },
-                                periphery = remember(s.user.userId) {
-                                    com.aktcl.aron.feature.tso.PeripheryDeps(
-                                        readModels.periphery(s.user.userId, readModels.plan(s.user.userId)), readModels.fix(applicationContext),
-                                        online = { isOnline() }, nowMs = { components.trustedClock.nowMs() },
-                                    )
-                                },
-                                finalSubmit = remember(s.user.userId) { readModels.finalSubmit(s.user.userId, readModels.plan(s.user.userId)) },
-                                myCall = remember(s.user.userId) {
-                                    val src = readModels.plan(s.user.userId)
-                                    com.aktcl.aron.feature.tso.mycall.MyCallDeps(
-                                        src, readModels.planQueue(s.user.userId, src), readModels.queryQueue(s.user.userId), readModels.taskQueue(s.user.userId),
-                                        { readModels.rubric(s.user.userId) }, { readModels.taskTypes(s.user.userId) },
-                                    )
-                                },
-                                nowIso = { java.time.Instant.ofEpochMilli(components.trustedClock.nowMs()).toString() },
-                                screens = mapOf<com.aktcl.aron.feature.tso.TsoScreen, @androidx.compose.runtime.Composable (() -> Unit) -> Unit>(
-                                    com.aktcl.aron.feature.tso.TsoScreen.DASHBOARD to { back ->
+                                screens = mapOf<com.aktcl.aron.feature.tso.TsoScreen, com.aktcl.aron.feature.tso.TsoScreenContent>(
+                                    com.aktcl.aron.feature.tso.TsoScreen.DASHBOARD to { nav, _ ->
                                         val api = remember(s.user.userId) { TsoApi(components.apiClient, applicationContext, s.user.userId) }
                                         // The business day follows the trusted clock at every recomposition, not the device clock at start.
                                         val day = com.aktcl.aron.rules.BusinessDate.of(components.trustedClock.nowMs()).toString()
-                                        TsoDashboardHost(api, day, back)
+                                        TsoDashboardHost(api, day, { nav.back() })
                                     },
-                                ),
+                                ) + areas + tickets,
                             ) } }
                             }
                         }
@@ -257,4 +246,34 @@ class MainActivity : ComponentActivity() {
         }
         }
     }
+}
+
+/**
+ * What every feature host of the signed-in TSO day can use (A1 dashboard, targets and inbox; A2 [ticketScreens]; A3
+ * [areaScreens]), built once per signed-in user by [MainActivity]. A host builds its ports from these handles, so a lane
+ * never edits MainActivity to wire a screen.
+ */
+class TsoHost(
+    val context: Context,
+    val components: SessionComponents,
+    val databases: com.aktcl.aron.core.database.UserDatabases,
+    /** The one TSO outbox (records and local mirror rows in one transaction, idempotent by client uuid). */
+    val outbox: TsoOutbox,
+    val readModels: TsoReadModels,
+    val userId: Long,
+    /** The login name: part of every retained screen-state key, so a shared phone never hands one rep's state to the next. */
+    val userKey: String,
+    /** Validated connectivity right now (asked on demand: no listener, no polling). */
+    val online: () -> Boolean,
+    /** This user's camera and photo queue once ready, else null; a compose state read, so a screen recomposes when it lands. */
+    val media: () -> com.aktcl.aron.core.media.MediaComponents?,
+    /** This user's camera and photo queue, created on demand (outside composition). */
+    val mediaFor: suspend () -> com.aktcl.aron.core.media.MediaComponents,
+) {
+    /** Dhaka business date `YYYY-MM-DD` from trusted time. */
+    val today: () -> String = { components.trustedClock.businessDate().toString() }
+    /** Trusted epoch milliseconds. */
+    val nowMs: () -> Long = { components.trustedClock.nowMs() }
+    /** Trusted now as RFC 3339. */
+    val nowIso: () -> String = { java.time.Instant.ofEpochMilli(components.trustedClock.nowMs()).toString() }
 }
