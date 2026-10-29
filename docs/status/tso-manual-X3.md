@@ -107,3 +107,9 @@ Not run: Playwright e2e (Linux runner), a live browser against the dev API, Grad
 
 The lead merges X3 after X1 (X3 is based on it). When X2 is on dev (test account), open `/final-submit/submit` as a delegated
 DMO, `/tso-daily-tracking`, a route map and the national dashboard there and check the figures against the phone.
+
+## Verify (final)
+
+Rerun on `4564d8dcd` (the four code commits plus this file's first version; the only later commit adds this section):
+`cd web && npm run typecheck` exit 0; `npm run lint` exit 0; `npm test` 156 files, 1960 passed, 1 skipped, 0 failed;
+`python3 tools/ci/money-float-scan.py` 13/13 allowed, 0 open, exit 0.
