@@ -229,4 +229,63 @@ files untouched), device checks.
 
 ### Next step
 
-Lane B2's s5 items are built. Left for the lead: merge (B2 after B1), the asks above, and the full CI run on Linux.
+Superseded by the fix round below.
+
+## Fix round: checker defects (2026-10-29)
+
+An independent checker reported 1 medium and 6 low defects on `5e53b5ea`. Each is answered below; the code and test changes are
+commit `d59515a7`, plus this status file.
+
+### Done
+
+| # | sev | defect | what was done |
+|---|---|---|---|
+| 1 | medium | Old dw-only midnight stamps (`final_submitted_at` set, `auto_submitted` true, no `app.final_submit` row) still counted as Final Submits until a later rebuild of that zone-day; the old test rebuilt before asserting | **Fixed.** `zoneSubmittedSql` (NationalDashboard.kt) adds `AND NOT fz.auto_submitted`: one rule for the national card and the summary. Safe because `rebuildZoneDay` always writes `auto_submitted = false`. New test `FinalSubmitPctUnifiedTest#anOldMidnightStampIsNoFinalSubmitEvenBeforeItsZoneDayIsRebuilt`: stamps both service zone-days and reads the card and the summary for the territory, zone and route-only callers **without** a rebuild (0 of 2, 0 of 1); then a live submit of one zone rebuilds that zone-day only and counts (1 of 2), while the other keeps its old stamp and still does not count. Optional data clean-up asked of F2 (ask 10). |
+| 2 | low | Final-submit figures read the zone-day projection, not live rows; no test shows that a real reopen or job submit reaches the card without the whole-day rebuild | **Code unchanged (D-B2-18 stands, ratification asked, ask 11).** New test `FinalSubmitPctUnifiedTest#oneRouteDayDirtyMarkCarriesASubmitAndAReopenToTheCardAndTheSummary`: a `via = 'job'` row plus ONE `app.mark_dirty('route_day_agg', R8, day, 'final_submit')` (what DayApi does), the worker, card and summary 1 of 2; the reopen plus ONE `mark_dirty(..., R9, 'reopen')`, the worker, 0 of 2. No `requestRebuild(day)` in it. Evidence from `tso-man/B3` at `f839baaf` (read only): `AutoFinalSubmitJob.closeZone` calls `DayApi.closeLocked(via = "job")`, which marks every route-day of the zone dirty with reason `final_submit` (DayApi.kt:425); `DayStates.reopen` marks each reopened route-day `reopen` (DayStates.kt:213); the worker turns a route-day rebuild into a `zone_day_agg` mark (AggregationWorker.kt:142). The end-to-end test through B3's own code paths is still B3's (ask 8). |
+| 3 | low | s4.2 "one channel -> 100.00% Astha Channel" and CPR "29/1186 -> 2.4% (never 2.5)" not tested through the national SQL | **Fixed.** Fixture `tso_dashboard_day.sql`: OX (route RX, Exact Zone) is an Astha outlet (no other test reads OX's channel). `NationalExactPctTest#byChannelStdOfOneChannelIsOneHundredPercent`: Exact Zone Astha 10000 bp, pie label "100.00% Astha Channel", every channel listed in the brief's order, the others 0; territory GT 7500 / Astha 2500 ("75.00% GT Channel", "25.00% Astha Channel"). `#cprOf29Over1186IsTwoPointFourNeverTwoPointFive`: R8 plans 1176 target outlets (R9 10: 1186) and sells at 29 new outlets through visits, memos and lines in the app tables, the real worker, then `cpr()` of Gulshan - Test: 1186 / 29, `cpr_pct_bp` 245, text "2.4%" from the integers (rounding the 245 bp again would give 2.5); the summary reads 1186 / 29 too. |
+| 4 | low | `TargetAchievementApi.figuresByZone` filtered the full T and A lists once per zone (O(zones x rows)) | **Fixed.** Grouped once with `groupBy` (O(rows)); same maps, same key order. TargetAchievementTest unchanged and green. |
+| 5 | low | `scope-cases.txt` marker after the first appended line; four out-of-ownership edits; DashboardTest no longer covered a final-submitted zone; GeoValidationTest's cross-check became a constant | **Fixed where B2 can:** the `# tso-manual B2` line now heads B2's block (above `GET /v1/dashboards/targets`; only B2's own lines moved). `DashboardTest#nationalFiguresEqualTheHandComputedControlTotals` inserts zone 2's `app.final_submit` row and runs the worker: zones final-submitted 1, 50.0 % again (was 0 / 0.0). `GeoValidationTest#nationalFiguresEqualTheHandComputedOnes` cross-checks again: the summary's geo % equals the national Geo Fencing card's (1 of 4) computed from the card's integers, beside the 25.0. Ratification of the four edits (AggregationWorker.kt, NationalDashboardTest, DashboardTest, GeoValidationTest) asked of the lead (ask 12). |
+| 6 | low | The web Geo Fencing card moved to the national route set (D-B2-16) without a lead ruling; FF Geo pins and the route map still count every route | **Code unchanged; ruling asked (ask 9).** B2 owns docs/10 line 26 only, so the note in docs/09 or docs/10 is for the docs owner once ruled; W1 already has ask 6. |
+| 7 | low | BRAND users get 403 on segment-share over HTTP while contract 1.10.0 and D-B2-21 say they read their own brands | **Unchanged (platform file, not B2's); ask 1 stands.** When `Pattern("POST", "/v1/dashboards/national/segment-share")` is appended to `PortalLevels.BRAND_DASHBOARD`, flip `SegmentShareTest`'s BRAND assertion from 403 to 200 (body: Maxim's segment only). |
+
+### Decisions
+
+- **D-B2-24 Old stamps.** A zone-day row with `auto_submitted` true is never a Final Submit, whatever `final_submitted_at` holds; only
+  the rebuild from live rows (which writes `auto_submitted = false`) can make a zone-day submitted. No data migration from B2 (F2 owns
+  V0141+, ask 10); the read rule alone makes the figures right on the day B2 deploys.
+- **D-B2-25 Fixture channel.** The s4.2 one-channel case uses Exact Zone (OX made an Astha outlet) rather than a new zone, so no other
+  figure of the parity day moves (Exact Zone plans no route: no route-set figure includes it).
+
+### Deviations
+
+- Fix-round edits to files outside B2's s5 list, each marked `tso-manual B2`: `DashboardTest` (a fixture `app.final_submit` row inside
+  the test, expectation back to 1 / 50.0) and `GeoValidationTest` (the summary == card cross-check). Both were already deviation 2 of
+  step 2; the checker asked for these changes.
+
+### Asks (new; asks 1 to 8 of step 2 stand)
+
+9. **Lead:** rule whether the web national Geo Fencing card follows D-TSO-MAN-09 (completed calls of the national route set, as built,
+   D-B2-16) or keeps every route in scope (then only the summary moves and summary == card parity holds only for the TSO app). If
+   ruled as built, the docs owner notes it in docs/09 or docs/10 (B2 owns docs/10 line 26 only), and W1 (ask 6) shows it.
+10. **F2 (optional, V0141+):** a one-off clean-up of the stamps the removed worker left, so `dw.agg_daily_zone` and
+    `dw.v_route_day.zone_auto_submitted` stop showing them: `UPDATE dw.agg_daily_zone z SET final_submitted_at = (SELECT min(f.submitted_at)
+    FROM app.final_submit f WHERE f.zone_id = z.zone_id AND f.business_date = z.business_date AND f.reopened_at IS NULL), auto_submitted =
+    false WHERE z.auto_submitted;` (the figures no longer need it: D-B2-24).
+11. **Lead:** ratify D-B2-18 (final-submit figures read the zone-day projection, rebuilt from the live rows on every route-day dirty
+    mark) or rule a direct read of `app.final_submit` behind the summary cache key.
+12. **Lead:** ratify the four out-of-ownership edits (AggregationWorker.kt call removal; NationalDashboardTest, DashboardTest and
+    GeoValidationTest expectations).
+
+### Verify (this worktree, local laptop, JDK 21, UTC, local PostgreSQL 16; CI not run, nothing pushed)
+
+| Command (through gl.sh) | Head | Result |
+|---|---|---|
+| `:backend:analytics:test --tests` FinalSubmitPctUnifiedTest, NationalExactPctTest, DashboardTest, GeoValidationTest, TargetAchievementTest, TsoDashboardParityTest, SegmentShareTest, BrandCprTest, LoginSubmitUsersTest, NationalDashboardTest | `5e53b5ea` + the fix (committed as `d59515a7`) | BUILD SUCCESSFUL in 26 min: 76 tests, 0 failures (FinalSubmitPctUnifiedTest 4, NationalExactPctTest 8, DashboardTest 9, GeoValidationTest 4, TargetAchievementTest 9, TsoDashboardParityTest 5, SegmentShareTest 4, BrandCprTest 5, LoginSubmitUsersTest 6, NationalDashboardTest 22) |
+| **Full s5 Verify** `:backend:analytics:test :backend:app:test --continue` | `d59515a7` | **BUILD SUCCESSFUL in 2 h 19 min**: analytics 50 classes, **299 tests, 0 failures** (295 before + 4 new: FinalSubmitPctUnifiedTest 2 -> 4, NationalExactPctTest 6 -> 8); app 89 classes, **464 tests, 0 failures** (2 skipped) |
+
+Not run: CI on Linux, the web suite (no W1 file touched), device checks. No Android screen in this round: no screenshot goldens needed.
+
+### Next step
+
+Lane B2's s5 items are built and the checker's defects are answered. Left for the lead: asks 1, 5, 7, 9, 11, 12 (rulings and the
+platform allow-list), F2 ask 10 (optional), B3 ask 8 (end-to-end test), W1 ask 6, merge (B2 after B1) and the full CI run on Linux.
