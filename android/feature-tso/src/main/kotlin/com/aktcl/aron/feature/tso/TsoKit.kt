@@ -57,8 +57,25 @@ import com.aktcl.aron.core.ui.aron.nightPage
 import com.aktcl.aron.core.ui.aron.nightRoles
 import com.aktcl.aron.core.ui.aron.nightText
 
-/** Room a scrolling screen leaves after its last item when it shows the Home button (the button sits over the content). */
+/**
+ * Room the root Dashboard leaves after its last card for the Home button it draws over its content. A [TsoFrame] keeps its own
+ * content above the Home disc ([TsoFabBand]), so a screen inside it needs no such room.
+ */
 val TsoFabPadding: Dp = AronHomeFabHeight
+
+/**
+ * tso-manual X4b: the band of the Home disc (64 dp over a 14 dp margin) under a [TsoFrame]'s content, as the vendor's notched bottom
+ * band (screenshots 31, 43): the content (a form's Save, a list's last row) never sits under the disc, so the disc never takes the
+ * tap meant for it; only the disc's soft glow rises over the content's lower edge.
+ */
+internal val TsoFabBand: Dp = 64.dp + 14.dp
+
+/**
+ * tso-manual X4b: with the Home button AND a bottom bar, the bar's action sits above the Home disc, the disc overlapping only its
+ * lower edge (screenshot 33: Set Plan over the house): 16 dp of the disc may overlap the bar's 52 dp button, so the button's centre
+ * (where a tap lands) is never under the disc.
+ */
+internal val TsoBarOverFab: Dp = TsoFabBand - 16.dp
 
 /**
  * The frame of the TSO screens that are not migrated to the [TsoNav] frame yet (A3's areas): the TSO top bar (grey round back
@@ -91,7 +108,7 @@ fun TsoFrame(
  * The frame of every TSO screen opened through [TsoNav] (build contract s5 A1; screenshots 8, 17, 24, 39): the TSO top bar with the
  * gradient [title] and the grey round back button ([onBack], by default [TsoNav.back]) on the navy page, [bottomBar] docked under
  * the content, and the Home button at the bottom centre when [homeButton] (pass `TsoFab.of(screen)`, the s8 FAB column). A scrolling
- * content leaves [TsoFabPadding] at its end when the Home button shows.
+ * content ends above the Home disc ([TsoFabBand]); a bottom bar sits above the disc too ([TsoBarOverFab]), as screenshots 31, 33, 43.
  */
 @Composable
 fun TsoFrame(
@@ -107,8 +124,17 @@ fun TsoFrame(
     Box(modifier.fillMaxSize().nightPage(n)) {
         Column(Modifier.fillMaxSize()) {
             AronNightTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back))
-            Box(Modifier.weight(1f).fillMaxWidth(), content = content)
-            if (bottomBar != null) Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).padding(16.dp)) { bottomBar() }
+            Box(
+                Modifier.weight(1f).fillMaxWidth()
+                    .then(if (homeButton && bottomBar == null) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = TsoFabBand) else Modifier),
+                content = content,
+            )
+            if (bottomBar != null) {
+                Box(
+                    Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = if (homeButton) TsoBarOverFab else 16.dp),
+                ) { bottomBar() }
+            }
         }
         if (homeButton) {
             AronHomeFab({ nav.home() }, stringResource(R.string.tso_chrome_home), Modifier.align(Alignment.BottomCenter), buttonModifier = Modifier.testTag(TsoKitTags.HOME))
@@ -138,9 +164,11 @@ fun TsoGradientButton(
     style: TsoButtonStyle = TsoButtonStyle.Blue,
     enabled: Boolean = true,
     busy: Boolean = false,
+    /** A decorative glyph before the label (core-ui `AronIcons`), e.g. the picture of Browse Gallery (screenshot 43). */
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
 ) {
     val s = when (style) { TsoButtonStyle.Lime -> NightButtonStyle.Lime; TsoButtonStyle.Cyan -> NightButtonStyle.Cyan; TsoButtonStyle.Blue -> NightButtonStyle.Blue }
-    NightButton(text, onClick, modifier, style = s, enabled = enabled, busy = busy)
+    NightButton(text, onClick, modifier, style = s, enabled = enabled, busy = busy, icon = icon)
 }
 
 /**
@@ -288,20 +316,6 @@ fun RowScope.TsoBottomBar(primary: TsoAction, modifier: Modifier = Modifier, sec
 @Composable
 fun TsoButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     AronSecondaryButton(text, onClick, modifier.fillMaxWidth(), enabled = enabled)
-}
-
-/** One tile of a menu screen: its label, the icon id for [tsoIcon], the test tag and what it opens. */
-data class TsoMenuTile(val label: String, val icon: String, val tag: String, val onClick: () -> Unit)
-
-/** A menu screen's tiles (sr/outlet-menu.png): grey tiles with the gradient icon over a red label, three to a row. */
-@Composable
-fun TsoMenuGrid(tiles: List<TsoMenuTile>, modifier: Modifier = Modifier) {
-    val look = LocalAronLook.current
-    com.aktcl.aron.core.ui.aron.AronTileGrid(tiles, modifier.padding(12.dp), columns = 3) { t, m ->
-        com.aktcl.aron.core.ui.aron.AronTile(
-            t.label, tsoIcon(t.icon), onClick = t.onClick, modifier = m.then(Modifier.testTag(t.tag)), menu = true, labelColor = look.tileLabelOutlet,
-        )
-    }
 }
 
 /** The quiet loading state (no spinner): grey placeholder lines on a white card, announced as "Loading". */

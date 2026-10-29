@@ -93,17 +93,16 @@ class MainActivity : ComponentActivity() {
         activityLog.flushSoon(id) // the log's own scope: onDestroy right after must not cancel the write
     }
 
-    /** tso-manual A1: the screen a tapped push notice asks for (the inbox or the ticket dashboard); TsoApp opens it on the Dashboard. */
-    private val pushOpen = kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.feature.tso.TsoScreen?>(null)
+    /**
+     * tso-manual A1, X4b (R-W-12 (1)): what a tapped push notice asks for ([TsoPushOpen]: the inbox, or the Ticket Dashboard
+     * through `TicketPush.open`); TsoApp applies it on the Dashboard. Read in onCreate and onNewIntent.
+     */
+    private val pushOpen = kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.feature.tso.TsoOpenRequest?>(null)
 
     private fun takePushIntent(intent: android.content.Intent?) {
-        val screen = when (com.aktcl.aron.core.sync.push.PushNotices.opens(intent)) {
-            com.aktcl.aron.core.sync.push.PushNotices.OPEN_INBOX -> com.aktcl.aron.feature.tso.TsoScreen.NOTIFICATIONS
-            com.aktcl.aron.core.sync.push.PushNotices.OPEN_TICKETS -> com.aktcl.aron.feature.tso.TsoScreen.TICKET_DASHBOARD
-            else -> return
-        }
+        val request = TsoPushOpen.request(intent) ?: return
         intent?.removeExtra(com.aktcl.aron.core.sync.push.PushNotices.EXTRA_OPEN) // a recreate must not open it again
-        pushOpen.value = screen
+        pushOpen.value = request
     }
 
     override fun onNewIntent(intent: android.content.Intent) {

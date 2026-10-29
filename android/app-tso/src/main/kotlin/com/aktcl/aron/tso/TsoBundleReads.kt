@@ -4,6 +4,12 @@ import com.aktcl.aron.core.database.entity.OutletEntity
 import com.aktcl.aron.core.database.entity.RouteEntity
 import com.aktcl.aron.feature.tso.mycall.PlanOutlet
 import com.aktcl.aron.feature.tso.mycall.PlanRoute
+import com.aktcl.aron.feature.tso.mycall.RouteSr
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.longOrNull
 
 /**
  * The TSO bundle carries the zone-wide routes and outlets of the TSO's reach with the AMO outlet fields (owner_name, contact_number,
@@ -31,8 +37,50 @@ internal object TsoBundleReads {
         PlanOutlet(it.outletId, it.code, it.name, it.nameBn, it.ownerName, it.clusterName.takeIf { c -> c.isNotBlank() }, it.contactNumber?.takeIf { p -> p.isNotBlank() }, it.channel.takeIf { c -> c.isNotBlank() })
     }
 
-    /** The routes of the bundle. The bundle names no SR on a route (the assignee comes from the online read), so [PlanRoute.sr] is null here. */
-    fun routes(rows: List<RouteEntity>): List<PlanRoute> = rows.filter { it.status == "active" }.map {
-        PlanRoute(it.routeId, it.code, it.name, it.zoneId, it.displayLabel)
+    /**
+     * What a stored route snapshot says about its SR (contract 1.10.0 `RouteSnapshot.sr_user_id` / `sr_name`, R-W-06 (4)): the
+     * route's SR on the bundle date, the same SR `GET /v1/routes` names. [carried] is false when the snapshot has neither member
+     * (a server before R-W-06, or an unreadable section); [sr] is null when the route is vacant ("SR Not Set").
+     */
+    data class SrInBundle(val carried: Boolean, val sr: RouteSr?)
+
+    private val NOT_CARRIED = SrInBundle(false, null)
+
+    /** Reads `sr_user_id` / `sr_name` from a route's raw snapshot section (`route.<id>`: every member but the route and outlets). */
+    fun srOf(extras: String?): SrInBundle {
+        val o = runCatching { Json.parseToJsonElement(extras ?: return NOT_CARRIED) as? JsonObject }.getOrNull() ?: return NOT_CARRIED
+        if ("sr_user_id" !in o) return NOT_CARRIED
+        val idEl = o["sr_user_id"]
+        if (idEl == null || idEl is JsonNull) return SrInBundle(true, null) // vacant on the bundle date
+        val id = (idEl as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull?.takeIf { it >= 1 } ?: return NOT_CARRIED
+        val name = (o["sr_name"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() } ?: return NOT_CARRIED
+        return SrInBundle(true, RouteSr(id, name))
+    }
+
+    /** One active route of the bundle; [carried] says whether its snapshot names the SR ([PlanRoute.sr], null when vacant). */
+    data class BundleRoute(val route: PlanRoute, val carried: Boolean)
+
+    /**
+     * tso-manual X4b (R-W-12 (9), fix round D-X4b-08): the bundle's active routes, each with what its own snapshot says about its
+     * SR, so Set Plan, My Visit Plan and Assign Task work offline and read nothing. A route whose snapshot lacks the members is
+     * not carried (an older server, a delta from a mixed version): its SR is null here and the caller fills it from the online
+     * read, or the last one kept, before calling it vacant. Null when the bundle has no active route.
+     */
+    fun routesWithSr(rows: List<RouteEntity>, extrasOf: (Long) -> String?): List<BundleRoute>? {
+        val active = rows.filter { it.status == "active" }
+        if (active.isEmpty()) return null
+        return active.map { r ->
+            val s = srOf(extrasOf(r.routeId))
+            BundleRoute(PlanRoute(r.routeId, r.code, r.name, r.zoneId, r.displayLabel, s.sr), s.carried)
+        }
+    }
+
+    /**
+     * The offline answer when some route's snapshot does not carry its SR: the bundle where it does, the last online read
+     * ([lastRead], by route id) for the others; a route that neither names is vacant ("SR Not Set": no task can be queued for it).
+     */
+    fun fill(bundle: List<BundleRoute>, lastRead: List<PlanRoute>?): List<PlanRoute> {
+        val read = lastRead.orEmpty().associateBy { it.id }
+        return bundle.map { b -> if (b.carried) b.route else b.route.copy(sr = read[b.route.id]?.sr) }
     }
 }

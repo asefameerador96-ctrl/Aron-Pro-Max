@@ -521,7 +521,7 @@ fun TsoLoginSubmitStatusContent(
             val rows = remember(v) { keyedUsers(v?.items.orEmpty()) }
             LazyColumn(
                 Modifier.fillMaxSize().testTag(TsoDashTags.USERS),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = TsoFabPadding),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp), // the frame keeps the list above the Home disc (X4b)
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 when {

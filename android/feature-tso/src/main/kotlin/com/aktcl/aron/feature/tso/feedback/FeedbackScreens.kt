@@ -236,6 +236,7 @@ fun FeedbackFormScreen(
                             else try { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } catch (_: ActivityNotFoundException) { state.galleryUnavailable() }
                         },
                         Modifier.fillMaxWidth(0.62f).testTag(FeedbackTags.PHOTO), style = TsoButtonStyle.Blue,
+                        icon = com.aktcl.aron.core.ui.AronIcons.Image, // screenshot 43: the picture glyph (R-W-12 (3))
                     )
                     if (form.photoUuid != null) Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.tso_fb_picture_added), Modifier.testTag(FeedbackTags.PHOTO_ADDED), style = MaterialTheme.typography.bodyMedium, color = look.ink)
@@ -252,6 +253,8 @@ fun FeedbackFormScreen(
                     { if (queued) onBack() else scope.launch { state.submit() } },
                     Modifier.fillMaxWidth(0.62f).testTag(FeedbackTags.SEND), style = TsoButtonStyle.Lime,
                     enabled = result !is FeedbackResult.NoCategories && !(queued && onSaved != null),
+                    // screenshot 43: the floppy-disk glyph on Save (X4b fix round); the legacy "Done" has none
+                    icon = if (queued && onSaved == null) null else com.aktcl.aron.core.ui.AronIcons.Save,
                 )
             }
             // under the button, so Save does not move when the form says it was saved (legacy wiring only)

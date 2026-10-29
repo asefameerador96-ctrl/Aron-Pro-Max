@@ -1,12 +1,7 @@
 package com.aktcl.aron.feature.tso.feedback
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.feature.tso.R
 import com.aktcl.aron.feature.tso.RetainedCounter
@@ -61,30 +56,4 @@ class FormSetup {
         get() = state.value
         set(v) { state.value = v }
     var maxImages: Int = 1
-}
-
-/**
- * The former tile Home's My Feedback (the own list and the new-feedback form inside one destination), kept with its
- * behaviour for the legacy wiring and the shell tests that still compose it; the app's AreasHost opens [FeedbackListEntry]
- * and [FeedbackNewEntry]. Categories come from the login snapshot; a null [queue] hides New; a null [photos] hides the
- * picture row; [nowIso] is trusted `now` as RFC 3339. Every retained key carries [userKey].
- */
-@Composable
-fun FeedbackFlow(
-    source: FeedbackSource, queue: FeedbackQueue?, photos: FeedbackPhotos?, userKey: String, nowIso: () -> String, onBack: () -> Unit,
-) {
-    var writing by rememberSaveable { mutableStateOf(false) }
-    val counter = rememberRetained("tso-$userKey-fb-epoch") { RetainedCounter() }
-    val epoch = counter.n
-    val cats = rememberRetained("tso-$userKey-fb-cats-$epoch") { CategoryHolder() }
-    LaunchedEffect(epoch) { if (cats.list == null) cats.list = runCatching { source.categories() }.getOrDefault(emptyList()) }
-    val list = rememberRetained("tso-$userKey-fb-list-$epoch") { FeedbackListState(source) }
-    BackHandler(enabled = writing) { writing = false; counter.n++ }
-    val loaded = cats.list
-    if (writing && queue != null && loaded != null) {
-        val form = rememberRetained("tso-$userKey-fb-form-$epoch") { FeedbackFormState(queue, loaded, nowIso, photos) }
-        FeedbackFormScreen(form, onBack = { writing = false; counter.n++ }, photosEnabled = photos != null)
-    } else {
-        FeedbackListScreen(list, loaded ?: emptyList(), onBack = onBack, onNew = if (queue != null && loaded != null) ({ writing = true }) else null)
-    }
 }

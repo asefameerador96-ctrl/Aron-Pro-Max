@@ -24,6 +24,8 @@ import com.aktcl.aron.feature.home.HomeTags
 import com.aktcl.aron.feature.home.RoleHomeTags
 import com.aktcl.aron.feature.home.RoleHomes
 import com.aktcl.aron.feature.tso.feedback.FeedbackCategory
+import com.aktcl.aron.feature.tso.feedback.FeedbackListEntry
+import com.aktcl.aron.feature.tso.feedback.FeedbackNewEntry
 import com.aktcl.aron.feature.tso.feedback.FeedbackItem
 import com.aktcl.aron.feature.tso.feedback.FeedbackSource
 import com.aktcl.aron.feature.tso.feedback.FeedbackTags
@@ -39,16 +41,21 @@ import com.aktcl.aron.feature.tso.mycall.MyCallTags
 import com.aktcl.aron.feature.tso.mycall.PlanOutlet
 import com.aktcl.aron.feature.tso.mycall.PlanRoute
 import com.aktcl.aron.feature.tso.mycall.PlanSource
+import com.aktcl.aron.feature.tso.mycall.SetPlanEntry
+import com.aktcl.aron.feature.tso.mycall.VisitPlanEntry
 import com.aktcl.aron.feature.tso.mycall.VisitPlanItem
 import com.aktcl.aron.feature.tso.password.CpOutcome
 import com.aktcl.aron.feature.tso.periphery.FixResult
+import com.aktcl.aron.feature.tso.periphery.MyTeamEntry
 import com.aktcl.aron.feature.tso.periphery.Nearby
 import com.aktcl.aron.feature.tso.periphery.PeripheryDeps
 import com.aktcl.aron.feature.tso.periphery.PeripheryTags
 import com.aktcl.aron.feature.tso.periphery.PeripherySource
+import com.aktcl.aron.feature.tso.periphery.RetailerEntry
 import com.aktcl.aron.feature.tso.periphery.Stamped
 import com.aktcl.aron.feature.tso.periphery.TeamMember
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -106,8 +113,10 @@ class TsoNavigationTest {
 
     /** The drawer path of each screen: the group to expand (if any) and the row. */
     private val drawerPath = mapOf(
-        TsoScreen.LEAVE to listOf("leave"), TsoScreen.FINAL_SUBMIT to listOf("final_submit"), TsoScreen.MY_TEAM to listOf("periphery", "my_team"),
-        TsoScreen.MY_VISIT_PLAN to listOf("my_call", "visit_plan"), TsoScreen.FEEDBACK_LIST to listOf("feedback", "feedback_list"),
+        TsoScreen.LEAVE to listOf("leave"), TsoScreen.FINAL_SUBMIT to listOf("final_submit"),
+        TsoScreen.MY_TEAM to listOf("periphery", "my_team"), TsoScreen.RETAILER to listOf("periphery", "retailer"),
+        TsoScreen.MY_VISIT_PLAN to listOf("my_call", "visit_plan"), TsoScreen.SET_PLAN to listOf("my_call", "set_plan"),
+        TsoScreen.FEEDBACK_NEW to listOf("feedback", "feedback_new"), TsoScreen.FEEDBACK_LIST to listOf("feedback", "feedback_list"),
     )
 
     private fun openFromDrawer(screen: TsoScreen) {
@@ -126,7 +135,7 @@ class TsoNavigationTest {
             CompositionLocalProvider(LocalContext provides context) {
                 TsoLoginTheme(AppLanguage.EN, loggedOut = false) {
                     back = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-                    // the area screens as the app's AreasHost wires them (one entry per former Home tile until A3 splits the hubs)
+                    // the area screens as the app's AreasHost wires them: one entry per drawer row (A3's per-screen entries, R-W-12 (2))
                     val today = { "2026-10-17" }
                     val myCall = MyCallDeps(plan, { 0 }, { true }, { true }, { null }, { emptyList() })
                     TsoApp(
@@ -136,11 +145,12 @@ class TsoNavigationTest {
                             TsoScreen.DASHBOARD to { _, _ -> Text("dashboard", Modifier_testTag("tso_nav_dashboard")) },
                             TsoScreen.LEAVE to { nav, _ -> com.aktcl.aron.feature.tso.leave.LeaveFlow(leave, { _, _ -> true }, user.username, today, { nav.back() }) },
                             TsoScreen.FINAL_SUBMIT to { nav, _ -> com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitFlow(fs, user.username, 7, today, { nav.back() }) },
-                            TsoScreen.MY_TEAM to { nav, _ -> com.aktcl.aron.feature.tso.periphery.PeripheryFlow(periphery, user.username, today, { nav.back() }) },
-                            TsoScreen.MY_VISIT_PLAN to { nav, _ -> com.aktcl.aron.feature.tso.mycall.MyCallFlow(myCall, user.username, today, { nav.back() }) },
-                            TsoScreen.FEEDBACK_LIST to { nav, _ ->
-                                com.aktcl.aron.feature.tso.feedback.FeedbackFlow(feedback, { _, _, _ -> true }, null, user.username, { java.time.Instant.now().toString() }, { nav.back() })
-                            },
+                            TsoScreen.MY_TEAM to { nav, _ -> MyTeamEntry(periphery, user.username, today, nav) },
+                            TsoScreen.RETAILER to { nav, _ -> RetailerEntry(periphery, user.username, nav) },
+                            TsoScreen.MY_VISIT_PLAN to { nav, _ -> VisitPlanEntry(myCall, user.username, today, nav) },
+                            TsoScreen.SET_PLAN to { nav, _ -> SetPlanEntry(myCall, user.username, today, nav) },
+                            TsoScreen.FEEDBACK_NEW to { nav, _ -> FeedbackNewEntry(feedback, { _, _, _ -> true }, null, user.username, { "2026-10-17T10:00:00Z" }, nav) },
+                            TsoScreen.FEEDBACK_LIST to { nav, _ -> FeedbackListEntry(feedback, canWrite = true, user.username, nav) },
                         ),
                     )
                 }
@@ -153,20 +163,36 @@ class TsoNavigationTest {
 
     /** The tag of the real screen of each destination (never the placeholder's RoleHomeTags.EMPTY). */
     private val realScreenTag = mapOf(
-        TsoScreen.DASHBOARD to "tso_nav_dashboard", TsoScreen.LEAVE to LeaveTags.APPLY, TsoScreen.FINAL_SUBMIT to FsTags.GET, TsoScreen.MY_TEAM to PeripheryTags.TEAM,
-        TsoScreen.MY_VISIT_PLAN to MyCallTags.SET_PLAN, TsoScreen.FEEDBACK_LIST to FeedbackTags.NEW, TsoScreen.SETTINGS to TsoSettingsTags.CHANGE_PASSWORD,
+        TsoScreen.DASHBOARD to "tso_nav_dashboard", TsoScreen.LEAVE to LeaveTags.APPLY, TsoScreen.FINAL_SUBMIT to FsTags.GET,
+        TsoScreen.MY_TEAM to PeripheryTags.ZONE, TsoScreen.RETAILER to PeripheryTags.RADIUS,
+        TsoScreen.MY_VISIT_PLAN to MyCallTags.SHOW, TsoScreen.SET_PLAN to MyCallTags.SHOW,
+        TsoScreen.FEEDBACK_NEW to FeedbackTags.SEND, TsoScreen.FEEDBACK_LIST to FeedbackTags.NEW, TsoScreen.SETTINGS to TsoSettingsTags.CHANGE_PASSWORD,
+    )
+
+    /** The title each entry's frame prints (the two My Call forms share their tags, so the title tells them apart). */
+    private val titleRes = mapOf(
+        TsoScreen.MY_TEAM to R.string.tso_pe_my_teams, TsoScreen.RETAILER to R.string.tso_pe_outlets_title,
+        TsoScreen.MY_VISIT_PLAN to R.string.tso_mc_visit_plan, TsoScreen.SET_PLAN to R.string.tso_mc_set_plan,
+        TsoScreen.FEEDBACK_NEW to R.string.tso_fb_create_title,
     )
 
     private fun assertRealScreen(screen: TsoScreen) {
         try { compose.waitUntil(5_000) { compose.onAllNodesWithTagCount(realScreenTag.getValue(screen)) > 0 } } catch (e: androidx.compose.ui.test.ComposeTimeoutException) { throw AssertionError("no real screen for $screen (" + realScreenTag.getValue(screen) + ")\n" + compose.onRoot().printToString().take(1500), e) }
         compose.onNodeWithTag(RoleHomeTags.EMPTY).assertDoesNotExist()
         compose.onNodeWithTag(TsoShellTags.PLACEHOLDER).assertDoesNotExist()
+        titleRes[screen]?.let { res ->
+            val t = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN).getString(res)
+            assertTrue("$screen shows its title $t", compose.onAllNodes(androidx.compose.ui.test.hasText(t) and androidx.compose.ui.test.isHeading()).fetchSemanticsNodes().isNotEmpty())
+        }
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onAllNodesWithTagCount(tag: String) =
         onAllNodesWithTag(tag).fetchSemanticsNodes().size
 
-    private val screensWithAreas = listOf(TsoScreen.LEAVE, TsoScreen.FINAL_SUBMIT, TsoScreen.MY_TEAM, TsoScreen.MY_VISIT_PLAN, TsoScreen.FEEDBACK_LIST, TsoScreen.SETTINGS)
+    private val screensWithAreas = listOf(
+        TsoScreen.LEAVE, TsoScreen.FINAL_SUBMIT, TsoScreen.MY_TEAM, TsoScreen.RETAILER, TsoScreen.MY_VISIT_PLAN, TsoScreen.SET_PLAN,
+        TsoScreen.FEEDBACK_NEW, TsoScreen.FEEDBACK_LIST, TsoScreen.SETTINGS,
+    )
 
     @Test fun everyDrawerScreenWithAnAreaOpensARealScreenAndBackReturnsToTheDashboard() {
         show()

@@ -10,11 +10,23 @@ import javax.xml.parsers.DocumentBuilderFactory
  * F-SYS-023: no Aron app asks for the microphone, and location is in-use only. Checked on the MERGED manifests of the
  * three apps (every library's permissions included; the test task depends on processDebugMainManifest), and on every
  * module's source manifest. XML is parsed, so quoting style cannot hide a permission; a `tools:node="remove"` entry is a
- * removal, not a request.
+ * removal, not a request. tso-manual X4b (R-W-12 (7)): no app asks for storage either; the photo picker and the camera
+ * write to the app's own files (core-media GalleryImport, no storage permission), so every storage permission is forbidden.
  */
 class ManifestPermissionAuditTest {
     private val root = File(System.getProperty("aron.androidRoot") ?: error("aron.androidRoot not set"))
     private val forbidden = setOf("android.permission.RECORD_AUDIO", "android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.CAPTURE_AUDIO_OUTPUT")
+
+    /**
+     * R-W-12 (7): the storage permissions, forbidden in the three apps' merged manifests (no exception): shared storage, the three
+     * Android 13 media permissions (images, video, audio), the Android 14 partial pick, all files, and the location in media
+     * files (X4b fix round: READ_MEDIA_AUDIO and ACCESS_MEDIA_LOCATION added).
+     */
+    private val storage = setOf(
+        "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE", "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO", "android.permission.READ_MEDIA_AUDIO", "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.MANAGE_EXTERNAL_STORAGE", "android.permission.ACCESS_MEDIA_LOCATION",
+    )
 
     // D-GEO-BG-01 (lead ruling 2026-10-07): background location is allowed for the optional breadcrumbs (N-035) in
     // exactly these two app manifests (source and merged), and nowhere else. The microphone rule has no exception.
@@ -40,6 +52,33 @@ class ManifestPermissionAuditTest {
                 assertTrue("$app requests ${requested intersect forbiddenFor(app)}", (requested intersect forbiddenFor(app)).isEmpty())
             }
         }
+    }
+
+    @Test fun mergedAppManifestsRequestNoStorage() {
+        for (app in listOf("app-sr", "app-amo", "app-tso")) {
+            val merged = mergedManifests(app)
+            assertTrue("no merged manifest for $app: run :android:$app:processDebugMainManifest", merged.isNotEmpty())
+            for (f in merged) {
+                val requested = ManifestAudit.requestedPermissions(f.readText())
+                assertTrue("$app requests storage ${requested intersect storage} (${f.path})", (requested intersect storage).isEmpty())
+            }
+        }
+    }
+
+    @Test fun theStorageRuleSeesAnSdkCappedRequest() {
+        // a library that asks for storage only up to an SDK level still asks: the audit reads it as a request
+        val xml = """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+            <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+            <uses-permission-sdk-23 android:name="android.permission.READ_MEDIA_AUDIO"/>
+            <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION"/>
+            <uses-permission android:name="android.permission.CAMERA"/>
+        </manifest>"""
+        assertEquals(
+            setOf("android.permission.READ_EXTERNAL_STORAGE", "android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_AUDIO", "android.permission.ACCESS_MEDIA_LOCATION"),
+            ManifestAudit.requestedPermissions(xml) intersect storage,
+        )
+        assertEquals(8, storage.size)
     }
 
     @Test fun mergedSrManifestHasTheFieldPermissions() {

@@ -76,13 +76,34 @@ class LeaveModelTest {
 
     @Test fun unknownStatusIsPendingNeverApproved() = assertEquals(LeaveStatus.PENDING, LeaveStatus.of("whatever"))
 
+    /** R-W-10 (LV-16): the four leave refusal codes of D-B3-15 have leave texts; every other code is worded by the bundle. */
     @Test fun refusalCodesMapToTheirReasonWords() {
-        assertEquals(LeaveRefusal.DATE_WINDOW, LeaveRefusal.of("business_date_out_of_window"))
-        assertEquals(LeaveRefusal.DUPLICATE, LeaveRefusal.of("payload_conflict"))
-        assertEquals(LeaveRefusal.NOT_ALLOWED, LeaveRefusal.of("scope_out_of_reach"))
-        assertEquals(LeaveRefusal.INVALID, LeaveRefusal.of("schema_invalid"))
-        assertEquals(LeaveRefusal.OTHER, LeaveRefusal.of("server_error"))
-        assertEquals(LeaveRefusal.OTHER, LeaveRefusal.of(null))
+        assertEquals(LeaveRefusal.OUT_OF_WINDOW, LeaveRefusal.of("business_date_out_of_window"))
+        assertEquals(LeaveRefusal.OVERLAP, LeaveRefusal.of("content_duplicate"))
+        assertEquals(LeaveRefusal.NOT_TSO, LeaveRefusal.of("scope_out_of_reach"))
+        assertEquals(LeaveRefusal.UNKNOWN_TYPE, LeaveRefusal.of("schema_invalid"))
+        listOf("payload_conflict", "no_assignment_on_date", "user_disabled", "server_error", "config_version_unknown", null).forEach {
+            assertEquals("$it", LeaveRefusal.OTHER, LeaveRefusal.of(it))
+        }
+    }
+
+    @Test fun theBundleReasonTextsAreReadAndABadSectionGivesNone() {
+        val t = LeaveReasonTexts.parse("""{"payload_conflict":{"bn":"বাংলা কারণ","en":"English reason"},"server_error":{"en":"Only English"},"bad":5,"also_bad":{"bn":7}}""")
+        assertEquals(LeaveReasonText("বাংলা কারণ", "English reason"), t["payload_conflict"])
+        assertEquals("Only English", t["server_error"]?.of(bangla = false)); assertEquals(null, t["server_error"]?.of(bangla = true))
+        assertFalse("bad" in t); assertEquals(LeaveReasonText(null, null), t["also_bad"])
+        assertEquals(emptyMap<String, LeaveReasonText>(), LeaveReasonTexts.parse(null))
+        assertEquals(emptyMap<String, LeaveReasonText>(), LeaveReasonTexts.parse("not json"))
+        assertEquals(emptyMap<String, LeaveReasonText>(), LeaveReasonTexts.parse("[1,2]"))
+    }
+
+    @Test fun anAnswerCarriesTheBundleTextOfItsCode() {
+        val reasons = mapOf("payload_conflict" to LeaveReasonText("ভিন্ন তথ্য", "Different data"), "server_error" to LeaveReasonText("সার্ভার", "Server"))
+        val queued = item("q", "2026-10-21", sent = false)
+        assertEquals(LeaveReasonText("ভিন্ন তথ্য", "Different data"), queued.answered(LeaveSyncAnswer.REFUSED, "payload_conflict", reasons).refusalReason)
+        assertEquals(LeaveReasonText("সার্ভার", "Server"), queued.answered(LeaveSyncAnswer.HELD, null, reasons).refusalReason) // no code: server_error
+        assertEquals(null, queued.answered(LeaveSyncAnswer.REFUSED, "unknown_code", reasons).refusalReason)
+        assertEquals(queued, queued.answered(null, null, reasons)) // not answered yet: "Not sent yet" stays
     }
 
     /** Checker fix (low): the server's answer as the outbox holds it: rejected is "Not accepted", quarantined is "Held for review". */
@@ -176,7 +197,7 @@ class LeaveScreenTest {
     @Test fun aRefusedApplicationSaysNotAcceptedWithTheReason() {
         show(AppLanguage.EN, FakeSource(fresh = LeaveSource.Cached(emptyList(), "10:00"), unsent = listOf(item("r", "2026-10-21", sent = false, refusal = "business_date_out_of_window"))))
         compose.onNodeWithTag(LeaveTags.refused("r")).assertExists()
-        compose.onNodeWithText("Not accepted: the date is outside the allowed window").assertExists()
+        compose.onNodeWithText("Not accepted: the first day is outside the allowed window").assertExists()
         compose.onNodeWithText("Not accepted").assertExists() // the pill
         compose.onNodeWithTag(LeaveTags.unsent("r")).assertDoesNotExist()
     }
@@ -185,9 +206,52 @@ class LeaveScreenTest {
         val held = item("h", "2026-10-21", sent = false).answered(LeaveSyncAnswer.HELD, "scope_out_of_reach")
         show(AppLanguage.EN, FakeSource(fresh = LeaveSource.Cached(emptyList(), "10:00"), unsent = listOf(held)))
         compose.onNodeWithTag(LeaveTags.held("h")).assertExists()
-        compose.onNodeWithText("Held for review: you cannot apply for this date").assertExists()
+        compose.onNodeWithText("Held for review: only a TSO may apply for leave").assertExists()
         compose.onNodeWithText("Held for review").assertExists() // the pill
         compose.onNodeWithTag(LeaveTags.unsent("h")).assertDoesNotExist(); compose.onNodeWithTag(LeaveTags.refused("h")).assertDoesNotExist()
+    }
+
+    /** R-W-10 (LV-16): each leave refusal code has its own leave text, in en and in bn. */
+    @Test fun theFourLeaveCodesHaveLeaveTextsInEnglishAndBangla() {
+        val codes = listOf("content_duplicate", "schema_invalid", "scope_out_of_reach", "business_date_out_of_window")
+        val unsent = codes.mapIndexed { i, c -> item("r$i", "2026-10-2$i", sent = false).answered(LeaveSyncAnswer.REFUSED, c) }
+        show(AppLanguage.EN, FakeSource(fresh = LeaveSource.Cached(emptyList(), "10:00"), unsent = unsent))
+        listOf(
+            "Not accepted: it overlaps a leave already applied for",
+            "Not accepted: the leave type is not recognised; download fresh data",
+            "Not accepted: only a TSO may apply for leave",
+            "Not accepted: the first day is outside the allowed window",
+        ).forEach { compose.onNodeWithTag(LeaveTags.LIST).performScrollToNode(hasText(it)); compose.onNodeWithText(it).assertExists() }
+    }
+
+    @Test fun theFourLeaveCodesInBangla() {
+        val codes = listOf("content_duplicate", "schema_invalid", "scope_out_of_reach", "business_date_out_of_window")
+        val held = codes.mapIndexed { i, c -> item("h$i", "2026-10-2$i", sent = false).answered(LeaveSyncAnswer.HELD, c) }
+        show(AppLanguage.BN, FakeSource(fresh = LeaveSource.Cached(emptyList(), "10:00"), unsent = held))
+        listOf(
+            "পর্যালোচনার জন্য আটকে আছে: আগে আবেদন করা একটি ছুটির সাথে দিন মিলে যাচ্ছে",
+            "পর্যালোচনার জন্য আটকে আছে: ছুটির ধরনটি চেনা যায়নি; নতুন ডেটা নামিয়ে নিন",
+            "পর্যালোচনার জন্য আটকে আছে: শুধু টিএসও ছুটির আবেদন করতে পারেন",
+            "পর্যালোচনার জন্য আটকে আছে: প্রথম দিনটি অনুমোদিত সময়সীমার বাইরে",
+        ).forEach { compose.onNodeWithTag(LeaveTags.LIST).performScrollToNode(hasText(it)); compose.onNodeWithText(it).assertExists() }
+    }
+
+    /** Any other code falls back to the bundle's reason text in the app's language; without one, the generic words. */
+    @Test fun anotherCodeShowsTheBundleReasonText() {
+        val reasons = mapOf("payload_conflict" to LeaveReasonText("একই রেকর্ড ভিন্ন তথ্যসহ এসেছে।", "The same record arrived with different data."))
+        val unsent = listOf(
+            item("p", "2026-10-21", sent = false).answered(LeaveSyncAnswer.REFUSED, "payload_conflict", reasons),
+            item("x", "2026-10-22", sent = false).answered(LeaveSyncAnswer.REFUSED, "unknown_code", reasons),
+        )
+        show(AppLanguage.EN, FakeSource(fresh = LeaveSource.Cached(emptyList(), "10:00"), unsent = unsent))
+        compose.onNodeWithText("Not accepted: The same record arrived with different data.").assertExists()
+        compose.onNodeWithText("Not accepted: the server did not accept it").assertExists()
+    }
+
+    @Test fun anotherCodeShowsTheBundleReasonTextInBangla() {
+        val reasons = mapOf("payload_conflict" to LeaveReasonText("একই রেকর্ড ভিন্ন তথ্যসহ এসেছে।", "The same record arrived with different data."))
+        show(AppLanguage.BN, FakeSource(fresh = LeaveSource.Cached(emptyList(), "10:00"), unsent = listOf(item("p", "2026-10-21", sent = false).answered(LeaveSyncAnswer.REFUSED, "payload_conflict", reasons))))
+        compose.onNodeWithText("গৃহীত হয়নি: একই রেকর্ড ভিন্ন তথ্যসহ এসেছে।").assertExists()
     }
 
     @Test fun banglaUsesBengaliDigitsAndBanglaBadge() {

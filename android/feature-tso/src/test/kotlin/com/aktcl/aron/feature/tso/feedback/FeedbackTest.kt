@@ -248,6 +248,21 @@ class FeedbackTest {
         org.junit.Assert.assertEquals("accessibility: " + compose.a11yProblems(), emptyList<String>(), compose.a11yProblems())
     }
 
+    /** Screenshot 43: Browse Gallery draws the picture glyph and Save the floppy disk, each before its label (X4b fix round). */
+    @Test fun saveAndBrowseGalleryDrawTheirGlyphs() {
+        val s = FeedbackFormState(Q(), two, { "x" }, Gallery(), 1)
+        show(AppLanguage.EN) { FeedbackFormScreen(s, onBack = {}, photosEnabled = true) }
+        fun glyphIn(button: String, glyph: String) = compose.onNode(
+            androidx.compose.ui.test.hasTestTag(com.aktcl.aron.core.ui.aron.NightButtonTags.icon(glyph)) and
+                androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.hasTestTag(button)),
+            useUnmergedTree = true,
+        )
+        glyphIn(FeedbackTags.SEND, "save").assertExists()
+        glyphIn(FeedbackTags.PHOTO, "image").assertExists()
+        glyphIn(FeedbackTags.SEND, "image").assertDoesNotExist()
+        glyphIn(FeedbackTags.PHOTO, "save").assertDoesNotExist()
+    }
+
     @Test fun banglaFormWords() {
         val s = FeedbackFormState(Q(), two, { "x" }, Gallery(), 1)
         show(AppLanguage.BN) { FeedbackFormScreen(s, onBack = {}, photosEnabled = true) }

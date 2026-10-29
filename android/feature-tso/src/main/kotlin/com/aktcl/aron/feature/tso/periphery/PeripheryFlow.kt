@@ -1,11 +1,6 @@
 package com.aktcl.aron.feature.tso.periphery
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import com.aktcl.aron.feature.tso.TsoNav
 import com.aktcl.aron.feature.tso.rememberRetained
 
@@ -37,25 +32,4 @@ fun MyTeamEntry(deps: PeripheryDeps, userKey: String, today: () -> String, nav: 
 fun RetailerEntry(deps: PeripheryDeps, userKey: String, nav: TsoNav) {
     val st = rememberRetained("tso-$userKey-pe-retailer") { RetailerState(deps.source, deps.asOfNow, deps.fix) }
     RetailerScreen(st, deps.online, deps.nowMs, userKey, onBack = { nav.back() }, settings = deps.settings, nav = nav, findOnOpen = true)
-}
-
-/**
- * The former tile Home's My Periphery (hub, My Team, Retailer), kept with its behaviour for the legacy wiring and the
- * shell tests that still compose it; the app's AreasHost opens [MyTeamEntry] and [RetailerEntry] directly.
- */
-@Composable
-fun PeripheryFlow(deps: PeripheryDeps, userKey: String, today: () -> String, onBack: () -> Unit) {
-    var step by rememberSaveable { mutableStateOf("hub") }
-    BackHandler(enabled = step != "hub") { step = "hub" }
-    when (step) {
-        "team" -> {
-            val st = rememberRetained("tso-$userKey-pe-team") { TeamState(deps.source, today) }
-            TeamScreen(st, deps.online, deps.nowMs, userKey, onBack = { step = "hub" }, settings = deps.settings)
-        }
-        "retailer" -> {
-            val st = rememberRetained("tso-$userKey-pe-retailer") { RetailerState(deps.source, deps.asOfNow, deps.fix) }
-            RetailerScreen(st, deps.online, deps.nowMs, userKey, onBack = { step = "hub" }, settings = deps.settings)
-        }
-        else -> PeripheryHub({ step = "team" }, { step = "retailer" }, onBack)
-    }
 }

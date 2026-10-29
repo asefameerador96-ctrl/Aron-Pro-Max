@@ -28,6 +28,20 @@ interface TsoNav {
     fun home()
 }
 
+/**
+ * What a tapped push notice asks the TSO app to open (tso-manual X4b, R-W-12 (1)). The app module builds it from the
+ * notice's open extra (the inbox, or the Ticket Dashboard through A2's `TicketPush.open`); [TsoApp] applies it once on the
+ * Dashboard (the stack is emptied first), so back from the opened screen returns to the Dashboard.
+ */
+fun interface TsoOpenRequest {
+    fun open(nav: TsoNav)
+
+    companion object {
+        /** A plain screen without an argument (the inbox). */
+        fun of(screen: TsoScreen): TsoOpenRequest = TsoOpenRequest { it.open(screen) }
+    }
+}
+
 /** One screen of a host map: drawn with the navigator and the argument it was opened with. */
 typealias TsoScreenContent = @Composable (nav: TsoNav, arg: String?) -> Unit
 

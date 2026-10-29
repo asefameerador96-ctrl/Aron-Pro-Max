@@ -72,8 +72,22 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
         return com.aktcl.aron.feature.tso.ZoneNamesJson.parse(body, bangla)
     }
 
+    /**
+     * One GET of [path], which may end in a query (`/v1/leave?limit=100`). The query goes into the URL's query: the client's
+     * contract path is an encoded path, where OkHttp writes `?` as `%3F`, so `/v1/routes?limit=500` would be asked as the
+     * path `/v1/routes%3Flimit=500` (tso-manual X4b fix round, found by TsoAssignTaskOfflineTest; TsoReadModelsUrlTest).
+     */
     private suspend fun get(path: String): String? {
-        val r = runCatching { client.call(path = path, auth = CallAuth.Grant(Grant.FULL), build = { get() }, decode = { body, _ -> body }) }.getOrNull()
+        val contractPath = path.substringBefore('?')
+        val query = path.substringAfter('?', "").ifEmpty { null }
+        val r = runCatching {
+            val c = client
+            c.call(
+                path = contractPath, auth = CallAuth.Grant(Grant.FULL),
+                build = { url(c.origin.path(contractPath).newBuilder().encodedQuery(query).build()); get() },
+                decode = { body, _ -> body },
+            )
+        }.getOrNull()
         return (r as? ApiResult.Success)?.value
     }
 
@@ -87,9 +101,12 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
          * The mirror rows written with each queued application (same transaction as the outbox row). A row the server refused
          * on sync (outbox state rejected) carries its outcome code, so the card says "Not accepted: <reason>" (D-TSO-MAN-33);
          * one the server holds for review (outbox state quarantined, e.g. scope_out_of_reach) says "Held for review: <reason>".
+         * A code without a leave text is worded by the stored bundle's `reason_texts` (R-W-10), so it reads offline too.
          */
         override suspend fun unsent(): List<com.aktcl.aron.feature.tso.leave.LeaveItem> = runCatching {
             val box = databases.of(userId).outboxDao()
+            // the whole section, all its stored chunks (ReferenceRepository.section); unreadable or absent gives no texts
+            val reasons = com.aktcl.aron.feature.tso.leave.LeaveReasonTexts.parse(runCatching { com.aktcl.aron.core.database.repo.ReferenceRepository(databases.of(userId)).section("reason_texts") }.getOrNull())
             meta(userId).metaWithPrefix(LEAVE_MIRROR).mapNotNull { LeaveJson.parseUnsent(it.value) }.map { item ->
                 val row = runCatching { box.byClientUuid(item.leaveUuid) }.getOrNull()
                 val answer = when (row?.state) {
@@ -97,7 +114,7 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
                     com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED -> com.aktcl.aron.feature.tso.leave.LeaveSyncAnswer.HELD
                     else -> null
                 }
-                item.answered(answer, row?.lastCode)
+                item.answered(answer, row?.lastCode, reasons)
             }
         }.getOrDefault(emptyList())
 
@@ -217,17 +234,38 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
     fun plan(userId: Long): com.aktcl.aron.feature.tso.mycall.PlanSource = object : com.aktcl.aron.feature.tso.mycall.PlanSource {
         private val J = com.aktcl.aron.feature.tso.mycall.PlanJson
 
+        /**
+         * tso-manual X4b (R-W-12 (9); fix round, D-X4b-08): the routes with their SR, in this order. (1) An online read younger
+         * than 30 minutes is newer than the bundle, so it wins and a mid-day SR change shows (no request). (2) The bundle's
+         * routes when every route's snapshot carries its SR (`sr_user_id` / `sr_name`, R-W-06): offline, no request. (3) A route
+         * whose snapshot does not carry it: the online read (`GET /v1/routes`, kept 30 minutes). (4) Offline: the bundle where it
+         * carries the SR, the last online read kept for the others; a route neither names is vacant.
+         */
         override suspend fun routes(): List<com.aktcl.aron.feature.tso.mycall.PlanRoute>? {
             cacheFresh(userId, "routes", REFERENCE_TTL_MS)?.let { c -> J.parseRoutes(c)?.let { return it } }
+            val bundle = bundleRoutesWithSr()
+            if (bundle != null && bundle.all { it.carried }) return bundle.map { it.route }
             val fresh = getPages("/v1/routes")?.map { J.parseRoutes(it) ?: return@map null }
             if (fresh != null && fresh.none { it == null }) {
                 val all = fresh.filterNotNull().flatten().distinctBy { it.id }
                 cachePut(userId, "routes", J.routesToCache(all), asOfNow()); return all
             }
-            cacheGet(userId, "routes")?.let { c -> J.parseRoutes(c.first)?.let { return it } }
-            // nothing online and nothing cached: the routes of the bundle (no SR names there)
-            return runCatching { TsoBundleReads.routes(meta(userId).routesFor(com.aktcl.aron.rules.BusinessDate.of(System.currentTimeMillis()).toString())) }.getOrNull()?.takeIf { it.isNotEmpty() }
+            val last = cacheGet(userId, "routes")?.let { c -> J.parseRoutes(c.first) }
+            if (bundle != null && bundle.any { it.carried }) return TsoBundleReads.fill(bundle, last)
+            last?.let { return it }
+            // nothing online and nothing kept: the routes of the bundle (no SR names there)
+            return bundle?.map { it.route }?.takeIf { it.isNotEmpty() }
         }
+
+        /** The stored bundle's active routes of the business date (trusted time), each with what its snapshot says about its SR. */
+        private suspend fun bundleRoutesWithSr(): List<TsoBundleReads.BundleRoute>? = runCatching {
+            val db = databases.of(userId)
+            val rows = db.referenceDao().routesFor(env.businessDate())
+            if (rows.isEmpty()) return@runCatching null
+            val repo = com.aktcl.aron.core.database.repo.ReferenceRepository(db)
+            val extras = rows.associate { it.routeId to repo.section("route.${it.routeId}") }
+            TsoBundleReads.routesWithSr(rows) { extras[it] }
+        }.getOrNull()
 
         override suspend fun outlets(routeId: Long): List<com.aktcl.aron.feature.tso.mycall.PlanOutlet>? {
             // the bundle first (D-TSO-BUNDLE-OUTLETS): local, instant and offline; the online read only when the bundle has none

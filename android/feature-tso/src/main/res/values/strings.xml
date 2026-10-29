@@ -197,9 +197,7 @@
     <string name="tso_mc_task_waiting">Assign task</string>
     <string name="tso_mc_no_task_types">The task types have not been downloaded yet. Connect once and open the app again.</string>
     <string name="tso_mc_no_rubric">The visit questions have not been downloaded yet. Connect once and open the app again.</string>
-    <string name="tso_pe_team">My Team</string>
     <string name="tso_pe_team_sub">Check your team</string>
-    <string name="tso_pe_retailer">Retailer</string>
     <string name="tso_pe_retailer_sub">Check outlets around you</string>
     <string name="tso_pe_radius">Radius</string>
     <string name="tso_pe_find">Find outlets here</string>

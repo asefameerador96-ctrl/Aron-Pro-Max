@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -216,10 +217,16 @@ fun NightGlowField(
 /** The fill of a [NightButton]: Cyan (Login), Lime (Final Submit and plan actions), Blue (Submit ticket), Cancel (green), LogOut (orange). */
 enum class NightButtonStyle { Cyan, Lime, Blue, Cancel, LogOut }
 
+/** Test tags of [NightButton]: the decorative glyph before the label, by its kit name (e.g. `save`, `image`). */
+object NightButtonTags {
+    fun icon(name: String) = "night_button_icon_$name"
+}
+
 /**
  * A gradient action button of the TSO look (screenshots 5, 17, 24, 44): 12 dp corners, at least 52 dp tall, a bold label; the bright
  * fills carry the navy label and the blue one a white label, all at 7:1 (TokenContrastTest). Disabled or [busy]: the grey chip fill and
- * not pressable (the label stays). [fill] false sizes the button to its label (dialog buttons).
+ * not pressable (the label stays). [fill] false sizes the button to its label (dialog buttons). [icon] draws a decorative glyph in the
+ * label's colour before the label (Browse Gallery and Save, screenshot 43); the label carries the meaning for TalkBack.
  */
 @Composable
 fun NightButton(
@@ -230,6 +237,7 @@ fun NightButton(
     enabled: Boolean = true,
     busy: Boolean = false,
     fill: Boolean = true,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
 ) {
     val n = nightRoles()
     val on = enabled && !busy
@@ -253,7 +261,17 @@ fun NightButton(
             .padding(horizontal = 24.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, style = lookStyle(18.sp, bold = true, color = ink, align = TextAlign.Center))
+        if (icon == null) {
+            Text(text, style = lookStyle(18.sp, bold = true, color = ink, align = TextAlign.Center))
+        } else {
+            androidx.compose.foundation.layout.Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+            ) {
+                androidx.compose.material3.Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp).testTag(NightButtonTags.icon(icon.name)))
+                Text(text, style = lookStyle(18.sp, bold = true, color = ink, align = TextAlign.Center))
+            }
+        }
     }
 }
 
