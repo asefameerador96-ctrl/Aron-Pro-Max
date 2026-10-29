@@ -53,4 +53,5 @@ dependencies {
     testImplementation(libs.roborazzi)
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.roborazzi.junit.rule)
+    testImplementation(project(":android:feature-tickets")) // tso-manual A2: TicketScreenshotTests (screenshots 11 to 18)
 }
