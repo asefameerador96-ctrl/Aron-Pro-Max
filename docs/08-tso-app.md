@@ -21,8 +21,12 @@ rules (`Percent`, `Qty`, `Targets`; build contract s4.2, D-TSO-MAN-10). Cards, t
 - **Login & Bikroy Joma Status**: Login Status = successful logins / target routes; **Bikroy Joma Status = submitted / target routes**
   (D-TSO-MAN-07: the manual text and screenshot 7 agree, 1 of 5 = 20%; this corrects the earlier "÷ login count" line). Captions
   Target Route, Total Login, Login Count, Total Bikroy Joma. Tapping opens **Login & Bikroy Joma Status** (screenshot 8): tabs Not
-  Logged In / Not Uploaded, one row per (route, user): display name ("SR Not Set" on a vacant route), User Name, Route, Dep Name
-  (the zone), AMO rows following the route state (D-TSO-MAN-12).
+  Logged In / Not Uploaded, one row per (route, user): display name (the username when the user has no full name; "SR Not Set" only
+  on a vacant route, one with no user at all), User Name, Route, Dep Name (the zone), AMO rows following the route state
+  (D-TSO-MAN-12). The list is lazy (a tab may carry up to 2,000 rows).
+- **When it reads**: on open and on pull-to-refresh, never on a timer. The Dashboard shown again within a minute of its last read of
+  the same day (back from another screen) keeps that read; a pull always reads. Each card or tab is read once at a time: a second
+  pull waits for the read running, and a tab switch during a slow read reads the new tab at once (the first answer still lands).
 - **By Segment Value Contribution**: value share and volume share (within the unit family) as two lines (D-TSO-MAN-11).
 
 The Home button (bottom centre) is on the Dashboard and on Login & Bikroy Joma Status (build contract s8).
@@ -42,7 +46,8 @@ pull-to-refresh and when a push with the reason `notification` (or `ticket_updat
 list, newest first (50 rows, "Show older" for more): a dot on the rows that were new, title and body in the app's language (English
 when the producer gave no Bangla), the age ("2h ago"). Opening it marks everything up to the newest id read (`POST
 /v1/me/notifications/read {up_to_id}`, idempotent); offline the read is kept on the phone, already counted off the badge, and sent
-first on the next read. A ticket row opens that ticket, a leave decision opens Leave, a midnight auto Final Submit opens Final Submit.
+first on the next read. The bell tapped while the Dashboard is still reading the inbox waits for that read and then marks its newest
+id. A ticket row opens that ticket, a leave decision opens Leave, a midnight auto Final Submit opens Final Submit.
 The newest page is kept for offline with its "as of". Kinds: ticket_updated, leave_decided, final_submit_auto; announcements stay
 push-only. A tapped push notice opens the inbox (`notification`) or the Ticket Dashboard (`ticket_updated`); the push itself carries
 the reason only (fixed Bangla and English text, no business data). `day_final_submitted` is the SR and AMO day-lock push (silent

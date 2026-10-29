@@ -126,6 +126,46 @@ and zone queries, the 60 s rule and a new month, kept per month and node and a r
 filter on the shared tab); TsoPushReasonsTest (core-sync, 3: the three reasons, the Bangla texts, channels and taps, the
 in-process announcement); TokenContrastTest +1.
 
+## Fix round (independent checker, 2026-10-29): every high and medium defect, and every low one
+
+Base of the round: `e2e5d5f6` (end of step 3). Nine defects reported; all nine fixed.
+
+| sev | defect | fix | where |
+|---|---|---|---|
+| high | logout then login: `viewModelStore.clear()` after `logout()` cleared the LoginViewModel the logged-out screen already held; the next login spun for ever | per-phase ViewModel stores (D-A1-17 amended): `SessionPhaseScope(signedInKey)` around the logged-out branch and the signed-in branch; the activity's store is never cleared; a logged-out phase on screen clears the day and the old form | core-ui `SessionScope.kt` (new); app-tso `MainActivity.kt` |
+| medium | `if (xRefreshing) return` guards dropped the read a new tab, node or the bell needed (Login & Bikroy Joma tabs, inbox `open()` then `markAllRead()` on a stale page, Details nodes) | `TsoReadFlights<K>`: one read per key, awaitable (a second call joins it), another key reads in parallel, the read runs in the sign-in's scope (`rememberCoroutineScope` of the signed-in branch: a screen or tab that leaves only stops waiting; the logout cancels it). Dashboard cards, each users tab, the inbox page and "Show older", Target Status per month, Details per (node, month). The refresh indicators follow their own key (`usersRefreshing` = the selected tab, `detailsRefreshing(node)`). `open()` joins the running page read before marking. A pending read is cleared only if no higher one was set meanwhile (D-A1-29) | app-tso `TsoApi.kt`, `TsoDashboardHost.kt`, `TsoInboxHost.kt`, `TsoTargetsHost.kt`, `MainActivity.kt` |
+| low | users list and inbox composed every row (up to 2000 a tab; inbox grows with "Show older") | `LazyColumn`; users keyed `<route_id>:<username or user_id or role>` (a repeated key gets its index), inbox keyed by id | feature-tso `TsoDashboardScreens.kt`, `notifications/TsoInboxScreen.kt` |
+| low | goldens missing for 8 and 44 at 200 percent, drawer 10 bn, 27 en, 30 bn and en | added `tso_login_status_200_bn`, `tso_logout_dialog_200_bn`, `tso_drawer_tickets_bn`, `tso_drawer_periphery_en`, `tso_drawer_my_call_en`, `tso_drawer_my_call_bn` | ui-screenshots `TsoScreenshotTests.kt`, `TsoLargeTextScreenshotTests.kt` |
+| low | Details item names broke mid-word at 360 dp ("Advance" / "d") | the Item column is as wide as the longest word of any item name (measured with the row's style), at least 30 percent (screenshot 41's share) and at most 42 percent of the table; the figure columns share the rest (weights 1, 1.3, 1.15, 1.2) and still shrink in their cells; rows and header both 8 dp sides (screenshot: about 9 dp) | feature-tso `targets/TargetStatusScreens.kt` |
+| low | the Dashboard re-read 9 calls on every back navigation | `TsoDashboardModel.show()`: shown again within 60 s of its last read of the same business day keeps it; a pull always reads; a new day reads (D-A1-30) | app-tso `TsoDashboardHost.kt` |
+| low | the cache's file I/O ran on the caller's (main) thread | `remember`, `cached` and the refusal's delete run in `withContext(Dispatchers.IO)` | app-tso `TsoApi.kt` |
+| low | "as of" took the oldest stamp by string order; "SR Not Set" whenever `display_name` was null | `TsoDashboards.oldest` compares instants (`OffsetDateTime.parse`: "Z" or an offset, any fraction digits; unreadable stamps skipped; `asOfClock` uses the same parse); `LoginSubmitUser.userId` parsed, `vacant` = no `user_id` and no `username`; a real user without a full name shows the username (D-A1-31) | feature-tso `TsoDashboard.kt`, `TsoDashboardScreens.kt` |
+| low | status said `TsoDashboardCardsTest 15` | corrected to 13 (the class had 13 @Test methods at every step-2 and step-3 commit); the fix round adds 2 (15 now) | this file |
+| found by the new golden | `tso_logout_dialog_200_bn` showed the Log Out label broken inside its word ("লগ / আ / উট") beside Cancel | the two buttons sit in a `FlowRow` (end-aligned, as on screenshot 44): when both do not fit, Log Out moves to the next line whole; at the default size both stay side by side (looked at: `tso_logout_dialog_en` unchanged) | feature-tso `TsoChrome.kt` |
+
+Docs: docs/08 Dashboard (when it reads, the row name rule, the lazy list) and the inbox (the bell joins the running read).
+
+### Tests added or changed in the fix round
+
+- core-ui `SessionViewModelStoresTest` (new, 4): a phase is stable while it lasts and every change is a new phase; a logged-out phase
+  on screen clears the day and the old form while signing in never clears the form; another user's day is cleared at a new sign-in;
+  the activity finishing clears every phase.
+- feature-auth `LogoutThenLoginTest` (new, 2), built as MainActivity builds the shell: log in, sign in, log out, log in again: the
+  submit reaches the login port, the day's retained state is cleared, the form is fresh (no last user's name), the same user signs in
+  to a fresh day; three rounds in a row. A temporary control test (not committed) rebuilt the old shape (form in the activity's store,
+  the whole store cleared after the logout) and confirmed it strands the form (see Verify).
+- app-tso `TsoApiTest` +3: a tab switch during a slow read still reads the new tab (no spinner) and the first answer lands; a second
+  pull waits for the running read and never doubles it; the Dashboard shown again within a minute keeps its read, a pull always
+  reads, a new day reads. `TsoInboxTest` +1: the bell tapped while the Dashboard reads the inbox joins that read (one GET) and marks
+  the newest id (`{"up_to_id":3}`). `TsoTargetsTest` +2: opening another node while one reads reads it and ends its spinner, the
+  first node's answer still lands; a second Status pull waits for the running read. The models now take the day's scope (tests pass
+  their `runBlocking` scope).
+- feature-tso `TsoDashboardCardsTest` +2 (oldest stamp by time with fractions and offsets; vacancy on the user, unique list keys);
+  `TsoLoginStatusScreenTest` (new, 2: username shown without a full name and "SR Not Set" only on the vacant route; a 2000-row tab
+  is lazy and scrolls to its last row); `TsoInboxScreenTest` +1 (a long inbox is lazy, an older page repeating a row shows it once);
+  `targets/DetailsTableLayoutTest` (new, 1, native graphics: every screenshot 41 item name breaks only after a space at 360 dp, and
+  the long names still wrap).
+
 ## Decisions
 
 - **D-A1-01 Root during the stubs.** The empty back stack is the tile Home, so behaviour is unchanged until A1's shell
@@ -159,7 +199,8 @@ in-process announcement); TokenContrastTest +1.
 - **D-A1-10 Dashboard reads.** On open and on pull-to-refresh the eight card reads run in parallel (both channel cards,
   so the ▸ switch shows the other card without a read); a second pull while one runs is ignored. Each card is cached
   per day (key `nat_<card>_<day>`, 3 days, 60 files, as before); the model is kept per signed-in user, so returning to
-  the Dashboard shows the last figures while it reads again.
+  the Dashboard shows the last figures while it reads again. Amended in the fix round by D-A1-29 (a second pull waits for the
+  running read) and D-A1-30 (shown again within 60 s keeps the read).
 - **D-A1-11 "As of".** One line under the top bar with the OLDEST stamp among the cards on screen ("As of 14:30"), or
   "Offline: showing the copy of 14:30" when any card is a kept copy. A card with no figures says why (offline with no
   copy, refused, nothing yet).
@@ -176,8 +217,14 @@ in-process announcement); TokenContrastTest +1.
 - **D-A1-16 Drawing from integers.** Ring arcs, bar widths, pie angles (`sweepTenths`) and chart heights are drawing
   only, computed from the integer tenths / whole / bp; every printed figure goes through `Percent`/`Qty`/`Targets`.
 - **D-A1-17 Retained state at logout (SH-17).** After a logout that was not refused, MainActivity deletes the kept
-  dashboard copies and clears the activity's `ViewModelStore` (every `rememberRetained` holder); `aron_ui_<id>.xml` is
-  in the wiped files.
+  dashboard copies; `aron_ui_<id>.xml` is in the wiped files. Superseded in the fix round (checker, high): the activity's
+  `ViewModelStore` is never cleared. Each session phase has its own store (core-ui `SessionPhaseScope` /
+  `SessionViewModelStores`, a ViewModel of the activity so a phase survives rotation and `recreate()`): the login form lives in
+  the logged-out phase's store, every `rememberRetained` holder of the day in the sign-in's store. A logged-out phase on screen
+  clears every other store (the day that ended and the previous login form); entering a signed-in phase clears only other
+  signed-in stores (never the form whose `login` call let the user in). Every change of phase is a new store, so the same user
+  signing in again starts fresh. Clearing the activity's store after `logout()` returned had cleared the login ViewModel the
+  logged-out screen already held: the next login spun for ever.
 - **D-A1-18 `RoleHomes.tsoTiles` deprecated, not deleted.** The TSO app no longer calls it; two shared golden files
   that are not A1's still do (ask below). `TsoTile` ids stay: A3's old frames pass them.
 - **D-A1-19 Target figures as the screenshots print them.** `achieved/target`, Target, Achievement and Remaining are plain
@@ -214,6 +261,15 @@ in-process announcement); TokenContrastTest +1.
   emitted from `PushNotices.show` because `PushShell` and `PushDispatcher` are not A1's files.
 - **D-A1-28 Where an inbox row leads.** `support_ticket` -> TICKET_DETAIL with the ticket uuid as the argument,
   `leave_application` -> LEAVE, `zone_day` -> FINAL_SUBMIT; other rows are not tappable.
+- **D-A1-29 One read per key (fix round).** Every read of the Dashboard, Login & Bikroy Joma Status, the inbox and Target Status runs
+  through `TsoReadFlights`: a call for a key being read joins it, other keys read in parallel, and the read runs in the sign-in's
+  scope, not the caller's, so leaving a screen or tab never cancels it and never strands the next read. A failed read throws to
+  every caller and frees its key. Mark-read is not a flight (each open marks the newest id it read; idempotent on the server).
+- **D-A1-30 Dashboard freshness (fix round).** The Dashboard shown again within 60 s of its last read of the same business day keeps
+  that read (back from Login & Bikroy Joma Status, Settings or a drawer screen); a pull always reads; the bell is read with the
+  cards, so it follows the same rule (pushes and the inbox still read it).
+- **D-A1-31 Vacant route (fix round).** A row is vacant when it has neither `user_id` nor `username` (contract
+  `LoginSubmitUserRow`); its name is "SR Not Set". Otherwise the name is the full name, else the username, else "—".
 
 ## Deviations
 
@@ -292,7 +348,7 @@ Step 2, 2026-10-29 (Dhaka; the Gradle lock was held by other lanes for most of t
 | command | result |
 |---|---|
 | `gl.sh … :android:core-ui:testDebugUnitTest :android:feature-tso:testDebugUnitTest :android:feature-auth:testDebugUnitTest :android:app-tso:testDebugUnitTest :android:core-system:testDebugUnitTest --tests '*Logout*' --tests '*UnsentItems*' --tests '*CheckerF022*' :android:ui-screenshots:testDebugUnitTest --tests '*.TsoScreenshotTests' --tests '*.TsoLargeTextScreenshotTests' -Paron.screenshots.recordTo=<scratch> --continue` (07:34 to 07:36, on `6e8d2c3c` plus the uncommitted goldens sources) | BUILD FAILED only by `:android:core-ui:testDebugUnitTest` (1 test, see below); every other task passed |
-| feature-tso | 32 classes, 165 tests, 0 failures, 0 errors (TsoShellTest 13, TsoDashboardCardsTest 15, LogoutDialogTest 3, TsoNavigationTest 2, TsoAppTest 4, TsoChromeTest 4, TsoLoginThemeTest 4, TsoFeedbackFlowTest 2, TsoNavTest 5, the A3 classes unchanged) |
+| feature-tso | 32 classes, 165 tests, 0 failures, 0 errors (TsoShellTest 13, TsoDashboardCardsTest 13 (corrected in the fix round: this line said 15; the class had 13 @Test methods at every step-2 and step-3 commit), LogoutDialogTest 3, TsoNavigationTest 2, TsoAppTest 4, TsoChromeTest 4, TsoLoginThemeTest 4, TsoFeedbackFlowTest 2, TsoNavTest 5, the A3 classes unchanged) |
 | app-tso | 5 classes, 29 tests, 0 failures (TsoApiTest 6) |
 | feature-auth | 7 classes, 47 tests, 0 failures (TsoLoginScreenTest 6, LoginScreenLocaleTest 5) |
 | core-system (filtered) | 4 classes, 14 tests, 0 failures (LogoutWipeUiPrefsTest 3, LogoutFlowTest, CheckerF022Test, UnsentItemsDialogTest) |
@@ -338,6 +394,31 @@ Step 3, 2026-10-29 (the Gradle lock was held by other lanes' backend runs for mo
 
 CI not run, nothing pushed.
 
+Fix round, 2026-10-29 (laptop clock; the Gradle lock was held by B1's backend run for the first wait):
+
+| command | result |
+|---|---|
+| `gl.sh … :android:core-ui:testDebugUnitTest --tests '*SessionViewModelStoresTest*' :android:feature-auth:testDebugUnitTest --tests '*LogoutThenLoginTest*' :android:app-tso:testDebugUnitTest --tests '*TsoApiTest*' --tests '*TsoInboxTest*' --tests '*TsoTargetsTest*' :android:feature-tso:testDebugUnitTest --tests '*TsoDashboardCardsTest*' --tests '*TsoLoginStatusScreenTest*' --tests '*TsoInboxScreenTest*' --tests '*DetailsTableLayoutTest*' --tests '*TargetStatusTest*' :android:app-tso:compileDebugKotlin :android:ui-screenshots:compileDebugUnitTestKotlin --continue` (development run, uncommitted tree) | BUILD SUCCESSFUL in 3m 25s: SessionViewModelStoresTest 4/4, LogoutThenLoginTest 3/3 (the two kept tests plus a temporary control that rebuilt the old shape, the login form in the activity's store and the whole store cleared after the logout: it confirmed the old shape strands the form, submit never reaches the port and `busy` stays true; the control was deleted before the commit), TsoApiTest 9/9, TsoInboxTest 9/9, TsoTargetsTest 7/7, TsoDashboardCardsTest 15/15, TsoLoginStatusScreenTest 2/2, TsoInboxScreenTest 5/5, DetailsTableLayoutTest 1/1, TargetStatusTest 12/12 |
+| s5 Verify: `gl.sh … :android:feature-tso:testDebugUnitTest :android:core-ui:testDebugUnitTest :android:feature-auth:testDebugUnitTest :android:app-tso:testDebugUnitTest :android:app-tso:assembleDebug :android:ui-screenshots:testDebugUnitTest --tests '*.TsoScreenshotTests' --tests '*.TsoLargeTextScreenshotTests' -Paron.screenshots.recordTo=<scratch>/goldens/A1fix --continue` (tree = commits `a23f39c4` to `38696637`) | BUILD FAILED in 4m 7s by 1 test that is not A1's (below); every other task passed, all executed (none from cache) |
+| feature-tso | 36 classes, 188 tests, 0 failures, 0 errors |
+| core-ui | 23 classes, 156 tests, 1 failure: `ScannerSourceSetsTest.aLiteralInMainIsFlaggedButNotInAnyTestSourceSet` (line 28, the Windows path-separator failure recorded in steps 2 and 3; `git log e2e5d5f6..HEAD` on the scanner and its test is empty); SessionViewModelStoresTest 4/4, TokenContrastTest and HardcodedStringScanTest pass |
+| feature-auth | 8 classes, 49 tests, 0 failures (LogoutThenLoginTest 2/2) |
+| app-tso | 7 classes, 48 tests, 0 failures (TsoApiTest 9, TsoInboxTest 9, TsoTargetsTest 7); `assembleDebug` built `app-tso-debug.apk` (29.4 MB) |
+| ui-screenshots, record mode into the scratch dir (no PNG committed) | 2 classes, 70 tests, 0 failures. Looked at: `tso_target_details_cigarette_en` and `tso_target_details_bn` ("Black / Diamond / Advanced" by words, as screenshot 41), `tso_login_status_en` (SR Not Set on the vacant row only), `tso_login_status_200_bn`, `tso_drawer_my_call_bn`, `tso_logout_dialog_200_bn` (Log Out broken inside its word: fixed, next row) |
+| after the dialog fix: `gl.sh … :android:feature-tso:testDebugUnitTest :android:ui-screenshots:testDebugUnitTest --tests '*.TsoScreenshotTests' --tests '*.TsoLargeTextScreenshotTests' -Paron.screenshots.recordTo=<scratch>/goldens/A1fix2 --continue` | BUILD SUCCESSFUL in 1m 43s: feature-tso 36 classes, 188 tests, 0 failures; ui-screenshots 70/70. `tso_logout_dialog_200_bn` now shows Cancel, then Log Out whole on the next line; `tso_logout_dialog_en` side by side as before |
+| `python tools/ci/money-float-scan.py` | 0 lines not allowed; exit 1 only for the 4 stale allow entries of step 2 (ask to the lead, unchanged) |
+| `python tools/ci/kpi-format-corpus.py --check` | up to date |
+
+CI not run, nothing pushed.
+
+Goldens needed, fix round (record on the Linux runner, `-Proborazzi.record=true`; none committed from this laptop):
+- New, TsoScreenshotTests: `tso_drawer_tickets_bn`, `tso_drawer_periphery_en`, `tso_drawer_my_call_en`, `tso_drawer_my_call_bn`.
+- New, TsoLargeTextScreenshotTests: `tso_login_status_200_bn`, `tso_logout_dialog_200_bn`.
+- Pixels changed by the fix round (record these after it, not before): `tso_target_details_cigarette_en`,
+  `tso_target_details_lighter_till_en`, `tso_target_details_till_en`, `tso_target_details_bn` (Item column width, 8 dp row sides),
+  `tso_login_status_en`, `tso_login_status_bn`, `tso_login_status_offline_en` (lazy list: same look), `tso_inbox_*` (lazy list: same
+  look). The step 2 and step 3 lists below still stand otherwise.
+
 Goldens needed, step 3 (record on the Linux runner, `-Proborazzi.record=true`; none committed from this laptop):
 - New, TsoScreenshotTests: `tso_target_monthly_en`, `tso_target_till_date_en`, `tso_target_monthly_bn`, `tso_target_sunlight_en`,
   `tso_target_kept_en`, `tso_target_offline_empty_en`, `tso_target_loading_en`, `tso_target_details_cigarette_en`,
@@ -354,13 +435,19 @@ Goldens needed, step 3 (record on the Linux runner, `-Proborazzi.record=true`; n
 - The money-float allow list still carries the 4 stale step-2 entries (lead's file; ask).
 - Not checked against a live server: the exact `children` answer of B2 for a house TSO and the B1 inbox page were built from
   the contract and the B1/B2 status files, tested with fakes.
+- Fix round: logout then login is proven in Robolectric with the shell's shape (`LogoutThenLoginTest`), not on a phone; the
+  single-flight reads are proven with fake slow servers, not on 2G. Both belong in the next device check (Next step).
 
 ## Next step
 
-A1 has no build item left in s5. For the next agent on this lane: (1) when the lead retires the shared role-home goldens,
-delete `RoleHomes.tsoTiles` (feature-home `RoleHome.kt`) and its `@Deprecated` callers; (2) when B1, B2 and B3 are on dev, run
-the s8 device checks for rows 2 to 10, 39 to 42, 44 and the inbox on a pilot phone (Target Status against real
-`children=zone` answers, a ticket update reaching the bell and the inbox, a `day_final_submitted` notice on an SR phone);
-(3) answer A2's and A3's questions on the inbox `TICKET_DETAIL` argument and `PushNotices.arrived` if they ask. The merge
-order of the wave (s6) puts A1 after W1 and before A2 and A3; `TsoScreenshotTests.kt` has A3's move pending on A3's branch,
-so expect a conflict there: keep A3's removal of the area cases and A1's appended step 2 and step 3 cases.
+A1 has no build item left in s5; the fix round's nine defects are fixed (section "Fix round"). For the next agent on this lane:
+(1) when the lead retires the shared role-home goldens, delete `RoleHomes.tsoTiles` (feature-home `RoleHome.kt`) and its
+`@Deprecated` callers; (2) when B1, B2 and B3 are on dev, run the s8 device checks for rows 2 to 10, 39 to 42, 44 and the inbox on
+a pilot phone (Target Status against real `children=zone` answers, a ticket update reaching the bell and the inbox, a
+`day_final_submitted` notice on an SR phone), and add a device check of logout then login on the same phone (the fix round's high
+defect: the second login must not spin); (3) answer A2's and A3's questions on the inbox `TICKET_DETAIL` argument and
+`PushNotices.arrived` if they ask. The merge order of the wave (s6) puts A1 after W1 and before A2 and A3; `TsoScreenshotTests.kt`
+has A3's move pending on A3's branch, so expect a conflict there: keep A3's removal of the area cases and A1's appended step 2, step
+3 and fix-round cases. A2 and A3 (information): `MainActivity` now wraps the signed-in branch in `SessionPhaseScope`, so every
+`rememberRetained` holder of their screens lives in the sign-in's store and is cleared by the next logged-out phase; nothing to
+change on their side.
