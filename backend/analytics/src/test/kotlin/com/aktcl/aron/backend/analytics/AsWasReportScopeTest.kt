@@ -1,5 +1,7 @@
 package com.aktcl.aron.backend.analytics
 
+import com.aktcl.aron.backend.platform.Reach
+import com.aktcl.aron.backend.platform.ReachNode
 import com.aktcl.aron.contract.Role
 import io.ktor.http.HttpStatusCode
 import org.junit.jupiter.api.AfterEach
@@ -25,6 +27,19 @@ class AsWasReportScopeTest : ReportFixture() {
 
     private fun exec(sql: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(sql); Aggregator.refreshDimensions(it); DashboardSummaries.refreshDimensions(it) }
     private fun id(sql: String) = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery(sql).mapTo(Long::class.java).one() }
+
+    @Test
+    fun aReportSelectorOfAnEmptyTerritoryIsTheCallersOnlyThroughItsParentChain() = app {
+        // D-REPORTS-NODEASWAS-08: a territory with no zone at all is the caller's when it or an ancestor is one of their top nodes (the ReportEngine selector path).
+        val t1 = id("SELECT id FROM app.territory WHERE code = 'T1'"); val d1 = id("SELECT division_id FROM app.territory WHERE id = $t1")
+        exec("INSERT INTO app.territory (code, name, division_id) VALUES ('TEMPTY','Empty territory', $d1)")
+        val tEmpty = id("SELECT id FROM app.territory WHERE code = 'TEMPTY'")
+        reaches[11] = Reach(11, Role.TSO, day, false, setOf(z1, z2), emptySet(), false, listOf(ReachNode("division", d1)))   // chain ties the empty territory to the division
+        reaches[14] = Reach(14, Role.TSO, day, false, setOf(z1, z2), emptySet(), false, listOf(ReachNode("zone", z1)))      // a zone scope node owns no empty territory
+        val sel = body(""","geo":{"territory":[$tEmpty]}""")
+        assertEquals(0, run(11, Role.TSO, "route-std", sel).okResult().rows().size, "under the caller's division: 200, nothing in it")
+        assertEquals(HttpStatusCode.Forbidden, run(14, Role.TSO, "route-std", sel).status, "a zone top node does not own an empty territory")
+    }
 
     @Test
     fun anOldTerritorySelectorAndRouteStdReadTheDayAsItWas() = app {
