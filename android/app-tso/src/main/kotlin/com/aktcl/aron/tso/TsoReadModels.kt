@@ -91,7 +91,8 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
          */
         override suspend fun unsent(): List<com.aktcl.aron.feature.tso.leave.LeaveItem> = runCatching {
             val box = databases.of(userId).outboxDao()
-            val reasons = com.aktcl.aron.feature.tso.leave.LeaveReasonTexts.parse(runCatching { meta(userId).section("reason_texts") }.getOrNull())
+            // the whole section, all its stored chunks (ReferenceRepository.section); unreadable or absent gives no texts
+            val reasons = com.aktcl.aron.feature.tso.leave.LeaveReasonTexts.parse(runCatching { com.aktcl.aron.core.database.repo.ReferenceRepository(databases.of(userId)).section("reason_texts") }.getOrNull())
             meta(userId).metaWithPrefix(LEAVE_MIRROR).mapNotNull { LeaveJson.parseUnsent(it.value) }.map { item ->
                 val row = runCatching { box.byClientUuid(item.leaveUuid) }.getOrNull()
                 val answer = when (row?.state) {
