@@ -6,7 +6,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
@@ -38,11 +42,11 @@ class TsoInboxScreenTest {
         listOf(n(3, "support_ticket", "6f1c0b9e-1111-4c4c-9a9a-000000000003", read = false, bn = "টিকিট আপডেট"), n(2, "announcement", "x", read = true)), null,
     )
 
-    private fun show(load: CardLoad<TsoInboxPage>?, language: AppLanguage = AppLanguage.EN, pending: Boolean = false, onOpen: (TsoInboxTarget) -> Unit = {}, older: (() -> Unit)? = null) {
+    private fun show(load: CardLoad<TsoInboxPage>?, language: AppLanguage = AppLanguage.EN, pending: Boolean = false, onOpen: (TsoInboxTarget) -> Unit = {}, older: (() -> Unit)? = null, olderRows: List<TsoNotification> = emptyList()) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         compose.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
-                TsoLoginTheme(language, loggedOut = false) { TsoInboxContent(load, emptyList(), now, false, pending, {}, onOpen, older) }
+                TsoLoginTheme(language, loggedOut = false) { TsoInboxContent(load, olderRows, now, false, pending, {}, onOpen, older) }
             }
         }
     }
@@ -77,5 +81,19 @@ class TsoInboxScreenTest {
     @Test fun offlineWithoutACopySaysSo() {
         show(CardLoad(null, failure = TsoFailure.OFFLINE))
         compose.onNodeWithText("Not available offline yet. Pull down to try again.").assertExists()
+    }
+
+    /** tso-manual A1 fix round: the list is lazy and keyed by id; "Show older" pages only add rows, the screen composes what it shows. */
+    @Test fun aLongInboxIsLazyAndAnOlderPageRepeatingARowShowsItOnce() {
+        val first = (200L downTo 151L).map { n(it, "announcement", "x", read = true) }
+        val olderRows = (151L downTo 2L).map { n(it, "announcement", "x", read = true) } // 151 repeats the first page's last row
+        show(CardLoad(page.copy(items = first, nextBeforeId = 1)), older = {}, olderRows = olderRows)
+        compose.onNodeWithTag(TsoInboxTags.row(200)).assertExists()
+        compose.onNodeWithTag(TsoInboxTags.row(2)).assertDoesNotExist() // not composed until it is on screen
+        compose.onNodeWithTag(TsoInboxTags.LIST).performScrollToNode(hasTestTag(TsoInboxTags.OLDER))
+        compose.onNodeWithTag(TsoInboxTags.row(2)).assertExists()
+        compose.onNodeWithTag(TsoInboxTags.OLDER).assertExists()
+        compose.onNodeWithTag(TsoInboxTags.LIST).performScrollToNode(hasTestTag(TsoInboxTags.row(151)))
+        compose.onAllNodesWithTag(TsoInboxTags.row(151)).assertCountEquals(1)
     }
 }

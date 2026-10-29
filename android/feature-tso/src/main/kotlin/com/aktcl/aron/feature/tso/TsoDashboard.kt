@@ -59,8 +59,20 @@ data class LoginSubmitCard(val asOf: String, val targetRoutes: Long, val success
 data class SegmentRow(val code: String, val name: String, val baseUnit: String, val valueMtk: Long, val qtyBase: Long)
 data class SegmentCard(val asOf: String, val totalValueMtk: Long, val familyTotals: Map<String, Long>, val segments: List<SegmentRow>)
 
-/** One (route, user) row of Not Logged In or Not Uploaded (D-TSO-MAN-12). A vacant route has an SR row with no user. */
-data class LoginSubmitUser(val routeId: Long, val routeName: String, val depName: String, val username: String?, val displayName: String?, val role: String)
+/**
+ * One (route, user) row of Not Logged In or Not Uploaded (D-TSO-MAN-12). A vacant route has an SR row with no user: user_id,
+ * username and display_name all null (contract `LoginSubmitUserRow`). A real user may have no full name ([displayName] null).
+ */
+data class LoginSubmitUser(
+    val routeId: Long, val routeName: String, val depName: String, val username: String?, val displayName: String?, val role: String,
+    val userId: Long? = null,
+) {
+    /** A route with no user ("SR Not Set"): decided on the user, never on a missing display name. */
+    val vacant: Boolean get() = userId == null && username == null
+
+    /** The list key: the route and its user (the role for a vacant route's row). */
+    val key: String get() = "$routeId:${username ?: userId?.toString() ?: role}"
+}
 data class LoginSubmitUsers(val asOf: String, val tab: String, val routeCount: Long, val truncated: Boolean, val items: List<LoginSubmitUser>)
 
 /** The two tabs of screenshot 8, in screen order. */
@@ -122,7 +134,7 @@ object TsoDashboards {
         LoginSubmitUsers(
             s(o, "as_of") ?: return null, s(o, "tab").orEmpty(), l(o, "route_count") ?: 0L, (o["truncated"] as? JsonPrimitive)?.booleanOrNull ?: false,
             arr(o, "items").mapNotNull { r ->
-                LoginSubmitUser(l(r, "route_id") ?: return@mapNotNull null, s(r, "route_name").orEmpty(), s(r, "dep_name").orEmpty(), s(r, "username"), s(r, "display_name"), s(r, "role") ?: "SR")
+                LoginSubmitUser(l(r, "route_id") ?: return@mapNotNull null, s(r, "route_name").orEmpty(), s(r, "dep_name").orEmpty(), s(r, "username"), s(r, "display_name"), s(r, "role") ?: "SR", l(r, "user_id"))
             },
         )
     }
@@ -187,7 +199,13 @@ object TsoDashboards {
     fun axisTicks(maxBp: Long, steps: Int): List<Long> = (0..steps).map { k -> Percent.whole(maxBp * k, steps * 10_000L) ?: 0L }
 
     /** "as of hh:mm" in Dhaka time from the server's stamp; null when the stamp is missing or unreadable. */
-    fun asOfClock(iso: String?): String? = iso?.let { runCatching { DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.of("Asia/Dhaka")).format(Instant.parse(it)) }.getOrNull() }
+    fun asOfClock(iso: String?): String? = instantOf(iso)?.let { runCatching { DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.of("Asia/Dhaka")).format(it) }.getOrNull() }
+
+    /** An RFC 3339 stamp as an instant ("Z" or an offset, any number of fraction digits); null when it is not one. */
+    fun instantOf(iso: String?): Instant? = iso?.let { runCatching { java.time.OffsetDateTime.parse(it).toInstant() }.getOrNull() }
+
+    /** The oldest of [stamps] by time (never by string order: fraction digits and offsets differ); unreadable stamps are skipped. */
+    fun oldest(stamps: List<String>): String? = stamps.mapNotNull { s -> instantOf(s)?.let { it to s } }.minByOrNull { it.first }?.second
 
     /** The request body of every card: only the business date (the scope is the token's; the client never sends scope ids). */
     fun filterBody(businessDate: String): String = """{"date":"$businessDate"}"""

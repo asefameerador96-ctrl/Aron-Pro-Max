@@ -237,4 +237,35 @@ class TsoDashboardCardsTest {
         assertEquals("2026-10-29T08:10:00Z", s.asOf)
         assertTrue(s.anyKept)
     }
+
+    // ---- tso-manual A1 fix round ---------------------------------------------------------------------------------------------
+
+    @Test fun theOldestStampIsByTimeNeverByStringOrder() {
+        // as strings "...:00Z" sorts after "...:00.5Z", but it is the older time
+        assertEquals("2026-10-29T08:30:00Z", TsoDashboards.oldest(listOf("2026-10-29T08:30:00.5Z", "2026-10-29T08:30:00Z")))
+        // an offset: 14:20+06:00 is 08:20Z, older than 08:25Z (string order says the opposite)
+        assertEquals("2026-10-29T14:20:00+06:00", TsoDashboards.oldest(listOf("2026-10-29T08:25:00Z", "2026-10-29T14:20:00+06:00")))
+        assertNull(TsoDashboards.oldest(listOf("not a time")))
+        assertEquals("2026-10-29T08:30:00Z", TsoDashboards.oldest(listOf("garbage", "2026-10-29T08:30:00Z")))
+        val cpr = TsoDashboards.cpr("""{"as_of":"2026-10-29T08:30:00.5Z","target_outlets":119,"successful_calls":3}""")
+        val geo = TsoDashboards.geo("""{"as_of":"2026-10-29T08:30:00Z","total_calls":4,"geo_validated":4}""")
+        assertEquals("2026-10-29T08:30:00Z", TsoDashboardState(cpr = CardLoad(cpr), geo = CardLoad(geo)).asOf)
+        assertEquals("14:20", TsoDashboards.asOfClock("2026-10-29T14:20:00+06:00"))
+        assertEquals("14:30", TsoDashboards.asOfClock("2026-10-29T08:30:00.123456Z"))
+    }
+
+    @Test fun aVacantRouteIsDecidedOnTheUserNeverOnAMissingName() {
+        val u = TsoDashboards.users(
+            """{$asOf,"tab":"not_logged_in","route_count":2,"truncated":false,"items":[
+            {"route_id":2,"route_code":"R2","route_name":"Apsis Route 2","zone_id":9,"dep_name":"Banani - Test","user_id":null,"username":null,"display_name":null,"role":"SR"},
+            {"route_id":2,"route_code":"R2","route_name":"Apsis Route 2","zone_id":9,"dep_name":"Banani - Test","user_id":9,"username":"sr9","display_name":null,"role":"SR"},
+            {"route_id":3,"route_code":"R3","route_name":"Apsis Route 3","zone_id":9,"dep_name":"Banani - Test","user_id":7,"username":"amo6334","display_name":"AMO-6334","role":"AMO"}]}""",
+        )!!
+        assertEquals(listOf(true, false, false), u.items.map { it.vacant })
+        assertEquals(listOf(null, 9L, 7L), u.items.map { it.userId })
+        // list keys: unique per (route, user), and a repeated row never repeats a key
+        assertEquals(listOf("2:SR", "2:sr9", "3:amo6334"), u.items.map { it.key })
+        val keys = keyedUsers(u.items + u.items).map { it.first }
+        assertEquals(keys.size, keys.toSet().size)
+    }
 }

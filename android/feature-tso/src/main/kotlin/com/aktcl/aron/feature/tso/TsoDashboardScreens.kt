@@ -5,6 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -31,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -89,8 +93,8 @@ data class TsoDashboardState(
 ) {
     private val stamps: List<String> get() = listOfNotNull(sales.value?.asOf, geo.value?.asOf, channelStd.value?.asOf, channelCalls.value?.asOf, cpr.value?.asOf, brand.value?.asOf, login.value?.asOf, segment.value?.asOf)
 
-    /** The oldest server stamp among the cards on screen: the "as of" line never claims fresher figures than the oldest card. */
-    val asOf: String? get() = stamps.minOrNull()
+    /** The oldest server stamp among the cards on screen (compared as instants): the "as of" line never claims fresher figures than the oldest card. */
+    val asOf: String? get() = TsoDashboards.oldest(stamps)
 
     /** True when at least one card is a kept copy (the server could not be reached). */
     val anyKept: Boolean get() = listOf(sales, geo, channelStd, channelCalls, cpr, brand, login, segment).any { it.kept && it.value != null }
@@ -512,32 +516,51 @@ fun TsoLoginSubmitStatusContent(
             }
         }
         PullToRefreshBox(refreshing, onRefresh, Modifier.weight(1f).fillMaxWidth()) {
-            Column(
-                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).testTag(TsoDashTags.USERS),
+            val v = load?.value
+            // up to 2000 rows a tab (contract): a lazy list composes only the rows on screen (docs/04, 2 GB phones)
+            val rows = remember(v) { keyedUsers(v?.items.orEmpty()) }
+            LazyColumn(
+                Modifier.fillMaxSize().testTag(TsoDashTags.USERS),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = TsoFabPadding),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                val v = load?.value
                 when {
-                    load == null -> TsoLoading(Modifier.heightIn(min = 200.dp))
-                    v == null -> TsoNote(stringResource(if (load.failure == TsoFailure.REFUSED) R.string.tso_dash_card_refused else R.string.tso_dash_card_offline))
+                    load == null -> item(key = "loading") { TsoLoading(Modifier.heightIn(min = 200.dp)) }
+                    v == null -> item(key = "note") { TsoNote(stringResource(if (load.failure == TsoFailure.REFUSED) R.string.tso_dash_card_refused else R.string.tso_dash_card_offline)) }
                     else -> {
                         TsoDashboards.asOfClock(v.asOf)?.let { c ->
-                            val clock = localizedDigits(c)
-                            Text(
-                                if (load.kept) stringResource(R.string.tso_dash_kept_copy, clock) else stringResource(R.string.tso_dash_as_of, clock),
-                                Modifier.fillMaxWidth().testTag(TsoDashTags.AS_OF), style = nightText(13.sp, if (load.kept) n.warning else n.inkMuted, align = TextAlign.End),
-                            )
+                            item(key = "as_of") {
+                                val clock = localizedDigits(c)
+                                Text(
+                                    if (load.kept) stringResource(R.string.tso_dash_kept_copy, clock) else stringResource(R.string.tso_dash_as_of, clock),
+                                    Modifier.fillMaxWidth().testTag(TsoDashTags.AS_OF), style = nightText(13.sp, if (load.kept) n.warning else n.inkMuted, align = TextAlign.End),
+                                )
+                            }
                         }
-                        if (v.items.isEmpty()) TsoNote(stringResource(R.string.tso_dash_users_empty))
-                        v.items.forEach { u -> UserRow(u) }
-                        if (v.truncated) Text(stringResource(R.string.tso_dash_truncated, localizedNumber(v.items.size.toLong())), style = nightText(13.sp, n.inkMuted))
+                        if (v.items.isEmpty()) item(key = "empty") { TsoNote(stringResource(R.string.tso_dash_users_empty)) }
+                        items(rows, key = { it.first }) { (_, u) -> UserRow(u) }
+                        if (v.truncated) item(key = "truncated") { Text(stringResource(R.string.tso_dash_truncated, localizedNumber(v.items.size.toLong())), style = nightText(13.sp, n.inkMuted)) }
                     }
                 }
-                Spacer(Modifier.height(TsoFabPadding))
             }
         }
     }
 }
+
+/** The rows with their list keys ([LoginSubmitUser.key]; a repeated key gets its index, so a malformed answer never crashes the list). */
+internal fun keyedUsers(items: List<LoginSubmitUser>): List<Pair<String, LoginSubmitUser>> {
+    val seen = HashSet<String>()
+    return items.mapIndexed { i, u ->
+        var k = u.key
+        if (!seen.add(k)) { k = "$k#$i"; seen.add(k) }
+        k to u
+    }
+}
+
+/** The name a row shows: the full name, else the username; "SR Not Set" only for a vacant route (no user at all). */
+@Composable
+internal fun userRowName(u: LoginSubmitUser): String =
+    u.displayName ?: if (u.vacant) stringResource(R.string.tso_dash_sr_not_set) else u.username ?: stringResource(R.string.tso_dash_dash)
 
 @Composable
 private fun UserRow(u: LoginSubmitUser) {
@@ -549,7 +572,7 @@ private fun UserRow(u: LoginSubmitUser) {
             }
             Spacer(Modifier.width(16.dp))
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(u.displayName ?: stringResource(R.string.tso_dash_sr_not_set), style = nightText(18.sp, n.ink, bold = true))
+                Text(userRowName(u), style = nightText(18.sp, n.ink, bold = true))
                 Text(stringResource(R.string.tso_dash_user_name, u.username ?: stringResource(R.string.tso_dash_dash)), style = nightText(14.sp, n.inkMuted))
                 Text(stringResource(R.string.tso_dash_user_route, u.routeName), style = nightText(14.sp, n.inkMuted))
                 Text(stringResource(R.string.tso_dash_user_dep, u.depName), style = nightText(14.sp, n.inkMuted))

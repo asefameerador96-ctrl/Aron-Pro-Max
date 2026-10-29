@@ -2,24 +2,25 @@ package com.aktcl.aron.feature.tso.notifications
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,31 +79,33 @@ fun TsoInboxContent(
 ) {
     val n = nightRoles()
     PullToRefreshBox(refreshing, onRefresh, modifier.fillMaxSize()) {
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).testTag(TsoInboxTags.LIST),
+        val v = load?.value
+        // a lazy list keyed by id: every "Show older" page adds rows, only the ones on screen are composed (docs/04, 2 GB phones)
+        val rows = remember(v, older) { v?.let { (it.items + older).distinctBy { r -> r.id } }.orEmpty() }
+        LazyColumn(
+            Modifier.fillMaxSize().testTag(TsoInboxTags.LIST),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Spacer(Modifier.height(4.dp))
-            val v = load?.value
             when {
-                load == null -> TsoLoading(Modifier.heightIn(min = 200.dp))
-                v == null -> TsoNightNote(stringResource(if (load.failure == TsoFailure.REFUSED) R.string.tso_dash_card_refused else R.string.tso_dash_card_offline))
+                load == null -> item(key = "loading") { TsoLoading(Modifier.heightIn(min = 200.dp)) }
+                v == null -> item(key = "note") { TsoNightNote(stringResource(if (load.failure == TsoFailure.REFUSED) R.string.tso_dash_card_refused else R.string.tso_dash_card_offline)) }
                 else -> {
                     TsoDashboards.asOfClock(v.asOf)?.let { c ->
-                        val clock = localizedDigits(c)
-                        Text(
-                            if (load.kept) stringResource(R.string.tso_dash_kept_copy, clock) else stringResource(R.string.tso_dash_as_of, clock),
-                            Modifier.fillMaxWidth().testTag(TsoInboxTags.AS_OF), style = nightText(13.sp, if (load.kept) n.warning else n.inkMuted, align = TextAlign.End),
-                        )
+                        item(key = "as_of") {
+                            val clock = localizedDigits(c)
+                            Text(
+                                if (load.kept) stringResource(R.string.tso_dash_kept_copy, clock) else stringResource(R.string.tso_dash_as_of, clock),
+                                Modifier.fillMaxWidth().testTag(TsoInboxTags.AS_OF), style = nightText(13.sp, if (load.kept) n.warning else n.inkMuted, align = TextAlign.End),
+                            )
+                        }
                     }
-                    if (pendingRead) Text(stringResource(R.string.tso_chrome_inbox_pending), Modifier.fillMaxWidth().testTag(TsoInboxTags.PENDING), style = nightText(13.sp, n.inkMuted))
-                    val rows = (v.items + older).distinctBy { it.id }
-                    if (rows.isEmpty()) TsoNightNote(stringResource(R.string.tso_chrome_inbox_empty))
-                    rows.forEach { item -> InboxRow(item, nowMs, onOpen) }
-                    if (onOlder != null) NightButton(stringResource(R.string.tso_chrome_inbox_older), onOlder, Modifier.testTag(TsoInboxTags.OLDER), style = NightButtonStyle.Blue)
+                    if (pendingRead) item(key = "pending") { Text(stringResource(R.string.tso_chrome_inbox_pending), Modifier.fillMaxWidth().testTag(TsoInboxTags.PENDING), style = nightText(13.sp, n.inkMuted)) }
+                    if (rows.isEmpty()) item(key = "empty") { TsoNightNote(stringResource(R.string.tso_chrome_inbox_empty)) }
+                    items(rows, key = { it.id }) { item -> InboxRow(item, nowMs, onOpen) }
+                    if (onOlder != null) item(key = "older") { NightButton(stringResource(R.string.tso_chrome_inbox_older), onOlder, Modifier.testTag(TsoInboxTags.OLDER), style = NightButtonStyle.Blue) }
                 }
             }
-            Spacer(Modifier.height(24.dp))
         }
     }
 }

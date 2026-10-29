@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -28,6 +29,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -310,8 +313,8 @@ private fun BandBar(pct: Long?, band: Band?) {
 }
 
 /**
- * The item table of Target Details (screenshots 41 and 42): white rules, Item at the start (wraps), the figures centred and the
- * percent at the end. Every figure from the integers: the tab's target, A, Targets.remaining and Targets.detailsBp. A figure shrinks to
+ * The item table of Target Details (screenshots 41 and 42): white rules, Item at the start (wraps between words: the column fits the
+ * longest word), the figures centred and the percent at the end. Every figure from the integers: the tab's target, A, Targets.remaining and Targets.detailsBp. A figure shrinks to
  * its cell on one line instead of breaking; the header words hyphenate. From 150 percent font scale the five columns no longer fit a
  * 360 dp phone, so each item becomes a block (its name, then Target, Achievement, Remaining and % as label and figure lines).
  */
@@ -320,53 +323,66 @@ private fun DetailsTable(items: List<TargetRow>, tab: TargetTab) {
     val n = nightRoles()
     val loc = uiLocale()
     val rule = n.ink.copy(alpha = if (n.solid) 1f else 0.8f)
-    val stacked = LocalDensity.current.fontScale >= 1.5f
-    val weights = listOf(1.45f, 1f, 1.25f, 1.15f, 1.2f)
+    val density = LocalDensity.current
+    val stacked = density.fontScale >= 1.5f
+    // Target, Achievement, Remaining, %: they share what the Item column leaves
+    val weights = listOf(0f, 1f, 1.3f, 1.15f, 1.2f)
     val head = listOf(R.string.tso_dash_tgt_item, R.string.tso_dash_tgt_target, R.string.tso_dash_tgt_achievement, R.string.tso_dash_tgt_remaining, R.string.tso_dash_tgt_pct).map { stringResource(it) }
-    Column(Modifier.fillMaxWidth().border(1.dp, rule).testTag(TargetTags.TABLE)) {
-        if (!stacked) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                head.forEachIndexed { i, h ->
-                    Text(
-                        h, Modifier.weight(weights[i]).padding(horizontal = 2.dp),
-                        style = nightText(14.sp, n.inkMuted, align = if (i == 0) TextAlign.Start else if (i == 4) TextAlign.End else TextAlign.Center)
-                            .copy(hyphens = Hyphens.Auto, lineBreak = LineBreak.Paragraph),
-                    )
-                }
-            }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(rule))
-        }
-        if (items.isEmpty()) {
-            Text(stringResource(R.string.tso_dash_tgt_items_empty), Modifier.fillMaxWidth().padding(16.dp), style = nightText(15.sp, n.inkMuted, align = TextAlign.Center))
-        }
-        items.forEachIndexed { idx, r ->
-            if (idx > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(rule))
-            val cells = listOf(
-                TargetStatus.qty(TargetStatus.target(r, tab), loc), TargetStatus.qty(r.achieved, loc),
-                TargetStatus.qty(TargetStatus.remaining(r, tab), loc), TargetStatus.detailsText(r, tab, loc),
-            )
-            val described = stringResource(R.string.tso_dash_tgt_row_desc, r.name, cells[0], cells[1], cells[2], cells[3])
-            val rowModifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).semantics(mergeDescendants = true) { contentDescription = described }
-                .testTag(TargetTags.row(r.productId)).padding(horizontal = 12.dp, vertical = 12.dp)
-            if (stacked) {
-                Column(rowModifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(r.name, style = nightText(16.sp, n.ink, bold = true))
-                    cells.forEachIndexed { i, c ->
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(head[i + 1], Modifier.weight(1f), style = nightText(14.sp, n.inkMuted))
-                            Text(c, style = nightText(16.sp, n.ink), maxLines = 1)
-                        }
+    val nameStyle = nightText(16.sp, n.ink)
+    val measurer = rememberTextMeasurer()
+    // The Item column is as wide as the longest single word of any item name, so names wrap only between words (screenshot 41:
+    // "Black / Diamond / Advanced"), and never under 30 percent (the screenshot's share) nor over 42 percent of the table.
+    val widestWordPx = remember(items, nameStyle, density) {
+        items.flatMap { it.name.split(' ') }.filter { it.isNotEmpty() }.maxOfOrNull { measurer.measure(it, nameStyle, softWrap = false, maxLines = 1).size.width } ?: 0
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val inner = (maxWidth - 18.dp).coerceAtLeast(0.dp) // the border and the rows' 8 dp sides
+        val itemWidth = (with(density) { widestWordPx.toDp() } + 4.dp).coerceIn(inner * 0.30f, inner * 0.42f)
+        Column(Modifier.fillMaxWidth().border(1.dp, rule).testTag(TargetTags.TABLE)) {
+            if (!stacked) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    head.forEachIndexed { i, h ->
+                        Text(
+                            h, (if (i == 0) Modifier.width(itemWidth) else Modifier.weight(weights[i])).padding(horizontal = 2.dp),
+                            style = nightText(14.sp, n.inkMuted, align = if (i == 0) TextAlign.Start else if (i == 4) TextAlign.End else TextAlign.Center)
+                                .copy(hyphens = Hyphens.Auto, lineBreak = LineBreak.Paragraph),
+                        )
                     }
                 }
-            } else {
-                Row(rowModifier, verticalAlignment = Alignment.CenterVertically) {
-                    Text(r.name, Modifier.weight(weights[0]).padding(horizontal = 2.dp), style = nightText(16.sp, n.ink))
-                    cells.forEachIndexed { i, c ->
-                        Text(
-                            c, Modifier.weight(weights[i + 1]).padding(horizontal = 2.dp), maxLines = 1, softWrap = false,
-                            style = nightText(16.sp, n.ink, align = if (i == 3) TextAlign.End else TextAlign.Center),
-                            autoSize = TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = 16.sp, stepSize = 0.5.sp),
-                        )
+                Box(Modifier.fillMaxWidth().height(1.dp).background(rule))
+            }
+            if (items.isEmpty()) {
+                Text(stringResource(R.string.tso_dash_tgt_items_empty), Modifier.fillMaxWidth().padding(16.dp), style = nightText(15.sp, n.inkMuted, align = TextAlign.Center))
+            }
+            items.forEachIndexed { idx, r ->
+                if (idx > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(rule))
+                val cells = listOf(
+                    TargetStatus.qty(TargetStatus.target(r, tab), loc), TargetStatus.qty(r.achieved, loc),
+                    TargetStatus.qty(TargetStatus.remaining(r, tab), loc), TargetStatus.detailsText(r, tab, loc),
+                )
+                val described = stringResource(R.string.tso_dash_tgt_row_desc, r.name, cells[0], cells[1], cells[2], cells[3])
+                val rowModifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).semantics(mergeDescendants = true) { contentDescription = described }
+                    .testTag(TargetTags.row(r.productId)).padding(horizontal = 8.dp, vertical = 12.dp)
+                if (stacked) {
+                    Column(rowModifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(r.name, style = nightText(16.sp, n.ink, bold = true))
+                        cells.forEachIndexed { i, c ->
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(head[i + 1], Modifier.weight(1f), style = nightText(14.sp, n.inkMuted))
+                                Text(c, style = nightText(16.sp, n.ink), maxLines = 1)
+                            }
+                        }
+                    }
+                } else {
+                    Row(rowModifier, verticalAlignment = Alignment.CenterVertically) {
+                        Text(r.name, Modifier.width(itemWidth).padding(horizontal = 2.dp), style = nameStyle)
+                        cells.forEachIndexed { i, c ->
+                            Text(
+                                c, Modifier.weight(weights[i + 1]).padding(horizontal = 2.dp), maxLines = 1, softWrap = false,
+                                style = nightText(16.sp, n.ink, align = if (i == 3) TextAlign.End else TextAlign.Center),
+                                autoSize = TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = 16.sp, stepSize = 0.5.sp),
+                            )
+                        }
                     }
                 }
             }
