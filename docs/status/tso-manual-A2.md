@@ -1,7 +1,8 @@
 # tso-manual A2 android-tickets: lane status
 
 Lane A2 of `docs/requests/tso-manual-build-2026-10.md` (s5 A2). Branch `tso-man/A2`, no pull request.
-Written 2026-10-29 (steps 1 and 2). Base: 95a35b7d (contract 1.10.0, V0130-V0140, F3 rules).
+Written 2026-10-29 (steps 1 to 3). Base: 95a35b7d (contract 1.10.0, V0130-V0140, F3 rules); step 3 merged
+`tso-man/A1-stubs` (5e9c52b0) first, as s5 asks.
 
 ## Done
 
@@ -99,6 +100,44 @@ Behaviour (s5 A2 rules):
   Cancelled show the fixed note (screenshot 14's text for Resolved). Support is always "Support" (never a name).
 - Reads only on open and pull-to-refresh (`PullToRefreshBox`); no timer anywhere.
 
+### Step 3: host wiring (app-tso), the s5 A2 host items
+
+Merged `tso-man/A1-stubs` first (`git merge --no-ff`, no conflict). Files:
+
+| file | what |
+|---|---|
+| `android/app-tso/.../TicketsHost.kt` (A2's since a1-stubs) | `TicketsHostDeps(host)`: `api`, `device`, `maxPhotos`, `photos`, one stable `deps`; `ticketScreens(deps)`: TICKET_DASHBOARD, TICKET_LIST, TICKET_QUICK, TICKET_CREATE, TICKET_DETAIL (uuid argument) in `TsoFrame(title, nav, homeButton = false)`; `TicketNav.afterSave` (back, then All Tickets); `TicketPush.target(reason)` (`ticket_updated` -> TICKET_DASHBOARD); `HostTicketSource` (the `TicketSource`), `TicketDevice` (the `TicketQueue`, mirrors, delivery, bundle reads), `MediaTicketPhotos` (the `TicketPhotos`) |
+| `android/app-tso/.../TicketApi.kt` (new) | `TicketApi`: `listSupportTickets(cursor, limit = 200)`, `summary()`, `get(uuid)` (GET only, no scope id, a non-UUID never reaches a path) and its own file cache (`keepList` / `keptList` / `forgetList`, `keepDetail` / `keptDetail` / `forgetDetail`); `TicketCopy` (the kept copy = the raw pages and summary, read back through `TicketWire`) |
+| `android/app-tso/build.gradle.kts` | one appended line `implementation(project(":android:feature-tickets")) // tso-manual A2` (end of the dependencies block) |
+| `android/core-media/.../MediaComponents.kt` (A2's append) | `importFromGallery(mediaUuid, uri, ref, claim: Boolean = true)`: `claim = false` only stages (A3's three-argument calls unchanged) |
+| `android/core-media/.../GalleryImportTest.kt` | + `aStagedPictureIsNotClaimedUntilTheSaveAndARemovedOneIsDropped` |
+| `android/app-tso/src/test/.../TicketWriteReplayTest.kt` (new) | 12 tests, see Verify |
+| `android/ui-screenshots/.../TicketScreenshotTests.kt` | the real host frame (`TsoFrame(title, nav, homeButton = false)`, as TicketsHost builds it) instead of the stand-in bar; + `tickets_list_resolved_200_bn`, `tickets_quick_sheet_200_en`, `tickets_issue_types_200_bn` (every screenshot 11 to 18 now has en, bn and a 200 % case) |
+| `android/feature-tickets/.../TicketKit.kt` | `hueFill(page, hue, fraction)` (was `amount`: the money-float scan read the colour mix as money; see Verify); `TicketPill` wraps to two lines (ellipsis after that) instead of dropping a word ("সমাধান হয়েছে" at 200 %) |
+| `android/feature-tickets/.../TicketListScreen.kt` | the selected status tab is scrolled into view once the row is laid out (Resolved was off screen in bn and at 200 %; found by looking at the recorded PNGs) |
+| `docs/08-tso-app.md` | appended "Tickets" section (s5 header: A2 appends it) |
+
+Behaviour:
+- **Writes** (`TicketDevice`): `support_ticket` / `support_ticket_event` through the one `TsoOutbox` (family self, rank 0,
+  envelope from trusted time), mirror rows `tso.unsent.ticket.<uuid>` / `tso.unsent.ticket_event.<uuid>` (the module's
+  `TicketMirror` JSON) in the SAME transaction as the row, then one debounced sync. A uuid the outbox holds, or one purged
+  after its ack (`purged_uuid`), answers false and claims nothing. Photos (at most 3) are claimed for the record
+  (`MediaRef("support", "support_ticket" | "support_ticket_event", uuid)`) before the commit, as the feedback queue does.
+  Payloads are the generated DTOs encoded with absent nulls (a close review has no `body` member; no affected username
+  means no member).
+- **Reads** (`HostTicketSource`): on open and pull-to-refresh only. List = pages of 200 (cursor) up to 5 pages, then the
+  summary; `complete` false when cut. A read that fails half way returns null and keeps the old copy whole. The mirror of
+  every ticket the list returns is dropped; a thread read drops the mirrors of its events (and of its ticket). Detail 404
+  (an unsent ticket, or not the caller's) is NotFound and its copy is dropped. `outbox()` delivery per D-A2-15.
+- **Bundle**: issue types from the section `code_lists` (`IssueTypes.parse`; chunked sections read whole through
+  `ReferenceRepository.section`); `cfg.support.ticket_max_photos` read each time a ticket screen opens, clamped 0..3,
+  default 3.
+- **Photos** (`MediaTicketPhotos`): camera through the on-screen media components (`host.media()`, whose overlay
+  MainActivity draws); gallery through `rememberGalleryPicker` and `importFromGallery(claim = false)` (staged, EXIF gone,
+  compressed); `discard` drops a removed one; thumbnails decoded off the main thread from the media store.
+- **Navigation**: Dashboard -> Detail (uuid), See all -> All Tickets, Need help -> Quick, Quick's "Report a different
+  issue" -> Create; after a save the form is closed and All Tickets opens. A detail without an argument goes back.
+
 ## Decisions
 
 - **D-A2-01** Gallery failures are a typed exception (`GalleryImportException.reason`, `messageRes`), not a camera
@@ -153,6 +192,35 @@ Behaviour (s5 A2 rules):
 - **D-A2-17** The ticket's description is drawn as the reporter's first bubble; `created` events are not drawn (no
   duplicate). status_change, priority_change, assign and close_review are one small centred line each.
 
+- **D-A2-18** The ticket copies are files under `cacheDir/tso_api_<userId>/tickets/` (TicketApi's own cache, like
+  TsoApi), inside the folder MainActivity already deletes after a logout that was not refused, so no MainActivity edit is
+  needed and a shared phone never shows one rep's tickets to the next. Bounded: 40 files, 14 days, 2 M characters per
+  copy; written to a temp file and renamed (a kill mid-write leaves the old copy). The copy holds the raw server bodies,
+  so `TicketWire` stays the only mapping.
+- **D-A2-19** List read: pages of 200 (the contract's maximum) up to 5 pages (1000 own tickets), then the summary. Any
+  failure returns null and keeps the old copy; a 403 or 404 on the list or the summary drops the copy (as TsoApi: a
+  refusal never serves an old copy). The "as of" is the summary's `as_of`, else the trusted now.
+- **D-A2-20** The camera uses the media components MainActivity draws the overlay for (`host.media()`): `mediaFor()`
+  makes a new `MediaComponents` with its own camera host, which has no overlay, so a capture through it would never
+  open. Stage, discard and claim use `media() ?: mediaFor()` (same files).
+- **D-A2-21** Stage-only gallery import is the additive `claim` parameter of A2's `importFromGallery` (default true:
+  A3's calls and the step 1 tests are unchanged).
+- **D-A2-22** The replay check also asks `purged_uuid` before anything is claimed or written, so a retry of a ticket
+  acked and purged long ago is not captured again (TsoOutbox itself only checks the live outbox).
+- **D-A2-23** After a save the form is popped and All Tickets is opened (manual s6: "The ticket appears in All Tickets
+  with status New"); the saved form never stays in the back stack.
+- **D-A2-24** Push: `TicketPush.target(reason)` maps the `sync_nudge` reason `ticket_updated` (B1's push) to
+  TICKET_DASHBOARD. The push itself reads nothing; the Dashboard reads as it opens. Showing the notice and opening the
+  screen from its tap are A1's files (ask below).
+- **D-A2-25** The photo picker's limit is fixed when it is drawn; a launch with another limit redraws it with that limit
+  and opens it one frame later (so "1 left" opens the single picker and "3 left" the multiple one), capped at 3.
+- **D-A2-26** The photo limit is a compose state in `TicketsHostDeps`, re-read from the bundle each time a ticket screen
+  opens (one local read), so the forms follow a config change without a restart and `TicketDeps` never changes identity
+  (the screens' states are keyed on it).
+- **D-A2-27** `TicketScreenshotTests` draws the real host frame (`TsoFrame(title, nav, homeButton = false)`, the same
+  lambda as TicketsHost), so the goldens recorded after A1's merge show A1's TSO bar; the night page stays a stand-in
+  until `AronLook.TsoNight` is on the branch (one line).
+
 ## Deviations
 
 - Step 1: none.
@@ -167,6 +235,14 @@ Behaviour (s5 A2 rules):
 - Step 2: on a 360 dp phone Submit Review & Close does not fit beside the two pills with the kit's font, so it moves to
   its own line, right-aligned, with its whole label (screenshot 14's phone fits all three on one line). The pills and the
   button are a flow: never squeezed, never clipped, also at 200 % text.
+
+- Step 3: the push deep link is only the host's mapping (`TicketPush.target`). The notice for reason `ticket_updated`
+  (core-sync `PushMessage` / `PushNotices`), reading the tap's intent (MainActivity) and opening a screen on start
+  (`TsoApp`) are A1's files; asked below.
+- Step 3: screenshot 10 (the drawer's Tickets group) is not in `TicketScreenshotTests`: A1's `TsoChrome` is not on this
+  branch (only the stubs are). A1 has `tso_drawer_tickets_en`; bn and 200 % of it are asked below.
+- Step 3: `TicketKit.hueFill`'s parameter renamed `amount` -> `fraction` in feature-tickets (A2's own file) because
+  `tools/ci/money-float-scan.py` flags a Float named "amount" as money (a step 2 line; the scan reported it not allowed).
 
 ## Asks
 
@@ -185,25 +261,74 @@ Behaviour (s5 A2 rules):
   ever pinned in lock-task mode, the picker's package (MediaProvider photo picker, or DocumentsUI on old phones) must be
   allowed, or the Browse Gallery button does nothing. Not testable on the laptop.
 
-## Not done (later A2 steps)
+- **A1 (push, D-TSO-MAN-26 step):** for `sync_nudge` with `reason = ticket_updated` (B1's push), show a fixed bn/en
+  notice and put the reason in `PushNotices.EXTRA_OPEN`; in MainActivity read it (onCreate and onNewIntent) and open
+  `TicketPush.target(extra)` (app-tso `TicketsHost.kt`, returns TICKET_DASHBOARD or null) through the TSO navigator, e.g.
+  a `TsoApp(..., open: TsoScreen?)` parameter. A2 cannot edit PushMessage, PushNotices, MainActivity or TsoApp.
+- **A1 (goldens):** screenshot 10 in bn and at 200 % (the drawer with the Tickets group open), next to your
+  `tso_drawer_tickets_en`, so s8 row 10 has en, bn and 200 %.
+- **lead (merge order B1, B2, B3, W1, A1, A2, A3):** after A1's shell is merged, `TicketScreenshotTests.night` becomes
+  `AronLook.TsoNight` (or `AronTheme(tso = true)`), one line; then record the goldens (list under Verify) on Linux.
 
-- app-tso `TicketsHost.kt` (merge `tso-man/A1-stubs` first, s5) and `TicketApi.kt` (own cache like TsoApi): the five
-  screen entries; `TicketSource` over `GET /v1/support/tickets` (pages of 200 up to a cap, `complete` false when cut),
-  `/summary`, `/{uuid}`, stored per user; `TicketQueue` over `host.outbox.enqueueAll` with record types
-  `support_ticket` / `support_ticket_event`, mirror keys `tso.unsent.ticket.<uuid>` and `tso.unsent.ticket_event.<uuid>`
-  (`TicketMirror` JSON), photos claimed with `MediaRef("support", "support_ticket" | "support_ticket_event", uuid)` in the
-  same call; `outbox()` delivery per D-A2-15 (outbox row state and `last_code`); issue types from the bundle section
-  `code_lists` (`IssueTypes.parse`); `now` = trusted clock; the build.gradle.kts dependency line.
-- core-media: a gallery import that STAGES without claiming (the `TicketPhotos` contract): today
-  `MediaComponents.importFromGallery` claims at pick time, so a picture removed from the form would still be sent.
-  Additive (A2 owns GalleryImport.kt and the append): e.g. `importFromGallery(mediaUuid, uri, ref, claim = false)`, then
-  the queue's `attach` claims it.
-- app-tso `TicketWriteReplayTest` (outbox row + mirror in one transaction, replay by uuid, mirror dropped on read back).
-- Push `ticket_updated` deep link to TICKET_DASHBOARD (A1 owns PushNotices; the host maps the reason).
-- docs/08 "Tickets" section (append). Goldens recorded on the Linux runner.
-- Device lab: the five screens on a pilot phone against dev (B1 on dev), gallery and camera, offline create then sync.
+## Not done
+
+- Goldens: recorded on the Linux runner after A1's shell and look are merged (names under Verify); nothing committed
+  here (Windows laptop).
+- The push deep link end to end (A1's files, ask above). The host side (`TicketPush.target`) is done and tested.
+- Device lab (pilot phone against dev, B1 on dev): the five screens, gallery (photo picker on the DPC-managed phone) and
+  camera, offline create then sync, the INC number replacing "Not sent yet", Submit Review & Close on a resolved ticket.
+- SR and AMO wiring of feature-tickets (D-TSO-MAN-17: later; the module is role-agnostic).
 
 ## Verify
+
+Step 3, on this laptop (JDK 21, UTC, via gl.sh), 2026-10-29. Most of the wall time was the Gradle lock (B1, B2, B3 backend
+runs); every run below is on the commits named.
+
+| command | result |
+|---|---|
+| `gl.sh :android:app-tso:testDebugUnitTest --tests 'com.aktcl.aron.tso.TicketWriteReplayTest' :android:core-media:testDebugUnitTest --tests '…GalleryImportTest' :android:ui-screenshots:compileDebugUnitTestKotlin --continue` (first run) | BUILD FAILED only in the test source: `TicketWriteReplayTest.kt:98` lambda type (`-> Any` for `-> Unit`); main code of app-tso, feature-tickets and core-media compiled; GalleryImportTest 14, 0 failures; ui-screenshots test sources compiled |
+| same app-tso filter (second run) | 3 failures, all the test fixture: `MediaStore.put` refused a staged photo whose sha256 did not match its bytes (fixed in the test: the real digest) |
+| same app-tso filter (third run) | BUILD SUCCESSFUL; TicketWriteReplayTest 12, 0 failures |
+| `gl.sh :android:ui-screenshots:testDebugUnitTest --tests '*TicketScreenshotTests*' -Paron.screenshots.recordTo=<scratchpad>/goldens/A2 :android:core-ui:testDebugUnitTest --tests '…HardcodedStringScanTest' --continue` | BUILD SUCCESSFUL; 30 recorded, 0 failures; HardcodedStringScanTest 5, 0 failures. Looking at the PNGs: Resolved was off screen in `tickets_list_resolved_bn` and `_200_bn`, and the status pill lost its second word at 200 % (fixed in `3732e6a9`, `e1d4e0a8`; a bring-into-view first did nothing because it ran before layout) |
+| **Final verify**: `gl.sh :android:feature-tickets:testDebugUnitTest :android:core-media:testDebugUnitTest :android:app-tso:testDebugUnitTest :android:app-tso:assembleDebug :android:ui-screenshots:testDebugUnitTest --tests '*TicketScreenshotTests*' -Paron.screenshots.recordTo=<scratchpad>/goldens/A2 :android:core-ui:testDebugUnitTest --tests 'com.aktcl.aron.core.ui.HardcodedStringScanTest' --continue` on `e1d4e0a8` (the step's Final Verify tasks plus the screenshot record and the string scan in the same call) | BUILD SUCCESSFUL in 5m 35s. feature-tickets 4 classes, 47 tests, 0 failures; core-media 14 classes, 95 tests, 0 failures (UP-TO-DATE: its inputs are unchanged since it ran in the exact Final Verify call `gl.sh :android:feature-tickets:testDebugUnitTest :android:core-media:testDebugUnitTest :android:app-tso:testDebugUnitTest :android:app-tso:assembleDebug --continue` on `cb0cdfce`: BUILD SUCCESSFUL in 4m 59s, the same counts); app-tso 5 classes, 35 tests, 0 failures (TicketWriteReplayTest 12, TsoWriteReplayTest 14, AppIconTest 4, AppCoexistenceTest 3, TsoBundleReadsTest 2); `app-tso-debug.apk` built; TicketScreenshotTests 30 recorded to the scratch dir, 0 failures; HardcodedStringScanTest 5, 0 failures |
+| `python tools/ci/money-float-scan.py` | before the rename: 1 not allowed (`TicketKit.kt:559 hueFill(…, amount: Float)`, a step 2 line); after `0a730a3a`: exit 0, 0 not allowed, 17/17 allowed |
+| `python tools/ci/wallclock-scan.py`, `date-pin-scan.py` | exit 0; no ticket file among the offenders (report-only scan) |
+
+What TicketWriteReplayTest proves (real file database closed and reopened as a kill, real media store, OkHttp fake
+server behind the real `AronApiClient`):
+- a ticket: one `support_ticket` row (family self, rank 0, Dhaka business date), payload exactly `issue_type_code`,
+  `title` (= label_en for a quick ticket), `description`, `source` (no `affected_username` member when empty), mirror
+  `tso.unsent.ticket.<uuid>`, one sync request; its photo claimed `MediaRef("support", "support_ticket", uuid)` before
+  the commit; after a relaunch the replay is false, byte-identical payload and sha, same mirror, no second sync, no
+  second claim; the unsent row reads back as New, no number, Pending;
+- a kill between the claim and the commit leaves no row and no mirror; the retry commits one row and the photo stays the
+  ticket's; a purged uuid is never queued again; more than 3 photos is refused before anything is written;
+- a comment and Submit Review & Close: one `support_ticket_event` row each, replays change nothing, the close uuid is
+  name-based (same on a second tap or screen), the close payload has no `body` member, the two mirror families never mix;
+- delivery: pending and in_flight Pending; acked Sent; rejected `issue_type_unknown` and quarantined
+  `scope_out_of_reach` Refused with the code; a row purged after its ack Sent;
+- reads: GET only, `limit=200` and the cursor only (no user, zone or scope id); two pages then the summary; the mirror of
+  the ticket the server returned is dropped and the unsent one stays; offline after a relaunch the copy comes back with the
+  server's `as_of`; a failed summary keeps the old copy; a list cut at 5 pages is `complete = false` and the summary's
+  1500 is kept; a thread read drops the returned comment's mirror (and the ticket's) and keeps the unsent comment's; offline
+  the kept thread; 404 is NotFound and drops the copy; `../summary` never reaches a path;
+- bundle: issue types from `code_lists` in sort order; `cfg.support.ticket_max_photos` 1, 0, 9 -> 3, "x" -> 3, absent 3;
+  the photo port clamps; without the on-screen camera a capture does nothing;
+- `TicketPush.target("ticket_updated")` is TICKET_DASHBOARD (others null); `TicketNav.afterSave` is back then All Tickets.
+
+Not run here: a real phone (device lab), goldens on Linux, the push tap end to end (A1's files).
+
+Golden names needed (TicketScreenshotTests, record on the Linux runner after A1's frame and look are merged, 30):
+tickets_dashboard_en, tickets_dashboard_bn, tickets_dashboard_200_bn, tickets_dashboard_offline_unsent_en,
+tickets_dashboard_empty_bn, tickets_dashboard_sunlight_en, tickets_list_en, tickets_list_bn, tickets_list_200_en,
+tickets_list_resolved_en, tickets_list_resolved_bn, tickets_list_resolved_200_bn, tickets_list_no_match_en,
+tickets_details_en, tickets_details_bn, tickets_details_200_en, tickets_details_open_thread_en, tickets_details_offline_bn,
+tickets_quick_en, tickets_quick_bn, tickets_quick_200_bn, tickets_quick_sheet_en, tickets_quick_sheet_bn,
+tickets_quick_sheet_200_en, tickets_create_en, tickets_create_bn, tickets_create_200_en, tickets_issue_types_en,
+tickets_issue_types_bn, tickets_issue_types_200_bn. Screenshot 10 is A1's drawer golden (`tso_drawer_tickets_en`; bn and
+200 % asked). The PNGs recorded here show the a1-stubs top bar (the Calm Glass gradient), not A1's TSO bar, because only
+the stubs are on this branch; the ticket content matched the JPGs 11 to 18 as in step 2.
+
 
 Step 2, on this laptop (JDK 21, UTC, via gl.sh), 2026-10-29, one Gradle call (07:47 to 08:08 Dhaka, most of it waiting
 for the lock):
@@ -277,8 +402,7 @@ Golden names needed: none for this step (no screen).
 
 ## Next step
 
-Step 3 (host): merge `tso-man/A1-stubs` (s5: A2 merges after a1-stubs), then write app-tso `TicketsHost.kt` and
-`TicketApi.kt` against the ports above (see Not done for the exact shape), the core-media stage-only gallery import, the
-`TicketWriteReplayTest`, the app-tso dependency line, and the docs/08 Tickets section. Verify with
-`gl.sh :android:feature-tickets:testDebugUnitTest :android:core-media:testDebugUnitTest :android:app-tso:testDebugUnitTest`,
-then record `TicketScreenshotTests` to the scratch dir with A1's real frame and look once A1's shell is merged.
+Step 3 is done on this branch (host, API and cache, outbox wiring, photos, push mapping, replay test, docs/08). What is
+left for A2: (1) when A1's shell is merged, switch `TicketScreenshotTests.night` to A1's look and look at the recorded
+PNGs once more against the JPGs 11 to 18 (the bar is then A1's TSO bar); (2) after A1 wires the push tap, a test of the
+whole path (push reason -> TICKET_DASHBOARD); (3) the device lab checks under Not done. No other s5 A2 item is open.
