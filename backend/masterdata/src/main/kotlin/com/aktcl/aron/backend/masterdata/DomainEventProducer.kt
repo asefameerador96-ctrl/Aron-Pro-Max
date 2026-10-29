@@ -38,4 +38,48 @@ class DomainEventProducer : RecordHandler {
             "INSERT INTO app.domain_event (event_type, payload_version, aggregate_type, aggregate_id, business_date, payload, source_client_uuid) " +
                 "SELECT '$event', 1, '$aggregate', $aggregateId, m.business_date, $payload, CAST(:src AS uuid) FROM app.$from WHERE m.id = :id AND $matchCol = CAST(:src AS uuid)",
         ).bind("id", id).bind("src", rec.clientUuid).bind("reason", (rec.payload["reason_code"] as? JsonPrimitive)?.content).execute()
+
+    // tso-manual B1: the three support_ticket.* v1 types (D-TSO-MAN-38, V0134 payload schemas). Written in the transaction
+    // of the change by SupportTicketHandler (sync: the ticket, the reporter's comment and close review) and
+    // SupportTicketService (the desk's status changes and replies); ids and codes only, never the title, a comment,
+    // notes or a reason (free text).
+    companion object {
+        /** `support_ticket.created` from the stored ticket and its state row; returns the rows written (1). */
+        fun supportTicketCreated(h: Handle, ticketUuid: String): Int = h.createUpdate(
+            "INSERT INTO app.domain_event (event_type, payload_version, aggregate_type, aggregate_id, business_date, payload, source_client_uuid) " +
+                "SELECT 'support_ticket.created', 1, 'support_ticket', t.client_uuid::text, t.business_date, " +
+                "jsonb_build_object('ticket_uuid', t.client_uuid, 'ticket_no', t.ticket_no, 'issue_type_code', t.issue_type_code, 'priority', s.priority, " +
+                "'requester_user_id', s.requester_user_id, 'requester_role', s.requester_role, 'business_date', t.business_date, 'source', t.source, " +
+                "'has_affected_user', t.affected_username IS NOT NULL), t.client_uuid " +
+                "FROM app.support_ticket t JOIN app.support_ticket_state s ON s.ticket_uuid = t.client_uuid WHERE t.client_uuid = CAST(:t AS uuid)",
+        ).bind("t", ticketUuid).execute()
+
+        /** `support_ticket.status_changed`; [sourceClientUuid] is the device record that made the change (null for the desk). */
+        fun supportTicketStatusChanged(
+            h: Handle, ticketUuid: String, eventUuid: String, from: String, to: String, resolutionCode: String?, actorUserId: Long, actorIsSupport: Boolean,
+            businessDate: java.time.LocalDate, sourceClientUuid: String?,
+        ): Int = ticketEvent(
+            h, "support_ticket.status_changed", ticketUuid, businessDate, sourceClientUuid,
+            kotlinx.serialization.json.buildJsonObject {
+                put("ticket_uuid", JsonPrimitive(ticketUuid)); put("event_uuid", JsonPrimitive(eventUuid)); put("from_status", JsonPrimitive(from)); put("to_status", JsonPrimitive(to))
+                put("resolution_code", JsonPrimitive(resolutionCode)); put("actor_user_id", JsonPrimitive(actorUserId)); put("actor_is_support", JsonPrimitive(actorIsSupport))
+            },
+        )
+
+        /** `support_ticket.commented` (the comment text is not in the payload). */
+        fun supportTicketCommented(
+            h: Handle, ticketUuid: String, eventUuid: String, actorUserId: Long, actorIsSupport: Boolean, businessDate: java.time.LocalDate, sourceClientUuid: String?,
+        ): Int = ticketEvent(
+            h, "support_ticket.commented", ticketUuid, businessDate, sourceClientUuid,
+            kotlinx.serialization.json.buildJsonObject {
+                put("ticket_uuid", JsonPrimitive(ticketUuid)); put("event_uuid", JsonPrimitive(eventUuid)); put("actor_user_id", JsonPrimitive(actorUserId)); put("actor_is_support", JsonPrimitive(actorIsSupport))
+            },
+        )
+
+        private fun ticketEvent(h: Handle, type: String, ticketUuid: String, businessDate: java.time.LocalDate, source: String?, payload: kotlinx.serialization.json.JsonObject): Int =
+            h.createUpdate(
+                "INSERT INTO app.domain_event (event_type, payload_version, aggregate_type, aggregate_id, business_date, payload, source_client_uuid) " +
+                    "VALUES (:type, 1, 'support_ticket', :agg, :bd, CAST(:p AS jsonb), CAST(:src AS uuid))",
+            ).bind("type", type).bind("agg", ticketUuid).bind("bd", businessDate).bind("p", payload.toString()).bind("src", source).execute()
+    }
 }
