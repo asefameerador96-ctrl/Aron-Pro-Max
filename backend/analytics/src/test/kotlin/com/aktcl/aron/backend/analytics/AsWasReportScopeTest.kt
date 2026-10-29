@@ -4,6 +4,9 @@ import com.aktcl.aron.contract.Role
 import io.ktor.http.HttpStatusCode
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import io.ktor.client.statement.bodyAsText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -41,7 +44,9 @@ class AsWasReportScopeTest : ReportFixture() {
             assertEquals(63_000, after.total("gross_mtk"), key)
         }
         val gone = run(10, Role.ANALYST, "route-std", body(""","geo":{"territory":[$t2]}"""))
-        assertEquals(HttpStatusCode.Forbidden, gone.status, "the new territory had no zone on the report's date")
+        assertEquals(HttpStatusCode.OK, gone.status, "the new territory is real and inside the reach but had no zone on the report's date: 200, no rows (D-LEAD-REPORT-SELECTOR-01)")
+        assertEquals(0, gone.okResult().rows().size)
+        assertEquals(HttpStatusCode.Forbidden, run(10, Role.ANALYST, "route-std", body(""","geo":{"territory":[999999]}""")).status, "an id that is no territory is refused")
         // The reach still bounds it: a TSO of zone 1 gets the old territory cut to the zone they reach (the zone that left is not held against them)...
         val tso = run(11, Role.TSO, "route-std", sel)
         assertEquals(HttpStatusCode.OK, tso.status)
@@ -63,25 +68,46 @@ class AsWasReportScopeTest : ReportFixture() {
     }
 
     @Test
-    fun aRouteSelectorUsesTheZonesTheRouteHadOnTheDates() = app {
+    fun aRouteSelectorUsesTheZonesTheRouteHadOnTheDatesAndRefusesOnScopeOnly() = app {
         val r3 = id("SELECT id FROM app.route WHERE code = 'R3'")
         val sel = body(""","geo":{"route":[$r3]}""")
         val before = run(14, Role.TSO, "route-std", sel)
         assertEquals(HttpStatusCode.OK, before.status, "R3 is zone 2's route")
         assertEquals(setOf("R3"), before.okResult().rows().map { it.str("route_code") }.toSet())
-        assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "route-std", sel).status, "and not zone 1's")
+        // Out of the caller's reach: refused, with the very answer of an unknown id (no existence leak).
+        val outOfReach = run(11, Role.TSO, "route-std", sel)
+        val unknown = run(11, Role.TSO, "route-std", body(""","geo":{"route":[999999]}"""))
+        assertEquals(HttpStatusCode.Forbidden, outOfReach.status)
+        assertEquals(HttpStatusCode.Forbidden, unknown.status)
+        assertEquals(unknown.problemBody(), outOfReach.problemBody(), "a route out of reach and an unknown id answer alike")
         exec("UPDATE app.route SET zone_id = $z1 WHERE code = 'R3'")   // moved to zone 1 today
-        // The old day is still zone 2's: its TSO keeps the route for that date, zone 1's TSO does not get it.
+        // The old day is still zone 2's: its TSO keeps the route for that date.
         assertEquals(before.okResult().rows(), run(14, Role.TSO, "route-std", sel).okResult().rows())
-        assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "route-std", sel).status)
-        assertEquals(HttpStatusCode.OK, run(10, Role.ANALYST, "route-std", sel).status)
-        assertEquals(HttpStatusCode.Forbidden, run(10, Role.ANALYST, "route-std", body(""","geo":{"route":[$r3,999999]}""")).status, "an unknown id still refuses the lot")
-        // A route with no history row at all (a bulk load with triggers off) is placed by the zone it has now, not refused for everyone.
+        // Zone 1's TSO now reaches the route (it is in their zone today) but it was not in their zone during the period: 200, no rows, not 403.
+        val joined = run(11, Role.TSO, "route-std", sel)
+        assertEquals(HttpStatusCode.OK, joined.status)
+        assertEquals(0, joined.okResult().rows().size, "in reach, not in the selected zones during the period")
+        // The empty answer is empty for the reports that read route-less rows too (coalesce(route_id, -1)): an outlet with no route in zone 1 is not R3's.
+        exec("UPDATE app.outlet SET route_id = NULL WHERE code = 'O1'")
+        assertEquals(0, run(10, Role.ANALYST, "retailer-list", body(""","geo":{"zone":[$z1],"route":[$r3]}""")).okResult().rows().size, "no route-less outlet in the empty answer")
+        assertEquals(0, run(11, Role.TSO, "retailer-list", sel).okResult().rows().size)
+        // A caller with the whole reach selecting zone 1 together with that route: 200, no rows (the route was zone 2's then).
+        val nat = run(10, Role.ANALYST, "route-std", body(""","geo":{"zone":[$z1],"route":[$r3]}"""))
+        assertEquals(HttpStatusCode.OK, nat.status)
+        assertEquals(0, nat.okResult().rows().size)
+        assertEquals(setOf("R3"), run(10, Role.ANALYST, "route-std", sel).okResult().rows().map { it.str("route_code") }.toSet())
+        // Zone 2's TSO keeps its route and loses nothing else; a route from another territory or an unknown id still refuses the lot.
+        assertEquals(HttpStatusCode.Forbidden, run(10, Role.ANALYST, "route-std", body(""","geo":{"route":[$r3,999999]}""")).status, "an unknown id refuses the lot")
+        // A route with no history row at all (a bulk load with triggers off) is judged on the zone it has now, not refused for everyone.
         exec("DELETE FROM app.route_zone_history WHERE route_id = $r3")
-        assertEquals(setOf("R3"), run(10, Role.ANALYST, "route-std", sel).okResult().rows().map { it.str("route_code") }.toSet(), "selected on its current zone, its rows read")
+        assertEquals(setOf("R3"), run(10, Role.ANALYST, "route-std", sel).okResult().rows().map { it.str("route_code") }.toSet(), "judged on the zone it has now: selected, rows read")
         assertEquals(HttpStatusCode.OK, run(11, Role.TSO, "route-std", sel).status, "R3 is zone 1's today")
         assertEquals(HttpStatusCode.Forbidden, run(14, Role.TSO, "route-std", sel).status, "and not zone 2's")
     }
+
+    /** The refusal as a client sees it, minus what differs per request. */
+    private suspend fun io.ktor.client.statement.HttpResponse.problemBody(): Pair<String?, String?> =
+        kotlinx.serialization.json.Json.parseToJsonElement(this.bodyAsText()).let { it.jsonObject["code"]?.jsonPrimitive?.content to it.jsonObject["detail"]?.jsonPrimitive?.content }
 
     private fun onDate(date: String, extra: String) = """{"period":{"date":"$date"},"output":{"format":"json","page_size":500}$extra}"""
 
@@ -121,7 +147,7 @@ class AsWasReportScopeTest : ReportFixture() {
         exec("UPDATE app.territory_history SET valid_from = DATE '2026-10-05' WHERE territory_id = $t2")
         exec("UPDATE app.division_history SET valid_from = DATE '2026-10-05' WHERE division_id = (SELECT division_id FROM app.territory WHERE id = $t2)")
         assertEquals(HttpStatusCode.OK, run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"territory":[$t2]}""")).status, "T2 held the zone on 10-05")
-        assertEquals(HttpStatusCode.Forbidden, run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"territory":[$t3]}""")).status, "T3 had no member on 10-05")
+        assertEquals(0, run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"territory":[$t3]}""")).okResult().rows().size, "T3 had no member on 10-05: 200, no rows")
     }
 
     @Test
@@ -143,6 +169,6 @@ class AsWasReportScopeTest : ReportFixture() {
         assertEquals(HttpStatusCode.OK, both.status, "a redundant parent selector must not turn the child's 200 into a 403")
         assertEquals(run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"territory":[$t1]}""")).okResult().rows(), both.okResult().rows())
         // The child selector is checked against the zones the parent left: T2 sat under W2 on that date, so wing W1 with territory T2 selects nothing.
-        assertEquals(HttpStatusCode.Forbidden, run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"wing":[$w1],"territory":[$t2]}""")).status)
+        assertEquals(0, run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"wing":[$w1],"territory":[$t2]}""")).okResult().rows().size)
     }
 }
