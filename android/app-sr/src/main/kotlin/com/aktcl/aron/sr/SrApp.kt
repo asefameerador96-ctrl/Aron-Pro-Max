@@ -379,7 +379,8 @@ fun SrApp(
                     }
                 },
                 onSettings = { screen = SrScreen.SETTINGS },
-                banner = if (data.downloading) stringResource(R.string.sr_bundle_downloading) else null,
+                // tso-manual X4a (R-W-11, A3 ask 1): the download first, else the day lock after the zone's Final Submit (null while open)
+                banner = srHomeBanner(data.downloading) { srDayLockBannerText(day) },
                 hero = snap?.hero, kpis = snap?.kpis, money = snap?.money, loading = snap == null,
                 dock = snap?.let { HomeDayModel.dock(it.dayState) },
                 sync = sync, onSync = openSync,
@@ -427,6 +428,8 @@ fun SrApp(
                 var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
                 var opening by remember { mutableStateOf(false) }
                 var skipping by rememberSaveable { mutableStateOf(false) }
+                var lockNotice by remember { mutableStateOf(false) } // tso-manual X4a: no new call on a route-day closed by Final Submit
+                if (lockNotice) SrDayLockDialog(onOk = { lockNotice = false })
                 val all = OutletPicker.rows(data.outlets)
                 Column {
                     // Skip: an outlet marked not reached from the list, no fix, no geo gate, not a visit (F-SR-057).
@@ -439,6 +442,8 @@ fun SrApp(
                         else if (!opening) {
                             opening = true
                             scope.launch {
+                                // tso-manual X4a (R-W-11, A3 ask 11): the lock text, not a fix and a generic failed commit
+                                if (day.sale.callLocked(r.outlet.routeId)) { lockNotice = true; opening = false; return@launch }
                                 runCatching { day.visitFlow.open(day.visitOutlet(r.outlet)) }
                                 opening = false; screen = SrScreen.VISIT
                             }
@@ -454,6 +459,12 @@ fun SrApp(
                 if (open != null) {
                     SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME })
                 } else {
+                    // tso-manual X4a (R-W-11): the lock landed while the fix was read, so the committer refused the call (nothing
+                    // stored): the lock text instead of the generic failed commit and its retry
+                    val failed = st as? VisitUiState.CommitFailed
+                    var lockedOut by remember(failed) { mutableStateOf(false) }
+                    LaunchedEffect(failed) { lockedOut = failed != null && day.sale.callLocked(failed.outlet.routeId) }
+                    if (lockedOut) SrDayLockDialog(onOk = { screen = SrScreen.HOME })
                     VisitCheckContent(
                         st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { screen = SrScreen.FORCE },
                         onRetry = { scope.launch { day.visitFlow.retryCommit() } },
@@ -545,6 +556,15 @@ fun SrApp(
 }
 
 /** AKTCL's route kind wording, kept in English on every language (screens-sr s2 header note). */
+/**
+ * tso-manual X4a (R-W-11, A3 ask 1): the SR Home's one banner slot. The first-bundle download keeps its text first; otherwise
+ * [lockText] (`srDayLockBannerText`, the day lock after the zone's Final Submit: title, body and the held and refused
+ * counts; null while the day is open).
+ */
+@Composable
+internal fun srHomeBanner(downloading: Boolean, lockText: @Composable () -> String?): String? =
+    if (downloading) stringResource(R.string.sr_bundle_downloading) else lockText()
+
 @Composable
 private fun routeKindText(wire: String?): String? = when (RouteKind.of(wire)) {
     RouteKind.DAILY -> stringResource(R.string.sr_route_kind_daily)

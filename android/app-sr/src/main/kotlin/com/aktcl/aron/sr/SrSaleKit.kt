@@ -3,10 +3,10 @@ package com.aktcl.aron.sr
 import android.content.Context
 import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.entity.GeoFixEntity
+import com.aktcl.aron.core.database.repo.FinalSubmitLock
 import com.aktcl.aron.core.database.repo.ReconciliationRepository
 import com.aktcl.aron.core.printing.doc.DaySummaryPrint
 import com.aktcl.aron.core.printing.flow.PrintAttempt
-import com.aktcl.aron.core.printing.flow.SaveAndPrint
 import com.aktcl.aron.feature.dayclose.RoomDaySource
 import com.aktcl.aron.feature.dayclose.RoomDaySubmitWriter
 import com.aktcl.aron.feature.dayclose.SalesSubmitViewModel
@@ -114,17 +114,50 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     }
     private val commitStep = SaleCommitStep(flow, printSource) { editFix() }
 
-    fun newSaleViewModel() = SaleViewModel(flow, SaveAndPrint(commitStep::invoke, day.printing))
+    // tso-manual X4a (R-W-11): a sale save refused by the Final Submit lock (the lock arrived while the call was open)
+    private val _lockRefused = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    /** True after a sale or memo edit was refused by the Final Submit lock: the host shows the lock text, nothing was stored or printed. */
+    val lockRefused: kotlinx.coroutines.flow.StateFlow<Boolean> = _lockRefused
+
+    /** The host has shown the lock text of a refused save. */
+    fun clearLockRefusal() { _lockRefused.value = false }
+
+    fun newSaleViewModel() = SaleViewModel(flow, SrLockGate.saveAndPrint(commitStep::invoke, day.printing, _lockRefused))
     fun saleVisit(v: com.aktcl.aron.feature.outlet.OpenVisit) =
         SaleVisit(v.visitUuid, v.outletId, v.routeId, day.businessDate(), PriceType.OUTLET.wire, canSell = v.geoAction != "blocked")
 
     private val closer = VisitCloser(day.capture, CaptureMetaSource { _, rid -> day.metaProvider.meta(rid ?: 0L) }, { day.iso(day.currentMs()) })
 
-    /** Writes the visit's one `visit_close` with [outcome] and closes the call; the sync is asked for afterwards (never awaited). */
+    /**
+     * Writes the visit's one `visit_close` with [outcome] and closes the call; the sync is asked for afterwards (never awaited).
+     * tso-manual X4a (R-W-11, A3 ask 11): on a route-day closed by its zone's Final Submit the call ends on the phone first and
+     * no close is written (the server would refuse it); a lock that lands during the write ends it the same way. Never throws for the lock.
+     */
     suspend fun closeVisit(outcome: VisitOutcomeCode, declined: Boolean = false) {
-        val v = day.visitSession.current.value ?: return
-        closer.close(VisitToClose(v.visitUuid, v.routeId, callStartedAtIso = callStarted.remove(v.visitUuid)), outcome, day.businessDate(), declined)
-        day.visitSession.close(); runCatching { day.requestSync() }
+        val open = day.visitSession.current.value ?: return
+        if (day.endCallIfDayFinal()) { callStarted.remove(open.visitUuid); return }
+        val queued = SrLockGate.closeCall(day.visitSession) { v ->
+            closer.close(VisitToClose(v.visitUuid, v.routeId, callStartedAtIso = callStarted.remove(v.visitUuid)), outcome, day.businessDate(), declined)
+        }
+        if (queued) runCatching { day.requestSync() }
+    }
+
+    /**
+     * tso-manual X4a (R-W-11, A3 ask 11): true when a new call on [routeId] (the outlet's route, as the visit records it) would
+     * be refused by the Final Submit lock today. The outlet list shows the lock text instead of reading a fix; it is
+     * `SrDay.finalLocked()` for the day's route.
+     */
+    suspend fun callLocked(routeId: Long): Boolean =
+        runCatching { FinalSubmitLock.refuses(db, day.metaProvider.meta(routeId), "visit") }.getOrDefault(false)
+
+    /**
+     * tso-manual X4a (R-W-11): true when an edit of [memoUuid] would be refused by the Final Submit lock (the edit is a new
+     * `memo` on the old memo's route, today). The memo screen disables Edit with the lock text; reprints stay allowed.
+     */
+    suspend fun editLocked(memoUuid: String): Boolean {
+        val memo = dao.memo(memoUuid) ?: return false
+        return runCatching { FinalSubmitLock.refuses(db, day.metaProvider.meta(memo.meta.routeId ?: 0L), "memo") }.getOrDefault(false)
     }
 
     /**
@@ -158,18 +191,26 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         flow.withEdit(EditContext(memoUuid, reason.wire))
     }
 
-    /** Marks an outlet of the list as not reached: one `visit_skip` with its outbox record, no fix and no geo gate (F-SR-057). */
-    suspend fun skipOutlet(outlet: com.aktcl.aron.core.database.entity.OutletEntity, reason: VisitOutcomeCode) {
-        day.capture.recordVisitSkip(
-            com.aktcl.aron.core.database.entity.VisitSkipEntity(ClientIds.newUuid(), day.metaProvider.meta(outlet.routeId), outlet.outletId, reason.wire),
-        )
-        runCatching { day.requestSync() }
+    /**
+     * Marks an outlet of the list as not reached: one `visit_skip` with its outbox record, no fix and no geo gate (F-SR-057).
+     * tso-manual X4a (R-W-11): false when the Final Submit lock refused it (nothing stored; the host shows the lock text).
+     */
+    suspend fun skipOutlet(outlet: com.aktcl.aron.core.database.entity.OutletEntity, reason: VisitOutcomeCode): Boolean {
+        val queued = SrLockGate.skip {
+            day.capture.recordVisitSkip(
+                com.aktcl.aron.core.database.entity.VisitSkipEntity(ClientIds.newUuid(), day.metaProvider.meta(outlet.routeId), outlet.outletId, reason.wire),
+            )
+        }
+        if (queued) runCatching { day.requestSync() }
+        return queued
     }
 
     fun newMemoViewModel() = MemoViewModel(
         store,
         RoomDueCollectionWriter(day.capture, { day.metaProvider.meta(0L) }, visitUuidOf = { o -> dao.visitsOn(day.businessDate()).lastOrNull { it.outletId == o }?.clientUuid }),
         MemoPrintingReprinter(day.printing), ::names, day::businessDate,
+        // tso-manual X4a (R-W-11): Mark Paid is hidden while today's route-day is closed by its zone's Final Submit
+        markPaidLocked = { day.finalLocked() },
     )
 
     suspend fun history(): List<StoredMemo> = store.history(day.businessDate())

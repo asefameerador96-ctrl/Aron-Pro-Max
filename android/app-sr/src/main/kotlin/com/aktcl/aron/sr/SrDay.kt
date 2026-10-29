@@ -644,16 +644,18 @@ internal object SrCallLock {
      * closed route-day the call ends on the phone only ([endsOnPhone]). True when a close was queued (the caller asks for a sync).
      */
     suspend fun abandon(db: AronDatabase, capture: CaptureRepository, session: VisitSession, meta: CaptureMeta, nowIso: String): Boolean {
-        val v = session.current.value ?: return false
+        if (session.current.value == null) return false
         if (endsOnPhone(db, session, meta)) return false
-        capture.recordVisitClose(
-            com.aktcl.aron.core.database.entity.VisitCloseEntity(
-                clientUuid = com.aktcl.aron.core.common.ClientIds.newUuid(), meta = meta, visitClientUuid = v.visitUuid, outcomeCode = "abandoned",
-                callStartedAt = null, callDeclined = false, endedAt = nowIso, isZeroSale = true,
-            ),
-        )
-        session.close()
-        return true
+        // tso-manual X4a (R-W-11): CaptureRepository refuses a visit_close on a closed route-day now; a lock that lands
+        // between the check above and the write ends the call on the phone the same way (SrLockGate.closeCall)
+        return SrLockGate.closeCall(session) { v ->
+            capture.recordVisitClose(
+                com.aktcl.aron.core.database.entity.VisitCloseEntity(
+                    clientUuid = com.aktcl.aron.core.common.ClientIds.newUuid(), meta = meta, visitClientUuid = v.visitUuid, outcomeCode = "abandoned",
+                    callStartedAt = null, callDeclined = false, endedAt = nowIso, isZeroSale = true,
+                ),
+            )
+        }
     }
 }
 

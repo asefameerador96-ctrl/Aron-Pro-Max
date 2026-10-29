@@ -53,6 +53,13 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
     val v = open ?: return
     val kit = day.sale
     val scope = rememberCoroutineScope()
+    // tso-manual X4a (R-W-11): the lock arrived while this call was open and refused its sale: nothing was stored or printed.
+    // The lock text replaces the sale (and its "save failed" dialog); OK ends the call on the phone and goes Home (banner).
+    val lockRefused by kit.lockRefused.collectAsState()
+    if (lockRefused) {
+        SrDayLockDialog(onOk = { scope.launch { kit.clearLockRefusal(); day.endCallIfDayFinal(); onDone() } })
+        return
+    }
     var started by rememberSaveable(v.visitUuid) { mutableStateOf(false) }
     if (!started) {
         val name = day.dayData.collectAsState().value.outlets.firstOrNull { it.outletId == v.outletId }?.name.orEmpty()
@@ -122,10 +129,12 @@ fun NoSaleHost(day: SrDay, onDone: () -> Unit) {
 @Composable
 fun SkipHost(day: SrDay, outlet: com.aktcl.aron.core.database.entity.OutletEntity, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
+    var locked by remember { mutableStateOf(false) } // tso-manual X4a: the skip was refused by the Final Submit lock
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         androidx.compose.material3.Text(outlet.name, style = androidx.compose.material3.MaterialTheme.typography.titleLarge, modifier = Modifier.padding(AronTokens.Space.L))
-        outcomeRows.forEach { (code, label) -> AronListRow(stringResource(label), onClick = { scope.launch { day.sale.skipOutlet(outlet, code); onDone() } }) }
+        outcomeRows.forEach { (code, label) -> AronListRow(stringResource(label), onClick = { scope.launch { if (day.sale.skipOutlet(outlet, code)) onDone() else locked = true } }) }
     }
+    if (locked) SrDayLockDialog(onOk = onDone)
 }
 
 private val outcomeRows = listOf(
@@ -143,6 +152,8 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
     var history by remember { mutableStateOf<com.aktcl.aron.feature.memo.domain.SaleHistory?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { kit.prepare(); vm.refresh() }
+    // tso-manual X4a (R-W-11): the push day_final_submitted pulls the delta; Mark Paid and Edit follow the lock while on screen
+    LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { vm.refresh() } }
     BackHandler(enabled = st.selected != null || history != null) { if (history != null) history = null else vm.open("") }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         val sel = st.selected
@@ -152,7 +163,13 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
             h != null -> SaleHistoryScreen(h, offlineBanner = true, skuName = kit::skuName, skuCategory = kit::skuCategoryCode)
             sel == null -> MemoMenuScreen(st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
             else -> {
-                MemoDetailView(sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid, skuCategory = kit::skuCategoryCode)
+                // an edit is a new memo: on a route-day closed by Final Submit it is disabled with the lock text (Print stays)
+                var editLocked by remember(sel.memo.memoUuid) { mutableStateOf(false) }
+                LaunchedEffect(sel.memo.memoUuid, st.dayLocked) { editLocked = kit.editLocked(sel.memo.memoUuid) }
+                MemoDetailView(
+                    sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid, skuCategory = kit::skuCategoryCode,
+                    editDisabledReason = if (editLocked) stringResource(R.string.sr_lock_body) else null,
+                )
                 AronSecondaryButton(
                     stringResource(R.string.sr_sale_history),
                     { scope.launch { history = SaleHistoryBuilder.build(kit.history(), sel.memo.outletId) } },
@@ -162,6 +179,8 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
             }
         }
     }
+    // tso-manual X4a: a Mark Paid the lock refused (nothing stored)
+    if (st.lockRefused) SrDayLockDialog(onOk = vm::dismissLockRefusal)
 }
 
 /** Sales Summary with its printed copy (F-SR-036); the print needs no connection and never blocks anything. */
@@ -231,7 +250,16 @@ fun EditHost(day: SrDay, memoUuid: String, sunlight: Boolean, onSunlight: (Boole
     var checked by remember(memoUuid) { mutableStateOf(false) }
     var reason by remember(memoUuid) { mutableStateOf<EditReason?>(null) }
     var ready by remember(memoUuid) { mutableStateOf(false) }
-    LaunchedEffect(memoUuid) { kit.prepare(); denied = kit.prepareEdit(memoUuid); checked = true }
+    // tso-manual X4a (R-W-11): an edit on a route-day closed by Final Submit is not started (no fix is taken) and says why;
+    // one the lock refuses at the save shows the same text, nothing stored or printed
+    var locked by remember(memoUuid) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val lockRefused by kit.lockRefused.collectAsState()
+    LaunchedEffect(memoUuid) { kit.prepare(); if (kit.editLocked(memoUuid)) locked = true else denied = kit.prepareEdit(memoUuid); checked = true }
+    if (locked || lockRefused) {
+        SrDayLockDialog(onOk = { scope.launch { kit.clearLockRefusal(); onDone() } })
+        return
+    }
     val r = reason
     when {
         !checked -> com.aktcl.aron.core.ui.aron.AronLoadingScreen(label = stringResource(R.string.sr_edit_checking))
