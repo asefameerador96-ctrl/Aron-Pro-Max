@@ -149,7 +149,7 @@ class TsoNavigationTest {
                             TsoScreen.RETAILER to { nav, _ -> RetailerEntry(periphery, user.username, nav) },
                             TsoScreen.MY_VISIT_PLAN to { nav, _ -> VisitPlanEntry(myCall, user.username, today, nav) },
                             TsoScreen.SET_PLAN to { nav, _ -> SetPlanEntry(myCall, user.username, today, nav) },
-                            TsoScreen.FEEDBACK_NEW to { nav, _ -> FeedbackNewEntry(feedback, { _, _, _ -> true }, null, user.username, { java.time.Instant.now().toString() }, nav) },
+                            TsoScreen.FEEDBACK_NEW to { nav, _ -> FeedbackNewEntry(feedback, { _, _, _ -> true }, null, user.username, { "2026-10-17T10:00:00Z" }, nav) },
                             TsoScreen.FEEDBACK_LIST to { nav, _ -> FeedbackListEntry(feedback, canWrite = true, user.username, nav) },
                         ),
                     )

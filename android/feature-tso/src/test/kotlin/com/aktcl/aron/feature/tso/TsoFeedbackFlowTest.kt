@@ -47,7 +47,7 @@ class TsoFeedbackFlowTest {
     /** My Feedback as the app's AreasHost wires it: A3's per-screen entries for the two drawer rows (R-W-12 (2)). */
     private fun feedbackScreen(source: FeedbackSource, userKey: String) = mapOf<TsoScreen, TsoScreenContent>(
         TsoScreen.FEEDBACK_LIST to { nav, _ -> FeedbackListEntry(source, canWrite = true, userKey, nav) },
-        TsoScreen.FEEDBACK_NEW to { nav, _ -> FeedbackNewEntry(source, q, null, userKey, { java.time.Instant.now().toString() }, nav) },
+        TsoScreen.FEEDBACK_NEW to { nav, _ -> FeedbackNewEntry(source, q, null, userKey, { "2026-10-17T10:00:00Z" }, nav) },
     )
 
     private fun start() {
