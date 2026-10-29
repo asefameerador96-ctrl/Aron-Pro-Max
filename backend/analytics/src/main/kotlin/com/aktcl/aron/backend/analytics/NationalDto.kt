@@ -23,6 +23,8 @@ data class FfGeoPinsRequest(val filter: NationalDashboardFilter = NationalDashbo
 data class NationalSalesCard(
     val category_code: String, val base_unit: String, val total_sales: Long, val daily_target: String?, val sales_so_far: Long,
     val remaining: String?, val achievement_pct_bp: Long?, val target_routes: Int,
+    /** Contract 1.10.0: the sum of the route monthly targets in scope (base units); null when no target is loaded (D-TSO-MAN-08). */
+    val monthly_target_qty: Long? = null,
 )
 
 @Serializable
@@ -61,6 +63,8 @@ data class NationalFinalSubmit(
 data class NationalLoginSubmit(
     val date: String, val till_time: Boolean, val as_of: String, val last_updated_at: String?,
     val target_routes: Int, val successful_login: Int, val login_pct_bp: Int?, val submitted: Int, val submit_pct_bp: Int?,
+    /** Contract 1.10.0: submitted / target_routes, the TSO app's Bikroy Joma % (D-TSO-MAN-07). */
+    val submit_of_target_pct_bp: Int? = null,
 )
 
 @Serializable
@@ -163,6 +167,47 @@ data class NationalFilterOptions(
     val date: String, val till_time: Boolean, val as_of: String, val last_updated_at: String?,
     val wings: List<OptionNode>, val divisions: List<OptionNode>, val territories: List<OptionNode>, val houses: List<OptionNode>, val zones: List<OptionNode>,
     val categories: List<OptionCode>, val segments: List<OptionCode>, val brands: List<OptionCode>, val variants: List<OptionCode>,
+)
+
+/** Brand CPR card (contract 1.10.0 `NationalBrandCpr`, D-TSO-MAN-06). */
+@Serializable
+data class BrandCprRow(
+    val brand_code: String, val brand_name: String, val outlets_bought: Int, val cpr_bp: Long?, val cpr_of_successful_bp: Long?, val cpr_of_target_bp: Long?,
+)
+
+@Serializable
+data class NationalBrandCpr(
+    val date: String, val till_time: Boolean, val as_of: String, val last_updated_at: String?,
+    val target_outlets: Int, val successful_calls: Int, val denominator: String, val brands: List<BrandCprRow>,
+)
+
+/** By Segment Value Contribution card (contract 1.10.0 `NationalSegmentShare`, D-TSO-MAN-11). */
+@Serializable
+data class SegmentFamily(val base_unit: String, val total_qty_base: Long)
+
+@Serializable
+data class SegmentShareRow(
+    val segment_code: String, val segment_name: String, val category_code: String, val base_unit: String, val value_mtk: Long, val value_share_bp: Int?,
+    val qty_base: Long, val volume_share_bp: Int?,
+)
+
+@Serializable
+data class NationalSegmentShare(
+    val date: String, val till_time: Boolean, val as_of: String, val last_updated_at: String?,
+    val total_value_mtk: Long, val families: List<SegmentFamily>, val segments: List<SegmentShareRow>,
+)
+
+/** One (route, user) row of the Login / Submit Status screen (contract 1.10.0 `LoginSubmitUserRow`, D-TSO-MAN-12). */
+@Serializable
+data class LoginSubmitUserRow(
+    val route_id: Long, val route_code: String, val route_name: String, val zone_id: Long, val dep_name: String,
+    val user_id: Long?, val username: String?, val display_name: String?, val role: String,
+)
+
+@Serializable
+data class NationalLoginSubmitUsers(
+    val date: String, val till_time: Boolean, val as_of: String, val last_updated_at: String?,
+    val tab: String, val route_count: Int, val truncated: Boolean, val items: List<LoginSubmitUserRow>,
 )
 
 @Serializable

@@ -373,6 +373,7 @@ class Wiring(
                 notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
                 inboxRoutes(com.aktcl.aron.backend.notify.InboxDeps(db, guard, clock)) // tso-manual B1
                 supportTicketRoutes(com.aktcl.aron.backend.masterdata.SupportTicketDeps(db, config, push, guard, clock)) // tso-manual B1
+                com.aktcl.aron.backend.analytics.TargetAchievementDeps(com.aktcl.aron.backend.analytics.TargetAchievementService(db, config, clock), reach, guard, clock).install(this)   // tso-manual B2
             }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,
                 isolation = com.aktcl.aron.backend.platform.RequestIsolation.forPools(s.dbPoolMax, s.dbReadUrl?.let { s.dbReadPoolMax }),
                 securityEvents = securityEvents, securityStore = securityStore)

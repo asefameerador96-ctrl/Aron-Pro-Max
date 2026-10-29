@@ -222,3 +222,8 @@ GET /v1/support/tickets/summary -> case SupportTicketTest#summaryCountsTheCaller
 GET /v1/support/tickets/{ticket_uuid} -> case SupportTicketTest#reporterSeesOwnTicketsOnlyAndTheDeskSeesAll
 PATCH /v1/support/tickets/{ticket_uuid} -> case SupportTicketTest#reporterSeesOwnTicketsOnlyAndTheDeskSeesAll
 POST /v1/support/tickets/{ticket_uuid}/events -> case SupportTicketTest#reporterSeesOwnTicketsOnlyAndTheDeskSeesAll
+# tso-manual B2 (getTargetAchievement and the contract 1.10.0 national cards)
+GET /v1/dashboards/targets -> case TargetAchievementTest#aNodeOutsideTheReachIs403AndTheZoneCardsComeFromTheReach
+POST /v1/dashboards/national/brand-cpr -> case BrandCprTest#overHttpTheScopeComesFromTheTokenAndTheClientCannotWidenIt
+POST /v1/dashboards/national/segment-share -> case SegmentShareTest#overHttpTheScopeComesFromTheTokenAndTheClientCannotWidenIt
+POST /v1/dashboards/national/login-submit/users -> case LoginSubmitUsersTest#overHttpTheScopeComesFromTheTokenAndTheClientCannotWidenIt
