@@ -50,11 +50,14 @@ class HouseDedupTest {
         assertEquals(HttpStatusCode.PreconditionFailed, sendA1(HttpMethod.Post, "/admin/geo/house/merge", admin, """{"keep_id":$a,"merge_ids":[$b],"change_reason":"$reason"}""", ifMatch = v + 5).status)
         assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Post, "/admin/geo/house/merge", env.token("tso1001", Role.TSO), """{"keep_id":$a,"merge_ids":[$b],"change_reason":"$reason"}""", ifMatch = v).status)
         assertEquals("active", env.sql("SELECT status FROM app.house WHERE id = $b"), "refusals changed nothing")
+        val zMir = id("zone", "Z-MIR")
+        assertEquals(b, env.geo.geo().zoneHouse[zMir], "the snapshot is warm and holds the old house")
         val r = sendA1(HttpMethod.Post, "/admin/geo/house/merge", admin, """{"keep_id":$a,"merge_ids":[$b,$c],"change_reason":"$reason"}""", ifMatch = v)
         assertEquals(HttpStatusCode.OK, r.status, r.toString())
         assertEquals("inactive", env.sql("SELECT status FROM app.house WHERE id = $b")); assertEquals("inactive", env.sql("SELECT status FROM app.house WHERE id = $c"))
         assertEquals("active", env.sql("SELECT status FROM app.house WHERE id = $a"))
         assertEquals(a.toString(), env.sql("SELECT house_id FROM app.zone WHERE code = 'Z-MIR'"))
+        assertEquals(a, env.geo.geo().zoneHouse[zMir], "the merge invalidated the snapshot: a house-scope reach follows at once, not after the TTL")
         assertEquals(1, env.audit("geo_house", b, "merge")); assertEquals(1, env.audit("geo_house", a, "merge_keep"))
         // A merged (inactive) house is not a duplicate candidate any more only when the group shrinks to one active house; the groups list stays name-based.
         val after = sendA1(HttpMethod.Get, "/admin/geo/house/duplicates", admin).objA1().getValue("groups").jsonArray.map { it.jsonObject }

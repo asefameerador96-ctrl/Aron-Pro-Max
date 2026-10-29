@@ -9,33 +9,58 @@ import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 
+/** One geography snapshot and its [version] (counts the snapshots that differed from the one before); a cache of anything derived from the geography keys on the pair. */
+class GeoSnapshot(val geo: Geo, val version: Long)
+
 /** Geography snapshot from PostgreSQL, refreshed at most every [ttlMs] (master data changes rarely). */
 class GeoRepository(private val db: Database, private val clock: AronClock = AronClock.SYSTEM, private val ttlMs: Long = 60_000) {
-    private val cached = AtomicReference<Pair<Long, Geo>?>(null)
-    private val last = AtomicReference<Geo?>(null)
-    private val changes = java.util.concurrent.atomic.AtomicLong()
+    private class Cached(val at: Long, val snap: GeoSnapshot)
+    private val cached = AtomicReference<Cached?>(null)
+    /** Bumped by [invalidate]: a load that began before it read the geography before the edit and must not be installed. */
+    private val generation = java.util.concurrent.atomic.AtomicLong()
+    private val lock = java.util.concurrent.locks.ReentrantLock()
+    private var lastGeo: Geo? = null
+    private var changes = 0L
+    /** Test seam: runs after a load has read the database and before it is installed. */
+    @Volatile internal var afterLoad: (() -> Unit)? = null
 
-    fun geo(): Geo {
-        val now = clock.now().toEpochMilli()
-        cached.get()?.let { (at, g) -> if (now - at < ttlMs) return g }
-        return load().also { g ->
-            cached.set(now to g)
-            if (last.getAndSet(g) != g) changes.incrementAndGet()
-        }
+    fun geo(): Geo = snapshot().geo
+
+    /** The geography version (see [GeoSnapshot]); refreshes the snapshot when it is older than the TTL. */
+    fun version(): Long = snapshot().version
+
+    /** The current snapshot and its version as ONE pair (a reach computed from the geography is cached under the version of that same geography). */
+    fun snapshot(): GeoSnapshot {
+        cached.get()?.let { if (clock.now().toEpochMilli() - it.at < ttlMs) return it.snap }
+        lock.lock()   // one reload at a time: callers arriving at the expiry share it
+        try {
+            cached.get()?.let { if (clock.now().toEpochMilli() - it.at < ttlMs) return it.snap }
+            var attempt = 0
+            while (true) {
+                val gen = generation.get()
+                val g = load()
+                afterLoad?.invoke()
+                val snap = GeoSnapshot(g, register(g))
+                if (generation.get() == gen) { cached.set(Cached(clock.now().toEpochMilli(), snap)); return snap }
+                // An edit committed and invalidated while this load ran: it may predate the edit. Read again; after a few tries answer with what was read, uncached.
+                if (++attempt >= 3) return snap
+            }
+        } finally { lock.unlock() }
     }
 
-    /** Counts the snapshots that differed from the one before (a zone created or moved, a territory re-parented): a cache of anything derived from the geography keys on it. */
-    fun version(): Long { geo(); return changes.get() }
+    private fun register(g: Geo): Long { if (lastGeo != g) { lastGeo = g; changes++ }; return changes }
 
-    fun invalidate() = cached.set(null)
+    fun invalidate() { generation.incrementAndGet(); cached.set(null) }
 
     /** The snapshot, reloaded once when it lacks a route or zone that live rows already reference (no 60 s blind spot). */
-    fun geoCovering(routeIds: Collection<Long> = emptyList(), zoneIds: Collection<Long> = emptyList()): Geo {
-        val g = geo()
-        if (routeIds.all { it in g.routeZone } && zoneIds.all { it in g.zoneTerritory }) return g
+    fun snapshotCovering(routeIds: Collection<Long> = emptyList(), zoneIds: Collection<Long> = emptyList()): GeoSnapshot {
+        val s = snapshot()
+        if (routeIds.all { it in s.geo.routeZone } && zoneIds.all { it in s.geo.zoneTerritory }) return s
         invalidate()
-        return geo()
+        return snapshot()
     }
+
+    fun geoCovering(routeIds: Collection<Long> = emptyList(), zoneIds: Collection<Long> = emptyList()): Geo = snapshotCovering(routeIds, zoneIds).geo
 
     private fun load(): Geo = db.jdbi.withHandle<Geo, Exception> { h ->
         fun pairs(sql: String) = h.createQuery(sql).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
@@ -63,6 +88,8 @@ class GeoRepository(private val db: Database, private val clock: AronClock = Aro
 class SqlReachResolver(private val db: Database, private val geo: GeoRepository, private val clock: AronClock = AronClock.SYSTEM) : ReachResolver {
     private data class Key(val userId: Long, val sv: Long, val date: LocalDate, val geoVersion: Long)
     private val cache = ConcurrentHashMap<Key, Pair<Long, Reach>>()
+    @Volatile private var cacheVersion = -1L
+    internal fun cacheSize() = cache.size
 
     override fun reach(userId: Long, role: Role, scopeVersion: Long, businessDate: LocalDate): Reach {
         val now = clock.now().toEpochMilli()
@@ -74,7 +101,10 @@ class SqlReachResolver(private val db: Database, private val geo: GeoRepository,
         }
         // The geography version too: a zone created or moved does not bump scope_version, yet it changes the zones a territory/division/wing
         // reach holds and the zones a node dashboard reads live from app.zone (D-REPORTS-NODEASWAS-04), so the two must agree.
-        val key = Key(userId, sv, businessDate, geo.version())
+        val snap = geo.snapshot()
+        // A new geography version empties the cache (the old entries could never be hit again, and each keeps its snapshot's views alive).
+        if (snap.version != cacheVersion) synchronized(cache) { if (snap.version != cacheVersion) { cache.clear(); cacheVersion = snap.version } }
+        val key = Key(userId, sv, businessDate, snap.version)
         cache[key]?.let { (at, r) -> if (now - at < 300_000 && r.role == role) return r }
         val (scope, asg) = db.jdbi.withHandle<Pair<List<ScopeRow>, List<AssignmentRow>>, Exception> { h ->
             h.createQuery("SELECT node_type, node_id, valid_from, valid_to FROM app.user_scope WHERE user_id = :u").bind("u", userId)
@@ -82,9 +112,11 @@ class SqlReachResolver(private val db: Database, private val geo: GeoRepository,
                 h.createQuery("SELECT route_id, kind, valid_from, valid_to FROM app.route_assignment WHERE user_id = :u").bind("u", userId)
                     .map { rs, _ -> AssignmentRow(rs.getLong(1), rs.getString(2), rs.getObject(3, LocalDate::class.java), rs.getObject(4, LocalDate::class.java)) }.list()
         }
-        val r = ReachCalculator.compute(userId, role, businessDate, scope, asg, geo.geoCovering(routeIds = asg.map { it.routeId }), current)
+        // ONE (snapshot, version) pair for the compute and the key it is stored under.
+        val used = if (asg.all { it.routeId in snap.geo.routeZone }) snap else geo.snapshotCovering(routeIds = asg.map { it.routeId })
+        val r = ReachCalculator.compute(userId, role, businessDate, scope, asg, used.geo, current)
         if (cache.size > 50_000) cache.clear()
-        cache[key] = now to r
+        cache[Key(userId, sv, businessDate, used.version)] = now to r
         return r
     }
 }
