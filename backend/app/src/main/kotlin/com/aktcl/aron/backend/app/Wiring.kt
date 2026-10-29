@@ -135,6 +135,7 @@ import com.aktcl.aron.backend.media.mediaRoutes
 import com.aktcl.aron.backend.media.MediaDeps
 import com.aktcl.aron.backend.sync.taskRoutes
 import com.aktcl.aron.backend.notify.inboxRoutes
+import com.aktcl.aron.backend.masterdata.supportTicketRoutes
 import com.aktcl.aron.backend.notify.notificationRoutes
 import com.aktcl.aron.backend.notify.pushRoutes
 
@@ -172,6 +173,7 @@ class Wiring(
             com.aktcl.aron.backend.masterdata.DataVoidBarrierHandler(com.aktcl.aron.backend.sync.TypeRules.BY_TYPE.keys),
             com.aktcl.aron.backend.sync.GeoRecheckHandler(),
             com.aktcl.aron.backend.sync.ConsentRecords(),
+            com.aktcl.aron.backend.masterdata.SupportTicketHandler(), // tso-manual B1
         )
 
         /** [extraRecordHandlers], [pushSender] and [blobPorts] are for tests only; production handlers are listed in [recordHandlers]. */
@@ -370,6 +372,7 @@ class Wiring(
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
                 notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
                 inboxRoutes(com.aktcl.aron.backend.notify.InboxDeps(db, guard, clock)) // tso-manual B1
+                supportTicketRoutes(com.aktcl.aron.backend.masterdata.SupportTicketDeps(db, config, push, guard, clock)) // tso-manual B1
             }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,
                 isolation = com.aktcl.aron.backend.platform.RequestIsolation.forPools(s.dbPoolMax, s.dbReadUrl?.let { s.dbReadPoolMax }),
                 securityEvents = securityEvents, securityStore = securityStore)
