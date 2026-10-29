@@ -106,28 +106,38 @@ class ReportEngine(
                 if (ids.isEmpty()) continue
                 // As was: the zones the selected nodes had on the dates of the period (D-REPORTS-NODEASWAS-01), then narrowed by the reach below.
                 val members = memberZones(h, col, ids.distinct(), from, to)
-                // Every selected node, each by itself: known on those dates, holding today no zone outside the reach, and with a member in the reach.
-                if (!members.allowed(if (reach.national) null else reach.zoneIds, ids.distinct(), zones?.toSet())) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected geography is outside your reach")
+                // Every selected node, each by itself: a node that exists and lies inside today's reach (D-LEAD-REPORT-SELECTOR-01: scope only; one with no member in the period reads no rows).
+                if (!members.allowed(if (reach.national) null else reach.zoneIds, ids.distinct())) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected geography is outside your reach")
                 val sel = members.zones
                 zones = if (zones == null) sel else zones.intersect(sel.toSet()).toList()
             }
             if (geo.route.isNotEmpty()) {
-                // A route is in the zone(s) it had on the dates of the period (app.route_zone_history), not only the zone it has today: a route that moved
-                // is still its old zone's for an old period. Rows are read by zone and route both, so a route never widens the reach.
-                // A route with no history row at all (rows loaded with triggers off, a bulk import) is placed by the zone it has now (dw.dim_geo), as AsWasSql.geo does for the Ops lists.
+                // D-REPORTS-NODEASWAS-05/-06, ruling D-LEAD-REPORT-SELECTOR-01. A refusal is for SCOPE only: an unknown id or a route outside the caller's reach
+                // (today's reach: one of the zones it has or had in the period, or the zone it has today, is in the reach; an assignment in reach.routeIds does not widen the zones) is 403, the same answer for both.
+                // A route inside the reach that was not in the selected zones during the period is a 200 with no rows.
+                val ids = geo.route.distinct()
+                val known = h.createQuery("SELECT id FROM app.route WHERE id = ANY(:ids)").bindArray("ids", Long::class.javaObjectType, ids).mapTo(Long::class.javaObjectType).set()
+                // The zones a route had on the dates of the period (app.route_zone_history). A route with no history row at all (rows loaded with triggers off,
+                // a bulk import) is placed by the zone it has now (dw.dim_geo), as AsWasSql.geo does for the Ops lists.
                 val rows = h.createQuery(
                     "SELECT route_id, zone_id FROM app.route_zone_history WHERE route_id = ANY(:ids) AND daterange(valid_from, valid_to, '[)') && daterange(:f, :t, '[]') " +
                         "UNION SELECT g.route_id, g.zone_id FROM dw.dim_geo g WHERE g.route_id = ANY(:ids) AND NOT EXISTS (SELECT 1 FROM app.route_zone_history z WHERE z.route_id = g.route_id)",
                 )
-                    .bindArray("ids", Long::class.javaObjectType, geo.route).bind("f", from).bind("t", to)
-                    .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
-                val inReach = rows.filter { (r, z) -> (zones == null || z in zones!!) && (routes == null || r in routes!!) }.map { it.first }.distinct()
-                if (inReach.size != geo.route.distinct().size) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected route is outside your reach")
-                routes = inReach
+                    .bindArray("ids", Long::class.javaObjectType, ids).bind("f", from).bind("t", to)
+                    .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().groupBy({ it.first }, { it.second })
+                // The zone a route has today, for the reach test (a route in the caller's zone today is theirs; one that left it stays readable only for the dates it was there).
+                val nowZone = h.createQuery("SELECT id, zone_id FROM app.route WHERE id = ANY(:ids)").bindArray("ids", Long::class.javaObjectType, ids)
+                    .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
+                val reachZones = if (reach.national) null else reach.zoneIds
+                fun inReach(r: Long) = (routes == null || r in routes!!) &&
+                    (reachZones == null || rows[r].orEmpty().any { it in reachZones } || nowZone[r]?.let { it in reachZones } == true)
+                if (ids.any { it !in known || !inReach(it) }) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected route is outside your reach")
+                val sel = ids.filter { r -> rows[r].orEmpty().any { zones == null || it in zones!! } }
+                routes = sel.ifEmpty { NO_ROUTE }   // in reach but not in the selected zones during the period: no rows, never "everything"
             }
         }
         if (zones != null && zones.isEmpty()) zones = listOf(-1L)   // an empty reach reads nothing, never "everything"
-        if (routes != null && routes.isEmpty()) routes = listOf(-1L)
+        if (routes != null && routes.isEmpty()) routes = NO_ROUTE
         return ReportContext(q, from, to, p, zones, routes, p.pii, runCatching { config.int("cfg.geo.suspicious_score_threshold") }.getOrNull() ?: Aggregator.DEFAULT_SUSPICIOUS_THRESHOLD, DashboardSummaries.successfulLoginSql(h, "a"))
     }
 
@@ -302,3 +312,9 @@ class ReportEngine(
 
     private fun filtersText(q: ReportQuery): String = kotlinx.serialization.json.Json.encodeToString(ReportQuery.serializer(), q.copy(output = q.output.copy(sort = emptyList()))).take(1900)
 }
+
+/**
+ * The route list that selects no row. Not -1: handlers filter a route-less row with `coalesce(route_id, -1)`, which -1 would match (every outlet,
+ * task or QC line with no route in the caller's zones would come back).
+ */
+private val NO_ROUTE = listOf(-2L)

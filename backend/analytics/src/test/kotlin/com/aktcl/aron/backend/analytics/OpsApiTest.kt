@@ -7,6 +7,7 @@ import com.aktcl.aron.backend.platform.RegistryDefaults
 import com.aktcl.aron.contract.Role
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -15,6 +16,9 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.route
+import io.ktor.server.application.install
+import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.testing.ApplicationTestBuilder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -46,6 +50,18 @@ class OpsApiTest : ReportFixture() {
         val dash = DashboardService(fresh.db, clock)
         r.opsRoutes(OpsDeps(OpsService(fresh.db, RegistryDefaults(), clock), dash, reach, guard, clock))
         r.dashboardRoutes(DashboardDeps(dash, reach, guard, clock))   // the portal gate in front of it is what the BRAND test below exercises
+        // The same two handlers WITHOUT the guard, as the principal named by X-Test-Role (user 15 for BRAND): the handlers' own role checks, past the portal gate.
+        r.route("/nogate") {
+            install(createRouteScopedPlugin("TestPrincipal") {
+                onCall { call ->
+                    val role = Role.valueOf(call.request.headers["X-Test-Role"]!!)
+                    call.attributes.put(com.aktcl.aron.backend.platform.PrincipalKey, com.aktcl.aron.backend.platform.AronPrincipal(
+                        if (role == Role.BRAND) 15 else 10, "u", role, 1, "api", null, null, "web", emptyList(), false, emptyList(), "jti", java.time.Instant.parse("2026-10-05T00:00:00Z"),
+                    ))
+                }
+            })
+            dashboardHandlers(DashboardDeps(dash, reach, guard, clock))
+        }
     }
 
     private suspend fun ApplicationTestBuilder.get(uid: Long, role: Role, path: String): HttpResponse = client.get(path) { bearerAuth(TestTokens.web(uid, role)) }
@@ -225,6 +241,21 @@ class OpsApiTest : ReportFixture() {
     /** docs/24 s4.6: a parked row turned final "is listed on the quarantine page"; listQuarantine: "Rejected and quarantined records". */
 
     @Test
+    fun aNodeOutOfReachAndAnUnknownNodeAnswerTheSameBodyOnEveryNodePath() = app {
+        // D-LEAD-REPORT-SELECTOR-01: a non-national caller learns nothing from the refusal: zone 2 is real but not zone 1's TSO's, 999999 is no node; both are the same 403.
+        suspend fun refusal(path: String, level: String, node: Long): Pair<HttpStatusCode, JsonObject> =
+            get(11, Role.TSO, "/v1/dashboards/$path${if ('?' in path) "&" else "?"}level=$level&node_id=$node").let { it.status to it.obj() }
+        val z2Id = z2
+        for (path in listOf("summary?from=2026-10-04&to=2026-10-04", "geo-validation?from=2026-10-04&to=2026-10-04", "login-submit?business_date=2026-10-04", "flagged-memos?from=2026-10-04&to=2026-10-04", "sync-health?business_date=2026-10-04")) {
+            val real = refusal(path, "zone", z2Id); val unknown = refusal(path, "zone", 999_999)
+            assertEquals(HttpStatusCode.Forbidden, real.first, "$path: a real zone outside the reach")
+            assertEquals(HttpStatusCode.Forbidden, unknown.first, "$path: no such zone")
+            assertEquals(unknown.second.s("code"), real.second.s("code"), path); assertEquals(unknown.second.s("detail"), real.second.s("detail"), "$path: the same body")
+            assertEquals(HttpStatusCode.OK, get(11, Role.TSO, "/v1/dashboards/$path${if ('?' in path) "&" else "?"}level=zone&node_id=$z1").status, "$path: the caller's own zone still answers")
+        }
+    }
+
+    @Test
     fun theBrandRolesAreRefusedAtThePortalGateAndTheHandlerChecksFailClosed() = app {
         fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.app_user (id, username, full_name, role, must_change_password) OVERRIDING SYSTEM VALUE VALUES (15, 'user15', 'User 15', 'BRAND', false)") }
         reaches[15] = com.aktcl.aron.backend.platform.Reach(15, Role.BRAND, day, true, emptySet(), emptySet(), false, emptyList())
@@ -236,6 +267,15 @@ class OpsApiTest : ReportFixture() {
         }
         assertEquals(HttpStatusCode.OK, get(10, Role.ANALYST, "/v1/dashboards/geo-validation?from=2026-10-04&to=2026-10-04").status)
         // Defence in depth, if the gate is ever opened: a BRAND user without brands and any BRAND on geo-validation are refused by the handler itself.
+        // At the handler, past the gate (a mutant that deletes either call survives the gate-level test above, which refuses first).
+        suspend fun nogate(role: Role, path: String) = client.get("/v1/nogate/dashboards/$path?from=2026-10-04&to=2026-10-04") { header("X-Test-Role", role.name) }
+        for (path in listOf("summary", "geo-validation")) assertEquals(HttpStatusCode.OK, nogate(Role.ANALYST, path).status, "the handlers answer a national user when mounted without the gate: $path")
+        val noBrandScope = nogate(Role.BRAND, "summary")   // this deployment's resolver gives a BRAND user no brand claim (null)
+        assertEquals(HttpStatusCode.Forbidden, noBrandScope.status, "requireBrandScope: a BRAND user without a brand scope reads nothing")
+        assertEquals("no brand scope", noBrandScope.obj().s("detail"))
+        val brandGeo = nogate(Role.BRAND, "geo-validation")
+        assertEquals(HttpStatusCode.Forbidden, brandGeo.status, "refuseBrandCaller: geo validation has no brand dimension")
+        assertEquals("geo validation is not available to this role", brandGeo.obj().s("detail"))
         assertEquals(com.aktcl.aron.contract.ProblemCode.ERR_FORBIDDEN, kotlin.test.assertFailsWith<com.aktcl.aron.backend.platform.ApiProblem> { requireBrandScope(Role.BRAND, null) }.code)
         requireBrandScope(Role.BRAND, emptySet()); requireBrandScope(Role.BRAND, setOf(1L)); requireBrandScope(Role.TSO, null)
         assertEquals(com.aktcl.aron.contract.ProblemCode.ERR_FORBIDDEN, kotlin.test.assertFailsWith<com.aktcl.aron.backend.platform.ApiProblem> { refuseBrandCaller(Role.BRAND) }.code)
