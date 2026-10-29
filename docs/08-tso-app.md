@@ -17,9 +17,11 @@ Dashboard, Leave, Final Submit, My Periphery (My Team, Retailer), My Call (My Vi
 - Leave applications list (screenshot 19): oldest first (the screenshot wins over the manual's "newest first", D-TSO-MAN-33).
   Each card: calendar icon with "from to to", "Reason: ...", the day count in a circle ("Day"/"Days"), and the orange status
   pill ("DMO approval pending"); no leave type. TSO leave is approved by the DMO. An application still on the phone says
-  "Not sent yet"; one the server refused on sync says "Not accepted: <reason>". Apply For Leave at the bottom.
+  "Not sent yet"; one the server refused on sync says "Not accepted: <reason>"; one it holds for an admin's review
+  (quarantined) says "Held for review: <reason>". Apply For Leave at the bottom.
 - Apply (screenshots 20 to 22): Leave Type dropdown with nothing chosen (types from the bundle code list `leave_type`, else
-  Casual, Sick, Earn), Date empty until picked from the calendar, typed Number of days (starts at 0), Reason, and the lime Apply
+  Casual, Sick, Earn), Date empty until picked from the calendar, typed Number of days (starts at 0; Bengali digits from a
+  Bangla keyboard count), Reason, and the lime Apply
   under the form. to_date = from + days - 1 in calendar days. Apply saves on the phone (offline) and returns to the list with
   a toast. Window `cfg.leave.allow_past_days` (31) and `allow_ahead_days` (365).
 
@@ -34,8 +36,12 @@ routes without data are not due) → Submit. Due routes not uploaded give a warn
 OK, which returns to the selectors with the zone cleared for the next zone (CR-5). A second attempt the same day is refused
 ("already given FINAL SUBMIT for today"). The client uuid carries the preview's `submit_seq`, so a submit after a reopen is
 new and a replay of a reopened one (409 `ERR_DAY_FINAL_SUBMIT_REOPENED`) reads the preview again (D-TSO-MAN-28). →
-`final_submit`. After it, the SR and AMO phones of the zone lock capture for the route-day (printing stays allowed) and show
-a banner (D-TSO-MAN-31).
+`final_submit`. The system back and the on-screen back do the same on every step (routes → pickers, pickers → out, and
+leaving starts a fresh screen next time); Get Sales Data asks for today's date when it is tapped. After it, the SR and AMO
+phones of the zone lock capture for the route-day and show a banner (D-TSO-MAN-31): no new call starts on a closed
+route-day, a call in progress when the lock arrives ends on the phone (the server refuses its close) and is not restored
+after a relaunch; a late Sales Submit, attendance and printing stay allowed (the server accepts them as state). Nothing
+of this throws in a screen (D-A3-22).
 
 ## My Periphery
 
@@ -50,7 +56,7 @@ Screenshots 28 and 29, D-TSO-MAN-34. Both are drawer rows of their own (My Team,
 - **Retailer ("Outlets"):** Zone and Radius dropdowns side by side (radii from `cfg.tso.periphery_radius_options_m`,
   50 / 100 / 300 by default); the map shows the outlets inside the radius circle around the TSO's own fix (green pin).
   One balanced-power fix is taken when the screen opens, when the zone or radius is picked and on the refresh icon,
-  never a stream. Online the server answers (`GET /v1/outlets/nearby`, reach from the token); offline the phone works
+  never a stream; a pick while a fix is still running takes one more fix for the new choice once that one ends. Online the server answers (`GET /v1/outlets/nearby`, reach from the token); offline the phone works
   the answer out from the bundle with the server's rule (active, coordinates confirmed, route set, zone, haversine ≤ r,
   distance rounded to 0.1 m, nearest first, ties by outlet id) and says so. Pins show the distance in whole metres
   (rounded). A mock fix is flagged and a fix outside Bangladesh is never sent.

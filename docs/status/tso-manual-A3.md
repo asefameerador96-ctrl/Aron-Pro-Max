@@ -49,7 +49,7 @@ point to, listed below.
 - `app-sr` `SrDayLockBannerTest.kt` (new): banner words en and bn with counts; nothing when open.
 - `ui-screenshots` `TsoAreaScreenshotTests.kt`: 21 new cases for screenshots 19 to 26 (see Goldens).
 
-## Step 2: My Periphery, My Call, My Feedback (this step)
+## Step 2: My Periphery, My Call, My Feedback
 
 Items: PER-02..07, 09, 10, 12..14, 18; MC-01, SP-01..03 (app), VP-01..03, VQ-02, AT-01, AT-02; FB-01..10, FB-13; CR-4;
 D-TSO-MAN-34, 35, 36. Started with `git merge --no-ff tso-man/A2-gallery` (926cf155: `GalleryImporter`,
@@ -106,6 +106,47 @@ decisions they point to.
 - `ui-screenshots` `TsoAreaScreenshotTests.kt`: 31 new cases (see Goldens); `menuShot` captures a screen with a dropdown open
   (`captureScreenRoboImage`).
 
+## Fix round 1 (independent checker, 2026-10-29)
+
+Seven defects: one high, two medium, four low. All are fixed in A3's files, except the parts that need files A3 does not
+own. Those parts are asks 1, 10 and 11.
+
+### Done
+
+| severity | defect | fix | where |
+|---|---|---|---|
+| high | The Final Submit lock went through `check()` in CaptureRepository's requireOpenRouteDay for every record. Sales Submit after "Submit anyway", leaving a call when the lock arrived mid-visit, and Mark Paid crashed the SR app, again on every retry and after a relaunch. | **D-A3-22.** The lock is per record type: `FinalSubmitLock.LOCKED_TYPES` is B3's `DAY_LOCKED_TYPES`, and day_submit, attendance, print_event and amo_record are never refused. `RouteDayLock.isOpen(db, meta, recordType)` and `requireOpen` apply the lock only when the caller names the type, and throw `RouteDayFinalSubmittedException`. CaptureRepository names no type yet (ask 10), so nothing it does throws for the lock. A3 refuses a new call itself: the SrDay and AmoDay visit-flow committers call `FinalSubmitLock.requireCallOpen`, and VisitFlow shows the refusal as CommitFailed with nothing stored. A call in progress ends on the phone without a close (`SrCallLock.abandon` / `endsOnPhone`, `AmoCallLock.endsOnPhone`, `AmoDay.closeVisit`). A call is not restored on a closed route-day (`FinalSubmitLock.callToRestore`), so no relaunch loop. `SrDay.endCallIfDayFinal()` is ready for SrSaleKit (ask 11). The banner text says "not accepted" instead of "cannot be saved". | `core-database/.../repo/RouteDayLock.kt`, `app-sr/.../SrDay.kt`, `app-amo/.../AmoDay.kt`, `app-sr` and `app-amo` `strings_a3.xml` (en, bn) |
+| medium | The SR and AMO lock banners were not drawn. AmoDay.routeLocked had no caller, and the AMO control and joint call screens were not gated. | The AMO control, joint and sale calls cannot start on a closed route: the committer refuses them through the same state as `routeLocked`, which now documents this. A call already open ends on the phone. The banners still need one line each in files A3 does not own: ask 1, now with the exact lines. The row 26 device check waits for that ask. | `AmoDay.kt` |
+| medium | Retailer race: a zone or radius pick during the opening fix left the screen on "Loading" with no fix for the new choice. | **D-A3-23.** If find() is called while one is running, the running find takes exactly one more fix for the new choice after it drops the old answer. A pick without its own find leaves the screen on Pick. A second refresh during a run takes no extra fix. | `periphery/PeripheryModel.kt` (`RetailerState.find`, `findOnce`) |
+| low | No golden case for screenshot 21. Missing 200 percent cases for 20, 23, 26, 34 and 35, and the bn and 200 percent cases for 32. | Added `leave_s21_en`, `leave_s21_bn`, `leave_s21_200_bn` (dropdown open, `menuShot`), `leave_s20_200_bn`, `fs_s23_200_bn`, `fs_s26_200_en`, `mc_s32_bn`, `mc_s32_200_bn`, `mc_s34_200_bn`, `mc_s35_200_en`. | `ui-screenshots/.../TsoAreaScreenshotTests.kt` |
+| low | Final Submit: the system back on the pickers, a failure or the already-submitted state skipped the epoch, so old picks and a stale date came back. | **D-A3-24.** BackHandler is enabled in every phase and goes through the same back as the on-screen arrow. Get Sales Data uses `today()` when tapped. | `finalsubmit/FinalSubmitScreen.kt`, `FinalSubmit.kt`, `FinalSubmitFlow.kt` (KDoc) |
+| low | Bengali digits typed into the days field gave 0 days. | **D-A3-25.** `daysFromText` maps Bengali digits to Latin (`LocaleDigits.toAscii`) before it filters. | `leave/LeaveApply.kt` |
+| low | A leave the server quarantined showed "Not sent yet" indefinitely. | **D-A3-26.** `LeaveSyncAnswer` with `LeaveItem.answered` and `held`: the outbox state QUARANTINED shows "Held for review: <reason>" with a Warning pill, and REJECTED shows "Not accepted" as before. New strings `tso_leave_held` and `tso_leave_held_reason` (en, bn). | `leave/LeaveModel.kt`, `LeaveScreen.kt`, `app-tso/.../TsoReadModels.kt`, `feature-tso` `strings_a3.xml` |
+| | docs/08 Leave, Final Submit, Retailer | updated for the above | `docs/08-tso-app.md` |
+
+### Tests (new or changed)
+
+- `core-database` `RouteDayLockTest`: the locked types are refused and state records stay open
+  (`refuses`, `isOpen` with a type, `requireOpen` throws `RouteDayFinalSubmittedException` with route, date and type).
+  Captures that name no type never throw for the lock: visit_close mid-visit, due_collection and day_submit are queued,
+  and a Sales Submit still closes the route-day with a plain IllegalStateException. Printing stays allowed (the print
+  stays the memo's child in the visit family). The sync-answer lock reads through `refuses`.
+- `app-sr` `SrDayLockCaptureTest` (new; real database through UserDatabases and the production writers): leaving the call
+  after the lock arrived mid-visit ends it on the phone (no close, not restored, a new call refused). Before the lock the
+  call closes `abandoned` as before. **Sales Submit** after the lock (SalesSubmitViewModel + RoomDaySubmitWriter) is
+  queued with no uncaught exception. **Mark Paid** after the lock (MemoViewModel + RoomDueCollectionWriter) is queued with
+  no uncaught exception. Both tests install an uncaught-exception catcher that would record a crash.
+- `app-amo` `AmoDayLockCallTest` (new): a call cannot start on the closed route, and one in progress ends on the phone
+  without a close and is not restored. Another route of the zone stays open.
+- `feature-tso` `PeripheryLogicTest`: a pick during the opening fix takes exactly one more fix and shows the new radius. A
+  pick without its own find ends on Pick. A second refresh during a run takes no extra fix.
+- `feature-tso` `FinalSubmitLogicTest.getSalesDataAsksForTodayWhenItIsTapped`; new class `FinalSubmitBackTest`: the system
+  back on the pickers with a failure leaves through onBack, as the on-screen back does; the system back on the routes
+  returns to the pickers.
+- `feature-tso` `LeaveModelTest.aQuarantinedApplicationIsHeldForReviewNotNotSentYet`,
+  `LeaveScreenTest.aHeldApplicationSaysHeldForReviewWithTheReason`, and Bengali digits in
+  `daysTextKeepsDigitsDropsLeadingZerosAndEmptyIsZero`.
+
 ## Decisions
 
 - **D-A3-01 Typed days start at "0".** Screenshot 20 shows "0" as the field's value; the field keeps the typed text, drops
@@ -118,7 +159,7 @@ decisions they point to.
 - **D-A3-03 Lock sources.** The Final Submit lock is read from both the held route section (bundle and delta) and the last sync
   answer's `day_states`, either one locks; a reopen unlocks once both have moved on (next sync answer and next delta, the
   foreground delta comes within 30 minutes). A lost push still locks at the next sync.
-- **D-A3-04 The lock is enforced in RouteDayLock.isOpen.** CaptureRepository (not A3's file) checks every route-day capture
+- **D-A3-04 (superseded by D-A3-22 in fix round 1) The lock is enforced in RouteDayLock.isOpen.** CaptureRepository (not A3's file) checks every route-day capture
   through it, so the refusal is in one place and cannot be bypassed by a screen. Consequence: a Sales Submit (`day_submit`)
   after the lock is refused on the phone, although the server would accept it as state only; the SR's check-out therefore
   opens on a final-locked day (SrDay attendance gate) so no rep is stuck. The AMO's supervisor-day submit and attendance are
@@ -174,11 +215,40 @@ decisions they point to.
 - **D-A3-21 Business date on My feedback.** The card prints `business_date` (contract 1.10.0) and falls back to the date of
   `created_at` for an older row.
 
+- **D-A3-22 The Final Submit lock is per record type and never throws in a screen.** The server refuses only B3's
+  `DAY_LOCKED_TYPES` after the lock. Day_submit, attendance, print_event and amo_record are accepted as state, so the phone
+  never refuses them (D-TSO-MAN-31). `FinalSubmitLock.LOCKED_TYPES` mirrors that list. `RouteDayLock` applies the lock only
+  when the caller names its record type. CaptureRepository (not A3's file) names none yet, so a late Sales Submit, a
+  visit_close and a due collection are queued and the server answers them. A3 enforces the lock where it owns the entry
+  point:
+  - A new call is refused (SR and AMO committers).
+  - A call in progress ends on the phone without a close, because the server refuses a visit_close captured after the
+    lock.
+  - That call is not restored after a relaunch. A reopen brings it back.
+
+  Until ask 10, a sale saved in a call that was already open when the lock arrived, and Mark Paid or a memo edit from the
+  memo list, are stored and printed on the phone. The server refuses them `day_final_submitted`, and the banner counts
+  them. Before this fix, the same lock-arrives window existed for anything captured before the push landed. The print
+  ledger passes no type either, so a reprint after Final Submit (without a Sales Submit) stays in the memo's visit family
+  with its route. The server accepts print_event after the lock. Check-out still opens on a final-locked day.
+- **D-A3-23 A pick during a running Retailer fix re-runs once.** One balanced fix per pick (D-TSO-MAN-34). The fix that was
+  already running is not reused for the new choice: the new choice gets its own fix once the old one ends.
+- **D-A3-24 Final Submit: one back in every phase; the date at Get Sales Data.** The system back and the on-screen back are
+  the same function in every phase. From the pickers both leave through onBack, so the flow's epoch starts a fresh state
+  next time. The sales date is `today()` when Get Sales Data is tapped (Ui.date follows it).
+- **D-A3-25 Bengali digits in the typed days field** count as their Latin digits. The field then shows the Latin number
+  (D-A3-01: typed fields show the keyboard's Latin digits).
+- **D-A3-26 A held leave.** An application the server quarantined shows the Warning pill "Held for review" and the line
+  "Held for review: <reason>", worded with the refusal reasons. Once an admin accepts it, the server list carries it and
+  the server row replaces the local one.
+
 ## Deviations
 
-- The lock banners (`SrDayLockBanner`, `AmoDayLockBanner`) are built and tested but **not yet drawn on the SR and AMO Home**:
-  the call site is in `app-sr/.../SrApp.kt` and the AMO home host, which no lane owns in s5. See ask 1. Capture is locked
-  regardless (database), so the safety part of D-TSO-MAN-31 holds without the banner.
+- The lock banners (`SrDayLockBanner`, `AmoDayLockBanner`) are built and tested but **not yet drawn on the SR and AMO Home**.
+  The call site is in `app-sr/.../SrApp.kt` and the AMO home host, which no lane owns in s5. See ask 1. Without them the rep
+  sees a refused call as a generic failed commit. Fix round 1 (D-A3-22): the phone refuses new calls and ends a call in
+  progress, but the database refuses no capture type until CaptureRepository names its types (ask 10). Until then, the
+  server refuses a late memo or collection `day_final_submitted`.
 - `FinalSubmitApi.geo()` (per-level `/v1/admin/geo/{level}` reads) is removed; the cascade reads filter-options once.
   `zones()` stays for the flat fallback (A1's TsoNavigationTest fake implements it).
 
@@ -189,10 +259,16 @@ decisions they point to.
 
 ## Asks
 
-1. **Lead (SrApp.kt and the AMO home have no owner):** draw the lock banner. SR: in `SrApp.kt` Home, put
-   `SrDayLockBanner(day)` at the top of the Home content (or pass its text as `HomeContent(banner = ...)`); AMO: the same with
-   `AmoDayLockBanner(day)` on the AMO home. One line each, marked `// tso-manual A3`. Either A3 gets the line in its owned
-   list, or the lead adds it.
+1. **Lead (SrApp.kt and the AMO home have no owner; re-raised in fix round 1, the row 26 device check waits for it):** draw
+   the lock banner. Since fix round 1 each host needs only one argument, marked `// tso-manual A3`:
+   - SR, `SrApp.kt`, the `HomeContent(...)` call: `banner = if (data.downloading)
+     stringResource(R.string.sr_bundle_downloading) else srDayLockBannerText(day),`.
+   - AMO, `MainActivity.kt`, the `AmoApp(...)` call: `banners = amoDayLockBanners(day),` (the `day` var there is
+     `AmoDay?`).
+
+   Both helpers are in A3's files (SrDay.kt, AmoDay.kt). They refresh on each applied push pull while composed and are
+   null or empty while the day is open. The Warning-styled composables `SrDayLockBanner` and `AmoDayLockBanner` stay
+   available for a host that has a column for them. Either A3 gets these lines in its owned list, or the lead adds them.
 2. **Lead / CI (goldens):** record on Linux and look at the goldens listed below; the existing area goldens changed pixels
    on purpose (new layout), including A1's three 200 percent goldens that render A3 screens.
 3. **A1:** `TsoLargeTextScreenshotTests.leave_apply_200_bn` now shows the empty-type form with 3 days (LeaveForm no longer
@@ -216,6 +292,27 @@ decisions they point to.
    cached `/v1/routes`) shows "SR Not Set". If the TSO bundle's route section can carry the route's SR (user id and name),
    A3 reads it; until then Assign Task needs one online routes read per 30 minutes (kept in the cache).
 
+10. **Lead (CaptureRepository is not A3's file; fix round 1, D-A3-22):** let the database refuse the locked types again,
+    without a crash. Replace `check(RouteDayLock.isOpen(db, meta)) {...}` in `requireOpenRouteDay(meta)` with
+    `RouteDayLock.requireOpen(db, meta, recordType)` and pass the record type per caller:
+    - Now: `recordVisitOpen` "visit" and `recordSale` "memo". Their callers already turn a refusal into "commit failed"
+      or "save failed".
+    - Only after ask 11: `recordDueCollection` "due_collection", `recordVisitSkip` "visit_skip", `recordVisitClose`
+      "visit_close".
+    - Never: `recordDaySubmit`, `recordAmo`, `recordSurveyResponse`, `recordContentView`. The server accepts them after
+      the lock.
+
+    RouteDayLockTest already covers `requireOpen`.
+11. **Owners of feature-memo, feature-dayclose and the SR and AMO hosts (fix round 1):** catch
+    `RouteDayFinalSubmittedException` where the capture is launched, show the lock text, and gate the actions:
+    - `MemoViewModel.markPaid` and memo edit or void: catch the exception, and hide Mark Paid when
+      `SrDay.finalLocked()`.
+    - `SrSaleKit.closeVisit`: start with `if (day.endCallIfDayFinal()) return`. The call then ends on the phone and no
+      close the server would refuse is written.
+    - SR picker and AMO `ControlCallHost`: when `day.finalLocked()` or `day.routeLocked(route)` is true, show the lock
+      text instead of VisitFlow's generic CommitFailed.
+    - Sales Submit needs nothing, because day_submit is accepted after the lock.
+
 ## Goldens needed (record on the Linux runner; none committed from this laptop)
 
 Changed pixels (re-record): `tso_leave_list_bn`, `tso_leave_list_sunlight_en`, `tso_leave_empty_en`, `tso_leave_offline_bn`,
@@ -238,6 +335,11 @@ captures with the dropdown open, `captureScreenRoboImage`.)
 Step 2, changed pixels (re-record): `tso_feedback_list_bn`, `tso_feedback_form_en`, `tso_feedback_empty_en`,
 `tso_set_plan_bn` (now the form only), `tso_set_plan_unavailable_en`, `tso_visit_query_bn`; A1's file
 `tso_visit_query_3line_bn` (TsoLargeTextScreenshotTests, the Visit Query restyled). Screenshots 27 and 30 are A1's menus.
+
+Fix round 1, new (10): `tso_leave_s20_200_bn`, `tso_leave_s21_en`, `tso_leave_s21_bn`, `tso_leave_s21_200_bn`,
+`tso_fs_s23_200_bn`, `tso_fs_s26_200_en`, `tso_mc_s32_bn`, `tso_mc_s32_200_bn`, `tso_mc_s34_200_bn`, `tso_mc_s35_200_en`.
+The `tso_leave_s21_*` and `tso_mc_s32_*` cases are whole-screen captures with the dropdown open (`captureScreenRoboImage`).
+No existing case changed pixels in this round.
 
 ## Verify (this worktree, local laptop through gl.sh; CI not run, nothing pushed)
 
@@ -266,19 +368,33 @@ Step 2 (2026-10-29, Dhaka 07:20 to 08:48; every run waited for the shared Gradle
 Not run in step 2: the ui-screenshots verify mode (goldens are recorded on the Linux runner); the interactive maps on a
 phone (device checks); A1's TsoLargeTextScreenshotTests (its sources compile).
 
+Fix round 1 (2026-10-29, Dhaka 10:01 to 12:12). Every run first waited for the shared Gradle lock, which other lanes'
+backend runs held for about two hours in total.
+
+| command | result |
+|---|---|
+| `gl.sh … --continue :android:core-database:testDebugUnitTest --tests '*RouteDayLockTest*' --tests '*RoomPrintLedgerTest*' :android:app-sr:testDebugUnitTest --tests '*SrDayLockCaptureTest*' --tests '*SrDayLockBannerTest*' :android:app-amo:testDebugUnitTest --tests '*AmoDayLockCallTest*' :android:feature-tso:testDebugUnitTest --tests '*periphery*' --tests '*finalsubmit*' --tests '*leave*' :android:app-tso:compileDebugUnitTestKotlin :android:ui-screenshots:compileDebugUnitTestKotlin` (run 1) | BUILD FAILED in 57s, only on `app-sr:compileDebugUnitTestKotlin`: a newline was written into a string literal of the new SrDayLockBannerTest case (fixed). Every other task passed: RouteDayLockTest 9/9, RoomPrintLedgerTest 9/9, AmoDayLockCallTest 1/1; feature-tso PeripheryLogicTest 25/25, PeripheryScreenTest 7/7, FinalSubmitLogicTest 16/16, FinalSubmitScreenTest 6/6, FinalSubmitBackTest 2/2, FinalSubmitCascadeTest 7/7, and all eight leave classes (LeaveModelTest 11, LeaveScreenTest 8, ...). app-tso and ui-screenshots test sources compile |
+| **s5 Verify (full)** `gl.sh … --continue :android:feature-tso:testDebugUnitTest :android:core-map:testDebugUnitTest :android:core-database:testDebugUnitTest :android:app-sr:testDebugUnitTest :android:app-amo:testDebugUnitTest :android:feature-tasks:testDebugUnitTest :android:app-tso:testDebugUnitTest :android:ui-screenshots:testDebugUnitTest` | BUILD FAILED in 9m 41s, on two tasks only; both are explained below. **Green:** feature-tso 38 classes, 217 tests, 0 failures; app-sr 15 classes, 45 tests, 0 failures (SrDayLockCaptureTest 4/4 with no uncaught exception, SrDayLockBannerTest 5/5); app-amo 6 classes, 32 tests, 0 failures; feature-tasks 3 classes, 19 tests, 0 failures; app-tso 4 classes, 23 tests, 0 failures; core-map UP-TO-DATE (unchanged this round, 27/27 in step 2). **core-database:** 27 classes, 203 tests, 9 failed (RouteDayLockTest 9/9 green). The 9 are the same Room `MigrationTestHelper` cases as in step 2 (SchemaMigrationTest 6, Migration67Test, Migration78Test, CheckerAmoRecordsTest): "This driver is configured to open a database named 'migration-NN' but 'C:\...' was requested", the Windows-path environment failure. **ui-screenshots (verify mode):** 16 classes, 355 tests, 82 failed; every other class passed. The 82 are all A3 screens: in TsoAreaScreenshotTests (80 cases), 63 have "missing golden" (exactly the new names listed under Goldens: 21 from step 1, 32 from step 2, 10 from this round) and 15 fail the Roborazzi compare (exactly the "changed pixels" lists of steps 1 and 2); `my_call_hub_bn` and `periphery_hub_en` pass. In A1's TsoLargeTextScreenshotTests, the 4 cases that render A3 screens fail the compare (`leave_apply_200_bn`, `final_submit_pick_200_bn`, `final_submit_review_200_en`, `visit_query_three_line_bn`; listed under ask 2 and Goldens) and `home_200_bn` passes. The lead records these goldens on the Linux runner (ask 2) |
+
 ## Next step
 
-Step 2 is done (above). What is left on the lane, in order:
+Step 2 and fix round 1 are done (above). What is left on the lane, in order:
 
-1. When A1 has switched `TsoNavigationTest` and `TsoFeedbackFlowTest` to the AreasHost entries (ask 6), delete
+1. The lead or the file owners act on asks 1, 10 and 11 (fix round 1). Once CaptureRepository passes the record type
+   (ask 10), rerun `RouteDayLockTest` and `SrDayLockCaptureTest`. `SrDayLockCaptureTest` expects Sales Submit to stay
+   queued, because day_submit is never locked. If due_collection is typed before MemoViewModel catches the refusal, Mark
+   Paid would fail the uncaught-exception check: keep the order in ask 10.
+2. When A1 has switched `TsoNavigationTest` and `TsoFeedbackFlowTest` to the AreasHost entries (ask 6), delete
    `PeripheryFlow`, `MyCallFlow`, `FeedbackFlow`, `PeripheryHub`, `MyCallHub`, the legacy saved-banner path of
    `FeedbackFormScreen` (`onSaved == null`) and the cases `my_call_hub_bn` / `periphery_hub_en`; list their goldens for
    deletion.
-2. Put A1's picture glyph on Browse Gallery once `AronIcons.Image` exists (ask 7).
-3. Read the route's SR from the bundle for an offline Assign Task if B3 adds it (ask 9).
-4. Ask 1 of step 1 (the lock banner call sites on the SR and AMO Home) is still open for the lead.
-5. Device checks on a pilot phone against dev (s8 rows 28, 29, 31 to 38, 43): My Team zoom and tap, the Retailer circle
-   and one fix per pick, the gallery picker on an Android 9 and an Android 11+ phone, a plan and a delegated task reaching
-   the SR's bundle with its route.
+3. Put A1's picture glyph on Browse Gallery once `AronIcons.Image` exists (ask 7).
+4. Read the route's SR from the bundle for an offline Assign Task if B3 adds it (ask 9).
+5. Device checks on a pilot phone against dev:
+   - s8 row 26 ("SR phone shows lock"), after ask 1: with the TSO's "Submit anyway", the SR's Sales Submit, Mark Paid
+     and leaving an open call do not crash. A new call is refused and the banner shows.
+   - Rows 28, 29, 31 to 38 and 43: My Team zoom and tap; the Retailer circle and one fix per pick (also a pick during
+     the opening fix); the gallery picker on an Android 9 phone and an Android 11+ phone; a plan and a delegated task
+     reaching the SR's bundle with its route.
 6. After A1's TsoNight kit is merged, the lead records the goldens on the Linux runner and looks at them against the
-   owner's JPGs (the scratch recordings here use the a1-stubs kit, so colours are not yet the night look).
+   owner's JPGs. The scratch recordings here use the a1-stubs kit, so the colours are not yet the night look.
