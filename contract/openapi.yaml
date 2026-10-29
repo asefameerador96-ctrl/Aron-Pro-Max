@@ -10878,7 +10878,7 @@ components:
           description: 'The unit the field apps count this category in (docs/34 s4.2): pack (packet or box, per SKU `base_per_pack`) or dozen (matches).'
         qty_entered:
           $ref: '#/components/schemas/Decimal3'
-          description: 'This item''s quantity in `entry_unit`, summed per SKU first (each SKU''s base-unit quantity over its base_per_pack): 10s and 20s of one category convert correctly. Same basis as the item''s `qty_base`, which the list that carries the item states: in `DashboardSummary.by_category` the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, lead ruling R-W-06); `DailyTrackingRow.by_category` states its own basis.'
+          description: 'This item''s quantity in `entry_unit`, summed per SKU first (each SKU''s base-unit quantity over its base_per_pack): 10s and 20s of one category convert correctly. Same basis as the item''s `qty_base`: in both lists that carry the item (`DashboardSummary.by_category`, `DailyTrackingRow.by_category`) the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, lead rulings R-W-06 and R-W-20).'
         net_mtk: { $ref: '#/components/schemas/Mtk' }
     NationalDashboardFilter:
       type: object
@@ -12672,11 +12672,10 @@ components:
         by_category:
           type: array
           maxItems: 10
-          description: 'Per category for the route-day. `qty_base` is the sold plus free quantity of the route-day''s lines
-            in base units (sale and free lines, as built), not the Total Sales basis of D-TSO-MAN-09 that
-            `DashboardSummary.by_category` uses. `entry_unit` and `qty_entered` are not sent here today; a server that
-            sends them converts this same quantity. Whether this list moves to sold only is open (lead ruling R-W-06 names
-            the summary only).'
+          description: 'Per category for the route-day. `qty_base` is the sold quantity of sale lines only, in base units:
+            no free or DRP lines (D-TSO-MAN-09, lead ruling R-W-20), the one sales quantity of every dashboard, as
+            `DashboardSummary.by_category` and the national Sales card count it. `entry_unit` and `qty_entered` are not
+            sent here today; a server that sends them converts this same quantity.'
           items: { $ref: '#/components/schemas/CategoryVolume' }
         tilldate_target_achievement_pct:
           type: [number, 'null']

@@ -110,9 +110,11 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
             // Same-time-yesterday (F-WEB-038): only for the live Dhaka day; the previous day with route rows in reach, rebuilt from login time and memo commit times.
             if (date == nowDhaka.toLocalDate()) comparator = comparator(h, node, date, nowDhaka.toLocalTime().withSecond(0).withNano(0))
             val page = rows.take(limit)
+            // Lead ruling R-W-20 (tso-manual X2): the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09), the one
+            // sales quantity of every dashboard (DashboardSummary.by_category, the national Sales card); was sold plus free.
             val cats = if (page.isEmpty()) emptyMap() else h.createQuery(
                 """
-                SELECT a.route_id, p.category_code, p.base_unit, sum(a.sold_qty_base + a.free_qty_base) qty, sum(a.gross_mtk) gross
+                SELECT a.route_id, p.category_code, p.base_unit, sum(a.sold_qty_base) qty, sum(a.gross_mtk) gross
                   FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWas.product)}
                  WHERE a.business_date = :d AND a.route_id = ANY(:rids) GROUP BY 1, 2, 3 ORDER BY 1, 2
                 """,

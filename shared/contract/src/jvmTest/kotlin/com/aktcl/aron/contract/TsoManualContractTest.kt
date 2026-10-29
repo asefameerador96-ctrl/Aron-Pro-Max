@@ -733,16 +733,17 @@ class TsoManualContractTest {
         val reply = flat(op("post", "/v1/support/tickets/{ticket_uuid}/events")["description"])
         assertTrue(reply.contains("a stored reply writes one inbox row for the reporter (kind `ticket_updated`)"), reply)
         assertTrue(reply.contains("push with reason `notification`; a replay writes neither again"), reply)
-        // CategoryVolume is the item of two lists with two bases: qty_entered follows its item's qty_base, and each list states it
+        // CategoryVolume is the item of two lists with one basis (lead ruling R-W-20, lane X2): sold quantity of sale lines only in both,
+        // and qty_entered follows its item's qty_base
         val entered = flat(prop("CategoryVolume", "qty_entered")["description"])
         assertTrue(entered.contains("Same basis as the item's `qty_base`"), entered)
-        assertTrue(entered.contains("in `DashboardSummary.by_category` the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09"), entered)
+        assertTrue(entered.contains("(`DashboardSummary.by_category`, `DailyTrackingRow.by_category`) the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09"), entered)
         assertFalse(entered.contains("each SKU's qty_base"), "one quantity per item, not per SKU qty_base: $entered")
         assertEquals("CategoryVolume", ref(map(prop("DailyTrackingRow", "by_category")["items"])))
         assertEquals("CategoryVolume", ref(map(prop("DashboardSummary", "by_category")["items"])))
         val tracking = flat(prop("DailyTrackingRow", "by_category")["description"])
-        assertTrue(tracking.contains("`qty_base` is the sold plus free quantity of the route-day's lines"), tracking)
-        assertTrue(tracking.contains("not the Total Sales basis of D-TSO-MAN-09"), tracking)
+        assertTrue(tracking.contains("`qty_base` is the sold quantity of sale lines only, in base units: no free or DRP lines (D-TSO-MAN-09, lead ruling R-W-20)"), tracking)
+        assertFalse(tracking.contains("sold plus free"), tracking)
         assertTrue(flat(prop("DashboardSummary", "by_category")["description"]).contains("Sold quantity of sale lines only (no free or DRP lines)"))
         fun share(schema: String) = flat(map(map(map(prop(schema, "channels")["items"])["properties"])["share_pct_bp"])["description"])
         assertTrue(share("NationalChannelCalls").contains("The denominator is the total including unclassified calls, `total` + `unclassified`"))

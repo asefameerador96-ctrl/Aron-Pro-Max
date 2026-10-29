@@ -7161,7 +7161,7 @@ export interface components {
              * @enum {string}
              */
             entry_unit?: "pack" | "dozen";
-            /** @description This item's quantity in `entry_unit`, summed per SKU first (each SKU's base-unit quantity over its base_per_pack): 10s and 20s of one category convert correctly. Same basis as the item's `qty_base`, which the list that carries the item states: in `DashboardSummary.by_category` the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, lead ruling R-W-06); `DailyTrackingRow.by_category` states its own basis. */
+            /** @description This item's quantity in `entry_unit`, summed per SKU first (each SKU's base-unit quantity over its base_per_pack): 10s and 20s of one category convert correctly. Same basis as the item's `qty_base`: in both lists that carry the item (`DashboardSummary.by_category`, `DailyTrackingRow.by_category`) the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, lead rulings R-W-06 and R-W-20). */
             qty_entered?: components["schemas"]["Decimal3"];
             net_mtk: components["schemas"]["Mtk"];
         };
@@ -7823,7 +7823,7 @@ export interface components {
             successful_calls: number;
             active_memo_count: number;
             net_mtk: components["schemas"]["Mtk"];
-            /** @description Per category for the route-day. `qty_base` is the sold plus free quantity of the route-day's lines in base units (sale and free lines, as built), not the Total Sales basis of D-TSO-MAN-09 that `DashboardSummary.by_category` uses. `entry_unit` and `qty_entered` are not sent here today; a server that sends them converts this same quantity. Whether this list moves to sold only is open (lead ruling R-W-06 names the summary only). */
+            /** @description Per category for the route-day. `qty_base` is the sold quantity of sale lines only, in base units: no free or DRP lines (D-TSO-MAN-09, lead ruling R-W-20), the one sales quantity of every dashboard, as `DashboardSummary.by_category` and the national Sales card count it. `entry_unit` and `qty_entered` are not sent here today; a server that sends them converts this same quantity. */
             by_category?: components["schemas"]["CategoryVolume"][];
             /** @description Deprecated (contract 1.10.0, lead ruling R-W-06): read `tilldate_target_achievement_bp`. The same figure as a percentage with two decimals: `tilldate_target_achievement_bp` / 100 (the bp is this figure x 100, rounded once half up). Kept for older readers; null exactly when the bp is null. */
             tilldate_target_achievement_pct?: number | null;
