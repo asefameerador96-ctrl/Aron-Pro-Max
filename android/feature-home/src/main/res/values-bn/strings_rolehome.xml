@@ -14,13 +14,6 @@
     <string name="rh_amo_sales_submit">বিক্রয় জমা</string>
     <string name="rh_amo_report">রিপোর্ট</string>
 
-    <string name="rh_tso_dashboard">ড্যাশবোর্ড</string>
-    <string name="rh_tso_leave">ছুটি</string>
-    <string name="rh_tso_final_submit">ফাইনাল সাবমিট</string>
-    <string name="rh_tso_periphery">আমার পরিধি</string>
-    <string name="rh_tso_my_call">আমার কল</string>
-    <string name="rh_tso_feedback">আমার মতামত</string>
-    <string name="rh_tso_device_otp">ডিভাইস ওটিপি</string>
 
     <string name="rh_hero_amo_sales">আজ টিমের বিক্রয়</string>
     <string name="rh_hero_amo_visits">আজকের ভিজিট</string>

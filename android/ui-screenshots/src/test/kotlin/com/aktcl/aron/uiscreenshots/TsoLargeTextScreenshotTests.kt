@@ -81,7 +81,8 @@ class TsoLargeTextScreenshotTests {
             screens = mapOf(com.aktcl.aron.feature.tso.TsoScreen.DASHBOARD to { _, _ -> com.aktcl.aron.feature.tso.TsoDashboardContent(dash, false, com.aktcl.aron.feature.tso.ChannelMode.STD, {}, {}, {}) }),
         )
     }
-    @Test fun drawer_200_bn() = shot("tso_drawer_200_bn", AppLanguage.BN) {
+    // screenshot 10 (the Tickets group open) at 200 percent, next to tso_drawer_tickets_en and tso_drawer_tickets_bn (R-W-12 (8))
+    @Test fun drawer_tickets_200_bn() = shot("tso_drawer_tickets_200_bn", AppLanguage.BN) {
         com.aktcl.aron.feature.tso.TsoDrawerContent(user.fullName, {}, {}, {}, initiallyExpanded = "tickets")
     }
     @Test fun login_200_en() = shot("tso_login_200_en", AppLanguage.EN) {

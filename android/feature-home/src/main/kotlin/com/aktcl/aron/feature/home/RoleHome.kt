@@ -134,12 +134,6 @@ object RoleHomes {
         const val TEAM = "team"; const val OUTLET = "outlet"; const val SALES_SUBMIT = "sales_submit"; const val REPORT = "report"
     }
 
-    /** Former TSO tile ids; kept as icon ids for the TSO area frames (no tile Home any more, D-TSO-MAN-14). */
-    object TsoTile {
-        const val DASHBOARD = "dashboard"; const val LEAVE = "leave"; const val FINAL_SUBMIT = "final_submit"; const val PERIPHERY = "periphery"
-        const val MY_CALL = "my_call"; const val FEEDBACK = "feedback"; const val DEVICE_OTP = "device_otp"
-    }
-
     /**
      * AMO tiles in docs/07 order: the six daily tiles (3 x 2), then Sales Submit and Report as the day-close group. Astha is
      * deferred (docs/27) and has no entry. [badges] by tile id (the Outlet tile carries pending verifications).
@@ -153,20 +147,6 @@ object RoleHomes {
         RoleTile(AmoTile.OUTLET, R.string.rh_amo_outlet, AronIcons.Outlet, badges[AmoTile.OUTLET] ?: 0, RoleTileGroup.Today),
         RoleTile(AmoTile.SALES_SUBMIT, R.string.rh_amo_sales_submit, AronIcons.Submit, badges[AmoTile.SALES_SUBMIT] ?: 0, RoleTileGroup.DayClose),
         RoleTile(AmoTile.REPORT, R.string.rh_amo_report, AronIcons.Trend, badges[AmoTile.REPORT] ?: 0, RoleTileGroup.DayClose),
-    )
-
-    // tso-manual A1: the TSO tile catalogue is retired (D-TSO-MAN-14): the TSO app opens on the Dashboard with the drawer and no
-    // longer calls tsoTiles(). It stays, deprecated, only for the shared role-home goldens (RoleHomeShot, ScreenshotTests), which
-    // are not A1's files; their owner retires those two cases and then this function (ask in docs/status/tso-manual-A1.md).
-    @Deprecated("Retired for TSO (D-TSO-MAN-14): the TSO app has a drawer, not a tile Home. Kept for the shared role-home goldens only.")
-    fun tsoTiles(badges: Map<String, Int> = emptyMap()): List<RoleTile> = listOf(
-        RoleTile(TsoTile.DASHBOARD, R.string.rh_tso_dashboard, AronIcons.Dashboard, badges[TsoTile.DASHBOARD] ?: 0, RoleTileGroup.Today),
-        RoleTile(TsoTile.LEAVE, R.string.rh_tso_leave, AronIcons.Leave, badges[TsoTile.LEAVE] ?: 0, RoleTileGroup.Today),
-        RoleTile(TsoTile.FINAL_SUBMIT, R.string.rh_tso_final_submit, AronIcons.Verified, badges[TsoTile.FINAL_SUBMIT] ?: 0, RoleTileGroup.Today),
-        RoleTile(TsoTile.PERIPHERY, R.string.rh_tso_periphery, AronIcons.Explore, badges[TsoTile.PERIPHERY] ?: 0, RoleTileGroup.Today),
-        RoleTile(TsoTile.MY_CALL, R.string.rh_tso_my_call, AronIcons.Place, badges[TsoTile.MY_CALL] ?: 0, RoleTileGroup.Today),
-        RoleTile(TsoTile.FEEDBACK, R.string.rh_tso_feedback, AronIcons.Feedback, badges[TsoTile.FEEDBACK] ?: 0, RoleTileGroup.Today),
-        RoleTile(TsoTile.DEVICE_OTP, R.string.rh_tso_device_otp, AronIcons.Lock, badges[TsoTile.DEVICE_OTP] ?: 0, RoleTileGroup.Others),
     )
 
     /** `AMO - name (username)` over the ISO business date (F-SR-008 wording, no route for these roles). */
