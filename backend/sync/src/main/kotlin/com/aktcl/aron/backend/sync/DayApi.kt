@@ -287,12 +287,15 @@ class DayService(
      * Lane X2 (lead ruling R-W-06 (1)): the one rule of who may Final Submit, read by the submit and by the preview's
      * `can_submit`: the TSO ("manual") or a role listed in `cfg.day.final_submit_delegate_roles` ("delegated"); null for
      * anyone else. Reach is checked apart ([requireZone]: the preview answers 403 outside it, the submit too).
+     * Only [DELEGABLE] roles can be delegated (X2 fix round, checker L1): the registry bounds the key to "subset of DMO, WM"
+     * (V0006) but the config editor checks the list length only, so a stored NATIONAL, ADMIN or other role is ignored here
+     * rather than told `can_submit` while the guard refuses its POST.
      */
     internal fun submitKind(p: AronPrincipal): String? {
         val delegates = runCatching { config.value("cfg.day.final_submit_delegate_roles").jsonArray.map { it.jsonPrimitive.content }.toSet() }.getOrDefault(emptySet())
         return when {
             p.role == Role.TSO -> "manual"
-            p.role.wire in delegates -> "delegated"
+            p.role in DELEGABLE && p.role.wire in delegates -> "delegated"
             else -> null
         }
     }
@@ -629,6 +632,8 @@ class DayService(
         // tso-manual B3
         /** Dummy BR and Institutional routes: never due without data (D-TSO-MAN-27). */
         private val DUMMY_CLASSES = setOf("dummy_br", "dummy_institutional")
+        /** The roles `cfg.day.final_submit_delegate_roles` may name (registry bounds "subset of DMO, WM", V0006); lane X2. */
+        private val DELEGABLE = setOf(Role.DMO, Role.WM)
         /** cfg.day.reopen_roles when unreadable (the V0134 default). */
         private val DEFAULT_REOPEN_ROLES = setOf("ADMIN", "SUPERADMIN")
         private const val REOPEN_ROLES_KEY = "cfg.day.reopen_roles"
