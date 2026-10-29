@@ -31,7 +31,7 @@ tasks.withType<Test>().configureEach {
     // listed below; =b runs every other class, as an EXCLUDE of the same list, so the two shards are complementary by
     // construction: no class can fall between them and a class added anywhere lands in b. Unset runs everything, as
     // before (local runs and every other task). Any other value fails the build instead of running a wrong subset.
-    // Groups balanced from the TEST-CLASS END timings of run 40755248363 (about 18 minutes of class time each).
+    // Groups balanced from the TEST-CLASS END timings of run 40755248363: about 18 (a) and 20 (b) minutes of class time.
     val shard = System.getenv("ARON_ANALYTICS_SHARD")?.trim()?.lowercase().orEmpty()
     if (shard.isNotEmpty()) {
         val shardA = listOf(

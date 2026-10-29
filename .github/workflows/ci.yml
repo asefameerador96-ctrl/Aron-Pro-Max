@@ -388,7 +388,8 @@ jobs:
   # it runs on two runners: shard a is the class list in backend/analytics/build.gradle.kts, shard b is every other class
   # (an exclude of the same list, so the shards are complementary by construction and a new class lands in b). Same
   # Gradle task, every class still runs exactly once, about 20 minutes a shard; the guards stay as they are and stay hang
-  # guards. Both shard names are required checks on main (tools/github-governance.ps1). D-LEAD-CI-ANALYTICS-SHARD-01.
+  # guards. The required check on main stays the one name "Backend analytics tests": the jvm-analytics-check job below
+  # (a skipped matrix job posts no per-shard check, see there). D-LEAD-CI-ANALYTICS-SHARD-01.
   jvm-analytics:
     name: Backend analytics tests (${{ matrix.shard }})
     needs: changes
@@ -437,6 +438,32 @@ jobs:
             backend/analytics/build/reports/tests/
             backend/analytics/build/test-results/
           retention-days: 7
+
+  jvm-analytics-check:
+    # The one required check for the analytics suite ("Backend analytics tests" in tools/github-governance.ps1). A matrix
+    # job that the changes filter skips posts ONE skipped check under its unexpanded name, so "(a)" and "(b)" would never
+    # report on a docs-, web- or android-only pull request and a protection requiring them would wait forever. This job
+    # always runs and passes exactly when both shards passed, or the suite was rightly skipped. D-LEAD-CI-ANALYTICS-SHARD-01.
+    name: Backend analytics tests
+    needs: [changes, jvm-analytics]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Both shards passed, or the suite was skipped by the changes filter
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          SHARDS_RESULT: ${{ needs.jvm-analytics.result }}
+          JVM_CHANGED: ${{ needs.changes.outputs.jvm }}
+        run: |
+          echo "changes: ${CHANGES_RESULT}; jvm changed: ${JVM_CHANGED}; analytics shards: ${SHARDS_RESULT}"
+          if [ "${CHANGES_RESULT}" != "success" ]; then echo "::error::the changes job did not succeed (${CHANGES_RESULT}), so the analytics shards never ran"; exit 1; fi
+          case "${SHARDS_RESULT}" in
+            success) echo "both shards passed" ;;
+            skipped) if [ "${JVM_CHANGED}" = "true" ]; then echo "::error::jvm changed but the analytics shards were skipped"; exit 1; fi
+                     echo "no JVM change: the suite was rightly skipped" ;;
+            *) echo "::error::analytics shards: ${SHARDS_RESULT}"; exit 1 ;;
+          esac
 
   android:
     name: Android debug APKs, unit tests and lint

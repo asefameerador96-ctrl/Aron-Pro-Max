@@ -818,15 +818,12 @@ class Workflows(unittest.TestCase):
             name = name.strip()
             if name == "Detect changed areas":
                 continue
-            # A matrix job's check runs carry the expanded value: one required check a shard (D-LEAD-CI-ANALYTICS-SHARD-01).
-            names = [name]
-            m = re.search(r"\$\{\{ matrix\.(\w+) \}\}", name)
-            if m:
-                values = re.search(r"(?m)^\s+%s: \[([^\]]+)\]" % m.group(1), c)
-                self.assertIsNotNone(values, f"matrix values of {m.group(1)} for {name}")
-                names = [name.replace(m.group(0), v.strip()) for v in values.group(1).split(",")]
-            for n in names:
-                self.assertIn(f"'{n}'", gov, "every ci job (every check run of a matrix job) is a required check on main")
+            if "${{ matrix." in name:
+                # A matrix job is never required directly (skipped, it reports under the unexpanded name only); its
+                # aggregator job is: JvmSplit pins the one for jvm-analytics. D-LEAD-CI-ANALYTICS-SHARD-01.
+                self.assertEqual(name, "Backend analytics tests (${{ matrix.shard }})", "the only matrix job")
+                continue
+            self.assertIn(f"'{name}'", gov, "every ci job is a required check on main")
         self.assertNotIn("'Contract lint'", gov, "no required check without a job")
         self.assertIn("tools/ci/last-green-int.sh", c, "every ci run shows the last green INT run and its age")
         self.assertIn("bash scripts/ci.sh generate", c, "web/src/contract/openapi.d.ts regenerate-and-diff")
@@ -1877,7 +1874,8 @@ class JvmSplit(unittest.TestCase):
         c = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
         jvm = c[c.index("\n  jvm:"):c.index("\n  jvm-app:")]
         app = c[c.index("\n  jvm-app:"):c.index("\n  jvm-analytics:")]
-        analytics = c[c.index("\n  jvm-analytics:"):c.index("\n  android:")]
+        analytics = c[c.index("\n  jvm-analytics:"):c.index("\n  jvm-analytics-check:")]
+        check = c[c.index("\n  jvm-analytics-check:"):c.index("\n  android:")]
         self.assertIn(":backend:app:build -x :backend:app:test", jvm)
         self.assertIn("run: ./gradlew --console=plain :backend:app:test", app)
         self.assertIn("name: Backend app tests", app)
@@ -1904,11 +1902,39 @@ class JvmSplit(unittest.TestCase):
         self.assertIn('"a" -> shardA.forEach { includeTestsMatching(it) }', kts)
         self.assertIn('"b" -> shardA.forEach { excludeTestsMatching(it) }', kts, "b is the complement of a")
         self.assertIn("else -> throw GradleException", kts, "a wrong value never runs a wrong subset")
+        # The required check is the aggregator job, never a shard: a matrix job skipped by the changes filter posts one
+        # skipped check under its unexpanded name, so a protection requiring "(a)" or "(b)" would wait forever on a
+        # docs-, web- or android-only pull request.
+        self.assertIn("name: Backend analytics tests\n", check)
+        self.assertIn("needs: [changes, jvm-analytics]", check)
+        self.assertIn("if: always()", check, "runs whether the shards ran, failed or were skipped")
+        self.assertIn("SHARDS_RESULT: ${{ needs.jvm-analytics.result }}", check)
+        self.assertIn('if [ "${CHANGES_RESULT}" != "success" ]', check, "a failed changes job is never a pass")
+        self.assertIn('skipped) if [ "${JVM_CHANGED}" = "true" ]', check, "skipped counts only when nothing JVM changed")
+        self.assertNotIn("${{ matrix.", check, "the aggregator has no matrix")
         gov = (ROOT / "tools" / "github-governance.ps1").read_text(encoding="utf-8")
-        for name in ("'Shared, db and backend (build and tests)'", "'Backend app tests'",
-                     "'Backend analytics tests (a)'", "'Backend analytics tests (b)'"):
+        for name in ("'Shared, db and backend (build and tests)'", "'Backend app tests'", "'Backend analytics tests'"):
             self.assertIn(name, gov)
-        self.assertNotIn("'Backend analytics tests',", gov, "the unsharded name is no longer a check")
+        for name in ("'Backend analytics tests (a)'", "'Backend analytics tests (b)'", "matrix.shard"):
+            self.assertNotIn(name, gov, "a shard is never a required check (it does not report when skipped)")
+
+    def test_every_listed_shard_class_exists(self):
+        """A name in the shard-a list that matches no class is silent (the class simply runs in shard b and the balance
+        drifts), so the list is checked against the declared test classes here."""
+        kts = (ROOT / "backend" / "analytics" / "build.gradle.kts").read_text(encoding="utf-8")
+        block = kts[kts.index("val shardA = listOf("):kts.index(').map { "com.aktcl.aron.backend.analytics.$it" }')]
+        listed = re.findall(r'"([A-Za-z0-9_.]+)"', block)
+        self.assertEqual(len(listed), 23, listed)
+        self.assertEqual(len(set(listed)), len(listed), "no duplicate")
+        declared = set()
+        for f in (ROOT / "backend" / "analytics" / "src" / "test").rglob("*.kt"):
+            pkg = re.search(r"(?m)^package com\.aktcl\.aron\.backend\.analytics(\.[\w.]+)?", f.read_text(encoding="utf-8"))
+            sub = (pkg.group(1)[1:] + ".") if pkg and pkg.group(1) else ""
+            for m in re.finditer(r"(?m)^(?:internal |private )?class (\w+Test)\b", f.read_text(encoding="utf-8")):
+                declared.add(sub + m.group(1))
+        self.assertGreaterEqual(len(declared), 40, declared)
+        missing = sorted(set(listed) - declared)
+        self.assertEqual(missing, [], f"shard-a names with no declared class: {missing}")
 
 
 class LakeAndBlobRetention(unittest.TestCase):
