@@ -46,7 +46,8 @@ export const getFilters = (token: string) =>
 export const getSales = (token: string, q: NationalQuery) =>
   post<Wire<"NationalSales">, SalesSlice>(token, "national/sales", toFilter(q), (w) => ({
     ...stamp(w),
-    cards: w.cards.filter((c) => isCategory(c.category_code)).map((c) => ({ category: c.category_code as CategoryCode, unit: c.base_unit as UnitCode, total: c.total_sales, daily_target: num(c.daily_target), pct_bp: c.achievement_pct_bp, remaining: num(c.remaining) })),
+    cards: w.cards.filter((c) => isCategory(c.category_code)).map((c) => ({ category: c.category_code as CategoryCode, unit: c.base_unit as UnitCode, total: c.total_sales, daily_target: num(c.daily_target), pct_bp: c.achievement_pct_bp, remaining: num(c.remaining), monthly_target_qty: c.monthly_target_qty })), // tso-manual W1: + monthly_target_qty
+    working_days: w.working_days, // tso-manual W1 (D-TSO-MAN-10): the ring's W
   }));
 export const getCpr = (token: string, q: NationalQuery) => post<Wire<"NationalCpr">, CprSlice>(token, "national/cpr", toFilter(q), (w) => ({ ...stamp(w), target_outlets: w.target_outlets, successful_calls: w.successful_calls, cpr_pct_bp: w.cpr_pct_bp }));
 export const getChannelCalls = (token: string, q: NationalQuery) => post<Wire<"NationalChannelCalls">, ChannelSlice>(token, "national/channel-calls", toFilter(q), (w) => ({ ...stamp(w), channels: channels(w) }));
@@ -71,7 +72,7 @@ export const getRouteMap = (token: string, routeId: number, date: string) =>
       ...stamp(w), sr_name: w.sr_name ?? "—", territory_code: w.territory.code, territory_name: w.territory.name ?? w.territory.code, zone: w.zone.name ?? w.zone.code, route: w.route.name ?? w.route.code,
       start: w.sale_start, last_position: w.sr_last_position, path: w.path,
       outlets: w.outlets.map((o) => ({ id: o.outlet_id, code: o.code, name: o.name ?? o.code, contact: o.contact ?? null, cluster: o.cluster_name ?? "—", lat: o.lat, lng: o.lng, state: o.state === "geo_validated" ? "geo" : o.state === "photo_validation" ? "photo" : "not_called", at: o.call_time, sales: o.call_time ? qtyOf(o) : null })),
-      target_vs_achievement: w.target_vs_achievement.filter((t) => isCategory(t.category_code)).map((t) => ({ category: t.category_code as CategoryCode, pct_bp: t.achievement_pct_bp })),
+      target_vs_achievement: w.target_vs_achievement.filter((t) => isCategory(t.category_code)).map((t) => ({ category: t.category_code as CategoryCode, pct_bp: t.achievement_pct_bp, sales: t.sales, daily_target: t.daily_target })), // tso-manual W1: + sales, daily_target
       last_sale_place: w.last_sale_place ?? null,
       cpr: { target_outlets: w.cpr.target_outlets, successful_calls: w.cpr.successful_calls, geo_validation: w.cpr.geo_validated, cpr_pct_bp: w.cpr.cpr_pct_bp },
       time: { first_sale: w.time_card.first_sale_time ?? null, last_sale: w.time_card.last_sale_time ?? null, total_hours: hours(w.time_card.total_sale_seconds), avg_hours: hours(w.time_card.average_sale_seconds), distance_m: w.time_card.distance_covered_m },

@@ -170,7 +170,7 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
         const share = all > 0 ? sel / all : 0;
         const total = sc(SALES_TOTAL[c], share);
         const target = Math.round(SALES_TARGET[c] * dayless * share);
-        return { category_code: c, base_unit: C[c], total_sales: total, daily_target: target > 0 ? `${target}.000` : null, sales_so_far: total, remaining: target > 0 ? `${Math.max(0, target - total)}.000` : null, achievement_pct_bp: bp(total, target), target_routes: zs.length * 4 };
+        return { category_code: c, base_unit: C[c], total_sales: total, daily_target: target > 0 ? `${target}.000` : null, sales_so_far: total, remaining: target > 0 ? `${Math.max(0, target - total)}.000` : null, achievement_pct_bp: bp(total, target), target_routes: zs.length * 4, monthly_target_qty: target > 0 ? target * 26 : null }; // tso-manual W1: monthly = daily x W (26)
       }),
     }), true;
   }

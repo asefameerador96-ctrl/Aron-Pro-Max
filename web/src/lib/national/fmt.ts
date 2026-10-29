@@ -40,7 +40,8 @@ export function pctBp(locale: Locale, bp: number | null | undefined, digits: 0 |
   const steps = Math.floor((Math.abs(bp) + unit / 2) / unit);
   // tso-manual W1: the text is pctText's (Western grouping in both locales, as the phone and the corpus). With digits 2 the bp is
   // already at the printed precision and the figure is exact; with 1 or 0 it is rounded a second time, so a card that has the
-  // integers prints pctText(pctTenths(n, d), 1) instead (D-TSO-MAN-10: one rounding per figure).
+  // integers prints pctText(pctTenths(n, d), 1) instead (D-TSO-MAN-10: one rounding per figure). The national cards and the
+  // route map do; digits 1 or 0 remain only as the fallback of a server that does not yet send the integers.
   return pctText(locale, bp < 0 ? -steps : steps, digits);
 }
 
@@ -92,6 +93,23 @@ export const pctWhole = (n: number | null | undefined, d: number | null | undefi
 export const pctTenths = (n: number | null | undefined, d: number | null | undefined): number | null => scaled(n, d, 1_000n);
 /** Basis points: target details (2 dp), channel pie (2 dp), what the server sends as `*_bp`. 85 of 81 -> 10494. */
 export const pctBpOf = (n: number | null | undefined, d: number | null | undefined): number | null => scaled(n, d, 10_000n);
+
+/** The thousandths of a contract Decimal3 ("1680.000", "3.846"), read exactly from its digits; null for anything else. */
+function thousandths(d: string | null | undefined): bigint | null {
+  const m = typeof d === "string" ? /^(\d{1,15})(?:\.(\d{1,3}))?$/.exec(d) : null;
+  return m ? BigInt(m[1]!) * 1_000n + BigInt((m[2] ?? "").padEnd(3, "0")) : null;
+}
+
+/** Whole percent of an integer n in a Decimal3 d, rounded once: round_half_up(100 * n / d), d taken exactly as thousandths.
+ *  The route map's Target vs Achievement bars: sales over the route's daily target, the very figure the server's
+ *  `achievement_pct_bp` is (TargetVsAchievement: "sales / daily_target"), without rounding that bp a second time. d = 0, a
+ *  missing d or an input that is not a non-negative integer gives null ("—"). 34 of "1680.000" -> 2; 1 of "0.269" -> 372. */
+export function pctWholeOverDecimal3(n: number | null | undefined, d: string | null | undefined): number | null {
+  const a = nat(n);
+  const b = thousandths(d);
+  if (a === null || b === null || b === 0n) return null;
+  return exact((2n * 100n * 1_000n * a + b) / (2n * b));
+}
 
 /** A scaled integer percent as text: v / 10^decimals with exactly `decimals` digits and "%", whole part grouped; null -> "—".
  *  24 tenths -> "2.4%", 10494 bp -> "104.94%", 40 whole -> "৪০%" (bn). Pair it with pctWhole, pctTenths or pctBpOf. */
