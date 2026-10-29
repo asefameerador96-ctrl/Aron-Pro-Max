@@ -7,7 +7,7 @@ import { ColumnChart } from "@/components/dash/charts";
 import { RetryButton } from "@/components/dash/table-actions";
 import type { ApiOutcome } from "@/lib/api/client";
 import { formatNumber, problemMessage, t, type Locale, type MessageKey } from "@/lib/i18n";
-import { clock, dailyRingTenths, pctBp, pctTenths, pctText, qty } from "@/lib/national/fmt"; // tso-manual W1: rings from the integers
+import { channelShareText, clock, dailyRingTenths, pctBp, pctTenths, pctText, qty } from "@/lib/national/fmt"; // tso-manual W1: rings from the integers; X3: channel shares
 import type { BreakdownBy, BreakdownMeasure, BreakdownSlice, CategoryCode, ChannelCode, ChannelSlice, CprSlice, FinalSubmitSlice, GeoFencingSlice, LoginSubmitSlice, SalesSlice } from "@/lib/national/types";
 import { InfoPopup } from "./info-popup";
 import { BigRing, CardError, CHANNEL_COLOR, channelOrder, Figure, NatCard } from "./parts";
@@ -89,14 +89,16 @@ export function CprCard({ slot, locale }: { slot: Slot<CprSlice>; locale: Locale
   );
 }
 
-function ChannelLegend({ rows, locale, valueOf, testPrefix }: { rows: { code: ChannelCode; value: number; share_bp: number | null }[]; locale: Locale; valueOf: (n: number) => string; testPrefix: string }) {
+// tso-manual X3 (R-W-13 (6)): each share printed once from the counts over the card's denominator (channelShareText), never from
+// the rounded share_pct_bp; the pie prints the same text on its slices.
+function ChannelLegend({ rows, locale, valueOf, testPrefix, denominator }: { rows: { code: ChannelCode; value: number }[]; locale: Locale; valueOf: (n: number) => string; testPrefix: string; denominator: number }) {
   return (
     <ul className="space-y-1.5 text-center" aria-label={testPrefix}>
       {rows.map((r) => (
         <li key={r.code} data-testid={`${testPrefix}-${r.code}`} data-value={r.value}>
           <p className="flex items-center justify-center gap-1.5 text-body-strong tabular-nums text-primary">
             <span className="size-2.5 shrink-0 rounded-full" style={{ background: CHANNEL_COLOR[r.code] }} aria-hidden="true" />
-            {valueOf(r.value)} ({pctBp(locale, r.share_bp)})
+            {valueOf(r.value)} ({channelShareText(locale, r.value, denominator)})
           </p>
           <p className="text-caption text-secondary">{channelName(locale, r.code)}</p>
         </li>
@@ -116,7 +118,7 @@ export function ChannelCallsCard({ slot, locale }: { slot: Slot<ChannelSlice>; l
           const rows = sorted(d);
           return (
             <div className="flex items-center justify-between gap-2">
-              <ChannelLegend rows={rows} locale={locale} valueOf={(v) => qty(locale, v)} testPrefix="ch-calls" />
+              <ChannelLegend rows={rows} locale={locale} valueOf={(v) => qty(locale, v)} testPrefix="ch-calls" denominator={d.denominator} />
               <ChannelRadial rows={rows} label={t(locale, "nat.ch_calls")} />
             </div>
           );
@@ -205,8 +207,8 @@ export function ChannelStdCard({ slot, locale }: { slot: Slot<ChannelSlice>; loc
           const rows = sorted(d);
           return (
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <ChannelLegend rows={rows} locale={locale} valueOf={(v) => qty(locale, v)} testPrefix="ch-std" />
-              <ChannelPie rows={rows} label={t(locale, "nat.ch_std")} locale={locale} />
+              <ChannelLegend rows={rows} locale={locale} valueOf={(v) => qty(locale, v)} testPrefix="ch-std" denominator={d.denominator} />
+              <ChannelPie rows={rows} label={t(locale, "nat.ch_std")} locale={locale} denominator={d.denominator} />
             </div>
           );
         }}

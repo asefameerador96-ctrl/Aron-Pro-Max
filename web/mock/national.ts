@@ -272,7 +272,7 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
     return send(200, {
       ...common, route: { id: rm, code: `R${rm}`, name: `Route ${pin.n + 1}` }, sr_name: `SR ${rm}`, territory: { id: t.id, code: String(1300 + t.id), name: t.name }, zone: { id: pin.zone.id, code: `Z${pin.zone.id}`, name: pin.zone.name },
       sale_start: path[0] ?? null, sr_last_position: path[path.length - 1] ?? null, outlets, path,
-      target_vs_achievement: [["cigarette", 26], ["bidi", 0], ["lighter", 60], ["match", 68]].map(([c, p]) => ({ category_code: c, base_unit: C[c as keyof typeof C], daily_target: "1000.000", sales: Number(p) * 10, achievement_pct_bp: Number(p) * 100 })),
+      target_vs_achievement: [["cigarette", 26], ["bidi", 0], ["lighter", 60], ["match", 68]].map(([c, p]) => ({ category_code: c, base_unit: C[c as keyof typeof C], daily_target: "1000.000", sales: Number(p) * 10, achievement_pct_bp: Number(p) * 100, monthly_target_qty: "26000.000", working_days: 26 })), // tso-manual X3: the Sales-card integers (R-W-06 (3)); 26000 / 26 = the daily 1000.000
       last_sale_place: "Rampasha Bazar",
       cpr: { target_outlets: 50, successful_calls: called.length, geo_validated: called.filter((o) => o.state === "geo_validated").length, cpr_pct_bp: bp(called.length, 50) },
       time_card: { first_sale_time: called[0]?.call_time ?? null, last_sale_time: called[called.length - 1]?.call_time ?? null, total_sale_seconds: secs, average_sale_seconds: Math.round(secs / called.length), distance_covered_m: 1196.97 },

@@ -11,7 +11,7 @@ import { getLocale } from "@/lib/auth/service";
 import { isCalendarDate } from "@/lib/dates";
 import { mapsKey } from "@/lib/maps/guard";
 import { businessDate, formatNumber, problemMessage, t, type MessageKey } from "@/lib/i18n";
-import { clock, distance, hoursBetween, pctBp, pctText, pctWhole, pctWholeOverDecimal3 } from "@/lib/national/fmt"; // tso-manual W1: + pctText, pctWhole, pctWholeOverDecimal3
+import { clock, distance, hoursBetween, pctText, pctWhole, routeBarText } from "@/lib/national/fmt"; // tso-manual W1: + pctText, pctWhole; X3: routeBarText
 import { flagIcon, personIcon, pinIcon, PIN_FILL } from "@/lib/national/marker-icons";
 import { getRouteMap } from "@/lib/national/server";
 
@@ -47,9 +47,10 @@ export default async function RouteMapPage({ params, searchParams }: { params: P
     { src: flagIcon(), label: "nat.rm.legend.start" }, { src: pinIcon(PIN_FILL.black), label: "nat.rm.legend.base" }, { src: pinIcon(PIN_FILL.green), label: "nat.rm.legend.geo" }, { src: pinIcon(PIN_FILL.red), label: "nat.rm.legend.photo" }, { src: personIcon(), label: "nat.rm.legend.sr" },
   ] as const;
   const card = "glass-data p-(--card-pad) text-primary";
-  // tso-manual W1 (D-TSO-MAN-10): each whole % rounded once from the integers on the payload. A bar is sales over the Decimal3
-  // daily target (the figure behind achievement_pct_bp); the bp still draws the bar, and prints only for an older answer.
-  const barText = (x: (typeof d.target_vs_achievement)[number]) => (x.sales === undefined || x.daily_target === undefined ? pctBp(locale, x.pct_bp, 0) : pctText(locale, pctWholeOverDecimal3(x.sales, x.daily_target), 0));
+  // tso-manual W1 (D-TSO-MAN-10): each whole % rounded once from the integers on the payload; the bp still draws the bar.
+  // tso-manual X3 (R-W-13 (5)): a bar prints by the Sales-card rule from monthly_target_qty and working_days when the server sends
+  // them; W1's sales-over-Decimal3-daily-target path, then the bp, remain the fallbacks for an older answer (routeBarText).
+  const barText = (x: (typeof d.target_vs_achievement)[number]) => routeBarText(locale, x);
   const cprText = pctText(locale, pctWhole(calls, d.cpr.target_outlets), 0);
   return (
     <div className="space-y-4" data-testid="route-map-page">

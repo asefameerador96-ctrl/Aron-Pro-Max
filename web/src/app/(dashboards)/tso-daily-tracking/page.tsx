@@ -7,7 +7,7 @@ import { BUCKETS } from "@/lib/dash/buckets";
 import { getDailyTracking } from "@/lib/dash/server";
 import { isCalendarDate } from "@/lib/dates";
 import { businessDate, problemMessage, t } from "@/lib/i18n";
-import { pct2dpText } from "@/lib/national/fmt"; // tso-manual W1: the till-date % at the server's precision
+import { tillDatePctText } from "@/lib/national/fmt"; // tso-manual X3 (R-W-13 (4)): the till-date % from the bp at 2 dp
 
 
 // TSO Daily Tracking Dashboard (F-WEB-028): routes of the TSO's territory in the 100, 90 to 100, 80 to 90 and below 80 percent buckets,
@@ -39,7 +39,7 @@ export default async function TsoDailyTrackingPage({ searchParams }: { searchPar
                   <li key={i.route_id} className="flex justify-between gap-2">
                     <span>{i.route_name}</span>
                     <span className="tabular-nums" data-testid={`tilldate-${i.route_id}`}>
-                      {n(locale, i.visited_outlets)}/{n(locale, i.target_outlets)} · {t(locale, "tsoman.tracking.tilldate", { pct: pct2dpText(locale, i.tilldate_target_achievement_pct) })}
+                      {n(locale, i.visited_outlets)}/{n(locale, i.target_outlets)} · {t(locale, "tsoman.tracking.tilldate", { pct: tillDatePctText(locale, i) })}
                     </span>
                   </li>
                 ))}

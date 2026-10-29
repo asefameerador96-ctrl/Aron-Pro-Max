@@ -1,6 +1,7 @@
 // Flat channel charts of the national dashboard (dataviz skill): concentric radial rings for "By Channel Successful Call" and a pie for
 // "By Channel STD". Every value is also printed in the legend next to the chart, so the picture is never the only carrier of a number.
-import { formatNumber, type Locale } from "@/lib/i18n";
+import type { Locale } from "@/lib/i18n";
+import { channelShareText } from "@/lib/national/fmt";
 import type { ChannelCode } from "@/lib/national/types";
 import { CHANNEL_COLOR } from "./parts";
 
@@ -27,8 +28,10 @@ export function ChannelRadial({ rows, label, size = 130 }: { rows: Row[]; label:
   );
 }
 
-/** A flat pie with the share printed on slices of 5% and more (the smaller ones are in the legend). */
-export function ChannelPie({ rows, label, locale, size = 170 }: { rows: Row[]; label: string; locale: Locale; size?: number }) {
+/** A flat pie with the share printed on slices of 5% and more (the smaller ones are in the legend). The slice text is the legend's
+ *  (tso-manual X3, R-W-13 (6)): tenths of value over the card's denominator, rounded once from the integers; the geometry stays the
+ *  drawing of the listed rows. */
+export function ChannelPie({ rows, label, locale, denominator, size = 170 }: { rows: Row[]; label: string; locale: Locale; denominator: number; size?: number }) {
   const total = rows.reduce((s, r) => s + Math.max(0, r.value), 0);
   if (total <= 0) return <svg role="img" aria-label={label} viewBox="0 0 100 100" width={size} height={size}><circle cx="50" cy="50" r="46" fill="var(--state-skeleton)" /></svg>;
   const R = 46;
@@ -47,7 +50,7 @@ export function ChannelPie({ rows, label, locale, size = 170 }: { rows: Row[]; l
       {slices.map((s) => (s.d ? <path key={s.r.code} d={s.d} fill={CHANNEL_COLOR[s.r.code]} stroke="var(--surface-solid)" strokeWidth="0.6" /> : <circle key={s.r.code} cx="50" cy="50" r={R} fill={CHANNEL_COLOR[s.r.code]} />))}
       {slices.filter((s) => s.frac >= 0.05).map((s) => (
         <text key={`t-${s.r.code}`} x={s.lx} y={s.ly} textAnchor="middle" dominantBaseline="central" fontSize="5.5" fontWeight="700" fill="var(--on-accent, #fff)">
-          {formatNumber(locale, s.frac * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+          {channelShareText(locale, s.r.value, denominator)}
         </text>
       ))}
     </svg>
