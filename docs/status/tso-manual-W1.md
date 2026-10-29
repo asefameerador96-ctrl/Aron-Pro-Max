@@ -1,8 +1,9 @@
 # tso-manual W1 web: lane status
 
 Lane W1 of `docs/requests/tso-manual-build-2026-10.md` (s5 W1). Branch `tso-man/W1`, base 95a35b7d, no pull request,
-nothing pushed. Written 2026-10-29: step 1 (support console and numbers) and step 2 (day, drill, leave, feedback, reports).
-Both halves of s5 W1 are built; "Next step" lists what is left (asks only).
+nothing pushed. Written 2026-10-29: step 1 (support console and numbers), step 2 (day, drill, leave, feedback, reports) and
+the fix round after the independent checker (2 medium, 5 low defects; see "Done (fix round)"). Both halves of s5 W1 are
+built; "Next step" lists what is left (asks and the lead's ratification).
 
 ## Done (step 1)
 
@@ -42,6 +43,20 @@ the closed note. Not a golden; the web has no screenshot goldens for this page.
 | strings | bn and en pairs under `tsoman.` (drill, reopen, leave, feedback, report title, quarantine, tracking), plus `error.ERR_DAY_NOT_FINAL_SUBMITTED`. | `web/src/lib/i18n/messages-tsoman.ts` |
 | tests | Named: `drill-columns.test.tsx` (17), `day-reopen-form.test.tsx` (18), `final-submit-roles.test.tsx` (13), `leave-applicant.test.tsx` (13). Also: `feedback-inbox.test.tsx` (7), `tso-reports.test.ts` (3), `late-sale-quarantine.test.tsx` (4), `tso-daily-tracking.test.tsx` (3), `mock-tso-manual.test.ts` (7). Pages render against the contract mock; actions go through the real BFF handlers. | `web/tests/*` |
 
+## Done (fix round, 2026-10-29)
+
+The checker's defects, each fixed or answered. Commits 885b23be..d861d6f2.
+
+| defect | what changed | files |
+|---|---|---|
+| medium: national rings and route map rounded twice | Sales, CPR, Final Submit and Login/Submit print `pctText(pctTenths(n, d), 1)` from the slice counts; the Sales ring `dailyRingTenths(total, monthly_target_qty, working_days)` (W = 0 or no target "—", R-F-13). Route map: CPR ring `pctWhole(calls, target_outlets)`; a Target vs Achievement bar `pctWholeOverDecimal3(sales, daily_target)` (D-W1-20). The bp still draws rings and bars, and prints only for an answer without the integers (pre-1.10.0 server). Rendered-card test: 29/1186 prints 2.4% (en, bn), 1/29 Bikroy Joma 3.4%, Sales s4.2 fixtures, route map 50/2003 prints 2% (bp 250 would print 3%). | `web/src/components/national/cards.tsx`, `web/src/app/(dashboards)/dashboard/route-map/[routeId]/page.tsx`, `web/src/lib/national/types.ts`, `server.ts` (tagged), `fmt.ts`, `web/mock/national.ts`, `web/tests/national-exact-pct.test.tsx` (new) |
+| medium: reopen window refusal | `reopenRefusal()` reads B3's 409 ERR_REQUEST_STATE (DayService.reopen, tso-man/B3) as the window refusal on the date field, with `context.reopen_window_days` in the text ("outside the reopen window of 3 days"); the 400 `/business_date` `window` shape is read the same way; B3's `invalid_value` body errors land on their field. The hint names no number (the window is the server's). Mock follows B3's answers and order (body 400 `invalid_value`, replay by caller and zone-day, role 403, 403 ERR_OUT_OF_SCOPE, 409 ERR_REQUEST_STATE incl. a future day, 409 ERR_DAY_NOT_FINAL_SUBMITTED). | `day-reopen-form.tsx`, `web/mock/tso-manual.ts`, `messages-tsoman.ts` (`tsoman.reopen.window_hint`, `tsoman.reopen.window_n`), `web/tests/day-reopen-form.test.tsx` |
+| low: desk key reused with a new body | Each desk action keeps `{key, signature, answered}`; the key is reused only when the last attempt got no answer AND the canonical body without `op_uuid`/`event_uuid` is unchanged (`nextKey`, `settleAttempt`, `requestSignature`). A 409 ERR_CONFLICT on such a resend reloads the page and says "Your earlier send may have gone through…" (`reloaded`) instead of "Someone changed this ticket". Tests: same request keeps the key; edited reply, notes, reason, priority or a new version gets a new key; any answer settles; through the mock an edited resend is a new reply (the old key with the new body is the 409 the console used to send). | `ticket-rules.ts`, `use-ticket-op.ts`, `desk-panel.tsx`, `messages-tsoman.ts` (`tickets.reloaded`), `web/tests/checker-tickets.test.tsx` |
+| low: drill caption for one route, "today" | With a picked route the scope-wide route count is not shown; with a picked route and no picked zone the route's zone is read (`GET /v1/admin/routes/{id}`, MASTER_READERS) and sent as `zone_ids`, so a list cut at 2,000 rows holds the route. Captions say "on {date}" (bn "{date} তারিখে"). | `drill/[kind]/login-users.ts`, `page.tsx`, `messages-tsoman.ts`, `web/mock/dash.ts` (one-route read), `web/tests/drill-columns.test.tsx` |
+| low: till-date % from a float | Not changeable on the web until the wire has integers (ask 8). A test pins B2's wire form: for bp 0..1,000,000 (step 7) and the s4.3 fixtures, `pct2dpText` of B2's `BigDecimal.valueOf(bp, 2).toDouble()` equals `pctText(bp, 2)`. | `web/tests/tso-daily-tracking.test.tsx` |
+| low: FS-18 delegates | `FINAL_SUBMIT_PAGE_ROLES` gains WM (the menu lists the page for WM; the preview API serves any role in reach; the proxy forwards a WM submit). Test: WM sees the preview without the button; with a delegate config the proxy passes the API's 200 for WM and DMO; the button waits for `FinalSubmitPreview.can_submit` (ask 4, not on any branch yet). | `web/src/lib/admin/ops.ts`, `web/tests/final-submit-roles.test.tsx` |
+| low: edits outside Owns | No code change: listed for the lead's ratification (ask 12). The CRUD engine's media change is already opt-in (`media` field flag). The code-ref line changes only refs with `value: "code"`, and `web/src/app/admin/_entities/feedback.ts` is the only such ref (grep `value: "code"` over the entities and the admin components: 1 hit), so no other entity renders differently today. | — |
+
 ## Decisions
 
 - **D-W1-01 Desk gating through the module grants.** `Me.support_desk` is folded into the menu's module grants: without it
@@ -73,8 +88,9 @@ the closed note. Not a golden; the web has no screenshot goldens for this page.
   edits, so a lost answer for zone A could be replayed as zone B. Here the key is kept only for a resend of the same
   unanswered request (step 1's `keepsKey`: no answer or 5xx).
 - **D-W1-12 Final Submit roles.** Button: TSO only, because `cfg.day.final_submit_delegate_roles` is server-delivered (default
-  []) and the web cannot read it; proxy: TSO, DMO, WM (the roles the API can ever accept); page: the menu's roles. A delegated
-  DMO or WM gets the button once the preview says so (ask 4).
+  []) and the web cannot read it; proxy: TSO, DMO, WM (the roles the API can ever accept); page: TSO, DMO, WM, ADMIN,
+  SUPERADMIN (WM added in the fix round: the menu lists the page for WM). A delegated DMO or WM gets the button once the
+  preview says so (ask 4).
 - **D-W1-13 Leave type label and note.** Labels from `/v1/admin/code-lists` (MASTER_READERS include the web roles); retired
   items still label old rows; the note limit follows the existing BFF (300) rather than the contract's 500 (ask 9).
 - **D-W1-14 Feedback thumbnail in the engine.** One optional `media` flag on a field (no new field kind); read URLs resolved
@@ -87,6 +103,30 @@ the closed note. Not a golden; the web has no screenshot goldens for this page.
 - **D-W1-17 Quarantine wording.** Only `after_final_submit` gets a label and help (the item names it); other codes keep the
   server's code text as before.
 - **D-W1-18 Catalogue row id.** The visit log's catalogue `row` is "XA-02" (no F-WEB row exists for it).
+- **D-W1-19 Ring text from counts, geometry from bp (fix round).** Each national ring and bar prints its text from the
+  slice's integers, rounded once; the server's bp still sets the ring arc and bar width (a drawing, not a printed figure).
+  When an older server sends no `monthly_target_qty` / `working_days` (or no `sales` / `daily_target` on the route map), the
+  text falls back to the bp, at the old precision.
+- **D-W1-20 Route-map bar = sales over the Decimal3 daily target.** `TargetVsAchievement` carries `sales`, `daily_target`
+  (Decimal3) and `achievement_pct_bp` only; the contract defines the bp as "sales / daily_target", and B2 computes it as
+  `ratioBp(sales, monthly / W rounded to 3 dp)` (NationalMaps.kt, base and tso-man/B2). The bar prints
+  round_half_up(100 × sales / daily_target) with `daily_target` read exactly as thousandths (`pctWholeOverDecimal3`): one
+  rounding of the very figure the bp is (BigInt inside). Whole-from-bp was rejected because it is the double rounding (wrong
+  whenever the exact value lies in [k + 0.495, k + 0.5)). If the owner wants the bar against the monthly target and W
+  instead, see ask 11.
+- **D-W1-21 Reopen refusal shapes.** The form reads both: 409 ERR_REQUEST_STATE (B3) and 400 ERR_VALIDATION `/business_date`
+  `window` (the contract lists 400 and 409 for the operation). The hint says "within the reopen window after the business
+  date (a setting on the server)"; the refusal names the number from `context.reopen_window_days` when present.
+- **D-W1-22 Desk key signature.** The signature is the canonical JSON (keys sorted, undefined left out) of the body without
+  `op_uuid` and `event_uuid`; an update body includes `expected_version`, so the same change after a reload is a new op.
+  An edited body after a lost answer is a new request by design: if the first send landed, the desk sees both (the thread is
+  read again on success).
+- **D-W1-23 Drill route zone.** The route's zone is read only when a route is picked and no zone is (one GET); an unreadable
+  route leaves the filter as before. The caption is hidden for a route rather than recounted, because the server's
+  `route_count` is the filter's.
+- **D-W1-24 Channel legend not changed.** The By Channel legends still print `share_pct_bp` at one decimal: the contract does
+  not state the share's denominator (B2 divides by every channel row, i.e. `total + unclassified` on Channel Calls and `total`
+  on Channel STD). Printing tenths from the integers waits for that wording (ask 10); the checker did not list these lines.
 
 ## Deviations (files outside the s5 W1 Owns list; each line tagged `// tso-manual W1`)
 
@@ -95,6 +135,11 @@ the closed note. Not a golden; the web has no screenshot goldens for this page.
   entry shows when Me.support_desk" (D-W1-01).
 - `web/src/lib/admin/access-grants.ts` and `web/tests/user-access.test.ts` (step 1): ruled to W1 by R-F-11 / F1 ask 14.
 - `web/tests/roles-menu.test.ts` (step 1): two expectations gain `/admin/tickets` (the static role list of the portal roles).
+- Fix round, national numbers (s5 W1 item "Web percentages from integers through the corpus"; the checker's fix names both
+  files): `web/src/components/national/cards.tsx` (rings print from counts), `web/src/app/(dashboards)/dashboard/route-map/
+  [routeId]/page.tsx` (bars and CPR ring), `web/src/lib/national/types.ts` (optional members `monthly_target_qty`,
+  `working_days`, `sales`, `daily_target`) and `web/src/lib/national/server.ts` (two mapping lines carry them); every line
+  tagged `tso-manual W1`. New test `web/tests/national-exact-pct.test.tsx`.
 - `error.ERR_TICKET_TRANSITION_INVALID`, `error.ERR_TICKET_COMMENTS_CLOSED` (step 1) and `error.ERR_DAY_NOT_FINAL_SUBMITTED`
   (step 2): outside `tickets.`/`tsoman.` because `problemMessage` reads `error.<code>`.
 - Step 2, new files next to owned ones (no other lane edits `web/`): `web/src/app/(dashboards)/drill/[kind]/login-users.ts`,
@@ -111,36 +156,54 @@ the closed note. Not a golden; the web has no screenshot goldens for this page.
 
 ## Asks
 
-1. **Lead (web cards outside W1's files):** `web/src/components/national/cards.tsx` prints the Sales ring, CPR, Final
-   Submit and Login/Submit rings with `pctBp(bp, 1)` (tenths from a rounded bp: 29/1186 prints 2.5%, the phone 2.4%).
-   The slices already carry the integers; the fix is `pctText(locale, pctTenths(n, d), 1)` per card (Sales:
-   `dailyRingTenths(total, monthly_target_qty, working_days)`). Assign the file to W1 or its owner.
+1. **Lead (done in the fix round, ratify):** `web/src/components/national/cards.tsx` and the route-map page
+   `web/src/app/(dashboards)/dashboard/route-map/[routeId]/page.tsx` printed rings and bars from a rounded bp (29/1186 as
+   2.5% against the phone's 2.4%). W1 changed both (and two tagged lines each in `web/src/lib/national/types.ts` and
+   `server.ts`) to print from the integers; please ratify, or name the owner who keeps them.
 2. **Lead:** `web/src/components/kit/icons.tsx` `MENU_ICON` has no entry for `admin-tickets` (falls back to the dot);
    one line `"admin-tickets": "inbox"` if the owner of that file agrees.
 3. **B1:** the console assumes `Me.support_desk` is true for ADMIN and SUPERADMIN (D-TSO-MAN-22) and that the module guard
    answers 403 for an ADMIN without module `support`; the read URL of `support_ticket*` media must be allowed for the desk
    (TK-14), else the photos are silently left out.
 4. **F1 + B3 (1.10.x): `FinalSubmitPreview.can_submit`** (bool, computed on the server from the caller's role and
-   `cfg.day.final_submit_delegate_roles`). The web shows the Submit button only to the TSO today (D-W1-12); with this member
-   it would follow the server for a delegated DMO or WM. Until then a delegated DMO or WM cannot submit from the web (the app
-   path is unaffected).
-5. **B3 (`POST /v1/day/reopen` answers the web expects; the mock does this):** outside the window → 400 ERR_VALIDATION with
-   `errors: [{pointer: "/business_date", code: "window"}]` (shown on the date field); a zone-day not final-submitted (or
-   already reopened) → 409 ERR_DAY_NOT_FINAL_SUBMITTED; the same `client_uuid` with another body → 409 ERR_CONFLICT; a replay
-   → 200 with the first DayReopenResult.
+   `cfg.day.final_submit_delegate_roles`). Still open (no branch has it on 2026-10-29). The web shows the Submit button only to
+   the TSO today (D-W1-12); with this member it would follow the server for a delegated DMO or WM (TSO rule as the fallback).
+   A WM and a DMO now open the page and see the preview; the proxy already forwards their submit (tested with a delegate
+   config). Until then a delegated DMO or WM cannot submit from the web (the app path is unaffected).
+5. **B3 (`POST /v1/day/reopen`; aligned in the fix round):** the web and the mock now follow B3's answers (ab4e4e43,
+   DayService.reopen): outside the window (or a future day) → 409 ERR_REQUEST_STATE with `context.reopen_window_days`, shown
+   on the date field with the number; please keep that context member. The 400 `/business_date` `window` shape is also read,
+   so no lead ruling is needed for the web. Not final-submitted → 409 ERR_DAY_NOT_FINAL_SUBMITTED; the caller's replay of the
+   same zone-day → 200 with the first result; the uuid on another zone-day or by another user → 409 ERR_CONFLICT.
 6. **B3 (report columns):** the mock's column keys are, for the task planner, `assigned_by`, `route`, `label`, `comment`, and
    for the visit log `plan_date, tso, zone, route, outlet_code, outlet_name, status, completed_at, sr_visits_regularly,
    sr_prints_memo, delegate_task, task, task_status`, each with `label_bn`. The web engine takes any key; please send
    `label_bn` so the Bangla report headers are not English.
 7. **B1/B3 (media authz):** the feedback inbox reads `GET /v1/media/{photo_uuid}/read-url` as SUPPORT, ADMIN and SUPERADMIN;
    if the API refuses those roles for `feedback` media, the thumbnail shows a dash.
-8. **B2:** `DailyTrackingRow.tilldate_target_achievement_pct` at two decimals (the web prints it at that precision, D-W1-16).
+8. **F1 + B2 (1.10.x):** `DailyTrackingRow.tilldate_target_achievement_pct` is a JSON number with no integer member; the web
+   prints it at two decimals (D-W1-16) and depends on B2 sending exactly bp / 100 (`BigDecimal.valueOf(bp, 2).toDouble()`),
+   which `tso-daily-tracking.test.tsx` now pins. Please add an integer member (`tilldate_target_achievement_bp`, int64, or
+   A and T' as integers); the page then prints `pctText(bp, 2)` and the float goes.
 9. **Lead:** the leave-decision BFF (`web/src/app/api/bff/leave-decision/route.ts`, not W1's) caps the note at 300 while
    DecisionRequest allows 500; the page follows 300. One constant if the owner wants 500.
+10. **F1 (wording):** state the denominator of `share_pct_bp` on NationalChannelCalls (B2: `total + unclassified`) and
+    NationalChannelStd (`total`), so the web channel legends can print tenths from the integers (D-W1-24).
+11. **F1 + B2 (optional, owner's call):** `TargetVsAchievement` has no `monthly_target_qty` or `working_days`; its bp (and
+    the web bar, D-W1-20) is sales over the 3-dp daily target. If the bar should be exact against monthly target and W
+    (as the national Sales ring is), add those two members; the web would print `pctWhole(sales × W, monthly)`.
+12. **Lead (ratify before the W1 merge, or reassign):** D-W1-01 (desk gating through module grants, one in-place line in
+    `web/src/lib/menu/matrix.ts`), D-W1-06 (working_days corpus section listed as "not a web formatter"), D-W1-14 (the CRUD
+    engine's opt-in `media` flag and the code-ref line in `pages.tsx`: only `feedback.ts` has a code ref, so no other entity
+    changes), the three `error.*` keys outside `tickets.`/`tsoman.`, the test edits (CA4-4, CA4-20, the reports-seeded task
+    planner row, the dash-drill stub, e2e category) and the fix-round national files (ask 1). The checker verified the test
+    edits against the backend (FEEDBACK_TRIAGE includes SUPPORT; TaskPlannerReport grain is `task`).
 
 ## Not done
 
-- Asks 1 and 2 wait for the lead (not W1 files).
+- Ask 2 waits for the lead (not a W1 file); ask 12 lists what the lead ratifies before the merge.
+- The channel legends (By Channel Calls, By Channel STD) still print the bp at one decimal (D-W1-24, ask 10).
+- The Final Submit button for a delegated DMO or WM waits for `FinalSubmitPreview.can_submit` (ask 4).
 - `getTargetAchievement` (changed, not new, in 1.10.0) has no mock: the web does not read it.
 - Step 2 pages were not seen in a live browser. A Next dev server (port 3311) and a mock started at 04:31 in this worktree
   (step 1) were still running; they hold the Next dev lock for this folder and their mock process predates the step-2 mock
@@ -148,6 +211,22 @@ the closed note. Not a golden; the web has no screenshot goldens for this page.
   contract mock in the tests above (static markup); the client forms' clicks are covered through their pure rules, not by a
   browser.
 - Playwright e2e not run on this laptop.
+
+## Verify fix round (this worktree, 2026-10-29, Windows laptop, Node 22; CI not run)
+
+Run on HEAD d861d6f2 (the six fix commits; the status file is the only later change).
+
+- `cd web && npm run lint`: exit 0 (whole web).
+- `npm run typecheck`: exit 0.
+- `npm test` (whole web): 155 files, 1923 passed, 1 skipped, 0 failed (step 2 had 154 files, 1899 passed; +1 file
+  `national-exact-pct.test.tsx`, +24 tests).
+- Targeted while developing: `npx vitest run tests/national-exact-pct.test.tsx tests/national-server.test.ts` 16 passed;
+  `tests/day-reopen-form.test.tsx tests/mock-tso-manual.test.ts tests/day-codelists.test.tsx` 36 passed;
+  `tests/checker-tickets.test.tsx` 31 passed; `tests/drill-columns.test.tsx` 19 passed; `tests/final-submit-roles.test.tsx`
+  15 passed; `tests/tso-daily-tracking.test.tsx` 4 passed.
+- `python tools/ci/money-float-scan.py`: 17 of 17 allowed, 0 open findings (`python3` is not on this laptop's PATH; `python`
+  3.14.2 ran it).
+- Not run: Playwright e2e, the Linux CI runner, a live browser against B1/B2/B3 on dev.
 
 ## Verify step 2 (this worktree, 2026-10-29, Windows laptop, Node 22; CI not run)
 
@@ -175,10 +254,13 @@ the Linux runner.
 The s5 W1 items are built (both steps). What a next agent on this lane can do:
 
 1. When F1/B3 answer ask 4: `final-submit-page.tsx` passes `preview.can_submit` (keep the TSO rule as the fallback for an
-   older server) and `final-submit-roles.test.tsx` gains the delegate case. When B3 answers asks 5 and 6: align
-   `web/mock/tso-manual.ts` (reopen) and `web/mock/dash.ts` (report keys) if B3 differs.
-2. If the lead assigns `web/src/components/national/cards.tsx` (ask 1): print the rings with `pctText(locale, pctTenths(n,
-   d), 1)` and `dailyRingTenths` from the slice integers.
-3. Before merge: rerun `cd web && npm run lint && npm run typecheck && npm test`. When B1, B2 and B3 are on dev (test
-   account), check the drill, reopen, leave, feedback and quarantine pages there; stop the step-1 dev server on port 3311 and
-   its mock if nobody uses them.
+   older server); the delegate test in `final-submit-roles.test.tsx` then expects the button for a WM/DMO whose preview says
+   `can_submit: true`. When B3 answers ask 6: align `web/mock/dash.ts` (report keys) if B3 differs (the reopen mock already
+   follows B3).
+2. When F1/B2 answer ask 8: `tso-daily-tracking/page.tsx` prints `pctText(locale, row.tilldate_target_achievement_bp, 2)`
+   and `pct2dpText` goes (with its pinning test). When F1 answers ask 10: the channel legends print
+   `pctText(pctTenths(value, denominator), 1)`. Ask 11 only if the owner wants it.
+3. Lead ratification (asks 1 and 12) before the W1 merge.
+4. Before merge: rerun `cd web && npm run lint && npm run typecheck && npm test`. When B1, B2 and B3 are on dev (test
+   account), check the drill, reopen, leave, feedback, quarantine and national pages there; stop the step-1 dev server on
+   port 3311 and its mock if nobody uses them.
