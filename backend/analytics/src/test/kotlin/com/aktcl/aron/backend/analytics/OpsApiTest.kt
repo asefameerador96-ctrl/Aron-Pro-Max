@@ -119,8 +119,53 @@ class OpsApiTest : ReportFixture() {
         val own = get(14, Role.TSO, "/v1/dashboards/sync-health?business_date=2026-10-04").obj()
         assertEquals(listOf(z2), own["by_zone"]!!.jsonArray.map { it.jsonObject.s("zone_id").toLong() }); assertEquals(0, own["summary"]!!.jsonObject["pending_photos"]!!.jsonObject.i("count"))
         val ls = get(10, Role.ANALYST, "/v1/dashboards/login-submit?business_date=2026-10-04").obj()["zones"]!!.jsonArray.map { it.jsonObject }
-        assertEquals(2, ls.size); assertEquals(mapOf(z2 to "true"), ls.filter { it.s("final_submitted") == "true" }.associate { it.s("zone_id").toLong() to "true" })   // only R3 (zone 2) is final-submitted
+        // tso-manual X2 (R-W-03): R3's route-day state final_submitted alone is no Final Submit; seed_day.sql has no app.final_submit row.
+        assertEquals(2, ls.size); assertEquals(emptyList(), ls.filter { it.s("final_submitted") == "true" })
         assertEquals(listOf(z2), get(14, Role.TSO, "/v1/dashboards/login-submit?business_date=2026-10-04").obj()["zones"]!!.jsonArray.map { it.jsonObject.s("zone_id").toLong() })
+    }
+
+    /**
+     * Lead ruling R-W-03 (tso-manual X2): login-submit `zones[]` and sync-health `by_zone` say a zone is final-submitted by the rule of
+     * the national Final Submit card and the summary ([zoneSubmittedSql]: the zone-day projection of the live `app.final_submit` rows),
+     * not by the route-day states. The two rules are pulled apart here: zone 2's only route R3 is in state final_submitted with no
+     * live row, zone 1 gets a live row while its routes are not final_submitted; each change reaches the projection the way DayApi
+     * sends it (one route-day dirty mark, the worker). Then a reopened row stops counting, and an old dw-only midnight stamp
+     * (`auto_submitted`, D-B2-24) never counts.
+     */
+    @Test
+    fun zoneFinalSubmitFollowsTheLiveRowsLikeTheNationalCard() = app {
+        val r1 = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.route WHERE code = 'R1'").mapTo(Long::class.java).one() }
+        val card = NationalDashboardService(fresh.db, AronClock { java.time.Instant.parse("2026-10-04T12:00:00Z") })
+        suspend fun read(uid: Long, role: Role): Triple<Map<Long, Boolean>, Map<Long, Boolean>, Int> {
+            val zones = get(uid, role, "/v1/dashboards/login-submit?business_date=2026-10-04").obj()["zones"]!!.jsonArray.map { it.jsonObject }
+                .associate { it.s("zone_id").toLong() to (it.s("final_submitted") == "true") }
+            val health = get(uid, role, "/v1/dashboards/sync-health?business_date=2026-10-04").obj()["by_zone"]!!.jsonArray.map { it.jsonObject }
+                .associate { it.s("zone_id").toLong() to (it.s("final_submitted") == "true") }
+            return Triple(zones, health, card.finalSubmit(NationalCaller(reaches.getValue(uid)), NationalDashboardFilter(date = "2026-10-04")).final_submitted)
+        }
+        fun dirty(route: Long, why: String) {
+            fresh.db.jdbi.useHandle<Exception> { it.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, ?)", route, day, why) }
+            AggregationWorker(fresh.db).runUntilIdle()
+        }
+        val r3 = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.route WHERE code = 'R3'").mapTo(Long::class.java).one() }
+        assertEquals(Triple(mapOf(z1 to false, z2 to false), mapOf(z1 to false, z2 to false), 0), read(10, Role.ANALYST), "R3 final_submitted by state, no live row")
+        sql(
+            """
+            INSERT INTO app.final_submit (client_uuid, zone_id, business_date, submitted_by, submitted_at, via)
+            SELECT '00000000-0000-4000-8000-0000000c2f01', $z1, DATE '2026-10-04', u.id, TIMESTAMPTZ '2026-10-04 11:00Z', 'web' FROM app.app_user u WHERE u.username = 'sr001'
+            """.trimIndent(),
+        )
+        dirty(r1, "final_submit")
+        assertEquals(Triple(mapOf(z1 to true, z2 to false), mapOf(z1 to true, z2 to false), 1), read(10, Role.ANALYST), "zone 1's live row, its routes not final_submitted")
+        assertEquals(Triple(mapOf(z1 to true), mapOf(z1 to true), 1), read(11, Role.TSO), "the zone-1 TSO")
+        assertEquals(Triple(mapOf(z2 to false), mapOf(z2 to false), 0), read(14, Role.TSO), "the zone-2 TSO")
+        sql("UPDATE app.final_submit SET reopened_at = TIMESTAMPTZ '2026-10-04 12:00Z', reopened_by = 13, reopen_reason = 'X2 test reopen' WHERE zone_id = $z1")
+        dirty(r1, "reopen")
+        assertEquals(Triple(mapOf(z1 to false, z2 to false), mapOf(z1 to false, z2 to false), 0), read(10, Role.ANALYST), "a reopened row no longer counts")
+        // An old stamp of the removed dw-only midnight worker (no live row): never a Final Submit, before or without a rebuild.
+        sql("UPDATE dw.agg_daily_zone SET final_submitted_at = TIMESTAMPTZ '2026-10-04 18:00Z', auto_submitted = true WHERE business_date = DATE '2026-10-04' AND zone_id = $z2")
+        assertEquals(Triple(mapOf(z1 to false, z2 to false), mapOf(z1 to false, z2 to false), 0), read(10, Role.ANALYST), "an old midnight stamp")
+        assertEquals(r3, fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT route_id FROM dw.agg_daily_route WHERE business_date = DATE '2026-10-04' AND day_state = 'final_submitted'").mapTo(Long::class.java).one() })
     }
 
     @Test
