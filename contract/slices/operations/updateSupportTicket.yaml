@@ -49,9 +49,14 @@ operation:
 
     therefore can never add a second event, and the server keeps the op''s body fingerprint with it for the
 
-    same-body check. The op is audited; after commit the reporter gets one inbox row for it and, when ticket pushes
+    same-body check. The op is audited; after commit the reporter gets one inbox row for it (kind `ticket_updated`)
 
-    are switched on, one push with reason `ticket_updated`.
+    and, when ticket pushes are switched on, one data-only push with reason `notification` (the bell''s push reason,
+
+    D-TSO-MAN-26; the app then reads `listMyNotifications`). A desk reply (`addSupportTicketEvent`) also writes
+    one
+
+    such inbox row for the reporter, with the same push rule (lead ruling R-W-06, D-B1-07, D-B1-12).
 
     '
   parameters:

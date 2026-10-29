@@ -45,6 +45,7 @@ CategoryVolume:
     qty_entered:
       $ref: '#/components/schemas/Decimal3'
       description: 'Quantity in `entry_unit`, summed per SKU first (each SKU''s qty_base over its base_per_pack):
-        10s and 20s of one category convert correctly. Sold plus free, like qty_base.'
+        10s and 20s of one category convert correctly. Sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09,
+        lead ruling R-W-06), like `DashboardSummary.by_category` qty_base.'
     net_mtk:
       $ref: '#/components/schemas/Mtk'

@@ -58,7 +58,8 @@ NationalChannelStd:
             format: int64
             minimum: 0
             description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
-              is 0.'
+              is 0. The denominator is `total` (all the card''s cigarette sticks, equal to the Sales (Cigarette)
+              card; lead ruling R-W-06). The web legend prints the share once from `value` and `total`.'
     total:
       type: integer
       format: int64

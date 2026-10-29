@@ -15,7 +15,12 @@ operation:
     `ERR_CONFLICT`. Allowed only while the ticket is new or in_progress, else 409 `ERR_TICKET_COMMENTS_CLOSED`.
     The
 
-    first support reply on a new ticket moves it to in_progress and stamps `first_response_at`.
+    first support reply on a new ticket moves it to in_progress and stamps `first_response_at`. After commit a stored
+
+    reply writes one inbox row for the reporter (kind `ticket_updated`) and, when ticket pushes are switched on,
+    one
+
+    data-only push with reason `notification`; a replay writes neither again (lead ruling R-W-06, D-B1-12).
 
     '
   parameters:

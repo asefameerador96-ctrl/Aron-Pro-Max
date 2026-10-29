@@ -58,7 +58,9 @@ NationalChannelCalls:
             format: int64
             minimum: 0
             description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
-              is 0.'
+              is 0. The denominator is the total including unclassified calls, `total` + `unclassified`, so the
+              six shares add up to 10000 only when `unclassified` is 0 (lead ruling R-W-06). The web legend prints
+              the share once from `value` and that denominator.'
     total:
       type: integer
       minimum: 0

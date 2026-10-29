@@ -21,8 +21,9 @@ TargetVsAchievement:
       oneOf:
       - $ref: '#/components/schemas/Decimal3'
       - type: 'null'
-      description: The route's monthly target for the category / the working days of the month. Null without a target,
-        and null when the month has no working day (W = 0, lead ruling R-F-13).
+      description: The route's monthly target for the category / the working days of the month (`monthly_target_qty`
+        / `working_days`, rounded once to 3 decimals). Null without a target, and null when the month has no working
+        day (W = 0, lead ruling R-F-13).
     sales:
       type: integer
       format: int64
@@ -33,5 +34,27 @@ TargetVsAchievement:
       - 'null'
       format: int64
       minimum: 0
-      description: sales / daily_target in basis points, uncapped (may exceed 10000, hence int64, R-F-16); null
-        whenever daily_target is null (R-F-13), and null when the route's monthly target is 0 (daily_target "0.000").
+      description: 'sales / daily_target in basis points, uncapped (may exceed 10000, hence int64, R-F-16); null
+        whenever daily_target is null (R-F-13), and null when the route''s monthly target is 0 (daily_target "0.000").
+        One rule with the Sales card (lead ruling R-W-06): when `monthly_target_qty` and `working_days` are sent,
+        the bp is exact from them, round_half_up(10000 * sales * working_days / monthly_target_qty) once, never
+        from the rounded daily_target; null when `working_days` is 0 or there is no target (`monthly_target_qty`
+        null), and null when `monthly_target_qty` is 0.'
+    monthly_target_qty:
+      oneOf:
+      - $ref: '#/components/schemas/Decimal3'
+      - type: 'null'
+      description: The route's monthly target for the category in base units (the sum of its SKU targets for the
+        month of the date; whole base units today, so the fraction is ".000", as the Decimal3 members of TargetAchievementRow
+        carry them); null without a target. With `working_days` it gives `daily_target` and the exact `achievement_pct_bp`
+        (the Sales-card rule, NationalSalesCard). When `working_days` is 0 the phone and the web print "—" for every
+        figure derived from it and never divide by it (R-F-13). Lead ruling R-W-06, contract 1.10.0; optional until
+        the server sends it.
+    working_days:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: 'W: the working days of the month that `daily_target` divides by, at the route''s zone (D-TSO-MAN-08:
+        the zone''s weekend and the declarations on its path; WorkingDays of shared/rules). 0 when the month has
+        no working day there (then `daily_target` and `achievement_pct_bp` are null, R-F-13). Lead ruling R-W-06,
+        contract 1.10.0; optional until the server sends it.'

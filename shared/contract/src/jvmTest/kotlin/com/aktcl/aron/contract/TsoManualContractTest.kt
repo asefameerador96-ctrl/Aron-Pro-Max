@@ -613,4 +613,113 @@ class TsoManualContractTest {
         val geoLevel = flat(map(map(map(OpenApi.doc["components"])["parameters"])["GeoLevelQuery"])["description"])
         assertTrue(geoLevel.contains("`house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value)"), geoLevel)
     }
+
+    // ---- lead rulings after the feature wave (build contract s10, 2026-10-29; lane X1) ----
+
+    /**
+     * R-W-06 (1): `FinalSubmitPreview.can_submit`, the role rule of the submit path (TSO or a delegate role), always
+     * computed by the server, so it is required in the response; the app and the web keep a TSO fallback for an older
+     * server (R-W-13).
+     */
+    @Test
+    fun finalSubmitPreviewSaysWhetherTheCallerMaySubmit() {
+        val p = prop("FinalSubmitPreview", "can_submit")
+        assertEquals("boolean", p["type"])
+        assertTrue("can_submit" in required("FinalSubmitPreview"), "the server always computes it (lane X1 brief)")
+        assertEquals(listOf("zone_id", "business_date", "already_submitted", "can_submit", "routes"), required("FinalSubmitPreview"))
+        val text = flat(p["description"])
+        for (rule in listOf(
+            "true when the caller's role is TSO or is listed in `cfg.day.final_submit_delegate_roles`", "the same rule the submit path enforces",
+            "It is the role rule only: whether the zone-day is already submitted is `already_submitted`",
+            "offer Submit when `can_submit` is true and `already_submitted` is false", "falls back to the TSO rule", "R-W-06",
+        )) assertTrue(text.contains(rule), "FinalSubmitPreview.can_submit must say: $rule")
+        assertFalse(p.containsKey("default"), "no schema default (openapi-typescript, D-F1-02)")
+    }
+
+    /** R-W-06 (2): the till-date % gets an integer member; the float stays for older readers and is described as deprecated. */
+    @Test
+    fun dailyTrackingTillDateIsAnIntegerBasisPointMember() {
+        val bp = prop("DailyTrackingRow", "tilldate_target_achievement_bp")
+        assertEquals(listOf("integer", "null"), bp["type"]); assertEquals("int64", bp["format"]); assertEquals(0, bp["minimum"])
+        assertEquals(null, bp["maximum"], "uncapped")
+        val pct = prop("DailyTrackingRow", "tilldate_target_achievement_pct")
+        assertEquals(listOf("number", "null"), pct["type"], "the float member stays (R-W-06)")
+        assertTrue(flat(pct["description"]).startsWith("Deprecated (contract 1.10.0, lead ruling R-W-06): read `tilldate_target_achievement_bp`"))
+        assertTrue(flat(pct["description"]).contains("`tilldate_target_achievement_bp` / 100 (the bp is this figure x 100, rounded once half up)"))
+        assertFalse(pct.containsKey("deprecated"), "described as deprecated only: a deprecated flag would mark every web read of it")
+        val text = flat(bp["description"])
+        for (rule in listOf("round_half_up(10000 x A / T') once, from the integers", "D-B2-13", "Null without a cigarette target that month",
+            "when the month has no working day (n = 0), and when T' is 0", "The web prints it with two decimals (bp / 100)")) {
+            assertTrue(text.contains(rule), "DailyTrackingRow.tilldate_target_achievement_bp must say: $rule")
+        }
+        // bp / 100 is the two-decimal figure, rounded once: 12345 of 20000 sticks is 6172.5 bp -> 6173 -> 61.73 %
+        val a = 12_345L; val t = 20_000L
+        val bpOf = (2 * 10_000 * a + t) / (2 * t)
+        assertEquals(6173L, bpOf); assertEquals("61.73", java.math.BigDecimal.valueOf(bpOf, 2).toPlainString())
+        assertEquals(listOf("route_id", "route_name", "zone_id", "state", "target_outlets", "visited_outlets", "successful_calls", "active_memo_count", "net_mtk", "bucket"),
+            required("DailyTrackingRow"), "the required list does not change (R-W-06)")
+    }
+
+    /** R-W-06 (3): the route card carries the monthly target and W, so its bp follows the Sales-card rule. */
+    @Test
+    fun routeMapTargetCardUsesTheSalesCardRule() {
+        val m = prop("TargetVsAchievement", "monthly_target_qty")
+        assertEquals("Decimal3", ref(m)); assertTrue(nullable(m))
+        val w = prop("TargetVsAchievement", "working_days")
+        assertEquals(listOf("integer", 0, 31), listOf(w["type"], w["minimum"], w["maximum"]))
+        assertEquals(listOf("category_code", "base_unit", "daily_target", "sales", "achievement_pct_bp"), required("TargetVsAchievement"), "both optional (R-W-06)")
+        val text = flat(prop("TargetVsAchievement", "achievement_pct_bp")["description"])
+        for (rule in listOf("One rule with the Sales card (lead ruling R-W-06)", "round_half_up(10000 * sales * working_days / monthly_target_qty) once",
+            "never from the rounded daily_target", "null when `working_days` is 0 or there is no target (`monthly_target_qty` null)")) {
+            assertTrue(text.contains(rule), "TargetVsAchievement.achievement_pct_bp must say: $rule")
+        }
+        // the same formula as the Sales card, with sales in place of total_sales
+        assertTrue(flat(prop("NationalSalesCard", "achievement_pct_bp")["description"]).contains("round_half_up(10000 * total_sales * working_days / monthly_target_qty)"))
+        assertTrue(flat(w["description"]).contains("0 when the month has no working day there (then `daily_target` and `achievement_pct_bp` are null, R-F-13)"))
+        assertTrue(flat(m["description"]).contains("never divide by it (R-F-13)"))
+        // why the exact rule matters: 50 sticks against a 1991-stick month of 27 working days is 6780.51 bp, so 6781 exactly;
+        // through the rounded daily target 73.741 it would be 6780.49, so 6780
+        val sales = 50L; val month = 1991L; val days = 27L
+        val exact = (2 * 10_000 * sales * days + month) / (2 * month)
+        val daily = java.math.BigDecimal(month).divide(java.math.BigDecimal(days), 3, java.math.RoundingMode.HALF_UP)
+        val viaDaily = java.math.BigDecimal(10_000 * sales).divide(daily, 0, java.math.RoundingMode.HALF_UP).toLong()
+        assertEquals("73.741", daily.toPlainString()); assertEquals(6781L, exact); assertEquals(6780L, viaDaily)
+    }
+
+    /** R-W-06 (4): the bundle's route entry names the route's SR, so Assign Task works offline (R-W-12). */
+    @Test
+    fun bundleRouteEntryNamesItsSr() {
+        val id = prop("RouteSnapshot", "sr_user_id")
+        assertEquals(listOf("integer", "null"), id["type"]); assertEquals("int64", id["format"]); assertEquals(1, id["minimum"])
+        val name = prop("RouteSnapshot", "sr_name")
+        assertEquals(listOf("string", "null"), name["type"]); assertEquals(120, name["maxLength"])
+        assertEquals(listOf("route_id", "route_snapshot_version", "route", "assignment_kind", "planned_today", "target_outlets", "outlets", "open_memos",
+            "sales_plan_sku_ids", "targets", "achievement_mtd", "day_state"), required("RouteSnapshot"), "both optional (R-W-06)")
+        val text = flat(id["description"])
+        for (rule in listOf("on the bundle date (`meta.valid_for_business_date`)", "the same SR that `GET /v1/routes` names", "null when the route is vacant",
+            "Sent in the TSO bundle so Assign Task works offline")) assertTrue(text.contains(rule), "RouteSnapshot.sr_user_id must say: $rule")
+        assertTrue(flat(name["description"]).contains("null exactly when `sr_user_id` is null"))
+        // the bundle's route section is this schema (TSO, SR and AMO bundles alike), and the phone decodes it from WireDtos
+        assertEquals("RouteSnapshot", ref(map(prop("Bundle", "routes")["items"])))
+        assertEquals(Long::class.javaObjectType, RouteSnapshot::class.java.getDeclaredField("srUserId").type)
+        assertEquals(String::class.java, RouteSnapshot::class.java.getDeclaredField("srName").type)
+    }
+
+    /** R-W-06, descriptions: the desk's push reason, the reply's inbox row, sold-only quantities and the channel share denominators. */
+    @Test
+    fun featureWaveDescriptions() {
+        val update = flat(op("patch", "/v1/support/tickets/{ticket_uuid}")["description"])
+        assertTrue(update.contains("one data-only push with reason `notification`"), update)
+        assertFalse(update.contains("push with reason `ticket_updated`"), "the bell's push reason is notification (D-TSO-MAN-26, D-B1-07)")
+        assertTrue(update.contains("A desk reply (`addSupportTicketEvent`) also writes one such inbox row for the reporter"), update)
+        val reply = flat(op("post", "/v1/support/tickets/{ticket_uuid}/events")["description"])
+        assertTrue(reply.contains("a stored reply writes one inbox row for the reporter (kind `ticket_updated`)"), reply)
+        assertTrue(reply.contains("push with reason `notification`; a replay writes neither again"), reply)
+        val entered = flat(prop("CategoryVolume", "qty_entered")["description"])
+        assertTrue(entered.contains("Sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09"), entered)
+        assertFalse(entered.contains("Sold plus free"), entered)
+        fun share(schema: String) = flat(map(map(map(prop(schema, "channels")["items"])["properties"])["share_pct_bp"])["description"])
+        assertTrue(share("NationalChannelCalls").contains("The denominator is the total including unclassified calls, `total` + `unclassified`"))
+        assertTrue(share("NationalChannelStd").contains("The denominator is `total`"))
+    }
 }

@@ -203,6 +203,8 @@ data class RouteSnapshot(
     @SerialName("targets") val targets: List<JsonElement>,
     @SerialName("achievement_mtd") val achievementMtd: List<JsonElement>,
     @SerialName("day_state") val dayState: RouteDayState,
+    @SerialName("sr_user_id") val srUserId: Long? = null,
+    @SerialName("sr_name") val srName: String? = null,
 )
 
 /** Outlet as the phone needs it. `radius_m` and `max_accuracy_m` are already resolved for this outlet (outlet > route > zone > geo_class > territory > division > wing > global). */

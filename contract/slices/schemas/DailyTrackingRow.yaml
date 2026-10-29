@@ -57,6 +57,22 @@ DailyTrackingRow:
       - number
       - 'null'
       minimum: 0
+      description: 'Deprecated (contract 1.10.0, lead ruling R-W-06): read `tilldate_target_achievement_bp`. The
+        same figure as a percentage with two decimals: `tilldate_target_achievement_bp` / 100 (the bp is this figure
+        x 100, rounded once half up). Kept for older readers; null exactly when the bp is null.'
+    tilldate_target_achievement_bp:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+      description: 'Till-date target achievement of the route in basis points (10000 = 100 %), uncapped (may exceed
+        10000, hence int64, R-F-16): round_half_up(10000 x A / T'') once, from the integers, where A is the route''s
+        cigarette sticks of sale lines from the 1st of the month to the tracked date and T'' the sum of its cigarette
+        items'' till-date targets (each item rounded once, D-TSO-MAN-05) on the till-date basis of the TSO Target
+        Status, with the working days at the route''s zone (D-B2-13). Null without a cigarette target that month,
+        when the month has no working day (n = 0), and when T'' is 0. The web prints it with two decimals (bp /
+        100) and never from the float member (lead ruling R-W-06, R-W-13; contract 1.10.0).'
     bucket:
       type: string
       enum:
