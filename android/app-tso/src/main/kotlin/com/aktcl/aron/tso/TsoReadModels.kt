@@ -72,8 +72,22 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
         return com.aktcl.aron.feature.tso.ZoneNamesJson.parse(body, bangla)
     }
 
+    /**
+     * One GET of [path], which may end in a query (`/v1/leave?limit=100`). The query goes into the URL's query: the client's
+     * contract path is an encoded path, where OkHttp writes `?` as `%3F`, so `/v1/routes?limit=500` would be asked as the
+     * path `/v1/routes%3Flimit=500` (tso-manual X4b fix round, found by TsoAssignTaskOfflineTest; TsoReadModelsUrlTest).
+     */
     private suspend fun get(path: String): String? {
-        val r = runCatching { client.call(path = path, auth = CallAuth.Grant(Grant.FULL), build = { get() }, decode = { body, _ -> body }) }.getOrNull()
+        val contractPath = path.substringBefore('?')
+        val query = path.substringAfter('?', "").ifEmpty { null }
+        val r = runCatching {
+            val c = client
+            c.call(
+                path = contractPath, auth = CallAuth.Grant(Grant.FULL),
+                build = { url(c.origin.path(contractPath).newBuilder().encodedQuery(query).build()); get() },
+                decode = { body, _ -> body },
+            )
+        }.getOrNull()
         return (r as? ApiResult.Success)?.value
     }
 
