@@ -12141,9 +12141,9 @@ components:
           description: 'Achievement in basis points. One rule with the Sales card (lead ruling R-W-06):
             round_half_up(10000 * sales * working_days / monthly_target_qty) once, computed by the server from the
             integers (the route''s monthly target for the category and W at its zone), never from the rounded daily_target,
-            which is for display only. Uncapped: may exceed 10000, hence int64 (R-F-16). Null when `working_days` is 0 or
-            there is no target (`monthly_target_qty` null), and null when `monthly_target_qty` is 0 (daily_target "0.000");
-            so null whenever daily_target is null (R-F-13). The server sends `monthly_target_qty` and `working_days` with
+            which is for display only. Uncapped: may exceed 10000, hence int64 (R-F-16). The bp is null when `working_days`
+            is 0 or there is no target (`monthly_target_qty` null), and null when the route''s monthly target is 0
+            (`monthly_target_qty` "0.000", daily_target "0.000"); so null whenever daily_target is null (R-F-13). The server sends `monthly_target_qty` and `working_days` with
             every card, so a reader prints this figure and the bars from the same integers (R-W-13). Note on older servers:
             a server before the integration round sent neither member and divided by the rounded daily_target, which can
             differ by 1 bp; a reader prints the bp as sent.'
