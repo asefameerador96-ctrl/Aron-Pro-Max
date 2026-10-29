@@ -32,8 +32,9 @@ export function applicantLines(l: Leave): { name: string; username: string | nul
   return { name: l.applicant_name ?? username ?? `#${l.user_id}`, username: l.applicant_name ? username : null };
 }
 
-/** DecisionRequest note limit as the BFF enforces it (the contract allows 500; the proxy keeps 300). */
-export const NOTE_MAX = 300;
+/** DecisionRequest note limit: the contract's maxLength 500, which the BFF (/api/bff/leave-decision, after trimming) and LeaveApi
+ *  both count in UTF-16 units (String.length). tso-manual X3 (R-W-13 (2)): was 300 at the proxy. */
+export const NOTE_MAX = 500;
 
 /** The body the BFF route takes: the note only on a rejection, trimmed, left out when empty. */
 export function decisionBody(leaveUuid: string, decision: "approve" | "reject", note = ""): { leave_uuid: string; decision: "approve" | "reject"; note?: string } {

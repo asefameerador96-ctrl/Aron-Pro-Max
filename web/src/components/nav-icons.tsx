@@ -48,6 +48,7 @@ const P = {
   upload: "M12 16V4 M7 9l5-5 5 5 M4 20h16",
   list: "M9 6h11 M9 12h11 M9 18h11 M4 6h.01 M4 12h.01 M4 18h.01",
   radius: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18 M12 12l6-6 M12 12h.01",
+  inbox: "M4 13l2.5-8h11l2.5 8 M4 13v6h16v-6 M4 13h4.5a3.5 3.5 0 0 0 7 0H20", // tso-manual X3: the support desk's Tickets entry
   dot: "M12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2",
 } as const;
 
@@ -64,6 +65,7 @@ const BY_ID: Record<string, NavIconName> = {
   "report-route-qc": "check", "report-memo-number-gaps": "hash", "report-geofence-calibration": "radius",
   "tso-final-submit": "check", "tso-web-entry": "edit", "tso-qc-entry": "shieldCheck", "tso-wh-qc": "box", "tso-device-otp": "device",
   "admin-home": "shield", "admin-master-data": "database", "admin-outlet-requests": "store", "admin-outlet-change": "edit", "admin-team": "users", "admin-radius": "radius", "admin-wholesale": "box", "admin-audit": "history",
+  "admin-tickets": "inbox", // tso-manual X3 (R-W-13 (1)): the sidebar draws this map, so the ruled MENU_ICON line alone would leave the dot
   "cfg-home": "gear", "cfg-keys": "key", "cfg-rules": "list", "cfg-switches": "toggle", "cfg-changes": "edit", "cfg-history": "history", "cfg-reach": "pin", "cfg-devices": "device", "cfg-releases": "upload",
   "cfg-quarantine": "alert", "cfg-sync-health": "sync", "cfg-geofence": "radius", "cfg-enrolment": "qr", "cfg-app-block": "lock", "cfg-day": "clock", "cfg-qc-faults": "shieldCheck", "cfg-flags": "flag",
   "cfg-permissions": "shield", "cfg-entry-unlocks": "lock", "cfg-print-templates": "printer", "cfg-supervisor-targets": "target", "cfg-dues": "coin", "cfg-export-log": "file", "cfg-data-entry": "edit",

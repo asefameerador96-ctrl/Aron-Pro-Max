@@ -1,6 +1,6 @@
 "use client";
 // tso-manual W1, LV-19: the DMO's decision on one leave application. Approve is one tap; Reject opens an optional note for the
-// TSO (DecisionRequest.note, at most 300 characters through the BFF) and asks for a second tap. The server checks the role and
+// TSO (DecisionRequest.note, at most 500 characters, NOTE_MAX, as the BFF and the contract) and asks for a second tap. The server checks the role and
 // the TSO's reach (/api/bff/leave-decision); a refusal shows its text and the row stays as it was.
 import { useRouter } from "next/navigation";
 import { useState } from "react";
