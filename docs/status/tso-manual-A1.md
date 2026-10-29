@@ -86,6 +86,46 @@ TsoLoginScreenTest (6); LogoutWipeUiPrefsTest (3); TokenContrastTest (+6); TsoLo
 TsoNavigationTest, TsoFeedbackFlowTest rewritten for the drawer. Removed with the summary model: TsoDashboardsTest,
 TsoCompactCorpusTest (lakh/crore are gone from the phone, D-TSO-MAN-10).
 
+## Step 3: Target Status, the bell inbox, push reasons (done, except the items under "Not done")
+
+Base of the step: `3ce6af81` (end of step 2). Items: T-01, 02, 04 (app), 06, 08, 10, 11 (app); SH-08 (app); D-TSO-MAN-26 (app),
+39, 40; R-F-01, R-F-24; F1 asks 15 and 18 (A1 part); F3 ask (33114). SH-01 (release name) was done in step 2 (`699fdc6c`) and is
+re-verified here.
+
+| item | what | where |
+|---|---|---|
+| Target model | `TargetTab`, `TargetRow` (integers only: T, A, T'), `TargetNode` (own `elapsed_days` / `period_days`, R-F-24), `TargetAnswer` (`cards`: the node, then each zone; a zone answering itself is one card), `TargetNodeKey` (`top` or `<level>:<id>`), `TargetStatus` (parser, `ordered`, `categoryCards` = the sums of the item rows, `items` with the filter, and the printers: `fraction`, `cardPct` / `cardPctText` (`Targets.cardPct`), `band` (`Targets.band`), `detailsBp` / `detailsText` (`Targets.detailsBp`, 2 dp), `remaining` (`Targets.remaining`), `qty` (`Formats.digits`), `bandsOf` (`cfg.kpi.bar_bands`)) | feature-tso `targets/TargetStatus.kt` (new) |
+| Target screens | `TargetTabs`, `TargetStatusContent` (screenshots 39, 40: tabs, "as of", territory card tinted teal, zone cards, bars, "Details ->"), `TargetDetailsContent` (41, 42: tabs, the node card with the category bars, the item table; a bar toggles the filter, "Show all categories" while filtered), `TargetTags` | feature-tso `targets/TargetStatusScreens.kt` (new) |
+| Target reads | `TsoApi.get`, `targetStatus(month)` = `GET /v1/dashboards/targets?month&product_level=category&children=zone`, `targetDetails(node, month)` = `month[&level&node_id]&product_level=variant` (the top node without level/node_id); cache keys `tgt_status_<month>`, `tgt_details_<node>_<month>` | app-tso `TsoApi.kt` |
+| Target host | `TsoTargetsModel` (one per user: shared tab, Details filter, bands from the bundle, a screen shown again within 60 s keeps its read, pull always reads, a new month reads), `TsoTargetStatusHost`, `TsoTargetDetailsHost` (title = the node's name), `targetScreens(host, api)` | app-tso `TsoTargetsHost.kt` (new) |
+| Band colours | `AronNightRoles.bandRed / bandAmber / bandGreen` (night: the screenshot's E53935 / FFB300 / 2E8B3A; Sunlight: deep solid B0001C / 8A5A00 / 00642F); the printed percent uses the danger / warning / success inks | core-ui `Tokens.kt` (appended members with defaults), TokenContrastTest `tsoTargetBandsReachThreeToOne` |
+| Inbox model | `TsoNotification`, `TsoInboxPage`, `TsoInboxTarget`, `TsoInboxes` (parser, `readResult`, `readBody`, `badge` = unread minus pending reads, `target` of a row, `age` via `TicketMath.ageText`) | feature-tso `notifications/TsoInbox.kt` (new) |
+| Inbox screen | `TsoInboxContent` (newest first, teal dot on new rows, title and body in the app's language, age, "as of" / kept copy, the pending-read line, "Show older"), `TsoInboxTags` | feature-tso `notifications/TsoInboxScreen.kt` (new) |
+| Inbox reads | `TsoApi.notifications()` (`limit=50`, kept as `inbox`), `olderNotifications(beforeId)` (never kept), `markNotificationsRead(upTo)` -> `MarkRead.Done(unread)` / `Rejected` (4xx other than 401, 408, 429) / `NoAnswer` | app-tso `TsoApi.kt` |
+| Inbox host | `TsoInboxModel` (`refresh`: pending read first, then the page; `open`: refresh then mark up to the newest id; the pending read in `aron_ui_<id>` key `tso_inbox_pending_read_up_to`; `unread` for the bell), `TsoInboxHost`, `inboxScreens(host, model)` | app-tso `TsoInboxHost.kt` (new) |
+| Bell reads | `TsoDashboardModel(..., alsoOnLoad)`: the inbox is read with the cards on Dashboard open and pull-to-refresh (in parallel; the cards do not wait for it, a failure never stops them); `dashboardScreens(host, api, inbox)` | app-tso `TsoDashboardHost.kt` |
+| Push reasons | `PushNotice.InboxUpdated / TicketUpdated / DayFinalSubmitted`; `PushMessage.REASON_NOTIFICATION / REASON_TICKET_UPDATED / REASON_DAY_FINAL_SUBMITTED`, `noticeFor(reason)`; every `sync_nudge` still pulls the bundle with the ordinary spread | core-sync `push/PushMessage.kt` |
+| Push notices | channels `aron_updates` (default) and `aron_day` (low, silent); fixed bn/en texts (`strings_a1.xml`); a tap opens the inbox (`OPEN_INBOX`) or the ticket dashboard (`OPEN_TICKETS`), the day notice opens the app; `PushNotices.opens(intent)`; every notice is announced in process on `PushNotices.arrived` before it is shown | core-sync `push/PushNotices.kt`, `res/values*/strings_a1.xml` (new) |
+| Shell | `TsoApp(..., openRequest, onOpenRequestHandled)`: a tapped push opens its screen on the Dashboard (back returns to it) | feature-tso `TsoApp.kt` |
+| MainActivity | one `TsoApi` per user shared by the Dashboard, targets and the inbox; `screens = dashboard + targets + inboxScreen + areas + tickets`; `unread = inbox.unread`; `PushNotices.arrived` (`InboxUpdated`, `TicketUpdated`) re-reads the bell while the app is shown; `takePushIntent` in `onCreate` and `onNewIntent` | app-tso `MainActivity.kt` |
+| Strings | `tso_dash_tgt_*` (22) and `tso_chrome_inbox_*` (6), en and bn | feature-tso `values*/strings_a1.xml` |
+| Docs | docs/08 Target Status section rewritten, the inbox under the Drawer menu section; PARITY-SPEC line 47 (Target Status and the inbox look); delta-tso.md shell section: 8 rows (figures, bar colours, filter, table header, "as of", per-node dash, inbox, push notices) | docs |
+
+### Tests added or changed in step 3
+
+TargetStatusTest (feature-tso, 12: the cards of screenshots 39 and 40 in en and bn, every till-date item fixture and the card
+sums, R-F-01 33114 at 21/26 and 32799 at 20/25, every Details fixture (35.00%, 33.00%, 0.20%, 1.33%, 0.60%; 43.42%, 40.94%,
+0.25%, 2.48%, 0.74%, 0.62%, 1.65%; 104.94% uncapped vs 100% capped; remaining 650, 9980, 2959, 456, 8045, 0), bands from the
+config, R-F-24 per-node dash, one card for a zone, the node key; screens: tabs switch the figures, "Details ->" gives `zone:9`
+and `top`, offline note, the filter and the tab keeping node and filter, Bangla); TsoInboxScreenTest (feature-tso, 4);
+TsoShellTest +1 (a tapped push opens the inbox on the Dashboard once, no Home button, back to the Dashboard); TsoInboxTest
+(app-tso, 8: unread from the server and no read without a call, open marks up to the newest id, offline kept page + pending
+read off the badge + sent first online + survives a new model, offline without a copy, a refused read is dropped, the
+Dashboard reads the bell, the badge rule, parsing and row targets); TsoTargetsTest (app-tso, 5: the Status query, Details top
+and zone queries, the 60 s rule and a new month, kept per month and node and a refusal drops the copy, Details opens with no
+filter on the shared tab); TsoPushReasonsTest (core-sync, 3: the three reasons, the Bangla texts, channels and taps, the
+in-process announcement); TokenContrastTest +1.
+
 ## Decisions
 
 - **D-A1-01 Root during the stubs.** The empty back stack is the tile Home, so behaviour is unchanged until A1's shell
@@ -140,6 +180,40 @@ TsoCompactCorpusTest (lakh/crore are gone from the phone, D-TSO-MAN-10).
   in the wiped files.
 - **D-A1-18 `RoleHomes.tsoTiles` deprecated, not deleted.** The TSO app no longer calls it; two shared golden files
   that are not A1's still do (ask below). `TsoTile` ids stay: A3's old frames pass them.
+- **D-A1-19 Target figures as the screenshots print them.** `achieved/target`, Target, Achievement and Remaining are plain
+  integers in base units (`Formats.digits`: "1030/40999", "10000"; Bengali digits in Bangla, no grouping), because screenshots
+  39 to 42 print them so (rule 14a). Percents are computed once on the phone from the integers (`Targets.cardPct`,
+  `Targets.detailsBp`, `Percent.text`); the parser does not read the server's `*_pct_bp` members at all.
+- **D-A1-20 The Details card is the sum of its item rows.** Each category bar on Target Details sums the variant rows of
+  that category (T, A, and T' per item as the server rounded it), so the card always equals its table (R-F-01: 33114 at
+  21/26). The four card categories always show (0 of 0 prints "—"); T' is null when the node's `period_days` is 0 or any item
+  has none. Status cards print the server's category rows as sent, ordered Cigarette, Bidi, Lighter, Match, then others.
+- **D-A1-21 Node key.** Details opens with `top` (read without `level`/`node_id`: the caller's top reach node; this also
+  serves a house TSO, since an explicit `level=house` is refused by the dashboards) or `zone:<id>` (an id the server
+  returned; 403 outside the reach). An unreadable argument is `top`. Never a list of ids.
+- **D-A1-22 When Target Status reads.** On show and on pull-to-refresh; a screen shown again within 60 s of its last read
+  of the same month (back from Details) keeps it; a new month reads. No timer. The tab switch reads nothing.
+- **D-A1-23 Tab and filter.** One tab for both screens (Details opens on the tab Status shows; switching on Details keeps
+  the node and the filter). "Details ->" clears the filter. A bar toggles its filter; while filtered the card shows that
+  bar only (screenshot 41) and "Show all categories" under it.
+- **D-A1-24 Bands.** `cfg.kpi.bar_bands` from this user's bundle (`ReferenceRepository.config`), read with every Status
+  read; a missing or malformed value is [40, 80] (`Bands.of`). The bar fill is the band colour with an 8 dp stub even at 0%
+  (screenshot 39 shows a red stub at 0%); the percent is printed in the 4.5:1 status ink of its band.
+- **D-A1-25 The inbox read.** One page of 50, kept as `inbox` (3 days, like the cards); "Show older" pages are never kept.
+  Opening the inbox reads it and marks up to the newest id; offline the read is kept (`aron_ui_<id>`, wiped at logout) and
+  the badge counts it off: a pending read at or above the page's newest id clears the badge, below it the page's unread rows
+  up to it come off. The pending read goes first on the next read and is dropped on success or on a 4xx refusal (other than
+  401, 408, 429). The dot shows the rows that were unread when the list was read (for this visit).
+- **D-A1-26 Bell triggers.** Dashboard open and pull-to-refresh (`alsoOnLoad`, parallel to the cards), the inbox itself, and
+  the push reasons `notification` and `ticket_updated` while the app is shown (`PushNotices.arrived`). In the background the
+  push shows its notice; the next Dashboard open reads the count.
+- **D-A1-27 Push notices.** `notification` and `ticket_updated` show on a new "Updates" channel (default importance) and
+  open the inbox or the Ticket Dashboard; `day_final_submitted` shows on a new silent "Day status" channel (low importance:
+  the midnight auto Final Submit must not ring SR phones at 00:00) and opens the app (A3's lock banner explains). All three
+  keep the bundle pull with the ordinary 0 to 120 s spread (the midnight fan-out is the large one). The in-process signal is
+  emitted from `PushNotices.show` because `PushShell` and `PushDispatcher` are not A1's files.
+- **D-A1-28 Where an inbox row leads.** `support_ticket` -> TICKET_DETAIL with the ticket uuid as the argument,
+  `leave_application` -> LEAVE, `zone_day` -> FINAL_SUBMIT; other rows are not tappable.
 
 ## Deviations
 
@@ -158,6 +232,12 @@ TsoCompactCorpusTest (lakh/crore are gone from the phone, D-TSO-MAN-10).
 - Step 2: the old summary model (`TsoDash`, `CategorySales`, `SliceRow`, `ZoneRef`, `RouteDayRow`, the zone filter, lakh and
   crore) is removed with `/v1/dashboards/summary`; the class names `TsoDashboards`, `TsoDashboardState` and
   `TsoDashboardContent` are reused, so the unused imports of `AmoTsoScreenshotTests` (not A1's) still resolve.
+- Step 3, against the screenshots (all in delta-tso.md "A1 shell deltas"): "Show all categories" while a Details filter is
+  on; the table header words hyphenate instead of breaking mid-word, figures shrink in their cells, and from 150 percent
+  font scale each item is a block (name, then label and figure lines) because five columns do not fit 360 dp;
+  "as of" and pull-to-refresh on Target Status, Details and the inbox; the per-node "—" (R-F-24); the inbox itself (no
+  screenshot). The bright amber bar keeps the screenshot colour on the light track (1.4:1); its percent carries the figure.
+- Step 3: `PushNotices.show` also announces the notice in process (a side effect of a function named show), see D-A1-27.
 
 ## Asks
 
@@ -181,6 +261,16 @@ TsoCompactCorpusTest (lakh/crore are gone from the phone, D-TSO-MAN-10).
   (`TsoFab.of(...)` is false); use the `nav` overload of `TsoFrame`. `TsoDropdownField` is now core-ui `AronDropdown`
   (tags `AronDropdownTags`).
 - **A2 and A3 (earlier asks still stand):** build ports from `TsoHost` inside your host files; never edit MainActivity.
+- **A2 (step 3):** (1) an inbox row about a ticket opens `TsoScreen.TICKET_DETAIL` with the ticket uuid (`ref_id`) as the
+  `arg`; please read it there. (2) A tapped `ticket_updated` push opens `TICKET_DASHBOARD` on the Dashboard (A1 wired it
+  through `TsoApp(openRequest)`); `ticketScreens` only needs the map entry. (3) If the ticket screens want to refresh on a
+  ticket push while shown, collect `PushNotices.arrived` for `PushNotice.TicketUpdated` (no polling).
+- **B1 (information, no change needed):** the phone accepts both `reason = notification` (what B1 sends for a desk update
+  today: opens the inbox) and `reason = ticket_updated` (opens the Ticket Dashboard). Either way the push carries no
+  business data and the bell re-reads `GET /v1/me/notifications`.
+- **A3 (information):** `day_final_submitted` shows a silent "Day closed" notice on SR and AMO phones and still schedules
+  the bundle pull; your lock refresh needs nothing else from core-sync. To react while the app is shown, collect
+  `PushNotices.arrived` for `PushNotice.DayFinalSubmitted`.
 
 ## Verify (this worktree, local laptop; CI not run, nothing pushed)
 
@@ -228,24 +318,49 @@ Goldens needed (record on the Linux runner, `-Proborazzi.record=true`, TsoScreen
   `tso_home_parity_sunlight_bn`, `tso_home_200_bn`, `tso_dashboard_en`, `tso_dashboard_bn`, `tso_dashboard_empty_offline_en`,
   `tso_dashboard_sunlight_bn`, `tso_dashboard_routes_bn`, `tso_dashboard_routes_empty_en`, `tso_dashboard_zones_en`.
 
-## Not done in step 2
+Step 3, 2026-10-29 (the Gradle lock was held by other lanes' backend runs for most of the step; laptop clock):
 
-- The inbox: the bell shows `unread` (MainActivity passes 0) and opens NOTIFICATIONS, which is the placeholder frame;
-  TsoInboxHost, the NOTIFICATIONS screen, TsoInboxTest and the push reasons (`notification`, `ticket_updated`,
-  `day_final_submitted` in core-sync PushMessage / PushNotices) are the next step (D-TSO-MAN-26, SH-08).
-- Target Status and Details (T-01..11, D-TSO-MAN-39/40, TargetStatusTest with the s4.3 fixtures and the 33114 card of
-  R-F-01): next step; the drawer row opens the placeholder today.
-- Goldens are not committed (Windows laptop); device checks (s8 rows 2, 3, 5 to 10 on a pilot phone) not done.
+| command | result |
+|---|---|
+| `gl.sh … :android:core-ui:testDebugUnitTest --tests '*TokenContrastTest*' :android:core-sync:testDebugUnitTest --tests '*.push.*' :android:feature-tso:testDebugUnitTest --tests '*.targets.*' --tests '*.notifications.*' --tests '*TsoShellTest*' :android:app-tso:testDebugUnitTest --tests '*TsoInboxTest*' --tests '*TsoTargetsTest*' --tests '*TsoApiTest*' :android:ui-screenshots:compileDebugUnitTestKotlin --continue` (first compile of the step) | BUILD FAILED by 1 test: `TsoInboxScreenTest.rowsTheNewDotAndARowOpensItsTicket` (the dot sits inside the merged row; fixed with `useUnmergedTree = true`). Everything else green: TokenContrastTest 23/23, TsoPushReasonsTest 3/3 and the other push classes, TargetStatusTest 12/12, TsoShellTest 13/13, TsoInboxTest 8/8, TsoTargetsTest 5/5, TsoApiTest 6/6; ui-screenshots test sources compile |
+| `gl.sh … :android:feature-tso:testDebugUnitTest --tests '*TsoInboxScreenTest*' :android:ui-screenshots:testDebugUnitTest --tests '*.TsoScreenshotTests' --tests '*.TsoLargeTextScreenshotTests' -Paron.screenshots.recordTo=<scratch>/goldens/A1 --continue` | BUILD SUCCESSFUL; TsoInboxScreenTest 4/4; TsoScreenshotTests 54/54 and TsoLargeTextScreenshotTests 10/10 written to the scratch dir only (no PNG committed). Looked at against screenshots 39 to 42: the cards, bars, colours, tabs, "Details →", the node title and the table match; fixes from the look: the table header ("Achie / ve- / ment" became "Achieve- / ment") and the 200 percent table (now one block per item), commit `bc67b047` |
+| Final Verify: `gl.sh … :android:feature-tso:testDebugUnitTest :android:core-ui:testDebugUnitTest :android:feature-auth:testDebugUnitTest :android:app-tso:testDebugUnitTest :android:core-sync:testDebugUnitTest :android:app-tso:assembleDebug :android:ui-screenshots:testDebugUnitTest --tests '*.TsoScreenshotTests' --tests '*.TsoLargeTextScreenshotTests' -Paron.screenshots.recordTo=<scratch> --continue` (on `fa599028` plus the table change) | BUILD FAILED by 4 tests, see below; `:android:app-tso:assembleDebug` built `app-tso-debug.apk` (29.4 MB) |
+| feature-tso | 34 classes, 182 tests, 0 failures, 0 errors |
+| feature-auth | 7 classes, 47 tests, 0 failures |
+| ui-screenshots (record mode, scratch dir) | 2 classes, 64 tests, 0 failures |
+| core-ui | 22 classes, 152 tests, 1 failure: `ScannerSourceSetsTest.aLiteralInMainIsFlaggedButNotInAnyTestSourceSet`, the Windows path-separator failure already recorded in step 2 (not A1's: A1 never touched the scanner or that test) |
+| app-tso | 7 classes, 42 tests, 1 failure: `TsoApiTest.everyCardIsANationalPostWithOnlyTheDateAndNeverTheSummary` saw 7 of the 8 card paths. Cause: the test's fake server appended to a plain `mutableListOf` from parallel OkHttp threads and lost one entry (the same test passed in the first run of this step). A1's test; fixed in `f88a46ee` (thread-safe request logs in TsoApiTest, TsoInboxTest, TsoTargetsTest) |
+| core-sync | 39 classes, 292 tests, 2 failures, both `DeviceTelemetryTest` (`onlyARegainAfterALossIsKeptAndOldDaysArePrunedWithoutABatch`: "The process cannot access the file because it is being used by another process" on its `telemetry-test.json`; `aProcessStartedOfflineRecordsItsFirstConnectionAsARegain`: a 10 s timeout). Not A1's: `git log 95a35b7d..HEAD -- android/core-sync/src/main/kotlin/com/aktcl/aron/core/sync/DeviceTelemetry.kt android/core-sync/src/test/kotlin/com/aktcl/aron/core/sync/DeviceTelemetryTest.kt` is empty; the push classes (incl. TsoPushReasonsTest 3/3) pass |
+| Re-run after the fixes: `gl.sh … :android:app-tso:testDebugUnitTest :android:feature-tso:testDebugUnitTest --tests '*.targets.*' :android:core-sync:testDebugUnitTest --tests '*DeviceTelemetryTest*' --continue` (on `f88a46ee`) | BUILD FAILED by 2 tests that are not A1's: app-tso 7 classes, 42 tests, 1 failure, `AppCoexistenceTest.nothingInTheManifestCollidesWithAnotherPackage` with `java.nio.file.FileSystemAlreadyExistsException` inside Robolectric's `DefaultNativeRuntimeLoader.maybeCopyFonts` (sandbox set-up, before the test body; it passed in the final verify above); TsoApiTest 6/6, TsoInboxTest 8/8, TsoTargetsTest 5/5. DeviceTelemetryTest 12 tests, 1 failure (`onlyARegainAfterALossIsKeptAndOldDaysArePrunedWithoutABatch`, its `telemetry-test.json` not found this time: the same Windows file race, a different test of the pair). TargetStatusTest 12/12 |
+| `python tools/ci/money-float-scan.py` | 0 lines not allowed; exit 1 only for the 4 stale allow entries of step 2 (ask to the lead, unchanged) |
+| `python tools/ci/kpi-format-corpus.py --check` | up to date |
+| `python -m unittest test_gates.TsoReleaseCopyName` (tools/ci) | 5 tests OK (SH-01: `aron_tso_app_<dd_mm_yyyy>_v<code>.apk`, the release-app.yml copy step from step 2 is unchanged) |
+
+CI not run, nothing pushed.
+
+Goldens needed, step 3 (record on the Linux runner, `-Proborazzi.record=true`; none committed from this laptop):
+- New, TsoScreenshotTests: `tso_target_monthly_en`, `tso_target_till_date_en`, `tso_target_monthly_bn`, `tso_target_sunlight_en`,
+  `tso_target_kept_en`, `tso_target_offline_empty_en`, `tso_target_loading_en`, `tso_target_details_cigarette_en`,
+  `tso_target_details_lighter_till_en`, `tso_target_details_till_en`, `tso_target_details_bn`, `tso_inbox_en`, `tso_inbox_bn`,
+  `tso_inbox_offline_pending_en`, `tso_inbox_empty_en`, `tso_inbox_sunlight_bn`.
+- New, TsoLargeTextScreenshotTests: `tso_target_status_200_bn`, `tso_target_details_200_en`, `tso_inbox_200_bn`.
+- The step 2 list above still stands (no step 3 change moves those pixels).
+
+## Not done
+
+- Goldens are not committed (Windows laptop; the lead records them on the Linux runner). Device checks (s8 rows 2, 3, 5 to 10,
+  39 to 42 and the inbox on a pilot phone against dev) not done: they need B1, B2 and B3 on dev.
+- `RoleHomes.tsoTiles` is still `@Deprecated`, not deleted: it waits for the lead to retire the shared role-home goldens (ask).
+- The money-float allow list still carries the 4 stale step-2 entries (lead's file; ask).
+- Not checked against a live server: the exact `children` answer of B2 for a house TSO and the B1 inbox page were built from
+  the contract and the B1/B2 status files, tested with fakes.
 
 ## Next step
 
-A1 step 3: (1) Target Status (`targets/*`, `TsoTargetsHost.kt`): `getTargetAchievement?month&product_level=category&children=zone`
-and Details `level&node_id&product_level=variant`, each cached per month; cards per D-TSO-MAN-40 through `Targets.cardPct`,
-`Targets.band`, `Targets.detailsBp`, `Targets.remaining` only; TargetStatusTest with every s4.3 fixture, tab state that keeps
-the node, the category filter, and the F3 ask: a card built from the eight Cigarette items is 33114 at 21/26 (R-F-01);
-R-F-24 per-node `period_days` = 0 prints "—"; decode every widened `*_bp` as Long (F1 asks 15 and 18; the generated
-`TargetAchievementRow` already has `Long?`). Goldens for screenshots 39 to 42. (2) The inbox (`notifications/*`,
-`TsoInboxHost.kt`): unread count read on Dashboard open and pull-to-refresh and on push reason `notification` (no
-polling), the plain list, mark read up to the newest id, offline cache; TsoInboxTest; push reasons in core-sync. (3) After
-the lead retires the shared role-home goldens, delete `RoleHomes.tsoTiles`. The shell, the look, the login, the Dashboard
-and Login & Bikroy Joma Status, the logout and the release copy are done (this step).
+A1 has no build item left in s5. For the next agent on this lane: (1) when the lead retires the shared role-home goldens,
+delete `RoleHomes.tsoTiles` (feature-home `RoleHome.kt`) and its `@Deprecated` callers; (2) when B1, B2 and B3 are on dev, run
+the s8 device checks for rows 2 to 10, 39 to 42, 44 and the inbox on a pilot phone (Target Status against real
+`children=zone` answers, a ticket update reaching the bell and the inbox, a `day_final_submitted` notice on an SR phone);
+(3) answer A2's and A3's questions on the inbox `TICKET_DETAIL` argument and `PushNotices.arrived` if they ask. The merge
+order of the wave (s6) puts A1 after W1 and before A2 and A3; `TsoScreenshotTests.kt` has A3's move pending on A3's branch,
+so expect a conflict there: keep A3's removal of the area cases and A1's appended step 2 and step 3 cases.
