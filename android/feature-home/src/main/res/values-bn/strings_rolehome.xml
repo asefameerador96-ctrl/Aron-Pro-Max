@@ -24,6 +24,7 @@
     <string name="rh_empty_title">%1$s শিগগিরই আসছে</string>
     <string name="rh_empty_hint">এই অংশটি তার লেনের সাথে আসবে। বাকি সব কাজ আগের মতোই চলবে।</string>
 
+    <string name="rh_tso_device_otp">ডিভাইস ওটিপি</string>
     <string name="rh_tso_otp_title">বাইন্ড কোড ওয়েবে দেওয়া হয়</string>
     <string name="rh_tso_otp_hint">কম্পিউটারে এই পাতাটি খুলুন, TSO হিসেবে সাইন ইন করে যে ফোনটি বাইন্ড হচ্ছে তার জন্য আজকের ৪ অঙ্কের কোডটি দেখুন।</string>
     <string name="rh_tso_otp_url_label">ARON ওয়েব ড্যাশবোর্ডের পাতা</string>

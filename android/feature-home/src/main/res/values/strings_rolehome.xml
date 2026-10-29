@@ -28,6 +28,7 @@
     <string name="rh_empty_hint">This section arrives with its lane. Everything else keeps working as usual.</string>
 
     <!-- TSO device OTP: bind codes are read on the web today -->
+    <string name="rh_tso_device_otp">Device OTP</string>
     <string name="rh_tso_otp_title">Bind codes are issued on the web</string>
     <string name="rh_tso_otp_hint">Open this page on a computer, sign in as the TSO and read today\'s 4-digit code for the phone being bound.</string>
     <string name="rh_tso_otp_url_label">Page on the ARON web dashboard</string>
