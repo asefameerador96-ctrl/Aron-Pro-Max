@@ -75,7 +75,9 @@ class GeoSnapshotRaceTest {
             assertTrue(held.await(10, java.util.concurrent.TimeUnit.SECONDS), "the reload is in progress")
             exec("INSERT INTO app.zone (code, name, territory_id) VALUES ('Z2','Zone2', $t1)"); geo.invalidate()
             // Not served the entry of the reload in progress (nothing is cached), not blocked beyond the wait: it loads alone and reads the edit.
-            assertEquals(2, geo.snapshot().geo.zoneTerritory.size)
+            // Answered while the reload still holds the lock (it is released only in the finally): waiting for the lock instead would time out here.
+            val answer = java.util.concurrent.CompletableFuture.supplyAsync { geo.snapshot().geo.zoneTerritory.size }
+            assertEquals(2, answer.get(5, java.util.concurrent.TimeUnit.SECONDS))
         } finally { release.countDown(); reloader.join(10_000) }
     }
 

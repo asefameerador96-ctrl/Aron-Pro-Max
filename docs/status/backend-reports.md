@@ -1,5 +1,9 @@
 # backend-reports lane status
 
+## Session 10 (2026-10-29): candidate 4 = part B (in progress)
+
+State: partb branch merged with INT 61 (0ead5e3f). Full `:backend:masterdata:test :backend:analytics:test` GREEN on the merged tree (92 classes, 46 min, before the checker-round test fixes); the touched classes re-run green after them (GeoSnapshotRaceTest 6, HouseDedupTest 1, AsWasProbeTest 5, AsWasReportScopeTest 6). Opus checker round 1: HELD one item (HouseDedupTest pin did not bite: Jdbi reuses the thread handle), fixed with a mutant (invalidate inside the transaction) that now fails; added the wait-path test (mutant: wait for the lock) and made AsWasReportScopeTest's analyst assertion check the status before `.result()`; D-REPORTS-REACH-GEO-06. Next after the push: selector candidate (D-LEAD-REPORT-SELECTOR-01, node + route together, -2 sentinel), handler-level refuseBrandCaller/requireBrandScope tests, docs/requests zone-move-day note, HANDOVER 8->9 leftovers B, D, E, F, G, REBUILD-01.
+
 ## HANDOVER 9 -> 10 (2026-10-29 ~06:50 UTC, session 9 at ~400k): candidates 0-3 are on INT or under the lead gate, part B is on a WIP branch
 
 **What is where.**
