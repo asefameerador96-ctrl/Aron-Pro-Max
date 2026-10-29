@@ -125,7 +125,7 @@ class ReportEngine(
                 )
                     .bindArray("ids", Long::class.javaObjectType, ids).bind("f", from).bind("t", to)
                     .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().groupBy({ it.first }, { it.second })
-                // The zone a route has today, for the reach test: a route that has since left the caller's zone is no longer theirs to read.
+                // The zone a route has today, for the reach test (a route in the caller's zone today is theirs; one that left it stays readable only for the dates it was there).
                 val nowZone = h.createQuery("SELECT id, zone_id FROM app.route WHERE id = ANY(:ids)").bindArray("ids", Long::class.javaObjectType, ids)
                     .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
                 val reachZones = if (reach.national) null else reach.zoneIds

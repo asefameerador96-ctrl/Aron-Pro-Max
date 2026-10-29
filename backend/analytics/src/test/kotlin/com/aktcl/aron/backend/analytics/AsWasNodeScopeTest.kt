@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 /**
  * A requested node is the node as it was on the dates asked (D-REPORTS-NODEASWAS-01), on real PostgreSQL 16: after a zone moves to another
  * territory, a drill-down on an old date reads the territory as it was then (the zones it had, the figures it had), the new territory has no
- * members on that date (403), a period that straddles the move counts each day by the territory the zone had that day, and the reach still bounds it.
+ * members on that date (200, no rows: D-REPORTS-NODEASWAS-07), a period that straddles the move counts each day by the territory the zone had that day, and the reach still bounds it.
  */
 class AsWasNodeScopeTest {
     private val day = LocalDate.parse("2026-10-04")   // the fixture's own date, not the dev seed's
@@ -158,7 +158,7 @@ class AsWasNodeScopeTest {
 
     @Test
     fun aNodeThatLostEveryZoneHasNoMembersFromThenOnAndKeepsThemBefore() {
-        // Both zones left T1 for T2 on day 2: T1 has no member from then on (403), still has both before it, and T2 has none on day 1.
+        // Both zones left T1 for T2 on day 2: T1 has no member from then on (200, no rows), still has both before it, and T2 has none on day 1.
         moveZ2()
         exec("UPDATE app.zone SET territory_id = $t2 WHERE code = 'Z1'")
         exec("UPDATE app.zone_history SET valid_to = DATE '$day2' WHERE zone_id IN ($z1, $z2) AND territory_id = $t1 AND valid_to IS NOT NULL")

@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 /**
  * A report's geography selector and its SKU and route placement are as they were on the report's dates (D-REPORTS-NODEASWAS-01): after Z2
  * moves to a new territory, route-std for the old territory on the fixture date still lists both zones' routes with the same figures, and the
- * new territory has no members on that date (403).
+ * new territory has no members on that date (200, no rows).
  */
 class AsWasReportScopeTest : ReportFixture() {
     /** The status first, so a refusal fails readably instead of as a missing field. */

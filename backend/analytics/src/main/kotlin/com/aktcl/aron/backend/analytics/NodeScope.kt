@@ -78,7 +78,7 @@ private val GEO_COLUMNS = mapOf("wing" to ("wing_id" to "wing_name"), "division"
 
 /**
  * Resolves `level` + `node_id` (or the caller's top reach node) to the zones to read. Reach comes only from the token's user:
- * a node outside it, or unknown, is 403 with no existence leak; a node is allowed only when every zone under it is in reach.
+ * a node outside it, or unknown, is 403 with no existence leak; a node inside the reach with no member in the window is 200 with no rows (D-REPORTS-NODEASWAS-07).
  * The default node may be a `house` (the reach's zones); route assignments alone give the caller's routes, read route-keyed
  * (D-BC-DASH-ROUTE-KEYED-01; labelled by the first route). An explicit node is never a route: a route-only caller reaches no zone (403).
  * [outOfScope] is the 403's code: `ERR_FORBIDDEN` for the older dashboards, `ERR_OUT_OF_SCOPE` where the contract names it.
