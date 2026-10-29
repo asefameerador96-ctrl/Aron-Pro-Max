@@ -79,7 +79,7 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
         val nowDhaka = clock.now().atZone(ZoneId.of("Asia/Dhaka"))
         var comparator: TrackingComparator? = null
         val (items, next) = db.readJdbi.withHandle<Pair<List<DailyTrackingRow>, Long?>, Exception> { h ->
-            val node = resolveScopedNode(h, reach, level, nodeId)
+            val node = resolveScopedNode(h, reach, level, nodeId, from = date)
             val login = DashboardSummaries.successfulLoginSql(h)
             val asWas = AsWasSql.probe(h, date)
             val rows = node.bind(

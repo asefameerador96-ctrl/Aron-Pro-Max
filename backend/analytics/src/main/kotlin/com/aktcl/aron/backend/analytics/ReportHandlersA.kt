@@ -121,7 +121,7 @@ object RouteStdReport : ReportHandler {
             SELECT g.route_code, g.route_name, p.sku_code, p.short_name AS sku_name, p.category_name, p.base_unit,
                    CASE WHEN p.base_unit = 'dozen' THEN 'dozen' ELSE 'pack' END AS entry_unit, CASE WHEN p.base_unit = 'dozen' THEN 1 ELSE p.base_per_pack END AS base_per_pack, sum(a.sold_qty_base)::bigint AS sold_qty_base,
                    sum(a.free_qty_base)::bigint AS free_qty_base, sum(a.gross_mtk)::bigint AS gross_mtk, sum(a.memo_count)::int AS memos
-              FROM dw.agg_daily_route_sku a JOIN dw.dim_product p ON p.sku_id = a.sku_id JOIN dw.dim_geo g ON g.route_id = a.route_id
+              FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN", lo = ":from", hi = ":to")} ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":from", hi = ":to")}
              WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("a.route_id")} AND $prod
              GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
             """,

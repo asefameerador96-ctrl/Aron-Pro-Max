@@ -206,7 +206,7 @@ class Wiring(
             val devices = JdbiDeviceStore(db)
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val dashboardService = DashboardService(db, clock)
-            val dashboards = DashboardDeps(dashboardService, reach, guard, clock)
+            val dashboards = DashboardDeps(dashboardService, reach, guard, clock, brandScope(users))
             // Row 3 (D-ROLES-02): a BRAND user's brands are read from app.user_brand_scope on every call, not from the token,
             // so a grant change narrows the next card at once; no brand row answers 403 (fail closed), every other level null.
             val national = NationalDeps(NationalDashboardService(db, clock, config), reach, guard, brandScope(users), clock = clock)

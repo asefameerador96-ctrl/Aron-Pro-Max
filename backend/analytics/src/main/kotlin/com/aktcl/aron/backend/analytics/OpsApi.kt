@@ -131,7 +131,7 @@ class OpsService(
         // F-SYS-084: past 17:30 Dhaka on the business date (the day's upload deadline), a phone still reporting pending rows is held too.
         val pastClose = !clock.now().isBefore(date.atTime(17, 30).atZone(java.time.ZoneId.of("Asia/Dhaka")).toInstant())
         return db.readJdbi.withHandle<SyncHealthPage, Exception> { h ->
-            val node = resolveScopedNode(h, reach, level, nodeId)
+            val node = resolveScopedNode(h, reach, level, nodeId, from = date)
             val base = "WITH " + healthBase.replace("%ZONE%", node.clause("g.zone_id", "g.route_id")).replace("%ZONEGZ%", node.clause("gz.zone_id", "gz.route_id"))
             fun q(sql: String) = node.bind(h.createQuery(sql).bind("d", date).bind("held_before", OffsetDateTime.ofInstant(heldBefore, java.time.ZoneOffset.UTC)).bind("past_close", pastClose))
             val s = q("$base SELECT count(DISTINCT device_id)::int, count(DISTINCT device_id) FILTER (WHERE pending > 0)::int, count(DISTINCT device_id) FILTER (WHERE held)::int, (SELECT coalesce(sum(r), 0) FROM (SELECT DISTINCT user_id, rejected AS r FROM rows) x)::int, (SELECT coalesce(sum(q), 0) FROM (SELECT DISTINCT user_id, quarantined AS q FROM rows) y)::int, (SELECT count(*) FROM days WHERE mism)::int FROM rows")
@@ -223,7 +223,8 @@ class OpsService(
     fun loginSubmit(reach: Reach, dashboards: DashboardService, date: LocalDate, level: String?, nodeId: Long?): LoginSubmitStatus {
         val summary = dashboards.summary(reach, level, nodeId, date, date)
         val days = db.readJdbi.withHandle<List<LoginDay>, Exception> { h ->
-            val node = resolveScopedNode(h, reach, level, nodeId)
+            val node = resolveScopedNode(h, reach, level, nodeId, from = date)
+            val asWas = AsWasSql.probe(h, date)   // a route is in the zone it had on the date (route_zone_history), not the zone it has now
             val login = DashboardSummaries.successfulLoginSql(h, "ag")   // Successful Login = login AND download AND check-in (D-REPORTS-LOGIN-01)
             node.bind(
                 h.createQuery(
@@ -231,7 +232,7 @@ class OpsService(
                     SELECT rd.*, g.route_code, g.route_name, au.username AS assigned_username, au.full_name AS assigned_user_full_name,
                            coalesce(($login), false) AS login_ok,
                            EXISTS (SELECT 1 FROM app.day_exception e WHERE e.status = 'approved' AND e.voided_at IS NULL AND rd.route_id = ANY (e.route_ids) AND rd.business_date BETWEEN e.from_date AND e.to_date) AS excused
-                      FROM app.route_day rd JOIN dw.dim_geo g ON g.route_id = rd.route_id LEFT JOIN app.app_user au ON au.id = rd.assigned_user_id
+                      FROM app.route_day rd ${AsWasSql.geo("g", "rd.route_id", "rd.business_date", lo = ":d", hi = ":d", plain = asWas.geo)} LEFT JOIN app.app_user au ON au.id = rd.assigned_user_id
                       LEFT JOIN dw.agg_daily_route ag ON ag.route_id = rd.route_id AND ag.business_date = rd.business_date
                      WHERE rd.business_date = :d AND rd.planned AND ${node.clause("g.zone_id", "g.route_id")} ORDER BY g.route_code
                     """,
@@ -248,7 +249,7 @@ class OpsService(
         }
         val live = days.filter { !it.excused }
         val zones = db.readJdbi.withHandle<List<ZoneFinalDto>, Exception> { h ->
-            val node = resolveScopedNode(h, reach, level, nodeId)
+            val node = resolveScopedNode(h, reach, level, nodeId, from = date)
             // A route-only caller: the zones its target routes were stamped with, and each zone's Final Submit (D-BC-DASH-ROUTE-KEYED-01).
             val sql = if (node.routeOnly) {
                 "SELECT zone_id, bool_or(zone_final_submitted) FROM dw.v_route_day v WHERE business_date = :d AND v.route_id = ANY(:routes) GROUP BY zone_id HAVING bool_or(is_target_route) ORDER BY zone_id"

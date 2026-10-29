@@ -104,17 +104,26 @@ class ReportEngine(
             val selectors = listOf("wing_id" to geo.wing, "division_id" to geo.division, "territory_id" to geo.territory, "zone_id" to geo.zone)
             for ((col, ids) in selectors) {
                 if (ids.isEmpty()) continue
-                val sel = h.createQuery("SELECT DISTINCT zone_id FROM dw.dim_geo WHERE $col = ANY(:ids)").bindArray("ids", Long::class.javaObjectType, ids).mapTo(Long::class.java).list()
-                val known = h.createQuery("SELECT count(DISTINCT $col) FROM dw.dim_geo WHERE $col = ANY(:ids)").bindArray("ids", Long::class.javaObjectType, ids).mapTo(Long::class.java).one()
-                if (known != ids.distinct().size.toLong() || (zones != null && !zones.containsAll(sel))) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected geography is outside your reach")
+                // As was: the zones the selected nodes had on the dates of the period (D-REPORTS-NODEASWAS-01), then narrowed by the reach below.
+                val members = memberZones(h, col, ids.distinct(), from, to)
+                // Every selected node, each by itself: known on those dates, holding today no zone outside the reach, and with a member in the reach.
+                if (!members.allowed(if (reach.national) null else reach.zoneIds, ids.distinct(), zones?.toSet())) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected geography is outside your reach")
+                val sel = members.zones
                 zones = if (zones == null) sel else zones.intersect(sel.toSet()).toList()
             }
             if (geo.route.isNotEmpty()) {
-                val rows = h.createQuery("SELECT route_id, zone_id FROM dw.dim_geo WHERE route_id = ANY(:ids)").bindArray("ids", Long::class.javaObjectType, geo.route)
+                // A route is in the zone(s) it had on the dates of the period (app.route_zone_history), not only the zone it has today: a route that moved
+                // is still its old zone's for an old period. Rows are read by zone and route both, so a route never widens the reach.
+                // A route with no history row at all (rows loaded with triggers off, a bulk import) is placed by the zone it has now (dw.dim_geo), as AsWasSql.geo does for the Ops lists.
+                val rows = h.createQuery(
+                    "SELECT route_id, zone_id FROM app.route_zone_history WHERE route_id = ANY(:ids) AND daterange(valid_from, valid_to, '[)') && daterange(:f, :t, '[]') " +
+                        "UNION SELECT g.route_id, g.zone_id FROM dw.dim_geo g WHERE g.route_id = ANY(:ids) AND NOT EXISTS (SELECT 1 FROM app.route_zone_history z WHERE z.route_id = g.route_id)",
+                )
+                    .bindArray("ids", Long::class.javaObjectType, geo.route).bind("f", from).bind("t", to)
                     .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
-                val inReach = rows.filter { (r, z) -> (zones == null || z in zones!!) && (routes == null || r in routes!!) }
+                val inReach = rows.filter { (r, z) -> (zones == null || z in zones!!) && (routes == null || r in routes!!) }.map { it.first }.distinct()
                 if (inReach.size != geo.route.distinct().size) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected route is outside your reach")
-                routes = inReach.map { it.first }
+                routes = inReach
             }
         }
         if (zones != null && zones.isEmpty()) zones = listOf(-1L)   // an empty reach reads nothing, never "everything"
