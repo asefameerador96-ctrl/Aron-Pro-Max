@@ -832,7 +832,7 @@ Ring plan for apps: ring 0 the owner's three phones, ring 1 20 to 50 pilot SRs, 
 
 ### A8.3 CI and CD gates
 
-**CI (`ci.yml`, 10 jobs since train 41, actions pinned by commit SHA).** Measured: 22.3 minutes wall before the split (run 37682155791, 9 of 9 green); after the split 27.3 and 28.6 minutes wall on the qa lane runs 40174952495 and 40178671065 (10 of 10 green), where the new "Backend analytics tests" job alone takes about 27 minutes and every other job finishes within 21 minutes, so the wall is the longest job rather than a sum (D-QA-CI-HANG-01; a migrated template database for FreshDb is the next cut, hand-offs file); the 15-minute target is **not met**.
+**CI (`ci.yml`, 10 jobs since train 41, actions pinned by commit SHA).** Measured: 22.3 minutes wall before the split (run 37682155791, 9 of 9 green); after the split 27.3 and 28.6 minutes wall on the qa lane runs 40174952495 and 40178671065 (10 of 10 green), where the new "Backend analytics tests" job alone takes about 27 minutes and every other job finishes within 21 minutes, so the wall is the longest job rather than a sum (D-QA-CI-HANG-01; a migrated template database for FreshDb is the next cut, hand-offs file); the 15-minute target is **not met**. Since train 60 the analytics suite (39.5 minutes on slow runners by 2026-10-29, against a 42-minute hang guard) runs as two complementary matrix jobs, "Backend analytics tests (a)" and "(b)", about 20 minutes each, so the 10 job definitions of ci.yml give 11 check runs (D-LEAD-CI-ANALYTICS-SHARD-01).
 
 | Job | Gate |
 |---|---|

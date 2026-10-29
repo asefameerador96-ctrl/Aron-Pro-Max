@@ -384,12 +384,21 @@ jobs:
   # The suite reached 23 minutes on a normal runner on 2026-10-28 and twice overran a 35-minute step on a slow one with
   # every finished class green (runs 1668 and 1671, attempt 1 each), so the step guard is 42 minutes and the job 50:
   # still a hang guard (a hang shows as one class with no END line in the log), no longer a slow-runner guard. D-LEAD-CI-ANALYTICS-TIMEOUT-01.
+  # The suite then reached 39.5 minutes on slow runners (runs 1684 and 1686, 2026-10-29) against that 42-minute guard, so
+  # it runs on two runners: shard a is the class list in backend/analytics/build.gradle.kts, shard b is every other class
+  # (an exclude of the same list, so the shards are complementary by construction and a new class lands in b). Same
+  # Gradle task, every class still runs exactly once, about 20 minutes a shard; the guards stay as they are and stay hang
+  # guards. Both shard names are required checks on main (tools/github-governance.ps1). D-LEAD-CI-ANALYTICS-SHARD-01.
   jvm-analytics:
-    name: Backend analytics tests
+    name: Backend analytics tests (${{ matrix.shard }})
     needs: changes
     if: needs.changes.outputs.jvm == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [a, b]
     services:
       postgres:
         image: postgres:16
@@ -407,6 +416,8 @@ jobs:
           --health-retries 20
     env:
       ARON_TEST_PG_URL: jdbc:postgresql://localhost:5432/aron_test?user=aron_test
+      # a or b: the shard this runner executes (backend/analytics/build.gradle.kts). D-LEAD-CI-ANALYTICS-SHARD-01.
+      ARON_ANALYTICS_SHARD: ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
@@ -414,14 +425,14 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
-      - name: Backend analytics tests
+      - name: Backend analytics tests (shard ${{ matrix.shard }})
         timeout-minutes: 42
         run: ./gradlew --console=plain :backend:analytics:test
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: jvm-analytics-test-reports
+          name: jvm-analytics-test-reports-${{ matrix.shard }}
           path: |
             backend/analytics/build/reports/tests/
             backend/analytics/build/test-results/

@@ -815,8 +815,18 @@ class Workflows(unittest.TestCase):
         self.assertNotIn("\n  contract:", c, "contract lint is folded into the gates job (CI audit s5 item 8)")
         gov = (ROOT / "tools" / "github-governance.ps1").read_text(encoding="utf-8")
         for name in re.findall(r"(?m)^    name: (.+)$", c):
-            if name.strip() != "Detect changed areas":
-                self.assertIn(f"'{name.strip()}'", gov, "every ci job is a required check on main")
+            name = name.strip()
+            if name == "Detect changed areas":
+                continue
+            # A matrix job's check runs carry the expanded value: one required check a shard (D-LEAD-CI-ANALYTICS-SHARD-01).
+            names = [name]
+            m = re.search(r"\$\{\{ matrix\.(\w+) \}\}", name)
+            if m:
+                values = re.search(r"(?m)^\s+%s: \[([^\]]+)\]" % m.group(1), c)
+                self.assertIsNotNone(values, f"matrix values of {m.group(1)} for {name}")
+                names = [name.replace(m.group(0), v.strip()) for v in values.group(1).split(",")]
+            for n in names:
+                self.assertIn(f"'{n}'", gov, "every ci job (every check run of a matrix job) is a required check on main")
         self.assertNotIn("'Contract lint'", gov, "no required check without a job")
         self.assertIn("tools/ci/last-green-int.sh", c, "every ci run shows the last green INT run and its age")
         self.assertIn("bash scripts/ci.sh generate", c, "web/src/contract/openapi.d.ts regenerate-and-diff")
@@ -1860,7 +1870,8 @@ esac
 
 class JvmSplit(unittest.TestCase):
     """Lead 2026-10-07: :backend:app:test (about 14.5 of 26 minutes) runs in its own parallel job; every test still runs
-    exactly once, and both job names are required checks on main."""
+    exactly once, and the job names are required checks on main. D-LEAD-CI-ANALYTICS-SHARD-01 (2026-10-29): the
+    analytics suite runs as two complementary shards (a = a class list, b = an exclude of the same list)."""
 
     def test_app_tests_run_once_in_their_own_job(self):
         c = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
@@ -1876,14 +1887,28 @@ class JvmSplit(unittest.TestCase):
         # limit and the 60-minute job limit make a hang fail fast.
         self.assertIn("-x :backend:app:test -x :backend:analytics:test", jvm)
         self.assertIn("run: ./gradlew --console=plain :backend:analytics:test", analytics)
-        self.assertIn("name: Backend analytics tests", analytics)
+        self.assertIn("name: Backend analytics tests (${{ matrix.shard }})", analytics)
         self.assertIn("if: needs.changes.outputs.jvm == 'true'", analytics, "runs exactly when the jvm job runs")
         self.assertIn("ARON_TEST_PG_URL", analytics, "its own PostgreSQL service")
         self.assertIn("timeout-minutes: 60", jvm)
         self.assertIn("timeout-minutes: 45\n        run: >-", jvm, "the test step fails before the job does")
+        # D-LEAD-CI-ANALYTICS-SHARD-01: two shards on two runners, complementary by construction (b excludes exactly the
+        # list a includes), one Gradle task with no other filter, both still under the 42-minute hang guard.
+        self.assertIn("matrix:\n        shard: [a, b]", analytics)
+        self.assertIn("fail-fast: false", analytics, "one red shard does not hide the other's result")
+        self.assertIn("ARON_ANALYTICS_SHARD: ${{ matrix.shard }}", analytics)
+        self.assertEqual(analytics.count("timeout-minutes: 42"), 1, "the step guard, once (the matrix copies it)")
+        self.assertIn("name: jvm-analytics-test-reports-${{ matrix.shard }}", analytics, "one artifact name a shard")
+        kts = (ROOT / "backend" / "analytics" / "build.gradle.kts").read_text(encoding="utf-8")
+        self.assertIn('System.getenv("ARON_ANALYTICS_SHARD")', kts)
+        self.assertIn('"a" -> shardA.forEach { includeTestsMatching(it) }', kts)
+        self.assertIn('"b" -> shardA.forEach { excludeTestsMatching(it) }', kts, "b is the complement of a")
+        self.assertIn("else -> throw GradleException", kts, "a wrong value never runs a wrong subset")
         gov = (ROOT / "tools" / "github-governance.ps1").read_text(encoding="utf-8")
-        for name in ("'Shared, db and backend (build and tests)'", "'Backend app tests'", "'Backend analytics tests'"):
+        for name in ("'Shared, db and backend (build and tests)'", "'Backend app tests'",
+                     "'Backend analytics tests (a)'", "'Backend analytics tests (b)'"):
             self.assertIn(name, gov)
+        self.assertNotIn("'Backend analytics tests',", gov, "the unsharded name is no longer a check")
 
 
 class LakeAndBlobRetention(unittest.TestCase):
