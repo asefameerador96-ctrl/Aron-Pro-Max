@@ -5553,7 +5553,7 @@ Per zone and business date: route and visit counts, geo and risk counts, and sal
 | `last_event_id` | bigint | not null |  | Highest app.domain_event id folded into this row by the projector (replays are ignored). |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 | `final_submitted_at` | timestamp with time zone | null |  | UTC time of the zone-day's first Final Submit, or of the midnight auto-submit. |
-| `auto_submitted` | boolean | not null |  | True when the midnight job auto-submitted the zone-day (dw only; app.final_submit is not written). |
+| `auto_submitted` | boolean | not null |  | Retired (V0141, D-TSO-MAN-30): always false. The midnight job writes a real app.final_submit row (via job), and app.final_submit is the only source of a zone-day's Final Submit; final_submitted_at is the first live app.final_submit row. Kept so the stable dw view keeps its column. |
 
 Keys: `PRIMARY KEY (business_date, zone_id)`
 
@@ -6925,7 +6925,7 @@ Stable view: one row per route and business date (dw.agg_daily_route) with the z
 | `final_submitted_at` | timestamp with time zone | null |  | UTC time of the Final Submit. |
 | `zone_final_submitted` | boolean | null |  | dw.agg_daily_zone.final_submitted of the route-day's stamped zone: every target route of that zone-day is final-submitted (the midnight auto-submit does not set it; see zone_auto_submitted). |
 | `zone_final_submitted_at` | timestamp with time zone | null |  | UTC time of that zone-day's first Final Submit or midnight auto-submit. |
-| `zone_auto_submitted` | boolean | null |  | True when the midnight job auto-submitted that zone-day. |
+| `zone_auto_submitted` | boolean | null |  | Retired (V0141): always false (dw.agg_daily_zone.auto_submitted). A midnight-job Final Submit is a live app.final_submit row (via job) and shows in zone_final_submitted_at like any other. |
 | `first_sale_at` | timestamp with time zone | null |  | UTC time of the route-day's first memo (First Sale Time). |
 | `last_sale_at` | timestamp with time zone | null |  | UTC time of the route-day's last memo (Last Sale Time). |
 | `target_outlets` | integer | null |  | Outlets planned for the route-day, frozen at the first bundle of the day (strike-rate denominator). |
