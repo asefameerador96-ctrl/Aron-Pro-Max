@@ -13,14 +13,27 @@ import re
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
+import base64
+
 DOCS = [("summary", "Summary", "README.md"), ("hld", "High-level design", "01-high-level-design.md"),
-        ("lld", "Low-level design", "02-low-level-design.md"), ("cost", "Resources and cost", "03-resource-plan-and-cost.md")]
+        ("lld", "Low-level design", "02-low-level-design.md"), ("cost", "Resources and cost", "03-resource-plan-and-cost.md"),
+        ("precise", "Precise version", "04-precise-version.md")]
 ANCHORS = {"README.md": "#summary", "01-high-level-design.md": "#hld", "02-low-level-design.md": "#lld",
-           "03-resource-plan-and-cost.md": "#cost", "cost-model.py": "#cost"}
+           "03-resource-plan-and-cost.md": "#cost", "04-precise-version.md": "#precise", "cost-model.py": "#cost"}
+
+
+def image_tag(src, alt):
+    """Embed the PNG as a data URI so the page is self-contained."""
+    p = HERE / src
+    if not p.exists():
+        return f'<p class="muted">[missing figure {html.escape(src)}]</p>'
+    data = base64.b64encode(p.read_bytes()).decode("ascii")
+    return f'<figure class="fig"><img src="data:image/png;base64,{data}" alt="{html.escape(alt)}" loading="lazy"></figure>'
 
 
 def inline(s):
     s = html.escape(s, quote=False)
+    s = re.sub(r"`(0[1-4]-[a-z-]+\.md)`", lambda m: f'<a href="{ANCHORS.get(m.group(1), "#")}"><code>{m.group(1)}</code></a>', s)
     s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
     s = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)
 
@@ -36,7 +49,7 @@ def table(lines):
     rows = [[c.strip() for c in ln.strip().strip("|").split("|")] for ln in lines]
     head, sep, body = rows[0], rows[1], rows[2:]
     align = ["right" if c.endswith(":") and c.startswith("-") else ("center" if c.startswith(":") and c.endswith(":") else "left") for c in sep]
-    out = ['<div class="tbl"><table>', "<thead><tr>"]
+    out = [f'<div class="tbl"><table class="{"wide" if len(head) >= 4 else "narrow"}">', "<thead><tr>"]
     for i, c in enumerate(head):
         out.append(f'<th style="text-align:{align[i] if i < len(align) else "left"}">{inline(c)}</th>')
     out.append("</tr></thead><tbody>")
@@ -76,15 +89,21 @@ def convert(md, section_id):
                 buf.append(lines[j]); j += 1
             out.append(table(buf)); i = j
             continue
+        im = re.match(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$", ln)
+        if im:
+            out.append(image_tag(im.group(2), im.group(1))); i += 1
+            continue
+        cap = re.match(r"^\*(?!\*)(.+)\*\s*$", ln)
+        if cap:
+            out.append(f'<p class="caption">{inline(cap.group(1))}</p>'); i += 1
+            continue
         m = re.match(r"^(#{1,3})\s+(.*)$", ln)
         if m:
-            level = len(m.group(1)); text = m.group(2)
+            level = len(m.group(1)) + 1; text = m.group(2)   # the hero is the page's only h1
             hcount += 1
             hid = f"{section_id}-{hcount}"
-            if level == 1:
-                out.append(f'<h1 id="{hid}">{inline(text)}</h1>')
-            else:
-                out.append(f'<h{level} id="{hid}">{inline(text)}</h{level}>')
+            cls = ' class="doc-title"' if level == 2 else ""
+            out.append(f'<h{level} id="{hid}"{cls}>{inline(text)}</h{level}>')
             i += 1
             continue
         if ln.strip() == "---":
@@ -104,7 +123,7 @@ def convert(md, section_id):
         if ln.strip() == "":
             i += 1; continue
         j = i; buf = []
-        while j < n and lines[j].strip() != "" and not lines[j].startswith(("|", "#", "```")) and not re.match(r"^\s*([-*]|\d+\.)\s+", lines[j]):
+        while j < n and lines[j].strip() != "" and not lines[j].startswith(("|", "#", "```", "![")) and not re.match(r"^\s*([-*]|\d+\.)\s+", lines[j]):
             buf.append(lines[j].strip()); j += 1
         out.append(f"<p>{inline(' '.join(buf))}</p>"); i = j
     return "\n".join(out)
@@ -136,9 +155,13 @@ header.hero p{max-width:72ch;color:var(--muted);margin:0}
 section.doc{padding-block:36px 8px;border-bottom:1px solid var(--line)}
 section.doc:last-child{border-bottom:0}
 h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.2;text-wrap:balance}
-section.doc h1{font-size:clamp(24px,3vw,32px);margin:0 0 12px;padding-left:12px;border-left:4px solid var(--accent)}
-h2{font-size:22px;margin:36px 0 10px}
-h3{font-size:17px;margin:26px 0 8px;color:var(--muted)}
+section.doc h2.doc-title{font-size:clamp(24px,3vw,32px);margin:0 0 12px;padding-left:12px;border-left:4px solid var(--accent);color:var(--fg)}
+h3{font-size:22px;margin:36px 0 10px}
+h4{font-size:17px;margin:26px 0 8px;color:var(--muted)}
+.fig{margin:16px 0 4px;padding:8px;background:#ffffff;border:1px solid var(--line);border-radius:6px;overflow-x:auto}
+.fig img{display:block;max-width:100%;height:auto;min-width:640px}
+.caption{font-size:13px;color:var(--muted);margin:4px 0 18px;font-style:italic}
+.muted{color:var(--muted)}
 p{max-width:78ch;margin:10px 0}
 ul,ol{max-width:78ch;padding-left:22px;margin:8px 0}
 li{margin:4px 0}
@@ -148,7 +171,8 @@ pre{background:var(--code-bg);padding:12px 14px;border-radius:6px;overflow-x:aut
 pre code{background:none;padding:0}
 hr{border:0;border-top:1px solid var(--line);margin:28px 0}
 .tbl{overflow-x:auto;margin:14px 0;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
-table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+table.wide{min-width:720px}
 th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
 th{background:var(--accent-soft);font-weight:600;white-space:nowrap}
 tbody tr:last-child td{border-bottom:0}
@@ -175,12 +199,12 @@ def main():
     parts.append("""<header class="hero">
 <div class="eyebrow">AKTCL field-sales platform · design pack · 2026-10-29</div>
 <h1>What Aron needs in the final Azure account for 8,500 field users, and what it costs each month</h1>
-<p>High-level and low-level design, every resource with its specification and the reason for it, and the monthly Azure cost per resource at list prices read from Microsoft's price API on the date above. Designed, written as infrastructure code and tested at pilot size; the fleet-size proof runs in the final account before the first rollout wave.</p>
+<p>High-level and low-level design with Azure-icon diagrams, every resource with its specification, quantity and the reason for both, and the monthly Azure cost per resource at list prices read from Microsoft's price API on 2026-10-29. Core production is written as infrastructure code and rehearsed at pilot size in the test account; the DR tier, private endpoints, worker scaling, the photo consumer and the signing vault are designed only; the 8,500-user proof and the timed drills can only run in the final account.</p>
 <div class="kpis">
-<div class="kpi"><div class="l">Core production</div><div class="v">USD 5,980</div><div class="s">a month, zone-redundant, one region</div></div>
-<div class="kpi"><div class="l">Core + DR tier</div><div class="v">USD 7,420</div><div class="s">a month; 6,560 with a 1-year database reservation</div></div>
-<div class="kpi"><div class="l">Design peaks</div><div class="v">400 req/s</div><div class="s">morning storm; 4,500 rows/s at check-out</div></div>
-<div class="kpi"><div class="l">Recovery</div><div class="v">RPO 0</div><div class="s">zone loss; region loss RPO 15 min, RTO 4 h</div></div>
+<div class="kpi"><div class="l">Aron core production</div><div class="v">USD 5,490</div><div class="s">a month, zone-redundant, one region</div></div>
+<div class="kpi"><div class="l">Spec: core + DR + buffer</div><div class="v">USD 8,700</div><div class="s">a month; budget 9,000 (DR 1,210, buffer 2,000)</div></div>
+<div class="kpi"><div class="l">Spec+: with the existing sites</div><div class="v">USD 9,540</div><div class="s">a month; 8,370 with 1-year database reservations</div></div>
+<div class="kpi"><div class="l">Design peaks</div><div class="v">400 req/s</div><div class="s">morning storm; 4,500 rows/s at check-out; RPO 0 on a zone loss</div></div>
 </div>
 </header>""")
     for sid, title, fname in DOCS:
