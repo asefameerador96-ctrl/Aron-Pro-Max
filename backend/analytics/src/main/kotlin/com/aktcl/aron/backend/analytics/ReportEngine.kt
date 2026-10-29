@@ -104,9 +104,11 @@ class ReportEngine(
             val selectors = listOf("wing_id" to geo.wing, "division_id" to geo.division, "territory_id" to geo.territory, "zone_id" to geo.zone)
             for ((col, ids) in selectors) {
                 if (ids.isEmpty()) continue
-                val sel = h.createQuery("SELECT DISTINCT zone_id FROM dw.dim_geo WHERE $col = ANY(:ids)").bindArray("ids", Long::class.javaObjectType, ids).mapTo(Long::class.java).list()
-                val known = h.createQuery("SELECT count(DISTINCT $col) FROM dw.dim_geo WHERE $col = ANY(:ids)").bindArray("ids", Long::class.javaObjectType, ids).mapTo(Long::class.java).one()
-                if (known != ids.distinct().size.toLong() || (zones != null && !zones.containsAll(sel))) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected geography is outside your reach")
+                // As was: the zones the selected nodes had on the dates of the period (D-REPORTS-NODEASWAS-01), then narrowed by the reach below.
+                val members = memberZones(h, col, ids.distinct(), from, to)
+                // Every selected node, each by itself: known on those dates, holding today no zone outside the reach, and with a member in the reach.
+                if (!members.allowed(if (reach.national) null else reach.zoneIds, ids.distinct(), zones?.toSet())) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected geography is outside your reach")
+                val sel = members.zones
                 zones = if (zones == null) sel else zones.intersect(sel.toSet()).toList()
             }
             if (geo.route.isNotEmpty()) {
