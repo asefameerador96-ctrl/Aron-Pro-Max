@@ -114,10 +114,10 @@ class ReportEngine(
             if (geo.route.isNotEmpty()) {
                 // A route is in the zone(s) it had on the dates of the period (app.route_zone_history), not only the zone it has today: a route that moved
                 // is still its old zone's for an old period. Rows are read by zone and route both, so a route never widens the reach.
-                // A route with no history row at all (rows loaded with triggers off, a bulk import) falls back to the zone it has now.
+                // A route with no history row at all (rows loaded with triggers off, a bulk import) is placed by the zone it has now (dw.dim_geo), as AsWasSql.geo does for the Ops lists.
                 val rows = h.createQuery(
                     "SELECT route_id, zone_id FROM app.route_zone_history WHERE route_id = ANY(:ids) AND daterange(valid_from, valid_to, '[)') && daterange(:f, :t, '[]') " +
-                        "UNION SELECT g.route_id, g.zone_id FROM dw.dim_geo g WHERE g.route_id = ANY(:ids) AND NOT EXISTS (SELECT 1 FROM app.route_zone_history x WHERE x.route_id = g.route_id)",
+                        "UNION SELECT g.route_id, g.zone_id FROM dw.dim_geo g WHERE g.route_id = ANY(:ids) AND NOT EXISTS (SELECT 1 FROM app.route_zone_history z WHERE z.route_id = g.route_id)",
                 )
                     .bindArray("ids", Long::class.javaObjectType, geo.route).bind("f", from).bind("t", to)
                     .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
