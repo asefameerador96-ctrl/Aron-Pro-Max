@@ -119,7 +119,7 @@ export function ChannelCallsCard({ slot, locale }: { slot: Slot<ChannelSlice>; l
           return (
             <div className="flex items-center justify-between gap-2">
               <ChannelLegend rows={rows} locale={locale} valueOf={(v) => qty(locale, v)} testPrefix="ch-calls" denominator={d.denominator} />
-              <ChannelRadial rows={rows} label={t(locale, "nat.ch_calls")} />
+              <ChannelRadial rows={rows} label={t(locale, "nat.ch_calls")} denominator={d.denominator} />
             </div>
           );
         }}

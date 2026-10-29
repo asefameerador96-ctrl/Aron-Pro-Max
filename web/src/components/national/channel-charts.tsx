@@ -7,16 +7,17 @@ import { CHANNEL_COLOR } from "./parts";
 
 type Row = { code: ChannelCode; value: number };
 
-/** Concentric rings, outermost first: each channel's arc is its share of the total on its own pale track. */
-export function ChannelRadial({ rows, label, size = 130 }: { rows: Row[]; label: string; size?: number }) {
-  const total = rows.reduce((s, r) => s + Math.max(0, r.value), 0);
+/** Concentric rings, outermost first: each channel's arc is its share on its own pale track. The share is over the card's
+ *  denominator, the legend's (tso-manual X3 fix round, R-W-13 (6)): with unclassified calls the arcs add up to less than a full
+ *  turn, as the printed shares add up to less than 100 %. A 0 denominator draws the tracks only. */
+export function ChannelRadial({ rows, label, denominator, size = 130 }: { rows: Row[]; label: string; denominator: number; size?: number }) {
   const gap = 7.2;
   return (
     <svg role="img" aria-label={label} viewBox="0 0 100 100" width={size} height={size} data-testid="channel-radial" className="shrink-0 -rotate-90">
       {rows.map((r, i) => {
         const rad = 46 - i * gap;
         const c = 2 * Math.PI * rad;
-        const v = total > 0 ? Math.max(0, r.value) / total : 0;
+        const v = denominator > 0 ? Math.min(1, Math.max(0, r.value) / denominator) : 0;
         return (
           <g key={r.code}>
             <circle cx="50" cy="50" r={rad} fill="none" stroke="var(--state-skeleton)" strokeWidth="3.2" />
