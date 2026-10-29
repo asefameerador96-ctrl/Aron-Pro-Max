@@ -2,6 +2,7 @@ package com.aktcl.aron.core.media
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.net.Uri // tso-manual A2
 import com.aktcl.aron.core.common.WallClock
 
 /**
@@ -39,4 +40,20 @@ class MediaComponents(
     }
 
     suspend fun discard(mediaUuid: String) = capturer.discard(mediaUuid)
+
+    // tso-manual A2: gallery pictures (D-TSO-MAN-23 ticket photos, D-TSO-MAN-36 feedback; GalleryImport.kt)
+    val gallery: GalleryImporter<Bitmap> = GalleryImporter(AndroidImageCodec, store, clock, businessDate, config = config)
+    private val resolver = context.applicationContext.contentResolver
+
+    /**
+     * A picture picked with [rememberGalleryPicker]: read once, compressed to the camera's budget with every EXIF segment
+     * dropped, stored, claimed for [ref] and queued exactly like a camera photo ([attach], with no shutter fix). Idempotent by
+     * [mediaUuid]: a repeat returns the stored item without reading [uri] again. Call it right after the pick (the read
+     * grant does not outlive the screen). Throws [GalleryImportException] (show its `messageRes`) when the picture cannot be
+     * added; an evidence purpose is refused (camera-only).
+     */
+    suspend fun importFromGallery(mediaUuid: String, uri: Uri, ref: MediaRef): MediaItem {
+        gallery.import(mediaUuid, ref) { resolver.openInputStream(uri) }
+        return attach(mediaUuid, ref, stamp = null)
+    }
 }

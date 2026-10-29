@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- tso-manual A2: pictures from the phone's gallery (D-TSO-MAN-23, D-TSO-MAN-36; GalleryImport.kt) -->
+    <string name="media_gallery_failed">This picture could not be added. Choose another one.</string>
+    <string name="media_gallery_too_large">This picture is too large. Choose a smaller one.</string>
+    <string name="media_gallery_unavailable">The gallery could not open on this phone.</string>
+</resources>
