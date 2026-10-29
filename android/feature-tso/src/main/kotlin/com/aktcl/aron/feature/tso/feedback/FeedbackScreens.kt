@@ -253,6 +253,8 @@ fun FeedbackFormScreen(
                     { if (queued) onBack() else scope.launch { state.submit() } },
                     Modifier.fillMaxWidth(0.62f).testTag(FeedbackTags.SEND), style = TsoButtonStyle.Lime,
                     enabled = result !is FeedbackResult.NoCategories && !(queued && onSaved != null),
+                    // screenshot 43: the floppy-disk glyph on Save (X4b fix round); the legacy "Done" has none
+                    icon = if (queued && onSaved == null) null else com.aktcl.aron.core.ui.AronIcons.Save,
                 )
             }
             // under the button, so Save does not move when the form says it was saved (legacy wiring only)
