@@ -14,9 +14,10 @@ class GeoSnapshot(val geo: Geo, val version: Long)
 
 /** Geography snapshot from PostgreSQL, refreshed at most every [ttlMs] (master data changes rarely). */
 class GeoRepository(private val db: Database, private val clock: AronClock = AronClock.SYSTEM, private val ttlMs: Long = 60_000) {
-    private class Cached(val at: Long, val snap: GeoSnapshot)
+    /** A snapshot is valid only for the [gen]eration it was read under: [invalidate] bumps the generation, so no reader accepts an entry that predates it. */
+    private class Cached(val at: Long, val snap: GeoSnapshot, val gen: Long)
     private val cached = AtomicReference<Cached?>(null)
-    /** Bumped by [invalidate]: a load that began before it read the geography before the edit and must not be installed. */
+    /** Bumped by [invalidate]: a load that began before it read the geography before the edit and must not be served again. */
     private val generation = java.util.concurrent.atomic.AtomicLong()
     private val lock = java.util.concurrent.locks.ReentrantLock()
     private var lastGeo: Geo? = null
@@ -29,26 +30,26 @@ class GeoRepository(private val db: Database, private val clock: AronClock = Aro
     /** The geography version (see [GeoSnapshot]); refreshes the snapshot when it is older than the TTL. */
     fun version(): Long = snapshot().version
 
+    private fun fresh(c: Cached?): GeoSnapshot? = c?.takeIf { clock.now().toEpochMilli() - it.at < ttlMs && it.gen == generation.get() }?.snap
+
     /** The current snapshot and its version as ONE pair (a reach computed from the geography is cached under the version of that same geography). */
     fun snapshot(): GeoSnapshot {
-        cached.get()?.let { if (clock.now().toEpochMilli() - it.at < ttlMs) return it.snap }
-        lock.lock()   // one reload at a time: callers arriving at the expiry share it
+        fresh(cached.get())?.let { return it }
+        lock.lock()   // one reload at a time: callers arriving at the expiry share one
         try {
-            cached.get()?.let { if (clock.now().toEpochMilli() - it.at < ttlMs) return it.snap }
+            fresh(cached.get())?.let { return it }
             var attempt = 0
             while (true) {
                 val gen = generation.get()
                 val g = load()
                 afterLoad?.invoke()
-                val snap = GeoSnapshot(g, register(g))
-                // Install first, then look at the generation: invalidate() bumps it BEFORE it clears `cached`, so an invalidation that lands between the two
-                // steps is seen here (and the entry removed), and one that lands after the check clears the entry itself. No ordering keeps a pre-edit snapshot.
-                val c = Cached(clock.now().toEpochMilli(), snap)
-                cached.set(c)
-                if (generation.get() == gen) return snap
-                cached.compareAndSet(c, null)
+                val stale = generation.get() != gen
                 // An edit committed and invalidated while this load ran: it may predate the edit. Read again; after a few tries answer with what was read, uncached.
-                if (++attempt >= 3) return snap
+                if (stale && ++attempt < 3) continue
+                val snap = GeoSnapshot(g, register(g))
+                // Tagged with the generation it was read under: an invalidation after this point (even one statement later) makes every reader reject the entry.
+                if (!stale) cached.set(Cached(clock.now().toEpochMilli(), snap, gen))
+                return snap
             }
         } finally { lock.unlock() }
     }
