@@ -279,11 +279,14 @@ class FinalSubmitState(private val api: FinalSubmitApi, private val userId: Long
     suspend fun getSalesData() {
         val s = _s.value
         if (busy || s.phase !is FsPhase.Pick && s.phase !is FsPhase.Failed) return
-        val errors = validateFs(s.zoneId, s.date, today())
-        if (errors.isNotEmpty()) { _s.value = s.copy(errors = errors); return }
+        // the sales date is today's business date when the data is asked for, not when the screen state was made (a state
+        // kept over midnight asks for the new day)
+        val date = today()
+        val errors = validateFs(s.zoneId, date, date)
+        if (errors.isNotEmpty()) { _s.value = s.copy(date = date, errors = errors); return }
         busy = true
-        _s.value = s.copy(phase = FsPhase.Loading, errors = emptyList())
-        try { readPreview(checkNotNull(s.zoneId), s.date, null) } finally { busy = false }
+        _s.value = s.copy(date = date, phase = FsPhase.Loading, errors = emptyList())
+        try { readPreview(checkNotNull(s.zoneId), date, null) } finally { busy = false }
     }
 
     private suspend fun readPreview(zone: Long, date: String, notice: FsNotice?) {

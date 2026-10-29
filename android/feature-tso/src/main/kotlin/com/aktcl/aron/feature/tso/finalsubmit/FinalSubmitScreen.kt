@@ -96,9 +96,10 @@ fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Mod
     LaunchedEffect(state) { if (!state.ui.value.cascadeTried) { state.loadCascade(); if (!state.ui.value.cascade) state.loadZones() } }
     val phase = ui.phase
     val onRoutes = phase is FsPhase.Review || phase is FsPhase.Submitting || phase is FsPhase.Done
-    // system back and the on-screen back do the same: from the routes to the pickers (Done: as OK), from the pickers out
+    // system back and the on-screen back do the same in every phase: from the routes to the pickers (Done: as OK), from the
+    // pickers (also with a failure line) out through onBack, so the next visit starts a fresh state (checker fix, D-A3-08)
     val back: () -> Unit = { if (phase is FsPhase.Review) state.retry() else if (phase is FsPhase.Done) state.nextZone() else onBack() }
-    BackHandler(enabled = phase is FsPhase.Review || phase is FsPhase.Done) { back() }
+    BackHandler(enabled = true) { back() }
     Dialogs(state, phase)
     TsoFrame(
         stringResource(R.string.tso_fs_title), backOnly(back), homeButton = false, modifier = modifier,

@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -175,6 +176,21 @@ class FinalSubmitLogicTest {
         assertTrue(s.ui.value.phase is FsPhase.AlreadySubmitted)
     }
 
+    /** Checker fix (low): a state kept over midnight asks for the new day's sales, not the day the state was made. */
+    @Test fun getSalesDataAsksForTodayWhenItIsTapped() = runBlocking {
+        var today = "2026-10-26"
+        val dates = ArrayList<String>()
+        val api = object : FinalSubmitApi by Api() {
+            override suspend fun preview(zoneId: Long, date: String): FsPreviewOutcome { dates += date; return FsPreviewOutcome.Failed(FsFailure.OFFLINE) }
+        }
+        val s = FinalSubmitState(api, 7) { today }
+        s.pickZone(10); s.getSalesData()
+        today = "2026-10-27" // the TSO comes back to the kept screen after midnight
+        s.retry(); s.getSalesData()
+        assertEquals(listOf("2026-10-26", "2026-10-27"), dates)
+        assertEquals("2026-10-27", s.ui.value.date)
+    }
+
     @Test fun noZoneIsAnErrorAndPreviewIsNotCalled() = runBlocking {
         val api = Api(); val s = st(api); s.getSalesData()
         assertEquals(listOf(FsError.NO_ZONE), s.ui.value.errors); assertEquals(0, api.previewCalls)
@@ -291,5 +307,42 @@ class FinalSubmitScreenTest {
         runBlocking { s.pickLevel(4, 41); s.getSalesData(); s.submit() }; compose.waitForIdle()
         compose.onNodeWithTag(FsTags.NOTICE).assertExists()
         compose.onNodeWithTag(FsTags.SUBMIT).assertIsEnabled()
+    }
+}
+
+/**
+ * Checker fix (low): the system back on the pickers (also with a failure line on them) leaves through the same back as the
+ * on-screen arrow, so FinalSubmitFlow starts a fresh state next time (no old picks or failure banner, today's date).
+ */
+@RunWith(AndroidJUnit4::class)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34])
+class FinalSubmitBackTest {
+    @get:Rule val compose = androidx.compose.ui.test.junit4.createAndroidComposeRule<androidx.activity.ComponentActivity>()
+
+    @Test fun theSystemBackOnThePickersLeavesThroughTheSameBack() {
+        var backs = 0
+        val s = FinalSubmitState(Api(previews = mutableListOf(FsPreviewOutcome.Failed(FsFailure.OFFLINE))), 7) { D }
+        val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides context) { AronTheme(AppLanguage.EN) { FinalSubmitScreen(s, onBack = { backs++ }) } } }
+        compose.waitForIdle()
+        runBlocking { s.pickZone(10); s.getSalesData() }; compose.waitForIdle()
+        compose.onNodeWithTag(FsTags.FAILED).assertExists()
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle()
+        assertEquals("the system back left through onBack", 1, backs)
+        compose.onNodeWithContentDescription("Back").performClick(); compose.waitForIdle()
+        assertEquals("the on-screen back does the same", 2, backs)
+    }
+
+    @Test fun theSystemBackOnTheRoutesReturnsToThePickers() {
+        var backs = 0
+        val s = FinalSubmitState(Api(previews = mutableListOf(FsPreviewOutcome.Ok(preview(warn = emptyList())))), 7) { D }
+        val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides context) { AronTheme(AppLanguage.EN) { FinalSubmitScreen(s, onBack = { backs++ }) } } }
+        compose.waitForIdle()
+        runBlocking { s.pickZone(10); s.getSalesData() }; compose.waitForIdle()
+        assertTrue(s.ui.value.phase is FsPhase.Review)
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle()
+        assertEquals(FsPhase.Pick, s.ui.value.phase); assertEquals(0, backs)
     }
 }
