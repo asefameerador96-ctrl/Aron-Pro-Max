@@ -216,3 +216,9 @@ PUT /v1/admin/mdm/policies/{policy_id} -> exempt: national module (mdm grant), n
 # tso-manual B1
 GET /v1/me/notifications -> case InboxTest#ownRowsOnly
 POST /v1/me/notifications/read -> case InboxTest#ownRowsOnly
+# tso-manual B1: support tickets (D-TSO-MAN-22: a reporter reads its own tickets, 404 for another's; the desk permission reads and works all)
+GET /v1/support/tickets -> case SupportTicketTest#reporterSeesOwnTicketsOnlyAndTheDeskSeesAll
+GET /v1/support/tickets/summary -> case SupportTicketTest#summaryCountsTheCallersTicketsAndTheDeskCountsAll
+GET /v1/support/tickets/{ticket_uuid} -> case SupportTicketTest#reporterSeesOwnTicketsOnlyAndTheDeskSeesAll
+PATCH /v1/support/tickets/{ticket_uuid} -> case SupportTicketTest#reporterSeesOwnTicketsOnlyAndTheDeskSeesAll
+POST /v1/support/tickets/{ticket_uuid}/events -> case SupportTicketTest#reporterSeesOwnTicketsOnlyAndTheDeskSeesAll
