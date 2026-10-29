@@ -84,3 +84,9 @@ Non-blocking findings on D-LEAD-CI-ANALYTICS-SHARD-01 (lane/lead-ci-analytics-sh
 - **E. `.lowercase()` on the shard value is unpinned** (the one surviving mutation of 21): add a check_infra assertion or drop the lowercasing (CI passes the literal `a`/`b`).
 - **F. Note, no action:** a future `@Nested` class follows its outer class in both shards (JUnit Platform's class filter walks the parent); none exist in backend/analytics today. A renamed or deleted class in the shard-a list is silent at Gradle level (it simply runs in b); `test_every_listed_shard_class_exists` catches it in Infra validation.
 
+## 2026-10-29 06:36 UTC — backend-reports candidates 2+3 (ac30e09e): lead decisions
+
+- **Fallback lands with candidate 3.** A route with no `route_zone_history` row (triggers-off loads such as `db/perf/generate.sql`) must not be 403 for everyone in the report route selector; it is placed by its current `dim_geo` zone, as `AsWasSql.geo` already does for Ops login/submit (D-REPORTS-NODEASWAS-06). Requested as one small follow-up commit on the lane on top of ac30e09e; the gate re-opens for that delta only.
+- **D-LEAD-REPORT-SELECTOR-01** (DECISIONS): selectors are a conjunction over as-was membership; 403 is for scope only (route outside today's token reach, same body as an unknown id); an in-reach route that was not in the selected zone during the period is 200 with no rows; keyed on reach, never on the caller's level. Three tests asked for (in-reach moved-later route → 200 empty; out-of-reach → 403; unknown id → 403 same body).
+- **Gate state:** static union passed 06:28 (DECISIONS 137 expected, 0 markers, byte-identical, scan 0 new, gates OK); lane run 40829009917 (#1692) in progress; the lead's Opus checker on ac30e09e running; a delta re-check follows the follow-up push; GO train 61 after train 60 lands.
+
