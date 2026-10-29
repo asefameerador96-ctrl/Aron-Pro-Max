@@ -56,16 +56,59 @@ class GeoSnapshotRaceTest {
 
     @Test
     fun anInvalidationBetweenTheGenerationCheckAndTheInstallIsNotLost() {
-        // The edit commits and invalidates at the instant the loaded snapshot is stamped for installation (the clock call inside the install).
-        var geoRef: GeoRepository? = null
+        val geo = GeoRepository(fresh.db, clock)
         var armed = true
-        val seamClock = AronClock {
-            if (armed) { armed = false; exec("INSERT INTO app.zone (code, name, territory_id) VALUES ('Z2','Zone2', $t1)"); geoRef!!.invalidate() }
-            Instant.parse("2026-10-04T12:00:00Z")
-        }
-        val geo = GeoRepository(fresh.db, seamClock).also { geoRef = it }
+        // The edit commits and invalidates after the load passed its staleness check and right before it installs the snapshot it read.
+        geo.beforeInstall = { if (armed) { armed = false; exec("INSERT INTO app.zone (code, name, territory_id) VALUES ('Z2','Zone2', $t1)"); geo.invalidate() } }
         geo.snapshot()   // the pre-edit read
         assertEquals(2, geo.snapshot().geo.zoneTerritory.size, "the next read sees the edit: the old snapshot was not left installed")
+    }
+
+    @Test
+    fun theGeographyIsReadInOneStatementAndMatchesTheTables() {
+        val statements = java.util.concurrent.atomic.AtomicInteger()
+        fresh.db.jdbi.setSqlLogger(object : org.jdbi.v3.core.statement.SqlLogger {
+            override fun logAfterExecution(context: org.jdbi.v3.core.statement.StatementContext) { statements.incrementAndGet() }
+        })
+        val g = GeoRepository(fresh.db, clock).geo()
+        assertEquals(1, statements.get(), "one statement = one MVCC snapshot: the chain zone > territory > division > wing is never a mix of two commits")
+        val z1 = id("SELECT id FROM app.zone WHERE code = 'Z1'")
+        assertEquals(mapOf(z1 to t1), g.zoneTerritory)
+        assertEquals(mapOf(t1 to id("SELECT id FROM app.division WHERE code = 'D1'")), g.territoryDivision)
+        assertEquals(mapOf(id("SELECT id FROM app.division WHERE code = 'D1'") to id("SELECT id FROM app.wing WHERE code = 'W1'")), g.divisionWing)
+        assertEquals("Zone1", g.names[("zone" to z1)]?.second); assertEquals("Z1", g.names[("zone" to z1)]?.first)
+        assertEquals("Terr1", g.names[("territory" to t1)]?.second)
+    }
+
+    @Test
+    fun callersHoldingTheWholePoolAreNotStalledBehindAReloadThatNeedsAConnection() {
+        // Pool of 2, both connections held by callers that call geo() inside their handle (as AdminGeography and the planner do); a third caller with no handle reloads.
+        val small = com.zaxxer.hikari.HikariDataSource(com.zaxxer.hikari.HikariConfig().apply { jdbcUrl = fresh.url; maximumPoolSize = 2; connectionTimeout = 1_500 })
+        try {
+            var now = Instant.parse("2026-10-04T12:00:00Z")
+            val smallDb = com.aktcl.aron.backend.platform.Database(small)
+            val geo = GeoRepository(smallDb, AronClock { now })
+            geo.snapshot()                                  // warm
+            now = now.plusSeconds(120)                      // past the TTL: an expired entry, no edit since
+            val ready = java.util.concurrent.CountDownLatch(2); val go = java.util.concurrent.CountDownLatch(1)
+            val waited = java.util.concurrent.ConcurrentHashMap<String, Long>()
+            val holders = (1..2).map { n ->
+                Thread {
+                    smallDb.jdbi.useHandle<Exception> {
+                        ready.countDown(); go.await()
+                        val t0 = System.nanoTime(); geo.snapshot(); waited["h$n"] = (System.nanoTime() - t0) / 1_000_000
+                    }
+                }.also { it.start() }
+            }
+            ready.await()
+            var loaderError: Throwable? = null
+            val loader = Thread { try { geo.snapshot() } catch (e: Throwable) { loaderError = e } }.also { it.start() }   // takes the reload lock, then waits for a connection
+            Thread.sleep(300)
+            go.countDown()
+            holders.forEach { it.join(10_000) }; loader.join(10_000)
+            assertTrue(waited.values.all { it < 1_000 }, "holders were served the expired entry at once, not after the pool timeout: $waited")
+            assertEquals(null, loaderError, "and the loader got its connection once they finished")
+        } finally { small.close() }
     }
 
     @Test

@@ -71,4 +71,24 @@ class AsWasProbeTest {
         exec("UPDATE app.zone SET territory_id = (SELECT id FROM app.territory WHERE code = 'T9') WHERE code = 'Z1'")
         assertEquals("f/t/t", probe())
     }
+
+    @Test
+    fun probesOfOneKeyThatOverlapRunOneQuery() {
+        val queries = java.util.concurrent.atomic.AtomicInteger()
+        fresh.db.jdbi.setSqlLogger(object : org.jdbi.v3.core.statement.SqlLogger {
+            override fun logAfterExecution(context: org.jdbi.v3.core.statement.StatementContext) { if (context.renderedSql.contains("NOT EXISTS")) queries.incrementAndGet() }
+        })
+        val entered = java.util.concurrent.CountDownLatch(1); val release = java.util.concurrent.CountDownLatch(1)
+        AsWasSql.probeHook = { entered.countDown(); release.await() }
+        try {
+            var a = ""; var b = ""
+            val t1 = Thread { a = probe() }.also { it.start() }
+            entered.await()                                   // the first probe is running
+            val t2 = Thread { b = probe() }.also { it.start() }
+            Thread.sleep(300)                                 // the second has arrived and is waiting for the first
+            release.countDown(); t1.join(20_000); t2.join(20_000)
+            assertEquals("t/t/t", a); assertEquals(a, b)
+            assertEquals(1, queries.get(), "the overlapping probe took the running one's answer instead of scanning the history tables again")
+        } finally { AsWasSql.probeHook = null }
+    }
 }

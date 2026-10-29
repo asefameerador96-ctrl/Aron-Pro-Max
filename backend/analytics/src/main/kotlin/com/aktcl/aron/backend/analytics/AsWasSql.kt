@@ -26,6 +26,9 @@ internal object AsWasSql {
 
     /** How long a probe answer is reused. Tests that edit masters and read at once set it to 0. */
     @Volatile var probeTtlMs: Long = 20_000
+    private val inflight = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CompletableFuture<Plain>>()
+    /** Test seam: runs at the start of a probe's own computation. */
+    @Volatile internal var probeHook: (() -> Unit)? = null
 
     /** A table whose periods the timelines read: the key column and the columns of it that a read uses. */
     private class Tracked(val table: String, val key: String, val cols: List<String>)
@@ -61,13 +64,29 @@ internal object AsWasSql {
      */
     fun probe(h: org.jdbi.v3.core.Handle, from: java.time.LocalDate): Plain {
         val key = "${h.connection.catalog}|$from"
-        val now = System.currentTimeMillis()
-        probes[key]?.let { (at, v) -> if (now - at < probeTtlMs) return v }
+        probes[key]?.let { (at, v) -> if (System.currentTimeMillis() - at < probeTtlMs) return v }
+        // Single flight: callers that arrive while the probe of this key is running wait for its answer instead of each scanning the history tables
+        // (after a bulk edit every dashboard request of the 20 s window would otherwise run its own).
+        val mine = java.util.concurrent.CompletableFuture<Plain>()
+        val running = inflight.putIfAbsent(key, mine)
+        if (running != null) {
+            runCatching { running.get(30, java.util.concurrent.TimeUnit.SECONDS) }.getOrNull()?.let { return it }
+            return compute(h, from, key)   // the running probe failed or took too long: answer on our own
+        }
+        try {
+            return compute(h, from, key).also { mine.complete(it) }
+        } catch (t: Throwable) {
+            mine.completeExceptionally(t); throw t
+        } finally { inflight.remove(key, mine) }
+    }
+
+    private fun compute(h: org.jdbi.v3.core.Handle, from: java.time.LocalDate, key: String): Plain {
+        probeHook?.invoke()
         fun none(tables: List<Tracked>) = tables.joinToString(" AND ") { "NOT EXISTS (${changedKeys(it, ":f")})" }
         val v = h.createQuery("SELECT ${none(GEO_HISTORY)}, ${none(PRODUCT_HISTORY)}, ${none(OUTLET_HISTORY)}").bind("f", from)
             .map { rs, _ -> Plain(rs.getBoolean(1), rs.getBoolean(2), rs.getBoolean(3)) }.one()
         if (probes.size > 1_000) probes.clear()
-        probes[key] = now to v
+        probes[key] = System.currentTimeMillis() to v
         return v
     }
 
