@@ -129,11 +129,11 @@ class ReportEngine(
                     (reachZones == null || r in reach.routeIds || periodZones(r).any { it in reachZones } || current[r]?.let { it in reachZones } == true)
                 if (ids.any { it !in current || !inReach(it) }) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected route is outside your reach")
                 val sel = ids.filter { r -> periodZones(r).any { zones == null || it in zones!! } }
-                routes = sel.ifEmpty { listOf(-1L) }   // in reach but not in the selected zones during the period: no rows, never "everything"
+                routes = sel.ifEmpty { NO_ROUTE }   // in reach but not in the selected zones during the period: no rows, never "everything"
             }
         }
         if (zones != null && zones.isEmpty()) zones = listOf(-1L)   // an empty reach reads nothing, never "everything"
-        if (routes != null && routes.isEmpty()) routes = listOf(-1L)
+        if (routes != null && routes.isEmpty()) routes = NO_ROUTE
         return ReportContext(q, from, to, p, zones, routes, p.pii, runCatching { config.int("cfg.geo.suspicious_score_threshold") }.getOrNull() ?: Aggregator.DEFAULT_SUSPICIOUS_THRESHOLD, DashboardSummaries.successfulLoginSql(h, "a"))
     }
 
@@ -308,3 +308,9 @@ class ReportEngine(
 
     private fun filtersText(q: ReportQuery): String = kotlinx.serialization.json.Json.encodeToString(ReportQuery.serializer(), q.copy(output = q.output.copy(sort = emptyList()))).take(1900)
 }
+
+/**
+ * The route list that selects no row. Not -1: handlers filter a route-less row with `coalesce(route_id, -1)`, which -1 would match (every outlet,
+ * task or QC line with no route in the caller's zones would come back).
+ */
+private val NO_ROUTE = listOf(-2L)

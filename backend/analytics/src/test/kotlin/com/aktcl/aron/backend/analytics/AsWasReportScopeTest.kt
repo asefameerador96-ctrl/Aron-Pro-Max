@@ -82,6 +82,10 @@ class AsWasReportScopeTest : ReportFixture() {
         val joined = run(11, Role.TSO, "route-std", sel)
         assertEquals(HttpStatusCode.OK, joined.status)
         assertEquals(0, joined.result().rows().size, "in reach, not in the selected zones during the period")
+        // The empty answer is empty for the reports that read route-less rows too (coalesce(route_id, -1)): an outlet with no route in zone 1 is not R3's.
+        exec("UPDATE app.outlet SET route_id = NULL WHERE code = 'O1'")
+        assertEquals(0, run(10, Role.ANALYST, "retailer-list", body(""","geo":{"zone":[$z1],"route":[$r3]}""")).result().rows().size, "no route-less outlet in the empty answer")
+        assertEquals(0, run(11, Role.TSO, "retailer-list", sel).result().rows().size)
         // A caller with the whole reach selecting zone 1 together with that route: 200, no rows (the route was zone 2's then).
         val nat = run(10, Role.ANALYST, "route-std", body(""","geo":{"zone":[$z1],"route":[$r3]}"""))
         assertEquals(HttpStatusCode.OK, nat.status)
