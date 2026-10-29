@@ -113,6 +113,23 @@ class AsWasReportScopeTest : ReportFixture() {
         assertEquals(HttpStatusCode.Forbidden, run(14, Role.TSO, "route-std", sel).status, "and not zone 2's")
     }
 
+    @Test
+    fun aRouteOutsideTheReachZonesIsRefusedLikeAnUnknownIdAndAnAssignedOneIsInReach() = app {
+        val r3 = id("SELECT id FROM app.route WHERE code = 'R3'")   // zone 2's route; user 11 reaches zone 1 only
+        val sel = body(""","geo":{"route":[$r3]}""")
+        val outOfReach = run(11, Role.TSO, "route-std", sel)
+        val unknown = run(11, Role.TSO, "route-std", body(""","geo":{"route":[999999]}"""))
+        assertEquals(HttpStatusCode.Forbidden, outOfReach.status, "a route in a zone the caller does not reach")
+        assertEquals(HttpStatusCode.Forbidden, unknown.status)
+        assertEquals(unknown.problemBody(), outOfReach.problemBody(), "the same body: no existence leak")
+        // The same route ASSIGNED to the caller (reach.routeIds) is in their reach whatever zone it sits in: 200. It is still read by zone and route both,
+        // so the assignment never widens the zones: zone 2's figures stay out of a caller who reaches zone 1.
+        reaches[11] = com.aktcl.aron.backend.platform.Reach(11, Role.TSO, day, false, setOf(z1), setOf(r3), false, listOf(com.aktcl.aron.backend.platform.ReachNode("zone", z1)))
+        val assigned = run(11, Role.TSO, "route-std", sel)
+        assertEquals(HttpStatusCode.OK, assigned.status, "assigned route: in reach")
+        assertEquals(0, assigned.okResult().rows().size, "and never wider than the zones of the reach")
+    }
+
     /** The refusal as a client sees it, minus what differs per request. */
     private suspend fun io.ktor.client.statement.HttpResponse.problemBody(): Pair<String?, String?> =
         kotlinx.serialization.json.Json.parseToJsonElement(this.bodyAsText()).let { it.jsonObject["code"]?.jsonPrimitive?.content to it.jsonObject["detail"]?.jsonPrimitive?.content }
