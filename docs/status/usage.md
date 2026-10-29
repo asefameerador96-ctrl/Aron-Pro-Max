@@ -1179,3 +1179,8 @@
 
 ### 16:47 UTC 2026-10-29 — lane check (quiet)
 - Dev health build 863eb159 = INT (train 64). No train in flight. lane/backend-reports remote tip = INT 863eb159 (integrator fast-forward after train 64); backend-reports #11 (created 15:55) has pushed nothing yet, 52 min in, not overdue (nudge threshold 18:00). Lead docs tip bbcc2f48 (train 64 landing record) rides train 65. Opus slot held; db #15 by the 06:30 one-shot. No owner message since 14:1x. Nothing to act on; no owner action needed.
+
+### 16:55 UTC 2026-10-29 — backend-reports #11 candidate 1 "checked ef09a43893c4" (16:50): gate in progress
+- Static gate PASS: FF on INT 863eb159 (2 commits 65e0675b, ef09a438); delta = DECISIONS.md (+1, 0 removed), DashboardApi.kt (+4/-4: `|D` default flag on both response-cache keys, two KDoc lines), AsWasNodeScopeCacheTest.kt (+20: `aDefaultReadAndAnExplicitReadOfTheFirstTopNodeNeverShareACacheEntry`); union in wt-verify with lead docs 40eaece3: DECISIONS 154 = 153 + 0 + 1, 0 markers, both heads contained; date-pin scan 0 new (106 baselined); gates self-test 37 OK (8 skipped).
+- Lane run ci 40915431177 (#1732) on ef09a438, in progress since 16:50:03 (Detect, Repository gates, Shared/db/backend success by 16:51; Backend app tests, analytics (a), (b), Container images running; Infra/Web/Android path-skipped) — real shards, expect 17:10–17:15.
+- Lead's own Opus checker launched 16:53 on the final diff (static, own worktree wt-check-c1). GO train 65 only after PASS + run green.
