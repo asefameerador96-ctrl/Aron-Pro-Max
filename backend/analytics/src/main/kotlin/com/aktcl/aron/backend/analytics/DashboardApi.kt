@@ -108,7 +108,7 @@ private val ROUTE_LEVEL = Level(null, null, null, null, "route")
 
 /**
  * GET /v1/dashboards/summary (F-API-014). Reads `dw` aggregates only (never the transaction log; the SKU master for report units), from the read replica
- * when configured, scoped by the caller's server-side reach; cached [ttl] (5 s) per scope hash, node and date range.
+ * when configured, scoped by the caller's server-side reach; cached [ttl] (5 s) per scope hash, the caller's top nodes, node and date range.
  * D-NIGHT-SYNC-01: the cache was 30 s (docs/25 F-API-014), which alone could hold a synced memo off the tile for longer
  * than the 15 s goal; 5 s still folds the 30 s refetches of every open tab of one scope into one query.
  */
