@@ -555,7 +555,6 @@ fun SrApp(
     }
 }
 
-/** AKTCL's route kind wording, kept in English on every language (screens-sr s2 header note). */
 /**
  * tso-manual X4a (R-W-11, A3 ask 1): the SR Home's one banner slot. The first-bundle download keeps its text first; otherwise
  * [lockText] (`srDayLockBannerText`, the day lock after the zone's Final Submit: title, body and the held and refused
@@ -565,6 +564,7 @@ fun SrApp(
 internal fun srHomeBanner(downloading: Boolean, lockText: @Composable () -> String?): String? =
     if (downloading) stringResource(R.string.sr_bundle_downloading) else lockText()
 
+/** AKTCL's route kind wording, kept in English on every language (screens-sr s2 header note). */
 @Composable
 private fun routeKindText(wire: String?): String? = when (RouteKind.of(wire)) {
     RouteKind.DAILY -> stringResource(R.string.sr_route_kind_daily)
