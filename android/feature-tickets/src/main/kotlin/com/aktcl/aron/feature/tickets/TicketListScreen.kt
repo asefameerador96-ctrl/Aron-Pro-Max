@@ -1,10 +1,7 @@
 package com.aktcl.aron.feature.tickets
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -27,6 +24,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -36,6 +34,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -89,19 +90,35 @@ fun TicketListScreen(state: TicketListState, frame: TicketFrame, onOpen: (String
     }
 }
 
-/** The tabs scroll sideways when they do not fit (200 % text); the selected one is always scrolled into view (screenshot 13). */
-@OptIn(ExperimentalFoundationApi::class)
+/**
+ * The tabs scroll sideways when they do not fit (Bangla, 200 % text); the selected one is scrolled into view once the row is
+ * laid out (screenshot 13 shows Resolved highlighted). A plain scroll to the measured position, no animation.
+ */
 @Composable
 private fun TabRow(selected: TicketTab, onSelect: (TicketTab) -> Unit) {
     val p = ticketPalette()
-    val inView = remember { TicketTab.entries.associateWith { BringIntoViewRequester() } }
-    LaunchedEffect(selected) { inView.getValue(selected).bringIntoView() }
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    val scroll = rememberScrollState()
+    var viewport by remember { mutableIntStateOf(0) }
+    var span by remember { mutableStateOf<IntRange?>(null) }
+    LaunchedEffect(selected, span, viewport) {
+        val s = span ?: return@LaunchedEffect
+        if (viewport <= 0) return@LaunchedEffect
+        val target = when {
+            s.first < scroll.value -> s.first
+            s.last > scroll.value + viewport -> s.last - viewport
+            else -> return@LaunchedEffect
+        }
+        scroll.scrollTo(target.coerceIn(0, scroll.maxValue))
+    }
+    Row(
+        Modifier.fillMaxWidth().onSizeChanged { viewport = it.width }.horizontalScroll(scroll),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         TicketTab.entries.forEach { t ->
             val on = t == selected
             Box(
                 Modifier
-                    .bringIntoViewRequester(inView.getValue(t))
+                    .onPlaced { c -> if (on) { val x = c.positionInParent().x.toInt(); span = x..(x + c.size.width) } }
                     .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(50))
                     .background(if (on) p.accent else p.chip)

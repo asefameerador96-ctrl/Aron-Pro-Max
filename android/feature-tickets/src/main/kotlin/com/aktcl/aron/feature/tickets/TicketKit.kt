@@ -326,7 +326,8 @@ internal fun digits(n: Long): String = com.aktcl.aron.rules.Formats.integer(n, L
 @Composable
 internal fun TicketPill(text: String, modifier: Modifier = Modifier, fill: Color = ticketPalette().chip, ink: Color = ticketPalette().chipInk) {
     Box(modifier.clip(RoundedCornerShape(50)).background(fill).padding(horizontal = 10.dp, vertical = 4.dp)) {
-        Text(text, style = MaterialTheme.typography.labelMedium, color = ink, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        // two lines at most: a long Bangla status at 200 % text ("সমাধান হয়েছে") wraps instead of losing its second word
+        Text(text, style = MaterialTheme.typography.labelMedium, color = ink, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
