@@ -47,6 +47,14 @@ class AsWasReportScopeTest : ReportFixture() {
         assertEquals(HttpStatusCode.OK, gone.status, "the new territory is real and inside the reach but had no zone on the report's date: 200, no rows (D-LEAD-REPORT-SELECTOR-01)")
         assertEquals(0, gone.okResult().rows().size)
         assertEquals(HttpStatusCode.Forbidden, run(10, Role.ANALYST, "route-std", body(""","geo":{"territory":[999999]}""")).status, "an id that is no territory is refused")
+        // A TSO whose own zone is in T2 today: T2 is in their reach, it had no zone on the date: 200, no rows. A TSO of another zone: refused, with the answer of an unknown id.
+        val joined = run(14, Role.TSO, "route-std", body(""","geo":{"territory":[$t2]}"""))
+        assertEquals(HttpStatusCode.OK, joined.status, "in the reach today, empty for the period")
+        assertEquals(0, joined.okResult().rows().size)
+        val outOfReach = run(11, Role.TSO, "route-std", body(""","geo":{"territory":[$t2]}"""))
+        val unknown = run(11, Role.TSO, "route-std", body(""","geo":{"territory":[999999]}"""))
+        assertEquals(HttpStatusCode.Forbidden, outOfReach.status); assertEquals(HttpStatusCode.Forbidden, unknown.status)
+        assertEquals(unknown.problemBody(), outOfReach.problemBody(), "a territory out of reach and an unknown id answer alike")
         // The reach still bounds it: a TSO of zone 1 gets the old territory cut to the zone they reach (the zone that left is not held against them)...
         val tso = run(11, Role.TSO, "route-std", sel)
         assertEquals(HttpStatusCode.OK, tso.status)
