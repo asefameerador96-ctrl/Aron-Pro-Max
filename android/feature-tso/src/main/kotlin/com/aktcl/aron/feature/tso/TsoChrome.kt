@@ -311,6 +311,7 @@ fun TsoLogoutDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
 data class TsoLogoutWords(val title: String, val body: String, val cancel: String, val confirm: String)
 
 /** The body of [TsoLogoutDialog] (also drawn inline by the goldens, which capture one window). */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun TsoLogoutDialogContent(onConfirm: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier, words: TsoLogoutWords? = null) {
     val n = nightRoles()
@@ -333,7 +334,11 @@ fun TsoLogoutDialogContent(onConfirm: () -> Unit, onDismiss: () -> Unit, modifie
             Spacer(Modifier.height(36.dp))
             Text(w.body, style = nightText(16.sp, n.inkMuted, align = TextAlign.Center))
             Spacer(Modifier.height(36.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End)) {
+            // side by side as on screenshot 44; when both do not fit (large font, long Bangla) Log Out moves to the next line rather
+            // than breaking its word ("লগ আ / উট" at 200 percent)
+            androidx.compose.foundation.layout.FlowRow(
+                Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 NightButton(w.cancel, onDismiss, Modifier.testTag(TsoShellTags.LOGOUT_CANCEL), style = NightButtonStyle.Cancel, fill = false)
                 NightButton(w.confirm, onConfirm, Modifier.testTag(TsoShellTags.LOGOUT_CONFIRM), style = NightButtonStyle.LogOut, fill = false)
             }
