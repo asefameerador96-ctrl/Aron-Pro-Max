@@ -315,6 +315,7 @@ class DashboardService(
         val inScope = if (ns.routeOnly) ns.clause("zone_id", "route_id") else ns.clause("a.zone_id", "a.route_id") + ns.inNode("zn")
         // The all-brand figures are not read for a BRAND caller (nothing of them is shown; its KPIs come from by_brand).
         val kpis by lazy { h.q("$days WHERE business_date BETWEEN :f AND :t AND $inScope") { it.map { rs, _ -> kpisOf(rs) }.one() } }
+        if (!brandOnly) kpis   // read now, before any other result set is open on this handle
         val asOf = h.q("SELECT max(a.updated_at) FROM ${if (ns.routeOnly) "dw.v_route_day a" else zoneDays} WHERE a.business_date BETWEEN :f AND :t AND $inScope") {
             it.map { rs, _ -> rs.getObject(1, java.time.OffsetDateTime::class.java)?.toInstant() }.one()
         } ?: clock.now()

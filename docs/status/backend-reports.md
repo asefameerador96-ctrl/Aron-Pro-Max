@@ -6,7 +6,8 @@
 |---|---|
 | Candidate 0 (lead's blocking 1 + 2) | code e9bed80a: `GeoRepository.version()` in the `SqlReachResolver` cache key; tests StaleReachDashboardTest, AsWasNodeScopeTest (M3c, M5, M6); Opus checker CONFIRMED (round 1, no defects); mutants stale-reach, M3c, M5, M6a, M6b each fail their test |
 | Candidate 1 part A (lead items 1-4: sync-health date, house-merge invalidate, snapshot race, cache clear; D-REPORTS-REACH-GEO-02/-03, docs/requests/db-geo-version.md) | local, checker round 1 HELD one defect (fixed, regression test), round 2 pending; then push once; |
-| Candidate 1 rest (checker items 2-5, HANDOVER list) | after part A; item 5 asymmetry (zone that joined a node) is an owner question (lead row AA): document only |
+| Candidate 2 (session 8's brand-scope gap items 2-6; D-REPORTS-BRANDSCOPE-02) | local a04f6d07 + KPI-read hardening; Opus checker CONFIRMED (no blocking; notes: as_of of a BRAND caller is the all-brand timestamp, brand by_category keeps stock-only rows, no test proves the KPI query is skipped); full analytics 43 classes / 276 tests green; push after train 59 landed |
+| Candidate 1 rest and HANDOVER items B-G, REBUILD-01 (checker items 2-5) | after candidate 2; item 5 asymmetry (zone that joined a node) is an owner question (lead row AA): document only |
 
 Checker notes, not blocking, carried to candidate 1: (1) a TTL reload that starts before an admin commit can write its old snapshot back after `invalidate()` (pre-existing; fix: generation number checked before storing); (2) other `GeoRepository` instances (Main.kt export and bundle workers, a second API instance) see a geography edit within 60 s, not at once; (3) `HouseDedup.kt:82` changes `zone.house_id` without `geo.invalidate()`; (4) any geography edit empties the reach cache for all users (stale keys stay until the 50k clear); (5) `reach()` calls `geo()` on every call, so concurrent callers at TTL expiry each reload.
 
