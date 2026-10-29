@@ -1169,3 +1169,6 @@
 
 ### 15:13 UTC 2026-10-29 — train 64 pushed (lead git verification)
 - Integrator 22 pushed INT 863eb1594d982b86b0a082bc25b17054c3694d2c at 15:13 (ci 40899239330, #1727). Lead git check: INT 63, lead docs 7d7d3d5f and backend-reports 592034ec contained; DECISIONS 153 in the expected order (INT, then D-LEAD-FINAL-PACK-01/-02, then LEFT-01, LAG-01, NODEASWAS-08, -09), 0 markers, 0 lines lost from INT/lane/lead, no new duplicate ids; the 9 lane files and the lead docs files (incl. both .docx) byte-identical. ci, the real deploy (worker --0000136) and health are verified at the 16:02 check-in.
+
+### 15:25 UTC 2026-10-29 — evening report (lead)
+- docs/status/evening-2026-10-29.md written (trains 60–63 landed, 64 in flight: ci #1727 in progress since 15:12, health still 4ac9b8dc; the two owner requests and the docs/35 pack; the candidate 6 checker catch; sessions with platform counts: backend-reports #10 431k / USD 17.7 READY TO RECYCLE, integrator 22 232k / USD 6.0, db #14 archived 483k / USD 32.7; every session seven_day allowed_warning, reset 2026-11-03 18:00 UTC). Decision: the Opus slot stays held overnight; db #15 is created at the 06:30 morning report with a hard 300k budget unless the owner answers row Y first. Morning one-shot re-armed for 2026-10-30 06:30 UTC; the lane-check cron prompt refreshed.
