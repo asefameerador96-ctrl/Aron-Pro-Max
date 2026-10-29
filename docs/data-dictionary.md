@@ -5552,7 +5552,7 @@ Per zone and business date: route and visit counts, geo and risk counts, and sal
 | `dues_collected_mtk` | bigint | not null |  | Dues collected against earlier credit memos, in milli-taka. |
 | `last_event_id` | bigint | not null |  | Highest app.domain_event id folded into this row by the projector (replays are ignored). |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
-| `final_submitted_at` | timestamp with time zone | null |  | UTC time of the zone-day's first Final Submit, or of the midnight auto-submit. |
+| `final_submitted_at` | timestamp with time zone | null |  | UTC time of the zone-day's first live app.final_submit row (not reopened), whoever made it: the TSO or a delegate role (via app or web) or the midnight job (via job). Null when there is none or every one is reopened. |
 | `auto_submitted` | boolean | not null |  | Retired (V0141, D-TSO-MAN-30): always false. The midnight job writes a real app.final_submit row (via job), and app.final_submit is the only source of a zone-day's Final Submit; final_submitted_at is the first live app.final_submit row. Kept so the stable dw view keeps its column. |
 
 Keys: `PRIMARY KEY (business_date, zone_id)`
@@ -6705,7 +6705,7 @@ Stable view: per zone and business date the first Final Submit (second submits i
 | `business_date` | date | null |  | Asia/Dhaka business date that was final-submitted. |
 | `first_submitted_at` | timestamp with time zone | null |  | UTC time of the first Final Submit of the zone-day. |
 | `first_submitted_by` | bigint | null |  | User who made the first Final Submit (app.app_user id); null when the midnight job made it. |
-| `first_via` | text | null |  | Channel of the first Final Submit: app or web. |
+| `first_via` | text | null |  | Channel of the first Final Submit: app, web or job (the midnight AutoFinalSubmitJob, V0135). |
 | `submits` | bigint | null |  | Number of Final Submits of the zone-day (a reopen and a resubmit add one). |
 | `last_submitted_at` | timestamp with time zone | null |  | UTC time of the latest Final Submit of the zone-day. |
 | `reopened_now` | boolean | null |  | True when every submit of the zone-day is reopened (no live Final Submit). |
@@ -6923,8 +6923,8 @@ Stable view: one row per route and business date (dw.agg_daily_route) with the z
 | `sales_submitted` | boolean | null |  | True when Sales Submit (or Final Submit) is in effect and the login was successful (the zone's sales_submitted_routes rule). |
 | `sales_submitted_at` | timestamp with time zone | null |  | UTC instant Sales Submit took effect. |
 | `final_submitted_at` | timestamp with time zone | null |  | UTC time of the Final Submit. |
-| `zone_final_submitted` | boolean | null |  | dw.agg_daily_zone.final_submitted of the route-day's stamped zone: every target route of that zone-day is final-submitted (the midnight auto-submit does not set it; see zone_auto_submitted). |
-| `zone_final_submitted_at` | timestamp with time zone | null |  | UTC time of that zone-day's first Final Submit or midnight auto-submit. |
+| `zone_final_submitted` | boolean | null |  | dw.agg_daily_zone.final_submitted of the route-day's stamped zone: every target route of that zone-day is final-submitted, whoever closed it, the midnight job included (it closes the zone-day through the same code path as the TSO, V0135). |
+| `zone_final_submitted_at` | timestamp with time zone | null |  | UTC time of that zone-day's first live app.final_submit row (via app, web or job; dw.agg_daily_zone.final_submitted_at). Null when there is none or every one is reopened. |
 | `zone_auto_submitted` | boolean | null |  | Retired (V0141): always false (dw.agg_daily_zone.auto_submitted). A midnight-job Final Submit is a live app.final_submit row (via job) and shows in zone_final_submitted_at like any other. |
 | `first_sale_at` | timestamp with time zone | null |  | UTC time of the route-day's first memo (First Sale Time). |
 | `last_sale_at` | timestamp with time zone | null |  | UTC time of the route-day's last memo (Last Sale Time). |

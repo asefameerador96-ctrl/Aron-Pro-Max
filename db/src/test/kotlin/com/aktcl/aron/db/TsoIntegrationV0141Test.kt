@@ -7,6 +7,7 @@ import org.junit.jupiter.api.TestInstance
 import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -56,6 +57,20 @@ class TsoIntegrationV0141Test {
         assertTrue(view.startsWith("Retired (V0141): always false"), view)
         // the column stays, so the stable view keeps its column contract (DwViewContractTest)
         assertEquals("boolean", c.scalar("SELECT data_type FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'v_route_day' AND column_name = 'zone_auto_submitted'"))
+        // the sibling comments no longer describe the old model: the midnight job closes the zone-day like the TSO
+        // (DayService.closeLocked), so the zone flag is set by it and the stamps are the first live app.final_submit row
+        val siblings = listOf(
+            comment("dw.agg_daily_zone", "final_submitted_at"), comment("dw.v_route_day", "zone_final_submitted"),
+            comment("dw.v_route_day", "zone_final_submitted_at"), comment("dw.v_final_submit_log", "first_via"),
+        )
+        for (text in siblings) {
+            assertFalse(text.contains("auto-submit"), "no separate midnight auto-submit any more: $text")
+            assertFalse(text.contains("see zone_auto_submitted"), "does not point at the retired column: $text")
+        }
+        assertTrue(siblings[0].startsWith("UTC time of the zone-day's first live app.final_submit row (not reopened), whoever made it"), siblings[0])
+        assertTrue(siblings[1].contains("whoever closed it, the midnight job included"), siblings[1])
+        assertTrue(siblings[2].startsWith("UTC time of that zone-day's first live app.final_submit row (via app, web or job"), siblings[2])
+        assertEquals("Channel of the first Final Submit: app, web or job (the midnight AutoFinalSubmitJob, V0135).", siblings[3])
     }
 
     /**
