@@ -36,7 +36,7 @@ import org.robolectric.annotation.Config
 class TsoTargetsTest {
     @get:Rule val tmp = TemporaryFolder()
 
-    private val seen = mutableListOf<Pair<String, String?>>()
+    private val seen = java.util.concurrent.CopyOnWriteArrayList<Pair<String, String?>>()
     private var transportDown = false
     private var status = 200
 

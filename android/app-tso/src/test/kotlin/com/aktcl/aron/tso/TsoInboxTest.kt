@@ -41,7 +41,8 @@ class TsoInboxTest {
 
     private data class Seen(val method: String, val path: String, val query: String?, val body: String)
 
-    private val seen = mutableListOf<Seen>()
+    // the card reads run in parallel on OkHttp threads: a plain list can lose a request (a flaky count), so a thread-safe one
+    private val seen = java.util.concurrent.CopyOnWriteArrayList<Seen>()
     private var transportDown = false
     private var readStatus = 200
 
