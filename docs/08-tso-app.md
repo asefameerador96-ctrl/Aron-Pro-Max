@@ -73,5 +73,11 @@ desk and follows them until they are solved. The screens live in the role-agnost
   D-TSO-MAN-18) and shows "Not sent yet" in place of its INC number until the server lists it (mirror row
   `tso.unsent.ticket.<uuid>`); a refused one shows "Not accepted: <reason>". One UUID per form survives rotation and a
   kill; a double tap or a retry never makes a second ticket. Lists and threads are read only when a screen opens or is
-  pulled down (no timer) and kept on the phone for offline viewing with their "as of" time.
-- **Push:** `ticket_updated` (support changed, replied to or resolved a ticket) opens the Ticket Dashboard.
+  pulled down (no timer) and kept on the phone for offline viewing with their "as of" time. To save data, the list is not
+  read again when a screen opens within 3 minutes of the last read (moving between the Dashboard, All Tickets and
+  Details); pulling down always reads.
+- **Photos:** a photo is only staged until its ticket or comment is saved. Closing the Quick sheet (X, tapping outside,
+  back) or leaving a form or an unsent comment drops its photos, so they are never sent; a rotation or a kill keeps them
+  with the form.
+- **Push:** `ticket_updated` (support changed, replied to or resolved a ticket) opens the Ticket Dashboard, which then
+  reads online even within the 3 minutes.

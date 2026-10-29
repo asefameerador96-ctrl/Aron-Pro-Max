@@ -1,7 +1,7 @@
 # tso-manual A2 android-tickets: lane status
 
 Lane A2 of `docs/requests/tso-manual-build-2026-10.md` (s5 A2). Branch `tso-man/A2`, no pull request.
-Written 2026-10-29 (steps 1 to 3). Base: 95a35b7d (contract 1.10.0, V0130-V0140, F3 rules); step 3 merged
+Written 2026-10-29 (steps 1 to 3, then the checker's fix round). Base: 95a35b7d (contract 1.10.0, V0130-V0140, F3 rules); step 3 merged
 `tso-man/A1-stubs` (5e9c52b0) first, as s5 asks.
 
 ## Done
@@ -138,6 +138,20 @@ Behaviour:
 - **Navigation**: Dashboard -> Detail (uuid), See all -> All Tickets, Need help -> Quick, Quick's "Report a different
   issue" -> Create; after a save the form is closed and All Tickets opens. A detail without an argument goes back.
 
+### Fix round (independent checker, 2026-10-29): 1 high, 8 low
+
+| # | sev | defect | fix | proof |
+|---|---|---|---|---|
+| 1 | high | Quick sheet could never be closed: `dismiss` nulled the sheet, then `abandon` read the stale opening draft and wrote it back, reopening the sheet; staged photos never discarded | `SheetSlot` (QuickTicketScreen.kt): a form's write reaches the sheet only while it shows that uuid, and `read` returns the form's last draft, never the opening one. `dismiss` takes the photos with `TicketFormState.leave()` BEFORE closing, then drops them on `TicketDeps.background` (`discardLater`); it does nothing while the save runs. The sheet's form is now built in the screen (needed by the leave hook, #3) | `TicketScreensTest.theQuickSheetClosesForGoodOnTheXAndOnBackAndDropsItsPhoto` (open tile, camera photo, X: sheet gone and stays gone after 2 s, photo in `FakePhotos.discarded`; again with system back through the activity's `OnBackPressedDispatcher`: sheet gone, tiles still there, second photo discarded; then a new tile saves one ticket). Mutation check: with the old read/write/dismiss restored the test fails (Verify) |
+| 2 | low | Photos claimed before the outbox commit; a failed or killed commit left them claimed, so a photo removed afterwards was still sent with the retry; KDoc said "one transaction" | Claim before commit is kept (it is the media layer's documented rule: `MediaComponents.attach` "BEFORE committing that record"). `MediaTicketPhotos.discard` now also drops a photo claimed for a ticket record that was never saved (`TicketDevice.holds(uuid)`: no outbox row and not purged), only for purpose `support` and ref types `support_ticket` / `support_ticket_event`; a saved record's photo and any other feature's photo are kept. KDoc of `TicketQueue`, `TicketPhotos.discard`, `TicketDevice` corrected. `removePhoto`, `removeCommentPhoto` and `leave` do nothing while a save runs (the save owns the photos it took) | `TicketWriteReplayTest.aPhotoRemovedAfterAClaimWhoseCommitFailedIsNeverSentWithTheRetry` (claim two, commit fails, remove one: gone from the media store; retry: one row, only the kept photo, claimed for the ticket; a saved record's photo survives a discard), `aFormLeftAfterAKilledSaveDropsItsClaimedPhotosAndKeepsOtherRecordsPhotos` (claimed and staged dropped after a relaunch; a `visit` photo untouched); `TicketFlowTest.aRunningSaveOwnsItsPhotosRemoveAndLeaveWaitForIt`. Note: the checker's second case (an abandoned claimed photo uploads and is parked `parent_missing`) does not happen on this code: `MediaUploader` uploads only when the record is acked or was seen in the outbox, and deletes an unseen one after `pending_photo_grace_days`; it is now dropped at once |
+| 3 | low | Photos staged in Create or an unsent comment leaked when the rep left without saving | `OnLeaveScreen` (TicketKit.kt): runs once when the screen leaves the composition while the lifecycle is at least STARTED (back, top-bar back, drawer); never on a recreation (rotation, language, process death: the lifecycle is already below STARTED and the saved draft brings the photos back). Create, Quick (sheet open) and Details (comment) drop their staged photos through it on `TicketDeps.background` (new constructor parameter, default an IO scope), so leaving never cancels the drop. A photo the camera or the picker returns after a form was left is dropped at once. The media layer's own backstop stays (MediaUploader housekeeping drops unclaimed photos older than a day when a media job runs) | `TicketScreensTest.leavingAScreenDropsItsStagedPhotosButARecreationKeepsThem` (Create, Quick with sheet, Details with comment photos: each dropped on leave; with the lifecycle at CREATED the next screen's photo is kept); `TicketFlowTest.aLeftFormIsDoneAndAPhotoStagedAfterwardsIsDroppedAtOnce` |
+| 4 | low | Data budget: every open of Dashboard / All Tickets (and every return from Details) read every page plus the summary | `TicketLists.fresh`: a list copy read on this phone less than `TicketLimits.FRESH_MS` (3 min, trusted clock; `TicketSnapshot.readAtMs`, kept in the copy as `read_at_ms`) ago is shown without a read when a screen opens. Pull to refresh (`load(refresh = true)`) always reads; a Dashboard opened from a ticket push reads (`refreshOnOpen`, via `TicketPush.open(nav, reason)` which passes the reason as the route argument). An old copy without `read_at_ms`, a clock that went back, or an older copy reads | `TicketFlowTest.aFreshCopyIsNotReadAgainOnOpenButAPullToRefreshAndAnOldCopyAre` (Dashboard -> All Tickets -> Dashboard within a minute: 1 read; a new unsent ticket still counted; refresh reads; after 3 min the open reads); `TicketModelTest.aCopyIsFreshForThreeMinutesFromItsReadOnThisPhone`; replay test: `readAtMs` set by the host read, kept through the file copy, absent in an old copy; `TicketPush.open` |
+| 5 | low | All Tickets cards drew a chevron (screenshots 12, 13 have none) | `TicketCard(chevron: Boolean = true)`; TicketListScreen passes false, the age is then centred vertically at the right; the Dashboard keeps it | `TicketScreensTest.allTicketsCardsHaveNoChevronAndTheAgeCentredWhileTheDashboardCardsHaveOne` (age centre = card centre within 1.5 px); goldens `tickets_list_*` looked at (Verify) |
+| 6 | low | Quick tiles in one row had different heights (screenshot 15: one height, label at the bottom) | `IssueTile` reserves `labelLines` x the style's line height for the label and aligns it to the bottom of that box, so every tile has one height and labels of a row end on one line | `TicketScreensTest.quickTilesAreOneHeightAndTheLabelsOfARowEndOnOneLine`; goldens `tickets_quick_*` looked at (Verify) |
+| 7 | low | s8 row 15 "tile caption test" and row 16 "offline quick create, gallery and camera" not proven | new `TicketScreensTest.theTileCaptionIsTheCategoryAndTheUrgencyInEnglishAndBangla` ("Tickets · High", "Tickets · Medium", "টিকিট · উচ্চ", "টিকিট · নিম্ন", unknown codes shown as sent); `offlineQuickCreateIsSavedAtOnceAndShownNotSentYet` now stages a gallery pick and a camera photo and asserts `rec.photos` = the draft's two photo uuids in order | the tests named |
+| 8 | low | three edits outside the s5 A2 list (ui-screenshots build line, core-media `strings_a2.xml`, the `android.net.Uri` import) without a lead confirmation | nothing to change in code; the ask to the lead is restated under Asks (confirm before the B1..A3 merge, or move to the owner) | – |
+| 9 | low | push deep link only a mapping | kept A1's ask, now with one call for A1: `TicketPush.open(nav, reason)`; the end-to-end test stays under Next step | `aTicketPushOpensTheTicketDashboardAndASaveOpensAllTickets` (+ `open`) |
+
 ## Decisions
 
 - **D-A2-01** Gallery failures are a typed exception (`GalleryImportException.reason`, `messageRes`), not a camera
@@ -221,6 +235,27 @@ Behaviour:
   lambda as TicketsHost), so the goldens recorded after A1's merge show A1's TSO bar; the night page stays a stand-in
   until `AronLook.TsoNight` is on the branch (one line).
 
+- **D-A2-28** (fix round) A closed Quick sheet stays closed: the form's draft is written to the sheet only while the
+  sheet shows that form's uuid (`SheetSlot`); X, the scrim and back do nothing while the save runs (milliseconds), so a
+  dismiss never races the save.
+- **D-A2-29** "Leaving" a ticket screen is the screen leaving the composition while the activity is at least STARTED
+  (`OnLeaveScreen`). The TSO back stack (`TsoApp`, `AronScreenTransition`) keeps no saveable state of a popped screen, so a
+  left draft is gone for good and its staged photos are dropped; a recreation disposes the composition with the lifecycle
+  already below STARTED, and the saved draft keeps its photos. The drop runs on `TicketDeps.background` (default an IO
+  `SupervisorJob` scope per `TicketDeps`, which the TSO host builds once per user), not on the screen's scope.
+- **D-A2-30** Data budget (constraint 3): a list copy younger than 3 minutes by the phone's trusted clock is not read again
+  when the Dashboard or All Tickets opens; pull to refresh and a push-opened Dashboard always read. 3 minutes keeps a quick
+  Dashboard -> Details -> back -> All Tickets walk at one read, while a rep who comes back later sees fresh counts.
+  Paging All Tickets (read page 1, more on scroll) was not chosen: the local search and the tabs work on the whole list
+  offline (s5 A2), which paging would break.
+- **D-A2-31** Photo claim stays before the commit (the media layer's rule; a commit-first order would need a reconciler to
+  claim the photos of a committed row after a kill, and the photo uuids are not in the ticket payload). Instead the ticket
+  photo port drops a photo claimed for a ticket record that is not saved, when the rep removes it or leaves the form.
+- **D-A2-32** All Tickets cards have no chevron and the age is centred (screenshots 12, 13); the Dashboard's recent cards
+  keep the chevron above the age (screenshot 11).
+- **D-A2-33** Quick tiles reserve the label's lines (2, or 4 in the one-column large-text layout) at the style's line
+  height, label at the bottom, so all tiles are one height (screenshot 15).
+
 ## Deviations
 
 - Step 1: none.
@@ -241,6 +276,9 @@ Behaviour:
   (`TsoApp`) are A1's files; asked below.
 - Step 3: screenshot 10 (the drawer's Tickets group) is not in `TicketScreenshotTests`: A1's `TsoChrome` is not on this
   branch (only the stubs are). A1 has `tso_drawer_tickets_en`; bn and 200 % of it are asked below.
+- Fix round: none. Every edit is in A2's own files (feature-tickets, app-tso `TicketsHost.kt`, `TicketApi.kt`,
+  `TicketWriteReplayTest.kt`, the docs/08 Tickets section, this file); core-media was not touched (the photo rule is in
+  the ticket photo port, through the public `MediaStore.get` / `deleteIf`).
 - Step 3: `TicketKit.hueFill`'s parameter renamed `amount` -> `fraction` in feature-tickets (A2's own file) because
   `tools/ci/money-float-scan.py` flags a Float named "amount" as money (a step 2 line; the scan reported it not allowed).
 
@@ -262,9 +300,20 @@ Behaviour:
   allowed, or the Browse Gallery button does nothing. Not testable on the laptop.
 
 - **A1 (push, D-TSO-MAN-26 step):** for `sync_nudge` with `reason = ticket_updated` (B1's push), show a fixed bn/en
-  notice and put the reason in `PushNotices.EXTRA_OPEN`; in MainActivity read it (onCreate and onNewIntent) and open
-  `TicketPush.target(extra)` (app-tso `TicketsHost.kt`, returns TICKET_DASHBOARD or null) through the TSO navigator, e.g.
-  a `TsoApp(..., open: TsoScreen?)` parameter. A2 cannot edit PushMessage, PushNotices, MainActivity or TsoApp.
+  notice and put the reason in `PushNotices.EXTRA_OPEN`; in MainActivity read it (onCreate and onNewIntent) and, through
+  the TSO navigator, call `TicketPush.open(nav, extra)` (app-tso `TicketsHost.kt`; it opens TICKET_DASHBOARD with the
+  reason as the route argument, so the Dashboard reads online even when its copy is fresh, D-A2-30; false for any other
+  push). If the navigator is not reachable there, a `TsoApp(..., open: TsoRoute?)` parameter with
+  `TsoRoute(TicketPush.target(extra), TicketPush.REASON)` does the same. A2 cannot edit PushMessage, PushNotices,
+  MainActivity or TsoApp.
+- **lead (fix round, checker defect 8):** please confirm, before the B1..A3 merge, the three edits outside the s5 A2
+  list, all marked `// tso-manual A2` and listed under Deviations: (a) the appended
+  `testImplementation(project(":android:feature-tickets"))` line in `android/ui-screenshots/build.gradle.kts` (the owned
+  TicketScreenshotTests cannot compile without it); (b) the new core-media `values/strings_a2.xml` and
+  `values-bn/strings_a2.xml` (the s5 rule "each lane has values/strings_<lane>.xml", used by the owned GalleryImport.kt);
+  (c) the `import android.net.Uri // tso-manual A2` line at the top of `MediaComponents.kt` (the owned
+  `importFromGallery(…, uri: Uri, …)` append needs it; a Kotlin import cannot go at the end of the file). Or name the
+  lane that should carry them.
 - **A1 (goldens):** screenshot 10 in bn and at 200 % (the drawer with the Tickets group open), next to your
   `tso_drawer_tickets_en`, so s8 row 10 has en, bn and 200 %.
 - **lead (merge order B1, B2, B3, W1, A1, A2, A3):** after A1's shell is merged, `TicketScreenshotTests.night` becomes
@@ -274,12 +323,33 @@ Behaviour:
 
 - Goldens: recorded on the Linux runner after A1's shell and look are merged (names under Verify); nothing committed
   here (Windows laptop).
-- The push deep link end to end (A1's files, ask above). The host side (`TicketPush.target`) is done and tested.
+- The push deep link end to end (A1's files, ask above). The host side (`TicketPush.target`, `TicketPush.open`) is done
+  and tested.
+- The lead's confirmation of the three edits outside the s5 A2 list (checker defect 8, ask above).
 - Device lab (pilot phone against dev, B1 on dev): the five screens, gallery (photo picker on the DPC-managed phone) and
   camera, offline create then sync, the INC number replacing "Not sent yet", Submit Review & Close on a resolved ticket.
 - SR and AMO wiring of feature-tickets (D-TSO-MAN-17: later; the module is role-agnostic).
 
 ## Verify
+
+Fix round, on this laptop (JDK 21, UTC, via gl.sh), 2026-10-29, code commits `fa220093` (feature-tickets) and `f03e04c7`
+(app-tso); every run below is on that code (the status and docs/08 edits came after).
+
+| command | result |
+|---|---|
+| `gl.sh :android:feature-tickets:testDebugUnitTest :android:app-tso:testDebugUnitTest --tests 'com.aktcl.aron.tso.TicketWriteReplayTest' :android:ui-screenshots:compileDebugUnitTestKotlin --continue` (run 1) | BUILD FAILED only in app-tso test compile: the old `MediaTicketPhotos(…) { cfg }` call bound its trailing lambda to the new `recordSaved` parameter (fixed: `maxNow = { cfg }`). feature-tickets 4 classes, 56 tests, 0 failures (TicketFlowTest 15, TicketListStateTest 6, TicketModelTest 24, TicketScreensTest 11); ui-screenshots test sources compiled |
+| mutation check: the old sheet behaviour restored in QuickTicketScreen (read falls back to the opening draft, unconditional write, dismiss = null then `abandon()`), `gl.sh :android:feature-tickets:testDebugUnitTest --tests '*TicketScreensTest*' :android:app-tso:testDebugUnitTest --tests 'com.aktcl.aron.tso.TicketWriteReplayTest' --continue` | as wanted: `theQuickSheetClosesForGoodOnTheXAndOnBackAndDropsItsPhoto` FAILED at the "and it does not come back" assertion (TicketScreensTest.kt:203), 11 tests, 1 failed; TicketWriteReplayTest 14, 0 failures. The file was then restored byte for byte |
+| **Final verify**: `gl.sh :android:feature-tickets:testDebugUnitTest :android:core-media:testDebugUnitTest :android:app-tso:testDebugUnitTest :android:app-tso:assembleDebug :android:ui-screenshots:testDebugUnitTest --tests '*TicketScreenshotTests*' -Paron.screenshots.recordTo=<scratchpad>/goldens/A2 :android:core-ui:testDebugUnitTest --tests 'com.aktcl.aron.core.ui.HardcodedStringScanTest' --continue` | BUILD SUCCESSFUL in 1m 27s. feature-tickets 56, 0 failures (FROM-CACHE: the same inputs as run 1, whose results these are); core-media 14 classes, 95 tests, 0 failures (UP-TO-DATE: no core-media change in this round); app-tso 5 classes, 37 tests, 0 failures (TicketWriteReplayTest 14); `app-tso-debug.apk` built; TicketScreenshotTests 30 recorded to the scratch dir, 0 failures; HardcodedStringScanTest 5, 0 failures |
+| `python tools/ci/money-float-scan.py`, `wallclock-scan.py`, `date-pin-scan.py` | exit 0 each; money-float 0 not allowed (17/17 allowed); no ticket file among the report-only findings |
+
+Looking at the recorded PNGs against the owner's JPGs: `tickets_quick_en` / `_bn` now have every tile one height with
+the label at the bottom (screenshot 15; "Astha Target" beside "Astha Gift Choice & Disb…"); `tickets_quick_200_bn` (one
+column) is one height with room for four label lines; `tickets_list_en` has no chevron and the age centred at the right
+(screenshot 12). The Dashboard keeps the chevron (tested). The goldens of `tickets_list_*` and `tickets_quick_*` change
+content; the names are unchanged (list below).
+
+Not run here: the whole ui-screenshots module in verify mode (it fails by design on the ticket goldens, which are not
+committed from this laptop); a real phone (device lab).
 
 Step 3, on this laptop (JDK 21, UTC, via gl.sh), 2026-10-29. Most of the wall time was the Gradle lock (B1, B2, B3 backend
 runs); every run below is on the commits named.
@@ -402,7 +472,11 @@ Golden names needed: none for this step (no screen).
 
 ## Next step
 
-Step 3 is done on this branch (host, API and cache, outbox wiring, photos, push mapping, replay test, docs/08). What is
-left for A2: (1) when A1's shell is merged, switch `TicketScreenshotTests.night` to A1's look and look at the recorded
-PNGs once more against the JPGs 11 to 18 (the bar is then A1's TSO bar); (2) after A1 wires the push tap, a test of the
-whole path (push reason -> TICKET_DASHBOARD); (3) the device lab checks under Not done. No other s5 A2 item is open.
+Step 3 and the checker's fix round are done on this branch (code `fa220093`, `f03e04c7`; every high and low defect fixed
+except defect 8, which waits for the lead's confirmation under Asks, and defect 9, which waits for A1). What is left for
+A2: (1) when A1's shell is merged, switch `TicketScreenshotTests.night` to A1's look and look at the recorded PNGs once
+more against the JPGs 11 to 18 (the bar is then A1's TSO bar); (2) after A1 wires the push tap with
+`TicketPush.open(nav, reason)`, a test of the whole path (push reason -> TICKET_DASHBOARD with the reason argument ->
+an online read even with a fresh copy); (3) the device lab checks under Not done, plus on a pilot phone: close the Quick
+sheet with X, outside tap and back (it stays closed), rotate with a photo staged (it stays), back out of Create with a
+photo (it is gone from `files/media/u<id>`). No other s5 A2 item is open.
