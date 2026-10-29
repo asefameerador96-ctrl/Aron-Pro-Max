@@ -36,9 +36,10 @@ import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.Glyph.caretDown
 
-/** Test tags of [AronDropdown]: the closed field and each option of the open list. */
+/** Test tags of [AronDropdown]: the closed field, the open list and each option of it. */
 object AronDropdownTags {
     const val FIELD = "aron_dropdown_field"
+    const val MENU = "aron_dropdown_menu"
     fun option(index: Int) = "aron_dropdown_option_$index"
 }
 
@@ -94,7 +95,7 @@ fun <T> AronDropdown(
             }
             DropdownMenu(
                 expanded = open, onDismissRequest = { open = false }, containerColor = fill,
-                modifier = if (fieldWidthPx > 0) Modifier.width(with(density) { fieldWidthPx.toDp() }) else Modifier,
+                modifier = (if (fieldWidthPx > 0) Modifier.width(with(density) { fieldWidthPx.toDp() }) else Modifier).testTag(AronDropdownTags.MENU),
             ) {
                 options.forEachIndexed { i, o ->
                     DropdownMenuItem(

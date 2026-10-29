@@ -17,10 +17,15 @@ class ManifestPermissionAuditTest {
     private val root = File(System.getProperty("aron.androidRoot") ?: error("aron.androidRoot not set"))
     private val forbidden = setOf("android.permission.RECORD_AUDIO", "android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.CAPTURE_AUDIO_OUTPUT")
 
-    /** R-W-12 (7): the storage permissions, forbidden in the three apps' merged manifests (no exception). */
+    /**
+     * R-W-12 (7): the storage permissions, forbidden in the three apps' merged manifests (no exception): shared storage, the three
+     * Android 13 media permissions (images, video, audio), the Android 14 partial pick, all files, and the location in media
+     * files (X4b fix round: READ_MEDIA_AUDIO and ACCESS_MEDIA_LOCATION added).
+     */
     private val storage = setOf(
         "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE", "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_MEDIA_VIDEO", "android.permission.READ_MEDIA_VISUAL_USER_SELECTED", "android.permission.MANAGE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VIDEO", "android.permission.READ_MEDIA_AUDIO", "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.MANAGE_EXTERNAL_STORAGE", "android.permission.ACCESS_MEDIA_LOCATION",
     )
 
     // D-GEO-BG-01 (lead ruling 2026-10-07): background location is allowed for the optional breadcrumbs (N-035) in
@@ -65,10 +70,15 @@ class ManifestPermissionAuditTest {
         val xml = """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
             <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
             <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+            <uses-permission-sdk-23 android:name="android.permission.READ_MEDIA_AUDIO"/>
+            <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION"/>
             <uses-permission android:name="android.permission.CAMERA"/>
         </manifest>"""
-        assertEquals(setOf("android.permission.READ_EXTERNAL_STORAGE", "android.permission.READ_MEDIA_IMAGES"), ManifestAudit.requestedPermissions(xml) intersect storage)
-        assertEquals(6, storage.size)
+        assertEquals(
+            setOf("android.permission.READ_EXTERNAL_STORAGE", "android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_AUDIO", "android.permission.ACCESS_MEDIA_LOCATION"),
+            ManifestAudit.requestedPermissions(xml) intersect storage,
+        )
+        assertEquals(8, storage.size)
     }
 
     @Test fun mergedSrManifestHasTheFieldPermissions() {
