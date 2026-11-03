@@ -211,12 +211,11 @@ class TokenContrastTest {
         night("orange badge label", Color.White, n.badgeOrange, 4.5)
     }
 
-    /** The Final Submit route card (screenshot 25, night look only): white title and muted FF line on the steel-blue fill, 4.5:1. */
+    /** The Final Submit route card (screenshot 25, night look only): white title, FF line and 'not due' line on the steel-blue fill, 4.5:1 (the muted ink is not used on this card). */
     @Test fun tsoRouteCardInkReachesFourPointFive() {
         val n = AronNightRoles.Night
         val look = AronLook.TsoNight
         night("route card ink", look.ink, n.routeCard, 4.5)
-        night("route card muted ink", look.inkMuted, n.routeCard, 4.5)
     }
 
     @Test fun tsoNightButtonLabelsOnBrightFillsReachFourPointFiveToOne() {

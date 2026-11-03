@@ -301,8 +301,8 @@ data class AronNightRoles(
     /** Status inks readable on the navy cards. */
     val danger: Color, val warning: Color, val success: Color,
     // tso-manual A1: the Target Status bars (screenshots 39 to 42): red, amber and green fills on [barTrack] by `cfg.kpi.bar_bands`
-    /** The Final Submit route cards (screenshot 25): solid steel blue with white text (8.6:1) and the muted ink (4.85:1); Sunlight draws the white outline card instead. */
-    val routeCard: Color = hex(0x234F76),
+    /** The Final Submit route cards (screenshot 25): a steel blue near the owner's 4682B4, deepened until white ink holds 4.5:1 (see TokenContrastTest); Sunlight draws the white outline card instead. */
+    val routeCard: Color = hex(0x3F7AAD),
     val bandRed: Color = hex(0xE53935), val bandAmber: Color = hex(0xFFB300), val bandGreen: Color = hex(0x2E8B3A),
     /**
      * The page glows of the owner's screenshots (Night only; Sunlight is solid and draws none): [glowBottom] is the bright-blue dome

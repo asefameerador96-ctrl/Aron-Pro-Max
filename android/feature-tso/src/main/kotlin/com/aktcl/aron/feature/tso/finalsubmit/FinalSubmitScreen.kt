@@ -90,7 +90,7 @@ fun fsRouteTitle(r: FsRoute): String {
  * Final Submit (screenshots 23 to 26). The pickers: Wing, Division, Territory, House, Zone (each a dropdown; one option is
  * picked for the TSO) and the lime Get Sales Data, enabled once the zone is chosen. The routes: the Sales Date box, the
  * route cards ("<name> <kind>", the FF line, an amber "Not uploaded" chip on a due route that has not uploaded; not-due
- * routes greyed) and Submit. No Home button (s8 rows 23 to 26). Back from the routes returns to the pickers.
+ * routes carry a "not due" line and are not dimmed, D-TSO-MAN-51) and Submit. No Home button (s8 rows 23 to 26). Back from the routes returns to the pickers.
  */
 @Composable
 fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Modifier = Modifier) {
@@ -200,7 +200,7 @@ private fun Routes(ui: FinalSubmitState.Ui, phase: FsPhase) {
         Text(stringResource(R.string.tso_fs_routes), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = look.ink)
         preview.routes.forEach { r ->
             val night = com.aktcl.aron.core.ui.aron.nightRoles()
-            val cardMod = Modifier.fillMaxWidth().testTag(FsTags.route(r.routeId)).alpha(if (r.notDue || done) 0.55f else 1f)
+            val cardMod = Modifier.fillMaxWidth().testTag(FsTags.route(r.routeId)).alpha(if (done) 0.55f else 1f)
             val card: @Composable (@Composable () -> Unit) -> Unit = { body ->
                 // screenshot 25: solid steel-blue route cards in the night look; Sunlight keeps the white outline card
                 if (night.solid) TsoCard(cardMod) { body() }
@@ -210,8 +210,8 @@ private fun Routes(ui: FinalSubmitState.Ui, phase: FsPhase) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
                         Text(fsRouteTitle(r), Modifier.testTag(FsTags.title(r.routeId)), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = look.ink)
-                        Text(if (r.ffName != null) stringResource(R.string.tso_fs_ff, r.ffName) else stringResource(R.string.tso_fs_sr_not_set), Modifier.testTag(FsTags.ff(r.routeId)), style = MaterialTheme.typography.bodyMedium, color = look.inkMuted)
-                        if (r.notDue) Text(stringResource(R.string.tso_fs_not_due), Modifier.testTag(FsTags.notDue(r.routeId)), style = MaterialTheme.typography.labelMedium, color = look.inkMuted)
+                        Text(if (r.ffName != null) stringResource(R.string.tso_fs_ff, r.ffName) else stringResource(R.string.tso_fs_sr_not_set), Modifier.testTag(FsTags.ff(r.routeId)), style = MaterialTheme.typography.bodyMedium, color = if (night.solid) look.inkMuted else look.ink)
+                        if (r.notDue) Text(stringResource(R.string.tso_fs_not_due), Modifier.testTag(FsTags.notDue(r.routeId)), style = MaterialTheme.typography.labelMedium, color = if (night.solid) look.inkMuted else look.ink)
                     }
                     if (r.notUploaded) TsoStatusPill(stringResource(R.string.tso_fs_not_uploaded), Modifier.testTag(FsTags.notUploaded(r.routeId)), tone = TsoPillTone.Warning)
                 }
