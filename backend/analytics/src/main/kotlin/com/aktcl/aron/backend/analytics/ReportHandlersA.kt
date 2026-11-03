@@ -144,8 +144,13 @@ object RouteBsrCprReport : ReportHandler {
 
     override fun spec(ctx: ReportContext): SqlSpec {
         val (prod, prodBinds) = productClause(ctx, "pp")
-        // A brand qualifies when it has a product inside the selected categories / products.
-        val brandFilter = if (prod == "true") "" else "AND EXISTS (SELECT 1 FROM dw.dim_product pp WHERE pp.brand_id = b.brand_id AND $prod)"
+        // A brand qualifies when it has a product inside the selected categories / products, as the product tree was on the row's date
+        // (D-REPORTS-ASWAS-05). When the probe says no product-history period closed inside the period, today's list is the same answer and cheaper.
+        val brandFilter = when {
+            prod == "true" -> ""
+            ctx.plainProduct -> "AND EXISTS (SELECT 1 FROM dw.dim_product pp WHERE pp.brand_id = b.brand_id AND $prod)"
+            else -> "AND EXISTS (SELECT 1 FROM ${AsWasSql.productAll("pp", ":from", ":to")} WHERE pp.brand_id = b.brand_id AND $prod AND pp.as_from <= b.business_date AND pp.as_to > b.business_date)"
+        }
         return SqlSpec(
             """
             WITH rt AS (SELECT route_id, sum(target_outlets) FILTER (WHERE planned AND NOT exception_approved) AS t, sum(successful_calls) AS sc, sum(active_memo_count) AS memos

@@ -172,9 +172,9 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
                 if (s("route_id") != req.route_id.toString() || s("business_date") != req.business_date || s("note") != req.note) throw ApiProblem(ProblemCode.ERR_CONFLICT, "action_uuid already used for a different action")
                 return@inTransaction TrackingAction(req.action_uuid, req.route_id, req.business_date, req.note, by, at.wire(), (after["notified_user_ids"] as kotlinx.serialization.json.JsonArray).map { (it as kotlinx.serialization.json.JsonPrimitive).content.toLong() })
             }
-            // A route outside the caller's reach, or unknown, is 403 (no existence leak). A route the caller holds by assignment is in reach
+            // A route outside the caller's reach, or unknown, is 403 (no existence leak). The route's zone is read live from app.route (D-REPORTS-NODEASWAS-11), not from dw.dim_geo, which lags a route move by the refresh bound. A route the caller holds by assignment is in reach
             // too, so a route-only TSO acts on the routes its Daily Tracking lists (D-BC-DASH-ROUTE-KEYED-01).
-            val geo = h.createQuery("SELECT zone_id, territory_id FROM dw.dim_geo WHERE route_id = :r").bind("r", req.route_id).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.findOne().orElse(null)
+            val geo = h.createQuery("SELECT r.zone_id, z.territory_id FROM app.route r JOIN app.zone z ON z.id = r.zone_id WHERE r.id = :r").bind("r", req.route_id).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.findOne().orElse(null)
             if (geo == null || !reach.coversRoute(req.route_id, geo.first)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "route is outside your reach")
             if (stored != null) throw ApiProblem(ProblemCode.ERR_CONFLICT, "action_uuid already used for a different action")
             if (!h.createQuery("SELECT EXISTS (SELECT 1 FROM app.route_day WHERE route_id = :r AND business_date = :d)").bind("r", req.route_id).bind("d", date).mapTo(Boolean::class.java).one())
