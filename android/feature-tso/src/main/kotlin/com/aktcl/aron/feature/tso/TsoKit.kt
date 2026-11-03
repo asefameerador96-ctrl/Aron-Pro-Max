@@ -95,7 +95,7 @@ fun TsoFrame(
 ) {
     val n = nightRoles()
     Column(modifier.fillMaxSize().nightPage(n)) {
-        AronNightTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back))
+        AronNightTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back), onPage = true)
         Box(Modifier.weight(1f).fillMaxWidth(), content = content)
         if (bottomBar != null) {
             Row(
@@ -127,7 +127,7 @@ fun TsoFrame(
     val n = nightRoles()
     Box(modifier.fillMaxSize().nightPage(n, glow)) {
         Column(Modifier.fillMaxSize()) {
-            AronNightTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back))
+            AronNightTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back), onPage = true)
             Box(
                 Modifier.weight(1f).fillMaxWidth()
                     .then(if (homeButton && bottomBar == null) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = TsoFabBand) else Modifier),

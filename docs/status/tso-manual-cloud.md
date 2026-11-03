@@ -8,6 +8,30 @@
 **Container notes.** Local Postgres for backend tests: `pg_ctlcluster 16 main start`, role/db aron_test, trust rule for aron_test in /etc/postgresql/16/main/pg_hba.conf, `ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/aron_test?user=aron_test`; Maven Central sometimes answers 429 for version ranges (retry after a minute); gradle commands over about 9 minutes must run in the background. Full local Android job (assemble 3 APKs, testDebugUnitTest, lintDebug) takes about 9 minutes.
 **Residual owner-visible differences** are listed under "Remaining owner-visible differences" below (fills darker than the screenshots, no bottom glow, cosmetic rows).
 
+## Batch 2 (tso-manual #2, lane/tso-manual-wip-batch2)
+Items in the lead's order, one commit each (golden PNGs ride in the commit that changed them or in the "goldens: re-recorded" commit):
+1. Tickets harness: `AronTheme(dark = !sunlight, tso = true)` like TsoAreaScreenshotTests, manual LocalAronLook layering removed. Recording in the container left 36 of 37 `tickets_*` PNGs byte-identical (the old layering already drew the same pixels); only `tickets_dashboard_sunlight_en` changed.
+2. Map fallback list (rows 28, 29): ink and muted ink from `LocalAronLook` (they were the default black).
+3. Page glows: `NightPageGlow` (`nightPage(n, glow)`), tokens `glowBottom` 3D9FFF and `glowTop` 104B78; bottom dome on Final Submit, Target Status and Details, login status; top wash on Leave and Leave Apply; Sunlight draws none. `AronNightTopBar(onPage = true)` inside a TsoFrame so the glow is not cut at the bar. TokenContrastTest `tsoTopGlowKeepsInkReadable` (white 7:1, muted 4.5:1 on the top glow).
+4. Row 19 leave card: teal-to-blue gradient (126985 to 16507F), teal edge, solid orange badge B45C00 with white bold label (4.7:1), day disc that grows with the font (the 200 % Bangla clipping). Test `tsoLeaveCardInkAndOrangeBadgeReachFourPointFive`.
+5. Row 25 route cards 3F7AAD (white 4.56:1), no 0.55 alpha on not-due routes, D-TSO-MAN-51.
+6. Small items: info-dialog scrim 0.35, dropdown list near-black navy over its field, helper line outside the glowing field (no dark patch), glowing Date field on Leave Apply, Assign Task info card navy with an aqua edge, bottom bar clear of the Home disc (rows 33, 38: `TsoBarOverFab` = band + 4 dp, no overlap). Row 43 bottom-bar notch: not done (optional).
+7. Row 34 behavioural test `MyCallScreenTest.myVisitPlanShowsTodayAndTheZoneAndNeedsARouteBeforeShowOutlet`.
+8. `TsoBottomBar` primary is `NightButton` Cyan.
+9. Rows 8 (titles shrink 22 to 16 sp to fit one line), 30 (crossed-out storefront for Set Plan), 41 (one figure size per column, % column wider). Rows 14 and 16 are not changed (below).
+
+### Mismatches vs owner screenshots (after batch 2)
+- Row 14: Submit Review & Close wraps under the pills at 360 dp: the pills (about 190 dp) plus the button (about 200 dp) exceed the 328 dp row; the owner's phone is about 410 dp wide. The flow row wraps by design (never squeezes). Accepted.
+- Row 16: our Quick Report sheet is taller (extra optional username field, D-TSO-MAN-20/21), so it starts higher than the owner's. Accepted.
+- Row 19: card gradient and orange badge follow the owner's; the orange is darker than the owner's FF9800 (white label at 4.7:1, D-TSO-MAN-50).
+- Rows 23 to 26, 39 to 42: the bottom glow dome is drawn behind the page; the owner's rises slightly less high (about 20 % of the height, ours about 25 %). The glow is bright blue behind nothing but the Home disc and the docked button.
+- Row 25: card blue 3F7AAD is a little darker than the owner's 4682B4 (white-label contrast).
+- Row 21: our list is the field's width (the owner's runs edge to edge) and covers the field it opened from.
+- Rows 28, 29: a stale person row stays dimmed (STALE_ALPHA); live rows are white.
+- Row 30: the Set Plan glyph is our storefront with a slash (approximation of the owner's icon).
+- Row 41: the "Remaining" header hyphenates (Re-main-ing); the owner's wraps "Remainin / g".
+- Row 43: bottom-bar notch not drawn.
+
 ## Task 1: goldens recorded on Linux (2026-11-03)
 - Recorded with `./gradlew :android:ui-screenshots:testDebugUnitTest -Proborazzi.record=true` in the lane container (Robolectric, Linux, Maven mirror).
 - 140 new PNGs committed in `android/ui-screenshots/src/test/screenshots/` (the 161 failing tests share names, some tests write several variants; 161 failures in run #1734 were all "missing golden"). The 21 existing goldens that record mode rewrote were reverted (they already verified in CI; no churn).
