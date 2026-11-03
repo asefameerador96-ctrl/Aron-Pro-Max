@@ -144,9 +144,10 @@ object TsoDrawer {
  * and the inbox (no screenshot: none).
  */
 /**
- * The page glow of each TSO screen that has one (conformance rows 19 to 26, 39 to 42, 8): the bright-blue bottom dome on Target Status,
- * Target Details, the login-status page and Final Submit; the blue top wash on the Leave pages. The hosts (app-tso) and the screenshot
- * tests read this one table, so a golden proves the glow the app draws.
+ * The page glow the app-tso hosts frame for the three host-framed pages: the bright-blue bottom dome of Target Status, Target Details and
+ * the login-status page (conformance rows 8, 39 to 42). The hosts and the screenshot frames read this one table, so a golden proves the
+ * glow the app draws. Final Submit and the Leave pages draw theirs inside their own screens (`FinalSubmitScreen`, `LeaveScreen`,
+ * `LeaveApplyScreen`), where the goldens already render the real composable; they are not in this table.
  */
 object TsoGlow {
     fun of(screen: TsoScreen): com.aktcl.aron.core.ui.aron.NightPageGlow = when (screen) {
