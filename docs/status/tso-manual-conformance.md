@@ -98,3 +98,55 @@ Lead (cloud), 2026-11-03 21:20 UTC. Method: six Sonnet readers (rows 1–8, 9–
 
 ## Device walk (owner's phone against dev; rows the contract marks device)
 Install dialog label and update-over-install (2, 3); launcher icon (4); My Team map with SR markers, fit button, zoom and tap (28); Retailer map with radius pins, each radius pick (29); airplane-mode first open then reconnect replay of Set Plan, Assign Task, leave and ticket (cross-cutting e); print/paper items are SR/AMO, not TSO.
+
+
+## Re-check after fix batch 1 (lane/tso-manual 86236433), 2026-11-03 22:08 UTC
+
+Three Sonnet readers + three verifiers over rows 19–26, 28–29, 31–38, 43 and cross-cutting checks (101 look on every golden, 102 button labels, 103 stale goldens, 104 tall goldens). The harness fix worked: every re-recorded golden is in the TsoNight look; D-TSO-MAN-50 white labels confirmed. Verdicts after verification:
+
+| # | Verdict | Gap | Remaining difference |
+|---|---|---|---|
+| 19 (leave-finalsubmit) | PARTIAL | major | Card fill is dark navy with a teal outline; the owner's card is a solid teal-to-blue gradient. |
+| 20 (leave-finalsubmit) | PROVEN | info | Button is olive rather than the owner's lime (D-TSO-MAN-50, info). |
+| 21 (leave-finalsubmit) | PROVEN | minor | The menu panel is a lighter navy (about #1a2050) and sits under the field, with the Date field partly visible beneath it. The owner's menu is a near-black navy, full width, and covers the field and th |
+| 22 (leave-finalsubmit) | PROVEN | minor | The helper line sits on a darker rectangle that looks like a rendering artifact in all three variants. |
+| 23 (leave-finalsubmit) | PARTIAL | major | Remaining: the owner's bright-blue bottom glow is missing (reported residual). |
+| 24 (leave-finalsubmit) | PARTIAL | minor | Bright-blue bottom glow missing (reported residual). |
+| 25 (leave-finalsubmit) | PARTIAL | major | Card fill is routeCard 0x234F76, a dark steel blue; the owner's cards are bright steel blue (about #4682B4). The owner would see this at a glance. |
+| 26 (leave-finalsubmit) | PARTIAL | minor | The panel is wider and anchored lower, almost edge to edge at 360 dp; the owner's is a smaller inset card (different width, minor). |
+| 28 (periphery-mycall) | PARTIAL | major | In the no-network fallback list the SR names ('SR - Testing Banani (Apsis Route)'), the 'Last seen ...' lines, 'Checkin', 'Mock GPS today: 2' and 'No location yet' are dark ink on the navy page, nearl |
+| 29 (periphery-mycall) | PARTIAL | major | The outlet rows in the fallback list ('outlet name 1 . DHK-344-001', 'Apsis Cluster . 12 m', 'You are here') are dark ink on navy, nearly invisible (same cause as row 28). |
+| 31 (periphery-mycall) | PROVEN | info | Bottom glow is bright blue; the owner's is a teal-green haze (known residual, cosmetic). |
+| 32 (periphery-mycall) | PROVEN | none | The golden's route menu is a rounded card with a lighter weight font; the owner's is a full-width darker panel with bold white items (size and weight only, not a finding). |
+| 33 (periphery-mycall) | PROVEN | minor | The golden adds a '0 of 7 selected / Select all' strip that the owner's screen does not have (extra helper, cosmetic). |
+| 34 (periphery-mycall) | PARTIAL | minor | The 'Select Route' placeholder is muted grey-blue; the owner's is bright white (cosmetic). |
+| 35 (periphery-mycall) | PROVEN | minor | The selected pill's label and border are a brighter lime-green than the owner's muted teal; the unselected label is a brighter blue-grey than the owner's dim grey (cosmetic). |
+| 36 (periphery-mycall) | PROVEN | minor | The owner's card is a translucent blue gradient panel with no visible border; the golden is a navy card with a teal border (cosmetic). |
+| 37 (periphery-mycall) | PROVEN | minor | The owner's Submit has a faint green glow; the golden shows a bright-blue Home glow at the bottom and the Home button overlaps the Submit button's lower edge (the owner's Submit also sits close to Hom |
+| 38 (periphery-mycall) | PARTIAL | minor | The outlet info card is a purple-tinted translucent panel with a violet border; the owner's is a navy card with an aqua/teal glow border (a visible colour difference). |
+| 43 (feedback-cross) | PROVEN | minor | Browse Gallery is a flat royal-blue fill (about #2a4bd0) with a soft shadow. The owner's is a bright light-blue gradient with a strong blue glow. This is a gradient and glow difference. |
+| 101 (feedback-cross) | PARTIAL | major | The 38 tickets_* goldens (TicketScreenshotTests line 90) still use AronTheme(dark=false) and no tso=true, and were last recorded at 19:53 on 2026-11-03, before the harness fix at 21:27. They are navy  |
+| 101 (leave-finalsubmit) | PROVEN | info | The fill is darker than the owner's lime (accepted per D-TSO-MAN-50, info). |
+| 101 (periphery-mycall) | PROVEN | none | Only the fallback list text in rows 28 and 29 still uses dark ink on navy (see those rows). |
+| 102 (feedback-cross) | PROVEN | info | The bright-blue bottom glow is missing on Final Submit (s23, s25) and Target Status. This is a known residual and a minor-to-major cosmetic gap. It is present on My Teams, Set Plan, My Visit Plan, Log |
+| 102 (leave-finalsubmit) | PARTIAL | major | Missing glow on Final Submit pages 23-26, as the lane reports. |
+| 102 (periphery-mycall) | PROVEN | info | Labels are bolder and larger than the owner's thin labels (not a finding). |
+| 103 (feedback-cross) | PROVEN | info | There are no pre-2026-11-03 PNGs. A different kind of staleness exists: 12 tso_* goldens and all 38 tickets_* goldens carry only the 19:53 recording, before the 21:27 re-record and the 21:50 D-TSO-MAN |
+| 103 (leave-finalsubmit) | PROVEN | info | The warning dialog 'Routes not uploaded' has pink Cancel and mint 'Submit anyway' buttons, not covered by an owner screenshot (inferred; the owner has no such screen). |
+| 103 (periphery-mycall) | PARTIAL | minor | Glow colour is blue instead of teal-green, or absent in the owner's. |
+| 104 (feedback-cross) | PARTIAL | minor | Row 11: the Recent tickets list is cut off in mid-card at the 1600 dp bottom (the 6th card is clipped). The owner's screenshot may show more cards. Inference, minor. |
+| 104 (leave-finalsubmit) | PROVEN | none |  |
+| 104 (periphery-mycall) | PROVEN | none | Tab green and unselected text tone are slightly brighter than the owner's (cosmetic). |
+
+**Lead decision:** the remaining items are visual (page glows, card colours, one legibility defect in the offline map-fallback lists, the tickets screenshot harness) with no data or behaviour risk; train 67 lands the build on dev once run 41726922987 is green so the owner can walk it on a phone, and batch 2 below lands as train 68.
+
+### Fix batch 2 (tso-manual #2)
+1. TicketScreenshotTests harness: tso=true and dark=!sunlight like TsoAreaScreenshotTests, drop the manual LocalAronLook layering, re-record the 37 tickets_* goldens (fields get the purple glow).
+2. My Team / Retailer offline fallback lists (rows 28, 29): list text in the TSO ink roles (white, muted) instead of dark ink on navy; check the Sunlight variant too.
+3. Page glows per the owner's screenshots: bright-blue bottom radial glow on Final Submit (23–26), Target Status (39–42) and the login-status page; blue top glow on the Leave pages (19–22); as TsoNight page-background elements (tokens), contrast gates unchanged.
+4. Row 19 leave card: teal-to-blue gradient fill and a solid orange status badge as the owner's; fix the day-count clipping at 200% Bangla.
+5. Row 25 route cards: a brighter steel blue near the owner's (holding 4.5:1 for white, computed); not-due routes keep the 'not due' chip but no 0.55 alpha dimming (the owner's cards are uniform); update the D-TSO-MAN-27 wording.
+6. Small items: row 26 lighter scrim; row 21 menu near-black navy covering the field; row 22 helper line without the dark patch and the Date field's glow; row 38 info card navy with an aqua border; rows 33/38 content padding so the Home button does not overlap Set Plan / Assign Task; row 43 bottom-bar notch (optional).
+7. Row 34: a behavioural Compose test for My Visit Plan (date, zone, route → Show Outlet).
+8. TsoBottomBar's cyan primary button (ChangePasswordScreen) → NightButton Cyan (white label, 4.5:1).
+9. Cosmetic rows 8, 14, 16, 30, 41 as listed in docs/status/tso-manual-cloud.md.
