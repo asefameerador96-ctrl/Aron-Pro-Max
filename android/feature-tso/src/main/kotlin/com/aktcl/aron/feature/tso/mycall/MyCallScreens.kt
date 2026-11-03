@@ -75,7 +75,7 @@ import com.aktcl.aron.feature.tso.TsoGradientButton
 import com.aktcl.aron.feature.tso.TsoLoading
 import com.aktcl.aron.feature.tso.TsoNav
 import com.aktcl.aron.feature.tso.TsoPillTone
-import com.aktcl.aron.feature.tso.TsoSegmentedTabs
+import com.aktcl.aron.feature.tso.TsoTwoPillTabs
 import com.aktcl.aron.feature.tso.TsoStatusPill
 import com.aktcl.aron.feature.tso.leave.backOnly
 import com.aktcl.aron.feature.tso.zoneName
@@ -206,8 +206,10 @@ fun SetPlanScreen(state: SetPlanState, onBack: () -> Unit, modifier: Modifier = 
 private fun OutletPickCard(o: PlanOutlet, bangla: Boolean, selected: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
     TsoCard(
-        modifier.fillMaxWidth().toggleable(value = selected, role = Role.Checkbox, onValueChange = { onToggle() }),
-        glow = selected,
+        // screenshot 33: the chosen card keeps the navy outline card and gets a bright aqua edge (not the purple glow card)
+        modifier.fillMaxWidth().toggleable(value = selected, role = Role.Checkbox, onValueChange = { onToggle() })
+            .then(if (selected) Modifier.border(2.dp, com.aktcl.aron.core.ui.aron.nightRoles().teal, RoundedCornerShape(12.dp)) else Modifier),
+        glow = false,
     ) {
         Row(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -342,7 +344,7 @@ fun VisitPlanOutletsScreen(
     val bn = LocalAppLanguage.current == AppLanguage.BN
     TsoFrame(stringResource(R.string.tso_mc_visit_plan_outlets), nav, homeButton = true, modifier = modifier, onBack = onBack) {
         Column(Modifier.fillMaxSize().padding(horizontal = AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            TsoSegmentedTabs(listOf(stringResource(R.string.tso_mc_tab_pending), stringResource(R.string.tso_mc_tab_completed)), ui.tab, { state.tab(it) })
+            TsoTwoPillTabs(listOf(stringResource(R.string.tso_mc_tab_pending), stringResource(R.string.tso_mc_tab_completed)), ui.tab, { state.tab(it) })
             when (ui.planLoad) {
                 PickLoad.IDLE, PickLoad.LOADING -> TsoLoading(Modifier.weight(1f))
                 PickLoad.UNAVAILABLE -> TsoBanner(stringResource(R.string.tso_mc_unavailable), Modifier.testTag(MyCallTags.UNAVAILABLE), kind = TsoBannerKind.Offline)

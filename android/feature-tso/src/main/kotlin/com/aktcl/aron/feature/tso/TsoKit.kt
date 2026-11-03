@@ -261,6 +261,32 @@ fun TsoSegmentedTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Uni
 }
 
 /**
+ * Two separate pills (Pending / Completed, screenshot 35): the selected one a navy pill with a green edge and a green label, the other
+ * plain muted text with no fill. Same tags and TalkBack role as [TsoSegmentedTabs]; Sunlight draws the selected edge solid.
+ */
+@Composable
+fun TsoTwoPillTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val n = nightRoles()
+    val shape = RoundedCornerShape(12.dp)
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        labels.forEachIndexed { i, l ->
+            val on = i == selected
+            Box(
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = 52.dp)
+                    .clip(shape)
+                    .then(if (on) Modifier.background(n.field).border(if (n.solid) 2.dp else 1.5.dp, n.positive, shape) else Modifier)
+                    .selectable(selected = on, role = Role.Tab, onClick = { onSelect(i) })
+                    .testTag(TsoKitTags.segment(i))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text(l, style = nightText(17.sp, if (on) n.positive else n.inkMuted)) }
+        }
+    }
+}
+
+/**
  * A scrolling row of pill tabs (All / New / In Progress / Resolved / Closed, screenshots 12 and 13): the selected pill blue with a
  * white label, the others quiet navy.
  */

@@ -302,6 +302,8 @@ data class AronNightRoles(
     /** Status inks readable on the navy cards. */
     val danger: Color, val warning: Color, val success: Color,
     // tso-manual A1: the Target Status bars (screenshots 39 to 42): red, amber and green fills on [barTrack] by `cfg.kpi.bar_bands`
+    /** The Final Submit route cards (screenshot 25): solid steel blue with white text (7.1:1); Sunlight draws the white outline card instead. */
+    val routeCard: Color = hex(0x2B5F8E),
     val bandRed: Color = hex(0xE53935), val bandAmber: Color = hex(0xFFB300), val bandGreen: Color = hex(0x2E8B3A),
 ) {
     companion object {

@@ -2,6 +2,9 @@ package com.aktcl.aron.feature.tso.finalsubmit
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,7 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronConfirmDialog
-import com.aktcl.aron.core.ui.AronInfoDialog
+import com.aktcl.aron.feature.tso.TsoInfoDialog
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.LocalAronLook
@@ -123,10 +126,10 @@ fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Mod
 private fun Dialogs(state: FinalSubmitState, phase: FsPhase) {
     val scope = rememberCoroutineScope()
     if (phase is FsPhase.AlreadySubmitted) {
-        AronInfoDialog(stringResource(R.string.tso_fs_title), stringResource(R.string.tso_fs_already), stringResource(R.string.tso_fs_ok), onDismiss = { state.dismissAlready() })
+        TsoInfoDialog(stringResource(R.string.tso_fs_title), stringResource(R.string.tso_fs_already), stringResource(R.string.tso_fs_ok), onDismiss = { state.dismissAlready() })
     }
     if (phase is FsPhase.Done) {
-        AronInfoDialog(stringResource(R.string.tso_fs_success_title), stringResource(R.string.tso_fs_done_short), stringResource(R.string.tso_fs_ok), onDismiss = { state.nextZone() })
+        TsoInfoDialog(stringResource(R.string.tso_fs_success_title), stringResource(R.string.tso_fs_done_short), stringResource(R.string.tso_fs_ok), onDismiss = { state.nextZone() })
     }
     if (phase is FsPhase.Review && phase.warning) {
         val names = phase.preview.warnRoutes.map { fsRouteTitle(it) }
@@ -195,7 +198,14 @@ private fun Routes(ui: FinalSubmitState.Ui, phase: FsPhase) {
         if (phase is FsPhase.Review && phase.notice == FsNotice.REOPENED) TsoBanner(stringResource(R.string.tso_fs_reopened), Modifier.testTag(FsTags.NOTICE), kind = TsoBannerKind.Warning)
         Text(stringResource(R.string.tso_fs_routes), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = look.ink)
         preview.routes.forEach { r ->
-            TsoCard(Modifier.fillMaxWidth().testTag(FsTags.route(r.routeId)).alpha(if (r.notDue || done) 0.55f else 1f)) {
+            val night = com.aktcl.aron.core.ui.aron.nightRoles()
+            val cardMod = Modifier.fillMaxWidth().testTag(FsTags.route(r.routeId)).alpha(if (r.notDue || done) 0.55f else 1f)
+            val card: @Composable (@Composable () -> Unit) -> Unit = { body ->
+                // screenshot 25: solid steel-blue route cards in the night look; Sunlight keeps the white outline card
+                if (night.solid) TsoCard(cardMod) { body() }
+                else Box(cardMod.clip(RoundedCornerShape(12.dp)).background(night.routeCard).padding(16.dp)) { body() }
+            }
+            card {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
                         Text(fsRouteTitle(r), Modifier.testTag(FsTags.title(r.routeId)), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = look.ink)

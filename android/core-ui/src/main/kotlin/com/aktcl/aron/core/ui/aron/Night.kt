@@ -248,7 +248,7 @@ fun NightButton(
         style == NightButtonStyle.Lime -> Triple(grad(n, n.limeStart, n.limeEnd), n.onBright, null)
         style == NightButtonStyle.Cancel -> Triple(SolidColor(n.cancel), n.onBright, n.cancel)
         style == NightButtonStyle.LogOut -> Triple(grad(n, n.logoutStart, n.logoutEnd, vertical = true), n.onBright, n.logoutStart)
-        else -> Triple(SolidColor(n.blue), n.onBlue, null)
+        else -> Triple(SolidColor(n.blue), n.onBlue, n.blue) // screenshot 43: the blue button glows
     }
     Box(
         modifier

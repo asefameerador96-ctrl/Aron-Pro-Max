@@ -67,6 +67,8 @@ object TsoShellTags {
     const val GEAR = "tso_shell_gear"
     const val PLACEHOLDER = "tso_shell_placeholder"
     const val LOGOUT_DIALOG = "tso_logout_dialog"
+    const val INFO_DIALOG = "tso_info_dialog"
+    const val INFO_OK = "tso_info_ok"
     const val LOGOUT_CANCEL = "tso_logout_cancel"
     const val LOGOUT_CONFIRM = "tso_logout_confirm"
     fun row(id: String) = "tso_drawer_row_$id"
@@ -305,6 +307,39 @@ fun TsoLogoutDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
         stringResource(R.string.tso_chrome_cancel), stringResource(R.string.tso_drawer_logout),
     )
     Dialog(onDismissRequest = onDismiss) { TsoLogoutDialogContent(onConfirm, onDismiss, words = words) }
+}
+
+/**
+ * The one-button message dialog of the TSO look (Final Submit "Success", screenshot 26): the navy rounded panel of the logout dialog,
+ * the title and the message centred in white, a filled blue OK on the right. Words are resolved by the caller (its locale).
+ */
+@Composable
+fun TsoInfoDialog(title: String, message: String, okLabel: String, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) { TsoInfoDialogContent(title, message, okLabel, onDismiss) }
+}
+
+/** The body of [TsoInfoDialog] (also drawn inline by the goldens, which capture one window). */
+@Composable
+fun TsoInfoDialogContent(title: String, message: String, okLabel: String, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    val n = nightRoles()
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(if (n.solid) SolidColor(n.dialogTop) else Brush.verticalGradient(listOf(n.dialogTop, n.dialogBottom)))
+            .then(if (n.solid) Modifier.border(2.dp, n.outlineEdge, RoundedCornerShape(24.dp)) else Modifier)
+            .padding(24.dp)
+            .testTag(TsoShellTags.INFO_DIALOG),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(title, style = nightText(22.sp, n.ink, bold = true, align = TextAlign.Center), modifier = Modifier.semantics { heading() })
+        Spacer(Modifier.height(20.dp))
+        Text(message, style = nightText(16.sp, n.ink, align = TextAlign.Center))
+        Spacer(Modifier.height(24.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            NightButton(okLabel, onDismiss, Modifier.testTag(TsoShellTags.INFO_OK), style = NightButtonStyle.Blue, fill = false)
+        }
+    }
 }
 
 /** The four texts of the logout dialog. */

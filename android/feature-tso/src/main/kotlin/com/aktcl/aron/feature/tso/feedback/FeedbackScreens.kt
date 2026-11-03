@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -149,8 +150,11 @@ fun FeedbackListScreen(
 @Composable
 private fun CategoryRow(label: String, selected: Boolean, enabled: Boolean, tag: String, onPick: () -> Unit) {
     val look = LocalAronLook.current
+    val n = com.aktcl.aron.core.ui.aron.nightRoles()
+    // screenshot 43: dark navy rows with white text; the chosen row keeps the navy but gets the teal edge and the tick (never grey)
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 52.dp).background(if (selected) look.underline else look.card)
+        Modifier.fillMaxWidth().heightIn(min = 52.dp).background(if (selected) n.field else look.card)
+            .then(if (selected) Modifier.border(1.5.dp, n.teal) else Modifier)
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onPick).testTag(tag).padding(horizontal = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
