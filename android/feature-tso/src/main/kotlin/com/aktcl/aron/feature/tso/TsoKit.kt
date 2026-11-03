@@ -217,11 +217,13 @@ fun TsoGlowField(
     supportingText: String? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    /** False for the plain outlined box of the owner's Assign Task comment (screenshot 38): no glow. */
+    glow: Boolean = true,
 ) {
     NightGlowField(
         value, onValueChange, label = label, placeholder = placeholder, enabled = enabled, singleLine = singleLine, minLines = minLines,
         isError = isError, supportingText = supportingText, keyboardOptions = keyboardOptions, visualTransformation = visualTransformation,
-        fieldModifier = modifier,
+        fieldModifier = modifier, glow = glow,
     )
 }
 
@@ -239,8 +241,10 @@ fun <T> TsoDropdownField(
     label: String? = null,
     placeholder: String = "",
     enabled: Boolean = true,
+    /** The placeholder in the white ink of a chosen value (My Visit Plan, screenshot 34); the default is the muted placeholder (screenshot 23). */
+    brightPlaceholder: Boolean = false,
 ) {
-    AronDropdown(options, selected, onSelect, optionLabel, modifier, label = label, placeholder = placeholder, enabled = enabled)
+    AronDropdown(options, selected, onSelect, optionLabel, modifier, label = label, placeholder = placeholder, enabled = enabled, brightPlaceholder = brightPlaceholder)
 }
 
 /**

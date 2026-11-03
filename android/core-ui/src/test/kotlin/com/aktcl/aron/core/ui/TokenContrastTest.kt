@@ -195,6 +195,21 @@ class TokenContrastTest {
      * Cancel green, Log Out orange) is gated at WCAG AA 4.5:1, on both stops and the midpoint of every gradient; this is a separate group from the
      * 7:1 key-figure gate and does not loosen it. Sunlight stays at 7:1 above.
      */
+    /** The map fallback list of the TSO look (rows 28, 29): the muted ink of a stale row and the ink of a live one on the navy page, 4.5:1. */
+    @Test fun tsoMapFallbackListInksReachFourPointFive() {
+        val n = AronNightRoles.Night
+        night("stale row muted ink on the page", AronLook.TsoNight.inkMuted, n.page, 4.5)
+        night("live row ink on the page", AronLook.TsoNight.ink, n.page, 4.5)
+    }
+
+    /** My Visit Plan's white placeholder (screenshot 34) on the field, and Assign Task's plain comment box (page colour, quiet outline): 4.5:1 / 3:1. */
+    @Test fun tsoBrightPlaceholderAndPlainBoxHoldTheirGates() {
+        val n = AronNightRoles.Night
+        night("white placeholder on the field", AronLook.TsoNight.ink, n.field, 4.5)
+        night("placeholder on the plain comment box", n.placeholder, n.page, 4.5)
+        night("plain box outline on the page", n.divider, n.page, 3.0)
+    }
+
     /** The top glow of the Leave pages (screenshots 19 to 22): white ink and the muted ink over its strongest point keep 7:1 and 4.5:1. */
     @Test fun tsoTopGlowKeepsInkReadable() {
         val n = AronNightRoles.Night

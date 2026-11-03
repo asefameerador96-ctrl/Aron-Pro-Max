@@ -61,13 +61,15 @@ fun <T> AronDropdown(
     label: String? = null,
     placeholder: String = "",
     enabled: Boolean = true,
+    /** TSO look: draw the placeholder in the ink of a chosen value (screenshot 34); ignored in the other looks. */
+    brightPlaceholder: Boolean = false,
 ) {
     val look = LocalAronLook.current
     val n = look.night
     val fill = n?.field ?: look.card
     val edge = n?.fieldEdge ?: look.underline
     val ink = n?.ink ?: look.ink
-    val hint = n?.placeholder ?: look.hint
+    val hint = if (brightPlaceholder && n != null) n.ink else n?.placeholder ?: look.hint
     val shape = RoundedCornerShape(if (n != null) 14.dp else 12.dp)
     var open by remember { mutableStateOf(false) }
     var fieldWidthPx by remember { mutableIntStateOf(0) }
