@@ -129,6 +129,7 @@ class TsoScreenshotTests {
     )
 
     @Test fun login_en() = shot("tso_login_en", AppLanguage.EN) { TsoLoginContent(LoginUiState(), {}, {}, {}, {}, {}) }
+    @Test fun login_bn() = shot("tso_login_bn", AppLanguage.BN) { TsoLoginContent(LoginUiState(), {}, {}, {}, {}, {}) } // conformance row 5 (empty form, Bangla)
     @Test fun login_bn_refused() = shot("tso_login_refused_bn", AppLanguage.BN) { TsoLoginContent(LoginUiState(username = "tso1001", password = "x", message = LoginMessage.InvalidCredentials), {}, {}, {}, {}, {}) }
     @Test fun login_sunlight_en() = shot("tso_login_sunlight_en", AppLanguage.EN, sunlight = true) { TsoLoginContent(LoginUiState(username = "tso1001"), {}, {}, {}, {}, {}) }
 
@@ -165,6 +166,8 @@ class TsoScreenshotTests {
         }
     }
     @Test fun drawer_en() = shot("tso_drawer_en", AppLanguage.EN) { Drawer(null) }
+    // conformance row 9: a tall frame so the whole list down to Log Out shows
+    @Test @Config(qualifiers = "w360dp-h1400dp") fun drawer_tall_en() = shot("tso_drawer_tall_en", AppLanguage.EN) { Drawer(null) }
     @Test fun drawer_tickets_en() = shot("tso_drawer_tickets_en", AppLanguage.EN) { Drawer("tickets") }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun drawer_periphery_bn() = shot("tso_drawer_periphery_bn", AppLanguage.BN) { Drawer("periphery", "টেস্টিং ঢাকা নর্থ") }
     @Test fun drawer_my_call_sunlight_en() = shot("tso_drawer_my_call_sunlight_en", AppLanguage.EN, sunlight = true) { Drawer("my_call") }
@@ -213,6 +216,8 @@ class TsoScreenshotTests {
             TargetDetailsContent(CardLoad(tgtDetails), tab, Bands.DEFAULT, filter, false, {}, {}, {})
         }
     @Test fun target_monthly_en() = shot("tso_target_monthly_en", AppLanguage.EN) { TargetStatusShot(TargetTab.MONTHLY) }
+    // conformance row 39: a tall frame so the lower half of the monthly target shows
+    @Test @Config(qualifiers = "w360dp-h1400dp") fun target_monthly_tall_en() = shot("tso_target_monthly_tall_en", AppLanguage.EN) { TargetStatusShot(TargetTab.MONTHLY) }
     @Test fun target_till_date_en() = shot("tso_target_till_date_en", AppLanguage.EN) { TargetStatusShot(TargetTab.TILL_DATE) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun target_monthly_bn() = shot("tso_target_monthly_bn", AppLanguage.BN) { TargetStatusShot(TargetTab.MONTHLY) }
     @Test fun target_sunlight_en() = shot("tso_target_sunlight_en", AppLanguage.EN, sunlight = true) { TargetStatusShot(TargetTab.TILL_DATE) }

@@ -240,6 +240,8 @@ class TsoAreaScreenshotTests {
     @Test fun fs_s24_en() = shot("tso_fs_s24_en", AppLanguage.EN) { FinalSubmitScreen(fsAt(24), onBack = {}) }
     @Test fun fs_s24_bn() = shot("tso_fs_s24_bn", AppLanguage.BN) { FinalSubmitScreen(fsAt(24), onBack = {}) }
     @Test fun fs_s25_en() = shot("tso_fs_s25_en", AppLanguage.EN) { FinalSubmitScreen(fsAt(25), onBack = {}) }
+    // conformance row 25: a tall frame so every route card and the Submit button show
+    @Test @Config(qualifiers = "w360dp-h1400dp") fun fs_s25_tall_en() = shot("tso_fs_s25_tall_en", AppLanguage.EN) { FinalSubmitScreen(fsAt(25), onBack = {}) }
     @Test fun fs_s25_bn() = shot("tso_fs_s25_bn", AppLanguage.BN) { FinalSubmitScreen(fsAt(25), onBack = {}) }
     @Test fun fs_warning_en() = shot("tso_fs_warning_en", AppLanguage.EN) { val st = fsAt(25); runBlocking { st.submit() }; FinalSubmitScreen(st, onBack = {}) }
     @Test fun fs_s26_en() = shot("tso_fs_s26_en", AppLanguage.EN) { FinalSubmitScreen(fsAt(26), onBack = {}) }

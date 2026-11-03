@@ -181,6 +181,8 @@ class TicketScreenshotTests {
 
     // ---- 11 dashboard
     @Test fun dashboard_en() = shot("tickets_dashboard_en", AppLanguage.EN) { TicketDashboardScreen(TicketDashboardState(dashboardDeps()), tsoFrame, {}, {}, {}) }
+    // conformance rows 11, 15, 17, 18: tall frames so the lower halves are proven (Recent tickets, all 31 tiles, Submit, the whole type list)
+    @Test @Config(qualifiers = "w360dp-h1600dp") fun dashboard_tall_en() = shot("tickets_dashboard_tall_en", AppLanguage.EN) { TicketDashboardScreen(TicketDashboardState(dashboardDeps()), tsoFrame, {}, {}, {}) }
     @Test fun dashboard_bn() = shot("tickets_dashboard_bn", AppLanguage.BN) { TicketDashboardScreen(TicketDashboardState(dashboardDeps()), tsoFrame, {}, {}, {}) }
     @Test @Config(fontScale = 2.0f) fun dashboard_200_bn() = shot("tickets_dashboard_200_bn", AppLanguage.BN) { TicketDashboardScreen(TicketDashboardState(dashboardDeps()), tsoFrame, {}, {}, {}) }
     @Test fun dashboard_offline_unsent_en() = shot("tickets_dashboard_offline_unsent_en", AppLanguage.EN) {
@@ -216,6 +218,7 @@ class TicketScreenshotTests {
 
     // ---- 15, 16 quick ticket
     @Test fun quick_en() = shot("tickets_quick_en", AppLanguage.EN) { QuickTicketScreen(dashboardDeps(), tsoFrame, {}, {}) }
+    @Test @Config(qualifiers = "w360dp-h1600dp") fun quick_tall_en() = shot("tickets_quick_tall_en", AppLanguage.EN) { QuickTicketScreen(dashboardDeps(), tsoFrame, {}, {}) }
     @Test fun quick_bn() = shot("tickets_quick_bn", AppLanguage.BN) { QuickTicketScreen(dashboardDeps(), tsoFrame, {}, {}) }
     @Test @Config(fontScale = 2.0f) fun quick_200_bn() = shot("tickets_quick_200_bn", AppLanguage.BN) { QuickTicketScreen(dashboardDeps(), tsoFrame, {}, {}) }
     @Test fun quick_sheet_en() = shot("tickets_quick_sheet_en", AppLanguage.EN) {
@@ -231,9 +234,11 @@ class TicketScreenshotTests {
 
     // ---- 17, 18 create ticket
     @Test fun create_en() = shot("tickets_create_en", AppLanguage.EN) { CreateTicketScreen(dashboardDeps(), tsoFrame, {}) }
+    @Test @Config(qualifiers = "w360dp-h1600dp") fun create_tall_en() = shot("tickets_create_tall_en", AppLanguage.EN) { CreateTicketScreen(dashboardDeps(), tsoFrame, {}) }
     @Test fun create_bn() = shot("tickets_create_bn", AppLanguage.BN) { CreateTicketScreen(dashboardDeps(), tsoFrame, {}) }
     @Test @Config(fontScale = 2.0f) fun create_200_en() = shot("tickets_create_200_en", AppLanguage.EN) { CreateTicketScreen(dashboardDeps(), tsoFrame, {}) }
     @Test fun issue_types_en() = shot("tickets_issue_types_en", AppLanguage.EN) { CreateTicketScreen(dashboardDeps(), tsoFrame, {}, issueListOpen = true) }
+    @Test @Config(qualifiers = "w360dp-h1600dp") fun issue_types_tall_en() = shot("tickets_issue_types_tall_en", AppLanguage.EN) { CreateTicketScreen(dashboardDeps(), tsoFrame, {}, issueListOpen = true) }
     @Test fun issue_types_bn() = shot("tickets_issue_types_bn", AppLanguage.BN) { CreateTicketScreen(dashboardDeps(), tsoFrame, {}, issueListOpen = true) }
     @Test @Config(fontScale = 2.0f) fun issue_types_200_bn() = shot("tickets_issue_types_200_bn", AppLanguage.BN) { CreateTicketScreen(dashboardDeps(), tsoFrame, {}, issueListOpen = true) }
 }

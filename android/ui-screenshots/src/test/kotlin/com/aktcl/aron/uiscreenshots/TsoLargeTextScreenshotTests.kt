@@ -88,6 +88,9 @@ class TsoLargeTextScreenshotTests {
     @Test fun login_200_en() = shot("tso_login_200_en", AppLanguage.EN) {
         com.aktcl.aron.feature.auth.TsoLoginContent(com.aktcl.aron.feature.auth.LoginUiState(message = com.aktcl.aron.feature.auth.LoginMessage.OfflineNeverOnline), {}, {}, {}, {}, {})
     }
+    @Test fun login_200_bn() = shot("tso_login_200_bn", AppLanguage.BN) {
+        com.aktcl.aron.feature.auth.TsoLoginContent(com.aktcl.aron.feature.auth.LoginUiState(message = com.aktcl.aron.feature.auth.LoginMessage.OfflineNeverOnline), {}, {}, {}, {}, {})
+    }
     // tso-manual A1 fix round: Login & Bikroy Joma Status (screenshot 8) and the logout dialog (screenshot 44) at 200 percent
     @Test fun login_status_200_bn() = shot("tso_login_status_200_bn", AppLanguage.BN) {
         val users = com.aktcl.aron.feature.tso.TsoDashboards.users("""{$stamp,"tab":"not_uploaded","route_count":2,"truncated":false,"items":[
