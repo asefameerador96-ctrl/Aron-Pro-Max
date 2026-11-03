@@ -69,7 +69,7 @@ fun <T> AronDropdown(
     val fill = n?.field ?: look.card
     val edge = n?.fieldEdge ?: look.underline
     val ink = n?.ink ?: look.ink
-    val hint = if (brightPlaceholder && n != null) n.ink else n?.placeholder ?: look.hint
+    val hint = if (brightPlaceholder && n != null && enabled) n.ink else n?.placeholder ?: look.hint
     val shape = RoundedCornerShape(if (n != null) 14.dp else 12.dp)
     var open by remember { mutableStateOf(false) }
     var fieldWidthPx by remember { mutableIntStateOf(0) }
