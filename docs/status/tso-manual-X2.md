@@ -47,6 +47,24 @@ submitted, bp), the summary (`zones_with_target_routes`, `zones_final_submitted`
 stop (0 of 1, 0 bp); (3) the second `runOnce()` re-closes it as cycle 1 (`jobUuid(zone, day, 1)`, R-W-01 / D-B3-11), dirty,
 the worker, all four count it again; a third pass closes nothing. Each read moves the clock 6 s past the summary's 5 s cache.
 
+## Follow-up pass (checker M1, L1, L3; R-W-19, R-W-20, R-W-21)
+
+The previous fix round's edits were uncommitted and unverified; this pass committed them (M1, L1, L3), then did R-W-19 and
+R-W-20 (five commits). The pass was cut off by a usage limit before its checks. The first resumed pass confirmed the
+contract regeneration and ran the negative proofs; its full backend run was stopped by the lead after 3 hours, with
+`:backend:analytics:test` unfinished. The second resumed pass (time-boxed by the owner) re-ran the contract checks, only
+the test classes that cover the five commits (one targeted run), a negative proof for every row (six, L3 in both halves)
+and the CI scans (Verify, follow-up pass); the full module suites run on the Linux CI runners after the merge. No code
+changed in either resumed pass.
+
+| Item | What | Proving test | Commit |
+|---|---|---|---|
+| M1 | Route-only callers of login-submit `zones[]` and sync-health `by_zone` (their own `routeOnly` SQL branches) proven on the live-row rule: no code change (OpsApi's routeOnly branches already call `zoneSubmittedSql`), the test was missing | `OpsApiTest.zoneFinalSubmitFollowsTheLiveRowsLikeTheNationalCard` (route-only TSOs on R3, zone 2's only route in state final_submitted, and on R1: R3's state alone false, R1's zone follows the live row and the reopen, an old midnight stamp false) | `e38f99086` |
+| L1 / D-X2-14 | `DayService.submitKind`: only DMO and WM can be delegated (the registry bound of `cfg.day.final_submit_delegate_roles`) | `DayApiTest.aDelegateListNamingARoleOutsideDmoAndWmDelegatesOnlyThose` (list NATIONAL, ADMIN, DMO: `can_submit` false, false, true; NATIONAL and ADMIN submits 403 and close nothing; the DMO's 200 "delegated") | `a8d4b41a4` |
+| L3 / D-X2-13 | `MediaRead`: a feedback photo for the triage roles and the desk only as far as FeedbackApi lists that feedback (a role FeedbackApi lists by the author's zone, and its `ownerInReach` on the author); `OwnerZone` (platform) is the one owner-zone fragment, `SupportRoles.FEEDBACK_READERS` the one reader set (FeedbackApi uses both) | `MediaReadTest.theTriageRolesAndTheDeskReadFeedbackPhotos` (a Mirpur DMO desk reads the Mirpur author's photo, not a Z-OTHER author's; a zone-reach SUPPORT refused; after the author's home zone moves to Mirpur the DMO desk reads it, a plain DMO and an AMO or TSO desk do not; tickets and outlet photos unchanged; no URL minted for a refusal) | `899b2a756` |
+| R-W-19 / D-X2-15 | `TargetVsAchievement.monthly_target_qty` pinned as a whole "<n>.000" in base units (no code change) | `NationalMapsTest.routeMapMonthlyTargetIsAlwaysAWholeNumberOfBaseUnits` (every card of R1, R2, R3 over five target sets: 2507 sticks, 1, 1000, 2507, 2e9 over two SKUs; digits then `.000`, no leading zero, and equals the database sum; R2 null) | `659712797` |
+| R-W-20 / D-X2-16 | `DailyTrackingRow.by_category.qty_base` = `sum(sold_qty_base)` (was sold + free). Contract descriptions of `DailyTrackingRow.by_category` and `CategoryVolume.qty_entered` say sold only in both lists (1.10.0, description only); slices, `web/src/contract/openapi.d.ts` regenerated; `TsoManualContractTest` pins the wording | `TsoDashboardParityTest.dailyTrackingByCategoryCountsSoldLinesOnly` (tso_dashboard_day.sql: R1 sold 30, promo 20 + DRP 10 free: its row 30 sticks, 187 500 mtk; the Apsis TSO's tracked rows sum to cigarette 40, bidi 2991, equal to the summary's `by_category` and the national Sales card) | `43e046721` |
+
 ## Decisions (D-X2-NN; the lead may move them to DECISIONS.md)
 
 - **D-X2-01 `Me.support_desk` follows the write gate, not a role list.** R-W-09 (1) names "SUPERADMIN, or a holder of module
@@ -61,10 +79,9 @@ the worker, all four count it again; a third pass closes nothing. Each read move
 - **D-X2-03 The photo lists follow the cap value, bounded by the contract.** "The lists stop at the cap" is read as the
   configured cap (`cfg.support.ticket_max_photos`, 0..3), so lowering it shortens the lists; `attachment_count` still counts
   every stored photo (D-B1-16 unchanged), the server stores what arrives.
-- **D-X2-04 Feedback photos: role and permission, not reach.** The triage roles and the desk read feedback photos whatever
-  their reach (today they are all national, so nothing changed for the seed; the rule makes it explicit and independent of
-  geography). The ADMIN module gate still applies before MediaRead (`/v1/media/**` -> `reports`), as it does for the feedback
-  list itself (`/v1/feedback/**` -> `reports`).
+- **D-X2-04 Feedback photos: role and permission (superseded in the fix round by D-X2-13: bound to the record's reach).**
+  Step 1 let the triage roles and the desk read feedback photos whatever their reach. The ADMIN module gate still applies
+  before MediaRead (`/v1/media/**` -> `reports`), as it does for the feedback list itself (`/v1/feedback/**` -> `reports`).
 - **D-X2-05 `sr_user_id` / `sr_name` in every bundle.** R-W-06 (4) and the task ask it for the TSO bundle "and wherever the
   schema is shared, consistently". `RouteSnapshot` is one type for the SR, AMO and TSO bundles and the delta's
   `routes_added`, so every route entry carries it with one meaning (the SR of `GET /v1/routes`). Cost: two members per route.
@@ -93,6 +110,29 @@ the worker, all four count it again; a third pass closes nothing. Each read move
   removing it is a cleanup, not a rule change. The `final-submit-status` report's `zone_final` column (ReportHandlersB,
   `bool_and(day_state = 'final_submitted')`) and `dw.v_route_day.zone_final_submitted` (a stable dw view column) also read
   route-day states; R-W-03 names the cards, the summary and the two ops lists, so they are ask 3, not changed.
+- **D-X2-13 (fix round) A feedback photo is no wider than its feedback.** Supersedes D-X2-04 after the checker's L3: the
+  triage roles (SUPPORT, ADMIN, SUPERADMIN) and the desk permission read a feedback photo when FeedbackApi would list the
+  feedback to them, its `ownerInReach` rule on the author (national reach, or the author's home zone, else the zone of its
+  primary route valid today, in the caller's zones). The author is the photo's captor: the `feedback` record and its
+  `media_meta` come from the same signed-in user. The SQL fragment moved to platform (`OwnerZone.sql`), and masterdata's
+  `AdminSupport.userZone` now returns it, so the list and the photo share one rule. A caller outside that rule, with or
+  without the desk, keeps MediaRead's captor rule (as before X2). Nothing changes for the seeded triage roles, which
+  ReachCalculator always gives national reach. Follow-up pass: the desk counts only on a role FeedbackApi lists feedback to
+  by the author's zone (its reader roles, `SupportRoles.FEEDBACK_READERS` now shared with FeedbackApi, minus the TSO, which
+  lists its own only); a desk on an AMO, an SR or a TSO adds nothing to the captor rule. Ratified by R-W-21.
+- **D-X2-14 (fix round) Only DMO and WM can be delegated.** Checker L1: `DayService.submitKind` intersects
+  `cfg.day.final_submit_delegate_roles` with {DMO, WM}, the registry's `bounds_rule` ("subset of DMO, WM", V0006), because
+  the config editor checks the list length only. A stored NATIONAL, ADMIN or other role is ignored. The preview and the
+  submit both read `submitKind`, so `can_submit` and the POST still agree. The config editor's list validation is not
+  changed here (it is a config-module rule for every list key). Ratified by R-W-21.
+- **D-X2-15 (follow-up, R-W-19) T is pinned in base units.** "Always a whole <n>.000" is read as T itself: the sum of the
+  route's monthly targets of the category in the SKU base unit (sticks, pieces, dozens; `qty_base` is a bigint, so the sum is
+  whole by construction), x 1000 in Decimal3. No code change; the test pins the value against the database sum over every
+  card, so a conversion to packets (2507 sticks of 10s would be "250.700") or to a daily figure fails it.
+- **D-X2-16 (follow-up, R-W-20) Daily Tracking keeps its category rows.** Only the quantity moved to `sold_qty_base`; a
+  category whose route-day lines are all free still lists with `qty_base` 0 (as `DashboardSummary.by_category` does, no
+  HAVING). `net_mtk` stays the sale lines' value (`gross_mtk`; free and DRP lines carry none). `entry_unit` / `qty_entered`
+  are still not sent here.
 
 ## Deviations (files outside the step's modules)
 
@@ -105,6 +145,9 @@ the worker, all four count it again; a third pass closes nothing. Each read move
 - Step 2: `backend/app/src/test/.../FinalSubmitProjectionEndToEndTest.kt` (new; the proof needs the sync job, DayService
   and the analytics reads in one production wiring, which only the app module has); `docs/09-web-and-api.md` (one clause,
   R-W-04 "docs/09 if it describes the card").
+- Follow-up pass: `contract/openapi.yaml`, `contract/slices/**`, `web/src/contract/openapi.d.ts` and
+  `shared/contract/.../TsoManualContractTest.kt` (X1's files): R-W-20 has the contract description and the server change
+  together; regenerated the way X1 did (s Verify, follow-up pass). `web/node_modules` was installed with `npm ci` (ignored).
 
 ## Asks
 
@@ -115,8 +158,7 @@ the worker, all four count it again; a third pass closes nothing. Each read move
 3. **Lead (R-W-03 reach, step 2):** the `final-submit-status` report's `zone_final` column still reads the route-day
    states. Say whether "one formula everywhere" covers it: then it is one line (`zoneSubmittedSql` per group, grouped by
    `g.zone_id`) plus the report tests that pin it; `dw.v_route_day.zone_final_submitted` would need a view change (V0142+).
-4. **Lead (X1 ask 6, still open):** `DailyTrackingRow.by_category.qty_base` stays sold plus free (as built, as the contract
-   describes it); not changed in step 2.
+4. ~~Lead (X1 ask 6): the daily-tracking quantity basis.~~ Answered by R-W-20 (sold only) and done in the follow-up pass.
 
 ## Verify (this worktree, local laptop, JDK 21, UTC, local PostgreSQL 16; CI not run, nothing pushed)
 
@@ -150,17 +192,51 @@ below), CI, web (no web or contract file changed).
 Not run: CI on Linux, the web suite (no web, contract or generated file changed in step 2), `:backend:auth:test` (not in
 step 2's list; step 1's RoleGrantsTest note stands), device checks. No Android screen: no goldens.
 
+### Verify, follow-up pass (same laptop; head `43e046721`, CI not run, nothing pushed)
+
+The rows below are the second resumed pass's own runs (2026-11-04, logs `SP/x2_fu3_*.log`), except the row marked
+"first resumed pass".
+
+`SP` is the session scratchpad (`C:/Users/User/AppData/Local/Temp/claude/C--Users-User-Aron/c1f57a1f-.../scratchpad`).
+
+| Command | Result |
+|---|---|
+| `PY tools/slice-contract.py --check` | "contract/slices is up to date" (exit 0) |
+| `PY shared/contract/tools/gen_wire_dtos.py --check` | exit 0, nothing stale (the R-W-20 change is description only) |
+| `cd web && npm run gen:contract` (openapi-typescript 7.13.0, `node_modules` already present, no `npm ci`), then `git status` | regenerated `src/contract/openapi.d.ts`, no diff: `43e046721`'s copy is current; nothing to commit |
+| **Targeted run, one invocation** (log `SP/x2_fu3_targeted.log`): `gl.sh <wt> :backend:analytics:test --tests *OpsApiTest --tests *NationalMapsTest --tests *TsoDashboardParityTest --rerun :backend:media:test --tests *MediaReadTest --rerun :backend:app:test --tests *DayApiTest --rerun :backend:masterdata:test --tests *FeedbackTest --rerun :shared:contract:jvmTest --tests *TsoManualContractTest --rerun --continue` | **BUILD SUCCESSFUL in 12m 25s**, every test task executed (`--rerun`, none from cache; "43 actionable tasks: 7 executed, 36 up-to-date"), 0 failures: OpsApiTest 11/11, NationalMapsTest 9/9, TsoDashboardParityTest 6/6 (analytics: the classes of `e38f99086`, `659712797`, `43e046721`); MediaReadTest 3/3 and FeedbackTest 3/3 (`899b2a756`: MediaRead, and FeedbackApi / AdminSupport now on platform's `OwnerZone` and `SupportRoles.FEEDBACK_READERS`); DayApiTest 11/11 (`a8d4b41a4`; DayApi is in sync, its HTTP test in app); TsoManualContractTest 30/30 (`43e046721`'s contract wording) |
+| Negative proofs, one run (log `SP/x2_fu3_neg1.log`): `PY SP/x2_neg2.py <wt>` puts back the pre-fix rule in five files (OpsApi's two route-only branches to `bool_or(zone_final_submitted)`; DayApi without `p.role in DELEGABLE`; MediaRead without `authorInReach`; NationalMaps T x 100 instead of x 1000, i.e. packets of 10; DailyTracking `sum(sold + free)`), then `gl.sh <wt> :backend:analytics:test --tests *OpsApiTest.zoneFinalSubmitFollowsTheLiveRowsLikeTheNationalCard --tests *NationalMapsTest.routeMapMonthlyTargetIsAlwaysAWholeNumberOfBaseUnits --tests *TsoDashboardParityTest.dailyTrackingByCategoryCountsSoldLinesOnly :backend:media:test --tests *MediaReadTest.theTriageRolesAndTheDeskReadFeedbackPhotos :backend:app:test --tests *DayApiTest.aDelegateListNamingARoleOutsideDmoAndWmDelegatesOnlyThose --continue`, then `git checkout --` of the five files in the same script | BUILD FAILED in 1m 20s as intended, each test on its own rule. M1: "route-only R3: its state alone is no Final Submit ==> expected: <({2=false}, {2=false})> but was: <({2=true}, {2=true})>". L1: "NATIONAL, ADMIN, DMO ==> expected: <[false, false, true]> but was: <[true, true, true]>". L3 (reach): the Mirpur DMO desk was minted a URL for the Z-OTHER author's photo `bbbbbbbb-...` (`MediaReadTest.kt:152`, expected `ApiProblem`). R-W-19: "route 1 cigarette: T 250.700 is not a whole <n>.000". R-W-20: "R1: sold only, the sale lines' value ==> expected: <[CategoryVolume(cigarette, stick, qty_base=30, net_mtk=187500, ...)]> but was: <[... qty_base=60 ...]>". Restored; `git status` showed only this file modified |
+| Negative proof, L3 second half (log `SP/x2_fu3_neg2.log`): `PY SP/x2_neg3.py <wt>` drops `listsFeedbackByReach(p)` (keeps the reach check), then `gl.sh <wt> :backend:media:test --tests *MediaReadTest.theTriageRolesAndTheDeskReadFeedbackPhotos`, then `git checkout --` | BUILD FAILED in 18s as intended: an AMO with the desk permission was minted the Z-OTHER author's photo once the author's home zone is Mirpur (`MediaReadTest.kt:169`, expected `ApiProblem`); restored, `git diff --quiet -- backend` clean |
+| `PY tools/ci/money-float-scan.py .` | "13 money line(s) with floating point, 0 not allowed, 0 stale and 0 ambiguous allow entr(ies), 13/13 allowed (0 open finding(s))" (exit 0) |
+| `PY tools/ci/date-pin-scan.py .` | "106 literal(s) in seed-dependent tests, 106 baselined, 0 new" (exit 0) |
+| `PY tools/ci/wallclock-scan.py .` | "14 offender(s) in 5 module(s) (report only)", the same 14 as step 2; none in a file of the follow-up pass (offenders: AuditReadTest, MdmApiTest, DataFlowTraceSupport, DayCloseRaceTest, MfaTest, SupportAccessControlTest, ConfigScopeTest, two feature-tso tests) |
+| `PY tools/ci/kpi-format-corpus.py --check` | "contract/fixtures/kpi-format-corpus.json up to date (300 seeded cases plus the s4 fixtures; oracle reproduces the contract)" (exit 0) |
+| First resumed pass, full backend run (log `SP/x2_verify_run.log`, head `43e046721`), **stopped by the lead after 3 hours** | Not a complete verify. What it showed: `:backend:sync:test` ran and passed (7 classes, 37/37); `:backend:media:test` and `:backend:app:test` FROM-CACHE (a stored successful run with the same inputs); `:backend:platform:test`, `:backend:masterdata:test`, `:backend:notify:test` UP-TO-DATE; `:backend:auth:test` failed only `RoleGrantsTest.aGrantAndARevokeTakeEffectWithinTheCacheWindow` (known, fixed on the integration branch by `a1b5041b3`, not this lane's); `:backend:analytics:test` did not finish (41 classes had ended, all SUCCESS, when it was stopped) |
+
+Not run locally in this pass (time-boxed by the owner; one full backend run takes about 3 hours on this laptop): the full
+module suites `:backend:analytics:test`, `:backend:app:test`, `:backend:media:test`, `:backend:masterdata:test`,
+`:backend:sync:test`, `:backend:platform:test`, `:backend:auth:test` and `:shared:contract:jvmTest`; they run on the
+Linux CI runners after the merge. Web suite not run (only the generated `openapi.d.ts` changed, and it regenerates
+identically). No Android screen changed: no goldens.
+
 ## Not done
 
+- `:backend:analytics:test` full module runs on Linux CI after merge. Likewise the other full module suites were not run
+  locally in the follow-up pass (`:backend:app:test`, `:backend:media:test`, `:backend:masterdata:test`,
+  `:backend:sync:test`, `:backend:platform:test`, `:backend:auth:test`, `:shared:contract:jvmTest`): only the classes that
+  cover the five commits ran (Verify, follow-up pass). CI on Linux not run, nothing pushed.
 - `RoleGrantsTest` (auth) stays red on this branch until the integration branch's `a1b5041b3` is merged in (step 1 Verify).
 - The `Me.support_desk` contract description (ask 1) is unchanged here (contract files are X1's).
 - Ask 3 (the `final-submit-status` report's `zone_final` column and the `v_route_day.zone_final_submitted` view column still
-  read route-day states) and ask 4 (X1 ask 6, the daily-tracking quantity basis) wait for the lead.
+  read route-day states) waits for the lead. Ask 4 is answered (R-W-20) and done.
+- The config editor still accepts any role in `cfg.day.final_submit_delegate_roles` (it checks the list length only);
+  DayService ignores the roles outside {DMO, WM} (D-X2-14). Validating the list there is a config-module change, not made.
 - The web reads of the new members (`tilldate_target_achievement_bp`, `monthly_target_qty`, `working_days`) are X3's (R-W-13).
 - `DashboardApi.compute`'s unused route-day-state `zf` (D-X2-12) is not removed.
 
 ## Next step
 
-Lane X2 is complete for its two steps. The lead merges `tso-man/X2` (after X1, with `a1b5041b3` from the integration
-branch for RoleGrantsTest) and rules asks 1 to 4; X3 prints the till-date % from the bp and the route-map bars from
-`monthly_target_qty` and `working_days`.
+Lane X2 is complete for its two steps and the follow-up pass. The lead merges `tso-man/X2` (after X1, with `a1b5041b3`
+from the integration branch for RoleGrantsTest), runs the full backend suites on the Linux CI runners (any failure comes
+back to a fix round) and rules asks 1 to 3; X3 prints the till-date % from the bp and the
+route-map bars from `monthly_target_qty` and `working_days`, and reads Daily Tracking's `by_category` as sold only.
