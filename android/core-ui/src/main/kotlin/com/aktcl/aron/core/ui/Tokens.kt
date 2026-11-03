@@ -317,6 +317,8 @@ data class AronNightRoles(
      * label (4.7:1, D-TSO-MAN-50: the owner's FF9800 darkened until the white label holds 4.5:1). Sunlight draws the white outline card.
      */
     val leaveStart: Color = hex(0x126985), val leaveEnd: Color = hex(0x16507F), val leaveEdge: Color = hex(0x2A9FC0),
+    /** The open list of a dropdown (screenshots 21, 32): near-black navy, over the field it opened from; Sunlight uses the white field fill. */
+    val menu: Color = hex(0x050D2E),
     val leaveDisc: Color = Color(0x1FFFFFFF), val badgeOrange: Color = hex(0xB45C00),
 ) {
     companion object {

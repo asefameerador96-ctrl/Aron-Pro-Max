@@ -74,11 +74,11 @@ val TsoFabPadding: Dp = AronHomeFabHeight
 internal val TsoFabBand: Dp = 64.dp + 14.dp
 
 /**
- * tso-manual X4b: with the Home button AND a bottom bar, the bar's action sits above the Home disc, the disc overlapping only its
- * lower edge (screenshot 33: Set Plan over the house): 16 dp of the disc may overlap the bar's 52 dp button, so the button's centre
- * (where a tap lands) is never under the disc.
+ * With the Home button AND a bottom bar, the bar's action sits wholly above the Home disc and its glow (screenshots 33, 37, 38; conformance
+ * rows 33 and 38: the disc must never overlap Set Plan or Assign Task, so a tap on the button never lands under it): the disc's band
+ * ([TsoFabBand]) plus a 4 dp gap. (Batch 1 let 16 dp of the disc overlap the button.)
  */
-internal val TsoBarOverFab: Dp = TsoFabBand - 16.dp
+internal val TsoBarOverFab: Dp = TsoFabBand + 4.dp
 
 /**
  * The frame of the TSO screens that are not migrated to the [TsoNav] frame yet (A3's areas): the TSO top bar (grey round back

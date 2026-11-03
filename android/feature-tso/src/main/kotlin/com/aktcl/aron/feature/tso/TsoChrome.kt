@@ -37,7 +37,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -315,7 +317,11 @@ fun TsoLogoutDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
  */
 @Composable
 fun TsoInfoDialog(title: String, message: String, okLabel: String, onDismiss: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss) { TsoInfoDialogContent(title, message, okLabel, onDismiss) }
+    Dialog(onDismissRequest = onDismiss) {
+        // a lighter scrim than the platform's 0.6 (screenshot 26: the page stays visible behind the card)
+        (LocalView.current.parent as? DialogWindowProvider)?.window?.setDimAmount(0.35f)
+        TsoInfoDialogContent(title, message, okLabel, onDismiss)
+    }
 }
 
 /** The body of [TsoInfoDialog] (also drawn inline by the goldens, which capture one window). */

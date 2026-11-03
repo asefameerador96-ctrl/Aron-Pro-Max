@@ -463,7 +463,7 @@ fun AssignTaskScreen(
             if (ui.result is TaskResult.NoSr) TsoBanner(stringResource(R.string.tso_mc_no_sr), Modifier.testTag(MyCallTags.NO_SR), kind = TsoBannerKind.Warning)
             if (assigned) TsoBanner(stringResource(R.string.tso_mc_assigned, state.srName ?: ""), Modifier.testTag(MyCallTags.ASSIGNED), kind = TsoBannerKind.Success)
             if (ui.result is TaskResult.Failed) TsoBanner(stringResource(R.string.tso_mc_save_failed), kind = TsoBannerKind.Error)
-            if (outlet != null || state.routeName != null) TsoCard(Modifier.fillMaxWidth().testTag(MyCallTags.INFO), glow = true) {
+            if (outlet != null || state.routeName != null) TsoCard(Modifier.fillMaxWidth().testTag(MyCallTags.INFO), edge = com.aktcl.aron.core.ui.aron.nightRoles().teal) {
                 Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     outlet?.let { LabelLine(stringResource(R.string.tso_mc_info_outlet), it.title(bn), strong = true) }
                     outlet?.cluster?.let { LabelLine(stringResource(R.string.tso_mc_info_cluster), it, strong = true) }

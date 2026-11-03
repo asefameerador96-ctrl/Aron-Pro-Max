@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.ui.LocalAronLook
@@ -70,6 +71,7 @@ fun <T> AronDropdown(
     val shape = RoundedCornerShape(if (n != null) 14.dp else 12.dp)
     var open by remember { mutableStateOf(false) }
     var fieldWidthPx by remember { mutableIntStateOf(0) }
+    var fieldHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val shown = selected?.let(optionLabel)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -78,7 +80,7 @@ fun <T> AronDropdown(
             Row(
                 modifier
                     .fillMaxWidth()
-                    .onSizeChanged { fieldWidthPx = it.width }
+                    .onSizeChanged { fieldWidthPx = it.width; fieldHeightPx = it.height }
                     .heightIn(min = 56.dp)
                     .then(if (n != null) Modifier.nightGlow(n, edge, shape, 8.dp) else Modifier)
                     .clip(shape)
@@ -94,7 +96,9 @@ fun <T> AronDropdown(
                 GlyphCanvas(Modifier.size(14.dp)) { caretDown(if (enabled) ink else hint) }
             }
             DropdownMenu(
-                expanded = open, onDismissRequest = { open = false }, containerColor = fill,
+                // the owner's list covers the field it opened from (screenshot 21) on a near-black navy panel; Sunlight keeps the solid fill
+                expanded = open, onDismissRequest = { open = false }, containerColor = if (n != null && !n.solid) n.menu else fill,
+                offset = if (n != null && fieldHeightPx > 0) DpOffset(0.dp, with(density) { -fieldHeightPx.toDp() }) else DpOffset.Zero,
                 modifier = (if (fieldWidthPx > 0) Modifier.width(with(density) { fieldWidthPx.toDp() }) else Modifier).testTag(AronDropdownTags.MENU),
             ) {
                 options.forEachIndexed { i, o ->

@@ -55,6 +55,8 @@ import com.aktcl.aron.feature.tso.TsoButtonStyle
 import com.aktcl.aron.feature.tso.TsoDates
 import com.aktcl.aron.feature.tso.TsoDropdownField
 import com.aktcl.aron.core.ui.aron.NightPageGlow
+import com.aktcl.aron.core.ui.aron.nightGlow
+import com.aktcl.aron.core.ui.aron.nightRoles
 import com.aktcl.aron.feature.tso.TsoFrame
 import com.aktcl.aron.feature.tso.TsoGlowField
 import com.aktcl.aron.feature.tso.TsoGradientButton
@@ -177,19 +179,21 @@ private fun FieldError(errors: List<LeaveError>, e: LeaveError) {
 @Composable
 private fun LeaveDateField(value: String, onChange: (String) -> Unit, label: String, placeholder: String, modifier: Modifier = Modifier, enabled: Boolean = true, min: String? = null, max: String? = null, today: String? = null) {
     val look = LocalAronLook.current
+    val night = nightRoles()
     var open by rememberSaveable { mutableStateOf(false) }
     val shown = if (value.isBlank()) null else TsoDates.long(value, LocalAppLanguage.current)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, style = MaterialTheme.typography.labelLarge, color = look.ink)
         Row(
-            modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(12.dp)).background(look.card).border(1.dp, look.underline, RoundedCornerShape(12.dp))
+            modifier.fillMaxWidth().heightIn(min = 56.dp).nightGlow(night, night.fieldEdge, RoundedCornerShape(14.dp), 8.dp).clip(RoundedCornerShape(14.dp))
+                .background(night.field).border(if (night.solid) 2.dp else 1.dp, night.fieldEdge, RoundedCornerShape(14.dp))
                 .clickable(enabled = enabled, role = Role.Button, onClickLabel = label) { open = true }
                 .semantics { contentDescription = listOfNotNull(label, shown ?: placeholder).joinToString(", ") }
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(shown ?: placeholder, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = if (shown != null) look.ink else look.inkMuted)
-            Icon(AronIcons.Calendar, contentDescription = null, tint = look.inkMuted)
+            Text(shown ?: placeholder, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = if (shown != null) night.ink else night.placeholder)
+            Icon(AronIcons.Calendar, contentDescription = null, tint = night.chevron)
         }
     }
     if (open) {

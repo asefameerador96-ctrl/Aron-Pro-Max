@@ -208,7 +208,6 @@ fun NightGlowField(
             textStyle = lookStyle(16.sp, color = n.ink),
             placeholder = if (placeholder == null) null else { { Text(placeholder, style = lookStyle(16.sp, color = n.placeholder)) } },
             trailingIcon = trailing,
-            supportingText = if (supportingText == null) null else { { Text(supportingText, style = lookStyle(13.sp, color = if (isError) n.danger else n.inkMuted)) } },
             keyboardOptions = keyboardOptions, keyboardActions = keyboardActions, visualTransformation = visualTransformation,
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = n.field, unfocusedContainerColor = n.field, disabledContainerColor = n.field, errorContainerColor = n.field,
@@ -217,6 +216,8 @@ fun NightGlowField(
                 disabledBorderColor = n.fieldEdge.copy(alpha = 0.4f), errorBorderColor = n.danger, cursorColor = n.ink, errorCursorColor = n.danger,
             ),
         )
+        // drawn under the field, not inside it: inside, the glow's shadow also fills the helper line's transparent area as a dark patch (row 22)
+        if (supportingText != null) Text(supportingText, Modifier.padding(horizontal = 16.dp), style = lookStyle(13.sp, color = if (isError) n.danger else n.inkMuted))
     }
 }
 
