@@ -36,7 +36,7 @@ class TsoChannelToggleTest {
     private fun show(initial: ChannelMode, onMode: (ChannelMode) -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
         compose.setContent {
-            var mode by mutableStateOf(initial)
+            var mode by androidx.compose.runtime.remember { mutableStateOf(initial) }
             CompositionLocalProvider(LocalContext provides ctx) {
                 TsoLoginTheme(AppLanguage.EN, loggedOut = false) {
                     TsoDashboardContent(state, false, mode, {}, { mode = if (mode == ChannelMode.STD) ChannelMode.CALLS else ChannelMode.STD; onMode(mode) }, {})
