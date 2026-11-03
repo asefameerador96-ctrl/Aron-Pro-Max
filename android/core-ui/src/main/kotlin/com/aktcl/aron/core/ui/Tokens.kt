@@ -252,10 +252,9 @@ data class AronLookColors(
  * buttons. [AronNightRoles.Sunlight] is the same set solid (white surfaces, black ink, no gradient or glow): Sunlight overrides the
  * night look. Contrast is computed by TokenContrastTest: key figures and button labels 7:1, body 4.5:1, graphics 3:1.
  *
- * Deviation from the screenshots, for legibility (rule 14): the bright Login (cyan), Final Submit (lime), Cancel (green) and Log Out
- * (orange) buttons carry a navy label ([onBright]) where the screenshots show white (white on those fills is about 2:1); the blue
- * button is a little deeper ([blue]) so its white label reaches 7:1; the cyan button's lower stop and the orange stop are lifted so the
- * navy label holds 7:1 on both stops.
+ * Deviation from the screenshots, for legibility (rule 14, D-TSO-MAN-50): the Login (cyan), Final Submit (lime), Cancel (green) and Log Out
+ * (orange) buttons keep the owner's white bold label ([onBright] = white) on the screenshot hues darkened only until the label holds
+ * 4.5:1 (WCAG AA) on every stop; the blue button is a little deeper ([blue]) so its white label reaches 7:1. Sunlight is unchanged.
  */
 @Immutable
 data class AronNightRoles(
@@ -302,8 +301,8 @@ data class AronNightRoles(
     /** Status inks readable on the navy cards. */
     val danger: Color, val warning: Color, val success: Color,
     // tso-manual A1: the Target Status bars (screenshots 39 to 42): red, amber and green fills on [barTrack] by `cfg.kpi.bar_bands`
-    /** The Final Submit route cards (screenshot 25): solid steel blue with white text (7.1:1); Sunlight draws the white outline card instead. */
-    val routeCard: Color = hex(0x2B5F8E),
+    /** The Final Submit route cards (screenshot 25): solid steel blue with white text (8.6:1) and the muted ink (4.85:1); Sunlight draws the white outline card instead. */
+    val routeCard: Color = hex(0x234F76),
     val bandRed: Color = hex(0xE53935), val bandAmber: Color = hex(0xFFB300), val bandGreen: Color = hex(0x2E8B3A),
 ) {
     companion object {
@@ -320,9 +319,11 @@ data class AronNightRoles(
             ringTrack = hex(0x615180), ringTrackOutline = hex(0x374462), ringFill = hex(0x51DAA6),
             barTrack = hex(0xE1E6E1), barFillStart = hex(0x9BD0FF), barFillEnd = hex(0x2F80ED),
             valueLine = hex(0xF28C28), volumeLine = hex(0x2ED3C6), pie = hex(0xD81B87), gridLine = hex(0x1E2A55),
-            cyanStart = hex(0x3BB8D8), cyanEnd = hex(0x78A8F2), limeStart = hex(0xA4C81A), limeEnd = hex(0x62B843), blue = hex(0x2244D0),
-            onBright = hex(0x04122F), onBlue = hex(0xFFFFFF),
-            cancel = hex(0x00C850), logoutStart = hex(0xF69703), logoutEnd = hex(0xE8930F), dialogTop = hex(0x04103A), dialogBottom = hex(0x0D1A55),
+            // D-TSO-MAN-50: white button labels as in the owner's screenshots; each fill is the screenshot hue darkened only as far as the
+            // white bold label needs 4.5:1 (was cyan 3BB8D8-78A8F2, lime A4C81A-62B843, cancel 00C850, orange F69703-E8930F with a navy label)
+            cyanStart = hex(0x297F95), cyanEnd = hex(0x5577AB), limeStart = hex(0x687E10), limeEnd = hex(0x478430), blue = hex(0x2244D0),
+            onBright = hex(0xFFFFFF), onBlue = hex(0xFFFFFF),
+            cancel = hex(0x008837), logoutStart = hex(0xA86702), logoutEnd = hex(0xA5680B), dialogTop = hex(0x04103A), dialogBottom = hex(0x0D1A55),
             segmentOn = hex(0x0F844F), onSegment = hex(0xFFFFFF), pillOn = hex(0x2244D0), pillOff = hex(0x1A2550), chip = hex(0x2A3556), chipInk = hex(0xC9D0E6),
             plateTop = hex(0xBFF5BC), plateBottom = hex(0xFFDCE0),
             danger = hex(0xFF7A7A), warning = hex(0xFFB74D), success = hex(0x5BD16A),

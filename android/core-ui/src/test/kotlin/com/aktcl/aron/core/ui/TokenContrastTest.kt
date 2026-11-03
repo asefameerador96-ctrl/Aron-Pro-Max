@@ -1,6 +1,7 @@
 package com.aktcl.aron.core.ui
 
 import androidx.compose.ui.graphics.Color
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.pow
@@ -182,10 +183,24 @@ class TokenContrastTest {
         listOf(n.titleStart, n.titleEnd).forEach { night("$name title", it, n.page, 7.0) }
     }
 
-    @Test fun tsoButtonLabelsReachSevenToOne() = tsoRoles.forEach { (name, n) ->
-        listOf(n.cyanStart, n.cyanEnd, n.limeStart, n.limeEnd, n.cancel, n.logoutStart, n.logoutEnd).forEach { night("$name label on bright fill", n.onBright, it, 7.0) }
+    /** Sunlight keeps 7:1 on every button label (rule 14); the night look's bright-fill labels are the separate 4.5:1 group below (D-TSO-MAN-50). */
+    @Test fun tsoSunlightButtonLabelsAndNightBlueLabelsReachSevenToOne() = tsoRoles.forEach { (name, n) ->
+        if (n.solid) listOf(n.cyanStart, n.cyanEnd, n.limeStart, n.limeEnd, n.cancel, n.logoutStart, n.logoutEnd).forEach { night("$name label on bright fill", n.onBright, it, 7.0) }
         night("$name label on blue", n.onBlue, n.blue, 7.0)
         night("$name label on the selected pill", n.onBlue, n.pillOn, 7.0)
+    }
+
+    /**
+     * D-TSO-MAN-50 (rule 14a over rule 14 for button labels): in the NIGHT look the white bold label on the bright fills (Login cyan, Final Submit lime,
+     * Cancel green, Log Out orange) is gated at WCAG AA 4.5:1, on both stops and the midpoint of every gradient; this is a separate group from the
+     * 7:1 key-figure gate and does not loosen it. Sunlight stays at 7:1 above.
+     */
+    @Test fun tsoNightButtonLabelsOnBrightFillsReachFourPointFiveToOne() {
+        val n = AronNightRoles.Night
+        assertEquals(Color.White, n.onBright)
+        fun mid(a: Color, b: Color) = Color((a.red + b.red) / 2, (a.green + b.green) / 2, (a.blue + b.blue) / 2)
+        val ramps = listOf(n.cyanStart to n.cyanEnd, n.limeStart to n.limeEnd, n.cancel to n.cancel, n.logoutStart to n.logoutEnd)
+        ramps.forEach { (a, b) -> listOf(a, mid(a, b), b).forEach { night("night label on bright fill (4.5:1 group)", n.onBright, it, 4.5) } }
     }
 
     @Test fun tsoBodyAndCaptionsReachFourPointFive() = tsoRoles.forEach { (name, n) ->

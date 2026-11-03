@@ -208,7 +208,7 @@ private fun OutletPickCard(o: PlanOutlet, bangla: Boolean, selected: Boolean, on
     TsoCard(
         // screenshot 33: the chosen card keeps the navy outline card and gets a bright aqua edge (not the purple glow card)
         modifier.fillMaxWidth().toggleable(value = selected, role = Role.Checkbox, onValueChange = { onToggle() })
-            .then(if (selected) Modifier.border(2.dp, com.aktcl.aron.core.ui.aron.nightRoles().teal, RoundedCornerShape(12.dp)) else Modifier),
+            .then(if (selected) Modifier.border(2.dp, com.aktcl.aron.core.ui.aron.nightRoles().teal, RoundedCornerShape(22.dp)) else Modifier), // 22 dp: the card's own clip shape (Night.kt OutlineShape)
         glow = false,
     ) {
         Row(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalAlignment = Alignment.CenterVertically) {
