@@ -47,7 +47,6 @@ import com.aktcl.aron.core.ui.aron.AronHomeFabHeight
 import com.aktcl.aron.core.ui.aron.AronMinus
 import com.aktcl.aron.core.ui.aron.AronNightTopBar
 import com.aktcl.aron.core.ui.aron.AronPlus
-import com.aktcl.aron.core.ui.aron.AronPrimaryButton
 import com.aktcl.aron.core.ui.aron.AronSecondaryButton
 import com.aktcl.aron.core.ui.aron.NightButton
 import com.aktcl.aron.core.ui.aron.NightButtonStyle
@@ -352,7 +351,8 @@ data class TsoAction(val text: String, val onClick: () -> Unit, val enabled: Boo
 @Composable
 fun RowScope.TsoBottomBar(primary: TsoAction, modifier: Modifier = Modifier, secondary: TsoAction? = null) {
     if (secondary != null) AronSecondaryButton(secondary.text, secondary.onClick, Modifier.weight(1f), enabled = secondary.enabled)
-    AronPrimaryButton(primary.text, primary.onClick, modifier.weight(1f), enabled = primary.enabled && !primary.busy)
+    // the night Cyan button: white label at 4.5:1 or more (D-TSO-MAN-50); the kit's primary ramp was about 2.3:1 under a white label
+    NightButton(primary.text, primary.onClick, modifier.weight(1f), style = NightButtonStyle.Cyan, enabled = primary.enabled, busy = primary.busy, fill = false)
 }
 
 /** A full-width grey button (the secondary action inside a form or list). */
