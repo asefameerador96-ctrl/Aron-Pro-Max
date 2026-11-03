@@ -185,6 +185,8 @@ jobs:
           echo "${RUNNER_TEMP}/bin" >> "${GITHUB_PATH}"
       - name: Gate self-tests (each gate fails on a deliberate violation; tools/ci/test_gates.py)
         run: python3 tools/ci/test_gates.py
+      - name: TSO APK owner-name copy self-test (D-TSO-MAN-42)
+        run: python3 tools/ci/test_tso_apk_copy.py
       - name: Done rows have tests (AUD-TP-8, warning)
         run: |
           python3 tools/ci/test_done_rows.py
@@ -611,6 +613,9 @@ jobs:
           (cd signed && sha256sum ./*.apk > SHA256SUMS && cat SHA256SUMS)
           # N-064: release-manifest.json, one contract AppReleaseWrite entry per APK (download_url added by the store upload)
           APKSIGNER="${signer}" python3 tools/ci/release-manifest.py signed "${ARON_VERSION_NAME}" "${ARON_VERSION_CODE}" "${GITHUB_SHA}"
+          # tso-manual (D-TSO-MAN-42, screenshot 1): the owner-named TSO copy and SHA256SUMS, after the manifest (it accepts only aron-<app>-<version>-dev.apk)
+          tools/ci/tso-apk-copy.sh signed "${ARON_VERSION_NAME}" "${ARON_VERSION_CODE}"
+          (cd signed && cat SHA256SUMS)
           echo "signed=true" >> "${GITHUB_OUTPUT}"
       - name: Upload the release-signed dev APKs
         if: steps.sign.outputs.signed == 'true'
