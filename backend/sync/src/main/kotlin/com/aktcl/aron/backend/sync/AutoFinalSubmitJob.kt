@@ -86,7 +86,7 @@ class AutoFinalSubmitJob(
         val switch = db.jdbi.withHandle<ScopedConfig, Exception> { h -> ScopedConfig.load(h, clock.now(), clock.now(), setOf(SWITCH_KEY)) }
         val out = ArrayList<Closed>()
         for ((zone, wing) in zones) {
-            val on = switch.value(SWITCH_KEY, ScopedConfig.Chain.of(ConfigScopeType.WING to wing))?.let { runCatching { it.jsonPrimitive.booleanOrNull }.getOrNull() } ?: true
+            val on = switch.value(SWITCH_KEY, ScopedConfig.Chain.of(ConfigScopeType.WING to wing))?.let { runCatching { it.jsonPrimitive.booleanOrNull }.getOrNull() } ?: false
             if (!on) continue
             val closed = runCatching { closeZone(zone, date, tsos.covering(zone)) }
                 .onFailure { e -> log.error("auto Final Submit of zone {} on {} failed", zone, date, e) }.getOrNull() ?: continue

@@ -71,8 +71,8 @@ object DayStates {
         h.createQuery("SELECT 1 FROM app.route_day WHERE route_id = ANY(:r) AND business_date = :d ORDER BY route_id FOR NO KEY UPDATE")
             .bindArray("r", Long::class.javaObjectType, routes).bind("d", date).mapTo(Int::class.java).list()
         // Rule 4: a figure row stored after the zone-day's Final Submit is counted as late, never reopening the day. Under
-        // cfg.day.late_sync_after_final_policy = accept_and_flag every such row is stored; under quarantine (the default,
-        // D-TSO-MAN-31) only a row an ADMIN accepted from the quarantine reaches here (IngestService holds the others).
+        // cfg.day.late_sync_after_final_policy = accept_and_flag every such row is stored; under quarantine (a config switch,
+        // D-TSO-MAN-31; the shipped default is accept_and_flag, D-TSO-MAN-49) only a row an ADMIN accepted from the quarantine reaches here (IngestService holds the others).
         // Only the figure types of the day lock count (tso-manual B3, D-B3-03): a Sales Submit, an attendance event or a
         // reprint after the lock is state, not a late row. Runs once per stored record, so a replay never counts twice.
         if (type in IngestService.DAY_LOCKED_TYPES) {
