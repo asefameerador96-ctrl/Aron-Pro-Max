@@ -587,7 +587,7 @@ class TsoManualV0130Test {
     fun theBuildsSettingsPermissionAndEventsAreRegistered() = db.connect().use { c ->
         assertEquals(
             listOf(
-                "cfg.day.auto_final_submit_enabled|bool|true|3|global,wing|cfg.edit.field",
+                "cfg.day.auto_final_submit_enabled|bool|false|3|global,wing|cfg.edit.field",
                 "cfg.feedback.max_images|int|1|1|global|cfg.edit.ops",
                 "cfg.kpi.bar_bands|list|[40, 80]|1|global|cfg.edit.field",
                 "cfg.kpi.brand_cpr_denominator.tso|enum|\"successful_calls\"|1|global|cfg.edit.field",
@@ -631,7 +631,7 @@ class TsoManualV0130Test {
         assertEquals("0", c.scalar("SELECT count(*) FROM app.cfg_key WHERE $mine AND (length(description_en) = 0 OR restrictive_dir <> 'none' OR effect <> 'B' OR requires_ack)"))
         // R-F-06: the feedback record holds one photo_uuid.
         assertEquals("0|1", c.scalar("SELECT (bounds ->> 'min') || '|' || (bounds ->> 'max') FROM app.cfg_key WHERE key = 'cfg.feedback.max_images'"))
-        assertEquals("\"quarantine\"", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.day.late_sync_after_final_policy'"))
+        assertEquals("\"accept_and_flag\"", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.day.late_sync_after_final_policy'")) // D-TSO-MAN-49
         assertEquals("[\"ADMIN\", \"SUPERADMIN\"]", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.day.reopen_roles'"))
         assertEquals(listOf("ADMIN", "SUPERADMIN"), c.column("SELECT role FROM app.role_grant_map WHERE permission = 'support.ticket.manage'").filterNotNull().sorted())
         // V0134 catalogued them planned; V0141 (lead ruling R-W-07) makes them live once B1 and B3 ship the producers.

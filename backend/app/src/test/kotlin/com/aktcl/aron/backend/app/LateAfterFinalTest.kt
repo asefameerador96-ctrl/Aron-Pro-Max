@@ -77,8 +77,10 @@ class LateAfterFinalTest {
     private val repoRoot = File(System.getProperty("aron.repoRoot") ?: "../..")
     private val tag = "LAF"
     private val day = "2027-01-03"
-    private val lockAt = Instant.parse("2027-01-03T06:00:00Z")
-    private val now = AtomicReference(lockAt)
+    private val setUpAt = Instant.parse("2027-01-03T06:00:00Z")
+    /** 31 s after set-up: the 30 s config cache has expired, so the switches written in [setUp] are read (D-TSO-MAN-49). */
+    private val lockAt = setUpAt.plusSeconds(31)
+    private val now = AtomicReference(setUpAt)
     private val clock = AronClock { now.get() }
     private lateinit var world: ApiWorld
     private lateinit var phone: SyncPhone
@@ -90,6 +92,13 @@ class LateAfterFinalTest {
     @BeforeAll
     fun setUp() {
         world = ApiWorld(repoRoot, mirrors = listOf(tag), clock = clock)
+        // D-TSO-MAN-49: the shipped default is accept_and_flag; this class tests the quarantine switch, so it is switched on here,
+        // and the auto close (shipped off, D-262) for test 6.
+        world.fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.day.late_sync_after_final_policy', 'global', 0, '\"quarantine\"'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test: quarantine policy' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.day.auto_final_submit_enabled', 'global', 0, 'true'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test: auto close on' FROM app.cfg_version")
+        }
+        now.set(lockAt)
         zone = one("SELECT id FROM app.zone WHERE code = 'Z-$tag'")
         phone = world.phoneFor(tag, 0, day)
         srId = phone.userId

@@ -141,10 +141,10 @@ class IngestService(
         }
         /**
          * tso-manual B3, D-TSO-MAN-31: cfg.day.late_sync_after_final_policy, read once per batch on first use. An unreadable
-         * or unknown value is `quarantine`, which never loses a sale and never counts one an admin has not seen.
+         * or unknown value is `accept_and_flag`, the shipped default (D-TSO-MAN-49, D-55): a captured sale is never refused.
          */
         val latePolicy: String by lazy {
-            runCatching { config.string("cfg.day.late_sync_after_final_policy") }.getOrNull()?.takeIf { it in LATE_POLICIES } ?: "quarantine"
+            runCatching { config.string("cfg.day.late_sync_after_final_policy") }.getOrNull()?.takeIf { it in LATE_POLICIES } ?: "accept_and_flag"
         }
         /** Memo arithmetic failures of the current family segment (client_uuid to detail). */
         var arith: Map<String, String> = emptyMap()
@@ -1202,14 +1202,14 @@ class IngestService(
      * in. The lock is the route-day's `final_submitted_at` (the live close's time; a reopen clears it). The route-day row
      * is created when missing and held FOR NO KEY UPDATE before it is read, in the order Final Submit takes it (KD-1): a
      * close either committed before this check or waits for this family's commit, so a family is never split by it.
-     * - `quarantine` (default): held `after_final_submit` (no figure moves until an ADMIN accepts it, then it is counted
+     * - `quarantine`: held `after_final_submit` (no figure moves until an ADMIN accepts it, then it is counted
      *   late) when it was captured before the lock, when its capture time is not trusted (`clock_offset_ms` null: a phone
      *   rebooted without an anchor stamps the wall clock, docs/24 s3 item 2, so "after the lock" is unproven and a sale
      *   is never lost on it), or when the close is the midnight job's and the record belongs to a visit family whose
      *   visit was captured before it (the family's business date is fixed at visit open, docs/17: a call that straddles
      *   midnight); otherwise refused `day_final_submitted`.
      * - `reject`: every late figure row is refused `day_final_submitted`.
-     * - `accept_and_flag`: no verdict; the row is stored and counted late (the pre-1.10 rule, D-55).
+     * - `accept_and_flag` (the shipped default, D-TSO-MAN-49): no verdict; the row is stored and counted late (the pre-1.10 rule, D-55).
      */
     private fun dayLockVerdict(h: Handle, ctx: Ctx, r: Rec, env: JsonObject, bd: LocalDate, routeId: Long, captured: Instant): Pair<RecordOutcomeCode, String>? {
         if (ctx.latePolicy == "accept_and_flag") return null
@@ -1909,7 +1909,7 @@ class IngestService(
         /**
          * Figure records of a route-day: the call, the sale and its edits, voids, returns, collections and stock. After the
          * zone-day's Final Submit one captured before the lock is held `after_final_submit`, one captured at or after it is
-         * refused `day_final_submitted` (cfg.day.late_sync_after_final_policy = quarantine; the exceptions that hold are in
+         * refused `day_final_submitted` (cfg.day.late_sync_after_final_policy = quarantine or reject, not the shipped default accept_and_flag; the exceptions that hold are in
          * [dayLockVerdict]). State records stay accepted:
          * `day_submit`, `day_open`, `attendance_event`, reprints (`print_event`, printing stays allowed) and telemetry.
          */

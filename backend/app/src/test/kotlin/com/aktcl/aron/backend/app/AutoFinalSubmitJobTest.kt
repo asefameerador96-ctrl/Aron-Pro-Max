@@ -132,6 +132,11 @@ class AutoFinalSubmitJobTest {
         world.exec("INSERT INTO app.territory (code, name, division_id) SELECT 'T-OFF', 'Off Territory', id FROM app.division WHERE code = 'D-OFF'")
         wingOff = world.one("SELECT id FROM app.wing WHERE code = 'W-OFF'")
         zOff = zone("Z-OFF", territory = "T-OFF").also { planned("Z-OFF-R", d02) }
+        // D-TSO-MAN-49: the shipped default is off (D-262); this class tests the job, so the global switch is on, the wing W-OFF off.
+        world.exec(
+            "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
+                "SELECT 'cfg.day.auto_final_submit_enabled', 'global', 0, 'true'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test: auto close on' FROM app.cfg_version",
+        )
         world.exec(
             "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
                 "SELECT 'cfg.day.auto_final_submit_enabled', 'wing', $wingOff, 'false'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test: off in W-OFF' FROM app.cfg_version",

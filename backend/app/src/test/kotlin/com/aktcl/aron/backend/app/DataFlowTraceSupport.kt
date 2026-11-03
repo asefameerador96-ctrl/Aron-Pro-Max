@@ -107,6 +107,8 @@ abstract class DataFlowTraceSupport(
                     "now() + interval '1 hour', (SELECT id FROM app.app_user WHERE username = 'admin1001'), 'qa trace: the dev seed job enrols the smoke device' RETURNING id) " +
                     "UPDATE app.device d SET enrolment_token_id = tok.id FROM tok WHERE d.device_uuid = '${ApiWorld.SR_PHONE}' AND d.enrolment_token_id IS NULL",
             )
+            // D-TSO-MAN-49: the shipped late policy is accept_and_flag; hop 12 traces the quarantine hold, so it is switched on here.
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.day.late_sync_after_final_policy', 'global', 0, '\"quarantine\"'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'qa trace: quarantine policy' FROM app.cfg_version")
             // Test geography only: the other division gets its own wing, so wing, division and territory scopes each have something to cut.
             h.execute("INSERT INTO app.wing (code, name) VALUES ('W-LKX', 'Wing LKX')")
             h.execute("UPDATE app.division SET wing_id = (SELECT id FROM app.wing WHERE code = 'W-LKX') WHERE code = 'D-LKX'")

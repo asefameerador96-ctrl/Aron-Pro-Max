@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit
  *   exception removes, the rule of the national final-submit figure) without a live submit (D-TSO-MAN-30). A zone-day
  *   that a TSO, a delegate or this job closed is skipped while that close is live; one an ADMIN reopened is closed
  *   again by the next pass inside the window, unless a person closed it first (D-B3-11, revised in the fix round).
- * - **Switch:** `cfg.day.auto_final_submit_enabled` (default true) resolved at the zone's wing, then global.
+ * - **Switch:** `cfg.day.auto_final_submit_enabled` (default false, D-TSO-MAN-49, D-262) resolved at the zone's wing, then global.
  * - **The close** is the manual submit's locked code path ([DayService.closeLocked]) under the same zone-day advisory
  *   lock, with `via = 'job'`, `submitted_by` NULL (V0135 CHECK `final_submit_job_actor`) and a client uuid derived from
  *   the zone-day and its cycle (`aron.final-submit.job:<zone>:<date>:<submit_seq>`, submit_seq = the reopened closes,

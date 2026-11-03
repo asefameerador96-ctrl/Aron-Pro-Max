@@ -8,9 +8,11 @@
 --    (cfg.support.max_upload_mb). List keys: the config editor checks max_items only; the item rules (subset of SR, AMO,
 --    TSO; two ascending integers 1..99) are written in bounds_rule and enforced by the reading module.
 --    cfg.feedback.max_images is bounded 0..1: the feedback record holds one photo_uuid (lead ruling R-F-06).
--- 2. Default changes (D-TSO-MAN-29, D-TSO-MAN-31; owner question 1 of the contract s7.1 keeps quarantine as the
---    default): cfg.day.late_sync_after_final_policy accept_and_flag -> quarantine; cfg.day.reopen_roles ["ADMIN"] ->
---    ["ADMIN","SUPERADMIN"]. No backend code read either key before this build.
+-- 2. Default changes (D-TSO-MAN-29, D-TSO-MAN-31, D-TSO-MAN-49): cfg.day.late_sync_after_final_policy stays
+--    accept_and_flag (the cloud's standing rule, D-55, D-579, CLAUDE.md constraint 1: a captured sale is never refused)
+--    until the owner answers contract s7.1 question 1; `quarantine` and `reject` are config switches, no code change.
+--    cfg.day.auto_final_submit_enabled ships false (D-262: auto-close off until confirmed).
+--    cfg.day.reopen_roles ["ADMIN"] -> ["ADMIN","SUPERADMIN"]. No backend code read either key before this build.
 -- 3. Permission support.ticket.manage (the support desk, D-TSO-MAN-22) for ADMIN and SUPERADMIN; SUPPORT can be granted
 --    it on the permission page without code (owner question 4).
 -- 4. Six domain-event types v1 (D-TSO-MAN-38), status planned until their producers (lanes B1, B3) ship; payloads carry
@@ -37,7 +39,7 @@ INSERT INTO app.cfg_key (key, area, kind, value_type, default_value, bounds, bou
    'Send a push nudge to the reporter''s phone when the support desk updates a ticket (the inbox row is written either way).'),
   ('cfg.notify.inbox_retention_days', 'notify', 'S', 'int', '90'::jsonb, '{"min": 30, "max": 365}'::jsonb, NULL, ARRAY['global']::text[], 1, NULL, 'B', 'server', false, false, 'none', 'cfg.edit.ops',
    'Days a notification stays in the bell inbox (app.user_notification) before the prune job deletes it (D-TSO-MAN-26).'),
-  ('cfg.day.auto_final_submit_enabled', 'day', 'S', 'bool', 'true'::jsonb, '{}'::jsonb, NULL, ARRAY['global', 'wing']::text[], 3, NULL, 'B', 'server', false, false, 'none', 'cfg.edit.field',
+  ('cfg.day.auto_final_submit_enabled', 'day', 'S', 'bool', 'false'::jsonb, '{}'::jsonb, NULL, ARRAY['global', 'wing']::text[], 3, NULL, 'B', 'server', false, false, 'none', 'cfg.edit.field',
    'Final-submit every service zone that has no Final Submit at 00:00 Asia/Dhaka (AutoFinalSubmitJob, D-TSO-MAN-30); the zone-day then locks like a manual submit.'),
   ('cfg.tso.team_location_max_age_min', 'tso', 'S', 'int', '120'::jsonb, '{"min": 15, "max": 720}'::jsonb, NULL, ARRAY['global']::text[], 1, NULL, 'B', 'both', false, false, 'none', 'cfg.edit.field',
    'Minutes after which a team member''s last synced position on My Team is shown greyed as stale (D-170, D-TSO-MAN-34).'),
@@ -53,7 +55,7 @@ INSERT INTO app.cfg_key (key, area, kind, value_type, default_value, bounds, bou
    'Most gallery images attached to one feedback (screenshot 43: one, D-TSO-MAN-36); at most 1, the feedback record holds one photo.');
 
 -- ---------- 2. default changes ----------
-UPDATE app.cfg_key SET default_value = '"quarantine"'::jsonb, updated_at = now()
+UPDATE app.cfg_key SET default_value = '"accept_and_flag"'::jsonb, updated_at = now()
  WHERE key = 'cfg.day.late_sync_after_final_policy';
 UPDATE app.cfg_key SET default_value = '["ADMIN", "SUPERADMIN"]'::jsonb, updated_at = now()
  WHERE key = 'cfg.day.reopen_roles';
