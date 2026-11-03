@@ -49,7 +49,7 @@ class ReportContext(
     /** null = every zone. */ val zoneIds: List<Long>?, /** null = no route restriction. */ val routeIds: List<Long>?, val pii: Boolean,
     /** cfg.geo.suspicious_score_threshold: the user-day score that makes a day suspicious (docs/24 s11.4). */ val suspiciousThreshold: Int = Aggregator.DEFAULT_SUSPICIOUS_THRESHOLD,
     /** Successful Login (login AND download AND check-in) over `dw.agg_daily_route` columns of alias `a`; see [DashboardSummaries.successfulLoginSql]. */ val successfulLogin: String = "a.day_state <> 'not_started'",
-    /** The probe's verdict for the product tree over the period (D-REPORTS-ASWAS-05): true when no product-history period closed inside it, so today's `dw.dim_product` answers a qualification exactly. Default false = as was. */ val plainProduct: Boolean = false,
+    /** The probe's verdict for the product tree over the period (D-REPORTS-ASWAS-05): true when no product-history period closed after the period's first day (the probe has no upper bound), so today's `dw.dim_product` answers a qualification exactly. Default false = as was. */ val plainProduct: Boolean = false,
 ) {
     fun zoneClause(col: String) = if (zoneIds == null) "true" else "$col = ANY(:zones)"
     fun routeClause(col: String) = if (routeIds == null) "true" else "$col = ANY(:routes)"

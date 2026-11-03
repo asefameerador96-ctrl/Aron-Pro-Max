@@ -117,6 +117,15 @@ class ReportBatchATest : ReportFixture() {
             assertEquals(false, probe().product, "a product-history period closed after the window began")
             assertEquals(plainRows, rows(cat), "the brand that LOST the category today still counts on the old date")
             assertEquals(emptyList(), rows(cat2), "the brand that GAINED the category today did not hold it on the old date")
+            // A period that spans the change: the tree changes on 2026-10-06 (the history rows are moved to that date so the test does not depend on the clock),
+            // and BrandTwo sold on that day. Each day counts under the category the brand had THAT day, and the boundary day belongs to the new period.
+            exec("UPDATE app.product_node_history SET valid_to = DATE '2026-10-06' WHERE node_id = (SELECT id FROM app.product_node WHERE code = 'B2') AND valid_to IS NOT NULL AND valid_to > DATE '2026-10-06'")
+            exec("UPDATE app.product_node_history SET valid_from = DATE '2026-10-06' WHERE node_id IN (SELECT id FROM app.product_node WHERE code IN ('B2', 'SEG2', 'CAT2')) AND valid_to IS NULL")
+            exec("INSERT INTO dw.agg_daily_route_brand (business_date, route_id, brand_id, memo_count, sold_qty_base, gross_mtk) SELECT DATE '2026-10-06', r.id, b.id, 7, 70, 7000 FROM app.route r, app.product_node b WHERE r.code = 'R1' AND b.code = 'B2'")
+            fun span(category: Long) = """{"period":{"from":"2026-10-04","to":"2026-10-06"},"output":{"format":"json","page_size":500},"category":[$category]}"""
+            suspend fun brandTwoMemos(category: Long) = run(10, Role.ANALYST, "route-bsr-cpr", span(category)).result().rows().filter { it.str("route_code") == "R1" && it.str("brand_name") == "BrandTwo" }.map { it.num("brand_memos").toInt() }
+            assertEquals(listOf(1), brandTwoMemos(cat), "under the old category: only the old day's memos, not the day of the change")
+            assertEquals(listOf(7), brandTwoMemos(cat2), "under the new category: only the day of the change (the boundary day is in the new period)")
         } finally { AsWasSql.probeTtlMs = 20_000 }
     }
 
