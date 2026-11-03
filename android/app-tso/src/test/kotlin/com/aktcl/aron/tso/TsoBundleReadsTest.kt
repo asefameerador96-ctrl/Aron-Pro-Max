@@ -2,8 +2,12 @@ package com.aktcl.aron.tso
 
 import com.aktcl.aron.core.database.entity.OutletEntity
 import com.aktcl.aron.core.database.entity.RouteEntity
+import com.aktcl.aron.feature.tso.mycall.PlanRoute
+import com.aktcl.aron.feature.tso.mycall.RouteSr
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** The TSO bundle's outlets and routes (D-TSO-BUNDLE-OUTLETS) become the plan pickers' rows with the AMO outlet fields. */
@@ -29,8 +33,50 @@ class TsoBundleReadsTest {
         assertEquals("বাংলা 1", rows[0].title(true)); assertEquals("Rahim Store", rows[0].title(false))
     }
 
-    @Test fun routesKeepZoneAndLabelAndNameNoSr() {
-        val rows = TsoBundleReads.routes(listOf(route(1, label = "North"), route(2, status = "inactive")))
-        assertEquals(listOf(1L), rows.map { it.id }); assertEquals(10L, rows[0].zoneId); assertEquals("North", rows[0].label); assertNull(rows[0].sr)
+    @Test fun routesKeepZoneAndLabelAndNameNoSrWhenNotCarried() {
+        val rows = TsoBundleReads.routesWithSr(listOf(route(1, label = "North"), route(2, status = "inactive"))) { null }!!
+        assertEquals(listOf(1L), rows.map { it.route.id }); assertEquals(10L, rows[0].route.zoneId); assertEquals("North", rows[0].route.label)
+        assertNull(rows[0].route.sr); assertFalse(rows[0].carried)
     }
+
+    // ---- tso-manual X4b (R-W-12 (9)): the route's SR from the bundle (R-W-06 `sr_user_id` / `sr_name`)
+
+    @Test fun theSrOfARouteSnapshotIsReadAndAVacantRouteIsCarriedWithoutSr() {
+        assertEquals(TsoBundleReads.SrInBundle(true, com.aktcl.aron.feature.tso.mycall.RouteSr(7, "Rahim")), TsoBundleReads.srOf("""{"route_id":1,"sr_user_id":7,"sr_name":" Rahim "}"""))
+        assertEquals(TsoBundleReads.SrInBundle(true, null), TsoBundleReads.srOf("""{"route_id":1,"sr_user_id":null,"sr_name":null}"""))
+        // not carried: an older server, an unreadable section, a bad id, a named id without its name
+        for (raw in listOf(null, "", "not json", "[1]", """{"route_id":1}""", """{"sr_user_id":"7","sr_name":"R"}""", """{"sr_user_id":0,"sr_name":"R"}""", """{"sr_user_id":7}""", """{"sr_user_id":7,"sr_name":"  "}""")) {
+            assertEquals("$raw", TsoBundleReads.SrInBundle(false, null), TsoBundleReads.srOf(raw))
+        }
+    }
+
+    @Test fun routesWithSrSayPerRouteWhetherTheSnapshotCarriesTheSr() {
+        val extras = mapOf(1L to """{"sr_user_id":7,"sr_name":"Rahim"}""", 2L to """{"sr_user_id":null,"sr_name":null}""", 3L to """{"planned_today":true}""")
+        val rows = TsoBundleReads.routesWithSr(listOf(route(1, label = "North"), route(2), route(3), route(4, status = "inactive"))) { extras[it] }!!
+        assertEquals(listOf(1L, 2L, 3L), rows.map { it.route.id })
+        assertEquals(TsoBundleReads.BundleRoute(planRoute(1, "North", rahim), true), rows[0])
+        assertNull(rows[1].route.sr); assertTrue("vacant, said so by the snapshot", rows[1].carried)
+        assertNull(rows[2].route.sr); assertFalse("a snapshot without the members does not say: not vacant, not carried", rows[2].carried)
+        assertTrue(TsoBundleReads.routesWithSr(listOf(route(1), route(2))) { """{"planned_today":true}""" }!!.none { it.carried })
+        assertNull(TsoBundleReads.routesWithSr(emptyList()) { null })
+        assertNull(TsoBundleReads.routesWithSr(listOf(route(5, status = "inactive"))) { null })
+    }
+
+    @Test fun fillTakesTheBundleWhereItCarriesTheSrAndTheLastReadForTheOthers() {
+        val extras = mapOf(1L to """{"sr_user_id":7,"sr_name":"Rahim"}""", 2L to """{"sr_user_id":null,"sr_name":null}""", 3L to """{"planned_today":true}""")
+        val bundle = TsoBundleReads.routesWithSr(listOf(route(1), route(2), route(3), route(6))) { extras[it] }!!
+        val karim = RouteSr(9, "Karim")
+        // the last read names other SRs for routes 1 and 2 (older than the bundle, which carries them) and the SR of route 3
+        val last = listOf(planRoute(1, null, karim), planRoute(2, null, karim), planRoute(3, null, karim))
+        val filled = TsoBundleReads.fill(bundle, last)
+        assertEquals(listOf(1L, 2L, 3L, 6L), filled.map { it.id })
+        assertEquals("the bundle carries route 1", rahim, filled[0].sr)
+        assertNull("the bundle says route 2 is vacant", filled[1].sr)
+        assertEquals("route 3 is not carried: the last read names it", karim, filled[2].sr)
+        assertNull("route 6: neither names it, so it is vacant", filled[3].sr)
+        assertEquals(listOf(rahim, null, null, null), TsoBundleReads.fill(bundle, null).map { it.sr })
+    }
+
+    private val rahim = RouteSr(7, "Rahim")
+    private fun planRoute(id: Long, label: String?, sr: RouteSr?) = PlanRoute(id, "R$id", "Route $id", 10, label, sr)
 }

@@ -1,0 +1,10 @@
+SupportTicketStatus:
+  type: string
+  enum:
+  - new
+  - in_progress
+  - resolved
+  - closed
+  - cancelled
+  description: Ticket life cycle (D-TSO-MAN-20). Open = new + in_progress. No reopen and no auto-close; an unsolved
+    problem is a new ticket quoting the old number.

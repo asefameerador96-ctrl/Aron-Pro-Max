@@ -250,7 +250,6 @@ class ScreenshotTests {
 
     // ---- role homes (RoleHomeShot) ----
     private val amo = HomeUser("Testing Banani", "amo5001", "AMO", offline = false, reauthRequired = false, updateRequired = false)
-    private val tso = HomeUser("Testing Dhaka North", "tso1001", "TSO", offline = true, reauthRequired = false, updateRequired = false)
     private val health = DeviceHealthModel.of(62, 1200, 3, 15)
 
     // ---- screens ----
@@ -355,11 +354,6 @@ class ScreenshotTests {
         hero = RoleHero.Amo(4_391_000, 6, 60), health = health,
     )
 
-    @Composable private fun TsoHome(sunlight: Boolean) = RoleHomeContent(
-        RoleHomes.header(RoleHomes.TSO_PREFIX, tso, "2026-10-05"), tso, BundleStatus.Offline,
-        RoleHomes.tsoTiles(mapOf(RoleHomes.TsoTile.LEAVE to 1)), SyncChipState.Offline, onTile = {}, onSettings = {},
-        hero = RoleHero.Tso(3, 12), health = health, sunlight = sunlight,
-    )
 
     // ---- Home ----
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun home_bn_light() = shot("home_bn_light", AppLanguage.BN) { Home(AppLanguage.BN) }
@@ -424,8 +418,6 @@ class ScreenshotTests {
     // ---- AMO and TSO homes ----
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_home_bn_light() = shot("amo_home_bn_light", AppLanguage.BN) { AmoHome(false) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_home_bn_sunlight() = shot("amo_home_bn_sunlight", AppLanguage.BN, sunlight = true) { AmoHome(true) }
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun tso_home_bn_light() = shot("tso_home_bn_light", AppLanguage.BN) { TsoHome(false) }
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun tso_home_bn_sunlight() = shot("tso_home_bn_sunlight", AppLanguage.BN, sunlight = true) { TsoHome(true) }
 
     /** Bootstrap guard: a run that only recorded images must not look green (CI uploads test results on failure only). */
     @Test fun recordingRunNeverPasses() {

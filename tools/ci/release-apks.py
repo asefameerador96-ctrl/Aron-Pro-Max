@@ -12,7 +12,11 @@ Prints one tab-separated line per APK: <app> <variant> <gate name> <file stem fo
   gate name  sr-release (universal; keeps the existing baseline) or sr-release-arm64-v8a
   file stem  aron-sr (universal) or aron-sr-arm64-v8a; the caller appends the version and ".apk"
 Usage: release-apks.py [repo root, default .]
+       release-apks.py --tso-copy-name <versionCode> [<yyyy-mm-dd>]   (tso-manual A1, D-TSO-MAN-42)
+  prints aron_tso_app_<dd_mm_yyyy>_v<versionCode>.apk, the name of the extra TSO copy the release adds next to the existing
+  names (the updater keeps reading those); the date is the build date in Asia/Dhaka (UTC+6, no DST), today by default.
 """
+import datetime
 import re
 import sys
 from pathlib import Path
@@ -20,7 +24,29 @@ from pathlib import Path
 ABIS = ("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
 
 
+DHAKA = datetime.timezone(datetime.timedelta(hours=6))
+
+
+def tso_copy_name(version_code, build_date):
+    """aron_tso_app_<dd_mm_yyyy>_v<versionCode>.apk (D-TSO-MAN-42, screenshot 1)."""
+    code = int(version_code)
+    if code <= 0:
+        raise ValueError(f"versionCode must be positive: {version_code}")
+    return f"aron_tso_app_{build_date.strftime('%d_%m_%Y')}_v{code}.apk"
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--tso-copy-name":
+        if len(sys.argv) not in (3, 4):
+            print("::error::usage: release-apks.py --tso-copy-name <versionCode> [<yyyy-mm-dd>]", file=sys.stderr)
+            return 2
+        day = datetime.date.fromisoformat(sys.argv[3]) if len(sys.argv) == 4 else datetime.datetime.now(DHAKA).date()
+        try:
+            print(tso_copy_name(sys.argv[2], day))
+        except ValueError as e:
+            print(f"::error::{e}", file=sys.stderr)
+            return 2
+        return 0
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
     errors, lines = [], []
     for app in ("sr", "amo", "tso"):

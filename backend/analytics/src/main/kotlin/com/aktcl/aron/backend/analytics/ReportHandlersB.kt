@@ -393,3 +393,65 @@ object SalesSummaryReport : ReportHandler {
         """,
     )
 }
+
+/**
+ * `tso-visit-log` (tso-manual B3, XA-03, D-TSO-MAN-35, R-F-12; docs/24 s12.3): one row per planned outlet of the TSOs'
+ * visit plans (Set Plan) whose plan date is in the period, in reach by the plan's route (the route chosen in Set Plan,
+ * else the outlets' smallest route; the outlet's zone without either):
+ * - status `completed` with the capture time of the first Visit Query (a `retailer_questionnaire` assessment of that
+ *   planned outlet), else `pending`;
+ * - both answers by criterion key (`sr_visits_regularly`, `sr_prints_memo` of the V0139 rubric; the text, else yes or no,
+ *   else the score), the delegate flag, and the task the TSO assigned for that outlet on the Visit Query's day when the
+ *   delegate flag is set (its title, the task type's label as Assign Task sends it, and its status).
+ * Column keys and labels are the web catalogue's (W1).
+ */
+object TsoVisitLogReport : ReportHandler {
+    override val definition = definition(
+        "tso-visit-log", "TSO Visit Log", "field_force", "planned outlet",
+        listOf(
+            col("plan_date", "Plan date", "date", bn = "পরিকল্পনার তারিখ"), col("tso", "TSO", "string", bn = "টিএসও"), col("zone", "Zone", "string", bn = "জোন"),
+            col("route", "Route", "string", bn = "রুট"), col("outlet_code", "Outlet code", "string", bn = "আউটলেট কোড"), col("outlet_name", "Outlet", "string", bn = "আউটলেট"),
+            col("status", "Status", "string", bn = "অবস্থা"), col("completed_at", "Completed at", "timestamp", bn = "সম্পন্নের সময়"),
+            col("sr_visits_regularly", "Does the SR visit your shop regularly?", "string", bn = "SR আপনার দোকান নিয়মিত ভিজিট করে?"),
+            col("sr_prints_memo", "Does the SR give you a printed memo regularly?", "string", bn = "SR নিয়মিত মেমো প্রিন্ট করে দেয়?"),
+            col("delegate_task", "Task delegated", "bool", bn = "কাজ দেওয়া হয়েছে"), col("task", "Task", "string", bn = "কাজ"), col("task_status", "Task status", "string", bn = "কাজের অবস্থা"),
+        ),
+        listOf("period", "geo"),
+        bn = "টিএসও ভিজিট লগ",
+    )
+
+    /** The answer of the Visit Query [q] to the rubric criterion [key]. */
+    private fun answer(key: String) = """
+        (SELECT coalesce(ans.answer_text, CASE ans.answer_bool WHEN true THEN 'yes' WHEN false THEN 'no' END, ans.score::text)
+           FROM app.call_assessment_answer ans
+           JOIN app.rubric_version rv ON rv.rubric_id = q.rubric_id AND rv.version = q.rubric_version
+           CROSS JOIN LATERAL jsonb_array_elements(rv.criteria) c
+          WHERE ans.assessment_client_uuid = q.client_uuid AND ans.voided_at IS NULL
+            AND (c ->> 'criterion_id')::bigint = ans.criterion_id AND c ->> 'key' = '$key'
+          ORDER BY ans.captured_at DESC, ans.id DESC LIMIT 1)"""
+
+    override fun spec(ctx: ReportContext) = SqlSpec(
+        """
+        SELECT p.plan_date, u.username AS tso, z.name AS zone, r.name AS route, o.code AS outlet_code, o.name AS outlet_name,
+               CASE WHEN q.client_uuid IS NULL THEN 'pending' ELSE 'completed' END AS status, q.captured_at AS completed_at,
+               ${answer("sr_visits_regularly")} AS sr_visits_regularly, ${answer("sr_prints_memo")} AS sr_prints_memo,
+               q.delegate_task, tk.title AS task, tk.status AS task_status
+          FROM app.visit_plan_outlet po
+          JOIN app.visit_plan p ON p.client_uuid = po.plan_client_uuid
+          JOIN app.app_user u ON u.id = p.user_id
+          JOIN app.outlet o ON o.id = po.outlet_id
+          CROSS JOIN LATERAL (SELECT coalesce(p.route_id, (SELECT min(o2.route_id) FROM app.visit_plan_outlet x JOIN app.outlet o2 ON o2.id = x.outlet_id
+                                                          WHERE x.plan_client_uuid = p.client_uuid AND x.voided_at IS NULL)) AS route_id) pr
+          LEFT JOIN app.route r ON r.id = pr.route_id
+          LEFT JOIN app.zone z ON z.id = coalesce(r.zone_id, o.zone_id)
+          LEFT JOIN LATERAL (SELECT a.client_uuid, a.captured_at, a.business_date, a.delegate_task, a.rubric_id, a.rubric_version FROM app.call_assessment a
+                              WHERE a.visit_plan_outlet_client_uuid = po.client_uuid AND a.kind = 'retailer_questionnaire' AND a.voided_at IS NULL
+                              ORDER BY a.captured_at, a.id LIMIT 1) q ON true
+          LEFT JOIN LATERAL (SELECT t.title, t.status FROM app.task t
+                              WHERE q.delegate_task AND t.user_id = p.user_id AND t.outlet_id = po.outlet_id AND t.business_date = q.business_date AND t.voided_at IS NULL
+                              ORDER BY t.captured_at, t.id LIMIT 1) tk ON true
+         WHERE po.voided_at IS NULL AND p.voided_at IS NULL AND ${ctx.dateClause("p.plan_date")}
+           AND ${ctx.zoneClause("coalesce(r.zone_id, o.zone_id)")} AND ${ctx.routeClause("coalesce(pr.route_id, -1)")}
+        """,
+    )
+}

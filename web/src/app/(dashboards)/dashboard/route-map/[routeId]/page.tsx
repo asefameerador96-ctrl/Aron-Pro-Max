@@ -11,7 +11,7 @@ import { getLocale } from "@/lib/auth/service";
 import { isCalendarDate } from "@/lib/dates";
 import { mapsKey } from "@/lib/maps/guard";
 import { businessDate, formatNumber, problemMessage, t, type MessageKey } from "@/lib/i18n";
-import { clock, distance, hoursBetween, pctBp } from "@/lib/national/fmt";
+import { clock, distance, hoursBetween, pctText, pctWhole, routeBarText } from "@/lib/national/fmt"; // tso-manual W1: + pctText, pctWhole; X3: routeBarText
 import { flagIcon, personIcon, pinIcon, PIN_FILL } from "@/lib/national/marker-icons";
 import { getRouteMap } from "@/lib/national/server";
 
@@ -47,6 +47,11 @@ export default async function RouteMapPage({ params, searchParams }: { params: P
     { src: flagIcon(), label: "nat.rm.legend.start" }, { src: pinIcon(PIN_FILL.black), label: "nat.rm.legend.base" }, { src: pinIcon(PIN_FILL.green), label: "nat.rm.legend.geo" }, { src: pinIcon(PIN_FILL.red), label: "nat.rm.legend.photo" }, { src: personIcon(), label: "nat.rm.legend.sr" },
   ] as const;
   const card = "glass-data p-(--card-pad) text-primary";
+  // tso-manual W1 (D-TSO-MAN-10): each whole % rounded once from the integers on the payload; the bp still draws the bar.
+  // tso-manual X3 (R-W-13 (5)): a bar prints by the Sales-card rule from monthly_target_qty and working_days when the server sends
+  // them; W1's sales-over-Decimal3-daily-target path, then the bp, remain the fallbacks for an older answer (routeBarText).
+  const barText = (x: (typeof d.target_vs_achievement)[number]) => routeBarText(locale, x);
+  const cprText = pctText(locale, pctWhole(calls, d.cpr.target_outlets), 0);
   return (
     <div className="space-y-4" data-testid="route-map-page">
       <div className="flex items-center gap-3">{back}<h1 className="text-title text-accent">{t(locale, "nat.rm.title")}</h1></div>
@@ -73,8 +78,8 @@ export default async function RouteMapPage({ params, searchParams }: { params: P
             {d.target_vs_achievement.map((x) => (
               <li key={x.category} data-testid={`tva-${x.category}`} className="grid grid-cols-[4.5rem_1fr_3rem] items-center gap-2 text-body">
                 <span className="text-secondary">{t(locale, `nat.rm.cat.${x.category}` as MessageKey)}</span>
-                <Meter pct={x.pct_bp === null ? null : x.pct_bp / 100} valueText={pctBp(locale, x.pct_bp, 0)} label={t(locale, `nat.rm.cat.${x.category}` as MessageKey)} className="!h-3" />
-                <span className="text-body-strong tabular-nums">{pctBp(locale, x.pct_bp, 0)}</span>
+                <Meter pct={x.pct_bp === null ? null : x.pct_bp / 100} valueText={barText(x)} label={t(locale, `nat.rm.cat.${x.category}` as MessageKey)} className="!h-3" />
+                <span className="text-body-strong tabular-nums">{barText(x)}</span>
               </li>
             ))}
           </ul>
@@ -83,7 +88,7 @@ export default async function RouteMapPage({ params, searchParams }: { params: P
         <section className={card} aria-labelledby="cpr-h" data-testid="route-cpr">
           <h2 id="cpr-h" className="mb-3 border-b border-accent-graphic/40 pb-2 text-title text-secondary">{t(locale, "nat.rm.cpr")}</h2>
           <div className="flex items-center justify-between gap-3">
-            <BigRing bp={d.cpr.cpr_pct_bp} text={pctBp(locale, d.cpr.cpr_pct_bp, 0)} label={t(locale, "nat.rm.cpr")} tone="green" size={110} testId="route-cpr-ring" />
+            <BigRing bp={d.cpr.cpr_pct_bp} text={cprText} label={t(locale, "nat.rm.cpr")} tone="green" size={110} testId="route-cpr-ring" />
             <dl className="space-y-3 text-center">
               {([["nat.rm.cpr.target", d.cpr.target_outlets], ["nat.rm.cpr.success", calls], ["nat.rm.cpr.geo", d.cpr.geo_validation]] as const).map(([k, v]) => (
                 <div key={k}>

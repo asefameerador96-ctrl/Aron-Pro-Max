@@ -1,0 +1,57 @@
+NotificationItem:
+  type: object
+  description: One inbox row (D-TSO-MAN-26). The texts are fixed by the producer in both languages; `title_bn` and
+    `body_bn` may be null (the app shows the English text).
+  required:
+  - id
+  - kind
+  - ref_type
+  - ref_id
+  - title_en
+  - title_bn
+  - body_en
+  - body_bn
+  - created_at
+  - business_date
+  - read_at
+  additionalProperties: false
+  properties:
+    id:
+      $ref: '#/components/schemas/Id'
+    kind:
+      $ref: '#/components/schemas/NotificationKind'
+    ref_type:
+      type: string
+      enum:
+      - support_ticket
+      - leave_application
+      - zone_day
+    ref_id:
+      type: string
+      minLength: 1
+      maxLength: 64
+      description: The ticket_uuid, the leave_uuid, or `<zone_id>:<business_date>` for a zone-day.
+    title_en:
+      type: string
+      maxLength: 120
+    title_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    body_en:
+      type: string
+      maxLength: 300
+    body_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 300
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    read_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'

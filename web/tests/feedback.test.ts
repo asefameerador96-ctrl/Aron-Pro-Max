@@ -13,10 +13,15 @@ describe("feedback inbox (F-ADM-028)", () => {
     expect(mock.state.tables.feedback!.find((r) => r.feedback_uuid === F1)).toMatchObject({ status: "resolved" });
     expect(mock.state.audit.at(-1)).toMatchObject({ entity: "feedback", reason: REASON });
   });
-  it("refuses an unknown status and a read-only role", async () => {
+  it("refuses an unknown status and a role the API does not let triage", async () => {
     const admin = await signIn("madmin1");
     expect((await act("feedback", F1, "status", { values: { status: "deleted" }, reason: REASON }, admin)).status).toBe(400);
+    const tso = await signIn("mtso1"); // tso-manual W1 (FB-12): SUPPORT triages like the API (FEEDBACK_TRIAGE); a TSO does not
+    expect((await act("feedback", F1, "status", { values: { status: "closed" }, reason: REASON }, tso)).status).toBe(403);
+  });
+  it("SUPPORT sets the status like the API allows (tso-manual W1, FB-12)", async () => {
     const support = await signIn("msupport1");
-    expect((await act("feedback", F1, "status", { values: { status: "closed" }, reason: REASON }, support)).status).toBe(403);
+    expect((await act("feedback", F1, "status", { values: { status: "closed" }, reason: REASON }, support)).status).toBe(200);
+    expect(mock.state.audit.at(-1)).toMatchObject({ entity: "feedback", reason: REASON, actor_username: "msupport1" });
   });
 });

@@ -35,10 +35,13 @@ import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.localizedNumber
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMapOptions
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.Circle
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapEffect
+import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MapsComposeExperimentalApi
@@ -78,6 +81,12 @@ fun mapModeOf(online: Boolean, settings: MapSettings, keyPresent: Boolean, point
  * age of each fix ("last seen HH:MM (n min ago)", greyed after [staleAfterMin]). The list shows in every mode.
  *
  * [cacheKey] names the view (screen plus scope) so the image of one zone never shows for another. [nowMs] is trusted time.
+ *
+ * [interactive] (tso-manual A3, D-TSO-MAN-34; the TSO's My Team and Retailer only, the AMO stays on lite mode): the live
+ * map is a full map that fills the screen, with zoom and pan, tap a pin for its bubble (name, last seen, source and
+ * [MapPoint.note]), tilt and rotation off and no my-location layer; old fixes are faded, pins are coloured by
+ * [MapPoint.kind], and [circle] is drawn and framed. It is still composed only while its screen is open, so no tile is
+ * fetched in the background. Offline or without a map, the list shows exactly as in lite mode.
  */
 @OptIn(MapsComposeExperimentalApi::class)
 @Composable
@@ -91,8 +100,14 @@ fun LiteMapScreen(
     cacheKey: String,
     modifier: Modifier = Modifier,
     staleAfterMin: Int = FixAge.DEFAULT_STALE_AFTER_MIN,
+    interactive: Boolean = false,
+    circle: MapCircle? = null,
 ) {
     val mode = mapModeOf(online, settings, keyPresent, points)
+    if (mode == MapMode.LIVE && interactive) {
+        InteractiveMap(points, nowMs, staleAfterMin, circle, cache, cacheKey, modifier.fillMaxSize())
+        return
+    }
     Column(modifier.fillMaxSize()) {
         when (mode) {
             MapMode.LIVE -> {
@@ -131,6 +146,74 @@ fun LiteMapScreen(
     }
 }
 
+/** The words under a pin's name: "Last seen 09:10 (15 min ago) · Visit", then the note on its own line; null when nothing. */
+@Composable
+private fun pointLine(p: MapPoint, nowMs: Long, staleAfterMin: Int): String? {
+    val age = FixAge.of(p.fixAtMs, nowMs, staleAfterMin)
+    val first = when {
+        p.kind != MapPointKind.PERSON && age == null -> null
+        age == null -> stringResource(R.string.map_no_fix)
+        else -> stringResource(R.string.map_last_seen, localizedDigits(age.clock), localizedNumber(age.minutesAgo))
+    }
+    val source = p.source?.takeIf { it.isNotBlank() }?.let { s -> MapSources.labelRes(s)?.let { stringResource(it) } ?: s }
+    val line = when {
+        first == null -> source
+        source == null -> first
+        else -> stringResource(R.string.map_line_with_source, first, source)
+    }
+    return listOfNotNull(line, p.note?.takeIf { it.isNotBlank() }).joinToString("\n").ifEmpty { null }
+}
+
+/**
+ * The full interactive map of [LiteMapScreen] (D-TSO-MAN-34): zoom and pan, tap for the bubble, tilt and rotation off, no
+ * my-location layer, no toolbar. The first frame holds every located pin and the circle; a new answer moves it.
+ */
+@OptIn(MapsComposeExperimentalApi::class)
+@Composable
+private fun InteractiveMap(points: List<MapPoint>, nowMs: Long, staleAfterMin: Int, circle: MapCircle?, cache: MapTileCache?, cacheKey: String, modifier: Modifier) {
+    val shown = remember(points) { points.filter { it.located }.take(MAX_INTERACTIVE_MARKERS) }
+    val frame = remember(shown, circle) { MapFrame.of(shown, circle) } ?: return
+    val camera = rememberCameraPositionState { position = CameraPosition.fromLatLngZoom(LatLng(frame.lat, frame.lng), frame.zoom) }
+    LaunchedEffect(frame) { camera.move(CameraUpdateFactory.newLatLngZoom(LatLng(frame.lat, frame.lng), frame.zoom)) }
+    val scope = rememberCoroutineScope()
+    val lines = shown.associate { it.id to pointLine(it, nowMs, staleAfterMin) }
+    val ring = com.aktcl.aron.core.ui.LocalAronLook.current.purple
+    GoogleMap(
+        modifier = modifier.testTag(LiteMapTags.MAP),
+        cameraPositionState = camera,
+        googleMapOptionsFactory = { GoogleMapOptions().liteMode(false).mapToolbarEnabled(false) },
+        properties = MapProperties(isMyLocationEnabled = false, isBuildingEnabled = false, isIndoorEnabled = false),
+        uiSettings = MapUiSettings(
+            mapToolbarEnabled = false, zoomControlsEnabled = true, myLocationButtonEnabled = false, compassEnabled = false,
+            tiltGesturesEnabled = false, rotationGesturesEnabled = false, scrollGesturesEnabled = true, zoomGesturesEnabled = true,
+            indoorLevelPickerEnabled = false,
+        ),
+    ) {
+        if (circle != null) Circle(center = LatLng(circle.lat, circle.lng), radius = circle.radiusM.toDouble(), fillColor = ring.copy(alpha = 0.14f), strokeColor = ring, strokeWidth = 3f)
+        shown.forEach { p ->
+            key(p.id) {
+                val stale = p.kind == MapPointKind.PERSON && FixAge.of(p.fixAtMs, nowMs, staleAfterMin).let { it == null || it.stale }
+                Marker(
+                    state = rememberUpdatedMarkerState(position = LatLng(p.lat!!, p.lng!!)), title = p.label, snippet = lines[p.id],
+                    alpha = if (stale) STALE_ALPHA else 1f, icon = BitmapDescriptorFactory.defaultMarker(hueOf(p.kind)),
+                )
+            }
+        }
+        if (cache != null) MapEffect(cacheKey) { map ->
+            map.setOnMapLoadedCallback {
+                map.snapshot { bmp -> if (bmp != null) scope.launch(Dispatchers.IO) { runCatching { cache.put(cacheKey, encode(bmp)) } } }
+            }
+        }
+    }
+}
+
+/** Pin colours: people azure, outlets red (the map default), the TSO's own fix green. */
+internal fun hueOf(kind: MapPointKind): Float = when (kind) {
+    MapPointKind.PERSON -> BitmapDescriptorFactory.HUE_AZURE
+    MapPointKind.OUTLET -> BitmapDescriptorFactory.HUE_RED
+    MapPointKind.SELF -> BitmapDescriptorFactory.HUE_GREEN
+}
+
 @Composable
 private fun PointList(points: List<MapPoint>, nowMs: Long, staleAfterMin: Int, modifier: Modifier) {
     if (points.isEmpty()) {
@@ -140,16 +223,14 @@ private fun PointList(points: List<MapPoint>, nowMs: Long, staleAfterMin: Int, m
     LazyColumn(modifier.testTag(LiteMapTags.LIST)) {
         items(points, key = { it.id }) { p ->
             val age = FixAge.of(p.fixAtMs, nowMs, staleAfterMin)
+            // a person without a fix or with an old one is greyed; an outlet has no fix age and never is
+            val faded = p.kind == MapPointKind.PERSON && (age == null || age.stale)
             Column(
-                Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).alpha(if (age == null || age.stale) STALE_ALPHA else 1f)
+                Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).alpha(if (faded) STALE_ALPHA else 1f)
                     .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.S).testTag(LiteMapTags.ROW + p.id),
             ) {
                 Text(p.label, style = MaterialTheme.typography.titleMedium)
-                val line = when {
-                    age == null -> stringResource(R.string.map_no_fix)
-                    else -> stringResource(R.string.map_last_seen, localizedDigits(age.clock), localizedNumber(age.minutesAgo))
-                }
-                Text(if (p.source.isNullOrBlank()) line else stringResource(R.string.map_line_with_source, line, p.source), style = MaterialTheme.typography.bodyMedium)
+                pointLine(p, nowMs, staleAfterMin)?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             }
         }
     }
@@ -164,5 +245,8 @@ private fun encode(bmp: Bitmap): ByteArray = ByteArrayOutputStream().use { out -
 
 /** Lite mode draws every marker into one image; more than this is clutter on a 360 dp screen and costs memory. */
 const val MAX_MARKERS = 100
+
+/** The interactive map draws pins one by one and can zoom in, so it holds a whole Retailer answer (server cap 300). */
+const val MAX_INTERACTIVE_MARKERS = 300
 private val MAP_HEIGHT = 280.dp
 private const val STALE_ALPHA = 0.5f

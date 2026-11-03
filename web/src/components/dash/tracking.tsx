@@ -1,7 +1,8 @@
 import { TakeAction } from "@/components/dash/take-action";
-import { n, pctText, takaText } from "@/components/dash/tiles";
+import { n, takaText } from "@/components/dash/tiles";
 import type { Schemas } from "@/contract/types";
 import { BUCKETS, countBuckets, type Bucket } from "@/lib/dash/buckets";
+import { tillDatePctText } from "@/lib/national/fmt"; // tso-manual X3 (R-W-13 (4)): the till-date % from the bp at 2 dp, as TSO Daily Tracking
 import { t, type Locale, type MessageKey } from "@/lib/i18n";
 
 export const BUCKET_KEY: Record<Bucket, MessageKey> = {
@@ -64,7 +65,7 @@ export function TrackingTable({ locale, items, businessDate, canAct }: { locale:
               <td className="px-3 py-2 text-right tabular-nums">{n(locale, r.successful_calls)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{n(locale, r.active_memo_count)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{takaText(locale, r.net_mtk)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{pctText(locale, r.tilldate_target_achievement_pct)}</td>
+              <td className="px-3 py-2 text-right tabular-nums" data-testid={`achievement-${r.route_id}`}>{tillDatePctText(locale, r)}</td>
               {canAct ? (
                 <td className="px-3 py-2">
                   <TakeAction routeId={r.route_id} businessDate={businessDate} labels={{ open: t(locale, "tracking.take_action"), note: t(locale, "tracking.note"), send: t(locale, "tracking.send"), sent: t(locale, "tracking.sent"), failed: t(locale, "tracking.failed"), notified: t(locale, "tracking.notified") }} />

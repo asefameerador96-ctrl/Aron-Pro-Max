@@ -43,6 +43,8 @@ SyncRecord:
   - $ref: '#/components/schemas/AppErrorRecord'
   - $ref: '#/components/schemas/SaleAbortRecord'
   - $ref: '#/components/schemas/ConsentAcceptRecord'
+  - $ref: '#/components/schemas/SupportTicketRecord'
+  - $ref: '#/components/schemas/SupportTicketEventRecord'
   discriminator:
     propertyName: type
     mapping:
@@ -88,3 +90,5 @@ SyncRecord:
       app_error: '#/components/schemas/AppErrorRecord'
       sale_abort: '#/components/schemas/SaleAbortRecord'
       consent_accept: '#/components/schemas/ConsentAcceptRecord'
+      support_ticket: '#/components/schemas/SupportTicketRecord'
+      support_ticket_event: '#/components/schemas/SupportTicketEventRecord'

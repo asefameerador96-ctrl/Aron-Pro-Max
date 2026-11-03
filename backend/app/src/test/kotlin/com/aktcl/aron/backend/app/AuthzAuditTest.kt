@@ -38,7 +38,7 @@ import kotlin.test.assertTrue
  * Authorisation audit (qa lane, 2026-10-18) of the admin, data-entry and drill-down routes: enrolment tokens, config
  * changes, versions and tools, dues adjustments, price batches, web entry and QC, paper backfill (data entry), entry
  * unlocks, device OTPs, route assignments, app releases, report queries and exports, and the dashboards. Contract-only
- * surfaces (`/v1/dashboards/targets`, `/v1/web-entry/outlet-sku`) must answer 404 to everyone.
+ * surfaces (`/v1/web-entry/outlet-sku`; `/v1/dashboards/targets` until tso-manual B2 served it) must answer 404 to everyone.
  *
  * Every role calls every route (SR on its phone; AMO, TSO, DMO, WM, TOP, ANALYST, SUPPORT, ADMIN, SUPERADMIN on the web;
  * WM, TOP, ANALYST and a second SUPERADMIN are inserted here) in an ApiWorld with a mirrored second division (`LKX`).
@@ -203,6 +203,21 @@ class AuthzAuditTest {
         } finally { h.execute("SET session_replication_role = origin") }
         lkxVisits = id("SELECT count(*) FROM app.visit WHERE route_id = $oRoute")
         Aggregator.refreshDimensions(h)
+        // tso-manual B1: a ticket of tso1001 (new) for the support ticket routes.
+        h.execute(
+            "INSERT INTO app.support_ticket (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, issue_type_code, title, description, source) " +
+                "VALUES ('$ticketUuid'::uuid, '$ticketUuid'::uuid, DATE '$day', $tsoId, TIMESTAMPTZ '${day}T03:00:00Z', 0, 'printer_connection', 'QA audit ticket', '', 'manual')",
+        )
+        h.execute("INSERT INTO app.support_ticket_state (ticket_uuid, requester_user_id, requester_role, priority) VALUES ('$ticketUuid'::uuid, $tsoId, 'TSO', 'p1')")
+    }
+
+    /** tso-manual B1: the audited ticket and a desk change that is always a change (the next priority on the current version). */
+    private val ticketUuid = UUID.randomUUID().toString()
+    private fun ticketOp(): String {
+        val (version, priority) = world.fresh.db.jdbi.withHandle<Pair<Int, String>, Exception> { h ->
+            h.createQuery("SELECT version, priority FROM app.support_ticket_state WHERE ticket_uuid = CAST(:t AS uuid)").bind("t", ticketUuid).map { rs, _ -> rs.getInt(1) to rs.getString(2) }.one()
+        }
+        return obj("op_uuid" to uuid(), "expected_version" to version, "priority" to if (priority == "p2") "p3" else "p2").toString()
     }
 
     // ---- http -------------------------------------------------------------------------------------------------------
@@ -435,9 +450,17 @@ class AuthzAuditTest {
             RouteSpec("POST /v1/admin/releases (invalid body)", p, { "/v1/admin/releases" }, { "{}" }, writers),
             RouteSpec("PATCH /v1/admin/releases/{} (invalid body)", HttpMethod.Patch, { "/v1/admin/releases/900001" }, { obj("bogus" to 1).toString() },
                 writers, headers = mapOf("If-Match" to "\"1\"")),
-            // Contract only (targets and Astha outlet-SKU entry deferred, docs/27): 404 for everyone.
-            RouteSpec("GET /v1/dashboards/targets", g, { "/v1/dashboards/targets" }, null, emptySet()),
+            // tso-manual B2: Target Status (contract 1.10.0, D-TSO-MAN-39) is served: the dashboard readers plus the AMO app (docs/24 s8.5 "R (app home)").
+            RouteSpec("GET /v1/dashboards/targets", g, { "/v1/dashboards/targets?month=${day.take(7)}" }, null, dashDocs + "AMO"),
+            // Contract only (Astha outlet-SKU entry deferred, docs/27): 404 for everyone.
             RouteSpec("POST /v1/web-entry/outlet-sku", p, { "/v1/web-entry/outlet-sku" }, { "{}" }, emptySet()),
+            // tso-manual B1 (D-TSO-MAN-22): every signed-in caller lists and counts its own tickets; tso1001's ticket is read by its
+            // reporter and the desk (support.ticket.manage: ADMIN, SUPERADMIN), anyone else gets 404; only the desk writes.
+            RouteSpec("GET /v1/support/tickets", g, { "/v1/support/tickets" }, null, all),
+            RouteSpec("GET /v1/support/tickets/summary", g, { "/v1/support/tickets/summary" }, null, all),
+            RouteSpec("GET /v1/support/tickets/{}", g, { "/v1/support/tickets/$ticketUuid" }, null, setOf("TSO", "ADMIN", "SUPERADMIN")),
+            RouteSpec("PATCH /v1/support/tickets/{}", HttpMethod.Patch, { "/v1/support/tickets/$ticketUuid" }, { ticketOp() }, writers),
+            RouteSpec("POST /v1/support/tickets/{}/events", p, { "/v1/support/tickets/$ticketUuid/events" }, { obj("event_uuid" to uuid(), "body" to "qa authz audit reply").toString() }, writers),
         )
     }
 
@@ -598,6 +621,7 @@ class AuthzAuditTest {
                 idorProbe("GET /v1/dashboards/summary", role, "node $level", g, "/v1/dashboards/summary?from=$day&to=$day&level=$level&node_id=$id", null)
                 idorProbe("GET /v1/dashboards/geo-validation", role, "node $level", g, "/v1/dashboards/geo-validation?from=$day&to=$day&level=$level&node_id=$id", null)
                 idorProbe("GET /v1/dashboards/daily-tracking", role, "node $level", g, "/v1/dashboards/daily-tracking?business_date=$day&level=$level&node_id=$id", null)
+                idorProbe("GET /v1/dashboards/targets", role, "node $level", g, "/v1/dashboards/targets?month=${day.take(7)}&level=$level&node_id=$id&children=zone", null)   // tso-manual B2
             }
         }
         // National writers: whole-country reach by role (ReachCalculator.nationalRoles); a body that mixes divisions must still be refused.

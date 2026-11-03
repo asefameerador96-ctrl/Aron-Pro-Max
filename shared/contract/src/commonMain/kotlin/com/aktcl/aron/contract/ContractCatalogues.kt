@@ -160,6 +160,8 @@ enum class ReportKey(val wire: String) {
     @SerialName("superstar-campaign") SUPERSTAR_CAMPAIGN("superstar-campaign"),
     @SerialName("retailer-list") RETAILER_LIST("retailer-list"),
     @SerialName("sku-list") SKU_LIST("sku-list"),
+    // contract 1.10.0, lead ruling R-F-12 (TSO manual build)
+    @SerialName("tso-visit-log") TSO_VISIT_LOG("tso-visit-log"),
 }
 
 /** Kind of visit; AMO calls never count in the SR strike rate (docs/24 s12.4). */
@@ -227,6 +229,10 @@ enum class CodeListKey(val wire: String) {
     @SerialName("channel") CHANNEL("channel"),
     @SerialName("sub_channel") SUB_CHANNEL("sub_channel"),
     @SerialName("geo_class") GEO_CLASS("geo_class"),
+    /** Contract 1.10.0 (D-TSO-MAN-19): the 31 Annex A issue types of a support ticket. */
+    @SerialName("ticket_issue_type") TICKET_ISSUE_TYPE("ticket_issue_type"),
+    /** Contract 1.10.0 (D-TSO-MAN-20): the resolution codes the support desk picks when it resolves a ticket. */
+    @SerialName("ticket_resolution_code") TICKET_RESOLUTION_CODE("ticket_resolution_code"),
 }
 
 /** Why a photo was taken (docs/24 s4.11). */
@@ -327,6 +333,14 @@ enum class RecordOutcomeCode(val wire: String, val status: AckStatus, val retrya
     @SerialName("insufficient_points") INSUFFICIENT_POINTS("insufficient_points", AckStatus.REJECTED, false),
     @SerialName("gift_photo_exists") GIFT_PHOTO_EXISTS("gift_photo_exists", AckStatus.REJECTED, false),
     @SerialName("programme_inactive") PROGRAMME_INACTIVE("programme_inactive", AckStatus.QUARANTINED, null),
+    /** Contract 1.10.0 (D-TSO-MAN-31): captured before its zone-day's Final Submit, arrived after it; counted when an ADMIN accepts it. */
+    @SerialName("after_final_submit") AFTER_FINAL_SUBMIT("after_final_submit", AckStatus.QUARANTINED, null),
+    /** Contract 1.10.0 (D-TSO-MAN-31): a memo, edit, void, return or collection captured at or after the zone-day's Final Submit. */
+    @SerialName("day_final_submitted") DAY_FINAL_SUBMITTED("day_final_submitted", AckStatus.REJECTED, false),
+    /** Contract 1.10.0 (D-TSO-MAN-20, 21): a ticket event the ticket's state does not allow, or on another user's ticket. */
+    @SerialName("ticket_state_invalid") TICKET_STATE_INVALID("ticket_state_invalid", AckStatus.REJECTED, false),
+    /** Contract 1.10.0 (D-TSO-MAN-19): a ticket whose issue type is not an active ticket_issue_type code on its business date. */
+    @SerialName("issue_type_unknown") ISSUE_TYPE_UNKNOWN("issue_type_unknown", AckStatus.REJECTED, false),
 }
 
 /** Stable RFC 9457 problem code with its HTTP status (docs/24 s3.4). */
@@ -406,4 +420,73 @@ enum class ProblemCode(val wire: String, val httpStatus: Int) {
     @SerialName("ERR_PUSH_DISABLED") ERR_PUSH_DISABLED("ERR_PUSH_DISABLED", 409),
     @SerialName("ERR_ENTRY_WINDOW_CLOSED") ERR_ENTRY_WINDOW_CLOSED("ERR_ENTRY_WINDOW_CLOSED", 409),
     @SerialName("ERR_GIFT_CHOICE_LOCKED") ERR_GIFT_CHOICE_LOCKED("ERR_GIFT_CHOICE_LOCKED", 409),
+    /** Contract 1.10.0 (D-TSO-MAN-20): a support-desk status change the ticket's state does not allow. */
+    @SerialName("ERR_TICKET_TRANSITION_INVALID") ERR_TICKET_TRANSITION_INVALID("ERR_TICKET_TRANSITION_INVALID", 409),
+    /** Contract 1.10.0 (D-TSO-MAN-21): a reply on a ticket that is no longer new or in_progress. */
+    @SerialName("ERR_TICKET_COMMENTS_CLOSED") ERR_TICKET_COMMENTS_CLOSED("ERR_TICKET_COMMENTS_CLOSED", 409),
+    /** Contract 1.10.0 (D-TSO-MAN-28): a Final Submit replay of a submit whose zone-day was reopened since. */
+    @SerialName("ERR_DAY_FINAL_SUBMIT_REOPENED") ERR_DAY_FINAL_SUBMIT_REOPENED("ERR_DAY_FINAL_SUBMIT_REOPENED", 409),
+}
+
+/** Support ticket life cycle (contract 1.10.0, D-TSO-MAN-20). Open = NEW + IN_PROGRESS; no reopen. */
+@Serializable
+enum class SupportTicketStatus(val wire: String) {
+    @SerialName("new") NEW("new"),
+    @SerialName("in_progress") IN_PROGRESS("in_progress"),
+    @SerialName("resolved") RESOLVED("resolved"),
+    @SerialName("closed") CLOSED("closed"),
+    @SerialName("cancelled") CANCELLED("cancelled"),
+}
+
+/** Support ticket priority (contract 1.10.0, D-TSO-MAN-19); labels P1 - Highest .. P4 - Low live in the localisation layer. */
+@Serializable
+enum class SupportTicketPriority(val wire: String) {
+    @SerialName("p1") P1("p1"),
+    @SerialName("p2") P2("p2"),
+    @SerialName("p3") P3("p3"),
+    @SerialName("p4") P4("p4"),
+}
+
+/** Kind of a support ticket thread entry (contract 1.10.0, D-TSO-MAN-20, 21). */
+@Serializable
+enum class SupportTicketEventKind(val wire: String) {
+    @SerialName("created") CREATED("created"),
+    @SerialName("comment") COMMENT("comment"),
+    @SerialName("close_review") CLOSE_REVIEW("close_review"),
+    @SerialName("status_change") STATUS_CHANGE("status_change"),
+    @SerialName("resolution") RESOLUTION("resolution"),
+    @SerialName("priority_change") PRIORITY_CHANGE("priority_change"),
+    @SerialName("assign") ASSIGN("assign"),
+}
+
+/** Kind of a notification inbox row (contract 1.10.0, D-TSO-MAN-26). */
+@Serializable
+enum class NotificationKind(val wire: String) {
+    @SerialName("ticket_updated") TICKET_UPDATED("ticket_updated"),
+    @SerialName("leave_decided") LEAVE_DECIDED("leave_decided"),
+    @SerialName("final_submit_auto") FINAL_SUBMIT_AUTO("final_submit_auto"),
+}
+
+/**
+ * Module of an ADMIN user's grants (docs/34 s1, D-ROLES-02; `Me.modules`, `UserAccess.modules`). SUPPORT from contract
+ * 1.10.0 (lead ruling R-F-11): the support ticket routes; the support-desk permission stays `support.ticket.manage`.
+ */
+@Serializable
+enum class AdminModule(val wire: String) {
+    @SerialName("masterdata") MASTERDATA("masterdata"),
+    @SerialName("routes") ROUTES("routes"),
+    @SerialName("outlets") OUTLETS("outlets"),
+    @SerialName("products") PRODUCTS("products"),
+    @SerialName("prices") PRICES("prices"),
+    @SerialName("users") USERS("users"),
+    @SerialName("targets") TARGETS("targets"),
+    @SerialName("credentials") CREDENTIALS("credentials"),
+    @SerialName("mdm") MDM("mdm"),
+    @SerialName("reports") REPORTS("reports"),
+    @SerialName("config") CONFIG("config"),
+    @SerialName("data_entry") DATA_ENTRY("data_entry"),
+    @SerialName("indent") INDENT("indent"),
+    @SerialName("leaderboard") LEADERBOARD("leaderboard"),
+    @SerialName("daily_tracking") DAILY_TRACKING("daily_tracking"),
+    @SerialName("support") SUPPORT("support"),
 }

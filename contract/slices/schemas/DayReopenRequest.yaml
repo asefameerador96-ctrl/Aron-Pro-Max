@@ -12,3 +12,7 @@ DayReopenRequest:
       $ref: '#/components/schemas/BusinessDate'
     reason:
       $ref: '#/components/schemas/ChangeReason'
+    client_uuid:
+      $ref: '#/components/schemas/Uuid'
+      description: Optional idempotency key; a repeat of the same reopen answers the first result (D-TSO-MAN-29,
+        contract 1.10.0).

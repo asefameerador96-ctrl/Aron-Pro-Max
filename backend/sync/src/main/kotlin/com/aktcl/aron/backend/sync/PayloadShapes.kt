@@ -47,6 +47,8 @@ object PayloadShapes {
         "risk_review" to PayloadShape(setOf("action", "note", "signal_id"), setOf("action", "signal_id"), mapOf()),
         "sale_abort" to PayloadShape(setOf("memo_no", "outlet_id", "reason", "visit_client_uuid"), setOf("memo_no", "reason"), mapOf()),
         "stock_movement" to PayloadShape(setOf("kind", "pack_factor", "qty_base", "qty_entered", "reason_code", "sku_id", "slip_printed", "unit_entered"), setOf("kind", "pack_factor", "qty_base", "qty_entered", "sku_id", "slip_printed", "unit_entered"), mapOf()),
+        "support_ticket" to PayloadShape(setOf("affected_username", "description", "issue_type_code", "source", "title"), setOf("description", "issue_type_code", "source", "title"), mapOf()),
+        "support_ticket_event" to PayloadShape(setOf("body", "kind", "ticket_uuid"), setOf("kind", "ticket_uuid"), mapOf()),
         "survey_response" to PayloadShape(setOf("answer_bool", "answer_num", "answer_option_code", "answer_text", "answer_type", "photo_uuid", "question_id", "survey_id", "survey_version", "visit_client_uuid"), setOf("answer_type", "question_id", "survey_id", "survey_version", "visit_client_uuid"), mapOf()),
         "task" to PayloadShape(setOf("assignee_user_id", "description", "due_date", "outlet_id", "source_visit_client_uuid", "task_type_code", "title"), setOf("assignee_user_id", "task_type_code", "title"), mapOf()),
         "task_event" to PayloadShape(setOf("event", "note", "task_uuid"), setOf("event", "task_uuid"), mapOf()),

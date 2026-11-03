@@ -46,5 +46,10 @@ object ReasonTexts {
         RecordOutcomeCode.INSUFFICIENT_POINTS to ("যথেষ্ট পয়েন্ট নেই।" to "Not enough points."),
         RecordOutcomeCode.GIFT_PHOTO_EXISTS to ("এই উপহারের ছবি আগেই তোলা হয়েছে।" to "A photo for this gift was already captured."),
         RecordOutcomeCode.PROGRAMME_INACTIVE to ("প্রোগ্রামটি চালু নেই; পর্যালোচনার জন্য রাখা হয়েছে।" to "The programme is not active; held for review."),
+        // tso-manual F1: contract 1.10.0 codes (D-TSO-MAN-19, 20, 21, 31)
+        RecordOutcomeCode.AFTER_FINAL_SUBMIT to ("জোনের ফাইনাল সাবমিটের আগে তোলা, কিন্তু পরে পৌঁছেছে; পর্যালোচনার জন্য রাখা হয়েছে।" to "Captured before the zone's Final Submit but arrived after it; held for review."),
+        RecordOutcomeCode.DAY_FINAL_SUBMITTED to ("জোনের ফাইনাল সাবমিটের পরে তোলা; এই দিনের বিক্রি আর বদলানো যাবে না।" to "Captured after the zone's Final Submit; this day's sales can no longer change."),
+        RecordOutcomeCode.TICKET_STATE_INVALID to ("টিকিটের বর্তমান অবস্থায় এটি করা যায় না।" to "This cannot be done in the ticket's current state."),
+        RecordOutcomeCode.ISSUE_TYPE_UNKNOWN to ("এই সমস্যার ধরনটি তালিকায় নেই; নতুন ডেটা নামিয়ে আবার টিকিট দিন।" to "This issue type is not in the list; download fresh data and raise the ticket again."),
     ).entries.associate { (code, t) -> code.wire to ReasonText(bn = t.first, en = t.second) }
 }

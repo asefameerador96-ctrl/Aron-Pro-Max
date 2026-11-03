@@ -23,7 +23,7 @@ Targets sit beside the facts at the same grain, so achievement % is a division t
 | BSR | memos containing a brand ÷ total memos | confirm denominator `docs/13` |
 | Geo-validation % | geo-valid calls ÷ total calls | force sales are photo-valid, excluded |
 | Login % | routes whose bundle was downloaded ÷ target routes | |
-| Submit % | routes uploaded ÷ target routes (apps: ÷ logged-in) | |
+| Submit % (Bikroy Joma) | routes uploaded ÷ target routes (the TSO app, `submit_of_target_pct_bp`: 1 of 5 = 20%) | the web brief's Login / Submit card also shows ÷ successful logins (`submit_pct_bp`); D-TSO-MAN-07 |
 | Final-submit status | zones submitted vs remaining | one/zone/day |
 | Achievement % | sales ÷ target (MTD or month) | bands: ≥100, 90–100, 80–90, <80 |
 | Channel mix | calls/memos split across GT/DCC/Astha/RCC/MT/HoReCa | |

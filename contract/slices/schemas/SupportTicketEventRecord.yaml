@@ -1,0 +1,14 @@
+SupportTicketEventRecord:
+  description: The reporter's comment on, or close review of, its own ticket (contract 1.10.0, D-TSO-MAN-20, 21).
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: support_ticket_event
+      payload:
+        $ref: '#/components/schemas/SupportTicketEventPayload'
+  unevaluatedProperties: false

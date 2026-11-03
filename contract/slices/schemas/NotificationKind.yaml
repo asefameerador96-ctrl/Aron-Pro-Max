@@ -1,0 +1,9 @@
+NotificationKind:
+  type: string
+  enum:
+  - ticket_updated
+  - leave_decided
+  - final_submit_auto
+  description: Inbox row kind (D-TSO-MAN-26). ticket_updated (a support action on the caller's ticket), leave_decided
+    (the caller's leave approved or rejected), final_submit_auto (a zone in the caller's reach was final-submitted
+    by the midnight job).

@@ -1,0 +1,9 @@
+SupportTicketPriority:
+  type: string
+  enum:
+  - p1
+  - p2
+  - p3
+  - p4
+  description: P1 - Highest, P2 - High, P3 - Medium, P4 - Low (labels in the localisation layer). The default comes
+    from the issue type (`attrs.priority`, P1 for all 31 types); the support desk may change it (D-TSO-MAN-19).

@@ -134,6 +134,8 @@ import com.aktcl.aron.backend.sync.riskSignalRoutes
 import com.aktcl.aron.backend.media.mediaRoutes
 import com.aktcl.aron.backend.media.MediaDeps
 import com.aktcl.aron.backend.sync.taskRoutes
+import com.aktcl.aron.backend.notify.inboxRoutes
+import com.aktcl.aron.backend.masterdata.supportTicketRoutes
 import com.aktcl.aron.backend.notify.notificationRoutes
 import com.aktcl.aron.backend.notify.pushRoutes
 
@@ -171,6 +173,10 @@ class Wiring(
             com.aktcl.aron.backend.masterdata.DataVoidBarrierHandler(com.aktcl.aron.backend.sync.TypeRules.BY_TYPE.keys),
             com.aktcl.aron.backend.sync.GeoRecheckHandler(),
             com.aktcl.aron.backend.sync.ConsentRecords(),
+            com.aktcl.aron.backend.masterdata.SupportTicketHandler(), // tso-manual B1
+            com.aktcl.aron.backend.masterdata.LeaveApplicationHandler(), // tso-manual B3: leave on sync judged as POST /v1/leave (D-TSO-MAN-33)
+            com.aktcl.aron.backend.masterdata.FeedbackChecks(), // tso-manual B3: feedback precheck shared with POST /v1/feedback (D-TSO-MAN-36)
+            com.aktcl.aron.backend.sync.VisitPlanRecords(), // tso-manual B3: Set Plan records (SP-03)
         )
 
         /** [extraRecordHandlers], [pushSender] and [blobPorts] are for tests only; production handlers are listed in [recordHandlers]. */
@@ -330,7 +336,7 @@ class Wiring(
                 deviceReplaceRoutes(otpDeps)
                 visitPlanRoutes(VisitPlanDeps(db, reach, config, guard, clock))
                 routeAssignmentRoutes(RouteAssignmentsDeps(db, reach, guard, clock))
-                leaveRoutes(LeaveDeps(db, reach, config, guard, clock))
+                leaveRoutes(LeaveDeps(db, reach, config, guard, clock, nudger = push)) // tso-manual B3: push after a leave decision (D-TSO-MAN-26)
                 tutorialRoutes(TutorialsDeps(db, blob, guard))
                 supportUploadRoutes(SupportUploadDeps(db, blob, config, guard, clock))
                 feedbackRoutes(FeedbackDeps(db, reach, config, guard, clock))
@@ -361,13 +367,16 @@ class Wiring(
                 releaseAdminRoutes(ReleaseAdminDeps(ReleaseAdmin(db, configResolver, clock), guard))
                 syncRoutes(sync)
                 taskRoutes(com.aktcl.aron.backend.sync.TaskDeps(com.aktcl.aron.backend.sync.TaskService(db, reach, clock, push), guard))
-                dayRoutes(com.aktcl.aron.backend.sync.DayDeps(guard, com.aktcl.aron.backend.sync.DayService(db, config, reach, sync.ingest!!, clock)))
+                dayRoutes(com.aktcl.aron.backend.sync.DayDeps(guard, com.aktcl.aron.backend.sync.DayService(db, config, reach, sync.ingest!!, clock, nudger = push))) // tso-manual B3: push day_final_submitted
                 memoRoutes(com.aktcl.aron.backend.sync.MemoDeps(db, reach, guard, clock))
                 nearbyRoutes(com.aktcl.aron.backend.sync.NearbyDeps(db, config, reach, guard, clock))
                 riskSignalRoutes(com.aktcl.aron.backend.sync.RiskSignalDeps(db, config, reach, guard, clock))
                 mediaRoutes(MediaDeps(db, { path, max, until -> blob.writeSas(path, max, until) }, guard, clock, blobs.photoWriter, reach, blobs.photoRead, blobs.imageRead))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
                 notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
+                inboxRoutes(com.aktcl.aron.backend.notify.InboxDeps(db, guard, clock)) // tso-manual B1
+                supportTicketRoutes(com.aktcl.aron.backend.masterdata.SupportTicketDeps(db, config, push, guard, clock)) // tso-manual B1
+                com.aktcl.aron.backend.analytics.TargetAchievementDeps(com.aktcl.aron.backend.analytics.TargetAchievementService(db, config, clock), reach, guard, clock).install(this)   // tso-manual B2
             }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,
                 isolation = com.aktcl.aron.backend.platform.RequestIsolation.forPools(s.dbPoolMax, s.dbReadUrl?.let { s.dbReadPoolMax }),
                 securityEvents = securityEvents, securityStore = securityStore)

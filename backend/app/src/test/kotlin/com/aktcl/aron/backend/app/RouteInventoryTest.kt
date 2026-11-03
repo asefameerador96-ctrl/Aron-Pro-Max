@@ -130,7 +130,7 @@ class RouteInventoryTest {
         val problems = mutableListOf<String>()
         missing.sorted().forEach { problems += "no scope line for $it (add `$it -> case <TestClass>#<method>`, `exempt: <reason>` or `gap: <lane>`)" }
         stale.sorted().forEach { problems += "scope line for a route that no longer exists: $it" }
-        val testSources = repoRoot.resolve("backend").walkTopDown().filter { it.isFile && it.extension == "kt" && "/src/test/" in it.path }.toList()
+        val testSources = repoRoot.resolve("backend").walkTopDown().filter { it.isFile && it.extension == "kt" && "/src/test/" in it.invariantSeparatorsPath }.toList()
         for ((route, rest) in entries) {
             when {
                 rest.startsWith("case ") -> {

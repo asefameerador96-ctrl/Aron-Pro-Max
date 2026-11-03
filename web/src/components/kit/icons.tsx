@@ -114,6 +114,7 @@ const MENU_ICON: Record<string, IconName> = {
   "admin-radius": "radius",
   "admin-wholesale": "wholesale",
   "admin-audit": "audit",
+  "admin-tickets": "inbox", // tso-manual X3 (R-W-13 (1)): the support desk's Tickets entry
   "cfg-home": "config",
   "cfg-keys": "key",
   "cfg-rules": "list",

@@ -127,6 +127,8 @@ jobs:
             "${signer}" verify --print-certs "${dst}" | grep -E "Signer #1 certificate SHA-256 digest" | sed "s/^/${app} ${variant}: /"
             echo "${gate}=${dst}" >> gate-args.txt
           done <<< "${list}"
+          # tso-manual A1 (D-TSO-MAN-42): the TSO copy under the name of screenshot 1; the existing names stay for the updater
+          cp "out/aron-tso-${VERSION_NAME}.apk" "out/$(python3 tools/ci/release-apks.py --tso-copy-name "${VERSION_CODE}")"
           (cd out && sha256sum ./*.apk > SHA256SUMS)
           cat out/SHA256SUMS
       - name: APK size gate

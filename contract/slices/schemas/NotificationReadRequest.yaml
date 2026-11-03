@@ -1,0 +1,8 @@
+NotificationReadRequest:
+  type: object
+  required:
+  - up_to_id
+  additionalProperties: false
+  properties:
+    up_to_id:
+      $ref: '#/components/schemas/Id'

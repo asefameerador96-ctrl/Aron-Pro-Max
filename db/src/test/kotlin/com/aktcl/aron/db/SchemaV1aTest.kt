@@ -288,7 +288,12 @@ class SchemaV1aTest {
             // docs/19 s9 working-day window keys (V0058, docs/requests/backend-core-working-day-window-keys.md).
             "cfg.calendar.window_unit", "cfg.bundle.stale_max_cal_days_ceiling", "cfg.calendar.break_overrides", "cfg.calendar.prefetch_next_working_day",
             // docs/19 s9 line 679 (V0067).
-            "cfg.app.rejected_keep_days")
+            "cfg.app.rejected_keep_days",
+            // TSO manual build contract s2.4 (docs/requests/tso-manual-build-2026-10.md, lead 2026-10-28; V0134).
+            "cfg.kpi.tilldate_basis.tso", "cfg.kpi.tilldate_basis.amo_team", "cfg.kpi.brand_cpr_denominator.tso", "cfg.kpi.bar_bands",
+            "cfg.support.ticket_requester_roles", "cfg.support.ticket_max_photos", "cfg.notify.ticket_push_enabled", "cfg.notify.inbox_retention_days",
+            "cfg.day.auto_final_submit_enabled", "cfg.tso.team_location_max_age_min", "cfg.tso.plan_max_days_ahead", "cfg.leave.allow_past_days",
+            "cfg.leave.allow_ahead_days", "cfg.leave.block_overlap", "cfg.feedback.max_images")
         assertEquals(specKeys + ruled, dbKeys)
         db.connect().use { c ->
             assertEquals("100", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.geo.radius_m'"))

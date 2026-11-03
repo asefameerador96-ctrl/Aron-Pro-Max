@@ -52,3 +52,8 @@ TeamLocation:
         age_min:
           type: integer
           minimum: 0
+    mock_fixes_today:
+      type: integer
+      minimum: 0
+      description: Fixes of the user flagged as mock locations on the business date (anti-spoofing chip, D-TSO-MAN-34,
+        contract 1.10.0); `last_fix` never is one. Absent means 0.

@@ -26,6 +26,17 @@ sealed interface PushNotice {
     /** `sync_nudge` with `reason = task_assigned`: a fixed Bangla/English text; the task arrives with the pull. */
     data object TaskAssigned : PushNotice
 
+    // tso-manual A1 (D-TSO-MAN-26, 31): three fixed Bangla/English notices; the push carries the reason only, never business data.
+
+    /** `sync_nudge` with `reason = notification`: a row was added to the user's bell inbox; the TSO app re-reads its unread count. */
+    data object InboxUpdated : PushNotice
+
+    /** `sync_nudge` with `reason = ticket_updated`: support changed one of the user's tickets; the tap opens the ticket dashboard. */
+    data object TicketUpdated : PushNotice
+
+    /** `sync_nudge` with `reason = day_final_submitted`: the zone-day was final submitted; the SR and AMO apps lock its capture. */
+    data object DayFinalSubmitted : PushNotice
+
     /** `announcement`: the text the admin typed, Bangla when the app runs in Bangla and a Bangla text was given. */
     data class Announcement(val titleEn: String, val titleBn: String?, val bodyEn: String, val bodyBn: String?) : PushNotice {
         fun title(bangla: Boolean) = if (bangla && !titleBn.isNullOrBlank()) titleBn else titleEn
@@ -65,6 +76,19 @@ data class PushMessage(
         const val KIND_BUNDLE_PULL = "bundle_pull"
         const val KIND_MDM_NUDGE = "mdm_nudge"
         const val REASON_TASK_ASSIGNED = "task_assigned"
+        // tso-manual A1: the reasons of the TSO manual build (backend notify `PushReasons`, B3 `PUSH_DAY_FINAL_SUBMITTED`)
+        const val REASON_NOTIFICATION = "notification"
+        const val REASON_TICKET_UPDATED = "ticket_updated"
+        const val REASON_DAY_FINAL_SUBMITTED = "day_final_submitted"
+
+        /** The fixed notice of a `sync_nudge` reason; an unknown reason pulls without a notice. */
+        fun noticeFor(reason: String?): PushNotice? = when (reason) {
+            REASON_TASK_ASSIGNED -> PushNotice.TaskAssigned
+            REASON_NOTIFICATION -> PushNotice.InboxUpdated
+            REASON_TICKET_UPDATED -> PushNotice.TicketUpdated
+            REASON_DAY_FINAL_SUBMITTED -> PushNotice.DayFinalSubmitted
+            else -> null
+        }
         const val ORDINARY_JITTER_S = 120
         const val URGENT_JITTER_S = 20
 
@@ -77,10 +101,7 @@ data class PushMessage(
             // A value outside the window is clamped, never trusted: a bad sender cannot hold a pull back for hours.
             val pullAfter = data["pull_after_s"]?.trim()?.toIntOrNull()?.coerceIn(0, jitterCapS(urgent))
             return when (kind) {
-                KIND_SYNC_NUDGE -> PushMessage(
-                    kind, reason, setOf(PushPullKind.BUNDLE),
-                    if (reason == REASON_TASK_ASSIGNED) PushNotice.TaskAssigned else null, pullAfter, urgent,
-                )
+                KIND_SYNC_NUDGE -> PushMessage(kind, reason, setOf(PushPullKind.BUNDLE), noticeFor(reason), pullAfter, urgent)
                 KIND_BUNDLE_PULL -> PushMessage(kind, reason, setOf(PushPullKind.BUNDLE), null, pullAfter, urgent)
                 KIND_MDM_NUDGE -> PushMessage(kind, reason, setOf(PushPullKind.MDM), null, pullAfter, urgent = true)
                 KIND_CONFIG_PULL -> PushMessage(

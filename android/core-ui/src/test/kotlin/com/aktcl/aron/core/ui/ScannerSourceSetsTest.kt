@@ -25,7 +25,7 @@ class ScannerSourceSetsTest {
         write(root, "main")
         val v = HardcodedStringScanner.scanTree(root)
         assertEquals(1, v.size)
-        assertTrue(v.single().file.contains("src/main/"))
+        assertTrue(v.single().file.replace(File.separatorChar, '/').contains("src/main/"))
     }
 
     @Test fun debugAndReleaseAndFlavourSetsShip() {

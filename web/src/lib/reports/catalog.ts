@@ -47,7 +47,7 @@ const DAY = ["period", "geo"] as const satisfies readonly FilterId[];
 export const WEB_REPORTS: readonly WebReport[] = [
   { row: "F-WEB-002", slug: "retailers", key: "retailer-list", titleKey: "report.retailers", area: "outlet", filters: ["geo", "active_status", "sub_channels", "category", "outlet_code"] },
   { row: "F-WEB-008", slug: "skus", key: "sku-list", titleKey: "report.skus", area: "sales", filters: ["active_status", "category", "products"] },
-  { row: "F-WEB-011", slug: "task-planner", key: "task-planner", titleKey: "report.task_planner", area: "field_force", filters: RANGE },
+  { row: "F-WEB-011", slug: "task-planner", key: "task-planner", titleKey: "report.task_planner", area: "field_force", filters: [...RANGE, "outlet_code"] }, // tso-manual W1 (XA-03): the server's outlet code filter
   { row: "F-WEB-012", slug: "geo-capture", key: "by-route-geo-capture", titleKey: "report.geo_capture", area: "geo", filters: ["geo"] },
   { row: "F-WEB-013", slug: "std-memo", key: "std-memo", titleKey: "report.std_memo", area: "sales", filters: ["period", "geo", "category", "product_type", "products", "date_grouping", "std_criteria", "memo_criteria", "field_force_type"], grouping: "total" },
   { row: "F-WEB-014", slug: "sr-efficiency", key: "sr-efficiency", titleKey: "report.sr_efficiency", area: "field_force", filters: [...RANGE, "field_force_type"] },
@@ -72,6 +72,8 @@ export const WEB_REPORTS: readonly WebReport[] = [
   { row: "F-WEB-062", slug: "route-qc", key: "route-qc", titleKey: "report.route_qc", area: "ops", filters: RANGE },
   { row: "F-WEB-064", slug: "memo-number-gaps", key: "memo-number-gaps", titleKey: "report.memo_gaps", area: "ops", filters: RANGE },
   { row: "F-WEB-067", slug: "geofence-calibration", key: "geofence-calibration", titleKey: "report.geofence_calibration", area: "geo", filters: RANGE, chart: { label: "distance_band_m", value: "visits" } },
+  // tso-manual W1 (XA-02, R-F-12): the TSO's visit plans with the two answers of the retailer questionnaire and the delegated task
+  { row: "XA-02", slug: "tso-visit-log", key: "tso-visit-log", titleKey: "tsoman.report.tso_visit_log", area: "field_force", filters: RANGE },
 ];
 
 export function reportBySlug(slug: string): WebReport | undefined {

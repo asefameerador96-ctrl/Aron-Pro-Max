@@ -10,65 +10,116 @@ import org.junit.runner.RunWith
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.robolectric.annotation.Config
 
-/** The five-level cascade (Wing, Division, Territory, House, Zone) of F-TSO-010. */
+/**
+ * The five-level cascade of Final Submit (D-TSO-MAN-32, screenshots 23 and 24): Wing > Division > Territory > House > Zone
+ * from `GET /v1/dashboards/national/filter-options` (FilterNode parent ids; the server cuts the lists to the token's reach,
+ * the phone sends no ids). A level with one option is preselected; Get Sales Data needs all five.
+ */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34])
 class FinalSubmitCascadeTest {
-    // parent id -> children, per level; ids are unique across the tree
-    private class Tree(val kids: Map<Pair<String, Long?>, List<FsGeoNode>>, var broken: Boolean = false) : FinalSubmitApi {
-        override suspend fun zones() = listOf(50L)
-        override suspend fun geo(level: String, parentId: Long?): List<FsGeoNode>? = if (broken && parentId != null) null else kids[level to parentId].orEmpty()
+    companion object {
+        /** Screenshot 24's tree: one wing, division, territory and house, and the house's two zones (Banani - Test, Gulshan - Test). */
+        val screenshot23 = FsFilterOptions(
+            wings = listOf(FsFilterNode(1, "Apsis Wing", null)),
+            divisions = listOf(FsFilterNode(11, "Apsis Division", 1)),
+            territories = listOf(FsFilterNode(21, "Apsis Territory", 11)),
+            houses = listOf(FsFilterNode(31, "Apsis House", 21, 21)),
+            zones = listOf(FsFilterNode(41, "Banani - Test", 31, 21), FsFilterNode(42, "Gulshan - Test", 31, 21)),
+        )
+
+        /** Two wings; the second wing's territory has two houses and one zone without a house. */
+        val wide = FsFilterOptions(
+            wings = listOf(FsFilterNode(1, "W1", null), FsFilterNode(2, "W2", null)),
+            divisions = listOf(FsFilterNode(11, "D1", 1), FsFilterNode(12, "D2", 2)),
+            territories = listOf(FsFilterNode(21, "T1", 11), FsFilterNode(22, "T2", 12)),
+            houses = listOf(FsFilterNode(31, "H1", 21, 21), FsFilterNode(32, "H2", 22, 22), FsFilterNode(33, "H3", 22, 22)),
+            zones = listOf(
+                FsFilterNode(41, "Z1", 31, 21), FsFilterNode(42, "Z2", 32, 22), FsFilterNode(43, "Z3", 32, 22),
+                FsFilterNode(44, "Z4", 33, 22), FsFilterNode(45, "Z5", null, 22),
+            ),
+        )
+    }
+
+    private class Tree(val o: FsFilterOptions?, val flat: List<Long>? = listOf(50L)) : FinalSubmitApi {
+        var reads = 0
+        override suspend fun zones() = flat
+        override suspend fun filterOptions(): FsFilterOptions? { reads++; return o }
         override suspend fun preview(zoneId: Long, date: String) = FsPreviewOutcome.Failed(FsFailure.SERVER)
         override suspend fun submit(clientUuid: String, zoneId: Long, date: String) = FsSubmitOutcome.Failed(FsFailure.SERVER)
     }
-    private fun n(id: Long, name: String) = FsGeoNode(id, name, null)
-    private fun state(t: Tree) = FinalSubmitState(t, 7) { "2026-10-17" }
+    private fun state(t: Tree) = FinalSubmitState(t, 7) { "2026-10-26" }
 
-    private val tree = mapOf(
-        ("wing" to null) to listOf(n(1, "W1"), n(2, "W2")),
-        ("division" to 1L) to listOf(n(11, "D1")),
-        ("territory" to 11L) to listOf(n(21, "T1")),
-        ("house" to 21L) to listOf(n(31, "H1"), n(32, "H2")),
-        ("zone" to 31L) to listOf(n(41, "Z1"), n(42, "Z2")),
-        ("zone" to 32L) to listOf(n(43, "Z3")),
-    )
+    @Test fun singleOptionLevelsArePreselectedDownToTheChoice() = runBlocking {
+        val t = Tree(screenshot23); val s = state(t); s.loadCascade()
+        assertTrue(s.ui.value.cascade)
+        assertEquals(mapOf(0 to 1L, 1 to 11L, 2 to 21L, 3 to 31L), s.ui.value.picks)
+        assertEquals(listOf(41L, 42L), s.ui.value.options[4]!!.map { it.id })
+        assertNull("two zones: the TSO chooses, Get Sales Data stays off", s.ui.value.zoneId)
+        s.pickLevel(4, 41); assertEquals(41L, s.ui.value.zoneId)
+        assertEquals(1, t.reads) // one read for the whole cascade, no request per level
+    }
 
-    @Test fun singleChildLevelsArePickedAndTheZoneIsChosenLast() = runBlocking {
-        val s = state(Tree(tree)); s.loadCascade()
-        assertTrue(s.ui.value.cascade); assertNull(s.ui.value.zoneId)
-        s.pickLevel(0, 1)
-        assertEquals(mapOf(0 to 1L, 1 to 11L, 2 to 21L), s.ui.value.picks)   // division and territory had one node each
-        assertEquals(listOf(31L, 32L), s.ui.value.options[3]!!.map { it.id })
-        s.pickLevel(3, 31); assertNull(s.ui.value.zoneId)
-        s.pickLevel(4, 42); assertEquals(42L, s.ui.value.zoneId)
+    @Test fun aSingleZoneIsPreselectedTooSoGetIsReadyAtOnce() = runBlocking {
+        val one = screenshot23.copy(zones = screenshot23.zones.take(1))
+        val s = state(Tree(one)); s.loadCascade()
+        assertEquals(41L, s.ui.value.zoneId)
+        assertEquals(5, s.ui.value.picks.size)
+    }
+
+    @Test fun eachLevelListsTheChildrenOfThePickAbove() = runBlocking {
+        val s = state(Tree(wide)); s.loadCascade()
+        assertTrue(s.ui.value.picks.isEmpty()); assertNull(s.ui.value.zoneId)
+        assertEquals(listOf(1L, 2L), s.ui.value.options[0]!!.map { it.id })
+        s.pickLevel(0, 2)
+        assertEquals(mapOf(0 to 2L, 1 to 12L, 2 to 22L), s.ui.value.picks) // D2 and T2 were the only options
+        // the territory's houses, plus "No house" for its zone without one
+        assertEquals(listOf(32L, 33L, FsGeo.NO_HOUSE), s.ui.value.options[3]!!.map { it.id })
+        s.pickLevel(3, 32); assertEquals(listOf(42L, 43L), s.ui.value.options[4]!!.map { it.id })
+        s.pickLevel(3, 33); assertEquals(44L, s.ui.value.zoneId) // H3 has one zone: picked
+        s.pickLevel(3, FsGeo.NO_HOUSE); assertEquals(45L, s.ui.value.zoneId)
     }
 
     @Test fun changingAnUpperLevelClearsEverythingBelow() = runBlocking {
-        val s = state(Tree(tree)); s.loadCascade()
-        s.pickLevel(0, 1); s.pickLevel(3, 31); s.pickLevel(4, 41)
-        s.pickLevel(3, 32)   // house with a single zone: picked for the TSO
-        assertEquals(43L, s.ui.value.zoneId); assertEquals(listOf(43L), s.ui.value.options[4]!!.map { it.id })
+        val s = state(Tree(wide)); s.loadCascade()
+        s.pickLevel(0, 2); s.pickLevel(3, 32); s.pickLevel(4, 43)
+        assertEquals(43L, s.ui.value.zoneId)
+        s.pickLevel(0, 1)
+        assertEquals(mapOf(0 to 1L, 1 to 11L, 2 to 21L, 3 to 31L, 4 to 41L), s.ui.value.picks) // W1's chain has one option per level
+        assertEquals(41L, s.ui.value.zoneId)
         s.pickLevel(0, 2)
-        assertNull(s.ui.value.zoneId); assertEquals(setOf(0), s.ui.value.picks.keys); assertEquals(emptyList<FsGeoNode>(), s.ui.value.options[1])   // W2 has no divisions; nothing deeper is offered
+        assertNull(s.ui.value.zoneId); assertFalse(s.ui.value.picks.containsKey(3)); assertFalse(s.ui.value.options.containsKey(4))
     }
 
     @Test fun anIdOutsideTheOfferedOptionsIsIgnored() = runBlocking {
-        val s = state(Tree(tree)); s.loadCascade()
-        s.pickLevel(0, 99); s.pickLevel(4, 41)
+        val s = state(Tree(wide)); s.loadCascade()
+        s.pickLevel(0, 99); s.pickLevel(4, 41); s.pickLevel(2, 21)
         assertTrue(s.ui.value.picks.isEmpty()); assertNull(s.ui.value.zoneId)
     }
 
-    @Test fun anUnreadableTreeFallsBackToTheFlatZoneList() = runBlocking {
-        val nothing = state(Tree(emptyMap())); nothing.loadCascade(); assertFalse(nothing.ui.value.cascade)
-        val broken = state(Tree(tree, broken = true)); broken.loadCascade(); broken.pickLevel(0, 1)
-        assertFalse(broken.ui.value.cascade); assertNull(broken.ui.value.zoneId)
-        broken.loadZones(); broken.pickZone(50); assertEquals(50L, broken.ui.value.zoneId)
+    @Test fun unreadableFilterOptionsFallBackToTheFlatZoneList() = runBlocking {
+        val s = state(Tree(null)); s.loadCascade()
+        assertFalse(s.ui.value.cascade); assertTrue(s.ui.value.cascadeTried)
+        s.loadZones(); s.pickZone(50); assertEquals(50L, s.ui.value.zoneId)
+        val empty = state(Tree(FsFilterOptions(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()))); empty.loadCascade()
+        assertFalse(empty.ui.value.cascade)
     }
 
-    @Test fun nodePageParsingDropsBadRows() {
-        val p = FsGeo.parse("""{"items":[{"id":1,"name":"A","name_bn":"ক"},{"id":0,"name":"x"},{"id":3,"name":""},{"id":4,"name":"D","name_bn":null}]}""")!!
-        assertEquals(listOf(1L, 4L), p.map { it.id })
-        assertEquals("ক", p[0].label(true)); assertEquals("A", p[0].label(false)); assertEquals("D", p[1].label(true))
-        assertNull(FsGeo.parse("not json"))
+    @Test fun filterOptionsJsonIsReadWithParentsAndBadNodesDropped() {
+        val body = """{"date":"2026-10-26","till_time":true,"as_of":"2026-10-26T09:00:00Z","last_updated_at":null,
+          "wings":[{"id":1,"code":"W-A","name":"Apsis Wing","wing_id":null,"division_id":null,"territory_id":null,"house_id":null},{"id":0,"code":"bad","name":"x"}],
+          "divisions":[{"id":11,"code":"D-A","name":"Apsis Division","wing_id":1}],
+          "territories":[{"id":21,"code":"T-A","name":null,"division_id":11}],
+          "houses":[{"id":31,"code":"H-A","name":"Apsis House","territory_id":21}],
+          "zones":[{"id":41,"code":"Z-B","name":"Banani - Test","house_id":31,"territory_id":21},{"id":45,"code":"Z-X","name":"Loose","house_id":null,"territory_id":21}],
+          "categories":[],"segments":[],"brands":[],"variants":[]}"""
+        val o = FsGeo.parseFilterOptions(body)!!
+        assertEquals(listOf(1L), o.wings.map { it.id })
+        assertEquals(1L, o.divisions.single().parentId)
+        assertEquals("T-A", o.territories.single().name) // a null name falls back to the code
+        assertEquals(21L, o.houses.single().parentId)
+        assertEquals(listOf(31L, null), o.zones.map { it.parentId }); assertEquals(listOf(21L, 21L), o.zones.map { it.territoryId })
+        assertEquals(listOf(31L, FsGeo.NO_HOUSE), FsGeo.children(o, 3, mapOf(0 to 1L, 1 to 11L, 2 to 21L)).map { it.id })
+        assertNull(FsGeo.parseFilterOptions("not json")); assertNull(FsGeo.parseFilterOptions("""{"wings":[]}"""))
     }
 }

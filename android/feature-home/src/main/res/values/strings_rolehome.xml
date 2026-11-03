@@ -15,14 +15,6 @@
     <string name="rh_amo_sales_submit">Sales Submit</string>
     <string name="rh_amo_report">Report</string>
 
-    <!-- TSO tiles (docs/08 drawer order; Target Status is deferred, docs/27) -->
-    <string name="rh_tso_dashboard">Dashboard</string>
-    <string name="rh_tso_leave">Leave</string>
-    <string name="rh_tso_final_submit">Final Submit</string>
-    <string name="rh_tso_periphery">My Periphery</string>
-    <string name="rh_tso_my_call">My Call</string>
-    <string name="rh_tso_feedback">My Feedback</string>
-    <string name="rh_tso_device_otp">Device OTP</string>
 
     <!-- hero row -->
     <string name="rh_hero_amo_sales">Team sales today</string>
@@ -36,6 +28,7 @@
     <string name="rh_empty_hint">This section arrives with its lane. Everything else keeps working as usual.</string>
 
     <!-- TSO device OTP: bind codes are read on the web today -->
+    <string name="rh_tso_device_otp">Device OTP</string>
     <string name="rh_tso_otp_title">Bind codes are issued on the web</string>
     <string name="rh_tso_otp_hint">Open this page on a computer, sign in as the TSO and read today\'s 4-digit code for the phone being bound.</string>
     <string name="rh_tso_otp_url_label">Page on the ARON web dashboard</string>

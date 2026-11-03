@@ -226,8 +226,7 @@ class AggregationWorker(
     /** Nothing is left to project or rebuild: the national dashboard's summary tables are current as of now. */
     private fun markFresh() = db.jdbi.useHandle<Exception> { h ->
         if (DashboardSummaries.ready(h)) {
-            val today = com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
-            DashboardSummaries.autoSubmit(h, today)
+            // tso-manual B2: the dw-only midnight auto-submit stamp is removed (D-TSO-MAN-30); AutoFinalSubmitJob (B3) writes app.final_submit.
             DashboardSummaries.touchFreshness(h, clock.now())
         }
     }

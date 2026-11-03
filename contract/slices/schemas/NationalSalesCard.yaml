@@ -30,8 +30,11 @@ NationalSalesCard:
       oneOf:
       - $ref: '#/components/schemas/Decimal3'
       - type: 'null'
-      description: Sum over the routes in the filter of route monthly target / working days of the month (Fridays
-        and holidays excluded); null when no target is loaded for them. Always the full-day target.
+      description: 'Today''s target (D-TSO-MAN-08): the sum of the route monthly targets in scope for the month
+        (`monthly_target_qty`) / `NationalSales.working_days` W, the working days at the lowest common node of the
+        scope. Always the full-day target; on a Friday or holiday the same formula applies (no zeroing). Null when
+        no target is loaded for the routes in scope, and null when W = 0 (a month with no working day at that node;
+        the phone and the web print "—", lead ruling R-F-13).'
     sales_so_far:
       type: integer
       format: int64
@@ -41,14 +44,29 @@ NationalSalesCard:
       oneOf:
       - $ref: '#/components/schemas/Decimal3'
       - type: 'null'
-      description: max(daily_target - sales_so_far, 0); null without a target.
+      description: max(daily_target - sales_so_far, 0); null whenever daily_target is null (no target, or W = 0).
     achievement_pct_bp:
       type:
       - integer
       - 'null'
+      format: int64
       minimum: 0
-      description: total_sales / daily_target in basis points (ring); null without a target. May exceed 10000.
+      description: 'total_sales / daily_target in basis points (ring); null whenever daily_target is null: without
+        a target, and when `NationalSales.working_days` is 0 (the ring prints "—", lead ruling R-F-13); and null
+        when `monthly_target_qty` is 0 (a loaded target that sums to 0: daily_target is "0.000", the ring prints
+        "—"). Uncapped: may exceed 10000, hence int64 (R-F-16). Exact: round_half_up(10000 * total_sales * working_days
+        / monthly_target_qty), from the integers, never from the rounded daily_target (D-TSO-MAN-10, contract 1.10.0).'
     target_routes:
       type: integer
       minimum: 0
       description: Routes in the filter that carry a monthly target for the category.
+    monthly_target_qty:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+      description: Sum of the route monthly targets (base units) in scope for the month of `date`; null when no
+        target is loaded. The phone prints Total Target from it and `working_days` (D-TSO-MAN-08, contract 1.10.0;
+        optional until the server sends it). When `working_days` is 0 the phone and the web print "—" for every
+        figure derived from `working_days` and never divide by it (R-F-13).

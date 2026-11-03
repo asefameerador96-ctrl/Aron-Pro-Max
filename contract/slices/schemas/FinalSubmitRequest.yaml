@@ -8,6 +8,10 @@ FinalSubmitRequest:
   properties:
     client_uuid:
       $ref: '#/components/schemas/Uuid'
+      description: 'Idempotency key. The TSO app derives it as the name-based, version-4-shaped UUID (StableIds.v4)
+        of `aron.tso.final-submit:<user_id>:<zone_id>:<business_date>:<submit_seq>`, with submit_seq from the preview
+        (D-TSO-MAN-28): the same submit retried keeps its UUID, a submit after a reopen gets a new one. A replay
+        of a reopened submit''s UUID is 409 `ERR_DAY_FINAL_SUBMIT_REOPENED`.'
     zone_id:
       $ref: '#/components/schemas/Id'
     business_date:

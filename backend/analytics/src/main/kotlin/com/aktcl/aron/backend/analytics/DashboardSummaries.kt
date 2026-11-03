@@ -188,35 +188,20 @@ internal object DashboardSummaries {
     }
 
     /**
-     * Zone-day part: the Final Submit time (first submit of the zone-day wins; a reopened one no longer counts). A zone that
-     * the midnight job auto-submitted keeps that time until a real submit replaces it.
+     * Zone-day part: the Final Submit time, the first live `app.final_submit` row of the zone-day (a reopened one no longer
+     * counts). The midnight job writes its own `app.final_submit` row (`via = 'job'`, D-TSO-MAN-30), so there is no dw-only
+     * auto-submit stamp any more: `auto_submitted` stays false and every final-submit figure reads the live rows.
      */
     fun rebuildZoneDay(h: Handle, zoneId: Long, date: LocalDate) {
         h.createUpdate(
             """
             UPDATE dw.agg_daily_zone z SET
-              final_submitted_at = coalesce(
-                (SELECT min(f.submitted_at) FROM app.final_submit f WHERE f.zone_id = :z AND f.business_date = :d AND f.reopened_at IS NULL),
-                CASE WHEN z.auto_submitted THEN z.final_submitted_at END),
-              auto_submitted = NOT EXISTS (SELECT 1 FROM app.final_submit f WHERE f.zone_id = :z AND f.business_date = :d AND f.reopened_at IS NULL) AND z.auto_submitted
+              final_submitted_at = (SELECT min(f.submitted_at) FROM app.final_submit f WHERE f.zone_id = :z AND f.business_date = :d AND f.reopened_at IS NULL),
+              auto_submitted = false
              WHERE z.zone_id = :z AND z.business_date = :d
             """,
         ).bind("z", zoneId).bind("d", date).execute()
     }
-
-    /**
-     * The midnight auto-submit (brief s3.3): a service zone (it had a normal planned route) of a day that has ended and
-     * that no TSO submitted counts as submitted at 00:00 of the next Dhaka day. Summary only: `app.final_submit` is not written.
-     */
-    fun autoSubmit(h: Handle, today: LocalDate): Int = h.createUpdate(
-        """
-        UPDATE dw.agg_daily_zone z SET final_submitted_at = ((z.business_date + 1)::timestamp AT TIME ZONE 'Asia/Dhaka'), auto_submitted = true
-         WHERE z.business_date < :today AND z.business_date >= :today - 7 AND z.final_submitted_at IS NULL
-           AND NOT EXISTS (SELECT 1 FROM app.final_submit f WHERE f.zone_id = z.zone_id AND f.business_date = z.business_date AND f.reopened_at IS NULL)
-           AND EXISTS (SELECT 1 FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
-                        WHERE a.zone_id = z.zone_id AND a.business_date = z.business_date AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr')
-        """,
-    ).bind("today", today).execute()
 
     /**
      * Route-days the outbox does not announce: planned ones with no aggregate row yet (nobody opened the app) and ones whose positions

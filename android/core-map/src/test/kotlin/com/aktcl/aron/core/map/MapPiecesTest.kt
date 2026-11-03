@@ -105,6 +105,30 @@ class MapPiecesTest {
         assertNull(MapFrame.of(listOf(MapPoint("3", "c", null, null))))
     }
 
+    /** tso-manual A3: the Retailer circle is inside the first frame, and the frame centres on it when it is the only thing. */
+    @Test
+    fun theFrameHoldsTheRadiusCircle() {
+        val c = MapCircle(23.79, 90.40, 300)
+        val alone = MapFrame.of(emptyList(), c)!!
+        assertEquals(23.79, alone.lat, 1e-9)
+        assertEquals(90.40, alone.lng, 1e-9)
+        assertTrue("300 m fits at street level, not the whole city", alone.zoom in 14f..17f)
+        val edges = MapFrame.edges(c)
+        edges.forEach { assertEquals(300.0, com.aktcl.aron.rules.Geo.haversineM(c.lat, c.lng, it.lat!!, it.lng!!), 1.0) }
+        val withPin = MapFrame.of(listOf(MapPoint("o", "far", 23.80, 90.40, kind = MapPointKind.OUTLET)), c)!!
+        assertTrue(withPin.zoom <= alone.zoom)
+        assertNull(MapFrame.of(emptyList(), null))
+    }
+
+    @Test
+    fun pointsArePeopleUnlessSaidAndSourcesHaveWords() {
+        assertEquals(MapPointKind.PERSON, MapPoint("1", "a", 1.0, 1.0).kind)
+        assertEquals(listOf(R.string.map_source_check_in, R.string.map_source_visit, R.string.map_source_check_out, R.string.map_source_breadcrumb), MapSources.CODES.map { MapSources.labelRes(it) })
+        assertNull(MapSources.labelRes("Visit (AMO label)"))
+        assertNull(MapSources.labelRes(null))
+        assertEquals(3, MapPointKind.entries.map { hueOf(it) }.distinct().size)
+    }
+
     /** "Loaded only when its screen opens": only the two map composables (the list screen and the D-MAP-02 single-outlet map) touch Maps SDK classes; the geocoder never does. */
     @Test
     fun onlyTheScreenComposableReferencesTheMapsSdk() {
