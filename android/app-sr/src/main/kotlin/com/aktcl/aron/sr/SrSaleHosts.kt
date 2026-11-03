@@ -101,7 +101,8 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
     // AV, then KV, then the POSM survey, then the sale (F-SR-020/021); every item reads local data and a missing one is skipped.
     var contentDone by rememberSaveable(v.visitUuid) { mutableStateOf(false) }
     if (!contentDone) {
-        CallContentHost(day, v.visitUuid, v.outletId) { contentDone = true }
+        // X4a fix round (R-W-23): a survey Save the route-day refused shows the matching text; OK ends the call, as at entry
+        CallContentHost(day, v.visitUuid, v.outletId, onRefused = { closed = it }) { contentDone = true }
         return
     }
     val vm = viewModel(key = "sale-" + v.visitUuid) { kit.newSaleViewModel() }

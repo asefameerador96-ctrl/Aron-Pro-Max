@@ -5,7 +5,12 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.entity.VisitCloseEntity
+import com.aktcl.aron.core.database.entity.SurveyEntity
 import com.aktcl.aron.core.database.repo.DayRefusal
+import com.aktcl.aron.feature.outlet.AnswerType
+import com.aktcl.aron.feature.outlet.SurveyAnswer
+import com.aktcl.aron.feature.outlet.SurveyQuestion
+import com.aktcl.aron.feature.outlet.SurveyResponseRow
 import com.aktcl.aron.feature.outlet.VisitSession
 import com.aktcl.aron.feature.outlet.VisitUiState
 import com.aktcl.aron.feature.sale.domain.VisitOutcomeCode
@@ -122,7 +127,49 @@ class SrRefusalSweepTest {
         assertEquals(2, queued("stock_movement"))
     }
 
+    /**
+     * Fix round (checker medium, R-W-22 "no stock slip prints after the lock"): the slip of a Save stored before the lock is
+     * not printed after it either. Print is not offered for it and the tap prints nothing; the Save stays unprinted and its
+     * slip prints once the day reopens.
+     */
+    @Test fun aSlipOfASaveStoredBeforeTheLockDoesNotPrintAfterItAndPrintsOnceReopened() {
+        f.catalogOnly()
+        val l = load()
+        l.setEntered(105, 4)
+        assertTrue(runBlocking { f.day.saveStock(l) }.saved)
+        assertTrue("before the lock its slip may print", runBlocking { f.day.stockSlipPrintable() })
+        f.finalSubmitted()
+        assertFalse("Print is not drawn after the lock", runBlocking { f.day.stockSlipPrintable() })
+        printTapPrintsNothing()
+        assertTrue("the Save stays unprinted", runBlocking { f.day.slipNotPrinted() })
+        f.reopened()
+        assertTrue(runBlocking { f.day.stockSlipPrintable() })
+        f.day.printUnprintedStock()
+        SrLockFixture.await("the slip print starts once the day reopens") { f.day.stockAttempt.value != null }
+        assertEquals(listOf<Throwable>(), crashes.toList())
+    }
+
     // ---------------- R-W-23: no capture refusal escapes a host ----------------
+
+    /**
+     * Fix round (checker low, R-W-23): the POSM survey's Save refused by the SR's own Sales Submit is named for the call's host
+     * (which shows the submit text and ends the call), stores nothing and never throws; on an open day it saves as before.
+     */
+    @Test fun aSurveySaveTheSalesSubmitRefusedIsNamedAndStoresNothing() {
+        val survey = SurveyEntity(1, 1, "S", null)
+        fun rows(v: com.aktcl.aron.feature.outlet.OpenVisit) =
+            listOf(SurveyResponseRow(ClientIds.newUuid(), v.visitUuid, 1, 1, SurveyQuestion(1, AnswerType.BOOL, "q1", true, false), SurveyAnswer(bool = true)))
+        val before = f.openCall()
+        val after = f.openCall(outletId = 50002, seq = 2)
+        assertNull("an open day saves as before", runBlocking { f.day.saveSurveyRefusal(before.visitUuid, survey, rows(before)) })
+        assertEquals(1, runBlocking { f.db.captureDao().surveyResponsesOf(before.visitUuid) }.size)
+        assertEquals(1, queued("survey_response"))
+        f.salesSubmitted()
+        assertEquals(DayRefusal.SALES_SUBMIT, runBlocking { f.day.saveSurveyRefusal(after.visitUuid, survey, rows(after)) })
+        assertTrue("nothing stored", runBlocking { f.db.captureDao().surveyResponsesOf(after.visitUuid) }.isEmpty())
+        assertEquals(1, queued("survey_response"))
+        assertEquals(listOf<Throwable>(), crashes.toList())
+    }
 
     @Test fun aSkipAfterTheSrsOwnSalesSubmitIsNamedNotThrown() {
         f.salesSubmitted()

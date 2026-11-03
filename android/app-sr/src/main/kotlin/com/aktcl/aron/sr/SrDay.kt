@@ -468,6 +468,24 @@ class SrDay(
         return if (questions.isEmpty()) null else survey to questions
     }
 
+    /**
+     * tso-manual X4a fix round (R-W-23, checker low): the survey's Save as its host words it. Null when stored, or when it
+     * failed for any other reason (the sale goes on, as before); otherwise why the route-day refused it (the SR's own Sales
+     * Submit, or the Final Submit lock): nothing is stored and the call's host shows the matching text. Never throws but for
+     * cancellation.
+     */
+    suspend fun saveSurveyRefusal(
+        visitUuid: String, survey: com.aktcl.aron.core.database.entity.SurveyEntity,
+        rows: List<com.aktcl.aron.feature.outlet.SurveyResponseRow>,
+    ): DayRefusal? = try {
+        saveSurvey(visitUuid, survey, rows)
+        null
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        DayRefusal.of(e)
+    }
+
     /** Writes the confirmed answers (one per question per visit) and claims the photos for them. */
     suspend fun saveSurvey(
         visitUuid: String, survey: com.aktcl.aron.core.database.entity.SurveyEntity,
@@ -489,12 +507,29 @@ class SrDay(
     /** Today's stock rows not yet on a printed slip, read from Room (survives a kill and relaunch). */
     suspend fun unprintedStock() = db.captureDao().stockOn(businessDate()).filter { !it.slipPrinted }
 
+    /**
+     * The Save the Print tap would print next: the oldest unprinted one. tso-manual X4a fix round (R-W-22, "no stock slip
+     * prints after the lock"): a Save whose route-day the zone's Final Submit closed is left out, also one stored before the
+     * lock; it stays unprinted and prints once the day reopens. Empty when nothing may print.
+     */
+    suspend fun printableStockSave(): List<com.aktcl.aron.core.database.entity.StockMovementEntity> {
+        val closed = HashMap<Pair<Long?, String>, Boolean>()
+        val open = unprintedStock().filter { r ->
+            !closed.getOrPut(r.meta.routeId to r.meta.businessDate) { capture.dayRefusal(r.meta, "stock_movement") != null }
+        }
+        return StockSlips.oldestUnprintedSave(open)
+    }
+
+    /** True when the Print tap has a slip it may print ([printableStockSave]); the Stock screen draws Print only then. */
+    suspend fun stockSlipPrintable(): Boolean = printableStockSave().isNotEmpty()
+
     /** Prints one slip for every unprinted stock row of today; the confirmation question is answered by [answerStockPrint]. */
     fun printUnprintedStock() {
         printScope.launch {
             if (_stockAttempt.value != null) return@launch
             // One slip covers exactly one Save (the ledger flips the rows of the named row's Save); the next Save prints on the next tap.
-            val save = StockSlips.oldestUnprintedSave(unprintedStock())
+            // X4a fix round (R-W-22): never the slip of a Save on a route-day closed by Final Submit, even if the button was drawn.
+            val save = printableStockSave()
             if (save.isEmpty()) return@launch
             _stockAttempt.value = com.aktcl.aron.feature.sale.domain.guardedPrint { printing.printStockSlip(StockSlips.slipUuid(save), stockSlip(save)) }
         }

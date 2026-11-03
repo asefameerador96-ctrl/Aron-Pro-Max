@@ -47,7 +47,12 @@ import java.io.File
  * Everything reads local data; a missing file is logged `skipped_missing` and skipped without blocking the sale.
  */
 @Composable
-fun CallContentHost(day: SrDay, visitUuid: String, outletId: Long, sunlightKey: Boolean = false, onDone: () -> Unit) {
+fun CallContentHost(
+    day: SrDay, visitUuid: String, outletId: Long, sunlightKey: Boolean = false,
+    /** tso-manual X4a fix round (R-W-23): the survey's Save was refused by the route-day; the call's host words it. */
+    onRefused: (com.aktcl.aron.core.database.repo.DayRefusal) -> Unit = {},
+    onDone: () -> Unit,
+) {
     var items by remember(visitUuid) { mutableStateOf<List<ContentItemEntity>?>(null) }
     var index by remember(visitUuid) { mutableStateOf(0) }
     var survey by remember(visitUuid) { mutableStateOf<Pair<SurveyEntity, List<SurveyQuestionEntity>>?>(null) }
@@ -65,7 +70,7 @@ fun CallContentHost(day: SrDay, visitUuid: String, outletId: Long, sunlightKey: 
     if (!surveyChecked) return
     val s = survey
     if (s == null) { LaunchedEffect(Unit) { onDone() }; return }
-    SurveyStep(day, visitUuid, s.first, s.second, onDone)
+    SurveyStep(day, visitUuid, s.first, s.second, onRefused, onDone)
 }
 
 @Composable
@@ -137,7 +142,10 @@ private val AnswersSaver = androidx.compose.runtime.saveable.Saver<Map<String, S
 )
 
 @Composable
-private fun SurveyStep(day: SrDay, visitUuid: String, survey: SurveyEntity, rows: List<SurveyQuestionEntity>, onDone: () -> Unit) {
+private fun SurveyStep(
+    day: SrDay, visitUuid: String, survey: SurveyEntity, rows: List<SurveyQuestionEntity>,
+    onRefused: (com.aktcl.aron.core.database.repo.DayRefusal) -> Unit, onDone: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val bn = androidx.compose.ui.platform.LocalConfiguration.current.locales[0].language == "bn"
     // This screen answers yes/no and photo questions. A required question of another type could never be answered and would
@@ -198,8 +206,10 @@ private fun SurveyStep(day: SrDay, visitUuid: String, survey: SurveyEntity, rows
             onConfirm = {
                 confirm = false; saving = true
                 scope.launch {
-                    runCatching { day.saveSurvey(visitUuid, survey, PosmSurvey.rows(visitUuid, survey.surveyId, survey.version, defs, answers)) }
-                    onDone()
+                    // X4a fix round (R-W-23): a Save the route-day refused is worded by the call's host (nothing stored); any other
+                    // failure goes on to the sale as before
+                    val why = day.saveSurveyRefusal(visitUuid, survey, PosmSurvey.rows(visitUuid, survey.surveyId, survey.version, defs, answers))
+                    if (why != null) onRefused(why) else onDone()
                 }
             },
             onDismiss = { confirm = false },
