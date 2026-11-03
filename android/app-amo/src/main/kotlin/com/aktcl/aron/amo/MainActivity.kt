@@ -244,6 +244,8 @@ class MainActivity : ComponentActivity() {
                                 onUpdate = { updateShell.openPage() },
                                 reach = reach, screens = screens,
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
+                                // tso-manual X4a (R-W-11, A3 ask 1): the routes closed by the zone's Final Submit; empty while all are open
+                                banners = amoDayLockBanners(day),
                             ) }
                             }
                         }

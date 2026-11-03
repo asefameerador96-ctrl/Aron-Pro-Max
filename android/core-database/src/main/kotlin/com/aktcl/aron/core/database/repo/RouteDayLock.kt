@@ -17,9 +17,11 @@ import kotlinx.serialization.json.JsonPrimitive
  * tso-manual A3 (D-TSO-MAN-31, D-A3-22): the zone-day's Final Submit closes the route-day too, but only for the record
  * types the server refuses after the lock ([FinalSubmitLock.LOCKED_TYPES]); a `day_submit`, an attendance event, a print
  * or an AMO record still goes through, as the server accepts them. The lock applies only when the caller names its record
- * type ([isOpen] with `recordType`, [requireOpen]). A caller that does not (CaptureRepository's requireOpenRouteDay until it
- * passes the type, the print ledger) is not checked against Final Submit, so nothing throws for the lock in a screen that
- * does not catch it; the SR and AMO days refuse a new call on a closed route-day themselves (SrDay, AmoDay).
+ * type ([isOpen] with `recordType`, [requireOpen]). A caller that does not (the print ledger) is not checked against Final
+ * Submit. tso-manual X4a (R-W-11): CaptureRepository names the type for visit, memo, due_collection, visit_skip and
+ * visit_close, and the SR and AMO screens catch [RouteDayFinalSubmittedException] and show the lock text. Follow-up
+ * (R-W-22, R-W-23): stock_movement is named too (the Final Submit part only), and the screens catch
+ * [RouteDaySubmittedException] as well ([DayRefusal]) and word it with the submit text.
  */
 internal object RouteDayLock {
     suspend fun isOpen(db: AronDatabase, meta: CaptureMeta, recordType: String? = null): Boolean {
@@ -33,13 +35,24 @@ internal object RouteDayLock {
     /**
      * tso-manual A3: refuses a capture of [recordType] with [meta] when its route-day is closed, by the zone's Final Submit
      * ([RouteDayFinalSubmittedException], which a screen catches and words as the lock) or by a Sales Submit
-     * (IllegalStateException, as before). The drop-in for CaptureRepository's requireOpenRouteDay once it passes the type.
+     * ([RouteDaySubmittedException], an IllegalStateException as before). CaptureRepository's requireOpenRouteDay (tso-manual X4a).
      */
     suspend fun requireOpen(db: AronDatabase, meta: CaptureMeta, recordType: String?) {
-        if (recordType != null && FinalSubmitLock.refuses(db, meta, recordType)) {
-            throw RouteDayFinalSubmittedException(meta.businessDate, checkNotNull(meta.routeId), recordType)
+        when (refusal(db, meta, recordType)) {
+            DayRefusal.FINAL_SUBMIT -> throw RouteDayFinalSubmittedException(meta.businessDate, checkNotNull(meta.routeId), checkNotNull(recordType))
+            DayRefusal.SALES_SUBMIT -> throw RouteDaySubmittedException(meta.businessDate, meta.routeId)
+            null -> Unit
         }
-        check(isOpen(db, meta)) { "route-day ${meta.businessDate} is submitted; nothing more can be captured" }
+    }
+
+    /**
+     * tso-manual X4a (R-W-23): why [requireOpen] would refuse a capture of [recordType] with [meta], or null when it would
+     * pass. Pure reads, no write; the one rule both use, so a screen's check and the write cannot disagree.
+     */
+    suspend fun refusal(db: AronDatabase, meta: CaptureMeta, recordType: String?): DayRefusal? = when {
+        recordType != null && FinalSubmitLock.refuses(db, meta, recordType) -> DayRefusal.FINAL_SUBMIT
+        !isOpen(db, meta) -> DayRefusal.SALES_SUBMIT
+        else -> null
     }
 
     private suspend fun routeOpen(db: AronDatabase, businessDate: String, routeId: Long?): Boolean {
@@ -187,3 +200,31 @@ data class LockAcks(val held: Int, val refused: Int) {
  */
 class RouteDayFinalSubmittedException(val businessDate: String, val routeId: Long, val recordType: String) :
     IllegalStateException("route $routeId on $businessDate is closed by its zone's Final Submit; no $recordType is captured")
+
+/**
+ * A capture refused on this phone because its route-day (or the AMO's supervisor day) is closed by a Sales Submit the
+ * server has not voided (docs/24 s4.2 rule 2). The same IllegalStateException and message as before; tso-manual X4a (fix
+ * round) names the type so a screen that can meet it (Mark Paid after the rep's own Sales Submit) words it and never crashes.
+ */
+class RouteDaySubmittedException(val businessDate: String, val routeId: Long?) :
+    IllegalStateException("route-day $businessDate is submitted; nothing more can be captured")
+
+/**
+ * tso-manual X4a (R-W-23): why this phone refused a capture of a route-day, so the screen that launched it words it and
+ * never throws: the zone's Final Submit ([RouteDayFinalSubmittedException]; the lock text) or a Sales Submit that stands,
+ * the rep's own or the AMO's supervisor day ([RouteDaySubmittedException]; feature-dayclose's `submit_blocked_done`).
+ */
+enum class DayRefusal {
+    FINAL_SUBMIT,
+    SALES_SUBMIT,
+    ;
+
+    companion object {
+        /** The refusal [t] carries, or null for any other failure (and for none). */
+        fun of(t: Throwable?): DayRefusal? = when (t) {
+            is RouteDayFinalSubmittedException -> FINAL_SUBMIT
+            is RouteDaySubmittedException -> SALES_SUBMIT
+            else -> null
+        }
+    }
+}
