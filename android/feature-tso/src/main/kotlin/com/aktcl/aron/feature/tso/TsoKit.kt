@@ -53,6 +53,7 @@ import com.aktcl.aron.core.ui.aron.NightGlowCard
 import com.aktcl.aron.core.ui.aron.NightGlowField
 import com.aktcl.aron.core.ui.aron.NightOutlineCard
 import com.aktcl.aron.core.ui.aron.nightGlow
+import com.aktcl.aron.core.ui.aron.NightPageGlow
 import com.aktcl.aron.core.ui.aron.nightPage
 import com.aktcl.aron.core.ui.aron.nightRoles
 import com.aktcl.aron.core.ui.aron.nightText
@@ -109,6 +110,7 @@ fun TsoFrame(
  * gradient [title] and the grey round back button ([onBack], by default [TsoNav.back]) on the navy page, [bottomBar] docked under
  * the content, and the Home button at the bottom centre when [homeButton] (pass `TsoFab.of(screen)`, the s8 FAB column). A scrolling
  * content ends above the Home disc ([TsoFabBand]); a bottom bar sits above the disc too ([TsoBarOverFab]), as screenshots 31, 33, 43.
+ * [glow] draws the page glow of the owner's screenshots behind the content (bottom dome 23 to 26, 39 to 42; top wash 19 to 22).
  */
 @Composable
 fun TsoFrame(
@@ -118,10 +120,11 @@ fun TsoFrame(
     bottomBar: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
     onBack: () -> Unit = { nav.back() },
+    glow: NightPageGlow = NightPageGlow.None,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val n = nightRoles()
-    Box(modifier.fillMaxSize().nightPage(n)) {
+    Box(modifier.fillMaxSize().nightPage(n, glow)) {
         Column(Modifier.fillMaxSize()) {
             AronNightTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back))
             Box(

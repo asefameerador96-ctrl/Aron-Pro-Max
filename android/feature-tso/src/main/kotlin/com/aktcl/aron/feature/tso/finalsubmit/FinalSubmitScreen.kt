@@ -41,6 +41,7 @@ import com.aktcl.aron.feature.tso.TsoBannerKind
 import com.aktcl.aron.feature.tso.TsoButtonStyle
 import com.aktcl.aron.feature.tso.TsoCard
 import com.aktcl.aron.feature.tso.TsoDropdownField
+import com.aktcl.aron.core.ui.aron.NightPageGlow
 import com.aktcl.aron.feature.tso.TsoFrame
 import com.aktcl.aron.feature.tso.TsoGradientButton
 import com.aktcl.aron.feature.tso.TsoPillTone
@@ -105,7 +106,7 @@ fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Mod
     BackHandler(enabled = true) { back() }
     Dialogs(state, phase)
     TsoFrame(
-        stringResource(R.string.tso_fs_title), backOnly(back), homeButton = false, modifier = modifier,
+        stringResource(R.string.tso_fs_title), backOnly(back), homeButton = false, modifier = modifier, glow = NightPageGlow.Bottom,
         bottomBar = if (!onRoutes) null else {
             {
                 TsoGradientButton(

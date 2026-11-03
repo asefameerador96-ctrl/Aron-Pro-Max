@@ -304,6 +304,13 @@ data class AronNightRoles(
     /** The Final Submit route cards (screenshot 25): solid steel blue with white text (8.6:1) and the muted ink (4.85:1); Sunlight draws the white outline card instead. */
     val routeCard: Color = hex(0x234F76),
     val bandRed: Color = hex(0xE53935), val bandAmber: Color = hex(0xFFB300), val bandGreen: Color = hex(0x2E8B3A),
+    /**
+     * The page glows of the owner's screenshots (Night only; Sunlight is solid and draws none): [glowBottom] is the bright-blue dome
+     * rising from the bottom edge of Final Submit (23 to 26), Target Status (39 to 42) and the login-status page; [glowTop] is the
+     * blue wash down from the top of the Leave pages (19 to 22). Nothing but the Home disc and empty page sits on the dome, and white ink on
+     * [glowTop] is 7:1 or more (TokenContrastTest).
+     */
+    val glowBottom: Color = hex(0x3D9FFF), val glowTop: Color = hex(0x104B78),
 ) {
     companion object {
         val Night = AronNightRoles(

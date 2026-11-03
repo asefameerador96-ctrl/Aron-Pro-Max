@@ -28,6 +28,7 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -333,8 +334,36 @@ fun NightBar(percent: Long?, modifier: Modifier = Modifier, height: Dp = 14.dp) 
     }
 }
 
-/** The page of a TSO screen: the navy page colour (solid light grey in Sunlight). */
-fun Modifier.nightPage(n: AronNightRoles): Modifier = this.background(n.page)
+/** Which page glow of the owner's screenshots a TSO screen draws behind its content (Night only; Sunlight is solid). */
+enum class NightPageGlow { None, Bottom, Top }
+
+/**
+ * The page of a TSO screen: the navy page colour (solid light grey in Sunlight) and, in the night look, the [glow] of the owner's
+ * screenshots: a bright-blue dome rising from the bottom edge ([NightPageGlow.Bottom], screenshots 23 to 26, 39 to 42) or a blue wash
+ * down from the top ([NightPageGlow.Top], screenshots 19 to 22). Colours are the [AronNightRoles.glowBottom] and [AronNightRoles.glowTop] tokens.
+ */
+fun Modifier.nightPage(n: AronNightRoles, glow: NightPageGlow = NightPageGlow.None): Modifier {
+    val base = this.background(n.page)
+    if (n.solid || glow == NightPageGlow.None) return base
+    return base.drawBehind {
+        val w = size.width
+        val h = size.height
+        when (glow) {
+            NightPageGlow.Bottom -> {
+                // a circle centred a little below the bottom edge: its top rises about 0.43 of the width above the edge, full width at the edge
+                val centre = Offset(w / 2f, h + 0.2f * w)
+                drawRect(
+                    Brush.radialGradient(0f to n.glowBottom, 0.8f to n.glowBottom, 1f to n.glowBottom.copy(alpha = 0f), center = centre, radius = 0.63f * w),
+                )
+            }
+            NightPageGlow.Top -> drawRect(
+                Brush.verticalGradient(0f to n.glowTop, 1f to n.glowTop.copy(alpha = 0f), startY = 0f, endY = h * 0.45f),
+                size = Size(w, h * 0.45f),
+            )
+            NightPageGlow.None -> Unit
+        }
+    }
+}
 
 /** A small text of the TSO look in the bundled font (for the kit's callers outside core-ui). */
 @Composable

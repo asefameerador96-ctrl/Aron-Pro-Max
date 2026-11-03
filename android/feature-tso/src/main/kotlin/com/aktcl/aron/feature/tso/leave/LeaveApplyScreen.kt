@@ -54,6 +54,7 @@ import com.aktcl.aron.feature.tso.TsoBannerKind
 import com.aktcl.aron.feature.tso.TsoButtonStyle
 import com.aktcl.aron.feature.tso.TsoDates
 import com.aktcl.aron.feature.tso.TsoDropdownField
+import com.aktcl.aron.core.ui.aron.NightPageGlow
 import com.aktcl.aron.feature.tso.TsoFrame
 import com.aktcl.aron.feature.tso.TsoGlowField
 import com.aktcl.aron.feature.tso.TsoGradientButton
@@ -115,7 +116,7 @@ fun LeaveApplyScreen(state: LeaveApplyState, onBack: () -> Unit, modifier: Modif
     LaunchedEffect(state) { state.load() }
     val queued = result is LeaveApplyResult.Queued
     val errors = (result as? LeaveApplyResult.Invalid)?.errors.orEmpty()
-    TsoFrame(stringResource(R.string.tso_leave_apply_title), backOnly(onBack), homeButton = false, modifier = modifier) {
+    TsoFrame(stringResource(R.string.tso_leave_apply_title), backOnly(onBack), homeButton = false, modifier = modifier, glow = NightPageGlow.Top) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen),
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),

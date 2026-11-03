@@ -45,6 +45,7 @@ import com.aktcl.aron.feature.tso.TsoButtonStyle
 import com.aktcl.aron.feature.tso.TsoCard
 import com.aktcl.aron.feature.tso.TsoEmpty
 import com.aktcl.aron.feature.tso.TsoError
+import com.aktcl.aron.core.ui.aron.NightPageGlow
 import com.aktcl.aron.feature.tso.TsoFrame
 import com.aktcl.aron.feature.tso.TsoGradientButton
 import com.aktcl.aron.feature.tso.TsoLoading
@@ -90,7 +91,7 @@ fun LeaveListScreen(state: LeaveListState, onBack: () -> Unit, modifier: Modifie
     val ui by state.ui.collectAsStateWithLifecycle()
     LaunchedEffect(state) { state.load() }
     TsoFrame(
-        stringResource(R.string.tso_leave_title), backOnly(onBack), homeButton = false, modifier = modifier,
+        stringResource(R.string.tso_leave_title), backOnly(onBack), homeButton = false, modifier = modifier, glow = NightPageGlow.Top,
         bottomBar = if (onApply == null) null else {
             { TsoGradientButton(stringResource(R.string.tso_leave_apply), onApply, Modifier.testTag(LeaveTags.APPLY), style = TsoButtonStyle.Lime) }
         },
