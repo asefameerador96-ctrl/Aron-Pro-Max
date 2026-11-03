@@ -96,7 +96,7 @@ class TsoLargeTextScreenshotTests {
         val users = com.aktcl.aron.feature.tso.TsoDashboards.users("""{$stamp,"tab":"not_uploaded","route_count":2,"truncated":false,"items":[
             {"route_id":2,"route_code":"R2","route_name":"ঢাকা উত্তর রুট দুই","zone_id":9,"dep_name":"বনানী - টেস্ট জোন","user_id":4,"username":"sr334002","display_name":"এসআর - টেস্টিং বনানী দুই","role":"SR"},
             {"route_id":3,"route_code":"R3","route_name":"ঢাকা উত্তর রুট তিন","zone_id":9,"dep_name":"বনানী - টেস্ট জোন","user_id":null,"username":null,"display_name":null,"role":"SR"}]}""")
-        com.aktcl.aron.feature.tso.TsoFrame(androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.tso.R.string.tso_dash_login_submit), tgtNav, homeButton = true) {
+        com.aktcl.aron.feature.tso.TsoFrame(androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.tso.R.string.tso_dash_login_submit), tgtNav, homeButton = true, glow = com.aktcl.aron.feature.tso.TsoGlow.of(com.aktcl.aron.feature.tso.TsoScreen.LOGIN_SUBMIT_STATUS)) {
             com.aktcl.aron.feature.tso.TsoLoginSubmitStatusContent(com.aktcl.aron.feature.tso.LoginSubmitTab.NOT_UPLOADED, com.aktcl.aron.feature.tso.CardLoad(users), false, {}, {})
         }
     }
@@ -139,7 +139,7 @@ class TsoLargeTextScreenshotTests {
             tgtRow("category", 3, "Lighter", "lighter", 100, 85, 81), tgtRow("category", 4, "Match", "match", 170, 72, 137)).joinToString(",")
         val a = com.aktcl.aron.feature.tso.targets.TargetStatus.parse("""{$tgtHead,"node":{"type":"territory","id":3,"name":"ঢাকা উত্তর টেরিটরি"},"elapsed_days":25,"period_days":31,"rows":[$rows],
             "children":[{"node":{"type":"zone","id":9,"name":"বনানী - টেস্ট জোন"},"elapsed_days":25,"period_days":31,"rows":[$rows]}]}""")
-        com.aktcl.aron.feature.tso.TsoFrame(androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.tso.R.string.tso_drawer_target_status), tgtNav, homeButton = false) {
+        com.aktcl.aron.feature.tso.TsoFrame(androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.tso.R.string.tso_drawer_target_status), tgtNav, homeButton = false, glow = com.aktcl.aron.feature.tso.TsoGlow.of(com.aktcl.aron.feature.tso.TsoScreen.TARGET_STATUS)) {
             com.aktcl.aron.feature.tso.targets.TargetStatusContent(com.aktcl.aron.feature.tso.CardLoad(a), com.aktcl.aron.feature.tso.targets.TargetTab.TILL_DATE, com.aktcl.aron.rules.Bands.DEFAULT, false, {}, {}, {})
         }
     }
@@ -147,7 +147,7 @@ class TsoLargeTextScreenshotTests {
         val rows = listOf(tgtRow("variant", 101, "Black Diamond Double Filter", "cigarette", 1234567, 350, 995617), tgtRow("variant", 102, "Maxim Bolt", "cigarette", 1000, 330, 806),
             tgtRow("variant", 301, "Aster", "lighter", 100, 85, 81)).joinToString(",")
         val a = com.aktcl.aron.feature.tso.targets.TargetStatus.parse("""{$tgtHead,"node":{"type":"territory","id":3,"name":"Apsis"},"elapsed_days":25,"period_days":31,"rows":[$rows]}""")
-        com.aktcl.aron.feature.tso.TsoFrame("Apsis", tgtNav, homeButton = false) {
+        com.aktcl.aron.feature.tso.TsoFrame("Apsis", tgtNav, homeButton = false, glow = com.aktcl.aron.feature.tso.TsoGlow.of(com.aktcl.aron.feature.tso.TsoScreen.TARGET_DETAILS)) {
             com.aktcl.aron.feature.tso.targets.TargetDetailsContent(com.aktcl.aron.feature.tso.CardLoad(a), com.aktcl.aron.feature.tso.targets.TargetTab.TILL_DATE, com.aktcl.aron.rules.Bands.DEFAULT, null, false, {}, {}, {})
         }
     }

@@ -143,6 +143,18 @@ object TsoDrawer {
  * tickets (11 to 18), leave (19 to 22), Final Submit (23 to 26), Target Status (39 to 42), Settings, Change Password, PDA to Support
  * and the inbox (no screenshot: none).
  */
+/**
+ * The page glow of each TSO screen that has one (conformance rows 19 to 26, 39 to 42, 8): the bright-blue bottom dome on Target Status,
+ * Target Details, the login-status page and Final Submit; the blue top wash on the Leave pages. The hosts (app-tso) and the screenshot
+ * tests read this one table, so a golden proves the glow the app draws.
+ */
+object TsoGlow {
+    fun of(screen: TsoScreen): com.aktcl.aron.core.ui.aron.NightPageGlow = when (screen) {
+        TsoScreen.TARGET_STATUS, TsoScreen.TARGET_DETAILS, TsoScreen.LOGIN_SUBMIT_STATUS -> com.aktcl.aron.core.ui.aron.NightPageGlow.Bottom
+        else -> com.aktcl.aron.core.ui.aron.NightPageGlow.None
+    }
+}
+
 object TsoFab {
     val screens: Set<TsoScreen> = setOf(
         TsoScreen.DASHBOARD, TsoScreen.LOGIN_SUBMIT_STATUS, TsoScreen.MY_TEAM, TsoScreen.RETAILER, TsoScreen.SET_PLAN,
