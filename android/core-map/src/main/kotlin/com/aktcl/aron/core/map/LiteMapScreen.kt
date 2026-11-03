@@ -30,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronTokens
+import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.localizedNumber
@@ -217,9 +218,10 @@ internal fun hueOf(kind: MapPointKind): Float = when (kind) {
 @Composable
 private fun PointList(points: List<MapPoint>, nowMs: Long, staleAfterMin: Int, modifier: Modifier) {
     if (points.isEmpty()) {
-        Text(stringResource(R.string.map_list_empty), modifier.padding(AronTokens.Space.L).testTag(LiteMapTags.LIST))
+        Text(stringResource(R.string.map_list_empty), modifier.padding(AronTokens.Space.L).testTag(LiteMapTags.LIST), color = LocalAronLook.current.ink)
         return
     }
+    val look = LocalAronLook.current
     LazyColumn(modifier.testTag(LiteMapTags.LIST)) {
         items(points, key = { it.id }) { p ->
             val age = FixAge.of(p.fixAtMs, nowMs, staleAfterMin)
@@ -229,8 +231,9 @@ private fun PointList(points: List<MapPoint>, nowMs: Long, staleAfterMin: Int, m
                 Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).alpha(if (faded) STALE_ALPHA else 1f)
                     .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.S).testTag(LiteMapTags.ROW + p.id),
             ) {
-                Text(p.label, style = MaterialTheme.typography.titleMedium)
-                pointLine(p, nowMs, staleAfterMin)?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                // explicit look roles: outside a Surface the default ink is black, unreadable on the TSO navy page (conformance rows 28, 29)
+                Text(p.label, style = MaterialTheme.typography.titleMedium, color = look.ink)
+                pointLine(p, nowMs, staleAfterMin)?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = look.inkMuted) }
             }
         }
     }
