@@ -65,6 +65,18 @@ changed in either resumed pass.
 | R-W-19 / D-X2-15 | `TargetVsAchievement.monthly_target_qty` pinned as a whole "<n>.000" in base units (no code change) | `NationalMapsTest.routeMapMonthlyTargetIsAlwaysAWholeNumberOfBaseUnits` (every card of R1, R2, R3 over five target sets: 2507 sticks, 1, 1000, 2507, 2e9 over two SKUs; digits then `.000`, no leading zero, and equals the database sum; R2 null) | `659712797` |
 | R-W-20 / D-X2-16 | `DailyTrackingRow.by_category.qty_base` = `sum(sold_qty_base)` (was sold + free). Contract descriptions of `DailyTrackingRow.by_category` and `CategoryVolume.qty_entered` say sold only in both lists (1.10.0, description only); slices, `web/src/contract/openapi.d.ts` regenerated; `TsoManualContractTest` pins the wording | `TsoDashboardParityTest.dailyTrackingByCategoryCountsSoldLinesOnly` (tso_dashboard_day.sql: R1 sold 30, promo 20 + DRP 10 free: its row 30 sticks, 187 500 mtk; the Apsis TSO's tracked rows sum to cigarette 40, bidi 2991, equal to the summary's `by_category` and the national Sales card) | `43e046721` |
 
+## Second fix round (checker on `c81d88cbb`: five lows, no high or medium)
+
+All five fixed. Each code or contract fix has a test that failed with the fix undone (Verify, second fix round).
+
+| Item | What | Proving test |
+|---|---|---|
+| Low 1 / D-X2-17 | `MediaRead`: for a feedback photo, a triage role or the desk on a role FeedbackApi lists feedback to by the author's zone gets FeedbackApi's `ownerInReach` on the author as the whole answer; it no longer falls through to the captor rule when that says no | `MediaReadTest.theTriageRolesAndTheDeskReadFeedbackPhotos`, new case: sr3003 (home zone Z-OTHER) covered a Mirpur route on the photo's date; the Mirpur DMO desk and a zone-reach SUPPORT are refused its feedback photo, a plain Mirpur DMO (captor rule) reads it; 7 URLs minted, none for a refusal |
+| Low 2 | `contract/openapi.yaml` 1.10.0 note names R-W-20 (`DailyTrackingRow.by_category` now sold only: an existing reader shows a smaller `qty_base` for a route-day with promo or DRP lines) and D-X2-14 (`can_submit` for a delegate only on DMO or WM); slices and `web/src/contract/openapi.d.ts` regenerated | `TsoManualContractTest.theChangelogNamesTheIntegrationRound` (two new pins) |
+| Low 3 | `FinalSubmitPreview.can_submit` description and the `FinalSubmitPreviewDto.can_submit` KDoc (DayApi.kt): true for the TSO, "or is DMO or WM and is listed in `cfg.day.final_submit_delegate_roles` (the registry bound; any other listed role is ignored)" | `TsoManualContractTest.finalSubmitPreviewSaysWhetherTheCallerMaySubmit` (pins the new wording; `assertFalse` on the old "role is TSO or is listed in") |
+| Low 4 | The NATIONAL and ADMIN submit refusals pin the problem code `ERR_FORBIDDEN`, not only the 403 (`requireZone` would answer `ERR_OUT_OF_SCOPE`), and ADMIN's refusal detail is `submitKind`'s. The negative run showed NATIONAL's POST is refused earlier, by the portal level guard (NATIONAL reads only), so on the POST the DMO/WM bound is shown by ADMIN | `DayApiTest.aDelegateListNamingARoleOutsideDmoAndWmDelegatesOnlyThose` |
+| Low 5 | `DailyTrackingTest`, the direct test class of the R-W-20 query, is in this round's targeted run (the checker's run, its `pos.log`, also had it 12/12) | Verify, second fix round |
+
 ## Decisions (D-X2-NN; the lead may move them to DECISIONS.md)
 
 - **D-X2-01 `Me.support_desk` follows the write gate, not a role list.** R-W-09 (1) names "SUPERADMIN, or a holder of module
@@ -133,6 +145,18 @@ changed in either resumed pass.
   category whose route-day lines are all free still lists with `qty_base` 0 (as `DashboardSummary.by_category` does, no
   HAVING). `net_mtk` stays the sale lines' value (`gross_mtk`; free and DRP lines carry none). `entry_unit` / `qty_entered`
   are still not sent here.
+- **D-X2-17 (second fix round, checker low 1) The feedback list is the whole answer for the desk and the triage roles.**
+  R-W-21 ratified D-X2-13 as "readable by the triage roles and the desk only as far as FeedbackApi lists that feedback to the
+  caller". The follow-up pass enforced the widening half only: when the author check said no, a desk or triage caller fell
+  through to the captor rule, which reaches an author who held any route in the caller's routes or zones that day. Now, for
+  a role FeedbackApi lists feedback to by the author's zone (`FEEDBACK_READERS` minus the TSO) with a triage role or the
+  desk, `authorInReach` is the answer, both ways. Unchanged: the desk on an AMO, SR or TSO (no zone list in FeedbackApi)
+  adds nothing to the captor rule; a plain zone reader (DMO, WM, TOP, NATIONAL, ANALYST without the desk) keeps the captor
+  rule, because R-W-21 binds the triage roles and the desk only. So a DMO with the desk is refused the photo of an author
+  whose home zone is elsewhere but who held a route in the DMO's zone that day, while a plain DMO reads it (the test pins
+  both). With today's data the two rules agree for every feedback author: only a TSO can POST feedback, and
+  `AdminRoutes.createAssignment` gives routes to SR and AMO users only, so a TSO author holds no route, the captor rule falls
+  to its home zone, and that is also `OwnerZone`'s first choice. Ask 5.
 
 ## Deviations (files outside the step's modules)
 
@@ -148,6 +172,10 @@ changed in either resumed pass.
 - Follow-up pass: `contract/openapi.yaml`, `contract/slices/**`, `web/src/contract/openapi.d.ts` and
   `shared/contract/.../TsoManualContractTest.kt` (X1's files): R-W-20 has the contract description and the server change
   together; regenerated the way X1 did (s Verify, follow-up pass). `web/node_modules` was installed with `npm ci` (ignored).
+- Second fix round: `contract/openapi.yaml` (the 1.10.0 note and the `can_submit` description), `contract/slices/INDEX.md`,
+  `contract/slices/schemas/FinalSubmitPreview.yaml`, `web/src/contract/openapi.d.ts` and `TsoManualContractTest` (X1's
+  files), for lows 2 and 3. `tools/slice-contract.py` writes CRLF on this Windows laptop (it rewrote all 890 slices); they
+  were put back to LF before the commit, so only the two real slice changes remain and `--check` still passes.
 
 ## Asks
 
@@ -159,6 +187,10 @@ changed in either resumed pass.
    states. Say whether "one formula everywhere" covers it: then it is one line (`zoneSubmittedSql` per group, grouped by
    `g.zone_id`) plus the report tests that pin it; `dw.v_route_day.zone_final_submitted` would need a view change (V0142+).
 4. ~~Lead (X1 ask 6): the daily-tracking quantity basis.~~ Answered by R-W-20 (sold only) and done in the follow-up pass.
+5. **Lead (D-X2-17):** should every role FeedbackApi lists feedback to by zone (DMO, WM, TOP, NATIONAL, ANALYST), not only
+   with the desk, read a feedback photo exactly as far as the list? Then a plain DMO and a desk DMO agree. It is one
+   condition in `MediaRead` (drop the triage-or-desk clause) and one `MediaReadTest` assertion flips. Not done here, since
+   R-W-21 names the triage roles and the desk.
 
 ## Verify (this worktree, local laptop, JDK 21, UTC, local PostgreSQL 16; CI not run, nothing pushed)
 
@@ -219,6 +251,20 @@ module suites `:backend:analytics:test`, `:backend:app:test`, `:backend:media:te
 Linux CI runners after the merge. Web suite not run (only the generated `openapi.d.ts` changed, and it regenerates
 identically). No Android screen changed: no goldens.
 
+### Verify, second fix round (same laptop, 2026-11-04; CI not run, nothing pushed)
+
+Logs in `SP` (`x2_fr2_neg.log`, `x2_fr2_pos.log`); the mutation script is `SP/x2_fr2_neg.py` (backups in `SP/x2_fr2_bk`).
+
+| Command | Result |
+|---|---|
+| Negative proofs, one run: `PY SP/x2_fr2_neg.py <wt> apply` (MediaRead back to `... && authorInReach(...)) return row to true`, i.e. the fall-through; DayApi's `submitKind` refusal answered as `ERR_OUT_OF_SCOPE`; `contract/openapi.yaml` back to `HEAD`), then `gl.sh <wt> :backend:media:test --tests *MediaReadTest.theTriageRolesAndTheDeskReadFeedbackPhotos :backend:app:test --tests *DayApiTest.aDelegateListNamingARoleOutsideDmoAndWmDelegatesOnlyThose :shared:contract:jvmTest --tests *TsoManualContractTest.theChangelogNamesTheIntegrationRound --tests *TsoManualContractTest.finalSubmitPreviewSaysWhetherTheCallerMaySubmit --continue`, then `... restore` | BUILD FAILED in 54s as intended, each on its own rule. Low 1: the Mirpur DMO desk was minted a URL for sr3003's feedback photo `ffffffff-...` (expected `ApiProblem`). Low 4: "admin1001: ... expected: <ERR_FORBIDDEN> but was: <ERR_OUT_OF_SCOPE>". Low 2: "the 1.10.0 changelog must name R-W-20's by_category change". Low 3: "FinalSubmitPreview.can_submit must say: true when the caller's role is TSO, or is DMO or WM and is listed in ...". Restored; the code diff was byte-identical to the one before the mutations (`cmp`) |
+| What the low 4 run also showed | natx2 kept `ERR_FORBIDDEN` under the mutation: NATIONAL's POST is refused earlier by the portal level guard ("a national user reads only", `PortalLevels`), so on the POST only ADMIN reaches the delegate bound in `submitKind` (NATIONAL's `can_submit` false is still `submitKind`'s). The test comment says so, and the test now also pins ADMIN's refusal detail "Final Submit is the TSO's (or a delegate role's)" (added after the negative run; green in the run below) |
+| **Targeted run, one invocation** (`SP/x2_fr2_pos.log`): `gl.sh <wt> :backend:media:test --tests *MediaReadTest --rerun :backend:app:test --tests *DayApiTest --rerun :shared:contract:jvmTest --tests *TsoManualContractTest --tests *ContractDriftTest --rerun :backend:analytics:test --tests *DailyTrackingTest --rerun --continue` | **BUILD SUCCESSFUL in 3m 37s**, every test task executed ("41 actionable tasks: 11 executed, 30 up-to-date"), 0 failures: MediaReadTest 3/3, DayApiTest 11/11, TsoManualContractTest 30/30, ContractDriftTest 32/32, DailyTrackingTest 12/12 (low 5) |
+| `PY tools/slice-contract.py --check` | "contract/slices is up to date" (exit 0; after the CRLF slices were put back to LF) |
+| `PY shared/contract/tools/gen_wire_dtos.py --check` | exit 0 (description only) |
+| `cd web && npm run gen:contract` | `src/contract/openapi.d.ts` regenerated: the `can_submit` description line only |
+| `PY tools/ci/money-float-scan.py .` / `date-pin-scan.py .` / `wallclock-scan.py .` | "13/13 allowed (0 open finding(s))" / "106 baselined, 0 new" / "14 offender(s) in 5 module(s) (report only)", the same 14 as before, none in a file of this round |
+
 ## Not done
 
 - `:backend:analytics:test` full module runs on Linux CI after merge. Likewise the other full module suites were not run
@@ -233,10 +279,15 @@ identically). No Android screen changed: no goldens.
   DayService ignores the roles outside {DMO, WM} (D-X2-14). Validating the list there is a config-module change, not made.
 - The web reads of the new members (`tilldate_target_achievement_bp`, `monthly_target_qty`, `working_days`) are X3's (R-W-13).
 - `DashboardApi.compute`'s unused route-day-state `zf` (D-X2-12) is not removed.
+- Second fix round: every checker finding is fixed (five lows). Ask 5 (whether plain zone readers should follow the feedback
+  list too) waits for the lead. Not run locally in this round (time-boxed): the full module suites `:backend:media:test`,
+  `:backend:app:test`, `:backend:sync:test`, `:backend:analytics:test`, `:shared:contract:jvmTest` (only the classes in
+  Verify, second fix round), and the web suite (only the generated `openapi.d.ts` description changed); they run on Linux CI
+  after the merge.
 
 ## Next step
 
 Lane X2 is complete for its two steps and the follow-up pass. The lead merges `tso-man/X2` (after X1, with `a1b5041b3`
 from the integration branch for RoleGrantsTest), runs the full backend suites on the Linux CI runners (any failure comes
-back to a fix round) and rules asks 1 to 3; X3 prints the till-date % from the bp and the
+back to a fix round) and rules asks 1 to 3 and 5; X3 prints the till-date % from the bp and the
 route-map bars from `monthly_target_qty` and `working_days`, and reads Daily Tracking's `by_category` as sold only.
