@@ -117,7 +117,7 @@ object TsoDrawer {
             "my_call", R.string.tso_drawer_my_call, R.string.tso_drawer_my_call_sub, AronIcons.Verified,
             children = listOf(
                 TsoDrawerEntry("visit_plan", R.string.tso_drawer_visit_plan, R.string.tso_drawer_visit_plan_sub, AronIcons.AddBusiness, TsoScreen.MY_VISIT_PLAN),
-                TsoDrawerEntry("set_plan", R.string.tso_drawer_set_plan, R.string.tso_drawer_set_plan_sub, AronIcons.Outlet, TsoScreen.SET_PLAN),
+                TsoDrawerEntry("set_plan", R.string.tso_drawer_set_plan, R.string.tso_drawer_set_plan_sub, AronIcons.StoreOff, TsoScreen.SET_PLAN),
             ),
         ),
         TsoDrawerEntry("target_status", R.string.tso_drawer_target_status, R.string.tso_drawer_target_status_sub, AronIcons.Target, TsoScreen.TARGET_STATUS),

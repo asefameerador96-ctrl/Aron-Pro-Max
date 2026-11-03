@@ -24,6 +24,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,9 +80,15 @@ fun Modifier.nightGlow(n: AronNightRoles, color: Color, shape: Shape, elevation:
 @Composable
 fun NightTitle(text: String, modifier: Modifier = Modifier, size: TextUnit = 22.sp, align: TextAlign = TextAlign.Center, maxLines: Int = 2) {
     val n = nightRoles()
-    val base = lookStyle(size, semibold = true, align = align)
+    // a title that wraps shrinks a step at a time, down to 16 sp, until it fits one line (screenshot 8: "Login & Bikroy Joma Status" is one line);
+    // it wraps to [maxLines] only when 16 sp still does not fit (long Bangla, large text)
+    var fitted by remember(text, size) { mutableStateOf(size) }
+    val base = lookStyle(fitted, semibold = true, align = align)
     val style = if (n.solid) base.copy(color = n.ink) else base.copy(brush = Brush.horizontalGradient(listOf(n.titleStart, n.titleEnd)))
-    Text(text, modifier.semantics { heading() }, style = style, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
+    Text(
+        text, modifier.semantics { heading() }, style = style, maxLines = maxLines, overflow = TextOverflow.Ellipsis,
+        onTextLayout = { if (it.lineCount > 1 && fitted.value > 16f && size.value >= 16f) fitted = (fitted.value - 1f).sp },
+    )
 }
 
 /** The grey round back button of the TSO screens (52 dp disc, white chevron; screenshots 8, 17, 24, 39). [label] is its TalkBack name. */
