@@ -3,7 +3,8 @@
 Branch `tso-man/X4a`, worktree `.claude/worktrees/tso-X4a`, base `tso-man/X1` (f4ba4501d). Build contract
 `docs/requests/tso-manual-build-2026-10.md` s10 R-W-11; the asks are A3's asks 1, 10 and 11 and D-A3-22
 (`docs/status/tso-manual-A3.md`). Nothing pushed, no pull request. The fix round after the checker's report on
-5b11e9307 is in "Fix round" below; the rows it changed say so.
+5b11e9307 is in "Fix round" below; the rows it changed say so. The follow-up pass (R-W-22 stock lock, R-W-23 no capture
+refusal escapes a host) is in "Follow-up pass" below.
 
 ## Done
 
@@ -75,6 +76,37 @@ by a Sales Submit (fix round) says feature-memo's `memo_mark_paid` and feature-d
   hosts and the AMO sale, edit and memo hosts. ControlCallHost and the SR picker composable themselves are not composed;
   their decisions are the helpers.
 
+Follow-up pass (R-W-22, R-W-23):
+
+- **D-X4a-13 Stock meets the Final Submit lock only.** `recordStock` names `stock_movement` to the lock (`requireNotFinal`),
+  not to the Sales Submit check: the server accepts stock after a `day_submit` and the phone always did (a stock return
+  after the Sales Submit stays possible). This supersedes D-X4a-01's "stock stays as it was" for the lock. A routeless
+  movement never meets the lock, as on the server (`routeId != null` in B3's `dayLocked`).
+- **D-X4a-14 "No stock slip prints after the lock" is read as: no slip for a refused Save.** A Save the lock refuses stores
+  nothing, so no slip exists, none is offered and the Print tap prints nothing. A slip of a Save stored before the lock
+  still prints: it is the paper of a capture the server holds or accepts, `print_event` is accepted after the lock, and
+  the lock text itself says "Printing still works". Ask 5 asks the lead to confirm.
+- **D-X4a-15 One refusal kind and one rule.** `DayRefusal` lives next to the two exceptions in core-database;
+  `RouteDayLock.refusal` is the rule `requireOpen` throws by, and `CaptureRepository.dayRefusal` mirrors each record
+  method, so no screen's check can disagree with the write. The kit and day APIs stay additive: `onRefused` callbacks with
+  defaults, `callLocked` / `editLocked` / `refusedByLock` keep meaning the Final Submit lock, `lockRefused` keeps its
+  meaning and `submitRefused` sits beside it.
+- **D-X4a-16 The submit text is existing strings.** feature-dayclose's `submit_title` ("Sales submit") over
+  `submit_blocked_done` ("Today's sales are already submitted."), with `sr_ok` / `amo_ok` (`SrDaySubmittedDialog`,
+  `AmoDaySubmittedDialog`). The lock text is A3's, unchanged. No new string, no screenshot case.
+- **D-X4a-17 A call whose route-day no longer takes its records cannot go on.** The SR can submit the day with a call open
+  (the submit gate does not block on it) and come back to it. `SaleHost` checks the call on entry and again when the rep
+  leaves it (No, back, the close after Review); `NoSaleHost` before its close: the text shows first and OK ends the call
+  on the phone with no close written (the composable is gone once the call ends, so the text cannot come after). A
+  refusal that lands during the write itself ends the call silently, as the fix round's lock did. On the AMO the
+  ControlCallHost outlives the call, so the close runs and the outlet list shows why. Such a call is not restored after a
+  relaunch (it would come back on every launch otherwise); a server void of the submit brings it back.
+- **D-X4a-18 A sale the Sales Submit refuses takes no memo number.** `recordNumberedSale` runs the full route-day check
+  (lock and Sales Submit) before it reserves; D-X4a-03 covered the lock only.
+- **D-X4a-19 Writes with no Save of their own stay silent.** The SR's AV/KV content view (logged after an item ends) and
+  the SR survey keep their `runCatching`: nothing is stored on a refusal, the call's entry guard shows the text before
+  them and a submit landing mid-call is worded by the sale's save.
+
 ## Deviations (files outside the lane's list)
 
 - `core-database/.../repo/RouteDayLock.kt` (A3's file): KDoc only, it no longer says CaptureRepository names no type.
@@ -87,6 +119,14 @@ by a Sales Submit (fix round) says feature-memo's `memo_mark_paid` and feature-d
   `VisitDueCollectionWriter` and `RoomDueCollectionWriter.accepts`. `app-amo/build.gradle.kts`: test-only dependencies
   `kotlinx-coroutines-test` and the compose BOM with `ui-test-junit4`, as `app-sr` has them (no test manifest).
   `app-amo/src/test/.../AmoDayLockGateTest.kt`: the old Mark Paid case is renamed and says only what it proves.
+- Follow-up pass: `core-database/.../repo/RouteDayLock.kt` (A3's file) gains `DayRefusal` and `RouteDayLock.refusal`
+  (`requireOpen` throws by it, same exceptions and messages). `feature-stock` gains `StockSaving.kt`, one new file and no
+  change to any existing feature-stock file: the Save the SR's `StockHost` and the AMO's `AmoStockHost` each wrote inline
+  (and identically) moves there so both meet the lock the same way and the refusal can be tested on the real `SrDay` /
+  `AmoDay` without composing a screen; its non-refusal behaviour (SAVED, NOTHING_ENTERED, REFUSED_SAME_VALUES, SAVE_FAILED,
+  the re-save guard) is the hosts' old code, and feature-stock's own 33 tests are unchanged and green. `app-sr/.../SrApp.kt`: `StockHost` is `internal` (was `private`) so the compose test can show
+  it. `app-amo/.../AmoStockCorrectHost.kt` and `ControlCallHost.kt` word the refusals. The SR and AMO test fixtures gain
+  `catalogOnly`, `reopened` and a `closeDay` parameter on `refusedSale`.
 
 ## Asks
 
@@ -96,20 +136,25 @@ by a Sales Submit (fix round) says feature-memo's `memo_mark_paid` and feature-d
 2. **Lead / device lab:** s8 row 26 ("SR phone shows lock") on a pilot phone against dev, now that the banners are drawn:
    with the TSO's "Submit anyway", the SR's Sales Submit, Mark Paid, a sale saved in an open call and leaving a call do
    not crash; a new call is refused with the lock text; the Home banner shows. The same for the AMO's control call.
+   Follow-up: add a stock Save after the lock (the lock text, no slip) and, on an open day, the SR's own Sales Submit
+   with a call still open, then back to that call (the submit text, OK goes Home, the call is not restored on relaunch).
    **The offline window to check and accept:** the phone refuses only after it has learned the lock (the push's pull, or
    the next sync answer's `day_states`). A sale saved offline after the server's `final_submitted_at` but before the
    phone learns of it is stored and printed, and the server then refuses it `day_final_submitted` (the Home banner counts
    it under "not accepted"). This is designed and tested on the laptop only; no device has run it.
-3. **Lead (checker low, not ruled by R-W-11, not changed here): stock after Final Submit.** `stock_movement` is in B3's
-   DAY_LOCKED_TYPES, but `CaptureRepository.recordStock` checks no lock at all (D-X4a-01). A stock save after the Final
-   Submit is queued (and may print a slip), the server refuses it `day_final_submitted`, and the rep is told only by the
-   banner's "not accepted" count. Ruling wanted: name `stock_movement` in `recordStock` with the lock text on the SR and
-   AMO stock screens, or have the server accept stock after the lock.
-4. **Lead (seen in the fix round, not the Final Submit lock, not changed here):** a skip from the SR outlet list after the
-   SR's own Sales Submit throws `RouteDaySubmittedException` out of `SkipHost`'s coroutine (`SrLockGate.skip` and
-   `AmoLockGate.skip` catch only the Final Submit refusal). The same was true on X1 before this lane (a plain
-   IllegalStateException). Read from the code; no test ran it. A fix needs words for "the day is submitted" on the skip
-   list (feature-dayclose's `submit_blocked_done` would do).
+3. **Answered by R-W-22, done in the follow-up pass:** stock is locked on the phone as on the server (D-X4a-13, D-X4a-14).
+4. **Answered by R-W-23, done in the follow-up pass:** the skip after the SR's own Sales Submit, and every other path of the
+   sweep, is worded and never thrown.
+5. **Lead (D-X4a-14):** confirm that a stock slip of a Save stored *before* the lock may still be printed after it (as a
+   memo reprint may; the lock text says printing still works). If not, the Print button of the Stock screen must also be
+   hidden while the day's route is final; one line in each stock host.
+6. **Lead (R-W-23 sweep, not changed):** the AMO's routeless supervisor records (outlet-request verification, exception
+   review, task assignment) are refused after the AMO's own supervisor-day Sales Submit (the phone's rule since before
+   this lane). Their hosts catch it with their own failure text ("could not save" style); nothing is thrown. Should they
+   say the submit text instead? Three hosts outside this lane's list (AmoOutletHub, AmoTeamHub, AmoTaskHub).
+7. **Lead / owner (strings, not changed):** A3's lock body says "sales, memo edits and collections are not accepted"; stock
+   is now refused too. Adding "stock" to `sr_lock_body` / `amo_lock_body` (en and bn) is a string change for A3's owner or
+   the Bangla reviewer; the screens already show the lock title and body for a refused stock Save.
 
 ## Fix round (checker report on 5b11e9307)
 
@@ -127,7 +172,49 @@ and saw them fail, then restored the fixes (Verify, row "negative check").
 | L1 | one `lockRefused` flag per kit; OK cleared it before ending the call | the refused draft's key (D-X4a-11); OK ends the call and navigates, then clears (`afterSaleRefusal`; the edit hosts likewise) | `SrDayLockHostsTest.anotherCallsRefusalIsNotShownOnThisCall`, `AmoDayLockHostsTest.anotherCallsRefusalIsNotShownOnThisCall`, `SrKitLockTest` / `AmoKitLockTest.aRefusedSaleBelongsToItsCallAndOkEndsTheCallBeforeTheRefusalClears` |
 | L2 | AMO Edit not re-checked when the lock lands (D-X4a-06 untrue on the AMO) | both memo hosts re-check Edit on every applied push pull; the AMO host also on every change of `day.dayLock` | `AmoDayLockHostsTest.editOnTheMemoDetailFollowsTheLockThatLandsWhileItIsOnScreen` (the SR host's pull counter is not test-proven: `PushRuntime.pulledNow` is internal to core-sync) |
 | L3 | the status promised more than the phone can do; reprint proven only with a fake | the offline window is stated in ask 2 and Not done; the reprint goes through the real chain | `SrKitLockTest.markPaidIsHiddenOnAFinalDayAndAReprintStillGoesToThePrintLedger`: `MemoPrintingReprinter(day.printing)` with the day's `RoomPrintLedger` after the lock: not refused, one `print_event` queued (no printer is saved, so the attempt is `Failed` and the event says so; a real paper print is the device check) |
-| L4 | stock after Final Submit not raised | not changed (R-W-11 does not name stock, D-X4a-01); raised as ask 3 | none (no code change) |
+| L4 | stock after Final Submit not raised | not changed (R-W-11 does not name stock, D-X4a-01); raised as ask 3 | none (no code change); done in the follow-up pass (R-W-22) |
+
+## Follow-up pass (R-W-22, R-W-23; lead rulings after the integration round)
+
+This pass ran in three attempts. The first wrote the code below and was cut off by a usage limit before compiling it. The
+second compiled and ran it (one targeted run, BUILD SUCCESSFUL at 01:16 on 2026-11-04, scratch log only) and committed it
+in four pieces (1bcd7ef06 core-database, d827aa273 feature-stock, fe784831d app-sr, 0f790cc5f app-amo); it was cut off
+with the negative proof's batch A applied to the tree and waiting for the build lock, so that batch never ran then. The
+third attempt (this report's Verify rows "follow-up") ran the negative proof and the green run itself: a scratch script
+(`x4a_negative.py`, outside the repository) undoes one batch of rules at a time in the committed tree (A: the stock lock in
+recordStock and the parity guard; B: the refusals named by the gates, kits and hosts and the stock Save's wording; C: the
+call ended on the phone and not restored after a Sales Submit); each batch's targeted tests ran and failed as intended,
+`git checkout -- android` restored the tree after each, and the targeted classes then ran green on the committed code. No
+source changed in the third attempt; only this file.
+
+| item | what | proving test |
+|---|---|---|
+| R-W-22 core | `CaptureRepository.recordStock` names `stock_movement` to the Final Submit lock inside its transaction (each distinct meta of the Save): a Save on a route-day closed by its zone's Final Submit is refused with `RouteDayFinalSubmittedException("stock_movement")` and nothing is stored or queued. A routeless movement (the AMO outside a call) never meets the lock, as on the server; a Sales Submit does not refuse stock (D-X4a-13). | `core-database` `CaptureRepositoryDayLockTest.aStockSaveOnAFinalRouteDayIsRefusedAndNothingIsQueued` |
+| R-W-22 parity | The phone's `FinalSubmitLock.LOCKED_TYPES` must equal B3's `IngestService.DAY_LOCKED_TYPES`: a test reads the `setOf(...)` literal from `backend/sync/.../IngestService.kt` in this repository and compares the sets. They are equal on this base (13 types, `stock_movement` among them). | `CaptureRepositoryDayLockTest.thePhonesLockedTypesAreTheServersDayLockedTypes` |
+| R-W-22 screens | One Save of the Stock screen for both apps is `StockSaving.save` (feature-stock, new): stored → `SAVED`; refused by the route-day → no message, `refused` says why, `StockLoad.commitFailed` gives the re-save guard back (the same values save once the day reopens); any other failure → `SAVE_FAILED` as before. `SrDay.saveStock` (the day's route) and `AmoDay.saveStock` (the open call's route, none outside a call) wire it; `StockHost` (SR) and `AmoStockHost` show the lock text (`SrRefusalDialog` / `AmoRefusalDialog`) for a refused Save. `AmoStockCorrectHost` shows the lock text for a refused correction (`correctStock` goes through `recordStock`). Nothing is stored, so no slip is offered (`slipNotPrinted` false) and the Print tap prints nothing (D-X4a-14). | `app-sr` `SrRefusalSweepTest`: lock already there (refused, nothing stored or queued, no slip offered, the Print tap starts no print and queues no `print_event`, the typed quantity stays); lock arriving mid-entry (the same, then the same two dozen save once on a reopened day); an open day saves as before and the SR's own Sales Submit does not refuse stock. `SrRefusalHostsTest.theStockScreenShowsTheLockTextForARefusedSaveAndQueuesNothing` (composed). `app-amo` `AmoRefusalSweepTest`: the same two cases in a call on a final route, stock outside a call still saves with no route, a correction in such a call is refused by name and stores nothing; `AmoRefusalHostsTest.theStockScreenInACallOnAFinalRouteShowsTheLockTextAndQueuesNothing` |
+| R-W-23 core | `DayRefusal` (FINAL_SUBMIT, SALES_SUBMIT; `DayRefusal.of(throwable)`), and `RouteDayLock.refusal`, the one rule `requireOpen` now uses. `CaptureRepository.dayRefusal(meta, type)` answers what the record method would do with the same meta (stock: the lock only; routeless due collection: never), so a screen asks it before a fix or a form. `acceptsDueCollection` is `dayRefusal(…) == null`. `recordNumberedSale` runs the full route-day check before reserving a number, so a sale the Sales Submit refuses takes no number either (D-X4a-18). | `CaptureRepositoryDayLockTest.dayRefusalAnswersWhatEachWriteWouldDo`; the "no memo number taken" asserts of the two sale cases below |
+| R-W-23 SR (ask 4) | The gate (`SrLockGate.saveAndPrint`, `closeCall`, `skip`) catches both refusals and says which (`onRefused`); the kit asks `dayRefusal` before anything: `startCall` / `newCallRefusal` (picker), `commitRefusal` (visit screen), `editRefusal` (memo detail and edit host), `openCallRefusal` (a call in progress), `skipOutlet(… onRefused)`, `closeVisit` returns why the call ended on the phone, `submitRefused` keyed like `lockRefused` for a sale or edit save, `endRefusedCall`. Hosts: `SkipHost`, the picker and the visit screen (SrApp), `SaleHost` (entry guard, the start prompt's No and back, the close after Review), `NoSaleHost`, `MemoHost` (Edit disabled with the submit text), `EditHost`, `StockHost` show `SrRefusalDialog` (the lock text, or the submit text `SrDaySubmittedDialog`). A call whose route-day is closed is not restored after a relaunch (D-X4a-17). | `SrRefusalSweepTest`: a skip after the SR's own Sales Submit is named, not thrown (and the lock is named as the lock); a new call is refused by name before a fix; a submit landing while the fix is read is worded, not a retry; a sale refused by the submit takes no number and OK ends the call; leaving a call (close after Review, No-sale, start prompt's No) ends it on the phone and says why; a submit landing during the close write ends the call without a throw; such a call is not restored; an edit is refused by name and the lock wins over the submit. `SrRefusalHostsTest` (composed): the skip host, a call whose route-day was submitted (entry), the sale host, the no-sale host and the edit host (no fix read) show "Today's sales are already submitted." and OK leaves; nothing is stored. Mark Paid: the fix round's `SrKitLockTest.markPaidIsHiddenAfterTheSrsOwnSalesSubmit…` |
+| R-W-23 AMO | The same on the AMO: `AmoLockGate` catches both; `AmoDay.newCallRefusal`, `openCall(… onRefused)`, `commitRefusal`, `saveCallStep` (assessment, joint call, survey, price check: `StepSave(saved, refused)`), `AmoDay.closeVisit` returns why the call ended on the phone, `AmoSaleKit.submitRefused`, `editRefusal`, `endCallIfClosed`, `skipOutlet(… onRefused)`. `ControlCallHost` (outlet pick, check step, every way out of a call, the four steps), `AmoSaleHost`, `AmoMemoHost`, `AmoEditHost`, `AmoStockHost`, `AmoStockCorrectHost` show `AmoRefusalDialog` (the lock text with the closed-route count, or `AmoDaySubmittedDialog`). A call the supervisor-day submit closed is not restored. | `AmoRefusalSweepTest`: a new call after the supervisor-day submit is refused by name before a fix; a submit landing while the fix is read is worded; a sale refused by the submit takes no number and OK ends the call; leaving a call ends it on the phone and says why; not restored; the four call steps return `StepSave(false, SALES_SUBMIT)` and store nothing, an open day saves and a plain failure is not worded as a refusal; an edit and a skip are refused by name. `AmoRefusalHostsTest` (composed): the sale host and the edit host (no fix read) show the submit text |
+
+The sweep (every place on SR and AMO that can throw `RouteDayFinalSubmittedException` or `RouteDaySubmittedException`):
+
+| path | before this pass | now |
+|---|---|---|
+| SR skip (`SkipHost`) | a Sales Submit refusal crashed the screen (ask 4) | submit text, OK leaves |
+| SR new call (picker), visit commit (visit screen) | the submit refusal read a fix and then showed the generic failed commit with a retry that could never pass | refused before a fix with the submit text; a submit landing during the fix: the submit text, not the retry |
+| SR sale save (`SaleHost` via `SaveAndPrint`) | generic "save failed" with a retry; a memo number was burned | submit text in place of the sale, OK ends the call; no number |
+| SR close (Review's close, `NoSaleHost`, start prompt's No and back) | the submit refusal escaped `SrLockGate.closeCall` / `SrCallLock.abandon`: a crash | text first, OK ends the call on the phone (no close); a refusal during the write ends the call without a throw |
+| SR memo edit (`MemoHost`, `EditHost`) | Edit drawn; a fix was read and the save failed generically | Edit disabled with the submit text; the edit host reads no fix |
+| SR Mark Paid | fix round (hidden, a tap it beat is worded) | unchanged |
+| SR stock | not locked (ask 3) | the lock text, nothing queued or printed (R-W-22) |
+| SR AV/KV content view, SR survey (`CallContentHost`) | refusals caught (`runCatching`), nothing stored | unchanged; the call's entry guard shows the text first, a submit landing mid-call is worded by the sale's save (D-X4a-19) |
+| SR memo void and return | no screen on the SR phone | nothing to catch |
+| AMO control / joint / sale call (outlet pick, check step) | lock only; the submit refusal read a fix and then a generic failed commit | the submit text before a fix; during the fix: the submit text |
+| AMO call steps (assessment, joint, survey, price) | caught, no words (the form stays) | the submit text, the form stays |
+| AMO close (menu, back, after a step, after the sale) | the submit refusal escaped `AmoLockGate.closeCall`: a crash | ends the call on the phone, the outlet list shows why |
+| AMO sale, edit, Mark Paid, stock, stock correction | sale/edit generic failure; stock not locked | the lock or submit text, as on the SR |
+| AMO verification, exception review, task assignment (routeless supervisor records) | caught by their hosts with their own failure text | unchanged, never thrown (ask 6) |
+| `IllegalArgumentException` from `requireRoute` | every SR and AMO visit-family write carries the visit's or the outlet's route (non-null in the visit row and `OutletEntity`); the routeless content-view and survey metas are caught by their hosts | unchanged, no path left that can reach a host uncaught |
 
 ## Verify (this worktree, laptop, through gl.sh; CI not run, nothing pushed)
 
@@ -143,6 +230,12 @@ and saw them fail, then restored the fixes (Verify, row "negative check").
 | **negative check** (fixes undone in the worktree by a scratch script, then restored before any commit): `gl.sh … --continue` feature-memo `*MemoDayLockTest*`, app-sr `*SrKitLockTest*` `*SrDayLockHostsTest*`, app-amo `*AmoKitLockTest*` `*AmoDayLockHostsTest*` | BUILD FAILED as intended, 10 failures, each a fix-round test: MemoDayLockTest.theRefusalIsNeverShownWhileMarkPaidIsStillDrawn; SrKitLockTest.markPaidIsHiddenAfterTheSrsOwnSalesSubmit…, aRefusedSaleBelongsToItsCall…; SrDayLockHostsTest.anotherCallsRefusalIsNotShownOnThisCall; AmoKitLockTest.markPaidOutsideACallCollectsOnTheCallsRoute… ("collected": the old wiring's write failed), markPaidOutsideACallIsHiddenWhenTheMemosRouteIsFinal…, theSupervisorDaySubmitHidesMarkPaid…, aRefusedSaleBelongsToItsCall…; AmoDayLockHostsTest.anotherCallsRefusalIsNotShownOnThisCall, editOnTheMemoDetailFollowsTheLock… |
 | **Lane verify (fix round)** `gl.sh … --continue :android:core-database:testDebugUnitTest :android:feature-memo:testDebugUnitTest :android:feature-dayclose:testDebugUnitTest :android:app-sr:testDebugUnitTest :android:app-amo:testDebugUnitTest :android:app-sr:assembleDebug :android:app-amo:assembleDebug :android:core-ui:testDebugUnitTest --tests '*HardcodedStringScanTest*'` | BUILD FAILED in 1m 4s on two tasks, neither from this lane's code. **Green:** feature-memo 15 classes, 55 tests, 0 failures; feature-dayclose 8 classes, 43 tests, 0 failures; app-sr 19 classes, 67 tests, 0 failures; app-amo 9 classes, 49 tests, 0 failures; app-sr and app-amo debug APKs built. **core-database:** 28 classes, 209 tests, 10 failed: the 9 known Windows-path Room MigrationTestHelper cases (SchemaMigrationTest 6, Migration67Test, Migration78Test, CheckerAmoRecordsTest) and `ZoneScaleBudgetTest.anElevenThousandOutletZoneStaysInsideTheBudgets` ("one route query 114 ms > 100", a timing budget, the laptop was running other lanes' builds; no DAO or query changed here; see the rerun row). **HardcodedStringScanTest:** 5 tests, 1 failed with the same 3 violations as before, all in `feature-tso/.../leave/LeaveApply.kt:22` (on the base `tso-man/X1`; fixed on the integration branch in a1b5041b3). No violation in a file of this lane |
 | reruns, three times: `gl.sh … --continue :android:core-database:testDebugUnitTest --tests '*ZoneScaleBudgetTest*' --rerun :android:feature-memo:testDebugUnitTest --tests '*MemoDayLockTest*' --rerun :android:app-sr:testDebugUnitTest --tests '*SrDayLockCaptureTest*' --tests '*SrKitLockTest*' --rerun` | BUILD SUCCESSFUL all three times (19 s, 21 s, 21 s): ZoneScaleBudgetTest 1/1, MemoDayLockTest 6/6, SrDayLockCaptureTest 4/4, SrKitLockTest 8/8 in each run; the timing budget holds when the laptop is quieter, and the two formerly flaky Mark Paid cases did not fail |
+| **follow-up, attempt 2** (scratch log `run1.log`, 2026-11-04 01:16 +0600, before the four commits at 01:17): `gl.sh … :android:core-database:testDebugUnitTest --tests '*CaptureRepositoryDayLockTest*' --tests '*RouteDayLockTest*' :android:feature-stock:testDebugUnitTest :android:app-sr:testDebugUnitTest --tests '*SrRefusal*' --tests '*SrDayLock*' --tests '*SrKitLock*' :android:app-amo:testDebugUnitTest --tests '*AmoRefusal*' --tests '*AmoDayLock*' --tests '*AmoKitLock*'` | BUILD SUCCESSFUL in 1m 14s (the follow-up code compiled; read from the log and the test-result files, not rerun by attempt 3 under this command) |
+| **follow-up negative proof A** (attempt 3; `x4a_negative.py A`: recordStock's `requireNotFinal(…, STOCK_MOVEMENT)` removed and a `phone_only_type` added to `FinalSubmitLock.LOCKED_TYPES`): `gl.sh … --continue :android:core-database:testDebugUnitTest --tests '*CaptureRepositoryDayLockTest*' :android:app-sr:testDebugUnitTest --tests '*SrRefusal*' :android:app-amo:testDebugUnitTest --tests '*AmoRefusal*'` | BUILD FAILED in 1m 34s as intended, 10 failures: CaptureRepositoryDayLockTest 3 of 9 (aStockSaveOnAFinalRouteDayIsRefusedAndNothingIsQueued, thePhonesLockedTypesAreTheServersDayLockedTypes, dayRefusalAnswersWhatEachWriteWouldDo); SrRefusalSweepTest aStockSaveWithTheLockAlreadyThere…, aLockThatArrivesWhileTheRepTypes…; SrRefusalHostsTest theStockScreenShowsTheLockText…; AmoRefusalSweepTest aStockSaveInACallOnAFinalRoute…, aLockThatArrivesWhileTheAmoTypes…, aStockCorrectionInACallOnAFinalRoute…; AmoRefusalHostsTest theStockScreenInACallOnAFinalRoute…. Every other case passed. Tree restored with `git checkout -- android` |
+| **follow-up negative proof B** (`x4a_negative.py B`: the gates, kits and hosts name only the Final Submit lock, the stock Save does not word a refusal, `recordNumberedSale` checks only the lock before the reserve, the SR sale host's entry and No guards removed): the same command | BUILD FAILED in 1m 40s as intended, 23 failures (core-database 9/9 passed: the memo-number reserve is asserted in the app tests): app-sr 13 of 17 (SrRefusalSweepTest: both stock cases, the skip, the new call, the submit while the fix is read, the sale's number, the edit; SrRefusalHostsTest: the stock screen, the skip host, the call on a submitted day, the sale host, the no-sale host, the edit host); app-amo 10 of 14 (AmoRefusalSweepTest: both stock cases, the new call, the submit while the fix is read, the sale's number, the call steps, the edit and skip; AmoRefusalHostsTest: the stock screen, the sale host, the edit host). Tree restored |
+| **follow-up negative proof C** (`x4a_negative.py C`: `closeVisit` names only the lock, a call on a submitted route-day is restored after a relaunch): `gl.sh … --continue :android:app-sr:testDebugUnitTest --tests '*SrRefusal*' :android:app-amo:testDebugUnitTest --tests '*AmoRefusal*'` | BUILD FAILED in 53s as intended, 9 failures: SrRefusalSweepTest aCallOnASubmittedRouteDayIsNotRestoredAfterARelaunch, leavingACallAfterTheSalesSubmitEndsItOnThePhoneAndSaysWhy, aSaleRefusedByTheSalesSubmitTakesNoNumberAndOkEndsTheCall; SrRefusalHostsTest theSaleHost…, aCallWhoseRouteDayWasSubmitted…, theNoSaleHost…; AmoRefusalSweepTest aCallTheSupervisorDaySubmitClosedIsNotRestored…, aSaleRefusedByTheSupervisorDaySubmit…; AmoRefusalHostsTest theSaleHost…. Tree restored |
+| **follow-up green** (attempt 3, committed tree, `git status` clean under `android/`): `gl.sh … --continue :android:core-database:testDebugUnitTest --tests '*CaptureRepositoryDayLockTest*' --tests '*RouteDayLockTest*' --rerun :android:feature-stock:testDebugUnitTest --tests '*StockLoadTest*' --rerun :android:app-sr:testDebugUnitTest --tests '*SrRefusal*' --tests '*DayLock*' --tests '*LockGate*' --tests '*KitLock*' --rerun :android:app-amo:testDebugUnitTest --tests '*AmoRefusal*' --tests '*DayLock*' --tests '*LockGate*' --tests '*KitLock*' --rerun` | BUILD SUCCESSFUL in 37s, 111 tests, 0 failures: CaptureRepositoryDayLockTest 9/9, RouteDayLockTest 9/9; StockLoadTest 13/13 (the `committed` / `commitFailed` guard StockSaving uses; feature-stock has no test class of this lane); SrRefusalSweepTest 11/11, SrRefusalHostsTest 6/6, SrKitLockTest 8/8, SrDayLockBannerTest 5/5, SrDayLockCaptureTest 4/4, SrDayLockHomeTest 6/6, SrDayLockHostsTest 4/4, SrDayLockSaleTest 4/4; AmoRefusalSweepTest 11/11, AmoRefusalHostsTest 3/3, AmoKitLockTest 8/8, AmoDayLockCallTest 1/1, AmoDayLockGateTest 5/5, AmoDayLockHostsTest 4/4 |
+| follow-up, not run on the laptop (lead's instruction: targeted classes only) | the full module suites core-database, feature-memo, feature-dayclose, feature-stock, app-sr, app-amo, `:android:app-sr:assembleDebug`, `:android:app-amo:assembleDebug` and `HardcodedStringScanTest`: the lead runs them on the Linux CI runners after the merge |
 
 ## Goldens needed
 
@@ -156,12 +249,26 @@ None (D-X4a-07: no screenshot case was added).
   sync answer). A sale saved offline after the server's `final_submitted_at` and before the phone learns it is stored and
   printed, and the server then refuses it `day_final_submitted`. No phone-side change can close that window; it is shown
   afterwards in the Home banner's "not accepted" count.
-- Stock after Final Submit (ask 3) and a skip after the SR's own Sales Submit (ask 4) are raised, not changed.
+- Stock after Final Submit (ask 3) and a skip after the SR's own Sales Submit (ask 4): done in the follow-up pass (R-W-22,
+  R-W-23). Open from it: ask 5 (may a slip of a Save stored before the lock still print), ask 6 (the AMO's routeless
+  supervisor records after its own submit keep their own failure text), ask 7 (the lock body does not name stock).
+- Follow-up: a close or skip write that fails for a reason other than the two route-day refusals (a database error, a
+  contract `require`) is still rethrown by `SrLockGate` / `AmoLockGate`, as before this lane; there is no generic failure
+  string for those screens. The sweep found no SR or AMO host path on which `requireRoute` can be reached (the visit family
+  always carries the visit's or the outlet's route), so no such failure is known; it is stated, not tested.
+- Follow-up: `ControlCallHost`'s four call steps and its leave-call, and the SR picker and visit screen composables, are not
+  composed in a test; their decisions (`AmoDay.saveCallStep`, `AmoDay.closeVisit`, `AmoDay.openCall`, `commitRefusal`,
+  `SrSaleKit.startCall`, `commitRefusal`) are tested on the real day.
 - The SR memo host's re-check of Edit on a push pull has no test (`PushRuntime.pulledNow` is internal to core-sync); the
   AMO host's twin is tested through `day.dayLock`.
 - ControlCallHost and the SR picker composable are not composed in a test; their decisions are the tested helpers.
+- Follow-up: only the targeted classes ran on the laptop (Verify, "follow-up green"). The full module suites of
+  core-database, feature-memo, feature-dayclose, feature-stock, app-sr and app-amo, both `assembleDebug` tasks and
+  `HardcodedStringScanTest` were not run for the follow-up; the lead runs them on the Linux CI runners after the merge.
+  The Room MigrationTestHelper path cases of core-database are a known Windows-only failure.
 - CI did not run; nothing is pushed.
 
 ## Next step
 
-The lead merges `tso-man/X4a` with the integration round and rules on asks 3 and 4; the device lab runs s8 row 26 (ask 2).
+The lead merges `tso-man/X4a` with the integration round and rules on asks 5, 6 and 7; the device lab runs s8 row 26 with
+the follow-up's stock and submit steps (ask 2).
