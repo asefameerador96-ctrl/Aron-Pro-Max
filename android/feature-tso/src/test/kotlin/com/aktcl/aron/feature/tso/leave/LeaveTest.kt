@@ -120,7 +120,7 @@ class LeaveModelTest {
         val src = FakeSource(cached = LeaveSource.Cached(listOf(item("a", "2026-10-01")), "09:00"), fresh = LeaveSource.Cached(listOf(item("a", "2026-10-01", status = LeaveStatus.APPROVED)), "10:30"))
         val s = LeaveListState(src); s.load()
         val ui = s.ui.value as LeaveListUi.Content
-        assertEquals("10:30", ui.asOf); assertEquals(LeaveStatus.APPROVED, ui.items.single().status); assertEquals(false, ui.offlineCached)
+        assertEquals("a fresh read shows no 'As of' (D-TSO-MAN-40)", null, ui.asOf); assertEquals(LeaveStatus.APPROVED, ui.items.single().status); assertEquals(false, ui.offlineCached)
     }
 
     @Test fun offlineKeepsTheCachedListAndSaysSo() = runBlocking {
@@ -182,7 +182,7 @@ class LeaveScreenTest {
         compose.onNodeWithText("Casual").assertDoesNotExist(); compose.onNodeWithText("Sick").assertDoesNotExist()
         compose.onNodeWithTag(LeaveTags.LIST).performScrollToNode(hasTestTag(LeaveTags.card("c")))
         compose.onNodeWithTag(LeaveTags.unsent("c")).assertExists()
-        compose.onNodeWithText("As of 10:42").assertExists()
+        compose.onNodeWithText("As of 10:42").assertDoesNotExist() // a fresh read: 'As of' only for a kept copy
         compose.onNodeWithTag(LeaveTags.APPLY).assertExists()
         compose.onNodeWithText("Apply For Leave").assertExists()
         org.junit.Assert.assertEquals("accessibility: " + compose.a11yProblems(), emptyList<String>(), compose.a11yProblems())
@@ -255,7 +255,8 @@ class LeaveScreenTest {
     }
 
     @Test fun banglaUsesBengaliDigitsAndBanglaBadge() {
-        show(AppLanguage.BN, FakeSource(fresh = rows))
+        // a kept copy (offline): the only state that shows 'As of' (D-TSO-MAN-40)
+        show(AppLanguage.BN, FakeSource(cached = LeaveSource.Cached(rows.items, "10:42"), fresh = null))
         compose.onNodeWithText("ডিএমও অনুমোদনের অপেক্ষায়").assertExists()
         compose.onNodeWithText("২০২৬-১০-০৫ থেকে ২০২৬-১০-০৭").assertExists()
         compose.onNodeWithTag(LeaveTags.days("a")).assert(spoken("৩ দিন"))
