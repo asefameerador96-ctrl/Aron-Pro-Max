@@ -210,6 +210,19 @@ class TokenContrastTest {
         night("plain box outline on the page", n.divider, n.page, 3.0)
     }
 
+    /** Sunlight (TsoSunlight roles, solid): the new picker, menu and fallback-list pairs at 7:1. */
+    @Test fun tsoSunlightPickerMenuAndFallbackListPairsReachSevenToOne() {
+        val n = AronNightRoles.Sunlight
+        val look = AronLook.TsoSunlight
+        fun sun(what: String, fg: Color, bg: Color) { val r = contrast(over(fg, bg), bg); assertTrue("TsoSunlight $what: ${"%.2f".format(r)} < 7", r >= 7.0) }
+        sun("picker ink on the field", look.ink, n.field)
+        sun("picker placeholder on the field", n.placeholder, n.field)
+        sun("dropdown list ink", look.ink, n.field)
+        sun("fallback list ink on the page", look.ink, n.page)
+        sun("fallback list muted ink on the page", look.inkMuted, n.page)
+        sun("plain comment box placeholder on the page", n.placeholder, n.page)
+    }
+
     /** The top glow of the Leave pages (screenshots 19 to 22): white ink and the muted ink over its strongest point keep 7:1 and 4.5:1. */
     @Test fun tsoTopGlowKeepsInkReadable() {
         val n = AronNightRoles.Night
