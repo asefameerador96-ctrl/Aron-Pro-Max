@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aktcl.aron.core.ui.AronTokens
+import com.aktcl.aron.core.database.repo.DayRefusal
 import com.aktcl.aron.feature.dayclose.SalesSubmitScreen
 import com.aktcl.aron.feature.memo.domain.SaleHistoryBuilder
 import com.aktcl.aron.feature.memo.ui.JourneyScreen
@@ -41,8 +42,6 @@ import androidx.compose.ui.platform.LocalContext
 import com.aktcl.aron.core.system.permission.AndroidPermissions
 import com.aktcl.aron.core.system.permission.GatedFeature
 import com.aktcl.aron.core.system.permission.PermissionPolicy
-import com.aktcl.aron.feature.stock.SaveOutcome
-import com.aktcl.aron.feature.stock.SaveRefusal
 import com.aktcl.aron.feature.stock.StockContent
 import com.aktcl.aron.feature.stock.StockMessage
 import com.aktcl.aron.feature.amo.R as AmoR
@@ -64,10 +63,13 @@ fun AmoSaleHost(
     // tso-manual X4a (R-W-11): the lock arrived while this call was open and refused its sale: nothing was stored or printed.
     // The lock text replaces the sale (and its "save failed" dialog); OK ends the call on the phone when its route is closed.
     // Only this call's own refusal shows here (fix round), and it is cleared after the call has ended and the screen moved on.
+    // Follow-up (R-W-23): a sale refused because the supervisor day's Sales Submit stands shows the submit text the same way.
     val scope = rememberCoroutineScope()
-    val refused by kit.lockRefused.collectAsState()
-    if (refused == v.visitUuid) {
-        AmoDayLockDialog(day, onOk = { scope.launch { kit.afterSaleRefusal(onCallEnded, onDone) } })
+    val lockRefused by kit.lockRefused.collectAsState()
+    val submitRefused by kit.submitRefused.collectAsState()
+    val refused = when (v.visitUuid) { lockRefused -> DayRefusal.FINAL_SUBMIT; submitRefused -> DayRefusal.SALES_SUBMIT; else -> null }
+    if (refused != null) {
+        AmoRefusalDialog(day, refused, onOk = { scope.launch { kit.afterSaleRefusal(onCallEnded, onDone) } })
         return
     }
     var already by remember(v.visitUuid) { mutableStateOf<Boolean?>(null) }
@@ -110,13 +112,18 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
             sel == null -> MemoMenuScreen(st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
             else -> {
                 // an edit is a new memo on the memo's route: on a route closed by Final Submit it is disabled with the lock text;
-                // checked again on every applied push pull and lock refresh (fix round), not only when Mark Paid's own check changes
-                var editLocked by remember(sel.memo.memoUuid) { mutableStateOf(false) }
-                LaunchedEffect(sel.memo.memoUuid, st.dayLocked, pulls, dayLock) { editLocked = kit.editLocked(sel.memo.memoUuid) }
+                // checked again on every applied push pull and lock refresh (fix round), not only when Mark Paid's own check changes;
+                // follow-up (R-W-23): after the supervisor day's Sales Submit it is disabled with the submit text
+                var editRefused by remember(sel.memo.memoUuid) { mutableStateOf<DayRefusal?>(null) }
+                LaunchedEffect(sel.memo.memoUuid, st.dayLocked, pulls, dayLock) { editRefused = kit.editRefusal(sel.memo.memoUuid) }
                 val closed = dayLock?.closedRouteIds?.size ?: 0
                 MemoDetailView(
                     sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid, skuCategory = kit::skuCategoryCode,
-                    editDisabledReason = if (editLocked) stringResource(R.string.amo_lock_body, com.aktcl.aron.core.ui.localizedNumber(closed.coerceAtLeast(1).toLong())) else null,
+                    editDisabledReason = when (editRefused) {
+                        DayRefusal.FINAL_SUBMIT -> stringResource(R.string.amo_lock_body, com.aktcl.aron.core.ui.localizedNumber(closed.coerceAtLeast(1).toLong()))
+                        DayRefusal.SALES_SUBMIT -> stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_blocked_done)
+                        null -> null
+                    },
                 )
                 AmoSecondary(
                     stringResource(AmoR.string.amo_sale_history),
@@ -198,13 +205,16 @@ fun AmoEditHost(day: AmoDay, memoUuid: String, onDone: () -> Unit) {
     var reason by remember(memoUuid) { mutableStateOf<EditReason?>(null) }
     var ready by remember(memoUuid) { mutableStateOf(false) }
     // tso-manual X4a (R-W-11): an edit on a route closed by Final Submit is not started (no fix is taken) and says why;
-    // one the lock refuses at the save shows the same text, nothing stored or printed
-    var locked by remember(memoUuid) { mutableStateOf(false) }
-    val refused by kit.lockRefused.collectAsState()
-    LaunchedEffect(memoUuid) { kit.prepare(); if (kit.editLocked(memoUuid)) locked = true else denied = kit.prepareEdit(memoUuid); checked = true }
+    // one the lock refuses at the save shows the same text, nothing stored or printed. Follow-up (R-W-23): the same with
+    // the submit text after the supervisor day's Sales Submit.
+    var startRefused by remember(memoUuid) { mutableStateOf<DayRefusal?>(null) }
+    val lockRefused by kit.lockRefused.collectAsState()
+    val submitRefused by kit.submitRefused.collectAsState()
+    LaunchedEffect(memoUuid) { kit.prepare(); val why = kit.editRefusal(memoUuid); if (why != null) startRefused = why else denied = kit.prepareEdit(memoUuid); checked = true }
     // only this edit's own refusal (fix round); cleared after leaving, so the edit's "save failed" never shows in between
-    if (locked || refused == memoUuid) {
-        AmoDayLockDialog(day, onOk = { onDone(); kit.clearLockRefusal() })
+    val refused = startRefused ?: when (memoUuid) { lockRefused -> DayRefusal.FINAL_SUBMIT; submitRefused -> DayRefusal.SALES_SUBMIT; else -> null }
+    if (refused != null) {
+        AmoRefusalDialog(day, refused, onOk = { onDone(); kit.clearLockRefusal() })
         return
     }
     val r = reason
@@ -223,12 +233,17 @@ fun AmoEditHost(day: AmoDay, memoUuid: String, onDone: () -> Unit) {
     }
 }
 
-/** Stock issue and the slip (F-SR-013/014); the printer icon and banner are on the frame, the hold is the frame's too. */
+/**
+ * Stock issue and the slip (F-SR-013/014); the printer icon and banner are on the frame, the hold is the frame's too.
+ * tso-manual X4a (R-W-22): a Save the zone's Final Submit refuses (in a call on a closed route) stores and queues nothing
+ * and shows the lock text; no slip is offered for it.
+ */
 @Composable
 fun AmoStockHost(day: AmoDay) {
     val scope = rememberCoroutineScope()
     var version by remember { mutableStateOf(0) }
     var message by remember { mutableStateOf<StockMessage?>(null) }
+    var refused by remember { mutableStateOf<DayRefusal?>(null) }
     var unprinted by remember { mutableStateOf(true) }
     val att by day.stockAttempt.collectAsState()
     LaunchedEffect(att) { unprinted = day.slipNotPrinted() }
@@ -241,12 +256,9 @@ fun AmoStockHost(day: AmoDay) {
         onIssue = { id, q -> l.setEntered(id, q.toLong()); version++ },
         onSave = {
             scope.launch {
-                when (val out = l.save(day.currentMs(), day.metaProvider.meta(0L))) {
-                    is SaveOutcome.Saved -> runCatching { day.capture.recordStock(out.movements) }
-                        .onSuccess { l.committed(out, day.currentMs()); message = StockMessage.SAVED; unprinted = day.slipNotPrinted(); day.requestSync() }
-                        .onFailure { l.commitFailed(); message = StockMessage.SAVE_FAILED }
-                    is SaveOutcome.Refused -> message = if (out.reason == SaveRefusal.NOTHING_ENTERED) StockMessage.NOTHING_ENTERED else StockMessage.REFUSED_SAME_VALUES
-                }
+                val r = day.saveStock(l)
+                message = r.message; refused = r.refused
+                if (r.saved) { unprinted = day.slipNotPrinted(); runCatching { day.requestSync() } }
                 version++
             }
         },
@@ -254,4 +266,5 @@ fun AmoStockHost(day: AmoDay) {
         onPrint = if (unprinted && PermissionPolicy.allowed(GatedFeature.PRINT, AndroidPermissions.snapshotOf(LocalContext.current))) ({ day.printUnprintedStock() }) else null,
     )
     }
+    refused?.let { AmoRefusalDialog(day, it, onOk = { refused = null }) }
 }

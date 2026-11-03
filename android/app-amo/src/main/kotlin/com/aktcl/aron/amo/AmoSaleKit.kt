@@ -3,7 +3,6 @@ package com.aktcl.aron.amo
 import android.content.Context
 import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.entity.GeoFixEntity
-import com.aktcl.aron.core.database.repo.FinalSubmitLock
 import com.aktcl.aron.core.database.repo.ReconciliationRepository
 import com.aktcl.aron.core.printing.doc.DaySummaryPrint
 import com.aktcl.aron.core.printing.flow.PrintAttempt
@@ -125,18 +124,34 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
      */
     val lockRefused: kotlinx.coroutines.flow.StateFlow<String?> = _lockRefused
 
-    /** The host has shown the lock text of a refused save. */
-    fun clearLockRefusal() { _lockRefused.value = null }
-
-    fun newSaleViewModel() = SaleViewModel(flow, AmoLockGate.saveAndPrint(commitStep::invoke, day.printing) { _lockRefused.value = flow.state.value.draft?.let(::refusalKey) })
+    // tso-manual X4a follow-up (R-W-23): the same for a save refused because the supervisor day's Sales Submit stands
+    private val _submitRefused = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
     /**
-     * tso-manual X4a (fix round): OK on the lock text of a refused sale. When the call's route is still closed the call ends
-     * on the phone and [onCallEnded] runs (back to the outlet list), else [onDone] (back to the call menu); the refusal is
-     * cleared last, so the sale's generic "save failed" never shows in between.
+     * The draft key ([refusalKey]) of the sale or memo edit refused because the day's sales are already submitted (the AMO's
+     * supervisor-day Sales Submit stands; nothing was stored or printed), or null. The host whose key it is shows the submit text.
+     */
+    val submitRefused: kotlinx.coroutines.flow.StateFlow<String?> = _submitRefused
+
+    /** The host has shown the text of a refused save. */
+    fun clearLockRefusal() { _lockRefused.value = null; _submitRefused.value = null }
+
+    fun newSaleViewModel() = SaleViewModel(flow, AmoLockGate.saveAndPrint(commitStep::invoke, day.printing) { why ->
+        val key = flow.state.value.draft?.let(::refusalKey)
+        when (why) {
+            com.aktcl.aron.core.database.repo.DayRefusal.FINAL_SUBMIT -> _lockRefused.value = key
+            com.aktcl.aron.core.database.repo.DayRefusal.SALES_SUBMIT -> _submitRefused.value = key
+        }
+    })
+
+    /**
+     * tso-manual X4a (fix round): OK on the text of a refused sale. When the call's route-day still refuses it (the lock, or
+     * since the follow-up the supervisor day's Sales Submit) the call ends on the phone and [onCallEnded] runs (back to the
+     * outlet list), else [onDone] (back to the call menu); the refusal is cleared last, so the sale's generic "save failed"
+     * never shows in between.
      */
     suspend fun afterSaleRefusal(onCallEnded: () -> Unit, onDone: () -> Unit) {
-        if (endCallIfDayFinal()) onCallEnded() else onDone()
+        if (endCallIfClosed() != null) onCallEnded() else onDone()
         clearLockRefusal()
     }
     fun saleVisit(v: com.aktcl.aron.feature.outlet.OpenVisit) =
@@ -149,32 +164,39 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
      * tso-manual X4a (R-W-11): [AmoDay.closeVisit] has already ended a call on a closed route on the phone; a lock that lands
      * during the write ends the call the same way (no close queued, nothing thrown).
      */
-    suspend fun closeVisit(outcome: VisitOutcomeCode, declined: Boolean = false) {
-        val queued = AmoLockGate.closeCall(day.visitSession) { v ->
+    suspend fun closeVisit(outcome: VisitOutcomeCode, declined: Boolean = false): com.aktcl.aron.core.database.repo.DayRefusal? {
+        var why: com.aktcl.aron.core.database.repo.DayRefusal? = null
+        val queued = AmoLockGate.closeCall(day.visitSession, { why = it }) { v ->
             closer.close(VisitToClose(v.visitUuid, v.routeId, callStartedAtIso = callStarted.remove(v.visitUuid)), outcome, day.businessDate(), declined)
         }
         if (queued) runCatching { day.requestSync() }
+        return why
     }
 
     /**
-     * tso-manual X4a (R-W-11, A3 ask 11): ends the open call on the phone when its route is closed by its zone's Final Submit
-     * (no close is written; the server would refuse it). True when it did; false leaves the call as it was.
+     * tso-manual X4a (R-W-11, A3 ask 11; follow-up R-W-23): ends the open call on the phone when its close would be refused
+     * (the zone's Final Submit closed its route, or the supervisor day's Sales Submit stands; no close is written) and says
+     * why; null leaves the call as it was.
      */
-    suspend fun endCallIfDayFinal(): Boolean {
-        val v = day.visitSession.current.value ?: return false
-        val ended = AmoCallLock.endsOnPhone(db, day.visitSession, day.metaProvider.meta(v.routeId))
-        if (ended) { callStarted.remove(v.visitUuid); day.routeId = null }
-        return ended
+    suspend fun endCallIfClosed(): com.aktcl.aron.core.database.repo.DayRefusal? {
+        val v = day.visitSession.current.value ?: return null
+        val why = AmoCallLock.endedBy(db, day.visitSession, day.metaProvider.meta(v.routeId)) ?: return null
+        callStarted.remove(v.visitUuid); day.routeId = null
+        return why
     }
 
     /**
-     * tso-manual X4a (R-W-11): true when an edit of [memoUuid] would be refused by the Final Submit lock (the edit is a new
-     * `memo` on the old memo's route, today). The memo screen disables Edit with the lock text; reprints stay allowed.
+     * tso-manual X4a (R-W-11; follow-up R-W-23): why an edit of [memoUuid] would be refused (the edit is a new `memo` on the
+     * old memo's route, today), or null: the Final Submit lock, or the supervisor day's Sales Submit. The memo screen disables
+     * Edit with the matching text and the edit host starts nothing; reprints stay allowed.
      */
-    suspend fun editLocked(memoUuid: String): Boolean {
-        val memo = dao.memo(memoUuid) ?: return false
-        return runCatching { FinalSubmitLock.refuses(db, day.metaProvider.meta(memo.meta.routeId ?: 0L), "memo") }.getOrDefault(false)
+    suspend fun editRefusal(memoUuid: String): com.aktcl.aron.core.database.repo.DayRefusal? {
+        val memo = dao.memo(memoUuid) ?: return null
+        return runCatching { day.capture.dayRefusal(day.metaProvider.meta(memo.meta.routeId ?: 0L), "memo") }.getOrNull()
     }
+
+    /** True when [editRefusal] is the Final Submit lock. */
+    suspend fun editLocked(memoUuid: String): Boolean = editRefusal(memoUuid) == com.aktcl.aron.core.database.repo.DayRefusal.FINAL_SUBMIT
 
     /**
      * Edit gate of F-SR-033 for a stored memo: still live, before QC, and inside the outlet geofence on a fresh fix. Null when
@@ -209,10 +231,13 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
 
     /**
      * Marks an outlet of the list as not reached: one `visit_skip` with its outbox record, no fix and no geo gate (F-SR-057).
-     * tso-manual X4a (R-W-11): false when the Final Submit lock refused it (nothing stored).
+     * tso-manual X4a (R-W-11): false when the Final Submit lock refused it (nothing stored); follow-up (R-W-23): or the
+     * supervisor day's Sales Submit. [onRefused] says which; nothing throws.
      */
-    suspend fun skipOutlet(outlet: com.aktcl.aron.core.database.entity.OutletEntity, reason: VisitOutcomeCode): Boolean {
-        val queued = AmoLockGate.skip {
+    suspend fun skipOutlet(
+        outlet: com.aktcl.aron.core.database.entity.OutletEntity, reason: VisitOutcomeCode, onRefused: (com.aktcl.aron.core.database.repo.DayRefusal) -> Unit = {},
+    ): Boolean {
+        val queued = AmoLockGate.skip(onRefused) {
             day.capture.recordVisitSkip(
                 com.aktcl.aron.core.database.entity.VisitSkipEntity(ClientIds.newUuid(), day.metaProvider.meta(outlet.routeId), outlet.outletId, reason.wire),
             )

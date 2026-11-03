@@ -11,6 +11,7 @@ import com.aktcl.aron.core.common.LocaleDigits
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.feature.home.RoleBanner
+import com.aktcl.aron.core.database.repo.DayRefusal
 import com.aktcl.aron.core.database.repo.RouteDayFinalSubmittedException
 import com.aktcl.aron.core.printing.flow.CommittedMemo
 import com.aktcl.aron.core.printing.flow.MemoPrinting
@@ -24,68 +25,110 @@ import com.aktcl.aron.feature.amo.R as AmoR
  * Final Submit lock that CaptureRepository enforces per route. Every refusal ([RouteDayFinalSubmittedException]) is caught
  * where the capture is launched and worded with the lock text ([AmoDayLockDialog]); nothing is stored, nothing is printed,
  * nothing throws out of a screen. Without the day object, so tests run it on a plain database with the production writers.
+ * Follow-up (R-W-22, R-W-23): the stock Saves meet the lock too, and a refusal because the AMO's own supervisor-day Sales
+ * Submit stands ([com.aktcl.aron.core.database.repo.RouteDaySubmittedException]) is caught the same way and worded with the
+ * submit text ([AmoDaySubmittedDialog]); [DayRefusal] says which.
  */
 internal object AmoLockGate {
     /**
-     * The sale's Save and Print with the lock named: a commit refused by the lock calls [onRefused] (the kit keeps which
-     * sale or edit was refused) and is rethrown, so [SaveAndPrint] stops at SaveFailed before the print step (nothing
-     * prints); the host of that sale or edit shows the lock text in its place.
+     * The sale's Save and Print with the lock named: a commit the route-day refuses (the zone's Final Submit, or since the
+     * follow-up a Sales Submit that stands) calls [onRefused] with why (the kit keeps which sale or edit was refused) and is
+     * rethrown, so [SaveAndPrint] stops at SaveFailed before the print step (nothing prints); the host of that sale or edit
+     * shows the matching text in its place.
      */
-    fun saveAndPrint(commit: suspend () -> CommittedMemo, printing: MemoPrinting, onRefused: () -> Unit): SaveAndPrint =
+    fun saveAndPrint(commit: suspend () -> CommittedMemo, printing: MemoPrinting, onRefused: (DayRefusal) -> Unit): SaveAndPrint =
         SaveAndPrint({
             try {
                 commit()
-            } catch (e: RouteDayFinalSubmittedException) {
-                onRefused()
+            } catch (e: Exception) {
+                DayRefusal.of(e)?.let(onRefused)
                 throw e
             }
         }, printing)
 
     /**
-     * Closes the open call of [session] with [write]. When the lock lands between the caller's check ([AmoCallLock]) and the
-     * write, the refusal ends the call on the phone: no close is queued and nothing throws. True when a close was queued.
+     * Closes the open call of [session] with [write]. When the route-day refuses the close (the lock landed between the
+     * caller's check ([AmoCallLock]) and the write; follow-up: or a Sales Submit stands), the call ends on the phone: no close
+     * is queued, [onRefused] is told why and nothing throws. True when a close was queued.
      */
-    suspend fun closeCall(session: VisitSession, write: suspend (OpenVisit) -> Unit): Boolean {
+    suspend fun closeCall(session: VisitSession, onRefused: (DayRefusal) -> Unit = {}, write: suspend (OpenVisit) -> Unit): Boolean {
         val v = session.current.value ?: return false
         try {
             write(v)
-        } catch (_: RouteDayFinalSubmittedException) {
+        } catch (e: Exception) {
+            val why = DayRefusal.of(e) ?: throw e
             session.close()
+            onRefused(why)
             return false
         }
         session.close()
         return true
     }
 
-    /** A skip ([write] queues its `visit_skip`): true when queued, false when the lock refused it (nothing stored). */
-    suspend fun skip(write: suspend () -> Unit): Boolean =
+    /**
+     * A skip ([write] queues its `visit_skip`): true when queued, false when the route-day refused it (nothing stored;
+     * [onRefused] says why: the lock, or since the follow-up the supervisor day's Sales Submit, R-W-23).
+     */
+    suspend fun skip(onRefused: (DayRefusal) -> Unit = {}, write: suspend () -> Unit): Boolean =
         try {
             write()
             true
-        } catch (_: RouteDayFinalSubmittedException) {
+        } catch (e: Exception) {
+            onRefused(DayRefusal.of(e) ?: throw e)
             false
         }
 }
 
 /**
- * tso-manual X4a (R-W-11, A3 ask 11, fix round): the outlet pick of a control, joint or sale call ([kind]). False when
- * [outlet]'s route is closed by its zone's Final Submit: no fix is read, the day takes no route and nothing is stored; the
- * host shows the lock text. Otherwise the day takes that route and the visit flow opens the call (it reads the fix and
- * commits; its state says how that went).
+ * tso-manual X4a (R-W-11; follow-up R-W-23): why a new control, joint or sale call on [routeId] would be refused today, or
+ * null: the zone's Final Submit closed that route-day, or the AMO's own supervisor-day Sales Submit stands. Pure reads.
  */
-internal suspend fun AmoDay.openCall(outlet: com.aktcl.aron.core.database.entity.OutletEntity, kind: String): Boolean {
-    if (routeLocked(outlet.routeId)) return false
+internal suspend fun AmoDay.newCallRefusal(routeId: Long): DayRefusal? =
+    runCatching { capture.dayRefusal(metaProvider.meta(routeId), "visit") }.getOrNull()
+
+/**
+ * tso-manual X4a (R-W-11, A3 ask 11, fix round; follow-up R-W-23): the outlet pick of a control, joint or sale call ([kind]).
+ * False when a call on [outlet]'s route would be refused ([newCallRefusal]; [onRefused] says why): no fix is read, the day
+ * takes no route and nothing is stored; the host shows the matching text. Otherwise the day takes that route and the visit
+ * flow opens the call (it reads the fix and commits; its state says how that went).
+ */
+internal suspend fun AmoDay.openCall(outlet: com.aktcl.aron.core.database.entity.OutletEntity, kind: String, onRefused: (DayRefusal) -> Unit = {}): Boolean {
+    newCallRefusal(outlet.routeId)?.let { onRefused(it); return false }
     routeId = outlet.routeId
     runCatching { visitFlow.open(com.aktcl.aron.feature.amo.ControlCall.visitOutlet(outlet, kind)) }
     return true
 }
 
 /**
- * tso-manual X4a (R-W-11, fix round): true when [state] is a call commit the Final Submit lock refused (the lock landed while
- * the fix was read; nothing was stored). The check step shows the lock text, not the generic retry.
+ * tso-manual X4a (R-W-11, fix round; follow-up R-W-23): why [state] is a call commit the route-day refused (the lock, or the
+ * supervisor day's Sales Submit, landed while the fix was read; nothing was stored), or null. The check step shows the
+ * matching text, not the generic retry.
  */
+internal suspend fun AmoDay.commitRefusal(state: com.aktcl.aron.feature.outlet.VisitUiState?): DayRefusal? =
+    (state as? com.aktcl.aron.feature.outlet.VisitUiState.CommitFailed)?.let { newCallRefusal(it.outlet.routeId) }
+
+/** True when [commitRefusal] is the Final Submit lock. */
 internal suspend fun AmoDay.refusedByLock(state: com.aktcl.aron.feature.outlet.VisitUiState?): Boolean =
-    (state as? com.aktcl.aron.feature.outlet.VisitUiState.CommitFailed)?.let { routeLocked(it.outlet.routeId) } ?: false
+    commitRefusal(state) == DayRefusal.FINAL_SUBMIT
+
+/** What one Save of a call step (assessment, joint call, survey, price check) came to: stored, or refused and why. */
+internal data class StepSave(val saved: Boolean, val refused: DayRefusal?)
+
+/**
+ * tso-manual X4a follow-up (R-W-23): one Save of a call step ([write]: the AMO record or survey writer). Stored: saved. A
+ * refusal of the route-day (the AMO's supervisor-day Sales Submit; these records are not Final Submit types): not saved and
+ * why, so the step shows the submit text. Any other failure: not saved, as before (the step keeps the form for another
+ * Save). Never throws but for cancellation.
+ */
+internal suspend fun AmoDay.saveCallStep(write: suspend () -> Unit): StepSave =
+    try {
+        write()
+        StepSave(true, null)
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        StepSave(false, DayRefusal.of(e))
+    }
 
 /**
  * tso-manual X4a (fix round): which sale or memo edit a refused save belongs to, so only its own host shows the lock text:
@@ -102,6 +145,27 @@ fun AmoDayLockDialog(day: AmoDay, onOk: () -> Unit) {
     val lock = day.dayLock.collectAsState().value
     LaunchedEffect(day) { day.refreshLock() }
     AmoDayLockDialogContent(closedRoutes = lock?.closedRouteIds?.size ?: 0, onOk = onOk)
+}
+
+/**
+ * tso-manual X4a follow-up (R-W-23): the words of a capture refused because the day's sales are already submitted (the AMO's
+ * supervisor-day Sales Submit stands): the Sales Submit title and feature-dayclose's `submit_blocked_done`, bn and en.
+ */
+@Composable
+fun AmoDaySubmittedDialog(onOk: () -> Unit) {
+    com.aktcl.aron.core.ui.aron.AronDialog(
+        stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_title), stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_blocked_done),
+        stringResource(AmoR.string.amo_ok), onConfirm = onOk, onDismiss = onOk,
+    )
+}
+
+/** tso-manual X4a follow-up (R-W-23): the words of [why]: the lock text, or the submit text. */
+@Composable
+fun AmoRefusalDialog(day: AmoDay, why: DayRefusal, onOk: () -> Unit) {
+    when (why) {
+        DayRefusal.FINAL_SUBMIT -> AmoDayLockDialog(day, onOk)
+        DayRefusal.SALES_SUBMIT -> AmoDaySubmittedDialog(onOk)
+    }
 }
 
 /** What [AmoDayLockDialog] draws; [closedRoutes] below one counts as one (the route just refused). */

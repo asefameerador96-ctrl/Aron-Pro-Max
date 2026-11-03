@@ -118,6 +118,12 @@ internal class AmoLockFixture(context: Context) {
             """{"route_id":$routeId,"targets":[],"day_state":{"route_id":$routeId,"business_date":"$date","state":"final_submitted","submit_cycle":0,"submit_voided":false,"final_submitted_at":"${day.iso(day.currentMs())}"}}""")))
     }
 
+    /** tso-manual X4a follow-up: the zone's Final Submit voided (the next delta's day_state is open again): the lock is gone. */
+    fun reopened(routeId: Long = route) = runBlocking {
+        db.referenceDao().insertSections(listOf(BundleSectionEntity("route.$routeId",
+            """{"route_id":$routeId,"targets":[],"day_state":{"route_id":$routeId,"business_date":"$date","state":"open","submit_cycle":0,"submit_voided":false}}""")))
+    }
+
     /** The AMO's own supervisor-day Sales Submit (no route), as RoomDaySubmitWriter writes it. */
     fun supervisorDaySubmitted() = runBlocking {
         day.capture.recordDaySubmit(DaySubmitEntity(ClientIds.newUuid(), meta(null).copy(routeId = null), "supervisor_day", 1, "{}", MONEY, 0, 0, 0, false, 0, 0, false))
@@ -170,15 +176,24 @@ internal class AmoLockFixture(context: Context) {
         memo
     }
 
-    /** One priced SKU (matches, by the dozen) with twenty dozen issued to the AMO today, so the kit's own sale can be drafted. */
-    fun stockedCatalog() = runBlocking {
+    /** One priced SKU (matches, by the dozen) in the bundle, nothing issued yet (the Stock screen's catalog). */
+    fun catalogOnly() = runBlocking {
         db.referenceDao().insertSkus(listOf(SkuEntity(105, "S105", 105, "match", "n105", "Aster105", null, "dozen", 10, "base", null, "1.000", 105, "active", 1)))
         db.referenceDao().insertPrices(listOf(PriceEntity(1, 105, "outlet", 28_000, 1, "2026-09-01", null)))
+    }
+
+    /** One priced SKU (matches, by the dozen) with twenty dozen issued to the AMO today, so the kit's own sale can be drafted. */
+    fun stockedCatalog() = runBlocking {
+        catalogOnly()
         day.capture.recordStock(listOf(StockMovementEntity(ClientIds.newUuid(), meta(null), "issue", 105, 20, "dozen", 1, 20, null, false)))
     }
 
-    /** The kit's own sale in the call [v] (two dozen), saved after the lock reached the phone: SaveFailed, nothing stored. */
-    fun refusedSale(v: OpenVisit): SaleViewModel {
+    /**
+     * The kit's own sale in the call [v] (two dozen), saved after the lock reached the phone: SaveFailed, nothing stored.
+     * tso-manual X4a follow-up: [closeDay] is how the day closed while the sale was open (default the zone's Final Submit of
+     * the call's route; the AMO's supervisor-day Sales Submit for R-W-23).
+     */
+    fun refusedSale(v: OpenVisit, closeDay: () -> Unit = { finalSubmitted(v.routeId) }): SaleViewModel {
         stockedCatalog()
         val vm = day.sale.newSaleViewModel()
         runBlocking { day.sale.prepare() }
@@ -186,7 +201,7 @@ internal class AmoLockFixture(context: Context) {
         await("the sale is drafted") { day.sale.flow.state.value.draft?.visitUuid == v.visitUuid }
         vm.setQuantity(105, 2, QtyUnit.DOZEN)
         await("two dozen on the draft") { day.sale.flow.state.value.draft?.lines?.isNotEmpty() == true }
-        finalSubmitted(v.routeId)
+        closeDay()
         vm.onPrintTapped()
         vm.viewModelScopeForDialogs().launch { vm.saveAndPrint.onSaveAnswer(true) }
         await("the save stops before the print step") { vm.saveAndPrint.step.value == SaveAndPrint.Step.SaveFailed }

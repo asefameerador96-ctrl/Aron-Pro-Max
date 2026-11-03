@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.repo.CaptureRepository
+import com.aktcl.aron.core.database.repo.DayRefusal
 import com.aktcl.aron.core.database.repo.FinalSubmitLock
 import com.aktcl.aron.core.database.repo.LockAcks
 import androidx.compose.runtime.collectAsState
@@ -268,23 +269,26 @@ class AmoDay(
      */
     private val closeLock = kotlinx.coroutines.sync.Mutex()
 
-    suspend fun closeVisit() = closeLock.withLock {
+    suspend fun closeVisit(): DayRefusal? = closeLock.withLock {
         // the lock makes a double tap wait; the second run finds the session already closed
-        val v = visitSession.current.value ?: return@withLock
+        val v = visitSession.current.value ?: return@withLock null
         // tso-manual A3 (D-A3-22): on a route closed by its zone's Final Submit the call ends on the phone (the server would
-        // refuse its close day_final_submitted), so leaving a control or joint call never throws
-        if (AmoCallLock.endsOnPhone(db, visitSession, metaProvider.meta(v.routeId))) { routeId = null; return@withLock }
+        // refuse its close day_final_submitted), so leaving a control or joint call never throws; X4a follow-up (R-W-23): the
+        // same when the AMO's supervisor-day Sales Submit stands. The answer says why the call ended without a close (the
+        // host shows the matching text), or null when a close was queued.
+        AmoCallLock.endedBy(db, visitSession, metaProvider.meta(v.routeId))?.let { routeId = null; return@withLock it }
         val date = businessDate()
         val memo = db.captureDao().memosOn(date).filter { it.visitClientUuid == v.visitUuid }
         val superseded = memo.mapNotNull { it.supersedesClientUuid }.toSet()
         val live = memo.filter { it.clientUuid !in superseded }.maxByOrNull { it.committedAt }
         val audited = db.captureDao().amoRecordsOfFamily(v.visitUuid).isNotEmpty() || db.captureDao().surveyResponsesOf(v.visitUuid).isNotEmpty()
-        when (com.aktcl.aron.feature.amo.AmoCallOutcome.of(live?.lineCount, audited)) {
+        val why = when (com.aktcl.aron.feature.amo.AmoCallOutcome.of(live?.lineCount, audited)) {
             com.aktcl.aron.feature.amo.AmoCallOutcome.SOLD -> sale.closeVisit(com.aktcl.aron.feature.sale.domain.VisitOutcomeCode.SOLD)
             com.aktcl.aron.feature.amo.AmoCallOutcome.AUDIT_ONLY -> sale.closeVisit(com.aktcl.aron.feature.sale.domain.VisitOutcomeCode.ZERO_SALE)
             com.aktcl.aron.feature.amo.AmoCallOutcome.ABANDONED -> closeAbandoned(v)
         }
         routeId = null
+        why
     }
 
     /** True once today's supervisor day is submitted: no new call starts until the server reopens it (the same fact the Submit screen reads). */
@@ -331,9 +335,11 @@ class AmoDay(
      */
     suspend fun routeLocked(routeId: Long): Boolean = runCatching { FinalSubmitLock.isFinal(db, businessDate(), routeId) }.getOrDefault(false)
 
-    private suspend fun closeAbandoned(v: com.aktcl.aron.feature.outlet.OpenVisit) {
-        // tso-manual X4a (R-W-11): a lock that lands after closeVisit's check ends the call on the phone (AmoLockGate.closeCall)
-        val queued = AmoLockGate.closeCall(visitSession) {
+    private suspend fun closeAbandoned(v: com.aktcl.aron.feature.outlet.OpenVisit): DayRefusal? {
+        // tso-manual X4a (R-W-11): a lock that lands after closeVisit's check ends the call on the phone (AmoLockGate.closeCall);
+        // follow-up (R-W-23): so does a refusal of the supervisor day's Sales Submit
+        var why: DayRefusal? = null
+        val queued = AmoLockGate.closeCall(visitSession, { why = it }) {
             capture.recordVisitClose(
                 com.aktcl.aron.core.database.entity.VisitCloseEntity(
                     clientUuid = com.aktcl.aron.core.common.ClientIds.newUuid(), meta = metaProvider.meta(v.routeId), visitClientUuid = v.visitUuid, outcomeCode = "abandoned",
@@ -342,6 +348,7 @@ class AmoDay(
             )
         }
         if (queued) runCatching { requestSync() }
+        return why
     }
 
     /** After a relaunch: a committed visit with no close is the call in progress. */
@@ -349,6 +356,8 @@ class AmoDay(
         if (visitSession.current.value != null) return
         // tso-manual A3: a call on a route closed by Final Submit is not restored (it cannot go on; D-A3-22)
         val last = FinalSubmitLock.callToRestore(db, businessDate()) { it.geoAction != "blocked" && it.visitKind.startsWith("amo_") } ?: return
+        // tso-manual X4a follow-up (R-W-23): nor a call whose close the supervisor day's Sales Submit would refuse
+        if (runCatching { capture.dayRefusal(last.meta, "visit_close") }.getOrNull() != null) return
         visitSession.restore(
             com.aktcl.aron.feature.outlet.OpenVisit(
                 visitUuid = last.clientUuid, outletId = last.outletId, routeId = last.meta.routeId ?: 0L, geoVerdict = last.geoVerdict,
@@ -457,6 +466,14 @@ class AmoDay(
 
     // ---- stock: one StockLoad per day and screen visit; the re-save guard survives a kill (SharedPreferences)
     private var stock: StockLoad? = null
+    /**
+     * One Save of the Stock screen (F-SR-013/014) with the open call's route, or none outside a call: tso-manual X4a (R-W-22),
+     * a Save the zone's Final Submit refuses stores and queues nothing and says why (the screen shows the lock text; no slip
+     * is offered for it). Outside a call the movement has no route and never meets the lock, as on the server.
+     */
+    suspend fun saveStock(load: StockLoad): com.aktcl.aron.feature.stock.StockSaveResult =
+        com.aktcl.aron.feature.stock.StockSaving.save(load, ::currentMs, metaProvider.meta(0L)) { capture.recordStock(it) }
+
     suspend fun stockLoad(): StockLoad = stock ?: run {
         val loaded = db.captureDao().stockBalanceOn(businessDate()).associate { it.skuId to it.qtyBase }
         StockLoad(reference.skus(), loaded, guardStore = PrefsGuardStore(context, userId)).also { stock = it }
@@ -595,12 +612,20 @@ data class AmoDayLock(val closedRouteIds: List<Long>, val acks: LockAcks)
  * object, so tests run it on a plain database.
  */
 internal object AmoCallLock {
-    /** Ends the open call on the phone when its route-day is closed by Final Submit (no close queued); false otherwise. */
-    suspend fun endsOnPhone(db: AronDatabase, session: VisitSession, meta: CaptureMeta): Boolean {
-        if (session.current.value == null || !FinalSubmitLock.refuses(db, meta, "visit_close")) return false
+    /**
+     * Ends the open call on the phone when its close with [meta] would be refused (no close queued) and says why: the zone's
+     * Final Submit closed its route-day, or, X4a follow-up (R-W-23), the AMO's supervisor-day Sales Submit stands (the rule
+     * CaptureRepository.recordVisitClose applies). Null leaves the call as it was.
+     */
+    suspend fun endedBy(db: AronDatabase, session: VisitSession, meta: CaptureMeta): DayRefusal? {
+        if (session.current.value == null) return null
+        val why = runCatching { CaptureRepository(db).dayRefusal(meta, "visit_close") }.getOrNull() ?: return null
         session.close()
-        return true
+        return why
     }
+
+    /** True when [endedBy] ended the call on the phone. */
+    suspend fun endsOnPhone(db: AronDatabase, session: VisitSession, meta: CaptureMeta): Boolean = endedBy(db, session, meta) != null
 }
 
 /**
