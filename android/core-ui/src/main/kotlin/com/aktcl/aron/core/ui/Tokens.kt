@@ -311,6 +311,13 @@ data class AronNightRoles(
      * [glowTop] is 7:1 or more (TokenContrastTest).
      */
     val glowBottom: Color = hex(0x3D9FFF), val glowTop: Color = hex(0x104B78),
+    /**
+     * The Leave application card (screenshot 19, night look only): a teal-to-blue gradient fill with a teal edge, white ink (6:1 at the
+     * start, 8:1 at the end), a day-count disc of [leaveDisc] over it, and the solid orange pending badge [badgeOrange] with a white bold
+     * label (4.7:1, D-TSO-MAN-50: the owner's FF9800 darkened until the white label holds 4.5:1). Sunlight draws the white outline card.
+     */
+    val leaveStart: Color = hex(0x126985), val leaveEnd: Color = hex(0x16507F), val leaveEdge: Color = hex(0x2A9FC0),
+    val leaveDisc: Color = Color(0x1FFFFFFF), val badgeOrange: Color = hex(0xB45C00),
 ) {
     companion object {
         val Night = AronNightRoles(

@@ -131,17 +131,22 @@ fun NightOutlineCard(
     onClick: (() -> Unit)? = null,
     contentPadding: PaddingValues = PaddingValues(16.dp),
     fill: Color? = null,
+    /** A gradient fill instead of [fill] (the Leave card, screenshot 19); ignored in Sunlight, which stays solid. */
+    fillBrush: Brush? = null,
+    /** The edge colour when it is not the teal [AronNightRoles.outlineEdge]; ignored in Sunlight. */
+    edge: Color? = null,
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val n = nightRoles()
+    val edgeColor = if (n.solid) n.outlineEdge else edge ?: n.outlineEdge
     Column(
         modifier
             .fillMaxWidth()
-            .nightGlow(n, n.outlineEdge, OutlineShape, 8.dp)
+            .nightGlow(n, edgeColor, OutlineShape, 8.dp)
             .clip(OutlineShape)
-            .background(fill ?: n.outlineCard)
-            .border(if (n.solid) 2.dp else 1.5.dp, n.outlineEdge, OutlineShape)
+            .then(if (fillBrush != null && !n.solid) Modifier.background(fillBrush) else Modifier.background(fill ?: n.outlineCard))
+            .border(if (n.solid) 2.dp else 1.5.dp, edgeColor, OutlineShape)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .padding(contentPadding),
         verticalArrangement = verticalArrangement,

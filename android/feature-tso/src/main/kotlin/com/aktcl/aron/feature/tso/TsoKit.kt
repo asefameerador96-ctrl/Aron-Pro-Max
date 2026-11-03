@@ -34,6 +34,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.ui.LocalAronLook
@@ -184,10 +186,12 @@ fun TsoCard(
     modifier: Modifier = Modifier,
     glow: Boolean = false,
     onClick: (() -> Unit)? = null,
+    fillBrush: Brush? = null,
+    edge: Color? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     if (glow) NightGlowCard(modifier, onClick = onClick, verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
-    else NightOutlineCard(modifier, onClick = onClick, verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+    else NightOutlineCard(modifier, onClick = onClick, fillBrush = fillBrush, edge = edge, verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
 }
 
 /**
@@ -328,6 +332,16 @@ fun TsoStatusPill(text: String, modifier: Modifier = Modifier, tone: TsoPillTone
             .padding(horizontal = 12.dp, vertical = 5.dp),
     ) {
         Text(text, style = nightText(13.sp, ink, semibold = true))
+    }
+}
+
+/** The solid orange status badge of the owner's Leave card (screenshot 19), white bold label; Sunlight keeps the quiet chip. */
+@Composable
+fun TsoOrangeBadge(text: String, modifier: Modifier = Modifier) {
+    val n = nightRoles()
+    if (n.solid) { TsoStatusPill(text, modifier, TsoPillTone.Warning); return }
+    Box(modifier.clip(RoundedCornerShape(8.dp)).background(n.badgeOrange).padding(horizontal = 12.dp, vertical = 4.dp)) {
+        Text(text, style = nightText(13.sp, Color.White, bold = true))
     }
 }
 

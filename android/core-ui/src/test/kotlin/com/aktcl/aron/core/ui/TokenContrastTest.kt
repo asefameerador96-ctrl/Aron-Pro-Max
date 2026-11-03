@@ -202,6 +202,15 @@ class TokenContrastTest {
         night("muted ink on the top glow", AronLook.TsoNight.inkMuted, n.glowTop, 4.5)
     }
 
+    /** The Leave card (screenshot 19, night look only): white ink on both gradient stops 4.5:1 (day word, captions), white badge label on orange 4.5:1. */
+    @Test fun tsoLeaveCardInkAndOrangeBadgeReachFourPointFive() {
+        val n = AronNightRoles.Night
+        night("leave card ink at the start", Color.White, n.leaveStart, 4.5)
+        night("leave card ink at the end", Color.White, n.leaveEnd, 4.5)
+        night("leave card ink on the day disc", Color.White, over(n.leaveDisc, n.leaveStart), 4.5)
+        night("orange badge label", Color.White, n.badgeOrange, 4.5)
+    }
+
     /** The Final Submit route card (screenshot 25, night look only): white title and muted FF line on the steel-blue fill, 4.5:1. */
     @Test fun tsoRouteCardInkReachesFourPointFive() {
         val n = AronNightRoles.Night
