@@ -118,6 +118,12 @@ internal class SrLockFixture(context: Context) {
             """{"route_id":$routeId,"targets":[],"day_state":{"route_id":$routeId,"business_date":"$date","state":"final_submitted","submit_cycle":0,"submit_voided":false,"final_submitted_at":"${day.iso(day.currentMs())}"}}""")))
     }
 
+    /** tso-manual X4a follow-up: the zone's Final Submit voided (the next delta's day_state is open again): the lock is gone. */
+    fun reopened(routeId: Long = route) = runBlocking {
+        db.referenceDao().insertSections(listOf(BundleSectionEntity("route.$routeId",
+            """{"route_id":$routeId,"targets":[],"day_state":{"route_id":$routeId,"business_date":"$date","state":"open","submit_cycle":0,"submit_voided":false}}""")))
+    }
+
     /** The SR's own Sales Submit of the route-day (no Final Submit). */
     fun salesSubmitted(routeId: Long = route) = runBlocking {
         day.capture.recordDaySubmit(DaySubmitEntity(ClientIds.newUuid(), meta(routeId), "route_day", 1, "{}", MONEY, 0, 0, 0, false, 0, 0, false))
@@ -162,18 +168,24 @@ internal class SrLockFixture(context: Context) {
         memo
     }
 
-    /** One priced SKU (matches, by the dozen) with twenty dozen issued today, so the kit's own sale can be drafted. */
-    fun stockedCatalog() = runBlocking {
+    /** One priced SKU (matches, by the dozen) in the bundle, nothing issued yet (the Stock screen's catalog). */
+    fun catalogOnly() = runBlocking {
         db.referenceDao().insertSkus(listOf(SkuEntity(105, "S105", 105, "match", "n105", "Aster105", null, "dozen", 10, "base", null, "1.000", 105, "active", 1)))
         db.referenceDao().insertPrices(listOf(PriceEntity(1, 105, "outlet", 28_000, 1, "2026-09-01", null)))
+    }
+
+    /** One priced SKU (matches, by the dozen) with twenty dozen issued today, so the kit's own sale can be drafted. */
+    fun stockedCatalog() = runBlocking {
+        catalogOnly()
         day.capture.recordStock(listOf(StockMovementEntity(ClientIds.newUuid(), meta(), "issue", 105, 20, "dozen", 1, 20, null, false)))
     }
 
     /**
      * The kit's own sale on [v] (two dozen), saved after the lock reached the phone: the production Save and Print of
-     * [SrSaleKit.newSaleViewModel] stops at SaveFailed. Returns the view model.
+     * [SrSaleKit.newSaleViewModel] stops at SaveFailed. Returns the view model. tso-manual X4a follow-up: [closeDay] is how
+     * the route-day closed while the sale was open (default the zone's Final Submit; the SR's own Sales Submit for R-W-23).
      */
-    fun refusedSale(v: OpenVisit): SaleViewModel {
+    fun refusedSale(v: OpenVisit, closeDay: () -> Unit = { finalSubmitted(v.routeId) }): SaleViewModel {
         stockedCatalog()
         val vm = day.sale.newSaleViewModel()
         runBlocking { day.sale.prepare() }
@@ -181,7 +193,7 @@ internal class SrLockFixture(context: Context) {
         await("the sale is drafted") { day.sale.flow.state.value.draft?.visitUuid == v.visitUuid }
         vm.setQuantity(105, 2, QtyUnit.DOZEN)
         await("two dozen on the draft") { day.sale.flow.state.value.draft?.lines?.isNotEmpty() == true }
-        finalSubmitted(v.routeId)
+        closeDay()
         vm.onPrintTapped()
         vm.viewModelScopeForDialogs().launch { vm.saveAndPrint.onSaveAnswer(true) }
         await("the save stops before the print step") { vm.saveAndPrint.step.value == SaveAndPrint.Step.SaveFailed }

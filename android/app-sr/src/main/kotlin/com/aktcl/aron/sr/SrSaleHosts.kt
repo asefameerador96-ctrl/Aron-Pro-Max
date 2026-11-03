@@ -22,6 +22,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
+import com.aktcl.aron.core.database.repo.DayRefusal
 import com.aktcl.aron.feature.dayclose.SalesSubmitScreen
 import com.aktcl.aron.feature.memo.domain.SaleHistoryBuilder
 import com.aktcl.aron.feature.memo.ui.JourneyScreen
@@ -56,9 +57,22 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
     // tso-manual X4a (R-W-11): the lock arrived while this call was open and refused its sale: nothing was stored or printed.
     // The lock text replaces the sale (and its "save failed" dialog); OK ends the call on the phone and goes Home (banner).
     // Only this call's own refusal shows here (fix round), and it is cleared after the call has ended and Home is shown.
-    val refused by kit.lockRefused.collectAsState()
-    if (refused == v.visitUuid) {
-        SrDayLockDialog(onOk = { scope.launch { kit.afterSaleRefusal(onDone) } })
+    // Follow-up (R-W-23): a sale refused because the SR's own Sales Submit stands shows the submit text the same way.
+    val lockRefused by kit.lockRefused.collectAsState()
+    val submitRefused by kit.submitRefused.collectAsState()
+    val saveRefused = when (v.visitUuid) { lockRefused -> DayRefusal.FINAL_SUBMIT; submitRefused -> DayRefusal.SALES_SUBMIT; else -> null }
+    if (saveRefused != null) {
+        SrRefusalDialog(saveRefused, onOk = { scope.launch { kit.afterSaleRefusal(onDone) } })
+        return
+    }
+    // tso-manual X4a follow-up (R-W-23): a call whose route-day no longer takes its records (the zone's Final Submit, or the
+    // SR's own Sales Submit made while the call was open) cannot go on: the matching text at once, or when the rep leaves it
+    // (No, back, the close after Review); OK ends it on the phone with no close written and goes Home. Nothing throws.
+    var closed by remember(v.visitUuid) { mutableStateOf<DayRefusal?>(null) }
+    LaunchedEffect(v.visitUuid) { closed = kit.openCallRefusal() }
+    val leave: (suspend () -> Unit) -> Unit = { close -> scope.launch { kit.openCallRefusal()?.let { closed = it } ?: run { close(); onDone() } } }
+    closed?.let { why ->
+        SrRefusalDialog(why, onOk = { scope.launch { kit.endRefusedCall(); onDone() } })
         return
     }
     var started by rememberSaveable(v.visitUuid) { mutableStateOf(false) }
@@ -69,7 +83,7 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
         val start = { kit.callStarted[v.visitUuid] = day.iso(day.currentMs()); started = true }
         if (g == null) {
             // restored after a relaunch: no fix on the phone to show, so the plain prompt
-            StartCallPrompt(name, onYes = start, onNo = { scope.launch { day.closeVisitAbandoned(); onDone() } })
+            StartCallPrompt(name, onYes = start, onNo = { leave { day.closeVisitAbandoned() } })
         } else {
             // the confirm step (D-MAP-02): distance, radius, verdict and the lite map from the fix the visit already took
             val context = androidx.compose.ui.platform.LocalContext.current
@@ -79,7 +93,7 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
                 onMap =
                     { context.startActivity(OutletMapActivity.intent(context, g.outletName, g.outletLat, g.outletLng, g.radiusM, g.phoneLat, g.phoneLng)) },
                 onStartCall = start, onNoSale = onNoSale, geo = g, mapSlot = mapSlot, geoPanel = true,
-                onBack = { scope.launch { day.closeVisitAbandoned(); onDone() } },
+                onBack = { leave { day.closeVisitAbandoned() } },
             )
         }
         return
@@ -106,36 +120,42 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
                 outlet?.clusterName?.let { stringResource(R.string.sr_review_cluster, it) },
             ),
             onFinished = {
-                scope.launch {
-                    val zero = vm.state.value.draft?.zeroSale == true
-                    kit.closeVisit(if (zero) VisitOutcomeCode.ZERO_SALE else VisitOutcomeCode.SOLD)
-                    onDone()
-                }
+                val zero = vm.state.value.draft?.zeroSale == true
+                leave { kit.closeVisit(if (zero) VisitOutcomeCode.ZERO_SALE else VisitOutcomeCode.SOLD) }
             },
         )
         AronSecondaryButton(stringResource(R.string.sr_no_sale), onNoSale, Modifier.fillMaxWidth().padding(AronTokens.Space.L))
     }
 }
 
-/** The no-sale outcomes of F-SR-057; each writes the visit's one `visit_close`. */
+/**
+ * The no-sale outcomes of F-SR-057; each writes the visit's one `visit_close`. tso-manual X4a follow-up (R-W-23): when the
+ * call's route-day no longer takes the close (the Final Submit lock, or the SR's own Sales Submit), the matching text shows
+ * and OK ends the call on the phone with no close written; nothing throws.
+ */
 @Composable
 fun NoSaleHost(day: SrDay, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
+    var refused by remember { mutableStateOf<DayRefusal?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        outcomeRows.forEach { (code, label) -> AronListRow(stringResource(label), onClick = { scope.launch { day.sale.closeVisit(code); onDone() } }) }
+        outcomeRows.forEach { (code, label) ->
+            AronListRow(stringResource(label), onClick = { scope.launch { day.sale.openCallRefusal()?.let { refused = it } ?: run { day.sale.closeVisit(code); onDone() } } })
+        }
     }
+    refused?.let { SrRefusalDialog(it, onOk = { scope.launch { day.sale.endRefusedCall(); onDone() } }) }
 }
 
 /** The reason for skipping [outlet] from the list (`visit_skip`, F-SR-057): the same outcome list, no fix, not a visit. */
 @Composable
 fun SkipHost(day: SrDay, outlet: com.aktcl.aron.core.database.entity.OutletEntity, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var locked by remember { mutableStateOf(false) } // tso-manual X4a: the skip was refused by the Final Submit lock
+    // tso-manual X4a: the skip was refused by the Final Submit lock; follow-up (R-W-23, ask 4): or by the SR's own Sales Submit
+    var refused by remember { mutableStateOf<DayRefusal?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         androidx.compose.material3.Text(outlet.name, style = androidx.compose.material3.MaterialTheme.typography.titleLarge, modifier = Modifier.padding(AronTokens.Space.L))
-        outcomeRows.forEach { (code, label) -> AronListRow(stringResource(label), onClick = { scope.launch { if (day.sale.skipOutlet(outlet, code)) onDone() else locked = true } }) }
+        outcomeRows.forEach { (code, label) -> AronListRow(stringResource(label), onClick = { scope.launch { if (day.sale.skipOutlet(outlet, code) { refused = it }) onDone() } }) }
     }
-    if (locked) SrDayLockDialog(onOk = onDone)
+    refused?.let { SrRefusalDialog(it, onOk = onDone) }
 }
 
 private val outcomeRows = listOf(
@@ -166,12 +186,17 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
             sel == null -> MemoMenuScreen(st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
             else -> {
                 // an edit is a new memo: on a route-day closed by Final Submit it is disabled with the lock text (Print stays);
-                // checked again on every applied push pull (fix round), not only when Mark Paid's own check changes
-                var editLocked by remember(sel.memo.memoUuid) { mutableStateOf(false) }
-                LaunchedEffect(sel.memo.memoUuid, st.dayLocked, pulls) { editLocked = kit.editLocked(sel.memo.memoUuid) }
+                // checked again on every applied push pull (fix round), not only when Mark Paid's own check changes;
+                // follow-up (R-W-23): after the SR's own Sales Submit it is disabled with the submit text
+                var editRefused by remember(sel.memo.memoUuid) { mutableStateOf<DayRefusal?>(null) }
+                LaunchedEffect(sel.memo.memoUuid, st.dayLocked, pulls) { editRefused = kit.editRefusal(sel.memo.memoUuid) }
                 MemoDetailView(
                     sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid, skuCategory = kit::skuCategoryCode,
-                    editDisabledReason = if (editLocked) stringResource(R.string.sr_lock_body) else null,
+                    editDisabledReason = when (editRefused) {
+                        DayRefusal.FINAL_SUBMIT -> stringResource(R.string.sr_lock_body)
+                        DayRefusal.SALES_SUBMIT -> stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_blocked_done)
+                        null -> null
+                    },
                 )
                 AronSecondaryButton(
                     stringResource(R.string.sr_sale_history),
@@ -267,13 +292,16 @@ fun EditHost(day: SrDay, memoUuid: String, sunlight: Boolean, onSunlight: (Boole
     var reason by remember(memoUuid) { mutableStateOf<EditReason?>(null) }
     var ready by remember(memoUuid) { mutableStateOf(false) }
     // tso-manual X4a (R-W-11): an edit on a route-day closed by Final Submit is not started (no fix is taken) and says why;
-    // one the lock refuses at the save shows the same text, nothing stored or printed
-    var locked by remember(memoUuid) { mutableStateOf(false) }
-    val refused by kit.lockRefused.collectAsState()
-    LaunchedEffect(memoUuid) { kit.prepare(); if (kit.editLocked(memoUuid)) locked = true else denied = kit.prepareEdit(memoUuid); checked = true }
+    // one the lock refuses at the save shows the same text, nothing stored or printed. Follow-up (R-W-23): the same with the
+    // submit text after the SR's own Sales Submit.
+    var startRefused by remember(memoUuid) { mutableStateOf<DayRefusal?>(null) }
+    val lockRefused by kit.lockRefused.collectAsState()
+    val submitRefused by kit.submitRefused.collectAsState()
+    LaunchedEffect(memoUuid) { kit.prepare(); val why = kit.editRefusal(memoUuid); if (why != null) startRefused = why else denied = kit.prepareEdit(memoUuid); checked = true }
     // only this edit's own refusal (fix round); cleared after leaving, so the edit's "save failed" never shows in between
-    if (locked || refused == memoUuid) {
-        SrDayLockDialog(onOk = { onDone(); kit.clearLockRefusal() })
+    val refused = startRefused ?: when (memoUuid) { lockRefused -> DayRefusal.FINAL_SUBMIT; submitRefused -> DayRefusal.SALES_SUBMIT; else -> null }
+    if (refused != null) {
+        SrRefusalDialog(refused, onOk = { onDone(); kit.clearLockRefusal() })
         return
     }
     val r = reason
