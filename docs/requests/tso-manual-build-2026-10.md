@@ -880,10 +880,10 @@ is named; device checks run on a pilot phone against dev (test account).
 | 12 | all tickets | A2, B1 | N | TicketListStateTest (tabs, search, age); golden |
 | 13 | filtered Resolved | A2 | N | TicketListStateTest Resolved tab; golden |
 | 14 | ticket details | A2, B1 | N | resolution message format test; comments refused after resolved (both paths); close_review only from resolved; golden |
-| 15 | quick report tiles | A2, F2 | N | CodeListsTest 31 items and attrs; tile caption test; golden |
+| 15 | quick report tiles | A2, F2 | N | TsoManualV0130Test.theIssueTypesAreThe31AnnexATypesVerbatim (31 items and attrs); TicketAnnexATilesTest (31 tiles in Annex A order, REPORT_DIFFERENT opens Create); tile caption test; goldens tickets_quick_en, tickets_quick_tall_en |
 | 16 | quick ticket sheet | A2 | N | TicketFlowTest offline quick create, gallery and camera; golden |
 | 17 | create ticket | A2 | N | TicketFlowTest validation; golden |
-| 18 | issue types list | A2, F2 | N | 31 labels verbatim in Annex A order |
+| 18 | issue types list | A2, F2 | N | TsoManualV0130Test.theIssueTypesAreThe31AnnexATypesVerbatim (31 labels verbatim in Annex A order); golden tickets_issue_types_tall_en |
 | 19 | leave list | A3 | N | LeaveTest order ascending, card fields; golden |
 | 20 | leave form | A3 | N | form empty states; golden |
 | 21 | leave type | A3, B3 | N | types from bundle; LeaveHandlerTest |
@@ -897,7 +897,7 @@ is named; device checks run on a pilot phone against dev (test account).
 | 29 | retailer | A3, B3 | Y | PeripheryTest offline nearby == server rule; NearbyOutletsTest margin; golden |
 | 30 | my call menu | A1 | – | TsoShellTest |
 | 31 | set plan | A3 | Y | PlanTest default today, cfg days ahead; golden |
-| 32 | choose route | A3 | Y | dropdown test |
+| 32 | choose route | A3 | Y | MyCallScreenTest.setPlanOpensOnTodayWithTheOnlyZoneChosenAndNeedsARoute (route dropdown); golden tso_mc_s32_* |
 | 33 | select outlets | A3, B3 | Y | VisitPlanRecordsTest route_id; golden |
 | 34 | my visit plan | A3 | Y | golden |
 | 35 | pending / completed | A3 | Y | no tab counts, "No Outlets Found"; golden |
@@ -909,7 +909,7 @@ is named; device checks run on a pilot phone against dev (test account).
 | 41 | details | A1, B2 | N | 35.00%…1.33%, 43.42%, 0.25%, 104.94%, remaining 0; golden |
 | 42 | details till-date | A1 | N | tab switch keeps the node; category filter; golden |
 | 43 | create feedback | A3, B3 | Y | FeedbackTest categories suggestion and feedback, gallery max 1; FeedbackIngestTest; golden |
-| 44 | log out | A1 | – | LogoutDialogTest (text, refusal with unsent items, wipe incl. aron_ui_<id>.xml); golden |
+| 44 | log out | A1 | – | LogoutDialogTest (text); LogoutFlowTest (refusal with unsent items) and LogoutWipeUiPrefsTest (wipe incl. aron_ui_<id>.xml) in core-system; golden |
 | – | inbox and bell | A1, B1, B3 | – | TsoInboxTest; InboxTest; leave decided and auto-submit rows |
 | – | web support console | W1, B1 | – | checker-tickets.test.tsx (resolve needs code and notes, cancel needs reason, version conflict) |
 | – | web reopen, final submit, drill, leave, feedback | W1, B3 | – | day-reopen-form, final-submit-roles, drill-columns, leave-applicant tests |
