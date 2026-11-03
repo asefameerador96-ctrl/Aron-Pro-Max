@@ -3,6 +3,7 @@ package com.aktcl.aron.backend.masterdata
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.FieldError
+import com.aktcl.aron.backend.platform.OwnerZone
 import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.ServerConfig
@@ -77,10 +78,11 @@ internal object AdminSupport {
         return r.reach(p.userId, p.role, p.scopeVersion, today(clock))
     }
 
-    /** Zone of a user: the home zone, else the zone of the primary route assignment valid today (same rule as the device-OTP panel). */
-    fun userZone(alias: String) =
-        "COALESCE($alias.home_zone_id, (SELECT r.zone_id FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id WHERE a.user_id = $alias.id AND a.ended_at IS NULL " +
-            "AND (a.valid_to IS NULL OR a.valid_to > :today) AND a.kind = 'primary' AND a.valid_from <= :today ORDER BY a.valid_from DESC LIMIT 1))"
+    /**
+     * Zone of a user: the home zone, else the zone of the primary route assignment valid today (same rule as the device-OTP
+     * panel). The fragment is platform's [OwnerZone], shared with media's feedback-photo read (lane X2 fix round).
+     */
+    fun userZone(alias: String) = OwnerZone.sql(alias)
 
     /** SQL predicate over the app_user alias [alias] (record owner): the owner's zone is inside the caller's reach. */
     fun ownerInReach(reach: Reach, alias: String): String = when {

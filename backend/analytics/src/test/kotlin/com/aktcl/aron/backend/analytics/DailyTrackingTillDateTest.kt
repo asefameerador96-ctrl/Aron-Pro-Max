@@ -12,6 +12,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.TestInstance
+import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
 import kotlin.test.Test
@@ -63,10 +64,23 @@ class DailyTrackingTillDateTest {
         override fun configVersion() = 1L
     }
 
-    private fun pcts(date: String, basis: String? = null): Map<String, Double?> {
+    private fun pcts(date: String, basis: String? = null): Map<String, Double?> = rows(date, basis).mapValues { it.value.tilldate_target_achievement_pct }
+
+    private fun rows(date: String, basis: String? = null): Map<String, DailyTrackingRow> {
         val page = DailyTrackingService(fresh.db, config(basis), clock).page(tso, LocalDate.parse(date), null, null, 100, null)
         val code = listOf("R1", "R2", "R3", "R4").associateBy { ids.getValue(it) }   // ids of different tables may repeat: map the routes only
-        return page.items.associate { code.getValue(it.route_id) to it.tilldate_target_achievement_pct }
+        return page.items.associateBy { code.getValue(it.route_id) }
+    }
+
+    /**
+     * Lead ruling R-W-06 (tso-manual X2): `tilldate_target_achievement_bp` is the figure, from the integers through Percent.bp; the deprecated
+     * float member is exactly bp / 100 (no second rounding), and both are null together. Returns the bp of each route.
+     */
+    private fun bps(date: String, basis: String? = null): Map<String, Long?> = rows(date, basis).mapValues { (code, r) ->
+        val bp = r.tilldate_target_achievement_bp; val pct = r.tilldate_target_achievement_pct
+        assertEquals(bp == null, pct == null, "$code: the bp and the float are null together")
+        if (bp != null) assertEquals(BigDecimal.valueOf(bp), BigDecimal(pct.toString()).movePointRight(2).stripTrailingZeros().setScale(0), "$code: float x 100 == bp")
+        bp
     }
 
     private fun sql(s: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(s) }
@@ -80,6 +94,9 @@ class DailyTrackingTillDateTest {
         assertNull(p.getValue("R3"), "no cigarette target that month: no till-date target, no percent")
         // 10 Oct, calendar 10/31: only the sales of 1..10 count (R1: 200 + 330 + 30 + 30 = 590), T' = 7291 -> 809 bp.
         assertEquals(8.09, pcts("2026-10-10")["R1"])
+        // R-W-06 (tso-manual X2): the same s4.2 figures as integers, and the null case.
+        assertEquals(mapOf("R1" to 433L, "R2" to 162L, "R3" to null), bps("2026-10-25"))
+        assertEquals(809L, bps("2026-10-10")["R1"])
     }
 
     @Test
@@ -88,8 +105,10 @@ class DailyTrackingTillDateTest {
             sql("INSERT INTO app.calendar_holiday (date, scope_type, scope_id, kind, selling_day, name_en) VALUES ('2026-10-21', 'global', 0, 'holiday', false, 'B2'), ('2026-10-12', 'zone', ${ids.getValue("Z1")}, 'holiday', false, 'B2')")
             // Banani on 10 Oct: e = 8 (Fridays 2 and 9 off), n = 24 (5 Fridays, the 21st and Banani's 12th off): R1 T' = 7533, A 590 -> 783 bp.
             assertEquals(7.83, pcts("2026-10-10", "working_days")["R1"])
+            assertEquals(783L, bps("2026-10-10", "working_days")["R1"])
             // The calendar basis ignores the calendar: still 809 bp.
             assertEquals(8.09, pcts("2026-10-10", "calendar_days")["R1"])
+            assertEquals(809L, bps("2026-10-10", "calendar_days")["R1"])
         } finally { sql("DELETE FROM app.calendar_holiday") }
     }
 
@@ -99,6 +118,7 @@ class DailyTrackingTillDateTest {
             sql("INSERT INTO app.calendar_holiday (date, scope_type, scope_id, kind, selling_day, name_en) SELECT d::date, 'zone', ${ids.getValue("Z1")}, 'emergency_off', false, 'B2' FROM generate_series(DATE '2026-10-01', DATE '2026-10-31', interval '1 day') d")
             val p = pcts("2026-10-25", "working_days")
             assertNull(p.getValue("R1")); assertNull(p.getValue("R2"))   // n = 0 in Banani (R-F-15)
+            assertEquals(mapOf("R1" to null, "R2" to null), bps("2026-10-25", "working_days").filterKeys { it != "R3" })
         } finally { sql("DELETE FROM app.calendar_holiday") }
     }
 }

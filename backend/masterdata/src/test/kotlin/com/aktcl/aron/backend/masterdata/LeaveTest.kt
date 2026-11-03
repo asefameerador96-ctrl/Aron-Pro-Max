@@ -8,6 +8,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.TestInstance
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.UUID
 import kotlin.random.Random
 import kotlin.test.Test
@@ -23,7 +25,16 @@ class LeaveTest {
     @AfterAll fun tearDown() = env.close()
 
     private fun uuid() = UUID.randomUUID().toString()
-    private fun apply(id: String, from: String = "2027-03-01", days: Int = 2, type: String = "casual", reason: String = "Family event") =
+
+    /**
+     * Lane X2 (lead ruling R-W-09 (9), B3's ask): every leave date is relative to today, because the leave API judges the
+     * first day against its own system clock (BackendAdminEnv runs the platform on AronClock.SYSTEM): within
+     * cfg.leave.allow_past_days (31) back and cfg.leave.allow_ahead_days (365) ahead. Fixed 2027 dates expired in 2027-04.
+     */
+    private val today: LocalDate = LocalDate.now(ZoneId.of("Asia/Dhaka")) // wall-clock-ok: the leave window is relative to the API's system clock
+    private fun ahead(days: Long): String = today.plusDays(days).toString()
+
+    private fun apply(id: String, from: String = ahead(120), days: Int = 2, type: String = "casual", reason: String = "Family event") =
         """{"leave_uuid":"$id","leave_type_code":"$type","from_date":"$from","days":$days,"reason":"$reason"}"""
 
     @Test
@@ -33,7 +44,7 @@ class LeaveTest {
         assertEquals(HttpStatusCode.Created, r1.status)
         val first = r1.bodyAsText()
         val j = r1.objA3()
-        assertEquals("pending", j.strA3("status")); assertEquals("2027-03-02", j.strA3("to_date")); assertEquals(env.ids.getValue("tso1001").toString(), j.getValue("user_id").jsonPrimitive.content)
+        assertEquals("pending", j.strA3("status")); assertEquals(ahead(121), j.strA3("to_date")); assertEquals(env.ids.getValue("tso1001").toString(), j.getValue("user_id").jsonPrimitive.content)
         assertTrue(j["decided_at"] == null || j["decided_at"] is JsonNull)
         // Replay by client uuid stores one row and returns the same body.
         val r2 = sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), apply(id))
@@ -44,7 +55,7 @@ class LeaveTest {
         assertEquals(HttpStatusCode.Conflict, sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso2001"), apply(id)).status)
 
         // The TSO sees it; the DMO of the division sees it; the DMO of another division does not.
-        assertEquals(listOf(id), sendA3(HttpMethod.Get, "/v1/leave?status=pending&from=2027-03-01&to=2027-03-31", env.tok("tso1001")).objA3().itemsA3().map { it.strA3("leave_uuid") })
+        assertEquals(listOf(id), sendA3(HttpMethod.Get, "/v1/leave?status=pending&from=${ahead(120)}&to=${ahead(150)}", env.tok("tso1001")).objA3().itemsA3().map { it.strA3("leave_uuid") })
         assertTrue(sendA3(HttpMethod.Get, "/v1/leave", env.tok("dmo1001")).objA3().itemsA3().any { it.strA3("leave_uuid") == id })
         assertTrue(sendA3(HttpMethod.Get, "/v1/leave", env.tok("dmo3001")).objA3().itemsA3().none { it.strA3("leave_uuid") == id })
 
@@ -74,20 +85,20 @@ class LeaveTest {
         assertEquals(HttpStatusCode.BadRequest, post(apply("nope")).status)
         assertEquals(HttpStatusCode.BadRequest, post(apply(uuid(), days = 0)).status)
         assertEquals(HttpStatusCode.BadRequest, post(apply(uuid(), days = 366)).status)
-        assertEquals(HttpStatusCode.BadRequest, post(apply(uuid(), from = "2027-02-30")).status)
+        assertEquals(HttpStatusCode.BadRequest, post(apply(uuid(), from = "2027-02-30")).status) // not a calendar date: the parse probe, not a leave date
         assertEquals(HttpStatusCode.BadRequest, post(apply(uuid(), type = "Bad Code")).status)
         assertEquals(HttpStatusCode.BadRequest, post(apply(uuid(), type = "unlisted_type")).status)
         assertEquals(HttpStatusCode.BadRequest, post(apply(uuid(), reason = "")).status)
-        assertEquals(HttpStatusCode.BadRequest, post("""{"leave_uuid":"${uuid()}","leave_type_code":"casual","from_date":"2027-03-01","days":1,"reason":"x","user_id":9}""").status)
+        assertEquals(HttpStatusCode.BadRequest, post("""{"leave_uuid":"${uuid()}","leave_type_code":"casual","from_date":"${ahead(120)}","days":1,"reason":"x","user_id":9}""").status)
         for (u in listOf("sr1001", "amo1001", "dmo1001", "admin1001")) assertEquals(HttpStatusCode.Forbidden, post(apply(uuid()), env.tok(u)).status, u)
         for (u in listOf("sr1001", "amo1001", "support1001")) assertEquals(HttpStatusCode.Forbidden, sendA3(HttpMethod.Get, "/v1/leave", env.tok(u)).status, u)
         val id = uuid()
-        post(apply(id, from = "2027-04-01"))
+        assertEquals(HttpStatusCode.Created, post(apply(id, from = ahead(150))).status)
         assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Post, "/v1/leave/$id/decision", env.tok("dmo1001"), """{"decision":"maybe"}""").status)
         assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Post, "/v1/leave/$id/decision", env.tok("dmo1001"), """{"decision":"approve","note":"${"n".repeat(501)}"}""").status)
         assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Post, "/v1/leave/not-a-uuid/decision", env.tok("dmo1001"), """{"decision":"approve"}""").status)
         assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Get, "/v1/leave?status=done", tso).status)
-        assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Get, "/v1/leave?from=2027-01-01&to=2027-12-31", tso).status)
+        assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Get, "/v1/leave?from=${ahead(0)}&to=${ahead(364)}", tso).status)
         // A reject is audited and final.
         assertEquals("rejected", sendA3(HttpMethod.Post, "/v1/leave/$id/decision", env.tok("dmo1001"), """{"decision":"reject"}""").objA3().strA3("status"))
         assertEquals(HttpStatusCode.Conflict, sendA3(HttpMethod.Post, "/v1/leave/$id/decision", env.tok("dmo1001"), """{"decision":"approve"}""").status)
@@ -97,7 +108,7 @@ class LeaveTest {
     fun randomisedListsNeverLeakLeaveOutsideTheCallersReach() = env.app {
         val rnd = Random(22)
         val owners = listOf("tso1001", "tso2001", "tso3001")
-        val dates = (1..8).map { "2027-06-%02d".format(it * 3) }
+        val dates = (1..8).map { ahead(200L + it * 3) }
         val owner = mutableMapOf<String, String>()
         for (o in owners) for (d in dates.shuffled(rnd).take(5)) {
             val id = uuid(); assertEquals(HttpStatusCode.Created, sendA3(HttpMethod.Post, "/v1/leave", env.tok(o), apply(id, from = d, days = 1)).status); owner[id] = o

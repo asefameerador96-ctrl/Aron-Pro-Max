@@ -47,6 +47,15 @@ class LeaveHandlerTest {
     private lateinit var sr: TsoPhone
     private val today = LocalDate.parse("2027-01-03")
 
+    /**
+     * Lane X2 (lead ruling R-W-09 (9)): every leave date is relative to the test's today, the Dhaka date of the world's
+     * fixed API clock (TsoWorld starts at 2027-01-03T04:00Z), so the window checks never depend on the day the test runs.
+     */
+    private fun day(n: Long): LocalDate = today.plusDays(n)
+
+    /** [d] in Bangla digits, as the bn notification body prints it. */
+    private fun bn(d: LocalDate): String = d.toString().map { c -> if (c in '0'..'9') '\u09E6' + (c - '0') else c }.joinToString("")
+
     @BeforeAll
     fun setUp() {
         world = TsoWorld(repoRoot)
@@ -76,21 +85,21 @@ class LeaveHandlerTest {
     @Test
     @Order(1)
     fun bothPathsStoreAValidApplicationAndCountCalendarDays() = world.withApi {
-        // 2027-01-07 is a Thursday: two days end on Friday 01-08 (Fridays and holidays count, D-TSO-MAN-33).
+        // today + 4 is a Thursday (2027-01-07): two days end on Friday (Fridays and holidays count, D-TSO-MAN-33).
         val cu = uuid()
-        assertEquals("accepted", viaSync(tso, LocalDate.parse("2027-01-07"), 2, cu = cu).status())
-        assertEquals("2027-01-08", world.scalar("SELECT to_date::text FROM app.leave_application WHERE client_uuid = '$cu'"))
-        val r = viaPost(tso, LocalDate.parse("2027-01-14"), 3)
+        assertEquals("accepted", viaSync(tso, day(4), 2, cu = cu).status())
+        assertEquals(day(5).toString(), world.scalar("SELECT to_date::text FROM app.leave_application WHERE client_uuid = '$cu'"))
+        val r = viaPost(tso, day(11), 3)
         assertEquals(HttpStatusCode.Created, r.status, r.bodyAsText())
-        assertEquals("2027-01-16", json(r.bodyAsText())["to_date"]!!.jsonPrimitive.content)
+        assertEquals(day(13).toString(), json(r.bodyAsText())["to_date"]!!.jsonPrimitive.content)
         // The window bounds are inside on both paths.
         assertEquals("accepted", viaSync(tso, today.minusDays(31), 1).status(), "31 days back")
         assertEquals(HttpStatusCode.Created, viaPost(tso, today.plusDays(365), 1).status, "365 days ahead")
         // A resend of the stored record is a duplicate; a POST replay answers the stored row.
-        assertEquals("duplicate", viaSync(tso, LocalDate.parse("2027-01-07"), 2, cu = cu).status())
+        assertEquals("duplicate", viaSync(tso, day(4), 2, cu = cu).status())
         val id = uuid()
-        val first = viaPost(tso, LocalDate.parse("2027-02-01"), 1, id = id)
-        val again = viaPost(tso, LocalDate.parse("2027-02-01"), 1, id = id)
+        val first = viaPost(tso, day(29), 1, id = id)
+        val again = viaPost(tso, day(29), 1, id = id)
         assertEquals(HttpStatusCode.Created, first.status); assertEquals(HttpStatusCode.OK, again.status); assertEquals(first.bodyAsText(), again.bodyAsText())
     }
 
@@ -127,11 +136,11 @@ class LeaveHandlerTest {
     @Test
     @Order(3)
     fun overlapIsAllowedByDefaultAndRefusedOnBothPathsWhenBlocked() = world.withApi {
-        val from = LocalDate.parse("2027-03-01")
+        val from = day(57)
         assertEquals("accepted", viaSync(tso, from, 3).status())
         assertEquals(HttpStatusCode.Created, viaPost(tso, from.plusDays(1), 2).status, "cfg.leave.block_overlap is false by default")
         // A record the phone will resend byte for byte (a resend is the same envelope, not a new capture).
-        val kept = world.record("leave_application", payload(LocalDate.parse("2027-04-01"), 1))
+        val kept = world.record("leave_application", payload(day(88), 1))
         val keptUuid = kept["client_uuid"]!!.jsonPrimitive.content
         assertEquals("accepted", with(world) { ack(sync(tso, listOf(kept)), keptUuid) }.status())
         world.cfg("cfg.leave.block_overlap", "true")
@@ -143,7 +152,7 @@ class LeaveHandlerTest {
         assertEquals(HttpStatusCode.Conflict, r.status, r.bodyAsText()); assertEquals("overlap", r.reason())
         // A replay is answered before the rules: the stored application stays a duplicate.
         assertEquals("duplicate", with(world) { ack(sync(tso, listOf(kept)), keptUuid) }.status())
-        assertEquals(HttpStatusCode.Created, viaPost(tso, LocalDate.parse("2027-05-01"), 1).status, "no overlap, no refusal")
+        assertEquals(HttpStatusCode.Created, viaPost(tso, day(118), 1).status, "no overlap, no refusal")
         world.cfg("cfg.leave.block_overlap", "false")
         world.forgetTokens()
     }
@@ -154,7 +163,7 @@ class LeaveHandlerTest {
         with(world) {
             val fcm = registerPush(tso)
             val cu = uuid()
-            assertEquals("accepted", viaSync(tso, LocalDate.parse("2027-06-10"), 2, cu = cu).status())
+            assertEquals("accepted", viaSync(tso, day(158), 2, cu = cu).status())
             pushes.clear()
             val path = "/v1/leave/$cu/decision"
             val d1 = postWeb("dmo1001", path, """{"decision":"approve","note":"Enjoy"}""")
@@ -166,13 +175,13 @@ class LeaveHandlerTest {
             assertEquals("Dhaka North", dj["territory_name"]!!.jsonPrimitive.content)
             val n = rows("SELECT kind, ref_type, ref_id, dedupe_key, title_en, title_bn, body_en, body_bn FROM app.user_notification WHERE user_id = ${tso.userId}").single()
             assertEquals(listOf("leave_decided", "leave_application", cu, "leave_decided:$cu", "Leave approved"), listOf(n["kind"], n["ref_type"], n["ref_id"], n["dedupe_key"], n["title_en"]))
-            assertEquals("Your leave of 2 days (2027-06-10 to 2027-06-11) was approved.", n["body_en"])
-            assertTrue((n["body_bn"] as String).contains("২০২৭-০৬-১০") && (n["title_bn"] as String).isNotBlank(), n.toString())
+            assertEquals("Your leave of 2 days (${day(158)} to ${day(159)}) was approved.", n["body_en"])
+            assertTrue((n["body_bn"] as String).contains(bn(day(158))) && (n["title_bn"] as String).isNotBlank(), n.toString())
             val ev = json(scalar("SELECT payload::text FROM app.domain_event WHERE event_type = 'leave.decided' AND aggregate_id = '$cu'")!!)
             assertEquals(cu, ev["leave_uuid"]!!.jsonPrimitive.content); assertEquals("approved", ev["status"]!!.jsonPrimitive.content)
             assertEquals(tso.userId.toString(), ev["user_id"]!!.jsonPrimitive.content)
             assertEquals(one("SELECT id FROM app.app_user WHERE username = 'dmo1001'").toString(), ev["decided_by"]!!.jsonPrimitive.content)
-            assertEquals(listOf("2027-06-10", "2027-06-11", "2", "casual"), listOf("from_date", "to_date", "days", "leave_type_code").map { ev[it]!!.jsonPrimitive.content })
+            assertEquals(listOf(day(158).toString(), day(159).toString(), "2", "casual"), listOf("from_date", "to_date", "days", "leave_type_code").map { ev[it]!!.jsonPrimitive.content })
             fun mine() = pushes.filter { it.first == fcm && it.second["reason"] == "notification" }
             val until = System.nanoTime() + 30_000_000_000L
             while (mine().isEmpty() && System.nanoTime() < until) Thread.sleep(20)
@@ -186,10 +195,10 @@ class LeaveHandlerTest {
             assertEquals(1, mine().size)
             // A rejection reads "not approved".
             val other = uuid()
-            assertEquals(HttpStatusCode.Created, viaPost(tso, LocalDate.parse("2027-07-01"), 1, id = other).status)
+            assertEquals(HttpStatusCode.Created, viaPost(tso, day(179), 1, id = other).status)
             assertEquals(HttpStatusCode.OK, postWeb("dmo1001", "/v1/leave/$other/decision", """{"decision":"reject"}""").status)
             assertEquals("Leave not approved", scalar("SELECT title_en FROM app.user_notification WHERE ref_id = '$other'"))
-            assertEquals("Your leave of 1 day (2027-07-01) was not approved.", scalar("SELECT body_en FROM app.user_notification WHERE ref_id = '$other'"))
+            assertEquals("Your leave of 1 day (${day(179)}) was not approved.", scalar("SELECT body_en FROM app.user_notification WHERE ref_id = '$other'"))
             // The deciding page's list names the applicant (LV-19).
             val list = json(getWeb("dmo1001", "/v1/leave?status=approved").bodyAsText())["items"]!!.jsonArray.map { it.jsonObject }
             val row = list.single { it["leave_uuid"]!!.jsonPrimitive.content == cu }

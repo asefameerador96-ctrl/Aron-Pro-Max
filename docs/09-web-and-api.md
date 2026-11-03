@@ -8,7 +8,7 @@ Standard filter on data pages: Wing → Division → Territory → House → Zon
 
 ### Pages to build (grouped; parity with the current menu)
 
-- **Dashboard (home):** national/territory snapshot — sales vs target by category, live CPR, calls by channel, geo-validation %, login/submit %, final-submit status, sales by brand/channel, SR positions on a map. Loads from rollups, no button press.
+- **Dashboard (home):** national/territory snapshot — sales vs target by category, live CPR, calls by channel, geo-validation % (the Geo Fencing card counts completed SR calls of the national route set, so it equals the TSO app's summary; pins and the route map stay per route: lead ruling R-W-04, `docs/10`), login/submit %, final-submit status, sales by brand/channel, SR positions on a map. Loads from rollups, no button press.
 - **Retailer:** Browse Retailer (outlet list + detail; edit = basic info, address, business, additional-detail sections). PII-gated columns.
 - **Products:** Category, Segment, Brand, Variant, SKU, Product Tree (reference views).
 - **Route Planning:** Browse Routes (route → SR/SS by zone).

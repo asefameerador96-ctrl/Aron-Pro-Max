@@ -189,6 +189,25 @@ class TsoDashboardParityTest : TsoDayFixture() {
         assertParity(32)
     }
 
+    /**
+     * Lead ruling R-W-20 (tso-manual X2): Daily Tracking's `by_category` counts the sold quantity of sale lines only, the one sales
+     * quantity of every dashboard (D-TSO-MAN-09); free and DRP lines are never a sale. R1 sold 30 Maxim Regular sticks and gave 30
+     * more on a promo and a DRP line: its row says 30 (sold plus free said 60). Summed over the Apsis TSO's tracked route-days the
+     * rows equal the summary's `by_category` (40 and 2991), as the national Sales card counts them.
+     */
+    @Test
+    fun dailyTrackingByCategoryCountsSoldLinesOnly() {
+        val r1 = id("R1")
+        assertEquals(30L to 30L, long("SELECT sum(sold_qty_base) FROM dw.agg_daily_route_sku WHERE business_date = '2026-10-25' AND route_id = $r1") to
+            long("SELECT sum(free_qty_base) FROM dw.agg_daily_route_sku WHERE business_date = '2026-10-25' AND route_id = $r1"), "R1: 20 + 10 sold, a promo 20 and a DRP 10 free")
+        val rows = DailyTrackingService(fresh.db, config(), clock).page(reaches.getValue(32), day, null, null, 100, null).items
+        assertEquals(listOf(CategoryVolume("cigarette", "stick", 30L, 187_500L)), rows.single { it.route_id == r1 }.by_category, "R1: sold only, the sale lines' value")
+        val tracked = rows.flatMap { it.by_category }.groupBy { it.category_code }.mapValues { (_, v) -> v.sumOf { it.qty_base } }
+        assertEquals(mapOf("cigarette" to 40L, "bidi" to 2991L), tracked)
+        assertEquals(summary(32).by_category.associate { it.category_code to it.qty_base }, tracked, "Daily Tracking and the summary count one sales quantity")
+        assertEquals(national().sales(caller(32), all).cards.filter { it.total_sales > 0 }.associate { it.category_code to it.total_sales }, tracked, "and the national Sales card")
+    }
+
     @Test
     fun everyKindOfCallerSeesTheSameFiguresOnBothReads() {
         for (uid in listOf(31L, 32L, 33L, 34L, 35L, 36L, 37L)) assertParity(uid)

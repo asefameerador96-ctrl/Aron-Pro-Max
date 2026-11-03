@@ -59,7 +59,9 @@ info:
       `DailyTrackingRow.tilldate_target_achievement_bp` (the float `tilldate_target_achievement_pct` is deprecated),
       `TargetVsAchievement.monthly_target_qty` and `working_days`, `RouteSnapshot.sr_user_id` and `sr_name`, and the
       descriptions of `updateSupportTicket`, `addSupportTicketEvent`, `CategoryVolume.qty_entered` and the channel
-      `share_pct_bp` denominators.
+      `share_pct_bp` denominators. `DailyTrackingRow.by_category` now counts sold quantity only, never free or DRP lines
+      (lead ruling R-W-20: an existing reader shows a smaller `qty_base` for a route-day with promo or DRP lines), and
+      `FinalSubmitPreview.can_submit` is true for a delegate only when its role is DMO or WM (D-X2-14, R-W-21).
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -10114,9 +10116,9 @@ components:
         already_submitted: { type: boolean }
         can_submit:
           type: boolean
-          description: 'Whether the caller may Final Submit this zone-day: true when the caller''s role is TSO or is listed
-            in `cfg.day.final_submit_delegate_roles` (resolved as `postFinalSubmit` reads it), the same rule the submit
-            path enforces; the zone is already in the caller''s reach (else this read is 403). It is the role rule only:
+          description: 'Whether the caller may Final Submit this zone-day: true when the caller''s role is TSO, or is DMO
+            or WM and is listed in `cfg.day.final_submit_delegate_roles` (the registry bound; any other listed role is
+            ignored; resolved as `postFinalSubmit` reads it), the same rule the submit path enforces; the zone is already in the caller''s reach (else this read is 403). It is the role rule only:
             whether the zone-day is already submitted is `already_submitted`, so the app and the web offer Submit when
             `can_submit` is true and `already_submitted` is false. Optional until the server sends it (the required list
             does not change, lead ruling R-W-06; 1.10.x makes it required); a reader of a server that does not send it
@@ -10878,7 +10880,7 @@ components:
           description: 'The unit the field apps count this category in (docs/34 s4.2): pack (packet or box, per SKU `base_per_pack`) or dozen (matches).'
         qty_entered:
           $ref: '#/components/schemas/Decimal3'
-          description: 'This item''s quantity in `entry_unit`, summed per SKU first (each SKU''s base-unit quantity over its base_per_pack): 10s and 20s of one category convert correctly. Same basis as the item''s `qty_base`, which the list that carries the item states: in `DashboardSummary.by_category` the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, lead ruling R-W-06); `DailyTrackingRow.by_category` states its own basis.'
+          description: 'This item''s quantity in `entry_unit`, summed per SKU first (each SKU''s base-unit quantity over its base_per_pack): 10s and 20s of one category convert correctly. Same basis as the item''s `qty_base`: in both lists that carry the item (`DashboardSummary.by_category`, `DailyTrackingRow.by_category`) the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, lead rulings R-W-06 and R-W-20).'
         net_mtk: { $ref: '#/components/schemas/Mtk' }
     NationalDashboardFilter:
       type: object
@@ -12672,11 +12674,10 @@ components:
         by_category:
           type: array
           maxItems: 10
-          description: 'Per category for the route-day. `qty_base` is the sold plus free quantity of the route-day''s lines
-            in base units (sale and free lines, as built), not the Total Sales basis of D-TSO-MAN-09 that
-            `DashboardSummary.by_category` uses. `entry_unit` and `qty_entered` are not sent here today; a server that
-            sends them converts this same quantity. Whether this list moves to sold only is open (lead ruling R-W-06 names
-            the summary only).'
+          description: 'Per category for the route-day. `qty_base` is the sold quantity of sale lines only, in base units:
+            no free or DRP lines (D-TSO-MAN-09, lead ruling R-W-20), the one sales quantity of every dashboard, as
+            `DashboardSummary.by_category` and the national Sales card count it. `entry_unit` and `qty_entered` are not
+            sent here today; a server that sends them converts this same quantity.'
           items: { $ref: '#/components/schemas/CategoryVolume' }
         tilldate_target_achievement_pct:
           type: [number, 'null']
