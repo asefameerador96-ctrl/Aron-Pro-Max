@@ -73,13 +73,21 @@ class CaptureRepository(
         outbox.insert(listOf(RecordMapping.geoBreadcrumb(clientUuid, meta, fix, nowIso())))
     }
 
-    /** One Save of the Stock screen: one event per SKU, all or nothing. */
+    /**
+     * One Save of the Stock screen: one event per SKU, all or nothing.
+     *
+     * tso-manual X4a (R-W-22): `stock_movement` is one of B3's DAY_LOCKED_TYPES, so a Save whose route-day is closed by the
+     * zone's Final Submit is refused ([RouteDayFinalSubmittedException]) and nothing is stored or queued; the stock screens
+     * word it with the lock text and no slip is printed for it. A routeless movement (the AMO outside a call) never meets
+     * the lock, as on the server. A Sales Submit does not refuse stock (D-X4a-13: the server accepts it and the phone always did).
+     */
     suspend fun recordStock(movements: List<StockMovementEntity>) {
         require(movements.isNotEmpty()) { "nothing to save" }
         requireUuids(*movements.map { it.clientUuid }.toTypedArray())
         db.withTransaction {
             val fresh = movements.filterNot { purged(it.clientUuid) } // a purged movement replayed is not captured again
             if (fresh.isEmpty()) return@withTransaction emptyList()
+            fresh.map { it.meta }.distinct().forEach { requireNotFinal(it, STOCK_MOVEMENT) }
             capture.insertStock(fresh)
             val at = nowIso()
             outbox.insert(fresh.map { RecordMapping.stock(it, at) })
@@ -166,8 +174,9 @@ class CaptureRepository(
         check(!purged(sale.memo.clientUuid)) { "memo ${sale.memo.clientUuid} was already saved and sent from this phone" }
         // A replay of a sale that is still stored (a retry after a kill and relaunch) gets its own number back and burns none.
         capture.memo(sale.memo.clientUuid)?.memoNo?.let { return it }
-        // tso-manual X4a (D-X4a-03): a sale the Final Submit lock refuses takes no memo number (checked again in recordSale)
-        requireNotFinal(sale.memo.meta, "memo")
+        // tso-manual X4a (D-X4a-03): a sale the Final Submit lock refuses takes no memo number (checked again in recordSale);
+        // follow-up (R-W-23): nor does one a standing Sales Submit refuses (the same route-day check, before the reserve)
+        requireOpenRouteDay(sale.memo.meta, "memo")
         val memoNo = MemoNumbers(db).reserve(sale.memo.meta.businessDate, numbering)
         recordSale(sale.copy(memo = sale.memo.copy(memoNo = memoNo)))
         return memoNo
@@ -178,7 +187,21 @@ class CaptureRepository(
      * route-day check: no Final Submit lock and no standing Sales Submit (route-day or the AMO's supervisor day) closes its
      * route-day; a routeless collection is never checked. The memo screen draws Mark Paid only then. Pure reads, no write.
      */
-    suspend fun acceptsDueCollection(meta: CaptureMeta): Boolean = meta.routeId == null || RouteDayLock.isOpen(db, meta, DUE_COLLECTION)
+    suspend fun acceptsDueCollection(meta: CaptureMeta): Boolean = dayRefusal(meta, DUE_COLLECTION) == null
+
+    /**
+     * tso-manual X4a (R-W-23): why a capture of [recordType] with [meta] would be refused by this repository's route-day check,
+     * or null when it would pass: [DayRefusal.FINAL_SUBMIT] for a type the server refuses after the zone's Final Submit
+     * ([FinalSubmitLock.LOCKED_TYPES]) on a closed route-day, [DayRefusal.SALES_SUBMIT] while a Sales Submit stands (the
+     * route-day's, or the AMO's supervisor day). Per type as the record methods check it: `stock_movement` meets the Final
+     * Submit lock only, a routeless `due_collection` is never checked. Pure reads, no write; a screen asks it before it reads
+     * a fix or opens a form, and words the answer.
+     */
+    suspend fun dayRefusal(meta: CaptureMeta, recordType: String): DayRefusal? = when {
+        recordType == STOCK_MOVEMENT -> DayRefusal.FINAL_SUBMIT.takeIf { FinalSubmitLock.refuses(db, meta, STOCK_MOVEMENT) }
+        recordType == DUE_COLLECTION && meta.routeId == null -> null
+        else -> RouteDayLock.refusal(db, meta, recordType)
+    }
 
     /** A due collected against an earlier memo: its own family (a signed header record, docs/24 s4.2). */
     suspend fun recordDueCollection(due: DueCollectionEntity, fix: GeoFixEntity? = null) {
@@ -404,7 +427,8 @@ class CaptureRepository(
      *
      * tso-manual X4a (R-W-11, A3 ask 10): the callers name their type for visit, memo, due_collection, visit_skip and
      * visit_close, and never for day_submit, amo records, survey answers or content views, which the server accepts after
-     * the lock as before (D-TSO-MAN-31). The print ledger does not come through here.
+     * the lock as before (D-TSO-MAN-31). The print ledger does not come through here. Follow-up (R-W-22): [recordStock]
+     * names `stock_movement` to the Final Submit part alone ([requireNotFinal]).
      */
     private suspend fun requireOpenRouteDay(meta: CaptureMeta, recordType: String? = null) = RouteDayLock.requireOpen(db, meta, recordType)
 
@@ -439,6 +463,9 @@ class CaptureRepository(
 
         /** The record type [recordDueCollection] names to the route-day lock, and [acceptsDueCollection] asks with. */
         private const val DUE_COLLECTION = "due_collection"
+
+        /** The record type [recordStock] names to the Final Submit lock (tso-manual X4a, R-W-22). */
+        const val STOCK_MOVEMENT = "stock_movement"
 
         /** RFC 3339 UTC with exactly three fraction digits, as on the wire (docs/24 s3.1 item 5). */
         val ISO_MILLIS: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC)

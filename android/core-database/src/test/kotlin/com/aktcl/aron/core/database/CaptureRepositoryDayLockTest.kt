@@ -14,6 +14,7 @@ import com.aktcl.aron.core.database.entity.SurveyResponseEntity
 import com.aktcl.aron.core.database.entity.VisitSkipEntity
 import com.aktcl.aron.core.database.record.AmoPayloads
 import com.aktcl.aron.core.database.repo.CaptureRepository
+import com.aktcl.aron.core.database.repo.DayRefusal
 import com.aktcl.aron.core.database.repo.FinalSubmitLock
 import com.aktcl.aron.core.database.repo.MemoNumbering
 import com.aktcl.aron.core.database.repo.RouteDayFinalSubmittedException
@@ -24,6 +25,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -158,6 +160,74 @@ class CaptureRepositoryDayLockTest {
         assertFalse(repo.acceptsDueCollection(TestRows.meta(routeId = route + 1)))
         assertThrows(RouteDayFinalSubmittedException::class.java) { runBlocking { repo.recordDueCollection(due(route + 1)) } }
         assertTrue(db.captureDao().dueCollectionsOn(date).isEmpty())
+    }
+
+    /**
+     * tso-manual X4a follow-up (R-W-22): `stock_movement` is locked on the phone as on the server. A Save on a route-day
+     * closed by its zone's Final Submit is refused before anything is stored or queued; a routeless movement (the AMO
+     * outside a call) and another route stay open; the rep's own Sales Submit does not refuse stock (D-X4a-13).
+     */
+    @Test fun aStockSaveOnAFinalRouteDayIsRefusedAndNothingIsQueued() = runTest {
+        repo.recordStock(listOf(TestRows.stock(skuId = 100))) // loaded before the lock
+        finalSubmitted()
+        val outboxBefore = db.outboxDao().unsentCount()
+        refused("stock_movement") { repo.recordStock(listOf(TestRows.stock(skuId = 100), TestRows.stock(skuId = 101))) }
+        assertEquals("no outbox row was written", outboxBefore, db.outboxDao().unsentCount())
+        assertEquals("only the movement stored before the lock", 1, db.captureDao().stockOn(date).size)
+        // the AMO outside a call (no route) and another route are not closed by this route's Final Submit
+        val routeless = TestRows.stock(skuId = 102).let { it.copy(meta = it.meta.copy(routeId = null)) }
+        repo.recordStock(listOf(routeless))
+        val other = TestRows.stock(skuId = 103).let { it.copy(meta = it.meta.copy(routeId = route + 1)) }
+        repo.recordStock(listOf(other))
+        assertNotNull(db.outboxDao().byClientUuid(routeless.clientUuid)); assertNotNull(db.outboxDao().byClientUuid(other.clientUuid))
+        // a Sales Submit of the other route does not refuse stock (the server accepts stock after a day_submit)
+        repo.recordDaySubmit(DaySubmitEntity(ClientIds.newUuid(), TestRows.meta(routeId = route + 1), "route_day", 1, "{}", MONEY, 0, 0, 0, false, 0, 0, false))
+        val afterSubmit = TestRows.stock(skuId = 104).let { it.copy(meta = it.meta.copy(routeId = route + 1)) }
+        repo.recordStock(listOf(afterSubmit))
+        assertNotNull(db.outboxDao().byClientUuid(afterSubmit.clientUuid))
+    }
+
+    /**
+     * tso-manual X4a follow-up (R-W-23): [CaptureRepository.dayRefusal] answers, per type, what the write would do with the
+     * same meta (the screens ask it before a fix or a form), and [DayRefusal.of] names the refusal a write threw.
+     */
+    @Test fun dayRefusalAnswersWhatEachWriteWouldDo() = runTest {
+        val types = listOf("visit", "memo", "visit_close", "visit_skip", "due_collection", "stock_movement", "survey_response", "distribution_check")
+        types.forEach { assertNull("$it on an open day", repo.dayRefusal(TestRows.meta(), it)) }
+        // the rep's own Sales Submit: every route-day capture but stock is refused by name
+        repo.recordDaySubmit(DaySubmitEntity(ClientIds.newUuid(), TestRows.meta(), "route_day", 1, "{}", MONEY, 0, 0, 0, false, 0, 0, false))
+        types.forEach { assertEquals(it, if (it == "stock_movement") null else DayRefusal.SALES_SUBMIT, repo.dayRefusal(TestRows.meta(), it)) }
+        val skip = VisitSkipEntity(ClientIds.newUuid(), TestRows.meta(), 50002, "shop_closed")
+        val thrown = runCatching { repo.recordVisitSkip(skip) }.exceptionOrNull()
+        assertEquals(DayRefusal.SALES_SUBMIT, DayRefusal.of(thrown))
+        repo.recordStock(listOf(TestRows.stock())) // stock is not refused by a Sales Submit
+        // the zone's Final Submit on another route: the locked types meet the lock, the others pass
+        val other = TestRows.meta(routeId = route + 1)
+        finalSubmitted(route + 1)
+        for (t in types) {
+            val want = if (t in FinalSubmitLock.LOCKED_TYPES) DayRefusal.FINAL_SUBMIT else null
+            assertEquals(t, want, repo.dayRefusal(other, t))
+        }
+        val e = runCatching { repo.recordStock(listOf(TestRows.stock().let { it.copy(meta = other) })) }.exceptionOrNull()
+        assertEquals(DayRefusal.FINAL_SUBMIT, DayRefusal.of(e))
+        assertNull("any other failure is not a refusal", DayRefusal.of(IllegalStateException("x")))
+        // a routeless collection is never checked, as recordDueCollection
+        assertNull(repo.dayRefusal(TestRows.meta(routeId = null), "due_collection"))
+        assertEquals(DayRefusal.SALES_SUBMIT, repo.dayRefusal(TestRows.meta(), "due_collection"))
+    }
+
+    /**
+     * tso-manual X4a follow-up (R-W-22): the phone's [FinalSubmitLock.LOCKED_TYPES] is B3's IngestService.DAY_LOCKED_TYPES,
+     * read from the server source in this repository, so neither side can add or drop a type alone.
+     */
+    @Test fun thePhonesLockedTypesAreTheServersDayLockedTypes() {
+        val root = generateSequence(java.io.File("").absoluteFile) { it.parentFile }.first { java.io.File(it, "settings.gradle.kts").isFile && java.io.File(it, "backend").isDirectory }
+        val source = java.io.File(root, "backend/sync/src/main/kotlin/com/aktcl/aron/backend/sync/IngestService.kt").readText()
+        val literal = Regex("""val DAY_LOCKED_TYPES = setOf\(([^)]*)\)""").find(source)?.groupValues?.get(1)
+        assertNotNull("IngestService.DAY_LOCKED_TYPES is a setOf literal", literal)
+        val server = Regex("\"([a-z_]+)\"").findAll(literal!!).map { it.groupValues[1] }.toSet()
+        assertTrue("stock_movement is locked on the server", "stock_movement" in server)
+        assertEquals(server, FinalSubmitLock.LOCKED_TYPES)
     }
 
     private companion object {
