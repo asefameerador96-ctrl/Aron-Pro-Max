@@ -254,6 +254,23 @@ class LeaveScreenTest {
         compose.onNodeWithText("গৃহীত হয়নি: একই রেকর্ড ভিন্ন তথ্যসহ এসেছে।").assertExists()
     }
 
+    @Test fun aKeptCopyShowsAsOfInEnglish() {
+        show(AppLanguage.EN, FakeSource(cached = LeaveSource.Cached(rows.items, "10:42"), fresh = null))
+        compose.onNodeWithText("As of 10:42").assertExists()
+    }
+
+    @Test fun theCachedListShowsAsOfWhileTheRefreshRuns() {
+        // D-TSO-MAN-52: a cached list whose refresh has not answered must not look fresh
+        val never = kotlinx.coroutines.CompletableDeferred<LeaveSource.Cached?>()
+        val src = object : LeaveSource {
+            override suspend fun cached() = LeaveSource.Cached(rows.items, "09:00")
+            override suspend fun unsent() = emptyList<LeaveItem>()
+            override suspend fun refresh() = never.await()
+        }
+        show(AppLanguage.EN, src)
+        compose.onNodeWithText("As of 09:00").assertExists()
+    }
+
     @Test fun banglaUsesBengaliDigitsAndBanglaBadge() {
         // a kept copy (offline): the only state that shows 'As of' (D-TSO-MAN-40)
         show(AppLanguage.BN, FakeSource(cached = LeaveSource.Cached(rows.items, "10:42"), fresh = null))
