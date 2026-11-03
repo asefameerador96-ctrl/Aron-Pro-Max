@@ -236,7 +236,9 @@ fun AmoEditHost(day: AmoDay, memoUuid: String, onDone: () -> Unit) {
 /**
  * Stock issue and the slip (F-SR-013/014); the printer icon and banner are on the frame, the hold is the frame's too.
  * tso-manual X4a (R-W-22): a Save the zone's Final Submit refuses (in a call on a closed route) stores and queues nothing
- * and shows the lock text; no slip is offered for it.
+ * and shows the lock text; no slip is offered for it. Fix round: no stock slip prints after the lock, also not the slip of
+ * a Save stored before it in a call on that route: Print is not drawn while the next slip's route is final
+ * ([AmoDay.stockSlipPrintable]), re-read when the lock lands, and the print itself checks again.
  */
 @Composable
 fun AmoStockHost(day: AmoDay) {
@@ -245,10 +247,12 @@ fun AmoStockHost(day: AmoDay) {
     var message by remember { mutableStateOf<StockMessage?>(null) }
     var refused by remember { mutableStateOf<DayRefusal?>(null) }
     var unprinted by remember { mutableStateOf(true) }
+    var printable by remember { mutableStateOf(false) }
     val att by day.stockAttempt.collectAsState()
-    LaunchedEffect(att) { unprinted = day.slipNotPrinted() }
+    val lock by day.dayLock.collectAsState()
+    LaunchedEffect(att, lock) { unprinted = day.slipNotPrinted(); printable = day.stockSlipPrintable() }
     // a thrown read is an error with a retry, never a crash and never a screen stuck on the loading card
-    val read = com.aktcl.aron.core.ui.aron.rememberAsyncLoad { day.stockLoad().also { unprinted = day.slipNotPrinted() } }
+    val read = com.aktcl.aron.core.ui.aron.rememberAsyncLoad { day.stockLoad().also { unprinted = day.slipNotPrinted(); printable = day.stockSlipPrintable() } }
     com.aktcl.aron.core.ui.aron.AronLoaded(read, stringResource(com.aktcl.aron.feature.stock.R.string.stk_load_failed), stringResource(com.aktcl.aron.feature.home.R.string.fb_retry)) { l ->
         version.let {} // the content recomposes on every edit: StockLoad is a plain object, this counter is its signal
     StockContent(
@@ -258,12 +262,12 @@ fun AmoStockHost(day: AmoDay) {
             scope.launch {
                 val r = day.saveStock(l)
                 message = r.message; refused = r.refused
-                if (r.saved) { unprinted = day.slipNotPrinted(); runCatching { day.requestSync() } }
+                if (r.saved) { unprinted = day.slipNotPrinted(); printable = day.stockSlipPrintable(); runCatching { day.requestSync() } }
                 version++
             }
         },
-        // Print never blocks Save: it is offered after a Save and may be retried later (Q-UI-03).
-        onPrint = if (unprinted && PermissionPolicy.allowed(GatedFeature.PRINT, AndroidPermissions.snapshotOf(LocalContext.current))) ({ day.printUnprintedStock() }) else null,
+        // Print never blocks Save: it is offered after a Save and may be retried later (Q-UI-03); never after the lock (R-W-22).
+        onPrint = if (unprinted && printable && PermissionPolicy.allowed(GatedFeature.PRINT, AndroidPermissions.snapshotOf(LocalContext.current))) ({ day.printUnprintedStock() }) else null,
     )
     }
     refused?.let { AmoRefusalDialog(day, it, onOk = { refused = null }) }

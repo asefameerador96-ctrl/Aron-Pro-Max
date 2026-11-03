@@ -128,7 +128,85 @@ class AmoRefusalSweepTest {
         assertEquals(1, queued("stock_movement"))
     }
 
+    /**
+     * Fix round (checker medium, R-W-22 "no stock slip prints after the lock"): the slip of a Save stored in a call before
+     * that route's Final Submit is not printed after it (not offered, the tap prints nothing, it stays unprinted); the slip
+     * of the AMO's own routeless Save still prints.
+     */
+    @Test fun aSlipOfASaveStoredInACallBeforeTheLockDoesNotPrintAfterIt() {
+        f.catalogOnly()
+        inCall()
+        val l = load()
+        l.setEntered(105, 4)
+        assertTrue(runBlocking { f.day.saveStock(l) }.saved)
+        assertTrue("before the lock its slip may print", runBlocking { f.day.stockSlipPrintable() })
+        f.finalSubmitted()
+        assertFalse("Print is not drawn after the lock", runBlocking { f.day.stockSlipPrintable() })
+        printTapPrintsNothing()
+        assertTrue("the Save stays unprinted", runBlocking { f.day.slipNotPrinted() })
+        // outside the call the AMO's own Save has no route: its slip prints, the locked one stays unprinted
+        f.day.visitSession.close(); f.day.routeId = null
+        l.setEntered(105, 1)
+        assertTrue(runBlocking { f.day.saveStock(l) }.saved)
+        assertTrue(runBlocking { f.day.stockSlipPrintable() })
+        assertTrue(runBlocking { f.day.printableStockSave() }.all { it.meta.routeId == null })
+        f.day.printUnprintedStock()
+        AmoLockFixture.await("the routeless slip print starts") { f.day.stockAttempt.value != null }
+        assertEquals(listOf<Throwable>(), crashes.toList())
+    }
+
+    /**
+     * Fix round (checker low): the outlet pick sets the day's route before the fix is read, and backing out of the check step
+     * leaves it set with no call open. The AMO's own stock (a Save, a correction) then carries no route, so that route's
+     * Final Submit never refuses it.
+     */
+    @Test fun aRouteLeftBehindByABackedOutCallNeverTagsTheAmosOwnStock() {
+        f.catalogOnly()
+        f.day.routeId = f.route // the outlet pick took the route, then the AMO backed out of the check step: no call is open
+        f.finalSubmitted()
+        val l = load()
+        l.setEntered(105, 2)
+        val r = runBlocking { f.day.saveStock(l) }
+        assertTrue(r.toString(), r.saved); assertNull(r.refused)
+        assertNull(stockRows().single().meta.routeId)
+        assertTrue("the correction too", runBlocking { f.day.correctStock(105, 5, "count_error", "dozen") })
+        assertTrue(stockRows().all { it.meta.routeId == null })
+        assertEquals(2, queued("stock_movement"))
+        assertEquals(listOf<Throwable>(), crashes.toList())
+    }
+
     // ---------------- R-W-23 ----------------
+
+    /**
+     * Fix round (checker low, R-W-23): the control call host's entry guard ([AmoDay.endCallIfClosed]), as the SR sale host's.
+     * Back to a call whose route-day no longer takes its records (the Final Submit lock, or the supervisor-day submit): it
+     * ends on the phone with no close written and says why; on an open day the call stays.
+     */
+    @Test fun aCallWhoseRouteDayClosedEndsAtTheControlCallsEntryAndSaysWhy() {
+        val v = inCall()
+        assertNull("an open day leaves the call as it is", runBlocking { f.day.endCallIfClosed() })
+        assertEquals(v.visitUuid, f.day.visitSession.current.value?.visitUuid)
+        f.finalSubmitted()
+        assertEquals(DayRefusal.FINAL_SUBMIT, runBlocking { f.day.endCallIfClosed() })
+        assertNull("the call ended on the phone", f.day.visitSession.current.value)
+        assertNull(f.day.routeId)
+        f.reopened()
+        inCall(outletId = 50002, seq = 2)
+        f.supervisorDaySubmitted()
+        assertEquals(DayRefusal.SALES_SUBMIT, runBlocking { f.day.endCallIfClosed() })
+        assertNull(f.day.visitSession.current.value)
+        assertTrue("no visit_close written", runBlocking { f.db.captureDao().visitClosesOn(f.date) }.isEmpty())
+        assertEquals(listOf<Throwable>(), crashes.toList())
+    }
+
+    /** Fix round (checker low): the supervisor-day submit after the zone's Final Submit, with a call open on that route, is queued. */
+    @Test fun theSupervisorDaySubmitAfterTheFinalSubmitIsQueued() {
+        inCall()
+        f.finalSubmitted()
+        runBlocking { f.day.sale.submitWriter().queue(f.date, com.aktcl.aron.feature.dayclose.SubmitGate(true, emptyList(), null), emptyList()) }
+        assertEquals(1, queued("day_submit"))
+        assertEquals(listOf<Throwable>(), crashes.toList())
+    }
 
     @Test fun aNewCallAfterTheSupervisorDaySubmitIsRefusedByNameBeforeAFix() {
         f.supervisorDaySubmitted()

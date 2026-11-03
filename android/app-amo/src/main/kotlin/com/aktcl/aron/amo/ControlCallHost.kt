@@ -75,6 +75,11 @@ fun ControlCallHost(
     var callEnded by remember { mutableStateOf<DayRefusal?>(null) }
     val leaveCall: () -> Unit = { scope.launch { callEnded = day.closeVisit(); step = CcStep.OUTLET } }
     callEnded?.let { AmoRefusalDialog(day, it, onOk = { callEnded = null }) }
+    // X4a fix round (R-W-23, checker low): the entry guard, as the SR sale host's. A call in progress (back to it, or restored)
+    // whose route-day no longer takes its records ends on the phone at once, before any step is drafted; the outlet list says why
+    LaunchedEffect(open) {
+        if (open != null) runCatching { day.endCallIfClosed() }.getOrNull()?.let { callEnded = it; step = CcStep.OUTLET }
+    }
     val goBack: () -> Unit = {
         when (step) {
             CcStep.ROUTE -> onBack()

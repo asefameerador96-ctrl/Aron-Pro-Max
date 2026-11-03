@@ -291,6 +291,17 @@ class AmoDay(
         why
     }
 
+    /**
+     * tso-manual X4a fix round (R-W-23, checker low): the control call host's entry guard, as the SR sale host's. When the call
+     * in progress no longer takes its records (its route-day closed by the zone's Final Submit, or the AMO's supervisor-day
+     * Sales Submit standing), it ends on the phone now with no close written and the answer says why; the host goes to the
+     * outlet list and shows the text. Null leaves the call as it is.
+     */
+    suspend fun endCallIfClosed(): DayRefusal? = closeLock.withLock {
+        val v = visitSession.current.value ?: return@withLock null
+        AmoCallLock.endedBy(db, visitSession, metaProvider.meta(v.routeId))?.also { routeId = null }
+    }
+
     /** True once today's supervisor day is submitted: no new call starts until the server reopens it (the same fact the Submit screen reads). */
     suspend fun daySubmitted(): Boolean = com.aktcl.aron.feature.dayclose.RoomDaySource(db).alreadySubmitted(businessDate())
 
@@ -426,12 +437,30 @@ class AmoDay(
     /** Today's stock rows not yet on a printed slip, read from Room (survives a kill and relaunch). */
     suspend fun unprintedStock() = db.captureDao().stockOn(businessDate()).filter { !it.slipPrinted }
 
+    /**
+     * The Save the Print tap would print next: the oldest unprinted one. tso-manual X4a fix round (R-W-22, "no stock slip
+     * prints after the lock"): a Save on a route-day the zone's Final Submit closed (a Save made in a call on that route) is
+     * left out, also one stored before the lock; it stays unprinted and prints once the day reopens. A routeless Save (outside
+     * a call) never meets the lock. Empty when nothing may print.
+     */
+    suspend fun printableStockSave(): List<com.aktcl.aron.core.database.entity.StockMovementEntity> {
+        val closed = HashMap<Pair<Long?, String>, Boolean>()
+        val open = unprintedStock().filter { r ->
+            !closed.getOrPut(r.meta.routeId to r.meta.businessDate) { capture.dayRefusal(r.meta, "stock_movement") != null }
+        }
+        return StockSlips.oldestUnprintedSave(open)
+    }
+
+    /** True when the Print tap has a slip it may print ([printableStockSave]); the Stock screen draws Print only then. */
+    suspend fun stockSlipPrintable(): Boolean = printableStockSave().isNotEmpty()
+
     /** Prints one slip for every unprinted stock row of today; the confirmation question is answered by [answerStockPrint]. */
     fun printUnprintedStock() {
         printScope.launch {
             if (_stockAttempt.value != null) return@launch
             // One slip covers exactly one Save (the ledger flips the rows of the named row's Save); the next Save prints on the next tap.
-            val save = StockSlips.oldestUnprintedSave(unprintedStock())
+            // X4a fix round (R-W-22): never the slip of a Save on a route-day closed by Final Submit, even if the button was drawn.
+            val save = printableStockSave()
             if (save.isEmpty()) return@launch
             _stockAttempt.value = com.aktcl.aron.feature.sale.domain.guardedPrint { printing.printStockSlip(StockSlips.slipUuid(save), stockSlip(save)) }
         }
@@ -472,7 +501,14 @@ class AmoDay(
      * is offered for it). Outside a call the movement has no route and never meets the lock, as on the server.
      */
     suspend fun saveStock(load: StockLoad): com.aktcl.aron.feature.stock.StockSaveResult =
-        com.aktcl.aron.feature.stock.StockSaving.save(load, ::currentMs, metaProvider.meta(0L)) { capture.recordStock(it) }
+        com.aktcl.aron.feature.stock.StockSaving.save(load, ::currentMs, stockMeta()) { capture.recordStock(it) }
+
+    /**
+     * tso-manual X4a fix round (checker low): the meta of the AMO's stock movement: the open call's route, none outside a
+     * call. Never [routeId] alone: the outlet pick sets it before the fix is read, and backing out of the check step leaves
+     * it set with no call open.
+     */
+    internal fun stockMeta(): CaptureMeta = metaProvider.meta(0L).copy(routeId = visitSession.current.value?.routeId?.takeIf { it != 0L })
 
     suspend fun stockLoad(): StockLoad = stock ?: run {
         val loaded = db.captureDao().stockBalanceOn(businessDate()).associate { it.skuId to it.qtyBase }

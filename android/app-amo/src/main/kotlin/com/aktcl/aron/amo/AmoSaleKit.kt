@@ -287,10 +287,16 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
     /** F-AMO-030: the extended reconciliation (fixed rows, zero when the type has no records) and a `supervisor_day` submit. */
     fun newSubmitViewModel() = SalesSubmitViewModel(
         day.userId, day::businessDate, AmoDaySource(RoomDaySource(db), ::reconcileTypes), com.aktcl.aron.feature.dayclose.DigestServerCounts(AmoServerCounts(serverCounts, ::reconcileTypes), day.submitDigests, db),
-        // the supervisor day has no route, whatever call happens to be open (the lock and the cycle key on date + route)
-        RoomDaySubmitWriter(db, day.capture, { day.metaProvider.meta(0L).copy(routeId = null) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() }, scope = "supervisor_day"),
+        submitWriter(),
         syncScheduler, online,
     )
+
+    /**
+     * The `supervisor_day` submit's writer. The supervisor day has no route, whatever call happens to be open (the lock and
+     * the cycle key on date + route), so it is queued after the zone's Final Submit too (X4a fix round: tested on its own).
+     */
+    internal fun submitWriter() =
+        RoomDaySubmitWriter(db, day.capture, { day.metaProvider.meta(0L).copy(routeId = null) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() }, scope = "supervisor_day")
 
     /** The sync response's `server_totals` as accepted + rejected + quarantined per record type; null before the first answer. */
     private val serverCounts = ServerCounts { date ->
