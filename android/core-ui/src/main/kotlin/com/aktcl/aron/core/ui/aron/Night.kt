@@ -224,7 +224,7 @@ object NightButtonTags {
 
 /**
  * A gradient action button of the TSO look (screenshots 5, 17, 24, 44): 12 dp corners, at least 52 dp tall, a bold label; the bright
- * fills carry the navy label and the blue one a white label, all at 7:1 (TokenContrastTest). Disabled or [busy]: the grey chip fill and
+ * fills and the blue one carry a white label: 4.5:1 on the bright fills (D-TSO-MAN-50), 7:1 on blue (TokenContrastTest). Disabled or [busy]: the grey chip fill and
  * not pressable (the label stays). [fill] false sizes the button to its label (dialog buttons). [icon] draws a decorative glyph in the
  * label's colour before the label (Browse Gallery and Save, screenshot 43); the label carries the meaning for TalkBack.
  */

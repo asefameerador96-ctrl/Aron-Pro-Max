@@ -250,7 +250,7 @@ data class AronLookColors(
  * 24, 39 and 44 (JPEG, 5x5 averages; the contract's starting values where the JPEG blurs): navy page, purple-gradient glow cards, navy
  * outline cards with a teal edge, cyan figures, green-to-yellow gradient titles, the grey round back button, glow fields and gradient
  * buttons. [AronNightRoles.Sunlight] is the same set solid (white surfaces, black ink, no gradient or glow): Sunlight overrides the
- * night look. Contrast is computed by TokenContrastTest: key figures and button labels 7:1, body 4.5:1, graphics 3:1.
+ * night look. Contrast is computed by TokenContrastTest: key figures 7:1 (button labels 7:1 in Sunlight, 4.5:1 in the night look, D-TSO-MAN-50), body 4.5:1, graphics 3:1.
  *
  * Deviation from the screenshots, for legibility (rule 14, D-TSO-MAN-50): the Login (cyan), Final Submit (lime), Cancel (green) and Log Out
  * (orange) buttons keep the owner's white bold label ([onBright] = white) on the screenshot hues darkened only until the label holds

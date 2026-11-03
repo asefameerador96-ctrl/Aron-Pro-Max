@@ -195,6 +195,14 @@ class TokenContrastTest {
      * Cancel green, Log Out orange) is gated at WCAG AA 4.5:1, on both stops and the midpoint of every gradient; this is a separate group from the
      * 7:1 key-figure gate and does not loosen it. Sunlight stays at 7:1 above.
      */
+    /** The Final Submit route card (screenshot 25, night look only): white title and muted FF line on the steel-blue fill, 4.5:1. */
+    @Test fun tsoRouteCardInkReachesFourPointFive() {
+        val n = AronNightRoles.Night
+        val look = AronLook.TsoNight
+        night("route card ink", look.ink, n.routeCard, 4.5)
+        night("route card muted ink", look.inkMuted, n.routeCard, 4.5)
+    }
+
     @Test fun tsoNightButtonLabelsOnBrightFillsReachFourPointFiveToOne() {
         val n = AronNightRoles.Night
         assertEquals(Color.White, n.onBright)
