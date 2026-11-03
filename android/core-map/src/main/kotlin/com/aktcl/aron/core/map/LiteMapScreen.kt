@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -218,9 +219,11 @@ internal fun hueOf(kind: MapPointKind): Float = when (kind) {
 @Composable
 private fun PointList(points: List<MapPoint>, nowMs: Long, staleAfterMin: Int, modifier: Modifier) {
     if (points.isEmpty()) {
-        Text(stringResource(R.string.map_list_empty), modifier.padding(AronTokens.Space.L).testTag(LiteMapTags.LIST), color = LocalAronLook.current.ink)
+        Text(stringResource(R.string.map_list_empty), modifier.padding(AronTokens.Space.L).testTag(LiteMapTags.LIST), color = LocalAronLook.current.let { if (it.night != null) it.ink else Color.Unspecified })
         return
     }
+    // only the TSO look sets the ink; the SR and AMO looks inherit the content colour exactly as before (parity pinned by the AMO golden)
+    val tso = LocalAronLook.current.night != null
     val look = LocalAronLook.current
     LazyColumn(modifier.testTag(LiteMapTags.LIST)) {
         items(points, key = { it.id }) { p ->
@@ -232,8 +235,8 @@ private fun PointList(points: List<MapPoint>, nowMs: Long, staleAfterMin: Int, m
                     .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.S).testTag(LiteMapTags.ROW + p.id),
             ) {
                 // explicit look roles: outside a Surface the default ink is black, unreadable on the TSO navy page (conformance rows 28, 29)
-                Text(p.label, style = MaterialTheme.typography.titleMedium, color = look.ink)
-                pointLine(p, nowMs, staleAfterMin)?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = look.inkMuted) }
+                Text(p.label, style = MaterialTheme.typography.titleMedium, color = if (tso) look.ink else Color.Unspecified)
+                pointLine(p, nowMs, staleAfterMin)?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = if (tso) look.inkMuted else Color.Unspecified) }
             }
         }
     }
