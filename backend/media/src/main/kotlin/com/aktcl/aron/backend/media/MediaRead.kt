@@ -61,9 +61,10 @@ internal class MediaRead(private val d: MediaDeps) {
             // Lane X2 (lead ruling R-W-09 (6)): a feedback photo is also read by the roles that triage feedback (SUPPORT,
             // ADMIN, SUPERADMIN, FeedbackApi) and by the support desk, as far as they read the feedback record itself (fix
             // round, checker L3): FeedbackApi's ownerInReach rule on the author, who is the photo's captor (one signed-in
-            // user sends both), for a role FeedbackApi lists feedback to by the author's zone. Outside it, and for everyone
-            // else, the captor rule below.
-            if (row.refType == FEEDBACK_REF && listsFeedbackByReach(p) && (p.role in SupportRoles.FEEDBACK_TRIAGE || SupportRoles.isDesk(p)) && authorInReach(h, reach, row.owner, today)) return@withHandle row to true
+            // user sends both), for a role FeedbackApi lists feedback to by the author's zone. That rule is the whole answer
+            // for them (second fix round, checker low 1: never the captor rule as well, so the photo is no wider than the
+            // list); everyone else, and the desk on a role FeedbackApi does not list by zone, keeps the captor rule below.
+            if (row.refType == FEEDBACK_REF && listsFeedbackByReach(p) && (p.role in SupportRoles.FEEDBACK_TRIAGE || SupportRoles.isDesk(p))) return@withHandle row to authorInReach(h, reach, row.owner, today)
             val ok = when {
                 reach.ownRecordsOnly -> false
                 reach.national -> true

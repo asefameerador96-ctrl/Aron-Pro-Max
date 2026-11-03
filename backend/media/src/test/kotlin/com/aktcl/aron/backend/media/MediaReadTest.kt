@@ -123,7 +123,8 @@ class MediaReadTest {
      * Lane X2, lead ruling R-W-09 (6), bound to the record's reach in the fix round (checker L3): a feedback photo is read by
      * the feedback triage roles (SUPPORT, ADMIN, SUPERADMIN) and by the support desk (`support.ticket.manage`) as far as they
      * read the feedback record itself, FeedbackApi's `ownerInReach` on the author (national reach, or the author's home zone,
-     * else its primary route's zone, in the caller's zones); anyone else, and the desk outside that, keeps the captor rule.
+     * else its primary route's zone, in the caller's zones), and only that (second fix round: not the captor rule as well);
+     * anyone else, and the desk on a role FeedbackApi does not list feedback to by zone, keeps the captor rule.
      * The rule is the feedback photo's only: the same callers get no other photo outside their reach, and a ticket photo
      * stays the reporter's and the desk's.
      */
@@ -132,6 +133,7 @@ class MediaReadTest {
         val f = fixture()
         f.fresh.use {
             val other = f.ids.getValue("sr2002"); val sr = f.ids.getValue("sr1001"); val amo = f.ids.getValue("amo1001"); val admin = f.ids.getValue("admin1001")
+            val cover = f.ids.getValue("sr3003")
             // The triage roles have national reach (as ReachCalculator gives them); everyone else reaches the Mirpur zone only.
             val mirpur = { u: Long, r: Role -> Reach(u, r, day, false, setOf(f.mirZone), emptySet(), false, emptyList()) }
             val triageNational = ReachResolver { u, r, _, _ -> if (r in SupportRoles.FEEDBACK_TRIAGE) Reach(u, r, day, true, emptySet(), emptySet(), false, emptyList()) else mirpur(u, r) }
@@ -153,6 +155,15 @@ class MediaReadTest {
             denied(narrow, principal(admin, Role.SUPPORT), feedback)
             // Others keep the captor rule: the Mirpur TSO, AMO and DMO do not reach sr2002.
             denied(m, principal(amo, Role.TSO), feedback); denied(m, principal(amo, Role.AMO), feedback); denied(m, principal(amo, Role.DMO), feedback)
+            // The feedback list is the whole answer for the desk and the triage roles, in both directions (second fix round,
+            // checker low 1): sr3003 (home zone Z-OTHER) covered a Mirpur route on the photo's date, so the captor rule reaches
+            // its photo, but the Mirpur feedback list does not show its feedback (home zone first). The Mirpur DMO desk and a
+            // zone-reach SUPPORT are refused; a plain Mirpur DMO is neither, so it keeps the captor rule (R-W-21 binds the
+            // triage roles and the desk) and reads it.
+            val coverFeedback = "ffffffff-ffff-4fff-8fff-ffffffffffff"; photo(f, coverFeedback, cover, purpose = "feedback", refType = "feedback")
+            denied(m, principal(amo, Role.DMO, desk), coverFeedback)
+            denied(narrow, principal(admin, Role.SUPPORT), coverFeedback)
+            m.readUrl(principal(amo, Role.DMO), coverFeedback)
             // Only feedback photos: an outlet photo outside the reach stays refused to the triage roles and the desk.
             for (p in listOf(principal(admin, Role.SUPPORT), principal(admin, Role.ADMIN), principal(amo, Role.DMO, desk))) denied(narrow, p, outlet)
             // A ticket photo stays the desk's (the permission), not a triage role's.
@@ -168,7 +179,7 @@ class MediaReadTest {
             // to the captor rule, which refuses both here (sr2002 held its Z-OTHER route on the photo's date).
             denied(m, principal(amo, Role.AMO, desk), feedback); denied(m, principal(amo, Role.TSO, desk), feedback)
             denied(narrow, principal(amo, Role.DMO, desk), outlet)
-            assertEquals(3 + 1 + 1 + 1, issued.size, "no URL minted for a refused read")
+            assertEquals(3 + 1 + 1 + 1 + 1, issued.size, "no URL minted for a refused read")
         }
     }
 
