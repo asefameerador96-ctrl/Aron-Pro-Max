@@ -309,7 +309,7 @@ class DayApiTest {
         assertEquals(true, json(client.preview(tso).bodyAsText())["already_submitted"]!!.jsonPrimitive.content.toBoolean())
         assertEquals("final_submitted", routeDay(day, "state"))
 
-        // tso-manual B3 (D-TSO-MAN-31, default cfg.day.late_sync_after_final_policy = quarantine): a call captured before
+        // tso-manual B3 (D-TSO-MAN-31; cfg.day.late_sync_after_final_policy = quarantine, switched on in setUp: the shipped default is accept_and_flag, D-TSO-MAN-49): a call captured before
         // the close that arrives after it is held after_final_submit, out of the figures and not counted until an ADMIN
         // accepts it (LateAfterFinalTest covers the accept). It was "accepted and counted" before contract 1.10.0.
         val held = client.send(listOf(visit(o, 12.0)), want = "quarantined")

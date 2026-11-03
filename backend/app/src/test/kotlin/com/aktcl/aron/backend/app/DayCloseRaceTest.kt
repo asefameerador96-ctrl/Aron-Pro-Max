@@ -63,7 +63,7 @@ import kotlin.test.assertTrue
  * admin1001 (the SQL fallback below stays for a backend that answers 404). A reopen clears the route-days' close, so
  * after the second close they carry its time (S1 compares with the live close).
  *
- * tso-manual B3 (D-TSO-MAN-31, default cfg.day.late_sync_after_final_policy = quarantine): every row of a family that
+ * tso-manual B3 (D-TSO-MAN-31; cfg.day.late_sync_after_final_policy = quarantine, set in setUp: the shipped default is accept_and_flag, D-TSO-MAN-49): every row of a family that
  * commits after the close was captured before it (the phone's capture times precede every close), so it is held
  * `quarantined after_final_submit`, not counted; after wave 1 (and after the post-close batch of a reopen round) ADMIN
  * accepts the held items on the quarantine page, which stores them and counts them late. The counter clauses (T1 to T4)

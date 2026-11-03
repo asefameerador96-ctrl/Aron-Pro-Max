@@ -114,7 +114,7 @@ class VisitPlansTest {
     fun randomisedReadsNeverLeakAPlanOutsideTheCallersReach() = env.app {
         val rnd = Random(20)
         val tsos = mapOf("tso1001" to "MIR-SR-D", "tso2001" to "OTH-SR-1", "tso3001" to "FAR-SR-1")
-        val planDates = (1..6).map { "2027-02-0$it" }
+        val planDates = (10..15).map { day(it.toLong()) } // today+10..15: clear of the dates the other tests plan on (a second plan of one TSO, date and route would union, not create)
         val created = mutableMapOf<String, MutableSet<String>>() // plan uuid -> planner username
         val owner = mutableMapOf<String, String>()
         for ((tso, route) in tsos) for (date in planDates.shuffled(rnd).take(4)) {
