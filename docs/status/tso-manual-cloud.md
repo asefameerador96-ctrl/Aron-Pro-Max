@@ -32,6 +32,14 @@ Items in the lead's order, one commit each (golden PNGs ride in the commit that 
 - Row 41: the "Remaining" header hyphenates (Re-main-ing); the owner's wraps "Remainin / g".
 - Row 43: bottom-bar notch not drawn.
 
+## Batch 3 (tso-manual #2, lane/tso-manual-wip-batch3, based on c3f5df90)
+1. Row 102: `TsoGlow.of(screen)` is the one table the app-tso hosts and the screenshot frames read; the login-status, Target Status and Target Details goldens now draw the bottom dome (TsoGlowTest).
+2. Row 28: a stale or no-fix person row in the TSO map fallback list is drawn in the muted ink (B8C2E5, 10:1 on the page) instead of 0.5 alpha (the "Mock GPS today" line was 3.4:1); SR/AMO keep the alpha; `map_fallback_list_default_en` is unchanged.
+3. Row 34 and Set Plan pickers: glowing Date field with the calendar icon at the start, white Select Route placeholder (same ink as a chosen value; Set Plan's pickers share the component), 4.5:1 asserted.
+4. Row 38: glowing Date field, plain Comment box (page colour, quiet outline, no glow), the "Assigned to" line removed (the success banner "Task assigned to <SR>" carries the same name; string removed from both languages).
+5. Leave list: 'As of' only for a kept copy (LeaveListState); the two tests that expected it on a fresh read now assert none there and the Bangla test uses a kept copy.
+6. Row 21 panel over the Date field's border line: not changed (not a one-line offset: the panel is three rows tall).
+
 ## Task 1: goldens recorded on Linux (2026-11-03)
 - Recorded with `./gradlew :android:ui-screenshots:testDebugUnitTest -Proborazzi.record=true` in the lane container (Robolectric, Linux, Maven mirror).
 - 140 new PNGs committed in `android/ui-screenshots/src/test/screenshots/` (the 161 failing tests share names, some tests write several variants; 161 failures in run #1734 were all "missing golden"). The 21 existing goldens that record mode rewrote were reverted (they already verified in CI; no churn).
