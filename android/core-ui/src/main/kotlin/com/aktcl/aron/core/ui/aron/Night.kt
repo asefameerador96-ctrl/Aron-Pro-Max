@@ -359,6 +359,9 @@ fun NightBar(percent: Long?, modifier: Modifier = Modifier, height: Dp = 14.dp) 
 /** How far the bottom dome rises above the bottom edge: no more than the band a TsoFrame keeps free for the Home disc (78 dp). */
 val NightGlowRise: Dp = 72.dp
 
+/** The vertical squash of the bottom dome (an unsquashed circle rises 0.43 of the width): its top then sits exactly [risePx] above the bottom edge (never higher than the circle). */
+fun nightDomeSquash(widthPx: Float, risePx: Float): Float = (risePx / (0.43f * widthPx)).coerceAtMost(1f)
+
 /** Which page glow of the owner's screenshots a TSO screen draws behind its content (Night only; Sunlight is solid). */
 enum class NightPageGlow { None, Bottom, Top }
 
@@ -377,7 +380,7 @@ fun Modifier.nightPage(n: AronNightRoles, glow: NightPageGlow = NightPageGlow.No
             NightPageGlow.Bottom -> {
                 // a circle centred a little below the bottom edge (full width at the edge), squashed so its top rises only NightGlowRise:
                 // no content ever scrolls over the bright blue (white on 3D9FFF is 2.76:1), see TsoGlowRiseTest
-                val squash = (NightGlowRise.toPx() / (0.43f * w)).coerceAtMost(1f)
+                val squash = nightDomeSquash(w, NightGlowRise.toPx())
                 scale(1f, squash, pivot = Offset(w / 2f, h)) {
                     drawRect(
                         Brush.radialGradient(0f to n.glowBottom, 0.8f to n.glowBottom, 1f to n.glowBottom.copy(alpha = 0f), center = Offset(w / 2f, h + 0.2f * w), radius = 0.63f * w),

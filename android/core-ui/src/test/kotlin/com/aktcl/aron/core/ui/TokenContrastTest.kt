@@ -213,6 +213,11 @@ class TokenContrastTest {
         night("leave card ink at the end", Color.White, n.leaveEnd, 4.5)
         night("leave card ink on the day disc", Color.White, over(n.leaveDisc, n.leaveStart), 4.5)
         night("orange badge label", Color.White, n.badgeOrange, 4.5)
+        fun mid(a: Color, b: Color) = Color((a.red + b.red) / 2, (a.green + b.green) / 2, (a.blue + b.blue) / 2)
+        night("leave card ink at the gradient midpoint", Color.White, mid(n.leaveStart, n.leaveEnd), 4.5)
+        night("dropdown list ink", AronLook.TsoNight.ink, n.menu, 4.5)
+        night("dropdown list muted ink", AronLook.TsoNight.inkMuted, n.menu, 4.5)
+        night("dropdown list placeholder", n.placeholder, n.menu, 4.5)
     }
 
     /** The Final Submit route card (screenshot 25, night look only): white title, FF line and 'not due' line on the steel-blue fill, 4.5:1 (the muted ink is not used on this card). */
