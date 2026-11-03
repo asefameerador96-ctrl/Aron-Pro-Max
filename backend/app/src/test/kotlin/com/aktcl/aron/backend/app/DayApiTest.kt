@@ -433,7 +433,13 @@ class DayApiTest {
             for (u in listOf("natx2", "admin1001")) {
                 val r = client.submitOf(client.web(u), uuid(), zone, d)
                 assertEquals(HttpStatusCode.Forbidden, r.status, "$u: ${r.bodyAsText()}")
+                // A role rule refuses it, never the zone reach (ERR_OUT_OF_SCOPE): both callers reach the zone. NATIONAL's
+                // POST stops earlier, at the portal level guard ("a national user reads only"); ADMIN's reaches the delegate
+                // bound in submitKind, which is the refusal pinned below (second fix round, checker low 4).
+                assertEquals("ERR_FORBIDDEN", code(r.bodyAsText()), "$u: ${r.bodyAsText()}")
             }
+            val byAdmin = client.submitOf(client.web("admin1001"), uuid(), zone, d)
+            assertEquals("Final Submit is the TSO's (or a delegate role's)", json(byAdmin.bodyAsText())["detail"]!!.jsonPrimitive.content, byAdmin.bodyAsText())
             assertEquals(0L, closes(), "a refused submit closes nothing")
             val byDmo = client.submitOf(client.web("dmo1001"), uuid(), zone, d)
             assertEquals(HttpStatusCode.OK, byDmo.status, byDmo.bodyAsText())
