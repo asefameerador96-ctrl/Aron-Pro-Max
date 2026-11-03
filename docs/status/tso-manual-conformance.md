@@ -150,3 +150,34 @@ Three Sonnet readers + three verifiers over rows 19–26, 28–29, 31–38, 43 a
 7. Row 34: a behavioural Compose test for My Visit Plan (date, zone, route → Show Outlet).
 8. TsoBottomBar's cyan primary button (ChangePasswordScreen) → NightButton Cyan (white label, 4.5:1).
 9. Cosmetic rows 8, 14, 16, 30, 41 as listed in docs/status/tso-manual-cloud.md.
+
+## Re-check after fix batch 2 (candidate 2efd3da0 → c3f5df90; workflow wf_5925fc03-379, 3 Sonnet readers + 3 adversarial verifiers, 1.19M subagent tokens, finished 23:28 UTC 2026-11-03; every verifier verdict upheld)
+
+| Row | Verdict | Evidence / remaining gap |
+|---|---|---|
+| 19 | PROVEN | Top wash unbroken (golden 0A3056→082850→page, no bar step; AronNightTopBar onPage); card linearGradient 126985→16507F edge 2A9FC0; badge exactly B45C00 (white 4.70); day disc 5.83:1 where it sits, 4.79 worst case over leaveStart (gated). Residuals: the owner's wash is a radial glow peaking ~10% down and a shade brighter; "As of" shown for a fresh read (→ batch 3 item 5); fixture dates. Lead ruling: the day count is a status figure, 4.5:1 applies. |
+| 20 | PROVEN | Same wash; all fields 131C45 = token match with the owner's; Date field carries the purple glow (nightGlow fieldEdge 14 dp/8 dp). Cosmetic residual: the owner's bottom teal haze is not drawn. |
+| 21 | PROVEN | Panel 050D2E (= menu token) field-width, rows 48 dp, items Casual/Sick/Earn in white. Cosmetic: the panel fully covers the Date field's border line that the owner's shows beneath (→ batch 3 item 6, only if trivial). |
+| 22 | PROVEN | Helper line is a separate Text under the field (13 sp, inkMuted/danger; error still announced via semantics); no dark patch (pixels = page colour); B8C2E5 on 040C3A 10.62:1. 200% bn clips the Apply bar at the 800 dp frame (frame, not the app). |
+| 101 tickets harness | PROVEN | TicketScreenshotTests wraps every shot in AronTheme(dark=!sunlight, tso=true) = production; the 37 tickets_* goldens are in the night look. |
+| 23, 24 | PARTIAL (accepted residual) | Dome 3D9FFF rises 72 dp (71 px) vs the owner's ~155 dp; everything else on the pages matches. Lead ruling: 72 dp stays for now (one token, nothing readable over it); the taller dome on pages whose bottom band is content-free is offered to the owner as an option. |
+| 25 | PROVEN | All five cards 3F7AAD at three sample points each, no alpha difference (not-due dimming gone). Pre-existing, not batch 2: lime Sales Date box (owner's green), chip-vs-clipboard glyph. |
+| 26 | PROVEN | Scrim dim 0.60 → 0.34 (owner's ~0.5); panel width edge-to-edge vs the owner's inset card unproven until the device walk. |
+| 102 glows | PARTIAL | The Target Status, Target Details and login-status domes exist only in app-tso host code (TsoTargetsHost.kt:114/127, TsoDashboardHost.kt:154 pass glow = Bottom); no golden or test proves them because the screenshot frames do not pass the glow (FinalSubmitScreen.kt:109 passes it inside the feature, hence only s23–s26 goldens show it). → batch 3 item 1. |
+| 8, 30, 41 | PROVEN | One-line "Login & Bikroy Joma Status" title; StoreOff = storefront path + slash (Icons.kt:72); one figure size per Target Details column. |
+| 28 | PARTIAL | Live rows fixed (white titles, muted B8C2E5); stale/no-fix rows keep alpha 0.5 → secondary line 5E678F on 040C3A = 3.41:1 (incl. the "Mock GPS today" flag). → batch 3 item 2. |
+| 29 | PROVEN | Every outlet row title FFFFFF, detail B8C2E5 on the navy page; radius menu golden matches. |
+| 33, 38 FAB | PROVEN | Per-pixel column x=180: lime fill to y=717, halo 718–721, disc from 722: no overlap, in en/bn/200%. Row 38 extras (not FAB): Date field lacks the glow, Comment box has a glow the owner's lacks, extra "Assigned to" line. → batch 3 item 4. |
+| 34 | PARTIAL | MyCallScreenTest.myVisitPlanShowsTodayAndTheZoneAndNeedsARouteBeforeShowOutlet exists at the candidate with the asserted steps (green CI run comes with train 68's gate run); golden: Date field has no purple glow border (owner's does), Select Route placeholder muted 8A93B8 vs the owner's white. → batch 3 item 3. |
+| TsoBottomBar | PROVEN | TsoKit.kt:360 NightButton(style = Cyan, fill = false, enabled, busy); white label on the cyan ramp 4.55–4.61. |
+| 14 | PROVEN (accepted residual) | tickets_details goldens byte-identical to 8cba953a; only the 360 dp vs ~410 dp canvas width differs. |
+| 16 | PROVEN (accepted residual) | tickets_quick_sheet goldens byte-identical; the residual is the 800 dp golden canvas height (the sheet itself matches the owner's); earlier wording "extra username field" corrected here. |
+
+## Fix batch 3 (assigned 23:3x UTC 2026-11-03 to tso-manual #2 on lane/tso-manual-wip-batch3 from c3f5df90; c3f5df90 stays the train-68 candidate)
+1. Row 102: prove the bottom dome on Target Status / Target Details / login status with goldens (frame parameters in the screenshot tests, or move the glow into the feature composables as Final Submit does).
+2. Row 28: stale/no-fix person rows → muted token holding >= 4.5:1 instead of alpha 0.5 (TSO look only; AMO golden byte-identical) + TokenContrastTest line.
+3. Row 34: Date field purple glow border; Select Route placeholder white (>= 4.5:1 on the field).
+4. Row 38: Date field glow; no glow on the Comment box; drop or justify the extra "Assigned to" line.
+5. Leave list: "As of" only for a kept copy (LeaveListState.publish) + test.
+6. Row 21 (optional, one-line): let the Date field's border show beneath the dropdown panel.
+Lead rulings: rows 23/24 dome 72 dp accepted for now (tall-dome option offered to the owner); leave-card day count = status figure (4.5:1).
