@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.VisualTransformation
@@ -217,7 +218,7 @@ fun NightGlowField(
                 .semantics {
                     (label ?: placeholder)?.let { contentDescription = it }
                     // the helper line is drawn outside the field: an error message is still announced with the field
-                    if (isError && supportingText != null) error(supportingText)
+                    if (isError && supportingText != null) this.error(supportingText)
                 },
             enabled = enabled, singleLine = singleLine, minLines = minLines, isError = isError, shape = shape,
             textStyle = lookStyle(16.sp, color = n.ink),
