@@ -162,6 +162,8 @@ fun TsoDashboardContent(
 
 @Composable
 private fun AsOf(state: TsoDashboardState) {
+    // D-TSO-MAN-40: the owner's dashboard screenshots 6 and 7 have no "As of" line; it shows only when a card is a kept (offline) copy
+    if (!state.anyKept) return
     val n = nightRoles()
     val clock = TsoDashboards.asOfClock(state.asOf)?.let { localizedDigits(it) } ?: return
     val text = if (state.anyKept) stringResource(R.string.tso_dash_kept_copy, clock) else stringResource(R.string.tso_dash_as_of, clock)
@@ -528,7 +530,7 @@ fun TsoLoginSubmitStatusContent(
                     load == null -> item(key = "loading") { TsoLoading(Modifier.heightIn(min = 200.dp)) }
                     v == null -> item(key = "note") { TsoNote(stringResource(if (load.failure == TsoFailure.REFUSED) R.string.tso_dash_card_refused else R.string.tso_dash_card_offline)) }
                     else -> {
-                        TsoDashboards.asOfClock(v.asOf)?.let { c ->
+                        TsoDashboards.asOfClock(v.asOf)?.takeIf { load.kept }?.let { c -> // D-TSO-MAN-40: only a kept copy says "As of"
                             item(key = "as_of") {
                                 val clock = localizedDigits(c)
                                 Text(

@@ -3,7 +3,9 @@ package com.aktcl.aron.feature.tso
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -29,14 +31,29 @@ class TsoLoginStatusScreenTest {
 
     private val stamp = "\"as_of\":\"2026-10-29T08:30:00Z\",\"date\":\"2026-10-29\",\"till_time\":true,\"last_updated_at\":null"
 
-    private fun show(users: LoginSubmitUsers?) {
+    private fun show(users: LoginSubmitUsers?, kept: Boolean = false) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
         compose.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
-                TsoLoginTheme(AppLanguage.EN, loggedOut = false) { TsoLoginSubmitStatusContent(LoginSubmitTab.NOT_LOGGED_IN, CardLoad(users), false, {}, {}) }
+                TsoLoginTheme(AppLanguage.EN, loggedOut = false) { TsoLoginSubmitStatusContent(LoginSubmitTab.NOT_LOGGED_IN, CardLoad(users, kept = kept), false, {}, {}) }
             }
         }
         compose.waitForIdle()
+    }
+
+    private val oneUser = """{$stamp,"tab":"not_logged_in","route_count":1,"truncated":false,"items":[
+        {"route_id":2,"route_code":"R2","route_name":"Apsis Route 2","zone_id":9,"dep_name":"Banani - Test","user_id":9,"username":"sr9","display_name":null,"role":"SR"}]}"""
+
+    /** D-TSO-MAN-40: the owner's screenshot 8 has no "As of" line; it appears only for a kept (offline) copy. */
+    @Test fun theAsOfLineShowsOnlyForAKeptCopy() {
+        show(TsoDashboards.users(oneUser), kept = false)
+        compose.onNodeWithText("sr9").assertExists()
+        compose.onAllNodesWithTag(TsoDashTags.AS_OF).assertCountEquals(0)
+    }
+
+    @Test fun aKeptCopySaysSoWithItsClock() {
+        show(TsoDashboards.users(oneUser), kept = true)
+        compose.onNodeWithTag(TsoDashTags.AS_OF).assertExists()
     }
 
     @Test fun aUserWithoutAFullNameShowsTheUsernameAndOnlyAVacantRouteIsSrNotSet() {

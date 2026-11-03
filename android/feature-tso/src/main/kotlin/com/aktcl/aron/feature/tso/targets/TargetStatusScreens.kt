@@ -189,6 +189,8 @@ private fun missing(failure: TsoFailure): String = stringResource(
 
 @Composable
 private fun AsOfLine(asOf: String, kept: Boolean) {
+    // D-TSO-MAN-40: the owner's screenshots 39 to 42 have no "As of" line; it shows only for a kept (offline) copy
+    if (!kept) return
     val n = nightRoles()
     val clock = TsoDashboards.asOfClock(asOf)?.let { localizedDigits(it) } ?: return
     Text(
