@@ -59,7 +59,9 @@ info:
       `DailyTrackingRow.tilldate_target_achievement_bp` (the float `tilldate_target_achievement_pct` is deprecated),
       `TargetVsAchievement.monthly_target_qty` and `working_days`, `RouteSnapshot.sr_user_id` and `sr_name`, and the
       descriptions of `updateSupportTicket`, `addSupportTicketEvent`, `CategoryVolume.qty_entered` and the channel
-      `share_pct_bp` denominators.
+      `share_pct_bp` denominators. `DailyTrackingRow.by_category` now counts sold quantity only, never free or DRP lines
+      (lead ruling R-W-20: an existing reader shows a smaller `qty_base` for a route-day with promo or DRP lines), and
+      `FinalSubmitPreview.can_submit` is true for a delegate only when its role is DMO or WM (D-X2-14, R-W-21).
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -10114,9 +10116,9 @@ components:
         already_submitted: { type: boolean }
         can_submit:
           type: boolean
-          description: 'Whether the caller may Final Submit this zone-day: true when the caller''s role is TSO or is listed
-            in `cfg.day.final_submit_delegate_roles` (resolved as `postFinalSubmit` reads it), the same rule the submit
-            path enforces; the zone is already in the caller''s reach (else this read is 403). It is the role rule only:
+          description: 'Whether the caller may Final Submit this zone-day: true when the caller''s role is TSO, or is DMO
+            or WM and is listed in `cfg.day.final_submit_delegate_roles` (the registry bound; any other listed role is
+            ignored; resolved as `postFinalSubmit` reads it), the same rule the submit path enforces; the zone is already in the caller''s reach (else this read is 403). It is the role rule only:
             whether the zone-day is already submitted is `already_submitted`, so the app and the web offer Submit when
             `can_submit` is true and `already_submitted` is false. Optional until the server sends it (the required list
             does not change, lead ruling R-W-06; 1.10.x makes it required); a reader of a server that does not send it

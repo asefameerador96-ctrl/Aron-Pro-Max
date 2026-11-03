@@ -46,6 +46,9 @@ class TsoManualContractTest {
         for (member in listOf("`FinalSubmitPreview.can_submit`", "`DailyTrackingRow.tilldate_target_achievement_bp`", "`TargetVsAchievement.monthly_target_qty` and `working_days`",
             "`RouteSnapshot.sr_user_id` and `sr_name`", "`CategoryVolume.qty_entered`")) assertTrue(info.contains(member), "the 1.10.0 changelog must name $member")
         assertFalse(info.contains("can_submit` (required"), "can_submit is optional (R-W-06: the required lists do not change)")
+        // Lane X2 second fix round: the amendments that change what an existing member means are named too.
+        assertTrue(info.contains("`DailyTrackingRow.by_category` now counts sold quantity only, never free or DRP lines (lead ruling R-W-20"), "the 1.10.0 changelog must name R-W-20's by_category change")
+        assertTrue(info.contains("`FinalSubmitPreview.can_submit` is true for a delegate only when its role is DMO or WM (D-X2-14, R-W-21)"), "the 1.10.0 changelog must name D-X2-14's delegate bound")
     }
 
     @Test
@@ -640,12 +643,14 @@ class TsoManualContractTest {
         assertEquals(listOf("zone_id", "business_date", "already_submitted", "routes"), required("FinalSubmitPreview"), "the required list does not change (R-W-06)")
         val text = flat(p["description"])
         for (rule in listOf(
-            "true when the caller's role is TSO or is listed in `cfg.day.final_submit_delegate_roles`", "the same rule the submit path enforces",
+            "true when the caller's role is TSO, or is DMO or WM and is listed in `cfg.day.final_submit_delegate_roles` (the registry bound; any other listed role is ignored",
+            "the same rule the submit path enforces",
             "It is the role rule only: whether the zone-day is already submitted is `already_submitted`",
             "offer Submit when `can_submit` is true and `already_submitted` is false", "Optional until the server sends it",
             "1.10.x makes it required", "falls back to the TSO rule", "R-W-06",
         )) assertTrue(text.contains(rule), "FinalSubmitPreview.can_submit must say: $rule")
         assertFalse(text.contains("The server always computes it"), "optional, so the contract does not promise it yet")
+        assertFalse(text.contains("role is TSO or is listed in"), "a listed role outside DMO and WM is not a delegate (D-X2-14, R-W-21)")
         assertFalse(p.containsKey("default"), "no schema default (openapi-typescript, D-F1-02)")
     }
 

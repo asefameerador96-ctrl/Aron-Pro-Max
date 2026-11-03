@@ -89,8 +89,9 @@ data class FinalSubmitPreviewDto(
     val warn_route_ids: List<Long> = emptyList(),
     /**
      * Lane X2 (lead ruling R-W-06 (1), contract 1.10.0): whether the caller may Final Submit this zone-day, from the rule
-     * the submit path enforces ([DayService.submitKind]): TSO, or a role in `cfg.day.final_submit_delegate_roles`. The
-     * zone is in the caller's reach (else the preview is 403). The role rule only: `already_submitted` stays separate.
+     * the submit path enforces ([DayService.submitKind]): TSO, or a role that is DMO or WM and is listed in
+     * `cfg.day.final_submit_delegate_roles` (the registry bound, D-X2-14; any other listed role is ignored). The zone is in
+     * the caller's reach (else the preview is 403). The role rule only: `already_submitted` stays separate.
      */
     val can_submit: Boolean = false,
 )

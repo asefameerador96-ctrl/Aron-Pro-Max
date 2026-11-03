@@ -256,7 +256,7 @@ Source: contract/openapi.yaml, version 1.10.0.
 - `schemas/AppHome.yaml` (572 B)
 - `schemas/TeamDayRow.yaml` (763 B)
 - `schemas/SalesSubmitRequest.yaml` (861 B)
-- `schemas/FinalSubmitPreview.yaml` (5558 B)
+- `schemas/FinalSubmitPreview.yaml` (5638 B)
 - `schemas/FinalSubmitRequest.yaml` (737 B)
 - `schemas/FinalSubmitResult.yaml` (616 B)
 - `schemas/SubmitVoidRequest.yaml` (575 B)
