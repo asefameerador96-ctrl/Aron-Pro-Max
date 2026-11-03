@@ -307,10 +307,10 @@ data class AronNightRoles(
     /**
      * The page glows of the owner's screenshots (Night only; Sunlight is solid and draws none): [glowBottom] is the bright-blue dome
      * rising from the bottom edge of Final Submit (23 to 26), Target Status (39 to 42) and the login-status page; [glowTop] is the
-     * blue wash down from the top of the Leave pages (19 to 22). Nothing but the Home disc and empty page sits on the dome, and white ink on
-     * [glowTop] is 7:1 or more (TokenContrastTest).
+     * blue wash down from the top of the Leave pages (19 to 22). The dome rises only [com.aktcl.aron.core.ui.aron.NightGlowRise] (inside the Home band), so no content scrolls over it; the title, white ink,
+     * muted ink and the kit red on [glowTop] hold their gates (TokenContrastTest).
      */
-    val glowBottom: Color = hex(0x3D9FFF), val glowTop: Color = hex(0x104B78),
+    val glowBottom: Color = hex(0x3D9FFF), val glowTop: Color = hex(0x0A3056),
     /**
      * The Leave application card (screenshot 19, night look only): a teal-to-blue gradient fill with a teal edge, white ink (6:1 at the
      * start, 8:1 at the end), a day-count disc of [leaveDisc] over it, and the solid orange pending badge [badgeOrange] with a white bold

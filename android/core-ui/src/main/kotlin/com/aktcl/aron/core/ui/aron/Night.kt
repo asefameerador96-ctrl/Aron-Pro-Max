@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -213,7 +214,11 @@ fun NightGlowField(
                 .fillMaxWidth()
                 .heightIn(min = 56.dp)
                 .nightGlow(n, n.fieldEdge, shape, 8.dp)
-                .semantics { (label ?: placeholder)?.let { contentDescription = it } },
+                .semantics {
+                    (label ?: placeholder)?.let { contentDescription = it }
+                    // the helper line is drawn outside the field: an error message is still announced with the field
+                    if (isError && supportingText != null) error(supportingText)
+                },
             enabled = enabled, singleLine = singleLine, minLines = minLines, isError = isError, shape = shape,
             textStyle = lookStyle(16.sp, color = n.ink),
             placeholder = if (placeholder == null) null else { { Text(placeholder, style = lookStyle(16.sp, color = n.placeholder)) } },
@@ -350,6 +355,9 @@ fun NightBar(percent: Long?, modifier: Modifier = Modifier, height: Dp = 14.dp) 
     }
 }
 
+/** How far the bottom dome rises above the bottom edge: no more than the band a TsoFrame keeps free for the Home disc (78 dp). */
+val NightGlowRise: Dp = 72.dp
+
 /** Which page glow of the owner's screenshots a TSO screen draws behind its content (Night only; Sunlight is solid). */
 enum class NightPageGlow { None, Bottom, Top }
 
@@ -366,11 +374,14 @@ fun Modifier.nightPage(n: AronNightRoles, glow: NightPageGlow = NightPageGlow.No
         val h = size.height
         when (glow) {
             NightPageGlow.Bottom -> {
-                // a circle centred a little below the bottom edge: its top rises about 0.43 of the width above the edge, full width at the edge
-                val centre = Offset(w / 2f, h + 0.2f * w)
-                drawRect(
-                    Brush.radialGradient(0f to n.glowBottom, 0.8f to n.glowBottom, 1f to n.glowBottom.copy(alpha = 0f), center = centre, radius = 0.63f * w),
-                )
+                // a circle centred a little below the bottom edge (full width at the edge), squashed so its top rises only NightGlowRise:
+                // no content ever scrolls over the bright blue (white on 3D9FFF is 2.76:1), see TsoGlowRiseTest
+                val squash = (NightGlowRise.toPx() / (0.43f * w)).coerceAtMost(1f)
+                scale(1f, squash, pivot = Offset(w / 2f, h)) {
+                    drawRect(
+                        Brush.radialGradient(0f to n.glowBottom, 0.8f to n.glowBottom, 1f to n.glowBottom.copy(alpha = 0f), center = Offset(w / 2f, h + 0.2f * w), radius = 0.63f * w),
+                    )
+                }
             }
             NightPageGlow.Top -> drawRect(
                 Brush.verticalGradient(0f to n.glowTop, 1f to n.glowTop.copy(alpha = 0f), startY = 0f, endY = h * 0.45f),

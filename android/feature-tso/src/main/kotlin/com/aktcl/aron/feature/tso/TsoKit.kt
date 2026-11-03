@@ -130,7 +130,12 @@ fun TsoFrame(
             AronNightTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back), onPage = true)
             Box(
                 Modifier.weight(1f).fillMaxWidth()
-                    .then(if (homeButton && bottomBar == null) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = TsoFabBand) else Modifier),
+                    .then(
+                        if (homeButton && bottomBar == null) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = TsoFabBand)
+                        // a bottom glow with no Home disc and no bar (Final Submit pickers): content stays clear of the dome
+                        else if (glow == NightPageGlow.Bottom && bottomBar == null) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = TsoFabBand)
+                        else Modifier,
+                    ),
                 content = content,
             )
             if (bottomBar != null) {

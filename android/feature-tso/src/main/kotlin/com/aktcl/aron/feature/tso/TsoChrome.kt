@@ -27,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -319,7 +320,8 @@ fun TsoLogoutDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
 fun TsoInfoDialog(title: String, message: String, okLabel: String, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         // a lighter scrim than the platform's 0.6 (screenshot 26: the page stays visible behind the card)
-        (LocalView.current.parent as? DialogWindowProvider)?.window?.setDimAmount(0.35f)
+        val dialogView = LocalView.current
+        SideEffect { (dialogView.parent as? DialogWindowProvider)?.window?.setDimAmount(0.35f) }
         TsoInfoDialogContent(title, message, okLabel, onDismiss)
     }
 }

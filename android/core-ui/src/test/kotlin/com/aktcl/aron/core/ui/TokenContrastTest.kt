@@ -200,6 +200,10 @@ class TokenContrastTest {
         val n = AronNightRoles.Night
         night("ink on the top glow", AronLook.TsoNight.ink, n.glowTop, 7.0)
         night("muted ink on the top glow", AronLook.TsoNight.inkMuted, n.glowTop, 4.5)
+        night("title start on the top glow", n.titleStart, n.glowTop, 7.0)
+        night("title end on the top glow", n.titleEnd, n.glowTop, 7.0)
+        night("kit red (field errors) on the top glow", AronLook.TsoNight.red, n.glowTop, 4.5)
+        night("back disc on the top glow", n.backButton, n.glowTop, 1.5)
     }
 
     /** The Leave card (screenshot 19, night look only): white ink on both gradient stops 4.5:1 (day word, captions), white badge label on orange 4.5:1. */
