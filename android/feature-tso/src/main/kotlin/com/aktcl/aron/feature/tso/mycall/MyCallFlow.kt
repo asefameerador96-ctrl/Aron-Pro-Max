@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.feature.tso.R
@@ -92,7 +93,7 @@ fun VisitPlanEntry(deps: MyCallDeps, userKey: String, today: () -> String, nav: 
         }
         STEP_TASK -> {
             val outlet = checkNotNull(sel.outlet)
-            val days = st.ui.value.maxAheadDays
+            val days = st.ui.collectAsStateWithLifecycle().value.maxAheadDays
             val t = rememberRetained("tso-$userKey-mc-task-${sel.planUuid}-${outlet.id}") {
                 AssignTaskState(sel.types, sel.route, outlet.id, deps.taskQueue, today, sel.planUuid, QueryIds.task(sel.planUuid, outlet.id), days)
             }
