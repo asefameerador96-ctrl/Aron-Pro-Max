@@ -103,6 +103,7 @@ private val LEVELS = mapOf(
 )
 /** [LEVELS] plus `house` (children: its zones; resolved from the reach in nodeScope), for the caller's default node only; an explicit `level=house` stays 400 (contract GeoLevelQuery). */
 private val DEFAULT_LEVELS = LEVELS + ("house" to Level(null, null, "zone_id", "zone_name", "zone"))
+internal fun isDashboardLevel(type: String): Boolean = type in DEFAULT_LEVELS
 /** A route-only caller's default node (D-BC-DASH-ROUTE-KEYED-01): children are its routes, as under a zone. */
 private val ROUTE_LEVEL = Level(null, null, null, null, "route")
 
