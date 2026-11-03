@@ -173,7 +173,7 @@ Three Sonnet readers + three verifiers over rows 19–26, 28–29, 31–38, 43 a
 | 14 | PROVEN (accepted residual) | tickets_details goldens byte-identical to 8cba953a; only the 360 dp vs ~410 dp canvas width differs. |
 | 16 | PROVEN (accepted residual) | tickets_quick_sheet goldens byte-identical; the residual is the 800 dp golden canvas height (the sheet itself matches the owner's); earlier wording "extra username field" corrected here. |
 
-## Fix batch 3 (assigned 23:3x UTC 2026-11-03 to tso-manual #2 on lane/tso-manual-wip-batch3 from c3f5df90; c3f5df90 stays the train-68 candidate)
+## Fix batch 3 (assigned 23:31 UTC 2026-11-03 to tso-manual #2 on lane/tso-manual-wip-batch3 from c3f5df90; c3f5df90 stays the train-68 candidate)
 1. Row 102: prove the bottom dome on Target Status / Target Details / login status with goldens (frame parameters in the screenshot tests, or move the glow into the feature composables as Final Submit does).
 2. Row 28: stale/no-fix person rows → muted token holding >= 4.5:1 instead of alpha 0.5 (TSO look only; AMO golden byte-identical) + TokenContrastTest line.
 3. Row 34: Date field purple glow border; Select Route placeholder white (>= 4.5:1 on the field).
