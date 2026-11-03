@@ -82,7 +82,7 @@ class TsoAreaScreenshotTests {
 
     private fun shot(name: String, language: AppLanguage, sunlight: Boolean = false, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
-        rule.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) { content() } } }
+        rule.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language, dark = !sunlight, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true, tso = true) { content() } } }
         rule.waitForIdle()
         if (recordTo == null && System.getProperty("roborazzi.test.record") != "true") assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
         rule.onRoot().captureRoboImage("${recordTo ?: goldens}/$name.png", roborazziOptions = options)
@@ -92,7 +92,7 @@ class TsoAreaScreenshotTests {
     @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
     private fun menuShot(name: String, language: AppLanguage, openTag: String, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
-        rule.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language, dark = false, sunlight = false, tier = GlassTier.B, reducedMotion = true) { content() } } }
+        rule.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language, dark = true, sunlight = false, tier = GlassTier.B, reducedMotion = true, tso = true) { content() } } }
         rule.waitForIdle()
         rule.onNodeWithTag(openTag).performClick(); rule.waitForIdle()
         if (recordTo == null && System.getProperty("roborazzi.test.record") != "true") assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
