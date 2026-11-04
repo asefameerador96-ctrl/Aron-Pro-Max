@@ -217,3 +217,6 @@ Lead rulings: rows 23/24 dome 72 dp accepted for now (tall-dome option offered t
 
 ### Fix batch 3 — round 4 (assigned 00:34 UTC 2026-11-04)
 (a) Final Submit pickers: full edge border when the glow-alike opt-in is set; re-record tso_fs_s23_*. (b) tso-manual-cloud.md lines 36/40/67. (c) LeaveTest.kt:275 comment → D-TSO-MAN-52. (d) TsoGlowTest iterate TsoScreen.entries minus the two Bottom pages.
+
+### Round 4 result (candidate d338c025, 00:45 UTC 2026-11-04; lead's own pixel check)
+| 23 Final Submit pickers | PROVEN | tso_fs_s23_en.png: all five pickers now draw the same edge (123,63,228) at the top and left borders (old golden: Wing (123,63,228), the four disabled (61,42,133)); only the three fs_s23 goldens changed. Docs/comments/test items (b)(c)(d) done; lead Opus checker on the round-4 delta running. |
