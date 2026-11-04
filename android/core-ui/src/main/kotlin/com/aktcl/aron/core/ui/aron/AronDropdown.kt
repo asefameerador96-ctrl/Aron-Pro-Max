@@ -84,7 +84,7 @@ fun <T> AronDropdown(
                     .fillMaxWidth()
                     .onSizeChanged { fieldWidthPx = it.width; fieldHeightPx = it.height }
                     .heightIn(min = 56.dp)
-                    .then(if (n != null) Modifier.nightGlow(n, edge, shape, 8.dp) else Modifier)
+                    .then(if (n != null && enabled) Modifier.nightGlow(n, edge, shape, 8.dp) else Modifier) // a disabled picker has no halo
                     .clip(shape)
                     .background(fill)
                     .border(if (n?.solid == true) 2.dp else 1.dp, if (enabled) edge else edge.copy(alpha = 0.4f), shape)
