@@ -51,7 +51,8 @@ id. A ticket row opens that ticket, a leave decision opens Leave, a midnight aut
 The newest page is kept for offline with its "as of". Kinds: ticket_updated, leave_decided, final_submit_auto; announcements stay
 push-only. A tapped push notice opens the inbox (`notification`) or the Ticket Dashboard (`ticket_updated`); the push itself carries
 the reason only (fixed Bangla and English text, no business data). `day_final_submitted` is the SR and AMO day-lock push (silent
-"Day closed" notice).
+"Day closed" notice), sent only while `cfg.day.late_sync_after_final_policy` is quarantine or reject; under accept_and_flag
+(the default, owner decision 2026-11-04) a close sends `day_state_changed`, which shows nothing and only pulls the day state.
 
 ## Leave
 
