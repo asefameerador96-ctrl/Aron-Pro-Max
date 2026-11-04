@@ -167,7 +167,7 @@ class AmoDayLockGateTest {
         val session = VisitSession().also { it.restore(v) }
         finalSubmitted()
         // AmoDay.closeVisit's own check (A3's AmoCallLock) ends the call first ...
-        assertTrue(runBlocking { AmoCallLock.endsOnPhone(db, VisitSession().also { it.restore(v) }, meta()) })
+        assertTrue(runBlocking { AmoCallLock.endsOnPhone(repo, VisitSession().also { it.restore(v) }, meta()) })
         // ... and a lock that lands after that check ends it in the write (AmoSaleKit.closeVisit, AmoDay.closeAbandoned)
         val closer = VisitCloser(repo, { _, rid -> meta(rid) }, { now })
         assertFalse(runBlocking { AmoLockGate.closeCall(session) { o -> closer.close(VisitToClose(o.visitUuid, o.routeId, null), VisitOutcomeCode.SOLD, date) } })

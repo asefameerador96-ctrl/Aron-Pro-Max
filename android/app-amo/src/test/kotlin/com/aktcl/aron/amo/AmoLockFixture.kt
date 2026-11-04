@@ -113,6 +113,20 @@ internal class AmoLockFixture(context: Context, latePolicy: String?) {
      */
     fun setLatePolicy(policy: String?) = latePolicyOn(db, policy)
 
+    /**
+     * X4a fix round (checker low): the trusted clock as one server answer sets it ([serverMs] now), so a test can run the
+     * phone's own wall clock ahead of or behind the day's trusted time.
+     */
+    fun trustAt(serverMs: Long) = components.trustedClock.record(com.aktcl.aron.rules.TimeAnchor(0, serverMs, SystemClock.elapsedRealtime()))
+
+    /** X4a fix round: an admin's late-sale policy scheduled from [fromIso] (a bundle's scheduled row), next to the resolved one. */
+    fun schedulePolicy(policy: String, fromIso: String) = runBlocking {
+        db.referenceDao().insertConfig(listOf(ConfigValueEntity(
+            key = FinalSubmitLock.KEY_LATE_POLICY, valueJson = "\"$policy\"", scopeType = "global", scopeId = null, effectiveFrom = fromIso,
+            effectiveTo = null, configVersion = 2, requiresAck = false, scheduled = true,
+        )))
+    }
+
     init { setLatePolicy(latePolicy) }
 
     fun meta(routeId: Long? = route): CaptureMeta = day.metaProvider.meta(routeId ?: 0L)

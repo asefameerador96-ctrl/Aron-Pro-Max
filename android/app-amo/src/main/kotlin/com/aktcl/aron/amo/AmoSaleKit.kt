@@ -180,7 +180,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
      */
     suspend fun endCallIfClosed(): com.aktcl.aron.core.database.repo.DayRefusal? {
         val v = day.visitSession.current.value ?: return null
-        val why = AmoCallLock.endedBy(db, day.visitSession, day.metaProvider.meta(v.routeId)) ?: return null
+        val why = AmoCallLock.endedBy(day.capture, day.visitSession, day.metaProvider.meta(v.routeId)) ?: return null
         callStarted.remove(v.visitUuid); day.routeId = null
         return why
     }

@@ -158,6 +158,41 @@ class SrLatePolicyTest {
         assertNotNull(f.day.stockAttempt.value)
     }
 
+    /**
+     * X4a fix round (checker low): the call guards (SaleHost's entry guard, the sale screens' close pre-check, leaving the
+     * call, the relaunch check) read the late-sale policy at the day's trusted time, the instant the writes use, never at
+     * the phone's wall clock. Here the phone's clock runs ten minutes ahead of trusted time and an admin's quarantine is
+     * scheduled to start between the two: at trusted time the policy is still accept_and_flag, so the call stays open, is
+     * restored after a relaunch and its close is written.
+     */
+    @Test fun theCallGuardsReadThePolicyAtTrustedTimeNotAtTheWallClock() {
+        val f = SrLockFixture(context, latePolicy = "accept_and_flag")
+        try {
+            val wall = System.currentTimeMillis()
+            f.trustAt(wall - 10 * 60_000L) // trusted time: ten minutes behind the phone's own clock
+            f.schedulePolicy("quarantine", fromIso = f.day.iso(wall - 5 * 60_000L))
+            f.finalSubmitted()
+            assertFalse("accept_and_flag at trusted time", runBlocking { FinalSubmitLock.lockApplies(f.db, f.day.iso(f.day.currentMs())) })
+            assertTrue("quarantine at the wall clock", runBlocking { FinalSubmitLock.lockApplies(f.db, f.day.iso(System.currentTimeMillis())) })
+            val v = f.openCall()
+            f.day.visitSession.restore(v)
+            assertNull("SaleHost's entry guard", runBlocking { f.day.openCallRefusal() })
+            assertNull("the sale screens' close pre-check", runBlocking { f.day.endCallIfClosed() })
+            assertEquals(v.visitUuid, f.day.visitSession.current.value?.visitUuid)
+            // a relaunch restores the call
+            f.day.visitSession.close()
+            runBlocking { f.day.restoreOpenVisit() }
+            assertEquals("restored after a relaunch", v.visitUuid, f.day.visitSession.current.value?.visitUuid)
+            // leaving the call writes its close: the guard and the write agree
+            assertNull(runBlocking { f.day.closeVisitAbandoned() })
+            assertEquals(listOf(v.visitUuid), runBlocking { f.db.captureDao().visitClosesOn(f.date) }.map { it.visitClientUuid })
+            assertEquals(1, queued(f, "visit_close"))
+            assertEquals(listOf<Throwable>(), crashes.toList())
+        } finally {
+            f.close()
+        }
+    }
+
     @Test fun theSrsOwnSalesSubmitStillRefusesAsBuilt() = forEachOpenPolicy { f ->
         f.finalSubmitted()
         f.salesSubmitted()

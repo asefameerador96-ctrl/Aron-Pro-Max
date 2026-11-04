@@ -128,7 +128,7 @@ class SrDayLockCaptureTest {
         val session = VisitSession().also { it.restore(v) }
         finalSubmitted() // the lock arrives while the SR is in the call
         // the call prompt's No (or back): no close is queued (the server would refuse it), the call ends, nothing throws
-        assertFalse(SrCallLock.abandon(db, repo, session, meta(), now))
+        assertFalse(SrCallLock.abandon(repo, session, meta(), now))
         assertNull(session.current.value)
         assertTrue(db.captureDao().visitClosesOn(date).isEmpty())
         // a relaunch does not take the rep back into the call
@@ -142,10 +142,10 @@ class SrDayLockCaptureTest {
         val v = openVisit()
         assertEquals(v.visitUuid, FinalSubmitLock.callToRestore(db, date) { true }?.clientUuid)
         val session = VisitSession().also { it.restore(v) }
-        assertTrue(SrCallLock.abandon(db, repo, session, meta(), now))
+        assertTrue(SrCallLock.abandon(repo, session, meta(), now))
         assertNull(session.current.value)
         assertEquals("abandoned", db.captureDao().visitClosesOn(date).single().outcomeCode)
-        assertFalse(SrCallLock.endsOnPhone(db, VisitSession().also { it.restore(v) }, meta()))
+        assertFalse(SrCallLock.endsOnPhone(repo, VisitSession().also { it.restore(v) }, meta()))
         FinalSubmitLock.requireCallOpen(db, meta()) // open
     }
 

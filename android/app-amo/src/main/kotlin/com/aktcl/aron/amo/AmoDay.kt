@@ -276,7 +276,7 @@ class AmoDay(
         // refuse its close day_final_submitted), so leaving a control or joint call never throws; X4a follow-up (R-W-23): the
         // same when the AMO's supervisor-day Sales Submit stands. The answer says why the call ended without a close (the
         // host shows the matching text), or null when a close was queued.
-        AmoCallLock.endedBy(db, visitSession, metaProvider.meta(v.routeId))?.let { routeId = null; return@withLock it }
+        AmoCallLock.endedBy(capture, visitSession, metaProvider.meta(v.routeId))?.let { routeId = null; return@withLock it }
         val date = businessDate()
         val memo = db.captureDao().memosOn(date).filter { it.visitClientUuid == v.visitUuid }
         val superseded = memo.mapNotNull { it.supersedesClientUuid }.toSet()
@@ -299,7 +299,7 @@ class AmoDay(
      */
     suspend fun endCallIfClosed(): DayRefusal? = closeLock.withLock {
         val v = visitSession.current.value ?: return@withLock null
-        AmoCallLock.endedBy(db, visitSession, metaProvider.meta(v.routeId))?.also { routeId = null }
+        AmoCallLock.endedBy(capture, visitSession, metaProvider.meta(v.routeId))?.also { routeId = null }
     }
 
     /** True once today's supervisor day is submitted: no new call starts until the server reopens it (the same fact the Submit screen reads). */
@@ -653,17 +653,19 @@ internal object AmoCallLock {
     /**
      * Ends the open call on the phone when its close with [meta] would be refused (no close queued) and says why: the zone's
      * Final Submit closed its route-day, or, X4a follow-up (R-W-23), the AMO's supervisor-day Sales Submit stands (the rule
-     * CaptureRepository.recordVisitClose applies). Null leaves the call as it was.
+     * CaptureRepository.recordVisitClose applies). Null leaves the call as it was. X4a fix round (checker low): judged by
+     * [capture], the day's own repository on trusted time ([AmoDay.capture]), so the guard reads the late-sale policy at the
+     * same instant the write will (never the device's wall clock).
      */
-    suspend fun endedBy(db: AronDatabase, session: VisitSession, meta: CaptureMeta): DayRefusal? {
+    suspend fun endedBy(capture: CaptureRepository, session: VisitSession, meta: CaptureMeta): DayRefusal? {
         if (session.current.value == null) return null
-        val why = runCatching { CaptureRepository(db).dayRefusal(meta, "visit_close") }.getOrNull() ?: return null
+        val why = runCatching { capture.dayRefusal(meta, "visit_close") }.getOrNull() ?: return null
         session.close()
         return why
     }
 
     /** True when [endedBy] ended the call on the phone. */
-    suspend fun endsOnPhone(db: AronDatabase, session: VisitSession, meta: CaptureMeta): Boolean = endedBy(db, session, meta) != null
+    suspend fun endsOnPhone(capture: CaptureRepository, session: VisitSession, meta: CaptureMeta): Boolean = endedBy(capture, session, meta) != null
 }
 
 /**

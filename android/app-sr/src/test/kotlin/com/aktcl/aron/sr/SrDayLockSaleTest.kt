@@ -197,7 +197,7 @@ class SrDayLockSaleTest {
 
         // the lock text's OK ends the call on the phone (SrDay.endCallIfDayFinal): no visit_close the server would refuse
         val session = VisitSession().also { it.restore(v) }
-        assertTrue(runBlocking { SrCallLock.endsOnPhone(db, session, meta()) })
+        assertTrue(runBlocking { SrCallLock.endsOnPhone(repo, session, meta()) })
         assertNull(session.current.value)
         assertTrue(runBlocking { db.captureDao().visitClosesOn(date) }.isEmpty())
         // a relaunch: the call is not restored (no loop back into a sale that cannot be saved) and a new call is refused

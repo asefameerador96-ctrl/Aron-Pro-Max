@@ -218,7 +218,7 @@ class SrDay(
     suspend fun closeVisitAbandoned(): DayRefusal? {
         val v = visitSession.current.value ?: return null
         var why: DayRefusal? = null
-        if (SrCallLock.abandon(db, capture, visitSession, metaProvider.meta(v.routeId), iso(clock.nowMs())) { why = it }) runCatching { requestSync() }
+        if (SrCallLock.abandon(capture, visitSession, metaProvider.meta(v.routeId), iso(clock.nowMs())) { why = it }) runCatching { requestSync() }
         return why
     }
 
@@ -229,7 +229,7 @@ class SrDay(
      */
     suspend fun openCallRefusal(): DayRefusal? {
         val v = visitSession.current.value ?: return null
-        return SrCallLock.refusal(db, metaProvider.meta(v.routeId))
+        return SrCallLock.refusal(capture, metaProvider.meta(v.routeId))
     }
 
     /**
@@ -239,7 +239,7 @@ class SrDay(
      */
     suspend fun endCallIfClosed(): DayRefusal? {
         val v = visitSession.current.value ?: return null
-        return SrCallLock.endedBy(db, visitSession, metaProvider.meta(v.routeId))
+        return SrCallLock.endedBy(capture, visitSession, metaProvider.meta(v.routeId))
     }
 
     /**
@@ -298,7 +298,7 @@ class SrDay(
         val last = FinalSubmitLock.callToRestore(db, businessDate(), iso(clock.nowMs())) { it.geoAction != "blocked" } ?: return
         // tso-manual X4a follow-up (R-W-23): nor a call whose route-day the SR's own Sales Submit closed (its sale and close
         // would be refused); a server void of the submit brings it back
-        if (SrCallLock.refusal(db, last.meta) != null) return
+        if (SrCallLock.refusal(capture, last.meta) != null) return
         visitSession.restore(
             OpenVisit(
                 visitUuid = last.clientUuid, outletId = last.outletId, routeId = last.meta.routeId ?: 0L, geoVerdict = last.geoVerdict,
@@ -701,20 +701,22 @@ internal object SrCallLock {
     /**
      * Why the call's close with [meta] would be refused, or null: the zone's Final Submit closed its route-day, or, X4a
      * follow-up (R-W-23), a Sales Submit of it stands. The same rule CaptureRepository.recordVisitClose applies. Pure reads.
+     * X4a fix round (checker low): judged by [capture], the day's own repository on trusted time ([SrDay.capture]), so a
+     * guard reads the late-sale policy at the same instant the write will (never the device's wall clock).
      */
-    suspend fun refusal(db: AronDatabase, meta: CaptureMeta): DayRefusal? =
-        runCatching { CaptureRepository(db).dayRefusal(meta, "visit_close") }.getOrNull()
+    suspend fun refusal(capture: CaptureRepository, meta: CaptureMeta): DayRefusal? =
+        runCatching { capture.dayRefusal(meta, "visit_close") }.getOrNull()
 
     /** Ends the open call on the phone when its close would be refused ([refusal]; no close queued) and says why; null otherwise. */
-    suspend fun endedBy(db: AronDatabase, session: VisitSession, meta: CaptureMeta): DayRefusal? {
+    suspend fun endedBy(capture: CaptureRepository, session: VisitSession, meta: CaptureMeta): DayRefusal? {
         if (session.current.value == null) return null
-        val why = refusal(db, meta) ?: return null
+        val why = refusal(capture, meta) ?: return null
         session.close()
         return why
     }
 
     /** True when [endedBy] ended the call on the phone. */
-    suspend fun endsOnPhone(db: AronDatabase, session: VisitSession, meta: CaptureMeta): Boolean = endedBy(db, session, meta) != null
+    suspend fun endsOnPhone(capture: CaptureRepository, session: VisitSession, meta: CaptureMeta): Boolean = endedBy(capture, session, meta) != null
 
     /**
      * Leaves the open call as `abandoned` (the call prompt's No and back): the close is queued with its outbox row, or on a
@@ -722,11 +724,11 @@ internal object SrCallLock {
      * caller asks for a sync).
      */
     suspend fun abandon(
-        db: AronDatabase, capture: CaptureRepository, session: VisitSession, meta: CaptureMeta, nowIso: String,
+        capture: CaptureRepository, session: VisitSession, meta: CaptureMeta, nowIso: String,
         onRefused: (DayRefusal) -> Unit = {},
     ): Boolean {
         if (session.current.value == null) return false
-        endedBy(db, session, meta)?.let { onRefused(it); return false }
+        endedBy(capture, session, meta)?.let { onRefused(it); return false }
         // tso-manual X4a (R-W-11): CaptureRepository refuses a visit_close on a closed route-day now; a refusal that lands
         // between the check above and the write ends the call on the phone the same way (SrLockGate.closeCall)
         return SrLockGate.closeCall(session, onRefused) { v ->

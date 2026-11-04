@@ -84,7 +84,7 @@ class AmoDayLockCallTest {
         val v = controlCall(route, 1)
         val session = VisitSession().also { it.restore(v) }
         finalSubmitted(route) // the lock arrives during the control call
-        assertTrue(AmoCallLock.endsOnPhone(db, session, meta()))
+        assertTrue(AmoCallLock.endsOnPhone(repo, session, meta()))
         assertNull(session.current.value)
         assertTrue("no close the server would refuse", db.captureDao().visitClosesOn(date).isEmpty())
         assertNull("not restored after a relaunch", FinalSubmitLock.callToRestore(db, date) { it.visitKind.startsWith("amo_") })
@@ -93,7 +93,7 @@ class AmoDayLockCallTest {
         // another route of the zone stays open: a call there starts and ends as before
         FinalSubmitLock.requireCallOpen(db, meta(other))
         val open = controlCall(other, 2)
-        assertFalse(AmoCallLock.endsOnPhone(db, VisitSession().also { it.restore(open) }, meta(other)))
+        assertFalse(AmoCallLock.endsOnPhone(repo, VisitSession().also { it.restore(open) }, meta(other)))
         assertEquals(open.visitUuid, FinalSubmitLock.callToRestore(db, date) { it.visitKind.startsWith("amo_") }?.clientUuid)
     }
 }
