@@ -33,11 +33,11 @@ Items in the lead's order, one commit each (golden PNGs ride in the commit that 
 - Row 43: bottom-bar notch not drawn.
 
 ## Batch 3 (tso-manual #2, lane/tso-manual-wip-batch3, based on c3f5df90)
-1. Row 102: `TsoGlow.of(screen)` is the one table the app-tso hosts and the screenshot frames read; the login-status, Target Status and Target Details goldens now draw the bottom dome (TsoGlowTest).
+1. Row 102: `TsoGlow.of(screen)` is the one table the app-tso hosts and the screenshot frames read; the login-status and Target Status goldens now draw the bottom dome; Target Details draws none, as the owner's 41 and 42 (TsoGlowTest).
 2. Row 28: a stale or no-fix person row in the TSO map fallback list is drawn in the muted ink (B8C2E5, 10:1 on the page) instead of 0.5 alpha (the "Mock GPS today" line was 3.4:1); SR/AMO keep the alpha; `map_fallback_list_default_en` is unchanged.
 3. Row 34 and Set Plan pickers: glowing Date field with the calendar icon at the start, white Select Route placeholder (same ink as a chosen value; Set Plan's pickers share the component), 4.5:1 asserted.
 4. Row 38: glowing Date field, plain Comment box (page colour, quiet outline, no glow), the "Assigned to" line removed (the success banner "Task assigned to <SR>" carries the same name; string removed from both languages).
-5. Leave list: 'As of' only for a kept copy (LeaveListState); the two tests that expected it on a fresh read now assert none there and the Bangla test uses a kept copy.
+5. Leave list: 'As of' only for a copy not confirmed fresh: a kept copy, and a cached list while its refresh runs (LeaveListState, D-TSO-MAN-52); the two tests that expected it on a fresh read now assert none there and the Bangla test uses a kept copy.
 6. Row 21 panel over the Date field's border line: not changed (not a one-line offset: the panel is three rows tall).
 
 ## Task 1: goldens recorded on Linux (2026-11-03)
@@ -64,7 +64,7 @@ Done, one commit each: (1) TsoAreaScreenshotTests wraps screens in the TSO look;
 
 ## Remaining owner-visible differences (recorded, not fixed)
 - Button labels (D-TSO-MAN-50, lead ruling): white bold labels as in the owner's screenshots, on the screenshot hues darkened only until the label holds 4.5:1 (cyan 297F95-5577AB, lime 687E10-478430, Cancel 008837, Log Out A86702-A5680B). Residual difference: the fills are slightly darker than the owner's brighter lime and cyan. Sunlight unchanged. Flip back with 'navy labels'.
-- The bright-blue bottom glow of the Final Submit, Target and login-status pages is not drawn (only the Home disc halo); not done.
+- The bright-blue bottom dome is drawn on Final Submit, Target Status and the login-status page since batch 2/3, 72 dp high (the owner's is about 155 dp); see "Mismatches vs owner screenshots (after batch 2)".
 - Row 37 delegate-question and radio label colours: the re-recorded golden shows white ink; no change needed after the harness fix (checked by eye).
 - Row 14 ticket-details button wrapping, row 8 title wrapping at 360 dp, row 30 Set Plan icon glyph, row 41 shrinking % column, row 16 sheet position: cosmetic, not done.
 - Success dialog is drawn edge to edge in the Robolectric capture (a window-capture effect); on a device the platform dialog margins apply (inferred).
