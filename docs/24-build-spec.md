@@ -1032,6 +1032,7 @@ Legend. **Levels:** G global, ROLE, W wing, D division, T territory, GC geo_clas
 | **Operations, notifications, API** |||||||||
 | `cfg.ops.push_enabled` (**changed**, D24-23) | bool | true | — | G | O | B | srv | C3 |
 | `cfg.ops.push_jitter_s` | int | 120 | 0..600 | G | O | B | srv | C1 |
+| `cfg.ops.config_pull_spread_s` (**new**, V0143, D-TSO-MAN-62) | int | 20 | 0..900 | G | O | B | srv | C1 |
 | `cfg.notify.task_push_enabled` (**new**) | bool | true | — | G W D T Z | O | B | srv | C1 |
 | `cfg.ops.sync_hold_s` | int (kind O, auto-expires) | 0 | 0..900 | G W D T Z | O | B | both | C3 |
 | `cfg.ops.sync_hold_by_version` | list<int> (kind O) | [] | duration ≤ 24 h | G | O | B | srv | C3 |
