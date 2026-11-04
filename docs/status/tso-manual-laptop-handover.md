@@ -28,6 +28,17 @@ The cloud integrator can merge it into `lane/tso-manual` as one head. Nothing in
 Merge fix: X2's `FinalSubmitProjectionEndToEndTest` now switches the midnight auto close on in its setUp, as
 `AutoFinalSubmitJobTest` does. The cloud ships auto close off (D-TSO-MAN-49).
 
+Test harness fix (commits `14f6119ed`..`f48773c4c`):
+- **Failure.** Your all-areas run 41750277921 on `7f4230ada` failed only `:android:app-sr:testDebugUnitTest` (2 of 93).
+- **Cause.** A MemoViewModel that SrLatePolicyTest created was never cleared. Its reload after Mark Paid ran after the fixture closed the database ("connection pool has been closed"). The same exception then surfaced as `UncaughtExceptionsBeforeTest` in SrRefusalHostsTest.
+- **Fix.** A test-only `TestWork` in app-sr and app-amo holds every view model, every scope and the Room executor. A fixture's `close()` now:
+  1. lets the work in flight finish on the open database;
+  2. clears and joins it;
+  3. only then closes the database.
+- **Production.** The one production change is an optional `parentJob` on SrDay and AmoDay. It is null on the phone, so the phone behaves as before.
+- **Tests.** No assertion was weakened. New `*LockFixtureCloseTest` classes pin the order of shutdown. An independent checker confirmed the root cause from the CI report.
+- **Where it ran.** The race did not reproduce on Windows. Full app-sr (95) and app-amo (75) passed on the laptop. Linux proof is the next CI run.
+
 ## What ran, and where
 
 - **Laptop (Windows, JDK 21, local PostgreSQL 16).**
@@ -35,7 +46,15 @@ Merge fix: X2's `FinalSubmitProjectionEndToEndTest` now switches the midnight au
   - Generator drift checks on the merged branch: slices, WireDtos and PayloadShapes are up to date.
   - Scans: money-float 13/13 allowed, date-pin 0 new, KPI corpus up to date.
 - **Not run on the laptop.** No full module suite. The single full backend run, stopped after 3 hours, had passed sync, media and app, with auth failing only on RoleGrantsTest, which is fixed on this base. Also not run: assembleDebug, lint, squawk and oasdiff.
-- These need the all-areas `workflow_dispatch` run on this branch's exact sha.
+- **Linux CI on this branch.**
+
+  | Run | Commit | Result |
+  |---|---|---|
+  | 41749105748 (push) | `7f4230ada` | success |
+  | 41750277921 (your all-areas dispatch) | `7f4230ada` | green except app-sr 2/93; that is the harness leak, fixed above |
+  | 41755403153 (push) | `67f109d40` (fix round 4) | backend, backend app, both analytics shards, repository gates, containers, release APKs and Android green; web and infra skipped by the changes filter |
+
+- The final all-areas `workflow_dispatch` run on the branch head is the cloud lead's to trigger.
 
 ## Open for the cloud lead
 
