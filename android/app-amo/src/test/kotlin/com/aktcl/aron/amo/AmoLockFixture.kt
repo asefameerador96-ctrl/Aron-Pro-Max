@@ -133,6 +133,12 @@ internal class AmoLockFixture(context: Context, latePolicy: String?) {
 
     fun close() {
         scope.cancel()
+        // Barrier (as SrLockFixture): queued Room work finishes before the in-memory database closes.
+        for (executor in listOf(db.queryExecutor, db.transactionExecutor)) {
+            val done = java.util.concurrent.CountDownLatch(1)
+            runCatching { executor.execute { done.countDown() } }.onFailure { done.countDown() }
+            done.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        }
         db.close()
         dir.deleteRecursively()
     }
