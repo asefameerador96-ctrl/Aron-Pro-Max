@@ -293,7 +293,9 @@ class SchemaV1aTest {
             "cfg.kpi.tilldate_basis.tso", "cfg.kpi.tilldate_basis.amo_team", "cfg.kpi.brand_cpr_denominator.tso", "cfg.kpi.bar_bands",
             "cfg.support.ticket_requester_roles", "cfg.support.ticket_max_photos", "cfg.notify.ticket_push_enabled", "cfg.notify.inbox_retention_days",
             "cfg.day.auto_final_submit_enabled", "cfg.tso.team_location_max_age_min", "cfg.tso.plan_max_days_ahead", "cfg.leave.allow_past_days",
-            "cfg.leave.allow_ahead_days", "cfg.leave.block_overlap", "cfg.feedback.max_images")
+            "cfg.leave.allow_ahead_days", "cfg.leave.block_overlap", "cfg.feedback.max_images",
+            // config_pull push spread (V0143, D-TSO-MAN-62).
+            "cfg.ops.config_pull_spread_s")
         assertEquals(specKeys + ruled, dbKeys)
         db.connect().use { c ->
             assertEquals("100", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.geo.radius_m'"))

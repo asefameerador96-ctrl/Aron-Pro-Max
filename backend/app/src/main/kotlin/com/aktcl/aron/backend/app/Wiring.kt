@@ -301,8 +301,11 @@ class Wiring(
                     (configResolver.resolve(key, chain, clock.now()).value as kotlinx.serialization.json.JsonPrimitive).content == "true"
                 }.getOrDefault(false)
             }
-            // X4a ask 11 (D-TSO-MAN-57): a change of the late-sale policy pushes ONE config_pull to the phones of its scope, after the commit.
-            configService.configPull = com.aktcl.aron.backend.notify.ConfigPullPush(db, config, push)
+            // D-TSO-MAN-62 (one mechanism): after a committed change of the late-sale policy, ONE config_pull (CONFIG only, spread by
+            // cfg.ops.config_pull_spread_s) goes to the SR and AMO phones of the closed zone-days (LatePolicyPush), so a phone
+            // locked under quarantine unlocks with the change, and a quarantine set after the close locks it.
+            val latePolicyPush = com.aktcl.aron.backend.sync.LatePolicyPush(db, com.aktcl.aron.backend.notify.ConfigPullPush(db, config, push), clock)
+            configService.committed = com.aktcl.aron.backend.config.ConfigCommitListener { _, keys -> latePolicyPush.onConfigCommitted(keys) }
             val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock, reach = reach), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + extraRecordHandlers)), db, config, clock)
             ingestForReview = sync.ingest
             val hikari = db.write as? com.zaxxer.hikari.HikariDataSource

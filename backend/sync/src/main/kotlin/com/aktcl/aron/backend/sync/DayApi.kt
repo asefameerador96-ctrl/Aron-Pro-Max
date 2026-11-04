@@ -127,8 +127,31 @@ const val PUSH_DAY_STATE_CHANGED = "day_state_changed"
  * checker high): [PUSH_DAY_FINAL_SUBMITTED] only while the late-sale policy in force is quarantine or reject, read as
  * ingest reads it ([IngestService.latePolicyOf]); [PUSH_DAY_STATE_CHANGED] under accept_and_flag or an unreadable value.
  */
-fun finalSubmitPushReason(config: ServerConfig): String =
-    if (IngestService.latePolicyOf(config) in IngestService.LOCKING_LATE_POLICIES) PUSH_DAY_FINAL_SUBMITTED else PUSH_DAY_STATE_CHANGED
+fun finalSubmitPushReason(config: ServerConfig): String = LatePolicyPush.pushReasonFor(IngestService.latePolicyOf(config))
+
+/**
+ * The zone's field phones (D-TSO-MAN-31): the SR and AMO users of its route-days on [date], and every active AMO whose scope
+ * covers the zone on the date (the D-TSO-MAN-12 rule): an AMO sells on the outlet's SR route, so an AMO without a
+ * route-day here still captures on the zone's closed route-days. Scope rows are effective-dated, valid_to exclusive. The
+ * push after a close goes to them ([DayService.closeLocked]), and so does the push after a change of the late-sale policy
+ * ([LatePolicyPush], X4a fix round 4).
+ */
+internal fun zoneFieldUsers(h: Handle, zone: Long, date: LocalDate): List<Long> = h.createQuery(
+    """
+    SELECT u.id FROM app.route_day rd JOIN app.route r ON r.id = rd.route_id
+    JOIN app.app_user u ON u.id IN (rd.assigned_user_id, rd.acting_user_id)
+    WHERE r.zone_id = :z AND rd.business_date = :d AND u.role IN ('SR', 'AMO') AND u.status = 'active'
+    UNION
+    SELECT u.id FROM app.zone z JOIN app.territory t ON t.id = z.territory_id JOIN app.division dv ON dv.id = t.division_id
+    JOIN app.user_scope s ON s.valid_from <= :d AND (s.valid_to IS NULL OR s.valid_to > :d)
+         AND ((s.node_type = 'zone' AND s.node_id = z.id) OR (s.node_type = 'house' AND s.node_id = z.house_id)
+              OR (s.node_type = 'territory' AND s.node_id = z.territory_id) OR (s.node_type = 'division' AND s.node_id = t.division_id)
+              OR (s.node_type = 'wing' AND s.node_id = dv.wing_id) OR s.node_type = 'national')
+    JOIN app.app_user u ON u.id = s.user_id AND u.role = 'AMO' AND u.status = 'active'
+    WHERE z.id = :z
+    ORDER BY 1
+    """.trimIndent(),
+).bind("z", zone).bind("d", date).mapTo(Long::class.java).list()
 
 class DayDeps(val guard: AuthGuardDeps, val service: DayService)
 
@@ -473,25 +496,7 @@ class DayService(
             put("submitted_by", by); put("submit_seq", preview.submit_seq); put("route_count", preview.routes.size)
             put("not_uploaded_route_count", preview.warn_route_ids.size)
         })
-        // The zone's field phones (D-TSO-MAN-31): the SR and AMO users of its route-days, and every active AMO whose scope
-        // covers the zone on the date (the D-TSO-MAN-12 rule): an AMO sells on the outlet's SR route, so an AMO without a
-        // route-day here still captures on the zone's closed route-days. Scope rows are effective-dated, valid_to exclusive.
-        val recipients = h.createQuery(
-            """
-            SELECT u.id FROM app.route_day rd JOIN app.route r ON r.id = rd.route_id
-            JOIN app.app_user u ON u.id IN (rd.assigned_user_id, rd.acting_user_id)
-            WHERE r.zone_id = :z AND rd.business_date = :d AND u.role IN ('SR', 'AMO') AND u.status = 'active'
-            UNION
-            SELECT u.id FROM app.zone z JOIN app.territory t ON t.id = z.territory_id JOIN app.division dv ON dv.id = t.division_id
-            JOIN app.user_scope s ON s.valid_from <= :d AND (s.valid_to IS NULL OR s.valid_to > :d)
-                 AND ((s.node_type = 'zone' AND s.node_id = z.id) OR (s.node_type = 'house' AND s.node_id = z.house_id)
-                      OR (s.node_type = 'territory' AND s.node_id = z.territory_id) OR (s.node_type = 'division' AND s.node_id = t.division_id)
-                      OR (s.node_type = 'wing' AND s.node_id = dv.wing_id) OR s.node_type = 'national')
-            JOIN app.app_user u ON u.id = s.user_id AND u.role = 'AMO' AND u.status = 'active'
-            WHERE z.id = :z
-            ORDER BY 1
-            """.trimIndent(),
-        ).bind("z", zone).bind("d", date).mapTo(Long::class.java).list()
+        val recipients = zoneFieldUsers(h, zone, date)
         return FinalSubmitResultDto(zone, date.toString(), now.wire(), kind, preview.routes.size, preview.routes.sumOf { it.memo_count }, preview.routes.sumOf { it.net_mtk }) to recipients
     }
 
