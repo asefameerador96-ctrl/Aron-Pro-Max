@@ -78,7 +78,7 @@ internal fun refusalKey(draft: com.aktcl.aron.feature.sale.domain.SaleDraft): St
 
 /**
  * The lock text where a capture was refused (a new call, a sale save, a skip, Mark Paid, a memo edit): the banner's title and
- * body ("New calls cannot start; sales, memo edits and collections are not accepted. Printing still works."), bn and en.
+ * body ("New calls cannot start; sales, stock entries, memo edits and collections are not accepted. Printing still works."), bn and en.
  */
 @Composable
 fun SrDayLockDialog(onOk: () -> Unit) {

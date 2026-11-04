@@ -226,7 +226,7 @@ class AmoDayLockGateTest {
         val (title, body) = AmoDayLockWords.refusal(0, en, AppLanguage.EN)
         assertEquals("Routes closed by Final Submit", title)
         assertTrue(body, body.startsWith("Final Submit is done today for 1 of your zone's routes."))
-        assertTrue(body, body.contains("sales, memo edits and collections on them are not accepted"))
+        assertTrue(body, body.contains("sales, stock entries, memo edits and collections on them are not accepted"))
         val (bnTitle, bnBody) = AmoDayLockWords.refusal(3, AppLocale.wrap(app, AppLanguage.BN).resources, AppLanguage.BN)
         assertEquals("ফাইনাল সাবমিটে রুট বন্ধ", bnTitle)
         assertTrue(bnBody, bnBody.contains("৩টি রুটের"))

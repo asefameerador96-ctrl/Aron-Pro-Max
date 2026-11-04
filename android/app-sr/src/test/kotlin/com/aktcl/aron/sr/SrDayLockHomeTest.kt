@@ -89,7 +89,7 @@ class SrDayLockHomeTest {
         var ok = 0
         show(AppLanguage.EN) { SrDayLockDialog(onOk = { ok++ }) }
         compose.onNodeWithText("Day closed by Final Submit").assertExists()
-        compose.onNodeWithText("sales, memo edits and collections are not accepted. Printing still works.", substring = true).assertExists()
+        compose.onNodeWithText("sales, stock entries, memo edits and collections are not accepted. Printing still works.", substring = true).assertExists()
         compose.onNodeWithText("OK").performClick()
         compose.waitForIdle()
         assertEquals(1, ok)
