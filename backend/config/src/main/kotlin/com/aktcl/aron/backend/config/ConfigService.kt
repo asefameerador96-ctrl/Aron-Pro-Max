@@ -3,7 +3,6 @@ package com.aktcl.aron.backend.config
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.AronPrincipal
-import com.aktcl.aron.backend.platform.ConfigPullNotifier
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.FieldError
 import com.aktcl.aron.backend.platform.wire
@@ -650,5 +649,3 @@ fun KeyDef.toDto() = ConfigKeyDto(key, area, kind, valueType, default, bounds, s
 fun Resolved.toDto() = ResolvedConfigValue(
     key.key, value, scopeType, scopeId, effectiveFrom?.wire(), effectiveTo?.wire(), configVersion, key.requiresAck, key.bounds,
 )
-
-/** The config key whose change pushes a `config_pull` (X4a ask 11, D-TSO-MAN-57), and the push's `reason`. */
