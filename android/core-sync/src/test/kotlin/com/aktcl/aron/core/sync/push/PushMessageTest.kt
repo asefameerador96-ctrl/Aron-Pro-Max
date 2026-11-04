@@ -39,7 +39,7 @@ class PushMessageTest {
         val m = PushMessage.parse(sent)!!
         assertEquals(setOf(PushPullKind.CONFIG_URGENT), m.pulls)
         assertEquals(PushMessage.REASON_LATE_POLICY_CHANGED, m.reason)
-        assertNull(m.notice, "no notice is shown for a policy change")
+        assertNull(m.notice) // no notice is shown for a policy change
         assertEquals(7_000L, m.pullDelayMs(kotlin.random.Random(1)))
         // The same reason without the urgent flag is still the ordinary CONFIG pull, never a bundle pull.
         assertEquals(setOf(PushPullKind.CONFIG), PushMessage.parse(sent - "urgent")!!.pulls)
