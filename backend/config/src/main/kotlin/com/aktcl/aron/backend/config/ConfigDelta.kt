@@ -56,7 +56,8 @@ class ConfigDelta(
         val deviceKeys = resolver.registry().values.filter { !it.retired && it.delivery != "server" }.map { it.key }
         val newer = resolver.resolveAll(chain, now, deviceKeys)
         val older = resolveAsOf(chain, now, since, deviceKeys)
-        val changed = newer.values.filter { n -> older[n.key.key]?.let { sameValue(it, n) } != true }.map { it.toDto() }
+        val endMoved = endsMovedSince(chain, now, since, deviceKeys)
+        val changed = newer.values.filter { n -> n.key.key in endMoved || older[n.key.key]?.let { sameValue(it, n) } != true }.map { it.toDto() }
         val scheduled = scheduled(chain, now, deviceKeys)
         // An outlet- or route-scoped radius is outside the caller's chain, so it shows only here (F-SYS-053).
         val radius = radiusChanges?.invoke(userId, since).orEmpty()
@@ -66,16 +67,40 @@ class ConfigDelta(
 
     private fun sameValue(a: Resolved, b: Resolved) = a.value == b.value && a.scopeType == b.scopeType && a.scopeId == b.scopeId && a.effectiveFrom == b.effectiveFrom
 
+    /**
+     * Keys of the caller's chain whose row in force at [now] had its end set or moved by a version after [since]
+     * (tso-manual X4a fix round 4, checker low). A removal dated later (an item with a null value and a future
+     * `effective_from`) only closes the open row at that instant (`effective_to`, `superseded_in_version`) and inserts no
+     * row. The version-as-of rebuild reads the same row with its new end, so [sameValue] sees no change, and no scheduled row
+     * carries the end. Without this the phone kept the open-ended value (for the late-sale policy: a quarantine that locked
+     * the phone after the server had fallen back to accept_and_flag). The resolved value then travels again, with its new
+     * `effective_to`, and the phone ends it there (`ReferenceRepository.configInForce`).
+     */
+    private fun endsMovedSince(chain: List<ScopeNode>, now: Instant, since: Long, keys: Collection<String>): Set<String> =
+        db.jdbi.withHandle<Set<String>, Exception> { h ->
+            val q = h.createQuery(
+                "SELECT DISTINCT v.key FROM app.cfg_value v WHERE v.superseded_in_version > :since AND v.effective_from <= :now AND v.effective_to > :now " +
+                    "AND v.key = ANY (CAST(:keys AS text[])) AND (${predicate(chain)})",
+            ).bind("since", since).bind("now", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).bind("keys", "{" + keys.joinToString(",") + "}")
+            chain.forEachIndexed { i, n -> q.bind("t$i", n.type).bind("i$i", n.id) }
+            q.mapTo(String::class.java).set()
+        }
+
     private fun rank() = "CASE v.scope_type " + Precedence.rank.entries.joinToString(" ") { "WHEN '${it.key}' THEN ${it.value}" } + " END"
 
     private fun predicate(chain: List<ScopeNode>) = chain.indices.joinToString(" OR ") { "(v.scope_type = :t$it AND v.scope_id = :i$it)" }
 
-    /** The resolved values as they stood when [asOf] was the latest committed version, evaluated at [at]. */
+    /**
+     * The resolved values as they stood when [asOf] was the latest committed version, evaluated at [at]. A row superseded at
+     * or before [asOf] still counts when its end (set by that supersession, so the same as of [asOf]) lies after [at]: a
+     * removal or a change dated later only moves the open row's end (X4a fix round 4). Before, such a row was dropped from
+     * the old state, so every later delta re-sent the key as changed until its end.
+     */
     private fun resolveAsOf(chain: List<ScopeNode>, at: Instant, asOf: Long, keys: Collection<String>): Map<String, Resolved> {
         val reg = resolver.registry()
         val rows = db.jdbi.withHandle<Map<String, Resolved>, Exception> { h ->
             val q = h.createQuery(
-                "SELECT DISTINCT ON (v.key) v.* FROM app.cfg_value v WHERE v.config_version <= :asof AND (v.superseded_in_version IS NULL OR v.superseded_in_version > :asof) " +
+                "SELECT DISTINCT ON (v.key) v.* FROM app.cfg_value v WHERE v.config_version <= :asof " +
                     "AND v.effective_from <= :at AND (v.effective_to IS NULL OR v.effective_to > :at OR (v.superseded_in_version IS NOT NULL AND v.superseded_in_version > :asof)) " +
                     "AND (${predicate(chain)}) ORDER BY v.key, ${rank()} DESC, v.scope_id ASC",
             ).bind("asof", asOf).bind("at", OffsetDateTime.ofInstant(at, ZoneOffset.UTC))

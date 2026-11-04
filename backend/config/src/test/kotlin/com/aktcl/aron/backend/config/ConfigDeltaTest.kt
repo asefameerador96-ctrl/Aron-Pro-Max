@@ -79,6 +79,52 @@ class ConfigDeltaTest {
         assertTrue(svc.currentVersion() > 3)
     }
 
+    /**
+     * tso-manual X4a fix round 4 (checker low): a removal dated later only sets the open row's `effective_to` (no new row,
+     * nothing scheduled), and the version-as-of rebuild reads that row with its new end, so the delta saw no change and the
+     * phone kept the value open-ended (for the late-sale policy: a quarantine locking the phone after the server fell back to
+     * accept_and_flag). The delta now carries the resolved value again with its new end; a phone at the new version gets 304.
+     */
+    @Test
+    fun aRemovalDatedLaterDeliversTheNewEndOfTheOpenValue() {
+        val sr = env.ids.getValue("sr1001")
+        set("cfg.geo.fix_reuse_max_age_s", "global", 0, 45)
+        val since = svc.currentVersion()
+        val end = removeLater("cfg.geo.fix_reuse_max_age_s")
+        val v = assertIs<DeltaOutcome.Changes>(delta.delta(sr, null, since, null)).body.values.single { it.key == "cfg.geo.fix_reuse_max_age_s" }
+        assertEquals(45, v.value.jsonPrimitive.int, "still in force until its end")
+        assertEquals(end, java.time.Instant.parse(v.effective_to), "the new end travels with it")
+    }
+
+    /**
+     * X4a fix round 4: a phone that already holds the moved end is not sent the key again by every later delta. The
+     * version-as-of rebuild dropped a row superseded at or before that version even when its new end was still ahead, so
+     * the old state fell back to the default and the key looked changed in every delta until its end.
+     */
+    @Test
+    fun aMovedEndIsSentOnceNotWithEveryLaterChange() {
+        val sr = env.ids.getValue("sr1001")
+        set("cfg.geo.breadcrumb_interval_min", "global", 0, 20)
+        removeLater("cfg.geo.breadcrumb_interval_min")
+        val held = svc.currentVersion() // the phone pulled the moved end
+        set("cfg.geo.refresh_max", "global", 0, 2) // another change
+        val later = assertIs<DeltaOutcome.Changes>(delta.delta(sr, null, held, null)).body
+        assertEquals(listOf("cfg.geo.refresh_max"), later.values.map { it.key }, "only the new change")
+    }
+
+    /** Commits a removal of [key]'s global value dated two hours ahead (a C2 change waits its delay first); returns the end. */
+    private fun removeLater(key: String): java.time.Instant {
+        val end = clock.now().plusSeconds(2 * 3600)
+        val c = svc.create(
+            env.principal("admin1001", Role.ADMIN),
+            ConfigChangeRequestIn("End the pilot value tonight", false, listOf(ConfigChangeItemIn(key, "global", 0, JsonNull, effective_from = end.toString()))), null, null,
+        )
+        if (c.status == "scheduled") { clock.advance(11 * 60); svc.applyDue() }
+        assertEquals("applied", svc.change(c.change_id).status)
+        clock.advance(2)
+        return end
+    }
+
     @Test
     fun aFlagChangeAppearsInTheNextDeltaAndCapturedDataShapeIsUntouched() { // F-API-065: flags are the cfg.flag.* keys
         val sr = env.ids.getValue("sr1001")
