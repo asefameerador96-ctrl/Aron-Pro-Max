@@ -53,10 +53,50 @@ class LatePolicyLockTest {
         """{"route_id":$routeId,"targets":[],"day_state":{"route_id":$routeId,"business_date":"$date","state":"final_submitted","submit_cycle":0,"submit_voided":false,"final_submitted_at":"2026-10-05T15:00:00.000Z"}}""")))
 
     /** A raw config row of the policy key, as a bundle could hold it ([json] is the stored JSON text). */
-    private fun row(json: String, scheduled: Boolean = false, from: String? = null) = ConfigValueEntity(
+    private fun row(json: String, scheduled: Boolean = false, from: String? = null, to: String? = null) = ConfigValueEntity(
         key = FinalSubmitLock.KEY_LATE_POLICY, valueJson = json, scopeType = "global", scopeId = null, effectiveFrom = from,
-        effectiveTo = null, configVersion = 1, requiresAck = false, scheduled = scheduled,
+        effectiveTo = to, configVersion = 1, requiresAck = false, scheduled = scheduled,
     )
+
+    /**
+     * X4a fix round (checker medium): an admin's quarantine or reject with an end time (`effective_to`, ConfigService) stops
+     * locking at that end on the phone, as the server's DbServerConfig stops applying it there and falls back to
+     * accept_and_flag. No config delta brings that reversion (the ended row and the default resolve alike), so the phone
+     * must not keep the ended value until its next full bundle. A scheduled value still wins inside its own window.
+     */
+    @Test fun aTimeLimitedQuarantineOrRejectStopsLockingAtItsEnd() = runTest {
+        finalSubmitted()
+        val before = "2026-10-05T16:59:59.999Z"
+        val end = "2026-10-05T17:00:00.000Z"
+        val later = "2026-10-05T18:30:00.000Z"
+        for (policy in listOf("quarantine", "reject")) {
+            db.referenceDao().deleteConfigKey(FinalSubmitLock.KEY_LATE_POLICY)
+            // the resolved row of the bundle: the admin's value, valid until 17:00
+            db.referenceDao().insertConfig(listOf(row("\"$policy\"", from = "2026-10-05T08:00:00.000Z", to = end)))
+            assertTrue(policy, FinalSubmitLock.lockApplies(db, before))
+            assertFalse("$policy ended at 17:00", FinalSubmitLock.lockApplies(db, end))
+            assertFalse("$policy stays ended", FinalSubmitLock.lockApplies(db, later))
+            // every gated read follows the predicate: the capture checks, Mark Paid, the banners and the AMO route check
+            assertEquals(DayRefusal.FINAL_SUBMIT, CaptureRepository(db) { before }.dayRefusal(TestRows.meta(), "memo"))
+            assertNull(CaptureRepository(db) { end }.dayRefusal(TestRows.meta(), "memo"))
+            assertNull(CaptureRepository(db) { later }.dayRefusal(TestRows.meta(), "stock_movement"))
+            assertTrue("Mark Paid is drawn again", CaptureRepository(db) { end }.acceptsDueCollection(TestRows.meta()))
+            assertTrue(FinalSubmitLock.locks(db, date, route, before))
+            assertFalse(FinalSubmitLock.locks(db, date, route, end))
+            assertEquals(emptyList<Long>(), FinalSubmitLock.lockedRoutes(db, date, listOf(route), end))
+            assertFalse(FinalSubmitLock.refuses(db, TestRows.meta(), "visit", end))
+            // the plain config read keeps its rule for its other callers (unchanged by this fix)
+            assertEquals("\"$policy\"", com.aktcl.aron.core.database.repo.ReferenceRepository(db).config(FinalSubmitLock.KEY_LATE_POLICY, later))
+        }
+        // a scheduled value that follows the ended one applies inside its own window
+        db.referenceDao().deleteConfigKey(FinalSubmitLock.KEY_LATE_POLICY)
+        db.referenceDao().insertConfig(listOf(
+            row("\"quarantine\"", from = "2026-10-05T08:00:00.000Z", to = end),
+            row("\"reject\"", scheduled = true, from = "2026-10-05T18:00:00.000Z"),
+        ))
+        assertFalse(FinalSubmitLock.lockApplies(db, "2026-10-05T17:30:00.000Z"))
+        assertTrue(FinalSubmitLock.lockApplies(db, later))
+    }
 
     @Test fun onlyQuarantineOrRejectLockAndAnAbsentOrUnreadablePolicyDoesNot() = runTest {
         assertFalse("no policy in the bundle: the server's fallback, accept_and_flag", FinalSubmitLock.lockApplies(db, now))

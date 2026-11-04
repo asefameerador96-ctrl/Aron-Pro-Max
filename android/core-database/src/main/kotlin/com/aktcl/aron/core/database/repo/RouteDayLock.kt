@@ -120,12 +120,15 @@ object FinalSubmitLock {
 
     /**
      * THE predicate of the phone's Final Submit lock (owner decision 2026-11-04, D-TSO-MAN-49): true only when the late-sale
-     * policy in force at [nowIso] (trusted time; the bundle's scheduled value whose window holds it, else the resolved one)
-     * is quarantine or reject. False for accept_and_flag, and false when the key is absent or its value unreadable, as the
-     * server falls back to accept_and_flag (IngestService). Pure reads, never throws.
+     * policy in force at [nowIso] (trusted time; the bundle's scheduled value whose window holds it, else the resolved one
+     * while its own window lasts) is quarantine or reject. False for accept_and_flag, and false when the key is absent or
+     * its value unreadable, as the server falls back to accept_and_flag (IngestService). X4a fix round (checker medium): a
+     * time-limited quarantine or reject stops locking at its `effective_to`, as the server stops applying it there
+     * ([ReferenceRepository.configInForce]; the key is global-only, so what follows it is the registry default,
+     * accept_and_flag, unless a scheduled value says otherwise). Pure reads, never throws.
      */
     suspend fun lockApplies(db: AronDatabase, nowIso: String): Boolean = runCatching {
-        val text = ReferenceRepository(db).config(KEY_LATE_POLICY, nowIso) ?: return false
+        val text = ReferenceRepository(db).configInForce(KEY_LATE_POLICY, nowIso) ?: return false
         val policy = (json.parseToJsonElement(text) as? JsonPrimitive)?.takeIf { it.isString }?.content
         policy in LOCKING_POLICIES
     }.getOrDefault(false)
