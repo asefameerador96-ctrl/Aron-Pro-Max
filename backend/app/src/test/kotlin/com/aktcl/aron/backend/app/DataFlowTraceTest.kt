@@ -96,6 +96,14 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         note("bundle meta", "bundle_version=${meta.path("bundle_version").asText()} config_version=${meta.path("config_version").asText()}")
         hop("routes in the trace day's bundle", "planned today" to bundle.path("routes").filter { it.path("planned_today").asBoolean() }.joinToString(",") { it.path("route").path("code").asText("?") }, "expected" to "GUL-SR-2")
         hop("outlets on the planned route with a pin", "with pin" to route.path("outlets").count { it.path("lat").isNumber && it.path("lng").isNumber }, "outlets" to route.path("outlets").size(), "expected" to 20)
+        // D-SRFIX-04b: the deploy smoke logs in as smoke1; its bundle must carry SMK-SR-D with a pinned smoke outlet and a priced plan
+        // (a read-only login: it touches none of the sr1001 trace state above)
+        val smokeBundle = fetchBundle(login("smoke1", "app_sr", ApiWorld.SR_PHONE), ApiWorld.SR_PHONE)
+        val smokeRoute = smokeBundle.path("routes").firstOrNull { it.path("route").path("code").asText() == "SMK-SR-D" }
+        hop("smoke1's bundle carries SMK-SR-D with its smoke outlets pinned",
+            "pinned smoke outlets" to (smokeRoute?.path("outlets")?.count { it.path("lat").isNumber && it.path("lng").isNumber } ?: -1), "expected" to 3)
+        hop("smoke1's SMK-SR-D has plan SKUs that are active and priced (slice-smoke pick_route)",
+            "priced plan SKUs >= 1" to ((smokeRoute?.let { skusOf(smokeBundle, it).size } ?: 0) >= 1), "expected" to true)
         hop("plan SKUs with an outlet price today", "count" to skus.size, "expected >= 39" to skus.size.coerceAtLeast(39))
         note("pack sizes in the bundle (category: entry unit x pack)", skus.values.groupBy { it.category }.entries.joinToString(" / ") { (c, l) -> "$c: " + l.map { "${it.entryUnit}x${it.perPack}" }.distinct().sorted().joinToString("|") })
         note("memo numbers: bind_ordinal x block + n", "ordinal ${bundle.path("user").path("bind_ordinal").asInt()}, block ${bundle.path("user").path("memo_seq_block_size").asInt()}, first number ${sr.seq}")
@@ -346,7 +354,10 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
             hop("$role sales cards: base_unit per category", "units" to sales.path("cards").associate { it.path("category_code").asText() to it.path("base_unit").asText() }.toSortedMap(), "expected" to sortedMapOf("bidi" to "stick", "cigarette" to "stick", "lighter" to "piece", "match" to "dozen"), hard = false)
             note("$role sales card detail", sales.path("cards").joinToString("; ") { "${it.path("category_code").asText()} target/day ${it.path("daily_target").asText("-")} remaining ${it.path("remaining").asText("-")} achv_bp ${it.path("achievement_pct_bp").asText("-")} routes ${it.path("target_routes").asInt()}" } + "; working_days ${sales.path("working_days").asInt()}; till_time ${sales.path("till_time").asBoolean()}")
             val cpr = op("cpr")
-            val expTarget = if (national) route.path("outlets").size() + lkxTargetOutlets else route.path("outlets").size()
+            // D-SRFIX-04b: the smoke route SMK-SR-D (daily, own zone Z-SMK inside T-DHK-N) is a planned route in every caller's scope on dev,
+            // and no dashboard filters test origin, so its three smoke outlets are target outlets of every card
+            val smokeOutlets = sqlLong("SELECT count(*) FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE r.code = 'SMK-SR-D'").toInt()
+            val expTarget = (if (national) route.path("outlets").size() + lkxTargetOutlets else route.path("outlets").size()) + smokeOutlets
             val expCalls = if (national) sr.memos.count { it.lines.isNotEmpty() && !it.voided } + lkxMemos.size else sr.memos.count { it.lines.isNotEmpty() && !it.voided }
             hop("$role CPR target outlets / successful calls", "dashboard" to "${cpr.path("target_outlets").asInt()}/${cpr.path("successful_calls").asInt()}", "device truth" to "$expTarget/$expCalls", hard = false)
             note("$role CPR percent (basis points)", cpr.path("cpr_pct_bp").asText())
@@ -538,7 +549,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         hop("Final Submit card: zones final submitted (national)", "dashboard" to fs.path("final_submitted").asInt(), "device truth" to 1, hard = false)
         note("Final Submit card", fs.toString().take(300))
         val tsoCard = jsonOf(postJson("/v1/dashboards/national/final-submit", tso, body))
-        hop("Final Submit card for the TSO: final submitted / remaining", "dashboard" to "${tsoCard.path("final_submitted").asInt()}/${tsoCard.path("remaining").asInt()}", "device truth" to "1/0", hard = false)
+        hop("Final Submit card for the TSO: final submitted / remaining", "dashboard" to "${tsoCard.path("final_submitted").asInt()}/${tsoCard.path("remaining").asInt()}", "device truth" to "1/${sqlLong("SELECT count(*) FROM app.zone WHERE code = 'Z-SMK'")}", hard = false) // D-SRFIX-04b: the smoke zone Z-SMK is inside tso1001's territory and is never final submitted: one zone remaining
         val log = rows("SELECT * FROM dw.v_final_submit_log WHERE business_date = DATE '$day'")
         note("dw.v_final_submit_log rows", log.joinToString(" | ") { it.entries.joinToString(",") { e -> "${e.key}=${e.value}" }.take(400) })
         // Sales unchanged by the submit steps.

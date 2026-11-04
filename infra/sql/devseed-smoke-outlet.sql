@@ -1,9 +1,9 @@
 -- The SR slice smoke's own outlets (lead 2026-10-07; moved to Gulshan/Banani by lane db 2026-10-22, D-SEED-02; moved to the
 -- smoke SR's own route by lane sr-phone-fixes, D-SRFIX-04): the three outlets SMOKE-SR-001..003 sit on smoke1's daily dev
--- route SMK-SR-D (db/seed/06_dev_smoke_user.sql), NOT on sr1001's routes, so the smoke sale (voided at the end of every
+-- route SMK-SR-D (zone Z-SMK; db/seed/06_dev_smoke_user.sql), NOT on sr1001's routes, so the smoke sale (voided at the end of every
 -- run) never lands on an outlet a tester uses nor shows in the owner's phone. A daily route (mask 127) gives the smoke
 -- an outlet on every day (infra/scripts/slice-smoke.py takes the code list). Same columns and history rows as
--- db/seed/03_outlets_and_plans.sql; idempotent; dev only (loaded by the dev seed image after db/seed, so after 06 and 06_dev_smoke_user).
+-- db/seed/03_outlets_and_plans.sql; idempotent; dev only (loaded last by the dev seed image as 09_smoke_outlet.sql, after every db/seed file).
 -- Where SMK-SR-D does not exist (test profile: BackendCoreAsksV0061Test loads this file on the Mirpur fixture), only
 -- SMOKE-SR-001 exists, on MIR-SR-D, as before. Outlets seeded earlier on sr1001's routes are moved here.
 

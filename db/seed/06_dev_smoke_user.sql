@@ -1,4 +1,4 @@
--- The slice smoke's own SR (lane sr-phone-fixes, D-SRFIX-04): `smoke1`, primary on ONE dev route SMK-SR-D (Gulshan zone, daily)
+-- The slice smoke's own SR (lane sr-phone-fixes, D-SRFIX-04): `smoke1`, primary on ONE dev route SMK-SR-D (own zone Z-SMK under T-DHK-N / H-GUL, daily)
 -- that holds only the SMOKE-SR-001..003 outlets (infra/sql/devseed-smoke-outlet.sql, loaded after this file), bound to the
 -- seeded dev device 00000000-0000-4000-8000-000000000001 beside sr1001 (a device may carry several users; the unique
 -- (device, user) pair is what the binding index guards). The owner's pilot login sr1001 is not touched: its phone stops showing the
@@ -23,8 +23,9 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Its own zone, so the TSO's Final Submit preview and the zone views of Z-GUL never list the smoke route (a daily route
-  -- would be "due and not submitted" there every day).
+  -- Its own zone Z-SMK (territory T-DHK-N, house H-GUL, cluster 'Smoke Circle'), so the per-zone Final Submit preview of Z-GUL
+  -- stays as it was. Z-SMK itself is inside tso1001's territory, so on dev a TSO/DMO/national card shows it as one service zone
+  -- not final and one route not logged in on days without a smoke run (accepted dev-only residual, D-SRFIX-04b).
   INSERT INTO app.zone (code, name, name_bn, territory_id, house_id, dep_name)
     SELECT 'Z-SMK', 'Slice smoke (dev)', 'স্লাইস স্মোক (ডেভ)', t.id, h.id, 'Smoke DEP' FROM app.territory t, app.house h
      WHERE t.code = 'T-DHK-N' AND h.code = 'H-GUL' AND NOT EXISTS (SELECT 1 FROM app.zone x WHERE x.code = 'Z-SMK');
@@ -37,6 +38,13 @@ BEGIN
   INSERT INTO app.route_planned (route_id, visit_kind, visit_days_mask, valid_from)
     SELECT r.id, r.visit_kind, r.visit_days_mask, DATE '2026-10-01' FROM app.route r
      WHERE r.code = 'SMK-SR-D' AND NOT EXISTS (SELECT 1 FROM app.route_planned p WHERE p.route_id = r.id);
+  -- The zone's open sales plan, like 06_dev_gulshan_banani's for Z-GUL: BundleService builds a route's sales_plan_sku_ids per zone
+  -- (no fallback), and the smoke needs a plan SKU that is active and has an outlet price (slice-smoke.py pick_route).
+  INSERT INTO app.sales_plan (zone_id, sku_id, valid_from)
+    SELECT z.id, s.id, DATE '2026-10-01' FROM app.zone z, app.sku s
+     WHERE z.code = 'Z-SMK' AND s.status = 'active'
+       AND EXISTS (SELECT 1 FROM app.sku_price p WHERE p.sku_id = s.id AND p.price_type = 'outlet' AND p.amount_mtk > 0)
+       AND NOT EXISTS (SELECT 1 FROM app.sales_plan p WHERE p.zone_id = z.id AND p.sku_id = s.id AND p.valid_to IS NULL);
 
   INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password)
     SELECT 'smoke1', 'Slice Smoke SR (dev)', 'SR', 'Sales Representative', 'T-SMK-0001', 'en', z.id, true, false
