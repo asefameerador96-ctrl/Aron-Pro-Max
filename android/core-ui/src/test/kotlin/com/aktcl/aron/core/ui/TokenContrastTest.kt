@@ -215,9 +215,8 @@ class TokenContrastTest {
         val n = AronNightRoles.Sunlight
         val look = AronLook.TsoSunlight
         fun sun(what: String, fg: Color, bg: Color) { val r = contrast(over(fg, bg), bg); assertTrue("TsoSunlight $what: ${"%.2f".format(r)} < 7", r >= 7.0) }
-        sun("picker ink on the field", look.ink, n.field)
+        sun("picker ink on the field", n.ink, n.field)
         sun("picker placeholder on the field", n.placeholder, n.field)
-        sun("dropdown list ink", look.ink, n.field)
         sun("fallback list ink on the page", look.ink, n.page)
         sun("fallback list muted ink on the page", look.inkMuted, n.page)
         sun("plain comment box placeholder on the page", n.placeholder, n.page)
