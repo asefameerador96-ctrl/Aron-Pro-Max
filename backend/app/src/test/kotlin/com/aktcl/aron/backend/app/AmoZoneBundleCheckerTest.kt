@@ -204,4 +204,33 @@ class AmoZoneBundleCheckerTest {
         assertEquals(listOf(0, 0, 0), zone.map { it["target_outlets"]!!.jsonPrimitive.int }, "no SR target on a supervisor's zone routes")
         assertEquals(before, ids("SELECT count(*) FROM app.route_day WHERE route_id IN ($mirRoutes)").single(), "no route-day from a TSO fetch")
     }
+
+    /**
+     * Lane X2, lead ruling R-W-06 (4): every route entry of the TSO bundle names the route's SR on the bundle date
+     * (`sr_user_id`, `sr_name`), as `GET /v1/routes` lists it first among its SR assignees: a cover valid that date before
+     * the primary, and null (sent) when the route is vacant, so Assign Task works offline. The SR bundle's entries carry the
+     * same members (one meaning for the shared RouteSnapshot). Runs last: it changes the Mirpur assignments.
+     */
+    @Test
+    @Order(7)
+    fun theTsoBundleNamesEachRoutesSrOnTheBundleDate() = testApplication {
+        application { aronApi(wiring) }
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            // MIR-SR-3F: a cover SR for 2027-01-03 only (sr1001 stays its primary). MIR-SR-2F: sr1001's primary ended on 2027-01-03 (vacant).
+            h.execute("INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password) SELECT 'srcovx2', 'Cover SR (X2)', 'SR', designation, 'T-SR-X2', locale, home_zone_id, false, false FROM app.app_user WHERE username = 'sr1001'")
+            h.execute("INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, valid_to, reason) SELECT r.id, u.id, 'cover', DATE '2027-01-03', DATE '2027-01-04', 'x2 cover' FROM app.route r, app.app_user u WHERE r.code = 'MIR-SR-3F' AND u.username = 'srcovx2'")
+            h.execute("UPDATE app.route_assignment SET valid_to = DATE '2027-01-03' WHERE kind = 'primary' AND route_id = (SELECT id FROM app.route WHERE code = 'MIR-SR-2F')")
+        }
+        val sr = ids("SELECT id FROM app.app_user WHERE username = 'sr1001'").single()
+        val cover = ids("SELECT id FROM app.app_user WHERE username = 'srcovx2'").single()
+        fun byCode(b: JsonObject) = b["routes"]!!.jsonArray.map { it.jsonObject }.associateBy { it["route"]!!.jsonObject["code"]!!.jsonPrimitive.content }
+        val tso = byCode(client.bundle("tso1001", "app_tso", tsoPhone))
+        fun srOf(r: JsonObject): Pair<String, String> = r.getValue("sr_user_id").toString() to r.getValue("sr_name").toString()
+        assertEquals("$sr" to "\"Test SR (Mirpur)\"", srOf(tso.getValue("MIR-SR-D")), "the primary SR")
+        assertEquals("$cover" to "\"Cover SR (X2)\"", srOf(tso.getValue("MIR-SR-3F")), "a cover valid that date comes before the primary")
+        assertEquals("null" to "null", srOf(tso.getValue("MIR-SR-2F")), "vacant: both members sent as null")
+        // The SR's own bundle: the same members with the same meaning.
+        val own = byCode(client.bundle("sr1001", "app_sr", devPhone))
+        assertEquals("$sr" to "\"Test SR (Mirpur)\"", srOf(own.getValue("MIR-SR-D")))
+    }
 }

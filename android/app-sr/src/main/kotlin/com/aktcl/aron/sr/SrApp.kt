@@ -107,8 +107,6 @@ import com.aktcl.aron.feature.outlet.RequestError
 import com.aktcl.aron.feature.outlet.RequestValidation
 import com.aktcl.aron.feature.outlet.VisitCheckContent
 import com.aktcl.aron.feature.outlet.VisitUiState
-import com.aktcl.aron.feature.stock.SaveOutcome
-import com.aktcl.aron.feature.stock.SaveRefusal
 import com.aktcl.aron.feature.stock.StockContent
 import com.aktcl.aron.feature.stock.StockMessage
 import com.aktcl.aron.feature.tasks.TaskContent
@@ -379,7 +377,8 @@ fun SrApp(
                     }
                 },
                 onSettings = { screen = SrScreen.SETTINGS },
-                banner = if (data.downloading) stringResource(R.string.sr_bundle_downloading) else null,
+                // tso-manual X4a (R-W-11, A3 ask 1): the download first, else the day lock after the zone's Final Submit (null while open)
+                banner = srHomeBanner(data.downloading) { srDayLockBannerText(day) },
                 hero = snap?.hero, kpis = snap?.kpis, money = snap?.money, loading = snap == null,
                 dock = snap?.let { HomeDayModel.dock(it.dayState) },
                 sync = sync, onSync = openSync,
@@ -427,6 +426,9 @@ fun SrApp(
                 var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
                 var opening by remember { mutableStateOf(false) }
                 var skipping by rememberSaveable { mutableStateOf(false) }
+                // tso-manual X4a: no new call on a route-day closed by Final Submit; follow-up (R-W-23): nor after the SR's own Sales Submit
+                var lockNotice by remember { mutableStateOf<com.aktcl.aron.core.database.repo.DayRefusal?>(null) }
+                lockNotice?.let { SrRefusalDialog(it, onOk = { lockNotice = null }) }
                 val all = OutletPicker.rows(data.outlets)
                 Column {
                     // Skip: an outlet marked not reached from the list, no fix, no geo gate, not a visit (F-SR-057).
@@ -439,7 +441,8 @@ fun SrApp(
                         else if (!opening) {
                             opening = true
                             scope.launch {
-                                runCatching { day.visitFlow.open(day.visitOutlet(r.outlet)) }
+                                // tso-manual X4a (R-W-11, A3 ask 11; R-W-23): the lock or submit text, not a fix and a generic failed commit
+                                if (!day.sale.startCall(r.outlet) { lockNotice = it }) { opening = false; return@launch }
                                 opening = false; screen = SrScreen.VISIT
                             }
                         }
@@ -454,6 +457,13 @@ fun SrApp(
                 if (open != null) {
                     SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME })
                 } else {
+                    // tso-manual X4a (R-W-11): the lock landed while the fix was read, so the committer refused the call (nothing
+                    // stored): the lock text instead of the generic failed commit and its retry; follow-up (R-W-23): the submit
+                    // text when the SR's own Sales Submit refused it
+                    val failed = st as? VisitUiState.CommitFailed
+                    var lockedOut by remember(failed) { mutableStateOf<com.aktcl.aron.core.database.repo.DayRefusal?>(null) }
+                    LaunchedEffect(failed) { lockedOut = day.sale.commitRefusal(failed) }
+                    lockedOut?.let { SrRefusalDialog(it, onOk = { screen = SrScreen.HOME }) }
                     VisitCheckContent(
                         st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { screen = SrScreen.FORCE },
                         onRetry = { scope.launch { day.visitFlow.retryCommit() } },
@@ -544,6 +554,15 @@ fun SrApp(
     }
 }
 
+/**
+ * tso-manual X4a (R-W-11, A3 ask 1): the SR Home's one banner slot. The first-bundle download keeps its text first; otherwise
+ * [lockText] (`srDayLockBannerText`, the day lock after the zone's Final Submit: title, body and the held and refused
+ * counts; null while the day is open).
+ */
+@Composable
+internal fun srHomeBanner(downloading: Boolean, lockText: @Composable () -> String?): String? =
+    if (downloading) stringResource(R.string.sr_bundle_downloading) else lockText()
+
 /** AKTCL's route kind wording, kept in English on every language (screens-sr s2 header note). */
 @Composable
 private fun routeKindText(wire: String?): String? = when (RouteKind.of(wire)) {
@@ -633,17 +652,26 @@ private fun RequestHost(day: SrDay, outlets: List<OutletEntity>, onDone: () -> U
     )
 }
 
-/** Stock issue and the slip (F-SR-013/014); the printer icon and banner are on the frame, the hold is the frame's too. */
+/**
+ * Stock issue and the slip (F-SR-013/014); the printer icon and banner are on the frame, the hold is the frame's too.
+ * tso-manual X4a (R-W-22): a Save the zone's Final Submit refuses (the lock already there, or landing while the rep types)
+ * stores and queues nothing and shows the lock text; no slip is offered for it. Fix round: no stock slip prints after the
+ * lock, also not the slip of a Save stored before it: Print is not drawn while the day's route is final
+ * ([SrDay.stockSlipPrintable]), re-read when the lock lands, and the print itself checks again.
+ */
 @Composable
-private fun StockHost(day: SrDay) {
+internal fun StockHost(day: SrDay) {
     val scope = rememberCoroutineScope()
     var version by remember { mutableStateOf(0) }
     var message by remember { mutableStateOf<StockMessage?>(null) }
+    var refused by remember { mutableStateOf<com.aktcl.aron.core.database.repo.DayRefusal?>(null) }
     var unprinted by remember { mutableStateOf(true) }
+    var printable by remember { mutableStateOf(false) }
     val att by day.stockAttempt.collectAsState()
-    LaunchedEffect(att) { unprinted = day.slipNotPrinted() }
+    val lock by day.dayLock.collectAsState()
+    LaunchedEffect(att, lock) { unprinted = day.slipNotPrinted(); printable = day.stockSlipPrintable() }
     // a thrown read is an error with a retry, never a crash and never a screen stuck on the loading card
-    val read = com.aktcl.aron.core.ui.aron.rememberAsyncLoad { day.stockLoad().also { unprinted = day.slipNotPrinted() } }
+    val read = com.aktcl.aron.core.ui.aron.rememberAsyncLoad { day.stockLoad().also { unprinted = day.slipNotPrinted(); printable = day.stockSlipPrintable() } }
     com.aktcl.aron.core.ui.aron.AronLoaded(read, stringResource(com.aktcl.aron.feature.stock.R.string.stk_load_failed), stringResource(HomeR.string.fb_retry)) { l ->
         version.let {} // the content recomposes on every edit: StockLoad is a plain object, this counter is its signal
     StockContent(
@@ -651,17 +679,15 @@ private fun StockHost(day: SrDay) {
         onIssue = { id, q -> l.setEntered(id, q.toLong()); version++ },
         onSave = {
             scope.launch {
-                when (val out = l.save(day.currentMs(), day.metaProvider.meta(0L))) {
-                    is SaveOutcome.Saved -> runCatching { day.capture.recordStock(out.movements) }
-                        .onSuccess { l.committed(out, day.currentMs()); message = StockMessage.SAVED; unprinted = day.slipNotPrinted(); day.requestSync() }
-                        .onFailure { l.commitFailed(); message = StockMessage.SAVE_FAILED }
-                    is SaveOutcome.Refused -> message = if (out.reason == SaveRefusal.NOTHING_ENTERED) StockMessage.NOTHING_ENTERED else StockMessage.REFUSED_SAME_VALUES
-                }
+                val r = day.saveStock(l)
+                message = r.message; refused = r.refused
+                if (r.saved) { unprinted = day.slipNotPrinted(); printable = day.stockSlipPrintable(); runCatching { day.requestSync() } }
                 version++
             }
         },
-        // Print never blocks Save: it is offered after a Save and may be retried later (Q-UI-03).
-        onPrint = if (unprinted && PermissionPolicy.allowed(GatedFeature.PRINT, AndroidPermissions.snapshotOf(LocalContext.current))) ({ day.printUnprintedStock() }) else null,
+        // Print never blocks Save: it is offered after a Save and may be retried later (Q-UI-03); never after the lock (R-W-22).
+        onPrint = if (unprinted && printable && PermissionPolicy.allowed(GatedFeature.PRINT, AndroidPermissions.snapshotOf(LocalContext.current))) ({ day.printUnprintedStock() }) else null,
     )
     }
+    refused?.let { SrRefusalDialog(it, onOk = { refused = null }) }
 }

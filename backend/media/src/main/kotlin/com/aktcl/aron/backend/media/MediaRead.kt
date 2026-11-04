@@ -3,11 +3,16 @@ package com.aktcl.aron.backend.media
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronPrincipal
 import com.aktcl.aron.backend.platform.FieldError
+import com.aktcl.aron.backend.platform.OwnerZone
+import com.aktcl.aron.backend.platform.Reach
+import com.aktcl.aron.backend.platform.SupportRoles
 import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ProblemCode
+import com.aktcl.aron.contract.Role
 import com.aktcl.aron.rules.BusinessDate
 import kotlinx.datetime.toJavaLocalDate
 import kotlinx.serialization.Serializable
+import org.jdbi.v3.core.Handle
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
@@ -51,8 +56,16 @@ internal class MediaRead(private val d: MediaDeps) {
             if (row.owner == p.userId) return@withHandle row to true
             // tso-manual B1 (D-TSO-MAN-22, 23, TK-14): a ticket photo is the reporter's and the support desk's only (as the
             // ticket itself); the desk is the permission `support.ticket.manage`, never a geography.
-            if (row.refType in TICKET_REFS) return@withHandle row to ("support.ticket.manage" in p.permissions)
+            if (row.refType in TICKET_REFS) return@withHandle row to SupportRoles.isDesk(p)
             val reach = reachResolver.reach(p.userId, p.role, p.scopeVersion, today)
+            // Lane X2 (lead ruling R-W-09 (6)): a feedback photo is also read by the roles that triage feedback (SUPPORT,
+            // ADMIN, SUPERADMIN, FeedbackApi) and by the support desk, as far as they read the feedback record itself (fix
+            // round, checker L3): FeedbackApi's ownerInReach rule on the author, who is the photo's captor (one signed-in
+            // user sends both), for a role FeedbackApi lists feedback to by the author's zone. That rule is the whole answer
+            // for them (second fix round, checker low 1: never the captor rule as well, so the photo is no wider than the
+            // list); a TSO (own feedback only) and the roles FeedbackApi does not list keep the captor rule below.
+            // X2 ask 5 (D-TSO-MAN-55): the same rule for every role FeedbackApi lists by zone (DMO, WM, TOP, NATIONAL, ANALYST too), one reach rule.
+            if (row.refType == FEEDBACK_REF && listsFeedbackByReach(p)) return@withHandle row to authorInReach(h, reach, row.owner, today)
             val ok = when {
                 reach.ownRecordsOnly -> false
                 reach.national -> true
@@ -83,9 +96,27 @@ internal class MediaRead(private val d: MediaDeps) {
         return MediaReadUrl(url, expires.wire())
     }
 
+    /**
+     * FeedbackApi lists feedback by the author's zone to its reader roles except the TSO, which lists its own only (that is
+     * the captor case above); a role outside its readers (AMO, SR, ...) gets no feedback list at all, desk or not.
+     */
+    private fun listsFeedbackByReach(p: AronPrincipal): Boolean = p.role in SupportRoles.FEEDBACK_READERS && p.role != Role.TSO
+
+    /** FeedbackApi's `ownerInReach` (masterdata AdminSupport): national reach, or the author's [OwnerZone] on [today] in the caller's zones. */
+    private fun authorInReach(h: Handle, reach: Reach, author: Long, today: LocalDate): Boolean = when {
+        reach.ownRecordsOnly -> false
+        reach.national -> true
+        reach.zoneIds.isEmpty() -> false
+        else -> h.createQuery("SELECT coalesce(${OwnerZone.sql("u")} = ANY(:zones), false) FROM app.app_user u WHERE u.id = :author")
+            .bind("author", author).bind("today", today).bindArray("zones", Long::class.javaObjectType, reach.zoneIds.toList())
+            .mapTo(Boolean::class.javaObjectType).findOne().orElse(false)
+    }
+
     private companion object {
         const val VALID_S = 5 * 60L
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         val TICKET_REFS = setOf("support_ticket", "support_ticket_event") // tso-manual B1
+        /** The `ref_type` of a feedback record's photo (`media_meta` with purpose `feedback`). */
+        const val FEEDBACK_REF = "feedback" // lane X2
     }
 }

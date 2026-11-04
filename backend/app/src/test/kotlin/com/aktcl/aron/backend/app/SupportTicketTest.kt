@@ -2,18 +2,26 @@ package com.aktcl.aron.backend.app
 
 import com.aktcl.aron.backend.app.TicketHarness.Companion.json
 import com.aktcl.aron.rules.TicketMath
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
+import kotlinx.serialization.json.put
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.TestInstance
@@ -246,6 +254,22 @@ class SupportTicketTest {
         suspend fun desk(cl: TicketHarness.Caller) = json(c.call(cl, HttpMethod.Get, "/v1/me").bodyAsText())["support_desk"]?.jsonPrimitive?.content
         assertEquals("true", desk(admin)); assertEquals("true", desk(login(c, "superadmin1001")))
         assertEquals("false", desk(support)); assertEquals("false", desk(tsoWeb))
+        // Lane X2, R-W-09 (1): Me.support_desk only for a caller who may write. An ADMIN holding module support at `r` reads
+        // the desk (the permission is its role's) but its writes are 403 at the module gate, so the flag is false.
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute(
+                "INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password, password_hash) " +
+                    "SELECT 'admindeskr', 'Desk Reader', 'ADMIN', designation, 'T-ADM-9001', locale, home_zone_id, false, false, password_hash FROM app.app_user WHERE username = 'admin1001'",
+            )
+            h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT id, 'national', 0, DATE '2026-01-01', 'ticket tests' FROM app.app_user WHERE username = 'admindeskr'")
+            h.execute("INSERT INTO app.user_module_grant (user_id, module, access) SELECT id, m.module, m.access FROM app.app_user, (VALUES ('support', 'r'), ('reports', 'w')) AS m(module, access) WHERE username = 'admindeskr'")
+        }
+        val reader = login(c, "admindeskr")
+        assertEquals("false", desk(reader), "support at r: no desk writes, no desk flag")
+        assertTrue(mine in list(reader) && theirs in list(reader), "it still reads every ticket (the permission is the role's)")
+        assertEquals(HttpStatusCode.Forbidden, c.desk(reader, mine, "status" to "in_progress").status, "read-only access to module support")
+        assertEquals(HttpStatusCode.Forbidden, c.reply(reader, mine, "hello").status)
+        assertEquals("""{"support":"r","reports":"w"}""".let { json(it) }, json(c.call(reader, HttpMethod.Get, "/v1/me").bodyAsText())["modules"]!!.jsonObject)
     }
 
     /** TK-14: a ticket photo is the reporter's and the desk's (D-TSO-MAN-22, 23), not a supervisor's in reach. */
@@ -600,5 +624,145 @@ class SupportTicketTest {
         } finally {
             setCfg("cfg.notify.ticket_push_enabled", "true")
         }
+    }
+
+    // ---- lane X2: lead ruling R-W-09 ---------------------------------------------------------------------------------
+
+    /** Waits (suspending, so the server keeps working) until [n] backends of this database wait on a lock. */
+    private suspend fun TicketHarness.awaitLockWaiters(n: Int) {
+        val until = System.nanoTime() + 30_000_000_000L
+        while (true) {
+            val waiting = withContext(Dispatchers.IO) { count("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'") }
+            if (waiting >= n) return
+            check(System.nanoTime() < until) { "only $waiting of $n requests reached the lock" }
+            delay(20)
+        }
+    }
+
+    /**
+     * Runs [first] until its transaction waits on a held lock of `app.audit_log` (its event rows are inserted, not yet
+     * committed), then [second] until it waits too, then lets both go: two requests at the same moment, on two connections.
+     */
+    private suspend fun TicketHarness.atTheSameMoment(first: suspend () -> HttpResponse, second: suspend () -> HttpResponse): Pair<HttpResponse, HttpResponse> = coroutineScope {
+        val holder = fresh.dataSource.connection
+        try {
+            holder.autoCommit = false
+            holder.createStatement().use { it.execute("LOCK TABLE app.audit_log IN SHARE MODE") }
+            val a = async { first() }
+            awaitLockWaiters(1)
+            val b = async { second() }
+            awaitLockWaiters(2)
+            holder.rollback()
+            a.await() to b.await()
+        } finally {
+            runCatching { holder.rollback() }
+            holder.close()
+        }
+    }
+
+    /**
+     * R-W-09 (2): the same `op_uuid` (desk PATCH) or `event_uuid` (desk reply) sent at the same moment on two tickets: both
+     * pass the replay check (neither is committed), the second insert waits on the first's unique entry and then fails on
+     * it. The first answers 200 / 201, the second 409 ERR_CONFLICT (never 500) and writes nothing.
+     */
+    @Test
+    fun aUuidReusedAtTheSameMomentOnTwoTicketsIsAConflictNeverAServerError() = run { app ->
+        val c = app.client
+        val tso = login(c, "tso1001", tsoPhone)
+        val admin = login(c, "admin1001"); val superadmin = login(c, "superadmin1001")
+        val a = uuid(); val b = uuid(); val r1 = uuid(); val r2 = uuid()
+        assertEquals(List(4) { "accepted" }, c.send(tso, listOf(ticket(a), ticket(b), ticket(r1), ticket(r2))))
+        fun writes(t: String) = scalar(
+            "SELECT (SELECT count(*) FROM app.support_ticket_event WHERE ticket_uuid = '$t') || '|' || (SELECT version FROM app.support_ticket_state WHERE ticket_uuid = '$t') || '|' || " +
+                "(SELECT count(*) FROM app.audit_log WHERE entity = 'support_ticket' AND entity_id = '$t') || '|' || (SELECT count(*) FROM app.user_notification WHERE ref_id = '$t') || '|' || " +
+                "(SELECT count(*) FROM app.domain_event WHERE aggregate_id = '$t')",
+        )
+        // PATCH: one op_uuid, two tickets, two desk users.
+        val op = uuid()
+        val beforeB = writes(b)
+        val (p1, p2) = atTheSameMoment(
+            { c.desk(admin, a, "status" to "in_progress", op = op, expected = 1) },
+            { c.desk(superadmin, b, "status" to "in_progress", op = op, expected = 1) },
+        )
+        assertEquals(ok, p1.status, p1.bodyAsText())
+        assertEquals(HttpStatusCode.Conflict, p2.status, p2.bodyAsText()); assertEquals("ERR_CONFLICT", code(p2.bodyAsText()))
+        assertEquals("in_progress|new", "${status(a)}|${status(b)}")
+        assertEquals(a, scalar("SELECT ticket_uuid FROM app.support_ticket_event WHERE client_uuid = '$op'"), "the op is stored once, on the winner's ticket")
+        assertEquals(beforeB, writes(b), "the loser wrote no event, version, audit row, inbox row or domain event")
+        // The winner replays; the loser's retry is still 409 (the uuid is the winner's now).
+        assertEquals(ok, c.desk(admin, a, "status" to "in_progress", op = op, expected = 1).status)
+        assertEquals(HttpStatusCode.Conflict, c.desk(superadmin, b, "status" to "in_progress", op = op, expected = 1).status)
+        // Reply: one event_uuid, two New tickets (each reply first writes its derived status change, which races too).
+        val ev = uuid()
+        val beforeR2 = writes(r2)
+        val (e1, e2) = atTheSameMoment({ c.reply(admin, r1, "Please restart the phone", ev) }, { c.reply(admin, r2, "Please restart the phone", ev) })
+        assertEquals(HttpStatusCode.Created, e1.status, e1.bodyAsText())
+        assertEquals(HttpStatusCode.Conflict, e2.status, e2.bodyAsText()); assertEquals("ERR_CONFLICT", code(e2.bodyAsText()))
+        assertEquals("in_progress|new", "${status(r1)}|${status(r2)}")
+        assertEquals(beforeR2, writes(r2))
+        assertEquals(ok, c.reply(admin, r1, "Please restart the phone", ev).status, "the winner's reply replays")
+    }
+
+    /** R-W-09 (3): `q` also matches the issue type's Bangla label. */
+    @Test
+    fun qAlsoMatchesTheBanglaIssueLabel() = run { app ->
+        val c = app.client
+        val tso = login(c, "tso1001", tsoPhone); val admin = login(c, "admin1001")
+        val t = uuid()
+        assertEquals(listOf("accepted"), c.send(tso, listOf(ticket(t, issue = "memo_printing", title = "Memo comes out blank"))))
+        suspend fun found(cl: TicketHarness.Caller, q: String): Boolean {
+            val r = c.call(cl, HttpMethod.Get, "/v1/support/tickets?limit=200&q=" + java.net.URLEncoder.encode(q, Charsets.UTF_8))
+            assertEquals(ok, r.status, r.bodyAsText())
+            return json(r.bodyAsText())["items"]!!.jsonArray.any { it.jsonObject.s("ticket_uuid") == t }
+        }
+        assertFalse(found(tso, "প্রিন্ট"), "no Bangla label yet")
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.code_list_item SET label_bn = 'মেমো প্রিন্ট সমস্যা' WHERE list_key = 'ticket_issue_type' AND code = 'memo_printing'") }
+        try {
+            assertTrue(found(tso, "প্রিন্ট"), "a word of the Bangla label, for the reporter")
+            assertTrue(found(admin, "মেমো প্রিন্ট"), "and for the desk")
+            assertFalse(found(tso, "ব্যাটারি"), "a Bangla word in no label, title or number")
+            assertTrue(found(tso, "blank") && found(tso, "Memo Printing"), "the title and the English label still match")
+            assertEquals("মেমো প্রিন্ট সমস্যা", json(c.call(tso, HttpMethod.Get, "/v1/support/tickets/$t").bodyAsText())["ticket"]!!.jsonObject.s("issue_type_label_bn"))
+        } finally {
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.code_list_item SET label_bn = NULL WHERE list_key = 'ticket_issue_type' AND code = 'memo_printing'") }
+        }
+    }
+
+    /**
+     * R-W-09 (4): the photo cap (`cfg.support.ticket_max_photos`) is the phone's; the server stores every photo that
+     * arrives (a fourth `media_meta` of a ticket is accepted, no outcome code refuses it) and the ticket and event photo
+     * lists stop at the cap, oldest first; `attachment_count` counts them all.
+     */
+    @Test
+    fun theTicketListsStopAtThePhotoCap() = run { app ->
+        val c = app.client
+        val tso = login(c, "tso1001", tsoPhone)
+        val t = uuid(); val cm = uuid()
+        assertEquals(listOf("accepted", "accepted"), c.send(tso, listOf(ticket(t), comment(t, uuid = cm))))
+        fun meta(ref: String, refType: String): JsonObject {
+            val m = uuid()
+            return record("media_meta", buildJsonObject {
+                put("purpose", "support"); put("ref_type", refType); put("ref_client_uuid", ref); put("sha256", TicketHarness.sha256Hex(m)); put("phash", JsonNull)
+                put("bytes", 40_000); put("width", 1024); put("height", 768); put("mime", "image/jpeg"); put("blob_path", "photos/$day/$tsoPhone/$m.jpg")
+                put("taken_at", "2027-01-03T03:00:00.000Z"); put("fix", JsonNull)
+            }, m)
+        }
+        val ticketPhotos = List(4) { meta(t, "support_ticket") }
+        val eventPhotos = List(4) { meta(cm, "support_ticket_event") }
+        assertEquals(List(8) { "accepted" }, c.send(tso, ticketPhotos + eventPhotos), "the server stores what arrives")
+        fun uuids(l: List<JsonObject>) = l.map { it["client_uuid"]!!.jsonPrimitive.content }
+        suspend fun read(): Triple<List<String>, List<String>, Long> {
+            val d = json(c.call(tso, HttpMethod.Get, "/v1/support/tickets/$t").bodyAsText())
+            val ev = d["events"]!!.jsonArray.map { it.jsonObject }.single { it.s("event_uuid") == cm }
+            return Triple(d["attachments"]!!.jsonArray.map { it.jsonPrimitive.content }, ev["attachments"]!!.jsonArray.map { it.jsonPrimitive.content }, d["ticket"]!!.jsonObject["attachment_count"]!!.jsonPrimitive.long)
+        }
+        assertEquals(Triple(uuids(ticketPhotos).take(3), uuids(eventPhotos).take(3), 8L), read(), "the default cap 3 (the contract's maxItems)")
+        setCfg("cfg.support.ticket_max_photos", "1")
+        try {
+            assertEquals(Triple(uuids(ticketPhotos).take(1), uuids(eventPhotos).take(1), 8L), read(), "a lower cap shortens the lists")
+        } finally {
+            setCfg("cfg.support.ticket_max_photos", "3")
+        }
+        assertEquals(4L, count("SELECT count(*) FROM app.media WHERE ref_type = 'support_ticket' AND ref_client_uuid = '$t'"), "every photo stays stored")
     }
 }

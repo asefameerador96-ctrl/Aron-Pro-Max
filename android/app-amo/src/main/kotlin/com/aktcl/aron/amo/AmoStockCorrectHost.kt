@@ -20,6 +20,8 @@ import kotlinx.coroutines.launch
 /**
  * F-AMO-049: the SR's "correct total" path (F-SR-081, [StockAdjustments.correctTotal]) on the AMO's own stock. The balance is
  * recomputed from the ledger at Save, so a double tap or a retry after the commit finds nothing to correct and posts nothing.
+ * tso-manual X4a (R-W-22): a correction the zone's Final Submit refuses (in a call on a closed route) stores nothing and
+ * shows the lock text.
  */
 @Composable
 fun AmoStockCorrectHost(day: AmoDay, onDone: () -> Unit) {
@@ -31,6 +33,8 @@ fun AmoStockCorrectHost(day: AmoDay, onDone: () -> Unit) {
     var reason by rememberSaveable { mutableStateOf<CorrectionReason?>(null) }
     var saving by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
+    var refused by remember { mutableStateOf<com.aktcl.aron.core.database.repo.DayRefusal?>(null) }
+    refused?.let { AmoRefusalDialog(day, it, onOk = { refused = null }) }
     suspend fun load() {
         val bal = StockTracker.of(day.database, day.businessDate())
         // only SKUs that were ever loaded or sold today have a stock to correct
@@ -49,11 +53,12 @@ fun AmoStockCorrectHost(day: AmoDay, onDone: () -> Unit) {
             if (!saving && !saved && id != null && r != null && sku != null) {
                 saving = true
                 scope.launch {
-                    val ok = runCatching {
+                    val result = runCatching {
                         val right = com.aktcl.aron.feature.amo.StockCorrection.parseTotal(text) ?: error("not a total")
                         day.correctStock(id, right, r.code, sku.unit)
-                    }.isSuccess
-                    saving = false; saved = ok
+                    }
+                    val ok = result.isSuccess
+                    saving = false; saved = ok; refused = com.aktcl.aron.core.database.repo.DayRefusal.of(result.exceptionOrNull())
                     if (ok) { kotlinx.coroutines.delay(900); runCatching { load() }; day.forgetStock(); onDone() }
                 }
             }

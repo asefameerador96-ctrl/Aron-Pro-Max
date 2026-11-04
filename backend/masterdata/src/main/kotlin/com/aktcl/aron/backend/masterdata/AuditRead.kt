@@ -167,6 +167,9 @@ internal object AuditMask {
         "paper_backfill" to setOf("memo_no", "user_id", "route_id", "outlet_id", "business_date", "net_mtk", "paid_mtk", "lines"),
         "device_otp" to setOf("rows", "live", "expires_at"),
         "leave_application" to setOf("status", "applicant_user_id"),
+        // Lane X2 (lead ruling R-W-09 (7), B3's ask): the zone-day reopen images of DayService.reopen (D-B3-08): before = the
+        // live close, after = the reopen; ids, times, counts and the channel only (the reason stays masked as for every row).
+        "zone_day" to setOf("final_submit_uuid", "submitted_at", "via", "submitted_by", "late_rows", "reopened_at", "reopen_uuid", "route_day_count"),
         "dues_adjustment" to setOf("outlet_id", "kind", "amount_mtk", "client_uuid", "status", "balance_after_mtk", "balance_below_zero"),
         "device" to setOf("pending_rows", "status", "device_uuid", "flavour", "lockdown_level"),
         "enrolment_token" to setOf("flavour", "lockdown_level", "max_uses"),

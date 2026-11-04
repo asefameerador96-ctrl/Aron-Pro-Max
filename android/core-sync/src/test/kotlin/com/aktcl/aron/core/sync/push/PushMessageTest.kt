@@ -33,6 +33,20 @@ class PushMessageTest {
         assertEquals(setOf(PushPullKind.CONFIG), PushMessage.parse(mapOf("kind" to "config_pull", "urgent" to "false"))!!.pulls)
     }
 
+    /** X4a ask 11 (D-TSO-MAN-57): the late-sale policy push is a CONFIG pull and nothing else: no bundle, no notice, no sync. */
+    @Test fun theLatePolicyConfigPullSchedulesAConfigPullAndNothingElse() {
+        val sent = mapOf("kind" to "config_pull", "reason" to PushMessage.REASON_LATE_POLICY_CHANGED, "urgent" to "true", "pull_after_s" to "7", "notification_id" to "n1")
+        val m = PushMessage.parse(sent)!!
+        assertEquals(setOf(PushPullKind.CONFIG_URGENT), m.pulls)
+        assertEquals(PushMessage.REASON_LATE_POLICY_CHANGED, m.reason)
+        assertNull(m.notice) // no notice is shown for a policy change
+        assertEquals(7_000L, m.pullDelayMs(kotlin.random.Random(1)))
+        // The same reason without the urgent flag is still the ordinary CONFIG pull, never a bundle pull.
+        assertEquals(setOf(PushPullKind.CONFIG), PushMessage.parse(sent - "urgent")!!.pulls)
+        // As a sync_nudge reason it pulls the bundle only (no config, no notice): the policy travels as kind config_pull.
+        assertEquals(setOf(PushPullKind.BUNDLE), PushMessage.parse(mapOf("kind" to "sync_nudge", "reason" to PushMessage.REASON_LATE_POLICY_CHANGED))!!.pulls)
+    }
+
     @Test fun anAnnouncementShowsItsTextInTheAppLanguageAndPullsNothing() {
         val m = PushMessage.parse(mapOf("kind" to "announcement", "title_en" to "Meeting", "body_en" to "At 9", "title_bn" to "সভা", "body_bn" to "৯টায়"))!!
         val n = m.notice as PushNotice.Announcement

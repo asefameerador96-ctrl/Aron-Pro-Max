@@ -1,6 +1,7 @@
 package com.aktcl.aron.backend.app
 
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.JsonObject
@@ -29,6 +30,11 @@ import kotlin.test.assertTrue
  *   most one, and the final status follows (closed exactly when a close review was stored; else resolved when the desk
  *   resolved; else in_progress after a desk reply; else new);
  * - the outbox events: one `support_ticket.commented` per stored comment (device and desk), one status change per move.
+ * Lane X2 (lead ruling R-W-09 (5)): a random batch may carry one of its records twice (an in-batch duplicate); the later
+ * copy answers `duplicate` once the earlier one is stored, else the earlier copy's answer, and nothing doubles. In some
+ * schedules an SR (a role outside `cfg.support.ticket_requester_roles`) comments on its own ticket, stored while SR was
+ * allowed: the comment is quarantined `scope_out_of_reach`, and an ADMIN's accept is 409 `ERR_REQUEST_STATE` (R-F-05)
+ * while the role is still not allowed, with nothing stored (no event, no domain event, the item still open).
  * Size and seed: ARON_TICKET_FUZZ_RUNS (default 12) and ARON_TICKET_FUZZ_SEED (default 20261029), printed on failure.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -36,6 +42,9 @@ class SupportTicketSyncFuzzTest {
     private lateinit var w: TicketHarness
     private val runs = System.getenv("ARON_TICKET_FUZZ_RUNS")?.toIntOrNull() ?: 12
     private val seed = System.getenv("ARON_TICKET_FUZZ_SEED")?.toLongOrNull() ?: 20261029L
+    /** Lane X2: how often the schedules exercised the two R-W-09 (5) cases (checked at the end, so a seed cannot skip them). */
+    private var inBatchCopies = 0
+    private var srAccepts = 0
 
     @BeforeAll
     fun setUp() { w = TicketHarness() }
@@ -50,6 +59,15 @@ class SupportTicketSyncFuzzTest {
             val c = client
             val tso = login(c, "tso1001", tsoPhone)
             val admin = login(c, "admin1001")
+            val sr = login(c, "sr1001", srPhone)
+            // Lane X2: an SR ticket stored while SR was a requester role; afterwards only TSO is (the default).
+            val srTicket = uuid()
+            setCfg("cfg.support.ticket_requester_roles", """["TSO","SR"]""")
+            try { assertEquals(listOf("accepted"), c.send(sr, listOf(ticket(srTicket, issue = "user_login")))) } finally { setCfg("cfg.support.ticket_requester_roles", """["TSO"]""") }
+            fun srState() = scalar(
+                "SELECT version || '|' || status || '|' || (SELECT count(*) FROM app.support_ticket_event WHERE ticket_uuid = '$srTicket') || '|' || " +
+                    "(SELECT count(*) FROM app.domain_event WHERE aggregate_id = '$srTicket') FROM app.support_ticket_state WHERE ticket_uuid = '$srTicket'",
+            )
             for (run in 1..runs) {
                 val rnd = Random(seed + run)
                 val ctx = "seed=$seed run=$run"
@@ -70,7 +88,15 @@ class SupportTicketSyncFuzzTest {
                 val resolved = HashSet<String>(); val replied = HashSet<String>()
                 suspend fun batch(recs: List<JsonObject>) {
                     if (recs.isEmpty()) return
-                    c.send(tso, recs).forEachIndexed { i, a -> history.getOrPut(uuidOf(recs[i])) { mutableListOf() } += a }
+                    val acks = c.send(tso, recs)
+                    acks.forEachIndexed { i, a -> history.getOrPut(uuidOf(recs[i])) { mutableListOf() } += a }
+                    // Lane X2 (R-W-09 (5)): a record sent twice in one batch: once the first copy is stored the second is a
+                    // duplicate; otherwise both copies get the same answer (parked again, or the same final refusal).
+                    for (i in recs.indices) for (j in i + 1 until recs.size) if (uuidOf(recs[i]) == uuidOf(recs[j])) {
+                        val want = if (acks[i] == "accepted" || acks[i] == "duplicate") "duplicate" else acks[i]
+                        assertEquals(want, acks[j], "$ctx in-batch copy of ${kindOf(recs[i])} ${uuidOf(recs[i])}: ${acks[i]} then ${acks[j]}")
+                        inBatchCopies++
+                    }
                 }
                 suspend fun deskStep(step: Int) {
                     for (t in tickets) {
@@ -92,9 +118,32 @@ class SupportTicketSyncFuzzTest {
                 }
                 // Random batches: any subset, any order, resends included.
                 val steps = rnd.nextInt(3, 9)
+                val srStep = if (rnd.nextBoolean()) rnd.nextInt(steps) else -1
                 for (step in 0 until steps) {
-                    batch(outbox.shuffled(rnd).take(rnd.nextInt(1, outbox.size + 1)))
+                    val picked = outbox.shuffled(rnd).take(rnd.nextInt(1, outbox.size + 1)).toMutableList()
+                    // Lane X2: one batch in three carries one of its records a second time, at a random later position.
+                    if (rnd.nextInt(3) == 0) { val k = rnd.nextInt(picked.size); picked.add(rnd.nextInt(k + 1, picked.size + 1), picked[k]) }
+                    batch(picked)
                     deskStep(step)
+                    // Lane X2 (R-F-05, R-W-09 (5)): the SR comments on its own ticket at a random step of some schedules.
+                    if (step == srStep) {
+                        val cm = comment(srTicket, "SR comment $run")
+                        val cmUuid = uuidOf(cm)
+                        assertEquals(listOf("quarantined scope_out_of_reach"), c.send(sr, listOf(cm)), "$ctx SR comment")
+                        val before = srState()
+                        val item = count("SELECT id FROM app.sync_quarantine WHERE client_uuid = '$cmUuid' AND status = 'open'")
+                        val r = c.call(admin, HttpMethod.Post, "/v1/admin/quarantine/$item/resolve", """{"action":"accept","reason":"fuzz accept of an SR comment"}""")
+                        val body = r.bodyAsText()
+                        assertEquals(HttpStatusCode.Conflict, r.status, "$ctx accept of an SR comment while SR is not allowed: $body")
+                        assertEquals("ERR_REQUEST_STATE", TicketHarness.json(body)["code"]!!.jsonPrimitive.content, "$ctx $body")
+                        assertTrue("ticket_requester_roles" in body, "$ctx the role re-check refused it (R-F-05): $body")
+                        assertEquals("open", scalar("SELECT status FROM app.sync_quarantine WHERE id = $item"), "$ctx the item stays open")
+                        assertEquals(0L, count("SELECT count(*) FROM app.support_ticket_event WHERE client_uuid = '$cmUuid'"), "$ctx nothing stored")
+                        assertEquals("quarantined", scalar("SELECT status FROM app.ingest_registry WHERE client_uuid = '$cmUuid'"), "$ctx")
+                        assertEquals(before, srState(), "$ctx the SR ticket is untouched")
+                        assertEquals(listOf("quarantined scope_out_of_reach"), c.send(sr, listOf(cm)), "$ctx the phone's resend is still held")
+                        srAccepts++
+                    }
                 }
                 // Drain: tickets first, then whatever is still parked or never sent, until nothing is parked.
                 batch(outbox.filter { typeOf(it) == "support_ticket" })
@@ -158,6 +207,9 @@ class SupportTicketSyncFuzzTest {
                     assertEquals(version, version(t), "$ctx version of $t")
                 }
             }
+            // Lane X2: with the default seed and size both cases ran; a custom seed or size that skips one says so.
+            assertTrue(inBatchCopies > 0, "seed=$seed runs=$runs: no batch carried an in-batch duplicate")
+            assertTrue(srAccepts > 0, "seed=$seed runs=$runs: no schedule accepted a quarantined SR event")
         }
     }
 }

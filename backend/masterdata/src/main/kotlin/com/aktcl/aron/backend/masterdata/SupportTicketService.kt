@@ -46,7 +46,7 @@ import java.util.UUID
  */
 object SupportTickets {
     /** D-TSO-MAN-22: the support desk (seeded for ADMIN and SUPERADMIN in `app.role_grant_map`; SUPPORT can be granted it). */
-    const val DESK_PERMISSION = "support.ticket.manage"
+    const val DESK_PERMISSION = com.aktcl.aron.backend.platform.SupportRoles.DESK_PERMISSION
     const val REQUESTER_ROLES_KEY = "cfg.support.ticket_requester_roles"
     const val PUSH_KEY = "cfg.notify.ticket_push_enabled"
 
@@ -62,7 +62,7 @@ object SupportTickets {
     /** "Support" for every desk actor and the job (D-TSO-MAN-21): a support user is never shown by name. */
     const val SUPPORT_DISPLAY = "Support"
 
-    fun isDesk(p: AronPrincipal): Boolean = DESK_PERMISSION in p.permissions
+    fun isDesk(p: AronPrincipal): Boolean = com.aktcl.aron.backend.platform.SupportRoles.isDesk(p)
 
     /**
      * The global value of [key] at [at] (the API clock, as the config resolver compares), read on [h]: the newest
@@ -84,6 +84,19 @@ object SupportTickets {
             ?: DEFAULT_REQUESTER_ROLES
 
     fun roleAllowed(h: Handle, role: Role, at: Instant): Boolean = role.wire in requesterRoles(h, at)
+
+    const val MAX_PHOTOS_KEY = "cfg.support.ticket_max_photos"
+
+    /** The contract's `maxItems` of a ticket's and an event's `attachments` (D-TSO-MAN-23). */
+    const val CONTRACT_MAX_PHOTOS = 3
+
+    /**
+     * Lane X2, lead ruling R-W-09 (4): the photo cap `cfg.support.ticket_max_photos` (V0134: 0..3, default 3) is enforced
+     * on the phone; the server stores every photo that arrives (no outcome code refuses a fourth) and its ticket and event
+     * photo lists stop at the cap, never above the contract's 3. An unreadable value means 3.
+     */
+    fun photoCap(h: Handle, at: Instant): Int =
+        ((cfg(h, MAX_PHOTOS_KEY, at) as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toIntOrNull() ?: CONTRACT_MAX_PHOTOS).coerceIn(0, CONTRACT_MAX_PHOTOS)
 
     /** `cfg.notify.ticket_push_enabled`; an unreadable switch means off (as PushNotifier treats its switches). */
     fun pushEnabled(h: Handle, at: Instant): Boolean = (cfg(h, PUSH_KEY, at) as? JsonPrimitive)?.booleanOrNull ?: false
@@ -217,7 +230,8 @@ class SupportTicketService(
             val binds = LinkedHashMap<String, Any>()
             if (!desk) { where += "s.requester_user_id = :me"; binds["me"] = p.userId }
             f.q?.let { q ->
-                where += "(t.ticket_no LIKE :prefix ESCAPE '!' OR t.title ILIKE :text ESCAPE '!' OR it.label_en ILIKE :text ESCAPE '!')"
+                // Lane X2, R-W-09 (3): the issue type's Bangla label matches too (the TSO app shows it).
+                where += "(t.ticket_no LIKE :prefix ESCAPE '!' OR t.title ILIKE :text ESCAPE '!' OR it.label_en ILIKE :text ESCAPE '!' OR it.label_bn ILIKE :text ESCAPE '!')"
                 binds["prefix"] = like(q.uppercase()) + "%"; binds["text"] = "%" + like(q) + "%"
             }
             f.status?.let { where += "s.status = :status"; binds["status"] = it }
@@ -287,7 +301,7 @@ class SupportTicketService(
         val now = clock.now()
         val today = SupportTickets.today(clock)
         val cv = config.configVersion()
-        val out = db.jdbi.inTransaction<Written<JsonObject>, Exception> { h ->
+        val out = uuidRaceAsConflict("op_uuid ${u.opUuid}") { db.jdbi.inTransaction<Written<JsonObject>, Exception> { h ->
             val st = lockState(h, ticket) ?: throw notFound()
             val op = u.opUuid.toString()
             // R-F-03 replay first: before the version and the transition rules, so a retry whose answer was lost replays.
@@ -364,7 +378,7 @@ class SupportTicketService(
             val added = Inbox.add(h, inboxItem(st.requester, ticket, op, text))
             val push = added && SupportTickets.pushEnabled(h, now)
             Written(wire(readTicket(h, ticket)!!, true), st.requester.takeIf { push })
-        }
+        } }
         out.nudgeUser?.let { runCatching { nudger.nudge(it, Inbox.PUSH_REASON) }.onFailure { e -> log.warn("ticket push failed: ${e.javaClass.simpleName}") } }
         return out.value
     }
@@ -382,7 +396,7 @@ class SupportTicketService(
         val today = SupportTickets.today(clock)
         val cv = config.configVersion()
         val ev = eventUuid.toString()
-        val out = db.jdbi.inTransaction<Written<Pair<Boolean, SupportTicketEvent>>, Exception> { h ->
+        val out = uuidRaceAsConflict("event_uuid $ev") { db.jdbi.inTransaction<Written<Pair<Boolean, SupportTicketEvent>>, Exception> { h ->
             val st = lockState(h, ticket) ?: throw notFound()
             data class Prior(val ticket: String, val kind: String, val via: String, val body: String?)
             h.createQuery("SELECT ticket_uuid::text, kind, via, body FROM app.support_ticket_event WHERE client_uuid = :e").bind("e", eventUuid)
@@ -412,12 +426,27 @@ class SupportTicketService(
             val added = Inbox.add(h, inboxItem(st.requester, ticket, ev, SupportTicketTexts.of("reply", st.ticketNo)))
             val push = added && SupportTickets.pushEnabled(h, now)
             Written(true to events(h, ticket, eventUuid).single(), st.requester.takeIf { push })
-        }
+        } }
         out.nudgeUser?.let { runCatching { nudger.nudge(it, Inbox.PUSH_REASON) }.onFailure { e -> log.warn("ticket push failed: ${e.javaClass.simpleName}") } }
         return out.value
     }
 
     // ---- helpers -----------------------------------------------------------------------------------------------------
+
+    /**
+     * Lane X2, lead ruling R-W-09 (2): the replay check reads `app.support_ticket_event` before the insert, under the lock
+     * of the request's own ticket only, so the same `op_uuid` or `event_uuid` sent at the same moment on two tickets
+     * passes both checks and the second insert waits on the first's unique index entry. When the first commits, the second
+     * fails on `support_ticket_event_client_uuid_key` (SQLSTATE 23505): that is the "uuid already used" case, answered as
+     * the replay check answers it, 409 ERR_CONFLICT, never 500. The whole transaction has rolled back (nothing of the
+     * second request is stored). Any other unique violation is not this race and stays an error.
+     */
+    private fun <T> uuidRaceAsConflict(what: String, block: () -> T): T = try { block() } catch (e: org.jdbi.v3.core.JdbiException) {
+        val race = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<java.sql.SQLException>()
+            .any { it.sqlState == "23505" && EVENT_UUID_KEY in it.message.orEmpty() }
+        if (race) throw ApiProblem(ProblemCode.ERR_CONFLICT, "$what is already used by another request or event")
+        throw e
+    }
 
     private data class StateRow(val ticketNo: String, val requester: Long, val status: String, val priority: String, val assignee: Long?, val version: Int)
 
@@ -475,17 +504,17 @@ class SupportTicketService(
     private fun readTicket(h: Handle, ticket: UUID): TicketRow? =
         h.createQuery("$TICKET_SELECT AND t.client_uuid = :t").bind("t", ticket).map { rs, _ -> row(rs) }.findOne().orElse(null)
 
-    /** The thread (oldest first, at most 500), or only the event [only]. */
+    /** The thread (oldest first, at most 500), or only the event [only]; each event's photos stop at the cap (R-W-09 (4)). */
     private fun events(h: Handle, ticket: UUID, only: UUID? = null): List<SupportTicketEvent> = h.createQuery(
         """
         SELECT e.client_uuid::text AS uuid, e.kind, e.body, e.via, e.from_status, e.to_status, e.resolution_code, e.created_at, u.full_name,
                ARRAY(SELECT m.client_uuid::text FROM app.media m WHERE m.ref_type = 'support_ticket_event' AND m.ref_client_uuid = e.client_uuid
-                      AND m.voided_at IS NULL ORDER BY m.id LIMIT 3) AS photos
+                      AND m.voided_at IS NULL ORDER BY m.id LIMIT :cap) AS photos
           FROM app.support_ticket_event e JOIN app.app_user u ON u.id = e.user_id
          WHERE e.ticket_uuid = :t AND e.voided_at IS NULL${if (only != null) " AND e.client_uuid = :only" else ""}
          ORDER BY e.created_at, e.id LIMIT 500
         """.trimIndent(),
-    ).bind("t", ticket).also { q -> only?.let { q.bind("only", it) } }.map { rs, _ ->
+    ).bind("t", ticket).bind("cap", SupportTickets.photoCap(h, clock.now())).also { q -> only?.let { q.bind("only", it) } }.map { rs, _ ->
         val kind = rs.getString("kind")
         val support = rs.getString("via") != "device"
         // A close review (the reporter's Submit Review & Close) is accepted only on a resolved ticket and closes it: the
@@ -500,10 +529,14 @@ class SupportTicketService(
         )
     }.list()
 
-    /** Media uuids of the photos attached to [ref] (a ticket or an event), oldest first, at most 3 (D-TSO-MAN-23). */
+    /**
+     * Media uuids of the photos attached to [ref] (a ticket or an event), oldest first, at most the photo cap
+     * `cfg.support.ticket_max_photos` (D-TSO-MAN-23, R-W-09 (4); never above the contract's 3). `attachment_count` still
+     * counts every stored photo (D-B1-16).
+     */
     private fun photos(h: Handle, refType: String, ref: UUID): List<String> = h.createQuery(
-        "SELECT client_uuid::text FROM app.media WHERE ref_type = :rt AND ref_client_uuid = :r AND voided_at IS NULL ORDER BY id LIMIT 3",
-    ).bind("rt", refType).bind("r", ref).mapTo(String::class.java).list()
+        "SELECT client_uuid::text FROM app.media WHERE ref_type = :rt AND ref_client_uuid = :r AND voided_at IS NULL ORDER BY id LIMIT :cap",
+    ).bind("rt", refType).bind("r", ref).bind("cap", SupportTickets.photoCap(h, clock.now())).mapTo(String::class.java).list()
 
     /** The contract `SupportTicket`; the desk-only members (`assignee_user_id`, `assignee_name`) are absent for anyone else. */
     private fun wire(t: TicketRow, desk: Boolean): JsonObject {
@@ -542,6 +575,9 @@ class SupportTicketService(
     private fun bad(pointer: String, code: String) = ApiProblem(ProblemCode.ERR_VALIDATION, "invalid $pointer", errors = listOf(FieldError(pointer, code)))
 
     companion object {
+        /** The unique key of `app.support_ticket_event.client_uuid` (V0130, PostgreSQL's default name for the column's UNIQUE). */
+        internal const val EVENT_UUID_KEY = "support_ticket_event_client_uuid_key"
+
         /**
          * A LIKE pattern that matches [s] literally: `!` escapes `%`, `_` and itself (`ESCAPE '!'`; a backslash in a quoted
          * SQL literal makes Jdbi's statement parser read past the closing quote and miss the next named parameter).

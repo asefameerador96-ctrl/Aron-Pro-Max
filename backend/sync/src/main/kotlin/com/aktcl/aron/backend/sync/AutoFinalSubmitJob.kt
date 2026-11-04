@@ -47,8 +47,9 @@ import java.util.concurrent.TimeUnit
  * - **Notices**, in the close's transaction: one inbox row `final_submit_auto` for every active TSO whose reach covers
  *   the zone on that date ([Inbox.add], unique per recipient, R-F-04; the dedupe key also names the cycle and the
  *   recipient). After
- *   the commit: the push `notification` to each TSO with a new row and `day_final_submitted` to the zone's SR and AMO
- *   phones (as the manual close does). A lost push only delays the phone's next pull; ingest holds late rows anyway.
+ *   the commit: the push `notification` to each TSO with a new row and [finalSubmitPushReason] to the zone's SR and AMO
+ *   phones (as the manual close does: `day_final_submitted` only under quarantine or reject). A lost push only delays the
+ *   phone's next pull; ingest applies the late policy anyway.
  */
 class AutoFinalSubmitJob(
     private val db: Database,
@@ -93,7 +94,11 @@ class AutoFinalSubmitJob(
             out += closed
             // After the commit only (D-TSO-MAN-26, 31): no business data, the phones pull.
             closed.tsoUserIds.forEach { u -> runCatching { nudger.nudge(u, Inbox.PUSH_REASON) } }
-            closed.fieldUserIds.forEach { u -> runCatching { nudger.nudge(u, PUSH_DAY_FINAL_SUBMITTED) } }
+            // owner decision 2026-11-04: "sales are closed" (day_final_submitted) only under quarantine or reject
+            if (closed.fieldUserIds.isNotEmpty()) {
+                val reason = finalSubmitPushReason(config)
+                closed.fieldUserIds.forEach { u -> runCatching { nudger.nudge(u, reason) } }
+            }
         }
         if (out.isNotEmpty()) log.info("auto Final Submit closed {} zone-day(s) of {}", out.size, date)
         return out

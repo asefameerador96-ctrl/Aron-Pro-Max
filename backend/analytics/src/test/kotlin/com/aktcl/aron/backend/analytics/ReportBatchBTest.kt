@@ -44,7 +44,20 @@ ALTER TABLE app.visit ENABLE TRIGGER USER;
         val s = run(10, Role.ANALYST, "final-submit-status").result()
         val z1 = s.rows().by("zone_name", "Zone1")
         assertEquals(2, z1.num("target_routes").toInt()); assertEquals(1, z1.num("in_progress").toInt()); assertEquals(1, z1.num("sales_submitted").toInt()); assertEquals("false", z1.str("zone_final"))
-        assertEquals("true", s.rows().by("zone_name", "Zone2").str("zone_final"))
+        // One Final Submit formula (R-W-03, D-TSO-MAN-53): R3 is final_submitted by route state, but with no live app.final_submit row its zone is NOT final.
+        assertEquals("false", s.rows().by("zone_name", "Zone2").str("zone_final"))
+        fresh.dataSource.connection.use { c ->
+            c.createStatement().use {
+                it.execute(
+                    "INSERT INTO app.final_submit (client_uuid, zone_id, business_date, submitted_by, submitted_at, via) " +
+                        "SELECT '00000000-0000-4000-8000-0000000c2f02', $z2, DATE '2026-10-04', u.id, TIMESTAMPTZ '2026-10-04 11:00Z', 'web' FROM app.app_user u WHERE u.username = 'sr001'",
+                )
+            }
+        }
+        AggregationWorker(fresh.db).also { w -> w.requestRebuild(day); w.runUntilIdle() }
+        val live = run(10, Role.ANALYST, "final-submit-status").result()
+        assertEquals("true", live.rows().by("zone_name", "Zone2").str("zone_final"))
+        assertEquals("false", live.rows().by("zone_name", "Zone1").str("zone_final"))
         assertEquals(setOf("R3"), run(14, Role.TSO, "final-submit-log").result().rows().map { it.str("route_code")!! }.toSet())
         assertEquals(1, run(14, Role.TSO, "final-submit-status").result().rows().size)
     }

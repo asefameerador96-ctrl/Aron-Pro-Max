@@ -365,6 +365,94 @@ class DayApiTest {
     }
 
     /**
+     * Lane X2, lead ruling R-W-06 (1): `FinalSubmitPreview.can_submit` is the submit's own role rule (DayService.submitKind):
+     * the TSO true; a DMO or WM true only while its role is in `cfg.day.final_submit_delegate_roles`; every other role that
+     * may read the preview false. For each caller the submit agrees: 403 exactly when `can_submit` is false (a caller that
+     * may submit gets the close, or 409 once the zone-day is closed).
+     */
+    @Test
+    fun canSubmitIsTheSubmitsOwnRoleRule() = testApplication {
+        application { aronApi(wiring) }
+        val d = "2026-12-20"
+        // A WM whose wing holds the zone (db/seed has none).
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute(
+                "INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password, password_hash) " +
+                    "SELECT 'wmx2', 'WM X2', 'WM', 'Wing Manager', 'T-WM-X2', 'en', home_zone_id, false, false, password_hash FROM app.app_user WHERE username = 'dmo1001'",
+            )
+            h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT u.id, 'wing', d.wing_id, DATE '2026-01-01', 'x2' FROM app.app_user u, app.division d WHERE u.username = 'wmx2' AND d.code = 'D-DHK'")
+        }
+        suspend fun canSubmit(user: String): Boolean = client.previewOf(client.web(user), zone, d)["can_submit"]!!.jsonPrimitive.content.toBoolean()
+        val readers = listOf("tso1001", "dmo1001", "wmx2", "admin1001", "superadmin1001")
+        // The default delegate list is empty: the TSO only.
+        assertEquals(listOf(true, false, false, false, false), readers.map { canSubmit(it) })
+        for (u in readers.drop(1)) assertEquals(HttpStatusCode.Forbidden, client.submitOf(client.web(u), uuid(), zone, d).status, "$u: not the TSO, not delegated")
+        assertEquals(0L, fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT count(*) FROM app.final_submit WHERE zone_id = :z AND business_date = DATE '$d'").bind("z", zone).mapTo(Long::class.java).one() })
+        // Delegated DMO and WM: the preview says so and the submit agrees (the DMO closes, the WM then finds it closed).
+        setConfig("cfg.day.final_submit_delegate_roles", """["DMO","WM"]""")
+        try {
+            assertEquals(listOf(true, true, true, false, false), readers.map { canSubmit(it) })
+            val byDmo = client.submitOf(client.web("dmo1001"), uuid(), zone, d)
+            assertEquals(HttpStatusCode.OK, byDmo.status, byDmo.bodyAsText())
+            assertEquals("delegated", json(byDmo.bodyAsText())["kind"]!!.jsonPrimitive.content)
+            val byWm = client.submitOf(client.web("wmx2"), uuid(), zone, d)
+            assertEquals(HttpStatusCode.Conflict, byWm.status, "the WM may submit; the zone-day is closed already: ${byWm.bodyAsText()}")
+            assertEquals("ERR_DAY_ALREADY_FINAL_SUBMITTED", code(byWm.bodyAsText()))
+            for (u in listOf("admin1001", "superadmin1001")) assertEquals(HttpStatusCode.Forbidden, client.submitOf(client.web(u), uuid(), zone, d).status, u)
+            // can_submit is the role rule only: still true for the delegate after the close (already_submitted says the rest).
+            val after = client.previewOf(client.web("wmx2"), zone, d)
+            assertEquals(true, after["can_submit"]!!.jsonPrimitive.content.toBoolean()); assertEquals(true, after["already_submitted"]!!.jsonPrimitive.content.toBoolean())
+        } finally {
+            setConfig("cfg.day.final_submit_delegate_roles", "[]")
+        }
+        assertEquals(listOf(true, false, false), listOf("tso1001", "dmo1001", "wmx2").map { canSubmit(it) }, "back to the TSO only")
+        // A field role never gets the preview (403), so it never reads can_submit.
+        assertEquals(HttpStatusCode.Forbidden, client.get("/v1/day/final-submit/preview?zone_id=$zone&business_date=$d") { bearerAuth(client.login()); header("X-Device-Id", devPhone) }.status)
+    }
+
+    /**
+     * Lane X2 fix round (checker L1): only DMO and WM can be delegated, the registry's bound for
+     * `cfg.day.final_submit_delegate_roles` ("subset of DMO, WM", V0006), which the config editor does not check. A stored
+     * list that also names NATIONAL and ADMIN delegates neither: `can_submit` false and the submit 403 for both (a national
+     * user reads only; an ADMIN is no delegate even with `data_entry` at `w`), while the DMO it names is delegated (true, 200).
+     */
+    @Test
+    fun aDelegateListNamingARoleOutsideDmoAndWmDelegatesOnlyThose() = testApplication {
+        application { aronApi(wiring) }
+        val d = "2026-12-22"
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute(
+                "INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password, password_hash) " +
+                    "SELECT 'natx2', 'National X2', 'NATIONAL', 'National', 'T-NAT-X2', 'en', home_zone_id, false, false, password_hash FROM app.app_user WHERE username = 'dmo1001'",
+            )
+            h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT id, 'national', 0, DATE '2026-01-01', 'x2' FROM app.app_user WHERE username = 'natx2'")
+        }
+        suspend fun canSubmit(user: String): Boolean = client.previewOf(client.web(user), zone, d)["can_submit"]!!.jsonPrimitive.content.toBoolean()
+        fun closes(): Long = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT count(*) FROM app.final_submit WHERE zone_id = :z AND business_date = DATE '$d'").bind("z", zone).mapTo(Long::class.java).one() }
+        setConfig("cfg.day.final_submit_delegate_roles", """["NATIONAL","ADMIN","DMO"]""")
+        try {
+            assertEquals(listOf(false, false, true), listOf("natx2", "admin1001", "dmo1001").map { canSubmit(it) }, "NATIONAL, ADMIN, DMO")
+            for (u in listOf("natx2", "admin1001")) {
+                val r = client.submitOf(client.web(u), uuid(), zone, d)
+                assertEquals(HttpStatusCode.Forbidden, r.status, "$u: ${r.bodyAsText()}")
+                // A role rule refuses it, never the zone reach (ERR_OUT_OF_SCOPE): both callers reach the zone. NATIONAL's
+                // POST stops earlier, at the portal level guard ("a national user reads only"); ADMIN's reaches the delegate
+                // bound in submitKind, which is the refusal pinned below (second fix round, checker low 4).
+                assertEquals("ERR_FORBIDDEN", code(r.bodyAsText()), "$u: ${r.bodyAsText()}")
+            }
+            val byAdmin = client.submitOf(client.web("admin1001"), uuid(), zone, d)
+            assertEquals("Final Submit is the TSO's (or a delegate role's)", json(byAdmin.bodyAsText())["detail"]!!.jsonPrimitive.content, byAdmin.bodyAsText())
+            assertEquals(0L, closes(), "a refused submit closes nothing")
+            val byDmo = client.submitOf(client.web("dmo1001"), uuid(), zone, d)
+            assertEquals(HttpStatusCode.OK, byDmo.status, byDmo.bodyAsText())
+            assertEquals("delegated", json(byDmo.bodyAsText())["kind"]!!.jsonPrimitive.content)
+            assertEquals(1L, closes())
+        } finally {
+            setConfig("cfg.day.final_submit_delegate_roles", "[]")
+        }
+    }
+
+    /**
      * QA-FLOW-04 (docs/requests/backend-core-qa-1.md item 3, lead ruling 2026-10-22): every active route is listed, but
      * only a route planned on the date or with data warns. The first bundle of the day marks an SR's unplanned route
      * logged in; with nothing on it, that route was not due.

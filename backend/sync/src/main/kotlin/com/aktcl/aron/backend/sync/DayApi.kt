@@ -87,6 +87,13 @@ data class FinalSubmitPreviewDto(
     val submit_seq: Int = 0,
     /** The due routes not uploaded (upload_state not_uploaded), named in the app's warning; the submit is never blocked. */
     val warn_route_ids: List<Long> = emptyList(),
+    /**
+     * Lane X2 (lead ruling R-W-06 (1), contract 1.10.0): whether the caller may Final Submit this zone-day, from the rule
+     * the submit path enforces ([DayService.submitKind]): TSO, or a role that is DMO or WM and is listed in
+     * `cfg.day.final_submit_delegate_roles` (the registry bound, D-X2-14; any other listed role is ignored). The zone is in
+     * the caller's reach (else the preview is 403). The role rule only: `already_submitted` stays separate.
+     */
+    val can_submit: Boolean = false,
 )
 
 /** POST /v1/day/reopen (contract DayReopenRequest; D-TSO-MAN-29). */
@@ -101,8 +108,27 @@ const val UPLOAD_WEB_ENTRY = "web_entry"
 const val UPLOAD_NOT_UPLOADED = "not_uploaded"
 const val UPLOAD_NOT_DUE = "not_due"
 
-/** Push reason of a zone-day close (tso-manual B3, D-TSO-MAN-31): the SR and AMO apps of the zone pull the day state and lock capture. */
+/**
+ * Push reason of a zone-day close while the late-sale policy holds or refuses late captures (quarantine or reject; tso-manual
+ * B3, D-TSO-MAN-31): the SR and AMO apps of the zone show "Day closed ... new sales for that day are closed", pull the day
+ * state and lock capture. Never sent under accept_and_flag ([finalSubmitPushReason], owner decision 2026-11-04).
+ */
 const val PUSH_DAY_FINAL_SUBMITTED = "day_final_submitted"
+
+/**
+ * Push reason of a zone-day close under accept_and_flag, the shipped default (owner decision 2026-11-04, D-TSO-MAN-49): the
+ * SR and AMO phones of the zone pull the day state with no notice. The server accepts and flags a late sale, so nothing may
+ * tell a rep that sales are closed (the phones show no notice for a reason they do not know, and pull the bundle).
+ */
+const val PUSH_DAY_STATE_CHANGED = "day_state_changed"
+
+/**
+ * The reason of the push after a zone-day close, by the TSO, a delegate or the midnight job (tso-manual X4a fix round,
+ * checker high): [PUSH_DAY_FINAL_SUBMITTED] only while the late-sale policy in force is quarantine or reject, read as
+ * ingest reads it ([IngestService.latePolicyOf]); [PUSH_DAY_STATE_CHANGED] under accept_and_flag or an unreadable value.
+ */
+fun finalSubmitPushReason(config: ServerConfig): String =
+    if (IngestService.latePolicyOf(config) in IngestService.LOCKING_LATE_POLICIES) PUSH_DAY_FINAL_SUBMITTED else PUSH_DAY_STATE_CHANGED
 
 class DayDeps(val guard: AuthGuardDeps, val service: DayService)
 
@@ -157,7 +183,8 @@ internal fun supervisorDayState(h: Handle, userId: Long, date: LocalDate): Super
  *   `cfg.day.final_submit_delegate_roles`, for a zone in the caller's reach on that date (server-side scope). Not-uploaded
  *   due routes warn and never block (D-TSO-MAN-27). Every route-day of the zone and date gets `final_submitted_at`;
  *   ingest then holds or refuses its figure rows (D-TSO-MAN-31, [IngestService]). After the commit, the SR and AMO
- *   phones with a route-day in the zone get the push `day_final_submitted`; the close emits `zone_day.final_submitted`.
+ *   phones with a route-day in the zone get the push [finalSubmitPushReason] (`day_final_submitted` under quarantine or
+ *   reject, else the silent `day_state_changed`); the close emits `zone_day.final_submitted`.
  * - **Reopen** (D-TSO-MAN-29): an audited admin action within `cfg.day.reopen_window_days`, idempotent by its optional
  *   `client_uuid` ([reopen]).
  */
@@ -273,7 +300,25 @@ class DayService(
 
     fun preview(p: AronPrincipal, zone: Long, date: LocalDate): FinalSubmitPreviewDto {
         requireZone(p, zone, date)
-        return db.jdbi.withHandle<FinalSubmitPreviewDto, Exception> { h -> previewIn(h, zone, date) }
+        val canSubmit = submitKind(p) != null
+        return db.jdbi.withHandle<FinalSubmitPreviewDto, Exception> { h -> previewIn(h, zone, date) }.copy(can_submit = canSubmit)
+    }
+
+    /**
+     * Lane X2 (lead ruling R-W-06 (1)): the one rule of who may Final Submit, read by the submit and by the preview's
+     * `can_submit`: the TSO ("manual") or a role listed in `cfg.day.final_submit_delegate_roles` ("delegated"); null for
+     * anyone else. Reach is checked apart ([requireZone]: the preview answers 403 outside it, the submit too).
+     * Only [DELEGABLE] roles can be delegated (X2 fix round, checker L1): the registry bounds the key to "subset of DMO, WM"
+     * (V0006) but the config editor checks the list length only, so a stored NATIONAL, ADMIN or other role is ignored here
+     * rather than told `can_submit` while the guard refuses its POST.
+     */
+    internal fun submitKind(p: AronPrincipal): String? {
+        val delegates = runCatching { config.value("cfg.day.final_submit_delegate_roles").jsonArray.map { it.jsonPrimitive.content }.toSet() }.getOrDefault(emptySet())
+        return when {
+            p.role == Role.TSO -> "manual"
+            p.role in DELEGABLE && p.role.wire in delegates -> "delegated"
+            else -> null
+        }
     }
 
     private fun previewIn(h: Handle, zone: Long, date: LocalDate): FinalSubmitPreviewDto {
@@ -348,12 +393,7 @@ class DayService(
         // Replay first: the caller's own stored submit answers before the role and the delegate list are re-judged (a
         // delegate role removed from cfg.day.final_submit_delegate_roles after the submit must not turn a retry into 403).
         replay(h = null, req.client_uuid, p.userId)?.let { return it.checked(req, date) }
-        val delegates = runCatching { config.value("cfg.day.final_submit_delegate_roles").jsonArray.map { it.jsonPrimitive.content }.toSet() }.getOrDefault(emptySet())
-        val kind = when {
-            p.role == Role.TSO -> "manual"
-            p.role.wire in delegates -> "delegated"
-            else -> throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "Final Submit is the TSO's (or a delegate role's)")
-        }
+        val kind = submitKind(p) ?: throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "Final Submit is the TSO's (or a delegate role's)")
         val today = LocalDate.ofInstant(clock.now(), DHAKA)
         if (date.isAfter(today)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "a zone-day after today cannot be final-submitted", errors = listOf(FieldError("/business_date", "invalid_value")))
         requireZone(p, req.zone_id, date)
@@ -374,9 +414,13 @@ class DayService(
             }
             closeLocked(h, req.zone_id, date, req.client_uuid, p.userId, if (p.isPhone) "app" else "web", kind, now)
         }
-        // After the commit only: the SR and AMO phones of the zone pull the day state and lock capture (D-TSO-MAN-31).
-        // Best effort; a lost push only delays the lock until the phone's next pull (ingest holds the rows anyway).
-        recipients.forEach { u -> runCatching { nudger.nudge(u, PUSH_DAY_FINAL_SUBMITTED) } }
+        // After the commit only: the SR and AMO phones of the zone pull the day state (D-TSO-MAN-31); they are told that sales
+        // are closed, and lock, only under quarantine or reject (finalSubmitPushReason, owner decision 2026-11-04).
+        // Best effort; a lost push only delays the phone's next pull (ingest applies the policy anyway).
+        if (recipients.isNotEmpty()) {
+            val reason = finalSubmitPushReason(config)
+            recipients.forEach { u -> runCatching { nudger.nudge(u, reason) } }
+        }
         return result
     }
 
@@ -613,6 +657,8 @@ class DayService(
         // tso-manual B3
         /** Dummy BR and Institutional routes: never due without data (D-TSO-MAN-27). */
         private val DUMMY_CLASSES = setOf("dummy_br", "dummy_institutional")
+        /** The roles `cfg.day.final_submit_delegate_roles` may name (registry bounds "subset of DMO, WM", V0006); lane X2. */
+        private val DELEGABLE = setOf(Role.DMO, Role.WM)
         /** cfg.day.reopen_roles when unreadable (the V0134 default). */
         private val DEFAULT_REOPEN_ROLES = setOf("ADMIN", "SUPERADMIN")
         private const val REOPEN_ROLES_KEY = "cfg.day.reopen_roles"

@@ -58,4 +58,44 @@ class RoomDueCollectionWriter(
             ),
         )
     }
+
+    /** tso-manual X4a (fix round): the route-day check of [write] with the same meta ([CaptureRepository.acceptsDueCollection]). */
+    override suspend fun accepts(outletId: Long): Boolean = repo.acceptsDueCollection(meta())
+}
+
+/**
+ * tso-manual X4a (fix round, R-W-11 (3)): the SR and AMO kits' Mark Paid writer. The collection attaches to the outlet's
+ * last visit today and carries THAT visit's route (a visit always has one), so the AMO's Mark Paid outside a call, where
+ * the AMO has no route of its own, is a valid visit-family record on the route the memo was sold on. With no visit of the
+ * outlet today it carries [metaFor]`(null)` (the caller's own route, if any) and no visit, as before.
+ *
+ * [accepts] asks [CaptureRepository.acceptsDueCollection] with the very meta [write] would use, so the memo screen draws
+ * Mark Paid only when the write would be accepted: no Final Submit lock and no standing Sales Submit on that route-day.
+ */
+class VisitDueCollectionWriter(
+    private val db: AronDatabase,
+    private val repo: CaptureRepository,
+    /** The capture meta for a route: the visit's route, or null for the caller's own (SR: the day's route; AMO: the open call's, if any). */
+    private val metaFor: (routeId: Long?) -> CaptureMeta,
+    private val businessDate: () -> String,
+    private val newUuid: () -> String = ClientIds::newUuid,
+) : DueCollectionWriter {
+    /** The meta and the visit of a collection for [outletId]: the one rule [write] and [accepts] share. */
+    private suspend fun target(outletId: Long): Pair<CaptureMeta, String?> {
+        val visit = db.captureDao().visitsOn(businessDate()).lastOrNull { it.outletId == outletId }
+        return metaFor(visit?.meta?.routeId) to visit?.clientUuid
+    }
+
+    override suspend fun write(draft: DueCollectionDraft) {
+        val (meta, visit) = target(draft.outletId)
+        repo.recordDueCollection(
+            DueCollectionEntity(
+                clientUuid = newUuid(), meta = meta, outletId = draft.outletId, againstMemoClientUuid = draft.againstMemoUuid,
+                againstMemoNo = draft.againstMemoNo, againstMemoBusinessDate = draft.againstMemoBusinessDate, amountMtk = draft.amountMtk,
+                isFullSettlement = draft.isFullSettlement, outstandingBeforeMtk = draft.outstandingBeforeMtk, visitClientUuid = visit,
+            ),
+        )
+    }
+
+    override suspend fun accepts(outletId: Long): Boolean = repo.acceptsDueCollection(target(outletId).first)
 }

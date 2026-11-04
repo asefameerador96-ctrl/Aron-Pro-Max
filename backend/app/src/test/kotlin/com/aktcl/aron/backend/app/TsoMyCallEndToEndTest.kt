@@ -143,6 +143,23 @@ class TsoMyCallEndToEndTest {
             assertEquals(HttpStatusCode.OK, planner.status, planner.bodyAsText())
             val pr = json(planner.bodyAsText()).list("rows").single { it["outlet_code"]!!.jsonPrimitive.content == code1 }
             assertEquals(listOf("OOS", "tso1001", "sr1001", "Mirpur 10 Daily", "Refill the rack", "completed"), listOf("label", "assigned_by", "assignee", "route", "comment", "status").map { pr[it]!!.jsonPrimitive.content })
+            // Lane X2 (lead ruling R-W-09 (8), W1 ask 6): both reports send every column with its Bangla header, in W1's key
+            // order, in the query answer and in the catalogue entry the web builds its table from.
+            val wanted = mapOf(
+                "tso-visit-log" to listOf("plan_date", "tso", "zone", "route", "outlet_code", "outlet_name", "status", "completed_at", "sr_visits_regularly", "sr_prints_memo", "delegate_task", "task", "task_status"),
+                "task-planner" to listOf("business_date", "task_type_code", "label", "title", "assigned_by", "assignee", "route", "outlet_code", "outlet_name", "due_date", "status", "comment", "resolved_at"),
+            )
+            val catalogue = getWeb("tso1001", "/v1/reports")
+            assertEquals(HttpStatusCode.OK, catalogue.status, catalogue.bodyAsText())
+            val defs = json(catalogue.bodyAsText()).list("items").associateBy { it["report_key"]!!.jsonPrimitive.content }
+            for ((key, answer) in listOf("tso-visit-log" to json(log.bodyAsText()), "task-planner" to json(planner.bodyAsText()))) {
+                for ((where, cols) in listOf("query" to answer.list("columns"), "catalogue" to defs.getValue(key).list("columns"))) {
+                    assertEquals(wanted.getValue(key), cols.map { it["key"]!!.jsonPrimitive.content }, "$key $where: W1's keys in order")
+                    val missing = cols.filter { c -> (c["label_bn"] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content.isNullOrBlank() }
+                    assertTrue(missing.isEmpty(), "$key $where: columns without label_bn: ${missing.map { it["key"] }}")
+                    assertTrue(cols.all { c -> c["label_bn"]!!.jsonPrimitive.content.any { it in 'ঀ'..'৿' } }, "$key $where: the Bangla headers are Bangla")
+                }
+            }
 
             // 7. tso-manual B3 fix round (F2's note, D-B3-24): one active rubric per kind reaches a phone. An admin's own
             //    Visit Query beside the V0139 seed replaces it in the TSO and AMO bundles (the newest wins).
