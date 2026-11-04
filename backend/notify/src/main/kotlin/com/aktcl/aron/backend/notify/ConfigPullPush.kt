@@ -54,7 +54,7 @@ class ConfigPullPush(
                 """
                 SELECT u.id FROM app.app_user u WHERE u.status = 'active' AND (u.home_zone_id = ANY(:z) OR EXISTS (
                   SELECT 1 FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id
-                  WHERE a.user_id = u.id AND r.zone_id = ANY(:z) AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to > current_date)))
+                  WHERE a.user_id = u.id AND r.zone_id = ANY(:z) AND a.valid_from <= app.dhaka_date(now()) AND (a.valid_to IS NULL OR a.valid_to > app.dhaka_date(now())) AND a.ended_at IS NULL))
                 """.trimIndent(),
             ).bindArray("z", Long::class.javaObjectType, zones).mapTo(Long::class.java).list()
         }
