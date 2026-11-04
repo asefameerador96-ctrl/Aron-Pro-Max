@@ -370,7 +370,15 @@ Decisions (lane level; the lead writes the DECISIONS.md lines):
   (`after_final_submit`) or refused (`day_final_submitted`); under accept_and_flag the server does neither, so the banner
   has nothing to show, and a day that ran under quarantine still says what happened to its records.
 - **D-X4a-28 The offline window.** Under accept_and_flag there is none (the server accepts a late sale and flags it).
-  Under quarantine or reject it is exactly X4a's (ask 2).
+  Under quarantine or reject it is WIDER than X4a's (ask 2; corrected in fix round 3, checker low): the phone locks only
+  once it holds both the final day state and the locking policy, and the policy is config, not part of the bundle delta.
+  (a) X4a's window: between the close and the push's pulls (delivery, up to 120 s spread, longer offline). (b) A lost
+  push: the next sync answer brings the day state, but the policy only at the next config delta (the resume check after
+  its gap, or a push) or the next day's bundle. (c) An admin's switch to quarantine or reject made AFTER the close: that
+  close sent the silent `day_state_changed`, and no push follows a config change, so the phone keeps taking captures until
+  its next config delta. Fix round 3 narrows (b) and the common case: `day_final_submitted` now pulls the config as well
+  as the bundle (D-X4a-31). In every case the records are stored and printed on the phone, the server holds or refuses
+  them, and the Home banner counts them ("held" / "not accepted").
 
 Negative proofs (scratch script `neg.py` outside the repository: one batch of rules undone in the uncommitted tree, the
 targeted classes run, the files restored from its backup; `git status` showed the same tree after each):
@@ -397,12 +405,16 @@ Asks:
 8. **Lead:** D-X4a-26. Under accept_and_flag, should the TSO's Final Submit still open the SR's check-out (A3's rule)?
    As built here it does not: the rep is not locked and can still sell, so the check-out waits for the rep's own Sales
    Submit. The change back is one line in `SrDay`'s `salesSubmitted` (`isFinal` instead of `finalLocked`).
-9. **Lead / docs owner (not changed):** docs/24 s9.5's default column for this key still says `quarantine (V0134 ...)`,
+9. **Done in fix round 3 (checker low):** docs/24 s9.5's default cell now says `accept_and_flag (V0134, D-TSO-MAN-49 ...)`,
+   and s4.9 rule 4, docs/17 s4.9 and docs/16 DQ-57 name accept_and_flag as the shipped default. The original ask: docs/24 s9.5's default column for this key still said `quarantine (V0134 ...)`,
    and docs/16 DQ-57 and docs/17 s4.9 call quarantine "the default"; since D-TSO-MAN-49 the shipped default is
    accept_and_flag. Only the delivery column was changed here.
 10. **Device lab:** s8 row 26 now has two variants: the default (a sale after the TSO's Final Submit is saved and printed
-    on the phone with no banner, and the server accepts and flags it) and an admin-set quarantine or reject (X4a's lock as
-    in ask 2).
+    on the phone with no banner and NO notification, and the server accepts and flags it) and an admin-set quarantine or
+    reject (X4a's lock as in ask 2, with the "Day closed" notification). Fix round 3: in the second variant also check the
+    wider window of D-X4a-28: the admin switches the policy first, the TSO then closes, and the phone locks once the
+    close's push has pulled both the day state and the config; and a switch made after the close reaches the phone only
+    at its next config delta (no lock until then; the server holds or refuses those records).
 
 Not done:
 
@@ -415,3 +427,64 @@ Not done:
   which is what `srDayLockBannerText` and `amoDayLockBanners` draw from; the composed banner itself is X4a's
   `SrDayLockHomeTest` (unchanged).
 - No device has run either variant (ask 10). No web change: the portal's config console reads the delivery from the API.
+
+## Fix round 3 (checker report on 2568607c8, late policy on the phone)
+
+The checker found the core change sound and five defects: one high, one medium, three low. All five are fixed here, each
+with a test that fails without it (negative proofs below). Nothing pushed, no pull request; DECISIONS.md not edited (the
+lead writes the decision lines).
+
+| defect | fix | proving test |
+|---|---|---|
+| **High: the Final Submit push still told SR and AMO reps that sales are closed** under the default (`push_day_title` / `push_day_body`, "New sales for that day are closed"), outside `lockApplies` | Server side (D-X4a-29): the close's push reason follows the late-sale policy in force at the close. `finalSubmitPushReason(config)` (backend/sync `DayApi.kt`) sends `day_final_submitted` only under quarantine or reject, and `day_state_changed` under accept_and_flag, with no value row, or with an unreadable value. Both closes use it: `DayService.finalSubmit` (TSO or delegate) and `AutoFinalSubmitJob.closeDate` (midnight job). The policy is read by `IngestService.latePolicyOf`, the read and fallback ingest itself uses (extracted from the batch context, unchanged), and the locking set is `IngestService.LOCKING_LATE_POLICIES` (`LATE_POLICIES` minus accept_and_flag). The phone shows nothing for `day_state_changed` and pulls the bundle, so it still learns the day state (`PushMessage.REASON_DAY_STATE_CHANGED`, explicit). The KDoc of `PushNotice.DayFinalSubmitted`, `PushNotices`, `PUSH_DAY_FINAL_SUBMITTED`, DayService and the job now say when the push is sent. No string changed: the "sales are closed" text is now shown only when it is true. | `backend:app` `FinalSubmitPushPolicyTest` (new): for no row, quarantine, reject, accept_and_flag and `"QUARANTINE"`, the TSO's close over HTTP (registered SR and AMO phones, through backend:notify) and the job's close (worker login, recorded nudges) each send one data-only nudge of the expected reason to the zone's SR and AMO. `AutoFinalSubmitJobTest`: one setup line sets quarantine, because its `day_final_submitted` assertions are unchanged. `DayApiTest` already ran under quarantine. Phone side: `TsoPushReasonsTest.aCloseUnderAcceptAndFlagShowsNothingAndOnlyPullsTheBundle` (characterisation: no notice, nothing on the day channel, the bundle pull only) |
+| **Medium: a time-limited quarantine or reject kept the phones locked after it ended** (`ReferenceRepository.config` returned the resolved row whatever its `effective_to`, and no delta brings the reversion) | `ReferenceRepository.configInForce(key, nowIso)`: as `config`, but the resolved row also ends at its own `effective_to` (it then reads as absent, the caller's default). `FinalSubmitLock.lockApplies` reads the policy through it, so `refuses`, `locks` and `lockedRoutes` stop locking at the end: the server's DbServerConfig falls back to accept_and_flag there. The key is global-only (V0006), so the registry default follows unless a scheduled row says otherwise, and a scheduled row still wins inside its window. Other callers keep `config` unchanged (D-X4a-30). | `LatePolicyLockTest.aTimeLimitedQuarantineOrRejectStopsLockingAtItsEnd`: for quarantine and reject, a resolved row valid until 17:00 locks at 16:59:59.999 and not at 17:00 or later (`lockApplies`, `dayRefusal` for memo and stock, Mark Paid, `locks`, `lockedRoutes`, `refuses`). The plain `config` read still returns the ended value. A scheduled reject from 18:00 after an ended quarantine locks from 18:00 |
+| **Low: the call guards judged the policy on the wall clock** (`SrCallLock.refusal` / `endedBy` / `abandon`, `AmoCallLock.endedBy` built `CaptureRepository(db)`) | The guards take the day's own `capture`, the repository on trusted time (`SrDay.capture`, `AmoDay.capture`), instead of the database: `SrDay.openCallRefusal`, `endCallIfClosed`, `restoreOpenVisit`, `closeVisitAbandoned`, `AmoDay.closeVisit`, `endCallIfClosed`, `AmoSaleKit.endCallIfClosed`. The claim in item 4 above ("CaptureRepository passes its own trusted clock") now holds for these paths too. The X4a tests that call `SrCallLock` / `AmoCallLock` directly pass their own repository: 6 call lines, arguments only, assertions unchanged. | `SrLatePolicyTest.theCallGuardsReadThePolicyAtTrustedTimeNotAtTheWallClock` and `AmoLatePolicyTest.theCallGuardsReadThePolicyAtTrustedTimeNotAtTheWallClock`: the trusted clock is set ten minutes behind the phone's clock (`trustAt`, one server answer) and a quarantine is scheduled between the two (`schedulePolicy`), on a final route-day. The entry guards and close pre-checks leave the call open, the SR's relaunch restores it, and leaving the call writes its `visit_close` |
+| **Low: this status called the offline window under quarantine or reject "exactly X4a's"; it is wider** (the policy is config, which the bundle delta does not carry) | D-X4a-28 and ask 10 restated (cases a, b, c). The lock push also pulls the config (D-X4a-31): `PushMessage.nudgePulls`, so `day_final_submitted` schedules BUNDLE and CONFIG. Because the server sends it only under a locking policy, a switch made before the close reaches the phone with the close's own push. One config delta, capped by `ResumeConfigCheck`'s daily cap, about once a day per zone. A switch made after the close is still learned only at the next config delta (case c; ask 11). | `TsoPushReasonsTest.theThreeReasonsGiveTheirNoticeAndStillPullTheBundle`: `day_final_submitted` pulls `{BUNDLE, CONFIG}`, `notification` and `ticket_updated` `{BUNDLE}`. The loop's pull assertion was `== {BUNDLE}` for all three reasons and is now `BUNDLE in pulls`, plus the three exact sets: a deliberate behaviour change, disclosed here |
+| **Low: docs/24 s9.5's default cell said quarantine** | docs/24 s9.5 default cell: `accept_and_flag (V0134, D-TSO-MAN-49; quarantine and reject are admin switches, s4.9 rule 4)`. Also aligned: docs/24 s4.9 rule 4, docs/17 s4.9 and docs/16 DQ-57 (ask 9, closed), and docs/08's push line (`day_final_submitted` only under quarantine or reject, otherwise `day_state_changed`). | docs only |
+
+Decisions (lane level):
+
+- **D-X4a-29 The push reason is decided on the server, not on the phone.** The checker preferred a phone-side gate
+  (show the notice only when `lockApplies`). The server is the side that knows the policy in force at the close. A phone
+  whose held policy is stale (an admin's quarantine it has not pulled yet) would hide the warning exactly when the server
+  starts holding or refusing that rep's records. So the server picks the reason, and the phone shows what it is sent.
+  Under quarantine or reject the phone shows the notice at once and locks when its pulls land (D-X4a-31). That takes
+  seconds to minutes; it is X4a's window.
+- **D-X4a-30 `configInForce` is used by the lock only.** `ReferenceRepository.config` keeps its rule for its other ~25
+  callers (reprint cap, geo bases, media, device policy and others). The same "an ended resolved value is kept" behaviour
+  may matter for some of them. That is not audited in this round (Not done).
+- **D-X4a-31 The lock push pulls the config too.** See the table. The push still carries no business data.
+
+Negative proofs (scratch script `neg3.py` outside the repository: every fix below undone at once in the uncommitted tree
+from a backup copy, the targeted classes run, the files restored from the backup; `git diff` compared before and after):
+
+| undone (all at once) | command | result |
+|---|---|---|
+| N1a: DayService's close sends `day_final_submitted` whatever the policy; N1b: the job's close the same; N2: `lockApplies` reads `ReferenceRepository.config` (an ended value still counts); N3: the SR and AMO call guards get `CaptureRepository(db)` (the wall clock) at the four SrDay call sites, the two AmoDay sites and AmoSaleKit; N4: `nudgePulls` returns `{BUNDLE}` | `gl.sh … --continue :android:core-database:testDebugUnitTest --tests '*LatePolicyLockTest*' --rerun :android:core-sync:testDebugUnitTest --tests '*TsoPushReasonsTest*' --rerun :android:app-sr:testDebugUnitTest --tests '*SrLatePolicyTest*' --rerun :android:app-amo:testDebugUnitTest --tests '*AmoLatePolicyTest*' --rerun :backend:app:test --tests '*FinalSubmitPushPolicyTest*' --rerun` | BUILD FAILED in 52 s as intended, 5 failures, exactly the five rule tests; every other case of these classes passed. LatePolicyLockTest 5/6 (`aTimeLimitedQuarantineOrRejectStopsLockingAtItsEnd`: "quarantine ended at 17:00" [N2]); TsoPushReasonsTest 3/4 (`theThreeReasons…`: expected `[BUNDLE, CONFIG]` but was `[BUNDLE]` [N4]); SrLatePolicyTest 6/7 (`theCallGuards…`: "SaleHost's entry guard expected null, but was FINAL_SUBMIT" [N3]); AmoLatePolicyTest 6/7 (`theCallGuards…`: "ControlCallHost's entry guard expected null, but was FINAL_SUBMIT" [N3]); FinalSubmitPushPolicyTest 0/1: with no row, accept_and_flag and `"QUARANTINE"`, both the TSO's close (the SR and AMO phones) and the job's close (the SR and AMO users) sent `day_final_submitted` [N1a, N1b]. Restored from the script's backup; the four fixes re-checked by grep |
+
+Verify (this worktree, laptop, through gl.sh; CI not run, nothing pushed):
+
+| command | result |
+|---|---|
+| run 1 (uncommitted fix tree): `gl.sh … --continue :android:core-database:testDebugUnitTest --tests '*LatePolicyLockTest*' :android:core-sync:testDebugUnitTest --tests '*TsoPushReasonsTest*' --tests '*PushMessageTest*' :android:app-sr:testDebugUnitTest --tests '*SrLatePolicyTest*' --tests '*SrDayLockCaptureTest*' --tests '*SrDayLockSaleTest*' :android:app-amo:testDebugUnitTest --tests '*AmoLatePolicyTest*' --tests '*AmoDayLockCallTest*' --tests '*AmoDayLockGateTest*' :backend:app:test --tests '*FinalSubmitPushPolicyTest*' --tests '*AutoFinalSubmitJobTest*' --tests '*DayApiTest*'` | BUILD SUCCESSFUL in 1m 41s, 63 tests, 0 failures: LatePolicyLockTest 6/6, TsoPushReasonsTest 4/4, PushMessageTest 8/8, SrLatePolicyTest 7/7, SrDayLockCaptureTest 4/4, SrDayLockSaleTest 4/4, AmoLatePolicyTest 7/7, AmoDayLockCallTest 1/1, AmoDayLockGateTest 5/5, FinalSubmitPushPolicyTest 1/1, AutoFinalSubmitJobTest 5/5, DayApiTest 11/11. After it, FinalSubmitPushPolicyTest was restructured to compare both close paths in one assertion (so one negative run shows each call site); its first form had passed here |
+| negative | the table above |
+| **final** (committed tree 5a9b04e05, only this status file uncommitted): `gl.sh … --continue :android:core-database:testDebugUnitTest --tests '*RouteDayLockTest*' --tests '*CaptureRepositoryDayLockTest*' --tests '*LatePolicyLockTest*' --rerun :android:core-sync:testDebugUnitTest --tests '*TsoPushReasonsTest*' --tests '*PushMessageTest*' --tests '*PushDispatcherTest*' --rerun :android:feature-memo:testDebugUnitTest --tests '*MemoDayLockTest*' --rerun :android:feature-dayclose:testDebugUnitTest --tests '*SalesSubmitDayLockTest*' --rerun :android:app-sr:testDebugUnitTest --tests '*SrLatePolicyTest*' --tests '*SrRefusal*' --tests '*DayLock*' --tests '*LockGate*' --tests '*KitLock*' --tests '*StockSlipsTest*' --rerun :android:app-amo:testDebugUnitTest --tests '*AmoLatePolicyTest*' --tests '*AmoRefusal*' --tests '*DayLock*' --tests '*LockGate*' --tests '*KitLock*' --tests '*AmoRecordWriterReplayTest*' --rerun :android:app-tso:testDebugUnitTest --tests '*TicketPushNavigationTest*' --rerun :backend:sync:test --tests '*BundleUnitTest*' --rerun :backend:app:test --tests '*FinalSubmitPushPolicyTest*' --tests '*FinalSubmitProjectionEndToEndTest*' --tests '*LateAfterFinalTest*' --tests '*LateAfterFinalDefaultPolicyTest*' --tests '*DayApiTest*' --tests '*AutoFinalSubmitJobTest*' --rerun` | BUILD SUCCESSFUL in 2m 15s, 202 tests, 0 failures, 0 skipped. core-database: CaptureRepositoryDayLockTest 9/9, LatePolicyLockTest 6/6, RouteDayLockTest 9/9; core-sync: TsoPushReasonsTest 4/4, PushMessageTest 8/8, PushDispatcherTest 3/3; feature-memo MemoDayLockTest 6/6; feature-dayclose SalesSubmitDayLockTest 1/1; app-sr: SrLatePolicyTest 7/7, SrDayLockBannerTest 5/5, SrDayLockCaptureTest 4/4, SrDayLockHomeTest 6/6, SrDayLockHostsTest 4/4, SrDayLockSaleTest 4/4, SrKitLockTest 8/8, SrRefusalHostsTest 6/6, SrRefusalSweepTest 13/13, StockSlipsTest 4/4; app-amo: AmoLatePolicyTest 7/7, AmoDayLockCallTest 1/1, AmoDayLockGateTest 5/5, AmoDayLockHostsTest 4/4, AmoKitLockTest 8/8, AmoRecordWriterReplayTest 16/16, AmoRefusalHostsTest 3/3, AmoRefusalSweepTest 15/15; app-tso TicketPushNavigationTest 5/5; backend:sync BundleUnitTest 6/6; backend:app FinalSubmitPushPolicyTest 1/1, FinalSubmitProjectionEndToEndTest 1/1, LateAfterFinalTest 6/6, LateAfterFinalDefaultPolicyTest 1/1, DayApiTest 11/11, AutoFinalSubmitJobTest 5/5 |
+
+Asks:
+
+11. **Lead:** should a change of `cfg.day.late_sync_after_final_policy` push a `config_pull` to the SR and AMO phones
+    (ConfigService, after the commit), so that a quarantine or reject set after a close locks the phones without waiting
+    for their next config delta (D-X4a-28 case c)? Not built here: it touches ConfigService (backend/config), outside this
+    lane, and a national push to every field phone is the lead's call. Today an admin can send the `config_pull` from the
+    notifications console.
+
+Not done (fix round 3):
+
+- Only the targeted classes above ran on the laptop. Not run: the full module suites of core-database, core-sync,
+  app-sr, app-amo, backend:sync, backend:app (and feature-memo, feature-dayclose, feature-stock, db, none changed in this
+  round); `:android:app-sr:assembleDebug`, `:android:app-amo:assembleDebug`, `:android:app-tso:assembleDebug` (core-sync
+  changed); `HardcodedStringScanTest` (no string or resource changed); `TicketPushNavigationTest` (app-tso, reads
+  `day_final_submitted` without an extra, unchanged). The lead runs them on the Linux CI runners after the push.
+- D-X4a-30: the other callers of `ReferenceRepository.config` are not audited for an ended time-limited value.
+- Ask 11 (a config push on a policy change) is not built; D-X4a-28 case (c) stays open until it is.
+- No device has run any of it (ask 10).
