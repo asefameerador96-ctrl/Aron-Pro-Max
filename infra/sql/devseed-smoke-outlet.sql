@@ -15,7 +15,7 @@ UPDATE app.outlet o SET route_id = ro.id, zone_id = ro.zone_id, cluster_id = cl.
                         address = 'Smoke Road, Gulshan 2, Dhaka', lat = 23.792900, lng = 90.408200
   FROM app.route ro JOIN app.cluster cl ON cl.zone_id = ro.zone_id AND cl.name = 'Gulshan 2 Circle'
  WHERE ro.code = 'SMK-SR-D' AND o.code = 'SMOKE-SR-001' AND o.route_id IS DISTINCT FROM ro.id;
--- D-SRFIX-05: the smoke outlets no longer sit on sr1001's routes (the owner's phone downloaded them and saw the smoke
+-- D-SRFIX-04: the smoke outlets no longer sit on sr1001's routes (the owner's phone downloaded them and saw the smoke
 -- sales): all three move to the smoke SR's own route SMK-SR-D (db/seed/06b, dev only) when it exists; pins stay.
 UPDATE app.outlet o SET route_id = ro.id, zone_id = ro.zone_id, cluster_id = cl.id
   FROM app.route ro JOIN app.cluster cl ON cl.zone_id = ro.zone_id AND cl.name = 'Gulshan 2 Circle'

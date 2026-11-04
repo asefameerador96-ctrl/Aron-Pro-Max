@@ -41,7 +41,7 @@ PASSWORD = os.environ.get("SLICE_PASSWORD", "")
 DEVICE = os.environ.get("SLICE_DEVICE", "00000000-0000-4000-8000-000000000001")
 APP_VERSION = os.environ.get("SLICE_APP_VERSION", "1.0.9+9")
 TILE_WAIT_S = int(os.environ.get("SLICE_TILE_WAIT_S", "300"))
-# The smoke's own outlets (infra/sql/devseed-smoke-outlet.sql), all on smoke1's own daily dev route SMK-SR-D (db/seed/06b, D-SRFIX-05):
+# The smoke's own outlets (infra/sql/devseed-smoke-outlet.sql), all on smoke1's own daily dev route SMK-SR-D (db/seed/06b, D-SRFIX-04):
 # the owner's phone (sr1001) never downloads them and never sees the smoke sales as another phone's.
 OUTLET_CODES = [c.strip() for c in os.environ.get("SLICE_OUTLET_CODE", "SMOKE-SR-001,SMOKE-SR-002,SMOKE-SR-003").split(",") if c.strip()]
 OUTLET_CODE = ",".join(OUTLET_CODES)

@@ -55,7 +55,7 @@ data class RejectedRow(
 )
 
 /**
- * D-SRFIX-04: a refused record the server will never take (outcome [RejectedOutcome.DROPPED]) is listed under "Not accepted as
+ * D-SRFIX-03: a refused record the server will never take (outcome [RejectedOutcome.DROPPED]) is listed under "Not accepted as
  * sent" for [KEEP_DAYS] days from its business date, then moves to a "dismissed" list the rep can open. Only types that carry
  * no money or stock ([DISMISSABLE]) move: a memo, its lines, dues, QC, stock and day records stay listed until the outbox
  * itself drops them, so a sale is never hidden. A held, retry or other-phone row is never dismissed (it can still change).

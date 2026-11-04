@@ -5,7 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 
-/** D-SRFIX-04: old refused non-money records leave the "Not accepted as sent" list; a sale never does. */
+/** D-SRFIX-03: old refused non-money records leave the "Not accepted as sent" list; a sale never does. */
 class RejectedDismissalTest {
     private val today = "2026-11-04"
     private fun row(type: String, date: String, outcome: RejectedOutcome = RejectedOutcome.DROPPED, mine: Boolean = true) =

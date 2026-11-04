@@ -48,7 +48,7 @@ data class SubmitUiState(
     val syncing: Boolean = false,
     /** D-NIGHT-DAYCLOSE-01 (b): listed, shown whether or not a digest has run. */
     val rejected: List<RejectedRow> = emptyList(),
-    /** D-SRFIX-04: refused non-money records older than [RejectedDismissal.KEEP_DAYS] days, opened from a link, never in the main list. */
+    /** D-SRFIX-03: refused non-money records older than [RejectedDismissal.KEEP_DAYS] days, opened from a link, never in the main list. */
     val dismissed: List<RejectedRow> = emptyList(),
     /** A digest (server totals) has answered at least once for the date: before it, "Nothing to compare yet". */
     val serverKnown: Boolean = false,

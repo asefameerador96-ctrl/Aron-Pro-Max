@@ -99,7 +99,7 @@ object SalesSubmitTags {
     /** D-NIGHT-DAYCLOSE-01 (b): the listed rejected rows. */
     const val REJECTED = "submit_rejected"
 
-    /** D-SRFIX-04: the closed list of old refused non-money records. */
+    /** D-SRFIX-03: the closed list of old refused non-money records. */
     const val DISMISSED = "submit_dismissed"
 }
 
@@ -143,7 +143,7 @@ fun SalesSubmitScreen(
     legacyFiveRows: Boolean = true,
     /** D-NIGHT-DAYCLOSE-01 (b): the refused, held and retry rows of the phone's ack registry, listed with type, memo or outlet, reason and outcome. */
     rejected: List<RejectedRow> = emptyList(),
-    /** D-SRFIX-04: old refused non-money records, behind a link under the list. */
+    /** D-SRFIX-03: old refused non-money records, behind a link under the list. */
     dismissed: List<RejectedRow> = emptyList(),
     /** A digest has answered for the date; null infers it from the counts (a known server column). Before it: "Nothing to compare yet". */
     serverKnown: Boolean? = null,
@@ -404,7 +404,7 @@ private fun RejectedList(rows: List<RejectedRow>, typeLabel: (String) -> String,
     }
 }
 
-/** D-SRFIX-04: refused non-money records past their listing days: closed by default, one tap to read them. */
+/** D-SRFIX-03: refused non-money records past their listing days: closed by default, one tap to read them. */
 @Composable
 private fun DismissedList(rows: List<RejectedRow>, typeLabel: (String) -> String, today: String?) {
     val look = LocalAronLook.current

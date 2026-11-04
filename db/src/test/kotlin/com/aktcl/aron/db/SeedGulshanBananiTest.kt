@@ -40,7 +40,7 @@ class SeedGulshanBananiTest {
 
     private val gul = "('GUL-SR-2', 'GUL-SR-1', 'BAN-SR-11')"
 
-    // D-SRFIX-05: the slice smoke's own SR, route and device binding (db/seed/06b), and the smoke outlets on it only.
+    // D-SRFIX-04: the slice smoke's own SR, route and device binding (db/seed/06b), and the smoke outlets on it only.
     @Test
     fun theSmokeSrHasItsOwnRouteOutletsAndDeviceApartFromSr1001() {
         // its own database: the smoke outlets join zone Z-GUL, which the counts of the other tests must not see

@@ -1,4 +1,4 @@
--- The slice smoke's own SR (lane sr-phone-fixes, D-SRFIX-05): `smoke1`, primary on ONE dev route SMK-SR-D (Gulshan zone, daily)
+-- The slice smoke's own SR (lane sr-phone-fixes, D-SRFIX-04): `smoke1`, primary on ONE dev route SMK-SR-D (Gulshan zone, daily)
 -- that holds only the SMOKE-SR-001..003 outlets (infra/sql/devseed-smoke-outlet.sql, loaded after this file), bound to the
 -- seeded dev device 00000000-0000-4000-8000-000000000001 beside sr1001 (a device may carry several users; the unique
 -- (device, user) pair is what the binding index guards). The owner's pilot login sr1001 is not touched: its phone stops showing the
@@ -35,7 +35,7 @@ BEGIN
       FROM app.zone z WHERE z.code = 'Z-GUL' AND NOT EXISTS (SELECT 1 FROM app.app_user x WHERE lower(x.username) = 'smoke1');
 
   INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason)
-    SELECT r.id, u.id, 'primary', today, 'dev seed: the slice smoke SR (D-SRFIX-05)'
+    SELECT r.id, u.id, 'primary', today, 'dev seed: the slice smoke SR (D-SRFIX-04)'
       FROM app.route r, app.app_user u
      WHERE r.code = 'SMK-SR-D' AND u.username = 'smoke1'
        AND NOT EXISTS (SELECT 1 FROM app.route_assignment x WHERE x.route_id = r.id AND x.kind = 'primary'
