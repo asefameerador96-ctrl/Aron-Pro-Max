@@ -42,7 +42,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -78,6 +77,8 @@ class SrDayLockCaptureTest {
         databases = UserDatabases(ApplicationProvider.getApplicationContext<Application>()) { null }
         db = runBlocking { databases.of(user) }
         repo = CaptureRepository(db) { now }
+        // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
+        latePolicyOn(db, "quarantine")
         // an exception that leaves a view model's coroutine ends here (on a phone it would kill the process)
         val catcher = Thread.UncaughtExceptionHandler { _, e -> crashes += e }
         previousDefault = Thread.getDefaultUncaughtExceptionHandler(); Thread.setDefaultUncaughtExceptionHandler(catcher)
@@ -127,7 +128,7 @@ class SrDayLockCaptureTest {
         val session = VisitSession().also { it.restore(v) }
         finalSubmitted() // the lock arrives while the SR is in the call
         // the call prompt's No (or back): no close is queued (the server would refuse it), the call ends, nothing throws
-        assertFalse(SrCallLock.abandon(db, repo, session, meta(), now))
+        assertFalse(SrCallLock.abandon(repo, session, meta(), now))
         assertNull(session.current.value)
         assertTrue(db.captureDao().visitClosesOn(date).isEmpty())
         // a relaunch does not take the rep back into the call
@@ -141,10 +142,10 @@ class SrDayLockCaptureTest {
         val v = openVisit()
         assertEquals(v.visitUuid, FinalSubmitLock.callToRestore(db, date) { true }?.clientUuid)
         val session = VisitSession().also { it.restore(v) }
-        assertTrue(SrCallLock.abandon(db, repo, session, meta(), now))
+        assertTrue(SrCallLock.abandon(repo, session, meta(), now))
         assertNull(session.current.value)
         assertEquals("abandoned", db.captureDao().visitClosesOn(date).single().outcomeCode)
-        assertFalse(SrCallLock.endsOnPhone(db, VisitSession().also { it.restore(v) }, meta()))
+        assertFalse(SrCallLock.endsOnPhone(repo, VisitSession().also { it.restore(v) }, meta()))
         FinalSubmitLock.requireCallOpen(db, meta()) // open
     }
 
@@ -168,7 +169,12 @@ class SrDayLockCaptureTest {
         assertEquals("day_submit", runBlocking { db.outboxDao().byClientUuid(uuid) }?.recordType)
     }
 
-    @Test fun markPaidAfterTheLockNeverCrashes() {
+    /**
+     * tso-manual X4a (R-W-11): CaptureRepository names `due_collection` now, so a Mark Paid tapped after the lock arrived (the
+     * button was drawn before it) is refused: nothing is queued, the memo screen shows the lock text, nothing crashes, and
+     * the button is gone on the reload.
+     */
+    @Test fun markPaidAfterTheLockIsRefusedWithTheLockTextAndNeverCrashes() {
         val memoUuid = ClientIds.newUuid()
         val credit = StoredMemo(memoUuid, "sr1-261026-001", 50001, date, "2026-10-26T04:00:00.000Z", null, listOf(MemoItem(105, 3, 28_000, 84_000)), emptyList(), emptyList(), 84_000, 0, 0, 0, 84_000, 34_000, 50_000)
         val store = object : MemoStore {
@@ -176,14 +182,23 @@ class SrDayLockCaptureTest {
             override suspend fun collections(businessDate: String) = emptyList<StoredCollection>()
         }
         val reprinter = object : MemoReprinter { override suspend fun print(memoUuid: String, memo: com.aktcl.aron.core.printing.doc.MemoPrint) = PrintAttempt.Done }
-        finalSubmitted()
         val uuid = ClientIds.newUuid()
-        val vm = MemoViewModel(store, RoomDueCollectionWriter(repo, { meta() }, newUuid = { uuid }), reprinter, { PrintNames({ "S$it" }, { "O$it" }, "sr", "r") }, { date })
+        val vm = MemoViewModel(
+            // Mark Paid's check is the writer's own (fix round): the collection's route-day, as the write would see it
+            store, RoomDueCollectionWriter(repo, { meta() }, newUuid = { uuid }), reprinter, { PrintNames({ "S$it" }, { "O$it" }, "sr", "r") }, { date },
+        )
         vm.open(memoUuid)
+        runBlocking { withTimeoutOrNull(10_000) { while (!vm.state.value.canMarkPaid) delay(10) } }
+        assertTrue("drawn before the lock", vm.state.value.canMarkPaid)
+        finalSubmitted()
         vm.markPaid()
-        awaitQueued(uuid)
+        runBlocking { withTimeoutOrNull(10_000) { while (!vm.state.value.lockRefused) delay(10) } }
+        assertTrue("the lock text shows", vm.state.value.lockRefused)
         assertEquals(listOf<Throwable>(), crashes.toList())
-        // queued for the server, which answers day_final_submitted; the day banner counts it once the answer is back
-        assertNotNull(runBlocking { db.outboxDao().byClientUuid(uuid) })
+        assertNull("nothing queued", runBlocking { db.outboxDao().byClientUuid(uuid) })
+        assertFalse("Mark Paid is hidden now", vm.state.value.canMarkPaid)
+        assertTrue(vm.state.value.dayLocked)
+        vm.dismissLockRefusal()
+        assertFalse(vm.state.value.lockRefused)
     }
 }

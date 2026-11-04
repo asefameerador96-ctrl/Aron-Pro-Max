@@ -118,9 +118,9 @@ class CheckerBackendAdminTest {
         val t = env.tok("tso1001")
         val calls = listOf(
             Triple(HttpMethod.Post, "/v1/leave", """{"leave_uuid":"${ckUuid()}","leave_type_code":"casual","from_date":"2100-12-31","days":365,"reason":"x"}"""),
-            Triple(HttpMethod.Post, "/v1/leave", """{"leave_uuid":"${ckUuid()}","leave_type_code":"casual","from_date":"2027-01-01","days":99999999999,"reason":"x"}"""),
+            Triple(HttpMethod.Post, "/v1/leave", """{"leave_uuid":"${ckUuid()}","leave_type_code":"casual","from_date":"${ahead(1)}","days":99999999999,"reason":"x"}"""), // lane X2: leave dates relative to today (R-W-09 (9))
             Triple(HttpMethod.Post, "/v1/leave", "[]"), Triple(HttpMethod.Post, "/v1/leave", "null"), Triple(HttpMethod.Post, "/v1/leave", "{"),
-            Triple(HttpMethod.Post, "/v1/leave", """{"leave_uuid":"${ckUuid()}","leave_type_code":"casual","from_date":"2027-01-01","days":1,"reason":"\u0000bad"}"""),
+            Triple(HttpMethod.Post, "/v1/leave", """{"leave_uuid":"${ckUuid()}","leave_type_code":"casual","from_date":"${ahead(1)}","days":1,"reason":"\u0000bad"}"""),
             Triple(HttpMethod.Post, "/v1/feedback", """{"feedback_uuid":"${ckUuid()}","category_code":"idea","title":"a\u0000b","description":"d"}"""),
             Triple(HttpMethod.Post, "/v1/feedback", """{"feedback_uuid":"${ckUuid()}","category_code":"idea","title":"t","description":"d","photo_uuid":"zzz"}"""),
             Triple(HttpMethod.Post, "/v1/visit-plans", """{"plan_uuid":"${ckUuid()}","plan_date":"2027-01-01","route_id":9223372036854775807,"outlet_ids":[9223372036854775807]}"""),

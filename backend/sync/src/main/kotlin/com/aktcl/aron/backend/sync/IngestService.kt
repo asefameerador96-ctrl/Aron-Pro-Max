@@ -140,12 +140,10 @@ class IngestService(
             runCatching { up.deviceId?.let { deviceAcks(it) } ?: emptyList() }.onFailure { log.warn("config acks not read device_id=${up.deviceId} cause=${it.javaClass.simpleName}") }.getOrDefault(emptyList())
         }
         /**
-         * tso-manual B3, D-TSO-MAN-31: cfg.day.late_sync_after_final_policy, read once per batch on first use. An unreadable
-         * or unknown value is `accept_and_flag`, the shipped default (D-TSO-MAN-49, D-55): a captured sale is never refused.
+         * tso-manual B3, D-TSO-MAN-31: cfg.day.late_sync_after_final_policy, read once per batch on first use ([latePolicyOf]).
+         * An unreadable or unknown value is `accept_and_flag`, the shipped default (D-TSO-MAN-49, D-55).
          */
-        val latePolicy: String by lazy {
-            runCatching { config.string("cfg.day.late_sync_after_final_policy") }.getOrNull()?.takeIf { it in LATE_POLICIES } ?: "accept_and_flag"
-        }
+        val latePolicy: String by lazy { latePolicyOf(config) }
         /** Memo arithmetic failures of the current family segment (client_uuid to detail). */
         var arith: Map<String, String> = emptyMap()
         /** Memo content fingerprints of the current segment (s4.5: same outlet, lines and minute). */
@@ -1921,6 +1919,20 @@ class IngestService(
         val DAY_LOCKED_ROLES = setOf(Role.SR, Role.AMO)
         /** Values of cfg.day.late_sync_after_final_policy (V0006 bounds). */
         val LATE_POLICIES = setOf("accept_and_flag", "quarantine", "reject")
+
+        /**
+         * The late policies under which a late figure row of a final-submitted route-day is held or refused, so the SR and AMO
+         * phones lock it and the close's push says sales are closed (owner decision 2026-11-04): all but `accept_and_flag`.
+         */
+        val LOCKING_LATE_POLICIES: Set<String> = LATE_POLICIES - "accept_and_flag"
+
+        /**
+         * cfg.day.late_sync_after_final_policy in force: an unreadable or unknown value is `accept_and_flag`, the shipped
+         * default (D-TSO-MAN-49, D-55): a captured sale is never refused. Ingest reads it once per batch; the push after a
+         * zone-day close reads it the same way ([finalSubmitPushReason]), so the push never says more than ingest does.
+         */
+        fun latePolicyOf(config: ServerConfig): String =
+            runCatching { config.string("cfg.day.late_sync_after_final_policy") }.getOrNull()?.takeIf { it in LATE_POLICIES } ?: "accept_and_flag"
         private val DEVICE_HOLD_CODES = setOf(RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire, RecordOutcomeCode.DEVICE_NOT_ENROLLED.wire)
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")

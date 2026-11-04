@@ -3,6 +3,7 @@ package com.aktcl.aron.core.database
 import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.entity.AttendanceEventEntity
 import com.aktcl.aron.core.database.entity.CaptureMeta
+import com.aktcl.aron.core.database.entity.ConfigValueEntity
 import com.aktcl.aron.core.database.entity.GeoFixEntity
 import com.aktcl.aron.core.database.entity.MemoDiscountEntity
 import com.aktcl.aron.core.database.entity.MemoEntity
@@ -11,10 +12,23 @@ import com.aktcl.aron.core.database.entity.QcLineEntity
 import com.aktcl.aron.core.database.entity.StockMovementEntity
 import com.aktcl.aron.core.database.entity.VisitCloseEntity
 import com.aktcl.aron.core.database.entity.VisitEntity
+import com.aktcl.aron.core.database.repo.FinalSubmitLock
 import com.aktcl.aron.core.database.repo.SaleCapture
 
 /** Builders of realistic SR-day rows for tests (values follow the contract examples). */
 object TestRows {
+    /**
+     * Owner decision 2026-11-04 (D-TSO-MAN-49): writes the late-sale policy `cfg.day.late_sync_after_final_policy` into [db]'s
+     * held config as the bundle stores it (a global resolved value, JSON text); null removes the key, as a bundle without it.
+     */
+    suspend fun latePolicy(db: AronDatabase, policy: String?) {
+        db.referenceDao().deleteConfigKey(FinalSubmitLock.KEY_LATE_POLICY)
+        if (policy != null) db.referenceDao().insertConfig(listOf(ConfigValueEntity(
+            key = FinalSubmitLock.KEY_LATE_POLICY, valueJson = "\"$policy\"", scopeType = "global", scopeId = null, effectiveFrom = null,
+            effectiveTo = null, configVersion = 1, requiresAck = false, scheduled = false,
+        )))
+    }
+
     fun meta(routeId: Long? = 10231, offline: Boolean = true) = CaptureMeta(
         businessDate = "2026-10-05", capturedAt = "2026-10-05T04:31:07.120Z", capturedElapsedMs = 9_120_331, bootCount = 41,
         clockOffsetMs = -1_250, capturedOffline = offline, routeId = routeId, bundleVersion = "2026-10-05:3", configVersion = 318,

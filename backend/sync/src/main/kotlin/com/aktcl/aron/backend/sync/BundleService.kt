@@ -479,6 +479,7 @@ class BundleService(
         val primaries = h.createQuery(
             "SELECT route_id, user_id FROM app.route_assignment WHERE route_id = ANY(:r) AND kind = 'primary' AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)",
         ).bindArray("r", Long::class.javaObjectType, ids).bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
+        val srs = routeSrs(h, ids, date)
         val outlets = outlets(h, ids, cfg, roleOrdinal, zoneIds)
         val openMemoRows = if (zoneIds == null) openMemos(h, outlets.values.flatten().map { it.outlet_id }) else emptyList()
         val plan = h.createQuery("SELECT zone_id, sku_id FROM app.sales_plan WHERE zone_id = ANY(:z) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d) ORDER BY sku_id")
@@ -496,9 +497,24 @@ class BundleService(
                 open_memos = openMemoRows.filter { it.outlet_id in outletIds }, sales_plan_sku_ids = plan[r.zoneId].orEmpty(),
                 targets = emptyList(), achievement_mtd = emptyList(),
                 day_state = day?.state ?: RouteDayStateDto(r.routeId, date.toString(), "not_started", r.plannedToday, 1, false, null, null, null, null),
+                sr_user_id = srs[r.routeId]?.first, sr_name = srs[r.routeId]?.second,
             )
         }
     }
+
+    /**
+     * Lane X2 (lead ruling R-W-06 (4), D-X1-05): each route's SR on [date], exactly as `GET /v1/routes` lists its assignees
+     * (assignments not ended and valid that date, ordered by kind, so a cover comes before the primary, then by user id),
+     * the first one whose role is SR; a route without one is absent (vacant: null on the wire).
+     */
+    private fun routeSrs(h: Handle, routeIds: List<Long>, date: LocalDate): Map<Long, Pair<Long, String>> = if (routeIds.isEmpty()) emptyMap() else h.createQuery(
+        """
+        SELECT DISTINCT ON (a.route_id) a.route_id, u.id, u.full_name
+          FROM app.route_assignment a JOIN app.app_user u ON u.id = a.user_id
+         WHERE a.route_id = ANY(:r) AND a.ended_at IS NULL AND a.valid_from <= :d AND (a.valid_to IS NULL OR a.valid_to > :d) AND u.role = 'SR'
+         ORDER BY a.route_id, a.kind, u.id
+        """.trimIndent(),
+    ).bindArray("r", Long::class.javaObjectType, routeIds).bind("d", date).map { rs, _ -> rs.getLong(1) to (rs.getLong(2) to rs.getString(3).take(120)) }.list().toMap()
 
     /**
      * `outlet_radius_changes` of `GET /v1/config/delta` (android-core-backend-config-delta-radius.md, F-SYS-053): null

@@ -519,11 +519,24 @@ class ReferenceRepository(private val db: AronDatabase) {
      * The value of config [key] (JSON text) in force at [nowIso] (trusted time, RFC 3339 UTC with milliseconds): the latest
      * scheduled value whose window contains [nowIso], else the resolved value; null when the bundle does not carry the key.
      */
-    suspend fun config(key: String, nowIso: String): String? {
+    suspend fun config(key: String, nowIso: String): String? = valueAt(key, nowIso, resolvedEnds = false)
+
+    /**
+     * As [config], but the resolved value also ends at its own `effective_to`: at or after it the key reads as absent (null),
+     * so the caller falls back to its default, as the server does once a time-limited value has ended. No delta brings that
+     * reversion to the phone (ConfigDelta compares resolved values, and the ended value and the registry default it falls
+     * back to resolve alike at the delta's time), so without this the phone would keep the ended value until its next full
+     * bundle. tso-manual X4a fix round (checker medium, owner decision 2026-11-04): the Final Submit lock reads its late-sale
+     * policy through it ([FinalSubmitLock.lockApplies]); the other callers keep [config] as it was.
+     */
+    suspend fun configInForce(key: String, nowIso: String): String? = valueAt(key, nowIso, resolvedEnds = true)
+
+    private suspend fun valueAt(key: String, nowIso: String, resolvedEnds: Boolean): String? {
         val rows = dao.configRows(key)
         val scheduled = rows.filter { it.scheduled && it.effectiveFrom != null && it.effectiveFrom <= nowIso && (it.effectiveTo == null || nowIso < it.effectiveTo) }
             .maxByOrNull { it.effectiveFrom!! }
-        return (scheduled ?: rows.firstOrNull { !it.scheduled })?.valueJson
+        val resolved = rows.firstOrNull { !it.scheduled }?.takeIf { !resolvedEnds || it.effectiveTo == null || nowIso < it.effectiveTo }
+        return (scheduled ?: resolved)?.valueJson
     }
 
     suspend fun tasks(): List<TaskEntity> = dao.tasks()

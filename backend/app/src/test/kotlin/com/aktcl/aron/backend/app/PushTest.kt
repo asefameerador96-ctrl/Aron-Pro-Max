@@ -158,4 +158,39 @@ class PushTest {
         assertEquals(0, notifier.deliver(sr, "task_assigned"))
         assertEquals(0, count("SELECT count(*) FROM app.push_token WHERE user_id = $sr AND revoked_at IS NULL"), "an unregistered token is revoked")
     }
+
+    /**
+     * X4a ask 11 (D-TSO-MAN-57): a late-sale policy change sends ONE urgent `config_pull` to each live phone of the changed scope and to
+     * no one outside it; the message carries the kind, the reason and the jitter, nothing else (no business data); switched off with
+     * `cfg.ops.push_enabled`.
+     */
+    @Test
+    fun aLatePolicyChangeSendsOneConfigPullToTheScopesPhonesOnly() = testApplication {
+        application { aronApi(wiring) }
+        val phone = client.login("sr1001", phone = true)
+        val token3 = "fcm-token-" + "c".repeat(40)
+        assertEquals(HttpStatusCode.NoContent, client.register(phone, token3).status)
+        val got = CopyOnWriteArrayList<Pair<String, Map<String, String>>>()
+        val notifier = com.aktcl.aron.backend.notify.PushNotifier(fresh.db, wiring.config, { tok, data -> got += tok to data; true }, clock)
+        val pusher = com.aktcl.aron.backend.notify.ConfigPullPush(fresh.db, wiring.config, notifier)
+        fun awaitGot(n: Int) { val until = System.nanoTime() + 30_000_000_000L; while (got.size < n && System.nanoTime() < until) Thread.sleep(20) }
+        val srZone = count("SELECT home_zone_id FROM app.app_user WHERE id = $sr")
+        val otherZone = count("SELECT min(id) FROM app.zone WHERE id <> $srZone")
+
+        pusher.configPull("late_sync_policy_changed", listOf("global" to 0L, "global" to 0L))
+        awaitGot(1); Thread.sleep(300)
+        assertEquals(1, got.size, "one message for the one live phone, however many items named the scope")
+        val (to, data) = got.single()
+        assertEquals(token3, to)
+        assertEquals("config_pull", data["kind"]); assertEquals("late_sync_policy_changed", data["reason"]); assertEquals("true", data["urgent"])
+        assertTrue((data["pull_after_s"]!!.toInt()) in 0..20)
+        assertEquals(setOf("kind", "reason", "notification_id", "pull_after_s", "urgent"), data.keys, "data only")
+
+        got.clear()
+        pusher.configPull("late_sync_policy_changed", listOf("zone" to srZone))
+        awaitGot(1); assertEquals(1, got.size, "the SR's own zone")
+        got.clear()
+        pusher.configPull("late_sync_policy_changed", listOf("zone" to otherZone))
+        Thread.sleep(500); assertEquals(0, got.size, "a zone the SR does not belong to")
+    }
 }

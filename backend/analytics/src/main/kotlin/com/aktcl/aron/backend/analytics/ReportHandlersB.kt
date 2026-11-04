@@ -60,7 +60,10 @@ object FinalSubmitLogReport : ReportHandler {
     )
 }
 
-/** `final-submit-status`: zone-days final-submitted or not, with the number of target routes in each state. */
+/**
+ * `final-submit-status`: zone-days final-submitted or not, with the number of target routes in each state. `zone_final` is the one Final Submit formula
+ * (R-W-03, D-TSO-MAN-53): [zoneSubmittedSql], the live `app.final_submit` projection, never the route-day states.
+ */
 object FinalSubmitStatusReport : ReportHandler {
     override val definition = definition(
         "final-submit-status", "Final Submit Status", "day_control", "zone-day",
@@ -76,7 +79,7 @@ object FinalSubmitStatusReport : ReportHandler {
         SELECT a.business_date, g.zone_name, count(*)::int AS target_routes, count(*) FILTER (WHERE a.day_state NOT IN ('sales_submitted', 'final_submitted') AND NOT (a.day_state IN ('logged_in', 'in_field', 'synced', 'submit_pending_rows') AND ${ctx.successfulLogin}))::int AS not_started,
                count(*) FILTER (WHERE a.day_state IN ('logged_in', 'in_field', 'synced', 'submit_pending_rows') AND ${ctx.successfulLogin})::int AS in_progress,
                count(*) FILTER (WHERE a.day_state = 'sales_submitted')::int AS sales_submitted, count(*) FILTER (WHERE a.day_state = 'final_submitted')::int AS final_submitted,
-               bool_and(a.day_state = 'final_submitted') AS zone_final
+               ${zoneSubmittedSql("g.zone_id", "a.business_date")} AS zone_final
           FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":from", hi = ":to")}
          WHERE ${ctx.dateClause("a.business_date")} AND a.planned AND NOT a.exception_approved AND ${ctx.zoneClause("a.zone_id")} AND ${ctx.routeClause("a.route_id")}
          GROUP BY a.business_date, g.zone_id, g.zone_name

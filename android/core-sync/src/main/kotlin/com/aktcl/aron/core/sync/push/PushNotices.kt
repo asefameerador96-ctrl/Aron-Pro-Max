@@ -20,7 +20,9 @@ import kotlinx.coroutines.flow.asSharedFlow
  *
  * tso-manual A1 (D-TSO-MAN-26, 31): the reasons `notification` and `ticket_updated` show a fixed text on the updates channel and
  * open the inbox ([OPEN_INBOX]) or the ticket dashboard ([OPEN_TICKETS]); `day_final_submitted` shows a fixed text on the silent day
- * channel (the midnight auto Final Submit must not ring a phone at 00:00). Every notice is also announced in process on [arrived]
+ * channel (the midnight auto Final Submit must not ring a phone at 00:00). Owner decision 2026-11-04: the server sends
+ * `day_final_submitted` only under the quarantine or reject late policy, when its "new sales are closed" is true; a close
+ * under accept_and_flag (the default) sends `day_state_changed`, which shows nothing. Every notice is also announced in process on [arrived]
  * before it is shown (and even when notifications are off), so a running app re-reads what it is about (the TSO bell's unread count)
  * without any polling.
  */

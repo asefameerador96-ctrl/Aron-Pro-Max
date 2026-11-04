@@ -18,7 +18,8 @@ import kotlin.test.assertTrue
  * V0130..V0140, the data model of the TSO manual build (docs/requests/tso-manual-build-2026-10.md s2, lane F2): support
  * tickets (number, write-once capture, forward-only state, append-only thread, origin), the 31 Annex A issue types and
  * the other code lists, the notification inbox, the build's settings, permission and events, the midnight job's Final
- * Submit, the day-lock sync codes, the visit plan route, the Visit Query rubric and the six TSO dw views.
+ * Submit, the day-lock sync codes, the visit plan route, the Visit Query rubric and the six TSO dw views. V0142 (owner
+ * decision 2026-11-04): the late-sale policy key is delivered to the phones too.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TsoManualV0130Test {
@@ -632,6 +633,16 @@ class TsoManualV0130Test {
         // R-F-06: the feedback record holds one photo_uuid.
         assertEquals("0|1", c.scalar("SELECT (bounds ->> 'min') || '|' || (bounds ->> 'max') FROM app.cfg_key WHERE key = 'cfg.feedback.max_images'"))
         assertEquals("\"accept_and_flag\"", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.day.late_sync_after_final_policy'")) // D-TSO-MAN-49
+        // V0142 (owner decision 2026-11-04, D-TSO-MAN-49): the late-sale policy reaches the SR and AMO phones (the phone's lock
+        // applies only under quarantine or reject); only its delivery moved, the rest of the key is V0006's and V0134's.
+        assertEquals(
+            "both|\"accept_and_flag\"|accept_and_flag,quarantine,reject|global|3|cfg.edit.field",
+            c.scalar(
+                "SELECT concat_ws('|', delivery, default_value::text, (SELECT string_agg(e, ',' ORDER BY n) FROM jsonb_array_elements_text(bounds -> 'enum') WITH ORDINALITY x(e, n)), " +
+                    "array_to_string(scope_levels, ','), risk_class, editor_permission) FROM app.cfg_key WHERE key = 'cfg.day.late_sync_after_final_policy'",
+            ),
+        )
+        assertEquals("server", c.scalar("SELECT delivery FROM app.cfg_key WHERE key = 'cfg.day.auto_final_submit_enabled'"))
         assertEquals("[\"ADMIN\", \"SUPERADMIN\"]", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.day.reopen_roles'"))
         assertEquals(listOf("ADMIN", "SUPERADMIN"), c.column("SELECT role FROM app.role_grant_map WHERE permission = 'support.ticket.manage'").filterNotNull().sorted())
         // V0134 catalogued them planned; V0141 (lead ruling R-W-07) makes them live once B1 and B3 ship the producers.

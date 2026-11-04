@@ -259,6 +259,14 @@ data class RouteSnapshot(
     /** Achievement against deferred targets (docs/27): empty. */
     val achievement_mtd: List<JsonObject>,
     val day_state: RouteDayStateDto,
+    /**
+     * Lane X2 (lead ruling R-W-06 (4), contract 1.10.0, D-X1-05): the route's SR on the bundle date, the one `GET /v1/routes`
+     * names first among its SR assignees (a cover valid that date before the primary); null when the route is vacant. Sent
+     * on every route entry of every bundle (the TSO's Assign Task reads it offline), so the shared schema means one thing.
+     */
+    val sr_user_id: Long? = null,
+    /** The SR's full name (at most 120 characters); null with [sr_user_id] null. */
+    val sr_name: String? = null,
 )
 
 @Serializable

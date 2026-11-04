@@ -46,9 +46,13 @@ class TsoPushReasonsTest {
         cases.forEach { (reason, notice) ->
             val m = PushMessage.parse(mapOf("kind" to "sync_nudge", "reason" to reason))!!
             assertEquals(reason, notice, m.notice)
-            assertEquals(reason, setOf(PushPullKind.BUNDLE), m.pulls)
+            assertTrue(reason, PushPullKind.BUNDLE in m.pulls)
             assertFalse("$reason is not urgent: the midnight fan-out keeps the 120 s spread", m.urgent)
         }
+        assertEquals(setOf(PushPullKind.BUNDLE), PushMessage.parse(mapOf("kind" to "sync_nudge", "reason" to "notification"))!!.pulls)
+        assertEquals(setOf(PushPullKind.BUNDLE), PushMessage.parse(mapOf("kind" to "sync_nudge", "reason" to "ticket_updated"))!!.pulls)
+        // X4a fix round (checker low): the lock push also pulls the config, so a locking policy set before the close arrives with it
+        assertEquals(setOf(PushPullKind.BUNDLE, PushPullKind.CONFIG), PushMessage.parse(mapOf("kind" to "sync_nudge", "reason" to "day_final_submitted"))!!.pulls)
         // business data in the push is never read: the notice is the fixed one
         assertEquals(PushNotice.InboxUpdated, PushMessage.parse(mapOf("kind" to "sync_nudge", "reason" to "notification", "title_en" to "Leave approved for X"))!!.notice)
         assertEquals(PushNotice.TaskAssigned, PushMessage.noticeFor("task_assigned"))
@@ -80,6 +84,28 @@ class TsoPushReasonsTest {
         assertEquals(PushNotices.CHANNEL_DAY, day.channelId)
         assertEquals("দিন বন্ধ হয়েছে", shadowOf(day).contentTitle.toString())
         assertNull("the day notice opens the app, no screen", PushNotices.opens(shadowOf(day.contentIntent).savedIntent))
+    }
+
+    /**
+     * X4a fix round (checker high; owner decision 2026-11-04, D-TSO-MAN-49): a zone-day close under accept_and_flag (the
+     * shipped default) arrives as `day_state_changed` (backend `finalSubmitPushReason`): no notification and no in-process
+     * notice, so no rep is told that sales are closed while the server accepts them; the bundle pull still brings the day
+     * state, and no config pull is spent.
+     */
+    @Test fun aCloseUnderAcceptAndFlagShowsNothingAndOnlyPullsTheBundle() {
+        shadowOf(app as android.app.Application).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+        PushNotices.ensureChannels(app)
+        val m = PushMessage.parse(mapOf("kind" to "sync_nudge", "reason" to PushMessage.REASON_DAY_STATE_CHANGED))!!
+        assertNull("no notice", m.notice)
+        assertEquals(setOf(PushPullKind.BUNDLE), m.pulls)
+        assertFalse(m.urgent)
+        val shown = mutableListOf<PushNotice>()
+        val scheduled = mutableListOf<PushPullKind>()
+        PushDispatcher(show = { shown += it; PushNotices.show(app, it, bangla = false) }, schedule = { k, _ -> scheduled += k })
+            .onMessage(mapOf("kind" to "sync_nudge", "reason" to "day_state_changed"))
+        assertEquals(emptyList<PushNotice>(), shown)
+        assertEquals(listOf(PushPullKind.BUNDLE), scheduled)
+        assertNull("nothing on the day channel", shadowOf(manager).getNotification(PushNotices.ID_DAY))
     }
 
     @Test fun everyNoticeIsAnnouncedInProcessEvenWithNotificationsOff() = runBlocking {

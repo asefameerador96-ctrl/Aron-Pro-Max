@@ -2,6 +2,7 @@ package com.aktcl.aron.backend.analytics
 
 import com.aktcl.aron.rules.Percent
 import com.aktcl.aron.rules.UiLocale
+import io.ktor.client.statement.bodyAsText
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -65,9 +66,18 @@ class SegmentShareTest : TsoDayFixture() {
         assertEquals("2500", widened["total_value_mtk"]!!.jsonPrimitive.content, "naming Banani - Test is cut to the reach")
         val t = post(32, "/dashboards/national/segment-share").obj()
         for (k in listOf("date", "till_time", "as_of", "last_updated_at", "total_value_mtk", "families", "segments")) assertTrue(k in t, k)
-        // The service cuts a BRAND user to its brands (above), but the platform's BRAND allow-list (PortalLevels.BRAND_DASHBOARD) does not
-        // list this 1.10.0 route yet, so the guard refuses it first (ask in docs/status/tso-manual-B2.md).
-        assertEquals(403, post(38, "/dashboards/national/segment-share").status.value, "BRAND: refused by the portal-level guard")
+        // Lane X2, lead ruling R-W-08: the route is on the BRAND allow-list (PortalLevels.BRAND_DASHBOARD) and the service cuts a
+        // BRAND user to its own brands (the brand scope is the server's, never the request's): Maxim's segment only; the Bidi
+        // segment of another brand is absent even when the body names every zone.
+        for (body in listOf("""{"date":"2026-10-25"}""", """{"date":"2026-10-25","zone_ids":[${id("Z1")},${id("Z2")}]}""")) {
+            val r = post(38, "/dashboards/national/segment-share", body)
+            assertEquals(200, r.status.value, "BRAND: ${r.bodyAsText()}")
+            val b = r.obj()
+            val codes = b["segments"]!!.jsonArray.map { it.jsonObject["segment_code"]!!.jsonPrimitive.content }
+            assertEquals(listOf("SEG-MED"), codes, "only the caller's brand")
+            assertTrue("SEG-BID" !in codes, "a foreign brand's segment is absent")
+            assertEquals("10000", b["segments"]!!.jsonArray.single().jsonObject["value_share_bp"]!!.jsonPrimitive.content, "the share is over the caller's brands only")
+        }
         assertEquals(403, post(39, "/dashboards/national/segment-share").status.value, "AMO")
     }
 }

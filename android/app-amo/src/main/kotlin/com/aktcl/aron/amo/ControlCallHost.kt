@@ -15,6 +15,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.aktcl.aron.core.database.entity.OutletEntity
+import com.aktcl.aron.core.database.repo.DayRefusal
 import com.aktcl.aron.core.database.repo.RouteDay
 import com.aktcl.aron.core.system.permission.GatedFeature
 import com.aktcl.aron.core.system.permission.PermissionGate
@@ -69,13 +70,23 @@ fun ControlCallHost(
     // A call already open (kill and relaunch): back on its menu, never a second visit.
     val open by day.visitSession.current.collectAsState()
     LaunchedEffect(open) { if (open != null && step != inCall && step != CcStep.FORCE && step != CcStep.ASSESS && step != CcStep.SURVEY && step != CcStep.PRICE && step != CcStep.SALE) step = inCall }
+    // tso-manual X4a follow-up (R-W-23): a call whose close the route-day refused (the zone's Final Submit, or the supervisor
+    // day's Sales Submit) ended on the phone with no close written; the outlet list shows why, never a crash
+    var callEnded by remember { mutableStateOf<DayRefusal?>(null) }
+    val leaveCall: () -> Unit = { scope.launch { callEnded = day.closeVisit(); step = CcStep.OUTLET } }
+    callEnded?.let { AmoRefusalDialog(day, it, onOk = { callEnded = null }) }
+    // X4a fix round (R-W-23, checker low): the entry guard, as the SR sale host's. A call in progress (back to it, or restored)
+    // whose route-day no longer takes its records ends on the phone at once, before any step is drafted; the outlet list says why
+    LaunchedEffect(open) {
+        if (open != null) runCatching { day.endCallIfClosed() }.getOrNull()?.let { callEnded = it; step = CcStep.OUTLET }
+    }
     val goBack: () -> Unit = {
         when (step) {
             CcStep.ROUTE -> onBack()
             CcStep.OUTLET -> step = CcStep.ROUTE
             CcStep.CHECK, CcStep.FORCE -> step = CcStep.OUTLET
             CcStep.ASSESS, CcStep.SURVEY, CcStep.PRICE, CcStep.SALE -> step = CcStep.MENU
-            CcStep.MENU, CcStep.JOINT -> scope.launch { day.closeVisit(); step = CcStep.OUTLET }
+            CcStep.MENU, CcStep.JOINT -> leaveCall()
         }
     }
     androidx.activity.compose.BackHandler(onBack = goBack)
@@ -87,14 +98,17 @@ fun ControlCallHost(
                 CcStep.OUTLET -> {
                     var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
                     var opening by remember { mutableStateOf(false) }
+                    // tso-manual X4a: no call on a route closed by Final Submit; follow-up (R-W-23): nor after the supervisor day's Sales Submit
+                    var lockNotice by remember { mutableStateOf<DayRefusal?>(null) }
+                    lockNotice?.let { AmoRefusalDialog(day, it, onOk = { lockNotice = null }) }
                     val outlets = ControlCall.outlets(list.orEmpty(), routeId ?: -1L)
                     val all = OutletPicker.rows(outlets)
                     OutletPickerContent(OutletPicker.rows(outlets, chip), OutletPicker.chips(all), chip, { chip = it }, { r ->
                         if (!opening) {
                             opening = true
                             scope.launch {
-                                day.routeId = r.outlet.routeId
-                                runCatching { day.visitFlow.open(ControlCall.visitOutlet(r.outlet, kind)) }
+                                // tso-manual X4a (R-W-11, A3 ask 11; R-W-23): the lock or submit text, not a fix and a generic failed commit
+                                if (!day.openCall(r.outlet, kind) { lockNotice = it }) { opening = false; return@launch }
                                 opening = false; step = CcStep.CHECK
                             }
                         }
@@ -103,6 +117,13 @@ fun ControlCallHost(
                 CcStep.CHECK -> {
                     val st by day.visitFlow.state.collectAsState()
                     LaunchedEffect(st) { if (st is VisitUiState.Open) step = inCall }
+                    // tso-manual X4a (R-W-11): the lock landed while the fix was read and the committer refused the call (nothing
+                    // stored): the lock text instead of the generic failed commit and its retry; follow-up (R-W-23): the submit
+                    // text when the supervisor day's Sales Submit refused it
+                    val failed = st as? VisitUiState.CommitFailed
+                    var lockedOut by remember(failed) { mutableStateOf<DayRefusal?>(null) }
+                    LaunchedEffect(failed) { lockedOut = day.commitRefusal(failed) }
+                    lockedOut?.let { AmoRefusalDialog(day, it, onOk = { day.routeId = null; step = CcStep.OUTLET }) }
                     VisitCheckContent(
                         st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { step = CcStep.FORCE },
                         onRetry = { scope.launch { day.visitFlow.retryCommit() } }, onMap = null,
@@ -111,14 +132,14 @@ fun ControlCallHost(
                     )
                 }
                 CcStep.FORCE -> ManualOverrideStep(day, onStarted = { step = inCall }, onBack = { step = CcStep.CHECK })
-                CcStep.JOINT -> JointCallStep(day, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
-                CcStep.ASSESS -> PerfAssessmentStep(day, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
-                CcStep.SALE -> AmoSaleHost(day, onDone = { step = CcStep.MENU })
+                CcStep.JOINT -> JointCallStep(day, onSaved = leaveCall)
+                CcStep.ASSESS -> PerfAssessmentStep(day, onSaved = leaveCall)
+                CcStep.SALE -> AmoSaleHost(day, onDone = { step = CcStep.MENU }, onCallEnded = { step = CcStep.OUTLET })
                 CcStep.SURVEY -> SurveyStep(day, onDone = { step = CcStep.MENU })
                 CcStep.PRICE -> PriceStep(day, onSaved = { step = CcStep.MENU })
                 CcStep.MENU -> ControlCallMenu(
                     onSale = { step = CcStep.SALE }, onAssessment = { step = CcStep.ASSESS }, onSurvey = { step = CcStep.SURVEY }, onPrice = { step = CcStep.PRICE },
-                    onDone = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } },
+                    onDone = leaveCall,
                 )
             }
         }
@@ -182,6 +203,8 @@ private fun PerfAssessmentStep(day: AmoDay, onSaved: () -> Unit) {
     )) { mutableStateOf(com.aktcl.aron.feature.amo.PerfState()) }
     var saving by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
+    var refused by remember { mutableStateOf<DayRefusal?>(null) } // tso-manual X4a follow-up (R-W-23)
+    refused?.let { AmoRefusalDialog(day, it, onOk = { refused = null }) }
     LaunchedEffect(day) { brands = com.aktcl.aron.feature.amo.PerfAssessment.brands(runCatching { day.reference.section("products") }.getOrNull()) }
     val visit by day.visitSession.current.collectAsState()
     com.aktcl.aron.feature.amo.PerfAssessmentContent(
@@ -192,8 +215,9 @@ private fun PerfAssessmentStep(day: AmoDay, onSaved: () -> Unit) {
             if (!saving && !saved && v != null) {
                 saving = true
                 scope.launch {
-                    val ok = runCatching { day.saveAssessment(v.visitUuid, brands.orEmpty(), state) }.isSuccess
-                    saving = false; saved = ok
+                    val out = day.saveCallStep { day.saveAssessment(v.visitUuid, brands.orEmpty(), state) }
+                    val ok = out.saved
+                    saving = false; saved = ok; refused = out.refused
                     if (ok) { kotlinx.coroutines.delay(900); onSaved() }
                 }
             }
@@ -216,6 +240,8 @@ private fun JointCallStep(day: AmoDay, onSaved: () -> Unit) {
     )) { mutableStateOf(com.aktcl.aron.feature.amo.JointState()) }
     var saving by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
+    var refused by remember { mutableStateOf<DayRefusal?>(null) } // tso-manual X4a follow-up (R-W-23)
+    refused?.let { AmoRefusalDialog(day, it, onOk = { refused = null }) }
     LaunchedEffect(day, routeId) {
         rubric = com.aktcl.aron.feature.amo.JointCall.rubric(runCatching { day.reference.section("rubrics") }.getOrNull())
         sr = routeId?.let { com.aktcl.aron.feature.amo.JointCall.assignedSr(runCatching { day.reference.section("supervisor") }.getOrNull(), it) }
@@ -229,8 +255,9 @@ private fun JointCallStep(day: AmoDay, onSaved: () -> Unit) {
             if (!saving && !saved && v != null && r != null) {
                 saving = true
                 scope.launch {
-                    val ok = runCatching { day.saveJointCall(v.visitUuid, r, stars, sr?.userId) }.isSuccess
-                    saving = false; saved = ok
+                    val out = day.saveCallStep { day.saveJointCall(v.visitUuid, r, stars, sr?.userId) }
+                    val ok = out.saved
+                    saving = false; saved = ok; refused = out.refused
                     if (ok) { kotlinx.coroutines.delay(900); onSaved() }
                 }
             }
@@ -265,6 +292,8 @@ private fun SurveyStep(day: AmoDay, onDone: () -> Unit) {
     var answers by rememberSaveable(stateSaver = AnswersSaver) { mutableStateOf<Map<String, com.aktcl.aron.feature.outlet.SurveyAnswer>>(emptyMap()) }
     var confirming by rememberSaveable { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
+    var refused by remember { mutableStateOf<DayRefusal?>(null) } // tso-manual X4a follow-up (R-W-23)
+    refused?.let { AmoRefusalDialog(day, it, onOk = { refused = null }) }
     fun set(key: String, f: (com.aktcl.aron.feature.outlet.SurveyAnswer) -> com.aktcl.aron.feature.outlet.SurveyAnswer) {
         answers = answers + (key to f(answers[key] ?: com.aktcl.aron.feature.outlet.SurveyAnswer()))
     }
@@ -285,8 +314,9 @@ private fun SurveyStep(day: AmoDay, onDone: () -> Unit) {
                 saving = true
                 scope.launch {
                     val defs = questions.map { it.question }
-                    val ok = runCatching { day.saveSurvey(v.visitUuid, l.first, com.aktcl.aron.feature.outlet.PosmSurvey.rows(v.visitUuid, l.first.surveyId, l.first.version, defs, answers)) }.isSuccess
-                    saving = false
+                    val out = day.saveCallStep { day.saveSurvey(v.visitUuid, l.first, com.aktcl.aron.feature.outlet.PosmSurvey.rows(v.visitUuid, l.first.surveyId, l.first.version, defs, answers)) }
+                    val ok = out.saved
+                    saving = false; refused = out.refused
                     if (ok) onDone() // a failed write keeps the form (and the answers) on screen for another Submit
                 }
             }
@@ -309,6 +339,8 @@ private fun PriceStep(day: AmoDay, onSaved: () -> Unit) {
     val visit by day.visitSession.current.collectAsState()
     var saving by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
+    var refused by remember { mutableStateOf<DayRefusal?>(null) } // tso-manual X4a follow-up (R-W-23)
+    refused?.let { AmoRefusalDialog(day, it, onOk = { refused = null }) }
     LaunchedEffect(day, bn, visit?.visitUuid) {
         tolerance = day.priceToleranceBp()
         val done = visit?.let { runCatching { day.pricedSkus(it.visitUuid) }.getOrNull() }.orEmpty()
@@ -322,8 +354,9 @@ private fun PriceStep(day: AmoDay, onSaved: () -> Unit) {
             if (!saving && !saved && v != null) {
                 saving = true
                 scope.launch {
-                    val ok = runCatching { day.savePriceCompliance(v.visitUuid, list, typed, tolerance) }.isSuccess
-                    saving = false; saved = ok
+                    val out = day.saveCallStep { day.savePriceCompliance(v.visitUuid, list, typed, tolerance) }
+                    val ok = out.saved
+                    saving = false; saved = ok; refused = out.refused
                     if (ok) { kotlinx.coroutines.delay(900); onSaved() }
                 }
             }

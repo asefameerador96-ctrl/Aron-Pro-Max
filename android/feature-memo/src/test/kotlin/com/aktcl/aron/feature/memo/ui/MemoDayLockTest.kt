@@ -1,0 +1,236 @@
+package com.aktcl.aron.feature.memo.ui
+
+import android.content.Context
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.aktcl.aron.core.common.ClientIds
+import com.aktcl.aron.core.database.AronDatabase
+import com.aktcl.aron.core.database.entity.BundleSectionEntity
+import com.aktcl.aron.core.database.entity.CaptureMeta
+import com.aktcl.aron.core.database.entity.ConfigValueEntity
+import com.aktcl.aron.core.database.entity.DaySubmitEntity
+import com.aktcl.aron.core.database.entity.GeoFixEntity
+import com.aktcl.aron.core.database.entity.MemoEntity
+import com.aktcl.aron.core.database.entity.MemoLineEntity
+import com.aktcl.aron.core.database.entity.VisitEntity
+import com.aktcl.aron.core.database.repo.CaptureRepository
+import com.aktcl.aron.core.database.repo.FinalSubmitLock
+import com.aktcl.aron.core.database.repo.SaleCapture
+import com.aktcl.aron.core.printing.flow.PrintAttempt
+import com.aktcl.aron.feature.memo.domain.PrintNames
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withTimeoutOrNull
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+import java.util.Collections
+
+/**
+ * tso-manual X4a (R-W-11, D-TSO-MAN-31): the memo screen after the zone's Final Submit, on a real database with the
+ * production store and the kits' Mark Paid writer ([VisitDueCollectionWriter]). Mark Paid (a `due_collection`, which the
+ * server refuses after the lock) is hidden while its route-day is final or submitted; one tapped before the lock was known
+ * is refused with words, stores nothing and never crashes, and the screen never shows that refusal while Mark Paid is still
+ * drawn (fix round, the flaky line 129). A collection carries the route of the visit it attaches to, so a caller with no
+ * route of its own (the AMO outside a call) never writes a visit-family record without one. Reprints stay allowed.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [36])
+class MemoDayLockTest {
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val db = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries().build()
+    private val repo = CaptureRepository(db) { "2026-10-05T16:00:00.000Z" }
+    private val date = "2026-10-05"
+    private val route = 10231L
+    private val crashes: MutableList<Throwable> = Collections.synchronizedList(ArrayList())
+    private var previousDefault: Thread.UncaughtExceptionHandler? = null
+    private var previousOwn: Thread.UncaughtExceptionHandler? = null
+
+    @Before fun setUp() {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
+        runBlocking {
+            db.referenceDao().insertConfig(listOf(ConfigValueEntity(
+                key = FinalSubmitLock.KEY_LATE_POLICY, valueJson = "\"quarantine\"", scopeType = "global", scopeId = null, effectiveFrom = null,
+                effectiveTo = null, configVersion = 1, requiresAck = false, scheduled = false,
+            )))
+        }
+        val catcher = Thread.UncaughtExceptionHandler { _, e -> crashes += e }
+        previousDefault = Thread.getDefaultUncaughtExceptionHandler(); Thread.setDefaultUncaughtExceptionHandler(catcher)
+        previousOwn = Thread.currentThread().uncaughtExceptionHandler; Thread.currentThread().uncaughtExceptionHandler = catcher
+    }
+
+    @After fun tearDown() {
+        Thread.setDefaultUncaughtExceptionHandler(previousDefault); Thread.currentThread().uncaughtExceptionHandler = previousOwn
+        db.close()
+        Dispatchers.resetMain()
+    }
+
+    private fun meta(routeId: Long? = route) = CaptureMeta(date, "2026-10-05T04:31:07.120Z", 1, 1, 0, true, routeId, null, "b", false, 1)
+
+    /** A credit memo of 84 Tk with 50 Tk due, sold on the route before the lock; returns its visit and memo uuids. */
+    private fun creditMemo(memoNo: String = "sr334001-261005-001"): Pair<String, String> = runBlocking {
+        val visit = ClientIds.newUuid(); val fixId = ClientIds.newUuid()
+        val fix = GeoFixEntity(fixId, visit, "visit_open", "ok", 23.79, 90.40, 11.5, provider = "fused", isMock = false, reused = false, deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false)
+        repo.recordVisitOpen(VisitEntity(visit, meta(), "sr_call", 1, "2026-10-05T04:31:07.120Z", 1, true, null, fixId, "in_range", 18.4, 100, 50, "master", 23.7, 90.4, "sale_allowed"), fix)
+        val memo = ClientIds.newUuid()
+        repo.recordSale(SaleCapture(
+            MemoEntity(memo, meta(), visit, 1, memoNo, "sale", "2026-10-05T04:35:00.000Z", "2026-10-05", "outlet", 84_000, 0, 0, 0, 0, 84_000, 34_000, 50_000, true, null, 1, 0, 0),
+            listOf(MemoLineEntity(ClientIds.newUuid(), meta(), memo, 1, 105, "sale", 3, "dozen", 1, 3, "outlet", "2026-09-01", 28_000, 1, 84_000)),
+        ))
+        visit to memo
+    }
+
+    private fun finalSubmitted() = runBlocking {
+        db.referenceDao().insertSections(listOf(BundleSectionEntity("route.$route",
+            """{"route_id":$route,"targets":[],"day_state":{"route_id":$route,"business_date":"$date","state":"final_submitted","submit_cycle":0,"submit_voided":false,"final_submitted_at":"2026-10-05T15:00:00.000Z"}}""")))
+    }
+
+    private val prints = Collections.synchronizedList(ArrayList<String>())
+
+    /**
+     * The memo screen as the kits build it: [VisitDueCollectionWriter] with [ownRoute] as the caller's own route (the SR's
+     * day route; null for the AMO outside a call), and Mark Paid's check from that writer (the view model's default).
+     */
+    private fun vm(store: MemoStore = RoomMemoStore(db), ownRoute: Long? = route) = MemoViewModel(
+        store, VisitDueCollectionWriter(db, repo, { rid -> meta(rid ?: ownRoute) }, { date }),
+        object : MemoReprinter { override suspend fun print(memoUuid: String, memo: com.aktcl.aron.core.printing.doc.MemoPrint): PrintAttempt { prints += memoUuid; return PrintAttempt.Done } },
+        { PrintNames({ "S$it" }, { "O$it" }, "sr", "r") }, { date },
+    )
+
+    private fun salesSubmitted() = runBlocking {
+        repo.recordDaySubmit(DaySubmitEntity(ClientIds.newUuid(), meta(), "route_day", 1, "{}", MONEY, 0, 0, 0, false, 0, 0, false))
+    }
+
+    private fun await(what: String, cond: () -> Boolean) = runBlocking {
+        assertTrue(what, withTimeoutOrNull(10_000) { while (!cond()) delay(10); true } == true)
+    }
+
+    @Test fun markPaidIsHiddenOnAFinalDayAndReprintsStayAllowed() {
+        val (_, memo) = creditMemo()
+        finalSubmitted()
+        val v = vm()
+        v.open(memo)
+        await("the memo is open") { v.state.value.selected?.memo?.memoUuid == memo }
+        assertTrue(v.state.value.dayLocked)
+        assertFalse("Mark Paid is hidden", v.state.value.canMarkPaid)
+        assertEquals(50_000, v.state.value.remainingDueMtk) // the due still shows
+        v.reprint()
+        await("the reprint went to the printer") { prints.toList() == listOf(memo) }
+        assertEquals(PrintAttempt.Done, v.state.value.lastPrint)
+        assertEquals(listOf<Throwable>(), crashes.toList())
+    }
+
+    @Test fun aMarkPaidTappedAfterTheLockArrivedIsRefusedWithTheTextAndStoresNothing() {
+        val (_, memo) = creditMemo()
+        val v = vm()
+        v.open(memo)
+        await("Mark Paid is drawn while the day is open") { v.state.value.canMarkPaid }
+        finalSubmitted() // the push lands while the memo is on screen
+        v.markPaid()
+        await("the lock text shows") { v.state.value.lockRefused }
+        assertEquals(listOf<Throwable>(), crashes.toList())
+        assertTrue("no collection stored", runBlocking { db.captureDao().dueCollectionsOn(date) }.isEmpty())
+        assertEquals("nothing but the call and the sale queued", setOf("visit", "memo", "memo_line"), runBlocking { db.outboxDao().committedCounts(date) }.map { it.recordType }.toSet())
+        assertFalse(v.state.value.canMarkPaid); assertTrue(v.state.value.dayLocked)
+        assertEquals(50_000, v.state.value.remainingDueMtk)
+        v.dismissLockRefusal()
+        assertFalse(v.state.value.lockRefused)
+    }
+
+    @Test fun anOpenDayKeepsMarkPaid() {
+        val (visit, memo) = creditMemo()
+        val v = vm()
+        v.open(memo)
+        await("Mark Paid is drawn") { v.state.value.canMarkPaid }
+        assertFalse(v.state.value.dayLocked)
+        v.markPaid()
+        await("collected") { runBlocking { db.captureDao().dueCollectionsOn(date) }.size == 1 }
+        await("the button goes") { !v.state.value.canMarkPaid }
+        assertFalse(v.state.value.lockRefused)
+        val due = runBlocking { db.captureDao().dueCollectionsOn(date) }.single()
+        assertEquals(route, due.meta.routeId); assertEquals(visit, due.visitClientUuid)
+    }
+
+    /**
+     * Fix round (checker medium, the flaky line 129): the refusal and the reload are one state write. A store that looks at
+     * the screen's state whenever the day is re-read catches the old order (lockRefused set, then the reload's reads while
+     * Mark Paid is still drawn) on every run, not only when the thread timing happens to show it.
+     */
+    @Test fun theRefusalIsNeverShownWhileMarkPaidIsStillDrawn() {
+        val (_, memo) = creditMemo()
+        lateinit var v: MemoViewModel
+        val seen = Collections.synchronizedList(ArrayList<Pair<Boolean, Boolean>>())
+        val room = RoomMemoStore(db)
+        val watching = object : MemoStore {
+            override suspend fun memos(businessDate: String) = room.memos(businessDate).also { seen += v.state.value.lockRefused to v.state.value.canMarkPaid }
+            override suspend fun collections(businessDate: String) = room.collections(businessDate)
+        }
+        v = vm(store = watching)
+        v.open(memo)
+        await("Mark Paid is drawn while the day is open") { v.state.value.canMarkPaid }
+        finalSubmitted()
+        v.markPaid()
+        await("the lock text shows") { v.state.value.lockRefused }
+        assertFalse(v.state.value.canMarkPaid); assertTrue(v.state.value.dayLocked)
+        assertTrue("never the lock text with Mark Paid still drawn: $seen", seen.none { (refused, drawn) -> refused && drawn })
+        assertEquals(listOf<Throwable>(), crashes.toList())
+    }
+
+    /** Fix round (checker high 2): the day's own Sales Submit hides Mark Paid too, and a tap it beat is worded, not a crash. */
+    @Test fun aSalesSubmitHidesMarkPaidAndATapItBeatIsWordedNotACrash() {
+        val (_, memo) = creditMemo()
+        val v = vm()
+        v.open(memo)
+        await("Mark Paid is drawn") { v.state.value.canMarkPaid }
+        salesSubmitted()
+        v.markPaid()
+        await("the refusal is worded") { v.state.value.submitRefused }
+        assertEquals(listOf<Throwable>(), crashes.toList())
+        assertFalse(v.state.value.lockRefused); assertFalse(v.state.value.canMarkPaid); assertTrue(v.state.value.dayLocked)
+        assertTrue(runBlocking { db.captureDao().dueCollectionsOn(date) }.isEmpty())
+        v.dismissLockRefusal()
+        assertFalse(v.state.value.submitRefused)
+    }
+
+    /**
+     * Fix round (checker high 1): a caller with no route of its own (the AMO outside a call) collects on the route of the
+     * visit the memo was sold in: on an open route the collection is stored with that route and visit, nothing crashes; on a
+     * final route Mark Paid is hidden. FinalSubmitLock answers for the visit's route, never "routeless, so open".
+     */
+    @Test fun aCallerWithNoRouteCollectsOnTheVisitsRoute() {
+        val (visit, memo) = creditMemo()
+        val v = vm(ownRoute = null)
+        v.open(memo)
+        await("Mark Paid is drawn on the open route") { v.state.value.canMarkPaid }
+        v.markPaid()
+        await("collected") { runBlocking { db.captureDao().dueCollectionsOn(date) }.size == 1 }
+        val due = runBlocking { db.captureDao().dueCollectionsOn(date) }.single()
+        assertEquals("the visit's route", route, due.meta.routeId); assertEquals(visit, due.visitClientUuid)
+        assertEquals(listOf<Throwable>(), crashes.toList())
+        // the next memo of the day on the same route, after the zone's Final Submit: hidden, as the write would be refused
+        val (_, second) = creditMemo("sr334001-261005-002")
+        finalSubmitted()
+        val after = vm(ownRoute = null)
+        after.open(second)
+        await("the memo is open") { after.state.value.selected?.memo?.memoUuid == second }
+        assertFalse(after.state.value.canMarkPaid); assertTrue(after.state.value.dayLocked)
+        assertTrue(runBlocking { FinalSubmitLock.isFinal(db, date, route) })
+    }
+
+    private companion object {
+        const val MONEY = """{"active_memo_count":0,"gross_mtk":0,"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,"net_mtk":0,"paid_mtk":0,"due_mtk":0,"due_collected_mtk":0,"net_by_category_mtk":{},"issued_qty_base_by_sku":{},"sold_qty_base_by_sku":{}}"""
+    }
+}
