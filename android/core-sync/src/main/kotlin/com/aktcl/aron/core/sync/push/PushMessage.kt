@@ -92,6 +92,14 @@ data class PushMessage(
          */
         const val REASON_DAY_STATE_CHANGED = "day_state_changed"
 
+        /**
+         * X4a ask 11 (D-TSO-MAN-57, backend `LATE_POLICY_REASON`): the reason of the `config_pull` the server sends once when an admin
+         * changes `cfg.day.late_sync_after_final_policy`. It is a CONFIG pull only (urgent, so outside the daily cap): no bundle, no
+         * sync, no notice, no business data; the phone reads the new policy and its day lock follows at once. Idempotent: a repeat
+         * is one more conditional config read (ETag), nothing is applied twice.
+         */
+        const val REASON_LATE_POLICY_CHANGED = "late_sync_policy_changed"
+
         /** The fixed notice of a `sync_nudge` reason; an unknown reason pulls without a notice. */
         fun noticeFor(reason: String?): PushNotice? = when (reason) {
             REASON_TASK_ASSIGNED -> PushNotice.TaskAssigned

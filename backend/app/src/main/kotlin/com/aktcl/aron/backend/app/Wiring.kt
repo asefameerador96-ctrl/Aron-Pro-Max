@@ -301,6 +301,8 @@ class Wiring(
                     (configResolver.resolve(key, chain, clock.now()).value as kotlinx.serialization.json.JsonPrimitive).content == "true"
                 }.getOrDefault(false)
             }
+            // X4a ask 11 (D-TSO-MAN-57): a change of the late-sale policy pushes ONE config_pull to the phones of its scope, after the commit.
+            configService.configPull = com.aktcl.aron.backend.notify.ConfigPullPush(db, config, push)
             val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock, reach = reach), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + extraRecordHandlers)), db, config, clock)
             ingestForReview = sync.ingest
             val hikari = db.write as? com.zaxxer.hikari.HikariDataSource
