@@ -332,3 +332,86 @@ None (D-X4a-07: no screenshot case was added).
 
 The lead merges `tso-man/X4a` with the integration round and rules on asks 6 and 7 (ask 5 closed by D-X4a-20); the device lab runs s8 row 26 with
 the follow-up's stock and submit steps (ask 2).
+
+## Late policy on the phone (owner 2026-11-04)
+
+**Owner decision (2026-11-04, binding, given to the laptop session in chat):** when a phone sells after the TSO's Final
+Submit, the sale is accepted and flagged, never refused; the SR and AMO phones' day lock stays OFF by default. quarantine
+and reject remain config switches, and when an admin sets one of them, the phone lock this lane built applies exactly as
+built. Base: `tso-man/handover` 5c4fad492 (the cloud's `lane/tso-manual` 86236433b with D-TSO-MAN-49, plus X2 and X4a
+merged). Commits: f93767211 (V0142), 6101561ad (core-database predicate, fixtures), 3db0af853 (SR and AMO days, new
+tests), 2e5d75235 (X2's end-to-end test after the merge), and this section. Nothing pushed, no pull request;
+DECISIONS.md not edited (the lead writes the decision lines).
+
+| item | what | proving test |
+|---|---|---|
+| 1. The policy reaches the phone | `db/migrations/V0142__late_policy_reaches_the_phone.sql` (V0142 was free; V0141 was the last): `cfg.day.late_sync_after_final_policy` delivery `server` -> `both`, nothing else of the key changes. The bundle (`ScopedConfig.deviceValues`) and every config delta (`ConfigDelta`, delivery not `server`) now carry it with the registry default `accept_and_flag`. docs/19 and docs/24 s9.5 name the delivery. No data-dictionary change (it documents tables, not keys). | `TsoManualV0130Test.theBuildsSettingsPermissionAndEventsAreRegistered` (the key's row pinned: `both`, default, enum, scope, risk, editor; `cfg.day.auto_final_submit_enabled` stays `server`); `BundleUnitTest.theLateSalePolicyIsInTheDeviceBundle` (in the device values, scope `default`, value `accept_and_flag`; the auto close switch is not) |
+| 2. One predicate | `FinalSubmitLock.lockApplies(db, nowIso)` (RouteDayLock.kt): true only when the policy in force is `quarantine` or `reject` (`LOCKING_POLICIES`); false for `accept_and_flag`, an absent key or an unreadable value (not a JSON string, unknown, wrong case), the server's own fallback. It reads the held config through `ReferenceRepository.config(key, nowIso)`, the same path app-tso reads `cfg.tso.team_location_max_age_min` (`TsoReadModels.configRaw`) and the SR and AMO days read `cfg.memo.reprint_max` and `cfg.geo.update_base_*`; a scheduled value counts from its start. | `LatePolicyLockTest.onlyQuarantineOrRejectLockAndAnAbsentOrUnreadablePolicyDoesNot`, `theLockingPoliciesAreTheServersLatePoliciesButItsFallback` (IngestService's `LATE_POLICIES` minus `accept_and_flag`, and its fallback `accept_and_flag`, read from the server source as the LOCKED_TYPES parity) |
+| 3. Every lock use goes through it | `FinalSubmitLock.refuses` asks `lockApplies` after the type check and before reading the day state; `locks` (`lockApplies` and `isFinal`) and `lockedRoutes` are the gated reads. Routed: `RouteDayLock.isOpen`/`refusal`/`requireOpen` (FINAL_SUBMIT branch only), `CaptureRepository.dayRefusal`/`requireNotFinal`/`acceptsDueCollection` (Mark Paid hiding through `VisitDueCollectionWriter.accepts` and `MemoViewModel`), `FinalSubmitLock.requireCallOpen` (both visit committers) and `callToRestore`, `SrDay`/`AmoDay.printableStockSave` (the slip filter, D-X4a-20), `SrCallLock.refusal`/`endedBy` (SaleHost's entry guard, D-X4a-17; `abandon`), `AmoCallLock.endedBy` (`AmoDay.endCallIfClosed`, D-X4a-22; `AmoSaleKit.endCallIfClosed`; `AmoDay.closeVisit`), the kits' `newCallRefusal`/`callLocked`/`commitRefusal`/`refusedByLock`/`editRefusal`/`editLocked`/`skipOutlet`/`closeVisit`, `AmoDay.newCallRefusal`/`openCall`. The lock banners and the SR check-out gate: `SrDay.refreshLock` and `finalLocked` read `locks`, `AmoDay.refreshLock` reads `lockedRoutes`, `AmoDay.routeLocked` reads `locks`. Every `RouteDayFinalSubmittedException` comes from `requireOpen`, `requireNotFinal` or `requireCallOpen`, so every `DayRefusal.FINAL_SUBMIT` a gate, kit, host, `MemoViewModel` or `StockSaving` shows comes from the predicate. After the grep no production code reads `isFinal` or `finalRoutes` outside `locks`, `lockedRoutes` and `refuses`. | `LatePolicyLockTest.withNoPolicyInTheBundleAFinalRouteDayTakesEveryCapture`, `underAcceptAndFlagAFinalRouteDayTakesEveryCapture` (CaptureRepository: a call, a numbered sale, a skip, a collection, stock and the close are stored and queued on a final route-day; `dayRefusal` null for every locked type; Mark Paid accepted; `requireCallOpen` passes; the call is restored); `SrLatePolicyTest` (6) and `AmoLatePolicyTest` (6) on the real `SrDay` and `AmoDay`, each case run with the key absent and with `accept_and_flag`: no lock banner (`dayLock` null), `finalLocked`/`routeLocked` false, a new call reads its fix and opens, the entry guards leave the call open and a relaunch restores it; the kit's sale saves with its number, asks to print, the print runs (no printer in the fixture: `PrintFailed`, one `print_event` queued) and Edit is allowed; Mark Paid is drawn and collects on the call's route; a skip and the closes are queued; stock (and the AMO's correction) saves on the route, Print is drawn and the slip print starts |
+| 4. Trusted now | `CaptureRepository` passes its own clock (`nowIso()`) to every lock check; `SrDay`/`AmoDay` pass `iso(clock.nowMs())` to `locks`, `lockedRoutes` and `callToRestore`. Without a clock (`refuses` called directly, `requireCallOpen`) the capture's own trusted `captured_at` is used. So a stored Save (the slip filter) is judged by the policy in force now, not when it was captured. | `LatePolicyLockTest.aScheduledPolicyLocksFromItsStartAtTheRepositorysTrustedNow` (resolved `accept_and_flag`, scheduled `quarantine` from 17:00: the same 04:31 meta is open at 16:59 and FINAL_SUBMIT at 17:00) |
+| 5. X4a's lock tests under quarantine and reject | `SrLockFixture` and `AmoLockFixture` take `latePolicy` (required) and write it as the bundle stores it (`latePolicyOn`; core-database `TestRows.latePolicy`); every X4a lock test sets it in its fixture or `@Before`: `reject` in `CaptureRepositoryDayLockTest`, `SrKitLockTest`, `AmoKitLockTest`; `quarantine` in all the others (`RouteDayLockTest`, `MemoDayLockTest`, `SalesSubmitDayLockTest`, `SrDayLockCaptureTest`, `SrDayLockSaleTest`, `SrDayLockHostsTest`, `SrRefusalSweepTest`, `SrRefusalHostsTest`, `AmoDayLockCallTest`, `AmoDayLockGateTest`, `AmoDayLockHostsTest`, `AmoRefusalSweepTest`, `AmoRefusalHostsTest`). No assertion changed or removed. | the X4a classes in Verify, all green |
+| 6. The Sales Submit refusals are not part of it | `RouteDayLock.refusal`'s SALES_SUBMIT branch, `RouteDaySubmittedException` and every submit text are untouched; on a final route-day under `accept_and_flag` the SR's own Sales Submit and the AMO's supervisor-day submit still refuse with their own words. | `SrLatePolicyTest.theSrsOwnSalesSubmitStillRefusesAsBuilt`, `AmoLatePolicyTest.theSupervisorDaySubmitStillRefusesAsBuilt`, the Sales Submit part of `LatePolicyLockTest`'s capture cases, X4a's sweep tests |
+| 7. LOCKED_TYPES parity | unchanged: the phone's `FinalSubmitLock.LOCKED_TYPES` equals this branch's `IngestService.DAY_LOCKED_TYPES` | `CaptureRepositoryDayLockTest.thePhonesLockedTypesAreTheServersDayLockedTypes` |
+| 8. Merge: X2's end-to-end test | `FinalSubmitProjectionEndToEndTest` closes the zone-day through `AutoFinalSubmitJob`; the cloud ships `cfg.day.auto_final_submit_enabled` false, so after the merge the job closed nothing. `setUp` switches it on through `TsoWorld.cfg`, as `AutoFinalSubmitJobTest` does; assertions unchanged, the shipped default untouched. | baseline run: "expected: [(2, 2027-01-02)] but was: []"; green after |
+
+Decisions (lane level; the lead writes the DECISIONS.md lines):
+
+- **D-X4a-24 `isFinal` stays the fact.** `FinalSubmitLock.isFinal` and `finalRoutes` keep answering "the phone learned the
+  Final Submit" whatever the policy (tests use it); the lock is `lockApplies` plus that fact, in `refuses`, `locks` and
+  `lockedRoutes`. `lockApplies` is checked before the day state is parsed, so under the default the route section's JSON
+  is never read for a lock.
+- **D-X4a-25 The policy is read at trusted now.** As item 4; a scheduled change applies from its start on the phone as on
+  the server.
+- **D-X4a-26 Under accept_and_flag the Final Submit no longer opens the SR's check-out.** `SrDay.finalLocked` fed A3's
+  check-out gate ("the zone's Final Submit closed the route-day for the rep, so it opens the check-out as a Sales Submit
+  would"). With the lock off the rep can still sell, so the check-out waits for the rep's own Sales Submit, as on a day
+  with no Final Submit ("nothing on the phone changes"). Under quarantine or reject it opens as before. Ask 8.
+- **D-X4a-27 The "held / not accepted" counts are not gated.** `FinalSubmitLock.metLock` counts records the server held
+  (`after_final_submit`) or refused (`day_final_submitted`); under accept_and_flag the server does neither, so the banner
+  has nothing to show, and a day that ran under quarantine still says what happened to its records.
+- **D-X4a-28 The offline window.** Under accept_and_flag there is none (the server accepts a late sale and flags it).
+  Under quarantine or reject it is exactly X4a's (ask 2).
+
+Negative proofs (scratch script `neg.py` outside the repository: one batch of rules undone in the uncommitted tree, the
+targeted classes run, the files restored from its backup; `git status` showed the same tree after each):
+
+| batch | undone | command | result |
+|---|---|---|---|
+| A | R2: `refuses` ignores the policy; R3: `SrDay.refreshLock`/`finalLocked` and `AmoDay.refreshLock`/`routeLocked` read `isFinal`/`finalRoutes` directly; R5: V0142 removed | `gl.sh … --continue :android:core-database:testDebugUnitTest --tests '*LatePolicyLockTest*' :android:app-sr:testDebugUnitTest --tests '*SrLatePolicyTest*' :android:app-amo:testDebugUnitTest --tests '*AmoLatePolicyTest*' :backend:sync:test --tests '*BundleUnitTest*' :db:test --tests '*TsoManualV0130Test*'` | BUILD FAILED in 1m 20s as intended, 17 failures: LatePolicyLockTest 3 of 5 (both capture cases at "refuses false", the scheduled case at 16:59) [R2]; SrLatePolicyTest 6 of 6 (the banner case at "no lock banner" [R3]; sale, Mark Paid, skip, stock and the Sales Submit's words [R2]); AmoLatePolicyTest 6 of 6 (the same, the banner case at "no lock banner" [R3]); BundleUnitTest.theLateSalePolicyIsInTheDeviceBundle (no such key) and TsoManualV0130Test (`server` where `both` was expected) [R5] |
+| B | R1: `lockApplies` always true | `gl.sh … --continue :android:core-database:testDebugUnitTest --tests '*LatePolicyLockTest*'` | BUILD FAILED in 13 s as intended, 4 of 5 (the predicate case, both capture cases at "does not lock", the scheduled case); the server parity case passed (the set itself was not changed) |
+| C | R4: CaptureRepository reads the policy at the capture's `captured_at` (no trusted now) | the same | BUILD FAILED in 13 s as intended, 1 of 5: the scheduled case, "expected FINAL_SUBMIT but was null" at 17:00 |
+| merge | X2's test without the switch | the baseline run below | the one failure the merge brought, fixed by item 8 |
+
+Verify (this worktree, laptop, through gl.sh; CI not run, nothing pushed):
+
+| command | result |
+|---|---|
+| **baseline** (merged head 5c4fad492, before any change): `gl.sh … --continue :backend:app:test --tests '*FinalSubmitProjectionEndToEndTest*' --tests '*LateAfterFinalTest*' --tests '*LateAfterFinalDefaultPolicyTest*' --tests '*DayApiTest*' --tests '*AutoFinalSubmitJobTest*' :db:test --tests '*TsoManualV0130Test*' --tests '*TsoIntegrationV0141Test*'` | BUILD FAILED in 2m 20s, 24 backend tests, 1 failed: `FinalSubmitProjectionEndToEndTest` ("the job closes the open service zone-day", expected `[(2, 2027-01-02)]` but was `[]`); AutoFinalSubmitJobTest 5/5, DayApiTest 11/11, LateAfterFinalDefaultPolicyTest 1/1, LateAfterFinalTest 6/6; TsoManualV0130Test 17/17, TsoIntegrationV0141Test 3/3 |
+| run 1 (uncommitted fix): the android, backend and db classes of the final row, without `--rerun` | BUILD FAILED in 3m 23s, 2 failures, both in the new stock cases' own setup: the second policy of a case reused the first policy's stock re-save guard (it lives in the app's SharedPreferences, `aron-stock-guard-<user>`, not the database), so the same three dozen were refused as `REFUSED_SAME_VALUES`. Fixed in the tests: each policy runs on a fresh phone (the guard is cleared). Everything else green, the backend and db classes included |
+| run 2: `gl.sh … --continue :android:core-database:testDebugUnitTest --tests '*LatePolicyLockTest*' :android:app-sr:testDebugUnitTest --tests '*SrLatePolicyTest*' :android:app-amo:testDebugUnitTest --tests '*AmoLatePolicyTest*'` | BUILD SUCCESSFUL in 28 s: LatePolicyLockTest 5/5, SrLatePolicyTest 6/6, AmoLatePolicyTest 6/6 |
+| negative A, B, C | as the table above |
+| **final** (committed tree 2e5d75235, `git status` clean): `gl.sh … --continue :android:core-database:testDebugUnitTest --tests '*RouteDayLockTest*' --tests '*CaptureRepositoryDayLockTest*' --tests '*LatePolicyLockTest*' --rerun :android:feature-memo:testDebugUnitTest --tests '*MemoDayLockTest*' --rerun :android:feature-dayclose:testDebugUnitTest --tests '*SalesSubmitDayLockTest*' --rerun :android:app-sr:testDebugUnitTest --tests '*SrLatePolicyTest*' --tests '*SrRefusal*' --tests '*DayLock*' --tests '*LockGate*' --tests '*KitLock*' --tests '*StockSlipsTest*' --rerun :android:app-amo:testDebugUnitTest --tests '*AmoLatePolicyTest*' --tests '*AmoRefusal*' --tests '*DayLock*' --tests '*LockGate*' --tests '*KitLock*' --tests '*AmoRecordWriterReplayTest*' --rerun :backend:sync:test --tests '*BundleUnitTest*' --rerun :backend:app:test --tests '*FinalSubmitProjectionEndToEndTest*' --tests '*LateAfterFinalTest*' --tests '*LateAfterFinalDefaultPolicyTest*' --tests '*DayApiTest*' --tests '*AutoFinalSubmitJobTest*' --rerun :db:test --tests '*TsoManualV0130Test*' --tests '*TsoIntegrationV0141Test*' --rerun` | BUILD SUCCESSFUL in 2m 53s, 198 tests, 0 failures. core-database: CaptureRepositoryDayLockTest 9/9 (the LOCKED_TYPES parity among them), LatePolicyLockTest 5/5, RouteDayLockTest 9/9; feature-memo MemoDayLockTest 6/6; feature-dayclose SalesSubmitDayLockTest 1/1; app-sr: SrLatePolicyTest 6/6, SrDayLockBannerTest 5/5, SrDayLockCaptureTest 4/4, SrDayLockHomeTest 6/6, SrDayLockHostsTest 4/4, SrDayLockSaleTest 4/4, SrKitLockTest 8/8, SrRefusalHostsTest 6/6, SrRefusalSweepTest 13/13, StockSlipsTest 4/4; app-amo: AmoLatePolicyTest 6/6, AmoDayLockCallTest 1/1, AmoDayLockGateTest 5/5, AmoDayLockHostsTest 4/4, AmoKitLockTest 8/8, AmoRecordWriterReplayTest 16/16, AmoRefusalHostsTest 3/3, AmoRefusalSweepTest 15/15; backend:sync BundleUnitTest 6/6; backend:app FinalSubmitProjectionEndToEndTest 1/1, LateAfterFinalTest 6/6, LateAfterFinalDefaultPolicyTest 1/1, DayApiTest 11/11, AutoFinalSubmitJobTest 5/5; db TsoManualV0130Test 17/17, TsoIntegrationV0141Test 3/3 |
+
+Asks:
+
+8. **Lead:** D-X4a-26. Under accept_and_flag, should the TSO's Final Submit still open the SR's check-out (A3's rule)?
+   As built here it does not: the rep is not locked and can still sell, so the check-out waits for the rep's own Sales
+   Submit. The change back is one line in `SrDay`'s `salesSubmitted` (`isFinal` instead of `finalLocked`).
+9. **Lead / docs owner (not changed):** docs/24 s9.5's default column for this key still says `quarantine (V0134 ...)`,
+   and docs/16 DQ-57 and docs/17 s4.9 call quarantine "the default"; since D-TSO-MAN-49 the shipped default is
+   accept_and_flag. Only the delivery column was changed here.
+10. **Device lab:** s8 row 26 now has two variants: the default (a sale after the TSO's Final Submit is saved and printed
+    on the phone with no banner, and the server accepts and flags it) and an admin-set quarantine or reject (X4a's lock as
+    in ask 2).
+
+Not done:
+
+- Only the targeted classes above ran on the laptop. Not run: the full module suites of core-database, feature-memo,
+  feature-dayclose, feature-stock, app-sr, app-amo, backend:sync, backend:app and db; `:android:app-sr:assembleDebug`,
+  `:android:app-amo:assembleDebug`; `HardcodedStringScanTest` (no string or resource changed); `tools/ci/migrations-check.sh`
+  (squawk is not on the laptop; V0142 has `SET lock_timeout` and one row UPDATE). The lead runs them on the Linux CI
+  runners after the push.
+- No composed (UI) test of the banner under the new default: the tests read `SrDay.dayLock` / `AmoDay.dayLock` (null),
+  which is what `srDayLockBannerText` and `amoDayLockBanners` draw from; the composed banner itself is X4a's
+  `SrDayLockHomeTest` (unchanged).
+- No device has run either variant (ask 10). No web change: the portal's config console reads the delivery from the API.
