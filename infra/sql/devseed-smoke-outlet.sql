@@ -14,7 +14,12 @@
 UPDATE app.outlet o SET route_id = ro.id, zone_id = ro.zone_id, cluster_id = cl.id,
                         address = 'Smoke Road, Gulshan 2, Dhaka', lat = 23.792900, lng = 90.408200
   FROM app.route ro JOIN app.cluster cl ON cl.zone_id = ro.zone_id AND cl.name = 'Gulshan 2 Circle'
- WHERE ro.code = 'GUL-SR-2' AND o.code = 'SMOKE-SR-001' AND o.route_id IS DISTINCT FROM ro.id;
+ WHERE ro.code = 'SMK-SR-D' AND o.code = 'SMOKE-SR-001' AND o.route_id IS DISTINCT FROM ro.id;
+-- D-SRFIX-05: the smoke outlets no longer sit on sr1001's routes (the owner's phone downloaded them and saw the smoke
+-- sales): all three move to the smoke SR's own route SMK-SR-D (db/seed/06b, dev only) when it exists; pins stay.
+UPDATE app.outlet o SET route_id = ro.id, zone_id = ro.zone_id, cluster_id = cl.id
+  FROM app.route ro JOIN app.cluster cl ON cl.zone_id = ro.zone_id AND cl.name = 'Gulshan 2 Circle'
+ WHERE ro.code = 'SMK-SR-D' AND o.code IN ('SMOKE-SR-002', 'SMOKE-SR-003') AND o.route_id IS DISTINCT FROM ro.id;
 UPDATE app.outlet_placement_history h SET route_id = o.route_id, cluster_id = o.cluster_id
   FROM app.outlet o
  WHERE h.outlet_id = o.id AND o.code LIKE 'SMOKE-SR-%' AND h.valid_to IS NULL AND h.route_id IS DISTINCT FROM o.route_id
@@ -38,11 +43,11 @@ INSERT INTO app.outlet (code, name, name_bn, owner_name, contact_number, address
                         outlet_kind, price_type, visit_sequence)
 SELECT s.code, s.name, s.name_bn, 'Smoke Owner', s.phone, s.address,
        z.id, ro.id, cl.id, 'GT', sc.id, 'Urban', s.lat, s.lng, 'master', true, 8, 'retail', 'outlet', 99
-  FROM (VALUES ('SMOKE-SR-001', 'GUL-SR-2', 'Gulshan 2 Circle', 'Slice Smoke Outlet', 'স্লাইস স্মোক আউটলেট', '01799999999',
+  FROM (VALUES ('SMOKE-SR-001', 'SMK-SR-D', 'Gulshan 2 Circle', 'Slice Smoke Outlet', 'স্লাইস স্মোক আউটলেট', '01799999999',
                 'Smoke Road, Gulshan 2, Dhaka', 23.792900, 90.408200),
-               ('SMOKE-SR-002', 'GUL-SR-1', 'Gulshan 1 Circle', 'Slice Smoke Outlet 2', 'স্লাইস স্মোক আউটলেট ২', '01799999998',
+               ('SMOKE-SR-002', 'SMK-SR-D', 'Gulshan 2 Circle', 'Slice Smoke Outlet 2', 'স্লাইস স্মোক আউটলেট ২', '01799999998',
                 'Smoke Road, Gulshan 1, Dhaka', 23.781200, 90.416900),
-               ('SMOKE-SR-003', 'BAN-SR-11', 'Banani Road 11', 'Slice Smoke Outlet 3', 'স্লাইস স্মোক আউটলেট ৩', '01799999997',
+               ('SMOKE-SR-003', 'SMK-SR-D', 'Gulshan 2 Circle', 'Slice Smoke Outlet 3', 'স্লাইস স্মোক আউটলেট ৩', '01799999997',
                 'Smoke Road, Banani 11, Dhaka', 23.794100, 90.404700),
                -- Without the Gulshan seed (the test profile keeps the Mirpur fixture): the first outlet stays on MIR-SR-D.
                ('SMOKE-SR-001', 'MIR-SR-D', 'Mirpur 10 Bazar', 'Slice Smoke Outlet', 'স্লাইস স্মোক আউটলেট', '01799999999',
@@ -53,7 +58,7 @@ SELECT s.code, s.name, s.name_bn, 'Smoke Owner', s.phone, s.address,
   JOIN app.cluster cl ON cl.zone_id = z.id AND cl.name = s.cluster
   JOIN app.sub_channel sc ON sc.code = 'GT-GROCERY'
  WHERE NOT EXISTS (SELECT 1 FROM app.outlet x WHERE x.code = s.code)
-   AND (s.route <> 'MIR-SR-D' OR NOT EXISTS (SELECT 1 FROM app.route g WHERE g.code = 'GUL-SR-2'));
+   AND (s.route <> 'MIR-SR-D' OR NOT EXISTS (SELECT 1 FROM app.route g WHERE g.code = 'SMK-SR-D'));
 
 INSERT INTO app.outlet_placement_history (outlet_id, route_id, cluster_id, valid_from)
   SELECT o.id, o.route_id, o.cluster_id, DATE '2026-01-01' FROM app.outlet o

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """SR slice proof on a deployed environment (lead request 2026-10-07): the API path a phone takes for one sale,
-through the public address (Front Door), as the seeded SR on the seeded dev phone (db/seed: sr1001, device
+through the public address (Front Door), as the smoke's own seeded SR on the seeded dev phone (db/seed/06b: smoke1, never the owner's pilot login sr1001; device
 00000000-0000-4000-8000-000000000001, a bound phone, so login answers "ok" without OTP).
 
   1 login (phone)                     POST /v1/auth/login           status ok, a token (never printed)
@@ -20,7 +20,7 @@ through the public address (Front Door), as the seeded SR on the seeded dev phon
 Payload shapes follow backend/app/src/test/.../SyncConvergenceFuzzTest.kt (the server's own accepted records).
 Exit 0 when every step passed, 1 otherwise; one line per step, and with GITHUB_STEP_SUMMARY a table there.
 Environment: SLICE_API_HOST (host only), SLICE_PASSWORD (the seed password; never printed), optional SLICE_USER
-(sr1001), SLICE_DEVICE, SLICE_DEVICE_KEY (PEM file; signs X-Device-Proof), SLICE_OUTLET_CODE (SMOKE-SR-001,SMOKE-SR-002,SMOKE-SR-003), SLICE_APP_VERSION (1.0.9+9), SLICE_TILE_WAIT_S (300), SLICE_TILE_POLL_S (2).
+(smoke1), SLICE_DEVICE, SLICE_DEVICE_KEY (PEM file; signs X-Device-Proof), SLICE_OUTLET_CODE (SMOKE-SR-001,SMOKE-SR-002,SMOKE-SR-003), SLICE_APP_VERSION (1.0.9+9), SLICE_TILE_WAIT_S (300), SLICE_TILE_POLL_S (2).
 """
 import datetime
 import base64
@@ -36,13 +36,13 @@ import urllib.request
 import uuid
 
 HOST = os.environ.get("SLICE_API_HOST", "")
-USER = os.environ.get("SLICE_USER", "sr1001")
+USER = os.environ.get("SLICE_USER", "smoke1")
 PASSWORD = os.environ.get("SLICE_PASSWORD", "")
 DEVICE = os.environ.get("SLICE_DEVICE", "00000000-0000-4000-8000-000000000001")
 APP_VERSION = os.environ.get("SLICE_APP_VERSION", "1.0.9+9")
 TILE_WAIT_S = int(os.environ.get("SLICE_TILE_WAIT_S", "300"))
-# The smoke's own outlets (infra/sql/devseed-smoke-outlet.sql), one per sr1001 dev route: the Gulshan/Banani routes
-# are 2F (Sat+Tue, Sun+Wed, Mon+Thu), so today's planned route holds one of them; Friday has no route by design.
+# The smoke's own outlets (infra/sql/devseed-smoke-outlet.sql), all on smoke1's own daily dev route SMK-SR-D (db/seed/06b, D-SRFIX-05):
+# the owner's phone (sr1001) never downloads them and never sees the smoke sales as another phone's.
 OUTLET_CODES = [c.strip() for c in os.environ.get("SLICE_OUTLET_CODE", "SMOKE-SR-001,SMOKE-SR-002,SMOKE-SR-003").split(",") if c.strip()]
 OUTLET_CODE = ",".join(OUTLET_CODES)
 DEVICE_KEY = os.environ.get("SLICE_DEVICE_KEY", "")  # PEM file of the smoke device's key (Key Vault aron-dev-smoke-device-key)
