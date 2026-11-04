@@ -52,9 +52,15 @@ class SrKitLockTest {
     }
 
     @After fun tearDown() {
-        Thread.setDefaultUncaughtExceptionHandler(previousDefault); Thread.currentThread().uncaughtExceptionHandler = previousOwn
-        f.close()
-        Dispatchers.resetMain()
+        // CI run 41750277921: the fixture's work stops (finished, cancelled, joined, Room drained) and the database closes
+        // while the catchers still listen; what that work threw fails this test, not a later one
+        try {
+            f.close()
+            assertEquals("nothing escaped by the end of the test", listOf<Throwable>(), crashes.toList())
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(previousDefault); Thread.currentThread().uncaughtExceptionHandler = previousOwn
+            Dispatchers.resetMain()
+        }
     }
 
     private fun collections() = runBlocking { f.db.captureDao().dueCollectionsOn(f.date) }
@@ -62,7 +68,7 @@ class SrKitLockTest {
     @Test fun markPaidIsHiddenAfterTheSrsOwnSalesSubmitAndATapItBeatIsWordedNotACrash() {
         val v = f.openCall()
         val memo = f.creditMemo(v)
-        val drawn = f.day.sale.newMemoViewModel()
+        val drawn = f.memoViewModel()
         drawn.open(memo)
         await("Mark Paid is drawn on the open day") { drawn.state.value.canMarkPaid }
         f.salesSubmitted() // the SR submits the day; this memo screen was drawn before
@@ -75,7 +81,7 @@ class SrKitLockTest {
         drawn.dismissLockRefusal()
         assertFalse(drawn.state.value.submitRefused)
         // a memo screen opened after the submit never draws Mark Paid
-        val later = f.day.sale.newMemoViewModel()
+        val later = f.memoViewModel()
         later.open(memo)
         await("the memo is open") { later.state.value.selected?.memo?.memoUuid == memo }
         assertFalse("Mark Paid hidden after Sales Submit", later.state.value.canMarkPaid)
@@ -85,7 +91,7 @@ class SrKitLockTest {
     @Test fun markPaidOnAnOpenDayStoresOneCollectionOnTheVisitsRoute() {
         val v = f.openCall()
         val memo = f.creditMemo(v)
-        val vm = f.day.sale.newMemoViewModel()
+        val vm = f.memoViewModel()
         vm.open(memo)
         await("Mark Paid is drawn") { vm.state.value.canMarkPaid }
         assertFalse(vm.state.value.dayLocked)
@@ -102,7 +108,7 @@ class SrKitLockTest {
         val v = f.openCall()
         val memo = f.creditMemo(v)
         f.finalSubmitted()
-        val vm = f.day.sale.newMemoViewModel()
+        val vm = f.memoViewModel()
         vm.open(memo)
         await("the memo is open") { vm.state.value.selected?.memo?.memoUuid == memo }
         assertFalse("Mark Paid hidden on a final day", vm.state.value.canMarkPaid)

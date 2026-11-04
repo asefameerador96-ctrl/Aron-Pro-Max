@@ -54,13 +54,15 @@ class SrDayLockHostsTest {
     }
 
     @After fun tearDown() {
-        f.close()
-        Dispatchers.resetMain()
+        // the screen goes first, then the day's work stops and the database closes (SrLockFixture.close), then Main resets
+        try { f.close() } finally { Dispatchers.resetMain() }
     }
 
     private fun show(content: @Composable () -> Unit) {
         shadowOf(app.packageManager).addActivityIfNotPresent(ComponentName(app, ComponentActivity::class.java))
-        ActivityScenario.launch(ComponentActivity::class.java).onActivity { activity ->
+        // the fixture owns the screen: its close destroys the activity (composition and view models) before the day's work
+        // stops and the database closes (CI run 41750277921)
+        f.own(ActivityScenario.launch(ComponentActivity::class.java)).onActivity { activity ->
             val ctx = AppLocale.wrap(activity, AppLanguage.EN)
             activity.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { content() } } }
         }

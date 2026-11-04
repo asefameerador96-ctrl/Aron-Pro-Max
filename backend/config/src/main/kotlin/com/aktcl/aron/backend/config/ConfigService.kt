@@ -43,28 +43,27 @@ fun interface NodeReach {
     fun national(p: AronPrincipal): Boolean = p.role in setOf(Role.TOP, Role.NATIONAL, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 }
 
+/**
+ * Told once a config version has COMMITTED (never for a change that is pending, scheduled, rolled back or expired), with
+ * the keys its items touched. tso-manual X4a fix round 4 (checker medium): the wiring nudges the SR and AMO phones of the
+ * closed zone-days after a change of `cfg.day.late_sync_after_final_policy`, so a phone locked under quarantine or reject
+ * unlocks as soon as the policy returns to accept_and_flag. Runs on the committing thread after the commit; it must not
+ * throw (a failure is swallowed: the config change has already committed) and must not block for long.
+ */
+fun interface ConfigCommitListener {
+    fun committed(version: Long, keys: Set<String>)
+
+    companion object {
+        val NONE = ConfigCommitListener { _, _ -> }
+    }
+}
+
 class ConfigService(private val db: Database, val resolver: ConfigResolver, private val clock: AronClock = AronClock.SYSTEM, private val nodeReach: NodeReach? = null) {
+    /** Told after every committed version ([ConfigCommitListener]); set once by the wiring, none in tests that do not look. */
+    @Volatile var committed: ConfigCommitListener = ConfigCommitListener.NONE
+
     private val dhaka = ZoneId.of("Asia/Dhaka")
     internal val database: Database get() = db
-
-    /**
-     * X4a ask 11 (D-TSO-MAN-57): a change that moves `cfg.day.late_sync_after_final_policy` sends ONE `config_pull` push to the
-     * phones of the affected scope, AFTER its transaction committed, so a quarantine or reject (or a return to accept_and_flag)
-     * takes effect at once instead of at the next config delta. Wired by the application; default: no push.
-     */
-    @Volatile var configPull: ConfigPullNotifier = ConfigPullNotifier.NONE
-
-    /** The policy items the transaction in progress on this thread committed; flushed once after the commit, dropped on a rollback. */
-    private val policyScopes = ThreadLocal.withInitial { mutableListOf<Pair<String, Long>>() }
-
-    private fun <T> committing(block: () -> T): T {
-        policyScopes.get().clear()
-        val result = try { block() } catch (e: Throwable) { policyScopes.get().clear(); throw e }
-        val scopes = policyScopes.get().distinct()
-        policyScopes.get().clear()
-        if (scopes.isNotEmpty()) runCatching { configPull.configPull(LATE_POLICY_REASON, scopes) }
-        return result
-    }
 
     // ---------------------------------------------------------------- reads
 
@@ -146,10 +145,7 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
     }
 
     /** POST /admin/config/changes. [clientUuid] (Idempotency-Key) makes a replay return the first answer. */
-    fun create(p: AronPrincipal, req: ConfigChangeRequestIn, clientUuid: UUID?, requestId: String?, revertOf: Long? = null, kind: String = "change"): ConfigChangeDto =
-        committing { createUncommitted(p, req, clientUuid, requestId, revertOf, kind) }
-
-    private fun createUncommitted(p: AronPrincipal, req: ConfigChangeRequestIn, clientUuid: UUID?, requestId: String?, revertOf: Long?, kind: String): ConfigChangeDto {
+    fun create(p: AronPrincipal, req: ConfigChangeRequestIn, clientUuid: UUID?, requestId: String?, revertOf: Long? = null, kind: String = "change"): ConfigChangeDto {
         val tso = p.role == Role.TSO
         // Replay first (Idempotency-Key): a stored change of this caller answers as it is now, before the dates, the
         // registry or reach are re-judged (a retry minutes later must not turn into 400 in_past); the same key with other
@@ -315,10 +311,7 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
 
     // ---------------------------------------------------------------- write: decide
 
-    fun decide(p: AronPrincipal, changeId: Long, req: ConfigDecisionIn, requestId: String?): ConfigChangeDto =
-        committing { decideUncommitted(p, changeId, req, requestId) }
-
-    private fun decideUncommitted(p: AronPrincipal, changeId: Long, req: ConfigDecisionIn, requestId: String?): ConfigChangeDto {
+    fun decide(p: AronPrincipal, changeId: Long, req: ConfigDecisionIn, requestId: String?): ConfigChangeDto {
         if (req.decision !in setOf("approve", "reject", "cancel", "adopt")) throw ApiProblem(ProblemCode.ERR_VALIDATION, "decision must be approve, reject, cancel or adopt", errors = listOf(FieldError("body.decision", "invalid_value")))
         if (p.role != Role.ADMIN && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "not allowed to decide config changes")
         val now = clock.now()
@@ -406,13 +399,13 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
         val now = clock.now()
         var n = 0
         while (true) {
-            val done = committing { db.jdbi.inTransaction<Boolean, Exception> { h ->
+            val done = db.jdbi.inTransaction<Boolean, Exception> { h ->
                 val row = h.createQuery("SELECT change_id, requested_by FROM app.cfg_change WHERE status = 'scheduled' AND apply_at <= :now ORDER BY apply_at, change_id LIMIT 1 FOR UPDATE SKIP LOCKED")
                     .bind("now", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.findOne().orElse(null) ?: return@inTransaction false
                 AuditWriter.write(h, null, "cfg_change", row.first.toString(), "schedule_apply", JsonPrimitive("scheduled"), JsonPrimitive("applied"), null, null, via = "job")
                 commit(h, row.first, row.second, now, "schedule_apply", null, null)
                 true
-            } }
+            }
             if (!done) break
             n++
         }
@@ -566,7 +559,9 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
             .bind("v", version).bind("items", Json.encodeToString(applied)).bind("at", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).bind("id", changeId).execute()
         AuditWriter.write(h, actor, "cfg_version", version.toString(), "commit", null, Json.parseToJsonElement(Json.encodeToString(applied)), reason, requestId, via = if (actor == null) "job" else "web")
         h.createUpdate("SELECT pg_notify('cfg_changed', :v)").bind("v", version.toString()).execute()
-        applied.filter { it.key == LATE_POLICY_KEY }.forEach { policyScopes.get().add(it.scope_type to it.scope_id) }
+        // X4a fix round 4: only once the version is committed (create, approve and the schedule tick all commit through here).
+        val keys = items.map { it.key }.toSet()
+        h.afterCommit { runCatching { committed.committed(version, keys) } }
         return true
     }
 
@@ -657,5 +652,3 @@ fun Resolved.toDto() = ResolvedConfigValue(
 )
 
 /** The config key whose change pushes a `config_pull` (X4a ask 11, D-TSO-MAN-57), and the push's `reason`. */
-internal const val LATE_POLICY_KEY = "cfg.day.late_sync_after_final_policy"
-const val LATE_POLICY_REASON = "late_sync_policy_changed"

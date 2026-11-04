@@ -378,7 +378,12 @@ Decisions (lane level; the lead writes the DECISIONS.md lines):
   close sent the silent `day_state_changed`, and no push follows a config change, so the phone keeps taking captures until
   its next config delta. Fix round 3 narrows (b) and the common case: `day_final_submitted` now pulls the config as well
   as the bundle (D-X4a-31). In every case the records are stored and printed on the phone, the server holds or refuses
-  them, and the Home banner counts them ("held" / "not accepted").
+  them, and the Home banner counts them ("held" / "not accepted"). **Fix round 4** closes (c) and adds the reverse case
+  (d): an admin returns the policy to accept_and_flag (a new value, a revert or a rollback) after a locked close. Before
+  round 4 the phones of the closed zones kept the lock, its banner and the "Day closed" tray notice until their next
+  config delta, while the server already accepted and flagged. Now every committed change of the key nudges the SR and
+  AMO phones of the closed zone-days of today and yesterday at once (D-X4a-32, D-X4a-33). What remains is listed in
+  "Fix round 4" (the known windows, D-X4a-36).
 
 Negative proofs (scratch script `neg.py` outside the repository: one batch of rules undone in the uncommitted tree, the
 targeted classes run, the files restored from its backup; `git status` showed the same tree after each):
@@ -414,7 +419,12 @@ Asks:
     reject (X4a's lock as in ask 2, with the "Day closed" notification). Fix round 3: in the second variant also check the
     wider window of D-X4a-28: the admin switches the policy first, the TSO then closes, and the phone locks once the
     close's push has pulled both the day state and the config; and a switch made after the close reaches the phone only
-    at its next config delta (no lock until then; the server holds or refuses those records).
+    at its next config delta (no lock until then; the server holds or refuses those records). Fix round 4: a switch made
+    after the close now locks the closed zone's phones with its own push ("Day closed" notice), within the push's 0 to
+    120 s spread; check that. Also check a scheduled start (the admin schedules quarantine from a later time after a close):
+    the phone locks at the start on its trusted clock, without a new notice. Variant 3 (fix round 4): after a locked close
+    the admin returns the policy to accept_and_flag; within the push spread (0 to 120 s, online) the phone's banner and its
+    "Day closed" tray notice go, and a new call, a sale, Mark Paid and the stock slip work again.
 
 Not done:
 
@@ -476,7 +486,9 @@ Asks:
     (ConfigService, after the commit), so that a quarantine or reject set after a close locks the phones without waiting
     for their next config delta (D-X4a-28 case c)? Not built here: it touches ConfigService (backend/config), outside this
     lane, and a national push to every field phone is the lead's call. Today an admin can send the `config_pull` from the
-    notifications console.
+    notifications console. **Answered by fix round 4** (the lead's round 4 brief: fix every medium): built for both
+    directions: the SR and AMO phones of the zone-days closed today and yesterday (D-X4a-32). In steady state this is close to
+    the whole field fleet: see the handover note, ask 14.
 
 Not done (fix round 3):
 
@@ -486,5 +498,105 @@ Not done (fix round 3):
   changed); `HardcodedStringScanTest` (no string or resource changed); `TicketPushNavigationTest` (app-tso, reads
   `day_final_submitted` without an extra, unchanged). The lead runs them on the Linux CI runners after the push.
 - D-X4a-30: the other callers of `ReferenceRepository.config` are not audited for an ended time-limited value.
-- Ask 11 (a config push on a policy change) is not built; D-X4a-28 case (c) stays open until it is.
+- Ask 11 (a config push on a policy change) is not built; D-X4a-28 case (c) stays open until it is. (Built in fix round 4.)
 - No device has run any of it (ask 10).
+
+## Fix round 4 (checker report on 7f4230ada, late policy on the phone)
+
+The checker found round 3 sound for the paths it names. It reported one new medium (the reverse window: the phones stay
+locked after an admin returns the policy to accept_and_flag) and four lows. Fixed here: the medium, in both directions;
+the ConfigDelta low, plus a defect of the version-as-of rebuild that its test exposed; and the doc residue. Recorded here,
+not changed in code: the ingest window (it needs a ruling) and the TSO's warning text (the owner's manual wording). Each
+fix has a test that fails without it (negative proofs below). Nothing pushed, no pull request. DECISIONS.md not edited
+(the lead writes the decision lines). Commits: 42541ed67, e1e1cfe52, a0e364d5e, ee86875d4, 20153af0c, and this section.
+
+| defect | fix | proving test |
+|---|---|---|
+| **Medium: the reverse window.** An admin set quarantine or reject, the TSO closed, and the phones locked. The admin then returned the key to accept_and_flag (a new value, `revert_this_version`, or a rollback). The server accepted and flagged at once, but no push followed a config change. So every SR and AMO phone of the closed zones kept refusing calls, sales and Mark Paid, and kept its banner and the "Day closed ... New sales for that day are closed" tray notice, until its next config delta. The other direction, case (c) (a quarantine set after a close), waited the same way (ask 11). | Server. (1) `ConfigCommitListener` (backend/config): `ConfigService.committed` is told, with the version and the keys its items touched, through JDBI `Handle.afterCommit` in `commit()`. That covers create (applied), a C3 approval and the schedule tick, and only after the transaction has committed. A waiting, refused or expired change is never told. (2) `LatePolicyPush` (backend/sync, new; wired in backend/app `Wiring`): after a commit that touches `cfg.day.late_sync_after_final_policy`, it reads the policy in force from the committed rows at the clock's now, not through the 30 s ServerConfig cache. It then sends one data-only nudge to the SR and AMO users (`zoneFieldUsers`, the close's own recipients query, extracted unchanged from `closeLocked`) of every zone-day of today or yesterday (Dhaka) with a live close. The reason is the close's rule (`pushReasonFor`, which `finalSubmitPushReason` now uses too): `day_final_submitted` under quarantine or reject, else `day_state_changed`. Phone. (3) `day_state_changed` pulls BUNDLE and CONFIG (it was BUNDLE only), so the pulled accept_and_flag replaces the held quarantine and `lockApplies` turns false. (4) `PushMessage.withdrawsDayNotice` (true for `day_state_changed` only) makes `PushDispatcher` call `withdrawDayNotice`. PushShell wires that to `PushNotices.withdrawDay`, which cancels the day notice (`ID_DAY`), so the tray no longer says sales are closed. | `backend:config` `ConfigCommitListenerTest` (new): a C1 change is heard once, with its key, and its version is already visible on a separate JDBC connection when the listener runs. A C3 policy change is not heard while pending, and is heard on approval. A refused change is not heard. `backend:app` `LatePolicyChangePushTest` (new, production wiring over HTTP: the change by `superadmin1001`, the approval by a second SUPERADMIN, registered phones). Quarantine; the TSO closes today; the phones get `day_final_submitted`. Back to accept_and_flag: nothing while the change is pending; on approval the zone's SR and AMO phones each get one data-only `day_state_changed`, and a phone of another zone (not closed) gets nothing. Quarantine again after the close: `day_final_submitted`. A change of another key: nothing. `core-sync` `TsoPushReasonsTest.aCloseUnderAcceptAndFlagShowsNothingAndPullsTheDayStateAndThePolicy` (pulls BUNDLE and CONFIG; only `day_state_changed` withdraws) and `dayStateChangedWithdrawsTheDayNoticeAndNothingElse` (wired as PushShell wires it: an earlier `day_final_submitted` notice is on the tray; `ticket_updated` keeps it; `day_state_changed` removes it, keeps the inbox notice and shows nothing). `core-database` `LatePolicyLockTest.theConfigPullAfterAPolicyChangeMovesTheLockBothWays` (characterisation, no phone code changed for it: the pulled `ConfigDelta` of a revert unlocks, quarantine again locks, and a moved end stops the lock at that end) |
+| **Low: a later-added end never reached the phone.** A removal item (value null) with a future `effective_from` only sets the open row's `effective_to`. `ConfigDelta.sameValue` ignores `effective_to`, and no scheduled row carries the end. | `ConfigDelta.endsMovedSince`: a key whose in-force row (in the caller's chain) had its end set or moved by a version after the phone's is sent again, with its new `effective_to`. The phone stores it, and `configInForce` ends the lock there. Comparing `effective_to` in `sameValue`, the checker's first option, would not have worked: the as-of rebuild reads the same physical row with its new end. A defect this exposed is also fixed: the as-of rebuild dropped a row superseded at or before the phone's version even when its new end was still ahead. So every later delta re-sent the key until that end, and with rows like this in the database two existing `ConfigDeltaTest` cases failed (negative run A). `resolveAsOf` now keeps such a row: its end, set by that supersession, is its end as of that version. | `ConfigDeltaTest.aRemovalDatedLaterDeliversTheNewEndOfTheOpenValue` (the delta since the open row's version carries the value with the new end) and `aMovedEndIsSentOnceNotWithEveryLaterChange` (a phone that already holds the moved end gets only the next change) |
+| **Low: ingest judges the policy at batch arrival, the phone at the capture instant** | Recorded, not changed (D-X4a-36): it needs a ruling on ingest semantics (D-TSO-MAN-31 is the lead's). The device-lab variant 2 now also checks a scheduled start (ask 10). | none (record) |
+| **Low: doc residue** (docs/08 Final Submit paragraph, docs/16 s5 Final Submit row, docs/17 ownership row said unconditionally that the phones lock and late rows are held or refused) | All three now say so only under an admin-set quarantine or reject. Under accept_and_flag, the shipped default (D-TSO-MAN-49, D-TSO-MAN-HO-02), late rows are stored and flagged and the phones do not lock. docs/08's push line and docs/24 s4.9 rule 4 now name the push after a policy change. | docs only |
+| **Low: the TSO's Final Submit warning says "Submitting locks the day for this zone."** (`tso_fs_warn_body`, bn: "জমা দিলে এই জোনের দিনটি বন্ধ হয়ে যাবে।") | Not changed (D-X4a-37, ask 12). The owner's TSO manual says the same: "Submitting locks the day, so check first." (docs/evidence/manuals/manual-tso-2026-10.md, screenshot 25). Directive 14a binds the TSO app to the owner's material. The text is TSO-facing, not rep-facing. It is true for the zone-day: the TSO cannot submit it again, and the reopen is an admin's. | none |
+
+Deviations (files outside the lane's list): `backend/config/.../ConfigService.kt` (the listener and its `afterCommit` line),
+`backend/config/.../ConfigDelta.kt` (`endsMovedSince`, `resolveAsOf`) and `backend/app/.../Wiring.kt` (two lines that set
+the listener). The round 4 brief asked for every medium to be fixed, and these are the only places a config commit and the
+config delta live.
+
+Decisions (lane level):
+
+- **D-X4a-32 Who gets the push after a policy change.** The SR and AMO users of every zone-day of today or yesterday (Dhaka)
+  with a live close: the close's own recipients. Since every zone closes every day, in steady state this is close to the
+  whole field fleet (fix round 4 checker, medium: off-thread bulk sending before fleet size, handover ask 14). Only a phone holding a final route-day can be
+  locked. A phone of a zone that is not closed learns the policy at its next config delta, or with its zone's close push
+  (both day reasons now pull the config). Yesterday is included because the midnight job closes yesterday's zone-days, and
+  a phone may still hold yesterday's day just after midnight. The push is a `sync_nudge` (one per user, coalesced by
+  PushNotifier as every nudge is), honours `cfg.ops.push_enabled`, and carries no business data.
+- **D-X4a-33 `day_state_changed` pulls the config and withdraws the day notice.** Cost: one config delta per phone per close
+  under accept_and_flag (a 304 when nothing changed), the same as `day_final_submitted` since round 3, and inside
+  `ResumeConfigCheck`'s daily cap. It also shortens another case. A phone may still hold a locking policy that an admin has
+  since withdrawn, and its zone then closes under accept_and_flag. Before, it locked until its next config delta. Now it
+  locks only for the seconds between the bundle pull and the config pull, which run as two jobs after the same delay.
+- **D-X4a-34 The reason after a change is read from the committed rows.** The global row valid at the clock's now, else the
+  registry default, as DbServerConfig reads it. It is not read through the 30 s cache, which could still hold the old value.
+- **D-X4a-35 The config delta sends a moved end once.** This applies to every device-delivered key, not only the late
+  policy. D-X4a-30 stays open: the callers of `ReferenceRepository.config` (not `configInForce`) still keep a resolved value
+  past its end. That is not audited.
+- **D-X4a-36 Known windows of admin-set policies (checker low, recorded).**
+  - (i) Ingest judges the policy when the batch arrives, through DbServerConfig's cache of up to 30 s. The phone judges it at
+    the capture's trusted instant. Two consequences under an admin-set policy only:
+    - A capture made offline after a close but before a scheduled quarantine starts, uploaded after the start, is held
+      (quarantine) or refused (reject), although the phone saved and printed it.
+    - At the end of a time-limited quarantine or reject, or right after a revert, the phone unlocks (at the end, or once its
+      pull lands, 0 to 120 s). A capture uploaded while the server's cache still holds the old value (up to 30 s after the
+      change) is held or refused.
+    - In both cases the record is stored on the phone and the Home banner counts it ("held" or "not accepted"). Under
+      quarantine an ADMIN can accept it. Judging by the record's trusted `captured_at` needs a ruling (ask 13).
+  - (ii) A change dated later (a scheduled start or end) is pushed when it commits, not when it takes effect. The phone
+    applies it at its start on trusted time. But a "Day closed" tray notice shown before a scheduled return to
+    accept_and_flag stays after that return until the next `day_state_changed`. The in-app banner and the capture guards
+    follow the policy at once.
+  - (iii) A phone that is offline, or whose push is lost, learns a change at its next config delta (sync answer, resume,
+    or the next close push), as before.
+  - (iv) The bundle-before-config seconds of D-X4a-33.
+- **D-X4a-37 The TSO warning text stays.** As in the table. Ask 12.
+
+Negative proofs (scratch script `neg4.py` outside the repository: each batch is undone in the working tree from a backup,
+the classes run, and the files are restored. `git diff` and `git status --short` were byte-identical before and after each
+batch):
+
+| batch | undone | command | result |
+|---|---|---|---|
+| A | N1: the wiring never sets the listener. N2: `day_state_changed` pulls the bundle only. N3: the dispatcher never withdraws the day notice. N4: the delta ignores a moved end. N5: the as-of rebuild drops a row superseded at or before the version again. | `gl.sh … --continue :backend:config:test --tests '*ConfigDeltaTest*' :backend:app:test --tests '*LatePolicyChangePushTest*' :android:core-sync:testDebugUnitTest --tests '*TsoPushReasonsTest*'` | BUILD FAILED in 1m 13s, as intended. LatePolicyChangePushTest 0/1: "the policy back to accept_and_flag after a locked close": expected `day_state_changed` to the SR and AMO phones, but nothing was sent [N1]. TsoPushReasonsTest 3/5: `aCloseUnderAcceptAndFlag…` at the pulls assertion [N2]; `dayStateChangedWithdraws…` at "the day notice is withdrawn" [N3]. ConfigDeltaTest 2/6: `aRemovalDatedLater…` got NotModified where Changes was expected [N4]. `aMovedEndIsSentOnce…` got `[breadcrumb_interval_min, fix_reuse_max_age_s, refresh_max]` where only `refresh_max` was expected [N5]. Also failed under N5: the two existing cases `aChangeOutsideTheCallersChain…` and `phoneAtCurrentGets304…`, which then re-sent both moved-end keys. That is the defect fixed in the second row; it shows only once such rows exist, so it depends on test order |
+| B1 | N1b: the listener runs inside the transaction (no `afterCommit`) | `gl.sh … --continue :backend:app:test --tests '*LatePolicyChangePushTest*'` | BUILD SUCCESSFUL in 29s, so this mutation was **not** caught by that test. JDBI reuses the committing thread's open handle, so LatePolicyPush's read saw the uncommitted row. Hence the next row |
+| B2 | N1b again, after `ConfigCommitListenerTest` was added | `gl.sh … --continue :backend:config:test --tests '*ConfigCommitListenerTest*'` | BUILD FAILED in 18s, as intended: `Heard(version=5, keys=[cfg.geo.refresh_max], visibleElsewhere=false)` where `true` was expected |
+
+Verify (this worktree, laptop, through gl.sh; CI not run, nothing pushed):
+
+| command | result |
+|---|---|
+| run 1 (uncommitted): `:backend:config:test` ConfigDeltaTest, `:backend:app:test` LatePolicyChangePushTest and FinalSubmitPushPolicyTest, `:android:core-sync:testDebugUnitTest` TsoPushReasonsTest, PushMessageTest and PushDispatcherTest, `:android:core-database:testDebugUnitTest` LatePolicyLockTest | BUILD FAILED in 56s. `backend:config` test sources did not compile: the new constructor parameter caught the trailing NodeReach lambda of ConfigWorkflowTest and EditorPermissionTest. Fixed by making the listener a settable property, so the constructor is unchanged. Everything else passed: LatePolicyChangePushTest 1/1, FinalSubmitPushPolicyTest 1/1, TsoPushReasonsTest 4/4, PushMessageTest 8/8, PushDispatcherTest 3/3, LatePolicyLockTest 7/7 |
+| run 2: ConfigDeltaTest, ConfigWorkflowTest, EditorPermissionTest, LatePolicyChangePushTest, TsoPushReasonsTest | BUILD FAILED in 1m: ConfigDeltaTest 4/5. The new moved-end row broke `aChangeOutsideTheCallersChain…`, through the as-of defect in the table's second row. Fixed there, and the cases split by key. The other classes passed (ConfigWorkflowTest 5/5, EditorPermissionTest 4/4, LatePolicyChangePushTest 1/1, TsoPushReasonsTest 5/5) |
+| run 3: ConfigDeltaTest, BundleAcceptanceTest | BUILD SUCCESSFUL in 35s: 6/6, 8/8 |
+| run 4: ConfigCommitListenerTest | BUILD SUCCESSFUL in 19s: 1/1 |
+| negative A, B1, B2 | the table above |
+| **final** (committed tree 20153af0c; only the two status files uncommitted): `gl.sh … --continue :android:core-database:testDebugUnitTest --tests '*LatePolicyLockTest*' --tests '*RouteDayLockTest*' --tests '*CaptureRepositoryDayLockTest*' --rerun :android:core-sync:testDebugUnitTest --tests '*TsoPushReasonsTest*' --tests '*PushMessageTest*' --tests '*PushDispatcherTest*' --tests '*PushPullWorkTest*' --rerun :android:app-sr:testDebugUnitTest --tests '*SrLatePolicyTest*' --tests '*SrDayLockCaptureTest*' --tests '*SrDayLockSaleTest*' --rerun :android:app-amo:testDebugUnitTest --tests '*AmoLatePolicyTest*' --tests '*AmoDayLockCallTest*' --tests '*AmoDayLockGateTest*' --rerun :android:app-tso:testDebugUnitTest --tests '*TicketPushNavigationTest*' --rerun :backend:config:test --tests '*ConfigDeltaTest*' --tests '*ConfigCommitListenerTest*' --tests '*ConfigServiceTest*' --tests '*ConfigWorkflowTest*' --tests '*EditorPermissionTest*' --rerun :backend:app:test --tests '*LatePolicyChangePushTest*' --tests '*FinalSubmitPushPolicyTest*' --tests '*AutoFinalSubmitJobTest*' --tests '*DayApiTest*' --tests '*LateAfterFinalDefaultPolicyTest*' --tests '*LateAfterFinalTest*' --tests '*FinalSubmitProjectionEndToEndTest*' --tests '*BundleAcceptanceTest*' --rerun` | BUILD SUCCESSFUL in 3m 3s, 27 classes, 148 tests, 0 failures, 0 skipped. core-database: CaptureRepositoryDayLockTest 9/9, LatePolicyLockTest 7/7, RouteDayLockTest 9/9; core-sync: TsoPushReasonsTest 5/5, PushMessageTest 8/8, PushDispatcherTest 3/3, PushPullWorkTest 8/8; app-sr: SrLatePolicyTest 7/7, SrDayLockCaptureTest 4/4, SrDayLockSaleTest 4/4; app-amo: AmoLatePolicyTest 7/7, AmoDayLockCallTest 1/1, AmoDayLockGateTest 5/5; app-tso: TicketPushNavigationTest 5/5; backend:config: ConfigDeltaTest 6/6, ConfigCommitListenerTest 1/1, ConfigServiceTest 16/16, ConfigWorkflowTest 5/5, EditorPermissionTest 4/4; backend:app: LatePolicyChangePushTest 1/1, FinalSubmitPushPolicyTest 1/1, AutoFinalSubmitJobTest 5/5, DayApiTest 11/11, LateAfterFinalDefaultPolicyTest 1/1, LateAfterFinalTest 6/6, FinalSubmitProjectionEndToEndTest 1/1, BundleAcceptanceTest 8/8 |
+
+Asks:
+
+12. **Lead or owner:** `tso_fs_warn_body` ("Submitting locks the day for this zone." / "জমা দিলে এই জোনের দিনটি বন্ধ হয়ে যাবে।"). Keep it, as
+    the owner's manual words it (built so), or soften it to say the zone's day closes and late sales are flagged? A change
+    is two resource lines plus the HardcodedStringScanTest run.
+13. **Lead:** D-X4a-36 (i) and (ii). Should ingest judge an admin-set scheduled or time-limited late policy by the record's
+    trusted `captured_at` instead of batch arrival? And should a scheduled policy change also push at its start, not only
+    at its commit?
+
+Not done (fix round 4):
+
+- Only the targeted classes above ran on the laptop. Not run: the full module suites of backend:config, backend:sync,
+  backend:app, core-sync, core-database, app-sr, app-amo and app-tso; `:android:app-sr:assembleDebug`,
+  `:android:app-amo:assembleDebug` and `:android:app-tso:assembleDebug` (core-sync changed); lint; `HardcodedStringScanTest`
+  (no string or resource changed). The lead runs them on the Linux CI runners after the push.
+- Ask 12 (the TSO warning text) and ask 13 (the ingest window) are open. D-X4a-30 (the other callers of `config`) is not
+  audited.
+- No device has run any of it (ask 10, now with variant 3).

@@ -72,6 +72,9 @@ class SrDayLockCaptureTest {
     private var previousDefault: Thread.UncaughtExceptionHandler? = null
     private var previousOwn: Thread.UncaughtExceptionHandler? = null
 
+    /** The view models this class makes (CI run 41750277921): their work finishes, is cancelled and joined before the database closes. */
+    private val work = TestWork()
+
     @Before fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         databases = UserDatabases(ApplicationProvider.getApplicationContext<Application>()) { null }
@@ -86,9 +89,17 @@ class SrDayLockCaptureTest {
     }
 
     @After fun tearDown() {
-        Thread.setDefaultUncaughtExceptionHandler(previousDefault); Thread.currentThread().uncaughtExceptionHandler = previousOwn
-        databases.close(user)
-        Dispatchers.resetMain()
+        // the view models' work finishes, is cancelled and joined while the database is open and the catchers still listen;
+        // then the database closes (it runs on Room's default executor: every query here is a view model's, joined by stop)
+        try {
+            work.stop()
+            databases.close(user)
+            assertEquals("nothing escaped by the end of the test", listOf<Throwable>(), crashes.toList())
+        } finally {
+            work.roomExecutor.shutdown()
+            Thread.setDefaultUncaughtExceptionHandler(previousDefault); Thread.currentThread().uncaughtExceptionHandler = previousOwn
+            Dispatchers.resetMain()
+        }
     }
 
     private fun meta(routeId: Long? = route) = CaptureMeta(
@@ -161,7 +172,7 @@ class SrDayLockCaptureTest {
         val triggers = ArrayList<SyncTrigger>()
         val sched = object : SyncScheduler { override fun requestSync(userId: Long, trigger: SyncTrigger) { triggers += trigger } }
         val uuid = ClientIds.newUuid()
-        val vm = SalesSubmitViewModel(user, { date }, day, { mapOf("memo" to 2) }, RoomDaySubmitWriter(db, repo, { meta() }, { "other" }, newUuid = { uuid }), sched, { true })
+        val vm = work.viewModel { SalesSubmitViewModel(user, { date }, day, { mapOf("memo" to 2) }, RoomDaySubmitWriter(db, repo, { meta() }, { "other" }, newUuid = { uuid }), sched, { true }) }
         vm.refresh(); assertTrue(vm.state.value.gate.enabled)
         vm.submit()
         awaitQueued(uuid)
@@ -183,10 +194,12 @@ class SrDayLockCaptureTest {
         }
         val reprinter = object : MemoReprinter { override suspend fun print(memoUuid: String, memo: com.aktcl.aron.core.printing.doc.MemoPrint) = PrintAttempt.Done }
         val uuid = ClientIds.newUuid()
-        val vm = MemoViewModel(
-            // Mark Paid's check is the writer's own (fix round): the collection's route-day, as the write would see it
-            store, RoomDueCollectionWriter(repo, { meta() }, newUuid = { uuid }), reprinter, { PrintNames({ "S$it" }, { "O$it" }, "sr", "r") }, { date },
-        )
+        val vm = work.viewModel {
+            MemoViewModel(
+                // Mark Paid's check is the writer's own (fix round): the collection's route-day, as the write would see it
+                store, RoomDueCollectionWriter(repo, { meta() }, newUuid = { uuid }), reprinter, { PrintNames({ "S$it" }, { "O$it" }, "sr", "r") }, { date },
+            )
+        }
         vm.open(memoUuid)
         runBlocking { withTimeoutOrNull(10_000) { while (!vm.state.value.canMarkPaid) delay(10) } }
         assertTrue("drawn before the lock", vm.state.value.canMarkPaid)

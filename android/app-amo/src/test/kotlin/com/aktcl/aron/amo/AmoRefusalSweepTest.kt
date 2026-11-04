@@ -64,9 +64,15 @@ class AmoRefusalSweepTest {
     }
 
     @After fun tearDown() {
-        Thread.setDefaultUncaughtExceptionHandler(previousDefault); Thread.currentThread().uncaughtExceptionHandler = previousOwn
-        f.close()
-        Dispatchers.resetMain()
+        // CI run 41750277921: the fixture's work stops (finished, cancelled, joined, Room drained) and the database closes
+        // while the catchers still listen; what that work threw fails this test, not a later one
+        try {
+            f.close()
+            assertEquals("nothing escaped by the end of the test", listOf<Throwable>(), crashes.toList())
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(previousDefault); Thread.currentThread().uncaughtExceptionHandler = previousOwn
+            Dispatchers.resetMain()
+        }
     }
 
     private fun stockRows() = runBlocking { f.db.captureDao().stockOn(f.date) }

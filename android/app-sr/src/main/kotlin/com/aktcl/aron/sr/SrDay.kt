@@ -79,12 +79,18 @@ class SrDay(
     private val deviceRuntime: com.aktcl.aron.core.sync.device.DeviceRuntime? = null,
     /** F-SYS-092 resume config check; null in previews and tests. */
     private val resumeConfigCheck: com.aktcl.aron.core.sync.ResumeConfigCheck? = null,
+    /**
+     * The parent of the day's own scopes (the background work, the print runner, the print scope, the visit flow's config
+     * check). Null on the phone: each scope is its own root, as before, and lives as long as the day. A test passes its own
+     * job, so it can let the day's work finish, cancel it and join it before it closes the database (CI run 41750277921).
+     */
+    parentJob: kotlinx.coroutines.Job? = null,
 ) {
     /** Work started from the day that nobody waits for (the resume config check, settings reloads). */
-    private val background = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+    private val background = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Default)
 
     /** Prints and print confirms run here, so leaving a screen never cuts a receipt short (see [PrintRunner]). */
-    val printRunner = PrintRunner(kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main))
+    val printRunner = PrintRunner(kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Main))
 
     /**
      * R9: launches the conditional config check and returns at once; a visit or a sale never waits for it. Also bound as
@@ -380,6 +386,7 @@ class SrDay(
         session = visitSession, settings = { GeoSettings.DEFAULT }, nowIso = { iso(clock.nowMs()) },
         nextSequenceNo = { nextSequence++ },
         configCheck = com.aktcl.aron.feature.outlet.ConfigCheck { launchConfigCheck() },
+        background = background,
     )
 
     // ---- printing (F-SR-015): the ledger is Room, the renderer is built once (font parsing is the expensive part)
@@ -433,7 +440,7 @@ class SrDay(
     suspend fun slipNotPrinted(): Boolean = db.captureDao().stockOn(businessDate()).any { !it.slipPrinted }
 
     /** Outlives every screen: a print and its readable-question answer must finish even if the SR leaves Stock. */
-    private val printScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+    private val printScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Default)
     private val _stockAttempt = MutableStateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?>(null)
     val stockAttempt: StateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?> = _stockAttempt.asStateFlow()
 

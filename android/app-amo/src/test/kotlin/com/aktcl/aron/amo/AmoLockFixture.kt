@@ -41,9 +41,6 @@ import com.aktcl.aron.core.sync.SyncScheduler
 import com.aktcl.aron.feature.outlet.OpenVisit
 import com.aktcl.aron.feature.sale.ui.SaleViewModel
 import com.aktcl.aron.rules.QtyUnit
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -56,11 +53,18 @@ import java.io.File
  * wiring the screens use, on an in-memory database. The AMO is outside a call unless a test opens one (no route of its
  * own). Nothing reaches the network; the location source answers at the outlet (counted, and [duringFix] runs while the fix
  * is read); no printer is saved. The business date is the day's own (trusted clock, the wall clock here).
+ *
+ * CI run 41750277921: no work of a test outlives this fixture's database. The day's own scopes, Room's executor and the
+ * printer manager belong to [work]; a test makes its view models through [memoViewModel] and [saleViewModel] (never
+ * `day.sale.new…ViewModel()` directly) and hands a screen it shows to [own]. [close] lets that work finish, cancels and
+ * joins it, drains Room, and only then closes the database; a test restores its exception catchers after [close].
  */
-internal class AmoLockFixture(context: Context, latePolicy: String?) {
-    val db: AronDatabase = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries().build()
+internal class AmoLockFixture(context: Context, latePolicy: String?) : AutoCloseable {
+    val work = TestWork()
+    val db: AronDatabase = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries()
+        .setQueryExecutor(work.roomExecutor).setTransactionExecutor(work.roomExecutor).build()
     private val dir = File(context.cacheDir, "x4a-amo-day-" + ClientIds.newUuid()).apply { mkdirs() }
-    private val scope = CoroutineScope(SupervisorJob())
+    private var closed = false
     val route = 10231L
     val other = 10232L
 
@@ -100,9 +104,9 @@ internal class AmoLockFixture(context: Context, latePolicy: String?) {
     private val printerManager = PrinterManager({ error("no printer in this test") }, object : SavedPrinterStore {
         override fun load(): SavedPrinter? = null
         override fun save(printer: SavedPrinter?) = Unit
-    }, scope)
+    }, work.printerScope)
 
-    val day = AmoDay(9L, context, db, components, SyncScheduler.None, fixManager, printerManager, "amo", memoNumbering = MemoNumbering("amo334001", 0, 500))
+    val day = AmoDay(9L, context, db, components, SyncScheduler.None, fixManager, printerManager, "amo", memoNumbering = MemoNumbering("amo334001", 0, 500), parentJob = work.dayJob)
 
     val date: String get() = day.businessDate()
 
@@ -131,16 +135,29 @@ internal class AmoLockFixture(context: Context, latePolicy: String?) {
 
     fun meta(routeId: Long? = route): CaptureMeta = day.metaProvider.meta(routeId ?: 0L)
 
-    fun close() {
-        scope.cancel()
-        // Barrier (as SrLockFixture): queued Room work finishes before the in-memory database closes.
-        for (executor in listOf(db.queryExecutor, db.transactionExecutor)) {
-            val done = java.util.concurrent.CountDownLatch(1)
-            runCatching { executor.execute { done.countDown() } }.onFailure { done.countDown() }
-            done.await(5, java.util.concurrent.TimeUnit.SECONDS)
+    /** The memo screen's model on this day ([AmoSaleKit.newMemoViewModel]), held by [work]: cleared and joined by [close]. */
+    fun memoViewModel() = work.viewModel { day.sale.newMemoViewModel() }
+
+    /** The sale screen's model on this day ([AmoSaleKit.newSaleViewModel]), held by [work]: cleared and joined by [close]. */
+    fun saleViewModel() = work.viewModel { day.sale.newSaleViewModel() }
+
+    /** A screen the test shows (its ActivityScenario): destroyed by [close] before anything else stops. */
+    fun <T : AutoCloseable> own(screen: T): T = work.own(screen)
+
+    /**
+     * Stops the test's work ([TestWork.stop]: what is in flight finishes, then everything is cancelled and joined, and Room is
+     * drained), then closes the database. If the work did not stop, the database stays open and the test fails with that.
+     */
+    override fun close() {
+        if (closed) return
+        closed = true
+        try {
+            work.stop()
+            db.close()
+        } finally {
+            work.roomExecutor.shutdown()
+            dir.deleteRecursively()
         }
-        db.close()
-        dir.deleteRecursively()
     }
 
     /** The zone's Final Submit of [routeId] as the phone learns it (the push pulls the delta): the route section's day_state. */
@@ -226,7 +243,7 @@ internal class AmoLockFixture(context: Context, latePolicy: String?) {
      */
     fun refusedSale(v: OpenVisit, closeDay: () -> Unit = { finalSubmitted(v.routeId) }): SaleViewModel {
         stockedCatalog()
-        val vm = day.sale.newSaleViewModel()
+        val vm = saleViewModel()
         runBlocking { day.sale.prepare() }
         vm.start(day.sale.saleVisit(v))
         await("the sale is drafted") { day.sale.flow.state.value.draft?.visitUuid == v.visitUuid }
@@ -246,7 +263,7 @@ internal class AmoLockFixture(context: Context, latePolicy: String?) {
      */
     fun savedSale(v: OpenVisit, closeDay: () -> Unit = { finalSubmitted(v.routeId) }): SaleViewModel {
         stockedCatalog()
-        val vm = day.sale.newSaleViewModel()
+        val vm = saleViewModel()
         runBlocking { day.sale.prepare() }
         vm.start(day.sale.saleVisit(v))
         await("the sale is drafted") { day.sale.flow.state.value.draft?.visitUuid == v.visitUuid }

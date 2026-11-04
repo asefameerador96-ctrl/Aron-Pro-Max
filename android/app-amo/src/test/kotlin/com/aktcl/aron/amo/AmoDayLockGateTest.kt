@@ -41,9 +41,6 @@ import com.aktcl.aron.feature.sale.domain.SaleVisit
 import com.aktcl.aron.feature.sale.domain.VisitCloser
 import com.aktcl.aron.feature.sale.domain.VisitOutcomeCode
 import com.aktcl.aron.feature.sale.domain.VisitToClose
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -71,20 +68,30 @@ import java.io.File
 @Config(sdk = [34], application = Application::class)
 class AmoDayLockGateTest {
     private val app = ApplicationProvider.getApplicationContext<Application>()
-    private val db = Room.inMemoryDatabaseBuilder(app, AronDatabase::class.java).allowMainThreadQueries().build()
+    /** CI run 41750277921: the printer scope and Room's executor of this class stop before the database closes. */
+    private val work = TestWork()
+    private val db = Room.inMemoryDatabaseBuilder(app, AronDatabase::class.java).allowMainThreadQueries()
+        .setQueryExecutor(work.roomExecutor).setTransactionExecutor(work.roomExecutor).build()
     private val date = "2026-10-26"
     private val route = 10231L
     private val other = 10232L
     private val now = "2026-10-26T12:00:00.000Z"
     private val repo = CaptureRepository(db) { now }
-    private val printerScope = CoroutineScope(SupervisorJob())
+    private val printerScope = work.printerScope
 
     @Before fun lockingPolicy() {
         // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
         latePolicyOn(db, "quarantine")
     }
 
-    @After fun tearDown() { printerScope.cancel(); db.close() }
+    @After fun tearDown() {
+        try {
+            work.stop() // the printer manager's scope cancelled and joined, Room drained
+            db.close()
+        } finally {
+            work.roomExecutor.shutdown()
+        }
+    }
 
     private fun meta(routeId: Long? = route) = CaptureMeta(
         businessDate = date, capturedAt = now, capturedElapsedMs = 1_000, bootCount = 3, clockOffsetMs = 0L, capturedOffline = true,

@@ -54,23 +54,25 @@ class AmoLatePolicyTest {
     }
 
     @After fun tearDown() {
+        // every test closed its fixtures (their work stopped, then the database closed) before the catchers go
         Thread.setDefaultUncaughtExceptionHandler(previousDefault); Thread.currentThread().uncaughtExceptionHandler = previousOwn
         Dispatchers.resetMain()
     }
 
-    /** Runs [block] on a fresh real day for each policy that must leave the phone unlocked: none in the bundle, accept_and_flag. */
+    /**
+     * Runs [block] on a fresh real day for each policy that must leave the phone unlocked: none in the bundle, accept_and_flag.
+     * "Nothing escaped" is read after the fixture closed (CI run 41750277921): the work the block started has finished, been
+     * cancelled and joined before the database closed, so what it threw is counted here and none of it reaches the next policy.
+     */
     private fun forEachOpenPolicy(block: (AmoLockFixture) -> Unit) {
         for (policy in listOf(null, "accept_and_flag")) {
             // each policy on a fresh phone: the stock Save's re-save guard lives in the app's preferences, not the database
             app.getSharedPreferences("aron-stock-guard-9", android.content.Context.MODE_PRIVATE).edit().clear().commit()
-            val f = AmoLockFixture(app, latePolicy = policy)
             try {
-                block(f)
+                AmoLockFixture(app, latePolicy = policy).use(block)
                 assertEquals("policy $policy: nothing escaped", listOf<Throwable>(), crashes.toList())
             } catch (e: AssertionError) {
                 throw AssertionError("late policy $policy: ${e.message}", e)
-            } finally {
-                f.close()
             }
         }
     }
@@ -118,7 +120,7 @@ class AmoLatePolicyTest {
     @Test fun markPaidIsDrawnOnTheFinalRouteAndCollects() = forEachOpenPolicy { f ->
         val memo = f.creditMemo(f.controlCall())
         f.finalSubmitted()
-        val vm = f.day.sale.newMemoViewModel()
+        val vm = f.memoViewModel()
         vm.open(memo)
         await("Mark Paid is drawn on the final route") { vm.state.value.canMarkPaid }
         assertFalse(vm.state.value.dayLocked)
@@ -169,8 +171,7 @@ class AmoLatePolicyTest {
      * between the two: at trusted time the policy is still accept_and_flag, so the call stays open and its close is written.
      */
     @Test fun theCallGuardsReadThePolicyAtTrustedTimeNotAtTheWallClock() {
-        val f = AmoLockFixture(app, latePolicy = "accept_and_flag")
-        try {
+        AmoLockFixture(app, latePolicy = "accept_and_flag").use { f ->
             val wall = System.currentTimeMillis()
             f.trustAt(wall - 10 * 60_000L) // trusted time: ten minutes behind the phone's own clock
             f.schedulePolicy("quarantine", fromIso = f.day.iso(wall - 5 * 60_000L))
@@ -186,9 +187,8 @@ class AmoLatePolicyTest {
             assertEquals(listOf(v.visitUuid), runBlocking { f.db.captureDao().visitClosesOn(f.date) }.map { it.visitClientUuid })
             assertEquals(1, queued(f, "visit_close"))
             assertEquals(listOf<Throwable>(), crashes.toList())
-        } finally {
-            f.close()
         }
+        assertEquals("nothing escaped after the fixture closed", listOf<Throwable>(), crashes.toList())
     }
 
     @Test fun theSupervisorDaySubmitStillRefusesAsBuilt() = forEachOpenPolicy { f ->

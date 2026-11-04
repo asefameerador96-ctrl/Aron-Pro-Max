@@ -51,6 +51,7 @@ class PushShell(
     private val dispatcher = PushDispatcher(
         show = { notice -> PushNotices.show(localized(app), notice, bangla(app)) },
         schedule = { kind, delayMs -> pulls.schedule(kind, delayMs) },
+        withdrawDayNotice = { PushNotices.withdrawDay(app) }, // X4a fix round 4: day_state_changed
     )
 
     fun install() {

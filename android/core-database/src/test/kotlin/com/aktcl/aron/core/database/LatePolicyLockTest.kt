@@ -98,6 +98,46 @@ class LatePolicyLockTest {
         assertTrue(FinalSubmitLock.lockApplies(db, later))
     }
 
+    /**
+     * X4a fix round 4 (checker medium and low): what the config pull of the push after a policy change does to the lock, as
+     * `ReferenceRepository.applyConfigDelta` stores the server's `ConfigDelta`. Characterisation of the phone's half (no
+     * phone code changed for it): the admin's revert (the key resolves to the registry default) lifts the lock at once;
+     * quarantine set again locks; and a removal dated later, which the delta now carries as the same value with its new
+     * `effective_to` (backend ConfigDelta), stops the lock at that end.
+     */
+    @Test fun theConfigPullAfterAPolicyChangeMovesTheLockBothWays() = runTest {
+        val ref = com.aktcl.aron.core.database.repo.ReferenceRepository(db)
+        fun delta(from: Long, value: String) = com.aktcl.aron.core.database.reference.BundleReference.json.decodeFromString(
+            com.aktcl.aron.core.database.reference.ConfigDeltaWire.serializer(),
+            """{"from_version":$from,"to_version":${from + 1},"values":[$value],"scheduled":[],"removed_keys":[]}""",
+        )
+        val key = FinalSubmitLock.KEY_LATE_POLICY
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(com.aktcl.aron.core.database.repo.ReferenceRepository.KEY_CONFIG_VERSION, "40"))
+        TestRows.latePolicy(db, "quarantine")
+        finalSubmitted()
+        assertTrue("locked under the held quarantine", FinalSubmitLock.locks(db, date, route, now))
+
+        // the admin returns the policy to accept_and_flag (a revert: no row, the registry default)
+        val revert = """{"key":"$key","value":"accept_and_flag","scope_type":"default","scope_id":null,"effective_from":null,"requires_ack":false}"""
+        assertEquals(com.aktcl.aron.core.database.repo.DeltaResult.APPLIED, ref.applyConfigDelta(delta(40, revert)))
+        assertFalse("unlocked by the pull", FinalSubmitLock.locks(db, date, route, now))
+        assertNull(repo.dayRefusal(TestRows.meta(), "memo"))
+        assertTrue("Mark Paid is drawn again", repo.acceptsDueCollection(TestRows.meta()))
+
+        // quarantine set again after the close
+        val again = """{"key":"$key","value":"quarantine","scope_type":"global","scope_id":0,"effective_from":"2026-10-05T15:30:00.000Z","config_version":42,"requires_ack":false}"""
+        assertEquals(com.aktcl.aron.core.database.repo.DeltaResult.APPLIED, ref.applyConfigDelta(delta(41, again)))
+        assertTrue("locked again", FinalSubmitLock.locks(db, date, route, now))
+        assertEquals(DayRefusal.FINAL_SUBMIT, repo.dayRefusal(TestRows.meta(), "memo"))
+
+        // a removal dated 17:00: the same value with its new end
+        val ended = again.replace("\"config_version\":42", "\"effective_to\":\"2026-10-05T17:00:00.000Z\",\"config_version\":42")
+        assertEquals(com.aktcl.aron.core.database.repo.DeltaResult.APPLIED, ref.applyConfigDelta(delta(42, ended)))
+        assertTrue(FinalSubmitLock.lockApplies(db, "2026-10-05T16:59:59.999Z"))
+        assertFalse("ended at 17:00", FinalSubmitLock.lockApplies(db, "2026-10-05T17:00:00.000Z"))
+        assertNull(CaptureRepository(db) { "2026-10-05T17:00:00.000Z" }.dayRefusal(TestRows.meta(), "memo"))
+    }
+
     @Test fun onlyQuarantineOrRejectLockAndAnAbsentOrUnreadablePolicyDoesNot() = runTest {
         assertFalse("no policy in the bundle: the server's fallback, accept_and_flag", FinalSubmitLock.lockApplies(db, now))
         for ((policy, locks) in listOf("accept_and_flag" to false, "quarantine" to true, "reject" to true)) {

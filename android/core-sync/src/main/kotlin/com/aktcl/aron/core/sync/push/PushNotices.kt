@@ -22,7 +22,8 @@ import kotlinx.coroutines.flow.asSharedFlow
  * open the inbox ([OPEN_INBOX]) or the ticket dashboard ([OPEN_TICKETS]); `day_final_submitted` shows a fixed text on the silent day
  * channel (the midnight auto Final Submit must not ring a phone at 00:00). Owner decision 2026-11-04: the server sends
  * `day_final_submitted` only under the quarantine or reject late policy, when its "new sales are closed" is true; a close
- * under accept_and_flag (the default) sends `day_state_changed`, which shows nothing. Every notice is also announced in process on [arrived]
+ * under accept_and_flag (the default) sends `day_state_changed`, which shows nothing and takes an earlier "Day closed" notice
+ * off the tray ([withdrawDay], X4a fix round 4). Every notice is also announced in process on [arrived]
  * before it is shown (and even when notifications are off), so a running app re-reads what it is about (the TSO bell's unread count)
  * without any polling.
  */
@@ -100,6 +101,16 @@ object PushNotices {
         } catch (_: SecurityException) { // POST_NOTIFICATIONS revoked on API 33+
             false
         }
+    }
+
+    /**
+     * X4a fix round 4 (checker medium; owner decision 2026-11-04): takes the "Day closed ... new sales are closed" notice of
+     * an earlier `day_final_submitted` off the tray. Called for `day_state_changed`, which the server sends when the late-sale
+     * policy in force is accept_and_flag (a close under it, or an admin returning the policy to it after a locked close): the
+     * notice is no longer true, and nothing may tell a rep that sales are closed while the server accepts them. Never throws.
+     */
+    fun withdrawDay(context: Context) {
+        try { NotificationManagerCompat.from(context).cancel(ID_DAY) } catch (_: RuntimeException) { }
     }
 
     /** The app's own launcher activity, brought to the front; a task opens the task list, an inbox or ticket update its screen. */

@@ -160,26 +160,27 @@ class PushTest {
     }
 
     /**
-     * X4a ask 11 (D-TSO-MAN-57): a late-sale policy change sends ONE urgent `config_pull` to each live phone of the changed scope and to
-     * no one outside it; the message carries the kind, the reason and the jitter, nothing else (no business data); switched off with
-     * `cfg.ops.push_enabled`.
+     * X4a ask 11 (D-TSO-MAN-57, D-TSO-MAN-62): the config_pull push goes ONE urgent data message to each live phone of the given
+     * users and to no one else; it carries the kind, the reason and the jitter, nothing else (no business data); the jitter is
+     * 0..`cfg.ops.config_pull_spread_s` (default 20, read at send time, so the final account widens it by config); switched off
+     * with `cfg.ops.push_enabled`.
      */
     @Test
-    fun aLatePolicyChangeSendsOneConfigPullToTheScopesPhonesOnly() = testApplication {
+    fun aConfigPullGoesOnePerLivePhoneOfTheGivenUsersWithAJitterThatFollowsTheConfig() = testApplication {
         application { aronApi(wiring) }
         val phone = client.login("sr1001", phone = true)
         val token3 = "fcm-token-" + "c".repeat(40)
         assertEquals(HttpStatusCode.NoContent, client.register(phone, token3).status)
         val got = CopyOnWriteArrayList<Pair<String, Map<String, String>>>()
         val notifier = com.aktcl.aron.backend.notify.PushNotifier(fresh.db, wiring.config, { tok, data -> got += tok to data; true }, clock)
-        val pusher = com.aktcl.aron.backend.notify.ConfigPullPush(fresh.db, wiring.config, notifier)
         fun awaitGot(n: Int) { val until = System.nanoTime() + 30_000_000_000L; while (got.size < n && System.nanoTime() < until) Thread.sleep(20) }
-        val srZone = count("SELECT home_zone_id FROM app.app_user WHERE id = $sr")
-        val otherZone = count("SELECT min(id) FROM app.zone WHERE id <> $srZone")
+        val other = count("SELECT min(id) FROM app.app_user WHERE id <> $sr AND status = 'active'")
 
-        pusher.configPull("late_sync_policy_changed", listOf("global" to 0L, "global" to 0L))
+        // the registry default is 20 s
+        val pusher = com.aktcl.aron.backend.notify.ConfigPullPush(fresh.db, wiring.config, notifier)
+        pusher.configPull("late_sync_policy_changed", listOf(sr, sr))
         awaitGot(1); Thread.sleep(300)
-        assertEquals(1, got.size, "one message for the one live phone, however many items named the scope")
+        assertEquals(1, got.size, "one message for the one live phone, however many times the user is named")
         val (to, data) = got.single()
         assertEquals(token3, to)
         assertEquals("config_pull", data["kind"]); assertEquals("late_sync_policy_changed", data["reason"]); assertEquals("true", data["urgent"])
@@ -187,10 +188,26 @@ class PushTest {
         assertEquals(setOf("kind", "reason", "notification_id", "pull_after_s", "urgent"), data.keys, "data only")
 
         got.clear()
-        pusher.configPull("late_sync_policy_changed", listOf("zone" to srZone))
-        awaitGot(1); assertEquals(1, got.size, "the SR's own zone")
+        pusher.configPull("late_sync_policy_changed", listOf(other))
+        Thread.sleep(500); assertEquals(0, got.size, "a user without a live phone here gets nothing")
+        pusher.configPull("late_sync_policy_changed", emptyList())
+        Thread.sleep(300); assertEquals(0, got.size, "no users, no push")
+
+        // the window is the config value, read at send time: 0 -> every delay 0; 600 -> within 600 and not all 0 (50 draws)
+        fun withSpread(n: Int) = object : com.aktcl.aron.backend.platform.ServerConfig by wiring.config {
+            override fun value(key: String) = if (key == "cfg.ops.config_pull_spread_s") kotlinx.serialization.json.JsonPrimitive(n) else wiring.config.value(key)
+            override fun int(key: String) = if (key == "cfg.ops.config_pull_spread_s") n else wiring.config.int(key)
+        }
         got.clear()
-        pusher.configPull("late_sync_policy_changed", listOf("zone" to otherZone))
-        Thread.sleep(500); assertEquals(0, got.size, "a zone the SR does not belong to")
+        com.aktcl.aron.backend.notify.ConfigPullPush(fresh.db, withSpread(0), notifier).configPull("late_sync_policy_changed", listOf(sr))
+        awaitGot(1); assertEquals("0", got.single().second["pull_after_s"], "a window of 0 s")
+        got.clear()
+        val wide = com.aktcl.aron.backend.notify.ConfigPullPush(fresh.db, withSpread(600), notifier)
+        repeat(50) { wide.configPull("late_sync_policy_changed", listOf(sr)) }
+        awaitGot(50); Thread.sleep(300)
+        val delays = got.map { it.second["pull_after_s"]!!.toInt() }
+        assertEquals(50, delays.size)
+        assertTrue(delays.all { it in 0..600 }, "within the widened window")
+        assertTrue(delays.any { it > 20 }, "a window of 600 s really spreads wider than the pilot's 20 s: $delays")
     }
 }

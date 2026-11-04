@@ -62,6 +62,12 @@ class AmoDay(
     /** The phone's memo numbering (username, bind ordinal, block size) from the login; null only in previews and tests. */
     val memoNumbering: com.aktcl.aron.core.database.repo.MemoNumbering? = null,
     private val deviceRuntime: DeviceRuntime? = null,
+    /**
+     * The parent of the day's own scopes (the print scope, the visit flow's config check). Null on the phone: each scope is
+     * its own root, as before, and lives as long as the day. A test passes its own job, so it can let the day's work finish,
+     * cancel it and join it before it closes the database (CI run 41750277921).
+     */
+    parentJob: kotlinx.coroutines.Job? = null,
 ) {
     internal val database: AronDatabase get() = db
     val userDisplayName: String get() = userName
@@ -221,6 +227,7 @@ class AmoDay(
         },
         session = visitSession, settings = { GeoSettings.DEFAULT }, nowIso = { iso(clock.nowMs()) },
         nextSequenceNo = { nextSequence++ },
+        background = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Default),
     )
 
     val outletRequests = OutletRequests(
@@ -432,7 +439,7 @@ class AmoDay(
     suspend fun slipNotPrinted(): Boolean = db.captureDao().stockOn(businessDate()).any { !it.slipPrinted }
 
     /** Outlives every screen: a print and its readable-question answer must finish even if the SR leaves Stock. */
-    private val printScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+    private val printScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Default)
     private val _stockAttempt = MutableStateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?>(null)
     val stockAttempt: StateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?> = _stockAttempt.asStateFlow()
 
