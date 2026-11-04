@@ -205,3 +205,15 @@ Lead rulings: rows 23/24 dome 72 dp accepted for now (tall-dome option offered t
 6. D-TSO-MAN-52: the Leave As-of rule extends D-TSO-MAN-40 (incl. refreshing).
 7. Target Details: TsoGlow.of(TARGET_DETAILS) = None (owner's 41/42 have no dome); re-record five goldens; fix the "39 to 42" comments and TsoGlowTest.
 8. TsoFrame bottom padding guarded with !n.solid (Sunlight shows no empty band); re-record tso_target_sunlight_en.
+
+## Re-check after fix batch 3 rounds 2+3 (candidate 659b3d4f; workflow wf_2f4c0bfe-d8b, 1 reader + 1 verifier, 0.28M tokens, finished 00:33 UTC 2026-11-04; both verdicts upheld)
+
+| Row | Verdict | Evidence / remaining gap |
+|---|---|---|
+| 41, 42 Target Details | PROVEN | No dome: the five goldens differ from 347e1780 only from the old dome rows down; ~12.8k dome pixels → 0; band pure page navy (200_en continues the table rows, as the owner's 42 cuts its last row at the edge). TsoGlow.of(TARGET_DETAILS) = None read by host and both frames. |
+| Target Status Sunlight | PROVEN | Diff bbox rows 722–800 only: the grey band is gone, the white Zone card runs to the edge (Lighter bar 7.33:1, 53% 7.52:1, text 16.3:1); zero dome pixels (nightPage base when n.solid; !n.solid guard removes the padding). Amber bar fill 5.93:1 is a pre-existing graphic. |
+| Set Plan, disabled route picker | PROVEN | Diff rows 432–510 only: no halo (flat page at the field edge), border unchanged, placeholder + caret (138,147,184) = 5.43:1 on the field; Date and Zone identical old/new. |
+| 23 Final Submit pickers | PARTIAL → round 4 (a) | Halo identical on all five pickers and the goldens byte-identical between 347e1780 and 659b3d4f; but the four disabled pickers draw a dimmer border (61,42,133) than the enabled Wing (123,63,228) — `edge.copy(alpha = 0.4f)` when disabled — while the owner's 23 shows five identical borders. Pre-existing parity gap, fixed in round 4 via the same opt-in. |
+
+### Fix batch 3 — round 4 (assigned 00:34 UTC 2026-11-04)
+(a) Final Submit pickers: full edge border when the glow-alike opt-in is set; re-record tso_fs_s23_*. (b) tso-manual-cloud.md lines 36/40/67. (c) LeaveTest.kt:275 comment → D-TSO-MAN-52. (d) TsoGlowTest iterate TsoScreen.entries minus the two Bottom pages.
