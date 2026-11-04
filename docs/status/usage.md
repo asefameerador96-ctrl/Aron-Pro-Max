@@ -1508,3 +1508,6 @@
 ### 14:48 UTC 2026-11-04 — 2-hourly lane check (trig_019JnciXMV6ZWyXd65xdZJQD)
 - State unchanged since 12:48: NO TRAIN IN FLIGHT; INT 3675c003 (train 72) deployed and healthy (line below); no active building lane; integrator 22 idle; stop rule holds (no new sessions; db #15 held). No owner message. Nothing to gate, nothing overdue, nothing needs the owner at this check. The evening report fires at 15:00 UTC (trig_01AbgnrMU84HJbmG6c3UbWig).
 - Health at 14:48: {"status":"ok","api":"/v1","server_time":"2026-11-04T14:48:16.806Z","generation":"d65f8ee0-67b7-4b6f-8126-c0c8e8997e2b","build":"3675c0034dbede45b7615e9dfd430901d0f364a9"}
+
+### 15:04 UTC 2026-11-04 — evening report (trig_01AbgnrMU84HJbmG6c3UbWig)
+- Verified: INT 3675c003 (train 72), DECISIONS 235, lead docs contain INT, health build 3675c003; INT runs ci #1807 success (attempt 2), deploy #307 success, #306 skipped. Sessions by get_session: lead 390k context, integrator 22 idle 344k (cumulative output 98.5k), both lanes archived; every session's seven_day = allowed_warning (reset 2026-11-10 18:00 UTC). Report written to docs/status/evening-2026-11-04.md; posted to the owner in chat (<300 words). Morning report one-shot created for 2026-11-05 06:30 UTC (it creates the next evening one). Lane-check prompt unchanged (location and hard rules unchanged).
