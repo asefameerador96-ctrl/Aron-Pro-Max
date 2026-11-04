@@ -264,6 +264,48 @@ class VisitFlowTest {
         assertEquals(seen[0].first.clientUuid, seen[1].first.clientUuid); assertEquals(seen[0].second.clientUuid, seen[1].second.clientUuid)
     }
 
+    private fun failingFlow(
+        err: Throwable, held: OpenVisit? = null, seen: MutableList<Throwable> = mutableListOf(), session: VisitSession = VisitSession(),
+    ): VisitFlow {
+        val meta = CaptureMetaProvider { r -> CaptureMeta("2026-10-07", "2026-10-07T04:00:00.000Z", 1, 3, 0, true, r, null, "2026-10-07:1", false, 5) }
+        return VisitFlow(
+            FakeFixes(ArrayDeque(listOf(fix()))), meta, VisitCommitter { _, _ -> throw err }, session, { GeoSettings.DEFAULT },
+            { UUID.randomUUID().toString() }, { "x" }, { 1 },
+            storedCall = StoredCallLookup { _, _ -> held }, onCommitError = { seen += it },
+        )
+    }
+
+    // D-SRFIX-01: the generic failed-commit card tells the rep what failed, and the exception names its type
+    @Test fun aZoneLockRefusalIsWordedAsTheLock() = runTest {
+        val seen = mutableListOf<Throwable>()
+        val st = failingFlow(com.aktcl.aron.core.database.repo.RouteDayFinalSubmittedException("2026-10-07", 1L, "visit"), seen = seen).open(outlet)
+        assertEquals(CommitFailure.LOCKED, (st as VisitUiState.CommitFailed).failure)
+        assertEquals("RouteDayFinalSubmittedException", st.typeTag); assertEquals(1, seen.size)
+    }
+
+    @Test fun theRepsOwnSalesSubmitIsWordedAsTheSubmit() = runTest {
+        val st = failingFlow(com.aktcl.aron.core.database.repo.RouteDaySubmittedException("2026-10-07", 1L)).open(outlet)
+        assertEquals(CommitFailure.DAY_SUBMITTED, (st as VisitUiState.CommitFailed).failure)
+    }
+
+    @Test fun aStorageErrorKeepsTheRetryTextAndNamesItsType() = runTest {
+        val st = failingFlow(IllegalStateException("UNIQUE constraint failed")).open(outlet)
+        assertEquals(CommitFailure.STORAGE, (st as VisitUiState.CommitFailed).failure); assertEquals("IllegalStateException", st.typeTag)
+    }
+
+    @Test fun aStorageErrorWithAStoredCallResumesItInsteadOfLosingTheCapture() = runTest {
+        val held = OpenVisit("11111111-1111-4111-8111-111111111111", outlet.outletId, outlet.routeId, "in_range", "sale_allowed", true, false, null, "2026-10-07T04:00:00.000Z")
+        val session = VisitSession()
+        val st = failingFlow(IllegalStateException("UNIQUE constraint failed"), held = held, session = session).open(outlet)
+        assertEquals(VisitUiState.Open(held), st); assertEquals(held, session.current.value)
+    }
+
+    @Test fun aRefusalNeverResumesAStoredCall() = runTest {
+        val held = OpenVisit("11111111-1111-4111-8111-111111111111", outlet.outletId, outlet.routeId, "in_range", "sale_allowed", true, false, null, "x")
+        val st = failingFlow(com.aktcl.aron.core.database.repo.RouteDayFinalSubmittedException("2026-10-07", 1L, "visit"), held = held).open(outlet)
+        assertTrue(st is VisitUiState.CommitFailed)
+    }
+
     @Test fun blockedVisitIsHandedToTheCloser() = runTest {
         val s = GeoSettings.DEFAULT.copy(policyBase = GeoSettings.DEFAULT.policyBase.copy(mockPolicy = MockPolicy.BLOCK_SALE))
         var closed: OpenVisit? = null

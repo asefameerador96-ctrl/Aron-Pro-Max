@@ -54,6 +54,25 @@ data class RejectedRow(
     val fromThisPhone: Boolean = true,
 )
 
+/**
+ * D-SRFIX-04: a refused record the server will never take (outcome [RejectedOutcome.DROPPED]) is listed under "Not accepted as
+ * sent" for [KEEP_DAYS] days from its business date, then moves to a "dismissed" list the rep can open. Only types that carry
+ * no money or stock ([DISMISSABLE]) move: a memo, its lines, dues, QC, stock and day records stay listed until the outbox
+ * itself drops them, so a sale is never hidden. A held, retry or other-phone row is never dismissed (it can still change).
+ */
+object RejectedDismissal {
+    const val KEEP_DAYS = 7L
+    val DISMISSABLE = setOf("media_meta", "geo_breadcrumb", "app_error", "activity_log", "print_event", "content_view", "device_status", "config_ack", "consent_accept")
+
+    fun isDismissed(r: RejectedRow, today: String, keepDays: Long = KEEP_DAYS): Boolean =
+        r.outcome == RejectedOutcome.DROPPED && r.fromThisPhone && r.recordType in DISMISSABLE &&
+            runCatching { java.time.LocalDate.parse(r.businessDate).plusDays(keepDays).isBefore(java.time.LocalDate.parse(today)) }.getOrDefault(false)
+
+    /** (listed, dismissed) in the original order. */
+    fun split(rows: List<RejectedRow>, today: String, keepDays: Long = KEEP_DAYS): Pair<List<RejectedRow>, List<RejectedRow>> =
+        rows.partition { !isDismissed(it, today, keepDays) }
+}
+
 /** One line of the reconciliation table as shown: a record type, or several grouped by [SubmitDisplay.views]. */
 data class CountView(val key: String, val device: Int, val server: Int?, val matches: Boolean)
 

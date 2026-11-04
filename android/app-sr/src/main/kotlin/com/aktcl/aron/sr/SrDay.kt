@@ -387,7 +387,26 @@ class SrDay(
         nextSequenceNo = { nextSequence++ },
         configCheck = com.aktcl.aron.feature.outlet.ConfigCheck { launchConfigCheck() },
         background = background,
+        // D-SRFIX-01: a failed commit first looks for the call this phone already holds (resume, never lose the capture)
+        storedCall = com.aktcl.aron.feature.outlet.StoredCallLookup { uuid, outletId -> heldCall(uuid, outletId) },
+        onCommitError = { t -> android.util.Log.w("AronVisit", "visit commit failed: type=" + t.javaClass.simpleName, t) },
     )
+
+    /** D-SRFIX-01: the stored visit [uuid], else today's unclosed, non-blocked call at [outletId], as the open visit; null if none. */
+    private suspend fun heldCall(uuid: String, outletId: Long): OpenVisit? {
+        val dao = db.captureDao()
+        val today = businessDate()
+        val rows = dao.visitsOn(today)
+        val closed = dao.visitClosesOn(today).map { it.visitClientUuid }.toSet()
+        val v = rows.firstOrNull { it.clientUuid == uuid }
+            ?: rows.filter { it.outletId == outletId && it.clientUuid !in closed && it.geoAction != "blocked" }.maxByOrNull { it.sequenceNo }
+            ?: return null
+        return OpenVisit(
+            visitUuid = v.clientUuid, outletId = v.outletId, routeId = v.meta.routeId ?: 0L, geoVerdict = v.geoVerdict,
+            geoAction = v.geoAction, geoValidated = v.geoVerdict == "in_range", photoValidated = v.geoForcePhotoUuid != null,
+            forceReasonCode = v.geoForceReasonCode, openedAtIso = v.openedAt,
+        )
+    }
 
     // ---- printing (F-SR-015): the ledger is Room, the renderer is built once (font parsing is the expensive part)
     private val renderer: com.aktcl.aron.core.printing.PaperRenderer by lazy {

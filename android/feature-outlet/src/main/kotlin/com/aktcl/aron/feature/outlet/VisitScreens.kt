@@ -362,7 +362,10 @@ fun VisitCheckContent(
                 is VisitUiState.LocationBlocked -> GeoCard(
                     GeoKind.Warning, stringResource(if (state.reason == "location_off") R.string.out_location_off else R.string.out_location_denied), emptyList(), Modifier.testTag(OutletTags.MESSAGE),
                 )
-                is VisitUiState.CommitFailed -> GeoCard(GeoKind.Danger, stringResource(R.string.out_commit_failed), emptyList(), Modifier.testTag(OutletTags.MESSAGE))
+                is VisitUiState.CommitFailed -> GeoCard(
+                    GeoKind.Danger,
+                    stringResource(when (state.failure) { CommitFailure.LOCKED -> R.string.out_commit_locked; CommitFailure.DAY_SUBMITTED -> R.string.out_commit_day_submitted; CommitFailure.STORAGE -> R.string.out_commit_failed }),
+                    emptyList(), Modifier.testTag(OutletTags.MESSAGE))
                 is VisitUiState.Open -> GeoCard(
                     // after a Force Sale the visit is open but the fix said otherwise: the card follows the verdict, never "in range" over "outside"
                     if (geo == null || geo.inRange) GeoKind.InRange else GeoKind.Warning,
