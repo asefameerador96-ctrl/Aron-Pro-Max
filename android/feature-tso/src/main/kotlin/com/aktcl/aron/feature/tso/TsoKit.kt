@@ -243,8 +243,9 @@ fun <T> TsoDropdownField(
     enabled: Boolean = true,
     /** The placeholder in the white ink of a chosen value (My Visit Plan, screenshot 34); the default is the muted placeholder (screenshot 23). */
     brightPlaceholder: Boolean = false,
+    haloWhenDisabled: Boolean = false,
 ) {
-    AronDropdown(options, selected, onSelect, optionLabel, modifier, label = label, placeholder = placeholder, enabled = enabled, brightPlaceholder = brightPlaceholder)
+    AronDropdown(options, selected, onSelect, optionLabel, modifier, label = label, placeholder = placeholder, enabled = enabled, brightPlaceholder = brightPlaceholder, haloWhenDisabled = haloWhenDisabled)
 }
 
 /**

@@ -158,7 +158,7 @@ private fun Pickers(state: FinalSubmitState, ui: FinalSubmitState.Ui, phase: FsP
                     options, options.firstOrNull { it.id == ui.picks[lv] }, { n -> state.pickLevel(lv, n.id) },
                     { n -> if (lv == 3 && n.id == FsGeo.NO_HOUSE) noHouse else n.label(bangla) },
                     Modifier.testTag(FsTags.level(lv)), label = stringResource(LEVEL_LABELS[lv]), placeholder = stringResource(LEVEL_HINTS[lv]),
-                    enabled = options.isNotEmpty() && !busy,
+                    enabled = options.isNotEmpty() && !busy, haloWhenDisabled = true,
                 )
             }
         } else if (ui.cascadeTried) {
@@ -168,7 +168,7 @@ private fun Pickers(state: FinalSubmitState, ui: FinalSubmitState.Ui, phase: FsP
             val names = ui.zones.associateWith { zoneName(it) }
             TsoDropdownField(
                 ui.zones, ui.zoneId, { z -> state.pickZone(z) }, { z -> names[z] ?: z.toString() }, Modifier.testTag(FsTags.FLAT_ZONE),
-                label = stringResource(R.string.tso_fs_level_zone), placeholder = stringResource(R.string.tso_fs_select_zone), enabled = ui.zones.isNotEmpty() && !busy,
+                label = stringResource(R.string.tso_fs_level_zone), placeholder = stringResource(R.string.tso_fs_select_zone), enabled = ui.zones.isNotEmpty() && !busy, haloWhenDisabled = true,
             )
         }
         ui.errors.forEach { e -> TsoBanner(stringResource(when (e) { FsError.NO_ZONE -> R.string.tso_fs_err_zone; FsError.DATE_FORMAT -> R.string.tso_leave_err_date_format; FsError.DATE_FUTURE -> R.string.tso_fs_err_future }), Modifier.testTag(FsTags.ERRORS), kind = TsoBannerKind.Error) }

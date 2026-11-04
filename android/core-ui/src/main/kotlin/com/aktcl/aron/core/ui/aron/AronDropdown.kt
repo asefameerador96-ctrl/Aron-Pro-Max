@@ -63,6 +63,8 @@ fun <T> AronDropdown(
     enabled: Boolean = true,
     /** TSO look: draw the placeholder in the ink of a chosen value (screenshot 34); ignored in the other looks. */
     brightPlaceholder: Boolean = false,
+    /** Keep the glow halo when disabled (Final Submit, screenshot 23: every picker glows alike while the lower ones wait); default: no halo. */
+    haloWhenDisabled: Boolean = false,
 ) {
     val look = LocalAronLook.current
     val n = look.night
@@ -84,7 +86,7 @@ fun <T> AronDropdown(
                     .fillMaxWidth()
                     .onSizeChanged { fieldWidthPx = it.width; fieldHeightPx = it.height }
                     .heightIn(min = 56.dp)
-                    .then(if (n != null && enabled) Modifier.nightGlow(n, edge, shape, 8.dp) else Modifier) // a disabled picker has no halo
+                    .then(if (n != null && (enabled || haloWhenDisabled)) Modifier.nightGlow(n, edge, shape, 8.dp) else Modifier) // a disabled picker has no halo
                     .clip(shape)
                     .background(fill)
                     .border(if (n?.solid == true) 2.dp else 1.dp, if (enabled) edge else edge.copy(alpha = 0.4f), shape)
