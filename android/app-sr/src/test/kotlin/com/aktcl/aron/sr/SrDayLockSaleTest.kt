@@ -36,11 +36,8 @@ import com.aktcl.aron.feature.sale.domain.VisitCloser
 import com.aktcl.aron.feature.sale.domain.VisitOutcomeCode
 import com.aktcl.aron.feature.sale.domain.VisitToClose
 import com.aktcl.aron.feature.sale.ui.SaleViewModel
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -73,12 +70,15 @@ import java.util.Collections
 @Config(sdk = [36])
 class SrDayLockSaleTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
-    private val db = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries().build()
+    /** CI run 41750277921: the view models, the printer scope and Room's executor of this class stop before the database closes. */
+    private val work = TestWork()
+    private val db = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries()
+        .setQueryExecutor(work.roomExecutor).setTransactionExecutor(work.roomExecutor).build()
     private val date = "2026-10-26"
     private val route = 10231L
     private val now = "2026-10-26T12:00:00.000Z"
     private val repo = CaptureRepository(db) { now }
-    private val printerScope = CoroutineScope(SupervisorJob())
+    private val printerScope = work.printerScope
     private val crashes: MutableList<Throwable> = Collections.synchronizedList(ArrayList())
     private var previousDefault: Thread.UncaughtExceptionHandler? = null
     private var previousOwn: Thread.UncaughtExceptionHandler? = null
@@ -94,10 +94,16 @@ class SrDayLockSaleTest {
     }
 
     @After fun tearDown() {
-        Thread.setDefaultUncaughtExceptionHandler(previousDefault); Thread.currentThread().uncaughtExceptionHandler = previousOwn
-        printerScope.cancel()
-        db.close()
-        Dispatchers.resetMain()
+        // the work stops (finished, cancelled, joined, Room drained) while the catchers still listen; then the database closes
+        try {
+            work.stop()
+            db.close()
+            assertEquals("nothing escaped by the end of the test", listOf<Throwable>(), crashes.toList())
+        } finally {
+            work.roomExecutor.shutdown()
+            Thread.setDefaultUncaughtExceptionHandler(previousDefault); Thread.currentThread().uncaughtExceptionHandler = previousOwn
+            Dispatchers.resetMain()
+        }
     }
 
     private fun meta(routeId: Long? = route) = CaptureMeta(
@@ -144,7 +150,7 @@ class SrDayLockSaleTest {
         flow.setQuantity(sku.skuId, 2, sku.entry.unit)
         // as SrSaleKit's printSource: the stored memo through the production memo store; counted, so a refused sale shows none
         val step = SaleCommitStep(flow, MemoPrintSource { uuid -> loads++; PrintMapping.memo(RoomMemoStore(db).memos(date).first { it.memoUuid == uuid }, names) })
-        SaleViewModel(flow, SrLockGate.saveAndPrint(step::invoke, printing()) { refused.value = true }) to flow
+        work.viewModel { SaleViewModel(flow, SrLockGate.saveAndPrint(step::invoke, printing()) { refused.value = true }) } to flow
     }
 
     /** MemoPrinting on this database's ledger; no printer and no renderer: anything that tried to print would fail the test. */
