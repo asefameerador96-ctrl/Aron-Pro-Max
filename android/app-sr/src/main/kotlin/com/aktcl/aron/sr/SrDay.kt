@@ -188,13 +188,17 @@ class SrDay(
      */
     suspend fun refreshLock() {
         val date = businessDate()
-        val locked = routeId?.let { runCatching { FinalSubmitLock.isFinal(db, date, it) }.getOrDefault(false) } ?: false
+        // owner decision 2026-11-04: the lock (and its banner) only while the late-sale policy locks (FinalSubmitLock.locks)
+        val locked = routeId?.let { FinalSubmitLock.locks(db, date, it, iso(clock.nowMs())) } ?: false
         val acks = runCatching { FinalSubmitLock.metLock(db, date) }.getOrDefault(LockAcks(0, 0))
         _dayLock.value = if (locked || acks.any) DayLock(locked, acks) else null
     }
 
-    /** True when today's route-day is closed by its zone's Final Submit (read from the database, not the cached flow). */
-    suspend fun finalLocked(): Boolean = routeId?.let { runCatching { FinalSubmitLock.isFinal(db, businessDate(), it) }.getOrDefault(false) } ?: false
+    /**
+     * True when the phone locks today's route-day: closed by its zone's Final Submit while the late-sale policy locks
+     * (quarantine or reject; owner decision 2026-11-04, [FinalSubmitLock.locks]); read from the database, not the cached flow.
+     */
+    suspend fun finalLocked(): Boolean = routeId?.let { FinalSubmitLock.locks(db, businessDate(), it, iso(clock.nowMs())) } ?: false
 
     private val routePrefs = context.getSharedPreferences("aron-route-$userId", Context.MODE_PRIVATE)
     /** The route the SR picked for today's date (F-SR-065), or null. */
@@ -291,7 +295,7 @@ class SrDay(
     suspend fun restoreOpenVisit() {
         if (visitSession.current.value != null) return
         // tso-manual A3: a call on a route-day closed by Final Submit is not restored (it cannot go on; D-A3-22)
-        val last = FinalSubmitLock.callToRestore(db, businessDate()) { it.geoAction != "blocked" } ?: return
+        val last = FinalSubmitLock.callToRestore(db, businessDate(), iso(clock.nowMs())) { it.geoAction != "blocked" } ?: return
         // tso-manual X4a follow-up (R-W-23): nor a call whose route-day the SR's own Sales Submit closed (its sale and close
         // would be refused); a server void of the submit brings it back
         if (SrCallLock.refusal(db, last.meta) != null) return

@@ -335,16 +335,18 @@ class AmoDay(
      */
     suspend fun refreshLock() {
         val date = businessDate()
-        val closed = runCatching { FinalSubmitLock.finalRoutes(db, date, zoneRoutes.keys.sorted()) }.getOrDefault(emptyList())
+        // owner decision 2026-11-04: closed routes count (and the banner shows) only while the late-sale policy locks
+        val closed = runCatching { FinalSubmitLock.lockedRoutes(db, date, zoneRoutes.keys.sorted(), iso(clock.nowMs())) }.getOrDefault(emptyList())
         val acks = runCatching { FinalSubmitLock.metLock(db, date) }.getOrDefault(LockAcks(0, 0))
         _dayLock.value = if (closed.isNotEmpty() || acks.any) AmoDayLock(closed, acks) else null
     }
 
     /**
-     * True when [routeId]'s route-day today is closed by its zone's Final Submit: a control, joint or sale call on it cannot
-     * start (the visit flow's committer refuses it through [FinalSubmitLock.requireCallOpen], which reads the same state).
+     * True when the phone locks [routeId]'s route-day today: closed by its zone's Final Submit while the late-sale policy
+     * locks (quarantine or reject; owner decision 2026-11-04, [FinalSubmitLock.locks]). A control, joint or sale call on it
+     * cannot start then (the visit flow's committer refuses it through [FinalSubmitLock.requireCallOpen], the same rule).
      */
-    suspend fun routeLocked(routeId: Long): Boolean = runCatching { FinalSubmitLock.isFinal(db, businessDate(), routeId) }.getOrDefault(false)
+    suspend fun routeLocked(routeId: Long): Boolean = FinalSubmitLock.locks(db, businessDate(), routeId, iso(clock.nowMs()))
 
     private suspend fun closeAbandoned(v: com.aktcl.aron.feature.outlet.OpenVisit): DayRefusal? {
         // tso-manual X4a (R-W-11): a lock that lands after closeVisit's check ends the call on the phone (AmoLockGate.closeCall);
@@ -366,7 +368,7 @@ class AmoDay(
     suspend fun restoreOpenVisit() {
         if (visitSession.current.value != null) return
         // tso-manual A3: a call on a route closed by Final Submit is not restored (it cannot go on; D-A3-22)
-        val last = FinalSubmitLock.callToRestore(db, businessDate()) { it.geoAction != "blocked" && it.visitKind.startsWith("amo_") } ?: return
+        val last = FinalSubmitLock.callToRestore(db, businessDate(), iso(clock.nowMs())) { it.geoAction != "blocked" && it.visitKind.startsWith("amo_") } ?: return
         // tso-manual X4a follow-up (R-W-23): nor a call whose close the supervisor day's Sales Submit would refuse
         if (runCatching { capture.dayRefusal(last.meta, "visit_close") }.getOrNull() != null) return
         visitSession.restore(
