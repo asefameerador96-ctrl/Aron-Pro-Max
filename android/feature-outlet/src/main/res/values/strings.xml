@@ -23,7 +23,7 @@
     <string name="out_force_sale">Force Sale</string>
     <string name="out_commit_failed">The visit could not be saved. Try again.</string>
     <string name="out_commit_locked">Your TSO has done the Final Submit for this route today. New calls cannot start.</string>
-    <string name="out_commit_day_submitted">Today\'s sales are already submitted, so a new call cannot start. To sell more today, ask your TSO to reopen the day.</string>
+    <string name="out_commit_day_submitted">Today\'s sales are already submitted, so a new call cannot start. If you must sell more today, ask the office to reopen the day.</string>
     <string name="out_retry">Try again</string>
     <string name="out_map">Map</string>
     <string name="out_open_visit_resumed">Continuing your visit at %1$s</string>

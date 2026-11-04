@@ -23,7 +23,7 @@
     <string name="out_force_sale">ফোর্স সেল</string>
     <string name="out_commit_failed">ভিজিট সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।</string>
     <string name="out_commit_locked">আপনার টিএসও আজ এই রুটের ফাইনাল সাবমিট করেছেন। নতুন কল শুরু করা যাবে না।</string>
-    <string name="out_commit_day_submitted">আজকের বিক্রয় ইতিমধ্যে জমা হয়েছে, তাই নতুন কল শুরু করা যাবে না। আজ আরও বিক্রি করতে চাইলে আপনার টিএসওকে দিনটি আবার খুলে দিতে বলুন।</string>
+    <string name="out_commit_day_submitted">আজকের বিক্রয় ইতিমধ্যে জমা হয়েছে, তাই নতুন কল শুরু করা যাবে না। আজ আরও বিক্রি করতে চাইলে অফিসকে দিনটি আবার খুলে দিতে বলুন।</string>
     <string name="out_retry">আবার চেষ্টা করুন</string>
     <string name="out_map">মানচিত্র</string>
     <string name="out_open_visit_resumed">%1$s-এ আপনার ভিজিট চলছে</string>
