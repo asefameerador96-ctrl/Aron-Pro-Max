@@ -111,7 +111,7 @@ fun TsoFrame(
  * gradient [title] and the grey round back button ([onBack], by default [TsoNav.back]) on the navy page, [bottomBar] docked under
  * the content, and the Home button at the bottom centre when [homeButton] (pass `TsoFab.of(screen)`, the s8 FAB column). A scrolling
  * content ends above the Home disc ([TsoFabBand]); a bottom bar sits above the disc too ([TsoBarOverFab]), as screenshots 31, 33, 43.
- * [glow] draws the page glow of the owner's screenshots behind the content (bottom dome 23 to 26, 39 to 42; top wash 19 to 22).
+ * [glow] draws the page glow of the owner's screenshots behind the content (bottom dome 23 to 26, 39, 40, and the login status 8; top wash 19 to 22).
  */
 @Composable
 fun TsoFrame(
@@ -132,8 +132,8 @@ fun TsoFrame(
                 Modifier.weight(1f).fillMaxWidth()
                     .then(
                         if (homeButton && bottomBar == null) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = TsoFabBand)
-                        // a bottom glow with no Home disc and no bar (Final Submit pickers): content stays clear of the dome
-                        else if (glow == NightPageGlow.Bottom && bottomBar == null) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = TsoFabBand)
+                        // a bottom glow with no Home disc and no bar (Final Submit pickers, Target Status): content stays clear of the dome; Sunlight has no dome, no band
+                        else if (glow == NightPageGlow.Bottom && bottomBar == null && !n.solid) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = TsoFabBand)
                         else Modifier,
                     ),
                 content = content,
