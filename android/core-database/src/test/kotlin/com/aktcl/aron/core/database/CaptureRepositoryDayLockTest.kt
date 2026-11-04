@@ -22,6 +22,7 @@ import com.aktcl.aron.core.database.repo.RouteDaySubmittedException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -49,6 +50,11 @@ class CaptureRepositoryDayLockTest {
     private val route = TestRows.meta().routeId!!
     private val date = TestRows.meta().businessDate
     private val numbering = MemoNumbering("sr334001", 0, 500)
+
+    @Before fun lockingPolicy() = runBlocking {
+        // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
+        TestRows.latePolicy(db, "reject")
+    }
 
     @After fun tearDown() = db.close()
 

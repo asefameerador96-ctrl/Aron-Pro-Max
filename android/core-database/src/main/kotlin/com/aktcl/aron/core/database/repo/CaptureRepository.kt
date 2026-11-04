@@ -195,12 +195,14 @@ class CaptureRepository(
      * ([FinalSubmitLock.LOCKED_TYPES]) on a closed route-day, [DayRefusal.SALES_SUBMIT] while a Sales Submit stands (the
      * route-day's, or the AMO's supervisor day). Per type as the record methods check it: `stock_movement` meets the Final
      * Submit lock only, a routeless `due_collection` is never checked. Pure reads, no write; a screen asks it before it reads
-     * a fix or opens a form, and words the answer.
+     * a fix or opens a form, and words the answer. Owner decision 2026-11-04: FINAL_SUBMIT only while the late-sale policy
+     * in force at this repository's trusted now locks ([FinalSubmitLock.lockApplies]: quarantine or reject); under
+     * accept_and_flag (the default) a final route-day answers as an open one, and SALES_SUBMIT is unchanged.
      */
     suspend fun dayRefusal(meta: CaptureMeta, recordType: String): DayRefusal? = when {
-        recordType == STOCK_MOVEMENT -> DayRefusal.FINAL_SUBMIT.takeIf { FinalSubmitLock.refuses(db, meta, STOCK_MOVEMENT) }
+        recordType == STOCK_MOVEMENT -> DayRefusal.FINAL_SUBMIT.takeIf { FinalSubmitLock.refuses(db, meta, STOCK_MOVEMENT, nowIso()) }
         recordType == DUE_COLLECTION && meta.routeId == null -> null
-        else -> RouteDayLock.refusal(db, meta, recordType)
+        else -> RouteDayLock.refusal(db, meta, recordType, nowIso())
     }
 
     /** A due collected against an earlier memo: its own family (a signed header record, docs/24 s4.2). */
@@ -430,11 +432,11 @@ class CaptureRepository(
      * the lock as before (D-TSO-MAN-31). The print ledger does not come through here. Follow-up (R-W-22): [recordStock]
      * names `stock_movement` to the Final Submit part alone ([requireNotFinal]).
      */
-    private suspend fun requireOpenRouteDay(meta: CaptureMeta, recordType: String? = null) = RouteDayLock.requireOpen(db, meta, recordType)
+    private suspend fun requireOpenRouteDay(meta: CaptureMeta, recordType: String? = null) = RouteDayLock.requireOpen(db, meta, recordType, nowIso())
 
     /** tso-manual X4a: the Final Submit part of [requireOpenRouteDay] alone, for a check that must run before a side effect. */
     private suspend fun requireNotFinal(meta: CaptureMeta, recordType: String) {
-        if (FinalSubmitLock.refuses(db, meta, recordType)) throw RouteDayFinalSubmittedException(meta.businessDate, checkNotNull(meta.routeId), recordType)
+        if (FinalSubmitLock.refuses(db, meta, recordType, nowIso())) throw RouteDayFinalSubmittedException(meta.businessDate, checkNotNull(meta.routeId), recordType)
     }
 
     /** Device ids are lower-case UUID v4 (contract `Uuid`); anything else would be rejected on upload as schema_invalid. */

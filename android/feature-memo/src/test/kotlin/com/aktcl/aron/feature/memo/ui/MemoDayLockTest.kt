@@ -8,6 +8,7 @@ import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.AronDatabase
 import com.aktcl.aron.core.database.entity.BundleSectionEntity
 import com.aktcl.aron.core.database.entity.CaptureMeta
+import com.aktcl.aron.core.database.entity.ConfigValueEntity
 import com.aktcl.aron.core.database.entity.DaySubmitEntity
 import com.aktcl.aron.core.database.entity.GeoFixEntity
 import com.aktcl.aron.core.database.entity.MemoEntity
@@ -59,6 +60,13 @@ class MemoDayLockTest {
 
     @Before fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
+        // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
+        runBlocking {
+            db.referenceDao().insertConfig(listOf(ConfigValueEntity(
+                key = FinalSubmitLock.KEY_LATE_POLICY, valueJson = "\"quarantine\"", scopeType = "global", scopeId = null, effectiveFrom = null,
+                effectiveTo = null, configVersion = 1, requiresAck = false, scheduled = false,
+            )))
+        }
         val catcher = Thread.UncaughtExceptionHandler { _, e -> crashes += e }
         previousDefault = Thread.getDefaultUncaughtExceptionHandler(); Thread.setDefaultUncaughtExceptionHandler(catcher)
         previousOwn = Thread.currentThread().uncaughtExceptionHandler; Thread.currentThread().uncaughtExceptionHandler = catcher

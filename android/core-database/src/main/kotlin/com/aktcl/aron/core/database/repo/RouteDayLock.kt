@@ -22,11 +22,16 @@ import kotlinx.serialization.json.JsonPrimitive
  * visit_close, and the SR and AMO screens catch [RouteDayFinalSubmittedException] and show the lock text. Follow-up
  * (R-W-22, R-W-23): stock_movement is named too (the Final Submit part only), and the screens catch
  * [RouteDaySubmittedException] as well ([DayRefusal]) and word it with the submit text.
+ *
+ * Owner decision 2026-11-04 (D-TSO-MAN-49): the Final Submit part applies only while the late-sale policy in force is
+ * quarantine or reject ([FinalSubmitLock.lockApplies]); under accept_and_flag (the shipped default) a final-submitted
+ * route-day takes every capture as before and the server accepts and flags it. [nowIso] is the trusted time the policy is
+ * read at (null: the capture's own `captured_at`). The Sales Submit part is unchanged.
  */
 internal object RouteDayLock {
-    suspend fun isOpen(db: AronDatabase, meta: CaptureMeta, recordType: String? = null): Boolean {
+    suspend fun isOpen(db: AronDatabase, meta: CaptureMeta, recordType: String? = null, nowIso: String? = null): Boolean {
         // tso-manual A3: a route-day closed by its zone's Final Submit takes no more captures of the locked types (D-TSO-MAN-31)
-        if (recordType != null && FinalSubmitLock.refuses(db, meta, recordType)) return false
+        if (recordType != null && FinalSubmitLock.refuses(db, meta, recordType, nowIso ?: meta.capturedAt)) return false
         if (!routeOpen(db, meta.businessDate, meta.routeId)) return false
         // An AMO's supervisor-day submit (no route) closes the whole day: records that carry a route are refused too.
         return meta.routeId == null || supervisorOpen(db, meta.businessDate)
@@ -37,8 +42,8 @@ internal object RouteDayLock {
      * ([RouteDayFinalSubmittedException], which a screen catches and words as the lock) or by a Sales Submit
      * ([RouteDaySubmittedException], an IllegalStateException as before). CaptureRepository's requireOpenRouteDay (tso-manual X4a).
      */
-    suspend fun requireOpen(db: AronDatabase, meta: CaptureMeta, recordType: String?) {
-        when (refusal(db, meta, recordType)) {
+    suspend fun requireOpen(db: AronDatabase, meta: CaptureMeta, recordType: String?, nowIso: String? = null) {
+        when (refusal(db, meta, recordType, nowIso)) {
             DayRefusal.FINAL_SUBMIT -> throw RouteDayFinalSubmittedException(meta.businessDate, checkNotNull(meta.routeId), checkNotNull(recordType))
             DayRefusal.SALES_SUBMIT -> throw RouteDaySubmittedException(meta.businessDate, meta.routeId)
             null -> Unit
@@ -49,8 +54,8 @@ internal object RouteDayLock {
      * tso-manual X4a (R-W-23): why [requireOpen] would refuse a capture of [recordType] with [meta], or null when it would
      * pass. Pure reads, no write; the one rule both use, so a screen's check and the write cannot disagree.
      */
-    suspend fun refusal(db: AronDatabase, meta: CaptureMeta, recordType: String?): DayRefusal? = when {
-        recordType != null && FinalSubmitLock.refuses(db, meta, recordType) -> DayRefusal.FINAL_SUBMIT
+    suspend fun refusal(db: AronDatabase, meta: CaptureMeta, recordType: String?, nowIso: String? = null): DayRefusal? = when {
+        recordType != null && FinalSubmitLock.refuses(db, meta, recordType, nowIso ?: meta.capturedAt) -> DayRefusal.FINAL_SUBMIT
         !isOpen(db, meta) -> DayRefusal.SALES_SUBMIT
         else -> null
     }
@@ -91,10 +96,51 @@ internal object RouteDayLock {
  *
  * A reopen (D-TSO-MAN-29) clears it when both sources have moved on (the next sync answer and the next delta). Pure reads,
  * no network, never throws: an unreadable source counts as "not final".
+ *
+ * Owner decision 2026-11-04 (D-TSO-MAN-49): whether the phone acts on a final route-day at all is ONE predicate,
+ * [lockApplies]: the late-sale policy `cfg.day.late_sync_after_final_policy` in force (in the device bundle since V0142) is
+ * quarantine or reject. Under accept_and_flag (the shipped default), with the key absent or unreadable (the server's own
+ * fallback), nothing on the phone changes after a Final Submit. Every lock use goes through it: [refuses] (and so
+ * RouteDayLock, CaptureRepository's checks, the screens' refusals, Mark Paid, the stock slip filter and the call guards),
+ * [locks] (the banners, the check-out gate, the AMO's route check) and [lockedRoutes] (the AMO banner). [isFinal] and
+ * [finalRoutes] stay the plain fact the phone learned and decide nothing on their own.
  */
 object FinalSubmitLock {
     /** Sync meta key of the last sync answer's route-day states (the sync engine's `SyncEngine.KEY_DAY_STATES`). */
     const val KEY_SYNC_DAY_STATES = "sync.day_states"
+
+    /** The late-sale policy key (V0006; delivered to the phones by V0142, owner decision 2026-11-04). */
+    const val KEY_LATE_POLICY = "cfg.day.late_sync_after_final_policy"
+
+    /**
+     * The policies under which the server holds or refuses a late capture of a final route-day, so the phone locks it
+     * (V0006 bounds: accept_and_flag, quarantine, reject). accept_and_flag is not among them.
+     */
+    val LOCKING_POLICIES: Set<String> = setOf("quarantine", "reject")
+
+    /**
+     * THE predicate of the phone's Final Submit lock (owner decision 2026-11-04, D-TSO-MAN-49): true only when the late-sale
+     * policy in force at [nowIso] (trusted time; the bundle's scheduled value whose window holds it, else the resolved one)
+     * is quarantine or reject. False for accept_and_flag, and false when the key is absent or its value unreadable, as the
+     * server falls back to accept_and_flag (IngestService). Pure reads, never throws.
+     */
+    suspend fun lockApplies(db: AronDatabase, nowIso: String): Boolean = runCatching {
+        val text = ReferenceRepository(db).config(KEY_LATE_POLICY, nowIso) ?: return false
+        val policy = (json.parseToJsonElement(text) as? JsonPrimitive)?.takeIf { it.isString }?.content
+        policy in LOCKING_POLICIES
+    }.getOrDefault(false)
+
+    /**
+     * True when the phone locks the route-day [routeId] on [businessDate]: the lock applies ([lockApplies] at [nowIso]) and
+     * the route-day is closed by its zone's Final Submit ([isFinal]). The SR banner, the SR check-out gate and the AMO's
+     * route check read it. Pure reads, never throws.
+     */
+    suspend fun locks(db: AronDatabase, businessDate: String, routeId: Long, nowIso: String): Boolean =
+        runCatching { lockApplies(db, nowIso) && isFinal(db, businessDate, routeId) }.getOrDefault(false)
+
+    /** The routes among [routeIds] the phone locks on [businessDate] ([locks]); empty while the lock does not apply. */
+    suspend fun lockedRoutes(db: AronDatabase, businessDate: String, routeIds: List<Long>, nowIso: String): List<Long> =
+        if (!lockApplies(db, nowIso)) emptyList() else finalRoutes(db, businessDate, routeIds)
 
     /** Outcome codes of records that met the lock on the server (contract RecordOutcomeCode, 1.10.0). */
     const val HELD = "after_final_submit"
@@ -112,12 +158,16 @@ object FinalSubmitLock {
     )
 
     /**
-     * True when a capture of [recordType] with [meta] meets the lock: a locked type ([LOCKED_TYPES]) on a route-day closed by
-     * its zone's Final Submit. A routeless record never does. Pure reads, never throws.
+     * True when a capture of [recordType] with [meta] meets the lock: the lock applies ([lockApplies] at [nowIso], by default
+     * the capture's own trusted `captured_at`) and a locked type ([LOCKED_TYPES]) is captured on a route-day closed by its
+     * zone's Final Submit. A routeless record never does. Pure reads, never throws.
      */
-    suspend fun refuses(db: AronDatabase, meta: CaptureMeta, recordType: String): Boolean {
+    suspend fun refuses(db: AronDatabase, meta: CaptureMeta, recordType: String, nowIso: String = meta.capturedAt): Boolean {
         val route = meta.routeId ?: return false
-        return recordType in LOCKED_TYPES && isFinal(db, meta.businessDate, route)
+        if (recordType !in LOCKED_TYPES) return false
+        // owner decision 2026-11-04: accept_and_flag (the default), an absent or unreadable policy: the phone never locks
+        if (!lockApplies(db, nowIso)) return false
+        return isFinal(db, meta.businessDate, route)
     }
 
     /**
@@ -134,20 +184,28 @@ object FinalSubmitLock {
      * null. A call whose route-day is closed by Final Submit is not restored: it cannot go on (no sale, no close would be
      * accepted), so the rep is not taken back into it on every launch. A reopen of the day brings it back.
      */
-    suspend fun callToRestore(db: AronDatabase, businessDate: String, eligible: (com.aktcl.aron.core.database.entity.VisitEntity) -> Boolean): com.aktcl.aron.core.database.entity.VisitEntity? {
+    suspend fun callToRestore(
+        db: AronDatabase, businessDate: String, nowIso: String? = null, eligible: (com.aktcl.aron.core.database.entity.VisitEntity) -> Boolean,
+    ): com.aktcl.aron.core.database.entity.VisitEntity? {
         val dao = db.captureDao()
         val closed = dao.visitClosesOn(businessDate).map { it.visitClientUuid }.toSet()
         val last = dao.visitsOn(businessDate).filter { it.clientUuid !in closed && eligible(it) }.maxByOrNull { it.sequenceNo } ?: return null
-        return last.takeUnless { refuses(db, it.meta, "visit_close") }
+        return last.takeUnless { refuses(db, it.meta, "visit_close", nowIso ?: it.meta.capturedAt) }
     }
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** True when the route-day [routeId] on [businessDate] is closed by its zone's Final Submit. */
+    /**
+     * True when the route-day [routeId] on [businessDate] is closed by its zone's Final Submit: the fact the phone learned,
+     * whatever the policy. It decides no lock on its own: [locks] and [refuses] add [lockApplies].
+     */
     suspend fun isFinal(db: AronDatabase, businessDate: String, routeId: Long): Boolean =
         sectionFinal(db, businessDate, routeId) || syncFinal(db, businessDate, routeId)
 
-    /** The routes among [routeIds] whose route-day on [businessDate] is closed by Final Submit (in the given order). */
+    /**
+     * The routes among [routeIds] whose route-day on [businessDate] is closed by Final Submit (in the given order): the fact,
+     * as [isFinal]; the AMO banner reads [lockedRoutes].
+     */
     suspend fun finalRoutes(db: AronDatabase, businessDate: String, routeIds: List<Long>): List<Long> {
         val fromSync = syncStates(db).filter { isFinalState(it, businessDate) }.mapNotNull { it.long("route_id") }.toSet()
         return routeIds.distinct().filter { it in fromSync || sectionFinal(db, businessDate, it) }

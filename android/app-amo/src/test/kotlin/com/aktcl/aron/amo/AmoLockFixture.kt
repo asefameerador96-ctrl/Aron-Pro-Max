@@ -7,6 +7,7 @@ import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.AronDatabase
 import com.aktcl.aron.core.database.entity.BundleSectionEntity
 import com.aktcl.aron.core.database.entity.CaptureMeta
+import com.aktcl.aron.core.database.entity.ConfigValueEntity
 import com.aktcl.aron.core.database.entity.DaySubmitEntity
 import com.aktcl.aron.core.database.entity.GeoFixEntity
 import com.aktcl.aron.core.database.entity.MemoEntity
@@ -17,6 +18,7 @@ import com.aktcl.aron.core.database.entity.RouteEntity
 import com.aktcl.aron.core.database.entity.SkuEntity
 import com.aktcl.aron.core.database.entity.StockMovementEntity
 import com.aktcl.aron.core.database.entity.VisitEntity
+import com.aktcl.aron.core.database.repo.FinalSubmitLock
 import com.aktcl.aron.core.database.repo.MemoNumbering
 import com.aktcl.aron.core.database.repo.SaleCapture
 import com.aktcl.aron.core.geo.FixDeviceState
@@ -55,7 +57,7 @@ import java.io.File
  * own). Nothing reaches the network; the location source answers at the outlet (counted, and [duringFix] runs while the fix
  * is read); no printer is saved. The business date is the day's own (trusted clock, the wall clock here).
  */
-internal class AmoLockFixture(context: Context) {
+internal class AmoLockFixture(context: Context, latePolicy: String?) {
     val db: AronDatabase = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries().build()
     private val dir = File(context.cacheDir, "x4a-amo-day-" + ClientIds.newUuid()).apply { mkdirs() }
     private val scope = CoroutineScope(SupervisorJob())
@@ -103,6 +105,15 @@ internal class AmoLockFixture(context: Context) {
     val day = AmoDay(9L, context, db, components, SyncScheduler.None, fixManager, printerManager, "amo", memoNumbering = MemoNumbering("amo334001", 0, 500))
 
     val date: String get() = day.businessDate()
+
+    /**
+     * Owner decision 2026-11-04 (D-TSO-MAN-49): the late-sale policy the bundle carries (`cfg.day.late_sync_after_final_policy`,
+     * in the device bundle since V0142); null: the bundle carries no such key. The phone locks a final route-day only under
+     * quarantine or reject, so the X4a lock tests name one of them; accept_and_flag and null prove that nothing changes.
+     */
+    fun setLatePolicy(policy: String?) = latePolicyOn(db, policy)
+
+    init { setLatePolicy(latePolicy) }
 
     fun meta(routeId: Long? = route): CaptureMeta = day.metaProvider.meta(routeId ?: 0L)
 
@@ -208,6 +219,26 @@ internal class AmoLockFixture(context: Context) {
         return vm
     }
 
+    /**
+     * Owner decision 2026-11-04 (D-TSO-MAN-49): the kit's own sale on [v] (two dozen) with [closeDay] landing while it is
+     * open, as [refusedSale], where the lock does not apply (accept_and_flag, or no policy in the bundle): the Save stores
+     * the memo with its number and the flow asks to print. Returns the view model.
+     */
+    fun savedSale(v: OpenVisit, closeDay: () -> Unit = { finalSubmitted(v.routeId) }): SaleViewModel {
+        stockedCatalog()
+        val vm = day.sale.newSaleViewModel()
+        runBlocking { day.sale.prepare() }
+        vm.start(day.sale.saleVisit(v))
+        await("the sale is drafted") { day.sale.flow.state.value.draft?.visitUuid == v.visitUuid }
+        vm.setQuantity(105, 2, QtyUnit.DOZEN)
+        await("two dozen on the draft") { day.sale.flow.state.value.draft?.lines?.isNotEmpty() == true }
+        closeDay()
+        vm.onPrintTapped()
+        vm.viewModelScopeForDialogs().launch { vm.saveAndPrint.onSaveAnswer(true) }
+        await("the sale is saved and asks to print") { vm.saveAndPrint.step.value == SaveAndPrint.Step.AskPrint }
+        return vm
+    }
+
     companion object {
         const val LAT = 23.79
         const val LNG = 90.40
@@ -216,5 +247,19 @@ internal class AmoLockFixture(context: Context) {
         fun await(what: String, cond: () -> Boolean) = runBlocking {
             assertTrue(what, withTimeoutOrNull(10_000) { while (!cond()) delay(10); true } == true)
         }
+    }
+}
+
+/**
+ * Owner decision 2026-11-04 (D-TSO-MAN-49): writes the late-sale policy [policy] into [db]'s held config as the bundle
+ * stores it (a global resolved value, JSON text); null removes the key, as a bundle without it.
+ */
+internal fun latePolicyOn(db: AronDatabase, policy: String?) {
+    runBlocking<Unit> {
+        db.referenceDao().deleteConfigKey(FinalSubmitLock.KEY_LATE_POLICY)
+        if (policy != null) db.referenceDao().insertConfig(listOf(ConfigValueEntity(
+            key = FinalSubmitLock.KEY_LATE_POLICY, valueJson = "\"$policy\"", scopeType = "global", scopeId = null, effectiveFrom = null,
+            effectiveTo = null, configVersion = 1, requiresAck = false, scheduled = false,
+        )))
     }
 }

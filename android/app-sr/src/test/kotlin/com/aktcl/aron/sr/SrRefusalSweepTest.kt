@@ -53,7 +53,8 @@ class SrRefusalSweepTest {
         val catcher = Thread.UncaughtExceptionHandler { _, e -> crashes += e }
         previousDefault = Thread.getDefaultUncaughtExceptionHandler(); Thread.setDefaultUncaughtExceptionHandler(catcher)
         previousOwn = Thread.currentThread().uncaughtExceptionHandler; Thread.currentThread().uncaughtExceptionHandler = catcher
-        f = SrLockFixture(context)
+        // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
+        f = SrLockFixture(context, latePolicy = "quarantine")
     }
 
     @After fun tearDown() {

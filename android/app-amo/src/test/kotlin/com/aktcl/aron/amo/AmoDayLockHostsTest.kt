@@ -49,7 +49,8 @@ class AmoDayLockHostsTest {
 
     @Before fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
-        f = AmoLockFixture(app)
+        // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
+        f = AmoLockFixture(app, latePolicy = "quarantine")
     }
 
     @After fun tearDown() {

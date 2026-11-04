@@ -19,6 +19,7 @@ import com.aktcl.aron.core.printing.flow.PrintEvent
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -43,6 +44,11 @@ class RouteDayLockTest {
     private val repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
     private val route = TestRows.meta().routeId!!
     private val date = TestRows.meta().businessDate
+
+    @Before fun lockingPolicy() = runBlocking {
+        // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
+        TestRows.latePolicy(db, "quarantine")
+    }
 
     @After fun tearDown() = db.close()
 

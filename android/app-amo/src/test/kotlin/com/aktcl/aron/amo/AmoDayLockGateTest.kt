@@ -47,6 +47,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -77,6 +78,11 @@ class AmoDayLockGateTest {
     private val now = "2026-10-26T12:00:00.000Z"
     private val repo = CaptureRepository(db) { now }
     private val printerScope = CoroutineScope(SupervisorJob())
+
+    @Before fun lockingPolicy() {
+        // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
+        latePolicyOn(db, "quarantine")
+    }
 
     @After fun tearDown() { printerScope.cancel(); db.close() }
 

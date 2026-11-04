@@ -48,6 +48,8 @@ class AmoDayLockCallTest {
         databases = UserDatabases(ApplicationProvider.getApplicationContext<Application>()) { null }
         db = runBlocking { databases.of(user) }
         repo = CaptureRepository(db) { now }
+        // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
+        latePolicyOn(db, "quarantine")
     }
 
     @After fun tearDown() = databases.close(user)
