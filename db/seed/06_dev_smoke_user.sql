@@ -15,24 +15,32 @@ DECLARE
   today date := app.dhaka_date(now());
 BEGIN
   IF EXISTS (SELECT 1 FROM app.cfg_version WHERE summary = 'Dev database overrides (docs/24 s9.4, seed)') THEN
-    RAISE NOTICE 'seed 06b skipped (config version of 04 present: test or local profile)';
+    RAISE NOTICE 'seed 06 smoke user skipped (config version of 04 present: test or local profile)';
     RETURN;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM app.zone WHERE code = 'Z-GUL') THEN
-    RAISE NOTICE 'seed 06b skipped (no Z-GUL: seed 06 has not run)';
+    RAISE NOTICE 'seed 06 smoke user skipped (no Z-GUL: seed 06 has not run)';
     RETURN;
   END IF;
 
+  -- Its own zone, so the TSO's Final Submit preview and the zone views of Z-GUL never list the smoke route (a daily route
+  -- would be "due and not submitted" there every day).
+  INSERT INTO app.zone (code, name, name_bn, territory_id, house_id, dep_name)
+    SELECT 'Z-SMK', 'Slice smoke (dev)', 'স্লাইস স্মোক (ডেভ)', t.id, h.id, 'Smoke DEP' FROM app.territory t, app.house h
+     WHERE t.code = 'T-DHK-N' AND h.code = 'H-GUL' AND NOT EXISTS (SELECT 1 FROM app.zone x WHERE x.code = 'Z-SMK');
+  INSERT INTO app.cluster (zone_id, name, cluster_type)
+    SELECT z.id, 'Smoke Circle', 'market' FROM app.zone z
+     WHERE z.code = 'Z-SMK' AND NOT EXISTS (SELECT 1 FROM app.cluster x WHERE x.zone_id = z.id AND x.name = 'Smoke Circle');
   INSERT INTO app.route (code, name, display_label, zone_id, kind, visit_kind, visit_days_mask, sequence_no, route_class)
     SELECT 'SMK-SR-D', 'Slice smoke (daily)', 'Daily', z.id, 'sr', 'daily', 127, 99, 'normal'
-      FROM app.zone z WHERE z.code = 'Z-GUL' AND NOT EXISTS (SELECT 1 FROM app.route x WHERE x.code = 'SMK-SR-D');
+      FROM app.zone z WHERE z.code = 'Z-SMK' AND NOT EXISTS (SELECT 1 FROM app.route x WHERE x.code = 'SMK-SR-D');
   INSERT INTO app.route_planned (route_id, visit_kind, visit_days_mask, valid_from)
     SELECT r.id, r.visit_kind, r.visit_days_mask, DATE '2026-10-01' FROM app.route r
      WHERE r.code = 'SMK-SR-D' AND NOT EXISTS (SELECT 1 FROM app.route_planned p WHERE p.route_id = r.id);
 
   INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password)
     SELECT 'smoke1', 'Slice Smoke SR (dev)', 'SR', 'Sales Representative', 'T-SMK-0001', 'en', z.id, true, false
-      FROM app.zone z WHERE z.code = 'Z-GUL' AND NOT EXISTS (SELECT 1 FROM app.app_user x WHERE lower(x.username) = 'smoke1');
+      FROM app.zone z WHERE z.code = 'Z-SMK' AND NOT EXISTS (SELECT 1 FROM app.app_user x WHERE lower(x.username) = 'smoke1');
 
   INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason)
     SELECT r.id, u.id, 'primary', today, 'dev seed: the slice smoke SR (D-SRFIX-04)'
@@ -50,6 +58,6 @@ BEGIN
     UPDATE app.app_user SET data_origin = 'test' WHERE username = 'smoke1' AND data_origin <> 'test';
     UPDATE app.route SET data_origin = 'test' WHERE code = 'SMK-SR-D' AND data_origin <> 'test';
   END IF;
-  RAISE NOTICE 'seed 06b applied (smoke1 on SMK-SR-D)';
+  RAISE NOTICE 'seed 06 smoke user applied (smoke1 on SMK-SR-D)';
 END
 $seed$;

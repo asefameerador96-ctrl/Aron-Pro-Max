@@ -67,9 +67,14 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
     fun hop1TheDevSeed() {
         h("1 Seed (dev profile: db/seed without 04_*, plus the smoke outlets)")
         hop("config version `Dev database overrides` absent (the Gulshan seed applies)", "count" to sqlLong("SELECT count(*) FROM app.cfg_version WHERE summary = 'Dev database overrides (docs/24 s9.4, seed)'"), "expected" to 0L)
-        hop("Gulshan/Banani routes, mask, outlets (20 seed + 1 smoke each)",
+        hop("Gulshan/Banani routes, mask, outlets (20/23/20 seed outlets; the smoke outlets sit on SMK-SR-D, D-SRFIX-04)",
             "rows" to sql("SELECT string_agg(x, ',' ORDER BY x) FROM (SELECT r.code || ':' || r.visit_days_mask || ':' || count(o.id) AS x FROM app.route r JOIN app.outlet o ON o.route_id = r.id WHERE r.code IN ('GUL-SR-2','GUL-SR-1','BAN-SR-11') GROUP BY r.code, r.visit_days_mask) t"),
-            "expected" to "BAN-SR-11:36:21,GUL-SR-1:18:24,GUL-SR-2:9:21")
+            "expected" to "BAN-SR-11:36:20,GUL-SR-1:18:23,GUL-SR-2:9:20")
+        hop("slice smoke (D-SRFIX-04): route SMK-SR-D holds exactly the three smoke outlets",
+            "outlets" to sql("SELECT string_agg(o.code, ',' ORDER BY o.code) FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE r.code = 'SMK-SR-D'"),
+            "expected" to "SMOKE-SR-001,SMOKE-SR-002,SMOKE-SR-003")
+        hop("slice smoke: SMK-SR-D is a daily route", "mask" to sqlLong("SELECT visit_days_mask FROM app.route WHERE code = 'SMK-SR-D'"), "expected" to 127L)
+        hop("slice smoke: smoke1's open primaries", "routes" to sql("SELECT string_agg(r.code, ',' ORDER BY r.code) FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id JOIN app.app_user u ON u.id = a.user_id WHERE u.username = 'smoke1' AND a.kind = 'primary' AND a.valid_to IS NULL"), "expected" to "SMK-SR-D")
         hop("Friday (bit 6) is no route's day", "sum of masks" to sqlLong("SELECT sum(visit_days_mask) FROM app.route WHERE code IN ('GUL-SR-2','GUL-SR-1','BAN-SR-11')"), "Sat..Thu" to 63L)
         val u = rows("SELECT category_code AS cat, count(*) AS n, min(base_per_pack) AS lo, max(base_per_pack) AS hi, string_agg(DISTINCT base_unit, ',') AS unit, string_agg(DISTINCT entry_unit_default, ',') AS entry FROM app.sku WHERE status = 'active' GROUP BY category_code ORDER BY 1")
         note("SKU units by category (count, base_per_pack lo-hi, base unit, entry unit)", u.joinToString(" / ") { "${it["cat"]}: ${it["n"]}, ${it["lo"]}-${it["hi"]}, ${it["unit"]}, ${it["entry"]}" })
@@ -90,7 +95,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         val meta = bundle.path("meta")
         note("bundle meta", "bundle_version=${meta.path("bundle_version").asText()} config_version=${meta.path("config_version").asText()}")
         hop("routes in the trace day's bundle", "planned today" to bundle.path("routes").filter { it.path("planned_today").asBoolean() }.joinToString(",") { it.path("route").path("code").asText("?") }, "expected" to "GUL-SR-2")
-        hop("outlets on the planned route with a pin", "with pin" to route.path("outlets").count { it.path("lat").isNumber && it.path("lng").isNumber }, "outlets" to route.path("outlets").size(), "expected" to 21)
+        hop("outlets on the planned route with a pin", "with pin" to route.path("outlets").count { it.path("lat").isNumber && it.path("lng").isNumber }, "outlets" to route.path("outlets").size(), "expected" to 20)
         hop("plan SKUs with an outlet price today", "count" to skus.size, "expected >= 39" to skus.size.coerceAtLeast(39))
         note("pack sizes in the bundle (category: entry unit x pack)", skus.values.groupBy { it.category }.entries.joinToString(" / ") { (c, l) -> "$c: " + l.map { "${it.entryUnit}x${it.perPack}" }.distinct().sorted().joinToString("|") })
         note("memo numbers: bind_ordinal x block + n", "ordinal ${bundle.path("user").path("bind_ordinal").asInt()}, block ${bundle.path("user").path("memo_seq_block_size").asInt()}, first number ${sr.seq}")

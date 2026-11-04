@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """SR slice proof on a deployed environment (lead request 2026-10-07): the API path a phone takes for one sale,
-through the public address (Front Door), as the smoke's own seeded SR on the seeded dev phone (db/seed/06b: smoke1, never the owner's pilot login sr1001; device
+through the public address (Front Door), as the smoke's own seeded SR on the seeded dev phone (db/seed/06_dev_smoke_user.sql: smoke1, never the owner's pilot login sr1001; device
 00000000-0000-4000-8000-000000000001, a bound phone, so login answers "ok" without OTP).
 
   1 login (phone)                     POST /v1/auth/login           status ok, a token (never printed)
@@ -41,7 +41,7 @@ PASSWORD = os.environ.get("SLICE_PASSWORD", "")
 DEVICE = os.environ.get("SLICE_DEVICE", "00000000-0000-4000-8000-000000000001")
 APP_VERSION = os.environ.get("SLICE_APP_VERSION", "1.0.9+9")
 TILE_WAIT_S = int(os.environ.get("SLICE_TILE_WAIT_S", "300"))
-# The smoke's own outlets (infra/sql/devseed-smoke-outlet.sql), all on smoke1's own daily dev route SMK-SR-D (db/seed/06b, D-SRFIX-04):
+# The smoke's own outlets (infra/sql/devseed-smoke-outlet.sql), all on smoke1's own daily dev route SMK-SR-D (db/seed/06_dev_smoke_user.sql, D-SRFIX-04):
 # the owner's phone (sr1001) never downloads them and never sees the smoke sales as another phone's.
 OUTLET_CODES = [c.strip() for c in os.environ.get("SLICE_OUTLET_CODE", "SMOKE-SR-001,SMOKE-SR-002,SMOKE-SR-003").split(",") if c.strip()]
 OUTLET_CODE = ",".join(OUTLET_CODES)
