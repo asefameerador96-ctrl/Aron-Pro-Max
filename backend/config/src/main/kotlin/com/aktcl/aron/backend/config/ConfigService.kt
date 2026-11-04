@@ -42,7 +42,25 @@ fun interface NodeReach {
     fun national(p: AronPrincipal): Boolean = p.role in setOf(Role.TOP, Role.NATIONAL, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 }
 
+/**
+ * Told once a config version has COMMITTED (never for a change that is pending, scheduled, rolled back or expired), with
+ * the keys its items touched. tso-manual X4a fix round 4 (checker medium): the wiring nudges the SR and AMO phones of the
+ * closed zone-days after a change of `cfg.day.late_sync_after_final_policy`, so a phone locked under quarantine or reject
+ * unlocks as soon as the policy returns to accept_and_flag. Runs on the committing thread after the commit; it must not
+ * throw (a failure is swallowed: the config change has already committed) and must not block for long.
+ */
+fun interface ConfigCommitListener {
+    fun committed(version: Long, keys: Set<String>)
+
+    companion object {
+        val NONE = ConfigCommitListener { _, _ -> }
+    }
+}
+
 class ConfigService(private val db: Database, val resolver: ConfigResolver, private val clock: AronClock = AronClock.SYSTEM, private val nodeReach: NodeReach? = null) {
+    /** Told after every committed version ([ConfigCommitListener]); set once by the wiring, none in tests that do not look. */
+    @Volatile var committed: ConfigCommitListener = ConfigCommitListener.NONE
+
     private val dhaka = ZoneId.of("Asia/Dhaka")
     internal val database: Database get() = db
 
@@ -540,6 +558,9 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
             .bind("v", version).bind("items", Json.encodeToString(applied)).bind("at", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).bind("id", changeId).execute()
         AuditWriter.write(h, actor, "cfg_version", version.toString(), "commit", null, Json.parseToJsonElement(Json.encodeToString(applied)), reason, requestId, via = if (actor == null) "job" else "web")
         h.createUpdate("SELECT pg_notify('cfg_changed', :v)").bind("v", version.toString()).execute()
+        // X4a fix round 4: only once the version is committed (create, approve and the schedule tick all commit through here).
+        val keys = items.map { it.key }.toSet()
+        h.afterCommit { runCatching { committed.committed(version, keys) } }
         return true
     }
 
