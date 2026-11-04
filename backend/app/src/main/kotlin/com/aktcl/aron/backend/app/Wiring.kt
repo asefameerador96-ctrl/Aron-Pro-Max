@@ -301,6 +301,10 @@ class Wiring(
                     (configResolver.resolve(key, chain, clock.now()).value as kotlinx.serialization.json.JsonPrimitive).content == "true"
                 }.getOrDefault(false)
             }
+            // tso-manual X4a fix round 4: after a committed change of the late-sale policy, the SR and AMO phones of the closed
+            // zone-days are nudged to pull it (LatePolicyPush), so a locked phone unlocks with the change.
+            val latePolicyPush = com.aktcl.aron.backend.sync.LatePolicyPush(db, push, clock)
+            configService.committed = com.aktcl.aron.backend.config.ConfigCommitListener { _, keys -> latePolicyPush.onConfigCommitted(keys) }
             val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock, reach = reach), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + extraRecordHandlers)), db, config, clock)
             ingestForReview = sync.ingest
             val hikari = db.write as? com.zaxxer.hikari.HikariDataSource

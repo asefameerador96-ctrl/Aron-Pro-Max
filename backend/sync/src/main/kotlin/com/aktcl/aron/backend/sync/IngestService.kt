@@ -1931,8 +1931,17 @@ class IngestService(
          * default (D-TSO-MAN-49, D-55): a captured sale is never refused. Ingest reads it once per batch; the push after a
          * zone-day close reads it the same way ([finalSubmitPushReason]), so the push never says more than ingest does.
          */
-        fun latePolicyOf(config: ServerConfig): String =
-            runCatching { config.string("cfg.day.late_sync_after_final_policy") }.getOrNull()?.takeIf { it in LATE_POLICIES } ?: "accept_and_flag"
+        fun latePolicyOf(config: ServerConfig): String = latePolicyOf(runCatching { config.value(LATE_POLICY_KEY) }.getOrNull())
+
+        /**
+         * The same read of one stored value (X4a fix round 4: the push after a change of the key reads the committed row,
+         * not the 30 s ServerConfig cache): a JSON string among [LATE_POLICIES], else `accept_and_flag`.
+         */
+        fun latePolicyOf(raw: JsonElement?): String =
+            runCatching { raw!!.jsonPrimitive.content }.getOrNull()?.takeIf { it in LATE_POLICIES } ?: "accept_and_flag"
+
+        /** The late-sale policy key (V0006; delivered to the SR and AMO phones since V0142). */
+        const val LATE_POLICY_KEY = "cfg.day.late_sync_after_final_policy"
         private val DEVICE_HOLD_CODES = setOf(RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire, RecordOutcomeCode.DEVICE_NOT_ENROLLED.wire)
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
