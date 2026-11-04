@@ -637,7 +637,7 @@ Proved by: T-1-21, T-1-22, T-1-23, T-1-25, T-1-26, T-1-28, T-1-29, T-1-30, T-1-3
 | A substitute opening the route sets `acting_user_id` | D-85 |
 | Check-in with no visit still counts as `in_field` | The SR is at work |
 | A route with zero rows at 17:00 stays `in_field` | Daily Tracking lists it |
-| Rows after final submit follow the zone-day lock (s4.9 item 4): held `after_final_submit` when captured before the lock or on an untrusted clock (aggregated into their business date, flagged late, once an ADMIN accepts them), refused `day_final_submitted` when captured at or after it; the zone is never reopened automatically | D-55, D-TSO-MAN-31 |
+| Rows after final submit follow the late-sale policy (s4.9 item 4): under accept_and_flag, the shipped default (D-TSO-MAN-49, D-TSO-MAN-HO-02), they are stored, aggregated into their business date and flagged late, and the SR and AMO phones do not lock; only while an admin has set quarantine are they held `after_final_submit` when captured before the lock or on an untrusted clock (aggregated, flagged late, once an ADMIN accepts them) and refused `day_final_submitted` when captured at or after it (under reject every late figure row is refused), and the phones lock; the zone is never reopened automatically | D-55, D-TSO-MAN-31 |
 | A new business date is a new `route_day`; yesterday's row is never mutated | D-388 |
 | Device and server disagreement is displayed | Home header shows `device_state` and, when known, `server_state` |
 

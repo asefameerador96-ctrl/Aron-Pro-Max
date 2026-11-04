@@ -52,7 +52,9 @@ The newest page is kept for offline with its "as of". Kinds: ticket_updated, lea
 push-only. A tapped push notice opens the inbox (`notification`) or the Ticket Dashboard (`ticket_updated`); the push itself carries
 the reason only (fixed Bangla and English text, no business data). `day_final_submitted` is the SR and AMO day-lock push (silent
 "Day closed" notice), sent only while `cfg.day.late_sync_after_final_policy` is quarantine or reject; under accept_and_flag
-(the default, owner decision 2026-11-04) a close sends `day_state_changed`, which shows nothing and only pulls the day state.
+(the default, owner decision 2026-11-04) a close sends `day_state_changed`, which shows nothing, takes an earlier "Day closed"
+notice off the tray, and pulls the day state and the policy. A committed change of the policy sends the same reason, for the
+policy now in force, to the SR and AMO phones of the zone-days of today and yesterday that are closed (X4a fix round 4).
 
 ## Leave
 
@@ -79,11 +81,15 @@ OK, which returns to the selectors with the zone cleared for the next zone (CR-5
 ("already given FINAL SUBMIT for today"). The client uuid carries the preview's `submit_seq`, so a submit after a reopen is
 new and a replay of a reopened one (409 `ERR_DAY_FINAL_SUBMIT_REOPENED`) reads the preview again (D-TSO-MAN-28). →
 `final_submit`. The system back and the on-screen back do the same on every step (routes → pickers, pickers → out, and
-leaving starts a fresh screen next time); Get Sales Data asks for today's date when it is tapped. After it, the SR and AMO
-phones of the zone lock capture for the route-day and show a banner (D-TSO-MAN-31): no new call starts on a closed
+leaving starts a fresh screen next time); Get Sales Data asks for today's date when it is tapped. What the SR and AMO
+phones of the zone do after it depends on `cfg.day.late_sync_after_final_policy`. Under accept_and_flag, the shipped
+default (D-TSO-MAN-49, owner decision 2026-11-04, D-TSO-MAN-HO-02), they do not lock: a sale after the Final Submit is
+saved and printed as on any day, and the server stores it and flags it late. Only while an admin has set quarantine or
+reject do they lock capture for the route-day and show a banner (D-TSO-MAN-31): no new call starts on a closed
 route-day, a call in progress when the lock arrives ends on the phone (the server refuses its close) and is not restored
-after a relaunch; a late Sales Submit, attendance and printing stay allowed (the server accepts them as state). Nothing
-of this throws in a screen (D-A3-22).
+after a relaunch; a late Sales Submit, attendance and printing stay allowed (the server accepts them as state). When the
+admin returns the policy to accept_and_flag, the phones of the closed zone-days are told at once and unlock (X4a fix
+round 4). Nothing of this throws in a screen (D-A3-22).
 
 ## My Periphery
 
