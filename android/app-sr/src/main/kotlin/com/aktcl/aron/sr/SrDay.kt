@@ -392,15 +392,13 @@ class SrDay(
         onCommitError = { t -> android.util.Log.w("AronVisit", "visit commit failed: type=" + t.javaClass.simpleName, t) },
     )
 
-    /** D-SRFIX-01: the stored visit [uuid], else today's unclosed, non-blocked call at [outletId], as the open visit; null if none. */
+    /**
+     * D-SRFIX-01: the visit this phone already stored under [uuid] (a commit that landed before the failure was seen), as the
+     * open visit; null if none. Same uuid only: another call at the same outlet is never taken for this one (checker).
+     */
+    @Suppress("UNUSED_PARAMETER")
     private suspend fun heldCall(uuid: String, outletId: Long): OpenVisit? {
-        val dao = db.captureDao()
-        val today = businessDate()
-        val rows = dao.visitsOn(today)
-        val closed = dao.visitClosesOn(today).map { it.visitClientUuid }.toSet()
-        val v = rows.firstOrNull { it.clientUuid == uuid }
-            ?: rows.filter { it.outletId == outletId && it.clientUuid !in closed && it.geoAction != "blocked" }.maxByOrNull { it.sequenceNo }
-            ?: return null
+        val v = db.captureDao().visit(uuid) ?: return null
         return OpenVisit(
             visitUuid = v.clientUuid, outletId = v.outletId, routeId = v.meta.routeId ?: 0L, geoVerdict = v.geoVerdict,
             geoAction = v.geoAction, geoValidated = v.geoVerdict == "in_range", photoValidated = v.geoForcePhotoUuid != null,

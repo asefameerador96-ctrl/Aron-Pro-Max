@@ -300,6 +300,18 @@ class VisitFlowTest {
         assertEquals(VisitUiState.Open(held), st); assertEquals(held, session.current.value)
     }
 
+    @Test fun aResumedBlockedVisitStillGetsItsCloseHandOff() = runTest {
+        val held = OpenVisit("11111111-1111-4111-8111-111111111111", outlet.outletId, outlet.routeId, "outside", "blocked", false, false, null, "x")
+        var closed: OpenVisit? = null
+        val meta = CaptureMetaProvider { r -> CaptureMeta("2026-10-07", "2026-10-07T04:00:00.000Z", 1, 3, 0, true, r, null, "2026-10-07:1", false, 5) }
+        val s = GeoSettings.DEFAULT.copy(policyBase = GeoSettings.DEFAULT.policyBase.copy(mockPolicy = MockPolicy.BLOCK_SALE))
+        val f = VisitFlow(
+            FakeFixes(ArrayDeque(listOf(fix(mock = true)))), meta, VisitCommitter { _, _ -> error("pk") }, VisitSession(), { s },
+            { UUID.randomUUID().toString() }, { "x" }, { 1 }, { closed = it }, storedCall = StoredCallLookup { _, _ -> held },
+        )
+        assertEquals(VisitUiState.Blocked(held), f.open(outlet)); assertEquals(held, closed)
+    }
+
     @Test fun aRefusalNeverResumesAStoredCall() = runTest {
         val held = OpenVisit("11111111-1111-4111-8111-111111111111", outlet.outletId, outlet.routeId, "in_range", "sale_allowed", true, false, null, "x")
         val st = failingFlow(com.aktcl.aron.core.database.repo.RouteDayFinalSubmittedException("2026-10-07", 1L, "visit"), held = held).open(outlet)

@@ -104,7 +104,7 @@ fun interface VisitCommitter {
 
 /** D-SRFIX-01: finds the call this phone already holds, so a failed commit resumes it instead of losing the capture. */
 fun interface StoredCallLookup {
-    /** The stored visit [visitUuid], else today's unclosed call at [outletId]; null when there is none. */
+    /** The stored visit [visitUuid] only; null when there is none (never another call at the same outlet). */
     suspend fun find(visitUuid: String, outletId: Long): OpenVisit?
 
     companion object { val None = StoredCallLookup { _, _ -> null } }

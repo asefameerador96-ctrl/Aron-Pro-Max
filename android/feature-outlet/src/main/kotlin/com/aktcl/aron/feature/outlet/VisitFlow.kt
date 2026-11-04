@@ -116,8 +116,7 @@ class VisitFlow(
     private val openStore: OpenVisitStore = OpenVisitStore.None,
     private val configCheck: ConfigCheck = ConfigCheck.None,
     /**
-     * D-SRFIX-01: after a failed commit, the visit this phone already holds for the flow's visit uuid or, failing that, the
-     * unclosed call of the same outlet today (a retried or crashed earlier commit). A capture is never lost: it is resumed.
+     * D-SRFIX-01: after a failed commit, the visit this phone already holds for the flow's visit uuid (a commit that landed before its failure was seen). A capture is never lost: it is resumed.
      */
     private val storedCall: StoredCallLookup = StoredCallLookup.None,
     /** D-SRFIX-01: told every commit exception, so the next report names its type (production logs it). */
@@ -285,6 +284,7 @@ class VisitFlow(
         val st = if (blocked) VisitUiState.Blocked(held) else VisitUiState.Open(held)
         if (!blocked) session.set(held, VisitGeoInfo.of(o, result.verdict, result.distanceM, fix.lat.takeIf { fix.isOk }, fix.lng.takeIf { fix.isOk }))
         ui.value = st
+        if (blocked) onBlocked(held)
         return st
     }
 
