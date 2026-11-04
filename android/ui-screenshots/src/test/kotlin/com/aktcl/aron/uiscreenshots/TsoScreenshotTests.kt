@@ -150,7 +150,7 @@ class TsoScreenshotTests {
         {"route_id":3,"route_code":"R3","route_name":"Apsis Route 3","zone_id":9,"dep_name":"Banani - Test","user_id":null,"username":null,"display_name":null,"role":"SR"}]}""")
     @Composable private fun Status(tab: LoginSubmitTab, load: CardLoad<LoginSubmitUsers>?) {
         val nav = object : TsoNav { override fun open(screen: TsoScreen, arg: String?) {}; override fun back() {}; override fun home() {} }
-        TsoFrame(androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.tso.R.string.tso_dash_login_submit), nav, homeButton = TsoFab.of(TsoScreen.LOGIN_SUBMIT_STATUS)) {
+        TsoFrame(androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.tso.R.string.tso_dash_login_submit), nav, homeButton = TsoFab.of(TsoScreen.LOGIN_SUBMIT_STATUS), glow = com.aktcl.aron.feature.tso.TsoGlow.of(TsoScreen.LOGIN_SUBMIT_STATUS)) {
             TsoLoginSubmitStatusContent(tab, load, false, {}, {})
         }
     }
@@ -208,11 +208,11 @@ class TsoScreenshotTests {
     ).joinToString(",") + "]}")
     private val nav0 = object : TsoNav { override fun open(screen: TsoScreen, arg: String?) {}; override fun back() {}; override fun home() {} }
     @Composable private fun TargetStatusShot(tab: TargetTab, load: CardLoad<TargetAnswer>? = CardLoad(tgtStatus)) =
-        TsoFrame(androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.tso.R.string.tso_drawer_target_status), nav0, homeButton = TsoFab.of(TsoScreen.TARGET_STATUS)) {
+        TsoFrame(androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.tso.R.string.tso_drawer_target_status), nav0, homeButton = TsoFab.of(TsoScreen.TARGET_STATUS), glow = com.aktcl.aron.feature.tso.TsoGlow.of(TsoScreen.TARGET_STATUS)) {
             TargetStatusContent(load, tab, Bands.DEFAULT, false, {}, {}, {})
         }
     @Composable private fun TargetDetailsShot(tab: TargetTab, filter: String?) =
-        TsoFrame("Apsis", nav0, homeButton = TsoFab.of(TsoScreen.TARGET_DETAILS)) {
+        TsoFrame("Apsis", nav0, homeButton = TsoFab.of(TsoScreen.TARGET_DETAILS), glow = com.aktcl.aron.feature.tso.TsoGlow.of(TsoScreen.TARGET_DETAILS)) {
             TargetDetailsContent(CardLoad(tgtDetails), tab, Bands.DEFAULT, filter, false, {}, {}, {})
         }
     @Test fun target_monthly_en() = shot("tso_target_monthly_en", AppLanguage.EN) { TargetStatusShot(TargetTab.MONTHLY) }

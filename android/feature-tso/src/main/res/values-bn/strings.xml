@@ -115,7 +115,6 @@
     <string name="tso_mc_assign">দিন</string>
     <string name="tso_mc_task_type">কাজের ধরন</string>
     <string name="tso_mc_comment">মন্তব্য</string>
-    <string name="tso_mc_assignee">যাঁকে দেওয়া হবে: %1$s</string>
     <string name="tso_mc_assigned">কাজ দেওয়া হয়েছে %1$s কে</string>
     <string name="tso_mc_no_sr">এই রুটে এসআর নির্ধারিত নেই। কাজ দেওয়ার কেউ নেই।</string>
     <string name="tso_mc_err_route">একটি রুট বাছাই করুন</string>

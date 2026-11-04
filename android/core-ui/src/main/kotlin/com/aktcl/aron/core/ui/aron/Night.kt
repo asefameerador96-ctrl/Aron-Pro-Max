@@ -204,9 +204,14 @@ fun NightGlowField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailing: (@Composable () -> Unit)? = null,
     fieldModifier: Modifier = Modifier,
+    /** False: a plain outlined box on the page colour, no glowing halo (Assign Task's comment, screenshot 38). */
+    glow: Boolean = true,
 ) {
     val n = nightRoles()
     val shape = RoundedCornerShape(14.dp)
+    // the plain box: the page colour inside and a quiet outline (the owner's Comment); the glow field keeps the navy fill and violet edge
+    val boxFill = if (glow) n.field else n.page
+    val edge = if (glow) n.fieldEdge else n.divider
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (label != null) Text(label, style = lookStyle(16.sp, bold = true, color = n.ink))
         OutlinedTextField(
@@ -214,7 +219,7 @@ fun NightGlowField(
             fieldModifier
                 .fillMaxWidth()
                 .heightIn(min = 56.dp)
-                .nightGlow(n, n.fieldEdge, shape, 8.dp)
+                .then(if (glow) Modifier.nightGlow(n, n.fieldEdge, shape, 8.dp) else Modifier)
                 .semantics {
                     (label ?: placeholder)?.let { contentDescription = it }
                     // the helper line is drawn outside the field: an error message is still announced with the field
@@ -226,9 +231,9 @@ fun NightGlowField(
             trailingIcon = trailing,
             keyboardOptions = keyboardOptions, keyboardActions = keyboardActions, visualTransformation = visualTransformation,
             colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = n.field, unfocusedContainerColor = n.field, disabledContainerColor = n.field, errorContainerColor = n.field,
+                focusedContainerColor = boxFill, unfocusedContainerColor = boxFill, disabledContainerColor = boxFill, errorContainerColor = boxFill,
                 focusedTextColor = n.ink, unfocusedTextColor = n.ink, disabledTextColor = n.inkMuted, errorTextColor = n.ink,
-                focusedBorderColor = n.fieldEdge, unfocusedBorderColor = n.fieldEdge.copy(alpha = if (n.solid) 1f else 0.75f),
+                focusedBorderColor = edge, unfocusedBorderColor = if (glow) n.fieldEdge.copy(alpha = if (n.solid) 1f else 0.75f) else edge.copy(alpha = if (n.solid) 1f else 0.8f),
                 disabledBorderColor = n.fieldEdge.copy(alpha = 0.4f), errorBorderColor = n.danger, cursorColor = n.ink, errorCursorColor = n.danger,
             ),
         )
@@ -367,7 +372,7 @@ enum class NightPageGlow { None, Bottom, Top }
 
 /**
  * The page of a TSO screen: the navy page colour (solid light grey in Sunlight) and, in the night look, the [glow] of the owner's
- * screenshots: a bright-blue dome rising from the bottom edge ([NightPageGlow.Bottom], screenshots 23 to 26, 39 to 42) or a blue wash
+ * screenshots: a bright-blue dome rising from the bottom edge ([NightPageGlow.Bottom], screenshots 23 to 26, 39, 40, and the login status 8) or a blue wash
  * down from the top ([NightPageGlow.Top], screenshots 19 to 22). Colours are the [AronNightRoles.glowBottom] and [AronNightRoles.glowTop] tokens.
  */
 fun Modifier.nightPage(n: AronNightRoles, glow: NightPageGlow = NightPageGlow.None): Modifier {

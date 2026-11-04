@@ -306,7 +306,7 @@ data class AronNightRoles(
     val bandRed: Color = hex(0xE53935), val bandAmber: Color = hex(0xFFB300), val bandGreen: Color = hex(0x2E8B3A),
     /**
      * The page glows of the owner's screenshots (Night only; Sunlight is solid and draws none): [glowBottom] is the bright-blue dome
-     * rising from the bottom edge of Final Submit (23 to 26), Target Status (39 to 42) and the login-status page; [glowTop] is the
+     * rising from the bottom edge of Final Submit (23 to 26), Target Status (39, 40) and the login-status page; [glowTop] is the
      * blue wash down from the top of the Leave pages (19 to 22). The dome rises only [com.aktcl.aron.core.ui.aron.NightGlowRise] (inside the Home band), so no content scrolls over it; the title, white ink,
      * muted ink and the kit red on [glowTop] hold their gates (TokenContrastTest).
      */

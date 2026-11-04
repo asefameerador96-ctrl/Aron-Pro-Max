@@ -69,6 +69,7 @@ import com.aktcl.aron.feature.tso.TsoButtonStyle
 import com.aktcl.aron.feature.tso.TsoCard
 import com.aktcl.aron.feature.tso.TsoDates
 import com.aktcl.aron.feature.tso.TsoDropdownField
+import com.aktcl.aron.core.ui.aron.nightGlow
 import com.aktcl.aron.feature.tso.TsoFrame
 import com.aktcl.aron.feature.tso.TsoGlowField
 import com.aktcl.aron.feature.tso.TsoGradientButton
@@ -124,19 +125,21 @@ object MyCallTags {
 internal fun McDateField(value: String, onChange: (String) -> Unit, label: String?, modifier: Modifier = Modifier, min: String? = null, max: String? = null) {
     val look = LocalAronLook.current
     var open by rememberSaveable { mutableStateOf(false) }
+    val night = com.aktcl.aron.core.ui.aron.nightRoles()
     val shown = TsoDates.long(value, LocalAppLanguage.current)
     val name = label ?: stringResource(R.string.tso_mc_date)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (label != null) Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = look.ink)
         Row(
-            modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(12.dp)).background(look.card).border(1.dp, look.purple, RoundedCornerShape(12.dp))
+            modifier.fillMaxWidth().heightIn(min = 56.dp).nightGlow(night, night.fieldEdge, RoundedCornerShape(14.dp), 8.dp).clip(RoundedCornerShape(14.dp))
+                .background(night.field).border(if (night.solid) 2.dp else 1.dp, night.fieldEdge, RoundedCornerShape(14.dp))
                 .clickable(role = Role.Button, onClickLabel = name) { open = true }
                 .semantics { contentDescription = "$name, $shown" }
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Icon(AronIcons.Calendar, contentDescription = null, tint = look.ink)
+            Icon(AronIcons.Calendar, contentDescription = null, tint = night.ink)
             Text(shown, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = look.ink)
         }
     }
@@ -169,12 +172,12 @@ private fun ZoneRoutePickers(routes: List<PlanRoute>, load: PickLoad, zoneId: Lo
     val names = zones.associateWith { zoneName(it) }
     TsoDropdownField(
         zones, zoneId, onZone, { names[it] ?: it.toString() }, Modifier.testTag(MyCallTags.ZONE),
-        label = stringResource(R.string.tso_mc_select_zone), placeholder = stringResource(R.string.tso_mc_select_zone),
+        label = stringResource(R.string.tso_mc_select_zone), placeholder = stringResource(R.string.tso_mc_select_zone), brightPlaceholder = true,
     )
     val inZone = routes.filter { it.zoneId == zoneId }
     TsoDropdownField(
         inZone, inZone.firstOrNull { it.id == routeId }, { onRoute(it.id) }, { it.name }, Modifier.testTag(MyCallTags.ROUTE),
-        label = stringResource(R.string.tso_mc_select_route), placeholder = stringResource(R.string.tso_mc_select_route), enabled = zoneId != null,
+        label = stringResource(R.string.tso_mc_select_route), placeholder = stringResource(R.string.tso_mc_select_route), enabled = zoneId != null, brightPlaceholder = true,
     )
     if (missingRoute) Text(stringResource(R.string.tso_mc_err_route), Modifier.testTag(MyCallTags.MISSING_ROUTE), style = MaterialTheme.typography.bodySmall, color = LocalAronLook.current.red)
 }
@@ -478,9 +481,8 @@ fun AssignTaskScreen(
             McDateField(ui.date, { state.setDate(it) }, null, Modifier.testTag(MyCallTags.DATE), min = state.todayIso(), max = state.maxIso())
             TsoGlowField(
                 ui.comment, { state.setComment(it.take(MAX_TASK_COMMENT)) }, Modifier.testTag(MyCallTags.COMMENT),
-                placeholder = stringResource(R.string.tso_mc_comment), singleLine = false, minLines = 5, enabled = !assigned,
+                placeholder = stringResource(R.string.tso_mc_comment), singleLine = false, minLines = 5, enabled = !assigned, glow = false,
             )
-            state.srName?.let { Text(stringResource(R.string.tso_mc_assignee, it), style = MaterialTheme.typography.bodySmall, color = LocalAronLook.current.inkMuted) }
             (ui.result as? TaskResult.Invalid)?.errors?.forEach { e ->
                 TsoBanner(stringResource(when (e) {
                     TaskError.NO_TYPE -> R.string.tso_mc_err_type; TaskError.DATE_FORMAT -> R.string.tso_leave_err_date_format; TaskError.DATE_PAST -> R.string.tso_mc_err_date_past

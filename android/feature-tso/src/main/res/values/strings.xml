@@ -115,7 +115,6 @@
     <string name="tso_mc_assign">Assign</string>
     <string name="tso_mc_task_type">Task type</string>
     <string name="tso_mc_comment">Comment</string>
-    <string name="tso_mc_assignee">Assigned to: %1$s</string>
     <string name="tso_mc_assigned">Task assigned to %1$s</string>
     <string name="tso_mc_no_sr">This route shows SR Not Set. There is nobody to assign the task to.</string>
     <string name="tso_mc_err_route">Choose a route</string>
