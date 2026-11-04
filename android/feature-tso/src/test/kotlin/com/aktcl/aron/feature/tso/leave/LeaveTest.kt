@@ -272,7 +272,7 @@ class LeaveScreenTest {
     }
 
     @Test fun banglaUsesBengaliDigitsAndBanglaBadge() {
-        // a kept copy (offline): the only state that shows 'As of' (D-TSO-MAN-40)
+        // a kept copy (offline) shows 'As of'; so does a cached list while its refresh runs (D-TSO-MAN-52); a fresh read shows none
         show(AppLanguage.BN, FakeSource(cached = LeaveSource.Cached(rows.items, "10:42"), fresh = null))
         compose.onNodeWithText("ডিএমও অনুমোদনের অপেক্ষায়").assertExists()
         compose.onNodeWithText("২০২৬-১০-০৫ থেকে ২০২৬-১০-০৭").assertExists()

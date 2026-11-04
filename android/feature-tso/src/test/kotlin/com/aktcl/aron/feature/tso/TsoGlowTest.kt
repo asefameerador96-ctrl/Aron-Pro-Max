@@ -11,7 +11,6 @@ class TsoGlowTest {
     }
     @Test fun targetDetailsHasNoDomeAsInTheOwnersScreenshots() = assertEquals(NightPageGlow.None, TsoGlow.of(TsoScreen.TARGET_DETAILS))
     @Test fun otherScreensDrawNoneHere() {
-        assertEquals(NightPageGlow.None, TsoGlow.of(TsoScreen.DASHBOARD))
-        assertEquals(NightPageGlow.None, TsoGlow.of(TsoScreen.MY_TEAM))
+        for (s in TsoScreen.entries - setOf(TsoScreen.TARGET_STATUS, TsoScreen.LOGIN_SUBMIT_STATUS)) assertEquals("$s", NightPageGlow.None, TsoGlow.of(s))
     }
 }
