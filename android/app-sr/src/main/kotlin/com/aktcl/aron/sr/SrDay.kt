@@ -387,7 +387,24 @@ class SrDay(
         nextSequenceNo = { nextSequence++ },
         configCheck = com.aktcl.aron.feature.outlet.ConfigCheck { launchConfigCheck() },
         background = background,
+        // D-SRFIX-01: a failed commit first looks for the call this phone already holds (resume, never lose the capture)
+        storedCall = com.aktcl.aron.feature.outlet.StoredCallLookup { uuid, outletId -> heldCall(uuid, outletId) },
+        onCommitError = { t -> android.util.Log.w("AronVisit", "visit commit failed: type=" + t.javaClass.simpleName, t) },
     )
+
+    /**
+     * D-SRFIX-01: the visit this phone already stored under [uuid] (a commit that landed before the failure was seen), as the
+     * open visit; null if none. Same uuid only: another call at the same outlet is never taken for this one (checker).
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private suspend fun heldCall(uuid: String, outletId: Long): OpenVisit? {
+        val v = db.captureDao().visit(uuid) ?: return null
+        return OpenVisit(
+            visitUuid = v.clientUuid, outletId = v.outletId, routeId = v.meta.routeId ?: 0L, geoVerdict = v.geoVerdict,
+            geoAction = v.geoAction, geoValidated = v.geoVerdict == "in_range", photoValidated = v.geoForcePhotoUuid != null,
+            forceReasonCode = v.geoForceReasonCode, openedAtIso = v.openedAt,
+        )
+    }
 
     // ---- printing (F-SR-015): the ledger is Room, the renderer is built once (font parsing is the expensive part)
     private val renderer: com.aktcl.aron.core.printing.PaperRenderer by lazy {

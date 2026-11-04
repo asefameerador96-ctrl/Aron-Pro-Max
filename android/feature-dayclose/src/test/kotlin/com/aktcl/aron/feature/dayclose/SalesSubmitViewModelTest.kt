@@ -42,6 +42,21 @@ class SalesSubmitViewModelTest {
         assertEquals(SubmitProgress.Settled, v.state.value.progress)
     }
 
+    // D-SRFIX-03b: a dismissed old record is shown apart on the screen, but the day_submit upload keeps the TRUE rejected count
+    @Test fun dismissedRowsAreOffTheScreenCountButStayInTheUploadedRejectedCount() {
+        val old = RejectedRow("u1", "media_meta", "2026-09-01", "schema_invalid", RejectedOutcome.DROPPED)
+        val sale = RejectedRow("u2", "memo", "2026-09-01", "schema_invalid", RejectedOutcome.DROPPED)
+        val base = Day().apply { states = OutboxStates(0, 0, 10, 2, 0) }
+        class Rej : DaySource by base { override suspend fun rejectedRows(businessDate: String) = listOf(old, sale) }
+        val q = ArrayList<SubmitGate>()
+        val v = SalesSubmitViewModel(1, { "2026-10-05" }, Rej(), { mapOf("memo" to 6) }, { _, g, _ -> q += g }, Sched(), { true })
+        v.refresh()
+        assertEquals(listOf(old), v.state.value.dismissed); assertEquals(listOf(sale), v.state.value.rejected)
+        assertEquals("screen: one left", 1, v.state.value.gate.notes.filterIsInstance<SubmitBlock.Rejected>().single().count)
+        v.submit()
+        assertEquals("upload: both", 2, q.single().notes.filterIsInstance<SubmitBlock.Rejected>().single().count)
+    }
+
     @Test fun blankServerColumnBlocksSubmit() {
         val v = vm(Day(), null, Sched()); v.refresh()
         assertFalse(v.state.value.gate.enabled); assertEquals(null, v.state.value.counts.single().server)

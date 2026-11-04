@@ -41,10 +41,28 @@ sealed interface VisitUiState {
     data class LocationBlocked(val reason: String) : VisitUiState
 
     /** The commit failed (database error): nothing was written; the rep may try again. */
-    data class CommitFailed(val outlet: VisitOutlet) : VisitUiState
+    data class CommitFailed(
+        val outlet: VisitOutlet,
+        /** Why (D-SRFIX-01): the words the card shows; [CommitFailure.STORAGE] keeps the plain retry text. */
+        val failure: CommitFailure = CommitFailure.STORAGE,
+        /** The exception's simple class name, for the log and a support report; never shown as an error code to the rep. */
+        val typeTag: String = "",
+    ) : VisitUiState
 
     /** Mock policy `block_sale`: the visit is recorded and the rep sees "mock location detected". */
     data class Blocked(val visit: OpenVisit) : VisitUiState
+}
+
+/** Why a visit commit failed, so the card tells the rep what to do (D-SRFIX-01). */
+enum class CommitFailure {
+    /** The route-day is closed by the zone's Final Submit: the lock text. */
+    LOCKED,
+
+    /** The rep's own Sales Submit stands for the route-day: the submit text. */
+    DAY_SUBMITTED,
+
+    /** Any other failure (storage, a constraint): nothing was stored, try again. */
+    STORAGE,
 }
 
 /** The committed visit that sale screens (android-sr-b) build on. */
@@ -97,6 +115,12 @@ class VisitFlow(
     private val onBlocked: suspend (OpenVisit) -> Unit = {},
     private val openStore: OpenVisitStore = OpenVisitStore.None,
     private val configCheck: ConfigCheck = ConfigCheck.None,
+    /**
+     * D-SRFIX-01: after a failed commit, the visit this phone already holds for the flow's visit uuid (a commit that landed before its failure was seen). A capture is never lost: it is resumed.
+     */
+    private val storedCall: StoredCallLookup = StoredCallLookup.None,
+    /** D-SRFIX-01: told every commit exception, so the next report names its type (production logs it). */
+    private val onCommitError: (Throwable) -> Unit = {},
     /** The config check runs here, never awaited: the network is not in the critical path of a visit (R9). */
     private val background: kotlinx.coroutines.CoroutineScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default),
 ) {
@@ -225,9 +249,16 @@ class VisitFlow(
         } catch (t: kotlinx.coroutines.CancellationException) {
             throw t
         } catch (t: Throwable) {
-            val st = VisitUiState.CommitFailed(o)
-            ui.value = st
-            return st
+            runCatching { onCommitError(t) }
+            val why = commitFailureOf(t)
+            // D-SRFIX-01: a refusal is worded as such; any other failure first looks for the call this phone already holds
+            val held = if (why != CommitFailure.STORAGE) null else runCatching { storedCall.find(visitUuid, o.outletId) }.getOrNull()
+            if (held == null) {
+                val st = VisitUiState.CommitFailed(o, why, t.javaClass.simpleName)
+                ui.value = st
+                return st
+            }
+            return resumeHeld(held, o, result, fix)
         }
         val open = OpenVisit(
             visitUuid = visitUuid, outletId = o.outletId, routeId = o.routeId, geoVerdict = result.verdict.wire,
@@ -245,7 +276,26 @@ class VisitFlow(
         return st
     }
 
+    /** D-SRFIX-01: the call the phone already holds becomes the open visit (same uuid, nothing written twice). */
+    private suspend fun resumeHeld(held: OpenVisit, o: VisitOutlet, result: GeoVerdictResult, fix: FixReading): VisitUiState {
+        visitUuid = held.visitUuid
+        runCatching { openStore.clear(held.visitUuid) }
+        val blocked = held.geoAction == GeoAction.BLOCKED.wire
+        val st = if (blocked) VisitUiState.Blocked(held) else VisitUiState.Open(held)
+        if (!blocked) session.set(held, VisitGeoInfo.of(o, result.verdict, result.distanceM, fix.lat.takeIf { fix.isOk }, fix.lng.takeIf { fix.isOk }))
+        ui.value = st
+        if (blocked) onBlocked(held)
+        return st
+    }
+
     companion object {
+        /** The words for [t]: the zone lock, the rep's own submit, or a plain storage failure. */
+        fun commitFailureOf(t: Throwable): CommitFailure = when (com.aktcl.aron.core.database.repo.DayRefusal.of(t)) {
+            com.aktcl.aron.core.database.repo.DayRefusal.FINAL_SUBMIT -> CommitFailure.LOCKED
+            com.aktcl.aron.core.database.repo.DayRefusal.SALES_SUBMIT -> CommitFailure.DAY_SUBMITTED
+            null -> CommitFailure.STORAGE
+        }
+
         const val PURPOSE_VISIT = "visit_open"
         const val PURPOSE_REFRESH = "refresh"
         private val REASON = Regex("^[a-z][a-z0-9_]{1,40}$")

@@ -210,6 +210,8 @@ class SrRefusalSweepTest {
         val st = f.day.visitFlow.state.value
         assertTrue(st.toString(), st is VisitUiState.CommitFailed)
         assertEquals(DayRefusal.SALES_SUBMIT, runBlocking { f.day.sale.commitRefusal(st) })
+        // D-SRFIX-01: the card itself says "day submitted" (the owner's phone, APK 1780, showed the generic retry card here)
+        assertEquals(com.aktcl.aron.feature.outlet.CommitFailure.DAY_SUBMITTED, (st as VisitUiState.CommitFailed).failure)
         assertFalse(runBlocking { f.day.sale.refusedByLock(st) })
         assertTrue("nothing stored", runBlocking { f.db.captureDao().visitsOn(f.date) }.isEmpty())
     }
