@@ -11,9 +11,12 @@ class PushDispatcher(
     private val show: (PushNotice) -> Unit,
     private val schedule: (PushPullKind, Long) -> Unit,
     private val random: Random = Random.Default,
+    /** X4a fix round 4: takes the "Day closed" notice off the tray ([PushNotices.withdrawDay]) for [PushMessage.withdrawsDayNotice]. */
+    private val withdrawDayNotice: () -> Unit = {},
 ) {
     fun onMessage(data: Map<String, String>): PushMessage? {
         val message = PushMessage.parse(data) ?: return null
+        if (message.withdrawsDayNotice) try { withdrawDayNotice() } catch (_: RuntimeException) { }
         message.notice?.let { notice -> try { show(notice) } catch (_: RuntimeException) { } }
         val delayMs = message.pullDelayMs(random)
         message.pulls.forEach { schedule(it, delayMs) }

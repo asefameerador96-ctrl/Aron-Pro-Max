@@ -90,22 +90,49 @@ class TsoPushReasonsTest {
      * X4a fix round (checker high; owner decision 2026-11-04, D-TSO-MAN-49): a zone-day close under accept_and_flag (the
      * shipped default) arrives as `day_state_changed` (backend `finalSubmitPushReason`): no notification and no in-process
      * notice, so no rep is told that sales are closed while the server accepts them; the bundle pull still brings the day
-     * state, and no config pull is spent.
+     * state.
+     *
+     * Fix round 4 (checker medium): the server also sends `day_state_changed` to the closed zone-day's SR and AMO phones when
+     * an admin returns the policy to accept_and_flag after a locked close (backend `LatePolicyPush`). So it pulls the config
+     * too (the phone's held quarantine or reject is replaced and the lock lifts), and it takes the earlier "Day closed ... new
+     * sales are closed" notice off the tray, as PushShell wires it. The other reasons keep the tray as it is.
      */
-    @Test fun aCloseUnderAcceptAndFlagShowsNothingAndOnlyPullsTheBundle() {
-        shadowOf(app as android.app.Application).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
-        PushNotices.ensureChannels(app)
+    @Test fun aCloseUnderAcceptAndFlagShowsNothingAndPullsTheDayStateAndThePolicy() {
         val m = PushMessage.parse(mapOf("kind" to "sync_nudge", "reason" to PushMessage.REASON_DAY_STATE_CHANGED))!!
         assertNull("no notice", m.notice)
-        assertEquals(setOf(PushPullKind.BUNDLE), m.pulls)
+        assertEquals(setOf(PushPullKind.BUNDLE, PushPullKind.CONFIG), m.pulls)
         assertFalse(m.urgent)
+        assertTrue(m.withdrawsDayNotice)
+        listOf("day_final_submitted", "notification", "ticket_updated", "task_assigned").forEach { r ->
+            assertFalse("$r withdraws nothing", PushMessage.parse(mapOf("kind" to "sync_nudge", "reason" to r))!!.withdrawsDayNotice)
+        }
+    }
+
+    /** Fix round 4: what [aCloseUnderAcceptAndFlagShowsNothingAndPullsTheDayStateAndThePolicy] says, on the tray, as PushShell wires the dispatcher. */
+    @Test fun dayStateChangedWithdrawsTheDayNoticeAndNothingElse() {
+        shadowOf(app as android.app.Application).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+        PushNotices.ensureChannels(app)
         val shown = mutableListOf<PushNotice>()
         val scheduled = mutableListOf<PushPullKind>()
-        PushDispatcher(show = { shown += it; PushNotices.show(app, it, bangla = false) }, schedule = { k, _ -> scheduled += k })
-            .onMessage(mapOf("kind" to "sync_nudge", "reason" to "day_state_changed"))
-        assertEquals(emptyList<PushNotice>(), shown)
-        assertEquals(listOf(PushPullKind.BUNDLE), scheduled)
-        assertNull("nothing on the day channel", shadowOf(manager).getNotification(PushNotices.ID_DAY))
+        // as PushShell wires the dispatcher
+        val dispatcher = PushDispatcher(
+            show = { shown += it; PushNotices.show(app, it, bangla = false) }, schedule = { k, _ -> scheduled += k },
+            withdrawDayNotice = { PushNotices.withdrawDay(app) },
+        )
+        // the earlier close under quarantine: the "Day closed" notice is on the tray, and an inbox notice beside it
+        dispatcher.onMessage(mapOf("kind" to "sync_nudge", "reason" to "day_final_submitted"))
+        dispatcher.onMessage(mapOf("kind" to "sync_nudge", "reason" to "notification"))
+        assertNotNull(shadowOf(manager).getNotification(PushNotices.ID_DAY))
+        // a later push of another reason keeps it
+        dispatcher.onMessage(mapOf("kind" to "sync_nudge", "reason" to "ticket_updated"))
+        assertNotNull("ticket_updated keeps the day notice", shadowOf(manager).getNotification(PushNotices.ID_DAY))
+        shown.clear(); scheduled.clear()
+        // the admin returns the policy to accept_and_flag: day_state_changed
+        dispatcher.onMessage(mapOf("kind" to "sync_nudge", "reason" to "day_state_changed"))
+        assertNull("the day notice is withdrawn", shadowOf(manager).getNotification(PushNotices.ID_DAY))
+        assertNotNull("the inbox notice stays", shadowOf(manager).getNotification(PushNotices.ID_INBOX))
+        assertEquals("and nothing is shown", emptyList<PushNotice>(), shown)
+        assertTrue("the pulls are scheduled as before", PushPullKind.BUNDLE in scheduled)
     }
 
     @Test fun everyNoticeIsAnnouncedInProcessEvenWithNotificationsOff() = runBlocking {
