@@ -150,3 +150,73 @@ Three Sonnet readers + three verifiers over rows 19–26, 28–29, 31–38, 43 a
 7. Row 34: a behavioural Compose test for My Visit Plan (date, zone, route → Show Outlet).
 8. TsoBottomBar's cyan primary button (ChangePasswordScreen) → NightButton Cyan (white label, 4.5:1).
 9. Cosmetic rows 8, 14, 16, 30, 41 as listed in docs/status/tso-manual-cloud.md.
+
+## Re-check after fix batch 2 (candidate 2efd3da0 → c3f5df90; workflow wf_5925fc03-379, 3 Sonnet readers + 3 adversarial verifiers, 1.19M subagent tokens, finished 23:28 UTC 2026-11-03; every verifier verdict upheld)
+
+| Row | Verdict | Evidence / remaining gap |
+|---|---|---|
+| 19 | PROVEN | Top wash unbroken (golden 0A3056→082850→page, no bar step; AronNightTopBar onPage); card linearGradient 126985→16507F edge 2A9FC0; badge exactly B45C00 (white 4.70); day disc 5.83:1 where it sits, 4.79 worst case over leaveStart (gated). Residuals: the owner's wash is a radial glow peaking ~10% down and a shade brighter; "As of" shown for a fresh read (→ batch 3 item 5); fixture dates. Lead ruling: the day count is a status figure, 4.5:1 applies. |
+| 20 | PROVEN | Same wash; all fields 131C45 = token match with the owner's; Date field carries the purple glow (nightGlow fieldEdge 14 dp/8 dp). Cosmetic residual: the owner's bottom teal haze is not drawn. |
+| 21 | PROVEN | Panel 050D2E (= menu token) field-width, rows 48 dp, items Casual/Sick/Earn in white. Cosmetic: the panel fully covers the Date field's border line that the owner's shows beneath (→ batch 3 item 6, only if trivial). |
+| 22 | PROVEN | Helper line is a separate Text under the field (13 sp, inkMuted/danger; error still announced via semantics); no dark patch (pixels = page colour); B8C2E5 on 040C3A 10.62:1. 200% bn clips the Apply bar at the 800 dp frame (frame, not the app). |
+| 101 tickets harness | PROVEN | TicketScreenshotTests wraps every shot in AronTheme(dark=!sunlight, tso=true) = production; the 37 tickets_* goldens are in the night look. |
+| 23, 24 | PARTIAL (accepted residual) | Dome 3D9FFF rises 72 dp (71 px) vs the owner's ~155 dp; everything else on the pages matches. Lead ruling: 72 dp stays for now (one token, nothing readable over it); the taller dome on pages whose bottom band is content-free is offered to the owner as an option. |
+| 25 | PROVEN | All five cards 3F7AAD at three sample points each, no alpha difference (not-due dimming gone). Pre-existing, not batch 2: lime Sales Date box (owner's green), chip-vs-clipboard glyph. |
+| 26 | PROVEN | Scrim dim 0.60 → 0.34 (owner's ~0.5); panel width edge-to-edge vs the owner's inset card unproven until the device walk. |
+| 102 glows | PARTIAL | The Target Status, Target Details and login-status domes exist only in app-tso host code (TsoTargetsHost.kt:114/127, TsoDashboardHost.kt:154 pass glow = Bottom); no golden or test proves them because the screenshot frames do not pass the glow (FinalSubmitScreen.kt:109 passes it inside the feature, hence only s23–s26 goldens show it). → batch 3 item 1. |
+| 8, 30, 41 | PROVEN | One-line "Login & Bikroy Joma Status" title; StoreOff = storefront path + slash (Icons.kt:72); one figure size per Target Details column. |
+| 28 | PARTIAL | Live rows fixed (white titles, muted B8C2E5); stale/no-fix rows keep alpha 0.5 → secondary line 5E678F on 040C3A = 3.41:1 (incl. the "Mock GPS today" flag). → batch 3 item 2. |
+| 29 | PROVEN | Every outlet row title FFFFFF, detail B8C2E5 on the navy page; radius menu golden matches. |
+| 33, 38 FAB | PROVEN | Per-pixel column x=180: lime fill to y=717, halo 718–721, disc from 722: no overlap, in en/bn/200%. Row 38 extras (not FAB): Date field lacks the glow, Comment box has a glow the owner's lacks, extra "Assigned to" line. → batch 3 item 4. |
+| 34 | PARTIAL | MyCallScreenTest.myVisitPlanShowsTodayAndTheZoneAndNeedsARouteBeforeShowOutlet exists at the candidate with the asserted steps (green CI run comes with train 68's gate run); golden: Date field has no purple glow border (owner's does), Select Route placeholder muted 8A93B8 vs the owner's white. → batch 3 item 3. |
+| TsoBottomBar | PROVEN | TsoKit.kt:360 NightButton(style = Cyan, fill = false, enabled, busy); white label on the cyan ramp 4.55–4.61. |
+| 14 | PROVEN (accepted residual) | tickets_details goldens byte-identical to 8cba953a; only the 360 dp vs ~410 dp canvas width differs. |
+| 16 | PROVEN (accepted residual) | tickets_quick_sheet goldens byte-identical; the residual is the 800 dp golden canvas height (the sheet itself matches the owner's); earlier wording "extra username field" corrected here. |
+
+## Fix batch 3 (assigned 23:31 UTC 2026-11-03 to tso-manual #2 on lane/tso-manual-wip-batch3 from c3f5df90; c3f5df90 stays the train-68 candidate)
+1. Row 102: prove the bottom dome on Target Status / Target Details / login status with goldens (frame parameters in the screenshot tests, or move the glow into the feature composables as Final Submit does).
+2. Row 28: stale/no-fix person rows → muted token holding >= 4.5:1 instead of alpha 0.5 (TSO look only; AMO golden byte-identical) + TokenContrastTest line.
+3. Row 34: Date field purple glow border; Select Route placeholder white (>= 4.5:1 on the field).
+4. Row 38: Date field glow; no glow on the Comment box; drop or justify the extra "Assigned to" line.
+5. Leave list: "As of" only for a kept copy (LeaveListState.publish) + test.
+6. Row 21 (optional, one-line): let the Date field's border show beneath the dropdown panel.
+Lead rulings: rows 23/24 dome 72 dp accepted for now (tall-dome option offered to the owner); leave-card day count = status figure (4.5:1).
+
+## Re-check after fix batch 3 (candidate 347e1780; workflow wf_65ed8111-d06, 2 Sonnet readers + 2 adversarial verifiers, 0.66M subagent tokens, finished 00:08 UTC 2026-11-04; every verifier verdict upheld)
+
+| Row | Verdict | Evidence / remaining gap |
+|---|---|---|
+| 102 login status | PROVEN | Four goldens differ from c3f5df90 only in rows 729–799; dome 3D9FFF with the Final Submit profile (1 px taller); no pixel >= 220 in the band except the house glyph; wiring TsoGlow.of(LOGIN_SUBMIT_STATUS)=Bottom read by TsoDashboardHost.kt:154 and both screenshot frames. Owner's 08 dome ~13% high with the last card over it: the accepted 72 dp ruling. |
+| 102 Target Status | PROVEN | Every night golden: bottom 78 rows identical to tso_fs_s23_en, zero bright pixels in the band; content clipped at row 722 (the FAB-less page lost 78 px of list viewport to the new padding; scrollable; accepted). Owner's 39/40 dome 267/1600 px (16.7%) vs ours 72/800 (9%): accepted residual. |
+| 102 Target Details | PARTIAL → batch 3 round 2 item 7 | The owner's 41/42 draw NO dome (navy 04103A from the bottom edge up 300 px); TsoGlow.of(TARGET_DETAILS)=Bottom and the "39 to 42" comments overclaim. Lead ruling: screenshot wins → None, re-record the five details goldens. |
+| 102 Sunlight | PROVEN (+ item 8) | tso_target_sunlight_en bottom 72 rows all F4F4F4 (nightPage returns plain background when n.solid). Side effect: TsoFrame pads by TsoFabBand without an n.solid guard → empty grey band on Sunlight; guard with !n.solid (round 2 item 8). |
+| 19 Leave As-of | PROVEN | LeaveListState.publish asOf only when offlineCached; fresh-read goldens lose the "As of 10:42" strip (list grows into it, Apply bar unmoved); leave_offline_bn (kept copy) 0 differing pixels; owner's 19 has no As-of line. Round 2 item 1 adds the refreshing-phase cue. |
+| 34 | PROVEN | Date field edge 7B3FE4 with halo, calendar icon before the text, "Select Route" white (16.4:1 on 131C45); Zone/Route glow as in the screenshot. Caret white vs the owner's grey: pre-existing. |
+| 38 | PROVEN | Date field glow + icon; Comment box plain (6E7699 outline 4.21:1, placeholder 6.21:1); "Assigned to" gone (y512–560 pure page). |
+| 31, 32 | PROVEN | Set Plan fields glow, Date icon, values white; route menu 050D2E with white items as the owner's. McDateField 52→56 dp (matches the owner's height). Residual → round 2 item 2 extended: a DISABLED picker differs from an enabled one only by a 1.67:1 border (halo and white caret stay) → disabled = muted placeholder, muted caret, no halo. |
+| 28 | PROVEN | Stale/no-fix rows: 81859C/5E678F → B8C2E5 (10.62:1); live row identical; AMO golden byte-identical (git diff --quiet exit 0); alpha only when faded && !tso. |
+
+### Fix batch 3 — round 2 (assigned 23:56 / 00:09 UTC to tso-manual #2 on lane/tso-manual-wip-batch3)
+1. Leave list refreshing phase: asOf when offlineCached || refreshing + screen assertion (regression found by the lead checker).
+2. Disabled picker: muted placeholder, muted caret, no glow halo; border as today.
+3. TsoGlow KDoc wording (or move Final Submit/Leave into the table).
+4. Sunlight 7:1 variants of the new contrast assertions.
+5. EN screen assertion for "As of" on a kept copy.
+6. D-TSO-MAN-52: the Leave As-of rule extends D-TSO-MAN-40 (incl. refreshing).
+7. Target Details: TsoGlow.of(TARGET_DETAILS) = None (owner's 41/42 have no dome); re-record five goldens; fix the "39 to 42" comments and TsoGlowTest.
+8. TsoFrame bottom padding guarded with !n.solid (Sunlight shows no empty band); re-record tso_target_sunlight_en.
+
+## Re-check after fix batch 3 rounds 2+3 (candidate 659b3d4f; workflow wf_2f4c0bfe-d8b, 1 reader + 1 verifier, 0.28M tokens, finished 00:33 UTC 2026-11-04; both verdicts upheld)
+
+| Row | Verdict | Evidence / remaining gap |
+|---|---|---|
+| 41, 42 Target Details | PROVEN | No dome: the five goldens differ from 347e1780 only from the old dome rows down; ~12.8k dome pixels → 0; band pure page navy (200_en continues the table rows, as the owner's 42 cuts its last row at the edge). TsoGlow.of(TARGET_DETAILS) = None read by host and both frames. |
+| Target Status Sunlight | PROVEN | Diff bbox rows 722–800 only: the grey band is gone, the white Zone card runs to the edge (Lighter bar 7.33:1, 53% 7.52:1, text 16.3:1); zero dome pixels (nightPage base when n.solid; !n.solid guard removes the padding). Amber bar fill 5.93:1 is a pre-existing graphic. |
+| Set Plan, disabled route picker | PROVEN | Diff rows 432–510 only: no halo (flat page at the field edge), border unchanged, placeholder + caret (138,147,184) = 5.43:1 on the field; Date and Zone identical old/new. |
+| 23 Final Submit pickers | PARTIAL → round 4 (a) | Halo identical on all five pickers and the goldens byte-identical between 347e1780 and 659b3d4f; but the four disabled pickers draw a dimmer border (61,42,133) than the enabled Wing (123,63,228) — `edge.copy(alpha = 0.4f)` when disabled — while the owner's 23 shows five identical borders. Pre-existing parity gap, fixed in round 4 via the same opt-in. |
+
+### Fix batch 3 — round 4 (assigned 00:34 UTC 2026-11-04)
+(a) Final Submit pickers: full edge border when the glow-alike opt-in is set; re-record tso_fs_s23_*. (b) tso-manual-cloud.md lines 36/40/67. (c) LeaveTest.kt:275 comment → D-TSO-MAN-52. (d) TsoGlowTest iterate TsoScreen.entries minus the two Bottom pages.
+
+### Round 4 result (candidate d338c025, 00:45 UTC 2026-11-04; lead's own pixel check)
+| 23 Final Submit pickers | PROVEN | tso_fs_s23_en.png: all five pickers now draw the same edge (123,63,228) at the top and left borders (old golden: Wing (123,63,228), the four disabled (61,42,133)); only the three fs_s23 goldens changed. Docs/comments/test items (b)(c)(d) done; lead Opus checker on the round-4 delta running. |
