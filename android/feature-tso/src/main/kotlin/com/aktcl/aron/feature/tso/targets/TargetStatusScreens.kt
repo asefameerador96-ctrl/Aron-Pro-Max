@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -328,7 +327,7 @@ private fun DetailsTable(items: List<TargetRow>, tab: TargetTab) {
     val density = LocalDensity.current
     val stacked = density.fontScale >= 1.5f
     // Target, Achievement, Remaining, %: they share what the Item column leaves
-    val weights = listOf(0f, 1f, 1.3f, 1.15f, 1.2f)
+    val weights = listOf(0f, 1f, 1.2f, 1.05f, 1.45f)
     val head = listOf(R.string.tso_dash_tgt_item, R.string.tso_dash_tgt_target, R.string.tso_dash_tgt_achievement, R.string.tso_dash_tgt_remaining, R.string.tso_dash_tgt_pct).map { stringResource(it) }
     val nameStyle = nightText(16.sp, n.ink)
     val measurer = rememberTextMeasurer()
@@ -340,6 +339,20 @@ private fun DetailsTable(items: List<TargetRow>, tab: TargetTab) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val inner = (maxWidth - 18.dp).coerceAtLeast(0.dp) // the border and the rows' 8 dp sides
         val itemWidth = (with(density) { widestWordPx.toDp() } + 4.dp).coerceIn(inner * 0.30f, inner * 0.42f)
+        // one figure size per column (screenshot 41: the % column never shrinks by itself): the largest 16 sp down to 8 sp at which every
+        // figure of the column fits its cell on one line
+        val allCells = remember(items, tab, loc) {
+            items.map { r -> listOf(TargetStatus.qty(TargetStatus.target(r, tab), loc), TargetStatus.qty(r.achieved, loc), TargetStatus.qty(TargetStatus.remaining(r, tab), loc), TargetStatus.detailsText(r, tab, loc)) }
+        }
+        val sumW = weights.drop(1).sum()
+        val colSizes = remember(allCells, itemWidth, inner, nameStyle, density) {
+            (0..3).map { i ->
+                val cellPx = with(density) { ((inner - itemWidth) * (weights[i + 1] / sumW) - 4.dp).toPx() }
+                var size = 16f
+                while (size > 8f && allCells.any { measurer.measure(it[i], nameStyle.copy(fontSize = size.sp), softWrap = false, maxLines = 1).size.width > cellPx }) size -= 0.5f
+                size
+            }
+        }
         Column(Modifier.fillMaxWidth().border(1.dp, rule).testTag(TargetTags.TABLE)) {
             if (!stacked) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -358,10 +371,7 @@ private fun DetailsTable(items: List<TargetRow>, tab: TargetTab) {
             }
             items.forEachIndexed { idx, r ->
                 if (idx > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(rule))
-                val cells = listOf(
-                    TargetStatus.qty(TargetStatus.target(r, tab), loc), TargetStatus.qty(r.achieved, loc),
-                    TargetStatus.qty(TargetStatus.remaining(r, tab), loc), TargetStatus.detailsText(r, tab, loc),
-                )
+                val cells = allCells[idx]
                 val described = stringResource(R.string.tso_dash_tgt_row_desc, r.name, cells[0], cells[1], cells[2], cells[3])
                 val rowModifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).semantics(mergeDescendants = true) { contentDescription = described }
                     .testTag(TargetTags.row(r.productId)).padding(horizontal = 8.dp, vertical = 12.dp)
@@ -381,8 +391,7 @@ private fun DetailsTable(items: List<TargetRow>, tab: TargetTab) {
                         cells.forEachIndexed { i, c ->
                             Text(
                                 c, Modifier.weight(weights[i + 1]).padding(horizontal = 2.dp), maxLines = 1, softWrap = false,
-                                style = nightText(16.sp, n.ink, align = if (i == 3) TextAlign.End else TextAlign.Center),
-                                autoSize = TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = 16.sp, stepSize = 0.5.sp),
+                                style = nightText(colSizes[i].sp, n.ink, align = if (i == 3) TextAlign.End else TextAlign.Center),
                             )
                         }
                     }

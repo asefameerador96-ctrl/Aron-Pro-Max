@@ -195,12 +195,36 @@ class TokenContrastTest {
      * Cancel green, Log Out orange) is gated at WCAG AA 4.5:1, on both stops and the midpoint of every gradient; this is a separate group from the
      * 7:1 key-figure gate and does not loosen it. Sunlight stays at 7:1 above.
      */
-    /** The Final Submit route card (screenshot 25, night look only): white title and muted FF line on the steel-blue fill, 4.5:1. */
+    /** The top glow of the Leave pages (screenshots 19 to 22): white ink and the muted ink over its strongest point keep 7:1 and 4.5:1. */
+    @Test fun tsoTopGlowKeepsInkReadable() {
+        val n = AronNightRoles.Night
+        night("ink on the top glow", AronLook.TsoNight.ink, n.glowTop, 7.0)
+        night("muted ink on the top glow", AronLook.TsoNight.inkMuted, n.glowTop, 4.5)
+        night("title start on the top glow", n.titleStart, n.glowTop, 7.0)
+        night("title end on the top glow", n.titleEnd, n.glowTop, 7.0)
+        night("kit red (field errors) on the top glow", AronLook.TsoNight.red, n.glowTop, 4.5)
+        night("back disc on the top glow", n.backButton, n.glowTop, 1.5)
+    }
+
+    /** The Leave card (screenshot 19, night look only): white ink on both gradient stops 4.5:1 (day word, captions), white badge label on orange 4.5:1. */
+    @Test fun tsoLeaveCardInkAndOrangeBadgeReachFourPointFive() {
+        val n = AronNightRoles.Night
+        night("leave card ink at the start", Color.White, n.leaveStart, 4.5)
+        night("leave card ink at the end", Color.White, n.leaveEnd, 4.5)
+        night("leave card ink on the day disc", Color.White, over(n.leaveDisc, n.leaveStart), 4.5)
+        night("orange badge label", Color.White, n.badgeOrange, 4.5)
+        fun mid(a: Color, b: Color) = Color((a.red + b.red) / 2, (a.green + b.green) / 2, (a.blue + b.blue) / 2)
+        night("leave card ink at the gradient midpoint", Color.White, mid(n.leaveStart, n.leaveEnd), 4.5)
+        night("dropdown list ink", AronLook.TsoNight.ink, n.menu, 4.5)
+        night("dropdown list muted ink", AronLook.TsoNight.inkMuted, n.menu, 4.5)
+        night("dropdown list placeholder", n.placeholder, n.menu, 4.5)
+    }
+
+    /** The Final Submit route card (screenshot 25, night look only): white title, FF line and 'not due' line on the steel-blue fill, 4.5:1 (the muted ink is not used on this card). */
     @Test fun tsoRouteCardInkReachesFourPointFive() {
         val n = AronNightRoles.Night
         val look = AronLook.TsoNight
         night("route card ink", look.ink, n.routeCard, 4.5)
-        night("route card muted ink", look.inkMuted, n.routeCard, 4.5)
     }
 
     @Test fun tsoNightButtonLabelsOnBrightFillsReachFourPointFiveToOne() {

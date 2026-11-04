@@ -133,6 +133,23 @@ class MyCallScreenTest {
     private val today = "2026-10-17"
     private fun planned() = listOf(VisitPlanItem(PlanIds.plan(7, today, 1), today, 1, listOf(PlannedOutlet(1, PlanStatus.PENDING))))
 
+    /** Screenshot 34 (conformance row 34): the date is today, the only zone is chosen, a route is required, then Show Outlet opens the outlets. */
+    @Test fun myVisitPlanShowsTodayAndTheZoneAndNeedsARouteBeforeShowOutlet() {
+        var shown = 0
+        val st = VisitPlanState(Src(plans = planned())) { today }
+        show(AppLanguage.EN) { VisitPlanScreen(st, onShow = { shown++ }, onBack = {}) }
+        compose.onNodeWithText("October 17, 2026").assertIsDisplayed()   // the date: today
+        compose.onNodeWithText("Zone 10").assertIsDisplayed()            // the zone: the only one, chosen
+        compose.onNodeWithTag(MyCallTags.SHOW).performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(MyCallTags.MISSING_ROUTE).assertIsDisplayed(); assertEquals("no route: no outlets", 0, shown)
+        compose.onNodeWithTag(MyCallTags.ROUTE).performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Route One").performClick(); compose.waitForIdle()
+        assertEquals(1L, st.ui.value.routeId)
+        compose.onNodeWithTag(MyCallTags.SHOW).performScrollTo().performClick(); compose.waitForIdle()
+        assertEquals("a route is chosen: Show Outlet opens the outlets", 1, shown)
+        assertEquals("accessibility: " + compose.a11yProblems(), emptyList<String>(), compose.a11yProblems())
+    }
+
     @Test fun visitPlanOutletsHasNoCountsAndSaysNoOutletsFound() {
         val st = VisitPlanState(Src(plans = emptyList())) { today }
         kotlinx.coroutines.runBlocking { st.loadRoutes(); st.pickRoute(1); st.show() }

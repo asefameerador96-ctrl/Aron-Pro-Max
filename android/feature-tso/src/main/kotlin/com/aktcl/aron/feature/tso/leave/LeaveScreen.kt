@@ -6,13 +6,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -45,10 +47,13 @@ import com.aktcl.aron.feature.tso.TsoButtonStyle
 import com.aktcl.aron.feature.tso.TsoCard
 import com.aktcl.aron.feature.tso.TsoEmpty
 import com.aktcl.aron.feature.tso.TsoError
+import com.aktcl.aron.core.ui.aron.NightPageGlow
 import com.aktcl.aron.feature.tso.TsoFrame
 import com.aktcl.aron.feature.tso.TsoGradientButton
 import com.aktcl.aron.feature.tso.TsoLoading
 import com.aktcl.aron.feature.tso.TsoNav
+import com.aktcl.aron.feature.tso.TsoOrangeBadge
+import com.aktcl.aron.core.ui.aron.nightRoles
 import com.aktcl.aron.feature.tso.TsoPillTone
 import com.aktcl.aron.feature.tso.TsoScreen
 import com.aktcl.aron.feature.tso.TsoStatusPill
@@ -90,7 +95,7 @@ fun LeaveListScreen(state: LeaveListState, onBack: () -> Unit, modifier: Modifie
     val ui by state.ui.collectAsStateWithLifecycle()
     LaunchedEffect(state) { state.load() }
     TsoFrame(
-        stringResource(R.string.tso_leave_title), backOnly(onBack), homeButton = false, modifier = modifier,
+        stringResource(R.string.tso_leave_title), backOnly(onBack), homeButton = false, modifier = modifier, glow = NightPageGlow.Top,
         bottomBar = if (onApply == null) null else {
             { TsoGradientButton(stringResource(R.string.tso_leave_apply), onApply, Modifier.testTag(LeaveTags.APPLY), style = TsoButtonStyle.Lime) }
         },
@@ -157,38 +162,46 @@ private fun LeaveCard(item: LeaveItem) {
     val period = localizedDigits(stringResource(R.string.tso_leave_period, item.fromDate, item.toDate))
     val dayWord = stringResource(if (item.days == 1) R.string.tso_leave_day_word_one else R.string.tso_leave_day_word)
     val daysNumber = localizedNumber(item.days.toLong())
-    TsoCard(Modifier.fillMaxWidth().testTag(LeaveTags.card(item.leaveUuid))) {
+    val n = nightRoles()
+    // night: the owner's teal-to-blue gradient card with white ink (the muted ink is under 4.5:1 on teal), orange pending badge
+    val onTeal = if (n.solid) look.inkMuted else look.ink
+    TsoCard(
+        Modifier.fillMaxWidth().testTag(LeaveTags.card(item.leaveUuid)),
+        fillBrush = Brush.linearGradient(listOf(n.leaveStart, n.leaveEnd)), edge = n.leaveEdge,
+    ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TsoStatusPill(pillText, Modifier.testTag(LeaveTags.badge(item.leaveUuid)), tone = tone)
+            if (tone == TsoPillTone.Warning && !n.solid) TsoOrangeBadge(pillText, Modifier.testTag(LeaveTags.badge(item.leaveUuid)))
+            else TsoStatusPill(pillText, Modifier.testTag(LeaveTags.badge(item.leaveUuid)), tone = tone)
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(AronIcons.Calendar, contentDescription = null, tint = look.inkMuted, modifier = Modifier.size(20.dp))
+                    Icon(AronIcons.Calendar, contentDescription = null, tint = onTeal, modifier = Modifier.size(20.dp))
                     Text(period, style = MaterialTheme.typography.bodyLarge, fontStyle = FontStyle.Italic, color = look.ink)
                 }
                 Text(stringResource(R.string.tso_leave_reason_line, item.reason), style = MaterialTheme.typography.bodyLarge, fontStyle = FontStyle.Italic, color = look.ink)
                 when {
                     item.refusalCode != null && item.held -> Text(
                         stringResource(R.string.tso_leave_held_reason, refusalText(item)), Modifier.testTag(LeaveTags.held(item.leaveUuid)),
-                        style = MaterialTheme.typography.bodyMedium, color = look.inkMuted,
+                        style = MaterialTheme.typography.bodyMedium, color = onTeal,
                     )
                     item.refusalCode != null -> Text(
                         stringResource(R.string.tso_leave_not_accepted_reason, refusalText(item)), Modifier.testTag(LeaveTags.refused(item.leaveUuid)),
-                        style = MaterialTheme.typography.bodyMedium, color = look.red,
+                        style = MaterialTheme.typography.bodyMedium, color = if (n.solid) look.red else look.ink,
                     )
-                    !item.sent -> Text(stringResource(R.string.tso_leave_not_sent), Modifier.testTag(LeaveTags.unsent(item.leaveUuid)), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
+                    !item.sent -> Text(stringResource(R.string.tso_leave_not_sent), Modifier.testTag(LeaveTags.unsent(item.leaveUuid)), style = MaterialTheme.typography.bodySmall, color = onTeal)
                 }
             }
             // the day count in a circle: the number over "Day" or "Days" (read as one phrase by TalkBack)
             val spoken = "$daysNumber $dayWord"
             Box(
-                Modifier.size(64.dp).clip(CircleShape).background(look.page).testTag(LeaveTags.days(item.leaveUuid)).clearAndSetSemantics { contentDescription = spoken },
+                // a disc that grows with the font (200 % Bangla "দিন" was clipped at a fixed 64 dp)
+                Modifier.defaultMinSize(64.dp, 64.dp).clip(RoundedCornerShape(50)).background(if (n.solid) look.page else n.leaveDisc).padding(horizontal = 6.dp, vertical = 4.dp).testTag(LeaveTags.days(item.leaveUuid)).clearAndSetSemantics { contentDescription = spoken },
                 contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(daysNumber, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = look.ink)
-                    Text(dayWord, style = MaterialTheme.typography.labelMedium, color = look.inkMuted)
+                    Text(dayWord, style = MaterialTheme.typography.labelMedium, color = onTeal)
                 }
             }
         }
