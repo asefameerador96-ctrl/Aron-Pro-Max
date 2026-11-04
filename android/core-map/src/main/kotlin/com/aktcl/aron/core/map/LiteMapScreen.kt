@@ -231,11 +231,12 @@ private fun PointList(points: List<MapPoint>, nowMs: Long, staleAfterMin: Int, m
             // a person without a fix or with an old one is greyed; an outlet has no fix age and never is
             val faded = p.kind == MapPointKind.PERSON && (age == null || age.stale)
             Column(
-                Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).alpha(if (faded) STALE_ALPHA else 1f)
+                Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).alpha(if (faded && !tso) STALE_ALPHA else 1f)
                     .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.S).testTag(LiteMapTags.ROW + p.id),
             ) {
                 // explicit look roles: outside a Surface the default ink is black, unreadable on the TSO navy page (conformance rows 28, 29)
-                Text(p.label, style = MaterialTheme.typography.titleMedium, color = if (tso) look.ink else Color.Unspecified)
+                // TSO look: a stale row is shown in the muted ink (10:1 on the page), never at half alpha (the flag line fell to 3.4:1); SR/AMO keep the alpha
+                Text(p.label, style = MaterialTheme.typography.titleMedium, color = if (!tso) Color.Unspecified else if (faded) look.inkMuted else look.ink)
                 pointLine(p, nowMs, staleAfterMin)?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = if (tso) look.inkMuted else Color.Unspecified) }
             }
         }

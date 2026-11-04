@@ -20,7 +20,7 @@ import com.aktcl.aron.feature.tso.TsoDashboardState
 import com.aktcl.aron.feature.tso.TsoDashboards
 import com.aktcl.aron.feature.tso.TsoFab
 import com.aktcl.aron.feature.tso.TsoFailure
-import com.aktcl.aron.core.ui.aron.NightPageGlow
+import com.aktcl.aron.feature.tso.TsoGlow
 import com.aktcl.aron.feature.tso.TsoFrame
 import com.aktcl.aron.feature.tso.TsoLoginSubmitStatusContent
 import com.aktcl.aron.feature.tso.TsoNav
@@ -151,7 +151,7 @@ fun TsoDashboardHost(model: TsoDashboardModel, nav: TsoNav) {
 fun TsoLoginStatusHost(model: TsoDashboardModel, nav: TsoNav) {
     val scope = rememberCoroutineScope()
     LaunchedEffect(model.usersTab) { model.loadUsers(model.usersTab) }
-    TsoFrame(stringResource(TsoR.string.tso_dash_login_submit), nav, homeButton = TsoFab.of(TsoScreen.LOGIN_SUBMIT_STATUS), glow = NightPageGlow.Bottom) {
+    TsoFrame(stringResource(TsoR.string.tso_dash_login_submit), nav, homeButton = TsoFab.of(TsoScreen.LOGIN_SUBMIT_STATUS), glow = TsoGlow.of(TsoScreen.LOGIN_SUBMIT_STATUS)) {
         TsoLoginSubmitStatusContent(
             model.usersTab, model.users[model.usersTab], model.usersRefreshing,
             onTab = { model.usersTab = it }, onRefresh = { scope.launch { model.loadUsers(model.usersTab) } },

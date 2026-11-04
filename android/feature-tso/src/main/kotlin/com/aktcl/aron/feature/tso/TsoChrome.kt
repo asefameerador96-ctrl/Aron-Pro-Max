@@ -140,9 +140,22 @@ object TsoDrawer {
  * The Home button column of build contract s8 (FAB = Y per screenshot): Dashboard (6, 7), Login & Bikroy Joma Status (8), My Team
  * (28), Retailer (29), Set Plan (31 to 33), My Visit Plan and its outlets, query and task (34 to 38), Add new feedback (43), and My
  * feedback with it (an improvement with no screenshot; it belongs to the same group). Every other screen has none: login (5),
- * tickets (11 to 18), leave (19 to 22), Final Submit (23 to 26), Target Status (39 to 42), Settings, Change Password, PDA to Support
+ * tickets (11 to 18), leave (19 to 22), Final Submit (23 to 26), Target Status and Details (39 to 42), Settings, Change Password, PDA to Support
  * and the inbox (no screenshot: none).
  */
+/**
+ * The page glow the app-tso hosts frame for the two host-framed pages that have one: the bright-blue bottom dome of Target Status (screenshots 39, 40)
+ * and the login-status page (8). Target Details (41, 42) has none: the owner's pages are plain navy to the bottom edge. The hosts and the screenshot frames read this one table, so a golden proves the
+ * glow the app draws. Final Submit and the Leave pages draw theirs inside their own screens (`FinalSubmitScreen`, `LeaveScreen`,
+ * `LeaveApplyScreen`), where the goldens already render the real composable; they are not in this table.
+ */
+object TsoGlow {
+    fun of(screen: TsoScreen): com.aktcl.aron.core.ui.aron.NightPageGlow = when (screen) {
+        TsoScreen.TARGET_STATUS, TsoScreen.LOGIN_SUBMIT_STATUS -> com.aktcl.aron.core.ui.aron.NightPageGlow.Bottom
+        else -> com.aktcl.aron.core.ui.aron.NightPageGlow.None
+    }
+}
+
 object TsoFab {
     val screens: Set<TsoScreen> = setOf(
         TsoScreen.DASHBOARD, TsoScreen.LOGIN_SUBMIT_STATUS, TsoScreen.MY_TEAM, TsoScreen.RETAILER, TsoScreen.SET_PLAN,
