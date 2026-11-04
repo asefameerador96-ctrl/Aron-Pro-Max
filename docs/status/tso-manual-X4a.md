@@ -487,8 +487,8 @@ Asks:
     for their next config delta (D-X4a-28 case c)? Not built here: it touches ConfigService (backend/config), outside this
     lane, and a national push to every field phone is the lead's call. Today an admin can send the `config_pull` from the
     notifications console. **Answered by fix round 4** (the lead's round 4 brief: fix every medium): built for both
-    directions, and not as a national push: only the SR and AMO phones of the closed zone-days of today and yesterday
-    (D-X4a-32).
+    directions: the SR and AMO phones of the zone-days closed today and yesterday (D-X4a-32). In steady state this is close to
+    the whole field fleet: see the handover note, ask 14.
 
 Not done (fix round 3):
 
@@ -526,7 +526,8 @@ config delta live.
 Decisions (lane level):
 
 - **D-X4a-32 Who gets the push after a policy change.** The SR and AMO users of every zone-day of today or yesterday (Dhaka)
-  with a live close: the close's own recipients, not a national fan-out. Only a phone holding a final route-day can be
+  with a live close: the close's own recipients. Since every zone closes every day, in steady state this is close to the
+  whole field fleet (fix round 4 checker, medium: off-thread bulk sending before fleet size, handover ask 14). Only a phone holding a final route-day can be
   locked. A phone of a zone that is not closed learns the policy at its next config delta, or with its zone's close push
   (both day reasons now pull the config). Yesterday is included because the midnight job closes yesterday's zone-days, and
   a phone may still hold yesterday's day just after midnight. The push is a `sync_nudge` (one per user, coalesced by
