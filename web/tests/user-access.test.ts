@@ -28,9 +28,9 @@ describe("portal levels", () => {
 });
 
 describe("modules", () => {
-  it("fifteen modules including data entry, indent, leaderboard and daily tracking", () => {
-    expect(GRANT_MODULES).toHaveLength(15);
-    for (const m of ["data_entry", "indent", "leaderboard", "daily_tracking"]) expect(GRANT_MODULES as readonly string[]).toContain(m);
+  it("sixteen modules including data entry, indent, leaderboard, daily tracking and support (R-F-11)", () => {
+    expect(GRANT_MODULES).toHaveLength(16); // tso-manual W1: + support (R-F-11)
+    for (const m of ["data_entry", "indent", "leaderboard", "daily_tracking", "support"]) expect(GRANT_MODULES as readonly string[]).toContain(m);
   });
 });
 

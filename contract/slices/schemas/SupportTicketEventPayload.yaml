@@ -1,0 +1,36 @@
+SupportTicketEventPayload:
+  type: object
+  description: 'The reporter''s action on its own ticket through the outbox (contract 1.10.0, D-TSO-MAN-20, 21).
+    `comment` needs a
+
+    `body` of 1 to 2000 characters and is allowed while the ticket is new or in_progress; `close_review` ("Submit
+
+    Review & Close", one tap, no rating) only while it is resolved. Otherwise, or on another user''s ticket, the
+    record
+
+    is rejected `ticket_state_invalid` (final). A ticket not on the server yet parks the event (`parent_missing`).
+
+    A requester role outside the configured requester roles is quarantined `scope_out_of_reach`, with the same role
+
+    check again on an accept as for the ticket (R-F-05).
+
+    Photos follow as `media_meta` with ref_type `support_ticket_event` (at most 3). Family: own header, rank 0.
+
+    '
+  required:
+  - ticket_uuid
+  - kind
+  additionalProperties: false
+  properties:
+    ticket_uuid:
+      $ref: '#/components/schemas/Uuid'
+    kind:
+      type: string
+      enum:
+      - comment
+      - close_review
+    body:
+      type: string
+      maxLength: 2000
+      description: The comment text (1 to 2000 characters for a comment, a server check); may be absent on a close
+        review.

@@ -41,14 +41,17 @@ internal class MediaRead(private val d: MediaDeps) {
         val uuid = rawUuid?.takeIf { UUID_V4.matches(it) }
             ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "media_uuid is not a UUID", errors = listOf(FieldError("path.media_uuid", "invalid_value")))
         val reachResolver = d.reach ?: throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "photo reads are not wired")
-        data class Row(val owner: Long, val date: LocalDate, val path: String, val status: String)
+        data class Row(val owner: Long, val date: LocalDate, val path: String, val status: String, val refType: String)
         val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
         val (row, inReach) = d.db.readJdbi.withHandle<Pair<Row, Boolean>, Exception> { h ->
-            val row = h.createQuery("SELECT user_id, business_date, blob_path, status FROM app.media WHERE client_uuid = :u AND voided_at IS NULL")
+            val row = h.createQuery("SELECT user_id, business_date, blob_path, status, ref_type FROM app.media WHERE client_uuid = :u AND voided_at IS NULL")
                 .bind("u", UUID.fromString(uuid))
-                .map { rs, _ -> Row(rs.getLong(1), rs.getObject(2, LocalDate::class.java), rs.getString(3), rs.getString(4)) }
+                .map { rs, _ -> Row(rs.getLong(1), rs.getObject(2, LocalDate::class.java), rs.getString(3), rs.getString(4), rs.getString(5)) }
                 .findOne().orElseThrow { ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such photo") }
             if (row.owner == p.userId) return@withHandle row to true
+            // tso-manual B1 (D-TSO-MAN-22, 23, TK-14): a ticket photo is the reporter's and the support desk's only (as the
+            // ticket itself); the desk is the permission `support.ticket.manage`, never a geography.
+            if (row.refType in TICKET_REFS) return@withHandle row to ("support.ticket.manage" in p.permissions)
             val reach = reachResolver.reach(p.userId, p.role, p.scopeVersion, today)
             val ok = when {
                 reach.ownRecordsOnly -> false
@@ -83,5 +86,6 @@ internal class MediaRead(private val d: MediaDeps) {
     private companion object {
         const val VALID_S = 5 * 60L
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+        val TICKET_REFS = setOf("support_ticket", "support_ticket_event") // tso-manual B1
     }
 }

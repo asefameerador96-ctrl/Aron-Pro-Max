@@ -8,6 +8,7 @@ import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.FieldError
 import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.ServerConfig
+import com.aktcl.aron.backend.platform.WorkingCalendarRepo
 import com.aktcl.aron.backend.platform.authenticated
 import com.aktcl.aron.backend.platform.principal
 import com.aktcl.aron.backend.platform.receiveStrict
@@ -16,12 +17,17 @@ import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.contract.Role
 import com.aktcl.aron.rules.BusinessDate
+import com.aktcl.aron.rules.NodePath
+import com.aktcl.aron.rules.Percent
+import com.aktcl.aron.rules.Targets
+import com.aktcl.aron.rules.TillDateBasis
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import kotlinx.datetime.toJavaLocalDate
+import kotlinx.datetime.toKotlinLocalDate
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -60,9 +66,12 @@ data class TrackingAction(val action_uuid: String, val route_id: Long, val busin
 
 /**
  * Daily Tracking (F-API-015). The achievement behind the buckets is the call productivity of the route-day: successful calls divided by
- * target outlets (docs/24 s12.4 strike rate), because the target-quantity achievement belongs to the deferred target programme (docs/27);
- * `tilldate_target_achievement_pct` therefore stays null. Buckets: >= 100, 90 to < 100, 80 to < 90, < 80, exception (an approved day exception
+ * target outlets (docs/24 s12.4 strike rate). Buckets: >= 100, 90 to < 100, 80 to < 90, < 80, exception (an approved day exception
  * excuses the route), not logged in (planned, state not_started).
+ * `tilldate_target_achievement_pct` (tso-manual B2, D-TSO-MAN-05/08) is the route's cigarette STD against its till-date target: A = sold
+ * sticks of sale lines, business dates 1st..the tracked date; T' = the sum over the route's cigarette items (variants) of
+ * Targets.tillDate(T_item, e, n) on the `cfg.kpi.tilldate_basis.tso` basis (working days at the route's zone); Percent.bp(A, T') printed
+ * with two decimals. Null when the route has no cigarette target that month (T' = 0) or n = 0.
  */
 class DailyTrackingService(private val db: Database, private val config: ServerConfig, private val clock: AronClock = AronClock.SYSTEM) {
 
@@ -105,7 +114,8 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
                 """,
             ).bind("d", date).bindArray("rids", Long::class.javaObjectType, page.map { it.route_id })
                 .map { rs, _ -> rs.getLong(1) to CategoryVolume(rs.getString(2), rs.getString(3), rs.getLong(4), rs.getLong(5)) }.list().groupBy({ it.first }, { it.second })
-            page.map { it.copy(by_category = cats[it.route_id].orEmpty()) } to (if (rows.size > limit) page.last().route_id else null)
+            val tillDate = tillDatePct(h, page, date)
+            page.map { it.copy(by_category = cats[it.route_id].orEmpty(), tilldate_target_achievement_pct = tillDate[it.route_id]) } to (if (rows.size > limit) page.last().route_id else null)
         }
         return DailyTrackingPage(clock.now().wire(), date.toString(), items, next?.let { Base64.getUrlEncoder().withoutPadding().encodeToString("r|$it".toByteArray()) }, comparator)
     }
@@ -140,6 +150,38 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
             prev.toString(), "%02d:%02d".format(time.hour, time.minute),
             TrackingBuckets(counts["ge_100"] ?: 0, counts["from_90"] ?: 0, counts["from_80"] ?: 0, counts["below_80"] ?: 0, counts["exception"] ?: 0, counts["not_logged_in"] ?: 0),
         )
+    }
+
+    /**
+     * The till-date target achievement % of each route on [date] (see the class comment): cigarette sticks, item till-date rounded once per
+     * variant and summed (R-F-01), one Percent.bp rounding, null without a cigarette target or when n = 0 (R-F-15).
+     */
+    private fun tillDatePct(h: org.jdbi.v3.core.Handle, rows: List<DailyTrackingRow>, date: LocalDate): Map<Long, Double?> {
+        if (rows.isEmpty()) return emptyMap()
+        val ids = rows.map { it.route_id }
+        val month = java.time.YearMonth.from(date)
+        val basis = TillDateBasis.fromWire(runCatching { config.string(TargetAchievementService.BASIS_TSO) }.getOrNull())
+        val targets = h.createQuery(
+            """
+            SELECT t.route_id, p.variant_id, sum(t.qty_base) FROM app.route_monthly_target t JOIN dw.dim_product p ON p.sku_id = t.sku_id
+             WHERE t.month = :m AND t.route_id = ANY(:r) AND p.category_code = 'cigarette' GROUP BY 1, 2
+            """,
+        ).bind("m", month.atDay(1)).bindArray("r", Long::class.javaObjectType, ids).map { rs, _ -> rs.getLong(1) to rs.getLong(3) }.list().groupBy({ it.first }, { it.second })
+        val achieved = h.createQuery(
+            """
+            SELECT a.route_id, sum(a.sold_qty_base) FROM dw.agg_daily_route_sku a JOIN dw.dim_product p ON p.sku_id = a.sku_id
+             WHERE a.business_date BETWEEN :f AND :d AND a.route_id = ANY(:r) AND p.category_code = 'cigarette' GROUP BY 1
+            """,
+        ).bind("f", month.atDay(1)).bind("d", date).bindArray("r", Long::class.javaObjectType, ids).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
+        val cals = if (basis == TillDateBasis.WORKING_DAYS) WorkingCalendarRepo.load(h, month, clock.now(), config) else null
+        val paths = if (cals != null) WorkingCalendarRepo.zonePaths(h, rows.map { it.zone_id }) else emptyMap()
+        val ym = kotlinx.datetime.YearMonth(month.year, month.monthValue)
+        return rows.associate { row ->
+            val items = targets[row.route_id]
+            val days = Targets.days(basis, ym, date.toKotlinLocalDate(), cals?.at(paths[row.zone_id] ?: NodePath.GLOBAL))
+            val td = if (items == null || days.period == 0) null else items.fold(0L) { s, t -> Math.addExact(s, Targets.tillDate(t, days) ?: 0L) }
+            row.route_id to td?.let { Percent.bp((achieved[row.route_id] ?: 0L).coerceAtLeast(0L), it) }?.let { BigDecimal.valueOf(it, 2).toDouble() }
+        }
     }
 
     private fun bucket(exception: Boolean, state: String, loginOk: Boolean, pct: BigDecimal?): String = when {

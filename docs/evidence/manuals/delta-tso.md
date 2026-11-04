@@ -2,6 +2,10 @@
 
 Date: 2026-10-04. Output of the "find everything the spec does not cover" pass for the TSO manual.
 
+**Update 2026-10-29 (TSO manual build, lane A1):** the October manual (`manual-tso-2026-10.md`) and its 44 screenshots are built by the
+build contract `docs/requests/tso-manual-build-2026-10.md`; the shell section at the end of this file ("A1 shell deltas") records what
+the new shell keeps different from the screenshots, and why.
+
 **Inputs read in full:** `scratchpad/manuals/manual-tso.md` (737 lines: 24 screens, 17 flows, 50 rules, 24 message entries, 29 entities, 30 unclear items); `docs/08-tso-app.md`, `docs/03-data-model.md`, `docs/10-kpis-and-programs.md`, `docs/13-open-questions.md`, `db/schema.sql`; plan drafts `plan/lens-features.md` (F-TSO-001..020, F-SYS, G-feat-01..67) and `plan/lens-data.md` (T01..T08, M-33..M-36, D-01..D-09). Also read for context: `docs/01, 02, 04, 09, 11, 12, 22`, `plan/seed-findings.md`, the `cfg.tso.*`, `cfg.leave.*`, `cfg.feedback.*`, `cfg.target.*` rows of `plan/lens-config.md`; searched (not read in full) the AMO, SR and Web manual inventories for cross-manual checks.
 **Not found:** `docs/15-feature-inventory.md` and `docs/16-data-platform.md` do not exist in the repo (only `docs/22-apsis-data-profile.md` was added after `docs/13`). "Plan" below therefore means the `plan/lens-*.md` drafts. An item covered only by a lens draft is counted COVERED but is still not in the spec of record.
 **PDF spot-checks** against `eefcbecb-TSO_App_User_Manual.pdf` pages 5-7, 10-11, 13-21 (log in Appendix B): the inventory is accurate; no factual error found. Three observations in the screenshots are not in the inventory and are used below (Not Uploaded is a superset of Not Logged In; the till-date targets fit a calendar-day pro-rata; the Set Plan card shows address, not cluster).
@@ -545,3 +549,37 @@ Not re-read: pp. 1-4, 8, 9, 12, 22 (cover, install, login, drawer repeats, empty
 8. Whether AMO routes and AMO users belong in Target Route, Total Login and the lists (G-08), and whether service zones appear in the Zone picker (section 3 row 18).
 9. Behaviour offline: login without signal, dashboard with no data, any "no internet" message (G-05); none is in the manual.
 10. Device list and Android versions on the TSO fleet (G-29).
+
+---
+
+## A1 shell deltas (TSO manual build, 2026-10-29)
+
+What the rebuilt TSO shell (login, top bar, drawer, Dashboard chrome, Settings, Log Out, Target Status and the bell inbox) keeps different from the October screenshots,
+each with its reason. Lane A1, build contract s5 A1 and s7.2.
+
+| Delta | Screenshot | Build | Reason |
+|---|---|---|---|
+| Enrolment gate before the first login | none (screenshot 5 goes straight to the login) | kept on side-loaded pilot phones only; fleet phones are QR-provisioned | security: a phone must be enrolled before it can sign in (D-TSO-MAN-16, CR-2) |
+| One-time location notice | none | kept once per user | consent for location use (D-TSO-MAN-16, CR-2) |
+| Login OTP | none for TSO | none (D-AUTH-TSO-NOBIND); the "Login OTP issue" ticket type serves SR and AMO | CR-1 |
+| Language toggle on the login | none | a text toggle at the bottom | constraint 8: the language is chosen before login (D-TSO-MAN-15) |
+| Password eye | none | kept | small improvement (D-TSO-MAN-15) |
+| Sun switch and version line | none on the login | in Settings | D-TSO-MAN-15 |
+| Launcher icon plate | light plate | D-BRAND-02 red plate | s7.2 recorded difference |
+| Labels on bright buttons | white on cyan (Login), lime, green (Cancel) and orange (Log Out) | navy labels; the cyan button's lower stop, the orange stop and the blue button deepened or lifted a little | legibility: white on those fills is about 2:1; key labels hold 7:1 (rule 14, TokenContrastTest) |
+| Drawer header | "TSO" and the name | plus a Settings gear | Settings has no other entry (D-TSO-MAN-14, small improvement) |
+| My Feedback group | "Add new feedback" | plus "My feedback" (own list) | improvement (D-TSO-MAN-14) |
+| Logout text | "Your all app data will removed." | "All app data on this phone will be removed." | grammar fix (s7.1 Q6, default) |
+| Logout with unsent items | wipes regardless | refused, "N items not yet sent", Sync now or Cancel | constraint 2: no queued record is ever lost (G-man-tso-01, D-TSO-MAN-37) |
+| "as of" line on the Dashboard | none | "As of hh:mm" (or "Offline: showing the copy of hh:mm") | the reads are snapshots; a kept copy must say so (build contract s5 A1) |
+| Pull-to-refresh on the Dashboard | not shown | reads on open and on pull-to-refresh, never on a timer | constraint 3 (battery, data) |
+| By Channel STD ▸ | callout of the older manual | switches to By Channel Successful Call and back, choice kept | D-TSO-MAN-41 |
+| Totals in base units | sticks, pieces, dozens | the same (sold lines only) | D-TSO-MAN-09 |
+| Target Status figures | "1030/40999", "3%" | the same plain integers (no grouping, Bengali digits in Bangla); percents computed on the phone from the integers | screenshots 39 to 42 win (rule 14a); D-TSO-MAN-10 one rounding |
+| Target Status bar colours | bright red, amber, green on a light track | the same fills; the percent beside each bar is printed in a 4.5:1 status ink (the amber bar on the light track is 1.4:1, so the printed percent carries the figure) | legibility (rule 14, TokenContrastTest `tsoTargetBandsReachThreeToOne`) |
+| Details category filter | tapping a bar shows that bar and its items (screenshot 41) | the same, plus "Show all categories" under the bar while filtered (tapping the bar again also clears it) | the screenshot gives no way back to all categories |
+| Details table header | "Achieve ment", "Remainin g" (broken mid-word) | hyphenated where the word does not fit; figures shrink in their cells instead of breaking; from 150 percent font scale each item is a block (name, then Target, Achievement, Remaining, % lines) | legibility at 360 dp and 200 percent font |
+| "as of" and pull-to-refresh on Target Status, Details and the inbox | none | as on the Dashboard; a kept copy says so | the reads are snapshots (build contract s5 A1) |
+| A node with no working day | none | "—" for its till-date figures, per node | R-F-15, R-F-24 |
+| Notifications inbox behind the bell | bell with a badge, no inbox screenshot | a plain inbox list, newest first; opening it marks everything read; offline the read is kept and the badge counts it | D-TSO-MAN-26 improvement |
+| Push notices | none in the manual | fixed Bangla and English texts for `notification`, `ticket_updated` and `day_final_submitted` (silent channel for the day lock); the push carries no business data | D-TSO-MAN-26, 31; N-037 |

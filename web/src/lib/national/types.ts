@@ -66,9 +66,14 @@ export interface SalesCard {
   pct_bp: number | null;
   /** Target minus sales, never below 0 (null without a target). */
   remaining: number | null;
+  // tso-manual W1 (D-TSO-MAN-10): the integers the ring is printed from, rounded once (contract 1.10.0)
+  /** Sum of the route monthly targets in base units; null without a target; undefined from a server older than 1.10.0. */
+  monthly_target_qty?: number | null;
 }
 export interface SalesSlice extends Stamp {
   cards: SalesCard[];
+  /** tso-manual W1: working days W of the month at the scope's node (0: no working day, the ring prints "—", R-F-13). */
+  working_days?: number;
 }
 export interface CprSlice extends Stamp {
   target_outlets: number;
@@ -83,6 +88,9 @@ export interface ChannelCount {
 }
 export interface ChannelSlice extends Stamp {
   channels: ChannelCount[];
+  /** tso-manual X3 (R-W-06, R-W-13 (6)): what each share divides by, so the legend prints it once from the counts: `total` +
+   *  `unclassified` on By Channel Calls, `total` on By Channel STD. */
+  denominator: number;
 }
 export interface FinalSubmitSlice extends Stamp {
   total_zone: number;
@@ -167,7 +175,10 @@ export interface RouteMapSlice extends Stamp {
   last_position: { lat: number; lng: number; at: string } | null;
   path: { lat: number; lng: number; at: string }[];
   outlets: RouteOutlet[];
-  target_vs_achievement: { category: CategoryCode; pct_bp: number | null }[];
+  /** tso-manual W1: `sales` and the Decimal3 `daily_target` print the whole % once (pctWholeOverDecimal3); the bp draws the bar.
+   *  tso-manual X3: with `monthly_target_qty` (Decimal3) and `working_days` (contract 1.10.0, R-W-06) the bar prints by the
+   *  Sales-card rule (routeBarText); undefined from a server before the integration round. */
+  target_vs_achievement: { category: CategoryCode; pct_bp: number | null; sales?: number; daily_target?: string | null; monthly_target_qty?: string | null; working_days?: number }[];
   last_sale_place: string | null;
   cpr: { target_outlets: number; successful_calls: number; geo_validation: number; cpr_pct_bp: number | null };
   time: { first_sale: string | null; last_sale: string | null; total_hours: number | null; avg_hours: number | null; distance_m: number };

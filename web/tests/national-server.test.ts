@@ -72,3 +72,22 @@ describe("national adapters", () => {
     expect(r.ok && r.data.territory_code).toBe("1306");
   });
 });
+
+describe("tso-manual X3: the integers the cards print from (R-W-06, R-W-13 (5), (6))", () => {
+  it("channel calls divide by total + unclassified, channel STD by total", async () => {
+    answer = { ...stamp, channels: [{ channel: "GT", value: 29, share_pct_bp: 245 }], total: 1129, unclassified: 57 };
+    const c = await server.getChannelCalls("tok", { date: "2026-10-22" });
+    expect(c.ok && c.data.denominator).toBe(1186);
+    answer = { ...stamp, channels: [{ channel: "GT", value: 29, share_pct_bp: 245 }], total: 1186, unit: "stick" };
+    const s = await server.getChannelStd("tok", { date: "2026-10-22" });
+    expect(s.ok && s.data.denominator).toBe(1186);
+  });
+  it("route map: each Target vs Achievement entry carries monthly_target_qty and working_days when sent", async () => {
+    const base = { ...stamp, route: { id: 1, code: "R1", name: "R" }, sr_name: "S", territory: { id: 2, code: "1306", name: "T" }, zone: { id: 3, code: "Z", name: "Z" }, sale_start: null, sr_last_position: null, path: [], outlets: [], cpr: { target_outlets: 1, successful_calls: 0, geo_validated: 0, cpr_pct_bp: 0 }, time_card: { total_sale_seconds: null, average_sale_seconds: null, distance_covered_m: 0 } };
+    answer = { ...base, target_vs_achievement: [{ category_code: "cigarette", base_unit: "stick", daily_target: "28.708", sales: 30, achievement_pct_bp: 10450, monthly_target_qty: "689.000", working_days: 24 }, { category_code: "bidi", base_unit: "stick", daily_target: "1.000", sales: 1, achievement_pct_bp: 10000 }] };
+    const r = await server.getRouteMap("tok", 1, "2026-10-22");
+    expect(r.ok && r.data.target_vs_achievement[0]).toMatchObject({ category: "cigarette", sales: 30, monthly_target_qty: "689.000", working_days: 24 });
+    expect(r.ok && r.data.target_vs_achievement[1]?.monthly_target_qty).toBeUndefined(); // an older server: the fallback path
+    expect(r.ok && r.data.target_vs_achievement[1]?.working_days).toBeUndefined();
+  });
+});

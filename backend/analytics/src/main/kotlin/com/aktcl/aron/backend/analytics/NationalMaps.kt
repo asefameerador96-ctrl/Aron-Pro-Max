@@ -171,7 +171,8 @@ fun NationalDashboardService.routeMap(caller: NationalCaller, routeId: Long, dat
         val firstSale = a.firstSale; val lastSale = a.lastSale
         val total = if (firstSale != null && lastSale != null) java.time.Duration.between(firstSale, lastSale).seconds else null
 
-        val month = YearMonth.from(date); val wd = WorkingCalendar.workingDays(h, month, weekendDays())
+        // tso-manual B2: W at the route's zone (D-TSO-MAN-08: the zone's weekend and the declarations on its path).
+        val month = YearMonth.from(date); val wd = workingDaysAt(h, month, com.aktcl.aron.backend.platform.WorkingCalendarRepo.zonePaths(h, listOf(head.zone.id))[head.zone.id] ?: com.aktcl.aron.rules.NodePath.GLOBAL)
         val targets = h.createQuery(
             """
             SELECT p.category_code, sum(t.qty_base) FROM app.route_monthly_target t ${AsWasSql.product("p", "t.sku_id", "CAST(:d AS date)", lo = ":d", hi = ":d", plain = asWas.product)}

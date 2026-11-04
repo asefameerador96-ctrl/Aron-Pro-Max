@@ -36,6 +36,8 @@ import java.util.UUID
 @Serializable
 data class FeedbackDto(
     val feedback_uuid: String, val user_id: Long, val category_code: String, val title: String, val description: String, val photo_uuid: String?, val created_at: String, val status: String,
+    // tso-manual B3 (contract 1.10.0, FB-09): the record's business date and capture time, the author's login and zone
+    val business_date: String? = null, val captured_at: String? = null, val username: String? = null, val zone_id: Long? = null,
 )
 
 @Serializable
@@ -73,12 +75,15 @@ fun Route.feedbackRoutes(d: FeedbackDeps) {
 
 private val FEEDBACK_STATUSES = setOf("new", "in_progress", "resolved", "closed") // contract FeedbackStatus
 
-private const val FB_COLS = "f.client_uuid, f.user_id, f.category_code, f.title, f.description, f.photo_uuid, f.created_at, COALESCE(s.status, 'new') AS status"
-private const val FB_FROM = "app.feedback f LEFT JOIN app.feedback_status s ON s.feedback_client_uuid = f.client_uuid"
+private const val FB_COLS = "f.client_uuid, f.user_id, f.category_code, f.title, f.description, f.photo_uuid, f.created_at, COALESCE(s.status, 'new') AS status, " +
+    "f.business_date, f.captured_at, au.username AS author_username, au.home_zone_id AS author_zone_id" // tso-manual B3 (FB-09)
+private const val FB_FROM = "app.feedback f LEFT JOIN app.feedback_status s ON s.feedback_client_uuid = f.client_uuid JOIN app.app_user au ON au.id = f.user_id"
 
 private fun mapFeedback(rs: ResultSet) = FeedbackDto(
     rs.getObject("client_uuid", UUID::class.java).toString(), rs.getLong("user_id"), rs.getString("category_code"), rs.getString("title"), rs.getString("description"),
     rs.getObject("photo_uuid", UUID::class.java)?.toString(), rs.getObject("created_at", OffsetDateTime::class.java).toInstant().wire(), rs.getString("status"),
+    rs.getObject("business_date", LocalDate::class.java).toString(), rs.getObject("captured_at", OffsetDateTime::class.java).toInstant().wire(),
+    rs.getString("author_username"), rs.getObject("author_zone_id") as Long?,
 )
 
 private fun listFeedback(call: ApplicationCall, d: FeedbackDeps): FeedbackPageDto {
@@ -135,10 +140,8 @@ private suspend fun submit(call: ApplicationCall, d: FeedbackDeps): Pair<Boolean
         // Replay first: a stored feedback_uuid answers the stored row as it is, before any rule is re-judged (a category
         // retired since the first send must not turn a late replay into a 400).
         readOne(h, id)?.let { row -> if (same(row)) return@inTransaction false to row else throw ApiProblem(ProblemCode.ERR_CONFLICT, "feedback_uuid already stores different feedback") }
-        val known = h.createQuery("SELECT count(*) FROM app.code_list_item WHERE list_key = 'feedback_category'").mapTo(Int::class.java).one()
-        if (known > 0 && h.createQuery("SELECT count(*) FROM app.code_list_item WHERE list_key = 'feedback_category' AND code = :c AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)")
-                .bind("c", req.category_code).bind("d", today).mapTo(Int::class.java).one() == 0
-        ) bad("body.category_code", "unknown_code")
+        // tso-manual B3 (D-TSO-MAN-36, FB-11): the rules the feedback sync record is judged by (FeedbackChecks).
+        FeedbackRules.check(h, req.category_code, photo != null, today)?.let { r -> bad("body.${r.field}", r.reason) }
         val inserted = h.createUpdate(
             "INSERT INTO app.feedback (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, category_code, title, description, photo_uuid) VALUES (:u, :u, :bd, :uid, :at, :cv, :c, :t, :d, CAST(:ph AS uuid)) ON CONFLICT (client_uuid) DO NOTHING",
         ).bind("u", id).bind("bd", today).bind("uid", p.userId).bind("at", now).bind("cv", cfgVersion).bind("c", req.category_code).bind("t", title).bind("d", desc).bind("ph", photo).execute()

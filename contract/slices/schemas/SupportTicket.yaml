@@ -1,0 +1,161 @@
+SupportTicket:
+  type: object
+  description: A ticket as the reporter and the support desk read it (D-TSO-MAN-18 to 25). The desk-only members
+    are absent for any other caller.
+  required:
+  - ticket_uuid
+  - ticket_no
+  - issue_type_code
+  - issue_type_label_en
+  - issue_type_label_bn
+  - category_label_en
+  - title
+  - description
+  - source
+  - priority
+  - status
+  - requester
+  - affected_username
+  - business_date
+  - captured_at
+  - created_at
+  - updated_at
+  - first_response_at
+  - resolved_at
+  - closed_at
+  - cancelled_at
+  - resolution_code
+  - resolution_label_en
+  - resolution_notes
+  - cancel_reason
+  - version
+  - attachment_count
+  additionalProperties: false
+  properties:
+    ticket_uuid:
+      $ref: '#/components/schemas/Uuid'
+    ticket_no:
+      oneOf:
+      - $ref: '#/components/schemas/TicketNumber'
+      - type: 'null'
+    issue_type_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    issue_type_label_en:
+      type: string
+      maxLength: 120
+    issue_type_label_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+      description: Null until AKTCL supplies the Bangla label (the app shows the English one).
+    category_label_en:
+      type: string
+      maxLength: 40
+      description: Always "Tickets" (screenshot 15 shows it before the urgency, "Tickets - High").
+    title:
+      type: string
+      maxLength: 120
+    description:
+      type: string
+      maxLength: 2000
+    source:
+      type: string
+      enum:
+      - quick
+      - manual
+    priority:
+      $ref: '#/components/schemas/SupportTicketPriority'
+    status:
+      $ref: '#/components/schemas/SupportTicketStatus'
+    requester:
+      type: object
+      description: The user who raised the ticket.
+      required:
+      - user_id
+      - username
+      - full_name
+      - role
+      additionalProperties: false
+      properties:
+        user_id:
+          $ref: '#/components/schemas/Id'
+        username:
+          $ref: '#/components/schemas/Username'
+        full_name:
+          type: string
+          maxLength: 120
+        role:
+          $ref: '#/components/schemas/Role'
+    affected_username:
+      type:
+      - string
+      - 'null'
+      pattern: ^[A-Za-z0-9._-]{3,40}$
+    assignee_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: Support desk only.
+    assignee_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+      description: Support desk only.
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    captured_at:
+      $ref: '#/components/schemas/Timestamp'
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    updated_at:
+      $ref: '#/components/schemas/Timestamp'
+    first_response_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    resolved_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    closed_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    cancelled_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    resolution_code:
+      type:
+      - string
+      - 'null'
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+      description: A `ticket_resolution_code` code.
+    resolution_label_en:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    resolution_notes:
+      type:
+      - string
+      - 'null'
+      maxLength: 2000
+    cancel_reason:
+      type:
+      - string
+      - 'null'
+      maxLength: 500
+    version:
+      type: integer
+      minimum: 1
+      description: Row version; the desk sends it as `expected_version`.
+    attachment_count:
+      type: integer
+      minimum: 0
+      description: Photos on the ticket and its events.

@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- feature-tickets (tso-manual A2): বাংলা টেক্সট। ইস্যুর নাম bundle থেকে আসে (label_bn না থাকলে ইংরেজি দেখানো হয়)। -->
+<resources>
+    <string name="tickets_title_dashboard">টিকিট ড্যাশবোর্ড</string>
+    <string name="tickets_title_all">সব টিকিট</string>
+    <string name="tickets_title_details">টিকিটের বিস্তারিত</string>
+    <string name="tickets_title_quick">কুইক রিপোর্ট</string>
+    <string name="tickets_title_create">টিকিট তৈরি</string>
+
+    <string name="tickets_stat_total">মোট</string>
+    <string name="tickets_stat_new">নতুন</string>
+    <string name="tickets_stat_in_progress">কাজ চলছে</string>
+    <string name="tickets_stat_resolved">সমাধান হয়েছে</string>
+    <string name="tickets_resolution_title">টিকিট সমাধানের অবস্থা</string>
+    <string name="tickets_res_resolved">সমাধান হয়েছে</string>
+    <string name="tickets_res_open">খোলা</string>
+    <string name="tickets_res_total">মোট টিকিট</string>
+    <string name="tickets_res_resolved_caption">সমাধান হয়েছে</string>
+    <string name="tickets_res_open_caption">খোলা টিকিট</string>
+    <string name="tickets_help_title">সাহায্য দরকার?</string>
+    <string name="tickets_help_body">কয়েক সেকেন্ডে নতুন টিকিট দিন</string>
+    <string name="tickets_recent">সাম্প্রতিক টিকিট</string>
+    <string name="tickets_see_all">সব দেখুন</string>
+    <string name="tickets_empty">এখনো কোনো টিকিট নেই</string>
+    <string name="tickets_empty_hint">কুইক টিকিট বা টিকিট তৈরি থেকে টিকিট দিন।</string>
+    <string name="tickets_offline_copy">অফলাইন। %1$s সময়ের কপি দেখানো হচ্ছে।</string>
+    <string name="tickets_offline_none">অফলাইন। ফোন অনলাইনে এলে টিকিট দেখা যাবে।</string>
+    <string name="tickets_as_of">%1$s পর্যন্ত</string>
+    <string name="tickets_refresh">রিফ্রেশ</string>
+
+    <string name="tickets_search_hint">টিকিট খুঁজুন</string>
+    <string name="tickets_tab_all">সব</string>
+    <string name="tickets_tab_new">নতুন</string>
+    <string name="tickets_tab_in_progress">কাজ চলছে</string>
+    <string name="tickets_tab_resolved">সমাধান হয়েছে</string>
+    <string name="tickets_tab_closed">বন্ধ</string>
+    <string name="tickets_no_match">মিলে যায় এমন কোনো টিকিট নেই।</string>
+    <string name="tickets_not_sent">এখনো পাঠানো হয়নি</string>
+    <string name="tickets_number_follows">পাঠানো হয়েছে, নম্বর পরে আসবে</string>
+    <string name="tickets_status_new">নতুন</string>
+    <string name="tickets_status_in_progress">কাজ চলছে</string>
+    <string name="tickets_status_resolved">সমাধান হয়েছে</string>
+    <string name="tickets_status_closed">বন্ধ</string>
+    <string name="tickets_status_cancelled">বাতিল</string>
+    <string name="tickets_priority_p1">P১ - সর্বোচ্চ</string>
+    <string name="tickets_priority_p2">P২ - উচ্চ</string>
+    <string name="tickets_priority_p3">P৩ - মাঝারি</string>
+    <string name="tickets_priority_p4">P৪ - নিম্ন</string>
+    <string name="tickets_open_ticket">টিকিট %1$s খুলুন</string>
+
+    <string name="tickets_refused">গ্রহণ করা হয়নি: %1$s</string>
+    <string name="tickets_why_state">টিকিটের বর্তমান অবস্থায় এটি আর করা যায় না</string>
+    <string name="tickets_why_issue_type">এই ধরনের ইস্যু আর নেই; অন্য ধরন বেছে আবার টিকিট দিন</string>
+    <string name="tickets_why_scope">আপনার পদে এখনো টিকিট দেওয়া যায় না</string>
+    <string name="tickets_why_other">সার্ভার গ্রহণ করেনি (%1$s)</string>
+
+    <string name="tickets_category">টিকিট</string>
+    <string name="tickets_close">রিভিউ দিয়ে বন্ধ করুন</string>
+    <string name="tickets_closing">বন্ধ করা হচ্ছে। এখনো পাঠানো হয়নি।</string>
+    <string name="tickets_no_comments_resolved">এই টিকিটের সমাধান হয়েছে। আর কোনো মন্তব্য যোগ করা যাবে না।</string>
+    <string name="tickets_no_comments_closed">এই টিকিট বন্ধ। আর কোনো মন্তব্য যোগ করা যাবে না।</string>
+    <string name="tickets_no_comments_cancelled">এই টিকিট বাতিল। আর কোনো মন্তব্য যোগ করা যাবে না।</string>
+    <string name="tickets_no_comments_unsent">টিকিট পাঠানো হলে মন্তব্য যোগ করা যাবে।</string>
+    <string name="tickets_support">সাপোর্ট</string>
+    <string name="tickets_you">আপনি</string>
+    <string name="tickets_comment_hint">মন্তব্য লিখুন…</string>
+    <string name="tickets_send">পাঠান</string>
+    <string name="tickets_attach">ছবি যোগ করুন</string>
+    <string name="tickets_event_status">অবস্থা বদলে %1$s হয়েছে</string>
+    <string name="tickets_event_closed">রিভিউ শেষে বন্ধ</string>
+    <string name="tickets_event_priority">অগ্রাধিকার বদলে %1$s হয়েছে</string>
+    <string name="tickets_event_assigned">সাপোর্টে দায়িত্ব দেওয়া হয়েছে</string>
+    <string name="tickets_photos_attached">ছবি: %1$s</string>
+    <string name="tickets_not_found">এই টিকিট পাওয়া যায়নি।</string>
+    <string name="tickets_detail_offline">অফলাইন। এই ফোনে যা আছে তা দেখানো হচ্ছে।</string>
+    <string name="tickets_time_am">পূর্বাহ্ণ</string>
+    <string name="tickets_time_pm">অপরাহ্ণ</string>
+
+    <string name="tickets_quick_heading">কুইক রিপোর্ট</string>
+    <string name="tickets_quick_sub">সাধারণ কোনো সমস্যায় ট্যাপ করে সাথে সাথে টিকিট দিন।</string>
+    <string name="tickets_category_tickets">টিকিট</string>
+    <string name="tickets_urgency_high">উচ্চ</string>
+    <string name="tickets_urgency_medium">মাঝারি</string>
+    <string name="tickets_urgency_low">নিম্ন</string>
+    <string name="tickets_doesnt_match">মিলছে না?</string>
+    <string name="tickets_report_different">অন্য সমস্যা জানান</string>
+    <string name="tickets_quick_desc_hint">সংক্ষেপে বর্ণনা লিখুন...</string>
+    <string name="tickets_pick_gallery">গ্যালারি থেকে নিন</string>
+    <string name="tickets_capture_photo">ছবি তুলুন</string>
+    <string name="tickets_submit_quick">টিকিট জমা দিন</string>
+    <string name="tickets_close_sheet">বন্ধ করুন</string>
+    <string name="tickets_no_issue_types">ইস্যুর তালিকা এখনো এই ফোনে নেই। দিনের ডেটা নামিয়ে আবার চেষ্টা করুন।</string>
+
+    <string name="tickets_create_heading">নতুন সমস্যা জানান</string>
+    <string name="tickets_create_sub">সমস্যার ধরন বাছুন, একটি শিরোনাম ও সংক্ষিপ্ত বর্ণনা দিন।</string>
+    <string name="tickets_issue_type">সমস্যার ধরন</string>
+    <string name="tickets_issue_type_hint">সমস্যার ধরন বাছুন</string>
+    <string name="tickets_title_label">শিরোনাম</string>
+    <string name="tickets_title_hint">সমস্যার ছোট সারাংশ</string>
+    <string name="tickets_description_label">বর্ণনা</string>
+    <string name="tickets_description_hint">কী হয়েছে? কীভাবে আবার ঘটে...</string>
+    <string name="tickets_affected_label">যার সমস্যা তার ইউজারনেম (ঐচ্ছিক)</string>
+    <string name="tickets_affected_hint">অন্য কারও ফোন থেকে টিকিট দিলে</string>
+    <string name="tickets_upload">স্ক্রিনশট দিন</string>
+    <string name="tickets_upload_sub">গ্যালারি থেকে নিতে বা ছবি তুলতে ট্যাপ করুন</string>
+    <string name="tickets_submit_manual">টিকিট জমা দিন</string>
+    <string name="tickets_photo_remove">ছবি %1$s সরান</string>
+    <string name="tickets_photos_limit">সর্বোচ্চ %1$sটি ছবি।</string>
+
+    <string name="tickets_err_issue">সমস্যার ধরন বাছুন।</string>
+    <string name="tickets_err_title">একটি শিরোনাম লিখুন।</string>
+    <string name="tickets_err_title_long">শিরোনাম সর্বোচ্চ ১২০ অক্ষরের হতে পারে।</string>
+    <string name="tickets_err_description">বর্ণনা লিখুন।</string>
+    <string name="tickets_err_description_long">বর্ণনা সর্বোচ্চ ২০০০ অক্ষরের হতে পারে।</string>
+    <string name="tickets_err_affected">ইউজারনেমে ৩ থেকে ৪০টি অক্ষর, সংখ্যা, ডট, ড্যাশ বা আন্ডারস্কোর থাকে।</string>
+    <string name="tickets_err_photos">ছবি বেশি হয়ে গেছে।</string>
+    <string name="tickets_err_comment">আগে মন্তব্য লিখুন।</string>
+    <string name="tickets_err_comment_long">মন্তব্য সর্বোচ্চ ২০০০ অক্ষরের হতে পারে।</string>
+    <string name="tickets_err_photo">ছবিটি যোগ করা যায়নি।</string>
+    <string name="tickets_saved">টিকিট সেভ হয়েছে। ফোন অনলাইনে এলে পাঠানো হবে।</string>
+    <string name="tickets_comment_saved">মন্তব্য সেভ হয়েছে। ফোন অনলাইনে এলে পাঠানো হবে।</string>
+    <string name="tickets_close_saved">বন্ধ করার অনুরোধ সেভ হয়েছে। ফোন অনলাইনে এলে পাঠানো হবে।</string>
+    <string name="tickets_save_failed">এই ফোনে সেভ করা যায়নি। আবার চেষ্টা করুন।</string>
+</resources>

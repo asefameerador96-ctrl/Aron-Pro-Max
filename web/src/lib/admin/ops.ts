@@ -1,7 +1,8 @@
 // Whitelist of the admin write operations the portal may call through the BFF (POST /api/bff/admin-op).
 // The browser names an operation by key; the server owns the method, the path, the roles and where the reason goes.
 // A path or a body member is never taken from the browser, so the console cannot be turned into an open proxy.
-import type { RoleList } from "@/lib/auth/roles";
+import type { Role } from "@/contract/types";
+import { hasRole, type RoleList } from "@/lib/auth/roles";
 
 export type OpMethod = "POST" | "PATCH" | "PUT" | "DELETE";
 
@@ -64,6 +65,7 @@ export const OPS = {
   "mdm.enrolment.create": { method: "POST", path: "/v1/admin/mdm/enrolment-tokens", roles: ADMINS, reason: null },
   "mdm.enrolment.revoke": { method: "POST", path: "/v1/admin/mdm/enrolment-tokens/{token_id}/revoke", roles: ADMINS, reason: null, noBody: true },
   // F-ADM-029 / F-ADM-052 reopen a final-submitted zone-day (cfg.day.reopen_roles: admin)
+  // tso-manual W1 (FS-14, D-TSO-MAN-29): cfg.day.reopen_roles defaults to ADMIN and SUPERADMIN; the form adds client_uuid (idempotent)
   "day.reopen": { method: "POST", path: "/v1/day/reopen", roles: ADMINS, reason: "reason" },
   // F-ADM-057 entry unlock grants replace "call support" for back-dated web entry
   "entry-unlock.create": { method: "POST", path: "/v1/admin/entry-unlocks", roles: SUPPORT_UP, reason: "reason" },
@@ -89,12 +91,20 @@ export const OPS = {
   "permissions.put": { method: "PUT", path: "/v1/admin/permissions/roles/{role}", roles: SUPERS, reason: "reason" },
   // F-ADM-024 paper backfill: a dead-phone day keyed by printed memo number, source manual
   "paper-backfill.create": { method: "POST", path: "/v1/admin/data-entry", roles: SUPPORT_UP, reason: "reason" },
+  // tso-manual W1: the support desk (TK-16, D-TSO-MAN-20/21; contract updateSupportTicket, addSupportTicketEvent). The API checks the
+  // desk permission (support.ticket.manage) and, for an ADMIN, the `support` module. No ChangeReason member: a desk action is
+  // idempotent by `op_uuid` and carries `expected_version` (the version read); a reply is idempotent by `event_uuid`. The cancel
+  // reason and the resolution notes are members of the update itself.
+  "ticket.update": { method: "PATCH", path: "/v1/support/tickets/{ticket_uuid}", roles: SUPPORT_UP, reason: null },
+  "ticket.event": { method: "POST", path: "/v1/support/tickets/{ticket_uuid}/events", roles: SUPPORT_UP, reason: null },
 } as const satisfies Record<string, OpDef>;
 
 /** Web-role operations (the TSO's own pages live outside /admin): served by /api/bff/team-op, gated by the web roles. */
 export const TEAM_OPS = {
   // F-WEB-051 web Final Submit (same server rule as the app: online only, once per zone and day)
-  "day.final-submit": { method: "POST", path: "/v1/day/final-submit", roles: ["TSO", "DMO", "ADMIN", "SUPERADMIN"], reason: null },
+  // tso-manual W1 (FS-18): only roles the API can accept: the TSO, and DMO or WM when cfg.day.final_submit_delegate_roles lists
+  // them (bounds "subset of DMO, WM"); an ADMIN or SUPERADMIN is always 403 there, so the proxy no longer forwards them.
+  "day.final-submit": { method: "POST", path: "/v1/day/final-submit", roles: ["TSO", "DMO", "WM"], reason: null },
   // F-WEB-051 Delete Section Data: an audited void with a reason, only before Final Submit
   "day.data-void": { method: "POST", path: "/v1/admin/data-void", roles: ["TSO", "ADMIN", "SUPERADMIN"], reason: "reason", forbid: { member: "scope", values: ["all", "app_memos"] } },
   // F-WEB-050 Web Entry (route-day aggregate): a re-save replaces the entry and needs a reason (change_reason)
@@ -102,6 +112,31 @@ export const TEAM_OPS = {
   // F-WEB-052 / F-WEB-060 market and warehouse QC entry (warehouse needs a reason and the warehouse QC permission)
   "qc-entry.save": { method: "POST", path: "/v1/web-entry/qc", roles: ["TSO", "ADMIN", "SUPERADMIN"], reason: "reason", reasonOptional: true },
 } as const satisfies Record<string, OpDef>;
+
+/**
+ * tso-manual W1 (FS-18). Who opens the web Final Submit page (the preview and Delete Section Data; the menu's roles), and who
+ * gets its Submit button: only the roles POST /v1/day/final-submit accepts with the shipped config, i.e. the TSO. A DMO or WM
+ * is accepted only when cfg.day.final_submit_delegate_roles lists the role; that key is server-only (default []), so the page
+ * cannot know it; the preview's `can_submit` (contract 1.10.0, R-W-06) now says it, see finalSubmitButton.
+ * The page roles include WM (fix round): the menu lists Final Submit for a WM, the preview API serves any role in reach, and a WM
+ * may be a delegate (the proxy forwards a WM submit).
+ */
+export const FINAL_SUBMIT_PAGE_ROLES = ["TSO", "DMO", "WM", "ADMIN", "SUPERADMIN"] as const satisfies RoleList;
+/** The fallback of finalSubmitButton: who gets the button when the preview does not say (a server before contract 1.10.0's
+ *  integration round): the TSO alone, the role the API accepts with the shipped config. */
+export const FINAL_SUBMIT_BUTTON_ROLES = ["TSO"] as const satisfies RoleList;
+
+/**
+ * tso-manual X3 (R-W-13 (3), R-W-06 (1)). Whether the Final Submit page offers its Submit button to this caller for this preview:
+ * `FinalSubmitPreview.can_submit` when the server sends it (its role rule with cfg.day.final_submit_delegate_roles, so a delegated
+ * DMO or WM gets the button and a TSO can be told no), else the TSO-only rule above. Never for a role the team-op proxy does not
+ * forward (`day.final-submit`: TSO, DMO, WM), so a server that says yes to another role cannot produce a button that always fails.
+ * Whether the zone-day is already submitted stays the view's own check (`already_submitted`).
+ */
+export function finalSubmitButton(role: Role | undefined, preview: { can_submit?: boolean } | null | undefined): boolean {
+  if (!hasRole(role, TEAM_OPS["day.final-submit"].roles)) return false;
+  return preview?.can_submit ?? hasRole(role, FINAL_SUBMIT_BUTTON_ROLES);
+}
 
 export type TeamOpKey = keyof typeof TEAM_OPS;
 export type OpKey = keyof typeof OPS;

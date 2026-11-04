@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lane A3 (build contract s5, D-TSO-MAN-31): the AMO day lock after Final Submit. Bangla twin in values-bn/strings_a3.xml. -->
+<resources>
+    <string name="amo_lock_title">Routes closed by Final Submit</string>
+    <string name="amo_lock_body">Final Submit is done today for %1$s of your zone\'s routes. New calls on those routes cannot start; sales, memo edits and collections on them are not accepted. Printing still works.</string>
+    <string name="amo_lock_held">%1$s records from before the Final Submit are held for review and count only when the admin accepts them.</string>
+    <string name="amo_lock_refused">%1$s records made after the Final Submit were not accepted.</string>
+</resources>

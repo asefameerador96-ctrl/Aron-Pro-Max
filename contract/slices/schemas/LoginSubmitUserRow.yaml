@@ -1,0 +1,52 @@
+LoginSubmitUserRow:
+  type: object
+  description: One (route, user) row of the Login / Submit Status screen (D-TSO-MAN-12). A vacant route has one
+    SR row with user_id, username and display_name null ("SR Not Set").
+  required:
+  - route_id
+  - route_code
+  - route_name
+  - zone_id
+  - dep_name
+  - user_id
+  - username
+  - display_name
+  - role
+  additionalProperties: false
+  properties:
+    route_id:
+      $ref: '#/components/schemas/Id'
+    route_code:
+      type: string
+      maxLength: 40
+    route_name:
+      type: string
+      maxLength: 120
+    zone_id:
+      $ref: '#/components/schemas/Id'
+    dep_name:
+      type: string
+      maxLength: 120
+      description: The zone name (screenshot 8 "Dep Name").
+    user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    username:
+      oneOf:
+      - $ref: '#/components/schemas/Username'
+      - type: 'null'
+      description: Shown as "User Name".
+    display_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+      description: The user's full_name ("SR - Testing Banani").
+    role:
+      type: string
+      enum:
+      - SR
+      - AMO

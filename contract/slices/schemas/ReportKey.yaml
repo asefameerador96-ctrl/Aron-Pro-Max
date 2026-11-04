@@ -1,6 +1,7 @@
 ReportKey:
   type: string
-  description: Report registry keys of this build, programme reports included (docs/24 s12.3).
+  description: Report registry keys of this build, programme reports included (docs/24 s12.3). `tso-visit-log` from
+    contract 1.10.0 (lead ruling R-F-12; the TSO visit plans with their answers and delegated tasks).
   enum:
   - std-memo
   - sr-efficiency
@@ -44,3 +45,4 @@ ReportKey:
   - superstar-campaign
   - retailer-list
   - sku-list
+  - tso-visit-log

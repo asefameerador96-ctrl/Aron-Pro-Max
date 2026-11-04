@@ -40,3 +40,20 @@ LeaveApplication:
       oneOf:
       - $ref: '#/components/schemas/Timestamp'
       - type: 'null'
+    applicant_username:
+      oneOf:
+      - $ref: '#/components/schemas/Username'
+      - type: 'null'
+      description: Read-only, the applicant's login name for the deciding page (contract 1.10.0).
+    applicant_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+      description: Read-only, the applicant's full name (contract 1.10.0).
+    territory_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+      description: Read-only, the applicant's territory name (contract 1.10.0).

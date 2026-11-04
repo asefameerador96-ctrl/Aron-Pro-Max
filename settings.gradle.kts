@@ -82,6 +82,7 @@ include(":android:feature-outlet")
 include(":android:feature-tasks")
 include(":android:feature-amo")
 include(":android:feature-tso")
+include(":android:feature-tickets") // tso-manual A2
 include(":android:app-sr")
 include(":android:app-amo")
 include(":android:app-tso")

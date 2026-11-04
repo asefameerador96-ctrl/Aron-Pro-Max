@@ -87,8 +87,8 @@ class BackOfficeAndConfigV0023Test {
             exec("INSERT INTO app.admin_asset (asset_id, purpose, mime, bytes, sha256, blob_path) VALUES ('00000000-0000-4000-8000-0000000000a1', 'tutorial_manual', 'application/pdf', 10, decode(repeat('ab', 32), 'hex'), 'a/b.pdf')")
             exec("INSERT INTO app.survey (kind, valid_from) VALUES ('posm', '2026-10-01')")
             exec("INSERT INTO app.survey_version (survey_id, version, title_en, questions) SELECT id, 1, 'POSM', '[]' FROM app.survey")
-            exec("INSERT INTO app.rubric (kind) VALUES ('joint_call')")
-            exec("INSERT INTO app.rubric_version (rubric_id, version, criteria) SELECT id, 1, '[]' FROM app.rubric")
+            // Only the rubric made here: V0139 seeds the retailer_questionnaire rubric with its version 1.
+            exec("WITH r AS (INSERT INTO app.rubric (kind) VALUES ('joint_call') RETURNING id) INSERT INTO app.rubric_version (rubric_id, version, criteria) SELECT id, 1, '[]' FROM r")
             exec("INSERT INTO app.print_template (kind, version, font_columns, template_json, effective_from) VALUES ('cash_memo', 1, 32, '{}', '2026-10-08')")
             exec("UPDATE app.survey SET version = 2, updated_at = now()")                  // the head row is mutable
             for (t in listOf("admin_asset", "survey_version", "rubric_version", "print_template")) {

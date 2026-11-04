@@ -34,6 +34,10 @@ import java.security.KeyPairGenerator
 import java.security.spec.ECGenParameterSpec
 import java.time.Instant
 import java.util.Base64
+import kotlin.math.PI
+import kotlin.math.asin
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -162,6 +166,38 @@ class NearbyOutletsTest {
         val b = json(client.read("/v1/outlets/nearby?lat=23.9&lng=90.4&radius_m=300").bodyAsText())
         assertEquals(true, b["truncated"]!!.jsonPrimitive.boolean)
         assertEquals((1..50).map { "CAP-$it" }, b["items"]!!.jsonArray.map { it.jsonObject["code"]!!.jsonPrimitive.content }, "the 50 nearest")
+    }
+
+    /**
+     * tso-manual B3 (D-TSO-MAN-34, PER-08): an outlet at 0.9995 r due north and due east of the centre is inside the circle
+     * by the shared haversine and is served for every radius option. The box that picks the candidates is r over the
+     * metres of one degree on the haversine's sphere, plus 1%; the old box (111,320 m a degree) cut both off.
+     */
+    @Test
+    fun outletsJustInsideTheRadiusNorthAndEastAreServed() = testApplication {
+        application { aronApi(wiring) }
+        for ((i, radius) in listOf(50, 100, 300).withIndex()) {
+            val lat = 23.70 + 0.01 * i
+            val lng = 90.30
+            val d = 0.9995 * radius
+            val north = lat + d / (Geo.EARTH_RADIUS_M * PI / 180.0)
+            val east = lng + Math.toDegrees(2 * asin(sin(d / (2 * Geo.EARTH_RADIUS_M)) / cos(Math.toRadians(lat))))
+            assertEquals(d, Geo.haversineM(lat, lng, north, lng), 1e-6); assertEquals(d, Geo.haversineM(lat, lng, lat, east), 1e-6)
+            assertTrue(north - lat > radius / 111_320.0 && east - lng > radius / (111_320.0 * cos(Math.toRadians(lat))), "the old box missed both")
+            fresh.db.jdbi.useHandle<Exception> { h ->
+                for ((tag, la, ln) in listOf(Triple("N", north, lng), Triple("E", lat, east))) h.execute(
+                    """
+                    INSERT INTO app.outlet (code, name, owner_name, zone_id, route_id, cluster_id, channel, lat, lng, location_basis, location_confirmed)
+                    SELECT 'EDGE-$tag-$radius', 'Edge $tag $radius', 'Owner', o.zone_id, o.route_id, o.cluster_id, 'GT', $la, $ln, 'master', true FROM app.outlet o WHERE o.code = 'MIR-D-001'
+                    """.trimIndent(),
+                )
+            }
+            val r = client.read("/v1/outlets/nearby?lat=$lat&lng=$lng&radius_m=$radius")
+            assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+            val items = json(r.bodyAsText())["items"]!!.jsonArray.map { it.jsonObject }
+            assertEquals(listOf("EDGE-E-$radius", "EDGE-N-$radius").sorted(), items.map { it["code"]!!.jsonPrimitive.content }.sorted(), "radius $radius")
+            items.forEach { assertTrue(it["distance_m"]!!.jsonPrimitive.double <= radius) }
+        }
     }
 
     @Test

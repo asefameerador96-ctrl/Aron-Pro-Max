@@ -5,15 +5,21 @@
 import { cache } from "react";
 import type { Role } from "@/contract/types";
 import { rawRequest } from "@/lib/api/raw";
-import type { GrantModule } from "./access-grants";
+import { GRANT_MODULES, type GrantModule } from "./access-grants";
 
 /** `{module: "r"|"w"}` an ADMIN holds; null = no module filter (any other role, SUPERADMIN, or grants not deployed yet). */
 export type ModuleGrants = Partial<Record<GrantModule, "r" | "w">>;
 export type ModuleAccess = "none" | "r" | "w";
 
 /** The claim read for the signed-in user: only an ADMIN is judged by modules. */
-export function grantsOf(role: Role, modules: Record<string, "r" | "w"> | null | undefined): ModuleGrants | null {
-  return role === "ADMIN" && modules ? (modules as ModuleGrants) : null;
+export function grantsOf(role: Role, modules: Record<string, "r" | "w"> | null | undefined, supportDesk?: boolean): ModuleGrants | null {
+  const grants = role === "ADMIN" && modules ? (modules as ModuleGrants) : null;
+  // tso-manual W1 (D-TSO-MAN-22, R-F-11): the support module's pages (the "Tickets" menu entry) need `Me.support_desk` on top of
+  // any module grant, for every role. `supportDesk` false withholds that one module and leaves the others as they were (an
+  // ADMIN's claim, or every module for the roles without a claim); undefined applies no desk filter (callers before 1.10.0).
+  if (supportDesk !== false) return grants;
+  const base: ModuleGrants = grants ?? (Object.fromEntries(GRANT_MODULES.map((m) => [m, "w"])) as ModuleGrants);
+  return Object.fromEntries(Object.entries(base).filter(([m]) => m !== "support")) as ModuleGrants;
 }
 
 export function accessOf(grants: ModuleGrants | null, module: GrantModule | null): ModuleAccess {
@@ -37,7 +43,9 @@ const API_ROUTES: readonly (readonly [string, GrantModule])[] = [
   ["/v1/admin/skus/**", "products"], ["/v1/admin/product-nodes/**", "products"], ["/v1/admin/assets/**", "products"], ["/v1/sku-images/**", "products"],
   ["/v1/admin/prices/**", "prices"],
   ["/v1/admin/targets/**", "targets"], ["/v1/admin/route-targets/**", "targets"], ["/v1/admin/target-revisions/**", "targets"], ["/v1/admin/supervisor-targets/**", "targets"], ["/v1/admin/sales-plans/**", "targets"],
-  ["/v1/admin/devices/**", "mdm"], ["/v1/admin/enrolment-tokens/**", "mdm"], ["/v1/admin/releases/**", "mdm"], ["/v1/admin/mdm/**", "mdm"], ["/v1/admin/notifications/**", "mdm"], ["/v1/support/**", "mdm"],
+  ["/v1/admin/devices/**", "mdm"], ["/v1/admin/enrolment-tokens/**", "mdm"], ["/v1/admin/releases/**", "mdm"], ["/v1/admin/mdm/**", "mdm"], ["/v1/admin/notifications/**", "mdm"],
+  ["/v1/support/tickets/**", "support"], // tso-manual W1: the support desk routes (R-F-11, B1 AdminModules); before /v1/support/** (first match wins)
+  ["/v1/support/**", "mdm"],
   ["/v1/admin/data-entry/**", "data_entry"], ["/v1/admin/data-void/**", "data_entry"], ["/v1/admin/entry-unlocks/**", "data_entry"], ["/v1/admin/dues-adjustments/**", "data_entry"], ["/v1/admin/quarantine/**", "data_entry"], ["/v1/web-entry/**", "data_entry"], ["/v1/day/**", "data_entry"],
   ["/v1/admin/indent/**", "indent"], ["/v1/indent/**", "indent"], ["/v1/leaderboard/**", "leaderboard"],
   ["/v1/dashboards/daily-tracking/**", "daily_tracking"], ["/v1/tasks/**", "daily_tracking"], ["/v1/risk-signals/**", "daily_tracking"],
@@ -62,6 +70,7 @@ const PAGES: readonly (readonly [string, GrantModule])[] = [
   ["/admin/config", "config"], ["/admin/permissions", "config"], ["/admin/audit", "config"],
   ["/admin/master-data", "masterdata"], ["/admin/calendar", "masterdata"], ["/admin/house-dedupe", "masterdata"], ["/admin/code-lists", "masterdata"], ["/admin/print-templates", "masterdata"], ["/admin/tutorials", "masterdata"], ["/admin/surveys", "masterdata"], ["/admin/rubrics", "masterdata"], ["/admin/content", "masterdata"], ["/admin/clusters", "masterdata"],
   ["/admin/export-log", "reports"], ["/reports", "reports"],
+  ["/admin/tickets", "support"], // tso-manual W1 (R-F-11)
   ["/daily-tracking", "daily_tracking"], ["/tso-daily-tracking", "daily_tracking"], ["/leave", "users"],
   ["/", "reports"], ["/exceptions", "reports"], ["/flagged-memos", "reports"], ["/sync-health", "reports"], ["/final-submit", "reports"],
 ];

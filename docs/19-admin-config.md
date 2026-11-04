@@ -1001,7 +1001,7 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 | `cfg.leave.block_overlap` | S | bool | false | n/a | G | F | B | srv | C1 | | G-man-075 | 3b |
 | `cfg.leave.balance_enforced` | S | bool | false | n/a | G | F | B | srv | C1 | | G-man-075 | 3b |
 | `cfg.feedback.categories` | S | content(app.reason_code) | [Suggestion] only (the lens Complaint and Bug are invented) | n/a | G | O | B | both | C0 | | G-man-083; D-197 | 3b |
-| `cfg.feedback.max_images` | S | int | 1 | 1 to 5 | G | O | B | dev | C0 | | G-man-083 | 3b |
+| `cfg.feedback.max_images` | S | int | 1 | 0 to 1 (R-F-06: the feedback record holds one photo_uuid) | G | O | B | dev | C0 | | G-man-083 | 3b |
 | `cfg.tso.periphery_radius_options_m` | S | list<int> | [50, 100, 300] | 1 to 6 values, 10 to 5000 | G W | F | B | dev | C0 | Replaces three lens spellings | G-man-078 | 3b |
 | `cfg.tso.periphery_default_radius_m` | S | int | 50 (first option) | in the options | G | F | B | dev | C0 | | G-man-078 | 3b |
 | `cfg.tso.periphery_max_markers` | S | int | 300 (A) | 50 to 2000 | G | O | B | dev | C1 | | G-man-078 | 3b |

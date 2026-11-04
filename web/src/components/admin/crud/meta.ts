@@ -61,6 +61,9 @@ interface FieldBase {
   optionKeys?: Record<string, MessageKey>;
   /** Show as a list column. */
   column?: boolean;
+  /** tso-manual W1 (FB-12): the value is a media UUID; the list and the action summary show its picture through
+   *  GET /v1/media/{uuid}/read-url (a short-lived URL read on the server; a failed read leaves a dash). */
+  media?: boolean;
 }
 
 export type FieldMeta<Row, Write, Patch> =

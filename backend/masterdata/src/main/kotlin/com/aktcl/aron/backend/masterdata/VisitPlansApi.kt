@@ -107,12 +107,14 @@ private fun loadPlans(h: Handle, uuids: List<UUID>): Map<UUID, VisitPlanDto> {
             "FROM app.visit_plan_outlet po JOIN app.outlet o ON o.id = po.outlet_id WHERE po.plan_client_uuid = ANY(:u) AND po.voided_at IS NULL ORDER BY po.id",
     ).bindArray("u", UUID::class.java, uuids)
         .map { rs, _ -> Row(rs.getObject(1, UUID::class.java), rs.getLong(2), rs.getObject(3) as Long?, rs.getObject(4, OffsetDateTime::class.java)) }.list()
-    val heads = h.createQuery("SELECT client_uuid, user_id, plan_date FROM app.visit_plan WHERE client_uuid = ANY(:u)").bindArray("u", UUID::class.java, uuids)
-        .map { rs, _ -> Triple(rs.getObject(1, UUID::class.java), rs.getLong(2), rs.getObject(3, LocalDate::class.java)) }.list()
+    // tso-manual B3 (SP-03, V0137): the route chosen in Set Plan, else (a plan stored before V0137) the outlets' smallest route.
+    data class Head(val uuid: UUID, val user: Long, val date: LocalDate, val route: Long?)
+    val heads = h.createQuery("SELECT client_uuid, user_id, plan_date, route_id FROM app.visit_plan WHERE client_uuid = ANY(:u)").bindArray("u", UUID::class.java, uuids)
+        .map { rs, _ -> Head(rs.getObject(1, UUID::class.java), rs.getLong(2), rs.getObject(3, LocalDate::class.java), rs.getObject(4) as Long?) }.list()
     val byPlan = rows.groupBy { it.plan }
-    return heads.mapNotNull { (uuid, user, date) ->
+    return heads.mapNotNull { (uuid, user, date, planRoute) ->
         val outlets = byPlan[uuid] ?: return@mapNotNull null
-        val route = outlets.mapNotNull { it.route }.minOrNull() ?: return@mapNotNull null
+        val route = planRoute ?: outlets.mapNotNull { it.route }.minOrNull() ?: return@mapNotNull null
         uuid to VisitPlanDto(
             uuid.toString(), user, date.toString(), route,
             outlets.map { VisitPlanOutletDto(it.outlet, if (it.completed != null) "completed" else "pending", it.completed?.toInstant()?.wire()) },
@@ -184,8 +186,9 @@ private suspend fun savePlan(call: ApplicationCall, d: VisitPlanDeps): Pair<Bool
         var changed = 0
         if (existing == null && target == planUuid) {
             changed += h.createUpdate(
-                "INSERT INTO app.visit_plan (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, plan_date, note) VALUES (:u, :u, :bd, :uid, :at, :cv, :pd, :note) ON CONFLICT (client_uuid) DO NOTHING",
-            ).bind("u", planUuid).bind("bd", today).bind("uid", p.userId).bind("at", now).bind("cv", cfgVersion).bind("pd", planDate).bind("note", req.note).execute()
+                // tso-manual B3 (SP-03): the plan keeps the route chosen in Set Plan, as the sync record does (V0137).
+                "INSERT INTO app.visit_plan (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, plan_date, note, route_id) VALUES (:u, :u, :bd, :uid, :at, :cv, :pd, :note, :route) ON CONFLICT (client_uuid) DO NOTHING",
+            ).bind("u", planUuid).bind("bd", today).bind("uid", p.userId).bind("at", now).bind("cv", cfgVersion).bind("pd", planDate).bind("note", req.note).bind("route", req.route_id).execute()
         }
         for (oid in outletIds) {
             // The outlet row's client uuid is derived from (plan, outlet): the same outlet saved twice, or by two plan uuids, is one row.

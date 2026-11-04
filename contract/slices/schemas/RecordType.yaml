@@ -43,5 +43,7 @@ RecordType:
   - app_error
   - sale_abort
   - consent_accept
+  - support_ticket
+  - support_ticket_event
   description: Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except
-    where docs/24 s12 says otherwise.
+    where docs/24 s12 says otherwise. `support_ticket` and `support_ticket_event` from contract 1.10.0 (D-TSO-MAN-18).

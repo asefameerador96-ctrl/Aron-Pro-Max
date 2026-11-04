@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- tso-manual A1 (D-TSO-MAN-26, 31): fixed texts of the push reasons notification, ticket_updated and day_final_submitted.
+         A push carries the reason only, never business data. -->
+    <string name="push_channel_updates">Updates</string>
+    <string name="push_channel_day">Day status</string>
+    <string name="push_inbox_title">New notification</string>
+    <string name="push_inbox_body">You have a new notification. Tap to open your notifications.</string>
+    <string name="push_ticket_title">Ticket updated</string>
+    <string name="push_ticket_body">Support updated one of your tickets. Tap to open your tickets.</string>
+    <string name="push_day_title">Day closed</string>
+    <string name="push_day_body">Final Submit is done for your zone. New sales for that day are closed; printing still works.</string>
+</resources>

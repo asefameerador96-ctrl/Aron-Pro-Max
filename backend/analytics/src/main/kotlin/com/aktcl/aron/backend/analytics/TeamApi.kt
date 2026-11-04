@@ -38,7 +38,11 @@ data class AppHome(val as_of: String, val business_date: String, val node: NodeR
 data class LastFix(val lat: Double, val lng: Double, val accuracy_m: Double?, val at: String, val source: String, val age_min: Int)
 
 @Serializable
-data class TeamLocation(val user_id: Long, val full_name: String, val route_ids: List<Long>, val last_fix: LastFix?)
+data class TeamLocation(
+    val user_id: Long, val full_name: String, val route_ids: List<Long>, val last_fix: LastFix?,
+    /** tso-manual B3 (contract 1.10.0, D-TSO-MAN-34, PER-17): the user's mock-location fixes of the business date (the anti-spoofing chip). */
+    val mock_fixes_today: Int = 0,
+)
 
 @Serializable
 data class TeamLocationList(val as_of: String, val items: List<TeamLocation>)
@@ -142,8 +146,15 @@ class TeamService(private val db: Database, private val dashboards: DashboardSer
                         WHERE business_date = :d AND voided_at IS NULL AND fix_lat IS NOT NULL AND coalesce(fix_is_mock, false) = false
                       UNION ALL SELECT user_id, fix_lat, fix_lng, fix_accuracy_m, captured_at, 'breadcrumb' FROM app.geo_breadcrumb
                         WHERE business_date = :d AND voided_at IS NULL AND fix_lat IS NOT NULL AND coalesce(fix_is_mock, false) = false),
-                    last AS (SELECT DISTINCT ON (user_id) * FROM fixes WHERE user_id IN (SELECT uid FROM team) ORDER BY user_id, captured_at DESC)
-                    SELECT t.uid, t.full_name, t.routes, l.lat, l.lng, l.acc, l.captured_at, l.source FROM team t LEFT JOIN last l ON l.user_id = t.uid ORDER BY t.full_name, t.uid
+                    last AS (SELECT DISTINCT ON (user_id) * FROM fixes WHERE user_id IN (SELECT uid FROM team) ORDER BY user_id, captured_at DESC),
+                    -- tso-manual B3 (PER-17): the same three sources, the fixes flagged as mock locations (never a last_fix).
+                    mock AS (SELECT user_id, count(*) AS n FROM (
+                      SELECT user_id FROM app.attendance_event WHERE business_date = :d AND voided_at IS NULL AND fix_is_mock
+                      UNION ALL SELECT user_id FROM app.visit WHERE business_date = :d AND voided_at IS NULL AND fix_is_mock
+                      UNION ALL SELECT user_id FROM app.geo_breadcrumb WHERE business_date = :d AND voided_at IS NULL AND fix_is_mock) m
+                      WHERE user_id IN (SELECT uid FROM team) GROUP BY user_id)
+                    SELECT t.uid, t.full_name, t.routes, l.lat, l.lng, l.acc, l.captured_at, l.source, coalesce(mk.n, 0) AS mock_fixes
+                      FROM team t LEFT JOIN last l ON l.user_id = t.uid LEFT JOIN mock mk ON mk.user_id = t.uid ORDER BY t.full_name, t.uid
                     """,
                 ).bind("d", date), z,
             ).map { rs, _ ->
@@ -151,6 +162,7 @@ class TeamService(private val db: Database, private val dashboards: DashboardSer
                 TeamLocation(
                     rs.getLong("uid"), rs.getString("full_name"), (rs.getArray("routes").array as Array<*>).map { (it as Number).toLong() },
                     at?.let { LastFix(rs.getDouble("lat"), rs.getDouble("lng"), rs.getObject("acc") as Double?, it.wire(), rs.getString("source"), Duration.between(it, now).toMinutes().coerceAtLeast(0).toInt()) },
+                    rs.getLong("mock_fixes").coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
                 )
             }.list()
         }

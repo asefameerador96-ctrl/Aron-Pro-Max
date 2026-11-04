@@ -1,0 +1,14 @@
+SupportTicketEventWrite:
+  type: object
+  description: A support-desk reply; `event_uuid` makes it idempotent.
+  required:
+  - event_uuid
+  - body
+  additionalProperties: false
+  properties:
+    event_uuid:
+      $ref: '#/components/schemas/Uuid'
+    body:
+      type: string
+      minLength: 1
+      maxLength: 2000

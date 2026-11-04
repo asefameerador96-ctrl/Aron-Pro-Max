@@ -19,6 +19,7 @@ export async function loadAllowedMenus(token: string, _role: Role): Promise<Set<
 
 /** The role x menu matrix and an ADMIN's module claim from ONE /v1/me call (the shell needs both). */
 export async function loadMenuAccess(token: string, role: Role): Promise<{ allowed: Set<string> | null; grants: ModuleGrants | null }> {
-  const r = await rawRequest<{ menus?: MenuPermission[]; modules?: Record<string, "r" | "w"> | null }>({ method: "GET", path: "/v1/me", token });
-  return r.ok ? { allowed: allowedFromMenus(r.data.menus), grants: grantsOf(role, r.data.modules) } : { allowed: null, grants: null };
+  const r = await rawRequest<{ menus?: MenuPermission[]; modules?: Record<string, "r" | "w"> | null; support_desk?: boolean }>({ method: "GET", path: "/v1/me", token });
+  // tso-manual W1: the "Tickets" entry shows only with Me.support_desk (D-TSO-MAN-22; absent means false, contract 1.10.0)
+  return r.ok ? { allowed: allowedFromMenus(r.data.menus), grants: grantsOf(role, r.data.modules, r.data.support_desk === true) } : { allowed: null, grants: grantsOf(role, null, false) };
 }
