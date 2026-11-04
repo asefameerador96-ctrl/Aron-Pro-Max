@@ -934,7 +934,7 @@ Legend. **Levels:** G global, ROLE, W wing, D division, T territory, GC geo_clas
 | `cfg.day.submit_grace_h` | int | 10 | 0..24 | G | O | B | both | C1 |
 | `cfg.day.final_submit_allow_not_set_routes` | enum(allow, warn, block) | allow | — | G W | F | B | srv | C2 |
 | `cfg.day.final_submit_delegate_roles` | list<role> | [] | subset of DMO, WM | G W | S | B | srv | C3 |
-| `cfg.day.late_sync_after_final_policy` | enum(accept_and_flag, quarantine, reject) | quarantine (V0134, D-TSO-MAN-31; s4.9 rule 4) | — | G | F | B | srv | C3 |
+| `cfg.day.late_sync_after_final_policy` | enum(accept_and_flag, quarantine, reject) | quarantine (V0134, D-TSO-MAN-31; s4.9 rule 4) | — | G | F | B | both (V0142: the phones lock only under quarantine or reject, owner 2026-11-04) | C3 |
 | `cfg.day.reopen_roles` | list<role> | [ADMIN] | subset of roles | G W | S | B | srv | C3 |
 | `cfg.day.reopen_window_days` | int | 3 | 0..31 | G | F | B | srv | C2 |
 | `cfg.day.month_close_grace_days` | int | 3 | 0..10 | G | S | B | srv | C3 |
