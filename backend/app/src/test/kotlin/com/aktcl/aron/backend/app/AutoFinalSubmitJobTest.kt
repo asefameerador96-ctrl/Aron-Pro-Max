@@ -141,6 +141,13 @@ class AutoFinalSubmitJobTest {
             "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
                 "SELECT 'cfg.day.auto_final_submit_enabled', 'wing', $wingOff, 'false'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test: off in W-OFF' FROM app.cfg_version",
         )
+        // Owner decision 2026-11-04 (X4a fix round): the close tells the phones that sales are closed (`day_final_submitted`)
+        // only under quarantine or reject; this class asserts that push, so the quarantine switch is set on here.
+        // FinalSubmitPushPolicyTest proves the shipped default's silent `day_state_changed`.
+        world.exec(
+            "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
+                "SELECT 'cfg.day.late_sync_after_final_policy', 'global', 0, '\"quarantine\"'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test: quarantine policy' FROM app.cfg_version",
+        )
         // tso-manual B3 fix round (D-TSO-MAN-31, D-TSO-MAN-12): the mirror's house H-AFS holds Z-AFS, and Z-AFS-H2 joins it;
         // AMO afsamo9's scope is the house and its own AMO route is in Z-AFS-H2, so it has no route-day in Z-AFS; AMO
         // aftamo9 covers T-AFT only.
