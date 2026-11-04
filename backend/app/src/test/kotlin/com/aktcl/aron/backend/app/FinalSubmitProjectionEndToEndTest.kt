@@ -56,6 +56,9 @@ class FinalSubmitProjectionEndToEndTest {
     @BeforeAll
     fun setUp() {
         world = TsoWorld(repoRoot, mirrors = listOf("FSE"), start = Instant.parse("2027-01-03T04:00:00Z"))
+        // D-TSO-MAN-49: the midnight auto close ships off (D-262); this class closes through the job, so it is switched on
+        // here as AutoFinalSubmitJobTest does (a fresh DbServerConfig per job() reads it).
+        world.cfg("cfg.day.auto_final_submit_enabled", "true")
         zone = world.one("SELECT id FROM app.zone WHERE code = 'Z-FSE'")
         route = world.one("SELECT id FROM app.route WHERE code = 'FSE-SR-D'")
         world.exec(
