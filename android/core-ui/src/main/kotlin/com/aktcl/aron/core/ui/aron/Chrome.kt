@@ -497,13 +497,15 @@ fun AronNightTopBar(
     onBack: (() -> Unit)? = null,
     backLabel: String? = null,
     trailing: (@Composable () -> Unit)? = null,
+    /** True when the bar sits on a page that already draws the page colour and its glow (a TsoFrame): no fill of its own, so a glow runs unbroken behind it. */
+    onPage: Boolean = false,
 ) {
     val look = LocalAronLook.current
     val n = look.nightRoles
     Box(
         modifier
             .fillMaxWidth()
-            .background(n.page)
+            .then(if (onPage) Modifier else Modifier.background(n.page))
             .then(if (n.solid) Modifier.drawBehind { drawRect(n.ink, Offset(0f, size.height - 2.dp.toPx()), Size(size.width, 2.dp.toPx())) } else Modifier)
             .windowInsetsPadding(WindowInsets.statusBars)
             .heightIn(min = 76.dp)

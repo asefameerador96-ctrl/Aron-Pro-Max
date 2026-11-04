@@ -34,6 +34,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.ui.LocalAronLook
@@ -45,7 +47,6 @@ import com.aktcl.aron.core.ui.aron.AronHomeFabHeight
 import com.aktcl.aron.core.ui.aron.AronMinus
 import com.aktcl.aron.core.ui.aron.AronNightTopBar
 import com.aktcl.aron.core.ui.aron.AronPlus
-import com.aktcl.aron.core.ui.aron.AronPrimaryButton
 import com.aktcl.aron.core.ui.aron.AronSecondaryButton
 import com.aktcl.aron.core.ui.aron.NightButton
 import com.aktcl.aron.core.ui.aron.NightButtonStyle
@@ -53,6 +54,7 @@ import com.aktcl.aron.core.ui.aron.NightGlowCard
 import com.aktcl.aron.core.ui.aron.NightGlowField
 import com.aktcl.aron.core.ui.aron.NightOutlineCard
 import com.aktcl.aron.core.ui.aron.nightGlow
+import com.aktcl.aron.core.ui.aron.NightPageGlow
 import com.aktcl.aron.core.ui.aron.nightPage
 import com.aktcl.aron.core.ui.aron.nightRoles
 import com.aktcl.aron.core.ui.aron.nightText
@@ -71,11 +73,11 @@ val TsoFabPadding: Dp = AronHomeFabHeight
 internal val TsoFabBand: Dp = 64.dp + 14.dp
 
 /**
- * tso-manual X4b: with the Home button AND a bottom bar, the bar's action sits above the Home disc, the disc overlapping only its
- * lower edge (screenshot 33: Set Plan over the house): 16 dp of the disc may overlap the bar's 52 dp button, so the button's centre
- * (where a tap lands) is never under the disc.
+ * With the Home button AND a bottom bar, the bar's action sits wholly above the Home disc and its glow (screenshots 33, 37, 38; conformance
+ * rows 33 and 38: the disc must never overlap Set Plan or Assign Task, so a tap on the button never lands under it): the disc's band
+ * ([TsoFabBand]) plus a 4 dp gap. (Batch 1 let 16 dp of the disc overlap the button.)
  */
-internal val TsoBarOverFab: Dp = TsoFabBand - 16.dp
+internal val TsoBarOverFab: Dp = TsoFabBand + 4.dp
 
 /**
  * The frame of the TSO screens that are not migrated to the [TsoNav] frame yet (A3's areas): the TSO top bar (grey round back
@@ -93,7 +95,7 @@ fun TsoFrame(
 ) {
     val n = nightRoles()
     Column(modifier.fillMaxSize().nightPage(n)) {
-        AronNightTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back))
+        AronNightTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back), onPage = true)
         Box(Modifier.weight(1f).fillMaxWidth(), content = content)
         if (bottomBar != null) {
             Row(
@@ -109,6 +111,7 @@ fun TsoFrame(
  * gradient [title] and the grey round back button ([onBack], by default [TsoNav.back]) on the navy page, [bottomBar] docked under
  * the content, and the Home button at the bottom centre when [homeButton] (pass `TsoFab.of(screen)`, the s8 FAB column). A scrolling
  * content ends above the Home disc ([TsoFabBand]); a bottom bar sits above the disc too ([TsoBarOverFab]), as screenshots 31, 33, 43.
+ * [glow] draws the page glow of the owner's screenshots behind the content (bottom dome 23 to 26, 39 to 42; top wash 19 to 22).
  */
 @Composable
 fun TsoFrame(
@@ -118,15 +121,21 @@ fun TsoFrame(
     bottomBar: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
     onBack: () -> Unit = { nav.back() },
+    glow: NightPageGlow = NightPageGlow.None,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val n = nightRoles()
-    Box(modifier.fillMaxSize().nightPage(n)) {
+    Box(modifier.fillMaxSize().nightPage(n, glow)) {
         Column(Modifier.fillMaxSize()) {
-            AronNightTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back))
+            AronNightTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back), onPage = true)
             Box(
                 Modifier.weight(1f).fillMaxWidth()
-                    .then(if (homeButton && bottomBar == null) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = TsoFabBand) else Modifier),
+                    .then(
+                        if (homeButton && bottomBar == null) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = TsoFabBand)
+                        // a bottom glow with no Home disc and no bar (Final Submit pickers): content stays clear of the dome
+                        else if (glow == NightPageGlow.Bottom && bottomBar == null) Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = TsoFabBand)
+                        else Modifier,
+                    ),
                 content = content,
             )
             if (bottomBar != null) {
@@ -181,10 +190,12 @@ fun TsoCard(
     modifier: Modifier = Modifier,
     glow: Boolean = false,
     onClick: (() -> Unit)? = null,
+    fillBrush: Brush? = null,
+    edge: Color? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     if (glow) NightGlowCard(modifier, onClick = onClick, verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
-    else NightOutlineCard(modifier, onClick = onClick, verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+    else NightOutlineCard(modifier, onClick = onClick, fillBrush = fillBrush, edge = edge, verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
 }
 
 /**
@@ -328,6 +339,16 @@ fun TsoStatusPill(text: String, modifier: Modifier = Modifier, tone: TsoPillTone
     }
 }
 
+/** The solid orange status badge of the owner's Leave card (screenshot 19), white bold label; Sunlight keeps the quiet chip. */
+@Composable
+fun TsoOrangeBadge(text: String, modifier: Modifier = Modifier) {
+    val n = nightRoles()
+    if (n.solid) { TsoStatusPill(text, modifier, TsoPillTone.Warning); return }
+    Box(modifier.clip(RoundedCornerShape(8.dp)).background(n.badgeOrange).padding(horizontal = 12.dp, vertical = 4.dp)) {
+        Text(text, style = nightText(13.sp, Color.White, bold = true))
+    }
+}
+
 /** One docked action: the label, what it does, whether it can be pressed. */
 data class TsoAction(val text: String, val onClick: () -> Unit, val enabled: Boolean = true, val busy: Boolean = false)
 
@@ -335,7 +356,8 @@ data class TsoAction(val text: String, val onClick: () -> Unit, val enabled: Boo
 @Composable
 fun RowScope.TsoBottomBar(primary: TsoAction, modifier: Modifier = Modifier, secondary: TsoAction? = null) {
     if (secondary != null) AronSecondaryButton(secondary.text, secondary.onClick, Modifier.weight(1f), enabled = secondary.enabled)
-    AronPrimaryButton(primary.text, primary.onClick, modifier.weight(1f), enabled = primary.enabled && !primary.busy)
+    // the night Cyan button: white label at 4.5:1 or more (D-TSO-MAN-50); the kit's primary ramp was about 2.3:1 under a white label
+    NightButton(primary.text, primary.onClick, modifier.weight(1f), style = NightButtonStyle.Cyan, enabled = primary.enabled, busy = primary.busy, fill = false)
 }
 
 /** A full-width grey button (the secondary action inside a form or list). */

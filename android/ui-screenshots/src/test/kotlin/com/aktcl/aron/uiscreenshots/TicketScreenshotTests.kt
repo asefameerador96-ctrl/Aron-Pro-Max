@@ -18,7 +18,6 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
 import com.aktcl.aron.core.ui.GlassTier
-import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.feature.tickets.CommentDraft
 import com.aktcl.aron.feature.tickets.CreateTicketScreen
 import com.aktcl.aron.feature.tickets.Delivery
@@ -65,8 +64,8 @@ import org.robolectric.RobolectricTestRunner
  * Goldens of the Tickets screens (tso-manual A2; screenshots 11 to 18 of the owner's TSO manual) in bn, en and at 200 %
  * font, plus the offline, empty, open-thread and Sunlight states. Every screen is drawn in the frame the TSO host passes
  * (app-tso TicketsHost.kt: `TsoFrame(title, nav, homeButton = false)`, lane A1's top bar; s8 gives 11 to 18 no Home
- * button), so the goldens recorded after A1's shell is merged show the real bar. The night look is A1's `AronLook.TsoNight`
- * ([night], tso-manual X4b, R-W-12 (5)). Screenshot 10 (the drawer's Tickets group) is A1's TsoChrome golden in en, bn and at
+ * button), so the goldens recorded after A1's shell is merged show the real bar. The night look is the harness rule tso=true, dark=!sunlight
+ * (R-W-12 (5)). Screenshot 10 (the drawer's Tickets group) is A1's TsoChrome golden in en, bn and at
  * 200 % (`tso_drawer_tickets_en`, `tso_drawer_tickets_bn`, `tso_drawer_tickets_200_bn`). Record on Linux only: `./gradlew :android:ui-screenshots:testDebugUnitTest -Proborazzi.record=true
  * --tests '*TicketScreenshotTests*'`.
  */
@@ -80,16 +79,11 @@ class TicketScreenshotTests {
     private val goldens: String = System.getProperty("aron.screenshots.goldens") ?: "src/test/screenshots"
     private val options = RoborazziOptions(compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.002f))
 
-    /** The TSO night look (D-TSO-MAN-13, A1's tokens; R-W-12 (5)); Sunlight keeps the kit's. */
-    private val night = com.aktcl.aron.core.ui.AronLook.TsoNight
-
     private fun shot(name: String, language: AppLanguage, sunlight: Boolean = false, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         rule.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
-                AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) {
-                    if (sunlight) content() else CompositionLocalProvider(LocalAronLook provides night) { content() }
-                }
+                AronTheme(language, dark = !sunlight, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true, tso = true) { content() }
             }
         }
         rule.waitForIdle()
