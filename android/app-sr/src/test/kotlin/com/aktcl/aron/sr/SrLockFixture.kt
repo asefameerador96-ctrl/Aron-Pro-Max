@@ -133,6 +133,14 @@ internal class SrLockFixture(context: Context, latePolicy: String?) {
 
     fun close() {
         scope.cancel()
+        // Barrier: work a view model queued on Room's executors (a write behind a coroutine the test already left) finishes BEFORE the
+        // in-memory database closes; otherwise it dies on a Room thread with "database closed" and the uncaught exception lands in
+        // whichever test runs next in the JVM (CI: SrLatePolicyTest, SrRefusalHostsTest; not reproducible on a fast machine).
+        for (executor in listOf(db.queryExecutor, db.transactionExecutor)) {
+            val done = java.util.concurrent.CountDownLatch(1)
+            runCatching { executor.execute { done.countDown() } }.onFailure { done.countDown() }
+            done.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        }
         db.close()
         dir.deleteRecursively()
     }

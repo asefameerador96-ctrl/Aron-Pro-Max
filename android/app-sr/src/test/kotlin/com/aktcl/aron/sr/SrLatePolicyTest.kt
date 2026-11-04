@@ -64,7 +64,7 @@ class SrLatePolicyTest {
             val f = SrLockFixture(context, latePolicy = policy)
             try {
                 block(f)
-                assertEquals("policy $policy: nothing escaped", listOf<Throwable>(), crashes.toList())
+                assertEquals("policy $policy: nothing escaped: " + crashes.joinToString { it.stackTraceToString().take(1500) }, listOf<Throwable>(), crashes.toList())
             } catch (e: AssertionError) {
                 throw AssertionError("late policy $policy: ${e.message}", e)
             } finally {
