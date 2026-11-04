@@ -61,13 +61,17 @@ fun <T> AronDropdown(
     label: String? = null,
     placeholder: String = "",
     enabled: Boolean = true,
+    /** TSO look: draw the placeholder in the ink of a chosen value (screenshot 34); ignored in the other looks. */
+    brightPlaceholder: Boolean = false,
+    /** Draw a disabled picker like an enabled one: the glow halo and the full edge (Final Submit, screenshot 23: five identical pickers while the lower ones wait); default: no halo and a dimmed edge. */
+    haloWhenDisabled: Boolean = false,
 ) {
     val look = LocalAronLook.current
     val n = look.night
     val fill = n?.field ?: look.card
     val edge = n?.fieldEdge ?: look.underline
     val ink = n?.ink ?: look.ink
-    val hint = n?.placeholder ?: look.hint
+    val hint = if (brightPlaceholder && n != null && enabled) n.ink else n?.placeholder ?: look.hint
     val shape = RoundedCornerShape(if (n != null) 14.dp else 12.dp)
     var open by remember { mutableStateOf(false) }
     var fieldWidthPx by remember { mutableIntStateOf(0) }
@@ -82,10 +86,10 @@ fun <T> AronDropdown(
                     .fillMaxWidth()
                     .onSizeChanged { fieldWidthPx = it.width; fieldHeightPx = it.height }
                     .heightIn(min = 56.dp)
-                    .then(if (n != null) Modifier.nightGlow(n, edge, shape, 8.dp) else Modifier)
+                    .then(if (n != null && (enabled || haloWhenDisabled)) Modifier.nightGlow(n, edge, shape, 8.dp) else Modifier) // a disabled picker has no halo unless haloWhenDisabled
                     .clip(shape)
                     .background(fill)
-                    .border(if (n?.solid == true) 2.dp else 1.dp, if (enabled) edge else edge.copy(alpha = 0.4f), shape)
+                    .border(if (n?.solid == true) 2.dp else 1.dp, if (enabled || haloWhenDisabled) edge else edge.copy(alpha = 0.4f), shape)
                     .clickable(enabled = enabled && options.isNotEmpty(), role = Role.DropdownList, onClickLabel = label) { open = true }
                     .semantics { contentDescription = listOfNotNull(label, shown ?: placeholder.ifEmpty { null }).joinToString(", ") }
                     .testTag(AronDropdownTags.FIELD)

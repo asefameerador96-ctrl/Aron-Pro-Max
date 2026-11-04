@@ -195,6 +195,33 @@ class TokenContrastTest {
      * Cancel green, Log Out orange) is gated at WCAG AA 4.5:1, on both stops and the midpoint of every gradient; this is a separate group from the
      * 7:1 key-figure gate and does not loosen it. Sunlight stays at 7:1 above.
      */
+    /** The map fallback list of the TSO look (rows 28, 29): the muted ink of a stale row and the ink of a live one on the navy page, 4.5:1. */
+    @Test fun tsoMapFallbackListInksReachFourPointFive() {
+        val n = AronNightRoles.Night
+        night("stale row muted ink on the page", AronLook.TsoNight.inkMuted, n.page, 4.5)
+        night("live row ink on the page", AronLook.TsoNight.ink, n.page, 4.5)
+    }
+
+    /** My Visit Plan's white placeholder (screenshot 34) on the field, and Assign Task's plain comment box (page colour, quiet outline): 4.5:1 / 3:1. */
+    @Test fun tsoBrightPlaceholderAndPlainBoxHoldTheirGates() {
+        val n = AronNightRoles.Night
+        night("white placeholder on the field", AronLook.TsoNight.ink, n.field, 4.5)
+        night("placeholder on the plain comment box", n.placeholder, n.page, 4.5)
+        night("plain box outline on the page", n.divider, n.page, 3.0)
+    }
+
+    /** Sunlight (TsoSunlight roles, solid): the new picker, menu and fallback-list pairs at 7:1. */
+    @Test fun tsoSunlightPickerMenuAndFallbackListPairsReachSevenToOne() {
+        val n = AronNightRoles.Sunlight
+        val look = AronLook.TsoSunlight
+        fun sun(what: String, fg: Color, bg: Color) { val r = contrast(over(fg, bg), bg); assertTrue("TsoSunlight $what: ${"%.2f".format(r)} < 7", r >= 7.0) }
+        sun("picker ink on the field", n.ink, n.field)
+        sun("picker placeholder on the field", n.placeholder, n.field)
+        sun("fallback list ink on the page", look.ink, n.page)
+        sun("fallback list muted ink on the page", look.inkMuted, n.page)
+        sun("plain comment box placeholder on the page", n.placeholder, n.page)
+    }
+
     /** The top glow of the Leave pages (screenshots 19 to 22): white ink and the muted ink over its strongest point keep 7:1 and 4.5:1. */
     @Test fun tsoTopGlowKeepsInkReadable() {
         val n = AronNightRoles.Night

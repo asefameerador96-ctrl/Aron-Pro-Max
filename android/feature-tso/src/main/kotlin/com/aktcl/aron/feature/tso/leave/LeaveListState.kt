@@ -55,6 +55,6 @@ class LeaveListState(private val source: LeaveSource) {
 
     private fun publish(c: LeaveSource.Cached, local: List<LeaveItem>, offlineCached: Boolean, refreshing: Boolean = false) {
         val merged = mergeLeave(c.items, local)
-        _ui.value = if (merged.isEmpty()) LeaveListUi.Empty else LeaveListUi.Content(merged, c.asOf, offlineCached, refreshing)
+        _ui.value = if (merged.isEmpty()) LeaveListUi.Empty else LeaveListUi.Content(merged, c.asOf.takeIf { offlineCached || refreshing }, offlineCached, refreshing) // 'As of' only for a copy that is not confirmed fresh: kept offline, or shown while the refresh runs (D-TSO-MAN-52)
     }
 }
