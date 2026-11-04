@@ -153,17 +153,19 @@ class MediaReadTest {
             m.readUrl(principal(amo, Role.DMO, desk), mirFeedback)
             denied(m, principal(amo, Role.DMO, desk), feedback)
             denied(narrow, principal(admin, Role.SUPPORT), feedback)
-            // Others keep the captor rule: the Mirpur TSO, AMO and DMO do not reach sr2002.
-            denied(m, principal(amo, Role.TSO), feedback); denied(m, principal(amo, Role.AMO), feedback); denied(m, principal(amo, Role.DMO), feedback)
+            // X2 ask 5 (D-TSO-MAN-55): a plain zone reader (no desk) reads exactly as far as the feedback list: a Mirpur DMO or WM
+            // reads the Mirpur author's photo and is refused (403) the other zone's (sr2002, Z-OTHER). A TSO (own feedback only)
+            // and an AMO (no list) keep the captor rule, which does not reach sr2002.
+            m.readUrl(principal(amo, Role.DMO), mirFeedback); m.readUrl(principal(amo, Role.WM), mirFeedback)
+            denied(m, principal(amo, Role.TSO), feedback); denied(m, principal(amo, Role.AMO), feedback); denied(m, principal(amo, Role.DMO), feedback); denied(m, principal(amo, Role.WM), feedback)
             // The feedback list is the whole answer for the desk and the triage roles, in both directions (second fix round,
             // checker low 1): sr3003 (home zone Z-OTHER) covered a Mirpur route on the photo's date, so the captor rule reaches
             // its photo, but the Mirpur feedback list does not show its feedback (home zone first). The Mirpur DMO desk and a
-            // zone-reach SUPPORT are refused; a plain Mirpur DMO is neither, so it keeps the captor rule (R-W-21 binds the
-            // triage roles and the desk) and reads it.
+            // zone-reach SUPPORT are refused, and since ask 5 so is a plain Mirpur DMO: one reach rule, the list's.
             val coverFeedback = "ffffffff-ffff-4fff-8fff-ffffffffffff"; photo(f, coverFeedback, cover, purpose = "feedback", refType = "feedback")
             denied(m, principal(amo, Role.DMO, desk), coverFeedback)
             denied(narrow, principal(admin, Role.SUPPORT), coverFeedback)
-            m.readUrl(principal(amo, Role.DMO), coverFeedback)
+            denied(m, principal(amo, Role.DMO), coverFeedback)
             // Only feedback photos: an outlet photo outside the reach stays refused to the triage roles and the desk.
             for (p in listOf(principal(admin, Role.SUPPORT), principal(admin, Role.ADMIN), principal(amo, Role.DMO, desk))) denied(narrow, p, outlet)
             // A ticket photo stays the desk's (the permission), not a triage role's.
@@ -171,15 +173,15 @@ class MediaReadTest {
             m.readUrl(principal(admin, Role.SUPPORT, desk), ticket)
             // FeedbackApi's owner rule, not the captor rule: sr2002's home zone moves to Mirpur while it still holds its Z-OTHER
             // route on the photo's date. The Mirpur feedback list now shows its feedback (home zone first), so the desk reads
-            // the photo; a plain DMO keeps the captor rule (the route held that day) and stays refused.
+            // the photo, and so does a plain DMO (ask 5: the list's rule for both).
             f.fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.app_user SET home_zone_id = ? WHERE id = ?", f.mirZone, other) }
             m.readUrl(principal(amo, Role.DMO, desk), feedback)
-            denied(m, principal(amo, Role.DMO), feedback)
+            m.readUrl(principal(amo, Role.DMO), feedback)
             // The desk on a role FeedbackApi does not list feedback to by zone (an AMO: no list; a TSO: its own only) adds nothing
             // to the captor rule, which refuses both here (sr2002 held its Z-OTHER route on the photo's date).
             denied(m, principal(amo, Role.AMO, desk), feedback); denied(m, principal(amo, Role.TSO, desk), feedback)
             denied(narrow, principal(amo, Role.DMO, desk), outlet)
-            assertEquals(3 + 1 + 1 + 1 + 1, issued.size, "no URL minted for a refused read")
+            assertEquals(3 + 1 + 2 + 1 + 1 + 1, issued.size, "no URL minted for a refused read")
         }
     }
 
