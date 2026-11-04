@@ -44,6 +44,8 @@ data class SubmitUiState(
     val online: Boolean = false,
     val counts: List<CountRow> = emptyList(),
     val gate: SubmitGate = SubmitGate(false, emptyList(), null),
+    /** D-SRFIX-03b: the gate on the TRUE outbox counts (dismissed rows included): what the day_submit record uploads; [gate] is the screen's. */
+    val uploadGate: SubmitGate = SubmitGate(false, emptyList(), null),
     val progress: SubmitProgress = SubmitProgress.Idle,
     val syncing: Boolean = false,
     /** D-NIGHT-DAYCLOSE-01 (b): listed, shown whether or not a digest has run. */
@@ -90,7 +92,7 @@ class SalesSubmitViewModel(
                 recompute()
                 val s = _state.value
                 if (!s.gate.enabled || s.progress != SubmitProgress.Idle) return@withLock
-                writer.queue(businessDate(), s.gate, s.counts)
+                writer.queue(businessDate(), s.uploadGate, s.counts)
                 _state.value = s.copy(progress = SubmitProgress.Queued)
                 scheduler.requestSync(userId, SyncTrigger.DAY_SUBMIT)
             }
@@ -113,10 +115,12 @@ class SalesSubmitViewModel(
         val submitted = source.alreadySubmitted(d)
         val settled = submitted && source.submitSettled(d)
         val prev = _state.value.progress
-        val states = source.outboxStates(d).let { it.copy(rejected = (it.rejected - dismissed.size).coerceAtLeast(0)) }
+        val trueStates = source.outboxStates(d)
+        val states = trueStates.copy(rejected = (trueStates.rejected - dismissed.size).coerceAtLeast(0))
+        val uploadGate = SalesSubmitRules.gate(trueStates, counts, source.dues(d), alreadySubmitted = submitted && prev == SubmitProgress.Idle)
         val gate = SalesSubmitRules.gate(states, counts, source.dues(d), alreadySubmitted = submitted && prev == SubmitProgress.Idle)
         _state.value = _state.value.copy(
-            online = online(), counts = counts, gate = gate, rejected = rejected, dismissed = dismissed, serverKnown = srv != null,
+            online = online(), counts = counts, gate = gate, uploadGate = uploadGate, rejected = rejected, dismissed = dismissed, serverKnown = srv != null,
             progress = when { settled -> SubmitProgress.Settled; submitted || prev == SubmitProgress.Queued -> SubmitProgress.Queued; else -> SubmitProgress.Idle },
         )
     }

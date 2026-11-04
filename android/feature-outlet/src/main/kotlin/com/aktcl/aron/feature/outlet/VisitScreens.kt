@@ -410,7 +410,8 @@ fun VisitCheckContent(
             }
             is VisitUiState.Blocked -> if (onBack != null) OutletBar(BarAction(stringResource(R.string.out_go_back), onBack))
             is VisitUiState.LocationBlocked -> if (onOpenLocationSettings != null) OutletBar(BarAction(stringResource(R.string.out_turn_on_location), onOpenLocationSettings))
-            is VisitUiState.CommitFailed -> OutletBar(BarAction(stringResource(R.string.out_retry_short), onRetry, OutletTags.RETRY, icon = AronIcons.Refresh))
+            // D-SRFIX-03b: a refused day cannot start a call, so a retry would only be refused again: only a storage failure retries
+            is VisitUiState.CommitFailed -> if (state.failure == CommitFailure.STORAGE) OutletBar(BarAction(stringResource(R.string.out_retry_short), onRetry, OutletTags.RETRY, icon = AronIcons.Refresh))
             is VisitUiState.Open -> if (onStartCall != null) OutletBar(BarAction(startLabel, onStartCall, icon = AronIcons.ArrowForward))
             VisitUiState.Idle -> Unit
         }
