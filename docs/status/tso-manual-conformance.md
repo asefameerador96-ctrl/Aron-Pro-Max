@@ -181,3 +181,27 @@ Three Sonnet readers + three verifiers over rows 19–26, 28–29, 31–38, 43 a
 5. Leave list: "As of" only for a kept copy (LeaveListState.publish) + test.
 6. Row 21 (optional, one-line): let the Date field's border show beneath the dropdown panel.
 Lead rulings: rows 23/24 dome 72 dp accepted for now (tall-dome option offered to the owner); leave-card day count = status figure (4.5:1).
+
+## Re-check after fix batch 3 (candidate 347e1780; workflow wf_65ed8111-d06, 2 Sonnet readers + 2 adversarial verifiers, 0.66M subagent tokens, finished 00:08 UTC 2026-11-04; every verifier verdict upheld)
+
+| Row | Verdict | Evidence / remaining gap |
+|---|---|---|
+| 102 login status | PROVEN | Four goldens differ from c3f5df90 only in rows 729–799; dome 3D9FFF with the Final Submit profile (1 px taller); no pixel >= 220 in the band except the house glyph; wiring TsoGlow.of(LOGIN_SUBMIT_STATUS)=Bottom read by TsoDashboardHost.kt:154 and both screenshot frames. Owner's 08 dome ~13% high with the last card over it: the accepted 72 dp ruling. |
+| 102 Target Status | PROVEN | Every night golden: bottom 78 rows identical to tso_fs_s23_en, zero bright pixels in the band; content clipped at row 722 (the FAB-less page lost 78 px of list viewport to the new padding; scrollable; accepted). Owner's 39/40 dome 267/1600 px (16.7%) vs ours 72/800 (9%): accepted residual. |
+| 102 Target Details | PARTIAL → batch 3 round 2 item 7 | The owner's 41/42 draw NO dome (navy 04103A from the bottom edge up 300 px); TsoGlow.of(TARGET_DETAILS)=Bottom and the "39 to 42" comments overclaim. Lead ruling: screenshot wins → None, re-record the five details goldens. |
+| 102 Sunlight | PROVEN (+ item 8) | tso_target_sunlight_en bottom 72 rows all F4F4F4 (nightPage returns plain background when n.solid). Side effect: TsoFrame pads by TsoFabBand without an n.solid guard → empty grey band on Sunlight; guard with !n.solid (round 2 item 8). |
+| 19 Leave As-of | PROVEN | LeaveListState.publish asOf only when offlineCached; fresh-read goldens lose the "As of 10:42" strip (list grows into it, Apply bar unmoved); leave_offline_bn (kept copy) 0 differing pixels; owner's 19 has no As-of line. Round 2 item 1 adds the refreshing-phase cue. |
+| 34 | PROVEN | Date field edge 7B3FE4 with halo, calendar icon before the text, "Select Route" white (16.4:1 on 131C45); Zone/Route glow as in the screenshot. Caret white vs the owner's grey: pre-existing. |
+| 38 | PROVEN | Date field glow + icon; Comment box plain (6E7699 outline 4.21:1, placeholder 6.21:1); "Assigned to" gone (y512–560 pure page). |
+| 31, 32 | PROVEN | Set Plan fields glow, Date icon, values white; route menu 050D2E with white items as the owner's. McDateField 52→56 dp (matches the owner's height). Residual → round 2 item 2 extended: a DISABLED picker differs from an enabled one only by a 1.67:1 border (halo and white caret stay) → disabled = muted placeholder, muted caret, no halo. |
+| 28 | PROVEN | Stale/no-fix rows: 81859C/5E678F → B8C2E5 (10.62:1); live row identical; AMO golden byte-identical (git diff --quiet exit 0); alpha only when faded && !tso. |
+
+### Fix batch 3 — round 2 (assigned 23:56 / 00:09 UTC to tso-manual #2 on lane/tso-manual-wip-batch3)
+1. Leave list refreshing phase: asOf when offlineCached || refreshing + screen assertion (regression found by the lead checker).
+2. Disabled picker: muted placeholder, muted caret, no glow halo; border as today.
+3. TsoGlow KDoc wording (or move Final Submit/Leave into the table).
+4. Sunlight 7:1 variants of the new contrast assertions.
+5. EN screen assertion for "As of" on a kept copy.
+6. D-TSO-MAN-52: the Leave As-of rule extends D-TSO-MAN-40 (incl. refreshing).
+7. Target Details: TsoGlow.of(TARGET_DETAILS) = None (owner's 41/42 have no dome); re-record five goldens; fix the "39 to 42" comments and TsoGlowTest.
+8. TsoFrame bottom padding guarded with !n.solid (Sunlight shows no empty band); re-record tso_target_sunlight_en.
