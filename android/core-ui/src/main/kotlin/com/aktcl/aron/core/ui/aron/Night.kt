@@ -24,10 +24,16 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -40,6 +46,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.VisualTransformation
@@ -75,9 +82,15 @@ fun Modifier.nightGlow(n: AronNightRoles, color: Color, shape: Shape, elevation:
 @Composable
 fun NightTitle(text: String, modifier: Modifier = Modifier, size: TextUnit = 22.sp, align: TextAlign = TextAlign.Center, maxLines: Int = 2) {
     val n = nightRoles()
-    val base = lookStyle(size, semibold = true, align = align)
+    // a title that wraps shrinks a step at a time, down to 16 sp, until it fits one line (screenshot 8: "Login & Bikroy Joma Status" is one line);
+    // it wraps to [maxLines] only when 16 sp still does not fit (long Bangla, large text)
+    var fitted by remember(text, size) { mutableStateOf(size) }
+    val base = lookStyle(fitted, semibold = true, align = align)
     val style = if (n.solid) base.copy(color = n.ink) else base.copy(brush = Brush.horizontalGradient(listOf(n.titleStart, n.titleEnd)))
-    Text(text, modifier.semantics { heading() }, style = style, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
+    Text(
+        text, modifier.semantics { heading() }, style = style, maxLines = maxLines, overflow = TextOverflow.Ellipsis,
+        onTextLayout = { if (it.lineCount > 1 && fitted.value > 16f && size.value >= 16f) fitted = (fitted.value - 1f).sp },
+    )
 }
 
 /** The grey round back button of the TSO screens (52 dp disc, white chevron; screenshots 8, 17, 24, 39). [label] is its TalkBack name. */
@@ -130,17 +143,22 @@ fun NightOutlineCard(
     onClick: (() -> Unit)? = null,
     contentPadding: PaddingValues = PaddingValues(16.dp),
     fill: Color? = null,
+    /** A gradient fill instead of [fill] (the Leave card, screenshot 19); ignored in Sunlight, which stays solid. */
+    fillBrush: Brush? = null,
+    /** The edge colour when it is not the teal [AronNightRoles.outlineEdge]; ignored in Sunlight. */
+    edge: Color? = null,
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val n = nightRoles()
+    val edgeColor = if (n.solid) n.outlineEdge else edge ?: n.outlineEdge
     Column(
         modifier
             .fillMaxWidth()
-            .nightGlow(n, n.outlineEdge, OutlineShape, 8.dp)
+            .nightGlow(n, edgeColor, OutlineShape, 8.dp)
             .clip(OutlineShape)
-            .background(fill ?: n.outlineCard)
-            .border(if (n.solid) 2.dp else 1.5.dp, n.outlineEdge, OutlineShape)
+            .then(if (fillBrush != null && !n.solid) Modifier.background(fillBrush) else Modifier.background(fill ?: n.outlineCard))
+            .border(if (n.solid) 2.dp else 1.5.dp, edgeColor, OutlineShape)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .padding(contentPadding),
         verticalArrangement = verticalArrangement,
@@ -197,12 +215,15 @@ fun NightGlowField(
                 .fillMaxWidth()
                 .heightIn(min = 56.dp)
                 .nightGlow(n, n.fieldEdge, shape, 8.dp)
-                .semantics { (label ?: placeholder)?.let { contentDescription = it } },
+                .semantics {
+                    (label ?: placeholder)?.let { contentDescription = it }
+                    // the helper line is drawn outside the field: an error message is still announced with the field
+                    if (isError && supportingText != null) this.error(supportingText)
+                },
             enabled = enabled, singleLine = singleLine, minLines = minLines, isError = isError, shape = shape,
             textStyle = lookStyle(16.sp, color = n.ink),
             placeholder = if (placeholder == null) null else { { Text(placeholder, style = lookStyle(16.sp, color = n.placeholder)) } },
             trailingIcon = trailing,
-            supportingText = if (supportingText == null) null else { { Text(supportingText, style = lookStyle(13.sp, color = if (isError) n.danger else n.inkMuted)) } },
             keyboardOptions = keyboardOptions, keyboardActions = keyboardActions, visualTransformation = visualTransformation,
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = n.field, unfocusedContainerColor = n.field, disabledContainerColor = n.field, errorContainerColor = n.field,
@@ -211,6 +232,8 @@ fun NightGlowField(
                 disabledBorderColor = n.fieldEdge.copy(alpha = 0.4f), errorBorderColor = n.danger, cursorColor = n.ink, errorCursorColor = n.danger,
             ),
         )
+        // drawn under the field, not inside it: inside, the glow's shadow also fills the helper line's transparent area as a dark patch (row 22)
+        if (supportingText != null) Text(supportingText, Modifier.padding(horizontal = 16.dp), style = lookStyle(13.sp, color = if (isError) n.danger else n.inkMuted))
     }
 }
 
@@ -333,8 +356,45 @@ fun NightBar(percent: Long?, modifier: Modifier = Modifier, height: Dp = 14.dp) 
     }
 }
 
-/** The page of a TSO screen: the navy page colour (solid light grey in Sunlight). */
-fun Modifier.nightPage(n: AronNightRoles): Modifier = this.background(n.page)
+/** How far the bottom dome rises above the bottom edge: no more than the band a TsoFrame keeps free for the Home disc (78 dp). */
+val NightGlowRise: Dp = 72.dp
+
+/** The vertical squash of the bottom dome (an unsquashed circle rises 0.43 of the width): its top then sits exactly [risePx] above the bottom edge (never higher than the circle). */
+fun nightDomeSquash(widthPx: Float, risePx: Float): Float = (risePx / (0.43f * widthPx)).coerceAtMost(1f)
+
+/** Which page glow of the owner's screenshots a TSO screen draws behind its content (Night only; Sunlight is solid). */
+enum class NightPageGlow { None, Bottom, Top }
+
+/**
+ * The page of a TSO screen: the navy page colour (solid light grey in Sunlight) and, in the night look, the [glow] of the owner's
+ * screenshots: a bright-blue dome rising from the bottom edge ([NightPageGlow.Bottom], screenshots 23 to 26, 39 to 42) or a blue wash
+ * down from the top ([NightPageGlow.Top], screenshots 19 to 22). Colours are the [AronNightRoles.glowBottom] and [AronNightRoles.glowTop] tokens.
+ */
+fun Modifier.nightPage(n: AronNightRoles, glow: NightPageGlow = NightPageGlow.None): Modifier {
+    val base = this.background(n.page)
+    if (n.solid || glow == NightPageGlow.None) return base
+    return base.drawBehind {
+        val w = size.width
+        val h = size.height
+        when (glow) {
+            NightPageGlow.Bottom -> {
+                // a circle centred a little below the bottom edge (full width at the edge), squashed so its top rises only NightGlowRise:
+                // no content ever scrolls over the bright blue (white on 3D9FFF is 2.76:1), see TsoGlowRiseTest
+                val squash = nightDomeSquash(w, NightGlowRise.toPx())
+                scale(1f, squash, pivot = Offset(w / 2f, h)) {
+                    drawRect(
+                        Brush.radialGradient(0f to n.glowBottom, 0.8f to n.glowBottom, 1f to n.glowBottom.copy(alpha = 0f), center = Offset(w / 2f, h + 0.2f * w), radius = 0.63f * w),
+                    )
+                }
+            }
+            NightPageGlow.Top -> drawRect(
+                Brush.verticalGradient(0f to n.glowTop, 1f to n.glowTop.copy(alpha = 0f), startY = 0f, endY = h * 0.45f),
+                size = Size(w, h * 0.45f),
+            )
+            NightPageGlow.None -> Unit
+        }
+    }
+}
 
 /** A small text of the TSO look in the bundled font (for the kit's callers outside core-ui). */
 @Composable

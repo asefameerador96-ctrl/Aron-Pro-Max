@@ -301,9 +301,25 @@ data class AronNightRoles(
     /** Status inks readable on the navy cards. */
     val danger: Color, val warning: Color, val success: Color,
     // tso-manual A1: the Target Status bars (screenshots 39 to 42): red, amber and green fills on [barTrack] by `cfg.kpi.bar_bands`
-    /** The Final Submit route cards (screenshot 25): solid steel blue with white text (8.6:1) and the muted ink (4.85:1); Sunlight draws the white outline card instead. */
-    val routeCard: Color = hex(0x234F76),
+    /** The Final Submit route cards (screenshot 25): a steel blue near the owner's 4682B4, deepened until white ink holds 4.5:1 (see TokenContrastTest); Sunlight draws the white outline card instead. */
+    val routeCard: Color = hex(0x3F7AAD),
     val bandRed: Color = hex(0xE53935), val bandAmber: Color = hex(0xFFB300), val bandGreen: Color = hex(0x2E8B3A),
+    /**
+     * The page glows of the owner's screenshots (Night only; Sunlight is solid and draws none): [glowBottom] is the bright-blue dome
+     * rising from the bottom edge of Final Submit (23 to 26), Target Status (39 to 42) and the login-status page; [glowTop] is the
+     * blue wash down from the top of the Leave pages (19 to 22). The dome rises only [com.aktcl.aron.core.ui.aron.NightGlowRise] (inside the Home band), so no content scrolls over it; the title, white ink,
+     * muted ink and the kit red on [glowTop] hold their gates (TokenContrastTest).
+     */
+    val glowBottom: Color = hex(0x3D9FFF), val glowTop: Color = hex(0x0A3056),
+    /**
+     * The Leave application card (screenshot 19, night look only): a teal-to-blue gradient fill with a teal edge, white ink (6:1 at the
+     * start, 8:1 at the end), a day-count disc of [leaveDisc] over it, and the solid orange pending badge [badgeOrange] with a white bold
+     * label (4.7:1, D-TSO-MAN-50: the owner's FF9800 darkened until the white label holds 4.5:1). Sunlight draws the white outline card.
+     */
+    val leaveStart: Color = hex(0x126985), val leaveEnd: Color = hex(0x16507F), val leaveEdge: Color = hex(0x2A9FC0),
+    /** The open list of a dropdown (screenshots 21, 32): near-black navy, over the field it opened from; Sunlight uses the white field fill. */
+    val menu: Color = hex(0x050D2E),
+    val leaveDisc: Color = Color(0x1FFFFFFF), val badgeOrange: Color = hex(0xB45C00),
 ) {
     companion object {
         val Night = AronNightRoles(

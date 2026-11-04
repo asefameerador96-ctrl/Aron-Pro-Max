@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.feature.tso.CardLoad
 import com.aktcl.aron.feature.tso.TsoFab
+import com.aktcl.aron.core.ui.aron.NightPageGlow
 import com.aktcl.aron.feature.tso.TsoFrame
 import com.aktcl.aron.feature.tso.TsoNav
 import com.aktcl.aron.feature.tso.TsoScreen
@@ -110,7 +111,7 @@ class TsoTargetsModel(
 fun TsoTargetStatusHost(model: TsoTargetsModel, nav: TsoNav) {
     val scope = rememberCoroutineScope()
     LaunchedEffect(model) { model.showStatus() }
-    TsoFrame(stringResource(TsoR.string.tso_drawer_target_status), nav, homeButton = TsoFab.of(TsoScreen.TARGET_STATUS)) {
+    TsoFrame(stringResource(TsoR.string.tso_drawer_target_status), nav, homeButton = TsoFab.of(TsoScreen.TARGET_STATUS), glow = NightPageGlow.Bottom) {
         TargetStatusContent(
             model.status, model.tab, model.bands, model.statusRefreshing,
             onTab = { model.tab = it }, onDetails = { model.openDetails(it, nav) }, onRefresh = { scope.launch { model.loadStatus() } },
@@ -123,7 +124,7 @@ fun TsoTargetDetailsHost(model: TsoTargetsModel, nav: TsoNav, arg: String?) {
     val scope = rememberCoroutineScope()
     val node = remember(arg) { TargetNodeKey.parse(arg) }
     LaunchedEffect(node) { model.showDetails(node) }
-    TsoFrame(model.titleOf(node) ?: stringResource(TsoR.string.tso_drawer_target_status), nav, homeButton = TsoFab.of(TsoScreen.TARGET_DETAILS)) {
+    TsoFrame(model.titleOf(node) ?: stringResource(TsoR.string.tso_drawer_target_status), nav, homeButton = TsoFab.of(TsoScreen.TARGET_DETAILS), glow = NightPageGlow.Bottom) {
         TargetDetailsContent(
             model.details[node.wire], model.tab, model.bands, model.filter, model.detailsRefreshing(node),
             onTab = { model.tab = it }, onFilter = { model.filter = it }, onRefresh = { scope.launch { model.loadDetails(node) } },

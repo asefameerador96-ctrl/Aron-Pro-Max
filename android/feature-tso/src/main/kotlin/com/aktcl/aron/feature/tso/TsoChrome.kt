@@ -27,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -37,7 +38,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -115,7 +118,7 @@ object TsoDrawer {
             "my_call", R.string.tso_drawer_my_call, R.string.tso_drawer_my_call_sub, AronIcons.Verified,
             children = listOf(
                 TsoDrawerEntry("visit_plan", R.string.tso_drawer_visit_plan, R.string.tso_drawer_visit_plan_sub, AronIcons.AddBusiness, TsoScreen.MY_VISIT_PLAN),
-                TsoDrawerEntry("set_plan", R.string.tso_drawer_set_plan, R.string.tso_drawer_set_plan_sub, AronIcons.Outlet, TsoScreen.SET_PLAN),
+                TsoDrawerEntry("set_plan", R.string.tso_drawer_set_plan, R.string.tso_drawer_set_plan_sub, AronIcons.StoreOff, TsoScreen.SET_PLAN),
             ),
         ),
         TsoDrawerEntry("target_status", R.string.tso_drawer_target_status, R.string.tso_drawer_target_status_sub, AronIcons.Target, TsoScreen.TARGET_STATUS),
@@ -315,7 +318,12 @@ fun TsoLogoutDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
  */
 @Composable
 fun TsoInfoDialog(title: String, message: String, okLabel: String, onDismiss: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss) { TsoInfoDialogContent(title, message, okLabel, onDismiss) }
+    Dialog(onDismissRequest = onDismiss) {
+        // a lighter scrim than the platform's 0.6 (screenshot 26: the page stays visible behind the card)
+        val dialogView = LocalView.current
+        SideEffect { (dialogView.parent as? DialogWindowProvider)?.window?.setDimAmount(0.35f) }
+        TsoInfoDialogContent(title, message, okLabel, onDismiss)
+    }
 }
 
 /** The body of [TsoInfoDialog] (also drawn inline by the goldens, which capture one window). */
