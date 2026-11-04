@@ -52,9 +52,15 @@ class AmoKitLockTest {
     }
 
     @After fun tearDown() {
-        Thread.setDefaultUncaughtExceptionHandler(previousDefault); Thread.currentThread().uncaughtExceptionHandler = previousOwn
-        f.close()
-        Dispatchers.resetMain()
+        // CI run 41750277921: the fixture's work stops (finished, cancelled, joined, Room drained) and the database closes
+        // while the catchers still listen; what that work threw fails this test, not a later one
+        try {
+            f.close()
+            assertEquals("nothing escaped by the end of the test", listOf<Throwable>(), crashes.toList())
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(previousDefault); Thread.currentThread().uncaughtExceptionHandler = previousOwn
+            Dispatchers.resetMain()
+        }
     }
 
     private fun collections() = runBlocking { f.db.captureDao().dueCollectionsOn(f.date) }
@@ -63,7 +69,7 @@ class AmoKitLockTest {
         val v = f.controlCall()
         val memo = f.creditMemo(v)
         assertNull("outside a call: the AMO has no route of its own", f.day.routeId)
-        val vm = f.day.sale.newMemoViewModel()
+        val vm = f.memoViewModel()
         vm.open(memo)
         await("Mark Paid is drawn on the open route") { vm.state.value.canMarkPaid }
         assertFalse(vm.state.value.dayLocked)
@@ -79,7 +85,7 @@ class AmoKitLockTest {
     @Test fun markPaidOutsideACallIsHiddenWhenTheMemosRouteIsFinalAndATapItBeatIsWorded() {
         val v = f.controlCall()
         val memo = f.creditMemo(v)
-        val drawn = f.day.sale.newMemoViewModel()
+        val drawn = f.memoViewModel()
         drawn.open(memo)
         await("Mark Paid is drawn before the lock") { drawn.state.value.canMarkPaid }
         f.finalSubmitted() // the push lands while the memo is on screen
@@ -89,21 +95,21 @@ class AmoKitLockTest {
         assertTrue("no collection stored", collections().isEmpty())
         assertFalse(drawn.state.value.canMarkPaid); assertTrue(drawn.state.value.dayLocked)
         // opened after the lock: never drawn, though the AMO itself has no route outside a call
-        val later = f.day.sale.newMemoViewModel()
+        val later = f.memoViewModel()
         later.open(memo)
         await("the memo is open") { later.state.value.selected?.memo?.memoUuid == memo }
         assertFalse("Mark Paid hidden on the final route", later.state.value.canMarkPaid)
         assertTrue(later.state.value.dayLocked)
         // a memo of the zone's other route, still open, keeps Mark Paid
         val onOther = f.creditMemo(f.controlCall(outletId = 50002, routeId = f.other, seq = 2))
-        val third = f.day.sale.newMemoViewModel()
+        val third = f.memoViewModel()
         third.open(onOther)
         await("Mark Paid on the open route") { third.state.value.canMarkPaid }
     }
 
     @Test fun theSupervisorDaySubmitHidesMarkPaidAndATapItBeatIsWorded() {
         val memo = f.creditMemo(f.controlCall())
-        val drawn = f.day.sale.newMemoViewModel()
+        val drawn = f.memoViewModel()
         drawn.open(memo)
         await("Mark Paid is drawn") { drawn.state.value.canMarkPaid }
         f.supervisorDaySubmitted()
