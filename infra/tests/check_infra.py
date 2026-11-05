@@ -2312,6 +2312,32 @@ esac
         self.assertNotIn("component", json.dumps(st.get("tags")), "the photo account is never tagged as the lake")
 
 
+
+class DirectUrlConsumers(unittest.TestCase):
+    """The direct database URL is read by pgjdbc AND by psql (the dblogins/seed job and the scripts strip 'jdbc:'), so its
+    query string may carry only parameters both accept (D-INFRA-DIRECT-URL-KEEPALIVE-02; deploy #313 failed on tcpKeepAlive)."""
+
+    LIBPQ_AND_PGJDBC = {"sslmode", "user", "password"}
+
+    def _params(self, name):
+        kv = (ROOT / "infra" / "modules" / "keyvault.bicep").read_text(encoding="utf-8")
+        m = re.search(r"^var %s = '([^']*)'" % name, kv, re.M)
+        self.assertIsNotNone(m, f"{name} is defined as a single-quoted Bicep string")
+        return [p.split("=", 1)[0] for p in m.group(1).split("&") if p]
+
+    def test_direct_url_parameters_are_accepted_by_both_pgjdbc_and_psql(self):
+        keys = self._params("directParams")
+        self.assertEqual(set(keys), self.LIBPQ_AND_PGJDBC, f"directParams keys {keys}: pgjdbc-only options break psql")
+        self.assertEqual(len(keys), len(set(keys)), "no duplicate parameter")
+
+    def test_psql_consumers_strip_the_jdbc_prefix_and_use_the_direct_url(self):
+        apps = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        self.assertIn('exec psql "\\${ARON_DB_URL#jdbc:}"', apps, "the dblogins job hands the direct URL to psql")
+        for script in ("infra/scripts/devseed-run.sh", "infra/scripts/drill.sh", "tools/data/devload_job.py"):
+            self.assertIn("#jdbc:", (ROOT / script).read_text(encoding="utf-8"), f"{script} strips jdbc: for psql")
+        # The pooled URL keeps prepareThreshold=0 (PgBouncer transaction mode) and is never handed to psql.
+        self.assertIn("prepareThreshold", self._params("pooledParams"))
+
 if __name__ == "__main__":
     if not (COMPILED / "main.json").exists():
         sys.exit(f"compiled templates not found in {COMPILED}; run infra/validate.sh")

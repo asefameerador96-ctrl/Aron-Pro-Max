@@ -3,6 +3,7 @@ package com.aktcl.aron.backend.platform
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.flywaydb.core.Flyway
+import org.flywaydb.core.api.configuration.FluentConfiguration
 import org.jdbi.v3.core.Jdbi
 import org.jdbi.v3.core.kotlin.KotlinPlugin
 import javax.sql.DataSource
@@ -67,13 +68,30 @@ object Migrator {
      * (docs/requests/backend-migrate-connect-retries.md). Any other migration failure still fails at once.
      */
     fun migrate(ds: DataSource, connectRetries: Int = 10, connectRetriesIntervalS: Int = 15): Int =
+        configure(ds, connectRetries, connectRetriesIntervalS).load().migrate().migrationsExecuted
+
+    /**
+     * Flyway runs a migration on one connection while a second one (schema history, advisory lock) waits idle inside a
+     * transaction for the whole migration. The servers set idle_in_transaction_session_timeout (30 s on dev,
+     * infra/modules/postgres.bicep) to protect the pooled api and worker sessions, so every migration longer than that lost
+     * the waiting connection and failed on Flyway's next write with SQLSTATE 08006 (deploys #308, #309 and #311; found and
+     * reproduced by db #15, D-OPS-MIGRATE-IDLE-TIMEOUT-01). Flyway runs this on every connection it opens, so only the
+     * migrate role's sessions are exempt; the job's replicaTimeout bounds them instead. The api and worker pools are untouched.
+     */
+    const val INIT_SQL = "SET idle_in_transaction_session_timeout = 0"
+
+    /** The migrate role's Flyway configuration; [locations] is overridable for tests only. */
+    fun configure(
+        ds: DataSource,
+        connectRetries: Int = 10,
+        connectRetriesIntervalS: Int = 15,
+        locations: Array<String> = arrayOf("classpath:db/migration"),
+    ): FluentConfiguration =
         Flyway.configure()
             .dataSource(ds)
             .connectRetries(connectRetries)
             .connectRetriesInterval(connectRetriesIntervalS)
-            .locations("classpath:db/migration")
+            .locations(*locations)
             .validateOnMigrate(true)
-            .load()
-            .migrate()
-            .migrationsExecuted
+            .initSql(INIT_SQL)
 }
