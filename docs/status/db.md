@@ -27,6 +27,7 @@ Backend maps the lock/deadlock SQLSTATEs already: `backend/platform/.../Http.kt`
 - V0149 worker grants (`bundle_snapshot` INSERT, `outlet_request_event` INSERT) + `WorkerGrantsTest` (audited list of worker write targets with file:line) found from the dev server log; rule: a worker write target needs its `app.db_role_grant` row before the code lands (D-DB-WORKER-GRANTS-01).
 
 **Open (all paused by the stop rule).**
+0. **First small item for db #16, after the pause** (lead checker on 720bbbdf, should-fixes, tests only, no migration): (a) `MigrationLockSafetyTest` V0146 and V0147 cases use a fixed `Thread.sleep(7_000)` then `assertFalse(isDone)`: poll `pg_stat_activity` (with `pg_stat_clear_snapshot()`) for the migration's wait state before releasing the worker session (V0146: `wait_event = 'PgSleep'` after its lock timeout; V0147: `Lock` or `PgSleep`), as the V0144 case does, so a slow runner cannot pass without proving a retry; (b) `WorkerGrantsTest.theWorkerMayRevokePushTokensAndNothingElseOnThem` asserts only the two allowed columns: add a negative check (table-level UPDATE on `app.push_token` false, or another column false) or rename it; (c) wrap the long KDoc line at `WorkerGrantsTest.kt:12`.
 1. BI row scope (design `docs/requests/db-bi-reader-row-scope-answer-DRAFT.md`; needs the lead's per-audience login decision; would be V0150 or later, contract 1.5).
 2. History `(key, valid_from)` indexes: waits for `docs/requests/backend-reports-db-history-indexes.md` on INT.
 3. Data-architecture row 9 remainder: unchanged from HANDOVER 13 -> 14.
