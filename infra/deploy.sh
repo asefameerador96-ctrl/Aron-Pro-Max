@@ -76,25 +76,32 @@ worker_paused=false # set by pause_worker; resume_worker runs on every exit path
 WORKER_APP="ca-aron-${ENV_NAME}-worker"
 worker_previous_replicas() {
   # Replicas of every revision but the latest: the previous revision keeps its database sessions while it drains.
+  # A failed or throttled read prints "?" (keep polling) and never ends the deploy: set -e would otherwise exit silently.
   local latest
-  latest="$(az containerapp show -g "$RG" -n "$WORKER_APP" --query properties.latestRevisionName -o tsv 2>/dev/null)" || return 0
+  if ! latest="$(az containerapp show -g "$RG" -n "$WORKER_APP" --query properties.latestRevisionName -o tsv 2>/dev/null)" || [ -z "$latest" ]; then
+    echo "?"; return 0
+  fi
   az containerapp revision list -g "$RG" -n "$WORKER_APP" --query "[?name != '${latest}'].properties.replicas" -o tsv 2>/dev/null \
-    | awk '{ s += $1 } END { print s + 0 }'
+    | awk '{ s += $1 } END { print s + 0 }' || echo "?"
 }
 pause_worker() {
   local n err
   if ! az containerapp show -g "$RG" -n "$WORKER_APP" --query name -o tsv >/dev/null 2>&1; then
     note "worker $WORKER_APP not found (first deploy); nothing to pause"; return 0
   fi
+  # Marked paused BEFORE the update: if ARM applies it but az reports a failure, the resume still removes the variable.
+  worker_paused=true
   if err="$(az containerapp update -g "$RG" -n "$WORKER_APP" --set-env-vars ARON_WORKER_PAUSED=true -o none 2>&1)"; then
-    worker_paused=true
+    n="?"
     for _ in $(seq 1 24); do
-      n="$(worker_previous_replicas)"
-      [ "${n:-0}" = 0 ] && break
+      n="$(worker_previous_replicas || echo "?")"
+      [ "$n" = 0 ] && break
       sleep 5
     done
-    if [ "${n:-0}" = 0 ]; then
+    if [ "$n" = 0 ]; then
       note "worker $WORKER_APP paused for the migrations (ARON_WORKER_PAUSED=true revision up; the previous revision has drained)"
+    elif [ "$n" = "?" ]; then
+      echo "::warning::worker $WORKER_APP: paused revision requested, but the replica count could not be read; the migrations start now"
     else
       echo "::warning::worker $WORKER_APP: the paused revision is up but the previous revision still runs ${n} replica(s) after 120 s; the migrations start beside it"
     fi
