@@ -56,9 +56,15 @@ class RouteDayViewTest {
             )
             // The zone's Final Submit reaches each of its routes.
             assertEquals("0", scalar("SELECT count(*) FILTER (WHERE zone_final_submitted) FROM dw.v_route_day WHERE business_date = $day AND zone_id = $zone"))
-            // The midnight auto-submit stamps the zone-day without setting final_submitted; a later Final Submit sets it.
+            // An old dw-only auto_submitted stamp is not a Final Submit; a live Final Submit time (not auto) is.
             exec("INSERT INTO dw.agg_daily_zone (business_date, zone_id, territory_id, final_submitted, final_submitted_at, auto_submitted) SELECT $day, $zone, territory_id, false, now(), true FROM app.zone WHERE id = $zone")
             assertEquals("0|3", scalar("SELECT count(*) FILTER (WHERE zone_final_submitted) || '|' || count(*) FILTER (WHERE zone_auto_submitted) FROM dw.v_route_day WHERE business_date = $day AND zone_id = $zone"))
+            // One formula (V0148): the live Final Submit time decides, not the route-state flag (backend zoneSubmittedSql).
+            exec("UPDATE dw.agg_daily_zone SET final_submitted = false, auto_submitted = false WHERE business_date = $day AND zone_id = $zone")
+            assertEquals("3", scalar("SELECT count(*) FILTER (WHERE zone_final_submitted) FROM dw.v_route_day WHERE business_date = $day AND zone_id = $zone"))
+            exec("UPDATE dw.agg_daily_zone SET final_submitted = true, final_submitted_at = NULL WHERE business_date = $day AND zone_id = $zone")
+            assertEquals("0", scalar("SELECT count(*) FILTER (WHERE zone_final_submitted) FROM dw.v_route_day WHERE business_date = $day AND zone_id = $zone"))
+            exec("UPDATE dw.agg_daily_zone SET final_submitted_at = now() WHERE business_date = $day AND zone_id = $zone")
             exec("UPDATE dw.agg_daily_zone SET final_submitted = true, auto_submitted = false WHERE business_date = $day AND zone_id = $zone")
             assertEquals("3|0", scalar("SELECT count(*) FILTER (WHERE zone_final_submitted) || '|' || count(*) FILTER (WHERE zone_auto_submitted) FROM dw.v_route_day WHERE business_date = $day AND zone_id = $zone"))
             // The zone rollup's rules, computed from the route rows: target_routes 2, logged_in 1, sales_submitted 1, visits 6, net 5400.
