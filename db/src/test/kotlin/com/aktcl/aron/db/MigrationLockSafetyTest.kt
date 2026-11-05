@@ -20,6 +20,7 @@ import kotlin.test.assertTrue
  */
 class MigrationLockSafetyTest {
     private lateinit var db: TestDatabase
+    private val pool = Executors.newCachedThreadPool { r -> Thread(r).apply { isDaemon = true } }
     private val dir = File(System.getProperty("aron.migrations"))
 
     /** A throwaway database migrated to V0143 and seeded, then the named files run in order (the state the next step starts from). */
@@ -31,7 +32,10 @@ class MigrationLockSafetyTest {
     }
 
     @AfterEach
-    fun tearDown() = db.close()
+    fun tearDown() {
+        pool.shutdownNow()
+        if (::db.isInitialized) db.close()
+    }
 
     private fun sql(prefix: String) = dir.listFiles()!!.single { it.name.startsWith(prefix) }.readText()
 
@@ -46,7 +50,7 @@ class MigrationLockSafetyTest {
     }
 
     private fun <T> concurrently(block: () -> T): java.util.concurrent.Future<T> =
-        Executors.newSingleThreadExecutor().submit(Callable { block() })
+        pool.submit(Callable { block() })
 
     @Test
     fun v0144WaitsHoldingNothingThenFinishesAfterTheWorkerReleases() {
@@ -55,14 +59,20 @@ class MigrationLockSafetyTest {
             worker.autoCommit = false
             worker.exec("SELECT count(*) FROM dw.dim_geo_version")                    // the worker reads the version table first ...
             val migration = concurrently { runFile("V0144__") }
-            Thread.sleep(2_000)
+            // Wait until the migration has met the worker's lock and sleeps in its retry loop (a failed NOWAIT, then pg_sleep).
+            val deadline = System.nanoTime() + 20_000_000_000L
+            // (pg_stat_activity is a per-transaction snapshot, and the worker session is inside a transaction: clear it each time.)
+            while (worker.also { it.exec("SELECT pg_stat_clear_snapshot()") }.scalar("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event = 'PgSleep' AND pid <> pg_backend_pid()") == "0") {
+                check(System.nanoTime() < deadline) { "the migration never reached its retry sleep" }
+                Thread.sleep(100)
+            }
             // ... and then dw.dim_geo: it must not queue behind a half-taken lock set of the migration.
             worker.exec("SET LOCAL lock_timeout = '1s'")
             worker.exec("SELECT count(*) FROM dw.dim_geo")
             assertEquals(false, migration.isDone, "the migration is still waiting for dw.dim_geo_version")
             worker.commit()
             val ms = migration.get(30, java.util.concurrent.TimeUnit.SECONDS)
-            assertTrue(ms >= 1_500, "it waited for the worker: $ms ms")
+            assertTrue(ms >= 400, "it waited for the worker (at least one retry sleep): $ms ms")
         }
         db.connect().use { c -> assertEquals("1", c.scalar("SELECT count(*) FROM pg_proc WHERE proname = 'zone_house_follow'")) }
         runFile("V0145__")
