@@ -159,6 +159,44 @@ class MigrationsCheck(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         self.assertIn("V0001__t1.sql was shipped", out)
 
+    def _blob(self, rev, name):
+        return self.git("rev-parse", f"{rev}:db/migrations/{name}").strip()
+
+    def test_replacing_a_shipped_migration_needs_its_allowlist_line(self):
+        self.write("V0002__t2.sql", "SET lock_timeout = '5s';\nCREATE TABLE t2 (id bigint PRIMARY KEY, y int);\n")
+        rc, out = self.check()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("Only a version listed in db/migrations/REPLACED-UNAPPLIED.txt", out)
+
+    @unittest.skipUnless(tool("squawk"), "squawk binary not available")
+    def test_a_listed_replacement_passes_and_a_wrong_blob_does_not(self):
+        old = self._blob(self.base, "V0002__t2.sql")
+        self.write("V0002__t2.sql", "SET lock_timeout = '5s';\nCREATE TABLE t2 (id bigint PRIMARY KEY, y int);\n")
+        new = self.git("hash-object", os.path.join(self.repo, "db/migrations/V0002__t2.sql")).strip()
+        self.write("REPLACED-UNAPPLIED.txt", f"V0002 {old} {'0' * 40} wrong new blob, deploy #1 and #2\n")
+        rc, out = self.check()
+        self.assertEqual(rc, 1, out)
+        self.write("REPLACED-UNAPPLIED.txt", f"V0002 {old} {new} never applied: deploy #1 and #2 failed\n")
+        rc, out = self.check()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("replaced-unapplied: db/migrations/V0002__t2.sql allowed", out)
+
+    def test_a_version_is_replaced_once(self):
+        self.write("REPLACED-UNAPPLIED.txt", f"V0002 {'1' * 40} {'2' * 40} a\nV0002 {'2' * 40} {'3' * 40} b\n")
+        rc, out = self.check()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("lists a version twice", out)
+
+    def test_the_allowlist_is_append_only(self):
+        self.write("REPLACED-UNAPPLIED.txt", f"V0002 {'1' * 40} {'2' * 40} first entry\n")
+        self.git("add", "-A")
+        self.git("commit", "-qm", "list")
+        self.base = self.git("rev-parse", "HEAD").strip()
+        self.write("REPLACED-UNAPPLIED.txt", "")
+        rc, out = self.check()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("is append-only", out)
+
     def test_deleting_a_shipped_migration_fails(self):
         os.remove(os.path.join(self.repo, "db/migrations/V0002__t2.sql"))
         rc, out = self.check()

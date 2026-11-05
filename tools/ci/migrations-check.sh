@@ -20,13 +20,35 @@ err() { echo "::error::$*"; fail=1; }
 git cat-file -e "${base}^{commit}" 2>/dev/null || { echo "::error::base commit $base is not in this checkout"; exit 1; }
 version() { basename "$1" | sed -nE 's/^V([0-9]+)__.*\.sql$/\1/p'; }
 
-# 1. Shipped migrations unchanged.
+# 1. Shipped migrations unchanged. One reviewed exception: db/migrations/REPLACED-UNAPPLIED.txt lists a shipped version
+#    that never succeeded on any database that outlives a test (the lead's ruling, with the deploy runs that prove it):
+#    "<version> <blob id at base> <blob id at HEAD> <reason, evidence>". The replacement is accepted only when the line
+#    is in the file at HEAD, names exactly the base and HEAD blobs of that file, and every line of the file at base is
+#    still there (append-only). Flyway still refuses a replaced file on any database that DID apply the old one
+#    (validate-on-migrate checksum), so a wrong claim fails loudly at deploy, never silently.
+allow=db/migrations/REPLACED-UNAPPLIED.txt
+replaced=()
 mapfile -t shipped < <(git ls-tree --name-only "$base" -- "$dir/" | grep -E '/V[0-9]+__.*\.sql$' || true)
+if git cat-file -e "$base:$allow" 2>/dev/null; then
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    git show "HEAD:$allow" 2>/dev/null | grep -qxF -- "$line" || err "$allow lost the line '${line:0:60}...' (the list is append-only)"
+  done < <(git show "$base:$allow")
+fi
+if git show "HEAD:$allow" 2>/dev/null | awk 'NF {print $1}' | sort | uniq -d | grep -q .; then
+  err "$allow lists a version twice: a shipped migration is replaced once"
+fi
 for f in "${shipped[@]}"; do
   if ! git cat-file -e "HEAD:$f" 2>/dev/null; then
     err "$f was shipped at ${base:0:7} and is gone at HEAD: a shipped migration is never deleted or renamed"
   elif [ "$(git rev-parse "$base:$f")" != "$(git rev-parse "HEAD:$f")" ]; then
-    err "$f was shipped at ${base:0:7} and changed since: never edit a shipped migration; add a new one (expand/contract)"
+    ver="V$(version "$f")"; old="$(git rev-parse "$base:$f")"; new="$(git rev-parse "HEAD:$f")"
+    if git show "HEAD:$allow" 2>/dev/null | grep -qE "^${ver} ${old} ${new} .+"; then
+      echo "replaced-unapplied: $f allowed by $allow (never applied on a persistent database)"
+      replaced+=("$f")
+    else
+      err "$f was shipped at ${base:0:7} and changed since: never edit a shipped migration; add a new one (expand/contract). (Only a version listed in $allow as '${ver} ${old} ${new} <reason>' may be replaced.)"
+    fi
   fi
 done
 echo "checksum: ${#shipped[@]} shipped migration(s) at ${base:0:7} checked"
@@ -49,9 +71,10 @@ done
 echo "order: ${#added[@]} new migration(s), highest shipped version $max_shipped"
 
 # 3. squawk on the new ones.
-if [ "${#added[@]}" -gt 0 ]; then
-  if ! "$squawk" --config tools/ci/squawk.toml --reporter gcc --assume-in-transaction "${added[@]}"; then
-    err "squawk found migration risks in: ${added[*]} (rules: tools/ci/squawk.toml; fix the migration, it is not shipped yet. Most common: put SET lock_timeout = '5s'; before the first DDL, CREATE INDEX CONCURRENTLY on an existing table, ADD CONSTRAINT ... NOT VALID then VALIDATE CONSTRAINT)"
+lint=("${added[@]}" "${replaced[@]}")
+if [ "${#lint[@]}" -gt 0 ]; then
+  if ! "$squawk" --config tools/ci/squawk.toml --reporter gcc --assume-in-transaction "${lint[@]}"; then
+    err "squawk found migration risks in: ${lint[*]} (rules: tools/ci/squawk.toml; fix the migration, it is not shipped yet. Most common: put SET lock_timeout = '5s'; before the first DDL, CREATE INDEX CONCURRENTLY on an existing table, ADD CONSTRAINT ... NOT VALID then VALIDATE CONSTRAINT)"
   fi
 fi
 
