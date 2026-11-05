@@ -56,7 +56,7 @@ class DwViewContractTest {
         appendLine()
         appendLine("Generated from the PostgreSQL catalogue by `tools/data-dictionary/render.sh` (db lane); do not edit by hand.")
         appendLine("Other products read only these views (docs/31 s3). Contract version **$version** (`dw.view_contract_version()`):")
-        appendLine("the minor number rises when a column or view is added, the major number when one is removed, renamed or retyped;")
+        appendLine("the minor number rises when a column or view is added or a column's meaning changes (columns unchanged), the major number when one is removed, renamed or retyped;")
         appendLine("`DwViewContractTest` refuses to regenerate this file otherwise. Every view ends with `is_effective` (the row")
         appendLine("counts in an ordinary total) and, except the calendar views, carries `data_origin` (V0116). Column meanings are")
         appendLine("in docs/data-dictionary.md; each column shows its PostgreSQL type.")

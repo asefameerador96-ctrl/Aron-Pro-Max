@@ -30,6 +30,6 @@ CREATE OR REPLACE FUNCTION dw.view_contract_version() RETURNS text
 LANGUAGE sql IMMUTABLE
 AS $$ SELECT '1.4' $$;
 
-COMMENT ON COLUMN dw.v_route_day.zone_final_submitted IS 'True when the zone-day this route-day belongs to has a live Final Submit: dw.agg_daily_zone.final_submitted_at is set and the retired auto_submitted flag is false. The same rule as the national card, the summary and the final-submit-status report (backend zoneSubmittedSql, D-TSO-MAN-30); since V0146 (contract 1.4) it no longer reads agg_daily_zone.final_submitted.';
+COMMENT ON COLUMN dw.v_route_day.zone_final_submitted IS 'True when the zone-day this route-day belongs to has a live Final Submit, whoever closed it, the midnight job included: dw.agg_daily_zone.final_submitted_at is set and the retired auto_submitted flag is false. The same rule as the national card, the summary and the final-submit-status report (backend zoneSubmittedSql, D-TSO-MAN-30); since V0146 (contract 1.4) it no longer reads agg_daily_zone.final_submitted.';
 
 SELECT app.apply_db_role_grants();
