@@ -1539,3 +1539,8 @@
 ### 04:46 UTC 2026-11-05 — 2-hourly lane check (trig_019JnciXMV6ZWyXd65xdZJQD)
 - State unchanged: NO TRAIN IN FLIGHT; INT 3675c003 (train 72) deployed and healthy (line below); overnight codeql #75 on INT success; no active building lane; integrator 22 idle; stop rule holds (no new sessions; db #15 held). No owner message. Nothing to gate, nothing overdue, nothing needs the owner. Next: morning report 06:30 UTC (trig_01HSZDuaz686zsQYEoHDRPyX).
 - Health at 04:46: {"status":"ok","api":"/v1","server_time":"2026-11-05T04:46:56.313Z","generation":"d65f8ee0-67b7-4b6f-8126-c0c8e8997e2b","build":"3675c0034dbede45b7615e9dfd430901d0f364a9"}
+
+### 06:35 UTC 2026-11-05 — morning report; STOP RULE LIFTED; db #15 created
+- Verified 06:31: INT 3675c003 (train 72), DECISIONS 235, lead docs contain INT, health build 3675c003; overnight codeql #75 success; no lane tip moved; no owner message. get_session: lead seven_day = **allowed** (fresh, 06:30); integrator 22 idle since 11:15 yesterday with a stale "allowed_warning" snapshot (the limit is account-wide, the fresh lead read is current); lead context 464k.
+- Ruling: the stop rule of 2026-11-04 06:32 lifts by its own terms (warning cleared). Pacing D-LEAD-STALL-02 stays: one building lane + the integrator. db #15 created at 06:34: session_014mnioNkECwg1XMMnRUEHSB (claude-sonnet-5-5, source_url + source_revision lane/db + model + shallow note; 300k budget; brief in lane-sessions.md and lead-state.md). Report written to docs/status/morning-2026-11-05.md; owner morning report posted in chat; evening report one-shot created for 15:00 UTC (trig_01FwSJdWKw4DZjYAijGaBETv); lane-check prompt unchanged.
+- Spend this check: two get_session reads, public-API curls, one create_session; no reader, no checker.
