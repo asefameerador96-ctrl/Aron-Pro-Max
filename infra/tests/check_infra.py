@@ -745,8 +745,15 @@ class Workflows(unittest.TestCase):
                         "the success path starts the worker again right after the migrate loop")
         self.assertLess(body.index("\n  resume_worker\n"), body.index("ARON_DEPLOY_SERVICES=true"),
                         "the worker is started again before the apps are updated")
-        self.assertIn("az containerapp stop -g \"$RG\" -n \"$WORKER_APP\"", d)
-        self.assertIn("az containerapp start -g \"$RG\" -n \"$WORKER_APP\"", d)
+        # D-OPS-MIGRATE-PAUSE-02: az 2.91.0 has no `containerapp stop/start`; the pause is minimum replicas 0 (no ingress, no
+        # scale rule: the app stays at zero), the original minimum is read from the app and restored, never assumed.
+        self.assertIn('az containerapp update -g "$RG" -n "$WORKER_APP" --min-replicas 0 -o none', d)
+        self.assertIn('az containerapp update -g "$RG" -n "$WORKER_APP" --min-replicas "$worker_min" -o none', d)
+        self.assertIn("--query properties.template.scale.minReplicas", d, "the original minimum is read, not assumed")
+        self.assertIn('[ "$cur" = 0 ]', d, "a minimum already at 0 is a warning, not a pause (nothing to restore)")
+        cmds = "\n".join(l for l in d.splitlines() if not l.lstrip().startswith("#"))  # commands only, not comments
+        self.assertNotIn("az containerapp stop", cmds)
+        self.assertNotIn("az containerapp start", cmds)
         self.assertIn('if got="$(read_lock)" && [ "$(lock_owner "$got")" = "$lock_me" ]; then break; fi', d, "write, settle, re-read")
         self.assertIn('if ! cur="$(read_lock)"; then', d, "a failed read counts as held")
         self.assertIn("|| return 1", d[d.index("read_lock() {"):d.index("lock_owner()")])

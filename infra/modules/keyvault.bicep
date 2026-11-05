@@ -41,7 +41,10 @@ resource kv 'Microsoft.KeyVault/vaults@2024-11-01' = {
 // Without PgBouncer (Burstable, TEST profile) the same URL points at 5432 and the app's own pool is the only pool.
 var pooledParams = 'sslmode=require&prepareThreshold=0&user=${postgresAdminLogin}&password=${postgresAdminPassword}'
 // Direct connections (5432) for Flyway (session advisory lock) and the worker (advisory locks for run-once jobs).
-var directParams = 'sslmode=require&user=${postgresAdminLogin}&password=${postgresAdminPassword}'
+// tcpKeepAlive=true (pgjdbc): OS-level TCP keepalives on these long-lived sessions, so no middlebox drops a connection that
+// looks idle while a long statement runs (deploy #309 lost the migrate connection, SQLSTATE 08006, right after a 105 s
+// statement; D-INFRA-DIRECT-URL-KEEPALIVE-01). No socketTimeout: a migration may legitimately run for minutes.
+var directParams = 'sslmode=require&tcpKeepAlive=true&user=${postgresAdminLogin}&password=${postgresAdminPassword}'
 
 resource secretDbPassword 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = {
   parent: kv

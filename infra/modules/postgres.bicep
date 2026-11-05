@@ -124,6 +124,9 @@ var baseSettings = [
   { name: 'log_min_duration_statement', value: '500' }
   { name: 'track_io_timing', value: 'on' }
   { name: 'idle_in_transaction_session_timeout', value: '30000' }
+  // Server log files downloadable (az postgres flexible-server server-logs; dynamic, default retention 3 days) so a failed
+  // migration's server-side reason can be read; the same lines also stream to Log Analytics via diag (D-OPS-PG-LOGS-01).
+  { name: 'logfiles.download_enable', value: 'on' }
 ]
 // Query Store is not offered on Burstable.
 var queryStoreSettings = skuTier == 'Burstable' ? [] : [{ name: 'pg_qs.query_capture_mode', value: 'top' }]
