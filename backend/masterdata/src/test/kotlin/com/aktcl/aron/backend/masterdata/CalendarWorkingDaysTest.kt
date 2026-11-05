@@ -66,8 +66,16 @@ class CalendarWorkingDaysTest {
 
     @Test
     fun revokeRulesAndRoles() = env.app {
-        val future = env.today.plusDays(40)
-        val c = sendA1(HttpMethod.Post, "/admin/calendar/holidays", admin, """{"date":"$future","scope_type":"global","scope_id":0,"kind":"holiday","name_en":"Revoke me","reason":"Revoke rule test entry"}""")
+        // The Dhaka business date + 40 can land on a seeded global holiday (e.g. Victory Day 2026-12-16 from 18:00 UTC on
+        // 2026-11-05) and the create then conflicts; the seed grows, so take the first free date from there on.
+        var future = env.today.plusDays(40)
+        var c = sendA1(HttpMethod.Post, "/admin/calendar/holidays", admin, """{"date":"$future","scope_type":"global","scope_id":0,"kind":"holiday","name_en":"Revoke me","reason":"Revoke rule test entry"}""")
+        for (i in 1..14) {
+            if (c.status == HttpStatusCode.Created) break
+            future = future.plusDays(1)
+            c = sendA1(HttpMethod.Post, "/admin/calendar/holidays", admin, """{"date":"$future","scope_type":"global","scope_id":0,"kind":"holiday","name_en":"Revoke me","reason":"Revoke rule test entry"}""")
+        }
+        assertEquals(HttpStatusCode.Created, c.status, c.toString())
         val id = c.objA1().lng("id")
         val body = """{"change_reason":"Withdrawn by the committee"}"""
         assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Post, "/admin/calendar/holidays/$id/revoke", admin, """{"change_reason":"short"}""").status)
