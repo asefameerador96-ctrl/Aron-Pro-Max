@@ -195,11 +195,14 @@ export async function handleAdmin(h: AdminHost, method: string, path: string, ur
   const fb = /^\/v1\/feedback(?:\/([0-9a-f-]{36}))?$/.exec(path);
   if (fb && user.master) {
     const rows = state.tables.feedback!;
-    if (!(method === "GET" ? ADMIN_READ : ADMIN_WRITE).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    const triage: Role[] = ["SUPPORT", "ADMIN", "SUPERADMIN"]; // tso-manual W1 (FB-12): the API's FEEDBACK_TRIAGE
+    if (!(method === "GET" ? ADMIN_READ : triage).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
     if (method === "GET" && !fb[1]) {
       const cat = url.searchParams.get("category_code");
       const st = url.searchParams.get("status");
-      const items = rows.filter((r) => (!cat || r.category_code === cat) && (!st || r.status === st));
+      const from = url.searchParams.get("from"); // tso-manual W1 (FB-12): FromDate / ToDate on the business date
+      const to = url.searchParams.get("to");
+      const items = rows.filter((r) => (!cat || r.category_code === cat) && (!st || r.status === st) && (!from || String(r.business_date) >= from) && (!to || String(r.business_date) <= to)).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
       return send(res, 200, { items, next_cursor: null });
     }
     if (method === "PATCH" && fb[1]) {

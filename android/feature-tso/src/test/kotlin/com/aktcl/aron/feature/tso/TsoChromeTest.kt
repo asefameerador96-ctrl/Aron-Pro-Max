@@ -5,73 +5,55 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.filter
-import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
-import com.aktcl.aron.core.ui.AronTheme
-import com.aktcl.aron.feature.home.BundleStatus
-import com.aktcl.aron.feature.home.HomeTags
-import com.aktcl.aron.feature.home.HomeUser
-import com.aktcl.aron.feature.home.RoleHomes
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
+/** The TSO top bar (screenshot 6): menu, "Good day, <full_name>", the bell with its unread count; and the manual's date formats. */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34])
 class TsoChromeTest {
     @get:Rule val compose = createComposeRule()
-    private val user = HomeUser("Testing Dhaka North", "tso1001", "TSO", offline = false, reauthRequired = false, updateRequired = false)
+    private var menus = 0
+    private var bells = 0
 
-    private fun show(language: AppLanguage, onLogout: () -> Unit = {}): Context {
-        val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
+    private fun show(language: AppLanguage, unread: Int) {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         compose.setContent {
-            CompositionLocalProvider(LocalContext provides context) {
-                AronTheme(language) { TsoApp(user, "2026-10-05", BundleStatus.Ready("b-1", "2026-10-05"), "0.1.0 (1)", {}, onLogout) }
+            CompositionLocalProvider(LocalContext provides ctx) {
+                TsoLoginTheme(language, loggedOut = false) { TsoRootTopBar("Testing Dhaka North", unread, onMenu = { menus++ }, onBell = { bells++ }) }
             }
         }
-        compose.waitForIdle(); return context
+        compose.waitForIdle()
     }
 
-    @Test fun homeTilesKeepTheManualOrderAndNoTargetStatus() {
-        // the drawer of the manual (S-06) is now the tile grid: the same six destinations in the same order, Settings behind the gear
-        val tiles = RoleHomes.tsoTiles().filter { it.id != RoleHomes.TsoTile.DEVICE_OTP }
-        assertEquals(listOf(TsoScreen.DASHBOARD, TsoScreen.LEAVE, TsoScreen.FINAL_SUBMIT, TsoScreen.PERIPHERY, TsoScreen.MY_CALL, TsoScreen.FEEDBACK), tiles.map { TsoScreen.of(it) })
-        assertFalse(tiles.any { it.id.contains("target") })
+    @Test fun theBarGreetsAndCountsUnread() {
+        show(AppLanguage.EN, unread = 3)
+        compose.onNodeWithText("Good day, Testing Dhaka North").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Notifications, 3 unread").assertExists()
+        compose.onNodeWithText("3", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag(TsoShellTags.MENU).assertExists()
     }
 
-    @Test fun homeShowsTheGradientHeaderLineAndTheGear() {
-        val ctx = show(AppLanguage.EN)
-        compose.onNodeWithTag(HomeTags.HEADER).assertIsDisplayed()
-        compose.onNodeWithText("TSO - Testing Dhaka North (tso1001)").assertIsDisplayed()
-        compose.onNodeWithContentDescription(ctx.getString(com.aktcl.aron.feature.home.R.string.set_open)).assertIsDisplayed()
+    @Test fun banglaDigitsAndAHundredIsNinetyNinePlus() {
+        show(AppLanguage.BN, unread = 120)
+        compose.onNodeWithText("শুভ দিন, Testing Dhaka North").assertIsDisplayed()
+        compose.onNodeWithText("99+", useUnmergedTree = true).assertExists()
     }
 
-    @Test fun banglaHeaderLine() { show(AppLanguage.BN); compose.onNodeWithText("TSO - Testing Dhaka North (tso1001)").assertIsDisplayed() }
-
-    @Test fun logoutInSettingsAsksBeforeLoggingOut() {
-        var out = false
-        val ctx = show(AppLanguage.EN) { out = true }
-        compose.onNodeWithContentDescription(ctx.getString(com.aktcl.aron.feature.home.R.string.set_open)).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(HomeTags.LOGOUT).performScrollTo().performClick(); compose.waitForIdle()
-        assertFalse(out)
-        compose.onAllNodesWithText(ctx.getString(com.aktcl.aron.feature.home.R.string.set_logout_confirm)).filter(hasClickAction() and !hasTestTag(HomeTags.LOGOUT)).onFirst().performClick(); compose.waitForIdle()
-        assertTrue(out)
+    @Test fun noUnreadNoBadge() {
+        show(AppLanguage.EN, unread = 0)
+        compose.onNodeWithTag(TsoShellTags.BADGE, useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithContentDescription("Notifications").assertExists()
     }
 
     @Test fun dateFormatsOfTheManual() {

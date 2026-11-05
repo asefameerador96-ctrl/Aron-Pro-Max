@@ -18,6 +18,12 @@ interface LeaveSource {
     /** One online read of `GET /v1/leave`; null when offline or refused (the cached list stays). */
     suspend fun refresh(): Cached?
 
+    /** The bundle code list `leave_type` (empty: the form offers the manual's three types). Offline: the stored bundle. */
+    suspend fun leaveTypes(): List<LeaveType> = emptyList()
+
+    /** `cfg.leave.allow_past_days` / `allow_ahead_days` from the stored bundle config (defaults 31 and 365). */
+    suspend fun window(): LeaveWindow = LeaveWindow()
+
     data class Cached(val items: List<LeaveItem>, val asOf: String)
 }
 
@@ -49,6 +55,6 @@ class LeaveListState(private val source: LeaveSource) {
 
     private fun publish(c: LeaveSource.Cached, local: List<LeaveItem>, offlineCached: Boolean, refreshing: Boolean = false) {
         val merged = mergeLeave(c.items, local)
-        _ui.value = if (merged.isEmpty()) LeaveListUi.Empty else LeaveListUi.Content(merged, c.asOf, offlineCached, refreshing)
+        _ui.value = if (merged.isEmpty()) LeaveListUi.Empty else LeaveListUi.Content(merged, c.asOf.takeIf { offlineCached || refreshing }, offlineCached, refreshing) // 'As of' only for a copy that is not confirmed fresh: kept offline, or shown while the refresh runs (D-TSO-MAN-52)
     }
 }

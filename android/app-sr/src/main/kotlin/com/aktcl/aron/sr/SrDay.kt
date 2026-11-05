@@ -1,6 +1,8 @@
 package com.aktcl.aron.sr
 
 import androidx.room.withTransaction
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.testTag
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -11,6 +13,9 @@ import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.entity.OutletEntity
 import com.aktcl.aron.core.database.entity.RouteEntity
 import com.aktcl.aron.core.database.repo.CaptureRepository
+import com.aktcl.aron.core.database.repo.DayRefusal
+import com.aktcl.aron.core.database.repo.FinalSubmitLock
+import com.aktcl.aron.core.database.repo.LockAcks
 import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.core.geo.FixManager
 import com.aktcl.aron.core.session.SessionComponents
@@ -74,12 +79,18 @@ class SrDay(
     private val deviceRuntime: com.aktcl.aron.core.sync.device.DeviceRuntime? = null,
     /** F-SYS-092 resume config check; null in previews and tests. */
     private val resumeConfigCheck: com.aktcl.aron.core.sync.ResumeConfigCheck? = null,
+    /**
+     * The parent of the day's own scopes (the background work, the print runner, the print scope, the visit flow's config
+     * check). Null on the phone: each scope is its own root, as before, and lives as long as the day. A test passes its own
+     * job, so it can let the day's work finish, cancel it and join it before it closes the database (CI run 41750277921).
+     */
+    parentJob: kotlinx.coroutines.Job? = null,
 ) {
     /** Work started from the day that nobody waits for (the resume config check, settings reloads). */
-    private val background = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+    private val background = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Default)
 
     /** Prints and print confirms run here, so leaving a screen never cuts a receipt short (see [PrintRunner]). */
-    val printRunner = PrintRunner(kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main))
+    val printRunner = PrintRunner(kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Main))
 
     /**
      * R9: launches the conditional config check and returns at once; a visit or a sale never waits for it. Also bound as
@@ -164,7 +175,36 @@ class SrDay(
         val outlets = if (planned.size > 1 && route != null) route.outlets else routes.flatMap { it.outlets }
         data.value = DayData(date, route?.route, routes.map { it.route }, outlets, freshness, data.value.downloading)
         _loaded.value = true
+        // tso-manual A3 (D-TSO-MAN-35): the Task screen shows the task type's label from this user's bundle, not its code
+        com.aktcl.aron.feature.tasks.TaskTypeLabels.hold(com.aktcl.aron.feature.tasks.TaskTypeLabels.parse(runCatching { reference.section("code_lists") }.getOrNull()))
+        refreshLock()
     }
+
+    // ---- tso-manual A3: the day lock after the zone's Final Submit (D-TSO-MAN-31)
+    private val _dayLock = MutableStateFlow<DayLock?>(null)
+
+    /** The route-day's Final Submit lock and the day's records that met it on the server; null when neither applies. */
+    val dayLock: StateFlow<DayLock?> = _dayLock.asStateFlow()
+
+    /**
+     * Re-reads the lock from the held day state (bundle or delta, the push `day_final_submitted` pulls the delta; or the last
+     * sync answer) for today's route, and the acks of records that met it. Local reads only; called by [reload] and by
+     * [SrDayLockBanner] on each applied push pull. This drives the banner and the check-out gate; a new call on the closed
+     * route-day is refused by the visit flow's committer and a call in progress ends on the phone ([SrCallLock], D-A3-22).
+     */
+    suspend fun refreshLock() {
+        val date = businessDate()
+        // owner decision 2026-11-04: the lock (and its banner) only while the late-sale policy locks (FinalSubmitLock.locks)
+        val locked = routeId?.let { FinalSubmitLock.locks(db, date, it, iso(clock.nowMs())) } ?: false
+        val acks = runCatching { FinalSubmitLock.metLock(db, date) }.getOrDefault(LockAcks(0, 0))
+        _dayLock.value = if (locked || acks.any) DayLock(locked, acks) else null
+    }
+
+    /**
+     * True when the phone locks today's route-day: closed by its zone's Final Submit while the late-sale policy locks
+     * (quarantine or reject; owner decision 2026-11-04, [FinalSubmitLock.locks]); read from the database, not the cached flow.
+     */
+    suspend fun finalLocked(): Boolean = routeId?.let { FinalSubmitLock.locks(db, businessDate(), it, iso(clock.nowMs())) } ?: false
 
     private val routePrefs = context.getSharedPreferences("aron-route-$userId", Context.MODE_PRIVATE)
     /** The route the SR picked for today's date (F-SR-065), or null. */
@@ -175,19 +215,45 @@ class SrDay(
     @Volatile var requestKind: com.aktcl.aron.feature.outlet.OutletRequestKind = com.aktcl.aron.feature.outlet.OutletRequestKind.NEW
     @Volatile var requestOutlet: OutletEntity? = null
 
-    /** Placeholder end of a call until the sale screens exist: no memo, so the visit closes `abandoned` (docs/24 s4.2). */
-    suspend fun closeVisitAbandoned() {
-        val v = visitSession.current.value ?: return
-        val meta = metaProvider.meta(v.routeId)
-        val now = iso(clock.nowMs())
-        capture.recordVisitClose(
-            com.aktcl.aron.core.database.entity.VisitCloseEntity(
-                clientUuid = com.aktcl.aron.core.common.ClientIds.newUuid(), meta = meta, visitClientUuid = v.visitUuid, outcomeCode = "abandoned",
-                callStartedAt = null, callDeclined = false, endedAt = now, isZeroSale = true,
-            ),
-        )
-        visitSession.close(); runCatching { requestSync() }
+    /**
+     * Placeholder end of a call until the sale screens exist: no memo, so the visit closes `abandoned` (docs/24 s4.2).
+     * tso-manual A3 (D-A3-22): on a route-day closed by its zone's Final Submit the call ends on the phone, never a crash;
+     * X4a follow-up (R-W-23): so does a call whose route-day the SR's own Sales Submit closed. Returns why the call ended on
+     * the phone without a close, or null (a close was queued, or no call was open).
+     */
+    suspend fun closeVisitAbandoned(): DayRefusal? {
+        val v = visitSession.current.value ?: return null
+        var why: DayRefusal? = null
+        if (SrCallLock.abandon(capture, visitSession, metaProvider.meta(v.routeId), iso(clock.nowMs())) { why = it }) runCatching { requestSync() }
+        return why
     }
+
+    /**
+     * tso-manual X4a follow-up (R-W-23): why the open call can no longer take its records, or null: its route-day is closed
+     * by its zone's Final Submit, or a Sales Submit of it stands (the SR's own). Pure reads; the call screens show the
+     * matching text before anything is read or written.
+     */
+    suspend fun openCallRefusal(): DayRefusal? {
+        val v = visitSession.current.value ?: return null
+        return SrCallLock.refusal(capture, metaProvider.meta(v.routeId))
+    }
+
+    /**
+     * tso-manual A3 (D-TSO-MAN-31): for the sale screens' own close (SrSaleKit): when the open call's close would be refused
+     * (its route-day closed by its zone's Final Submit, or, X4a follow-up R-W-23, by the SR's own Sales Submit), the call
+     * ends on the phone now, no close is to be written, and the answer says why. Null leaves everything as it was.
+     */
+    suspend fun endCallIfClosed(): DayRefusal? {
+        val v = visitSession.current.value ?: return null
+        return SrCallLock.endedBy(capture, visitSession, metaProvider.meta(v.routeId))
+    }
+
+    /**
+     * One Save of the Stock screen (F-SR-013/014) on today's route: tso-manual X4a (R-W-22), a Save the zone's Final Submit
+     * refuses stores and queues nothing and says why (the screen shows the lock text; no slip is offered for it).
+     */
+    suspend fun saveStock(load: StockLoad): com.aktcl.aron.feature.stock.StockSaveResult =
+        com.aktcl.aron.feature.stock.StockSaving.save(load, ::currentMs, metaProvider.meta(0L)) { capture.recordStock(it) }
 
     private val bundleRunning = java.util.concurrent.atomic.AtomicBoolean(false)
     private val _loaded = MutableStateFlow(false)
@@ -234,9 +300,11 @@ class SrDay(
 
     suspend fun restoreOpenVisit() {
         if (visitSession.current.value != null) return
-        val date = businessDate()
-        val closed = db.captureDao().visitClosesOn(date).map { it.visitClientUuid }.toSet()
-        val last = db.captureDao().visitsOn(date).filter { it.clientUuid !in closed && it.geoAction != "blocked" }.maxByOrNull { it.sequenceNo } ?: return
+        // tso-manual A3: a call on a route-day closed by Final Submit is not restored (it cannot go on; D-A3-22)
+        val last = FinalSubmitLock.callToRestore(db, businessDate(), iso(clock.nowMs())) { it.geoAction != "blocked" } ?: return
+        // tso-manual X4a follow-up (R-W-23): nor a call whose route-day the SR's own Sales Submit closed (its sale and close
+        // would be refused); a server void of the submit brings it back
+        if (SrCallLock.refusal(capture, last.meta) != null) return
         visitSession.restore(
             OpenVisit(
                 visitUuid = last.clientUuid, outletId = last.outletId, routeId = last.meta.routeId ?: 0L, geoVerdict = last.geoVerdict,
@@ -299,7 +367,9 @@ class SrDay(
         // coordinates stay, with the last resolved address when the fix is near it.
         addressResolver = { lat, lng -> addressResolver.displayText(context, lat, lng) },
         // D-NIGHT-CHECKOUT-01: check-out only after the day's Sales Submit is committed on this phone (offline is enough).
-        salesSubmitted = { com.aktcl.aron.feature.dayclose.RoomDaySource(db).alreadySubmitted(businessDate()) },
+        salesSubmitted = { com.aktcl.aron.feature.dayclose.RoomDaySource(db).alreadySubmitted(businessDate()) || finalLocked() },
+        // tso-manual A3: the zone's Final Submit closed the route-day for the rep, so it opens the check-out as a Sales Submit
+        // would (D-TSO-MAN-31: the server accepts attendance and a late Sales Submit after the lock, state only)
     )
 
     @Volatile private var nextSequence = 1
@@ -308,13 +378,33 @@ class SrDay(
     val visitFlow: VisitFlow = VisitFlow(
         fixes = fixSource, metaProvider = metaProvider,
         committer = { v, f ->
+            // tso-manual A3 (D-TSO-MAN-31): no new call on a route-day closed by its zone's Final Submit; the flow shows a failed commit
+            FinalSubmitLock.requireCallOpen(db, v.meta)
             v.geoForcePhotoUuid?.let { claimPhoto(it, "force_sale", "visit", v.clientUuid, f) }
             capture.recordVisitOpen(v, f); runCatching { requestSync() }
         },
         session = visitSession, settings = { GeoSettings.DEFAULT }, nowIso = { iso(clock.nowMs()) },
         nextSequenceNo = { nextSequence++ },
         configCheck = com.aktcl.aron.feature.outlet.ConfigCheck { launchConfigCheck() },
+        background = background,
+        // D-SRFIX-01: a failed commit first looks for the call this phone already holds (resume, never lose the capture)
+        storedCall = com.aktcl.aron.feature.outlet.StoredCallLookup { uuid, outletId -> heldCall(uuid, outletId) },
+        onCommitError = { t -> android.util.Log.w("AronVisit", "visit commit failed: type=" + t.javaClass.simpleName, t) },
     )
+
+    /**
+     * D-SRFIX-01: the visit this phone already stored under [uuid] (a commit that landed before the failure was seen), as the
+     * open visit; null if none. Same uuid only: another call at the same outlet is never taken for this one (checker).
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private suspend fun heldCall(uuid: String, outletId: Long): OpenVisit? {
+        val v = db.captureDao().visit(uuid) ?: return null
+        return OpenVisit(
+            visitUuid = v.clientUuid, outletId = v.outletId, routeId = v.meta.routeId ?: 0L, geoVerdict = v.geoVerdict,
+            geoAction = v.geoAction, geoValidated = v.geoVerdict == "in_range", photoValidated = v.geoForcePhotoUuid != null,
+            forceReasonCode = v.geoForceReasonCode, openedAtIso = v.openedAt,
+        )
+    }
 
     // ---- printing (F-SR-015): the ledger is Room, the renderer is built once (font parsing is the expensive part)
     private val renderer: com.aktcl.aron.core.printing.PaperRenderer by lazy {
@@ -367,7 +457,7 @@ class SrDay(
     suspend fun slipNotPrinted(): Boolean = db.captureDao().stockOn(businessDate()).any { !it.slipPrinted }
 
     /** Outlives every screen: a print and its readable-question answer must finish even if the SR leaves Stock. */
-    private val printScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+    private val printScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Default)
     private val _stockAttempt = MutableStateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?>(null)
     val stockAttempt: StateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?> = _stockAttempt.asStateFlow()
 
@@ -406,6 +496,24 @@ class SrDay(
         return if (questions.isEmpty()) null else survey to questions
     }
 
+    /**
+     * tso-manual X4a fix round (R-W-23, checker low): the survey's Save as its host words it. Null when stored, or when it
+     * failed for any other reason (the sale goes on, as before); otherwise why the route-day refused it (the SR's own Sales
+     * Submit, or the Final Submit lock): nothing is stored and the call's host shows the matching text. Never throws but for
+     * cancellation.
+     */
+    suspend fun saveSurveyRefusal(
+        visitUuid: String, survey: com.aktcl.aron.core.database.entity.SurveyEntity,
+        rows: List<com.aktcl.aron.feature.outlet.SurveyResponseRow>,
+    ): DayRefusal? = try {
+        saveSurvey(visitUuid, survey, rows)
+        null
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        DayRefusal.of(e)
+    }
+
     /** Writes the confirmed answers (one per question per visit) and claims the photos for them. */
     suspend fun saveSurvey(
         visitUuid: String, survey: com.aktcl.aron.core.database.entity.SurveyEntity,
@@ -427,12 +535,29 @@ class SrDay(
     /** Today's stock rows not yet on a printed slip, read from Room (survives a kill and relaunch). */
     suspend fun unprintedStock() = db.captureDao().stockOn(businessDate()).filter { !it.slipPrinted }
 
+    /**
+     * The Save the Print tap would print next: the oldest unprinted one. tso-manual X4a fix round (R-W-22, "no stock slip
+     * prints after the lock"): a Save whose route-day the zone's Final Submit closed is left out, also one stored before the
+     * lock; it stays unprinted and prints once the day reopens. Empty when nothing may print.
+     */
+    suspend fun printableStockSave(): List<com.aktcl.aron.core.database.entity.StockMovementEntity> {
+        val closed = HashMap<Pair<Long?, String>, Boolean>()
+        val open = unprintedStock().filter { r ->
+            !closed.getOrPut(r.meta.routeId to r.meta.businessDate) { capture.dayRefusal(r.meta, "stock_movement") != null }
+        }
+        return StockSlips.oldestUnprintedSave(open)
+    }
+
+    /** True when the Print tap has a slip it may print ([printableStockSave]); the Stock screen draws Print only then. */
+    suspend fun stockSlipPrintable(): Boolean = printableStockSave().isNotEmpty()
+
     /** Prints one slip for every unprinted stock row of today; the confirmation question is answered by [answerStockPrint]. */
     fun printUnprintedStock() {
         printScope.launch {
             if (_stockAttempt.value != null) return@launch
             // One slip covers exactly one Save (the ledger flips the rows of the named row's Save); the next Save prints on the next tap.
-            val save = StockSlips.oldestUnprintedSave(unprintedStock())
+            // X4a fix round (R-W-22): never the slip of a Save on a route-day closed by Final Submit, even if the button was drawn.
+            val save = printableStockSave()
             if (save.isEmpty()) return@launch
             _stockAttempt.value = com.aktcl.aron.feature.sale.domain.guardedPrint { printing.printStockSlip(StockSlips.slipUuid(save), stockSlip(save)) }
         }
@@ -584,3 +709,120 @@ class PrefsGuardStore(context: Context, userId: Long) : StockLoad.GuardStore {
     override fun load(): Pair<String, Long>? = prefs.getString("sig", null)?.let { it to prefs.getLong("at", 0L) }
     override fun save(signature: String, atMs: Long) { prefs.edit().putString("sig", signature).putLong("at", atMs).apply() }
 }
+
+/**
+ * The SR's route-day lock after the zone's Final Submit (tso-manual A3, D-TSO-MAN-31): [locked] when the route-day is
+ * closed; [acks] the day's records the server held for review (captured before the lock) or refused (captured after).
+ */
+data class DayLock(val locked: Boolean, val acks: LockAcks)
+
+/**
+ * tso-manual A3 (D-TSO-MAN-31, D-A3-22): how the SR's call in progress ends when its route-day is closed by the zone's Final
+ * Submit, without the day object (tests run it on a plain database). The server refuses a `visit_close` captured after the
+ * lock, so none is queued: the call ends on the phone and nothing throws, also when the lock arrived mid-visit.
+ */
+internal object SrCallLock {
+    /**
+     * Why the call's close with [meta] would be refused, or null: the zone's Final Submit closed its route-day, or, X4a
+     * follow-up (R-W-23), a Sales Submit of it stands. The same rule CaptureRepository.recordVisitClose applies. Pure reads.
+     * X4a fix round (checker low): judged by [capture], the day's own repository on trusted time ([SrDay.capture]), so a
+     * guard reads the late-sale policy at the same instant the write will (never the device's wall clock).
+     */
+    suspend fun refusal(capture: CaptureRepository, meta: CaptureMeta): DayRefusal? =
+        runCatching { capture.dayRefusal(meta, "visit_close") }.getOrNull()
+
+    /** Ends the open call on the phone when its close would be refused ([refusal]; no close queued) and says why; null otherwise. */
+    suspend fun endedBy(capture: CaptureRepository, session: VisitSession, meta: CaptureMeta): DayRefusal? {
+        if (session.current.value == null) return null
+        val why = refusal(capture, meta) ?: return null
+        session.close()
+        return why
+    }
+
+    /** True when [endedBy] ended the call on the phone. */
+    suspend fun endsOnPhone(capture: CaptureRepository, session: VisitSession, meta: CaptureMeta): Boolean = endedBy(capture, session, meta) != null
+
+    /**
+     * Leaves the open call as `abandoned` (the call prompt's No and back): the close is queued with its outbox row, or on a
+     * closed route-day the call ends on the phone only ([endedBy]; [onRefused] says why). True when a close was queued (the
+     * caller asks for a sync).
+     */
+    suspend fun abandon(
+        capture: CaptureRepository, session: VisitSession, meta: CaptureMeta, nowIso: String,
+        onRefused: (DayRefusal) -> Unit = {},
+    ): Boolean {
+        if (session.current.value == null) return false
+        endedBy(capture, session, meta)?.let { onRefused(it); return false }
+        // tso-manual X4a (R-W-11): CaptureRepository refuses a visit_close on a closed route-day now; a refusal that lands
+        // between the check above and the write ends the call on the phone the same way (SrLockGate.closeCall)
+        return SrLockGate.closeCall(session, onRefused) { v ->
+            capture.recordVisitClose(
+                com.aktcl.aron.core.database.entity.VisitCloseEntity(
+                    clientUuid = com.aktcl.aron.core.common.ClientIds.newUuid(), meta = meta, visitClientUuid = v.visitUuid, outcomeCode = "abandoned",
+                    callStartedAt = null, callDeclined = false, endedAt = nowIso, isZeroSale = true,
+                ),
+            )
+        }
+    }
+}
+
+/**
+ * The banner of the closed route-day (D-TSO-MAN-31): no new call starts and sales, edits and collections are not accepted, printing still
+ * works, and how many of the day's records met the lock on the server. It refreshes itself when a push pull lands (the
+ * push `day_final_submitted` pulls the delta that carries the day state), only while it is on screen: no timer, no listener
+ * outside its composition. Nothing shows while the day is open.
+ */
+@androidx.compose.runtime.Composable
+fun SrDayLockBanner(day: SrDay, modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier) {
+    val lock = day.dayLock.collectAsState().value
+    androidx.compose.runtime.LaunchedEffect(day) {
+        day.refreshLock()
+        com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { day.refreshLock() }
+    }
+    SrDayLockBannerContent(lock, modifier)
+}
+
+/**
+ * tso-manual A3 (ask 1): the lock banner as one text, for a host whose banner slot takes a string (the SR Home's
+ * `HomeContent(banner = ...)`): the title and the lines of [SrDayLockBanner], refreshed the same way. Null while the day is open.
+ */
+@androidx.compose.runtime.Composable
+fun srDayLockBannerText(day: SrDay): String? {
+    val lock = day.dayLock.collectAsState().value
+    androidx.compose.runtime.LaunchedEffect(day) {
+        day.refreshLock()
+        com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { day.refreshLock() }
+    }
+    return srDayLockText(lock)
+}
+
+/** The words of [lock] as one text: the title (when the route-day is closed), then each line; null when nothing applies. */
+@androidx.compose.runtime.Composable
+fun srDayLockText(lock: DayLock?): String? {
+    val l = lock ?: return null
+    val title = if (l.locked) androidx.compose.ui.res.stringResource(R.string.sr_lock_title) else null
+    return (listOfNotNull(title) + srLockLines(l)).joinToString(separator = LINE_BREAK).ifEmpty { null }
+}
+
+@androidx.compose.runtime.Composable
+private fun srLockLines(l: DayLock): List<String> = buildList {
+    if (l.locked) add(androidx.compose.ui.res.stringResource(R.string.sr_lock_body))
+    if (l.acks.held > 0) add(androidx.compose.ui.res.stringResource(R.string.sr_lock_held, com.aktcl.aron.core.ui.localizedNumber(l.acks.held.toLong())))
+    if (l.acks.refused > 0) add(androidx.compose.ui.res.stringResource(R.string.sr_lock_refused, com.aktcl.aron.core.ui.localizedNumber(l.acks.refused.toLong())))
+}
+
+/** What [SrDayLockBanner] draws for [lock] (null: nothing). */
+@androidx.compose.runtime.Composable
+fun SrDayLockBannerContent(lock: DayLock?, modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier) {
+    val l = lock ?: return
+    val body = srLockLines(l).joinToString(separator = LINE_BREAK)
+    com.aktcl.aron.core.ui.AronBanner(
+        body, modifier.then(androidx.compose.ui.Modifier.testTag(SrDayLockTags.BANNER)), kind = com.aktcl.aron.core.ui.BannerKind.Warning,
+        title = if (l.locked) androidx.compose.ui.res.stringResource(R.string.sr_lock_title) else null,
+    )
+}
+
+object SrDayLockTags { const val BANNER = "sr_day_lock_banner" }
+
+private const val LINE_BREAK = "\n"
+

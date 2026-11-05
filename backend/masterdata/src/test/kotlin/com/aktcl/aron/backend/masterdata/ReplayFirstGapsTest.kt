@@ -71,7 +71,9 @@ class ReplayFirstGapsTest {
             assertFalse(r.bodyAsText().contains("Secret"))
         }
         val lid = uuid()
-        val lv = """{"leave_uuid":"$lid","leave_type_code":"casual","from_date":"2028-06-01","days":1,"reason":"SecretReason"}"""
+        // tso-manual B3: inside cfg.leave.allow_ahead_days (365) of the API's system clock (was 2028-06-01).
+        val from = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Dhaka")).plusDays(200) // wall-clock-ok: the leave window is relative to the API's system clock
+        val lv = """{"leave_uuid":"$lid","leave_type_code":"casual","from_date":"$from","days":1,"reason":"SecretReason"}"""
         assertEquals(HttpStatusCode.Created, sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), lv).status)
         val r2 = sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso2001"), lv)
         assertEquals(HttpStatusCode.Conflict, r2.status)

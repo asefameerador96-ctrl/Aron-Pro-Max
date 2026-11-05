@@ -42,7 +42,7 @@ const SUMS: Record<string, [string, "visited" | "successful" | "memos" | "net_mt
   "by-outlet-by-day": ["net_mtk", "net_mtk"],
   "amo-call": ["visited", "visited"],
   "online-offline": ["memos", "memos"],
-  "task-planner": ["visited", "visited"],
+  // tso-manual W1 (XA-03): the task planner lists tasks (assigned by, route, label, comment), no route-day sums
   "sr-outlets": ["visited", "visited"],
   "qc-report": ["visited", "visited"],
   "route-qc": ["visited", "visited"],

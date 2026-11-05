@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- tso-manual A1: the TSO login (screenshot 5, D-TSO-MAN-15) -->
+    <string name="auth_tso_login">Login</string>
+    <string name="auth_tso_password_show">Show password</string>
+    <string name="auth_tso_password_hide">Hide password</string>
+</resources>

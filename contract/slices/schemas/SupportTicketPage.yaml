@@ -1,0 +1,16 @@
+SupportTicketPage:
+  type: object
+  required:
+  - items
+  - next_cursor
+  additionalProperties: false
+  properties:
+    items:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/SupportTicket'
+    next_cursor:
+      oneOf:
+      - $ref: '#/components/schemas/PageCursor'
+      - type: 'null'

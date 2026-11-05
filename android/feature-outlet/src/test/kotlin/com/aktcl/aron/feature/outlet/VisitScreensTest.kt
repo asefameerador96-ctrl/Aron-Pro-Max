@@ -64,6 +64,23 @@ class VisitScreensTest {
         compose.onNodeWithText("Location is off. Turn it on to start selling.").assertExists()
     }
 
+    // D-SRFIX-03b: a refused day cannot start a call, so no "Try again"; a storage failure keeps it
+    @Test fun aStorageFailureOffersTryAgain() {
+        show(AppLanguage.EN) { VisitCheckContent(VisitUiState.CommitFailed(outlet, CommitFailure.STORAGE), {}, {}, {}, null) }
+        compose.onNodeWithTag(OutletTags.RETRY).assertExists()
+    }
+
+    @Test fun aDaySubmittedFailureOffersNoTryAgain() {
+        show(AppLanguage.EN) { VisitCheckContent(VisitUiState.CommitFailed(outlet, CommitFailure.DAY_SUBMITTED), {}, {}, {}, null) }
+        compose.onNodeWithTag(OutletTags.RETRY).assertDoesNotExist()
+        compose.onNodeWithTag(OutletTags.MESSAGE).assertExists()
+    }
+
+    @Test fun aLockedFailureOffersNoTryAgain() {
+        show(AppLanguage.EN) { VisitCheckContent(VisitUiState.CommitFailed(outlet, CommitFailure.LOCKED), {}, {}, {}, null) }
+        compose.onNodeWithTag(OutletTags.RETRY).assertDoesNotExist()
+    }
+
     private fun o(id: Long, name: String) = OutletEntity(
         outletId = id, routeId = 1, code = "DHK-$id", name = name, nameBn = null, nameSortKey = TextRules.nameSortKey(name), ownerName = "x",
         contactNumber = "01712345678", lat = 1.0, lng = 1.0, locationConfirmed = true, provisionalLat = null, provisionalLng = null,

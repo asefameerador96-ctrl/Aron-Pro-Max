@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- feature-tickets (tso-manual A2): the Tickets screens, screenshots 10 to 18 of the owner's TSO manual. Twins in values-bn. -->
+<resources>
+    <!-- screen titles (the host's top bar) -->
+    <string name="tickets_title_dashboard">Tickets Dashboard</string>
+    <string name="tickets_title_all">All Tickets</string>
+    <string name="tickets_title_details">Ticket Details</string>
+    <string name="tickets_title_quick">Quick Report</string>
+    <string name="tickets_title_create">Create Ticket</string>
+
+    <!-- dashboard (screenshot 11) -->
+    <string name="tickets_stat_total">Total</string>
+    <string name="tickets_stat_new">New</string>
+    <string name="tickets_stat_in_progress">In Progress</string>
+    <string name="tickets_stat_resolved">Resolved</string>
+    <string name="tickets_resolution_title">Ticket Resolution Status</string>
+    <string name="tickets_res_resolved">Resolved</string>
+    <string name="tickets_res_open">Open</string>
+    <string name="tickets_res_total">Total Tickets</string>
+    <string name="tickets_res_resolved_caption">Resolved</string>
+    <string name="tickets_res_open_caption">Open Tickets</string>
+    <string name="tickets_help_title">Need help?</string>
+    <string name="tickets_help_body">Raise a new ticket in seconds</string>
+    <string name="tickets_recent">Recent tickets</string>
+    <string name="tickets_see_all">See all</string>
+    <string name="tickets_empty">No tickets yet</string>
+    <string name="tickets_empty_hint">Raise one with Quick Ticket or Create Ticket.</string>
+    <string name="tickets_offline_copy">Offline. Showing the copy from %1$s.</string>
+    <string name="tickets_offline_none">Offline. Tickets are shown when the phone is online.</string>
+    <string name="tickets_as_of">As of %1$s</string>
+    <string name="tickets_refresh">Refresh</string>
+
+    <!-- all tickets (screenshots 12, 13) -->
+    <string name="tickets_search_hint">Search tickets</string>
+    <string name="tickets_tab_all">All</string>
+    <string name="tickets_tab_new">New</string>
+    <string name="tickets_tab_in_progress">In Progress</string>
+    <string name="tickets_tab_resolved">Resolved</string>
+    <string name="tickets_tab_closed">Closed</string>
+    <string name="tickets_no_match">No tickets match.</string>
+    <string name="tickets_not_sent">Not sent yet</string>
+    <string name="tickets_number_follows">Sent, number follows</string>
+    <string name="tickets_line" translatable="false">%1$s · %2$s</string>
+    <string name="tickets_status_new">NEW</string>
+    <string name="tickets_status_in_progress">IN PROGRESS</string>
+    <string name="tickets_status_resolved">RESOLVED</string>
+    <string name="tickets_status_closed">CLOSED</string>
+    <string name="tickets_status_cancelled">CANCELLED</string>
+    <string name="tickets_priority_p1">P1 - Highest</string>
+    <string name="tickets_priority_p2">P2 - High</string>
+    <string name="tickets_priority_p3">P3 - Medium</string>
+    <string name="tickets_priority_p4">P4 - Low</string>
+    <string name="tickets_open_ticket">Open ticket %1$s</string>
+
+    <!-- server refusals (outcome codes) -->
+    <string name="tickets_refused">Not accepted: %1$s</string>
+    <string name="tickets_why_state">the ticket\'s status no longer allows it</string>
+    <string name="tickets_why_issue_type">this issue type is no longer offered; raise it again with another type</string>
+    <string name="tickets_why_scope">your role cannot raise tickets yet</string>
+    <string name="tickets_why_other">the server refused it (%1$s)</string>
+
+    <!-- details (screenshot 14) -->
+    <string name="tickets_category">Tickets</string>
+    <string name="tickets_close">Submit Review &amp; Close</string>
+    <string name="tickets_closing">Closing. Not sent yet.</string>
+    <string name="tickets_no_comments_resolved">This ticket is resolved. No further comments can be added.</string>
+    <string name="tickets_no_comments_closed">This ticket is closed. No further comments can be added.</string>
+    <string name="tickets_no_comments_cancelled">This ticket is cancelled. No further comments can be added.</string>
+    <string name="tickets_no_comments_unsent">Comments can be added once the ticket is sent.</string>
+    <string name="tickets_support">Support</string>
+    <string name="tickets_you">You</string>
+    <string name="tickets_comment_hint">Write a comment…</string>
+    <string name="tickets_send">Send</string>
+    <string name="tickets_attach">Add a photo</string>
+    <string name="tickets_event_status">Status changed to %1$s</string>
+    <string name="tickets_event_closed">Closed after review</string>
+    <string name="tickets_event_priority">Priority changed to %1$s</string>
+    <string name="tickets_event_assigned">Assigned in support</string>
+    <string name="tickets_photos_attached">Photos: %1$s</string>
+    <string name="tickets_not_found">This ticket was not found.</string>
+    <string name="tickets_detail_offline">Offline. Showing what this phone has.</string>
+    <string name="tickets_time_am">AM</string>
+    <string name="tickets_time_pm">PM</string>
+
+    <!-- quick ticket (screenshots 15, 16) -->
+    <string name="tickets_quick_heading">Quick report</string>
+    <string name="tickets_quick_sub">Tap a common issue to raise a ticket instantly.</string>
+    <string name="tickets_category_tickets">Tickets</string>
+    <string name="tickets_urgency_high">High</string>
+    <string name="tickets_urgency_medium">Medium</string>
+    <string name="tickets_urgency_low">Low</string>
+    <string name="tickets_doesnt_match">Doesn\'t match?</string>
+    <string name="tickets_report_different">Report a different issue</string>
+    <string name="tickets_quick_desc_hint">Add a brief description...</string>
+    <string name="tickets_pick_gallery">Pick from Gallery</string>
+    <string name="tickets_capture_photo">Capture photo</string>
+    <string name="tickets_submit_quick">Submit Ticket</string>
+    <string name="tickets_close_sheet">Close</string>
+    <string name="tickets_no_issue_types">The issue list is not on this phone yet. Download the day\'s data, then try again.</string>
+
+    <!-- create ticket (screenshots 17, 18) -->
+    <string name="tickets_create_heading">Report a new issue</string>
+    <string name="tickets_create_sub">Pick the issue type, give it a title and a brief description.</string>
+    <string name="tickets_issue_type">Issue type</string>
+    <string name="tickets_issue_type_hint">Select Issue Type</string>
+    <string name="tickets_title_label">Title</string>
+    <string name="tickets_title_hint">Short summary of the problem</string>
+    <string name="tickets_description_label">Description</string>
+    <string name="tickets_description_hint">What happened? Steps to reproduce...</string>
+    <string name="tickets_affected_label">Username of the affected user (optional)</string>
+    <string name="tickets_affected_hint">For a ticket raised from another user\'s phone</string>
+    <string name="tickets_upload">Upload Screenshot</string>
+    <string name="tickets_upload_sub">Tap to browse or take a photo</string>
+    <string name="tickets_submit_manual">Submit ticket</string>
+    <string name="tickets_photo_remove">Remove photo %1$s</string>
+    <string name="tickets_photos_limit">Up to %1$s photos.</string>
+
+    <!-- errors and toasts -->
+    <string name="tickets_err_issue">Pick the issue type.</string>
+    <string name="tickets_err_title">Write a title.</string>
+    <string name="tickets_err_title_long">The title can be at most 120 characters.</string>
+    <string name="tickets_err_description">Write a description.</string>
+    <string name="tickets_err_description_long">The description can be at most 2000 characters.</string>
+    <string name="tickets_err_affected">A username has 3 to 40 letters, digits, dots, dashes or underscores.</string>
+    <string name="tickets_err_photos">Too many photos.</string>
+    <string name="tickets_err_comment">Write a comment first.</string>
+    <string name="tickets_err_comment_long">A comment can be at most 2000 characters.</string>
+    <string name="tickets_err_photo">The photo could not be added.</string>
+    <string name="tickets_saved">Ticket saved. It is sent when the phone is online.</string>
+    <string name="tickets_comment_saved">Comment saved. It is sent when the phone is online.</string>
+    <string name="tickets_close_saved">Close saved. It is sent when the phone is online.</string>
+    <string name="tickets_save_failed">It could not be saved on this phone. Try again.</string>
+</resources>

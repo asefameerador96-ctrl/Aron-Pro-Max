@@ -41,8 +41,8 @@ class LiteMapScreenTest {
     fun offlineShowsTheListWithTheAgeOfEachFixAndNoMap() {
         show(online = false)
         rule.onNodeWithTag(LiteMapTags.LIST).assertIsDisplayed()
-        rule.onNodeWithText("Last seen 09:10 (15 min ago) · visit").assertIsDisplayed()
-        rule.onNodeWithText("Last seen 06:55 (150 min ago) · check_in").assertIsDisplayed()
+        rule.onNodeWithText("Last seen 09:10 (15 min ago) · Visit").assertIsDisplayed()
+        rule.onNodeWithText("Last seen 06:55 (150 min ago) · Check-in").assertIsDisplayed()
         rule.onNodeWithText("No location yet").assertIsDisplayed()
         rule.onNodeWithTag(LiteMapTags.MAP).assertDoesNotExist()
         rule.onNodeWithTag(LiteMapTags.SNAPSHOT).assertDoesNotExist()
@@ -70,10 +70,32 @@ class LiteMapScreenTest {
         rule.onNodeWithText("Rahim (R-12)").assertIsDisplayed()
     }
 
+    /** tso-manual A3: the interactive map (TSO My Team and Retailer) shows the same list offline and never composes the SDK. */
+    @Test
+    fun interactiveOfflineShowsTheListAndNoMap() {
+        rule.setContent { AronTheme(AppLanguage.EN) { LiteMapScreen(points, MapSettings(), false, true, now, null, "team-zone-3", interactive = true, circle = MapCircle(23.79, 90.40, 100)) } }
+        rule.onNodeWithTag(LiteMapTags.LIST).assertIsDisplayed()
+        rule.onNodeWithText("Rahim (R-12)").assertIsDisplayed()
+        rule.onNodeWithTag(LiteMapTags.MAP).assertDoesNotExist()
+    }
+
+    /** Outlets have no fix age: no "No location yet" line and never greyed; the note (distance, mock chip) shows under the name. */
+    @Test
+    fun outletRowsShowTheirNoteAndAnUnknownSourceAsIs() {
+        val pts = listOf(
+            MapPoint("o-1", "Shop One", 23.79, 90.40, kind = MapPointKind.OUTLET, note = "12 m"),
+            MapPoint("sr-9", "Selim", 23.79, 90.41, now - 5 * 60_000, "সিঙ্ক", note = "Mock GPS today: 2"),
+        )
+        rule.setContent { AronTheme(AppLanguage.EN) { LiteMapScreen(pts, MapSettings(), false, true, now, null, "near", interactive = true) } }
+        rule.onNodeWithText("12 m").assertIsDisplayed()
+        rule.onNodeWithText("No location yet").assertDoesNotExist()
+        rule.onNodeWithText("Last seen 09:20 (5 min ago) · সিঙ্ক\nMock GPS today: 2").assertIsDisplayed()
+    }
+
     @Test
     @Config(qualifiers = "bn")
     fun banglaUsesBengaliDigits() {
         show(online = false, language = AppLanguage.BN)
-        rule.onNodeWithText("সর্বশেষ দেখা ০৯:১০ (১৫ মিনিট আগে) · visit").assertIsDisplayed()
+        rule.onNodeWithText("সর্বশেষ দেখা ০৯:১০ (১৫ মিনিট আগে) · ভিজিট").assertIsDisplayed()
     }
 }

@@ -13,13 +13,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -28,27 +23,25 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.R as CoreR
-import com.aktcl.aron.core.ui.aron.AronDialog
 import com.aktcl.aron.core.ui.aron.AronListRow
-import com.aktcl.aron.core.ui.aron.AronLogoutButton
 import com.aktcl.aron.core.ui.aron.AronScaffold
 import com.aktcl.aron.core.ui.aron.AronSwitchRow
-import com.aktcl.aron.core.ui.aron.AronTopBar
-import com.aktcl.aron.feature.home.HomeTags
+import com.aktcl.aron.core.ui.aron.AronNightTopBar
 import com.aktcl.aron.feature.home.R
 import com.aktcl.aron.feature.home.RoleHomeTags
 
 /**
- * TSO Settings in the existing-Aron look: top bar with the back chevron, white rows on the grey page (language, the optional
- * Sunlight theme, version, app update, PDA to Support, change password) and the Log out button, which asks first (it wipes this
- * user's data, F-SYS-022: [logoutMessage] says so).
+ * TSO Settings (D-TSO-MAN-14: the drawer header's gear opens it) in the TSO look: the TSO top bar with the round back button, rows
+ * on the navy page: language, the optional Sunlight theme, version, app update, PDA to Support, change password. Log Out is the last
+ * drawer row with its own dialog (D-TSO-MAN-37), so Settings has no logout button any more; [logoutMessage] and [onLogout] are kept
+ * for the callers and unused.
  */
 @Composable
 fun TsoSettingsContent(
     versionText: String,
-    logoutMessage: String,
+    @Suppress("UNUSED_PARAMETER") logoutMessage: String,
     onLanguageSelect: (AppLanguage) -> Unit,
-    onLogout: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") onLogout: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     sunlight: Boolean = false,
@@ -59,15 +52,9 @@ fun TsoSettingsContent(
     onChangePassword: (() -> Unit)? = null,
 ) {
     val language = LocalAppLanguage.current
-    var confirm by rememberSaveable { mutableStateOf(false) }
     AronScaffold(
         modifier = modifier,
-        topBar = {
-            AronTopBar(
-                stringResource(R.string.set_title), icon = painterResource(CoreR.drawable.aron_ic_gear),
-                onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back),
-            )
-        },
+        topBar = { AronNightTopBar(stringResource(R.string.set_title), onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back)) },
     ) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState())
@@ -97,14 +84,7 @@ fun TsoSettingsContent(
             if (onChangePassword != null) {
                 AronListRow(stringResource(com.aktcl.aron.feature.tso.R.string.tso_cp_row), Modifier.testTag(TsoSettingsTags.CHANGE_PASSWORD), trailing = ">", onClick = onChangePassword)
             }
-            AronLogoutButton(stringResource(R.string.set_logout), { confirm = true }, Modifier.fillMaxWidth().testTag(HomeTags.LOGOUT))
         }
-    }
-    if (confirm) {
-        AronDialog(
-            stringResource(R.string.set_logout_title), logoutMessage, stringResource(R.string.set_logout_confirm),
-            onConfirm = { confirm = false; onLogout() }, onDismiss = { confirm = false }, dismissText = stringResource(R.string.set_cancel),
-        )
     }
 }
 

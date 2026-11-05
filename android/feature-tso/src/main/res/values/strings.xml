@@ -23,7 +23,7 @@
     <string name="tso_leave_type">Select leave Type</string>
     <string name="tso_leave_from">Select Date</string>
     <string name="tso_leave_date_hint">YYYY-MM-DD</string>
-    <string name="tso_leave_days_label">Number of Days</string>
+    <string name="tso_leave_days_label">Number of days</string>
     <string name="tso_leave_days_minus">One day less</string>
     <string name="tso_leave_days_plus">One day more</string>
     <string name="tso_leave_until">Last day: %1$s</string>
@@ -115,7 +115,6 @@
     <string name="tso_mc_assign">Assign</string>
     <string name="tso_mc_task_type">Task type</string>
     <string name="tso_mc_comment">Comment</string>
-    <string name="tso_mc_assignee">Assigned to: %1$s</string>
     <string name="tso_mc_assigned">Task assigned to %1$s</string>
     <string name="tso_mc_no_sr">This route shows SR Not Set. There is nobody to assign the task to.</string>
     <string name="tso_mc_err_route">Choose a route</string>
@@ -147,7 +146,7 @@
     <string name="tso_dash_sales_of">Sales (%1$s)</string>
     <string name="tso_dash_lakh">Lakh</string>
     <string name="tso_dash_crore">Cr</string>
-    <string name="tso_dash_cpr">Live CPR</string>
+    <string name="tso_dash_cpr">CPR</string>
     <string name="tso_dash_x_of_y">%1$s of %2$s</string>
     <string name="tso_dash_cpr_labels">Successful calls of target outlets</string>
     <string name="tso_dash_channel_std">By Channel STD</string>
@@ -156,8 +155,8 @@
     <string name="tso_dash_volume">Volume</string>
     <string name="tso_dash_brand_ratio">By Brand Call/Memo Ratio</string>
     <string name="tso_dash_no_sales">No sales yet.</string>
-    <string name="tso_dash_login_submit">Login and Bikroy Joma status</string>
-    <string name="tso_dash_login_status">Login status</string>
+    <string name="tso_dash_login_submit">Login &amp; Bikroy Joma Status</string>
+    <string name="tso_dash_login_status">Login Status</string>
     <string name="tso_dash_submit_status">Submit status</string>
     <string name="tso_dash_no_login">No login figures yet.</string>
     <string name="tso_dash_not_logged_in">Not logged in (%1$s)</string>
@@ -197,9 +196,7 @@
     <string name="tso_mc_task_waiting">Assign task</string>
     <string name="tso_mc_no_task_types">The task types have not been downloaded yet. Connect once and open the app again.</string>
     <string name="tso_mc_no_rubric">The visit questions have not been downloaded yet. Connect once and open the app again.</string>
-    <string name="tso_pe_team">My Team</string>
     <string name="tso_pe_team_sub">Check your team</string>
-    <string name="tso_pe_retailer">Retailer</string>
     <string name="tso_pe_retailer_sub">Check outlets around you</string>
     <string name="tso_pe_radius">Radius</string>
     <string name="tso_pe_find">Find outlets here</string>

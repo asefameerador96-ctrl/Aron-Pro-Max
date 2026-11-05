@@ -8,4 +8,9 @@
     <string name="map_no_fix">এখনো কোনো অবস্থান নেই</string>
     <string name="map_last_seen">সর্বশেষ দেখা %1$s (%2$s মিনিট আগে)</string>
     <string name="map_address_last_known">%1$s (কাছাকাছি: %2$s, সর্বশেষ জানা)</string>
+    <!-- tso-manual A3 -->
+    <string name="map_source_check_in">চেক-ইন</string>
+    <string name="map_source_visit">ভিজিট</string>
+    <string name="map_source_check_out">চেক-আউট</string>
+    <string name="map_source_breadcrumb">চলার পথে</string>
 </resources>

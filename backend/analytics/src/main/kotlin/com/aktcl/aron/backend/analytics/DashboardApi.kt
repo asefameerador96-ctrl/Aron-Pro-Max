@@ -13,6 +13,7 @@ import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.contract.Role
 import com.aktcl.aron.rules.BusinessDate
+import com.aktcl.aron.rules.Percent
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
@@ -75,9 +76,26 @@ data class DashboardSummary(
     val by_segment: List<ChannelVolume> = emptyList(),
 )
 
-/** Percentage with two decimals (half up), null when the denominator is 0. */
+/** Percentage with two decimals: [Percent.bp] (F3, rounded once, half up) / 100; null when the denominator is 0. */
 internal fun pct(n: Long, d: Long): Double? =
-    if (d <= 0) null else BigDecimal(n).multiply(BigDecimal(100)).divide(BigDecimal(d), 2, RoundingMode.HALF_UP).toDouble()
+    if (d <= 0) null else Percent.bp(n, d)?.let { BigDecimal.valueOf(it, 2).toDouble() }
+
+/**
+ * The national route set's figures of one group (D-TSO-MAN-09): target routes, successful logins, Bikroy Joma, target outlets,
+ * successful calls and completed (geo-valid) calls of normal SR route-days, planned, not excused; plus the service zone-days and
+ * those final-submitted by their live `app.final_submit` rows through the zone-day projection (D-TSO-MAN-30). The same rows and rules as the national cards, so the summary and the
+ * TSO dashboard print the same figures (TsoDashboardParityTest).
+ */
+private class SetFigures(val tr: Long = 0, val lr: Long = 0, val sr: Long = 0, val tout: Long = 0, val sc: Long = 0, val calls: Long = 0, val geoCalls: Long = 0, val zt: Int = 0, val zf: Int = 0)
+
+/** [this] with its login, CPR, geo and final-submit members from [s]; [zones] false (a route row) leaves the zone members null. */
+private fun DashboardKpis.withSet(s: SetFigures, zones: Boolean = true) = copy(
+    target_routes = Math.toIntExact(s.tr), logged_in_routes = Math.toIntExact(s.lr), login_pct = pct(s.lr, s.tr), sales_submitted_routes = Math.toIntExact(s.sr),
+    submit_pct_of_logged_in = pct(s.sr, s.lr), day_completion_pct = pct(s.sr, s.tr), target_outlets = Math.toIntExact(s.tout), successful_calls = Math.toIntExact(s.sc),
+    strike_rate_pct = pct(s.sc, s.tout), geo_valid_pct = pct(s.geoCalls, s.calls),
+    zones_with_target_routes = if (zones) s.zt else null, zones_final_submitted = if (zones) s.zf else null,
+    final_submit_pct = if (zones) pct(s.zf.toLong(), s.zt.toLong()) else null,
+)
 
 /**
  * What a caller may see: all zones (national), a set of zones, or (a route-only caller, [routes] non-null) a set of routes.
@@ -103,12 +121,13 @@ private val LEVELS = mapOf(
 )
 /** [LEVELS] plus `house` (children: its zones; resolved from the reach in nodeScope), for the caller's default node only; an explicit `level=house` stays 400 (contract GeoLevelQuery). */
 private val DEFAULT_LEVELS = LEVELS + ("house" to Level(null, null, "zone_id", "zone_name", "zone"))
+internal fun isDashboardLevel(type: String): Boolean = type in DEFAULT_LEVELS
 /** A route-only caller's default node (D-BC-DASH-ROUTE-KEYED-01): children are its routes, as under a zone. */
 private val ROUTE_LEVEL = Level(null, null, null, null, "route")
 
 /**
  * GET /v1/dashboards/summary (F-API-014). Reads `dw` aggregates only (never the transaction log; the SKU master for report units), from the read replica
- * when configured, scoped by the caller's server-side reach; cached [ttl] (5 s) per scope hash, node and date range.
+ * when configured, scoped by the caller's server-side reach; cached [ttl] (5 s) per scope hash, the caller's top nodes, node (and whether it was named or defaulted), date range and, for a brand caller, brands.
  * D-NIGHT-SYNC-01: the cache was 30 s (docs/25 F-API-014), which alone could hold a synced memo off the tile for longer
  * than the 15 s goal; 5 s still folds the 30 s refetches of every open tab of one scope into one query.
  */
@@ -129,7 +148,7 @@ class DashboardService(
         }
         val scope = ZoneScope(reach.national, reach.zoneIds.toList(), if (level == null && nodeId == null) routeOnlyNode(reach)?.routes else null)
         val node = resolveNode(reach, level, nodeId)
-        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to|${brands?.sorted()?.joinToString(",", "B:") ?: ""}"
+        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to|${brands?.sorted()?.joinToString(",", "B:") ?: ""}|${topNodesKey(reach)}|${if (level == null && nodeId == null) "D" else ""}"
         val now = clock.now()
         cache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
         val multi = level == null && nodeId == null && !reach.national && reach.topNodes.count { it.type in DEFAULT_LEVELS } > 1
@@ -145,7 +164,7 @@ class DashboardService(
      * `dw.agg_daily_zone` rollup (the same figures as the summary), the device/server verdict mismatch rate over the
      * visits the server re-checked (`dw.fact_visit`), the suspicious-visit rate, and the risk signals raised on those
      * dates in those zones by code (dismissed ones left out; a signal with no zone counts at national level only).
-     * Children as in the summary (routes under a zone). Cached [ttl] per scope, node and range like the summary.
+     * Children as in the summary (routes under a zone). Cached [ttl] per scope, node, range, the caller's top nodes and whether the node was named or defaulted (a default read of several top nodes is the whole reach, `multi`), like the summary.
      */
     fun geoValidation(reach: Reach, level: String?, nodeId: Long?, from: LocalDate, to: LocalDate): GeoValidationSummary {
         if (to.isBefore(from) || ChronoUnit.DAYS.between(from, to) > 92) {
@@ -153,7 +172,7 @@ class DashboardService(
         }
         val scope = ZoneScope(reach.national, reach.zoneIds.toList(), if (level == null && nodeId == null) routeOnlyNode(reach)?.routes else null)
         val node = resolveNode(reach, level, nodeId)
-        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to"
+        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to|${topNodesKey(reach)}|${if (level == null && nodeId == null) "D" else ""}"
         val now = clock.now()
         geoCache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
         val multi = level == null && nodeId == null && !reach.national && reach.topNodes.count { it.type in DEFAULT_LEVELS } > 1
@@ -270,7 +289,7 @@ class DashboardService(
         // As was (D-REPORTS-NODEASWAS-01): the zones the node had on any date of the window, not the zones it has now, so a drill-down on an old
         // date reads the node as it was. Window never changed: the current structure answers (the plain path, the old SQL).
         val members = if (lv.col == null || multi) null else memberZones(h, lv.col, listOf(node.second), from, to)
-        if (members != null && !members.allowed(if (reach.national) null else reach.zoneIds, listOf(node.second))) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
+        if (members != null && !members.allowed(reach, listOf(node.second))) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
         val nodeZones: List<Long> = members?.readable(if (reach.national) null else reach.zoneIds) ?: emptyList()
         val eff = when {
             multi -> ZoneScope(false, reach.zoneIds.toList().ifEmpty { listOf(-1L) })
@@ -313,19 +332,26 @@ class DashboardService(
         val zoneDays = "dw.agg_daily_zone a ${ns.chain("zn", "a.zone_id", "a.business_date")}"
         val days = if (ns.routeOnly) "SELECT $routeSums FROM dw.v_route_day" else "SELECT $sums FROM $zoneDays"
         val inScope = if (ns.routeOnly) ns.clause("zone_id", "route_id") else ns.clause("a.zone_id", "a.route_id") + ns.inNode("zn")
-        val kpis = h.q("$days WHERE business_date BETWEEN :f AND :t AND $inScope") { it.map { rs, _ -> kpisOf(rs) }.one() }
+        // The all-brand figures are not read for a BRAND caller (nothing of them is shown; its KPIs come from by_brand).
+        // D-TSO-MAN-09/30 (tso-manual B2): login, CPR, geo and final submit come from the national route set and the zone-day Final Submit (live rows).
+        val kpis by lazy {
+            h.q("$days WHERE business_date BETWEEN :f AND :t AND $inScope") { it.map { rs, _ -> kpisOf(rs) }.one() }
+                .withSet(setFigures(h, ns, from, to, asWas, null)[0L] ?: SetFigures())
+        }
+        if (!brandOnly) kpis   // read now, before any other result set is open on this handle
         val asOf = h.q("SELECT max(a.updated_at) FROM ${if (ns.routeOnly) "dw.v_route_day a" else zoneDays} WHERE a.business_date BETWEEN :f AND :t AND $inScope") {
             it.map { rs, _ -> rs.getObject(1, java.time.OffsetDateTime::class.java)?.toInstant() }.one()
         } ?: clock.now()
 
         // Report unit and quantity (contract CategoryVolume) only when every SKU of the group has the same report unit; the
         // quantity is the exact sum of qty_base / report_factor (base units per report unit) rounded once to 3 decimals, half up.
-        // net_mtk is the sale-line value: free, DRP and offer lines are offset by their discounts, and memo-level QC
-        // settlements and rounding are not attributed to a SKU (the same basis as by_brand and by_segment).
+        // The quantity is the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, contract 1.10.0), as the
+        // national sales card counts it. net_mtk is the sale-line value: memo-level QC settlements and rounding are not
+        // attributed to a SKU (the same basis as by_brand and by_segment).
         val byCategory = h.q(
             """
             WITH k AS (
-              SELECT p.category_code, p.base_unit, s.report_unit, s.report_factor, p.base_per_pack, sum(a.sold_qty_base + a.free_qty_base) qty, sum(a.gross_mtk) gross
+              SELECT p.category_code, p.base_unit, s.report_unit, s.report_factor, p.base_per_pack, sum(a.sold_qty_base) qty, sum(a.gross_mtk) gross
                 FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.product)} ${AsWasSql.geo("g", "a.route_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
                 JOIN app.sku s ON s.id = a.sku_id
                WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")}${ns.inNode("g")}${if (brandOnly) " AND p.brand_id = ANY(:scopeBrands)" else ""} GROUP BY 1, 2, 3, 4, 5)
@@ -350,13 +376,13 @@ class DashboardService(
                 """
                 SELECT p.segment_id, p.segment_name, sum(a.gross_mtk) net, sum(a.sold_qty_base) qty, 0 memos
                   FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.product)} ${AsWasSql.geo("g", "a.route_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
-                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")}${ns.inNode("g")} AND p.brand_id = ANY(:scopeBrands) GROUP BY 1, 2 ORDER BY 1
+                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")}${ns.inNode("g")} AND p.brand_id = ANY(:scopeBrands) GROUP BY 1, 2 HAVING sum(a.gross_mtk) <> 0 OR sum(a.sold_qty_base) <> 0 ORDER BY 1
                 """
             } else {
                 """
                 SELECT a.segment_id, p.segment_name, sum(a.gross_mtk) net, sum(a.sold_qty_base) qty, sum(a.memo_count) memos
                   FROM dw.agg_daily_route_segment a ${AsWasSql.geo("g", "a.route_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
-                  JOIN LATERAL (SELECT name AS segment_name FROM app.product_node WHERE id = a.segment_id) p ON true
+                  JOIN LATERAL (SELECT coalesce((SELECT name FROM app.product_node WHERE id = a.segment_id), 'n' || a.segment_id) AS segment_name) p ON true
                  WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")}${ns.inNode("g")} GROUP BY 1, 2 ORDER BY 1
                 """
             },
@@ -388,12 +414,12 @@ class DashboardService(
         ) { it.map { rs, _ -> ChannelVolume(rs.getString(1), null, rs.getLong(2), null, rs.getInt(3), rs.getInt(4)) }.list() }   // qty_base null: base units differ per category and are never added (the channel STD is the national dashboard's cigarette card)
 
         // BSR per brand (docs/24 s12.4): active memos containing the brand / active memos, over the same route-days.
-        val totalMemos = kpis.active_memo_count.toLong()
+        val totalMemos = if (brandOnly) 0L else kpis.active_memo_count.toLong()
         val byBrand = h.q(
             """
             SELECT b.brand_id, p.brand_name, sum(b.gross_mtk) net, sum(b.sold_qty_base) qty, sum(b.memo_count) memos
               FROM dw.agg_daily_route_brand b ${AsWasSql.geo("g", "b.route_id", "b.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
-              JOIN LATERAL (SELECT name AS brand_name FROM app.product_node WHERE id = b.brand_id) p ON true
+              JOIN LATERAL (SELECT coalesce((SELECT name FROM app.product_node WHERE id = b.brand_id), 'n' || b.brand_id) AS brand_name) p ON true
              WHERE b.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "b.route_id")}${ns.inNode("g")}${if (brandOnly) " AND b.brand_id = ANY(:scopeBrands)" else ""} GROUP BY 1, 2 ORDER BY 1
             """,
         ) {
@@ -417,14 +443,16 @@ class DashboardService(
                 """,
             ) { it.map { rs, _ -> DashboardChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), rs.getString("ccode"), rs.getString("cname")), brandKpis(rs.getLong("gross"))) }.list() }
         } else if (lv.childCol != null && lv.childName != null) {
+            val set = setFigures(h, ns, from, to, asWas, "g.${lv.childCol}")
             h.q(
                 """
                 SELECT zg.${lv.childCol} cid, zg.${lv.childName} cname, $sums
                   FROM dw.agg_daily_zone a ${AsWasSql.zone("zg", "a.zone_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
                  WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("a.zone_id", "a.route_id")}${ns.inNode("zg")} GROUP BY 1, 2 ORDER BY 1
                 """,
-            ) { it.map { rs, _ -> DashboardChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), null, rs.getString("cname")), kpisOf(rs)) }.list() }
+            ) { it.map { rs, _ -> DashboardChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), null, rs.getString("cname")), kpisOf(rs).withSet(set[rs.getLong("cid")] ?: SetFigures())) }.list() }
         } else {
+            val set = setFigures(h, ns, from, to, asWas, "g.route_id")
             // A zone's children are its routes: a route-day counts as one target route when planned and not excused.
             val login = DashboardSummaries.successfulLoginSql(h)
             h.q(
@@ -440,10 +468,35 @@ class DashboardService(
                   FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
                  WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("a.zone_id", "a.route_id")} GROUP BY 1, 2, 3 ORDER BY 1
                 """,
-            ) { it.map { rs, _ -> DashboardChild(NodeRefDto("route", rs.getLong("cid"), rs.getString("ccode"), rs.getString("cname")), kpisOf(rs, zones = false)) }.list() }
+            ) { it.map { rs, _ -> DashboardChild(NodeRefDto("route", rs.getLong("cid"), rs.getString("ccode"), rs.getString("cname")), kpisOf(rs, zones = false).withSet(set[rs.getLong("cid")] ?: SetFigures(), zones = false)) }.list() }
         }
         val shown = if (brandOnly) brandKpis(byBrand.sumOf { it.net_mtk }) else kpis
         return DashboardSummary(asOf.wire(), from.toString(), to.toString(), nodeRef, shown, byCategory, byChannel, byBrand, children, bySegment)
+    }
+
+    /**
+     * [SetFigures] per [group] (an SQL column over the as-was geography `g`, null for the node's total keyed 0): the national
+     * route set's route-days of the node and dates, read like the national cards (`dw.agg_daily_route`, D-TSO-MAN-09), and their
+     * service zone-days final-submitted by their live `app.final_submit` rows ([zoneSubmittedSql], D-TSO-MAN-30).
+     */
+    private fun setFigures(h: Handle, ns: NodeScope, from: LocalDate, to: LocalDate, asWas: AsWasSql.Plain, group: String?): Map<Long, SetFigures> {
+        val login = DashboardSummaries.successfulLoginSql(h)
+        return ns.bind(h.createQuery(
+            """
+            WITH s AS (SELECT ${group ?: "CAST(0 AS bigint)"} AS k, a.zone_id, a.business_date, ($login) AS ok, a.sales_submitted_at IS NOT NULL AS sub,
+                              a.target_outlets, a.successful_calls, a.completed_calls, a.completed_geo_valid_calls
+                         FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":f", hi = ":t", plain = asWas.geo)}
+                        WHERE a.business_date BETWEEN :f AND :t AND $NATIONAL_ROUTE_SET AND ${ns.clause("g.zone_id", "a.route_id")}${ns.inNode("g")}),
+            r AS (SELECT k, count(*) tr, count(*) FILTER (WHERE ok) lr, count(*) FILTER (WHERE ok AND sub) sr, coalesce(sum(target_outlets), 0) tout,
+                         coalesce(sum(successful_calls), 0) sc, coalesce(sum(completed_calls), 0) cc, coalesce(sum(completed_geo_valid_calls), 0) cgv
+                    FROM s GROUP BY k),
+            z AS (SELECT k, count(*) zt, count(*) FILTER (WHERE ${zoneSubmittedSql("d.zone_id", "d.business_date")}) zf
+                    FROM (SELECT DISTINCT k, zone_id, business_date FROM s) d GROUP BY k)
+            SELECT r.k, r.tr, r.lr, r.sr, r.tout, r.sc, r.cc, r.cgv, coalesce(z.zt, 0) zt, coalesce(z.zf, 0) zf FROM r LEFT JOIN z ON z.k = r.k
+            """,
+        ).bind("f", from).bind("t", to)).map { rs, _ ->
+            rs.getLong("k") to SetFigures(rs.getLong("tr"), rs.getLong("lr"), rs.getLong("sr"), rs.getLong("tout"), rs.getLong("sc"), rs.getLong("cc"), rs.getLong("cgv"), rs.getInt("zt"), rs.getInt("zf"))
+        }.list().toMap()
     }
 
     /**
@@ -480,38 +533,57 @@ class DashboardDeps(
 /** Field phones read their own home strip (`/app/home`); the dashboards are for TSO and above. */
 internal val DASHBOARD_ROLES = Role.entries.toSet() - Role.SR - Role.AMO - Role.SUPPORT   // SUPPORT sees sync health only (docs/24 s8.5)
 
+/**
+ * The caller's scope nodes as part of the response-cache key (D-REPORTS-NODEASWAS-09): whether an empty node is the caller's depends on them
+ * ([NodeMembers.allowed]), and the zone set in `scope.hash` does not carry them, so two callers with the same zones must not share an answer.
+ */
+internal fun topNodesKey(reach: Reach): String = reach.topNodes.joinToString(",") { "${it.type}:${it.id}" }
+
+/** A BRAND user without brands must see nothing, never everything (fail closed). */
+internal fun requireBrandScope(role: Role, brandIds: Set<Long>?) {
+    if (role == Role.BRAND && brandIds == null) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "no brand scope")
+}
+
+/** Visits, geo and mock rates have no brand dimension: a BRAND caller reads none of them (the portal gate refuses the route too; defence in depth). */
+internal fun refuseBrandCaller(role: Role) {
+    if (role == Role.BRAND) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "geo validation is not available to this role")
+}
+
 fun Route.dashboardRoutes(d: DashboardDeps) {
-    authenticated(d.guard) {
-        get("/dashboards/summary") {
-            val p = call.principal
-            if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
-            val q = call.request.queryParameters
-            val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
-            fun date(n: String, default: LocalDate) = q[n]?.let { s ->
-                runCatching { LocalDate.parse(s) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value")))
-            } ?: default
-            val from = date("from", today)
-            val to = date("to", from)
-            val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
-            val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
-            val brandIds = d.brands.brandIds(p.userId, p.role)
-            // A BRAND user without brands must see nothing, never everything (fail closed).
-            if (p.role == Role.BRAND && brandIds == null) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "no brand scope")
-            call.respond(d.service.summary(reach, q["level"], nodeId, from, to, brandIds))
-        }
-        get("/dashboards/geo-validation") {
-            val p = call.principal
-            if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
-            val q = call.request.queryParameters
-            val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
-            fun date(n: String, default: LocalDate) = q[n]?.let { s ->
-                runCatching { LocalDate.parse(s) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value")))
-            } ?: default
-            val from = date("from", today)
-            val to = date("to", from)
-            val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
-            val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
-            call.respond(d.service.geoValidation(reach, q["level"], nodeId, from, to))
-        }
+    authenticated(d.guard) { dashboardHandlers(d) }
+}
+
+/** The handlers without the guard (a test mounts them with a principal of its own, past the portal gate, to prove the handler's own role checks). */
+internal fun Route.dashboardHandlers(d: DashboardDeps) {
+    get("/dashboards/summary") {
+        val p = call.principal
+        if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
+        val q = call.request.queryParameters
+        val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
+        fun date(n: String, default: LocalDate) = q[n]?.let { s ->
+            runCatching { LocalDate.parse(s) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value")))
+        } ?: default
+        val from = date("from", today)
+        val to = date("to", from)
+        val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
+        val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
+        val brandIds = d.brands.brandIds(p.userId, p.role)
+        requireBrandScope(p.role, brandIds)
+        call.respond(d.service.summary(reach, q["level"], nodeId, from, to, brandIds))
+    }
+    get("/dashboards/geo-validation") {
+        val p = call.principal
+        if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
+        val q = call.request.queryParameters
+        val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
+        fun date(n: String, default: LocalDate) = q[n]?.let { s ->
+            runCatching { LocalDate.parse(s) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value")))
+        } ?: default
+        val from = date("from", today)
+        val to = date("to", from)
+        val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
+        refuseBrandCaller(p.role)
+        val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
+        call.respond(d.service.geoValidation(reach, q["level"], nodeId, from, to))
     }
 }

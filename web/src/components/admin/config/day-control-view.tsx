@@ -1,10 +1,10 @@
 // F-ADM-029 day reopen and final-submit override, and F-ADM-052 Config page P15 day control (adds the missing check-out list).
 import { DataTable, type Column } from "@/components/admin/kit/data-table";
 import { FilterBar } from "@/components/admin/kit/filter-bar";
-import { OpForm, type OpFieldDef } from "@/components/admin/kit/op-form";
 import { Card, PageHeading } from "@/components/admin/kit/page";
 import type { ReportResult } from "@/lib/admin/types";
-import { formatBusinessDate, formatNumber, t, type Locale } from "@/lib/i18n";
+import { businessDate, formatBusinessDate, formatNumber, t, type Locale } from "@/lib/i18n";
+import { DayReopenForm } from "./day-reopen-form";
 
 export interface DayControlViewProps {
   locale: Locale;
@@ -30,10 +30,6 @@ function ReportList({ locale, data, title, unknownKey, emptyKey }: { locale: Loc
 }
 
 export function DayControlView({ locale, zone, date, late, missing, canWrite, withMissing, basePath, missingFailed }: DayControlViewProps) {
-  const fields: OpFieldDef[] = [
-    { name: "zone_id", label: t(locale, "cfgc.col.zone"), kind: "int", required: true, initial: zone },
-    { name: "business_date", label: t(locale, "cfgc.col.date"), kind: "date", required: true, initial: date },
-  ];
   return (
     <div className="space-y-4">
       <PageHeading title={t(locale, withMissing ? "day.p15.title" : "day.title")} intro={t(locale, "day.intro")} />
@@ -45,7 +41,8 @@ export function DayControlView({ locale, zone, date, late, missing, canWrite, wi
       {canWrite ? (
         <Card title={t(locale, "day.reopen.title")}>
           <p className="text-sm text-slate-600">{t(locale, "day.reopen.hint")}</p>
-          <OpForm op="day.reopen" fields={fields} submitLabel={t(locale, "day.reopen.submit")} successKey="day.reopen.done" resetOnSuccess={false} testId="reopen-form" />
+          {/* tso-manual W1 (FS-14, D-TSO-MAN-29): the reopen sends client_uuid, kept only for a resend of the same unanswered request */}
+          <DayReopenForm zone={zone} date={date} today={businessDate()} testId="reopen-form" />
         </Card>
       ) : (
         <p className="text-sm text-slate-600">{t(locale, "cfgc.read_only")}</p>

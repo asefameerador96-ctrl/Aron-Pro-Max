@@ -80,6 +80,56 @@ class ReportBatchATest : ReportFixture() {
     }
 
     @Test
+    fun aBrandWhoseNodeRowIsMissingKeepsItsRowUnderAFallbackName() = app {
+        // D-REPORTS-LEFT-01: the brand name is a fallback lookup, not an inner join that drops the route x brand row.
+        val b1 = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.product_node WHERE name = 'BrandOne'").mapTo(Long::class.java).one() }
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("SET session_replication_role = replica"); h.execute("DELETE FROM app.product_node WHERE id = $b1"); h.execute("SET session_replication_role = DEFAULT") }
+        val o = run(10, Role.ANALYST, "route-bsr-cpr").result()
+        assertEquals(4, o.rows().size, "no route x brand row dropped")
+        assertEquals(100.0, o.rows().single { it.str("route_code") == "R1" && it.str("brand_name") == "n$b1" }.num("bsr_pct"))
+    }
+
+    private fun nodeId(sql: String) = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery(sql).mapTo(Long::class.java).one() }
+    private fun exec(sql: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(sql); Aggregator.refreshDimensions(it); DashboardSummaries.refreshDimensions(it) }
+
+    @Test
+    fun theBrandQualificationFollowsTheProductTreeOfEachDayAndOnlyThenPaysForIt() = app {
+        // D-REPORTS-ASWAS-05: a brand qualifies for a category selection by the product tree as it was on the row's date.
+        AsWasSql.probeTtlMs = 0
+        try {
+            val cat = nodeId("SELECT id FROM app.product_node WHERE level = 'category' AND code = 'CAT'")
+            suspend fun rows(category: Long) = run(10, Role.ANALYST, "route-bsr-cpr", body(""","category":[$category]""")).result().rows().map { it.str("route_code") + "/" + it.str("brand_name") }.sorted()
+            fun probe() = fresh.db.jdbi.withHandle<AsWasSql.Plain, Exception> { AsWasSql.probe(it, day) }
+            // Plain window: nothing in the product tree changed since the report date, so today's list answers (the cheap form) and the rows are the same as the as-was form's.
+            assertEquals(true, probe().product, "no product-history period closed since the window began")
+            val plainRows = rows(cat)
+            assertEquals(4, plainRows.size)
+            assertEquals(run(10, Role.ANALYST, "route-bsr-cpr").result().rows().map { it.str("route_code") + "/" + it.str("brand_name") }.sorted(), plainRows, "the category holds every brand of the fixture")
+            val asWasForm = fresh.db.jdbi.withHandle<Int, Exception> { h ->
+                h.createQuery("SELECT count(*) FROM dw.agg_daily_route_brand b WHERE b.business_date = DATE '2026-10-04' AND EXISTS (SELECT 1 FROM ${AsWasSql.productAll("pp", "DATE '2026-10-04'", "DATE '2026-10-04'")} WHERE pp.brand_id = b.brand_id AND pp.category_id = $cat AND pp.as_from <= b.business_date AND pp.as_to > b.business_date)").mapTo(Int::class.java).one()
+            }
+            assertEquals(plainRows.size, asWasForm, "plain window: the as-was and the today form qualify the same brand-days")
+            // BrandTwo moves today to a segment of a NEW category: for the report date it still belongs to CAT, and the new category did not hold it then.
+            exec("INSERT INTO app.product_node (level, code, name) VALUES ('category','CAT2','Cigars')")
+            exec("INSERT INTO app.product_node (level, code, name, parent_id) VALUES ('segment','SEG2','Luxury',(SELECT id FROM app.product_node WHERE code = 'CAT2'))")
+            exec("UPDATE app.product_node SET parent_id = (SELECT id FROM app.product_node WHERE code = 'SEG2') WHERE code = 'B2'")
+            val cat2 = nodeId("SELECT id FROM app.product_node WHERE code = 'CAT2'")
+            assertEquals(false, probe().product, "a product-history period closed after the window began")
+            assertEquals(plainRows, rows(cat), "the brand that LOST the category today still counts on the old date")
+            assertEquals(emptyList(), rows(cat2), "the brand that GAINED the category today did not hold it on the old date")
+            // A period that spans the change: the tree changes on 2026-10-06 (the history rows are moved to that date so the test does not depend on the clock),
+            // and BrandTwo sold on that day. Each day counts under the category the brand had THAT day, and the boundary day belongs to the new period.
+            exec("UPDATE app.product_node_history SET valid_to = DATE '2026-10-06' WHERE node_id = (SELECT id FROM app.product_node WHERE code = 'B2') AND valid_to IS NOT NULL AND valid_to > DATE '2026-10-06'")
+            exec("UPDATE app.product_node_history SET valid_from = DATE '2026-10-06' WHERE node_id IN (SELECT id FROM app.product_node WHERE code IN ('B2', 'SEG2', 'CAT2')) AND valid_to IS NULL")
+            exec("INSERT INTO dw.agg_daily_route_brand (business_date, route_id, brand_id, memo_count, sold_qty_base, gross_mtk) SELECT DATE '2026-10-06', r.id, b.id, 7, 70, 7000 FROM app.route r, app.product_node b WHERE r.code = 'R1' AND b.code = 'B2'")
+            fun span(category: Long) = """{"period":{"from":"2026-10-04","to":"2026-10-06"},"output":{"format":"json","page_size":500},"category":[$category]}"""
+            suspend fun brandTwoMemos(category: Long) = run(10, Role.ANALYST, "route-bsr-cpr", span(category)).result().rows().filter { it.str("route_code") == "R1" && it.str("brand_name") == "BrandTwo" }.map { it.num("brand_memos").toInt() }
+            assertEquals(listOf(1), brandTwoMemos(cat), "under the old category: only the old day's memos, not the day of the change")
+            assertEquals(listOf(7), brandTwoMemos(cat2), "under the new category: only the day of the change (the boundary day is in the new period)")
+        } finally { AsWasSql.probeTtlMs = 20_000 }
+    }
+
+    @Test
     fun cprAndBsrPerRouteAndBrand() = app {
         val o = run(10, Role.ANALYST, "route-bsr-cpr").result()
         assertEquals(4, o.rows().size)

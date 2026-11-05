@@ -158,7 +158,7 @@ class BundleService(
                     consents = ConsentRecords.accepted(h, user.id),
                 ),
                 config = ResolvedConfig(configVersion, cfg.deviceValues(userChain), cfg.deviceScheduled(userChain, until)),
-                code_lists = codeLists(h, date),
+                code_lists = codeLists(h, date, user.role), // tso-manual B3: a code limited by attrs.roles reaches those roles only
                 products = products(h),
                 prices = prices(h, date, date.plusDays(horizonDays.toLong())),
                 offers = emptyList(),
@@ -167,7 +167,7 @@ class BundleService(
                 routes = routes,
                 tasks = tasks(h, user.id),
                 surveys = BundleContent.surveys(h, user.role, date),
-                rubrics = BundleContent.rubrics(h, user.role),
+                rubrics = newestRubricPerKind(BundleContent.rubrics(h, user.role)), // tso-manual B3: one active rubric per kind (F2's note, D-B3-24)
                 supervisor = supReach?.let { SupervisorBundle.section(h, user.id, p.role, it, date, (plans.map { r -> r.routeId } + zonePlans.map { r -> r.routeId }).distinct()) },
                 reason_texts = ReasonTexts.ALL,
                 device_policy_version = configVersion,
@@ -479,6 +479,7 @@ class BundleService(
         val primaries = h.createQuery(
             "SELECT route_id, user_id FROM app.route_assignment WHERE route_id = ANY(:r) AND kind = 'primary' AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)",
         ).bindArray("r", Long::class.javaObjectType, ids).bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
+        val srs = routeSrs(h, ids, date)
         val outlets = outlets(h, ids, cfg, roleOrdinal, zoneIds)
         val openMemoRows = if (zoneIds == null) openMemos(h, outlets.values.flatten().map { it.outlet_id }) else emptyList()
         val plan = h.createQuery("SELECT zone_id, sku_id FROM app.sales_plan WHERE zone_id = ANY(:z) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d) ORDER BY sku_id")
@@ -496,9 +497,24 @@ class BundleService(
                 open_memos = openMemoRows.filter { it.outlet_id in outletIds }, sales_plan_sku_ids = plan[r.zoneId].orEmpty(),
                 targets = emptyList(), achievement_mtd = emptyList(),
                 day_state = day?.state ?: RouteDayStateDto(r.routeId, date.toString(), "not_started", r.plannedToday, 1, false, null, null, null, null),
+                sr_user_id = srs[r.routeId]?.first, sr_name = srs[r.routeId]?.second,
             )
         }
     }
+
+    /**
+     * Lane X2 (lead ruling R-W-06 (4), D-X1-05): each route's SR on [date], exactly as `GET /v1/routes` lists its assignees
+     * (assignments not ended and valid that date, ordered by kind, so a cover comes before the primary, then by user id),
+     * the first one whose role is SR; a route without one is absent (vacant: null on the wire).
+     */
+    private fun routeSrs(h: Handle, routeIds: List<Long>, date: LocalDate): Map<Long, Pair<Long, String>> = if (routeIds.isEmpty()) emptyMap() else h.createQuery(
+        """
+        SELECT DISTINCT ON (a.route_id) a.route_id, u.id, u.full_name
+          FROM app.route_assignment a JOIN app.app_user u ON u.id = a.user_id
+         WHERE a.route_id = ANY(:r) AND a.ended_at IS NULL AND a.valid_from <= :d AND (a.valid_to IS NULL OR a.valid_to > :d) AND u.role = 'SR'
+         ORDER BY a.route_id, a.kind, u.id
+        """.trimIndent(),
+    ).bindArray("r", Long::class.javaObjectType, routeIds).bind("d", date).map { rs, _ -> rs.getLong(1) to (rs.getLong(2) to rs.getString(3).take(120)) }.list().toMap()
 
     /**
      * `outlet_radius_changes` of `GET /v1/config/delta` (android-core-backend-config-delta-radius.md, F-SYS-053): null
@@ -593,7 +609,13 @@ class BundleService(
             rs.getLong("outlet_id"), rs.getLong("net_mtk"), rs.getLong("due"))
     }.list()
 
-    private fun codeLists(h: Handle, date: LocalDate): List<CodeList> {
+    /**
+     * Every contract code list valid on [date] (1.10.0 adds `ticket_issue_type` and `ticket_resolution_code`, which the
+     * TSO's Quick Ticket and ticket screens read, with the leave types, feedback categories and task types). tso-manual
+     * B3: an item whose `attrs.roles` names roles reaches only those roles (V0027's rule; "active task_type items for
+     * TSO", D-TSO-MAN-35); an item without it reaches every role.
+     */
+    private fun codeLists(h: Handle, date: LocalDate, role: String): List<CodeList> {
         val known = CodeListKey.entries.map { it.wire }.toSet()
         return h.createQuery(
             "SELECT list_key, code, label_en, label_bn, sort, attrs::text AS attrs, valid_from, valid_to FROM app.code_list_item WHERE valid_from <= :d AND (valid_to IS NULL OR valid_to > :d) ORDER BY list_key, sort, code",
@@ -603,7 +625,13 @@ class BundleService(
                 attrs = rs.getString("attrs")?.let { Json.parseToJsonElement(it) as? JsonObject } ?: JsonObject(emptyMap()),
                 valid_from = rs.getObject("valid_from", LocalDate::class.java).toString(), valid_to = rs.getObject("valid_to", LocalDate::class.java)?.toString(),
             )
-        }.list().filter { it.first in known }.groupBy({ it.first }, { it.second }).map { (k, v) -> CodeList(k, v) }
+        }.list().filter { it.first in known && forRole(it.second, role) }.groupBy({ it.first }, { it.second }).map { (k, v) -> CodeList(k, v) }
+    }
+
+    /** False only when the item lists its roles (`attrs.roles`, an array of role codes) and [role] is not one of them. */
+    private fun forRole(item: CodeItem, role: String): Boolean {
+        val roles = item.attrs["roles"] as? kotlinx.serialization.json.JsonArray ?: return true
+        return roles.any { (it as? kotlinx.serialization.json.JsonPrimitive)?.content == role }
     }
 
     private fun products(h: Handle): BundleProducts {
@@ -653,17 +681,22 @@ class BundleService(
         }.take(60)
     }
 
-    /** Open tasks assigned to the user (the task itself always travels in the bundle; a push only nudges, N-037). */
+    /**
+     * Open tasks assigned to the user (the task itself always travels in the bundle; a push only nudges, N-037), with the
+     * task's route (the TSO's Assign Task sends the plan's route) or, without one, its outlet's route (as GET /v1/tasks).
+     */
     private fun tasks(h: Handle, userId: Long): List<TaskDto> = h.createQuery(
         """
-        SELECT client_uuid, task_type_code, title, description, assignee_user_id, user_id, outlet_id, due_date, status, created_at, status_changed_at, source
-        FROM app.task WHERE assignee_user_id = :u AND status = 'ongoing' AND voided_at IS NULL ORDER BY created_at, client_uuid LIMIT 1000
+        SELECT t.client_uuid, t.task_type_code, t.title, t.description, t.assignee_user_id, t.user_id, t.outlet_id, t.due_date, t.status, t.created_at, t.status_changed_at, t.source,
+               COALESCE(t.route_id, (SELECT o.route_id FROM app.outlet o WHERE o.id = t.outlet_id)) AS route_id
+        FROM app.task t WHERE t.assignee_user_id = :u AND t.status = 'ongoing' AND t.voided_at IS NULL ORDER BY t.created_at, t.client_uuid LIMIT 1000
         """.trimIndent(),
     ).bind("u", userId).map { rs, _ ->
         TaskDto(
             task_uuid = rs.getString("client_uuid"), task_type_code = rs.getString("task_type_code"), title = rs.getString("title"),
             description = rs.getString("description"), assignee_user_id = rs.getLong("assignee_user_id"), assigned_by_user_id = rs.getLong("user_id"),
-            route_id = null, outlet_id = rs.getObject("outlet_id") as Long?, due_date = rs.getObject("due_date", LocalDate::class.java)?.toString(),
+            // tso-manual B3 (XA-01): the task's route, else its outlet's
+            route_id = rs.getObject("route_id") as Long?, outlet_id = rs.getObject("outlet_id") as Long?, due_date = rs.getObject("due_date", LocalDate::class.java)?.toString(),
             status = rs.getString("status"), created_at = rs.ts("created_at")!!, resolved_at = null, resolution_note = null,
             source = if (rs.getString("source") == "online") "web" else "app",
         )
@@ -695,5 +728,16 @@ class BundleService(
             Base64.getUrlEncoder().withoutPadding().encodeToString("c1|$date|$seq|${at.toEpochMilli()}".toByteArray())
 
         private fun ResultSet.ts(col: String): String? = getObject(col, OffsetDateTime::class.java)?.toInstant()?.wire()
+
+        // tso-manual B3
+        /**
+         * One active rubric per kind reaches a phone: the newest (highest rubric id), so an admin's own Visit Query beside
+         * the V0139 seed replaces it instead of giving the phone two (F2's note to B3, D-B3-24). The order stays by id.
+         */
+        fun newestRubricPerKind(rubrics: List<JsonObject>): List<JsonObject> {
+            fun id(r: JsonObject) = (r["rubric_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: Long.MIN_VALUE
+            val keep = rubrics.groupBy { (it["kind"] as? JsonPrimitive)?.content }.values.map { same -> same.maxBy { id(it) } }.toSet()
+            return rubrics.filter { it in keep }
+        }
     }
 }

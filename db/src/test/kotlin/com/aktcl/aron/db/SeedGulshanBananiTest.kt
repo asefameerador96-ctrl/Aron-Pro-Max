@@ -40,6 +40,36 @@ class SeedGulshanBananiTest {
 
     private val gul = "('GUL-SR-2', 'GUL-SR-1', 'BAN-SR-11')"
 
+    // D-SRFIX-04: the slice smoke's own SR, route and device binding (db/seed/06_dev_smoke_user.sql), and the smoke outlets on it only.
+    @Test
+    fun theSmokeSrHasItsOwnRouteOutletsAndDeviceApartFromSr1001() {
+        // its own database: the smoke outlets join zone Z-GUL, which the counts of the other tests must not see
+        val own = TestPostgres.createDatabase().migrated()
+        try { own.connect().use { checkSmoke(it) } } finally { own.close() }
+    }
+
+    private fun checkSmoke(c: Connection) {
+        loadDevProfile(c)
+        c.exec(File(System.getProperty("aron.seed")).resolve("../../infra/sql/devseed-smoke-outlet.sql").readText())
+        assertEquals("SMK-SR-D", c.scalar("SELECT string_agg(r.code, ',') FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id JOIN app.app_user u ON u.id = a.user_id WHERE u.username = 'smoke1' AND a.kind = 'primary' AND a.valid_to IS NULL"))
+        assertEquals("SMOKE-SR-001,SMOKE-SR-002,SMOKE-SR-003", c.scalar("SELECT string_agg(o.code, ',' ORDER BY o.code) FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE r.code = 'SMK-SR-D'"))
+        assertEquals("0", c.scalar("SELECT count(*) FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE r.code IN $gul AND o.code LIKE 'SMOKE-SR-%'"))
+        assertEquals("1", c.scalar("SELECT count(*) FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id WHERE r.code = 'SMK-SR-D'"))
+        assertEquals("127", c.scalar("SELECT visit_days_mask FROM app.route WHERE code = 'SMK-SR-D'"))
+        // what slice-smoke.py pick_route needs from smoke1's bundle: a plan SKU of the route's zone that is active and has an outlet price,
+        // and a pin on the smoke outlet (BundleService builds sales_plan_sku_ids per zone, no fallback)
+        assertEquals("true", c.scalar("SELECT (count(*) > 0)::text FROM app.sales_plan p JOIN app.zone z ON z.id = p.zone_id JOIN app.sku s ON s.id = p.sku_id WHERE z.code = 'Z-SMK' AND p.valid_to IS NULL AND s.status = 'active' AND EXISTS (SELECT 1 FROM app.sku_price x WHERE x.sku_id = s.id AND x.price_type = 'outlet' AND x.amount_mtk > 0)"))
+        assertEquals("true", c.scalar("SELECT (lat IS NOT NULL AND lng IS NOT NULL)::text FROM app.outlet WHERE code = 'SMOKE-SR-001'"))
+        assertEquals("2", c.scalar("SELECT count(*) FROM app.device_binding b JOIN app.device d ON d.id = b.device_id WHERE d.device_uuid = '00000000-0000-4000-8000-000000000001' AND b.status = 'active'"))
+        assertEquals("test|test", c.scalar("SELECT u.data_origin || '|' || r.data_origin FROM app.app_user u, app.route r WHERE u.username = 'smoke1' AND r.code = 'SMK-SR-D'"))
+        // sr1001, the owner's pilot login, keeps exactly its three routes
+        assertEquals("BAN-SR-11,GUL-SR-1,GUL-SR-2", c.scalar("SELECT string_agg(r.code, ',' ORDER BY r.code) FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id JOIN app.app_user u ON u.id = a.user_id WHERE u.username = 'sr1001' AND a.kind = 'primary' AND a.valid_to IS NULL"))
+        // a second load of the seed and the smoke file changes nothing
+        loadDevProfile(c); c.exec(File(System.getProperty("aron.seed")).resolve("../../infra/sql/devseed-smoke-outlet.sql").readText())
+        assertEquals("1", c.scalar("SELECT count(*) FROM app.app_user WHERE username = 'smoke1'"))
+        assertEquals("3", c.scalar("SELECT count(*) FROM app.outlet WHERE code LIKE 'SMOKE-SR-%'"))
+    }
+
     @Test
     fun theSrWorksThreeFridayAwareRoutesWithSixtyOutletsAndEveryChannel() = dev.connect().use { c ->
         assertEquals("H-GUL|T-DHK-N", c.scalar("SELECT h.code || '|' || t.code FROM app.house h JOIN app.territory t ON t.id = h.territory_id WHERE h.code = 'H-GUL'"))

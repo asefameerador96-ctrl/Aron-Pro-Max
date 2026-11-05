@@ -19,11 +19,18 @@ data class FeedbackCategory(val code: String, val labelBn: String?, val labelEn:
     fun label(bangla: Boolean): String = if (bangla && !labelBn.isNullOrBlank()) labelBn else labelEn
 }
 
-/** One feedback as the list shows it ([sent] false = still in the outbox: "not sent yet"). */
+/**
+ * One feedback as the list shows it ([sent] false = still in the outbox: "not sent yet"). [businessDate] is the Dhaka
+ * business date of the feedback (contract 1.10.0, D-TSO-MAN-36); the list shows it, else the date of [createdAt].
+ */
 data class FeedbackItem(
     val feedbackUuid: String, val categoryCode: String, val title: String, val description: String,
     val createdAt: String, val status: FeedbackStatus, val sent: Boolean = true, val hasPhoto: Boolean = false,
-)
+    val businessDate: String? = null,
+) {
+    /** The date the card prints: the business date when the server or the phone gave one. */
+    val shownDate: String get() = businessDate ?: createdAt.take(10)
+}
 
 data class FeedbackForm(val categoryCode: String? = null, val title: String = "", val description: String = "", val photoUuid: String? = null)
 data class FeedbackPayload(val categoryCode: String, val title: String, val description: String, val photoUuid: String?)
@@ -73,7 +80,8 @@ object FeedbackJson {
     private fun item(o: JSONObject) = FeedbackItem(
         str(o, "feedback_uuid"), str(o, "category_code"), str(o, "title"), str(o, "description"), str(o, "created_at"),
         status = checkNotNull(FeedbackStatus.entries.firstOrNull { it.wire == (if (o.isNull("status")) "new" else str(o, "status")) }) { "unknown status" },
-        hasPhoto = !o.isNull("photo_uuid") && o.optString("photo_uuid").isNotEmpty(),
+        hasPhoto = o.has("photo_uuid") && !o.isNull("photo_uuid") && o.optString("photo_uuid").isNotEmpty(),
+        businessDate = if (!o.has("business_date") || o.isNull("business_date")) null else o.optString("business_date").takeIf { it.length == 10 },
     )
 
     fun parsePage(body: String): Page? = runCatching {
@@ -83,6 +91,7 @@ object FeedbackJson {
 
     private fun obj(i: FeedbackItem) = JSONObject().put("feedback_uuid", i.feedbackUuid).put("category_code", i.categoryCode).put("title", i.title)
         .put("description", i.description).put("created_at", i.createdAt).put("status", i.status.wire).put("photo_uuid", if (i.hasPhoto) "x" else JSONObject.NULL)
+        .put("business_date", i.businessDate ?: JSONObject.NULL)
 
     fun toCache(items: List<FeedbackItem>): String =
         JSONObject().put("items", JSONArray(items.filter { it.sent }.map(::obj))).put("next_cursor", JSONObject.NULL).toString()
@@ -97,8 +106,13 @@ interface FeedbackSource {
     suspend fun cached(): Cached?
     suspend fun unsent(): List<FeedbackItem>
     suspend fun refresh(): Cached?
+    /** `cfg.feedback.max_images` of the bundle, 0..1 (R-F-06: the record holds one photo_uuid); 1 when the bundle has none. 0 hides Browse Gallery. */
+    suspend fun maxImages(): Int = 1
     data class Cached(val items: List<FeedbackItem>, val asOf: String)
 }
+
+/** The bound of `cfg.feedback.max_images`: one picture at most, whatever the config says (R-F-06). */
+fun feedbackMaxImages(cfg: Int?): Int = cfg?.coerceIn(0, 1) ?: 1
 
 fun interface FeedbackQueue { suspend fun submit(uuid: String, createdAt: String, payload: FeedbackPayload): Boolean }
 
@@ -109,7 +123,18 @@ fun interface FeedbackQueue { suspend fun submit(uuid: String, createdAt: String
 interface FeedbackPhotos {
     suspend fun take(photoUuid: String): String?
     suspend fun discard(photoUuid: String)
+
+    /**
+     * D-TSO-MAN-36 "Browse Gallery": the picture the rep picked in the system photo picker, read once and stored compressed
+     * under [photoUuid] through A2's gallery import (same budget as the camera, EXIF dropped, no storage permission). It is
+     * NOT claimed yet: Save claims it for the feedback [feedbackUuid] with the record, so a removed picture or an abandoned
+     * form never uploads.
+     */
+    suspend fun fromGallery(photoUuid: String, feedbackUuid: String, uri: android.net.Uri): GalleryPick = GalleryPick.UNREADABLE
 }
+
+/** The outcome of a gallery pick; the screen words every refusal and the form stays as it was. */
+enum class GalleryPick { OK, NO_SPACE, TOO_LARGE, UNREADABLE, NO_PICKER }
 
 sealed interface FeedbackResult {
     data object Editing : FeedbackResult
@@ -122,8 +147,15 @@ sealed interface FeedbackResult {
 /** One uuid per form: a double tap or a retry after a failure never queues twice; nothing waits for the network. */
 class FeedbackFormState(
     private val queue: FeedbackQueue, private val categories: List<FeedbackCategory>, private val nowIso: () -> String,
-    private val photos: FeedbackPhotos? = null, private val newUuid: () -> String = { UUID.randomUUID().toString() },
+    private val photos: FeedbackPhotos? = null,
+    /** `cfg.feedback.max_images` ([feedbackMaxImages]): 0 hides Browse Gallery, 1 allows one picture. */
+    maxImages: Int = 1,
+    private val newUuid: () -> String = { UUID.randomUUID().toString() },
 ) {
+    val maxImages: Int = feedbackMaxImages(maxImages)
+    private val _galleryError = MutableStateFlow<GalleryPick?>(null)
+    /** Why the last gallery pick was not added (null when it was, or nothing was picked). */
+    val galleryError: StateFlow<GalleryPick?> = _galleryError.asStateFlow()
     private var uuid = newUuid()
     private var busy = false
     private val _form = MutableStateFlow(FeedbackForm())
@@ -143,6 +175,26 @@ class FeedbackFormState(
         val id = newUuid()
         _form.value = _form.value.copy(photoUuid = p.take(id))
     }
+
+    /**
+     * The picked picture ([uri]) becomes the form's one picture (a second pick replaces the first, which is dropped). It is
+     * stored on the phone at once and claimed for this feedback only by Save. Nothing happens after Save or when the config
+     * allows no picture.
+     */
+    suspend fun addFromGallery(uri: android.net.Uri) {
+        val p = photos ?: return
+        if (maxImages <= 0 || _result.value is FeedbackResult.Queued) return
+        val id = newUuid()
+        val r = runCatching { p.fromGallery(id, uuid, uri) }.getOrElse { if (it is kotlinx.coroutines.CancellationException) throw it; GalleryPick.UNREADABLE }
+        if (r != GalleryPick.OK) { _galleryError.value = r; return }
+        _form.value.photoUuid?.let { old -> runCatching { p.discard(old) } }
+        _galleryError.value = null
+        _form.value = _form.value.copy(photoUuid = id)
+        if (_result.value is FeedbackResult.Invalid) _result.value = FeedbackResult.Editing
+    }
+
+    /** The phone has no picture picker at all (very old system): said once on the form. */
+    fun galleryUnavailable() { _galleryError.value = GalleryPick.NO_PICKER }
 
     suspend fun removePhoto() {
         val p = photos ?: return

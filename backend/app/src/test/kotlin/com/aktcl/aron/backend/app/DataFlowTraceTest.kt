@@ -67,9 +67,14 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
     fun hop1TheDevSeed() {
         h("1 Seed (dev profile: db/seed without 04_*, plus the smoke outlets)")
         hop("config version `Dev database overrides` absent (the Gulshan seed applies)", "count" to sqlLong("SELECT count(*) FROM app.cfg_version WHERE summary = 'Dev database overrides (docs/24 s9.4, seed)'"), "expected" to 0L)
-        hop("Gulshan/Banani routes, mask, outlets (20 seed + 1 smoke each)",
+        hop("Gulshan/Banani routes, mask, outlets (20/23/20 seed outlets; the smoke outlets sit on SMK-SR-D, D-SRFIX-04)",
             "rows" to sql("SELECT string_agg(x, ',' ORDER BY x) FROM (SELECT r.code || ':' || r.visit_days_mask || ':' || count(o.id) AS x FROM app.route r JOIN app.outlet o ON o.route_id = r.id WHERE r.code IN ('GUL-SR-2','GUL-SR-1','BAN-SR-11') GROUP BY r.code, r.visit_days_mask) t"),
-            "expected" to "BAN-SR-11:36:21,GUL-SR-1:18:24,GUL-SR-2:9:21")
+            "expected" to "BAN-SR-11:36:20,GUL-SR-1:18:23,GUL-SR-2:9:20")
+        hop("slice smoke (D-SRFIX-04): route SMK-SR-D holds exactly the three smoke outlets",
+            "outlets" to sql("SELECT string_agg(o.code, ',' ORDER BY o.code) FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE r.code = 'SMK-SR-D'"),
+            "expected" to "SMOKE-SR-001,SMOKE-SR-002,SMOKE-SR-003")
+        hop("slice smoke: SMK-SR-D is a daily route", "mask" to sqlLong("SELECT visit_days_mask FROM app.route WHERE code = 'SMK-SR-D'"), "expected" to 127L)
+        hop("slice smoke: smoke1's open primaries", "routes" to sql("SELECT string_agg(r.code, ',' ORDER BY r.code) FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id JOIN app.app_user u ON u.id = a.user_id WHERE u.username = 'smoke1' AND a.kind = 'primary' AND a.valid_to IS NULL"), "expected" to "SMK-SR-D")
         hop("Friday (bit 6) is no route's day", "sum of masks" to sqlLong("SELECT sum(visit_days_mask) FROM app.route WHERE code IN ('GUL-SR-2','GUL-SR-1','BAN-SR-11')"), "Sat..Thu" to 63L)
         val u = rows("SELECT category_code AS cat, count(*) AS n, min(base_per_pack) AS lo, max(base_per_pack) AS hi, string_agg(DISTINCT base_unit, ',') AS unit, string_agg(DISTINCT entry_unit_default, ',') AS entry FROM app.sku WHERE status = 'active' GROUP BY category_code ORDER BY 1")
         note("SKU units by category (count, base_per_pack lo-hi, base unit, entry unit)", u.joinToString(" / ") { "${it["cat"]}: ${it["n"]}, ${it["lo"]}-${it["hi"]}, ${it["unit"]}, ${it["entry"]}" })
@@ -90,7 +95,15 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         val meta = bundle.path("meta")
         note("bundle meta", "bundle_version=${meta.path("bundle_version").asText()} config_version=${meta.path("config_version").asText()}")
         hop("routes in the trace day's bundle", "planned today" to bundle.path("routes").filter { it.path("planned_today").asBoolean() }.joinToString(",") { it.path("route").path("code").asText("?") }, "expected" to "GUL-SR-2")
-        hop("outlets on the planned route with a pin", "with pin" to route.path("outlets").count { it.path("lat").isNumber && it.path("lng").isNumber }, "outlets" to route.path("outlets").size(), "expected" to 21)
+        hop("outlets on the planned route with a pin", "with pin" to route.path("outlets").count { it.path("lat").isNumber && it.path("lng").isNumber }, "outlets" to route.path("outlets").size(), "expected" to 20)
+        // D-SRFIX-04b: the deploy smoke logs in as smoke1; its bundle must carry SMK-SR-D with a pinned smoke outlet and a priced plan
+        // (a read-only login: it touches none of the sr1001 trace state above)
+        val smokeBundle = fetchBundle(login("smoke1", "app_sr", ApiWorld.SR_PHONE), ApiWorld.SR_PHONE)
+        val smokeRoute = smokeBundle.path("routes").firstOrNull { it.path("route").path("code").asText() == "SMK-SR-D" }
+        hop("smoke1's bundle carries SMK-SR-D with its smoke outlets pinned",
+            "pinned smoke outlets" to (smokeRoute?.path("outlets")?.count { it.path("lat").isNumber && it.path("lng").isNumber } ?: -1), "expected" to 3)
+        hop("smoke1's SMK-SR-D has plan SKUs that are active and priced (slice-smoke pick_route)",
+            "priced plan SKUs >= 1" to ((smokeRoute?.let { skusOf(smokeBundle, it).size } ?: 0) >= 1), "expected" to true)
         hop("plan SKUs with an outlet price today", "count" to skus.size, "expected >= 39" to skus.size.coerceAtLeast(39))
         note("pack sizes in the bundle (category: entry unit x pack)", skus.values.groupBy { it.category }.entries.joinToString(" / ") { (c, l) -> "$c: " + l.map { "${it.entryUnit}x${it.perPack}" }.distinct().sorted().joinToString("|") })
         note("memo numbers: bind_ordinal x block + n", "ordinal ${bundle.path("user").path("bind_ordinal").asInt()}, block ${bundle.path("user").path("memo_seq_block_size").asInt()}, first number ${sr.seq}")
@@ -341,7 +354,10 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
             hop("$role sales cards: base_unit per category", "units" to sales.path("cards").associate { it.path("category_code").asText() to it.path("base_unit").asText() }.toSortedMap(), "expected" to sortedMapOf("bidi" to "stick", "cigarette" to "stick", "lighter" to "piece", "match" to "dozen"), hard = false)
             note("$role sales card detail", sales.path("cards").joinToString("; ") { "${it.path("category_code").asText()} target/day ${it.path("daily_target").asText("-")} remaining ${it.path("remaining").asText("-")} achv_bp ${it.path("achievement_pct_bp").asText("-")} routes ${it.path("target_routes").asInt()}" } + "; working_days ${sales.path("working_days").asInt()}; till_time ${sales.path("till_time").asBoolean()}")
             val cpr = op("cpr")
-            val expTarget = if (national) route.path("outlets").size() + lkxTargetOutlets else route.path("outlets").size()
+            // D-SRFIX-04b: the smoke route SMK-SR-D (daily, own zone Z-SMK inside T-DHK-N) is a planned route in every caller's scope on dev,
+            // and no dashboard filters test origin, so its three smoke outlets are target outlets of every card
+            val smokeOutlets = sqlLong("SELECT count(*) FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE r.code = 'SMK-SR-D'").toInt()
+            val expTarget = (if (national) route.path("outlets").size() + lkxTargetOutlets else route.path("outlets").size()) + smokeOutlets
             val expCalls = if (national) sr.memos.count { it.lines.isNotEmpty() && !it.voided } + lkxMemos.size else sr.memos.count { it.lines.isNotEmpty() && !it.voided }
             hop("$role CPR target outlets / successful calls", "dashboard" to "${cpr.path("target_outlets").asInt()}/${cpr.path("successful_calls").asInt()}", "device truth" to "$expTarget/$expCalls", hard = false)
             note("$role CPR percent (basis points)", cpr.path("cpr_pct_bp").asText())
@@ -533,7 +549,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         hop("Final Submit card: zones final submitted (national)", "dashboard" to fs.path("final_submitted").asInt(), "device truth" to 1, hard = false)
         note("Final Submit card", fs.toString().take(300))
         val tsoCard = jsonOf(postJson("/v1/dashboards/national/final-submit", tso, body))
-        hop("Final Submit card for the TSO: final submitted / remaining", "dashboard" to "${tsoCard.path("final_submitted").asInt()}/${tsoCard.path("remaining").asInt()}", "device truth" to "1/0", hard = false)
+        hop("Final Submit card for the TSO: final submitted / remaining", "dashboard" to "${tsoCard.path("final_submitted").asInt()}/${tsoCard.path("remaining").asInt()}", "device truth" to "1/${sqlLong("SELECT count(*) FROM app.zone WHERE code = 'Z-SMK'")}", hard = false) // D-SRFIX-04b: the smoke zone Z-SMK is inside tso1001's territory and is never final submitted: one zone remaining
         val log = rows("SELECT * FROM dw.v_final_submit_log WHERE business_date = DATE '$day'")
         note("dw.v_final_submit_log rows", log.joinToString(" | ") { it.entries.joinToString(",") { e -> "${e.key}=${e.value}" }.take(400) })
         // Sales unchanged by the submit steps.
@@ -547,16 +563,26 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
     @Test
     @Order(12)
     fun hop12ALateSaleAfterFinalSubmitIsAcceptedAndCountedOnce() {
-        h("12 Late sale after Final Submit (accept and flag, never reopens, counted once)")
+        h("12 Late sale after Final Submit (held after_final_submit, accepted by the admin, never reopens, counted once)")
         val c10 = pick("cigarette", 10)
         val m = Memo(outletByCode("GUL2-005"), "GUL2-005", listOf(Line(c10, 3)), paidShare = 100, minute = 160)
         val recs = recordsOf(sr, m, gulPins.getValue(m.outlet), 100, 100, 5)
         recs.groupingBy { it.path("type").asText() }.eachCount().forEach { (t, n) -> sr.counts.merge(t, n, Int::plus) }
         sr.memos += m
+        // tso-manual B3 (contract 1.10.0, D-TSO-MAN-31; was accept-and-flag, D-55): captured before the zone-day's Final
+        // Submit, it is held after_final_submit (out of the figures) until an ADMIN accepts it on the quarantine page.
         val a = send(sr, recs, uuid())
-        hop("late sale statuses", "statuses" to acks(a).distinct(), "expected" to listOf("accepted"))
+        hop("late sale statuses", "statuses" to acks(a).distinct(), "expected" to listOf("quarantined"))
         val b = send(sr, recs, uuid())
-        hop("late sale again", "statuses" to acks(b).distinct(), "expected" to listOf("duplicate"))
+        hop("late sale again", "statuses" to acks(b).distinct(), "expected" to listOf("quarantined"))
+        val admin = login("admin1001", "web", null)
+        while (true) {
+            val id = sql("SELECT min(id)::text FROM app.sync_quarantine WHERE code = 'after_final_submit' AND status = 'open' AND business_date = DATE '$day'") ?: break
+            val r = postJson("/v1/admin/quarantine/$id/resolve", admin, """{"action":"accept","reason":"late sale checked with the SR"}""")
+            hop("admin accepts the held late sale", "status" to r.status.value, "expected" to 200)
+        }
+        val c = send(sr, recs, uuid())
+        hop("late sale after the accept", "statuses" to acks(c).distinct(), "expected" to listOf("duplicate"))
         runWorker()
         val ar = rows("SELECT day_state, active_memo_count, gross_mtk, late_rows_after_final FROM dw.agg_daily_route WHERE business_date = DATE '$day' AND route_id = $gulRouteId").single()
         val active = sr.memos.filter { it.lines.isNotEmpty() && !it.voided }
@@ -570,6 +596,10 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         val expected = sortedMapOf<String, Long>()
         for (x in sr.memos.filter { it.lines.isNotEmpty() && !it.voided } + lkxMemos) for (l in x.lines) expected.merge(l.sku.category, l.qtyBase, Long::plus)
         hop("national sales cards include the late sale once", "dashboard" to s2, "device truth" to expected, hard = false)
+        // tso-manual B3 (D-TSO-MAN-29, 31): hops 14 and 15 sell again on this route-day; under the day lock those sales would
+        // be held, so an ADMIN reopens the zone-day (audited) and they run on an open day as before.
+        val ro = postJson("/v1/day/reopen", admin, """{"zone_id":$zGul,"business_date":"$day","reason":"trace: the edge hops sell after the late sale"}""")
+        hop("ADMIN reopens the zone-day for the edge hops", "status" to ro.status.value, "expected" to 200)
     }
 
 

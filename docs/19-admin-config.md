@@ -517,7 +517,7 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 | `cfg.day.final_submit_autoclose_time` | T | time | none (off) | 22:00 to 23:59 or none | G W | S | B | srv | C3 | The system closes a zone-day as `system_closed`. unknown; confirm: Q53 | D-262 | 3b |
 | `cfg.day.reopen_roles` | S | list<role> | [admin] (A) | subset of roles | G W | S | B | srv | C3 | Too wide and "final" means nothing. restrictive: fewer roles. unknown; confirm: Q11 | D-55 | 3b |
 | `cfg.day.reopen_window_days` | S | int | 3 (A) | 0 to 31 | G | F | B | srv | C2 | Beyond this a reopen needs two-person approval whatever the role | D-55 | 3b |
-| `cfg.day.late_sync_after_final_policy` | S | enum(accept_and_flag, quarantine, reject) | accept_and_flag | enum | G | F | B | srv | C3 | `reject` loses real sales from a late phone. restrictive: none (never loosened to lose data) | D-55 | 3b |
+| `cfg.day.late_sync_after_final_policy` | S | enum(accept_and_flag, quarantine, reject) | accept_and_flag | enum | G | F | B | both | C3 | `reject` loses real sales from a late phone. Delivered to the phones since V0142 (owner 2026-11-04): the SR and AMO day lock applies only under quarantine or reject. restrictive: none (never loosened to lose data) | D-55 | 3b |
 | `cfg.day.attendance_missing_checkout_autoclose_time` | T | time | 23:30 (A) | later than `checkout_latest_time` | G | F | B | srv | C1 | A forgotten check-out is closed as "no check-out" and never blocks Sales Submit | D-329 | 2e |
 | `cfg.day.take_action_after` | T | time | 17:00 | 12:00 to 23:00 | G W | F | B | srv | C1 | Daily Tracking "take action" opens after this time | docs/09 | 4a |
 | `cfg.day.multi_visit_same_outlet_policy` | S | enum(allow, allow_after_zero_sale, block) | allow_after_zero_sale | enum | G | F | B | both | C2 | `allow` double-counts CPR unless the aggregate collapses; 68 duplicate keys exist in the sample | D-250 | 2a |
@@ -711,6 +711,7 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 | `cfg.ops.bundle_hold` | O | bool | false | duration required | G W | O | B | srv | C3 | Morning storm brake; devices fall back to `stale_max_days` | G-cfg-16 | 2d |
 | `cfg.ops.maintenance_banner` | O | json {bn, en, from, to, severity} | null | 200 characters each | G W D T Z ROLE | O | B | both | C0 | Previewed on a phone frame; also on `GET /config/public` for global scope | G-cfg-16 | 2d |
 | `cfg.ops.push_enabled` | S | bool | false in the pilot | n/a | G WAVE | O | B | srv | C3 | FCM data messages for urgent keys only, never an upload trigger. unknown; confirm: FCM acceptable (D-09, MUST-CONFIRM by 2d) | D-09 | 2d |
+| `cfg.ops.config_pull_spread_s` | S | int | 20 (0 to 900) | n/a | G | O | B | srv | C1 | Seconds over which the phones that get a `config_pull` push (a change of `cfg.day.late_sync_after_final_policy`) spread their pull: each waits a random 0 to this many seconds. 20 at pilot size; widen to minutes at fleet size, no code change (V0143, D-TSO-MAN-62) | D-TSO-MAN-62 | 2d |
 | `cfg.ops.push_jitter_s` | S | int | 120 | 0 to 600 | G | O | B | srv | C1 | At most 8,500 / 120 = 71 delta pulls a second | G-sre-07 | 2d |
 | `cfg.ops.push_jitter_urgent_s` | S | int | 20 | 0 to 120 | G | O | B | srv | C2 | 8,500 / 20 = 425 pulls a second, served from the ETag cache | G-sre-07 | 2d |
 | `cfg.ops.prescale_schedule` | T | json per wing | 06:15 and 16:45; api 8, worker 3, web 4; auth 6 on wave mornings | api 3 to 30, auth 2 to 12, worker 1 to 10, web 2 to 6 per wing | W | O | R | srv | C2 | DEPLOY-TIME (D-552): rendered into the deployment template by a pipeline run, read-only in the console with the date of the last deploy; an urgent change is a break-glass `az containerapp update` | D-133 | 4d |
@@ -1001,7 +1002,7 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 | `cfg.leave.block_overlap` | S | bool | false | n/a | G | F | B | srv | C1 | | G-man-075 | 3b |
 | `cfg.leave.balance_enforced` | S | bool | false | n/a | G | F | B | srv | C1 | | G-man-075 | 3b |
 | `cfg.feedback.categories` | S | content(app.reason_code) | [Suggestion] only (the lens Complaint and Bug are invented) | n/a | G | O | B | both | C0 | | G-man-083; D-197 | 3b |
-| `cfg.feedback.max_images` | S | int | 1 | 1 to 5 | G | O | B | dev | C0 | | G-man-083 | 3b |
+| `cfg.feedback.max_images` | S | int | 1 | 0 to 1 (R-F-06: the feedback record holds one photo_uuid) | G | O | B | dev | C0 | | G-man-083 | 3b |
 | `cfg.tso.periphery_radius_options_m` | S | list<int> | [50, 100, 300] | 1 to 6 values, 10 to 5000 | G W | F | B | dev | C0 | Replaces three lens spellings | G-man-078 | 3b |
 | `cfg.tso.periphery_default_radius_m` | S | int | 50 (first option) | in the options | G | F | B | dev | C0 | | G-man-078 | 3b |
 | `cfg.tso.periphery_max_markers` | S | int | 300 (A) | 50 to 2000 | G | O | B | dev | C1 | | G-man-078 | 3b |

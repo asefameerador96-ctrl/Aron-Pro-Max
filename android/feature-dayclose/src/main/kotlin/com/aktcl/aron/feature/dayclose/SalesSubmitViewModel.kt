@@ -44,10 +44,14 @@ data class SubmitUiState(
     val online: Boolean = false,
     val counts: List<CountRow> = emptyList(),
     val gate: SubmitGate = SubmitGate(false, emptyList(), null),
+    /** D-SRFIX-03b: the gate on the TRUE outbox counts (dismissed rows included): what the day_submit record uploads; [gate] is the screen's. */
+    val uploadGate: SubmitGate = SubmitGate(false, emptyList(), null),
     val progress: SubmitProgress = SubmitProgress.Idle,
     val syncing: Boolean = false,
     /** D-NIGHT-DAYCLOSE-01 (b): listed, shown whether or not a digest has run. */
     val rejected: List<RejectedRow> = emptyList(),
+    /** D-SRFIX-03: refused non-money records older than [RejectedDismissal.KEEP_DAYS] days, opened from a link, never in the main list. */
+    val dismissed: List<RejectedRow> = emptyList(),
     /** A digest (server totals) has answered at least once for the date: before it, "Nothing to compare yet". */
     val serverKnown: Boolean = false,
 )
@@ -88,7 +92,7 @@ class SalesSubmitViewModel(
                 recompute()
                 val s = _state.value
                 if (!s.gate.enabled || s.progress != SubmitProgress.Idle) return@withLock
-                writer.queue(businessDate(), s.gate, s.counts)
+                writer.queue(businessDate(), s.uploadGate, s.counts)
                 _state.value = s.copy(progress = SubmitProgress.Queued)
                 scheduler.requestSync(userId, SyncTrigger.DAY_SUBMIT)
             }
@@ -107,13 +111,16 @@ class SalesSubmitViewModel(
         val local = runCatching { source.rejectedRows(d) }.getOrDefault(emptyList())
         // The phone's own rows first; the server adds what this install does not hold (earlier installs, other phones).
         val held = local.map { it.clientUuid }.toSet()
-        val rejected = local + runCatching { server.serverRejected(d) }.getOrDefault(emptyList()).filter { it.clientUuid !in held }
+        val (rejected, dismissed) = RejectedDismissal.split(local + runCatching { server.serverRejected(d) }.getOrDefault(emptyList()).filter { it.clientUuid !in held }, d)
         val submitted = source.alreadySubmitted(d)
         val settled = submitted && source.submitSettled(d)
         val prev = _state.value.progress
-        val gate = SalesSubmitRules.gate(source.outboxStates(d), counts, source.dues(d), alreadySubmitted = submitted && prev == SubmitProgress.Idle)
+        val trueStates = source.outboxStates(d)
+        val states = trueStates.copy(rejected = (trueStates.rejected - dismissed.size).coerceAtLeast(0))
+        val uploadGate = SalesSubmitRules.gate(trueStates, counts, source.dues(d), alreadySubmitted = submitted && prev == SubmitProgress.Idle)
+        val gate = SalesSubmitRules.gate(states, counts, source.dues(d), alreadySubmitted = submitted && prev == SubmitProgress.Idle)
         _state.value = _state.value.copy(
-            online = online(), counts = counts, gate = gate, rejected = rejected, serverKnown = srv != null,
+            online = online(), counts = counts, gate = gate, uploadGate = uploadGate, rejected = rejected, dismissed = dismissed, serverKnown = srv != null,
             progress = when { settled -> SubmitProgress.Settled; submitted || prev == SubmitProgress.Queued -> SubmitProgress.Queued; else -> SubmitProgress.Idle },
         )
     }

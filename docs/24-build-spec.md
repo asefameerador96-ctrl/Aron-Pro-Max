@@ -277,7 +277,7 @@ Every non-2xx API response is `application/problem+json` with members `type` (`u
 | 401 | `ERR_UNAUTHENTICATED`, `ERR_TOKEN_EXPIRED`, `ERR_SCOPE_CHANGED`, `ERR_PASSWORD_CHANGED`, `ERR_AUTH_INVALID_CREDENTIALS`, `ERR_AUTH_REFRESH_INVALID`, `ERR_AUTH_REFRESH_REUSED`, `ERR_AUTH_MFA_INVALID`, `ERR_AUTH_OTP_INVALID`, `ERR_AUTH_OTP_EXPIRED`, `ERR_DEVICE_PROOF_INVALID` | `ERR_TOKEN_EXPIRED` and `ERR_SCOPE_CHANGED`: yes after one refresh | `ERR_TOKEN_EXPIRED`/`ERR_SCOPE_CHANGED`: refresh once and repeat; `ERR_SCOPE_CHANGED` also schedules a full bundle. Refresh failures (`REFRESH_*`, `PASSWORD_CHANGED`): the phone keeps selling offline on the local session and asks for the password at the next online moment; the outbox keeps uploading on the upload grant |
 | 403 | `ERR_FORBIDDEN`, `ERR_OUT_OF_SCOPE`, `ERR_AUTHZ_ROLE_ABOVE_GRANT`, `ERR_AUTH_ACCOUNT_LOCKED` (with `retry_after_s`, D24-60), `ERR_AUTH_USER_DISABLED`, `ERR_AUTH_PASSWORD_CHANGE_REQUIRED`, `ERR_AUTH_BIND_LOCKED`, `ERR_AUTH_PORTAL_NOT_ALLOWED`, `ERR_AUTH_OTP_ATTEMPTS_EXCEEDED`, `ERR_DEVICE_NOT_ENROLLED`, `ERR_DEVICE_UNBOUND`, `ERR_DEVICE_SUSPENDED`, `ERR_DEVICE_REVOKED`, `ERR_DEVICE_INTEGRITY_FAILED`, `ERR_ENROLMENT_TOKEN_INVALID`, `ERR_ENROLMENT_TOKEN_EXPIRED`, `ERR_ENROLMENT_TOKEN_EXHAUSTED`, `ERR_ENROLMENT_ATTESTATION_FAILED` | no (`ACCOUNT_LOCKED` after `retry_after_s`) | show the localised message; never retry automatically |
 | 404 | `ERR_NOT_FOUND` | no | also returned for an id outside the caller's reach on a single-resource GET (no existence leak) |
-| 409 | `ERR_CONFLICT`, `ERR_REQUEST_STATE`, `ERR_SEPARATION_OF_DUTIES`, `ERR_CFG_SELF_APPROVAL`, `ERR_CFG_FREEZE_WINDOW`, `ERR_MASTER_DUPLICATE_CODE`, `ERR_MASTER_OVERLAP`, `ERR_MASTER_IN_USE`, `ERR_SYNC_BATCH_UUID_REUSED`, `ERR_BUNDLE_NEW_BUSINESS_DATE`, `ERR_DAY_ALREADY_FINAL_SUBMITTED`, `ERR_DAY_NOT_FINAL_SUBMITTED`, `ERR_DAY_SUBMIT_VOID_NOT_ALLOWED`, `ERR_DAY_DATA_VOID_NOT_ALLOWED`, `ERR_DEVICE_LIMIT_REACHED`, `ERR_PUSH_DISABLED`, `ERR_ENTRY_WINDOW_CLOSED`, `ERR_GIFT_CHOICE_LOCKED` | no | `ERR_SYNC_BATCH_UUID_REUSED`: the phone mints a new `batch_uuid` for the same rows (a phone bug if it happens); `ERR_BUNDLE_NEW_BUSINESS_DATE`: fetch the full bundle |
+| 409 | `ERR_CONFLICT`, `ERR_REQUEST_STATE`, `ERR_SEPARATION_OF_DUTIES`, `ERR_CFG_SELF_APPROVAL`, `ERR_CFG_FREEZE_WINDOW`, `ERR_MASTER_DUPLICATE_CODE`, `ERR_MASTER_OVERLAP`, `ERR_MASTER_IN_USE`, `ERR_SYNC_BATCH_UUID_REUSED`, `ERR_BUNDLE_NEW_BUSINESS_DATE`, `ERR_DAY_ALREADY_FINAL_SUBMITTED`, `ERR_DAY_NOT_FINAL_SUBMITTED`, `ERR_DAY_SUBMIT_VOID_NOT_ALLOWED`, `ERR_DAY_DATA_VOID_NOT_ALLOWED`, `ERR_DEVICE_LIMIT_REACHED`, `ERR_PUSH_DISABLED`, `ERR_ENTRY_WINDOW_CLOSED`, `ERR_GIFT_CHOICE_LOCKED`, `ERR_TICKET_TRANSITION_INVALID`, `ERR_TICKET_COMMENTS_CLOSED`, `ERR_DAY_FINAL_SUBMIT_REOPENED` | no | `ERR_SYNC_BATCH_UUID_REUSED`: the phone mints a new `batch_uuid` for the same rows (a phone bug if it happens); `ERR_BUNDLE_NEW_BUSINESS_DATE`: fetch the full bundle; `ERR_DAY_FINAL_SUBMIT_REOPENED` (contract 1.10.0): the TSO app reads the Final Submit preview again and submits with the next `submit_seq` UUID; the two ticket codes (contract 1.10.0): reload the ticket |
 | 410 | `ERR_BUNDLE_CURSOR_EXPIRED` | no | fetch the full bundle (or restart paging) |
 | 412 | `ERR_PRECONDITION_FAILED` | no | reload and re-apply the edit |
 | 413 | `ERR_PAYLOAD_TOO_LARGE`, `ERR_SYNC_BATCH_TOO_LARGE`, `ERR_SYNC_DECOMPRESSION_LIMIT`, `ERR_REPORT_TOO_LARGE` | no | phones halve the batch (s4.7); reports switch to the export job |
@@ -381,6 +381,8 @@ A **family** is a header record and its children, linked by `family_uuid` (the h
 | `app_error` | self | 0 | — | all | `app_error` |
 | `sale_abort` (memo number burned without a memo) | self | 0 | optional `visit_client_uuid` | SR, AMO | `sale_abort` |
 | `consent_accept` (location notice) | self | 0 | — | all | `user_consent` |
+| `support_ticket` (contract 1.10.0, D-TSO-MAN-18; the only way a ticket is created) | self | 0 | — | TSO (requester roles from config) | `support_ticket` (+ `support_ticket_state`) |
+| `support_ticket_event` (comment or close review, contract 1.10.0) | self | 0 | `ticket_uuid` | TSO (the ticket's requester) | `support_ticket_event` |
 
 Ordering rules (the phone MUST follow them; the server tolerates violations by parking):
 1. Outbox order is commit order (`seq`). A batch is the next rows in `seq` order, whole families first.
@@ -448,6 +450,10 @@ Code catalogue (`RecordOutcomeCode`):
 | `insufficient_points` | rejected | no | redemption above the server balance while `cfg.loyalty.negative_balance_policy` = reject (the default accept_and_flag never uses it) |
 | `gift_photo_exists` | rejected | no | a second hand-over photo for the same Astha assignment or redeemed unit under another `client_uuid` |
 | `programme_inactive` | quarantined | — | programme not active on the business date or outlet not enrolled |
+| `after_final_submit` | quarantined | — | captured before its zone-day's Final Submit and arrived after it, or with an untrusted capture time (`clock_offset_ms` null), or in a visit family opened before a midnight job close; held out of the day's figures and counted (flagged late) only when an ADMIN accepts it on the quarantine page, so no offline sale is lost (contract 1.10.0, D-TSO-MAN-31, R-W-01; s4.9 rule 4) |
+| `day_final_submitted` | rejected | no | a memo, memo edit, void, return or collection captured (by a trusted clock) at or after its zone-day's Final Submit; `day_submit` and `attendance_event` after the lock are still accepted (contract 1.10.0, D-TSO-MAN-31, R-W-01; s4.9 rule 4) |
+| `ticket_state_invalid` | rejected | no | a `support_ticket_event` the ticket's state does not allow (a comment after the ticket left new and in_progress, a close review before it is resolved) or on another user's ticket (contract 1.10.0, D-TSO-MAN-20, 21) |
+| `issue_type_unknown` | rejected | no | a `support_ticket` whose `issue_type_code` is not an active `ticket_issue_type` code on its business date (contract 1.10.0, D-TSO-MAN-19) |
 
 ### 4.6 Resume, retry and ordering guarantees
 
@@ -496,7 +502,7 @@ Rules:
 1. **Sales Submit** is a `day_submit` record (offline-capable, `cfg.day.sales_submit_offline_queue` = true) or `POST /v1/day/sales-submit` online, idempotent by `client_uuid`. After it the phone locks capture for that route-day except dues collection and printing. `submit_cycle` starts at 1.
 2. **Submit void** (`POST /v1/day/submit-void`, TSO and above, before Final Submit): the effective submit is voided, the state returns to `synced`, the phone unlocks at its next contact (`day_states[]` in the batch response or delta) and the next submit carries `submit_cycle` + 1.
 3. **Final Submit** (`POST /v1/day/final-submit`) is online-only, once per zone and business date (a second one returns `409 ERR_DAY_ALREADY_FINAL_SUBMITTED` with `context.submitted_at`; a replay with the same `client_uuid` returns the first success). Preview (`GET /v1/day/final-submit/preview`) lists every route with its state; routes not submitted are allowed (`cfg.day.final_submit_allow_not_set_routes` = allow).
-4. **Late data after Final Submit** is accepted and flagged (`cfg.day.late_sync_after_final_policy` = `accept_and_flag`): stored, counted in the day's aggregates, and listed on the final-submit log as late; it never reopens the day. **Reopen** (`POST /v1/day/reopen`) is audited and limited to `cfg.day.reopen_roles` (admin) within `cfg.day.reopen_window_days` (3).
+4. **Late data after Final Submit** (D-TSO-MAN-31; lead rulings R-W-01 and R-W-17; `cfg.day.late_sync_after_final_policy`, default `accept_and_flag` since D-TSO-MAN-49 (V0134; owner decision 2026-11-04: a sale after the Final Submit is accepted and flagged, the SR and AMO phones do not lock), `quarantine` and `reject` are admin switches). The lock is the route-day's `final_submitted_at` (the live close's `submitted_at`, by the TSO, a delegate or the midnight job; a reopen clears it). It closes the figure records of SR and AMO uploaders (visit, visit_close, visit_skip, sale_abort, memo, memo_line, memo_discount, qc_line, memo_void, due_collection, stock_movement, redemption, redemption_line); `day_submit`, `day_open`, `attendance_event`, reprints and telemetry after the lock are accepted (state only, no figures). Under `quarantine`, a row **captured before the lock is held** `after_final_submit` (stored for review, out of the day's figures, counted and flagged late only when an ADMIN accepts it in `/admin/quarantine`); a row whose capture time is **not trusted** (`clock_offset_ms` null or absent: "after the lock" is unproven) is held the same way and never refused; a row of a visit family whose visit was captured before a midnight job close is held too (a call that straddles midnight, D-B3-25); any other row **captured at or after the lock is refused** `day_final_submitted` (final, not retryable). `reject` refuses every late figure row; `accept_and_flag` (the rule before contract 1.10.0) stores it and counts it late. No sale captured before the lock is lost, and late data never reopens the day. The SR and AMO phones hold the key (V0142) and lock only under `quarantine` or `reject`; after a committed change of the key, the SR and AMO users of every zone-day of today or yesterday with a live close get ONE `config_pull` push (a CONFIG pull only, reason `late_sync_policy_changed` while the policy locks, `late_sync_policy_relaxed` when it no longer does, the latter also withdrawing the phone's "Day closed" notice; `pull_after_s` random 0 to `cfg.ops.config_pull_spread_s`, 20 by default), so a phone locks or unlocks with the change, not at its next config delta (tso-manual X4a fix round 4; one mechanism, D-TSO-MAN-62). **Reopen** (`POST /v1/day/reopen`) is audited and limited to `cfg.day.reopen_roles` (admin) within `cfg.day.reopen_window_days` (3).
 5. **Data void** (`POST /v1/admin/data-void`, before Final Submit only) tombstones every record of a route-day: rows get `voided_at`, their `client_uuid`s stay in `ingest_registry` with status `voided`, and a route-day barrier rejects late rows captured before the void (`voided_by_admin`) while rows captured after it are accepted (D24-45).
 6. **Voids are tombstones everywhere**: a `memo_void` record marks the memo `voided` (never deleted), prints a void slip and removes it from net totals; an edited memo marks the original `superseded`. Aggregates subtract voided and superseded memos.
 7. **Day-close rule for counts:** a business date is closed for reconciliation when the route-day is `final_submitted` and every device that wrote to it has an empty outbox for that date (sync-health shows the exceptions).
@@ -928,7 +934,7 @@ Legend. **Levels:** G global, ROLE, W wing, D division, T territory, GC geo_clas
 | `cfg.day.submit_grace_h` | int | 10 | 0..24 | G | O | B | both | C1 |
 | `cfg.day.final_submit_allow_not_set_routes` | enum(allow, warn, block) | allow | — | G W | F | B | srv | C2 |
 | `cfg.day.final_submit_delegate_roles` | list<role> | [] | subset of DMO, WM | G W | S | B | srv | C3 |
-| `cfg.day.late_sync_after_final_policy` | enum(accept_and_flag, quarantine, reject) | accept_and_flag | — | G | F | B | srv | C3 |
+| `cfg.day.late_sync_after_final_policy` | enum(accept_and_flag, quarantine, reject) | accept_and_flag (V0134, D-TSO-MAN-49; quarantine and reject are admin switches, s4.9 rule 4) | — | G | F | B | both (V0142: the phones lock only under quarantine or reject, owner 2026-11-04) | C3 |
 | `cfg.day.reopen_roles` | list<role> | [ADMIN] | subset of roles | G W | S | B | srv | C3 |
 | `cfg.day.reopen_window_days` | int | 3 | 0..31 | G | F | B | srv | C2 |
 | `cfg.day.month_close_grace_days` | int | 3 | 0..10 | G | S | B | srv | C3 |
@@ -1026,6 +1032,7 @@ Legend. **Levels:** G global, ROLE, W wing, D division, T territory, GC geo_clas
 | **Operations, notifications, API** |||||||||
 | `cfg.ops.push_enabled` (**changed**, D24-23) | bool | true | — | G | O | B | srv | C3 |
 | `cfg.ops.push_jitter_s` | int | 120 | 0..600 | G | O | B | srv | C1 |
+| `cfg.ops.config_pull_spread_s` (**new**, V0143, D-TSO-MAN-62) | int | 20 | 0..900 | G | O | B | srv | C1 |
 | `cfg.notify.task_push_enabled` (**new**) | bool | true | — | G W D T Z | O | B | srv | C1 |
 | `cfg.ops.sync_hold_s` | int (kind O, auto-expires) | 0 | 0..900 | G W D T Z | O | B | both | C3 |
 | `cfg.ops.sync_hold_by_version` | list<int> (kind O) | [] | duration ≤ 24 h | G | O | B | srv | C3 |
@@ -1337,6 +1344,7 @@ Every report is one `POST /v1/reports/{report_key}/query` with a `ReportQuery` (
 | `superstar-campaign` | per outlet category, slab, base target and criteria-met flag |
 | `retailer-list` | Browse Retailer list export (PII columns by role) |
 | `sku-list` | Browse SKU list export with the price types the role may see (three decimals) |
+| `tso-visit-log` | TSO visit plans (contract 1.10.0, lead ruling R-F-12): plan date, TSO, zone, route, outlet, status, completed at, both answers by key, delegate task, the task and its status |
 
 Every export (xlsx, pdf, print) is listed in the export log `GET /v1/report-exports` with its filters, row count and PII flag. Column sets whose sample workbook is not yet seen carry `columns_known: false` in `GET /v1/reports` and are fixed when the sponsor provides the sample.
 
@@ -1545,7 +1553,7 @@ Each row is a question the sources left open or answered in conflicting ways, wi
 
 ## Appendix A. Endpoint index (generated from `contract/openapi.yaml`)
 
-Generated by the cross-check script (`--appendix`); 258 operations on 208 paths, grouped by tag in the order of the contract. Request and response schemas, statuses and examples are in the YAML.
+Generated by the cross-check script (`--appendix`); 268 operations on 217 paths (contract 1.10.0), grouped by tag in the order of the contract. Request and response schemas, statuses and examples are in the YAML.
 
 | Tag | Method | Path | operationId | Summary |
 |---|---|---|---|---|
@@ -1609,6 +1617,8 @@ Generated by the cross-check script (`--appendix`); 258 operations on 208 paths,
 | tasks | POST | `/v1/tasks/{task_uuid}/cancel` | `cancelTask` | Cancel an ongoing task (creator, the zone's TSO or an admin). |
 | notifications | PUT | `/v1/devices/me/push-token` | `registerPushToken` | Register or replace the FCM token of this phone for the calling user. |
 | notifications | POST | `/v1/admin/notifications` | `sendNotification` | Send an FCM data nudge (announcement or config pull) to devices in a scope. |
+| notifications | GET | `/v1/me/notifications` | `listMyNotifications` | The caller's notification inbox, newest first (the bell in the TSO app). |
+| notifications | POST | `/v1/me/notifications/read` | `markMyNotificationsRead` | Mark the caller's inbox read up to an id (opening the bell). |
 | team | GET | `/v1/team/locations` | `getTeamLocations` | Last synced fix per team member (no live tracking; age and source shown). |
 | team | GET | `/v1/team/stock` | `getTeamStock` | Issued, sold, returned and current stock per SR and SKU for a date (SR phones never returned). |
 | team | GET | `/v1/outlets/nearby` | `getNearbyOutlets` | Outlets within a radius of a point (TSO Retailer radius map), capped and scoped. |
@@ -1632,10 +1642,13 @@ Generated by the cross-check script (`--appendix`); 258 operations on 208 paths,
 | dashboards | GET | `/v1/dashboards/targets` | `getTargetAchievement` | Monthly target and achievement (till-date basis per surface) for a node. |
 | dashboards | POST | `/v1/dashboards/national/sales` | `queryNationalSales` | Sales cards with daily target |
 | dashboards | POST | `/v1/dashboards/national/cpr` | `queryNationalCpr` | Live CPR card |
+| dashboards | POST | `/v1/dashboards/national/brand-cpr` | `queryNationalBrandCpr` | Brand CPR card |
 | dashboards | POST | `/v1/dashboards/national/channel-calls` | `queryNationalChannelCalls` | By Channel Successful Call card |
 | dashboards | POST | `/v1/dashboards/national/final-submit` | `queryNationalFinalSubmit` | Final Submit Status card |
 | dashboards | POST | `/v1/dashboards/national/login-submit` | `queryNationalLoginSubmit` | Login / Submit Status card |
+| dashboards | POST | `/v1/dashboards/national/login-submit/users` | `queryNationalLoginSubmitUsers` | Login / Submit Status users (Not Logged In, Not Uploaded) |
 | dashboards | POST | `/v1/dashboards/national/channel-std` | `queryNationalChannelStd` | By Channel STD card |
+| dashboards | POST | `/v1/dashboards/national/segment-share` | `queryNationalSegmentShare` | By Segment Value Contribution card |
 | dashboards | POST | `/v1/dashboards/national/breakdown` | `queryNationalBreakdown` | Breakdown STD / Memo card |
 | dashboards | POST | `/v1/dashboards/national/geo-fencing` | `queryNationalGeoFencing` | Geo Fencing card |
 | dashboards | POST | `/v1/dashboards/national/ff-geo/pins` | `queryFfGeoPins` | FF Geo Location pins |
@@ -1807,6 +1820,11 @@ Generated by the cross-check script (`--appendix`); 258 operations on 208 paths,
 | admin-finance | POST | `/v1/admin/dues-adjustments/{adjustment_id}/decision` | `decideDuesAdjustment` | Approve or reject a dues adjustment (checker ≠ maker); approval adds a ledger row and changes the outlet balance. |
 | support | POST | `/v1/support/pda-upload` | `createSupportUpload` | Write-only SAS for one "PDA to Support" data file (encrypted zip, size-capped). |
 | support | POST | `/v1/client-errors` | `reportClientError` | Privacy-scrubbed error report from the web app (phones send `app_error` records in the batch). |
+| support | GET | `/v1/support/tickets` | `listSupportTickets` | Support tickets, newest first (the caller's own; the support desk sees every ticket). |
+| support | GET | `/v1/support/tickets/summary` | `getSupportTicketSummary` | Ticket counts for the Ticket Dashboard (the caller's own tickets; the support desk counts every ticket). |
+| support | GET | `/v1/support/tickets/{ticket_uuid}` | `getSupportTicket` | One ticket with its thread and photos. |
+| support | PATCH | `/v1/support/tickets/{ticket_uuid}` | `updateSupportTicket` | Support desk action on a ticket (status, priority, assignee, resolution or cancellation). |
+| support | POST | `/v1/support/tickets/{ticket_uuid}/events` | `addSupportTicketEvent` | Support desk reply on a ticket. |
 
 ---
 

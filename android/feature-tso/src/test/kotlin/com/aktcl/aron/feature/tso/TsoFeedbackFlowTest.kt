@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -42,34 +44,65 @@ class TsoFeedbackFlowTest {
     }
     private val q = FeedbackQueue { u, _, _ -> sent += u; true }
 
+    /** My Feedback as the app's AreasHost wires it: A3's per-screen entries for the two drawer rows (R-W-12 (2)). */
+    private fun feedbackScreen(source: FeedbackSource, userKey: String) = mapOf<TsoScreen, TsoScreenContent>(
+        TsoScreen.FEEDBACK_LIST to { nav, _ -> FeedbackListEntry(source, canWrite = true, userKey, nav) },
+        TsoScreen.FEEDBACK_NEW to { nav, _ -> FeedbackNewEntry(source, q, null, userKey, { "2026-10-17T10:00:00Z" }, nav) },
+    )
+
     private fun start() {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
         compose.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
                 AronTheme(AppLanguage.EN) {
-                    TsoApp(HomeUser("T", "tso1", "TSO", false, false, false), "2026-10-05", BundleStatus.Ready("b", "2026-10-05"), "0", {}, {}, feedback = src, feedbackQueue = q)
+                    TsoApp(HomeUser("T", "tso1", "TSO", false, false, false), "2026-10-05", BundleStatus.Ready("b", "2026-10-05"), "0", {}, {}, screens = feedbackScreen(src, "tso1"))
                 }
             }
         }
     }
 
-    private fun sendOne() {
-        compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.TsoTile.FEEDBACK)).performScrollTo().performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(FeedbackTags.NEW).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(FeedbackTags.TITLE).performTextInput("t")
-        compose.onNodeWithTag(FeedbackTags.DESCRIPTION).performTextInput("d")
+    /** A My Feedback row from the drawer (A1 shell step: the tile Home is retired, D-TSO-MAN-14): `feedback_list` or `feedback_new`. */
+    private fun openFromDrawer(row: String) {
+        compose.onNodeWithTag(TsoShellTags.MENU).performClick(); compose.waitForIdle()
+        // the drawer keeps the last open group: expand My Feedback only when its rows are not shown yet
+        if (compose.onAllNodesWithTag(TsoShellTags.row(row), useUnmergedTree = true).fetchSemanticsNodes().isEmpty()) {
+            compose.onNodeWithTag(TsoShellTags.row("feedback"), useUnmergedTree = true).performScrollTo().performClick(); compose.waitForIdle()
+        }
+        compose.onNodeWithTag(TsoShellTags.row(row), useUnmergedTree = true).performScrollTo().performClick(); compose.waitForIdle()
     }
 
-    @Test fun reopenAfterSendShowsAFreshForm() {
-        start(); sendOne()
+    private fun openMyFeedback() = openFromDrawer("feedback_list")
+
+    private fun fillAndSave(title: String) {
         compose.onNode(androidx.compose.ui.test.hasText("Suggestion")).performScrollTo().performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(FeedbackTags.SEND).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(FeedbackTags.QUEUED).assertExists()
-        compose.onNodeWithTag(FeedbackTags.SEND).performClick(); compose.waitForIdle() // Done -> list
-        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle() // list -> Home
-        compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.TsoTile.FEEDBACK)).performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(FeedbackTags.TITLE).performTextInput(title)
+        compose.onNodeWithTag(FeedbackTags.DESCRIPTION).performTextInput("d")
+        // Save sits under the form (screenshot 43): scroll to it first on a small screen
+        compose.onNodeWithTag(FeedbackTags.SEND).performScrollTo().performClick(); compose.waitForIdle()
+    }
+
+    private fun titleText(): String =
+        compose.onNodeWithTag(FeedbackTags.TITLE).fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.EditableText)?.text.orEmpty()
+
+    /**
+     * My feedback > Add new feedback opens the form on the list; Save queues it, toasts and returns to the list. The next form
+     * (here from the drawer's Add new feedback row) is a fresh one with a new uuid, never the saved draft.
+     */
+    @Test fun reopenAfterSendShowsAFreshForm() {
+        start()
+        openMyFeedback()
         compose.onNodeWithTag(FeedbackTags.NEW).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(FeedbackTags.QUEUED).assertDoesNotExist()
+        fillAndSave("first")
+        assertEquals(1, sent.size)
+        assertEquals("Feedback saved", ShadowToast.getTextOfLatestToast())
+        compose.onNodeWithTag(FeedbackTags.NEW).assertExists() // back on My feedback
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle() // list -> Dashboard
+        openFromDrawer("feedback_new")
+        compose.onNodeWithTag(FeedbackTags.SEND).assertExists()
+        assertEquals("", titleText()) // a fresh form, not the saved one
+        fillAndSave("second")
+        assertEquals(2, sent.size)
+        assertEquals(2, sent.toSet().size) // a new uuid for the new form
     }
 
     @Test fun nextUserOnTheSamePhoneNeverSeesTheLastUsersFeedback() {
@@ -84,15 +117,15 @@ class TsoFeedbackFlowTest {
         compose.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
                 AronTheme(AppLanguage.EN) {
-                    who.value?.let { w -> TsoApp(HomeUser("T", w, "TSO", false, false, false), "2026-10-05", BundleStatus.Ready("b", "2026-10-05"), "0", {}, {}, feedback = androidx.compose.runtime.remember(w) { source(w) }, feedbackQueue = q) }
+                    who.value?.let { w -> TsoApp(HomeUser("T", w, "TSO", false, false, false), "2026-10-05", BundleStatus.Ready("b", "2026-10-05"), "0", {}, {}, screens = feedbackScreen(androidx.compose.runtime.remember(w) { source(w) }, w)) }
                 }
             }
         }
-        compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.TsoTile.FEEDBACK)).performScrollTo().performClick(); compose.waitForIdle()
+        openMyFeedback()
         compose.onNodeWithTag(FeedbackTags.card("u-A")).assertExists()
         compose.runOnIdle { who.value = null }; compose.waitForIdle()   // logout: the TSO host leaves composition, the activity stays
         compose.runOnIdle { who.value = "B" }; compose.waitForIdle()    // next rep logs in
-        compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.TsoTile.FEEDBACK)).performScrollTo().performClick(); compose.waitForIdle()
+        openMyFeedback()
         compose.onNodeWithTag(FeedbackTags.card("u-A")).assertDoesNotExist()
         compose.onNodeWithTag(FeedbackTags.card("u-B")).assertExists()
     }

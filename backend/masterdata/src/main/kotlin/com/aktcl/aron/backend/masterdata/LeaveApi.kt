@@ -25,7 +25,6 @@ import io.ktor.server.routing.post
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import org.jdbi.v3.core.Handle
 import java.sql.ResultSet
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -36,6 +35,8 @@ import java.util.UUID
 data class LeaveDto(
     val leave_uuid: String, val user_id: Long, val leave_type_code: String, val from_date: String, val days: Int, val to_date: String, val reason: String,
     val status: String, val decided_by_user_id: Long? = null, val decided_at: String? = null,
+    // tso-manual B3 (contract 1.10.0, LV-19): read-only, for the deciding page
+    val applicant_username: String? = null, val applicant_name: String? = null, val territory_name: String? = null,
 )
 
 @Serializable
@@ -49,7 +50,11 @@ data class LeaveIn(val leave_uuid: String, val leave_type_code: String, val from
 @Serializable
 data class LeaveDecisionIn(val decision: String, val note: String? = null)
 
-class LeaveDeps(val db: Database, val reach: ReachResolver, val config: ServerConfig, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
+class LeaveDeps(
+    val db: Database, val reach: ReachResolver, val config: ServerConfig, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM,
+    /** tso-manual B3: the applicant's push after a decision commits (reason `notification`, D-TSO-MAN-26). */
+    val nudger: com.aktcl.aron.backend.platform.Nudger = com.aktcl.aron.backend.platform.Nudger.NONE,
+)
 
 private val LEAVE_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.NATIONAL, Role.ANALYST, Role.ADMIN, Role.SUPERADMIN)
 /** Matrix of docs/24 s8.5: leave decisions are A for DMO, WM, ADMIN and SUPERADMIN (the DMO is the TSO's manager, D24-55). */
@@ -71,12 +76,20 @@ fun Route.leaveRoutes(d: LeaveDeps) {
     }
 }
 
-private const val COLS = "l.client_uuid, l.user_id, l.leave_type_code, l.from_date, l.days, l.to_date, l.reason, l.status, l.decided_by, l.decided_at"
+// tso-manual B3 (LV-19): the applicant's login, name and territory (the current territory scope, else the home zone's territory).
+private const val COLS = "l.client_uuid, l.user_id, l.leave_type_code, l.from_date, l.days, l.to_date, l.reason, l.status, l.decided_by, l.decided_at, " +
+    "ap.username AS applicant_username, ap.full_name AS applicant_name, " +
+    "COALESCE((SELECT t.name FROM app.user_scope us JOIN app.territory t ON t.id = us.node_id WHERE us.user_id = l.user_id AND us.node_type = 'territory' " +
+    "AND us.valid_from <= app.dhaka_date(now()) AND (us.valid_to IS NULL OR us.valid_to > app.dhaka_date(now())) ORDER BY us.valid_from DESC, us.id DESC LIMIT 1), " +
+    "(SELECT t.name FROM app.zone hz JOIN app.territory t ON t.id = hz.territory_id WHERE hz.id = ap.home_zone_id)) AS territory_name"
+/** The leave row with its applicant (alias `ap`); every read of [COLS] selects from it. */
+private const val LEAVE_FROM = "app.leave_application l JOIN app.app_user ap ON ap.id = l.user_id"
 
 private fun mapLeave(rs: ResultSet) = LeaveDto(
     rs.getObject("client_uuid", UUID::class.java).toString(), rs.getLong("user_id"), rs.getString("leave_type_code"), rs.getObject("from_date", LocalDate::class.java).toString(),
     rs.getInt("days"), rs.getObject("to_date", LocalDate::class.java).toString(), rs.getString("reason"), rs.getString("status"),
     rs.getObject("decided_by") as Long?, rs.getObject("decided_at", OffsetDateTime::class.java)?.toInstant()?.wire(),
+    rs.getString("applicant_username"), rs.getString("applicant_name"), rs.getString("territory_name"),
 )
 
 private fun listLeave(call: ApplicationCall, d: LeaveDeps): LeavePageDto {
@@ -95,7 +108,7 @@ private fun listLeave(call: ApplicationCall, d: LeaveDeps): LeavePageDto {
         if (from != null) where += "l.to_date >= :from"
         if (to != null) where += "l.from_date <= :to"
         if (cursor != null) where += "(l.from_date, l.id) < (:c_date, :c_id)"
-        val q = h.createQuery("SELECT l.id, $COLS FROM app.leave_application l JOIN app.app_user ow ON ow.id = l.user_id WHERE ${where.joinToString(" AND ")} ORDER BY l.from_date DESC, l.id DESC LIMIT :lim")
+        val q = h.createQuery("SELECT l.id, $COLS FROM $LEAVE_FROM JOIN app.app_user ow ON ow.id = l.user_id WHERE ${where.joinToString(" AND ")} ORDER BY l.from_date DESC, l.id DESC LIMIT :lim")
             .bindOwnerReach(reach, today).bind("lim", limit + 1)
         if (p.role == Role.TSO) q.bind("me", p.userId)
         if (status != null) q.bind("status", status)
@@ -106,13 +119,6 @@ private fun listLeave(call: ApplicationCall, d: LeaveDeps): LeavePageDto {
         val page = rows.take(limit)
         LeavePageDto(page.map { it.first }, if (rows.size > limit) AdminSupport.encodeCursor(page.last().third, page.last().second) else null)
     }
-}
-
-private fun codeKnown(h: Handle, listKey: String, code: String, on: LocalDate): Boolean {
-    val total = h.createQuery("SELECT count(*) FROM app.code_list_item WHERE list_key = :k").bind("k", listKey).mapTo(Int::class.java).one()
-    if (total == 0) return true // list not seeded yet: the pattern check is all there is (reported as a gap)
-    return h.createQuery("SELECT count(*) FROM app.code_list_item WHERE list_key = :k AND code = :c AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)")
-        .bind("k", listKey).bind("c", code).bind("d", on).mapTo(Int::class.java).one() > 0
 }
 
 private suspend fun applyLeave(call: ApplicationCall, d: LeaveDeps): Pair<Boolean, LeaveDto> {
@@ -133,20 +139,20 @@ private suspend fun applyLeave(call: ApplicationCall, d: LeaveDeps): Pair<Boolea
         fun same(row: LeaveDto) = row.user_id == p.userId && row.leave_type_code == req.leave_type_code && row.from_date == from.toString() && row.days == req.days && row.reason == reason
         // Replay first: a stored leave_uuid answers the stored application (its current status), before the leave type or
         // the overlap is re-judged, so a late replay never turns into a 400 or 409.
-        h.createQuery("SELECT l.id, $COLS FROM app.leave_application l WHERE l.client_uuid = :u").bind("u", id).map { rs, _ -> mapLeave(rs) }.findOne().orElse(null)?.let { row ->
+        h.createQuery("SELECT l.id, $COLS FROM $LEAVE_FROM WHERE l.client_uuid = :u").bind("u", id).map { rs, _ -> mapLeave(rs) }.findOne().orElse(null)?.let { row ->
             if (same(row)) return@inTransaction false to row
             throw ApiProblem(ProblemCode.ERR_CONFLICT, "leave_uuid already stores a different application")
         }
-        if (!codeKnown(h, "leave_type", req.leave_type_code, from)) bad("body.leave_type_code", "unknown_code")
-        // A TSO cannot hold two pending or approved applications over the same days (a replay of the same uuid is not an overlap).
-        val overlap = h.createQuery("SELECT count(*) FROM app.leave_application l WHERE l.user_id = :uid AND l.client_uuid <> :u AND l.voided_at IS NULL AND l.status IN ('pending','approved') AND l.from_date <= :to AND l.to_date >= :f")
-            .bind("uid", p.userId).bind("u", id).bind("f", from).bind("to", from.plusDays(req.days - 1L)).mapTo(Int::class.java).one()
-        if (overlap > 0) throw ApiProblem(ProblemCode.ERR_CONFLICT, "you already have leave over these days", errors = listOf(com.aktcl.aron.backend.platform.FieldError("body.from_date", "overlap")))
+        // tso-manual B3 (D-TSO-MAN-33): the rules the leave_application sync record is judged by (LeaveApplicationHandler).
+        LeaveRules.check(h, p.userId, id, req.leave_type_code, from, req.days, today)?.let { r ->
+            if (r.conflict) throw ApiProblem(ProblemCode.ERR_CONFLICT, "you already have leave over these days", errors = listOf(com.aktcl.aron.backend.platform.FieldError("body.${r.field}", r.reason)))
+            bad("body.${r.field}", r.reason)
+        }
         val inserted = h.createUpdate(
             "INSERT INTO app.leave_application (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, leave_type_code, from_date, days, reason) " +
                 "VALUES (:u, :u, :bd, :uid, :at, :cv, :t, :f, :days, :r) ON CONFLICT (client_uuid) DO NOTHING",
         ).bind("u", id).bind("bd", today).bind("uid", p.userId).bind("at", now).bind("cv", cfgVersion).bind("t", req.leave_type_code).bind("f", from).bind("days", req.days).bind("r", reason).execute()
-        val row = h.createQuery("SELECT l.id, $COLS FROM app.leave_application l WHERE l.client_uuid = :u").bind("u", id).map { rs, _ -> mapLeave(rs) }.one()
+        val row = h.createQuery("SELECT l.id, $COLS FROM $LEAVE_FROM WHERE l.client_uuid = :u").bind("u", id).map { rs, _ -> mapLeave(rs) }.one()
         // The same uuid with different content, or another user's uuid, is a conflict, never a silent overwrite.
         if (!same(row)) {
             throw ApiProblem(ProblemCode.ERR_CONFLICT, "leave_uuid already stores a different application")
@@ -166,8 +172,9 @@ private suspend fun decide(call: ApplicationCall, d: LeaveDeps): LeaveDto {
     val reach = AdminSupport.reach(d.reach, call, d.clock)
     val today = AdminSupport.today(d.clock)
     val now = AdminSupport.utc(d.clock)
-    return d.db.jdbi.inTransaction<LeaveDto, Exception> { h ->
-        val row = h.createQuery("SELECT l.id, $COLS FROM app.leave_application l WHERE l.client_uuid = :u AND l.voided_at IS NULL FOR UPDATE OF l").bind("u", id).map { rs, _ -> mapLeave(rs) }.findOne().orElse(null)
+    var pushTo: Long? = null
+    val out = d.db.jdbi.inTransaction<LeaveDto, Exception> { h ->
+        val row = h.createQuery("SELECT l.id, $COLS FROM $LEAVE_FROM WHERE l.client_uuid = :u AND l.voided_at IS NULL FOR UPDATE OF l").bind("u", id).map { rs, _ -> mapLeave(rs) }.findOne().orElse(null)
             ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "leave application not found")
         // Out of reach and unknown are told apart only after the reach check: a caller outside the reach learns nothing.
         try { AdminSupport.ownerInReachOrThrow(reach, h, row.user_id, today) } catch (e: ApiProblem) { if (e.code == ProblemCode.ERR_OUT_OF_SCOPE) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "leave application not found") else throw e }
@@ -179,6 +186,12 @@ private suspend fun decide(call: ApplicationCall, d: LeaveDeps): LeaveDto {
         h.createUpdate("UPDATE app.leave_application SET status = :s, decided_by = :by, decided_at = :at, decision_note = :n WHERE client_uuid = :u AND status = 'pending'")
             .bind("s", wanted).bind("by", p.userId).bind("at", now).bind("n", req.note?.trim()?.ifEmpty { null }).bind("u", id).execute()
         AuditWriter.write(h, p, "leave_application", id.toString(), "decide", buildJsonObject { put("status", row.status) }, buildJsonObject { put("status", wanted); put("applicant_user_id", row.user_id) }, req.note?.trim()?.ifEmpty { null }, call.requestId)
-        h.createQuery("SELECT l.id, $COLS FROM app.leave_application l WHERE l.client_uuid = :u").bind("u", id).map { rs, _ -> mapLeave(rs) }.one()
+        // tso-manual B3 (D-TSO-MAN-26, 38; LV-22): the leave.decided event and the applicant's inbox row, in this transaction.
+        val leave = LeaveDecided.Leave(id, row.user_id, row.leave_type_code, LocalDate.parse(row.from_date), row.days, LocalDate.parse(row.to_date))
+        if (LeaveDecided.record(h, leave, wanted, p.userId, today)) pushTo = row.user_id
+        h.createQuery("SELECT l.id, $COLS FROM $LEAVE_FROM WHERE l.client_uuid = :u").bind("u", id).map { rs, _ -> mapLeave(rs) }.one()
     }
+    // After the commit only; best effort (the phone reads its inbox on the next open or pull-to-refresh anyway).
+    pushTo?.let { u -> runCatching { d.nudger.nudge(u, com.aktcl.aron.backend.platform.Inbox.PUSH_REASON) } }
+    return out
 }

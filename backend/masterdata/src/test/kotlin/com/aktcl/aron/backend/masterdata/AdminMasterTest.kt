@@ -221,7 +221,7 @@ class AdminMasterTest {
     @Test
     fun codeListsAddEditReplayIsIdempotentAndBumpsTheContentVersionOnce() = env.app {
         val list = sendA1(HttpMethod.Get, "/admin/code-lists", admin).objA1().arr("lists")
-        assertEquals(14, list.size)
+        assertEquals(16, list.size) // tso-manual B1: + ticket_issue_type, ticket_resolution_code
         val put = """{"items":[{"code":"fault_seal","label_en":"Broken seal","label_bn":"সিল ভাঙা","sort":10,"attrs":{"group":"MFC"}}],"change_reason":"Add the seal fault type"}"""
         val versions0 = env.count("SELECT count(*) FROM app.cfg_version WHERE kind = 'content'")
         val r1 = sendA1(HttpMethod.Put, "/admin/code-lists/qc_fault_type", admin, put)

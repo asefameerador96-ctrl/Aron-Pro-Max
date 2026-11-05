@@ -1,0 +1,41 @@
+TargetAchievementNode:
+  type: object
+  description: 'One child node of a target answer (`children=zone`), with the same rows as the parent (contract
+    1.10.0).
+
+    It carries its own till-date basis days (lead ruling R-F-15, D-TSO-MAN-08): on the working-days basis e and
+    n are
+
+    the working days at this node''s own path (WorkingDays.resolve: a zone holiday or emergency off counts only
+    for
+
+    that zone), so they can differ from the parent''s; on the calendar-days basis they equal the parent''s. n =
+    0 at
+
+    this node makes the till-date members of its rows null, whatever the parent''s n.
+
+    '
+  required:
+  - node
+  - elapsed_days
+  - period_days
+  - rows
+  additionalProperties: false
+  properties:
+    node:
+      $ref: '#/components/schemas/NodeRef'
+    elapsed_days:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: e of the till-date basis at this node (R-F-15).
+    period_days:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: n of the till-date basis at this node, 0..31; 0 makes the till-date members of this node's rows
+        null, whatever the parent's n (R-F-15).
+    rows:
+      type: array
+      items:
+        $ref: '#/components/schemas/TargetAchievementRow'

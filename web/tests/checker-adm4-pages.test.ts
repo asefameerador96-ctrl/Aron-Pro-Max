@@ -46,12 +46,12 @@ describe("F-ADM-028 feedback inbox", () => {
       expect(text(await action())).toMatch(FORBIDDEN);
     });
   }
-  it("CA4-4: SUPPORT is read-only: no status action link, read-only note shown, action page Forbidden", async () => {
+  // tso-manual W1 (FB-12): SUPPORT triages feedback like the API (FeedbackApi FEEDBACK_TRIAGE = SUPPORT, ADMIN, SUPERADMIN).
+  it("CA4-4: SUPPORT sets the status like the API allows: the status action link and the action page", async () => {
     ROLE = "SUPPORT";
     const m = await list();
-    expect(m).not.toContain('data-testid="action-status"');
-    expect(m).toContain(E["admin.read_only"]);
-    expect(text(await action())).toMatch(FORBIDDEN);
+    expect(m).toContain('data-testid="action-status"');
+    expect(text(await action())).not.toMatch(FORBIDDEN);
   });
   it("CA4-5: ADMIN sees the set-status link; hostile title/description are escaped", async () => {
     rows = [row({ title: "<img src=x onerror=alert(1)>", description: "<script>alert(2)</script>" })];

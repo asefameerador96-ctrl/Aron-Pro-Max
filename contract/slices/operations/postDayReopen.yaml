@@ -5,6 +5,19 @@ operation:
   - day
   operationId: postDayReopen
   summary: Audited reopen of a final-submitted zone-day (roles in cfg.day.reopen_roles).
+  description: 'D-TSO-MAN-29 (contract 1.10.0). Roles from `cfg.day.reopen_roles` (default ADMIN and SUPERADMIN),
+    within
+
+    `cfg.day.reopen_window_days` of the business date, with a reason of 10 to 500 characters. Idempotent by the
+
+    optional `client_uuid`: a repeat of the same reopen answers the first result. Audited; the zone-day''s
+
+    aggregates are marked for rebuild. A later Final Submit replay of the reopened submit''s `client_uuid` gets
+    409
+
+    `ERR_DAY_FINAL_SUBMIT_REOPENED`.
+
+    '
   requestBody:
     required: true
     content:

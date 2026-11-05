@@ -1,6 +1,15 @@
 ProblemCode:
   type: string
-  description: Stable problem codes (HTTP status in docs/24 s3.4).
+  description: 'Stable problem codes (HTTP status in docs/24 s3.4). From contract 1.10.0 (409): `ERR_TICKET_TRANSITION_INVALID`
+
+    (a support-desk status change the ticket''s state does not allow, D-TSO-MAN-20), `ERR_TICKET_COMMENTS_CLOSED`
+    (a
+
+    reply on a ticket that is no longer new or in_progress, D-TSO-MAN-21), `ERR_DAY_FINAL_SUBMIT_REOPENED` (a Final
+
+    Submit replay of a submit whose zone-day was reopened since, D-TSO-MAN-28).
+
+    '
   enum:
   - ERR_VALIDATION
   - ERR_MALFORMED_JSON
@@ -76,3 +85,6 @@ ProblemCode:
   - ERR_PUSH_DISABLED
   - ERR_ENTRY_WINDOW_CLOSED
   - ERR_GIFT_CHOICE_LOCKED
+  - ERR_TICKET_TRANSITION_INVALID
+  - ERR_TICKET_COMMENTS_CLOSED
+  - ERR_DAY_FINAL_SUBMIT_REOPENED

@@ -41,7 +41,7 @@ class CodeListsTest {
                     "WHERE i.list_key = l.list_key AND i.valid_to IS NULL) ORDER BY 1",
             ),
         )
-        assertEquals("17", c.scalar("SELECT count(*) FROM app.code_list"))
+        assertEquals("19", c.scalar("SELECT count(*) FROM app.code_list"))   // V0131: + ticket_issue_type, ticket_resolution_code
     }
 
     @Test

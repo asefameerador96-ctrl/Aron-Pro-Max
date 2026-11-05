@@ -1,0 +1,22 @@
+SupportTicketDetail:
+  type: object
+  required:
+  - ticket
+  - events
+  - attachments
+  additionalProperties: false
+  properties:
+    ticket:
+      $ref: '#/components/schemas/SupportTicket'
+    events:
+      type: array
+      maxItems: 500
+      description: Oldest first.
+      items:
+        $ref: '#/components/schemas/SupportTicketEvent'
+    attachments:
+      type: array
+      maxItems: 3
+      description: Media uuids of the ticket's own photos (read through the media read URL).
+      items:
+        $ref: '#/components/schemas/Uuid'

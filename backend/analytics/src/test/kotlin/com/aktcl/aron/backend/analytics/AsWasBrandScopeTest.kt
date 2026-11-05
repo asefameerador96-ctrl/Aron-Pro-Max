@@ -128,4 +128,45 @@ class AsWasBrandScopeTest {
         assertEquals(before2.kpis, a2.kpis)
         assertEquals(before1.by_brand, a1.by_brand); assertEquals(before2.by_brand, a2.by_brand)
     }
+
+    @Test
+    fun aSegmentWhereTheBrandOnlyMovedStockHasNoRow() {
+        val withSales = summary(brands = setOf(b("B2")))
+        assertTrue(withSales.by_segment.isNotEmpty() && withSales.kpis.net_mtk > 0)
+        // The SKU rollup also carries stock movement: a brand whose lines sold nothing must not show a zero segment.
+        exec("UPDATE dw.agg_daily_route_sku SET gross_mtk = 0, sold_qty_base = 0 WHERE sku_id = (SELECT id FROM app.sku WHERE code = 'SKU2')")
+        val s = summary(brands = setOf(b("B2")))
+        assertTrue(s.by_segment.isEmpty(), "no zero-value segment row: ${s.by_segment}")
+    }
+
+    @Test
+    fun aZoneNodeListsItsRoutesWithTheBrandValueOnlyAndTheCacheKeepsTheScopesApart() {
+        val z1 = id("SELECT id FROM app.zone WHERE code = 'Z1'")
+        val d = dash()   // one service for the three reads: the summary cache is shared, its key must carry the brand scope
+        val all = d.summary(national, "zone", z1, day, day)
+        val own = d.summary(national, "zone", z1, day, day, setOf(b("B1")))
+        val again = d.summary(national, "zone", z1, day, day)
+        assertEquals(all, again, "the brand answer did not replace the national one in the cache")
+        assertNotEquals(all.kpis.net_mtk, own.kpis.net_mtk)
+        assertTrue(own.children.isNotEmpty() && own.children.all { it.node.type == "route" }, "a zone's children are its routes")
+        assertEquals(own.kpis.net_mtk, own.children.sumOf { it.kpis.net_mtk }, "the routes carry the brand value and add up to the zone")
+        assertTrue(own.children.all { it.kpis.active_memo_count == 0 && it.kpis.target_outlets == 0 && it.kpis.login_pct == null })
+        assertTrue(all.children.sumOf { it.kpis.net_mtk } > own.children.sumOf { it.kpis.net_mtk })
+    }
+
+    @Test
+    fun aRouteOnlyCallerAndAHouseCallerAreCutToTheirBrandsToo() {
+        val r1 = id("SELECT id FROM app.route WHERE code = 'R1'")
+        val routeOnly = Reach(5, Role.TSO, day, false, emptySet(), setOf(r1), false, listOf(ReachNode("route", r1)))
+        val ctl = summary(routeOnly).by_brand.single { it.name == "BrandOne" }
+        val own = summary(routeOnly, setOf(b("B1")))
+        assertEquals(ctl.net_mtk, own.kpis.net_mtk, "the brand value on the caller's own route")
+        assertEquals(listOf(ctl.copy(memo_ratio_pct = null)), own.by_brand)
+        assertTrue(own.by_channel.isEmpty() && own.kpis.active_memo_count == 0)
+        val z1 = id("SELECT id FROM app.zone WHERE code = 'Z1'")
+        val house = Reach(6, Role.TSO, day, false, setOf(z1), emptySet(), false, listOf(ReachNode("house", 424_242L)))
+        val hCtl = summary(house).by_brand.singleOrNull { it.name == "BrandOne" }
+        assertEquals(hCtl?.net_mtk ?: 0L, summary(house, setOf(b("B1"))).kpis.net_mtk)
+        assertEquals(summary(inZones(z1), setOf(b("B1"))).kpis, summary(house, setOf(b("B1"))).kpis, "a house is its zones")
+    }
 }

@@ -1,0 +1,9 @@
+NotificationReadResult:
+  type: object
+  required:
+  - unread_count
+  additionalProperties: false
+  properties:
+    unread_count:
+      type: integer
+      minimum: 0

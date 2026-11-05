@@ -21,10 +21,10 @@ Targets sit beside the facts at the same grain, so achievement % is a division t
 | Memo | Count of memos | |
 | CPR | successful calls ÷ target outlets on the day's routes | "strike rate" in the apps |
 | BSR | memos containing a brand ÷ total memos | confirm denominator `docs/13` |
-| Geo-validation % | geo-valid calls ÷ total calls | force sales are photo-valid, excluded |
+| Geo-validation % | geo-valid calls ÷ total calls | force sales are photo-valid, excluded. **Dashboard Geo Fencing card (web national and TSO app, lead ruling R-W-04):** completed SR calls of the national route set (normal SR route-days, planned, not excused; D-TSO-MAN-09, D-B2-16): `completed_geo_valid_calls ÷ completed_calls`, a completed call being an SR call with an outcome other than abandoned or not reached, so the web card equals the TSO summary's `geo_valid_pct`. The FF Geo pins, the route pop-up and the route map stay per route (each route's own completed calls, whatever its kind) |
 | Login % | routes whose bundle was downloaded ÷ target routes | |
-| Submit % | routes uploaded ÷ target routes (apps: ÷ logged-in) | |
-| Final-submit status | zones submitted vs remaining | one/zone/day |
+| Submit % (Bikroy Joma) | routes uploaded ÷ target routes (the TSO app, `submit_of_target_pct_bp`: 1 of 5 = 20%) | the web brief's Login / Submit card also shows ÷ successful logins (`submit_pct_bp`); D-TSO-MAN-07 |
+| Final-submit status | zones submitted vs remaining | one/zone/day. One rule everywhere (lead ruling R-W-03, D-TSO-MAN-30): a service zone-day counts as submitted when it has a live `app.final_submit` row (not reopened; a TSO, a delegate or the midnight job, `via` app, web or job), read through the zone-day projection `dw.agg_daily_zone.final_submitted_at` that the worker rebuilds on every route-day dirty mark (D-B2-18); an old dw-only midnight stamp never counts (D-B2-24). The national card, the summary, login-submit `zones[]` and sync-health `by_zone` share it |
 | Achievement % | sales ÷ target (MTD or month) | bands: ≥100, 90–100, 80–90, <80 |
 | Channel mix | calls/memos split across GT/DCC/Astha/RCC/MT/HoReCa | |
 | Retention | current API returns `total_retention_*` per category | meaning to confirm `docs/13` |

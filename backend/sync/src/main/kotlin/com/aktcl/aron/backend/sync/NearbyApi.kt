@@ -78,8 +78,7 @@ internal fun nearby(d: NearbyDeps, p: AronPrincipal, q: NearbyQuery): NearbyOutl
     val now = d.clock.now()
     val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, BusinessDate.of(now.toEpochMilli()).toJavaLocalDate())
     if (q.zoneId != null && !reach.coversZone(q.zoneId)) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "zone_id is outside your reach")
-    val dLat = q.radiusM / 111_320.0
-    val dLng = q.radiusM / (111_320.0 * cos(Math.toRadians(q.lat)))
+    val (dLat, dLng) = bbox(q.lat, q.radiusM)
     val rows = d.db.readJdbi.withHandle<List<NearbyOutletDto>, Exception> { h ->
         h.createQuery(
             """
@@ -108,4 +107,15 @@ internal fun nearby(d: NearbyDeps, p: AronPrincipal, q: NearbyQuery): NearbyOutl
     // A reveal's contact numbers count against the hourly PII budget (D-AUTHZ-PII, checker B3).
     com.aktcl.aron.backend.platform.PiiReadBudget.chargeRevealed(d.db, d.config, d.clock, p, shown.size)
     return NearbyOutletsDto(now.wire(), q.radiusM, rows.size > q.maxMarkers, shown)
+}
+
+/**
+ * tso-manual B3 (D-TSO-MAN-34, PER-08): the half sides in degrees of the box that picks the candidates of a circle of
+ * [radiusM] around [lat]: the radius over the metres of one degree on the sphere [Geo.haversineM] uses
+ * (`EARTH_RADIUS_M * pi / 180`, about 111,195 m), plus a 1% margin; east-west divided by cos(lat). The haversine then
+ * decides, so an outlet at 0.9995 r north or east is inside the box and served (the old 111,320 m degree cut it off).
+ */
+internal fun bbox(lat: Double, radiusM: Int): Pair<Double, Double> {
+    val dLat = radiusM / (Geo.EARTH_RADIUS_M * Math.PI / 180.0) * 1.01
+    return dLat to dLat / cos(Math.toRadians(lat))
 }

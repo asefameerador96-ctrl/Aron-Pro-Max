@@ -42,6 +42,7 @@ dependencies {
     testImplementation(project(":android:feature-tasks"))
     testImplementation(project(":android:feature-auth"))
     testImplementation(project(":android:feature-amo")) // AmoShot (goldens of the AMO screens in their five states)
+    testImplementation(project(":android:core-map")) // MapFallbackListScreenshotTests (the shared offline list in the default look)
     testImplementation(project(":android:feature-tso")) // the TSO dashboard cards
     testImplementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit4)
@@ -53,4 +54,5 @@ dependencies {
     testImplementation(libs.roborazzi)
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.roborazzi.junit.rule)
+    testImplementation(project(":android:feature-tickets")) // tso-manual A2: TicketScreenshotTests (screenshots 11 to 18)
 }

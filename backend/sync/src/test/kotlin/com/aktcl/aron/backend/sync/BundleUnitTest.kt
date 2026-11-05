@@ -71,6 +71,20 @@ class BundleUnitTest {
         assertTrue(c.deviceValues(chain).filter { it.scope_type == "default" }.all { it.scope_id == null && it.config_version == null })
     }
 
+    /**
+     * Owner decision 2026-11-04 (D-TSO-MAN-49, V0142): the late-sale policy reaches the SR and AMO phones, which lock a
+     * final-submitted route-day only under quarantine or reject; the shipped default (accept_and_flag) travels as the
+     * registry default. Its server-only sibling, the midnight auto close switch, stays off the phone.
+     */
+    @Test
+    fun theLateSalePolicyIsInTheDeviceBundle() {
+        val values = cfg().deviceValues(ScopedConfig.Chain.of(ConfigScopeType.ZONE to 9L))
+        val policy = values.single { it.key == "cfg.day.late_sync_after_final_policy" }
+        assertEquals("accept_and_flag", policy.value.jsonPrimitive.content)
+        assertEquals("default", policy.scope_type)
+        assertTrue(values.none { it.key == "cfg.day.auto_final_submit_enabled" }, "server-only keys are not delivered")
+    }
+
     @Test
     fun everyRejectOrQuarantineCodeHasBanglaAndEnglishText() {
         RecordOutcomeCode.entries.forEach { c ->

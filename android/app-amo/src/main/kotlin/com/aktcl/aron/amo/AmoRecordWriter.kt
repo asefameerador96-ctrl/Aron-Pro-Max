@@ -181,7 +181,9 @@ class AmoRecordWriter(
      */
     suspend fun correctStock(businessDate: String, skuId: Long, right: Long, reasonCode: String, unit: String): Boolean {
         val current = com.aktcl.aron.feature.stock.StockTracker.of(db, businessDate)[skuId]?.current ?: 0L
-        val adj = com.aktcl.aron.feature.stock.StockAdjustments.correctTotal(skuId, current, right, reasonCode, unit, meta.meta(0L)) ?: return false
+        // X4a fix round (checker low): the open call's route, none outside a call (never a route a backed-out call left behind)
+        val m = meta.meta(0L).copy(routeId = routeOfCall().takeIf { it != 0L })
+        val adj = com.aktcl.aron.feature.stock.StockAdjustments.correctTotal(skuId, current, right, reasonCode, unit, m) ?: return false
         capture.recordStock(listOf(adj))
         runCatching { requestSync() }
         return true

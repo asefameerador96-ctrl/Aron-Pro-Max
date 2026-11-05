@@ -88,7 +88,8 @@ fun aronTypography(language: AppLanguage, sunlight: Boolean = false): Typography
 val LocalSunlight = staticCompositionLocalOf { false }
 
 /**
- * [dark] is a user choice (light is the field default); [sunlight] is the outdoor switch and forces tier C.
+ * [dark] is a user choice (light is the field default); [sunlight] is the outdoor switch and forces tier C. [tso] picks the TSO look
+ * (navy; Sunlight still wins).
  * [reducedMotion] is the system "remove animations" setting (read once); tier C and sunlight also reduce motion
  * (android-glass s9: tier C is a performance profile), so the kit never springs or scales on a phone that fell to C.
  */
@@ -99,6 +100,8 @@ fun AronTheme(
     sunlight: Boolean = false,
     tier: GlassTier = LocalGlassTier.current,
     reducedMotion: Boolean = rememberSystemReducedMotion(),
+    /** The TSO app (D-TSO-MAN-13): the parity kit reads [AronLook.TsoNight], or [AronLook.TsoSunlight] when [sunlight] is on. */
+    tso: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val mode = if (sunlight) AronMode.Sunlight else if (dark) AronMode.Dark else AronMode.Light
@@ -108,7 +111,12 @@ fun AronTheme(
         LocalAppLanguage provides language,
         LocalAronColors provides roles,
         LocalSunlight provides sunlight,
-        LocalAronLook provides (if (sunlight) AronLook.Sunlight else AronLook.Default),
+        LocalAronLook provides when {
+            tso && sunlight -> AronLook.TsoSunlight
+            tso -> AronLook.TsoNight
+            sunlight -> AronLook.Sunlight
+            else -> AronLook.Default
+        },
         LocalGlassTier provides resolvedTier,
         LocalReducedMotion provides (reducedMotion || resolvedTier == GlassTier.C),
     ) {

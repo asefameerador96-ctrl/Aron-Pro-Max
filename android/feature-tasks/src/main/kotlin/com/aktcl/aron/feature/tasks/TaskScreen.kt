@@ -67,6 +67,40 @@ object TaskTags {
     const val MY_REQUESTS = "tsk_my_requests"
     fun item(uuid: String) = "tsk_item_$uuid"
     fun resolve(uuid: String) = "tsk_resolve_$uuid"
+    fun type(uuid: String) = "tsk_type_$uuid"
+}
+
+/** One label of the bundle code list `task_type` (tso-manual A3, D-TSO-MAN-35): English, and Bangla once AKTCL supplies it. */
+data class TaskTypeLabel(val en: String, val bn: String?) {
+    fun text(bangla: Boolean): String = if (bangla && !bn.isNullOrBlank()) bn else en
+}
+
+/**
+ * The task type labels of the signed-in user's bundle, by code. The day object of the app ([hold] from the stored bundle
+ * section `code_lists`, after every reload) keeps them here as compose state, so the Task screen shows labels with no extra
+ * read; the TSO's task types (D-TSO-MAN-35) reach the SR card this way. Reference data only, never business figures.
+ */
+object TaskTypeLabels {
+    private val held = androidx.compose.runtime.mutableStateOf<Map<String, TaskTypeLabel>>(emptyMap())
+
+    /** The labels now (read in composition: the screen redraws when they change). */
+    val current: Map<String, TaskTypeLabel> get() = held.value
+
+    fun hold(labels: Map<String, TaskTypeLabel>) { if (held.value != labels) held.value = labels }
+
+    /** The `task_type` list of a `code_lists` section; bad items are dropped; empty when absent or unreadable. */
+    fun parse(codeLists: String?): Map<String, TaskTypeLabel> = runCatching {
+        val a = org.json.JSONArray(codeLists ?: return emptyMap())
+        val list = (0 until a.length()).map { a.getJSONObject(it) }.firstOrNull { it.optString("list_key") == "task_type" }?.optJSONArray("items") ?: return emptyMap()
+        (0 until list.length()).mapNotNull { i ->
+            runCatching {
+                val o = list.getJSONObject(i)
+                val code = o.getString("code"); val en = o.getString("label_en")
+                require(code.isNotBlank() && en.isNotBlank())
+                code to TaskTypeLabel(en, if (o.isNull("label_bn")) null else o.optString("label_bn").ifBlank { null })
+            }.getOrNull()
+        }.toMap()
+    }.getOrDefault(emptyMap())
 }
 
 private const val ONGOING = "ongoing"
@@ -86,7 +120,11 @@ private const val SWIPE_RESOLVE_FRACTION = 0.4f
  * place under "Completed".
  */
 @Composable
-fun TaskContent(state: TaskListState, onResolve: (String) -> Unit, modifier: Modifier = Modifier, onMyRequests: (() -> Unit)? = null, nowMs: Long = System.currentTimeMillis()) {
+fun TaskContent(
+    state: TaskListState, onResolve: (String) -> Unit, modifier: Modifier = Modifier, onMyRequests: (() -> Unit)? = null, nowMs: Long = System.currentTimeMillis(),
+    // tso-manual A3 (D-TSO-MAN-35, XA-01): the task type's label from the bundle code list `task_type`, never the code
+    typeLabels: Map<String, TaskTypeLabel> = TaskTypeLabels.current,
+) {
     val open = state.items.filter { it.status == ONGOING }
     val done = state.items.filter { it.status != ONGOING }
     val synced = state.syncedAt?.let { stringResource(R.string.tsk_synced_at, localizedDigits(dhakaStamp(it))) } ?: stringResource(R.string.tsk_never_synced)
@@ -118,8 +156,8 @@ fun TaskContent(state: TaskListState, onResolve: (String) -> Unit, modifier: Mod
                         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
                     ) {
                         itemsIndexed(shown, key = { _, t -> t.taskUuid }) { _, t ->
-                            if (t.status == ONGOING) SwipeToResolve(t.taskUuid, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid))) { TaskCard(t, onResolve) }
-                            else TaskCard(t, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid)))
+                            if (t.status == ONGOING) SwipeToResolve(t.taskUuid, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid))) { TaskCard(t, onResolve, typeLabels = typeLabels) }
+                            else TaskCard(t, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid)), typeLabels)
                         }
                     }
                 }
@@ -186,15 +224,20 @@ private fun SwipeToResolve(taskUuid: String, onResolve: (String) -> Unit, modifi
     )
 }
 
-/** One task on a white card: the type code in red ahead of the purple title, description (4 lines), the outlet and the due date, the status word and a "Resolve" button. */
+/** One task on a white card: the type's label in red ahead of the purple title, description (4 lines), the outlet and the due date, the status word and a "Resolve" button. */
 @Composable
-private fun TaskCard(t: TaskItem, onResolve: (String) -> Unit, modifier: Modifier = Modifier) {
+private fun TaskCard(t: TaskItem, onResolve: (String) -> Unit, modifier: Modifier = Modifier, typeLabels: Map<String, TaskTypeLabel> = emptyMap()) {
     val look = LocalAronLook.current
     val ongoing = t.status == ONGOING
+    val bangla = com.aktcl.aron.core.ui.LocalAppLanguage.current == com.aktcl.aron.core.common.AppLanguage.BN
     Column(modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            // T2: the task type code as a red tag ("OOS") ahead of the title, as on the manual's card
-            if (t.taskTypeCode.isNotBlank()) Text(t.taskTypeCode.uppercase(java.util.Locale.ROOT), style = MaterialTheme.typography.labelLarge, color = look.red)
+            // T2: the task type as a red tag ahead of the title, as on the manual's card. tso-manual A3 (D-TSO-MAN-35): the
+            // bundle's label ("Stock out"), not the code; the code shows only when the bundle has no label for it yet
+            if (t.taskTypeCode.isNotBlank()) Text(
+                typeLabels[t.taskTypeCode]?.text(bangla) ?: t.taskTypeCode.uppercase(java.util.Locale.ROOT),
+                Modifier.testTag(TaskTags.type(t.taskUuid)), style = MaterialTheme.typography.labelLarge, color = look.red,
+            )
             Text(t.title, style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         }
         StatusWord(if (ongoing) AronIcons.Clock else AronIcons.Check, stringResource(if (ongoing) R.string.tsk_status_ongoing else R.string.tsk_status_completed))

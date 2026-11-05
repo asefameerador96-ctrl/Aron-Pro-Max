@@ -25,6 +25,8 @@ DashboardSummary:
     by_category:
       type: array
       maxItems: 10
+      description: Sold quantity of sale lines only (no free or DRP lines), in base units (D-TSO-MAN-09, contract
+        1.10.0).
       items:
         $ref: '#/components/schemas/CategoryVolume'
     by_channel:

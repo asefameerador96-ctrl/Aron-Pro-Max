@@ -197,10 +197,11 @@ def asset_id_for(sha256: str) -> str:
 
 
 def asset_in_url(url: str | None) -> str | None:
-    """The asset id inside a blob read URL (`.../assets/sku_image/<id>.jpg?sas`), or None."""
+    """The asset id inside a blob read URL (`.../assets/sku_image/<id>.jpg?sas`), or None. Azure's SDK writes the blob name as one
+    path segment, so the live URL reads `.../media/assets%2Fsku_image%2F<id>.jpg`: the path is decoded before it is matched."""
     if not url:
         return None
-    m = IMAGE_PATH.search(urllib.parse.urlsplit(url).path)
+    m = IMAGE_PATH.search(urllib.parse.unquote(urllib.parse.urlsplit(url).path))
     return m.group(1) if m else None
 
 

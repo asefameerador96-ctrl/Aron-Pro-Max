@@ -102,6 +102,14 @@ fun interface VisitCommitter {
     suspend fun commit(visit: VisitEntity, fix: GeoFixEntity)
 }
 
+/** D-SRFIX-01: finds the call this phone already holds, so a failed commit resumes it instead of losing the capture. */
+fun interface StoredCallLookup {
+    /** The stored visit [visitUuid] only; null when there is none (never another call at the same outlet). */
+    suspend fun find(visitUuid: String, outletId: Long): OpenVisit?
+
+    companion object { val None = StoredCallLookup { _, _ -> null } }
+}
+
 /** Local, outbox-free record of the call in progress (R8): lets a kill and relaunch resume the visit. */
 interface OpenVisitStore {
     /** Writes the OPEN row (client uuid, outlet, trusted start time) at once; no outbox record. Idempotent per uuid. */

@@ -163,6 +163,10 @@ private fun me(call: ApplicationCall, d: AuthDeps): Me {
                     else -> null
                 },
                 brands = if (p.role == Role.BRAND) p.brands else null,
+                // tso-manual B1: drives the web Tickets menu. Lane X2 (lead ruling R-W-09 (1)): true only for a caller who may
+                // write at the desk, the rule the ticket writes enforce: the desk permission, and for an ADMIN module
+                // `support` at `w` (a read grant, or no grant, leaves the desk's writes 403 at the module gate).
+                support_desk = "support.ticket.manage" in p.permissions && (p.role != Role.ADMIN || p.modules?.get("support") == "w"),
             )
 }
 

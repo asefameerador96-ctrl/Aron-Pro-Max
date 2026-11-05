@@ -171,22 +171,30 @@ fun NationalDashboardService.routeMap(caller: NationalCaller, routeId: Long, dat
         val firstSale = a.firstSale; val lastSale = a.lastSale
         val total = if (firstSale != null && lastSale != null) java.time.Duration.between(firstSale, lastSale).seconds else null
 
-        val month = YearMonth.from(date); val wd = WorkingCalendar.workingDays(h, month, weekendDays())
+        // tso-manual B2: W at the route's zone (D-TSO-MAN-08: the zone's weekend and the declarations on its path).
+        val month = YearMonth.from(date); val wd = workingDaysAt(h, month, com.aktcl.aron.backend.platform.WorkingCalendarRepo.zonePaths(h, listOf(head.zone.id))[head.zone.id] ?: com.aktcl.aron.rules.NodePath.GLOBAL)
         val targets = h.createQuery(
             """
             SELECT p.category_code, sum(t.qty_base) FROM app.route_monthly_target t ${AsWasSql.product("p", "t.sku_id", "CAST(:d AS date)", lo = ":d", hi = ":d", plain = asWas.product)}
              WHERE t.month = :m AND t.route_id = :r GROUP BY 1
             """,
-        ).bind("m", month.atDay(1)).bind("r", routeId).bind("d", date).map { rs, _ -> rs.getString(1) to rs.getBigDecimal(2) }.list().toMap()
+        ).bind("m", month.atDay(1)).bind("r", routeId).bind("d", date).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap()
         val sold = h.createQuery(
             "SELECT p.category_code, p.base_unit, sum(s.sold_qty_base) FROM dw.agg_daily_route_sku s ${AsWasSql.product("p", "s.sku_id", "s.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWas.product)} WHERE s.route_id = :r AND s.business_date = :d GROUP BY 1, 2",
         ).bind("r", routeId).bind("d", date).map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getLong(3)) }.list().associateBy { it.first }
         val cats = h.createQuery("SELECT DISTINCT category_code, base_unit FROM dw.dim_product").map { rs, _ -> rs.getString(1) to rs.getString(2) }.list()
             .sortedBy { CATEGORY_ORDER.indexOf(it.first).let { i -> if (i < 0) 99 else i } }
+        // Lead ruling R-W-06 (tso-manual X2): the Sales card's rule from the integers T (monthly target, base units) and W, through the
+        // same functions as the card ([dailyTargetThousandths], [salesAchievementBp]); the daily target is for display only, the bp is
+        // never sales over the rounded daily target. T and W are sent, so a reader prints the bars exactly (R-W-13 (5)).
+        val w = wd.toLong()
         val tva = cats.map { (cat, unit) ->
             val s = sold[cat]?.third ?: 0L
-            val daily = targets[cat]?.takeIf { wd > 0 }?.divide(BigDecimal(wd), 3, RoundingMode.HALF_UP)
-            TargetVsAchievement(cat, unit, daily?.toPlainString(), s, daily?.takeIf { it.signum() > 0 }?.let { ratioBp(BigDecimal(s), it) })
+            val monthly = targets[cat]
+            TargetVsAchievement(
+                cat, unit, dailyTargetThousandths(monthly, w)?.let(::decimal3), s, salesAchievementBp(s, w, monthly),
+                monthly_target_qty = monthly?.let { decimal3(Math.multiplyExact(it, 1_000L)) }, working_days = wd,
+            )
         }
         val lastPlace = h.createQuery(
             """

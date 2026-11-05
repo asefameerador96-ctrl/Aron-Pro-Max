@@ -3,8 +3,9 @@ import { z } from "zod";
 import type { Schemas } from "@/contract/types";
 import { authenticate, problemResponse } from "@/lib/api/guard";
 import { rawRequest } from "@/lib/api/raw";
+import { NOTE_MAX } from "@/app/(dashboards)/leave/leave-rows"; // tso-manual X3 (R-W-13 (2)): DecisionRequest.note maxLength 500, one constant with the page
 
-const body = z.object({ leave_uuid: z.string().uuid(), decision: z.enum(["approve", "reject"]), note: z.string().trim().max(300).optional() });
+const body = z.object({ leave_uuid: z.string().uuid(), decision: z.enum(["approve", "reject"]), note: z.string().trim().max(NOTE_MAX).optional() });
 
 /** POST /api/bff/leave-decision: a DMO approves or rejects a TSO's leave (F-WEB-046). The server checks the role and the TSO's reach. */
 export async function POST(req: NextRequest): Promise<NextResponse> {

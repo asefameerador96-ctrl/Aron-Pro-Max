@@ -89,11 +89,87 @@ class NationalMapsTest {
         assertEquals(RouteMapCpr(3, 2, 1, 6667), m.cpr)
         val cig = m.target_vs_achievement.first { it.category_code == "cigarette" }
         assertEquals("100.000", cig.daily_target); assertEquals(45, cig.sales); assertEquals(4500L, cig.achievement_pct_bp)   // 2 500 / 25 working days
+        assertEquals("2500.000", cig.monthly_target_qty); assertEquals(25, cig.working_days)                                  // R-W-06: T and W sent
         assertEquals("2026-10-04T04:10:00Z", m.time_card.first_sale_time); assertEquals("2026-10-04T08:00:00Z", m.time_card.last_sale_time)
         assertEquals(13_800L, m.time_card.total_sale_seconds); assertEquals(6_900L, m.time_card.average_sale_seconds)   // 3 h 50 min over 2 successful calls
         assertEquals("CZ1", m.last_sale_place)
         assertTrue(m.outlets.all { it.contact == null })
         assertEquals(ProblemCode.ERR_NOT_FOUND, assertFailsWith<ApiProblem> { svc.routeMap(zones(z2), r1, "2026-10-04") }.code)
+    }
+
+    /**
+     * Lead ruling R-W-06 (tso-manual X2): the route map's Target vs Achievement card uses the Sales card's rule through the same
+     * functions ([dailyTargetThousandths], [salesAchievementBp]): bp = round_half_up(10000 x sales x W / T) once from the integers, the
+     * daily target T / W for display only; T (`monthly_target_qty`, a whole ".000") and W (`working_days`, at the route's zone) are
+     * sent. Hand computed with an independent Python-integer oracle (round half up).
+     */
+    @Test
+    fun routeMapTargetCardUsesTheSalesCardRule() {
+        val z1 = id("SELECT zone_id FROM app.route WHERE id = $r1")
+        fun card() = svc.routeMap(national(), r1, "2026-10-04").target_vs_achievement.single { it.category_code == "cigarette" }
+        fun sql(s: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(s) }
+        // W 26 at R1's zone: Friday the 30th declared a selling day there (25 + 1). T 2530, sales 45.
+        sql("INSERT INTO app.calendar_holiday (date, scope_type, scope_id, kind, selling_day, name_en) VALUES ('2026-10-30', 'zone', $z1, 'makeup_day', true, 'X2 make-up day')")
+        sql("UPDATE app.route_monthly_target SET qty_base = 2530 WHERE route_id = $r1")
+        val c = card()
+        assertEquals(26, c.working_days); assertEquals("2530.000", c.monthly_target_qty); assertEquals(45L, c.sales)
+        assertEquals("97.308", c.daily_target)                                           // 2530 / 26 = 97.3077 -> 97.308, rounded once
+        // 10000 x 45 x 26 / 2530 = 4624.505 -> 4625. The old rule, 45 over the rounded 97.308, gave 450000 / 97.308 = 4624.46 -> 4624.
+        assertEquals(4625L, c.achievement_pct_bp)
+        assertEquals(c.achievement_pct_bp, salesAchievementBp(45, 26, 2530), "the Sales card's function")
+        assertEquals(4624L, ratioBp(java.math.BigDecimal(45), java.math.BigDecimal("97.308")), "the old daily-target rule differs by 1 bp here")
+        // A target that sums to 0: daily "0.000", no bp (Percent.bp of a 0 whole), T still sent.
+        sql("UPDATE app.route_monthly_target SET qty_base = 0 WHERE route_id = $r1")
+        card().let { assertEquals("0.000", it.daily_target); assertNull(it.achievement_pct_bp); assertEquals("0.000", it.monthly_target_qty); assertEquals(26, it.working_days) }
+        // No working day at the zone (R-F-13): no daily target, no bp, W 0 sent, T still sent.
+        sql("UPDATE app.route_monthly_target SET qty_base = 2530 WHERE route_id = $r1")
+        sql("DELETE FROM app.calendar_holiday WHERE scope_type = 'zone'")
+        sql("INSERT INTO app.calendar_holiday (date, scope_type, scope_id, kind, selling_day, name_en) SELECT d::date, 'zone', $z1, 'emergency_off', false, 'X2 off' FROM generate_series(DATE '2026-10-01', DATE '2026-10-31', interval '1 day') d")
+        card().let { assertEquals(0, it.working_days); assertNull(it.daily_target); assertNull(it.achievement_pct_bp); assertEquals("2530.000", it.monthly_target_qty) }
+        // No target at all: T null, no daily target, no bp; W still sent.
+        sql("DELETE FROM app.calendar_holiday WHERE scope_type = 'zone'")
+        sql("DELETE FROM app.route_monthly_target WHERE route_id = $r1")
+        card().let { assertNull(it.monthly_target_qty); assertNull(it.daily_target); assertNull(it.achievement_pct_bp); assertEquals(25, it.working_days); assertEquals(45L, it.sales) }
+    }
+
+    /**
+     * Lead ruling R-W-19 (tso-manual X2): `TargetVsAchievement.monthly_target_qty` stays a Decimal3 on the wire but is always a
+     * whole number, "<n>.000": T, the sum of the route's monthly targets in the category, in base units (sticks here), never
+     * converted to packets or divided by W. Every card of every route, over targets that are no whole number of packets of 10
+     * (2507 sticks would be "250.700" packets), single sticks and the column's upper bound on two SKUs; a route without a target
+     * sends null.
+     */
+    @Test
+    fun routeMapMonthlyTargetIsAlwaysAWholeNumberOfBaseUnits() {
+        fun sql(s: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(s) }
+        val r3 = id("SELECT id FROM app.route WHERE code = 'R3'")
+        val sku1 = id("SELECT id FROM app.sku WHERE code = 'SKU1'"); val sku2 = id("SELECT id FROM app.sku WHERE code = 'SKU2'")
+        val whole = Regex("^(0|[1-9][0-9]*)\\.000$")
+        fun expected(route: Long): Map<String, Long> = fresh.db.jdbi.withHandle<Map<String, Long>, Exception> { h ->
+            h.createQuery("SELECT s.category_code, sum(t.qty_base) FROM app.route_monthly_target t JOIN app.sku s ON s.id = t.sku_id WHERE t.route_id = :r AND t.month = DATE '2026-10-01' GROUP BY 1")
+                .bind("r", route).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap()
+        }
+        fun target(route: Long, sku: Long, qty: Long) = sql(
+            "INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($route, $sku, DATE '2026-10-01', $qty, '00000000-0000-4000-8000-0000000000c1') " +
+                "ON CONFLICT (route_id, sku_id, month) DO UPDATE SET qty_base = EXCLUDED.qty_base",
+        )
+        var seen = 0
+        for ((q1, q2) in listOf(2500L to 7L, 1L to 0L, 999L to 1L, 2501L to 6L, 1_000_000_000L to 1_000_000_000L)) {
+            target(r1, sku1, q1); target(r1, sku2, q2); target(r3, sku1, q2); target(r3, sku2, q1)   // each row within the column's 0..1e9
+            for (route in listOf(r1, r2, r3)) {
+                val want = expected(route)
+                for (card in svc.routeMap(national(), route, "2026-10-04").target_vs_achievement) {
+                    val t = card.monthly_target_qty
+                    val sum = want[card.category_code]
+                    if (sum == null) { assertNull(t, "route $route ${card.category_code}: no target, no T"); continue }
+                    assertTrue(t != null && whole.matches(t), "route $route ${card.category_code}: T $t is not a whole <n>.000")
+                    assertEquals("$sum.000", t, "route $route ${card.category_code}: T is the target sum in base units")
+                    seen++
+                }
+            }
+        }
+        assertEquals("2000000000.000", svc.routeMap(national(), r1, "2026-10-04").target_vs_achievement.single { it.category_code == "cigarette" }.monthly_target_qty)
+        assertEquals(10, seen, "R1 and R3 carry a cigarette target in each of the five rounds; R2 none")
     }
 
     @Test

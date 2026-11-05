@@ -1,6 +1,7 @@
 package com.aktcl.aron.core.ui
 
 import androidx.compose.ui.graphics.Color
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.pow
@@ -162,5 +163,151 @@ class TokenContrastTest {
             m.warning, m.warningContainer, m.danger, m.dangerContainer, m.offline, m.offlineContainer, m.yesFill, m.noFill,
         ).map { Triple((it.red * 255).toInt() / 16, (it.green * 255).toInt() / 16, (it.blue * 255).toInt() / 16) }.toSet()
         assertTrue("distinct colours: ${colours.size}", colours.size >= 10)
+    }
+
+    // ---- tso-manual A1: the TSO look (D-TSO-MAN-13), computed on the night and the Sunlight roles ---------------------------------
+
+    private fun night(what: String, fg: Color, bg: Color, target: Double) {
+        val ratio = contrast(over(fg, bg), bg)
+        assertTrue("TsoNight $what: ${"%.2f".format(ratio)} < $target", ratio >= target)
+    }
+    private val tsoRoles = listOf("night" to AronNightRoles.Night, "sunlight" to AronNightRoles.Sunlight)
+
+    @Test fun tsoKeyFiguresReachSevenToOne() = tsoRoles.forEach { (name, n) ->
+        // the cyan figures (40.0, 1.7 K, 4) on both stops of the glow card and on the outline card; white ink everywhere it is drawn
+        listOf(n.glowCardStart, n.glowCardEnd, n.outlineCard, n.page).forEach { night("$name figure", n.figure, it, 7.0) }
+        listOf(n.page, n.glowCardStart, n.glowCardEnd, n.outlineCard, n.rowCard, n.field, n.drawer, n.dialogTop, n.dialogBottom).forEach {
+            night("$name ink", n.ink, it, 7.0)
+        }
+        // the gradient title on the page (both stops)
+        listOf(n.titleStart, n.titleEnd).forEach { night("$name title", it, n.page, 7.0) }
+    }
+
+    /** Sunlight keeps 7:1 on every button label (rule 14); the night look's bright-fill labels are the separate 4.5:1 group below (D-TSO-MAN-50). */
+    @Test fun tsoSunlightButtonLabelsAndNightBlueLabelsReachSevenToOne() = tsoRoles.forEach { (name, n) ->
+        if (n.solid) listOf(n.cyanStart, n.cyanEnd, n.limeStart, n.limeEnd, n.cancel, n.logoutStart, n.logoutEnd).forEach { night("$name label on bright fill", n.onBright, it, 7.0) }
+        night("$name label on blue", n.onBlue, n.blue, 7.0)
+        night("$name label on the selected pill", n.onBlue, n.pillOn, 7.0)
+    }
+
+    /**
+     * D-TSO-MAN-50 (rule 14a over rule 14 for button labels): in the NIGHT look the white bold label on the bright fills (Login cyan, Final Submit lime,
+     * Cancel green, Log Out orange) is gated at WCAG AA 4.5:1, on both stops and the midpoint of every gradient; this is a separate group from the
+     * 7:1 key-figure gate and does not loosen it. Sunlight stays at 7:1 above.
+     */
+    /** The map fallback list of the TSO look (rows 28, 29): the muted ink of a stale row and the ink of a live one on the navy page, 4.5:1. */
+    @Test fun tsoMapFallbackListInksReachFourPointFive() {
+        val n = AronNightRoles.Night
+        night("stale row muted ink on the page", AronLook.TsoNight.inkMuted, n.page, 4.5)
+        night("live row ink on the page", AronLook.TsoNight.ink, n.page, 4.5)
+    }
+
+    /** My Visit Plan's white placeholder (screenshot 34) on the field, and Assign Task's plain comment box (page colour, quiet outline): 4.5:1 / 3:1. */
+    @Test fun tsoBrightPlaceholderAndPlainBoxHoldTheirGates() {
+        val n = AronNightRoles.Night
+        night("white placeholder on the field", AronLook.TsoNight.ink, n.field, 4.5)
+        night("placeholder on the plain comment box", n.placeholder, n.page, 4.5)
+        night("plain box outline on the page", n.divider, n.page, 3.0)
+    }
+
+    /** Sunlight (TsoSunlight roles, solid): the new picker, menu and fallback-list pairs at 7:1. */
+    @Test fun tsoSunlightPickerMenuAndFallbackListPairsReachSevenToOne() {
+        val n = AronNightRoles.Sunlight
+        val look = AronLook.TsoSunlight
+        fun sun(what: String, fg: Color, bg: Color) { val r = contrast(over(fg, bg), bg); assertTrue("TsoSunlight $what: ${"%.2f".format(r)} < 7", r >= 7.0) }
+        sun("picker ink on the field", n.ink, n.field)
+        sun("picker placeholder on the field", n.placeholder, n.field)
+        sun("fallback list ink on the page", look.ink, n.page)
+        sun("fallback list muted ink on the page", look.inkMuted, n.page)
+        sun("plain comment box placeholder on the page", n.placeholder, n.page)
+    }
+
+    /** The top glow of the Leave pages (screenshots 19 to 22): white ink and the muted ink over its strongest point keep 7:1 and 4.5:1. */
+    @Test fun tsoTopGlowKeepsInkReadable() {
+        val n = AronNightRoles.Night
+        night("ink on the top glow", AronLook.TsoNight.ink, n.glowTop, 7.0)
+        night("muted ink on the top glow", AronLook.TsoNight.inkMuted, n.glowTop, 4.5)
+        night("title start on the top glow", n.titleStart, n.glowTop, 7.0)
+        night("title end on the top glow", n.titleEnd, n.glowTop, 7.0)
+        night("kit red (field errors) on the top glow", AronLook.TsoNight.red, n.glowTop, 4.5)
+        night("back disc on the top glow", n.backButton, n.glowTop, 1.5)
+    }
+
+    /** The Leave card (screenshot 19, night look only): white ink on both gradient stops 4.5:1 (day word, captions), white badge label on orange 4.5:1. */
+    @Test fun tsoLeaveCardInkAndOrangeBadgeReachFourPointFive() {
+        val n = AronNightRoles.Night
+        night("leave card ink at the start", Color.White, n.leaveStart, 4.5)
+        night("leave card ink at the end", Color.White, n.leaveEnd, 4.5)
+        night("leave card ink on the day disc", Color.White, over(n.leaveDisc, n.leaveStart), 4.5)
+        night("orange badge label", Color.White, n.badgeOrange, 4.5)
+        fun mid(a: Color, b: Color) = Color((a.red + b.red) / 2, (a.green + b.green) / 2, (a.blue + b.blue) / 2)
+        night("leave card ink at the gradient midpoint", Color.White, mid(n.leaveStart, n.leaveEnd), 4.5)
+        night("dropdown list ink", AronLook.TsoNight.ink, n.menu, 4.5)
+        night("dropdown list muted ink", AronLook.TsoNight.inkMuted, n.menu, 4.5)
+        night("dropdown list placeholder", n.placeholder, n.menu, 4.5)
+    }
+
+    /** The Final Submit route card (screenshot 25, night look only): white title, FF line and 'not due' line on the steel-blue fill, 4.5:1 (the muted ink is not used on this card). */
+    @Test fun tsoRouteCardInkReachesFourPointFive() {
+        val n = AronNightRoles.Night
+        val look = AronLook.TsoNight
+        night("route card ink", look.ink, n.routeCard, 4.5)
+    }
+
+    @Test fun tsoNightButtonLabelsOnBrightFillsReachFourPointFiveToOne() {
+        val n = AronNightRoles.Night
+        assertEquals(Color.White, n.onBright)
+        fun mid(a: Color, b: Color) = Color((a.red + b.red) / 2, (a.green + b.green) / 2, (a.blue + b.blue) / 2)
+        val ramps = listOf(n.cyanStart to n.cyanEnd, n.limeStart to n.limeEnd, n.cancel to n.cancel, n.logoutStart to n.logoutEnd)
+        ramps.forEach { (a, b) -> listOf(a, mid(a, b), b).forEach { night("night label on bright fill (4.5:1 group)", n.onBright, it, 4.5) } }
+    }
+
+    @Test fun tsoBodyAndCaptionsReachFourPointFive() = tsoRoles.forEach { (name, n) ->
+        listOf(n.page, n.outlineCard, n.rowCard, n.drawer, n.dialogBottom).forEach { night("$name inkMuted", n.inkMuted, it, 4.5) }
+        listOf(n.glowCardStart, n.glowCardEnd).forEach { night("$name card label", n.label, it, 4.5) }
+        listOf(n.positive, n.teal, n.success, n.warning, n.danger).forEach { night("$name status ink on the outline card", it, n.outlineCard, 4.5) }
+        night("$name placeholder", n.placeholder, n.field, 4.5)
+        night("$name chip", n.chipInk, n.chip, 4.5)
+        night("$name segment", n.onSegment, n.segmentOn, 4.5)
+        night("$name badge digits", n.onBadge, n.badge, 4.5)
+    }
+
+    @Test fun tsoGraphicsReachThreeToOne() = tsoRoles.forEach { (name, n) ->
+        night("$name back chevron", n.backInk, n.backButton, 3.0)
+        night("$name back button on the page", n.backButton, n.page, if (n.solid) 3.0 else 1.5)
+        night("$name home glyph", n.onFab, n.fab, 3.0)
+        night("$name drawer chevron", n.chevron, n.drawer, 3.0)
+        night("$name field edge", n.fieldEdge, n.page, 3.0)
+        night("$name ring fill on the glow card", n.ringFill, n.glowCardEnd, 3.0)
+        night("$name ring fill on the outline card", n.ringFill, n.outlineCard, 3.0)
+        night("$name bar fill on its track", n.barFillEnd, n.barTrack, 3.0)
+        night("$name value line", n.valueLine, n.outlineCard, 3.0)
+        night("$name volume line", n.volumeLine, n.outlineCard, 3.0)
+    }
+
+    @Test fun tsoSunlightIsSolidAndTenToOne() {
+        val n = AronNightRoles.Sunlight
+        assertTrue(n.solid)
+        listOf(n.page, n.outlineCard, n.glowCardStart, n.field, n.drawer).forEach { night("sunlight ink", n.ink, it, 10.0); night("sunlight figure", n.figure, it, 10.0) }
+        assertTrue(AronLook.TsoSunlight.sunlight && AronLook.TsoSunlight.night == AronNightRoles.Sunlight)
+        assertTrue(!AronLook.TsoNight.sunlight && AronLook.TsoNight.night == AronNightRoles.Night)
+    }
+
+    @Test fun tsoSharedKitRolesHoldTheirGates() {
+        val l = AronLook.TsoNight
+        listOf(l.page, l.card, l.panel, l.tileMenu).forEach { night("kit ink", l.ink, it, 7.0) }
+        listOf(l.page, l.card).forEach { night("kit inkMuted", l.inkMuted, it, 4.5); night("kit red", l.red, it, 4.5); night("kit purple text", l.purple, it, 4.5) }
+        listOf(l.barStart, l.barMid, l.barEnd).forEach { night("kit label on the primary ramp", l.onBar, it, 7.0) }
+        night("kit secondary button label", l.secondaryText, l.disabledFill, 7.0)
+        night("kit notice", l.ink, l.noticeFill, 7.0)
+    }
+
+    // tso-manual A1 step 3: the Target Status bars. The printed percent carries the figure (danger, warning, success inks, 4.5:1 on
+    // the card above); the band fill must stand out from the card at 3:1. On the night card the bright amber of screenshot 39 sits
+    // on the light track at 1.4:1 (the screenshot's colours; the percent beside it is the figure); Sunlight also holds 3:1 on the track.
+    @Test fun tsoTargetBandsReachThreeToOne() = tsoRoles.forEach { (name, n) ->
+        listOf(n.bandRed, n.bandAmber, n.bandGreen).forEach { night("$name band fill on the card", it, n.outlineCard, 3.0) }
+        if (n.solid) listOf(n.bandRed, n.bandAmber, n.bandGreen).forEach { night("$name band fill on its track", it, n.barTrack, 3.0) }
+        assertTrue("$name bands distinct", setOf(n.bandRed, n.bandAmber, n.bandGreen).size == 3)
     }
 }

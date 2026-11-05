@@ -58,6 +58,10 @@ enum class RecordType(val wire: String) {
     @SerialName("app_error") APP_ERROR("app_error"),
     @SerialName("sale_abort") SALE_ABORT("sale_abort"),
     @SerialName("consent_accept") CONSENT_ACCEPT("consent_accept"),
+    /** Contract 1.10.0 (D-TSO-MAN-18): a support ticket raised on the phone; the only way a ticket is created. */
+    @SerialName("support_ticket") SUPPORT_TICKET("support_ticket"),
+    /** Contract 1.10.0 (D-TSO-MAN-20, 21): the reporter's comment on, or close review of, its own ticket. */
+    @SerialName("support_ticket_event") SUPPORT_TICKET_EVENT("support_ticket_event"),
 }
 
 /** Roles (docs/24 s8.5). */

@@ -21,6 +21,17 @@ class ReplayFirstTest {
     @AfterAll fun tearDown() = env.close()
     private fun uuid() = UUID.randomUUID().toString()
 
+    // tso-manual B3 (D-TSO-MAN-33): overlapping leave is refused only with cfg.leave.block_overlap (default false), read
+    // by LeaveRules on the request's own handle, so the switch is a cfg_value row (closed again after the test).
+    private fun overlapBlock(on: Boolean) = if (on) {
+        env.exec(
+            "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
+                "SELECT 'cfg.leave.block_overlap', 'global', 0, 'true'::jsonb, TIMESTAMPTZ '2026-01-01T00:00:00Z', max(config_version), 'test: overlap block on' FROM app.cfg_version",
+        )
+    } else {
+        env.exec("UPDATE app.cfg_value SET effective_to = now() WHERE key = 'cfg.leave.block_overlap' AND scope_type = 'global' AND effective_to IS NULL")
+    }
+
     @Test
     fun feedbackReplayAfterTheCategoryIsRetired() = env.app {
         env.exec("INSERT INTO app.code_list_item (list_key, code, label_en, sort, valid_from) VALUES ('feedback_category', 'night_check', 'Night check', 99, DATE '2001-01-01')")
@@ -40,7 +51,9 @@ class ReplayFirstTest {
     @Test
     fun leaveReplayAfterAnOverlapAppears() = env.app {
         val id = uuid()
-        val body = """{"leave_uuid":"$id","leave_type_code":"casual","from_date":"2028-03-01","days":3,"reason":"Family"}"""
+        // tso-manual B3: inside cfg.leave.allow_ahead_days (365) of the API's system clock (was 2028-03-01).
+        val from = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Dhaka")).plusDays(120) // wall-clock-ok: the leave window is relative to the API's system clock
+        val body = """{"leave_uuid":"$id","leave_type_code":"casual","from_date":"$from","days":3,"reason":"Family"}"""
         assertEquals(HttpStatusCode.Created, sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), body).status)
         // Another pending application over the same days lands later (another phone, a migration, an admin fix).
         env.exec(
@@ -51,7 +64,10 @@ class ReplayFirstTest {
         assertEquals(HttpStatusCode.OK, replay.status)
         assertEquals(id, replay.objA3().strA3("leave_uuid"))
         assertEquals(HttpStatusCode.Conflict, sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), body.replace("Family", "Changed")).status)
-        assertEquals(HttpStatusCode.Conflict, sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), body.replace(id, uuid())).status)   // a fresh one still meets the overlap rule
+        overlapBlock(true)
+        try {
+            assertEquals(HttpStatusCode.Conflict, sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), body.replace(id, uuid())).status)   // a fresh one still meets the overlap rule
+        } finally { overlapBlock(false) }
     }
 
     @Test

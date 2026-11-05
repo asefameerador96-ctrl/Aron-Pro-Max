@@ -181,10 +181,13 @@ class OpsService(
         val routeless = if (reach.national && level == null) h.createQuery("SELECT count(*)::int FROM app.sync_quarantine WHERE status = 'open' AND route_id IS NULL").mapTo(Int::class.java).one() else 0
         val backlog = node.bind(h.createQuery("SELECT count(*)::int $openQ")).mapTo(Int::class.java).one() + routeless
         val qByZone = node.bind(h.createQuery("SELECT g.zone_id, count(*)::int $openQ AND q.business_date = :d GROUP BY 1").bind("d", date)).map { rs, _ -> rs.getLong(1) to rs.getInt(2) }.list().toMap()
+        // R-W-03 (tso-manual X2): a zone's Final Submit is the national card's and the summary's rule, [zoneSubmittedSql] (the zone-day
+        // projection of the live app.final_submit rows, D-TSO-MAN-30), never the route-day states (agg_daily_zone.final_submitted).
         val zsql = if (node.routeOnly) {
-            "SELECT zone_id, count(*) FILTER (WHERE is_target_route), count(*) FILTER (WHERE is_target_route AND successful_login), " +
-                "count(*) FILTER (WHERE is_target_route AND sales_submitted), bool_or(zone_final_submitted) FROM dw.v_route_day v WHERE business_date = :d AND v.route_id = ANY(:routes) GROUP BY zone_id"
-        } else "SELECT zone_id, target_routes, logged_in_routes, sales_submitted_routes, final_submitted FROM dw.agg_daily_zone a WHERE business_date = :d AND ${node.clause("a.zone_id", "a.route_id")}"
+            "SELECT v.zone_id, count(*) FILTER (WHERE is_target_route), count(*) FILTER (WHERE is_target_route AND successful_login), " +
+                "count(*) FILTER (WHERE is_target_route AND sales_submitted), ${zoneSubmittedSql("v.zone_id", "CAST(:d AS date)")} " +
+                "FROM dw.v_route_day v WHERE v.business_date = :d AND v.route_id = ANY(:routes) GROUP BY v.zone_id"
+        } else "SELECT a.zone_id, target_routes, logged_in_routes, sales_submitted_routes, ${zoneSubmittedSql("a.zone_id", "a.business_date")} FROM dw.agg_daily_zone a WHERE a.business_date = :d AND ${node.clause("a.zone_id", "a.route_id")}"
         val zrows = node.bind(h.createQuery(zsql).bind("d", date))
             .map { rs, _ -> rs.getLong(1) to listOf(rs.getInt(2), rs.getInt(3), rs.getInt(4), if (rs.getBoolean(5)) 1 else 0) }.list().toMap()
         val p95 = node.bind(h.createQuery("SELECT zone_id, percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM received_at - committed_at))::float8 FROM dw.fact_memo m WHERE business_date = :d AND ${node.clause("m.zone_id", "m.route_id")} GROUP BY 1").bind("d", date))
@@ -224,6 +227,7 @@ class OpsService(
         val summary = dashboards.summary(reach, level, nodeId, date, date)
         val days = db.readJdbi.withHandle<List<LoginDay>, Exception> { h ->
             val node = resolveScopedNode(h, reach, level, nodeId, from = date)
+            val asWas = AsWasSql.probe(h, date)   // a route is in the zone it had on the date (route_zone_history), not the zone it has now
             val login = DashboardSummaries.successfulLoginSql(h, "ag")   // Successful Login = login AND download AND check-in (D-REPORTS-LOGIN-01)
             node.bind(
                 h.createQuery(
@@ -231,7 +235,7 @@ class OpsService(
                     SELECT rd.*, g.route_code, g.route_name, au.username AS assigned_username, au.full_name AS assigned_user_full_name,
                            coalesce(($login), false) AS login_ok,
                            EXISTS (SELECT 1 FROM app.day_exception e WHERE e.status = 'approved' AND e.voided_at IS NULL AND rd.route_id = ANY (e.route_ids) AND rd.business_date BETWEEN e.from_date AND e.to_date) AS excused
-                      FROM app.route_day rd JOIN dw.dim_geo g ON g.route_id = rd.route_id LEFT JOIN app.app_user au ON au.id = rd.assigned_user_id
+                      FROM app.route_day rd ${AsWasSql.geo("g", "rd.route_id", "rd.business_date", lo = ":d", hi = ":d", plain = asWas.geo)} LEFT JOIN app.app_user au ON au.id = rd.assigned_user_id
                       LEFT JOIN dw.agg_daily_route ag ON ag.route_id = rd.route_id AND ag.business_date = rd.business_date
                      WHERE rd.business_date = :d AND rd.planned AND ${node.clause("g.zone_id", "g.route_id")} ORDER BY g.route_code
                     """,
@@ -250,9 +254,11 @@ class OpsService(
         val zones = db.readJdbi.withHandle<List<ZoneFinalDto>, Exception> { h ->
             val node = resolveScopedNode(h, reach, level, nodeId, from = date)
             // A route-only caller: the zones its target routes were stamped with, and each zone's Final Submit (D-BC-DASH-ROUTE-KEYED-01).
+            // R-W-03 (tso-manual X2): final_submitted by [zoneSubmittedSql], the rule of the national card and the summary.
             val sql = if (node.routeOnly) {
-                "SELECT zone_id, bool_or(zone_final_submitted) FROM dw.v_route_day v WHERE business_date = :d AND v.route_id = ANY(:routes) GROUP BY zone_id HAVING bool_or(is_target_route) ORDER BY zone_id"
-            } else "SELECT zone_id, final_submitted FROM dw.agg_daily_zone a WHERE business_date = :d AND target_routes > 0 AND ${node.clause("a.zone_id", "a.route_id")} ORDER BY zone_id"
+                "SELECT v.zone_id, ${zoneSubmittedSql("v.zone_id", "CAST(:d AS date)")} FROM dw.v_route_day v WHERE v.business_date = :d AND v.route_id = ANY(:routes) " +
+                    "GROUP BY v.zone_id HAVING bool_or(is_target_route) ORDER BY v.zone_id"
+            } else "SELECT a.zone_id, ${zoneSubmittedSql("a.zone_id", "a.business_date")} FROM dw.agg_daily_zone a WHERE a.business_date = :d AND a.target_routes > 0 AND ${node.clause("a.zone_id", "a.route_id")} ORDER BY a.zone_id"
             node.bind(h.createQuery(sql).bind("d", date))
                 .map { rs, _ -> ZoneFinalDto(rs.getLong(1), rs.getBoolean(2)) }.list()
         }

@@ -2,11 +2,14 @@ package com.aktcl.aron.backend.analytics
 
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.AuthGuardDeps
+import com.aktcl.aron.backend.platform.Reach
+import com.aktcl.aron.backend.platform.ReachNode
 import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.RegistryDefaults
 import com.aktcl.aron.contract.Role
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -15,6 +18,9 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.route
+import io.ktor.server.application.install
+import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.testing.ApplicationTestBuilder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -45,6 +51,19 @@ class OpsApiTest : ReportFixture() {
     override fun mount(r: Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {
         val dash = DashboardService(fresh.db, clock)
         r.opsRoutes(OpsDeps(OpsService(fresh.db, RegistryDefaults(), clock), dash, reach, guard, clock))
+        r.dashboardRoutes(DashboardDeps(dash, reach, guard, clock))   // the portal gate in front of it is what the BRAND test below exercises
+        // The same two handlers WITHOUT the guard, as the principal named by X-Test-Role (user 15 for BRAND): the handlers' own role checks, past the portal gate.
+        r.route("/nogate") {
+            install(createRouteScopedPlugin("TestPrincipal") {
+                onCall { call ->
+                    val role = Role.valueOf(call.request.headers["X-Test-Role"]!!)
+                    call.attributes.put(com.aktcl.aron.backend.platform.PrincipalKey, com.aktcl.aron.backend.platform.AronPrincipal(
+                        if (role == Role.BRAND) 15 else 10, "u", role, 1, "api", null, null, "web", emptyList(), false, emptyList(), "jti", java.time.Instant.parse("2026-10-05T00:00:00Z"),
+                    ))
+                }
+            })
+            dashboardHandlers(DashboardDeps(dash, reach, guard, clock))
+        }
     }
 
     private suspend fun ApplicationTestBuilder.get(uid: Long, role: Role, path: String): HttpResponse = client.get(path) { bearerAuth(TestTokens.web(uid, role)) }
@@ -119,8 +138,69 @@ class OpsApiTest : ReportFixture() {
         val own = get(14, Role.TSO, "/v1/dashboards/sync-health?business_date=2026-10-04").obj()
         assertEquals(listOf(z2), own["by_zone"]!!.jsonArray.map { it.jsonObject.s("zone_id").toLong() }); assertEquals(0, own["summary"]!!.jsonObject["pending_photos"]!!.jsonObject.i("count"))
         val ls = get(10, Role.ANALYST, "/v1/dashboards/login-submit?business_date=2026-10-04").obj()["zones"]!!.jsonArray.map { it.jsonObject }
-        assertEquals(2, ls.size); assertEquals(mapOf(z2 to "true"), ls.filter { it.s("final_submitted") == "true" }.associate { it.s("zone_id").toLong() to "true" })   // only R3 (zone 2) is final-submitted
+        // tso-manual X2 (R-W-03): R3's route-day state final_submitted alone is no Final Submit; seed_day.sql has no app.final_submit row.
+        assertEquals(2, ls.size); assertEquals(emptyList(), ls.filter { it.s("final_submitted") == "true" })
         assertEquals(listOf(z2), get(14, Role.TSO, "/v1/dashboards/login-submit?business_date=2026-10-04").obj()["zones"]!!.jsonArray.map { it.jsonObject.s("zone_id").toLong() })
+    }
+
+    /**
+     * Lead ruling R-W-03 (tso-manual X2): login-submit `zones[]` and sync-health `by_zone` say a zone is final-submitted by the rule of
+     * the national Final Submit card and the summary ([zoneSubmittedSql]: the zone-day projection of the live `app.final_submit` rows),
+     * not by the route-day states. The two rules are pulled apart here: zone 2's only route R3 is in state final_submitted with no
+     * live row, zone 1 gets a live row while its routes are not final_submitted; each change reaches the projection the way DayApi
+     * sends it (one route-day dirty mark, the worker). Then a reopened row stops counting, and an old dw-only midnight stamp
+     * (`auto_submitted`, D-B2-24) never counts. The route-only callers (D-BC-DASH-ROUTE-KEYED-01; X2 fix round, checker M1) read
+     * both lists through their own `routeOnly` SQL branches, so they are asserted beside the zone callers: R3's route-only TSO
+     * never sees zone 2 final-submitted from R3's state, R1's sees zone 1 follow the live row and the reopen.
+     */
+    @Test
+    fun zoneFinalSubmitFollowsTheLiveRowsLikeTheNationalCard() = app {
+        val r1 = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.route WHERE code = 'R1'").mapTo(Long::class.java).one() }
+        val card = NationalDashboardService(fresh.db, AronClock { java.time.Instant.parse("2026-10-04T12:00:00Z") })
+        /** login-submit `zones[]` and sync-health `by_zone`: zone -> final_submitted, as the caller reads them over HTTP. */
+        suspend fun lists(uid: Long, role: Role): Pair<Map<Long, Boolean>, Map<Long, Boolean>> {
+            val zones = get(uid, role, "/v1/dashboards/login-submit?business_date=2026-10-04").obj()["zones"]!!.jsonArray.map { it.jsonObject }
+                .associate { it.s("zone_id").toLong() to (it.s("final_submitted") == "true") }
+            val health = get(uid, role, "/v1/dashboards/sync-health?business_date=2026-10-04").obj()["by_zone"]!!.jsonArray.map { it.jsonObject }
+                .associate { it.s("zone_id").toLong() to (it.s("final_submitted") == "true") }
+            return zones to health
+        }
+        suspend fun read(uid: Long, role: Role): Triple<Map<Long, Boolean>, Map<Long, Boolean>, Int> {
+            val (zones, health) = lists(uid, role)
+            return Triple(zones, health, card.finalSubmit(NationalCaller(reaches.getValue(uid)), NationalDashboardFilter(date = "2026-10-04")).final_submitted)
+        }
+        fun dirty(route: Long, why: String) {
+            fresh.db.jdbi.useHandle<Exception> { it.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, ?)", route, day, why) }
+            AggregationWorker(fresh.db).runUntilIdle()
+        }
+        val r3 = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.route WHERE code = 'R3'").mapTo(Long::class.java).one() }
+        // Route-only TSOs (no zone in reach): 15 holds R3 (zone 2's only route), 16 holds R1 (zone 1).
+        reaches[15] = Reach(15, Role.TSO, day, false, emptySet(), setOf(r3), false, listOf(ReachNode("route", r3, "R3", "Route3")))
+        reaches[16] = Reach(16, Role.TSO, day, false, emptySet(), setOf(r1), false, listOf(ReachNode("route", r1, "R1", "Route1")))
+        assertEquals(Triple(mapOf(z1 to false, z2 to false), mapOf(z1 to false, z2 to false), 0), read(10, Role.ANALYST), "R3 final_submitted by state, no live row")
+        assertEquals(mapOf(z2 to false) to mapOf(z2 to false), lists(15, Role.TSO), "route-only R3: its state alone is no Final Submit")
+        assertEquals(mapOf(z1 to false) to mapOf(z1 to false), lists(16, Role.TSO), "route-only R1: no live row yet")
+        sql(
+            """
+            INSERT INTO app.final_submit (client_uuid, zone_id, business_date, submitted_by, submitted_at, via)
+            SELECT '00000000-0000-4000-8000-0000000c2f01', $z1, DATE '2026-10-04', u.id, TIMESTAMPTZ '2026-10-04 11:00Z', 'web' FROM app.app_user u WHERE u.username = 'sr001'
+            """.trimIndent(),
+        )
+        dirty(r1, "final_submit")
+        assertEquals(Triple(mapOf(z1 to true, z2 to false), mapOf(z1 to true, z2 to false), 1), read(10, Role.ANALYST), "zone 1's live row, its routes not final_submitted")
+        assertEquals(Triple(mapOf(z1 to true), mapOf(z1 to true), 1), read(11, Role.TSO), "the zone-1 TSO")
+        assertEquals(Triple(mapOf(z2 to false), mapOf(z2 to false), 0), read(14, Role.TSO), "the zone-2 TSO")
+        assertEquals(mapOf(z1 to true) to mapOf(z1 to true), lists(16, Role.TSO), "route-only R1: zone 1's live row, R1 not final_submitted")
+        assertEquals(mapOf(z2 to false) to mapOf(z2 to false), lists(15, Role.TSO), "route-only R3: still no live row of zone 2")
+        sql("UPDATE app.final_submit SET reopened_at = TIMESTAMPTZ '2026-10-04 12:00Z', reopened_by = 13, reopen_reason = 'X2 test reopen' WHERE zone_id = $z1")
+        dirty(r1, "reopen")
+        assertEquals(Triple(mapOf(z1 to false, z2 to false), mapOf(z1 to false, z2 to false), 0), read(10, Role.ANALYST), "a reopened row no longer counts")
+        assertEquals(mapOf(z1 to false) to mapOf(z1 to false), lists(16, Role.TSO), "route-only R1: the reopen")
+        // An old stamp of the removed dw-only midnight worker (no live row): never a Final Submit, before or without a rebuild.
+        sql("UPDATE dw.agg_daily_zone SET final_submitted_at = TIMESTAMPTZ '2026-10-04 18:00Z', auto_submitted = true WHERE business_date = DATE '2026-10-04' AND zone_id = $z2")
+        assertEquals(Triple(mapOf(z1 to false, z2 to false), mapOf(z1 to false, z2 to false), 0), read(10, Role.ANALYST), "an old midnight stamp")
+        assertEquals(mapOf(z2 to false) to mapOf(z2 to false), lists(15, Role.TSO), "route-only R3: an old midnight stamp")
+        assertEquals(r3, fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT route_id FROM dw.agg_daily_route WHERE business_date = DATE '2026-10-04' AND day_state = 'final_submitted'").mapTo(Long::class.java).one() })
     }
 
     @Test
@@ -222,4 +302,55 @@ class OpsApiTest : ReportFixture() {
     }
 
     /** docs/24 s4.6: a parked row turned final "is listed on the quarantine page"; listQuarantine: "Rejected and quarantined records". */
+
+    @Test
+    fun aNodeOutOfReachAndAnUnknownNodeAnswerTheSameBodyOnEveryNodePath() = app {
+        // D-LEAD-REPORT-SELECTOR-01: a non-national caller learns nothing from the refusal: zone 2 is real but not zone 1's TSO's, 999999 is no node; both are the same 403.
+        suspend fun refusal(path: String, level: String, node: Long): Pair<HttpStatusCode, JsonObject> =
+            get(11, Role.TSO, "/v1/dashboards/$path${if ('?' in path) "&" else "?"}level=$level&node_id=$node").let { it.status to it.obj() }
+        fun nodeId(sql: String) = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery(sql).mapTo(Long::class.java).one() }
+        // Every level: the zone outside the reach, and the territory, division and wing that hold zone 2 as well as the caller's zone 1 (a node that still holds a zone the caller cannot see).
+        val real = mapOf(
+            "zone" to z2,
+            "territory" to nodeId("SELECT territory_id FROM app.zone WHERE id = $z1"),
+            "division" to nodeId("SELECT t.division_id FROM app.zone z JOIN app.territory t ON t.id = z.territory_id WHERE z.id = $z1"),
+            "wing" to nodeId("SELECT d.wing_id FROM app.zone z JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id WHERE z.id = $z1"),
+        )
+        for (path in listOf("summary?from=2026-10-04&to=2026-10-04", "geo-validation?from=2026-10-04&to=2026-10-04", "login-submit?business_date=2026-10-04", "flagged-memos?from=2026-10-04&to=2026-10-04", "sync-health?business_date=2026-10-04")) {
+            for ((level, outside) in real) {
+                val out = refusal(path, level, outside); val unknown = refusal(path, level, 999_999)
+                assertEquals(HttpStatusCode.Forbidden, out.first, "$path $level: a real node holding a zone outside the reach")
+                assertEquals(HttpStatusCode.Forbidden, unknown.first, "$path $level: no such node")
+                assertEquals(unknown.second.s("code"), out.second.s("code"), "$path $level"); assertEquals(unknown.second.s("detail"), out.second.s("detail"), "$path $level: the same body")
+            }
+            assertEquals(HttpStatusCode.OK, get(11, Role.TSO, "/v1/dashboards/$path${if ('?' in path) "&" else "?"}level=zone&node_id=$z1").status, "$path: the caller's own zone still answers")
+        }
+    }
+
+    @Test
+    fun theBrandRolesAreRefusedAtThePortalGateAndTheHandlerChecksFailClosed() = app {
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.app_user (id, username, full_name, role, must_change_password) OVERRIDING SYSTEM VALUE VALUES (15, 'user15', 'User 15', 'BRAND', false)") }
+        reaches[15] = com.aktcl.aron.backend.platform.Reach(15, Role.BRAND, day, true, emptySet(), emptySet(), false, emptyList())
+        // Today the portal gate closes both dashboard routes to BRAND (PortalLevels.BRAND_ROUTES); opening one is the lead's and authz's call.
+        for (path in listOf("summary", "geo-validation")) {
+            val r = get(15, Role.BRAND, "/v1/dashboards/$path?from=2026-10-04&to=2026-10-04")
+            assertEquals(HttpStatusCode.Forbidden, r.status, path)
+            assertEquals("not available at this portal level", r.obj().s("detail"))
+        }
+        assertEquals(HttpStatusCode.OK, get(10, Role.ANALYST, "/v1/dashboards/geo-validation?from=2026-10-04&to=2026-10-04").status)
+        // Defence in depth, if the gate is ever opened: a BRAND user without brands and any BRAND on geo-validation are refused by the handler itself.
+        // At the handler, past the gate (a mutant that deletes either call survives the gate-level test above, which refuses first).
+        suspend fun nogate(role: Role, path: String) = client.get("/v1/nogate/dashboards/$path?from=2026-10-04&to=2026-10-04") { header("X-Test-Role", role.name) }
+        for (path in listOf("summary", "geo-validation")) assertEquals(HttpStatusCode.OK, nogate(Role.ANALYST, path).status, "the handlers answer a national user when mounted without the gate: $path")
+        val noBrandScope = nogate(Role.BRAND, "summary")   // this deployment's resolver gives a BRAND user no brand claim (null)
+        assertEquals(HttpStatusCode.Forbidden, noBrandScope.status, "requireBrandScope: a BRAND user without a brand scope reads nothing")
+        assertEquals("no brand scope", noBrandScope.obj().s("detail"))
+        val brandGeo = nogate(Role.BRAND, "geo-validation")
+        assertEquals(HttpStatusCode.Forbidden, brandGeo.status, "refuseBrandCaller: geo validation has no brand dimension")
+        assertEquals("geo validation is not available to this role", brandGeo.obj().s("detail"))
+        assertEquals(com.aktcl.aron.contract.ProblemCode.ERR_FORBIDDEN, kotlin.test.assertFailsWith<com.aktcl.aron.backend.platform.ApiProblem> { requireBrandScope(Role.BRAND, null) }.code)
+        requireBrandScope(Role.BRAND, emptySet()); requireBrandScope(Role.BRAND, setOf(1L)); requireBrandScope(Role.TSO, null)
+        assertEquals(com.aktcl.aron.contract.ProblemCode.ERR_FORBIDDEN, kotlin.test.assertFailsWith<com.aktcl.aron.backend.platform.ApiProblem> { refuseBrandCaller(Role.BRAND) }.code)
+        refuseBrandCaller(Role.TSO); refuseBrandCaller(Role.ANALYST)
+    }
 }

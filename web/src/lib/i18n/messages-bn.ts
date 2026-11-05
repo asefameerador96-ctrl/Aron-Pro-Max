@@ -1,5 +1,6 @@
 import { nationalBn } from "./messages-national-bn";
 import { w4Bn } from "./messages-wave4";
+import { tsomanBn } from "./messages-tsoman"; // tso-manual W1
 // Bangla catalogue (the default locale). Same keys as messages-en.ts; tests/i18n.test.ts enforces parity and that
 // no Bangla value is empty or equal to its English text.
 import { dashBn } from "./messages-dash-bn";
@@ -441,6 +442,7 @@ export const bn: Record<MessageKey, string> = {
   ...cfgBn,
   ...mdmBn,
   ...w4Bn,
+  ...tsomanBn, // tso-manual W1
   "menu.admin.sr_lifecycle": "এসআর জীবনচক্র",
   "lifecycle.create.title": "এসআর তৈরি করুন",
   "lifecycle.create.hint": "এসআর ভূমিকা, ফোন নম্বর ও হোম জোনসহ ব্যবহারকারী যোগ করুন। অস্থায়ী পাসওয়ার্ড একবার দেখানো হয়।",

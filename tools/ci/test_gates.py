@@ -560,5 +560,34 @@ class DatePinScan(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout)
 
 
+
+# tso-manual A1: the TSO release copy aron_tso_app_<dd_mm_yyyy>_v<versionCode>.apk (D-TSO-MAN-42, s8 row 1)
+class TsoReleaseCopyName(unittest.TestCase):
+    def run_name(self, *args):
+        return subprocess.run([sys.executable, str(HERE / "release-apks.py"), "--tso-copy-name", *args], capture_output=True, text=True)
+
+    def test_the_name_of_screenshot_1(self):
+        r = self.run_name("10025", "2026-10-29")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "aron_tso_app_29_10_2026_v10025.apk")
+
+    def test_day_and_month_are_two_digits(self):
+        self.assertEqual(self.run_name("3", "2026-01-05").stdout.strip(), "aron_tso_app_05_01_2026_v3.apk")
+
+    def test_today_in_dhaka_by_default(self):
+        r = self.run_name("7")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout.strip(), r"^aron_tso_app_\d{2}_\d{2}_\d{4}_v7\.apk$")
+
+    def test_a_bad_version_code_fails(self):
+        self.assertEqual(self.run_name("0", "2026-10-29").returncode, 2)
+        self.assertEqual(self.run_name("x", "2026-10-29").returncode, 2)
+
+    def test_the_workflow_adds_the_copy_before_the_digests(self):
+        wf = (ROOT / ".github" / "workflows" / "release-app.yml").read_text(encoding="utf-8")
+        copy = wf.index("--tso-copy-name")
+        self.assertLess(copy, wf.index("sha256sum ./*.apk > SHA256SUMS"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

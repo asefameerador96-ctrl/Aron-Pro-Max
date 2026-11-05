@@ -34,6 +34,7 @@ class AdminModulesTest {
         "indent" to ("GET /v1/indent/requests" to "POST /v1/indent/requests"),
         "leaderboard" to ("GET /v1/leaderboard" to "POST /v1/leaderboard/refresh"),
         "daily_tracking" to ("GET /v1/dashboards/daily-tracking" to "POST /v1/tasks"),
+        "support" to ("GET /v1/support/tickets" to "PATCH /v1/support/tickets/6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10"), // tso-manual B1
     )
 
     private fun split(s: String) = s.substringBefore(' ') to s.substringAfter(' ')
@@ -168,5 +169,9 @@ class AdminModulesTest {
         assertEquals("daily_tracking", AdminModules.moduleOf("POST", "/v1/risk-signals/9/review"))
         assertEquals("mdm", AdminModules.moduleOf("POST", "/v1/admin/notifications"))
         assertEquals("mdm", AdminModules.moduleOf("POST", "/v1/support/pda-upload"))
+        // tso-manual B1 (R-F-11): the ticket routes are the support desk's module, the PDA upload stays mdm.
+        assertEquals("support", AdminModules.moduleOf("GET", "/v1/support/tickets"))
+        assertEquals("support", AdminModules.moduleOf("GET", "/v1/support/tickets/summary"))
+        assertEquals("support", AdminModules.moduleOf("POST", "/v1/support/tickets/6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10/events"))
     }
 }

@@ -44,7 +44,20 @@ ALTER TABLE app.visit ENABLE TRIGGER USER;
         val s = run(10, Role.ANALYST, "final-submit-status").result()
         val z1 = s.rows().by("zone_name", "Zone1")
         assertEquals(2, z1.num("target_routes").toInt()); assertEquals(1, z1.num("in_progress").toInt()); assertEquals(1, z1.num("sales_submitted").toInt()); assertEquals("false", z1.str("zone_final"))
-        assertEquals("true", s.rows().by("zone_name", "Zone2").str("zone_final"))
+        // One Final Submit formula (R-W-03, D-TSO-MAN-53): R3 is final_submitted by route state, but with no live app.final_submit row its zone is NOT final.
+        assertEquals("false", s.rows().by("zone_name", "Zone2").str("zone_final"))
+        fresh.dataSource.connection.use { c ->
+            c.createStatement().use {
+                it.execute(
+                    "INSERT INTO app.final_submit (client_uuid, zone_id, business_date, submitted_by, submitted_at, via) " +
+                        "SELECT '00000000-0000-4000-8000-0000000c2f02', $z2, DATE '2026-10-04', u.id, TIMESTAMPTZ '2026-10-04 11:00Z', 'web' FROM app.app_user u WHERE u.username = 'sr001'",
+                )
+            }
+        }
+        AggregationWorker(fresh.db).also { w -> w.requestRebuild(day); w.runUntilIdle() }
+        val live = run(10, Role.ANALYST, "final-submit-status").result()
+        assertEquals("true", live.rows().by("zone_name", "Zone2").str("zone_final"))
+        assertEquals("false", live.rows().by("zone_name", "Zone1").str("zone_final"))
         assertEquals(setOf("R3"), run(14, Role.TSO, "final-submit-log").result().rows().map { it.str("route_code")!! }.toSet())
         assertEquals(1, run(14, Role.TSO, "final-submit-status").result().rows().size)
     }
@@ -111,6 +124,9 @@ ALTER TABLE app.visit ENABLE TRIGGER USER;
         val r1 = ss.rows().filter { it.str("route_code") == "R1" }
         assertEquals(2, r1.size); assertEquals(66.67, r1.first().num("cpr_pct")); assertEquals(34_000, r1.first().num("net_mtk").toLong())
         assertEquals(100.0, r1.single { it.str("brand_name") == "BrandOne" }.num("bsr_pct")); assertEquals(50.0, r1.single { it.str("brand_name") == "BrandTwo" }.num("bsr_pct"))
+        val b1 = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.product_node WHERE name = 'BrandOne'").mapTo(Long::class.java).one() }
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("SET session_replication_role = replica"); h.execute("DELETE FROM app.product_node WHERE id = $b1"); h.execute("SET session_replication_role = DEFAULT") }
+        assertEquals(1, run(10, Role.ANALYST, "sales-summary").result().rows().count { it.str("brand_name") == "n$b1" && it.str("route_code") == "R1" }, "a brand without a node row shows n<id>, as LEFT-01")
         // The AMO's app reads std-memo and sales-summary for its zone (F-API-017b); the other batch B reports are not for AMO.
         assertEquals(HttpStatusCode.OK, run(12, Role.AMO, "sales-summary").status)
         assertEquals(3, run(12, Role.AMO, "sales-summary").result().rows().size)           // zone 1: R1 two brands, R2 one

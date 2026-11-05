@@ -8,6 +8,7 @@ import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.FieldError
 import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.ServerConfig
+import com.aktcl.aron.backend.platform.WorkingCalendarRepo
 import com.aktcl.aron.backend.platform.authenticated
 import com.aktcl.aron.backend.platform.principal
 import com.aktcl.aron.backend.platform.receiveStrict
@@ -16,12 +17,17 @@ import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.contract.Role
 import com.aktcl.aron.rules.BusinessDate
+import com.aktcl.aron.rules.NodePath
+import com.aktcl.aron.rules.Percent
+import com.aktcl.aron.rules.Targets
+import com.aktcl.aron.rules.TillDateBasis
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import kotlinx.datetime.toJavaLocalDate
+import kotlinx.datetime.toKotlinLocalDate
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -41,6 +47,8 @@ data class DailyTrackingRow(
     val route_id: Long, val route_name: String, val zone_id: Long, val user_id: Long? = null, val user_name: String? = null, val state: String,
     val target_outlets: Int, val visited_outlets: Int, val successful_calls: Int, val active_memo_count: Int, val net_mtk: Long,
     val by_category: List<CategoryVolume> = emptyList(), val tilldate_target_achievement_pct: Double? = null, val bucket: String,
+    /** Lead ruling R-W-06 (tso-manual X2): the till-date achievement in basis points, the one figure; the float member is it / 100. */
+    val tilldate_target_achievement_bp: Long? = null,
 )
 
 @Serializable
@@ -60,9 +68,14 @@ data class TrackingAction(val action_uuid: String, val route_id: Long, val busin
 
 /**
  * Daily Tracking (F-API-015). The achievement behind the buckets is the call productivity of the route-day: successful calls divided by
- * target outlets (docs/24 s12.4 strike rate), because the target-quantity achievement belongs to the deferred target programme (docs/27);
- * `tilldate_target_achievement_pct` therefore stays null. Buckets: >= 100, 90 to < 100, 80 to < 90, < 80, exception (an approved day exception
+ * target outlets (docs/24 s12.4 strike rate). Buckets: >= 100, 90 to < 100, 80 to < 90, < 80, exception (an approved day exception
  * excuses the route), not logged in (planned, state not_started).
+ * `tilldate_target_achievement_pct` (tso-manual B2, D-TSO-MAN-05/08) is the route's cigarette STD against its till-date target: A = sold
+ * sticks of sale lines, business dates 1st..the tracked date; T' = the sum over the route's cigarette items (variants) of
+ * Targets.tillDate(T_item, e, n) on the `cfg.kpi.tilldate_basis.tso` basis (working days at the route's zone); Percent.bp(A, T') printed
+ * with two decimals. Null when the route has no cigarette target that month (T' = 0) or n = 0.
+ * `tilldate_target_achievement_bp` (lead ruling R-W-06, tso-manual X2) is that Percent.bp itself, from the integers, rounded once;
+ * the deprecated float member is the same bp / 100 (exact at two decimals), so the two never disagree.
  */
 class DailyTrackingService(private val db: Database, private val config: ServerConfig, private val clock: AronClock = AronClock.SYSTEM) {
 
@@ -97,15 +110,21 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
             // Same-time-yesterday (F-WEB-038): only for the live Dhaka day; the previous day with route rows in reach, rebuilt from login time and memo commit times.
             if (date == nowDhaka.toLocalDate()) comparator = comparator(h, node, date, nowDhaka.toLocalTime().withSecond(0).withNano(0))
             val page = rows.take(limit)
+            // Lead ruling R-W-20 (tso-manual X2): the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09), the one
+            // sales quantity of every dashboard (DashboardSummary.by_category, the national Sales card); was sold plus free.
             val cats = if (page.isEmpty()) emptyMap() else h.createQuery(
                 """
-                SELECT a.route_id, p.category_code, p.base_unit, sum(a.sold_qty_base + a.free_qty_base) qty, sum(a.gross_mtk) gross
+                SELECT a.route_id, p.category_code, p.base_unit, sum(a.sold_qty_base) qty, sum(a.gross_mtk) gross
                   FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWas.product)}
                  WHERE a.business_date = :d AND a.route_id = ANY(:rids) GROUP BY 1, 2, 3 ORDER BY 1, 2
                 """,
             ).bind("d", date).bindArray("rids", Long::class.javaObjectType, page.map { it.route_id })
                 .map { rs, _ -> rs.getLong(1) to CategoryVolume(rs.getString(2), rs.getString(3), rs.getLong(4), rs.getLong(5)) }.list().groupBy({ it.first }, { it.second })
-            page.map { it.copy(by_category = cats[it.route_id].orEmpty()) } to (if (rows.size > limit) page.last().route_id else null)
+            val tillDate = tillDateBp(h, page, date)
+            page.map { r ->
+                val bp = tillDate[r.route_id]
+                r.copy(by_category = cats[r.route_id].orEmpty(), tilldate_target_achievement_bp = bp, tilldate_target_achievement_pct = bp?.let { BigDecimal.valueOf(it, 2).toDouble() })
+            } to (if (rows.size > limit) page.last().route_id else null)
         }
         return DailyTrackingPage(clock.now().wire(), date.toString(), items, next?.let { Base64.getUrlEncoder().withoutPadding().encodeToString("r|$it".toByteArray()) }, comparator)
     }
@@ -142,6 +161,39 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
         )
     }
 
+    /**
+     * The till-date target achievement of each route on [date] in basis points (see the class comment): cigarette sticks, item till-date
+     * rounded once per variant and summed (R-F-01), one Percent.bp rounding, null without a cigarette target, when n = 0 (R-F-15) and when
+     * T' = 0. The integer is the figure (R-W-06); the float member is derived from it.
+     */
+    private fun tillDateBp(h: org.jdbi.v3.core.Handle, rows: List<DailyTrackingRow>, date: LocalDate): Map<Long, Long?> {
+        if (rows.isEmpty()) return emptyMap()
+        val ids = rows.map { it.route_id }
+        val month = java.time.YearMonth.from(date)
+        val basis = TillDateBasis.fromWire(runCatching { config.string(TargetAchievementService.BASIS_TSO) }.getOrNull())
+        val targets = h.createQuery(
+            """
+            SELECT t.route_id, p.variant_id, sum(t.qty_base) FROM app.route_monthly_target t JOIN dw.dim_product p ON p.sku_id = t.sku_id
+             WHERE t.month = :m AND t.route_id = ANY(:r) AND p.category_code = 'cigarette' GROUP BY 1, 2
+            """,
+        ).bind("m", month.atDay(1)).bindArray("r", Long::class.javaObjectType, ids).map { rs, _ -> rs.getLong(1) to rs.getLong(3) }.list().groupBy({ it.first }, { it.second })
+        val achieved = h.createQuery(
+            """
+            SELECT a.route_id, sum(a.sold_qty_base) FROM dw.agg_daily_route_sku a JOIN dw.dim_product p ON p.sku_id = a.sku_id
+             WHERE a.business_date BETWEEN :f AND :d AND a.route_id = ANY(:r) AND p.category_code = 'cigarette' GROUP BY 1
+            """,
+        ).bind("f", month.atDay(1)).bind("d", date).bindArray("r", Long::class.javaObjectType, ids).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
+        val cals = if (basis == TillDateBasis.WORKING_DAYS) WorkingCalendarRepo.load(h, month, clock.now(), config) else null
+        val paths = if (cals != null) WorkingCalendarRepo.zonePaths(h, rows.map { it.zone_id }) else emptyMap()
+        val ym = kotlinx.datetime.YearMonth(month.year, month.monthValue)
+        return rows.associate { row ->
+            val items = targets[row.route_id]
+            val days = Targets.days(basis, ym, date.toKotlinLocalDate(), cals?.at(paths[row.zone_id] ?: NodePath.GLOBAL))
+            val td = if (items == null || days.period == 0) null else items.fold(0L) { s, t -> Math.addExact(s, Targets.tillDate(t, days) ?: 0L) }
+            row.route_id to td?.let { Percent.bp((achieved[row.route_id] ?: 0L).coerceAtLeast(0L), it) }
+        }
+    }
+
     private fun bucket(exception: Boolean, state: String, loginOk: Boolean, pct: BigDecimal?): String = when {
         exception -> "exception"
         state == "not_started" || !loginOk -> "not_logged_in"
@@ -172,9 +224,9 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
                 if (s("route_id") != req.route_id.toString() || s("business_date") != req.business_date || s("note") != req.note) throw ApiProblem(ProblemCode.ERR_CONFLICT, "action_uuid already used for a different action")
                 return@inTransaction TrackingAction(req.action_uuid, req.route_id, req.business_date, req.note, by, at.wire(), (after["notified_user_ids"] as kotlinx.serialization.json.JsonArray).map { (it as kotlinx.serialization.json.JsonPrimitive).content.toLong() })
             }
-            // A route outside the caller's reach, or unknown, is 403 (no existence leak). A route the caller holds by assignment is in reach
+            // A route outside the caller's reach, or unknown, is 403 (no existence leak). The route's zone is read live from app.route (D-REPORTS-NODEASWAS-11), not from dw.dim_geo, which lags a route move by the refresh bound. A route the caller holds by assignment is in reach
             // too, so a route-only TSO acts on the routes its Daily Tracking lists (D-BC-DASH-ROUTE-KEYED-01).
-            val geo = h.createQuery("SELECT zone_id, territory_id FROM dw.dim_geo WHERE route_id = :r").bind("r", req.route_id).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.findOne().orElse(null)
+            val geo = h.createQuery("SELECT r.zone_id, z.territory_id FROM app.route r JOIN app.zone z ON z.id = r.zone_id WHERE r.id = :r").bind("r", req.route_id).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.findOne().orElse(null)
             if (geo == null || !reach.coversRoute(req.route_id, geo.first)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "route is outside your reach")
             if (stored != null) throw ApiProblem(ProblemCode.ERR_CONFLICT, "action_uuid already used for a different action")
             if (!h.createQuery("SELECT EXISTS (SELECT 1 FROM app.route_day WHERE route_id = :r AND business_date = :d)").bind("r", req.route_id).bind("d", date).mapTo(Boolean::class.java).one())
