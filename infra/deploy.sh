@@ -63,38 +63,41 @@ export ARON_DEV_SEED
 whatif_file="$(mktemp)"; migrate_log="$(mktemp)"
 worker_paused=false # set by pause_worker; resume_worker runs on every exit path (EXIT trap) and after the migrations
 # The worker (AggregationWorker) refreshes dw.dim_* and dw.fact_* continuously, so a migration that locks those tables
-# contends with it, a failure CI never sees because no worker runs there (D-OPS-MIGRATE-PAUSE-01, mechanism -02). The pause
-# sets the worker's minimum replicas to 0: the worker has no ingress and no scale rule, and Container Apps documents that
-# such an app "scales to zero and has no way of starting back up" until the minimum is raised again, so this is a
-# deterministic stop (az 2.91.0 has no `az containerapp stop`; the first version of this pause failed for that reason,
-# deploy #309). The original minimum is read from the app and restored right after the migrate job on every path (the EXIT
-# trap covers a failed deploy), before the apps are updated; the apps update then sets the template's minimum again anyway.
-# Each change is a new worker revision (Single mode): expected, pruned by maxInactiveRevisions. The API keeps serving:
-# field sync must never wait for a deploy, and the API does not write the dw tables.
+# contends with it, a failure CI never sees because no worker runs there (D-OPS-MIGRATE-PAUSE-01; mechanism -02). az 2.91.0
+# has no `az containerapp stop` (the first version of this pause failed for that reason, deploy #309), so the pause is a
+# revision of the same image with ARON_WORKER_PAUSED=true: the worker role then idles without a database connection or a
+# job (Main.kt), the revision is ready as soon as its container runs (no ingress, no probes) and Single revision mode
+# deactivates the previous revision, which drains within its termination grace. Every building block already runs on dev
+# at each deploy: `az containerapp update --set-env-vars` (the web app), the Single-mode revision switch, the same image.
+# The variable is removed right after the migrate job on every path (the EXIT trap covers a failed deploy), before the
+# apps are updated; the apps update defines the env list without it anyway. Each change is a new worker revision, pruned
+# by maxInactiveRevisions. The first deploy that carries the flag-aware image pauses nothing yet (the running image ignores
+# the variable); from the next deploy on the pause holds. The API keeps serving: field sync never waits for a deploy.
 WORKER_APP="ca-aron-${ENV_NAME}-worker"
-worker_min=""
-worker_replicas() {
-  # Replicas of every revision, the one being deactivated included: it still holds its database sessions while it drains.
-  az containerapp revision list -g "$RG" -n "$WORKER_APP" --query "[].properties.replicas" -o tsv 2>/dev/null \
+worker_previous_replicas() {
+  # Replicas of every revision but the latest: the previous revision keeps its database sessions while it drains.
+  local latest
+  latest="$(az containerapp show -g "$RG" -n "$WORKER_APP" --query properties.latestRevisionName -o tsv 2>/dev/null)" || return 0
+  az containerapp revision list -g "$RG" -n "$WORKER_APP" --query "[?name != '${latest}'].properties.replicas" -o tsv 2>/dev/null \
     | awk '{ s += $1 } END { print s + 0 }'
 }
 pause_worker() {
-  local n err cur
-  if ! cur="$(az containerapp show -g "$RG" -n "$WORKER_APP" --query properties.template.scale.minReplicas -o tsv 2>/dev/null)"; then
+  local n err
+  if ! az containerapp show -g "$RG" -n "$WORKER_APP" --query name -o tsv >/dev/null 2>&1; then
     note "worker $WORKER_APP not found (first deploy); nothing to pause"; return 0
   fi
-  if ! [[ "$cur" =~ ^[0-9]+$ ]] || [ "$cur" = 0 ]; then
-    echo "::warning::worker $WORKER_APP minimum replicas is '${cur:-unset}': not paused (nothing to restore); the migrations run beside it"
-    return 0
-  fi
-  if err="$(az containerapp update -g "$RG" -n "$WORKER_APP" --min-replicas 0 -o none 2>&1)"; then
-    worker_paused=true; worker_min="$cur"
-    for _ in $(seq 1 18); do
-      n="$(worker_replicas)"
+  if err="$(az containerapp update -g "$RG" -n "$WORKER_APP" --set-env-vars ARON_WORKER_PAUSED=true -o none 2>&1)"; then
+    worker_paused=true
+    for _ in $(seq 1 24); do
+      n="$(worker_previous_replicas)"
       [ "${n:-0}" = 0 ] && break
       sleep 5
     done
-    note "worker $WORKER_APP paused for the migrations (minimum replicas $cur -> 0; replicas still running: ${n:-0})"
+    if [ "${n:-0}" = 0 ]; then
+      note "worker $WORKER_APP paused for the migrations (ARON_WORKER_PAUSED=true revision up; the previous revision has drained)"
+    else
+      echo "::warning::worker $WORKER_APP: the paused revision is up but the previous revision still runs ${n} replica(s) after 120 s; the migrations start beside it"
+    fi
   else
     echo "::warning::could not pause $WORKER_APP before the migrations; they run beside it: ${err:-no error text}"
   fi
@@ -102,10 +105,10 @@ pause_worker() {
 resume_worker() {
   [ "$worker_paused" = true ] || return 0
   worker_paused=false
-  if az containerapp update -g "$RG" -n "$WORKER_APP" --min-replicas "$worker_min" -o none 2>/dev/null; then
-    note "worker $WORKER_APP resumed (minimum replicas back to $worker_min)"
+  if az containerapp update -g "$RG" -n "$WORKER_APP" --remove-env-vars ARON_WORKER_PAUSED -o none 2>/dev/null; then
+    note "worker $WORKER_APP resumed (ARON_WORKER_PAUSED removed; the new revision runs the jobs)"
   else
-    echo "::warning::could not resume $WORKER_APP; resume it by hand: az containerapp update -g $RG -n $WORKER_APP --min-replicas $worker_min"
+    echo "::warning::could not resume $WORKER_APP; resume it by hand: az containerapp update -g $RG -n $WORKER_APP --remove-env-vars ARON_WORKER_PAUSED"
   fi
 }
 lock_tag="aron-deploy-lock"; lock_held=false; hb_pid=""
