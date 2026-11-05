@@ -181,6 +181,12 @@ class MigrationsCheck(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         self.assertIn("replaced-unapplied: db/migrations/V0002__t2.sql allowed", out)
 
+    def test_a_version_is_replaced_once(self):
+        self.write("REPLACED-UNAPPLIED.txt", f"V0002 {'1' * 40} {'2' * 40} a\nV0002 {'2' * 40} {'3' * 40} b\n")
+        rc, out = self.check()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("lists a version twice", out)
+
     def test_the_allowlist_is_append_only(self):
         self.write("REPLACED-UNAPPLIED.txt", f"V0002 {'1' * 40} {'2' * 40} first entry\n")
         self.git("add", "-A")

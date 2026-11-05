@@ -35,6 +35,9 @@ if git cat-file -e "$base:$allow" 2>/dev/null; then
     git show "HEAD:$allow" 2>/dev/null | grep -qxF -- "$line" || err "$allow lost the line '${line:0:60}...' (the list is append-only)"
   done < <(git show "$base:$allow")
 fi
+if git show "HEAD:$allow" 2>/dev/null | awk 'NF {print $1}' | sort | uniq -d | grep -q .; then
+  err "$allow lists a version twice: a shipped migration is replaced once"
+fi
 for f in "${shipped[@]}"; do
   if ! git cat-file -e "HEAD:$f" 2>/dev/null; then
     err "$f was shipped at ${base:0:7} and is gone at HEAD: a shipped migration is never deleted or renamed"

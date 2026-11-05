@@ -25,34 +25,36 @@
 --    projector write, dw.scd2_open_version) and its facts from today are re-stamped. An updated_at-only refresh does
 --    nothing. DELETE stays row level and unchanged (dw.scd2_track).
 -- 3. v2 (after deploy #308/#309 on dev): this migration holds only the functions, triggers and indexes and takes its
---    table locks up front with a NOWAIT retry; the one full rekey of all four dimensions is V0146 and the fact-key
---    restamp is V0147, each its own transaction and idempotent, so no single transaction runs the whole backfill.
---    (The first version of this file ran all three and never completed on dev.)
+--    table locks all at once or not at all (NOWAIT retry); the one full rekey of all four dimensions is V0146 (which
+--    also re-stamps the facts of the ids whose versions changed) and V0147 completes every fact key. Each is its own
+--    transaction, idempotent and retryable, so a lost connection costs one step, not the whole backfill. (The first
+--    version of this file ran all of it in one transaction and never completed on dev.)
 -- No dw.v_* view changes: the view contract stays 1.3 (since V0140).
 
 SET lock_timeout = '5s';
 
--- ---------- -1. take the table locks up front, in the Aggregator's order, retrying while the worker holds them ----------
+-- ---------- -1. take ALL the table locks at once, or none, retrying while the worker holds any of them ----------
 -- v2 (deploy #308 failed on dev with the AggregationWorker running): the trigger swap and the index builds below need
--- ACCESS EXCLUSIVE / SHARE locks that the worker's refresh transaction can hold for longer than lock_timeout. Each table is
--- locked with NOWAIT in a short retry loop (about 60 s per table), so the migration neither waits behind a long
--- transaction nor holds a half-taken set while it waits (it holds only the locks already taken, in the worker's order).
+-- ACCESS EXCLUSIVE / SHARE locks that the worker's refresh transaction can hold for longer than lock_timeout. The whole
+-- set (the eight dw dimension and version tables, and app.zone for the zone trigger of section 3b) is locked by ONE
+-- LOCK ... NOWAIT statement inside a sub-transaction: if any table is busy the sub-transaction aborts and releases every
+-- lock it took, the migration sleeps holding nothing, and retries (about 60 s in all, then it raises). It never waits
+-- while holding a part of the set, so it cannot sit between the worker's lock order (the worker reads the version tables
+-- before dw.dim_geo) and its own.
 DO $$
-DECLARE t text; n int;
+DECLARE n int := 0;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['dw.dim_geo', 'dw.dim_geo_version', 'dw.dim_product', 'dw.dim_product_version',
-                           'dw.dim_outlet', 'dw.dim_outlet_version', 'dw.dim_user', 'dw.dim_user_version'] LOOP
-    n := 0;
-    LOOP
-      BEGIN
-        EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE NOWAIT', t);
-        EXIT;
-      EXCEPTION WHEN lock_not_available THEN
-        n := n + 1;
-        IF n >= 120 THEN RAISE EXCEPTION 'V0144: % stayed locked for 60 s (is the worker paused?)', t; END IF;
-        PERFORM pg_sleep(0.5);
-      END;
-    END LOOP;
+  LOOP
+    BEGIN
+      LOCK TABLE dw.dim_geo, dw.dim_geo_version, dw.dim_product, dw.dim_product_version,
+                 dw.dim_outlet, dw.dim_outlet_version, dw.dim_user, dw.dim_user_version IN ACCESS EXCLUSIVE MODE NOWAIT;
+      LOCK TABLE app.zone IN SHARE ROW EXCLUSIVE MODE NOWAIT;
+      EXIT;
+    EXCEPTION WHEN lock_not_available THEN
+      n := n + 1;
+      IF n >= 120 THEN RAISE EXCEPTION 'V0144: the dw dimension tables or app.zone stayed locked for 60 s (is the worker paused?)'; END IF;
+      PERFORM pg_sleep(0.5);
+    END;
   END LOOP;
 END $$;
 
@@ -198,11 +200,14 @@ BEGIN
   END IF;
   FOREACH t IN ARRAY ARRAY['fact_memo', 'fact_visit'] LOOP
     -- aron.rekey_skip_locked = on (the migration only): rows another transaction holds are skipped, never waited for (no
-    -- deadlock with the worker); the migration's completeness pass repeats until none is left.
+    -- wait while holding table locks); the migration's completeness pass repeats until none is left. Only the wrong
+    -- rows are locked. The setting is a plain custom GUC: a session that sets it makes its own trigger-path restamps
+    -- skip locked rows (low risk, no completeness pass); nothing in Aron sets it outside V0146/V0147.
     EXECUTE format('UPDATE dw.%1$I f SET %2$I = dw.%3$I(f.%4$I, f.business_date), updated_at = now()
                      WHERE f.%4$I = ANY ($1) AND f.business_date >= $2 AND f.%2$I IS DISTINCT FROM dw.%3$I(f.%4$I, f.business_date)
                        AND (coalesce(current_setting(''aron.rekey_skip_locked'', true), '''') <> ''on''
-                            OR (f.tableoid, f.ctid) IN (SELECT l.tableoid, l.ctid FROM dw.%1$I l WHERE l.%4$I = ANY ($1) AND l.business_date >= $2 FOR UPDATE SKIP LOCKED))',
+                            OR (f.tableoid, f.ctid) IN (SELECT l.tableoid, l.ctid FROM dw.%1$I l WHERE l.%4$I = ANY ($1) AND l.business_date >= $2
+                                       AND l.%2$I IS DISTINCT FROM dw.%3$I(l.%4$I, l.business_date) FOR UPDATE SKIP LOCKED))',
                    t, c.fact_key, c.key_fn, c.natural_key) USING p_ids, coalesce(p_from, '-infinity'::date);
     GET DIAGNOSTICS n = ROW_COUNT;
     tot := tot + n;
