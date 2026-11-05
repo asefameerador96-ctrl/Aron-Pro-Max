@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Read-only diagnostics of the dev rehearsal environment (D-OPS-DIAGNOSE-01), run by .github/workflows/ops-diagnose.yml
+# with the deploy identity: the PostgreSQL server (state, metrics, parameters, server-log excerpts when downloadable,
+# activity log), the migrate job's and the worker's console and system logs from Log Analytics, and the worker app's
+# state. Everything printed is metadata, metrics or log excerpts; never a secret, connection string or Key Vault value.
+# This script changes nothing in Azure: it only lists, shows, queries and downloads logs.
+#
+# Usage: AZURE_RESOURCE_GROUP=rg-aron-dev infra/scripts/diagnose.sh <since-utc> <until-utc> [job-prefix] [worker-app]
+set -uo pipefail
+RG="${AZURE_RESOURCE_GROUP:?set AZURE_RESOURCE_GROUP}"
+SINCE="${1:?since (UTC, e.g. 2026-11-05T09:40:00Z)}"
+UNTIL="${2:?until (UTC)}"
+JOB_PREFIX="${3:-caj-aron-dev-migrate}"
+WORKER_APP="${4:-ca-aron-dev-worker}"
+section() { printf '\n== %s\n' "$*"; }
+try() { "$@" 2>&1 || echo "(command failed: $*)"; }
+
+section "az version"
+az version -o tsv 2>/dev/null | head -1 || true
+section "containerapp start/stop commands available in this az"
+az containerapp -h 2>&1 | grep -E '^\s+(start|stop)\b' || echo "(no start/stop subcommands listed)"
+
+section "PostgreSQL server"
+server="$(az postgres flexible-server list -g "$RG" --query "[?starts_with(name,'psql-aron-')].name | [0]" -o tsv 2>/dev/null || true)"
+if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
+  echo "server: $server"
+  try az postgres flexible-server show -g "$RG" -n "$server" --query '{state:state, version:version, sku:sku.name, tier:sku.tier, storageGb:storage.storageSizeGb, ha:highAvailability.mode, haState:highAvailability.state, maintenance:maintenanceWindow.customWindow}' -o json
+  sid="$(az postgres flexible-server show -g "$RG" -n "$server" --query id -o tsv 2>/dev/null || true)"
+  section "PostgreSQL parameters that bound a migration"
+  for p in work_mem shared_buffers maintenance_work_mem temp_buffers statement_timeout idle_in_transaction_session_timeout lock_timeout log_min_duration_statement logfiles.download_enable logfiles.retention_days max_connections; do
+    v="$(az postgres flexible-server parameter show -g "$RG" -s "$server" -n "$p" --query value -o tsv 2>/dev/null || echo '?')"
+    printf '%-40s %s\n' "$p" "$v"
+  done
+  section "PostgreSQL metrics $SINCE .. $UNTIL (PT1M, max)"
+  if [ -n "$sid" ]; then
+    try az monitor metrics list --resource "$sid" --metric cpu_percent memory_percent active_connections connections_failed is_db_alive storage_percent iops \
+      --start-time "$SINCE" --end-time "$UNTIL" --interval PT1M --aggregation Maximum \
+      --query "value[].{metric:name.value, points:timeseries[0].data[?maximum!=null].[timeStamp,maximum]}" -o json | head -400
+  fi
+  section "PostgreSQL activity log $SINCE .. $UNTIL (platform events: restarts, failovers, maintenance)"
+  if [ -n "$sid" ]; then
+    try az monitor activity-log list --resource-id "$sid" --start-time "$SINCE" --end-time "$UNTIL" \
+      --query "[].{time:eventTimestamp, op:operationName.localizedValue, status:status.localizedValue, sub:subStatus.localizedValue, caller:caller}" -o table
+  fi
+  section "PostgreSQL server log files (last 24 h) and excerpts in the window"
+  files="$(az postgres flexible-server server-logs list -g "$RG" -n "$server" --file-last-written 24 --query "[].name" -o tsv 2>&1 || true)"
+  if [ -z "$files" ] || printf '%s' "$files" | grep -qi 'error\|not\|disabled'; then
+    echo "(no downloadable server logs: ${files:-none}; logfiles.download_enable is probably off)"
+  else
+    tmp="$(mktemp -d)"
+    for f in $files; do
+      az postgres flexible-server server-logs download -g "$RG" -n "$server" --name "$f" --out "$tmp" -o none 2>/dev/null || continue
+    done
+    # Severity lines and slow statements only; DETAIL/parameter lines are dropped so no row values are printed.
+    find "$tmp" -type f | while read -r lf; do
+      echo "-- $(basename "$lf")"
+      grep -E 'FATAL|PANIC|terminat|out of memory|Killed|database system|server process|checkpoint|could not|duration: [0-9]{5,}' "$lf" \
+        | grep -v -E 'DETAIL|parameters:' | awk -v s="${SINCE:0:16}" -v u="${UNTIL:0:16}" '{ t=substr($1,1,16); if (t >= s && t <= u) print substr($0,1,200) }' | head -80
+    done
+    rm -rf "$tmp"
+  fi
+fi
+
+section "Log Analytics: console log of job executions starting with $JOB_PREFIX in the window"
+ws="$(az monitor log-analytics workspace list -g "$RG" --query "[0].customerId" -o tsv 2>/dev/null || true)"
+if [ -z "$ws" ]; then echo "(no Log Analytics workspace in $RG)"; else
+  q="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleLogs
+     | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
+     | extend exec = coalesce(column_ifexists('ContainerGroupName_s', ''), column_ifexists('ContainerGroupName', '')),
+              line = coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', ''))
+     | where exec startswith '$JOB_PREFIX' | order by TimeGenerated asc | project TimeGenerated, exec, line | take 400"
+  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, exec, line]" -o tsv | cut -c1-400
+  section "Log Analytics: system log (platform reasons) for $JOB_PREFIX and $WORKER_APP in the window"
+  q="union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppSystemLogs
+     | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
+     | where * contains '$JOB_PREFIX' or * contains '$WORKER_APP'
+     | extend line = strcat(coalesce(column_ifexists('Reason_s', ''), column_ifexists('Reason', '')), ': ',
+                            coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
+     | order by TimeGenerated asc | project TimeGenerated, line | take 200"
+  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | cut -c1-300
+fi
+
+section "worker app $WORKER_APP"
+try az containerapp show -g "$RG" -n "$WORKER_APP" --query '{running:properties.runningStatus, provisioning:properties.provisioningState, latest:properties.latestRevisionName, latestReady:properties.latestReadyRevisionName, mode:properties.configuration.activeRevisionsMode}' -o json
+try az containerapp revision list -g "$RG" -n "$WORKER_APP" --query "[?properties.active].{name:name, replicas:properties.replicas, running:properties.runningState, created:properties.createdTime}" -o table
+echo
+echo "diagnose: done (read-only)"
