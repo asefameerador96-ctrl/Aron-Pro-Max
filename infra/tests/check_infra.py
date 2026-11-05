@@ -702,6 +702,33 @@ class Workflows(unittest.TestCase):
         self.assertIn('[ "$attempt" -eq 1 ] && [ "$status" = Failed ]', block)
         self.assertIn("FlywaySqlUnableToConnectToDbException|Connection is not available, request timed out", block)
 
+    def test_deploy_hold_marker_stops_the_deploy_before_the_lock(self):
+        # D-OPS-DEPLOY-HOLD-01: with infra/migrations.hold present nothing is deployed and no migration attempted; the
+        # run ends green with a HELD summary row; a rollback ignores the hold. The check sits before the lock section.
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn('if [ -f infra/migrations.hold ] && [ -z "$ROLLBACK_SHA" ]; then', d)
+        self.assertIn('summary "| Deploy | HELD (infra/migrations.hold): ${reason} |"', d)
+        self.assertLess(d.index("infra/migrations.hold"), d.index("# ---"), "the hold is checked before the lock is taken")
+        self.assertLess(d.index("summary() {"), d.index("if [ -f infra/migrations.hold ]"), "summary() exists before the hold uses it")
+
+    def test_ops_diagnose_is_read_only_and_integration_branch_only(self):
+        # D-OPS-DIAGNOSE-01: the diagnostics workflow signs in as the deploy identity on the integration branch only and
+        # its script never changes Azure (no update/start/stop/restart/delete/job start; the only "stop" text is a --help grep).
+        w = (WORKFLOWS / "ops-diagnose.yml").read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:", w)
+        self.assertNotIn("push:", w)
+        self.assertIn("environment: azure-dev", w)
+        self.assertIn('[ "${GITHUB_REF}" = "refs/heads/claude/wonderful-thompson-k6ejnf" ]', w)
+        self.assertIn("uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906", w)
+        self.assertIn("uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", w)
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        sh = "\n".join(l for l in sh.splitlines() if not l.lstrip().startswith("#"))  # commands only, not comments
+        for verb in ("containerapp update", "containerapp start ", "containerapp stop ", "containerapp restart", "job start",
+                     "az deployment", "delete", "revision activate", "revision deactivate", "secret set", "keyvault secret"):
+            self.assertNotIn(verb, sh, f"diagnose.sh must not run: {verb}")
+        self.assertIn("grep -v -E 'DETAIL|parameters:'", sh, "server-log excerpts drop row values")
+        self.assertIn("set -uo pipefail", sh)
+
     def test_deploy_holds_one_lock_for_the_whole_deploy(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         body = d[d.index("# ---"):]

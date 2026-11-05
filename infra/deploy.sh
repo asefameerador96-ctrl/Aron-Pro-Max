@@ -70,11 +70,11 @@ worker_paused=false # set by pause_worker; resume_worker runs on every exit path
 # serving: field sync must never wait for a deploy, and the API does not write the dw tables.
 WORKER_APP="ca-aron-${ENV_NAME}-worker"
 pause_worker() {
-  local n
+  local n err
   if ! az containerapp show -g "$RG" -n "$WORKER_APP" --query name -o tsv >/dev/null 2>&1; then
     note "worker $WORKER_APP not found (first deploy); nothing to pause"; return 0
   fi
-  if az containerapp stop -g "$RG" -n "$WORKER_APP" -o none 2>/dev/null; then
+  if err="$(az containerapp stop -g "$RG" -n "$WORKER_APP" -o none 2>&1)"; then
     worker_paused=true
     for _ in $(seq 1 12); do
       n="$(az containerapp replica list -g "$RG" -n "$WORKER_APP" --query 'length(@)' -o tsv 2>/dev/null || echo 0)"
@@ -83,7 +83,7 @@ pause_worker() {
     done
     note "worker $WORKER_APP stopped for the migrations (replicas left: ${n:-0})"
   else
-    echo "::warning::could not stop $WORKER_APP before the migrations; they run beside it"
+    echo "::warning::could not stop $WORKER_APP before the migrations; they run beside it: ${err:-no error text}"
   fi
 }
 resume_worker() {
@@ -126,6 +126,17 @@ trap 'rm -f "$whatif_file" "$migrate_log"; resume_worker; release_lock' EXIT
 # A cancelled or timed-out job gets SIGINT/SIGTERM before SIGKILL: exit at once so the EXIT trap releases the lock.
 trap 'exit 130' INT TERM
 summary() { [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "$*" >> "$GITHUB_STEP_SUMMARY"; echo "$*"; }
+
+# A deploy hold (D-OPS-DEPLOY-HOLD-01): while infra/migrations.hold exists, nothing is deployed and no migration is
+# attempted; the run ends green with a loud HELD row so the integration branch does not go red for a known, held
+# condition. The file names the reason and who lifts it. A rollback (ROLLBACK_SHA) ignores the hold: an earlier image
+# without migrations is exactly what a hold wants available.
+if [ -f infra/migrations.hold ] && [ -z "$ROLLBACK_SHA" ]; then
+  reason="$(head -c 400 infra/migrations.hold | tr '\n' ' ')"
+  summary "| Deploy | HELD (infra/migrations.hold): ${reason} |"
+  echo "::warning::deploy of $SHA HELD by infra/migrations.hold; nothing was deployed and no migration was attempted"
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------------------------------------- lock
 # One deploy at a time per group, held for the WHOLE deploy (infra, images, migrations, apps), because a deploy has

@@ -1,0 +1,71 @@
+# Read-only diagnostics of the dev rehearsal environment (D-OPS-DIAGNOSE-01): infra/scripts/diagnose.sh prints the
+# PostgreSQL server state, metrics, parameters and server-log excerpts, the migrate job's and worker's console and
+# system logs from Log Analytics, and the worker app's state for a UTC window. It changes nothing in Azure.
+#
+# Manual only, integration branch only (the GitHub environment azure-dev deploys from that branch only), environment
+# azure-dev with the deploy identity (OIDC). The output goes to the job log of a public repository: the script prints
+# metadata, metrics and log excerpts only, never a secret, connection string or Key Vault value, and drops DETAIL and
+# parameter lines from server logs. Actions are pinned by commit SHA (release tag in the comment).
+
+name: ops-diagnose
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: Window start, UTC (e.g. 2026-11-05T09:40:00Z); empty = 3 hours ago
+        type: string
+        default: ""
+      until:
+        description: Window end, UTC; empty = now
+        type: string
+        default: ""
+      job_prefix:
+        description: Container Apps job execution prefix to read console logs for
+        type: string
+        default: caj-aron-dev-migrate
+      worker_app:
+        description: The worker container app to describe
+        type: string
+        default: ca-aron-dev-worker
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ops-diagnose
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Diagnose dev (read-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: azure-dev
+    env:
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      SINCE: ${{ inputs.since }}
+      UNTIL: ${{ inputs.until }}
+      JOB_PREFIX: ${{ inputs.job_prefix }}
+      WORKER_APP: ${{ inputs.worker_app }}
+    steps:
+      - name: Branch
+        run: |
+          [ "${GITHUB_REF}" = "refs/heads/claude/wonderful-thompson-k6ejnf" ] || { echo "::error::integration branch only"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Sign in to Azure (OIDC, no client secret)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Azure CLI settings
+        run: az config set extension.use_dynamic_install=yes_without_prompt core.only_show_errors=true
+      - name: Diagnose (infra/scripts/diagnose.sh)
+        run: |
+          since="${SINCE:-$(date -u -d '3 hours ago' +%Y-%m-%dT%H:%M:%SZ)}"
+          until="${UNTIL:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+          echo "window ${since} .. ${until}; job prefix ${JOB_PREFIX}; worker ${WORKER_APP}"
+          infra/scripts/diagnose.sh "$since" "$until" "$JOB_PREFIX" "$WORKER_APP" | tee diagnose.txt
+          { echo '## ops-diagnose'; echo; echo "window ${since} .. ${until}"; echo; echo '```'; head -c 60000 diagnose.txt; echo; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
