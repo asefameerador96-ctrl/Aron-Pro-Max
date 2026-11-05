@@ -40,22 +40,23 @@ if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
   section "PostgreSQL activity log $SINCE .. $UNTIL (platform events: restarts, failovers, maintenance)"
   if [ -n "$sid" ]; then
     try az monitor activity-log list --resource-id "$sid" --start-time "$SINCE" --end-time "$UNTIL" \
-      --query "[].{time:eventTimestamp, op:operationName.localizedValue, status:status.localizedValue, sub:subStatus.localizedValue, caller:caller}" -o table
+      --query "[].{time:eventTimestamp, op:operationName.localizedValue, status:status.localizedValue, sub:subStatus.localizedValue}" -o table
   fi
   section "PostgreSQL server log files (last 24 h) and excerpts in the window"
-  files="$(az postgres flexible-server server-logs list -g "$RG" -n "$server" --file-last-written 24 --query "[].name" -o tsv 2>&1 || true)"
-  if [ -z "$files" ] || printf '%s' "$files" | grep -qi 'error\|not\|disabled'; then
-    echo "(no downloadable server logs: ${files:-none}; logfiles.download_enable is probably off)"
+  files="$(az postgres flexible-server server-logs list -g "$RG" -s "$server" --file-last-written 24 --query "[].name" -o tsv 2>&1)" || { echo "(server-logs list failed: ${files:-no text}; logfiles.download_enable is off unless the error says otherwise)"; files=""; }
+  if [ -z "$files" ]; then
+    echo "(no downloadable server log files in the last 24 h)"
   else
     tmp="$(mktemp -d)"
-    for f in $files; do
-      az postgres flexible-server server-logs download -g "$RG" -n "$server" --name "$f" --out "$tmp" -o none 2>/dev/null || continue
-    done
-    # Severity lines and slow statements only; DETAIL/parameter lines are dropped so no row values are printed.
+    ( cd "$tmp" && for f in $files; do
+        az postgres flexible-server server-logs download -g "$RG" -s "$server" -n "$f" -o none 2>&1 || echo "(download of $f failed)"
+      done )
+    # Severity lines and slow statements only; DETAIL/parameter lines are dropped so no row values are printed. Postgres
+    # log lines start "YYYY-MM-DD HH:MM:SS.mmm UTC"; the window bounds are ISO "YYYY-MM-DDTHH:MM", so the key is rebuilt as such.
     find "$tmp" -type f | while read -r lf; do
       echo "-- $(basename "$lf")"
       grep -E 'FATAL|PANIC|terminat|out of memory|Killed|database system|server process|checkpoint|could not|duration: [0-9]{5,}' "$lf" \
-        | grep -v -E 'DETAIL|parameters:' | awk -v s="${SINCE:0:16}" -v u="${UNTIL:0:16}" '{ t=substr($1,1,16); if (t >= s && t <= u) print substr($0,1,200) }' | head -80
+        | grep -v -E 'DETAIL|parameters:' | awk -v s="${SINCE:0:16}" -v u="${UNTIL:0:16}" '{ t=$1 "T" substr($2,1,5); if (t >= s && t <= u) print substr($0,1,200) }' | head -80
     done
     rm -rf "$tmp"
   fi
@@ -73,7 +74,7 @@ if [ -z "$ws" ]; then echo "(no Log Analytics workspace in $RG)"; else
   section "Log Analytics: system log (platform reasons) for $JOB_PREFIX and $WORKER_APP in the window"
   q="union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppSystemLogs
      | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
-     | where * contains '$JOB_PREFIX' or * contains '$WORKER_APP'
+     | where * has '$JOB_PREFIX' or * has '$WORKER_APP'
      | extend line = strcat(coalesce(column_ifexists('Reason_s', ''), column_ifexists('Reason', '')), ': ',
                             coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
      | order by TimeGenerated asc | project TimeGenerated, line | take 200"

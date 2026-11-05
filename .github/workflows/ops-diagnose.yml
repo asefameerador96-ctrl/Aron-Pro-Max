@@ -68,4 +68,4 @@ jobs:
           until="${UNTIL:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
           echo "window ${since} .. ${until}; job prefix ${JOB_PREFIX}; worker ${WORKER_APP}"
           infra/scripts/diagnose.sh "$since" "$until" "$JOB_PREFIX" "$WORKER_APP" | tee diagnose.txt
-          { echo '## ops-diagnose'; echo; echo "window ${since} .. ${until}"; echo; echo '```'; head -c 60000 diagnose.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '## ops-diagnose'; echo; echo "window ${since} .. ${until}"; echo; echo '```'; head -c 60000 diagnose.txt; echo; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
