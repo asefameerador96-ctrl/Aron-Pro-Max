@@ -84,14 +84,15 @@ if [ -z "$ws" ]; then echo "(no Log Analytics workspace in $RG)"; else
   try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | cut -c1-300
   section "Log Analytics: PostgreSQL server log (AzureDiagnostics, PostgreSQLLogs) in the window, severity lines only"
   # Server-side reasons for a lost session (terminated, reset, out of memory, crash recovery): ERROR/FATAL/PANIC lines and the
-  # LOG lines that name such a reason. Slow-statement (duration/execute), STATEMENT, DETAIL and parameter records are dropped,
-  # so no SQL text or bind value is printed; an ERROR line is kept as the server wrote it.
+  # LOG lines that name such a reason. Slow-statement (duration), STATEMENT, CONTEXT, QUERY, DETAIL and parameter records are
+  # dropped, so no SQL text or bind value is printed; an ERROR line is kept as the server wrote it, and a disconnection line
+  # names the login role, database and client host (not secrets).
   q="AzureDiagnostics
      | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
      | where ResourceProvider == 'MICROSOFT.DBFORPOSTGRESQL' and Category == 'PostgreSQLLogs'
      | extend msg = tostring(coalesce(column_ifexists('Message', ''), column_ifexists('message_s', '')))
      | where msg matches regex '-(ERROR|FATAL|PANIC):' or (msg matches regex '-LOG:' and msg matches regex '(?i)terminat|out of memory|database system|server process|checkpoint|could not|disconnection|reset by peer')
-     | where msg !contains 'duration:' and msg !contains 'execute' and msg !contains 'statement:' and msg !contains 'DETAIL:' and msg !contains 'parameters:'
+     | where msg !contains 'duration:' and msg !contains 'statement:' and msg !contains 'CONTEXT:' and msg !contains 'QUERY:' and msg !contains 'DETAIL:' and msg !contains 'parameters:'
      | order by TimeGenerated asc | project TimeGenerated, msg = substring(msg, 0, 240) | take 300"
   try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, msg]" -o tsv | cut -c1-300
 fi

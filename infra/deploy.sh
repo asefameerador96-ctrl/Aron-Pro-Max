@@ -76,13 +76,17 @@ worker_paused=false # set by pause_worker; resume_worker runs on every exit path
 WORKER_APP="ca-aron-${ENV_NAME}-worker"
 worker_previous_replicas() {
   # Replicas of every revision but the latest: the previous revision keeps its database sessions while it drains.
-  # A failed or throttled read prints "?" (keep polling) and never ends the deploy: set -e would otherwise exit silently.
-  local latest
+  # A failed or throttled read prints exactly "?" (keep polling) and never ends the deploy: set -e would otherwise exit
+  # silently, and an `az | awk || echo "?"` pipeline would print both awk's 0 and the "?". --all keeps the deactivated
+  # revision in the list while its replica is still in its termination grace.
+  local latest counts
   if ! latest="$(az containerapp show -g "$RG" -n "$WORKER_APP" --query properties.latestRevisionName -o tsv 2>/dev/null)" || [ -z "$latest" ]; then
     echo "?"; return 0
   fi
-  az containerapp revision list -g "$RG" -n "$WORKER_APP" --query "[?name != '${latest}'].properties.replicas" -o tsv 2>/dev/null \
-    | awk '{ s += $1 } END { print s + 0 }' || echo "?"
+  if ! counts="$(az containerapp revision list -g "$RG" -n "$WORKER_APP" --all --query "[?name != '${latest}'].properties.replicas" -o tsv 2>/dev/null)"; then
+    echo "?"; return 0
+  fi
+  printf '%s\n' "$counts" | awk '{ s += $1 } END { print s + 0 }'
 }
 pause_worker() {
   local n err
