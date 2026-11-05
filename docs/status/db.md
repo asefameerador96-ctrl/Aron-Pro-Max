@@ -2,6 +2,15 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## Session 15, 2026-11-05 (lane/db; INT 3675c003 = train 72 merged)
+
+| Item | State |
+|---|---|
+| 1. merge INT + renumber wip | DONE, checked: V0144 `dim_version_rekey` (was V0123; round-5 blocker fixed: `app.zone_house_follow`, dim_geo_version.house_id = raw house as recorded) and V0145 `geo_version` (was V0124). Opus checker PASS (should-fixes taken). Answer notes: `db-backend-reports-dim-version-rekey-answer.md` (house_id meaning), `db-geo-version-answer.md`. DECISIONS 237. View contract still 1.3 (no view change in these two) |
+| 2/3. contract 1.4 + one `zone_final_submitted` formula | NEXT: V0146 = CREATE OR REPLACE dw.v_route_day with `zone_final_submitted = coalesce(z.final_submitted_at IS NOT NULL AND NOT z.auto_submitted, false)` (the backend's `zoneSubmittedSql`), contract '1.4' + history line in DwViewContractTest, update RouteDayViewTest. SQL only, no Kotlin change |
+| 4. dim-rekey / geo-version / BI row scope / history indexes / row 9 | rekey and geo-version done (item 1); BI row scope (V0147) still waits for the lead's per-audience login decision; history `(key, valid_from)` indexes wait for `backend-reports-db-history-indexes.md`; row 9 unchanged |
+| 5. row W private seed | NOT STARTED |
+
 ## HANDOVER (session 14 -> session 15), 2026-10-29 ~09:05 UTC, lane/db = INT 78ffb242 (train 60) + this docs-only commit
 
 **State.** **No candidate is gated.** V0123 is NOT on lane/db: the Opus checker's round 4 on its final diff FAILED (one
