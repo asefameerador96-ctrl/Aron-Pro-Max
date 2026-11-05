@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Read-only diagnostics of the dev rehearsal environment (D-OPS-DIAGNOSE-01), run by .github/workflows/ops-diagnose.yml
 # with the deploy identity: the PostgreSQL server (state, metrics, parameters, server-log excerpts when downloadable,
-# activity log), the migrate job's and the worker's console and system logs from Log Analytics, and the worker app's
-# state. Everything printed is metadata, metrics or log excerpts; never a secret, connection string or Key Vault value.
+# activity log, diagnostic settings), the PostgreSQL server log lines streamed to Log Analytics, the migrate job's and the
+# worker's console and system logs from Log Analytics, and the worker app's state. Everything printed is metadata, metrics
+# or log excerpts; never a secret, connection string or Key Vault value.
 # This script changes nothing in Azure: it only lists, shows, queries and downloads logs.
 #
 # Usage: AZURE_RESOURCE_GROUP=rg-aron-dev infra/scripts/diagnose.sh <since-utc> <until-utc> [job-prefix] [worker-app]
@@ -26,6 +27,8 @@ if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
   echo "server: $server"
   try az postgres flexible-server show -g "$RG" -n "$server" --query '{state:state, version:version, sku:sku.name, tier:sku.tier, storageGb:storage.storageSizeGb, ha:highAvailability.mode, haState:highAvailability.state, maintenance:maintenanceWindow.customWindow}' -o json
   sid="$(az postgres flexible-server show -g "$RG" -n "$server" --query id -o tsv 2>/dev/null || true)"
+  section "PostgreSQL diagnostic settings (which log categories stream to Log Analytics)"
+  if [ -n "$sid" ]; then try az monitor diagnostic-settings list --resource "$sid" -o json | head -60; fi
   section "PostgreSQL parameters that bound a migration"
   for p in work_mem shared_buffers maintenance_work_mem temp_buffers statement_timeout idle_in_transaction_session_timeout lock_timeout log_min_duration_statement logfiles.download_enable logfiles.retention_days max_connections; do
     v="$(az postgres flexible-server parameter show -g "$RG" -s "$server" -n "$p" --query value -o tsv 2>/dev/null || echo '?')"
@@ -79,6 +82,19 @@ if [ -z "$ws" ]; then echo "(no Log Analytics workspace in $RG)"; else
                             coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
      | order by TimeGenerated asc | project TimeGenerated, line | take 200"
   try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | cut -c1-300
+  section "Log Analytics: PostgreSQL server log (AzureDiagnostics, PostgreSQLLogs) in the window, severity lines only"
+  # Server-side reasons for a lost session (terminated, reset, out of memory, crash recovery): ERROR/FATAL/PANIC lines and the
+  # LOG lines that name such a reason. Slow-statement (duration), STATEMENT, CONTEXT, QUERY, DETAIL and parameter records are
+  # dropped, so no SQL text or bind value is printed; an ERROR line is kept as the server wrote it, and a disconnection line
+  # names the login role, database and client host (not secrets).
+  q="AzureDiagnostics
+     | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
+     | where ResourceProvider == 'MICROSOFT.DBFORPOSTGRESQL' and Category == 'PostgreSQLLogs'
+     | extend msg = tostring(coalesce(column_ifexists('Message', ''), column_ifexists('message_s', '')))
+     | where msg matches regex '-(ERROR|FATAL|PANIC):' or (msg matches regex '-LOG:' and msg matches regex '(?i)terminat|out of memory|database system|server process|checkpoint|could not|disconnection|reset by peer')
+     | where msg !contains 'duration:' and msg !contains 'statement:' and msg !contains 'CONTEXT:' and msg !contains 'QUERY:' and msg !contains 'DETAIL:' and msg !contains 'parameters:'
+     | order by TimeGenerated asc | project TimeGenerated, msg = substring(msg, 0, 240) | take 300"
+  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, msg]" -o tsv | cut -c1-300
 fi
 
 section "worker app $WORKER_APP"

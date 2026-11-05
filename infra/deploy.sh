@@ -62,37 +62,64 @@ ARON_DEV_SEED="$([[ "$PROFILE" == dev* ]] && grep -qx 'param devSeed = true' "in
 export ARON_DEV_SEED
 whatif_file="$(mktemp)"; migrate_log="$(mktemp)"
 worker_paused=false # set by pause_worker; resume_worker runs on every exit path (EXIT trap) and after the migrations
-# The worker is stopped while the migrations run (lead 2026-11-05, deploy run 41994755137): the AggregationWorker writes
-# dw.fact_* and dw.dim_* continuously, so a migration that rewrites those tables (V0144 dim version rekey) waits on its
-# locks and dies at its own 5 s lock_timeout, a failure CI never sees because no worker runs there. `az containerapp stop`
-# ends every replica of the app at once and `start` brings the same revision back; the worker is started again right
-# after the migrate job on every path (the EXIT trap covers a failed deploy), before the apps are updated. The API keeps
-# serving: field sync must never wait for a deploy, and the API does not write the dw tables.
+# The worker (AggregationWorker) refreshes dw.dim_* and dw.fact_* continuously, so a migration that locks those tables
+# contends with it, a failure CI never sees because no worker runs there (D-OPS-MIGRATE-PAUSE-01; mechanism -02). az 2.91.0
+# has no `az containerapp stop` (the first version of this pause failed for that reason, deploy #309), so the pause is a
+# revision of the same image with ARON_WORKER_PAUSED=true: the worker role then idles without a database connection or a
+# job (Main.kt), the revision is ready as soon as its container runs (no ingress, no probes) and Single revision mode
+# deactivates the previous revision, which drains within its termination grace. Every building block already runs on dev
+# at each deploy: `az containerapp update --set-env-vars` (the web app), the Single-mode revision switch, the same image.
+# The variable is removed right after the migrate job on every path (the EXIT trap covers a failed deploy), before the
+# apps are updated; the apps update defines the env list without it anyway. Each change is a new worker revision, pruned
+# by maxInactiveRevisions. The first deploy that carries the flag-aware image pauses nothing yet (the running image ignores
+# the variable); from the next deploy on the pause holds. The API keeps serving: field sync never waits for a deploy.
 WORKER_APP="ca-aron-${ENV_NAME}-worker"
+worker_previous_replicas() {
+  # Replicas of every revision but the latest: the previous revision keeps its database sessions while it drains.
+  # A failed or throttled read prints exactly "?" (keep polling) and never ends the deploy: set -e would otherwise exit
+  # silently, and an `az | awk || echo "?"` pipeline would print both awk's 0 and the "?". --all keeps the deactivated
+  # revision in the list while its replica is still in its termination grace.
+  local latest counts
+  if ! latest="$(az containerapp show -g "$RG" -n "$WORKER_APP" --query properties.latestRevisionName -o tsv 2>/dev/null)" || [ -z "$latest" ]; then
+    echo "?"; return 0
+  fi
+  if ! counts="$(az containerapp revision list -g "$RG" -n "$WORKER_APP" --all --query "[?name != '${latest}'].properties.replicas" -o tsv 2>/dev/null)"; then
+    echo "?"; return 0
+  fi
+  printf '%s\n' "$counts" | awk '{ s += $1 } END { print s + 0 }'
+}
 pause_worker() {
   local n err
   if ! az containerapp show -g "$RG" -n "$WORKER_APP" --query name -o tsv >/dev/null 2>&1; then
     note "worker $WORKER_APP not found (first deploy); nothing to pause"; return 0
   fi
-  if err="$(az containerapp stop -g "$RG" -n "$WORKER_APP" -o none 2>&1)"; then
-    worker_paused=true
-    for _ in $(seq 1 12); do
-      n="$(az containerapp replica list -g "$RG" -n "$WORKER_APP" --query 'length(@)' -o tsv 2>/dev/null || echo 0)"
-      [ "${n:-0}" = 0 ] && break
+  # Marked paused BEFORE the update: if ARM applies it but az reports a failure, the resume still removes the variable.
+  worker_paused=true
+  if err="$(az containerapp update -g "$RG" -n "$WORKER_APP" --set-env-vars ARON_WORKER_PAUSED=true -o none 2>&1)"; then
+    n="?"
+    for _ in $(seq 1 24); do
+      n="$(worker_previous_replicas || echo "?")"
+      [ "$n" = 0 ] && break
       sleep 5
     done
-    note "worker $WORKER_APP stopped for the migrations (replicas left: ${n:-0})"
+    if [ "$n" = 0 ]; then
+      note "worker $WORKER_APP paused for the migrations (ARON_WORKER_PAUSED=true revision up; the previous revision has drained)"
+    elif [ "$n" = "?" ]; then
+      echo "::warning::worker $WORKER_APP: paused revision requested, but the replica count could not be read; the migrations start now"
+    else
+      echo "::warning::worker $WORKER_APP: the paused revision is up but the previous revision still runs ${n} replica(s) after 120 s; the migrations start beside it"
+    fi
   else
-    echo "::warning::could not stop $WORKER_APP before the migrations; they run beside it: ${err:-no error text}"
+    echo "::warning::could not pause $WORKER_APP before the migrations; they run beside it: ${err:-no error text}"
   fi
 }
 resume_worker() {
   [ "$worker_paused" = true ] || return 0
   worker_paused=false
-  if az containerapp start -g "$RG" -n "$WORKER_APP" -o none 2>/dev/null; then
-    note "worker $WORKER_APP started again"
+  if az containerapp update -g "$RG" -n "$WORKER_APP" --remove-env-vars ARON_WORKER_PAUSED -o none 2>/dev/null; then
+    note "worker $WORKER_APP resumed (ARON_WORKER_PAUSED removed; the new revision runs the jobs)"
   else
-    echo "::warning::could not start $WORKER_APP again; start it by hand: az containerapp start -g $RG -n $WORKER_APP"
+    echo "::warning::could not resume $WORKER_APP; resume it by hand: az containerapp update -g $RG -n $WORKER_APP --remove-env-vars ARON_WORKER_PAUSED"
   fi
 }
 lock_tag="aron-deploy-lock"; lock_held=false; hb_pid=""
@@ -133,6 +160,9 @@ summary() { [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "$*" >> "$GITHUB_STEP_SUMM
 # without migrations is exactly what a hold wants available.
 if [ -f infra/migrations.hold ] && [ -z "$ROLLBACK_SHA" ]; then
   reason="$(head -c 400 infra/migrations.hold | tr '\n' ' ')"
+  summary "### Aron ${ENV_NAME}: deploy of ${SHA:0:8} HELD"
+  summary "| Item | State |"
+  summary "|---|---|"
   summary "| Deploy | HELD (infra/migrations.hold): ${reason} |"
   echo "::warning::deploy of $SHA HELD by infra/migrations.hold; nothing was deployed and no migration was attempted"
   exit 0
