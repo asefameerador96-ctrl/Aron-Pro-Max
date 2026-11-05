@@ -431,22 +431,35 @@ fi
 note "migrate job with $BACKEND_IMAGE"
 ARON_DEPLOY_SERVICES=false az deployment group create -g "$RG" -n aron-apps-migrate --template-file infra/apps.bicep \
   --parameters "infra/params/${PROFILE}.apps.bicepparam" -o none
-# Prints the console log of one job execution from Log Analytics (ingestion takes a few minutes, so it retries), so a
-# failed migration shows its cause in the deploy log. Best effort: never fails the caller.
+# Prints the console log of one job execution from Log Analytics, so a failed migration shows its cause in the deploy
+# log. Ingestion lags by minutes and arrives in pieces: the first query often returns only the first lines (deploy run
+# 41994755137 showed Flyway's "Migrating schema to version 0144" and not the SQL error that followed it), so after the
+# first lines appear it keeps reading until a terminal line shows up or the log has stopped growing for two minutes.
+# Best effort: never fails the caller.
 job_logs() { # execution
-  local ws q out
+  local ws q out prev="" same=0
   ws="$(az monitor log-analytics workspace list -g "$RG" --query "[0].customerId" -o tsv 2>/dev/null)" || return 0
   [ -n "$ws" ] || return 0
   q="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleLogs
      | extend exec = coalesce(column_ifexists('ContainerGroupName_s', ''), column_ifexists('ContainerGroupName', '')),
               line = coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', ''))
-     | where exec startswith '$1' | order by TimeGenerated asc | project TimeGenerated, line | take 200"
-  for _ in $(seq 1 12); do
+     | where exec startswith '$1' | order by TimeGenerated asc | project TimeGenerated, line | take 400"
+  for _ in $(seq 1 24); do
     out="$(az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv 2>/dev/null || true)"
-    if [ -n "$out" ]; then echo "---- console log of $1"; echo "$out"; echo "----"; return 0; fi
+    if [ -n "$out" ]; then
+      if [ "$out" = "$prev" ]; then same=$((same + 1)); else same=0; fi
+      prev="$out"
+      # Terminal lines: Flyway's success or failure, an uncaught exception, or the process ending.
+      if [ "$same" -ge 4 ] || printf '%s' "$out" | grep -qE 'Successfully applied|"level":"ERROR"|FlywayException|Migration of schema .* failed|Exception:|exit code|Finished'; then
+        echo "---- console log of $1"; echo "$out"; echo "----"; return 0
+      fi
+    fi
     sleep 30
   done
-  echo "(no console log of $1 in Log Analytics after 6 minutes)"
+  if [ -n "$prev" ]; then
+    echo "---- console log of $1 (still growing after 12 minutes; the tail may be missing)"; echo "$prev"; echo "----"; return 0
+  fi
+  echo "(no console log of $1 in Log Analytics after 12 minutes)"
   # No console output usually means the container never ran (image pull, identity, start command): the platform's
   # system log for the execution says why (deploy run 37624445094: dblogins Failed with an empty console log).
   q="union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppSystemLogs
