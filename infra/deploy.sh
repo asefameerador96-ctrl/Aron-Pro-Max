@@ -61,6 +61,40 @@ export ARON_ALERT_EMAILS ARON_BUDGET_AMOUNT="${ARON_BUDGET_AMOUNT:-}" ARON_NAME_
 ARON_DEV_SEED="$([[ "$PROFILE" == dev* ]] && grep -qx 'param devSeed = true' "infra/params/${PROFILE}.apps.bicepparam" && echo true || echo false)"
 export ARON_DEV_SEED
 whatif_file="$(mktemp)"; migrate_log="$(mktemp)"
+worker_paused=false # set by pause_worker; resume_worker runs on every exit path (EXIT trap) and after the migrations
+# The worker is stopped while the migrations run (lead 2026-11-05, deploy run 41994755137): the AggregationWorker writes
+# dw.fact_* and dw.dim_* continuously, so a migration that rewrites those tables (V0144 dim version rekey) waits on its
+# locks and dies at its own 5 s lock_timeout, a failure CI never sees because no worker runs there. `az containerapp stop`
+# ends every replica of the app at once and `start` brings the same revision back; the worker is started again right
+# after the migrate job on every path (the EXIT trap covers a failed deploy), before the apps are updated. The API keeps
+# serving: field sync must never wait for a deploy, and the API does not write the dw tables.
+WORKER_APP="ca-aron-${ENV_NAME}-worker"
+pause_worker() {
+  local n
+  if ! az containerapp show -g "$RG" -n "$WORKER_APP" --query name -o tsv >/dev/null 2>&1; then
+    note "worker $WORKER_APP not found (first deploy); nothing to pause"; return 0
+  fi
+  if az containerapp stop -g "$RG" -n "$WORKER_APP" -o none 2>/dev/null; then
+    worker_paused=true
+    for _ in $(seq 1 12); do
+      n="$(az containerapp replica list -g "$RG" -n "$WORKER_APP" --query 'length(@)' -o tsv 2>/dev/null || echo 0)"
+      [ "${n:-0}" = 0 ] && break
+      sleep 5
+    done
+    note "worker $WORKER_APP stopped for the migrations (replicas left: ${n:-0})"
+  else
+    echo "::warning::could not stop $WORKER_APP before the migrations; they run beside it"
+  fi
+}
+resume_worker() {
+  [ "$worker_paused" = true ] || return 0
+  worker_paused=false
+  if az containerapp start -g "$RG" -n "$WORKER_APP" -o none 2>/dev/null; then
+    note "worker $WORKER_APP started again"
+  else
+    echo "::warning::could not start $WORKER_APP again; start it by hand: az containerapp start -g $RG -n $WORKER_APP"
+  fi
+}
 lock_tag="aron-deploy-lock"; lock_held=false; hb_pid=""
 lock_me="${GITHUB_RUN_ID:-local}.${GITHUB_RUN_ATTEMPT:-1}.$$"
 lock_ttl=900   # seconds without a heartbeat after which a lock is stale (the holder refreshes it every 60 s)
@@ -88,7 +122,7 @@ release_lock() {
       && echo "== deploy lock released" || echo "::warning::could not release the deploy lock; it goes stale ${lock_ttl} s after the last heartbeat"
   fi
 }
-trap 'rm -f "$whatif_file" "$migrate_log"; release_lock' EXIT
+trap 'rm -f "$whatif_file" "$migrate_log"; resume_worker; release_lock' EXIT
 # A cancelled or timed-out job gets SIGINT/SIGTERM before SIGKILL: exit at once so the EXIT trap releases the lock.
 trap 'exit 130' INT TERM
 summary() { [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "$*" >> "$GITHUB_STEP_SUMMARY"; echo "$*"; }
@@ -431,22 +465,35 @@ fi
 note "migrate job with $BACKEND_IMAGE"
 ARON_DEPLOY_SERVICES=false az deployment group create -g "$RG" -n aron-apps-migrate --template-file infra/apps.bicep \
   --parameters "infra/params/${PROFILE}.apps.bicepparam" -o none
-# Prints the console log of one job execution from Log Analytics (ingestion takes a few minutes, so it retries), so a
-# failed migration shows its cause in the deploy log. Best effort: never fails the caller.
+# Prints the console log of one job execution from Log Analytics, so a failed migration shows its cause in the deploy
+# log. Ingestion lags by minutes and arrives in pieces: the first query often returns only the first lines (deploy run
+# 41994755137 showed Flyway's "Migrating schema to version 0144" and not the SQL error that followed it), so after the
+# first lines appear it keeps reading until a terminal line shows up or the log has stopped growing for two minutes.
+# Best effort: never fails the caller.
 job_logs() { # execution
-  local ws q out
+  local ws q out prev="" same=0
   ws="$(az monitor log-analytics workspace list -g "$RG" --query "[0].customerId" -o tsv 2>/dev/null)" || return 0
   [ -n "$ws" ] || return 0
   q="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleLogs
      | extend exec = coalesce(column_ifexists('ContainerGroupName_s', ''), column_ifexists('ContainerGroupName', '')),
               line = coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', ''))
-     | where exec startswith '$1' | order by TimeGenerated asc | project TimeGenerated, line | take 200"
-  for _ in $(seq 1 12); do
+     | where exec startswith '$1' | order by TimeGenerated asc | project TimeGenerated, line | take 400"
+  for _ in $(seq 1 24); do
     out="$(az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv 2>/dev/null || true)"
-    if [ -n "$out" ]; then echo "---- console log of $1"; echo "$out"; echo "----"; return 0; fi
+    if [ -n "$out" ]; then
+      if [ "$out" = "$prev" ]; then same=$((same + 1)); else same=0; fi
+      prev="$out"
+      # Terminal lines: Flyway's success or failure, an uncaught exception, or the process ending.
+      if [ "$same" -ge 4 ] || grep -qE 'Successfully applied|"level":"ERROR"|Flyway[A-Za-z]*Exception|Migration of schema .* failed|Exception:|exit code|Finished' <<<"$out"; then
+        echo "---- console log of $1"; echo "$out"; echo "----"; return 0
+      fi
+    fi
     sleep 30
   done
-  echo "(no console log of $1 in Log Analytics after 6 minutes)"
+  if [ -n "$prev" ]; then
+    echo "---- console log of $1 (still growing after 12 minutes; the tail may be missing)"; echo "$prev"; echo "----"; return 0
+  fi
+  echo "(no console log of $1 in Log Analytics after 12 minutes)"
   # No console output usually means the container never ran (image pull, identity, start command): the platform's
   # system log for the execution says why (deploy run 37624445094: dblogins Failed with an empty console log).
   q="union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppSystemLogs
@@ -458,6 +505,7 @@ job_logs() { # execution
   if [ -n "$out" ]; then echo "---- system log of $1"; echo "$out"; echo "----"; else echo "(no system log of $1 either)"; fi
 }
 if [ "$RUN_MIGRATIONS" = true ]; then
+  pause_worker
   # One more execution ONLY when the first could not open its first database connection (seen twice on 2026-10-06/07:
   # Hikari "Connection is not available ... total=0" within 5 s on a fresh job replica). Migrations are idempotent
   # (Flyway). The root fix, Flyway connectRetries in the migrate role, is requested from backend-core
@@ -486,6 +534,7 @@ if [ "$RUN_MIGRATIONS" = true ]; then
     fi
     die "migrations $execution ended ${status}; the apps were NOT updated. Logs: Log Analytics, ContainerAppConsoleLogs, ContainerJobName_s == '$JOB'"
   done
+  resume_worker
 else
   note "migrations not run (RUN_MIGRATIONS=$RUN_MIGRATIONS)"
 fi

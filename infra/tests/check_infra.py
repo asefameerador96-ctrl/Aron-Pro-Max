@@ -707,7 +707,19 @@ class Workflows(unittest.TestCase):
         body = d[d.index("# ---"):]
         self.assertLess(body.index('note "deploy lock held"'), body.index("merge-base --is-ancestor"),
                         "the ordering guard runs while the lock is held")
-        self.assertIn("trap 'rm -f \"$whatif_file\" \"$migrate_log\"; release_lock' EXIT", d)
+        # The EXIT trap starts the worker again (paused for the migrations, D-OPS-MIGRATE-PAUSE-01) and then releases the lock;
+        # both helpers are defined before the trap, so an early die never calls an undefined function and the lock is always released.
+        self.assertIn("trap 'rm -f \"$whatif_file\" \"$migrate_log\"; resume_worker; release_lock' EXIT", d)
+        self.assertLess(d.index("resume_worker() {"), d.index("trap 'rm -f"), "resume_worker is defined before the EXIT trap")
+        self.assertLess(d.index("pause_worker() {"), d.index("trap 'rm -f"), "pause_worker is defined before the EXIT trap")
+        self.assertLess(body.index("\n  pause_worker\n"), body.index('execution="$(az containerapp job start'),
+                        "the worker is stopped before the migrate job starts")
+        self.assertLess(body.index('die "migrations $execution ended'), body.index("\n  resume_worker\n"),
+                        "the success path starts the worker again right after the migrate loop")
+        self.assertLess(body.index("\n  resume_worker\n"), body.index("ARON_DEPLOY_SERVICES=true"),
+                        "the worker is started again before the apps are updated")
+        self.assertIn("az containerapp stop -g \"$RG\" -n \"$WORKER_APP\"", d)
+        self.assertIn("az containerapp start -g \"$RG\" -n \"$WORKER_APP\"", d)
         self.assertIn('if got="$(read_lock)" && [ "$(lock_owner "$got")" = "$lock_me" ]; then break; fi', d, "write, settle, re-read")
         self.assertIn('if ! cur="$(read_lock)"; then', d, "a failed read counts as held")
         self.assertIn("|| return 1", d[d.index("read_lock() {"):d.index("lock_owner()")])
