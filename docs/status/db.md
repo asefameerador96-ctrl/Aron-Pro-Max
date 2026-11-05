@@ -15,6 +15,17 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
 
 Backend maps the lock/deadlock SQLSTATEs already: `backend/platform/.../Http.kt` TRANSIENT_SQLSTATES (55P03, 40P01, 40001, ...) and 57014 answer 503, so an admin zone write that fails inside `app.zone_house_follow` is a retryable 503 TODAY (existing behaviour, not a proposal).
 
+## Session 15 state (2026-11-05 evening): items 1 to 4 on lane/db
+
+| Item | State |
+|---|---|
+| 1 | LANDED (train 73): V0144 (replaced in place by v2 under D-DB-REPLACE-UNAPPLIED-01 in train 76), V0145 |
+| 3 | LANDED (train 76/78): V0146 rekey backfill, V0147 fact restamp, V0148 view contract 1.4 (`zone_final_submitted` one formula), applied on dev (schema 0148) after the Flyway idle-timeout exemption (root cause of deploys #308/#309/#311: Flyway's idle second connection killed by `idle_in_transaction_session_timeout` 30 s, found by db #15, D-OPS-MIGRATE-IDLE-TIMEOUT-01) |
+| 4 | IN REVIEW (this commit): `MigrationLockSafetyTest`, `docs/requests/db-fleet-plan-fact-restamp.md` (+ author rule), V0149 worker grants (`bundle_snapshot` INSERT, `outlet_request_event` INSERT; `WorkerGrantsTest` = audit list), D-DB-WORKER-GRANTS-01 |
+| 5 row W "private seed" | NOT implemented: open question with the lead (owner has not said "private seed"; design in the section 'Row W open question') |
+| open | BI row scope (V0150 or later; needs the lead's per-audience login decision), history `(key, valid_from)` indexes (wait for `backend-reports-db-history-indexes.md`), data-architecture row 9 remainder. Parked and NOT to be used: commit 08de6f71 (work_mem 64MB, deadlock_detected in V0146/V0147: files are shipped and applied) on `lane/db-wip-workmem` |
+| next free migration | V0150 (V0149 is the grants fix). View contract 1.4 |
+
 ## V0144 failed on dev (deploy #308, 2026-11-05): analysis by db #15 (no error text yet; not pushed)
 
 **Facts.** Migrate job = Container Apps job, Flyway on the DIRECT URL as the server admin, 0.5 CPU / 1 Gi, `replicaTimeout` 1800 s, no retry (`infra/apps.bicep:158-169`). Server parameters set by us: only `idle_in_transaction_session_timeout` 30 s (`infra/modules/postgres.bicep:126`); no `statement_timeout`. V0144 sets `lock_timeout` 5 s for its transaction. Postgres DDL is transactional and Flyway runs a Postgres migration in one transaction, so a failed V0144 rolls back completely: no history row, schema at 0143. V0144 contains no non-transactional statement (CREATE INDEX is non-concurrent, no CONCURRENTLY, no VACUUM, no ALTER SYSTEM, no session_replication_role).
