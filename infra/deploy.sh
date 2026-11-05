@@ -61,6 +61,40 @@ export ARON_ALERT_EMAILS ARON_BUDGET_AMOUNT="${ARON_BUDGET_AMOUNT:-}" ARON_NAME_
 ARON_DEV_SEED="$([[ "$PROFILE" == dev* ]] && grep -qx 'param devSeed = true' "infra/params/${PROFILE}.apps.bicepparam" && echo true || echo false)"
 export ARON_DEV_SEED
 whatif_file="$(mktemp)"; migrate_log="$(mktemp)"
+worker_paused=false # set by pause_worker; resume_worker runs on every exit path (EXIT trap) and after the migrations
+# The worker is stopped while the migrations run (lead 2026-11-05, deploy run 41994755137): the AggregationWorker writes
+# dw.fact_* and dw.dim_* continuously, so a migration that rewrites those tables (V0144 dim version rekey) waits on its
+# locks and dies at its own 5 s lock_timeout, a failure CI never sees because no worker runs there. `az containerapp stop`
+# ends every replica of the app at once and `start` brings the same revision back; the worker is started again right
+# after the migrate job on every path (the EXIT trap covers a failed deploy), before the apps are updated. The API keeps
+# serving: field sync must never wait for a deploy, and the API does not write the dw tables.
+WORKER_APP="ca-aron-${ENV_NAME}-worker"
+pause_worker() {
+  local n
+  if ! az containerapp show -g "$RG" -n "$WORKER_APP" --query name -o tsv >/dev/null 2>&1; then
+    note "worker $WORKER_APP not found (first deploy); nothing to pause"; return 0
+  fi
+  if az containerapp stop -g "$RG" -n "$WORKER_APP" -o none 2>/dev/null; then
+    worker_paused=true
+    for _ in $(seq 1 12); do
+      n="$(az containerapp replica list -g "$RG" -n "$WORKER_APP" --query 'length(@)' -o tsv 2>/dev/null || echo 0)"
+      [ "${n:-0}" = 0 ] && break
+      sleep 5
+    done
+    note "worker $WORKER_APP stopped for the migrations (replicas left: ${n:-0})"
+  else
+    echo "::warning::could not stop $WORKER_APP before the migrations; they run beside it"
+  fi
+}
+resume_worker() {
+  [ "$worker_paused" = true ] || return 0
+  worker_paused=false
+  if az containerapp start -g "$RG" -n "$WORKER_APP" -o none 2>/dev/null; then
+    note "worker $WORKER_APP started again"
+  else
+    echo "::warning::could not start $WORKER_APP again; start it by hand: az containerapp start -g $RG -n $WORKER_APP"
+  fi
+}
 lock_tag="aron-deploy-lock"; lock_held=false; hb_pid=""
 lock_me="${GITHUB_RUN_ID:-local}.${GITHUB_RUN_ATTEMPT:-1}.$$"
 lock_ttl=900   # seconds without a heartbeat after which a lock is stale (the holder refreshes it every 60 s)
@@ -88,7 +122,7 @@ release_lock() {
       && echo "== deploy lock released" || echo "::warning::could not release the deploy lock; it goes stale ${lock_ttl} s after the last heartbeat"
   fi
 }
-trap 'rm -f "$whatif_file" "$migrate_log"; release_lock' EXIT
+trap 'rm -f "$whatif_file" "$migrate_log"; resume_worker; release_lock' EXIT
 # A cancelled or timed-out job gets SIGINT/SIGTERM before SIGKILL: exit at once so the EXIT trap releases the lock.
 trap 'exit 130' INT TERM
 summary() { [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "$*" >> "$GITHUB_STEP_SUMMARY"; echo "$*"; }
@@ -450,7 +484,7 @@ job_logs() { # execution
       if [ "$out" = "$prev" ]; then same=$((same + 1)); else same=0; fi
       prev="$out"
       # Terminal lines: Flyway's success or failure, an uncaught exception, or the process ending.
-      if [ "$same" -ge 4 ] || printf '%s' "$out" | grep -qE 'Successfully applied|"level":"ERROR"|FlywayException|Migration of schema .* failed|Exception:|exit code|Finished'; then
+      if [ "$same" -ge 4 ] || grep -qE 'Successfully applied|"level":"ERROR"|Flyway[A-Za-z]*Exception|Migration of schema .* failed|Exception:|exit code|Finished' <<<"$out"; then
         echo "---- console log of $1"; echo "$out"; echo "----"; return 0
       fi
     fi
@@ -471,6 +505,7 @@ job_logs() { # execution
   if [ -n "$out" ]; then echo "---- system log of $1"; echo "$out"; echo "----"; else echo "(no system log of $1 either)"; fi
 }
 if [ "$RUN_MIGRATIONS" = true ]; then
+  pause_worker
   # One more execution ONLY when the first could not open its first database connection (seen twice on 2026-10-06/07:
   # Hikari "Connection is not available ... total=0" within 5 s on a fresh job replica). Migrations are idempotent
   # (Flyway). The root fix, Flyway connectRetries in the migrate role, is requested from backend-core
@@ -499,6 +534,7 @@ if [ "$RUN_MIGRATIONS" = true ]; then
     fi
     die "migrations $execution ended ${status}; the apps were NOT updated. Logs: Log Analytics, ContainerAppConsoleLogs, ContainerJobName_s == '$JOB'"
   done
+  resume_worker
 else
   note "migrations not run (RUN_MIGRATIONS=$RUN_MIGRATIONS)"
 fi
