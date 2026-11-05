@@ -26,7 +26,7 @@
 --    nothing. DELETE stays row level and unchanged (dw.scd2_track).
 -- 3. One rekey of all four dimensions here, then every fact key that still differs (pilot size on dev; the final
 --    account migrates from empty).
--- No dw.v_* view changes: the view contract stays 1.2.
+-- No dw.v_* view changes: the view contract stays 1.3 (since V0140).
 
 SET lock_timeout = '5s';
 
@@ -246,13 +246,13 @@ BEGIN
     -- The merged periods are computed once and analyzed, so every statement below joins them by hash or index (a CTE
     -- estimated at one row made the full run's anti-join quadratic: 94 s for 30k outlets).
     -- (A temp table: the calling transaction cannot use PREPARE TRANSACTION; nothing in Aron does.)
-    IF to_regclass('pg_temp.dw_v0123_rekey_periods') IS NOT NULL THEN
-      DROP TABLE pg_temp.dw_v0123_rekey_periods;
+    IF to_regclass('pg_temp.dw_v0144_rekey_periods') IS NOT NULL THEN
+      DROP TABLE pg_temp.dw_v0144_rekey_periods;
     END IF;
-    EXECUTE 'CREATE TEMP TABLE dw_v0123_rekey_periods ON COMMIT DROP AS ' || x;
-    EXECUTE format('CREATE INDEX ON pg_temp.dw_v0123_rekey_periods (%I, valid_from)', c.natural_key);
-    ANALYZE pg_temp.dw_v0123_rekey_periods;
-    x := 'SELECT * FROM pg_temp.dw_v0123_rekey_periods';
+    EXECUTE 'CREATE TEMP TABLE dw_v0144_rekey_periods ON COMMIT DROP AS ' || x;
+    EXECUTE format('CREATE INDEX ON pg_temp.dw_v0144_rekey_periods (%I, valid_from)', c.natural_key);
+    ANALYZE pg_temp.dw_v0144_rekey_periods;
+    x := 'SELECT * FROM pg_temp.dw_v0144_rekey_periods';
     dim := d;
     ver := d || '_version';
     sk := replace(d, 'dim_', '') || '_key';
@@ -298,7 +298,7 @@ BEGIN
       INTO kept USING p_ids;
     kept := kept - inserted;
     restamped := dw.restamp_fact_keys(d, ARRAY(SELECT DISTINCT unnest(a_ids)), a_from);
-    DROP TABLE pg_temp.dw_v0123_rekey_periods;
+    DROP TABLE pg_temp.dw_v0144_rekey_periods;
     RETURN NEXT;
   END LOOP;
 END $$;
