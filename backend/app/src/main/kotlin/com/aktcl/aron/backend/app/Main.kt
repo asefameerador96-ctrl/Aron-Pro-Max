@@ -57,6 +57,13 @@ fun main() {
             apiServer(wiring, settings.port).start(wait = true)
         }
         ServerRole.WORKER -> {
+            if (settings.workerPaused) {
+                // The deploy sets ARON_WORKER_PAUSED=true on a revision for the migration window (D-OPS-MIGRATE-PAUSE-02): this
+                // replica stays up, so the revision is ready and the previous one drains, but opens no database connection and
+                // runs no job; the deploy removes the variable afterwards and that next revision replaces this one.
+                log.warn("aron worker PAUSED by ARON_WORKER_PAUSED: no database connection, no jobs, until the next revision")
+                Thread.currentThread().join()
+            }
             // Jobs registered so far: the aggregation worker (dirty keys into dw, F-SYS-015). Other lanes append theirs.
             val workerDb = Database.fromSettings(settings)
             // The admin's cfg.geo.suspicious_score_threshold, as the dashboards and reports read it (data-architecture review finding 18).

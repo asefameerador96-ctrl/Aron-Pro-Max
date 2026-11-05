@@ -52,6 +52,12 @@ data class Settings(
     val mfaKeyPrevious: Secret? = null,
     /** Google service account allowed to call Play Integrity `decodeIntegrityToken` (N-027); falls back to the FCM one; verdicts stay unevaluated without either. */
     val playIntegrityServiceAccountJson: Secret? = null,
+    /**
+     * ARON_WORKER_PAUSED=true: the worker role starts, logs and idles without opening the database or running a job. The
+     * deploy sets it on a revision for the migration window and removes it afterwards (D-OPS-MIGRATE-PAUSE-02); the api and
+     * migrate roles ignore it.
+     */
+    val workerPaused: Boolean = false,
 ) {
     /** Like the data-class form, with credentials in the database URLs redacted (secrets are never printed). */
     override fun toString(): String =
@@ -115,6 +121,7 @@ data class Settings(
                 mfaKey = src.secret("ARON_MFA_KEY"),
                 mfaKeyPrevious = src.secret("ARON_MFA_KEY_PREVIOUS"),
                 playIntegrityServiceAccountJson = src.secret("ARON_PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON"),
+                workerPaused = src.get("ARON_WORKER_PAUSED")?.trim()?.lowercase() == "true",
             )
         }
     }

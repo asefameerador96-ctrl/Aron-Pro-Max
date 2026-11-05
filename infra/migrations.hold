@@ -1,1 +1,6 @@
-HELD by the lead 2026-11-05 09:58 UTC (D-OPS-DEPLOY-HOLD-01): V0144 failed on dev twice (deploy runs 41994755137 and 42004126678; the second time the body completed in ~105 s and the server closed the connection, SQLSTATE 08006, before Flyway recorded it). No deploy re-attempts the migration until the cause is read (ops-diagnose) and db #15's fix is landed. Removing this file lifts the hold; a ROLLBACK_SHA deploy ignores it.
+HELD by the lead 14:09 UTC 2026-11-05 (D-OPS-DEPLOY-HOLD-01): deploy #311 (run 42039107772) failed in V0146 exactly as
+deploy #309 (run 42004126678) failed in the shipped V0144: the migration body completed after about 104 s and the next
+write on the connection failed with SQLSTATE 08006 before Flyway could record the migration. Dev schema is at 0145
+(V0144 v2 and V0145 committed), the apps serve train 72 (3675c003). No deploy re-attempts the migrations until the
+PostgreSQL server log for 13:54-13:57 UTC has been read (ops-diagnose with the PostgreSQLLogs query this train adds) and
+db #15's correction of V0146 is landed. Removing this file lifts the hold; a ROLLBACK_SHA deploy ignores it.

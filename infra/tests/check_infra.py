@@ -745,8 +745,20 @@ class Workflows(unittest.TestCase):
                         "the success path starts the worker again right after the migrate loop")
         self.assertLess(body.index("\n  resume_worker\n"), body.index("ARON_DEPLOY_SERVICES=true"),
                         "the worker is started again before the apps are updated")
-        self.assertIn("az containerapp stop -g \"$RG\" -n \"$WORKER_APP\"", d)
-        self.assertIn("az containerapp start -g \"$RG\" -n \"$WORKER_APP\"", d)
+        # D-OPS-MIGRATE-PAUSE-02: az 2.91.0 has no `containerapp stop/start`; the pause is a revision of the same image with
+        # ARON_WORKER_PAUSED=true, which the worker role honours before opening the database; the resume removes the variable.
+        self.assertIn('az containerapp update -g "$RG" -n "$WORKER_APP" --set-env-vars ARON_WORKER_PAUSED=true -o none', d)
+        self.assertIn('az containerapp update -g "$RG" -n "$WORKER_APP" --remove-env-vars ARON_WORKER_PAUSED -o none', d)
+        self.assertIn("worker_previous_replicas", d, "the pause waits for the previous revision to drain")
+        main_kt = (ROOT / "backend" / "app" / "src" / "main" / "kotlin" / "com" / "aktcl" / "aron" / "backend" / "app" / "Main.kt").read_text(encoding="utf-8")
+        worker_branch = main_kt[main_kt.index("ServerRole.WORKER ->"):]
+        self.assertLess(worker_branch.index("if (settings.workerPaused)"), worker_branch.index("Database.fromSettings(settings)"),
+                        "a paused worker opens no database connection")
+        settings_kt = (ROOT / "backend" / "platform" / "src" / "main" / "kotlin" / "com" / "aktcl" / "aron" / "backend" / "platform" / "Settings.kt").read_text(encoding="utf-8")
+        self.assertIn('src.get("ARON_WORKER_PAUSED")', settings_kt)
+        cmds = "\n".join(l for l in d.splitlines() if not l.lstrip().startswith("#"))  # commands only, not comments
+        self.assertNotIn("az containerapp stop", cmds)
+        self.assertNotIn("az containerapp start", cmds)
         self.assertIn('if got="$(read_lock)" && [ "$(lock_owner "$got")" = "$lock_me" ]; then break; fi', d, "write, settle, re-read")
         self.assertIn('if ! cur="$(read_lock)"; then', d, "a failed read counts as held")
         self.assertIn("|| return 1", d[d.index("read_lock() {"):d.index("lock_owner()")])
