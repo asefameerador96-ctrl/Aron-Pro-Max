@@ -59,7 +59,7 @@ class RouteDayViewTest {
             // An old dw-only auto_submitted stamp is not a Final Submit; a live Final Submit time (not auto) is.
             exec("INSERT INTO dw.agg_daily_zone (business_date, zone_id, territory_id, final_submitted, final_submitted_at, auto_submitted) SELECT $day, $zone, territory_id, false, now(), true FROM app.zone WHERE id = $zone")
             assertEquals("0|3", scalar("SELECT count(*) FILTER (WHERE zone_final_submitted) || '|' || count(*) FILTER (WHERE zone_auto_submitted) FROM dw.v_route_day WHERE business_date = $day AND zone_id = $zone"))
-            // One formula (V0146): the live Final Submit time decides, not the route-state flag (backend zoneSubmittedSql).
+            // One formula (V0148): the live Final Submit time decides, not the route-state flag (backend zoneSubmittedSql).
             exec("UPDATE dw.agg_daily_zone SET final_submitted = false, auto_submitted = false WHERE business_date = $day AND zone_id = $zone")
             assertEquals("3", scalar("SELECT count(*) FILTER (WHERE zone_final_submitted) FROM dw.v_route_day WHERE business_date = $day AND zone_id = $zone"))
             exec("UPDATE dw.agg_daily_zone SET final_submitted = true, final_submitted_at = NULL WHERE business_date = $day AND zone_id = $zone")

@@ -24,11 +24,37 @@
 --    whose kept columns moved are rekeyed in one call; an id the rekey leaves alone takes V0043's step (the date of the
 --    projector write, dw.scd2_open_version) and its facts from today are re-stamped. An updated_at-only refresh does
 --    nothing. DELETE stays row level and unchanged (dw.scd2_track).
--- 3. One rekey of all four dimensions here, then every fact key that still differs (pilot size on dev; the final
---    account migrates from empty).
--- No dw.v_* view changes: the view contract stays 1.2.
+-- 3. v2 (after deploy #308/#309 on dev): this migration holds only the functions, triggers and indexes and takes its
+--    table locks up front with a NOWAIT retry; the one full rekey of all four dimensions is V0146 and the fact-key
+--    restamp is V0147, each its own transaction and idempotent, so no single transaction runs the whole backfill.
+--    (The first version of this file ran all three and never completed on dev.)
+-- No dw.v_* view changes: the view contract stays 1.3 (since V0140).
 
 SET lock_timeout = '5s';
+
+-- ---------- -1. take the table locks up front, in the Aggregator's order, retrying while the worker holds them ----------
+-- v2 (deploy #308 failed on dev with the AggregationWorker running): the trigger swap and the index builds below need
+-- ACCESS EXCLUSIVE / SHARE locks that the worker's refresh transaction can hold for longer than lock_timeout. Each table is
+-- locked with NOWAIT in a short retry loop (about 60 s per table), so the migration neither waits behind a long
+-- transaction nor holds a half-taken set while it waits (it holds only the locks already taken, in the worker's order).
+DO $$
+DECLARE t text; n int;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['dw.dim_geo', 'dw.dim_geo_version', 'dw.dim_product', 'dw.dim_product_version',
+                           'dw.dim_outlet', 'dw.dim_outlet_version', 'dw.dim_user', 'dw.dim_user_version'] LOOP
+    n := 0;
+    LOOP
+      BEGIN
+        EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE NOWAIT', t);
+        EXIT;
+      EXCEPTION WHEN lock_not_available THEN
+        n := n + 1;
+        IF n >= 120 THEN RAISE EXCEPTION 'V0144: % stayed locked for 60 s (is the worker paused?)', t; END IF;
+        PERFORM pg_sleep(0.5);
+      END;
+    END LOOP;
+  END LOOP;
+END $$;
 
 -- ---------- 0. btree lookups by id and start (the GiST exclusion index keeps the no-overlap rule) ----------
 -- The version tables hold one row per master per change (pilot: a few hundred rows; fleet: tens of thousands).
@@ -171,8 +197,12 @@ BEGIN
     RETURN 0;
   END IF;
   FOREACH t IN ARRAY ARRAY['fact_memo', 'fact_visit'] LOOP
+    -- aron.rekey_skip_locked = on (the migration only): rows another transaction holds are skipped, never waited for (no
+    -- deadlock with the worker); the migration's completeness pass repeats until none is left.
     EXECUTE format('UPDATE dw.%1$I f SET %2$I = dw.%3$I(f.%4$I, f.business_date), updated_at = now()
-                     WHERE f.%4$I = ANY ($1) AND f.business_date >= $2 AND f.%2$I IS DISTINCT FROM dw.%3$I(f.%4$I, f.business_date)',
+                     WHERE f.%4$I = ANY ($1) AND f.business_date >= $2 AND f.%2$I IS DISTINCT FROM dw.%3$I(f.%4$I, f.business_date)
+                       AND (coalesce(current_setting(''aron.rekey_skip_locked'', true), '''') <> ''on''
+                            OR (f.tableoid, f.ctid) IN (SELECT l.tableoid, l.ctid FROM dw.%1$I l WHERE l.%4$I = ANY ($1) AND l.business_date >= $2 FOR UPDATE SKIP LOCKED))',
                    t, c.fact_key, c.key_fn, c.natural_key) USING p_ids, coalesce(p_from, '-infinity'::date);
     GET DIAGNOSTICS n = ROW_COUNT;
     tot := tot + n;
@@ -246,13 +276,13 @@ BEGIN
     -- The merged periods are computed once and analyzed, so every statement below joins them by hash or index (a CTE
     -- estimated at one row made the full run's anti-join quadratic: 94 s for 30k outlets).
     -- (A temp table: the calling transaction cannot use PREPARE TRANSACTION; nothing in Aron does.)
-    IF to_regclass('pg_temp.dw_v0123_rekey_periods') IS NOT NULL THEN
-      DROP TABLE pg_temp.dw_v0123_rekey_periods;
+    IF to_regclass('pg_temp.dw_v0144_rekey_periods') IS NOT NULL THEN
+      DROP TABLE pg_temp.dw_v0144_rekey_periods;
     END IF;
-    EXECUTE 'CREATE TEMP TABLE dw_v0123_rekey_periods ON COMMIT DROP AS ' || x;
-    EXECUTE format('CREATE INDEX ON pg_temp.dw_v0123_rekey_periods (%I, valid_from)', c.natural_key);
-    ANALYZE pg_temp.dw_v0123_rekey_periods;
-    x := 'SELECT * FROM pg_temp.dw_v0123_rekey_periods';
+    EXECUTE 'CREATE TEMP TABLE dw_v0144_rekey_periods ON COMMIT DROP AS ' || x;
+    EXECUTE format('CREATE INDEX ON pg_temp.dw_v0144_rekey_periods (%I, valid_from)', c.natural_key);
+    ANALYZE pg_temp.dw_v0144_rekey_periods;
+    x := 'SELECT * FROM pg_temp.dw_v0144_rekey_periods';
     dim := d;
     ver := d || '_version';
     sk := replace(d, 'dim_', '') || '_key';
@@ -298,7 +328,7 @@ BEGIN
       INTO kept USING p_ids;
     kept := kept - inserted;
     restamped := dw.restamp_fact_keys(d, ARRAY(SELECT DISTINCT unnest(a_ids)), a_from);
-    DROP TABLE pg_temp.dw_v0123_rekey_periods;
+    DROP TABLE pg_temp.dw_v0144_rekey_periods;
     RETURN NEXT;
   END LOOP;
 END $$;
@@ -452,15 +482,6 @@ REVOKE ALL ON FUNCTION app.zone_house_follow() FROM PUBLIC;
 COMMENT ON COLUMN dw.dim_geo_version.house_id IS 'The zone''s house as app.zone_history recorded it (raw, versioned as was); dw.dim_geo.house_id is the same-name fold (lowest active house of the same name).';
 CREATE TRIGGER zone_house_follow AFTER UPDATE ON app.zone
   REFERENCING OLD TABLE AS zone_old NEW TABLE AS zone_new FOR EACH STATEMENT EXECUTE FUNCTION app.zone_house_follow();
-
--- ---------- 4. one rekey (it re-stamps the facts of the ids it changed), then every fact key that still differs ----------
-SELECT count(*) FROM dw.rekey_dim_versions();
-SELECT dw.restamp_fact_keys(d, ARRAY(SELECT DISTINCT f.id FROM (SELECT route_id FROM dw.fact_memo UNION SELECT route_id FROM dw.fact_visit) f(id)), NULL)
-  FROM (VALUES ('dim_geo')) v(d);
-SELECT dw.restamp_fact_keys(d, ARRAY(SELECT DISTINCT f.id FROM (SELECT outlet_id FROM dw.fact_memo UNION SELECT outlet_id FROM dw.fact_visit) f(id)), NULL)
-  FROM (VALUES ('dim_outlet')) v(d);
-SELECT dw.restamp_fact_keys(d, ARRAY(SELECT DISTINCT f.id FROM (SELECT user_id FROM dw.fact_memo UNION SELECT user_id FROM dw.fact_visit) f(id)), NULL)
-  FROM (VALUES ('dim_user')) v(d);
 
 -- ---------- data dictionary ----------
 DO $$
