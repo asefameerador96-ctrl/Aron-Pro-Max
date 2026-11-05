@@ -41,11 +41,12 @@ resource kv 'Microsoft.KeyVault/vaults@2024-11-01' = {
 // Without PgBouncer (Burstable, TEST profile) the same URL points at 5432 and the app's own pool is the only pool.
 var pooledParams = 'sslmode=require&prepareThreshold=0&user=${postgresAdminLogin}&password=${postgresAdminPassword}'
 // Direct connections (5432) for Flyway (session advisory lock) and the worker (advisory locks for run-once jobs).
-// tcpKeepAlive=true (pgjdbc): OS-level TCP keepalives on these long-lived sessions. They start after the OS idle time (Linux
-// default 7200 s unless the node tunes it), so this covers long idle gaps, not a 105 s busy statement; it removes one class
-// of cause for deploy #309's lost migrate connection (SQLSTATE 08006) at no cost and claims nothing about that cause
-// (D-INFRA-DIRECT-URL-KEEPALIVE-01). No socketTimeout: a migration may legitimately run for minutes.
-var directParams = 'sslmode=require&tcpKeepAlive=true&user=${postgresAdminLogin}&password=${postgresAdminPassword}'
+// TWO kinds of client read this URL: pgjdbc (migrate job, worker) and libpq/psql (the dblogins and seed job executions,
+// devseed-run.sh, drill.sh, devload_job.py strip the leading 'jdbc:' and pass the rest to psql). Only parameters both
+// accept may appear here (sslmode, user, password): a pgjdbc-only option such as tcpKeepAlive or prepareThreshold makes
+// psql exit with 'invalid URI query parameter' (deploy #313, D-INFRA-DIRECT-URL-KEEPALIVE-02). A keepalive, if ever
+// wanted, belongs to the server's tcp_keepalives_* parameters (postgres.bicep), not to this URL.
+var directParams = 'sslmode=require&user=${postgresAdminLogin}&password=${postgresAdminPassword}'
 
 resource secretDbPassword 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = {
   parent: kv
