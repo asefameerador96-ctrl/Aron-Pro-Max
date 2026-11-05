@@ -19,7 +19,7 @@
 --    history's current period disagrees with the dimension row on a versioned column (a write the history did not see:
 --    app.outlet_placement_history is written by the admin API, not by a trigger; house_id does not count) is left
 --    alone. One rekey of a dimension runs at a time (advisory lock); the periods go through an analyzed temp table. Invoker rights: worker_rw (the projector, and jobs_rw through its membership) and the
---    owner write; api_rw, web_ro and bi_reader fail on the version-table privilege. Idempotent: a second run changes nothing.
+--    owner write; api_rw, web_ro and bi_reader fail on the version-table privilege (api_rw reaches a rekey only indirectly, through the SECURITY DEFINER zone trigger of section 3b; a rekey failure or lock wait there aborts that admin zone write, a retryable 503 at the 15 s request timeout, on purpose: no scheduled full rekey would heal a swallowed error). Idempotent: a second run changes nothing.
 -- 2. The dimension triggers: INSERT and UPDATE are statement level (dw.dim_versions_follow, transition tables): the ids
 --    whose kept columns moved are rekeyed in one call; an id the rekey leaves alone takes V0043's step (the date of the
 --    projector write, dw.scd2_open_version) and its facts from today are re-stamped. An updated_at-only refresh does
@@ -56,8 +56,9 @@ AS $$
   SELECT h.route_id, h.valid_from, h.valid_to,
          h.route_kind, h.visit_kind, h.zone_id, h.territory_id, h.division_id, h.wing_id, h.status,
          -- the zone's house in the period as the history recorded it: a house merge (V0093, admin HouseDedup) moves the
-         -- zones to the surviving house, which zone_history dates, and a house's status change moves nothing (V0093's
-         -- DashboardSummaries key, the lowest active house of the same name, is the same house once zones are merged)
+         -- zones to the surviving house, which zone_history dates, and a house's status change moves nothing. The version
+         -- keeps this RAW house: it can differ from the same-name fold in dw.dim_geo.house_id (DashboardSummaries' key,
+         -- the lowest active house of the same name), for example a zone on the higher same-name id (section 3b).
          h.house_id,
          h.route_class,
          r.code, r.name, z.name, t.name, d.name, w.name, hs.name
@@ -446,8 +447,9 @@ BEGIN
   END IF;
   RETURN NULL;
 END $$;
-COMMENT ON FUNCTION app.zone_house_follow() IS 'AFTER UPDATE statement on app.zone: rekeys dw.dim_geo_version for the routes of zones whose house_id changed (V0144). dim_geo_version.house_id is the house as the history recorded it.';
+COMMENT ON FUNCTION app.zone_house_follow() IS 'AFTER UPDATE statement on app.zone: rekeys dw.dim_geo_version for the routes of zones whose house_id changed (V0144). dim_geo_version.house_id is the house as the history recorded it. Called by api_rw writes indirectly: an error or lock wait aborts the admin zone write on purpose (no scheduled rekey would heal it).';
 REVOKE ALL ON FUNCTION app.zone_house_follow() FROM PUBLIC;
+COMMENT ON COLUMN dw.dim_geo_version.house_id IS 'The zone''s house as app.zone_history recorded it (raw, versioned as was); dw.dim_geo.house_id is the same-name fold (lowest active house of the same name).';
 CREATE TRIGGER zone_house_follow AFTER UPDATE ON app.zone
   REFERENCING OLD TABLE AS zone_old NEW TABLE AS zone_new FOR EACH STATEMENT EXECUTE FUNCTION app.zone_house_follow();
 

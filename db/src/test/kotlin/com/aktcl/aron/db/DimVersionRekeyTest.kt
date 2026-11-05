@@ -297,13 +297,22 @@ class DimVersionRekeyTest {
             refreshDims()
             val low = scalar("SELECT house_id FROM app.zone WHERE code = 'Z-MIR'")!!
             val key0 = scalar("SELECT dw.geo_key_on($route, $day - 30)")!!
+            val outlet = scalar("SELECT min(id) FROM app.outlet")!!
+            val user = scalar("SELECT min(id) FROM app.app_user")!!
+            fact(route, outlet, user, "$day")
+            refreshDims()
+            factKeysAreRight()
             exec("INSERT INTO app.house (code, name, territory_id) SELECT 'H-REKEY2', name, territory_id FROM app.house WHERE id = $low")
             val high = scalar("SELECT id FROM app.house WHERE code = 'H-REKEY2'")!!
             // Zone to the HIGHER duplicate: DashboardSummaries still folds to the lowest active (dim_geo unchanged), no refresh runs.
+            exec("SET LOCAL ROLE api_rw")                                          // HouseDedup / AdminGeography write as api_rw
             exec("UPDATE app.zone SET house_id = $high WHERE code = 'Z-MIR'")
+            exec("RESET ROLE")
             assertEquals(low, scalar("SELECT house_id FROM dw.dim_geo WHERE route_id = $route"), "the fold keeps the lowest id")
             assertEquals(high, scalar("SELECT house_id FROM dw.dim_geo_version WHERE geo_key = dw.geo_key_on($route, $day)"), "the zone trigger versioned the move")
             assertEquals(low, scalar("SELECT house_id FROM dw.dim_geo_version WHERE geo_key = $key0"), "the past keeps the house it had")
+            assertEquals("true", scalar("SELECT (valid_to = $day)::text FROM dw.dim_geo_version WHERE geo_key = $key0"), "the past version closes on the day of the move")
+            factKeysAreRight()
             // And back to the LOWER id (a merge into the lower id).
             exec("UPDATE app.zone SET house_id = $low WHERE code = 'Z-MIR'")
             assertEquals(low, scalar("SELECT house_id FROM dw.dim_geo_version WHERE geo_key = dw.geo_key_on($route, $day)"))

@@ -6,7 +6,10 @@
 -- statement, not per row. Readers: api_rw and worker_rw (SELECT on app.*), read beside scope_version in
 -- SqlReachResolver.reach. Writes: only the SECURITY DEFINER bump trigger and the owner (guard as V0119's history tables,
 -- because app.apply_db_role_grants() gives api_rw INSERT and UPDATE on every app table). Geography edits are admin
--- writes: the single row serialises them for the length of their transaction, which is what a version needs.
+-- writes: the single row serialises them for the length of their transaction, which is what a version needs. The row is
+-- locked at the end of each statement, after that statement's row locks, so two concurrent multi-statement geography
+-- transactions touching overlapping rows in different orders can deadlock (40P01): admin writes touch rows in a fixed
+-- order or retry (low risk at pilot size).
 
 SET lock_timeout = '5s';
 

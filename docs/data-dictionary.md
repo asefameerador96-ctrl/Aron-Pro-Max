@@ -5714,7 +5714,7 @@ One row is a version of geo valid over [valid_from, valid_to) (SCD2): dated by t
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the version (null = since ever). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the version ended, exclusive (null = current). |
 | `is_current` | boolean | null |  | True for the current version (valid_to is null). |
-| `house_id` | bigint | null |  | Distribution house of the route's zone in this version; null when the zone named none. |
+| `house_id` | bigint | null |  | The zone's house as app.zone_history recorded it (raw, versioned as was); dw.dim_geo.house_id is the same-name fold (lowest active house of the same name). |
 | `house_name` | text | null |  | Name of that house in this version. |
 | `route_class` | text | not null |  | Route class in this version. |
 
