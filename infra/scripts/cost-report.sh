@@ -2,15 +2,32 @@
 # Read-only cost reading of ONE resource group (owner's review, docs/28): month-to-date cost per day and per resource
 # from Azure's own cost data, without the budget API. Tries, in order:
 #   1. Cost Management query  (Microsoft.CostManagement/query, actual cost, daily, grouped by resource)
-#   2. Consumption usage details (Microsoft.Consumption/usageDetails, the older API)
+#   2. Consumption usage details (Microsoft.Consumption/usageDetails, the older API), read at SUBSCRIPTION scope with a
+#      resource-group filter: the resource-group scope answers 404 for this API (run 42191608792, D-OPS-COST-SCOPE-01)
 # Both are refused while the billing account's cost policy is off for subscription users (the same policy that
 # blocks budgets); the script then says so plainly and changes nothing. Writes the result to the run summary.
+# When no figure could be read at all the script emits a ::warning:: annotation, so the run list shows it (the run
+# itself stays green: a refused cost API is a state of the account, not a failure of the repository).
 # Usage: infra/scripts/cost-report.sh <resource-group>
+# Sourcing it only defines the functions (tests); running it does the reading.
 # shellcheck source=lib.sh
-source "$(dirname "$0")/lib.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+# Consumption usageDetails URL at subscription scope, filtered to one resource group and the month to date.
+usage_details_url() { # subscription resource-group start end
+  printf 'https://management.azure.com/subscriptions/%s/providers/Microsoft.Consumption/usageDetails?api-version=2023-05-01&$filter=properties/usageStart ge \x27%s\x27 and properties/usageEnd le \x27%s\x27 and properties/resourceGroup eq \x27%s\x27\n' "$1" "$3" "$4" "$2"
+}
+# True when an az error text says the call was throttled.
+is_throttled() { grep -q "429\|Too Many Requests" "$1"; }
+# The annotation that makes a run without any cost figure visible in the run list.
+no_figure_warning() { # resource-group reason
+  echo "::warning::cost-report of $1: no cost figure was read ($2)"
+}
+
+main() {
 rg="${1:?resource group}"
 sub="$(az account show --query id -o tsv)" || die "not signed in to Azure"
-scope="/subscriptions/${sub}/resourceGroups/${rg}"
+scope="/subscriptions/${sub}/resourceGroups/${rg}"  # Cost Management query accepts the resource-group scope
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 summary() { echo "$*"; [ -z "${GITHUB_STEP_SUMMARY:-}" ] || echo "$*" >> "$GITHUB_STEP_SUMMARY"; }
 
@@ -24,7 +41,7 @@ for wait in 0 30 60 120 180; do
   sleep "$wait"
   if az rest --method post --url "https://management.azure.com${scope}/providers/Microsoft.CostManagement/query?api-version=2023-11-01" \
        --body "$body" -o json > "$tmp/q.json" 2> "$tmp/q.err"; then query_ok=true; break; fi
-  grep -q "429\|Too Many Requests" "$tmp/q.err" || break
+  is_throttled "$tmp/q.err" || break
   echo "Cost Management throttled (429); retrying"
 done
 if [ "$query_ok" = true ]; then
@@ -54,8 +71,7 @@ fi
 summary "- Cost Management query failed: $(tr '\n' ' ' < "$tmp/q.err" | cut -c1-300)"
 
 start="$(date -u +%Y-%m-01)"; end="$(date -u +%Y-%m-%d)"
-if az rest --method get -o json > "$tmp/u.json" 2> "$tmp/u.err" \
-     --url "https://management.azure.com${scope}/providers/Microsoft.Consumption/usageDetails?api-version=2023-05-01&\$filter=properties/usageStart ge '${start}' and properties/usageEnd le '${end}'"; then
+if az rest --method get -o json > "$tmp/u.json" 2> "$tmp/u.err" --url "$(usage_details_url "$sub" "$rg" "$start" "$end")"; then
   python3 - "$tmp/u.json" <<'PY' | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
 import collections, json, sys
 items = json.load(open(sys.argv[1])).get("value", [])
@@ -73,11 +89,15 @@ PY
 fi
 summary "- Consumption usage details failed: $(tr '\n' ' ' < "$tmp/u.err" | cut -c1-300)"
 summary ""
-if grep -q "429\|Too Many Requests" "$tmp/q.err"; then
+if is_throttled "$tmp/q.err"; then
   summary "**Cost Management kept throttling (429) for about 6 minutes; run cost-report again later.**"
+  no_figure_warning "$rg" "Cost Management throttled (429) for about 6 minutes"
   exit 0
 fi
 summary "**No Azure cost data is readable by the deploy identity.** Turn on the billing account's cost policy for"
 summary "subscription users (the same switch the budget needs), or read the cost in the portal as the owner"
 summary "(Cost Management > Cost analysis, scope ${rg}). Until then the per-day figure is the estimate in docs/status/infra.md."
+no_figure_warning "$rg" "neither the Cost Management query nor the Consumption usage details is readable by the deploy identity"
 exit 0
+}
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then main "$@"; fi
