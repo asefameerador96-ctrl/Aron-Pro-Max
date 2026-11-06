@@ -15,6 +15,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # Consumption usageDetails URL at subscription scope, filtered to one resource group and the month to date.
 usage_details_url() { # subscription resource-group start end
+  # shellcheck disable=SC2016  # $filter is the literal OData option name, not a shell variable
   printf 'https://management.azure.com/subscriptions/%s/providers/Microsoft.Consumption/usageDetails?api-version=2023-05-01&$filter=properties/usageStart ge \x27%s\x27 and properties/usageEnd le \x27%s\x27 and properties/resourceGroup eq \x27%s\x27\n' "$1" "$3" "$4" "$2"
 }
 # True when an az error text says the call was throttled.
