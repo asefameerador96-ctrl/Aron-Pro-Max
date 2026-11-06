@@ -1,4 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Owner: lane android-amo-outlet (A4): Outlet menu and forms. Empty until that lane adds its strings; android-amo-shell does not edit this file. -->
+<!-- Owner: lane android-amo-outlet (A4): Outlet menu and forms. -->
 <resources>
+    <string name="amo_out_verify_heading">Verify the requests that came from SRs</string>
+    <string name="amo_out_ops_heading">Shop operations</string>
+    <string name="amo_out_tile_verify_new">New outlet verification</string>
+    <string name="amo_out_tile_verify_close">Outlet closure verification</string>
+    <string name="amo_out_tile_verify_change">Outlet correction verification</string>
+    <string name="amo_out_route">Route</string>
+    <string name="amo_out_cluster">Cluster</string>
+    <string name="amo_out_retailer_name">Retailer name</string>
+    <string name="amo_out_owner_name">Owner name</string>
+    <string name="amo_out_contact">Contact</string>
+    <string name="amo_out_pick_route">Select a route</string>
+    <string name="amo_out_pick_cluster">Select a cluster</string>
+    <string name="amo_out_pick_retailer">Select retailer</string>
+    <string name="amo_out_f_shop">Shop name</string>
+    <string name="amo_out_f_owner">Shop owner\'s name</string>
+    <string name="amo_out_f_mobile">Mobile number</string>
+    <string name="amo_out_sub_channel">Sub-Channel</string>
+    <string name="amo_out_pick_sub_channel">Select Sub-Channel</string>
+    <string name="amo_out_geo_class">Geo Classification</string>
+    <string name="amo_out_pick_geo_class">Select Geo Classification</string>
+    <string name="amo_out_all">All</string>
+    <string name="amo_out_saved">Data saved successfully.</string>
+    <string name="amo_out_updated">Data updated successfully.</string>
+    <string name="amo_out_photo_done">Photo captured</string>
+    <string name="amo_out_reject_message">This request will be rejected</string>
+    <string name="amo_out_err_route">Select a route.</string>
+    <string name="amo_out_err_cluster">Select a cluster.</string>
+    <string name="amo_out_err_retailer">Select the retailer.</string>
+    <string name="amo_out_err_name">Enter the shop name (2 to 120 letters).</string>
+    <string name="amo_out_err_owner">Enter the owner\'s name (2 to 120 letters).</string>
+    <string name="amo_out_err_mobile">Enter a valid mobile number (01XXXXXXXXX).</string>
+    <string name="amo_out_err_geo">Capture the GEO and the photo.</string>
+    <string name="amo_out_err_mock">A fake location was detected. Go to the shop and capture again.</string>
+    <string name="amo_out_err_sub_channel">Select the Sub-Channel.</string>
+    <string name="amo_out_err_geo_class">Select the Geo Classification.</string>
+    <string name="amo_out_thumb">Photo of the shop</string>
+    <string name="amo_out_base_title">Base Recalibration</string>
+    <string name="amo_out_base_button">Update Base</string>
+    <string name="amo_out_map_title">Confirm location</string>
+    <string name="amo_out_map_confirm">Confirm</string>
+    <string name="amo_out_map_distance">The pin is %1$s m from where you stand (at most %2$s m).</string>
+    <string name="amo_out_map_hint">Drag the pin to the shop\'s exact point.</string>
+    <string name="amo_out_map_offline">The map needs a connection. Move the pin with the buttons.</string>
+    <string name="amo_out_list_no_detail">Details load when you are online</string>
 </resources>

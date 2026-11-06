@@ -91,11 +91,29 @@ class AmoTsoScreenshotTests {
         VerifyDetail("new", "pending", 5, mapOf("name" to "Rahim Store", "owner_name" to "Abdur Rahim", "contact_number" to "01712345678", "address" to "Kawran Bazar, Dhaka"), null, 23.75, 90.39, 1, listOf("low_accuracy")), true,
     )
 
-    private fun verifyForm(bn: Boolean, detail: VerifyDetailState, errors: Set<com.aktcl.aron.feature.amo.VerifyError> = emptySet(), decidable: Boolean = true) = @Composable {
-        VerifyFormContent(
-            pendingNew, detail, emptyList<FieldChange>(), emptyList(), true, decidable, subs, bn, 2, "Urban", "", errors, false, false, false,
-            {}, {}, {}, {}, {}, {},
-        )
+    private fun verifyForm(bn: Boolean, detail: VerifyDetailState, errors: Set<com.aktcl.aron.feature.amo.AmoFormError> = emptySet(), decidable: Boolean = true) = @Composable {
+        val none = emptySet<com.aktcl.aron.feature.amo.AmoFormError>()
+        val items = listOf(
+            com.aktcl.aron.feature.amo.routeItem(com.aktcl.aron.feature.amo.Pick(listOf(com.aktcl.aron.feature.amo.AmoOption(1, "Savar BazarDaily")), 1, {}, false), none),
+            com.aktcl.aron.feature.amo.clusterItem(com.aktcl.aron.feature.amo.Pick(listOf(com.aktcl.aron.feature.amo.AmoOption(77, "Madrasa Road")), 77, {}, false), none),
+        ) + com.aktcl.aron.feature.amo.shopReadOnlyItems("Rahim Store", "Abdur Rahim", "01712345678") +
+            com.aktcl.aron.feature.amo.classificationItems(com.aktcl.aron.feature.amo.Pick(subs.map { com.aktcl.aron.feature.amo.AmoOption(it.id, if (bn) it.labelBn ?: it.labelEn else it.labelEn) }, 2, {}), "Urban", {}, errors) +
+            com.aktcl.aron.feature.amo.captureItem(com.aktcl.aron.feature.outlet.GeoPhotoState(), {}, errors)
+        VerifyFormContent(pendingNew, detail, emptyList<FieldChange>(), emptyList(), items, decidable, false, false, false, {}, {})
+    }
+
+    private fun verifyFormOf(type: String, bn: Boolean) = @Composable {
+        val none = emptySet<com.aktcl.aron.feature.amo.AmoFormError>()
+        val items = listOf(
+            com.aktcl.aron.feature.amo.routeItem(com.aktcl.aron.feature.amo.Pick(listOf(com.aktcl.aron.feature.amo.AmoOption(1, "Savar BazarDaily")), 1, {}, false), none),
+            com.aktcl.aron.feature.amo.clusterItem(com.aktcl.aron.feature.amo.Pick(listOf(com.aktcl.aron.feature.amo.AmoOption(77, "Madrasa Road")), 77, {}, false), none),
+        ) + com.aktcl.aron.feature.amo.shopReadOnlyItems("Siyam", "Robiul", "01832714554") + if (type == "close") emptyList() else
+            com.aktcl.aron.feature.amo.classificationItems(com.aktcl.aron.feature.amo.Pick(subs.map { com.aktcl.aron.feature.amo.AmoOption(it.id, if (bn) it.labelBn ?: it.labelEn else it.labelEn) }, 1, {}), "Urban", {}, none)
+        VerifyFormContent(pendingNew.copy(type = type), VerifyDetailState.Unavailable, emptyList<FieldChange>(), emptyList(), items, true, false, false, false, {}, {})
+    }
+
+    private fun listRows(vararg r: PendingRequest) = r.map {
+        com.aktcl.aron.feature.amo.VerifyListRow(it, "Savar BazarDaily", "Madrasa Road", it.outletName, "Abdur Rahim", "01712345678")
     }
 
     private val task = AssignedTask("t1", "stock_check", "Stock check - Rahim Store", 1, 7, "ongoing", "2026-10-19", null, null, "2026-10-17T01:00:00Z")
@@ -136,10 +154,12 @@ class AmoTsoScreenshotTests {
 
     // ---- Verify
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_verify_form_new_en() = shot("amo_verify_form_new_en", AppLanguage.EN, "Verify requests", content = verifyForm(false, newDetail))
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_form_new_bn_long() = shot("amo_verify_form_new_bn", AppLanguage.BN, "অনুরোধ যাচাই", content = verifyForm(true, newDetail, setOf(com.aktcl.aron.feature.amo.VerifyError.GEO_CLASS_REQUIRED)))
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_form_new_bn_long() = shot("amo_verify_form_new_bn", AppLanguage.BN, "অনুরোধ যাচাই", content = verifyForm(true, newDetail, setOf(com.aktcl.aron.feature.amo.AmoFormError.GEO_CLASS)))
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_form_close_bn() = shot("amo_verify_form_close_bn", AppLanguage.BN, "স্থায়ী বন্ধ", content = verifyFormOf("close", true))
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_form_info_bn() = shot("amo_verify_form_info_bn", AppLanguage.BN, "তথ্য পরিবর্তন করুন", content = verifyFormOf("info", true))
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_verify_form_offline_en() = shot("amo_verify_form_offline_en", AppLanguage.EN, "Verify requests", content = verifyForm(false, VerifyDetailState.Unavailable))
-    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_verify_list_en() = shot("amo_verify_list_en", AppLanguage.EN, "Verify requests") { VerifyListContent(listOf(pendingNew, pendingNew.copy(uuid = "x", type = "close", outletName = "Pan Ghar")), mapOf(5L to "Rahim Uddin"), {}) }
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_list_empty_bn() = shot("amo_verify_list_empty_bn", AppLanguage.BN, "অনুরোধ যাচাই") { VerifyListContent(emptyList(), emptyMap(), {}) }
+    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_verify_list_en() = shot("amo_verify_list_en", AppLanguage.EN, "Verify requests") { VerifyListContent(listRows(pendingNew, pendingNew.copy(uuid = "x", type = "close", outletName = "Pan Ghar")), {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_list_empty_bn() = shot("amo_verify_list_empty_bn", AppLanguage.BN, "অনুরোধ যাচাই") { VerifyListContent(emptyList(), {}) }
 
     // ---- Exceptions
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_exceptions_list_en() = shot("amo_exceptions_list_en", AppLanguage.EN, "Exceptions") { ExceptionsListContent(signals, mapOf(7L to "Rahim Uddin", 8L to "Karim"), {}) }
@@ -193,24 +213,18 @@ class AmoTsoScreenshotTests {
         ))))
     }
     private fun outletHub() = @Composable {
-        com.aktcl.aron.feature.amo.HubListContent(listOf(
-            com.aktcl.aron.feature.amo.HubSection("এসআর থেকে আসা অনুরোধগুলো যাচাই করুন", listOf(
-                com.aktcl.aron.feature.amo.HubRow("নতুন আউটলেট যাচাইকরণ", "৩", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_new, badge = 3), com.aktcl.aron.feature.amo.HubRow("আউটলেট বন্ধের যাচাইকরণ", "১", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_close, badge = 1), com.aktcl.aron.feature.amo.HubRow("আউটলেট সংশোধনের যাচাইকরণ", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_edit),
-            )),
-            com.aktcl.aron.feature.amo.HubSection("দোকান সংক্রান্ত অপারেশন্স", listOf(
-                com.aktcl.aron.feature.amo.HubRow("নতুন দোকান", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_new), com.aktcl.aron.feature.amo.HubRow("স্থায়ী বন্ধ", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_close), com.aktcl.aron.feature.amo.HubRow("তথ্য পরিবর্তন করুন", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_edit),
-                com.aktcl.aron.feature.amo.HubRow("আপডেট বেস", icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_update_base), com.aktcl.aron.feature.amo.HubRow("আমার অনুরোধ", icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_verify),
-            )),
-        ))
+        com.aktcl.aron.feature.amo.AmoOutletMenuContent(
+            mapOf(com.aktcl.aron.feature.amo.VerifyGroup.NEW to 3, com.aktcl.aron.feature.amo.VerifyGroup.CLOSE to 1), {}, {}, onOwn = {},
+        )
     }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_hub_bn_fs2() = shot("amo_team_hub_bn_fs2", AppLanguage.BN, "টিম", fontScale = 2f, content = teamHub())
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_hub_sunlight_bn() = shot("amo_team_hub_sunlight_bn", AppLanguage.BN, "টিম", sunlight = true, content = teamHub())
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_outlet_hub_bn() = shot("amo_outlet_hub_bn", AppLanguage.BN, "আউটলেট", content = outletHub())
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_outlet_hub_bn_fs2() = shot("amo_outlet_hub_bn_fs2", AppLanguage.BN, "আউটলেট", fontScale = 2f, content = outletHub())
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_outlet_hub_sunlight_bn() = shot("amo_outlet_hub_sunlight_bn", AppLanguage.BN, "আউটলেট", sunlight = true, content = outletHub())
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_list_bn_fs2() = shot("amo_verify_list_bn_fs2", AppLanguage.BN, "অনুরোধ যাচাই", fontScale = 2f) { VerifyListContent(longVerify, mapOf(5L to "রহিম উদ্দিন"), {}) }
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_list_sunlight_bn() = shot("amo_verify_list_sunlight_bn", AppLanguage.BN, "অনুরোধ যাচাই", sunlight = true) { VerifyListContent(longVerify, mapOf(5L to "রহিম উদ্দিন"), {}) }
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_form_bn_fs2() = shot("amo_verify_form_bn_fs2", AppLanguage.BN, "অনুরোধ যাচাই", fontScale = 2f, content = verifyForm(true, newDetail, setOf(com.aktcl.aron.feature.amo.VerifyError.GEO_CLASS_REQUIRED)))
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_list_bn_fs2() = shot("amo_verify_list_bn_fs2", AppLanguage.BN, "অনুরোধ যাচাই", fontScale = 2f) { VerifyListContent(listRows(*longVerify.toTypedArray()), {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_list_sunlight_bn() = shot("amo_verify_list_sunlight_bn", AppLanguage.BN, "অনুরোধ যাচাই", sunlight = true) { VerifyListContent(listRows(*longVerify.toTypedArray()), {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_form_bn_fs2() = shot("amo_verify_form_bn_fs2", AppLanguage.BN, "অনুরোধ যাচাই", fontScale = 2f, content = verifyForm(true, newDetail, setOf(com.aktcl.aron.feature.amo.AmoFormError.GEO_CLASS)))
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_tasks_sunlight_bn() = shot("amo_tasks_sunlight_bn", AppLanguage.BN, "টাস্ক ডেলিগেশন", sunlight = true) { AssignedTasksContent(tasks, mapOf(7L to "রহিম উদ্দিন"), mapOf(1L to "রহিম স্টোর"), taskType, false, false, {}) }
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_task_assign_sunlight_en() = shot("amo_task_assign_sunlight_en", AppLanguage.EN, "Task Delegation", sunlight = true) {
         TaskAssignContent("Rahim Uddin", listOf("Rahim Store", "R-1042", "Kawran Bazar"), listOf(TaskType("stock_check", "Stock check", "স্টক পরীক্ষা"), TaskType("price", "Price check", "দাম যাচাই")), false, "stock_check", listOf("2026-10-18", "2026-10-19"), "2026-10-18", "", emptySet(), false, false, {}, {}, {}, {})

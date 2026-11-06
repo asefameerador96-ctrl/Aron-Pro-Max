@@ -21,9 +21,13 @@ fun OutletRequestDraft.toEntities(meta: CaptureMeta, fix: FixReading, fixUuid: S
             OutletRequestKind.NEW -> {
                 name?.let { put("name", it) }; ownerName?.let { put("owner_name", it) }; contactNumber?.let { put("contact_number", it) }
                 clusterId?.let { put("cluster_id", it) }
+                subChannelId?.let { put("sub_channel_id", it) }; geoClass?.let { put("geo_class", it) }
                 if (fix.isOk) { put("lat", fix.lat!!); put("lng", fix.lng!!) }
             }
-            OutletRequestKind.INFO -> { name?.let { put("name", it) }; ownerName?.let { put("owner_name", it) }; contactNumber?.let { put("contact_number", it) } }
+            OutletRequestKind.INFO -> {
+                name?.let { put("name", it) }; ownerName?.let { put("owner_name", it) }; contactNumber?.let { put("contact_number", it) }
+                subChannelId?.let { put("sub_channel_id", it) }; geoClass?.let { put("geo_class", it) }
+            }
             OutletRequestKind.CLOSE -> put("close_reason_code", closeReasonCode ?: "shop_closed")
             OutletRequestKind.CLUSTER -> clusterId?.let { put("cluster_id", it) }
             OutletRequestKind.LOCATION -> if (pointLat != null && pointLng != null) { put("lat", pointLat); put("lng", pointLng) } else if (fix.isOk) { put("lat", fix.lat!!); put("lng", fix.lng!!) }

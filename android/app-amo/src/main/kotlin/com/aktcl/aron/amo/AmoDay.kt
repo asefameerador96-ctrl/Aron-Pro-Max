@@ -552,8 +552,10 @@ class AmoDay(
     suspend fun subChannels(): List<com.aktcl.aron.feature.amo.SubChannel> =
         com.aktcl.aron.feature.amo.OutletVerify.subChannels(runCatching { reference.section("code_lists") }.getOrNull())
 
-    suspend fun decideRequest(recordUuid: String, requestUuid: String, verify: Boolean, subChannelId: Long?, geoClass: String?, note: String?, photoUuid: String?): Boolean =
-        writer.decideRequest(recordUuid, requestUuid, verify, subChannelId, geoClass, note, photoUuid)
+    suspend fun decideRequest(
+        recordUuid: String, requestUuid: String, verify: Boolean, subChannelId: Long?, geoClass: String?, note: String?, photoUuid: String?,
+        capturedFix: com.aktcl.aron.feature.outlet.FixReading? = null,
+    ): Boolean = writer.decideRequest(recordUuid, requestUuid, verify, subChannelId, geoClass, note, photoUuid, capturedFix)
 
     // ---- Exceptions (F-AMO-038): risk signals of the zone, reviewed offline
 
