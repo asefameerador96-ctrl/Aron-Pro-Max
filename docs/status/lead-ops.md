@@ -30,4 +30,10 @@ DECISIONS: D-OPS-FLYWAY-AFTERCONNECT-01, D-OPS-DEPLOY-LOGS-01, D-OPS-ACR-UNLOCK-
 
 ## Evidence run ids
 
-(pending the first lane push)
+| Run | Commit | Result |
+|---|---|---|
+| 42298043704 | 9c551a17 | RED: Infra validation (shellcheck SC2016 in cost-report.sh, fixed in 2f9f2cc8) and Backend app tests (`DataFlowTraceTest` hop12 and everyFindingIsKnown: fails the same way, 2 of 16, on the untouched INT head 756cc24c when run locally after 00:00 Dhaka, so time-dependent or pre-existing, not this lane; owner: qa/backend-core). Shared, db and backend (Flyway tests), Container images, Web, Android, gates: green. |
+| 42302644776 | 2f9f2cc8 | green (Infra validation success; other jobs skipped by change detection) |
+| 42303324239 | b4ed9675 (merge of INT 7f34a1d2) | green (Android, APK size, gates, analytics success; rest skipped by change detection) |
+
+Checker: Opus PASS on 6 commits (3 should-fixes taken, D-OPS-CHECKER-FIXES-01).
