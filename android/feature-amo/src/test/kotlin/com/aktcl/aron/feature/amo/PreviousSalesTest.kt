@@ -11,14 +11,14 @@ import org.junit.Test
 /** Screenshots 24 and 26: previous sale data for a date, from the server (F2 shape) or from this phone's own memos when offline. */
 class PreviousSalesTest {
     private val server = """{"business_date":"2026-11-05","lines":[
-        {"sku":{"sku_id":11,"sku_code":"MAXR-10S","short_name":"MaxR-10S"},"qty_report":10,"report_unit":"packet","qty_base":100,"value_mtk":80000000},
-        {"sku":{"sku_id":12,"sku_code":"ABS","short_name":"ABS"},"qty_report":25,"report_unit":"packet","qty_base":250,"value_mtk":20005000}],
+        {"sku":{"sku_id":11,"sku_code":"MAXR-10S","short_name":"MaxR-10S"},"qty_report":"10.000","report_unit":"packet","qty_base":100,"value_mtk":80000000},
+        {"sku":{"sku_id":12,"sku_code":"ABS","short_name":"ABS"},"qty_report":"25.500","report_unit":"packet","qty_base":250,"value_mtk":20005000}],
         "totals":{"value_mtk":999}}"""
 
     @Test fun serverLinesAreReadAndTheTotalIsTheTrueSumNotTheServersTotals() {
         val h = PreviousSales.parseServer(server, "2026-11-05")!!
         assertEquals(listOf("MaxR-10S", "ABS"), h.lines.map { it.name })
-        assertEquals(listOf(10L to "packet", 25L to "packet"), h.lines.map { it.qtyReport to it.reportUnit })
+        assertEquals(listOf("10.000" to "packet", "25.500" to "packet"), h.lines.map { it.qtyReport.toPlainString() to it.reportUnit })
         assertEquals(100_005_000L, h.totalMtk) // R3: the vendor total did not equal its lines; ours sums integer milli-taka exactly
         assertEquals(SaleHistorySource.SERVER, h.source)
     }
@@ -36,7 +36,7 @@ class PreviousSalesTest {
         val h = PreviousSales.fromLocal("2026-11-06", listOf(original, edited, other), skus)
         assertEquals(1, h.lines.size)
         assertEquals(80, h.lines[0].qtyBase.toInt()) // 50 (edit replaces the original) + 30
-        assertEquals(8L, h.lines[0].qtyReport) // 80 sticks = 8 packets of 10
+        assertEquals(0, java.math.BigDecimal(8).compareTo(h.lines[0].qtyReport)) // 80 sticks = 8 packets of 10
         assertEquals("packet", h.lines[0].reportUnit)
         assertEquals(64_000_000L, h.totalMtk)
         assertEquals(SaleHistorySource.LOCAL, h.source)

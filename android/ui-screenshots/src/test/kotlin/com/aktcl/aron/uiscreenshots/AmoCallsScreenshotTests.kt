@@ -127,9 +127,9 @@ class AmoCallsScreenshotTests {
     @Test fun amo_joint_call_v2_sunlight() = shot("amo_joint_call_v2_sunlight_bn", AppLanguage.BN, "এসআর কল অ্যাসেসমেন্ট", sunlight = true) { joint() }
 
     private val history = PreviousSales.parseServer(
-        """{"lines":[{"sku":{"sku_id":11,"sku_code":"MAXR-10S","short_name":"MaxR-10S"},"qty_report":10,"report_unit":"packet","qty_base":100,"value_mtk":80000000},
-        {"sku":{"sku_id":12,"sku_code":"ABS","short_name":"ABS"},"qty_report":25,"report_unit":"packet","qty_base":250,"value_mtk":20000000},
-        {"sku":{"sku_id":13,"sku_code":"ASTER","short_name":"Aster"},"qty_report":1,"report_unit":"box","qty_base":25,"value_mtk":12500000}]}""", "2026-11-05",
+        """{"lines":[{"sku":{"sku_id":11,"sku_code":"MAXR-10S","short_name":"MaxR-10S"},"qty_report":"10.000","report_unit":"packet","qty_base":100,"value_mtk":80000000},
+        {"sku":{"sku_id":12,"sku_code":"ABS","short_name":"ABS"},"qty_report":"25.000","report_unit":"packet","qty_base":250,"value_mtk":20000000},
+        {"sku":{"sku_id":13,"sku_code":"ASTER","short_name":"Aster"},"qty_report":"1.000","report_unit":"box","qty_base":25,"value_mtk":12500000}]}""", "2026-11-05",
     )
     @Test fun amo_previous_sales_bn() = shot("amo_previous_sales_bn", AppLanguage.BN, "বিক্রয় ইতিহাস") { PreviousSalesContent("2026-11-05", "2026-11-06", history, {}, outletLabel = "Siyam (1618410-1832714554-Madrasa Road)") }
     @Test fun amo_previous_sales_empty_en() = shot("amo_previous_sales_empty_en", AppLanguage.EN, "Sale History") { PreviousSalesContent("2026-11-06", "2026-11-06", PreviousSales.parseServer("""{"lines":[]}""", "2026-11-06"), {}) }
