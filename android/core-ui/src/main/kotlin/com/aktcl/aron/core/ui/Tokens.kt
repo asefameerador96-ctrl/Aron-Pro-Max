@@ -243,6 +243,15 @@ data class AronLookColors(
     val amber: Color = hex(0xE08A00), val gold: Color = hex(0xF5B301), val skeleton: Color = hex(0xE3E3E3), val infoBorder: Color = hex(0xC0C0C0),
     /** The TSO roles (D-TSO-MAN-13): set only by [AronLook.TsoNight] and [AronLook.TsoSunlight]; null in the SR and AMO looks. */
     val night: AronNightRoles? = null,
+    /**
+     * The AMO roles (D-AMO-MAN-03), set only by [AronLook.AmoPurple] and [AronLook.AmoSunlight]; null elsewhere, so the SR and TSO looks
+     * (and their goldens) are unchanged. A filled primary button uses [primaryStart] to [primaryEnd] instead of the bar ramp; [stopFill]
+     * is the Check Out red, [choiceFill] the navy of choices and Proceed; [roundBack] draws the back arrow inside a round chip.
+     */
+    val primaryStart: Color? = null, val primaryEnd: Color? = null, val stopFill: Color? = null, val choiceFill: Color? = null,
+    val roundBack: Boolean = false,
+    /** The AMO target cards (screenshot 9): sky blue, deepened until the white figure holds 7:1. */
+    val targetCard: Color? = null,
 )
 
 /**
@@ -428,6 +437,25 @@ object AronLook {
 
     /** The TSO look in Sunlight: [Sunlight] with the solid TSO roles ([AronNightRoles.Sunlight]); Sunlight overrides the night look. */
     val TsoSunlight = Sunlight.copy(night = AronNightRoles.Sunlight)
+
+    /**
+     * The AMO look (D-AMO-MAN-03; notes 08, 09, 14, 15, 16, 41): a SOLID deep-purple bar (the vendor has no gradient), a light page, white
+     * cards with a thin grey border, green filled primary buttons, red Check Out, navy choices. The vendor's lighter greens and sky blue
+     * are deepened until white labels and figures hold 7:1 (TokenContrastTest). Sunlight overrides it ([AmoSunlight]).
+     */
+    val AmoPurple = Default.copy(
+        barStart = hex(0x4A1A96), barMid = hex(0x4A1A96), barEnd = hex(0x4A1A96), onBar = hex(0xFFFFFF),
+        purple = hex(0x4A1A96), panel = hex(0x4A1A96), page = hex(0xF3F3F3), pageHome = hex(0xF3F3F3), tileLabel = hex(0x222222), tileLabelOutlet = hex(0x222222),
+        targetTop = hex(0x0B4EA2), targetBottom = hex(0x0B4EA2),
+        primaryStart = hex(0x00642F), primaryEnd = hex(0x00642F), stopFill = hex(0xB0001C), choiceFill = hex(0x0B4EA2),
+        roundBack = true, targetCard = hex(0x0B5A8C),
+    )
+
+    /** The AMO look in Sunlight: [Sunlight] (solid white bars, black ink) with the deep green, red and navy fills and the round back arrow. */
+    val AmoSunlight = Sunlight.copy(
+        primaryStart = hex(0x00642F), primaryEnd = hex(0x00642F), stopFill = hex(0xB0001C), choiceFill = hex(0x0B2F6B),
+        roundBack = true, targetCard = hex(0x0B2F6B),
+    )
 
     /** Card and tile radius 12 dp, button radius 8 dp, the plus/minus square 36 dp drawn inside a 48 dp hit area. */
     val CardRadius: Dp = 12.dp

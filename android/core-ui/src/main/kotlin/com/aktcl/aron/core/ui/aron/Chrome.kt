@@ -137,7 +137,11 @@ fun AronTopBar(
                         .clickable(role = Role.Button, onClick = onBack)
                         .semantics { if (backLabel != null) contentDescription = backLabel },
                     contentAlignment = Alignment.Center,
-                ) { GlyphCanvas(Modifier.size(24.dp)) { chevronBack(look.onBar) } }
+                ) {
+                    // the AMO look draws the arrow inside a round chip (notes 14, 41)
+                    if (look.roundBack) Box(Modifier.size(36.dp).clip(CircleShape).background(look.onBar.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) { GlyphCanvas(Modifier.size(22.dp)) { chevronBack(look.onBar) } }
+                    else GlyphCanvas(Modifier.size(24.dp)) { chevronBack(look.onBar) }
+                }
             }
             Row(
                 Modifier.padding(horizontal = AronLook.Touch + 8.dp, vertical = 6.dp),
@@ -241,6 +245,8 @@ fun AronHomeHeader(
     settingsLabel: String,
     modifier: Modifier = Modifier,
     avatar: Painter? = null,
+    /** False in the AMO Home (screenshot 8 has no gear in the header; Settings is a tile). */
+    showSettings: Boolean = true,
 ) {
     val look = LocalAronLook.current
     Row(
@@ -260,7 +266,7 @@ fun AronHomeHeader(
             FitText(title, lookStyle(15.sp, medium = true, color = look.onBar), 12.sp, maxLines = 2, oneLineDown = 12.sp)
             FitText(subtitle, lookStyle(12.sp, medium = true, color = look.onBar), 10.sp, maxLines = 2, oneLineDown = 10.sp)
         }
-        Box(
+        if (showSettings) Box(
             Modifier.size(AronLook.Touch).testTag(AronHomeSettingsTag).clickable(role = Role.Button, onClick = onSettings).semantics { contentDescription = settingsLabel },
             contentAlignment = Alignment.Center,
         ) { GlyphCanvas(Modifier.size(28.dp)) { gear(look.onBar, hole = if (look.sunlight) look.card else look.barEnd) } }
@@ -309,6 +315,8 @@ fun AronPrimaryButton(
     val onPanel = LocalOnPanel.current
     val fill: Brush = when {
         !enabled -> SolidColor(look.primaryDisabled)
+        // the AMO look (D-AMO-MAN-03): green filled primary, in Sunlight too
+        look.primaryStart != null -> Brush.horizontalGradient(listOf(look.primaryStart, look.primaryEnd ?: look.primaryStart))
         look.sunlight -> SolidColor(look.purple)
         // sr/summary.png Print: #4A1C99 to #A73964
         reverse -> Brush.horizontalGradient(listOf(look.printStart, look.printEnd))

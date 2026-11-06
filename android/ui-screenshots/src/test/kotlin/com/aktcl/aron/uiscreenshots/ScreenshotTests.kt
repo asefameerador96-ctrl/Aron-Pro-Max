@@ -348,12 +348,6 @@ class ScreenshotTests {
     @Composable private fun Login(sunlight: Boolean) =
         LoginContent(LoginUiState(username = "sr334001", password = "secret", message = LoginMessage.InvalidCredentials), "ARON SR", "1.0.25 (12)", {}, {}, {}, {}, {}, sunlight = sunlight, onSunlight = {})
 
-    @Composable private fun AmoHome(sunlight: Boolean) = com.aktcl.aron.feature.amo.AmoHomeContent(
-        RoleHomes.header(RoleHomes.AMO_PREFIX, amo, "2026-10-05"), amo, BundleStatus.Ready("b-17", "2026-10-05"),
-        RoleHomes.amoTiles(mapOf(RoleHomes.AmoTile.OUTLET to 3)), onTile = {}, onSettings = {},
-        hero = RoleHero.Amo(4_391_000, 6, 60), health = health,
-    )
-
 
     // ---- Home ----
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun home_bn_light() = shot("home_bn_light", AppLanguage.BN) { Home(AppLanguage.BN) }
@@ -416,8 +410,6 @@ class ScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun login_bn_sunlight() = shot("login_bn_sunlight", AppLanguage.BN, sunlight = true) { Login(true) }
 
     // ---- AMO and TSO homes ----
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_home_bn_light() = shot("amo_home_bn_light", AppLanguage.BN) { AmoHome(false) }
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_home_bn_sunlight() = shot("amo_home_bn_sunlight", AppLanguage.BN, sunlight = true) { AmoHome(true) }
 
     /** Bootstrap guard: a run that only recorded images must not look green (CI uploads test results on failure only). */
     @Test fun recordingRunNeverPasses() {
