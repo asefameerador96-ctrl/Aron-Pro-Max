@@ -38,8 +38,8 @@ class AmoManualV0150Test {
     private fun visit(uuid: String, action: String, reason: String?) =
         "INSERT INTO app.visit (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, visit_kind, outlet_id, " +
             "opened_at, sequence_no, planned, verdict, radius_m_used, max_accuracy_m_used, location_basis, geo_action, force_sale_reason) " +
-            "VALUES ('$uuid', '$uuid', DATE '2026-10-05', (SELECT id FROM app.app_user WHERE username = 'sr1001'), TIMESTAMPTZ '2026-10-05 10:00+06', 0, " +
-            "'sr_call', (SELECT min(id) FROM app.outlet), TIMESTAMPTZ '2026-10-05 10:00+06', 1, true, 'in_range', 100, 50, 'master', '$action', ${reason?.let { "'$it'" } ?: "NULL"})"
+            "VALUES ('$uuid', '$uuid', CURRENT_DATE, (SELECT id FROM app.app_user WHERE username = 'sr1001'), now(), 0, " +
+            "'sr_call', (SELECT min(id) FROM app.outlet), now(), 1, true, 'in_range', 100, 50, 'master', '$action', ${reason?.let { "'$it'" } ?: "NULL"})"
 
     @Test
     fun aForceSaleReasonIsOnlyAllowedOnAForceSaleAndOnlyTwoValues() = db.connect().use { c ->
