@@ -1845,3 +1845,9 @@
 
 ### 2026-11-06 14:47 UTC — 2-hourly lane check (trig_019JnciXMV6ZWyXd65xdZJQD)
 - Health 200 on 756cc24c (train 80 = INT, author Claude); every lane tip unchanged; no new run since the 08:59 cost-report. No owner message. Stop rule active: nothing created, nothing nudged; db #15 paused, integrator 23 idle. Evening report fires in 13 min (trig_01RUaUe2hDP1k61Me8P6EoYD).
+
+### 2026-11-06 15:02 UTC — EVENING REPORT (trig_01RUaUe2hDP1k61Me8P6EoYD; docs/status/evening-2026-11-06.md)
+- ReadNotifications: only the evening trigger; no owner message. Verified by git + health: INT 756cc24c (train 80, author Claude, DECISIONS 249); health 200 build 756cc24c at 15:02; lane/db ef92d07f and every lane tip unchanged; no run on INT since the 08:59 cost-report. No train in flight; no train today.
+- cost-report 42191608792 (job 127804745912) read through the public log: five "Cost Management throttled (429); retrying" lines then "Cost Management query failed: ERROR: Too Many Requests" — the job still concluded success. No weekly cost figure. Backlog (lead ops train): cost-report.sh honours Retry-After / exponential backoff over minutes, and the step fails or warns in the summary when the query never succeeds (an honest green).
+- Sessions (fresh get_session): lead seven_day_overage_included allowed_warning (229k context after compaction; USD 3,152); integrator 23 idle 140k allowed_warning (21:08 11-05); db #15 paused 506k allowed_warning (21:10 11-05). STOP RULE D-LEAD-STALL-02 HOLDS: create nothing new.
+- One-shots created: bundle pre-generation proof 16:35 UTC trig_01XEQoHJS1r18FfvYnhtd5tk (ops-diagnose 15:55–16:30 UTC, read-only); morning report 2026-11-07 06:30 UTC trig_01VcP3SK6wqgX5ac89JTR8n1. Lane-check cron unchanged. Owner evening report posted after this push.
