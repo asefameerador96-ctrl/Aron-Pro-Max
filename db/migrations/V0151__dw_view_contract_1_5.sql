@@ -43,6 +43,7 @@ SELECT a.attname::text AS col, col_description('dw.v_visit'::regclass, a.attnum)
   FROM pg_attribute a WHERE a.attrelid = 'dw.v_visit'::regclass AND a.attnum > 0 AND NOT a.attisdropped;
 CREATE TEMP TABLE v_visit_view_comment ON COMMIT DROP AS SELECT obj_description('dw.v_visit'::regclass, 'pg_class') AS descr;
 
+-- squawk-ignore ban-drop-view
 DROP VIEW dw.v_visit;
 CREATE VIEW dw.v_visit AS
 SELECT business_date, visit_client_uuid, user_id, route_id, zone_id, outlet_id, visit_kind, opened_at, ended_at, outcome_code,

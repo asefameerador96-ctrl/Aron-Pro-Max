@@ -117,9 +117,9 @@ class AmoFoundationF1Test {
         exec(
             """
             INSERT INTO app.visit (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, visit_kind, outlet_id, opened_at, sequence_no, planned,
-                                   verdict, radius_m_used, max_accuracy_m_used, location_basis, geo_action, outcome_code, voided_at)
+                                   verdict, radius_m_used, max_accuracy_m_used, location_basis, geo_action, outcome_code, close_client_uuid, voided_at)
             SELECT u, u, DATE '$date', $amoId, TIMESTAMPTZ '$date 10:00+06', 0, '$kind', $outlet, TIMESTAMPTZ '$date 10:00+06', $seq, false,
-                   'in_range', 100, 50, 'master', 'sale_allowed', ${outcome?.let { "'$it'" } ?: "NULL"}, ${if (voided) "now()" else "NULL"}
+                   'in_range', 100, 50, 'master', 'sale_allowed', ${outcome?.let { "'$it'" } ?: "NULL"}, ${if (outcome != null) "gen_random_uuid()" else "NULL"}, ${if (voided) "now()" else "NULL"}
               FROM (SELECT gen_random_uuid() AS u) x
             """.trimIndent(),
         )
