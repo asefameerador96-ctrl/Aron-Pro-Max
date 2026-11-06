@@ -93,7 +93,7 @@ object Reports {
     }
 
     val ROUTE_MEMO_COLUMNS = listOf("route_code", "memos", "gross_mtk", "net_mtk")
-    val ROUTE_STD_COLUMNS = listOf("route_code", "category_name", "base_unit", "sold_qty_base", "gross_mtk")
+    val ROUTE_STD_COLUMNS = listOf("route_code", "route_name", "category_code", "category_name", "base_unit", "sold_qty_base", "gross_mtk")
 
     /** Memos, gross and net per route from the `route-memo` rows (the server sums any range, so this is exact even when the memo list is long; periods of one route are added). */
     fun routeMemoTotals(r: ReportData): List<RouteStd> = r.rows.groupBy { it.s("route_code").orEmpty() }.map { (code, rows) ->
@@ -101,7 +101,7 @@ object Reports {
     }.sortedBy { it.code }
 
     /** The `route-std` rows (route x SKU) added up per route and category; a category with SKUs of different base units keeps the value only. */
-    fun routeCategories(r: ReportData): List<RouteCategory> = r.rows.groupBy { it.s("route_code").orEmpty() to it.s("category_name").orEmpty() }.map { (key, rows) ->
+    fun routeCategories(r: ReportData): List<RouteCategory> = r.rows.groupBy { (it.s("route_name") ?: it.s("route_code")).orEmpty() to (it.s("category_code") ?: it.s("category_name")).orEmpty() }.map { (key, rows) ->
         val units = rows.mapNotNull { it.s("base_unit") }.toSet()
         val sameUnit = units.size == 1 && rows.all { it.s("base_unit") != null && it.l("sold_qty_base") != null }
         RouteCategory(key.first, key.second, if (sameUnit) rows.sumOf { it.l("sold_qty_base") ?: 0 } else null, if (sameUnit) units.first() else null, rows.sumOf { it.l("gross_mtk") ?: 0 })

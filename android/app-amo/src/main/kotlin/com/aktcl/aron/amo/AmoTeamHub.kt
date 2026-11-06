@@ -50,12 +50,10 @@ fun AmoTeamHub(day: AmoDay, reach: AmoReach, onBack: () -> Unit, start: AmoLeaf?
     var leaf by rememberSaveable { mutableStateOf(if (startExceptions) TeamLeaf.EXCEPTIONS else if (start != null) TeamLeaf.LEAF else TeamLeaf.HUB) }
     var open by rememberSaveable { mutableStateOf<AmoLeaf?>(start) }
     var signalId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var liveFilter by rememberSaveable { mutableStateOf(false) }
-    var stockSr by rememberSaveable { mutableStateOf<Long?>(null) }
     val back: () -> Unit = {
         when (leaf) {
             TeamLeaf.HUB -> onBack()
-            TeamLeaf.LEAF -> if (open == AmoLeaf.LIVE_DASHBOARD && liveFilter) liveFilter = false else if (open == AmoLeaf.SR_STOCK && stockSr != null) stockSr = null else if (direct) onBack() else leaf = TeamLeaf.HUB
+            TeamLeaf.LEAF -> if (direct) onBack() else leaf = TeamLeaf.HUB
             TeamLeaf.EXCEPTION_DETAIL -> leaf = TeamLeaf.EXCEPTIONS
             else -> if (direct) onBack() else leaf = TeamLeaf.HUB
         }
@@ -68,7 +66,13 @@ fun AmoTeamHub(day: AmoDay, reach: AmoReach, onBack: () -> Unit, start: AmoLeaf?
                 HubRow(stringResource(AmoR.string.amo_exc_title), onClick = { leaf = TeamLeaf.EXCEPTIONS }, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_exceptions)
             HubListContent(listOf(HubSection(null, rows)))
         }
-        TeamLeaf.LEAF -> if (open == AmoLeaf.TASK_DELEGATION) AmoTaskHub(day, back) else if (open == AmoLeaf.TEAM_PERFORMANCE) AmoFrame(stringResource(AmoR.string.amo_leaf_team_performance), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_team_performance) { AmoTeamPerformance(day) } else if (open == AmoLeaf.LIVE_DASHBOARD) AmoFrame(stringResource(AmoR.string.amo_live_title), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_live_dashboard) { AmoLiveDashboard(day, liveFilter, { liveFilter = it }) } else if (open == AmoLeaf.SR_STOCK) AmoFrame(stringResource(AmoR.string.amo_leaf_sr_stock), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_sr_stock) { AmoTeamStock(day, stockSr, { stockSr = it }) } else if (open == AmoLeaf.TEAM_LOCATION) AmoFrame(stringResource(AmoR.string.amo_leaf_team_location), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_team_location) { AmoTeamLocation(day) } else RoleSectionPlaceholder(stringResource(open?.let { leafLabel(it) } ?: HomeR.string.rh_amo_team), AronIcons.Info, onBack = back)
+        // A3: each destination hosts its own frame and its own sub-state (Details, the SR detail, the filter), so Back is theirs
+        TeamLeaf.LEAF -> if (open == AmoLeaf.TASK_DELEGATION) AmoTaskHub(day, back)
+        else if (open == AmoLeaf.TEAM_PERFORMANCE) AmoTeamPerformanceHost(day, back)
+        else if (open == AmoLeaf.LIVE_DASHBOARD) AmoLiveDataHost(day, back)
+        else if (open == AmoLeaf.SR_STOCK) AmoSrStockHost(day, back)
+        else if (open == AmoLeaf.TEAM_LOCATION) AmoTeamLocationHost(day, back)
+        else RoleSectionPlaceholder(stringResource(open?.let { leafLabel(it) } ?: HomeR.string.rh_amo_team), AronIcons.Info, onBack = back)
         TeamLeaf.EXCEPTIONS, TeamLeaf.EXCEPTION_DETAIL -> AmoFrame(stringResource(AmoR.string.amo_exc_title), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_exceptions) {
             AmoExceptions(day, leaf == TeamLeaf.EXCEPTION_DETAIL, signalId, onOpen = { signalId = it.id; leaf = TeamLeaf.EXCEPTION_DETAIL }, onDone = { leaf = TeamLeaf.EXCEPTIONS })
         }

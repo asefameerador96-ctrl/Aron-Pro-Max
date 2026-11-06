@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The rider marker of the AMO Team Location (screenshot 33, R11): our own drawing of a scooter rider, tinted by the caller (purple fresh, grey stale). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="40dp" android:height="40dp" android:viewportWidth="40" android:viewportHeight="40">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M20,20m-19,0a19,19 0,1 1,38 0a19,19 0,1 1,-38 0"/>
+    <path android:fillColor="#FF4A1A9A" android:pathData="M20,20m-16,0a16,16 0,1 1,32 0a16,16 0,1 1,-32 0"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M23,10.5a2.2,2.2 0,1 1,-4.4 0a2.2,2.2 0,1 1,4.4 0zM21,14l3.2,3.4l2.6,0.4l-0.3,1.8l-3.4,-0.4l-1.4,-1.4l-1.2,2.4l2.2,2.4l0,4.4l-2,0l0,-3.4l-2.6,-2.6zM12.5,28.5a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0zM23.5,28.5a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0z"/>
+</vector>
