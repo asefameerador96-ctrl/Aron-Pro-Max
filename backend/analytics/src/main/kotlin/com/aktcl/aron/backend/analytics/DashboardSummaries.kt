@@ -18,7 +18,7 @@ internal object DashboardSummaries {
         "dim_product" to listOf("segment_code", "brand_code", "variant_code"),
         "agg_daily_route" to listOf("downloaded_at", "completed_calls", "completed_geo_valid_calls", "first_sale_at", "last_sale_at"),
         "agg_daily_zone" to listOf("final_submitted_at", "auto_submitted"),
-        "fact_visit" to listOf("radius_m", "outlet_lat", "outlet_lng", "fix_lat", "fix_lng", "force_photo_uuid", "completed", "force_sale_reason"),
+        "fact_visit" to listOf("radius_m", "outlet_lat", "outlet_lng", "fix_lat", "fix_lng", "force_photo_uuid", "completed"),
     )
     private val tables = listOf("agg_daily_outlet_sku", "agg_daily_route_variant", "route_last_position", "summary_freshness")
 
@@ -176,10 +176,12 @@ internal object DashboardSummaries {
             """,
         ).bind("r", routeId).bind("d", date).execute()
 
+        // V0151 (contract 1.5) adds force_sale_reason; probed on its own so the rest of the summaries keep working on either side of it.
+        val forceReason = h.createQuery("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'fact_visit' AND column_name = 'force_sale_reason')").mapTo(Boolean::class.java).one()
         h.createUpdate(
             """
             UPDATE dw.fact_visit f SET radius_m = v.radius_m_used, outlet_lat = v.outlet_lat, outlet_lng = v.outlet_lng, fix_lat = v.fix_lat,
-                   fix_lng = v.fix_lng, force_photo_uuid = v.force_photo_uuid, force_sale_reason = v.force_sale_reason,
+                   fix_lng = v.fix_lng, force_photo_uuid = v.force_photo_uuid, ${if (forceReason) "force_sale_reason = v.force_sale_reason," else ""}
                    completed = (v.visit_kind = 'sr_call' AND v.voided_at IS NULL AND v.outcome_code IS NOT NULL AND v.outcome_code NOT IN ('abandoned', 'not_reached'))
               FROM app.visit v
              WHERE f.visit_client_uuid = v.client_uuid AND f.business_date = v.business_date AND v.route_id = :r AND v.business_date = :d

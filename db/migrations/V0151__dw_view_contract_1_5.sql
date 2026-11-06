@@ -24,7 +24,7 @@ DECLARE n int := 0;
 BEGIN
   LOOP
     BEGIN
-      LOCK TABLE dw.fact_visit IN ACCESS EXCLUSIVE MODE NOWAIT;
+      LOCK TABLE dw.fact_visit, dw.v_visit IN ACCESS EXCLUSIVE MODE NOWAIT;
       EXIT;
     EXCEPTION WHEN lock_not_available THEN
       n := n + 1;

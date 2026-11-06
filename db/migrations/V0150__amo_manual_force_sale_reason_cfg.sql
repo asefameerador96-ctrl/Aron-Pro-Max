@@ -13,7 +13,7 @@
 --    the backend reads, cfg.geo.update_base_max_per_outlet_month (the contract text says "monthly_cap"; D-AMO-FND-02).
 -- 4. Rubric sections and guidance: app.rubric_version.criteria is a JSON array, not a table (V0023), so section,
 --    guidance_en and guidance_bn are new members of the criterion objects (contract 1.11.0), not columns: no DDL
---    (D-AMO-FND-01). The joint_call version 2 content is dev seed data (db/seed/08b_dev_amo_manual_content.sql).
+--    (D-AMO-FND-01). The joint_call version 2 content is dev seed data (db/seed/09_dev_amo_manual_content.sql).
 --
 -- Behaviour under a running worker and API: ADD COLUMN needs ACCESS EXCLUSIVE on app.visit and app.outlet_request_event,
 -- the FK constraints SHARE ROW EXCLUSIVE on app.route and app.cluster. All four are taken by ONE LOCK ... NOWAIT inside a

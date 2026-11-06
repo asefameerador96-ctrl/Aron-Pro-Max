@@ -973,6 +973,17 @@ class IngestService(
             }
         }
 
+        // 5a. D-AMO-MAN-12: the route and cluster an AMO corrected on a verification form exist, belong together (the cluster is in the
+        // route's zone) and sit in the uploader's reach; anything else is a final schema_invalid, never stored.
+        if (r.type == "outlet_request_verification") {
+            val vRoute = payload.long("route_id"); val vCluster = payload.long("cluster_id")
+            val rz = vRoute?.let { id -> h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", id).mapTo(Long::class.java).findOne().orElse(null) ?: return finalReject(h, ctx, r, RecordOutcomeCode.UNKNOWN_ROUTE, "route $id") }
+            val cz = vCluster?.let { id -> h.createQuery("SELECT zone_id FROM app.cluster WHERE id = :c").bind("c", id).mapTo(Long::class.java).findOne().orElse(null) ?: return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "cluster $id") }
+            if (rz != null && cz != null && rz != cz) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "cluster $vCluster is not in the zone of route $vRoute")
+            val zone = rz ?: cz
+            if (zone != null && !scopeAccepted && !ctx.reachOn(bd).coversZone(zone)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "zone $zone on $bd")
+        }
+
         if (!scopeAccepted) env.long("acting_for_user_id")?.let { a ->
             if (!actingForValid(h, ctx, routeId, a, bd)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "acting_for_user_id $a without a cover of route $routeId")
         }
@@ -1699,6 +1710,7 @@ class IngestService(
         if (r.type == "visit") {
             val reason = payload["force_sale_reason"]
             if (reason != null && reason !is JsonNull) {
+                if (manual) return "force_sale_reason is chosen on the phone; a paper entry has none"
                 val code = (reason as? JsonPrimitive)?.takeIf { it.isString }?.content
                 if (code !in FORCE_SALE_REASONS) return "force_sale_reason must be internet_problem or location_change"
                 val action = ((payload["geo"] as? JsonObject)?.get("action") as? JsonPrimitive)?.takeIf { it.isString }?.content

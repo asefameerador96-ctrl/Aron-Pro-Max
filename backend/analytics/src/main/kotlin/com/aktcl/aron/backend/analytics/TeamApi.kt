@@ -180,6 +180,9 @@ class TeamService(private val db: Database, private val dashboards: DashboardSer
     fun stock(reach: Reach, zoneId: Long?, date: LocalDate, role: Role? = null): TeamStockList {
         val rows = db.readJdbi.withHandle<List<TeamStockItem>, Exception> { h ->
             val z = zones(h, reach, zoneId)
+            // D-AMO-MAN-09: phones in clear only for an AMO reading exactly their OWN home zone (an AMO scoped wider, or to several zones, gets null).
+            val phonesInClear = role == Role.AMO && !reach.national && z != null && z.size == 1 &&
+                h.createQuery("SELECT home_zone_id FROM app.app_user WHERE id = :u").bind("u", reach.userId).mapTo(Long::class.javaObjectType).findOne().orElse(null) == z[0]
             // current = issued - sold - free (promo, DRP reward, sample lines leave the bag too) - returned, plus signed adjustments and minus damaged and short stock.
             val flat = bindZones(
                 h.createQuery(
@@ -216,7 +219,7 @@ class TeamService(private val db: Database, private val dashboards: DashboardSer
                 TeamStockItem(
                     rs.getLong("uid"), rs.getString("full_name"), emptyList(), (rs.getArray("route_names").array as Array<*>).map { it.toString() }, rs.getInt("outlets"),
                     // D-AMO-MAN-09: an AMO reads the phones of the SRs of their own zone (the reach is the token's zone); everyone else gets null.
-                    if (role == Role.AMO) rs.getString("phone") else null,
+                    if (phonesInClear) rs.getString("phone") else null,
                 )
             }.list()
             fun skus(uid: Long) = bySr[uid].orEmpty().map { (_, sku, v) -> TeamStockSku(sku, v[0] as String, v[1] as Long, v[2] as Long, v[3] as Long, v[4] as Long) }
