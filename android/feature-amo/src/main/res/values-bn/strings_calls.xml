@@ -1,4 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Owner: lane android-amo-calls (A2): Control Call, Sales, assessments, Memo, Summary, Sales Submit. Empty until that lane adds its strings; android-amo-shell does not edit this file. -->
 <resources>
+    <string name="amo_cp_route_placeholder">একটি রুট সিলেক্ট করুন</string>
+    <string name="amo_cp_outlet_placeholder">রিটেইলার নির্বাচন করুন</string>
+    <string name="amo_cp_all">সব</string>
+    <string name="amo_cp_live">LIVE</string>
+    <string name="amo_cp_out_of_range">AMO এবং রিটেইলার রেঞ্জের মধ্যে নেই।</string>
+    <string name="amo_cp_override">ম্যানুয়াল ওভাররাইড</string>
+    <string name="amo_cp_refresh">রিফ্রেশ</string>
+    <string name="amo_cp_checking">আপনার অবস্থান যাচাই করা হচ্ছে…</string>
+    <string name="amo_cp_dot_base">বেস লোকেশন আছে</string>
+    <string name="amo_cp_badge_today">আজ কল করা হয়েছে</string>
+    <string name="amo_cp_joint_tile">এসআর কল অ্যাসেসমেন্ট</string>
+    <string name="amo_cp_joint_title">জয়েন্ট কল অ্যাক্টিভিটি</string>
+    <string name="amo_cp_sales_title">বিক্রয়</string>
+    <string name="amo_cp_no_outlets">এই রুটে কোনো রিটেইলার নেই</string>
+    <string name="amo_fs_question">আপনার ফোর্স সেলের কারণ কী?</string>
+    <string name="amo_fs_internet">ইন্টারনেট সমস্যা</string>
+    <string name="amo_fs_location">লোকেশন চেঞ্জ</string>
+    <string name="amo_pa_retailer">খুচরা বিক্রেতাঃ</string>
+    <string name="amo_pa_route">রুট:</string>
+    <string name="amo_pa_dist_hint">অ্যাসেসমেন্টের মুহূর্তে এসকেইউ দোকানে থাকলে অথবা OOS হয়ে গেলেও টিক চিহ্ন দিন।</string>
+    <string name="amo_pa_oos_hint2">OOS থাকলে টিক চিহ্ন দিন।</string>
+    <string name="amo_pa_posm_required">POSM এর জন্য হ্যাঁ বা না বেছে নিন।</string>
+    <string name="amo_saved_title">ডেটা সফলভাবে সংরক্ষিত হয়েছে।</string>
+    <string name="amo_jc_screen_title">এসআর কল অ্যাসেসমেন্ট</string>
+    <string name="amo_jc_intro1">SR নিম্নলিখিত পদক্ষেপগুলি কীভাবে সম্পন্ন করেছে তা মূল্যায়ন করুন।</string>
+    <string name="amo_jc_intro2">মূল্যায়নের ক্ষেত্রে, ১ হল সর্বনিম্ন স্তর এবং ৫ হল সর্বোচ্চ স্তর।</string>
+    <string name="amo_jc_low">নিম্ন</string>
+    <string name="amo_jc_high">উচ্চ</string>
+    <string name="amo_jc_section_other">অন্যান্য</string>
 </resources>

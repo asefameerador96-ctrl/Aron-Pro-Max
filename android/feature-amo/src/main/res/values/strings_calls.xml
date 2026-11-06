@@ -1,4 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Owner: lane android-amo-calls (A2): Control Call, Sales, assessments, Memo, Summary, Sales Submit. Empty until that lane adds its strings; android-amo-shell does not edit this file. -->
+<!-- Owner: lane android-amo-calls (A2): Control Call, Sales, assessments, Memo, Summary, Sales Submit. android-amo-shell does not edit this file. -->
 <resources>
+    <!-- Control Call / Joint Call / Sales picker (17-22, 29-30) -->
+    <string name="amo_cp_route_placeholder">Select a route</string>
+    <string name="amo_cp_outlet_placeholder">Select retailer</string>
+    <string name="amo_cp_all">All</string>
+    <string name="amo_cp_live">LIVE</string>
+    <string name="amo_cp_out_of_range">AMO and the retailer are not within range.</string>
+    <string name="amo_cp_override">Manual Override</string>
+    <string name="amo_cp_refresh">Refresh</string>
+    <string name="amo_cp_checking">Checking your location…</string>
+    <string name="amo_cp_dot_base">Base location on file</string>
+    <string name="amo_cp_badge_today">Called today</string>
+    <string name="amo_cp_joint_tile">SR Call Assessment</string>
+    <string name="amo_cp_joint_title">Joint Call Activity</string>
+    <string name="amo_cp_sales_title">Sales</string>
+    <string name="amo_cp_no_outlets">No retailers on this route</string>
+    <!-- Force-sale reason (23) -->
+    <string name="amo_fs_question">What is the reason for your force sale?</string>
+    <string name="amo_fs_internet">Internet problem</string>
+    <string name="amo_fs_location">Location change</string>
+    <!-- Perf Assessment (27-28) -->
+    <string name="amo_pa_retailer">Retailer:</string>
+    <string name="amo_pa_route">Route:</string>
+    <string name="amo_pa_dist_hint">Tick a brand that is in the shop at the moment of the assessment, even if it has gone OOS.</string>
+    <string name="amo_pa_oos_hint2">Tick if OOS.</string>
+    <string name="amo_pa_posm_required">Choose Yes or No for POSM.</string>
+    <string name="amo_saved_title">Data saved successfully.</string>
+    <!-- Joint Call (31-32) -->
+    <string name="amo_jc_screen_title">SR Call Assessment</string>
+    <string name="amo_jc_intro1">Evaluate how the SR carried out the following steps.</string>
+    <string name="amo_jc_intro2">For rating, 1 is the lowest level and 5 is the highest level.</string>
+    <string name="amo_jc_low">Low</string>
+    <string name="amo_jc_high">High</string>
+    <string name="amo_jc_section_other">Other</string>
 </resources>

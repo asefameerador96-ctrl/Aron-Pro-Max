@@ -28,9 +28,9 @@ class AmoRecordWriter(
     private val stampedFixUuid: suspend (photoUuid: String, requestUuid: String) -> String? = { _, _ -> null },
 ) {
     /** Joint Call assessment (F-AMO-011): one assessment and its answers, family = the visit; a second Save for the visit writes nothing. */
-    suspend fun saveJointCall(visitUuid: String, rubric: com.aktcl.aron.feature.amo.JointRubric, state: com.aktcl.aron.feature.amo.JointState, assessedUserId: Long?) {
+    suspend fun saveJointCall(visitUuid: String, rubric: com.aktcl.aron.feature.amo.JointRubric, state: com.aktcl.aron.feature.amo.JointState, assessedUserId: Long?, defaultStar: Int? = 1) {
         if (db.captureDao().amoRecordsOfFamily(visitUuid).any { it.recordType == "call_assessment" }) return
-        val planned = com.aktcl.aron.feature.amo.JointCall.records(visitUuid, rubric, state, assessedUserId, newUuid)
+        val planned = com.aktcl.aron.feature.amo.JointCall.records(visitUuid, rubric, state, assessedUserId, defaultStar, newUuid)
         db.withTransaction {
             for (p in planned) capture.recordAmo(
                 com.aktcl.aron.core.database.entity.AmoRecordEntity(p.clientUuid, meta.meta(routeOfCall()), p.type, p.familyUuid, p.rank, p.payload.toString()),
