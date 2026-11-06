@@ -86,15 +86,36 @@ if [ -z "$ws" ]; then echo "(no Log Analytics workspace in $RG)"; else
   # Server-side reasons for a lost session (terminated, reset, out of memory, crash recovery): ERROR/FATAL/PANIC lines and the
   # LOG lines that name such a reason. Slow-statement (duration), STATEMENT, CONTEXT, QUERY, DETAIL and parameter records are
   # dropped, so no SQL text or bind value is printed; an ERROR line is kept as the server wrote it, and a disconnection line
-  # names the login role, database and client host (not secrets).
+  # names the login role, database and client host (not secrets). The anchored exclusion on -LOG: execute/statement/parse/bind
+  # (the prefixes log_statement and log_min_duration_statement produce) keeps SQL text out even if log_statement is ever turned on.
   q="AzureDiagnostics
      | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
      | where ResourceProvider == 'MICROSOFT.DBFORPOSTGRESQL' and Category == 'PostgreSQLLogs'
      | extend msg = tostring(coalesce(column_ifexists('Message', ''), column_ifexists('message_s', '')))
      | where msg matches regex '-(ERROR|FATAL|PANIC):' or (msg matches regex '-LOG:' and msg matches regex '(?i)terminat|out of memory|database system|server process|checkpoint|could not|disconnection|reset by peer')
+     | where not(msg matches regex @'-LOG:\s+(execute|statement|parse|bind)')
      | where msg !contains 'duration:' and msg !contains 'statement:' and msg !contains 'CONTEXT:' and msg !contains 'QUERY:' and msg !contains 'DETAIL:' and msg !contains 'parameters:'
      | order by TimeGenerated asc | project TimeGenerated, msg = substring(msg, 0, 240) | take 300"
   try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, msg]" -o tsv | cut -c1-300
+fi
+
+section "Log Analytics: console log of $WORKER_APP in the window (severity and job-run lines only, 200 chars each)"
+# The worker's scheduled jobs (bundle pre-generation at 16:00 UTC, outlet-request lapse, aggregation, geo re-check, retention)
+# log one line per run; WARN/ERROR lines name a cause class. A line is kept when it carries a severity of WARN/ERROR/FATAL or
+# names a job run; it is cut at 200 characters and lines that mention SQL, parameters or tokens are dropped, so no payload,
+# statement or secret is printed. Runs without a database query (D-OPS-DIAGNOSE-WORKER-01).
+if [ -n "${ws:-}" ]; then
+  q="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleLogs
+     | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
+     | extend app = coalesce(column_ifexists('ContainerAppName_s', ''), column_ifexists('ContainerAppName', '')),
+              line = tostring(coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
+     | where app == '$WORKER_APP'
+     | where line matches regex @'(?i)\b(WARN|ERROR|FATAL)\b|\"level\":\"(WARN|ERROR)' or line matches regex @'(?i)bundle|lapsed|worker started|PAUSED|aggregat|geo re-check|retention|risk signal|route-day'
+     | where not(line matches regex @'(?i)statement|parameters|bind|password|secret|token|authorization|bearer')
+     | order by TimeGenerated asc | project TimeGenerated, line = substring(line, 0, 200) | take 200"
+  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | cut -c1-260
+else
+  echo "(no Log Analytics workspace, so no worker console log)"
 fi
 
 section "worker app $WORKER_APP"

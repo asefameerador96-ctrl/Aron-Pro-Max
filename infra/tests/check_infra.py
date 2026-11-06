@@ -757,6 +757,21 @@ class Workflows(unittest.TestCase):
         self.assertIn("grep -v -E 'DETAIL|parameters:'", sh, "server-log excerpts drop row values")
         self.assertIn("set -uo pipefail", sh)
 
+    def test_diagnose_reads_the_worker_console_log_and_keeps_statements_out(self):
+        # D-OPS-DIAGNOSE-WORKER-01: the worker app's console log (severity and job-run lines, cut at 200 characters, no
+        # SQL/parameter/secret words) and the anchored statement exclusion on the server-log query.
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        i = sh.index("console log of $WORKER_APP in the window")
+        w = sh[i:sh.index('section "worker app $WORKER_APP"')]
+        self.assertIn("ContainerAppConsoleLogs_CL", w)
+        self.assertIn("where app == '$WORKER_APP'", w)
+        self.assertIn("substring(line, 0, 200)", w)
+        self.assertIn("bundle|lapsed", w, "job-run lines (bundle pre-generation, outlet request lapse)")
+        self.assertIn("not(line matches regex @'(?i)statement|parameters|bind|password|secret|token", w)
+        pg = sh[sh.index("PostgreSQLLogs'"):sh.index("section \"Log Analytics: console log of $WORKER_APP")]
+        self.assertIn("where not(msg matches regex @'-LOG:\\s+(execute|statement|parse|bind)')", pg,
+                      "anchored: a statement record is dropped even when log_statement is turned on")
+
     def test_deploy_holds_one_lock_for_the_whole_deploy(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         body = d[d.index("# ---"):]
