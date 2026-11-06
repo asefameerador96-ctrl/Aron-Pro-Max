@@ -25,3 +25,9 @@ Local setup that worked in this container: `pg_ctlcluster 16 main start`; `CREAT
 
 **Reported to the lead:** F1 shapes (message delivered 21:2x). Not yet reported: "checked b3f01ace6" (CI not green yet), DECISIONS 7 (D-AMO-FND-01..07), migrations V0150/V0151.
 **Traps:** Postgres stops on idle (`pg_ctlcluster 16 main start`); role `aron_test`/`aron_test`; `ARON_TEST_PG_URL` exported in the same shell; Gradle online (not --offline); tools in /tmp/claude-0/tools (squawk, oasdiff via tools/ci/install-tool.sh); a full `:backend:app:test` was NOT run locally (CI does; targeted classes only).
+
+### HANDOVER addendum: F2 field facts (sent to the lead 2026-11-06)
+- login-submit `sales_by_category` reuses the existing `CategoryVolume` shape: members are `category_code`, `base_unit`, `qty_base`, `net_mtk`, `report_unit`, `qty_report`, `entry_unit`, `qty_entered` (so `category_code`, not `category`).
+- sales-by-date lines: `sku` is an object `{sku_id, sku_code, short_name}`, then `qty_report`, `report_unit`, `qty_base`, `value_mtk`; totals `total_qty_base`, `total_value_mtk`.
+- members rows add `phone_masked`, `total_outlets`, `vacant` and `route_days` (ISO weekdays, 1 = Monday), beside `user_id`, `full_name`, `route_id`, `route_name`, `phone`.
+- Repository state at recycle: `lane/amo-foundation` = F1 + the DatePinScan fix (589fcdad8; F1 run 42298698739 is superseded by the run of that sha). This branch (`lane/amo-foundation-wip-handover1`) holds the F2 code and must not go to lane/amo-foundation until contract, regeneration, tests and the checker are done. It already contains the same DatePin fix (same content as 589fcdad8).
