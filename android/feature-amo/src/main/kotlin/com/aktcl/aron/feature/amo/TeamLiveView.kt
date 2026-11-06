@@ -161,11 +161,11 @@ fun LiveDataContent(
         LiveCard(stringResource(R.string.amo_live_geo_title), LiveTags.GEO) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Stat(d.targetOutlets.toString(), stringResource(R.string.amo_live_target_outlets)); Stat(d.geoValid.toString(), stringResource(R.string.amo_live_geo_validation)); Stat(d.photoValid.toString(), stringResource(R.string.amo_live_photo_validation))
+                    Stat(d.targetOutlets.toString(), stringResource(R.string.amo_live_target_outlets)); Stat(d.geoValid?.toString() ?: "—", stringResource(R.string.amo_live_geo_validation)); Stat(d.photoValid?.toString() ?: "—", stringResource(R.string.amo_live_photo_validation))
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Ring((d.geoBp ?: 0L) / 10_000f, d.geoText(UiLocale.EN), null)
-                    Text(stringResource(R.string.amo_live_total_calls), style = amoText(12, color = look.inkMuted)); Text(d.totalCalls.toString(), style = amoText(20, bold = true))
+                    Text(stringResource(R.string.amo_live_total_calls), style = amoText(12, color = look.inkMuted)); Text(d.totalCalls?.toString() ?: "—", style = amoText(20, bold = true))
                 }
             }
         }

@@ -21,11 +21,11 @@ data class CategorySales(val code: String, val baseUnit: String, val qtyBase: Lo
  */
 data class LiveData(
     val asOf: String, val categories: List<CategorySales>, val memoCount: Long, val netMtk: Long,
-    val targetOutlets: Long, val successfulCalls: Long, val geoValid: Long, val photoValid: Long, val totalCalls: Long,
+    val targetOutlets: Long, val successfulCalls: Long, val geoValid: Long?, val photoValid: Long?, val totalCalls: Long?,
     val targetRoutes: Long, val loggedInRoutes: Long, val submittedRoutes: Long,
 ) {
     val strikeBp: Long? get() = Percent.bp(successfulCalls, targetOutlets)
-    val geoBp: Long? get() = Percent.bp(geoValid, totalCalls)
+    val geoBp: Long? get() = if (geoValid == null || totalCalls == null) null else Percent.bp(geoValid, totalCalls)
     val loginPct: Long? get() = Percent.whole(loggedInRoutes, targetRoutes)
     val submitPct: Long? get() = Percent.whole(submittedRoutes, loggedInRoutes)
 
@@ -44,6 +44,8 @@ data class LiveData(
 
 object LiveDataParser {
     private fun l(o: JsonObject?, k: String) = (o?.get(k) as? JsonPrimitive)?.takeIf { it !is JsonNull }?.longOrNull ?: 0L
+    /** A nullable count (the server sends null for a non-AMO caller): null prints as a dash. */
+    private fun n(o: JsonObject?, k: String) = (o?.get(k) as? JsonPrimitive)?.takeIf { it !is JsonNull }?.longOrNull
     private fun routes(o: JsonObject?, k: String) = (o?.get(k) as? JsonArray).orEmpty().mapNotNull { ((it as? JsonObject)?.get("route_id") as? JsonPrimitive)?.longOrNull }
 
     /** [routeId] null is every route of the zone; a route keeps only its own row of the route lists. Unreadable: null. */
@@ -59,7 +61,7 @@ object LiveDataParser {
         }
         return LiveData(
             (o["as_of"] as? JsonPrimitive)?.contentOrNull.orEmpty(), cats, l(k, "active_memo_count"), l(k, "net_mtk"),
-            l(k, "target_outlets"), l(k, "successful_calls"), l(o, "geo_valid_visits"), l(o, "photo_valid_visits"), l(o, "visits_total"),
+            l(k, "target_outlets"), l(k, "successful_calls"), n(o, "geo_valid_visits"), n(o, "photo_valid_visits"), n(o, "visits_total"),
             if (perRoute) (notIn.size + inNot.size + done.size).toLong() else l(k, "target_routes"),
             if (perRoute) (inNot.size + done.size).toLong() else l(k, "logged_in_routes"),
             if (perRoute) done.size.toLong() else l(k, "sales_submitted_routes"),

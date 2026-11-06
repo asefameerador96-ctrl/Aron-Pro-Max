@@ -31,6 +31,7 @@ class LiveDataTest {
     @Test fun zeroBasesAreDashesAndGarbageIsNull() {
         val d = LiveDataParser.parse("""{"kpis":{}}""")!!
         assertEquals("—", d.strikeText()); assertEquals("—", d.geoText()); assertNull(d.loginPct)
+        assertNull(d.geoValid); assertNull(d.totalCalls) // a null count from a non-AMO caller is a dash, never 0
         assertNull(LiveDataParser.parse(null)); assertNull(LiveDataParser.parse("[]"))
     }
 }
