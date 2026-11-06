@@ -310,4 +310,38 @@ class TokenContrastTest {
         if (n.solid) listOf(n.bandRed, n.bandAmber, n.bandGreen).forEach { night("$name band fill on its track", it, n.barTrack, 3.0) }
         assertTrue("$name bands distinct", setOf(n.bandRed, n.bandAmber, n.bandGreen).size == 3)
     }
+
+    // ---- amo-shell A1: the AMO look (D-AMO-MAN-03), key figures and button labels at 7:1 in both looks ------------------------------
+
+    private val amoLooks = listOf("AmoPurple" to AronLook.AmoPurple, "AmoSunlight" to AronLook.AmoSunlight)
+    private fun amo(name: String, what: String, fg: Color, bg: Color, target: Double) {
+        val ratio = contrast(over(fg, bg), bg)
+        assertTrue("$name $what: ${"%.2f".format(ratio)} < $target", ratio >= target)
+    }
+
+    @Test fun amoButtonLabelsReachSevenToOne() = amoLooks.forEach { (n, l) ->
+        // the white label on the green primary (Save, Check In, Update base), the red Check Out and the navy choices / Proceed
+        listOfNotNull(l.primaryStart, l.primaryEnd, l.stopFill, l.choiceFill).forEach { amo(n, "white label on a button fill", Color.White, it, 7.0) }
+    }
+
+    @Test fun amoBarTitleAndKeyFiguresReachSevenToOne() = amoLooks.forEach { (n, l) ->
+        amo(n, "title on the bar", l.onBar, l.barStart, 7.0)
+        amo(n, "title on the bar (end)", l.onBar, l.barEnd, 7.0)
+        amo(n, "ink on a card", l.ink, l.card, 7.0)
+        amo(n, "ink on the page", l.ink, l.page, 7.0)
+        amo(n, "tile label on the card", l.tileLabel, l.card, 7.0)
+        amo(n, "key figure (purple) on a card", l.purple, l.card, 7.0)
+        amo(n, "white figure on a target card", Color.White, l.targetCard!!, 7.0)
+    }
+
+    @Test fun amoLooksAreScopedAndSunlightIsSolid() {
+        // the SR and TSO looks carry none of the AMO roles, so their goldens cannot move
+        listOf(AronLook.Default, AronLook.Sunlight, AronLook.TsoNight, AronLook.TsoSunlight).forEach {
+            assertTrue(it.primaryStart == null && it.stopFill == null && !it.roundBack && it.targetCard == null)
+        }
+        assertTrue(AronLook.AmoSunlight.sunlight && !AronLook.AmoPurple.sunlight)
+        // the vendor bar is one solid colour
+        assertEquals(AronLook.AmoPurple.barStart, AronLook.AmoPurple.barEnd)
+        assertEquals(AronLook.AmoPurple.barStart, AronLook.AmoPurple.barMid)
+    }
 }

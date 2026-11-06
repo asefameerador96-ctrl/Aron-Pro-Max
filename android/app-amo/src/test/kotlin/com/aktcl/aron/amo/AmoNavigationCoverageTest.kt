@@ -29,14 +29,18 @@ class AmoNavigationCoverageTest {
     /** The screens the app module builds: its map entries `AmoScreen.X to`. */
     private val built: Set<AmoScreen> = AmoScreen.entries.filter { Regex("AmoScreen\\.${it.name} to").containsMatchIn(main) }.toSet()
 
-    @Test fun everyHomeTileOpensARealScreen() {
-        val tiles = RoleHomes.amoTiles(emptyMap())
-        assertEquals("eight hub tiles", 8, tiles.size)
+    @Test fun everyHomeTileHasItsOwnNavigationEntryAndAScreen() {
+        val tiles = AmoMenu.tiles(AmoReach(subordinateSrs = 3, pendingVerifications = 0))
+        assertEquals("seventeen tiles (D-AMO-MAN-02)", 17, tiles.size)
+        // AmoApp itself draws Home, Settings and the Sales Journey empty state (lane A3 fills the journey); every other tile is built in MainActivity
+        val inApp = setOf(AmoScreen.SETTINGS, AmoScreen.SALES_JOURNEY)
         tiles.forEach { t ->
             val screen = AmoScreen.of(t)
             assertTrue("tile ${t.id} maps to a screen of its own", screen.tileId == t.id)
-            assertTrue("tile ${t.id} (${screen.name}) has a real screen in MainActivity, not the placeholder", screen in built)
+            assertTrue("tile ${t.id} (${screen.name}) has a real screen in MainActivity, not the placeholder", screen in built || screen in inApp)
         }
+        assertTrue("Sales Journey shows an empty state until A3", File("../feature-amo/src/main/kotlin/com/aktcl/aron/feature/amo/AmoApp.kt").readText().contains("amo_journey_empty"))
+        assertTrue("Exceptions has a Settings row and a host", AmoScreen.EXCEPTIONS in built)
     }
 
     @Test fun settingsAndSupportHaveRealScreens() {
@@ -52,12 +56,15 @@ class AmoNavigationCoverageTest {
         assertEquals(5, leaves.size)
         leaves.forEach { l -> assertTrue("Team hub entry ${l.name} has its own screen in AmoTeamHub", Regex("open == AmoLeaf\\.${l.name}\\b").containsMatchIn(team)) }
         assertTrue("Exceptions is a Team hub entry too", team.contains("TeamLeaf.EXCEPTIONS"))
+        leaves.forEach { l -> assertTrue("Team tile ${l.name} is built", AmoScreen.entries.first { it.leaf == l } in built) }
     }
 
     @Test fun everySaleHubEntryOpensARealScreen() {
         val leaves = AmoMenu.hub(RoleHomes.AmoTile.SALE, AmoReach(subordinateSrs = 3, pendingVerifications = 0))
         assertEquals(listOf(AmoLeaf.SALE, AmoLeaf.STOCK, AmoLeaf.MEMO, AmoLeaf.SUMMARY), leaves)
         listOf("SaleLeaf.SALE ->", "SaleLeaf.STOCK ->", "SaleLeaf.MEMO ->", "SaleLeaf.SUMMARY ->").forEach { assertTrue("Sale hub: $it", sale.contains(it)) }
+        // each leaf is also a Home tile of its own: the hub opens on it (D-AMO-MAN-02)
+        listOf(AmoScreen.STOCK, AmoScreen.SALE, AmoScreen.MEMO, AmoScreen.SUMMARY).forEach { assertTrue("${it.name} is built", it in built) }
     }
 
     @Test fun theOutletHubReachesRealScreensForEveryEntry() {
@@ -72,7 +79,7 @@ class AmoNavigationCoverageTest {
         val reachable = AmoMenu.leaves(full).toSet()
         val covered = setOf(
             AmoLeaf.ATTENDANCE, AmoLeaf.JOINT_CALL, AmoLeaf.CONTROL_CALL, AmoLeaf.TEAM_LOCATION, AmoLeaf.TEAM_PERFORMANCE, AmoLeaf.TASK_DELEGATION, AmoLeaf.LIVE_DASHBOARD,
-            AmoLeaf.SR_STOCK, AmoLeaf.OUTLET, AmoLeaf.STOCK, AmoLeaf.SALE, AmoLeaf.MEMO, AmoLeaf.SUMMARY, AmoLeaf.SALES_SUBMIT, AmoLeaf.REPORT, AmoLeaf.SETTINGS,
+            AmoLeaf.SR_STOCK, AmoLeaf.OUTLET, AmoLeaf.STOCK, AmoLeaf.SALE, AmoLeaf.MEMO, AmoLeaf.SUMMARY, AmoLeaf.SALES_SUBMIT, AmoLeaf.REPORT, AmoLeaf.SALES_JOURNEY, AmoLeaf.SETTINGS,
         )
         assertEquals(emptySet<AmoLeaf>(), reachable - covered)
     }

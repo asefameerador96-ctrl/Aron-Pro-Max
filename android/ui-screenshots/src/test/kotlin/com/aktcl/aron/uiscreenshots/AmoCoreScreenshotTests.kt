@@ -55,7 +55,7 @@ class AmoCoreScreenshotTests {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         rule.setContent {
             CompositionLocalProvider(LocalContext provides ctx, LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
-                AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) {
+                AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true, amo = true) { // D-AMO-MAN-03
                     com.aktcl.aron.feature.amo.AmoFrame(title, onBack = {}) { content() }
                 }
             }
