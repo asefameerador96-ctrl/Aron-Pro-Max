@@ -30,6 +30,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.io.File
+import java.time.DayOfWeek
 import java.time.LocalDate
 
 /** A seeded database plus the `/v1/admin` master-data routes under test (tests of F-API-035, 035b, 045). */
@@ -37,6 +39,23 @@ class AdminEnv : AutoCloseable {
     val db = SeededAdminDb()
     // wall-clock-ok: the app under test runs on AronClock.SYSTEM, so its Dhaka "today" is the real one
     val today: LocalDate = BusinessDate.of(System.currentTimeMillis()).toJavaLocalDate()
+
+    /** Dates the dev config seed names (db/seed/04: the seeded national holiday), read from the file so they never drift. */
+    private val seededHolidays: Set<LocalDate> by lazy {
+        Regex("""DATE '(\d{4}-\d{2}-\d{2})'""").findAll(File(System.getProperty("aron.repoRoot"), "db/seed/04_dev_config_and_codes.sql").readText())
+            .map { LocalDate.parse(it.groupValues[1]) }.toSet()
+    }
+
+    /**
+     * The first date at or after Dhaka today + [offset] such that it and the next [span] - 1 days are neither a Friday nor a
+     * seeded holiday (D-QA-CI-02). Use it for every test date that is declared or counted as a calendar day; a bare
+     * `today.plusDays(n)` lands on Victory Day (2026-12-16) or a Friday on some run days.
+     */
+    fun workingDay(offset: Long, span: Int = 1): LocalDate {
+        var d = today.plusDays(offset)
+        while ((0 until span).any { val x = d.plusDays(it.toLong()); x.dayOfWeek == DayOfWeek.FRIDAY || x in seededHolidays }) d = d.plusDays(1)
+        return d
+    }
 
     /** The geography snapshot of the app under test (set when [app] mounts it). */
     lateinit var geo: GeoRepository
