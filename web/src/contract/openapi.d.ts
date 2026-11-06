@@ -1111,7 +1111,7 @@ export interface paths {
         /**
          * Everything sold to an outlet on a date by any SR (the AMO's previous sale data; contract 1.11.0).
          * @description Reach-checked: the outlet's route (else its zone) must be in the caller's reach, otherwise 403 `ERR_FORBIDDEN`.
-         *     Supervisor roles and SR (for outlets of the own routes). `business_date` defaults to today and must lie within the
+         *     Supervisor roles only (SR and the other roles 403). `business_date` defaults to today and must lie within the
          *     last 90 days (else 400 `ERR_VALIDATION`). Lines are per SKU in the SKU's field unit (`report_unit`: pack for cigarettes,
          *     bidi and lighters, dozen for matches; docs/34 s4.2) and in base units, from active sale memo lines only.
          */
@@ -8091,14 +8091,14 @@ export interface components {
                 zone_id: components["schemas"]["Id"];
                 final_submitted: boolean;
             }[];
-            /** @description AMO callers only (contract 1.11.0): the zone's SR calls of the date inside the geo-fence. */
-            geo_valid_visits?: number;
+            /** @description AMO callers only, null for every other role (contract 1.11.0): the zone's SR calls of the date inside the geo-fence. */
+            geo_valid_visits?: number | null;
             /** @description AMO callers only: SR calls of the date with a verification photo. */
-            photo_valid_visits?: number;
+            photo_valid_visits?: number | null;
             /** @description AMO callers only: all SR calls of the date in the zone. */
-            visits_total?: number;
+            visits_total?: number | null;
             /** @description AMO callers only: the zone's sold volume of the date per category (the Live Dashboard columns). */
-            sales_by_category?: components["schemas"]["CategoryVolume"][];
+            sales_by_category?: components["schemas"]["CategoryVolume"][] | null;
         };
         SyncHealthRow: {
             user_id: components["schemas"]["Id"];

@@ -200,6 +200,8 @@ class AmoFoundationF2Test {
             assertEquals(HttpStatusCode.BadRequest, getAs(amo, "/v1/team/journey?user_id=${sr.userId}&route_id=$routeD&business_date=soon").status)
             assertEquals(HttpStatusCode.NotFound, getAs(amo, "/v1/team/journey?user_id=987654&route_id=$routeD").status)
             assertEquals(HttpStatusCode.NotFound, getAs(amo, "/v1/team/journey?user_id=${amo.userId}&route_id=$routeD").status, "only an SR has a journey")
+            val lkxSrId = one("SELECT id FROM app.app_user WHERE username = 'lkxsr1001'")
+            assertEquals(HttpStatusCode.NotFound, getAs(amo, "/v1/team/journey?user_id=$lkxSrId&route_id=$routeD").status, "an SR outside the route is never named")
         }
     }
 

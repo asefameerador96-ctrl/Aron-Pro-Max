@@ -67,11 +67,22 @@ class AmoTeamReads(private val db: Database, private val clock: AronClock = Aron
         if (route == null || !reach.coversRoute(routeId, route.second)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "route is outside your reach")
         val user = h.createQuery("SELECT full_name FROM app.app_user WHERE id = :u AND role = 'SR'").bind("u", userId).mapTo(String::class.java).findOne().orElse(null)
             ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such SR")
+        // The SR must work the route: a primary assignment, a day's acting row or any call on it (no name of an SR outside the route is ever returned).
+        val onRoute = h.createQuery(
+            """
+            SELECT EXISTS (SELECT 1 FROM app.route_assignment a WHERE a.route_id = :r AND a.user_id = :u)
+                OR EXISTS (SELECT 1 FROM app.route_day d WHERE d.route_id = :r AND d.acting_user_id = :u)
+                OR EXISTS (SELECT 1 FROM app.visit v WHERE v.route_id = :r AND v.user_id = :u)
+            """,
+        ).bind("r", routeId).bind("u", userId).mapTo(Boolean::class.java).one()
+        if (!onRoute) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such SR on this route")
         class V(val uuid: String, val outlet: JourneyOutlet, val lat: Double?, val lng: Double?, val opened: java.time.Instant, val closed: java.time.Instant?, val status: String)
         val visits = h.createQuery(
             """
             SELECT v.client_uuid::text AS uuid, o.id AS oid, o.name, o.code, o.contact_number, c.name AS cluster, o.lat, o.lng, v.opened_at, v.ended_at,
-                   CASE WHEN EXISTS (SELECT 1 FROM app.memo m WHERE m.visit_client_uuid = v.client_uuid AND m.voided_at IS NULL AND (m.status = 'superseded' OR m.supersedes_client_uuid IS NOT NULL)) THEN 'edited_sale'
+                   CASE WHEN EXISTS (SELECT 1 FROM app.memo m WHERE m.visit_client_uuid = v.client_uuid AND m.voided_at IS NULL
+                                      AND ((m.status = 'active' AND m.supersedes_client_uuid IS NOT NULL)
+                                        OR (m.status = 'superseded' AND EXISTS (SELECT 1 FROM app.memo e WHERE e.client_uuid = m.superseded_by_client_uuid AND e.status = 'active' AND e.voided_at IS NULL)))) THEN 'edited_sale'
                         WHEN EXISTS (SELECT 1 FROM app.memo m WHERE m.visit_client_uuid = v.client_uuid AND m.voided_at IS NULL AND m.status = 'active' AND m.memo_kind = 'sale') THEN 'new_sale'
                         ELSE 'no_sale' END AS status
               FROM app.visit v JOIN app.outlet o ON o.id = v.outlet_id LEFT JOIN app.cluster c ON c.id = o.cluster_id

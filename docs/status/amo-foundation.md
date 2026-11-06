@@ -31,3 +31,15 @@ Local setup that worked in this container: `pg_ctlcluster 16 main start`; `CREAT
 - sales-by-date lines: `sku` is an object `{sku_id, sku_code, short_name}`, then `qty_report`, `report_unit`, `qty_base`, `value_mtk`; totals `total_qty_base`, `total_value_mtk`.
 - members rows add `phone_masked`, `total_outlets`, `vacant` and `route_days` (ISO weekdays, 1 = Monday), beside `user_id`, `full_name`, `route_id`, `route_name`, `phone`.
 - Repository state at recycle: `lane/amo-foundation` = F1 + the DatePinScan fix (589fcdad8; F1 run 42298698739 is superseded by the run of that sha). This branch (`lane/amo-foundation-wip-handover1`) holds the F2 code and must not go to lane/amo-foundation until contract, regeneration, tests and the checker are done. It already contains the same DatePin fix (same content as 589fcdad8).
+
+## Session 2 (2026-11-06 evening; lane amo-foundation #2, Sonnet + Opus checker)
+
+**Done (F2, local commits on `lane/amo-foundation-wip-handover1`, not yet pushed until F1 is green and reported):**
+- Contract 1.11.0 F2: `getTeamJourney`, `getTeamMembers`, `getOutletSalesByDate`, `LoginSubmitStatus` AMO members, schemas, slices, WireDtos (seven read DTOs), `openapi.d.ts`, docs/24 Appendix A (272 operations on 221 paths), gate file appended; oasdiff 0 breaking (base 756cc24c).
+- Backend: `AmoTeamReads.kt` (reach via `coversRoute`; SR/SUPPORT/BRAND refused; `qty_report` as Decimal3 string), login-submit AMO counts, `sales-summary` target columns (D-AMO-FND-09).
+- Tests: `AmoFoundationF2Test` (9 tests: journey ordering/status/duration/gap/haversine on a fixed pair, empty day, validation, scope with AMO/TSO/DMO/ADMIN/SUPPORT/SR tokens and the other division; members vacant route, ISO days, phone only for the own-zone AMO; sales-by-date totals, units, 90-day window, scope; login-submit AMO counts and closed national endpoints), `ReportBatchBTest` target columns, `AmoManualContractTest` F2 fixtures, scope-cases rows for the 3 new routes.
+- DECISIONS D-AMO-FND-08..11.
+
+**Open:** Opus checker result on F2, full `:backend:app:test` result, F1 CI run result (589fcdad8), then merge INT, push F2 and report.
+
+**Assumptions:** see D-AMO-FND-08..11 (readers, target columns, AMO counts, formulas).

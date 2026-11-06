@@ -342,7 +342,7 @@ Source: contract/openapi.yaml, version 1.11.0.
 - `schemas/DashboardSummary.yaml` (1547 B)
 - `schemas/DailyTrackingRow.yaml` (2930 B)
 - `schemas/DailyTrackingPage.yaml` (1752 B)
-- `schemas/LoginSubmitStatus.yaml` (1830 B)
+- `schemas/LoginSubmitStatus.yaml` (1957 B)
 - `schemas/SyncHealthRow.yaml` (1475 B)
 - `schemas/SyncHealthPage.yaml` (3362 B)
 - `schemas/GeoValidationSummary.yaml` (2164 B)
