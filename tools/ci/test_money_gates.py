@@ -12,7 +12,9 @@
                            rounds half away from zero; a hand edit is caught
 Run: python3 tools/ci/test_money_gates.py
 """
+import contextlib
 import importlib.util
+import io
 import json
 import subprocess
 import sys
@@ -222,11 +224,16 @@ class MoneyFormatCorpusTest(unittest.TestCase):
             gen.ROOT = Path(d)
             gen.OUT.write_text(gen.render().replace("1,164.20", "1,164.21"), encoding="utf-8")
             sys_argv = sys.argv
+            out = io.StringIO()
             try:
                 sys.argv = ["x"]
-                self.assertEqual(1, gen.main())
+                # main() prints the ::error:: annotation; captured so a green run leaves none in the CI log (D-QA-CI-05)
+                with contextlib.redirect_stdout(out):
+                    self.assertEqual(1, gen.main())
             finally:
                 sys.argv = sys_argv
+            self.assertIn("::error", out.getvalue())
+            self.assertIn("stale or missing", out.getvalue())
 
 
 if __name__ == "__main__":
