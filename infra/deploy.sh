@@ -159,11 +159,10 @@ summary() { [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "$*" >> "$GITHUB_STEP_SUMM
 # condition. The file names the reason and who lifts it. A rollback (ROLLBACK_SHA) ignores the hold: an earlier image
 # without migrations is exactly what a hold wants available.
 if [ -f infra/migrations.hold ] && [ -z "$ROLLBACK_SHA" ]; then
-  reason="$(head -c 400 infra/migrations.hold | tr '\n' ' ')"
   summary "### Aron ${ENV_NAME}: deploy of ${SHA:0:8} HELD"
   summary "| Item | State |"
   summary "|---|---|"
-  summary "| Deploy | HELD (infra/migrations.hold): ${reason} |"
+  summary "$(held_row infra/migrations.hold)"
   echo "::warning::deploy of $SHA HELD by infra/migrations.hold; nothing was deployed and no migration was attempted"
   exit 0
 fi
@@ -519,7 +518,7 @@ job_logs() { # execution
      | extend exec = coalesce(column_ifexists('ContainerGroupName_s', ''), column_ifexists('ContainerGroupName', '')),
               line = coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', ''))
      | where exec startswith '$1' | order by TimeGenerated asc | project TimeGenerated, line | take 400"
-  for _ in $(seq 1 24); do
+  for _ in $(seq 1 "${JOB_LOGS_TRIES:-24}"); do
     out="$(az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv 2>/dev/null || true)"
     if [ -n "$out" ]; then
       if [ "$out" = "$prev" ]; then same=$((same + 1)); else same=0; fi
@@ -545,6 +544,11 @@ job_logs() { # execution
   out="$(az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv 2>/dev/null || true)"
   if [ -n "$out" ]; then echo "---- system log of $1"; echo "$out"; echo "----"; else echo "(no system log of $1 either)"; fi
 }
+# The console log of a job execution that SUCCEEDED, last 200 lines (bounded wait of about 3 minutes), so every deploy run
+# carries Flyway's per-version lines and the dblogins job's output, not only a failing run (D-OPS-DEPLOY-LOGS-01).
+job_logs_ok() { # execution
+  JOB_LOGS_TRIES=6 job_logs "$1" | tail -n 200 || true
+}
 if [ "$RUN_MIGRATIONS" = true ]; then
   pause_worker
   # One more execution ONLY when the first could not open its first database connection (seen twice on 2026-10-06/07:
@@ -560,7 +564,7 @@ if [ "$RUN_MIGRATIONS" = true ]; then
       case "$status" in Succeeded|Failed|Stopped|Degraded) break ;; esac
       sleep 10
     done
-    [ "$status" = Succeeded ] && { note "migrations succeeded"; break; }
+    [ "$status" = Succeeded ] && { note "migrations succeeded"; job_logs_ok "$execution"; break; }
     case "$status" in Failed|Stopped|Degraded) ;; *)
       # Still running after 20 minutes: stop it, so no second migrate execution can start beside it after the lock.
       az containerapp job stop -g "$RG" -n "$JOB" --job-execution-name "$execution" -o none 2>/dev/null \
@@ -621,6 +625,7 @@ if [ -n "$DBLOGINS_JOB" ]; then
     dblogins_result="FAILED (${status:-unknown}; per-app logins off, apps not affected)"
   else
     note "database logins succeeded"
+    job_logs_ok "$execution"
     # The job fails unless every login of the SQL's membership list holds exactly its memberships, so success means
     # exactly these logins (read from the same file the job runs).
     logins="$(python3 -c 'import re, sys

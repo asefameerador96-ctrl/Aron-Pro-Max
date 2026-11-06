@@ -702,12 +702,40 @@ class Workflows(unittest.TestCase):
         self.assertIn('[ "$attempt" -eq 1 ] && [ "$status" = Failed ]', block)
         self.assertIn("FlywaySqlUnableToConnectToDbException|Connection is not available, request timed out", block)
 
+    def test_held_row_is_one_table_row_of_at_most_400_characters(self):
+        import subprocess, tempfile
+        def row(text):
+            with tempfile.TemporaryDirectory() as t:
+                f = Path(t) / "migrations.hold"
+                f.write_text(text)
+                r = subprocess.run(["bash", "-c", f'source infra/scripts/lib.sh; held_row "{f}"'], cwd=ROOT, capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                return r.stdout
+        short = row("held until db 16\nlifts: lead\n")
+        self.assertTrue(short.startswith("| Deploy | HELD ("), short)
+        self.assertTrue(short.endswith("held until db 16 lifts: lead |\n"), short)
+        long = row("x | y " * 500)
+        self.assertLessEqual(len(long.rstrip("\n")), 400)
+        self.assertTrue(long.rstrip("\n").endswith("... |"), "a cut reason ends in an ellipsis")
+        self.assertEqual(long.count("|"), 3, "a pipe in the reason never splits the cell")
+        self.assertEqual(long.count("\n"), 1, "one line")
+
+    def test_successful_job_logs_are_printed_bounded(self):
+        # D-OPS-DEPLOY-LOGS-01: the migrate and the dblogins job's console log also on SUCCESS, last 200 lines each.
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn("JOB_LOGS_TRIES=6 job_logs \"$1\" | tail -n 200", d)
+        self.assertIn('{ note "migrations succeeded"; job_logs_ok "$execution"; break; }', d)
+        i = d.index('note "database logins succeeded"')
+        self.assertIn('job_logs_ok "$execution"', d[i:i + 120])
+        self.assertIn('seq 1 "${JOB_LOGS_TRIES:-24}"', d, "the failure path keeps its 12-minute wait by default")
+
     def test_deploy_hold_marker_stops_the_deploy_before_the_lock(self):
         # D-OPS-DEPLOY-HOLD-01: with infra/migrations.hold present nothing is deployed and no migration attempted; the
         # run ends green with a HELD summary row; a rollback ignores the hold. The check sits before the lock section.
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         self.assertIn('if [ -f infra/migrations.hold ] && [ -z "$ROLLBACK_SHA" ]; then', d)
-        self.assertIn('summary "| Deploy | HELD (infra/migrations.hold): ${reason} |"', d)
+        self.assertIn('summary "$(held_row infra/migrations.hold)"', d)
+        self.assertIn('summary "| Item | State |"', d, "the HELD row sits under a table header")
         self.assertLess(d.index("infra/migrations.hold"), d.index("# ---"), "the hold is checked before the lock is taken")
         self.assertLess(d.index("summary() {"), d.index("if [ -f infra/migrations.hold ]"), "summary() exists before the hold uses it")
 
