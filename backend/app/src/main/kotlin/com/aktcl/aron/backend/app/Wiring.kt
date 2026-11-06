@@ -27,6 +27,8 @@ import com.aktcl.aron.backend.analytics.BrandScopeResolver
 import com.aktcl.aron.backend.analytics.NationalDeps
 import com.aktcl.aron.backend.analytics.nationalDashboardRoutes
 import com.aktcl.aron.backend.analytics.appTeamRoutes
+import com.aktcl.aron.backend.analytics.AmoTeamReads
+import com.aktcl.aron.backend.analytics.amoTeamRoutes
 import com.aktcl.aron.backend.analytics.opsRoutes
 import com.aktcl.aron.backend.analytics.reportRoutes
 import com.aktcl.aron.backend.auth.AuthDeps
@@ -331,6 +333,7 @@ class Wiring(
                 dashboardRoutes(dashboards)
                 nationalDashboardRoutes(national)
                 appTeamRoutes(team)
+                amoTeamRoutes(team, AmoTeamReads(db, clock))
                 dailyTrackingRoutes(tracking)
                 opsRoutes(ops)
                 deviceRoutes(deviceEnrolment)
