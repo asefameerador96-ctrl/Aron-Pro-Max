@@ -102,6 +102,8 @@ fun AronTheme(
     reducedMotion: Boolean = rememberSystemReducedMotion(),
     /** The TSO app (D-TSO-MAN-13): the parity kit reads [AronLook.TsoNight], or [AronLook.TsoSunlight] when [sunlight] is on. */
     tso: Boolean = false,
+    /** The AMO app's signed-in screens (D-AMO-MAN-03): [AronLook.AmoPurple], or [AronLook.AmoSunlight] when [sunlight] is on. */
+    amo: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val mode = if (sunlight) AronMode.Sunlight else if (dark) AronMode.Dark else AronMode.Light
@@ -114,6 +116,8 @@ fun AronTheme(
         LocalAronLook provides when {
             tso && sunlight -> AronLook.TsoSunlight
             tso -> AronLook.TsoNight
+            amo && sunlight -> AronLook.AmoSunlight
+            amo -> AronLook.AmoPurple
             sunlight -> AronLook.Sunlight
             else -> AronLook.Default
         },

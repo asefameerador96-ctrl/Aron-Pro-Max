@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Owner: lane android-amo-shell (A1): AMO look, Home, system and settings strings. Other lanes: add your own strings_<feature>.xml, never edit this file. -->
+<resources>
+    <string name="amo_shell_target_today">আজকের টার্গেট</string>
+    <string name="amo_shell_target_total">টোটাল কল টার্গেট</string>
+    <string name="amo_shell_target_control">কন্ট্রোল কল টার্গেট</string>
+    <string name="amo_shell_target_joint">জয়েন্ট কল টার্গেট</string>
+    <string name="amo_shell_fold">টাইল লুকান</string>
+    <string name="amo_shell_unfold">টাইল দেখান</string>
+    <string name="amo_shell_no_data">তথ্য পাওয়া যায়নি</string>
+</resources>

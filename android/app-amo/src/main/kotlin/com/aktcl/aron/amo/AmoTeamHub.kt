@@ -44,18 +44,20 @@ private enum class TeamLeaf { HUB, EXCEPTIONS, EXCEPTION_DETAIL, LEAF }
  * section placeholder; rows plug in here as they are built.
  */
 @Composable
-fun AmoTeamHub(day: AmoDay, reach: AmoReach, onBack: () -> Unit) {
-    var leaf by rememberSaveable { mutableStateOf(TeamLeaf.HUB) }
-    var open by rememberSaveable { mutableStateOf<AmoLeaf?>(null) }
+fun AmoTeamHub(day: AmoDay, reach: AmoReach, onBack: () -> Unit, start: AmoLeaf? = null, startExceptions: Boolean = false) {
+    // D-AMO-MAN-02: Home has one tile per team destination, so the host opens straight on [start] (or Exceptions from Settings) and Back leaves it
+    val direct = start != null || startExceptions
+    var leaf by rememberSaveable { mutableStateOf(if (startExceptions) TeamLeaf.EXCEPTIONS else if (start != null) TeamLeaf.LEAF else TeamLeaf.HUB) }
+    var open by rememberSaveable { mutableStateOf<AmoLeaf?>(start) }
     var signalId by rememberSaveable { mutableStateOf<Long?>(null) }
     var liveFilter by rememberSaveable { mutableStateOf(false) }
     var stockSr by rememberSaveable { mutableStateOf<Long?>(null) }
     val back: () -> Unit = {
         when (leaf) {
             TeamLeaf.HUB -> onBack()
-            TeamLeaf.LEAF -> if (open == AmoLeaf.LIVE_DASHBOARD && liveFilter) liveFilter = false else if (open == AmoLeaf.SR_STOCK && stockSr != null) stockSr = null else leaf = TeamLeaf.HUB
+            TeamLeaf.LEAF -> if (open == AmoLeaf.LIVE_DASHBOARD && liveFilter) liveFilter = false else if (open == AmoLeaf.SR_STOCK && stockSr != null) stockSr = null else if (direct) onBack() else leaf = TeamLeaf.HUB
             TeamLeaf.EXCEPTION_DETAIL -> leaf = TeamLeaf.EXCEPTIONS
-            else -> leaf = TeamLeaf.HUB
+            else -> if (direct) onBack() else leaf = TeamLeaf.HUB
         }
     }
     BackHandler(onBack = back)
