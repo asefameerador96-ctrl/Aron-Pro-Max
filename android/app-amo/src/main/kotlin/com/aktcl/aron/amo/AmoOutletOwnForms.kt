@@ -59,6 +59,22 @@ private fun rememberRouteDays(day: AmoDay): List<RouteDay> {
     return days
 }
 
+/** Resolved at the first save of a form: a key whose request is already stored means the earlier act finished, so this act takes a new uuid (never swallowed as a replay). */
+private class SubmitUuid(private val day: AmoDay, private val key: String) {
+    private var uuid: String? = null
+    suspend fun get(): String = uuid ?: run {
+        var u = day.drafts.uuid(key)
+        if (day.requestStored(u)) { day.drafts.clear(key); u = day.drafts.uuid(key) }
+        u.also { uuid = it }
+    }
+}
+
+private suspend fun safeSubmit(day: AmoDay, f: OutletRequestForm): RequestValidation? =
+    try { day.outletRequests.submit(f) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
+
+@Composable
+private fun failedNotice(failed: Boolean): List<AmoFormItem> = if (failed) listOf(AmoFormItem.Notice(stringResource(AmoR.string.amo_task_failed), BannerKind.Error)) else emptyList()
+
 private fun mapErrors(e: Set<RequestError>): Set<AmoFormError> = e.mapNotNull { AmoOutletLists.fieldError(it) }.toSet()
 
 /** Error texts the field mapping does not cover (dues block, too many photos, ...), shown as banners above the form. */
@@ -92,6 +108,7 @@ private fun NewShopForm(day: AmoDay, days: List<RouteDay>, onCleared: () -> Unit
     var subId by rememberSaveable { mutableStateOf<Long?>(null) }
     var geo by rememberSaveable { mutableStateOf<String?>(null) }
     var errors by remember { mutableStateOf<Set<RequestError>>(emptySet()) }
+    var failed by remember { mutableStateOf(false) }
     var saved by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var subs by remember { mutableStateOf<List<com.aktcl.aron.feature.amo.SubChannel>>(emptyList()) }
@@ -99,12 +116,13 @@ private fun NewShopForm(day: AmoDay, days: List<RouteDay>, onCleared: () -> Unit
     val capture = remember { day.newCapture("outlet_capture") }
     val cap by capture.state.collectAsState()
     val draftKey = "own:new"
+    val ids = remember(draftKey) { SubmitUuid(day, draftKey) }
     val routeOutlets = routeId?.let { ControlCallOutlets.of(days, it) }.orEmpty()
     val clusters = AmoOutletLists.clusters(routeOutlets.ifEmpty { day.zoneOutlets })
     if (saved) { AmoSuccessDialog(stringResource(AmoR.string.amo_out_saved), stringResource(AmoR.string.amo_ok)) { saved = false; onCleared() }; return }
     val formErrors = mapErrors(errors)
     AmoOutletFormBody(
-        items = otherErrors(errors) + newShopItems(
+        items = failedNotice(failed) + otherErrors(errors) + newShopItems(
             route = Pick(AmoOutletLists.routes(days), routeId, { routeId = it; clusterId = null }),
             cluster = Pick(clusters, clusterId, { clusterId = it }, enabled = routeId != null),
             text = ShopText(name, owner, mobile, { name = it }, { owner = it }, { mobile = it }),
@@ -115,13 +133,15 @@ private fun NewShopForm(day: AmoDay, days: List<RouteDay>, onCleared: () -> Unit
             if (!busy) {
                 busy = true
                 scope.launch {
+                    if (cap.fix?.isMock == true) { errors = setOf(RequestError.MOCK_FIX); busy = false; return@launch } // anti-spoofing: a fake fix is never queued
                     val f = OutletRequestForm(
-                        kind = OutletRequestKind.NEW, requestUuid = day.drafts.uuid(draftKey), name = name, ownerName = owner, mobile = mobile, clusterId = clusterId,
+                        kind = OutletRequestKind.NEW, requestUuid = ids.get(), name = name, ownerName = owner, mobile = mobile, clusterId = clusterId,
                         subChannelId = subId, geoClass = geo, fix = cap.fix, photoUuids = listOfNotNull(cap.photo?.photoUuid),
                     )
-                    when (val r = day.outletRequests.submit(f)) {
+                    when (val r = safeSubmit(day, f)) {
+                null -> failed = true
                         is RequestValidation.Invalid -> errors = r.errors
-                        is RequestValidation.Ok -> { errors = emptySet(); day.drafts.clear(draftKey); saved = true }
+                        is RequestValidation.Ok -> { failed = false; errors = emptySet(); day.drafts.clear(draftKey); saved = true }
                     }
                     busy = false
                 }
@@ -149,21 +169,24 @@ private fun CloseForm(day: AmoDay, onCleared: () -> Unit) {
     var clusterId by rememberSaveable { mutableStateOf<Long?>(null) }
     var outletId by rememberSaveable { mutableStateOf<Long?>(null) }
     var errors by remember { mutableStateOf<Set<RequestError>>(emptySet()) }
+    var failed by remember { mutableStateOf(false) }
     var pickedMissing by remember { mutableStateOf(false) }
     var ask by rememberSaveable { mutableStateOf(false) }
     var saved by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val outlet = outletId?.let { id -> day.zoneOutlets.firstOrNull { it.outletId == id } }
     val draftKey = "own:close:${outletId ?: 0}"
+    val ids = remember(draftKey) { SubmitUuid(day, draftKey) }
     if (saved) { AmoSuccessDialog(stringResource(AmoR.string.amo_out_saved), stringResource(AmoR.string.amo_ok)) { saved = false; onCleared() }; return }
     fun commit() {
         val o = outlet ?: return
         busy = true
         scope.launch {
-            val f = OutletRequestForm(kind = OutletRequestKind.CLOSE, outletId = o.outletId, requestUuid = day.drafts.uuid(draftKey), confirmed = true, openDueMtk = o.openDueMtk)
-            when (val r = day.outletRequests.submit(f)) {
+            val f = OutletRequestForm(kind = OutletRequestKind.CLOSE, outletId = o.outletId, requestUuid = ids.get(), confirmed = true, openDueMtk = o.openDueMtk)
+            when (val r = safeSubmit(day, f)) {
+                null -> failed = true
                 is RequestValidation.Invalid -> errors = r.errors
-                is RequestValidation.Ok -> { errors = emptySet(); day.drafts.clear(draftKey); saved = true }
+                is RequestValidation.Ok -> { failed = false; errors = emptySet(); day.drafts.clear(draftKey); saved = true }
             }
             busy = false
         }
@@ -179,7 +202,7 @@ private fun CloseForm(day: AmoDay, onCleared: () -> Unit) {
         if ((outlet?.openDueMtk ?: 0) > 0) add(AmoFormItem.Notice(stringResource(OutR.string.out_req_dues_warning), BannerKind.Warning))
     }
     AmoOutletFormBody(
-        items = otherErrors(errors) + warn + closeItems(
+        items = failedNotice(failed) + otherErrors(errors) + warn + closeItems(
             cluster = Pick(AmoOutletLists.clusters(day.zoneOutlets), clusterId, { clusterId = it; outletId = null }),
             retailer = Pick(AmoOutletLists.retailers(inCluster, clusterId, OutletPicker.ALL_CHIP), outletId, { outletId = it }, enabled = clusterId != null),
             name = outlet?.name, owner = outlet?.ownerName, mobile = outlet?.contactNumber,
@@ -210,6 +233,7 @@ private fun ChangeInfoForm(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
     var owner by rememberSaveable { mutableStateOf("") }
     var mobile by rememberSaveable { mutableStateOf("") }
     var errors by remember { mutableStateOf<Set<RequestError>>(emptySet()) }
+    var failed by remember { mutableStateOf(false) }
     var ask by rememberSaveable { mutableStateOf(false) }
     var saved by rememberSaveable { mutableStateOf(false) }
     var photoDone by rememberSaveable { mutableStateOf(false) }
@@ -219,6 +243,7 @@ private fun ChangeInfoForm(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
     val outlets = routeId?.let { ControlCallOutlets.of(days, it) }.orEmpty()
     val outlet = outlets.firstOrNull { it.outletId == outletId }
     val draftKey = "own:info:${outletId ?: 0}"
+    val ids = remember(draftKey) { SubmitUuid(day, draftKey) }
     // choosing a retailer fills the three fields from the bundle; the AMO edits them
     LaunchedEffect(outletId) {
         outlet?.let { name = it.name; owner = it.ownerName.orEmpty(); mobile = AmoOutletLists.phone(it.contactNumber).orEmpty() }
@@ -233,13 +258,15 @@ private fun ChangeInfoForm(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
         val o = outlet ?: return
         busy = true
         scope.launch {
+            if (cap.fix?.isMock == true) { errors = setOf(RequestError.MOCK_FIX); busy = false; return@launch }
             val f = OutletRequestForm(
-                kind = OutletRequestKind.INFO, outletId = o.outletId, requestUuid = day.drafts.uuid(draftKey), name = name, ownerName = owner, mobile = mobile,
+                kind = OutletRequestKind.INFO, outletId = o.outletId, requestUuid = ids.get(), name = name, ownerName = owner, mobile = mobile,
                 fix = cap.fix, photoUuids = listOfNotNull(cap.photo?.photoUuid), confirmed = true,
             )
-            when (val r = day.outletRequests.submit(f)) {
+            when (val r = safeSubmit(day, f)) {
+                null -> failed = true
                 is RequestValidation.Invalid -> errors = r.errors
-                is RequestValidation.Ok -> { errors = emptySet(); day.drafts.clear(draftKey); saved = true }
+                is RequestValidation.Ok -> { failed = false; errors = emptySet(); day.drafts.clear(draftKey); saved = true }
             }
             busy = false
         }
@@ -253,7 +280,7 @@ private fun ChangeInfoForm(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
     val formErrors = mapErrors(errors) + if (RequestError.OUTLET_REQUIRED in errors) setOf(AmoFormError.RETAILER) else emptySet()
     val letters = AmoOutletLists.letters(outlets, null)
     AmoOutletFormBody(
-        items = otherErrors(errors) + changeInfoItems(
+        items = failedNotice(failed) + otherErrors(errors) + changeInfoItems(
             route = Pick(AmoOutletLists.routes(days), routeId, { routeId = it; outletId = null; chip = OutletPicker.ALL_CHIP }),
             retailer = Pick(AmoOutletLists.retailers(outlets, null, chip), outletId, { outletId = it }, enabled = routeId != null),
             letters = if (routeId != null && letters.isNotEmpty()) AmoFormItem.Letters(letters, chip) { chip = it } else null,
@@ -291,6 +318,7 @@ private fun UpdateBaseFlow(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
     var ask by rememberSaveable { mutableStateOf(false) }
     var step by rememberSaveable { mutableStateOf(BaseStep.PICK) }
     var errors by remember { mutableStateOf<Set<RequestError>>(emptySet()) }
+    var failed by remember { mutableStateOf(false) }
     var noFix by remember { mutableStateOf(false) }
     var saved by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -301,6 +329,7 @@ private fun UpdateBaseFlow(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
     val outlets = routeId?.let { ControlCallOutlets.of(days, it) }.orEmpty()
     val outlet = outlets.firstOrNull { it.outletId == outletId }
     val draftKey = "own:location:${outletId ?: 0}"
+    val ids = remember(draftKey) { SubmitUuid(day, draftKey) }
     val fix = cap.fix?.takeIf { it.isOk }
     val context = androidx.compose.ui.platform.LocalContext.current
     if (saved) { AmoSuccessDialog(stringResource(AmoR.string.amo_out_saved), stringResource(AmoR.string.amo_ok)) { saved = false; onCleared() }; return }
@@ -311,7 +340,7 @@ private fun UpdateBaseFlow(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
                 ask = false; noFix = false
                 scope.launch {
                     val after = capture.shutter()
-                    val f = after.fix?.takeIf { it.isOk }
+                    val f = after.fix?.takeIf { it.isOk && !it.isMock }
                     if (after.photo != null && f != null) { pinLat = f.lat; pinLng = f.lng; step = BaseStep.MAP } else noFix = true
                 }
             },
@@ -323,6 +352,7 @@ private fun UpdateBaseFlow(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
         val pin = (pinLat ?: fix.lat!!) to (pinLng ?: fix.lng!!)
         val maxM = day.updateBaseMaxM
         Column(Modifier.fillMaxSize()) {
+            if (failed) AmoBanner(stringResource(AmoR.string.amo_task_failed), Modifier.padding(horizontal = AronTokens.Space.Screen), BannerKind.Error)
             errors.forEach {
                 AmoBanner(
                     stringResource(when (it) { RequestError.POINT_TOO_FAR -> OutR.string.out_req_err_point_far; RequestError.MOCK_FIX -> OutR.string.out_req_err_mock; RequestError.MOVE_TOO_FAR -> OutR.string.out_req_err_move_far; RequestError.PHOTO_REQUIRED -> OutR.string.out_req_err_photo; else -> OutR.string.out_req_err_geo }),
@@ -337,12 +367,13 @@ private fun UpdateBaseFlow(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
                         busy = true
                         scope.launch {
                             val f = OutletRequestForm(
-                                kind = OutletRequestKind.LOCATION, outletId = outlet.outletId, requestUuid = day.drafts.uuid(draftKey), fix = cap.fix,
+                                kind = OutletRequestKind.LOCATION, outletId = outlet.outletId, requestUuid = ids.get(), fix = cap.fix,
                                 photoUuids = listOfNotNull(cap.photo?.photoUuid), pointLat = pin.first, pointLng = pin.second, oldLat = outlet.lat, oldLng = outlet.lng,
                             )
-                            when (val r = day.outletRequests.submit(f)) {
+                            when (val r = safeSubmit(day, f)) {
+                null -> failed = true
                                 is RequestValidation.Invalid -> errors = r.errors
-                                is RequestValidation.Ok -> { errors = emptySet(); day.drafts.clear(draftKey); saved = true }
+                                is RequestValidation.Ok -> { failed = false; errors = emptySet(); day.drafts.clear(draftKey); saved = true }
                             }
                             busy = false
                         }
@@ -366,7 +397,7 @@ private fun UpdateBaseFlow(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.weight(1f)) {
             AmoOutletFormBody(
-                items = (if (noFix) listOf(AmoFormItem.Notice(stringResource(OutR.string.out_req_err_geo), BannerKind.Error)) else emptyList()) + listOfNotNull(
+                items = failedNotice(failed) + (if (noFix) listOf(AmoFormItem.Notice(stringResource(OutR.string.out_req_err_geo), BannerKind.Error)) else emptyList()) + listOfNotNull(
                     routeItem(Pick(AmoOutletLists.routes(days), routeId, { routeId = it; outletId = null; chip = OutletPicker.ALL_CHIP }), emptySet()),
                     if (routeId != null && letters.isNotEmpty()) AmoFormItem.Letters(letters, chip) { chip = it } else null,
                     retailerItem(Pick(AmoOutletLists.retailers(outlets, null, chip), outletId, { outletId = it }, enabled = routeId != null), emptySet()),

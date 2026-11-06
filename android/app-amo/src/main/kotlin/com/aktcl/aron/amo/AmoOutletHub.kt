@@ -153,7 +153,7 @@ private fun AmoClusterHost(day: AmoDay, onDone: () -> Unit) {
     val outlet: OutletEntity = day.requestOutlet ?: run { LaunchedEffect(Unit) { onDone() }; return }
     val draftKey = "own:cluster:${outlet.outletId}"
     var form by remember(outlet.outletId) {
-        mutableStateOf(OutletRequestForm(kind = OutletRequestKind.CLUSTER, outletId = outlet.outletId, requestUuid = day.drafts.uuid(draftKey), currentClusterId = outlet.clusterId))
+        mutableStateOf(OutletRequestForm(kind = OutletRequestKind.CLUSTER, outletId = outlet.outletId, requestUuid = "", currentClusterId = outlet.clusterId))
     }
     val capture = remember(outlet.outletId) { day.newCapture("outlet_capture") }
     val cap by capture.state.collectAsState()
@@ -166,7 +166,12 @@ private fun AmoClusterHost(day: AmoDay, onDone: () -> Unit) {
         onChange = { form = it }, onShutter = { scope.launch { capture.shutter() } },
         onSave = {
             scope.launch {
-                when (val r = day.outletRequests.submit(form.copy(fix = cap.fix, photoUuids = listOfNotNull(cap.photo?.photoUuid)))) {
+                if (cap.fix?.isMock == true) { errors = setOf(com.aktcl.aron.feature.outlet.RequestError.MOCK_FIX); return@launch }
+                var u = day.drafts.uuid(draftKey)
+                if (day.requestStored(u)) { day.drafts.clear(draftKey); u = day.drafts.uuid(draftKey) } // an earlier act finished before a kill: this one is new
+                val r = try { day.outletRequests.submit(form.copy(requestUuid = u, fix = cap.fix, photoUuids = listOfNotNull(cap.photo?.photoUuid))) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
+                when (r) {
+                    null -> errors = setOf(com.aktcl.aron.feature.outlet.RequestError.REASON_REQUIRED)
                     is RequestValidation.Invalid -> errors = r.errors
                     is RequestValidation.Ok -> { errors = emptySet(); day.drafts.clear(draftKey); done = true }
                 }

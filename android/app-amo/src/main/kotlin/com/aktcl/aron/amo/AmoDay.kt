@@ -206,6 +206,9 @@ class AmoDay(
         }
     }
 
+    /** True when an outlet request with this client uuid is already stored on the phone (A4: an act that finished before a kill). */
+    suspend fun requestStored(uuid: String): Boolean = db.captureDao().outletRequestCount(uuid) > 0
+
     fun newCapture(purpose: String) = GeoPhotoCapture(fixSource, object : PhotoPipeline {
         override suspend fun captureAndCompress(photoUuid: String) = photoPipeline.captureAndCompress(photoUuid)
         override suspend fun discard(photoUuid: String) = photoPipeline.discard(photoUuid)
