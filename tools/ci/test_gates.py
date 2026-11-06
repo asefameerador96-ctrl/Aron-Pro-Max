@@ -22,6 +22,7 @@ Binaries: OASDIFF and SQUAWK (paths) or on PATH; a test that needs a missing bin
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -625,6 +626,39 @@ class TsoReleaseCopyName(unittest.TestCase):
         wf = (ROOT / ".github" / "workflows" / "release-app.yml").read_text(encoding="utf-8")
         copy = wf.index("--tso-copy-name")
         self.assertLess(copy, wf.index("sha256sum ./*.apk > SHA256SUMS"))
+
+
+class RobolectricPrefetch(unittest.TestCase):
+    """D-QA-CI-01: the Android job must not fetch Robolectric's android-all jars from Maven during the test phase."""
+    script = ROOT / "tools" / "ci" / "robolectric-prefetch.sh"
+
+    def test_the_script_is_executable_and_pins_every_jar(self):
+        self.assertTrue(os.access(self.script, os.X_OK))
+        text = self.script.read_text(encoding="utf-8")
+        self.assertEqual(len(re.findall(r'^  "\d+-robolectric-\d+-i7 [0-9a-f]{64}"$', text, re.M)), 4)
+
+    def test_the_table_matches_the_catalog_version_and_the_sdks_the_tests_use(self):
+        catalog = (ROOT / "gradle" / "libs.versions.toml").read_text(encoding="utf-8")
+        self.assertIn('robolectric = "4.17"', catalog, "bump the table in robolectric-prefetch.sh with Robolectric")
+        text = self.script.read_text(encoding="utf-8")
+        have = {int(m) for m in re.findall(r'"(\d+)-robolectric-', text)}
+        # API level -> Android version, as Robolectric 4.17 names the jar
+        by_api = {29: 10, 30: 11, 34: 14, 36: 16}
+        used = set()
+        for f in (ROOT / "android").rglob("*.kt"):
+            used.update(int(n) for grp in re.findall(r"sdk\s*=\s*\[([0-9, ]+)\]", f.read_text(encoding="utf-8", errors="ignore"))
+                        for n in grp.split(","))
+        used.add(36)  # a test with no @Config runs at the targetSdk
+        for api in used:
+            self.assertIn(api, by_api, f"sdk={api} is used by a test but has no jar in the pre-fetch table")
+            self.assertIn(by_api[api], have, f"sdk={api} needs android-all-instrumented-{by_api[api]}")
+
+    def test_build_and_workflow_wire_the_offline_dir(self):
+        build = (ROOT / "build.gradle.kts").read_text(encoding="utf-8")
+        self.assertEqual(build.count('"robolectric.offline", "true"'), 2)  # library and application modules
+        wf = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        self.assertLess(wf.index("tools/ci/robolectric-prefetch.sh"), wf.index("testDebugUnitTest lintDebug"))
+        self.assertIn("ROBOLECTRIC_OFFLINE_DIR=", wf)
 
 
 if __name__ == "__main__":
