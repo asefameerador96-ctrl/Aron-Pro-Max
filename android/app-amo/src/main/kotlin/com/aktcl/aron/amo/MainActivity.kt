@@ -34,6 +34,7 @@ import com.aktcl.aron.core.ui.aronPageBackground
 import com.aktcl.aron.feature.auth.LoginScreen
 import com.aktcl.aron.feature.auth.LoginViewModel
 import com.aktcl.aron.feature.amo.AmoApp
+import com.aktcl.aron.feature.amo.AmoLeaf
 import com.aktcl.aron.feature.amo.AmoScreen
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -60,6 +61,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var telemetry: com.aktcl.aron.core.sync.DeviceTelemetry
     @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
     @Inject lateinit var skuPackshots: com.aktcl.aron.core.sync.SkuPackshots
+    /** D-AMO-SHELL-02: the target-cards source; the endpoint client replaces the fixture when `GET /v1/supervisor/call-targets` lands. */
+    private val callTargetsSource: com.aktcl.aron.feature.amo.CallTargetsSource = com.aktcl.aron.feature.amo.UnsetCallTargets
     private val packshotProvider by lazy { com.aktcl.aron.core.ui.aron.BitmapPackshotProvider(skuPackshots::bitmap, skuPackshots::cached) }
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
@@ -127,7 +130,7 @@ class MainActivity : ComponentActivity() {
                             val vm = viewModel { LoginViewModel(components.session::login).also { it.bind = components.session::bindDevice } }
                             LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol)
                         }
-                        is SessionState.Active -> {
+                        is SessionState.Active -> AronTheme(language, sunlight = sunlight, amo = true) { // D-AMO-MAN-03: the AMO look on every signed-in screen
                             // F-SYS-022: AMO keeps its data; it keeps uploading.
                             val logoutFlow = remember(s.user.userId) { shellLogout.flow(AppRole.AMO, s.user.userId) }
                             var unsent by remember { mutableStateOf<Int?>(null) }
@@ -169,6 +172,9 @@ class MainActivity : ComponentActivity() {
                                     com.aktcl.aron.feature.amo.AmoReach.parse(com.aktcl.aron.core.database.repo.ReferenceRepository(databases.of(s.user.userId)).section("supervisor"), s.user.userId)
                                 }.getOrDefault(com.aktcl.aron.feature.amo.AmoReach.NONE)
                             }
+                            // The four Home target cards: the fixture answers null (every card prints "—") until the server endpoint is wired (D-AMO-SHELL-02).
+                            var targets by remember(s.user.userId) { mutableStateOf<com.aktcl.aron.feature.amo.CallTargets?>(null) }
+                            LaunchedEffect(s.user.userId, home.businessDate) { targets = runCatching { callTargetsSource.load(home.businessDate.take(7)) }.getOrNull() }
                             // F-AMO-003: the day object (attendance first); one per user, restored from Room after a kill.
                             var day by remember(s.user.userId) { mutableStateOf<AmoDay?>(null) }
                             LaunchedEffect(s.user.userId) {
@@ -198,8 +204,17 @@ class MainActivity : ComponentActivity() {
                                     },
                                     AmoScreen.OUTLET to { back -> AmoOutletHub(d, back) },
                                     AmoScreen.REPORT to { back -> AmoReportHub(d, back) },
-                                    AmoScreen.TEAM to { back -> AmoTeamHub(d, reach, back) },
-                                    AmoScreen.SALE to { back -> AmoSaleHub(d, back) },
+                                    // D-AMO-MAN-02: one Home tile per destination; the hosts open straight on the tile's own screen
+                                    AmoScreen.TEAM_LOCATION to { back -> AmoTeamHub(d, reach, back, start = AmoLeaf.TEAM_LOCATION) },
+                                    AmoScreen.TEAM_PERFORMANCE to { back -> AmoTeamHub(d, reach, back, start = AmoLeaf.TEAM_PERFORMANCE) },
+                                    AmoScreen.TASK_DELEGATION to { back -> AmoTeamHub(d, reach, back, start = AmoLeaf.TASK_DELEGATION) },
+                                    AmoScreen.LIVE_DASHBOARD to { back -> AmoTeamHub(d, reach, back, start = AmoLeaf.LIVE_DASHBOARD) },
+                                    AmoScreen.SR_STOCK to { back -> AmoTeamHub(d, reach, back, start = AmoLeaf.SR_STOCK) },
+                                    AmoScreen.EXCEPTIONS to { back -> AmoTeamHub(d, reach, back, startExceptions = true) },
+                                    AmoScreen.STOCK to { back -> AmoSaleHub(d, back, start = AmoLeaf.STOCK) },
+                                    AmoScreen.SALE to { back -> AmoSaleHub(d, back, start = AmoLeaf.SALE) },
+                                    AmoScreen.MEMO to { back -> AmoSaleHub(d, back, start = AmoLeaf.MEMO) },
+                                    AmoScreen.SUMMARY to { back -> AmoSaleHub(d, back, start = AmoLeaf.SUMMARY) },
                                     AmoScreen.CONTROL_CALL to { back -> ControlCallHost(d, back) },
                                     AmoScreen.JOINT_CALL to { back -> ControlCallHost(d, back, kind = com.aktcl.aron.feature.amo.AmoVisitKind.JOINT_CALL) },
                                     AmoScreen.ATTENDANCE to { back ->
@@ -242,7 +257,7 @@ class MainActivity : ComponentActivity() {
                                 sunlight = sunlight,
                                 onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                 onUpdate = { updateShell.openPage() },
-                                reach = reach, screens = screens,
+                                reach = reach, screens = screens, targets = targets,
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
                                 // tso-manual X4a (R-W-11, A3 ask 1): the routes closed by the zone's Final Submit; empty while all are open
                                 banners = amoDayLockBanners(day),

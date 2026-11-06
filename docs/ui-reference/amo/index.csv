@@ -1,0 +1,78 @@
+no,file,screen,parts
+1,01-find_the_apk_and_install.jpg,Find the APK and install,2
+2,02-installation_complete.jpg,Installation complete,2
+3,03-login_and_location_permission.jpg,Login and location permission,2
+4,04-camera_and_audio_permission.jpg,Camera and audio permission,2
+5,05-new_update_available.jpg,New update available,2
+6,06-download_and_install_the_update.jpg,Download and install the update,2
+7,07-update_from_inside_the_app.jpg,Update from inside the app,2
+8,08-dashboard_menu.jpg,Dashboard menu,1
+9,09-target_cards_bottom_of_the_dashboard.jpg,Target cards (bottom of the Dashboard),1
+10,10-turn_on_bluetooth_and_find_the_printer.jpg,Turn on Bluetooth and find the printer,2
+11,11-pair_with_pin_0000.jpg,Pair with PIN 0000,2
+12,12-allow_bluetooth_in_the_app.jpg,Allow Bluetooth in the app,2
+13,13-printer_connected.jpg,Printer connected,2
+14,14-attendance_screen.jpg,Attendance screen,2
+15,15-check_in.jpg,Check in,2
+16,16-check_out.jpg,Check out,2
+17,17-control_call_select_route_and_outlet.jpg,Control Call: select route and outlet,1
+18,18-control_call_within_range.jpg,Control Call: within range,1
+19,19-outlet_list.jpg,Outlet list,1
+20,20-manual_override_and_control_call_menu.jpg,Manual override and Control Call menu,2
+21,21-sales_select_route.jpg,Sales: select route,2
+22,22-sales_select_outlet.jpg,Sales: select outlet,2
+23,23-sales_screen_and_force_sale_reason.jpg,Sales screen and force-sale reason,2
+24,24-enter_the_sale_and_review.jpg,Enter the sale and review,2
+25,25-partial_payment_due.jpg,Partial payment (due),2
+26,26-view_previous_sale_data.jpg,View previous sale data,2
+27,27-sr_performance_assessment.jpg,SR Performance Assessment,1
+28,28-assessment_saved.jpg,Assessment saved,2
+29,29-select_the_route.jpg,Select the route,2
+30,30-select_the_outlet.jpg,Select the outlet,2
+31,31-sr_call_assessment.jpg,SR Call Assessment,1
+32,32-save_the_assessment.jpg,Save the assessment,2
+33,33-live_location_of_srs.jpg,Live location of SRs,2
+34,34-monthly_and_till_date_target.jpg,Monthly and Till Date target,2
+35,35-details_by_brand.jpg,Details by brand,2
+36,36-one_category_only.jpg,One category only,1
+37,37-assigned_tasks.jpg,Assigned Tasks,1
+38,38-assign_a_task.jpg,Assign a task,2
+39,39-live_data_by_route.jpg,Live data by route,2
+40,40-sr_list_and_lifted_stock.jpg,SR list and lifted stock,2
+41,41-stock_issue.jpg,Stock issue,2
+42,42-find_and_reprint_a_memo.jpg,Find and reprint a memo,2
+43,43-collect_a_due.jpg,Collect a due,2
+44,44-confirm_payment.jpg,Confirm payment,2
+45,45-today_s_sales_summary.jpg,Today's sales summary,1
+46,46-outlet_menu.jpg,Outlet menu,1
+47,47-new_outlet_request.jpg,New outlet request,2
+48,48-photo_and_save.jpg,Photo and save,2
+49,49-new_outlet_saved.jpg,New outlet saved,1
+50,50-close_request.jpg,Close request,2
+51,51-close_request_updated.jpg,Close request updated,1
+52,52-correction_request.jpg,Correction request,2
+53,53-correction_updated.jpg,Correction updated,1
+54,54-select_route_and_cluster.jpg,Select route and cluster,2
+55,55-new_shop_form.jpg,New shop form,2
+56,56-photo_and_save.jpg,Photo and save,2
+57,57-permanent_close.jpg,Permanent close,2
+58,58-close_saved.jpg,Close saved,1
+59,59-change_information_form.jpg,Change information form,1
+60,60-photo_taken.jpg,Photo taken,2
+61,61-save_the_change.jpg,Save the change,2
+62,62-base_recalibration.jpg,Base Recalibration,2
+63,63-select_the_outlet.jpg,Select the outlet,2
+64,64-confirm_the_location.jpg,Confirm the location,1
+65,65-sync_data.jpg,Sync data,2
+66,66-due_warning_and_success.jpg,Due warning and success,2
+67,67-route_info_std_target.jpg,Route info: STD target,2
+68,68-route_info_memo_target.jpg,Route info: Memo target,1
+69,69-shop_wise_info.jpg,Shop-wise info,2
+70,70-shop_wise_memo_target.jpg,Shop-wise memo target,1
+71,71-std_memo_report.jpg,STD Memo Report,2
+72,72-sales_till_now_summary.jpg,Sales till now summary,2
+73,73-sr_list.jpg,SR list,1
+74,74-journey_timeline.jpg,Journey timeline,1
+75,75-settings.jpg,Settings,2
+76,76-send_data_file_to_support.jpg,Send data file to support,1
+77,77-log_out.jpg,Log Out,1

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Settings tile icon of the AMO Home (screenshot 8): the gear of aron_ic_gear in the red-to-purple-to-blue gradient of the tile icons. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt" android:width="48dp" android:height="48dp" android:viewportWidth="48" android:viewportHeight="48">
+<path android:fillType="evenOdd" android:pathData="M21,4h6l1,5 4,2 4.5,-3 4.2,4.2 -3,4.5 2,4 5,1v6l-5,1 -2,4 3,4.5 -4.2,4.2 -4.5,-3 -4,2 -1,5h-6l-1,-5 -4,-2 -4.5,3 -4.2,-4.2 3,-4.5 -2,-4 -5,-1v-6l5,-1 2,-4 -3,-4.5 4.2,-4.2 4.5,3 4,-2zM17.5,24a6.5,6.5 0 1 0 13,0a6.5,6.5 0 1 0 -13,0z"><aapt:attr name="android:fillColor"><gradient android:type="linear" android:startX="6" android:startY="4" android:endX="42" android:endY="46"><item android:offset="0" android:color="#FFEC2D7E"/><item android:offset="0.5" android:color="#FF9B3BE0"/><item android:offset="1" android:color="#FF2F86F0"/></gradient></aapt:attr></path>
+</vector>

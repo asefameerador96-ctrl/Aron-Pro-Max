@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronConfirmDialog
+import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronFonts
 import com.aktcl.aron.core.ui.SyncChipState
 import com.aktcl.aron.core.ui.LocalAppLanguage
@@ -84,14 +85,23 @@ import com.aktcl.aron.core.ui.R as CoreR
  */
 @DrawableRes
 internal fun amoTileIcon(tileId: String): Int? = when (tileId) {
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.ATTENDANCE -> CoreR.drawable.aron_art_attendance
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.SALE -> CoreR.drawable.aron_art_sale
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.OUTLET -> CoreR.drawable.aron_art_outlet
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.SALES_SUBMIT -> CoreR.drawable.aron_art_sales_submit
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.TEAM -> CoreR.drawable.aron_ic_team
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.REPORT -> CoreR.drawable.aron_ic_report
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.JOINT_CALL -> CoreR.drawable.aron_ic_joint_call
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.CONTROL_CALL -> CoreR.drawable.aron_ic_control_call
+    "attendance" -> CoreR.drawable.aron_art_attendance
+    "joint_call" -> CoreR.drawable.aron_ic_joint_call
+    "control_call" -> CoreR.drawable.aron_ic_control_call
+    "team_location" -> CoreR.drawable.aron_ic_team_location
+    "team_performance" -> CoreR.drawable.aron_ic_team_performance
+    "task_delegation" -> CoreR.drawable.aron_art_task_delegation
+    "live_dashboard" -> CoreR.drawable.aron_ic_live_dashboard
+    "sr_stock" -> CoreR.drawable.aron_ic_sr_stock
+    "outlet" -> CoreR.drawable.aron_art_outlet
+    "stock" -> CoreR.drawable.aron_art_stock
+    "sale" -> CoreR.drawable.aron_art_sale
+    "memo" -> CoreR.drawable.aron_art_memo
+    "summary" -> CoreR.drawable.aron_art_summary
+    "sales_submit" -> CoreR.drawable.aron_art_sales_submit
+    "report" -> CoreR.drawable.aron_ic_report
+    "sales_journey" -> CoreR.drawable.aron_art_sales_journey
+    "settings" -> CoreR.drawable.aron_art_settings
     else -> null
 }
 
@@ -130,6 +140,57 @@ private fun AmoDayCard(hero: RoleHero.Amo, money: String, modifier: Modifier = M
     }
 }
 
+/** The AMO Home header lines (screenshots 8, 9; R3): "<name> (<username>)" over "<zone name> AMO, <business date>". */
+object AmoHomeHeader {
+    fun of(user: HomeUser, businessDate: String, zoneName: String?): HomeHeader {
+        val zone = zoneName?.trim().orEmpty()
+        return HomeHeader(
+            title = "${user.fullName.trim()} (${user.username})",
+            subtitle = (if (zone.isEmpty()) "AMO" else "$zone AMO") + ", $businessDate",
+            routeKind = null, routeName = null, isoDate = businessDate,
+        )
+    }
+}
+
+/** The four target cards (screenshot 9): sky-blue rounded cards, a white icon, the white label and the white bold "done/target" or "—". */
+@Composable
+private fun AmoTargetCards(targets: CallTargets?, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    val cards = listOf(
+        Triple(R.string.amo_shell_target_today, AronIcons.Place, targets?.today),
+        Triple(R.string.amo_shell_target_total, AronIcons.Phone, targets?.month),
+        Triple(R.string.amo_shell_target_control, AronIcons.Sale, targets?.control),
+        Triple(R.string.amo_shell_target_joint, AronIcons.Team, targets?.joint),
+    )
+    Column(
+        modifier.fillMaxWidth().testTag(AmoHomeTags.TARGETS).clip(RoundedCornerShape(12.dp)).background(look.card).padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        cards.chunked(2).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { (label, icon, t) ->
+                    val figure = localizedDigits(CallTargetMath.figure(t))
+                    Column(
+                        Modifier.weight(1f).testTag(AmoHomeTags.target(label)).clip(RoundedCornerShape(12.dp)).background(look.targetCard ?: look.targetTop).padding(12.dp)
+                            .semantics(mergeDescendants = true) { },
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        androidx.compose.material3.Icon(icon, contentDescription = null, tint = look.onPanel, modifier = Modifier.size(24.dp))
+                        Text(stringResource(label), style = inkStyle(14, color = look.onPanel))
+                        Text(figure, style = inkStyle(22, bold = true, color = look.onPanel))
+                    }
+                }
+            }
+        }
+    }
+}
+
+object AmoHomeTags {
+    const val TARGETS = "amo_targets"
+    const val COLLAPSE = "amo_collapse"
+    fun target(@androidx.annotation.StringRes label: Int) = "amo_target_$label"
+}
+
 /**
  * The AMO Home in the existing-Aron look (sr/home-1-tiles.webp): gradient header, white page, the tile grid, the day card, then the quiet
  * status lines (offline, bundle, device) that the offline-first rules keep. Stand-alone from feature-home's RoleHomeContent (lane ui-sr-a owns that).
@@ -149,16 +210,19 @@ fun AmoHomeContent(
     /** The quiet sync state under the tiles; tapping opens the sync sheet when the host has one (null: not tappable). */
     sync: SyncChipState = SyncChipState.Synced,
     onSync: (() -> Unit)? = null,
+    /** The four target cards; null prints "—" on each (the server endpoint has not answered or is not built yet). */
+    targets: CallTargets? = null,
     /** The day card's money text (milli-taka in the user's digits), formatted by the host. */
     money: @Composable (Long) -> String = { com.aktcl.aron.rules.Formats.money(it, if (LocalAppLanguage.current == AppLanguage.BN) com.aktcl.aron.rules.UiLocale.BN else com.aktcl.aron.rules.UiLocale.EN) },
 ) {
     val look = LocalAronLook.current
-    val dateSpoken = stringResource(HomeR.string.home_business_date, localizedDigits(header.subtitle))
+    val dateSpoken = stringResource(HomeR.string.home_business_date, localizedDigits(header.isoDate.orEmpty()))
     AronScaffold(
         topBar = {
             AronHomeHeader(
                 header.title, localizedDigits(header.subtitle), onSettings, stringResource(HomeR.string.set_open),
                 Modifier.testTag(HomeTags.HEADER).semantics { contentDescription = header.title + ", " + dateSpoken },
+                showSettings = false,
             )
         },
         modifier = modifier, home = true,
@@ -172,12 +236,22 @@ fun AmoHomeContent(
             if (user.reauthRequired) AmoNotice(stringResource(HomeR.string.home_reauth_required), warning = true)
             if (user.updateRequired) AmoNotice(stringResource(HomeR.string.home_update_required), warning = true)
             banners.forEach { AmoNotice(it.text) }
-            AronTileGrid(tiles) { t, m ->
-                AronTile(
-                    stringResource(t.label), tilePainter(t.id), onClick = { onTile(t) }, modifier = m.testTag(RoleHomeTags.tile(t.id)),
-                    badge = t.badge, badgeDescription = if (t.badge > 0) stringResource(CoreR.string.core_ui_tile_badge, localizedNumber(t.badge.toLong())) else null,
-                )
+            // the vendor grid (D-AMO-MAN-02): three columns on a white card; the chevron below it folds the grid to show the target cards
+            var gridOpen by rememberSaveable { mutableStateOf(true) }
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(look.card).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (gridOpen) AronTileGrid(tiles, columns = 3, gap = 8.dp) { t, m ->
+                    AronTile(
+                        stringResource(t.label), tilePainter(t.id), onClick = { onTile(t) }, modifier = m.testTag(RoleHomeTags.tile(t.id)),
+                        badge = t.badge, badgeDescription = if (t.badge > 0) stringResource(CoreR.string.core_ui_tile_badge, localizedNumber(t.badge.toLong())) else null,
+                    )
+                }
+                Box(
+                    Modifier.fillMaxWidth().heightIn(min = 40.dp).testTag(AmoHomeTags.COLLAPSE)
+                        .clickable(role = Role.Button, onClickLabel = stringResource(if (gridOpen) R.string.amo_shell_fold else R.string.amo_shell_unfold)) { gridOpen = !gridOpen },
+                    contentAlignment = Alignment.Center,
+                ) { androidx.compose.material3.Icon(if (gridOpen) AronIcons.ExpandLess else AronIcons.ExpandMore, contentDescription = null, tint = look.choiceFill ?: look.purple, modifier = Modifier.size(28.dp)) }
             }
+            AmoTargetCards(targets)
             (hero as? RoleHero.Amo)?.let { h -> AmoDayCard(h, money(h.teamSalesMtk), Modifier.padding(horizontal = 4.dp)) }
             // the shared sync-status footer of the AMO and TSO homes: the sync state, then what today's data check found and the device figures (F-SR-064)
             val status = amoSyncText(sync)
@@ -259,6 +333,8 @@ fun AmoSettingsContent(
     onSupport: (() -> Unit)? = null,
     /** "Printer diagnostics" (D-PRINT-02); shown when non-null. */
     onPrinter: (() -> Unit)? = null,
+    /** Exceptions (risk signals): no Home tile in the vendor menu, so it is a Settings row (D-AMO-SHELL-03); shown when non-null. */
+    onExceptions: (() -> Unit)? = null,
 ) {
     val look = LocalAronLook.current
     val language = LocalAppLanguage.current
@@ -297,6 +373,11 @@ fun AmoSettingsContent(
             }
             if (onPrinter != null) {
                 SettingRow(stringResource(HomeR.string.set_printer), Modifier.testTag(RoleHomeTags.SET_PRINTER), onClick = onPrinter) {
+                    Text("›", style = inkStyle(24, color = look.inkMuted), modifier = Modifier.clearAndSetSemantics { })
+                }
+            }
+            if (onExceptions != null) {
+                SettingRow(stringResource(R.string.amo_exc_title), Modifier.testTag("amo_set_exceptions"), onClick = onExceptions) {
                     Text("›", style = inkStyle(24, color = look.inkMuted), modifier = Modifier.clearAndSetSemantics { })
                 }
             }
