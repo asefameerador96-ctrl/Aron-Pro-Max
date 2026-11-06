@@ -440,11 +440,14 @@ class ScopeLeakAcrossEndpointsTest {
     }
 
     /** The numeric leaves of a JSON answer (times, versions and cursors left out), as a comparable fingerprint. */
+    /** Members only an AMO caller's login-submit answer carries (contract 1.11.0); the national view of the node has none, so they stay out of the fingerprint (their scope is judged by AmoFoundationF2Test#loginSubmitAmo...). */
+    private val AMO_ONLY_MEMBERS = setOf("geo_valid_visits", "photo_valid_visits", "visits_total", "sales_by_category")
+
     internal fun numbers(text: String): List<String> {
         val out = mutableListOf<String>()
         fun walk(n: JsonNode, key: String) {
             when {
-                n.isObject -> n.properties().forEach { (k, v) -> walk(v, k) }
+                n.isObject -> n.properties().forEach { (k, v) -> if (k !in AMO_ONLY_MEMBERS) walk(v, k) }
                 n.isArray -> n.forEach { walk(it, key) }
                 n.isNumber && !TIMEISH.containsMatchIn(key) -> out += "$key=${n.asText()}"
             }

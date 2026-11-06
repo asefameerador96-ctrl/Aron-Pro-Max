@@ -65,9 +65,11 @@ class AmoTeamReads(private val db: Database, private val clock: AronClock = Aron
     fun journey(reach: Reach, userId: Long, routeId: Long, date: LocalDate): TeamJourney = db.readJdbi.withHandle<TeamJourney, Exception> { h ->
         val route = h.createQuery("SELECT name, zone_id FROM app.route WHERE id = :r").bind("r", routeId).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.findOne().orElse(null)
         if (route == null || !reach.coversRoute(routeId, route.second)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "route is outside your reach")
-        val user = h.createQuery("SELECT full_name FROM app.app_user WHERE id = :u AND role = 'SR'").bind("u", userId).mapTo(String::class.java).findOne().orElse(null)
+        class U(val name: String, val homeZone: Long?)
+        val u = h.createQuery("SELECT full_name, home_zone_id FROM app.app_user WHERE id = :u AND role = 'SR'").bind("u", userId).map { rs, _ -> U(rs.getString(1), rs.getObject(2) as Long?) }.findOne().orElse(null)
             ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such SR")
-        // The SR must work the route: a primary assignment, a day's acting row or any call on it (no name of an SR outside the route is ever returned).
+        val user = u.name
+        // The SR must belong to the caller's reach: work the route (an assignment, a day's acting row or any call on it) or have a home zone in reach (no name of an SR outside the reach is ever returned).
         val onRoute = h.createQuery(
             """
             SELECT EXISTS (SELECT 1 FROM app.route_assignment a WHERE a.route_id = :r AND a.user_id = :u)
@@ -75,7 +77,7 @@ class AmoTeamReads(private val db: Database, private val clock: AronClock = Aron
                 OR EXISTS (SELECT 1 FROM app.visit v WHERE v.route_id = :r AND v.user_id = :u)
             """,
         ).bind("r", routeId).bind("u", userId).mapTo(Boolean::class.java).one()
-        if (!onRoute) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such SR on this route")
+        if (!onRoute && !(u.homeZone != null && reach.coversZone(u.homeZone) && !reach.ownRecordsOnly)) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such SR on this route")
         class V(val uuid: String, val outlet: JourneyOutlet, val lat: Double?, val lng: Double?, val opened: java.time.Instant, val closed: java.time.Instant?, val status: String)
         val visits = h.createQuery(
             """
