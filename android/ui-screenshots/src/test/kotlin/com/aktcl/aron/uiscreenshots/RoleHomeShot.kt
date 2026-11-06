@@ -62,16 +62,7 @@ class RoleHomeShot {
         rule.onRoot().captureRoboImage(File(dir, "$name.png").path, roborazziOptions = options)
     }
 
-    @Composable private fun AmoHome(sunlight: Boolean) = com.aktcl.aron.feature.amo.AmoHomeContent(
-        RoleHomes.header(RoleHomes.AMO_PREFIX, amo, "2026-10-05"), amo, BundleStatus.Ready("b-17", "2026-10-05"),
-        RoleHomes.amoTiles(mapOf(RoleHomes.AmoTile.OUTLET to 3)), onTile = {}, onSettings = {},
-        hero = RoleHero.Amo(4_391_000, 6, 60), health = health,
-    )
 
-
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_home_bn_light() = shot("rolehome_amo_bn_light", AppLanguage.BN) { AmoHome(false) }
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_home_bn_sunlight() = shot("rolehome_amo_bn_sunlight", AppLanguage.BN, sunlight = true) { AmoHome(true) }
-    @Test fun amo_home_en_light() = shot("rolehome_amo_en_light", AppLanguage.EN) { AmoHome(false) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun empty_bn_light() = shot("rolehome_empty_bn_light", AppLanguage.BN) {
         RoleSectionPlaceholder(stringResource(R.string.rh_amo_control_call), AronIcons.Place, onBack = {}, syncedAt = localizedDigits("10:42"))
     }

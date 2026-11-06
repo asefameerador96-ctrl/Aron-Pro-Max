@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Owner: lane android-amo-shell (A1): AMO look, Home, system and settings strings. Other lanes: add your own strings_<feature>.xml, never edit this file. -->
+<resources>
+    <string name="amo_shell_target_today">Today\'s Target</string>
+    <string name="amo_shell_target_total">Total Call Target</string>
+    <string name="amo_shell_target_control">Control Call Target</string>
+    <string name="amo_shell_target_joint">Joint Call Target</string>
+    <string name="amo_shell_fold">Hide the tiles</string>
+    <string name="amo_shell_unfold">Show the tiles</string>
+    <string name="amo_shell_no_data">No data found</string>
+</resources>

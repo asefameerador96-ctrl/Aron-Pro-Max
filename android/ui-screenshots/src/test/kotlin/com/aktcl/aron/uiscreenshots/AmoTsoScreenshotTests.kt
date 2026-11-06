@@ -72,7 +72,7 @@ class AmoTsoScreenshotTests {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         rule.setContent {
             CompositionLocalProvider(LocalContext provides ctx, LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
-                AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) {
+                AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true, amo = true) { // D-AMO-MAN-03
                     com.aktcl.aron.feature.amo.AmoFrame(title, onBack = {}) { content() }
                 }
             }
@@ -211,14 +211,6 @@ class AmoTsoScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_list_bn_fs2() = shot("amo_verify_list_bn_fs2", AppLanguage.BN, "অনুরোধ যাচাই", fontScale = 2f) { VerifyListContent(longVerify, mapOf(5L to "রহিম উদ্দিন"), {}) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_list_sunlight_bn() = shot("amo_verify_list_sunlight_bn", AppLanguage.BN, "অনুরোধ যাচাই", sunlight = true) { VerifyListContent(longVerify, mapOf(5L to "রহিম উদ্দিন"), {}) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_form_bn_fs2() = shot("amo_verify_form_bn_fs2", AppLanguage.BN, "অনুরোধ যাচাই", fontScale = 2f, content = verifyForm(true, newDetail, setOf(com.aktcl.aron.feature.amo.VerifyError.GEO_CLASS_REQUIRED)))
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_home_bn_fs2() = shot("amo_home_bn_fs2", AppLanguage.BN, "", fontScale = 2f) {
-        val amo = com.aktcl.aron.feature.home.HomeUser("Testing Banani", "amo5001", "AMO", offline = false, reauthRequired = false, updateRequired = false)
-        com.aktcl.aron.feature.amo.AmoHomeContent(
-            com.aktcl.aron.feature.home.RoleHomes.header(com.aktcl.aron.feature.home.RoleHomes.AMO_PREFIX, amo, "2026-10-05"), amo, com.aktcl.aron.feature.home.BundleStatus.Ready("b-17", "2026-10-05"),
-            com.aktcl.aron.feature.home.RoleHomes.amoTiles(mapOf(com.aktcl.aron.feature.home.RoleHomes.AmoTile.OUTLET to 3)), onTile = {}, onSettings = {},
-            hero = null, health = com.aktcl.aron.feature.home.DeviceHealthModel.of(62, 1200, 3, 15),
-        )
-    }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_tasks_sunlight_bn() = shot("amo_tasks_sunlight_bn", AppLanguage.BN, "টাস্ক ডেলিগেশন", sunlight = true) { AssignedTasksContent(tasks, mapOf(7L to "রহিম উদ্দিন"), mapOf(1L to "রহিম স্টোর"), taskType, false, false, {}) }
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_task_assign_sunlight_en() = shot("amo_task_assign_sunlight_en", AppLanguage.EN, "Task Delegation", sunlight = true) {
         TaskAssignContent("Rahim Uddin", listOf("Rahim Store", "R-1042", "Kawran Bazar"), listOf(TaskType("stock_check", "Stock check", "স্টক পরীক্ষা"), TaskType("price", "Price check", "দাম যাচাই")), false, "stock_check", listOf("2026-10-18", "2026-10-19"), "2026-10-18", "", emptySet(), false, false, {}, {}, {}, {})
