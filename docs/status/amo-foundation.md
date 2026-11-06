@@ -43,3 +43,6 @@ Local setup that worked in this container: `pg_ctlcluster 16 main start`; `CREAT
 **Open:** Opus checker result on F2, full `:backend:app:test` result, F1 CI run result (589fcdad8), then merge INT, push F2 and report.
 
 **Assumptions:** see D-AMO-FND-08..11 (readers, target columns, AMO counts, formulas).
+
+**Backlog (qa owns, later):** the scope-leak harness has no per-role positive control; an AMO token of another zone would judge `GET /v1/supervisor/call-targets` properly and let it leave the blind baseline (D-AMO-FND-12).
+**F1 CI:** `9f4d924cb` fixes the 2 db tests and the ScopeLeak blind list; `DataFlowTraceTest` x2 fail on clean INT too (qa-ci fix, train 82). Plan agreed with the lead: wait for "train 82 landed", merge INT, push F1+F2 together, report "checked <sha> (F1+F2)".
