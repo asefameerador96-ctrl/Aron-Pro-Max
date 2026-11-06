@@ -193,8 +193,6 @@ private fun InteractiveMap(
     val context = androidx.compose.ui.platform.LocalContext.current
     // my-location needs the permission the day already holds; without it the layer stays off instead of crashing
     val located = myLocation && androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
-    val rider = remember(riderMarker) { if (riderMarker) riderIcon(context, false) else null }
-    val riderStale = remember(riderMarker) { if (riderMarker) riderIcon(context, true) else null }
     val lines = shown.associate { it.id to pointLine(it, nowMs, staleAfterMin) }
     val ring = com.aktcl.aron.core.ui.LocalAronLook.current.purple
     GoogleMap(
@@ -209,6 +207,9 @@ private fun InteractiveMap(
         ),
     ) {
         if (circle != null) Circle(center = LatLng(circle.lat, circle.lng), radius = circle.radiusM.toDouble(), fillColor = ring.copy(alpha = 0.14f), strokeColor = ring, strokeWidth = 3f)
+        // built inside the map content: the Maps SDK is initialised by then (BitmapDescriptorFactory needs it)
+        val rider = if (riderMarker) remember { riderIcon(context, false) } else null
+        val riderStale = if (riderMarker) remember { riderIcon(context, true) } else null
         shown.forEach { p ->
             key(p.id) {
                 val stale = p.kind == MapPointKind.PERSON && FixAge.of(p.fixAtMs, nowMs, staleAfterMin).let { it == null || it.stale }

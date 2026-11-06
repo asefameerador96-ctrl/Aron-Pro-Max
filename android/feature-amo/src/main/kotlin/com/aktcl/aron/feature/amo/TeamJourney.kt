@@ -71,7 +71,7 @@ object TeamJourneys {
                 s(c, "visit_uuid") ?: return@mapNotNull null,
                 // The brief asks for the real phone; the contract field today is `phone_masked`, so a clear `phone` wins when the server sends one.
                 JourneyOutlet(l(out, "id") ?: 0L, s(out, "name").orEmpty(), s(out, "code").orEmpty(), s(out, "phone") ?: s(out, "phone_masked"), s(out, "cluster")),
-                when (s(c, "status")) { "edited_sale" -> CallStatus.EDITED_SALE; "no_sale" -> CallStatus.NO_SALE; else -> CallStatus.NEW_SALE },
+                when (s(c, "status")) { "new_sale" -> CallStatus.NEW_SALE; "edited_sale" -> CallStatus.EDITED_SALE; else -> CallStatus.NO_SALE },
                 s(c, "opened_at") ?: return@mapNotNull null, s(c, "closed_at"), l(c, "duration_s"), d(c, "distance_from_prev_m"), d(c, "total_distance_m") ?: 0.0, l(c, "gap_to_next_s"),
             )
         }
@@ -89,7 +89,7 @@ object TeamJourneys {
     }
 
     /** Metres with two decimals (HALF_UP, the server's precision) in the user's digits: "২৭৭.৩২" / "277.32"; the unit word is added by the screen. */
-    fun metres(m: Double): BigDecimal = BigDecimal(m.coerceAtLeast(0.0)).setScale(2, RoundingMode.HALF_UP)
+    fun metres(m: Double): BigDecimal = BigDecimal.valueOf(if (m.isFinite()) m.coerceAtLeast(0.0) else 0.0).setScale(2, RoundingMode.HALF_UP)
 
     fun metresText(m: Double, locale: UiLocale): String = Formats.digits(metres(m).toPlainString(), locale)
 

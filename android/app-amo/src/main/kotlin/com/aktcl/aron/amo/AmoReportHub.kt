@@ -61,7 +61,7 @@ fun AmoReportHub(day: AmoDay, onBack: () -> Unit) {
                 var zone by remember { mutableStateOf("") }
                 LaunchedEffect(day) { zone = TeamTargets.parse(day.api.brandTargets(today.take(7), null).jsonOrNull())?.name.orEmpty() }
                 if (std == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen()
-                else StdMatrixContent(f, t, today, { a, b -> from = a; to = b }, std.data?.let { TeamReports.stdMatrix(zone, Reports.routeCategories(it)) }, std.stale, std.failed)
+                else StdMatrixContent(f, t, today, { a, b -> from = a; to = b }, std.data?.takeIf { !it.truncated }?.let { TeamReports.stdMatrix(zone, Reports.routeCategories(it)) }, std.stale, std.failed, truncated = std.data?.truncated == true)
             }
             ReportLeaf.SUMMARY, ReportLeaf.ROUTE -> {
                 // F-AMO-033: the month to today over the trading days; CPR and memo counts come from the sales-summary report, targets from the target slice

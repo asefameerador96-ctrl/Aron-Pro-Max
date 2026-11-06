@@ -18,6 +18,11 @@ class TeamJourneyTest {
         assertEquals("0.13", TeamJourneys.metresText(0.125, UiLocale.EN)); assertEquals("5.00", TeamJourneys.metresText(5.0, UiLocale.EN))
     }
 
+    @Test fun unknownStatusIsNotASaleAndNonFiniteDistanceDoesNotCrash() {
+        val j = TeamJourneys.journey("""{"calls":[{"visit_uuid":"a","outlet":{"id":1,"name":"x","code":"1"},"status":"void","opened_at":"2026-11-06T03:43:04Z"}]}""")!!
+        assertEquals(CallStatus.NO_SALE, j.calls[0].status); assertEquals("0.00", TeamJourneys.metresText(Double.NaN, UiLocale.EN)); assertEquals("0.00", TeamJourneys.metresText(Double.POSITIVE_INFINITY, UiLocale.EN))
+    }
+
     @Test fun clockIs12HourDhakaLatinDigits() {
         assertEquals("9:43:04 AM", TeamJourneys.clock12("2026-11-06T03:43:04Z")); assertEquals("10:06:15 PM", TeamJourneys.clock12("2026-11-06T16:06:15Z"))
         assertEquals("garbage", TeamJourneys.clock12("garbage"))

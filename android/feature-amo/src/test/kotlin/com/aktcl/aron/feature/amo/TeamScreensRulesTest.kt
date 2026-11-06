@@ -53,6 +53,11 @@ class TeamScreensRulesTest {
         assertEquals(0L, m.rows[0].cells["match"]); assertNull(m.rows[1].cells["match"])
     }
 
+    @Test fun aColumnNeverAddsTwoBaseUnitsAndSameCaseRoutesBothStay() {
+        val m = TeamReports.stdMatrix("Z", listOf(RouteCategory("A", "lighter", 25, "piece", 0), RouteCategory("B", "lighter", 2, "box", 0), RouteCategory("Gulshan", "match", 1, "dozen", 0), RouteCategory("GULSHAN", "match", 2, "dozen", 0)))
+        assertNull(m.totals["lighter"]); assertEquals(3L, m.totals["match"]); assertEquals(4, m.rows.size)
+    }
+
     @Test fun tillNowFiguresAndCpr() {
         val node = TeamTargetNode("route", 11, "Math Bazer", 30, listOf(TeamTargetRow("Maxim", "cigarette", 246_000, 143_380, 204_998)))
         val c = TeamReports.tillCard("Route: Math Bazer", node, false, mapOf("cigarette" to 571L), UiLocale.EN).rows.single()

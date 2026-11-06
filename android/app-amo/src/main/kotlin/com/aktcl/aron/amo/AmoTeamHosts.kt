@@ -75,6 +75,8 @@ internal fun rememberTargetNodes(day: AmoDay, members: Members?): TargetNodes? {
         for (id in ids) {
             val f = day.api.brandTargets(month, id)
             stale = stale || f is AmoFetch.Cached
+            // a server without the route level answers 400 for every route: stop after the first miss instead of asking 20 times
+            if (f.jsonOrNull() == null) break
             TeamTargets.parse(f.jsonOrNull())?.let { n ->
                 // the route's name from the members list when the node carries none
                 acc += if (n.name.isNullOrBlank()) n.copy(name = members.rows.firstOrNull { it.routeId == id }?.routeName) else n

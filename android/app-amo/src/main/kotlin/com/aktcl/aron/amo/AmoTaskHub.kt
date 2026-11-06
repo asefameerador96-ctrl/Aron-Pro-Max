@@ -110,7 +110,8 @@ private fun AmoTaskForm(day: AmoDay, days: List<RouteDay>, members: List<TeamMem
     val outlets = allOutlets.filter { letter == null || it.name.trim().uppercase().startsWith(letter!!) }
     val outlet = allOutlets.firstOrNull { it.outletId == outletId }
     val member = routeId?.let { r -> members.firstOrNull { it.routeId == r && !it.vacant } }
-    val sr = member?.userId?.let { id -> team.firstOrNull { it.userId == id } }
+    // the online members list names the SR of the day; without it (offline, first open) the bundle's team decides, as before
+    val sr = member?.userId?.let { id -> team.firstOrNull { it.userId == id } } ?: routeId?.let { r -> TaskDelegation.srsOfRoute(team, r).singleOrNull() }
     // Fixed when the form opens for this SR and outlet: a double tap or a retry queues one task.
     val draftKey = "task:${sr?.userId}:${outletId}"
     val uuid = remember(draftKey) { day.drafts.uuid(draftKey) }
@@ -120,7 +121,7 @@ private fun AmoTaskForm(day: AmoDay, days: List<RouteDay>, members: List<TeamMem
         outlets = outlets.map { it.outletId.toString() to (it.name + it.clusterName.takeIf { c -> c.isNotBlank() }?.let { c -> " ($c)" }.orEmpty()) },
         outletText = outlet?.let { it.name + it.clusterName.takeIf { c -> c.isNotBlank() }?.let { c -> " ($c)" }.orEmpty() }, onOutlet = { outletId = it.toLong() },
         letters = TaskDelegation.letters(allOutlets.map { it.name }), letter = letter, onLetter = { letter = it },
-        info = outlet?.let { TaskOutletInfo(it.name, it.ownerName.takeIf { o -> o.isNotBlank() }, member?.name, member?.phone) },
+        info = outlet?.let { TaskOutletInfo(it.name, it.ownerName.takeIf { o -> o.isNotBlank() }, member?.name ?: sr?.name, member?.phone) },
         types = loaded, bangla = bangla, typeCode = typeCode, onType = { typeCode = it },
         due = due, today = today, onDue = { due = it }, description = description, onDescription = { description = it },
         errors = errors, busy = busy, noSr = outlet != null && sr == null,

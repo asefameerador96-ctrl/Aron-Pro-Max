@@ -34,9 +34,11 @@ object TeamReports {
      */
     fun stdMatrix(zone: String, rows: List<RouteCategory>): StdMatrix {
         val cats = (TeamTargets.categoryOrder + rows.map { it.category }.distinct()).distinct().filter { c -> rows.any { it.category == c } }
-        val byRoute = rows.groupBy { it.route }.toSortedMap(compareBy { it.lowercase() })
+        val byRoute = rows.groupBy { it.route }.toList().sortedWith(compareBy({ it.first.lowercase() }, { it.first })).toMap()
         val body = byRoute.map { (route, rs) -> StdRow(route, cats.associateWith { c -> rs.filter { it.category == c }.let { m -> if (m.isEmpty()) 0L else if (m.any { it.qty == null }) null else m.sumOf { it.qty ?: 0L } } }) }
-        val totals = cats.associateWith { c -> if (body.any { it.cells[c] == null }) null else body.sumOf { it.cells[c] ?: 0L } }
+        // a column adds only quantities of ONE base unit: two routes counting the same category in different units give a dash
+        val mixed = cats.filter { c -> rows.filter { it.category == c }.mapNotNull { it.unit }.toSet().size > 1 }.toSet()
+        val totals = cats.associateWith { c -> if (c in mixed || body.any { it.cells[c] == null }) null else body.sumOf { it.cells[c] ?: 0L } }
         return StdMatrix(zone, cats, body, totals)
     }
 
