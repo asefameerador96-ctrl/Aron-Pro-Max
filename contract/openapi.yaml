@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.10.0
+  version: 1.11.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -62,6 +62,13 @@ info:
       `share_pct_bp` denominators. `DailyTrackingRow.by_category` now counts sold quantity only, never free or DRP lines
       (lead ruling R-W-20: an existing reader shows a smaller `qty_base` for a route-day with promo or DRP lines), and
       `FinalSubmitPreview.can_submit` is true for a delegate only when its role is DMO or WM (D-X2-14, R-W-21).
+    - 1.11.0 (AMO manual build, D-AMO-MAN-01 to 17, `docs/requests/amo-manual-build-2026-11.md` s3, gate file
+      `docs/requests/contract-amo-manual-1.11.md`), additive only: `VisitPayload.force_sale_reason` (why a sale was made
+      outside the geo-fence; only with `geo.action` force_sale), `section`, `section_bn`, `guidance_en` and `guidance_bn` on the rubric
+      criterion (`RubricDef`, `RubricWrite`, so also `RubricAdmin`), `getCallTargets` (`GET /v1/supervisor/call-targets`),
+      `TeamStockList` members that list every SR of the team with `route_names`, `total_outlets` and (the caller's own
+      team only, D-AMO-MAN-09) `phone`, and `OutletRequestVerificationPayload.route_id` and `cluster_id`. Members added to
+      responses the server already sends are optional.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -1497,6 +1504,34 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TeamStockList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/supervisor/call-targets:
+    get:
+      tags: [team]
+      operationId: getCallTargets
+      summary: The AMO Dashboard target cards (contract 1.11.0, D-AMO-MAN-06, build contract 4.3).
+      description: |
+        AMO only (anyone else 403 `ERR_FORBIDDEN`). Done = the caller's own closed visits of kind `amo_control_call` or
+        `amo_joint_call` that are not voided and not `abandoned` (or `not_reached`) in the month (`month`, `YYYY-MM`, default
+        the current Dhaka month) or on the Dhaka business date (today). The targets are three admin config numbers (the
+        monthly call target and the control-call and joint-call targets) resolved for the caller's zone; today's target is
+        the monthly target divided by the working days of the month (half up, at least 1). A target that is not set is
+        `null` (the card prints a dash).
+      parameters:
+        - name: month
+          in: query
+          required: false
+          schema: { type: string, pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$' }
+          description: Dhaka calendar month; default the current one. Only the current and past months are served.
+      responses:
+        '200':
+          description: The four cards.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CallTargets' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
@@ -8478,6 +8513,10 @@ components:
         assessed_user_id: { type: [integer, 'null'], format: int64, minimum: 1, description: SR assessed on an AMO joint call (the route's active assignee). }
         fix: { $ref: '#/components/schemas/GeoFix' }
         geo: { $ref: '#/components/schemas/DeviceGeoVerdict' }
+        force_sale_reason:
+          type: [string, 'null']
+          enum: [internet_problem, location_change, null]
+          description: 'Why the sale is made outside the geo-fence, chosen on the phone (contract 1.11.0, D-AMO-MAN-08). Allowed only when `geo.action` is `force_sale`; any other combination is rejected `schema_invalid`.'
     VisitClosePayload:
       type: object
       required: [visit_client_uuid, outcome_code, call_declined, ended_at, is_zero_sale]
@@ -8711,6 +8750,8 @@ components:
         decision: { type: string, enum: [verified, discarded] }
         sub_channel_id: { type: [integer, 'null'], format: int64, minimum: 1 }
         geo_class: { type: [string, 'null'], enum: [Hill, Urban, SemiUrban, Rural, null] }
+        route_id: { type: [integer, 'null'], format: int64, minimum: 1, description: 'Route chosen on the verification form; null = unchanged (contract 1.11.0, D-AMO-MAN-12). Stored on the verification event; nothing moves until approval.' }
+        cluster_id: { type: [integer, 'null'], format: int64, minimum: 1, description: 'Cluster chosen on the verification form; null = unchanged (contract 1.11.0).' }
         fix: { $ref: '#/components/schemas/GeoFix' }
         photo_uuid:
           oneOf:
@@ -9729,6 +9770,10 @@ components:
               answer_type: { type: string, enum: [score_1_5, text, bool], description: 'The one rubric answer type enum for read and write; `score_1_5` is a score from 1 to 5. `RubricWrite` also accepts the older spelling `stars_1_5` of the same type (docs/24 s14a R20).' }
               enabled: { type: boolean }
               key: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$', description: 'Stable key of the criterion (the `key` of `RubricWrite`), returned on the admin read (`RubricAdmin`) so a definition round-trips into the write (docs/24 s14a R20); the bundle may omit it.' }
+              section: { type: [string, 'null'], maxLength: 120, description: 'Heading of the group the criterion is shown under, English (contract 1.11.0; the Joint Call card headers). Criteria with the same section are grouped in order; null = no heading.' }
+              section_bn: { type: [string, 'null'], maxLength: 120, description: 'The same heading in Bangla (contract 1.11.0, D-AMO-FND-05).' }
+              guidance_en: { type: [string, 'null'], maxLength: 500, description: 'What to look for, English (contract 1.11.0).' }
+              guidance_bn: { type: [string, 'null'], maxLength: 500, description: 'What to look for, Bangla (contract 1.11.0).' }
     SurveyDef:
       description: Open on purpose (N-014). `SurveyDef` is the `allOf` base of `SurveyAdmin`, which closes the combined object, so `SurveyDef` carries no closing keyword.
       type: object
@@ -10697,6 +10742,26 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/TeamLocation' }
+    CallTargetCard:
+      type: object
+      required: [done, target]
+      additionalProperties: false
+      properties:
+        done: { type: integer, minimum: 0 }
+        target: { type: [integer, 'null'], minimum: 0, description: 'Null when the config key is not set (the card prints a dash).' }
+    CallTargets:
+      type: object
+      description: The four target cards of the AMO Dashboard (contract 1.11.0).
+      required: [as_of, business_date, period, today, month, control, joint]
+      additionalProperties: false
+      properties:
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        period: { type: string, pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$', description: 'The Dhaka month the `month`, `control` and `joint` cards cover (the `month` query value or the current month).' }
+        today: { $ref: '#/components/schemas/CallTargetCard' }
+        month: { $ref: '#/components/schemas/CallTargetCard' }
+        control: { $ref: '#/components/schemas/CallTargetCard' }
+        joint: { $ref: '#/components/schemas/CallTargetCard' }
     TeamStockList:
       type: object
       required: [as_of, business_date, items]
@@ -10713,6 +10778,16 @@ components:
             properties:
               user_id: { $ref: '#/components/schemas/Id' }
               full_name: { type: string, maxLength: 120 }
+              route_names:
+                type: array
+                maxItems: 50
+                items: { type: string, maxLength: 120 }
+                description: 'Names of the routes the SR works on the date, in route order (contract 1.11.0). An SR with no stock rows is listed with an empty `by_sku`.'
+              total_outlets: { type: integer, minimum: 0, description: 'Active outlets on those routes (contract 1.11.0).' }
+              phone:
+                type: [string, 'null']
+                pattern: '^01[3-9][0-9]{8}$'
+                description: 'The SR''s phone in clear, only for an AMO reading the SRs of their own zone (D-AMO-MAN-09); null for every other reader (contract 1.11.0).'
               by_sku:
                 type: array
                 items:
@@ -15583,6 +15658,10 @@ components:
               key: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
               label_en: { type: string, maxLength: 300 }
               label_bn: { type: [string, 'null'], maxLength: 300 }
+              section: { type: [string, 'null'], maxLength: 120 }
+              section_bn: { type: [string, 'null'], maxLength: 120 }
+              guidance_en: { type: [string, 'null'], maxLength: 500 }
+              guidance_bn: { type: [string, 'null'], maxLength: 500 }
               answer_type: { type: string, enum: [stars_1_5, bool, text, score_1_5], description: 'Same enum as the read (`RubricDef` and `RubricAdmin` `criteria[].answer_type`): `score_1_5` is the canonical spelling; `stars_1_5` is the older spelling of the same type, still accepted and stored as `score_1_5` (reads return `score_1_5`; docs/24 s14a R20).' }
         status: { $ref: '#/components/schemas/ActiveStatus' }
         change_reason: { $ref: '#/components/schemas/ChangeReason' }

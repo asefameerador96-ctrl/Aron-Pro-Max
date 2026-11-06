@@ -29,6 +29,21 @@ OutletRequestVerificationPayload:
       - SemiUrban
       - Rural
       - null
+    route_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: Route chosen on the verification form; null = unchanged (contract 1.11.0, D-AMO-MAN-12). Stored
+        on the verification event; nothing moves until approval.
+    cluster_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: Cluster chosen on the verification form; null = unchanged (contract 1.11.0).
     fix:
       $ref: '#/components/schemas/GeoFix'
     photo_uuid:

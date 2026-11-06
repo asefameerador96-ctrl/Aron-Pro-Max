@@ -295,7 +295,11 @@ class SchemaV1aTest {
             "cfg.day.auto_final_submit_enabled", "cfg.tso.team_location_max_age_min", "cfg.tso.plan_max_days_ahead", "cfg.leave.allow_past_days",
             "cfg.leave.allow_ahead_days", "cfg.leave.block_overlap", "cfg.feedback.max_images",
             // config_pull push spread (V0143, D-TSO-MAN-62).
-            "cfg.ops.config_pull_spread_s")
+            "cfg.ops.config_pull_spread_s",
+            // AMO manual build F1 (V0150, D-AMO-MAN-10, 13, 14): call targets, tile switch, Joint Call default star, brand list, Update Base guards.
+            "cfg.amo.call_target_month", "cfg.amo.control_call_target_month", "cfg.amo.joint_call_target_month", "cfg.amo.price_compliance_tile",
+            "cfg.amo.joint_call_default_star", "cfg.rubric.distribution_brands", "cfg.geo.update_base_max_distance_m", "cfg.geo.update_base_max_move_m",
+            "cfg.geo.update_base_max_per_outlet_month")
         assertEquals(specKeys + ruled, dbKeys)
         db.connect().use { c ->
             assertEquals("100", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.geo.radius_m'"))

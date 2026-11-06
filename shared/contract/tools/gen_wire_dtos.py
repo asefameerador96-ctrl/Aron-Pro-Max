@@ -38,6 +38,8 @@ GROUPS = [
     ("TSO dashboard cards and Target Status (contract 1.10.0)",
      ["NationalBrandCpr", "NationalSegmentShare", "LoginSubmitUserRow", "NationalLoginSubmitUsers", "TargetAchievementRow",
       "TargetAchievementNode", "TargetAchievement"]),
+    # contract 1.11.0, AMO manual build (docs/requests/amo-manual-build-2026-11.md s3)
+    ("AMO Dashboard target cards (contract 1.11.0)", ["CallTargetCard", "CallTargets"]),
 ]
 # Members that must never reach a log or crash report; WireDtosDriftTest fails when a generated class has a member
 # matching SECRET_PATTERN that its toString does not redact.

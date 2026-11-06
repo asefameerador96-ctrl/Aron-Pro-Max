@@ -422,6 +422,7 @@ data class VisitPayload(
     @SerialName("assessed_user_id") val assessedUserId: Long? = null,
     @Serializable(with = GeoFixWire::class) @SerialName("fix") val fix: GeoFix,
     @SerialName("geo") val geo: DeviceGeoVerdict,
+    @SerialName("force_sale_reason") val forceSaleReason: String? = null,
 )
 
 @Serializable
@@ -1279,3 +1280,30 @@ object TargetAchievementWire : JsonTransformingSerializer<TargetAchievement>(Tar
     override fun transformSerialize(element: JsonElement): JsonElement =
         if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
 }
+
+// ---- AMO Dashboard target cards (contract 1.11.0) ----
+
+@Serializable
+data class CallTargetCard(
+    @SerialName("done") val done: Int,
+    @SerialName("target") val target: Int?,
+)
+
+/** Encode CallTargetCard with this serializer at the top level (a member of type CallTargetCard or List<CallTargetCard> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object CallTargetCardWire : JsonTransformingSerializer<CallTargetCard>(CallTargetCard.serializer()) {
+    private val alwaysEmitted = listOf("target")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+/** The four target cards of the AMO Dashboard (contract 1.11.0). */
+@Serializable
+data class CallTargets(
+    @SerialName("as_of") val asOf: String,
+    @SerialName("business_date") val businessDate: String,
+    @SerialName("period") val period: String,
+    @Serializable(with = CallTargetCardWire::class) @SerialName("today") val today: CallTargetCard,
+    @Serializable(with = CallTargetCardWire::class) @SerialName("month") val month: CallTargetCard,
+    @Serializable(with = CallTargetCardWire::class) @SerialName("control") val control: CallTargetCard,
+    @Serializable(with = CallTargetCardWire::class) @SerialName("joint") val joint: CallTargetCard,
+)

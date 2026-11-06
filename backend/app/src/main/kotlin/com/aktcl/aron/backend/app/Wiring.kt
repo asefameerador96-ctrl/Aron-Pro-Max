@@ -85,6 +85,8 @@ import com.aktcl.aron.backend.masterdata.AdminProductsDeps
 import com.aktcl.aron.backend.masterdata.OtpCipher
 import com.aktcl.aron.backend.masterdata.AdminMasterDeps
 import com.aktcl.aron.backend.masterdata.adminMasterRoutes
+import com.aktcl.aron.backend.masterdata.CallTargetsDeps
+import com.aktcl.aron.backend.masterdata.callTargetsRoutes
 import com.aktcl.aron.backend.masterdata.VisitPlanDeps
 import com.aktcl.aron.backend.masterdata.visitPlanRoutes
 import com.aktcl.aron.backend.masterdata.RouteAssignmentsDeps
@@ -340,6 +342,7 @@ class Wiring(
                 auditReadRoutes(AuditReadDeps(db, guard, clock))
                 deviceReplaceRoutes(otpDeps)
                 visitPlanRoutes(VisitPlanDeps(db, reach, config, guard, clock))
+                callTargetsRoutes(CallTargetsDeps(db, reach, config, configResolver, guard, clock))
                 routeAssignmentRoutes(RouteAssignmentsDeps(db, reach, guard, clock))
                 leaveRoutes(LeaveDeps(db, reach, config, guard, clock, nudger = push)) // tso-manual B3: push after a leave decision (D-TSO-MAN-26)
                 tutorialRoutes(TutorialsDeps(db, blob, guard))

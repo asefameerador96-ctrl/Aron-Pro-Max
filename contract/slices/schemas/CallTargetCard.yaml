@@ -1,0 +1,16 @@
+CallTargetCard:
+  type: object
+  required:
+  - done
+  - target
+  additionalProperties: false
+  properties:
+    done:
+      type: integer
+      minimum: 0
+    target:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: Null when the config key is not set (the card prints a dash).

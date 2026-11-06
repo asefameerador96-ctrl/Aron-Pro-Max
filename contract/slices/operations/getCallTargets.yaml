@@ -1,0 +1,45 @@
+path: /v1/supervisor/call-targets
+method: get
+operation:
+  tags:
+  - team
+  operationId: getCallTargets
+  summary: The AMO Dashboard target cards (contract 1.11.0, D-AMO-MAN-06, build contract 4.3).
+  description: 'AMO only (anyone else 403 `ERR_FORBIDDEN`). Done = the caller''s own closed visits of kind `amo_control_call`
+    or
+
+    `amo_joint_call` that are not voided and not `abandoned` (or `not_reached`) in the month (`month`, `YYYY-MM`,
+    default
+
+    the current Dhaka month) or on the Dhaka business date (today). The targets are three admin config numbers (the
+
+    monthly call target and the control-call and joint-call targets) resolved for the caller''s zone; today''s target
+    is
+
+    the monthly target divided by the working days of the month (half up, at least 1). A target that is not set
+    is
+
+    `null` (the card prints a dash).
+
+    '
+  parameters:
+  - name: month
+    in: query
+    required: false
+    schema:
+      type: string
+      pattern: ^[0-9]{4}-(0[1-9]|1[0-2])$
+    description: Dhaka calendar month; default the current one. Only the current and past months are served.
+  responses:
+    '200':
+      description: The four cards.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CallTargets'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

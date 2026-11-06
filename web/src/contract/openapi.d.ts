@@ -1052,6 +1052,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/supervisor/call-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The AMO Dashboard target cards (contract 1.11.0, D-AMO-MAN-06, build contract 4.3).
+         * @description AMO only (anyone else 403 `ERR_FORBIDDEN`). Done = the caller's own closed visits of kind `amo_control_call` or
+         *     `amo_joint_call` that are not voided and not `abandoned` (or `not_reached`) in the month (`month`, `YYYY-MM`, default
+         *     the current Dhaka month) or on the Dhaka business date (today). The targets are three admin config numbers (the
+         *     monthly call target and the control-call and joint-call targets) resolved for the caller's zone; today's target is
+         *     the monthly target divided by the working days of the month (half up, at least 1). A target that is not set is
+         *     `null` (the card prints a dash).
+         */
+        get: operations["getCallTargets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leave": {
         parameters: {
             query?: never;
@@ -5601,6 +5626,11 @@ export interface components {
             assessed_user_id?: number | null;
             fix: components["schemas"]["GeoFix"];
             geo: components["schemas"]["DeviceGeoVerdict"];
+            /**
+             * @description Why the sale is made outside the geo-fence, chosen on the phone (contract 1.11.0, D-AMO-MAN-08). Allowed only when `geo.action` is `force_sale`; any other combination is rejected `schema_invalid`.
+             * @enum {string|null}
+             */
+            force_sale_reason?: "internet_problem" | "location_change" | null;
         };
         VisitClosePayload: {
             visit_client_uuid: components["schemas"]["Uuid"];
@@ -5790,6 +5820,16 @@ export interface components {
             sub_channel_id?: number | null;
             /** @enum {string|null} */
             geo_class?: "Hill" | "Urban" | "SemiUrban" | "Rural" | null;
+            /**
+             * Format: int64
+             * @description Route chosen on the verification form; null = unchanged (contract 1.11.0, D-AMO-MAN-12). Stored on the verification event; nothing moves until approval.
+             */
+            route_id?: number | null;
+            /**
+             * Format: int64
+             * @description Cluster chosen on the verification form; null = unchanged (contract 1.11.0).
+             */
+            cluster_id?: number | null;
             fix: components["schemas"]["GeoFix"];
             photo_uuid?: components["schemas"]["Uuid"] | null;
             note?: string | null;
@@ -6444,6 +6484,14 @@ export interface components {
                 enabled?: boolean;
                 /** @description Stable key of the criterion (the `key` of `RubricWrite`), returned on the admin read (`RubricAdmin`) so a definition round-trips into the write (docs/24 s14a R20); the bundle may omit it. */
                 key?: string;
+                /** @description Heading of the group the criterion is shown under, English (contract 1.11.0; the Joint Call card headers). Criteria with the same section are grouped in order; null = no heading. */
+                section?: string | null;
+                /** @description The same heading in Bangla (contract 1.11.0, D-AMO-FND-05). */
+                section_bn?: string | null;
+                /** @description What to look for, English (contract 1.11.0). */
+                guidance_en?: string | null;
+                /** @description What to look for, Bangla (contract 1.11.0). */
+                guidance_bn?: string | null;
             }[];
         };
         /** @description Open on purpose (N-014). `SurveyDef` is the `allOf` base of `SurveyAdmin`, which closes the combined object, so `SurveyDef` carries no closing keyword. */
@@ -7043,12 +7091,34 @@ export interface components {
             as_of: components["schemas"]["Timestamp"];
             items: components["schemas"]["TeamLocation"][];
         };
+        CallTargetCard: {
+            done: number;
+            /** @description Null when the config key is not set (the card prints a dash). */
+            target: number | null;
+        };
+        /** @description The four target cards of the AMO Dashboard (contract 1.11.0). */
+        CallTargets: {
+            as_of: components["schemas"]["Timestamp"];
+            business_date: components["schemas"]["BusinessDate"];
+            /** @description The Dhaka month the `month`, `control` and `joint` cards cover (the `month` query value or the current month). */
+            period: string;
+            today: components["schemas"]["CallTargetCard"];
+            month: components["schemas"]["CallTargetCard"];
+            control: components["schemas"]["CallTargetCard"];
+            joint: components["schemas"]["CallTargetCard"];
+        };
         TeamStockList: {
             as_of: components["schemas"]["Timestamp"];
             business_date: components["schemas"]["BusinessDate"];
             items: {
                 user_id: components["schemas"]["Id"];
                 full_name: string;
+                /** @description Names of the routes the SR works on the date, in route order (contract 1.11.0). An SR with no stock rows is listed with an empty `by_sku`. */
+                route_names?: string[];
+                /** @description Active outlets on those routes (contract 1.11.0). */
+                total_outlets?: number;
+                /** @description The SR's phone in clear, only for an AMO reading the SRs of their own zone (D-AMO-MAN-09); null for every other reader (contract 1.11.0). */
+                phone?: string | null;
                 by_sku: {
                     sku_id: components["schemas"]["Id"];
                     /** @enum {string} */
@@ -9869,6 +9939,10 @@ export interface components {
                 key: string;
                 label_en: string;
                 label_bn?: string | null;
+                section?: string | null;
+                section_bn?: string | null;
+                guidance_en?: string | null;
+                guidance_bn?: string | null;
                 /**
                  * @description Same enum as the read (`RubricDef` and `RubricAdmin` `criteria[].answer_type`): `score_1_5` is the canonical spelling; `stars_1_5` is the older spelling of the same type, still accepted and stored as `score_1_5` (reads return `score_1_5`; docs/24 s14a R20).
                  * @enum {string}
@@ -12776,6 +12850,32 @@ export interface operations {
                     "application/json": components["schemas"]["TeamStockList"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getCallTargets: {
+        parameters: {
+            query?: {
+                /** @description Dhaka calendar month; default the current one. Only the current and past months are served. */
+                month?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The four cards. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallTargets"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
         };

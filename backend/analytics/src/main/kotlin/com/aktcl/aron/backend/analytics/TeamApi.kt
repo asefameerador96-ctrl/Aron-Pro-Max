@@ -50,8 +50,16 @@ data class TeamLocationList(val as_of: String, val items: List<TeamLocation>)
 @Serializable
 data class TeamStockSku(val sku_id: Long, val base_unit: String, val issued_qty_base: Long, val sold_qty_base: Long, val returned_qty_base: Long, val current_qty_base: Long)
 
+/**
+ * One SR of the team. Contract 1.11.0 (D-AMO-MAN-09, 40): every SR of the zone on the date is listed, also one with no stock rows
+ * (`by_sku` empty); `route_names` in route order, `total_outlets` = active outlets on those routes, `phone` in clear only for an AMO
+ * reading the SRs of their own zone, else null.
+ */
 @Serializable
-data class TeamStockItem(val user_id: Long, val full_name: String, val by_sku: List<TeamStockSku>)
+data class TeamStockItem(
+    val user_id: Long, val full_name: String, val by_sku: List<TeamStockSku>,
+    val route_names: List<String> = emptyList(), val total_outlets: Int = 0, val phone: String? = null,
+)
 
 @Serializable
 data class TeamStockList(val as_of: String, val business_date: String, val items: List<TeamStockItem>)
@@ -169,10 +177,10 @@ class TeamService(private val db: Database, private val dashboards: DashboardSer
         return TeamLocationList(now.wire(), items)
     }
 
-    fun stock(reach: Reach, zoneId: Long?, date: LocalDate): TeamStockList {
+    fun stock(reach: Reach, zoneId: Long?, date: LocalDate, role: Role? = null): TeamStockList {
         val rows = db.readJdbi.withHandle<List<TeamStockItem>, Exception> { h ->
             val z = zones(h, reach, zoneId)
-            // current = issued - sold - free (promo, DRP reward, sample lines leave the bag too) - returned, plus signed adjustments and minus damaged and short stock. No phone numbers are read.
+            // current = issued - sold - free (promo, DRP reward, sample lines leave the bag too) - returned, plus signed adjustments and minus damaged and short stock.
             val flat = bindZones(
                 h.createQuery(
                     """
@@ -187,9 +195,36 @@ class TeamService(private val db: Database, private val dashboards: DashboardSer
                     """,
                 ).bind("d", date), z,
             ).map { rs, _ -> Triple(rs.getLong("uid") to rs.getString("full_name"), rs.getLong("sku_id"), listOf(rs.getString("base_unit"), rs.getLong("iss"), rs.getLong("sold"), rs.getLong("ret"), rs.getLong("cur"))) }.list()
-            flat.groupBy { it.first }.map { (u, skus) ->
-                TeamStockItem(u.first, u.second, skus.map { (_, sku, v) -> TeamStockSku(sku, v[0] as String, v[1] as Long, v[2] as Long, v[3] as Long, v[4] as Long) })
-            }
+            val bySr = flat.groupBy { it.first.first }
+            // The roster: every active SR with an assignment valid on the date, or the day's own assignee, on an active SR route of the reach (a vacant route has none).
+            val roster = bindZones(
+                h.createQuery(
+                    """
+                    WITH rr AS (
+                      SELECT ra.user_id AS uid, ra.route_id FROM app.route_assignment ra JOIN app.route r ON r.id = ra.route_id AND r.status = 'active' AND r.kind = 'sr'
+                       WHERE ra.valid_from <= :d AND (ra.valid_to IS NULL OR ra.valid_to > :d) AND ${clause(z, "r.zone_id")}
+                      UNION
+                      SELECT coalesce(rd.acting_user_id, rd.assigned_user_id), rd.route_id FROM app.route_day rd JOIN app.route r ON r.id = rd.route_id AND r.kind = 'sr'
+                       WHERE rd.business_date = :d AND coalesce(rd.acting_user_id, rd.assigned_user_id) IS NOT NULL AND ${clause(z, "r.zone_id")}),
+                    oc AS (SELECT o.route_id, count(*) AS n FROM app.outlet o WHERE o.status = 'active' AND o.route_id IN (SELECT route_id FROM rr) GROUP BY o.route_id)
+                    SELECT u.id AS uid, u.full_name, u.phone, array_agg(r.name ORDER BY r.sequence_no NULLS LAST, r.code) AS route_names, coalesce(sum(oc.n), 0)::int AS outlets
+                      FROM rr JOIN app.app_user u ON u.id = rr.uid AND u.role = 'SR' AND u.status = 'active' JOIN app.route r ON r.id = rr.route_id LEFT JOIN oc ON oc.route_id = rr.route_id
+                     GROUP BY u.id, u.full_name, u.phone ORDER BY u.full_name, u.id
+                    """,
+                ).bind("d", date), z,
+            ).map { rs, _ ->
+                TeamStockItem(
+                    rs.getLong("uid"), rs.getString("full_name"), emptyList(), (rs.getArray("route_names").array as Array<*>).map { it.toString() }, rs.getInt("outlets"),
+                    // D-AMO-MAN-09: an AMO reads the phones of the SRs of their own zone (the reach is the token's zone); everyone else gets null.
+                    if (role == Role.AMO) rs.getString("phone") else null,
+                )
+            }.list()
+            fun skus(uid: Long) = bySr[uid].orEmpty().map { (_, sku, v) -> TeamStockSku(sku, v[0] as String, v[1] as Long, v[2] as Long, v[3] as Long, v[4] as Long) }
+            val listed = roster.map { it.user_id }.toSet()
+            // A user with stock rows but no roster line (stood in on the day only, or no longer an active SR) keeps the older row shape.
+            (roster.map { it.copy(by_sku = skus(it.user_id)) } +
+                bySr.filterKeys { it !in listed }.map { (uid, sk) -> TeamStockItem(uid, sk.first().first.second, skus(uid)) })
+                .sortedWith(compareBy({ it.full_name }, { it.user_id }))
         }
         return TeamStockList(clock.now().wire(), date.toString(), rows)
     }
@@ -228,7 +263,7 @@ fun Route.appTeamRoutes(d: AppTeamDeps) {
             val p = call.principal
             if (p.role !in TEAM_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "team stock is not available to this role")
             val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
-            call.respond(d.service.stock(d.reach.reach(p.userId, p.role, p.scopeVersion, today), call.zoneParam(), call.dateParam("business_date", today, required = true)))
+            call.respond(d.service.stock(d.reach.reach(p.userId, p.role, p.scopeVersion, today), call.zoneParam(), call.dateParam("business_date", today, required = true), p.role))
         }
     }
 }

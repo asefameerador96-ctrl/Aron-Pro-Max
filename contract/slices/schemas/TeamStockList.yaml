@@ -25,6 +25,25 @@ TeamStockList:
           full_name:
             type: string
             maxLength: 120
+          route_names:
+            type: array
+            maxItems: 50
+            items:
+              type: string
+              maxLength: 120
+            description: Names of the routes the SR works on the date, in route order (contract 1.11.0). An SR with
+              no stock rows is listed with an empty `by_sku`.
+          total_outlets:
+            type: integer
+            minimum: 0
+            description: Active outlets on those routes (contract 1.11.0).
+          phone:
+            type:
+            - string
+            - 'null'
+            pattern: ^01[3-9][0-9]{8}$
+            description: The SR's phone in clear, only for an AMO reading the SRs of their own zone (D-AMO-MAN-09);
+              null for every other reader (contract 1.11.0).
           by_sku:
             type: array
             items:

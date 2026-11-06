@@ -1694,6 +1694,17 @@ class IngestService(
             val v = payload[k] ?: continue
             if (v !is JsonNull && (v !is JsonPrimitive || v.isString || (v.longOrNull ?: 0) < 1)) return "$k must be a positive integer"
         }
+        // Contract 1.11.0 (D-AMO-MAN-08): the force-sale reason is one of two codes and exists only on a force sale. The same rule
+        // is a CHECK on app.visit (V0150), so a reason can never be stored on any other visit.
+        if (r.type == "visit") {
+            val reason = payload["force_sale_reason"]
+            if (reason != null && reason !is JsonNull) {
+                val code = (reason as? JsonPrimitive)?.takeIf { it.isString }?.content
+                if (code !in FORCE_SALE_REASONS) return "force_sale_reason must be internet_problem or location_change"
+                val action = ((payload["geo"] as? JsonObject)?.get("action") as? JsonPrimitive)?.takeIf { it.isString }?.content
+                if (action != "force_sale") return "force_sale_reason is allowed only with geo.action force_sale"
+            }
+        }
         return null
     }
 
@@ -1945,6 +1956,7 @@ class IngestService(
         private val DEVICE_HOLD_CODES = setOf(RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire, RecordOutcomeCode.DEVICE_NOT_ENROLLED.wire)
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+        private val FORCE_SALE_REASONS = setOf("internet_problem", "location_change")
         private val TYPE_PATTERN = Regex("^[a-z][a-z_]{1,40}$")
 
         /** Record type a parent reference must name. */
