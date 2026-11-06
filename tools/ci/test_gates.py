@@ -649,6 +649,8 @@ if 'CostManagement' in url:
 if 'usageDetails' in url:
     if {usage!r} == 'ok':
         print('{{"value":[{{"properties":{{"date":"2026-11-05T00:00:00Z","costInBillingCurrency":2.0}}}}]}}'); sys.exit(0)
+    if {usage!r} == 'empty':
+        print('{{"value":[]}}'); sys.exit(0)
     print('404 Not Found', file=sys.stderr); sys.exit(1)
 sys.exit('unexpected az ' + ' '.join(a))
 """)
@@ -680,6 +682,11 @@ sys.exit('unexpected az ' + ' '.join(a))
         self.assertNotIn("/resourceGroups/", u, "the resource-group scope answers 404 for usageDetails")
         self.assertIn("properties/resourceGroup eq 'rg-aron-dev'", u)
         self.assertRegex(u, r"properties/usageStart ge '\d{4}-\d{2}-01' and properties/usageEnd le '\d{4}-\d{2}-\d{2}'")
+
+    def test_an_empty_usage_answer_is_no_figure(self):
+        rc, out, urls, _ = self.run_script(query="fail", usage="empty")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("::warning::cost-report of rg-aron-dev: no cost figure was read", out)
 
     def test_no_figure_at_all_emits_a_warning_annotation_and_stays_green(self):
         rc, out, urls, waits = self.run_script(query="fail", usage="fail")

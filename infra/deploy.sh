@@ -531,9 +531,9 @@ job_logs() { # execution
     sleep 30
   done
   if [ -n "$prev" ]; then
-    echo "---- console log of $1 (still growing after 12 minutes; the tail may be missing)"; echo "$prev"; echo "----"; return 0
+    echo "---- console log of $1 (still growing after the wait; the tail may be missing)"; echo "$prev"; echo "----"; return 0
   fi
-  echo "(no console log of $1 in Log Analytics after 12 minutes)"
+  echo "(no console log of $1 in Log Analytics after the wait)"
   # No console output usually means the container never ran (image pull, identity, start command): the platform's
   # system log for the execution says why (deploy run 37624445094: dblogins Failed with an empty console log).
   q="union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppSystemLogs
@@ -564,7 +564,7 @@ if [ "$RUN_MIGRATIONS" = true ]; then
       case "$status" in Succeeded|Failed|Stopped|Degraded) break ;; esac
       sleep 10
     done
-    [ "$status" = Succeeded ] && { note "migrations succeeded"; job_logs_ok "$execution"; break; }
+    [ "$status" = Succeeded ] && { note "migrations succeeded"; migrate_ok_exec="$execution"; break; }
     case "$status" in Failed|Stopped|Degraded) ;; *)
       # Still running after 20 minutes: stop it, so no second migrate execution can start beside it after the lock.
       az containerapp job stop -g "$RG" -n "$JOB" --job-execution-name "$execution" -o none 2>/dev/null \
@@ -580,6 +580,8 @@ if [ "$RUN_MIGRATIONS" = true ]; then
     die "migrations $execution ended ${status}; the apps were NOT updated. Logs: Log Analytics, ContainerAppConsoleLogs, ContainerJobName_s == '$JOB'"
   done
   resume_worker
+  # After the worker is running again: the log wait (up to about 3 minutes) must not delay its scheduled jobs.
+  [ -z "${migrate_ok_exec:-}" ] || job_logs_ok "$migrate_ok_exec"
 else
   note "migrations not run (RUN_MIGRATIONS=$RUN_MIGRATIONS)"
 fi

@@ -101,9 +101,10 @@ fi
 
 section "Log Analytics: console log of $WORKER_APP in the window (severity and job-run lines only, 200 chars each)"
 # The worker's scheduled jobs (bundle pre-generation at 16:00 UTC, outlet-request lapse, aggregation, geo re-check, retention)
-# log one line per run; WARN/ERROR lines name a cause class. A line is kept when it carries a severity of WARN/ERROR/FATAL or
-# names a job run; it is cut at 200 characters and lines that mention SQL, parameters or tokens are dropped, so no payload,
-# statement or secret is printed. Runs without a database query (D-OPS-DIAGNOSE-WORKER-01).
+# log one line per run. The console is one JSON object per line (logback), so the query projects level, logger and
+# formattedMessage (cut at 200 characters) and not the raw line. Lines naming SQL, parameters, keys or secrets are dropped, but a
+# driver message can still carry a value: the output is for operators and the repository is public, so read it before
+# pasting it anywhere (D-OPS-DIAGNOSE-WORKER-01). The newest 200 matching lines are kept.
 if [ -n "${ws:-}" ]; then
   q="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleLogs
      | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
@@ -111,8 +112,11 @@ if [ -n "${ws:-}" ]; then
               line = tostring(coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
      | where app == '$WORKER_APP'
      | where line matches regex @'(?i)\b(WARN|ERROR|FATAL)\b|\"level\":\"(WARN|ERROR)' or line matches regex @'(?i)bundle|lapsed|worker started|PAUSED|aggregat|geo re-check|retention|risk signal|route-day'
-     | where not(line matches regex @'(?i)statement|parameters|bind|password|secret|token|authorization|bearer')
-     | order by TimeGenerated asc | project TimeGenerated, line = substring(line, 0, 200) | take 200"
+     | where not(line matches regex @'(?i)statement|parameters|bind|password|secret|token|authorization|bearer|key=|sig=|jdbc:')
+     | extend j = parse_json(line)
+     | extend text = iff(isnotempty(tostring(j.formattedMessage)), strcat(tostring(j.level), ' ', tostring(j.loggerName), ' ', tostring(j.formattedMessage)), line)
+     | top 200 by TimeGenerated desc | order by TimeGenerated asc
+     | project TimeGenerated, line = substring(text, 0, 200)"
   try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | cut -c1-260
 else
   echo "(no Log Analytics workspace, so no worker console log)"

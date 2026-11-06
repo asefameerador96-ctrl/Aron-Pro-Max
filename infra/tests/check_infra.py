@@ -724,7 +724,9 @@ class Workflows(unittest.TestCase):
         # D-OPS-DEPLOY-LOGS-01: the migrate and the dblogins job's console log also on SUCCESS, last 200 lines each.
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         self.assertIn("JOB_LOGS_TRIES=6 job_logs \"$1\" | tail -n 200", d)
-        self.assertIn('{ note "migrations succeeded"; job_logs_ok "$execution"; break; }', d)
+        self.assertIn('{ note "migrations succeeded"; migrate_ok_exec="$execution"; break; }', d)
+        self.assertLess(d.index("  resume_worker\n  # After the worker"), d.index('job_logs_ok "$migrate_ok_exec"'),
+                        "the success log is read after the worker runs again")
         i = d.index('note "database logins succeeded"')
         self.assertIn('job_logs_ok "$execution"', d[i:i + 120])
         self.assertIn('seq 1 "${JOB_LOGS_TRIES:-24}"', d, "the failure path keeps its 12-minute wait by default")
@@ -765,7 +767,8 @@ class Workflows(unittest.TestCase):
         w = sh[i:sh.index('section "worker app $WORKER_APP"')]
         self.assertIn("ContainerAppConsoleLogs_CL", w)
         self.assertIn("where app == '$WORKER_APP'", w)
-        self.assertIn("substring(line, 0, 200)", w)
+        self.assertIn("substring(text, 0, 200)", w)
+        self.assertIn("parse_json(line)", w, "the JSON console line is projected, not printed raw")
         self.assertIn("bundle|lapsed", w, "job-run lines (bundle pre-generation, outlet request lapse)")
         self.assertIn("not(line matches regex @'(?i)statement|parameters|bind|password|secret|token", w)
         pg = sh[sh.index("PostgreSQLLogs'"):sh.index("section \"Log Analytics: console log of $WORKER_APP")]

@@ -71,7 +71,8 @@ fi
 summary "- Cost Management query failed: $(tr '\n' ' ' < "$tmp/q.err" | cut -c1-300)"
 
 start="$(date -u +%Y-%m-01)"; end="$(date -u +%Y-%m-%d)"
-if az rest --method get -o json > "$tmp/u.json" 2> "$tmp/u.err" --url "$(usage_details_url "$sub" "$rg" "$start" "$end")"; then
+if az rest --method get -o json > "$tmp/u.json" 2> "$tmp/u.err" --url "$(usage_details_url "$sub" "$rg" "$start" "$end")" \
+   && python3 -c 'import json, sys; sys.exit(0 if json.load(open(sys.argv[1])).get("value") else 1)' "$tmp/u.json"; then
   python3 - "$tmp/u.json" <<'PY' | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
 import collections, json, sys
 items = json.load(open(sys.argv[1])).get("value", [])
@@ -87,7 +88,7 @@ print(f"\nAverage {sum(by_day.values()) / days:.2f} per day over {days} day(s)")
 PY
   exit 0
 fi
-summary "- Consumption usage details failed: $(tr '\n' ' ' < "$tmp/u.err" | cut -c1-300)"
+summary "- Consumption usage details gave no figure: $(tr '\n' ' ' < "$tmp/u.err" | cut -c1-300)${tmp:+ (an empty answer counts as no figure)}"
 summary ""
 if is_throttled "$tmp/q.err"; then
   summary "**Cost Management kept throttling (429) for about 6 minutes; run cost-report again later.**"
