@@ -94,15 +94,13 @@ abstract class DataFlowTraceSupport(
 
     @BeforeAll
     fun setUp() {
-        world = ApiWorld(repoRoot, mirrors = listOf(ApiWorld.OTHER), clock = clock, devProfile = true)
+        // D-TSO-MAN-49: the shipped late policy is accept_and_flag; hop 12 traces the quarantine hold, so the world is built with it.
+        // D-QA-CI-09: it must be in the database BEFORE the wiring exists. DbServerConfig keeps its first snapshot for 30 s of the WORLD
+        // clock, which the trace freezes, so a row written afterwards is never seen; the trace used to pass only while the seed's
+        // today (Friday) differed from the trace day (Saturday), because the clock then jumped a day and expired that snapshot.
+        world = ApiWorld(repoRoot, mirrors = listOf(ApiWorld.OTHER), clock = clock, devProfile = true,
+            extraConfig = mapOf("cfg.day.late_sync_after_final_policy" to "\"quarantine\""))
         day = traceDay()
-        // D-QA-CI-09: the late policy row goes in BEFORE the app starts. DbServerConfig caches its snapshot for 30 s of the WORLD
-        // clock, which stands still, so a row written after the first config read is never seen; the trace used to pass only
-        // because the clock jumped a day (seed today Friday -> trace day Saturday) and expired the cache.
-        db { h ->
-            // D-TSO-MAN-49: the shipped late policy is accept_and_flag; hop 12 traces the quarantine hold, so it is switched on here.
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.day.late_sync_after_final_policy', 'global', 0, '\"quarantine\"'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'qa trace: quarantine policy' FROM app.cfg_version")
-        }
         app = TestApplication { application { aronApi(world.wiring) } }
         runBlocking { app.start() }
         db { h ->
