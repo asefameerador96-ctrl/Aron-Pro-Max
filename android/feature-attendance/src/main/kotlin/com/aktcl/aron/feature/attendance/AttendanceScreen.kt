@@ -592,6 +592,9 @@ private fun AmoStatusRow(state: AttendanceState, checkoutAtLabel: String, checkO
                 // open: the red Check Out; before the configured time (or the Sales Submit gate) the dashed orange box says when
                 if (state.checkOutEnabled && !state.busy) BigAction(
                     stringResource(R.string.att_check_out), AronIcons.Logout, onOut, AttendanceTags.CHECK_OUT, enabled = true, enabledColors = listOf(red, red), modifier = Modifier.weight(1f),
+                ) else if (state.checkOutTimeReached) BigAction(
+                    // the time has passed: something else holds check-out (Sales Submit first, a busy flow); the notice above says what
+                    stringResource(R.string.att_check_out), AronIcons.Logout, {}, AttendanceTags.CHECK_OUT, enabled = false, enabledColors = listOf(red, red), modifier = Modifier.weight(1f),
                 ) else StatusBox(
                     stringResource(R.string.att_amo_out_after, localizedDigits(checkoutAfterLabel(checkoutAtLabel, bangla))), AronIcons.Warning, if (look.sunlight) look.ink else WaitOrange,
                     AttendanceTags.CHECK_OUT, Modifier.weight(1f),

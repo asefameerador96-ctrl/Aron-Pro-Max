@@ -38,6 +38,7 @@ fun SupportHost(shell: SystemShell, userId: Long, versionName: String) {
                 status = try { s.send() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {
                     SupportStatus.Failed(com.aktcl.aron.core.system.support.SupportFailure.BUILD_FAILED)
                 }
+                // no polling (battery rule, NoPollingLintTest): the dialog shows when the send is already Sent; a queued upload keeps its status text on this screen
                 if (status is SupportStatus.Sent) sentDialog = true
                 lastSync = runCatching { s.lastSyncText() }.getOrNull()
             }

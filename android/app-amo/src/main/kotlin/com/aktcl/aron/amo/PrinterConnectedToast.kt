@@ -14,8 +14,8 @@ import com.aktcl.aron.core.printing.bt.PrinterState
 
 /** Screenshot 13 (R12): the toast "প্রিন্টার কানেক্ট করা হয়েছে" when the printer turns from not connected to connected on a printing screen. */
 object PrinterToast {
-    /** True on the transition into [PrinterState.Connected]; entering a screen with the printer already connected says nothing. */
-    fun shouldToast(was: PrinterState, now: PrinterState): Boolean = now == PrinterState.Connected && was != PrinterState.Connected
+    /** True on the transition into [PrinterState.Connected] from a not-connected state (not after a print or paper-out); entering a screen with the printer already connected says nothing. */
+    fun shouldToast(was: PrinterState, now: PrinterState): Boolean = now == PrinterState.Connected && (was == PrinterState.Off || was == PrinterState.NoPrinter || was == PrinterState.Connecting)
 }
 
 @Composable

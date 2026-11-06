@@ -17,5 +17,8 @@ class PrinterToastTest {
         assertFalse(PrinterToast.shouldToast(PrinterState.Connected, PrinterState.Connected))
         assertFalse(PrinterToast.shouldToast(PrinterState.Connected, PrinterState.Off))
         assertFalse(PrinterToast.shouldToast(PrinterState.Off, PrinterState.Connecting))
+        // after a print or a paper-out the printer comes back to Connected: no toast
+        assertFalse(PrinterToast.shouldToast(PrinterState.Printing("j", 100), PrinterState.Connected))
+        assertFalse(PrinterToast.shouldToast(PrinterState.PaperOut, PrinterState.Connected))
     }
 }
