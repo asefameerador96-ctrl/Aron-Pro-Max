@@ -74,6 +74,8 @@ fun ControlCallHost(
     var calledToday by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var showPrice by remember { mutableStateOf(false) }
     var opening by remember { mutableStateOf(false) }
+    // the retailer whose range check THIS screen started: a verdict left in the shared visit flow by an earlier retailer or call is never shown for another (checker findings 2-4)
+    var checked by remember { mutableStateOf<Long?>(null) }
     var lockNotice by remember { mutableStateOf<DayRefusal?>(null) }
     lockNotice?.let { AmoRefusalDialog(day, it, onOk = { lockNotice = null }) }
     LaunchedEffect(day) {
@@ -119,16 +121,16 @@ fun ControlCallHost(
             val list = days
             when (step) {
                 CcStep.PICK -> if (submitted && open == null) com.aktcl.aron.feature.amo.DaySubmittedNotice(onBack) else PickStep(
-                    day, list.orEmpty(), kind, startWithSale, routeId, outletId, chip, panel, calledToday, showPrice, opening,
+                    day, list.orEmpty(), kind, startWithSale, routeId, outletId, checked, chip, panel, calledToday, showPrice, opening,
                     onRoute = { routeId = it; outletId = null; chip = OutletPicker.ALL_CHIP; panel = Panel.NONE },
                     onOutlet = { o ->
-                        outletId = o.outletId; panel = Panel.NONE
+                        outletId = o.outletId; panel = Panel.NONE; checked = null
                         // Control and Joint Call check the range as soon as the retailer is chosen; on Sales the tile starts the check
-                        if (!startWithSale && !opening) { opening = true; scope.launch { day.openCall(o, kind) { lockNotice = it }; opening = false } }
+                        if (!startWithSale && !opening) { opening = true; scope.launch { if (day.openCall(o, kind) { lockNotice = it }) checked = o.outletId; opening = false } }
                     },
                     onChip = { chip = it }, onPanel = { panel = it },
                     onSalesTile = { o ->
-                        if (!opening) { opening = true; scope.launch { if (day.openCall(o, kind) { lockNotice = it }) Unit; opening = false } }
+                        if (!opening) { opening = true; scope.launch { if (day.openCall(o, kind) { lockNotice = it }) checked = o.outletId; opening = false } }
                     },
                     onOverride = { forceReason = ForceReason.LOCATION_CHANGE; step = CcStep.FORCE },
                     onReason = { forceReason = it; step = CcStep.FORCE },
@@ -145,7 +147,7 @@ fun ControlCallHost(
                     LaunchedEffect(failed) { lockedOut = day.commitRefusal(failed) }
                     lockedOut?.let { AmoRefusalDialog(day, it, onOk = { day.routeId = null; step = CcStep.PICK; outletId = null }) }
                     VisitCheckContent(
-                        st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { step = CcStep.FORCE },
+                        st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { forceReason = ForceReason.LOCATION_CHANGE; step = CcStep.FORCE },
                         onRetry = { scope.launch { day.visitFlow.retryCommit() } }, onMap = null,
                         texts = amoVisitCheckTexts(), onBack = { step = CcStep.PICK; outletId = null },
                         geoPanel = true, mapSlot = rememberAmoOutletMapSlot(day.online()),
@@ -165,7 +167,7 @@ fun ControlCallHost(
 /** The picker screen (17-23, 29-30): drop-downs, alphabet bar, range area and the tiles of the call. */
 @Composable
 private fun PickStep(
-    day: AmoDay, days: List<RouteDay>, kind: String, salesPath: Boolean, routeId: Long?, outletId: Long?, chip: String, panel: Panel,
+    day: AmoDay, days: List<RouteDay>, kind: String, salesPath: Boolean, routeId: Long?, outletId: Long?, checked: Long?, chip: String, panel: Panel,
     calledToday: Set<Long>, showPrice: Boolean, opening: Boolean,
     onRoute: (Long) -> Unit, onOutlet: (OutletEntity) -> Unit, onChip: (String) -> Unit, onPanel: (Panel) -> Unit, onSalesTile: (OutletEntity) -> Unit,
     onOverride: () -> Unit, onReason: (ForceReason) -> Unit,
@@ -173,7 +175,10 @@ private fun PickStep(
 ) {
     val scope = rememberCoroutineScope()
     val joint = kind == com.aktcl.aron.feature.amo.AmoVisitKind.JOINT_CALL
-    val st by day.visitFlow.state.collectAsState()
+    val flowState by day.visitFlow.state.collectAsState()
+    val open by day.visitSession.current.collectAsState()
+    // only a verdict this screen asked for, for the retailer on screen
+    val st: VisitUiState = if (checked != null && checked == outletId) flowState else VisitUiState.Idle
     val routes = ControlCall.routes(days)
     val outlets = ControlCall.outlets(days, routeId ?: -1L)
     val route = routes.firstOrNull { it.routeId == routeId }
@@ -192,17 +197,17 @@ private fun PickStep(
     var asking by remember(outletId) { mutableStateOf(false) }
     val checking = outlet != null && (st is VisitUiState.ReadingFix || opening)
     val needs = st as? VisitUiState.NeedsDecision
-    val callOpen = st is VisitUiState.Open && outlet != null
+    // a call open in the session (also one restored after a kill and relaunch, when the flow state is Idle) for the retailer on screen
+    val callOpen = outlet != null && open?.outletId == outlet.outletId
     val range: CallRange = when {
         outlet == null -> CallRange.Idle
-        salesPath -> if (checking) CallRange.Checking else CallRange.In
-        checking -> CallRange.Checking
         callOpen -> CallRange.In
+        checking -> CallRange.Checking
         needs != null && needs.outlet.outletId == outlet.outletId -> CallRange.Out(needs.forceSaleAvailable, needs.refreshLeft)
+        salesPath && checked != outletId -> CallRange.In // the Sales tile starts the check; nothing was asked yet
         else -> CallRange.Idle
     }
     // Sales tile: an out-of-range answer asks for the reason before the override photo (D-AMO-MAN-08)
-    LaunchedEffect(needs, salesPath, outletId) { if (salesPath && needs != null && needs.forceSaleAvailable && outlet != null && needs.outlet.outletId == outlet.outletId) asking = true }
     if (salesPath && asking) com.aktcl.aron.feature.amo.AmoForceReasonDialog(
         onReason = { code -> asking = false; onReason(if (code == "internet_problem") ForceReason.INTERNET_PROBLEM else ForceReason.LOCATION_CHANGE) },
         onDismiss = { asking = false },
@@ -222,7 +227,7 @@ private fun PickStep(
         letters = CallPick.letters(outlets), chip = chip, live = outlet != null, range = range,
         enabledOutlet = route != null, locked = callOpen,
         onOpenRoute = { onPanel(Panel.ROUTE) }, onOpenOutlet = { onPanel(Panel.OUTLET) }, onChip = onChip,
-        onOverride = onOverride, onRefresh = { scope.launch { runCatching { day.visitFlow.refresh() } } },
+        onOverride = { if (salesPath) asking = true else onOverride() }, onRefresh = { scope.launch { runCatching { day.visitFlow.refresh() } } },
         below = { com.aktcl.aron.feature.amo.AmoMenuTiles(tiles) },
     )
 }
