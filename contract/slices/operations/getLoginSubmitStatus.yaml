@@ -5,6 +5,15 @@ operation:
   - dashboards
   operationId: getLoginSubmitStatus
   summary: Login and Sales Submit status with the lists behind each count (Bikroy Joma status).
+  description: 'Also open to the AMO (contract 1.11.0, D-AMO-MAN-11): the reach is the own zone, derived from the
+    token, and the
+
+    response then carries `geo_valid_visits`, `photo_valid_visits`, `visits_total` and `sales_by_category`. The
+    national
+
+    endpoints stay closed to the AMO.
+
+    '
   parameters:
   - $ref: '#/components/parameters/BusinessDateQueryRequired'
   - $ref: '#/components/parameters/GeoLevelQuery'

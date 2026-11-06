@@ -133,6 +133,33 @@ ALTER TABLE app.visit ENABLE TRIGGER USER;
         assertEquals(HttpStatusCode.Forbidden, run(12, Role.AMO, "dss").status)
     }
 
+    /** Contract 1.11.0 (D-AMO-FND-09): target columns per route x brand and per route; null when the route has no target; value = quantity x outlet price, half up. */
+    @Test
+    fun salesSummaryTargetColumnsAreNullWithoutATargetAndPriceTheTargetQuantity() = app {
+        val before = run(10, Role.ANALYST, "sales-summary").result().rows()
+        assertTrue(before.all { it.str("target_qty_base") == null && it.str("route_target_qty_base") == null && it.str("target_value_mtk") == null }, "no target row: every target column is null")
+        sql(
+            "INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) SELECT '00000000-0000-4000-8000-0000000000b1', decode(repeat('ab', 32), 'hex'), 3, id FROM app.app_user WHERE username = 'sr001'",
+            // R1: SKU1 (BrandOne) 1000 sticks priced 800 mtk each, SKU2 (BrandTwo) 500 unpriced; a target in another month and one on R3 (zone 2) must not leak in
+            """INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid)
+               SELECT r.id, s.id, t.m, t.q, '00000000-0000-4000-8000-0000000000b1'
+                 FROM (VALUES ('R1', 'SKU1', DATE '2026-10-01', 1000), ('R1', 'SKU2', DATE '2026-10-01', 500), ('R1', 'SKU1', DATE '2026-09-01', 7), ('R3', 'SKU1', DATE '2026-10-01', 40)) t(rc, sc, m, q)
+                 JOIN app.route r ON r.code = t.rc JOIN app.sku s ON s.code = t.sc""",
+            "INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_from) SELECT id, 'outlet', 800, 1, DATE '2026-01-01' FROM app.sku WHERE code = 'SKU1'",
+        )
+        val r1 = run(10, Role.ANALYST, "sales-summary").result().rows().filter { it.str("route_code") == "R1" }
+        val one = r1.single { it.str("brand_name") == "BrandOne" }; val two = r1.single { it.str("brand_name") == "BrandTwo" }
+        assertEquals(1000L to 800_000L, one.num("target_qty_base").toLong() to one.num("target_value_mtk").toLong())
+        assertEquals(500L, two.num("target_qty_base").toLong()); assertEquals(null, two.str("target_value_mtk"), "an unpriced target SKU adds no value")
+        assertTrue(r1.all { it.num("route_target_qty_base").toLong() == 1500L && it.num("route_target_value_mtk").toLong() == 800_000L }, "the route's whole target repeats on each row")
+        val r2 = run(10, Role.ANALYST, "sales-summary").result().rows().filter { it.str("route_code") == "R2" }
+        assertTrue(r2.isNotEmpty() && r2.all { it.str("target_qty_base") == null && it.str("route_target_qty_base") == null }, "a route with no target stays null")
+        // zone 2's route R3 carries its own target; an AMO of zone 1 never sees it
+        assertEquals(40L, run(10, Role.ANALYST, "sales-summary").result().rows().first { it.str("route_code") == "R3" }.num("route_target_qty_base").toLong())
+        assertTrue(run(12, Role.AMO, "sales-summary").result().rows().none { it.str("route_code") == "R3" })
+        assertEquals(1500L, run(12, Role.AMO, "sales-summary").result().rows().first { it.str("route_code") == "R1" }.num("route_target_qty_base").toLong())
+    }
+
     @Test
     fun everyBatchBHandlerServesXlsxAndRefusesAForeignZone() = app {
         for (key in listOf("data-entry-log", "final-submit-log", "final-submit-status", "gigo", "dss", "ds-rrs", "tso-top-sheet", "daily-tracking", "leaderboard", "amo-call", "sr-outlets", "discount", "free-sample", "sales-summary")) {

@@ -1052,6 +1052,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/team/journey": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Sales Journey of one SR on one route and day, call by call (contract 1.11.0, D-AMO-MAN-10, build contract 4.4).
+         * @description AMO (own zone), TSO, DMO, WM and the national read roles, each inside the reach derived from the token; SR and the
+         *     other roles 403 `ERR_FORBIDDEN`, a route outside the reach 403. The calls are the SR's `sr_call` visits on the route
+         *     and Dhaka business date, ordered by `opened_at`. `status` is `edited_sale` when the visit's memo was superseded by an
+         *     edit (or is itself an edit), `new_sale` when it has an active sale memo and `no_sale` otherwise. `distance_from_prev_m`
+         *     is the haversine distance in metres (two decimals) between the previous call's outlet base point and this one's (null
+         *     for the first call or when an outlet has no base point), `total_distance_m` the running sum, `duration_s` is
+         *     `closed_at - opened_at` and `gap_to_next_s` is `next.opened_at - closed_at`. `phone_masked` never carries the full number.
+         */
+        get: operations["getTeamJourney"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/team/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The SR list of the reach, one row per route, with vacant routes (contract 1.11.0, D-AMO-MAN-09).
+         * @description Supervisor roles (AMO, TSO, DMO, WM, national read roles); SR and the other roles 403. One row per active SR route in
+         *     the reach with the SR assigned on the date (the day's acting SR, else the primary assignment); a route with nobody is
+         *     `vacant` (`user_id`, `full_name` null). `phone` is in clear only for an AMO on routes of the own home zone, `null`
+         *     for every other reader; `phone_masked` is always the masked form. `route_days` are ISO weekdays (1 = Monday).
+         */
+        get: operations["getTeamMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/outlets/{outlet_id}/sales-by-date": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Everything sold to an outlet on a date by any SR (the AMO's previous sale data; contract 1.11.0).
+         * @description Reach-checked: the outlet's route (else its zone) must be in the caller's reach, otherwise 403 `ERR_FORBIDDEN`.
+         *     Supervisor roles and SR (for outlets of the own routes). `business_date` defaults to today and must lie within the
+         *     last 90 days (else 400 `ERR_VALIDATION`). Lines are per SKU in the SKU's field unit (`report_unit`: pack for cigarettes,
+         *     bidi and lighters, dozen for matches; docs/34 s4.2) and in base units, from active sale memo lines only.
+         */
+        get: operations["getOutletSalesByDate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/supervisor/call-targets": {
         parameters: {
             query?: never;
@@ -1561,7 +1633,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Login and Sales Submit status with the lists behind each count (Bikroy Joma status). */
+        /**
+         * Login and Sales Submit status with the lists behind each count (Bikroy Joma status).
+         * @description Also open to the AMO (contract 1.11.0, D-AMO-MAN-11): the reach is the own zone, derived from the token, and the
+         *     response then carries `geo_valid_visits`, `photo_valid_visits`, `visits_total` and `sales_by_category`. The national
+         *     endpoints stay closed to the AMO.
+         */
         get: operations["getLoginSubmitStatus"];
         put?: never;
         post?: never;
@@ -7091,6 +7168,83 @@ export interface components {
             as_of: components["schemas"]["Timestamp"];
             items: components["schemas"]["TeamLocation"][];
         };
+        JourneyOutlet: {
+            id: components["schemas"]["Id"];
+            name: string;
+            code: string;
+            /** @description First three and last three digits only. */
+            phone_masked: string | null;
+            cluster: string | null;
+        };
+        JourneyCall: {
+            /** Format: uuid */
+            visit_uuid: string;
+            outlet: components["schemas"]["JourneyOutlet"];
+            /** @enum {string} */
+            status: "new_sale" | "edited_sale" | "no_sale";
+            opened_at: components["schemas"]["Timestamp"];
+            closed_at: components["schemas"]["Timestamp"] | null;
+            duration_s: number | null;
+            /** @description Metres, two decimals; null for the first call or when an outlet has no base point. */
+            distance_from_prev_m: number | null;
+            total_distance_m: number;
+            gap_to_next_s: number | null;
+        };
+        /** @description The Sales Journey of one SR on one route and day (contract 1.11.0). */
+        TeamJourney: {
+            user: {
+                user_id: components["schemas"]["Id"];
+                full_name: string;
+            };
+            route: {
+                route_id: components["schemas"]["Id"];
+                name: string;
+            };
+            business_date: components["schemas"]["BusinessDate"];
+            calls: components["schemas"]["JourneyCall"][];
+            total_distance_m: number;
+        };
+        TeamMemberRow: {
+            /** Format: int64 */
+            user_id: number | null;
+            full_name: string | null;
+            route_id: components["schemas"]["Id"];
+            route_name: string;
+            /** @description ISO weekdays the route is visited on (1 = Monday). */
+            route_days: number[];
+            /** @description In clear only for an AMO on routes of the own home zone (D-AMO-MAN-09); null otherwise. */
+            phone: string | null;
+            phone_masked: string | null;
+            total_outlets: number;
+            /** @description True when no SR is assigned to the route on the date. */
+            vacant: boolean;
+        };
+        TeamMemberList: {
+            as_of: components["schemas"]["Timestamp"];
+            business_date: components["schemas"]["BusinessDate"];
+            items: components["schemas"]["TeamMemberRow"][];
+        };
+        SalesByDateLine: {
+            sku: {
+                sku_id: components["schemas"]["Id"];
+                sku_code: string;
+                short_name: string | null;
+            };
+            qty_report: components["schemas"]["Decimal3"];
+            /** @enum {string} */
+            report_unit: "stick" | "piece" | "dozen" | "box" | "pack";
+            /** Format: int64 */
+            qty_base: number;
+            value_mtk: components["schemas"]["Mtk"];
+        };
+        SalesByDate: {
+            outlet_id: components["schemas"]["Id"];
+            business_date: components["schemas"]["BusinessDate"];
+            lines: components["schemas"]["SalesByDateLine"][];
+            /** Format: int64 */
+            total_qty_base: number;
+            total_value_mtk: components["schemas"]["Mtk"];
+        };
         CallTargetCard: {
             done: number;
             /** @description Null when the config key is not set (the card prints a dash). */
@@ -7937,6 +8091,14 @@ export interface components {
                 zone_id: components["schemas"]["Id"];
                 final_submitted: boolean;
             }[];
+            /** @description AMO callers only (contract 1.11.0): the zone's SR calls of the date inside the geo-fence. */
+            geo_valid_visits?: number;
+            /** @description AMO callers only: SR calls of the date with a verification photo. */
+            photo_valid_visits?: number;
+            /** @description AMO callers only: all SR calls of the date in the zone. */
+            visits_total?: number;
+            /** @description AMO callers only: the zone's sold volume of the date per category (the Live Dashboard columns). */
+            sales_by_category?: components["schemas"]["CategoryVolume"][];
         };
         SyncHealthRow: {
             user_id: components["schemas"]["Id"];
@@ -12852,6 +13014,90 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getTeamJourney: {
+        parameters: {
+            query: {
+                user_id: components["schemas"]["Id"];
+                route_id: components["schemas"]["Id"];
+                /** @description Business date (Asia/Dhaka); default today. */
+                business_date?: components["parameters"]["BusinessDateQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The journey. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamJourney"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getTeamMembers: {
+        parameters: {
+            query?: {
+                /** @description Business date (Asia/Dhaka); default today. */
+                business_date?: components["parameters"]["BusinessDateQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The team. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamMemberList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getOutletSalesByDate: {
+        parameters: {
+            query?: {
+                /** @description Business date (Asia/Dhaka); default today. */
+                business_date?: components["parameters"]["BusinessDateQuery"];
+            };
+            header?: never;
+            path: {
+                outlet_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The day's sales to the outlet. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesByDate"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     getCallTargets: {

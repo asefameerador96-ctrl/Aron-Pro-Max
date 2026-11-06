@@ -1,0 +1,55 @@
+TeamMemberRow:
+  type: object
+  required:
+  - user_id
+  - full_name
+  - route_id
+  - route_name
+  - route_days
+  - phone
+  - phone_masked
+  - total_outlets
+  - vacant
+  additionalProperties: false
+  properties:
+    user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    full_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    route_id:
+      $ref: '#/components/schemas/Id'
+    route_name:
+      type: string
+      maxLength: 120
+    route_days:
+      type: array
+      maxItems: 7
+      items:
+        type: integer
+        minimum: 1
+        maximum: 7
+      description: ISO weekdays the route is visited on (1 = Monday).
+    phone:
+      type:
+      - string
+      - 'null'
+      pattern: ^01[3-9][0-9]{8}$
+      description: In clear only for an AMO on routes of the own home zone (D-AMO-MAN-09); null otherwise.
+    phone_masked:
+      type:
+      - string
+      - 'null'
+      maxLength: 20
+    total_outlets:
+      type: integer
+      minimum: 0
+    vacant:
+      type: boolean
+      description: True when no SR is assigned to the route on the date.

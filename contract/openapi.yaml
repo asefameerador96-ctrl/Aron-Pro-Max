@@ -67,8 +67,10 @@ info:
       outside the geo-fence; only with `geo.action` force_sale), `section`, `section_bn`, `guidance_en` and `guidance_bn` on the rubric
       criterion (`RubricDef`, `RubricWrite`, so also `RubricAdmin`), `getCallTargets` (`GET /v1/supervisor/call-targets`),
       `TeamStockList` members that list every SR of the team with `route_names`, `total_outlets` and (the caller's own
-      team only, D-AMO-MAN-09) `phone`, and `OutletRequestVerificationPayload.route_id` and `cluster_id`. Members added to
-      responses the server already sends are optional.
+      team only, D-AMO-MAN-09) `phone`, and `OutletRequestVerificationPayload.route_id` and `cluster_id`; train F2 adds
+      `getTeamJourney`, `getTeamMembers`, `getOutletSalesByDate`, the AMO live counts on `LoginSubmitStatus`
+      (`geo_valid_visits`, `photo_valid_visits`, `visits_total`, `sales_by_category`) and the `sales-summary` report's
+      target columns. Members added to responses the server already sends are optional.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -1507,6 +1509,87 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /v1/team/journey:
+    get:
+      tags: [team]
+      operationId: getTeamJourney
+      summary: The Sales Journey of one SR on one route and day, call by call (contract 1.11.0, D-AMO-MAN-10, build contract 4.4).
+      description: |
+        AMO (own zone), TSO, DMO, WM and the national read roles, each inside the reach derived from the token; SR and the
+        other roles 403 `ERR_FORBIDDEN`, a route outside the reach 403. The calls are the SR's `sr_call` visits on the route
+        and Dhaka business date, ordered by `opened_at`. `status` is `edited_sale` when the visit's memo was superseded by an
+        edit (or is itself an edit), `new_sale` when it has an active sale memo and `no_sale` otherwise. `distance_from_prev_m`
+        is the haversine distance in metres (two decimals) between the previous call's outlet base point and this one's (null
+        for the first call or when an outlet has no base point), `total_distance_m` the running sum, `duration_s` is
+        `closed_at - opened_at` and `gap_to_next_s` is `next.opened_at - closed_at`. `phone_masked` never carries the full number.
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: route_id
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+        - $ref: '#/components/parameters/BusinessDateQuery'
+      responses:
+        '200':
+          description: The journey.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamJourney' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/team/members:
+    get:
+      tags: [team]
+      operationId: getTeamMembers
+      summary: The SR list of the reach, one row per route, with vacant routes (contract 1.11.0, D-AMO-MAN-09).
+      description: |
+        Supervisor roles (AMO, TSO, DMO, WM, national read roles); SR and the other roles 403. One row per active SR route in
+        the reach with the SR assigned on the date (the day's acting SR, else the primary assignment); a route with nobody is
+        `vacant` (`user_id`, `full_name` null). `phone` is in clear only for an AMO on routes of the own home zone, `null`
+        for every other reader; `phone_masked` is always the masked form. `route_days` are ISO weekdays (1 = Monday).
+      parameters:
+        - $ref: '#/components/parameters/BusinessDateQuery'
+      responses:
+        '200':
+          description: The team.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamMemberList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/outlets/{outlet_id}/sales-by-date:
+    get:
+      tags: [team]
+      operationId: getOutletSalesByDate
+      summary: Everything sold to an outlet on a date by any SR (the AMO's previous sale data; contract 1.11.0).
+      description: |
+        Reach-checked: the outlet's route (else its zone) must be in the caller's reach, otherwise 403 `ERR_FORBIDDEN`.
+        Supervisor roles only (SR and the other roles 403). `business_date` defaults to today and must lie within the
+        last 90 days (else 400 `ERR_VALIDATION`). Lines are per SKU in the SKU's field unit (`report_unit`: pack for cigarettes,
+        bidi and lighters, dozen for matches; docs/34 s4.2) and in base units, from active sale memo lines only.
+      parameters:
+        - name: outlet_id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+        - $ref: '#/components/parameters/BusinessDateQuery'
+      responses:
+        '200':
+          description: The day's sales to the outlet.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SalesByDate' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /v1/supervisor/call-targets:
     get:
       tags: [team]
@@ -2347,6 +2430,10 @@ paths:
       tags: [dashboards]
       operationId: getLoginSubmitStatus
       summary: Login and Sales Submit status with the lists behind each count (Bikroy Joma status).
+      description: |
+        Also open to the AMO (contract 1.11.0, D-AMO-MAN-11): the reach is the own zone, derived from the token, and the
+        response then carries `geo_valid_visits`, `photo_valid_visits`, `visits_total` and `sales_by_category`. The national
+        endpoints stay closed to the AMO.
       parameters:
         - $ref: '#/components/parameters/BusinessDateQueryRequired'
         - $ref: '#/components/parameters/GeoLevelQuery'
@@ -10742,6 +10829,112 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/TeamLocation' }
+    JourneyOutlet:
+      type: object
+      required: [id, name, code, phone_masked, cluster]
+      additionalProperties: false
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        name: { type: string, maxLength: 200 }
+        code: { type: string, maxLength: 40 }
+        phone_masked: { type: [string, 'null'], maxLength: 20, description: 'First three and last three digits only.' }
+        cluster: { type: [string, 'null'], maxLength: 120 }
+    JourneyCall:
+      type: object
+      required: [visit_uuid, outlet, status, opened_at, closed_at, duration_s, distance_from_prev_m, total_distance_m, gap_to_next_s]
+      additionalProperties: false
+      properties:
+        visit_uuid: { type: string, format: uuid }
+        outlet: { $ref: '#/components/schemas/JourneyOutlet' }
+        status: { type: string, enum: [new_sale, edited_sale, no_sale] }
+        opened_at: { $ref: '#/components/schemas/Timestamp' }
+        closed_at: { oneOf: [ { $ref: '#/components/schemas/Timestamp' }, { type: 'null' } ] }
+        duration_s: { type: [integer, 'null'], minimum: 0 }
+        distance_from_prev_m: { type: [number, 'null'], minimum: 0, description: 'Metres, two decimals; null for the first call or when an outlet has no base point.' }
+        total_distance_m: { type: number, minimum: 0 }
+        gap_to_next_s: { type: [integer, 'null'], minimum: 0 }
+    TeamJourney:
+      type: object
+      description: The Sales Journey of one SR on one route and day (contract 1.11.0).
+      required: [user, route, business_date, calls, total_distance_m]
+      additionalProperties: false
+      properties:
+        user:
+          type: object
+          required: [user_id, full_name]
+          additionalProperties: false
+          properties:
+            user_id: { $ref: '#/components/schemas/Id' }
+            full_name: { type: string, maxLength: 120 }
+        route:
+          type: object
+          required: [route_id, name]
+          additionalProperties: false
+          properties:
+            route_id: { $ref: '#/components/schemas/Id' }
+            name: { type: string, maxLength: 120 }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        calls:
+          type: array
+          items: { $ref: '#/components/schemas/JourneyCall' }
+        total_distance_m: { type: number, minimum: 0 }
+    TeamMemberRow:
+      type: object
+      required: [user_id, full_name, route_id, route_name, route_days, phone, phone_masked, total_outlets, vacant]
+      additionalProperties: false
+      properties:
+        user_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        full_name: { type: [string, 'null'], maxLength: 120 }
+        route_id: { $ref: '#/components/schemas/Id' }
+        route_name: { type: string, maxLength: 120 }
+        route_days:
+          type: array
+          maxItems: 7
+          items: { type: integer, minimum: 1, maximum: 7 }
+          description: 'ISO weekdays the route is visited on (1 = Monday).'
+        phone: { type: [string, 'null'], pattern: '^01[3-9][0-9]{8}$', description: 'In clear only for an AMO on routes of the own home zone (D-AMO-MAN-09); null otherwise.' }
+        phone_masked: { type: [string, 'null'], maxLength: 20 }
+        total_outlets: { type: integer, minimum: 0 }
+        vacant: { type: boolean, description: 'True when no SR is assigned to the route on the date.' }
+    TeamMemberList:
+      type: object
+      required: [as_of, business_date, items]
+      additionalProperties: false
+      properties:
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TeamMemberRow' }
+    SalesByDateLine:
+      type: object
+      required: [sku, qty_report, report_unit, qty_base, value_mtk]
+      additionalProperties: false
+      properties:
+        sku:
+          type: object
+          required: [sku_id, sku_code, short_name]
+          additionalProperties: false
+          properties:
+            sku_id: { $ref: '#/components/schemas/Id' }
+            sku_code: { type: string, maxLength: 40 }
+            short_name: { type: [string, 'null'], maxLength: 120 }
+        qty_report: { $ref: '#/components/schemas/Decimal3' }
+        report_unit: { type: string, enum: [stick, piece, dozen, box, pack] }
+        qty_base: { type: integer, format: int64, minimum: 0 }
+        value_mtk: { $ref: '#/components/schemas/Mtk' }
+    SalesByDate:
+      type: object
+      required: [outlet_id, business_date, lines, total_qty_base, total_value_mtk]
+      additionalProperties: false
+      properties:
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/SalesByDateLine' }
+        total_qty_base: { type: integer, format: int64, minimum: 0 }
+        total_value_mtk: { $ref: '#/components/schemas/Mtk' }
     CallTargetCard:
       type: object
       required: [done, target]
@@ -12837,6 +13030,13 @@ components:
             properties:
               zone_id: { $ref: '#/components/schemas/Id' }
               final_submitted: { type: boolean }
+        geo_valid_visits: { type: integer, minimum: 0, description: 'AMO callers only (contract 1.11.0): the zone''s SR calls of the date inside the geo-fence.' }
+        photo_valid_visits: { type: integer, minimum: 0, description: 'AMO callers only: SR calls of the date with a verification photo.' }
+        visits_total: { type: integer, minimum: 0, description: 'AMO callers only: all SR calls of the date in the zone.' }
+        sales_by_category:
+          type: array
+          description: 'AMO callers only: the zone''s sold volume of the date per category (the Live Dashboard columns).'
+          items: { $ref: '#/components/schemas/CategoryVolume' }
     SyncHealthRow:
       type: object
       required: [user_id, device_id, app_version, pending_rows_reported, rejected_count, quarantined_count, held_rows_alert]

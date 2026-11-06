@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.11.0.
 
 
-## Schemas (618)
+## Schemas (625)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -290,6 +290,13 @@ Source: contract/openapi.yaml, version 1.11.0.
 - `schemas/NotificationAccepted.yaml` (254 B)
 - `schemas/TeamLocation.yaml` (1270 B)
 - `schemas/TeamLocationList.yaml` (257 B)
+- `schemas/JourneyOutlet.yaml` (500 B)
+- `schemas/JourneyCall.yaml` (995 B)
+- `schemas/TeamJourney.yaml` (958 B)
+- `schemas/TeamMemberRow.yaml` (1119 B)
+- `schemas/TeamMemberList.yaml` (341 B)
+- `schemas/SalesByDateLine.yaml` (823 B)
+- `schemas/SalesByDate.yaml` (517 B)
 - `schemas/CallTargetCard.yaml` (307 B)
 - `schemas/CallTargets.yaml` (822 B)
 - `schemas/TeamStockList.yaml` (2241 B)
@@ -335,7 +342,7 @@ Source: contract/openapi.yaml, version 1.11.0.
 - `schemas/DashboardSummary.yaml` (1547 B)
 - `schemas/DailyTrackingRow.yaml` (2930 B)
 - `schemas/DailyTrackingPage.yaml` (1752 B)
-- `schemas/LoginSubmitStatus.yaml` (1155 B)
+- `schemas/LoginSubmitStatus.yaml` (1830 B)
 - `schemas/SyncHealthRow.yaml` (1475 B)
 - `schemas/SyncHealthPage.yaml` (3362 B)
 - `schemas/GeoValidationSummary.yaml` (2164 B)
@@ -624,7 +631,7 @@ Source: contract/openapi.yaml, version 1.11.0.
 - `schemas/DeviceCommandAck.yaml` (351 B)
 - `schemas/DeviceCommandAckResult.yaml` (238 B)
 
-## Operations (269)
+## Operations (272)
 
 - `operations/getHealth.yaml`  GET /v1/health (770 B)
 - `operations/headHealth.yaml`  HEAD /v1/health (483 B)
@@ -682,6 +689,9 @@ Source: contract/openapi.yaml, version 1.11.0.
 - `operations/markMyNotificationsRead.yaml`  POST /v1/me/notifications/read (1005 B)
 - `operations/getTeamLocations.yaml`  GET /v1/team/locations (593 B)
 - `operations/getTeamStock.yaml`  GET /v1/team/stock (607 B)
+- `operations/getTeamJourney.yaml`  GET /v1/team/journey (1795 B)
+- `operations/getTeamMembers.yaml`  GET /v1/team/members (1127 B)
+- `operations/getOutletSalesByDate.yaml`  GET /v1/outlets/{outlet_id}/sales-by-date (1317 B)
 - `operations/getCallTargets.yaml`  GET /v1/supervisor/call-targets (1462 B)
 - `operations/listLeave.yaml`  GET /v1/leave (736 B)
 - `operations/applyLeave.yaml`  POST /v1/leave (1669 B)
@@ -709,7 +719,7 @@ Source: contract/openapi.yaml, version 1.11.0.
 - `operations/getNationalFilterOptions.yaml`  GET /v1/dashboards/national/filter-options (864 B)
 - `operations/getNationalFreshness.yaml`  GET /v1/dashboards/national/freshness (779 B)
 - `operations/getDailyTracking.yaml`  GET /v1/dashboards/daily-tracking (854 B)
-- `operations/getLoginSubmitStatus.yaml`  GET /v1/dashboards/login-submit (715 B)
+- `operations/getLoginSubmitStatus.yaml`  GET /v1/dashboards/login-submit (1020 B)
 - `operations/getSyncHealth.yaml`  GET /v1/dashboards/sync-health (894 B)
 - `operations/getFlaggedMemos.yaml`  GET /v1/dashboards/flagged-memos (2679 B)
 - `operations/getGeoValidation.yaml`  GET /v1/dashboards/geo-validation (726 B)

@@ -1,0 +1,55 @@
+path: /v1/team/journey
+method: get
+operation:
+  tags:
+  - team
+  operationId: getTeamJourney
+  summary: The Sales Journey of one SR on one route and day, call by call (contract 1.11.0, D-AMO-MAN-10, build
+    contract 4.4).
+  description: 'AMO (own zone), TSO, DMO, WM and the national read roles, each inside the reach derived from the
+    token; SR and the
+
+    other roles 403 `ERR_FORBIDDEN`, a route outside the reach 403. The calls are the SR''s `sr_call` visits on
+    the route
+
+    and Dhaka business date, ordered by `opened_at`. `status` is `edited_sale` when the visit''s memo was superseded
+    by an
+
+    edit (or is itself an edit), `new_sale` when it has an active sale memo and `no_sale` otherwise. `distance_from_prev_m`
+
+    is the haversine distance in metres (two decimals) between the previous call''s outlet base point and this one''s
+    (null
+
+    for the first call or when an outlet has no base point), `total_distance_m` the running sum, `duration_s` is
+
+    `closed_at - opened_at` and `gap_to_next_s` is `next.opened_at - closed_at`. `phone_masked` never carries the
+    full number.
+
+    '
+  parameters:
+  - name: user_id
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+  - name: route_id
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+  - $ref: '#/components/parameters/BusinessDateQuery'
+  responses:
+    '200':
+      description: The journey.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TeamJourney'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

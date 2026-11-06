@@ -51,7 +51,7 @@ data class TeamMemberRow(
 @Serializable data class TeamMemberList(val as_of: String, val business_date: String, val items: List<TeamMemberRow>)
 
 @Serializable data class SalesSku(val sku_id: Long, val sku_code: String, val short_name: String?)
-@Serializable data class SalesByDateLine(val sku: SalesSku, val qty_report: Double, val report_unit: String, val qty_base: Long, val value_mtk: Long)
+@Serializable data class SalesByDateLine(val sku: SalesSku, val qty_report: String, val report_unit: String, val qty_base: Long, val value_mtk: Long)
 @Serializable data class SalesByDate(val outlet_id: Long, val business_date: String, val lines: List<SalesByDateLine>, val total_qty_base: Long, val total_value_mtk: Long)
 
 /** The AMO manual build's team reads (F2): Sales Journey, the SR list with vacant routes and the previous sale data of an outlet. */
@@ -64,7 +64,7 @@ class AmoTeamReads(private val db: Database, private val clock: AronClock = Aron
 
     fun journey(reach: Reach, userId: Long, routeId: Long, date: LocalDate): TeamJourney = db.readJdbi.withHandle<TeamJourney, Exception> { h ->
         val route = h.createQuery("SELECT name, zone_id FROM app.route WHERE id = :r").bind("r", routeId).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.findOne().orElse(null)
-        if (route == null || !reach.coversZone(route.second)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "route is outside your reach")
+        if (route == null || !reach.coversRoute(routeId, route.second)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "route is outside your reach")
         val user = h.createQuery("SELECT full_name FROM app.app_user WHERE id = :u AND role = 'SR'").bind("u", userId).mapTo(String::class.java).findOne().orElse(null)
             ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such SR")
         class V(val uuid: String, val outlet: JourneyOutlet, val lat: Double?, val lng: Double?, val opened: java.time.Instant, val closed: java.time.Instant?, val status: String)
@@ -137,7 +137,8 @@ class AmoTeamReads(private val db: Database, private val clock: AronClock = Aron
                 ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "outlet not found")
             // The outlet's route must be in the caller's reach (route's zone, else the outlet's own zone).
             val routeZone = o.second?.let { r -> h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", r).mapTo(Long::class.java).findOne().orElse(null) } ?: o.first
-            if (!reach.coversZone(routeZone) && !(o.second != null && o.second in reach.routeIds)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "the outlet is outside your reach")
+            val inReach = if (o.second != null) reach.coversRoute(o.second!!, routeZone) else reach.coversZone(routeZone)
+            if (!inReach) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "the outlet is outside your reach")
             val lines = h.createQuery(
                 """
                 SELECT s.id, s.code, s.short_name, s.base_unit, s.base_per_pack, s.entry_unit_default, sum(l.qty_base)::bigint AS qty, sum(l.gross_mtk)::bigint AS val
@@ -151,7 +152,7 @@ class AmoTeamReads(private val db: Database, private val clock: AronClock = Aron
                 val per = rs.getInt("base_per_pack").coerceAtLeast(1)
                 SalesByDateLine(
                     SalesSku(rs.getLong("id"), rs.getString("code"), rs.getString("short_name")),
-                    if (pack) Math.round(qty.toDouble() / per * 100.0) / 100.0 else qty.toDouble(), if (pack) "pack" else rs.getString("base_unit"), qty, rs.getLong("val"),
+                    java.math.BigDecimal(qty).divide(java.math.BigDecimal(if (pack) per else 1), 3, java.math.RoundingMode.HALF_UP).toPlainString(), if (pack) "pack" else rs.getString("base_unit"), qty, rs.getLong("val"),
                 )
             }.list()
             SalesByDate(outletId, date.toString(), lines, lines.sumOf { it.qty_base }, lines.sumOf { it.value_mtk })
@@ -159,7 +160,8 @@ class AmoTeamReads(private val db: Database, private val clock: AronClock = Aron
     }
 }
 
-private val READERS = Role.entries.toSet() - Role.SR - Role.SUPPORT
+/** Supervisors and the national read roles; SR, SUPPORT and BRAND (a brand user sees no people or outlets, docs/34 s1) are refused. */
+private val READERS = Role.entries.toSet() - Role.SR - Role.SUPPORT - Role.BRAND
 
 private fun ApplicationCall.longParam(name: String): Long = request.queryParameters[name]?.toLongOrNull()?.takeIf { it >= 1 }
     ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "$name is required", errors = listOf(FieldError("query.$name", "required")))
@@ -185,7 +187,7 @@ fun Route.amoTeamRoutes(d: AppTeamDeps, reads: AmoTeamReads) {
         }
         get("/outlets/{outlet_id}/sales-by-date") {
             val p = call.principal
-            if (p.role !in READERS + Role.SR) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "not available to this role")
+            if (p.role !in READERS) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "the previous sale data is for supervisors")
             val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
             val id = call.parameters["outlet_id"]?.toLongOrNull()?.takeIf { it >= 1 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad outlet_id", errors = listOf(FieldError("path.outlet_id", "invalid_value")))
             call.respond(reads.salesByDate(d.reach.reach(p.userId, p.role, p.scopeVersion, today), id, call.dateOrToday(today), today))

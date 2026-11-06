@@ -45,3 +45,20 @@ LoginSubmitStatus:
             $ref: '#/components/schemas/Id'
           final_submitted:
             type: boolean
+    geo_valid_visits:
+      type: integer
+      minimum: 0
+      description: 'AMO callers only (contract 1.11.0): the zone''s SR calls of the date inside the geo-fence.'
+    photo_valid_visits:
+      type: integer
+      minimum: 0
+      description: 'AMO callers only: SR calls of the date with a verification photo.'
+    visits_total:
+      type: integer
+      minimum: 0
+      description: 'AMO callers only: all SR calls of the date in the zone.'
+    sales_by_category:
+      type: array
+      description: 'AMO callers only: the zone''s sold volume of the date per category (the Live Dashboard columns).'
+      items:
+        $ref: '#/components/schemas/CategoryVolume'

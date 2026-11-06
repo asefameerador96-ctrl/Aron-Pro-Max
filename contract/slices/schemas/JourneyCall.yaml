@@ -1,0 +1,50 @@
+JourneyCall:
+  type: object
+  required:
+  - visit_uuid
+  - outlet
+  - status
+  - opened_at
+  - closed_at
+  - duration_s
+  - distance_from_prev_m
+  - total_distance_m
+  - gap_to_next_s
+  additionalProperties: false
+  properties:
+    visit_uuid:
+      type: string
+      format: uuid
+    outlet:
+      $ref: '#/components/schemas/JourneyOutlet'
+    status:
+      type: string
+      enum:
+      - new_sale
+      - edited_sale
+      - no_sale
+    opened_at:
+      $ref: '#/components/schemas/Timestamp'
+    closed_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    duration_s:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    distance_from_prev_m:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      description: Metres, two decimals; null for the first call or when an outlet has no base point.
+    total_distance_m:
+      type: number
+      minimum: 0
+    gap_to_next_s:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
