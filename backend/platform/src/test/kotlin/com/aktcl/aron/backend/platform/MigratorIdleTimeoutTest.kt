@@ -14,8 +14,9 @@ import kotlin.test.assertTrue
  * D-OPS-MIGRATE-IDLE-TIMEOUT-01: Flyway keeps a second connection idle inside a transaction while a migration runs, so a
  * server idle_in_transaction_session_timeout shorter than the migration kills it and the migration fails on Flyway's next
  * write (deploys #308, #309 and #311 on dev, where the timeout is 30 s). The migrate role exempts its own sessions through
- * [Migrator.ExemptIdleInTransaction] (Flyway's afterConnect callback, which replaced the deprecated initSql). Here the timeout is 2 s and the migration sleeps 5 s, as a connection option so no server privilege
- * is needed; the same migration passes with the exemption and fails without it.
+ * [Migrator.ExemptIdleInTransaction] (Flyway's afterConnect callback, which replaced the deprecated initSql). Here the
+ * timeout is 2 s and the migration sleeps 5 s, as a connection option so no server privilege is needed; the same
+ * migration passes with the exemption and fails without it.
  */
 class MigratorIdleTimeoutTest {
     private fun shortTimeoutDataSource(): HikariDataSource {

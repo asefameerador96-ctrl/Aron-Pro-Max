@@ -89,7 +89,10 @@ print(f"\nAverage {sum(by_day.values()) / days:.2f} per day over {days} day(s)")
 PY
   exit 0
 fi
-summary "- Consumption usage details gave no figure: $(tr '\n' ' ' < "$tmp/u.err" | cut -c1-300)${tmp:+ (an empty answer counts as no figure)}"
+empty_note=""
+# The call itself succeeded but its answer held no rows: say so (the error text is then empty).
+[ -s "$tmp/u.json" ] && [ ! -s "$tmp/u.err" ] && empty_note=" (the answer was empty: no usage rows)"
+summary "- Consumption usage details gave no figure: $(tr '\n' ' ' < "$tmp/u.err" | cut -c1-300)${empty_note}"
 summary ""
 if is_throttled "$tmp/q.err"; then
   summary "**Cost Management kept throttling (429) for about 6 minutes; run cost-report again later.**"

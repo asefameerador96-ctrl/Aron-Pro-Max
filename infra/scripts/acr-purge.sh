@@ -54,6 +54,8 @@ for repo in aron-backend aron-web; do
       # deploy.sh locks every pushed tag (--write-enabled false --delete-enabled true), and a write-locked manifest
       # refuses the delete with "operation is disallowed" (purge run 42144981907, 2026-11-06). Unlock each tag of THIS
       # candidate first; candidates never include an image in use (checked above), so no running image is unlocked.
+      # If the delete then fails (or a later tag's unlock does), the already unlocked tags stay unlocked: harmless, they
+      # belong to an old purge candidate and the run stops with an error.
       for t in ${tags//,/ }; do
         az acr repository update -n "$registry" --image "${repo}:${t}" --write-enabled true -o none \
           || die "could not unlock ${repo}:${t}"
