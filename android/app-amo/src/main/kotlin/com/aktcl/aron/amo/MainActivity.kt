@@ -128,7 +128,8 @@ class MainActivity : ComponentActivity() {
                         ) { onEnrol ->
                             // The bind step (OTP from /device-otp) follows the first login of an enrolled phone.
                             val vm = viewModel { LoginViewModel(components.session::login).also { it.bind = components.session::bindDevice } }
-                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol)
+                            // R1: the footer reads "ARON AMO v<version>", never the vendor credit
+                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol, footerText = stringResource(R.string.app_name) + " v" + BuildConfig.VERSION_NAME)
                         }
                         is SessionState.Active -> AronTheme(language, sunlight = sunlight, amo = true) { // D-AMO-MAN-03: the AMO look on every signed-in screen
                             // F-SYS-022: AMO keeps its data; it keeps uploading.
@@ -222,11 +223,14 @@ class MainActivity : ComponentActivity() {
                                         // D-NIGHT-CHECKOUT-01: the local Sales Submit is read on every visit (also back from Sales Submit)
                                         LaunchedEffect(d) { d.attendance.refreshSubmit() }
                                         val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
+                                        // screenshots 14 to 16: the user card "<name> (<username>)" over "<zone> AMO, <date>"
+                                        val attendanceHeader = com.aktcl.aron.feature.amo.AmoHomeHeader.of(HomeUser(s.user.fullName, s.user.username, s.user.role, false, false, false), home.businessDate, reach.zoneName)
                                         com.aktcl.aron.feature.amo.AmoAttendance(
                                             attendance, d.checkoutAtLabel(), onCheckIn = { dayScope.launch { d.attendance.checkIn() } },
                                             onCheckOut = { dayScope.launch { d.attendance.checkOut() } }, onBack = back,
                                             onOpenSalesSubmit = { navigate(AmoScreen.SALES_SUBMIT) },
                                             offline = !d.online(),
+                                            userTitle = attendanceHeader.title, userSubtitle = attendanceHeader.subtitle,
                                         )
                                     },
                                 )

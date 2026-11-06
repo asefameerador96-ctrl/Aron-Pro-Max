@@ -187,6 +187,8 @@ jobs:
         run: python3 tools/ci/test_gates.py
       - name: TSO APK owner-name copy self-test (D-TSO-MAN-42)
         run: python3 tools/ci/test_tso_apk_copy.py
+      - name: AMO APK owner-name copy self-test (D-AMO-MAN-16)
+        run: python3 tools/ci/test_amo_apk_copy.py
       - name: Done rows have tests (AUD-TP-8, warning)
         run: |
           python3 tools/ci/test_done_rows.py
@@ -615,6 +617,8 @@ jobs:
           APKSIGNER="${signer}" python3 tools/ci/release-manifest.py signed "${ARON_VERSION_NAME}" "${ARON_VERSION_CODE}" "${GITHUB_SHA}"
           # tso-manual (D-TSO-MAN-42, screenshot 1): the owner-named TSO copy and SHA256SUMS, after the manifest (it accepts only aron-<app>-<version>-dev.apk)
           tools/ci/tso-apk-copy.sh signed "${ARON_VERSION_NAME}" "${ARON_VERSION_CODE}"
+          # amo-shell A1 (D-AMO-MAN-16): the same for the AMO app
+          tools/ci/amo-apk-copy.sh signed "${ARON_VERSION_NAME}" "${ARON_VERSION_CODE}"
           (cd signed && cat SHA256SUMS)
           echo "signed=true" >> "${GITHUB_OUTPUT}"
       - name: Upload the release-signed dev APKs

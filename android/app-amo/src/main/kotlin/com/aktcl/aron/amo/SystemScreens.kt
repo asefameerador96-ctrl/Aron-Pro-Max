@@ -22,6 +22,12 @@ fun SupportHost(shell: SystemShell, userId: Long, versionName: String) {
         val s = shell.support(userId, versionName)
         support = s; status = s.status(); lastSync = s.lastSyncText()
     }
+    // screenshot 76: after the file is sent the vendor shows "সফল / সিঙ্ক ফাইল পাঠানো হয়ে গেছে" with ওকে; Settings stays behind it
+    var sentDialog by remember { mutableStateOf(false) }
+    if (sentDialog) com.aktcl.aron.core.ui.AronInfoDialog(
+        androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_support_title), androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_support_sent),
+        androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_ok), onDismiss = { sentDialog = false },
+    )
     SupportContent(
         status = status, appVersion = versionName, lastSyncText = lastSync,
         onSend = {
@@ -32,6 +38,7 @@ fun SupportHost(shell: SystemShell, userId: Long, versionName: String) {
                 status = try { s.send() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {
                     SupportStatus.Failed(com.aktcl.aron.core.system.support.SupportFailure.BUILD_FAILED)
                 }
+                if (status is SupportStatus.Sent) sentDialog = true
                 lastSync = runCatching { s.lastSyncText() }.getOrNull()
             }
         },

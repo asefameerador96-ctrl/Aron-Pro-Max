@@ -174,8 +174,13 @@ class AmoAppTest {
         compose.waitForIdle()
         compose.onNodeWithTag(RoleHomeTags.SET_VERSION).assertExists()
         compose.onNodeWithText("Version 0.1.0 (1)").assertExists()
+        // screenshot 75: the language tile opens the drop-down with "en" and "বাংলা"
+        compose.onNodeWithTag(AmoHomeTags.LANGUAGE).assertExists().performClick()
+        compose.waitForIdle()
         compose.onNodeWithTag(RoleHomeTags.SET_LANG_BN).assertExists()
         compose.onNodeWithTag(RoleHomeTags.SET_LANG_EN).assertExists()
+        compose.onNodeWithTag(RoleHomeTags.SET_LANG_EN).performClick()
+        compose.waitForIdle()
         compose.onNodeWithTag(RoleHomeTags.SET_SUNLIGHT).assertExists()
         compose.onNodeWithTag(HomeTags.LOGOUT).performScrollTo().performClick()
         compose.waitForIdle()
