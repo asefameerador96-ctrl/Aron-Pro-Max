@@ -294,4 +294,45 @@ class AmoRecordWriterReplayTest {
     private fun counterDump(): String = db.openHelper.readableDatabase.query("SELECT * FROM memo_counter").use { c ->
         buildList { while (c.moveToNext()) add((0 until c.columnCount).joinToString(",") { c.getString(it) ?: "" }) }.joinToString(";")
     }
+
+    // ---------- force sale reason (D-AMO-MAN-08, screenshot 23) ----------
+    private fun forceSaleVisit(reason: String): String = runBlocking {
+        val u = ClientIds.newUuid(); val photo = ClientIds.newUuid(); val f = com.aktcl.aron.core.database.entity.GeoFixEntity(
+            ClientIds.newUuid(), u, "visit_open", "ok", 23.80, 90.50, 8.0, provider = "fused", fixTime = "2026-10-17T04:00:00.000Z", fixElapsedRealtimeMs = 900, fixAgeMs = 10,
+            timeToFixMs = 1000, requestPriority = "balanced", isMock = false, reused = false, refreshCount = 1, deviceOwner = true, devOptionsEnabled = false, adbEnabled = false,
+            autoTimeEnabled = true, mockAppPresent = false,
+        )
+        capture.recordVisitOpen(
+            VisitEntity(
+                clientUuid = u, meta = metaProvider.meta(route), visitKind = "amo_control_call", outletId = 50002, openedAt = "2026-10-17T04:00:00.000Z", sequenceNo = 1, planned = true,
+                fixClientUuid = f.clientUuid, geoVerdict = "out_of_range", geoDistanceM = 900.0, geoRadiusMUsed = 100, geoMaxAccuracyMUsed = 50, geoLocationBasis = "master",
+                geoOutletLat = 23.79, geoOutletLng = 90.40, geoAction = "force_sale", geoForceReasonCode = reason, geoForcePhotoUuid = photo,
+            ),
+            f,
+        )
+        u
+    }
+
+    @Test fun theForceSaleReasonIsOnTheVisitSurvivesRelaunchAndAReplayedOpenAddsNoSecondVisit() = runBlocking {
+        for (reason in listOf("internet_problem", "location_change")) {
+            val v = forceSaleVisit(reason)
+            val rows = payloads("visit").filter { it.contains(v) }
+            assertEquals(1, rows.size)
+            assertEquals(true, rows[0].contains("\"force_reason_code\":\"$reason\"")) // the visit record carries the chosen reason with geo.action force_sale
+            assertEquals(true, rows[0].contains("\"action\":\"force_sale\""))
+            relaunch()
+            assertEquals(rows, payloads("visit").filter { it.contains(v) }) // byte-identical after the kill
+            // the same visit uuid committed again (a retried commit after a kill) is refused and queues no second visit
+            runCatching {
+                capture.recordVisitOpen(
+                    VisitEntity(
+                        clientUuid = v, meta = metaProvider.meta(route), visitKind = "amo_control_call", outletId = 50002, openedAt = "2026-10-17T04:00:00.000Z", sequenceNo = 1, planned = true,
+                        fixClientUuid = ClientIds.newUuid(), geoVerdict = "out_of_range", geoDistanceM = 900.0, geoRadiusMUsed = 100, geoMaxAccuracyMUsed = 50, geoLocationBasis = "master", geoOutletLat = 23.79, geoOutletLng = 90.40, geoAction = "force_sale", geoForceReasonCode = reason,
+                    ),
+                    com.aktcl.aron.core.database.entity.GeoFixEntity(ClientIds.newUuid(), v, "visit_open", "ok", 23.8, 90.5, 8.0, provider = "fused", fixTime = "2026-10-17T04:00:00.000Z", fixElapsedRealtimeMs = 900, fixAgeMs = 10, timeToFixMs = 1000, requestPriority = "balanced", isMock = false, reused = false, refreshCount = 0, deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false),
+                )
+            }
+            assertEquals(rows, payloads("visit").filter { it.contains(v) })
+        }
+    }
 }

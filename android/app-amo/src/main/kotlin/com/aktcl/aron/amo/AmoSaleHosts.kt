@@ -83,8 +83,13 @@ fun AmoSaleHost(
         false -> {
             val vm = viewModel(key = "sale-" + v.visitUuid) { kit.newSaleViewModel() }
             LaunchedEffect(v.visitUuid) { kit.prepare(); vm.start(kit.saleVisit(v)) }
-            Column(Modifier.fillMaxSize()) {
-                SaleRoute(vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f), onFinished = { onDone() })
+            var history by rememberSaveable(v.visitUuid) { mutableStateOf(false) }
+            BackHandler(enabled = history) { history = false }
+            if (history) PreviousSalesHost(day, v.outletId) else Column(Modifier.fillMaxSize()) {
+                SaleRoute(
+                    vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f), onFinished = { onDone() },
+                    onPreviousSales = { history = true }, historyLabel = stringResource(AmoR.string.amo_ps_title),
+                )
             }
         }
     }
@@ -109,7 +114,7 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
         val h = history
         when {
             h != null -> SaleHistoryScreen(h, offlineBanner = true, skuName = kit::skuName, skuCategory = kit::skuCategoryCode)
-            sel == null -> MemoMenuScreen(st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
+            sel == null -> MemoFindStep(day, st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
             else -> {
                 // an edit is a new memo on the memo's route: on a route closed by Final Submit it is disabled with the lock text;
                 // checked again on every applied push pull and lock refresh (fix round), not only when Mark Paid's own check changes;
@@ -271,4 +276,62 @@ fun AmoStockHost(day: AmoDay) {
     )
     }
     refused?.let { AmoRefusalDialog(day, it, onOk = { refused = null }) }
+}
+
+/** Previous sale data (screenshots 24, 26): the date steps from today back 90 days; the lines are read when the date changes. */
+@Composable
+fun PreviousSalesHost(day: AmoDay, outletId: Long) {
+    val today = remember { day.businessDate() }
+    var date by rememberSaveable { mutableStateOf(today) }
+    var history by remember { mutableStateOf<com.aktcl.aron.feature.amo.SaleHistory?>(null) }
+    var label by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(outletId) { label = runCatching { day.callHeader().first }.getOrNull() }
+    LaunchedEffect(outletId, date) { history = null; history = day.saleHistory(outletId, date) }
+    com.aktcl.aron.feature.amo.PreviousSalesContent(date, today, history, onShift = { date = com.aktcl.aron.feature.amo.PreviousSales.shift(date, it, today) }, outletLabel = label)
+}
+
+/**
+ * Memo find (screenshots 42-43): route, then retailer (the outlet's outstanding due beside "বাকি"), then the Memo tile opens that retailer's
+ * memos of today (reprint, edit, mark paid on the detail). Local reads only; nothing here waits on the network.
+ */
+@Composable
+private fun MemoFindStep(day: AmoDay, rows: List<com.aktcl.aron.feature.memo.domain.MemoMenuRow>, outletName: (Long) -> String, onOpen: (com.aktcl.aron.feature.memo.domain.MemoMenuRow) -> Unit) {
+    var routeId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var outletId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var chip by rememberSaveable { mutableStateOf(com.aktcl.aron.feature.outlet.OutletPicker.ALL_CHIP) }
+    var panel by rememberSaveable { mutableStateOf(0) } // 0 none, 1 routes, 2 outlets
+    var shown by rememberSaveable { mutableStateOf(false) }
+    var days by remember { mutableStateOf<List<com.aktcl.aron.core.database.repo.RouteDay>?>(null) }
+    var dues by remember { mutableStateOf<Map<Long, List<Pair<String, Long>>>>(emptyMap()) }
+    LaunchedEffect(day) {
+        days = runCatching { day.routes() }.getOrDefault(emptyList())
+        val today = day.businessDate()
+        dues = runCatching { com.aktcl.aron.feature.memo.ui.RoomMemoStore(day.database).memos(today) }.getOrDefault(emptyList()).let { all ->
+            val superseded = all.mapNotNull { it.supersedesUuid }.toSet()
+            all.filter { it.memoUuid !in superseded }.groupBy({ it.outletId }, { it.businessDate to it.dueMtk })
+        }
+    }
+    BackHandler(enabled = shown || panel != 0) { if (panel != 0) panel = 0 else shown = false }
+    val list = days ?: return
+    val routes = com.aktcl.aron.feature.amo.ControlCall.routes(list)
+    val outlets = com.aktcl.aron.feature.amo.ControlCall.outlets(list, routeId ?: -1L)
+    val pick = com.aktcl.aron.feature.amo.CallPick.rows(outlets, emptySet(), chip)
+    val outlet = outlets.firstOrNull { it.outletId == outletId }
+    if (shown && outlet != null) {
+        com.aktcl.aron.feature.memo.ui.MemoMenuScreen(rows.filter { it.outletId == outlet.outletId }, outletName, onOpen)
+        return
+    }
+    if (panel == 1) { com.aktcl.aron.feature.amo.AmoRoutePanel(routes, routeId, { routeId = it.routeId; outletId = null; chip = com.aktcl.aron.feature.outlet.OutletPicker.ALL_CHIP; panel = 0 }); return }
+    if (panel == 2) { com.aktcl.aron.feature.amo.AmoOutletPanel(pick, outletId, { outletId = it.outlet.outletId; panel = 0 }); return }
+    val label = outlet?.let { o ->
+        val due = com.aktcl.aron.feature.amo.MemoFind.outstandingMtk(o.openDueMtk, o.openDueAsOf, dues[o.outletId].orEmpty())
+        com.aktcl.aron.feature.outlet.OutletPicker.label(o) + if (due > 0) "  " + stringResource(AmoR.string.amo_mf_due, com.aktcl.aron.feature.sale.ui.money(due)) else ""
+    }
+    com.aktcl.aron.feature.amo.AmoCallPickContent(
+        routeText = routes.firstOrNull { it.routeId == routeId }?.shortTitle, outletText = label, outletHasBase = false,
+        letters = com.aktcl.aron.feature.amo.CallPick.letters(outlets), chip = chip, live = false,
+        range = if (outlet != null) com.aktcl.aron.feature.amo.CallRange.In else com.aktcl.aron.feature.amo.CallRange.Idle, enabledOutlet = routeId != null, locked = false,
+        onOpenRoute = { panel = 1 }, onOpenOutlet = { panel = 2 }, onChip = { chip = it }, onOverride = {}, onRefresh = {},
+        below = { com.aktcl.aron.feature.amo.AmoMenuTiles(listOf(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_memo, com.aktcl.aron.feature.home.R.string.hm_tile_memo, "amo_mf_tile") { shown = true })) },
+    )
 }

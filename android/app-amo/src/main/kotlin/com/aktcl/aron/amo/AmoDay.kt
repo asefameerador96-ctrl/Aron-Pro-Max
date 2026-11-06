@@ -539,6 +539,22 @@ class AmoDay(
     /** Outlets with a call (any AMO visit kind) opened on today's business date: the brown badge of the retailer list. Local read. */
     suspend fun calledTodayOutletIds(): Set<Long> = db.captureDao().visitsOn(businessDate()).map { it.outletId }.toSet()
 
+    /**
+     * Previous sale data (24, 26): every sale to the outlet on [date], any SR, from the server (a kept copy while offline); with neither
+     * (offline and never read, or the server refuses) this AMO's own live memos from this phone. The sale itself never waits on this.
+     */
+    suspend fun saleHistory(outletId: Long, date: String): com.aktcl.aron.feature.amo.SaleHistory {
+        val fetch = runCatching { api.salesByDate(outletId, date) }.getOrDefault(AmoFetch.Unavailable)
+        when (fetch) {
+            is AmoFetch.Fresh -> com.aktcl.aron.feature.amo.PreviousSales.parseServer(fetch.json, date)?.let { return it }
+            is AmoFetch.Cached -> com.aktcl.aron.feature.amo.PreviousSales.parseServer(fetch.json, date, com.aktcl.aron.feature.amo.SaleHistorySource.KEPT_COPY)?.let { return it }
+            else -> Unit
+        }
+        val memos = runCatching { com.aktcl.aron.feature.memo.ui.RoomMemoStore(db).memos(date) }.getOrDefault(emptyList()).filter { it.outletId == outletId }
+            .map { m -> com.aktcl.aron.feature.amo.LocalMemo(m.memoUuid, m.supersedesUuid, m.lines.map { com.aktcl.aron.feature.amo.PreviousSales.LocalMemoLine(it.skuId, it.qtyBase, it.grossMtk) }) }
+        return com.aktcl.aron.feature.amo.PreviousSales.fromLocal(date, memos, runCatching { skuInfo() }.getOrDefault(emptyMap()))
+    }
+
     /** The open call's retailer ("name (code-phone-cluster)") and route name for the assessment header cards. */
     suspend fun callHeader(): Pair<String?, String?> {
         val v = visitSession.current.value ?: return null to null

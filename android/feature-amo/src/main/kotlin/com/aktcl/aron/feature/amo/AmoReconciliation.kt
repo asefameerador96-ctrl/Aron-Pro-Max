@@ -27,8 +27,12 @@ object AmoReconciliation {
      * The groups of record types the Sales Submit table shows as ONE row each (display only, `SubmitDisplay`): the admin's AMO rows
      * (`cfg.sync.reconcile_types`) in their order, or [DEFAULT_ROWS]. The same rows [types] flattens, so the table and the counts agree.
      */
-    fun rowGroups(configJson: String?): List<List<String>> =
+    fun rowGroups(configJson: String?, priceCompliance: Boolean = true): List<List<String>> =
         ReconciliationRepository.rowTypes(configJson, "AMO").ifEmpty { DEFAULT_ROWS }.map { it.second }
+            // screenshot 65: "মূল্য সম্মতি" shows only while `cfg.amo.price_compliance_tile` is on (R12); the gate still counts its type
+            .filterNot { !priceCompliance && it.all { t -> t == PRICE_TYPE } }
+
+    const val PRICE_TYPE = "price_compliance_check"
 
     fun deviceCounts(types: List<String>, device: Map<String, Int>): Map<String, Int> = types.associateWith { 0 } + device
 

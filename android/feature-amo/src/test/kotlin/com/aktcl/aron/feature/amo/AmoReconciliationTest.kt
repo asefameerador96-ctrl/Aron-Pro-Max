@@ -44,3 +44,13 @@ class AmoReconciliationTest {
         assertEquals(AmoReconciliation.types(cfg), AmoReconciliation.rowGroups(cfg).flatten())
     }
 }
+
+class AmoReconciliationPriceRowTest {
+    @org.junit.Test fun priceComplianceRowIsShownOnlyWithTheFlagAndTheGateStillCountsItsType() {
+        val on = AmoReconciliation.rowGroups(null, priceCompliance = true)
+        val off = AmoReconciliation.rowGroups(null, priceCompliance = false)
+        org.junit.Assert.assertEquals(9, on.size); org.junit.Assert.assertEquals(8, off.size) // screenshot 65: nine rows, eight without Price compliance
+        org.junit.Assert.assertTrue(listOf("price_compliance_check") in on); org.junit.Assert.assertFalse(listOf("price_compliance_check") in off)
+        org.junit.Assert.assertTrue("price_compliance_check" in AmoReconciliation.types(null)) // display only: reconciliation counts do not change
+    }
+}

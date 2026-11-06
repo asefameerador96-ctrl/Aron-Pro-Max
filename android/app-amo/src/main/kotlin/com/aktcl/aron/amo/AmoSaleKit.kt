@@ -282,7 +282,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
     private suspend fun reconcileTypes(): List<String> = com.aktcl.aron.feature.amo.AmoReconciliation.types(reconcileConfig())
 
     /** The Sales Submit table's row groups (display only), from the same configuration as [reconcileTypes]. */
-    suspend fun submitRowGroups(): List<List<String>> = com.aktcl.aron.feature.amo.AmoReconciliation.rowGroups(reconcileConfig())
+    suspend fun submitRowGroups(): List<List<String>> = com.aktcl.aron.feature.amo.AmoReconciliation.rowGroups(reconcileConfig(), runCatching { day.priceComplianceTile() }.getOrDefault(false))
 
     /** F-AMO-030: the extended reconciliation (fixed rows, zero when the type has no records) and a `supervisor_day` submit. */
     fun newSubmitViewModel() = SalesSubmitViewModel(
