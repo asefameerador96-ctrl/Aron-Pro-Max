@@ -81,7 +81,7 @@ F1 → (A1 may start on F1's lane head for the target-card API shape) → F2 →
 
 ## 7. Owner report
 
-### 7.1 Questions (each with the default the build uses)
+### 7.1 Questions (each with the default the build uses) — ANSWERED by the owner 2026-11-06 ~21:10 UTC: all five defaults confirmed; on 3 the owner adds "if you want to use more colours of dot as identifier for more things you can, but I would prefer it to be the same as given at this moment" → the build keeps exactly the green dot and the brown badge, no further colours.
 1. **Call-target cards (screenshot 9).** Default: three admin config numbers per zone (monthly call target, control-call target, joint-call target); today's target = monthly ÷ working days; a card prints "—" until its number is set. Alternative: hide the four cards until a target engine exists.
 2. **Live location heartbeat.** Default: last known fix with its age, no periodic GPS (battery and data rules). Alternative: one fix every 15 minutes while checked in (costs battery; needs your yes).
 3. **Green dot and brown badge on outlet rows (19, 22).** The vendor marks outlets with a green dot (every row) and a brown round badge (some rows); their meaning is not in the manual. Default: green dot = the outlet has a base location on file; brown badge = the outlet was called today. Alternative: leave both out.
