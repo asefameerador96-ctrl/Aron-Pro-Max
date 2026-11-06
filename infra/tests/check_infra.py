@@ -1070,8 +1070,19 @@ elif a.startswith('containerapp job list'): print('')
 elif a.startswith('acr repository show'):
     sys.exit(0 if 'aron-backend' in a else 3)
 elif a.startswith('acr manifest list-metadata'): print({rows!r})
+elif a.startswith('acr repository update'):
+    assert '--write-enabled true' in a, a
+    open({str(log) + '.unlocked'!r}, 'a').write(sys.argv[sys.argv.index('--image') + 1] + '\\n')
 elif a.startswith('acr repository delete'):
-    open({str(log)!r}, 'a').write(sys.argv[sys.argv.index('--image') + 1] + '\\n')
+    # a registry whose tags deploy.sh locked refuses the delete until every tag of the image is unlocked
+    img = sys.argv[sys.argv.index('--image') + 1]
+    digest = img.split('@')[1]
+    unlocked = open({str(log) + '.unlocked'!r}).read().split() if __import__('os').path.exists({str(log) + '.unlocked'!r}) else []
+    for line in {rows!r}.split('\\n'):
+        f = line.split('\\t')
+        if f[0] == digest and any('aron-backend:' + t not in unlocked for t in f[1].split(',') if t):
+            print('ERROR: operation is disallowed on this tag', file=sys.stderr); sys.exit(1)
+    open({str(log)!r}, 'a').write(img + '\\n')
 else: sys.exit('unexpected az ' + a)
 """)
             stub.chmod(0o755)
@@ -1079,7 +1090,25 @@ else: sys.exit('unexpected az ' + a)
             r = subprocess.run(["bash", str(ROOT / "infra" / "scripts" / "acr-purge.sh"), "rg", keep],
                                env=env, capture_output=True, text=True, timeout=60)
             deleted = log.read_text().split() if log.exists() else []
+            unl = Path(str(log) + ".unlocked")
+            self.last_unlocked = unl.read_text().split() if unl.exists() else []
             return r.returncode, deleted, r.stdout + r.stderr
+
+    def test_registry_purge_unlocks_the_tags_deploy_locks(self):
+        # deploy.sh write-locks every pushed tag; the purge must unlock each tag of a candidate before the delete,
+        # and never touch the tags of the images it keeps (D-OPS-ACR-UNLOCK-01).
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        p = (ROOT / "infra" / "scripts" / "acr-purge.sh").read_text(encoding="utf-8")
+        self.assertIn("--write-enabled false --delete-enabled true", d)
+        self.assertIn("--write-enabled true", p)
+        self.assertLess(p.index("--write-enabled true"), p.index("az acr repository delete"), "unlock before delete")
+        old = "2020-01-01T00:00:00Z"
+        ms = [(f"sha256:{i:064x}", f"c{i},latest{i}", old) for i in range(12)]
+        rc, deleted, out = self.run_purge(ms, "", keep="10")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(deleted, ["aron-backend@sha256:%064x" % 10, "aron-backend@sha256:%064x" % 11])
+        self.assertEqual(sorted(self.last_unlocked), sorted(f"aron-backend:{t}" for i in (10, 11) for t in (f"c{i}", f"latest{i}")),
+                         "only the candidates' tags were unlocked")
 
     def test_registry_purge_keeps_newest_young_and_in_use(self):
         old = "2020-01-01T00:00:00Z"
