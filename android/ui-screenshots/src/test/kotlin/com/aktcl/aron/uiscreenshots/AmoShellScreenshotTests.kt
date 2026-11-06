@@ -65,7 +65,7 @@ class AmoShellScreenshotTests {
     private val reach = AmoReach(subordinateSrs = 4, pendingVerifications = 8, zoneName = "Dariapur")
 
     @Composable private fun Home(targets: CallTargets?, health: Boolean = false) = AmoHomeContent(
-        AmoHomeHeader.of(amo, "2026-10-26", reach.zoneName), amo, BundleStatus.Ready("b-17", "2026-10-26"),
+        AmoHomeHeader.of(amo, "2026-10-26", reach.zoneName, androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_header_zone), androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_header_plain)), amo, BundleStatus.Ready("b-17", "2026-10-26"),
         AmoMenu.tiles(reach, AmoMenu.badges(reach)), onTile = {}, onSettings = {}, targets = targets,
         health = if (health) DeviceHealthModel.of(62, 1200, 3, 15) else null,
     )

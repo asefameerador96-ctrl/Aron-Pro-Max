@@ -13,4 +13,7 @@
     <string name="amo_shell_support_title">সফল</string>
     <string name="amo_shell_support_sent">সিঙ্ক ফাইল পাঠানো হয়ে গেছে</string>
     <string name="amo_shell_ok">ওকে</string>
+    <string name="amo_shell_header_zone">%1$s AMO, %2$s</string>
+    <string name="amo_shell_header_plain">AMO, %1$s</string>
+    <string name="amo_shell_no_target">—</string>
 </resources>

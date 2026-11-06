@@ -71,5 +71,5 @@ object CallTargetMath {
     }
 
     /** "done/target" in Latin digits (the caller localises the digits), or "—" while the target is unset. */
-    fun figure(t: CallTarget?): String = if (t?.target == null) "—" else "${t.done}/${t.target}"
+    fun figure(t: CallTarget?, dash: String = "—"): String = if (t?.target == null) dash else "${t.done}/${t.target}"
 }

@@ -144,25 +144,29 @@ private fun AmoDayCard(hero: RoleHero.Amo, money: String, modifier: Modifier = M
 
 /** The AMO Home header lines (screenshots 8, 9; R3): "<name> (<username>)" over "<zone name> AMO, <business date>". */
 object AmoHomeHeader {
-    fun of(user: HomeUser, businessDate: String, zoneName: String?): HomeHeader {
+    /** [zoneFormat] = `amo_shell_header_zone` ("%1$s AMO, %2$s"), [plainFormat] = `amo_shell_header_plain` ("AMO, %1$s"): the words live in the string layer. */
+    fun of(user: HomeUser, businessDate: String, zoneName: String?, zoneFormat: String, plainFormat: String): HomeHeader {
         val zone = zoneName?.trim().orEmpty()
         return HomeHeader(
             title = "${user.fullName.trim()} (${user.username})",
-            subtitle = (if (zone.isEmpty()) "AMO" else "$zone AMO") + ", $businessDate",
+            subtitle = if (zone.isEmpty()) plainFormat.format(businessDate) else zoneFormat.format(zone, businessDate),
             routeKind = null, routeName = null, isoDate = businessDate,
         )
     }
 }
 
+private data class Card(val key: String, @androidx.annotation.StringRes val label: Int, val icon: androidx.compose.ui.graphics.vector.ImageVector, val target: CallTarget?)
+
 /** The four target cards (screenshot 9): sky-blue rounded cards, a white icon, the white label and the white bold "done/target" or "—". */
 @Composable
 private fun AmoTargetCards(targets: CallTargets?, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
+    val dash = stringResource(R.string.amo_shell_no_target)
     val cards = listOf(
-        Triple(R.string.amo_shell_target_today, AronIcons.Place, targets?.today),
-        Triple(R.string.amo_shell_target_total, AronIcons.Phone, targets?.month),
-        Triple(R.string.amo_shell_target_control, AronIcons.Sale, targets?.control),
-        Triple(R.string.amo_shell_target_joint, AronIcons.Team, targets?.joint),
+        Card("today", R.string.amo_shell_target_today, AronIcons.Place, targets?.today),
+        Card("total", R.string.amo_shell_target_total, AronIcons.Phone, targets?.month),
+        Card("control", R.string.amo_shell_target_control, AronIcons.Sale, targets?.control),
+        Card("joint", R.string.amo_shell_target_joint, AronIcons.Team, targets?.joint),
     )
     Column(
         modifier.fillMaxWidth().testTag(AmoHomeTags.TARGETS).clip(RoundedCornerShape(12.dp)).background(look.card).padding(10.dp),
@@ -170,10 +174,10 @@ private fun AmoTargetCards(targets: CallTargets?, modifier: Modifier = Modifier)
     ) {
         cards.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                row.forEach { (label, icon, t) ->
-                    val figure = localizedDigits(CallTargetMath.figure(t))
+                row.forEach { (key, label, icon, t) ->
+                    val figure = localizedDigits(CallTargetMath.figure(t, dash))
                     Column(
-                        Modifier.weight(1f).testTag(AmoHomeTags.target(label)).clip(RoundedCornerShape(12.dp)).background(look.targetCard ?: look.targetTop).padding(12.dp)
+                        Modifier.weight(1f).testTag(AmoHomeTags.target(key)).clip(RoundedCornerShape(12.dp)).background(look.targetCard ?: look.targetTop).padding(12.dp)
                             .semantics(mergeDescendants = true) { },
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
@@ -191,7 +195,8 @@ object AmoHomeTags {
     const val LANGUAGE = "amo_set_language"
     const val TARGETS = "amo_targets"
     const val COLLAPSE = "amo_collapse"
-    fun target(@androidx.annotation.StringRes label: Int) = "amo_target_$label"
+    /** Stable names: today, total, control, joint. */
+    fun target(key: String) = "amo_target_$key"
 }
 
 /**

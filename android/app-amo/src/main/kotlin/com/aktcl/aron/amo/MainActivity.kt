@@ -224,7 +224,7 @@ class MainActivity : ComponentActivity() {
                                         LaunchedEffect(d) { d.attendance.refreshSubmit() }
                                         val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
                                         // screenshots 14 to 16: the user card "<name> (<username>)" over "<zone> AMO, <date>"
-                                        val attendanceHeader = com.aktcl.aron.feature.amo.AmoHomeHeader.of(HomeUser(s.user.fullName, s.user.username, s.user.role, false, false, false), home.businessDate, reach.zoneName)
+                                        val attendanceHeader = com.aktcl.aron.feature.amo.AmoHomeHeader.of(HomeUser(s.user.fullName, s.user.username, s.user.role, false, false, false), home.businessDate, reach.zoneName, stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_header_zone), stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_header_plain))
                                         com.aktcl.aron.feature.amo.AmoAttendance(
                                             attendance, d.checkoutAtLabel(), onCheckIn = { dayScope.launch { d.attendance.checkIn() } },
                                             onCheckOut = { dayScope.launch { d.attendance.checkOut() } }, onBack = back,

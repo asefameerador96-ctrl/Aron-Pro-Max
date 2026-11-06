@@ -7,6 +7,9 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
@@ -209,5 +212,25 @@ class AmoAppTest {
         compose.onNodeWithText(context.getString(HomeR.string.rh_amo_attendance)).performClick()
         compose.onNodeWithTag("amo-att").assertIsDisplayed().performClick()
         compose.onNodeWithTag(HomeTags.HEADER).assertIsDisplayed()
+    }
+
+    @Test
+    fun theChevronFoldsTheTilesAndKeepsTheTargetCards() {
+        show(AppLanguage.EN)
+        compose.onNodeWithTag(RoleHomeTags.tile("attendance")).assertExists()
+        compose.onNodeWithTag(AmoHomeTags.COLLAPSE).performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(RoleHomeTags.tile("attendance")).assertDoesNotExist()
+        compose.onNodeWithTag(AmoHomeTags.TARGETS).assertExists()
+        compose.onNodeWithTag(AmoHomeTags.COLLAPSE).performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(RoleHomeTags.tile("attendance")).assertExists()
+    }
+
+    @Test
+    fun withNoTargetsEveryCardPrintsADash() {
+        show(AppLanguage.BN)
+        listOf("today", "total", "control", "joint").forEach { compose.onNodeWithTag(AmoHomeTags.target(it)).performScrollTo().assertTextContains("—") }
+        compose.onAllNodesWithText("—", useUnmergedTree = true).assertCountEquals(4)
     }
 }
