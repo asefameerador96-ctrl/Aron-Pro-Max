@@ -48,4 +48,10 @@ class TeamStockUnitsTest {
         org.junit.Assert.assertEquals(3L, t.getValue("lighter").lifted); org.junit.Assert.assertEquals("box", t.getValue("lighter").unitKey)
         org.junit.Assert.assertEquals(9L, t.getValue("match").lifted); org.junit.Assert.assertEquals("dozen", t.getValue("match").unitKey)
     }
+
+    @org.junit.Test fun aNonWholePacketCountIsTruncatedAndSaidSo() {
+        val line = StockLine(2, "stick", 45, 45, 0, 0) // 45 sticks of packets of 20 = 2 packets and 5 loose sticks
+        org.junit.Assert.assertEquals(2L, TeamStock.entered(45, line, skus)); org.junit.Assert.assertEquals(0L, TeamStock.entered(19, line, skus))
+        org.junit.Assert.assertEquals(45L, TeamStock.entered(45, StockLine(99, "stick", 45, 45, 0, 0), skus)) // unknown SKU: the base figure
+    }
 }

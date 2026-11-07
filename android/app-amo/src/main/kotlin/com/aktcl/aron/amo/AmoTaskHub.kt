@@ -112,8 +112,8 @@ private fun AmoTaskForm(day: AmoDay, days: List<RouteDay>, members: List<TeamMem
     val member = routeId?.let { r -> members.firstOrNull { it.routeId == r && !it.vacant } }
     // the online members list names the SR of the day; without it (offline, first open) the bundle's team decides, as before
     val sr = member?.userId?.let { id -> team.firstOrNull { it.userId == id } } ?: routeId?.let { r -> TaskDelegation.srsOfRoute(team, r).singleOrNull() }
-    // Fixed when the form opens for this SR and outlet: a double tap or a retry queues one task.
-    val draftKey = "task:${sr?.userId}:${outletId}"
+    // Keyed by route and outlet only (the SR may change when the members list arrives, which must not change the record): a double tap or a retry queues one task.
+    val draftKey = TaskDelegation.draftKey(routeId, outletId)
     val uuid = remember(draftKey) { day.drafts.uuid(draftKey) }
     TaskFormPageContent(
         routes = routes.map { it.routeId.toString() to it.title }, routeText = routes.firstOrNull { it.routeId == routeId }?.title,

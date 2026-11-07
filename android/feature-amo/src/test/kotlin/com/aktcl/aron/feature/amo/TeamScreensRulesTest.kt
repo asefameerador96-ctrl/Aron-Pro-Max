@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Test
 
 /** Rows 33, 37, 38, 71, 72 of the AMO manual build: the rules behind Team Location, Task Delegation and the reports. */
@@ -65,5 +66,42 @@ class TeamScreensRulesTest {
         assertEquals("—", TeamReports.tillCard("x", node, false, emptyMap(), UiLocale.EN).rows.single().memo) // no memo count from the server, no invented one
         assertEquals("79.67", TeamReports.cprText(7967, 10000, UiLocale.EN)); assertEquals("—", TeamReports.cprText(5, 0, UiLocale.EN))
         assertEquals("৭৯.৬৭", TeamReports.cprText(7967, 10000, UiLocale.BN))
+    }
+
+    @Test fun aRefusalIsNeverShownAsOffline() {
+        assertEquals(FetchNote.REFUSED, FetchNote.of(failed = true, stale = false, refused = true)) // Gone also counts as missing: refusal wins
+        assertEquals(FetchNote.REFUSED, FetchNote.of(failed = false, stale = true, refused = true))
+        assertEquals(FetchNote.OFFLINE, FetchNote.of(failed = true, stale = true, refused = false))
+        assertEquals(FetchNote.KEPT, FetchNote.of(failed = false, stale = true, refused = false)); assertEquals(FetchNote.NONE, FetchNote.of(false, false, false))
+    }
+
+    @Test fun categoryMemoColumnComesFromTheBrandMemosOfTheSalesSummary() {
+        val node = TeamTargetNode("route", 11, "Math Bazer", 30, listOf(TeamTargetRow("Maxim", "cigarette", 1, 1, 1), TeamTargetRow("Sheikh", "cigarette", 1, 1, 1), TeamTargetRow("Panther", "match", 1, 1, 1)))
+        val cards = listOf(
+            RouteCard("R11", "Math Bazer", 10, 8, 80.0, 40, 0, listOf(BrandRow("Maxim", 30, null), BrandRow("sheikh", 12, null), BrandRow("Panther", 5, null), BrandRow("Unknown", 9, null))),
+            RouteCard("R12", "Other", 10, 8, 80.0, 40, 0, listOf(BrandRow("Maxim", 100, null))),
+        )
+        assertEquals(mapOf("cigarette" to 42L, "match" to 5L), TeamReports.categoryMemos(node, cards, false)) // this route only; an unknown brand is ignored
+        assertEquals(mapOf("cigarette" to 142L, "match" to 5L), TeamReports.categoryMemos(node, cards, true)) // the zone adds every route
+        val row = TeamReports.tillCard("x", node, false, TeamReports.categoryMemos(node, cards, false), UiLocale.EN).rows
+        assertEquals("42", row.first { it.category == "cigarette" }.memo); assertEquals("5", row.first { it.category == "match" }.memo)
+        assertEquals(emptyMap<String, Long>(), TeamReports.categoryMemos(node, emptyList(), false)) // no report: dashes, not zeros
+    }
+
+    @Test fun summaryPeriodIsMonthToTodayNotYesterday() {
+        assertEquals("2026-11-01" to "2026-11-07", TeamReports.summaryPeriod("2026-11-07")); assertEquals("2026-11-01" to "2026-11-01", TeamReports.summaryPeriod("2026-11-01"))
+    }
+
+    @Test fun routeCategoriesGroupByRouteCodeAndShowTheName() {
+        fun row(code: String, name: String, q: Long): ReportRow = mapOf("route_code" to JsonPrimitive(code), "route_name" to JsonPrimitive(name), "category_code" to JsonPrimitive("match"), "base_unit" to JsonPrimitive("dozen"), "sold_qty_base" to JsonPrimitive(q), "gross_mtk" to JsonPrimitive(0L))
+        val cats = Reports.routeCategories(ReportData("2026-11-07", emptyList(), listOf(row("R1", "Gulshan", 2), row("R1", "Gulshan Zone Route", 3), row("R2", "Gulshan", 4)), 3))
+        assertEquals(2, cats.size); assertEquals(setOf("R1", "R2"), cats.map { it.code }.toSet()); assertEquals(5L, cats.first { it.code == "R1" }.qty); assertEquals(4L, cats.first { it.code == "R2" }.qty)
+        val m = TeamReports.stdMatrix("Z", cats); assertEquals(2, m.rows.size) // two routes with one name stay two rows
+        assertEquals(9L, m.totals["match"])
+    }
+
+    @Test fun taskDraftKeyIsRouteAndOutletOnly() {
+        assertEquals(TaskDelegation.draftKey(3, 50), TaskDelegation.draftKey(3, 50)); assertTrue(TaskDelegation.draftKey(3, 50) != TaskDelegation.draftKey(3, 51)); assertTrue(TaskDelegation.draftKey(3, 50) != TaskDelegation.draftKey(4, 50))
+        assertTrue(!TaskDelegation.draftKey(null, null).contains("user"))
     }
 }

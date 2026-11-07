@@ -34,12 +34,30 @@ object TeamReports {
      */
     fun stdMatrix(zone: String, rows: List<RouteCategory>): StdMatrix {
         val cats = (TeamTargets.categoryOrder + rows.map { it.category }.distinct()).distinct().filter { c -> rows.any { it.category == c } }
-        val byRoute = rows.groupBy { it.route }.toList().sortedWith(compareBy({ it.first.lowercase() }, { it.first })).toMap()
-        val body = byRoute.map { (route, rs) -> StdRow(route, cats.associateWith { c -> rs.filter { it.category == c }.let { m -> if (m.isEmpty()) 0L else if (m.any { it.qty == null }) null else m.sumOf { it.qty ?: 0L } } }) }
+        // one row per route CODE (two routes may share a name), labelled by the name
+        val byRoute = rows.groupBy { it.code }.toList().sortedWith(compareBy({ it.second.first().route.lowercase() }, { it.second.first().route }, { it.first }))
+        val body = byRoute.map { (_, rs) -> StdRow(rs.first().route, cats.associateWith { c -> rs.filter { it.category == c }.let { m -> if (m.isEmpty()) 0L else if (m.any { it.qty == null }) null else m.sumOf { it.qty ?: 0L } } }) }
         // a column adds only quantities of ONE base unit: two routes counting the same category in different units give a dash
         val mixed = cats.filter { c -> rows.filter { it.category == c }.mapNotNull { it.unit }.toSet().size > 1 }.toSet()
         val totals = cats.associateWith { c -> if (c in mixed || body.any { it.cells[c] == null }) null else body.sumOf { it.cells[c] ?: 0L } }
         return StdMatrix(zone, cats, body, totals)
+    }
+
+    /** The sales-summary period (lead ruling 2026-11-07, screenshot 72): the first of the month to TODAY, so CPR and memos match the target slice; F-AMO-033's "up to yesterday" is superseded for the AMO summary. */
+    fun summaryPeriod(today: String): Pair<String, String> = monthToToday(today)
+
+    /**
+     * Memos per category for a till-now card, from the `sales-summary` route cards: the sum of the memo counts of the brands of that category
+     * (the node's brand rows say which brand belongs to which category). A zone adds every route's brands; a route uses its own card (matched by
+     * name or code). A memo with two brands of one category is counted once per brand, so this is an upper bound of the category's memos.
+     * A category with no matching brand row is absent (the card prints a dash), never zero.
+     */
+    fun categoryMemos(node: TeamTargetNode, cards: List<RouteCard>, isZone: Boolean): Map<String, Long> {
+        val mine = if (isZone) cards else cards.filter { it.name.equals(node.name, true) || it.code.equals(node.name, true) }
+        val brandCategory = node.rows.associate { it.name.lowercase() to it.categoryCode }
+        val out = linkedMapOf<String, Long>()
+        for (b in mine.flatMap { it.brands }) { val c = brandCategory[b.name.lowercase()] ?: continue; out[c] = (out[c] ?: 0L) + b.memos }
+        return out
     }
 
     private fun fmt(n: Long?, l: UiLocale) = TeamTargets.qty(n, l)

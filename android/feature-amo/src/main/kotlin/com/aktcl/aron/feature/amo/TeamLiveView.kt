@@ -137,11 +137,11 @@ private fun ProgressBlock(icon: Int, title: String, pct: String, fraction: Float
 @Composable
 fun LiveDataContent(
     d: LiveData?, amoName: String, routeValue: String, routeOptions: List<Pair<String, String>>, perRoute: Boolean,
-    onRoute: (String) -> Unit, onFilter: () -> Unit, stale: Boolean, failed: Boolean, modifier: Modifier = Modifier, routeNote: Boolean = false,
+    onRoute: (String) -> Unit, onFilter: () -> Unit, stale: Boolean, failed: Boolean, refused: Boolean = false, modifier: Modifier = Modifier, routeNote: Boolean = false,
 ) {
     val look = LocalAronLook.current
     AmoPage(modifier) {
-        if (failed) AmoBanner(stringResource(R.string.amo_task_list_offline), kind = BannerKind.Warning) else if (stale) AmoBanner(stringResource(R.string.amo_task_list_kept), kind = BannerKind.Info)
+        AmoFetchBanner(failed, stale, refused)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AmoDropdown(amoName, emptyList(), {}, Modifier.weight(1f).testTag(LiveTags.AMO), enabled = false, small = true)
             AmoDropdown(routeValue, routeOptions, onRoute, Modifier.weight(1f).testTag(LiveTags.ROUTE), small = true)

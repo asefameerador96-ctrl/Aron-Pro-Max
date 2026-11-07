@@ -71,9 +71,9 @@ fun SrCard(m: TeamMember, onClick: (() -> Unit)?, modifier: Modifier = Modifier)
 
 /** SR List (screenshot 40 left) and the SR cards of the Sales Journey (73): one card per SR per route; a vacant route is not tappable on the journey. */
 @Composable
-fun SrListContent(members: List<TeamMember>, stale: Boolean, failed: Boolean, onOpen: (TeamMember) -> Unit, modifier: Modifier = Modifier, openVacant: Boolean = true) {
+fun SrListContent(members: List<TeamMember>, stale: Boolean, failed: Boolean, onOpen: (TeamMember) -> Unit, modifier: Modifier = Modifier, openVacant: Boolean = true, refused: Boolean = false) {
     AmoPage(modifier) {
-        if (failed) AmoBanner(stringResource(R.string.amo_task_list_offline), kind = BannerKind.Warning) else if (stale) AmoBanner(stringResource(R.string.amo_task_list_kept), kind = BannerKind.Info)
+        AmoFetchBanner(failed, stale, refused)
         if (members.isEmpty()) AmoEmpty(stringResource(R.string.amo_stock_empty), hint = stringResource(R.string.amo_stock_empty_hint))
         members.forEach { m -> SrCard(m, if (m.vacant && !openVacant) null else ({ onOpen(m) })) }
     }
@@ -111,12 +111,12 @@ fun LiftedStockContent(member: TeamMember, lines: List<IssueLine>, modifier: Mod
 
 /** The Sales Journey of one SR and route (screenshot 74): the timeline, a store node per call, the walking gap between calls. */
 @Composable
-fun JourneyTimelineContent(j: TeamJourney?, stale: Boolean, failed: Boolean, modifier: Modifier = Modifier) {
+fun JourneyTimelineContent(j: TeamJourney?, stale: Boolean, failed: Boolean, refused: Boolean = false, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
     val l = teamLocale()
     val minW = stringResource(R.string.amo_team_min); val secW = stringResource(R.string.amo_team_sec)
     AmoPage(modifier) {
-        if (failed) AmoBanner(stringResource(R.string.amo_task_list_offline), kind = BannerKind.Warning) else if (stale) AmoBanner(stringResource(R.string.amo_task_list_kept), kind = BannerKind.Info)
+        AmoFetchBanner(failed, stale, refused)
         if (j == null || j.calls.isEmpty()) { AmoEmpty(stringResource(R.string.amo_team_journey_empty), hint = stringResource(R.string.amo_team_journey_empty_hint)); return@AmoPage }
         j.calls.forEachIndexed { i, c ->
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

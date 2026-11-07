@@ -92,10 +92,10 @@ private val ZONE_TINT = Color(0xFFDCE5E2)
 /** Team Performance list (screenshot 34): the tabs, the tinted zone card, one card per route; each with the category bars and Details. */
 @Composable
 fun TeamPerformanceListContent(
-    cards: PerfCards, tab: PerfTab, onTab: (PerfTab) -> Unit, onDetails: (TeamTargetNode) -> Unit, stale: Boolean, failed: Boolean, modifier: Modifier = Modifier,
+    cards: PerfCards, tab: PerfTab, onTab: (PerfTab) -> Unit, onDetails: (TeamTargetNode) -> Unit, stale: Boolean, failed: Boolean, refused: Boolean = false, modifier: Modifier = Modifier,
 ) {
     AmoPage(modifier) {
-        if (failed) AmoBanner(stringResource(R.string.amo_perf_offline), kind = BannerKind.Warning) else if (stale) AmoBanner(stringResource(R.string.amo_task_list_kept), kind = BannerKind.Info)
+        AmoFetchBanner(failed, stale, refused, offlineText = R.string.amo_perf_offline)
         AmoSegments(listOf(stringResource(R.string.amo_team_perf_monthly), stringResource(R.string.amo_team_perf_till_date)), if (tab == PerfTab.MONTHLY) 0 else 1, { onTab(if (it == 0) PerfTab.MONTHLY else PerfTab.TILL_DATE) }, Modifier.testTag(TeamPerfTags.TAB))
         if (cards.zone == null && cards.routes.isEmpty()) AmoEmpty(stringResource(R.string.amo_perf_empty), hint = stringResource(R.string.amo_perf_empty_hint))
         cards.zone?.let { z ->
@@ -110,7 +110,7 @@ fun TeamPerformanceListContent(
 /** Details (screenshots 35, 36): the node's summary card (its categories are tappable filters) and the brand table. */
 @Composable
 fun TeamPerformanceDetailsContent(
-    node: TeamTargetNode, tab: PerfTab, onTab: (PerfTab) -> Unit, category: String?, onCategory: (String) -> Unit, stale: Boolean, failed: Boolean, modifier: Modifier = Modifier,
+    node: TeamTargetNode, tab: PerfTab, onTab: (PerfTab) -> Unit, category: String?, onCategory: (String) -> Unit, stale: Boolean, failed: Boolean, refused: Boolean = false, modifier: Modifier = Modifier,
 ) {
     val look = LocalAronLook.current
     val l = teamLocale()
@@ -118,7 +118,7 @@ fun TeamPerformanceDetailsContent(
     val shown = if (category == null) all else all.filter { it.categoryCode == category }
     val items = TeamTargets.items(node.rows, category)
     AmoPage(modifier) {
-        if (failed) AmoBanner(stringResource(R.string.amo_perf_offline), kind = BannerKind.Warning) else if (stale) AmoBanner(stringResource(R.string.amo_task_list_kept), kind = BannerKind.Info)
+        AmoFetchBanner(failed, stale, refused, offlineText = R.string.amo_perf_offline)
         AmoSegments(listOf(stringResource(R.string.amo_team_perf_monthly), stringResource(R.string.amo_team_perf_till_date)), if (tab == PerfTab.MONTHLY) 0 else 1, { onTab(if (it == 0) PerfTab.MONTHLY else PerfTab.TILL_DATE) }, Modifier.testTag(TeamPerfTags.TAB))
         PerfCard(
             stringResource(if (node.type == "route") R.string.amo_team_perf_route else R.string.amo_team_perf_zone, node.name.orEmpty()), shown, tab, node.type != "route",

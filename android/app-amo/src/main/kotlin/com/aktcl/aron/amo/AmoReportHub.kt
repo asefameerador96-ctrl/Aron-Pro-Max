@@ -47,7 +47,7 @@ fun AmoReportHub(day: AmoDay, onBack: () -> Unit) {
     val bangla = LocalAppLanguage.current == AppLanguage.BN
     val l = if (bangla) UiLocale.BN else UiLocale.EN
     val today = remember { day.businessDate() }
-    val defaults = remember { TeamReports.monthToToday(today) }
+    val defaults = remember { TeamReports.summaryPeriod(today) }
     val title = when (leaf) { ReportLeaf.STD -> AmoR.string.amo_rep_std; ReportLeaf.SUMMARY -> AmoR.string.amo_rep_summary; ReportLeaf.ROUTE -> -1; else -> AmoR.string.amo_rep_title }
     val members = if (leaf == ReportLeaf.SUMMARY || leaf == ReportLeaf.ROUTE) rememberMembers(day) else null
     val nodes = if (members != null) rememberTargetNodes(day, members) else null
@@ -61,26 +61,27 @@ fun AmoReportHub(day: AmoDay, onBack: () -> Unit) {
                 var zone by remember { mutableStateOf("") }
                 LaunchedEffect(day) { zone = TeamTargets.parse(day.api.brandTargets(today.take(7), null).jsonOrNull())?.name.orEmpty() }
                 if (std == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen()
-                else StdMatrixContent(f, t, today, { a, b -> from = a; to = b }, std.data?.takeIf { !it.truncated }?.let { TeamReports.stdMatrix(zone, Reports.routeCategories(it)) }, std.stale, std.failed, truncated = std.data?.truncated == true)
+                else StdMatrixContent(f, t, today, { a, b -> from = a; to = b }, std.data?.takeIf { !it.truncated }?.let { TeamReports.stdMatrix(zone, Reports.routeCategories(it)) }, std.stale, std.failed, std.refused, truncated = std.data?.truncated == true)
             }
             ReportLeaf.SUMMARY, ReportLeaf.ROUTE -> {
                 // F-AMO-033: the month to today over the trading days; CPR and memo counts come from the sales-summary report, targets from the target slice
                 val loaded = rememberReport(day, "sales-summary", defaults.first, defaults.second)
                 if (loaded == null || nodes == null) { com.aktcl.aron.core.ui.aron.AronLoadingScreen(); return@AmoFrame }
                 val reportCards = loaded.data?.let { Reports.routeCards(it) }.orEmpty()
-                val cards = listOfNotNull(nodes.zone?.let { TeamReports.tillCard(stringResource(AmoR.string.amo_team_perf_zone, it.name.orEmpty()), it, true, emptyMap(), l) }) +
-                    nodes.routes.map { TeamReports.tillCard(stringResource(AmoR.string.amo_team_perf_route, it.name.orEmpty()), it, false, emptyMap(), l) }
+                // the Memo column: the memos of the brands of each category, from the sales-summary rows (TeamReports.categoryMemos)
+                val cards = listOfNotNull(nodes.zone?.let { TeamReports.tillCard(stringResource(AmoR.string.amo_team_perf_zone, it.name.orEmpty()), it, true, TeamReports.categoryMemos(it, reportCards, true), l) }) +
+                    nodes.routes.map { TeamReports.tillCard(stringResource(AmoR.string.amo_team_perf_route, it.name.orEmpty()), it, false, TeamReports.categoryMemos(it, reportCards, false), l) }
                 if (leaf == ReportLeaf.ROUTE && openNode != null) {
                     val rc = reportCards.firstOrNull { it.name.equals(openNode.name, ignoreCase = true) || it.code.equals(openNode.name, ignoreCase = true) }
                     val brands = openNode.rows.map { r -> TeamReports.brandLine(r, rc?.brands?.firstOrNull { it.name.equals(r.name, ignoreCase = true) }?.memos, l) }
                     TillRouteDetailContent(rc?.let { TeamReports.cprText(it.successfulCalls, it.targetOutlets, l) } ?: Percent.DASH, rc?.let { Formats.integer(it.memos, l) } ?: Percent.DASH, brands)
-                } else TillNowContent(cards, { c -> route = c.routeId; if (c.routeId != null) leaf = ReportLeaf.ROUTE }, loaded.stale || nodes.stale, loaded.failed && nodes.zone == null)
+                } else TillNowContent(cards, { c -> route = c.routeId; if (c.routeId != null) leaf = ReportLeaf.ROUTE }, loaded.stale || nodes.stale, loaded.failed && nodes.zone == null, loaded.refused || nodes.refused)
             }
         }
     }
 }
 
-private class Loaded(val data: ReportData?, val stale: Boolean, val failed: Boolean)
+private class Loaded(val data: ReportData?, val stale: Boolean, val failed: Boolean, val refused: Boolean = false)
 
 @Composable
 private fun rememberReport(day: AmoDay, key: String, from: String, to: String): Loaded? {
@@ -88,7 +89,7 @@ private fun rememberReport(day: AmoDay, key: String, from: String, to: String): 
     LaunchedEffect(key, from, to) {
         val f = day.api.report(key, from, to)
         val json = f.jsonOrNull()
-        loaded = Loaded(Reports.parse(json), f is AmoFetch.Cached, f.isMissing())
+        loaded = Loaded(Reports.parse(json), f is AmoFetch.Cached, f.isMissing(), f is AmoFetch.Gone)
     }
     return loaded
 }

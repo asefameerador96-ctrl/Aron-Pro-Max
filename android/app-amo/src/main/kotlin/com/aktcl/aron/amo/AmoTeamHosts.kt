@@ -45,20 +45,20 @@ import com.aktcl.aron.feature.home.R as HomeR
 import java.io.File
 
 /** The SR/route rows of the zone (`GET /v1/team/members`), with the kept copy's flags. */
-internal class Members(val rows: List<TeamMember>, val stale: Boolean, val failed: Boolean)
+internal class Members(val rows: List<TeamMember>, val stale: Boolean, val failed: Boolean, val refused: Boolean = false)
 
 @Composable
 internal fun rememberMembers(day: AmoDay): Members? {
     var m by remember(day) { mutableStateOf<Members?>(null) }
     LaunchedEffect(day) {
         val f = day.api.teamMembers(day.businessDate())
-        m = Members(TeamJourneys.members(f.jsonOrNull()), f is AmoFetch.Cached, f.isMissing())
+        m = Members(TeamJourneys.members(f.jsonOrNull()), f is AmoFetch.Cached, f.isMissing(), f is AmoFetch.Gone)
     }
     return m
 }
 
 /** The zone node and one node per route (brand rows) for Team Performance and the sales-till-now summary; routes fill in as they arrive. */
-internal class TargetNodes(val zone: TeamTargetNode?, val routes: List<TeamTargetNode>, val stale: Boolean, val failed: Boolean)
+internal class TargetNodes(val zone: TeamTargetNode?, val routes: List<TeamTargetNode>, val stale: Boolean, val failed: Boolean, val refused: Boolean = false)
 
 @Composable
 internal fun rememberTargetNodes(day: AmoDay, members: Members?): TargetNodes? {
@@ -69,7 +69,7 @@ internal fun rememberTargetNodes(day: AmoDay, members: Members?): TargetNodes? {
         val zoneFetch = day.api.brandTargets(month, null)
         val zone = TeamTargets.parse(zoneFetch.jsonOrNull())
         var stale = zoneFetch is AmoFetch.Cached
-        out = TargetNodes(zone, emptyList(), stale, zoneFetch.isMissing())
+        out = TargetNodes(zone, emptyList(), stale, zoneFetch.isMissing(), zoneFetch is AmoFetch.Gone)
         val ids = members.rows.map { it.routeId }.distinct().take(MAX_ROUTE_CARDS)
         val acc = mutableListOf<TeamTargetNode>()
         for (id in ids) {
@@ -80,7 +80,7 @@ internal fun rememberTargetNodes(day: AmoDay, members: Members?): TargetNodes? {
             TeamTargets.parse(f.jsonOrNull())?.let { n ->
                 // the route's name from the members list when the node carries none
                 acc += if (n.name.isNullOrBlank()) n.copy(name = members.rows.firstOrNull { it.routeId == id }?.routeName) else n
-                out = TargetNodes(zone, acc.toList(), stale, zoneFetch.isMissing())
+                out = TargetNodes(zone, acc.toList(), stale, zoneFetch.isMissing(), zoneFetch is AmoFetch.Gone)
             }
         }
     }
@@ -102,8 +102,8 @@ fun AmoTeamPerformanceHost(day: AmoDay, onBack: () -> Unit) {
     val open = nodes?.let { n -> if (detail == "zone") n.zone else n.routes.firstOrNull { it.id.toString() == detail } }
     AmoFrame(open?.name ?: stringResource(AmoR.string.amo_leaf_team_performance), { if (detail != null) { category = null; detail = null } else onBack() }, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_team_performance) {
         if (nodes == null) { AronLoadingScreen(); return@AmoFrame }
-        if (open != null) TeamPerformanceDetailsContent(open, tab, { tab = it }, category, { category = TeamTargets.toggle(category, it) }, nodes.stale, nodes.failed)
-        else TeamPerformanceListContent(PerfCards(nodes.zone, nodes.routes), tab, { tab = it }, { n -> category = null; detail = if (n === nodes.zone) "zone" else n.id.toString() }, nodes.stale, nodes.failed)
+        if (open != null) TeamPerformanceDetailsContent(open, tab, { tab = it }, category, { category = TeamTargets.toggle(category, it) }, nodes.stale, nodes.failed, nodes.refused)
+        else TeamPerformanceListContent(PerfCards(nodes.zone, nodes.routes), tab, { tab = it }, { n -> category = null; detail = if (n === nodes.zone) "zone" else n.id.toString() }, nodes.stale, nodes.failed, nodes.refused)
     }
 }
 
@@ -118,6 +118,7 @@ fun AmoLiveDataHost(day: AmoDay, onBack: () -> Unit) {
     var loaded by remember { mutableStateOf(false) }
     var stale by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
+    var refused by remember { mutableStateOf(false) }
     var zoneFallback by remember { mutableStateOf(false) }
     LaunchedEffect(day) { routes = runCatching { day.routes() }.getOrDefault(emptyList()).map { it.route.routeId.toString() to (it.route.displayLabel ?: it.route.name) } }
     LaunchedEffect(day, applied, tick) {
@@ -127,7 +128,7 @@ fun AmoLiveDataHost(day: AmoDay, onBack: () -> Unit) {
         var f = if (route != null) day.api.liveDashboardRoute(date, route) else day.api.liveDashboard(date, null)
         // a server without the route level answers with the zone: the route's own login rows still apply and the screen says so
         if (route != null && f.jsonOrNull() == null) { f = day.api.liveDashboard(date, null); zoneFallback = f.jsonOrNull() != null }
-        stale = f is AmoFetch.Cached; failed = f.isMissing()
+        stale = f is AmoFetch.Cached; failed = f.isMissing(); refused = f is AmoFetch.Gone
         shown = LiveDataParser.parse(f.jsonOrNull(), route.takeIf { zoneFallback })
         loaded = true
     }
@@ -139,7 +140,7 @@ fun AmoLiveDataHost(day: AmoDay, onBack: () -> Unit) {
         if (!loaded) { AronLoadingScreen(); return@AmoFrame }
         LiveDataContent(
             shown, day.userDisplayName, routes.firstOrNull { it.first == draft }?.second ?: all, listOf("all" to all) + routes, applied != "all",
-            { draft = it }, { applied = draft }, stale, failed, routeNote = zoneFallback,
+            { draft = it }, { applied = draft }, stale, failed, refused, routeNote = zoneFallback,
         )
     }
 }
@@ -164,7 +165,7 @@ fun AmoSrStockHost(day: AmoDay, onBack: () -> Unit) {
         icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_sr_stock,
     ) {
         if (members == null || stock == null) { AronLoadingScreen(); return@AmoFrame }
-        if (row == null) SrListContent(members.rows.filter { !it.vacant }, members.stale, members.failed, { selected = it.routeId })
+        if (row == null) SrListContent(members.rows.filter { !it.vacant }, members.stale, members.failed, { selected = it.routeId }, refused = members.refused)
         else {
             val sr = stock!!.srs.firstOrNull { it.userId == row.userId }
             val lines = sr?.lines.orEmpty().filter { it.lifted > 0 }.map { l ->
@@ -189,20 +190,21 @@ fun AmoJourneyHost(day: AmoDay, onBack: () -> Unit) {
     var jLoaded by remember { mutableStateOf(false) }
     var jStale by remember { mutableStateOf(false) }
     var jFailed by remember { mutableStateOf(false) }
+    var jRefused by remember { mutableStateOf(false) }
     LaunchedEffect(day, userId, routeId) {
         val u = userId; val r = routeId
         if (u == null || r == null) { journey = null; return@LaunchedEffect }
         jLoaded = false
         val f = day.api.teamJourney(u, r, day.businessDate())
-        jStale = f is AmoFetch.Cached; jFailed = f.isMissing()
+        jStale = f is AmoFetch.Cached; jFailed = f.isMissing(); jRefused = f is AmoFetch.Gone
         journey = TeamJourneys.journey(f.jsonOrNull()); jLoaded = true
     }
     BackHandler(enabled = userId != null) { userId = null; routeId = null }
     AmoFrame(stringResource(HomeR.string.hm_tile_sales_journey), { if (userId != null) { userId = null; routeId = null } else onBack() }, icon = com.aktcl.aron.core.ui.R.drawable.aron_art_sales_journey) {
         if (members == null) { AronLoadingScreen(); return@AmoFrame }
-        if (userId == null) SrListContent(members.rows, members.stale, members.failed, { userId = it.userId; routeId = it.routeId }, openVacant = false)
+        if (userId == null) SrListContent(members.rows, members.stale, members.failed, { userId = it.userId; routeId = it.routeId }, openVacant = false, refused = members.refused)
         else if (!jLoaded) AronLoadingScreen()
-        else JourneyTimelineContent(journey, jStale, jFailed)
+        else JourneyTimelineContent(journey, jStale, jFailed, jRefused)
     }
 }
 
@@ -213,6 +215,7 @@ fun AmoTeamLocationHost(day: AmoDay, onBack: () -> Unit) {
     var pins by remember { mutableStateOf<List<com.aktcl.aron.feature.amo.TeamPin>?>(null) }
     var stale by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
+    var refused by remember { mutableStateOf(false) }
     var selected by rememberSaveable { mutableStateOf<Long?>(null) }
     var settings by remember { mutableStateOf(MapSettings()) }
     val members = rememberMembers(day)
@@ -220,7 +223,7 @@ fun AmoTeamLocationHost(day: AmoDay, onBack: () -> Unit) {
     LaunchedEffect(day) {
         settings = day.mapSettings()
         val f = day.api.teamLocations(day.businessDate())
-        stale = f is AmoFetch.Cached; failed = f.isMissing()
+        stale = f is AmoFetch.Cached; failed = f.isMissing(); refused = f is AmoFetch.Gone
         pins = TeamLocations.parse(f.jsonOrNull())
     }
     val sources = mapOf(
@@ -235,7 +238,7 @@ fun AmoTeamLocationHost(day: AmoDay, onBack: () -> Unit) {
         val points = list.filter { it.userId in byId }.map { p ->
             MapPoint(p.userId.toString(), p.name.trim(), p.lat, p.lng, p.atMs, p.source?.let { s -> sources[s] ?: s }, note = byId[p.userId]?.phone)
         }
-        TeamLocationContent(choices, selected, { selected = it }, stale, failed) { m ->
+        TeamLocationContent(choices, selected, { selected = it }, stale, failed, refused) { m ->
             LiteMapScreen(
                 points, settings, day.online(), MapsKey.present(context), day.currentMs(), cache, "team_" + day.userId + "_" + day.businessDate(), m,
                 interactive = true, riderMarker = true, compass = true, myLocation = true, focusId = selected?.toString(),

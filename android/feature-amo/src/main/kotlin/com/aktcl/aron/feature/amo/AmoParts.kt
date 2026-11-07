@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -207,6 +208,21 @@ fun AmoListRow(
 @Composable
 fun AmoBanner(text: String, modifier: Modifier = Modifier, kind: com.aktcl.aron.core.ui.BannerKind = com.aktcl.aron.core.ui.BannerKind.Info) =
     AmoNotice(text, modifier, warning = kind == com.aktcl.aron.core.ui.BannerKind.Warning || kind == com.aktcl.aron.core.ui.BannerKind.Error)
+
+/** What a team screen says about its read: a refusal (the server said no) is never "offline"; offline beats the kept-copy note. */
+enum class FetchNote { REFUSED, OFFLINE, KEPT, NONE;
+    companion object { fun of(failed: Boolean, stale: Boolean, refused: Boolean): FetchNote = if (refused) REFUSED else if (failed) OFFLINE else if (stale) KEPT else NONE }
+}
+
+@Composable
+fun AmoFetchBanner(failed: Boolean, stale: Boolean, refused: Boolean = false, offlineText: Int = R.string.amo_task_list_offline) {
+    when (FetchNote.of(failed, stale, refused)) {
+        FetchNote.REFUSED -> AmoBanner(stringResource(R.string.amo_team_refused), kind = com.aktcl.aron.core.ui.BannerKind.Warning)
+        FetchNote.OFFLINE -> AmoBanner(stringResource(offlineText), kind = com.aktcl.aron.core.ui.BannerKind.Warning)
+        FetchNote.KEPT -> AmoBanner(stringResource(R.string.amo_task_list_kept), kind = com.aktcl.aron.core.ui.BannerKind.Info)
+        FetchNote.NONE -> Unit
+    }
+}
 
 @Composable
 fun AmoSection(text: String, modifier: Modifier = Modifier) = com.aktcl.aron.core.ui.aron.AronSectionHeader(text, modifier)

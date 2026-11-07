@@ -29,7 +29,7 @@ data class BrandRow(val name: String, val memos: Long, val bsrPct: Double?)
 data class RouteStd(val code: String, val memos: Int, val grossMtk: Long, val netMtk: Long)
 
 /** One category of one route in the per-route STD (`route-std`, F-AMO-032): [qty] is in [unit] (null when the category mixes units, so it never adds sticks to pieces). */
-data class RouteCategory(val route: String, val category: String, val qty: Long?, val unit: String?, val grossMtk: Long)
+data class RouteCategory(val route: String, val category: String, val qty: Long?, val unit: String?, val grossMtk: Long, val code: String = route)
 
 object Reports {
     /** The `ReportQuery` body: one period, JSON output, 500 rows a page. The scope is the caller's reach on the server; nothing is selected here. */
@@ -101,9 +101,10 @@ object Reports {
     }.sortedBy { it.code }
 
     /** The `route-std` rows (route x SKU) added up per route and category; a category with SKUs of different base units keeps the value only. */
-    fun routeCategories(r: ReportData): List<RouteCategory> = r.rows.groupBy { (it.s("route_name") ?: it.s("route_code")).orEmpty() to (it.s("category_code") ?: it.s("category_name")).orEmpty() }.map { (key, rows) ->
+    fun routeCategories(r: ReportData): List<RouteCategory> = r.rows.groupBy { (it.s("route_code") ?: it.s("route_name")).orEmpty() to (it.s("category_code") ?: it.s("category_name")).orEmpty() }.map { (key, rows) ->
         val units = rows.mapNotNull { it.s("base_unit") }.toSet()
         val sameUnit = units.size == 1 && rows.all { it.s("base_unit") != null && it.l("sold_qty_base") != null }
-        RouteCategory(key.first, key.second, if (sameUnit) rows.sumOf { it.l("sold_qty_base") ?: 0 } else null, if (sameUnit) units.first() else null, rows.sumOf { it.l("gross_mtk") ?: 0 })
-    }.sortedWith(compareBy({ it.route }, { it.category }))
+        // grouped by route CODE (two routes may share a name), shown by name
+        RouteCategory(rows.firstNotNullOfOrNull { it.s("route_name") } ?: key.first, key.second, if (sameUnit) rows.sumOf { it.l("sold_qty_base") ?: 0 } else null, if (sameUnit) units.first() else null, rows.sumOf { it.l("gross_mtk") ?: 0 }, key.first)
+    }.sortedWith(compareBy({ it.route }, { it.code }, { it.category }))
 }

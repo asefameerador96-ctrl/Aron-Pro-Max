@@ -56,6 +56,6 @@ object TeamStock {
     fun unitKeyOf(l: StockLine, skus: Map<Long, SkuInfo>): String =
         skus[l.skuId]?.let { s -> s.entry?.let { EntryUnits.labelKey(s.categoryCode, it.unit) } }.orEmpty()
 
-    /** A server base quantity in the SKU's entry unit (whole units; the base figure when the entry unit is unknown). */
+    /** A server base quantity in the SKU's entry unit (whole units, TRUNCATED: 25 sticks in packets of 20 shows 1, the 5 loose sticks are not shown; lifted stock is issued in whole packets, so the remainder is 0 in practice; the base figure when the entry unit is unknown). */
     fun entered(base: Long, l: StockLine, skus: Map<Long, SkuInfo>): Long = skus[l.skuId]?.entry?.fromBase(base.coerceAtLeast(0L)) ?: base
 }

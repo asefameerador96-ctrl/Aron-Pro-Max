@@ -39,3 +39,6 @@ Wiring list when the lead says train 83 landed (names are in docs/status/amo-fou
 - sales-summary `target_qty_base` / `target_value_mtk` at route x category and route x brand grain: the screens do not read them yet (fallback from the targets endpoint is correct forever); memo counts per category from the report rows (item 2).
 - `GET /v1/team/stock`: members rows gain `route_names`, `total_outlets`, `phone`; the SR Stock list uses the members list today.
 - Also still open: an Opus checker pass on the fixes of D-AMO-TEAM-08; kept members copy keyed by date only; device check D-AMO-TEAM-DEV-01 (Team Location live map: rider marker, compass, my-location, bubble on SR pick).
+
+## A3 #2 session (2026-11-07)
+Step 1 done in the working tree: the six findings (D-AMO-TEAM-09) with tests `TeamScreensRulesTest.aRefusalIsNeverShownAsOffline`, `categoryMemoColumnComesFromTheBrandMemosOfTheSalesSummary`, `summaryPeriodIsMonthToTodayNotYesterday`, `routeCategoriesGroupByRouteCodeAndShowTheName`, `taskDraftKeyIsRouteAndOutletOnly`, `TeamStockUnitsTest.aNonWholePacketCountIsTruncatedAndSaidSo`. No local Android SDK in this container: compile and tests are proved by CI only. Step 2 (real F2 clients) waits for "train 83 landed".

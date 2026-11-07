@@ -110,12 +110,12 @@ private fun categoryTitle(code: String): String = when (code) {
 
 /** STD Memo Report (screenshot 71 right): the range, then the route x category matrix; the zone name is the first header cell and the categories scroll sideways. */
 @Composable
-fun StdMatrixContent(from: String, to: String, today: String, onRange: (String, String) -> Unit, m: StdMatrix?, stale: Boolean, failed: Boolean, modifier: Modifier = Modifier, truncated: Boolean = false) {
+fun StdMatrixContent(from: String, to: String, today: String, onRange: (String, String) -> Unit, m: StdMatrix?, stale: Boolean, failed: Boolean, refused: Boolean = false, modifier: Modifier = Modifier, truncated: Boolean = false) {
     val look = LocalAronLook.current
     val l = teamLocale()
     val h = rememberScrollState()
     Column(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (failed) AmoBanner(stringResource(R.string.amo_task_list_offline), kind = BannerKind.Warning) else if (stale) AmoBanner(stringResource(R.string.amo_task_list_kept), kind = BannerKind.Info)
+        AmoFetchBanner(failed, stale, refused)
         RangeField(from, to, today, onRange, Modifier.testTag(TeamReportTags.RANGE))
         // a cut-off answer is never printed as complete: no matrix, no totals, only the note
         if (truncated) { AmoBanner(stringResource(R.string.amo_rep_truncated), kind = BannerKind.Warning); return@Column }
@@ -168,9 +168,9 @@ private fun TillCardView(c: TillCard, onDetails: (() -> Unit)?) {
 
 /** Sales till now (screenshot 72 left): the zone card then one card per route with Category, Target, Sales, % and Memo. */
 @Composable
-fun TillNowContent(cards: List<TillCard>, onDetails: (TillCard) -> Unit, stale: Boolean, failed: Boolean, modifier: Modifier = Modifier) {
+fun TillNowContent(cards: List<TillCard>, onDetails: (TillCard) -> Unit, stale: Boolean, failed: Boolean, refused: Boolean = false, modifier: Modifier = Modifier) {
     AmoPage(modifier) {
-        if (failed) AmoBanner(stringResource(R.string.amo_task_list_offline), kind = BannerKind.Warning) else if (stale) AmoBanner(stringResource(R.string.amo_task_list_kept), kind = BannerKind.Info)
+        AmoFetchBanner(failed, stale, refused)
         if (cards.isEmpty()) AmoEmpty(stringResource(R.string.amo_rep_empty), hint = stringResource(R.string.amo_rep_empty_hint))
         cards.forEach { c -> TillCardView(c, { onDetails(c) }) }
     }

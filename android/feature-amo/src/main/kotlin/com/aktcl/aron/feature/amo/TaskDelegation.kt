@@ -48,6 +48,9 @@ object TaskDelegation {
         if (t.length > MAX_FORM_DESCRIPTION) add(AssignError.TEXT_TOO_LONG)
     }
 
+    /** The form draft key: route and outlet only. The SR can be replaced by the online members list while the form is open; the record's id must not change with it. */
+    fun draftKey(routeId: Long?, outletId: Long?): String = "task:route=$routeId:outlet=$outletId"
+
     /** The chip of a task: ongoing past its completion date reads overdue. [today] is the Dhaka business date. */
     fun chip(t: AssignedTask, today: String?): TaskChip = when {
         t.rejected -> TaskChip.REJECTED

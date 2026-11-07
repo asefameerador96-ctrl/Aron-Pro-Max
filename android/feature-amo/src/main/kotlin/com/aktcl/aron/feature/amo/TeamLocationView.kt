@@ -33,12 +33,12 @@ object TeamLocationRules {
  */
 @Composable
 fun TeamLocationContent(
-    choices: List<LocationChoice>, selectedId: Long?, onSelect: (Long) -> Unit, stale: Boolean, failed: Boolean,
+    choices: List<LocationChoice>, selectedId: Long?, onSelect: (Long) -> Unit, stale: Boolean, failed: Boolean, refused: Boolean = false,
     modifier: Modifier = Modifier, map: @Composable (Modifier) -> Unit,
 ) {
     Column(modifier.fillMaxSize()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (failed) AmoBanner(stringResource(R.string.amo_task_list_offline), kind = BannerKind.Warning) else if (stale) AmoBanner(stringResource(R.string.amo_task_list_kept), kind = BannerKind.Info)
+            AmoFetchBanner(failed, stale, refused)
             AmoDropdown(
                 choices.firstOrNull { it.userId == selectedId }?.name ?: stringResource(R.string.amo_team_loc_select), choices.map { it.userId.toString() to it.name },
                 { onSelect(it.toLong()) }, Modifier.testTag(TeamLocationTags.PICK),

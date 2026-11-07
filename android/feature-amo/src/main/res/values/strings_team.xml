@@ -92,4 +92,5 @@
     <string name="amo_team_sr_list_title">SR List</string>
     <string name="amo_team_live_title">Live Data</string>
     <string name="amo_team_task_form_title">Assign a task</string>
+    <string name="amo_team_refused">The server did not allow this list for your account. Ask your office to check your access.</string>
 </resources>
