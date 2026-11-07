@@ -63,7 +63,7 @@ data class ShopText(val name: String, val owner: String, val mobile: String, val
 
 @Composable
 fun routeItem(p: Pick, errors: Set<AmoFormError>) = AmoFormItem.Select(
-    "route", stringResource(R.string.amo_out_route).takeIf { false }, stringResource(R.string.amo_out_pick_route), p.options, p.id, p.onPick, p.enabled, errorText(AmoFormError.ROUTE.takeIf { it in errors }),
+    "route", null, stringResource(R.string.amo_out_pick_route), p.options, p.id, p.onPick, p.enabled, errorText(AmoFormError.ROUTE.takeIf { it in errors }),
 )
 
 @Composable

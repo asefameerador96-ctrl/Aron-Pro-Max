@@ -159,21 +159,28 @@ private fun AmoClusterHost(day: AmoDay, onDone: () -> Unit) {
     val cap by capture.state.collectAsState()
     var errors by remember { mutableStateOf<Set<com.aktcl.aron.feature.outlet.RequestError>>(emptySet()) }
     var done by rememberSaveable(outlet.outletId) { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    val ids = remember(draftKey) { SubmitUuid(day, draftKey) }
     val clusters = remember(day.zoneOutlets) { day.zoneOutlets.map { com.aktcl.aron.feature.outlet.ClusterOption(it.clusterId ?: -1, it.clusterName) }.filter { it.clusterId > 0 }.distinctBy { it.clusterId } }
+    val failedText = stringResource(AmoR.string.amo_task_failed)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(failed) { if (failed) { android.widget.Toast.makeText(context, failedText, android.widget.Toast.LENGTH_LONG).show(); failed = false } }
     if (done) { AmoSuccessDialog(stringResource(AmoR.string.amo_out_saved), stringResource(AmoR.string.amo_ok)) { done = false; onDone() }; return }
     OutletRequestContent(
         form = form, errors = errors, clusters = clusters, capture = cap, saved = false, warnOpenDues = false,
         onChange = { form = it }, onShutter = { scope.launch { capture.shutter() } },
         onSave = {
-            scope.launch {
-                if (cap.fix?.isMock == true) { errors = setOf(com.aktcl.aron.feature.outlet.RequestError.MOCK_FIX); return@launch }
-                var u = day.drafts.uuid(draftKey)
-                if (day.requestStored(u)) { day.drafts.clear(draftKey); u = day.drafts.uuid(draftKey) } // an earlier act finished before a kill: this one is new
-                val r = try { day.outletRequests.submit(form.copy(requestUuid = u, fix = cap.fix, photoUuids = listOfNotNull(cap.photo?.photoUuid))) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
-                when (r) {
-                    null -> errors = setOf(com.aktcl.aron.feature.outlet.RequestError.REASON_REQUIRED)
-                    is RequestValidation.Invalid -> errors = r.errors
-                    is RequestValidation.Ok -> { errors = emptySet(); day.drafts.clear(draftKey); done = true }
+            if (!busy) {
+                busy = true
+                scope.launch {
+                    if (cap.fix?.isMock == true) { errors = setOf(com.aktcl.aron.feature.outlet.RequestError.MOCK_FIX); busy = false; return@launch }
+                    when (val r = safeSubmit(day, ids, form.copy(fix = cap.fix, photoUuids = listOfNotNull(cap.photo?.photoUuid)))) {
+                        null -> failed = true
+                        is RequestValidation.Invalid -> { failed = false; errors = r.errors }
+                        is RequestValidation.Ok -> { failed = false; errors = emptySet(); day.drafts.clear(draftKey); done = true }
+                    }
+                    busy = false
                 }
             }
         },

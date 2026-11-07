@@ -134,7 +134,7 @@ class OutletFormsTest {
 
     @Test fun bothLocalesCarryTheSuccessTextsInTheirOwnLanguage() {
         show(AppLanguage.EN) { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.amo_out_updated)) }
-        compose.onNodeWithText("Data updated successfully.").assertExists()
+        compose.onNodeWithText("Data Updated Successfully").assertExists()
     }
 
     // ---- 64: Update Base geometry

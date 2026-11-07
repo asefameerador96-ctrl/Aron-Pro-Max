@@ -23,7 +23,7 @@
     <string name="amo_out_pick_geo_class">Select Geo Classification</string>
     <string name="amo_out_all">All</string>
     <string name="amo_out_saved">Data saved successfully.</string>
-    <string name="amo_out_updated">Data updated successfully.</string>
+    <string name="amo_out_updated">Data Updated Successfully</string>
     <string name="amo_out_photo_done">Photo captured</string>
     <string name="amo_out_reject_message">This request will be rejected</string>
     <string name="amo_out_err_route">Select a route.</string>

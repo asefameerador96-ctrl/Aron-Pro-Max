@@ -59,21 +59,28 @@ private fun rememberRouteDays(day: AmoDay): List<RouteDay> {
     return days
 }
 
-/** Resolved at the first save of a form: a key whose request is already stored means the earlier act finished, so this act takes a new uuid (never swallowed as a replay). */
-private class SubmitUuid(private val day: AmoDay, private val key: String) {
-    private var uuid: String? = null
-    suspend fun get(): String = uuid ?: run {
-        var u = day.drafts.uuid(key)
-        if (day.requestStored(u)) { day.drafts.clear(key); u = day.drafts.uuid(key) }
-        u.also { uuid = it }
-    }
+/**
+ * The uuid of one act: the form's `FormDrafts` key, unless a request is already stored under it, which means the earlier act finished before a kill, so the
+ * key is cleared and this act takes a new uuid (never swallowed as a replay). An unstored key is reused: a relaunch before the save queues the same record.
+ */
+internal suspend fun resolveActUuid(drafts: FormDrafts, key: String, stored: suspend (String) -> Boolean): String {
+    var u = drafts.uuid(key)
+    if (stored(u)) { drafts.clear(key); u = drafts.uuid(key) }
+    return u
 }
 
-private suspend fun safeSubmit(day: AmoDay, f: OutletRequestForm): RequestValidation? =
-    try { day.outletRequests.submit(f) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
+/** Resolved once, at the first save of a form (inside the save's try), then kept for retries and a double tap. */
+internal class SubmitUuid(private val day: AmoDay, private val key: String) {
+    private var uuid: String? = null
+    suspend fun get(): String = uuid ?: resolveActUuid(day.drafts, key) { day.requestStored(it) }.also { uuid = it }
+}
+
+/** Submits with the act's uuid; null = the save threw (the uuid lookup included), the caller shows the save-failed notice and resets busy. */
+internal suspend fun safeSubmit(day: AmoDay, ids: SubmitUuid, f: OutletRequestForm): RequestValidation? =
+    try { day.outletRequests.submit(f.copy(requestUuid = ids.get())) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
 
 @Composable
-private fun failedNotice(failed: Boolean): List<AmoFormItem> = if (failed) listOf(AmoFormItem.Notice(stringResource(AmoR.string.amo_task_failed), BannerKind.Error)) else emptyList()
+internal fun failedNotice(failed: Boolean): List<AmoFormItem> = if (failed) listOf(AmoFormItem.Notice(stringResource(AmoR.string.amo_task_failed), BannerKind.Error)) else emptyList()
 
 private fun mapErrors(e: Set<RequestError>): Set<AmoFormError> = e.mapNotNull { AmoOutletLists.fieldError(it) }.toSet()
 
@@ -135,10 +142,10 @@ private fun NewShopForm(day: AmoDay, days: List<RouteDay>, onCleared: () -> Unit
                 scope.launch {
                     if (cap.fix?.isMock == true) { errors = setOf(RequestError.MOCK_FIX); busy = false; return@launch } // anti-spoofing: a fake fix is never queued
                     val f = OutletRequestForm(
-                        kind = OutletRequestKind.NEW, requestUuid = ids.get(), name = name, ownerName = owner, mobile = mobile, clusterId = clusterId,
+                        kind = OutletRequestKind.NEW, name = name, ownerName = owner, mobile = mobile, clusterId = clusterId,
                         subChannelId = subId, geoClass = geo, fix = cap.fix, photoUuids = listOfNotNull(cap.photo?.photoUuid),
                     )
-                    when (val r = safeSubmit(day, f)) {
+                    when (val r = safeSubmit(day, ids, f)) {
                 null -> failed = true
                         is RequestValidation.Invalid -> errors = r.errors
                         is RequestValidation.Ok -> { failed = false; errors = emptySet(); day.drafts.clear(draftKey); saved = true }
@@ -182,8 +189,8 @@ private fun CloseForm(day: AmoDay, onCleared: () -> Unit) {
         val o = outlet ?: return
         busy = true
         scope.launch {
-            val f = OutletRequestForm(kind = OutletRequestKind.CLOSE, outletId = o.outletId, requestUuid = ids.get(), confirmed = true, openDueMtk = o.openDueMtk)
-            when (val r = safeSubmit(day, f)) {
+            val f = OutletRequestForm(kind = OutletRequestKind.CLOSE, outletId = o.outletId, confirmed = true, openDueMtk = o.openDueMtk)
+            when (val r = safeSubmit(day, ids, f)) {
                 null -> failed = true
                 is RequestValidation.Invalid -> errors = r.errors
                 is RequestValidation.Ok -> { failed = false; errors = emptySet(); day.drafts.clear(draftKey); saved = true }
@@ -260,10 +267,10 @@ private fun ChangeInfoForm(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
         scope.launch {
             if (cap.fix?.isMock == true) { errors = setOf(RequestError.MOCK_FIX); busy = false; return@launch }
             val f = OutletRequestForm(
-                kind = OutletRequestKind.INFO, outletId = o.outletId, requestUuid = ids.get(), name = name, ownerName = owner, mobile = mobile,
+                kind = OutletRequestKind.INFO, outletId = o.outletId, name = name, ownerName = owner, mobile = mobile,
                 fix = cap.fix, photoUuids = listOfNotNull(cap.photo?.photoUuid), confirmed = true,
             )
-            when (val r = safeSubmit(day, f)) {
+            when (val r = safeSubmit(day, ids, f)) {
                 null -> failed = true
                 is RequestValidation.Invalid -> errors = r.errors
                 is RequestValidation.Ok -> { failed = false; errors = emptySet(); day.drafts.clear(draftKey); saved = true }
@@ -367,10 +374,10 @@ private fun UpdateBaseFlow(day: AmoDay, days: List<RouteDay>, onCleared: () -> U
                         busy = true
                         scope.launch {
                             val f = OutletRequestForm(
-                                kind = OutletRequestKind.LOCATION, outletId = outlet.outletId, requestUuid = ids.get(), fix = cap.fix,
+                                kind = OutletRequestKind.LOCATION, outletId = outlet.outletId, fix = cap.fix,
                                 photoUuids = listOfNotNull(cap.photo?.photoUuid), pointLat = pin.first, pointLng = pin.second, oldLat = outlet.lat, oldLng = outlet.lng,
                             )
-                            when (val r = safeSubmit(day, f)) {
+                            when (val r = safeSubmit(day, ids, f)) {
                 null -> failed = true
                                 is RequestValidation.Invalid -> errors = r.errors
                                 is RequestValidation.Ok -> { failed = false; errors = emptySet(); day.drafts.clear(draftKey); saved = true }
