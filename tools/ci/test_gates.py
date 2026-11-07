@@ -659,6 +659,79 @@ class RobolectricPrefetch(unittest.TestCase):
         wf = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         self.assertLess(wf.index("tools/ci/robolectric-prefetch.sh"), wf.index("testDebugUnitTest lintDebug"))
         self.assertIn("ROBOLECTRIC_OFFLINE_DIR=", wf)
+# lead-ops item 4: infra/scripts/cost-report.sh (D-OPS-COST-SCOPE-01), run against a stubbed az
+class CostReport(unittest.TestCase):
+    SCRIPT = ROOT / "infra" / "scripts" / "cost-report.sh"
+
+    def run_script(self, query="ok", usage="ok", query_err="403 Forbidden"):
+        """query/usage: 'ok' answers a small JSON, 'fail' exits 1. Returns (rc, stdout+stderr, urls called, sleeps)."""
+        with tempfile.TemporaryDirectory() as t:
+            t = Path(t)
+            calls, sleeps = t / "urls", t / "sleeps"
+            (t / "az").write_text(f"""#!/usr/bin/env python3
+import sys
+a = sys.argv[1:]
+if a[:2] == ['account', 'show']: print('sub-1'); sys.exit(0)
+url = a[a.index('--url') + 1]
+open({str(calls)!r}, 'a').write(url + '\\n')
+if 'CostManagement' in url:
+    if {query!r} == 'ok':
+        print('{{"properties":{{"columns":[{{"name":"Cost"}},{{"name":"UsageDate"}},{{"name":"ResourceId"}},{{"name":"Currency"}}],"rows":[[1.5,20261105,"/x/y/vm1","USD"]]}}}}'); sys.exit(0)
+    print({query_err!r}, file=sys.stderr); sys.exit(1)
+if 'usageDetails' in url:
+    if {usage!r} == 'ok':
+        print('{{"value":[{{"properties":{{"date":"2026-11-05T00:00:00Z","costInBillingCurrency":2.0}}}}]}}'); sys.exit(0)
+    if {usage!r} == 'empty':
+        print('{{"value":[]}}'); sys.exit(0)
+    print('404 Not Found', file=sys.stderr); sys.exit(1)
+sys.exit('unexpected az ' + ' '.join(a))
+""")
+            (t / "sleep").write_text(f"#!/bin/sh\necho $1 >> {sleeps}\n")
+            for f in ("az", "sleep"):
+                (t / f).chmod(0o755)
+            summ = t / "summary.md"
+            env = {**os.environ, "PATH": f"{t}:{os.environ['PATH']}", "GITHUB_STEP_SUMMARY": str(summ)}
+            r = subprocess.run(["bash", str(self.SCRIPT), "rg-aron-dev"], env=env, capture_output=True, text=True, timeout=60)
+            urls = calls.read_text().split("\n")[:-1] if calls.exists() else []
+            waits = sleeps.read_text().split() if sleeps.exists() else []
+            return r.returncode, r.stdout + r.stderr, urls, waits
+
+    def test_the_query_path_reads_a_figure_without_a_warning(self):
+        rc, out, urls, _ = self.run_script()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("Cost Management query", out)
+        self.assertNotIn("::warning::", out)
+        self.assertEqual(len(urls), 1)
+        self.assertIn("/subscriptions/sub-1/resourceGroups/rg-aron-dev/providers/Microsoft.CostManagement/query", urls[0])
+
+    def test_the_fallback_reads_usage_details_at_subscription_scope_with_a_resource_group_filter(self):
+        rc, out, urls, _ = self.run_script(query="fail")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("Consumption usage details", out)
+        self.assertNotIn("::warning::", out, "a figure was read")
+        u = urls[-1]
+        self.assertIn("https://management.azure.com/subscriptions/sub-1/providers/Microsoft.Consumption/usageDetails?", u)
+        self.assertNotIn("/resourceGroups/", u, "the resource-group scope answers 404 for usageDetails")
+        self.assertIn("properties/resourceGroup eq 'rg-aron-dev'", u)
+        self.assertRegex(u, r"properties/usageStart ge '\d{4}-\d{2}-01' and properties/usageEnd le '\d{4}-\d{2}-\d{2}'")
+
+    def test_an_empty_usage_answer_is_no_figure(self):
+        rc, out, urls, _ = self.run_script(query="fail", usage="empty")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("::warning::cost-report of rg-aron-dev: no cost figure was read", out)
+
+    def test_no_figure_at_all_emits_a_warning_annotation_and_stays_green(self):
+        rc, out, urls, waits = self.run_script(query="fail", usage="fail")
+        self.assertEqual(rc, 0, out)
+        self.assertRegex(out, r"::warning::cost-report of rg-aron-dev: no cost figure was read")
+        self.assertEqual(waits, ["0"], "a non-throttle refusal is not retried")
+
+    def test_throttling_keeps_the_six_minute_back_off_and_warns(self):
+        rc, out, urls, waits = self.run_script(query="fail", usage="fail", query_err="429 Too Many Requests")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(waits, ["0", "30", "60", "120", "180"], "about 6 minutes of back-off in total")
+        self.assertEqual(sum(1 for u in urls if "CostManagement" in u), 5)
+        self.assertIn("::warning::cost-report of rg-aron-dev: no cost figure was read (Cost Management throttled (429)", out)
 
 
 if __name__ == "__main__":

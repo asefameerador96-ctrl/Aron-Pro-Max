@@ -391,10 +391,12 @@ Server parameters written one at a time by the template:
 | `azure.extensions` | `BTREE_GIST,PGCRYPTO,PG_STAT_STATEMENTS,PG_TRGM,POSTGIS` | allow-list |
 | `log_min_duration_statement` | 500 | slow-query log (ms) |
 | `track_io_timing` | on | I/O observability |
-| `idle_in_transaction_session_timeout` | 30000 | ms |
+| `idle_in_transaction_session_timeout` | 30000 | ms; the migrate role's sessions are exempt per session (`Migrator.INIT_SQL`, Flyway `afterConnect` callback) |
 | `pg_qs.query_capture_mode` | top | Query Store |
 
 Extensions actually created by migrations: `btree_gist` (V0001, exclusion constraints) and `pg_trgm` (V0068). PostGIS and pgcrypto are allow-listed but unused (nearby search is a lat/lng index plus haversine in the API). Not set in Bicep: `max_connections`, `pgbouncer.max_prepared_statements`, autovacuum tuning (the JDBC URL uses `prepareThreshold=0` instead). Role-level timeouts come from migrations (V0020 `apply_login_limits`), not Bicep.
+
+**Proposal for the FINAL account only (not applied to the test account; D-OPS-KEEPALIVE-PROPOSAL-01).** Set the server parameters `tcp_keepalives_idle` (60 s), `tcp_keepalives_interval` (10 s) and `tcp_keepalives_count` (6) in `postgres.bicep` for the production profile, so a half-open connection of a long job (migrate, worker, a dashboard export) behind a NAT or load-balancer idle timer is probed and dropped by the server instead of lingering until the 30 s idle-in-transaction limit or the client's own timeout. Why on the server and not in the URL: the direct URL is read by pgjdbc and by libpq/psql, and `tcpKeepAlive` is a pgjdbc-only option that libpq rejects (D-INFRA-DIRECT-URL-KEEPALIVE-02); server parameters reach both. Not a fix for the 08006 incident (that was the idle-in-transaction timeout, D-OPS-MIGRATE-IDLE-TIMEOUT-01). Evidence needed before it ships: the final account's private-networking path has an idle timer shorter than the longest migration (measure with a 10-minute `pg_sleep` migration drill); all three parameters are dynamic (no restart), and the check_infra parameter list gets the three names in the same change.
 
 ### B5.3 Pooling
 
