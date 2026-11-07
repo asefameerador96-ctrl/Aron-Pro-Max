@@ -18,3 +18,24 @@ Brief: `docs/requests/amo-manual-build-2026-11.md` s5 "A3 amo-team", rows 33 to 
 | 74 | Journey timeline | timeline, durations, distances | `TeamJourneyTest`, `amo_team_journey_timeline_*` |
 
 Open: F2 contract names for the sales-summary target columns (D-AMO-TEAM-06); real clients are wired against the F1/F2 names of the brief and tested with fixtures; device checks for the map (33).
+
+## Landed state and landing condition
+Head d856e566a (lane run 42308568632 green; lead's Opus checker PASS on the code). F2 (journey, members, login-submit additions, report targets) is not on INT yet, so the screens would show empty lists under the banner: the head lands in train 84, right after the foundation train 83.
+
+## HANDOVER (A3 session 1 -> A3 #2), context 498k
+Continue from branch `lane/android-amo-team` (merge INT first, one push per CI run). Not done, to take in the next push (the lead's six findings):
+1. Refusal is not offline. `AmoFetch.isMissing()` treats Gone (403/404) like offline in TeamPerformanceView.kt:98,121, TeamLocationView.kt:41, TeamLiveView.kt:144 and the SR list / journey views. Pass `refused = f is AmoFetch.Gone` and show a separate refusal string (en + bn in strings_team.xml).
+2. AmoReportHub.kt:71-72 passes `emptyMap()` to `TeamReports.tillCard`, so the category Memo column is always "—" although sales-summary rows carry memos: map memos from `Reports.routeCards` per category.
+3. AmoReportHub.kt:68 CPR period: use month-to-today (screenshot 72; lead ruling; F-AMO-033's "up to yesterday" is superseded for the AMO summary).
+4. Reports.kt:104 `routeCategories` groups by route_name before route_code: group by code, display the name.
+5. Note: `TeamStock.entered` / `fromBase` truncates a non-whole packet count (low risk).
+6. AmoTaskHub.kt:120 draft key `task:null:<id>` until the SR is known can change when the members list replaces the bundle's choice: key by route and outlet only.
+
+Wiring list when the lead says train 83 landed (names are in docs/status/amo-foundation.md, binding):
+- `GET /v1/team/members` (AmoApi.teamMembers, TeamJourneys.members): check `phone`, `phone_masked`, `total_outlets`, `vacant`, `route_days`, `route_name`.
+- `GET /v1/team/journey` (AmoApi.teamJourney, TeamJourneys.journey): `outlet.phone_masked` vs a clear `phone`; two-decimal distances.
+- `GET /v1/dashboards/login-submit` additions `geo_valid_visits`, `photo_valid_visits`, `visits_total`, `sales_by_category` (all nullable, null prints "—"); `level=route` is NOT offered by the F2 server today (400): Team Performance, sales-till-now and Live Data fall back to the zone; re-enable route cards when it is.
+- `GET /v1/dashboards/targets` product_level=brand (zone top node, `level=route&node_id` per route).
+- sales-summary `target_qty_base` / `target_value_mtk` at route x category and route x brand grain: the screens do not read them yet (fallback from the targets endpoint is correct forever); memo counts per category from the report rows (item 2).
+- `GET /v1/team/stock`: members rows gain `route_names`, `total_outlets`, `phone`; the SR Stock list uses the members list today.
+- Also still open: an Opus checker pass on the fixes of D-AMO-TEAM-08; kept members copy keyed by date only; device check D-AMO-TEAM-DEV-01 (Team Location live map: rider marker, compass, my-location, bubble on SR pick).
