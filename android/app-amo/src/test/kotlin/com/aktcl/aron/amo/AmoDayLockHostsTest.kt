@@ -116,10 +116,10 @@ class AmoDayLockHostsTest {
         compose.waitUntil(5_000) { runCatching { compose.onNodeWithTag("amo_cp_route").assertExists() }.isSuccess }
         compose.onNodeWithTag("amo_cp_route").performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(tagged("amo_cp_route_")).fetchSemanticsNodes().isNotEmpty() }
-        compose.onAllNodes(tagged("amo_cp_route_"))[0].performClick()
+        compose.onNodeWithTag("amo_cp_route_" + f.route).performClick()
         compose.onNodeWithTag("amo_cp_outlet").performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(tagged("amo_cp_outlet_")).fetchSemanticsNodes().isNotEmpty() }
-        compose.onAllNodes(tagged("amo_cp_outlet_") and androidx.compose.ui.test.hasText("Rahim Store 50001", substring = true))[0].performClick()
+        compose.onNodeWithTag("amo_cp_outlet_50001").performClick()
         compose.onNodeWithTag("amo_mf_tile").performClick()
         compose.waitUntil(5_000) { shown("Rahim Store 50001") }
         compose.onNodeWithText("Rahim Store 50001", substring = true).performClick()

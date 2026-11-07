@@ -109,7 +109,9 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
     LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { pulls++; vm.refresh() } }
     val dayLock = day.dayLock.collectAsState().value
     BackHandler(enabled = st.selected != null || history != null) { if (history != null) history = null else vm.open("") }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    // the find step (route and retailer pickers, their lists) scrolls itself: nesting it in a scrolling column crashes on infinite height
+    val outerScroll = st.selected != null || history != null
+    Column(Modifier.fillMaxSize().then(if (outerScroll) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
         val sel = st.selected
         val h = history
         when {
