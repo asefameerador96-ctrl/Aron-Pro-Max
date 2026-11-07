@@ -112,14 +112,14 @@ class AmoDayLockHostsTest {
         f.creditMemo(f.controlCall())
         show { AmoMemoHost(f.day, onEdit = {}) }
         // Memo find (screenshot 42): route, retailer, then the Memo tile lists the retailer's memos
-        fun tagged(prefix: String) = androidx.compose.ui.test.hasTestTag(prefix).let { _ -> androidx.compose.ui.test.SemanticsMatcher("tag starts with $prefix") { n -> (n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag) ?: "").startsWith(prefix) } }
+        fun tagged(prefix: String) = androidx.compose.ui.test.SemanticsMatcher("tag starts with $prefix") { n -> n.config.contains(androidx.compose.ui.semantics.SemanticsProperties.TestTag) && n.config[androidx.compose.ui.semantics.SemanticsProperties.TestTag].startsWith(prefix) }
         compose.waitUntil(5_000) { runCatching { compose.onNodeWithTag("amo_cp_route").assertExists() }.isSuccess }
         compose.onNodeWithTag("amo_cp_route").performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(tagged("amo_cp_route_")).fetchSemanticsNodes().isNotEmpty() }
         compose.onAllNodes(tagged("amo_cp_route_"))[0].performClick()
         compose.onNodeWithTag("amo_cp_outlet").performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(tagged("amo_cp_outlet_")).fetchSemanticsNodes().isNotEmpty() }
-        compose.onAllNodes(tagged("amo_cp_outlet_")).filter(androidx.compose.ui.test.hasText("Rahim Store 50001", substring = true))[0].performClick()
+        compose.onAllNodes(tagged("amo_cp_outlet_") and androidx.compose.ui.test.hasText("Rahim Store 50001", substring = true))[0].performClick()
         compose.onNodeWithTag("amo_mf_tile").performClick()
         compose.waitUntil(5_000) { shown("Rahim Store 50001") }
         compose.onNodeWithText("Rahim Store 50001", substring = true).performClick()

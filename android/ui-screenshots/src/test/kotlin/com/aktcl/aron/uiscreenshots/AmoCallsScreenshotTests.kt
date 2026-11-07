@@ -82,8 +82,8 @@ class AmoCallsScreenshotTests {
     @Test fun amo_control_call_pick_out_of_range_en() = shot("amo_control_call_pick_en", AppLanguage.EN, "Control Call Activity") { pick(CallRange.Out(true, true)) }
     @Test fun amo_control_call_pick_out_of_range_fs2() = shot("amo_control_call_pick_bn_fs2", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", fontScale = 2f) { pick(CallRange.Out(true, true)) }
     @Test fun amo_control_call_pick_out_of_range_sunlight() = shot("amo_control_call_pick_sunlight_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", sunlight = true) { pick(CallRange.Out(true, true)) }
-    @Test fun amo_control_call_menu_bn() = shot("amo_control_call_menu_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি") { pick(CallRange.In) }
-    @Test fun amo_control_call_menu_sunlight() = shot("amo_control_call_menu_sunlight_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", sunlight = true) { pick(CallRange.In) }
+    @Test fun amo_control_call_menu_bn() = shot("amo_cc_tiles_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি") { pick(CallRange.In) }
+    @Test fun amo_control_call_menu_sunlight() = shot("amo_cc_tiles_sunlight_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", sunlight = true) { pick(CallRange.In) }
     @Test fun amo_sales_pick_empty_bn() = shot("amo_sales_pick_empty_bn", AppLanguage.BN, "বিক্রয়") {
         AmoCallPickContent(null, null, false, emptyList(), "", false, CallRange.Idle, false, false, {}, {}, {}, {}, {})
     }
