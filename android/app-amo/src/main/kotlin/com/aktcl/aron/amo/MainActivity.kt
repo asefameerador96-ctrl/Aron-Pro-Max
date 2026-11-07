@@ -129,7 +129,7 @@ class MainActivity : ComponentActivity() {
                             // The bind step (OTP from /device-otp) follows the first login of an enrolled phone.
                             val vm = viewModel { LoginViewModel(components.session::login).also { it.bind = components.session::bindDevice } }
                             // R1: the footer reads "ARON AMO v<version>", never the vendor credit
-                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol, footerText = stringResource(R.string.app_name) + " v" + BuildConfig.VERSION_NAME)
+                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol, footerText = stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_login_footer, stringResource(R.string.app_name), BuildConfig.VERSION_NAME))
                         }
                         is SessionState.Active -> AronTheme(language, sunlight = sunlight, amo = true) { // D-AMO-MAN-03: the AMO look on every signed-in screen
                             // F-SYS-022: AMO keeps its data; it keeps uploading.

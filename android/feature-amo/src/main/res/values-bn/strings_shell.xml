@@ -8,8 +8,6 @@
     <string name="amo_shell_fold">টাইল লুকান</string>
     <string name="amo_shell_unfold">টাইল দেখান</string>
     <string name="amo_shell_no_data">তথ্য পাওয়া যায়নি</string>
-    <!-- the language drop-down of Settings shows the vendor's lower-case code (screenshot 75) -->
-    <string name="amo_shell_lang_en" translatable="false">en</string>
     <string name="amo_shell_support_title">সফল</string>
     <string name="amo_shell_support_sent">সিঙ্ক ফাইল পাঠানো হয়ে গেছে</string>
     <string name="amo_shell_ok">ওকে</string>

@@ -44,7 +44,7 @@ import kotlinx.coroutines.launch
 /**
  * The half-dome press-and-hold button of the AMO check-in / check-out sheet (notes 15, 16): the upper half of a circle, a gradient from
  * [from] (lower left) to [to] (upper right), the white [icon] over the white [label]. [onConfirmed] fires only after the finger has stayed
- * down for [holdMillis]; lifting early cancels (same rule as AronPressAndHoldButton). A white arc along the rim shows the progress; TalkBack
+ * down for [holdMillis]; lifting early cancels (same rule as AronPressAndHoldButton). A white bar along the bottom edge shows the progress; TalkBack
  * users get a long-click action instead of a hold. Sunlight passes one solid deep colour in both stops.
  */
 @Composable
