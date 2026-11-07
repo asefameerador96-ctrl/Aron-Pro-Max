@@ -22,6 +22,7 @@ Binaries: OASDIFF and SQUAWK (paths) or on PATH; a test that needs a missing bin
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -625,6 +626,145 @@ class TsoReleaseCopyName(unittest.TestCase):
         wf = (ROOT / ".github" / "workflows" / "release-app.yml").read_text(encoding="utf-8")
         copy = wf.index("--tso-copy-name")
         self.assertLess(copy, wf.index("sha256sum ./*.apk > SHA256SUMS"))
+
+
+class RobolectricPrefetch(unittest.TestCase):
+    """D-QA-CI-01: the Android job must not fetch Robolectric's android-all jars from Maven during the test phase."""
+    script = ROOT / "tools" / "ci" / "robolectric-prefetch.sh"
+
+    def test_the_script_is_executable_and_pins_every_jar(self):
+        self.assertTrue(os.access(self.script, os.X_OK))
+        text = self.script.read_text(encoding="utf-8")
+        self.assertEqual(len(re.findall(r'^  "\d+-robolectric-\d+-i7 [0-9a-f]{64}"$', text, re.M)), 4)
+
+    def test_the_table_matches_the_catalog_version_and_the_sdks_the_tests_use(self):
+        catalog = (ROOT / "gradle" / "libs.versions.toml").read_text(encoding="utf-8")
+        self.assertIn('robolectric = "4.17"', catalog, "bump the table in robolectric-prefetch.sh with Robolectric")
+        text = self.script.read_text(encoding="utf-8")
+        have = {int(m) for m in re.findall(r'"(\d+)-robolectric-', text)}
+        # API level -> Android version, as Robolectric 4.17 names the jar
+        by_api = {29: 10, 30: 11, 34: 14, 36: 16}
+        used = set()
+        for f in (ROOT / "android").rglob("*.kt"):
+            used.update(int(n) for grp in re.findall(r"sdk\s*=\s*\[([0-9, ]+)\]", f.read_text(encoding="utf-8", errors="ignore"))
+                        for n in grp.split(","))
+        used.add(36)  # a test with no @Config runs at the targetSdk
+        for api in used:
+            self.assertIn(api, by_api, f"sdk={api} is used by a test but has no jar in the pre-fetch table")
+            self.assertIn(by_api[api], have, f"sdk={api} needs android-all-instrumented-{by_api[api]}")
+
+    def test_build_and_workflow_wire_the_offline_dir(self):
+        build = (ROOT / "build.gradle.kts").read_text(encoding="utf-8")
+        self.assertEqual(build.count('"robolectric.offline", "true"'), 2)  # library and application modules
+        wf = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        self.assertLess(wf.index("tools/ci/robolectric-prefetch.sh"), wf.index("testDebugUnitTest lintDebug"))
+        self.assertIn("ROBOLECTRIC_OFFLINE_DIR=", wf)
+# lead-ops item 4: infra/scripts/cost-report.sh (D-OPS-COST-SCOPE-01), run against a stubbed az
+class CostReport(unittest.TestCase):
+    SCRIPT = ROOT / "infra" / "scripts" / "cost-report.sh"
+
+    def run_script(self, query="ok", usage="ok", query_err="403 Forbidden"):
+        """query/usage: 'ok' answers a small JSON, 'fail' exits 1. Returns (rc, stdout+stderr, urls called, sleeps)."""
+        with tempfile.TemporaryDirectory() as t:
+            t = Path(t)
+            calls, sleeps = t / "urls", t / "sleeps"
+            (t / "az").write_text(f"""#!/usr/bin/env python3
+import sys
+a = sys.argv[1:]
+if a[:2] == ['account', 'show']: print('sub-1'); sys.exit(0)
+url = a[a.index('--url') + 1]
+open({str(calls)!r}, 'a').write(url + '\\n')
+if 'CostManagement' in url:
+    if {query!r} == 'ok':
+        print('{{"properties":{{"columns":[{{"name":"Cost"}},{{"name":"UsageDate"}},{{"name":"ResourceId"}},{{"name":"Currency"}}],"rows":[[1.5,20261105,"/x/y/vm1","USD"]]}}}}'); sys.exit(0)
+    print({query_err!r}, file=sys.stderr); sys.exit(1)
+if 'usageDetails' in url:
+    if {usage!r} == 'ok':
+        print('{{"value":[{{"properties":{{"date":"2026-11-05T00:00:00Z","costInBillingCurrency":2.0}}}}]}}'); sys.exit(0)
+    if {usage!r} == 'empty':
+        print('{{"value":[]}}'); sys.exit(0)
+    print('404 Not Found', file=sys.stderr); sys.exit(1)
+sys.exit('unexpected az ' + ' '.join(a))
+""")
+            (t / "sleep").write_text(f"#!/bin/sh\necho $1 >> {sleeps}\n")
+            for f in ("az", "sleep"):
+                (t / f).chmod(0o755)
+            summ = t / "summary.md"
+            env = {**os.environ, "PATH": f"{t}:{os.environ['PATH']}", "GITHUB_STEP_SUMMARY": str(summ)}
+            r = subprocess.run(["bash", str(self.SCRIPT), "rg-aron-dev"], env=env, capture_output=True, text=True, timeout=60)
+            urls = calls.read_text().split("\n")[:-1] if calls.exists() else []
+            waits = sleeps.read_text().split() if sleeps.exists() else []
+            return r.returncode, r.stdout + r.stderr, urls, waits
+
+    def test_the_query_path_reads_a_figure_without_a_warning(self):
+        rc, out, urls, _ = self.run_script()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("Cost Management query", out)
+        self.assertNotIn("::warning::", out)
+        self.assertEqual(len(urls), 1)
+        self.assertIn("/subscriptions/sub-1/resourceGroups/rg-aron-dev/providers/Microsoft.CostManagement/query", urls[0])
+
+    def test_the_fallback_reads_usage_details_at_subscription_scope_with_a_resource_group_filter(self):
+        rc, out, urls, _ = self.run_script(query="fail")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("Consumption usage details", out)
+        self.assertNotIn("::warning::", out, "a figure was read")
+        u = urls[-1]
+        self.assertIn("https://management.azure.com/subscriptions/sub-1/providers/Microsoft.Consumption/usageDetails?", u)
+        self.assertNotIn("/resourceGroups/", u, "the resource-group scope answers 404 for usageDetails")
+        self.assertIn("properties/resourceGroup eq 'rg-aron-dev'", u)
+        self.assertRegex(u, r"properties/usageStart ge '\d{4}-\d{2}-01' and properties/usageEnd le '\d{4}-\d{2}-\d{2}'")
+
+    def test_an_empty_usage_answer_is_no_figure(self):
+        rc, out, urls, _ = self.run_script(query="fail", usage="empty")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("::warning::cost-report of rg-aron-dev: no cost figure was read", out)
+
+    def test_no_figure_at_all_emits_a_warning_annotation_and_stays_green(self):
+        rc, out, urls, waits = self.run_script(query="fail", usage="fail")
+        self.assertEqual(rc, 0, out)
+        self.assertRegex(out, r"::warning::cost-report of rg-aron-dev: no cost figure was read")
+        self.assertEqual(waits, ["0"], "a non-throttle refusal is not retried")
+
+    def test_throttling_keeps_the_six_minute_back_off_and_warns(self):
+        rc, out, urls, waits = self.run_script(query="fail", usage="fail", query_err="429 Too Many Requests")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(waits, ["0", "30", "60", "120", "180"], "about 6 minutes of back-off in total")
+        self.assertEqual(sum(1 for u in urls if "CostManagement" in u), 5)
+        self.assertIn("::warning::cost-report of rg-aron-dev: no cost figure was read (Cost Management throttled (429)", out)
+# amo-shell A1: the AMO release copy aron_amo_app_<dd_mm_yyyy>_v<versionCode>.apk (D-AMO-MAN-16, s8 row 1)
+class AmoReleaseCopyName(unittest.TestCase):
+    def run_name(self, *args):
+        return subprocess.run([sys.executable, str(HERE / "release-apks.py"), "--amo-copy-name", *args], capture_output=True, text=True)
+
+    def test_the_name_of_screenshot_1(self):
+        r = self.run_name("10025", "2026-11-06")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "aron_amo_app_06_11_2026_v10025.apk")
+
+    def test_day_and_month_are_two_digits(self):
+        self.assertEqual(self.run_name("3", "2026-01-05").stdout.strip(), "aron_amo_app_05_01_2026_v3.apk")
+
+    def test_today_in_dhaka_by_default(self):
+        r = self.run_name("7")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout.strip(), r"^aron_amo_app_\d{2}_\d{2}_\d{4}_v7\.apk$")
+
+    def test_a_bad_version_code_or_date_fails(self):
+        self.assertEqual(self.run_name("0", "2026-11-06").returncode, 2)
+        self.assertEqual(self.run_name("x", "2026-11-06").returncode, 2)
+        self.assertEqual(self.run_name("5", "06-11-2026").returncode, 2)
+
+    def test_the_tso_name_is_unchanged(self):
+        r = subprocess.run([sys.executable, str(HERE / "release-apks.py"), "--tso-copy-name", "10025", "2026-10-29"], capture_output=True, text=True)
+        self.assertEqual(r.stdout.strip(), "aron_tso_app_29_10_2026_v10025.apk")
+
+    def test_the_workflow_copies_the_amo_apk_next_to_the_tso_copy_before_the_digests(self):
+        wf = (ROOT / ".github" / "workflows" / "release-app.yml").read_text(encoding="utf-8")
+        amo = wf.index("--amo-copy-name")
+        self.assertIn('out/aron-amo-${VERSION_NAME}.apk', wf[wf.rindex("cp ", 0, amo):amo])
+        self.assertLess(wf.index("--tso-copy-name"), wf.index("sha256sum ./*.apk > SHA256SUMS"))
+        self.assertLess(amo, wf.index("sha256sum ./*.apk > SHA256SUMS"))
 
 
 if __name__ == "__main__":

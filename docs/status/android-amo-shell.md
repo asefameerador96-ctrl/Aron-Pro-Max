@@ -12,3 +12,8 @@ See DECISIONS.md D-AMO-SHELL-01..04. Not started: attendance parity 14–16, log
 ## Traps
 - A failed gradle pipe through tail reports exit 0: grep `BUILD`. Gradle online; `echo sdk.dir=/opt/android-sdk > local.properties` after `tools/android-sdk.sh`.
 - Goldens only on Linux: `-Proborazzi.record=true --tests '*Amo*'`.
+
+## Push 2 (attendance 14-16, login 3, update 5-7, Stock 41 toast, Settings 75-77, release copy name)
+- Done: AMO style of the shared attendance screen (`amoStyle`, dome hold button `AronDomeHoldButton`, dashed status boxes, 12-hour Latin chip, "Already Checked-In/Out" in the user's language); login footer "ARON AMO v<version>" (`footerText`); `UpdateContent(amoStyle)` texts; Settings = three tiles (language drop-down, PDA, Log out) + Sunlight/about/printer/exceptions rows; printer-connected toast (`PrinterToast`); PDA "সফল" dialog when the send is already Sent; `release-apks.py --amo-copy-name`, `amo-apk-copy.sh`, release and CI steps + tests; goldens (`AmoShellScreenshotTests`) and `docs/evidence/ui-parity/amo-03,08,09,14,15,16,41,75,77.png` (`tools/ui-kit/amo-side-by-side.py`).
+- Opus checker (attendance gate, release name, toast): gate and release PASS; two defects fixed (toast after a print; PDA dialog). The PDA dialog is not polled (NoPollingLintTest): a queued upload shows its status text instead.
+- Open: Stock 41 uses the shared Stock screen with the AMO look (panel is solid, the vendor's is a blue-to-indigo gradient); login permission dialogs 3-4 are Android system dialogs (device); update flow 7's forced-after-login uses the same screen; orange box after 17:00 with Sales Submit pending shows a grey Check Out (the notice above explains).

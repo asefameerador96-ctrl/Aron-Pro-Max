@@ -191,7 +191,7 @@ class AdminMasterTest {
     @Test
     fun holidaysDeclareListOverlapAndPastDate() = env.app {
         val zid = id("zone", "Z-MIR")
-        val day = env.today.plusDays(30)
+        val day = env.workingDay(30, span = 2) // the next day carries the make-up day below
         val body = """{"date":"$day","scope_type":"zone","scope_id":$zid,"kind":"holiday","name_en":"Local fair","reason":"Declared by the zone office"}"""
         val ok = sendA1(HttpMethod.Post, "/admin/calendar/holidays", admin, body)
         assertEquals(HttpStatusCode.Created, ok.status)

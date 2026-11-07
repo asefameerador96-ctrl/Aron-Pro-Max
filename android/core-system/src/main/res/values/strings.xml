@@ -67,4 +67,10 @@
     <string name="support_failed_too_large">The data file is too large to send. Call your supervisor.</string>
     <string name="support_failed_no_key">Sending to support is not set up on this phone yet. Call your supervisor.</string>
     <string name="support_failed_retrying">Sending to support failed several times. The phone keeps trying; check the internet or tap Send data file again.</string>
+    <!-- the AMO app's update texts (amo-shell A1, screenshots 5 to 7) -->
+    <string name="update_amo_ribbon">NEW UPDATE</string>
+    <string name="update_amo_heading">Update Available</string>
+    <string name="update_amo_updating">Updating the app</string>
+    <string name="update_amo_version">Version %1$s available</string>
+    <string name="update_amo_download">Download App &amp; Install</string>
 </resources>
