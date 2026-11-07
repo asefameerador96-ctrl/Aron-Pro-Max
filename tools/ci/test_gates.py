@@ -732,6 +732,39 @@ sys.exit('unexpected az ' + ' '.join(a))
         self.assertEqual(waits, ["0", "30", "60", "120", "180"], "about 6 minutes of back-off in total")
         self.assertEqual(sum(1 for u in urls if "CostManagement" in u), 5)
         self.assertIn("::warning::cost-report of rg-aron-dev: no cost figure was read (Cost Management throttled (429)", out)
+# amo-shell A1: the AMO release copy aron_amo_app_<dd_mm_yyyy>_v<versionCode>.apk (D-AMO-MAN-16, s8 row 1)
+class AmoReleaseCopyName(unittest.TestCase):
+    def run_name(self, *args):
+        return subprocess.run([sys.executable, str(HERE / "release-apks.py"), "--amo-copy-name", *args], capture_output=True, text=True)
+
+    def test_the_name_of_screenshot_1(self):
+        r = self.run_name("10025", "2026-11-06")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "aron_amo_app_06_11_2026_v10025.apk")
+
+    def test_day_and_month_are_two_digits(self):
+        self.assertEqual(self.run_name("3", "2026-01-05").stdout.strip(), "aron_amo_app_05_01_2026_v3.apk")
+
+    def test_today_in_dhaka_by_default(self):
+        r = self.run_name("7")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout.strip(), r"^aron_amo_app_\d{2}_\d{2}_\d{4}_v7\.apk$")
+
+    def test_a_bad_version_code_or_date_fails(self):
+        self.assertEqual(self.run_name("0", "2026-11-06").returncode, 2)
+        self.assertEqual(self.run_name("x", "2026-11-06").returncode, 2)
+        self.assertEqual(self.run_name("5", "06-11-2026").returncode, 2)
+
+    def test_the_tso_name_is_unchanged(self):
+        r = subprocess.run([sys.executable, str(HERE / "release-apks.py"), "--tso-copy-name", "10025", "2026-10-29"], capture_output=True, text=True)
+        self.assertEqual(r.stdout.strip(), "aron_tso_app_29_10_2026_v10025.apk")
+
+    def test_the_workflow_copies_the_amo_apk_next_to_the_tso_copy_before_the_digests(self):
+        wf = (ROOT / ".github" / "workflows" / "release-app.yml").read_text(encoding="utf-8")
+        amo = wf.index("--amo-copy-name")
+        self.assertIn('out/aron-amo-${VERSION_NAME}.apk', wf[wf.rindex("cp ", 0, amo):amo])
+        self.assertLess(wf.index("--tso-copy-name"), wf.index("sha256sum ./*.apk > SHA256SUMS"))
+        self.assertLess(amo, wf.index("sha256sum ./*.apk > SHA256SUMS"))
 
 
 if __name__ == "__main__":

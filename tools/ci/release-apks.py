@@ -15,6 +15,8 @@ Usage: release-apks.py [repo root, default .]
        release-apks.py --tso-copy-name <versionCode> [<yyyy-mm-dd>]   (tso-manual A1, D-TSO-MAN-42)
   prints aron_tso_app_<dd_mm_yyyy>_v<versionCode>.apk, the name of the extra TSO copy the release adds next to the existing
   names (the updater keeps reading those); the date is the build date in Asia/Dhaka (UTC+6, no DST), today by default.
+       release-apks.py --amo-copy-name <versionCode> [<yyyy-mm-dd>]   (amo-shell A1, D-AMO-MAN-16)
+  prints aron_amo_app_<dd_mm_yyyy>_v<versionCode>.apk, the same for the AMO app.
 """
 import datetime
 import re
@@ -27,22 +29,37 @@ ABIS = ("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
 DHAKA = datetime.timezone(datetime.timedelta(hours=6))
 
 
-def tso_copy_name(version_code, build_date):
-    """aron_tso_app_<dd_mm_yyyy>_v<versionCode>.apk (D-TSO-MAN-42, screenshot 1)."""
+def copy_name(app, version_code, build_date):
+    """aron_<app>_app_<dd_mm_yyyy>_v<versionCode>.apk for the TSO (D-TSO-MAN-42) and the AMO (D-AMO-MAN-16)."""
     code = int(version_code)
     if code <= 0:
         raise ValueError(f"versionCode must be positive: {version_code}")
-    return f"aron_tso_app_{build_date.strftime('%d_%m_%Y')}_v{code}.apk"
+    return f"aron_{app}_app_{build_date.strftime('%d_%m_%Y')}_v{code}.apk"
+
+
+def tso_copy_name(version_code, build_date):
+    """aron_tso_app_<dd_mm_yyyy>_v<versionCode>.apk (D-TSO-MAN-42, screenshot 1)."""
+    return copy_name("tso", version_code, build_date)
+
+
+def amo_copy_name(version_code, build_date):
+    """aron_amo_app_<dd_mm_yyyy>_v<versionCode>.apk (D-AMO-MAN-16, screenshot 1)."""
+    return copy_name("amo", version_code, build_date)
 
 
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "--tso-copy-name":
+    if len(sys.argv) > 1 and sys.argv[1] in ("--tso-copy-name", "--amo-copy-name"):
+        flag = sys.argv[1]
         if len(sys.argv) not in (3, 4):
-            print("::error::usage: release-apks.py --tso-copy-name <versionCode> [<yyyy-mm-dd>]", file=sys.stderr)
+            print(f"::error::usage: release-apks.py {flag} <versionCode> [<yyyy-mm-dd>]", file=sys.stderr)
             return 2
-        day = datetime.date.fromisoformat(sys.argv[3]) if len(sys.argv) == 4 else datetime.datetime.now(DHAKA).date()
         try:
-            print(tso_copy_name(sys.argv[2], day))
+            day = datetime.date.fromisoformat(sys.argv[3]) if len(sys.argv) == 4 else datetime.datetime.now(DHAKA).date()
+        except ValueError as e:
+            print(f"::error::{e}", file=sys.stderr)
+            return 2
+        try:
+            print((amo_copy_name if flag == "--amo-copy-name" else tso_copy_name)(sys.argv[2], day))
         except ValueError as e:
             print(f"::error::{e}", file=sys.stderr)
             return 2
