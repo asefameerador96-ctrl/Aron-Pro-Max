@@ -44,6 +44,8 @@ class ApiWorld(
     conformance: Boolean = false,
     /** The seed as the Azure dev database gets it (infra/deploy.sh): every db/seed file except 04_*, then the smoke outlets. */
     devProfile: Boolean = false,
+    /** Global cfg values (key to JSON text) written before the wiring exists, so the first config snapshot already holds them (D-QA-CI-09). */
+    extraConfig: Map<String, String> = emptyMap(),
 ) : AutoCloseable {
     data class Caller(val user: String, val client: String, val device: String?)
 
@@ -74,7 +76,7 @@ class ApiWorld(
         }
         fresh.db.jdbi.useHandle<Exception> { h ->
             h.createUpdate("UPDATE app.app_user SET password_hash = :h WHERE pilot").bind("h", PasswordHasher().hash(password)).execute()
-            for ((k, v) in listOf("cfg.api.rl.device_per_min" to "100000", "cfg.api.rl.user_per_min" to "100000", "cfg.auth.mfa_required_roles" to if (conformance) "[\"DMO\"]" else "[]")) {
+            for ((k, v) in listOf("cfg.api.rl.device_per_min" to "100000", "cfg.api.rl.user_per_min" to "100000", "cfg.auth.mfa_required_roles" to if (conformance) "[\"DMO\"]" else "[]") + extraConfig.toList()) {
                 h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT '$k', 'global', 0, '$v'::jsonb, TIMESTAMPTZ '$CFG_FROM', max(config_version), 'qa harness' FROM app.cfg_version")
             }
             h.execute("INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password) SELECT 'qa9001', 'QA Throwaway', role, designation, 'QA9001', locale, home_zone_id, false, false FROM app.app_user WHERE username = 'sr1001'")

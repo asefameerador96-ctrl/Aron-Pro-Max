@@ -86,7 +86,8 @@ fun AmoApp(
     BackHandler(enabled = screen != AmoScreen.HOME) { screen = if (screen in UNDER_SETTINGS) AmoScreen.SETTINGS else AmoScreen.HOME }
     val tiles = remember(badges, reach) { AmoMenu.tiles(reach, AmoMenu.badges(reach) + badges) }
     val sync = RoleHomes.syncState(bundle, user.offline).let { if (it == SyncChipState.Synced && syncedAt != null) SyncChipState.SyncedAt(syncedAt) else it }
-    val header = remember(user, businessDate, zoneName, reach) { AmoHomeHeader.of(user, businessDate, zoneName ?: reach.zoneName) }
+    val zoneFormat = stringResource(R.string.amo_shell_header_zone); val plainFormat = stringResource(R.string.amo_shell_header_plain)
+    val header = remember(user, businessDate, zoneName, reach, zoneFormat, plainFormat) { AmoHomeHeader.of(user, businessDate, zoneName ?: reach.zoneName, zoneFormat, plainFormat) }
     val navigate: (AmoScreen) -> Unit = remember { { screen = it } }
     androidx.compose.runtime.CompositionLocalProvider(LocalAmoNavigate provides navigate) {
     AronScreenTransition(screen, forward = { _, to -> to != AmoScreen.HOME }, modifier) { s ->

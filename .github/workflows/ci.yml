@@ -187,6 +187,8 @@ jobs:
         run: python3 tools/ci/test_gates.py
       - name: TSO APK owner-name copy self-test (D-TSO-MAN-42)
         run: python3 tools/ci/test_tso_apk_copy.py
+      - name: AMO APK owner-name copy self-test (D-AMO-MAN-16)
+        run: python3 tools/ci/test_amo_apk_copy.py
       - name: Done rows have tests (AUD-TP-8, warning)
         run: |
           python3 tools/ci/test_done_rows.py
@@ -508,6 +510,15 @@ jobs:
           else
             echo "GOOGLE_SERVICES_JSON not set: building without Firebase (push disabled)"
           fi
+      - name: Cache the Robolectric android-all jars
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/robolectric-deps
+          key: robolectric-deps-${{ hashFiles('tools/ci/robolectric-prefetch.sh') }}
+      - name: Pre-fetch the Robolectric jars (retry, SHA-256) so no test run goes to Maven
+        run: |
+          tools/ci/robolectric-prefetch.sh "${RUNNER_TEMP}/robolectric-deps"
+          echo "ROBOLECTRIC_OFFLINE_DIR=${RUNNER_TEMP}/robolectric-deps" >> "${GITHUB_ENV}"
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - name: Assemble the three debug APKs, run Android unit tests and lint
         run: >-
@@ -615,6 +626,8 @@ jobs:
           APKSIGNER="${signer}" python3 tools/ci/release-manifest.py signed "${ARON_VERSION_NAME}" "${ARON_VERSION_CODE}" "${GITHUB_SHA}"
           # tso-manual (D-TSO-MAN-42, screenshot 1): the owner-named TSO copy and SHA256SUMS, after the manifest (it accepts only aron-<app>-<version>-dev.apk)
           tools/ci/tso-apk-copy.sh signed "${ARON_VERSION_NAME}" "${ARON_VERSION_CODE}"
+          # amo-shell A1 (D-AMO-MAN-16): the same for the AMO app
+          tools/ci/amo-apk-copy.sh signed "${ARON_VERSION_NAME}" "${ARON_VERSION_CODE}"
           (cd signed && cat SHA256SUMS)
           echo "signed=true" >> "${GITHUB_OUTPUT}"
       - name: Upload the release-signed dev APKs

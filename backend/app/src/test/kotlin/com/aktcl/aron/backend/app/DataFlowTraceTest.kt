@@ -97,7 +97,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         hop("routes in the trace day's bundle", "planned today" to bundle.path("routes").filter { it.path("planned_today").asBoolean() }.joinToString(",") { it.path("route").path("code").asText("?") }, "expected" to "GUL-SR-2")
         hop("outlets on the planned route with a pin", "with pin" to route.path("outlets").count { it.path("lat").isNumber && it.path("lng").isNumber }, "outlets" to route.path("outlets").size(), "expected" to 20)
         // D-SRFIX-04b: the deploy smoke logs in as smoke1; its bundle must carry SMK-SR-D with a pinned smoke outlet and a priced plan
-        // (a read-only login: it touches none of the sr1001 trace state above)
+        // (its own login and bundle fetch: the fetch writes smoke1's route_day row, but it touches none of the sr1001 trace state above)
         val smokeBundle = fetchBundle(login("smoke1", "app_sr", ApiWorld.SR_PHONE), ApiWorld.SR_PHONE)
         val smokeRoute = smokeBundle.path("routes").firstOrNull { it.path("route").path("code").asText() == "SMK-SR-D" }
         hop("smoke1's bundle carries SMK-SR-D with its smoke outlets pinned",

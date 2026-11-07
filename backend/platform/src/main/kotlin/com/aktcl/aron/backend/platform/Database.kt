@@ -3,6 +3,9 @@ package com.aktcl.aron.backend.platform
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.flywaydb.core.Flyway
+import org.flywaydb.core.api.callback.BaseCallback
+import org.flywaydb.core.api.callback.Context
+import org.flywaydb.core.api.callback.Event
 import org.flywaydb.core.api.configuration.FluentConfiguration
 import org.jdbi.v3.core.Jdbi
 import org.jdbi.v3.core.kotlin.KotlinPlugin
@@ -71,14 +74,31 @@ object Migrator {
         configure(ds, connectRetries, connectRetriesIntervalS).load().migrate().migrationsExecuted
 
     /**
-     * Flyway runs a migration on one connection while a second one (schema history, advisory lock) waits idle inside a
-     * transaction for the whole migration. The servers set idle_in_transaction_session_timeout (30 s on dev,
-     * infra/modules/postgres.bicep) to protect the pooled api and worker sessions, so every migration longer than that lost
-     * the waiting connection and failed on Flyway's next write with SQLSTATE 08006 (deploys #308, #309 and #311; found and
-     * reproduced by db #15, D-OPS-MIGRATE-IDLE-TIMEOUT-01). Flyway runs this on every connection it opens, so only the
-     * migrate role's sessions are exempt; the job's replicaTimeout bounds them instead. The api and worker pools are untouched.
+     * Every Aron PostgreSQL server sets `idle_in_transaction_session_timeout = 30000` (30 s; `infra/modules/postgres.bicep`,
+     * parameter `idle_in_transaction_session_timeout`) so a pooled api or worker session that stalls inside a transaction cannot
+     * hold locks or a replica's cleanup horizon for long. The migrate role is exempt on purpose: Flyway runs a migration on
+     * one connection while a second one (schema history, advisory lock) waits idle inside a transaction for the whole
+     * migration, so every migration longer than 30 s lost the waiting connection and failed on Flyway's next write with
+     * SQLSTATE 08006 (deploys #308, #309 and #311; found and reproduced by db #15, D-OPS-MIGRATE-IDLE-TIMEOUT-01). The
+     * exemption is this statement, run by [ExemptIdleInTransaction] on every connection Flyway opens, so only the migrate
+     * role's sessions are exempt (the job's `replicaTimeout` bounds them instead); the api and worker pools are untouched.
      */
     const val INIT_SQL = "SET idle_in_transaction_session_timeout = 0"
+
+    /**
+     * Runs [INIT_SQL] after Flyway connects: the supported replacement (Flyway's `afterConnect` callback event) of the
+     * deprecated `initSql` setting, which printed a DeprecationUtils WARN per connection in the migrate console (deploy
+     * #315, D-OPS-FLYWAY-AFTERCONNECT-01).
+     */
+    object ExemptIdleInTransaction : BaseCallback() {
+        // Flyway passes a null Context when it asks whether a callback supports an event, so the parameter is nullable.
+        override fun supports(event: Event, context: Context?): Boolean = event == Event.AFTER_CONNECT
+        override fun canHandleInTransaction(event: Event, context: Context?): Boolean = true
+        override fun handle(event: Event, context: Context) {
+            context.connection.createStatement().use { it.execute(INIT_SQL) }
+        }
+        override fun getCallbackName(): String = "aron-exempt-idle-in-transaction"
+    }
 
     /** The migrate role's Flyway configuration; [locations] is overridable for tests only. */
     fun configure(
@@ -93,5 +113,5 @@ object Migrator {
             .connectRetriesInterval(connectRetriesIntervalS)
             .locations(*locations)
             .validateOnMigrate(true)
-            .initSql(INIT_SQL)
+            .callbacks(ExemptIdleInTransaction)
 }
