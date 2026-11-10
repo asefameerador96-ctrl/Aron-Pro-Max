@@ -50,7 +50,7 @@ class AmoRecordsTest {
         check("PriceComplianceCheckPayload", AmoPayloads.priceCompliance(u, 1, "retail", 100, 90, false, "n"), AmoPayloads.priceCompliance(u, 1, "retail", 100, 100, true, null))
         check("RiskReviewPayload", AmoPayloads.riskReview(9, "confirmed", "n"), AmoPayloads.riskReview(9, "dismissed", null))
         val fix = Json.parseToJsonElement("""{"fix_status":"ok"}""").jsonObject
-        check("OutletRequestVerificationPayload", AmoPayloads.outletRequestVerification(u, "verified", 4, "Urban", fix, u, "n"), AmoPayloads.outletRequestVerification(u, "discarded", null, null, fix, null, null))
+        check("OutletRequestVerificationPayload", AmoPayloads.outletRequestVerification(u, "verified", 4, "Urban", fix, u, "n", 7, 8), AmoPayloads.outletRequestVerification(u, "discarded", null, null, fix, null, null))
         check("TaskPayload", AmoPayloads.task("visit_followup", 7, 50001, "Title", "d", "2026-10-06", u), AmoPayloads.task("visit_followup", 7, null, "Title", null, null, null))
     }
 
