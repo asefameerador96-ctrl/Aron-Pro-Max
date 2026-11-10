@@ -596,6 +596,25 @@ class AmoDay(
         return o?.let { com.aktcl.aron.feature.outlet.OutletPicker.label(it) } to (r?.displayLabel ?: r?.name)
     }
 
+    /** The open call's outlet for the sale screens (screenshots 24, 25): the retailer pill label, the name and code (digits are localised by the screen), the route name and the cluster. */
+    data class SaleHeader(val pill: String, val name: String, val code: String, val route: String?, val cluster: String?)
+    suspend fun saleHeader(): SaleHeader? {
+        val v = visitSession.current.value ?: return null
+        val o = db.referenceDao().outlet(v.outletId) ?: return null
+        val r = routes().firstOrNull { it.route.routeId == v.routeId }?.route
+        return SaleHeader(
+            com.aktcl.aron.feature.outlet.OutletPicker.label(o), o.name, o.code,
+            (r?.displayLabel ?: r?.name)?.takeIf { it.isNotBlank() }, o.clusterName.takeIf { it.isNotBlank() },
+        )
+    }
+
+    /** A memo's outlet label and route name for the memo detail header (screenshots 42, 43); null parts when the outlet is not on the phone. */
+    suspend fun memoHeader(outletId: Long): Pair<String?, String?> {
+        val o = db.referenceDao().outlet(outletId) ?: return null to null
+        val r = routes().firstOrNull { it.route.routeId == o.routeId }?.route
+        return com.aktcl.aron.feature.outlet.OutletPicker.label(o) to (r?.displayLabel ?: r?.name)?.takeIf { it.isNotBlank() }
+    }
+
     /** The AMO's record writes (joint call, assessment, survey, price, verification, exceptions, tasks), testable on their own. */
     private val writer: AmoRecordWriter by lazy {
         AmoRecordWriter(

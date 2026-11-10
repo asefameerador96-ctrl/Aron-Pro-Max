@@ -71,6 +71,8 @@ class AmoControlCallHostTest {
         show { ControlCallHost(f.day, onBack = {}, startWithSale = true) }
         // a restored call on the Sales path opens the sale at once, not the picker
         compose.waitUntil(5_000) { !present("amo_cp_route") }
+        // screenshots 24, 25: the retailer stays on the sale screen
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithText("Rahim Store 50001", substring = true).assertExists() }.isSuccess }
         back() // Back from the sale entry: the picker, the call still open
         runCatching { compose.waitUntil(5_000) { present("amo_cc_sale") } }.onFailure { throw AssertionError("no Sales tile after Back; tree:\n" + compose.onRoot().printToString(), it) }
         // owner walk of build 1860: the Sale tile's picker is headed "Sales", never "Control Call Activity"

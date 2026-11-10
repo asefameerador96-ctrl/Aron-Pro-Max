@@ -85,9 +85,16 @@ fun AmoSaleHost(
             LaunchedEffect(v.visitUuid) { kit.prepare(); vm.start(kit.saleVisit(v)) }
             var history by rememberSaveable(v.visitUuid) { mutableStateOf(false) }
             BackHandler(enabled = history) { history = false }
+            // the outlet stays on screen from quantity entry to Print (screenshots 24, 25): the retailer pill and the review's three header lines
+            var header by remember(v.visitUuid) { mutableStateOf<AmoDay.SaleHeader?>(null) }
+            LaunchedEffect(v.visitUuid) { header = runCatching { day.saleHeader() }.getOrNull() }
+            val routeLine = header?.route?.let { stringResource(AmoR.string.amo_review_route, it) }
+            val clusterLine = header?.cluster?.let { stringResource(AmoR.string.amo_review_cluster, it) }
             if (history) PreviousSalesHost(day, v.outletId) else Column(Modifier.fillMaxSize()) {
                 SaleRoute(
                     vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f), onFinished = { onDone() },
+                    retailerLabel = header?.pill?.let { com.aktcl.aron.core.ui.localizedDigits(it) },
+                    outletLines = listOfNotNull(header?.let { "${it.name} (${com.aktcl.aron.core.ui.localizedDigits(it.code)})" }, routeLine, clusterLine),
                     onPreviousSales = { history = true }, // the button keeps the shared "পূর্বের সেল ডাটা দেখুন" (screenshots 24, 26)
                 )
             }
@@ -124,8 +131,11 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
                 var editRefused by remember(sel.memo.memoUuid) { mutableStateOf<DayRefusal?>(null) }
                 LaunchedEffect(sel.memo.memoUuid, st.dayLocked, pulls, dayLock) { editRefused = kit.editRefusal(sel.memo.memoUuid) }
                 val closed = dayLock?.closedRouteIds?.size ?: 0
+                var memoHeader by remember(sel.memo.memoUuid) { mutableStateOf<Pair<String?, String?>>(null to null) }
+                LaunchedEffect(sel.memo.memoUuid) { memoHeader = runCatching { day.memoHeader(sel.memo.outletId) }.getOrDefault(null to null) }
                 MemoDetailView(
                     sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid, skuCategory = kit::skuCategoryCode,
+                    outletName = memoHeader.first?.let { com.aktcl.aron.core.ui.localizedDigits(it) }, routeName = memoHeader.second, dashedDueBox = true, // screenshots 42, 43
                     editDisabledReason = when (editRefused) {
                         DayRefusal.FINAL_SUBMIT -> stringResource(R.string.amo_lock_body, com.aktcl.aron.core.ui.localizedNumber(closed.coerceAtLeast(1).toLong()))
                         DayRefusal.SALES_SUBMIT -> stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_blocked_done)

@@ -89,6 +89,16 @@ class MemoScreensTest {
         assertTrue("the amount sits under the name, not clipped in a fixed column", amount.getBoundsInRoot().top >= name.bottom)
     }
 
+    // screenshots 42, 43 (AMO): the "Route:" and "Retailer:" header lines and the due box with Mark paid; the SR header stays the single title
+    @Test fun amoHeaderAndDashedDueBox() {
+        var paid = 0
+        compose.setContent { AronTheme(AppLanguage.EN) { MemoDetailView(MemoMenu.detail(memo), true, 5_000_000, { "FB" }, {}, {}, { paid++ }, outletName = "Siyam (1618410)", routeName = "Savar BazarDaily", dashedDueBox = true) } }
+        compose.onNodeWithText("Route: Savar BazarDaily").assertExists()
+        compose.onNodeWithText("Retailer: Siyam (1618410)").assertExists()
+        compose.onNodeWithText("Mark paid").performClick()
+        compose.onNodeWithText("Mark paid").assertExists()
+    }
+
     @Test fun markPaidIsAbsentWhenSettled() {
         compose.setContent { AronTheme(AppLanguage.EN) { MemoDetailView(MemoMenu.detail(memo), false, 0, { "FB" }, {}, {}, {}) } }
         compose.onNodeWithText("Mark paid").assertDoesNotExist()

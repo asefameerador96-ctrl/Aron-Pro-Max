@@ -144,4 +144,14 @@ class AmoCallsScreenshotTests {
         com.aktcl.aron.feature.memo.ui.SummaryScreen(emptySummary, { "" }, {}, emptyText = "কিছু পাওয়া যায়নি", printWhenEmpty = true)
     }
     // row 66's two modals are separate windows (Dialog): a root capture cannot show them, so they are proven by SalesSubmitScreenTest (vendorDialogs...)
+
+    // ---- rows 42, 43 (memo detail: Route / Retailer lines, dashed due box with Mark paid) ----
+    private val dueMemo = com.aktcl.aron.feature.memo.domain.StoredMemo("m1", "amo-261110-001", 1, "2026-11-10", "2026-11-10T04:00:00.000Z", null,
+        listOf(com.aktcl.aron.feature.memo.domain.MemoItem(105, 3, 28_000, 84_000)), emptyList(), emptyList(), 84_000, 0, 0, 0, 84_000, 34_000, 50_000)
+    @Test fun amo_memo_detail_due_bn() = shot("amo_memo_detail_due_bn", AppLanguage.BN, "মেমো") {
+        com.aktcl.aron.feature.memo.ui.MemoDetailView(
+            com.aktcl.aron.feature.memo.domain.MemoMenu.detail(dueMemo), true, 50_000, { "Aster" }, {}, {}, {},
+            outletName = "Siyam (1618410-1832714554-Madrasa Road)", routeName = "Savar BazarDaily", dashedDueBox = true,
+        )
+    }
 }

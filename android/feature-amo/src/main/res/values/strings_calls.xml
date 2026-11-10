@@ -35,6 +35,8 @@
     <string name="amo_jc_high">High</string>
     <string name="amo_jc_section_other">Other</string>
     <!-- Previous sale data (24, 26) -->
+    <string name="amo_review_route">Route: %1$s</string>
+    <string name="amo_review_cluster">Cluster: %1$s</string>
     <string name="amo_ps_title">Sale data</string>
     <string name="amo_ps_loading">Loading…</string>
     <string name="amo_ps_empty">Nothing was sold to this retailer on this date</string>
