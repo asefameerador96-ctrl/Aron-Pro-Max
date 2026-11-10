@@ -44,7 +44,7 @@ data class TeamJourney(val user: JourneyUser, val route: JourneyRoute, val busin
 /** One row per SR and route; a route with no SR on the date is `vacant` (user_id and full_name null). `phone` in clear only for an AMO reading their own zone. */
 @Serializable
 data class TeamMemberRow(
-    val user_id: Long?, val full_name: String?, val route_id: Long, val route_name: String, val route_days: List<Int>, val phone: String?, val phone_masked: String?,
+    val user_id: Long?, val full_name: String?, val route_id: Long, val route_code: String, val route_name: String, val route_days: List<Int>, val phone: String?, val phone_masked: String?,
     val total_outlets: Int, val vacant: Boolean,
 )
 
@@ -118,7 +118,7 @@ class AmoTeamReads(private val db: Database, private val clock: AronClock = Aron
             val zones = if (reach.national) null else reach.zoneIds.toList().ifEmpty { listOf(-1L) }
             val q = h.createQuery(
                 """
-                SELECT r.id AS rid, r.name AS rname, r.visit_days_mask, r.zone_id, u.id AS uid, u.full_name, u.phone,
+                SELECT r.id AS rid, r.code AS rcode, r.name AS rname, r.visit_days_mask, r.zone_id, u.id AS uid, u.full_name, u.phone,
                        (SELECT count(*) FROM app.outlet o WHERE o.route_id = r.id AND o.status = 'active')::int AS outlets
                   FROM app.route r
                   LEFT JOIN LATERAL (SELECT a.user_id FROM app.route_assignment a WHERE a.route_id = r.id AND a.kind = 'primary' AND a.valid_from <= :d AND (a.valid_to IS NULL OR a.valid_to > :d) AND a.ended_at IS NULL LIMIT 1) pa ON true
@@ -133,7 +133,7 @@ class AmoTeamReads(private val db: Database, private val clock: AronClock = Aron
                 val daysMask = rs.getInt("visit_days_mask")
                 val own = role == Role.AMO && !reach.national && homeZone != null && rs.getLong("zone_id") == homeZone
                 TeamMemberRow(
-                    rs.getObject("uid") as Long?, rs.getString("full_name"), rs.getLong("rid"), rs.getString("rname"),
+                    rs.getObject("uid") as Long?, rs.getString("full_name"), rs.getLong("rid"), rs.getString("rcode"), rs.getString("rname"),
                     DayOfWeek.entries.filter { DayPlan.visitsOn(daysMask, LocalDate.of(2026, 1, 5).with(it)) }.map { it.value }.sorted(),
                     if (own) phone else null, mask(phone), rs.getInt("outlets"), rs.getObject("uid") == null,
                 )

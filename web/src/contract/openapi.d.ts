@@ -7209,6 +7209,8 @@ export interface components {
             user_id: number | null;
             full_name: string | null;
             route_id: components["schemas"]["Id"];
+            /** @description Beside `route_id` so a client never matches routes by name (D-AMO-MAN-18, contract 1.11.1). */
+            route_code: string;
             route_name: string;
             /** @description ISO weekdays the route is visited on (1 = Monday). */
             route_days: number[];

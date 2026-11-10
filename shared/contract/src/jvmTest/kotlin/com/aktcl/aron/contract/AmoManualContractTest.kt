@@ -96,7 +96,7 @@ class AmoManualContractTest {
         assertEquals(listOf("new_sale", "edited_sale", "no_sale"), props("JourneyCall").getValue("status")["enum"])
         assertTrue((props("JourneyCall").getValue("distance_from_prev_m")["type"] as List<*>).contains("null"), "the first call has no previous outlet")
         assertEquals(listOf("id", "name", "code", "phone_masked", "cluster"), required("JourneyOutlet"))
-        assertEquals(listOf("user_id", "full_name", "route_id", "route_name", "route_days", "phone", "phone_masked", "total_outlets", "vacant"), required("TeamMemberRow"))
+        assertEquals(listOf("user_id", "full_name", "route_id", "route_code", "route_name", "route_days", "phone", "phone_masked", "total_outlets", "vacant"), required("TeamMemberRow"))
         assertTrue((props("TeamMemberRow").getValue("user_id")["type"] as List<*>).contains("null"), "a vacant route has no SR")
         assertEquals(listOf("outlet_id", "business_date", "lines", "total_qty_base", "total_value_mtk"), required("SalesByDate"))
         assertEquals(listOf("sku", "qty_report", "report_unit", "qty_base", "value_mtk"), required("SalesByDateLine"))
@@ -120,7 +120,7 @@ class AmoManualContractTest {
         assertEquals(1, journey.calls.size); assertEquals(466, journey.calls.single().durationS); assertEquals(null, journey.calls.single().distanceFromPrevM)
         val members = wire.decodeFromString<TeamMemberList>(
             """{"as_of":"2027-01-03T04:00:00.000Z","business_date":"2027-01-03","items":[
-              {"user_id":null,"full_name":null,"route_id":9,"route_name":"Vacant","route_days":[1,4],"phone":null,"phone_masked":null,"total_outlets":0,"vacant":true}]}""",
+              {"user_id":null,"full_name":null,"route_id":9,"route_code":"MIR-SR-VAC","route_name":"Vacant","route_days":[1,4],"phone":null,"phone_masked":null,"total_outlets":0,"vacant":true}]}""",
         )
         assertTrue(members.items.single().vacant); assertEquals(listOf(1, 4), members.items.single().routeDays)
         val byDate = wire.decodeFromString<SalesByDate>(

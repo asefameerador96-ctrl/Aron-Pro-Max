@@ -293,7 +293,7 @@ Source: contract/openapi.yaml, version 1.11.1.
 - `schemas/JourneyOutlet.yaml` (500 B)
 - `schemas/JourneyCall.yaml` (995 B)
 - `schemas/TeamJourney.yaml` (958 B)
-- `schemas/TeamMemberRow.yaml` (1119 B)
+- `schemas/TeamMemberRow.yaml` (1300 B)
 - `schemas/TeamMemberList.yaml` (341 B)
 - `schemas/SalesByDateLine.yaml` (823 B)
 - `schemas/SalesByDate.yaml` (517 B)

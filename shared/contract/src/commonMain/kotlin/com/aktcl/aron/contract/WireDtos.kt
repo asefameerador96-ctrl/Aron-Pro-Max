@@ -1375,6 +1375,7 @@ data class TeamMemberRow(
     @SerialName("user_id") val userId: Long?,
     @SerialName("full_name") val fullName: String?,
     @SerialName("route_id") val routeId: Long,
+    @SerialName("route_code") val routeCode: String,
     @SerialName("route_name") val routeName: String,
     @SerialName("route_days") val routeDays: List<Int>,
     @SerialName("phone") val phone: String?,

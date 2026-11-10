@@ -235,7 +235,7 @@ class AmoFoundationF2Test {
             assertEquals(4, items.size, "three seeded routes of sr1001 and the vacant one: ${items.map { it.s("route_name") }}")
             val byRoute = items.associateBy { it.l("route_id") }
             val d = byRoute.getValue(routeD)
-            assertEquals(sr.userId, d.l("user_id")); assertEquals(false, d["vacant"]!!.jsonPrimitive.content.toBoolean()); assertEquals(20, d["total_outlets"]!!.jsonPrimitive.content.toInt())
+            assertEquals("MIR-SR-D", d.s("route_code")); assertEquals(sr.userId, d.l("user_id")); assertEquals(false, d["vacant"]!!.jsonPrimitive.content.toBoolean()); assertEquals(20, d["total_outlets"]!!.jsonPrimitive.content.toInt())
             assertEquals(listOf(1, 2, 3, 4, 5, 6, 7), d["route_days"]!!.jsonArray.map { it.jsonPrimitive.content.toInt() }, "a daily route: every ISO weekday")
             assertEquals("01712345678", d.s("phone")); assertEquals("017*****678", d.s("phone_masked"))
             assertEquals(listOf(2, 4, 7), byRoute.getValue(route3F)["route_days"]!!.jsonArray.map { it.jsonPrimitive.content.toInt() }, "Sun, Tue, Thu = ISO 7, 2, 4")

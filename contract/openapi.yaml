@@ -10881,12 +10881,13 @@ components:
         total_distance_m: { type: number, minimum: 0 }
     TeamMemberRow:
       type: object
-      required: [user_id, full_name, route_id, route_name, route_days, phone, phone_masked, total_outlets, vacant]
+      required: [user_id, full_name, route_id, route_code, route_name, route_days, phone, phone_masked, total_outlets, vacant]
       additionalProperties: false
       properties:
         user_id: { type: [integer, 'null'], format: int64, minimum: 1 }
         full_name: { type: [string, 'null'], maxLength: 120 }
         route_id: { $ref: '#/components/schemas/Id' }
+        route_code: { type: string, maxLength: 40, description: 'Beside `route_id` so a client never matches routes by name (D-AMO-MAN-18, contract 1.11.1).' }
         route_name: { type: string, maxLength: 120 }
         route_days:
           type: array
