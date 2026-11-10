@@ -2033,3 +2033,9 @@
 - Heads by git fetch 22:28: lane/amo-foundation still 1e38fde85 (foundation #3's M1 commits 6844f8ed2/5d0aa2282 remain local), lane/android-amo-calls 15b53243 (gated), lane/qa-ci c6094c07 (gated), INT 4d586aa4, lead docs aeac5926a.
 - get_session foundation #3 (session_014mnioMTmEj4xiR9ZcaSxLB): WORKING, "waiting on gate be7pz24m9 before pushing", context 178k, USD 2.94, updated 22:09. One nudge already sent 22:13; the 23:10 nudge rule is not yet due, so no second message.
 - Action: re-armed the same check-in for 23:00 UTC; the lane's own "checked <sha>" message wakes the lead earlier. Train 85 still waits only on that push. Nothing needs the owner.
+
+### 2026-11-10 22:46 UTC — 2-hourly lane check (lead)
+- Notifications: only the lane-check trigger; no owner message; no "checked <sha>".
+- Heads by ls-remote: INT 4d586aa4 (train 84); lane/amo-foundation 1e38fde85 (foundation #3 still gating locally, push pending); lane/android-amo-calls 15b53243 (gated); lane/qa-ci c6094c07 (gated); lane/android-amo-team 5b3af3cb (A3 #2, waits for train 85); lane/android-amo-shell 61a9d6c1 (landed in train 84); lane/android-amo-outlet e493aa54 (landed in train 83); lane/lead-train85 aa39052a (held, to be rebuilt).
+- Health: status ok, build b0479585 (train 82 image; no backend train has landed since, expected until train 85's real deploy).
+- No lane is 90 min overdue (foundation #3 last reported 22:09; nudged once 22:13). Train 85 check-in #2 armed for 23:00 UTC; the 23:10 nudge rule applies there. Nothing needs the owner.
