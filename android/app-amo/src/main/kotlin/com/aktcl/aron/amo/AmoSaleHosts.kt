@@ -259,7 +259,9 @@ fun AmoStockHost(day: AmoDay) {
     val lock by day.dayLock.collectAsState()
     LaunchedEffect(att, lock) { unprinted = day.slipNotPrinted(); printable = day.stockSlipPrintable() }
     // a thrown read is an error with a retry, never a crash and never a screen stuck on the loading card
-    val read = com.aktcl.aron.core.ui.aron.rememberAsyncLoad { day.stockLoad().also { unprinted = day.slipNotPrinted(); printable = day.stockSlipPrintable() } }
+    // D-AMO-BUNDLE-01: the first bundle may land while this screen is open; the read is keyed on the bundles applied since the day opened.
+    val epoch by day.bundleEpoch.collectAsState()
+    val read = com.aktcl.aron.core.ui.aron.rememberAsyncLoad(epoch) { day.stockLoad().also { unprinted = day.slipNotPrinted(); printable = day.stockSlipPrintable() } }
     com.aktcl.aron.core.ui.aron.AronLoaded(read, stringResource(com.aktcl.aron.feature.stock.R.string.stk_load_failed), stringResource(com.aktcl.aron.feature.home.R.string.fb_retry)) { l ->
         version.let {} // the content recomposes on every edit: StockLoad is a plain object, this counter is its signal
     StockContent(
