@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -54,7 +55,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.common.AppLanguage
-import com.aktcl.aron.core.ui.AronConfirmDialog
 import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronFonts
 import com.aktcl.aron.core.ui.SyncChipState
@@ -195,6 +195,7 @@ object AmoHomeTags {
     const val LANGUAGE = "amo_set_language"
     const val TARGETS = "amo_targets"
     const val COLLAPSE = "amo_collapse"
+    const val LOGOUT_DIALOG = "amo_logout_dialog"
     /** Stable names: today, total, control, joint. */
     fun target(key: String) = "amo_target_$key"
 }
@@ -251,6 +252,7 @@ fun AmoHomeContent(
                     AronTile(
                         stringResource(t.label), tilePainter(t.id), onClick = { onTile(t) }, modifier = m.testTag(RoleHomeTags.tile(t.id)),
                         badge = t.badge, badgeDescription = if (t.badge > 0) stringResource(CoreR.string.core_ui_tile_badge, localizedNumber(t.badge.toLong())) else null,
+                        showZeroBadge = t.id == AmoMenu.tileId(AmoLeaf.OUTLET),
                     )
                 }
                 Box(
@@ -294,7 +296,7 @@ private fun amoSyncText(state: SyncChipState): String = when (state) {
 @Composable
 private fun amoBundleLine(status: BundleStatus): String = when (status) {
     BundleStatus.Checking -> stringResource(HomeR.string.home_bundle_checking)
-    is BundleStatus.Ready -> stringResource(HomeR.string.home_bundle_ready, localizedDigits(status.validFor), status.bundleVersion)
+    is BundleStatus.Ready -> stringResource(HomeR.string.home_bundle_ready, localizedDigits(status.validFor), localizedDigits(status.bundleVersion))
     BundleStatus.Unchanged -> stringResource(HomeR.string.home_bundle_unchanged)
     BundleStatus.Offline -> stringResource(HomeR.string.home_bundle_offline)
     is BundleStatus.Refused -> stringResource(HomeR.string.home_bundle_refused, status.httpStatus.toString(), status.code ?: "-")
@@ -453,10 +455,39 @@ fun AmoSettingsContent(
         }
     }
     if (confirm) {
-        AronConfirmDialog(
-            stringResource(HomeR.string.set_logout_title), logoutMessage,
-            stringResource(HomeR.string.set_logout_confirm), stringResource(HomeR.string.set_cancel),
+        AmoLogoutDialog(
+            stringResource(HomeR.string.set_logout_title), logoutMessage, stringResource(HomeR.string.set_logout_confirm), stringResource(HomeR.string.set_cancel),
             onConfirm = { confirm = false; onLogout() }, onDismiss = { confirm = false },
         )
+    }
+}
+
+/**
+ * The log-out confirmation of screenshot 77: a white card with large round corners, the blue "i" disc, the question centred in blue, and
+ * a green "yes" (left) and a red "no" (right) as small rounded rectangles, white bold labels. Fills are the deep AMO tokens (7:1).
+ * The data-kept note of the role (F-SYS-022; not on the vendor dialog, a standing rule) stays as one small line under the question.
+ */
+@Composable
+internal fun AmoLogoutDialog(question: String, note: String, yes: String, no: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val look = LocalAronLook.current
+    val blue = look.choiceFill ?: look.purple
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().testTag(AmoHomeTags.LOGOUT_DIALOG).clip(RoundedCornerShape(24.dp)).background(Color.White).padding(horizontal = 24.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            androidx.compose.material3.Icon(AronIcons.Info, contentDescription = null, tint = blue, modifier = Modifier.size(44.dp))
+            Text(question, style = inkStyle(18, bold = true, color = blue), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(note, style = inkStyle(13), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
+                listOf(Triple(yes, look.primaryStart ?: look.purple, onConfirm), Triple(no, look.stopFill ?: look.red, onDismiss)).forEach { (label, fill, act) ->
+                    Box(
+                        Modifier.heightIn(min = 48.dp).widthIn(min = 72.dp).clip(RoundedCornerShape(8.dp)).background(fill)
+                            .clickable(role = Role.Button, onClick = act).padding(horizontal = 20.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text(label, style = inkStyle(16, bold = true, color = Color.White)) }
+                }
+            }
+        }
     }
 }

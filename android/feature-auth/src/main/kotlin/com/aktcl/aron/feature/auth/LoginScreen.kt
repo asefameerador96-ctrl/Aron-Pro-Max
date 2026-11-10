@@ -70,6 +70,13 @@ fun LoginScreen(
         )
         return
     }
+    if (variant == LoginVariant.Amo && state.bindToken == null) {
+        AmoLoginContent(
+            state, appTitle, versionName, viewModel::onUsernameChange, viewModel::onPasswordChange, viewModel::onTogglePasswordVisible, viewModel::onSubmit,
+            onLanguageSelect, onEnrol, sunlight, onSunlight, footerText,
+        )
+        return
+    }
     if (state.bindToken != null) {
         androidx.activity.compose.BackHandler(onBack = viewModel::onOtpBack)
         OtpContent(

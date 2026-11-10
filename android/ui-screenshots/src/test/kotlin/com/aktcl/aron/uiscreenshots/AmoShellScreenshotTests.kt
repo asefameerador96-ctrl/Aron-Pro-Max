@@ -82,7 +82,7 @@ class AmoShellScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h1500dp") fun amo_home_targets_sunlight_bn() = shot("amo_home_targets_sunlight_bn", AppLanguage.BN, sunlight = true) { Home(set) }
 
     // ---- push 2: Login (rows 3, R1), Attendance (14 to 16, R7), Stock (41), Settings (75, R16) ----
-    @Composable private fun Login() = com.aktcl.aron.feature.auth.LoginContent(
+    @Composable private fun Login() = com.aktcl.aron.feature.auth.AmoLoginContent(
         com.aktcl.aron.feature.auth.LoginUiState(username = "amo5864", password = "secret"), "ARON AMO", "1.0.25 (12)", {}, {}, {}, {}, {}, footerText = "ARON AMO v1.0.25",
     )
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_login_bn() = shot("amo_login_bn", AppLanguage.BN, amoLook = false) { Login() }

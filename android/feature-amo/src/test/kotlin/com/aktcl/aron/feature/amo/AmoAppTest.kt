@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -123,6 +124,15 @@ class AmoAppTest {
         compose.onNode(hasContentDescription(badge), useUnmergedTree = true).assertExists()
         // the language toggle and logout are no longer on Home
         compose.onNodeWithTag(HomeTags.LOGOUT).assertDoesNotExist()
+    }
+
+    @Test
+    fun theOutletTileKeepsItsRedBadgeAtZeroAndNoOtherTileHasOne() {
+        show(AppLanguage.BN, badges = emptyMap())
+        compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.AmoTile.OUTLET)).performScrollTo()
+        // screenshot 08: a red "০" at zero (Bangla digit); the other tiles draw a badge only above zero
+        compose.onNode(hasText("০") and hasAnyAncestor(hasTestTag(RoleHomeTags.tile(RoleHomes.AmoTile.OUTLET))), useUnmergedTree = true).assertExists()
+        compose.onNode(hasText("০") and hasAnyAncestor(hasTestTag(RoleHomeTags.tile(RoleHomes.AmoTile.ATTENDANCE))), useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test
