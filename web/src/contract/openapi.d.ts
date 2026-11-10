@@ -7388,6 +7388,8 @@ export interface components {
             /** @description This item's quantity in `entry_unit`, summed per SKU first (each SKU's base-unit quantity over its base_per_pack): 10s and 20s of one category convert correctly. Same basis as the item's `qty_base`: in both lists that carry the item (`DashboardSummary.by_category`, `DailyTrackingRow.by_category`) the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, lead rulings R-W-06 and R-W-20). */
             qty_entered?: components["schemas"]["Decimal3"];
             net_mtk: components["schemas"]["Mtk"];
+            /** @description Contract 1.11.1 (D-AMO-MAN-18): accepted memos with at least one sale line of this category in the window, each memo counted once per category (a memo spanning two brands of the category counts once). Null when the figure is not computed (the per-route rows of Daily Tracking). */
+            memos?: number | null;
         };
         /** @description The dashboard filter object (docs/34 s2, brief s1). Every list is optional; omitted or empty means everything the caller may see. The server intersects each list with the scope derived from the token (docs/34 s1, BRAND users also with their brands) and never widens it: ids outside the scope are ignored, and a list that leaves nothing yields zeros. Location ids are server surrogate keys; product codes are the product master codes. */
         NationalDashboardFilter: {

@@ -344,4 +344,34 @@ class AmoFoundationF2Test {
             assertEquals(HttpStatusCode.Forbidden, postAs(amo, "/v1/dashboards/national/login-submit", """{"date":"$date"}""").status, "national endpoints stay closed to the AMO")
         }
     }
+
+    // ------------------------------------------------------------------------------------------------ F2.1: CategoryVolume.memos (contract 1.11.1, D-AMO-MAN-18)
+
+    @Test
+    fun categoryMemosCountAMemoOncePerCategoryNotPerLineAndLeaveVoidedFreeAndOtherZonesOut() = world.withApi {
+        with(world) {
+            suspend fun memos(): Map<String, Int?> = json(getAs(amo, "/v1/dashboards/login-submit?business_date=$date").bodyAsText())["sales_by_category"]!!.jsonArray
+                .map { it.jsonObject }.associate { it.s("category_code")!! to it.s("memos")?.toInt() }
+            val before = memos()
+            // seeded: m1 has a cigarette sale line (plus a voided and a free cigarette line) and a match sale line; the LKX memo is another zone
+            assertEquals(1, before["cigarette"], "one memo with a cigarette sale line (voided and free lines do not count, the LKX memo is another zone): $before")
+            assertEquals(1, before["match"])
+            // one new memo with TWO cigarette SKUs (two lines) and a match line: +1 cigarette (not +2), +1 match
+            val secondCigarette = one("SELECT id FROM app.sku WHERE category_code = 'cigarette' AND id <> $cigaretteSku ORDER BY id LIMIT 1")
+            val m3 = "00000000-0000-4000-8000-0000000f2106"
+            memo(m3, "00000000-0000-4000-8000-0000000f2013", sr.userId, routeD, outletB, "sr1001-270103-004")
+            val per = one("SELECT base_per_pack FROM app.sku WHERE id = $secondCigarette").toInt()
+            line(m3, 1, cigaretteSku, 1, "pack", cigarettePack, cigarettePack, 0, sr.userId, routeD)
+            line(m3, 2, secondCigarette, 2, "pack", per, 2 * per, 0, sr.userId, routeD)
+            line(m3, 3, matchSku, 1, "dozen", 1, 1, 0, sr.userId, routeD)
+            // the dw projector (as the worker role runs it) writes dw.fact_memo, whose trigger fills dw.fact_memo_line
+            AggregationWorker(fresh.db, clock).also { w -> w.runUntilIdle(); w.requestRebuild(today()); w.runUntilIdle() }
+            now.updateAndGet { it.plusSeconds(10) }   // the dashboard summary is cached 5 s on the API clock
+            val after = memos()
+            assertEquals(2, after["cigarette"], "a memo with two cigarette lines counts once: $after")
+            assertEquals(2, after["match"])
+            // every category row carries the figure, a category the zone did not sell has no row
+            assertTrue(after.values.all { it != null && it >= 0 })
+        }
+    }
 }

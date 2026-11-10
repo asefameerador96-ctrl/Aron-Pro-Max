@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.11.0
+  version: 1.11.1
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -70,7 +70,8 @@ info:
       team only, D-AMO-MAN-09) `phone`, and `OutletRequestVerificationPayload.route_id` and `cluster_id`; train F2 adds
       `getTeamJourney`, `getTeamMembers`, `getOutletSalesByDate`, the AMO live counts on `LoginSubmitStatus`
       (`geo_valid_visits`, `photo_valid_visits`, `visits_total`, `sales_by_category`) and the `sales-summary` report's
-      target columns. Members added to responses the server already sends are optional.
+      target columns. 1.11.1 adds the optional `CategoryVolume.memos` (server-counted memos per category, D-AMO-MAN-18).
+      Members added to responses the server already sends are optional.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -11150,6 +11151,10 @@ components:
           $ref: '#/components/schemas/Decimal3'
           description: 'This item''s quantity in `entry_unit`, summed per SKU first (each SKU''s base-unit quantity over its base_per_pack): 10s and 20s of one category convert correctly. Same basis as the item''s `qty_base`: in both lists that carry the item (`DashboardSummary.by_category`, `DailyTrackingRow.by_category`) the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, lead rulings R-W-06 and R-W-20).'
         net_mtk: { $ref: '#/components/schemas/Mtk' }
+        memos:
+          type: [integer, 'null']
+          minimum: 0
+          description: 'Contract 1.11.1 (D-AMO-MAN-18): accepted memos with at least one sale line of this category in the window, each memo counted once per category (a memo spanning two brands of the category counts once). Null when the figure is not computed (the per-route rows of Daily Tracking).'
     NationalDashboardFilter:
       type: object
       additionalProperties: false

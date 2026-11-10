@@ -22,3 +22,7 @@ Shared: `WireDtos` gains `CallTargets`, `CallTargetCard`, `VisitPayload.forceSal
 - Field names the phones build against: sales-by-date `sku` is an object `{sku_id, sku_code, short_name}`, then `qty_report` (Decimal3 string), `report_unit`, `qty_base`, `value_mtk`, and `total_qty_base`, `total_value_mtk`; members rows carry `user_id`, `full_name` (both null when `vacant`), `route_id`, `route_name`, `route_days` (ISO weekdays, 1 = Monday), `phone` (clear only for an AMO on routes of its home zone), `phone_masked`, `total_outlets`, `vacant`.
 - Report `sales-summary` gains the columns `target_qty_base`, `target_value_mtk` (the brand's target on the route), `route_target_qty_base`, `route_target_value_mtk` (the route's whole target, repeated per row), null when there is no target. Report column lists are data (`ReportDefinition`), not contract schema, so no schema change; the access set of D-AMO-REPORT-02 is unchanged.
 - Shared: `WireDtos` gains the seven read DTOs; `web/src/contract/openapi.d.ts` regenerated; slices regenerated.
+
+## 1.11.1 (F2.1, lane amo-foundation, 2026-11-10; additive)
+
+- `CategoryVolume.memos` (optional, integer >= 0, nullable): accepted memos with at least one sale line of the category in the window, each memo once per category (D-AMO-MAN-18). Filled by `DashboardSummary.by_category` and so by `LoginSubmitStatus.sales_by_category` (the AMO Reports category Memo column); null on the per-route rows of Daily Tracking. `info.version` 1.11.0 to 1.11.1; oasdiff 0 breaking.
