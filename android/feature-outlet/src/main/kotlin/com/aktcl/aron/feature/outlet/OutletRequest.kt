@@ -40,6 +40,9 @@ data class OutletRequestForm(
     /** The shop's current point, for the move limit of Update Base; null skips that check. */
     val oldLat: Double? = null,
     val oldLng: Double? = null,
+    /** AMO-only (A4): the sub-channel and geo class the AMO chose on the New shop form; null for every SR request. */
+    val subChannelId: Long? = null,
+    val geoClass: String? = null,
 )
 
 enum class RequestError {
@@ -63,6 +66,8 @@ data class OutletRequestDraft(
     val originVisitUuid: String?,
     val pointLat: Double? = null,
     val pointLng: Double? = null,
+    val subChannelId: Long? = null,
+    val geoClass: String? = null,
 )
 
 sealed interface RequestValidation {
@@ -126,6 +131,7 @@ class OutletRequests(
             contactNumber = f.mobile?.let { TextRules.normalisePhone(it)?.value },
             clusterId = f.clusterId, closeReasonCode = f.closeReasonCode, note = f.note?.trim()?.takeIf { it.isNotEmpty() },
             fix = f.fix, photoUuids = f.photoUuids, originVisitUuid = f.originVisitUuid, pointLat = f.pointLat, pointLng = f.pointLng,
+            subChannelId = f.subChannelId, geoClass = f.geoClass,
         )
         return RequestValidation.Ok(draft, warnOpenDues = k == OutletRequestKind.CLOSE && f.openDueMtk > 0)
     }
