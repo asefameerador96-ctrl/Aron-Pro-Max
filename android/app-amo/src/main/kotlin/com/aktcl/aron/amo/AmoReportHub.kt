@@ -67,7 +67,9 @@ fun AmoReportHub(day: AmoDay, onBack: () -> Unit) {
                 // F-AMO-033: the month to today over the trading days; CPR and memo counts come from the sales-summary report, targets from the target slice
                 val loaded = rememberReport(day, "sales-summary", defaults.first, defaults.second)
                 if (loaded == null || nodes == null) { com.aktcl.aron.core.ui.aron.AronLoadingScreen(); return@AmoFrame }
-                val reportCards = loaded.data?.let { Reports.routeCards(it) }.orEmpty()
+                // a cut-off report (a page failed or the page cap was hit) gives no CPR or brand memos: partial rows would print as complete figures
+                val summaryCut = loaded.data?.truncated == true
+                val reportCards = loaded.data?.takeIf { !summaryCut }?.let { Reports.routeCards(it) }.orEmpty()
                 // the Memo column is the server's per-category count (CategoryVolume.memos, F2.1); until it is wired every cell is a dash and the note says pending (D-AMO-TEAM-10)
                 val catMemos = TeamReports.categoryMemos(emptyList())
                 val cards = listOfNotNull(nodes.zone?.let { TeamReports.tillCard(stringResource(AmoR.string.amo_team_perf_zone, it.name.orEmpty()), it, true, catMemos, l) }) +
@@ -76,7 +78,7 @@ fun AmoReportHub(day: AmoDay, onBack: () -> Unit) {
                     val rc = reportCards.firstOrNull { it.name.equals(openNode.name, ignoreCase = true) || it.code.equals(openNode.name, ignoreCase = true) }
                     val brands = openNode.rows.map { r -> TeamReports.brandLine(r, rc?.brands?.firstOrNull { it.name.equals(r.name, ignoreCase = true) }?.memos, l) }
                     TillRouteDetailContent(rc?.let { TeamReports.cprText(it.successfulCalls, it.targetOutlets, l) } ?: Percent.DASH, rc?.let { Formats.integer(it.memos, l) } ?: Percent.DASH, brands)
-                } else TillNowContent(cards, { c -> route = c.routeId; if (c.routeId != null) leaf = ReportLeaf.ROUTE }, loaded.stale || nodes.stale, loaded.failed && nodes.zone == null, loaded.refused || nodes.refused, memoPending = catMemos.isEmpty())
+                } else TillNowContent(cards, { c -> route = c.routeId; if (c.routeId != null) leaf = ReportLeaf.ROUTE }, loaded.stale || nodes.stale, loaded.failed && nodes.zone == null, loaded.refused || nodes.refused, memoPending = catMemos.isEmpty(), truncated = summaryCut)
             }
         }
     }

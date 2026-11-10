@@ -53,7 +53,7 @@ object TeamReports {
      */
     fun categoryMemos(cats: List<CategorySales>): Map<String, Long> = cats.mapNotNull { c -> c.memos?.let { c.code to it } }.toMap()
 
-    private fun fmt(    private fun fmt(n: Long?, l: UiLocale) = TeamTargets.qty(n, l)
+    private fun fmt(n: Long?, l: UiLocale) = TeamTargets.qty(n, l)
 
     /** A till-now card from a target node: target = the till-date target, sales = the achievement, percent with two decimals, memos when known. */
     fun tillCard(heading: String, node: TeamTargetNode, isZone: Boolean, memos: Map<String, Long>, l: UiLocale): TillCard =

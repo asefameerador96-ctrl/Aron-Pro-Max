@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -155,7 +156,7 @@ fun AmoSrStockHost(day: AmoDay, onBack: () -> Unit) {
     LaunchedEffect(day) {
         skus = runCatching { day.skuInfo() }.getOrDefault(emptyMap())
         val f = day.api.teamStock(day.businessDate())
-        stock = StockRead(TeamStock.parse(f.jsonOrNull()))
+        stock = StockRead(TeamStock.parse(f.jsonOrNull()), f.isMissing() && f.jsonOrNull() == null, f is AmoFetch.Gone)
     }
     BackHandler(enabled = selected != null) { selected = null }
     val bangla = com.aktcl.aron.core.ui.LocalAppLanguage.current == com.aktcl.aron.core.common.AppLanguage.BN
@@ -165,7 +166,7 @@ fun AmoSrStockHost(day: AmoDay, onBack: () -> Unit) {
         icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_sr_stock,
     ) {
         if (members == null || stock == null) { AronLoadingScreen(); return@AmoFrame }
-        if (row == null) SrListContent(members.rows.filter { !it.vacant }, members.stale, members.failed, { selected = it.routeId }, refused = members.refused)
+        if (row == null) SrListContent(members.rows.filter { !it.vacant }, members.stale, members.failed || stock!!.failed, { selected = it.routeId }, refused = members.refused || stock!!.refused)
         else {
             val sr = stock!!.srs.firstOrNull { it.userId == row.userId }
             val lines = sr?.lines.orEmpty().filter { it.lifted > 0 }.map { l ->
@@ -173,12 +174,14 @@ fun AmoSrStockHost(day: AmoDay, onBack: () -> Unit) {
                 val key = TeamStock.unitKeyOf(l, skus)
                 IssueLine(l.skuId.toString(), info?.let { if (bangla) it.nameBn ?: it.name else it.name } ?: l.skuId.toString(), TeamStock.entered(l.lifted, l, skus), if (key.isEmpty()) null else entryUnitLabel(key))
             }
-            LiftedStockContent(row, lines)
+            // a stock read that failed or was refused is said so: an empty list would print "none issued today" as a fact
+            if (stock!!.failed || stock!!.refused) androidx.compose.foundation.layout.Column(Modifier.padding(12.dp)) { com.aktcl.aron.feature.amo.AmoFetchBanner(stock!!.failed, false, stock!!.refused) }
+            else LiftedStockContent(row, lines)
         }
     }
 }
 
-internal class StockRead(val srs: List<com.aktcl.aron.feature.amo.SrStock>)
+internal class StockRead(val srs: List<com.aktcl.aron.feature.amo.SrStock>, val failed: Boolean = false, val refused: Boolean = false)
 
 /** Sales Journey (screenshots 73, 74): the SR cards (a vacant route is shown but cannot be opened), then the timeline of the chosen SR and route. */
 @Composable
