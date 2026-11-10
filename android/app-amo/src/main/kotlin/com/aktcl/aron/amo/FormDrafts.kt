@@ -12,7 +12,7 @@ import com.aktcl.aron.core.common.ClientIds
 class FormDrafts(context: Context, userId: Long) {
     private val prefs = context.getSharedPreferences("aron-amo-form-drafts-$userId", Context.MODE_PRIVATE)
 
-    @Synchronized fun uuid(key: String): String = prefs.getString(key, null) ?: ClientIds.newUuid().also { prefs.edit().putString(key, it).apply() }
+    @Synchronized fun uuid(key: String): String = prefs.getString(key, null) ?: ClientIds.newUuid().also { prefs.edit().putString(key, it).commit() }
 
     @Synchronized fun clear(key: String) { prefs.edit().remove(key).apply() }
 }

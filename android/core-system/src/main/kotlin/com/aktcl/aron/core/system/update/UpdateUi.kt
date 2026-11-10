@@ -131,11 +131,11 @@ fun UpdateContent(
 @Composable
 private fun AmoUpdateRibbon(text: String) {
     androidx.compose.foundation.layout.Box(
-        Modifier.padding(vertical = AronTokens.Space.L).background(androidx.compose.ui.graphics.Color(0xFFB85C00), androidx.compose.foundation.shape.RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 4.dp),
+        Modifier.padding(vertical = AronTokens.Space.L).background(com.aktcl.aron.core.ui.LocalAronColors.current.warning, androidx.compose.foundation.shape.RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 4.dp),
     ) {
         Text(
             text, color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.background(androidx.compose.ui.graphics.Color(0xFF8A4300), androidx.compose.foundation.shape.RoundedCornerShape(2.dp)).padding(horizontal = 24.dp, vertical = 8.dp),
+            modifier = Modifier.background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.22f), androidx.compose.foundation.shape.RoundedCornerShape(2.dp)).padding(horizontal = 24.dp, vertical = 8.dp),
         )
     }
 }

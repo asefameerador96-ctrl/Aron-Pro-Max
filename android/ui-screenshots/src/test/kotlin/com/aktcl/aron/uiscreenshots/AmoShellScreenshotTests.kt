@@ -111,10 +111,12 @@ class AmoShellScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_waiting_bn() = shot("amo_attendance_waiting_bn", AppLanguage.BN) { Attendance(checkedIn) }
     @Test fun amo_attendance_waiting_en() = shot("amo_attendance_waiting_en", AppLanguage.EN) { Attendance(checkedIn) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_waiting_bn_sunlight() = shot("amo_attendance_waiting_bn_sunlight", AppLanguage.BN, sunlight = true) { Attendance(checkedIn) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_waiting_bn_fs2() = shot("amo_attendance_waiting_bn_fs2", AppLanguage.BN, fontScale = 2f) { Attendance(checkedIn) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_open_bn() = shot("amo_attendance_open_bn", AppLanguage.BN) { Attendance(open) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_checkout_sheet_bn() = shot("amo_attendance_checkout_sheet_bn", AppLanguage.BN, after = tap("att_check_out")) { Attendance(open) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_done_bn() = shot("amo_attendance_done_bn", AppLanguage.BN) { Attendance(done) }
     @Test fun amo_attendance_done_en() = shot("amo_attendance_done_en", AppLanguage.EN) { Attendance(done) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_done_bn_sunlight() = shot("amo_attendance_done_bn_sunlight", AppLanguage.BN, sunlight = true) { Attendance(done) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_done_bn_fs2() = shot("amo_attendance_done_bn_fs2", AppLanguage.BN, fontScale = 2f) { Attendance(done) }
 
     private fun sku(id: Long, cat: String, name: String, unit: String, perPack: Int) =
