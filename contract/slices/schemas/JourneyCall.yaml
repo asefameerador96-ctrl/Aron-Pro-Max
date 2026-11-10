@@ -8,7 +8,7 @@ JourneyCall:
   - closed_at
   - duration_s
   - distance_from_prev_m
-  - total_distance_m
+  - distance_so_far_m
   - gap_to_next_s
   additionalProperties: false
   properties:
@@ -40,9 +40,11 @@ JourneyCall:
       - 'null'
       minimum: 0
       description: Metres, two decimals; null for the first call or when an outlet has no base point.
-    total_distance_m:
+    distance_so_far_m:
       type: number
       minimum: 0
+      description: 'Metres walked so far: the running sum of `distance_from_prev_m` up to and including this call
+        (0 for the first call).'
     gap_to_next_s:
       type:
       - integer

@@ -20,7 +20,7 @@ operation:
     is the haversine distance in metres (two decimals) between the previous call''s outlet base point and this one''s
     (null
 
-    for the first call or when an outlet has no base point), `total_distance_m` the running sum, `duration_s` is
+    for the first call or when an outlet has no base point), `distance_so_far_m` the running sum, `duration_s` is
 
     `closed_at - opened_at` and `gap_to_next_s` is `next.opened_at - closed_at`. `phone_masked` never carries the
     full number.

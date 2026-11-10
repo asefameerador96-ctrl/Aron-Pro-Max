@@ -91,8 +91,8 @@ class AmoManualContractTest {
 
     @Test
     fun theJourneyMembersAndSalesByDateSchemasKeepTheNamesThePhonesBuildAgainst() {
-        assertEquals(listOf("user", "route", "business_date", "calls", "total_distance_m"), required("TeamJourney"))
-        assertEquals(listOf("visit_uuid", "outlet", "status", "opened_at", "closed_at", "duration_s", "distance_from_prev_m", "total_distance_m", "gap_to_next_s"), required("JourneyCall"))
+        assertEquals(listOf("user", "route", "business_date", "calls", "distance_m"), required("TeamJourney"))
+        assertEquals(listOf("visit_uuid", "outlet", "status", "opened_at", "closed_at", "duration_s", "distance_from_prev_m", "distance_so_far_m", "gap_to_next_s"), required("JourneyCall"))
         assertEquals(listOf("new_sale", "edited_sale", "no_sale"), props("JourneyCall").getValue("status")["enum"])
         assertTrue((props("JourneyCall").getValue("distance_from_prev_m")["type"] as List<*>).contains("null"), "the first call has no previous outlet")
         assertEquals(listOf("id", "name", "code", "phone_masked", "cluster"), required("JourneyOutlet"))
@@ -113,9 +113,9 @@ class AmoManualContractTest {
     @Test
     fun theF2FixturesDecodeIntoTheWireDtos() {
         val journey = wire.decodeFromString<TeamJourney>(
-            """{"user":{"user_id":5,"full_name":"Test SR"},"route":{"route_id":3,"name":"Mirpur 10 Daily"},"business_date":"2027-01-03","total_distance_m":344.7,"calls":[
+            """{"user":{"user_id":5,"full_name":"Test SR"},"route":{"route_id":3,"name":"Mirpur 10 Daily"},"business_date":"2027-01-03","distance_m":344.7,"calls":[
               {"visit_uuid":"00000000-0000-4000-8000-0000000f2001","outlet":{"id":42,"name":"Rahim Store","code":"OC01","phone_masked":"018*****111","cluster":"Mirpur 10 Bazar"},"status":"new_sale",
-               "opened_at":"2027-01-03T04:00:00.000Z","closed_at":"2027-01-03T04:07:46.000Z","duration_s":466,"distance_from_prev_m":null,"total_distance_m":0.0,"gap_to_next_s":734}]}""",
+               "opened_at":"2027-01-03T04:00:00.000Z","closed_at":"2027-01-03T04:07:46.000Z","duration_s":466,"distance_from_prev_m":null,"distance_so_far_m":0.0,"gap_to_next_s":734}]}""",
         )
         assertEquals(1, journey.calls.size); assertEquals(466, journey.calls.single().durationS); assertEquals(null, journey.calls.single().distanceFromPrevM)
         val members = wire.decodeFromString<TeamMemberList>(

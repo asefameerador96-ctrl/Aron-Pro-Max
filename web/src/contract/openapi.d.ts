@@ -1066,7 +1066,7 @@ export interface paths {
          *     and Dhaka business date, ordered by `opened_at`. `status` is `edited_sale` when the visit's memo was superseded by an
          *     edit (or is itself an edit), `new_sale` when it has an active sale memo and `no_sale` otherwise. `distance_from_prev_m`
          *     is the haversine distance in metres (two decimals) between the previous call's outlet base point and this one's (null
-         *     for the first call or when an outlet has no base point), `total_distance_m` the running sum, `duration_s` is
+         *     for the first call or when an outlet has no base point), `distance_so_far_m` the running sum, `duration_s` is
          *     `closed_at - opened_at` and `gap_to_next_s` is `next.opened_at - closed_at`. `phone_masked` never carries the full number.
          */
         get: operations["getTeamJourney"];
@@ -7187,7 +7187,8 @@ export interface components {
             duration_s: number | null;
             /** @description Metres, two decimals; null for the first call or when an outlet has no base point. */
             distance_from_prev_m: number | null;
-            total_distance_m: number;
+            /** @description Metres walked so far: the running sum of `distance_from_prev_m` up to and including this call (0 for the first call). */
+            distance_so_far_m: number;
             gap_to_next_s: number | null;
         };
         /** @description The Sales Journey of one SR on one route and day (contract 1.11.0). */
@@ -7202,7 +7203,8 @@ export interface components {
             };
             business_date: components["schemas"]["BusinessDate"];
             calls: components["schemas"]["JourneyCall"][];
-            total_distance_m: number;
+            /** @description Metres of the whole journey (the sum of the calls' `distance_from_prev_m`). */
+            distance_m: number;
         };
         TeamMemberRow: {
             /** Format: int64 */

@@ -172,10 +172,10 @@ class AmoFoundationF2Test {
             // gaps: next.opened_at - this.closed_at (10:20:00 - 10:07:46 = 734 s; 10:30:00 - 10:25:00 = 300 s); the last call has none
             assertEquals(listOf(734L, 300L, null), c.map { it.l("gap_to_next_s") })
             // haversine on the fixed pair (R = 6 371 000 m): A to B 344.7042..., B to C 1017.3103...; two decimals, running total of the rounded legs
-            assertNull(c[0].s("distance_from_prev_m")); assertEquals(0.0, c[0].d("total_distance_m"))
-            assertEquals(344.70, c[1].d("distance_from_prev_m")); assertEquals(344.70, c[1].d("total_distance_m"))
-            assertEquals(1017.31, c[2].d("distance_from_prev_m")); assertEquals(1362.01, c[2].d("total_distance_m"))
-            assertEquals(1362.01, o.d("total_distance_m"))
+            assertNull(c[0].s("distance_from_prev_m")); assertEquals(0.0, c[0].d("distance_so_far_m"))
+            assertEquals(344.70, c[1].d("distance_from_prev_m")); assertEquals(344.70, c[1].d("distance_so_far_m"))
+            assertEquals(1017.31, c[2].d("distance_from_prev_m")); assertEquals(1362.01, c[2].d("distance_so_far_m"))
+            assertEquals(1362.01, o.d("distance_m"))
             // outlet block: masked phone (never the clear number), cluster, code
             val a = c[0]["outlet"]!!.jsonObject
             assertEquals(outletA, a.l("id")); assertEquals("018*****111", a.s("phone_masked")); assertTrue(a.s("code")!!.isNotBlank())
@@ -191,7 +191,7 @@ class AmoFoundationF2Test {
         with(world) {
             val yesterday = today().minusDays(2).toString()
             val e = json(getAs(amo, "/v1/team/journey?user_id=${sr.userId}&route_id=$routeD&business_date=$yesterday").bodyAsText())
-            assertEquals(emptyList(), e["calls"]!!.jsonArray); assertEquals(0.0, e.d("total_distance_m"))
+            assertEquals(emptyList(), e["calls"]!!.jsonArray); assertEquals(0.0, e.d("distance_m"))
             // no business_date: today
             assertEquals(date, json(getAs(amo, "/v1/team/journey?user_id=${sr.userId}&route_id=$routeD").bodyAsText()).s("business_date"))
             // validation and unknown ids

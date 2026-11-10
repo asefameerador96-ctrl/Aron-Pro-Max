@@ -35,11 +35,11 @@ import java.time.OffsetDateTime
 @Serializable
 data class JourneyCall(
     val visit_uuid: String, val outlet: JourneyOutlet, val status: String, val opened_at: String, val closed_at: String?, val duration_s: Long?,
-    val distance_from_prev_m: Double?, val total_distance_m: Double, val gap_to_next_s: Long?,
+    val distance_from_prev_m: Double?, val distance_so_far_m: Double, val gap_to_next_s: Long?,
 )
 
 @Serializable
-data class TeamJourney(val user: JourneyUser, val route: JourneyRoute, val business_date: String, val calls: List<JourneyCall>, val total_distance_m: Double)
+data class TeamJourney(val user: JourneyUser, val route: JourneyRoute, val business_date: String, val calls: List<JourneyCall>, val distance_m: Double)
 
 /** One row per SR and route; a route with no SR on the date is `vacant` (user_id and full_name null). `phone` in clear only for an AMO reading their own zone. */
 @Serializable

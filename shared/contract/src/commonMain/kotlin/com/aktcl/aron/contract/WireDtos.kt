@@ -1337,7 +1337,7 @@ data class JourneyCall(
     @SerialName("closed_at") val closedAt: String?,
     @SerialName("duration_s") val durationS: Int?,
     @SerialName("distance_from_prev_m") val distanceFromPrevM: Double?,
-    @SerialName("total_distance_m") val totalDistanceM: Double,
+    @SerialName("distance_so_far_m") val distanceSoFarM: Double,
     @SerialName("gap_to_next_s") val gapToNextS: Int?,
 )
 
@@ -1367,7 +1367,7 @@ data class TeamJourney(
     @SerialName("route") val route: TeamJourneyRoute,
     @SerialName("business_date") val businessDate: String,
     @SerialName("calls") val calls: List<@Serializable(with = JourneyCallWire::class) JourneyCall>,
-    @SerialName("total_distance_m") val totalDistanceM: Double,
+    @SerialName("distance_m") val distanceM: Double,
 )
 
 @Serializable

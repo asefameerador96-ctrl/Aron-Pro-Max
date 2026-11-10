@@ -6,7 +6,7 @@ TeamJourney:
   - route
   - business_date
   - calls
-  - total_distance_m
+  - distance_m
   additionalProperties: false
   properties:
     user:
@@ -39,6 +39,7 @@ TeamJourney:
       type: array
       items:
         $ref: '#/components/schemas/JourneyCall'
-    total_distance_m:
+    distance_m:
       type: number
       minimum: 0
+      description: Metres of the whole journey (the sum of the calls' `distance_from_prev_m`).

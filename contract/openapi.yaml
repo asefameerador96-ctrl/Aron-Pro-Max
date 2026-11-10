@@ -1521,7 +1521,7 @@ paths:
         and Dhaka business date, ordered by `opened_at`. `status` is `edited_sale` when the visit's memo was superseded by an
         edit (or is itself an edit), `new_sale` when it has an active sale memo and `no_sale` otherwise. `distance_from_prev_m`
         is the haversine distance in metres (two decimals) between the previous call's outlet base point and this one's (null
-        for the first call or when an outlet has no base point), `total_distance_m` the running sum, `duration_s` is
+        for the first call or when an outlet has no base point), `distance_so_far_m` the running sum, `duration_s` is
         `closed_at - opened_at` and `gap_to_next_s` is `next.opened_at - closed_at`. `phone_masked` never carries the full number.
       parameters:
         - name: user_id
@@ -10842,7 +10842,7 @@ components:
         cluster: { type: [string, 'null'], maxLength: 120 }
     JourneyCall:
       type: object
-      required: [visit_uuid, outlet, status, opened_at, closed_at, duration_s, distance_from_prev_m, total_distance_m, gap_to_next_s]
+      required: [visit_uuid, outlet, status, opened_at, closed_at, duration_s, distance_from_prev_m, distance_so_far_m, gap_to_next_s]
       additionalProperties: false
       properties:
         visit_uuid: { type: string, format: uuid }
@@ -10852,12 +10852,12 @@ components:
         closed_at: { oneOf: [ { $ref: '#/components/schemas/Timestamp' }, { type: 'null' } ] }
         duration_s: { type: [integer, 'null'], minimum: 0 }
         distance_from_prev_m: { type: [number, 'null'], minimum: 0, description: 'Metres, two decimals; null for the first call or when an outlet has no base point.' }
-        total_distance_m: { type: number, minimum: 0 }
+        distance_so_far_m: { type: number, minimum: 0, description: 'Metres walked so far: the running sum of `distance_from_prev_m` up to and including this call (0 for the first call).' }
         gap_to_next_s: { type: [integer, 'null'], minimum: 0 }
     TeamJourney:
       type: object
       description: The Sales Journey of one SR on one route and day (contract 1.11.0).
-      required: [user, route, business_date, calls, total_distance_m]
+      required: [user, route, business_date, calls, distance_m]
       additionalProperties: false
       properties:
         user:
@@ -10878,7 +10878,7 @@ components:
         calls:
           type: array
           items: { $ref: '#/components/schemas/JourneyCall' }
-        total_distance_m: { type: number, minimum: 0 }
+        distance_m: { type: number, minimum: 0, description: 'Metres of the whole journey (the sum of the calls'' `distance_from_prev_m`).' }
     TeamMemberRow:
       type: object
       required: [user_id, full_name, route_id, route_code, route_name, route_days, phone, phone_masked, total_outlets, vacant]
