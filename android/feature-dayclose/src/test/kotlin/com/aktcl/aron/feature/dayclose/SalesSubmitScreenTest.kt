@@ -58,6 +58,54 @@ class SalesSubmitScreenTest {
         compose.onNodeWithTag(SalesSubmitTags.HOLD).assertDoesNotExist()
     }
 
+    // row 66 (AMO): the vendor's two modals; the due question has Yes / No and no title, the success has one OK and the table stays behind it
+    @Test fun vendorDialogsAskAboutDuesThenConfirmTheSubmit() {
+        var submitted = 0
+        val counts = listOf(CountRow("memo", 6, 6))
+        val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(1, 125_000), false)
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { it }, {}, { submitted++ }, vendorDialogs = true) } }
+        compose.onNodeWithText("Submit sales").performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithText("You still have due with 1 retailer(s). Do you want to submit your sales?").assertExists()
+        compose.onNodeWithText("Are you sure?").assertDoesNotExist()
+        compose.onNodeWithText("No").performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(SalesSubmitTags.HOLD).assertDoesNotExist()
+        assertEquals(0, submitted)
+        compose.onNodeWithText("Submit sales").performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Yes").performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(SalesSubmitTags.HOLD).assertExists()
+    }
+
+    @Test fun vendorSuccessIsADialogOverTheTableWithOneOkAndOnlyForASubmitMadeHere() {
+        val counts = listOf(CountRow("memo", 6, 6))
+        val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), true)
+        var progress by androidx.compose.runtime.mutableStateOf(SubmitProgress.Idle)
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, progress, { it }, {}, {}, vendorDialogs = true) } }
+        compose.onNodeWithText("Sales submitted successfully").assertDoesNotExist()
+        progress = SubmitProgress.Settled; compose.waitForIdle()
+        compose.onNodeWithText("Sales submitted successfully").assertExists()
+        compose.onNodeWithText("6 records are on the server.").assertDoesNotExist()
+        compose.onNodeWithText("OK").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Sales submitted successfully").assertDoesNotExist()
+    }
+
+    // L4: reopening the screen on an already settled day shows no success modal again
+    @Test fun aSettledDayReopenedShowsNoSuccessModal() {
+        val counts = listOf(CountRow("memo", 6, 6))
+        val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), true)
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Settled, { it }, {}, {}, vendorDialogs = true) } }
+        compose.onNodeWithText("Sales submitted successfully").assertDoesNotExist()
+    }
+
+    // owner walk of build 1860: the table showed the raw key "device_status"; no wire name reaches the screen, whatever the host labels
+    @Test fun noRawRecordKeyReachesTheTable() {
+        val keys = listOf("device_status", "media_meta", "geo_breadcrumb", "app_error", "activity_log", "content_view", "config_ack", "consent_accept", "print_event")
+        val counts = keys.map { CountRow(it, 2, 2) }
+        val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), false)
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { it }, {}, {}, legacyFiveRows = false) } }
+        keys.forEach { k -> compose.onAllNodesWithText(k, substring = true).assertCountEquals(0) }
+        compose.onAllNodesWithText("Device status").assertCountEquals(2) // the status row and the record row
+    }
+
     @Test fun blankServerColumnBlocksAndNamesTheMismatch() {
         val counts = listOf(CountRow("memo", 6, null))
         val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), false)

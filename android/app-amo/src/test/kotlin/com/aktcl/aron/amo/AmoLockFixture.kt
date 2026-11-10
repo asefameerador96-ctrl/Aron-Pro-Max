@@ -74,6 +74,10 @@ internal class AmoLockFixture(context: Context, latePolicy: String?) : AutoClose
     /** Runs inside each location read: a test lands the Final Submit lock here ("the lock arrives while the fix is read"). */
     @Volatile var duringFix: () -> Unit = {}
 
+    /** Where the phone is, as an offset from the outlet in degrees of latitude (0.0 = at the outlet; 0.01 = about 1.1 km away), and the location switch. */
+    @Volatile var phoneOffsetLat = 0.0
+    @Volatile var locationAccess = LocationAccessState.OK
+
     private val components = SessionComponents(
         origin = ApiOrigin.parse("https://api.aron.test"), appVersion = "1.0.0+1", client = "app_amo", storageDir = dir,
         cipher = object : SecretCipher {
@@ -92,11 +96,11 @@ internal class AmoLockFixture(context: Context, latePolicy: String?) : AutoClose
                 fixReads++
                 duringFix()
                 return SourceResult.Located(
-                    RawLocation(LAT, LNG, 8.0, provider = "fused", timeMs = System.currentTimeMillis(), elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(), isMock = false),
+                    RawLocation(LAT + phoneOffsetLat, LNG, 8.0, provider = "fused", timeMs = System.currentTimeMillis(), elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(), isMock = false),
                 )
             }
         },
-        object : LocationAccess { override fun state(requirePrecise: Boolean) = LocationAccessState.OK },
+        object : LocationAccess { override fun state(requirePrecise: Boolean) = locationAccess },
         { FixDeviceState(deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false) },
         components.trustedClock,
     )

@@ -9,6 +9,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -110,6 +111,16 @@ class AmoDayLockHostsTest {
         f.zone() // the banner counts the zone's closed routes
         f.creditMemo(f.controlCall())
         show { AmoMemoHost(f.day, onEdit = {}) }
+        // Memo find (screenshot 42): route, retailer, then the Memo tile lists the retailer's memos
+        fun tagged(prefix: String) = androidx.compose.ui.test.SemanticsMatcher("tag starts with $prefix") { n -> n.config.contains(androidx.compose.ui.semantics.SemanticsProperties.TestTag) && n.config[androidx.compose.ui.semantics.SemanticsProperties.TestTag].startsWith(prefix) }
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithTag("amo_cp_route").assertExists() }.isSuccess }
+        compose.onNodeWithTag("amo_cp_route").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(tagged("amo_cp_route_")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("amo_cp_route_" + f.route).performClick()
+        compose.onNodeWithTag("amo_cp_outlet").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(tagged("amo_cp_outlet_")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("amo_cp_outlet_50001").performClick()
+        compose.onNodeWithTag("amo_mf_tile").performClick()
         compose.waitUntil(5_000) { shown("Rahim Store 50001") }
         compose.onNodeWithText("Rahim Store 50001", substring = true).performClick()
         compose.waitUntil(5_000) { shown("Mark paid") }
