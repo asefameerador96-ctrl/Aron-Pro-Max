@@ -1,5 +1,7 @@
 package com.aktcl.aron.core.system.update
 
+import androidx.compose.foundation.background
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -46,6 +48,7 @@ object UpdateTags {
     const val LATER = "update_later"
     const val UNKNOWN_SOURCES = "update_unknown_sources"
     const val DAY_BLOCKED = "update_day_blocked"
+    const val AMO_HEADING = "update_amo_heading"
 }
 
 /**
@@ -63,14 +66,27 @@ fun UpdateContent(
     onOpenUnknownSources: () -> Unit,
     onLater: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The AMO app's texts (screenshots 5 to 7, R6): the ribbon, "Update Available", "Version x available", "Download App & Install"; default false (SR, TSO unchanged). */
+    amoStyle: Boolean = false,
 ) {
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.L).testTag(UpdateTags.SCREEN),
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+        horizontalAlignment = if (amoStyle) androidx.compose.ui.Alignment.CenterHorizontally else androidx.compose.ui.Alignment.Start,
     ) {
-        Text(stringResource(if (required) R.string.update_title_required else R.string.update_title), style = MaterialTheme.typography.headlineSmall)
-        // Version names are identifiers (never localized digits); the size is a number.
-        Text(stringResource(R.string.update_version_size, release.versionName, localizedNumber(maxOf(1, (release.sizeBytes + 524_288) / 1_048_576))), style = MaterialTheme.typography.bodyLarge)
+        if (amoStyle) {
+            val updating = download is DownloadUi.Downloading
+            AmoUpdateRibbon(stringResource(R.string.update_amo_ribbon))
+            Text(
+                stringResource(if (updating) R.string.update_amo_updating else R.string.update_amo_heading), style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.testTag(UpdateTags.AMO_HEADING),
+            )
+            Text(stringResource(R.string.update_amo_version, release.versionName), style = MaterialTheme.typography.bodyLarge)
+        } else {
+            Text(stringResource(if (required) R.string.update_title_required else R.string.update_title), style = MaterialTheme.typography.headlineSmall)
+            // Version names are identifiers (never localized digits); the size is a number.
+            Text(stringResource(R.string.update_version_size, release.versionName, localizedNumber(maxOf(1, (release.sizeBytes + 524_288) / 1_048_576))), style = MaterialTheme.typography.bodyLarge)
+        }
         val notes = if (LocalAppLanguage.current == AppLanguage.BN) release.notesBn ?: release.notesEn else release.notesEn ?: release.notesBn
         notes?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         Text(
@@ -84,7 +100,7 @@ fun UpdateContent(
             style = MaterialTheme.typography.labelLarge,
         )
         when (download) {
-            DownloadUi.Idle -> AronPrimaryButton(stringResource(R.string.update_download), onDownload, Modifier.fillMaxWidth().testTag(UpdateTags.DOWNLOAD), enabled = network != NetworkStatus.OFFLINE)
+            DownloadUi.Idle -> AronPrimaryButton(stringResource(if (amoStyle) R.string.update_amo_download else R.string.update_download), onDownload, Modifier.fillMaxWidth().testTag(UpdateTags.DOWNLOAD), enabled = network != NetworkStatus.OFFLINE)
             is DownloadUi.Downloading -> {
                 LinearProgressIndicator(progress = { download.percent / 100f }, modifier = Modifier.fillMaxWidth())
                 Text(localizedDigits(stringResource(R.string.update_progress, download.percent)), style = MaterialTheme.typography.bodyLarge)
@@ -108,6 +124,19 @@ fun UpdateContent(
             }
         }
         if (!required) AronSecondaryButton(stringResource(R.string.update_later), onLater, Modifier.fillMaxWidth().testTag(UpdateTags.LATER))
+    }
+}
+
+/** The orange folded ribbon of screenshot 5 with its white words (drawn, no bitmap: the APK stays lean). */
+@Composable
+private fun AmoUpdateRibbon(text: String) {
+    androidx.compose.foundation.layout.Box(
+        Modifier.padding(vertical = AronTokens.Space.L).background(androidx.compose.ui.graphics.Color(0xFFB85C00), androidx.compose.foundation.shape.RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 4.dp),
+    ) {
+        Text(
+            text, color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.background(androidx.compose.ui.graphics.Color(0xFF8A4300), androidx.compose.foundation.shape.RoundedCornerShape(2.dp)).padding(horizontal = 24.dp, vertical = 8.dp),
+        )
     }
 }
 

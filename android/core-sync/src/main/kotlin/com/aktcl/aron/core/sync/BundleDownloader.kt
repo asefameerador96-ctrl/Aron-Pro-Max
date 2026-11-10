@@ -13,6 +13,7 @@ import com.aktcl.aron.core.network.SyncApi
 import com.aktcl.aron.core.network.TransportFailure
 import com.aktcl.aron.rules.BusinessDate
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -84,6 +85,20 @@ class BundleDownloader(
 
     /** Fetches and applies the bundle of [forDate] (default: today's Dhaka business date). Offline it changes nothing. */
     suspend fun download(forDate: String = BusinessDate.of(clock.nowMs()).toString()): BundleReport = lock.withLock { downloadLocked(forDate) }
+
+    /** True when this downloader works on [d] (a TSO wipe closes the user's database; a later sign-in opens a new one). */
+    internal fun uses(d: AronDatabase): Boolean = db === d
+
+    /**
+     * Day start of the AMO and TSO apps (F-SYS-006, D-AMO-BUNDLE-01): the full bundle of [date] when this phone does not hold
+     * it yet (first sign-in, a new Dhaka day), otherwise only the cheap path the SR app takes on resume: a delta at most
+     * every `cfg.bundle.delta_min_interval_min`, never a second full download. Nothing here waits for the network except
+     * the call itself; offline it changes nothing.
+     */
+    suspend fun ensureDay(date: String): BundleReport {
+        if (repo.businessDate() != date || repo.etag() == null) return download(date)
+        return refreshOnForeground() ?: BundleReport(BundleOutcome.UNCHANGED, repo.bundleVersion(), date)
+    }
 
     private suspend fun downloadLocked(forDate: String): BundleReport {
         val today = BusinessDate.of(clock.nowMs()).toString()
@@ -357,7 +372,26 @@ class BundleDownloaders(
 ) {
     private val byUser = java.util.concurrent.ConcurrentHashMap<Long, BundleDownloader>()
 
-    suspend fun of(userId: Long): BundleDownloader = byUser[userId] ?: databases.of(userId).let { db ->
-        byUser.computeIfAbsent(userId) { BundleDownloader(db, api, File(stagingRoot, "u$it"), clock) }
+    /**
+     * The user's downloader. It is checked against the live database on every call: a TSO wipe closes the user's database and
+     * a later sign-in opens a new one, and a downloader still holding the closed instance would fail on its first query.
+     */
+    suspend fun of(userId: Long): BundleDownloader {
+        val db = databases.of(userId)
+        return byUser.compute(userId) { id, cur -> cur?.takeIf { it.uses(db) } ?: BundleDownloader(db, api, File(stagingRoot, "u$id"), clock) }!!
+    }
+
+    /** The AMO and TSO day start runs in this scope, so a rotation or language switch (which cancels the screen's own scope) never aborts it. */
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default)
+    private val inFlight = java.util.concurrent.ConcurrentHashMap<Long, kotlinx.coroutines.Deferred<BundleReport>>()
+
+    /**
+     * [BundleDownloader.ensureDay] of [userId], off the main thread and once at a time per user: a second caller (a resume while the
+     * first sign-in download runs, a recreated screen) joins the run in flight; a caller that leaves only stops waiting.
+     */
+    suspend fun ensureDay(userId: Long, date: String): BundleReport {
+        val run = inFlight.compute(userId) { _, cur -> if (cur != null && cur.isActive) cur else scope.async { of(userId).ensureDay(date) } }!!
+        run.invokeOnCompletion { inFlight.remove(userId, run) }
+        return run.await()
     }
 }

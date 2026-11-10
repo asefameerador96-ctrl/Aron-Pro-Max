@@ -41,3 +41,15 @@ in_freeze_window() { # window [minute-of-day]
     [ "$now" -ge "$from" ] || [ "$now" -lt "$to" ]
   fi
 }
+
+# The HELD summary table row (D-OPS-DEPLOY-HOLD-01): "| Deploy | HELD (<file>): <reason> |" with the reason taken from the
+# hold file's text, newlines and pipes flattened (a pipe would split the cell), and the WHOLE row at most 400 characters
+# (an overlong cell is cut by the Actions summary and hid the end of the reason). Prints one line.
+held_row() { # hold-file
+  local max=400 prefix="| Deploy | HELD ($1): " suffix=" |" reason
+  reason="$(head -c 1000 "$1" | tr '\n\r|' '  /' | tr -s ' ')"
+  reason="${reason% }"
+  local room=$(( max - ${#prefix} - ${#suffix} ))
+  if [ "${#reason}" -gt "$room" ]; then reason="${reason:0:$(( room - 3 ))}..."; fi
+  printf '%s%s%s\n' "$prefix" "$reason" "$suffix"
+}

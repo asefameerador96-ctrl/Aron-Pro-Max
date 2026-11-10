@@ -48,6 +48,11 @@ val robolectricMirror = if (System.getenv("GITHUB_ACTIONS") == null && System.ge
     null
 }
 
+// CI (D-QA-CI-01): tools/ci/robolectric-prefetch.sh puts the verified android-all-instrumented jars in one folder and exports
+// it as ROBOLECTRIC_OFFLINE_DIR; Robolectric then resolves them from there (robolectric.offline=true) and never calls Maven.
+// Unset (developer and lane containers) keeps the online resolver and the mirror above.
+val robolectricOfflineDir: String? = System.getenv("ROBOLECTRIC_OFFLINE_DIR")?.takeIf { it.isNotBlank() }
+
 // DEV ONLY: bundle the pack pictures cropped from the owner's reference screenshot (android/dev-packshots/README.md).
 val devPackshots = (findProperty("aron.devPackshots") as String?)?.trim() == "true"
 
@@ -140,6 +145,10 @@ subprojects {
                 unitTests.all {
                     it.jvmArgs(robolectricJvmArgs)
                     robolectricMirror?.let { url -> it.systemProperty("robolectric.dependency.repo.url", url) }
+                    robolectricOfflineDir?.let { dir ->
+                        it.systemProperty("robolectric.offline", "true")
+                        it.systemProperty("robolectric.dependency.dir", dir)
+                    }
                 }
             }
             lint {
@@ -181,6 +190,10 @@ subprojects {
                 unitTests.all {
                     it.jvmArgs(robolectricJvmArgs)
                     robolectricMirror?.let { url -> it.systemProperty("robolectric.dependency.repo.url", url) }
+                    robolectricOfflineDir?.let { dir ->
+                        it.systemProperty("robolectric.offline", "true")
+                        it.systemProperty("robolectric.dependency.dir", dir)
+                    }
                 }
             }
             lint {

@@ -59,6 +59,8 @@ fun LoginScreen(
     onSunlight: ((Boolean) -> Unit)? = null,
     /** [LoginVariant.Tso] draws the TSO screen of screenshot 5 (D-TSO-MAN-15); the TSO app never reaches the OTP step (D-AUTH-TSO-NOBIND). */
     variant: LoginVariant = LoginVariant.Standard,
+    /** The footer line when the app wants its own ("ARON AMO v1.0.25", D-AMO-MAN R1); null keeps "Version <versionName>". */
+    footerText: String? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     if (variant == LoginVariant.Tso && state.bindToken == null) {
@@ -88,6 +90,7 @@ fun LoginScreen(
         onEnrol = onEnrol,
         sunlight = sunlight,
         onSunlight = onSunlight,
+        footerText = footerText,
     )
 }
 
@@ -109,6 +112,7 @@ fun LoginContent(
     onEnrol: (() -> Unit)? = null,
     sunlight: Boolean = false,
     onSunlight: ((Boolean) -> Unit)? = null,
+    footerText: String? = null,
 ) {
     val filled = state.username.isNotBlank() && state.password.isNotEmpty()
     val wrong = state.message == LoginMessage.InvalidCredentials || state.message == LoginMessage.OfflineWrongPassword
@@ -152,7 +156,7 @@ fun LoginContent(
                     }
                 }
             }
-            AuthFooter(localizedDigits(stringResource(R.string.auth_version, versionName)), Modifier.testTag(LoginTags.VERSION))
+            AuthFooter(localizedDigits(footerText ?: stringResource(R.string.auth_version, versionName)), Modifier.testTag(LoginTags.VERSION))
         }
     }
 }

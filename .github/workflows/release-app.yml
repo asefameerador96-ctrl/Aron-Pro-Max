@@ -129,6 +129,8 @@ jobs:
           done <<< "${list}"
           # tso-manual A1 (D-TSO-MAN-42): the TSO copy under the name of screenshot 1; the existing names stay for the updater
           cp "out/aron-tso-${VERSION_NAME}.apk" "out/$(python3 tools/ci/release-apks.py --tso-copy-name "${VERSION_CODE}")"
+          # amo-shell A1 (D-AMO-MAN-16): the same for the AMO app, aron_amo_app_<dd_mm_yyyy>_v<versionCode>.apk
+          cp "out/aron-amo-${VERSION_NAME}.apk" "out/$(python3 tools/ci/release-apks.py --amo-copy-name "${VERSION_CODE}")"
           (cd out && sha256sum ./*.apk > SHA256SUMS)
           cat out/SHA256SUMS
       - name: APK size gate

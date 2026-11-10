@@ -1,6 +1,10 @@
 package com.aktcl.aron.feature.attendance
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.PathEffect
+import com.aktcl.aron.core.common.AppLanguage
+import com.aktcl.aron.core.ui.LocalAppLanguage
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -110,6 +114,9 @@ object AttendanceTags {
     const val REFRESH = "att_refresh"
     /** D-NIGHT-CHECKOUT-01: the "Sales Submit first" notice and its link. */
     const val SUBMIT_FIRST = "att_submit_first"
+    /** The AMO style (D-AMO-MAN-03): the "Already Checked-Out" box and the white hold sheet. */
+    const val CHECKED_OUT = "att_checked_out"
+    const val SHEET = "att_sheet"
 }
 
 /** `HH:mm` Asia/Dhaka (UTC+6) of an RFC 3339 instant; the screen shows corrected business time, never the raw clock. */
@@ -161,6 +168,12 @@ fun AttendanceContent(
     onOpenSalesSubmit: (() -> Unit)? = null,
     /** D-NIGHT-CHECKOUT-02: offline the notice says why (the submit needs the server); the pending upload goes when a network returns. */
     offline: Boolean = false,
+    /**
+     * The AMO host's presentation (D-AMO-MAN-03, screenshots 14 to 16): purple rule and refresh icon, no day lines, dashed status boxes
+     * ("check-in done", "Check Out active after 5", "Already Checked-In / Out"), a white sheet with the half-dome hold button. Default
+     * false: the SR screen and its goldens do not change.
+     */
+    amoStyle: Boolean = false,
 ) {
     val c = LocalAronColors.current
     val look = LocalAronLook.current
@@ -175,22 +188,23 @@ fun AttendanceContent(
     }
     Box(modifier.fillMaxSize()) {
         ScrollColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (userTitle != null) UserCard(userTitle, userSubtitle)
+            if (userTitle != null) UserCard(userTitle, userSubtitle, amoStyle)
             if (state.lastFixMock) AronBanner(stringResource(R.string.att_mock_warning), kind = BannerKind.Warning)
-            if (dayComplete) AronBanner(stringResource(R.string.att_day_complete_message), kind = BannerKind.Success)
+            if (dayComplete && !amoStyle) AronBanner(stringResource(R.string.att_day_complete_message), kind = BannerKind.Success)
             if (state.fixFailed && !state.readingFix && !state.busy) {
                 AronBanner(
                     stringResource(R.string.att_fix_none), kind = BannerKind.Warning,
                     actionLabel = if (onRefreshFix != null) stringResource(R.string.att_fix_retry) else null, onAction = onRefreshFix,
                 )
             }
-            LocationCard(state, onRefreshFix)
-            DayLines(state, checkoutAtLabel)
+            LocationCard(state, onRefreshFix, amoStyle)
+            if (!amoStyle) DayLines(state, checkoutAtLabel)
             Spacer(Modifier.height(32.dp)) // with the column gap, about 56 to 64 dp between the location card and the message (sr/attendance.png)
             // the reference message once, centred above the two big buttons (screens-sr s3)
             val prompt = when {
                 !checkOutPhase && state.showCheckInPrompt -> stringResource(R.string.att_prompt_checkin)
                 checkOutPhase && !dayComplete && state.checkOutEnabled -> stringResource(R.string.att_prompt_checkout)
+                amoStyle && dayComplete -> stringResource(R.string.att_day_complete_message)
                 else -> null
             }
             // D-NIGHT-CHECKOUT-01: no check-out before the day's Sales Submit; one tap to the Sales Submit screen
@@ -207,7 +221,8 @@ fun AttendanceContent(
                     modifier = Modifier.fillMaxWidth().testTag(AttendanceTags.PROMPT).padding(vertical = 8.dp),
                 )
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (amoStyle) AmoStatusRow(state, checkoutAtLabel, checkOutPhase, dayComplete, onIn = { hold = HOLD_IN }, onOut = { hold = HOLD_OUT })
+            else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 // green in, red out once open, grey while not available (sr/attendance.png); a tap opens the hold sheet, never commits
                 BigAction(
                     stringResource(R.string.att_check_in), AronIcons.Login, { hold = HOLD_IN }, AttendanceTags.CHECK_IN,
@@ -223,7 +238,7 @@ fun AttendanceContent(
         var lastHold by remember { mutableStateOf(HOLD_IN) }
         hold?.let { lastHold = it }
         val out = lastHold == HOLD_OUT
-        val time = localizedDigits(remember(hold) { clock12(dhakaClock(nowIso())) })
+        val time = remember(hold) { clock12(dhakaClock(nowIso())) }.let { if (amoStyle) it else localizedDigits(it) } // R4: the AMO chip keeps Latin digits (screenshots 15, 16)
         val fixLine = state.fixAccuracyM?.let { stringResource(R.string.att_fix_line, localizedNumber(it.toLong())) } ?: stringResource(R.string.att_fix_line_none)
         HoldSheet(
             visible = hold != null,
@@ -232,6 +247,7 @@ fun AttendanceContent(
             timeText = time, fixLine = fixLine, tint = if (out) LocalAronColors.current.noFill else LocalAronColors.current.yesFill,
             onCancel = { hold = null },
             onConfirmed = { hold = null; if (out) onCheckOut() else onCheckIn() },
+            amoStyle = amoStyle,
         )
     }
 }
@@ -253,23 +269,24 @@ private fun LeadingTile(glyph: ImageVector, fill: Color) {
 
 /** The user card (sr/attendance.png): a lavender tile with the person glyph, the name line and the route line, over a red rule. */
 @Composable
-private fun UserCard(title: String, subtitle: String?) {
+private fun UserCard(title: String, subtitle: String?, amo: Boolean = false) {
     val look = LocalAronLook.current
+    val accent = if (amo) look.purple else look.red
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             LeadingTile(AronIcons.Person, Color(0xFFD7D3DF))
             Column(Modifier.weight(1f)) {
-                Text(title, color = look.ink, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                if (subtitle != null) Text(subtitle, color = look.ink, fontSize = 12.sp)
+                Text(title, color = if (amo) look.purple else look.ink, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                if (subtitle != null) Text(subtitle, color = if (amo) look.purple else look.ink, fontSize = 12.sp)
             }
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(look.red))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(accent))
     }
 }
 
 /** The location card (sr/attendance.png): a pin tile, the coordinates or address, the fix-quality chip and the red refresh icon. */
 @Composable
-private fun LocationCard(state: AttendanceState, onRefreshFix: (() -> Unit)?) {
+private fun LocationCard(state: AttendanceState, onRefreshFix: (() -> Unit)?, amo: Boolean = false) {
     val c = LocalAronColors.current
     val look = LocalAronLook.current
     val reduced = LocalReducedMotion.current
@@ -284,7 +301,7 @@ private fun LocationCard(state: AttendanceState, onRefreshFix: (() -> Unit)?) {
     // a compact, borderless #D7D7D7 block with a wide soft shadow, one text block of at most two lines (sr/attendance.png)
     Row(
         Modifier.fillMaxWidth().heightIn(min = 64.dp).shadow(12.dp, shape, ambientColor = Color(0x33000000), spotColor = Color(0x33000000)).clip(shape)
-            .background(if (look.sunlight) look.card else Color(0xFFD7D7D7)).padding(horizontal = 12.dp, vertical = 8.dp),
+            .background(if (look.sunlight) look.card else if (amo) Color(0xFFE9E6F1) else Color(0xFFD7D7D7)).padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         LeadingTile(AronIcons.Place, Color(0xFFC7C3CF))
@@ -312,7 +329,7 @@ private fun LocationCard(state: AttendanceState, onRefreshFix: (() -> Unit)?) {
                     .semantics { contentDescription = refreshLabel }.testTag(AttendanceTags.REFRESH),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(AronIcons.Refresh, contentDescription = null, tint = if (state.readingFix || state.busy) look.disabledText else look.red, modifier = Modifier.size(24.dp).graphicsLayer { rotationZ = spin.value })
+                Icon(AronIcons.Refresh, contentDescription = null, tint = if (state.readingFix || state.busy) look.disabledText else if (amo) look.purple else look.red, modifier = Modifier.size(24.dp).graphicsLayer { rotationZ = spin.value })
             }
         }
     }
@@ -463,7 +480,7 @@ private fun BigAction(label: String, glyph: ImageVector, onClick: () -> Unit, ta
  * stops under the host top bar (open issue for core-ui).
  */
 @Composable
-private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, timeText: String, fixLine: String, tint: Color, onCancel: () -> Unit, onConfirmed: () -> Unit) {
+private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, timeText: String, fixLine: String, tint: Color, onCancel: () -> Unit, onConfirmed: () -> Unit, amoStyle: Boolean = false) {
     val c = LocalAronColors.current
     val reduced = LocalReducedMotion.current
     val scrim = c.surfaceScrim
@@ -486,7 +503,8 @@ private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, timeTe
                 .drawBehind { drawRect(scrim.copy(alpha = scrim.alpha * scrimT)) }
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onCancel),
         ) {
-            GlassSurface(
+            if (amoStyle) AmoHoldSheetBody(Modifier.align(Alignment.BottomCenter).then(sheetMotion).pointerInput(Unit) { detectTapGestures { } }, title, icon, timeText, tint == c.noFill, onCancel, onConfirmed)
+            else GlassSurface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
@@ -517,5 +535,106 @@ private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, timeTe
                 }
             }
         }
+    }
+}
+
+
+/** "5" / "5:30" in Bangla (the string adds "টার"), "5 PM" / "5:30 PM" in English: the hour of the configured check-out time on the 12-hour clock. */
+internal fun checkoutAfterLabel(hhmm: String, bangla: Boolean): String = runCatching {
+    val (h, m) = hhmm.split(":").map { it.toInt() }
+    val h12 = if (h % 12 == 0) 12 else h % 12
+    val body = if (m == 0) "$h12" else "$h12:%02d".format(m)
+    if (bangla) body else body + if (h < 12) " AM" else " PM"
+}.getOrDefault(hhmm)
+
+private val DoneGreen = Color(0xFF00642F)
+private val DoneRed = Color(0xFFB0001C)
+private val WaitOrange = Color(0xFF8A4B00)
+
+/** A dashed status box of the AMO attendance screen (a status, not a button): [color] border, icon and text. */
+@Composable
+private fun StatusBox(text: String, icon: ImageVector, color: Color, tag: String?, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier.heightIn(min = 100.dp).clip(shape).background(look.card)
+            .drawBehind {
+                val w = 2.dp.toPx()
+                drawRoundRect(color, topLeft = Offset(w / 2, w / 2), size = Size(size.width - w, size.height - w), cornerRadius = CornerRadius(12.dp.toPx()), style = Stroke(w, pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f))))
+            }
+            .then(if (tag != null) Modifier.testTag(tag) else Modifier).padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.height(6.dp))
+        Text(text, color = color, fontSize = 14.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Medium)
+    }
+}
+
+/**
+ * The two tiles under the message (screenshots 14 to 16): before check-in a green Check In and a grey Check Out; after it a dashed
+ * "check-in done" box and either the dashed orange "active after <time>" box or the red Check Out; at the end the two "Already" boxes.
+ */
+@Composable
+private fun AmoStatusRow(state: AttendanceState, checkoutAtLabel: String, checkOutPhase: Boolean, dayComplete: Boolean, onIn: () -> Unit, onOut: () -> Unit) {
+    val look = LocalAronLook.current
+    val bangla = LocalAppLanguage.current == AppLanguage.BN
+    val green = look.primaryStart ?: DoneGreen
+    val red = look.stopFill ?: DoneRed
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        when {
+            dayComplete -> {
+                StatusBox(stringResource(R.string.att_amo_already_in), AronIcons.CheckCircle, green, AttendanceTags.STATUS, Modifier.weight(1f))
+                StatusBox(stringResource(R.string.att_amo_already_out), AronIcons.CheckCircle, red, AttendanceTags.CHECKED_OUT, Modifier.weight(1f))
+            }
+            checkOutPhase -> {
+                StatusBox(stringResource(R.string.att_amo_in_done), AronIcons.CheckCircle, green, AttendanceTags.STATUS, Modifier.weight(1f))
+                // open: the red Check Out; before the configured time (or the Sales Submit gate) the dashed orange box says when
+                if (state.checkOutEnabled && !state.busy) BigAction(
+                    stringResource(R.string.att_check_out), AronIcons.Logout, onOut, AttendanceTags.CHECK_OUT, enabled = true, enabledColors = listOf(red, red), modifier = Modifier.weight(1f),
+                ) else if (state.checkOutTimeReached) BigAction(
+                    // the time has passed: something else holds check-out (Sales Submit first, a busy flow); the notice above says what
+                    stringResource(R.string.att_check_out), AronIcons.Logout, {}, AttendanceTags.CHECK_OUT, enabled = false, enabledColors = listOf(red, red), modifier = Modifier.weight(1f),
+                ) else StatusBox(
+                    stringResource(R.string.att_amo_out_after, localizedDigits(checkoutAfterLabel(checkoutAtLabel, bangla))), AronIcons.Warning, if (look.sunlight) look.ink else WaitOrange,
+                    AttendanceTags.CHECK_OUT, Modifier.weight(1f),
+                )
+            }
+            else -> {
+                BigAction(
+                    stringResource(R.string.att_check_in), AronIcons.Login, onIn, AttendanceTags.CHECK_IN, enabled = state.checkInEnabled && !state.busy,
+                    enabledColors = listOf(green, green), modifier = Modifier.weight(1f),
+                )
+                BigAction(stringResource(R.string.att_check_out), AronIcons.Logout, {}, AttendanceTags.CHECK_OUT, enabled = false, enabledColors = listOf(red, red), modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/**
+ * The AMO hold sheet (screenshots 15, 16): a white sheet with rounded top corners and a grey handle, the heading and a bordered time chip
+ * in the colour of the action (green in, red out), and the half-dome hold button. A tap on the scrim, Back or "Cancel" closes it.
+ */
+@Composable
+private fun AmoHoldSheetBody(modifier: Modifier, title: String, icon: ImageVector, timeText: String, out: Boolean, onCancel: () -> Unit, onConfirmed: () -> Unit) {
+    val look = LocalAronLook.current
+    val color = if (out) (look.stopFill ?: DoneRed) else (look.primaryStart ?: DoneGreen)
+    val light = if (look.sunlight) color else if (out) Color(0xFFF2A0A8) else Color(0xFF8FD6AE)
+    Column(
+        modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).background(look.card)
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).testTag(AttendanceTags.SHEET),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(Modifier.padding(top = 10.dp).size(40.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(look.underline))
+        Text(title, color = color, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp))
+        Row(
+            Modifier.padding(top = 12.dp, bottom = 20.dp).clip(RoundedCornerShape(10.dp)).border(1.5.dp, color, RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(AronIcons.Clock, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
+            Text(timeText, color = color, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+        }
+        com.aktcl.aron.core.ui.aron.AronDomeHoldButton(stringResource(R.string.att_hold_label), icon, light, color, onConfirmed, Modifier.testTag(AttendanceTags.HOLD).padding(horizontal = 32.dp))
+        com.aktcl.aron.core.ui.AronTextButton(stringResource(R.string.att_cancel), onCancel, Modifier.fillMaxWidth())
     }
 }
