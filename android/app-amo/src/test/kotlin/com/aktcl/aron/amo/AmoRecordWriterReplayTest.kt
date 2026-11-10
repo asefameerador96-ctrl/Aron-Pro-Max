@@ -57,6 +57,28 @@ class AmoRecordWriterReplayTest {
     private val route = 10231L
 
     private val claims = mutableListOf<List<String>>()
+    // A4 (D-AMO-MAN-12): the new-outlet verification takes the fix and the photo captured on the form
+    @Test fun aVerificationUsesTheFixCapturedWithThePhotoAndClaimsThePhotoOnce() = runBlocking {
+        val request = ClientIds.newUuid(); val rec = ClientIds.newUuid(); val photo = ClientIds.newUuid()
+        val captured = FixReading("ok", 23.5, 90.25, 6.0, false)
+        assertTrue(writer.decideRequest(rec, request, true, 4L, "Urban", null, photo, captured))
+        val outer = kotlinx.serialization.json.Json.parseToJsonElement(payloads("outlet_request_verification").single()) as kotlinx.serialization.json.JsonObject
+        val p = (outer["payload"] as? kotlinx.serialization.json.JsonObject) ?: outer
+        val fix = (p["fix"] as? kotlinx.serialization.json.JsonObject) ?: error("no inline fix in: $outer")
+        assertEquals(23.5, (fix["lat"] as kotlinx.serialization.json.JsonPrimitive).content.toDouble(), 0.0)
+        assertEquals(photo, (p["photo_uuid"] as kotlinx.serialization.json.JsonPrimitive).content)
+        assertEquals(1, claims.count { it[0] == photo })
+        relaunch()
+        assertTrue(writer.decideRequest(rec, request, true, 4L, "Urban", null, photo, captured)) // replay after a swipe-kill
+        assertEquals(1, payloads("outlet_request_verification").size)
+    }
+
+    @Test fun aMockedCapturedFixIsNeverQueuedAsAVerification() = runBlocking {
+        val mocked = FixReading("ok", 23.5, 90.25, 6.0, true)
+        assertFalse(writer.decideRequest(ClientIds.newUuid(), ClientIds.newUuid(), true, 4L, "Urban", null, ClientIds.newUuid(), mocked))
+        assertEquals(0, payloads("outlet_request_verification").size)
+    }
+
     private var stamped: String? = null
 
     private val metaProvider = CaptureMetaProvider { rid ->
