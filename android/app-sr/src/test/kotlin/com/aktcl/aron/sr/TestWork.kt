@@ -95,6 +95,13 @@ internal class TestWork {
         failure?.let { throw it }
     }
 
+    /**
+     * True once nothing the test started is still in flight: the view models' and the day's coroutines are done and Room's
+     * executor is idle (the main looper is idled on each poll, so work posted there runs). A UI check awaits this state, then
+     * asserts the screen; [ms] is only a hang guard, not a tuned delay (D-QA-CI-03).
+     */
+    fun awaitSettled(ms: Long = HANG_GUARD_MS): Boolean = waitUntil(ms) { inFlight().isEmpty() && roomExecutor.isIdle() }
+
     /** Coroutines still running in the view models' and the day's scopes. */
     private fun inFlight(): List<Job> = (viewModelJobs + dayJob.children.toList()).flatMap { it.children.toList() }.filter { !it.isCompleted }
 
@@ -112,6 +119,7 @@ internal class TestWork {
     private companion object {
         const val SETTLE_MS = 10_000L
         const val JOIN_MS = 10_000L
+        const val HANG_GUARD_MS = 60_000L
     }
 }
 

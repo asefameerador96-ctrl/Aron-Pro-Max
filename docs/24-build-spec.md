@@ -621,7 +621,7 @@ One container image `aron-backend` (JRE 21, `backend:app` distribution) runs in 
 |---|---|---|
 | `api` | Ktor (Netty) on port 8080: every `/v1` route | Container Apps, 3 to 30 replicas, HTTP concurrency rule |
 | `worker` | aggregate projector, bundle generator, scheduled jobs (day rollover, settle timeouts, parked-row expiry, export jobs, risk rules, FCM sender); jobs that must run once take a PostgreSQL advisory lock | 1 to 10 replicas |
-| `migrate` | Flyway `migrate` from `classpath:db/migration`, then exit | Container Apps job before each deploy |
+| `migrate` | Flyway `migrate` from `classpath:db/migration`, then exit; its sessions are exempt from the server's 30 s `idle_in_transaction_session_timeout` (Flyway `afterConnect` callback) | Container Apps job before each deploy, with the worker paused (`ARON_WORKER_PAUSED` revision, not `az containerapp stop`) and resumed on every exit path |
 
 ### 6.2 Modules and endpoint ownership
 
@@ -1290,7 +1290,7 @@ All tables live in schema `app` unless marked `dw`. Every transaction table has 
 | Back office | `web_entry_route_day`, `web_entry_line`, `web_entry_outlet_sku`, `qc_summary_entry` (market and warehouse, source web), `entry_unlock`, `dues_adjustment`, `price_batch`, `tracking_action`, `report_export_log`, `client_error` |
 | Aggregates (`dw`) | `dw.agg_daily_route`, `dw.agg_daily_route_sku`, `dw.agg_daily_zone`, `dw.agg_hourly_zone`, `dw.agg_daily_outlet`, `dw.fact_visit`, `dw.fact_memo`, `dw.fact_geo_fix`, `dw.fact_device_day`, `dw.dim_date`, `dw.dim_geo`, `dw.dim_product`, `dw.dim_outlet` |
 
-The db lane writes these as Flyway migrations `db/migrations/V0001__<name>.sql` onward (four-digit, lower snake case, checked by `MigrationNamingTest`; D24-52). Forward-only: a shipped migration is never edited.
+The db lane writes these as Flyway migrations `db/migrations/V0001__<name>.sql` onward (four-digit, lower snake case, checked by `MigrationNamingTest`; D24-52). Forward-only: a shipped migration is never edited. A migration may run longer than the server's 30 s `idle_in_transaction_session_timeout` (the migrate role is exempt, D-OPS-MIGRATE-IDLE-TIMEOUT-01) but is bounded by the job's 1800 s `replicaTimeout`, and it runs while the worker is paused, so it still sets `lock_timeout` and takes its locks all-or-none for the api's sake.
 
 ### 12.2 Outlet change requests
 

@@ -59,6 +59,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var telemetry: com.aktcl.aron.core.sync.DeviceTelemetry
     @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
     @Inject lateinit var skuPackshots: com.aktcl.aron.core.sync.SkuPackshots
+    /** D-TSO-BUNDLE-01: the day-bundle download per user (F-SYS-006); the SR app has called it since its first build. */
+    @Inject lateinit var bundleDownloaders: com.aktcl.aron.core.sync.BundleDownloaders
     private val packshotProvider by lazy { com.aktcl.aron.core.ui.aron.BitmapPackshotProvider(skuPackshots::bitmap, skuPackshots::cached) }
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
@@ -67,8 +69,12 @@ class MainActivity : ComponentActivity() {
     private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
 
     /** F-SYS-020: an update check on every resume (throttled to 12 h inside, cached offline). */
+    /** D-TSO-BUNDLE-01: bumped on every resume; the day's bundle effect re-runs on it (a delta at most every 30 minutes, a full one on a new day). */
+    private var resumeTick by mutableStateOf(0)
+
     override fun onResume() {
         super.onResume()
+        resumeTick++
         lifecycleScope.launch { updateShell.check(atLogin = false) }
         pushShell.onResume() // N-038: a token not registered yet is tried again (local check first)
         lifecycleScope.launch { components.session.noteTimePassing() } // F-SYS-052: the offline window counts real uptime
@@ -231,9 +237,26 @@ class MainActivity : ComponentActivity() {
                             val areas = remember(host) { areaScreens(AreasHostDeps(host)) }
                             val tickets = remember(host) { ticketScreens(TicketsHostDeps(host)) }
                             val vm = viewModel(key = "home-" + s.user.userId) {
-                                HomePlaceholderViewModel(System::currentTimeMillis) { components.syncApi.bundle() }
+                                // conditional on the held bundle: a phone that has today's bundle gets a 304, not the whole territory again
+                                HomePlaceholderViewModel(System::currentTimeMillis) {
+                                    components.syncApi.bundle(ifNoneMatch = runCatching { com.aktcl.aron.core.database.repo.ReferenceRepository(databases.of(s.user.userId)).etag() }.getOrNull())
+                                }
                             }
                             val home by vm.state.collectAsStateWithLifecycle()
+                            // D-TSO-BUNDLE-01 (F-SYS-006): the day's bundle (routes, outlets, SKUs) goes into this user's Room database in the
+                            // background, as the SR app does at day start and on resume: the full bundle when this phone holds none for today,
+                            // otherwise a delta at most every 30 minutes. The download runs in the downloaders' own scope (off the main thread,
+                            // one run per user, not cancelled by a rotation or a language switch); nothing on Home waits for it, offline it
+                            // changes nothing, and the next resume tries again.
+                            LaunchedEffect(s.user.userId, resumeTick) {
+                                try {
+                                    bundleDownloaders.ensureDay(s.user.userId, components.trustedClock.businessDate().toString())
+                                } catch (e: kotlinx.coroutines.CancellationException) {
+                                    throw e
+                                } catch (_: Exception) {
+                                    // offline or refused: the next resume tries again
+                                }
+                            }
                             val sunlightPref = remember(s.user.userId) { SunlightPreference(applicationContext, s.user.userId.toString()) }
                             LaunchedEffect(s.user.userId) { sunlight = sunlightPref.enabled }
                             val updateState by updateShell.state.collectAsStateWithLifecycle()
