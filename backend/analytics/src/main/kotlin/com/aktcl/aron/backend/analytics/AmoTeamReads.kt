@@ -190,7 +190,10 @@ fun Route.amoTeamRoutes(d: AppTeamDeps, reads: AmoTeamReads) {
             val p = call.principal
             if (p.role !in READERS) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "the sales journey is for supervisors")
             val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
-            call.respond(reads.journey(d.reach.reach(p.userId, p.role, p.scopeVersion, today), call.longParam("user_id"), call.longParam("route_id"), call.dateOrToday(today)))
+            val date = call.dateOrToday(today)
+            // D-AMO-FND-13 (L2): the same window as sales-by-date, 90 days back and never the future.
+            if (date.isAfter(today) || date.isBefore(today.minusDays(90))) throw ApiProblem(ProblemCode.ERR_VALIDATION, "business_date must be within the last 90 days", errors = listOf(FieldError("query.business_date", "out_of_range")))
+            call.respond(reads.journey(d.reach.reach(p.userId, p.role, p.scopeVersion, today), call.longParam("user_id"), call.longParam("route_id"), date))
         }
         get("/team/members") {
             val p = call.principal

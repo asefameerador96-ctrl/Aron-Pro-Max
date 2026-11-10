@@ -23,6 +23,11 @@ class AmoManualContractTest {
     }
 
     @Test
+    fun versionIs1111() {
+        assertEquals("1.11.1", map(OpenApi.doc["info"])["version"].toString(), "the exact shipped contract version")
+    }
+
+    @Test
     fun theChangelogNamesTheAmoAdditions() {
         val info = flat(map(OpenApi.doc["info"])["description"])
         for (member in listOf("`VisitPayload.force_sale_reason`", "`getCallTargets`", "`OutletRequestVerificationPayload.route_id` and `cluster_id`", "`section_bn`")) assertTrue(info.contains(member), "the 1.11.0 changelog must name $member")

@@ -62,6 +62,9 @@ object RecordWriter {
                         doc["actor_user_id"] = JsonPrimitive(up.userId)
                         doc["via"] = JsonPrimitive("device")
                         doc["at"] = env["captured_at"] ?: JsonNull
+                        // D-AMO-FND-13 (L1): the route and cluster columns mean "the form changed it"; only the payload may say so, never the envelope's route_id.
+                        doc["route_id"] = payload["route_id"] ?: JsonNull
+                        doc["cluster_id"] = payload["cluster_id"] ?: JsonNull
                     }
                     "qc_line" -> {
                         // The QC header (one per visit) is the server's; the line points at it (s12.1).

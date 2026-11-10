@@ -71,6 +71,7 @@ private fun callTargets(call: ApplicationCall, d: CallTargetsDeps): CallTargetsD
         null -> currentMonth
         else -> if (PERIOD.matches(raw)) YearMonth.parse(raw) else throw ApiProblem(ProblemCode.ERR_VALIDATION, "month must be YYYY-MM", errors = listOf(FieldError("query.month", "invalid_value")))
     }
+    if (month.isBefore(currentMonth.minusMonths(12))) throw ApiProblem(ProblemCode.ERR_VALIDATION, "month is more than 12 months back", errors = listOf(FieldError("query.month", "out_of_range")))
     if (month.isAfter(currentMonth)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "month is in the future", errors = listOf(FieldError("query.month", "out_of_range")))
 
     val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
