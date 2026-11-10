@@ -2069,3 +2069,7 @@
 - Both GO conditions met: lead static gates PASS (5d0aa2282 and the train), Opus three-lens delta check PASS (wf_47455afe-cf2), run 12/12 green.
 - GO sent to integrator 23 (session_014mnioLVYbzXUW1yaVnerKm): "GO train 85: <this docs tip> 052b04c56; expected DECISIONS 310; REAL deploy: migrations V0150 + V0151 (PITR point, worker pause, migrate console must show both applied, dblogins, dev seed, SR slice smoke); report landed with the deploy details verbatim and health build = new INT sha". This is the first backend train since 82, so the dev image changes from b0479585.
 - Check-in trig_01RitAQ38HiEMbZp4Vh97txr moved to 00:45 UTC as the landing safety net; the integrator's "train 85 landed" wakes the lead earlier. Nothing needs the owner.
+
+### 2026-11-10 23:54 UTC — integrator 23 pushed train 85 to INT (lead note)
+- Integrator message 23:53: INT = bf113f461cfa2cebc590b22315c7e3ae1ff53bea (train 85 commit over lead docs 7c198fdf + lane/lead-train85 052b04c56), ci 42927007694 (#1913); no conflicts; DECISIONS 310 (expected 310), 0 markers, 0 duplicate D- lines, 0 INT lines lost; db/migrations vs previous INT: V0150 and V0151 added only; files differing from the lane head = lead docs/status only. It watches ci then runs the REAL deploy; a migrate failure stops it with the console quoted.
+- Lead: background watch on ci 42927007694; the 00:45 UTC landing check-in stays armed. Nothing needs the owner.
