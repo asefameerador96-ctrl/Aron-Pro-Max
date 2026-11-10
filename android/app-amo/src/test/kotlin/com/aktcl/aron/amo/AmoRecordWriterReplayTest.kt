@@ -140,6 +140,12 @@ class AmoRecordWriterReplayTest {
         assertEquals(base + n, outbox().size); assertEquals(rows, payloads("distribution_check") + payloads("distribution_check_line"))
     }
 
+    @Test fun anAssessmentWithoutThePosmAnswerIsRefusedAndWritesNothing() = runBlocking {
+        val v = visit(); val base = outbox().size
+        assertTrue(runCatching { writer.saveAssessment(v, brands, PerfState(present = setOf(1L), posm = null)) }.exceptionOrNull() is IllegalArgumentException)
+        assertEquals(base, outbox().size)
+    }
+
     @Test fun aFailureInTheMiddleOfAnAssessmentRollsBackEverything() = runBlocking {
         val v = visit(); val base = outbox().size
         failMetaAt = metaCalls + 2

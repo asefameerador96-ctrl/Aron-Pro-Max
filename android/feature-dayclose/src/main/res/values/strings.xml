@@ -35,6 +35,9 @@
     <string name="submit_dues_warning">%1$s retailers still owe %2$s. You can still submit.</string>
     <string name="submit_dues_title">Are you sure?</string>
     <string name="submit_dues_ask">%1$s retailers still owe you. Do you want to submit your sales?</string>
+    <string name="submit_dues_ask_v">You still have due with %1$s retailer(s). Do you want to submit your sales?</string>
+    <string name="submit_success_v">Sales submitted successfully</string>
+    <string name="submit_ok">OK</string>
     <string name="submit_yes">Yes</string>
     <string name="submit_no">No</string>
     <string name="submit_queued">Submit is saved and will be sent when you are online.</string>

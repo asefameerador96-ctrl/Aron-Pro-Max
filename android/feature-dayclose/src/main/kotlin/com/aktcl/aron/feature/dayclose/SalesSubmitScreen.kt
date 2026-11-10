@@ -63,6 +63,8 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronConfirmDialog
 import com.aktcl.aron.core.ui.AronEasing
 import com.aktcl.aron.core.ui.AronIcons
+import com.aktcl.aron.core.ui.AronNoButton
+import com.aktcl.aron.core.ui.AronYesButton
 import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronLook
@@ -149,6 +151,8 @@ fun SalesSubmitScreen(
     serverKnown: Boolean? = null,
     /** The business date on screen; a listed row of another date shows its date. */
     today: String? = null,
+    /** Row 66 (AMO): the due warning and the success message are modal dialogs over the table, as the vendor shows them; the SR keeps its own. */
+    vendorDialogs: Boolean = false,
 ) {
     // A type the host has no label for (memo_line, day_submit, ...) still reads in words, never as its wire name (checker)
     val known = recordTypeLabels()
@@ -159,6 +163,7 @@ fun SalesSubmitScreen(
     val bn = LocalAppLanguage.current == AppLanguage.BN
     var hold by rememberSaveable { mutableStateOf(false) }
     var duesAsk by rememberSaveable { mutableStateOf(false) }
+    var successShown by rememberSaveable { mutableStateOf(true) }
     val canSubmit = gate.enabled && progress == SubmitProgress.Idle
     // the hold step closes itself once the submit is no longer possible (an effect, not a write during composition)
     LaunchedEffect(canSubmit) { if (!canSubmit) { hold = false; duesAsk = false } }
@@ -181,7 +186,7 @@ fun SalesSubmitScreen(
                 stringResource(R.string.submit_status_title), stringResource(if (online) R.string.submit_status_online else R.string.submit_status_offline), online,
                 Modifier.fillMaxWidth(),
             )
-            if (progress == SubmitProgress.Settled) {
+            if (progress == SubmitProgress.Settled && !vendorDialogs) {
                 // the day is closed: the success state replaces the table (screens-sr s11)
                 SettledState(counts.sumOf { it.device })
             } else {
@@ -229,7 +234,20 @@ fun SalesSubmitScreen(
             )
             if (!canSubmit) Text(reason, style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         }
-        if (duesAsk) {
+        if (vendorDialogs && duesAsk) {
+            VendorDialog(
+                warn = true, message = stringResource(R.string.submit_dues_ask_v, localizedNumber((gate.duesWarning?.retailersWithDues ?: 0).toLong())),
+                onDismiss = { duesAsk = false },
+            ) {
+                AronYesButton(stringResource(R.string.submit_yes), { duesAsk = false; hold = true })
+                AronNoButton(stringResource(R.string.submit_no), { duesAsk = false })
+            }
+        } else if (vendorDialogs && progress == SubmitProgress.Settled && successShown) {
+            VendorDialog(warn = false, message = stringResource(R.string.submit_success_v), onDismiss = { successShown = false }) {
+                AronYesButton(stringResource(R.string.submit_ok), { successShown = false })
+            }
+        }
+        if (!vendorDialogs && duesAsk) {
             // SS4: the manual asks first, in a green Yes / red No dialog; Yes opens the hold step (the close of the day stays irreversible)
             AronConfirmDialog(
                 title = stringResource(R.string.submit_dues_title),
@@ -248,6 +266,24 @@ fun SalesSubmitScreen(
                 AronLinkButton(stringResource(R.string.submit_cancel), { hold = false }, Modifier.fillMaxWidth())
                 Spacer(Modifier.height(AronTokens.Space.M))
             }
+        }
+    }
+}
+
+/** The vendor's modal (note 66): white, strongly rounded, an amber warning triangle or a green tick, a blue message, the buttons at the lower right. */
+@Composable
+private fun VendorDialog(warn: Boolean, message: String, onDismiss: () -> Unit, buttons: @Composable () -> Unit) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White).padding(AronTokens.Space.L),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+        ) {
+            if (warn) Icon(AronIcons.Warning, contentDescription = null, tint = Color(0xFFFFB300), modifier = Modifier.size(56.dp))
+            else Box(Modifier.size(56.dp).clip(CircleShape).background(Color(0xFF43A047)), contentAlignment = Alignment.Center) {
+                Icon(AronIcons.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(36.dp))
+            }
+            Text(message, style = MaterialTheme.typography.titleMedium, color = Color(0xFF1565C0), textAlign = TextAlign.Center)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M, Alignment.End)) { buttons() }
         }
     }
 }

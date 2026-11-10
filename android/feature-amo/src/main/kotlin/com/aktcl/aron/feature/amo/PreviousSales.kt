@@ -113,6 +113,7 @@ fun PreviousSalesContent(date: String, today: String, history: SaleHistory?, onS
     val bn = LocalAppLanguage.current == AppLanguage.BN
     val loc = if (bn) UiLocale.BN else UiLocale.EN
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(stringResource(R.string.amo_ps_title), style = amoText(18, bold = true, color = look.purple)) // screenshot 26: "সেল ডাটা"
         if (outletLabel != null) Text(outletLabel, style = amoText(16, bold = true))
         Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             AmoSecondary("‹", { onShift(-1) }, Modifier.testTag(PreviousSalesTags.PREV), enabled = PreviousSales.shift(date, -1, today) != date)

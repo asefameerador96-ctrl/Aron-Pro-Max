@@ -146,14 +146,18 @@ class AmoRecordWriter(
 
     /** SR Perf. Assessment (F-AMO-007/008/009): the check and its brand lines, all or nothing, family = the visit. A second Save for the visit writes nothing. */
     suspend fun saveAssessment(visitUuid: String, brands: List<com.aktcl.aron.feature.amo.AmoBrand>, state: com.aktcl.aron.feature.amo.PerfState) {
-        if (db.captureDao().amoRecordsOfFamily(visitUuid).any { it.recordType == "distribution_check" }) return
+        // POSM is the one required answer (R9): the writer refuses a Save without it, whatever the host did, and writes nothing
+        require(state.posm != null) { "POSM answer is required" }
         val planned = com.aktcl.aron.feature.amo.PerfAssessment.records(visitUuid, brands, state, newUuid)
-        db.withTransaction {
+        // the replay check and the writes share one transaction: two Saves racing for the same visit write one assessment, not two
+        val wrote = db.withTransaction {
+            if (db.captureDao().amoRecordsOfFamily(visitUuid).any { it.recordType == "distribution_check" }) return@withTransaction false
             for (p in planned) capture.recordAmo(
                 com.aktcl.aron.core.database.entity.AmoRecordEntity(p.clientUuid, meta.meta(routeOfCall()), p.type, p.familyUuid, p.rank, p.payload.toString()),
             )
+            true
         }
-        runCatching { requestSync() }
+        if (wrote) runCatching { requestSync() }
     }
 
     private val requestFixUuids = java.util.concurrent.ConcurrentHashMap<String, String>()

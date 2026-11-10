@@ -58,6 +58,33 @@ class SalesSubmitScreenTest {
         compose.onNodeWithTag(SalesSubmitTags.HOLD).assertDoesNotExist()
     }
 
+    // row 66 (AMO): the vendor's two modals; the due question has Yes / No and no title, the success has one OK and the table stays behind it
+    @Test fun vendorDialogsAskAboutDuesThenConfirmTheSubmit() {
+        var submitted = 0
+        val counts = listOf(CountRow("memo", 6, 6))
+        val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(1, 125_000), false)
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { it }, {}, { submitted++ }, vendorDialogs = true) } }
+        compose.onNodeWithText("Submit sales").performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithText("You still have due with 1 retailer(s). Do you want to submit your sales?").assertExists()
+        compose.onNodeWithText("Are you sure?").assertDoesNotExist()
+        compose.onNodeWithText("No").performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(SalesSubmitTags.HOLD).assertDoesNotExist()
+        assertEquals(0, submitted)
+        compose.onNodeWithText("Submit sales").performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Yes").performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(SalesSubmitTags.HOLD).assertExists()
+    }
+
+    @Test fun vendorSuccessIsADialogOverTheTableWithOneOk() {
+        val counts = listOf(CountRow("memo", 6, 6))
+        val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), true)
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Settled, { it }, {}, {}, vendorDialogs = true) } }
+        compose.onNodeWithText("Sales submitted successfully").assertExists()
+        compose.onNodeWithText("6 records are on the server.").assertDoesNotExist()
+        compose.onNodeWithText("OK").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Sales submitted successfully").assertDoesNotExist()
+    }
+
     @Test fun blankServerColumnBlocksAndNamesTheMismatch() {
         val counts = listOf(CountRow("memo", 6, null))
         val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), false)

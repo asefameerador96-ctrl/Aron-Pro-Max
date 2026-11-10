@@ -15,6 +15,10 @@ import com.aktcl.aron.core.ui.AronTheme
 import com.aktcl.aron.core.ui.GlassTier
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -43,14 +47,14 @@ class AmoCallsScreenshotTests {
     private val goldens: String = System.getProperty("aron.screenshots.goldens") ?: "src/test/screenshots"
     private val options = RoborazziOptions(compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.002f))
 
-    private fun shot(name: String, language: AppLanguage, title: String, sunlight: Boolean = false, fontScale: Float = 1f, content: @Composable () -> Unit) {
+    private fun shot(name: String, language: AppLanguage, title: String, sunlight: Boolean = false, fontScale: Float = 1f, act: () -> Unit = {}, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         rule.setContent {
             CompositionLocalProvider(LocalContext provides ctx, LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
                 AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true, amo = true) { AmoFrame(title, onBack = {}) { content() } }
             }
         }
-        rule.waitForIdle()
+        rule.waitForIdle(); act(); rule.waitForIdle()
         if (recordTo == null && System.getProperty("roborazzi.test.record") != "true") assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
         rule.onRoot().captureRoboImage("${recordTo ?: goldens}/$name.png", roborazziOptions = options)
     }
@@ -131,6 +135,13 @@ class AmoCallsScreenshotTests {
         {"sku":{"sku_id":12,"sku_code":"ABS","short_name":"ABS"},"qty_report":"25.000","report_unit":"packet","qty_base":250,"value_mtk":20000000},
         {"sku":{"sku_id":13,"sku_code":"ASTER","short_name":"Aster"},"qty_report":"1.000","report_unit":"box","qty_base":25,"value_mtk":12500000}]}""", "2026-11-05",
     )
-    @Test fun amo_previous_sales_bn() = shot("amo_previous_sales_bn", AppLanguage.BN, "বিক্রয় ইতিহাস") { PreviousSalesContent("2026-11-05", "2026-11-06", history, {}, outletLabel = "Siyam (1618410-1832714554-Madrasa Road)") }
-    @Test fun amo_previous_sales_empty_en() = shot("amo_previous_sales_empty_en", AppLanguage.EN, "Sale History") { PreviousSalesContent("2026-11-06", "2026-11-06", PreviousSales.parseServer("""{"lines":[]}""", "2026-11-06"), {}) }
+    @Test fun amo_previous_sales_bn() = shot("amo_previous_sales_bn", AppLanguage.BN, "সেল ডাটা") { PreviousSalesContent("2026-11-05", "2026-11-06", history, {}, outletLabel = "Siyam (1618410-1832714554-Madrasa Road)") }
+    @Test fun amo_previous_sales_empty_en() = shot("amo_previous_sales_empty_en", AppLanguage.EN, "Sale data") { PreviousSalesContent("2026-11-06", "2026-11-06", PreviousSales.parseServer("""{"lines":[]}""", "2026-11-06"), {}) }
+
+    // ---- rows 45 and 66 (Summary empty state; Sales Submit due warning and success dialogs) ----
+    private val emptySummary = com.aktcl.aron.feature.memo.domain.DaySummary(emptyList(), emptyList(), 0L, 0L, 0L, 0)
+    @Test fun amo_summary_empty_bn() = shot("amo_summary_empty_bn", AppLanguage.BN, "বিক্রয় সারসংক্ষেপ") {
+        com.aktcl.aron.feature.memo.ui.SummaryScreen(emptySummary, { "" }, {}, emptyText = "কিছু পাওয়া যায়নি")
+    }
+    // row 66's two modals are separate windows (Dialog): a root capture cannot show them, so they are proven by SalesSubmitScreenTest (vendorDialogs...)
 }

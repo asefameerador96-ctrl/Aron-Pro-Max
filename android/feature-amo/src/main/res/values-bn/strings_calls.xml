@@ -29,7 +29,7 @@
     <string name="amo_jc_low">নিম্ন</string>
     <string name="amo_jc_high">উচ্চ</string>
     <string name="amo_jc_section_other">অন্যান্য</string>
-    <string name="amo_ps_title">বিক্রয় ইতিহাস</string>
+    <string name="amo_ps_title">সেল ডাটা</string>
     <string name="amo_ps_loading">লোড হচ্ছে…</string>
     <string name="amo_ps_empty">এই তারিখে এই রিটেইলারকে কিছু বিক্রি হয়নি</string>
     <string name="amo_ps_total">সর্বমোট</string>

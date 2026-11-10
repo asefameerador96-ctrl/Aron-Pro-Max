@@ -235,3 +235,20 @@ fun AmoMenuTiles(tiles: List<MenuTile>, modifier: Modifier = Modifier) {
 }
 
 data class MenuTile(@androidx.annotation.DrawableRes val icon: Int, @androidx.annotation.StringRes val label: Int, val tag: String, val onClick: () -> Unit)
+
+/** The range area of the picker as a pure function of the host's state (tested; the host only gathers the inputs). */
+object CallRangeRule {
+    /**
+     * [outletId] is the retailer on screen (null = none), [callOpen] a call open in the session for it, [checking] the fix is being read,
+     * [needs] the (override available, refresh left) of a pending out-of-range answer FOR THIS retailer, [checked] the retailer the flow last
+     * answered for. On the Sales path nothing was asked until the tile is tapped, so the area stays "in" (the tile starts the check).
+     */
+    fun of(outletId: Long?, callOpen: Boolean, checking: Boolean, needs: Pair<Boolean, Boolean>?, salesPath: Boolean, checked: Long?): CallRange = when {
+        outletId == null -> CallRange.Idle
+        callOpen -> CallRange.In
+        checking -> CallRange.Checking
+        needs != null -> CallRange.Out(needs.first, needs.second)
+        salesPath && checked != outletId -> CallRange.In
+        else -> CallRange.Idle
+    }
+}

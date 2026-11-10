@@ -130,7 +130,9 @@ fun ControlCallHost(
                     },
                     onChip = { chip = it }, onPanel = { panel = it },
                     onSalesTile = { o ->
-                        if (!opening) { opening = true; scope.launch { if (day.openCall(o, kind) { lockNotice = it }) checked = o.outletId; opening = false } }
+                        // a call for this very retailer is already open (Back from the sale, a relaunch): go on to the sale, never a dead tile
+                        if (open?.outletId == o.outletId) step = CcStep.SALE
+                        else if (!opening) { opening = true; scope.launch { if (day.openCall(o, kind) { lockNotice = it }) checked = o.outletId; opening = false } }
                     },
                     onOverride = { forceReason = ForceReason.LOCATION_CHANGE; step = CcStep.FORCE },
                     onReason = { forceReason = it; step = CcStep.FORCE },
@@ -199,14 +201,9 @@ private fun PickStep(
     val needs = st as? VisitUiState.NeedsDecision
     // a call open in the session (also one restored after a kill and relaunch, when the flow state is Idle) for the retailer on screen
     val callOpen = outlet != null && open?.outletId == outlet.outletId
-    val range: CallRange = when {
-        outlet == null -> CallRange.Idle
-        callOpen -> CallRange.In
-        checking -> CallRange.Checking
-        needs != null && needs.outlet.outletId == outlet.outletId -> CallRange.Out(needs.forceSaleAvailable, needs.refreshLeft)
-        salesPath && checked != outletId -> CallRange.In // the Sales tile starts the check; nothing was asked yet
-        else -> CallRange.Idle
-    }
+    val range: CallRange = com.aktcl.aron.feature.amo.CallRangeRule.of(
+        outlet?.outletId, callOpen, checking, needs?.takeIf { outlet != null && it.outlet.outletId == outlet.outletId }?.let { it.forceSaleAvailable to it.refreshLeft }, salesPath, checked,
+    )
     // Sales tile: an out-of-range answer asks for the reason before the override photo (D-AMO-MAN-08)
     if (salesPath && asking) com.aktcl.aron.feature.amo.AmoForceReasonDialog(
         onReason = { code -> asking = false; onReason(if (code == "internet_problem") ForceReason.INTERNET_PROBLEM else ForceReason.LOCATION_CHANGE) },

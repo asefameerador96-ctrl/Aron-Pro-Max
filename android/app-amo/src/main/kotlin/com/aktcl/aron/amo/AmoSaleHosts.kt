@@ -88,7 +88,7 @@ fun AmoSaleHost(
             if (history) PreviousSalesHost(day, v.outletId) else Column(Modifier.fillMaxSize()) {
                 SaleRoute(
                     vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f), onFinished = { onDone() },
-                    onPreviousSales = { history = true }, historyLabel = stringResource(AmoR.string.amo_ps_title),
+                    onPreviousSales = { history = true }, // the button keeps the shared "পূর্বের সেল ডাটা দেখুন" (screenshots 24, 26)
                 )
             }
         }
@@ -166,7 +166,7 @@ fun AmoSummaryHost(day: AmoDay) {
     val attempt by day.summaryAttempt.collectAsState()
     LaunchedEffect(Unit) { bundle = kit.summary() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) }) }
+        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) }, emptyText = stringResource(AmoR.string.amo_summary_empty)) }
     }
     com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(
         attempt, onAnswer = day::answerSummaryPrint, onClose = day::closeSummaryAttempt,
@@ -187,7 +187,8 @@ fun AmoSubmitHost(day: AmoDay) {
     LaunchedEffect(Unit) { vm.refresh() }
     // DISPLAY ONLY: the manual's nine rows, from the admin's AMO reconciliation rows (the gate and the day_submit rows stay per record type)
     var rowGroups by remember { mutableStateOf<List<List<String>>?>(null) }
-    LaunchedEffect(Unit) { rowGroups = runCatching { day.sale.submitRowGroups() }.getOrNull() }
+    val priceCounted = st.counts.any { it.recordType == com.aktcl.aron.feature.amo.AmoReconciliation.PRICE_TYPE && (it.device != 0 || (it.server ?: 0) != 0) }
+    LaunchedEffect(priceCounted) { rowGroups = runCatching { day.sale.submitRowGroups(priceCounted) }.getOrNull() }
     val recordLabels = mapOf(
         "visit" to stringResource(AmoR.string.amo_rec_visit), "memo" to stringResource(AmoR.string.amo_rec_memo), "stock_movement" to stringResource(AmoR.string.amo_rec_stock_movement),
         "qc_line" to stringResource(AmoR.string.amo_rec_qc_line), "memo_discount" to stringResource(AmoR.string.amo_rec_memo_discount), "visit_close" to stringResource(AmoR.string.amo_rec_visit_close),
@@ -199,7 +200,7 @@ fun AmoSubmitHost(day: AmoDay) {
     SalesSubmitScreen(
         online = st.online, counts = st.counts, gate = st.gate, progress = st.progress, typeLabel = { recordLabels[it] ?: it },
         onSync = vm::sync, onSubmit = vm::submit, syncing = st.syncing, rowGroups = rowGroups,
-        rejected = st.rejected, dismissed = st.dismissed, serverKnown = st.serverKnown, today = day.businessDate(), // D-NIGHT-DAYCLOSE-01
+        rejected = st.rejected, dismissed = st.dismissed, serverKnown = st.serverKnown, today = day.businessDate(), vendorDialogs = true, // D-NIGHT-DAYCLOSE-01; row 66
     )
 }
 
@@ -306,13 +307,13 @@ private fun MemoFindStep(day: AmoDay, rows: List<com.aktcl.aron.feature.memo.dom
     var panel by rememberSaveable { mutableStateOf(0) } // 0 none, 1 routes, 2 outlets
     var shown by rememberSaveable { mutableStateOf(false) }
     var days by remember { mutableStateOf<List<com.aktcl.aron.core.database.repo.RouteDay>?>(null) }
-    var dues by remember { mutableStateOf<Map<Long, List<Pair<String, Long>>>>(emptyMap()) }
+    var dues by remember { mutableStateOf<Map<Long, List<com.aktcl.aron.feature.amo.LocalDue>>>(emptyMap()) }
     LaunchedEffect(day) {
         days = runCatching { day.routes() }.getOrDefault(emptyList())
         val today = day.businessDate()
         dues = runCatching { com.aktcl.aron.feature.memo.ui.RoomMemoStore(day.database).memos(today) }.getOrDefault(emptyList()).let { all ->
-            val superseded = all.mapNotNull { it.supersedesUuid }.toSet()
-            all.filter { it.memoUuid !in superseded }.groupBy({ it.outletId }, { it.businessDate to it.dueMtk })
+            // every memo of the day, the replaced ones too: MemoFind nets an edit against the version the server figure already holds
+            all.groupBy({ it.outletId }, { com.aktcl.aron.feature.amo.LocalDue(it.memoUuid, it.businessDate, it.committedAtIso, it.dueMtk, it.supersedesUuid) })
         }
     }
     BackHandler(enabled = shown || panel != 0) { if (panel != 0) panel = 0 else shown = false }

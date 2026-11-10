@@ -457,6 +457,8 @@ fun SummaryScreen(
     printing: Boolean = false,
     /** The printer state of the info card (the host passes `AronPrinterBadge`); null shows none. */
     printerBadge: (@Composable () -> Unit)? = null,
+    /** The empty-day line when a host words it differently (the AMO shows the vendor's "nothing found"); null keeps the SR's. */
+    emptyText: String? = null,
 ) {
     val look = LocalAronLook.current
     val empty = summary.skus.isEmpty()
@@ -478,7 +480,7 @@ fun SummaryScreen(
             AronInfoCard(stringResource(R.string.summary_banner), trailing = printerBadge)
             if (empty) {
                 Text(
-                    stringResource(R.string.summary_empty), style = MaterialTheme.typography.bodyLarge, color = look.inkMuted, textAlign = TextAlign.Center,
+                    emptyText ?: stringResource(R.string.summary_empty), style = MaterialTheme.typography.bodyLarge, color = look.inkMuted, textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(vertical = AronTokens.Space.Xl),
                 )
             } else {

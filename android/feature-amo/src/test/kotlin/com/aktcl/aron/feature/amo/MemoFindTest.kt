@@ -4,15 +4,38 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class MemoFindTest {
+    private fun m(id: String, date: String, at: String, due: Long, sup: String? = null) = LocalDue(id, date, at, due, sup)
+
     @Test fun localDuesAfterTheServerFigureAreAddedAndOlderOnesAreNotCountedTwice() {
-        val local = listOf("2026-11-05" to 5_000_000L, "2026-11-06" to 11_642_000L)
-        assertEquals(11_642_000L + 20_000_000L, MemoFind.outstandingMtk(20_000_000, "2026-11-05T10:00:00Z", local)) // 11-05 is already in the server figure
-        assertEquals(20_000_000L + 5_000_000L + 11_642_000L, MemoFind.outstandingMtk(20_000_000, null, local))
-        assertEquals(0L, MemoFind.outstandingMtk(0, "2026-11-06", local)) // as-of today: everything is already in
+        val local = listOf(m("a", "2026-11-05", "2026-11-05T04:00:00Z", 5_000_000), m("b", "2026-11-06", "2026-11-06T05:00:00Z", 11_642_000))
+        assertEquals(11_642_000L + 20_000_000L, MemoFind.outstandingMtk(20_000_000, "2026-11-05T10:00:00Z", local)) // a is already in the server figure
+        assertEquals(20_000_000L + 5_000_000L + 11_642_000L, MemoFind.outstandingMtk(20_000_000, null, local)) // no as-of: nothing assumed in
+        assertEquals(20_000_000L, MemoFind.outstandingMtk(20_000_000, "2026-11-06", local)) // a date-only as-of is the end of that day
     }
 
-    @Test fun aCreditIsNeverSubtracted() {
-        assertEquals(10_000_000L, MemoFind.outstandingMtk(10_000_000, "2026-11-01", listOf("2026-11-06" to -3_000_000L)))
+    @Test fun asOfTodayStillAddsAMemoMadeAfterTheFigureWasTaken() {
+        val local = listOf(m("a", "2026-11-06", "2026-11-06T03:00:00Z", 4_000_000), m("b", "2026-11-06", "2026-11-06T09:00:00Z", 1_000_000))
+        assertEquals(7_000_000L + 1_000_000L, MemoFind.outstandingMtk(7_000_000, "2026-11-06T04:00:00Z", local))
+    }
+
+    @Test fun anEditCountsOnceWhateverSideOfTheFigureItsOriginalIsOn() {
+        val orig = m("o", "2026-11-06", "2026-11-06T03:00:00Z", 4_000_000)
+        val edit = m("e", "2026-11-06", "2026-11-06T09:00:00Z", 3_000_000, "o")
+        // the figure (04:00) holds the original: the edit adds only the difference (here a reduction)
+        assertEquals(10_000_000L - 1_000_000L, MemoFind.outstandingMtk(10_000_000, "2026-11-06T04:00:00Z", listOf(orig, edit)))
+        // the figure is older than both: only the edit counts, the original is superseded
+        assertEquals(10_000_000L + 3_000_000L, MemoFind.outstandingMtk(10_000_000, "2026-11-06T01:00:00Z", listOf(orig, edit)))
+        // no as-of: nothing netted, the edit's due is added (the unknown figure is taken as not holding it)
+        assertEquals(10_000_000L + 3_000_000L, MemoFind.outstandingMtk(10_000_000, null, listOf(orig, edit)))
+        // the figure is newer than the edit: both in, nothing added
+        assertEquals(10_000_000L, MemoFind.outstandingMtk(10_000_000, "2026-11-06T12:00:00Z", listOf(orig, edit)))
+        // a chain of two edits: the latest version the figure holds is the one netted
+        val edit2 = m("f", "2026-11-06", "2026-11-06T11:00:00Z", 2_000_000, "e")
+        assertEquals(10_000_000L - 1_000_000L, MemoFind.outstandingMtk(10_000_000, "2026-11-06T10:00:00Z", listOf(orig, edit, edit2))) // edit (09:00) is held: 2M - 3M
+    }
+
+    @Test fun aCreditIsNeverSubtractedAndTheTotalNeverGoesNegative() {
+        assertEquals(10_000_000L, MemoFind.outstandingMtk(10_000_000, "2026-11-01", listOf(m("c", "2026-11-06", "2026-11-06T05:00:00Z", -3_000_000))))
         assertEquals(0L, MemoFind.outstandingMtk(-5, null, emptyList()))
     }
 }

@@ -53,4 +53,9 @@ class AmoReconciliationPriceRowTest {
         org.junit.Assert.assertTrue(listOf("price_compliance_check") in on); org.junit.Assert.assertFalse(listOf("price_compliance_check") in off)
         org.junit.Assert.assertTrue("price_compliance_check" in AmoReconciliation.types(null)) // display only: reconciliation counts do not change
     }
+
+    @org.junit.Test fun aCountedPriceRowStaysEvenWithTheTileOff() {
+        val off = AmoReconciliation.rowGroups(null, priceCompliance = false, priceCounted = true)
+        org.junit.Assert.assertEquals(9, off.size); org.junit.Assert.assertTrue(listOf("price_compliance_check") in off)
+    }
 }
