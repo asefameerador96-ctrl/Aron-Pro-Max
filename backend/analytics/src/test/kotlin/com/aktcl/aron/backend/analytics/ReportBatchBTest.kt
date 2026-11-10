@@ -160,6 +160,19 @@ ALTER TABLE app.visit ENABLE TRIGGER USER;
         assertEquals(1500L, run(12, Role.AMO, "sales-summary").result().rows().first { it.str("route_code") == "R1" }.num("route_target_qty_base").toLong())
     }
 
+    /** Contract 1.11.1 (D-AMO-MAN-18): the AMO never matches routes by name, so every per-route report it may read carries `route_id` beside `route_code`. */
+    @Test
+    fun everyAmoReadableRouteReportCarriesRouteIdBesideRouteCode() = app {
+        val amoRouteReports = ReportHandlers.all.filter { Role.AMO in it.roles && it.definition.columns.any { c -> c.key == "route_code" } }
+        assertTrue(amoRouteReports.map { it.definition.report_key }.containsAll(listOf("route-memo", "route-std", "std-memo", "sales-summary")), "the AMO's route reports: ${amoRouteReports.map { it.definition.report_key }}")
+        for (h in amoRouteReports) assertTrue(h.definition.columns.any { it.key == "route_id" }, "${h.definition.report_key} has route_code but no route_id")
+        val r1 = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.route WHERE code = 'R1'").mapTo(Long::class.java).one() }
+        for (key in listOf("sales-summary", "route-memo", "route-std", "std-memo")) {
+            val rows = run(12, Role.AMO, key).result().rows().filter { it.str("route_code") == "R1" }
+            assertTrue(rows.isNotEmpty() && rows.all { it.num("route_id").toLong() == r1 }, "$key: route_id of R1 is $r1: $rows")
+        }
+    }
+
     @Test
     fun everyBatchBHandlerServesXlsxAndRefusesAForeignZone() = app {
         for (key in listOf("data-entry-log", "final-submit-log", "final-submit-status", "gigo", "dss", "ds-rrs", "tso-top-sheet", "daily-tracking", "leaderboard", "amo-call", "sr-outlets", "discount", "free-sample", "sales-summary")) {

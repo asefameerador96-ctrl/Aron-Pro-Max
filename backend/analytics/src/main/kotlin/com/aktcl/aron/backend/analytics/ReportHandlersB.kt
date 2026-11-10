@@ -383,7 +383,7 @@ object SalesSummaryReport : ReportHandler {
     override val definition = definition(
         "sales-summary", "Sales Summary Up To Now", "sales", "route x brand",
         listOf(
-            col("route_code", "Route", "string"), col("route_name", "Route name", "string"), col("target_outlets", "Target outlets", "integer"), col("successful_calls", "Successful calls", "integer"),
+            col("route_code", "Route", "string"), col("route_id", "Route id", "integer"), col("route_name", "Route name", "string"), col("target_outlets", "Target outlets", "integer"), col("successful_calls", "Successful calls", "integer"),
             col("cpr_pct", "CPR %", "pct", unit = "%"), col("memos", "Memos", "integer"), col("net_mtk", "Net", "mtk", unit = "mtk"), col("brand_name", "Brand", "string"),
             col("brand_memos", "Memos with brand", "integer"), col("bsr_pct", "BSR %", "pct", unit = "%"),
             col("target_qty_base", "Brand target (base units)", "integer"), col("target_value_mtk", "Brand target value", "mtk", unit = "mtk"),
@@ -406,7 +406,7 @@ object SalesSummaryReport : ReportHandler {
                 WHERE t.month = date_trunc('month', CAST(:to AS timestamp))::date GROUP BY 1, 2),
         tr AS (SELECT route_id, sum(q)::bigint AS q, sum(v)::bigint AS v FROM tg GROUP BY 1),
         bb AS (SELECT route_id, brand_id FROM br UNION SELECT route_id, brand_id FROM tg)
-        SELECT g.route_code, g.route_name, coalesce(rt.t, 0)::int AS target_outlets, rt.sc::int AS successful_calls, round(100.0 * rt.sc / nullif(rt.t, 0), 2) AS cpr_pct,
+        SELECT g.route_code, rt.route_id, g.route_name, coalesce(rt.t, 0)::int AS target_outlets, rt.sc::int AS successful_calls, round(100.0 * rt.sc / nullif(rt.t, 0), 2) AS cpr_pct,
                rt.memos::int AS memos, rt.net::bigint AS net_mtk, p.brand_name, br.bm::int AS brand_memos, round(100.0 * br.bm / nullif(rt.memos, 0), 2) AS bsr_pct,
                tg.q AS target_qty_base, tg.v AS target_value_mtk, tr.q AS route_target_qty_base, tr.v AS route_target_value_mtk
           FROM rt JOIN dw.dim_geo g ON g.route_id = rt.route_id LEFT JOIN bb ON bb.route_id = rt.route_id

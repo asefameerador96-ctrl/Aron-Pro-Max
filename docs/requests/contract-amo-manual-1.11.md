@@ -26,3 +26,4 @@ Shared: `WireDtos` gains `CallTargets`, `CallTargetCard`, `VisitPayload.forceSal
 ## 1.11.1 (F2.1, lane amo-foundation, 2026-11-10; additive)
 
 - `CategoryVolume.memos` (optional, integer >= 0, nullable): accepted memos with at least one sale line of the category in the window, each memo once per category (D-AMO-MAN-18). Filled by `DashboardSummary.by_category` and so by `LoginSubmitStatus.sales_by_category` (the AMO Reports category Memo column); null on the per-route rows of Daily Tracking. `info.version` 1.11.0 to 1.11.1; oasdiff 0 breaking.
+- Report columns (data, not schema): `route_id` (integer) beside `route_code` on `sales-summary`, `route-memo`, `route-std` and `std-memo`, the reports the AMO reads per route (D-AMO-MAN-18). Test `ReportBatchBTest.everyAmoReadableRouteReportCarriesRouteIdBesideRouteCode`.
