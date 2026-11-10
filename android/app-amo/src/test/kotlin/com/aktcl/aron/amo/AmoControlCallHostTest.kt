@@ -85,4 +85,41 @@ class AmoControlCallHostTest {
         assertEquals(v.visitUuid, f.day.visitSession.current.value?.visitUuid)
         assertNotNull(f.day.visitSession.current.value)
     }
+
+    private fun tag(prefix: String) = androidx.compose.ui.test.SemanticsMatcher("tag starts with $prefix") { n ->
+        n.config.contains(androidx.compose.ui.semantics.SemanticsProperties.TestTag) && n.config[androidx.compose.ui.semantics.SemanticsProperties.TestTag].startsWith(prefix)
+    }
+
+    /** Out of range offers Refresh first; Manual Override appears once the refreshes are used up (Geo rule). */
+    private fun awaitOverride() {
+        compose.waitUntil(8_000) { present("amo_cp_override") || present("amo_cp_refresh") }
+        var guard = 0
+        while (!present("amo_cp_override") && guard++ < 10) { compose.onNodeWithTag("amo_cp_refresh").performClick(); compose.waitForIdle(); compose.waitUntil(8_000) { present("amo_cp_override") || present("amo_cp_refresh") } }
+        compose.waitUntil(8_000) { present("amo_cp_override") }
+    }
+
+    private fun pickRetailer() {
+        compose.waitUntil(5_000) { present("amo_cp_route") }
+        compose.onNodeWithTag("amo_cp_route").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(tag("amo_cp_route_")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("amo_cp_route_" + f.route).performClick()
+        compose.onNodeWithTag("amo_cp_outlet").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(tag("amo_cp_outlet_")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("amo_cp_outlet_50001").performClick()
+    }
+
+    /** Lead gate M1: out of range on the Sales path asks the reason whether or not the AMO came through the location-off card. */
+    @Test fun outOfRangeOnTheSalesPathAsksTheReasonAndNeverRecordsOneUnasked() {
+        f.zone(); f.phoneOffsetLat = 0.01
+        show { ControlCallHost(f.day, onBack = {}, startWithSale = true) }
+        pickRetailer()
+        compose.onNodeWithTag("amo_cc_sale").performClick()
+        awaitOverride()
+        compose.onNodeWithTag("amo_cp_override").performClick()
+        compose.onNodeWithText("What is the reason for your force sale?").assertExists() // the reason dialog, nothing recorded yet
+        assertEquals(null, f.day.visitSession.current.value)
+        compose.onNodeWithText("Internet problem").performClick(); compose.waitForIdle()
+        // the chosen reason goes on to the override photo step (the visit is committed only after the photo)
+        assertEquals(null, f.day.visitSession.current.value)
+    }
 }

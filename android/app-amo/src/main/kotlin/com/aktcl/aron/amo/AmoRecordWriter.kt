@@ -29,14 +29,18 @@ class AmoRecordWriter(
 ) {
     /** Joint Call assessment (F-AMO-011): one assessment and its answers, family = the visit; a second Save for the visit writes nothing. */
     suspend fun saveJointCall(visitUuid: String, rubric: com.aktcl.aron.feature.amo.JointRubric, state: com.aktcl.aron.feature.amo.JointState, assessedUserId: Long?, defaultStar: Int? = 1) {
-        if (db.captureDao().amoRecordsOfFamily(visitUuid).any { it.recordType == "call_assessment" }) return
+        // the writer enforces what the screen enables: with no default star every scored item must be rated (no 0 -> 1 star through coerceIn)
+        require(state.canSave(rubric, defaultStar)) { "every scored item must be rated" }
         val planned = com.aktcl.aron.feature.amo.JointCall.records(visitUuid, rubric, state, assessedUserId, defaultStar, newUuid)
-        db.withTransaction {
+        // the replay check and the writes share one transaction: two Saves racing for the same visit write one assessment
+        val wrote = db.withTransaction {
+            if (db.captureDao().amoRecordsOfFamily(visitUuid).any { it.recordType == "call_assessment" }) return@withTransaction false
             for (p in planned) capture.recordAmo(
                 com.aktcl.aron.core.database.entity.AmoRecordEntity(p.clientUuid, meta.meta(routeOfCall()), p.type, p.familyUuid, p.rank, p.payload.toString()),
             )
+            true
         }
-        runCatching { requestSync() }
+        if (wrote) runCatching { requestSync() }
     }
 
     /** Request uuids this phone has already decided (queued or sent), so they leave the pending list at once. */

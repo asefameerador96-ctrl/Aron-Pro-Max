@@ -75,13 +75,24 @@ class SalesSubmitScreenTest {
         compose.onNodeWithTag(SalesSubmitTags.HOLD).assertExists()
     }
 
-    @Test fun vendorSuccessIsADialogOverTheTableWithOneOk() {
+    @Test fun vendorSuccessIsADialogOverTheTableWithOneOkAndOnlyForASubmitMadeHere() {
         val counts = listOf(CountRow("memo", 6, 6))
         val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), true)
-        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Settled, { it }, {}, {}, vendorDialogs = true) } }
+        var progress by androidx.compose.runtime.mutableStateOf(SubmitProgress.Idle)
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, progress, { it }, {}, {}, vendorDialogs = true) } }
+        compose.onNodeWithText("Sales submitted successfully").assertDoesNotExist()
+        progress = SubmitProgress.Settled; compose.waitForIdle()
         compose.onNodeWithText("Sales submitted successfully").assertExists()
         compose.onNodeWithText("6 records are on the server.").assertDoesNotExist()
         compose.onNodeWithText("OK").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Sales submitted successfully").assertDoesNotExist()
+    }
+
+    // L4: reopening the screen on an already settled day shows no success modal again
+    @Test fun aSettledDayReopenedShowsNoSuccessModal() {
+        val counts = listOf(CountRow("memo", 6, 6))
+        val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), true)
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Settled, { it }, {}, {}, vendorDialogs = true) } }
         compose.onNodeWithText("Sales submitted successfully").assertDoesNotExist()
     }
 

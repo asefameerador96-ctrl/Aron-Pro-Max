@@ -162,6 +162,14 @@ class AmoRecordWriterReplayTest {
         assertEquals(base + n, outbox().size); assertEquals(rows, payloads("distribution_check") + payloads("distribution_check_line"))
     }
 
+    @Test fun aJointCallWithNoDefaultStarAndAnUnratedItemIsRefusedAndWritesNothing() = runBlocking {
+        val v = visit(); val base = outbox().size
+        assertTrue(runCatching { writer.saveJointCall(v, rubric, JointState(mapOf(1L to 4)), 7L, defaultStar = null) }.exceptionOrNull() is IllegalArgumentException)
+        assertEquals(base, outbox().size)
+        writer.saveJointCall(v, rubric, JointState(mapOf(1L to 4, 2L to 2)), 7L, defaultStar = null) // all rated: saved
+        assertTrue(outbox().size > base)
+    }
+
     @Test fun anAssessmentWithoutThePosmAnswerIsRefusedAndWritesNothing() = runBlocking {
         val v = visit(); val base = outbox().size
         assertTrue(runCatching { writer.saveAssessment(v, brands, PerfState(present = setOf(1L), posm = null)) }.exceptionOrNull() is IllegalArgumentException)

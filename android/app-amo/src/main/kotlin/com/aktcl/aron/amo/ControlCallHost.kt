@@ -141,7 +141,12 @@ fun ControlCallHost(
                 )
                 CcStep.CHECK -> {
                     val st by day.visitFlow.state.collectAsState()
-                    LaunchedEffect(st) { if (st is VisitUiState.Open) step = if (startWithSale) CcStep.SALE else CcStep.PICK }
+                    LaunchedEffect(st) {
+                        if (st is VisitUiState.Open) step = if (startWithSale) CcStep.SALE else CcStep.PICK
+                        // Sales path: an out-of-range answer after the card (location back on, Refresh) goes to the picker, whose reason dialog
+                        // asks "why" before any override; the card never records a reason the AMO did not choose (D-AMO-CALLS-02, D-AMO-MAN-08)
+                        else if (st is VisitUiState.NeedsDecision && startWithSale) { checked = outletId; step = CcStep.PICK }
+                    }
                     // tso-manual X4a (R-W-11): the lock landed while the fix was read and the committer refused the call (nothing
                     // stored): the lock text instead of the generic failed commit and its retry
                     val failed = st as? VisitUiState.CommitFailed
@@ -149,7 +154,7 @@ fun ControlCallHost(
                     LaunchedEffect(failed) { lockedOut = day.commitRefusal(failed) }
                     lockedOut?.let { AmoRefusalDialog(day, it, onOk = { day.routeId = null; step = CcStep.PICK; outletId = null }) }
                     VisitCheckContent(
-                        st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { forceReason = ForceReason.LOCATION_CHANGE; step = CcStep.FORCE },
+                        st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { if (startWithSale) { checked = outletId; step = CcStep.PICK } else { forceReason = ForceReason.LOCATION_CHANGE; step = CcStep.FORCE } },
                         onRetry = { scope.launch { day.visitFlow.retryCommit() } }, onMap = null,
                         texts = amoVisitCheckTexts(), onBack = { step = CcStep.PICK; outletId = null },
                         geoPanel = true, mapSlot = rememberAmoOutletMapSlot(day.online()),
@@ -222,7 +227,7 @@ private fun PickStep(
     com.aktcl.aron.feature.amo.AmoCallPickContent(
         routeText = route?.shortTitle, outletText = selectedRow?.label, outletHasBase = selectedRow?.hasBase == true,
         letters = CallPick.letters(outlets), chip = chip, live = outlet != null, range = range,
-        enabledOutlet = route != null, locked = callOpen,
+        enabledOutlet = route != null, locked = callOpen || checking, // L1: no retailer switch while a range check runs
         onOpenRoute = { onPanel(Panel.ROUTE) }, onOpenOutlet = { onPanel(Panel.OUTLET) }, onChip = onChip,
         onOverride = { if (salesPath) asking = true else onOverride() }, onRefresh = { scope.launch { runCatching { day.visitFlow.refresh() } } },
         below = { com.aktcl.aron.feature.amo.AmoMenuTiles(tiles) },

@@ -165,7 +165,7 @@ fun SalesSubmitScreen(
     val bn = LocalAppLanguage.current == AppLanguage.BN
     var hold by rememberSaveable { mutableStateOf(false) }
     var duesAsk by rememberSaveable { mutableStateOf(false) }
-    var successShown by rememberSaveable { mutableStateOf(true) }
+    var successShown by rememberSaveable { mutableStateOf(progress == SubmitProgress.Idle || progress == SubmitProgress.Queued) } // shown only for a submit that settles while this screen is on
     val canSubmit = gate.enabled && progress == SubmitProgress.Idle
     // the hold step closes itself once the submit is no longer possible (an effect, not a write during composition)
     LaunchedEffect(canSubmit) { if (!canSubmit) { hold = false; duesAsk = false } }

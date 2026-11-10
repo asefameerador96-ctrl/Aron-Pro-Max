@@ -321,9 +321,9 @@ private fun MemoFindStep(day: AmoDay, rows: List<com.aktcl.aron.feature.memo.dom
     LaunchedEffect(day) {
         days = runCatching { day.routes() }.getOrDefault(emptyList())
         val today = day.businessDate()
-        dues = runCatching { com.aktcl.aron.feature.memo.ui.RoomMemoStore(day.database).memos(today) }.getOrDefault(emptyList()).let { all ->
-            // every memo of the day, the replaced ones too: MemoFind nets an edit against the version the server figure already holds
-            all.groupBy({ it.outletId }, { com.aktcl.aron.feature.amo.LocalDue(it.memoUuid, it.businessDate, it.committedAtIso, it.dueMtk, it.supersedesUuid) })
+        // every memo of every day the phone keeps, the replaced versions too, with their Mark Paid records: MemoFind nets edits and collections by memo
+        dues = runCatching { com.aktcl.aron.feature.memo.ui.RoomMemoStore(day.database).allWithCollections() }.getOrDefault(emptyList()).let { all ->
+            all.groupBy({ it.first.outletId }, { (m, c) -> com.aktcl.aron.feature.amo.LocalDue(m.memoUuid, m.businessDate, m.committedAtIso, m.dueMtk, m.supersedesUuid, c) })
         }
     }
     BackHandler(enabled = shown || panel != 0) { if (panel != 0) panel = 0 else shown = false }
