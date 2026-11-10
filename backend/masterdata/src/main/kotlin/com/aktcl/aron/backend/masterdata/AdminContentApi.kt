@@ -67,10 +67,20 @@ private val store = Json { encodeDefaults = true; ignoreUnknownKeys = true }
 )
 @Serializable data class SurveyPageDto(val items: List<SurveyAdminDto>, val next_cursor: String?)
 
-@Serializable data class RubricCriterionIn(val key: String, val label_en: String, val label_bn: String? = null, val answer_type: String)
+@Serializable data class RubricCriterionIn(
+    val key: String, val label_en: String, val label_bn: String? = null, val answer_type: String,
+    /** Contract 1.11.0 (D-AMO-MAN-10): the card heading the criterion sits under (EN and BN) and the "what to look for" lines. */
+    val section: String? = null, val section_bn: String? = null, val guidance_en: String? = null, val guidance_bn: String? = null,
+)
 @Serializable data class RubricWriteIn(val kind: String, val criteria: List<RubricCriterionIn>, val status: String? = null, val change_reason: String)
-@Serializable private data class StoredCriterion(val criterion_id: Long, val key: String, val label_en: String, val label_bn: String?, val answer_type: String)
-@Serializable data class RubricCriterionOut(val criterion_id: Long, val label_en: String, val label_bn: String?, val answer_type: String, val enabled: Boolean, val key: String)
+@Serializable private data class StoredCriterion(
+    val criterion_id: Long, val key: String, val label_en: String, val label_bn: String?, val answer_type: String,
+    val section: String? = null, val section_bn: String? = null, val guidance_en: String? = null, val guidance_bn: String? = null,
+)
+@Serializable data class RubricCriterionOut(
+    val criterion_id: Long, val label_en: String, val label_bn: String?, val answer_type: String, val enabled: Boolean, val key: String,
+    val section: String? = null, val section_bn: String? = null, val guidance_en: String? = null, val guidance_bn: String? = null,
+)
 @Serializable data class RubricAdminDto(val rubric_id: Long, val version: Int, val kind: String, val criteria: List<RubricCriterionOut>, val status: String)
 @Serializable data class RubricPageDto(val items: List<RubricAdminDto>, val next_cursor: String?)
 
@@ -297,7 +307,7 @@ private val CRITERION_TYPES = mapOf("stars_1_5" to "score_1_5", "score_1_5" to "
 
 private fun mapRubric(rs: java.sql.ResultSet): RubricAdminDto {
     val cs = store.decodeFromString(ListSerializer(StoredCriterion.serializer()), rs.getString("criteria"))
-    return RubricAdminDto(rs.getLong("id"), rs.getInt("version"), rs.getString("kind"), cs.map { RubricCriterionOut(it.criterion_id, it.label_en, it.label_bn, it.answer_type, true, it.key) }, rs.getString("status"))
+    return RubricAdminDto(rs.getLong("id"), rs.getInt("version"), rs.getString("kind"), cs.map { RubricCriterionOut(it.criterion_id, it.label_en, it.label_bn, it.answer_type, true, it.key, it.section, it.section_bn, it.guidance_en, it.guidance_bn) }, rs.getString("status"))
 }
 
 private const val RUBRIC_SQL = "SELECT r.id, r.version, r.kind, r.status, v.criteria::text AS criteria FROM app.rubric r JOIN app.rubric_version v ON v.rubric_id = r.id AND v.version = r.version"
@@ -327,6 +337,8 @@ private fun validRubric(req: RubricWriteIn): String {
         text(c.label_en, "$at.label_en", 300)
         if (c.label_bn != null && c.label_bn.length > 300) bad("$at.label_bn", "length")
         if (c.answer_type !in CRITERION_TYPES) bad("$at.answer_type")
+        for ((v, f, max) in listOf(Triple(c.section, "section", 120), Triple(c.section_bn, "section_bn", 120), Triple(c.guidance_en, "guidance_en", 500), Triple(c.guidance_bn, "guidance_bn", 500)))
+            if (v != null && v.length > max) bad("$at.$f", "length")
     }
     return reason
 }
@@ -338,7 +350,10 @@ private fun numberCriteria(h: Handle, rubricId: Long?, cs: List<RubricCriterionI
             store.decodeFromString(ListSerializer(StoredCriterion.serializer()), json).forEach { known[it.key] = it.criterion_id; if (it.criterion_id > max) max = it.criterion_id }
         }
     }
-    return cs.map { c -> StoredCriterion(known[c.key] ?: ++max, c.key, c.label_en.trim(), c.label_bn?.trim()?.ifEmpty { null }, CRITERION_TYPES.getValue(c.answer_type)) }
+    return cs.map { c -> StoredCriterion(
+        known[c.key] ?: ++max, c.key, c.label_en.trim(), c.label_bn?.trim()?.ifEmpty { null }, CRITERION_TYPES.getValue(c.answer_type),
+        c.section?.trim()?.ifEmpty { null }, c.section_bn?.trim()?.ifEmpty { null }, c.guidance_en?.trim()?.ifEmpty { null }, c.guidance_bn?.trim()?.ifEmpty { null },
+    ) }
 }
 
 private fun rubricAudit(r: RubricAdminDto) = buildJsonObject { put("version", r.version); put("status", r.status); put("criteria", r.criteria.size) }
