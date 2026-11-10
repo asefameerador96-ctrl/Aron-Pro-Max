@@ -162,6 +162,20 @@ class AmoRecordWriterReplayTest {
         assertEquals(base + n, outbox().size); assertEquals(rows, payloads("distribution_check") + payloads("distribution_check_line"))
     }
 
+    @Test fun aJointCallWithNoDefaultStarAndAnUnratedItemIsRefusedAndWritesNothing() = runBlocking {
+        val v = visit(); val base = outbox().size
+        assertTrue(runCatching { writer.saveJointCall(v, rubric, JointState(mapOf(1L to 4)), 7L, defaultStar = null) }.exceptionOrNull() is IllegalArgumentException)
+        assertEquals(base, outbox().size)
+        writer.saveJointCall(v, rubric, JointState(mapOf(1L to 4, 2L to 2)), 7L, defaultStar = null) // all rated: saved
+        assertTrue(outbox().size > base)
+    }
+
+    @Test fun anAssessmentWithoutThePosmAnswerIsRefusedAndWritesNothing() = runBlocking {
+        val v = visit(); val base = outbox().size
+        assertTrue(runCatching { writer.saveAssessment(v, brands, PerfState(present = setOf(1L), posm = null)) }.exceptionOrNull() is IllegalArgumentException)
+        assertEquals(base, outbox().size)
+    }
+
     @Test fun aFailureInTheMiddleOfAnAssessmentRollsBackEverything() = runBlocking {
         val v = visit(); val base = outbox().size
         failMetaAt = metaCalls + 2
@@ -315,5 +329,89 @@ class AmoRecordWriterReplayTest {
 
     private fun counterDump(): String = db.openHelper.readableDatabase.query("SELECT * FROM memo_counter").use { c ->
         buildList { while (c.moveToNext()) add((0 until c.columnCount).joinToString(",") { c.getString(it) ?: "" }) }.joinToString(";")
+    }
+
+    // ---------- force sale reason (D-AMO-MAN-08, screenshot 23) ----------
+    private fun forceSaleVisit(reason: String): String = runBlocking {
+        val u = ClientIds.newUuid(); val photo = ClientIds.newUuid(); val f = com.aktcl.aron.core.database.entity.GeoFixEntity(
+            ClientIds.newUuid(), u, "visit_open", "ok", 23.80, 90.50, 8.0, provider = "fused", fixTime = "2026-10-17T04:00:00.000Z", fixElapsedRealtimeMs = 900, fixAgeMs = 10,
+            timeToFixMs = 1000, requestPriority = "balanced", isMock = false, reused = false, refreshCount = 1, deviceOwner = true, devOptionsEnabled = false, adbEnabled = false,
+            autoTimeEnabled = true, mockAppPresent = false,
+        )
+        capture.recordVisitOpen(
+            VisitEntity(
+                clientUuid = u, meta = metaProvider.meta(route), visitKind = "amo_control_call", outletId = 50002, openedAt = "2026-10-17T04:00:00.000Z", sequenceNo = 1, planned = true,
+                fixClientUuid = f.clientUuid, geoVerdict = "out_of_range", geoDistanceM = 900.0, geoRadiusMUsed = 100, geoMaxAccuracyMUsed = 50, geoLocationBasis = "master",
+                geoOutletLat = 23.79, geoOutletLng = 90.40, geoAction = "force_sale", geoForceReasonCode = reason, geoForcePhotoUuid = photo,
+            ),
+            f,
+        )
+        u
+    }
+
+    @Test fun theForceSaleReasonIsOnTheVisitSurvivesRelaunchAndAReplayedOpenAddsNoSecondVisit() = runBlocking {
+        for (reason in listOf("internet_problem", "location_change")) {
+            val v = forceSaleVisit(reason)
+            val rows = payloads("visit").filter { it.contains(v) }
+            assertEquals(1, rows.size)
+            assertEquals(true, rows[0].contains("\"force_reason_code\":\"$reason\"")) // the visit record carries the chosen reason with geo.action force_sale
+            assertEquals(true, rows[0].contains("\"action\":\"force_sale\""))
+            relaunch()
+            assertEquals(rows, payloads("visit").filter { it.contains(v) }) // byte-identical after the kill
+            // the same visit uuid committed again (a retried commit after a kill) is refused and queues no second visit
+            runCatching {
+                capture.recordVisitOpen(
+                    VisitEntity(
+                        clientUuid = v, meta = metaProvider.meta(route), visitKind = "amo_control_call", outletId = 50002, openedAt = "2026-10-17T04:00:00.000Z", sequenceNo = 1, planned = true,
+                        fixClientUuid = ClientIds.newUuid(), geoVerdict = "out_of_range", geoDistanceM = 900.0, geoRadiusMUsed = 100, geoMaxAccuracyMUsed = 50, geoLocationBasis = "master", geoOutletLat = 23.79, geoOutletLng = 90.40, geoAction = "force_sale", geoForceReasonCode = reason,
+                    ),
+                    com.aktcl.aron.core.database.entity.GeoFixEntity(ClientIds.newUuid(), v, "visit_open", "ok", 23.8, 90.5, 8.0, provider = "fused", fixTime = "2026-10-17T04:00:00.000Z", fixElapsedRealtimeMs = 900, fixAgeMs = 10, timeToFixMs = 1000, requestPriority = "balanced", isMock = false, reused = false, refreshCount = 0, deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false),
+                )
+            }
+            assertEquals(rows, payloads("visit").filter { it.contains(v) })
+        }
+    }
+
+    /**
+     * M3 (lead gate on f35466e0): the real path reason -> override photo -> visit, with a FAKE photo port (no camera). The controller, the visit flow
+     * and the committer are the production ones; only the fix source and the photo pipeline are faked. The chosen reason must land on the stored visit
+     * as force_reason_code, the photo must be claimed once, and replaying the commit (a kill after the commit) must not queue a second visit.
+     */
+    @Test fun reasonThenOverridePhotoThenVisitStoresTheChosenReasonAndAReplayAddsNoSecondVisit() = runBlocking {
+        for (reason in listOf(com.aktcl.aron.feature.outlet.ForceReason.INTERNET_PROBLEM, com.aktcl.aron.feature.outlet.ForceReason.LOCATION_CHANGE)) {
+            val outlet = com.aktcl.aron.feature.outlet.VisitOutlet(50002, route, "Rahim Store", "DHK-1", 23.79, 90.40, "master", 100, 50)
+            val far = FixReading("ok", 23.80, 90.50, 8.0, false)
+            val fixes = object : com.aktcl.aron.feature.outlet.LocationFixSource {
+                override suspend fun readFix(purpose: String, refreshCount: Int) = far
+            }
+            val photos = object : com.aktcl.aron.feature.outlet.PhotoPipeline {
+                override suspend fun captureAndCompress(photoUuid: String) = com.aktcl.aron.feature.outlet.CapturedPhoto(photoUuid, "/fake.jpg", 1)
+                override suspend fun discard(photoUuid: String) = Unit
+            }
+            var committed: VisitEntity? = null; var committedFix: com.aktcl.aron.core.database.entity.GeoFixEntity? = null
+            val flow = com.aktcl.aron.feature.outlet.VisitFlow(
+                fixes, metaProvider,
+                { v, f -> claims += listOf(v.geoForcePhotoUuid.orEmpty(), "force_sale", v.clientUuid, f.clientUuid); capture.recordVisitOpen(v, f); committed = v; committedFix = f },
+                com.aktcl.aron.feature.outlet.VisitSession(), { com.aktcl.aron.feature.outlet.GeoSettings.DEFAULT }, { ClientIds.newUuid() }, { "2026-10-17T04:00:00.000Z" }, { 1 },
+            )
+            val cap = com.aktcl.aron.feature.outlet.GeoPhotoCapture(fixes, photos, "outlet_capture")
+            flow.open(outlet); repeat(3) { flow.refresh() }
+            cap.shutter()
+            val controller = com.aktcl.aron.feature.outlet.ForceSaleController(flow, cap, com.aktcl.aron.feature.outlet.OutletRequests({ }), { true })
+            val res = controller.confirm(reason, outlet)
+            assertTrue("started, was $res", res is com.aktcl.aron.feature.outlet.ForceSaleResult.Started)
+            val v = committed!!
+            assertEquals(reason.code, v.geoForceReasonCode)
+            assertEquals("force_sale", v.geoAction)
+            val rows = payloads("visit").filter { it.contains(v.clientUuid) }
+            assertEquals(1, rows.size)
+            assertTrue(rows[0].contains("\"force_reason_code\":\"${reason.code}\""))
+            assertEquals(1, claims.count { it[0] == v.geoForcePhotoUuid && it[0].isNotEmpty() }) // the override photo is claimed once
+            // a second confirm (a double tap) is refused: the flow is already open
+            assertTrue(controller.confirm(reason, outlet) is com.aktcl.aron.feature.outlet.ForceSaleResult.NotAvailable)
+            relaunch()
+            runCatching { capture.recordVisitOpen(v, committedFix!!) } // the same visit committed again after a kill
+            assertEquals(rows, payloads("visit").filter { it.contains(v.clientUuid) })
+        }
     }
 }

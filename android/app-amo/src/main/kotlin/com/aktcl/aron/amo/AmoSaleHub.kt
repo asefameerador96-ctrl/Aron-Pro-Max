@@ -60,7 +60,7 @@ fun AmoSaleHub(day: AmoDay, onBack: () -> Unit, start: com.aktcl.aron.feature.am
                 stringResource(
                     when (leaf) {
                         SaleLeaf.STOCK -> HomeR.string.hm_tile_stock; SaleLeaf.CORRECT -> AmoR.string.amo_sc_title; SaleLeaf.MEMO, SaleLeaf.EDIT -> HomeR.string.hm_tile_memo
-                        SaleLeaf.SUMMARY -> HomeR.string.hm_tile_summary; else -> HomeR.string.hm_tile_sale
+                        SaleLeaf.SUMMARY -> AmoR.string.amo_summary_title; else -> HomeR.string.hm_tile_sale
                     },
                 ),
                 back,

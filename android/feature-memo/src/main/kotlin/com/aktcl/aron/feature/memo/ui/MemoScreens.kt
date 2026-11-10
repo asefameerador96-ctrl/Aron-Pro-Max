@@ -224,6 +224,10 @@ fun MemoDetailView(
     skuUnit: (Long) -> String = { "" },
     /** The category code of a SKU ("cigarette", "bidi", "lighter", "match"); drives the "মোট <category>" subtotal rows (M3). */
     skuCategory: (Long) -> String? = { null },
+    /** The AMO's header (screenshots 42, 43): "রুট:" and "খুচরা বিক্রেতাঃ" lines in place of the single outlet title; null keeps the SR's. */
+    routeName: String? = null,
+    /** The AMO's due box is dashed red with the yellow card icon (43); the SR keeps the pink notice card. */
+    dashedDueBox: Boolean = false,
 ) {
     val look = LocalAronLook.current
     var confirm by remember { mutableStateOf(false) }
@@ -233,7 +237,10 @@ fun MemoDetailView(
         // header: the outlet (or the memo number), the memo number and time, the reprint and supersede markers
         WhiteCard {
             Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-                Text(outletName ?: memo.memoNo, style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2)
+                if (routeName != null) {
+                    Text(stringResource(R.string.memo_route_label) + " " + routeName, style = MaterialTheme.typography.titleSmall, color = look.ink, maxLines = 2)
+                    Text(stringResource(R.string.memo_retailer_label) + " " + (outletName ?: memo.memoNo), style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2)
+                } else Text(outletName ?: memo.memoNo, style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2)
                 Text(stringResource(R.string.memo_row_meta, memo.memoNo, dhakaTime(memo.committedAtIso)), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
                 if (detail.reprintIsDuplicate) MarkerLine(AronIcons.Print, stringResource(R.string.memo_duplicate))
                 memo.supersedesMemoNo?.let { MarkerLine(AronIcons.Edit, stringResource(R.string.memo_replaces, localizedDigits(it))) }
@@ -274,7 +281,7 @@ fun MemoDetailView(
                 }
             }
         }
-        if (dueMtk > 0) CreditBox(money(dueMtk), canMarkPaid) { confirm = true }
+        if (dueMtk > 0) CreditBox(money(dueMtk), canMarkPaid, dashedDueBox) { confirm = true }
         // a disabled action always says why, above the buttons
         listOfNotNull(printDisabledReason, editDisabledReason).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = look.inkMuted) }
         AronPrimaryButton(stringResource(R.string.memo_print), onPrint, Modifier.fillMaxWidth(), enabled = printDisabledReason == null && !printing, glyph = ButtonGlyph.Print)
@@ -291,8 +298,26 @@ fun MemoDetailView(
 
 /** The credit box: the pink notice card with the red edge, the due, and the green "Mark paid" inside it. */
 @Composable
-private fun CreditBox(dueText: String, canMarkPaid: Boolean, onMarkPaid: () -> Unit) {
+private fun CreditBox(dueText: String, canMarkPaid: Boolean, dashed: Boolean, onMarkPaid: () -> Unit) {
     val look = LocalAronLook.current
+    if (dashed) {
+        // screenshot 43: a dashed red rounded outline, the yellow card icon, the red sentence, the green "পরিশোধিত করুন"
+        val red = look.red
+        Column(
+            Modifier.fillMaxWidth().drawBehind {
+                drawRoundRect(red, cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx()), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(14f, 10f))))
+            }.padding(AronTokens.Space.L),
+            verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                Icon(AronIcons.Warning, contentDescription = null, tint = Color(0xFFFFB300), modifier = Modifier.size(AronTokens.Size.IconSmall))
+                Text(stringResource(R.string.memo_credit_title), style = MaterialTheme.typography.titleSmall, color = red)
+            }
+            Text(stringResource(R.string.memo_due, dueText), style = MaterialTheme.typography.bodyLarge, color = look.ink)
+            if (canMarkPaid) AronSolidButton(stringResource(R.string.memo_mark_paid), onMarkPaid, Modifier.fillMaxWidth(), tone = SolidTone.Green)
+        }
+        return
+    }
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).clip(RoundedCornerShape(AronLook.CardRadius)).background(Color(0xFFE6C8CA))) {
         Box(Modifier.width(5.dp).fillMaxHeight().background(look.red))
         Column(Modifier.weight(1f).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
@@ -457,6 +482,10 @@ fun SummaryScreen(
     printing: Boolean = false,
     /** The printer state of the info card (the host passes `AronPrinterBadge`); null shows none. */
     printerBadge: (@Composable () -> Unit)? = null,
+    /** The empty-day line when a host words it differently (the AMO shows the vendor's "nothing found"); null keeps the SR's. */
+    emptyText: String? = null,
+    /** The AMO prints an empty day too (screenshot 45 shows Print enabled; zero rows, zero totals); the SR keeps it off. */
+    printWhenEmpty: Boolean = false,
 ) {
     val look = LocalAronLook.current
     val empty = summary.skus.isEmpty()
@@ -469,7 +498,7 @@ fun SummaryScreen(
     val printButton: @Composable () -> Unit = {
         AronPrimaryButton(
             stringResource(R.string.summary_print), onPrint, Modifier.fillMaxWidth(),
-            enabled = !empty && !printing, glyph = ButtonGlyph.Print, reverse = true,
+            enabled = (printWhenEmpty || !empty) && !printing, glyph = ButtonGlyph.Print, reverse = true,
         )
     }
     if (empty || tablesStacked()) {
@@ -478,7 +507,7 @@ fun SummaryScreen(
             AronInfoCard(stringResource(R.string.summary_banner), trailing = printerBadge)
             if (empty) {
                 Text(
-                    stringResource(R.string.summary_empty), style = MaterialTheme.typography.bodyLarge, color = look.inkMuted, textAlign = TextAlign.Center,
+                    emptyText ?: stringResource(R.string.summary_empty), style = MaterialTheme.typography.bodyLarge, color = look.inkMuted, textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(vertical = AronTokens.Space.Xl),
                 )
             } else {
@@ -514,7 +543,7 @@ fun SummaryScreen(
                 }
             }
             printButton()
-            if (empty) Text(stringResource(R.string.summary_print_reason), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            if (empty && !printWhenEmpty) Text(stringResource(R.string.summary_print_reason), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         }
         return
     }
