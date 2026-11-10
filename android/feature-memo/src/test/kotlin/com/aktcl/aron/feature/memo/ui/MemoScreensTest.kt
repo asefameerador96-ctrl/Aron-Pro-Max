@@ -10,6 +10,8 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.performClick
@@ -18,6 +20,7 @@ import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronTheme
+import com.aktcl.aron.feature.memo.domain.DaySummary
 import com.aktcl.aron.feature.memo.domain.DaySummaryCalculator
 import com.aktcl.aron.feature.memo.domain.MemoItem
 import com.aktcl.aron.feature.memo.domain.MemoMenu
@@ -89,6 +92,22 @@ class MemoScreensTest {
     @Test fun markPaidIsAbsentWhenSettled() {
         compose.setContent { AronTheme(AppLanguage.EN) { MemoDetailView(MemoMenu.detail(memo), false, 0, { "FB" }, {}, {}, {}) } }
         compose.onNodeWithText("Mark paid").assertDoesNotExist()
+    }
+
+    // screenshot 45 (AMO): an empty day still shows "Print" enabled with the vendor's words; the SR keeps it off
+    @Test fun emptySummaryPrintsOnTheAmoAndNotOnTheSr() {
+        var printed = 0
+        val empty = DaySummary(emptyList(), emptyList(), 0L, 0L, 0L, 0)
+        compose.setContent { AronTheme(AppLanguage.EN) { SummaryScreen(empty, { "" }, { printed++ }, emptyText = "Nothing found", printWhenEmpty = true) } }
+        compose.onNodeWithText("Nothing found").assertExists()
+        compose.onNodeWithText("Print").assertIsEnabled().performClick()
+        org.junit.Assert.assertEquals(1, printed)
+    }
+
+    @Test fun emptySummaryPrintIsOffOnTheSr() {
+        val empty = DaySummary(emptyList(), emptyList(), 0L, 0L, 0L, 0)
+        compose.setContent { AronTheme(AppLanguage.EN) { SummaryScreen(empty, { "" }, {}) } }
+        compose.onNodeWithText("Print").assertIsNotEnabled()
     }
 
     @Test fun summaryShowsTheSeededGrandTotal() {

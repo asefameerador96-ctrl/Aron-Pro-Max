@@ -75,7 +75,7 @@ fun ControlCallHost(
     var showPrice by remember { mutableStateOf(false) }
     var opening by remember { mutableStateOf(false) }
     // the retailer whose range check THIS screen started: a verdict left in the shared visit flow by an earlier retailer or call is never shown for another (checker findings 2-4)
-    var checked by remember { mutableStateOf<Long?>(null) }
+    var checked by rememberSaveable { mutableStateOf<Long?>(null) } // survives a rotation (the retailer id is saveable too)
     var lockNotice by remember { mutableStateOf<DayRefusal?>(null) }
     lockNotice?.let { AmoRefusalDialog(day, it, onOk = { lockNotice = null }) }
     LaunchedEffect(day) {

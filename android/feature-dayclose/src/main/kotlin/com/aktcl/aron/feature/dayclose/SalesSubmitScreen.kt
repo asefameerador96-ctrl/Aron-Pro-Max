@@ -158,6 +158,8 @@ fun SalesSubmitScreen(
     val known = recordTypeLabels()
     val res = androidx.compose.ui.platform.LocalContext.current.resources
     // used by the server-more notes and the rejected list (the table and the gate notices keep the host's own labels)
+    // the table and the notices: the host's word, else the screen's own word for a housekeeping type, else the key as given (never a made-up phrase)
+    val shownLabel: (String) -> String = { t -> typeLabel(t).takeIf { it != t } ?: known[t] ?: t }
     val wordLabel: (String) -> String = { t -> typeLabel(t).takeIf { it != t } ?: known[t] ?: res.getString(R.string.submit_type_other, t) }
     val look = LocalAronLook.current
     val bn = LocalAppLanguage.current == AppLanguage.BN
@@ -193,10 +195,10 @@ fun SalesSubmitScreen(
                 if (progress == SubmitProgress.Queued) NoticeCard(stringResource(R.string.submit_queued), Notice.Info)
                 // the gate: the sync-before-submit notice and a mismatch are warnings, never silent; notes inform
                 val mismatches = gate.blocks.filterIsInstance<SubmitBlock.CountMismatch>()
-                gate.blocks.filter { it !is SubmitBlock.CountMismatch }.forEach { b -> NoticeCard(blockText(b, typeLabel), Notice.Warning) }
+                gate.blocks.filter { it !is SubmitBlock.CountMismatch }.forEach { b -> NoticeCard(blockText(b, shownLabel), Notice.Warning) }
                 if (mismatches.isNotEmpty()) {
                     // one notice names every mismatch (never silent) and offers the sync again; the table row carries the same word
-                    val lines = mismatches.map { blockText(it, typeLabel) }
+                    val lines = mismatches.map { blockText(it, shownLabel) }
                     AronNoticeCard(
                         lines.joinToString(separator = "\n"),
                         action = if (SalesSubmitRules.syncButtonEnabled(online, syncing)) stringResource(R.string.submit_sync_again) else null, onAction = onSync,
@@ -204,7 +206,7 @@ fun SalesSubmitScreen(
                 }
                 // D-NIGHT-DAYCLOSE-01 (b): the rows themselves, not a bare count, whether or not a digest has run
                 if (rejected.isNotEmpty()) RejectedList(rejected, wordLabel, bn, today)
-                else gate.notes.forEach { n -> NoticeCard(blockText(n, typeLabel), Notice.Info) }
+                else gate.notes.forEach { n -> NoticeCard(blockText(n, shownLabel), Notice.Info) }
                 if (dismissed.isNotEmpty()) DismissedList(dismissed, wordLabel, today)
                 // (a): a server count above the phone's is information (other phones, earlier installs of this login), never a mismatch
                 val extras = counts.filter { it.serverExtra > 0 }
@@ -219,7 +221,7 @@ fun SalesSubmitScreen(
                     NoticeCard(stringResource(R.string.submit_dues_warning, localizedNumber(d.retailersWithDues.toLong()), money), Notice.Warning)
                 }
                 CountsTable(
-                    if (rowGroups == null && legacyFiveRows) SubmitDisplay.legacyFive(counts).ifEmpty { SubmitDisplay.views(counts, null) } else SubmitDisplay.views(counts, rowGroups), typeLabel,
+                    if (rowGroups == null && legacyFiveRows) SubmitDisplay.legacyFive(counts).ifEmpty { SubmitDisplay.views(counts, null) } else SubmitDisplay.views(counts, rowGroups), shownLabel,
                     serverKnown = serverKnown ?: counts.any { it.server != null },
                 )
                 if (progress == SubmitProgress.Idle) { Spacer(Modifier.height(AronTokens.Space.M)); NoticeCard(stringResource(R.string.submit_info), Notice.Warning) }
@@ -405,6 +407,10 @@ private fun recordTypeLabels(): Map<String, String> = mapOf(
     "print_event" to stringResource(R.string.submit_type_print_event),
     "outlet_change_request" to stringResource(R.string.submit_type_outlet_request),
     "task_event" to stringResource(R.string.submit_type_task_event),
+    "media_meta" to stringResource(R.string.submit_type_media_meta), "geo_breadcrumb" to stringResource(R.string.submit_type_geo_breadcrumb),
+    "app_error" to stringResource(R.string.submit_type_app_error), "activity_log" to stringResource(R.string.submit_type_activity_log),
+    "content_view" to stringResource(R.string.submit_type_content_view), "device_status" to stringResource(R.string.submit_type_device_status),
+    "config_ack" to stringResource(R.string.submit_type_config_ack), "consent_accept" to stringResource(R.string.submit_type_consent_accept),
 )
 
 /** D-NIGHT-DAYCLOSE-01 (b): one card listing each refused, held or retry row: what it is, why, and what happens to it. */

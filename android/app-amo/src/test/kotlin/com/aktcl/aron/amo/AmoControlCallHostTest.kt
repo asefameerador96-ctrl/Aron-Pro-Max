@@ -1,0 +1,86 @@
+package com.aktcl.aron.amo
+
+import android.app.Application
+import android.content.ComponentName
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
+import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.aktcl.aron.core.common.AppLanguage
+import com.aktcl.aron.core.ui.AppLocale
+import com.aktcl.aron.core.ui.AronTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+
+/**
+ * The Sales path of `ControlCallHost` on a real [AmoDay] (T1 re-check, 2026-11-10): a call already open for the retailer (a relaunch, or Back from
+ * the sale screen) must never leave a dead Sales tile, and going on to the sale must neither open a second visit nor close the call.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [34], application = Application::class, qualifiers = "w360dp-h800dp")
+class AmoControlCallHostTest {
+    @get:Rule val compose = createEmptyComposeRule()
+    private val app = ApplicationProvider.getApplicationContext<Application>()
+    private lateinit var f: AmoLockFixture
+    private var activity: ComponentActivity? = null
+
+    @Before fun setUp() {
+        shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION, android.Manifest.permission.CAMERA, android.Manifest.permission.POST_NOTIFICATIONS)
+        Dispatchers.setMain(UnconfinedTestDispatcher()); f = AmoLockFixture(app, latePolicy = "accept_and_flag") }
+    @After fun tearDown() { try { f.close() } finally { Dispatchers.resetMain() } }
+
+    private fun show(content: @Composable () -> Unit) {
+        shadowOf(app.packageManager).addActivityIfNotPresent(ComponentName(app, ComponentActivity::class.java))
+        f.own(ActivityScenario.launch(ComponentActivity::class.java)).onActivity { a ->
+            activity = a
+            val ctx = AppLocale.wrap(a, AppLanguage.EN)
+            a.setContent { CompositionLocalProvider(LocalContext provides ctx, androidx.activity.compose.LocalActivityResultRegistryOwner provides a) { AronTheme(AppLanguage.EN) { content() } } }
+        }
+        compose.waitForIdle()
+    }
+
+    private fun back() { activity!!.runOnUiThread { activity!!.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle() }
+    private fun present(tag: String) = runCatching { compose.onNodeWithTag(tag).assertExists() }.isSuccess
+
+    @Test fun backFromTheSaleThenTheSalesTileGoesOnWithTheSameVisit() {
+        val v = f.controlCall()
+        f.zone(); f.day.visitSession.restore(v); f.day.routeId = v.routeId
+        show { ControlCallHost(f.day, onBack = {}, startWithSale = true) }
+        // a restored call on the Sales path opens the sale at once, not the picker
+        compose.waitUntil(5_000) { !present("amo_cp_route") }
+        back() // Back from the sale entry: the picker, the call still open
+        runCatching { compose.waitUntil(5_000) { present("amo_cc_sale") } }.onFailure { throw AssertionError("no Sales tile after Back; tree:\n" + compose.onRoot().printToString(), it) }
+        // owner walk of build 1860: the Sale tile's picker is headed "Sales", never "Control Call Activity"
+        compose.onNodeWithText("Sales").assertExists()
+        compose.onNodeWithText("Control Call Activity").assertDoesNotExist()
+        assertEquals(v.visitUuid, f.day.visitSession.current.value?.visitUuid)
+        compose.onNodeWithTag("amo_cc_sale").performClick() // formerly a dead tile
+        compose.waitUntil(5_000) { !present("amo_cc_sale") }
+        // the same single visit: no second visit, the call is neither closed nor reopened
+        assertEquals(v.visitUuid, f.day.visitSession.current.value?.visitUuid)
+        assertNotNull(f.day.visitSession.current.value)
+    }
+}

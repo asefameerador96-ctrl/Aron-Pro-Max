@@ -459,6 +459,8 @@ fun SummaryScreen(
     printerBadge: (@Composable () -> Unit)? = null,
     /** The empty-day line when a host words it differently (the AMO shows the vendor's "nothing found"); null keeps the SR's. */
     emptyText: String? = null,
+    /** The AMO prints an empty day too (screenshot 45 shows Print enabled; zero rows, zero totals); the SR keeps it off. */
+    printWhenEmpty: Boolean = false,
 ) {
     val look = LocalAronLook.current
     val empty = summary.skus.isEmpty()
@@ -471,7 +473,7 @@ fun SummaryScreen(
     val printButton: @Composable () -> Unit = {
         AronPrimaryButton(
             stringResource(R.string.summary_print), onPrint, Modifier.fillMaxWidth(),
-            enabled = !empty && !printing, glyph = ButtonGlyph.Print, reverse = true,
+            enabled = (printWhenEmpty || !empty) && !printing, glyph = ButtonGlyph.Print, reverse = true,
         )
     }
     if (empty || tablesStacked()) {
@@ -516,7 +518,7 @@ fun SummaryScreen(
                 }
             }
             printButton()
-            if (empty) Text(stringResource(R.string.summary_print_reason), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            if (empty && !printWhenEmpty) Text(stringResource(R.string.summary_print_reason), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         }
         return
     }

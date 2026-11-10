@@ -166,7 +166,7 @@ fun AmoSummaryHost(day: AmoDay) {
     val attempt by day.summaryAttempt.collectAsState()
     LaunchedEffect(Unit) { bundle = kit.summary() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) }, emptyText = stringResource(AmoR.string.amo_summary_empty)) }
+        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) }, emptyText = stringResource(AmoR.string.amo_summary_empty), printWhenEmpty = true) }
     }
     com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(
         attempt, onAnswer = day::answerSummaryPrint, onClose = day::closeSummaryAttempt,

@@ -85,6 +85,16 @@ class SalesSubmitScreenTest {
         compose.onNodeWithText("Sales submitted successfully").assertDoesNotExist()
     }
 
+    // owner walk of build 1860: the table showed the raw key "device_status"; no wire name reaches the screen, whatever the host labels
+    @Test fun noRawRecordKeyReachesTheTable() {
+        val keys = listOf("device_status", "media_meta", "geo_breadcrumb", "app_error", "activity_log", "content_view", "config_ack", "consent_accept", "print_event")
+        val counts = keys.map { CountRow(it, 2, 2) }
+        val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), false)
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { it }, {}, {}, legacyFiveRows = false) } }
+        keys.forEach { k -> compose.onAllNodesWithText(k, substring = true).assertCountEquals(0) }
+        compose.onAllNodesWithText("Device status").assertCountEquals(2) // the status row and the record row
+    }
+
     @Test fun blankServerColumnBlocksAndNamesTheMismatch() {
         val counts = listOf(CountRow("memo", 6, null))
         val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), false)
