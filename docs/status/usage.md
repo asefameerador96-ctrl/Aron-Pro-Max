@@ -2039,3 +2039,9 @@
 - Heads by ls-remote: INT 4d586aa4 (train 84); lane/amo-foundation 1e38fde85 (foundation #3 still gating locally, push pending); lane/android-amo-calls 15b53243 (gated); lane/qa-ci c6094c07 (gated); lane/android-amo-team 5b3af3cb (A3 #2, waits for train 85); lane/android-amo-shell 61a9d6c1 (landed in train 84); lane/android-amo-outlet e493aa54 (landed in train 83); lane/lead-train85 aa39052a (held, to be rebuilt).
 - Health: status ok, build b0479585 (train 82 image; no backend train has landed since, expected until train 85's real deploy).
 - No lane is 90 min overdue (foundation #3 last reported 22:09; nudged once 22:13). Train 85 check-in #2 armed for 23:00 UTC; the 23:10 nudge rule applies there. Nothing needs the owner.
+
+### 2026-11-10 23:00 UTC — train 85 re-gate check-in #2 (lead): nudged foundation #3 on pace
+- Check-in fired 23:00; no "checked <sha>" yet; lane/amo-foundation still 1e38fde85 by ls-remote.
+- get_session foundation #3: WORKING, task "Running for m in backend/sync backend/masterdata backend/…" (a sequential module loop over the whole backend; updated 22:40), context 181k, USD 3.09.
+- Lead message 23:00 (the one nudge the check-in allows): the lead static gate + Opus delta + the train's 12/12 CI run are the proof; finish only the touched modules plus test_gates and date-pin, merge origin 1e38fde85, push once, "checked <sha>"; nothing loosened.
+- Re-armed the check-in for 23:30 UTC. Nothing needs the owner.
