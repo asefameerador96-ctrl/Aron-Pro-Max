@@ -1,0 +1,30 @@
+CallTargets:
+  type: object
+  description: The four target cards of the AMO Dashboard (contract 1.11.0).
+  required:
+  - as_of
+  - business_date
+  - period
+  - today
+  - month
+  - control
+  - joint
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    period:
+      type: string
+      pattern: ^[0-9]{4}-(0[1-9]|1[0-2])$
+      description: The Dhaka month the `month`, `control` and `joint` cards cover (the `month` query value or the
+        current month).
+    today:
+      $ref: '#/components/schemas/CallTargetCard'
+    month:
+      $ref: '#/components/schemas/CallTargetCard'
+    control:
+      $ref: '#/components/schemas/CallTargetCard'
+    joint:
+      $ref: '#/components/schemas/CallTargetCard'

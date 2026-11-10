@@ -1,0 +1,45 @@
+TeamJourney:
+  type: object
+  description: The Sales Journey of one SR on one route and day (contract 1.11.0).
+  required:
+  - user
+  - route
+  - business_date
+  - calls
+  - distance_m
+  additionalProperties: false
+  properties:
+    user:
+      type: object
+      required:
+      - user_id
+      - full_name
+      additionalProperties: false
+      properties:
+        user_id:
+          $ref: '#/components/schemas/Id'
+        full_name:
+          type: string
+          maxLength: 120
+    route:
+      type: object
+      required:
+      - route_id
+      - name
+      additionalProperties: false
+      properties:
+        route_id:
+          $ref: '#/components/schemas/Id'
+        name:
+          type: string
+          maxLength: 120
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    calls:
+      type: array
+      items:
+        $ref: '#/components/schemas/JourneyCall'
+    distance_m:
+      type: number
+      minimum: 0
+      description: Metres of the whole journey (the sum of the calls' `distance_from_prev_m`).

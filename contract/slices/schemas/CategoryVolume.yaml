@@ -50,3 +50,11 @@ CategoryVolume:
         quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, lead rulings R-W-06 and R-W-20).'
     net_mtk:
       $ref: '#/components/schemas/Mtk'
+    memos:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: 'Contract 1.11.1 (D-AMO-MAN-18): accepted memos with at least one sale line of this category
+        in the window, each memo counted once per category (a memo spanning two brands of the category counts once).
+        Null when the figure is not computed (the per-route rows of Daily Tracking).'

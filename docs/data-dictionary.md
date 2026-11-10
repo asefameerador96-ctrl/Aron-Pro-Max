@@ -19,8 +19,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 172 | 2895 |
-| `dw` | 70 | 1109 |
+| `app` | 172 | 2898 |
+| `dw` | 70 | 1111 |
 
 ## Index
 
@@ -2948,10 +2948,12 @@ Trail of create, verify, approve, reject and lapse events on an outlet change re
 | `received_at` | timestamp with time zone | not null |  | UTC instant the server received the row. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `voided_at` | timestamp with time zone | null |  | UTC instant an admin data void tombstoned the row; null while live. Never deleted. |
+| `route_id` | bigint | null |  | Route the verifier (AMO) chose on a verification form; null when the form did not change it. Nothing moves until the approval rules say so. |
+| `cluster_id` | bigint | null |  | Cluster the verifier (AMO) chose on a verification form; null when the form did not change it. Nothing moves until the approval rules say so. |
 
 Keys: `UNIQUE (client_uuid)`; `PRIMARY KEY (id)`
 
-References: `FOREIGN KEY (actor_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (geo_class) REFERENCES app.geo_class_def(geo_class)`; `FOREIGN KEY (sub_channel_id) REFERENCES app.sub_channel(id)`
+References: `FOREIGN KEY (actor_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (cluster_id) REFERENCES app.cluster(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (geo_class) REFERENCES app.geo_class_def(geo_class)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (sub_channel_id) REFERENCES app.sub_channel(id)`
 
 ## app.partition_policy
 
@@ -5092,6 +5094,7 @@ One outlet visit with the phone's and the server's geo verdicts, distance, outco
 | `entry_source` | text | not null |  | device = captured on the phone; manual = keyed on the web for a dead-phone day (paper backfill, F-API-038). |
 | `entered_by_user_id` | bigint | null |  | Web user who keyed in a manual visit (app.app_user); null on device rows. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `force_sale_reason` | text | null |  | Why the sale was made outside the geo-fence, chosen on the phone: internet_problem or location_change. Only set when geo_action is force_sale (CHECK); null otherwise. Separate from force_reason_code (the older free code). |
 
 Keys: `UNIQUE (client_uuid, business_date)`; `UNIQUE (external_ref, business_date)`; `PRIMARY KEY (id, business_date)`
 
@@ -6172,6 +6175,7 @@ One row per visit with device and server verdicts, distances, the outlet base an
 | `server_distance_m` | double precision | null |  | Server re-check of the distance between the call fix and the outlet location, metres; null until checked or not copied. |
 | `within_fence` | boolean | null |  | Generated: true when the server verdict, else the device verdict, is in_range (geo-valid call). |
 | `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its visit (app.visit); set by trigger on every write. |
+| `force_sale_reason` | text | null |  | Why the sale was made outside the geo-fence: internet_problem or location_change (app.visit.force_sale_reason); null unless geo_action is force_sale. Copied by the rebuild. |
 
 Keys: `PRIMARY KEY (visit_client_uuid, business_date)`
 
@@ -7105,6 +7109,7 @@ Stable view: one row per visit (dw.fact_visit) with both geo verdicts and distan
 | `device_verdict` | text | null |  | Phone's geo verdict for the visit. |
 | `server_verdict` | text | null |  | Server's re-check verdict for the visit. |
 | `geo_action` | text | null |  | Action taken: sale_allowed, force_sale or blocked. |
+| `force_sale_reason` | text | null |  | Why the sale was made outside the geo-fence: internet_problem or location_change; null unless geo_action is force_sale. |
 | `distance_m` | double precision | null |  | Distance in metres between the fix and the outlet. |
 | `server_distance_m` | double precision | null |  | Server re-check of the distance between the call fix and the outlet location, metres; null until checked or not copied. |
 | `radius_m` | smallint | null |  | Geo-fence radius used at the call, metres (app.visit.radius_m_used). |

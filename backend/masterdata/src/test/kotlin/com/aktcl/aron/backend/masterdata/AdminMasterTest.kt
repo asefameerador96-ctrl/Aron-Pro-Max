@@ -213,8 +213,13 @@ class AdminMasterTest {
         val range = "from=${env.today}&to=${day.plusDays(5)}"
         val mine = sendA1(HttpMethod.Get, "/admin/calendar/holidays?$range", env.token("tso1001", Role.TSO)).objA1().itemsA1().map { it.strA1("kind") }
         assertTrue("holiday" in mine && "emergency_off" in mine && "makeup_day" in mine)
-        val theirs = sendA1(HttpMethod.Get, "/admin/calendar/holidays?$range", env.token("tso2001", Role.TSO)).objA1().itemsA1().map { it.strA1("scope_type") }
-        assertEquals(listOf("global"), theirs)
+        // The other territory sees global entries only: its own reach cuts the zone rows. Asserted on the rows this test declared
+        // (the make-up day is global) and on "every row is global", never on a count: the window can also hold the seeded
+        // Victory Day 2026-12-16, which is global too (D-QA-CI-10: this failed from Dhaka 2026-11-11 with [global, global]).
+        val theirsItems = sendA1(HttpMethod.Get, "/admin/calendar/holidays?$range", env.token("tso2001", Role.TSO)).objA1().itemsA1()
+        assertTrue(theirsItems.isNotEmpty() && theirsItems.all { it.strA1("scope_type") == "global" })
+        assertTrue("Make-up" in theirsItems.map { it.strA1("name_en") })
+        assertTrue("Local fair" !in theirsItems.map { it.strA1("name_en") } && "Flood" !in theirsItems.map { it.strA1("name_en") })
         assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Post, "/admin/calendar/holidays", env.token("tso1001", Role.TSO), body).status)
     }
 

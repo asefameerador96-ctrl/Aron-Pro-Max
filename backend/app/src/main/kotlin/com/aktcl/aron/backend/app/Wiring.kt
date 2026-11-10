@@ -27,6 +27,8 @@ import com.aktcl.aron.backend.analytics.BrandScopeResolver
 import com.aktcl.aron.backend.analytics.NationalDeps
 import com.aktcl.aron.backend.analytics.nationalDashboardRoutes
 import com.aktcl.aron.backend.analytics.appTeamRoutes
+import com.aktcl.aron.backend.analytics.AmoTeamReads
+import com.aktcl.aron.backend.analytics.amoTeamRoutes
 import com.aktcl.aron.backend.analytics.opsRoutes
 import com.aktcl.aron.backend.analytics.reportRoutes
 import com.aktcl.aron.backend.auth.AuthDeps
@@ -85,6 +87,8 @@ import com.aktcl.aron.backend.masterdata.AdminProductsDeps
 import com.aktcl.aron.backend.masterdata.OtpCipher
 import com.aktcl.aron.backend.masterdata.AdminMasterDeps
 import com.aktcl.aron.backend.masterdata.adminMasterRoutes
+import com.aktcl.aron.backend.masterdata.CallTargetsDeps
+import com.aktcl.aron.backend.masterdata.callTargetsRoutes
 import com.aktcl.aron.backend.masterdata.VisitPlanDeps
 import com.aktcl.aron.backend.masterdata.visitPlanRoutes
 import com.aktcl.aron.backend.masterdata.RouteAssignmentsDeps
@@ -329,6 +333,7 @@ class Wiring(
                 dashboardRoutes(dashboards)
                 nationalDashboardRoutes(national)
                 appTeamRoutes(team)
+                amoTeamRoutes(team, AmoTeamReads(db, clock))
                 dailyTrackingRoutes(tracking)
                 opsRoutes(ops)
                 deviceRoutes(deviceEnrolment)
@@ -340,6 +345,7 @@ class Wiring(
                 auditReadRoutes(AuditReadDeps(db, guard, clock))
                 deviceReplaceRoutes(otpDeps)
                 visitPlanRoutes(VisitPlanDeps(db, reach, config, guard, clock))
+                callTargetsRoutes(CallTargetsDeps(db, reach, config, configResolver, guard, clock))
                 routeAssignmentRoutes(RouteAssignmentsDeps(db, reach, guard, clock))
                 leaveRoutes(LeaveDeps(db, reach, config, guard, clock, nudger = push)) // tso-manual B3: push after a leave decision (D-TSO-MAN-26)
                 tutorialRoutes(TutorialsDeps(db, blob, guard))

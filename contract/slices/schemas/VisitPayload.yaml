@@ -36,3 +36,13 @@ VisitPayload:
       $ref: '#/components/schemas/GeoFix'
     geo:
       $ref: '#/components/schemas/DeviceGeoVerdict'
+    force_sale_reason:
+      type:
+      - string
+      - 'null'
+      enum:
+      - internet_problem
+      - location_change
+      - null
+      description: Why the sale is made outside the geo-fence, chosen on the phone (contract 1.11.0, D-AMO-MAN-08).
+        Allowed only when `geo.action` is `force_sale`; any other combination is rejected `schema_invalid`.
