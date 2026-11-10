@@ -122,4 +122,34 @@ class AmoControlCallHostTest {
         // the chosen reason goes on to the override photo step (the visit is committed only after the photo)
         assertEquals(null, f.day.visitSession.current.value)
     }
+
+    /**
+     * Lead gate M3: reason -> override photo -> visit through the real host, with a FAKE photo pipeline set on the day (no camera). The chosen reason
+     * is the visit's force_reason_code, and a replay of the same confirm (a second tap) leaves one visit.
+     */
+    @Test fun theChosenReasonThroughTheFakePhotoLandsOnTheVisitAndAReplayAddsNoSecondVisit() {
+        f.zone(); f.phoneOffsetLat = 0.01
+        f.day.photoPipeline = object : com.aktcl.aron.feature.outlet.PhotoPipeline {
+            override suspend fun captureAndCompress(photoUuid: String) = com.aktcl.aron.feature.outlet.CapturedPhoto(photoUuid, "/fake.jpg", 1)
+            override suspend fun discard(photoUuid: String) = Unit
+        }
+        show { ControlCallHost(f.day, onBack = {}, startWithSale = true) }
+        pickRetailer()
+        compose.onNodeWithTag("amo_cc_sale").performClick()
+        awaitOverride()
+        compose.onNodeWithTag("amo_cp_override").performClick()
+        compose.onNodeWithText("Internet problem").performClick(); compose.waitForIdle()
+        compose.waitUntil(8_000) { present(com.aktcl.aron.feature.outlet.ForceSaleTags.PHOTO) }
+        compose.onNodeWithTag(com.aktcl.aron.feature.outlet.ForceSaleTags.PHOTO).performClick(); compose.waitForIdle()
+        compose.waitUntil(8_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("Continue")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Continue").performClick(); compose.waitForIdle()
+        compose.waitUntil(8_000) { f.day.visitSession.current.value != null }
+        val visits = { kotlinx.coroutines.runBlocking { f.day.database.outboxDao().nextPending(1000) }.filter { it.recordType == "visit" } }
+        assertEquals(1, visits().size)
+        org.junit.Assert.assertTrue(visits()[0].payloadJson.contains("\"force_reason_code\":\"internet_problem\""))
+        org.junit.Assert.assertTrue(visits()[0].payloadJson.contains("\"action\":\"force_sale\""))
+        // a second tap on Continue (a replay of the same submit) cannot add a visit
+        runCatching { compose.onNodeWithText("Continue").performClick(); compose.waitForIdle() }
+        assertEquals(1, visits().size)
+    }
 }

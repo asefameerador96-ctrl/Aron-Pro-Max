@@ -13,6 +13,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.printToLog
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -95,8 +97,11 @@ class MemoScreensTest {
         compose.setContent { AronTheme(AppLanguage.EN) { MemoDetailView(MemoMenu.detail(memo), true, 5_000_000, { "FB" }, {}, {}, { paid++ }, outletName = "Siyam (1618410)", routeName = "Savar BazarDaily", dashedDueBox = true) } }
         compose.onNodeWithText("Route: Savar BazarDaily").assertExists()
         compose.onNodeWithText("Retailer: Siyam (1618410)").assertExists()
-        compose.onNodeWithText("Mark paid").performClick()
-        compose.onNodeWithText("Mark paid").assertExists()
+        compose.onNodeWithText("Mark paid").performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Are you sure?").assertExists()
+        assertEquals("the tap only opens the confirmation", 0, paid)
+        compose.onNodeWithText("Yes").performClick(); compose.waitForIdle()
+        assertEquals("the confirmed Mark paid reaches the callback once", 1, paid) // lead L-a
     }
 
     @Test fun markPaidIsAbsentWhenSettled() {

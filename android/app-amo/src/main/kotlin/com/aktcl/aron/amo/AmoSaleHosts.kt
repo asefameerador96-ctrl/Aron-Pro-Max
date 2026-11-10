@@ -339,8 +339,9 @@ private fun MemoFindStep(day: AmoDay, rows: List<com.aktcl.aron.feature.memo.dom
     if (panel == 1) { com.aktcl.aron.feature.amo.AmoRoutePanel(routes, routeId, { routeId = it.routeId; outletId = null; chip = com.aktcl.aron.feature.outlet.OutletPicker.ALL_CHIP; panel = 0 }); return }
     if (panel == 2) { com.aktcl.aron.feature.amo.AmoOutletPanel(pick, outletId, { outletId = it.outlet.outletId; panel = 0 }); return }
     val label = outlet?.let { o ->
-        val due = com.aktcl.aron.feature.amo.MemoFind.outstandingMtk(o.openDueMtk, o.openDueAsOf, dues[o.outletId].orEmpty())
-        com.aktcl.aron.feature.outlet.OutletPicker.label(o) + if (due > 0) "  " + stringResource(AmoR.string.amo_mf_due, com.aktcl.aron.feature.sale.ui.money(due)) else ""
+        val r = com.aktcl.aron.feature.amo.MemoFind.due(o.openDueMtk, o.openDueAsOf, dues[o.outletId].orEmpty())
+        com.aktcl.aron.feature.outlet.OutletPicker.label(o) + (if (r.outstandingMtk > 0) "  " + stringResource(AmoR.string.amo_mf_due, com.aktcl.aron.feature.sale.ui.money(r.outstandingMtk)) else "") +
+            (if (r.overpaidMtk > 0) "  " + stringResource(AmoR.string.amo_mf_overpaid, com.aktcl.aron.feature.sale.ui.money(r.overpaidMtk)) else "") // L-c: the excess is said, never netted away
     }
     com.aktcl.aron.feature.amo.AmoCallPickContent(
         routeText = routes.firstOrNull { it.routeId == routeId }?.shortTitle, outletText = label, outletHasBase = false,
