@@ -36,7 +36,7 @@ data class SaleHistoryLine(val skuId: Long, val skuCode: String, val name: Strin
 enum class SaleHistorySource { SERVER, KEPT_COPY, LOCAL }
 
 /** The sales to one outlet on one business date. The total is the true sum of the lines (R3: the vendor's total did not equal its lines). */
-data class SaleHistory(val date: String, val lines: List<SaleHistoryLine>, val source: SaleHistorySource) {
+data class SaleHistory(val date: String, val lines: List<SaleHistoryLine>, val source: SaleHistorySource, val unreadable: Int = 0) {
     val totalMtk: Long get() = lines.sumOf { it.valueMtk }
 }
 
@@ -75,7 +75,7 @@ object PreviousSales {
                 valueMtk = (o["value_mtk"] as? JsonPrimitive)?.longOrNull ?: return@mapNotNull null,
             )
         }
-        return SaleHistory(date, lines, source)
+        return SaleHistory(date, lines, source, unreadable = arr.size - lines.size) // a malformed line is counted and said, never silently dropped
     }
 
     /**
@@ -89,7 +89,14 @@ object PreviousSales {
         val lines = per.map { (id, v) ->
             val info = skus[id]
             val spec = info?.entry
-            SaleHistoryLine(id, "", info?.name ?: "#$id", java.math.BigDecimal(spec?.fromBase(v.first) ?: v.first), spec?.let { com.aktcl.aron.rules.EntryUnits.labelKey(info.categoryCode, it.unit) } ?: "stick", v.first, v.second)
+            // A count that is not a whole number of packets/boxes/dozens is never truncated: that line shows its base units (sticks/pieces), exact.
+            val whole = spec != null && spec.remainderBase(v.first) == 0L
+            val baseKey = when (info?.categoryCode) { "lighter" -> "piece"; "match" -> "dozen"; else -> "stick" }
+            SaleHistoryLine(
+                id, "", info?.name ?: "#$id",
+                java.math.BigDecimal(if (whole) spec!!.fromBase(v.first) else v.first),
+                if (whole) com.aktcl.aron.rules.EntryUnits.labelKey(info!!.categoryCode, spec!!.unit) else baseKey, v.first, v.second,
+            )
         }.sortedBy { it.name }
         return SaleHistory(date, lines, SaleHistorySource.LOCAL)
     }
@@ -100,7 +107,7 @@ object PreviousSales {
 
 typealias LocalMemo = PreviousSales.LocalMemo
 
-object PreviousSalesTags { const val DATE = "amo_ps_date"; const val PREV = "amo_ps_prev"; const val NEXT = "amo_ps_next"; const val EMPTY = "amo_ps_empty"; const val TOTAL = "amo_ps_total"; const val LOADING = "amo_ps_loading"; const val NOTE = "amo_ps_note"
+object PreviousSalesTags { const val DATE = "amo_ps_date"; const val PREV = "amo_ps_prev"; const val NEXT = "amo_ps_next"; const val EMPTY = "amo_ps_empty"; const val TOTAL = "amo_ps_total"; const val LOADING = "amo_ps_loading"; const val NOTE = "amo_ps_note"; const val UNREADABLE = "amo_ps_unreadable"
     fun row(skuId: Long) = "amo_ps_row_$skuId" }
 
 /**
@@ -131,9 +138,13 @@ fun PreviousSalesContent(date: String, today: String, history: SaleHistory?, onS
                     Text(stringResource(R.string.amo_ps_total), style = amoText(18, bold = true))
                     Text(Formats.digits(com.aktcl.aron.rules.Money.formatTaka(history.totalMtk, 2), loc), style = amoText(18, bold = true, color = look.purple), modifier = Modifier.testTag(PreviousSalesTags.TOTAL))
                 }
-                if (history.source == SaleHistorySource.LOCAL) Text(stringResource(R.string.amo_ps_local_note), style = amoText(13, color = look.inkMuted), modifier = Modifier.testTag(PreviousSalesTags.NOTE))
-                if (history.source == SaleHistorySource.KEPT_COPY) Text(stringResource(R.string.amo_ps_kept_note), style = amoText(13, color = look.inkMuted), modifier = Modifier.testTag(PreviousSalesTags.NOTE))
             }
+        }
+        // Notes sit under the list AND under an empty answer: an empty offline day is the phone's own copy, not "nothing sold anywhere".
+        if (history != null) {
+            if (history.source == SaleHistorySource.LOCAL) Text(stringResource(R.string.amo_ps_local_note), style = amoText(13, color = look.inkMuted), modifier = Modifier.testTag(PreviousSalesTags.NOTE))
+            if (history.source == SaleHistorySource.KEPT_COPY) Text(stringResource(R.string.amo_ps_kept_note), style = amoText(13, color = look.inkMuted), modifier = Modifier.testTag(PreviousSalesTags.NOTE))
+            if (history.unreadable > 0) Text(stringResource(R.string.amo_ps_unreadable, localizedNumber(history.unreadable.toLong())), style = amoText(13, color = look.inkMuted), modifier = Modifier.testTag(PreviousSalesTags.UNREADABLE))
         }
     }
 }

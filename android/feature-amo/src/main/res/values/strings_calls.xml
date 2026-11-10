@@ -44,4 +44,5 @@
     <string name="amo_ps_local_note">Offline: only your own memos from this phone are shown.</string>
     <string name="amo_ps_kept_note">Offline: the last copy kept on this phone.</string>
     <string name="amo_mf_due">Due: %1$s</string>
+    <string name="amo_ps_unreadable">%1$s lines could not be read and are not shown.</string>
 </resources>

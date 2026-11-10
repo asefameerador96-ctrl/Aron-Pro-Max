@@ -154,4 +154,56 @@ class AmoCallsScreenshotTests {
             outletName = "Siyam (1618410-1832714554-Madrasa Road)", routeName = "Savar BazarDaily", dashedDueBox = true,
         )
     }
+
+    // ---- rows 24, 25, 42, 65 under the AMO look (the shared SR screens, AMO header lines and dashed/vendor variants) ----
+    private fun sku(id: Long, cat: String, code: String, name: String, unit: String, perPack: Int, price: Long, stock: Long) =
+        com.aktcl.aron.feature.sale.domain.SaleSku(id, code, cat, name, null, unit, perPack, price, 1, "2026-09-01", stockBase = stock)
+    private val saleSkus = listOf(
+        sku(100, "cigarette", "MAXR10", "MaxR-10S", "stick", 10, 8_000, 394), sku(101, "cigarette", "PRIME10", "Prime Gold 10S", "stick", 10, 6_500, 610),
+        sku(103, "lighter", "ASTER", "Aster", "piece", 25, 12_500, 25), sku(105, "match", "FB", "FB", "dozen", 1, 28_000, 40),
+    )
+    private val saleCatalog = saleSkus.associateBy { it.skuId }
+    private val baseDraft = com.aktcl.aron.feature.sale.domain.SaleDraft("v1", 50001, 10231, "2026-11-10", memoUuid = "m1")
+    private val enteredDraft = com.aktcl.aron.feature.sale.domain.SaleDraftOps.setQuantity(
+        com.aktcl.aron.feature.sale.domain.SaleDraftOps.setQuantity(baseDraft, 100, 10, com.aktcl.aron.rules.QtyUnit.PACK), 103, 1, com.aktcl.aron.rules.QtyUnit.PACK,
+    )
+    private val enteredReview = com.aktcl.aron.feature.sale.domain.SaleReviewCalculator.review(enteredDraft, saleCatalog)
+    private val outletPill = "Babu Store (1618411-01711111111-Savar Metro)"
+
+    @Test fun amo_sale_entry_bn() = shot("amo_sale_entry_bn", AppLanguage.BN, "বিক্রয়") {
+        com.aktcl.aron.feature.sale.ui.SaleEntryScreen(
+            saleSkus, enteredReview, { id -> enteredDraft.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {},
+            recentSkuIds = setOf(100L), onPreviousSales = {}, retailerLabel = outletPill,
+        )
+    }
+
+    @Test fun amo_review_bn() = shot("amo_review_bn", AppLanguage.BN, "নিরীক্ষণ") {
+        com.aktcl.aron.feature.sale.ui.ReviewScreen(
+            enteredReview, {}, outletLine = "$outletPill\nরুট: Savar Bazar(Sat, Mon, Wed)\nক্লাস্টার: Savar Metro", onCreditToggle = {}, onQc = {},
+        )
+    }
+
+    @Test fun amo_memo_menu_bn() = shot("amo_memo_menu_bn", AppLanguage.BN, "মেমো") {
+        com.aktcl.aron.feature.memo.ui.MemoMenuScreen(
+            listOf(
+                com.aktcl.aron.feature.memo.domain.MemoMenuRow("m1", "amo-261110-001", 1, "2026-11-10T04:00:00.000Z", 84_000, 50_000),
+                com.aktcl.aron.feature.memo.domain.MemoMenuRow("m2", "amo-261109-004", 1, "2026-11-09T05:30:00.000Z", 120_500, 0),
+            ),
+            { "Babu Store" }, {},
+        )
+    }
+
+    @Test fun amo_sales_submit_bn() = shot("amo_sales_submit_bn", AppLanguage.BN, "বিক্রয় জমা") {
+        // the AMO host's table: the nine manual rows (price row hidden, cfg off), the AMO record labels, the day's counts equal on phone and server
+        val groups = com.aktcl.aron.feature.amo.AmoReconciliation.rowGroups(null, priceCompliance = false)
+        val counts = groups.flatten().distinct().mapIndexed { i, t -> com.aktcl.aron.feature.dayclose.CountRow(t, if (i == 0) 1 else if (i == 1) 25 else 0, if (i == 0) 1 else if (i == 1) 25 else 0) }
+        val labels = mapOf(
+            "visit" to com.aktcl.aron.feature.amo.R.string.amo_rec_visit, "memo" to com.aktcl.aron.feature.amo.R.string.amo_rec_memo, "stock_movement" to com.aktcl.aron.feature.amo.R.string.amo_rec_stock_movement, "qc_line" to com.aktcl.aron.feature.amo.R.string.amo_rec_qc_line,
+            "memo_discount" to com.aktcl.aron.feature.amo.R.string.amo_rec_memo_discount, "distribution_check" to com.aktcl.aron.feature.amo.R.string.amo_rec_distribution_check, "call_assessment" to com.aktcl.aron.feature.amo.R.string.amo_rec_call_assessment,
+            "survey_response" to com.aktcl.aron.feature.amo.R.string.amo_rec_survey_response,
+        )
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val gate = com.aktcl.aron.feature.dayclose.SalesSubmitRules.gate(com.aktcl.aron.feature.dayclose.OutboxStates(0, 0, 40, 0, 0), counts, com.aktcl.aron.feature.dayclose.DuesAtSubmit(0, 0), false)
+        com.aktcl.aron.feature.dayclose.SalesSubmitScreen(true, counts, gate, com.aktcl.aron.feature.dayclose.SubmitProgress.Idle, { t -> labels[t]?.let { ctx.getString(it) } ?: t }, {}, {}, rowGroups = groups, vendorDialogs = true)
+    }
 }

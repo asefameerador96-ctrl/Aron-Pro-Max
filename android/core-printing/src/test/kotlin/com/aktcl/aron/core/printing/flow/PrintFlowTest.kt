@@ -205,6 +205,19 @@ class PrintFlowTest {
         assertEquals(3 * one, e.sim.sessions.flatten().size)
     }
 
+    // Lead gate (A2 #2): a day summary with no lines must render and print on its own, so guardedPrint is not the only safety net.
+    @Test fun aDaySummaryWithNoLinesRendersAndPrintsWithoutTheGuard() = runTest {
+        val empty = com.aktcl.aron.core.printing.doc.DaySummaryPrint(
+            printedAtEpochMs = 1L, sr = "AMO", route = "r", lines = emptyList(), grossMtk = 0, discountMtk = 0, qcMtk = 0, netMtk = 0, dueMtk = 0, memoCount = 0,
+        )
+        val bmp = Fixtures.renderer().daySummary(empty).bitmap
+        assertTrue("the header and the zero totals still draw", lastInk(bmp) > 0)
+        val e = env(reprintMax = 0)
+        val a = e.printing.printDaySummary("55555555-5555-4555-8555-555555555555", empty)
+        assertTrue("reached the confirmation, not Failed: $a", a is PrintAttempt.AwaitingConfirmation)
+        assertTrue(e.sim.sessions.flatten().isNotEmpty())
+    }
+
     @Test fun aVoidSlipOrDueReceiptNamingTheMemoIsNotACopy() = runTest {
         val e = env()
         listOf("void_slip", "due_receipt").forEach { kind ->

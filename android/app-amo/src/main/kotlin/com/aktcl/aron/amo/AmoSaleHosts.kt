@@ -94,7 +94,7 @@ fun AmoSaleHost(
                 SaleRoute(
                     vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f), onFinished = { onDone() },
                     retailerLabel = header?.pill?.let { com.aktcl.aron.core.ui.localizedDigits(it) },
-                    outletLines = listOfNotNull(header?.let { "${it.name} (${com.aktcl.aron.core.ui.localizedDigits(it.code)})" }, routeLine, clusterLine),
+                    outletLines = listOfNotNull(header?.pill?.let { com.aktcl.aron.core.ui.localizedDigits(it) }, routeLine, clusterLine), // heading = "name (code-phone-cluster)" as screenshot 25
                     onPreviousSales = { history = true }, // the button keeps the shared "পূর্বের সেল ডাটা দেখুন" (screenshots 24, 26)
                 )
             }
