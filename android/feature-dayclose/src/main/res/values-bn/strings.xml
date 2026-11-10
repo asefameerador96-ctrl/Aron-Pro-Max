@@ -34,6 +34,17 @@
     <string name="submit_dues_warning">%1$s জন খুচরা বিক্রেতার কাছে %2$s বাকি আছে। তবুও জমা দিতে পারবেন।</string>
     <string name="submit_dues_title">আপনি কি নিশ্চিত?</string>
     <string name="submit_dues_ask">আপনার এখনো %1$s টি রিটেইলারের কাছে বাকি রয়েছে। আপনি আপনার বিক্রয় জমা দিতে চান?</string>
+    <string name="submit_dues_ask_v">আপনার এখনো %1$sটি রিটেইলারের কাছে বাকি রয়েছে। আপনি আপনার বিক্রয় জমা দিতে চান?</string>
+    <string name="submit_success_v">বিক্রয় সফল ভাবে জমা হয়েছে</string>
+    <string name="submit_ok">ওকে</string>
+    <string name="submit_type_media_meta">ছবির তথ্য</string>
+    <string name="submit_type_geo_breadcrumb">লোকেশন ট্র্যাক</string>
+    <string name="submit_type_app_error">অ্যাপ ত্রুটির রিপোর্ট</string>
+    <string name="submit_type_activity_log">কার্যকলাপের লগ</string>
+    <string name="submit_type_content_view">স্ক্রিন দেখা</string>
+    <string name="submit_type_device_status">ডিভাইস স্ট্যাটাস</string>
+    <string name="submit_type_config_ack">সেটিং গ্রহণ</string>
+    <string name="submit_type_consent_accept">সম্মতি</string>
     <string name="submit_yes">হ্যাঁ</string>
     <string name="submit_no">না</string>
     <string name="submit_queued">জমা সংরক্ষিত হয়েছে; অনলাইনে এলে পাঠানো হবে।</string>

@@ -65,6 +65,8 @@ fun AronTile(
     modifier: Modifier = Modifier,
     badge: Int = 0,
     badgeDescription: String? = null,
+    /** The AMO Outlet tile keeps its red badge at zero (note 08: a red "০"); other tiles draw a badge only above zero. */
+    showZeroBadge: Boolean = false,
     menu: Boolean = false,
     labelColor: Color? = null,
     enabled: Boolean = true,
@@ -93,7 +95,7 @@ fun AronTile(
             Spacer(Modifier.weight(1f).heightIn(min = 8.dp))
             TileLabel(label, labelColor ?: look.tileLabel)
         }
-        if (badge > 0) {
+        if (badge > 0 || (showZeroBadge && badge == 0)) {
             val text = if (badge > 99) localizedDigits("99+") else localizedNumber(badge.toLong())
             Box(
                 Modifier

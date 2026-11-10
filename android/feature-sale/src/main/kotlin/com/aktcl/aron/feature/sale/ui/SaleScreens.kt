@@ -262,6 +262,8 @@ fun SaleEntryScreen(
     onQcOnly: (() -> Unit)? = null,
     /** The retailer of this visit as `name (code-phone-cluster)`: the pill at the top of the list (sr/sale-select.png, the manual's SR-S-32). */
     retailerLabel: String? = null,
+    /** Text of the previous-sales button when the host wants its own (the AMO's "বিক্রয় ইতিহাস"); null keeps the SR wording. */
+    historyLabel: String? = null,
 ) {
     val look = LocalAronLook.current
     var askZero by remember { mutableStateOf(false) }
@@ -272,7 +274,7 @@ fun SaleEntryScreen(
     Column(modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).fillMaxWidth()) {
             if (retailerLabel != null) RetailerPickerField(value = retailerLabel, placeholder = "", onClick = {}, modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = AronTokens.Space.S))
-            if (onPreviousSales != null) GreenButton(stringResource(R.string.sale_history), onPreviousSales, Modifier.padding(horizontal = 12.dp, vertical = AronTokens.Space.S))
+            if (onPreviousSales != null) GreenButton(historyLabel ?: stringResource(R.string.sale_history), onPreviousSales, Modifier.padding(horizontal = 12.dp, vertical = AronTokens.Space.S))
             if (onQcOnly != null && !hasLines && skus.isNotEmpty()) LinkText(stringResource(R.string.sale_qc_only), onQcOnly, Modifier.testTag(SaleTags.QC_ONLY))
             when {
                 skus.isEmpty() || review == null -> AronEmptyState(stringResource(R.string.sale_empty), icon = AronIcons.Sale)
