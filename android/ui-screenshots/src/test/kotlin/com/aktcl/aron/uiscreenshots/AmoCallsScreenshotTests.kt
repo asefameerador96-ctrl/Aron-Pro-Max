@@ -141,7 +141,7 @@ class AmoCallsScreenshotTests {
     // ---- rows 45 and 66 (Summary empty state; Sales Submit due warning and success dialogs) ----
     private val emptySummary = com.aktcl.aron.feature.memo.domain.DaySummary(emptyList(), emptyList(), 0L, 0L, 0L, 0)
     @Test fun amo_summary_empty_bn() = shot("amo_summary_empty_bn", AppLanguage.BN, "বিক্রয় সারসংক্ষেপ") {
-        com.aktcl.aron.feature.memo.ui.SummaryScreen(emptySummary, { "" }, {}, emptyText = "কিছু পাওয়া যায়নি")
+        com.aktcl.aron.feature.memo.ui.SummaryScreen(emptySummary, { "" }, {}, emptyText = "কিছু পাওয়া যায়নি", printWhenEmpty = true)
     }
     // row 66's two modals are separate windows (Dialog): a root capture cannot show them, so they are proven by SalesSubmitScreenTest (vendorDialogs...)
 }
