@@ -34,6 +34,8 @@ fun SaleRoute(
     vm: SaleViewModel, printer: PrinterManager, skuNameOf: (Long) -> String, onFinished: (printed: Boolean) -> Unit, modifier: Modifier = Modifier,
     /** The retailer pill of the list screen (`name (code-phone-cluster)`) and the review header lines; null/empty leave them out. */
     retailerLabel: String? = null, outletLines: List<String> = emptyList(),
+    /** The previous-sales button of the entry screen (the AMO's "Sale History", 24/26); null hides it, as in the SR app. [historyLabel] overrides its text. */
+    onPreviousSales: (() -> Unit)? = null, historyLabel: String? = null,
 ) {
     val ui by vm.state.collectAsState()
     var stage by remember { mutableStateOf(SaleStage.Entry) }
@@ -59,6 +61,7 @@ fun SaleRoute(
                         onQcOnly = if (draft?.edit == null) ({ qcBefore = emptyList(); qcOnlyStarted = true; vm.startQcOnly(); stage = SaleStage.Qc }) else null,
                         onZeroSaleConfirmed = { vm.confirmZeroSale(); stage = SaleStage.Review },
                         retailerLabel = retailerLabel,
+                        onPreviousSales = onPreviousSales, historyLabel = historyLabel,
                     )
                     SaleStage.Slide -> if (review != null) SlideScreen(skus, review, { id -> draft?.slide?.firstOrNull { it.skuId == id }?.emptyPackets ?: 0L }, { id, n -> vm.setSlide(id, n) })
                     SaleStage.Qc -> if (review != null) QcScreen(
