@@ -2,11 +2,13 @@ package com.aktcl.aron.feature.amo
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -142,25 +144,29 @@ private fun AmoDayCard(hero: RoleHero.Amo, money: String, modifier: Modifier = M
 
 /** The AMO Home header lines (screenshots 8, 9; R3): "<name> (<username>)" over "<zone name> AMO, <business date>". */
 object AmoHomeHeader {
-    fun of(user: HomeUser, businessDate: String, zoneName: String?): HomeHeader {
+    /** [zoneFormat] = `amo_shell_header_zone` ("%1$s AMO, %2$s"), [plainFormat] = `amo_shell_header_plain` ("AMO, %1$s"): the words live in the string layer. */
+    fun of(user: HomeUser, businessDate: String, zoneName: String?, zoneFormat: String, plainFormat: String): HomeHeader {
         val zone = zoneName?.trim().orEmpty()
         return HomeHeader(
             title = "${user.fullName.trim()} (${user.username})",
-            subtitle = (if (zone.isEmpty()) "AMO" else "$zone AMO") + ", $businessDate",
+            subtitle = if (zone.isEmpty()) plainFormat.format(businessDate) else zoneFormat.format(zone, businessDate),
             routeKind = null, routeName = null, isoDate = businessDate,
         )
     }
 }
 
+private data class Card(val key: String, @androidx.annotation.StringRes val label: Int, val icon: androidx.compose.ui.graphics.vector.ImageVector, val target: CallTarget?)
+
 /** The four target cards (screenshot 9): sky-blue rounded cards, a white icon, the white label and the white bold "done/target" or "—". */
 @Composable
 private fun AmoTargetCards(targets: CallTargets?, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
+    val dash = stringResource(R.string.amo_shell_no_target)
     val cards = listOf(
-        Triple(R.string.amo_shell_target_today, AronIcons.Place, targets?.today),
-        Triple(R.string.amo_shell_target_total, AronIcons.Phone, targets?.month),
-        Triple(R.string.amo_shell_target_control, AronIcons.Sale, targets?.control),
-        Triple(R.string.amo_shell_target_joint, AronIcons.Team, targets?.joint),
+        Card("today", R.string.amo_shell_target_today, AronIcons.Place, targets?.today),
+        Card("total", R.string.amo_shell_target_total, AronIcons.Phone, targets?.month),
+        Card("control", R.string.amo_shell_target_control, AronIcons.Sale, targets?.control),
+        Card("joint", R.string.amo_shell_target_joint, AronIcons.Team, targets?.joint),
     )
     Column(
         modifier.fillMaxWidth().testTag(AmoHomeTags.TARGETS).clip(RoundedCornerShape(12.dp)).background(look.card).padding(10.dp),
@@ -168,10 +174,10 @@ private fun AmoTargetCards(targets: CallTargets?, modifier: Modifier = Modifier)
     ) {
         cards.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                row.forEach { (label, icon, t) ->
-                    val figure = localizedDigits(CallTargetMath.figure(t))
+                row.forEach { (key, label, icon, t) ->
+                    val figure = localizedDigits(CallTargetMath.figure(t, dash))
                     Column(
-                        Modifier.weight(1f).testTag(AmoHomeTags.target(label)).clip(RoundedCornerShape(12.dp)).background(look.targetCard ?: look.targetTop).padding(12.dp)
+                        Modifier.weight(1f).testTag(AmoHomeTags.target(key)).clip(RoundedCornerShape(12.dp)).background(look.targetCard ?: look.targetTop).padding(12.dp)
                             .semantics(mergeDescendants = true) { },
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
@@ -186,9 +192,11 @@ private fun AmoTargetCards(targets: CallTargets?, modifier: Modifier = Modifier)
 }
 
 object AmoHomeTags {
+    const val LANGUAGE = "amo_set_language"
     const val TARGETS = "amo_targets"
     const val COLLAPSE = "amo_collapse"
-    fun target(@androidx.annotation.StringRes label: Int) = "amo_target_$label"
+    /** Stable names: today, total, control, joint. */
+    fun target(key: String) = "amo_target_$key"
 }
 
 /**
@@ -309,6 +317,41 @@ private fun SettingRow(label: String, modifier: Modifier = Modifier, subtitle: S
     }
 }
 
+/** One square tile of the Settings row (screenshot 75): light grey, thin border; [caption] under the content in bold purple, none for the language tile. */
+@Composable
+private fun SettingTile(modifier: Modifier, onClick: () -> Unit, caption: String?, row: Boolean = false, content: @Composable () -> Unit) {
+    val look = LocalAronLook.current
+    val shape = RoundedCornerShape(8.dp)
+    Column(
+        modifier.heightIn(min = 112.dp).clip(shape).background(look.tileMenu).border(1.dp, look.tileHairline, shape).clickable(role = Role.Button, onClick = onClick).padding(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+    ) {
+        if (row) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) { content() } else content()
+        if (caption != null) Text(caption, style = inkStyle(14, bold = true, color = look.tileLabel), textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
+    }
+}
+
+@Composable
+private fun TileDisc(icon: androidx.compose.ui.graphics.vector.ImageVector, brush: Brush) {
+    Box(Modifier.size(52.dp).clip(androidx.compose.foundation.shape.CircleShape).background(brush), contentAlignment = Alignment.Center) {
+        androidx.compose.material3.Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp))
+    }
+}
+
+/** The small flag of the language tile and its menu rows (no flag icon in the kit): a pole and a waving cloth. */
+@Composable
+private fun FlagGlyph(color: Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(22.dp)) {
+        val w = size.width
+        drawLine(color, androidx.compose.ui.geometry.Offset(w * 0.2f, w * 0.08f), androidx.compose.ui.geometry.Offset(w * 0.2f, w * 0.95f), strokeWidth = w * 0.1f)
+        val p = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.25f, w * 0.12f); cubicTo(w * 0.5f, w * 0.0f, w * 0.6f, w * 0.3f, w * 0.9f, w * 0.15f)
+            lineTo(w * 0.9f, w * 0.6f); cubicTo(w * 0.6f, w * 0.75f, w * 0.5f, w * 0.45f, w * 0.25f, w * 0.58f); close()
+        }
+        drawPath(p, color)
+    }
+}
+
 @Composable
 private fun SectionTitle(text: String) {
     Text(text, style = inkStyle(16, bold = true, color = LocalAronLook.current.purple), modifier = Modifier.padding(start = 4.dp, top = 8.dp).semantics { heading() })
@@ -347,10 +390,36 @@ fun AmoSettingsContent(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            SectionTitle(stringResource(HomeR.string.set_language))
-            val tick: @Composable (Boolean) -> Unit = { on -> if (on) Text("✓", style = inkStyle(20, bold = true, color = look.purple), modifier = Modifier.clearAndSetSemantics { }) }
-            SettingRow(stringResource(CoreR.string.core_ui_language_bangla), Modifier.testTag(RoleHomeTags.SET_LANG_BN).semantics { selected = language == AppLanguage.BN }, onClick = { onLanguageSelect(AppLanguage.BN) }) { tick(language == AppLanguage.BN) }
-            SettingRow(stringResource(CoreR.string.core_ui_language_english), Modifier.testTag(RoleHomeTags.SET_LANG_EN).semantics { selected = language == AppLanguage.EN }, onClick = { onLanguageSelect(AppLanguage.EN) }) { tick(language == AppLanguage.EN) }
+            // screenshot 75 (R16): one row of three tiles: the language drop-down ("en" / "বাংলা"), PDA টু সাপোর্ট and লগ আউট
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                var menu by rememberSaveable { mutableStateOf(false) }
+                Box(Modifier.weight(1f)) {
+                    SettingTile(Modifier.testTag(AmoHomeTags.LANGUAGE), onClick = { menu = true }, caption = null, row = true) {
+                        FlagGlyph(look.ink)
+                        Text(
+                            stringResource(if (language == AppLanguage.BN) CoreR.string.core_ui_language_bangla else R.string.amo_shell_lang_en),
+                            style = inkStyle(16, color = look.purple),
+                        )
+                        androidx.compose.material3.Icon(AronIcons.ExpandMore, contentDescription = null, tint = look.purple, modifier = Modifier.size(20.dp))
+                    }
+                    androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = look.card) {
+                        listOf(AppLanguage.EN to RoleHomeTags.SET_LANG_EN, AppLanguage.BN to RoleHomeTags.SET_LANG_BN).forEach { (l, tag) ->
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(stringResource(if (l == AppLanguage.BN) CoreR.string.core_ui_language_bangla else R.string.amo_shell_lang_en), style = inkStyle(16, color = look.purple)) },
+                                leadingIcon = { FlagGlyph(look.ink) },
+                                onClick = { menu = false; onLanguageSelect(l) },
+                                modifier = Modifier.testTag(tag).semantics { selected = language == l },
+                            )
+                        }
+                    }
+                }
+                if (onSupport != null) SettingTile(Modifier.weight(1f).testTag(RoleHomeTags.SET_SUPPORT), onClick = onSupport, caption = stringResource(HomeR.string.set_support)) {
+                    TileDisc(AronIcons.Submit, Brush.verticalGradient(listOf(Color(0xFFE53570), Color(0xFF2F86F0))))
+                } else Spacer(Modifier.weight(1f))
+                SettingTile(Modifier.weight(1f).testTag(HomeTags.LOGOUT), onClick = { confirm = true }, caption = stringResource(HomeR.string.set_logout)) {
+                    TileDisc(AronIcons.Logout, Brush.verticalGradient(listOf(Color(0xFF4B1C97), Color(0xFFC0338E))))
+                }
+            }
             if (onSunlight != null) {
                 SectionTitle(stringResource(HomeR.string.rh_set_display))
                 SettingRow(
@@ -381,12 +450,6 @@ fun AmoSettingsContent(
                     Text("›", style = inkStyle(24, color = look.inkMuted), modifier = Modifier.clearAndSetSemantics { })
                 }
             }
-            if (onSupport != null) {
-                SettingRow(stringResource(HomeR.string.set_support), Modifier.testTag(RoleHomeTags.SET_SUPPORT), onClick = onSupport) {
-                    Text("›", style = inkStyle(24, color = look.inkMuted), modifier = Modifier.clearAndSetSemantics { })
-                }
-            }
-            AronPrimaryButton(stringResource(HomeR.string.set_logout), { confirm = true }, Modifier.fillMaxWidth().padding(top = 12.dp).testTag(HomeTags.LOGOUT))
         }
     }
     if (confirm) {

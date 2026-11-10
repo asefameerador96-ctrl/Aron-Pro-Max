@@ -61,6 +61,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var telemetry: com.aktcl.aron.core.sync.DeviceTelemetry
     @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
     @Inject lateinit var skuPackshots: com.aktcl.aron.core.sync.SkuPackshots
+    /** D-AMO-BUNDLE-01: the day-bundle download per user (F-SYS-006); the SR app has called it since its first build. */
+    @Inject lateinit var bundleDownloaders: com.aktcl.aron.core.sync.BundleDownloaders
     /** D-AMO-SHELL-02: the target-cards source; the endpoint client replaces the fixture when `GET /v1/supervisor/call-targets` lands. */
     private val callTargetsSource: com.aktcl.aron.feature.amo.CallTargetsSource = com.aktcl.aron.feature.amo.UnsetCallTargets
     private val packshotProvider by lazy { com.aktcl.aron.core.ui.aron.BitmapPackshotProvider(skuPackshots::bitmap, skuPackshots::cached) }
@@ -73,8 +75,12 @@ class MainActivity : ComponentActivity() {
     private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
 
     /** F-SYS-020: an update check on every resume (throttled to 12 h inside, cached offline). */
+    /** D-AMO-BUNDLE-01: bumped on every resume; the day's bundle effect re-runs on it (a delta at most every 30 minutes, a full one on a new day). */
+    private var resumeTick by mutableStateOf(0)
+
     override fun onResume() {
         super.onResume()
+        resumeTick++
         lifecycleScope.launch { updateShell.check(atLogin = false) }
         pushShell.onResume() // N-038: a token not registered yet is tried again (local check first)
         lifecycleScope.launch { components.session.noteTimePassing() } // F-SYS-052: the offline window counts real uptime
@@ -128,7 +134,8 @@ class MainActivity : ComponentActivity() {
                         ) { onEnrol ->
                             // The bind step (OTP from /device-otp) follows the first login of an enrolled phone.
                             val vm = viewModel { LoginViewModel(components.session::login).also { it.bind = components.session::bindDevice } }
-                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol)
+                            // R1: the footer reads "ARON AMO v<version>", never the vendor credit
+                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol, footerText = stringResource(R.string.app_name) + " v" + BuildConfig.VERSION_NAME)
                         }
                         is SessionState.Active -> AronTheme(language, sunlight = sunlight, amo = true) { // D-AMO-MAN-03: the AMO look on every signed-in screen
                             // F-SYS-022: AMO keeps its data; it keeps uploading.
@@ -160,14 +167,19 @@ class MainActivity : ComponentActivity() {
                             }
                             // The bundle head check of Day 1 stays the source of the status row; nothing on Home waits for it.
                             val vm = viewModel(key = "home-" + s.user.userId) {
-                                HomePlaceholderViewModel(System::currentTimeMillis) { components.syncApi.bundle() }
+                                // conditional on the held bundle: a phone that has today's bundle gets a 304, not the whole zone again
+                                HomePlaceholderViewModel(System::currentTimeMillis) {
+                                    components.syncApi.bundle(ifNoneMatch = runCatching { com.aktcl.aron.core.database.repo.ReferenceRepository(databases.of(s.user.userId)).etag() }.getOrNull())
+                                }
                             }
                             val home by vm.state.collectAsStateWithLifecycle()
                             val sunlightPref = remember(s.user.userId) { SunlightPreference(applicationContext, s.user.userId.toString()) }
                             LaunchedEffect(s.user.userId) { sunlight = sunlightPref.enabled }
                             // F-AMO-001: the Outlet badge and the menu variant come from the stored supervisor section (local read).
                             var reach by remember(s.user.userId) { mutableStateOf(com.aktcl.aron.feature.amo.AmoReach.NONE) }
-                            LaunchedEffect(s.user.userId, home.bundle) {
+                            // D-AMO-BUNDLE-01: bumped when the day's bundle was applied to Room, so the zone line and the menu re-read it.
+                            var bundleTick by remember(s.user.userId) { mutableStateOf(0) }
+                            LaunchedEffect(s.user.userId, home.bundle, bundleTick) {
                                 reach = runCatching {
                                     com.aktcl.aron.feature.amo.AmoReach.parse(com.aktcl.aron.core.database.repo.ReferenceRepository(databases.of(s.user.userId)).section("supervisor"), s.user.userId)
                                 }.getOrDefault(com.aktcl.aron.feature.amo.AmoReach.NONE)
@@ -186,6 +198,14 @@ class MainActivity : ComponentActivity() {
                                 // F-SYS-030/010: the camera and this user's photo queue (Manual Override, Update Base, outlet requests).
                                 runCatching { d.attachMedia(mediaShell.componentsFor(s.user.userId, d::businessDate)) }
                                 day = d
+                            }
+                            // D-AMO-BUNDLE-01 (F-SYS-006): the day's bundle goes into Room in the background, as the SR app does at day start
+                            // and on resume: the full bundle when this phone holds none for today, otherwise a delta at most every 30 minutes.
+                            // The screens already show the local data; Stock and the zone line re-read when a bundle was applied.
+                            LaunchedEffect(day, resumeTick) {
+                                val d = day ?: return@LaunchedEffect
+                                val outcome = d.downloadBundle(bundleDownloaders)
+                                if (outcome == com.aktcl.aron.core.sync.BundleOutcome.APPLIED || outcome == com.aktcl.aron.core.sync.BundleOutcome.PREFETCH_PROMOTED) bundleTick++
                             }
                             val dayScope = rememberCoroutineScope()
                             val screens: Map<AmoScreen, @Composable (() -> Unit) -> Unit> = day?.let { d ->
@@ -222,11 +242,14 @@ class MainActivity : ComponentActivity() {
                                         // D-NIGHT-CHECKOUT-01: the local Sales Submit is read on every visit (also back from Sales Submit)
                                         LaunchedEffect(d) { d.attendance.refreshSubmit() }
                                         val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
+                                        // screenshots 14 to 16: the user card "<name> (<username>)" over "<zone> AMO, <date>"
+                                        val attendanceHeader = com.aktcl.aron.feature.amo.AmoHomeHeader.of(HomeUser(s.user.fullName, s.user.username, s.user.role, false, false, false), home.businessDate, reach.zoneName, stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_header_zone), stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_header_plain))
                                         com.aktcl.aron.feature.amo.AmoAttendance(
                                             attendance, d.checkoutAtLabel(), onCheckIn = { dayScope.launch { d.attendance.checkIn() } },
                                             onCheckOut = { dayScope.launch { d.attendance.checkOut() } }, onBack = back,
                                             onOpenSalesSubmit = { navigate(AmoScreen.SALES_SUBMIT) },
                                             offline = !d.online(),
+                                            userTitle = attendanceHeader.title, userSubtitle = attendanceHeader.subtitle,
                                         )
                                     },
                                 )

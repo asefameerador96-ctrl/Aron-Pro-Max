@@ -702,12 +702,42 @@ class Workflows(unittest.TestCase):
         self.assertIn('[ "$attempt" -eq 1 ] && [ "$status" = Failed ]', block)
         self.assertIn("FlywaySqlUnableToConnectToDbException|Connection is not available, request timed out", block)
 
+    def test_held_row_is_one_table_row_of_at_most_400_characters(self):
+        import subprocess, tempfile
+        def row(text):
+            with tempfile.TemporaryDirectory() as t:
+                f = Path(t) / "migrations.hold"
+                f.write_text(text)
+                r = subprocess.run(["bash", "-c", f'source infra/scripts/lib.sh; held_row "{f}"'], cwd=ROOT, capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                return r.stdout
+        short = row("held until db 16\nlifts: lead\n")
+        self.assertTrue(short.startswith("| Deploy | HELD ("), short)
+        self.assertTrue(short.endswith("held until db 16 lifts: lead |\n"), short)
+        long = row("x | y " * 500)
+        self.assertLessEqual(len(long.rstrip("\n")), 400)
+        self.assertTrue(long.rstrip("\n").endswith("... |"), "a cut reason ends in an ellipsis")
+        self.assertEqual(long.count("|"), 3, "a pipe in the reason never splits the cell")
+        self.assertEqual(long.count("\n"), 1, "one line")
+
+    def test_successful_job_logs_are_printed_bounded(self):
+        # D-OPS-DEPLOY-LOGS-01: the migrate and the dblogins job's console log also on SUCCESS, last 200 lines each.
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn("JOB_LOGS_TRIES=6 job_logs \"$1\" | tail -n 200", d)
+        self.assertIn('{ note "migrations succeeded"; migrate_ok_exec="$execution"; break; }', d)
+        self.assertLess(d.index("  resume_worker\n  # After the worker"), d.index('job_logs_ok "$migrate_ok_exec"'),
+                        "the success log is read after the worker runs again")
+        i = d.index('note "database logins succeeded"')
+        self.assertIn('job_logs_ok "$execution"', d[i:i + 120])
+        self.assertIn('seq 1 "${JOB_LOGS_TRIES:-24}"', d, "the failure path keeps its 12-minute wait by default")
+
     def test_deploy_hold_marker_stops_the_deploy_before_the_lock(self):
         # D-OPS-DEPLOY-HOLD-01: with infra/migrations.hold present nothing is deployed and no migration attempted; the
         # run ends green with a HELD summary row; a rollback ignores the hold. The check sits before the lock section.
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         self.assertIn('if [ -f infra/migrations.hold ] && [ -z "$ROLLBACK_SHA" ]; then', d)
-        self.assertIn('summary "| Deploy | HELD (infra/migrations.hold): ${reason} |"', d)
+        self.assertIn('summary "$(held_row infra/migrations.hold)"', d)
+        self.assertIn('summary "| Item | State |"', d, "the HELD row sits under a table header")
         self.assertLess(d.index("infra/migrations.hold"), d.index("# ---"), "the hold is checked before the lock is taken")
         self.assertLess(d.index("summary() {"), d.index("if [ -f infra/migrations.hold ]"), "summary() exists before the hold uses it")
 
@@ -728,6 +758,22 @@ class Workflows(unittest.TestCase):
             self.assertNotIn(verb, sh, f"diagnose.sh must not run: {verb}")
         self.assertIn("grep -v -E 'DETAIL|parameters:'", sh, "server-log excerpts drop row values")
         self.assertIn("set -uo pipefail", sh)
+
+    def test_diagnose_reads_the_worker_console_log_and_keeps_statements_out(self):
+        # D-OPS-DIAGNOSE-WORKER-01: the worker app's console log (severity and job-run lines, cut at 200 characters, no
+        # SQL/parameter/secret words) and the anchored statement exclusion on the server-log query.
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        i = sh.index("console log of $WORKER_APP in the window")
+        w = sh[i:sh.index('section "worker app $WORKER_APP"')]
+        self.assertIn("ContainerAppConsoleLogs_CL", w)
+        self.assertIn("where app == '$WORKER_APP'", w)
+        self.assertIn("substring(text, 0, 200)", w)
+        self.assertIn("parse_json(line)", w, "the JSON console line is projected, not printed raw")
+        self.assertIn("bundle|lapsed", w, "job-run lines (bundle pre-generation, outlet request lapse)")
+        self.assertIn("not(line matches regex @'(?i)statement|parameters|bind|password|secret|token", w)
+        pg = sh[sh.index("PostgreSQLLogs'"):sh.index("section \"Log Analytics: console log of $WORKER_APP")]
+        self.assertIn("where not(msg matches regex @'-LOG:\\s+(execute|statement|parse|bind)')", pg,
+                      "anchored: a statement record is dropped even when log_statement is turned on")
 
     def test_deploy_holds_one_lock_for_the_whole_deploy(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
@@ -1070,8 +1116,19 @@ elif a.startswith('containerapp job list'): print('')
 elif a.startswith('acr repository show'):
     sys.exit(0 if 'aron-backend' in a else 3)
 elif a.startswith('acr manifest list-metadata'): print({rows!r})
+elif a.startswith('acr repository update'):
+    assert '--write-enabled true' in a, a
+    open({str(log) + '.unlocked'!r}, 'a').write(sys.argv[sys.argv.index('--image') + 1] + '\\n')
 elif a.startswith('acr repository delete'):
-    open({str(log)!r}, 'a').write(sys.argv[sys.argv.index('--image') + 1] + '\\n')
+    # a registry whose tags deploy.sh locked refuses the delete until every tag of the image is unlocked
+    img = sys.argv[sys.argv.index('--image') + 1]
+    digest = img.split('@')[1]
+    unlocked = open({str(log) + '.unlocked'!r}).read().split() if __import__('os').path.exists({str(log) + '.unlocked'!r}) else []
+    for line in {rows!r}.split('\\n'):
+        f = line.split('\\t')
+        if f[0] == digest and any('aron-backend:' + t not in unlocked for t in f[1].split(',') if t):
+            print('ERROR: operation is disallowed on this tag', file=sys.stderr); sys.exit(1)
+    open({str(log)!r}, 'a').write(img + '\\n')
 else: sys.exit('unexpected az ' + a)
 """)
             stub.chmod(0o755)
@@ -1079,7 +1136,25 @@ else: sys.exit('unexpected az ' + a)
             r = subprocess.run(["bash", str(ROOT / "infra" / "scripts" / "acr-purge.sh"), "rg", keep],
                                env=env, capture_output=True, text=True, timeout=60)
             deleted = log.read_text().split() if log.exists() else []
+            unl = Path(str(log) + ".unlocked")
+            self.last_unlocked = unl.read_text().split() if unl.exists() else []
             return r.returncode, deleted, r.stdout + r.stderr
+
+    def test_registry_purge_unlocks_the_tags_deploy_locks(self):
+        # deploy.sh write-locks every pushed tag; the purge must unlock each tag of a candidate before the delete,
+        # and never touch the tags of the images it keeps (D-OPS-ACR-UNLOCK-01).
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        p = (ROOT / "infra" / "scripts" / "acr-purge.sh").read_text(encoding="utf-8")
+        self.assertIn("--write-enabled false --delete-enabled true", d)
+        self.assertIn("--write-enabled true", p)
+        self.assertLess(p.index("--write-enabled true"), p.index("az acr repository delete"), "unlock before delete")
+        old = "2020-01-01T00:00:00Z"
+        ms = [(f"sha256:{i:064x}", f"c{i},latest{i}", old) for i in range(12)]
+        rc, deleted, out = self.run_purge(ms, "", keep="10")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(deleted, ["aron-backend@sha256:%064x" % 10, "aron-backend@sha256:%064x" % 11])
+        self.assertEqual(sorted(self.last_unlocked), sorted(f"aron-backend:{t}" for i in (10, 11) for t in (f"c{i}", f"latest{i}")),
+                         "only the candidates' tags were unlocked")
 
     def test_registry_purge_keeps_newest_young_and_in_use(self):
         old = "2020-01-01T00:00:00Z"

@@ -34,7 +34,9 @@ class DatabaseLogoutPorts(
             // Per-user preference files of the feature lanes (e.g. aron-stock-guard-<id>).
             File(context.applicationInfo.dataDir, "shared_prefs").listFiles { f -> f.name.endsWith("-$userId.xml") }.orEmpty() +
             // tso-manual A1 (SH-17, D-TSO-MAN-37): this user's UI preferences (Sunlight, the dashboard's channel choice)
-            uiPreferences(File(context.applicationInfo.dataDir, "shared_prefs"), userId)
+            uiPreferences(File(context.applicationInfo.dataDir, "shared_prefs"), userId) +
+            // D-TSO-BUNDLE-01: pages of a bundle download that was cancelled or killed stay staged (plain JSON: outlet names, phones, pins)
+            File(File(context.noBackupFilesDir, "aron/bundle-staging"), "u$userId")
 
     companion object {
         /** `aron_ui_<id>.xml`, the per-user UI preferences (core-ui SunlightPreference, the TSO dashboard): wiped with the user (SH-17). */

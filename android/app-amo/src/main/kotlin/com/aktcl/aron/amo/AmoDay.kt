@@ -111,6 +111,36 @@ class AmoDay(
     @Volatile private var bundleVersion: String? = null
     @Volatile private var configVersion: Long = 0
 
+    /**
+     * F-SYS-006 (D-AMO-BUNDLE-01): the day's bundle into this user's Room database (SKUs, zone routes and outlets, the
+     * supervisor section), as the SR app does at day start. Without it the Stock, Sale and zone screens read an empty
+     * database. One run at a time (the downloader's own lock); offline it changes nothing and the day never waits for it.
+     * Run it where the screens run [reload] (the main thread): it re-reads what the day holds when rows were applied.
+     */
+    suspend fun downloadBundle(downloaders: com.aktcl.aron.core.sync.BundleDownloaders): com.aktcl.aron.core.sync.BundleOutcome {
+        val outcome = try {
+            // The download itself runs in the downloaders' own scope (off the main thread, one run per user, not cancelled by a
+            // rotation); only the reads below run here, where the screens run them.
+            downloaders.ensureDay(userId, businessDate()).outcome
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            com.aktcl.aron.core.sync.BundleOutcome.FAILED
+        }
+        if (outcome == com.aktcl.aron.core.sync.BundleOutcome.APPLIED || outcome == com.aktcl.aron.core.sync.BundleOutcome.PREFETCH_PROMOTED) {
+            try { reload() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+            forgetStock() // a Stock list read while Room was empty must be read again (the SR app does this on every Stock tap)
+            try { deviceRuntime?.refreshDayConfig(userId, db) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+            _bundleEpoch.value = _bundleEpoch.value + 1
+        }
+        return outcome
+    }
+
+    private val _bundleEpoch = kotlinx.coroutines.flow.MutableStateFlow(0)
+
+    /** Counts the bundles applied to Room since this day opened; a screen that read Room once keys its read on it (Stock does). */
+    val bundleEpoch: kotlinx.coroutines.flow.StateFlow<Int> = _bundleEpoch
+
     /** Re-reads the bundle stamp the records carry; cheap, called when the day opens and after a bundle change. */
     suspend fun reload() {
         loadPrintConfig()
