@@ -87,7 +87,7 @@ step "actionlint + shellcheck"
 check env SHELLCHECK_OPTS="-e SC1091" "$ACTIONLINT" -shellcheck "$SHELLCHECK" .github/workflows/*.yml
 check "$SHELLCHECK" -x -P SCRIPTDIR infra/scripts/*.sh infra/validate.sh infra/deploy.sh tools/ci/*.sh
 # Every script the workflow or a person runs directly must be executable in git (checkout keeps the mode).
-for f in infra/deploy.sh infra/validate.sh infra/scripts/*.sh tools/ci/*.sh tools/ci/*.py; do
+for f in infra/deploy.sh infra/validate.sh infra/scripts/*.sh infra/scripts/*.py tools/ci/*.sh tools/ci/*.py; do
   [ "$f" = infra/scripts/lib.sh ] && continue
   mode="$(git ls-files -s "$f" 2>/dev/null | cut -d' ' -f1)"
   if [ -n "$mode" ] && [ "$mode" != 100755 ]; then echo "FAILED: $f is committed without the executable bit ($mode)"; fail=1; fi

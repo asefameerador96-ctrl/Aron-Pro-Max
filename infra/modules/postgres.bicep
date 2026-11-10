@@ -123,6 +123,8 @@ var baseSettings = [
   { name: 'azure.extensions', value: 'BTREE_GIST,PGCRYPTO,PG_STAT_STATEMENTS,PG_TRGM,POSTGIS' }
   { name: 'log_min_duration_statement', value: '500' }
   { name: 'track_io_timing', value: 'on' }
+  // 30 s for every Aron server. The migrate role (Flyway) is exempt per session: its waiting history connection idles inside a
+  // transaction for a whole migration (Migrator.INIT_SQL, backend/platform Database.kt; D-OPS-MIGRATE-IDLE-TIMEOUT-01).
   { name: 'idle_in_transaction_session_timeout', value: '30000' }
   // Server log files downloadable (az postgres flexible-server server-logs; dynamic, default retention 3 days) so a failed
   // migration's server-side reason can be read; the same lines also stream to Log Analytics via diag (D-OPS-PG-LOGS-01).

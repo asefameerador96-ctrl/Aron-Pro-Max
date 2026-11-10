@@ -12,7 +12,7 @@ import kotlinx.serialization.json.longOrNull
  * scope and the pending SR verification requests. [asthaOutlets] is false until the loyalty programme is built (docs/27:
  * deferred, the hook stays). [pendingVerifications] counts only requests waiting for this AMO's verification.
  */
-data class AmoReach(val subordinateSrs: Int, val pendingVerifications: Int, val asthaOutlets: Boolean = false) {
+data class AmoReach(val subordinateSrs: Int, val pendingVerifications: Int, val asthaOutlets: Boolean = false, val zoneName: String? = null) {
     /** The SS designation (MQ-19, assumed): a supervisor-tier user with no SR under them, shown the reduced menu. */
     val ss: Boolean get() = subordinateSrs == 0
 
@@ -29,15 +29,17 @@ data class AmoReach(val subordinateSrs: Int, val pendingVerifications: Int, val 
                 val r = e as? JsonObject ?: return@count false
                 str(r, "status") == "pending" && (r["requested_by_user_id"] as? JsonPrimitive)?.longOrNull != ownUserId
             }
-            return AmoReach(srs, pending)
+            // the zone name for the Home header; the server adds it to the supervisor section (parity finding 2), absent until then
+            val zone = (str(o, "zone_name") ?: str(o, "territory_name"))?.trim()?.takeIf { it.isNotEmpty() }
+            return AmoReach(srs, pending, zoneName = zone)
         }
     }
 }
 
-/** The AMO's destinations; the Home groups them into hub tiles, the count is the "17 / 13" of the menu (Settings included). */
+/** The AMO's destinations in the manual's order (D-AMO-MAN-02): one Home tile each, Settings included; Astha stays hidden while deferred. */
 enum class AmoLeaf {
     ATTENDANCE, JOINT_CALL, CONTROL_CALL, TEAM_LOCATION, TEAM_PERFORMANCE, TASK_DELEGATION, LIVE_DASHBOARD, SR_STOCK,
-    OUTLET, STOCK, SALE, MEMO, SUMMARY, SALES_SUBMIT, ASTHA, REPORT, SETTINGS,
+    OUTLET, STOCK, SALE, MEMO, SUMMARY, SALES_SUBMIT, ASTHA, REPORT, SALES_JOURNEY, SETTINGS,
 }
 
 object AmoMenu {
@@ -45,6 +47,43 @@ object AmoMenu {
      * The destinations resolved for [reach]: 17 for a full AMO with Astha outlets, 16 while Astha is deferred, 13 for an SS user
      * (no Team Location, Team Performance or SR Stock, which need subordinate SRs; no Astha).
      */
+    /** The Home tile id of a leaf (the stable key the host maps to a screen and the test tag `rh_tile_<id>` uses). */
+    fun tileId(leaf: AmoLeaf): String = leaf.name.lowercase()
+
+    /**
+     * The Home tiles (D-AMO-MAN-02, R5): one per leaf in the manual's order, so for a full AMO: Attendance, Joint Call, Control Call, Team
+     * Location, Team Performance, Task Delegation, Live Dashboard, SR Stock, Outlet, Stock, Sales, Memo, Summary, Sales Submit, Report,
+     * Sales Journey, Settings (Astha and Campaign Enrollment stay hidden: docs/27). [badges] by tile id (Outlet: pending SR verifications).
+     */
+    fun tiles(reach: AmoReach, badges: Map<String, Int> = emptyMap()): List<com.aktcl.aron.feature.home.RoleTile> = leaves(reach).filter { it != AmoLeaf.ASTHA }.map { l -> // Astha stays hidden whatever the bundle says (D-AMO-MAN-05)
+        val (label, icon) = tileFace(l)
+        com.aktcl.aron.feature.home.RoleTile(tileId(l), label, icon, badges[tileId(l)] ?: 0)
+    }
+
+    private fun tileFace(l: AmoLeaf): Pair<Int, androidx.compose.ui.graphics.vector.ImageVector> {
+        val i = com.aktcl.aron.core.ui.AronIcons
+        return when (l) {
+            AmoLeaf.ATTENDANCE -> com.aktcl.aron.feature.home.R.string.hm_tile_attendance to i.Attendance
+            AmoLeaf.JOINT_CALL -> com.aktcl.aron.feature.home.R.string.rh_amo_joint_call to i.Team
+            AmoLeaf.CONTROL_CALL -> com.aktcl.aron.feature.home.R.string.rh_amo_control_call to i.Place
+            AmoLeaf.TEAM_LOCATION -> R.string.amo_leaf_team_location to i.Place
+            AmoLeaf.TEAM_PERFORMANCE -> R.string.amo_leaf_team_performance to i.Trend
+            AmoLeaf.TASK_DELEGATION -> R.string.amo_leaf_task_delegation to i.Team
+            AmoLeaf.LIVE_DASHBOARD -> R.string.amo_leaf_live_dashboard to i.Trend
+            AmoLeaf.SR_STOCK -> R.string.amo_leaf_sr_stock to i.Team
+            AmoLeaf.OUTLET -> com.aktcl.aron.feature.home.R.string.hm_tile_outlet to i.Outlet
+            AmoLeaf.STOCK -> com.aktcl.aron.feature.home.R.string.hm_tile_stock to i.Sale
+            AmoLeaf.SALE -> com.aktcl.aron.feature.home.R.string.hm_tile_sale to i.Sale
+            AmoLeaf.MEMO -> com.aktcl.aron.feature.home.R.string.hm_tile_memo to i.Info
+            AmoLeaf.SUMMARY -> com.aktcl.aron.feature.home.R.string.hm_tile_summary to i.Info
+            AmoLeaf.SALES_SUBMIT -> com.aktcl.aron.feature.home.R.string.hm_tile_sales_submit to i.Submit
+            AmoLeaf.ASTHA -> com.aktcl.aron.feature.home.R.string.rh_amo_report to i.Info
+            AmoLeaf.REPORT -> com.aktcl.aron.feature.home.R.string.rh_amo_report to i.Trend
+            AmoLeaf.SALES_JOURNEY -> com.aktcl.aron.feature.home.R.string.hm_tile_sales_journey to i.Place
+            AmoLeaf.SETTINGS -> com.aktcl.aron.feature.home.R.string.set_title to i.Info
+        }
+    }
+
     fun leaves(reach: AmoReach): List<AmoLeaf> = AmoLeaf.entries.filter { leaf ->
         when (leaf) {
             AmoLeaf.TEAM_LOCATION, AmoLeaf.TEAM_PERFORMANCE, AmoLeaf.SR_STOCK -> reach.subordinateSrs > 0
@@ -55,7 +94,7 @@ object AmoMenu {
 
     /** Badge by hub tile id: Outlet carries the pending SR verifications, and only above zero (F-AMO-001). */
     fun badges(reach: AmoReach): Map<String, Int> =
-        if (reach.pendingVerifications > 0) mapOf(com.aktcl.aron.feature.home.RoleHomes.AmoTile.OUTLET to reach.pendingVerifications) else emptyMap()
+        if (reach.pendingVerifications > 0) mapOf(tileId(AmoLeaf.OUTLET) to reach.pendingVerifications) else emptyMap()
 
     /** Leaves behind each hub tile (Home shows eight hubs; the Team and Sale hubs open a list of these). */
     fun hub(tileId: String, reach: AmoReach): List<AmoLeaf> {

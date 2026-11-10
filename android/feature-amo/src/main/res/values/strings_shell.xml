@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Owner: lane android-amo-shell (A1): AMO look, Home, system and settings strings. Other lanes: add your own strings_<feature>.xml, never edit this file. -->
+<resources>
+    <string name="amo_shell_target_today">Today\'s Target</string>
+    <string name="amo_shell_target_total">Total Call Target</string>
+    <string name="amo_shell_target_control">Control Call Target</string>
+    <string name="amo_shell_target_joint">Joint Call Target</string>
+    <string name="amo_shell_fold">Hide the tiles</string>
+    <string name="amo_shell_unfold">Show the tiles</string>
+    <string name="amo_shell_no_data">No data found</string>
+    <!-- the language drop-down of Settings shows the vendor's lower-case code (screenshot 75) -->
+    <string name="amo_shell_lang_en" translatable="false">en</string>
+    <string name="amo_shell_support_title">Success</string>
+    <string name="amo_shell_support_sent">The sync file has been sent</string>
+    <string name="amo_shell_ok">OK</string>
+    <string name="amo_shell_header_zone">%1$s AMO, %2$s</string>
+    <string name="amo_shell_header_plain">AMO, %1$s</string>
+    <string name="amo_shell_no_target">—</string>
+</resources>

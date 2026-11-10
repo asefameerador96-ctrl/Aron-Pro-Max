@@ -26,6 +26,15 @@ A feature is not done unless its row gate is green. A lane that cannot meet a ga
 
 Required on every push to INT and every promotion PR: contract lint plus `oasdiff`; JVM build and tests (shared, db, backend) on PostgreSQL 16; Android debug APKs, unit tests and lint; the hard-coded-string scan; web lint, types, unit tests, build and the smoke e2e; container images built and booted; Bicep validation. **Added this week:** CodeQL (Kotlin, TypeScript), gitleaks, Dependabot, APK size gate, `assembleRelease` for SR (android-core asked), migration lint (`squawk`) and checksum check, SBOM on images.
 
+### 2.1 Test dates and the seeded calendar (D-QA-CI-02)
+
+A test that derives a date from "today" must not land on a seeded holiday or a Friday (weekly off, `cfg.calendar.weekend_days`). The seed names Victory Day 2026-12-16 (`db/seed/04_dev_config_and_codes.sql`), and `today + 40` hit it on Dhaka 2026-11-06. Rules:
+
+- **Backend masterdata tests:** declare or count calendar days only with `AdminEnv.workingDay(offset, span)` (AdminTestKit.kt): the first date at or after Dhaka today + offset whose `span` days are neither Friday nor a date named in the 04 seed (read from the file, so it cannot drift). A bare `env.today.plusDays(n)` is for dates where the weekday does not matter (price or assignment validity, audit bounds).
+- **db and android tests:** derive from the seed clock or the fixture, never a literal (`tools/ci/date-pin-scan.py` covers literals only); a computed date that is declared as a holiday or counted as a working day goes through the same rule (db: pick the date with a `NOT EXISTS (SELECT 1 FROM app.calendar_holiday ...)` and `extract(isodow ...) <> 5` guard).
+- **web tests** pin a fixed instant, so a Friday there is a fixed fact: name the weekday in a comment when it matters.
+- A computed-date lint was considered and not added: `today.plusDays(` is legitimate in most uses (validity windows, past-date refusals), so a text rule would be mostly false positives. The audit of 2026-11-06 (qa-ci) found calendar-sensitive uses only in AdminMasterTest and CalendarWorkingDaysTest (fixed) and SeedGulshanBananiTest's holiday counts (reads the seed rows it counts).
+
 ## 3. Data standards: the database as a product
 
 The data platform design is `docs/16` (principles P1 to P14, naming, money, business date, schemas `app`, `dw`, `cfg`, roles). The build keeps these rules, and the DB lane proves them:

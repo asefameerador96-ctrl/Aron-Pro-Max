@@ -29,7 +29,9 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -147,6 +149,39 @@ class BundleDownloaderTest {
         assertEquals(BundleOutcome.OFFLINE, downloader().download().outcome)
         db.close(); db = AronDatabase.open(context, USER, null) // and a relaunch
         assertDayIsInRoom()
+    }
+
+    /** D-AMO-BUNDLE-01 / D-TSO-BUNDLE-01: the supervisor apps' day start: the first bundle in full, then never a second full one that day. */
+    @Test fun ensureDayDownloadsTheFirstBundleAndOnlyAsksForADeltaAfterwards() = runBlocking {
+        val d = downloader()
+        assertEquals(BundleOutcome.APPLIED, d.ensureDay("2026-10-05").outcome)
+        assertEquals(1, requests.count { it.url.encodedPath == "/v1/sync/bundle" })
+        val afterFirst = requests.size
+        d.ensureDay("2026-10-05")
+        val afterSecond = requests.size
+        d.ensureDay("2026-10-05") // inside the 30-minute gate: nothing at all goes out
+        assertEquals(afterSecond, requests.size)
+        // the second call is the resume path: a delta at most (the answer to a missing cursor is the held day's own refetch), never a new login download
+        assertTrue("the second call sent ${afterSecond - afterFirst} requests", afterSecond - afterFirst <= 2)
+    }
+
+    /** A TSO wipe closes the user's database; the next sign-in must get a downloader on the NEW database, not the closed one. */
+    @Test fun aDownloaderIsRebuiltWhenTheUsersDatabaseWasClosedAndReopened() = runBlocking {
+        val databases = com.aktcl.aron.core.database.UserDatabases(context) { null }
+        val ok = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
+        val client = AronApiClient(ApiOrigin.parse(server.url("/").toString().trimEnd('/'), allowCleartextLoopback = true), ok, ClientIdentity("1.0.3+10003") { null })
+        val downloaders = BundleDownloaders(staging, databases, SyncApi(client), Clock)
+        val first = downloaders.of(4242L)
+        assertSame("same database: the same downloader", first, downloaders.of(4242L))
+        databases.close(4242L)
+        context.deleteDatabase(AronDatabase.fileName(4242L))
+        databases.allowOpen(4242L)
+        val second = downloaders.of(4242L)
+        assertNotSame(first, second)
+        assertTrue(second.uses(databases.of(4242L)))
+        databases.close(4242L)
+        context.deleteDatabase(AronDatabase.fileName(4242L))
+        Unit
     }
 
     @Test fun theNextRequestOfTheDayIsConditionalAndCountsAsLoggedIn() = runBlocking {

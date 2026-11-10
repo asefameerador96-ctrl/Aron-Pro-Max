@@ -32,24 +32,30 @@ private enum class SaleLeaf { LIST, SALE, STOCK, CORRECT, MEMO, EDIT, SUMMARY }
  * sale), Stock (F-AMO-029), Memo (F-AMO-014) and Summary (F-AMO-015). Each leaf is the SR's screen on the AMO's own data.
  */
 @Composable
-fun AmoSaleHub(day: AmoDay, onBack: () -> Unit) {
-    var leaf by rememberSaveable { mutableStateOf(SaleLeaf.LIST) }
+fun AmoSaleHub(day: AmoDay, onBack: () -> Unit, start: com.aktcl.aron.feature.amo.AmoLeaf? = null) {
+    // D-AMO-MAN-02: Home has one tile each for Stock, Sales, Memo and Summary; the host opens on [start] and Back from that leaf leaves the host
+    val direct = start != null
+    val first = when (start) {
+        com.aktcl.aron.feature.amo.AmoLeaf.STOCK -> SaleLeaf.STOCK; com.aktcl.aron.feature.amo.AmoLeaf.SALE -> SaleLeaf.SALE
+        com.aktcl.aron.feature.amo.AmoLeaf.MEMO -> SaleLeaf.MEMO; com.aktcl.aron.feature.amo.AmoLeaf.SUMMARY -> SaleLeaf.SUMMARY; else -> SaleLeaf.LIST
+    }
+    var leaf by rememberSaveable { mutableStateOf(first) }
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
     val back: () -> Unit = {
         when (leaf) {
             SaleLeaf.LIST -> onBack()
             SaleLeaf.EDIT -> leaf = SaleLeaf.MEMO
             SaleLeaf.CORRECT -> leaf = SaleLeaf.STOCK
-            else -> leaf = SaleLeaf.LIST
+            else -> if (direct) onBack() else leaf = SaleLeaf.LIST
         }
     }
     when (leaf) {
-        SaleLeaf.SALE -> ControlCallHost(day, onBack = { leaf = SaleLeaf.LIST }, startWithSale = true)
+        SaleLeaf.SALE -> ControlCallHost(day, onBack = { if (direct) onBack() else leaf = SaleLeaf.LIST }, startWithSale = true)
         else -> {
             BackHandler(onBack = back)
             // Stock, Memo and Summary show the printer status (manual: icon and "printer connected" banner), as the SR screens do.
             val printed = leaf == SaleLeaf.STOCK || leaf == SaleLeaf.MEMO || leaf == SaleLeaf.SUMMARY
-            if (printed) com.aktcl.aron.core.printing.ui.HoldPrinter(day.printerManager)
+            if (printed) { com.aktcl.aron.core.printing.ui.HoldPrinter(day.printerManager); PrinterConnectedToast(day.printerManager) }
             AmoFrame(
                 stringResource(
                     when (leaf) {

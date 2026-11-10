@@ -7,6 +7,9 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
@@ -61,7 +64,7 @@ class AmoAppTest {
                 AronTheme(language) {
                     AmoApp(
                         user, "2026-10-05", BundleStatus.Offline, "0.1.0 (1)", onLanguageSelect = {}, onLogout = onLogout,
-                        hero = RoleHero.Amo(4_391_000, 6, 60), badges = badges, syncedAt = "10:42", onSync = onSync, onSunlight = onSunlight,
+                        hero = RoleHero.Amo(4_391_000, 6, 60), badges = badges, reach = AmoReach(3, 0), syncedAt = "10:42", onSync = onSync, onSunlight = onSunlight,
                     )
                 }
             }
@@ -70,21 +73,18 @@ class AmoAppTest {
     }
 
     @Test
-    fun catalogueKeepsTheReferenceOrderWithIconsAndHidesAstha() {
-        val tiles = RoleHomes.amoTiles(mapOf(RoleHomes.AmoTile.OUTLET to 3))
+    fun catalogueIsTheManualsSeventeenTilesInOrderAndHidesAstha() {
+        val tiles = AmoMenu.tiles(AmoReach(3, 0), mapOf("outlet" to 3))
         assertEquals(
-            listOf("attendance", "joint_call", "control_call", "sale", "team", "outlet", "sales_submit", "report"),
+            listOf(
+                "attendance", "joint_call", "control_call", "team_location", "team_performance", "task_delegation", "live_dashboard", "sr_stock",
+                "outlet", "stock", "sale", "memo", "summary", "sales_submit", "report", "sales_journey", "settings",
+            ),
             tiles.map { it.id },
         )
-        assertFalse(tiles.any { it.id.contains("astha") || it.id.contains("target") })
-        assertEquals(AronIcons.Attendance, tiles[0].icon); assertEquals(AronIcons.Team, tiles[1].icon); assertEquals(AronIcons.Place, tiles[2].icon)
-        assertEquals(AronIcons.Sale, tiles[3].icon); assertEquals(AronIcons.Team, tiles[4].icon); assertEquals(AronIcons.Outlet, tiles[5].icon)
-        assertEquals(AronIcons.Submit, tiles[6].icon); assertEquals(AronIcons.Trend, tiles[7].icon)
+        assertFalse(tiles.any { it.id.contains("astha") || it.id.contains("campaign") || it.id.contains("target") })
         assertEquals(3, tiles.first { it.id == "outlet" }.badge)
         assertEquals(0, tiles.first { it.id == "sale" }.badge)
-        // the six daily tiles, then the day-close group (Sales Submit, Report)
-        assertEquals(listOf(RoleTileGroup.Today, RoleTileGroup.DayClose), tiles.map { it.group }.distinct())
-        assertEquals(6, tiles.count { it.group == RoleTileGroup.Today })
         // every tile maps to its own screen
         tiles.forEach { assertEquals(it.id, AmoScreen.of(it).tileId) }
     }
@@ -103,17 +103,17 @@ class AmoAppTest {
 
     @Test
     fun banglaHomeShowsHeaderDateOfflineBannerTilesAndBadge() {
-        val context = show(AppLanguage.BN, badges = mapOf(RoleHomes.AmoTile.OUTLET to 3))
+        val context = show(AppLanguage.BN, badges = mapOf("outlet" to 3))
         compose.onNodeWithTag(HomeTags.HEADER).assertIsDisplayed()
-        compose.onNodeWithText("AMO - Testing Banani (amo5001)").assertIsDisplayed()
-        // the bare ISO date on its own caption line (screens-sr s2); TalkBack reads the full sentence
-        compose.onNodeWithText("২০২৬-১০-০৫").assertIsDisplayed()
-        compose.onNodeWithTag(HomeTags.HEADER).assertContentDescriptionEquals("AMO - Testing Banani (amo5001), ব্যবসায়িক তারিখ: ২০২৬-১০-০৫")
+        // screenshots 8, 9: "<name> (<username>)" over "<zone> AMO, <date>" (no zone name in the bundle yet: "AMO, <date>"); TalkBack reads the full sentence
+        compose.onNodeWithText("Testing Banani (amo5001)").assertIsDisplayed()
+        compose.onNodeWithText("২০২৬-১০-০৫", substring = true).assertIsDisplayed()
+        compose.onNodeWithTag(HomeTags.HEADER).assertContentDescriptionEquals("Testing Banani (amo5001), ব্যবসায়িক তারিখ: ২০২৬-১০-০৫")
         compose.onNodeWithTag(HomeTags.MODE).assertIsDisplayed()
         // offline unlock with an offline bundle check: the chip and the banner already say it, the bundle line is not repeated
         compose.onNodeWithText(context.getString(HomeR.string.home_bundle_offline)).assertDoesNotExist()
         compose.onNodeWithTag(RoleHomeTags.HERO).assertExists()
-        RoleHomes.amoTiles().forEach { compose.onNodeWithTag(RoleHomeTags.tile(it.id)).assertExists() }
+        AmoMenu.tiles(AmoReach(3, 0)).forEach { compose.onNodeWithTag(RoleHomeTags.tile(it.id)).assertExists() }
         compose.onNodeWithTag(RoleHomeTags.tile("astha")).assertDoesNotExist()
         compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.AmoTile.ATTENDANCE)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(context.getString(HomeR.string.rh_amo_control_call)).assertExists()
@@ -159,7 +159,7 @@ class AmoAppTest {
     fun settingsSunlightRowTogglesAsOneRow() {
         var on: Boolean? = null
         val context = show(AppLanguage.BN, onSunlight = { on = it })
-        compose.onNodeWithContentDescription(context.getString(HomeR.string.set_open)).performClick()
+        compose.onNodeWithTag(RoleHomeTags.tile("settings")).performScrollTo().performClick()
         compose.waitForIdle()
         // the row announces itself as a switch with its state (UI-SR-6), not as a plain button
         compose.onNodeWithTag(RoleHomeTags.SET_SUNLIGHT).performScrollTo().assertIsOff().assertHasClickAction().performClick()
@@ -173,12 +173,17 @@ class AmoAppTest {
         val context = show(AppLanguage.EN, user = user.copy(offline = false), onLogout = { loggedOut = true })
         compose.onNodeWithTag(HomeTags.MODE).assertDoesNotExist()
         compose.onNodeWithText(context.getString(HomeR.string.home_bundle_offline)).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithContentDescription(context.getString(HomeR.string.set_open)).performClick()
+        compose.onNodeWithTag(RoleHomeTags.tile("settings")).performScrollTo().performClick()
         compose.waitForIdle()
         compose.onNodeWithTag(RoleHomeTags.SET_VERSION).assertExists()
         compose.onNodeWithText("Version 0.1.0 (1)").assertExists()
+        // screenshot 75: the language tile opens the drop-down with "en" and "বাংলা"
+        compose.onNodeWithTag(AmoHomeTags.LANGUAGE).assertExists().performClick()
+        compose.waitForIdle()
         compose.onNodeWithTag(RoleHomeTags.SET_LANG_BN).assertExists()
         compose.onNodeWithTag(RoleHomeTags.SET_LANG_EN).assertExists()
+        compose.onNodeWithTag(RoleHomeTags.SET_LANG_EN).performClick()
+        compose.waitForIdle()
         compose.onNodeWithTag(RoleHomeTags.SET_SUNLIGHT).assertExists()
         compose.onNodeWithTag(HomeTags.LOGOUT).performScrollTo().performClick()
         compose.waitForIdle()
@@ -207,5 +212,25 @@ class AmoAppTest {
         compose.onNodeWithText(context.getString(HomeR.string.rh_amo_attendance)).performClick()
         compose.onNodeWithTag("amo-att").assertIsDisplayed().performClick()
         compose.onNodeWithTag(HomeTags.HEADER).assertIsDisplayed()
+    }
+
+    @Test
+    fun theChevronFoldsTheTilesAndKeepsTheTargetCards() {
+        show(AppLanguage.EN)
+        compose.onNodeWithTag(RoleHomeTags.tile("attendance")).assertExists()
+        compose.onNodeWithTag(AmoHomeTags.COLLAPSE).performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(RoleHomeTags.tile("attendance")).assertDoesNotExist()
+        compose.onNodeWithTag(AmoHomeTags.TARGETS).assertExists()
+        compose.onNodeWithTag(AmoHomeTags.COLLAPSE).performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(RoleHomeTags.tile("attendance")).assertExists()
+    }
+
+    @Test
+    fun withNoTargetsEveryCardPrintsADash() {
+        show(AppLanguage.BN)
+        listOf("today", "total", "control", "joint").forEach { compose.onNodeWithTag(AmoHomeTags.target(it)).performScrollTo().assertTextContains("—") }
+        compose.onAllNodesWithText("—", useUnmergedTree = true).assertCountEquals(4)
     }
 }

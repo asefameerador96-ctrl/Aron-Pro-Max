@@ -51,6 +51,7 @@ fun UpdateHost(
                 onInstall = { shell.startInstall(s.release) },
                 onOpenUnknownSources = { runCatching { context.startActivity(shell.unknownSourcesIntent()) } },
                 onLater = { shell.later(s.release) },
+                amoStyle = true,
             )
         }
         UpdateScreen.Blocked -> Column(Modifier.padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
