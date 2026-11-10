@@ -46,3 +46,5 @@ Local setup that worked in this container: `pg_ctlcluster 16 main start`; `CREAT
 
 **Backlog (qa owns, later):** the scope-leak harness has no per-role positive control; an AMO token of another zone would judge `GET /v1/supervisor/call-targets` properly and let it leave the blind baseline (D-AMO-FND-12).
 **F1 CI:** `9f4d924cb` fixes the 2 db tests and the ScopeLeak blind list; `DataFlowTraceTest` x2 fail on clean INT too (qa-ci fix, train 82). Plan agreed with the lead: wait for "train 82 landed", merge INT, push F1+F2 together, report "checked <sha> (F1+F2)".
+
+**F2 Opus checker round 2: PASS** (no high/medium). Open lows, accepted: journey "no such SR" 404 messages differ (an id's existence as an SR is visible to a permitted reader, no name); `onRoute` also accepts voided visits (route already in reach); ScopeLeak `numbers()` skips the four AMO-only member names on every endpoint, so `geo_valid_visits` also leaves the geo-validation fingerprint (its `visits`, `geo_valid_pct`, `suspicious_visits` still fingerprint it; qa may scope the skip to the login-submit op).
