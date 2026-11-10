@@ -21,5 +21,8 @@ class CheckoutAfterLabelTest {
 
     @Test fun badInputComesBackUnchanged() {
         assertEquals("soon", checkoutAfterLabel("soon", bangla = true))
+        // out of range is bad input too, not "1 PM" for 25:00
+        assertEquals("25:00", checkoutAfterLabel("25:00", bangla = false))
+        assertEquals("17:75", checkoutAfterLabel("17:75", bangla = true))
     }
 }

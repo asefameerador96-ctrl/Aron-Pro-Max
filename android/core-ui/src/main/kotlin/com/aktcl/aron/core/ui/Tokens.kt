@@ -252,6 +252,8 @@ data class AronLookColors(
     val roundBack: Boolean = false,
     /** The AMO target cards (screenshot 9): sky blue, deepened until the white figure holds 7:1. */
     val targetCard: Color? = null,
+    /** The AMO bottom panel (screenshot 41): a vertical ramp from [panelTop] (royal blue) to [panelBottom] (indigo); null keeps the solid [panel] (Sunlight, SR, TSO). */
+    val panelTop: Color? = null, val panelBottom: Color? = null,
 )
 
 /**
@@ -448,7 +450,7 @@ object AronLook {
         purple = hex(0x4A1A96), panel = hex(0x4A1A96), page = hex(0xF3F3F3), pageHome = hex(0xF3F3F3), tileLabel = hex(0x222222), tileLabelOutlet = hex(0x222222),
         targetTop = hex(0x0B4EA2), targetBottom = hex(0x0B4EA2),
         primaryStart = hex(0x00642F), primaryEnd = hex(0x00642F), stopFill = hex(0xB0001C), choiceFill = hex(0x0B4EA2),
-        roundBack = true, targetCard = hex(0x0B5A8C),
+        roundBack = true, targetCard = hex(0x0B5A8C), panelTop = hex(0x0B4EA2), panelBottom = hex(0x3A1E99),
     )
 
     /** The AMO look in Sunlight: [Sunlight] (solid white bars, black ink) with the deep green, red and navy fills and the round back arrow. */
