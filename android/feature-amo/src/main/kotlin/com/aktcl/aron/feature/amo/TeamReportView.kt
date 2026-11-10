@@ -168,10 +168,11 @@ private fun TillCardView(c: TillCard, onDetails: (() -> Unit)?) {
 
 /** Sales till now (screenshot 72 left): the zone card then one card per route with Category, Target, Sales, % and Memo. */
 @Composable
-fun TillNowContent(cards: List<TillCard>, onDetails: (TillCard) -> Unit, stale: Boolean, failed: Boolean, refused: Boolean = false, modifier: Modifier = Modifier) {
+fun TillNowContent(cards: List<TillCard>, onDetails: (TillCard) -> Unit, stale: Boolean, failed: Boolean, refused: Boolean = false, modifier: Modifier = Modifier, memoPending: Boolean = false) {
     AmoPage(modifier) {
         AmoFetchBanner(failed, stale, refused)
         if (cards.isEmpty()) AmoEmpty(stringResource(R.string.amo_rep_empty), hint = stringResource(R.string.amo_rep_empty_hint))
+        if (memoPending && cards.isNotEmpty()) AmoBanner(stringResource(R.string.amo_team_memo_pending))
         cards.forEach { c -> TillCardView(c, { onDetails(c) }) }
     }
 }

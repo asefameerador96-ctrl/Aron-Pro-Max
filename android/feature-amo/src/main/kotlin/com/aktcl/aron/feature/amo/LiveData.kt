@@ -12,7 +12,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 
 /** Sales of one category for the day in base units (sticks, pieces, dozens), as the server's `CategoryVolume` carries them. */
-data class CategorySales(val code: String, val baseUnit: String, val qtyBase: Long)
+data class CategorySales(val code: String, val baseUnit: String, val qtyBase: Long, val memos: Long? = null)
 
 /**
  * The Live Dashboard of screenshot 39 (D-AMO-MAN-11, R11), built from ONE `GET /v1/dashboards/login-submit` answer whose reach is the
@@ -57,7 +57,7 @@ object LiveDataParser {
         val perRoute = routeId != null
         val cats = (o["sales_by_category"] as? JsonArray).orEmpty().mapNotNull { e ->
             val c = e as? JsonObject ?: return@mapNotNull null
-            CategorySales((c["category_code"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null, (c["base_unit"] as? JsonPrimitive)?.contentOrNull.orEmpty(), l(c, "qty_base"))
+            CategorySales((c["category_code"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null, (c["base_unit"] as? JsonPrimitive)?.contentOrNull.orEmpty(), l(c, "qty_base"), n(c, "memos"))
         }
         return LiveData(
             (o["as_of"] as? JsonPrimitive)?.contentOrNull.orEmpty(), cats, l(k, "active_memo_count"), l(k, "net_mtk"),

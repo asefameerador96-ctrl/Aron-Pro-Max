@@ -75,17 +75,14 @@ class TeamScreensRulesTest {
         assertEquals(FetchNote.KEPT, FetchNote.of(failed = false, stale = true, refused = false)); assertEquals(FetchNote.NONE, FetchNote.of(false, false, false))
     }
 
-    @Test fun categoryMemoColumnComesFromTheBrandMemosOfTheSalesSummary() {
-        val node = TeamTargetNode("route", 11, "Math Bazer", 30, listOf(TeamTargetRow("Maxim", "cigarette", 1, 1, 1), TeamTargetRow("Sheikh", "cigarette", 1, 1, 1), TeamTargetRow("Panther", "match", 1, 1, 1)))
-        val cards = listOf(
-            RouteCard("R11", "Math Bazer", 10, 8, 80.0, 40, 0, listOf(BrandRow("Maxim", 30, null), BrandRow("sheikh", 12, null), BrandRow("Panther", 5, null), BrandRow("Unknown", 9, null))),
-            RouteCard("R12", "Other", 10, 8, 80.0, 40, 0, listOf(BrandRow("Maxim", 100, null))),
-        )
-        assertEquals(mapOf("cigarette" to 42L, "match" to 5L), TeamReports.categoryMemos(node, cards, false)) // this route only; an unknown brand is ignored
-        assertEquals(mapOf("cigarette" to 142L, "match" to 5L), TeamReports.categoryMemos(node, cards, true)) // the zone adds every route
-        val row = TeamReports.tillCard("x", node, false, TeamReports.categoryMemos(node, cards, false), UiLocale.EN).rows
-        assertEquals("42", row.first { it.category == "cigarette" }.memo); assertEquals("5", row.first { it.category == "match" }.memo)
-        assertEquals(emptyMap<String, Long>(), TeamReports.categoryMemos(node, emptyList(), false)) // no report: dashes, not zeros
+    @Test fun categoryMemoColumnIsADashUntilTheServerSendsTheCountAndNeverDerived() {
+        val node = TeamTargetNode("route", 11, "Math Bazer", 30, listOf(TeamTargetRow("Maxim", "cigarette", 1, 1, 1), TeamTargetRow("Panther", "match", 1, 1, 1)))
+        val absent = LiveDataParser.parse("""{"as_of":"x","kpis":{},"sales_by_category":[{"category_code":"cigarette","base_unit":"stick","qty_base":10}]}""")!!
+        assertEquals(emptyMap<String, Long>(), TeamReports.categoryMemos(absent.categories)) // field absent: nothing, never an estimate
+        assertTrue(TeamReports.tillCard("x", node, false, TeamReports.categoryMemos(absent.categories), UiLocale.EN).rows.all { it.memo == "—" })
+        val present = LiveDataParser.parse("""{"as_of":"x","kpis":{},"sales_by_category":[{"category_code":"cigarette","base_unit":"stick","qty_base":10,"memos":42},{"category_code":"match","base_unit":"dozen","qty_base":3,"memos":null}]}""")!!
+        val rows = TeamReports.tillCard("x", node, false, TeamReports.categoryMemos(present.categories), UiLocale.EN).rows
+        assertEquals("42", rows.first { it.category == "cigarette" }.memo); assertEquals("—", rows.first { it.category == "match" }.memo) // null stays a dash
     }
 
     @Test fun summaryPeriodIsMonthToTodayNotYesterday() {

@@ -93,4 +93,5 @@
     <string name="amo_team_live_title">লাইভ ডেটা</string>
     <string name="amo_team_task_form_title">অ্যাসাইন্ড টাস্ক</string>
     <string name="amo_team_refused">এই তালিকা আপনার অ্যাকাউন্টের জন্য সার্ভার দেয়নি। আপনার অ্যাক্সেস দেখতে অফিসে জানান।</string>
+    <string name="amo_team_memo_pending">মেমো: অপেক্ষমাণ</string>
 </resources>

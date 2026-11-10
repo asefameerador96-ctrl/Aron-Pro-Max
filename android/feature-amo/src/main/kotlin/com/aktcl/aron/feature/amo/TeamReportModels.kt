@@ -47,20 +47,13 @@ object TeamReports {
     fun summaryPeriod(today: String): Pair<String, String> = monthToToday(today)
 
     /**
-     * Memos per category for a till-now card, from the `sales-summary` route cards: the sum of the memo counts of the brands of that category
-     * (the node's brand rows say which brand belongs to which category). A zone adds every route's brands; a route uses its own card (matched by
-     * name or code). A memo with two brands of one category is counted once per brand, so this is an upper bound of the category's memos.
-     * A category with no matching brand row is absent (the card prints a dash), never zero.
+     * Memos per category for a till-now card: ONLY what the server counts (`CategoryVolume.memos` = accepted memos with at least one line in
+     * that category, same window; D-AMO-TEAM-10). A category without the field is absent and the card prints a dash. No figure is derived
+     * on the phone: the sales-summary has brand memo counts only, and summing them would present an upper bound as a count.
      */
-    fun categoryMemos(node: TeamTargetNode, cards: List<RouteCard>, isZone: Boolean): Map<String, Long> {
-        val mine = if (isZone) cards else cards.filter { it.name.equals(node.name, true) || it.code.equals(node.name, true) }
-        val brandCategory = node.rows.associate { it.name.lowercase() to it.categoryCode }
-        val out = linkedMapOf<String, Long>()
-        for (b in mine.flatMap { it.brands }) { val c = brandCategory[b.name.lowercase()] ?: continue; out[c] = (out[c] ?: 0L) + b.memos }
-        return out
-    }
+    fun categoryMemos(cats: List<CategorySales>): Map<String, Long> = cats.mapNotNull { c -> c.memos?.let { c.code to it } }.toMap()
 
-    private fun fmt(n: Long?, l: UiLocale) = TeamTargets.qty(n, l)
+    private fun fmt(    private fun fmt(n: Long?, l: UiLocale) = TeamTargets.qty(n, l)
 
     /** A till-now card from a target node: target = the till-date target, sales = the achievement, percent with two decimals, memos when known. */
     fun tillCard(heading: String, node: TeamTargetNode, isZone: Boolean, memos: Map<String, Long>, l: UiLocale): TillCard =
