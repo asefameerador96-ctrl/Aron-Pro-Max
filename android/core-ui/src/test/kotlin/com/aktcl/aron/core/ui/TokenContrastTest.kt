@@ -334,6 +334,30 @@ class TokenContrastTest {
         amo(n, "white figure on a target card", Color.White, l.targetCard!!, 7.0)
     }
 
+    /**
+     * The AMO login pill (D-AMO-SHELL-09): the logged-out login is drawn in the DEFAULT look (MainActivity wraps only the signed-in branch in
+     * AronTheme(amo = true)), so the pill is the bar ramp red to purple with the bold 18 sp label centred on it. The label sits over the middle
+     * and the purple end at 7:1; the red left end is 4.3:1, above the 3:1 of large bold text. Sunlight is black on white.
+     */
+    @Test fun amoLoginPillLabelContrast() {
+        val d = AronLook.Default
+        amo("Default", "login label on the ramp middle", d.onBar, d.barMid, 7.0)
+        amo("Default", "login label on the ramp purple end", d.onBar, d.barEnd, 7.0)
+        amo("Default", "login label on the ramp red start (large bold text)", d.onBar, d.barStart, 4.0)
+        val s = AronLook.Sunlight
+        listOf(s.barStart, s.barMid, s.barEnd).forEach { amo("Sunlight", "login label on the pill", s.onBar, it, 7.0) }
+    }
+
+    @Test fun amoStockPanelRampHoldsSevenToOneForFigures() {
+        val l = AronLook.AmoPurple
+        listOf(l.panelTop!!, l.panelBottom!!).forEach {
+            amo("AmoPurple", "white figure on the panel ramp", l.onPanel, it, 7.0)
+            amo("AmoPurple", "muted ink on the panel ramp", l.onPanelMuted, it, 4.5)
+        }
+        // Sunlight and the other looks stay solid
+        listOf(AronLook.Default, AronLook.Sunlight, AronLook.TsoNight, AronLook.TsoSunlight, AronLook.AmoSunlight).forEach { assertTrue(it.panelTop == null) }
+    }
+
     @Test fun amoLooksAreScopedAndSunlightIsSolid() {
         // the SR and TSO looks carry none of the AMO roles, so their goldens cannot move
         listOf(AronLook.Default, AronLook.Sunlight, AronLook.TsoNight, AronLook.TsoSunlight).forEach {

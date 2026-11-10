@@ -14,6 +14,8 @@
     <string name="memo_total_discount">মোট ডিসকাউন্ট</string>
     <string name="memo_total_qc">মোট QC</string>
     <string name="memo_grand_total">সর্বমোট</string>
+    <string name="memo_route_label">রুট:</string>
+    <string name="memo_retailer_label">খুচরা বিক্রেতাঃ</string>
     <string name="memo_credit_title">এই বিক্রয়টি বাকিতে করা হয়েছে।</string>
     <string name="memo_due">বাকি: %1$s</string>
     <string name="memo_print">প্রিন্ট</string>

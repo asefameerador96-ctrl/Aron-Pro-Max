@@ -26,6 +26,11 @@ class RoomMemoStore(private val db: AronDatabase) : MemoStore {
         return dao.memosBetween(from, businessDate).map { toStored(it) }
     }
 
+    /** Every memo on the phone (all days it keeps, superseded versions too) with the collections recorded against each: (captured-at ISO, amount in milli-taka). */
+    suspend fun allWithCollections(): List<Pair<StoredMemo, List<Pair<String, Long>>>> =
+        dao.memosBetween("0000-01-01", "9999-12-31")
+            .map { m -> toStored(m) to dao.dueCollectionsOf(m.clientUuid).map { it.meta.capturedAt to it.amountMtk } }
+
     /** Collections against any memo of the date (a collection may be recorded on a later day than the memo). */
     override suspend fun collections(businessDate: String): List<StoredCollection> =
         dao.memosOn(businessDate).flatMap { m -> dao.dueCollectionsOf(m.clientUuid) }.map { StoredCollection(it.againstMemoClientUuid, it.amountMtk, it.againstMemoBusinessDate) }

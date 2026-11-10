@@ -541,9 +541,10 @@ private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, timeTe
 
 /** "5" / "5:30" in Bangla (the string adds "টার"), "5 PM" / "5:30 PM" in English: the hour of the configured check-out time on the 12-hour clock. */
 internal fun checkoutAfterLabel(hhmm: String, bangla: Boolean): String = runCatching {
-    val (h, m) = hhmm.split(":").map { it.toInt() }
+    val (h, m) = hhmm.split(":").map { it.trim().toInt() }
+    require(h in 0..23 && m in 0..59)
     val h12 = if (h % 12 == 0) 12 else h % 12
-    val body = if (m == 0) "$h12" else "$h12:%02d".format(m)
+    val body = if (m == 0) "$h12" else "$h12:" + "%02d".format(java.util.Locale.ROOT, m)
     if (bangla) body else body + if (h < 12) " AM" else " PM"
 }.getOrDefault(hhmm)
 

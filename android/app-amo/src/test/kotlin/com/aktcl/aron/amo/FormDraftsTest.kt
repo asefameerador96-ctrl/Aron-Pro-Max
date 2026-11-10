@@ -27,4 +27,22 @@ class FormDraftsTest {
     @Test fun usersDoNotShareDrafts() {
         assertNotEquals(FormDrafts(app, 1).uuid("verify:a"), FormDrafts(app, 2).uuid("verify:a"))
     }
+
+    // A4 (D-AMO-OUTLET-06): the uuid of an act is reused after a relaunch only while no request is stored under it
+    @Test fun anUnstoredKeyIsReusedAfterARelaunchAndAStoredOneTakesANewUuid() = kotlinx.coroutines.runBlocking {
+        val key = "own:new"
+        val first = resolveActUuid(FormDrafts(app, 9), key) { false }
+        val afterKill = FormDrafts(app, 9)
+        assertEquals("the save never committed: the same record is queued", first, resolveActUuid(afterKill, key) { false })
+        val second = resolveActUuid(afterKill, key) { it == first } // the first act's request is stored: this is a different act
+        assertNotEquals(first, second)
+        assertEquals("and the new uuid is the draft from then on", second, FormDrafts(app, 9).uuid(key))
+    }
+
+    @Test fun aLookupThatThrowsLeavesTheDraftKeyUntouched() = kotlinx.coroutines.runBlocking {
+        val d = FormDrafts(app, 10)
+        val first = d.uuid("own:close:5")
+        try { resolveActUuid(d, "own:close:5") { error("db closed") }; org.junit.Assert.fail() } catch (e: IllegalStateException) { /* safeSubmit turns this into the save-failed notice */ }
+        assertEquals(first, d.uuid("own:close:5"))
+    }
 }

@@ -236,6 +236,9 @@ class AmoDay(
         }
     }
 
+    /** True when an outlet request with this client uuid is already stored on the phone (A4: an act that finished before a kill). */
+    suspend fun requestStored(uuid: String): Boolean = db.captureDao().outletRequestCount(uuid) > 0
+
     fun newCapture(purpose: String) = GeoPhotoCapture(fixSource, object : PhotoPipeline {
         override suspend fun captureAndCompress(photoUuid: String) = photoPipeline.captureAndCompress(photoUuid)
         override suspend fun discard(photoUuid: String) = photoPipeline.discard(photoUuid)
@@ -558,7 +561,59 @@ class AmoDay(
     // ---- AMO records (amo_record): assessments, price checks, verifications, tasks, reviews
     private fun newUuid() = com.aktcl.aron.core.common.ClientIds.newUuid()
 
-    suspend fun saveJointCall(visitUuid: String, rubric: com.aktcl.aron.feature.amo.JointRubric, state: com.aktcl.aron.feature.amo.JointState, assessedUserId: Long?) = writer.saveJointCall(visitUuid, rubric, state, assessedUserId)
+    suspend fun saveJointCall(visitUuid: String, rubric: com.aktcl.aron.feature.amo.JointRubric, state: com.aktcl.aron.feature.amo.JointState, assessedUserId: Long?, defaultStar: Int? = 1) = writer.saveJointCall(visitUuid, rubric, state, assessedUserId, defaultStar)
+
+    /** `cfg.amo.joint_call_default_star`: 1 preselects star 1 on every item (the vendor's behaviour, default); "none" makes the AMO rate each item. */
+    suspend fun jointDefaultStar(): Int? = com.aktcl.aron.feature.amo.jointDefaultStar(runCatching { reference.config("cfg.amo.joint_call_default_star", iso(clock.nowMs())) }.getOrNull())
+
+    /** `cfg.amo.price_compliance_tile` (default false): the Price compliance tile of the Control Call menu (D-AMO-MAN-14). */
+    suspend fun priceComplianceTile(): Boolean = runCatching { reference.config("cfg.amo.price_compliance_tile", iso(clock.nowMs())) }.getOrNull()?.trim('"')?.equals("true", ignoreCase = true) == true
+
+    /** Outlets with a call (any AMO visit kind) opened on today's business date: the brown badge of the retailer list. Local read. */
+    suspend fun calledTodayOutletIds(): Set<Long> = db.captureDao().visitsOn(businessDate()).map { it.outletId }.toSet()
+
+    /**
+     * Previous sale data (24, 26): every sale to the outlet on [date], any SR, from the server (a kept copy while offline); with neither
+     * (offline and never read, or the server refuses) this AMO's own live memos from this phone. The sale itself never waits on this.
+     */
+    suspend fun saleHistory(outletId: Long, date: String): com.aktcl.aron.feature.amo.SaleHistory {
+        val fetch = runCatching { api.salesByDate(outletId, date) }.getOrDefault(AmoFetch.Unavailable)
+        when (fetch) {
+            is AmoFetch.Fresh -> com.aktcl.aron.feature.amo.PreviousSales.parseServer(fetch.json, date)?.let { return it }
+            is AmoFetch.Cached -> com.aktcl.aron.feature.amo.PreviousSales.parseServer(fetch.json, date, com.aktcl.aron.feature.amo.SaleHistorySource.KEPT_COPY)?.let { return it }
+            else -> Unit
+        }
+        val memos = runCatching { com.aktcl.aron.feature.memo.ui.RoomMemoStore(db).memos(date) }.getOrDefault(emptyList()).filter { it.outletId == outletId }
+            .map { m -> com.aktcl.aron.feature.amo.LocalMemo(m.memoUuid, m.supersedesUuid, m.lines.map { com.aktcl.aron.feature.amo.PreviousSales.LocalMemoLine(it.skuId, it.qtyBase, it.grossMtk) }) }
+        return com.aktcl.aron.feature.amo.PreviousSales.fromLocal(date, memos, runCatching { skuInfo() }.getOrDefault(emptyMap()))
+    }
+
+    /** The open call's retailer ("name (code-phone-cluster)") and route name for the assessment header cards. */
+    suspend fun callHeader(): Pair<String?, String?> {
+        val v = visitSession.current.value ?: return null to null
+        val o = db.referenceDao().outlet(v.outletId)
+        val r = routes().firstOrNull { it.route.routeId == v.routeId }?.route
+        return o?.let { com.aktcl.aron.feature.outlet.OutletPicker.label(it) } to (r?.displayLabel ?: r?.name)
+    }
+
+    /** The open call's outlet for the sale screens (screenshots 24, 25): the retailer pill label, the name and code (digits are localised by the screen), the route name and the cluster. */
+    data class SaleHeader(val pill: String, val name: String, val code: String, val route: String?, val cluster: String?)
+    suspend fun saleHeader(): SaleHeader? {
+        val v = visitSession.current.value ?: return null
+        val o = db.referenceDao().outlet(v.outletId) ?: return null
+        val r = routes().firstOrNull { it.route.routeId == v.routeId }?.route
+        return SaleHeader(
+            com.aktcl.aron.feature.outlet.OutletPicker.label(o), o.name, o.code,
+            (r?.displayLabel ?: r?.name)?.takeIf { it.isNotBlank() }, o.clusterName.takeIf { it.isNotBlank() },
+        )
+    }
+
+    /** A memo's outlet label and route name for the memo detail header (screenshots 42, 43); null parts when the outlet is not on the phone. */
+    suspend fun memoHeader(outletId: Long): Pair<String?, String?> {
+        val o = db.referenceDao().outlet(outletId) ?: return null to null
+        val r = routes().firstOrNull { it.route.routeId == o.routeId }?.route
+        return com.aktcl.aron.feature.outlet.OutletPicker.label(o) to (r?.displayLabel ?: r?.name)?.takeIf { it.isNotBlank() }
+    }
 
     /** The AMO's record writes (joint call, assessment, survey, price, verification, exceptions, tasks), testable on their own. */
     private val writer: AmoRecordWriter by lazy {
@@ -582,8 +637,10 @@ class AmoDay(
     suspend fun subChannels(): List<com.aktcl.aron.feature.amo.SubChannel> =
         com.aktcl.aron.feature.amo.OutletVerify.subChannels(runCatching { reference.section("code_lists") }.getOrNull())
 
-    suspend fun decideRequest(recordUuid: String, requestUuid: String, verify: Boolean, subChannelId: Long?, geoClass: String?, note: String?, photoUuid: String?): Boolean =
-        writer.decideRequest(recordUuid, requestUuid, verify, subChannelId, geoClass, note, photoUuid)
+    suspend fun decideRequest(
+        recordUuid: String, requestUuid: String, verify: Boolean, subChannelId: Long?, geoClass: String?, note: String?, photoUuid: String?,
+        capturedFix: com.aktcl.aron.feature.outlet.FixReading? = null,
+    ): Boolean = writer.decideRequest(recordUuid, requestUuid, verify, subChannelId, geoClass, note, photoUuid, capturedFix)
 
     // ---- Exceptions (F-AMO-038): risk signals of the zone, reviewed offline
 
