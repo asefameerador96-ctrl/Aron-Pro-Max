@@ -17,8 +17,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -108,6 +108,10 @@ class AmoDayLockHostsTest {
      * the check was keyed on Mark Paid's own state, which never changed on the AMO outside a call.
      */
     @Test fun editOnTheMemoDetailFollowsTheLockThatLandsWhileItIsOnScreen() {
+        // test-only race (CI run 42902438170): under the class's UnconfinedTestDispatcher a Main-dispatched resume can run on the Room IO thread that
+        // finished a query, and the Compose test Recomposer then applied a frame there (CalledFromWrongThreadException). This test needs no eager Main
+        // (it polls with waitUntil), so it uses the Looper-backed Main that never leaves the UI thread (D-AMO-CALLS-16).
+        Dispatchers.setMain(MainLooperImmediate.dispatcher)
         f.zone() // the banner counts the zone's closed routes
         f.creditMemo(f.controlCall())
         show { AmoMemoHost(f.day, onEdit = {}) }

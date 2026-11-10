@@ -53,3 +53,8 @@ Branch `lane/android-amo-calls` (from INT 7f34a1d2, which carries A1). Push only
 - Row 24: pill and history button present; the vendor cart/price icon, discount % and stock dot are not on the shared pack card.
 - Still open: F1/F2 wiring list (waits for "train 84 landed"); the location-off check card has no Refresh action (item 4 above); lows 6 above. All acceptances DEVICE-PENDING.
 
+
+## A2 #3 update (2026-11-10, lead rulings; D-AMO-CALLS-14)
+- Sales Submit header is "ডিভাইস" in both apps (shared string, four goldens re-recorded).
+- DEVICE-PENDING differences for the owner's next walk (shared screens kept as the SR parity work left them): row 25 review is a card layout, not the vendor table; row 24 pack card has no vendor cart price, discount % (zero per docs/27) or stock dot (owner Q3).
+- Waiting for "train 84 landed" (F1/F2 wiring). Open: location-off card has no Refresh action; lows 6.

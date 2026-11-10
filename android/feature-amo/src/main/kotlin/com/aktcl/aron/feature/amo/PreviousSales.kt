@@ -91,7 +91,7 @@ object PreviousSales {
             val spec = info?.entry
             // A count that is not a whole number of packets/boxes/dozens is never truncated: that line shows its base units (sticks/pieces), exact.
             val whole = spec != null && spec.remainderBase(v.first) == 0L
-            val baseKey = when (info?.categoryCode) { "lighter" -> "piece"; "match" -> "dozen"; else -> "stick" }
+            val baseKey = com.aktcl.aron.rules.EntryUnits.baseLabelKey(info?.categoryCode.orEmpty())
             SaleHistoryLine(
                 id, "", info?.name ?: "#$id",
                 java.math.BigDecimal(if (whole) spec!!.fromBase(v.first) else v.first),
