@@ -236,6 +236,9 @@ class AmoDay(
         }
     }
 
+    /** True when an outlet request with this client uuid is already stored on the phone (A4: an act that finished before a kill). */
+    suspend fun requestStored(uuid: String): Boolean = db.captureDao().outletRequestCount(uuid) > 0
+
     fun newCapture(purpose: String) = GeoPhotoCapture(fixSource, object : PhotoPipeline {
         override suspend fun captureAndCompress(photoUuid: String) = photoPipeline.captureAndCompress(photoUuid)
         override suspend fun discard(photoUuid: String) = photoPipeline.discard(photoUuid)
@@ -615,8 +618,10 @@ class AmoDay(
     suspend fun subChannels(): List<com.aktcl.aron.feature.amo.SubChannel> =
         com.aktcl.aron.feature.amo.OutletVerify.subChannels(runCatching { reference.section("code_lists") }.getOrNull())
 
-    suspend fun decideRequest(recordUuid: String, requestUuid: String, verify: Boolean, subChannelId: Long?, geoClass: String?, note: String?, photoUuid: String?): Boolean =
-        writer.decideRequest(recordUuid, requestUuid, verify, subChannelId, geoClass, note, photoUuid)
+    suspend fun decideRequest(
+        recordUuid: String, requestUuid: String, verify: Boolean, subChannelId: Long?, geoClass: String?, note: String?, photoUuid: String?,
+        capturedFix: com.aktcl.aron.feature.outlet.FixReading? = null,
+    ): Boolean = writer.decideRequest(recordUuid, requestUuid, verify, subChannelId, geoClass, note, photoUuid, capturedFix)
 
     // ---- Exceptions (F-AMO-038): risk signals of the zone, reviewed offline
 

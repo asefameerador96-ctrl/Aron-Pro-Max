@@ -1,4 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Owner: lane android-amo-outlet (A4): Outlet menu and forms. Empty until that lane adds its strings; android-amo-shell does not edit this file. -->
+<!-- Owner: lane android-amo-outlet (A4): Outlet menu and forms. -->
 <resources>
+    <string name="amo_out_verify_heading">এস আর থেকে আসা অনুরোধ গুলো যাচাই করুন</string>
+    <string name="amo_out_ops_heading">দোকান সংক্রান্ত অপারেশন্স</string>
+    <string name="amo_out_tile_verify_new">নতুন আউটলেট যাচাইকরণ</string>
+    <string name="amo_out_tile_verify_close">আউটলেট বন্ধের যাচাইকরণ</string>
+    <string name="amo_out_tile_verify_change">আউটলেট সংশোধনের যাচাইকরণ</string>
+    <string name="amo_out_route">রুট</string>
+    <string name="amo_out_cluster">ক্লাস্টার</string>
+    <string name="amo_out_retailer_name">খুচরা বিক্রেতার নাম</string>
+    <string name="amo_out_owner_name">মালিকের নাম</string>
+    <string name="amo_out_contact">যোগাযোগ</string>
+    <string name="amo_out_pick_route">একটি রুট সিলেক্ট করুন</string>
+    <string name="amo_out_pick_cluster">ক্লাস্টার নির্বাচন করুন</string>
+    <string name="amo_out_pick_retailer">রিটেইলার নির্বাচন করুন</string>
+    <string name="amo_out_f_shop">দোকানের নাম</string>
+    <string name="amo_out_f_owner">দোকানের মালিকের নাম</string>
+    <string name="amo_out_f_mobile">মোবাইল নম্বর</string>
+    <string name="amo_out_sub_channel">সাব-চ্যানেল</string>
+    <string name="amo_out_pick_sub_channel">সাব-চ্যানেল নির্বাচন করুন</string>
+    <string name="amo_out_geo_class">জিও ক্লাসিফিকেশন</string>
+    <string name="amo_out_pick_geo_class">জিও ক্লাসিফিকেশন নির্বাচন করুন</string>
+    <string name="amo_out_all">সব</string>
+    <string name="amo_out_saved">ডেটা সফলভাবে সংরক্ষিত হয়েছে।</string>
+    <string name="amo_out_updated">ডেটা সফলভাবে আপডেট হয়েছে।</string>
+    <string name="amo_out_photo_done">ছবি ধারণ করা সম্পন্ন হয়েছে</string>
+    <string name="amo_out_reject_message">এই অনুরোধটি বাতিল করা হবে</string>
+    <string name="amo_out_err_route">একটি রুট সিলেক্ট করুন।</string>
+    <string name="amo_out_err_cluster">ক্লাস্টার নির্বাচন করুন।</string>
+    <string name="amo_out_err_retailer">রিটেইলার নির্বাচন করুন।</string>
+    <string name="amo_out_err_name">দোকানের নাম লিখুন (২ থেকে ১২০ অক্ষর)।</string>
+    <string name="amo_out_err_owner">মালিকের নাম লিখুন (২ থেকে ১২০ অক্ষর)।</string>
+    <string name="amo_out_err_mobile">সঠিক মোবাইল নম্বর লিখুন (01XXXXXXXXX)।</string>
+    <string name="amo_out_err_geo">GEO এবং ছবি ধারণ করুন।</string>
+    <string name="amo_out_err_mock">নকল লোকেশন ধরা পড়েছে। দোকানে গিয়ে আবার ধারণ করুন।</string>
+    <string name="amo_out_err_sub_channel">সাব-চ্যানেল নির্বাচন করুন।</string>
+    <string name="amo_out_err_geo_class">জিও ক্লাসিফিকেশন নির্বাচন করুন।</string>
+    <string name="amo_out_thumb">দোকানের ছবি</string>
+    <string name="amo_out_base_title">বেস রিক্যালিব্রেশন</string>
+    <string name="amo_out_base_button">আপডেট বেস</string>
+    <string name="amo_out_map_title">অবস্থান নিশ্চিত করুন</string>
+    <string name="amo_out_map_confirm">নিশ্চিত করুন</string>
+    <string name="amo_out_map_distance">পিনটি আপনার অবস্থান থেকে %1$s মিটার দূরে (সর্বোচ্চ %2$s মিটার)।</string>
+    <string name="amo_out_map_hint">দোকানের সঠিক বিন্দুতে পিনটি টেনে আনুন।</string>
+    <string name="amo_out_map_offline">মানচিত্রের জন্য ইন্টারনেট লাগবে। বোতাম দিয়ে পিন সরান।</string>
+    <string name="amo_out_list_no_detail">বিস্তারিত অনলাইনে এলে দেখা যাবে</string>
 </resources>

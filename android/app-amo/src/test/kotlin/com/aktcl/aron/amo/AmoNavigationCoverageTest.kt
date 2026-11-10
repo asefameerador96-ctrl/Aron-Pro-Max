@@ -68,8 +68,12 @@ class AmoNavigationCoverageTest {
     }
 
     @Test fun theOutletHubReachesRealScreensForEveryEntry() {
-        listOf("OutletLeaf.PICK_ROUTE", "OutletLeaf.OWN_LIST", "OutletLeaf.VERIFY_LIST", "OutletLeaf.FORM", "OutletLeaf.VERIFY_FORM").forEach { assertTrue("Outlet hub: $it", outlet.contains("$it ->")) }
-        assertTrue("Update Base has its own host", outlet.contains("AmoUpdateBaseHost("))
+        listOf(
+            "OutletLeaf.PICK_ROUTE", "OutletLeaf.OWN_LIST", "OutletLeaf.VERIFY_LIST", "OutletLeaf.VERIFY_FORM", "OutletLeaf.NEW_SHOP", "OutletLeaf.CLOSE", "OutletLeaf.INFO",
+            "OutletLeaf.UPDATE_BASE", "OutletLeaf.CLUSTER_FORM",
+        ).forEach { assertTrue("Outlet hub: $it", outlet.contains("$it ->")) }
+        // A4 (screenshots 54 to 64): every shop operation of the menu has its own host
+        listOf("AmoNewShopHost(", "AmoCloseHost(", "AmoChangeInfoHost(", "AmoUpdateBaseHost(", "AmoVerifyHost(", "VerifyListHost(", "AmoClusterHost(").forEach { assertTrue("Outlet hub host $it", outlet.contains(it)) }
     }
 
     @Test fun theOnlyMenuLeafWithoutAScreenIsAsthaAndItIsHiddenWhileDeferred() {

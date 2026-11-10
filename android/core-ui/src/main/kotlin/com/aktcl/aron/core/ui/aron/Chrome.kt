@@ -189,6 +189,10 @@ fun AronPrinterBadge(connected: Boolean, label: String, onClick: () -> Unit, mod
     }
 }
 
+/** The bottom panel's fill: the vertical ramp of the AMO look (screenshot 41) when it has one, else the solid purple. */
+fun Modifier.panelBackground(look: AronLookColors): Modifier =
+    if (look.panelTop != null) background(Brush.verticalGradient(listOf(look.panelTop, look.panelBottom ?: look.panelTop))) else background(look.panel)
+
 /** True for the buttons of [AronScaffold] that sit on the purple panel: [AronPrimaryButton] then ends its ramp at `panelButtonEnd`. */
 private val LocalOnPanel = staticCompositionLocalOf { false }
 
@@ -217,7 +221,7 @@ fun AronScaffold(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .background(if (bottomPanel != null) look.panel else look.page)
+                    .then(if (bottomPanel == null) Modifier.background(look.page) else Modifier.panelBackground(look))
                     .windowInsetsPadding(WindowInsets.navigationBars),
             ) {
                 bottomPanel?.invoke(this)

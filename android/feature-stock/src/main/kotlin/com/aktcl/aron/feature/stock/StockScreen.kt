@@ -1,5 +1,6 @@
 package com.aktcl.aron.feature.stock
 
+import com.aktcl.aron.core.ui.aron.panelBackground
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -151,7 +152,7 @@ fun StockContent(
                 else -> null
             },
         ).takeIf { it.isNotEmpty() }?.joinToString(stringResource(R.string.stk_reason_join))
-        Column(Modifier.fillMaxWidth().background(look.panel).windowInsetsPadding(WindowInsets.navigationBars)) {
+        Column(Modifier.fillMaxWidth().panelBackground(look).windowInsetsPadding(WindowInsets.navigationBars)) {
             StockTotals(rows, totals, hasStock)
             if (reason != null) Text(reason, color = look.onPanelMuted, fontSize = 12.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp))
             Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -52,9 +52,13 @@ class AmoRecordWriter(
      * now (the server applies the 100 m, move-limit and mock guards). [recordUuid] is fixed when the form opens, so a double tap or a replay
      * queues one record. Returns false when the phone has no usable fix (nothing is queued).
      */
-    suspend fun decideRequest(recordUuid: String, requestUuid: String, verify: Boolean, subChannelId: Long?, geoClass: String?, note: String?, photoUuid: String?): Boolean {
+    suspend fun decideRequest(
+        recordUuid: String, requestUuid: String, verify: Boolean, subChannelId: Long?, geoClass: String?, note: String?, photoUuid: String?,
+        /** The fix taken with the photo on the form (A4, D-AMO-MAN-12), mock flag included; null reads one at the save as before. */
+        capturedFix: com.aktcl.aron.feature.outlet.FixReading? = null,
+    ): Boolean {
         if (requestUuid in decidedRequests()) return true // already decided on this phone: nothing to queue twice
-        val reading = readFix("outlet_verification")
+        val reading = capturedFix ?: readFix("outlet_verification")
         if (!reading.isOk || reading.isMock) return false
         val fixEntity = reading.toEntity(newUuid(), recordUuid, "outlet_verification", 0)
         val fix = com.aktcl.aron.core.database.record.RecordMapping.json.encodeToJsonElement(

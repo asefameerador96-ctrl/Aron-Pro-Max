@@ -26,6 +26,20 @@ object UpdateBasePoint {
     fun move(lat: Double, lng: Double, northM: Int, eastM: Int): Pair<Double, Double> =
         (lat + northM / M_PER_DEG_LAT) to (lng + eastM / (M_PER_DEG_LAT * cos(Math.toRadians(lat))))
 
+    /**
+     * The nearest point to ([lat], [lng]) that lies within [maxM] of the AMO's fix: a drag or a tap beyond the cap lands on the circle's edge,
+     * on the line towards where it was dropped (D-AMO-MAN-13). Flat-earth metres, exact enough for 100 m; the request validator re-checks
+     * with the haversine and the server again at approval.
+     */
+    fun clamp(fixLat: Double, fixLng: Double, lat: Double, lng: Double, maxM: Int): Pair<Double, Double> {
+        val dn = (lat - fixLat) * M_PER_DEG_LAT
+        val de = (lng - fixLng) * M_PER_DEG_LAT * cos(Math.toRadians(fixLat))
+        val d = hypot(dn, de)
+        if (d <= maxM || d == 0.0) return lat to lng
+        val k = maxM / d
+        return (fixLat + dn * k / M_PER_DEG_LAT) to (fixLng + de * k / (M_PER_DEG_LAT * cos(Math.toRadians(fixLat))))
+    }
+
     /** Straight distance of the chosen offset from where the AMO stands, in metres. */
     fun offsetM(northM: Int, eastM: Int): Int = hypot(northM.toDouble(), eastM.toDouble()).roundToInt()
 
