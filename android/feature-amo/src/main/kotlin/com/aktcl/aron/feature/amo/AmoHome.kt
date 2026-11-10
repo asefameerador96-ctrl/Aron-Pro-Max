@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -196,6 +197,8 @@ object AmoHomeTags {
     const val TARGETS = "amo_targets"
     const val COLLAPSE = "amo_collapse"
     const val LOGOUT_DIALOG = "amo_logout_dialog"
+    const val LOGOUT_YES = "amo_logout_yes"
+    const val LOGOUT_NO = "amo_logout_no"
     /** Stable names: today, total, control, joint. */
     fun target(key: String) = "amo_target_$key"
 }
@@ -293,10 +296,14 @@ private fun amoSyncText(state: SyncChipState): String = when (state) {
     is SyncChipState.Waiting -> stringResource(CoreR.string.core_ui_chip_waiting, localizedNumber(state.count.toLong()))
 }
 
+/** A date-like bundle version ("2026-11-07:1") takes locale digits; an identifier with letters ("b-17") is shown as it is. */
+@Composable
+internal fun bundleVersionText(v: String): String = if (v.none { it.isLetter() }) localizedDigits(v) else v
+
 @Composable
 private fun amoBundleLine(status: BundleStatus): String = when (status) {
     BundleStatus.Checking -> stringResource(HomeR.string.home_bundle_checking)
-    is BundleStatus.Ready -> stringResource(HomeR.string.home_bundle_ready, localizedDigits(status.validFor), localizedDigits(status.bundleVersion))
+    is BundleStatus.Ready -> stringResource(HomeR.string.home_bundle_ready, localizedDigits(status.validFor), bundleVersionText(status.bundleVersion))
     BundleStatus.Unchanged -> stringResource(HomeR.string.home_bundle_unchanged)
     BundleStatus.Offline -> stringResource(HomeR.string.home_bundle_offline)
     is BundleStatus.Refused -> stringResource(HomeR.string.home_bundle_refused, status.httpStatus.toString(), status.code ?: "-")
@@ -478,16 +485,21 @@ internal fun AmoLogoutDialog(question: String, note: String, yes: String, no: St
         ) {
             androidx.compose.material3.Icon(AronIcons.Info, contentDescription = null, tint = blue, modifier = Modifier.size(44.dp))
             Text(question, style = inkStyle(18, bold = true, color = blue), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            Text(note, style = inkStyle(13), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(note, style = MaterialTheme.typography.bodySmall.copy(color = LocalAronLook.current.ink), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
-                listOf(Triple(yes, look.primaryStart ?: look.purple, onConfirm), Triple(no, look.stopFill ?: look.red, onDismiss)).forEach { (label, fill, act) ->
-                    Box(
-                        Modifier.heightIn(min = 48.dp).widthIn(min = 72.dp).clip(RoundedCornerShape(8.dp)).background(fill)
-                            .clickable(role = Role.Button, onClick = act).padding(horizontal = 20.dp),
-                        contentAlignment = Alignment.Center,
-                    ) { Text(label, style = inkStyle(16, bold = true, color = Color.White)) }
-                }
+                AmoDialogButton(yes, look.primaryStart ?: look.purple, AmoHomeTags.LOGOUT_YES, onConfirm)
+                AmoDialogButton(no, look.stopFill ?: look.red, AmoHomeTags.LOGOUT_NO, onDismiss)
             }
         }
     }
+}
+
+/** A small rounded-rectangle button of the AMO dialogs: white bold label on a deep [fill] (7:1), at least 48 dp tall. */
+@Composable
+private fun AmoDialogButton(label: String, fill: Color, tag: String, onClick: () -> Unit) {
+    Box(
+        Modifier.testTag(tag).heightIn(min = 48.dp).widthIn(min = 72.dp).clip(RoundedCornerShape(8.dp)).background(fill)
+            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 20.dp),
+        contentAlignment = Alignment.Center,
+    ) { Text(label, style = inkStyle(16, bold = true, color = Color.White)) }
 }

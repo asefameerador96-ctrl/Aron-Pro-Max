@@ -128,11 +128,47 @@ class AmoAppTest {
 
     @Test
     fun theOutletTileKeepsItsRedBadgeAtZeroAndNoOtherTileHasOne() {
-        show(AppLanguage.BN, badges = emptyMap())
-        compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.AmoTile.OUTLET)).performScrollTo()
-        // screenshot 08: a red "০" at zero (Bangla digit); the other tiles draw a badge only above zero
-        compose.onNode(hasText("০") and hasAnyAncestor(hasTestTag(RoleHomeTags.tile(RoleHomes.AmoTile.OUTLET))), useUnmergedTree = true).assertExists()
-        compose.onNode(hasText("০") and hasAnyAncestor(hasTestTag(RoleHomeTags.tile(RoleHomes.AmoTile.ATTENDANCE))), useUnmergedTree = true).assertDoesNotExist()
+        val context = show(AppLanguage.BN, badges = emptyMap())
+        val outlet = RoleHomeTags.tile(RoleHomes.AmoTile.OUTLET)
+        compose.onNodeWithTag(outlet).performScrollTo()
+        // screenshot 08: a red "০" (Bangla digit) at zero
+        compose.onNode(hasText("০") and hasAnyAncestor(hasTestTag(outlet)), useUnmergedTree = true).assertExists()
+        // every other tile draws no badge at zero
+        AmoMenu.tiles(AmoReach(3, 0)).filter { RoleHomeTags.tile(it.id) != outlet }.forEach {
+            compose.onNode(hasText("০") and hasAnyAncestor(hasTestTag(RoleHomeTags.tile(it.id))), useUnmergedTree = true).assertDoesNotExist()
+        }
+        // TalkBack: at zero the badge announces nothing (a count is read only above zero), so no tile carries the count description
+        compose.onNode(hasContentDescription(context.getString(CoreR.string.core_ui_tile_badge, "০")), useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    private fun openLogoutDialog(onLogout: () -> Unit): Context {
+        val context = show(AppLanguage.EN, user = user.copy(offline = false), onLogout = onLogout)
+        compose.onNodeWithTag(RoleHomeTags.tile("settings")).performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(HomeTags.LOGOUT).performScrollTo().performClick()
+        compose.waitForIdle()
+        return context
+    }
+
+    @Test
+    fun logoutDialogYesLogsOutAndNoDismisses_yesIsLeftOfNo() {
+        var loggedOut = 0
+        openLogoutDialog { loggedOut++ }
+        // screenshot 77: the green yes sits left of the red no
+        val yes = compose.onNodeWithTag(AmoHomeTags.LOGOUT_YES).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val no = compose.onNodeWithTag(AmoHomeTags.LOGOUT_NO).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("yes ${yes.left} must be left of no ${no.left}", yes.right <= no.left)
+        // no dismisses and nothing happens
+        compose.onNodeWithTag(AmoHomeTags.LOGOUT_NO).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(AmoHomeTags.LOGOUT_DIALOG).assertDoesNotExist()
+        assertEquals(0, loggedOut)
+        // yes logs out
+        compose.onNodeWithTag(HomeTags.LOGOUT).performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(AmoHomeTags.LOGOUT_YES).performClick()
+        compose.waitForIdle()
+        assertEquals(1, loggedOut)
     }
 
     @Test
