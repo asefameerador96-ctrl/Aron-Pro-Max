@@ -102,7 +102,8 @@ class AmoVerificationRouteClusterTest {
             // a cluster alone, of the other zone, is the same
             val cu2 = UUID.randomUUID().toString()
             val b = ack(sync(amo, listOf(record("outlet_request_verification", payload(pendingRequest(), ""","cluster_id":${i.lkxCluster}"""), i.mirRoute, cu = cu2))), cu2)
-            assertEquals("scope_out_of_reach", b.code(), "$b")
+            assertEquals("quarantined", b.status(), "$b"); assertEquals("scope_out_of_reach", b.code(), "$b")
+            assertEquals(0L, one("SELECT count(*) FROM app.outlet_request_event WHERE client_uuid = CAST('$cu2' AS uuid)"))
         }
     }
 
