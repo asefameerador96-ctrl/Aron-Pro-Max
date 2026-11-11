@@ -42,7 +42,7 @@ const pairs = {
   "disc.stacking.exclusive": ["Exclusive (does not combine)", "এককভাবে (অন্যটির সাথে মেলে না)"],
   "disc.stacking.stackable": ["Stackable", "একসাথে প্রযোজ্য"],
   "disc.value.pct": ["{pct} off", "{pct} ছাড়"],
-  "disc.value.amount": ["৳{amount} off per {unit}", "প্রতি {unit} ৳{amount} ছাড়"],
+  "disc.value.amount": ["Tk {amount} off per {unit}", "প্রতি {unit} ৳{amount} ছাড়"],
   "disc.value.free": ["Buy {qty}, get {reward} free", "{qty} কিনলে {reward} বিনামূল্যে"],
   "disc.value.none": ["No rule set", "কোনো নিয়ম নেই"],
   "disc.unit.packet": ["packet", "প্যাকেট"],
