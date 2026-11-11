@@ -97,6 +97,26 @@ describe("integer money, percent and quantity", () => {
     expect(qtyText("en", 50, unitCtx([BOX]))).toBe("2 box(es) (50 piece(s))");
     expect(qtyText("bn", 50, unitCtx([BOX]))).toContain("২ বক্স");
   });
+  it("bidi is counted in packets of its own stick count (pack_factor 25 and 12, base stick): the word is packet and a mix of the two is base units", () => {
+    const B25: OfferSkuUnit = { sku_id: 20, base_unit: "stick", pack_factor: 25, field_unit: "pack" };
+    const B12: OfferSkuUnit = { sku_id: 21, base_unit: "stick", pack_factor: 12, field_unit: "pack" };
+    expect(displayUnit(B25)).toBe("packet");
+    expect(displayUnit(B12)).toBe("packet");
+    expect(unitCtx([B25])).toEqual({ packFactor: 25, fieldUnit: "packet", baseUnit: "stick" });
+    expect(unitCtx([B25, { ...B25, sku_id: 22 }])?.packFactor).toBe(25);
+    expect(unitCtx([B25, B12])).toBeNull(); // two pack sizes: quantities stay in sticks
+    expect(qtyText("en", 50, unitCtx([B25]))).toBe("2 packet(s) (50 stick(s))");
+    expect(qtyText("en", 36, unitCtx([B12]))).toBe("3 packet(s) (36 stick(s))");
+    expect(fieldQtyToBase("2", 12)).toBe(24);
+  });
+  it("the category decides the word when the caller has it; the base unit is the fallback", () => {
+    expect(displayUnit({ field_unit: "pack", base_unit: "stick", category_code: "bidi" })).toBe("packet");
+    expect(displayUnit({ field_unit: "pack", base_unit: "piece", category_code: "lighter" })).toBe("box");
+    expect(displayUnit({ field_unit: "dozen", base_unit: "dozen", category_code: "match" })).toBe("dozen");
+    expect(displayUnit({ field_unit: "pack", base_unit: "piece" })).toBe("box"); // no category on the wire: base unit
+    expect(displayUnit({ field_unit: "piece", base_unit: "piece", category_code: "other" })).toBe("piece");
+    expect(displayUnit({ field_unit: "pack", base_unit: "stick", category_code: "lighter" })).toBe("box"); // the category wins over a base-unit guess
+  });
   it("units are common only when every SKU counts the same way", () => {
     expect(unitCtx([P20, { ...P20, sku_id: 3 }])).toEqual({ packFactor: 20, fieldUnit: "packet", baseUnit: "stick" });
     expect(unitCtx([P20, P10])).toBeNull();
@@ -204,7 +224,7 @@ describe("form to contract", () => {
     const kept = save(fq, (f) => ({ ...f, title_en: "Renamed" }));
     expect(kept).toEqual({ request_uuid: "0b6d6c0e-8a5b-4d56-9f0a-3f1d3a4b5c6d", title_en: "Renamed", change_reason: "A reason that is long enough" }); // discount_bp 250 untouched
   });
-  it("reunit clears a threshold and a reward quantity that are not whole numbers in their old unit", () => {
+  it("reunit clears a threshold and a reward quantity that are not valid numbers in their old unit", () => {
     const f1 = base({ offer_type: "free_qty", threshold: "1.5", rewardSku: "2", rewardQty: "x" });
     const mixed = { ...f1, qualifying: [...f1.qualifying, { product_level: "sku" as const, product_id: 1 }], rewardSku: "1" };
     const re = reunit(mixed, f1, deriveUnits(f1, unitOf), deriveUnits(mixed, unitOf));
@@ -279,8 +299,8 @@ describe("display", () => {
     expect(amountPerUnitText("en", 100, unitCtx([P20]))).toBe("2.000");
     expect(amountPerUnitText("en", 100, null)).toBe("0.100");
     expect(valueText("en", offer({ discount_bp: 1250 }))).toBe("12.50% off");
-    expect(valueText("en", offer({ offer_type: "amount_per_unit", discount_mtk_per_unit: 100 }))).toBe("৳2.000 off per packet");
-    expect(valueText("en", offer({ offer_type: "amount_per_unit", discount_mtk_per_unit: 100, qualifying: [{ product_level: "brand", product_id: 1 }] }))).toBe("৳0.100 off per base unit");
+    expect(valueText("en", offer({ offer_type: "amount_per_unit", discount_mtk_per_unit: 100 }))).toBe("Tk 2.000 off per packet");
+    expect(valueText("en", offer({ offer_type: "amount_per_unit", discount_mtk_per_unit: 100, qualifying: [{ product_level: "brand", product_id: 1 }] }))).toBe("Tk 0.100 off per base unit");
     expect(valueText("en", offer({ offer_type: "free_qty", threshold_qty_base: 60, reward_sku_id: 2, reward_qty_base: 20 }))).toBe("Buy 3 packet(s) (60 stick(s)), get 1 packet(s) (20 stick(s)) free");
     expect(valueText("en", offer({ offer_type: "drp_slide" }))).toBe("No rule set");
   });

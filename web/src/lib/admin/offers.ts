@@ -71,12 +71,18 @@ export function mtkText(mtk: number | bigint): string {
   return `${neg ? "-" : ""}${whole}${frac ? `.${frac}` : ""}`;
 }
 
-/** The field unit of a set of SKUs, when they all count the same way; null for none or a mix (then quantities are base units). */
 /** The WORD the field apps and the portal show for a counting unit (units rule 5, docs/34 s4.2): packet for cigarettes and bidi (sticks),
  *  box for lighters (pieces, a box of 25), dozen for matches. The contract (1.12.1) sends the one `QtyUnit` word `pack` for both
  *  packet and box; the label is derived from the base unit as the Android UnitWords do. */
 export type DisplayUnit = "packet" | "box" | "dozen" | "piece" | "stick";
-export function displayUnit(u: Pick<OfferSkuUnit, "field_unit" | "base_unit">): DisplayUnit {
+/** An OfferSkuUnit, plus the SKU category when the caller has it (the admin SKU list carries `category_code`; the offer wire does not). */
+export type SkuUnit = OfferSkuUnit & { category_code?: string };
+const CATEGORY_WORD: Record<string, DisplayUnit> = { cigarette: "packet", bidi: "packet", lighter: "box", match: "dozen" };
+/** The word for a unit: keyed on the category when the wire carries it (the category decides packet / box / dozen), else on the base unit
+ *  (a stick base is a packet, a piece base is a box), which is safe because the admin API enforces the category's base unit. */
+export function displayUnit(u: Pick<SkuUnit, "field_unit" | "base_unit" | "category_code">): DisplayUnit {
+  const byCategory = u.category_code ? CATEGORY_WORD[u.category_code] : undefined;
+  if (byCategory && u.field_unit !== "piece" && u.field_unit !== "stick") return byCategory;
   if (u.field_unit === "pack") return u.base_unit === "piece" ? "box" : "packet";
   return u.field_unit;
 }
@@ -86,7 +92,8 @@ export interface UnitCtx {
   fieldUnit: DisplayUnit;
   baseUnit: OfferSkuUnit["base_unit"];
 }
-export function unitCtx(units: readonly OfferSkuUnit[]): UnitCtx | null {
+/** The field unit of a set of SKUs, when they all count the same way; null for none or a mix (then quantities are base units). */
+export function unitCtx(units: readonly SkuUnit[]): UnitCtx | null {
   const first = units[0];
   if (!first) return null;
   const same = units.every((u) => u.pack_factor === first.pack_factor && displayUnit(u) === displayUnit(first) && u.base_unit === first.base_unit);
