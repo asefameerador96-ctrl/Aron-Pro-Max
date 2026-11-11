@@ -14,6 +14,9 @@ import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
+import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.header
+import io.ktor.client.request.request
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
@@ -40,8 +43,9 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
- * Discount-programme portal API (lane portal-discount-api, train 2; D-DISC-API-03): /v1/admin/offers for the six operations of
- * contract 1.12.0. Every endpoint has a happy path, 400, 403, 409 and replay case; the scope matrix runs the seven portal
+ * Discount-programme portal API (lane portal-discount-api, train 2; D-DISC-API-04): /v1/admin/offers for the six operations of
+ * contract 1.12.1. The writes (create, update, status) each have a happy path, 400, 403, 409 and replay case (update also 412 and 404, status
+ * also 404); the three reads have a happy path, 400 on a bad query or path, 403 and 404 and no 409 or replay (they change nothing); the scope matrix runs the seven portal
  * levels (SUPERADMIN, ADMIN, NATIONAL, BRAND, WM, DMO, TSO) and the refused roles (SR, AMO, SUPPORT, ANALYST) through the real
  * guard (PortalLevels and AdminModules run exactly as in production).
  */
@@ -116,6 +120,8 @@ class AdminOffersTest {
 
     // ------------------------------------------------------------------------------------------------ plumbing
 
+    private val phoneDevice = UUID.randomUUID().toString()
+
     private fun tok(user: String, role: Role, modules: Map<String, String>? = null, flavour: String = "web"): String {
         // wall-clock-ok: token validity window against the app guard, which verifies with the system clock
         val now = Instant.now()
@@ -124,7 +130,7 @@ class AdminOffersTest {
             .claim("amr", if (role.wire in listOf("ADMIN", "SUPERADMIN", "SUPPORT")) listOf("pwd", "mfa") else listOf("pwd"))
             .issueTime(Date.from(now)).notBeforeTime(Date.from(now)).expirationTime(Date.from(now.plusSeconds(900))).jwtID(UUID.randomUUID().toString())
         if (modules != null) b.claim("modules", modules)
-        if (flavour != "web") b.claim("dvu", UUID.randomUUID().toString()).claim("did", 1L)
+        if (flavour != "web") b.claim("dvu", phoneDevice).claim("did", 1L)
         return SignedJWT(JWSHeader.Builder(JWSAlgorithm.ES256).keyID("t").build(), b.build()).apply { sign(TestTokens.keys.signer) }.serialize()
     }
 
@@ -206,6 +212,7 @@ class AdminOffersTest {
 
     @Test
     fun createRefusesWhatTheV0003ChecksAndTheV1LimitsRefuse() = app {
+        val offersBefore = count("SELECT count(*) FROM app.offer")
         val bad = listOf(
             "missing request_uuid" to createBody().replace(Regex("\"request_uuid\":\"[^\"]+\","), "") to "body.request_uuid",
             "request_uuid not v4" to createBody(request = "123e4567-e89b-12d3-a456-426614174000") to "body.request_uuid",
@@ -236,7 +243,7 @@ class AdminOffersTest {
             val (label, payload) = labelAndBody
             create(super1, payload).also { println("400 case: $label") }.expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", pointer)
         }
-        assertEquals(0, count("SELECT count(*) FROM app.offer WHERE code LIKE 'Title%'"))
+        assertEquals(offersBefore, count("SELECT count(*) FROM app.offer"), "no refused create left a row")
     }
 
     @Test
@@ -255,6 +262,13 @@ class AdminOffersTest {
         create(super1, createBody(code(), request)).expect(HttpStatusCode.Conflict, "ERR_CONFLICT")
         create(super1, createBody(code, uuid())).expect(HttpStatusCode.Conflict, "ERR_MASTER_DUPLICATE_CODE")
         assertEquals(offers, count("SELECT count(*) FROM app.offer"))
+        // A request_uuid that made a status move cannot be reused for a create, and the reverse.
+        val moved = createId(createBody()); val statusUuid = uuid()
+        call(HttpMethod.Post, "/v1/admin/offers/$moved/status", super1, """{"request_uuid":"$statusUuid","to_status":"active","reason":"$why"}""").expect(HttpStatusCode.OK)
+        create(super1, createBody(code(), statusUuid)).expect(HttpStatusCode.Conflict, "ERR_CONFLICT")
+        val other = createId(createBody())
+        call(HttpMethod.Post, "/v1/admin/offers/$other/status", super1, """{"request_uuid":"$request","to_status":"active","reason":"$why"}""").expect(HttpStatusCode.Conflict, "ERR_CONFLICT")
+        assertEquals("draft", scalar("SELECT status FROM app.offer WHERE id = $other"))
     }
 
     // ------------------------------------------------------------------------------------------------ updateOffer
@@ -443,6 +457,8 @@ class AdminOffersTest {
         }
         // (The guard stops a phone token without its device proof before the handler; the handler also refuses any phone principal.)
         call(HttpMethod.Get, "/v1/admin/offers", tok("tso3001", Role.TSO, flavour = "tso")).expect(HttpStatusCode.Unauthorized, "ERR_DEVICE_PROOF_INVALID")
+        // With the device header the token binds to, the call reaches the handler, which refuses a phone principal.
+        client.request("/v1/admin/offers") { method = HttpMethod.Get; bearerAuth(tok("tso3001", Role.TSO, flavour = "tso")); header("X-Device-Id", phoneDevice) }.expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN")
 
         // Writes: only SUPERADMIN and ADMIN with the w grant. Everyone else, every level, is refused and nothing is written.
         val before = count("SELECT count(*) FROM app.offer")

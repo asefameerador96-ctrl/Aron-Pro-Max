@@ -11,6 +11,12 @@ Branch `lane/portal-discount-api` from INT `claude/wonderful-thompson-k6ejnf`. P
 - `tools/ci/contract-breaking.sh <INT 34bef94a1> <oasdiff>`: 39 breaking by rule, all `response-property-enum-value-added` (`discounts` on `AdminModule`, the `QtyUnit` words on `OfferSkuUnit.field_unit` where `Offer` is a oneOf member of the sync responses); approved by the version bump 1.12.0 to 1.12.1 and docs/requests/contract-1.12-discount-portal.md (1.12.1 section) under D-LEAD-CONTRACT-112-01, to be confirmed by the lead; `contract: ok`. (Against the pre-train-92 base, 1.11.2 to 1.12.0, the same gate reported 15 for `draft` on `Offer.status`.)
 - Redocly 2.59.0 clean; `python3 tools/slice-contract.py --check` clean.
 
+## Deploy hazard (D-DISC-API-06)
+The 1.12.1 head must land together with Lane B's web head that adds `discounts` to GRANT_MODULES/modules.ts/menu. Alone, the contract turns the web CI red (tso-integration-web.test.tsx requires the AdminModule enum to equal GRANT_MODULES) and the deployed grants editor would drop every carried-over `discounts` grant on save. Never deploy the API alone.
+
+## Follow-ups (not done)
+Replay returns the stored version with the current status and ETag; `setOfferStatus` has no If-Match; no DB guard on status transitions; base quantities are not checked against pack_factor; old ADMIN tokens lacking the `discounts` claim get 401 ERR_SCOPE_CHANGED until refresh.
+
 ## Not done / not tested
 - Web (Lane B): `GRANT_MODULES` in web/src/lib/admin/access-grants.ts, modules.ts and the i18n keys do not know `discounts` yet; the pages do not exist.
 - The Android MoneyGateReviewTest needs the Android SDK and no android/ file changed; it was not run here.

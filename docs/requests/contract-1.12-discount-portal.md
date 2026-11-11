@@ -4,7 +4,7 @@ Approved by the lead as **D-LEAD-CONTRACT-112-01** (DECISIONS.md, 2026-11-11 08:
 response enum that gains a value; the oasdiff gate (`tools/ci/contract-breaking.sh`) reports that one as breaking, and this file
 is the lead-approved request that lets the same push (info.version 1.11.2 to 1.12.0) pass. No shipped client reads it: the bundle
 `offers` array is empty, the apps do not call the offer operations, and the web page does not exist yet. The field is unchanged
-(memo offer line zero, bundle `offers` empty; docs/27). Records: D-DISC-API-01 to 04.
+(memo offer line zero, bundle `offers` empty; docs/27). Records: D-DISC-API-01 to 05.
 
 ## The enum addition (the one breaking-by-rule change)
 
@@ -28,9 +28,10 @@ and their descriptions state the new rules (create makes a draft; update appends
   second breaking change). `OfferPatch` also gains optional `valid_from`, `offer_type`, `level`, `stacking`, `reward_sku_id`,
   `qualifying`, `scope`; its `status` member stays (deprecated, refused with 400).
 - `Offer`: optional `version_no`, `change_reason`, `created_at`, `updated_at`, `sku_units`.
-- `AdminModule` gains `discounts`. It is also a response enum (`Me.modules`, `UserAccess.modules` key on it), so this line is the second part of the same approval under D-LEAD-CONTRACT-112-01 (the permission module of the portal; `/v1/admin/offers/**` moves off `targets`; migration V0154/V0155 widens the grant CHECK and carries every ADMIN's `targets` access over).
 
 ## 1.12.1 (train 2 of the lane; approved by the lead as D-LEAD-CONTRACT-1121-01, 2026-11-11 11:12 UTC)
+
+The changelog entry of 1.12.0 in `info.description` is as it shipped; everything added after train 92 is under 1.12.1.
 
 Version 1.12.0 is on INT (train 92). Train 2 adds the routes and two contract changes that the lead asked for in the verdict on 5f694a0b5:
 `AdminModule` gains `discounts` (a response enum: `Me.modules`, `UserAccess.modules`), and `OfferSkuUnit.field_unit` takes the contract's

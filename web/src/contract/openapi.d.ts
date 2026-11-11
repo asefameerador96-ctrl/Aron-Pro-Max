@@ -10831,7 +10831,7 @@ export interface components {
             reason: components["schemas"]["ChangeReason"];
         };
         /**
-         * @description The fixed module list of an ADMIN user's grants (docs/34 s1). `discounts` from contract 1.12.0: the discount-programme portal (`/v1/admin/offers` and everything under it, moved off `targets`). `support` from contract 1.10.0 (lead ruling R-F-11): the support ticket routes (`/v1/support/tickets` and every path under it) belong to it; the support-desk permission stays `support.ticket.manage` (`Me.support_desk`).
+         * @description The fixed module list of an ADMIN user's grants (docs/34 s1). `discounts` from contract 1.12.1: the discount-programme portal (`/v1/admin/offers` and everything under it, moved off `targets`). `support` from contract 1.10.0 (lead ruling R-F-11): the support ticket routes (`/v1/support/tickets` and every path under it) belong to it; the support-desk permission stays `support.ticket.manage` (`Me.support_desk`).
          * @enum {string}
          */
         AdminModule: "masterdata" | "routes" | "outlets" | "products" | "prices" | "users" | "targets" | "credentials" | "mdm" | "reports" | "config" | "data_entry" | "indent" | "leaderboard" | "daily_tracking" | "support" | "discounts";

@@ -434,7 +434,8 @@ private fun fingerprint(kind: String, offerId: Long?, o: JsonObject): String {
             val v = o.getValue(k)
             append('|').append(k).append('=').append(
                 when {
-                    k == "change_reason" -> (v as? JsonPrimitive)?.content?.trim() ?: v.toString()
+                    // JSON-encoded like every other member, so a reason holding "|" or "=" cannot be read as another member.
+                    k == "change_reason" -> ((v as? JsonPrimitive)?.takeIf { it.isString }?.let { JsonPrimitive(it.content.trim()) } ?: v).toString()
                     k == "qualifying" || k == "scope" -> (v as? JsonArray)?.map { e -> (e as? JsonObject)?.entries?.sortedBy { it.key }?.joinToString(",") { "${it.key}:${it.value}" } ?: e.toString() }?.sorted()?.joinToString(";") ?: v.toString()
                     else -> v.toString()
                 },
@@ -479,6 +480,12 @@ private data class Prior(val versionId: Long, val offerId: Long, val versionNo: 
 private fun priorRequest(h: Handle, uuid: UUID): Prior? = h.createQuery("SELECT id, offer_id, version_no, request_fingerprint FROM app.offer_version WHERE request_uuid = :u").bind("u", uuid)
     .map { rs, _ -> Prior(rs.getLong(1), rs.getLong(2), rs.getInt(3), rs.getString(4)) }.findOne().orElse(null)
 
+/** A request_uuid is one call: if it already made a status move, a create or a patch with it is a conflict (and the reverse in [setStatus]). */
+private fun uuidUsedByStatus(h: Handle, uuid: UUID): Boolean =
+    h.createQuery("SELECT 1 FROM app.offer_status_change WHERE request_uuid = :u").bind("u", uuid).mapTo(Int::class.java).findOne().isPresent
+
+private fun uuidUsedByVersion(h: Handle, uuid: UUID): Boolean = priorRequest(h, uuid) != null
+
 private fun conflict(msg: String) = ApiProblem(ProblemCode.ERR_CONFLICT, msg, errors = listOf(FieldError("body.request_uuid", "reused")))
 
 // ------------------------------------------------------------------------------------------------ writing: handlers
@@ -500,6 +507,7 @@ private suspend fun createOffer(call: ApplicationCall, d: AdminOffersDeps): Pair
                 if (prior.fingerprint != fp || prior.versionNo != 1) throw conflict("request_uuid already used for a different call")
                 return@inTransaction loadOffer(h, prior.offerId, prior.versionId)!! to HttpStatusCode.Created
             }
+            if (uuidUsedByStatus(h, uuid)) throw conflict("request_uuid already used for a status change")
             if (h.createQuery("SELECT 1 FROM app.offer WHERE code = :c").bind("c", code).mapTo(Int::class.java).findOne().isPresent)
                 throw ApiProblem(ProblemCode.ERR_MASTER_DUPLICATE_CODE, "a discount programme with this code already exists", errors = listOf(FieldError("body.code", "duplicate")))
             refsExist(h, spec)
@@ -532,6 +540,7 @@ private suspend fun updateOffer(call: ApplicationCall, d: AdminOffersDeps): Offe
                 if (prior.fingerprint != fp || prior.offerId != id) throw conflict("request_uuid already used for a different call")
                 return@inTransaction loadOffer(h, prior.offerId, prior.versionId)!!
             }
+            if (uuidUsedByStatus(h, uuid)) throw conflict("request_uuid already used for a status change")
             val cur = loadOffer(h, id, lock = true) ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no discount programme with this id")
             if (cur.status != "draft") throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "only a draft can change; an ${cur.status} programme is final (create a new one)")
             if (cur.version != ifMatch) preconditionFailed(cur.version)
@@ -570,6 +579,7 @@ private suspend fun setStatus(call: ApplicationCall, d: AdminOffersDeps): OfferO
                     if (offer != id || status != to || why != reason) throw conflict("request_uuid already used for a different call")
                     return@inTransaction loadOffer(h, id)!!
                 }
+            if (uuidUsedByVersion(h, uuid)) throw conflict("request_uuid already used for a create or an update")
             val cur = loadOffer(h, id, lock = true) ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no discount programme with this id")
             val allowed = (cur.status == "draft" && to == "active") || (cur.status == "active" && to == "inactive")
             if (!allowed) throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "a ${cur.status} programme cannot move to $to (allowed: draft to active, active to inactive)")
