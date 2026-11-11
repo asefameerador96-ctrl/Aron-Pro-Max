@@ -51,6 +51,13 @@ class LiveDashboardCategoriesTest {
         assertEquals(80_000_000L, by.getValue("cigarette").netMtk)
     }
 
+    @Test fun aMissingBaseUnitUsesTheCategorysAndAnUnknownEntryUnitFallsBackToTheExactBaseQuantity() {
+        val j = """{"sales_by_category":[{"category_code":"lighter","qty_base":75,"net_mtk":1},{"category_code":"cigarette","base_unit":"stick","qty_base":30,"net_mtk":1,"entry_unit":"box","qty_entered":"3.000"}]}"""
+        val by = LiveDashboard.categories(kotlinx.serialization.json.Json.parseToJsonElement(j) as kotlinx.serialization.json.JsonObject).associateBy { it.code }
+        assertEquals("75", by.getValue("lighter").qtyText); assertEquals("piece", by.getValue("lighter").unitKey)
+        assertEquals("30", by.getValue("cigarette").qtyText); assertEquals("stick", by.getValue("cigarette").unitKey)
+    }
+
     @Test fun anOlderServerWithoutTheMembersGivesNullsAndNoCategories() {
         val f = LiveDashboard.parse(summary, """{"kpis":{"target_routes":2},"not_logged_in":[],"logged_in_not_submitted":[],"submitted":[]}""")!!
         assertNull(f.geoValidVisits); assertNull(f.photoValidVisits); assertNull(f.visitsTotal); assertTrue(f.categories.isEmpty())

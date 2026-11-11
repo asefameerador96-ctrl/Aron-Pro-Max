@@ -50,7 +50,7 @@
     <string name="amo_live_cat_bidi">Bidi</string>
     <string name="amo_live_cat_lighter">Lighter</string>
     <string name="amo_live_cat_match">Match</string>
-    <string name="amo_live_photo_valid">Calls with a photo check</string>
+    <string name="amo_live_photo_valid">Photo validation</string>
     <string name="amo_live_memos">%1$s memos</string>
-    <string name="amo_live_geo_visits">Geo-valid calls</string>
+    <string name="amo_live_geo_visits">Geo validation</string>
 </resources>

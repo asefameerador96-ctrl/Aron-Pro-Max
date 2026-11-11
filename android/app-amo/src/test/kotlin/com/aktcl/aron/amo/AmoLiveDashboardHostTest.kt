@@ -61,6 +61,7 @@ class AmoLiveDashboardHostTest {
         keep(kept)
         show()
         compose.waitUntil(8_000) { shown("62.5 packets") }
+        compose.onNodeWithText("List from the last time you were online.").assertExists() // the kept-copy notice
         compose.onNodeWithText("Cigarette").assertExists()
         compose.onNodeWithText("2 of 3").assertExists() // geo-valid visits
         compose.onNodeWithText("1 of 3").assertExists() // photo-valid visits

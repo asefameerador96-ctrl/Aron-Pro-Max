@@ -64,8 +64,9 @@ object LiveDashboard {
         val code = (c["category_code"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
         val entered = (c["qty_entered"] as? JsonPrimitive)?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.contentOrNull?.let(::decimalText)
         val entry = (c["entry_unit"] as? JsonPrimitive)?.contentOrNull
-        val baseUnit = (c["base_unit"] as? JsonPrimitive)?.contentOrNull ?: "stick"
-        val (qty, unit) = if (entered != null && entry != null) entered to com.aktcl.aron.rules.EntryUnits.labelKey(code, if (entry == "dozen") com.aktcl.aron.rules.QtyUnit.DOZEN else com.aktcl.aron.rules.QtyUnit.PACK)
+        val baseUnit = (c["base_unit"] as? JsonPrimitive)?.contentOrNull ?: com.aktcl.aron.rules.EntryUnits.baseLabelKey(code)
+        val entryUnit = when (entry) { "pack" -> com.aktcl.aron.rules.QtyUnit.PACK; "dozen" -> com.aktcl.aron.rules.QtyUnit.DOZEN; else -> null } // an entry unit this phone does not know falls back to the exact base quantity
+        val (qty, unit) = if (entered != null && entryUnit != null) entered to com.aktcl.aron.rules.EntryUnits.labelKey(code, entryUnit)
             else l(c, "qty_base").toString() to baseUnit
         LiveCategory(code, qty, unit, l(c, "net_mtk"), nl(c, "memos"))
     }
