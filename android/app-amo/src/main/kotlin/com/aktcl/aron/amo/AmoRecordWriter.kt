@@ -89,16 +89,19 @@ class AmoRecordWriter(
     }
 
     /**
-     * The code the server sent back for this phone's latest decision on [requestUuid] when it refused or held it (outbox rejected or
-     * quarantined: `unknown_route`, `schema_invalid`, `scope_out_of_reach`), else null. Such a decision does not hide the request, and the
-     * next decision takes a new record uuid.
+     * What the server sent back for this phone's newest decision on [requestUuid] when it refused (outbox `rejected`) or held it
+     * (`quarantined`): the state and its code (`unknown_route`, `schema_invalid`, `scope_out_of_reach`), else null. A refused decision does not hide the
+     * request and the corrected save takes a new record uuid; a held one blocks a new decision until it is resolved (a reviewer can still accept the
+     * held record, and the guarded verify applies only while the request is pending, so a second decision would either duplicate or be overridden).
      */
-    suspend fun refusedDecisionCode(requestUuid: String): String? = db.captureDao().amoRecordsOfType("outlet_request_verification").mapNotNull { r ->
-        val uuid = runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(r.payloadJson) as kotlinx.serialization.json.JsonObject)["request_uuid"]?.let { v -> (v as kotlinx.serialization.json.JsonPrimitive).content } }.getOrNull()
-        if (uuid != requestUuid) return@mapNotNull null
+    suspend fun refusedDecision(requestUuid: String): Pair<String, String>? = db.captureDao().amoRecordsOfType("outlet_request_verification").filter { r ->
+        runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(r.payloadJson) as kotlinx.serialization.json.JsonObject)["request_uuid"]?.let { v -> (v as kotlinx.serialization.json.JsonPrimitive).content } }.getOrNull() == requestUuid
+    }.lastOrNull()?.let { r ->
         val ob = db.outboxDao().byClientUuid(r.clientUuid)
-        if (ob?.state == com.aktcl.aron.core.database.entity.OutboxState.REJECTED || ob?.state == com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED) ob.lastCode ?: "rejected" else null
-    }.lastOrNull()
+        if (ob?.state == com.aktcl.aron.core.database.entity.OutboxState.REJECTED || ob?.state == com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED) ob.state to (ob.lastCode ?: "rejected") else null
+    }
+
+    suspend fun refusedDecisionCode(requestUuid: String): String? = refusedDecision(requestUuid)?.second
 
     suspend fun decidedSignals(): Set<Long> = db.captureDao().amoRecordsOfType("risk_review").filter { r ->
         // A review the server refused (rejected, quarantined) does not hide the signal: it can be reviewed again.

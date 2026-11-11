@@ -103,8 +103,11 @@ internal fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGon
     val draftKey = "verify:${req.uuid}"
     var recordUuid by remember(draftKey) { mutableStateOf(day.drafts.uuid(draftKey)) }
     var refusedCode by remember(uuid) { mutableStateOf<String?>(null) }
+    var held by remember(uuid) { mutableStateOf(false) }
     var routeDays by remember { mutableStateOf<List<com.aktcl.aron.core.database.repo.RouteDay>>(emptyList()) }
-    LaunchedEffect(uuid) { refusedCode = runCatching { day.refusedDecisionCode(req.uuid) }.getOrNull(); routeDays = runCatching { day.routes() }.getOrDefault(emptyList()) }
+    LaunchedEffect(uuid) { routeDays = runCatching { day.routes() }.getOrDefault(emptyList()) }
+    // a sync can answer while the form is open: the notice follows the newest decision (a local read every few seconds)
+    LaunchedEffect(uuid) { while (true) { val d = runCatching { day.refusedDecision(req.uuid) }.getOrNull(); refusedCode = d?.second; held = d?.first == com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED; kotlinx.coroutines.delay(4000) } }
     var routeSel by rememberSaveable(uuid) { mutableStateOf<Long?>(null) }
     var clusterSel by rememberSaveable(uuid) { mutableStateOf<Long?>(null) }
     var subId by rememberSaveable(uuid) { mutableStateOf<Long?>(null) }
@@ -144,31 +147,31 @@ internal fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGon
     val decidable = detail !is VerifyDetailState.Gone && (loaded?.takeIf { it.fresh }?.let { OutletVerify.decidable(it.detail, day.userId) } ?: true)
     // The form's own pickers: device ids of the downloaded masterdata, the SR's/outlet's route and cluster as the start; the payload carries them (never the envelope route)
     val effRoute = routeSel ?: req.routeId ?: outlet?.routeId
-    val effCluster = clusterSel ?: if (routeSel != null) null else req.clusterId ?: proposed["cluster_id"]?.toLongOrNull() ?: outlet?.clusterId
+    val effCluster = clusterSel ?: if (routeSel != null) null else (req.clusterId ?: proposed["cluster_id"]?.toLongOrNull() ?: outlet?.clusterId)
     fun decide(verify: Boolean) {
-        val e = OutletVerify.validate(req.type, verify, subId, geo, captured = cap.photo != null && cap.fix?.isOk == true)
+        val e = OutletVerify.validate(req.type, verify, subId, geo, captured = cap.photo != null && cap.fix?.isOk == true, clusterMissing = routeSel != null && clusterSel == null)
         errors = e
         if (e.isNotEmpty() || busy) return
         busy = true; noFix = false
         scope.launch {
             val ask = req.type == "new"
             var threw = false
-            val ok = try {
-                // a decision the server refused or held is not the one to replay: the corrected form is a new record (contract 1.11.1)
-                if (day.refusedDecisionCode(req.uuid) != null) { day.drafts.clear(draftKey); recordUuid = day.drafts.uuid(draftKey) }
-                day.decideRequest(
-                    recordUuid, req.uuid, verify, if (verify && ask) subId else null, if (verify && ask) geo else null, null,
-                    if (verify && ask) cap.photo?.photoUuid else null, if (verify && ask) cap.fix else null,
-                    routeId = if (verify) effRoute else null, clusterId = if (verify) effCluster else null,
+            var outcome: VerifyOutcome? = null
+            try {
+                outcome = day.decideFromForm(
+                    draftKey, req.uuid, recordUuid,
+                    VerifyChoice(verify, subId, geo, cap.photo?.photoUuid, cap.fix, routeSel, clusterSel, ask),
                 )
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { threw = true; false }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { threw = true }
+            val ok = outcome?.ok == true
+            outcome?.let { recordUuid = it.recordUuid; if (it.held) held = true }
             busy = false
             saveFailed = threw
-            if (ok) { day.drafts.clear(draftKey); rejected = !verify; savedDialog = true } else noFix = !threw
+            if (ok) { day.drafts.clear(draftKey); rejected = !verify; savedDialog = true } else noFix = !threw && outcome?.held != true
         }
     }
     val formErrors = errors.mapNotNull {
-        when (it) { VerifyError.SUB_CHANNEL_REQUIRED -> AmoFormError.SUB_CHANNEL; VerifyError.GEO_CLASS_REQUIRED -> AmoFormError.GEO_CLASS; VerifyError.GEO_PHOTO_REQUIRED -> AmoFormError.GEO_PHOTO }
+        when (it) { VerifyError.SUB_CHANNEL_REQUIRED -> AmoFormError.SUB_CHANNEL; VerifyError.GEO_CLASS_REQUIRED -> AmoFormError.GEO_CLASS; VerifyError.GEO_PHOTO_REQUIRED -> AmoFormError.GEO_PHOTO; VerifyError.CLUSTER_REQUIRED -> AmoFormError.CLUSTER }
     }.toSet()
     val routeOutlets = effRoute?.let { r -> routeDays.firstOrNull { it.route.routeId == r }?.outlets }.orEmpty()
     val clusterOptions = AmoOutletLists.clusters(routeOutlets.ifEmpty { day.zoneOutlets })
@@ -178,7 +181,7 @@ internal fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGon
     val head = listOfNotNull(
         refusedCode?.let { c -> AmoFormItem.Notice(stringResource(when (OutletVerify.decisionProblem(c)) { "unknown_route" -> AmoR.string.amo_out_why_unknown_route; "cluster" -> AmoR.string.amo_out_why_cluster; "scope" -> AmoR.string.amo_out_why_scope; else -> AmoR.string.amo_out_why_other }), com.aktcl.aron.core.ui.BannerKind.Warning) },
     ) + listOf(
-        com.aktcl.aron.feature.amo.routeItem(route, emptySet()), com.aktcl.aron.feature.amo.clusterItem(cluster, emptySet()),
+        com.aktcl.aron.feature.amo.routeItem(route, emptySet()), com.aktcl.aron.feature.amo.clusterItem(cluster, formErrors),
     )
     val shop = com.aktcl.aron.feature.amo.shopReadOnlyItems(proposed["name"] ?: outlet?.name ?: req.outletName, proposed["owner_name"] ?: outlet?.ownerName, proposed["contact_number"] ?: outlet?.contactNumber)
     val items = head + shop + when (req.type) {
@@ -187,7 +190,7 @@ internal fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGon
         else -> classificationItems(sub, geo, { geo = it }, formErrors)
     }
     com.aktcl.aron.feature.amo.VerifyFormContent(
-        request = req, detail = detail, changes = if (req.type == "info") changes else emptyList(), facts = facts, items = items, decidable = decidable,
+        request = req, detail = detail, changes = if (req.type == "info") changes else emptyList(), facts = facts, items = items, decidable = decidable && !held,
         noFix = noFix, saveFailed = saveFailed, busy = busy, onSave = { decide(true) }, onReject = { decide(false) },
     )
 }

@@ -89,7 +89,11 @@ class OutletFormsTest {
         assertTrue(OutletVerify.validate("new", false, null, null, captured = false).isEmpty()) // Cancel (reject) needs no capture
         assertTrue(OutletVerify.validate("close", true, null, null, captured = false).isEmpty())
         assertEquals("unknown_route", OutletVerify.decisionProblem("unknown_route")); assertEquals("cluster", OutletVerify.decisionProblem("schema_invalid"))
-        assertEquals("scope", OutletVerify.decisionProblem("scope_out_of_reach")); assertEquals("other", OutletVerify.decisionProblem(null))
+        assertEquals("scope", OutletVerify.decisionProblem("scope_out_of_reach")); assertEquals("other", OutletVerify.decisionProblem(null)); assertEquals("other", OutletVerify.decisionProblem("something_else"))
+        // a changed route needs a cluster pick (the old cluster cannot belong to the new route)
+        assertEquals(setOf(VerifyError.CLUSTER_REQUIRED), OutletVerify.validate("info", true, null, null, clusterMissing = true))
+        assertTrue(OutletVerify.validate("info", true, null, null, clusterMissing = false).isEmpty())
+        assertTrue(OutletVerify.validate("info", false, null, null, clusterMissing = true).isEmpty()) // a reject needs nothing
     }
 
     // ---- 47 to 61: the form body and the dialogs

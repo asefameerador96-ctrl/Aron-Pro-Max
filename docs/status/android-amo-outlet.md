@@ -11,10 +11,13 @@ Branch `lane/android-amo-outlet` (from INT 7f34a1d2). Push only that branch; mer
 - Decisions D-AMO-OUTLET-01..05.
 
 ## Open / to wire when the lead says the foundation train landed
-- Route and cluster on the verification form are locked (`OutletVerify.ROUTE_CLUSTER_EDITABLE`); flip + two payload members when INT has `route_id`/`cluster_id`.
+- Route and cluster on the verification form: DONE (D-AMO-OUTLET-08/09; `ROUTE_CLUSTER_EDITABLE` is gone).
 - The `cfg.geo.update_base_*` keys are read by name already (`AmoDay`); nothing to change.
 - Device rows (camera, live map drag, printer-free): 48, 56, 60, 64 (walk on a pilot phone).
 
 ## Push 4 (2026-11-11): route_id / cluster_id on verification (D-AMO-OUTLET-08) and HANDOVER
 - Done: pushes 1-3 (rows 46-64, checker fixes D-AMO-OUTLET-06/07, train 83 landed), push 4 wires the contract 1.11.1 members.
 - HANDOVER: nothing open for A4 except device rows 48, 56, 60, 64 (camera, live map drag; walk on a pilot phone) and the owner's decision on editable name/owner/mobile in verification (no contract member). Low, unfixed: a photo captured and then followed by a reject stays unclaimed. Traps: `tools/android-sdk.sh` + `echo sdk.dir=/opt/android-sdk > local.properties`; goldens only on Linux with `-Proborazzi.record=true --tests '*AmoOutletScreenshotTests*'`; grep BUILD, never trust a piped exit code.
+
+## Push 5 (2026-11-11): lead follow-ups (D-AMO-OUTLET-09)
+- Only the AMO's picks are sent; a changed route needs a cluster; refusedDecision ordered + refreshed every 4 s; a held (quarantined) decision blocks a new one; `VerifyDecision.kt` (`decideFromForm`) is the tested save. Flaky, not mine: `AmoDayLockHostsTest.editOnTheMemoDetailFollowsTheLockThatLandsWhileItIsOnScreen` failed once under load, passes alone and on rerun.

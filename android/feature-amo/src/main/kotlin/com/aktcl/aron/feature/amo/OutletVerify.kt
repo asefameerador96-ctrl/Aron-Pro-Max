@@ -15,7 +15,7 @@ data class PendingRequest(
 
 data class SubChannel(val id: Long, val labelEn: String, val labelBn: String?)
 
-enum class VerifyError { SUB_CHANNEL_REQUIRED, GEO_CLASS_REQUIRED, GEO_PHOTO_REQUIRED }
+enum class VerifyError { SUB_CHANNEL_REQUIRED, GEO_CLASS_REQUIRED, GEO_PHOTO_REQUIRED, CLUSTER_REQUIRED }
 
 /** One proposed field next to what the outlet has now (F-AMO-024: old versus new). */
 data class FieldChange(val field: String, val old: String?, val new: String)
@@ -97,9 +97,12 @@ object OutletVerify {
      * Save rules: a Cancel (discard) needs nothing; verifying a new outlet needs the sub-channel and the geo class
      * (docs/07; F-AMO-022). Other types take them optionally.
      */
-    fun validate(type: String, verify: Boolean, subChannelId: Long?, geoClass: String?, captured: Boolean = true): Set<VerifyError> {
-        if (!verify || type != "new") return emptySet()
+    fun validate(type: String, verify: Boolean, subChannelId: Long?, geoClass: String?, captured: Boolean = true, clusterMissing: Boolean = false): Set<VerifyError> {
+        if (!verify) return emptySet()
+        // the AMO changed the route: the old cluster cannot belong to the new one, so a cluster must be picked (contract 1.11.1)
+        if (type != "new") return if (clusterMissing) setOf(VerifyError.CLUSTER_REQUIRED) else emptySet()
         return buildSet {
+            if (clusterMissing) add(VerifyError.CLUSTER_REQUIRED)
             if (!captured) add(VerifyError.GEO_PHOTO_REQUIRED) // D-AMO-MAN-12: the new-outlet form re-captures GEO and photo (48)
             if (subChannelId == null) add(VerifyError.SUB_CHANNEL_REQUIRED)
             if (geoClass == null || geoClass !in GEO_CLASSES) add(VerifyError.GEO_CLASS_REQUIRED)
