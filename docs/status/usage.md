@@ -2233,3 +2233,6 @@
 
 ### 2026-11-11 02:52 UTC — train 86 landing check-in #1 (lead): deploy #324 still running
 - Deploy 42946804460 on INT 7b3cb2738 in progress since 02:33 (Deploy (infra/deploy.sh) step); health still bf113f461; no "train 86 landed" yet. Lane heads: A3 pushed beef33723 (report pending), A4 acf9cb72d (D-11 fix requested), qa-ci 6fd21503 (SR-flake root cause in progress), A1 0b8a681d7 (holding), A2 b922f5c5 (train-87 push pending). Check-in re-armed for 03:30 UTC; the deploy watch and the integrator's report wake the lead earlier. Nothing needs the owner.
+
+### 2026-11-11 02:53 UTC — qa-ci head run green (lead record)
+- Run 42946082024 on qa-ci 6fd21503: completed success 02:52 (11 success, 1 skipped). qa-ci's train 87 head is proven on its own run. Deploy #324 still in its post-deploy steps (health already on 7b3cb2738).
