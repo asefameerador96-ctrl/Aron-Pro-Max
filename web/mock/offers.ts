@@ -192,7 +192,7 @@ export async function handleOffers(s: OfferStore, ctx: Ctx, me: OfferCaller, met
     row.versions.unshift(next);
     row.version += 1;
     row.updated_at = next.created_at;
-    ctx.audit("offer", row.id, "update", { version_no: cur.version_no }, { version_no: next.version_no }, next.change_reason ?? null);
+    ctx.audit("offer", row.id, "new_version", { version_no: cur.version_no }, { version_no: next.version_no }, next.change_reason ?? null);
     const body = offerView(row);
     s.ops.set(key, { fp: print, status: 200, body });
     return done(200, body);
@@ -219,7 +219,7 @@ export async function handleOffers(s: OfferStore, ctx: Ctx, me: OfferCaller, met
     row.status = to;
     row.version += 1;
     row.updated_at = new Date().toISOString();
-    ctx.audit("offer", row.id, "status", { status: from }, { status: to }, String(b.reason));
+    ctx.audit("offer", row.id, to === "active" ? "activate" : "end", { status: from }, { status: to }, String(b.reason));
     const body = offerView(row);
     s.ops.set(key, { fp: print, status: 200, body });
     return done(200, body);

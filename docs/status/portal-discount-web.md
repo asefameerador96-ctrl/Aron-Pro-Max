@@ -33,3 +33,10 @@ Brief: `docs/status/portal-discount-brief.md` (on `lane/lead-docs-1022`), sectio
 - Start: read `DECISIONS.md` D-DISC-WEB-01, this file, `web/src/lib/admin/offers.ts` (all rules), `web/mock/offers.ts` (what the mock models).
 - Switching to the real API: delete the `handleOffers` line in `mock/server.ts` only for e2e runs against a real backend; the pages and BFF already call the contract paths through `apiClient`. Re-check the audit entity name (`offer`) and the `discounts` module name with Lane A.
 - Run: `cd web && npm ci && npm run lint && npm run typecheck && npm test && npm run build && PW_CHROMIUM_PATH=/opt/pw-browsers/chromium npx playwright test e2e/discounts.spec.ts --trace off`.
+
+## Limits and next-train notes (lead rulings, 2026-11-11)
+
+- Limit: the list search is client-side over up to 10 pages of 100 (listOffers has no q); acceptable at pilot size.
+- Empty product rows mean ALL products (Q9 lead ruling): the form allows zero rows with an explicit warning; detail shows "All products".
+- Audit entity `offer`, actions create, new_version, activate, end (confirmed by Lane A); the mock uses the same.
+- Next train: remove the AdminModule test exception once contract 1.12.1 (train 93) is on INT; switch to the real routes; show the five pixel-snapshot e2e failures are pre-existing on INT 34bef94a1.

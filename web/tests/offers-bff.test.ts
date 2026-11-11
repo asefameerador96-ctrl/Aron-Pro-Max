@@ -66,6 +66,11 @@ describe("create (a draft, version 1) and its replay", () => {
     const list = await (await api(c, "/v1/admin/offers")).json();
     expect(list.items.filter((o: { code: string }) => o.code === "NEW-1")).toHaveLength(1);
   });
+  it("an offer with no product rows (all products) is accepted", async () => {
+    const res = await create(await superadmin(), body({ qualifying: [] }));
+    expect(res.status).toBe(201);
+    expect((await res.json()).qualifying).toEqual([]);
+  });
   it("an ADMIN with the write grant creates; a reader, an ungranted ADMIN and a TSO are refused 403", async () => {
     expect((await create(await admin())).status).toBe(201);
     expect((await create(await reader(), body({ request_uuid: U(3), code: "R-1" }))).status).toBe(403);
@@ -133,7 +138,7 @@ describe("status (activate, end) with its reason and request_uuid", () => {
     const id = (await (await create(sa)).json()).id as number;
     await status(sa, id, { request_uuid: U(50), to_status: "active", reason: "Go live for Ramadan" });
     const audit = await (await api(sa, `/v1/admin/audit?entity=offer&entity_id=${id}`)).json();
-    expect(audit.items.map((e: { action: string; reason: string }) => [e.action, e.reason])).toEqual(expect.arrayContaining([["create", "Owner asked for this offer"], ["status", "Go live for Ramadan"]]));
+    expect(audit.items.map((e: { action: string; reason: string }) => [e.action, e.reason])).toEqual(expect.arrayContaining([["create", "Owner asked for this offer"], ["activate", "Go live for Ramadan"]]));
   });
 });
 

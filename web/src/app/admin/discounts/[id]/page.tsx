@@ -81,7 +81,7 @@ export default async function DiscountDetailPage({ params, searchParams }: { par
         <p className="text-body-strong text-primary [overflow-wrap:anywhere]" data-testid="offer-value">{valueText(locale, offer)}</p>
         {rewardName ? <p className="text-body text-secondary [overflow-wrap:anywhere]">{t(locale, "disc.form.reward_sku")}: {rewardName}</p> : null}
         <h3 className="text-label text-secondary">{t(locale, "disc.detail.products")}</h3>
-        {offer.qualifying.length === 0 ? <p className="text-body text-secondary">{t(locale, "disc.form.products_none")}</p> : (
+        {offer.qualifying.length === 0 ? <p className="text-body text-secondary" data-testid="offer-products-all">{t(locale, "disc.products.all")}</p> : (
           <ul className="space-y-1" data-testid="offer-products">
             {offer.qualifying.map((q) => <li key={`${q.product_level}:${q.product_id}`} className="[overflow-wrap:anywhere]">{t(locale, `disc.plevel.${q.product_level}` as MessageKey)} · {productLabel(q.product_level, q.product_id)}</li>)}
           </ul>

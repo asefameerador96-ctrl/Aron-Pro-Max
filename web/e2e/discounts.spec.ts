@@ -88,6 +88,7 @@ test("create a draft, edit it into version 2, activate it as Super Admin with a 
   await hydrated(form);
   await page.getByTestId("of-submit").click();
   await expect(page.getByTestId("error-of-code")).toBeVisible(); // required fields are named, nothing is sent
+  await expect(page.getByTestId("of-products-all")).toBeVisible(); // no product row: an explicit all-products warning
   await page.locator("#of-code").fill("NEW-E2E");
   await page.locator("#of-title-en").fill("E2E price off");
   await page.locator("#of-title-bn").fill("ই-টু-ই ছাড়");
@@ -97,6 +98,7 @@ test("create a draft, edit it into version 2, activate it as Super Admin with a 
   await page.locator("#of-pitem").selectOption({ index: 2 }); // Max Royal 20s: a packet of 20
   await page.getByTestId("of-add-product").click();
   await expect(page.getByTestId("of-products")).toBeVisible();
+  await expect(page.getByTestId("of-products-all")).toHaveCount(0);
   await page.locator("#of-per-unit").fill("0.0005"); // finer than a milli-taka
   await page.locator("#of-reason").fill(REASON);
   await page.getByTestId("of-submit").click();
@@ -162,3 +164,19 @@ for (const [name, size] of [["phone", { width: 360, height: 740 }], ["laptop", {
     }
   });
 }
+
+test("an offer with no product rows is saved and shown as applying to all products", async ({ page }) => {
+  await superLogin(page);
+  await page.goto("/admin/discounts/new");
+  await hydrated(page.getByTestId("offer-form"));
+  await page.locator("#of-code").fill("ALL-E2E");
+  await page.locator("#of-title-en").fill("All products offer");
+  await page.locator("#of-type").selectOption("pct_discount");
+  await page.locator("#of-from").fill("2026-11-15");
+  await page.locator("#of-to").fill("2099-12-31");
+  await page.locator("#of-percent").fill("1.5");
+  await page.locator("#of-reason").fill(REASON);
+  await page.getByTestId("of-submit").click();
+  await expect(page.getByTestId("discount-detail-page")).toBeVisible();
+  await expect(page.getByTestId("offer-products-all")).toBeVisible();
+});

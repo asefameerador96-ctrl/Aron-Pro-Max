@@ -59,7 +59,6 @@ export function OfferFormView({ mode, offerId, version, initial, skus, productNo
     const { errors: errs, body } = validateForm(f, { qualifying: qualUnits, reward: rewardUnits }, mode);
     const map: Record<string, string> = {};
     for (const x of errs as FieldError[]) map[x.field] = t(`disc.err.${x.code}` as MessageKey);
-    if (f.qualifying.length === 0) map.qualifying = t("disc.err.products");
     setErrors(map);
     if (!body || Object.keys(map).length > 0) return;
     const key = `${mode}:${offerId ?? ""}:${JSON.stringify(body)}`;
@@ -162,7 +161,7 @@ export function OfferFormView({ mode, offerId, version, initial, skus, productNo
           <h2 id="of-products-h" className="text-heading text-primary">{t("disc.form.products")}</h2>
           <p className="text-caption text-secondary">{t("disc.form.products_hint")}</p>
         </div>
-        {f.qualifying.length === 0 ? <p className="text-body text-secondary" data-testid="of-products-none">{t("disc.form.products_none")}</p> : (
+        {f.qualifying.length === 0 ? <Banner tone="warning" role="note" testId="of-products-all">{t("disc.products.all_warning")}</Banner> : (
           <ul className="space-y-1" data-testid="of-products">
             {f.qualifying.map((q) => (
               <li key={`${q.product_level}:${q.product_id}`} className="flex items-center justify-between gap-2 [overflow-wrap:anywhere]">
