@@ -199,13 +199,13 @@ class MainActivity : ComponentActivity() {
                             // the last good values) is held per MONTH inside CachedCallTargets, so a failed read never blanks the cards and never shows another month.
                             var targets by remember(s.user.userId) { mutableStateOf<com.aktcl.aron.feature.amo.CallTargets?>(null) }
                             var targetsStatus by remember(s.user.userId) { mutableStateOf(com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) }
-                            var resumeTick by remember(s.user.userId) { mutableStateOf(0) }
+                            var targetsRetryTick by remember(s.user.userId) { mutableStateOf(0) }
                             // coming back to the foreground: a session left open across Dhaka midnight shows the new date; a stale or failed card set tries again (8 s cap, no polling)
                             androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                                 vm.onResume()
-                                if (targetsStatus != com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) resumeTick++
+                                if (targetsStatus != com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) targetsRetryTick++
                             }
-                            LaunchedEffect(day, home.businessDate, bundleTick, resumeTick) {
+                            LaunchedEffect(day, home.businessDate, bundleTick, targetsRetryTick) {
                                 val d = day ?: return@LaunchedEffect
                                 val r = runCatching { d.callTargets.load(home.businessDate.take(7)) }.getOrNull() ?: return@LaunchedEffect
                                 targets = r.targets
