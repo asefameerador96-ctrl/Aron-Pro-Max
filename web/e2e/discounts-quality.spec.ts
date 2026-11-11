@@ -2,7 +2,7 @@
 // every screen state in light and dark and in Bangla, and the dashboard's performance budget (Fast 3G, 4x CPU, phone width) on the list.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { loginOk, resetMock } from "./helpers";
+import { hydrated, loginOk, resetMock } from "./helpers";
 
 // Same numbers as e2e/dash-perf.spec.ts BUDGET (docs/31); copied, not imported, so a spec file is not loaded twice.
 const BUDGET = { jsKbGzip: 300, lcpMs: 3500, cls: 0.1 };
@@ -49,6 +49,7 @@ for (const [scheme, lang] of [["light", "en"], ["dark", "en"], ["light", "bn"]] 
     // the states that only exist after an action: the open status panel, form errors, and the all-products warning
     await page.goto("/admin/discounts/2");
     await page.waitForLoadState("networkidle");
+    await hydrated(page.getByTestId("offer-status-panel")); // a click before React attaches is lost
     await page.getByTestId("os-active").click();
     await expect(page.getByTestId("os-form")).toBeVisible();
     await page.getByTestId("os-confirm").click(); // reason missing: the error text is shown
@@ -56,6 +57,7 @@ for (const [scheme, lang] of [["light", "en"], ["dark", "en"], ["light", "bn"]] 
     await scan(page, "status-panel-open-with-error", failures);
     await page.goto("/admin/discounts/new");
     await page.waitForLoadState("networkidle");
+    await hydrated(page.getByTestId("offer-form")); // before hydration a submit is a native one that reloads the page
     await expect(page.getByTestId("of-products-all")).toBeVisible();
     await page.getByTestId("of-submit").click();
     await expect(page.getByTestId("error-of-code")).toBeVisible();
