@@ -121,14 +121,13 @@ fun StdMatrixContent(from: String, to: String, today: String, onRange: (String, 
         if (truncated) { AmoBanner(stringResource(R.string.amo_rep_truncated), kind = BannerKind.Warning); return@Column }
         if (m == null || m.rows.isEmpty()) { AmoEmpty(stringResource(R.string.amo_rep_empty), hint = stringResource(R.string.amo_rep_empty_hint)); return@Column }
         Column(Modifier.fillMaxWidth().testTag(TeamReportTags.TABLE).border(0.5.dp, look.rowRule)) {
-            StdLine(m.zone, m.categories.map { categoryTitle(it) }, look.card, true, h)
-            m.rows.forEach { r -> StdLine(r.route, m.categories.map { Formats.integerOrDash(r.cells[it], l) }, look.card, false, h) }
-            Box(Modifier.testTag(TeamReportTags.TOTAL)) { StdLine(stringResource(R.string.amo_team_total_row), m.categories.map { Formats.integerOrDash(m.totals[it], l) }, TableLavender, true, h) }
+            StdLine(m.zone, m.categories.map { c -> categoryTitle(c) + (m.units[c]?.let { " (" + com.aktcl.aron.core.ui.entryUnitLabel(it) + ")" } ?: "") }, look.card, true, h)
+            m.rows.forEach { r -> StdLine(r.route, m.categories.map { m.cellText(r, it, l) }, look.card, false, h) }
+            Box(Modifier.testTag(TeamReportTags.TOTAL)) { StdLine(stringResource(R.string.amo_team_total_row), m.categories.map { m.totalText(it, l) }, TableLavender, true, h) }
         }
     }
 }
 
-private fun Formats.integerOrDash(n: Long?, l: com.aktcl.aron.rules.UiLocale) = if (n == null) com.aktcl.aron.rules.Percent.DASH else integer(n, l)
 
 @Composable
 private fun StdLine(first: String, cells: List<String>, fill: Color, bold: Boolean, h: androidx.compose.foundation.ScrollState) {
@@ -156,7 +155,7 @@ private fun TillCardView(c: TillCard, onDetails: (() -> Unit)?) {
         }
         c.rows.forEach { r ->
             Row(Modifier.fillMaxWidth()) {
-                Text(categoryTitle(r.category), style = amoText(13), modifier = Modifier.weight(1.4f))
+                Text(categoryTitle(r.category) + (r.unit?.let { " (" + com.aktcl.aron.core.ui.entryUnitLabel(it) + ")" } ?: ""), style = amoText(13), modifier = Modifier.weight(1.4f))
                 listOf(r.target to 1.3f, r.sales to 1.2f, r.pct to 0.9f, r.memo to 0.8f).forEach { (t, w) -> Text(t, style = amoText(13, align = TextAlign.End), modifier = Modifier.weight(w)) }
             }
         }
@@ -196,7 +195,7 @@ fun TillRouteDetailContent(cpr: String, totalMemo: String, brands: List<BrandLin
             if (brands.isEmpty()) Text(stringResource(R.string.amo_rep_no_brands), style = amoText(14, color = look.inkMuted), modifier = Modifier.padding(12.dp))
             brands.forEach { b ->
                 Row(Modifier.fillMaxWidth().background(look.card).border(0.5.dp, look.rowRule)) {
-                    listOf(b.brand, b.target, b.sales, b.pct, b.memo).forEachIndexed { i, t -> Text(t, style = amoText(13, align = if (i == 0) TextAlign.Start else TextAlign.End), modifier = Modifier.weight(if (i == 0) 1.6f else 1.1f).padding(6.dp)) }
+                    listOf(b.brand + (b.unit?.let { " (" + com.aktcl.aron.core.ui.entryUnitLabel(it) + ")" } ?: ""), b.target, b.sales, b.pct, b.memo).forEachIndexed { i, t -> Text(t, style = amoText(13, align = if (i == 0) TextAlign.Start else TextAlign.End), modifier = Modifier.weight(if (i == 0) 1.6f else 1.1f).padding(6.dp)) }
                 }
             }
         }

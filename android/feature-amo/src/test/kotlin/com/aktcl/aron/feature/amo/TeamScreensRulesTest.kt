@@ -125,4 +125,53 @@ class TeamScreensRulesTest {
         assertEquals(setOf("cigarette", "match", "Biscuit"), cats) // the app's own title and order apply to the known ones; an unknown name stays as sent
         assertEquals(listOf("cigarette", "match", "Biscuit"), TeamReports.stdMatrix("Z", Reports.routeCategories(ReportData("d", emptyList(), listOf(row("Biscuit"), row("Match"), row("Cigarette")), 3))).categories)
     }
+
+    // ---- units rule 5 on the AMO report screens (lead ruling 2026-11-11) -------------------------------------------------------
+
+    @Test fun conversionIsExactDecimalAndNeverFloat() {
+        assertEquals("2.250", FieldQty.converted(45, 20)!!.toPlainString()); assertEquals("1.000", FieldQty.converted(25, 25)!!.toPlainString())
+        assertEquals("0.333", FieldQty.converted(1, 3)!!.toPlainString()); assertNull(FieldQty.converted(10, 0)); assertNull(FieldQty.parse("x")); assertNull(FieldQty.parse("-1.000"))
+        assertEquals("12.5", FieldQty.text(FieldQty.parse("12.500")!!, UiLocale.EN)); assertEquals("1,200", FieldQty.text(FieldQty.parse("1200.000")!!, UiLocale.EN)); assertEquals("০.২৫", FieldQty.text(FieldQty.parse("0.250")!!, UiLocale.BN))
+    }
+
+    @Test fun targetRowsInFieldUnitsSumTheConvertedRowsAndFallBackToBase() {
+        val node = TeamTargets.parse("""{"node":{"type":"route","id":1,"name":"G"},"period_days":30,"rows":[
+          {"name":"Maxim","category_code":"cigarette","unit":"pack","target_qty":"10.000","achieved_qty":"4.500","tilldate_target_qty":"5.000","target_qty_base":100,"achieved_qty_base":45,"tilldate_target_qty_base":50},
+          {"name":"Sheikh","category_code":"cigarette","unit":"pack","target_qty":"20.000","achieved_qty":"3.000","tilldate_target_qty":"10.000","target_qty_base":400,"achieved_qty_base":60,"tilldate_target_qty_base":200},
+          {"name":"Gold","category_code":"bidi","unit":"stick","target_qty":"30.000","achieved_qty":"3.000","tilldate_target_qty":"15.000","target_qty_base":30,"achieved_qty_base":3,"tilldate_target_qty_base":15},
+          {"name":"Old","category_code":"lighter","target_qty_base":50,"achieved_qty_base":5,"tilldate_target_qty_base":25}]}""")!!
+        val cards = TeamTargets.categoryCards(node.rows, node.periodDays).associateBy { it.categoryCode }
+        val cig = cards.getValue("cigarette")
+        assertEquals("packet", cig.unit); assertEquals("30", TeamTargets.targetText(cig, PerfTab.MONTHLY, UiLocale.EN)); assertEquals("7.5", TeamTargets.achievedText(cig, UiLocale.EN)) // 10 + 20 and 4.5 + 3: the converted rows, never 500 sticks over one factor
+        assertEquals("15", TeamTargets.targetText(cig, PerfTab.TILL_DATE, UiLocale.EN)); assertEquals("22.5", TeamTargets.remainingText(cig, PerfTab.MONTHLY, UiLocale.EN)); assertEquals("7.5/30", TeamTargets.fraction(cig, PerfTab.MONTHLY, UiLocale.EN))
+        assertEquals("stick", TeamTargets.unitKey(cards.getValue("bidi")))
+        val old = cards.getValue("lighter") // no field-unit figure from the server: base units with the base unit word, nothing converted
+        assertEquals("piece", TeamTargets.unitKey(old)); assertEquals("50", TeamTargets.targetText(old, PerfTab.MONTHLY, UiLocale.EN)); assertEquals("45", TeamTargets.remainingText(old, PerfTab.MONTHLY, UiLocale.EN))
+        // a card whose rows differ in unit is not summed across units: base figures with the base word
+        val mixed = TeamTargets.categoryCards(listOf(node.rows[0], node.rows[0].copy(unit = "box")), 30).single()
+        assertNull(mixed.qty); assertEquals("stick", TeamTargets.unitKey(mixed)); assertEquals(200L, mixed.target)
+    }
+
+    @Test fun stdColumnsAreSumsOfConvertedRowsWithTheirUnitWord() {
+        fun row(route: String, cat: String, sku: String, q: Long, f: Long?): ReportRow = buildMap<String, JsonPrimitive> {
+            put("route_id", JsonPrimitive(if (route == "A") 1 else 2)); put("route_code", JsonPrimitive(route)); put("route_name", JsonPrimitive("Route $route")); put("category_name", JsonPrimitive(cat))
+            put("sku_code", JsonPrimitive(sku)); put("base_unit", JsonPrimitive("stick")); put("entry_unit", JsonPrimitive("pack")); if (f != null) put("base_per_pack", JsonPrimitive(f)); put("sold_qty_base", JsonPrimitive(q)); put("gross_mtk", JsonPrimitive(0))
+        }
+        val rows = listOf(row("A", "Cigarette", "s10", 100, 10), row("A", "Cigarette", "s20", 200, 20), row("B", "Cigarette", "s20", 50, 20), row("A", "Bidi", "b1", 100, 10), row("B", "Bidi", "b2", 100, null))
+        val m = TeamReports.stdMatrix("Z", Reports.routeCategories(ReportData("d", emptyList(), rows, rows.size)))
+        assertTrue(m.isField("cigarette")); assertEquals("packet", m.units["cigarette"])
+        assertEquals("20", m.cellText(m.rows[0], "cigarette", UiLocale.EN)); assertEquals("2.5", m.cellText(m.rows[1], "cigarette", UiLocale.EN)); assertEquals("22.5", m.totalText("cigarette", UiLocale.EN)) // 10 + 10, 2.5; the total adds converted rows
+        assertFalse(m.isField("bidi")); assertEquals("stick", m.units["bidi"]); assertEquals("100", m.cellText(m.rows[0], "bidi", UiLocale.EN)); assertEquals("200", m.totalText("bidi", UiLocale.EN)) // one SKU lacks its factor: the whole column stays base
+    }
+
+    @Test fun liveDataCategoryShowsTheServersEnteredFigureElseBase() {
+        val d = LiveDataParser.parse("""{"as_of":"x","kpis":{},"sales_by_category":[
+          {"category_code":"cigarette","base_unit":"stick","qty_base":450,"entry_unit":"pack","qty_entered":"22.500"},
+          {"category_code":"lighter","base_unit":"piece","qty_base":50},
+          {"category_code":"match","base_unit":"dozen","qty_base":3,"entry_unit":"dozen","qty_entered":"3.000"}]}""")!!
+        val by = d.categories.associateBy { it.code }
+        assertEquals("22.5" to "packet", by.getValue("cigarette").field()!!.let { FieldQty.plain(it.first) to it.second })
+        assertNull(by.getValue("lighter").field()) // base 50 pieces with the piece word
+        assertEquals("3" to "dozen", by.getValue("match").field()!!.let { FieldQty.plain(it.first) to it.second })
+    }
 }

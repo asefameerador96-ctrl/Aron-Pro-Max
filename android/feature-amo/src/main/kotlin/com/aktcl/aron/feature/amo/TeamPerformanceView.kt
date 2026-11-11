@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.entryUnitLabel
 import com.aktcl.aron.rules.Band
 import com.aktcl.aron.rules.Formats
 
@@ -59,7 +60,7 @@ private fun CategoryRow(r: TeamTargetRow, tab: PerfTab, selected: Boolean, onTap
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(categoryName(r.categoryCode), style = amoText(17, bold = selected), modifier = Modifier.weight(1f))
-            Text(TeamTargets.fraction(r, tab, l), style = amoText(13, color = look.inkMuted), textAlign = TextAlign.End)
+            Text(TeamTargets.fraction(r, tab, l) + (TeamTargets.unitKey(r)?.let { " " + entryUnitLabel(it) } ?: ""), style = amoText(13, color = look.inkMuted), textAlign = TextAlign.End)
             Text(TeamTargets.cardPctText(r, tab, l), style = amoText(14, bold = true, color = color))
         }
         AmoBandBar((pct ?: 0L) / 100f, color)
@@ -131,7 +132,7 @@ fun TeamPerformanceDetailsContent(
             if (items.isEmpty()) Text(stringResource(R.string.amo_team_perf_items_empty), style = amoText(14, color = look.inkMuted), modifier = Modifier.padding(12.dp))
             items.forEach { r ->
                 PerfTableRow(
-                    listOf(r.name, TeamTargets.qty(TeamTargets.target(r, tab), l), TeamTargets.qty(r.achieved, l), TeamTargets.qty(TeamTargets.remaining(r, tab), l), TeamTargets.detailsText(r, tab, l)),
+                    listOf(r.name + (TeamTargets.unitKey(r)?.let { " (" + entryUnitLabel(it) + ")" } ?: ""), TeamTargets.targetText(r, tab, l), TeamTargets.achievedText(r, l), TeamTargets.remainingText(r, tab, l), TeamTargets.detailsText(r, tab, l)),
                     look.card, false,
                 )
             }

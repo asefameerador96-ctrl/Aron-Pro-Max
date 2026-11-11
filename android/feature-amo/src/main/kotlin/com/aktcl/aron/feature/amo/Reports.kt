@@ -29,7 +29,9 @@ data class BrandRow(val name: String, val memos: Long, val bsrPct: Double?)
 data class RouteStd(val code: String, val memos: Int, val grossMtk: Long, val netMtk: Long)
 
 /** One category of one route in the per-route STD (`route-std`, F-AMO-032): [qty] is in [unit] (null when the category mixes units, so it never adds sticks to pieces). */
-data class RouteCategory(val route: String, val category: String, val qty: Long?, val unit: String?, val grossMtk: Long, val code: String = route)
+data class RouteCategory(val route: String, val category: String, val qty: Long?, val unit: String?, val grossMtk: Long, val code: String = route,
+    /** Field-unit quantity (units rule 5): the sum of each SKU row's `sold_qty_base / base_per_pack` (Decimal3), in the label key [packUnit]; null unless EVERY row has both. */
+    val packQty: java.math.BigDecimal? = null, val packUnit: String? = null)
 
 object Reports {
     /** The `ReportQuery` body: one period, JSON output, 500 rows a page. The scope is the caller's reach on the server; nothing is selected here. */
@@ -93,7 +95,7 @@ object Reports {
     }
 
     val ROUTE_MEMO_COLUMNS = listOf("route_id", "route_code", "memos", "gross_mtk", "net_mtk")
-    val ROUTE_STD_COLUMNS = listOf("route_id", "route_code", "route_name", "category_code", "category_name", "base_unit", "sold_qty_base", "gross_mtk")
+    val ROUTE_STD_COLUMNS = listOf("route_id", "route_code", "route_name", "category_code", "category_name", "base_unit", "entry_unit", "base_per_pack", "sold_qty_base", "gross_mtk")
 
     /** Memos, gross and net per route from the `route-memo` rows (the server sums any range, so this is exact even when the memo list is long; periods of one route are added). */
     fun routeMemoTotals(r: ReportData): List<RouteStd> = r.rows.groupBy { it.s("route_code").orEmpty() }.map { (code, rows) ->
@@ -110,7 +112,13 @@ object Reports {
     fun routeCategories(r: ReportData): List<RouteCategory> = r.rows.groupBy { (it.l("route_id")?.toString() ?: it.s("route_code") ?: it.s("route_name")).orEmpty() to (it.s("category_code") ?: categoryCodeOf(it.s("category_name"))).orEmpty() }.map { (key, rows) ->
         val units = rows.mapNotNull { it.s("base_unit") }.toSet()
         val sameUnit = units.size == 1 && rows.all { it.s("base_unit") != null && it.l("sold_qty_base") != null }
+        // units rule 5: every row converted exactly by its own pack factor, then summed; one entry unit for the group or none
+        val conv = rows.map { r -> r.l("sold_qty_base")?.let { q -> r.l("base_per_pack")?.let { f -> FieldQty.converted(q, f) } } }
+        val words = rows.map { r -> UnitWords.key(r.s("entry_unit"), key.second) }
+        val packOk = conv.all { it != null } && words.all { it != null } && words.toSet().size == 1
+        val packQty = if (packOk) conv.fold(java.math.BigDecimal.ZERO) { a, x -> a + x!! } else null
+        val packUnit = if (packOk) words.first() else null
         // grouped by route ID (else code; two routes may share a name, never matched by name), shown by name
-        RouteCategory(rows.firstNotNullOfOrNull { it.s("route_name") } ?: key.first, key.second, if (sameUnit) rows.sumOf { it.l("sold_qty_base") ?: 0 } else null, if (sameUnit) units.first() else null, rows.sumOf { it.l("gross_mtk") ?: 0 }, key.first)
+        RouteCategory(rows.firstNotNullOfOrNull { it.s("route_name") } ?: key.first, key.second, if (sameUnit) rows.sumOf { it.l("sold_qty_base") ?: 0 } else null, if (sameUnit) units.first() else null, rows.sumOf { it.l("gross_mtk") ?: 0 }, key.first, packQty, packUnit)
     }.sortedWith(compareBy({ it.route }, { it.code }, { it.category.lowercase() }, { it.category }))
 }

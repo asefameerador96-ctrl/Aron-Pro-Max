@@ -46,7 +46,8 @@ private fun SalesPanel(d: LiveData, perRoute: Boolean) {
         Text(stringResource(R.string.amo_live_sales_title), style = amoText(20, bold = true, color = look.onPanel))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             if (perRoute) d.columns().take(4).forEach { c ->
-                PanelColumn(c.qtyBase.toString(), categoryLabel(c.code), unitLabel(c.baseUnit), fig)
+                val field = c.field()
+                PanelColumn(field?.let { FieldQty.plain(it.first) } ?: c.qtyBase.toString(), categoryLabel(c.code), field?.let { com.aktcl.aron.core.ui.entryUnitLabel(it.second) } ?: unitLabel(c.baseUnit), fig)
             } else {
                 PanelColumn(d.memoCount.toString(), stringResource(R.string.amo_live_total_sales), null, fig)
                 PanelColumn(d.totalTaka(), stringResource(R.string.amo_live_total_taka), null, fig)
