@@ -15,6 +15,7 @@ export const bn: Record<MessageKey, string> = {
   "common.loading": "লোড হচ্ছে…",
   "common.save": "সংরক্ষণ",
   "common.cancel": "বাতিল",
+  "common.taka_word": "৳",
   "common.create": "তৈরি করুন",
   "common.edit": "সম্পাদনা",
   "common.search": "খুঁজুন",

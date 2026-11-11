@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -10,6 +10,7 @@ test("F-ADM-020: a survey with a conditional question is created with a reason",
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/surveys");
   await expect(page.getByTestId("data-table")).toContainText("POSM check");
+  await hydrated(page.getByTestId("def-new")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("def-new").click();
   await page.locator("#f-title_en").fill("Shelf survey");
   await page.locator("#f-valid_from").fill("2026-11-01");
@@ -29,6 +30,7 @@ test("F-ADM-020: a survey with a conditional question is created with a reason",
 test("a duplicate question key is refused in the form", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/surveys");
+  await hydrated(page.getByTestId("def-new")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("def-new").click();
   await page.locator("#f-title_en").fill("Dup");
   await page.locator("#f-valid_from").fill("2026-11-01");
@@ -44,6 +46,7 @@ test("a duplicate question key is refused in the form", async ({ page }) => {
 test("content: a KV image is uploaded and the item is created for a zone", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/content");
+  await hydrated(page.getByTestId("def-new")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("def-new").click();
   await page.locator("#f-kind").selectOption("kv");
   await page.locator("#f-title_en").fill("Poster");

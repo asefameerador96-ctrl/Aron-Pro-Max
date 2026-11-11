@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -13,6 +13,7 @@ test("product tree: brand under a segment shows the parent label; SKU create wit
   await expect(page.getByTestId("data-table")).toContainText("Premium"); // parent segment label
 
   await page.goto("/admin/skus/new");
+  await hydrated(page.locator("#f-code")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.locator("#f-code").fill("NEW-10S");
   await page.locator("#f-name").fill("New Brand 10s");
   await page.locator("#f-short_name").fill("New10");
@@ -35,6 +36,7 @@ test("product tree: brand under a segment shows the parent label; SKU create wit
 test("classification lists: locked codes, add an item, retire another, audited with the reason", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/master-data");
+  await hydrated(page.getByTestId("codelist-geo_class")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("codelist-geo_class").click();
   await expect(page.getByTestId("codelist-row")).toHaveCount(4);
   await expect(page.getByTestId("codelist-row").first().getByLabel("কোড")).toHaveAttribute("readonly", "");
@@ -58,6 +60,7 @@ test("classification lists: locked codes, add an item, retire another, audited w
 test("code list: a bad code is flagged on its row and nothing is saved", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/code-lists/channel");
+  await hydrated(page.getByTestId("codelist-add")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("codelist-add").click();
   const row = page.getByTestId("codelist-row").nth(2);
   await row.getByLabel("কোড").fill("Bad Code");

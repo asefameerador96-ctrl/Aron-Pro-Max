@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -24,6 +24,7 @@ test("retailer detail: four sections, an audited edit, reopen a wrongly closed o
 
   await page.goto("/admin/outlets");
   await expect(page.getByRole("row", { name: /Banani Store/ }).getByTestId("action-reopen")).toHaveCount(0); // active
+  await hydrated(page.getByRole("row", { name: /Wrongly Closed Tea Stall/ }).getByTestId("action-reopen")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByRole("row", { name: /Wrongly Closed Tea Stall/ }).getByTestId("action-reopen").click();
   await page.locator("#reason").fill("Closed by mistake, the stall is open");
   await page.getByRole("button", { name: "আউটলেট আবার চালু করুন" }).click();
@@ -54,12 +55,14 @@ test("outlet approval panel: a DMO sees only the panel, verifies then approves a
 
   // verify the pending new outlet, then reject the info request with a reason
   await page.goto("/admin/outlet-requests?request_type=new");
+  await hydrated(page.getByRole("row", { name: /New Corner Mart/ }).getByTestId("action-verify")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByRole("row", { name: /New Corner Mart/ }).getByTestId("action-verify").click();
   await page.locator("#f-sub_channel_id").selectOption("11");
   await page.locator("#reason").fill("Checked the photos and the address");
   await page.getByRole("button", { name: "যাচাই" }).click();
   await page.waitForURL(/\/admin\/outlet-requests$/);
   await page.goto("/admin/outlet-requests?request_type=info");
+  await hydrated(page.getByRole("row", { name: /Banani Store/ }).getByTestId("action-reject")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByRole("row", { name: /Banani Store/ }).getByTestId("action-reject").click();
   await page.locator("#reason").fill("Not the owner of record");
   await page.getByRole("button", { name: "বাতিল", exact: true }).first().click();
@@ -80,6 +83,7 @@ test("wholesale marking: basket with a live count, confirm step, one audit row p
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/wholesale-marking");
   await expect(page.getByTestId("basket-count")).toContainText("০"); // Bengali digits
+  await hydrated(page.getByRole("checkbox", { name: /DHK-334-001/ })); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByRole("checkbox", { name: /DHK-334-001/ }).check();
   await page.getByRole("checkbox", { name: /DHK-334-003/ }).check();
   await expect(page.getByTestId("basket-count")).toContainText("২");

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -9,6 +9,7 @@ test("F-ADM-028: the feedback inbox lists feedback and sets a status with a reas
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/feedback");
   await expect(page.getByTestId("data-table")).toContainText("Memo print is slow");
+  await hydrated(page.getByRole("row", { name: /Memo print is slow/ }).getByTestId("action-status")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByRole("row", { name: /Memo print is slow/ }).getByTestId("action-status").click();
   await page.locator("#f-status").selectOption("resolved");
   await page.locator("#reason").fill("Checked with the field team");

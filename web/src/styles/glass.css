@@ -434,6 +434,10 @@ dialog.sheet-start::backdrop {
   font-weight: 600;
   margin-inline-start: 0.2em;
 }
+.taka-en {
+  font-weight: 600;
+  margin-inline-start: 0.2em;
+}
 .money {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
