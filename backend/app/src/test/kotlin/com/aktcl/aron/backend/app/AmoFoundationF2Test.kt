@@ -269,6 +269,21 @@ class AmoFoundationF2Test {
     // ------------------------------------------------------------------------------------------------ GET /v1/outlets/{id}/sales-by-date
 
     @Test
+    fun salesByDateLabelsLightersInBoxesOf25() = world.withApi {
+        with(world) {
+            val lighter = one("SELECT id FROM app.sku WHERE code = 'Aster'")
+            line(m1, 9, lighter, 2, "pack", 25, 50, 5000, sr.userId, routeD)
+            try {
+                val lines = json(getAs(amo, "/v1/outlets/$outletA/sales-by-date?business_date=$date").bodyAsText())["lines"]!!.jsonArray.map { it.jsonObject }
+                val l = lines.single { it["sku"]!!.jsonObject.l("sku_id") == lighter }
+                assertEquals("box", l.s("report_unit")); assertEquals("2.000", l.s("qty_report")); assertEquals(50L, l.l("qty_base"))
+            } finally {
+                exec("UPDATE app.memo_line SET voided_at = now() WHERE memo_client_uuid = CAST('$m1' AS uuid) AND line_no = 9")
+            }
+        }
+    }
+
+    @Test
     fun salesByDateTotalsEverySrsActiveSaleLinesPerSkuInFieldUnits() = world.withApi {
         with(world) {
             val r = getAs(amo, "/v1/outlets/$outletA/sales-by-date?business_date=$date")

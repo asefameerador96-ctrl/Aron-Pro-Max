@@ -1523,6 +1523,8 @@ paths:
         is the haversine distance in metres (two decimals) between the previous call's outlet base point and this one's (null
         for the first call or when an outlet has no base point), `distance_so_far_m` the running sum, `duration_s` is
         `closed_at - opened_at` and `gap_to_next_s` is `next.opened_at - closed_at`. `phone_masked` never carries the full number.
+        `business_date` is at most 90 days back and never in the future (else 400 `ERR_VALIDATION`, `query.business_date`
+        `out_of_range`); the window is judged before the reach, so a bad date is a 400 and carries no data.
       parameters:
         - name: user_id
           in: query
@@ -1553,6 +1555,8 @@ paths:
         the reach with the SR assigned on the date (the day's acting SR, else the primary assignment); a route with nobody is
         `vacant` (`user_id`, `full_name` null). `phone` is in clear only for an AMO on routes of the own home zone, `null`
         for every other reader; `phone_masked` is always the masked form. `route_days` are ISO weekdays (1 = Monday).
+        The list is not paged: it holds every active SR route of the reach (an AMO zone has tens of routes; a national reader
+        gets them all). Paging is a later additive change (`limit`, `cursor`) if a reach grows past a few hundred routes.
       parameters:
         - $ref: '#/components/parameters/BusinessDateQuery'
       responses:
@@ -1572,8 +1576,8 @@ paths:
       description: |
         Reach-checked: the outlet's route (else its zone) must be in the caller's reach, otherwise 403 `ERR_FORBIDDEN`.
         Supervisor roles only (SR and the other roles 403). `business_date` defaults to today and must lie within the
-        last 90 days (else 400 `ERR_VALIDATION`). Lines are per SKU in the SKU's field unit (`report_unit`: pack for cigarettes,
-        bidi and lighters, dozen for matches; docs/34 s4.2) and in base units, from active sale memo lines only.
+        last 90 days (else 400 `ERR_VALIDATION`). Lines are per SKU in the SKU's field unit (`report_unit`: pack for cigarettes
+        and bidi, box (of 25) for lighters, dozen for matches; docs/34 s4.2) and in base units, from active sale memo lines only.
       parameters:
         - name: outlet_id
           in: path
@@ -1598,7 +1602,8 @@ paths:
       summary: The AMO Dashboard target cards (contract 1.11.0, D-AMO-MAN-06, build contract 4.3).
       description: |
         AMO only (anyone else 403 `ERR_FORBIDDEN`). Done = the caller's own closed visits of kind `amo_control_call` or
-        `amo_joint_call` that are not voided and not `abandoned` (or `not_reached`) in the month (`month`, `YYYY-MM`, default
+        `amo_joint_call` that are closed (an outcome is recorded), not voided and whose outcome is neither `abandoned` nor
+        `not_reached`, in the month (`month`, `YYYY-MM`, default
         the current Dhaka month) or on the Dhaka business date (today). The targets are three admin config numbers (the
         monthly call target and the control-call and joint-call targets) resolved for the caller's zone; today's target is
         the monthly target divided by the working days of the month (half up, at least 1). A target that is not set is
@@ -1608,7 +1613,7 @@ paths:
           in: query
           required: false
           schema: { type: string, pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$' }
-          description: Dhaka calendar month; default the current one. Only the current and past months are served.
+          description: Dhaka calendar month; default the current one. The current and the previous 12 months are served; a later month or one more than 12 months back is 400 `ERR_VALIDATION` (`query.month` `out_of_range`).
       responses:
         '200':
           description: The four cards.

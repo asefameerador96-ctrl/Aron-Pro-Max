@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * Contract 1.11.0 (AMO manual build, docs/requests/amo-manual-build-2026-11.md s3), foundation trains F1 and F2: the members and the
+ * Contract 1.11.1 (AMO manual build, docs/requests/amo-manual-build-2026-11.md s3), foundation trains F1 and F2: the members and the
  * operation the AMO lanes build against. Everything is additive: no existing required list grows.
  */
 @Suppress("UNCHECKED_CAST")
