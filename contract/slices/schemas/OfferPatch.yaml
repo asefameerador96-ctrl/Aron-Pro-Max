@@ -5,6 +5,8 @@ OfferPatch:
   - change_reason
   additionalProperties: false
   properties:
+    request_uuid:
+      $ref: '#/components/schemas/Uuid'
     title_en:
       type: string
       maxLength: 200
@@ -13,31 +15,98 @@ OfferPatch:
       - string
       - 'null'
       maxLength: 200
+    valid_from:
+      $ref: '#/components/schemas/BusinessDate'
     valid_to:
       $ref: '#/components/schemas/BusinessDate'
     status:
       $ref: '#/components/schemas/ActiveStatus'
+      deprecated: true
+      description: Refused with 400 since 1.12.0; use POST /v1/admin/offers/{id}/status.
+    offer_type:
+      type: string
+      enum:
+      - pct_discount
+      - amount_per_unit
+      - free_qty
+      - drp_slide
+    level:
+      type: string
+      enum:
+      - line
+      - memo
+    stacking:
+      type: string
+      enum:
+      - exclusive
+      - stackable
     discount_bp:
       type:
       - integer
       - 'null'
       minimum: 1
       maximum: 10000
+      description: pct_discount in basis points of the line gross (100 = 1 percent).
     discount_mtk_per_unit:
       type:
       - integer
       - 'null'
       format: int64
       minimum: 1
+      description: amount_per_unit in integer milli-taka per base unit (not per packet).
     threshold_qty_base:
       type:
       - integer
       - 'null'
+      minimum: 1
+      description: Quantity in base units (sticks, pieces, dozens) that triggers the offer.
+    reward_sku_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
       minimum: 1
     reward_qty_base:
       type:
       - integer
       - 'null'
       minimum: 1
+      description: Free quantity in base units of the reward SKU.
+    qualifying:
+      type: array
+      maxItems: 100
+      items:
+        type: object
+        required:
+        - product_level
+        - product_id
+        additionalProperties: false
+        properties:
+          product_level:
+            $ref: '#/components/schemas/ProductLevel'
+          product_id:
+            $ref: '#/components/schemas/Id'
+    scope:
+      type: array
+      maxItems: 200
+      items:
+        type: object
+        required:
+        - node_type
+        - node_id
+        additionalProperties: false
+        properties:
+          node_type:
+            type: string
+            enum:
+            - wing
+            - division
+            - territory
+            - zone
+            - route
+            - channel
+            - sub_channel
+          node_id:
+            $ref: '#/components/schemas/Id'
     change_reason:
       $ref: '#/components/schemas/ChangeReason'

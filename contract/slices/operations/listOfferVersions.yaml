@@ -1,0 +1,25 @@
+path: /v1/admin/offers/{id}/versions
+method: get
+operation:
+  tags:
+  - admin-products
+  operationId: listOfferVersions
+  summary: Every version of an offer, newest first (1.12.0).
+  description: Same read rules as `listOffers`, judged for each version on its own scope. Versions are immutable.
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of versions.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OfferVersionPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

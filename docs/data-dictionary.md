@@ -19,8 +19,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 172 | 2898 |
-| `dw` | 70 | 1111 |
+| `app` | 173 | 2907 |
+| `dw` | 72 | 1157 |
 
 ## Index
 
@@ -104,7 +104,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.memo_void`](#appmemo_void) | table | backend:sync | OFFLINE | transaction | personal | Void of a memo, recorded with its reason and location fix; the memo turns voided and is never deleted. |
 | [`app.mfa_secret`](#appmfa_secret) | table | backend:auth | ONLINE | master | secret | A user's TOTP secret (encrypted) and recovery code hashes. |
 | [`app.offer`](#appoffer) | table | backend:masterdata | ONLINE | master | none | Stable identity of an offer; each rule change is a new offer_version. |
-| [`app.offer_version`](#appoffer_version) | table | backend:masterdata | ONLINE | master | none | One version of an offer's rule, validity and reward; memos record the versions they used. |
+| [`app.offer_status_change`](#appoffer_status_change) | table | backend:masterdata | ONLINE | audit | none | Append-only trail of offer status moves (draft, active, inactive) with the reason and the person; the request UUID makes a retried move idempotent. |
+| [`app.offer_version`](#appoffer_version) | table | backend:masterdata | ONLINE | master | none | One immutable version of an offer's rule, validity and reward: a rule change is a new row, never an UPDATE (trigger and grant). The discount portal creates them (V0152); memos will record the versions they used once the discount engine exists, and the field offer line stays zero until then (docs/27). |
 | [`app.offer_version_product`](#appoffer_version_product) | table | backend:masterdata | ONLINE | master | none | Product the offer version applies to, at category, brand, variant or SKU level. |
 | [`app.offer_version_scope`](#appoffer_version_scope) | table | backend:masterdata | ONLINE | master | none | Geography or channel node an offer version is limited to; no rows means everywhere. |
 | [`app.outlet`](#appoutlet) | table | backend:masterdata | ONLINE | master | sensitive | One retail or wholesale outlet with owner, location, route placement and national id, TIN and trade licence. |
@@ -257,6 +258,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_memo`](#dwv_memo) | view | worker | SERVER | event_fact | none | Stable view: one row per memo (dw.fact_memo) with its money, scope keys and SCD2 keys; the memo UUID, never the printed memo number (personal: it embeds the login). is_effective = active with at least one line. |
 | [`dw.v_memo_flags`](#dwv_memo_flags) | view | worker | SERVER | event_fact | personal | Stable view: one row per memo the server flagged (app.memo.server_flags non-empty: zero price line, price, arithmetic or pack-factor mismatch and the like), with its scope keys; voided and superseded memos included with their status (counts use status = 'active' AND voided_at IS NULL). |
 | [`dw.v_memo_line`](#dwv_memo_line) | view | worker | SERVER | event_fact | none | Stable view: one row per memo line (dw.fact_memo_line) in entered and base units with its price at capture. is_effective = memo active and line not voided. |
+| [`dw.v_offer`](#dwv_offer) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per discount programme (app.offer) with the rule of its current version. The portal exists; the field does not use it yet (memo offer line zero, bundle offers empty). is_effective = status active. |
+| [`dw.v_offer_version`](#dwv_offer_version) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per immutable offer version with its rule, validity, reward and the product and scope rows as JSON arrays (empty scope = everywhere). is_effective = the current version of an active offer. |
 | [`dw.v_outlet_masked`](#dwv_outlet_masked) | view | backend:masterdata | ONLINE | master | none | Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107). |
 | [`dw.v_outlet_sku_daily`](#dwv_outlet_sku_daily) | view | worker | SERVER | event_fact | none | Stable view: quantity sold and memo count per outlet, SKU and business date (dw.agg_daily_outlet_sku). is_effective = true. |
 | [`dw.v_route_day`](#dwv_route_day) | view | worker | SERVER | event_fact | none | Stable view: one row per route and business date (dw.agg_daily_route) with the zone-day flags derived per route (target route, successful login, sales submitted) and the Final Submit of the zone the route-day was stamped with; summing over a caller's routes gives the route-scoped dashboard totals. is_effective = true. |
@@ -2426,7 +2429,7 @@ One sales memo header (or zero-sale record) for an outlet visit, with gross, dis
 | `price_list_date` | date | not null |  | Date of the price list used to price the memo. |
 | `price_type` | text | not null |  | Selling price type of the outlet or price row: outlet, cc, distributor (and reporting, nto for prices). |
 | `gross_mtk` | bigint | not null |  | Gross sales value before discounts, in milli-taka. |
-| `offer_discount_mtk` | bigint | not null |  | Offer and free-goods discount in milli-taka (zero until the discount engine exists, docs/27). |
+| `offer_discount_mtk` | bigint | not null |  | Offer and free-goods discount in milli-taka. Zero in every field app until the owner enables the discount engine (docs/27): the discount portal (V0152) manages programmes, but nothing applies them to a memo yet. |
 | `drp_discount_mtk` | bigint | not null |  | DRP (empty-pack slide) discount in milli-taka. |
 | `qc_deduction_mtk` | bigint | not null |  | QC settlement deducted on the memo, in milli-taka. |
 | `round_adj_mtk` | smallint | not null |  | Rounding adjustment applied to the net amount, in milli-taka. |
@@ -2634,7 +2637,7 @@ Stable identity of an offer; each rule change is a new offer_version.
 | `id` | bigint | not null |  | Server surrogate key. |
 | `code` | text | not null |  | Stable business code of the row, unique within its table. |
 | `group_code` | text | not null |  | Code of the group the offer belongs to, used to apply stacking rules. |
-| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
+| `status` | text | not null |  | Lifecycle: draft (being prepared, rule may still change), active, inactive (ended; shown as "Ended" in the portal). Moves go draft -> active -> inactive through app.offer_status_change. Active in the portal does not reach the field: the bundle offers array and the memo offer line stay zero (docs/27). |
 | `current_version_id` | bigint | null |  | Id of the offer_version currently in force for the offer. |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
@@ -2647,16 +2650,37 @@ Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (current_version_id) REFERENCES app.offer_version(id)`
 
+## app.offer_status_change
+
+Append-only trail of offer status moves (draft, active, inactive) with the reason and the person; the request UUID makes a retried move idempotent.
+
+`owner: backend:masterdata | capture: ONLINE | retention: audit | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `offer_id` | bigint | not null |  | Offer (app.offer) whose status moved. |
+| `from_status` | text | not null |  | Status before the move: draft, active or inactive. |
+| `to_status` | text | not null |  | Status after the move: draft, active or inactive; always different from from_status. |
+| `request_uuid` | uuid | not null |  | Client-generated UUID of the status call; unique, so a retried call returns this row instead of moving the offer twice. |
+| `reason` | text | not null |  | Why the offer moved, 10 to 500 characters, mandatory. |
+| `actor` | bigint | not null |  | User (app.app_user) who made the move. |
+| `at` | timestamp with time zone | not null |  | UTC instant of the move. |
+
+Keys: `UNIQUE (request_uuid)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (actor) REFERENCES app.app_user(id)`; `FOREIGN KEY (offer_id) REFERENCES app.offer(id)`
+
 ## app.offer_version
 
-One version of an offer's rule, validity and reward; memos record the versions they used.
+One immutable version of an offer's rule, validity and reward: a rule change is a new row, never an UPDATE (trigger and grant). The discount portal creates them (V0152); memos will record the versions they used once the discount engine exists, and the field offer line stays zero until then (docs/27).
 
 `owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
 | `id` | bigint | not null |  | Server surrogate key. |
-| `offer_id` | bigint | not null |  | Offer (app.offer) the row refers to; offers are deferred (docs/27). |
+| `offer_id` | bigint | not null |  | Offer (app.offer) the version belongs to; the discount portal is in build and the field does not read it (memo offer line zero, docs/27). |
 | `version_no` | integer | not null |  | Sequence number of the version within its offer. |
 | `offer_type` | text | not null |  | Rule type: pct_discount, amount_per_unit, free_qty or drp_slide. |
 | `level` | text | not null |  | Whether the offer applies per line or to the whole memo. |
@@ -2674,6 +2698,7 @@ One version of an offer's rule, validity and reward; memos record the versions t
 | `change_reason` | text | null |  | Reason recorded for creating the version. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
+| `request_uuid` | uuid | null |  | Client-generated UUID of the portal call that created this version (create or update); a replay of the same call returns this version instead of a new one. Null for versions not made by the portal. |
 
 Keys: `UNIQUE (offer_id, version_no)`; `PRIMARY KEY (id)`
 
@@ -6874,6 +6899,70 @@ Stable view: one row per memo line (dw.fact_memo_line) in entered and base units
 | `updated_at` | timestamp with time zone | null |  | UTC instant the row was last rewritten. |
 | `data_origin` | app.data_origin | null |  | Origin of the line (app.memo_line.data_origin, stamped at capture). |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
+
+## dw.v_offer
+
+Stable view: one row per discount programme (app.offer) with the rule of its current version. The portal exists; the field does not use it yet (memo offer line zero, bundle offers empty). is_effective = status active.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `offer_id` | bigint | null |  | Offer (app.offer.id). |
+| `offer_code` | text | null |  | Stable business code of the offer (app.offer.code). |
+| `group_code` | text | null |  | Campaign label of the offer (app.offer.group_code); also the group stacking rules would apply to. |
+| `status` | text | null |  | Lifecycle status: draft, active or inactive (Ended in the portal). |
+| `current_version_id` | bigint | null |  | Offer version (app.offer_version.id) currently in force. |
+| `current_version_no` | integer | null |  | Version number of the current version, from 1. |
+| `offer_type` | text | null |  | Rule type of the current version: pct_discount, amount_per_unit, free_qty or drp_slide. |
+| `level` | text | null |  | Where the discount applies: line or memo. |
+| `title_en` | text | null |  | English title of the current version. |
+| `title_bn` | text | null |  | Bangla title of the current version; null when none. |
+| `valid_from` | date | null |  | First business date (Asia/Dhaka) the current version is valid. |
+| `valid_to` | date | null |  | Last business date (Asia/Dhaka, inclusive) the current version is valid. |
+| `threshold_qty_base` | integer | null |  | Quantity in base units (sticks, pieces, dozens) that must be bought for the rule to apply; null when no threshold. |
+| `discount_bp` | integer | null |  | Percentage discount in basis points (1 to 10000); null unless pct_discount. |
+| `discount_mtk_per_unit` | bigint | null |  | Money discount per base unit in integer milli-taka; null unless amount_per_unit. |
+| `reward_sku_id` | bigint | null |  | SKU given free (app.sku.id); null unless a free-goods rule. |
+| `reward_qty_base` | integer | null |  | Free quantity in base units of the reward SKU; null unless a free-goods rule. |
+| `stacking` | text | null |  | exclusive or stackable with other offers of the same group. |
+| `version_count` | integer | null |  | Number of versions the offer has had. |
+| `created_at` | timestamp with time zone | null |  | UTC instant the offer was created. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant the offer row last changed (status or current version). |
+| `data_origin` | app.data_origin | null |  | Always production: offers carry no origin of their own. |
+| `is_effective` | boolean | null |  | True when the offer status is active. |
+
+## dw.v_offer_version
+
+Stable view: one row per immutable offer version with its rule, validity, reward and the product and scope rows as JSON arrays (empty scope = everywhere). is_effective = the current version of an active offer.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `offer_version_id` | bigint | null |  | Offer version (app.offer_version.id). |
+| `offer_id` | bigint | null |  | Offer (app.offer.id) the version belongs to. |
+| `offer_code` | text | null |  | Stable business code of the offer. |
+| `version_no` | integer | null |  | Version number within the offer, from 1. |
+| `is_current` | boolean | null |  | True for the version in force (app.offer.current_version_id). |
+| `offer_type` | text | null |  | Rule type: pct_discount, amount_per_unit, free_qty or drp_slide. |
+| `level` | text | null |  | Where the discount applies: line or memo. |
+| `title_en` | text | null |  | English title of the version. |
+| `title_bn` | text | null |  | Bangla title of the version; null when none. |
+| `valid_from` | date | null |  | First business date (Asia/Dhaka) the version is valid. |
+| `valid_to` | date | null |  | Last business date (Asia/Dhaka, inclusive) the version is valid. |
+| `threshold_qty_base` | integer | null |  | Quantity in base units that must be bought for the rule to apply; null when no threshold. |
+| `discount_bp` | integer | null |  | Percentage discount in basis points (1 to 10000); null unless pct_discount. |
+| `discount_mtk_per_unit` | bigint | null |  | Money discount per base unit in integer milli-taka; null unless amount_per_unit. |
+| `reward_sku_id` | bigint | null |  | SKU given free (app.sku.id); null unless a free-goods rule. |
+| `reward_qty_base` | integer | null |  | Free quantity in base units of the reward SKU; null unless a free-goods rule. |
+| `stacking` | text | null |  | exclusive or stackable with other offers of the same group. |
+| `rule` | jsonb | null |  | Extra typed parameters of the rule as JSON (empty object in v1; no slabs are invented, docs/27). |
+| `products` | jsonb | null |  | JSON array of {product_level, product_id} rows the version applies to (product_level category, brand, variant or sku, as in the contract); empty = every product. |
+| `scope` | jsonb | null |  | JSON array of {node_type, node_id} place rows (wing, division, territory, zone, route, channel, sub_channel, as in the contract); empty = everywhere. |
+| `created_at` | timestamp with time zone | null |  | UTC instant the version was made. |
+| `data_origin` | app.data_origin | null |  | Always production: offers carry no origin of their own. |
+| `is_effective` | boolean | null |  | True for the current version of an active offer. |
 
 ## dw.v_outlet_masked
 
