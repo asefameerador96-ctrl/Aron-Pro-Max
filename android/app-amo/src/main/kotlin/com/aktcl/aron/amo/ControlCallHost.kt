@@ -89,7 +89,7 @@ fun ControlCallHost(
     // A call already open (kill and relaunch): back on its screen, never a second visit; the drop-downs show its route and retailer.
     val open by day.visitSession.current.collectAsState()
     LaunchedEffect(open) {
-        calledToday = runCatching { day.calledTodayOutletIds() }.getOrDefault(emptySet())
+        calledToday = com.aktcl.aron.core.common.orDefaultKeepingCancellation(emptySet()) { day.calledTodayOutletIds() }
         open?.let { v ->
             if (v.routeId != 0L) routeId = v.routeId
             outletId = v.outletId

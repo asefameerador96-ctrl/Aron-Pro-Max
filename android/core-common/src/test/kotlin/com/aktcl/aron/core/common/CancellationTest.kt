@@ -14,8 +14,7 @@ import org.junit.Test
  * D-AMO-CALLS-35, the deterministic probe of the flake in AmoDayLockHostsTest.editOnTheMemoDetailFollowsTheLockThatLandsWhileItIsOnScreen. The memo host's
  * `LaunchedEffect(memo, dayLocked, pulls, dayLock) { editRefused = kit.editRefusal(memo) }` was cancelled by the key change while its query was in flight; the query was
  * wrapped in `runCatching`, which returned null for the cancellation, and the cancelled coroutine then wrote `editRefused = null` AFTER the newer run had written FINAL_SUBMIT.
- * No clock, no threads, no scheduling luck: the run is cancelled while suspended, so the outcome is the same every time (with `runCatching(..).getOrNull()` in place of the helper,
- * [cancelledRunNeverReturnsAValue] and [aSupersededRunCannotOverwriteTheNewerAnswer], 2 of the 3 tests, fail every time; D-AMO-CALLS-37 adds the same pair for [orDefaultKeepingCancellation]).
+ * No clock, no threads, no scheduling luck: the run is cancelled while suspended, so the outcome is the same every time (with `runCatching` in place of the helpers, 3 of this class's 5 tests fail every time: [cancelledRunNeverReturnsAValue] and [aSupersededRunCannotOverwriteTheNewerAnswer] for [orNullKeepingCancellation] (D-AMO-CALLS-35), [cancelledRunNeverFallsBackToTheDefault] for [orDefaultKeepingCancellation] (D-AMO-CALLS-37); the other two pin the unchanged non-cancellation behaviour).
  */
 class CancellationTest {
     @Test fun cancelledRunNeverReturnsAValue() = runBlocking {

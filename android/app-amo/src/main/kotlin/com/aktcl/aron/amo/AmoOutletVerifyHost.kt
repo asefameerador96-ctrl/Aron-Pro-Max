@@ -112,7 +112,7 @@ internal fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGon
     var savesDone by remember(uuid) { mutableStateOf(0) }
     LaunchedEffect(uuid, savesDone) {
         lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
-            val d = runCatching { day.refusedDecision(req.uuid) }.getOrNull(); refusedCode = d?.second; held = d?.first == com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED
+            val d = com.aktcl.aron.core.common.orNullKeepingCancellation { day.refusedDecision(req.uuid) }; refusedCode = d?.second; held = d?.first == com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED
         }
     }
     var routeSel by rememberSaveable(uuid) { mutableStateOf<Long?>(null) }

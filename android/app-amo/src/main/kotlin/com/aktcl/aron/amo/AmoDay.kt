@@ -581,7 +581,7 @@ class AmoDay(
     suspend fun jointDefaultStar(): Int? = com.aktcl.aron.feature.amo.jointDefaultStar(runCatching { reference.config("cfg.amo.joint_call_default_star", iso(clock.nowMs())) }.getOrNull())
 
     /** `cfg.amo.price_compliance_tile` (default false): the Price compliance tile of the Control Call menu (D-AMO-MAN-14). */
-    suspend fun priceComplianceTile(): Boolean = runCatching { reference.config("cfg.amo.price_compliance_tile", iso(clock.nowMs())) }.getOrNull()?.trim('"')?.equals("true", ignoreCase = true) == true
+    suspend fun priceComplianceTile(): Boolean = com.aktcl.aron.core.common.orNullKeepingCancellation { reference.config("cfg.amo.price_compliance_tile", iso(clock.nowMs())) }?.trim('"')?.equals("true", ignoreCase = true) == true
 
     /** Outlets with a call (any AMO visit kind) opened on today's business date: the brown badge of the retailer list. Local read. */
     suspend fun calledTodayOutletIds(): Set<Long> = db.captureDao().visitsOn(businessDate()).map { it.outletId }.toSet()
