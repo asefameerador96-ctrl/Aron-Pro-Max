@@ -57,3 +57,45 @@ class JointCallTest {
         assertNull(JointCall.assignedSr(sup, 77)); assertNull(JointCall.assignedSr(null, 5)); assertNull(JointCall.assignedSr("x", 5))
     }
 }
+
+class JointCallV2Test {
+    private val v2 = """[{"rubric_id":9,"version":2,"kind":"joint_call","criteria":[
+        {"criterion_id":1,"label_en":"Summarise the situation","label_bn":null,"answer_type":"score_1_5","enabled":true,"section":"5-step sales call assessment","section_bn":"৫ ধাপ সেলস কল অ্যাসেসমেন্ট","guidance_en":"What to look for: OHS count","guidance_bn":"যা দেখতে হবে: OHS কাউন্ট"},
+        {"criterion_id":2,"label_en":"Describe the concept","answer_type":"score_1_5","enabled":true,"section":"5-step sales call assessment","section_bn":"৫ ধাপ সেলস কল অ্যাসেসমেন্ট","guidance_en":"g2"},
+        {"criterion_id":3,"label_en":"Relationship","answer_type":"score_1_5","enabled":true,"section":"Relationship assessment","section_bn":"রিলেসনশিপ এসেসম্যান্ট","guidance_en":"g3"}]}]"""
+
+    @Test fun sectionsAndGuidanceAreReadAndGroupedInServerOrder() {
+        val r = JointCall.rubric(v2)!!
+        assertEquals(2, r.version)
+        assertEquals(listOf(2, 1), r.sections.map { it.criteria.size })
+        assertEquals("৫ ধাপ সেলস কল অ্যাসেসমেন্ট", r.sections[0].titleBn)
+        assertEquals("যা দেখতে হবে: OHS কাউন্ট", r.criteria[0].guidanceBn); assertNull(r.criteria[1].guidanceBn)
+        assertEquals("What to look for: OHS count", r.criteria[0].guidanceEn)
+    }
+
+    @Test fun aRubricWithoutSectionsIsOneHeaderlessSection() {
+        val r = JointCall.rubric("""[{"rubric_id":1,"version":1,"kind":"joint_call","criteria":[{"criterion_id":1,"label_en":"a","answer_type":"score_1_5"},{"criterion_id":2,"label_en":"b","answer_type":"score_1_5"}]}]""")!!
+        assertEquals(1, r.sections.size); assertNull(r.sections[0].title)
+    }
+
+    @Test fun starOneIsPreselectedByDefaultAndSaveIsAlwaysEnabled() {
+        val r = JointCall.rubric(v2)!!
+        assertEquals(1, jointDefaultStar(null)); assertEquals(1, jointDefaultStar("1")); assertEquals(1, jointDefaultStar("\"1\""))
+        assertTrue(JointState().canSave(r, 1)) // nothing touched: a forgotten item saves as 1
+        var n = 0
+        val recs = JointCall.records("v", r, JointState().star(1, 5), 42) { "u${n++}" }
+        assertEquals("7", recs[0].payload["total_score"].toString()) // 5 + 1 + 1
+        assertEquals("15", recs[0].payload["max_score"].toString())
+    }
+
+    @Test fun withNoneTheAmoMustRateEveryItemBeforeSave() {
+        val r = JointCall.rubric(v2)!!
+        assertNull(jointDefaultStar("none")); assertNull(jointDefaultStar(" \"None\" "))
+        assertFalse(JointState().canSave(r, null))
+        assertFalse(JointState().star(1, 4).star(2, 4).canSave(r, null))
+        assertTrue(JointState().star(1, 4).star(2, 4).star(3, 2).canSave(r, null))
+        assertEquals(0, JointState().of(1, null)); assertEquals(3, JointState().star(1, 3).of(1, null))
+    }
+
+    private fun assertFalse(b: Boolean) = org.junit.Assert.assertFalse(b)
+}

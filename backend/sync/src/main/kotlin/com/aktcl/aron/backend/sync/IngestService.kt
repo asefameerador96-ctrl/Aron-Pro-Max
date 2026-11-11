@@ -973,6 +973,17 @@ class IngestService(
             }
         }
 
+        // 5a. D-AMO-MAN-12: the route and cluster an AMO corrected on a verification form exist, belong together (the cluster is in the
+        // route's zone) and sit in the uploader's reach; anything else is a final schema_invalid, never stored.
+        if (r.type == "outlet_request_verification") {
+            val vRoute = payload.long("route_id"); val vCluster = payload.long("cluster_id")
+            val rz = vRoute?.let { id -> h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", id).mapTo(Long::class.java).findOne().orElse(null) ?: return finalReject(h, ctx, r, RecordOutcomeCode.UNKNOWN_ROUTE, "route $id") }
+            val cz = vCluster?.let { id -> h.createQuery("SELECT zone_id FROM app.cluster WHERE id = :c").bind("c", id).mapTo(Long::class.java).findOne().orElse(null) ?: return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "cluster $id") }
+            if (rz != null && cz != null && rz != cz) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "cluster $vCluster is not in the zone of route $vRoute")
+            val zone = rz ?: cz
+            if (zone != null && !scopeAccepted && !ctx.reachOn(bd).coversZone(zone)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "zone $zone on $bd")
+        }
+
         if (!scopeAccepted) env.long("acting_for_user_id")?.let { a ->
             if (!actingForValid(h, ctx, routeId, a, bd)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "acting_for_user_id $a without a cover of route $routeId")
         }
@@ -1694,6 +1705,18 @@ class IngestService(
             val v = payload[k] ?: continue
             if (v !is JsonNull && (v !is JsonPrimitive || v.isString || (v.longOrNull ?: 0) < 1)) return "$k must be a positive integer"
         }
+        // Contract 1.11.0 (D-AMO-MAN-08): the force-sale reason is one of two codes and exists only on a force sale. The same rule
+        // is a CHECK on app.visit (V0150), so a reason can never be stored on any other visit.
+        if (r.type == "visit") {
+            val reason = payload["force_sale_reason"]
+            if (reason != null && reason !is JsonNull) {
+                if (manual) return "force_sale_reason is chosen on the phone; a paper entry has none"
+                val code = (reason as? JsonPrimitive)?.takeIf { it.isString }?.content
+                if (code !in FORCE_SALE_REASONS) return "force_sale_reason must be internet_problem or location_change"
+                val action = ((payload["geo"] as? JsonObject)?.get("action") as? JsonPrimitive)?.takeIf { it.isString }?.content
+                if (action != "force_sale") return "force_sale_reason is allowed only with geo.action force_sale"
+            }
+        }
         return null
     }
 
@@ -1945,6 +1968,7 @@ class IngestService(
         private val DEVICE_HOLD_CODES = setOf(RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire, RecordOutcomeCode.DEVICE_NOT_ENROLLED.wire)
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+        private val FORCE_SALE_REASONS = setOf("internet_problem", "location_change")
         private val TYPE_PATTERN = Regex("^[a-z][a-z_]{1,40}$")
 
         /** Record type a parent reference must name. */

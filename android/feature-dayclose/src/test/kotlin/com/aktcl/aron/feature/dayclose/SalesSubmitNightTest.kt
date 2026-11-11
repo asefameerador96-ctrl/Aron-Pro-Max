@@ -113,5 +113,5 @@ class SalesSubmitNightTest {
      */
     @Test fun theHeaderFitsAt360InEnglish() = headerOnOneLine(AppLanguage.EN, "Item", "Phone", "Server")
 
-    @Test fun theHeaderFitsAt360InBangla() = headerOnOneLine(AppLanguage.BN, "বিষয়", "ফোন", "সার্ভার")
+    @Test fun theHeaderFitsAt360InBangla() = headerOnOneLine(AppLanguage.BN, "বিষয়", "ডিভাইস", "সার্ভার")
 }

@@ -12,14 +12,14 @@ object AmoVisitKind {
 }
 
 /** One row of the route list of a Control or Joint Call (F-AMO-004): the zone's routes, active ones, by code. */
-data class AmoRouteRow(val routeId: Long, val title: String, val outletCount: Int)
+data class AmoRouteRow(val routeId: Long, val title: String, val outletCount: Int, val shortTitle: String = title)
 
 object ControlCall {
     /** Routes of the zone-wide bundle for the picker: closed routes hidden, ordered by code; the title is the display label or name. */
     fun routes(days: List<RouteDay>): List<AmoRouteRow> =
         days.filter { it.route.status == "active" }
             .sortedWith(compareBy({ it.route.code }, { it.route.routeId }))
-            .map { AmoRouteRow(it.route.routeId, "${it.route.displayLabel ?: it.route.name} (${it.route.code})", it.outlets.count { o -> o.status == "active" }) }
+            .map { AmoRouteRow(it.route.routeId, "${it.route.displayLabel ?: it.route.name} (${it.route.code})", it.outlets.count { o -> o.status == "active" }, it.route.displayLabel ?: it.route.name) }
 
     /** Outlets of one route (route ids can repeat across a delta: the first occurrence wins), as the SR picker expects them. */
     fun outlets(days: List<RouteDay>, routeId: Long): List<OutletEntity> =

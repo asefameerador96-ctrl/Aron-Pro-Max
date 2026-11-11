@@ -82,7 +82,7 @@ class AmoShellScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h1500dp") fun amo_home_targets_sunlight_bn() = shot("amo_home_targets_sunlight_bn", AppLanguage.BN, sunlight = true) { Home(set) }
 
     // ---- push 2: Login (rows 3, R1), Attendance (14 to 16, R7), Stock (41), Settings (75, R16) ----
-    @Composable private fun Login() = com.aktcl.aron.feature.auth.LoginContent(
+    @Composable private fun Login() = com.aktcl.aron.feature.auth.AmoLoginContent(
         com.aktcl.aron.feature.auth.LoginUiState(username = "amo5864", password = "secret"), "ARON AMO", "1.0.25 (12)", {}, {}, {}, {}, {}, footerText = "ARON AMO v1.0.25",
     )
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_login_bn() = shot("amo_login_bn", AppLanguage.BN, amoLook = false) { Login() }
@@ -111,10 +111,12 @@ class AmoShellScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_waiting_bn() = shot("amo_attendance_waiting_bn", AppLanguage.BN) { Attendance(checkedIn) }
     @Test fun amo_attendance_waiting_en() = shot("amo_attendance_waiting_en", AppLanguage.EN) { Attendance(checkedIn) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_waiting_bn_sunlight() = shot("amo_attendance_waiting_bn_sunlight", AppLanguage.BN, sunlight = true) { Attendance(checkedIn) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_waiting_bn_fs2() = shot("amo_attendance_waiting_bn_fs2", AppLanguage.BN, fontScale = 2f) { Attendance(checkedIn) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_open_bn() = shot("amo_attendance_open_bn", AppLanguage.BN) { Attendance(open) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_checkout_sheet_bn() = shot("amo_attendance_checkout_sheet_bn", AppLanguage.BN, after = tap("att_check_out")) { Attendance(open) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_done_bn() = shot("amo_attendance_done_bn", AppLanguage.BN) { Attendance(done) }
     @Test fun amo_attendance_done_en() = shot("amo_attendance_done_en", AppLanguage.EN) { Attendance(done) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_done_bn_sunlight() = shot("amo_attendance_done_bn_sunlight", AppLanguage.BN, sunlight = true) { Attendance(done) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_attendance_done_bn_fs2() = shot("amo_attendance_done_bn_fs2", AppLanguage.BN, fontScale = 2f) { Attendance(done) }
 
     private fun sku(id: Long, cat: String, name: String, unit: String, perPack: Int) =
@@ -143,7 +145,7 @@ class AmoShellScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_stock_connected_saved_bn_sunlight() = shot("amo_stock_connected_saved_bn_sunlight", AppLanguage.BN, sunlight = true) { Stock(true, true) }
 
     @Composable private fun Settings() = com.aktcl.aron.feature.amo.AmoSettingsContent(
-        "1.0.25 (12)", "Your saved work stays on this phone and will still upload.", {}, {}, {}, sunlight = false, onSunlight = {}, onUpdate = {}, onSupport = {}, onPrinter = {}, onExceptions = {},
+        "1.0.25 (12)", androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.home.R.string.set_logout_message), {}, {}, {}, sunlight = false, onSunlight = {}, onUpdate = {}, onSupport = {}, onPrinter = {}, onExceptions = {},
     )
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_settings_bn() = shot("amo_settings_bn", AppLanguage.BN) { Settings() }
     @Test fun amo_settings_en() = shot("amo_settings_en", AppLanguage.EN) { Settings() }

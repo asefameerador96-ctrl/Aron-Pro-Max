@@ -15,5 +15,7 @@
     <string name="amo_shell_ok">OK</string>
     <string name="amo_shell_header_zone">%1$s AMO, %2$s</string>
     <string name="amo_shell_header_plain">AMO, %1$s</string>
+    <!-- the login footer: app name and the version, whose digits stay Latin in every language (the vendor shows "ARON AMO v1.0.25") -->
+    <string name="amo_shell_login_footer" translatable="false">%1$s v%2$s</string>
     <string name="amo_shell_no_target">—</string>
 </resources>

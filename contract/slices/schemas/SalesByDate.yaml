@@ -1,0 +1,24 @@
+SalesByDate:
+  type: object
+  required:
+  - outlet_id
+  - business_date
+  - lines
+  - total_qty_base
+  - total_value_mtk
+  additionalProperties: false
+  properties:
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    lines:
+      type: array
+      items:
+        $ref: '#/components/schemas/SalesByDateLine'
+    total_qty_base:
+      type: integer
+      format: int64
+      minimum: 0
+    total_value_mtk:
+      $ref: '#/components/schemas/Mtk'

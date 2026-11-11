@@ -1,0 +1,40 @@
+path: /v1/outlets/{outlet_id}/sales-by-date
+method: get
+operation:
+  tags:
+  - team
+  operationId: getOutletSalesByDate
+  summary: Everything sold to an outlet on a date by any SR (the AMO's previous sale data; contract 1.11.0).
+  description: 'Reach-checked: the outlet''s route (else its zone) must be in the caller''s reach, otherwise 403
+    `ERR_FORBIDDEN`.
+
+    Supervisor roles only (SR and the other roles 403). `business_date` defaults to today and must lie within the
+
+    last 90 days (else 400 `ERR_VALIDATION`). Lines are per SKU in the SKU''s field unit (`report_unit`: pack for
+    cigarettes,
+
+    bidi and lighters, dozen for matches; docs/34 s4.2) and in base units, from active sale memo lines only.
+
+    '
+  parameters:
+  - name: outlet_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+  - $ref: '#/components/parameters/BusinessDateQuery'
+  responses:
+    '200':
+      description: The day's sales to the outlet.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SalesByDate'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

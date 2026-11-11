@@ -54,3 +54,28 @@ RubricDef:
             pattern: ^[a-z][a-z0-9_]{1,40}$
             description: Stable key of the criterion (the `key` of `RubricWrite`), returned on the admin read (`RubricAdmin`)
               so a definition round-trips into the write (docs/24 s14a R20); the bundle may omit it.
+          section:
+            type:
+            - string
+            - 'null'
+            maxLength: 120
+            description: Heading of the group the criterion is shown under, English (contract 1.11.0; the Joint
+              Call card headers). Criteria with the same section are grouped in order; null = no heading.
+          section_bn:
+            type:
+            - string
+            - 'null'
+            maxLength: 120
+            description: The same heading in Bangla (contract 1.11.0, D-AMO-FND-05).
+          guidance_en:
+            type:
+            - string
+            - 'null'
+            maxLength: 500
+            description: What to look for, English (contract 1.11.0).
+          guidance_bn:
+            type:
+            - string
+            - 'null'
+            maxLength: 500
+            description: What to look for, Bangla (contract 1.11.0).

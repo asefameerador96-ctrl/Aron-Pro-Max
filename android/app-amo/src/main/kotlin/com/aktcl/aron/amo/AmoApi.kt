@@ -30,6 +30,9 @@ fun AmoFetch.isMissing(): Boolean = this is AmoFetch.Unavailable || this is AmoF
 class AmoApi(private val client: AronApiClient, context: Context, userId: Long) {
     private val dir = java.io.File(context.cacheDir, "amo_api_$userId")
 
+    /** `GET /v1/outlets/{id}/sales-by-date` (contract 1.11.0, F2): every sale to the outlet on [businessDate], any SR; the last answer per outlet and date is kept. */
+    suspend fun salesByDate(outletId: Long, businessDate: String): AmoFetch = get("/v1/outlets/$outletId/sales-by-date", "sales_${outletId}_$businessDate", mapOf("business_date" to businessDate))
+
     suspend fun outletRequest(uuid: String): AmoFetch = get("/v1/outlet-requests/$uuid", "req_$uuid")
 
     /** `GET /v1/team/locations` (F-API-023): the last synced fix of each SR of the zone. */

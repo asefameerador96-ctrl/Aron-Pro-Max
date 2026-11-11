@@ -83,8 +83,20 @@ fun AmoSaleHost(
         false -> {
             val vm = viewModel(key = "sale-" + v.visitUuid) { kit.newSaleViewModel() }
             LaunchedEffect(v.visitUuid) { kit.prepare(); vm.start(kit.saleVisit(v)) }
-            Column(Modifier.fillMaxSize()) {
-                SaleRoute(vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f), onFinished = { onDone() })
+            var history by rememberSaveable(v.visitUuid) { mutableStateOf(false) }
+            BackHandler(enabled = history) { history = false }
+            // the outlet stays on screen from quantity entry to Print (screenshots 24, 25): the retailer pill and the review's three header lines
+            var header by remember(v.visitUuid) { mutableStateOf<AmoDay.SaleHeader?>(null) }
+            LaunchedEffect(v.visitUuid) { header = runCatching { day.saleHeader() }.getOrNull() }
+            val routeLine = header?.route?.let { stringResource(AmoR.string.amo_review_route, it) }
+            val clusterLine = header?.cluster?.let { stringResource(AmoR.string.amo_review_cluster, it) }
+            if (history) PreviousSalesHost(day, v.outletId) else Column(Modifier.fillMaxSize()) {
+                SaleRoute(
+                    vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f), onFinished = { onDone() },
+                    retailerLabel = header?.pill?.let { com.aktcl.aron.core.ui.localizedDigits(it) },
+                    outletLines = listOfNotNull(header?.pill?.let { com.aktcl.aron.core.ui.localizedDigits(it) }, routeLine, clusterLine), // heading = "name (code-phone-cluster)" as screenshot 25
+                    onPreviousSales = { history = true }, // the button keeps the shared "পূর্বের সেল ডাটা দেখুন" (screenshots 24, 26)
+                )
             }
         }
     }
@@ -104,12 +116,14 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
     LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { pulls++; vm.refresh() } }
     val dayLock = day.dayLock.collectAsState().value
     BackHandler(enabled = st.selected != null || history != null) { if (history != null) history = null else vm.open("") }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    // the find step (route and retailer pickers, their lists) scrolls itself: nesting it in a scrolling column crashes on infinite height
+    val outerScroll = st.selected != null || history != null
+    Column(Modifier.fillMaxSize().then(if (outerScroll) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
         val sel = st.selected
         val h = history
         when {
             h != null -> SaleHistoryScreen(h, offlineBanner = true, skuName = kit::skuName, skuCategory = kit::skuCategoryCode)
-            sel == null -> MemoMenuScreen(st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
+            sel == null -> MemoFindStep(day, st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
             else -> {
                 // an edit is a new memo on the memo's route: on a route closed by Final Submit it is disabled with the lock text;
                 // checked again on every applied push pull and lock refresh (fix round), not only when Mark Paid's own check changes;
@@ -117,8 +131,11 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
                 var editRefused by remember(sel.memo.memoUuid) { mutableStateOf<DayRefusal?>(null) }
                 LaunchedEffect(sel.memo.memoUuid, st.dayLocked, pulls, dayLock) { editRefused = kit.editRefusal(sel.memo.memoUuid) }
                 val closed = dayLock?.closedRouteIds?.size ?: 0
+                var memoHeader by remember(sel.memo.memoUuid) { mutableStateOf<Pair<String?, String?>>(null to null) }
+                LaunchedEffect(sel.memo.memoUuid) { memoHeader = runCatching { day.memoHeader(sel.memo.outletId) }.getOrDefault(null to null) }
                 MemoDetailView(
                     sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid, skuCategory = kit::skuCategoryCode,
+                    outletName = memoHeader.first?.let { com.aktcl.aron.core.ui.localizedDigits(it) }, routeName = memoHeader.second, dashedDueBox = true, // screenshots 42, 43
                     editDisabledReason = when (editRefused) {
                         DayRefusal.FINAL_SUBMIT -> stringResource(R.string.amo_lock_body, com.aktcl.aron.core.ui.localizedNumber(closed.coerceAtLeast(1).toLong()))
                         DayRefusal.SALES_SUBMIT -> stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_blocked_done)
@@ -159,7 +176,7 @@ fun AmoSummaryHost(day: AmoDay) {
     val attempt by day.summaryAttempt.collectAsState()
     LaunchedEffect(Unit) { bundle = kit.summary() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) }) }
+        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) }, emptyText = stringResource(AmoR.string.amo_summary_empty), printWhenEmpty = true) }
     }
     com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(
         attempt, onAnswer = day::answerSummaryPrint, onClose = day::closeSummaryAttempt,
@@ -180,7 +197,8 @@ fun AmoSubmitHost(day: AmoDay) {
     LaunchedEffect(Unit) { vm.refresh() }
     // DISPLAY ONLY: the manual's nine rows, from the admin's AMO reconciliation rows (the gate and the day_submit rows stay per record type)
     var rowGroups by remember { mutableStateOf<List<List<String>>?>(null) }
-    LaunchedEffect(Unit) { rowGroups = runCatching { day.sale.submitRowGroups() }.getOrNull() }
+    val priceCounted = st.counts.any { it.recordType == com.aktcl.aron.feature.amo.AmoReconciliation.PRICE_TYPE && (it.device != 0 || (it.server ?: 0) != 0) }
+    LaunchedEffect(priceCounted) { rowGroups = runCatching { day.sale.submitRowGroups(priceCounted) }.getOrNull() }
     val recordLabels = mapOf(
         "visit" to stringResource(AmoR.string.amo_rec_visit), "memo" to stringResource(AmoR.string.amo_rec_memo), "stock_movement" to stringResource(AmoR.string.amo_rec_stock_movement),
         "qc_line" to stringResource(AmoR.string.amo_rec_qc_line), "memo_discount" to stringResource(AmoR.string.amo_rec_memo_discount), "visit_close" to stringResource(AmoR.string.amo_rec_visit_close),
@@ -192,7 +210,7 @@ fun AmoSubmitHost(day: AmoDay) {
     SalesSubmitScreen(
         online = st.online, counts = st.counts, gate = st.gate, progress = st.progress, typeLabel = { recordLabels[it] ?: it },
         onSync = vm::sync, onSubmit = vm::submit, syncing = st.syncing, rowGroups = rowGroups,
-        rejected = st.rejected, dismissed = st.dismissed, serverKnown = st.serverKnown, today = day.businessDate(), // D-NIGHT-DAYCLOSE-01
+        rejected = st.rejected, dismissed = st.dismissed, serverKnown = st.serverKnown, today = day.businessDate(), vendorDialogs = true, // D-NIGHT-DAYCLOSE-01; row 66
     )
 }
 
@@ -273,4 +291,63 @@ fun AmoStockHost(day: AmoDay) {
     )
     }
     refused?.let { AmoRefusalDialog(day, it, onOk = { refused = null }) }
+}
+
+/** Previous sale data (screenshots 24, 26): the date steps from today back 90 days; the lines are read when the date changes. */
+@Composable
+fun PreviousSalesHost(day: AmoDay, outletId: Long) {
+    val today = remember { day.businessDate() }
+    var date by rememberSaveable { mutableStateOf(today) }
+    var history by remember { mutableStateOf<com.aktcl.aron.feature.amo.SaleHistory?>(null) }
+    var label by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(outletId) { label = runCatching { day.callHeader().first }.getOrNull() }
+    LaunchedEffect(outletId, date) { history = null; history = day.saleHistory(outletId, date) }
+    com.aktcl.aron.feature.amo.PreviousSalesContent(date, today, history, onShift = { date = com.aktcl.aron.feature.amo.PreviousSales.shift(date, it, today) }, outletLabel = label)
+}
+
+/**
+ * Memo find (screenshots 42-43): route, then retailer (the outlet's outstanding due beside "বাকি"), then the Memo tile opens that retailer's
+ * memos of today (reprint, edit, mark paid on the detail). Local reads only; nothing here waits on the network.
+ */
+@Composable
+private fun MemoFindStep(day: AmoDay, rows: List<com.aktcl.aron.feature.memo.domain.MemoMenuRow>, outletName: (Long) -> String, onOpen: (com.aktcl.aron.feature.memo.domain.MemoMenuRow) -> Unit) {
+    var routeId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var outletId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var chip by rememberSaveable { mutableStateOf(com.aktcl.aron.feature.outlet.OutletPicker.ALL_CHIP) }
+    var panel by rememberSaveable { mutableStateOf(0) } // 0 none, 1 routes, 2 outlets
+    var shown by rememberSaveable { mutableStateOf(false) }
+    var days by remember { mutableStateOf<List<com.aktcl.aron.core.database.repo.RouteDay>?>(null) }
+    var dues by remember { mutableStateOf<Map<Long, List<com.aktcl.aron.feature.amo.LocalDue>>>(emptyMap()) }
+    LaunchedEffect(day) {
+        days = runCatching { day.routes() }.getOrDefault(emptyList())
+        val today = day.businessDate()
+        // every memo of every day the phone keeps, the replaced versions too, with their Mark Paid records: MemoFind nets edits and collections by memo
+        dues = runCatching { com.aktcl.aron.feature.memo.ui.RoomMemoStore(day.database).allWithCollections() }.getOrDefault(emptyList()).let { all ->
+            all.groupBy({ it.first.outletId }, { (m, c) -> com.aktcl.aron.feature.amo.LocalDue(m.memoUuid, m.businessDate, m.committedAtIso, m.dueMtk, m.supersedesUuid, c) })
+        }
+    }
+    BackHandler(enabled = shown || panel != 0) { if (panel != 0) panel = 0 else shown = false }
+    val list = days ?: return
+    val routes = com.aktcl.aron.feature.amo.ControlCall.routes(list)
+    val outlets = com.aktcl.aron.feature.amo.ControlCall.outlets(list, routeId ?: -1L)
+    val pick = com.aktcl.aron.feature.amo.CallPick.rows(outlets, emptySet(), chip)
+    val outlet = outlets.firstOrNull { it.outletId == outletId }
+    if (shown && outlet != null) {
+        com.aktcl.aron.feature.memo.ui.MemoMenuScreen(rows.filter { it.outletId == outlet.outletId }, outletName, onOpen)
+        return
+    }
+    if (panel == 1) { com.aktcl.aron.feature.amo.AmoRoutePanel(routes, routeId, { routeId = it.routeId; outletId = null; chip = com.aktcl.aron.feature.outlet.OutletPicker.ALL_CHIP; panel = 0 }); return }
+    if (panel == 2) { com.aktcl.aron.feature.amo.AmoOutletPanel(pick, outletId, { outletId = it.outlet.outletId; panel = 0 }); return }
+    val label = outlet?.let { o ->
+        val r = com.aktcl.aron.feature.amo.MemoFind.due(o.openDueMtk, o.openDueAsOf, dues[o.outletId].orEmpty())
+        com.aktcl.aron.feature.outlet.OutletPicker.label(o) + (if (r.outstandingMtk > 0) "  " + stringResource(AmoR.string.amo_mf_due, com.aktcl.aron.feature.sale.ui.money(r.outstandingMtk)) else "") +
+            (if (r.overpaidMtk > 0) "  " + stringResource(AmoR.string.amo_mf_overpaid, com.aktcl.aron.feature.sale.ui.money(r.overpaidMtk)) else "") // L-c: the excess is said, never netted away
+    }
+    com.aktcl.aron.feature.amo.AmoCallPickContent(
+        routeText = routes.firstOrNull { it.routeId == routeId }?.shortTitle, outletText = label, outletHasBase = false,
+        letters = com.aktcl.aron.feature.amo.CallPick.letters(outlets), chip = chip, live = false,
+        range = if (outlet != null) com.aktcl.aron.feature.amo.CallRange.In else com.aktcl.aron.feature.amo.CallRange.Idle, enabledOutlet = routeId != null, locked = false,
+        onOpenRoute = { panel = 1 }, onOpenOutlet = { panel = 2 }, onChip = { chip = it }, onOverride = {}, onRefresh = {},
+        below = { com.aktcl.aron.feature.amo.AmoMenuTiles(listOf(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_memo, com.aktcl.aron.feature.home.R.string.hm_tile_memo, "amo_mf_tile") { shown = true })) },
+    )
 }

@@ -139,6 +139,7 @@ object AdminModules {
     val NOT_ADMIN: List<PortalLevels.Pattern> = listOf(
         p("/v1/sync/**"), p("/v1/devices/**"), p("/v1/auth/**"), p("/v1/client-errors"),
         p("/v1/app/**"),
+        p("/v1/supervisor/call-targets"), // AMO-only cards (contract 1.11.0, getCallTargets): the handler refuses every other role
     )
 
     /** POSTs that only read. */
