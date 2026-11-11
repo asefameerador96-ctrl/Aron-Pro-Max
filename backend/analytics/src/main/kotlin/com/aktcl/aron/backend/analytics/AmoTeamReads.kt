@@ -154,18 +154,20 @@ class AmoTeamReads(private val db: Database, private val clock: AronClock = Aron
             if (!inReach) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "the outlet is outside your reach")
             val lines = h.createQuery(
                 """
-                SELECT s.id, s.code, s.short_name, s.base_unit, s.base_per_pack, s.entry_unit_default, sum(l.qty_base)::bigint AS qty, sum(l.gross_mtk)::bigint AS val
+                SELECT s.id, s.code, s.short_name, s.category_code, s.base_unit, s.base_per_pack, s.entry_unit_default, sum(l.qty_base)::bigint AS qty, sum(l.gross_mtk)::bigint AS val
                   FROM app.memo m JOIN app.memo_line l ON l.memo_client_uuid = m.client_uuid AND l.business_date = m.business_date AND l.voided_at IS NULL AND l.line_kind = 'sale'
                   JOIN app.sku s ON s.id = l.sku_id
                  WHERE m.outlet_id = :o AND m.business_date = :d AND m.status = 'active' AND m.voided_at IS NULL
-                 GROUP BY s.id, s.code, s.short_name, s.base_unit, s.base_per_pack, s.entry_unit_default ORDER BY s.code
+                 GROUP BY s.id, s.code, s.short_name, s.category_code, s.base_unit, s.base_per_pack, s.entry_unit_default ORDER BY s.code
                 """,
             ).bind("o", outletId).bind("d", date).map { rs, _ ->
                 val qty = rs.getLong("qty"); val pack = rs.getString("entry_unit_default") == "pack"
                 val per = rs.getInt("base_per_pack").coerceAtLeast(1)
                 SalesByDateLine(
                     SalesSku(rs.getLong("id"), rs.getString("code"), rs.getString("short_name")),
-                    java.math.BigDecimal(qty).divide(java.math.BigDecimal(if (pack) per else 1), 3, java.math.RoundingMode.HALF_UP).toPlainString(), if (pack) "pack" else rs.getString("base_unit"), qty, rs.getLong("val"),
+                    java.math.BigDecimal(qty).divide(java.math.BigDecimal(if (pack) per else 1), 3, java.math.RoundingMode.HALF_UP).toPlainString(),
+                    // rule 5 (owner 2026-10-22): the field counts lighters as a box of 25, cigarettes in packets; the quantity is the same, the label differs (D-AMO-FND-14).
+                    if (pack) (if (rs.getString("category_code") == "lighter") "box" else "pack") else rs.getString("base_unit"), qty, rs.getLong("val"),
                 )
             }.list()
             SalesByDate(outletId, date.toString(), lines, lines.sumOf { it.qty_base }, lines.sumOf { it.value_mtk })
