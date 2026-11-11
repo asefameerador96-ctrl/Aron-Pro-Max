@@ -13,6 +13,14 @@ operation:
     `offers` array stays empty.'
   parameters:
   - $ref: '#/components/parameters/IdPath'
+  - name: If-Match
+    in: header
+    required: false
+    description: Optional (1.12.2). The ETag of the offer being moved; when given and stale the move is refused
+      `412`.
+    schema:
+      type: string
+      pattern: ^"[0-9]{1,10}"$
   requestBody:
     required: true
     content:
@@ -36,3 +44,5 @@ operation:
       $ref: '#/components/responses/NotFound'
     '409':
       $ref: '#/components/responses/Conflict'
+    '412':
+      $ref: '#/components/responses/PreconditionFailed'

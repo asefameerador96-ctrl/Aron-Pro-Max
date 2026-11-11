@@ -339,6 +339,10 @@ class AdminOffersTest {
     fun statusMovesDraftToActiveBySuperadminAndActiveToEndedByAdminWithTheTrailAndReplay() = app {
         val id = createId(createBody())
         activate(id, adminW).expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN")
+        // If-Match on the status call is optional; a stale one is 412 and moves nothing, the current one passes.
+        val row = scalar("SELECT version FROM app.offer WHERE id = $id").toInt()
+        call(HttpMethod.Post, "/v1/admin/offers/$id/status", super1, """{"request_uuid":"${uuid()}","to_status":"active","reason":"$why"}""", row + 3).expect(HttpStatusCode.PreconditionFailed, "ERR_PRECONDITION_FAILED")
+        assertEquals("draft", scalar("SELECT status FROM app.offer WHERE id = $id"))
         assertEquals("draft", scalar("SELECT status FROM app.offer WHERE id = $id"))
         val request = uuid()
         val r = activate(id, super1, request); r.expect(HttpStatusCode.OK)

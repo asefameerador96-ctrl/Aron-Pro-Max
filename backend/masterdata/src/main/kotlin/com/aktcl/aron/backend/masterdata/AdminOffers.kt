@@ -569,6 +569,7 @@ private suspend fun setStatus(call: ApplicationCall, d: AdminOffersDeps): OfferO
     val uuid = requestUuid(o)
     val to = o.enum("to_status", setOf("active", "inactive"), required = true)!!
     val reason = o.str("reason", 1, 2000, required = true)!!.trim().also { if (it.length < 10 || it.length > 500) adminBad("body.reason", "length") }
+    val ifMatchGiven: Int? = call.request.headers["If-Match"]?.let { call.ifMatch() }
     // Activation is the owner's decision (brief s8 Q3, as for prices): SUPERADMIN only. Ending is a write like any other.
     if (to == "active" && p.role != Role.SUPERADMIN) throw forbidden("only a SUPERADMIN activates a discount programme")
     return mapDb {
@@ -581,6 +582,8 @@ private suspend fun setStatus(call: ApplicationCall, d: AdminOffersDeps): OfferO
                 }
             if (uuidUsedByVersion(h, uuid)) throw conflict("request_uuid already used for a create or an update")
             val cur = loadOffer(h, id, lock = true) ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no discount programme with this id")
+            // An If-Match is optional here (the move is judged by the status itself); when given it must be the offer's current row version.
+            ifMatchGiven?.let { if (it != cur.version) preconditionFailed(cur.version) }
             val allowed = (cur.status == "draft" && to == "active") || (cur.status == "active" && to == "inactive")
             if (!allowed) throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "a ${cur.status} programme cannot move to $to (allowed: draft to active, active to inactive)")
             if (to == "active" && LocalDate.parse(cur.valid_to).isBefore(today(d)))
