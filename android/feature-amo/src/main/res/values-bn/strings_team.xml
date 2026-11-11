@@ -23,6 +23,8 @@
     <string name="amo_team_task_overdue">মেয়াদোত্তীর্ণ</string>
     <string name="amo_team_task_completion">সম্পন্নের তারিখ: %1$s</string>
     <string name="amo_team_task_to">প্রাপক: %1$s</string>
+    <string name="amo_team_route_out_of_reach">আপনার আওতার বাইরে</string>
+    <string name="amo_team_route_unavailable">রুটের বিস্তারিত পাওয়া যাচ্ছে না</string>
     <string name="amo_team_task_saved">সফলভাবে সংরক্ষিত হয়েছে!</string>
     <string name="amo_team_task_all">সব</string>
     <string name="amo_team_task_select_route">রুট বাছাই করুন</string>

@@ -24,7 +24,7 @@ data class StdMatrix(
 
 /** The card of one node (zone or route) of the sales-till-now summary (screenshot 72). Cells are strings already formatted by [SalesTillNow]. */
 data class TillRow(val category: String, val target: String, val sales: String, val pct: String, val memo: String, val unit: String? = null)
-data class TillCard(val heading: String, val isZone: Boolean, val routeId: Long?, val rows: List<TillRow>)
+data class TillCard(val heading: String, val isZone: Boolean, val routeId: Long?, val rows: List<TillRow>, val outOfReach: Boolean = false)
 
 /** A brand line of the route detail: target, sales, percent, memos (a dash where the server sends nothing). */
 data class BrandLine(val brand: String, val target: String, val sales: String, val pct: String, val memo: String, val unit: String? = null)

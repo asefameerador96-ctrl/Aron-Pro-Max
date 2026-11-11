@@ -1,5 +1,6 @@
 package com.aktcl.aron.amo
 
+import com.aktcl.aron.feature.amo.RouteOutOfReach
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,41 +14,60 @@ class LoadTargetNodesTest {
         return """{"node":{"type":"$type","id":$id$nm},"period_days":6,"rows":[{"name":"Marise","category_code":"cigarette","target_qty_base":100,"achieved_qty_base":50,"tilldate_target_qty_base":60,"report_unit":"pack","target_qty_report":"5.000","achieved_qty_report":"2.500","tilldate_target_qty_report":"3.000","remaining_qty_report":"2.500","remaining_tilldate_qty_report":"0.500"}]}"""
     }
 
-    private suspend fun run(answers: Map<Long?, AmoFetch>, ids: List<Long>): Pair<List<TargetNodes>, List<Long?>> {
-        val asked = mutableListOf<Long?>(); val published = mutableListOf<TargetNodes>()
-        loadTargetNodes({ id -> asked += id; answers[id] ?: AmoFetch.Unavailable }, ids, { "Route $it" }) { published += it }
+    private suspend fun run(zone: AmoFetch, routes: Map<Long, RouteTargetsRead>, ids: List<Long>): Pair<List<TargetNodes>, List<Long>> {
+        val asked = mutableListOf<Long>(); val published = mutableListOf<TargetNodes>()
+        loadTargetNodes({ zone }, { id -> asked += id; routes[id] ?: RouteTargetsRead(AmoFetch.Unavailable, false) }, ids, { "Route $it" }) { published += it }
         return published to asked
     }
 
+    private fun fresh(json: String) = RouteTargetsRead(AmoFetch.Fresh(json), false)
+    private val zoneOk = AmoFetch.Fresh(node("zone", 5, "Gulshan"))
+    private val gone = RouteTargetsRead(AmoFetch.Gone, false)
+    private val notOffered = RouteTargetsRead(AmoFetch.Unavailable, true)
+
     @Test fun everyRouteAnswersAndFillsInWithItsNameFromTheMembers() = runBlocking {
-        val (out, asked) = run(mapOf(null to AmoFetch.Fresh(node("zone", 5, "Gulshan")), 1L to AmoFetch.Fresh(node("route", 1, null)), 2L to AmoFetch.Fresh(node("route", 2, "Banani"))), listOf(1, 2))
-        assertEquals(listOf<Long?>(null, 1L, 2L), asked)
+        val (out, asked) = run(zoneOk, mapOf(1L to fresh(node("route", 1, null)), 2L to fresh(node("route", 2, "Banani"))), listOf(1, 2))
+        assertEquals(listOf(1L, 2L), asked)
         val last = out.last()
-        assertEquals(listOf("Route 1", "Banani"), last.routes.map { it.name }); assertFalse(last.refused); assertFalse(last.failed)
+        assertEquals(listOf("Route 1", "Banani"), last.routes.map { it.name }); assertFalse(last.refused); assertFalse(last.failed); assertTrue(last.outOfReach.isEmpty()); assertFalse(last.routeLevelUnavailable)
         assertEquals("5.000", last.routes.first().rows.single().qty!!.target.toPlainString())
     }
 
-    @Test fun aRouteRefusedWith403StopsTheLoopAtOnceAndSaysRefused() = runBlocking {
-        val (out, asked) = run(mapOf(null to AmoFetch.Fresh(node("zone", 5, "Gulshan")), 1L to AmoFetch.Gone), listOf(1, 2, 3, 4))
-        assertEquals("one ask for the zone and one refused route, never one per route", listOf<Long?>(null, 1L), asked)
-        assertTrue(out.last().refused); assertTrue(out.last().routes.isEmpty()); assertEquals("Gulshan", out.last().zone!!.name)
+    /** Lead ruling 2026-11-11 06:00 UTC (a): a 403 marks that route alone; the loop reaches the later routes; no screen-level refusal. */
+    @Test fun aRouteRefusedWith403IsMarkedAndTheLoopContinuesWithTheLaterRoutes() = runBlocking {
+        val (out, asked) = run(zoneOk, mapOf(1L to gone, 2L to fresh(node("route", 2, "B")), 3L to gone, 4L to fresh(node("route", 4, "D"))), listOf(1, 2, 3, 4))
+        assertEquals("every route is asked once, the refused ones included", listOf(1L, 2L, 3L, 4L), asked)
+        val last = out.last()
+        assertEquals(listOf(RouteOutOfReach(1, "Route 1"), RouteOutOfReach(3, "Route 3")), last.outOfReach)
+        assertEquals(listOf("B", "D"), last.routes.map { it.name })
+        assertFalse("no screen-level refusal banner for a route", last.refused); assertEquals("Gulshan", last.zone!!.name); assertFalse(last.routeLevelUnavailable)
     }
 
-    @Test fun aSecondRouteRefusedAfterTheFirstKeepsTheFirstAndStops() = runBlocking {
-        val (out, asked) = run(mapOf(null to AmoFetch.Fresh(node("zone", 5, "Gulshan")), 1L to AmoFetch.Fresh(node("route", 1, "A")), 2L to AmoFetch.Gone), listOf(1, 2, 3))
-        assertEquals(listOf<Long?>(null, 1L, 2L), asked)
-        assertEquals(listOf("A"), out.last().routes.map { it.name }); assertTrue(out.last().refused)
+    /** (b): a 400 means the server has no route level: one note, the zone card stays, no access banner, no further asks. */
+    @Test fun aRouteRead400IsRouteDetailUnavailableNotAnAccessProblemAndStopsTheLoop() = runBlocking {
+        val (out, asked) = run(zoneOk, mapOf(1L to notOffered), listOf(1, 2, 3))
+        assertEquals(listOf(1L), asked)
+        val last = out.last()
+        assertTrue(last.routeLevelUnavailable); assertFalse(last.refused); assertFalse(last.failed); assertEquals("Gulshan", last.zone!!.name); assertTrue(last.outOfReach.isEmpty())
     }
 
-    @Test fun anOfflineRouteStopsTheLoopWithoutARefusal() = runBlocking {
-        val (out, asked) = run(mapOf(null to AmoFetch.Fresh(node("zone", 5, "Gulshan"))), listOf(1, 2, 3))
-        assertEquals(listOf<Long?>(null, 1L), asked); assertFalse(out.last().refused)
+    @Test fun aSecondRouteNotOfferedAfterTheFirstKeepsTheFirst() = runBlocking {
+        val (out, asked) = run(zoneOk, mapOf(1L to fresh(node("route", 1, "A")), 2L to notOffered), listOf(1, 2, 3))
+        assertEquals(listOf(1L, 2L), asked)
+        assertEquals(listOf("A"), out.last().routes.map { it.name }); assertTrue(out.last().routeLevelUnavailable)
     }
 
-    @Test fun aRefusedZoneIsRefusedAndTheKeptCopyIsMarkedStale() = runBlocking {
-        val (out, _) = run(mapOf(null to AmoFetch.Gone), listOf())
-        assertTrue(out.last().refused); assertTrue(out.last().failed)
-        val (kept, _) = run(mapOf(null to AmoFetch.Cached(node("zone", 5, "Gulshan"))), listOf())
-        assertTrue(kept.last().stale); assertFalse(kept.last().refused)
+    @Test fun anOfflineRouteStopsTheLoopWithoutARefusalOrANote() = runBlocking {
+        val (out, asked) = run(zoneOk, emptyMap(), listOf(1, 2, 3))
+        assertEquals(listOf(1L), asked); assertFalse(out.last().refused); assertFalse(out.last().routeLevelUnavailable)
+    }
+
+    @Test fun aKeptRouteCopyKeepsItsPlaceAsTheStaleNoteAndARefusedZoneIsRefused() = runBlocking {
+        val (out, _) = run(zoneOk, mapOf(1L to RouteTargetsRead(AmoFetch.Cached(node("route", 1, "A")), false), 2L to gone), listOf(1, 2))
+        assertTrue("the kept-copy note stays", out.last().stale); assertEquals(1, out.last().routes.size); assertEquals(1, out.last().outOfReach.size)
+        val (z, _) = run(AmoFetch.Gone, emptyMap(), listOf())
+        assertTrue(z.last().refused); assertTrue(z.last().failed)
+        val (k, _) = run(AmoFetch.Cached(node("zone", 5, "Gulshan")), emptyMap(), listOf())
+        assertTrue(k.last().stale); assertFalse(k.last().refused)
     }
 }

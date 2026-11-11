@@ -74,20 +74,23 @@ class AmoTeamApiTest {
         assertTrue("a refusal removed the copy", a.teamMembers("2026-11-06") is AmoFetch.Unavailable)
     }
 
-    /** Contract 1.11.2: a route read the server refuses is a refusal in both of its forms (403 outside the reach, 400 without node_id / level not offered), never an offline copy; the zone read is unchanged. */
-    @Test fun aRouteTargetReadRefusedWith403Or400IsARefusalAndTheZoneReadKeepsItsMeaning() = runBlocking {
+    /** Contract 1.11.2, lead ruling 2026-11-11 06:00 UTC: a route read tells its two refusals apart (403 outside the reach = Gone for that route; 400 = the server has no route level), never an old copy. */
+    @Test fun aRouteTargetReadTellsA403FromA400AndKeepsNoOldCopy() = runBlocking {
         val a = api()
-        assertTrue(a.brandTargets("2026-11", 11L) is AmoFetch.Fresh)
-        assertTrue(a.brandTargets("2026-11", null) is AmoFetch.Fresh)
-        for (code in listOf(403, 400)) {
-            status = code
-            assertTrue("route $code is a refusal", a.brandTargets("2026-11", 11L) is AmoFetch.Gone)
-            down = true
-            assertTrue("route $code left no old copy", a.brandTargets("2026-11", 11L) is AmoFetch.Unavailable)
-            down = false; status = 200
-            assertTrue(a.brandTargets("2026-11", 11L) is AmoFetch.Fresh)
-        }
+        assertTrue(a.routeTargets("2026-11", 11L).fetch is AmoFetch.Fresh)
+        assertTrue(seen.any { it.path == "/v1/dashboards/targets" && it.query == "month=2026-11&product_level=brand&level=route&node_id=11" })
+        status = 403
+        val r403 = a.routeTargets("2026-11", 11L)
+        assertTrue(r403.fetch is AmoFetch.Gone); assertFalse(r403.notOffered)
+        down = true; assertTrue("403 left no old copy", a.routeTargets("2026-11", 11L).fetch is AmoFetch.Unavailable); down = false
+        status = 200; assertTrue(a.routeTargets("2026-11", 11L).fetch is AmoFetch.Fresh)
         status = 400
-        assertFalse("a 400 on the zone read stays what it was (unreadable, not a refusal)", a.brandTargets("2026-11", null) is AmoFetch.Gone)
+        val r400 = a.routeTargets("2026-11", 11L)
+        assertTrue(r400.notOffered); assertFalse("a 400 is not an access refusal", r400.fetch is AmoFetch.Gone)
+        down = true; assertTrue("400 left no old copy", a.routeTargets("2026-11", 11L).fetch is AmoFetch.Unavailable); down = false
+        // offline is neither: it is just unavailable, and the zone read keeps its meaning
+        status = 200; assertTrue(a.routeTargets("2026-11", 11L).fetch is AmoFetch.Fresh)
+        down = true; val off = a.routeTargets("2026-11", 11L); assertFalse(off.notOffered); assertTrue(off.fetch is AmoFetch.Cached); down = false
+        status = 400; assertFalse(a.brandTargets("2026-11", null) is AmoFetch.Gone)
     }
 }

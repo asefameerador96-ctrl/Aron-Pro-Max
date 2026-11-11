@@ -33,6 +33,9 @@ data class RowQty(
  */
 data class TeamTargetRow(val name: String, val categoryCode: String, val target: Long, val achieved: Long, val tillDateTarget: Long?, val unit: String? = null, val qty: RowQty? = null)
 
+/** A route of the members list whose targets the server refused (403, outside the reach): its own row says so; the zone and the other routes are untouched. */
+data class RouteOutOfReach(val routeId: Long, val name: String?)
+
 /** One node of `GET /v1/dashboards/targets`: the zone or one route, with its brand rows. */
 data class TeamTargetNode(val type: String, val id: Long, val name: String?, val periodDays: Int, val rows: List<TeamTargetRow>)
 

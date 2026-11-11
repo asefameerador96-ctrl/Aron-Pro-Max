@@ -79,5 +79,5 @@ Then the full local gate (assemble x3, android unit tests `--max-workers=2`, lin
 
 ## A2 #4 field-unit wiring (2026-11-11; D-AMO-CALLS-29)
 - Done and tested: Team Performance, Details and till-now read the 1.11.2 report members as given (packets, boxes, dozens; remaining from the server), base figure with the base word when absent or mixed; till-now memos from `memos_*` (route own, zone sum only if every route reported); route-level 403 and 400 are refusals and the loop stops after one miss.
-- For the lead (Opus check): H1 percent and band come from base integers while the fraction is in packets (D-AMO-TEAM-19 (2) still open); M1 an older server without the route level now shows the refusal banner over the zone card.
+- Lead rulings 2026-11-11 06:00 UTC (D-AMO-CALLS-30): H1 not blocking, percent stays the server's base measure (follow-up: a basis hint; the owner is asked); M1 fixed: 403 on a route = that route's own "not in your reach" row and the loop continues, 400 = "route detail unavailable" line, no access banner; goldens `amo_team_perf_fieldunits_*` and `amo_team_perf_route_states_*` added.
 - Not done: a golden for the field-unit state (the golden fixtures carry no 1.11.2 members; none changed); the five follow-ups of D-AMO-CALLS-28; every acceptance DEVICE-PENDING.
