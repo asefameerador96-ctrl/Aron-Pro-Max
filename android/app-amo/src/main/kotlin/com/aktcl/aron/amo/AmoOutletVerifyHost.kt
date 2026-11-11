@@ -1,5 +1,6 @@
 package com.aktcl.aron.amo
 
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -106,8 +107,14 @@ internal fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGon
     var held by remember(uuid) { mutableStateOf(false) }
     var routeDays by remember { mutableStateOf<List<com.aktcl.aron.core.database.repo.RouteDay>>(emptyList()) }
     LaunchedEffect(uuid) { routeDays = runCatching { day.routes() }.getOrDefault(emptyList()) }
-    // a sync can answer while the form is open: the notice follows the newest decision (a local read every few seconds)
-    LaunchedEffect(uuid) { while (true) { val d = runCatching { day.refusedDecision(req.uuid) }.getOrNull(); refusedCode = d?.second; held = d?.first == com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED; kotlinx.coroutines.delay(4000) } }
+    // the notice follows the newest decision: read on open, on every return to the screen and after each save (no polling loop: the app has none, NoPollingLintTest)
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    var savesDone by remember(uuid) { mutableStateOf(0) }
+    LaunchedEffect(uuid, savesDone) {
+        lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            val d = runCatching { day.refusedDecision(req.uuid) }.getOrNull(); refusedCode = d?.second; held = d?.first == com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED
+        }
+    }
     var routeSel by rememberSaveable(uuid) { mutableStateOf<Long?>(null) }
     var clusterSel by rememberSaveable(uuid) { mutableStateOf<Long?>(null) }
     var subId by rememberSaveable(uuid) { mutableStateOf<Long?>(null) }
@@ -165,7 +172,7 @@ internal fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGon
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { threw = true }
             val ok = outcome?.ok == true
             outcome?.let { recordUuid = it.recordUuid; if (it.held) held = true }
-            busy = false
+            busy = false; savesDone++
             saveFailed = threw
             if (ok) { day.drafts.clear(draftKey); rejected = !verify; savedDialog = true } else noFix = !threw && outcome?.held != true
         }
