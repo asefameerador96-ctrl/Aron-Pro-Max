@@ -489,4 +489,5 @@ enum class AdminModule(val wire: String) {
     @SerialName("leaderboard") LEADERBOARD("leaderboard"),
     @SerialName("daily_tracking") DAILY_TRACKING("daily_tracking"),
     @SerialName("support") SUPPORT("support"),
+    @SerialName("discounts") DISCOUNTS("discounts"),
 }

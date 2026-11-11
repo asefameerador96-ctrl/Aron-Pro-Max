@@ -2223,7 +2223,7 @@ export interface paths {
         };
         /**
          * Offer and promotion rules (data, not code).
-         * @description Discount programmes of the portal (1.12.0). Permission module `discounts`: SUPERADMIN, or ADMIN with the `r` grant, read all; NATIONAL reads all; BRAND, WM, DMO and TSO read the offers within their server-side scope (the client never sends scope ids); SR, AMO, SUPPORT and ANALYST are refused `403`. Newest first; `limit` and `cursor` page it.
+         * @description Discount programmes of the portal (1.12.0). Permission module `discounts`: SUPERADMIN, or ADMIN with the `r` grant, read all; NATIONAL (and the retired TOP, read the same way) reads all; BRAND, WM, DMO and TSO read the offers within their server-side scope (the client never sends scope ids); a BRAND user also sees the offers that name no product (an empty product list means all products; the Q9 default); SR, AMO, SUPPORT and ANALYST are refused `403`. Newest first; `limit` and `cursor` page it.
          */
         get: operations["listOffers"];
         put?: never;
@@ -8995,11 +8995,8 @@ export interface components {
             base_unit: "stick" | "piece" | "dozen";
             /** @description Base units per pack (app.sku.base_per_pack); base quantity = field quantity x pack_factor. */
             pack_factor: number;
-            /**
-             * @description The word the field apps count this SKU in, derived by the server from the SKU category (docs/34 s4.2): packet for cigarettes and bidi, box for lighters, dozen for matches, piece for any other category.
-             * @enum {string}
-             */
-            field_unit: "packet" | "box" | "dozen" | "piece";
+            /** @description The unit the field apps count this SKU in (docs/34 s4.2), in the contract's one unit vocabulary (`QtyUnit`): `pack` (a packet of 20 or 10 sticks, a bidi packet, or a box of 25 lighters; the word packet or box is the app's label for the category) for cigarettes, bidi and lighters, `dozen` for matches, and the SKU's own `base_unit` for any other category. Derived by the server from the SKU category. Bidi in packets is pending the owner's confirmation (docs/34 s4.2). */
+            field_unit: components["schemas"]["QtyUnit"];
         };
         /** @description One immutable version of an offer (1.12.0). */
         OfferVersion: {
@@ -10834,10 +10831,10 @@ export interface components {
             reason: components["schemas"]["ChangeReason"];
         };
         /**
-         * @description The fixed module list of an ADMIN user's grants (docs/34 s1). `support` from contract 1.10.0 (lead ruling R-F-11): the support ticket routes (`/v1/support/tickets` and every path under it) belong to it; the support-desk permission stays `support.ticket.manage` (`Me.support_desk`).
+         * @description The fixed module list of an ADMIN user's grants (docs/34 s1). `discounts` from contract 1.12.1: the discount-programme portal (`/v1/admin/offers` and everything under it, moved off `targets`). `support` from contract 1.10.0 (lead ruling R-F-11): the support ticket routes (`/v1/support/tickets` and every path under it) belong to it; the support-desk permission stays `support.ticket.manage` (`Me.support_desk`).
          * @enum {string}
          */
-        AdminModule: "masterdata" | "routes" | "outlets" | "products" | "prices" | "users" | "targets" | "credentials" | "mdm" | "reports" | "config" | "data_entry" | "indent" | "leaderboard" | "daily_tracking" | "support";
+        AdminModule: "masterdata" | "routes" | "outlets" | "products" | "prices" | "users" | "targets" | "credentials" | "mdm" | "reports" | "config" | "data_entry" | "indent" | "leaderboard" | "daily_tracking" | "support" | "discounts";
         UserAccess: {
             user_id: components["schemas"]["Id"];
             role: components["schemas"]["Role"];
