@@ -25,14 +25,11 @@ data class VerifyDetail(val type: String, val status: String, val requestedBy: L
 
 /** Pure rules of the AMO verification screens (F-AMO-022/023/024); the app wires them to the API, the store and the camera. */
 object OutletVerify {
-    /**
-     * Route and cluster on the verification form are editable drop-downs (R13), but the verification record has no member for them on INT
-     * (`OutletRequestVerificationPayload` has `route_id`, `cluster_id` only on lane/amo-foundation, `additionalProperties: false`). They stay
-     * shown and locked until the foundation train lands and the lead says so; then this flips and the writer adds the two members.
-     */
-    const val ROUTE_CLUSTER_EDITABLE = false
 
     /** Contract `geo_class` values; the names are the wire values. */
+    /** The reasons a decision comes back with (contract 1.11.1), by the outbox code: the AMO's form shows the matching line. */
+    fun decisionProblem(code: String?): String = when (code) { "unknown_route" -> "unknown_route"; "schema_invalid" -> "cluster"; "scope_out_of_reach" -> "scope"; else -> "other" }
+
     private enum class GeoClass { Hill, Urban, SemiUrban, Rural }
     val GEO_CLASSES: List<String> = GeoClass.entries.map { it.name }
     private val INFO_FIELDS = listOf("name", "name_bn", "owner_name", "contact_number", "address", "sub_channel_id")

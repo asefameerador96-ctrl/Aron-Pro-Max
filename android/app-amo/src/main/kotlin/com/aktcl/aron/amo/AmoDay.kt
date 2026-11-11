@@ -639,8 +639,10 @@ class AmoDay(
 
     suspend fun decideRequest(
         recordUuid: String, requestUuid: String, verify: Boolean, subChannelId: Long?, geoClass: String?, note: String?, photoUuid: String?,
-        capturedFix: com.aktcl.aron.feature.outlet.FixReading? = null,
-    ): Boolean = writer.decideRequest(recordUuid, requestUuid, verify, subChannelId, geoClass, note, photoUuid, capturedFix)
+        capturedFix: com.aktcl.aron.feature.outlet.FixReading? = null, routeId: Long? = null, clusterId: Long? = null,
+    ): Boolean = writer.decideRequest(recordUuid, requestUuid, verify, subChannelId, geoClass, note, photoUuid, capturedFix, routeId, clusterId)
+
+    suspend fun refusedDecisionCode(requestUuid: String): String? = writer.refusedDecisionCode(requestUuid)
 
     // ---- Exceptions (F-AMO-038): risk signals of the zone, reviewed offline
 

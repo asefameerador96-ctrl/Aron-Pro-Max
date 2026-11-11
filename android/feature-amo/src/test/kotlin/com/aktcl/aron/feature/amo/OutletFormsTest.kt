@@ -88,7 +88,8 @@ class OutletFormsTest {
         assertEquals(setOf(VerifyError.GEO_PHOTO_REQUIRED), OutletVerify.validate("new", true, 4, "Urban", captured = false))
         assertTrue(OutletVerify.validate("new", false, null, null, captured = false).isEmpty()) // Cancel (reject) needs no capture
         assertTrue(OutletVerify.validate("close", true, null, null, captured = false).isEmpty())
-        assertFalse(OutletVerify.ROUTE_CLUSTER_EDITABLE) // until the foundation contract lands (D-AMO-OUTLET-03)
+        assertEquals("unknown_route", OutletVerify.decisionProblem("unknown_route")); assertEquals("cluster", OutletVerify.decisionProblem("schema_invalid"))
+        assertEquals("scope", OutletVerify.decisionProblem("scope_out_of_reach")); assertEquals("other", OutletVerify.decisionProblem(null))
     }
 
     // ---- 47 to 61: the form body and the dialogs
