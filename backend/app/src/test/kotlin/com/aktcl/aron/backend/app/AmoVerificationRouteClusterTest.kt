@@ -10,6 +10,7 @@ import java.io.File
 import java.util.UUID
 import kotlin.test.Test
 import io.ktor.client.statement.bodyAsText
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -109,12 +110,15 @@ class AmoVerificationRouteClusterTest {
             // read-back as the caller: the request is still pending and shows no verified step
             val backRes = getAs(amo, "/v1/outlet-requests/$reqA"); val back = backRes.bodyAsText()
             assertEquals(io.ktor.http.HttpStatusCode.OK, backRes.status, back)
+            assertEquals("pending", com.aktcl.aron.backend.app.TsoWorld.json(back)["status"]!!.jsonPrimitive.content, back)
             assertFalse(back.contains("\"verified\""), back)
             // a cluster alone, of the other zone, is the same
             val cu2 = UUID.randomUUID().toString()
             val b = ack(sync(amo, listOf(record("outlet_request_verification", payload(pendingRequest(), ""","cluster_id":${i.lkxCluster}"""), i.mirRoute, cu = cu2))), cu2)
             assertEquals("quarantined", b.status(), "$b"); assertEquals("scope_out_of_reach", b.code(), "$b")
             assertEquals(0L, one("SELECT count(*) FROM app.outlet_request_event WHERE client_uuid = CAST('$cu2' AS uuid)"))
+            val q2 = rows("SELECT code, detail FROM app.sync_quarantine WHERE client_uuid = CAST('$cu2' AS uuid)").single()
+            assertEquals("scope_out_of_reach", q2["code"]); assertTrue(q2["detail"].toString().startsWith("zone "), "the cluster-only detail names the zone: ${q2["detail"]}")
         }
     }
 

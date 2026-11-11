@@ -57,8 +57,11 @@ class AmoFoundationF3Test {
         with(world) {
             val m = YearMonth.from(today())
             assertEquals(HttpStatusCode.OK, getAs(amo, "/v1/supervisor/call-targets?month=${m.minusMonths(12)}").status, "12 months back is allowed")
-            assertEquals(HttpStatusCode.OK, getAs(amo, "/v1/supervisor/call-targets?month=$m").status, "the current month")
-            assertEquals(HttpStatusCode.OK, getAs(amo, "/v1/supervisor/call-targets").status, "no month means the current one")
+            for (url in listOf("/v1/supervisor/call-targets?month=$m", "/v1/supervisor/call-targets")) {
+                val r = getAs(amo, url); val body = r.bodyAsText()
+                assertEquals(HttpStatusCode.OK, r.status, body)
+                assertEquals(m.toString(), json(body)["period"]!!.jsonPrimitive.content, "$url answers the current month")
+            }
             for (bad in listOf(m.minusMonths(13), m.plusMonths(1))) {
                 val r = getAs(amo, "/v1/supervisor/call-targets?month=$bad"); val body = r.bodyAsText()
                 assertEquals(HttpStatusCode.BadRequest, r.status, body)
