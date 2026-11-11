@@ -22,7 +22,9 @@ data class ReportData(val asOf: String, val columns: List<ReportCol>, val rows: 
 }
 
 /** A route card of the Sales Summary Up To Now (F-AMO-033): target is zero or unknown → [cprPct] null → a dash on screen. */
-data class RouteCard(val code: String, val name: String, val targetOutlets: Long, val successfulCalls: Long, val cprPct: Double?, val memos: Long, val netMtk: Long, val brands: List<BrandRow>, val routeId: Long? = null)
+data class RouteCard(val code: String, val name: String, val targetOutlets: Long, val successfulCalls: Long, val cprPct: Double?, val memos: Long, val netMtk: Long, val brands: List<BrandRow>, val routeId: Long? = null,
+    /** The route's accepted memos with a sale line of each category over the report window (`memos_<category>` of the sales-summary, contract 1.11.2); a category the server did not send is absent. */
+    val categoryMemos: Map<String, Long> = emptyMap())
 data class BrandRow(val name: String, val memos: Long, val bsrPct: Double?)
 
 /** Per-route totals of the STD Memo Report (F-AMO-032). */
@@ -71,6 +73,8 @@ object Reports {
     private fun ReportRow.d(k: String) = this[k]?.takeIf { it !is JsonNull }?.doubleOrNull
     private fun ReportRow.s(k: String) = this[k]?.takeIf { it !is JsonNull }?.contentOrNull
 
+    val MEMO_CATEGORIES = listOf("cigarette", "bidi", "match", "lighter")
+
     /** Route cards with their brand tables from the `sales-summary` rows (one row per route and brand). */
     fun routeCards(r: ReportData): List<RouteCard> = r.rows.groupBy { (it.l("route_id")?.toString() ?: it.s("route_code")).orEmpty() }.map { (_, rows) ->
         val h = rows.first()
@@ -79,6 +83,8 @@ object Reports {
             // A zero target has no rate: the server sends null, and so does a missing value; both show a dash.
             h.d("cpr_pct")?.takeIf { (h.l("target_outlets") ?: 0) > 0 }, h.l("memos") ?: 0, h.l("net_mtk") ?: 0,
             rows.mapNotNull { b -> b.s("brand_name")?.let { BrandRow(it, b.l("brand_memos") ?: 0, b.d("bsr_pct")) } }, h.l("route_id"),
+            // the memo columns repeat on every brand row of a route: one value per route
+            MEMO_CATEGORIES.mapNotNull { c -> rows.firstNotNullOfOrNull { it.l("memos_$c") }?.let { c to it } }.toMap(),
         )
     }.sortedBy { it.code }
 

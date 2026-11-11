@@ -20,7 +20,11 @@ import kotlinx.serialization.json.longOrNull
 enum class PerfTab { MONTHLY, TILL_DATE }
 
 /** The server's own Decimal3 quantities of a row in its [TeamTargetRow.unit] (exact; [tillDate] null without a till-date figure). */
-data class RowQty(val target: BigDecimal, val achieved: BigDecimal, val tillDate: BigDecimal?)
+data class RowQty(
+    val target: BigDecimal, val achieved: BigDecimal, val tillDate: BigDecimal?,
+    /** The server's own `remaining_qty_report` / `remaining_tilldate_qty_report` (contract 1.11.2), shown as given; null = not sent (a card, or an older server): then max(T - A, 0) on these exact decimals. */
+    val remaining: BigDecimal? = null, val remainingTillDate: BigDecimal? = null,
+)
 
 /**
  * One item (brand) row of a target node, in base units; [tillDateTarget] is null when the node has no till-date figure. [unit] is the label key of
@@ -56,9 +60,21 @@ object TeamTargets {
             if (t < 0L || a < 0L) return@mapNotNull null
             val cat = s(r, "category_code").orEmpty()
             val till = if (period <= 0) null else l(r, "tilldate_target_qty_base")?.takeIf { it >= 0L }
-            val unit = UnitWords.key(s(r, "unit"), cat)
-            val tq = FieldQty.parse(s(r, "target_qty")); val aq = FieldQty.parse(s(r, "achieved_qty"))
-            val qty = if (unit != null && tq != null && aq != null) RowQty(tq, aq, if (till == null) null else FieldQty.parse(s(r, "tilldate_target_qty"))) else null
+            // Contract 1.11.2: the row's figures in the field unit, as the server rounded them (never recomputed from base here). A row whose SKUs cannot share
+            // one unit answers its BASE unit and the base quantities in the same members, so the base word comes out of the same path.
+            val reportUnit = UnitWords.key(s(r, "report_unit"), cat)
+            val rt = FieldQty.parse(s(r, "target_qty_report")); val ra = FieldQty.parse(s(r, "achieved_qty_report"))
+            val unit: String?; val qty: RowQty?
+            if (reportUnit != null && rt != null && ra != null) {
+                unit = reportUnit
+                qty = RowQty(rt, ra, if (till == null) null else FieldQty.parse(s(r, "tilldate_target_qty_report")), FieldQty.parse(s(r, "remaining_qty_report")), if (till == null) null else FieldQty.parse(s(r, "remaining_tilldate_qty_report")))
+            } else {
+                // an older server: the `unit` / `target_qty` members (the base unit's own Decimal3 there); a row without them stays in base units with the base word
+                val legacyUnit = UnitWords.key(s(r, "unit"), cat)
+                val tq = FieldQty.parse(s(r, "target_qty")); val aq = FieldQty.parse(s(r, "achieved_qty"))
+                unit = legacyUnit
+                qty = if (legacyUnit != null && tq != null && aq != null) RowQty(tq, aq, if (till == null) null else FieldQty.parse(s(r, "tilldate_target_qty"))) else null
+            }
             TeamTargetRow(s(r, "name").orEmpty(), cat, t, a, till, if (qty != null) unit else null, qty)
         }
         return TeamTargetNode(s(ref, "type") ?: return null, l(ref, "id") ?: return null, s(ref, "name"), period, rows)
@@ -110,11 +126,12 @@ object TeamTargets {
 
     fun achievedText(r: TeamTargetRow, locale: UiLocale): String = if (r.qty != null) dec(r.qty.achieved, locale) else qty(r.achieved, locale)
 
-    /** max(T - A, 0) in the row's unit, exact on the decimals; a dash without a target. */
+    /** The row's remaining in its unit: the server's `remaining_*_qty_report` as given, else max(T - A, 0) on the exact decimals (a card is the sum of its rows); a dash without a target. */
     fun remainingText(r: TeamTargetRow, tab: PerfTab, locale: UiLocale): String {
         val q = r.qty ?: return qty(remaining(r, tab), locale)
         val t = (if (tab == PerfTab.MONTHLY) q.target else q.tillDate) ?: return Percent.DASH
-        return dec((t - q.achieved).max(BigDecimal.ZERO), locale)
+        // the server's own remaining when it sent one (it floors at 0 from the rounded target and achievement); else max(T - A, 0) on the exact decimals
+        return dec((if (tab == PerfTab.MONTHLY) q.remaining else q.remainingTillDate) ?: (t - q.achieved).max(BigDecimal.ZERO), locale)
     }
 
     /** "achievement/target" with thousands grouping as screenshot 34 prints it ("1,598,680/2,270,000"). */

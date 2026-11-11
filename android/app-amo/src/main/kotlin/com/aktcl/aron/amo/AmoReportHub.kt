@@ -70,15 +70,18 @@ fun AmoReportHub(day: AmoDay, onBack: () -> Unit) {
                 // a cut-off report (a page failed or the page cap was hit) gives no CPR or brand memos: partial rows would print as complete figures
                 val summaryCut = loaded.data?.truncated == true
                 val reportCards = loaded.data?.takeIf { !summaryCut }?.let { Reports.routeCards(it) }.orEmpty()
-                // the Memo column is the server's per-category count (CategoryVolume.memos, F2.1); until it is wired every cell is a dash and the note says pending (D-AMO-TEAM-10)
-                val catMemos = TeamReports.categoryMemos(emptyList())
-                val cards = listOfNotNull(nodes.zone?.let { TeamReports.tillCard(stringResource(AmoR.string.amo_team_perf_zone, it.name.orEmpty()), it, true, catMemos, l) }) +
-                    nodes.routes.map { TeamReports.tillCard(stringResource(AmoR.string.amo_team_perf_route, it.name.orEmpty()), it, false, catMemos, l) }
+                // the Memo column is the server's own per-category count (sales-summary `memos_<category>`, contract 1.11.2): a route's from its card, the zone's
+                // the sum of every route's; absent (older server, cut-off report) it is a dash and the note says pending
+                val zoneMemos = TeamReports.zoneMemos(reportCards)
+                fun routeMemos(id: Long) = TeamReports.cardFor(reportCards, id, members?.rows?.firstOrNull { it.routeId == id }?.routeCode)?.categoryMemos.orEmpty()
+                val cards = listOfNotNull(nodes.zone?.let { TeamReports.tillCard(stringResource(AmoR.string.amo_team_perf_zone, it.name.orEmpty()), it, true, zoneMemos, l) }) +
+                    nodes.routes.map { TeamReports.tillCard(stringResource(AmoR.string.amo_team_perf_route, it.name.orEmpty()), it, false, routeMemos(it.id), l) }
+                val memoPending = zoneMemos.isEmpty() && nodes.routes.all { routeMemos(it.id).isEmpty() }
                 if (leaf == ReportLeaf.ROUTE && openNode != null) {
                     val rc = TeamReports.cardFor(reportCards, openNode.id, members?.rows?.firstOrNull { it.routeId == openNode.id }?.routeCode)
                     val brands = openNode.rows.map { r -> TeamReports.brandLine(r, rc?.brands?.firstOrNull { it.name.equals(r.name, ignoreCase = true) }?.memos, l) }
                     TillRouteDetailContent(rc?.let { TeamReports.cprText(it.successfulCalls, it.targetOutlets, l) } ?: Percent.DASH, rc?.let { Formats.integer(it.memos, l) } ?: Percent.DASH, brands, stale = loaded.stale || nodes.stale, failed = (loaded.failed || nodes.failed) && nodes.zone == null, refused = loaded.refused || nodes.refused)
-                } else TillNowContent(cards, { c -> route = c.routeId; if (c.routeId != null) leaf = ReportLeaf.ROUTE }, loaded.stale || nodes.stale, (loaded.failed || nodes.failed) && nodes.zone == null, loaded.refused || nodes.refused, memoPending = catMemos.isEmpty(), truncated = summaryCut)
+                } else TillNowContent(cards, { c -> route = c.routeId; if (c.routeId != null) leaf = ReportLeaf.ROUTE }, loaded.stale || nodes.stale, (loaded.failed || nodes.failed) && nodes.zone == null, loaded.refused || nodes.refused, memoPending = memoPending, truncated = summaryCut)
             }
         }
     }

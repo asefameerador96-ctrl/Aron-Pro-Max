@@ -67,28 +67,35 @@ internal fun rememberTargetNodes(day: AmoDay, members: Members?): TargetNodes? {
     LaunchedEffect(day, members) {
         members ?: return@LaunchedEffect
         val month = day.businessDate().take(7)
-        val zoneFetch = day.api.brandTargets(month, null)
-        val zone = TeamTargets.parse(zoneFetch.jsonOrNull())
-        var stale = zoneFetch is AmoFetch.Cached
-        out = TargetNodes(zone, emptyList(), stale, zoneFetch.isMissing(), zoneFetch is AmoFetch.Gone)
-        val ids = members.rows.map { it.routeId }.distinct().take(MAX_ROUTE_CARDS)
-        val acc = mutableListOf<TeamTargetNode>()
-        for (id in ids) {
-            val f = day.api.brandTargets(month, id)
-            stale = stale || f is AmoFetch.Cached
-            // a server without the route level answers 400 for every route: stop after the first miss instead of asking 20 times
-            if (f.jsonOrNull() == null) break
-            TeamTargets.parse(f.jsonOrNull())?.let { n ->
-                // the route's name from the members list when the node carries none
-                acc += if (n.name.isNullOrBlank()) n.copy(name = members.rows.firstOrNull { it.routeId == id }?.routeName) else n
-                out = TargetNodes(zone, acc.toList(), stale, zoneFetch.isMissing(), zoneFetch is AmoFetch.Gone)
-            }
-        }
+        loadTargetNodes({ id -> day.api.brandTargets(month, id) }, members.rows.map { it.routeId }.distinct().take(MAX_ROUTE_CARDS), { id -> members.rows.firstOrNull { it.routeId == id }?.routeName }) { out = it }
     }
     return out
 }
 
 private const val MAX_ROUTE_CARDS = 20
+
+/**
+ * The zone, then one route at a time (`level=route&node_id=`), publishing after each answer. The first route that does not answer (403 outside the reach,
+ * 400 level not offered, offline) ends the loop: one miss, never one ask per route; a refusal marks the result `refused` (the refusal banner, no old copy).
+ */
+internal suspend fun loadTargetNodes(fetch: suspend (Long?) -> AmoFetch, routeIds: List<Long>, routeName: (Long) -> String?, publish: (TargetNodes) -> Unit) {
+    val zoneFetch = fetch(null)
+    val zone = TeamTargets.parse(zoneFetch.jsonOrNull())
+    var stale = zoneFetch is AmoFetch.Cached
+    val zoneGone = zoneFetch is AmoFetch.Gone
+    publish(TargetNodes(zone, emptyList(), stale, zoneFetch.isMissing(), zoneGone))
+    val acc = mutableListOf<TeamTargetNode>()
+    for (id in routeIds) {
+        val f = fetch(id)
+        stale = stale || f is AmoFetch.Cached
+        if (f.jsonOrNull() == null) { publish(TargetNodes(zone, acc.toList(), stale, zoneFetch.isMissing(), zoneGone || f is AmoFetch.Gone)); break }
+        TeamTargets.parse(f.jsonOrNull())?.let { n ->
+            // the route's name from the members list when the node carries none
+            acc += if (n.name.isNullOrBlank()) n.copy(name = routeName(id)) else n
+            publish(TargetNodes(zone, acc.toList(), stale, zoneFetch.isMissing(), zoneGone))
+        }
+    }
+}
 
 /** Team Performance (screenshots 34 to 36): the zone card and the route cards; Details opens the brand table; a category tap filters it. */
 @Composable

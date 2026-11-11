@@ -73,4 +73,21 @@ class AmoTeamApiTest {
         down = true
         assertTrue("a refusal removed the copy", a.teamMembers("2026-11-06") is AmoFetch.Unavailable)
     }
+
+    /** Contract 1.11.2: a route read the server refuses is a refusal in both of its forms (403 outside the reach, 400 without node_id / level not offered), never an offline copy; the zone read is unchanged. */
+    @Test fun aRouteTargetReadRefusedWith403Or400IsARefusalAndTheZoneReadKeepsItsMeaning() = runBlocking {
+        val a = api()
+        assertTrue(a.brandTargets("2026-11", 11L) is AmoFetch.Fresh)
+        assertTrue(a.brandTargets("2026-11", null) is AmoFetch.Fresh)
+        for (code in listOf(403, 400)) {
+            status = code
+            assertTrue("route $code is a refusal", a.brandTargets("2026-11", 11L) is AmoFetch.Gone)
+            down = true
+            assertTrue("route $code left no old copy", a.brandTargets("2026-11", 11L) is AmoFetch.Unavailable)
+            down = false; status = 200
+            assertTrue(a.brandTargets("2026-11", 11L) is AmoFetch.Fresh)
+        }
+        status = 400
+        assertFalse("a 400 on the zone read stays what it was (unreadable, not a refusal)", a.brandTargets("2026-11", null) is AmoFetch.Gone)
+    }
 }
