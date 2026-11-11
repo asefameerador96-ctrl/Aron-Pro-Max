@@ -75,13 +75,13 @@ info:
       `tilldate_target_qty_report`, `remaining_qty_report`, `remaining_tilldate_qty_report`), `level=route` on `getTargetAchievement` and the `sales-summary`
       report's `memos_cigarette`, `memos_bidi`, `memos_match`, `memos_lighter` columns (D-AMO-FND-16): the report has one row per route and brand, so these route-level counts repeat on every brand row of a route (take one value per route, never add them up across brand rows).
       Members added to responses the server already sends are optional.
-    - 1.12.0 (discount-programme portal, lane portal-discount-api, D-DISC-API-01 to 03, lead approval D-LEAD-CONTRACT-112-01, gate file
+    - 1.12.0 (discount-programme portal, lane portal-discount-api, D-DISC-API-01 to 04, lead approval D-LEAD-CONTRACT-112-01, gate file
       `docs/requests/contract-1.12-discount-portal.md`), additive: `getOffer`, `listOfferVersions` and `setOfferStatus`
       (`GET /v1/admin/offers/{id}`, `GET /v1/admin/offers/{id}/versions`, `POST /v1/admin/offers/{id}/status`); the schemas `OfferStatus`
       (draft, active, inactive), `OfferVersion`, `OfferVersionPage`, `OfferStatusChange` and `OfferSkuUnit`; optional `request_uuid` on
       `OfferWrite` and `OfferPatch` (the server requires it), more optional members on `OfferPatch`, and optional `version_no`,
       `change_reason`, `created_at`, `updated_at` and `sku_units` on `Offer`; `Offer.status` is now `OfferStatus` (a response enum gains
-      `draft`: no shipped client reads it). `createOffer` makes a draft and no longer asks for a
+      `draft`: no shipped client reads it) and `AdminModule` gains `discounts`. `createOffer` makes a draft and no longer asks for a
       future `valid_from`. The field is unchanged: the bundle `offers` array stays empty and the memo offer line stays zero.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
@@ -16822,8 +16822,8 @@ components:
         reason: { $ref: '#/components/schemas/ChangeReason' }
     AdminModule:
       type: string
-      enum: [masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking, support]
-      description: 'The fixed module list of an ADMIN user''s grants (docs/34 s1). `support` from contract 1.10.0 (lead ruling R-F-11): the support ticket routes (`/v1/support/tickets` and every path under it) belong to it; the support-desk permission stays `support.ticket.manage` (`Me.support_desk`).'
+      enum: [masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking, support, discounts]
+      description: 'The fixed module list of an ADMIN user''s grants (docs/34 s1). `discounts` from contract 1.12.0: the discount-programme portal (`/v1/admin/offers` and everything under it, moved off `targets`). `support` from contract 1.10.0 (lead ruling R-F-11): the support ticket routes (`/v1/support/tickets` and every path under it) belong to it; the support-desk permission stays `support.ticket.manage` (`Me.support_desk`).'
     UserAccess:
       type: object
       required: [user_id, role, version, modules, brand_ids]

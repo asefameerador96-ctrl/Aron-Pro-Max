@@ -574,7 +574,7 @@ Source: contract/openapi.yaml, version 1.12.0.
 - `schemas/PricePreview.yaml` (806 B)
 - `schemas/PriceBatch.yaml` (604 B)
 - `schemas/OutletKindBulkWrite.yaml` (472 B)
-- `schemas/AdminModule.yaml` (548 B)
+- `schemas/AdminModule.yaml` (697 B)
 - `schemas/UserAccess.yaml` (757 B)
 - `schemas/UserAccessWrite.yaml` (576 B)
 - `schemas/OutletImportRow.yaml` (1132 B)

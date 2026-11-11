@@ -64,8 +64,17 @@ object PortalLevels {
         Pattern("POST", "/v1/dashboards/national/segment-share"),
     )
 
+    /**
+     * The discount-programme reads (portal-discount-api, D-DISC-API-03, brief s6 pending Q9): a BRAND user lists and opens only the
+     * programmes whose product scope touches its brands (the handler cuts the rows by `app.user_brand_scope`, not by the token).
+     * No write: a BRAND user reads only.
+     */
+    private val DISCOUNT_READS: List<Pattern> = listOf(
+        Pattern("GET", "/v1/admin/offers"), Pattern("GET", "/v1/admin/offers/{id}"), Pattern("GET", "/v1/admin/offers/{id}/versions"),
+    )
+
     /** BRAND's whole surface (row 3 adds the brand-filtered reads as they are built); R-W-08 adds its own inbox (read and mark read). */
-    val BRAND_ROUTES: List<Pattern> = OWN_SESSION + listOf(Pattern("GET", "/v1/me"), OWN_INBOX_READ) + BRAND_DASHBOARD
+    val BRAND_ROUTES: List<Pattern> = OWN_SESSION + listOf(Pattern("GET", "/v1/me"), OWN_INBOX_READ) + BRAND_DASHBOARD + DISCOUNT_READS
 
     /** The path the router matches: decoded segments, empty ones dropped (the same normalisation as the MFA check). */
     fun normalise(rawPath: String): String? {

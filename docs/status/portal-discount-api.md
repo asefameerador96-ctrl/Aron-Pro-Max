@@ -1,15 +1,15 @@
 # Status: lane portal-discount-api (Lane A), started 2026-11-11
 
-Branch `lane/portal-discount-api` from INT `claude/wonderful-thompson-k6ejnf` 05a50235b. Push only that branch; no pull request. Scope: `docs/status/portal-discount-brief.md` (on `lane/lead-docs-1022`); its s8 defaults are the answers until the owner says otherwise. The field does not change (memo offer line zero, bundle `offers` empty).
+Branch `lane/portal-discount-api` from INT `claude/wonderful-thompson-k6ejnf`. Push only that branch; no pull request. Scope: `docs/status/portal-discount-brief.md` (on `lane/lead-docs-1022`); its s8 defaults are the answers until the owner says otherwise. The field does not change (memo offer line zero, bundle `offers` empty).
 
-## Done (train 1, schema and contract; D-DISC-API-01, -02)
-- V0152 (schema, views, comments, grants) and V0153 (validate the status CHECK).
-- Contract 1.12.0: three new operations, new schemas, regenerated slices and web types.
-- `DiscountPortalV0152Test` (db), DwViewContractTest history "1.6", regenerated docs/data-dictionary.md and docs/dw-view-contract.md.
+## Done
+- Train 1 (schema and contract; D-DISC-API-01 to 03): V0152/V0153 (draft status, request_uuid, append-only trail, immutable versions, dw.v_offer and dw.v_offer_version, view contract 1.6), contract 1.12.0 (request file docs/requests/contract-1.12-discount-portal.md, lead ruling D-LEAD-CONTRACT-112-01), regenerated slices and web types. Checked head 5f694a0b5.
+- Train 2 (Ktor admin API; D-DISC-API-04): `AdminOffers.kt` (six operations of `/v1/admin/offers`), permission module `discounts` (AdminModules, V0154/V0155, contract AdminModule, dev seeds), BRAND read routes in PortalLevels, scope-cases lines, `AdminOffersTest` (10 tests), db tests.
 
-## Not done
-- Train 2: Ktor routes, `discounts` permission module, audit, tests (scope matrix, idempotency).
-- (see the report for the oasdiff and squawk results of the amended head: both run with the pinned CI tools.)
+## Not done / not tested
+- Web (Lane B): `GRANT_MODULES` in web/src/lib/admin/access-grants.ts, modules.ts and the i18n keys do not know `discounts` yet; the pages do not exist.
+- The Android MoneyGateReviewTest needs the Android SDK and no android/ file changed; it was not run here.
+- `channel` scope nodes and `drp_slide` are refused 400 in this release (no id for a channel; docs/27).
 
 ## HANDOVER
-Next: train 2 per the lane brief (AdminPrices.kt pattern, AdminModules.kt `discounts` module off `targets`). Local DB tests need a PostgreSQL 16 and `ARON_TEST_PG_URL`: follow the existing repo instruction (docs/26-lane-playbook.md and docs/24-build-spec.md D24-05); no credential belongs in this file. Run one Gradle at a time (two runs collide on db/build/kotlin).
+Local DB tests need a PostgreSQL 16 and `ARON_TEST_PG_URL`: follow the existing repo instruction (docs/26-lane-playbook.md and docs/24-build-spec.md D24-05); no credential belongs in this file. Run one Gradle at a time (two runs collide on db/build/kotlin). Pinned CI tools: `tools/ci/install-tool.sh squawk|oasdiff <dir>`; gates: `tools/ci/migrations-check.sh <base> <squawk>` and `tools/ci/contract-breaking.sh <base> <oasdiff>`.

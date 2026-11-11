@@ -162,4 +162,19 @@ class DiscountPortalV0152Test {
             c.exec("SET LOCAL ROLE web_ro"); c.scalar("SELECT count(*) FROM dw.v_offer_version"); c.exec("RESET ROLE")
         } finally { c.rollback(); c.autoCommit = true }
     }
+
+    @Test
+    fun theDiscountsModuleIsGrantedFromTargetsAndTheFingerprintColumnExists() = db.connect().use { c ->
+        c.autoCommit = false
+        try {
+            // V0154: the module CHECK is validated and accepts `discounts`; a grant on `targets` carried over at migration time (the seed ADMINs got it from 07_admin_module_grants).
+            assertEquals("true", c.scalar("SELECT convalidated::text FROM pg_constraint WHERE conname = 'user_module_grant_module_check'"), "validated"); assertTrue(c.scalar("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'user_module_grant_module_check'")!!.contains("discounts"))
+            assertEquals(c.scalar("SELECT count(*) FROM app.user_module_grant WHERE module = 'targets'"), c.scalar("SELECT count(*) FROM app.user_module_grant WHERE module = 'discounts'"))
+            val admin = c.scalar("SELECT id FROM app.app_user WHERE username = 'admin1001'")
+            c.exec("DELETE FROM app.user_module_grant WHERE user_id = $admin AND module = 'discounts'")
+            c.exec("INSERT INTO app.user_module_grant (user_id, module, access) VALUES ($admin, 'discounts', 'r')")
+            assertEquals("23514", c.refused("INSERT INTO app.user_module_grant (user_id, module, access) VALUES ($admin, 'discount', 'r')"))
+            assertEquals("text", c.scalar("SELECT data_type FROM information_schema.columns WHERE table_schema='app' AND table_name='offer_version' AND column_name='request_fingerprint'"))
+        } finally { c.rollback(); c.autoCommit = true }
+    }
 }

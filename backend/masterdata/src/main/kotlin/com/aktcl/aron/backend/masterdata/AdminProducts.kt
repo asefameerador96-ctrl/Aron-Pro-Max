@@ -42,7 +42,7 @@ import java.util.UUID
 
 // ---------------------------------------------------------------------------------------------------------------------
 // F-API-035c: the `admin-products` surface of the contract for the product tree and SKUs (prices are in AdminPrices.kt).
-// Offers (listOffers, createOffer, updateOffer) are a deferred programme (docs/27) and the sales plan (getSalesPlan,
+// Offers (listOffers, createOffer, updateOffer and the discount-portal operations) live in AdminOffers.kt (portal only, D-DISC-API-03); the sales plan (getSalesPlan,
 // putSalesPlan) belongs to F-API-035b / F-ADM-006: neither is built here.
 // ---------------------------------------------------------------------------------------------------------------------
 
