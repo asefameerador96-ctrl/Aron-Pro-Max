@@ -30,7 +30,7 @@ and their descriptions state the new rules (create makes a draft; update appends
 - `Offer`: optional `version_no`, `change_reason`, `created_at`, `updated_at`, `sku_units`.
 - `AdminModule` gains `discounts`. It is also a response enum (`Me.modules`, `UserAccess.modules` key on it), so this line is the second part of the same approval under D-LEAD-CONTRACT-112-01 (the permission module of the portal; `/v1/admin/offers/**` moves off `targets`; migration V0154/V0155 widens the grant CHECK and carries every ADMIN's `targets` access over).
 
-## 1.12.1 (train 2 of the lane; the second part of the same approval)
+## 1.12.1 (train 2 of the lane; approved by the lead as D-LEAD-CONTRACT-1121-01, 2026-11-11 11:12 UTC)
 
 Version 1.12.0 is on INT (train 92). Train 2 adds the routes and two contract changes that the lead asked for in the verdict on 5f694a0b5:
 `AdminModule` gains `discounts` (a response enum: `Me.modules`, `UserAccess.modules`), and `OfferSkuUnit.field_unit` takes the contract's

@@ -7,8 +7,9 @@ operation:
   summary: Offer and promotion rules (data, not code).
   description: 'Discount programmes of the portal (1.12.0). Permission module `discounts`: SUPERADMIN, or ADMIN
     with the `r` grant, read all; NATIONAL (and the retired TOP, read the same way) reads all; BRAND, WM, DMO and
-    TSO read the offers within their server-side scope (the client never sends scope ids); SR, AMO, SUPPORT and
-    ANALYST are refused `403`. Newest first; `limit` and `cursor` page it.'
+    TSO read the offers within their server-side scope (the client never sends scope ids); a BRAND user also sees
+    the offers that name no product (an empty product list means all products; the Q9 default); SR, AMO, SUPPORT
+    and ANALYST are refused `403`. Newest first; `limit` and `cursor` page it.'
   parameters:
   - name: status
     in: query

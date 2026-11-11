@@ -86,7 +86,7 @@ info:
       routes of the lane's train 2 (1.12.1). `createOffer` makes a draft and no longer asks for a
       future `valid_from`. The field is unchanged: the bundle `offers` array stays empty and the memo offer line stays zero.
     - 1.12.1 (discount-programme portal, train 2 of lane portal-discount-api, D-DISC-API-04; second part of D-LEAD-CONTRACT-112-01 in
-      `docs/requests/contract-1.12-discount-portal.md`): `AdminModule` gains `discounts` (also a response enum, `Me.modules` and
+      `docs/requests/contract-1.12-discount-portal.md`, approval D-LEAD-CONTRACT-1121-01): `AdminModule` gains `discounts` (also a response enum, `Me.modules` and
       `UserAccess.modules`); `OfferSkuUnit.field_unit` takes the contract's `QtyUnit` words (`pack`, `dozen`, `stick`, `piece`) instead of
       the packet, box, dozen, piece list of 1.12.0 (the member was never served before this release); the descriptions of `listOffers`
       (the retired TOP reads like NATIONAL) and `createOffer` (valid_from may be in the past). The routes behind the 1.12.0 statements
@@ -3415,7 +3415,7 @@ paths:
       description: >-
         Discount programmes of the portal (1.12.0). Permission module `discounts`: SUPERADMIN, or ADMIN with the `r` grant, read all;
         NATIONAL (and the retired TOP, read the same way) reads all; BRAND, WM, DMO and TSO read the offers within their server-side scope
-        (the client never sends scope ids); SR, AMO, SUPPORT and ANALYST are refused `403`. Newest first; `limit` and `cursor` page it.
+        (the client never sends scope ids); a BRAND user also sees the offers that name no product (an empty product list means all products; the Q9 default); SR, AMO, SUPPORT and ANALYST are refused `403`. Newest first; `limit` and `cursor` page it.
       parameters:
         - name: status
           in: query

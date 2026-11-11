@@ -764,7 +764,7 @@ Source: contract/openapi.yaml, version 1.12.1.
 - `operations/createPrices.yaml`  POST /v1/admin/prices (1175 B)
 - `operations/getSalesPlan.yaml`  GET /v1/admin/sales-plans/{zone_id} (677 B)
 - `operations/putSalesPlan.yaml`  PUT /v1/admin/sales-plans/{zone_id} (763 B)
-- `operations/listOffers.yaml`  GET /v1/admin/offers (1178 B)
+- `operations/listOffers.yaml`  GET /v1/admin/offers (1297 B)
 - `operations/createOffer.yaml`  POST /v1/admin/offers (1546 B)
 - `operations/getOffer.yaml`  GET /v1/admin/offers/{id} (766 B)
 - `operations/updateOffer.yaml`  PATCH /v1/admin/offers/{id} (1432 B)
