@@ -70,8 +70,8 @@ private fun AmoTaskList(day: AmoDay, team: List<TeamSr>, days: List<RouteDay>, s
     var types by remember { mutableStateOf<List<TaskType>>(emptyList()) }
     val bangla = androidx.compose.ui.platform.LocalConfiguration.current.locales[0].language == "bn"
     LaunchedEffect(day, saved) {
-        types = runCatching { day.taskTypes() }.getOrDefault(emptyList())
-        val local = runCatching { day.localTasks() }.getOrDefault(emptyList())
+        types = com.aktcl.aron.core.common.orDefaultKeepingCancellation(emptyList()) { day.taskTypes() }
+        val local = com.aktcl.aron.core.common.orDefaultKeepingCancellation(emptyList()) { day.localTasks() }
         val from = java.time.LocalDate.parse(day.businessDate()).minusDays(30).toString()
         val fetched = day.api.tasks(from)
         val json = fetched.jsonOrNull()

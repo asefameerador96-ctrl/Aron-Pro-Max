@@ -198,7 +198,7 @@ fun AmoSubmitHost(day: AmoDay) {
     // DISPLAY ONLY: the manual's nine rows, from the admin's AMO reconciliation rows (the gate and the day_submit rows stay per record type)
     var rowGroups by remember { mutableStateOf<List<List<String>>?>(null) }
     val priceCounted = st.counts.any { it.recordType == com.aktcl.aron.feature.amo.AmoReconciliation.PRICE_TYPE && (it.device != 0 || (it.server ?: 0) != 0) }
-    LaunchedEffect(priceCounted) { rowGroups = runCatching { day.sale.submitRowGroups(priceCounted) }.getOrNull() }
+    LaunchedEffect(priceCounted) { rowGroups = com.aktcl.aron.core.common.orNullKeepingCancellation { day.sale.submitRowGroups(priceCounted) } }
     val recordLabels = mapOf(
         "visit" to stringResource(AmoR.string.amo_rec_visit), "memo" to stringResource(AmoR.string.amo_rec_memo), "stock_movement" to stringResource(AmoR.string.amo_rec_stock_movement),
         "qc_line" to stringResource(AmoR.string.amo_rec_qc_line), "memo_discount" to stringResource(AmoR.string.amo_rec_memo_discount), "visit_close" to stringResource(AmoR.string.amo_rec_visit_close),
@@ -300,7 +300,7 @@ fun PreviousSalesHost(day: AmoDay, outletId: Long) {
     var date by rememberSaveable { mutableStateOf(today) }
     var history by remember { mutableStateOf<com.aktcl.aron.feature.amo.SaleHistory?>(null) }
     var label by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(outletId) { label = runCatching { day.callHeader().first }.getOrNull() }
+    LaunchedEffect(outletId) { label = com.aktcl.aron.core.common.orNullKeepingCancellation { day.callHeader().first } }
     LaunchedEffect(outletId, date) { history = null; history = day.saleHistory(outletId, date) }
     com.aktcl.aron.feature.amo.PreviousSalesContent(date, today, history, onShift = { date = com.aktcl.aron.feature.amo.PreviousSales.shift(date, it, today) }, outletLabel = label)
 }
