@@ -156,7 +156,7 @@ fun AmoSrStockHost(day: AmoDay, onBack: () -> Unit) {
     LaunchedEffect(day) {
         skus = runCatching { day.skuInfo() }.getOrDefault(emptyMap())
         val f = day.api.teamStock(day.businessDate())
-        stock = StockRead(TeamStock.parse(f.jsonOrNull()), f.isMissing() && f.jsonOrNull() == null, f is AmoFetch.Gone)
+        stock = StockRead(TeamStock.parse(f.jsonOrNull()), f.isMissing(), f is AmoFetch.Gone, f is AmoFetch.Cached)
     }
     BackHandler(enabled = selected != null) { selected = null }
     val bangla = com.aktcl.aron.core.ui.LocalAppLanguage.current == com.aktcl.aron.core.common.AppLanguage.BN
@@ -166,7 +166,7 @@ fun AmoSrStockHost(day: AmoDay, onBack: () -> Unit) {
         icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_sr_stock,
     ) {
         if (members == null || stock == null) { AronLoadingScreen(); return@AmoFrame }
-        if (row == null) SrListContent(members.rows.filter { !it.vacant }, members.stale, members.failed || stock!!.failed, { selected = it.routeId }, refused = members.refused || stock!!.refused)
+        if (row == null) SrListContent(members.rows.filter { !it.vacant }, members.stale || stock!!.stale, members.failed || stock!!.failed, { selected = it.routeId }, refused = members.refused || stock!!.refused)
         else {
             val sr = stock!!.srs.firstOrNull { it.userId == row.userId }
             val lines = sr?.lines.orEmpty().filter { it.lifted > 0 }.map { l ->
@@ -181,7 +181,7 @@ fun AmoSrStockHost(day: AmoDay, onBack: () -> Unit) {
     }
 }
 
-internal class StockRead(val srs: List<com.aktcl.aron.feature.amo.SrStock>, val failed: Boolean = false, val refused: Boolean = false)
+internal class StockRead(val srs: List<com.aktcl.aron.feature.amo.SrStock>, val failed: Boolean = false, val refused: Boolean = false, val stale: Boolean = false)
 
 /** Sales Journey (screenshots 73, 74): the SR cards (a vacant route is shown but cannot be opened), then the timeline of the chosen SR and route. */
 @Composable

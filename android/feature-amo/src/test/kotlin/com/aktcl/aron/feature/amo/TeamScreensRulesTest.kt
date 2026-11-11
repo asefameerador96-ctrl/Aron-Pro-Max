@@ -118,4 +118,11 @@ class TeamScreensRulesTest {
         val noIds = Reports.routeCards(ReportData("d", emptyList(), listOf(row(null, "R1", "Gulshan", 5)), 1))
         assertEquals(5L, TeamReports.cardFor(noIds, 11, "R1")!!.memos); assertNull(TeamReports.cardFor(noIds, 11, null)); assertNull(TeamReports.cardFor(noIds, 11, "Gulshan")) // a name is not a code
     }
+
+    @Test fun routeStdWithOnlyCategoryNamesMapsToTheKnownCodes() {
+        fun row(cat: String): ReportRow = mapOf("route_id" to JsonPrimitive(1), "route_code" to JsonPrimitive("R1"), "route_name" to JsonPrimitive("G"), "category_name" to JsonPrimitive(cat), "base_unit" to JsonPrimitive("stick"), "sold_qty_base" to JsonPrimitive(10), "gross_mtk" to JsonPrimitive(0))
+        val cats = Reports.routeCategories(ReportData("d", emptyList(), listOf(row("Cigarettes"), row("Match Box"), row("Biscuit")), 3)).map { it.category }.toSet()
+        assertEquals(setOf("cigarette", "match", "Biscuit"), cats) // the app's own title and order apply to the known ones; an unknown name stays as sent
+        assertEquals(listOf("cigarette", "match", "Biscuit"), TeamReports.stdMatrix("Z", Reports.routeCategories(ReportData("d", emptyList(), listOf(row("Biscuit"), row("Match"), row("Cigarette")), 3))).categories)
+    }
 }

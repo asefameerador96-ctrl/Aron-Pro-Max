@@ -100,8 +100,14 @@ object Reports {
         RouteStd(code, rows.sumOf { it.l("memos") ?: 0 }.toInt(), rows.sumOf { it.l("gross_mtk") ?: 0 }, rows.sumOf { it.l("net_mtk") ?: 0 })
     }.sortedBy { it.code }
 
+    /** The server's `route-std` sends the category NAME only (product node name); the four known categories map to their codes (so they sort and print in the app's language), any other name stays as sent. */
+    fun categoryCodeOf(name: String?): String? {
+        val n = name?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+        return when { "cigar" in n -> "cigarette"; "bidi" in n || "beedi" in n -> "bidi"; "lighter" in n -> "lighter"; "match" in n -> "match"; else -> name.orEmpty().trim() }
+    }
+
     /** The `route-std` rows (route x SKU) added up per route and category; a category with SKUs of different base units keeps the value only. */
-    fun routeCategories(r: ReportData): List<RouteCategory> = r.rows.groupBy { (it.l("route_id")?.toString() ?: it.s("route_code") ?: it.s("route_name")).orEmpty() to (it.s("category_code") ?: it.s("category_name")).orEmpty() }.map { (key, rows) ->
+    fun routeCategories(r: ReportData): List<RouteCategory> = r.rows.groupBy { (it.l("route_id")?.toString() ?: it.s("route_code") ?: it.s("route_name")).orEmpty() to (it.s("category_code") ?: categoryCodeOf(it.s("category_name"))).orEmpty() }.map { (key, rows) ->
         val units = rows.mapNotNull { it.s("base_unit") }.toSet()
         val sameUnit = units.size == 1 && rows.all { it.s("base_unit") != null && it.l("sold_qty_base") != null }
         // grouped by route ID (else code; two routes may share a name, never matched by name), shown by name
