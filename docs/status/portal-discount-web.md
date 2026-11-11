@@ -39,7 +39,7 @@ Brief: `docs/status/portal-discount-brief.md` (on `lane/lead-docs-1022`), sectio
 - Limit: the list search is client-side over up to 10 pages of 100 (listOffers has no q); acceptable at pilot size.
 - Empty product rows mean ALL products (lead ruling 2026-11-11 11:33 UTC, the brief's Q9 default on BRAND readers; Q9 itself, who else reads, is open): the form allows zero rows with an explicit warning; detail shows "All products". See D-DISC-WEB-02.
 - Audit entity `offer`, actions create, new_version, activate, end (confirmed by Lane A); the mock uses the same.
-- Next train: remove the AdminModule test exception and restore the type-level check once contract 1.12.1 (train 93) is on INT; switch to the real routes. (The five pixel-snapshot failures are proven pre-existing, see the baseline line.)
+- Next train: remove the AdminModule test exception and restore the type-level check once contract 1.12.1 (train 93) is on INT; switch to the real routes. (The five pixel-snapshot failures are proven pre-existing, see the baseline line.) — done (D-DISC-WEB-03).
 - Baseline (clean INT 34bef94a1, own worktree, specs config-tiers + national-shots, 2026-11-11): the same five pixel-snapshot tests fail there (config-tiers tiers A/B/C, national-shots route-map and sale-position; 5 failed, 4 passed). They are pre-existing in this container, not caused by this lane.
 
 ## Train 2 fixes (lead verdict on 03c59a6ac, Opus FAIL on the edit round-trip)

@@ -2,7 +2,7 @@
 // geography/route nodes for the pickers and for the labels of ids. A failed load never blocks reading a programme: the ids show.
 import { loadAllRows, loadRefOptions } from "@/components/admin/crud/server";
 import type { Option, SkuOption } from "@/components/admin/offer-form";
-import type { OfferSkuUnit } from "./offers";
+import type { OfferSkuUnit, SkuUnit } from "./offers";
 import { PACK_LABEL, BASE_UNIT_OF, type SkuCategory } from "./sku-pack";
 import { SCOPE_NODE_TYPES } from "./offers";
 
@@ -10,11 +10,11 @@ type NodeType = (typeof SCOPE_NODE_TYPES)[number];
 
 /** The server's field unit (contract 1.12.1, OfferSkuUnit): `pack` for cigarettes, bidi and lighters, `dozen` for matches, the SKU's own
  *  base unit for any other category. The display word (packet / box) is derived in lib/admin/offers.ts displayUnit. */
-function unitOfSku(row: Record<string, unknown>): OfferSkuUnit {
+function unitOfSku(row: Record<string, unknown>): SkuUnit {
   const cat = String(row.category_code) as SkuCategory;
   const known = cat in PACK_LABEL;
   const base = (known ? BASE_UNIT_OF[cat] : String(row.base_unit)) as OfferSkuUnit["base_unit"];
-  return { sku_id: Number(row.id), base_unit: base, pack_factor: Number(row.base_per_pack ?? 1), field_unit: !known ? base : cat === "match" ? "dozen" : "pack" };
+  return { sku_id: Number(row.id), base_unit: base, pack_factor: Number(row.base_per_pack ?? 1), field_unit: !known ? base : cat === "match" ? "dozen" : "pack", category_code: cat };
 }
 
 export interface OfferRefs {

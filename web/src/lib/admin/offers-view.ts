@@ -42,7 +42,7 @@ export function amountPerUnitText(locale: Locale, mtkPerBase: number, u: UnitCtx
   return formatMtkExact(locale, u ? perBaseToPerField(mtkPerBase, u.packFactor) : mtkPerBase);
 }
 
-/** One line for the list and the detail: "12.50% off", "৳2.000 off per packet", "Buy 3 packets (60 sticks), get 1 packet free". */
+/** One line for the list and the detail: "12.50% off", "Tk 2.000 off per packet", "Buy 3 packets (60 sticks), get 1 packet free". */
 export function valueText(locale: Locale, o: Rule & { sku_units?: readonly OfferSkuUnit[] | undefined }): string {
   const q = qualifyingUnit(o, o.sku_units);
   if (o.offer_type === "pct_discount" && o.discount_bp != null) return t(locale, "disc.value.pct", { pct: formatBp(locale, o.discount_bp) });
