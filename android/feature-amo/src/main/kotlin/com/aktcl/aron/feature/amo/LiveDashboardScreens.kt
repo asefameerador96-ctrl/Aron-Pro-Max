@@ -117,7 +117,8 @@ fun LiveDashboardContent(
                 AmoCard(title = stringResource(R.string.amo_live_geo)) {
                     AmoFigure(stringResource(R.string.amo_live_geo_valid), pctText(f.geoValidPct))
                     // bare counts as the screenshot has them: target outlets, geo validation, photo validation, and the total outlet visits as its own figure
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                    val amoCounts = f.geoValidVisits != null || f.photoValidVisits != null || f.visitsTotal != null // an older server sends none: no bare-count rows then
+                    if (amoCounts) Row(Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
                         CountStat(f.targetOutlets, stringResource(R.string.amo_rep_target), Modifier.weight(1f))
                         f.visitsTotal?.let { CountStat(it, stringResource(R.string.amo_live_visits_total), Modifier.weight(1f)) }
                     }

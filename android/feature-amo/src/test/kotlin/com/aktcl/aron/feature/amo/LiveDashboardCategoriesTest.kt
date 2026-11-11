@@ -29,7 +29,7 @@ class LiveDashboardCategoriesTest {
 
     private val summary = """{"as_of":"2026-11-10T05:00:00Z","kpis":{"target_routes":2,"logged_in_routes":2,"login_pct":100.0,"sales_submitted_routes":0,"submit_pct_of_logged_in":0.0,"target_outlets":81,"visited_outlets":3,"successful_calls":1,"strike_rate_pct":1.23,"gross_mtk":125000,"net_mtk":120000,"geo_valid_pct":50.0,"force_sale_pct":0.0,"mock_visits":0,"suspicious_visits":0}}"""
     private val login = """{"kpis":{"target_routes":2,"logged_in_routes":2,"login_pct":100.0,"sales_submitted_routes":0,"submit_pct_of_logged_in":0.0},"not_logged_in":[],"logged_in_not_submitted":[{"route_id":3}],"submitted":[],
-      "geo_valid_visits":2,"photo_valid_visits":1,"visits_total":3,
+      "geo_valid_visits":2,"photo_valid_visits":1,"visits_total":7,
       "sales_by_category":[
         {"category_code":"cigarette","base_unit":"stick","qty_base":1250,"net_mtk":80000000,"report_unit":"pack","qty_report":"100.000","entry_unit":"pack","qty_entered":"62.500","memos":4},
         {"category_code":"lighter","base_unit":"piece","qty_base":75,"net_mtk":12500000,"qty_report":null,"entry_unit":"pack","qty_entered":"3.000","memos":null},
@@ -40,7 +40,7 @@ class LiveDashboardCategoriesTest {
 
     @Test fun categoriesAreExactTextInTheFieldUnitNeverAFloat() {
         val f = LiveDashboard.parse(summary, login)!!
-        assertEquals(2L, f.geoValidVisits); assertEquals(1L, f.photoValidVisits); assertEquals(3L, f.visitsTotal)
+        assertEquals(2L, f.geoValidVisits); assertEquals(1L, f.photoValidVisits); assertEquals(7L, f.visitsTotal)
         val by = f.categories.associateBy { it.code }
         assertEquals(4, f.categories.size) // the row without a category_code and the junk entry are skipped
         assertEquals("62.5", by.getValue("cigarette").qtyText); assertEquals("packet", by.getValue("cigarette").unitKey); assertEquals(4L, by.getValue("cigarette").memos)
@@ -87,6 +87,8 @@ class LiveDashboardCategoriesTest {
         compose.onNodeWithText(Formats.money(12_500_000, UiLocale.EN)).assertExists() // no memo count when the server sends null
         // bare counts as screenshot 39 has them (below the fold): geo validation, photo validation and the total outlet visits as its own figure
         listOf("Geo validation", "Photo validation", "Total outlet visits").forEach { compose.onNodeWithText(it).assertExists() }
+        // the values: 7 is the total visits (distinct from the lighter's 3 boxes and the 2 and 1 counts) and shows in the card
+        assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasText("7")).fetchSemanticsNodes().isNotEmpty())
     }
 
     @Test fun theBanglaScreenUsesBanglaDigitsAndWordsAndTheKeptCopyKeepsTheFigures() {

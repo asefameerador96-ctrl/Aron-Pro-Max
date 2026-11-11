@@ -14,6 +14,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
+import org.junit.Assert.assertEquals
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -71,5 +72,21 @@ class AmoLiveDashboardHostTest {
         show()
         compose.waitUntil(8_000) { shown("No figures for this scope yet.") }
         compose.onNodeWithText("62.5 packets").assertDoesNotExist()
+    }
+
+    /** Lead (train 87): a previous-sale line of a WITHDRAWN lighter SKU still reads "box" (the category comes from every SKU, not only the active ones). */
+    @Test fun aWithdrawnLighterSkuInAKeptSalesAnswerStillShowsBoxes() {
+        kotlinx.coroutines.runBlocking {
+            f.db.referenceDao().insertSkus(listOf(
+                com.aktcl.aron.core.database.entity.SkuEntity(999, "S999", 999, "lighter", "SL old", "SL old", null, "piece", 25, "pack", null, "1.000", 999, "withdrawn", 1),
+            ))
+            val dir = java.io.File(app.cacheDir, "amo_api_${f.day.userId}").apply { mkdirs() }
+            java.io.File(dir, "sales_50001_${f.date}").writeText("""{"lines":[{"sku":{"sku_id":999,"short_name":"SL old"},"qty_report":"3.000","report_unit":"pack","qty_base":75,"value_mtk":1}]}""")
+            assertEquals("not among the active SKUs", false, f.db.referenceDao().activeSkus().any { it.skuId == 999L })
+            val h = f.day.saleHistory(50001, f.date)
+            assertEquals(com.aktcl.aron.feature.amo.SaleHistorySource.KEPT_COPY, h.source)
+            assertEquals("lighter", h.lines.single().categoryCode)
+            assertEquals("box", com.aktcl.aron.feature.amo.UnitWords.key(h.lines.single().reportUnit, h.lines.single().categoryCode))
+        }
     }
 }
