@@ -7,8 +7,8 @@ Branch `lane/portal-discount-api` from INT `claude/wonderful-thompson-k6ejnf`. P
 - Train 2 (Ktor admin API; D-DISC-API-04): `AdminOffers.kt` (six operations of `/v1/admin/offers`), permission module `discounts` (AdminModules, V0154/V0155, contract AdminModule, dev seeds), BRAND read routes in PortalLevels, scope-cases lines, `AdminOffersTest` (10 tests), db tests.
 
 ## Gate results with the pinned CI tools (tools/ci/install-tool.sh; head of train 2)
-- `tools/ci/migrations-check.sh d58e64632 <squawk>`: "4 new migration(s)", "migrations: ok" (V0152 to V0155; the only `squawk-ignore` left is `require-concurrent-index-creation` on the empty `offer_version` table).
-- `tools/ci/contract-breaking.sh d58e64632 <oasdiff>`: 18 breaking by rule, all `response-property-enum-value-added` (`draft` on `Offer.status` where `Offer` is a oneOf member of the sync responses, and `discounts` on `AdminModule`); approved by the version bump 1.11.2 to 1.12.0 and docs/requests/contract-1.12-discount-portal.md under D-LEAD-CONTRACT-112-01; `contract: ok`.
+- `tools/ci/migrations-check.sh <INT 34bef94a1> <squawk>`: "2 new migration(s)" (V0154, V0155), "migrations: ok" (V0152/V0153 are shipped; the only `squawk-ignore` left in them is `require-concurrent-index-creation` on the empty `offer_version` table).
+- `tools/ci/contract-breaking.sh <INT 34bef94a1> <oasdiff>`: 39 breaking by rule, all `response-property-enum-value-added` (`discounts` on `AdminModule`, the `QtyUnit` words on `OfferSkuUnit.field_unit` where `Offer` is a oneOf member of the sync responses); approved by the version bump 1.12.0 to 1.12.1 and docs/requests/contract-1.12-discount-portal.md (1.12.1 section) under D-LEAD-CONTRACT-112-01, to be confirmed by the lead; `contract: ok`. (Against the pre-train-92 base, 1.11.2 to 1.12.0, the same gate reported 15 for `draft` on `Offer.status`.)
 - Redocly 2.59.0 clean; `python3 tools/slice-contract.py --check` clean.
 
 ## Not done / not tested

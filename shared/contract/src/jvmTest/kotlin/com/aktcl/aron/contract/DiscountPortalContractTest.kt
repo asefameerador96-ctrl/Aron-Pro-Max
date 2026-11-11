@@ -58,6 +58,7 @@ class DiscountPortalContractTest {
     fun skuUnitsUseTheContractsOneUnitVocabulary() {
         assertTrue(listOf("sku_id", "base_unit", "pack_factor", "field_unit").all { it in required("OfferSkuUnit") })
         assertEquals("#/components/schemas/QtyUnit", props("OfferSkuUnit").getValue("field_unit")["\$ref"])
+        assertEquals(listOf("stick", "piece", "dozen", "pack"), OpenApi.enumOf("QtyUnit"))
         assertEquals(listOf("stick", "piece", "dozen"), map(props("OfferSkuUnit").getValue("base_unit"))["enum"] as List<String>)
         assertTrue("sku_units" in props("Offer") && "sku_units" !in required("Offer"))
         assertTrue("pending the owner's confirmation" in flat(props("OfferSkuUnit").getValue("field_unit")["description"]), "bidi in packets is flagged as pending")
@@ -82,7 +83,7 @@ class DiscountPortalContractTest {
     @Test
     fun theChangelogNamesTheDiscountPortalAdditions() {
         val info = flat(map(OpenApi.doc["info"])["description"])
-        for (member in listOf("1.12.0 (discount-programme portal", "`getOffer`", "`listOfferVersions`", "`setOfferStatus`", "`OfferStatus`", "`OfferSkuUnit`",
+        for (member in listOf("1.12.0 (discount-programme portal", "1.12.1 (discount-programme portal", "`getOffer`", "`listOfferVersions`", "`setOfferStatus`", "`OfferStatus`", "`OfferSkuUnit`",
             "`AdminModule`", "`discounts`", "D-LEAD-CONTRACT-112-01", "contract-1.12-discount-portal.md", "`StatusQuery`")) assertTrue(info.contains(member), "changelog names $member")
         assertFalse(info.contains("future-dated"), "createOffer no longer asks for a future valid_from")
     }

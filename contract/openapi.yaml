@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.12.0
+  version: 1.12.1
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -82,9 +82,15 @@ info:
       `OfferWrite` and `OfferPatch` (the server requires it), more optional members on `OfferPatch`, and optional `version_no`,
       `change_reason`, `created_at`, `updated_at` and `sku_units` on `Offer`; the `status` query parameter of `listOffers` moves from
       `StatusQuery` (`ActiveStatus`) to `OfferStatus`, and `updateOffer` gains the `409` response; `Offer.status` is now `OfferStatus`
-      (a response enum gains `draft`: no shipped client reads it) and `AdminModule` (in `Me.modules` and `UserAccess.modules`, so also a
-      response enum) gains `discounts`. The statements about what the server requires or refuses hold from the routes of the lane's train 2. `createOffer` makes a draft and no longer asks for a
+      (a response enum gains `draft`: no shipped client reads it). The statements about what the server requires or refuses hold from the
+      routes of the lane's train 2 (1.12.1). `createOffer` makes a draft and no longer asks for a
       future `valid_from`. The field is unchanged: the bundle `offers` array stays empty and the memo offer line stays zero.
+    - 1.12.1 (discount-programme portal, train 2 of lane portal-discount-api, D-DISC-API-04; second part of D-LEAD-CONTRACT-112-01 in
+      `docs/requests/contract-1.12-discount-portal.md`): `AdminModule` gains `discounts` (also a response enum, `Me.modules` and
+      `UserAccess.modules`); `OfferSkuUnit.field_unit` takes the contract's `QtyUnit` words (`pack`, `dozen`, `stick`, `piece`) instead of
+      the packet, box, dozen, piece list of 1.12.0 (the member was never served before this release); the descriptions of `listOffers`
+      (the retired TOP reads like NATIONAL) and `createOffer` (valid_from may be in the past). The routes behind the 1.12.0 statements
+      exist from this release.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:

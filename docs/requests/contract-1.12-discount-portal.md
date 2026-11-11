@@ -1,4 +1,4 @@
-# Contract 1.12.0: discount-programme portal (lane portal-discount-api, 2026-11-11)
+# Contract 1.12.0 and 1.12.1: discount-programme portal (lane portal-discount-api, 2026-11-11)
 
 Approved by the lead as **D-LEAD-CONTRACT-112-01** (DECISIONS.md, 2026-11-11 08:26 UTC). The change is additive except one
 response enum that gains a value; the oasdiff gate (`tools/ci/contract-breaking.sh`) reports that one as breaking, and this file
@@ -29,6 +29,15 @@ and their descriptions state the new rules (create makes a draft; update appends
   `qualifying`, `scope`; its `status` member stays (deprecated, refused with 400).
 - `Offer`: optional `version_no`, `change_reason`, `created_at`, `updated_at`, `sku_units`.
 - `AdminModule` gains `discounts`. It is also a response enum (`Me.modules`, `UserAccess.modules` key on it), so this line is the second part of the same approval under D-LEAD-CONTRACT-112-01 (the permission module of the portal; `/v1/admin/offers/**` moves off `targets`; migration V0154/V0155 widens the grant CHECK and carries every ADMIN's `targets` access over).
+
+## 1.12.1 (train 2 of the lane; the second part of the same approval)
+
+Version 1.12.0 is on INT (train 92). Train 2 adds the routes and two contract changes that the lead asked for in the verdict on 5f694a0b5:
+`AdminModule` gains `discounts` (a response enum: `Me.modules`, `UserAccess.modules`), and `OfferSkuUnit.field_unit` takes the contract's
+`QtyUnit` words (`pack`, `dozen`, `stick`, `piece`) instead of packet/box/dozen/piece, so there is one vocabulary (the member was never served
+before the routes of this release; bidi in packets is pending the owner's confirmation, docs/34 s4.2). oasdiff reports both as
+`response-property-enum-value-added`; no shipped client reads either (the apps do not call the offer operations; the `modules` claim is read
+by the web portal, which ignores an unknown module, and Lane B adds it). The gate needs a new `info.version` for them: 1.12.1.
 
 ## Also in 1.12.0 (additive)
 
