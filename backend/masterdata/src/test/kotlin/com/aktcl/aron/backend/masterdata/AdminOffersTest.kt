@@ -192,8 +192,9 @@ class AdminOffersTest {
         assertEquals(10, o.getValue("reward_qty_base").jsonPrimitive.content.toInt())
         // The pack size of the reward SKU (10) and of the qualifying SKU (20) travel with the offer for field-unit display.
         assertEquals(listOf(fx["s1"]!! to 20, fx["s2"]!! to 10), o.getValue("sku_units").jsonArray.map { it.jsonObject.getValue("sku_id").jsonPrimitive.content.toLong() to it.jsonObject.getValue("pack_factor").jsonPrimitive.content.toInt() })
-        assertEquals(listOf("packet", "packet"), o.getValue("sku_units").jsonArray.map { it.jsonObject.getValue("field_unit").jsonPrimitive.content }, "cigarette SKUs are counted in packets")
-        assertEquals(listOf("packet", "packet", "box", "dozen", "piece"), listOf("cigarette", "bidi", "lighter", "match", "other").map { fieldUnitOf(it) })
+        assertEquals(listOf("pack", "pack"), o.getValue("sku_units").jsonArray.map { it.jsonObject.getValue("field_unit").jsonPrimitive.content }, "cigarette SKUs are counted in packs (packets)")
+        assertEquals(listOf("pack", "pack", "pack", "dozen", "piece"), listOf("cigarette", "bidi", "lighter", "match", "other").map { fieldUnitOf(it, "piece") })
+        assertEquals("stick", fieldUnitOf("other", "stick"), "any other category keeps the SKU's own base unit")
         val id = o.getValue("id").jsonPrimitive.content
         assertEquals(1, count("SELECT count(*) FROM app.offer_version WHERE offer_id = $id"))
         assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'offer' AND entity_id = '$id' AND action = 'create' AND reason = '$why'"))

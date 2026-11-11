@@ -121,8 +121,15 @@ class DiscountPortalV0152Test {
     fun truncateIsRefusedOnTheAppendOnlyTablesEvenForTheOwner() = db.connect().use { c ->
         c.autoCommit = false
         try {
-            assertEquals("42501", c.refused("TRUNCATE app.offer_status_change"))
-            assertEquals("42501", c.refused("TRUNCATE app.offer_version CASCADE"))
+            // The statement triggers are what refuse it (the owner holds the privilege), and the PUBLIC grant is gone as well.
+            assertEquals("2", c.scalar("SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgname IN ('offer_status_change_no_truncate', 'offer_version_no_truncate') AND (tgtype & 32) = 32"))
+            val e1 = assertFailsWith<SQLException> { c.exec("TRUNCATE app.offer_status_change") }
+            assertEquals("42501", e1.sqlState); assertTrue("append-only" in e1.message.orEmpty() && "offer_status_change" in e1.message.orEmpty(), e1.message)
+            c.rollback()
+            // Without CASCADE the foreign keys onto app.offer_version refuse first (0A000), which would hide the guard; CASCADE gets past them,
+            // so the refusal below is the offer_version_no_truncate trigger's own message.
+            val e2 = assertFailsWith<SQLException> { c.exec("TRUNCATE app.offer_version CASCADE") }
+            assertEquals("42501", e2.sqlState); assertTrue("app.offer_version is append-only" in e2.message.orEmpty(), e2.message)
         } finally { c.rollback(); c.autoCommit = true }
     }
 
@@ -151,7 +158,7 @@ class DiscountPortalV0152Test {
             assertEquals("1|1", c.scalar("SELECT jsonb_array_length(products) || '|' || jsonb_array_length(scope) FROM dw.v_offer_version WHERE offer_version_id = $v2"))
             assertEquals("sku|$sku", c.scalar("SELECT (products->0->>'product_level') || '|' || (products->0->>'product_id') FROM dw.v_offer_version WHERE offer_version_id = $v2"), "the contract's member names")
             assertEquals("zone", c.scalar("SELECT scope->0->>'node_type' FROM dw.v_offer_version WHERE offer_version_id = $v2"))
-            assertEquals("true", c.scalar("SELECT ((scope->0->>'node_id') IS NOT NULL)::text FROM dw.v_offer_version WHERE offer_version_id = $v2"))
+            assertEquals(c.scalar("SELECT min(id) FROM app.zone"), c.scalar("SELECT scope->0->>'node_id' FROM dw.v_offer_version WHERE offer_version_id = $v2"), "node_id carries the zone's id")
             assertEquals("0", c.scalar("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'v_offer_version' AND column_name = 'change_reason'"), "no admin free text in a dw reuse view")
             assertEquals("0|0|false", c.scalar("SELECT jsonb_array_length(products) || '|' || jsonb_array_length(scope) || '|' || is_effective FROM dw.v_offer_version WHERE offer_version_id = $v1"), "an old version is not effective")
             c.exec("UPDATE app.offer SET status = 'inactive' WHERE id = $o")

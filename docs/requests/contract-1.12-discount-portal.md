@@ -28,9 +28,15 @@ and their descriptions state the new rules (create makes a draft; update appends
   second breaking change). `OfferPatch` also gains optional `valid_from`, `offer_type`, `level`, `stacking`, `reward_sku_id`,
   `qualifying`, `scope`; its `status` member stays (deprecated, refused with 400).
 - `Offer`: optional `version_no`, `change_reason`, `created_at`, `updated_at`, `sku_units`.
-- `AdminModule` gains `discounts` (the permission module of the portal; `/v1/admin/offers/**` moves off `targets`; migration V0154/V0155 widens the grant CHECK and carries every ADMIN's `targets` access over).
+- `AdminModule` gains `discounts`. It is also a response enum (`Me.modules`, `UserAccess.modules` key on it), so this line is the second part of the same approval under D-LEAD-CONTRACT-112-01 (the permission module of the portal; `/v1/admin/offers/**` moves off `targets`; migration V0154/V0155 widens the grant CHECK and carries every ADMIN's `targets` access over).
+
+## Also in 1.12.0 (additive)
+
+`listOffers`: its `status` filter takes `OfferStatus` instead of the shared `StatusQuery` (a wider request enum); `updateOffer`
+gains the `409` response (an offer that is not a draft, or a reused `request_uuid`). What the descriptions say the server requires or
+refuses (`request_uuid`, `drp_slide`, the `channel` node) holds from the lane's train 2, where the routes exist.
 
 ## Units and money
 
 Money members stay integer milli-taka per base unit (`discount_mtk_per_unit`) or basis points (`discount_bp`); quantities are base units
-(`*_qty_base`). `OfferSkuUnit` gives the SKU's `pack_factor` and the field-unit word so the portal shows both (docs/34 s4.2).
+(`*_qty_base`). `OfferSkuUnit` gives the SKU's `pack_factor` and `field_unit`, in the contract's own `QtyUnit` vocabulary (`pack`, `dozen`, or the SKU's base unit), so the portal shows both (docs/34 s4.2); bidi in packets is pending the owner's confirmation.

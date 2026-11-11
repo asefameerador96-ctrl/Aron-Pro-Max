@@ -6,6 +6,11 @@ Branch `lane/portal-discount-api` from INT `claude/wonderful-thompson-k6ejnf`. P
 - Train 1 (schema and contract; D-DISC-API-01 to 03): V0152/V0153 (draft status, request_uuid, append-only trail, immutable versions, dw.v_offer and dw.v_offer_version, view contract 1.6), contract 1.12.0 (request file docs/requests/contract-1.12-discount-portal.md, lead ruling D-LEAD-CONTRACT-112-01), regenerated slices and web types. Checked head 5f694a0b5.
 - Train 2 (Ktor admin API; D-DISC-API-04): `AdminOffers.kt` (six operations of `/v1/admin/offers`), permission module `discounts` (AdminModules, V0154/V0155, contract AdminModule, dev seeds), BRAND read routes in PortalLevels, scope-cases lines, `AdminOffersTest` (10 tests), db tests.
 
+## Gate results with the pinned CI tools (tools/ci/install-tool.sh; head of train 2)
+- `tools/ci/migrations-check.sh d58e64632 <squawk>`: "4 new migration(s)", "migrations: ok" (V0152 to V0155; the only `squawk-ignore` left is `require-concurrent-index-creation` on the empty `offer_version` table).
+- `tools/ci/contract-breaking.sh d58e64632 <oasdiff>`: 18 breaking by rule, all `response-property-enum-value-added` (`draft` on `Offer.status` where `Offer` is a oneOf member of the sync responses, and `discounts` on `AdminModule`); approved by the version bump 1.11.2 to 1.12.0 and docs/requests/contract-1.12-discount-portal.md under D-LEAD-CONTRACT-112-01; `contract: ok`.
+- Redocly 2.59.0 clean; `python3 tools/slice-contract.py --check` clean.
+
 ## Not done / not tested
 - Web (Lane B): `GRANT_MODULES` in web/src/lib/admin/access-grants.ts, modules.ts and the i18n keys do not know `discounts` yet; the pages do not exist.
 - The Android MoneyGateReviewTest needs the Android SDK and no android/ file changed; it was not run here.

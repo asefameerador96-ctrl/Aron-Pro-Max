@@ -214,16 +214,18 @@ private fun extras(h: Handle, rows: List<Row>): Extras {
         .bindList("v", vids).map { rs, _ -> rs.getLong(1) to OfferScopeOut(rs.getString(2), rs.getLong(3)) }.list().groupBy({ it.first }, { it.second })
     val skuIds = (rows.mapNotNull { it.rewardSku } + qual.values.flatten().filter { it.product_level == "sku" }.map { it.product_id }).distinct()
     val units = if (skuIds.isEmpty()) emptyMap() else h.createQuery("SELECT id, base_unit, base_per_pack, category_code FROM app.sku WHERE id IN (<s>)").bindList("s", skuIds)
-        .map { rs, _ -> OfferSkuUnitOut(rs.getLong(1), rs.getString(2), rs.getInt(3), fieldUnitOf(rs.getString(4))) }.list().associateBy { it.sku_id }
+        .map { rs, _ -> OfferSkuUnitOut(rs.getLong(1), rs.getString(2), rs.getInt(3), fieldUnitOf(rs.getString(4), rs.getString(2))) }.list().associateBy { it.sku_id }
     return Extras(qual, scope, units)
 }
 
-/** The word the field apps count a SKU in (docs/34 s4.2): packet for cigarettes and bidi, box for lighters, dozen for matches, piece for anything else. */
-internal fun fieldUnitOf(categoryCode: String): String = when (categoryCode) {
-    "cigarette", "bidi" -> "packet"
-    "lighter" -> "box"
+/**
+ * The unit the field apps count a SKU in (docs/34 s4.2), in the contract's `QtyUnit` words: `pack` for cigarettes, bidi (pending the owner's
+ * confirmation) and lighters (a box of 25; "packet" or "box" is the app's label), `dozen` for matches, otherwise the SKU's own base unit.
+ */
+internal fun fieldUnitOf(categoryCode: String, baseUnit: String): String = when (categoryCode) {
+    "cigarette", "bidi", "lighter" -> "pack"
     "match" -> "dozen"
-    else -> "piece"
+    else -> baseUnit
 }
 
 private fun unitsOf(r: Row, e: Extras): List<OfferSkuUnitOut> =

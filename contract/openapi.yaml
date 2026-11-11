@@ -80,8 +80,10 @@ info:
       (`GET /v1/admin/offers/{id}`, `GET /v1/admin/offers/{id}/versions`, `POST /v1/admin/offers/{id}/status`); the schemas `OfferStatus`
       (draft, active, inactive), `OfferVersion`, `OfferVersionPage`, `OfferStatusChange` and `OfferSkuUnit`; optional `request_uuid` on
       `OfferWrite` and `OfferPatch` (the server requires it), more optional members on `OfferPatch`, and optional `version_no`,
-      `change_reason`, `created_at`, `updated_at` and `sku_units` on `Offer`; `Offer.status` is now `OfferStatus` (a response enum gains
-      `draft`: no shipped client reads it) and `AdminModule` gains `discounts`. `createOffer` makes a draft and no longer asks for a
+      `change_reason`, `created_at`, `updated_at` and `sku_units` on `Offer`; the `status` query parameter of `listOffers` moves from
+      `StatusQuery` (`ActiveStatus`) to `OfferStatus`, and `updateOffer` gains the `409` response; `Offer.status` is now `OfferStatus`
+      (a response enum gains `draft`: no shipped client reads it) and `AdminModule` (in `Me.modules` and `UserAccess.modules`, so also a
+      response enum) gains `discounts`. The statements about what the server requires or refuses hold from the routes of the lane's train 2. `createOffer` makes a draft and no longer asks for a
       future `valid_from`. The field is unchanged: the bundle `offers` array stays empty and the memo offer line stays zero.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
@@ -3406,8 +3408,8 @@ paths:
       summary: Offer and promotion rules (data, not code).
       description: >-
         Discount programmes of the portal (1.12.0). Permission module `discounts`: SUPERADMIN, or ADMIN with the `r` grant, read all;
-        NATIONAL reads all; BRAND, WM, DMO and TSO read the offers within their server-side scope (the client never sends scope ids);
-        SR, AMO, SUPPORT and ANALYST are refused `403`. Newest first; `limit` and `cursor` page it.
+        NATIONAL (and the retired TOP, read the same way) reads all; BRAND, WM, DMO and TSO read the offers within their server-side scope
+        (the client never sends scope ids); SR, AMO, SUPPORT and ANALYST are refused `403`. Newest first; `limit` and `cursor` page it.
       parameters:
         - name: status
           in: query
@@ -14188,11 +14190,12 @@ components:
         base_unit: { type: string, enum: [stick, piece, dozen] }
         pack_factor: { type: integer, minimum: 1, maximum: 1000, description: Base units per pack (app.sku.base_per_pack); base quantity = field quantity x pack_factor. }
         field_unit:
-          type: string
-          enum: [packet, box, dozen, piece]
+          $ref: '#/components/schemas/QtyUnit'
           description: >-
-            The word the field apps count this SKU in, derived by the server from the SKU category (docs/34 s4.2): packet for cigarettes
-            and bidi, box for lighters, dozen for matches, piece for any other category.
+            The unit the field apps count this SKU in (docs/34 s4.2), in the contract's one unit vocabulary (`QtyUnit`): `pack` (a packet of
+            20 or 10 sticks, a bidi packet, or a box of 25 lighters; the word packet or box is the app's label for the category) for
+            cigarettes, bidi and lighters, `dozen` for matches, and the SKU's own `base_unit` for any other category. Derived by the
+            server from the SKU category. Bidi in packets is pending the owner's confirmation (docs/34 s4.2).
     OfferVersion:
       type: object
       description: One immutable version of an offer (1.12.0).
