@@ -150,8 +150,8 @@ class SalesSubmitScreenTest {
                 AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { "Memos of the day" }, {}, {}) } }
         }
         val item = compose.onNodeWithText("Memos of the day").getBoundsInRoot()
-        val device = compose.onNodeWithText("Phone").getBoundsInRoot()
-        compose.onNodeWithText("Phone").assertIsDisplayed()
+        val device = compose.onNodeWithText("Device").getBoundsInRoot()
+        compose.onNodeWithText("Device").assertIsDisplayed()
         assertTrue("the counts sit under the item, not clipped in a fixed column", device.top >= item.bottom)
     }
 
