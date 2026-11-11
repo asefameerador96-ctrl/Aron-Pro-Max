@@ -28,6 +28,7 @@ export function qtyText(locale: Locale, base: number, u: UnitCtx | null): string
   const baseText = t(locale, QTY_KEY[u.baseUnit], { n: base });
   if (u.packFactor === 1) return baseText;
   const { packs, rest } = splitBase(base, u.packFactor);
+  if (packs === 0) return baseText; // less than one pack: the base figure alone
   let field = packs > 0 ? t(locale, QTY_KEY[u.fieldUnit], { n: packs }) : "";
   if (rest > 0) field = field ? t(locale, "disc.qty.plus", { a: field, b: t(locale, QTY_KEY[u.baseUnit], { n: rest }) }) : t(locale, QTY_KEY[u.baseUnit], { n: rest });
   return t(locale, "disc.qty.with_base", { field, base: baseText });

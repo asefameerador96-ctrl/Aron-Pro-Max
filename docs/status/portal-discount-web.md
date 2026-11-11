@@ -41,3 +41,12 @@ Brief: `docs/status/portal-discount-brief.md` (on `lane/lead-docs-1022`), sectio
 - Audit entity `offer`, actions create, new_version, activate, end (confirmed by Lane A); the mock uses the same.
 - Next train: remove the AdminModule test exception once contract 1.12.1 (train 93) is on INT; switch to the real routes; show the five pixel-snapshot e2e failures are pre-existing on INT 34bef94a1.
 - Baseline (clean INT 34bef94a1, own worktree, specs config-tiers + national-shots, 2026-11-11): the same five pixel-snapshot tests fail there (config-tiers tiers A/B/C, national-shots route-map and sale-position; 5 failed, 4 passed). They are pre-existing in this container, not caused by this lane.
+
+## Train 2 fixes (lead verdict on 03c59a6ac, Opus FAIL on the edit round-trip)
+
+- No truncation: a quantity that is not a whole number of packs opens in base units (`OfferForm.inBase`), with the packs + remainder shown beside it; the PATCH sends only the members the user changed (`diffPatch` against `ruleOf(offer)`), so an unchanged quantity or amount is never re-sent through a conversion; nothing changed gives no request.
+- One unit source: `deriveUnits` is used by the edit page (open) and the form (render and save), from the SKU list only; without proven units everything is in base units.
+- Changing the products or the reward SKU re-expresses typed amounts and quantities with the same base value (`reunit`).
+- Zero product rows = all products (Q9 lead ruling) with an explicit warning; detail says "All products".
+- Tests added: sku_units-absent path, title-only edit byte-identical, truncation (65 on pack 20, reward 10), reunit, request_uuid kept on retry / regenerated on a changed body, status panel render (past valid_to block, Super-Admin-only note), e2e edit never truncates, long Bangla on the edit screen and the open status panel, gating test title fixed.
+- Still pending the contract: the AdminModule enum on INT does not list `discounts` yet (rides train 93); the runtime test exception stays and removes itself; the Schemas["AdminModule"] type check comes back with the enum.

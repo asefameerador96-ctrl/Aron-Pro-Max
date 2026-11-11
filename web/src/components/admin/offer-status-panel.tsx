@@ -7,7 +7,7 @@ import { useI18n } from "@/components/i18n-provider";
 import { Banner } from "@/components/kit/banner";
 import { Button } from "@/components/kit/button";
 import type { Problem } from "@/contract/types";
-import { newRequestUuid, REASON_MIN } from "@/lib/admin/offers";
+import { nextAttempt, REASON_MIN } from "@/lib/admin/offers";
 import { ReasonField } from "./kit/reason-field";
 
 export function OfferStatusPanel({ offerId, moves, pastEnd, superOnlyNote }: { offerId: number; moves: ("active" | "inactive")[]; pastEnd: boolean; superOnlyNote: boolean }) {
@@ -30,7 +30,7 @@ export function OfferStatusPanel({ offerId, moves, pastEnd, superOnlyNote }: { o
     }
     setReasonError(null);
     const key = `${open}:${reason.trim()}`;
-    if (attempt.current?.key !== key) attempt.current = { key, uuid: newRequestUuid() };
+    attempt.current = nextAttempt(attempt.current, key);
     setBusy(true);
     setBanner(null);
     try {

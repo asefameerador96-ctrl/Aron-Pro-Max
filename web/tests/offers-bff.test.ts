@@ -149,12 +149,12 @@ describe("reads through the mock (contract shape)", () => {
     expect(all.items).toHaveLength(2);
     expect(all.next_cursor).toBeTruthy();
     const rest = await (await api(r, `/v1/admin/offers?limit=2&cursor=${all.next_cursor}`)).json();
-    expect(rest.items).toHaveLength(1);
+    expect(rest.items).toHaveLength(2);
     expect(rest.next_cursor).toBeNull();
     const drafts = await (await api(r, "/v1/admin/offers?status=draft")).json();
-    expect(drafts.items.map((o: { code: string }) => o.code)).toEqual(["MAXR-PKT"]);
+    expect(drafts.items.map((o: { code: string }) => o.code)).toEqual(["ODD-QTY", "MAXR-PKT"]);
     expect((await api(r, "/v1/admin/offers?status=bogus")).status).toBe(400);
-    const one = await api(r, `/v1/admin/offers/${drafts.items[0].id}`);
+    const one = await api(r, `/v1/admin/offers/${drafts.items[1].id}`);
     expect(one.headers.get("etag")).toBe('"1"');
     expect((await one.json()).sku_units).toEqual([{ sku_id: 2, base_unit: "stick", pack_factor: 20, field_unit: "packet" }]);
     expect((await api(r, "/v1/admin/offers/9999")).status).toBe(404);

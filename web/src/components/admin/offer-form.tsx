@@ -10,7 +10,7 @@ import { Banner } from "@/components/kit/banner";
 import { Button } from "@/components/kit/button";
 import type { Problem } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
-import { LEVELS, OFFER_TYPES, PRODUCT_LEVELS, SCOPE_NODE_TYPES, STACKING, newRequestUuid, toPatch, unitCtx, validateForm, type FieldError, type OfferForm, type OfferSkuUnit } from "@/lib/admin/offers";
+import { LEVELS, OFFER_TYPES, PRODUCT_LEVELS, SCOPE_NODE_TYPES, STACKING, deriveUnits, diffPatch, effFactor, nextAttempt, reunit, validateForm, type FieldError, type OfferForm, type OfferSkuUnit, type RuleSnapshot } from "@/lib/admin/offers";
 import { qtyText, unitWord } from "@/lib/admin/offers-view";
 import { Field, inputClass } from "./kit/field";
 import { ReasonField } from "./kit/reason-field";
@@ -21,7 +21,7 @@ type NodeType = (typeof SCOPE_NODE_TYPES)[number];
 
 const POINTER_FIELD: Record<string, string> = { code: "code", group_code: "group_code", title_en: "title_en", title_bn: "title_bn", valid_from: "valid_from", valid_to: "valid_to", discount_bp: "percent", discount_mtk_per_unit: "perUnit", threshold_qty_base: "threshold", reward_sku_id: "rewardSku", reward_qty_base: "rewardQty", change_reason: "reason", qualifying: "qualifying", scope: "scope" };
 
-export function OfferFormView({ mode, offerId, version, initial, skus, productNodes, nodes, backHref }: { mode: "create" | "edit"; offerId?: number; version?: number; initial: OfferForm; skus: SkuOption[]; productNodes: Record<"category" | "brand" | "variant", Option[]>; nodes: Record<NodeType, Option[]>; backHref: string }) {
+export function OfferFormView({ mode, offerId, version, initial, original, skus, productNodes, nodes, backHref }: { mode: "create" | "edit"; offerId?: number; version?: number; initial: OfferForm; original?: RuleSnapshot; skus: SkuOption[]; productNodes: Record<"category" | "brand" | "variant", Option[]>; nodes: Record<NodeType, Option[]>; backHref: string }) {
   const { t, problem, locale } = useI18n();
   const router = useRouter();
   const [f, setF] = useState<OfferForm>(initial);
@@ -34,17 +34,14 @@ export function OfferFormView({ mode, offerId, version, initial, skus, productNo
   const [nType, setNType] = useState<NodeType>("wing");
   const [nItem, setNItem] = useState("");
   const set = <K extends keyof OfferForm>(k: K, v: OfferForm[K]) => setF((s) => ({ ...s, [k]: v }));
+  // A change of products or reward SKU can change the unit context: typed amounts keep their BASE value (never silently re-read).
+  const setUnitInput = (patch: Partial<Pick<OfferForm, "qualifying" | "rewardSku">>) => setF((s) => reunit({ ...s, ...patch }, s, deriveUnits(s, unitOf), deriveUnits({ ...s, ...patch }, unitOf)));
 
   const skuById = useMemo(() => new Map(skus.map((s) => [s.id, s])), [skus]);
-  const qualUnits = useMemo(() => {
-    if (f.qualifying.length === 0 || f.qualifying.some((q) => q.product_level !== "sku")) return null;
-    const us = f.qualifying.map((q) => skuById.get(q.product_id)?.unit);
-    return us.every(Boolean) ? unitCtx(us as OfferSkuUnit[]) : null;
-  }, [f.qualifying, skuById]);
-  const rewardUnits = useMemo(() => {
-    const s = skuById.get(Number(f.rewardSku));
-    return s ? unitCtx([s.unit]) : null;
-  }, [f.rewardSku, skuById]);
+  const unitOf = (id: number): OfferSkuUnit | undefined => skuById.get(id)?.unit;
+  const units = useMemo(() => deriveUnits(f, (id) => skuById.get(id)?.unit), [f, skuById]);
+  const qualUnits = units.qualifying;
+  const rewardUnits = units.reward;
   const mixed = f.qualifying.length > 0 && qualUnits === null;
 
   const optionsOf = (level: (typeof PRODUCT_LEVELS)[number]): Option[] => (level === "sku" ? skus.map((s) => ({ value: String(s.id), label: s.label })) : productNodes[level]);
@@ -56,18 +53,26 @@ export function OfferFormView({ mode, offerId, version, initial, skus, productNo
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBanner(null);
-    const { errors: errs, body } = validateForm(f, { qualifying: qualUnits, reward: rewardUnits }, mode);
+    const { errors: errs, body } = validateForm(f, units, mode);
     const map: Record<string, string> = {};
     for (const x of errs as FieldError[]) map[x.field] = t(`disc.err.${x.code}` as MessageKey);
     setErrors(map);
     if (!body || Object.keys(map).length > 0) return;
     const key = `${mode}:${offerId ?? ""}:${JSON.stringify(body)}`;
-    if (attempt.current?.key !== key) attempt.current = { key, uuid: newRequestUuid() };
+    let patchBody: ReturnType<typeof diffPatch> = null;
+    attempt.current = nextAttempt(attempt.current, key);
     const uuid = attempt.current.uuid;
+    if (mode === "edit") {
+      patchBody = original ? diffPatch(original, body, uuid) : null;
+      if (!patchBody) {
+        setBanner({ tone: "danger", text: t("disc.err.no_change") });
+        return;
+      }
+    }
     setBusy(true);
     try {
       const url = mode === "create" ? "/api/bff/admin/offers" : `/api/bff/admin/offers/${offerId}`;
-      const payload = mode === "create" ? { ...body, request_uuid: uuid } : { ...toPatch(body, uuid), version };
+      const payload = mode === "create" ? { ...body, request_uuid: uuid } : { ...patchBody, version };
       const res = await fetch(url, { method: mode === "create" ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(payload) });
       const data = (await res.json().catch(() => ({}))) as { id?: number; version_no?: number } & Partial<Problem>;
       if (res.ok) {
@@ -104,7 +109,7 @@ export function OfferFormView({ mode, offerId, version, initial, skus, productNo
   const addProduct = () => {
     const id = Number(pItem);
     if (!id || f.qualifying.some((q) => q.product_level === pLevel && q.product_id === id)) return;
-    set("qualifying", [...f.qualifying, { product_level: pLevel, product_id: id }]);
+    setUnitInput({ qualifying: [...f.qualifying, { product_level: pLevel, product_id: id }] });
     setPItem("");
   };
   const addNode = () => {
@@ -115,10 +120,14 @@ export function OfferFormView({ mode, offerId, version, initial, skus, productNo
   };
 
   const perUnitLabel = qualUnits ? t("disc.form.per_unit", { unit: unitWord(locale, qualUnits) }) : t("disc.form.per_unit_base");
-  const thresholdUnit = unitWord(locale, qualUnits);
-  const rewardUnit = unitWord(locale, rewardUnits);
-  const thresholdBase = qualUnits && /^\d+$/.test(f.threshold.trim()) ? qtyText(locale, Number(f.threshold) * qualUnits.packFactor, qualUnits) : null;
-  const rewardBase = rewardUnits && /^\d+$/.test(f.rewardQty.trim()) ? qtyText(locale, Number(f.rewardQty) * rewardUnits.packFactor, rewardUnits) : null;
+  const thresholdFactor = effFactor(qualUnits, f.inBase.threshold);
+  const rewardFactor = effFactor(rewardUnits, f.inBase.reward);
+  const thresholdUnit = unitWord(locale, qualUnits && !f.inBase.threshold ? qualUnits : null);
+  const rewardUnit = unitWord(locale, rewardUnits && !f.inBase.reward ? rewardUnits : null);
+  // The base figure (and, for a base entry, the packs and remainder) beside the typed quantity.
+  const baseHint = (text: string, factor: number, ctx: typeof qualUnits): string | undefined => (ctx && /^\d+$/.test(text.trim()) ? qtyText(locale, Number(text) * factor, ctx) : undefined);
+  const thresholdBase = baseHint(f.threshold, thresholdFactor, qualUnits);
+  const rewardBase = baseHint(f.rewardQty, rewardFactor, rewardUnits);
 
   return (
     <form onSubmit={submit} noValidate className="space-y-5" data-testid="offer-form" aria-busy={busy}>
@@ -166,7 +175,7 @@ export function OfferFormView({ mode, offerId, version, initial, skus, productNo
             {f.qualifying.map((q) => (
               <li key={`${q.product_level}:${q.product_id}`} className="flex items-center justify-between gap-2 [overflow-wrap:anywhere]">
                 <span>{t(`disc.plevel.${q.product_level}` as MessageKey)} · {labelOfProduct(q.product_level, q.product_id)}</span>
-                <Button type="button" variant="text" onClick={() => set("qualifying", f.qualifying.filter((x) => x !== q))} aria-label={t("disc.form.remove", { name: labelOfProduct(q.product_level, q.product_id) })}>×</Button>
+                <Button type="button" variant="text" onClick={() => setUnitInput({ qualifying: f.qualifying.filter((x) => x !== q) })} aria-label={t("disc.form.remove", { name: labelOfProduct(q.product_level, q.product_id) })}>×</Button>
               </li>
             ))}
           </ul>
@@ -199,7 +208,7 @@ export function OfferFormView({ mode, offerId, version, initial, skus, productNo
             </Field>
             <span aria-hidden="true" className="hidden md:block" />
             <Field label={t("disc.form.reward_sku")} htmlFor="of-reward-sku" required error={fieldError("rewardSku")}>
-              {sel("of-reward-sku", f.rewardSku, (v) => set("rewardSku", v), skus.map((s) => ({ value: String(s.id), label: s.label })))}
+              {sel("of-reward-sku", f.rewardSku, (v) => setUnitInput({ rewardSku: v }), skus.map((s) => ({ value: String(s.id), label: s.label })))}
             </Field>
             <Field label={t("disc.form.reward_qty", { unit: rewardUnit })} htmlFor="of-reward-qty" required hint={rewardBase ?? undefined} error={fieldError("rewardQty")}>
               <input id="of-reward-qty" inputMode="numeric" value={f.rewardQty} onChange={(ev) => set("rewardQty", ev.target.value)} className={inputClass} />

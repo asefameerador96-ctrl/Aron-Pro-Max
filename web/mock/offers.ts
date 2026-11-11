@@ -52,6 +52,8 @@ export function freshOfferStore(): OfferStore {
   seed("RAMADAN-PO", "active", { offer_type: "pct_discount", title_en: "Ramadan price off", title_bn: "রমজান মূল্য ছাড়", discount_bp: 250, valid_from: "2026-11-01", valid_to: "2099-12-31", qualifying: [{ product_level: "brand", product_id: 1 }] }, "2026-10-30T05:00:00.000Z");
   seed("MAXR-PKT", "draft", { offer_type: "amount_per_unit", title_en: "Max Royal 20s price off per packet", title_bn: "ম্যাক্স রয়্যাল ২০ শলাকার প্যাকেট প্রতি বিশেষ মূল্য ছাড় কর্মসূচি, ঢাকা উইংয়ের সকল পরিবেশক ও খুচরা বিক্রেতার জন্য প্রযোজ্য", discount_mtk_per_unit: 100, valid_from: "2026-11-15", valid_to: "2099-12-31", qualifying: [{ product_level: "sku", product_id: 2 }], scope: [{ node_type: "wing", node_id: 1 }] }, "2026-11-02T05:00:00.000Z");
   seed("BUY3-GET1", "inactive", { offer_type: "free_qty", title_en: "Buy 3 packets get 1 free", threshold_qty_base: 60, reward_sku_id: 2, reward_qty_base: 20, valid_from: "2026-09-01", valid_to: "2026-09-30", qualifying: [{ product_level: "sku", product_id: 2 }] }, "2026-08-28T05:00:00.000Z");
+  // A draft whose quantities are not whole packs (65 sticks on a pack of 20, reward 10 sticks): an edit must never truncate them.
+  seed("ODD-QTY", "draft", { offer_type: "free_qty", title_en: "Odd quantity offer", threshold_qty_base: 65, reward_sku_id: 2, reward_qty_base: 10, valid_from: "2026-11-15", valid_to: "2099-12-31", qualifying: [{ product_level: "sku", product_id: 2 }] }, "2026-11-03T05:00:00.000Z");
   return s;
 }
 

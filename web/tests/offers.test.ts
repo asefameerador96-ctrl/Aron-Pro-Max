@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { GRANT_MODULES } from "@/lib/admin/access-grants";
 import { moduleOfApiPath, moduleOfPage } from "@/lib/admin/modules";
 import {
-  activationBlocked, bpText, canActivateOffer, canReadOffers, canWriteOffers, emptyForm, fieldQtyToBase, formFromOffer, formatBp, mtkText, nextStatuses, offerAccess, percentToBp, perFieldTakaToPerBase, splitBase, toPatch, unitCtx, validateForm,
+  activationBlocked, bpText, canActivateOffer, canReadOffers, canWriteOffers, emptyForm, fieldQtyToBase, formFromOffer, formatBp, mtkText, nextStatuses, offerAccess, percentToBp, perFieldTakaToPerBase, splitBase, diffPatch, deriveUnits, nextAttempt, reunit, ruleOf, unitCtx, validateForm,
   type Offer, type OfferForm, type OfferSkuUnit,
 } from "@/lib/admin/offers";
 import { amountPerUnitText, qtyText, valueText } from "@/lib/admin/offers-view";
@@ -132,21 +132,77 @@ describe("form to contract", () => {
     expect(fieldsOf(validateForm(base({ offer_type: "amount_per_unit", perUnit: "x" }), u, "create"))).toContain("perUnit:invalid");
     expect(fieldsOf(validateForm(base({ offer_type: "free_qty" }), u, "create"))).toEqual(expect.arrayContaining(["threshold:required", "rewardSku:required", "rewardQty:required"]));
   });
-  it("an edit does not ask for the code and the patch carries neither code nor group", () => {
-    const r = validateForm(base({ code: "", offer_type: "pct_discount", percent: "5" }), { qualifying: q20, reward: null }, "edit");
+  const unitOf = (id: number) => ({ 1: P10, 2: P20, 8: BOX, 9: DOZ } as Record<number, OfferSkuUnit>)[id];
+  const server = (o: Partial<Offer>): Offer => ({ id: 1, code: "A", group_code: "G", offer_type: "free_qty", level: "line", title_en: "T", title_bn: null, valid_from: "2026-11-01", valid_to: "2026-11-30", threshold_qty_base: 65, reward_sku_id: 2, reward_qty_base: 10, qualifying: [{ product_level: "sku", product_id: 2 }], scope: [], stacking: "exclusive", status: "draft", version: 1, ...o }) as Offer;
+  const save = (o: Offer, edit: (f: OfferForm) => OfferForm, uo = unitOf) => {
+    const f0 = formFromOffer(o, uo);
+    const f = edit({ ...f0, reason: "A reason that is long enough" });
+    const r = validateForm(f, deriveUnits(f, uo), "edit");
     expect(r.errors).toEqual([]);
-    const patch = toPatch(r.body!, "0b6d6c0e-8a5b-4d56-9f0a-3f1d3a4b5c6d");
-    expect(patch).not.toHaveProperty("code");
-    expect(patch).not.toHaveProperty("group_code");
-    expect(patch).toMatchObject({ request_uuid: "0b6d6c0e-8a5b-4d56-9f0a-3f1d3a4b5c6d", discount_bp: 500, change_reason: "Owner asked for this offer" });
+    return diffPatch(ruleOf(o), r.body!, "0b6d6c0e-8a5b-4d56-9f0a-3f1d3a4b5c6d");
+  };
+  it("an edit does not ask for the code and a patch carries only what changed (never code or group)", () => {
+    const o = server({ offer_type: "pct_discount", discount_bp: 250, threshold_qty_base: null, reward_sku_id: null, reward_qty_base: null });
+    const patch = save(o, (f) => ({ ...f, percent: "5" }));
+    expect(patch).toEqual({ request_uuid: "0b6d6c0e-8a5b-4d56-9f0a-3f1d3a4b5c6d", discount_bp: 500, change_reason: "A reason that is long enough" });
   });
-  it("an existing offer round-trips through the form in the field unit", () => {
-    const offer = { id: 1, code: "A", group_code: "G", offer_type: "amount_per_unit", level: "line", title_en: "T", title_bn: "টি", valid_from: "2026-11-01", valid_to: "2026-11-30", discount_mtk_per_unit: 100, qualifying: [{ product_level: "sku", product_id: 2 }], scope: [{ node_type: "wing", node_id: 1 }], stacking: "exclusive", status: "draft", version: 1 } as Offer;
-    const f = formFromOffer(offer, { qualifying: q20, reward: null });
-    expect(f.perUnit).toBe("2");
-    expect(f.scope).toEqual([{ node_type: "wing", node_id: 1 }]);
-    const again = validateForm({ ...f, reason: "Round trip of the same rule" }, { qualifying: q20, reward: null }, "edit");
-    expect(again.body?.discount_mtk_per_unit).toBe(100);
+  it("NO TRUNCATION: a quantity that is not a whole number of packs opens in base units and a title-only edit leaves every quantity untouched", () => {
+    const o = server({}); // threshold 65 sticks on a pack of 20, reward 10 sticks
+    const f = formFromOffer(o, unitOf);
+    expect(f.threshold).toBe("65");
+    expect(f.inBase.threshold).toBe(true);
+    expect(f.rewardQty).toBe("10");
+    expect(f.inBase.reward).toBe(true);
+    const patch = save(o, (x) => ({ ...x, title_en: "Renamed" }));
+    expect(patch).toEqual({ request_uuid: "0b6d6c0e-8a5b-4d56-9f0a-3f1d3a4b5c6d", title_en: "Renamed", change_reason: "A reason that is long enough" });
+    expect(JSON.stringify(patch)).not.toMatch(/qty_base|discount/);
+    const whole = validateForm({ ...f, reason: "A reason that is long enough" }, deriveUnits(f, unitOf), "edit").body!; // the full snapshot is byte-identical too
+    expect(whole).toMatchObject({ threshold_qty_base: 65, reward_qty_base: 10 });
+  });
+  it("a whole number of packs opens in the field unit and saves back to the same base value", () => {
+    const o = server({ threshold_qty_base: 60, reward_qty_base: 20 });
+    const f = formFromOffer(o, unitOf);
+    expect([f.threshold, f.rewardQty, f.inBase.threshold, f.inBase.reward]).toEqual(["3", "1", false, false]);
+    expect(save(o, (x) => ({ ...x, title_en: "Renamed" }))).not.toHaveProperty("threshold_qty_base");
+    expect(save(o, (x) => ({ ...x, threshold: "4" }))).toMatchObject({ threshold_qty_base: 80 });
+  });
+  it("ONE UNIT SOURCE: when the SKU units are not known, opening and saving are both in base units (nothing multiplied or divided)", () => {
+    const none = () => undefined;
+    const o = server({ offer_type: "amount_per_unit", discount_mtk_per_unit: 100, threshold_qty_base: null, reward_sku_id: null, reward_qty_base: null });
+    const f = formFromOffer(o, none);
+    expect(f.perUnit).toBe("0.1"); // per base unit, as stored
+    expect(deriveUnits(f, none)).toEqual({ qualifying: null, reward: null });
+    expect(save(o, (x) => ({ ...x, title_en: "Renamed" }), none)).not.toHaveProperty("discount_mtk_per_unit");
+    expect(save(o, (x) => ({ ...x, perUnit: "0.2" }), none)).toMatchObject({ discount_mtk_per_unit: 200 });
+    // and with the units known the SAME stored value opens as a price per packet
+    expect(formFromOffer(o, unitOf).perUnit).toBe("2");
+  });
+  it("nothing changed gives no patch", () => {
+    expect(save(server({}), (f) => f)).toBeNull();
+  });
+  it("changing the products re-expresses typed amounts and quantities with the same base value", () => {
+    const f1 = { ...base({ offer_type: "amount_per_unit", perUnit: "2" }) }; // 2 taka per packet of 20 sticks
+    const before = deriveUnits(f1, unitOf);
+    const added = { ...f1, qualifying: [...f1.qualifying, { product_level: "sku" as const, product_id: 1 }] }; // a pack of 10 joins
+    const after = deriveUnits(added, unitOf);
+    expect(after.qualifying).toBeNull(); // mixed packs: base units
+    expect(reunit(added, f1, before, after).perUnit).toBe("0.1"); // 100 milli-taka per stick, not 2000
+    const f2 = base({ offer_type: "free_qty", threshold: "3" });
+    const mixed = { ...f2, qualifying: [...f2.qualifying, { product_level: "sku" as const, product_id: 1 }] };
+    const re = reunit(mixed, f2, deriveUnits(f2, unitOf), deriveUnits(mixed, unitOf));
+    expect(re.threshold).toBe("60"); // 3 packets of 20, now counted in base units
+    const back = reunit(f2, mixed, deriveUnits(mixed, unitOf), deriveUnits(f2, unitOf));
+    expect(back.threshold).toBe("3");
+    const odd = reunit({ ...f2, threshold: "65" }, { ...mixed, threshold: "65" }, deriveUnits(mixed, unitOf), deriveUnits(f2, unitOf));
+    expect([odd.threshold, odd.inBase.threshold]).toEqual(["65", true]); // 65 sticks is not whole packs of 20: stays a base entry
+  });
+  it("request_uuid is kept for a retry of the same body and regenerated for a changed body", () => {
+    let n = 0;
+    const make = () => `u${++n}`;
+    const a = nextAttempt(null, "body-1", make);
+    expect(nextAttempt(a, "body-1", make)).toBe(a);
+    expect(a.uuid).toBe("u1");
+    expect(nextAttempt(a, "body-2", make).uuid).toBe("u2");
   });
   it("activation is blocked only when the end date is before today (Asia/Dhaka date)", () => {
     expect(activationBlocked("2026-11-10", "2026-11-11")).toBe(true);
@@ -160,7 +216,7 @@ describe("display", () => {
     const u = unitCtx([P20]);
     expect(qtyText("en", 60, u)).toBe("3 packet(s) (60 stick(s))");
     expect(qtyText("en", 65, u)).toBe("3 packet(s) + 5 stick(s) (65 stick(s))");
-    expect(qtyText("en", 5, u)).toBe("5 stick(s) (5 stick(s))");
+    expect(qtyText("en", 5, u)).toBe("5 stick(s)");
     expect(qtyText("en", 7, null)).toBe("7 base unit(s)");
     expect(qtyText("en", 5, unitCtx([DOZ]))).toBe("5 dozen");
     expect(qtyText("bn", 60, u)).toContain("৩ প্যাকেট");

@@ -111,6 +111,7 @@ const pairs = {
   "disc.err.not_exact": ["This amount does not divide exactly into base units. Enter an amount whose milli-taka divides by the pack size.", "এই অঙ্কটি বেস ইউনিটে ঠিকভাবে ভাগ হয় না। এমন অঙ্ক দিন যার মিলি-টাকা প্যাক সাইজ দিয়ে ভাগ হয়।"],
   "disc.err.reason_short": ["Give a reason of at least 10 characters.", "কমপক্ষে ১০ অক্ষরের কারণ লিখুন।"],
   "disc.err.reason_long": ["The reason can be 500 characters at most.", "কারণ সর্বোচ্চ ৫০০ অক্ষরের হতে পারবে।"],
+  "disc.err.no_change": ["Nothing was changed. Change a field before saving a new version.", "কিছু বদলানো হয়নি। নতুন সংস্করণ সংরক্ষণের আগে কোনো ঘর বদলান।"],
   "disc.save_draft": ["Save draft", "খসড়া সংরক্ষণ"],
   "disc.save_changes": ["Save as new version", "নতুন সংস্করণ হিসেবে সংরক্ষণ"],
   "disc.saving": ["Saving…", "সংরক্ষণ হচ্ছে…"],

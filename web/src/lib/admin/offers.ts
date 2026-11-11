@@ -126,10 +126,28 @@ export interface OfferForm {
   rewardQty: string;
   qualifying: { product_level: (typeof PRODUCT_LEVELS)[number]; product_id: number }[];
   scope: { node_type: (typeof SCOPE_NODE_TYPES)[number] | string; node_id: number }[];
+  /** A quantity field entered in BASE units although the SKU has a pack size: set when an existing value is not a whole number of packs
+   *  (65 sticks on a pack of 20), so it is never truncated to a field unit (no rounding on a conversion that feeds a write). */
+  inBase: { threshold: boolean; reward: boolean };
   reason: string;
 }
 
-export const emptyForm = (): OfferForm => ({ code: "", group_code: "", title_en: "", title_bn: "", offer_type: "amount_per_unit", level: "line", stacking: "exclusive", valid_from: "", valid_to: "", percent: "", perUnit: "", threshold: "", rewardSku: "", rewardQty: "", qualifying: [], scope: [], reason: "" });
+export const emptyForm = (): OfferForm => ({ code: "", group_code: "", title_en: "", title_bn: "", offer_type: "amount_per_unit", level: "line", stacking: "exclusive", valid_from: "", valid_to: "", percent: "", perUnit: "", threshold: "", rewardSku: "", rewardQty: "", qualifying: [], scope: [], inBase: { threshold: false, reward: false }, reason: "" });
+
+/** Base units per entered unit of a field: the pack factor, or 1 when the unit is unknown or the field is entered in base units. */
+export const effFactor = (ctx: UnitCtx | null, forcedBase: boolean): number => (ctx && !forcedBase ? ctx.packFactor : 1);
+
+/** THE unit context, one source for opening and saving: derived only from the SKU units the client list proves (qualifying products
+ *  all SKUs of one pack size; the reward SKU). Anything else is base units. */
+export function deriveUnits(f: Pick<OfferForm, "qualifying" | "rewardSku">, unitOf: (skuId: number) => OfferSkuUnit | undefined): FormUnits {
+  let qualifying: UnitCtx | null = null;
+  if (f.qualifying.length > 0 && f.qualifying.every((q) => q.product_level === "sku")) {
+    const us = f.qualifying.map((q) => unitOf(q.product_id));
+    qualifying = us.every((u): u is OfferSkuUnit => u !== undefined) ? unitCtx(us) : null;
+  }
+  const r = unitOf(Number(f.rewardSku));
+  return { qualifying, reward: r ? unitCtx([r]) : null };
+}
 
 export interface FormUnits {
   /** Unit of the qualifying SKUs (threshold, per-unit amount); null = base units. */
@@ -176,7 +194,7 @@ export function validateForm(f: OfferForm, units: FormUnits, mode: "create" | "e
   } else if (f.offer_type === "amount_per_unit") {
     if (!f.perUnit.trim()) err("perUnit", "required");
     else {
-      discount_mtk_per_unit = units.qualifying ? perFieldTakaToPerBase(f.perUnit, units.qualifying.packFactor) : takaToMtk(f.perUnit);
+      discount_mtk_per_unit = units.qualifying ? perFieldTakaToPerBase(f.perUnit, units.qualifying.packFactor) : takaToMtk(f.perUnit); // per-unit amounts are never "forced base": a price per packet divides exactly or is refused
       if (discount_mtk_per_unit === null || discount_mtk_per_unit < 1) {
         discount_mtk_per_unit = null;
         err("perUnit", units.qualifying && takaToMtk(f.perUnit) !== null ? "not_exact" : "invalid");
@@ -185,7 +203,7 @@ export function validateForm(f: OfferForm, units: FormUnits, mode: "create" | "e
   } else if (f.offer_type === "free_qty") {
     if (!f.threshold.trim()) err("threshold", "required");
     else {
-      threshold_qty_base = fieldQtyToBase(f.threshold, units.qualifying?.packFactor ?? 1);
+      threshold_qty_base = fieldQtyToBase(f.threshold, effFactor(units.qualifying, f.inBase.threshold));
       if (threshold_qty_base === null) err("threshold", "invalid");
     }
     const sku = Number(f.rewardSku);
@@ -194,7 +212,7 @@ export function validateForm(f: OfferForm, units: FormUnits, mode: "create" | "e
     else reward_sku_id = sku;
     if (!f.rewardQty.trim()) err("rewardQty", "required");
     else {
-      reward_qty_base = fieldQtyToBase(f.rewardQty, units.reward?.packFactor ?? 1);
+      reward_qty_base = fieldQtyToBase(f.rewardQty, effFactor(units.reward, f.inBase.reward));
       if (reward_qty_base === null) err("rewardQty", "invalid");
     }
   }
@@ -223,19 +241,44 @@ export function validateForm(f: OfferForm, units: FormUnits, mode: "create" | "e
   return { errors, body };
 }
 
-/** OfferPatch for an edit: all rule members of the form (a full snapshot, so nulls clear what the new type does not use), no code. */
-export function toPatch(body: OfferWrite, requestUuid: string): OfferPatch {
-  const { code: _code, group_code: _group, ...rest } = body;
-  return { request_uuid: requestUuid, ...rest };
+export const RULE_MEMBERS = ["offer_type", "level", "title_en", "title_bn", "valid_from", "valid_to", "threshold_qty_base", "discount_bp", "discount_mtk_per_unit", "reward_sku_id", "reward_qty_base", "qualifying", "scope", "stacking"] as const;
+export type RuleSnapshot = Pick<OfferWrite, (typeof RULE_MEMBERS)[number]>;
+
+/** The rule of an offer exactly as the server holds it (base units, milli-taka, basis points): the reference an edit is diffed against. */
+export function ruleOf(o: Offer | OfferVersion): RuleSnapshot {
+  return {
+    offer_type: o.offer_type, level: o.level, title_en: o.title_en, title_bn: o.title_bn ?? null, valid_from: o.valid_from, valid_to: o.valid_to,
+    threshold_qty_base: o.threshold_qty_base ?? null, discount_bp: o.discount_bp ?? null, discount_mtk_per_unit: o.discount_mtk_per_unit ?? null,
+    reward_sku_id: o.reward_sku_id ?? null, reward_qty_base: o.reward_qty_base ?? null,
+    qualifying: o.qualifying.map((q) => ({ product_level: q.product_level, product_id: q.product_id })), scope: o.scope.map((x) => ({ node_type: x.node_type, node_id: x.node_id })), stacking: o.stacking,
+  };
 }
 
-/** The form for an existing offer (edit), the inverse of validateForm: quantities and per-unit amounts in the field unit when known. */
-export function formFromOffer(o: Offer | OfferVersion, units: FormUnits, code = "", group = ""): OfferForm {
+/** OfferPatch of an edit: ONLY the members the user changed (an unchanged quantity or amount is never re-sent through a conversion),
+ *  plus the reason and request_uuid. Null when nothing changed. */
+export function diffPatch(original: RuleSnapshot, body: OfferWrite, requestUuid: string): OfferPatch | null {
+  const changed: Record<string, unknown> = {};
+  for (const k of RULE_MEMBERS) if (JSON.stringify(body[k] ?? null) !== JSON.stringify(original[k] ?? null)) changed[k] = body[k] ?? null;
+  if (Object.keys(changed).length === 0) return null;
+  return { request_uuid: requestUuid, ...changed, change_reason: body.change_reason } as OfferPatch;
+}
+
+/** The form for an existing offer (edit): quantities and per-unit amounts in the field unit ONLY when exact; a quantity that is not a
+ *  whole number of packs opens in base units (never truncated). `unitOf` is the same lookup the form uses on save. */
+export function formFromOffer(o: Offer | OfferVersion, unitOf: (skuId: number) => OfferSkuUnit | undefined, code = "", group = ""): OfferForm {
+  const seed: OfferForm = { ...emptyForm(), qualifying: o.qualifying.map((x) => ({ product_level: x.product_level, product_id: x.product_id })), rewardSku: o.reward_sku_id == null ? "" : String(o.reward_sku_id) };
+  const units = deriveUnits(seed, unitOf);
   const q = units.qualifying;
-  const base: OfferForm = emptyForm();
-  const perUnit = o.discount_mtk_per_unit == null ? "" : mtkText(q ? perBaseToPerField(o.discount_mtk_per_unit, q.packFactor) : o.discount_mtk_per_unit);
+  const r = units.reward;
+  const qty = (base: number | null | undefined, ctx: UnitCtx | null): { text: string; forced: boolean } => {
+    if (base == null) return { text: "", forced: false };
+    if (ctx && base % ctx.packFactor !== 0) return { text: String(base), forced: true };
+    return { text: String(ctx ? base / ctx.packFactor : base), forced: false };
+  };
+  const th = qty(o.threshold_qty_base, q);
+  const rw = qty(o.reward_qty_base, r);
   return {
-    ...base,
+    ...seed,
     code: "code" in o ? o.code : code,
     group_code: "group_code" in o ? o.group_code : group,
     title_en: o.title_en,
@@ -246,14 +289,50 @@ export function formFromOffer(o: Offer | OfferVersion, units: FormUnits, code = 
     valid_from: o.valid_from,
     valid_to: o.valid_to,
     percent: o.discount_bp == null ? "" : bpText(o.discount_bp),
-    perUnit,
-    threshold: o.threshold_qty_base == null ? "" : String(q ? Math.trunc(o.threshold_qty_base / q.packFactor) : o.threshold_qty_base),
-    rewardSku: o.reward_sku_id == null ? "" : String(o.reward_sku_id),
-    rewardQty: o.reward_qty_base == null ? "" : String(units.reward ? Math.trunc(o.reward_qty_base / units.reward.packFactor) : o.reward_qty_base),
-    qualifying: o.qualifying.map((x) => ({ product_level: x.product_level, product_id: x.product_id })),
-    scope: o.scope.map((s) => ({ node_type: s.node_type, node_id: s.node_id })),
+    perUnit: o.discount_mtk_per_unit == null ? "" : mtkText(q ? perBaseToPerField(o.discount_mtk_per_unit, q.packFactor) : o.discount_mtk_per_unit),
+    threshold: th.text,
+    rewardSku: seed.rewardSku,
+    rewardQty: rw.text,
+    scope: o.scope.map((x) => ({ node_type: x.node_type, node_id: x.node_id })),
+    inBase: { threshold: th.forced, reward: rw.forced },
     reason: "",
   };
+}
+
+/** The unit context changed (a SKU of another pack size was added, the reward SKU changed): re-express every typed amount and
+ *  quantity so it keeps the same BASE value, instead of silently reading "2 per packet" as 2 per stick. A value that is not valid
+ *  text is left as typed; a quantity that no longer divides becomes a base entry. */
+export function reunit(next: OfferForm, prev: OfferForm, before: FormUnits, after: FormUnits): OfferForm {
+  const out: OfferForm = { ...next, inBase: { ...next.inBase } };
+  const same = (a: UnitCtx | null, b: UnitCtx | null) => a?.packFactor === b?.packFactor && a?.fieldUnit === b?.fieldUnit;
+  if (!same(before.qualifying, after.qualifying)) {
+    if (prev.perUnit.trim()) {
+      const perBase = before.qualifying ? perFieldTakaToPerBase(prev.perUnit, before.qualifying.packFactor) : takaToMtk(prev.perUnit);
+      if (perBase !== null) out.perUnit = mtkText(after.qualifying ? perBaseToPerField(perBase, after.qualifying.packFactor) : perBase);
+    }
+    if (prev.threshold.trim()) {
+      const base = fieldQtyToBase(prev.threshold, effFactor(before.qualifying, prev.inBase.threshold));
+      if (base !== null) {
+        const ok = !!after.qualifying && base % after.qualifying.packFactor === 0;
+        out.threshold = String(ok ? base / after.qualifying!.packFactor : base);
+        out.inBase.threshold = !!after.qualifying && !ok;
+      }
+    }
+  }
+  if (!same(before.reward, after.reward) && prev.rewardQty.trim()) {
+    const base = fieldQtyToBase(prev.rewardQty, effFactor(before.reward, prev.inBase.reward));
+    if (base !== null) {
+      const ok = !!after.reward && base % after.reward.packFactor === 0;
+      out.rewardQty = String(ok ? base / after.reward!.packFactor : base);
+      out.inBase.reward = !!after.reward && !ok;
+    }
+  }
+  return out;
+}
+
+/** request_uuid per submission: the same body keeps the uuid across a retry, a changed body gets a new one. */
+export function nextAttempt(prev: { key: string; uuid: string } | null, key: string, make: () => string = newRequestUuid): { key: string; uuid: string } {
+  return prev?.key === key ? prev : { key, uuid: make() };
 }
 
 /** The request needs `activate` rules (valid_to not in the past, Asia/Dhaka date) answered on the client so the button says why. */
