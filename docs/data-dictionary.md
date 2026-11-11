@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 173 | 2907 |
+| `app` | 173 | 2908 |
 | `dw` | 72 | 1157 |
 
 ## Index
@@ -2699,6 +2699,7 @@ One immutable version of an offer's rule, validity and reward: a rule change is 
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
 | `request_uuid` | uuid | null |  | Client-generated UUID of the portal call that created this version (create or update); a replay of the same call returns this version instead of a new one. Null for versions not made by the portal. |
+| `request_fingerprint` | text | null |  | SHA-256 (hex) of the normalised portal request that made this version; with request_uuid it tells a true replay from a reused UUID. Null for versions not made by the portal. |
 
 Keys: `UNIQUE (offer_id, version_no)`; `PRIMARY KEY (id)`
 
@@ -4977,7 +4978,7 @@ Per-module access of an ADMIN user (D-ROLES-02, docs/34 s1): r = read, w = read 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
 | `user_id` | bigint | not null |  | ADMIN user holding the grant (app.app_user). |
-| `module` | text | not null |  | Admin-portal module (contract AdminModule): masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking or support (the support desk, V0135). |
+| `module` | text | not null |  | Admin-portal module (contract AdminModule): masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking, support (the support desk, V0135) or discounts (the discount-programme portal, V0154). |
 | `access` | text | not null |  | r = read only, w = read and write. |
 | `granted_at` | timestamp with time zone | not null |  | UTC instant the grant was set or last changed. |
 | `granted_by` | bigint | null |  | SUPERADMIN who set the grant; null for the V0089 seed of existing admins. |

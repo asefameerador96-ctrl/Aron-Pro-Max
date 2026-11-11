@@ -238,6 +238,14 @@ class ScopeLeakAcrossEndpointsTest {
             h.execute("INSERT INTO app.leave_application ($base, leave_type_code, from_date, days, reason) VALUES ('$leave'::uuid, '$leave'::uuid, '$day'::date, $tso, '$at'::timestamptz, 1, 'casual', '$day'::date, 1, 'LKX seeded leave')")
             h.execute("INSERT INTO app.feedback ($base, category_code, title, description) VALUES ('$feedback'::uuid, '$feedback'::uuid, '$day'::date, $tso, '$at'::timestamptz, 1, 'suggestion', 'LKX seeded feedback', 'LKX seeded feedback')")
             seededUuids["leave_application"] = leave; seededUuids["feedback"] = feedback
+            // portal-discount-api (D-DISC-API-04): a discount programme scoped to the other division's zone; the national admin lists it, the scoped web callers must not.
+            h.execute("INSERT INTO app.offer (code, group_code) VALUES ('LKX-OFF', 'LKX')")
+            h.execute(
+                "INSERT INTO app.offer_version (offer_id, version_no, offer_type, level, title_en, valid_from, valid_to, discount_bp, stacking, change_reason) " +
+                    "SELECT id, 1, 'pct_discount', 'line', 'LKX seeded offer', '$day'::date, '$day'::date + 30, 500, 'exclusive', 'LKX seeded offer version' FROM app.offer WHERE code = 'LKX-OFF'",
+            )
+            h.execute("UPDATE app.offer SET current_version_id = (SELECT v.id FROM app.offer_version v WHERE v.offer_id = app.offer.id) WHERE code = 'LKX-OFF'")
+            h.execute("INSERT INTO app.offer_version_scope (offer_version_id, node_type, node_id) SELECT current_version_id, 'zone', $zone FROM app.offer WHERE code = 'LKX-OFF'")
             h.execute("INSERT INTO app.entry_unlock (scope_type, scope_id, from_date, to_date, reason, expires_at, created_by) VALUES ('zone', $zone, '$day'::date, '$day'::date, 'LKX seeded unlock', now() + interval '1 day', ${p.userId})")
             // DMO and WM read enrolment tokens of their zones (D-AUTHZ-ENROL-READ): one of the other division's zone.
             h.execute("INSERT INTO app.enrolment_token (token_sha256, token_prefix, flavour, lockdown_level, max_uses, zone_id, expires_at, created_by) VALUES (sha256(convert_to('$entry', 'UTF8')), 'LKXtok', 'sr', 'dev', 1, $zone, now() + interval '1 day', ${p.userId})")

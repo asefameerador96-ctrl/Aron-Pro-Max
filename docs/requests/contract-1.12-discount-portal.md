@@ -1,10 +1,10 @@
-# Contract 1.12.0: discount-programme portal (lane portal-discount-api, 2026-11-11)
+# Contract 1.12.0 and 1.12.1: discount-programme portal (lane portal-discount-api, 2026-11-11)
 
 Approved by the lead as **D-LEAD-CONTRACT-112-01** (DECISIONS.md, 2026-11-11 08:26 UTC). The change is additive except one
 response enum that gains a value; the oasdiff gate (`tools/ci/contract-breaking.sh`) reports that one as breaking, and this file
 is the lead-approved request that lets the same push (info.version 1.11.2 to 1.12.0) pass. No shipped client reads it: the bundle
 `offers` array is empty, the apps do not call the offer operations, and the web page does not exist yet. The field is unchanged
-(memo offer line zero, bundle `offers` empty; docs/27). Records: D-DISC-API-01 to 03.
+(memo offer line zero, bundle `offers` empty; docs/27). Records: D-DISC-API-01 to 05.
 
 ## The enum addition (the one breaking-by-rule change)
 
@@ -28,9 +28,25 @@ and their descriptions state the new rules (create makes a draft; update appends
   second breaking change). `OfferPatch` also gains optional `valid_from`, `offer_type`, `level`, `stacking`, `reward_sku_id`,
   `qualifying`, `scope`; its `status` member stays (deprecated, refused with 400).
 - `Offer`: optional `version_no`, `change_reason`, `created_at`, `updated_at`, `sku_units`.
-- `AdminModule` gains `discounts` in the next step of the lane (train 2, with the module and its migration).
+
+## 1.12.1 (train 2 of the lane; approved by the lead as D-LEAD-CONTRACT-1121-01, 2026-11-11 11:12 UTC)
+
+The changelog entry of 1.12.0 in `info.description` is as it shipped; everything added after train 92 is under 1.12.1.
+
+Version 1.12.0 is on INT (train 92). Train 2 adds the routes and two contract changes that the lead asked for in the verdict on 5f694a0b5:
+`AdminModule` gains `discounts` (a response enum: `Me.modules`, `UserAccess.modules`), and `OfferSkuUnit.field_unit` takes the contract's
+`QtyUnit` words (`pack`, `dozen`, `stick`, `piece`) instead of packet/box/dozen/piece, so there is one vocabulary (the member was never served
+before the routes of this release; bidi in packets is pending the owner's confirmation, docs/34 s4.2). oasdiff reports both as
+`response-property-enum-value-added`; no shipped client reads either (the apps do not call the offer operations; the `modules` claim is read
+by the web portal, which ignores an unknown module, and Lane B adds it). The gate needs a new `info.version` for them: 1.12.1.
+
+## Also in 1.12.0 (additive)
+
+`listOffers`: its `status` filter takes `OfferStatus` instead of the shared `StatusQuery` (a wider request enum); `updateOffer`
+gains the `409` response (an offer that is not a draft, or a reused `request_uuid`). What the descriptions say the server requires or
+refuses (`request_uuid`, `drp_slide`, the `channel` node) holds from the lane's train 2, where the routes exist.
 
 ## Units and money
 
 Money members stay integer milli-taka per base unit (`discount_mtk_per_unit`) or basis points (`discount_bp`); quantities are base units
-(`*_qty_base`). `OfferSkuUnit` gives the SKU's `pack_factor` and the field-unit word so the portal shows both (docs/34 s4.2).
+(`*_qty_base`). `OfferSkuUnit` gives the SKU's `pack_factor` and `field_unit`, in the contract's own `QtyUnit` vocabulary (`pack`, `dozen`, or the SKU's base unit), so the portal shows both (docs/34 s4.2); bidi in packets is pending the owner's confirmation.

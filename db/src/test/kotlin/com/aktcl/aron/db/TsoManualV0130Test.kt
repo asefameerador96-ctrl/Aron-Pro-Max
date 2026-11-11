@@ -524,7 +524,7 @@ class TsoManualV0130Test {
         }
         assertTrue(
             c.scalar("SELECT col_description('app.user_module_grant'::regclass, (SELECT attnum FROM pg_attribute WHERE attrelid = 'app.user_module_grant'::regclass AND attname = 'module'))")!!
-                .contains("daily_tracking or support"),
+                .contains("daily_tracking, support (the support desk, V0135) or discounts"), // V0154 appended discounts after support
         )
     }
 
