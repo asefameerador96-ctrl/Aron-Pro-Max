@@ -2,10 +2,8 @@
 // every screen state in light and dark and in Bangla, and the dashboard's performance budget (Fast 3G, 4x CPU, phone width) on the list.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { hydrated, loginOk, resetMock } from "./helpers";
+import { BUDGET, hydrated, loginOk, resetMock } from "./helpers";
 
-// Same numbers as e2e/dash-perf.spec.ts BUDGET (docs/31); copied, not imported, so a spec file is not loaded twice.
-const BUDGET = { jsKbGzip: 300, lcpMs: 3500, cls: 0.1 };
 
 test.beforeEach(async () => {
   await resetMock();

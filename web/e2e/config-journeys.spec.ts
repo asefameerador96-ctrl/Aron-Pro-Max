@@ -58,6 +58,7 @@ test("change request: a risk 2 change waits for a different SUPERADMIN, then rol
   await asSuper(page2);
   await page2.goto("/admin/config/changes?status=pending_approval");
   await hydrated(page2.getByTestId("approve-1").getByRole("button").first());
+  await hydrated(page2.getByTestId("approve-1").getByRole("button").first()); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page2.getByTestId("approve-1").getByRole("button").first().click();
   await page2.getByTestId("approve-1").locator("textarea").fill(REASON);
   await sendOp(page2, () => page2.getByTestId("approve-1").getByRole("button").first().click());

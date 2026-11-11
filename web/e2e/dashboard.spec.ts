@@ -1,7 +1,7 @@
 // F-WEB-001, F-WEB-047, F-WEB-068, N-047: the seeded TSO's dashboard, report pages and the Maps cost guard, in a real browser.
 import { expect, test } from "@playwright/test";
 import { controlTotals, routesInScope } from "../mock/seed";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -113,6 +113,7 @@ test("the orange Filter narrows the home to a zone: bound levels are read-only, 
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "English" }).click();
   await page.goto("/overview");
+  await hydrated(page.getByTestId("home-filter").locator("summary")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("home-filter").locator("summary").click();
   await expect(page.getByTestId("scope-locked-territory")).toBeVisible();
   await page.getByTestId("scope-select-zone").selectOption("3341");

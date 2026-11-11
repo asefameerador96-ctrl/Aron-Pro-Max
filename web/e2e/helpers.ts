@@ -43,3 +43,6 @@ export async function hydrated(locator: Locator): Promise<void> {
     check();
   }));
 }
+
+/** The one source of the dashboard performance budget (docs/31): JS on the wire (KB), LCP (ms) and CLS. Used by dash-perf and discounts-quality. */
+export const BUDGET = { jsKbGzip: 300, lcpMs: 3500, cls: 0.1 } as const;

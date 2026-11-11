@@ -5,9 +5,10 @@
 // The sparkline is optional and only drawn from real numbers.
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { t, type Locale } from "@/lib/i18n";
 import { STRETCHED_LINK } from "./stat-card";
 
-export function Money({ amount, testId, className = "", plain = false }: { amount: string; testId?: string; className?: string; /** a lakh/crore figure ("5.43 Lakh"): printed as is, no decimal split and no taka sign */ plain?: boolean }) {
+export function Money({ amount, testId, className = "", plain = false, locale = "bn" }: { /** English pages print "Tk" like the rest of the English UI (no Bengali webfont pulled for one glyph); Bangla keeps the sign. */ locale?: Locale; amount: string; testId?: string; className?: string; /** a lakh/crore figure ("5.43 Lakh"): printed as is, no decimal split and no taka sign */ plain?: boolean }) {
   if (plain) return <span className={`money ${className}`}><span data-testid={testId}>{amount}</span></span>;
   const dot = amount.lastIndexOf(".");
   const whole = dot < 0 ? amount : amount.slice(0, dot);
@@ -19,9 +20,13 @@ export function Money({ amount, testId, className = "", plain = false }: { amoun
         {frac ? <span className="frac">{frac}</span> : null}
       </span>
       {" "}
-      <span className="taka" lang="bn">
-        ৳
-      </span>
+      {locale === "en" ? (
+        <span className="taka-en">{t("en", "common.taka_word")}</span>
+      ) : (
+        <span className="taka" lang="bn">
+          ৳
+        </span>
+      )}
     </span>
   );
 }
@@ -43,13 +48,13 @@ export function Sparkline({ points, label }: { points: readonly number[]; label:
   );
 }
 
-export function HeroCard({ label, amount, sub, delta, sparkline, sparklineLabel, href, testId, valueTestId, caption, plain = false, className = "" }: { plain?: boolean; label: string; amount: string; sub?: ReactNode; delta?: ReactNode; sparkline?: readonly number[]; sparklineLabel?: string; href?: string; testId?: string; valueTestId?: string; caption?: ReactNode; className?: string }) {
+export function HeroCard({ label, amount, sub, delta, sparkline, sparklineLabel, href, testId, valueTestId, caption, plain = false, locale, className = "" }: { locale?: Locale; plain?: boolean; label: string; amount: string; sub?: ReactNode; delta?: ReactNode; sparkline?: readonly number[]; sparklineLabel?: string; href?: string; testId?: string; valueTestId?: string; caption?: ReactNode; className?: string }) {
   return (
     <section data-testid={testId} className={`glass-data @container relative flex min-h-42 flex-col gap-2 p-(--card-pad) text-primary ${className}`}>
       <h2 className="text-label text-secondary">{href ? <Link href={href} className={STRETCHED_LINK}>{label}</Link> : label}</h2>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <p className="fit-number min-w-0 text-hero text-primary">
-          <Money amount={amount} testId={valueTestId} plain={plain} />
+          <Money amount={amount} testId={valueTestId} plain={plain} locale={locale} />
         </p>
         {sparkline && sparklineLabel ? <Sparkline points={sparkline} label={sparklineLabel} /> : null}
       </div>

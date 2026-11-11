@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MOCK, dhakaPlus, loginOk, resetMock } from "./helpers";
+import { MOCK, dhakaPlus, hydrated, loginOk, resetMock } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -32,6 +32,7 @@ test("a content edit keeps the stored file when none is chosen", async ({ page }
 test("the acting scope end date is sent per node (exclusive end)", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/user-scope/2001");
+  await hydrated(page.getByTestId("scope-save"));
   const end = dhakaPlus(8);
   await page.getByTestId("until-territory-6").fill(end);
   await page.locator("#reason").fill("Acting cover until the 8th");
@@ -43,6 +44,7 @@ test("the acting scope end date is sent per node (exclusive end)", async ({ page
 test("an end date not after the start is refused before the call", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/user-scope/2001");
+  await hydrated(page.getByTestId("scope-save")); // before hydration the fill is reverted and a save click is lost
   await page.getByTestId("until-territory-6").fill(dhakaPlus(0));
   await page.locator("#reason").fill("Wrong end date on purpose");
   await page.getByTestId("scope-save").click();

@@ -1,7 +1,7 @@
 // D-MDM-01 MDM section in a real browser against the mock: device list with filters and flags, device detail with actions,
 // the second-approver rule for a factory reset, the policy editor with its schedule grid, and the role gate.
 import { expect, test, type Page } from "@playwright/test";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, hydrated, loginOk, resetMock } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -62,6 +62,7 @@ test("device detail: report facts, flags, a lock command is queued once, and the
 test("factory reset: requested by one admin, approved by another, never by the requester", async ({ page, browser }) => {
   await asAdmin(page);
   await page.goto("/admin/mdm/devices/3");
+  await hydrated(page.getByTestId("mdm-cmd-factory_reset")); // a click before React attaches is lost
   await page.getByTestId("mdm-cmd-factory_reset").click();
   await expect(page.getByTestId("mdm-second-approver")).toBeVisible();
   await page.locator("#mdm-reason").fill("Phone reported stolen");
@@ -73,12 +74,18 @@ test("factory reset: requested by one admin, approved by another, never by the r
   await asAdmin(other, "madmin1");
   await other.goto("/admin/mdm/devices/3");
   const box = other.getByTestId(/^cmd-approve-/);
+  const cmdId = ((await box.getAttribute("data-testid")) ?? "").replace("cmd-approve-", ""); // this very command, not "the first Queued row"
+  expect(cmdId).not.toBe("");
+  await hydrated(box.getByRole("button", { name: "Approve" }));
   await box.getByRole("button", { name: "Approve" }).click();
   await box.locator("textarea").fill("Confirmed with the TSO by phone");
   await box.getByRole("button", { name: "Confirm" }).click();
-  await expect(box.getByTestId("form-ok")).toBeVisible();
+  // The durable outcome, not the toast: the success message lives inside the approve box, and the router refresh that follows the
+  // decision removes that box (the command is no longer pending), so "form-ok" is visible only for a moment (D-WEB-FIX-01).
+  await expect(other.getByTestId(`cmd-state-${cmdId}`)).toHaveText("Queued");
+  await expect(box).toHaveCount(0);
   await other.reload();
-  await expect(other.getByTestId(/^cmd-state-/).first()).toHaveText("Queued");
+  await expect(other.getByTestId(`cmd-state-${cmdId}`)).toHaveText("Queued");
   await other.close();
 });
 
@@ -157,13 +164,18 @@ test("policy editor: a second editor holding the old version is refused", async 
 test("enrolment: a code is created, its QR is shown once, and the code can be revoked", async ({ page }) => {
   await asAdmin(page);
   await page.goto("/admin/mdm/enrolment");
+  await hydrated(page.getByTestId("mdm-enrolment-form"));
   await page.getByRole("button", { name: "Create QR" }).click();
   await expect(page.getByTestId("qr-result")).toBeVisible();
   await page.getByRole("button", { name: "Hide the QR" }).click();
   await expect(page.getByTestId("data-table")).toContainText("0 / 1");
+  await hydrated(page.getByRole("button", { name: "Revoke code" }));
   await page.getByRole("button", { name: "Revoke code" }).click();
   await page.getByRole("button", { name: "Confirm" }).click();
-  await expect(page.getByTestId("form-ok")).toBeVisible();
+  // The durable outcome only a real revoke produces: the list shows active codes only, so after the refresh the code is gone and
+  // the list is empty (the "Code revoked." message goes with the row, and the label button is swapped for Confirm at once, so neither proves it).
+  await expect(page.getByTestId("table-empty")).toBeVisible();
+  await expect(page.getByTestId("data-table")).toHaveCount(0);
 });
 
 test("alerts and the fleet activity log", async ({ page }) => {

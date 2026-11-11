@@ -1,6 +1,6 @@
 // Checker ADM-3: browser-level defects of the outlet approval panel and the wholesale basket. A failing test is a confirmed defect.
 import { expect, test } from "@playwright/test";
-import { loginOk, resetMock } from "./helpers";
+import { loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -26,6 +26,7 @@ test("CB3-E2: a DMO asking for the create page of a read-only entity gets a real
 test("CC3-E1: the wholesale confirm dialog takes keyboard focus when it opens", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/wholesale-marking");
+  await hydrated(page.getByRole("checkbox", { name: /DHK-334-001/ })); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByRole("checkbox", { name: /DHK-334-001/ }).check();
   await page.getByTestId("basket-continue").click();
   await expect(page.getByTestId("basket-confirm")).toBeVisible();
@@ -39,6 +40,7 @@ test("CC3-E2: the basket never grows past the 5000 outlets the contract accepts"
   await page.addInitScript(() => sessionStorage.setItem("aron.wholesale.basket", JSON.stringify(Array.from({ length: 4999 }, (_, i) => 100000 + i))));
   await page.goto("/admin/wholesale-marking");
   await expect(page.getByTestId("basket-count")).toContainText("৪,৯৯৯");
+  await hydrated(page.getByRole("checkbox", { name: "দেখানো সবগুলো বাছুন" })); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByRole("checkbox", { name: "দেখানো সবগুলো বাছুন" }).check();
   // select-all adds the shown rows without the MAX check that a single tick has: the basket ends above 5000 and the submit is a bare 400.
   const n = latin((await page.getByTestId("basket-count").textContent()) ?? "");

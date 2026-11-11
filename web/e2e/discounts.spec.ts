@@ -71,6 +71,7 @@ test("list: shows the seeded programmes with value, status, filter by status and
 test("detail: current rule in the field unit with the base figure, products, scope, versions and the audit trail", async ({ page }) => {
   await superEnglish(page);
   await page.goto("/admin/discounts");
+  await hydrated(page.getByTestId("offer-link-BUY3-GET1")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("offer-link-BUY3-GET1").click();
   await expect(page.getByTestId("offer-value")).toContainText("Buy 3 packet(s) (60 stick(s)), get 1 packet(s) (20 stick(s)) free");
   await expect(page.getByTestId("offer-version")).toHaveCount(1);
@@ -137,6 +138,7 @@ test("create a draft, edit it into version 2, activate it as Super Admin with a 
 test("an ADMIN with write cannot activate a draft (Super Admin only) but the draft can still be edited", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/discounts");
+  await hydrated(page.getByTestId("offer-link-MAXR-PKT")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("offer-link-MAXR-PKT").click();
   await expect(page.getByTestId("os-super-only")).toBeVisible();
   await expect(page.getByTestId("os-active")).toHaveCount(0);
@@ -175,6 +177,7 @@ test("an offer with no product rows is saved and shown as applying to all produc
   await superLogin(page);
   await page.goto("/admin/discounts/new");
   await hydrated(page.getByTestId("offer-form"));
+  await hydrated(page.locator("#of-code")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.locator("#of-code").fill("ALL-E2E");
   await page.locator("#of-title-en").fill("All products offer");
   await page.locator("#of-type").selectOption("pct_discount");
@@ -190,6 +193,7 @@ test("an offer with no product rows is saved and shown as applying to all produc
 test("an edit never truncates: a title-only change on a quantity of 65 sticks (pack of 20) keeps 65, in base units, as version 2", async ({ page }) => {
   await superEnglish(page);
   await page.goto("/admin/discounts");
+  await hydrated(page.getByTestId("offer-link-ODD-QTY")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("offer-link-ODD-QTY").click();
   await expect(page.getByTestId("offer-value")).toContainText("3 packet(s) + 5 stick(s) (65 stick(s))");
   await page.getByTestId("offer-edit").click();

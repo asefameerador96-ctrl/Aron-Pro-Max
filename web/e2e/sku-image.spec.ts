@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock, hydrated } from "./helpers";
 
 // 1x1 PNG
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
@@ -11,6 +11,7 @@ test.beforeEach(async () => {
 test("F-ADM-065: a pack image is uploaded, bound to the SKU with a reason, shown, then removed", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/skus/1");
+  await hydrated(page.locator("#f-image_asset_id")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.locator("#f-image_asset_id").setInputFiles({ name: "pack.png", mimeType: "image/png", buffer: PNG });
   await expect(page.getByTestId("asset-image_asset_id")).toContainText("pack.png");
   await page.locator("#reason").fill("Adding the new pack photo");
@@ -21,6 +22,7 @@ test("F-ADM-065: a pack image is uploaded, bound to the SKU with a reason, shown
 
   await page.goto("/admin/skus/1");
   await expect(page.getByTestId("asset-image_asset_id").locator("img")).toHaveAttribute("src", /blob\.example\/sku\//);
+  await hydrated(page.getByTestId("asset-image_asset_id").getByRole("button", { name: "সরান" })); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("asset-image_asset_id").getByRole("button", { name: "সরান" }).click();
   await page.locator("#reason").fill("Removing the outdated photo");
   await page.getByTestId("entity-form").locator('button[type="submit"]').click();
@@ -32,6 +34,7 @@ test("F-ADM-065: a pack image is uploaded, bound to the SKU with a reason, shown
 test("a wrong type or an oversize image is refused before any upload", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/skus/1");
+  await hydrated(page.locator("#f-image_asset_id")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.locator("#f-image_asset_id").setInputFiles({ name: "a.gif", mimeType: "image/gif", buffer: Buffer.from("GIF89a") });
   await expect(page.getByTestId("error-f-image_asset_id")).toBeVisible();
   await page.locator("#f-image_asset_id").setInputFiles({ name: "big.png", mimeType: "image/png", buffer: Buffer.alloc(307_201, 1) });

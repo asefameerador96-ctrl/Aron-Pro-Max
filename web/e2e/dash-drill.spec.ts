@@ -1,7 +1,7 @@
 // Completion pass: role extras on the home, drill-downs from the cards (scope and date kept in the URL), CSV export and the
 // refresh rule (no faster than 60 s, nothing while the tab is hidden).
 import { expect, test, type Page } from "@playwright/test";
-import { loginOk, resetMock } from "./helpers";
+import { loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -48,6 +48,7 @@ test("channel slice, CPR, strike and login cards each open their drill-down", as
   await expect(page.getByTestId("table-channels")).toBeVisible();
   for (const [id, table] of [["drill-calls", "table-calls"], ["drill-strike", "table-calls"], ["drill-login", "table-not-logged-in"]] as const) {
     await page.goto("/overview");
+    await hydrated(page.getByTestId(id)); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
     await page.getByTestId(id).click();
     await expect(page.getByTestId(table)).toBeVisible();
   }

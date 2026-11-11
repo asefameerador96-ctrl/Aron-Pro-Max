@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MOCK, dhakaPlus, loginOk, resetMock } from "./helpers";
+import { MOCK, dhakaPlus, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -9,6 +9,7 @@ const stateOf = async () => (await fetch(`${MOCK}/__mock/state`)).json();
 test("user scope: only the role's node type, saved from a date with a reason", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/users");
+  await hydrated(page.getByRole("row", { name: /tso334/ }).getByTestId("link-scope")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByRole("row", { name: /tso334/ }).getByTestId("link-scope").click();
   await expect(page.getByTestId("scope-user")).toContainText("tso334");
   await expect(page.getByTestId("scope-nodes")).toContainText("T-334");
@@ -41,6 +42,7 @@ test("user scope: an SR has none; support sees it read-only", async ({ page }) =
 test("sales plan: tree with select-all, apply to every zone of a territory, one audit row per zone", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/master-data");
+  await hydrated(page.getByTestId("link-sales-plan")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("link-sales-plan").click();
   await page.locator('select[name="zone_id"]').selectOption({ label: "Z-335-1 · Mirpur Zone 1" });
   await page.getByTestId("filter-bar").locator('button[type="submit"]').click();
@@ -65,6 +67,7 @@ test("sales plan: tree with select-all, apply to every zone of a territory, one 
 test("SR transfer: new primary starts and the old one ends at the same date", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/sr-transfer");
+  await hydrated(page.locator('select[name="user_id"]')); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.locator('select[name="user_id"]').selectOption({ label: "sr334001 · Testing Banani" });
   await page.getByTestId("filter-bar").locator('button[type="submit"]').click();
   await expect(page.getByTestId("transfer-current")).toContainText("R-334-01");
@@ -107,6 +110,7 @@ test("prices: three decimals typed in Bengali digits, a preview is required, the
 test("prices: a large change shows the second-approver notice", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/prices");
+  await hydrated(page.getByLabel("MaxR-10S আউটলেট")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByLabel("MaxR-10S আউটলেট").fill("2000");
   await page.locator("#f-valid_from").fill(dhakaPlus(2));
   await page.locator("#reason").fill("Large correction after the tax change");
