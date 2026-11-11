@@ -84,7 +84,7 @@ object Reports {
             h.d("cpr_pct")?.takeIf { (h.l("target_outlets") ?: 0) > 0 }, h.l("memos") ?: 0, h.l("net_mtk") ?: 0,
             rows.mapNotNull { b -> b.s("brand_name")?.let { BrandRow(it, b.l("brand_memos") ?: 0, b.d("bsr_pct")) } }, h.l("route_id"),
             // the memo columns repeat on every brand row of a route: one value per route
-            MEMO_CATEGORIES.mapNotNull { c -> rows.firstNotNullOfOrNull { it.l("memos_$c")?.takeIf { n -> n >= 0L } }?.let { c to it } }.toMap(), // a count is never negative: a negative member is no figure
+            MEMO_CATEGORIES.mapNotNull { c -> rows.firstNotNullOfOrNull { it.l("memos_$c") }?.takeIf { n -> n >= 0L }?.let { c to it } }.toMap(), // the first value of the route (they repeat on every brand row), then guarded: a count is never negative, a negative member is no figure
         )
     }.sortedBy { it.code }
 
