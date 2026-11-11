@@ -7,7 +7,7 @@
     <string name="submit_status_offline">Offline</string>
     <string name="submit_last_contact">Last contact %1$s</string>
     <string name="submit_col_item">Item</string>
-    <string name="submit_col_device">Phone</string>
+    <string name="submit_col_device">Device</string>
     <string name="submit_col_server">Server</string>
     <string name="submit_server_blank">—</string>
     <string name="submit_no_counts">Nothing to compare yet</string>

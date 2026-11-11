@@ -17,7 +17,6 @@ import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.LocalAronLook
-import com.aktcl.aron.core.ui.entryUnitLabel
 import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.rules.Formats
 import com.aktcl.aron.rules.UiLocale
@@ -30,7 +29,7 @@ import kotlinx.serialization.json.longOrNull
 import java.time.LocalDate
 
 /** One SKU line of the previous sale data (screenshot 26): what was sold to the outlet that day, in the field unit. */
-data class SaleHistoryLine(val skuId: Long, val skuCode: String, val name: String, val qtyReport: java.math.BigDecimal, val reportUnit: String, val qtyBase: Long, val valueMtk: Long)
+data class SaleHistoryLine(val skuId: Long, val skuCode: String, val name: String, val qtyReport: java.math.BigDecimal, val reportUnit: String, val qtyBase: Long, val valueMtk: Long, val categoryCode: String = "")
 
 /** Where the lines came from: the server (all sales to the outlet that day, any SR) or this phone's own memos (offline). */
 enum class SaleHistorySource { SERVER, KEPT_COPY, LOCAL }
@@ -70,7 +69,7 @@ object PreviousSales {
                 skuCode = (sku["sku_code"] as? JsonPrimitive)?.contentOrNull.orEmpty(),
                 name = (sku["short_name"] as? JsonPrimitive)?.contentOrNull ?: (sku["sku_code"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null,
                 qtyReport = (o["qty_report"] as? JsonPrimitive)?.contentOrNull?.trim()?.toBigDecimalOrNull() ?: return@mapNotNull null, // Decimal3 string "5.000", never a float
-                reportUnit = (o["report_unit"] as? JsonPrimitive)?.contentOrNull ?: "stick",
+                reportUnit = (o["report_unit"] as? JsonPrimitive)?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.contentOrNull.orEmpty(), // none sent: no unit word, never an invented "stick"
                 qtyBase = (o["qty_base"] as? JsonPrimitive)?.longOrNull ?: 0L,
                 valueMtk = (o["value_mtk"] as? JsonPrimitive)?.longOrNull ?: return@mapNotNull null,
             )
@@ -95,11 +94,14 @@ object PreviousSales {
             SaleHistoryLine(
                 id, "", info?.name ?: "#$id",
                 java.math.BigDecimal(if (whole) spec!!.fromBase(v.first) else v.first),
-                if (whole) com.aktcl.aron.rules.EntryUnits.labelKey(info!!.categoryCode, spec!!.unit) else baseKey, v.first, v.second,
+                if (whole) com.aktcl.aron.rules.EntryUnits.labelKey(info!!.categoryCode, spec!!.unit) else baseKey, v.first, v.second, info?.categoryCode.orEmpty(),
             )
         }.sortedBy { it.name }
         return SaleHistory(date, lines, SaleHistorySource.LOCAL)
     }
+
+    /** The server lines carry no category: the phone's SKU list gives it, so the server's `pack` reads packet, box or dozen per category. */
+    fun withCategories(h: SaleHistory, skus: Map<Long, SkuInfo>): SaleHistory = h.copy(lines = h.lines.map { l -> l.copy(categoryCode = skus[l.skuId]?.categoryCode.orEmpty()) })
 
     data class LocalMemoLine(val skuId: Long, val qtyBase: Long, val grossMtk: Long)
     data class LocalMemo(val memoUuid: String, val supersedesUuid: String?, val lines: List<LocalMemoLine>)
@@ -132,7 +134,7 @@ fun PreviousSalesContent(date: String, today: String, history: SaleHistory?, onS
             history.lines.isEmpty() -> AmoEmpty(stringResource(R.string.amo_ps_empty), Modifier.testTag(PreviousSalesTags.EMPTY))
             else -> {
                 history.lines.forEach { l ->
-                    AmoPackRow(l.skuId.toString(), l.name, Modifier.testTag(PreviousSalesTags.row(l.skuId)), subtitle = com.aktcl.aron.core.ui.localizedDigits(l.qtyReport.stripTrailingZeros().toPlainString()) + " " + entryUnitLabel(l.reportUnit), figure = Formats.digits(com.aktcl.aron.rules.Money.formatTaka(l.valueMtk, 2), loc))
+                    AmoPackRow(l.skuId.toString(), l.name, Modifier.testTag(PreviousSalesTags.row(l.skuId)), subtitle = com.aktcl.aron.core.ui.localizedDigits(l.qtyReport.stripTrailingZeros().toPlainString()) + " " + fieldUnitWord(l.reportUnit, l.categoryCode), figure = Formats.digits(com.aktcl.aron.rules.Money.formatTaka(l.valueMtk, 2), loc))
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(stringResource(R.string.amo_ps_total), style = amoText(18, bold = true))

@@ -16,6 +16,11 @@ operation:
 
     for every other reader; `phone_masked` is always the masked form. `route_days` are ISO weekdays (1 = Monday).
 
+    The list is not paged: it holds every active SR route of the reach (an AMO zone has tens of routes; a national
+    reader
+
+    gets them all). Paging is a later additive change (`limit`, `cursor`) if a reach grows past a few hundred routes.
+
     '
   parameters:
   - $ref: '#/components/parameters/BusinessDateQuery'
