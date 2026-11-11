@@ -2192,3 +2192,6 @@
 
 ### 2026-11-11 02:09 UTC — CORRECTION to the 02:06 block (lead)
 - The A3 lane's merge d52227831 DID take INT bf113f461 (parents 5b3af3cbd + bf113f461; merge-base = bf113f461). The "MISSING INT" result came from comparing against origin INT as fetched at 02:04, which had already moved to the train 86 commit pushed by integrator 23 (the GO went out 02:03). So the 7 "lost" DECISIONS lines are FND-14/15 + CALLS-18..22 and the 5 "removed" tests are A2's b922f5c5 tests — train 86 content, not yet on the lane. The instruction to A3 stands in substance (merge the CURRENT INT, i.e. the train 86 commit, before the next push, which it needs anyway for A2's shared unit mapping); the wording about "the previous INT" was wrong and is corrected to the lane.
+
+### 2026-11-11 02:10 UTC — train 86 on INT: ci #1931 running (lead record)
+- Integrator 23 pushed INT 7b3cb27381aef90a31a52203b34c50126c5a429e ("train 86: 0fd2e1b5 59223d62; train.md block") right after the 02:03 GO; ci 42943369190 (#1931) started 02:03:52; the real deploy (no migrations) follows. Lead background watch on the ci run; landing check-in 02:50 armed.
