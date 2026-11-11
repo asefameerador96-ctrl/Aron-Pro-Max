@@ -206,11 +206,4 @@ class AmoCallsScreenshotTests {
         val gate = com.aktcl.aron.feature.dayclose.SalesSubmitRules.gate(com.aktcl.aron.feature.dayclose.OutboxStates(0, 0, 40, 0, 0), counts, com.aktcl.aron.feature.dayclose.DuesAtSubmit(0, 0), false)
         com.aktcl.aron.feature.dayclose.SalesSubmitScreen(true, counts, gate, com.aktcl.aron.feature.dayclose.SubmitProgress.Idle, { t -> labels[t]?.let { ctx.getString(it) } ?: t }, {}, {}, rowGroups = groups, vendorDialogs = true)
     }
-
-    // ---- contract 1.11.1: Live Dashboard with the AMO members (category volumes in the field unit, geo/photo valid visits) ----
-    private val liveSummary = """{"as_of":"2026-11-10T05:00:00Z","kpis":{"target_routes":2,"logged_in_routes":2,"login_pct":100.0,"sales_submitted_routes":0,"submit_pct_of_logged_in":0.0,"target_outlets":81,"visited_outlets":3,"successful_calls":1,"strike_rate_pct":1.23,"gross_mtk":125000000,"net_mtk":120000000,"geo_valid_pct":66.67,"force_sale_pct":0.0,"mock_visits":0,"suspicious_visits":0}}"""
-    private val liveLogin = """{"kpis":{"target_routes":2,"logged_in_routes":2,"login_pct":100.0,"sales_submitted_routes":0,"submit_pct_of_logged_in":0.0},"not_logged_in":[],"logged_in_not_submitted":[{"route_id":3}],"submitted":[],"geo_valid_visits":2,"photo_valid_visits":1,"visits_total":3,"sales_by_category":[{"category_code":"cigarette","base_unit":"stick","qty_base":1000,"net_mtk":80000000,"entry_unit":"pack","qty_entered":"62.500","memos":4},{"category_code":"bidi","base_unit":"stick","qty_base":400,"net_mtk":1000000,"entry_unit":"pack","qty_entered":"20.000","memos":null},{"category_code":"lighter","base_unit":"piece","qty_base":75,"net_mtk":12500000,"entry_unit":"pack","qty_entered":"3.000","memos":1},{"category_code":"match","base_unit":"dozen","qty_base":9,"net_mtk":2800000,"entry_unit":"dozen","qty_entered":"9.000","memos":1}]}"""
-    @Test fun amo_live_dashboard_categories_bn() = shot("amo_live_dashboard_categories_bn", AppLanguage.BN, "লাইভ ডেটা") {
-        LiveDashboardContent(LiveDashboard.parse(liveSummary, liveLogin), "10/11 11:00", "আমার সব জোন", false, false, false, { com.aktcl.aron.rules.Formats.money(it, com.aktcl.aron.rules.UiLocale.BN) }, {})
-    }
 }

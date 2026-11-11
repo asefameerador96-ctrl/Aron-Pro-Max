@@ -131,3 +131,45 @@ TargetAchievementRow:
       minimum: 0
       description: A / T' in basis points, uncapped (int64, R-F-16); null when T' is 0, and null when `period_days`
         is 0 (R-F-15), the `period_days` of the row's node.
+    report_unit:
+      type: string
+      enum:
+      - stick
+      - piece
+      - dozen
+      - box
+      - pack
+      description: 'Contract 1.11.2 (D-AMO-FND-16). The field unit of the `*_qty_report` members (rule 5, docs/34
+        s4.2): pack for cigarettes
+
+        and bidi, box (of 25) for lighters, dozen for matches. A row whose SKUs cannot share one field unit answers
+        its base
+
+        `unit` here and the `*_qty_report` members equal the base quantities.
+
+        '
+    target_qty_report:
+      $ref: '#/components/schemas/Decimal3'
+      description: 'Contract 1.11.2. T in `report_unit`: the sum over the row''s SKUs of qty_base / base_per_pack
+        of each SKU (10s and 20s packets are converted one by one, never divided by one factor), rounded half up
+        to 3 decimals once.'
+    achieved_qty_report:
+      $ref: '#/components/schemas/Decimal3'
+      description: Contract 1.11.2. A in `report_unit`, converted per SKU like `target_qty_report`.
+    tilldate_target_qty_report:
+      $ref: '#/components/schemas/Decimal3'
+      description: 'Contract 1.11.2. T'' in `report_unit`: the row''s till-date target (base units, rounded once
+        per item) re-expressed at the target mix of the row''s SKUs (T in `report_unit` / T in base units); "0.000"
+        when `period_days` is 0.'
+    remaining_qty_report:
+      $ref: '#/components/schemas/Decimal3'
+      description: Contract 1.11.2. max(T - A, 0) in `report_unit`, computed from the ROUNDED `target_qty_report`
+        and `achieved_qty_report` (so it always equals what they print; it can differ by 0.001 from the base remaining
+        converted, e.g. with /12 pack sizes).
+    remaining_tilldate_qty_report:
+      type:
+      - string
+      - 'null'
+      pattern: ^-?\d{1,13}(\.\d{1,3})?$
+      description: Contract 1.11.2. max(T' - A, 0) in `report_unit` (beside `remaining_tilldate_qty_base`), from
+        the rounded `tilldate_target_qty_report` and `achieved_qty_report`; null when `period_days` is 0.

@@ -265,8 +265,9 @@ class TargetAchievementTest {
             assertEquals(0, gulshan.periodDays)
             for (row in gulshan.rows) {
                 assertNull(row.tilldateTargetQtyBase, row.name); assertNull(row.remainingTilldateQtyBase, row.name); assertNull(row.tilldateAchievementPctBp, row.name)
-                assertEquals("0.000", row.tilldateTargetQty, row.name)
+                assertEquals("0.000", row.tilldateTargetQty, row.name); assertNull(row.remainingTilldateQtyReport, row.name)
             }
+            assertEquals("0.000", terr.tilldateTargetQtyReport); assertEquals("0.000", terr.remainingTilldateQtyReport, "a node with a period and a 0 till-date target has nothing remaining")
             assertEquals(3000L, gulshan.rows.of("Cigarette").targetQtyBase)
             // Gulshan alone has n = 0 at its own node.
             val z = ask(21, month = "2026-11", level = "zone", node = ids.getValue("Z2"), cfg = working)
@@ -385,6 +386,83 @@ class TargetAchievementTest {
             routing { route("/v1") { targetAchievementRoutes(TargetAchievementDeps(TargetAchievementService(fresh.db, config, clock), reach, TestTokens.guard(config), clock)) } }
         }
         block()
+    }
+
+    // ------------------------------------------------------------------------------------------------ contract 1.11.2 (D-AMO-FND-16)
+
+    private fun <T> withPackUnits(block: () -> T): T {
+        sql("UPDATE app.sku SET entry_unit_default = 'pack' WHERE category_code IN ('cigarette', 'bidi', 'lighter')")
+        try { return block() } finally { sql("UPDATE app.sku SET entry_unit_default = base_unit WHERE category_code IN ('cigarette', 'bidi', 'lighter')") }
+    }
+
+    @Test
+    fun rowsCarryTheirQuantitiesInFieldUnitsSummedAfterConversionPerSku() = withPackUnits {
+        val rows = ask(23).rows
+        val cig = rows.of("Cigarette")
+        // 40999 sticks in all, of which 3000 are Marise 10s: (40999 - 3000) / 20 + 3000 / 10, never 40999 / 20 or 40999 / 10
+        assertEquals("pack", cig.reportUnit); assertEquals("2199.950", cig.targetQtyReport); assertEquals(40_999L, cig.targetQtyBase)
+        assertEquals("pack", rows.of("Bidi").reportUnit); assertEquals("440.000", rows.of("Bidi").targetQtyReport)       // 11000 sticks in packets of 25
+        assertEquals("box", rows.of("Lighter").reportUnit); assertEquals("4.000", rows.of("Lighter").targetQtyReport)  // 100 pieces: 4 boxes of 25
+        assertEquals("dozen", rows.of("Match").reportUnit); assertEquals("170.000", rows.of("Match").targetQtyReport)
+        // the SKU rows: Marise 10s alone is 3000 / 10 packets and its till-date share (3000 x 25 / 31 = 2419) / 10
+        val sku = ask(23, product = "sku").rows
+        val ten = sku.of("Marise Special Blend 10s")
+        assertEquals("pack", ten.reportUnit); assertEquals("300.000", ten.targetQtyReport)
+        assertEquals(java.math.BigDecimal(ten.tilldateTargetQtyBase!!).divide(java.math.BigDecimal(10)).setScale(3).toPlainString(), ten.tilldateTargetQtyReport)
+        // remaining till date = max(T' - A, 0) in packets, from the printed values (Marise 10s: T' 241.900, nothing sold in the fixture of it)
+        val expRemTd = (java.math.BigDecimal(ten.tilldateTargetQtyReport) - java.math.BigDecimal(ten.achievedQtyReport)).max(java.math.BigDecimal.ZERO).setScale(3).toPlainString()
+        assertEquals(expRemTd, ten.remainingTilldateQtyReport)
+        // remaining is max(T - A, 0) in the report unit; the base members are untouched
+        for (r in rows) assertTrue(java.math.BigDecimal(r.remainingQtyReport!!) == (java.math.BigDecimal(r.targetQtyReport!!) - java.math.BigDecimal(r.achievedQtyReport!!)).max(java.math.BigDecimal.ZERO), r.name)
+    }
+
+    @Test
+    fun aRowOfMixedFieldUnitsFallsBackToTheBaseUnitAndTheBaseQuantities() {
+        // one cigarette SKU counted in packs, the others in sticks: no single field unit for the Cigarette row
+        sql("UPDATE app.sku SET entry_unit_default = 'pack' WHERE code = 'MR20'")
+        try {
+            val cig = ask(23).rows.of("Cigarette")
+            assertEquals("stick", cig.reportUnit, "the base unit"); assertEquals(cig.targetQty, cig.targetQtyReport); assertEquals(cig.achievedQty, cig.achievedQtyReport)
+            assertEquals(cig.tilldateTargetQty, cig.tilldateTargetQtyReport); assertEquals(40_999L, cig.targetQtyBase)
+        } finally { sql("UPDATE app.sku SET entry_unit_default = base_unit WHERE code = 'MR20'") }
+    }
+
+    @Test
+    fun anEmptyCategoryCardPrintsTheFieldUnitOfItsSkusEntryUnit() = withPackUnits {
+        val a = ask(23, month = "2026-12")           // no target and no sale in December: every card is empty
+        assertEquals("pack", a.rows.of("Cigarette").reportUnit); assertEquals("box", a.rows.of("Lighter").reportUnit)
+        assertEquals("dozen", a.rows.of("Match").reportUnit, "matches are counted in their base unit")
+    }
+
+    @Test
+    fun aRouteOnlyCallerReadsItsOwnRouteAtLevelRouteAndNotAnotherRoute() {
+        val r1 = ids.getValue("R1")
+        val a = ask(25, level = "route", node = r1)
+        assertEquals("route", a.node.type); assertEquals(r1, a.node.id)
+        val e = assertFailsWith<ApiProblem> { ask(25, level = "route", node = ids.getValue("R2")) }
+        assertEquals(ProblemCode.ERR_OUT_OF_SCOPE, e.code, "R2 is in the zone of R1 but not among the caller's routes")
+    }
+
+    @Test
+    fun withoutPackCountingTheFieldUnitIsTheBaseUnitAndTheReportQuantitiesEqualTheBaseOnes() {
+        val cig = ask(23).rows.of("Cigarette")
+        assertEquals("stick", cig.reportUnit); assertEquals("40999.000", cig.targetQtyReport); assertEquals(cig.targetQty, cig.targetQtyReport)
+    }
+
+    @Test
+    fun levelRouteAnswersOneRouteOfTheReachAndRefusesOthers() {
+        val r1 = ids.getValue("R1")
+        val a = ask(23, level = "route", node = r1)
+        assertEquals("route", a.node.type); assertEquals(r1, a.node.id)
+        val expected = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT coalesce(sum(qty_base), 0) FROM app.route_monthly_target WHERE route_id = :r AND month = DATE '2026-10-01'").bind("r", r1).mapTo(Long::class.java).one() }
+        assertEquals(expected, a.rows.sumOf { it.targetQtyBase }, "the route's own target, not the zone's")
+        // a route outside the reach (R4), an unknown route, a missing node_id and children at a route
+        for (node in listOf(ids.getValue("R4"), 987_654L)) {
+            val e = assertFailsWith<ApiProblem> { ask(23, level = "route", node = node) }
+            assertEquals(ProblemCode.ERR_OUT_OF_SCOPE, e.code, "route $node")
+        }
+        assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { ask(23, level = "route", node = null) }.code)
+        assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { ask(23, level = "route", node = r1, children = "zone") }.code)
     }
 
     private suspend fun ApplicationTestBuilder.get(uid: Long, path: String): HttpResponse =

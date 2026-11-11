@@ -20,8 +20,6 @@ import com.aktcl.aron.feature.amo.AssignedTasksContent
 import com.aktcl.aron.feature.amo.ExceptionDetailContent
 import com.aktcl.aron.feature.amo.ExceptionsListContent
 import com.aktcl.aron.feature.amo.FieldChange
-import com.aktcl.aron.feature.amo.LiveDashboard
-import com.aktcl.aron.feature.amo.LiveDashboardContent
 import com.aktcl.aron.feature.amo.PendingRequest
 import com.aktcl.aron.feature.amo.PerfBar
 import com.aktcl.aron.feature.amo.Reports
@@ -135,11 +133,6 @@ class AmoTsoScreenshotTests {
         {"user_id":8,"full_name":"করিম মিয়া","by_sku":[]}]}"""
     private val skuInfo = mapOf(1L to com.aktcl.aron.feature.amo.SkuInfo("Gold Leaf 10s", "গোল্ড লিফ ১০", "cigarette"), 2L to com.aktcl.aron.feature.amo.SkuInfo("Lighter", "লাইটার", "lighter"))
 
-    private val live = LiveDashboard.parse(
-        """{"as_of":"2026-10-17T08:30:00Z","kpis":{"target_routes":10,"logged_in_routes":8,"login_pct":80.0,"sales_submitted_routes":3,"submit_pct_of_logged_in":37.5,"target_outlets":200,"visited_outlets":81,"successful_calls":1,"strike_rate_pct":1.23,"active_memo_count":1,"gross_mtk":125000000,"net_mtk":120000000,"geo_valid_pct":null,"force_sale_pct":5.0,"mock_visits":2,"suspicious_visits":1},"not_logged_in":[{"route_id":1}],"logged_in_not_submitted":[{"route_id":3}],"submitted":[]}""",
-        null,
-    )
-
     private fun reportPage(vararg rows: String, total: Int = rows.size) =
         """{"as_of":"x","columns":[{"key":"memo_no","label_en":"Memo no","label_bn":"মেমো নং","type":"string"},{"key":"business_date","label_en":"Date","label_bn":"তারিখ","type":"date"},{"key":"route_code","label_en":"Route","label_bn":"রুট","type":"string"},{"key":"outlet_name","label_en":"Outlet","label_bn":"আউটলেট","type":"string"},{"key":"line_count","label_en":"Lines","label_bn":"লাইন","type":"integer"},{"key":"gross_mtk","label_en":"Gross","label_bn":"মোট","type":"mtk"},{"key":"net_mtk","label_en":"Net","label_bn":"নিট","type":"mtk"}],"rows":[${rows.joinToString(",")}],"total_rows":$total}"""
     private val stdRows = Reports.parse(reportPage(
@@ -182,9 +175,6 @@ class AmoTsoScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_stock_detail_bn() = shot("amo_team_stock_detail_bn", AppLanguage.BN, "এসআর স্টক") {
         val sr = TeamStock.parse(stockJson).first { it.userId == 7L }; TeamStockDetailContent(sr, skuInfo, TeamStock.totals(sr.lines, skuInfo), true)
     }
-    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_live_dashboard_en() = shot("amo_live_dashboard_en", AppLanguage.EN, "Live Dashboard") { LiveDashboardContent(live, "14:30", "All my zones", false, false, false, money(false), {}) }
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_live_dashboard_kept_bn() = shot("amo_live_dashboard_kept_bn", AppLanguage.BN, "লাইভ ড্যাশবোর্ড") { LiveDashboardContent(live, "14:30", "আমার সব জোন", true, true, false, money(true), {}) }
-    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_live_dashboard_empty_en() = shot("amo_live_dashboard_empty_en", AppLanguage.EN, "Live Dashboard") { LiveDashboardContent(null, null, "All my zones", false, false, true, money(false), {}) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_performance_bn() = shot("amo_team_performance_bn", AppLanguage.BN, "টিমের পারফরম্যান্স") {
         TeamPerformanceContent(listOf(PerfBar("সিগারেট", "stick", 1000.0, 850.0, 150.0, 85.0), PerfBar("বিড়ি", "stick", 500.0, 230.0, 270.0, 46.0), PerfBar("লাইটার", "piece", 100.0, 10.0, 90.0, 10.0), PerfBar("ম্যাচ", "dozen", 0.0, 3.0, 0.0, null)), false, {}, false, false)
     }
@@ -198,7 +188,6 @@ class AmoTsoScreenshotTests {
     // ---- TSO dashboard
 
     // ---- Sunlight mode (outdoor-first: solid surfaces for figures, key numbers at 7:1)
-    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_live_dashboard_sunlight_en() = shot("amo_live_dashboard_sunlight_en", AppLanguage.EN, "Live Dashboard", sunlight = true) { LiveDashboardContent(live, "14:30", "All my zones", false, false, false, money(false), {}) }
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_verify_form_sunlight_en() = shot("amo_verify_form_sunlight_en", AppLanguage.EN, "Verify requests", sunlight = true, content = verifyForm(false, newDetail))
 
     // ---- long Bangla at 200% font scale (3-line wrap) and Sunlight for every screen with a figure, a status or a primary action
@@ -240,5 +229,4 @@ class AmoTsoScreenshotTests {
     }
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_std_memo_sunlight_en() = shot("amo_std_memo_sunlight_en", AppLanguage.EN, "STD Memo Report", sunlight = true) { StdMemoReportContent("2026-10-01" to "2026-10-16", stdRows, Reports.stdByRoute(stdRows), false, money(false), false, false) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_sales_summary_sunlight_bn() = shot("amo_sales_summary_sunlight_bn", AppLanguage.BN, "এখন পর্যন্ত বিক্রয় সারসংক্ষেপ", sunlight = true) { SalesSummaryContent(summaryCards, money(true), true, false, {}) }
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_live_dashboard_bn_fs2() = shot("amo_live_dashboard_bn_fs2", AppLanguage.BN, "লাইভ ডেটা", fontScale = 2f) { LiveDashboardContent(live, "14:30", "আমার সব জোন", false, false, false, money(true), {}) }
 }

@@ -337,7 +337,7 @@ private fun CountsTable(counts: List<CountView>, typeLabel: (String) -> String, 
         val blank = stringResource(R.string.submit_server_blank)
         AronDataTable(
             headers = listOf(stringResource(R.string.submit_col_item), stringResource(R.string.submit_col_device), stringResource(R.string.submit_col_server)),
-            // D-NIGHT-DAYCLOSE-01 (c): the count columns are wide enough for "Phone" / "Server" in one line at 360 px (never "Serve r")
+            // D-NIGHT-DAYCLOSE-01 (c): the count columns are wide enough for "Device" / "Server" in one line at 360 px (never "Serve r")
             weights = listOf(1.5f, 1f, 1f),
             rows = counts.map { row ->
                 val word = when { row.server == null -> waitingWord; !row.matches -> mismatchWord; else -> null }
