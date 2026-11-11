@@ -2179,3 +2179,8 @@
 
 ### 2026-11-11 02:01 UTC — lead container restarted; train 86 watch re-armed (lead record)
 - The lead's container restarted at ~01:58; the background watch on train 86 run 42939284296 was lost. Filesystem intact (docs worktree at abafaafc0, scratchpad, worktrees). Public API at 02:01: the run is in progress with 10 jobs success, 0 failed, 1 in progress (Backend analytics tests (b)). Watch re-armed. All other state is in docs/status and on the lanes' branches; nothing lost.
+
+### 2026-11-11 02:02 UTC — train 86 run 12/12 green; GO issued (lead)
+- CI run 42939284296 on lane/lead-train86 59223d621: completed success 02:02, 12 success / 0 failed / 0 skipped. Both heads carry lead static gates + Opus PASS (foundation b6fa83ebf: units/test-integrity/contract lenses + the lead's confirming pass; A2 b922f5c5: units-money/sync-offline/test-strings lenses) and green lane runs (42937857519, 42938293755).
+- GO sent to integrator 23: "GO train 86: <this docs tip> 59223d621; expected DECISIONS 317; REAL deploy, no migrations (backend image + worker; dblogins, dev seed, SR slice smoke per runbook); report landed with the deploy details verbatim and health build = new INT sha". Backend changes riding: sales-by-date lighters report_unit "box", test hardening, openapi descriptions, regenerated slices and web openapi.d.ts; android: F1/F2 wiring + UnitWords; APK number follows the INT ci run.
+- Landing check-in re-armed for 02:50 UTC; the integrator's "train 86 landed" wakes the lead earlier. Nothing needs the owner.
