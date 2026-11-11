@@ -2103,3 +2103,7 @@
 
 ### 2026-11-11 01:11 UTC — foundation F2.2 run red on two generated-file gates (lead)
 - Run 42936593193 (30f18aa94): early FAIL in "Repository gates" (tools/slice-contract.py --check: contract/slices out of date for getTeamJourney, getTeamMembers, getOutletSalesByDate, …) and "Web" (openapi.d.ts stale: npm run gen:contract). Cause: the openapi.yaml description edits were pushed without regenerating the two derived outputs. Not a test failure; no re-run. Sent foundation #3 the exact commands (slice-contract.py, web gen:contract, commit, local --check + test_gates, one push, "checked <sha>"). The Opus three-lens check on 30f18aa94 continues; it carries over if the new head differs only in generated files (lead verifies by diff --name-only).
+
+### 2026-11-11 01:13 UTC — foundation regen head f5e27fd59 verified generated-only (lead)
+- Lane message 01:12: f5e27fd59 = 30f18aa94 + one generated-only commit (contract/slices INDEX.md + getCallTargets/getOutletSalesByDate/getTeamJourney/getTeamMembers, web/src/contract/openapi.d.ts); local slice-contract --check "up to date", gen:contract clean, test_gates OK.
+- Lead check by git: 30f18aa94..f5e27fd59 touches exactly those 6 files, 0 non-generated files, secret grep clean. The static gate result of 30f18aa94 (PASS) and the running Opus check carry over to f5e27fd59. Lead background watch on its CI run.
