@@ -92,3 +92,8 @@ Then the full local gate (assemble x3, android unit tests `--max-workers=2`, lin
 
 ## A2 #4 corrections round (2026-11-11; D-AMO-CALLS-33, D-QA-CI-17)
 - Done: the `hostComposeRule` KDoc says precisely what runs the scheduler queue; `purgeRoutes` drops every member route's kept copy (entry point `loadTargetNodesFromApi`, tested through the API stub); `routeTargets` KDoc restored; guard tests `NoDirectComposeRuleTest` (app-amo, app-sr); the probe executor is shut down; the negative check in `AmoControlCallHostTest` settles first; `TestWork.awaitSettled` KDoc; the app-sr host classes use `hostComposeRule()` (D-QA-CI-17).
+
+## A2 #5 flake round (2026-11-11; D-AMO-CALLS-35, -36)
+- `AmoDayLockHostsTest.editOnTheMemoDetail...` CI flake = production race, not a harness timeout: `editRefusal`'s `runCatching` swallowed the cancellation of a `LaunchedEffect` run superseded by the lock change, and the cancelled run then wrote `editRefused = null` over the newer `FINAL_SUBMIT` (traced; reproduced under CPU load, 2 to 6 of 30 per run before, 0 of 90 after).
+- Fix: `core-common` `orNullKeepingCancellation` used by `AmoSaleKit.editRefusal` and `SrSaleKit.editRefusal`; probe `CancellationTest` (fails 2 of 3 with `runCatching`). Test files unchanged; all ~48 `waitUntil` sites audited and kept (D-AMO-CALLS-36); latent same-pattern sites listed there for the lead.
+- Gates: core-common + app-amo (122) + app-sr (97) unit suites green 3 runs in a row; lint see lead report. Branch held for the lead's gate.

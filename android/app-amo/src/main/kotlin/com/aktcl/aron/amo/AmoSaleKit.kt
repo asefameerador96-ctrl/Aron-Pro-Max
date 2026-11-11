@@ -192,7 +192,8 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
      */
     suspend fun editRefusal(memoUuid: String): com.aktcl.aron.core.database.repo.DayRefusal? {
         val memo = dao.memo(memoUuid) ?: return null
-        return runCatching { day.capture.dayRefusal(day.metaProvider.meta(memo.meta.routeId ?: 0L), "memo") }.getOrNull()
+        // not runCatching: it would turn the cancellation of a superseded LaunchedEffect run into null, which that run then writes over the newer answer (D-AMO-CALLS-35)
+        return com.aktcl.aron.core.common.orNullKeepingCancellation { day.capture.dayRefusal(day.metaProvider.meta(memo.meta.routeId ?: 0L), "memo") }
     }
 
     /** True when [editRefusal] is the Final Submit lock. */
