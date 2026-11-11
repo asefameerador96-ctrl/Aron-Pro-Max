@@ -315,6 +315,24 @@ class ContractConformanceTest {
             "POST /v1/admin/geo/house/merge" to Fx(body = { n, _, x -> n.put("keep_id", x.id("dup_keep")); n.putArray("merge_ids").add(x.id("dup_merge")) }),
             "GET /v1/admin/users/{}/access" to Fx(path = { _, x -> mapOf("id" to x.id("access_user").toString()) }),
             "PUT /v1/admin/users/{}/access" to Fx(path = { _, x -> mapOf("id" to x.id("access_user").toString()) }, body = { n, _, _ -> n.remove("brand_ids"); n.putObject("modules").put("outlets", "r") }),
+            // Discount portal (D-DISC-API-04): a draft is created, read, changed (with its row version as If-Match), then activated by the SUPERADMIN.
+            // Every part of the body is explicit: a generated one names drp_slide or a reward the offer type does not use.
+            "POST /v1/admin/offers" to Fx(body = { n, c, _ ->
+                n.removeAll()
+                n.put("request_uuid", java.util.UUID.randomUUID().toString()); n.put("code", "QA-OFF-${c.user}-${java.util.UUID.randomUUID().toString().take(6)}"); n.put("group_code", "QA")
+                n.put("offer_type", "pct_discount"); n.put("level", "line"); n.put("title_en", "QA offer"); n.put("valid_from", FUTURE)
+                n.put("valid_to", java.time.LocalDate.parse(FUTURE).plusDays(30).toString()); n.put("discount_bp", 500)
+                n.putArray("qualifying"); n.putArray("scope"); n.put("stacking", "exclusive"); n.put("change_reason", "conformance check offer")
+            }, capture = { _, b, x -> if (x["offer_id"] == null) { x["offer_id"] = b.path("id").asText(); x["offer_row"] = b.path("version").asText() } }),
+            "GET /v1/admin/offers/{}" to Fx(after = listOf("POST /v1/admin/offers"), path = { _, x -> mapOf("id" to x.need("offer_id")) }),
+            "GET /v1/admin/offers/{}/versions" to Fx(after = listOf("POST /v1/admin/offers"), path = { _, x -> mapOf("id" to x.need("offer_id")) }),
+            "PATCH /v1/admin/offers/{}" to Fx(after = listOf("POST /v1/admin/offers"), path = { _, x -> mapOf("id" to x.need("offer_id")) },
+                headers = { _, x -> mapOf("If-Match" to "\"${x.need("offer_row")}\"") },
+                body = { n, _, _ ->
+                    n.removeAll(); n.put("request_uuid", java.util.UUID.randomUUID().toString()); n.put("title_en", "QA offer renamed"); n.put("change_reason", "conformance check change")
+                }, capture = { _, b, x -> x["offer_row"] = b.path("version").asText() }),
+            "POST /v1/admin/offers/{}/status" to Fx(after = listOf("PATCH /v1/admin/offers/{}"), path = { _, x -> mapOf("id" to x.need("offer_id")) },
+                body = { n, _, _ -> n.removeAll(); n.put("request_uuid", java.util.UUID.randomUUID().toString()); n.put("to_status", "active"); n.put("reason", "conformance check activation") }),
             "POST /v1/admin/prices/preview" to Fx(body = { n, _, _ -> n.put("valid_from", FUTURE) }),
             // Publishing prices needs the preview of the same batch first (ERR_REQUEST_STATE otherwise).
             "POST /v1/admin/prices" to Fx(after = listOf("POST /v1/admin/prices/preview"), body = { n, _, _ -> n.put("valid_from", FUTURE) }),
