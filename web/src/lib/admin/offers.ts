@@ -247,18 +247,33 @@ export type RuleSnapshot = Pick<OfferWrite, (typeof RULE_MEMBERS)[number]>;
 /** The rule of an offer exactly as the server holds it (base units, milli-taka, basis points): the reference an edit is diffed against. */
 export function ruleOf(o: Offer | OfferVersion): RuleSnapshot {
   return {
-    offer_type: o.offer_type, level: o.level, title_en: o.title_en, title_bn: o.title_bn ?? null, valid_from: o.valid_from, valid_to: o.valid_to,
+    offer_type: o.offer_type, level: o.level, title_en: o.title_en.trim(), title_bn: o.title_bn?.trim() ? o.title_bn.trim() : null, valid_from: o.valid_from, valid_to: o.valid_to,
     threshold_qty_base: o.threshold_qty_base ?? null, discount_bp: o.discount_bp ?? null, discount_mtk_per_unit: o.discount_mtk_per_unit ?? null,
     reward_sku_id: o.reward_sku_id ?? null, reward_qty_base: o.reward_qty_base ?? null,
     qualifying: o.qualifying.map((q) => ({ product_level: q.product_level, product_id: q.product_id })), scope: o.scope.map((x) => ({ node_type: x.node_type, node_id: x.node_id })), stacking: o.stacking,
   };
 }
 
+/** The rule members only one offer type edits (the form fills just the current type's). Others may legally hold a stored value
+ *  (a percentage offer that also carries a threshold): an edit that keeps the type must leave them exactly as stored. */
+const TYPE_MEMBERS: Record<OfferType, readonly (typeof RULE_MEMBERS)[number][]> = {
+  pct_discount: ["discount_bp"],
+  amount_per_unit: ["discount_mtk_per_unit"],
+  free_qty: ["threshold_qty_base", "reward_sku_id", "reward_qty_base"],
+  drp_slide: [],
+};
+const ALL_TYPE_MEMBERS = new Set<string>(Object.values(TYPE_MEMBERS).flat());
+
 /** OfferPatch of an edit: ONLY the members the user changed (an unchanged quantity or amount is never re-sent through a conversion),
- *  plus the reason and request_uuid. Null when nothing changed. */
+ *  plus the reason and request_uuid. Members of another offer type are left alone unless the type itself changed. Null when nothing changed. */
 export function diffPatch(original: RuleSnapshot, body: OfferWrite, requestUuid: string): OfferPatch | null {
+  const typeChanged = body.offer_type !== original.offer_type;
+  const mine = new Set<string>(TYPE_MEMBERS[body.offer_type]);
   const changed: Record<string, unknown> = {};
-  for (const k of RULE_MEMBERS) if (JSON.stringify(body[k] ?? null) !== JSON.stringify(original[k] ?? null)) changed[k] = body[k] ?? null;
+  for (const k of RULE_MEMBERS) {
+    if (!typeChanged && ALL_TYPE_MEMBERS.has(k) && !mine.has(k)) continue;
+    if (JSON.stringify(body[k] ?? null) !== JSON.stringify(original[k] ?? null)) changed[k] = body[k] ?? null;
+  }
   if (Object.keys(changed).length === 0) return null;
   return { request_uuid: requestUuid, ...changed, change_reason: body.change_reason } as OfferPatch;
 }
@@ -304,11 +319,11 @@ export function formFromOffer(o: Offer | OfferVersion, unitOf: (skuId: number) =
  *  text is left as typed; a quantity that no longer divides becomes a base entry. */
 export function reunit(next: OfferForm, prev: OfferForm, before: FormUnits, after: FormUnits): OfferForm {
   const out: OfferForm = { ...next, inBase: { ...next.inBase } };
-  const same = (a: UnitCtx | null, b: UnitCtx | null) => a?.packFactor === b?.packFactor && a?.fieldUnit === b?.fieldUnit;
+  const same = (a: UnitCtx | null, b: UnitCtx | null) => a?.packFactor === b?.packFactor && a?.fieldUnit === b?.fieldUnit && a?.baseUnit === b?.baseUnit;
   if (!same(before.qualifying, after.qualifying)) {
     if (prev.perUnit.trim()) {
       const perBase = before.qualifying ? perFieldTakaToPerBase(prev.perUnit, before.qualifying.packFactor) : takaToMtk(prev.perUnit);
-      if (perBase !== null) out.perUnit = mtkText(after.qualifying ? perBaseToPerField(perBase, after.qualifying.packFactor) : perBase);
+      out.perUnit = perBase !== null ? mtkText(after.qualifying ? perBaseToPerField(perBase, after.qualifying.packFactor) : perBase) : ""; // invalid in the old unit: cleared for re-entry, never reinterpreted
     }
     if (prev.threshold.trim()) {
       const base = fieldQtyToBase(prev.threshold, effFactor(before.qualifying, prev.inBase.threshold));
@@ -316,6 +331,9 @@ export function reunit(next: OfferForm, prev: OfferForm, before: FormUnits, afte
         const ok = !!after.qualifying && base % after.qualifying.packFactor === 0;
         out.threshold = String(ok ? base / after.qualifying!.packFactor : base);
         out.inBase.threshold = !!after.qualifying && !ok;
+      } else {
+        out.threshold = "";
+        out.inBase.threshold = false;
       }
     }
   }
@@ -325,6 +343,9 @@ export function reunit(next: OfferForm, prev: OfferForm, before: FormUnits, afte
       const ok = !!after.reward && base % after.reward.packFactor === 0;
       out.rewardQty = String(ok ? base / after.reward!.packFactor : base);
       out.inBase.reward = !!after.reward && !ok;
+    } else {
+      out.rewardQty = "";
+      out.inBase.reward = false;
     }
   }
   return out;

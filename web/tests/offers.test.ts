@@ -177,6 +177,34 @@ describe("form to contract", () => {
     // and with the units known the SAME stored value opens as a price per packet
     expect(formFromOffer(o, unitOf).perUnit).toBe("2");
   });
+  it("a stored member of another offer type is never nulled: a title-only edit of a percentage offer with a threshold sends exactly three members", () => {
+    const o = server({ offer_type: "pct_discount", discount_bp: 250, threshold_qty_base: 60, reward_sku_id: 2, reward_qty_base: 20 });
+    const patch = save(o, (f) => ({ ...f, title_en: "Renamed" }));
+    expect(patch).toEqual({ request_uuid: "0b6d6c0e-8a5b-4d56-9f0a-3f1d3a4b5c6d", title_en: "Renamed", change_reason: "A reason that is long enough" });
+    // changing the TYPE rewrites the rule on purpose: the old type's value is cleared
+    const typed = save(o, (f) => ({ ...f, offer_type: "amount_per_unit", perUnit: "2" }));
+    expect(typed).toMatchObject({ offer_type: "amount_per_unit", discount_mtk_per_unit: 100, discount_bp: null });
+  });
+  it("a scope round-trips: it opens as stored and a title-only edit sends no scope; an edit does not ask for the code", () => {
+    const o = server({ offer_type: "pct_discount", discount_bp: 250, threshold_qty_base: null, reward_sku_id: null, reward_qty_base: null, scope: [{ node_type: "wing", node_id: 1 }, { node_type: "route", node_id: 7 }] });
+    const f = formFromOffer(o, unitOf);
+    expect(f.scope).toEqual([{ node_type: "wing", node_id: 1 }, { node_type: "route", node_id: 7 }]);
+    expect(f.code).toBe("A");
+    expect(validateForm({ ...f, code: "", reason: "A reason that is long enough" }, deriveUnits(f, unitOf), "edit").errors).toEqual([]); // code "" in edit mode is fine
+    const patch = save(o, (x) => ({ ...x, title_en: "Renamed" }));
+    expect(patch).not.toHaveProperty("scope");
+    expect(save(o, (x) => ({ ...x, scope: x.scope.slice(0, 1) }))).toMatchObject({ scope: [{ node_type: "wing", node_id: 1 }] });
+  });
+  it("trimmed titles and an empty Bangla title are not changes", () => {
+    const o = server({ offer_type: "pct_discount", discount_bp: 250, threshold_qty_base: null, reward_sku_id: null, reward_qty_base: null, title_en: "  T  ", title_bn: "   " });
+    expect(save(o, (f) => f)).toBeNull();
+  });
+  it("an amount that is invalid in the old unit is cleared for re-entry, never reinterpreted in the new unit", () => {
+    const f1 = base({ offer_type: "amount_per_unit", perUnit: "0.001" }); // not exact per packet of 20
+    const mixed = { ...f1, qualifying: [...f1.qualifying, { product_level: "sku" as const, product_id: 1 }] };
+    const re = reunit(mixed, f1, deriveUnits(f1, unitOf), deriveUnits(mixed, unitOf));
+    expect(re.perUnit).toBe("");
+  });
   it("nothing changed gives no patch", () => {
     expect(save(server({}), (f) => f)).toBeNull();
   });

@@ -5,7 +5,7 @@ import { OfferFormView } from "@/components/admin/offer-form";
 import { PageHeading } from "@/components/admin/kit/page";
 import { apiClient, outcome } from "@/lib/api/client";
 import { loadGrants } from "@/lib/admin/modules";
-import { canWriteOffers, formFromOffer, ruleOf } from "@/lib/admin/offers";
+import { canWriteOffers, formFromOffer, OFFER_TYPES, ruleOf } from "@/lib/admin/offers";
 import { loadOfferRefs } from "@/lib/admin/offers-load";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
@@ -24,6 +24,9 @@ export default async function EditDiscountPage({ params }: { params: Promise<{ i
   const offer = r.data;
   if (offer.status !== "draft") {
     return <Banner tone="warning" role="alert" testId="discount-not-draft">{t(locale, "disc.draft_only")} <Link href={back} className="underline">{t(locale, "disc.back_detail")}</Link></Banner>;
+  }
+  if (!(OFFER_TYPES as readonly string[]).includes(offer.offer_type)) {
+    return <Banner tone="warning" role="alert" testId="discount-type-unsupported">{t(locale, "disc.edit_unsupported_type")} <Link href={back} className="underline">{t(locale, "disc.back_detail")}</Link></Banner>;
   }
   const refs = await loadOfferRefs(session.at);
   // An inactive SKU is not in the active SKU list: keep its unit from the offer so the entered quantities stay in the same unit.

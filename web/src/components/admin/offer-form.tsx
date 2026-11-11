@@ -11,7 +11,7 @@ import { Button } from "@/components/kit/button";
 import type { Problem } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
 import { LEVELS, OFFER_TYPES, PRODUCT_LEVELS, SCOPE_NODE_TYPES, STACKING, deriveUnits, diffPatch, effFactor, nextAttempt, reunit, validateForm, type FieldError, type OfferForm, type OfferSkuUnit, type RuleSnapshot } from "@/lib/admin/offers";
-import { qtyText, unitWord } from "@/lib/admin/offers-view";
+import { baseWord, qtyText, unitWord } from "@/lib/admin/offers-view";
 import { Field, inputClass } from "./kit/field";
 import { ReasonField } from "./kit/reason-field";
 
@@ -122,8 +122,8 @@ export function OfferFormView({ mode, offerId, version, initial, original, skus,
   const perUnitLabel = qualUnits ? t("disc.form.per_unit", { unit: unitWord(locale, qualUnits) }) : t("disc.form.per_unit_base");
   const thresholdFactor = effFactor(qualUnits, f.inBase.threshold);
   const rewardFactor = effFactor(rewardUnits, f.inBase.reward);
-  const thresholdUnit = unitWord(locale, qualUnits && !f.inBase.threshold ? qualUnits : null);
-  const rewardUnit = unitWord(locale, rewardUnits && !f.inBase.reward ? rewardUnits : null);
+  const thresholdUnit = qualUnits && f.inBase.threshold ? baseWord(locale, qualUnits) : unitWord(locale, qualUnits);
+  const rewardUnit = rewardUnits && f.inBase.reward ? baseWord(locale, rewardUnits) : unitWord(locale, rewardUnits);
   // The base figure (and, for a base entry, the packs and remainder) beside the typed quantity.
   const baseHint = (text: string, factor: number, ctx: typeof qualUnits): string | undefined => (ctx && /^\d+$/.test(text.trim()) ? qtyText(locale, Number(text) * factor, ctx) : undefined);
   const thresholdBase = baseHint(f.threshold, thresholdFactor, qualUnits);

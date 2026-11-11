@@ -112,6 +112,7 @@ const pairs = {
   "disc.err.reason_short": ["Give a reason of at least 10 characters.", "কমপক্ষে ১০ অক্ষরের কারণ লিখুন।"],
   "disc.err.reason_long": ["The reason can be 500 characters at most.", "কারণ সর্বোচ্চ ৫০০ অক্ষরের হতে পারবে।"],
   "disc.err.no_change": ["Nothing was changed. Change a field before saving a new version.", "কিছু বদলানো হয়নি। নতুন সংস্করণ সংরক্ষণের আগে কোনো ঘর বদলান।"],
+  "disc.edit_unsupported_type": ["This programme type cannot be edited in the portal yet.", "এই ধরনের কর্মসূচি এখনও পোর্টালে সম্পাদনা করা যায় না।"],
   "disc.save_draft": ["Save draft", "খসড়া সংরক্ষণ"],
   "disc.save_changes": ["Save as new version", "নতুন সংস্করণ হিসেবে সংরক্ষণ"],
   "disc.saving": ["Saving…", "সংরক্ষণ হচ্ছে…"],

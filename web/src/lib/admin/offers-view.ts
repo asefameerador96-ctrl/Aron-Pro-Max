@@ -22,6 +22,9 @@ const UNIT_KEY: Record<OfferSkuUnit["field_unit"] | OfferSkuUnit["base_unit"], M
 const QTY_KEY: Record<OfferSkuUnit["field_unit"] | OfferSkuUnit["base_unit"], MessageKey> = { packet: "disc.qty.packet", box: "disc.qty.box", dozen: "disc.qty.dozen", piece: "disc.qty.piece", stick: "disc.qty.stick" };
 export const unitWord = (locale: Locale, u: UnitCtx | null): string => t(locale, u ? UNIT_KEY[u.fieldUnit] : "disc.unit.base");
 
+/** The SKU's own base word (stick, piece, dozen) for a field entered in base units; the generic base word when the unit is unknown. */
+export const baseWord = (locale: Locale, u: UnitCtx | null): string => t(locale, u ? UNIT_KEY[u.baseUnit] : "disc.unit.base");
+
 /** "3 packets (60 sticks)", "3 packets and 5 sticks (65 sticks)", or "60 base units" when the unit is unknown. */
 export function qtyText(locale: Locale, base: number, u: UnitCtx | null): string {
   if (!u) return t(locale, "disc.qty.base", { n: base });
