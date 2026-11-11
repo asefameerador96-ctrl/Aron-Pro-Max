@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 import { GRANT_MODULES } from "@/lib/admin/access-grants";
 import { moduleOfApiPath, moduleOfPage } from "@/lib/admin/modules";
 import {
-  activationBlocked, bpText, canActivateOffer, canReadOffers, canWriteOffers, emptyForm, fieldQtyToBase, formFromOffer, formatBp, mtkText, nextStatuses, offerAccess, percentToBp, perFieldTakaToPerBase, splitBase, diffPatch, deriveUnits, nextAttempt, reunit, ruleOf, unitCtx, validateForm,
+  activationBlocked, bpText, canActivateOffer, canReadOffers, canWriteOffers, emptyForm, fieldQtyToBase, formFromOffer, formatBp, mtkText, nextStatuses, offerAccess, percentToBp, perFieldTakaToPerBase, splitBase, diffPatch, deriveUnits, displayUnit, nextAttempt, reunit, ruleOf, unitCtx, validateForm,
   type Offer, type OfferForm, type OfferSkuUnit,
 } from "@/lib/admin/offers";
 import { amountPerUnitText, qtyText, valueText } from "@/lib/admin/offers-view";
 import { menuFor } from "@/lib/menu/menu";
 
-const P20: OfferSkuUnit = { sku_id: 2, base_unit: "stick", pack_factor: 20, field_unit: "packet" };
-const P10: OfferSkuUnit = { sku_id: 1, base_unit: "stick", pack_factor: 10, field_unit: "packet" };
+const P20: OfferSkuUnit = { sku_id: 2, base_unit: "stick", pack_factor: 20, field_unit: "pack" };
+const P10: OfferSkuUnit = { sku_id: 1, base_unit: "stick", pack_factor: 10, field_unit: "pack" };
 const DOZ: OfferSkuUnit = { sku_id: 9, base_unit: "dozen", pack_factor: 1, field_unit: "dozen" };
-const BOX: OfferSkuUnit = { sku_id: 8, base_unit: "piece", pack_factor: 25, field_unit: "box" };
+const BOX: OfferSkuUnit = { sku_id: 8, base_unit: "piece", pack_factor: 25, field_unit: "pack" };
 
 const base = (over: Partial<OfferForm> = {}): OfferForm => ({ ...emptyForm(), code: "RAM-1", title_en: "Ramadan", valid_from: "2026-11-01", valid_to: "2026-11-30", reason: "Owner asked for this offer", qualifying: [{ product_level: "sku", product_id: 2 }], ...over });
 const fieldsOf = (r: ReturnType<typeof validateForm>) => r.errors.map((e) => `${e.field}:${e.code}`);
@@ -86,6 +86,16 @@ describe("integer money, percent and quantity", () => {
     expect(perFieldTakaToPerBase("0.001", 20)).toBeNull();
     expect(perFieldTakaToPerBase("0", 20)).toBeNull();
     expect(perFieldTakaToPerBase("abc", 20)).toBeNull();
+  });
+  it("the display word follows units rule 5 from the contract's one QtyUnit vocabulary: packet for cigarettes and bidi, box of 25 for lighters, dozen for matches", () => {
+    expect(displayUnit(P20)).toBe("packet");
+    expect(displayUnit(BOX)).toBe("box");
+    expect(displayUnit(DOZ)).toBe("dozen");
+    expect(displayUnit({ field_unit: "piece", base_unit: "piece" })).toBe("piece");
+    expect(displayUnit({ field_unit: "stick", base_unit: "stick" })).toBe("stick");
+    expect(unitCtx([BOX])).toEqual({ packFactor: 25, fieldUnit: "box", baseUnit: "piece" });
+    expect(qtyText("en", 50, unitCtx([BOX]))).toBe("2 box(es) (50 piece(s))");
+    expect(qtyText("bn", 50, unitCtx([BOX]))).toContain("২ বক্স");
   });
   it("units are common only when every SKU counts the same way", () => {
     expect(unitCtx([P20, { ...P20, sku_id: 3 }])).toEqual({ packFactor: 20, fieldUnit: "packet", baseUnit: "stick" });
@@ -184,6 +194,22 @@ describe("form to contract", () => {
     // changing the TYPE rewrites the rule on purpose: the old type's value is cleared
     const typed = save(o, (f) => ({ ...f, offer_type: "amount_per_unit", perUnit: "2" }));
     expect(typed).toMatchObject({ offer_type: "amount_per_unit", discount_mtk_per_unit: 100, discount_bp: null });
+  });
+  it("a type change pins every nulled member: free_qty to pct and to amount clear the free_qty members; a kept free_qty leaves a stored discount_bp alone", () => {
+    const fq = server({ discount_bp: 250 }); // free_qty (65 / reward 2 x 10) that also stores a percentage
+    const toPct = save(fq, (f) => ({ ...f, offer_type: "pct_discount", percent: "5" }));
+    expect(toPct).toEqual({ request_uuid: "0b6d6c0e-8a5b-4d56-9f0a-3f1d3a4b5c6d", offer_type: "pct_discount", discount_bp: 500, threshold_qty_base: null, reward_sku_id: null, reward_qty_base: null, change_reason: "A reason that is long enough" });
+    const toAmt = save(fq, (f) => ({ ...f, offer_type: "amount_per_unit", perUnit: "2" }));
+    expect(toAmt).toEqual({ request_uuid: "0b6d6c0e-8a5b-4d56-9f0a-3f1d3a4b5c6d", offer_type: "amount_per_unit", discount_mtk_per_unit: 100, discount_bp: null, threshold_qty_base: null, reward_sku_id: null, reward_qty_base: null, change_reason: "A reason that is long enough" });
+    const kept = save(fq, (f) => ({ ...f, title_en: "Renamed" }));
+    expect(kept).toEqual({ request_uuid: "0b6d6c0e-8a5b-4d56-9f0a-3f1d3a4b5c6d", title_en: "Renamed", change_reason: "A reason that is long enough" }); // discount_bp 250 untouched
+  });
+  it("reunit clears a threshold and a reward quantity that are not whole numbers in their old unit", () => {
+    const f1 = base({ offer_type: "free_qty", threshold: "1.5", rewardSku: "2", rewardQty: "x" });
+    const mixed = { ...f1, qualifying: [...f1.qualifying, { product_level: "sku" as const, product_id: 1 }], rewardSku: "1" };
+    const re = reunit(mixed, f1, deriveUnits(f1, unitOf), deriveUnits(mixed, unitOf));
+    expect([re.threshold, re.inBase.threshold]).toEqual(["", false]);
+    expect([re.rewardQty, re.inBase.reward]).toEqual(["", false]);
   });
   it("a scope round-trips: it opens as stored and a title-only edit sends no scope; an edit does not ask for the code", () => {
     const o = server({ offer_type: "pct_discount", discount_bp: 250, threshold_qty_base: null, reward_sku_id: null, reward_qty_base: null, scope: [{ node_type: "wing", node_id: 1 }, { node_type: "route", node_id: 7 }] });

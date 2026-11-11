@@ -156,7 +156,7 @@ describe("reads through the mock (contract shape)", () => {
     expect((await api(r, "/v1/admin/offers?status=bogus")).status).toBe(400);
     const one = await api(r, `/v1/admin/offers/${drafts.items[1].id}`);
     expect(one.headers.get("etag")).toBe('"1"');
-    expect((await one.json()).sku_units).toEqual([{ sku_id: 2, base_unit: "stick", pack_factor: 20, field_unit: "packet" }]);
+    expect((await one.json()).sku_units).toEqual([{ sku_id: 2, base_unit: "stick", pack_factor: 20, field_unit: "pack" }]);
     expect((await api(r, "/v1/admin/offers/9999")).status).toBe(404);
     expect((await api(await ungranted(), "/v1/admin/offers")).status).toBe(403);
     expect((await api(await as("tso334", "tso-pass-1"), "/v1/admin/offers")).status).toBe(403);

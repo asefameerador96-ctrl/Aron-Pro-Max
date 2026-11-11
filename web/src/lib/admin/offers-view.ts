@@ -2,7 +2,7 @@
 // exact taka from integer milli-taka, percent from integer basis points. Pure; used by the list, the detail and the tests.
 import { formatNumber, t, type Locale, type MessageKey } from "@/lib/i18n";
 import { formatMtkExact } from "./money";
-import { formatBp, perBaseToPerField, splitBase, unitCtx, type Offer, type OfferVersion, type OfferSkuUnit, type UnitCtx } from "./offers";
+import { formatBp, type DisplayUnit, perBaseToPerField, splitBase, unitCtx, type Offer, type OfferVersion, type OfferSkuUnit, type UnitCtx } from "./offers";
 
 type Rule = Pick<Offer, "offer_type" | "qualifying" | "discount_bp" | "discount_mtk_per_unit" | "threshold_qty_base" | "reward_sku_id" | "reward_qty_base">;
 
@@ -18,8 +18,8 @@ export function rewardUnit(r: Pick<Rule, "reward_sku_id">, units: readonly Offer
   return u ? unitCtx([u]) : null;
 }
 
-const UNIT_KEY: Record<OfferSkuUnit["field_unit"] | OfferSkuUnit["base_unit"], MessageKey> = { packet: "disc.unit.packet", box: "disc.unit.box", dozen: "disc.unit.dozen", piece: "disc.unit.piece", stick: "disc.unit.stick" };
-const QTY_KEY: Record<OfferSkuUnit["field_unit"] | OfferSkuUnit["base_unit"], MessageKey> = { packet: "disc.qty.packet", box: "disc.qty.box", dozen: "disc.qty.dozen", piece: "disc.qty.piece", stick: "disc.qty.stick" };
+const UNIT_KEY: Record<DisplayUnit | OfferSkuUnit["base_unit"], MessageKey> = { packet: "disc.unit.packet", box: "disc.unit.box", dozen: "disc.unit.dozen", piece: "disc.unit.piece", stick: "disc.unit.stick" };
+const QTY_KEY: Record<DisplayUnit | OfferSkuUnit["base_unit"], MessageKey> = { packet: "disc.qty.packet", box: "disc.qty.box", dozen: "disc.qty.dozen", piece: "disc.qty.piece", stick: "disc.qty.stick" };
 export const unitWord = (locale: Locale, u: UnitCtx | null): string => t(locale, u ? UNIT_KEY[u.fieldUnit] : "disc.unit.base");
 
 /** The SKU's own base word (stick, piece, dozen) for a field entered in base units; the generic base word when the unit is unknown. */

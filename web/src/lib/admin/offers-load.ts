@@ -8,11 +8,13 @@ import { SCOPE_NODE_TYPES } from "./offers";
 
 type NodeType = (typeof SCOPE_NODE_TYPES)[number];
 
-/** Field unit word from the SKU category, the server's derivation (OfferSkuUnit): packet / box / dozen, piece for the rest. */
+/** The server's field unit (contract 1.12.1, OfferSkuUnit): `pack` for cigarettes, bidi and lighters, `dozen` for matches, the SKU's own
+ *  base unit for any other category. The display word (packet / box) is derived in lib/admin/offers.ts displayUnit. */
 function unitOfSku(row: Record<string, unknown>): OfferSkuUnit {
   const cat = String(row.category_code) as SkuCategory;
   const known = cat in PACK_LABEL;
-  return { sku_id: Number(row.id), base_unit: (known ? BASE_UNIT_OF[cat] : String(row.base_unit)) as OfferSkuUnit["base_unit"], pack_factor: Number(row.base_per_pack ?? 1), field_unit: known ? PACK_LABEL[cat] : "piece" };
+  const base = (known ? BASE_UNIT_OF[cat] : String(row.base_unit)) as OfferSkuUnit["base_unit"];
+  return { sku_id: Number(row.id), base_unit: base, pack_factor: Number(row.base_per_pack ?? 1), field_unit: !known ? base : cat === "match" ? "dozen" : "pack" };
 }
 
 export interface OfferRefs {

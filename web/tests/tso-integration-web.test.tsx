@@ -14,6 +14,7 @@ import { UserAccessEditor } from "@/components/admin/user-access-editor";
 import { ICON_PATHS, menuIcon } from "@/components/kit/icons";
 import { NavLink } from "@/components/nav-link";
 import { navIconFor } from "@/components/nav-icons";
+import type { Schemas } from "@/contract/types";
 import { GRANT_MODULES, MODULE_KEYS, type UserAccess } from "@/lib/admin/access-grants";
 import { formatNumber, t } from "@/lib/i18n";
 import { op, req, setupMock, signIn, superadmin } from "./helpers/harness";
@@ -87,13 +88,10 @@ describe("(2) the leave decision note allows 500 characters (DecisionRequest.not
 describe("(7) support is a grant module (R-F-11) and the editor offers it", () => {
   it("GRANT_MODULES is exactly the contract's AdminModule enum, support included", () => {
     const yaml = /\n {4}AdminModule:\n {6}type: string\n {6}enum: \[([^\]]+)\]/.exec(CONTRACT)?.[1];
-    // portal-discount-web (D-DISC-WEB-01): `discounts` is the lead-agreed module of the discount portal; the contract enum gains it with
-    // Lane A's train 2 (docs/requests/contract-1.12-discount-portal.md). Until then it is the ONE module the web knows ahead of the
-    // contract. The exception removes itself: once the contract lists `discounts`, the equality below must hold with no pending module.
-    const PENDING_CONTRACT = ["discounts"].filter((m) => !(yaml?.split(",").map((s) => s.trim()) ?? []).includes(m));
-    expect(yaml?.split(",").map((s) => s.trim())).toEqual([...GRANT_MODULES].filter((m) => !PENDING_CONTRACT.includes(m)));
-    const typed: readonly string[] = GRANT_MODULES; // the Schemas["AdminModule"]-typed check returns with the enum value (see PENDING_CONTRACT)
+    expect(yaml?.split(",").map((s) => s.trim())).toEqual([...GRANT_MODULES]);
+    const typed: readonly Schemas["AdminModule"][] = GRANT_MODULES; // a module the contract does not know fails the typecheck
     expect(typed).toContain("support");
+    expect(typed).toContain("discounts"); // contract 1.12.1 lists it: the temporary exception of portal-discount-web is gone
     expect(MODULE_KEYS.support).toBe("grant.module.support");
   });
   const access: UserAccess = { user_id: 3001, role: "ADMIN", version: 2, modules: { support: "w", outlets: "r" }, brand_ids: [] };

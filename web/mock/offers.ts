@@ -19,8 +19,8 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** The two SKUs of mock/master-seed.ts, as the server derives OfferSkuUnit (cigarettes: packet of 10 / 20 sticks). */
 export const SKU_UNITS: Record<number, OfferSkuUnit> = {
-  1: { sku_id: 1, base_unit: "stick", pack_factor: 10, field_unit: "packet" },
-  2: { sku_id: 2, base_unit: "stick", pack_factor: 20, field_unit: "packet" },
+  1: { sku_id: 1, base_unit: "stick", pack_factor: 10, field_unit: "pack" },
+  2: { sku_id: 2, base_unit: "stick", pack_factor: 20, field_unit: "pack" },
 };
 
 type Version = OfferVersion;

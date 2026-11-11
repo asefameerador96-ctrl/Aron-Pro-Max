@@ -72,16 +72,25 @@ export function mtkText(mtk: number | bigint): string {
 }
 
 /** The field unit of a set of SKUs, when they all count the same way; null for none or a mix (then quantities are base units). */
+/** The WORD the field apps and the portal show for a counting unit (units rule 5, docs/34 s4.2): packet for cigarettes and bidi (sticks),
+ *  box for lighters (pieces, a box of 25), dozen for matches. The contract (1.12.1) sends the one `QtyUnit` word `pack` for both
+ *  packet and box; the label is derived from the base unit as the Android UnitWords do. */
+export type DisplayUnit = "packet" | "box" | "dozen" | "piece" | "stick";
+export function displayUnit(u: Pick<OfferSkuUnit, "field_unit" | "base_unit">): DisplayUnit {
+  if (u.field_unit === "pack") return u.base_unit === "piece" ? "box" : "packet";
+  return u.field_unit;
+}
 export interface UnitCtx {
   packFactor: number;
-  fieldUnit: OfferSkuUnit["field_unit"];
+  /** Display word (packet, box, dozen, piece, stick), derived from the server's `field_unit` and `base_unit`. */
+  fieldUnit: DisplayUnit;
   baseUnit: OfferSkuUnit["base_unit"];
 }
 export function unitCtx(units: readonly OfferSkuUnit[]): UnitCtx | null {
   const first = units[0];
   if (!first) return null;
-  const same = units.every((u) => u.pack_factor === first.pack_factor && u.field_unit === first.field_unit && u.base_unit === first.base_unit);
-  return same ? { packFactor: first.pack_factor, fieldUnit: first.field_unit, baseUnit: first.base_unit } : null;
+  const same = units.every((u) => u.pack_factor === first.pack_factor && displayUnit(u) === displayUnit(first) && u.base_unit === first.base_unit);
+  return same ? { packFactor: first.pack_factor, fieldUnit: displayUnit(first), baseUnit: first.base_unit } : null;
 }
 
 /** Field quantity text ("3", "৩") to base units: packs times pack_factor. Null when not a positive whole number or unsafe. */
