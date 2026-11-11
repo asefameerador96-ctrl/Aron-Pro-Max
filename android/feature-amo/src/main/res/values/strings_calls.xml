@@ -46,4 +46,11 @@
     <string name="amo_mf_due">Due: %1$s</string>
     <string name="amo_ps_unreadable">%1$s lines could not be read and are not shown.</string>
     <string name="amo_mf_overpaid">Over-collected: %1$s</string>
+    <string name="amo_live_cat_cigarette">Cigarette</string>
+    <string name="amo_live_cat_bidi">Bidi</string>
+    <string name="amo_live_cat_lighter">Lighter</string>
+    <string name="amo_live_cat_match">Match</string>
+    <string name="amo_live_photo_valid">Photo validation</string>
+    <string name="amo_live_memos">%1$s memos</string>
+    <string name="amo_live_geo_visits">Geo validation</string>
 </resources>

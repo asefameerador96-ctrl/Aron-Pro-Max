@@ -111,7 +111,7 @@ class SalesSubmitNightTest {
      * (c): at 360 dp and the large text of the owner's phone (1.3, the table is not stacked below 1.5) the headers stay on one
      * line (the screenshot showed "Devic e / Serve r").
      */
-    @Test fun theHeaderFitsAt360InEnglish() = headerOnOneLine(AppLanguage.EN, "Item", "Phone", "Server")
+    @Test fun theHeaderFitsAt360InEnglish() = headerOnOneLine(AppLanguage.EN, "Item", "Device", "Server")
 
     @Test fun theHeaderFitsAt360InBangla() = headerOnOneLine(AppLanguage.BN, "বিষয়", "ডিভাইস", "সার্ভার")
 }

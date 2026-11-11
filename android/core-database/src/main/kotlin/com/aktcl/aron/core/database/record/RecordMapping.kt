@@ -121,6 +121,8 @@ object RecordMapping {
         StockMovementPayload(e.kind, e.skuId, int(e.qtyEntered), e.unitEntered, e.packFactor, int(e.qtyBase), e.reasonCode, e.slipPrinted),
     )
 
+    private val USER_FORCE_REASONS = setOf("internet_problem", "location_change")
+
     fun visit(e: VisitEntity, fix: GeoFixEntity, createdAt: String) = outbox(
         RecordType.VISIT, e.clientUuid, e.clientUuid, 0, e.meta, createdAt,
         VisitPayload.serializer(),
@@ -131,6 +133,8 @@ object RecordMapping {
                 e.geoVerdict, e.geoDistanceM, e.geoRadiusMUsed, e.geoMaxAccuracyMUsed, e.geoLocationBasis,
                 coord(e.geoOutletLat), coord(e.geoOutletLng), e.geoAction, e.geoForceReasonCode, e.geoForcePhotoUuid,
             ),
+            // contract 1.11.1: only with a force sale, and only the user's two reasons; `no_outlet_location` stays a geo field (D-AMO-CALLS-07/09)
+            forceSaleReason = e.geoForceReasonCode?.takeIf { e.geoAction == "force_sale" && it in USER_FORCE_REASONS },
         ),
     )
 

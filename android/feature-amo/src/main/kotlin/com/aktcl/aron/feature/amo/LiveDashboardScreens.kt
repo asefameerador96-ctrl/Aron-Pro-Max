@@ -19,6 +19,24 @@ import com.aktcl.aron.core.ui.localizedNumber
 @Composable
 private fun pctText(v: Double?): String = LiveDashboard.pct(v)?.let { localizedDigits("$it %") } ?: stringResource(R.string.amo_live_dash)
 
+@Composable
+private fun liveCategoryName(code: String): String = when (code) {
+    "cigarette" -> stringResource(R.string.amo_live_cat_cigarette)
+    "bidi" -> stringResource(R.string.amo_live_cat_bidi)
+    "lighter" -> stringResource(R.string.amo_live_cat_lighter)
+    "match" -> stringResource(R.string.amo_live_cat_match)
+    else -> code
+}
+
+/** "62.5 packets": the exact quantity text in the field unit (digits localised, never rounded). */
+@Composable
+private fun liveCategoryQty(c: LiveCategory): String = localizedDigits(c.qtyText) + " " + fieldUnitWord(c.unitKey)
+
+/** "80,000.00 ৳ · 4 memos": the category's money and, when the server has it, its memo count. */
+@Composable
+private fun liveCategoryMoney(c: LiveCategory, money: (Long) -> String): String =
+    money(c.netMtk) + (c.memos?.let { " · " + stringResource(R.string.amo_live_memos, localizedNumber(it)) } ?: "")
+
 /** F-AMO-020: the zone's figures with an as-of stamp. [scopeLabel] names the filter in force; [money] formats milli-taka in the user's digits. */
 @Composable
 fun LiveDashboardContent(
@@ -37,6 +55,11 @@ fun LiveDashboardContent(
                 AmoCard(title = stringResource(R.string.amo_live_sales)) {
                     AmoFigure(stringResource(R.string.amo_live_gross), money(f.grossMtk))
                     AmoFigure(stringResource(R.string.amo_live_net), money(f.netMtk))
+                    // the volume per category in the field unit (packets, boxes of 25, dozens), exact text, with its money and memo count (contract 1.11.1)
+                    f.categories.forEach { c ->
+                        AmoFigure(liveCategoryName(c.code), liveCategoryQty(c))
+                        androidx.compose.material3.Text(liveCategoryMoney(c, money), style = amoText(13, color = com.aktcl.aron.core.ui.LocalAronLook.current.inkMuted), modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                    }
                 }
                 AmoCard(title = stringResource(R.string.amo_live_strike)) {
                     AmoFigure(stringResource(R.string.amo_live_visited), stringResource(R.string.amo_live_x_of_y, localizedNumber(f.visitedOutlets), localizedNumber(f.targetOutlets)))
@@ -48,6 +71,8 @@ fun LiveDashboardContent(
                 }
                 AmoCard(title = stringResource(R.string.amo_live_geo)) {
                     AmoFigure(stringResource(R.string.amo_live_geo_valid), pctText(f.geoValidPct))
+                    if (f.geoValidVisits != null && f.visitsTotal != null) AmoFigure(stringResource(R.string.amo_live_geo_visits), stringResource(R.string.amo_live_x_of_y, localizedNumber(f.geoValidVisits), localizedNumber(f.visitsTotal)))
+                    if (f.photoValidVisits != null && f.visitsTotal != null) AmoFigure(stringResource(R.string.amo_live_photo_valid), stringResource(R.string.amo_live_x_of_y, localizedNumber(f.photoValidVisits), localizedNumber(f.visitsTotal)))
                     AmoFigure(stringResource(R.string.amo_live_force), pctText(f.forceSalePct))
                     AmoFigure(stringResource(R.string.amo_live_mock), localizedNumber(f.mockVisits))
                     AmoFigure(stringResource(R.string.amo_live_suspicious), localizedNumber(f.suspiciousVisits))
