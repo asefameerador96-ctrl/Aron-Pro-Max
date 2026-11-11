@@ -377,6 +377,9 @@ object FreeSampleReport : ReportHandler {
  * `route_target_value_mtk` the route's whole target (repeated on every row of the route like `net_mtk`), from `app.route_monthly_target` of the Dhaka
  * month of the period's last day (D-TARGET-MIN-01); null when no target row exists. The value is the target quantity priced at the outlet price in
  * force on that day, half up per SKU row; a target SKU without a price adds nothing to the value.
+ * Contract 1.11.2 (D-AMO-FND-16): `memos_cigarette`, `memos_bidi`, `memos_match`, `memos_lighter` are the route's accepted (active) memos with at least
+ * one sale line of the category in the report window, each memo once per category (a memo of two categories counts once in each), repeated on every row
+ * of the route like `net_mtk`; same definition as CategoryVolume.memos, over from/to.
  */
 object SalesSummaryReport : ReportHandler {
     override val roles = REPORT_ROLES + Role.AMO
@@ -388,6 +391,8 @@ object SalesSummaryReport : ReportHandler {
             col("brand_memos", "Memos with brand", "integer"), col("bsr_pct", "BSR %", "pct", unit = "%"),
             col("target_qty_base", "Brand target (base units)", "integer"), col("target_value_mtk", "Brand target value", "mtk", unit = "mtk"),
             col("route_target_qty_base", "Route target (base units)", "integer"), col("route_target_value_mtk", "Route target value", "mtk", unit = "mtk"),
+            col("memos_cigarette", "Memos with cigarette", "integer"), col("memos_bidi", "Memos with bidi", "integer"),
+            col("memos_match", "Memos with match", "integer"), col("memos_lighter", "Memos with lighter", "integer"),
         ),
         listOf("period", "geo"),
     )
@@ -405,11 +410,17 @@ object SalesSummaryReport : ReportHandler {
                                      ORDER BY x.valid_from DESC LIMIT 1) pr ON true
                 WHERE t.month = date_trunc('month', CAST(:to AS timestamp))::date GROUP BY 1, 2),
         tr AS (SELECT route_id, sum(q)::bigint AS q, sum(v)::bigint AS v FROM tg GROUP BY 1),
+        cm AS (SELECT l.route_id,
+                      count(DISTINCT l.memo_client_uuid) FILTER (WHERE cp.category_code = 'cigarette')::int AS m_cig, count(DISTINCT l.memo_client_uuid) FILTER (WHERE cp.category_code = 'bidi')::int AS m_bidi,
+                      count(DISTINCT l.memo_client_uuid) FILTER (WHERE cp.category_code = 'match')::int AS m_match, count(DISTINCT l.memo_client_uuid) FILTER (WHERE cp.category_code = 'lighter')::int AS m_lighter
+                 FROM dw.fact_memo_line l JOIN dw.dim_product cp ON cp.sku_id = l.sku_id
+                WHERE ${ctx.dateClause("l.business_date")} AND l.line_kind = 'sale' AND NOT l.voided AND l.memo_status = 'active' AND l.route_id IN (SELECT route_id FROM rt) GROUP BY 1),
         bb AS (SELECT route_id, brand_id FROM br UNION SELECT route_id, brand_id FROM tg)
         SELECT g.route_code, rt.route_id, g.route_name, coalesce(rt.t, 0)::int AS target_outlets, rt.sc::int AS successful_calls, round(100.0 * rt.sc / nullif(rt.t, 0), 2) AS cpr_pct,
                rt.memos::int AS memos, rt.net::bigint AS net_mtk, p.brand_name, br.bm::int AS brand_memos, round(100.0 * br.bm / nullif(rt.memos, 0), 2) AS bsr_pct,
-               tg.q AS target_qty_base, tg.v AS target_value_mtk, tr.q AS route_target_qty_base, tr.v AS route_target_value_mtk
-          FROM rt JOIN dw.dim_geo g ON g.route_id = rt.route_id LEFT JOIN bb ON bb.route_id = rt.route_id
+               tg.q AS target_qty_base, tg.v AS target_value_mtk, tr.q AS route_target_qty_base, tr.v AS route_target_value_mtk,
+               coalesce(cm.m_cig, 0) AS memos_cigarette, coalesce(cm.m_bidi, 0) AS memos_bidi, coalesce(cm.m_match, 0) AS memos_match, coalesce(cm.m_lighter, 0) AS memos_lighter
+          FROM rt JOIN dw.dim_geo g ON g.route_id = rt.route_id LEFT JOIN cm ON cm.route_id = rt.route_id LEFT JOIN bb ON bb.route_id = rt.route_id
           LEFT JOIN br ON br.route_id = bb.route_id AND br.brand_id = bb.brand_id
           LEFT JOIN tg ON tg.route_id = bb.route_id AND tg.brand_id = bb.brand_id LEFT JOIN tr ON tr.route_id = rt.route_id
           LEFT JOIN LATERAL (SELECT coalesce((SELECT name FROM app.product_node WHERE id = bb.brand_id), 'n' || bb.brand_id) AS brand_name) p ON true

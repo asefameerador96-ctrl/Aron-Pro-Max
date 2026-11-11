@@ -133,6 +133,31 @@ ALTER TABLE app.visit ENABLE TRIGGER USER;
         assertEquals(HttpStatusCode.Forbidden, run(12, Role.AMO, "dss").status)
     }
 
+    /** Contract 1.11.2 (D-AMO-FND-16): memos per category on the route, each memo once per category, over the report window; checked against an independent count of the dw memo lines. */
+    @Test
+    fun salesSummaryCarriesTheRoutesMemosPerCategoryOverTheWindow() = app {
+        val rows = run(10, Role.ANALYST, "sales-summary").result().rows()
+        val oracle = fresh.db.jdbi.withHandle<Map<String, Map<String, Int>>, Exception> { h ->
+            h.createQuery(
+                """
+                SELECT g.route_code, p.category_code, count(DISTINCT l.memo_client_uuid)::int
+                  FROM dw.fact_memo_line l JOIN dw.dim_product p ON p.sku_id = l.sku_id JOIN dw.dim_geo g ON g.route_id = l.route_id
+                 WHERE l.business_date BETWEEN DATE '2026-10-01' AND DATE '2026-10-31' AND l.line_kind = 'sale' AND NOT l.voided AND l.memo_status = 'active' GROUP BY 1, 2
+                """,
+            ).map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getInt(3)) }.list().groupBy({ it.first }) { it.second to it.third }.mapValues { it.value.toMap() }
+        }
+        assertTrue(oracle.isNotEmpty(), "the fixture has sale lines")
+        for (route in rows.map { it.str("route_code")!! }.toSet()) {
+            val mine = rows.filter { it.str("route_code") == route }
+            for (cat in listOf("cigarette", "bidi", "match", "lighter")) {
+                val expected = oracle[route]?.get(cat) ?: 0
+                assertTrue(mine.all { it.num("memos_$cat").toInt() == expected }, "$route $cat: every row of the route repeats $expected: ${mine.map { it.num("memos_$cat") }}")
+            }
+        }
+        // a window that holds no sale: every column is 0, the rows themselves follow the other aggregates
+        assertTrue(oracle.values.any { it.values.any { n -> n > 0 } })
+    }
+
     /** Contract 1.11.0 (D-AMO-FND-09): target columns per route x brand and per route; null when the route has no target; value = quantity x outlet price, half up. */
     @Test
     fun salesSummaryTargetColumnsAreNullWithoutATargetAndPriceTheTargetQuantity() = app {

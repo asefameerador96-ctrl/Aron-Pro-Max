@@ -387,6 +387,53 @@ class TargetAchievementTest {
         block()
     }
 
+    // ------------------------------------------------------------------------------------------------ contract 1.11.2 (D-AMO-FND-16)
+
+    private fun <T> withPackUnits(block: () -> T): T {
+        sql("UPDATE app.sku SET entry_unit_default = 'pack' WHERE category_code IN ('cigarette', 'bidi', 'lighter')")
+        try { return block() } finally { sql("UPDATE app.sku SET entry_unit_default = base_unit WHERE category_code IN ('cigarette', 'bidi', 'lighter')") }
+    }
+
+    @Test
+    fun rowsCarryTheirQuantitiesInFieldUnitsSummedAfterConversionPerSku() = withPackUnits {
+        val rows = ask(23).rows
+        val cig = rows.of("Cigarette")
+        // 40999 sticks in all, of which 3000 are Marise 10s: (40999 - 3000) / 20 + 3000 / 10, never 40999 / 20 or 40999 / 10
+        assertEquals("pack", cig.reportUnit); assertEquals("2199.950", cig.targetQtyReport); assertEquals(40_999L, cig.targetQtyBase)
+        assertEquals("pack", rows.of("Bidi").reportUnit); assertEquals("440.000", rows.of("Bidi").targetQtyReport)       // 11000 sticks in packets of 25
+        assertEquals("box", rows.of("Lighter").reportUnit); assertEquals("4.000", rows.of("Lighter").targetQtyReport)  // 100 pieces: 4 boxes of 25
+        assertEquals("dozen", rows.of("Match").reportUnit); assertEquals("170.000", rows.of("Match").targetQtyReport)
+        // the SKU rows: Marise 10s alone is 3000 / 10 packets and its till-date share (3000 x 25 / 31 = 2419) / 10
+        val sku = ask(23, product = "sku").rows
+        val ten = sku.of("Marise Special Blend 10s")
+        assertEquals("pack", ten.reportUnit); assertEquals("300.000", ten.targetQtyReport)
+        assertEquals(java.math.BigDecimal(ten.tilldateTargetQtyBase!!).divide(java.math.BigDecimal(10)).setScale(3).toPlainString(), ten.tilldateTargetQtyReport)
+        // remaining is max(T - A, 0) in the report unit; the base members are untouched
+        for (r in rows) assertTrue(java.math.BigDecimal(r.remainingQtyReport!!) == (java.math.BigDecimal(r.targetQtyReport!!) - java.math.BigDecimal(r.achievedQtyReport!!)).max(java.math.BigDecimal.ZERO), r.name)
+    }
+
+    @Test
+    fun withoutPackCountingTheFieldUnitIsTheBaseUnitAndTheReportQuantitiesEqualTheBaseOnes() {
+        val cig = ask(23).rows.of("Cigarette")
+        assertEquals("stick", cig.reportUnit); assertEquals("40999.000", cig.targetQtyReport); assertEquals(cig.targetQty, cig.targetQtyReport)
+    }
+
+    @Test
+    fun levelRouteAnswersOneRouteOfTheReachAndRefusesOthers() {
+        val r1 = ids.getValue("R1")
+        val a = ask(23, level = "route", node = r1)
+        assertEquals("route", a.node.type); assertEquals(r1, a.node.id)
+        val expected = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT coalesce(sum(qty_base), 0) FROM app.route_monthly_target WHERE route_id = :r AND month = DATE '2026-10-01'").bind("r", r1).mapTo(Long::class.java).one() }
+        assertEquals(expected, a.rows.sumOf { it.targetQtyBase }, "the route's own target, not the zone's")
+        // a route outside the reach (R4), an unknown route, a missing node_id and children at a route
+        for (node in listOf(ids.getValue("R4"), 987_654L)) {
+            val e = assertFailsWith<ApiProblem> { ask(23, level = "route", node = node) }
+            assertEquals(ProblemCode.ERR_OUT_OF_SCOPE, e.code, "route $node")
+        }
+        assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { ask(23, level = "route", node = null) }.code)
+        assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { ask(23, level = "route", node = r1, children = "zone") }.code)
+    }
+
     private suspend fun ApplicationTestBuilder.get(uid: Long, path: String): HttpResponse =
         client.get(path) { bearerAuth(TestTokens.web(uid, reaches.getValue(uid).role)) }
 
