@@ -2355,3 +2355,6 @@
 
 ### 2026-11-11 05:21 UTC — train 88 landing check-in #1 (lead): deploy #326 still running
 - Deploy 42964386174 on INT 2ffcfd0ba in progress since 05:14; no "train 88 landed" yet. Check-in re-armed for 06:00 UTC; the deploy watch and the integrator's report wake the lead earlier. Nothing needs the owner.
+
+### 2026-11-11 05:36 UTC — train 88 deploy #326 success; train 88 live on dev (lead record)
+- Deploy 42964386174 (#326) on INT 2ffcfd0ba: completed success 05:36:22 (job 130338097463); health build 2ffcfd0ba. Lead verified by git (INT contains ff7330467), API (ci #1950 + deploy #326 success) and health. Waiting for integrator 23's verbatim report (smoke, worker revision, APK) before the landing actions (INT line, lanes told, archives, A2 #4 docs-only follow-up).
