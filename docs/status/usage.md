@@ -2352,3 +2352,6 @@
 
 ### 2026-11-11 05:15 UTC — INT ci #1950 green; deploy #326 (REAL, no migrations) running (lead record)
 - ci 42960538648 (#1950) on INT 2ffcfd0ba (train 88): completed success 05:14 (11 success, 1 skipped). Deploy 42964386174 (#326) started 05:13:58 — the real no-migration deploy with contract 1.11.2 (backend image + worker; dblogins/seed/smoke). Lead background watch on the deploy; landing check-in 05:20 armed.
+
+### 2026-11-11 05:21 UTC — train 88 landing check-in #1 (lead): deploy #326 still running
+- Deploy 42964386174 on INT 2ffcfd0ba in progress since 05:14; no "train 88 landed" yet. Check-in re-armed for 06:00 UTC; the deploy watch and the integrator's report wake the lead earlier. Nothing needs the owner.
