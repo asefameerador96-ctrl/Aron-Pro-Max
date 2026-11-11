@@ -15,7 +15,7 @@ data class LiveFigures(
     val geoValidPct: Double?, val forceSalePct: Double?, val mockVisits: Long, val suspiciousVisits: Long,
     val targetRoutes: Long, val loggedInRoutes: Long, val loginPct: Double?, val submittedRoutes: Long, val submitPct: Double?,
     val notLoggedIn: List<Long>, val loggedInNotSubmitted: List<Long>, val submitted: List<Long>,
-    /** AMO-only members of `GET /v1/dashboards/login-submit` (contract 1.11.0): null before the server sends them. */
+    /** AMO-only members of `GET /v1/dashboards/login-submit` (contract 1.11.0, the category volumes 1.11.1): null before the server sends them. */
     val geoValidVisits: Long? = null, val photoValidVisits: Long? = null, val visitsTotal: Long? = null,
     val categories: List<LiveCategory> = emptyList(),
 )

@@ -56,14 +56,17 @@ class UnitWordsTest {
         val body = """{"lines":[{"sku":{"sku_id":11,"short_name":"MaxR-10S"},"qty_report":"10.000","report_unit":"pack","qty_base":100,"value_mtk":80000000},
           {"sku":{"sku_id":12,"short_name":"SL"},"qty_report":"3.000","report_unit":"pack","qty_base":75,"value_mtk":1},
           {"sku":{"sku_id":13,"short_name":"FB"},"qty_report":"4.000","report_unit":"dozen","qty_base":4,"value_mtk":1},
-          {"sku":{"sku_id":14,"short_name":"NoUnit"},"qty_report":"7.000","qty_base":7,"value_mtk":1}]}"""
-        val skus = mapOf(11L to SkuInfo("MaxR-10S", null, "cigarette"), 12L to SkuInfo("SL", null, "lighter"), 13L to SkuInfo("FB", null, "match"), 14L to SkuInfo("NoUnit", null, "cigarette"))
+          {"sku":{"sku_id":14,"short_name":"NoUnit"},"qty_report":"7.000","qty_base":7,"value_mtk":1},
+          {"sku":{"sku_id":15,"short_name":"One"},"qty_report":"1.000","report_unit":"pack","qty_base":20,"value_mtk":1}]}"""
+        val skus = mapOf(11L to "cigarette", 12L to "lighter", 13L to "match", 14L to "cigarette", 15L to "cigarette")
         val h = PreviousSales.withCategories(PreviousSales.parseServer(body, "2026-11-10")!!, skus)
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
         compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { PreviousSalesContent("2026-11-10", "2026-11-10", h, onShift = {}) } } }
         compose.onNodeWithText("10 packets").assertExists()
         compose.onNodeWithText("3 boxes").assertExists() // a lighter is a box of 25, not packets
         compose.onNodeWithText("4 dozen").assertExists()
-        compose.onNodeWithText("7 stick", substring = true).assertDoesNotExist() // no unit sent: none invented
+        compose.onNodeWithText("7").assertExists() // no unit sent: the quantity alone, no trailing space, none invented
+        compose.onNodeWithText("7 stick", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("1 packet").assertExists() // English singular for exactly one
     }
 }

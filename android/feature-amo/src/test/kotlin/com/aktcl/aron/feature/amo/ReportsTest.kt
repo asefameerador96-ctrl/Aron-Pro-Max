@@ -67,7 +67,7 @@ class ReportsTest {
             """{"route_code":"R2","category_name":null,"base_unit":null,"sold_qty_base":null,"gross_mtk":7}""",
         ))!!
         assertEquals(
-            listOf(RouteCategory("R1", "Cigarette", 150, "stick", 1500), RouteCategory("R1", "Other", null, null, 30), RouteCategory("R2", "", null, null, 7)),
+            listOf(RouteCategory("R1", "cigarette", 150, "stick", 1500), RouteCategory("R1", "Other", null, null, 30), RouteCategory("R2", "", null, null, 7)),
             Reports.routeCategories(r),
         )
     }

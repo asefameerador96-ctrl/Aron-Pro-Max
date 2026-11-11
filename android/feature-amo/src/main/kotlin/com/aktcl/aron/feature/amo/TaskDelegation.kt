@@ -9,6 +9,7 @@ import kotlinx.serialization.json.longOrNull
 import java.time.LocalDate
 
 data class TeamSr(val userId: Long, val name: String, val routeIds: List<Long>)
+enum class TaskChip { RUNNING, DONE, CANCELLED, OVERDUE, WAITING, REJECTED }
 data class TaskType(val code: String, val labelEn: String, val labelBn: String?)
 
 /** A task the AMO assigned: from the server, or still only on this phone ([waiting]). */
@@ -21,12 +22,47 @@ data class AssignedTask(
     val description: String? = null,
 )
 
-enum class AssignError { ASSIGNEE_REQUIRED, TYPE_REQUIRED, OUTLET_REQUIRED, DATE_INVALID, TEXT_TOO_LONG }
+enum class AssignError { ASSIGNEE_REQUIRED, TYPE_REQUIRED, OUTLET_REQUIRED, DATE_INVALID, TEXT_TOO_LONG, DESCRIPTION_REQUIRED, ROUTE_REQUIRED }
 
 /** Pure rules of Task Delegation (F-AMO-018/019). The assign form queues a `task` record offline; the list reads the server with a kept copy. */
 object TaskDelegation {
     const val MAX_DESCRIPTION = 1000
     const val MAX_TITLE = 120
+
+    /** The single-page form of screenshot 38: the description is required and at most this long (R11). */
+    const val MAX_FORM_DESCRIPTION = 500
+
+    /**
+     * The assign form of screenshot 38: a route, an outlet, an SR on that route, a type, a completion date from [today] on (never in the
+     * past) and a description that is not blank and at most [MAX_FORM_DESCRIPTION] characters.
+     */
+    fun validateForm(routeId: Long?, outletId: Long?, assigneeId: Long?, typeCode: String?, dueDate: String?, description: String?, today: String): Set<AssignError> = buildSet {
+        if (routeId == null) add(AssignError.ROUTE_REQUIRED)
+        if (outletId == null) add(AssignError.OUTLET_REQUIRED)
+        if (assigneeId == null) add(AssignError.ASSIGNEE_REQUIRED)
+        if (typeCode == null) add(AssignError.TYPE_REQUIRED)
+        val d = dueDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        if (d == null || d.isBefore(LocalDate.parse(today))) add(AssignError.DATE_INVALID)
+        val t = description?.trim().orEmpty()
+        if (t.isEmpty()) add(AssignError.DESCRIPTION_REQUIRED)
+        if (t.length > MAX_FORM_DESCRIPTION) add(AssignError.TEXT_TOO_LONG)
+    }
+
+    /** The form draft key: route and outlet only. The SR can be replaced by the online members list while the form is open; the record's id must not change with it. */
+    fun draftKey(routeId: Long?, outletId: Long?): String = "task:route=$routeId:outlet=$outletId"
+
+    /** The chip of a task: ongoing past its completion date reads overdue. [today] is the Dhaka business date. */
+    fun chip(t: AssignedTask, today: String?): TaskChip = when {
+        t.rejected -> TaskChip.REJECTED
+        t.waiting -> TaskChip.WAITING
+        t.status == "completed" -> TaskChip.DONE
+        t.status == "cancelled" -> TaskChip.CANCELLED
+        today != null && t.dueDate != null && t.dueDate < today -> TaskChip.OVERDUE
+        else -> TaskChip.RUNNING
+    }
+
+    /** The alphabet bar of the outlet list: the upper-case initials present, sorted (screenshot 38 shows only letters that have outlets). */
+    fun letters(names: List<String>): List<String> = names.mapNotNull { it.trim().firstOrNull()?.uppercaseChar()?.toString() }.distinct().sorted()
 
     private fun str(o: JsonObject, k: String) = (o[k] as? JsonPrimitive)?.contentOrNull
     private fun lng(o: JsonObject, k: String) = (o[k] as? JsonPrimitive)?.longOrNull

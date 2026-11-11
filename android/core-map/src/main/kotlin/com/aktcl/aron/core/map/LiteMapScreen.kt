@@ -104,10 +104,15 @@ fun LiteMapScreen(
     staleAfterMin: Int = FixAge.DEFAULT_STALE_AFTER_MIN,
     interactive: Boolean = false,
     circle: MapCircle? = null,
+    /** AMO Team Location (screenshot 33, R11): the rider marker of ours, the compass and the my-location button, and the pin to centre on with its bubble open. All off by default (the TSO maps are unchanged). */
+    riderMarker: Boolean = false,
+    compass: Boolean = false,
+    myLocation: Boolean = false,
+    focusId: String? = null,
 ) {
     val mode = mapModeOf(online, settings, keyPresent, points)
     if (mode == MapMode.LIVE && interactive) {
-        InteractiveMap(points, nowMs, staleAfterMin, circle, cache, cacheKey, modifier.fillMaxSize())
+        InteractiveMap(points, nowMs, staleAfterMin, circle, cache, cacheKey, modifier.fillMaxSize(), riderMarker, compass, myLocation, focusId)
         return
     }
     Column(modifier.fillMaxSize()) {
@@ -172,32 +177,48 @@ private fun pointLine(p: MapPoint, nowMs: Long, staleAfterMin: Int): String? {
  */
 @OptIn(MapsComposeExperimentalApi::class)
 @Composable
-private fun InteractiveMap(points: List<MapPoint>, nowMs: Long, staleAfterMin: Int, circle: MapCircle?, cache: MapTileCache?, cacheKey: String, modifier: Modifier) {
+private fun InteractiveMap(
+    points: List<MapPoint>, nowMs: Long, staleAfterMin: Int, circle: MapCircle?, cache: MapTileCache?, cacheKey: String, modifier: Modifier,
+    riderMarker: Boolean, compass: Boolean, myLocation: Boolean, focusId: String?,
+) {
     val shown = remember(points) { points.filter { it.located }.take(MAX_INTERACTIVE_MARKERS) }
     val frame = remember(shown, circle) { MapFrame.of(shown, circle) } ?: return
     val camera = rememberCameraPositionState { position = CameraPosition.fromLatLngZoom(LatLng(frame.lat, frame.lng), frame.zoom) }
-    LaunchedEffect(frame) { camera.move(CameraUpdateFactory.newLatLngZoom(LatLng(frame.lat, frame.lng), frame.zoom)) }
+    val focus = focusId?.let { id -> shown.firstOrNull { it.id == id } }
+    LaunchedEffect(frame, focus?.id) {
+        if (focus != null) camera.animate(CameraUpdateFactory.newLatLngZoom(LatLng(focus.lat!!, focus.lng!!), FOCUS_ZOOM))
+        else camera.move(CameraUpdateFactory.newLatLngZoom(LatLng(frame.lat, frame.lng), frame.zoom))
+    }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // my-location needs the permission the day already holds; without it the layer stays off instead of crashing
+    val located = myLocation && androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
     val lines = shown.associate { it.id to pointLine(it, nowMs, staleAfterMin) }
     val ring = com.aktcl.aron.core.ui.LocalAronLook.current.purple
     GoogleMap(
         modifier = modifier.testTag(LiteMapTags.MAP),
         cameraPositionState = camera,
         googleMapOptionsFactory = { GoogleMapOptions().liteMode(false).mapToolbarEnabled(false) },
-        properties = MapProperties(isMyLocationEnabled = false, isBuildingEnabled = false, isIndoorEnabled = false),
+        properties = MapProperties(isMyLocationEnabled = located, isBuildingEnabled = false, isIndoorEnabled = false),
         uiSettings = MapUiSettings(
-            mapToolbarEnabled = false, zoomControlsEnabled = true, myLocationButtonEnabled = false, compassEnabled = false,
+            mapToolbarEnabled = false, zoomControlsEnabled = true, myLocationButtonEnabled = located, compassEnabled = compass,
             tiltGesturesEnabled = false, rotationGesturesEnabled = false, scrollGesturesEnabled = true, zoomGesturesEnabled = true,
             indoorLevelPickerEnabled = false,
         ),
     ) {
         if (circle != null) Circle(center = LatLng(circle.lat, circle.lng), radius = circle.radiusM.toDouble(), fillColor = ring.copy(alpha = 0.14f), strokeColor = ring, strokeWidth = 3f)
+        // built inside the map content: the Maps SDK is initialised by then (BitmapDescriptorFactory needs it)
+        val rider = if (riderMarker) remember { riderIcon(context, false) } else null
+        val riderStale = if (riderMarker) remember { riderIcon(context, true) } else null
         shown.forEach { p ->
             key(p.id) {
                 val stale = p.kind == MapPointKind.PERSON && FixAge.of(p.fixAtMs, nowMs, staleAfterMin).let { it == null || it.stale }
+                val markerState = rememberUpdatedMarkerState(position = LatLng(p.lat!!, p.lng!!))
+                if (p.id == focus?.id) LaunchedEffect(p.id) { markerState.showInfoWindow() }
                 Marker(
-                    state = rememberUpdatedMarkerState(position = LatLng(p.lat!!, p.lng!!)), title = p.label, snippet = lines[p.id],
-                    alpha = if (stale) STALE_ALPHA else 1f, icon = BitmapDescriptorFactory.defaultMarker(hueOf(p.kind)),
+                    state = markerState, title = p.label, snippet = lines[p.id],
+                    alpha = if (stale && rider == null) STALE_ALPHA else 1f,
+                    icon = if (rider != null && p.kind == MapPointKind.PERSON) (if (stale) riderStale else rider) else BitmapDescriptorFactory.defaultMarker(hueOf(p.kind)),
                 )
             }
         }
@@ -208,6 +229,18 @@ private fun InteractiveMap(points: List<MapPoint>, nowMs: Long, staleAfterMin: I
         }
     }
 }
+
+/** The rider drawable as a map icon (purple; grey after the stale age); drawn once per screen. */
+private fun riderIcon(context: android.content.Context, grey: Boolean): com.google.android.gms.maps.model.BitmapDescriptor? = runCatching {
+    val d = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.aron_map_rider)!!.mutate()
+    val px = (40 * context.resources.displayMetrics.density).toInt()
+    val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+    val c = android.graphics.Canvas(bmp); d.setBounds(0, 0, px, px)
+    // stale: the same drawing without colour (saturation 0), so an old fix reads grey and not just fainter
+    if (grey) { val cm = android.graphics.ColorMatrix().apply { setSaturation(0f) }; d.colorFilter = android.graphics.ColorMatrixColorFilter(cm) }
+    d.draw(c)
+    BitmapDescriptorFactory.fromBitmap(bmp)
+}.getOrNull()
 
 /** Pin colours: people azure, outlets red (the map default), the TSO's own fix green. */
 internal fun hueOf(kind: MapPointKind): Float = when (kind) {
@@ -252,6 +285,7 @@ private fun encode(bmp: Bitmap): ByteArray = ByteArrayOutputStream().use { out -
 
 /** Lite mode draws every marker into one image; more than this is clutter on a 360 dp screen and costs memory. */
 const val MAX_MARKERS = 100
+private const val FOCUS_ZOOM = 16f
 
 /** The interactive map draws pins one by one and can zoom in, so it holds a whole Retailer answer (server cap 300). */
 const val MAX_INTERACTIVE_MARKERS = 300
