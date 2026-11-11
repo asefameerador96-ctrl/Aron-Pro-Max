@@ -906,7 +906,7 @@ Source: contract/openapi.yaml, version 1.11.2.
 - `operations/pullDeviceCommands.yaml`  GET /v1/devices/me/commands (766 B)
 - `operations/ackDeviceCommand.yaml`  POST /v1/devices/me/commands/{command_id}/ack (964 B)
 
-- `components-parameters.yaml` (7490 B)
+- `components-parameters.yaml` (7571 B)
 
 - `components-responses.yaml` (4921 B)
 

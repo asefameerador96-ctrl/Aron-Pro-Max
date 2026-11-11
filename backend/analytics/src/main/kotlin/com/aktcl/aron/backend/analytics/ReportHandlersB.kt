@@ -379,7 +379,7 @@ object FreeSampleReport : ReportHandler {
  * force on that day, half up per SKU row; a target SKU without a price adds nothing to the value.
  * Contract 1.11.2 (D-AMO-FND-16): `memos_cigarette`, `memos_bidi`, `memos_match`, `memos_lighter` are the route's accepted (active) memos with at least
  * one sale line of the category in the report window, each memo once per category (a memo of two categories counts once in each), repeated on every row
- * of the route like `net_mtk`; same definition as CategoryVolume.memos, over from/to.
+ * of the route like `net_mtk`; same counting rule as CategoryVolume.memos, over from/to, on the route-days the report itself includes (zone and route scope per day); the category is the SKU's current one.
  */
 object SalesSummaryReport : ReportHandler {
     override val roles = REPORT_ROLES + Role.AMO
@@ -414,7 +414,7 @@ object SalesSummaryReport : ReportHandler {
                       count(DISTINCT l.memo_client_uuid) FILTER (WHERE cp.category_code = 'cigarette')::int AS m_cig, count(DISTINCT l.memo_client_uuid) FILTER (WHERE cp.category_code = 'bidi')::int AS m_bidi,
                       count(DISTINCT l.memo_client_uuid) FILTER (WHERE cp.category_code = 'match')::int AS m_match, count(DISTINCT l.memo_client_uuid) FILTER (WHERE cp.category_code = 'lighter')::int AS m_lighter
                  FROM dw.fact_memo_line l JOIN dw.dim_product cp ON cp.sku_id = l.sku_id
-                WHERE ${ctx.dateClause("l.business_date")} AND l.line_kind = 'sale' AND NOT l.voided AND l.memo_status = 'active' AND l.route_id IN (SELECT route_id FROM rt) GROUP BY 1),
+                WHERE ${ctx.dateClause("l.business_date")} AND l.line_kind = 'sale' AND NOT l.voided AND l.memo_status = 'active' AND (l.route_id, l.business_date) IN (SELECT d.route_id, d.business_date FROM dw.agg_daily_route d WHERE ${ctx.dateClause("d.business_date")} AND ${ctx.zoneClause("d.zone_id")} AND ${ctx.routeClause("d.route_id")}) GROUP BY 1),
         bb AS (SELECT route_id, brand_id FROM br UNION SELECT route_id, brand_id FROM tg)
         SELECT g.route_code, rt.route_id, g.route_name, coalesce(rt.t, 0)::int AS target_outlets, rt.sc::int AS successful_calls, round(100.0 * rt.sc / nullif(rt.t, 0), 2) AS cpr_pct,
                rt.memos::int AS memos, rt.net::bigint AS net_mtk, p.brand_name, br.bm::int AS brand_memos, round(100.0 * br.bm / nullif(rt.memos, 0), 2) AS bsr_pct,

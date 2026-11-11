@@ -11333,7 +11333,7 @@ export interface components {
         ZoneIdQueryRequired: components["schemas"]["Id"];
         /** @description Narrowing selector; must be inside the caller's reach. */
         TerritoryIdQuery: components["schemas"]["Id"];
-        /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
+        /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value), except that `getTargetAchievement` also accepts `route` (contract 1.11.2). */
         GeoLevelQuery: components["schemas"]["ReachLevel"];
         /** @description Id of the node at `level` (omit for national). */
         NodeIdQuery: components["schemas"]["Id"];
@@ -13402,7 +13402,7 @@ export interface operations {
     getDashboardSummary: {
         parameters: {
             query?: {
-                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
+                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value), except that `getTargetAchievement` also accepts `route` (contract 1.11.2). */
                 level?: components["parameters"]["GeoLevelQuery"];
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];
@@ -13933,7 +13933,7 @@ export interface operations {
         parameters: {
             query: {
                 business_date: components["parameters"]["BusinessDateQueryRequired"];
-                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
+                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value), except that `getTargetAchievement` also accepts `route` (contract 1.11.2). */
                 level?: components["parameters"]["GeoLevelQuery"];
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];
@@ -13966,7 +13966,7 @@ export interface operations {
         parameters: {
             query: {
                 business_date: components["parameters"]["BusinessDateQueryRequired"];
-                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
+                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value), except that `getTargetAchievement` also accepts `route` (contract 1.11.2). */
                 level?: components["parameters"]["GeoLevelQuery"];
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];
@@ -13994,7 +13994,7 @@ export interface operations {
         parameters: {
             query: {
                 business_date: components["parameters"]["BusinessDateQueryRequired"];
-                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
+                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value), except that `getTargetAchievement` also accepts `route` (contract 1.11.2). */
                 level?: components["parameters"]["GeoLevelQuery"];
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];
@@ -14030,7 +14030,7 @@ export interface operations {
                 from?: components["parameters"]["FromDate"];
                 /** @description Last business date, inclusive (at most 92 days after `from`). */
                 to?: components["parameters"]["ToDate"];
-                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
+                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value), except that `getTargetAchievement` also accepts `route` (contract 1.11.2). */
                 level?: components["parameters"]["GeoLevelQuery"];
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];
@@ -14069,7 +14069,7 @@ export interface operations {
                 from?: components["parameters"]["FromDate"];
                 /** @description Last business date, inclusive (at most 92 days after `from`). */
                 to?: components["parameters"]["ToDate"];
-                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
+                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value), except that `getTargetAchievement` also accepts `route` (contract 1.11.2). */
                 level?: components["parameters"]["GeoLevelQuery"];
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];
@@ -14097,7 +14097,7 @@ export interface operations {
         parameters: {
             query: {
                 month: components["schemas"]["Month"];
-                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
+                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value), except that `getTargetAchievement` also accepts `route` (contract 1.11.2). */
                 level?: components["parameters"]["GeoLevelQuery"];
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];
