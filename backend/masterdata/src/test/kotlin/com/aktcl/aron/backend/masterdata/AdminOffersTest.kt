@@ -269,6 +269,10 @@ class AdminOffersTest {
         val other = createId(createBody())
         call(HttpMethod.Post, "/v1/admin/offers/$other/status", super1, """{"request_uuid":"$request","to_status":"active","reason":"$why"}""").expect(HttpStatusCode.Conflict, "ERR_CONFLICT")
         assertEquals("draft", scalar("SELECT status FROM app.offer WHERE id = $other"))
+        // The same for an update: a PATCH with the uuid of a status move is a conflict and writes no version.
+        val draft2 = createId(createBody()); val versionsBefore = count("SELECT count(*) FROM app.offer_version WHERE offer_id = $draft2")
+        call(HttpMethod.Patch, "/v1/admin/offers/$draft2", super1, """{"request_uuid":"$statusUuid","title_en":"Reused","change_reason":"$why"}""", scalar("SELECT version FROM app.offer WHERE id = $draft2").toInt()).expect(HttpStatusCode.Conflict, "ERR_CONFLICT")
+        assertEquals(versionsBefore, count("SELECT count(*) FROM app.offer_version WHERE offer_id = $draft2"))
     }
 
     // ------------------------------------------------------------------------------------------------ updateOffer
@@ -396,6 +400,8 @@ class AdminOffersTest {
         call(HttpMethod.Get, "/v1/admin/offers?status=bogus", adminR).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "query.status")
         call(HttpMethod.Get, "/v1/admin/offers?limit=0", adminR).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "query.limit")
         call(HttpMethod.Get, "/v1/admin/offers/abc", adminR).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "path.id")
+        call(HttpMethod.Get, "/v1/admin/offers/abc/versions", adminR).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "path.id")
+        call(HttpMethod.Get, "/v1/admin/offers/$a/versions?limit=0", adminR).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "query.limit")
         call(HttpMethod.Get, "/v1/admin/offers/999999", adminR).expect(HttpStatusCode.NotFound, "ERR_NOT_FOUND")
         call(HttpMethod.Get, "/v1/admin/offers/999999/versions", adminR).expect(HttpStatusCode.NotFound, "ERR_NOT_FOUND")
     }

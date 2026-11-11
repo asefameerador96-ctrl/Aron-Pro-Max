@@ -86,11 +86,12 @@ info:
     - 1.12.1 (discount-programme portal, train 2 of lane portal-discount-api, D-DISC-API-04 and -05; approval D-LEAD-CONTRACT-1121-01, gate file
       `docs/requests/contract-1.12-discount-portal.md`): `AdminModule` gains `discounts` (also a response enum: `Me.modules` and
       `UserAccess.modules`); `OfferSkuUnit.field_unit` takes the contract's `QtyUnit` words (`pack`, `dozen`, `stick`, `piece`) instead of
-      the packet, box, dozen, piece list of 1.12.0 (the member was never served before this release). Also stated from this release, when
-      the routes exist: the `status` query parameter of `listOffers` moves from `StatusQuery` (`ActiveStatus`) to `OfferStatus`, and
-      `updateOffer` gains the `409` response; the server requires `request_uuid` and refuses `drp_slide` and the `channel` scope node
-      with `400`; the retired TOP reads like NATIONAL and a BRAND user also sees the offers that name no product; `createOffer` accepts a
-      past `valid_from`. A `request_uuid` is one call: reusing it for another operation is `409`. The 1.12.0 entry above is as it shipped.
+      the packet, box, dozen, piece list of 1.12.0 (the member was never served before this release). Recorded here, not changed: the
+      `status` query parameter of `listOffers` (moved from `StatusQuery` to `OfferStatus`) and the `409` response of `updateOffer` both
+      shipped in 1.12.0. Stated from this release, when the routes exist: the server requires `request_uuid` and refuses `drp_slide` and
+      the `channel` scope node with `400`; the retired TOP reads like NATIONAL and a BRAND user also sees the offers that name no product;
+      `createOffer` accepts a past `valid_from`. A `request_uuid` is one call: reusing it for another operation is `409` (D-DISC-API-06).
+      The 1.12.0 entry above is as it shipped.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
