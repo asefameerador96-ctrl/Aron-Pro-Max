@@ -144,6 +144,9 @@ subprojects {
                 unitTests.isReturnDefaultValues = true
                 unitTests.all {
                     it.jvmArgs(robolectricJvmArgs)
+                    // D-QA-CI-16: a failing Android unit test printed only its top frame ("IllegalStateException at LifecycleRegistry.kt:382"), so a
+                    // CI-only failure could not be diagnosed from the log. Full stacks for failures only (passing tests print nothing).
+                    it.testLogging { events("failed"); exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL; showCauses = true; showStackTraces = true }
                     robolectricMirror?.let { url -> it.systemProperty("robolectric.dependency.repo.url", url) }
                     robolectricOfflineDir?.let { dir ->
                         it.systemProperty("robolectric.offline", "true")
@@ -189,6 +192,9 @@ subprojects {
                 unitTests.isReturnDefaultValues = true
                 unitTests.all {
                     it.jvmArgs(robolectricJvmArgs)
+                    // D-QA-CI-16: a failing Android unit test printed only its top frame ("IllegalStateException at LifecycleRegistry.kt:382"), so a
+                    // CI-only failure could not be diagnosed from the log. Full stacks for failures only (passing tests print nothing).
+                    it.testLogging { events("failed"); exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL; showCauses = true; showStackTraces = true }
                     robolectricMirror?.let { url -> it.systemProperty("robolectric.dependency.repo.url", url) }
                     robolectricOfflineDir?.let { dir ->
                         it.systemProperty("robolectric.offline", "true")

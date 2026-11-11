@@ -273,8 +273,16 @@ internal class SrLockFixture(context: Context, latePolicy: String?) : AutoClosea
         const val LNG = 90.40
         const val MONEY = """{"active_memo_count":0,"gross_mtk":0,"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,"net_mtk":0,"paid_mtk":0,"due_mtk":0,"due_collected_mtk":0,"net_by_category_mtk":{},"issued_qty_base_by_sku":{},"sold_qty_base_by_sku":{}}"""
 
+        /** Polls [cond] until true (10 s hang guard); idles the main looper each poll so Main work posted by the Looper-backed Main runs (D-QA-CI-16). */
         fun await(what: String, cond: () -> Boolean) = runBlocking {
-            assertTrue(what, withTimeoutOrNull(10_000) { while (!cond()) delay(10); true } == true)
+            assertTrue(what, withTimeoutOrNull(10_000) {
+                while (true) {
+                    if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+                    if (cond()) break
+                    delay(10)
+                }
+                true
+            } == true)
         }
     }
 }
