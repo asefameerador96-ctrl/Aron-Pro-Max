@@ -29,7 +29,7 @@ class AmoManualContractTest {
 
     @Test
     fun targetRowsCarryOptionalFieldUnitMembers() {
-        val members = listOf("report_unit", "target_qty_report", "achieved_qty_report", "tilldate_target_qty_report", "remaining_qty_report")
+        val members = listOf("report_unit", "target_qty_report", "achieved_qty_report", "tilldate_target_qty_report", "remaining_qty_report", "remaining_tilldate_qty_report")
         for (m in members) {
             assertTrue(m in props("TargetAchievementRow"), "TargetAchievementRow.$m")
             assertFalse(m in required("TargetAchievementRow"), "$m is optional (additive, 1.11.2)")

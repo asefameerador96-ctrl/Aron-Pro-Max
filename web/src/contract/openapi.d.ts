@@ -1742,11 +1742,11 @@ export interface paths {
          *     key; calendar days by default, D-TSO-MAN-05). The integer members (`*_qty_base`, `*_pct_bp`) are what the TSO app
          *     prints; the Decimal3 members and `achievement_pct` keep their meaning for the AMO app.
          *     Contract 1.11.2: each row also carries its quantities in the field unit (`report_unit`, `target_qty_report`,
-         *     `achieved_qty_report`, `tilldate_target_qty_report`, `remaining_qty_report`; rule 5: packets per SKU for cigarettes and
+         *     `achieved_qty_report`, `tilldate_target_qty_report`, `remaining_qty_report`, `remaining_tilldate_qty_report`; rule 5: packets per SKU for cigarettes and
          *     bidi, a box of 25 for lighters, dozens for matches). The conversion is done SKU by SKU and the results are summed, so a
          *     category with 10s and 20s packets is never divided by one factor. `level=route` with `node_id` answers one route of
          *     the caller's reach (the AMO's own routes); a route outside the reach, or unknown, is 403 `ERR_OUT_OF_SCOPE`;
-         *     `children` is not allowed there (400).
+         *     `children` is not allowed there (400), and a missing `node_id` is 400 (`query.node_id` required).
          */
         get: operations["getTargetAchievement"];
         put?: never;
@@ -8308,8 +8308,10 @@ export interface components {
             achieved_qty_report?: components["schemas"]["Decimal3"];
             /** @description Contract 1.11.2. T' in `report_unit`: the row's till-date target (base units, rounded once per item) re-expressed at the target mix of the row's SKUs (T in `report_unit` / T in base units); "0.000" when `period_days` is 0. */
             tilldate_target_qty_report?: components["schemas"]["Decimal3"];
-            /** @description Contract 1.11.2. max(T - A, 0) in `report_unit` (the report-unit T minus A, floored at 0). */
+            /** @description Contract 1.11.2. max(T - A, 0) in `report_unit`, computed from the ROUNDED `target_qty_report` and `achieved_qty_report` (so it always equals what they print; it can differ by 0.001 from the base remaining converted, e.g. with /12 pack sizes). */
             remaining_qty_report?: components["schemas"]["Decimal3"];
+            /** @description Contract 1.11.2. max(T' - A, 0) in `report_unit` (beside `remaining_tilldate_qty_base`), from the rounded `tilldate_target_qty_report` and `achieved_qty_report`; null when `period_days` is 0. */
+            remaining_tilldate_qty_report?: string | null;
         };
         /**
          * @description One child node of a target answer (`children=zone`), with the same rows as the parent (contract 1.10.0).

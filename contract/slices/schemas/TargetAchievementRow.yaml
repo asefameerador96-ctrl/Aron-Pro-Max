@@ -163,4 +163,13 @@ TargetAchievementRow:
         when `period_days` is 0.'
     remaining_qty_report:
       $ref: '#/components/schemas/Decimal3'
-      description: Contract 1.11.2. max(T - A, 0) in `report_unit` (the report-unit T minus A, floored at 0).
+      description: Contract 1.11.2. max(T - A, 0) in `report_unit`, computed from the ROUNDED `target_qty_report`
+        and `achieved_qty_report` (so it always equals what they print; it can differ by 0.001 from the base remaining
+        converted, e.g. with /12 pack sizes).
+    remaining_tilldate_qty_report:
+      type:
+      - string
+      - 'null'
+      pattern: ^-?\d{1,13}(\.\d{1,3})?$
+      description: Contract 1.11.2. max(T' - A, 0) in `report_unit` (beside `remaining_tilldate_qty_base`), from
+        the rounded `tilldate_target_qty_report` and `achieved_qty_report`; null when `period_days` is 0.

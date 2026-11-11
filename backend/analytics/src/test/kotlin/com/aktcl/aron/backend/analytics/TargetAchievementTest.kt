@@ -413,6 +413,33 @@ class TargetAchievementTest {
     }
 
     @Test
+    fun aRowOfMixedFieldUnitsFallsBackToTheBaseUnitAndTheBaseQuantities() {
+        // one cigarette SKU counted in packs, the others in sticks: no single field unit for the Cigarette row
+        sql("UPDATE app.sku SET entry_unit_default = 'pack' WHERE code = 'MR20'")
+        try {
+            val cig = ask(23).rows.of("Cigarette")
+            assertEquals("stick", cig.reportUnit, "the base unit"); assertEquals(cig.targetQty, cig.targetQtyReport); assertEquals(cig.achievedQty, cig.achievedQtyReport)
+            assertEquals(cig.tilldateTargetQty, cig.tilldateTargetQtyReport); assertEquals(40_999L, cig.targetQtyBase)
+        } finally { sql("UPDATE app.sku SET entry_unit_default = base_unit WHERE code = 'MR20'") }
+    }
+
+    @Test
+    fun anEmptyCategoryCardPrintsTheFieldUnitOfItsSkusEntryUnit() = withPackUnits {
+        val a = ask(23, month = "2026-12")           // no target and no sale in December: every card is empty
+        assertEquals("pack", a.rows.of("Cigarette").reportUnit); assertEquals("box", a.rows.of("Lighter").reportUnit)
+        assertEquals("dozen", a.rows.of("Match").reportUnit, "matches are counted in their base unit")
+    }
+
+    @Test
+    fun aRouteOnlyCallerReadsItsOwnRouteAtLevelRouteAndNotAnotherRoute() {
+        val r1 = ids.getValue("R1")
+        val a = ask(25, level = "route", node = r1)
+        assertEquals("route", a.node.type); assertEquals(r1, a.node.id)
+        val e = assertFailsWith<ApiProblem> { ask(25, level = "route", node = ids.getValue("R2")) }
+        assertEquals(ProblemCode.ERR_OUT_OF_SCOPE, e.code, "R2 is in the zone of R1 but not among the caller's routes")
+    }
+
+    @Test
     fun withoutPackCountingTheFieldUnitIsTheBaseUnitAndTheReportQuantitiesEqualTheBaseOnes() {
         val cig = ask(23).rows.of("Cigarette")
         assertEquals("stick", cig.reportUnit); assertEquals("40999.000", cig.targetQtyReport); assertEquals(cig.targetQty, cig.targetQtyReport)

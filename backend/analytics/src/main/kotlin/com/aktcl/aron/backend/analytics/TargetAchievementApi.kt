@@ -66,7 +66,10 @@ class TargetAchievementService(private val db: Database, private val config: Ser
         val fieldUnit: String get() = if (entryUnitDefault == "pack") (if (categoryCode == "lighter") "box" else "pack") else baseUnit
     }
 
-    private class Category(val id: Long, val name: String, val code: String, val unit: String)
+    private class Category(val id: Long, val name: String, val code: String, val unit: String, val packed: Boolean = false) {
+        /** The field unit an empty card prints: from the SKUs' `entry_unit_default` (packs -> pack, lighters box), else the base unit. */
+        val fieldUnit: String get() = if (packed) (if (code == "lighter") "box" else "pack") else unit
+    }
 
     /** `level=route` (contract 1.11.2, D-AMO-FND-16): one route of the caller's reach; a route outside it is 403 `ERR_OUT_OF_SCOPE`, an unknown one the same (no probing). */
     private fun routeNode(h: Handle, reach: Reach, nodeId: Long?): ScopedNode {
@@ -200,18 +203,15 @@ class TargetAchievementService(private val db: Database, private val config: Ser
 
     /** Every category of the catalogue: the Target Status card shows its four bars even where a category has no target. */
     private fun categories(h: Handle): List<Category> = h.createQuery(
-        "SELECT category_id, min(category_name), category_code, min(base_unit) FROM dw.dim_product GROUP BY category_id, category_code",
-    ).map { rs, _ -> Category(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4)) }.list()
+        "SELECT p.category_id, min(p.category_name), p.category_code, min(p.base_unit), bool_and(coalesce(s.entry_unit_default, '') = 'pack') FROM dw.dim_product p LEFT JOIN app.sku s ON s.id = p.sku_id GROUP BY p.category_id, p.category_code",
+    ).map { rs, _ -> Category(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getBoolean(5)) }.list()
         .sortedWith(compareBy<Category>({ categoryRank(it.code) }, { it.name }, { it.id }))
-
-    /** The field unit of a category with no SKU in the answer (an empty card still prints its unit). */
-    private fun categoryFieldUnit(code: String): String? = when (code) { "cigarette", "bidi" -> "pack"; "lighter" -> "box"; "match" -> "dozen"; else -> null }
 
     private fun categoryRank(code: String): Int = CATEGORY_ORDER.indexOf(code).let { if (it < 0) 99 else it }
 
     private class Acc(val id: Long, val name: String, val unit: String, val categoryCode: String, val order: List<Comparable<*>>) {
         var t = 0L; var a = 0L; var td = 0L
-        var tRep = BigDecimal.ZERO; var aRep = BigDecimal.ZERO; val units = LinkedHashSet<String>()
+        var tRep = BigDecimal.ZERO; var aRep = BigDecimal.ZERO; val units = LinkedHashSet<String>(); var emptyUnit: String? = null
     }
 
     /** The rows of one node at [level]: item till-date rounded once per item, every row the sum of its items (R-F-01). */
@@ -220,7 +220,7 @@ class TargetAchievementService(private val db: Database, private val config: Ser
         // Items: variants (a SKU row is its own item); T and A summed over the node's SKUs of the item, then T' rounded once.
         val items = (f.target.keys + f.achieved.keys).mapNotNull { products[it] }.groupBy { if (level == "sku") it.skuId else it.variantId }
         val acc = LinkedHashMap<Long, Acc>()
-        if (level == "category") categories.forEach { c -> acc[c.id] = Acc(c.id, c.name, c.unit, c.code, listOf(categoryRank(c.code), c.name, c.id)) }
+        if (level == "category") categories.forEach { c -> acc[c.id] = Acc(c.id, c.name, c.unit, c.code, listOf(categoryRank(c.code), c.name, c.id)).also { it.emptyUnit = c.fieldUnit } }
         for ((_, skus) in items) {
             val first = skus.first()   // every SKU of an item shares its variant, brand and category
             val t = skus.sumOf { f.target[it.skuId] ?: 0L }
@@ -247,12 +247,15 @@ class TargetAchievementService(private val db: Database, private val config: Ser
             val td: Long? = if (noPeriod) null else r.td
             val bp = Targets.detailsBp(r.a, r.t)
             // One field unit for the row, else the base unit with the base quantities (the contract says so).
-            val single = r.units.singleOrNull() ?: if (r.units.isEmpty()) categoryFieldUnit(r.categoryCode)?.takeIf { r.t == 0L && r.a == 0L } else null
+            val single = r.units.singleOrNull() ?: if (r.units.isEmpty()) r.emptyUnit?.takeIf { r.t == 0L && r.a == 0L } else null
             fun rep(v: BigDecimal) = v.setScale(3, java.math.RoundingMode.HALF_UP).toPlainString()
             val mixed = single == null
             val tR = if (mixed) r.t.toBigDecimal() else r.tRep; val aR = if (mixed) r.a.toBigDecimal() else r.aRep
             val tdR = if (noPeriod || r.t == 0L) BigDecimal.ZERO else if (mixed) r.td.toBigDecimal() else BigDecimal(r.td).multiply(r.tRep).divide(BigDecimal(r.t), java.math.MathContext.DECIMAL128)
-            val remR = (tR - aR).max(BigDecimal.ZERO)
+            // Remaining is computed from the rounded report quantities, so it always equals T_report - A_report as printed (floored at 0).
+            fun r3(v: BigDecimal) = v.setScale(3, java.math.RoundingMode.HALF_UP)
+            val remR = (r3(tR) - r3(aR)).max(BigDecimal.ZERO)
+            val remTdR = if (noPeriod) null else (r3(tdR) - r3(aR)).max(BigDecimal.ZERO)
             TargetAchievementRow(
                 productLevel = level, productId = r.id, name = r.name.take(120), unit = r.unit,
                 targetQty = d3(r.t), achievedQty = d3(r.a), tilldateTargetQty = d3(td ?: 0L),
@@ -260,7 +263,7 @@ class TargetAchievementService(private val db: Database, private val config: Ser
                 memoTarget = null, memoAchieved = null, categoryCode = r.categoryCode,
                 targetQtyBase = r.t, achievedQtyBase = r.a, tilldateTargetQtyBase = td, remainingQtyBase = Targets.remaining(r.t, r.a),
                 remainingTilldateQtyBase = td?.let { Targets.remaining(it, r.a) }, achievementPctBp = bp, tilldateAchievementPctBp = td?.let { Percent.bp(r.a, it) },
-                reportUnit = single ?: r.unit, targetQtyReport = rep(tR), achievedQtyReport = rep(aR), tilldateTargetQtyReport = rep(tdR), remainingQtyReport = rep(remR),
+                reportUnit = single ?: r.unit, targetQtyReport = rep(tR), achievedQtyReport = rep(aR), tilldateTargetQtyReport = rep(tdR), remainingQtyReport = rep(remR), remainingTilldateQtyReport = remTdR?.let { rep(it) },
             )
         }
     }

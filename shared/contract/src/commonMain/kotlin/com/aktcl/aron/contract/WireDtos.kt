@@ -1247,6 +1247,7 @@ data class TargetAchievementRow(
     @SerialName("achieved_qty_report") val achievedQtyReport: String? = null,
     @SerialName("tilldate_target_qty_report") val tilldateTargetQtyReport: String? = null,
     @SerialName("remaining_qty_report") val remainingQtyReport: String? = null,
+    @SerialName("remaining_tilldate_qty_report") val remainingTilldateQtyReport: String? = null,
 )
 
 /** Encode TargetAchievementRow with this serializer at the top level (a member of type TargetAchievementRow or List<TargetAchievementRow> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
