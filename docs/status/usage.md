@@ -2331,3 +2331,6 @@
 ### 2026-11-11 04:33 UTC — train 88 run 12/12 green; train 87 deploy is REAL and live (lead record)
 - Train 88 run 42955918332 on lane/lead-train88 ff7330467: completed success 04:33, 12 success / 0 failed / 0 skipped. Train 88 is GO-ready (both heads gated + Opus PASS + green lane runs + 12/12 train run); the GO is sent as soon as integrator 23 reports "train 87 landed" (one INT push per cycle).
 - Train 87 deploy #325 (42958063544) turned out REAL (the workflow counted the backend/db test files or the root build.gradle.kts as deployable): health build already c7ecd8252 at 04:33 while the deploy script finishes its post-steps (dblogins/seed/smoke); no migrations; the integrator's verbatim report follows.
+
+### 2026-11-11 04:36 UTC — train 87 deploy #325 success (lead record)
+- Deploy 42958063544 (#325) on INT c7ecd8252: completed success 04:36:12 (job 130317790964); health c7ecd8252. Waiting for integrator 23's verbatim landing report (smoke, APK name); GO train 88 follows it immediately.
