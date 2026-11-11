@@ -356,6 +356,7 @@ class AmoRecordWriterReplayTest {
             assertEquals(1, rows.size)
             assertEquals(true, rows[0].contains("\"force_reason_code\":\"$reason\"")) // the visit record carries the chosen reason with geo.action force_sale
             assertEquals(true, rows[0].contains("\"action\":\"force_sale\""))
+            assertEquals(true, rows[0].contains("\"force_sale_reason\":\"$reason\"")) // contract 1.11.1: the top-level field carries the same user reason
             relaunch()
             assertEquals(rows, payloads("visit").filter { it.contains(v) }) // byte-identical after the kill
             // the same visit uuid committed again (a retried commit after a kill) is refused and queues no second visit
@@ -413,5 +414,15 @@ class AmoRecordWriterReplayTest {
             runCatching { capture.recordVisitOpen(v, committedFix!!) } // the same visit committed again after a kill
             assertEquals(rows, payloads("visit").filter { it.contains(v.clientUuid) })
         }
+    }
+
+    /** The no-outlet-location reason is a geo field only; a non-force visit never carries force_sale_reason. */
+    @Test fun noOutletLocationAndNonForceVisitsCarryNoForceSaleReason() = runBlocking {
+        val v = forceSaleVisit("no_outlet_location")
+        val row = payloads("visit").single { it.contains(v) }
+        assertEquals(true, row.contains("\"force_reason_code\":\"no_outlet_location\""))
+        assertEquals(false, row.contains("force_sale_reason"))
+        val plain = visit()
+        assertEquals(false, payloads("visit").single { it.contains(plain) }.contains("force_sale_reason"))
     }
 }
