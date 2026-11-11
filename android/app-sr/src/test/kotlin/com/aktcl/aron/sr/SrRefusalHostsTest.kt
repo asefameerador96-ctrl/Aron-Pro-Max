@@ -58,6 +58,17 @@ class SrRefusalHostsTest {
         try { f.close() } finally { Dispatchers.resetMain() }
     }
 
+    /**
+     * The Stock host composes its Save button only after its async load (the stock read and the slip-state reads, on Room's executor) returns,
+     * and `waitForIdle` does not wait for Room. Under full parallel load the tap came first: "could not find any node (TestTag = 'stk_save')"
+     * (D-QA-CI-14). Wait for the host's work to settle, then for the state the host exposes (the Save node), then tap.
+     */
+    private fun awaitStockLoaded() {
+        assertTrue("the host's work did not settle", f.work.awaitSettled())
+        compose.waitForIdle()
+        compose.waitUntil(30_000) { runCatching { compose.onNodeWithTag(com.aktcl.aron.feature.stock.StockTags.SAVE).assertExists() }.isSuccess }
+    }
+
     private fun show(content: @Composable () -> Unit) {
         shadowOf(app.packageManager).addActivityIfNotPresent(ComponentName(app, ComponentActivity::class.java))
         // the fixture owns the screen: its close destroys the activity (composition and view models) before the day's work
@@ -78,6 +89,7 @@ class SrRefusalHostsTest {
         runBlocking { f.day.stockLoad() }.setEntered(105, 3) // typed on the screen; the lock is already there
         f.finalSubmitted()
         show { StockHost(f.day) }
+        awaitStockLoaded()
         compose.onNodeWithTag(com.aktcl.aron.feature.stock.StockTags.SAVE).performClick()
         shows(LOCK_TITLE)
         compose.onNodeWithText("Could not save", substring = true).assertDoesNotExist()
