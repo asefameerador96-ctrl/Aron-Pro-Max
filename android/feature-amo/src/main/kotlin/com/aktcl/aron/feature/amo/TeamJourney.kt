@@ -25,7 +25,7 @@ import java.util.Locale
  */
 data class TeamMember(
     val userId: Long?, val name: String?, val routeId: Long, val routeName: String, val routeDays: List<Int>, val phone: String?, val phoneMasked: String?,
-    val totalOutlets: Int, val vacant: Boolean,
+    val totalOutlets: Int, val vacant: Boolean, val routeCode: String? = null,
 )
 
 enum class CallStatus { NEW_SALE, EDITED_SALE, NO_SALE }
@@ -58,7 +58,7 @@ object TeamJourneys {
             l(m, "user_id"), s(m, "full_name"), l(m, "route_id") ?: return@mapNotNull null, s(m, "route_name").orEmpty(),
             (m["route_days"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.intOrNull }.filter { it in 1..7 }.sorted(),
             s(m, "phone")?.takeIf { it.isNotBlank() }, s(m, "phone_masked")?.takeIf { it.isNotBlank() }, (m["total_outlets"] as? JsonPrimitive)?.intOrNull ?: 0,
-            (m["vacant"] as? JsonPrimitive)?.booleanOrNull ?: (l(m, "user_id") == null),
+            (m["vacant"] as? JsonPrimitive)?.booleanOrNull ?: (l(m, "user_id") == null), s(m, "route_code")?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -72,10 +72,10 @@ object TeamJourneys {
                 // The brief asks for the real phone; the contract field today is `phone_masked`, so a clear `phone` wins when the server sends one.
                 JourneyOutlet(l(out, "id") ?: 0L, s(out, "name").orEmpty(), s(out, "code").orEmpty(), s(out, "phone") ?: s(out, "phone_masked"), s(out, "cluster")),
                 when (s(c, "status")) { "new_sale" -> CallStatus.NEW_SALE; "edited_sale" -> CallStatus.EDITED_SALE; else -> CallStatus.NO_SALE },
-                s(c, "opened_at") ?: return@mapNotNull null, s(c, "closed_at"), l(c, "duration_s"), d(c, "distance_from_prev_m"), d(c, "total_distance_m") ?: 0.0, l(c, "gap_to_next_s"),
+                s(c, "opened_at") ?: return@mapNotNull null, s(c, "closed_at"), l(c, "duration_s"), d(c, "distance_from_prev_m"), d(c, "distance_so_far_m") ?: 0.0, l(c, "gap_to_next_s"),
             )
         }
-        return TeamJourney(s(o["user"] as? JsonObject, "full_name").orEmpty(), s(o["route"] as? JsonObject, "name").orEmpty(), s(o, "business_date").orEmpty(), calls, d(o, "total_distance_m") ?: 0.0)
+        return TeamJourney(s(o["user"] as? JsonObject, "full_name").orEmpty(), s(o["route"] as? JsonObject, "name").orEmpty(), s(o, "business_date").orEmpty(), calls, d(o, "distance_m") ?: 0.0)
     }
 
     // ---- printing --------------------------------------------------------------------------------------------------------------

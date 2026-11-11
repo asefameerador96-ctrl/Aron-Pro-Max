@@ -43,6 +43,10 @@ object TeamReports {
         return StdMatrix(zone, cats, body, totals)
     }
 
+    /** The sales-summary card of a route: by route id; by route code only when the card carries no id (an older server). Never by name (two routes may share one). */
+    fun cardFor(cards: List<RouteCard>, routeId: Long, routeCode: String?): RouteCard? =
+        cards.firstOrNull { it.routeId == routeId } ?: routeCode?.takeIf { it.isNotBlank() }?.let { c -> cards.firstOrNull { it.routeId == null && it.code == c } }
+
     /** The sales-summary period (lead ruling 2026-11-07, screenshot 72): the first of the month to TODAY, so CPR and memos match the target slice; F-AMO-033's "up to yesterday" is superseded for the AMO summary. */
     fun summaryPeriod(today: String): Pair<String, String> = monthToToday(today)
 

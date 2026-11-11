@@ -101,4 +101,21 @@ class TeamScreensRulesTest {
         assertEquals(TaskDelegation.draftKey(3, 50), TaskDelegation.draftKey(3, 50)); assertTrue(TaskDelegation.draftKey(3, 50) != TaskDelegation.draftKey(3, 51)); assertTrue(TaskDelegation.draftKey(3, 50) != TaskDelegation.draftKey(4, 50))
         assertTrue(!TaskDelegation.draftKey(null, null).contains("user"))
     }
+
+    @Test fun f2ContractShapesParse() {
+        // contract 1.11.1 names: journey distance_m / distance_so_far_m, members route_code, CategoryVolume.memos
+        val j = TeamJourneys.journey("""{"user":{"user_id":7,"full_name":"R"},"route":{"route_id":3,"name":"G"},"business_date":"2026-11-06","distance_m":120.5,"calls":[{"visit_uuid":"a","outlet":{"id":1,"name":"O","code":"1","phone_masked":"017*****123","cluster":"C"},"status":"no_sale","opened_at":"2026-11-06T03:43:04Z","closed_at":null,"duration_s":null,"distance_from_prev_m":null,"distance_so_far_m":120.5,"gap_to_next_s":null}]}""")!!
+        assertEquals(120.5, j.runningMetres, 0.0); assertEquals(120.5, j.calls.single().runningMetres, 0.0)
+        val m = TeamJourneys.members("""{"items":[{"user_id":7,"full_name":"A","route_id":3,"route_code":"R-03","route_name":"G","route_days":[1],"phone":null,"phone_masked":"016*****244","total_outlets":9,"vacant":false}]}""")
+        assertEquals("R-03", m.single().routeCode); assertNull(m.single().phone)
+    }
+
+    @Test fun aRouteCardIsMatchedByIdThenCodeNeverByName() {
+        fun row(id: Long?, code: String, name: String, memos: Long): ReportRow = buildMap<String, JsonPrimitive> { if (id != null) put("route_id", JsonPrimitive(id)); put("route_code", JsonPrimitive(code)); put("route_name", JsonPrimitive(name)); put("memos", JsonPrimitive(memos)); put("brand_name", JsonPrimitive("Maxim")); put("brand_memos", JsonPrimitive(memos)) }
+        val withIds = Reports.routeCards(ReportData("d", emptyList(), listOf(row(11, "R1", "Gulshan", 5), row(12, "R2", "Gulshan", 9)), 2))
+        assertEquals(2, withIds.size) // two routes with one name stay two cards
+        assertEquals(9L, TeamReports.cardFor(withIds, 12, "R2")!!.memos); assertEquals(5L, TeamReports.cardFor(withIds, 11, null)!!.memos); assertNull(TeamReports.cardFor(withIds, 99, "R1")) // an id that is present and unknown never falls back to the code
+        val noIds = Reports.routeCards(ReportData("d", emptyList(), listOf(row(null, "R1", "Gulshan", 5)), 1))
+        assertEquals(5L, TeamReports.cardFor(noIds, 11, "R1")!!.memos); assertNull(TeamReports.cardFor(noIds, 11, null)); assertNull(TeamReports.cardFor(noIds, 11, "Gulshan")) // a name is not a code
+    }
 }

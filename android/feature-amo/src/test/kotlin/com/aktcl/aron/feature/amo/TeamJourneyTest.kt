@@ -28,9 +28,9 @@ class TeamJourneyTest {
         assertEquals("garbage", TeamJourneys.clock12("garbage"))
     }
 
-    private val ans = """{"user":{"user_id":7,"full_name":"Rahim"},"route":{"route_id":3,"name":"Gulshan-1"},"business_date":"2026-11-06","total_distance_m":391.54,"calls":[
-      {"visit_uuid":"a","outlet":{"id":1,"name":"Unite Tea Store","code":"2672261","phone_masked":"017*****123","cluster":"Fojle Rabbi Park"},"status":"new_sale","opened_at":"2026-11-06T03:43:04Z","closed_at":"2026-11-06T03:48:47Z","duration_s":343,"distance_from_prev_m":null,"total_distance_m":0.0,"gap_to_next_s":536},
-      {"visit_uuid":"b","outlet":{"id":2,"name":"Rana","code":"2645667","cluster":null},"status":"edited_sale","opened_at":"2026-11-06T03:57:43Z","closed_at":null,"duration_s":null,"distance_from_prev_m":277.32,"total_distance_m":277.32,"gap_to_next_s":null},
+    private val ans = """{"user":{"user_id":7,"full_name":"Rahim"},"route":{"route_id":3,"name":"Gulshan-1"},"business_date":"2026-11-06","distance_m":391.54,"calls":[
+      {"visit_uuid":"a","outlet":{"id":1,"name":"Unite Tea Store","code":"2672261","phone_masked":"017*****123","cluster":"Fojle Rabbi Park"},"status":"new_sale","opened_at":"2026-11-06T03:43:04Z","closed_at":"2026-11-06T03:48:47Z","duration_s":343,"distance_from_prev_m":null,"distance_so_far_m":0.0,"gap_to_next_s":536},
+      {"visit_uuid":"b","outlet":{"id":2,"name":"Rana","code":"2645667","cluster":null},"status":"edited_sale","opened_at":"2026-11-06T03:57:43Z","closed_at":null,"duration_s":null,"distance_from_prev_m":277.32,"distance_so_far_m":277.32,"gap_to_next_s":null},
       {"visit_uuid":"c","outlet":{"id":3,"name":"K","code":"1","phone":"01711000000"},"status":"no_sale","opened_at":"2026-11-06T04:10:00Z"}]}"""
 
     @Test fun journeyParsesStatusesAndOutletLine() {

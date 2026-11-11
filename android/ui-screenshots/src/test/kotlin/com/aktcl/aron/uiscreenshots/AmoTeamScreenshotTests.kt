@@ -202,10 +202,10 @@ class AmoTeamScreenshotTests {
 
     @Composable private fun journeyCards() = SrListContent(members, false, false, {}, openVacant = false)
     private val journey = TeamJourneys.journey(
-        """{"user":{"user_id":7,"full_name":"Rahim"},"route":{"route_id":3,"name":"Gulshan-1"},"business_date":"2026-11-06","total_distance_m":391.54,"calls":[
-        {"visit_uuid":"a","outlet":{"id":1,"name":"Unite Tea Store","code":"2672261","phone":"01856213762","cluster":"Fojle Rabbi Park"},"status":"new_sale","opened_at":"2026-11-06T03:43:04Z","closed_at":"2026-11-06T03:48:47Z","duration_s":342,"distance_from_prev_m":null,"total_distance_m":0.0,"gap_to_next_s":536},
-        {"visit_uuid":"b","outlet":{"id":2,"name":"Rana Tea Store","code":"2645667","phone":"01609690515","cluster":"Kachabazar Er Samne"},"status":"edited_sale","opened_at":"2026-11-06T03:57:43Z","closed_at":"2026-11-06T04:05:30Z","duration_s":466,"distance_from_prev_m":277.32,"total_distance_m":277.32,"gap_to_next_s":45},
-        {"visit_uuid":"c","outlet":{"id":3,"name":"Kalam Store","code":"2585581","phone":"01922630443","cluster":"Kachabazar Road"},"status":"no_sale","opened_at":"2026-11-06T04:06:15Z","closed_at":"2026-11-06T04:18:31Z","duration_s":735,"distance_from_prev_m":114.22,"total_distance_m":391.54,"gap_to_next_s":null}]}""",
+        """{"user":{"user_id":7,"full_name":"Rahim"},"route":{"route_id":3,"name":"Gulshan-1"},"business_date":"2026-11-06","distance_m":391.54,"calls":[
+        {"visit_uuid":"a","outlet":{"id":1,"name":"Unite Tea Store","code":"2672261","phone":"01856213762","cluster":"Fojle Rabbi Park"},"status":"new_sale","opened_at":"2026-11-06T03:43:04Z","closed_at":"2026-11-06T03:48:47Z","duration_s":342,"distance_from_prev_m":null,"distance_so_far_m":0.0,"gap_to_next_s":536},
+        {"visit_uuid":"b","outlet":{"id":2,"name":"Rana Tea Store","code":"2645667","phone":"01609690515","cluster":"Kachabazar Er Samne"},"status":"edited_sale","opened_at":"2026-11-06T03:57:43Z","closed_at":"2026-11-06T04:05:30Z","duration_s":466,"distance_from_prev_m":277.32,"distance_so_far_m":277.32,"gap_to_next_s":45},
+        {"visit_uuid":"c","outlet":{"id":3,"name":"Kalam Store","code":"2585581","phone":"01922630443","cluster":"Kachabazar Road"},"status":"no_sale","opened_at":"2026-11-06T04:06:15Z","closed_at":"2026-11-06T04:18:31Z","duration_s":735,"distance_from_prev_m":114.22,"distance_so_far_m":391.54,"gap_to_next_s":null}]}""",
     )
     @Composable private fun journeyTimeline() = JourneyTimelineContent(journey, false, false)
 }
