@@ -2327,3 +2327,7 @@
 
 ### 2026-11-11 04:17 UTC — INT ci #1947 green; deploy #325 running (lead record)
 - ci 42955315205 (#1947) on INT c7ecd8252 (train 87): completed success 04:16 (10 success, 2 skipped). Deploy 42958063544 (#325) started 04:15:43 — the workflow decides skip or a real no-migration run (the train touched only android, tests, docs and the root build.gradle.kts); the integrator reports. Lead background watch on the deploy; the train 88 run 42955918332 still in progress; landing check-in 04:40 armed.
+
+### 2026-11-11 04:33 UTC — train 88 run 12/12 green; train 87 deploy is REAL and live (lead record)
+- Train 88 run 42955918332 on lane/lead-train88 ff7330467: completed success 04:33, 12 success / 0 failed / 0 skipped. Train 88 is GO-ready (both heads gated + Opus PASS + green lane runs + 12/12 train run); the GO is sent as soon as integrator 23 reports "train 87 landed" (one INT push per cycle).
+- Train 87 deploy #325 (42958063544) turned out REAL (the workflow counted the backend/db test files or the root build.gradle.kts as deployable): health build already c7ecd8252 at 04:33 while the deploy script finishes its post-steps (dblogins/seed/smoke); no migrations; the integrator's verbatim report follows.
