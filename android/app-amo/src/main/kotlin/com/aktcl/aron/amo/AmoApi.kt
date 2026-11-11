@@ -76,14 +76,14 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
     suspend fun brandTargets(month: String, routeId: Long?): AmoFetch =
         get("/v1/dashboards/targets", "targets_brand_${routeId ?: 0}_$month", linkedMapOf("month" to month, "product_level" to "brand") + (routeId?.let { mapOf("level" to "route", "node_id" to it.toString()) } ?: emptyMap()))
 
+    /** Drops the kept copies of these routes' targets (the zone itself was refused: nothing of that reach may still be shown from an old copy). */
+    fun forgetRouteTargets(month: String, routeIds: List<Long>) = routeIds.forEach { forget("targets_brand_${it}_$month") }
+
     /**
      * One route of `GET /v1/dashboards/targets` (contract 1.11.2) with the two ways the server says no told apart: 403 (outside the reach, `ERR_OUT_OF_SCOPE`)
      * is [AmoFetch.Gone] for THAT route only; 400 (no node_id), 404 and 501 (the level is not offered) are [RouteTargetsRead.notOffered], a server that has no route level and not
      * an access problem. Neither serves an old copy.
      */
-    /** Drops the kept copies of these routes' targets (the zone itself was refused: nothing of that reach may still be shown from an old copy). */
-    fun forgetRouteTargets(month: String, routeIds: List<Long>) = routeIds.forEach { forget("targets_brand_${it}_$month") }
-
     suspend fun routeTargets(month: String, routeId: Long): RouteTargetsRead {
         val key = "targets_brand_${routeId}_$month"
         val (f, status) = getRaw("/v1/dashboards/targets", key, linkedMapOf("month" to month, "product_level" to "brand", "level" to "route", "node_id" to routeId.toString()))

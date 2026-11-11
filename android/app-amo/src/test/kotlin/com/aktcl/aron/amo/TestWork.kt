@@ -98,6 +98,7 @@ internal class TestWork {
     /**
      * True once nothing the test started is still in flight: the view models' and the day's coroutines are done and Room's executor is idle
      * (the main looper is idled on each poll). A check that "nothing happened" awaits this state instead of sleeping; [ms] is only a hang guard (D-QA-CI-12).
+     * It does NOT cover composition coroutines (a `LaunchedEffect` or `rememberAsyncLoad` in a shown screen): after it, a test that asserts a negative also advances a frame (`compose.mainClock.advanceTimeByFrame()`), D-AMO-CALLS-33.
      */
     fun awaitSettled(ms: Long = HANG_GUARD_MS): Boolean = waitUntil(ms) { inFlight().isEmpty() && roomExecutor.isIdle() }
 

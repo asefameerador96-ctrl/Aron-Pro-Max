@@ -119,6 +119,7 @@ class AmoControlCallHostTest {
         assertEquals(null, f.day.visitSession.current.value)
         compose.onNodeWithText("Internet problem").performClick(); compose.waitForIdle()
         // the chosen reason goes on to the override photo step (the visit is committed only after the photo)
+        f.work.awaitSettled(); compose.mainClock.advanceTimeByFrame() // let any work the tap started finish and a frame run before the NEGATIVE check
         assertEquals(null, f.day.visitSession.current.value)
     }
 

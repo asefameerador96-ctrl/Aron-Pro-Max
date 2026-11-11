@@ -42,7 +42,7 @@ class HostComposeRuleTest {
         val app = ApplicationProvider.getApplicationContext<Application>()
         shadowOf(app.packageManager).addActivityIfNotPresent(ComponentName(app, ComponentActivity::class.java))
         val room = DrainableExecutor()
-        ActivityScenario.launch(ComponentActivity::class.java).use { scenario ->
+        try { ActivityScenario.launch(ComponentActivity::class.java).use { scenario ->
             scenario.onActivity { a ->
                 a.setContent {
                     var n by remember { mutableStateOf(0) }
@@ -57,7 +57,7 @@ class HostComposeRuleTest {
                 }
             }
             compose.waitUntil(30_000) { total.get() >= 150 } // the idiom of the host tests: it must make progress, too
-        }
+        } } finally { room.shutdown() }
         assertTrue("composition made progress: ${total.get()}", total.get() >= 150)
         assertEquals("effects run off the main thread: $names", 0, off.get())
     }

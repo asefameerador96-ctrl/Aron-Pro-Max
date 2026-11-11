@@ -14,11 +14,11 @@ class LoadTargetNodesTest {
         return """{"node":{"type":"$type","id":$id$nm},"period_days":6,"rows":[{"name":"Marise","category_code":"cigarette","target_qty_base":100,"achieved_qty_base":50,"tilldate_target_qty_base":60,"report_unit":"pack","target_qty_report":"5.000","achieved_qty_report":"2.500","tilldate_target_qty_report":"3.000","remaining_qty_report":"2.500","remaining_tilldate_qty_report":"0.500"}]}"""
     }
 
-    private val purged = mutableListOf<Long>()
+    private var purgedTimes = 0
 
     private suspend fun run(zone: AmoFetch, routes: Map<Long, RouteTargetsRead>, ids: List<Long>): Pair<List<TargetNodes>, List<Long>> {
-        val asked = mutableListOf<Long>(); val published = mutableListOf<TargetNodes>(); purged.clear()
-        loadTargetNodes({ zone }, { id -> asked += id; routes[id] ?: RouteTargetsRead(AmoFetch.Unavailable, false) }, ids, { "Route $it" }, { purged += it }) { published += it }
+        val asked = mutableListOf<Long>(); val published = mutableListOf<TargetNodes>(); purgedTimes = 0
+        loadTargetNodes({ zone }, { id -> asked += id; routes[id] ?: RouteTargetsRead(AmoFetch.Unavailable, false) }, ids, { "Route $it" }, { purgedTimes++ }) { published += it }
         return published to asked
     }
 
@@ -78,10 +78,10 @@ class LoadTargetNodesTest {
         val (out, asked) = run(AmoFetch.Gone, mapOf(1L to fresh(node("route", 1, "A"))), listOf(1, 2, 3, 4, 5))
         assertTrue("no route was asked", asked.isEmpty())
         assertTrue(out.last().refused); assertTrue(out.last().routes.isEmpty()); assertTrue(out.last().outOfReach.isEmpty()); assertEquals(1, out.size)
-        assertEquals("the old route copies are dropped with the refused zone", listOf(1L, 2L, 3L, 4L, 5L), purged)
+        assertEquals("the old route copies are dropped once, with the refused zone", 1, purgedTimes)
     }
 
     @Test fun aZoneThatAnswersPurgesNothing() = runBlocking {
-        run(zoneOk, mapOf(1L to fresh(node("route", 1, "A"))), listOf(1)); assertTrue(purged.isEmpty())
+        run(zoneOk, mapOf(1L to fresh(node("route", 1, "A"))), listOf(1)); assertEquals(0, purgedTimes)
     }
 }

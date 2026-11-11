@@ -13,7 +13,11 @@ import kotlinx.coroutines.test.StandardTestDispatcher
  * measured here: 1 of 150 effect runs off the main thread, twice in a row).
  *
  * A `StandardTestDispatcher` as the effect context is honoured by the test environment as the Recomposer's dispatcher: a resumption from another thread is only
- * QUEUED on its scheduler, and the scheduler is run by the test's own idle loops (`waitUntil`, `performClick`, `waitForIdle`, which run on the main thread). So the
- * composition, its effects and its frames run on the main thread only, in every test, loaded machine or not. Nothing else about the rule changes.
+ * QUEUED on its scheduler, never run inline on the thread that resumed it, so the composition, its effects and its frames run on the main thread only. WHAT RUNS
+ * THE QUEUE, precisely (measured, D-AMO-CALLS-33): `waitUntil` advances one frame per poll and so runs the queued work; `performClick` and the other actions idle
+ * only while Compose itself reports pending work; a bare `waitForIdle()` does NOT call `runCurrent` on the scheduler, so work that finished on another thread
+ * after the last frame stays queued until the next `waitUntil` poll or frame advance (`mainClock.advanceTimeByFrame()`). A test that asserts a NEGATIVE ("nothing
+ * happened") must therefore settle the day's work and advance a frame first. (The v2 rule `androidx.compose.ui.test.junit4.v2.createEmptyComposeRule` was not used:
+ * the v1 factory with this dispatcher is what the suites were proven on.)
  */
 fun hostComposeRule(): ComposeTestRule = createEmptyComposeRule(StandardTestDispatcher())
