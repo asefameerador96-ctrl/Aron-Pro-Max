@@ -50,3 +50,4 @@ Brief: `docs/status/portal-discount-brief.md` (on `lane/lead-docs-1022`), sectio
 - Zero product rows = all products (Q9 lead ruling) with an explicit warning; detail says "All products".
 - Tests added: sku_units-absent path, title-only edit byte-identical, truncation (65 on pack 20, reward 10), reunit, request_uuid kept on retry / regenerated on a changed body, status panel render (past valid_to block, Super-Admin-only note), e2e edit never truncates, long Bangla on the edit screen and the open status panel, gating test title fixed.
 - Still pending the contract: the AdminModule enum on INT does not list `discounts` yet (rides train 93); the runtime test exception stays and removes itself; the Schemas["AdminModule"] type check comes back with the enum.
+- E2E at head b563c1340 plus this note: full suite 340 passed, 5 failed (the five pre-existing pixel-snapshot specs only); e2e/discounts.spec.ts 12 of 12 inside that run. Unit: 2003 passed.
