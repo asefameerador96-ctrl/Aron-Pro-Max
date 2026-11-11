@@ -112,5 +112,5 @@ object Reports {
         val sameUnit = units.size == 1 && rows.all { it.s("base_unit") != null && it.l("sold_qty_base") != null }
         // grouped by route ID (else code; two routes may share a name, never matched by name), shown by name
         RouteCategory(rows.firstNotNullOfOrNull { it.s("route_name") } ?: key.first, key.second, if (sameUnit) rows.sumOf { it.l("sold_qty_base") ?: 0 } else null, if (sameUnit) units.first() else null, rows.sumOf { it.l("gross_mtk") ?: 0 }, key.first)
-    }.sortedWith(compareBy({ it.route }, { it.code }, { it.category }))
+    }.sortedWith(compareBy({ it.route }, { it.code }, { it.category.lowercase() }, { it.category }))
 }
