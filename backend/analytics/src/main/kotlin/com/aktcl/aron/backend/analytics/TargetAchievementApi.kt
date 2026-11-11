@@ -59,9 +59,26 @@ class TargetAchievementService(private val db: Database, private val config: Ser
     private class Product(
         val skuId: Long, val skuName: String, val variantId: Long, val variantName: String, val brandId: Long, val brandName: String,
         val categoryId: Long, val categoryName: String, val categoryCode: String, val baseUnit: String, val sortKey: List<Comparable<*>>,
-    )
+        val basePerPack: Int = 1, val entryUnitDefault: String = "",
+    ) {
+        /** Rule 5 (docs/34 s4.2): a SKU counted in packs is reported in packs (lighters: boxes of 25), the rest in their base unit. */
+        val fieldFactor: Int get() = if (entryUnitDefault == "pack") basePerPack.coerceAtLeast(1) else 1
+        val fieldUnit: String get() = if (entryUnitDefault == "pack") (if (categoryCode == "lighter") "box" else "pack") else baseUnit
+    }
 
-    private class Category(val id: Long, val name: String, val code: String, val unit: String)
+    private class Category(val id: Long, val name: String, val code: String, val unit: String, val packed: Boolean = false) {
+        /** The field unit an empty card prints: from the SKUs' `entry_unit_default` (packs -> pack, lighters box), else the base unit. */
+        val fieldUnit: String get() = if (packed) (if (code == "lighter") "box" else "pack") else unit
+    }
+
+    /** `level=route` (contract 1.11.2, D-AMO-FND-16): one route of the caller's reach; a route outside it is 403 `ERR_OUT_OF_SCOPE`, an unknown one the same (no probing). */
+    private fun routeNode(h: Handle, reach: Reach, nodeId: Long?): ScopedNode {
+        val id = nodeId?.takeIf { it > 0 } ?: throw bad("query.node_id", "required")
+        val r = h.createQuery("SELECT zone_id, code, name FROM app.route WHERE id = :r").bind("r", id)
+            .map { rs, _ -> Triple(rs.getLong(1), rs.getString(2), rs.getString(3)) }.findOne().orElse(null)
+        if (r == null || !reach.coversRoute(id, r.first)) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "node is outside your reach")
+        return ScopedNode(NodeRefDto("route", id, r.second, r.third), null, listOf(id))
+    }
 
     /** T and A of one node by SKU. */
     private class Figures(val target: Map<Long, Long>, val achieved: Map<Long, Long>)
@@ -83,10 +100,10 @@ class TargetAchievementService(private val db: Database, private val config: Ser
         }
         val basis = TillDateBasis.fromWire(runCatching { config?.string(if (role == Role.AMO) BASIS_AMO else BASIS_TSO) }.getOrNull())
         return db.readJdbi.withHandle<TargetAchievement, Exception> { h ->
-            val node = resolveScopedNode(h, reach, level, nodeId, ProblemCode.ERR_OUT_OF_SCOPE)
+            val node = if (level == "route") routeNode(h, reach, nodeId) else resolveScopedNode(h, reach, level, nodeId, ProblemCode.ERR_OUT_OF_SCOPE)
             val withChildren = childrenParam == "zone"
             // R-F-18: children only at a territory or below (a house groups zones of one territory; a route-only caller's node is its routes).
-            if (withChildren && node.ref.type !in CHILD_PARENTS) throw bad("query.children", "invalid_value")
+            if (withChildren && (level == "route" || node.ref.type !in CHILD_PARENTS)) throw bad("query.children", "invalid_value")
             val byZone = figuresByZone(h, node, month, day)
             val products = products(h, byZone.values.flatMap { it.target.keys + it.achieved.keys }.toSet())
             val categories = if (productLevel == "category") categories(h) else emptyList()
@@ -167,7 +184,8 @@ class TargetAchievementService(private val db: Database, private val config: Ser
         return h.createQuery(
             """
             SELECT p.sku_id, coalesce(s.name, p.short_name), p.variant_id, p.variant_name, p.brand_id, p.brand_name, p.category_id, p.category_name,
-                   p.category_code, p.base_unit, coalesce(sg.sort, 0), coalesce(b.sort, 0), coalesce(v.sort, 0), coalesce(s.sort, 0), p.sku_code
+                   p.category_code, p.base_unit, coalesce(sg.sort, 0), coalesce(b.sort, 0), coalesce(v.sort, 0), coalesce(s.sort, 0), p.sku_code,
+                   coalesce(s.base_per_pack, 1), coalesce(s.entry_unit_default, '')
               FROM dw.dim_product p LEFT JOIN app.sku s ON s.id = p.sku_id LEFT JOIN app.product_node v ON v.id = p.variant_id
               LEFT JOIN app.product_node b ON b.id = p.brand_id LEFT JOIN app.product_node sg ON sg.id = p.segment_id
              WHERE p.sku_id = ANY(:s)
@@ -178,20 +196,22 @@ class TargetAchievementService(private val db: Database, private val config: Ser
                 rs.getLong(1), rs.getString(2), rs.getLong(3), rs.getString(4), rs.getLong(5), rs.getString(6), rs.getLong(7), rs.getString(8), cat, rs.getString(10),
                 // Catalogue order (D-TSO-MAN-40): category as the brief lists them, then segment, brand, variant and SKU by their sort, name and id.
                 listOf(categoryRank(cat), rs.getInt(11), rs.getInt(12), rs.getString(6), rs.getLong(5), rs.getInt(13), rs.getString(4), rs.getLong(3), rs.getInt(14), rs.getString(15)),
+                rs.getInt(16), rs.getString(17),
             )
         }.list().associateBy { it.skuId }
     }
 
     /** Every category of the catalogue: the Target Status card shows its four bars even where a category has no target. */
     private fun categories(h: Handle): List<Category> = h.createQuery(
-        "SELECT category_id, min(category_name), category_code, min(base_unit) FROM dw.dim_product GROUP BY category_id, category_code",
-    ).map { rs, _ -> Category(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4)) }.list()
+        "SELECT p.category_id, min(p.category_name), p.category_code, min(p.base_unit), bool_and(coalesce(s.entry_unit_default, '') = 'pack') FROM dw.dim_product p LEFT JOIN app.sku s ON s.id = p.sku_id GROUP BY p.category_id, p.category_code",
+    ).map { rs, _ -> Category(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getBoolean(5)) }.list()
         .sortedWith(compareBy<Category>({ categoryRank(it.code) }, { it.name }, { it.id }))
 
     private fun categoryRank(code: String): Int = CATEGORY_ORDER.indexOf(code).let { if (it < 0) 99 else it }
 
     private class Acc(val id: Long, val name: String, val unit: String, val categoryCode: String, val order: List<Comparable<*>>) {
         var t = 0L; var a = 0L; var td = 0L
+        var tRep = BigDecimal.ZERO; var aRep = BigDecimal.ZERO; val units = LinkedHashSet<String>(); var emptyUnit: String? = null
     }
 
     /** The rows of one node at [level]: item till-date rounded once per item, every row the sum of its items (R-F-01). */
@@ -200,7 +220,7 @@ class TargetAchievementService(private val db: Database, private val config: Ser
         // Items: variants (a SKU row is its own item); T and A summed over the node's SKUs of the item, then T' rounded once.
         val items = (f.target.keys + f.achieved.keys).mapNotNull { products[it] }.groupBy { if (level == "sku") it.skuId else it.variantId }
         val acc = LinkedHashMap<Long, Acc>()
-        if (level == "category") categories.forEach { c -> acc[c.id] = Acc(c.id, c.name, c.unit, c.code, listOf(categoryRank(c.code), c.name, c.id)) }
+        if (level == "category") categories.forEach { c -> acc[c.id] = Acc(c.id, c.name, c.unit, c.code, listOf(categoryRank(c.code), c.name, c.id)).also { it.emptyUnit = c.fieldUnit } }
         for ((_, skus) in items) {
             val first = skus.first()   // every SKU of an item shares its variant, brand and category
             val t = skus.sumOf { f.target[it.skuId] ?: 0L }
@@ -214,12 +234,28 @@ class TargetAchievementService(private val db: Database, private val config: Ser
             }
             val row = acc.getOrPut(id) { Acc(id, name, first.baseUnit, first.categoryCode, first.sortKey) }
             row.t = Math.addExact(row.t, t); row.a = Math.addExact(row.a, a); row.td = Math.addExact(row.td, td)
+            // Field units (D-AMO-FND-16): converted SKU by SKU (10s and 20s differ), summed after conversion, rounded once at the end.
+            for (p in skus) {
+                row.units += p.fieldUnit
+                row.tRep += BigDecimal(f.target[p.skuId] ?: 0L).divide(BigDecimal(p.fieldFactor), java.math.MathContext.DECIMAL128)
+                row.aRep += BigDecimal(f.achieved[p.skuId] ?: 0L).divide(BigDecimal(p.fieldFactor), java.math.MathContext.DECIMAL128)
+            }
         }
         val rows = acc.values.filter { level == "category" || it.t > 0 || it.a > 0 }
         val ordered = if (level == "category") rows else rows.sortedWith { x, y -> compareKeys(x.order, y.order) }
         return ordered.map { r ->
             val td: Long? = if (noPeriod) null else r.td
             val bp = Targets.detailsBp(r.a, r.t)
+            // One field unit for the row, else the base unit with the base quantities (the contract says so).
+            val single = r.units.singleOrNull() ?: if (r.units.isEmpty()) r.emptyUnit?.takeIf { r.t == 0L && r.a == 0L } else null
+            fun rep(v: BigDecimal) = v.setScale(3, java.math.RoundingMode.HALF_UP).toPlainString()
+            val mixed = single == null
+            val tR = if (mixed) r.t.toBigDecimal() else r.tRep; val aR = if (mixed) r.a.toBigDecimal() else r.aRep
+            val tdR = if (noPeriod || r.t == 0L) BigDecimal.ZERO else if (mixed) r.td.toBigDecimal() else BigDecimal(r.td).multiply(r.tRep).divide(BigDecimal(r.t), java.math.MathContext.DECIMAL128)
+            // Remaining is computed from the rounded report quantities, so it always equals T_report - A_report as printed (floored at 0).
+            fun r3(v: BigDecimal) = v.setScale(3, java.math.RoundingMode.HALF_UP)
+            val remR = (r3(tR) - r3(aR)).max(BigDecimal.ZERO)
+            val remTdR = if (noPeriod) null else (r3(tdR) - r3(aR)).max(BigDecimal.ZERO)
             TargetAchievementRow(
                 productLevel = level, productId = r.id, name = r.name.take(120), unit = r.unit,
                 targetQty = d3(r.t), achievedQty = d3(r.a), tilldateTargetQty = d3(td ?: 0L),
@@ -227,6 +263,7 @@ class TargetAchievementService(private val db: Database, private val config: Ser
                 memoTarget = null, memoAchieved = null, categoryCode = r.categoryCode,
                 targetQtyBase = r.t, achievedQtyBase = r.a, tilldateTargetQtyBase = td, remainingQtyBase = Targets.remaining(r.t, r.a),
                 remainingTilldateQtyBase = td?.let { Targets.remaining(it, r.a) }, achievementPctBp = bp, tilldateAchievementPctBp = td?.let { Percent.bp(r.a, it) },
+                reportUnit = single ?: r.unit, targetQtyReport = rep(tR), achievedQtyReport = rep(aR), tilldateTargetQtyReport = rep(tdR), remainingQtyReport = rep(remR), remainingTilldateQtyReport = remTdR?.let { rep(it) },
             )
         }
     }

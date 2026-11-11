@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * Contract 1.11.1 (AMO manual build, docs/requests/amo-manual-build-2026-11.md s3), foundation trains F1 and F2: the members and the
+ * Contract 1.11.2 (AMO manual build, docs/requests/amo-manual-build-2026-11.md s3), foundation trains F1 and F2: the members and the
  * operation the AMO lanes build against. Everything is additive: no existing required list grows.
  */
 @Suppress("UNCHECKED_CAST")
@@ -23,8 +23,20 @@ class AmoManualContractTest {
     }
 
     @Test
-    fun versionIs1111() {
-        assertEquals("1.11.1", map(OpenApi.doc["info"])["version"].toString(), "the exact shipped contract version")
+    fun versionIs1112() {
+        assertEquals("1.11.2", map(OpenApi.doc["info"])["version"].toString(), "the exact shipped contract version")
+    }
+
+    @Test
+    fun targetRowsCarryOptionalFieldUnitMembers() {
+        val members = listOf("report_unit", "target_qty_report", "achieved_qty_report", "tilldate_target_qty_report", "remaining_qty_report", "remaining_tilldate_qty_report")
+        for (m in members) {
+            assertTrue(m in props("TargetAchievementRow"), "TargetAchievementRow.$m")
+            assertFalse(m in required("TargetAchievementRow"), "$m is optional (additive, 1.11.2)")
+        }
+        assertEquals(setOf("stick", "piece", "dozen", "box", "pack"), (props("TargetAchievementRow").getValue("report_unit")["enum"] as List<*>).map { it.toString() }.toSet())
+        val cols = flat(OpenApi.doc)
+        for (c in listOf("memos_cigarette", "memos_bidi", "memos_match", "memos_lighter")) assertTrue(c in cols, "sales-summary names $c")
     }
 
     @Test
