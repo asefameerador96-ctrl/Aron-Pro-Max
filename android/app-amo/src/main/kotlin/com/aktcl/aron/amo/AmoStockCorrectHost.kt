@@ -42,7 +42,7 @@ fun AmoStockCorrectHost(day: AmoDay, onDone: () -> Unit) {
             CorrectionRow(s.skuId, if (bn) s.nameBn?.takeIf { it.isNotBlank() } ?: s.shortName else s.shortName, s.baseUnit, bal.getValue(s.skuId).current)
         }
     }
-    LaunchedEffect(day, bn) { runCatching { load() }.onFailure { rows = emptyList() } }
+    LaunchedEffect(day, bn) { try { load() } catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e } catch (t: Throwable) { rows = emptyList() } } // a cancelled run must not blank the list (D-AMO-CALLS-38)
     val list = rows ?: run { com.aktcl.aron.core.ui.aron.AronLoadingScreen(); return }
     StockCorrectionContent(
         list, selected, text, reason, saved, saving,
