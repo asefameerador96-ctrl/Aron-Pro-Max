@@ -49,7 +49,7 @@ describe("menu is driven from data", () => {
   });
   it("keeps the admin menu short: master-data tables hang off one hub, not one menu entry each", () => {
     const admin = menuFor("ADMIN").find((s) => s.group === "admin");
-    expect(admin?.items.map((i) => i.href)).toEqual(["/admin", "/admin/master-data", "/admin/outlet-requests", "/admin/team", "/admin/wholesale-marking", "/admin/mdm", "/admin/audit", "/admin/tickets"]); // tso-manual W1: + /admin/tickets
+    expect(admin?.items.map((i) => i.href)).toEqual(["/admin", "/admin/master-data", "/admin/outlet-requests", "/admin/team", "/admin/wholesale-marking", "/admin/mdm", "/admin/discounts", "/admin/audit", "/admin/tickets"]); // tso-manual W1: + /admin/tickets; portal-discount-web: + /admin/discounts
   });
   it("a new item with a role list appears for exactly those roles", () => {
     const extra: MenuItem = { id: "x", labelKey: "menu.dashboard", href: "/x", roles: ["DMO"], group: "main" };

@@ -23,11 +23,9 @@ OfferSkuUnit:
       maximum: 1000
       description: Base units per pack (app.sku.base_per_pack); base quantity = field quantity x pack_factor.
     field_unit:
-      type: string
-      enum:
-      - packet
-      - box
-      - dozen
-      - piece
-      description: 'The word the field apps count this SKU in, derived by the server from the SKU category (docs/34
-        s4.2): packet for cigarettes and bidi, box for lighters, dozen for matches, piece for any other category.'
+      $ref: '#/components/schemas/QtyUnit'
+      description: 'The unit the field apps count this SKU in (docs/34 s4.2), in the contract''s one unit vocabulary
+        (`QtyUnit`): `pack` (a packet of 20 or 10 sticks, a bidi packet, or a box of 25 lighters; the word packet
+        or box is the app''s label for the category) for cigarettes, bidi and lighters, `dozen` for matches, and
+        the SKU''s own `base_unit` for any other category. Derived by the server from the SKU category. Bidi in
+        packets is pending the owner''s confirmation (docs/34 s4.2).'
