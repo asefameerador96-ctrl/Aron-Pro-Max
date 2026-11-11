@@ -2346,3 +2346,6 @@
 
 ### 2026-11-11 04:40 UTC — integrator pushed train 88 to INT (lead record)
 - Integrator 23 (04:38): INT 2ffcfd0bab446fcf34cfa3a643d3d0493bfdae3c (train 88 commit), ci 42960538648 (#1950); no conflicts; DECISIONS 357 (expected 357), 0 markers, 0 duplicate D- lines, 0 INT lines lost; migrations none; slice-contract clean; it watches ci then the REAL no-migration deploy. Lead background watch on ci #1950; the docs worktree merges INT 2ffcfd0ba (markers 0, 357).
+
+### 2026-11-11 04:46 UTC — 2-hourly lane check (lead)
+- Notifications: the lane-check trigger only; no owner message. Heads: INT 2ffcfd0ba (train 88 commit; ci #1950 running; real deploy follows); lane/amo-foundation a4c70b80b, lane/android-amo-calls ee807c763 (both in train 88, lanes holding); lane/android-amo-team 19d5f26a0 (A3 #2 idle, code inside A2's head); lane/qa-ci fd790f8fd (landed in train 87, holding); lane/lead-train88 ff7330467. Health c7ecd8252 (train 87) until deploy #326 lands. No lane overdue; A1 #2 and A4 archived at 04:40. Nothing needs the owner.
