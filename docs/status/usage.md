@@ -2079,3 +2079,8 @@
 
 ### 2026-11-11 00:46 UTC — landing check-in #1: deploy #323 still running (lead)
 - Deploy 42932022812 (#323) on INT bf113f461: job "Deploy to dev" in progress; step 11 "Deploy (infra/deploy.sh)" running since 00:31:59 (the migrate + image + revision step); health still b0479585. No "train 85 landed" yet (expected only after the deploy and the smoke). Re-armed the check-in for 01:11 UTC; the lead's background watch on the deploy run and the integrator's report wake the lead earlier. Nothing needs the owner.
+
+### 2026-11-11 00:47 UTC — 2-hourly lane check (lead; coincides with landing check-in #1)
+- Notifications: the lane-check trigger only; no owner message.
+- Heads by ls-remote: INT bf113f461 (train 85 commit, ci #1913 green, deploy #323 in progress); lane/amo-foundation 5d0aa2282, lane/android-amo-calls 15b53243, lane/qa-ci c6094c07 (all three in train 85); lane/android-amo-team 5b3af3cb (A3 #2 holds); lane/android-amo-shell 61a9d6c1 (landed); lane/lead-train85 052b04c56.
+- Health: build b0479585 until deploy #323 finishes. Every active lane is holding for "train 85 landed" by instruction; none is overdue. Nothing needs the owner.
