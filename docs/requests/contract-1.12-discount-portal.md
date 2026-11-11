@@ -1,4 +1,4 @@
-# Contract 1.12.0 and 1.12.1: discount-programme portal (lane portal-discount-api, 2026-11-11)
+# Contract 1.12.0, 1.12.1 and 1.12.2: discount-programme portal (lane portal-discount-api, 2026-11-11)
 
 Approved by the lead as **D-LEAD-CONTRACT-112-01** (DECISIONS.md, 2026-11-11 08:26 UTC). The change is additive except one
 response enum that gains a value; the oasdiff gate (`tools/ci/contract-breaking.sh`) reports that one as breaking, and this file
@@ -39,6 +39,16 @@ Version 1.12.0 is on INT (train 92). Train 2 adds the routes and two contract ch
 before the routes of this release; bidi in packets is pending the owner's confirmation, docs/34 s4.2). oasdiff reports both as
 `response-property-enum-value-added`; no shipped client reads either (the apps do not call the offer operations; the `modules` claim is read
 by the web portal, which ignores an unknown module, and Lane B adds it). The gate needs a new `info.version` for them: 1.12.1.
+
+## 1.12.2 (train 94; approved by the lead as D-LEAD-CONTRACT-1122-01)
+
+Additive only: `setOfferStatus` takes an OPTIONAL `If-Match` request header (the offer's ETag; when given and stale the move is refused) and
+gains the `412` response. No header keeps the 1.12.1 behaviour, so no client changes. The same train brings V0156 (the database refuses any
+status move but draft to active to inactive, and a change of the current version once the offer has left draft), V0157 (the row version a call
+produced is stored, so a replay answers the first result's status and ETag; null for rows made earlier) and the pack-size check (a base
+quantity must be a multiple of the SKU's `base_per_pack`, units rule 5; 400 `not_a_multiple_of_pack_factor`). oasdiff reports the 39
+`response-property-enum-value-added` of 1.12.1 against a base older than train 93 only; against INT 82642d313 the additions of this version
+are an optional parameter and a new response status.
 
 ## Also in 1.12.0 (additive)
 
