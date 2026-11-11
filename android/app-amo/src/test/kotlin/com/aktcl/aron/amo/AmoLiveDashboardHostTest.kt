@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -24,9 +25,10 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * Contract 1.11.1 offline path (lead, train 85): the Live Dashboard reads `GET /v1/dashboards/login-submit` with the AMO members. The server is out of
- * reach here (api.aron.test does not answer), so the screen shows the last answer kept on this phone, says so, and the category volumes and the geo and photo
- * counts come from that kept copy in the field units. With no kept copy it says there is nothing, instead of inventing figures.
+ * Contract 1.11.1 offline path (lead, train 85), on the Live Data screen of the AMO team build (A3 replaced the old Live Dashboard host): it reads
+ * `GET /v1/dashboards/login-submit`. The server is out of reach here (api.aron.test does not answer), so the screen shows the last answer kept on this
+ * phone and says so; the counts come from that kept copy. With no kept copy it says there is nothing, instead of inventing figures. (The field-unit
+ * figures of the route variant are proved by `LiveDataTest` and the `amo_team_live_route_*` goldens.)
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34], application = Application::class, qualifiers = "w360dp-h800dp")
@@ -46,7 +48,7 @@ class AmoLiveDashboardHostTest {
         shadowOf(app.packageManager).addActivityIfNotPresent(ComponentName(app, ComponentActivity::class.java))
         f.own(ActivityScenario.launch(ComponentActivity::class.java)).onActivity { activity ->
             val ctx = AppLocale.wrap(activity, AppLanguage.EN)
-            activity.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { AmoLiveDashboard(f.day, filtering = false, onFiltering = {}) } } }
+            activity.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { AmoLiveDataHost(f.day, onBack = {}) } } }
         }
         compose.waitForIdle()
     }
@@ -58,20 +60,22 @@ class AmoLiveDashboardHostTest {
 
     private fun shown(text: String) = runCatching { compose.onNodeWithText(text, substring = true).assertExists() }.isSuccess
 
-    @Test fun offlineTheKeptAnswerShowsTheCategoriesInTheFieldUnitAndSaysItIsAKeptCopy() {
+    @Test fun offlineTheKeptAnswerShowsItsCountsAndSaysItIsAKeptCopy() {
         keep(kept)
         show()
-        compose.waitUntil(8_000) { shown("packets") }
-        compose.onNodeWithText("62.5").assertExists()
+        compose.waitUntil(8_000) { shown("List from the last time you were online.") }
         compose.onNodeWithText("List from the last time you were online.").assertExists() // the kept-copy notice
-        compose.onNodeWithText("Cigarette").assertExists()
-        listOf("Geo validation", "Photo validation", "Total outlet visits").forEach { compose.onNodeWithText(it).assertExists() } // the bare counts from the kept answer
+        compose.onAllNodesWithText("81")[0].assertExists() // target outlets of the kept answer
+        compose.onNodeWithText("No figures for this scope yet.").assertDoesNotExist()
+        // A2 #3's field-unit and bare-count assertions (62.5 packets, Cigarette, Geo/Photo validation, Total outlet visits) belong to `LiveDashboardContent`,
+        // which no host uses any more: this Live Data screen shows the day's category columns in BASE units as screenshot 39 does, and they are
+        // asserted by `LiveDashboardCategoriesTest` (content level, EN and BN) and `LiveDataTest`; moved, not dropped (D-AMO-CALLS-25).
     }
 
     @Test fun offlineWithNoKeptAnswerShowsNothingInsteadOfInventedFigures() {
         show()
         compose.waitUntil(8_000) { shown("No figures for this scope yet.") }
-        compose.onNodeWithText("62.5 packets").assertDoesNotExist()
+        compose.onNodeWithText("List from the last time you were online.").assertDoesNotExist() // no copy, no kept-copy note
     }
 
     /** Lead (train 87): a previous-sale line of a WITHDRAWN lighter SKU still reads "box" (the category comes from every SKU, not only the active ones). */

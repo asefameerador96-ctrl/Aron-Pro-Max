@@ -53,6 +53,23 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
     /** `GET /v1/dashboards/targets` for [month] (`yyyy-MM`) at category level (F-API-021a); empty while targets are deferred (docs/27). */
     suspend fun targets(month: String): AmoFetch = get("/v1/dashboards/targets", "targets_$month", mapOf("month" to month, "product_level" to "category"))
 
+    /** `GET /v1/team/members` (D-AMO-MAN-09): one row per SR and route of the zone, vacant routes included; the AMO's own zone carries the phones in clear. */
+    suspend fun teamMembers(businessDate: String): AmoFetch = get("/v1/team/members", "team_members_$businessDate", mapOf("business_date" to businessDate))
+
+    /** `GET /v1/team/journey` (screenshot 74): the SR's calls on [routeId] for the business date, computed by the server. */
+    suspend fun teamJourney(userId: Long, routeId: Long, businessDate: String): AmoFetch =
+        get("/v1/team/journey", "journey_${userId}_${routeId}_$businessDate", mapOf("user_id" to userId.toString(), "route_id" to routeId.toString(), "business_date" to businessDate))
+
+    /**
+     * `GET /v1/dashboards/targets` of one node at brand level (Team Performance, screenshots 34 to 36): [routeId] null is the caller's own
+     * top node (the zone); a route is asked by `level=route&node_id=` (an id the server itself listed; it answers 403 outside the reach).
+     */
+    suspend fun brandTargets(month: String, routeId: Long?): AmoFetch =
+        get("/v1/dashboards/targets", "targets_brand_${routeId ?: 0}_$month", linkedMapOf("month" to month, "product_level" to "brand") + (routeId?.let { mapOf("level" to "route", "node_id" to it.toString()) } ?: emptyMap()))
+
+    /** The Live Dashboard of one route (`level=route`), or null from the server when it does not offer that level. */
+    suspend fun liveDashboardRoute(date: String, routeId: Long): AmoFetch = get("/v1/dashboards/login-submit", "live_r${routeId}_$date", mapOf("business_date" to date, "level" to "route", "node_id" to routeId.toString()))
+
     /** A report page by page (a few pages of 500 rows), joined; the kept copy is the joined answer when it is complete and small enough. */
     suspend fun report(key: String, from: String, to: String): AmoFetch {
         val cacheKey = "rep_${key}_${from}_$to"

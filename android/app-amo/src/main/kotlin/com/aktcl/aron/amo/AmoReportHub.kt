@@ -16,65 +16,75 @@ import com.aktcl.aron.core.ui.AronScreen
 import com.aktcl.aron.core.ui.AronTopBar
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.feature.amo.ReportData
-import com.aktcl.aron.feature.amo.ReportMenuContent
+import com.aktcl.aron.feature.amo.ReportsTilesContent
+import com.aktcl.aron.feature.amo.StdMatrixContent
+import com.aktcl.aron.feature.amo.TeamReports
+import com.aktcl.aron.feature.amo.TeamTargets
+import com.aktcl.aron.feature.amo.TillNowContent
+import com.aktcl.aron.feature.amo.TillRouteDetailContent
+import com.aktcl.aron.rules.Percent
 import com.aktcl.aron.feature.amo.Reports
-import com.aktcl.aron.feature.amo.SalesSummaryContent
-import com.aktcl.aron.feature.amo.SalesSummaryRouteContent
-import com.aktcl.aron.feature.amo.StdMemoReportContent
 import com.aktcl.aron.feature.amo.R as AmoR
 import com.aktcl.aron.rules.Formats
 import com.aktcl.aron.rules.UiLocale
 
 private enum class ReportLeaf { MENU, STD, SUMMARY, ROUTE }
 
-/** The Report tile (F-AMO-032/033): STD Memo Report and Sales Summary Up To Now over the AMO's zone, online with a kept copy. */
+/**
+ * The Report tile (screenshots 71, 72): the two tiles, the STD Memo Report (route x category matrix over a date range, default the month to
+ * today) and the sales-till-now summary (zone and route cards with Target, Sales, %, Memo; a route opens its CPR, total memo and brand table).
+ */
 @Composable
 fun AmoReportHub(day: AmoDay, onBack: () -> Unit) {
     var leaf by rememberSaveable { mutableStateOf(ReportLeaf.MENU) }
-    var route by rememberSaveable { mutableStateOf<String?>(null) }
+    var route by rememberSaveable { mutableStateOf<Long?>(null) }
+    var from by rememberSaveable { mutableStateOf<String?>(null) }
+    var to by rememberSaveable { mutableStateOf<String?>(null) }
     val back: () -> Unit = {
         when (leaf) { ReportLeaf.MENU -> onBack(); ReportLeaf.ROUTE -> leaf = ReportLeaf.SUMMARY; else -> leaf = ReportLeaf.MENU }
     }
     BackHandler(onBack = back)
     val bangla = LocalAppLanguage.current == AppLanguage.BN
-    val money: (Long) -> String = { Formats.money(it, if (bangla) UiLocale.BN else UiLocale.EN) }
-    val title = when (leaf) { ReportLeaf.STD -> AmoR.string.amo_rep_std; ReportLeaf.SUMMARY, ReportLeaf.ROUTE -> AmoR.string.amo_rep_summary; else -> AmoR.string.amo_rep_title }
-    AmoFrame(stringResource(title), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_report) {
+    val l = if (bangla) UiLocale.BN else UiLocale.EN
+    val today = remember { day.businessDate() }
+    val defaults = remember { TeamReports.summaryPeriod(today) }
+    val title = when (leaf) { ReportLeaf.STD -> AmoR.string.amo_rep_std; ReportLeaf.SUMMARY -> AmoR.string.amo_rep_summary; ReportLeaf.ROUTE -> -1; else -> AmoR.string.amo_rep_title }
+    val members = if (leaf == ReportLeaf.SUMMARY || leaf == ReportLeaf.ROUTE) rememberMembers(day) else null
+    val nodes = if (members != null) rememberTargetNodes(day, members) else null
+    val openNode = nodes?.routes?.firstOrNull { it.id == route }
+    AmoFrame(if (title == -1) openNode?.name.orEmpty() else stringResource(title), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_report) {
         when (leaf) {
-            ReportLeaf.MENU -> ReportMenuContent({ leaf = ReportLeaf.STD }, { leaf = ReportLeaf.SUMMARY })
+            ReportLeaf.MENU -> ReportsTilesContent({ leaf = ReportLeaf.STD }, { leaf = ReportLeaf.SUMMARY })
             ReportLeaf.STD -> {
-                val range = remember { Reports.stdMemoRange(day.businessDate()) }
-                val loaded = rememberReport(day, "std-memo", range.first, range.second)
-                // Route totals and the per-category STD come from the server (`route-memo`, `route-std`, zone-scoped by the token); a refused or missing one falls back to the memo rows.
-                val totals = rememberReport(day, "route-memo", range.first, range.second)
-                val std = rememberReport(day, "route-std", range.first, range.second)
-                if (loaded == null || totals == null || std == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen()
-                else {
-                    val server = totals.data?.takeIf { !it.truncated && it.rows.isNotEmpty() }?.let { Reports.routeMemoTotals(it) }
-                    StdMemoReportContent(
-                        range, loaded.data, server ?: loaded.data?.let { Reports.stdByRoute(it) }.orEmpty(), bangla, money, loaded.stale || (totals.stale && server != null), loaded.failed,
-                        exactTotals = if (server != null) true else null,
-                        categories = std.data?.takeIf { !it.truncated }?.let { Reports.routeCategories(it) }.orEmpty(),
-                    )
-                }
+                val f = from ?: defaults.first; val t = to ?: defaults.second
+                val std = rememberReport(day, "route-std", f, t)
+                var zone by remember { mutableStateOf("") }
+                LaunchedEffect(day) { zone = TeamTargets.parse(day.api.brandTargets(today.take(7), null).jsonOrNull())?.name.orEmpty() }
+                if (std == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen()
+                else StdMatrixContent(f, t, today, { a, b -> from = a; to = b }, std.data?.takeIf { !it.truncated }?.let { TeamReports.stdMatrix(zone, Reports.routeCategories(it)) }, std.stale, std.failed, std.refused, truncated = std.data?.truncated == true)
             }
             ReportLeaf.SUMMARY, ReportLeaf.ROUTE -> {
-                // F-AMO-033: month to date over the trading days up to yesterday (today on the 1st), the same range as the STD report.
-                val range = remember { Reports.stdMemoRange(day.businessDate()) }
-                val loaded = rememberReport(day, "sales-summary", range.first, range.second)
-                if (loaded == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen()
-                else {
-                    val cards = loaded.data?.let { Reports.routeCards(it) }.orEmpty()
-                    val open = cards.firstOrNull { it.code == route }
-                    if (leaf == ReportLeaf.ROUTE && open != null) SalesSummaryRouteContent(open, money)
-                    else SalesSummaryContent(cards, money, loaded.stale, loaded.failed, { route = it.code; leaf = ReportLeaf.ROUTE })
-                }
+                // F-AMO-033: the month to today over the trading days; CPR and memo counts come from the sales-summary report, targets from the target slice
+                val loaded = rememberReport(day, "sales-summary", defaults.first, defaults.second)
+                if (loaded == null || nodes == null) { com.aktcl.aron.core.ui.aron.AronLoadingScreen(); return@AmoFrame }
+                // a cut-off report (a page failed or the page cap was hit) gives no CPR or brand memos: partial rows would print as complete figures
+                val summaryCut = loaded.data?.truncated == true
+                val reportCards = loaded.data?.takeIf { !summaryCut }?.let { Reports.routeCards(it) }.orEmpty()
+                // the Memo column is the server's per-category count (CategoryVolume.memos, F2.1); until it is wired every cell is a dash and the note says pending (D-AMO-TEAM-10)
+                val catMemos = TeamReports.categoryMemos(emptyList())
+                val cards = listOfNotNull(nodes.zone?.let { TeamReports.tillCard(stringResource(AmoR.string.amo_team_perf_zone, it.name.orEmpty()), it, true, catMemos, l) }) +
+                    nodes.routes.map { TeamReports.tillCard(stringResource(AmoR.string.amo_team_perf_route, it.name.orEmpty()), it, false, catMemos, l) }
+                if (leaf == ReportLeaf.ROUTE && openNode != null) {
+                    val rc = TeamReports.cardFor(reportCards, openNode.id, members?.rows?.firstOrNull { it.routeId == openNode.id }?.routeCode)
+                    val brands = openNode.rows.map { r -> TeamReports.brandLine(r, rc?.brands?.firstOrNull { it.name.equals(r.name, ignoreCase = true) }?.memos, l) }
+                    TillRouteDetailContent(rc?.let { TeamReports.cprText(it.successfulCalls, it.targetOutlets, l) } ?: Percent.DASH, rc?.let { Formats.integer(it.memos, l) } ?: Percent.DASH, brands)
+                } else TillNowContent(cards, { c -> route = c.routeId; if (c.routeId != null) leaf = ReportLeaf.ROUTE }, loaded.stale || nodes.stale, (loaded.failed || nodes.failed) && nodes.zone == null, loaded.refused || nodes.refused, memoPending = catMemos.isEmpty(), truncated = summaryCut)
             }
         }
     }
 }
 
-private class Loaded(val data: ReportData?, val stale: Boolean, val failed: Boolean)
+private class Loaded(val data: ReportData?, val stale: Boolean, val failed: Boolean, val refused: Boolean = false)
 
 @Composable
 private fun rememberReport(day: AmoDay, key: String, from: String, to: String): Loaded? {
@@ -82,7 +92,7 @@ private fun rememberReport(day: AmoDay, key: String, from: String, to: String): 
     LaunchedEffect(key, from, to) {
         val f = day.api.report(key, from, to)
         val json = f.jsonOrNull()
-        loaded = Loaded(Reports.parse(json), f is AmoFetch.Cached, f.isMissing())
+        loaded = Loaded(Reports.parse(json), f is AmoFetch.Cached, f.isMissing(), f is AmoFetch.Gone)
     }
     return loaded
 }
