@@ -2343,3 +2343,6 @@
 ### 2026-11-11 04:40 UTC — GO train 88 sent; A1 #2 and A4 archived (lead)
 - GO train 88 sent 04:40 to integrator 23: docs tip 75fb4023 + lane/lead-train88 ff7330467; expected DECISIONS 357; REAL deploy, no migrations (contract 1.11.2 additive); report format as before.
 - Archived after train 87 landed: android-amo-shell A1 #2 session_014mnioNxtiaZHio9Fs8RoRn (397k context, USD 9.95; HANDOVER 2 on INT) and android-amo-outlet A4 session_014mnioM34gAdy9zoncyovZa (467k, USD 16.22; HANDOVER on INT). qa-ci #1 holds for harness follow-ups.
+
+### 2026-11-11 04:40 UTC — integrator pushed train 88 to INT (lead record)
+- Integrator 23 (04:38): INT 2ffcfd0bab446fcf34cfa3a643d3d0493bfdae3c (train 88 commit), ci 42960538648 (#1950); no conflicts; DECISIONS 357 (expected 357), 0 markers, 0 duplicate D- lines, 0 INT lines lost; migrations none; slice-contract clean; it watches ci then the REAL no-migration deploy. Lead background watch on ci #1950; the docs worktree merges INT 2ffcfd0ba (markers 0, 357).
