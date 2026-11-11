@@ -229,6 +229,8 @@ class AdminOffersTest {
             "money as a string" to createBody(type = "amount_per_unit", discount = """"discount_mtk_per_unit":"500"""") to "body.discount_mtk_per_unit",
             "money as a float" to createBody(type = "amount_per_unit", discount = """"discount_mtk_per_unit":500.5""") to "body.discount_mtk_per_unit",
             "money above the overflow guard" to createBody(type = "amount_per_unit", discount = """"discount_mtk_per_unit":1000000000001""") to "body.discount_mtk_per_unit",
+            "reward not a multiple of the pack (SKU 2 is 10 per pack)" to createBody(type = "free_qty", discount = """"reward_sku_id":${fx["s2"]},"reward_qty_base":15,"threshold_qty_base":100""", qualifying = "[${q("sku", fx["s1"]!!)}]") to "body.reward_qty_base",
+            "threshold not a multiple of the pack (SKU 1 is 20 per pack)" to createBody(type = "free_qty", discount = """"reward_sku_id":${fx["s2"]},"reward_qty_base":10,"threshold_qty_base":110""", qualifying = "[${q("sku", fx["s1"]!!)}]") to "body.threshold_qty_base",
             "unknown reward sku" to createBody(type = "free_qty", discount = """"reward_sku_id":999999,"reward_qty_base":1,"threshold_qty_base":5""") to "body.reward_sku_id",
             "unknown product" to createBody(qualifying = "[${q("brand", 999999)}]") to "body.qualifying[0]",
             "a variant id given as a brand" to createBody(qualifying = "[${q("brand", fx["v1"]!!)}]") to "body.qualifying[0]",
@@ -262,6 +264,13 @@ class AdminOffersTest {
         create(super1, createBody(code(), request)).expect(HttpStatusCode.Conflict, "ERR_CONFLICT")
         create(super1, createBody(code, uuid())).expect(HttpStatusCode.Conflict, "ERR_MASTER_DUPLICATE_CODE")
         assertEquals(offers, count("SELECT count(*) FROM app.offer"))
+        // A replay answers the FIRST result: after the offer is activated, the create replay still shows a draft at the first ETag.
+        val firstId = firstObj.getValue("id").jsonPrimitive.content.toLong()
+        activate(firstId).expect(HttpStatusCode.OK)
+        val late = create(super1, body); late.expect(HttpStatusCode.Created)
+        assertEquals("draft", late.obj().getValue("status").jsonPrimitive.content)
+        assertEquals(firstObj.getValue("version"), late.obj().getValue("version"))
+        assertEquals(first.headers["ETag"], late.headers["ETag"])
         // A request_uuid that made a status move cannot be reused for a create, and the reverse.
         val moved = createId(createBody()); val statusUuid = uuid()
         call(HttpMethod.Post, "/v1/admin/offers/$moved/status", super1, """{"request_uuid":"$statusUuid","to_status":"active","reason":"$why"}""").expect(HttpStatusCode.OK)
@@ -302,6 +311,7 @@ class AdminOffersTest {
         // Replay (the If-Match is stale now: a replay is answered before it is judged) and a reused uuid with other content.
         val replay = call(HttpMethod.Patch, "/v1/admin/offers/$id", adminW, patch, etag); replay.expect(HttpStatusCode.OK)
         assertEquals(o.getValue("offer_version_id"), replay.obj().getValue("offer_version_id"))
+        assertEquals(o.getValue("version"), replay.obj().getValue("version"), "a replay shows the first ETag")
         assertEquals(2, count("SELECT count(*) FROM app.offer_version WHERE offer_id = $id"))
         call(HttpMethod.Patch, "/v1/admin/offers/$id", adminW, patch.replace("750", "760"), etag).expect(HttpStatusCode.Conflict, "ERR_CONFLICT")
         // A type change needs the old rate cleared and the new one given.
@@ -339,9 +349,19 @@ class AdminOffersTest {
     fun statusMovesDraftToActiveBySuperadminAndActiveToEndedByAdminWithTheTrailAndReplay() = app {
         val id = createId(createBody())
         activate(id, adminW).expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN")
+        // If-Match on the status call is optional; a stale one is 412 and moves nothing, the current one passes.
+        val row = scalar("SELECT version FROM app.offer WHERE id = $id").toInt()
+        call(HttpMethod.Post, "/v1/admin/offers/$id/status", super1, """{"request_uuid":"${uuid()}","to_status":"active","reason":"$why"}""", row + 3).expect(HttpStatusCode.PreconditionFailed, "ERR_PRECONDITION_FAILED")
         assertEquals("draft", scalar("SELECT status FROM app.offer WHERE id = $id"))
+        // The matching ETag passes: the move is made and the answer carries the new ETag (the row version after the move).
+        val tmp = createId(createBody()); val tmpRow = scalar("SELECT version FROM app.offer WHERE id = $tmp").toInt()
+        val ok = call(HttpMethod.Post, "/v1/admin/offers/$tmp/status", super1, """{"request_uuid":"${uuid()}","to_status":"active","reason":"$why"}""", tmpRow)
+        ok.expect(HttpStatusCode.OK)
+        assertEquals("active", ok.obj().getValue("status").jsonPrimitive.content)
+        assertEquals("\"${tmpRow + 1}\"", ok.headers["ETag"], "the new ETag")
         val request = uuid()
         val r = activate(id, super1, request); r.expect(HttpStatusCode.OK)
+        val firstRow = r.obj().getValue("version")
         assertEquals("active", r.obj().getValue("status").jsonPrimitive.content)
         assertEquals("t", scalar("SELECT is_effective FROM dw.v_offer WHERE offer_id = $id"))
         assertEquals(1, count("SELECT count(*) FROM app.offer_status_change WHERE offer_id = $id AND from_status = 'draft' AND to_status = 'active' AND request_uuid = '$request' AND reason = '$why'"))
@@ -357,6 +377,10 @@ class AdminOffersTest {
         call(HttpMethod.Post, "/v1/admin/offers/$id/status", adminW, end).expect(HttpStatusCode.OK)
         assertEquals("inactive", scalar("SELECT status FROM app.offer WHERE id = $id"))
         assertEquals("f", scalar("SELECT is_effective FROM dw.v_offer WHERE offer_id = $id"))
+        // The activation replayed after the offer ended still answers the first result: active, at the first ETag.
+        val replayed = activate(id, super1, request); replayed.expect(HttpStatusCode.OK)
+        assertEquals("active", replayed.obj().getValue("status").jsonPrimitive.content)
+        assertEquals(firstRow, replayed.obj().getValue("version"))
         // An ended offer cannot move again; a draft cannot be ended; nothing moves back to draft.
         call(HttpMethod.Post, "/v1/admin/offers/$id/status", super1, end.replace(Regex("\"request_uuid\":\"[^\"]+\""), "\"request_uuid\":\"${uuid()}\"")).expect(HttpStatusCode.Conflict, "ERR_REQUEST_STATE")
         activate(id).expect(HttpStatusCode.Conflict, "ERR_REQUEST_STATE")

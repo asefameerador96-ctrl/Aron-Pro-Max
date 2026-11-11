@@ -134,6 +134,23 @@ class DiscountPortalV0152Test {
     }
 
     @Test
+    fun theDatabaseRefusesAnyStatusMoveButDraftActiveInactiveAndALateVersionLink() = db.connect().use { c ->
+        c.autoCommit = false
+        try {
+            val o = c.offer("LC1"); val v1 = c.version(o, 1, null); val v2 = c.version(o, 2, null)
+            c.exec("UPDATE app.offer SET current_version_id = $v1 WHERE id = $o")
+            c.exec("UPDATE app.offer SET current_version_id = $v2 WHERE id = $o")          // a draft may take a newer version
+            assertEquals("23514", c.refused("UPDATE app.offer SET status = 'inactive' WHERE id = $o"), "draft -> inactive")
+            c.exec("UPDATE app.offer SET status = 'active' WHERE id = $o")
+            assertEquals("23514", c.refused("UPDATE app.offer SET current_version_id = $v1 WHERE id = $o"), "an active offer's rule is final")
+            assertEquals("23514", c.refused("UPDATE app.offer SET status = 'draft' WHERE id = $o"), "active -> draft")
+            c.exec("UPDATE app.offer SET status = 'inactive' WHERE id = $o")
+            assertEquals("23514", c.refused("UPDATE app.offer SET status = 'active' WHERE id = $o"), "inactive -> active")
+            c.exec("UPDATE app.offer SET group_code = 'OTHER' WHERE id = $o")               // other columns stay editable
+        } finally { c.rollback(); c.autoCommit = true }
+    }
+
+    @Test
     fun anOfferInsertedWithoutAStatusIsADraft() = db.connect().use { c ->
         c.autoCommit = false
         try {
