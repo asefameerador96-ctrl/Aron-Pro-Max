@@ -40,7 +40,7 @@ class AmoTeamPerformanceHostTest {
     private fun base(name: String, cat: String, t: Long, a: Long) = """"name":"$name","category_code":"$cat","target_qty_base":$t,"achieved_qty_base":$a,"tilldate_target_qty_base":$t"""
     private val withMembers = zone(
         """{${base("Marise", "cigarette", 50_000, 40_999)},"report_unit":"pack","target_qty_report":"2500.000","achieved_qty_report":"2199.950","tilldate_target_qty_report":"2500.000","remaining_qty_report":"300.050","remaining_tilldate_qty_report":"300.050"},
-           {${base("Aster", "lighter", 1_000, 810)},"report_unit":"pack","target_qty_report":"40.000","achieved_qty_report":"32.400","tilldate_target_qty_report":"40.000","remaining_qty_report":"7.600","remaining_tilldate_qty_report":"7.600"},
+           {${base("Aster", "lighter", 1_000, 810)},"report_unit":"box","target_qty_report":"40.000","achieved_qty_report":"32.400","tilldate_target_qty_report":"40.000","remaining_qty_report":"7.600","remaining_tilldate_qty_report":"7.600"},
            {${base("Salmon", "match", 30, 12)},"report_unit":"dozen","target_qty_report":"30.000","achieved_qty_report":"12.000","tilldate_target_qty_report":"30.000","remaining_qty_report":"18.000","remaining_tilldate_qty_report":"18.000"}""",
     )
     private val withoutMembers = zone("""{${base("Marise", "cigarette", 50_000, 40_999)}},{${base("Aster", "lighter", 1_000, 810)}}""")

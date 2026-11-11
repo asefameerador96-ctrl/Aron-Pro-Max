@@ -70,4 +70,11 @@ class LoadTargetNodesTest {
         val (k, _) = run(AmoFetch.Cached(node("zone", 5, "Gulshan")), emptyMap(), listOf())
         assertTrue(k.last().stale); assertFalse(k.last().refused)
     }
+
+    /** D-AMO-CALLS-31 (5): a refused zone is ONE refusal; the routes are not asked at all. */
+    @Test fun aZoneRefusedWith403EndsTheLoopAtOnceAndNoRouteIsAsked() = runBlocking {
+        val (out, asked) = run(AmoFetch.Gone, mapOf(1L to fresh(node("route", 1, "A"))), listOf(1, 2, 3, 4, 5))
+        assertTrue("no route was asked", asked.isEmpty())
+        assertTrue(out.last().refused); assertTrue(out.last().routes.isEmpty()); assertTrue(out.last().outOfReach.isEmpty()); assertEquals(1, out.size)
+    }
 }

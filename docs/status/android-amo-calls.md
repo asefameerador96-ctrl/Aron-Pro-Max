@@ -78,6 +78,10 @@ Then the full local gate (assemble x3, android unit tests `--max-workers=2`, lin
 - Still open from before: location-off card has no Refresh action; every acceptance DEVICE-PENDING.
 
 ## A2 #4 field-unit wiring (2026-11-11; D-AMO-CALLS-29)
-- Done and tested: Team Performance, Details and till-now read the 1.11.2 report members as given (packets, boxes, dozens; remaining from the server), base figure with the base word when absent or mixed; till-now memos from `memos_*` (route own, zone sum only if every route reported); route-level 403 and 400 are refusals and the loop stops after one miss.
+- Done and tested: Team Performance, Details and till-now read the 1.11.2 report members as given (packets, boxes, dozens; remaining from the server), base figure with the base word when absent or mixed; till-now memos from `memos_*` (route own, zone sum only if every route reported); route level per the 06:00 rulings (D-AMO-CALLS-30, -31): 403 on a route = that route's own "not in your reach" row and the loop goes on; 400, 404 and 501 on a route = one "route detail unavailable" line and the loop stops; a refused zone (403) = one refusal, no route asked. (The first version, "403 and 400 are refusals and the loop stops after one miss", is superseded.)
 - Lead rulings 2026-11-11 06:00 UTC (D-AMO-CALLS-30): H1 not blocking, percent stays the server's base measure (follow-up: a basis hint; the owner is asked); M1 fixed: 403 on a route = that route's own "not in your reach" row and the loop continues, 400 = "route detail unavailable" line, no access banner; goldens `amo_team_perf_fieldunits_*` and `amo_team_perf_route_states_*` added.
-- Not done: a golden for the field-unit state (the golden fixtures carry no 1.11.2 members; none changed); the five follow-ups of D-AMO-CALLS-28; every acceptance DEVICE-PENDING.
+- Goldens: `amo_team_perf_fieldunits_en/_bn` (packets, boxes, dozens and a base-unit route) and `amo_team_perf_route_states_en/_bn` exist since D-AMO-CALLS-30 (the earlier "no field-unit golden" is superseded). Not done: the five follow-ups of D-AMO-CALLS-28 and the follow-ups of D-AMO-CALLS-31; every acceptance DEVICE-PENDING.
+
+## A2 #4 narrow round (2026-11-11; D-AMO-CALLS-31)
+- Done: negative `memos_*` are no figure; a route 404 or 501 is "route detail unavailable" (403 only is "not in your reach"); a refused zone asks no route; lighter fixtures use `box` (one `pack` alias case kept).
+- Follow-ups listed in D-AMO-CALLS-31, none done.

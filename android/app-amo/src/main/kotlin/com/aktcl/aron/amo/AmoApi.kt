@@ -78,13 +78,14 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
 
     /**
      * One route of `GET /v1/dashboards/targets` (contract 1.11.2) with the two ways the server says no told apart: 403 (outside the reach, `ERR_OUT_OF_SCOPE`)
-     * is [AmoFetch.Gone] for THAT route only; 400 (no node_id, the level is not offered) is [RouteTargetsRead.notOffered], a server that has no route level and not
+     * is [AmoFetch.Gone] for THAT route only; 400 (no node_id), 404 and 501 (the level is not offered) are [RouteTargetsRead.notOffered], a server that has no route level and not
      * an access problem. Neither serves an old copy.
      */
     suspend fun routeTargets(month: String, routeId: Long): RouteTargetsRead {
         val key = "targets_brand_${routeId}_$month"
         val (f, status) = getRaw("/v1/dashboards/targets", key, linkedMapOf("month" to month, "product_level" to "brand", "level" to "route", "node_id" to routeId.toString()))
-        if (status == 400) { forget(key); return RouteTargetsRead(AmoFetch.Unavailable, true) }
+        // 400 (no node_id), 404 and 501 (no such route level / not implemented) all say the server has no route detail; only 403 says "not yours"
+        if (status == 400 || status == 404 || status == 501) { forget(key); return RouteTargetsRead(AmoFetch.Unavailable, true) }
         return RouteTargetsRead(f, false)
     }
 

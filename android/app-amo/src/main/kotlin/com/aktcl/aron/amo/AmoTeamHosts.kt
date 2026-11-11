@@ -80,7 +80,7 @@ internal fun rememberTargetNodes(day: AmoDay, members: Members?): TargetNodes? {
 private const val MAX_ROUTE_CARDS = 20
 
 /**
- * The zone, then one route at a time (`level=route&node_id=`), publishing after each answer. A 403 marks THAT route out of reach and the loop goes on with the
+ * The zone, then one route at a time (`level=route&node_id=`), publishing after each answer. A refused zone (403) ends it at once (one refusal, no ask per route). A 403 on a route marks THAT route out of reach and the loop goes on with the
  * rest; a 400 (the server has no route level) ends the loop with one note and no banner; an offline or unreadable answer ends it too. Nothing is asked twice.
  */
 internal suspend fun loadTargetNodes(fetchZone: suspend () -> AmoFetch, fetchRoute: suspend (Long) -> RouteTargetsRead, routeIds: List<Long>, routeName: (Long) -> String?, publish: (TargetNodes) -> Unit) {
@@ -92,6 +92,7 @@ internal suspend fun loadTargetNodes(fetchZone: suspend () -> AmoFetch, fetchRou
     var unavailable = false
     fun emit() = publish(TargetNodes(zone, acc.toList(), stale, zoneFetch.isMissing(), zoneGone, out.toList(), unavailable))
     emit()
+    if (zoneGone) return // the zone itself is refused: one refusal, the routes are not asked
     for (id in routeIds) {
         val r = fetchRoute(id)
         if (r.notOffered) { unavailable = true; emit(); break }

@@ -93,4 +93,20 @@ class AmoTeamApiTest {
         down = true; val off = a.routeTargets("2026-11", 11L); assertFalse(off.notOffered); assertTrue(off.fetch is AmoFetch.Cached); down = false
         status = 400; assertFalse(a.brandTargets("2026-11", null) is AmoFetch.Gone)
     }
+
+    /** D-AMO-CALLS-31 (3): only 403 is "not yours"; 404 and 501 (no route level) are route detail unavailable, like 400, and leave no old copy. */
+    @Test fun aRoute404Or501IsRouteDetailUnavailableNotOutOfReach() = runBlocking {
+        val a = api()
+        assertTrue(a.routeTargets("2026-11", 11L).fetch is AmoFetch.Fresh)
+        for (code in listOf(404, 501)) {
+            status = code
+            val r = a.routeTargets("2026-11", 11L)
+            assertTrue("$code is not offered", r.notOffered); assertFalse("$code is not an out-of-reach refusal", r.fetch is AmoFetch.Gone)
+            down = true; assertTrue("$code left no old copy", a.routeTargets("2026-11", 11L).fetch is AmoFetch.Unavailable); down = false
+            status = 200; assertTrue(a.routeTargets("2026-11", 11L).fetch is AmoFetch.Fresh)
+        }
+        status = 403
+        val r403 = a.routeTargets("2026-11", 11L)
+        assertTrue(r403.fetch is AmoFetch.Gone); assertFalse(r403.notOffered)
+    }
 }

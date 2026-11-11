@@ -25,7 +25,7 @@ class TeamFieldUnitMembersTest {
     )
     private val lighter = row(
         "Aster", "lighter", 1_000, 810, 500,
-        ""","report_unit":"pack","target_qty_report":"40.000","achieved_qty_report":"32.400","tilldate_target_qty_report":"20.000","remaining_qty_report":"7.600","remaining_tilldate_qty_report":"0.000"""",
+        ""","report_unit":"box","target_qty_report":"40.000","achieved_qty_report":"32.400","tilldate_target_qty_report":"20.000","remaining_qty_report":"7.600","remaining_tilldate_qty_report":"0.000"""",
     )
     private val match = row(
         "Salmon", "match", 30, 12, 15,
@@ -48,6 +48,9 @@ class TeamFieldUnitMembersTest {
         val box = node(row("Aster", "lighter", 1_000, 810, 500, ""","report_unit":"box","target_qty_report":"40.000","achieved_qty_report":"32.400","tilldate_target_qty_report":"20.000","remaining_qty_report":"7.600","remaining_tilldate_qty_report":"0.000"""")).rows.single()
         assertEquals("box", TeamTargets.unitKey(box)); assertEquals("32.4/40", TeamTargets.fraction(box, PerfTab.MONTHLY, UiLocale.EN))
         assertEquals("box", TeamTargets.unitKey(node(lighter).rows.single()))
+        // the alias: `pack` on a lighter reads as the same box word (kept as the one `pack` case)
+        val alias = node(row("Aster", "lighter", 1_000, 810, 500, ""","report_unit":"pack","target_qty_report":"40.000","achieved_qty_report":"32.400"""")).rows.single()
+        assertEquals("box", TeamTargets.unitKey(alias))
     }
 
     @Test fun remainingIsTheServersOwnMemberNotRecomputedOnThePhone() {
@@ -114,6 +117,8 @@ class TeamFieldUnitMembersTest {
         val cards = summary(srow(1, "A", ""","memos_cigarette":12,"memos_bidi":0,"memos_match":4,"memos_lighter":7"""), srow(1, "B", ""","memos_cigarette":12,"memos_bidi":0,"memos_match":4,"memos_lighter":7"""))
         assertEquals(mapOf("cigarette" to 12L, "bidi" to 0L, "match" to 4L, "lighter" to 7L), cards.single().categoryMemos)
         assertEquals(emptyMap<String, Long>(), summary(srow(1, "A", "")).single().categoryMemos) // an older server: no member, no figure
+        // D-AMO-CALLS-31 (2): a count is never negative; a negative member is no figure (the others stay)
+        assertEquals(mapOf("match" to 4L), summary(srow(1, "A", ""","memos_cigarette":-3,"memos_match":4""")).single().categoryMemos)
     }
 
     @Test fun theZoneMemosAreTheSumOfEveryRoutesCountOnlyForCategoriesEveryRouteReported() {
