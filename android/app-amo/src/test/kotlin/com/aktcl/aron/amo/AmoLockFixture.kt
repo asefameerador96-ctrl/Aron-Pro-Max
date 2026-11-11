@@ -1,6 +1,7 @@
 package com.aktcl.aron.amo
 
 import android.content.Context
+import android.os.Looper
 import android.os.SystemClock
 import androidx.room.Room
 import com.aktcl.aron.core.common.ClientIds
@@ -45,6 +46,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
+import org.robolectric.Shadows.shadowOf
 import org.junit.Assert.assertTrue
 import java.io.File
 
@@ -285,8 +287,19 @@ internal class AmoLockFixture(context: Context, latePolicy: String?) : AutoClose
         const val LNG = 90.40
         const val MONEY = """{"active_memo_count":0,"gross_mtk":0,"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,"net_mtk":0,"paid_mtk":0,"due_mtk":0,"due_collected_mtk":0,"net_by_category_mtk":{},"issued_qty_base_by_sku":{},"sold_qty_base_by_sku":{}}"""
 
+        /**
+         * Polls [cond] until true (10 s hang guard). With the Looper-backed Main (MainLooperImmediate, D-QA-CI-11) Main work resumed from a Room IO
+         * thread is POSTED to the main looper, which a blocked test thread never runs, so each poll idles it first (as TestWork.waitUntil does).
+         */
         fun await(what: String, cond: () -> Boolean) = runBlocking {
-            assertTrue(what, withTimeoutOrNull(10_000) { while (!cond()) delay(10); true } == true)
+            assertTrue(what, withTimeoutOrNull(10_000) {
+                while (true) {
+                    if (Looper.myLooper() == Looper.getMainLooper()) shadowOf(Looper.getMainLooper()).idle()
+                    if (cond()) break
+                    delay(10)
+                }
+                true
+            } == true)
         }
     }
 }

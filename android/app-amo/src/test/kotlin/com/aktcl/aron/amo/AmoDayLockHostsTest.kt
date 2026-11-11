@@ -20,7 +20,6 @@ import com.aktcl.aron.core.ui.AronTheme
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -49,7 +48,7 @@ class AmoDayLockHostsTest {
     private lateinit var f: AmoLockFixture
 
     @Before fun setUp() {
-        Dispatchers.setMain(UnconfinedTestDispatcher())
+        Dispatchers.setMain(MainLooperImmediate.dispatcher)
         // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
         f = AmoLockFixture(app, latePolicy = "quarantine")
     }

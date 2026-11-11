@@ -102,6 +102,8 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         val smokeRoute = smokeBundle.path("routes").firstOrNull { it.path("route").path("code").asText() == "SMK-SR-D" }
         hop("smoke1's bundle carries SMK-SR-D with its smoke outlets pinned",
             "pinned smoke outlets" to (smokeRoute?.path("outlets")?.count { it.path("lat").isNumber && it.path("lng").isNumber } ?: -1), "expected" to 3)
+        // D-QA-CI-13: SMK-SR-D is a daily route, so the bundle of the trace day must mark it planned_today (the deploy smoke picks its route from that flag)
+        hop("smoke1's bundle marks SMK-SR-D planned_today on the trace day", "planned_today" to (smokeRoute?.path("planned_today")?.asBoolean() ?: false), "expected" to true)
         hop("smoke1's SMK-SR-D has plan SKUs that are active and priced (slice-smoke pick_route)",
             "priced plan SKUs >= 1" to ((smokeRoute?.let { skusOf(smokeBundle, it).size } ?: 0) >= 1), "expected" to true)
         hop("plan SKUs with an outlet price today", "count" to skus.size, "expected >= 39" to skus.size.coerceAtLeast(39))

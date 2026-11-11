@@ -20,7 +20,6 @@ import com.aktcl.aron.core.ui.AronTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -48,7 +47,7 @@ class AmoRefusalHostsTest {
     private lateinit var f: AmoLockFixture
 
     @Before fun setUp() {
-        Dispatchers.setMain(UnconfinedTestDispatcher())
+        Dispatchers.setMain(MainLooperImmediate.dispatcher)
         // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
         f = AmoLockFixture(app, latePolicy = "quarantine")
     }
@@ -69,6 +68,17 @@ class AmoRefusalHostsTest {
         compose.waitForIdle()
     }
 
+    /**
+     * The Stock host composes its Save button only after its async load (the stock read and the slip-state reads, on Room's executor) returns,
+     * and `waitForIdle` does not wait for Room. Under full parallel load the tap came first: "could not find any node (TestTag = 'stk_save')"
+     * (D-QA-CI-14). Wait for the host's work to settle, then for the state the host exposes (the Save node), then tap.
+     */
+    private fun awaitStockLoaded() {
+        assertTrue("the host's work did not settle", f.work.awaitSettled())
+        compose.waitForIdle()
+        compose.waitUntil(30_000) { runCatching { compose.onNodeWithTag(com.aktcl.aron.feature.stock.StockTags.SAVE).assertExists() }.isSuccess }
+    }
+
     private fun shows(text: String) = compose.waitUntil(5_000) { runCatching { compose.onNodeWithText(text).assertExists() }.isSuccess }
 
     private fun queued(type: String) = runBlocking { f.db.outboxDao().committedCounts(f.date) }.filter { it.recordType == type }.sumOf { it.count }
@@ -80,6 +90,7 @@ class AmoRefusalHostsTest {
         runBlocking { f.day.stockLoad() }.setEntered(105, 3)
         f.finalSubmitted()
         show { AmoStockHost(f.day) }
+        awaitStockLoaded()
         compose.onNodeWithTag(com.aktcl.aron.feature.stock.StockTags.SAVE).performClick()
         shows(LOCK_TITLE)
         compose.onNodeWithText("Could not save", substring = true).assertDoesNotExist()

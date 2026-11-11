@@ -58,6 +58,7 @@ class AmoAppTest {
     private fun show(
         language: AppLanguage, user: HomeUser = this.user, badges: Map<String, Int> = emptyMap(), onLogout: () -> Unit = {},
         onSync: (() -> Unit)? = null, onSunlight: (Boolean) -> Unit = {},
+        targets: CallTargets? = null, targetsStatus: CallTargetsStatus = CallTargetsStatus.Fresh,
     ): Context {
         val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         compose.setContent {
@@ -65,7 +66,7 @@ class AmoAppTest {
                 AronTheme(language) {
                     AmoApp(
                         user, "2026-10-05", BundleStatus.Offline, "0.1.0 (1)", onLanguageSelect = {}, onLogout = onLogout,
-                        hero = RoleHero.Amo(4_391_000, 6, 60), badges = badges, reach = AmoReach(3, 0), syncedAt = "10:42", onSync = onSync, onSunlight = onSunlight,
+                        hero = RoleHero.Amo(4_391_000, 6, 60), badges = badges, reach = AmoReach(3, 0), syncedAt = "10:42", onSync = onSync, onSunlight = onSunlight, targets = targets, targetsStatus = targetsStatus,
                     )
                 }
             }
@@ -271,6 +272,40 @@ class AmoAppTest {
         compose.onNodeWithTag(AmoHomeTags.COLLAPSE).performScrollTo().performClick()
         compose.waitForIdle()
         compose.onNodeWithTag(RoleHomeTags.tile("attendance")).assertExists()
+    }
+
+    private val twelveOfNull = CallTargets(CallTarget(3, 5), CallTarget(42, 130), CallTarget(12, null), CallTarget(4, 20))
+
+    @Test
+    fun freshTargetsShowNoStateLineAndANullTargetKeepsItsDash() {
+        show(AppLanguage.EN, targets = twelveOfNull)
+        compose.onNodeWithTag(AmoHomeTags.TARGETS).performScrollTo()
+        compose.onNodeWithTag(AmoHomeTags.target("today")).assertTextContains("3/5", substring = true)
+        compose.onNodeWithTag(AmoHomeTags.target("control")).assertTextContains("12/—", substring = true) // done over a dash
+        compose.onNodeWithTag(AmoHomeTags.TARGETS_NOTE).assertDoesNotExist()
+    }
+
+    @Test
+    fun staleTargetsKeepTheirFiguresAndSayTheyAreSaved() {
+        val context = show(AppLanguage.EN, targets = twelveOfNull, targetsStatus = CallTargetsStatus.Stale)
+        compose.onNodeWithTag(AmoHomeTags.TARGETS).performScrollTo()
+        compose.onNodeWithTag(AmoHomeTags.target("total")).assertTextContains("42/130", substring = true)
+        compose.onNodeWithTag(AmoHomeTags.TARGETS_NOTE).assertTextEquals(context.getString(R.string.amo_shell_targets_stale))
+    }
+
+    @Test
+    fun failedTargetsWithNothingKeptPrintDashesAndSayTheyCouldNotLoad_longBangla() {
+        val context = show(AppLanguage.BN, targets = null, targetsStatus = CallTargetsStatus.Failed)
+        compose.onNodeWithTag(AmoHomeTags.TARGETS).performScrollTo()
+        compose.onNodeWithTag(AmoHomeTags.target("today")).assertTextContains("—", substring = true)
+        compose.onNodeWithTag(AmoHomeTags.TARGETS_NOTE).assertIsDisplayed().assertTextEquals(context.getString(R.string.amo_shell_targets_failed))
+    }
+
+    @Test
+    @org.robolectric.annotation.Config(fontScale = 2.0f, qualifiers = "bn-w360dp-h2400dp")
+    fun theFailedLineIsDisplayedAtTwoHundredPercent() {
+        show(AppLanguage.BN, targets = null, targetsStatus = CallTargetsStatus.Failed)
+        compose.onNodeWithTag(AmoHomeTags.TARGETS_NOTE).performScrollTo().assertIsDisplayed()
     }
 
     @Test

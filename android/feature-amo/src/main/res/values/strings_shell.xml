@@ -18,4 +18,6 @@
     <!-- the login footer: app name and the version, whose digits stay Latin in every language (the vendor shows "ARON AMO v1.0.25") -->
     <string name="amo_shell_login_footer" translatable="false">%1$s v%2$s</string>
     <string name="amo_shell_no_target">—</string>
+    <string name="amo_shell_targets_stale">Showing the saved numbers. They refresh when you are online.</string>
+    <string name="amo_shell_targets_failed">The targets could not be loaded. They will load when you are online.</string>
 </resources>

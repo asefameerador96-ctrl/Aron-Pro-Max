@@ -45,4 +45,9 @@
     <string name="amo_out_map_hint">Drag the pin to the shop\'s exact point.</string>
     <string name="amo_out_map_offline">The map needs a connection. Move the pin with the buttons.</string>
     <string name="amo_out_list_no_detail">Details load when you are online</string>
+    <string name="amo_out_why_unknown_route">This route is not known. Pick the route again.</string>
+    <string name="amo_out_why_cluster">The cluster does not belong to this route. Pick the cluster again.</string>
+    <string name="amo_out_why_scope">This route or cluster is not in your zone. The decision is held for review; a sync after the reviewer\'s decision lifts it.</string>
+    <string name="amo_out_why_other">The server did not accept the last decision. Check the route and cluster and save again.</string>
+    <string name="amo_out_why_held">The server is holding the last decision for review. It becomes decidable again after a sync that follows the reviewer\'s decision.</string>
 </resources>

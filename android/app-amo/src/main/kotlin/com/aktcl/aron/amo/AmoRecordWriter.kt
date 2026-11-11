@@ -60,6 +60,8 @@ class AmoRecordWriter(
         recordUuid: String, requestUuid: String, verify: Boolean, subChannelId: Long?, geoClass: String?, note: String?, photoUuid: String?,
         /** The fix taken with the photo on the form (A4, D-AMO-MAN-12), mock flag included; null reads one at the save as before. */
         capturedFix: com.aktcl.aron.feature.outlet.FixReading? = null,
+        /** The route and cluster chosen on the form (device ids from the downloaded masterdata); null = not sent (a rejection carries none). */
+        routeId: Long? = null, clusterId: Long? = null,
     ): Boolean {
         if (requestUuid in decidedRequests()) return true // already decided on this phone: nothing to queue twice
         val reading = capturedFix ?: readFix("outlet_verification")
@@ -69,7 +71,7 @@ class AmoRecordWriter(
             com.aktcl.aron.contract.GeoFix.serializer(), com.aktcl.aron.core.database.record.RecordMapping.fix(fixEntity),
         ) as kotlinx.serialization.json.JsonObject
         val payload = com.aktcl.aron.core.database.record.AmoPayloads.outletRequestVerification(
-            requestUuid, if (verify) "verified" else "discarded", subChannelId, geoClass, fix, photoUuid, note,
+            requestUuid, if (verify) "verified" else "discarded", subChannelId, geoClass, fix, photoUuid, note, routeId, clusterId,
         )
         photoUuid?.let { runCatching { claimPhoto(it, "outlet_verification", "outlet_request_verification", recordUuid, fixEntity) } }
         try {
@@ -85,6 +87,21 @@ class AmoRecordWriter(
         runCatching { requestSync() }
         return true
     }
+
+    /**
+     * What the server sent back for this phone's newest decision on [requestUuid] when it refused (outbox `rejected`) or held it
+     * (`quarantined`): the state and its code (`unknown_route`, `schema_invalid`, `scope_out_of_reach`), else null. A refused decision does not hide the
+     * request and the corrected save takes a new record uuid; a held one blocks a new decision until it is resolved (a reviewer can still accept the
+     * held record, and the guarded verify applies only while the request is pending, so a second decision would either duplicate or be overridden).
+     */
+    suspend fun refusedDecision(requestUuid: String): Pair<String, String>? = db.captureDao().amoRecordsOfType("outlet_request_verification").filter { r ->
+        runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(r.payloadJson) as kotlinx.serialization.json.JsonObject)["request_uuid"]?.let { v -> (v as kotlinx.serialization.json.JsonPrimitive).content } }.getOrNull() == requestUuid
+    }.lastOrNull()?.let { r ->
+        val ob = db.outboxDao().byClientUuid(r.clientUuid)
+        if (ob?.state == com.aktcl.aron.core.database.entity.OutboxState.REJECTED || ob?.state == com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED) ob.state to (ob.lastCode ?: "rejected") else null
+    }
+
+    suspend fun refusedDecisionCode(requestUuid: String): String? = refusedDecision(requestUuid)?.second
 
     suspend fun decidedSignals(): Set<Long> = db.captureDao().amoRecordsOfType("risk_review").filter { r ->
         // A review the server refused (rejected, quarantined) does not hide the signal: it can be reviewed again.

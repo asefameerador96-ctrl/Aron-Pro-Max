@@ -10,7 +10,6 @@ import com.aktcl.aron.sr.SrLockFixture.Companion.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -42,7 +41,7 @@ class SrKitLockTest {
     private var previousOwn: Thread.UncaughtExceptionHandler? = null
 
     @Before fun setUp() {
-        Dispatchers.setMain(UnconfinedTestDispatcher())
+        Dispatchers.setMain(MainLooperImmediate.dispatcher)
         // an exception that leaves a view model's coroutine ends here (on a phone it would kill the process)
         val catcher = Thread.UncaughtExceptionHandler { _, e -> crashes += e }
         previousDefault = Thread.getDefaultUncaughtExceptionHandler(); Thread.setDefaultUncaughtExceptionHandler(catcher)

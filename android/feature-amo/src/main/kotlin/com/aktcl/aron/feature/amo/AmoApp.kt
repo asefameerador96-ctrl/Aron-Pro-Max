@@ -79,6 +79,7 @@ fun AmoApp(
     screens: Map<AmoScreen, @Composable (onBack: () -> Unit) -> Unit> = emptyMap(),
     /** The four target cards of Home (screenshot 9); null until the server answers (every card then prints "—"). */
     targets: CallTargets? = null,
+    targetsStatus: CallTargetsStatus = CallTargetsStatus.Fresh,
     /** The zone name for the header line "<zone> AMO, <date>" (D-AMO-MAN-02); null when the bundle has none yet. */
     zoneName: String? = null,
 ) {
@@ -95,7 +96,7 @@ fun AmoApp(
             AmoScreen.HOME -> AmoHomeContent(
                 header, user, bundle, tiles,
                 onTile = { screen = AmoScreen.of(it) }, onSettings = { screen = AmoScreen.SETTINGS },
-                hero = hero, health = health, banners = banners, sync = sync, onSync = onSync, targets = targets,
+                hero = hero, health = health, banners = banners, sync = sync, onSync = onSync, targets = targets, targetsStatus = targetsStatus,
             )
             AmoScreen.SETTINGS -> AmoSettingsContent(
                 versionText, stringResource(HomeR.string.set_logout_message), onLanguageSelect, onLogout, onBack = { screen = AmoScreen.HOME },

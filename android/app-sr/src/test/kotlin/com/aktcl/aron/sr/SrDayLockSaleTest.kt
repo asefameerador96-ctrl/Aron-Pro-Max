@@ -42,7 +42,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeoutOrNull
@@ -84,7 +83,7 @@ class SrDayLockSaleTest {
     private var previousOwn: Thread.UncaughtExceptionHandler? = null
 
     @Before fun setUp() {
-        Dispatchers.setMain(UnconfinedTestDispatcher())
+        Dispatchers.setMain(MainLooperImmediate.dispatcher)
         // owner decision 2026-11-04: the phone locks only under quarantine or reject (default accept_and_flag); this class tests the lock
         latePolicyOn(db, "quarantine")
         // an exception that leaves a view model's coroutine ends here (on a phone it would kill the process)
@@ -163,7 +162,7 @@ class SrDayLockSaleTest {
     )
 
     private fun await(what: String, cond: () -> Boolean) = runBlocking {
-        assertTrue(what, withTimeoutOrNull(10_000) { while (!cond()) delay(10); true } == true)
+        assertTrue(what, withTimeoutOrNull(10_000) { while (true) { MainLooperImmediate.idle(); if (cond()) break; delay(10) }; true } == true)
     }
 
     /** "Yes" on "Save?" from the dialogs' scope (the view model's), as SaveAndPrintDialogs does. */

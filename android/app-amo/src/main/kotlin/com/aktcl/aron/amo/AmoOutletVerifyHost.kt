@@ -1,5 +1,6 @@
 package com.aktcl.aron.amo
 
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -101,7 +102,21 @@ internal fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGon
     val req = request ?: run { com.aktcl.aron.core.ui.aron.AronLoadingScreen(); return }
     // Fixed when the form opens and kept across a swipe-kill until the save succeeds: a double tap, a retry and a relaunch queue one decision.
     val draftKey = "verify:${req.uuid}"
-    val recordUuid = remember(draftKey) { day.drafts.uuid(draftKey) }
+    var recordUuid by remember(draftKey) { mutableStateOf(day.drafts.uuid(draftKey)) }
+    var refusedCode by remember(uuid) { mutableStateOf<String?>(null) }
+    var held by remember(uuid) { mutableStateOf(false) }
+    var routeDays by remember { mutableStateOf<List<com.aktcl.aron.core.database.repo.RouteDay>>(emptyList()) }
+    LaunchedEffect(uuid) { routeDays = runCatching { day.routes() }.getOrDefault(emptyList()) }
+    // the notice follows the newest decision: read on open, on every return to the screen and after each save (no polling loop: the app has none, NoPollingLintTest)
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    var savesDone by remember(uuid) { mutableStateOf(0) }
+    LaunchedEffect(uuid, savesDone) {
+        lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            val d = runCatching { day.refusedDecision(req.uuid) }.getOrNull(); refusedCode = d?.second; held = d?.first == com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED
+        }
+    }
+    var routeSel by rememberSaveable(uuid) { mutableStateOf<Long?>(null) }
+    var clusterSel by rememberSaveable(uuid) { mutableStateOf<Long?>(null) }
     var subId by rememberSaveable(uuid) { mutableStateOf<Long?>(null) }
     var geo by rememberSaveable(uuid) { mutableStateOf<String?>(null) }
     var errors by remember { mutableStateOf<Set<VerifyError>>(emptySet()) }
@@ -137,36 +152,43 @@ internal fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGon
         if (req.type == "close" && outlet != null) add(dueLabel to money + (outlet.openDueAsOf?.let { " (" + stringResource(AmoR.string.amo_verify_f_due_as_of, it) + ")" } ?: ""))
     }
     val decidable = detail !is VerifyDetailState.Gone && (loaded?.takeIf { it.fresh }?.let { OutletVerify.decidable(it.detail, day.userId) } ?: true)
+    // The form's own pickers: device ids of the downloaded masterdata, the SR's/outlet's route and cluster as the start; the payload carries them (never the envelope route)
+    val effRoute = routeSel ?: req.routeId ?: outlet?.routeId
+    val effCluster = clusterSel ?: if (routeSel != null) null else (req.clusterId ?: proposed["cluster_id"]?.toLongOrNull() ?: outlet?.clusterId)
     fun decide(verify: Boolean) {
-        val e = OutletVerify.validate(req.type, verify, subId, geo, captured = cap.photo != null && cap.fix?.isOk == true)
+        val e = OutletVerify.validate(req.type, verify, subId, geo, captured = cap.photo != null && cap.fix?.isOk == true, clusterMissing = routeSel != null && clusterSel == null)
         errors = e
         if (e.isNotEmpty() || busy) return
         busy = true; noFix = false
         scope.launch {
             val ask = req.type == "new"
             var threw = false
-            val ok = try {
-                day.decideRequest(
-                    recordUuid, req.uuid, verify, if (verify && ask) subId else null, if (verify && ask) geo else null, null,
-                    if (verify && ask) cap.photo?.photoUuid else null, if (verify && ask) cap.fix else null,
+            var outcome: VerifyOutcome? = null
+            try {
+                outcome = day.decideFromForm(
+                    draftKey, req.uuid, recordUuid,
+                    VerifyChoice(verify, subId, geo, cap.photo?.photoUuid, cap.fix, routeSel, clusterSel, ask),
                 )
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { threw = true; false }
-            busy = false
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { threw = true }
+            val ok = outcome?.ok == true
+            outcome?.let { recordUuid = it.recordUuid; if (it.held) held = true }
+            busy = false; savesDone++
             saveFailed = threw
-            if (ok) { day.drafts.clear(draftKey); rejected = !verify; savedDialog = true } else noFix = !threw
+            if (ok) { day.drafts.clear(draftKey); rejected = !verify; savedDialog = true } else noFix = !threw && outcome?.held != true
         }
     }
     val formErrors = errors.mapNotNull {
-        when (it) { VerifyError.SUB_CHANNEL_REQUIRED -> AmoFormError.SUB_CHANNEL; VerifyError.GEO_CLASS_REQUIRED -> AmoFormError.GEO_CLASS; VerifyError.GEO_PHOTO_REQUIRED -> AmoFormError.GEO_PHOTO }
+        when (it) { VerifyError.SUB_CHANNEL_REQUIRED -> AmoFormError.SUB_CHANNEL; VerifyError.GEO_CLASS_REQUIRED -> AmoFormError.GEO_CLASS; VerifyError.GEO_PHOTO_REQUIRED -> AmoFormError.GEO_PHOTO; VerifyError.CLUSTER_REQUIRED -> AmoFormError.CLUSTER }
     }.toSet()
-    val routeLabel = (req.routeId ?: outlet?.routeId)?.let { id -> routes.firstOrNull { it.id == id }?.label }
-    val clusterId = req.clusterId ?: proposed["cluster_id"]?.toLongOrNull() ?: outlet?.clusterId
-    val clusterLabel = clusterId?.let { id -> day.zoneOutlets.firstOrNull { it.clusterId == id }?.clusterName }
-    val route = Pick(listOfNotNull((req.routeId ?: outlet?.routeId)?.let { AmoOption(it, routeLabel ?: it.toString()) }), req.routeId ?: outlet?.routeId, {}, enabled = OutletVerify.ROUTE_CLUSTER_EDITABLE)
-    val cluster = Pick(listOfNotNull(clusterId?.let { AmoOption(it, clusterLabel ?: it.toString()) }), clusterId, {}, enabled = OutletVerify.ROUTE_CLUSTER_EDITABLE)
+    val routeOutlets = effRoute?.let { r -> routeDays.firstOrNull { it.route.routeId == r }?.outlets }.orEmpty()
+    val clusterOptions = AmoOutletLists.clusters(routeOutlets.ifEmpty { day.zoneOutlets })
+    val route = Pick(routes, effRoute, { routeSel = it; clusterSel = null })
+    val cluster = Pick(clusterOptions, effCluster, { clusterSel = it })
     val sub = Pick(subs.map { AmoOption(it.id, if (bangla) it.labelBn ?: it.labelEn else it.labelEn) }, subId, { subId = it })
-    val head = listOf(
-        com.aktcl.aron.feature.amo.routeItem(route, emptySet()), com.aktcl.aron.feature.amo.clusterItem(cluster, emptySet()),
+    val head = listOfNotNull(
+        refusedCode?.let { c -> AmoFormItem.Notice(stringResource(if (held && OutletVerify.decisionProblem(c) != "scope") AmoR.string.amo_out_why_held else when (OutletVerify.decisionProblem(c)) { "unknown_route" -> AmoR.string.amo_out_why_unknown_route; "cluster" -> AmoR.string.amo_out_why_cluster; "scope" -> AmoR.string.amo_out_why_scope; else -> AmoR.string.amo_out_why_other }), com.aktcl.aron.core.ui.BannerKind.Warning) },
+    ) + listOf(
+        com.aktcl.aron.feature.amo.routeItem(route, emptySet()), com.aktcl.aron.feature.amo.clusterItem(cluster, formErrors),
     )
     val shop = com.aktcl.aron.feature.amo.shopReadOnlyItems(proposed["name"] ?: outlet?.name ?: req.outletName, proposed["owner_name"] ?: outlet?.ownerName, proposed["contact_number"] ?: outlet?.contactNumber)
     val items = head + shop + when (req.type) {
@@ -175,7 +197,7 @@ internal fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGon
         else -> classificationItems(sub, geo, { geo = it }, formErrors)
     }
     com.aktcl.aron.feature.amo.VerifyFormContent(
-        request = req, detail = detail, changes = if (req.type == "info") changes else emptyList(), facts = facts, items = items, decidable = decidable,
+        request = req, detail = detail, changes = if (req.type == "info") changes else emptyList(), facts = facts, items = items, decidable = decidable && !held,
         noFix = noFix, saveFailed = saveFailed, busy = busy, onSave = { decide(true) }, onReject = { decide(false) },
     )
 }

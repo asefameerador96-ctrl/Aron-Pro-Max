@@ -63,8 +63,6 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var skuPackshots: com.aktcl.aron.core.sync.SkuPackshots
     /** D-AMO-BUNDLE-01: the day-bundle download per user (F-SYS-006); the SR app has called it since its first build. */
     @Inject lateinit var bundleDownloaders: com.aktcl.aron.core.sync.BundleDownloaders
-    /** D-AMO-SHELL-02: the target-cards source; the endpoint client replaces the fixture when `GET /v1/supervisor/call-targets` lands. */
-    private val callTargetsSource: com.aktcl.aron.feature.amo.CallTargetsSource = com.aktcl.aron.feature.amo.UnsetCallTargets
     private val packshotProvider by lazy { com.aktcl.aron.core.ui.aron.BitmapPackshotProvider(skuPackshots::bitmap, skuPackshots::cached) }
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
@@ -184,9 +182,6 @@ class MainActivity : ComponentActivity() {
                                     com.aktcl.aron.feature.amo.AmoReach.parse(com.aktcl.aron.core.database.repo.ReferenceRepository(databases.of(s.user.userId)).section("supervisor"), s.user.userId)
                                 }.getOrDefault(com.aktcl.aron.feature.amo.AmoReach.NONE)
                             }
-                            // The four Home target cards: the fixture answers null (every card prints "—") until the server endpoint is wired (D-AMO-SHELL-02).
-                            var targets by remember(s.user.userId) { mutableStateOf<com.aktcl.aron.feature.amo.CallTargets?>(null) }
-                            LaunchedEffect(s.user.userId, home.businessDate) { targets = runCatching { callTargetsSource.load(home.businessDate.take(7)) }.getOrNull() }
                             // F-AMO-003: the day object (attendance first); one per user, restored from Room after a kill.
                             var day by remember(s.user.userId) { mutableStateOf<AmoDay?>(null) }
                             LaunchedEffect(s.user.userId) {
@@ -198,6 +193,23 @@ class MainActivity : ComponentActivity() {
                                 // F-SYS-030/010: the camera and this user's photo queue (Manual Override, Update Base, outlet requests).
                                 runCatching { d.attachMedia(mediaShell.componentsFor(s.user.userId, d::businessDate)) }
                                 day = d
+                            }
+                            // D-AMO-SHELL-10/11: the four Home target cards (`GET /v1/supervisor/call-targets`), read in the background after sign-in, whenever
+                            // a bundle is applied and on resume while the numbers are stale or failed; never in the way of the screen. The kept copy (Room, else
+                            // the last good values) is held per MONTH inside CachedCallTargets, so a failed read never blanks the cards and never shows another month.
+                            var targets by remember(s.user.userId) { mutableStateOf<com.aktcl.aron.feature.amo.CallTargets?>(null) }
+                            var targetsStatus by remember(s.user.userId) { mutableStateOf(com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) }
+                            var targetsRetryTick by remember(s.user.userId) { mutableStateOf(0) }
+                            // coming back to the foreground: a session left open across Dhaka midnight shows the new date; a stale or failed card set tries again (8 s cap, no polling)
+                            androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                                vm.onResume()
+                                if (targetsStatus != com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) targetsRetryTick++
+                            }
+                            LaunchedEffect(day, home.businessDate, bundleTick, targetsRetryTick) {
+                                val d = day ?: return@LaunchedEffect
+                                val r = runCatching { d.callTargets.load(home.businessDate.take(7)) }.getOrNull() ?: return@LaunchedEffect
+                                targets = r.targets
+                                targetsStatus = r.status
                             }
                             // D-AMO-BUNDLE-01 (F-SYS-006): the day's bundle goes into Room in the background, as the SR app does at day start
                             // and on resume: the full bundle when this phone holds none for today, otherwise a delta at most every 30 minutes.
@@ -280,7 +292,7 @@ class MainActivity : ComponentActivity() {
                                 sunlight = sunlight,
                                 onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                 onUpdate = { updateShell.openPage() },
-                                reach = reach, screens = screens, targets = targets,
+                                reach = reach, screens = screens, targets = targets, targetsStatus = targetsStatus,
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
                                 // tso-manual X4a (R-W-11, A3 ask 1): the routes closed by the zone's Final Submit; empty while all are open
                                 banners = amoDayLockBanners(day),

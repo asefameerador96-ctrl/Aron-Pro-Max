@@ -46,6 +46,20 @@ class HomePlaceholderTest {
     }
 
     @Test
+    fun onResumeAfterDhakaMidnightShowsTheNewDateAndLeavesTheRestOfTheStateAlone() {
+        var now = justAfterDhakaMidnight - 3_600_000L // 23:30 on 2026-10-04 in Dhaka
+        val vm = HomePlaceholderViewModel({ now }) { ApiResult.Transport(TransportFailure.OFFLINE) }
+        assertEquals("2026-10-04", vm.state.value.businessDate)
+        val before = vm.state.value
+        vm.onResume()                       // same Dhaka day: the very same state object, nothing re-emitted
+        assertEquals(true, vm.state.value === before)
+        now = justAfterDhakaMidnight        // the session was left open across midnight
+        vm.onResume()
+        assertEquals("2026-10-05", vm.state.value.businessDate)
+        assertEquals(before.bundle, vm.state.value.bundle)   // only the date moved
+    }
+
+    @Test
     fun banglaHomeShowsBengaliDigitsAndTheOfflineBanner() {
         val vm = HomePlaceholderViewModel({ justAfterDhakaMidnight }) { ApiResult.Transport(TransportFailure.OFFLINE) }
         val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.BN)

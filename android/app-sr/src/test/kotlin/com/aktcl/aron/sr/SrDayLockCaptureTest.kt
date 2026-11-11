@@ -35,7 +35,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeoutOrNull
@@ -76,7 +75,7 @@ class SrDayLockCaptureTest {
     private val work = TestWork()
 
     @Before fun setUp() {
-        Dispatchers.setMain(UnconfinedTestDispatcher())
+        Dispatchers.setMain(MainLooperImmediate.dispatcher)
         databases = UserDatabases(ApplicationProvider.getApplicationContext<Application>()) { null }
         db = runBlocking { databases.of(user) }
         repo = CaptureRepository(db) { now }
@@ -132,7 +131,7 @@ class SrDayLockCaptureTest {
     }
 
     /** Waits (bounded) for the outbox row [uuid] the view model's coroutine writes on Room's executor. */
-    private fun awaitQueued(uuid: String) = runBlocking { withTimeoutOrNull(10_000) { while (db.outboxDao().byClientUuid(uuid) == null) delay(10) } }
+    private fun awaitQueued(uuid: String) = runBlocking { withTimeoutOrNull(10_000) { while (true) { MainLooperImmediate.idle(); if (db.outboxDao().byClientUuid(uuid) != null) break; delay(10) } } }
 
     @Test fun leavingTheCallAfterTheLockArrivedMidVisitEndsItOnThePhone() = runBlocking {
         val v = openVisit()
@@ -201,11 +200,11 @@ class SrDayLockCaptureTest {
             )
         }
         vm.open(memoUuid)
-        runBlocking { withTimeoutOrNull(10_000) { while (!vm.state.value.canMarkPaid) delay(10) } }
+        runBlocking { withTimeoutOrNull(10_000) { while (!vm.state.value.canMarkPaid) { MainLooperImmediate.idle(); delay(10) } } }
         assertTrue("drawn before the lock", vm.state.value.canMarkPaid)
         finalSubmitted()
         vm.markPaid()
-        runBlocking { withTimeoutOrNull(10_000) { while (!vm.state.value.lockRefused) delay(10) } }
+        runBlocking { withTimeoutOrNull(10_000) { while (!vm.state.value.lockRefused) { MainLooperImmediate.idle(); delay(10) } } }
         assertTrue("the lock text shows", vm.state.value.lockRefused)
         assertEquals(listOf<Throwable>(), crashes.toList())
         assertNull("nothing queued", runBlocking { db.outboxDao().byClientUuid(uuid) })

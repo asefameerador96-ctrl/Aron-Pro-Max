@@ -21,7 +21,6 @@ import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -50,7 +49,7 @@ class AmoControlCallHostTest {
 
     @Before fun setUp() {
         shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION, android.Manifest.permission.CAMERA, android.Manifest.permission.POST_NOTIFICATIONS)
-        Dispatchers.setMain(UnconfinedTestDispatcher()); f = AmoLockFixture(app, latePolicy = "accept_and_flag") }
+        Dispatchers.setMain(MainLooperImmediate.dispatcher); f = AmoLockFixture(app, latePolicy = "accept_and_flag") }
     @After fun tearDown() { try { f.close() } finally { Dispatchers.resetMain() } }
 
     private fun show(content: @Composable () -> Unit) {

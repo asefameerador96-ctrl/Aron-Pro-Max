@@ -28,7 +28,7 @@ data class HomeUiState(val businessDate: String, val bundle: BundleStatus)
  * could be read. The bundle is applied to Room by F-SYS-006 (Day 2); this only proves the authenticated call.
  */
 class HomePlaceholderViewModel(
-    nowMs: () -> Long,
+    private val nowMs: () -> Long,
     private val fetchBundle: suspend () -> ApiResult<BundleDownload>,
 ) : ViewModel() {
     private val _state = MutableStateFlow(HomeUiState(BusinessDate.of(nowMs()).toString(), BundleStatus.Checking))
@@ -36,6 +36,15 @@ class HomePlaceholderViewModel(
 
     init {
         refresh()
+    }
+
+    /**
+     * A host that comes back to the foreground calls this: a session left open across Dhaka midnight shows the new business date, not
+     * yesterday's. The state changes only when the date really changed (same contract, same object otherwise); hosts that never call it behave as before.
+     */
+    fun onResume() {
+        val today = BusinessDate.of(nowMs()).toString()
+        _state.update { if (it.businessDate == today) it else it.copy(businessDate = today) }
     }
 
     fun refresh() {

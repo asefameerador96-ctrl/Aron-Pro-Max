@@ -56,9 +56,9 @@ class SeedGulshanBananiTest {
         assertEquals("0", c.scalar("SELECT count(*) FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE r.code IN $gul AND o.code LIKE 'SMOKE-SR-%'"))
         assertEquals("1", c.scalar("SELECT count(*) FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id WHERE r.code = 'SMK-SR-D'"))
         assertEquals("127", c.scalar("SELECT visit_days_mask FROM app.route WHERE code = 'SMK-SR-D'"))
-        // what slice-smoke.py pick_route needs from smoke1's bundle: a plan SKU of the route's zone that is active and has an outlet price,
+        // what slice-smoke.py pick_route needs from smoke1's bundle: a plan SKU of the route's zone that is active and has an outlet price valid today (valid_from <= day < valid_to: valid_to is exclusive, V0003; D-QA-CI-13),
         // and a pin on the smoke outlet (BundleService builds sales_plan_sku_ids per zone, no fallback)
-        assertEquals("true", c.scalar("SELECT (count(*) > 0)::text FROM app.sales_plan p JOIN app.zone z ON z.id = p.zone_id JOIN app.sku s ON s.id = p.sku_id WHERE z.code = 'Z-SMK' AND p.valid_to IS NULL AND s.status = 'active' AND EXISTS (SELECT 1 FROM app.sku_price x WHERE x.sku_id = s.id AND x.price_type = 'outlet' AND x.amount_mtk > 0)"))
+        assertEquals("true", c.scalar("SELECT (count(*) > 0)::text FROM app.sales_plan p JOIN app.zone z ON z.id = p.zone_id JOIN app.sku s ON s.id = p.sku_id WHERE z.code = 'Z-SMK' AND p.valid_to IS NULL AND s.status = 'active' AND EXISTS (SELECT 1 FROM app.sku_price x WHERE x.sku_id = s.id AND x.price_type = 'outlet' AND x.amount_mtk > 0 AND x.valid_from <= app.dhaka_date(now()) AND (x.valid_to IS NULL OR x.valid_to > app.dhaka_date(now())))"))
         assertEquals("true", c.scalar("SELECT (lat IS NOT NULL AND lng IS NOT NULL)::text FROM app.outlet WHERE code = 'SMOKE-SR-001'"))
         assertEquals("2", c.scalar("SELECT count(*) FROM app.device_binding b JOIN app.device d ON d.id = b.device_id WHERE d.device_uuid = '00000000-0000-4000-8000-000000000001' AND b.status = 'active'"))
         assertEquals("test|test", c.scalar("SELECT u.data_origin || '|' || r.data_origin FROM app.app_user u, app.route r WHERE u.username = 'smoke1' AND r.code = 'SMK-SR-D'"))
