@@ -64,9 +64,9 @@ class AmoShellScreenshotTests {
     private val amo = HomeUser("AMO-Dariapur", "amo5864", "AMO", offline = false, reauthRequired = false, updateRequired = false)
     private val reach = AmoReach(subordinateSrs = 4, pendingVerifications = 8, zoneName = "Dariapur")
 
-    @Composable private fun Home(targets: CallTargets?, health: Boolean = false) = AmoHomeContent(
+    @Composable private fun Home(targets: CallTargets?, health: Boolean = false, status: com.aktcl.aron.feature.amo.CallTargetsStatus = com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) = AmoHomeContent(
         AmoHomeHeader.of(amo, "2026-10-26", reach.zoneName, androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_header_zone), androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_header_plain)), amo, BundleStatus.Ready("b-17", "2026-10-26"),
-        AmoMenu.tiles(reach, AmoMenu.badges(reach)), onTile = {}, onSettings = {}, targets = targets,
+        AmoMenu.tiles(reach, AmoMenu.badges(reach)), onTile = {}, onSettings = {}, targets = targets, targetsStatus = status,
         health = if (health) DeviceHealthModel.of(62, 1200, 3, 15) else null,
     )
 
@@ -79,6 +79,8 @@ class AmoShellScreenshotTests {
     // the whole page, so the four target cards under the grid are in the frame: values set, then unset ("—")
     @Test @Config(qualifiers = "bn-w360dp-h1500dp") fun amo_home_targets_bn() = shot("amo_home_targets_bn", AppLanguage.BN) { Home(set) }
     @Test @Config(qualifiers = "w360dp-h1500dp") fun amo_home_targets_unset_en() = shot("amo_home_targets_unset_en", AppLanguage.EN) { Home(null) }
+    @Test @Config(qualifiers = "bn-w360dp-h1500dp") fun amo_home_targets_stale_bn() = shot("amo_home_targets_stale_bn", AppLanguage.BN) { Home(set, status = com.aktcl.aron.feature.amo.CallTargetsStatus.Stale) }
+    @Test @Config(qualifiers = "bn-w360dp-h2400dp") fun amo_home_targets_failed_bn_fs2() = shot("amo_home_targets_failed_bn_fs2", AppLanguage.BN, fontScale = 2f) { Home(null, status = com.aktcl.aron.feature.amo.CallTargetsStatus.Failed) }
     @Test @Config(qualifiers = "bn-w360dp-h1500dp") fun amo_home_targets_sunlight_bn() = shot("amo_home_targets_sunlight_bn", AppLanguage.BN, sunlight = true) { Home(set) }
 
     // ---- push 2: Login (rows 3, R1), Attendance (14 to 16, R7), Stock (41), Settings (75, R16) ----

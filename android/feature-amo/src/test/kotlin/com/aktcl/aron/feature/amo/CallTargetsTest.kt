@@ -32,12 +32,13 @@ class CallTargetsTest {
         assertEquals(CallTarget(1, 20), t.joint)
     }
 
-    @Test fun anUnsetTargetPrintsADashAndASetOneDoneOverTarget() {
+    @Test fun anUnsetTargetPrintsTheDoneCountOverADashAndASetOneDoneOverTarget() {
         val t = CallTargetMath.compute(monthCall = null, monthControl = 80, monthJoint = null, workingDays = 26, today = "2026-11-06", visits = listOf(v(CallTargetMath.CONTROL, "2026-11-06")))
-        assertEquals("—", CallTargetMath.figure(t.today))
-        assertEquals("—", CallTargetMath.figure(t.month))
+        // D-AMO-SHELL-11: the target half is the dash; the AMO still sees their own done count while the programme is deferred
+        assertEquals("1/—", CallTargetMath.figure(t.today))
+        assertEquals("1/—", CallTargetMath.figure(t.month))
         assertEquals("1/80", CallTargetMath.figure(t.control))
-        assertEquals("—", CallTargetMath.figure(t.joint))
+        assertEquals("0/—", CallTargetMath.figure(t.joint))
         assertEquals("—", CallTargetMath.figure(null))
     }
 

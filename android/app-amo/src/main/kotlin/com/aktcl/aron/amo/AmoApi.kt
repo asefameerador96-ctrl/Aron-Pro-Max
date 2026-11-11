@@ -33,6 +33,12 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
     /** `GET /v1/outlets/{id}/sales-by-date` (contract 1.11.0, F2): every sale to the outlet on [businessDate], any SR; the last answer per outlet and date is kept. */
     suspend fun salesByDate(outletId: Long, businessDate: String): AmoFetch = get("/v1/outlets/$outletId/sales-by-date", "sales_${outletId}_$businessDate", mapOf("business_date" to businessDate))
 
+    /**
+     * `GET /v1/supervisor/call-targets?month=YYYY-MM` (contract 1.11.1, AMO only): the four Home cards. No file copy is kept here: the kept
+     * copy per month lives in Room (`RoomCallTargetsStore`) behind `CachedCallTargets`, so this answers Fresh, Gone (403/404/501) or Unavailable.
+     */
+    suspend fun callTargets(month: String): AmoFetch = get("/v1/supervisor/call-targets", null, mapOf("month" to month))
+
     suspend fun outletRequest(uuid: String): AmoFetch = get("/v1/outlet-requests/$uuid", "req_$uuid")
 
     /** `GET /v1/team/locations` (F-API-023): the last synced fix of each SR of the zone. */

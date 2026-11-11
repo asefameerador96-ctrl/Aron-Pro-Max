@@ -29,13 +29,74 @@ data class CallTargets(val today: CallTarget, val month: CallTarget, val control
 }
 
 /**
- * Where the Home reads the target cards from. The real source (the endpoint client) lands with lane/amo-foundation; until then the app
- * uses [UnsetCallTargets], so every card prints "—" and nothing on Home waits for the network.
+ * Where the Home reads the target cards from (the fixture form; the app uses [CachedCallTargets] through [CallTargetsFeed]). [UnsetCallTargets]
+ * makes every card print "—" and nothing on Home waits for the network.
  */
 fun interface CallTargetsSource { suspend fun load(month: String): CallTargets? }
 
 /** The fixture used until the server endpoint lands: no targets, so every card prints "—". */
 object UnsetCallTargets : CallTargetsSource { override suspend fun load(month: String): CallTargets? = null }
+
+/** What one read of `GET /v1/supervisor/call-targets` gave: the answer body, "not for you / not offered" (403, 404, 501), or no answer (offline, timeout, a server error). */
+sealed interface CallTargetsFetch {
+    data class Fresh(val json: String) : CallTargetsFetch
+    data object Gone : CallTargetsFetch
+    data object Unavailable : CallTargetsFetch
+}
+
+/** The last good answer per Dhaka month (`YYYY-MM`), kept on the phone (Room `sync_meta` in the app) so the cards still show something offline. */
+interface CallTargetsStore {
+    suspend fun read(month: String): String?
+    suspend fun write(month: String, json: String)
+    suspend fun clear(month: String)
+}
+
+/** Fresh = just read (or nothing to say: no targets for this user); Stale = the kept copy is shown because the read failed; Failed = no answer and no kept copy. */
+enum class CallTargetsStatus { Fresh, Stale, Failed }
+
+data class CallTargetsResult(val targets: CallTargets?, val status: CallTargetsStatus)
+
+/** Where the Home reads the cards and their state from; never throws, never blocks a sale. */
+fun interface CallTargetsFeed { suspend fun load(month: String): CallTargetsResult }
+
+/**
+ * The real source behind [CallTargetsFeed] (D-AMO-SHELL-10): the network read, capped at [timeoutMs], with a kept copy. A good answer is
+ * parsed, stored per month and returned [CallTargetsStatus.Fresh]; a failed or malformed read returns the last good copy of that month
+ * (the store, else the one held in memory) as [CallTargetsStatus.Stale] and NEVER a blank; with no copy at all it is
+ * [CallTargetsStatus.Failed]. A refusal ([CallTargetsFetch.Gone]) drops the copy: the server no longer offers the cards to this user.
+ */
+class CachedCallTargets(
+    private val fetch: suspend (month: String) -> CallTargetsFetch,
+    private val store: CallTargetsStore,
+    private val timeoutMs: Long = 8_000,
+) : CallTargetsFeed {
+    @Volatile private var kept: Pair<String, CallTargets>? = null
+
+    override suspend fun load(month: String): CallTargetsResult {
+        val read = try {
+            kotlinx.coroutines.withTimeoutOrNull(timeoutMs) { fetch(month) } ?: CallTargetsFetch.Unavailable
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            CallTargetsFetch.Unavailable
+        }
+        when (read) {
+            is CallTargetsFetch.Fresh -> CallTargets.parse(read.json)?.let { t ->
+                runCatching { store.write(month, read.json) }
+                kept = month to t
+                return CallTargetsResult(t, CallTargetsStatus.Fresh)
+            }
+            CallTargetsFetch.Gone -> {
+                runCatching { store.clear(month) }
+                if (kept?.first == month) kept = null
+                return CallTargetsResult(null, CallTargetsStatus.Fresh)
+            }
+            CallTargetsFetch.Unavailable -> Unit
+        }
+        val saved = runCatching { store.read(month) }.getOrNull()?.let { CallTargets.parse(it) } ?: kept?.takeIf { it.first == month }?.second
+        return if (saved != null) CallTargetsResult(saved, CallTargetsStatus.Stale) else CallTargetsResult(null, CallTargetsStatus.Failed)
+    }
+}
 
 /** Formulas 4.3 of the build contract (integer arithmetic; the server owns the live numbers, the app and the tests share the rule). */
 object CallTargetMath {
@@ -70,6 +131,13 @@ object CallTargetMath {
         )
     }
 
-    /** "done/target" in Latin digits (the caller localises the digits), or "—" while the target is unset. */
-    fun figure(t: CallTarget?, dash: String = "—"): String = if (t?.target == null) dash else "${t.done}/${t.target}"
+    /**
+     * "done/target" in Latin digits (the caller localises the digits). A target that is not set prints "done/—" (D-AMO-SHELL-11: the AMO
+     * sees their own count even while the target programme is deferred); "—" alone only when there is no card data at all.
+     */
+    fun figure(t: CallTarget?, dash: String = "—"): String = when {
+        t == null -> dash
+        t.target == null -> "${t.done}/$dash"
+        else -> "${t.done}/${t.target}"
+    }
 }
