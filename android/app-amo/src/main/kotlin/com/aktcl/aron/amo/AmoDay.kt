@@ -579,8 +579,8 @@ class AmoDay(
     suspend fun saleHistory(outletId: Long, date: String): com.aktcl.aron.feature.amo.SaleHistory {
         val fetch = runCatching { api.salesByDate(outletId, date) }.getOrDefault(AmoFetch.Unavailable)
         when (fetch) {
-            is AmoFetch.Fresh -> com.aktcl.aron.feature.amo.PreviousSales.parseServer(fetch.json, date)?.let { return it }
-            is AmoFetch.Cached -> com.aktcl.aron.feature.amo.PreviousSales.parseServer(fetch.json, date, com.aktcl.aron.feature.amo.SaleHistorySource.KEPT_COPY)?.let { return it }
+            is AmoFetch.Fresh -> com.aktcl.aron.feature.amo.PreviousSales.parseServer(fetch.json, date)?.let { return com.aktcl.aron.feature.amo.PreviousSales.withCategories(it, runCatching { skuInfo() }.getOrDefault(emptyMap())) }
+            is AmoFetch.Cached -> com.aktcl.aron.feature.amo.PreviousSales.parseServer(fetch.json, date, com.aktcl.aron.feature.amo.SaleHistorySource.KEPT_COPY)?.let { return com.aktcl.aron.feature.amo.PreviousSales.withCategories(it, runCatching { skuInfo() }.getOrDefault(emptyMap())) }
             else -> Unit
         }
         val memos = runCatching { com.aktcl.aron.feature.memo.ui.RoomMemoStore(db).memos(date) }.getOrDefault(emptyList()).filter { it.outletId == outletId }
