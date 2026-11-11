@@ -652,8 +652,14 @@ class AmoDay(
 
     suspend fun decideRequest(
         recordUuid: String, requestUuid: String, verify: Boolean, subChannelId: Long?, geoClass: String?, note: String?, photoUuid: String?,
-        capturedFix: com.aktcl.aron.feature.outlet.FixReading? = null,
-    ): Boolean = writer.decideRequest(recordUuid, requestUuid, verify, subChannelId, geoClass, note, photoUuid, capturedFix)
+        capturedFix: com.aktcl.aron.feature.outlet.FixReading? = null, routeId: Long? = null, clusterId: Long? = null,
+    ): Boolean = writer.decideRequest(recordUuid, requestUuid, verify, subChannelId, geoClass, note, photoUuid, capturedFix, routeId, clusterId)
+
+    suspend fun refusedDecisionCode(requestUuid: String): String? = writer.refusedDecisionCode(requestUuid)
+    suspend fun refusedDecision(requestUuid: String) = writer.refusedDecision(requestUuid)
+
+    /** The verification form's save: see [decideFromForm]. */
+    suspend fun decideFromForm(draftKey: String, requestUuid: String, currentRecordUuid: String, c: VerifyChoice) = writer.decideFromForm(drafts, draftKey, requestUuid, currentRecordUuid, c)
 
     // ---- Exceptions (F-AMO-038): risk signals of the zone, reviewed offline
 

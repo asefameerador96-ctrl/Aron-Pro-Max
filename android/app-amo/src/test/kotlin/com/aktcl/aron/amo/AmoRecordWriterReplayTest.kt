@@ -73,6 +73,88 @@ class AmoRecordWriterReplayTest {
         assertEquals(1, payloads("outlet_request_verification").size)
     }
 
+    // contract 1.11.1: the route and cluster chosen on the form travel in the payload (never the envelope route)
+    @Test fun aVerificationCarriesTheFormsRouteAndClusterAndAReplayKeepsOneRow() = runBlocking {
+        val request = ClientIds.newUuid(); val rec = ClientIds.newUuid()
+        assertTrue(writer.decideRequest(rec, request, true, 4L, "Urban", null, null, null, 5001L, 77L))
+        fun payload(): kotlinx.serialization.json.JsonObject { val o = kotlinx.serialization.json.Json.parseToJsonElement(payloads("outlet_request_verification").single()) as kotlinx.serialization.json.JsonObject; return (o["payload"] as? kotlinx.serialization.json.JsonObject) ?: o }
+        assertFalse("integer, not a string", (payload()["route_id"] as kotlinx.serialization.json.JsonPrimitive).isString)
+        assertEquals("5001", (payload()["route_id"] as kotlinx.serialization.json.JsonPrimitive).content)
+        assertFalse((payload()["cluster_id"] as kotlinx.serialization.json.JsonPrimitive).isString)
+        assertEquals("77", (payload()["cluster_id"] as kotlinx.serialization.json.JsonPrimitive).content)
+        relaunch()
+        assertTrue(writer.decideRequest(rec, request, true, 4L, "Urban", null, null, null, 5001L, 77L))
+        assertEquals(1, payloads("outlet_request_verification").size)
+    }
+
+    @Test fun aRejectionCarriesNoRouteOrClusterAndNullsAreOmitted() = runBlocking {
+        assertTrue(writer.decideRequest(ClientIds.newUuid(), ClientIds.newUuid(), false, null, null, null, null))
+        val o = kotlinx.serialization.json.Json.parseToJsonElement(payloads("outlet_request_verification").single()) as kotlinx.serialization.json.JsonObject
+        val p = (o["payload"] as? kotlinx.serialization.json.JsonObject) ?: o
+        assertTrue("route_id" !in p && "cluster_id" !in p)
+    }
+
+    @Test fun aDecisionTheServerRefusedShowsItsCodeAndLeavesTheRequestDecidable() = runBlocking {
+        val request = ClientIds.newUuid(); val rec = ClientIds.newUuid()
+        assertTrue(writer.decideRequest(rec, request, true, 4L, "Urban", null, null, null, 9999L, 77L))
+        assertEquals(null, writer.refusedDecisionCode(request))
+        db.outboxDao().applyAck(rec, "rejected", "unknown_route", null, "2026-10-17T05:00:00.000Z")
+        db.outboxDao().applyAck(rec, "quarantined", "scope_out_of_reach", null, "2026-10-17T05:00:00.000Z") // terminal rows never move: the first ack stands
+        assertEquals("unknown_route", writer.refusedDecisionCode(request))
+        assertFalse(writer.decidedRequests().contains(request)) // the request is decidable again
+        assertTrue(writer.decideRequest(ClientIds.newUuid(), request, true, 4L, "Urban", null, null, null, 5001L, 77L)) // the corrected form is a new record
+        assertEquals(2, db.captureDao().amoRecordsOfType("outlet_request_verification").size)
+    }
+
+    // ---- the form's save (decideFromForm): what the AMO picked, reject, refusal, hold
+    private val formDrafts get() = FormDrafts(ApplicationProvider.getApplicationContext<Application>(), user)
+    private fun payloadOf(request: String): kotlinx.serialization.json.JsonObject = payloads("outlet_request_verification").map { j ->
+        val o = kotlinx.serialization.json.Json.parseToJsonElement(j) as kotlinx.serialization.json.JsonObject; (o["payload"] as? kotlinx.serialization.json.JsonObject) ?: o
+    }.first { (it["request_uuid"] as kotlinx.serialization.json.JsonPrimitive).content == request }
+    private fun choice(verify: Boolean = true, route: Long? = null, cluster: Long? = null, newOutlet: Boolean = false, photo: String? = null, fix: FixReading? = null) = VerifyChoice(verify, 4L, "Urban", photo, fix, route, cluster, newOutlet)
+
+    @Test fun anUntouchedVerifySaveOmitsRouteAndClusterAndOnlyThePickedOnesAreSent() = runBlocking {
+        val r1 = ClientIds.newUuid(); val key1 = "verify:$r1"
+        assertTrue(writer.decideFromForm(formDrafts, key1, r1, formDrafts.uuid(key1), choice()).ok)
+        assertTrue("route_id" !in payloadOf(r1) && "cluster_id" !in payloadOf(r1))
+        val r2 = ClientIds.newUuid(); val key2 = "verify:$r2"
+        assertTrue(writer.decideFromForm(formDrafts, key2, r2, formDrafts.uuid(key2), choice(route = 5001L, cluster = 77L)).ok)
+        assertEquals("5001", (payloadOf(r2)["route_id"] as kotlinx.serialization.json.JsonPrimitive).content)
+    }
+
+    @Test fun aRejectOmitsEverythingTheVerifyCarriesEvenForANewOutletWithCapture() = runBlocking {
+        val photo = ClientIds.newUuid(); val captured = FixReading("ok", 23.5, 90.25, 6.0, false)
+        val v = ClientIds.newUuid(); val kv = "verify:$v"
+        assertTrue(writer.decideFromForm(formDrafts, kv, v, formDrafts.uuid(kv), choice(verify = true, route = 5001L, cluster = 77L, newOutlet = true, photo = photo, fix = captured)).ok)
+        val yes = payloadOf(v)
+        listOf("sub_channel_id", "geo_class", "photo_uuid", "route_id", "cluster_id").forEach { assertTrue("the verify carries $it", it in yes) }
+        assertEquals(23.5, ((yes["fix"] as kotlinx.serialization.json.JsonObject)["lat"] as kotlinx.serialization.json.JsonPrimitive).content.toDouble(), 0.0)
+        val r = ClientIds.newUuid(); val kr = "verify:$r"
+        assertTrue(writer.decideFromForm(formDrafts, kr, r, formDrafts.uuid(kr), choice(verify = false, route = 5001L, cluster = 77L, newOutlet = true, photo = photo, fix = captured)).ok)
+        val no = payloadOf(r)
+        listOf("sub_channel_id", "geo_class", "photo_uuid", "route_id", "cluster_id").forEach { assertTrue("the reject must not carry $it", it !in no) }
+        // the contract requires a fix on every decision: a reject's is the fresh reading, never the captured one
+        assertEquals(23.79, ((no["fix"] as kotlinx.serialization.json.JsonObject)["lat"] as kotlinx.serialization.json.JsonPrimitive).content.toDouble(), 0.0)
+        assertEquals("discarded", (no["decision"] as kotlinx.serialization.json.JsonPrimitive).content)
+    }
+
+    @Test fun aCorrectedSaveAfterARefusalTakesANewRecordUuidAndAHeldDecisionBlocksANewOne() = runBlocking {
+        val r = ClientIds.newUuid(); val key = "verify:$r"; val first = formDrafts.uuid(key)
+        assertTrue(writer.decideFromForm(formDrafts, key, r, first, choice(route = 9999L)).ok)
+        db.outboxDao().applyAck(first, "rejected", "unknown_route", null, "2026-10-17T05:00:00.000Z")
+        assertEquals("rejected" to "unknown_route", writer.refusedDecision(r))
+        val corrected = writer.decideFromForm(formDrafts, key, r, first, choice(route = 5001L))
+        assertTrue(corrected.ok); assertTrue("a new record, not the refused one", corrected.recordUuid != first)
+        assertEquals("an older refusal is not reported once a newer decision exists", null, writer.refusedDecision(r))
+        assertEquals(2, db.captureDao().amoRecordsOfType("outlet_request_verification").size)
+        // the newest decision is the one reported (order by capture time, then insertion)
+        db.outboxDao().applyAck(corrected.recordUuid, "quarantined", "scope_out_of_reach", null, "2026-10-17T05:00:01.000Z")
+        assertEquals("quarantined" to "scope_out_of_reach", writer.refusedDecision(r))
+        val blocked = writer.decideFromForm(formDrafts, key, r, corrected.recordUuid, choice(route = 5001L))
+        assertTrue(blocked.held && !blocked.ok)
+        assertEquals("held for review: nothing more queued", 2, db.captureDao().amoRecordsOfType("outlet_request_verification").size)
+    }
+
     @Test fun aMockedCapturedFixIsNeverQueuedAsAVerification() = runBlocking {
         val mocked = FixReading("ok", 23.5, 90.25, 6.0, true)
         assertFalse(writer.decideRequest(ClientIds.newUuid(), ClientIds.newUuid(), true, 4L, "Urban", null, ClientIds.newUuid(), mocked))
