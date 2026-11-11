@@ -40,3 +40,4 @@ Brief: `docs/status/portal-discount-brief.md` (on `lane/lead-docs-1022`), sectio
 - Empty product rows mean ALL products (Q9 lead ruling): the form allows zero rows with an explicit warning; detail shows "All products".
 - Audit entity `offer`, actions create, new_version, activate, end (confirmed by Lane A); the mock uses the same.
 - Next train: remove the AdminModule test exception once contract 1.12.1 (train 93) is on INT; switch to the real routes; show the five pixel-snapshot e2e failures are pre-existing on INT 34bef94a1.
+- Baseline (clean INT 34bef94a1, own worktree, specs config-tiers + national-shots, 2026-11-11): the same five pixel-snapshot tests fail there (config-tiers tiers A/B/C, national-shots route-map and sale-position; 5 failed, 4 passed). They are pre-existing in this container, not caused by this lane.
