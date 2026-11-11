@@ -47,7 +47,7 @@ private fun SalesPanel(d: LiveData, perRoute: Boolean) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             if (perRoute) d.columns().take(4).forEach { c ->
                 val field = c.field()
-                PanelColumn(field?.let { FieldQty.plain(it.first) } ?: c.qtyBase.toString(), categoryLabel(c.code), field?.let { com.aktcl.aron.core.ui.entryUnitLabel(it.second) } ?: unitLabel(c.baseUnit), fig, memo = c.memos?.let { stringResource(R.string.amo_team_live_memos, it) } ?: stringResource(R.string.amo_team_live_memos_none))
+                PanelColumn(field?.let { FieldQty.plain(it.first) } ?: c.qtyBase.toString(), categoryLabel(c.code), field?.let { com.aktcl.aron.core.ui.entryUnitLabel(it.second) } ?: (UnitWords.key(c.baseUnit, c.code) ?: FieldQty.baseUnitKey(c.code))?.let { com.aktcl.aron.core.ui.entryUnitLabel(it) }, fig, memo = c.memos?.let { stringResource(R.string.amo_team_live_memos, it) } ?: stringResource(R.string.amo_team_live_memos_none))
             } else {
                 PanelColumn(d.memoCount.toString(), stringResource(R.string.amo_live_total_sales), null, fig)
                 PanelColumn(d.totalTaka(), stringResource(R.string.amo_live_total_taka), null, fig)
@@ -72,11 +72,6 @@ private fun PanelColumn(value: String, label: String, unit: String?, fig: Color,
 private fun categoryLabel(code: String): String = when (code) {
     "cigarette" -> stringResource(R.string.amo_team_cat_cigarette); "bidi" -> stringResource(R.string.amo_team_cat_bidi)
     "lighter" -> stringResource(R.string.amo_team_cat_lighter); "match" -> stringResource(R.string.amo_team_cat_match); else -> code
-}
-
-@Composable
-private fun unitLabel(unit: String): String? = when (unit) {
-    "stick" -> stringResource(R.string.amo_unit_stick); "dozen" -> stringResource(R.string.amo_unit_dozen); "piece" -> stringResource(R.string.amo_unit_piece); else -> null
 }
 
 /** A ring gauge: grey track, green progress with round caps, the percent in the centre and a caption under it. */

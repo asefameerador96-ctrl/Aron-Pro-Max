@@ -113,10 +113,10 @@ object Reports {
         val units = rows.mapNotNull { it.s("base_unit") }.toSet()
         val sameUnit = units.size == 1 && rows.all { it.s("base_unit") != null && it.l("sold_qty_base") != null }
         // units rule 5: every row converted exactly by its own pack factor, then summed; one entry unit for the group or none
-        val conv = rows.map { r -> r.l("sold_qty_base")?.let { q -> r.l("base_per_pack")?.let { f -> FieldQty.converted(q, f) } } }
+        val conv = rows.map { r -> r.l("sold_qty_base")?.let { q -> r.l("base_per_pack")?.let { f -> FieldQty.converted(q, f, 12) } } } // 12 places per row, rounded ONCE after the sum (as the server rounds a category once)
         val words = rows.map { r -> UnitWords.key(r.s("entry_unit"), key.second) }
         val packOk = conv.all { it != null } && words.all { it != null } && words.toSet().size == 1
-        val packQty = if (packOk) conv.fold(java.math.BigDecimal.ZERO) { a, x -> a + x!! } else null
+        val packQty = if (packOk) conv.fold(java.math.BigDecimal.ZERO) { a, x -> a + x!! }.setScale(3, java.math.RoundingMode.HALF_UP) else null
         val packUnit = if (packOk) words.first() else null
         // grouped by route ID (else code; two routes may share a name, never matched by name), shown by name
         RouteCategory(rows.firstNotNullOfOrNull { it.s("route_name") } ?: key.first, key.second, if (sameUnit) rows.sumOf { it.l("sold_qty_base") ?: 0 } else null, if (sameUnit) units.first() else null, rows.sumOf { it.l("gross_mtk") ?: 0 }, key.first, packQty, packUnit)

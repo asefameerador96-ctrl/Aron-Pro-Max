@@ -19,8 +19,8 @@ object FieldQty {
     fun parse(s: String?): BigDecimal? = s?.trim()?.takeIf { it.isNotEmpty() }?.let { runCatching { BigDecimal(it) }.getOrNull() }?.takeIf { it.signum() >= 0 }
 
     /** `qty_base / base_per_pack` as Decimal3 (half up); null without a usable pack factor. */
-    fun converted(qtyBase: Long, basePerPack: Long): BigDecimal? =
-        if (basePerPack <= 0L || qtyBase < 0L) null else BigDecimal.valueOf(qtyBase).divide(BigDecimal.valueOf(basePerPack), 3, RoundingMode.HALF_UP)
+    fun converted(qtyBase: Long, basePerPack: Long, scale: Int = 3): BigDecimal? =
+        if (basePerPack <= 0L || qtyBase < 0L) null else BigDecimal.valueOf(qtyBase).divide(BigDecimal.valueOf(basePerPack), scale, RoundingMode.HALF_UP)
 
     /** "12.5" / "7": the Decimal3 without trailing zeros and without grouping, Latin digits (the Live Data panel prints plain figures). */
     fun plain(v: BigDecimal): String = v.setScale(3, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
