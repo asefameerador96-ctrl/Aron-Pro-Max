@@ -2076,3 +2076,6 @@
 
 ### 2026-11-11 00:32 UTC — INT ci #1913 green; deploy #323 (REAL, V0150/V0151) running (lead note)
 - ci 42927007694 (#1913) on INT bf113f461: completed success 00:31, 11 success / 0 failed / 1 skipped (the one skip is the area-filtered job). Deploy 42932022812 (#323) started 00:31:29 on bf113f461 with the migrations; the integrator watches it and reports the console verbatim. Lead background watch on the deploy run; landing check-in 00:45 stays armed.
+
+### 2026-11-11 00:46 UTC — landing check-in #1: deploy #323 still running (lead)
+- Deploy 42932022812 (#323) on INT bf113f461: job "Deploy to dev" in progress; step 11 "Deploy (infra/deploy.sh)" running since 00:31:59 (the migrate + image + revision step); health still b0479585. No "train 85 landed" yet (expected only after the deploy and the smoke). Re-armed the check-in for 01:11 UTC; the lead's background watch on the deploy run and the integrator's report wake the lead earlier. Nothing needs the owner.
