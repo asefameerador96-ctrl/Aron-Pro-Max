@@ -125,6 +125,12 @@ class TeamFieldUnitMembersTest {
         val cards = summary(srow(1, "A", ""","memos_cigarette":12,"memos_match":4"""), srow(2, "A", ""","memos_cigarette":5,"memos_match":1,"memos_bidi":9"""))
         assertEquals(mapOf("cigarette" to 17L, "match" to 5L), TeamReports.zoneMemos(cards)) // bidi: route 1 did not report it, so no partial sum
         assertEquals(emptyMap<String, Long>(), TeamReports.zoneMemos(emptyList()))
+        // D-AMO-CALLS-32: a route whose first value is negative has no figure for that category, so the zone has none either (never a partial sum, never a negative)
+        val withNegative = summary(srow(1, "A", ""","memos_cigarette":12,"memos_match":-4"""), srow(2, "A", ""","memos_cigarette":5,"memos_match":1"""))
+        assertEquals(mapOf("cigarette" to 17L), TeamReports.zoneMemos(withNegative))
+        // the first value found is the one guarded: a later brand row cannot rescue a negative first value
+        val rescued = summary(srow(3, "A", ""","memos_match":-4"""), srow(3, "B", ""","memos_match":9"""))
+        assertEquals(emptyMap<String, Long>(), rescued.single().categoryMemos)
     }
 
     @Test fun theTillCardPrintsTheMemoCountAndADashWhereTheServerSentNone() {

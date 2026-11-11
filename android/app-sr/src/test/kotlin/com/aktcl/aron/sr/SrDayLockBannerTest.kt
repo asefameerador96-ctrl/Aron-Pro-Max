@@ -6,7 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.core.app.ActivityScenario
@@ -30,7 +29,7 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [36])
 class SrDayLockBannerTest {
-    @get:Rule val compose = createEmptyComposeRule()
+    @get:Rule val compose = hostComposeRule()
 
     private fun show(language: AppLanguage, lock: DayLock?, asText: Boolean = false) {
         val app = ApplicationProvider.getApplicationContext<Context>()
