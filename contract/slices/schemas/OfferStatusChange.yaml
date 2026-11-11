@@ -1,0 +1,18 @@
+OfferStatusChange:
+  type: object
+  required:
+  - request_uuid
+  - to_status
+  - reason
+  additionalProperties: false
+  properties:
+    request_uuid:
+      $ref: '#/components/schemas/Uuid'
+    to_status:
+      type: string
+      enum:
+      - active
+      - inactive
+      description: draft -> active or active -> inactive.
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

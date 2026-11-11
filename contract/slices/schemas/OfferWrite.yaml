@@ -14,6 +14,8 @@ OfferWrite:
   - change_reason
   additionalProperties: false
   properties:
+    request_uuid:
+      $ref: '#/components/schemas/Uuid'
     code:
       type: string
       pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$
@@ -49,18 +51,21 @@ OfferWrite:
       - integer
       - 'null'
       minimum: 1
+      description: Quantity in base units (sticks, pieces, dozens) that triggers the offer.
     discount_bp:
       type:
       - integer
       - 'null'
       minimum: 1
       maximum: 10000
+      description: pct_discount in basis points of the line gross (100 = 1 percent).
     discount_mtk_per_unit:
       type:
       - integer
       - 'null'
       format: int64
       minimum: 1
+      description: amount_per_unit in integer milli-taka per base unit (not per packet).
     reward_sku_id:
       type:
       - integer
@@ -72,6 +77,7 @@ OfferWrite:
       - integer
       - 'null'
       minimum: 1
+      description: Free quantity in base units of the reward SKU.
     qualifying:
       type: array
       maxItems: 100

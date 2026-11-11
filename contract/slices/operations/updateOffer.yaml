@@ -5,6 +5,10 @@ operation:
   - admin-products
   operationId: updateOffer
   summary: Change an offer; a rule change creates a new offer version (memos keep the version they used).
+  description: 'Only while the offer is `draft` (1.12.0): every accepted change appends an immutable offer version;
+    an `active` or `inactive` offer is `409` (end it and create a new one). The status moves through `POST /v1/admin/offers/{id}/status`;
+    a `status` member here is `400`. Idempotent by `request_uuid` (required by the server): a repeat is answered
+    before `If-Match` is judged. SUPERADMIN, or ADMIN with the `w` grant on module `discounts`.'
   parameters:
   - $ref: '#/components/parameters/IdPath'
   - $ref: '#/components/parameters/IfMatch'
@@ -29,5 +33,7 @@ operation:
       $ref: '#/components/responses/Forbidden'
     '404':
       $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'
     '412':
       $ref: '#/components/responses/PreconditionFailed'
