@@ -17,7 +17,8 @@ operation:
     in: header
     required: false
     description: Optional (1.12.2). The ETag of the offer being moved; when given and stale the move is refused
-      `412`.
+      `412`. A replay of a stored `request_uuid` is answered before `If-Match` is judged, so a retry that carries
+      the now-stale ETag still gets the first result.
     schema:
       type: string
       pattern: ^"[0-9]{1,10}"$

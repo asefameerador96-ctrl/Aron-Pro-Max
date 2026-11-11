@@ -353,7 +353,12 @@ class AdminOffersTest {
         val row = scalar("SELECT version FROM app.offer WHERE id = $id").toInt()
         call(HttpMethod.Post, "/v1/admin/offers/$id/status", super1, """{"request_uuid":"${uuid()}","to_status":"active","reason":"$why"}""", row + 3).expect(HttpStatusCode.PreconditionFailed, "ERR_PRECONDITION_FAILED")
         assertEquals("draft", scalar("SELECT status FROM app.offer WHERE id = $id"))
-        assertEquals("draft", scalar("SELECT status FROM app.offer WHERE id = $id"))
+        // The matching ETag passes: the move is made and the answer carries the new ETag (the row version after the move).
+        val tmp = createId(createBody()); val tmpRow = scalar("SELECT version FROM app.offer WHERE id = $tmp").toInt()
+        val ok = call(HttpMethod.Post, "/v1/admin/offers/$tmp/status", super1, """{"request_uuid":"${uuid()}","to_status":"active","reason":"$why"}""", tmpRow)
+        ok.expect(HttpStatusCode.OK)
+        assertEquals("active", ok.obj().getValue("status").jsonPrimitive.content)
+        assertEquals("\"${tmpRow + 1}\"", ok.headers["ETag"], "the new ETag")
         val request = uuid()
         val r = activate(id, super1, request); r.expect(HttpStatusCode.OK)
         val firstRow = r.obj().getValue("version")

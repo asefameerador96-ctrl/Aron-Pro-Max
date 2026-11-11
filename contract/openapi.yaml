@@ -92,8 +92,12 @@ info:
       the `channel` scope node with `400`; the retired TOP reads like NATIONAL and a BRAND user also sees the offers that name no product;
       `createOffer` accepts a past `valid_from`. A `request_uuid` is one call: reusing it for another operation is `409` (D-DISC-API-06).
       The 1.12.0 entry above is as it shipped.
-    - 1.12.2 (follow-up of D-DISC-API-06, local until scheduled): `setOfferStatus` takes an optional `If-Match` and gains the `412` response; a stale
-      ETag is refused, no header keeps the 1.12.1 behaviour. Additive only; the database also refuses any status move but draft to active to
+    - 1.12.2 (discount-programme portal, train 94 of lane portal-discount-api, D-DISC-API-08 to 10; approval D-LEAD-CONTRACT-1122-01, gate file
+      `docs/requests/contract-1.12-discount-portal.md`), additive: `setOfferStatus` takes an optional `If-Match` and gains the `412` response; a
+      stale ETag is refused, no header keeps the 1.12.1 behaviour. A replayed `request_uuid` answers the first result, with the status and the
+      ETag the offer had right after the first call (V0157; rows made earlier answer the current ones). A base quantity that is not a multiple
+      of the SKU's pack size (`reward_qty_base` against the reward SKU, `threshold_qty_base` against each `sku`-level qualifying product) is
+      refused `400` with the field code `not_a_multiple_of_pack_factor`. The database also refuses any status move but draft to active to
       inactive (V0156).
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
@@ -3548,7 +3552,9 @@ paths:
         - name: If-Match
           in: header
           required: false
-          description: Optional (1.12.2). The ETag of the offer being moved; when given and stale the move is refused `412`.
+          description: >-
+            Optional (1.12.2). The ETag of the offer being moved; when given and stale the move is refused `412`. A replay of a stored
+            `request_uuid` is answered before `If-Match` is judged, so a retry that carries the now-stale ETag still gets the first result.
           schema: { type: string, pattern: '^"[0-9]{1,10}"$' }
       requestBody:
         required: true

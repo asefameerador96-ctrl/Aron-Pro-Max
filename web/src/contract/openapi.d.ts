@@ -15541,7 +15541,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Optional (1.12.2). The ETag of the offer being moved; when given and stale the move is refused `412`. */
+                /** @description Optional (1.12.2). The ETag of the offer being moved; when given and stale the move is refused `412`. A replay of a stored `request_uuid` is answered before `If-Match` is judged, so a retry that carries the now-stale ETag still gets the first result. */
                 "If-Match"?: string;
             };
             path: {

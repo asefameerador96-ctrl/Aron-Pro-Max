@@ -769,7 +769,7 @@ Source: contract/openapi.yaml, version 1.12.2.
 - `operations/getOffer.yaml`  GET /v1/admin/offers/{id} (766 B)
 - `operations/updateOffer.yaml`  PATCH /v1/admin/offers/{id} (1432 B)
 - `operations/listOfferVersions.yaml`  GET /v1/admin/offers/{id}/versions (791 B)
-- `operations/setOfferStatus.yaml`  POST /v1/admin/offers/{id}/status (1804 B)
+- `operations/setOfferStatus.yaml`  POST /v1/admin/offers/{id}/status (1959 B)
 - `operations/listUsers.yaml`  GET /v1/admin/users (795 B)
 - `operations/createUser.yaml`  POST /v1/admin/users (1071 B)
 - `operations/getUser.yaml`  GET /v1/admin/users/{id} (578 B)
