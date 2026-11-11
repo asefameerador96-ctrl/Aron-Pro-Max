@@ -47,7 +47,7 @@ private fun SalesPanel(d: LiveData, perRoute: Boolean) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             if (perRoute) d.columns().take(4).forEach { c ->
                 val field = c.field()
-                PanelColumn(field?.let { FieldQty.plain(it.first) } ?: c.qtyBase.toString(), categoryLabel(c.code), field?.let { com.aktcl.aron.core.ui.entryUnitLabel(it.second) } ?: unitLabel(c.baseUnit), fig)
+                PanelColumn(field?.let { FieldQty.plain(it.first) } ?: c.qtyBase.toString(), categoryLabel(c.code), field?.let { com.aktcl.aron.core.ui.entryUnitLabel(it.second) } ?: unitLabel(c.baseUnit), fig, memo = c.memos?.let { stringResource(R.string.amo_live_memos, it) } ?: stringResource(R.string.amo_live_memos_none))
             } else {
                 PanelColumn(d.memoCount.toString(), stringResource(R.string.amo_live_total_sales), null, fig)
                 PanelColumn(d.totalTaka(), stringResource(R.string.amo_live_total_taka), null, fig)
@@ -57,12 +57,14 @@ private fun SalesPanel(d: LiveData, perRoute: Boolean) {
 }
 
 @Composable
-private fun PanelColumn(value: String, label: String, unit: String?, fig: Color) {
+private fun PanelColumn(value: String, label: String, unit: String?, fig: Color, memo: String? = null) {
     val look = LocalAronLook.current
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 2.dp)) {
         Text(value, style = amoText(24, bold = true, color = fig))
         Text(label, style = amoText(14, color = look.onPanel))
         if (unit != null) Text(unit, style = amoText(11, color = look.onPanelMuted))
+        // the server's count of accepted memos with a line of this category on this day (CategoryVolume.memos); a dash when it sent none
+        if (memo != null) Text(memo, style = amoText(11, color = look.onPanelMuted))
     }
 }
 
