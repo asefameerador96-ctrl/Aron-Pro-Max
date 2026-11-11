@@ -21,6 +21,20 @@ object UnitWords {
     }
 }
 
-/** The localised unit word for a server or stored unit code of a SKU of [categoryCode]; the raw code when unknown, nothing when the server sent none. */
+/**
+ * The localised unit word for a server or stored unit code of a SKU of [categoryCode]; the raw code when unknown, nothing when the server sent none.
+ * [quantityText] (the exact quantity as text) picks the English singular for exactly 1 ("1 packet", "2 packets", "62.5 packets"); the dozen has no plural.
+ */
 @Composable
-fun fieldUnitWord(wire: String, categoryCode: String = ""): String = UnitWords.key(wire, categoryCode)?.let { entryUnitLabel(it) } ?: wire
+fun fieldUnitWord(wire: String, categoryCode: String = "", quantityText: String? = null): String {
+    val key = UnitWords.key(wire, categoryCode) ?: return wire
+    val count = if (quantityText?.trim() == "1") 1 else 2
+    val res = androidx.compose.ui.platform.LocalContext.current.resources
+    return when (key) {
+        "packet" -> res.getQuantityString(R.plurals.amo_unit_packet, count)
+        "box" -> res.getQuantityString(R.plurals.amo_unit_box, count)
+        "piece" -> res.getQuantityString(R.plurals.amo_unit_piece, count)
+        "stick" -> res.getQuantityString(R.plurals.amo_unit_stick, count)
+        else -> entryUnitLabel(key) // dozen: the same word for one and many
+    }
+}

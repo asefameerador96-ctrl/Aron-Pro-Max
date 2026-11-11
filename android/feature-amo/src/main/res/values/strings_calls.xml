@@ -51,6 +51,11 @@
     <string name="amo_live_cat_lighter">Lighter</string>
     <string name="amo_live_cat_match">Match</string>
     <string name="amo_live_photo_valid">Photo validation</string>
-    <string name="amo_live_memos">%1$s memos</string>
     <string name="amo_live_geo_visits">Geo validation</string>
+    <plurals name="amo_unit_packet"><item quantity="one">packet</item><item quantity="other">packets</item></plurals>
+    <plurals name="amo_unit_box"><item quantity="one">box</item><item quantity="other">boxes</item></plurals>
+    <plurals name="amo_unit_piece"><item quantity="one">piece</item><item quantity="other">pieces</item></plurals>
+    <plurals name="amo_unit_stick"><item quantity="one">stick</item><item quantity="other">sticks</item></plurals>
+    <plurals name="amo_live_memos"><item quantity="one">%1$s memo</item><item quantity="other">%1$s memos</item></plurals>
+    <string name="amo_live_visits_total">Total outlet visits</string>
 </resources>

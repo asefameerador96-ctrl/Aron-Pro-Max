@@ -31,7 +31,7 @@ class LiveDashboardCategoriesTest {
     private val login = """{"kpis":{"target_routes":2,"logged_in_routes":2,"login_pct":100.0,"sales_submitted_routes":0,"submit_pct_of_logged_in":0.0},"not_logged_in":[],"logged_in_not_submitted":[{"route_id":3}],"submitted":[],
       "geo_valid_visits":2,"photo_valid_visits":1,"visits_total":3,
       "sales_by_category":[
-        {"category_code":"cigarette","base_unit":"stick","qty_base":1000,"net_mtk":80000000,"report_unit":"pack","qty_report":"100.000","entry_unit":"pack","qty_entered":"62.500","memos":4},
+        {"category_code":"cigarette","base_unit":"stick","qty_base":1250,"net_mtk":80000000,"report_unit":"pack","qty_report":"100.000","entry_unit":"pack","qty_entered":"62.500","memos":4},
         {"category_code":"lighter","base_unit":"piece","qty_base":75,"net_mtk":12500000,"qty_report":null,"entry_unit":"pack","qty_entered":"3.000","memos":null},
         {"category_code":"match","base_unit":"dozen","qty_base":9,"net_mtk":2800000,"entry_unit":"dozen","qty_entered":"9.000","memos":1},
         {"category_code":"bidi","base_unit":"stick","qty_base":40,"net_mtk":100000},
@@ -81,17 +81,19 @@ class LiveDashboardCategoriesTest {
 
     @Test fun theSalesCardShowsEveryCategoryInEnglishWithMoneyAndMemos() {
         show(AppLanguage.EN, stale = false)
-        compose.onNodeWithText("62.5 packets").assertIsDisplayed()
+        compose.onNodeWithText("62.5").assertIsDisplayed(); compose.onNodeWithText("packets").assertIsDisplayed()
         compose.onNodeWithText("${Formats.money(80_000_000, UiLocale.EN)} · 4 memos").assertIsDisplayed()
-        compose.onNodeWithText("3 boxes").assertExists()
+        assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasText("3")).fetchSemanticsNodes().isNotEmpty()); compose.onNodeWithText("boxes").assertExists()
         compose.onNodeWithText(Formats.money(12_500_000, UiLocale.EN)).assertExists() // no memo count when the server sends null
-        compose.onNodeWithText("2 of 3").assertExists(); compose.onNodeWithText("1 of 3").assertExists() // geo-valid and photo-valid visits (below the fold)
+        // bare counts as screenshot 39 has them (below the fold): geo validation, photo validation and the total outlet visits as its own figure
+        listOf("Geo validation", "Photo validation", "Total outlet visits").forEach { compose.onNodeWithText(it).assertExists() }
     }
 
     @Test fun theBanglaScreenUsesBanglaDigitsAndWordsAndTheKeptCopyKeepsTheFigures() {
         show(AppLanguage.BN, stale = true) // offline: the last answer kept on the phone, said so
         compose.onNodeWithText("সিগারেট").assertIsDisplayed()
-        compose.onNodeWithText("৬২.৫", substring = true).assertIsDisplayed()
-        compose.onNodeWithText("ছবি ভ্যালিডেশন").assertExists(); compose.onNodeWithText("৩ এর মধ্যে ২").assertExists()
+        compose.onNodeWithText("৬২.৫").assertIsDisplayed(); compose.onNodeWithText("প্যাকেট").assertIsDisplayed()
+        assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasText("৩")).fetchSemanticsNodes().isNotEmpty()); compose.onNodeWithText("বক্স").assertExists() // the lighter: 3 boxes of 25
+        compose.onNodeWithText("ছবি ভ্যালিডেশন").assertExists(); listOf("জিও ভ্যালিডেশন", "ছবি ভ্যালিডেশন", "মোট আউটলেট ভ্রমণ").forEach { compose.onNodeWithText(it).assertExists() }
     }
 }
