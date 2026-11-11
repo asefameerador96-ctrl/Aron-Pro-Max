@@ -94,6 +94,6 @@
     <string name="amo_team_task_form_title">Assign a task</string>
     <string name="amo_team_refused">The server did not allow this list for your account. Ask your office to check your access.</string>
     <string name="amo_team_memo_pending">Memo: pending</string>
-    <string name="amo_live_memos">Memos: %1$d</string>
-    <string name="amo_live_memos_none">Memos: —</string>
+    <string name="amo_team_live_memos">Memos: %1$d</string>
+    <string name="amo_team_live_memos_none">Memos: —</string>
 </resources>
