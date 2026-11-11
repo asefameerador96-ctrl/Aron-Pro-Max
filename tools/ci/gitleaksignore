@@ -28,3 +28,6 @@ b1b02649f535fc4098286d5cdf9eb1b5956843d9:infra/lib/naming.bicep:generic-api-key:
 # 2026-10-22, lead review: web-dashboard request builder for the Breakdown card (the bearer argument followed by
 # the operation path literal matched generic-api-key); there is no credential on the line.
 a8f914931ceead107a17f74e9c547cb8ac9f6ddd:web/src/lib/national/server.ts:generic-api-key:58
+# lead ruling text in DECISIONS.md ("(lane portal-discount-api, ... portal): the lead approves") read as a key assignment;
+# reworded in D-LEAD-CONTRACT-112-01a; no secret (reviewed by the lead, 2026-11-11)
+5ce98afd2b4160bcf9337cc2142810db2f23fe7b:DECISIONS.md:generic-api-key:1848
