@@ -91,17 +91,47 @@ class DiscountPortalV0152Test {
     }
 
     @Test
-    fun theApiRoleInsertsVersionsAndTrailRowsAndUpdatesOnlyTheOfferRow() = db.connect().use { c ->
+    fun theGrantMapLetsTheApiRoleInsertVersionsAndTrailRowsAndUpdateOnlyTheOfferRow() = db.connect().use { c ->
+        // The grants themselves (not just what one statement happens to do): INSERT yes, UPDATE/DELETE/TRUNCATE no on the two append-only tables.
+        fun priv(role: String, table: String, p: String) = c.scalar("SELECT has_table_privilege('$role', '$table', '$p')::text")
+        for (t in listOf("app.offer_version", "app.offer_status_change")) {
+            assertEquals("true", priv("api_rw", t, "INSERT"), "$t insert")
+            assertEquals("true", priv("api_rw", t, "SELECT"), "$t select")
+            for (p in listOf("UPDATE", "DELETE", "TRUNCATE")) assertEquals("false", priv("api_rw", t, p), "$t $p")
+        }
+        assertEquals("true", priv("api_rw", "app.offer", "UPDATE"), "the offer row itself still takes status and current_version_id")
+        assertEquals("false", priv("api_rw", "app.offer", "DELETE"))
+        assertEquals("false", priv("worker_rw", "app.offer_status_change", "INSERT"), "only the API writes the trail")
         c.autoCommit = false
         try {
             val o = c.offer("G1")
+            val actor = c.scalar("SELECT id FROM app.app_user WHERE username = 'sr1001'")
             c.exec("SET LOCAL ROLE api_rw")
             c.exec("UPDATE app.offer SET group_code = 'CAMP-2' WHERE id = $o")
             c.version(o, 1, null)
+            c.exec("INSERT INTO app.offer_status_change (offer_id, from_status, to_status, request_uuid, reason, actor) VALUES ($o, 'draft', 'active', 'c0ffee00-0000-4000-8000-0000000d0201', 'approved by the owner', $actor)")
             assertEquals("42501", c.refused("UPDATE app.offer_version SET title_en = 'x' WHERE offer_id = $o"))
             assertEquals("42501", c.refused("UPDATE app.offer_status_change SET reason = 'x' WHERE offer_id = $o"))
             assertEquals("42501", c.refused("DELETE FROM app.offer WHERE id = $o"))
             c.exec("RESET ROLE")
+        } finally { c.rollback(); c.autoCommit = true }
+    }
+
+    @Test
+    fun truncateIsRefusedOnTheAppendOnlyTablesEvenForTheOwner() = db.connect().use { c ->
+        c.autoCommit = false
+        try {
+            assertEquals("42501", c.refused("TRUNCATE app.offer_status_change"))
+            assertEquals("42501", c.refused("TRUNCATE app.offer_version CASCADE"))
+        } finally { c.rollback(); c.autoCommit = true }
+    }
+
+    @Test
+    fun anOfferInsertedWithoutAStatusIsADraft() = db.connect().use { c ->
+        c.autoCommit = false
+        try {
+            c.exec("INSERT INTO app.offer (code, group_code) VALUES ('NOSTATUS', 'CAMP-1')")
+            assertEquals("draft", c.scalar("SELECT status FROM app.offer WHERE code = 'NOSTATUS'"))
         } finally { c.rollback(); c.autoCommit = true }
     }
 
@@ -119,6 +149,10 @@ class DiscountPortalV0152Test {
             c.exec("INSERT INTO app.offer_version_scope VALUES ($v2, 'zone', (SELECT min(id) FROM app.zone))")
             assertEquals("2|2|500|true|1", c.scalar("SELECT current_version_no || '|' || version_count || '|' || discount_mtk_per_unit || '|' || is_effective || '|' || (SELECT count(*) FROM dw.v_offer WHERE offer_code = 'W1') FROM dw.v_offer WHERE offer_code = 'W1'"))
             assertEquals("1|1", c.scalar("SELECT jsonb_array_length(products) || '|' || jsonb_array_length(scope) FROM dw.v_offer_version WHERE offer_version_id = $v2"))
+            assertEquals("sku|$sku", c.scalar("SELECT (products->0->>'product_level') || '|' || (products->0->>'product_id') FROM dw.v_offer_version WHERE offer_version_id = $v2"), "the contract's member names")
+            assertEquals("zone", c.scalar("SELECT scope->0->>'node_type' FROM dw.v_offer_version WHERE offer_version_id = $v2"))
+            assertEquals("true", c.scalar("SELECT ((scope->0->>'node_id') IS NOT NULL)::text FROM dw.v_offer_version WHERE offer_version_id = $v2"))
+            assertEquals("0", c.scalar("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'v_offer_version' AND column_name = 'change_reason'"), "no admin free text in a dw reuse view")
             assertEquals("0|0|false", c.scalar("SELECT jsonb_array_length(products) || '|' || jsonb_array_length(scope) || '|' || is_effective FROM dw.v_offer_version WHERE offer_version_id = $v1"), "an old version is not effective")
             c.exec("UPDATE app.offer SET status = 'inactive' WHERE id = $o")
             assertEquals("f", c.scalar("SELECT is_effective FROM dw.v_offer WHERE offer_code = 'W1'"))

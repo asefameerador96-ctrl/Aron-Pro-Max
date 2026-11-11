@@ -8,17 +8,19 @@
 -- 2. app.offer_version.request_uuid: the client UUID of the create or update call; a replay finds the first result.
 -- 3. app.offer_status_change: the append-only trail of draft -> active -> inactive moves (request_uuid unique = replay).
 -- 4. app.offer_version is immutable (a rule change is a new version): UPDATE and DELETE are refused by trigger and the
---    API role loses UPDATE on it (grant map); app.offer_status_change is append-only likewise.
+--    API role loses UPDATE on it (grant map); app.offer_status_change is append-only likewise. TRUNCATE is closed on both
+--    (statement trigger, REVOKE from PUBLIC; V0074 pattern).
 -- 5. dw.v_offer (one row per offer with its current version) and dw.v_offer_version (one row per version, with the product
 --    and scope rows as jsonb arrays) for later engines and dashboards (docs/31 s3: read dw.v_*, not app tables). Additive
---    views: dw.view_contract_version() 1.5 -> 1.6.
--- 6. Data-dictionary text for every new column and view; the V0016 comment on app.memo.offer_discount_mtk is restated.
+--    views: dw.view_contract_version() 1.5 -> 1.6. No free text of an admin in dw reuse views (the change reason stays in
+--    app.offer_version and the audit log); the jsonb rows use the contract's member names.
+-- 6. Data-dictionary text for every new column and view; the V0016 comments on app.offer_version, app.offer_version.offer_id
+--    and app.memo.offer_discount_mtk are restated.
 
 SET lock_timeout = '5s';
 
 -- ---------- 1. status draft / active / inactive ----------
--- squawk-ignore ban-drop-constraint
-ALTER TABLE app.offer DROP CONSTRAINT offer_status_check;   -- widened below: every old value stays allowed
+ALTER TABLE app.offer DROP CONSTRAINT offer_status_check;   -- widened below: every old value stays allowed (V0131 does the same)
 ALTER TABLE app.offer ADD CONSTRAINT offer_status_check CHECK (status IN ('draft','active','inactive')) NOT VALID;
 ALTER TABLE app.offer ALTER COLUMN status SET DEFAULT 'draft';
 COMMENT ON COLUMN app.offer.status IS 'Lifecycle: draft (being prepared, rule may still change), active, inactive (ended; shown as "Ended" in the portal). Moves go draft -> active -> inactive through app.offer_status_change. Active in the portal does not reach the field: the bundle offers array and the memo offer line stay zero (docs/27).';
@@ -47,6 +49,13 @@ CREATE TRIGGER offer_status_change_append_only BEFORE UPDATE OR DELETE ON app.of
   FOR EACH ROW EXECUTE FUNCTION app.deny_mutation();
 CREATE TRIGGER offer_version_immutable BEFORE UPDATE OR DELETE ON app.offer_version
   FOR EACH ROW EXECUTE FUNCTION app.deny_mutation();
+-- TRUNCATE skips row triggers: a statement trigger and the revoked privilege close it (V0074 pattern).
+CREATE TRIGGER offer_status_change_no_truncate BEFORE TRUNCATE ON app.offer_status_change
+  FOR EACH STATEMENT EXECUTE FUNCTION app.deny_mutation();
+CREATE TRIGGER offer_version_no_truncate BEFORE TRUNCATE ON app.offer_version
+  FOR EACH STATEMENT EXECUTE FUNCTION app.deny_mutation();
+REVOKE UPDATE, DELETE, TRUNCATE ON app.offer_status_change FROM PUBLIC;
+REVOKE UPDATE, DELETE, TRUNCATE ON app.offer_version FROM PUBLIC;
 
 COMMENT ON TABLE app.offer_status_change IS 'Append-only trail of offer status moves (draft, active, inactive) with the reason and the person; the request UUID makes a retried move idempotent.
 owner: backend:masterdata | capture: ONLINE | retention: audit | pii: none';
@@ -60,8 +69,9 @@ COMMENT ON COLUMN app.offer_status_change.actor IS 'User (app.app_user) who made
 COMMENT ON COLUMN app.offer_status_change.at IS 'UTC instant of the move.';
 
 -- ---------- 4. grants: the API inserts versions and trail rows, never updates them ----------
-UPDATE app.db_role_grant SET except_tables = array_cat(except_tables, ARRAY['offer_version','offer_status_change'])
- WHERE role = 'api_rw' AND schema_name = 'app' AND object = '*/update';
+UPDATE app.db_role_grant SET except_tables = except_tables || '{offer_version,offer_status_change}'::text[]
+ WHERE role = 'api_rw' AND schema_name = 'app' AND object = '*/update'
+   AND NOT ('offer_version' = ANY (except_tables)) AND NOT ('offer_status_change' = ANY (except_tables));
 
 -- ---------- 5. dw views ----------
 CREATE VIEW dw.v_offer AS
@@ -77,10 +87,10 @@ SELECT o.id AS offer_id, o.code AS offer_code, o.group_code, o.status, o.current
 CREATE VIEW dw.v_offer_version AS
 SELECT v.id AS offer_version_id, v.offer_id, o.code AS offer_code, v.version_no, v.id = o.current_version_id AS is_current,
        v.offer_type, v.level, v.title_en, v.title_bn, v.valid_from, v.valid_to, v.threshold_qty_base, v.discount_bp,
-       v.discount_mtk_per_unit, v.reward_sku_id, v.reward_qty_base, v.stacking, v.rule, v.change_reason,
-       COALESCE((SELECT jsonb_agg(jsonb_build_object('level', p.product_level, 'id', p.product_id) ORDER BY p.product_level, p.product_id)
+       v.discount_mtk_per_unit, v.reward_sku_id, v.reward_qty_base, v.stacking, v.rule,
+       COALESCE((SELECT jsonb_agg(jsonb_build_object('product_level', p.product_level, 'product_id', p.product_id) ORDER BY p.product_level, p.product_id)
                    FROM app.offer_version_product p WHERE p.offer_version_id = v.id), '[]'::jsonb) AS products,
-       COALESCE((SELECT jsonb_agg(jsonb_build_object('node_type', s.node_type, 'id', s.node_id) ORDER BY s.node_type, s.node_id)
+       COALESCE((SELECT jsonb_agg(jsonb_build_object('node_type', s.node_type, 'node_id', s.node_id) ORDER BY s.node_type, s.node_id)
                    FROM app.offer_version_scope s WHERE s.offer_version_id = v.id), '[]'::jsonb) AS scope,
        v.created_at, 'production'::app.data_origin AS data_origin,
        (v.id = o.current_version_id AND o.status = 'active') AS is_effective
@@ -134,9 +144,8 @@ COMMENT ON COLUMN dw.v_offer_version.reward_sku_id IS 'SKU given free (app.sku.i
 COMMENT ON COLUMN dw.v_offer_version.reward_qty_base IS 'Free quantity in base units of the reward SKU; null unless a free-goods rule.';
 COMMENT ON COLUMN dw.v_offer_version.stacking IS 'exclusive or stackable with other offers of the same group.';
 COMMENT ON COLUMN dw.v_offer_version.rule IS 'Extra typed parameters of the rule as JSON (empty object in v1; no slabs are invented, docs/27).';
-COMMENT ON COLUMN dw.v_offer_version.change_reason IS 'Why this version was made (the reason given with the portal change).';
-COMMENT ON COLUMN dw.v_offer_version.products IS 'JSON array of {level, id} product rows the version applies to (level category, brand, variant or sku); empty = every product.';
-COMMENT ON COLUMN dw.v_offer_version.scope IS 'JSON array of {node_type, id} place rows (wing, division, territory, zone, route, channel, sub_channel); empty = everywhere.';
+COMMENT ON COLUMN dw.v_offer_version.products IS 'JSON array of {product_level, product_id} rows the version applies to (product_level category, brand, variant or sku, as in the contract); empty = every product.';
+COMMENT ON COLUMN dw.v_offer_version.scope IS 'JSON array of {node_type, node_id} place rows (wing, division, territory, zone, route, channel, sub_channel, as in the contract); empty = everywhere.';
 COMMENT ON COLUMN dw.v_offer_version.created_at IS 'UTC instant the version was made.';
 COMMENT ON COLUMN dw.v_offer_version.data_origin IS 'Always production: offers carry no origin of their own.';
 COMMENT ON COLUMN dw.v_offer_version.is_effective IS 'True for the current version of an active offer.';
@@ -145,7 +154,10 @@ CREATE OR REPLACE FUNCTION dw.view_contract_version() RETURNS text
 LANGUAGE sql IMMUTABLE
 AS $$ SELECT '1.6' $$;
 
--- ---------- 6. restated field-line comment (V0016) ----------
+-- ---------- 6. restated V0016 comments ----------
+COMMENT ON TABLE app.offer_version IS 'One immutable version of an offer''s rule, validity and reward: a rule change is a new row, never an UPDATE (trigger and grant). The discount portal creates them (V0152); memos will record the versions they used once the discount engine exists, and the field offer line stays zero until then (docs/27).
+owner: backend:masterdata | capture: ONLINE | retention: master | pii: none';
+COMMENT ON COLUMN app.offer_version.offer_id IS 'Offer (app.offer) the version belongs to; the discount portal is in build and the field does not read it (memo offer line zero, docs/27).';
 COMMENT ON COLUMN app.memo.offer_discount_mtk IS 'Offer and free-goods discount in milli-taka. Zero in every field app until the owner enables the discount engine (docs/27): the discount portal (V0152) manages programmes, but nothing applies them to a memo yet.';
 
 SELECT app.apply_db_role_grants();

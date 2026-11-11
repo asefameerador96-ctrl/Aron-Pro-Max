@@ -75,6 +75,14 @@ info:
       `tilldate_target_qty_report`, `remaining_qty_report`, `remaining_tilldate_qty_report`), `level=route` on `getTargetAchievement` and the `sales-summary`
       report's `memos_cigarette`, `memos_bidi`, `memos_match`, `memos_lighter` columns (D-AMO-FND-16): the report has one row per route and brand, so these route-level counts repeat on every brand row of a route (take one value per route, never add them up across brand rows).
       Members added to responses the server already sends are optional.
+    - 1.12.0 (discount-programme portal, lane portal-discount-api, D-DISC-API-01 to 03, lead approval D-LEAD-CONTRACT-112-01, gate file
+      `docs/requests/contract-1.12-discount-portal.md`), additive: `getOffer`, `listOfferVersions` and `setOfferStatus`
+      (`GET /v1/admin/offers/{id}`, `GET /v1/admin/offers/{id}/versions`, `POST /v1/admin/offers/{id}/status`); the schemas `OfferStatus`
+      (draft, active, inactive), `OfferVersion`, `OfferVersionPage`, `OfferStatusChange` and `OfferSkuUnit`; optional `request_uuid` on
+      `OfferWrite` and `OfferPatch` (the server requires it), more optional members on `OfferPatch`, and optional `version_no`,
+      `change_reason`, `created_at`, `updated_at` and `sku_units` on `Offer`; `Offer.status` is now `OfferStatus` (a response enum gains
+      `draft`: no shipped client reads it). `createOffer` makes a draft and no longer asks for a
+      future `valid_from`. The field is unchanged: the bundle `offers` array stays empty and the memo offer line stays zero.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -3396,10 +3404,10 @@ paths:
       tags: [admin-products]
       operationId: listOffers
       summary: Offer and promotion rules (data, not code).
-      description: |
-        Discount programmes of the portal (1.12.0). Permission module `discounts`: SUPERADMIN, or ADMIN with the `r` grant, read all; NATIONAL
-        reads all; BRAND, WING_MANAGER, DMO and TSO read the offers within their server-side scope (the client never sends scope ids);
-        SR, AMO and SUPPORT are refused `403`. Newest first; `limit` and `cursor` page it.
+      description: >-
+        Discount programmes of the portal (1.12.0). Permission module `discounts`: SUPERADMIN, or ADMIN with the `r` grant, read all;
+        NATIONAL reads all; BRAND, WM, DMO and TSO read the offers within their server-side scope (the client never sends scope ids);
+        SR, AMO, SUPPORT and ANALYST are refused `403`. Newest first; `limit` and `cursor` page it.
       parameters:
         - name: status
           in: query
@@ -3423,11 +3431,13 @@ paths:
       tags: [admin-products]
       operationId: createOffer
       summary: Create an offer as a draft (version 1).
-      description: |
+      description: >-
         Always creates `status: draft` with version 1; activate it with `POST /v1/admin/offers/{id}/status`. SUPERADMIN, or ADMIN with the
         `w` grant on module `discounts`. Idempotent by `request_uuid` (required by the server): a repeat of the same call returns the first
-        result with `201`; the same `request_uuid` with different content, or a `code` that exists, is `409`. `valid_to >= valid_from`; money is
-        integer milli-taka per base unit or basis points; quantities are base units (see `sku_units` for the SKU pack size).
+        result with `201`; the same `request_uuid` with different content, or a `code` that exists, is `409`. `valid_to >= valid_from`; any
+        `valid_from` is accepted, a past or a future date alike (1.12.0 no longer asks for a future one; activation needs a `valid_to` that is
+        not in the past). Money is integer milli-taka per base unit or basis points; quantities are base units (see `sku_units` for the SKU
+        pack size and field unit). `drp_slide` and the `channel` scope node are refused `400` in this release.
       requestBody:
         required: true
         content:
@@ -3448,7 +3458,7 @@ paths:
       tags: [admin-products]
       operationId: getOffer
       summary: One offer with its current version (1.12.0).
-      description: Same read rules as `listOffers`; an offer outside the caller's server-side scope is `404`.
+      description: Same read rules as `listOffers`; an offer outside the caller's server-side scope is `404` (its existence is not revealed).
       parameters:
         - $ref: '#/components/parameters/IdPath'
       responses:
@@ -3466,10 +3476,11 @@ paths:
       tags: [admin-products]
       operationId: updateOffer
       summary: Change an offer; a rule change creates a new offer version (memos keep the version they used).
-      description: |
-        Only while the offer is `draft` (1.12.0): every accepted change appends an immutable offer version; an `active` or `inactive` offer is `409`
-        (end it and create a new one). The status moves through `POST /v1/admin/offers/{id}/status`; a `status` member here is `400`. Idempotent by
-        `request_uuid` (required by the server). SUPERADMIN, or ADMIN with the `w` grant on module `discounts`.
+      description: >-
+        Only while the offer is `draft` (1.12.0): every accepted change appends an immutable offer version; an `active` or `inactive` offer is
+        `409` (end it and create a new one). The status moves through `POST /v1/admin/offers/{id}/status`; a `status` member here is `400`.
+        Idempotent by `request_uuid` (required by the server): a repeat is answered before `If-Match` is judged. SUPERADMIN, or ADMIN with the
+        `w` grant on module `discounts`.
       parameters:
         - $ref: '#/components/parameters/IdPath'
         - $ref: '#/components/parameters/IfMatch'
@@ -3495,7 +3506,7 @@ paths:
       tags: [admin-products]
       operationId: listOfferVersions
       summary: Every version of an offer, newest first (1.12.0).
-      description: Same read rules as `listOffers`. Versions are immutable.
+      description: Same read rules as `listOffers`, judged for each version on its own scope. Versions are immutable.
       parameters:
         - $ref: '#/components/parameters/IdPath'
         - $ref: '#/components/parameters/Limit'
@@ -3514,11 +3525,12 @@ paths:
       tags: [admin-products]
       operationId: setOfferStatus
       summary: Activate a draft or end an active offer (1.12.0).
-      description: |
+      description: >-
         Allowed moves: draft -> active (SUPERADMIN only, as for prices), active -> inactive (SUPERADMIN, or ADMIN with the `w` grant on module
-        `discounts`). Anything else is `409`. Activation needs a current version whose `valid_to` is not in the past (Asia/Dhaka business date). The move is
-        recorded with its reason in the append-only status trail and in the audit log. Idempotent by `request_uuid`: a repeat returns the first
-        result; the same `request_uuid` with a different move is `409`. Activating does not change the field: the bundle `offers` array stays empty.
+        `discounts`). Anything else is `409`. Activation needs a current version whose `valid_to` is not in the past (Asia/Dhaka business
+        date), else `400`. The move is recorded with its reason in the append-only status trail and in the audit log. Idempotent by
+        `request_uuid`: a repeat returns the first result; the same `request_uuid` with a different move is `409`. Activating does not change
+        the field: the bundle `offers` array stays empty.
       parameters:
         - $ref: '#/components/parameters/IdPath'
       requestBody:
@@ -14126,11 +14138,11 @@ components:
         title_bn: { type: [string, 'null'], maxLength: 200 }
         valid_from: { $ref: '#/components/schemas/BusinessDate' }
         valid_to: { $ref: '#/components/schemas/BusinessDate' }
-        threshold_qty_base: { type: [integer, 'null'], minimum: 1, description: Quantity that triggers the offer (drp_slide - empties collected; free_qty - bought). }
-        discount_bp: { type: [integer, 'null'], minimum: 1, maximum: 10000, description: pct_discount in basis points of line gross. }
-        discount_mtk_per_unit: { type: [integer, 'null'], format: int64, minimum: 1, description: amount_per_unit per base unit. }
-        reward_sku_id: { type: [integer, 'null'], format: int64, minimum: 1 }
-        reward_qty_base: { type: [integer, 'null'], minimum: 1 }
+        threshold_qty_base: { type: [integer, 'null'], minimum: 1, description: 'Quantity in base units (sticks, pieces, dozens) that triggers the offer (free_qty: bought; drp_slide: empties collected).' }
+        discount_bp: { type: [integer, 'null'], minimum: 1, maximum: 10000, description: 'pct_discount in basis points of the line gross (100 = 1 percent).' }
+        discount_mtk_per_unit: { type: [integer, 'null'], format: int64, minimum: 1, description: 'amount_per_unit in integer milli-taka per base unit (stick, piece or dozen, not per packet).' }
+        reward_sku_id: { type: [integer, 'null'], format: int64, minimum: 1, description: The SKU given free (free_qty). }
+        reward_qty_base: { type: [integer, 'null'], minimum: 1, description: 'Free quantity in base units of the reward SKU.' }
         qualifying:
           type: array
           maxItems: 100
@@ -14167,12 +14179,20 @@ components:
           items: { $ref: '#/components/schemas/OfferSkuUnit' }
     OfferSkuUnit:
       type: object
-      required: [sku_id, base_unit, pack_factor]
+      description: >-
+        How one SKU named by an offer is counted in the field (docs/34 s4.2), so the portal can show a base-unit member in both units.
+      required: [sku_id, base_unit, pack_factor, field_unit]
       additionalProperties: false
       properties:
         sku_id: { $ref: '#/components/schemas/Id' }
         base_unit: { type: string, enum: [stick, piece, dozen] }
         pack_factor: { type: integer, minimum: 1, maximum: 1000, description: Base units per pack (app.sku.base_per_pack); base quantity = field quantity x pack_factor. }
+        field_unit:
+          type: string
+          enum: [packet, box, dozen, piece]
+          description: >-
+            The word the field apps count this SKU in, derived by the server from the SKU category (docs/34 s4.2): packet for cigarettes
+            and bidi, box for lighters, dozen for matches, piece for any other category.
     OfferVersion:
       type: object
       description: One immutable version of an offer (1.12.0).
@@ -14189,11 +14209,11 @@ components:
         title_bn: { type: [string, 'null'], maxLength: 200 }
         valid_from: { $ref: '#/components/schemas/BusinessDate' }
         valid_to: { $ref: '#/components/schemas/BusinessDate' }
-        threshold_qty_base: { type: [integer, 'null'], minimum: 1 }
-        discount_bp: { type: [integer, 'null'], minimum: 1, maximum: 10000 }
-        discount_mtk_per_unit: { type: [integer, 'null'], format: int64, minimum: 1 }
+        threshold_qty_base: { type: [integer, 'null'], minimum: 1, description: 'Quantity in base units (sticks, pieces, dozens) that triggers the offer.' }
+        discount_bp: { type: [integer, 'null'], minimum: 1, maximum: 10000, description: 'pct_discount in basis points of the line gross (100 = 1 percent).' }
+        discount_mtk_per_unit: { type: [integer, 'null'], format: int64, minimum: 1, description: 'amount_per_unit in integer milli-taka per base unit (not per packet).' }
         reward_sku_id: { type: [integer, 'null'], format: int64, minimum: 1 }
-        reward_qty_base: { type: [integer, 'null'], minimum: 1 }
+        reward_qty_base: { type: [integer, 'null'], minimum: 1, description: 'Free quantity in base units of the reward SKU.' }
         qualifying:
           type: array
           maxItems: 100
@@ -14255,11 +14275,11 @@ components:
         title_bn: { type: [string, 'null'], maxLength: 200 }
         valid_from: { $ref: '#/components/schemas/BusinessDate' }
         valid_to: { $ref: '#/components/schemas/BusinessDate' }
-        threshold_qty_base: { type: [integer, 'null'], minimum: 1 }
-        discount_bp: { type: [integer, 'null'], minimum: 1, maximum: 10000 }
-        discount_mtk_per_unit: { type: [integer, 'null'], format: int64, minimum: 1 }
+        threshold_qty_base: { type: [integer, 'null'], minimum: 1, description: 'Quantity in base units (sticks, pieces, dozens) that triggers the offer.' }
+        discount_bp: { type: [integer, 'null'], minimum: 1, maximum: 10000, description: 'pct_discount in basis points of the line gross (100 = 1 percent).' }
+        discount_mtk_per_unit: { type: [integer, 'null'], format: int64, minimum: 1, description: 'amount_per_unit in integer milli-taka per base unit (not per packet).' }
         reward_sku_id: { type: [integer, 'null'], format: int64, minimum: 1 }
-        reward_qty_base: { type: [integer, 'null'], minimum: 1 }
+        reward_qty_base: { type: [integer, 'null'], minimum: 1, description: 'Free quantity in base units of the reward SKU.' }
         qualifying:
           type: array
           maxItems: 100
@@ -14295,15 +14315,16 @@ components:
         valid_to: { $ref: '#/components/schemas/BusinessDate' }
         status:
           $ref: '#/components/schemas/ActiveStatus'
+          deprecated: true
           description: Refused with 400 since 1.12.0; use POST /v1/admin/offers/{id}/status.
         offer_type: { type: string, enum: [pct_discount, amount_per_unit, free_qty, drp_slide] }
         level: { type: string, enum: [line, memo] }
         stacking: { type: string, enum: [exclusive, stackable] }
-        discount_bp: { type: [integer, 'null'], minimum: 1, maximum: 10000 }
-        discount_mtk_per_unit: { type: [integer, 'null'], format: int64, minimum: 1 }
-        threshold_qty_base: { type: [integer, 'null'], minimum: 1 }
+        discount_bp: { type: [integer, 'null'], minimum: 1, maximum: 10000, description: 'pct_discount in basis points of the line gross (100 = 1 percent).' }
+        discount_mtk_per_unit: { type: [integer, 'null'], format: int64, minimum: 1, description: 'amount_per_unit in integer milli-taka per base unit (not per packet).' }
+        threshold_qty_base: { type: [integer, 'null'], minimum: 1, description: 'Quantity in base units (sticks, pieces, dozens) that triggers the offer.' }
         reward_sku_id: { type: [integer, 'null'], format: int64, minimum: 1 }
-        reward_qty_base: { type: [integer, 'null'], minimum: 1 }
+        reward_qty_base: { type: [integer, 'null'], minimum: 1, description: 'Free quantity in base units of the reward SKU.' }
         qualifying:
           type: array
           maxItems: 100

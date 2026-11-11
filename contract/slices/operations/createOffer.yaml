@@ -6,18 +6,12 @@ operation:
   operationId: createOffer
   summary: Create an offer as a draft (version 1).
   description: 'Always creates `status: draft` with version 1; activate it with `POST /v1/admin/offers/{id}/status`.
-    SUPERADMIN, or ADMIN with the
-
-    `w` grant on module `discounts`. Idempotent by `request_uuid` (required by the server): a repeat of the same
-    call returns the first
-
-    result with `201`; the same `request_uuid` with different content, or a `code` that exists, is `409`. `valid_to
-    >= valid_from`; money is
-
-    integer milli-taka per base unit or basis points; quantities are base units (see `sku_units` for the SKU pack
-    size).
-
-    '
+    SUPERADMIN, or ADMIN with the `w` grant on module `discounts`. Idempotent by `request_uuid` (required by the
+    server): a repeat of the same call returns the first result with `201`; the same `request_uuid` with different
+    content, or a `code` that exists, is `409`. `valid_to >= valid_from`; any `valid_from` is accepted, a past or
+    a future date alike (1.12.0 no longer asks for a future one; activation needs a `valid_to` that is not in the
+    past). Money is integer milli-taka per base unit or basis points; quantities are base units (see `sku_units`
+    for the SKU pack size and field unit). `drp_slide` and the `channel` scope node are refused `400` in this release.'
   requestBody:
     required: true
     content:

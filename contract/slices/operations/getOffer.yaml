@@ -5,7 +5,8 @@ operation:
   - admin-products
   operationId: getOffer
   summary: One offer with its current version (1.12.0).
-  description: Same read rules as `listOffers`; an offer outside the caller's server-side scope is `404`.
+  description: Same read rules as `listOffers`; an offer outside the caller's server-side scope is `404` (its existence
+    is not revealed).
   parameters:
   - $ref: '#/components/parameters/IdPath'
   responses:

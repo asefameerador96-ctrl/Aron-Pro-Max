@@ -9,7 +9,7 @@ Branch `lane/portal-discount-api` from INT `claude/wonderful-thompson-k6ejnf` 05
 
 ## Not done
 - Train 2: Ktor routes, `discounts` permission module, audit, tests (scope matrix, idempotency).
-- oasdiff breaking check not run (tool not installed here); squawk not run locally (CI runs it).
+- (see the report for the oasdiff and squawk results of the amended head: both run with the pinned CI tools.)
 
 ## HANDOVER
-Next: train 2 per the lane brief (AdminPrices.kt pattern, AdminModules.kt `discounts` module off `targets`). Local DB tests need a PostgreSQL 16 and `ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/postgres?user=aron&password=aron` (start with `service postgresql start`, create a SUPERUSER role `aron`). Run one Gradle at a time (two runs collide on db/build/kotlin).
+Next: train 2 per the lane brief (AdminPrices.kt pattern, AdminModules.kt `discounts` module off `targets`). Local DB tests need a PostgreSQL 16 and `ARON_TEST_PG_URL`: follow the existing repo instruction (docs/26-lane-playbook.md and docs/24-build-spec.md D24-05); no credential belongs in this file. Run one Gradle at a time (two runs collide on db/build/kotlin).

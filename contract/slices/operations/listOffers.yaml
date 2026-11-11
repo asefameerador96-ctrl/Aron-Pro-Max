@@ -6,14 +6,9 @@ operation:
   operationId: listOffers
   summary: Offer and promotion rules (data, not code).
   description: 'Discount programmes of the portal (1.12.0). Permission module `discounts`: SUPERADMIN, or ADMIN
-    with the `r` grant, read all; NATIONAL
-
-    reads all; BRAND, WING_MANAGER, DMO and TSO read the offers within their server-side scope (the client never
-    sends scope ids);
-
-    SR, AMO and SUPPORT are refused `403`. Newest first; `limit` and `cursor` page it.
-
-    '
+    with the `r` grant, read all; NATIONAL reads all; BRAND, WM, DMO and TSO read the offers within their server-side
+    scope (the client never sends scope ids); SR, AMO, SUPPORT and ANALYST are refused `403`. Newest first; `limit`
+    and `cursor` page it.'
   parameters:
   - name: status
     in: query

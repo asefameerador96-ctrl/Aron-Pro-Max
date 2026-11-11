@@ -20,7 +20,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | Schema | Relations | Columns |
 |---|---|---|
 | `app` | 173 | 2907 |
-| `dw` | 72 | 1158 |
+| `dw` | 72 | 1157 |
 
 ## Index
 
@@ -105,7 +105,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.mfa_secret`](#appmfa_secret) | table | backend:auth | ONLINE | master | secret | A user's TOTP secret (encrypted) and recovery code hashes. |
 | [`app.offer`](#appoffer) | table | backend:masterdata | ONLINE | master | none | Stable identity of an offer; each rule change is a new offer_version. |
 | [`app.offer_status_change`](#appoffer_status_change) | table | backend:masterdata | ONLINE | audit | none | Append-only trail of offer status moves (draft, active, inactive) with the reason and the person; the request UUID makes a retried move idempotent. |
-| [`app.offer_version`](#appoffer_version) | table | backend:masterdata | ONLINE | master | none | One version of an offer's rule, validity and reward; memos record the versions they used. |
+| [`app.offer_version`](#appoffer_version) | table | backend:masterdata | ONLINE | master | none | One immutable version of an offer's rule, validity and reward: a rule change is a new row, never an UPDATE (trigger and grant). The discount portal creates them (V0152); memos will record the versions they used once the discount engine exists, and the field offer line stays zero until then (docs/27). |
 | [`app.offer_version_product`](#appoffer_version_product) | table | backend:masterdata | ONLINE | master | none | Product the offer version applies to, at category, brand, variant or SKU level. |
 | [`app.offer_version_scope`](#appoffer_version_scope) | table | backend:masterdata | ONLINE | master | none | Geography or channel node an offer version is limited to; no rows means everywhere. |
 | [`app.outlet`](#appoutlet) | table | backend:masterdata | ONLINE | master | sensitive | One retail or wholesale outlet with owner, location, route placement and national id, TIN and trade licence. |
@@ -2673,14 +2673,14 @@ References: `FOREIGN KEY (actor) REFERENCES app.app_user(id)`; `FOREIGN KEY (off
 
 ## app.offer_version
 
-One version of an offer's rule, validity and reward; memos record the versions they used.
+One immutable version of an offer's rule, validity and reward: a rule change is a new row, never an UPDATE (trigger and grant). The discount portal creates them (V0152); memos will record the versions they used once the discount engine exists, and the field offer line stays zero until then (docs/27).
 
 `owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
 | `id` | bigint | not null |  | Server surrogate key. |
-| `offer_id` | bigint | not null |  | Offer (app.offer) the row refers to; offers are deferred (docs/27). |
+| `offer_id` | bigint | not null |  | Offer (app.offer) the version belongs to; the discount portal is in build and the field does not read it (memo offer line zero, docs/27). |
 | `version_no` | integer | not null |  | Sequence number of the version within its offer. |
 | `offer_type` | text | not null |  | Rule type: pct_discount, amount_per_unit, free_qty or drp_slide. |
 | `level` | text | not null |  | Whether the offer applies per line or to the whole memo. |
@@ -6958,9 +6958,8 @@ Stable view: one row per immutable offer version with its rule, validity, reward
 | `reward_qty_base` | integer | null |  | Free quantity in base units of the reward SKU; null unless a free-goods rule. |
 | `stacking` | text | null |  | exclusive or stackable with other offers of the same group. |
 | `rule` | jsonb | null |  | Extra typed parameters of the rule as JSON (empty object in v1; no slabs are invented, docs/27). |
-| `change_reason` | text | null |  | Why this version was made (the reason given with the portal change). |
-| `products` | jsonb | null |  | JSON array of {level, id} product rows the version applies to (level category, brand, variant or sku); empty = every product. |
-| `scope` | jsonb | null |  | JSON array of {node_type, id} place rows (wing, division, territory, zone, route, channel, sub_channel); empty = everywhere. |
+| `products` | jsonb | null |  | JSON array of {product_level, product_id} rows the version applies to (product_level category, brand, variant or sku, as in the contract); empty = every product. |
+| `scope` | jsonb | null |  | JSON array of {node_type, node_id} place rows (wing, division, territory, zone, route, channel, sub_channel, as in the contract); empty = everywhere. |
 | `created_at` | timestamp with time zone | null |  | UTC instant the version was made. |
 | `data_origin` | app.data_origin | null |  | Always production: offers carry no origin of their own. |
 | `is_effective` | boolean | null |  | True for the current version of an active offer. |

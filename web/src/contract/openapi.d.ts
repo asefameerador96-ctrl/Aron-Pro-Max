@@ -2223,18 +2223,13 @@ export interface paths {
         };
         /**
          * Offer and promotion rules (data, not code).
-         * @description Discount programmes of the portal (1.12.0). Permission module `discounts`: SUPERADMIN, or ADMIN with the `r` grant, read all; NATIONAL
-         *     reads all; BRAND, WING_MANAGER, DMO and TSO read the offers within their server-side scope (the client never sends scope ids);
-         *     SR, AMO and SUPPORT are refused `403`. Newest first; `limit` and `cursor` page it.
+         * @description Discount programmes of the portal (1.12.0). Permission module `discounts`: SUPERADMIN, or ADMIN with the `r` grant, read all; NATIONAL reads all; BRAND, WM, DMO and TSO read the offers within their server-side scope (the client never sends scope ids); SR, AMO, SUPPORT and ANALYST are refused `403`. Newest first; `limit` and `cursor` page it.
          */
         get: operations["listOffers"];
         put?: never;
         /**
          * Create an offer as a draft (version 1).
-         * @description Always creates `status: draft` with version 1; activate it with `POST /v1/admin/offers/{id}/status`. SUPERADMIN, or ADMIN with the
-         *     `w` grant on module `discounts`. Idempotent by `request_uuid` (required by the server): a repeat of the same call returns the first
-         *     result with `201`; the same `request_uuid` with different content, or a `code` that exists, is `409`. `valid_to >= valid_from`; money is
-         *     integer milli-taka per base unit or basis points; quantities are base units (see `sku_units` for the SKU pack size).
+         * @description Always creates `status: draft` with version 1; activate it with `POST /v1/admin/offers/{id}/status`. SUPERADMIN, or ADMIN with the `w` grant on module `discounts`. Idempotent by `request_uuid` (required by the server): a repeat of the same call returns the first result with `201`; the same `request_uuid` with different content, or a `code` that exists, is `409`. `valid_to >= valid_from`; any `valid_from` is accepted, a past or a future date alike (1.12.0 no longer asks for a future one; activation needs a `valid_to` that is not in the past). Money is integer milli-taka per base unit or basis points; quantities are base units (see `sku_units` for the SKU pack size and field unit). `drp_slide` and the `channel` scope node are refused `400` in this release.
          */
         post: operations["createOffer"];
         delete?: never;
@@ -2252,7 +2247,7 @@ export interface paths {
         };
         /**
          * One offer with its current version (1.12.0).
-         * @description Same read rules as `listOffers`; an offer outside the caller's server-side scope is `404`.
+         * @description Same read rules as `listOffers`; an offer outside the caller's server-side scope is `404` (its existence is not revealed).
          */
         get: operations["getOffer"];
         put?: never;
@@ -2262,9 +2257,7 @@ export interface paths {
         head?: never;
         /**
          * Change an offer; a rule change creates a new offer version (memos keep the version they used).
-         * @description Only while the offer is `draft` (1.12.0): every accepted change appends an immutable offer version; an `active` or `inactive` offer is `409`
-         *     (end it and create a new one). The status moves through `POST /v1/admin/offers/{id}/status`; a `status` member here is `400`. Idempotent by
-         *     `request_uuid` (required by the server). SUPERADMIN, or ADMIN with the `w` grant on module `discounts`.
+         * @description Only while the offer is `draft` (1.12.0): every accepted change appends an immutable offer version; an `active` or `inactive` offer is `409` (end it and create a new one). The status moves through `POST /v1/admin/offers/{id}/status`; a `status` member here is `400`. Idempotent by `request_uuid` (required by the server): a repeat is answered before `If-Match` is judged. SUPERADMIN, or ADMIN with the `w` grant on module `discounts`.
          */
         patch: operations["updateOffer"];
         trace?: never;
@@ -2278,7 +2271,7 @@ export interface paths {
         };
         /**
          * Every version of an offer, newest first (1.12.0).
-         * @description Same read rules as `listOffers`. Versions are immutable.
+         * @description Same read rules as `listOffers`, judged for each version on its own scope. Versions are immutable.
          */
         get: operations["listOfferVersions"];
         put?: never;
@@ -2300,10 +2293,7 @@ export interface paths {
         put?: never;
         /**
          * Activate a draft or end an active offer (1.12.0).
-         * @description Allowed moves: draft -> active (SUPERADMIN only, as for prices), active -> inactive (SUPERADMIN, or ADMIN with the `w` grant on module
-         *     `discounts`). Anything else is `409`. Activation needs a current version whose `valid_to` is not in the past (Asia/Dhaka business date). The move is
-         *     recorded with its reason in the append-only status trail and in the audit log. Idempotent by `request_uuid`: a repeat returns the first
-         *     result; the same `request_uuid` with a different move is `409`. Activating does not change the field: the bundle `offers` array stays empty.
+         * @description Allowed moves: draft -> active (SUPERADMIN only, as for prices), active -> inactive (SUPERADMIN, or ADMIN with the `w` grant on module `discounts`). Anything else is `409`. Activation needs a current version whose `valid_to` is not in the past (Asia/Dhaka business date), else `400`. The move is recorded with its reason in the append-only status trail and in the audit log. Idempotent by `request_uuid`: a repeat returns the first result; the same `request_uuid` with a different move is `409`. Activating does not change the field: the bundle `offers` array stays empty.
          */
         post: operations["setOfferStatus"];
         delete?: never;
@@ -8949,17 +8939,21 @@ export interface components {
             title_bn?: string | null;
             valid_from: components["schemas"]["BusinessDate"];
             valid_to: components["schemas"]["BusinessDate"];
-            /** @description Quantity that triggers the offer (drp_slide - empties collected; free_qty - bought). */
+            /** @description Quantity in base units (sticks, pieces, dozens) that triggers the offer (free_qty: bought; drp_slide: empties collected). */
             threshold_qty_base?: number | null;
-            /** @description pct_discount in basis points of line gross. */
+            /** @description pct_discount in basis points of the line gross (100 = 1 percent). */
             discount_bp?: number | null;
             /**
              * Format: int64
-             * @description amount_per_unit per base unit.
+             * @description amount_per_unit in integer milli-taka per base unit (stick, piece or dozen, not per packet).
              */
             discount_mtk_per_unit?: number | null;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description The SKU given free (free_qty).
+             */
             reward_sku_id?: number | null;
+            /** @description Free quantity in base units of the reward SKU. */
             reward_qty_base?: number | null;
             qualifying: {
                 product_level: components["schemas"]["ProductLevel"];
@@ -8994,12 +8988,18 @@ export interface components {
             /** @description Pack size of every SKU the rule names (the reward SKU and `sku`-level qualifying products), so a client can show base-unit fields in field units (packets, boxes, dozens) without a second call (1.12.0). */
             sku_units?: components["schemas"]["OfferSkuUnit"][];
         };
+        /** @description How one SKU named by an offer is counted in the field (docs/34 s4.2), so the portal can show a base-unit member in both units. */
         OfferSkuUnit: {
             sku_id: components["schemas"]["Id"];
             /** @enum {string} */
             base_unit: "stick" | "piece" | "dozen";
             /** @description Base units per pack (app.sku.base_per_pack); base quantity = field quantity x pack_factor. */
             pack_factor: number;
+            /**
+             * @description The word the field apps count this SKU in, derived by the server from the SKU category (docs/34 s4.2): packet for cigarettes and bidi, box for lighters, dozen for matches, piece for any other category.
+             * @enum {string}
+             */
+            field_unit: "packet" | "box" | "dozen" | "piece";
         };
         /** @description One immutable version of an offer (1.12.0). */
         OfferVersion: {
@@ -9015,12 +9015,18 @@ export interface components {
             title_bn?: string | null;
             valid_from: components["schemas"]["BusinessDate"];
             valid_to: components["schemas"]["BusinessDate"];
+            /** @description Quantity in base units (sticks, pieces, dozens) that triggers the offer. */
             threshold_qty_base?: number | null;
+            /** @description pct_discount in basis points of the line gross (100 = 1 percent). */
             discount_bp?: number | null;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description amount_per_unit in integer milli-taka per base unit (not per packet).
+             */
             discount_mtk_per_unit?: number | null;
             /** Format: int64 */
             reward_sku_id?: number | null;
+            /** @description Free quantity in base units of the reward SKU. */
             reward_qty_base?: number | null;
             qualifying: {
                 product_level: components["schemas"]["ProductLevel"];
@@ -9063,12 +9069,18 @@ export interface components {
             title_bn?: string | null;
             valid_from: components["schemas"]["BusinessDate"];
             valid_to: components["schemas"]["BusinessDate"];
+            /** @description Quantity in base units (sticks, pieces, dozens) that triggers the offer. */
             threshold_qty_base?: number | null;
+            /** @description pct_discount in basis points of the line gross (100 = 1 percent). */
             discount_bp?: number | null;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description amount_per_unit in integer milli-taka per base unit (not per packet).
+             */
             discount_mtk_per_unit?: number | null;
             /** Format: int64 */
             reward_sku_id?: number | null;
+            /** @description Free quantity in base units of the reward SKU. */
             reward_qty_base?: number | null;
             qualifying: {
                 product_level: components["schemas"]["ProductLevel"];
@@ -9089,7 +9101,10 @@ export interface components {
             title_bn?: string | null;
             valid_from?: components["schemas"]["BusinessDate"];
             valid_to?: components["schemas"]["BusinessDate"];
-            /** @description Refused with 400 since 1.12.0; use POST /v1/admin/offers/{id}/status. */
+            /**
+             * @deprecated
+             * @description Refused with 400 since 1.12.0; use POST /v1/admin/offers/{id}/status.
+             */
             status?: components["schemas"]["ActiveStatus"];
             /** @enum {string} */
             offer_type?: "pct_discount" | "amount_per_unit" | "free_qty" | "drp_slide";
@@ -9097,12 +9112,18 @@ export interface components {
             level?: "line" | "memo";
             /** @enum {string} */
             stacking?: "exclusive" | "stackable";
+            /** @description pct_discount in basis points of the line gross (100 = 1 percent). */
             discount_bp?: number | null;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description amount_per_unit in integer milli-taka per base unit (not per packet).
+             */
             discount_mtk_per_unit?: number | null;
+            /** @description Quantity in base units (sticks, pieces, dozens) that triggers the offer. */
             threshold_qty_base?: number | null;
             /** Format: int64 */
             reward_sku_id?: number | null;
+            /** @description Free quantity in base units of the reward SKU. */
             reward_qty_base?: number | null;
             qualifying?: {
                 product_level: components["schemas"]["ProductLevel"];

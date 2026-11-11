@@ -55,32 +55,35 @@ Offer:
       - integer
       - 'null'
       minimum: 1
-      description: Quantity that triggers the offer (drp_slide - empties collected; free_qty - bought).
+      description: 'Quantity in base units (sticks, pieces, dozens) that triggers the offer (free_qty: bought; drp_slide:
+        empties collected).'
     discount_bp:
       type:
       - integer
       - 'null'
       minimum: 1
       maximum: 10000
-      description: pct_discount in basis points of line gross.
+      description: pct_discount in basis points of the line gross (100 = 1 percent).
     discount_mtk_per_unit:
       type:
       - integer
       - 'null'
       format: int64
       minimum: 1
-      description: amount_per_unit per base unit.
+      description: amount_per_unit in integer milli-taka per base unit (stick, piece or dozen, not per packet).
     reward_sku_id:
       type:
       - integer
       - 'null'
       format: int64
       minimum: 1
+      description: The SKU given free (free_qty).
     reward_qty_base:
       type:
       - integer
       - 'null'
       minimum: 1
+      description: Free quantity in base units of the reward SKU.
     qualifying:
       type: array
       maxItems: 100

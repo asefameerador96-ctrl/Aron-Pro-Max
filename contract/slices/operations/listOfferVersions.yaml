@@ -5,7 +5,7 @@ operation:
   - admin-products
   operationId: listOfferVersions
   summary: Every version of an offer, newest first (1.12.0).
-  description: Same read rules as `listOffers`. Versions are immutable.
+  description: Same read rules as `listOffers`, judged for each version on its own scope. Versions are immutable.
   parameters:
   - $ref: '#/components/parameters/IdPath'
   - $ref: '#/components/parameters/Limit'
