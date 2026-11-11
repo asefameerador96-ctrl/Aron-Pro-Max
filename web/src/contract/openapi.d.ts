@@ -15540,7 +15540,10 @@ export interface operations {
     setOfferStatus: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional (1.12.2). The ETag of the offer being moved; when given and stale the move is refused `412`. A replay of a stored `request_uuid` is answered before `If-Match` is judged, so a retry that carries the now-stale ETag still gets the first result. */
+                "If-Match"?: string;
+            };
             path: {
                 id: components["parameters"]["IdPath"];
             };
@@ -15566,6 +15569,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
         };
     };
     listUsers: {
