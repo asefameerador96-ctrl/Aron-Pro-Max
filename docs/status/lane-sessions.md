@@ -230,3 +230,7 @@ Dependents merge origin/lane/ui-kit (not wait for INT). Parity proof per lane: d
 - integrator 23 session_014mnioLVYbzXUW1yaVnerKm (Sonnet): STANDING BY for GO train 89. USD 9.38, context 262k.
 - lead session_01MbUQSxrP7AB9tbyANjUTPS (Fable 5.1): USD 3,529.58 cumulative since 2026-10-04; seven_day status allowed (no pause); context 884k/1M (compaction imminent, records are on the docs branch).
 - Archived earlier this night (USD): A1 #2 9.95, A4 16.22, foundation #3 14.43, A2 #3 21.53, A3 #2 17.53.
+
+## 2026-11-11 07:44 UTC — wave 7 opened: Discount/campaign portal (lead)
+- portal-discount-api Lane A session_014mnioN6bHveHkiYiUjKXrH (Sonnet; created 07:43 from INT claude/wonderful-thompson-k6ejnf 05a50235b with source_url + source_revision + model, shallow-clone note given): branch lane/portal-discount-api; scope = docs/status/portal-discount-brief.md sections 5 and 6 (migration V0152+, contract 1.12.0, Ktor /v1/admin/offers with module `discounts`, scope matrix, idempotent writes, audit); Opus checker on money/scope/migration before any train. Lane B (web) is created after Lane A's contract bump is on its branch.
+- Active set now: A2 #4 session_014mnioQZhWhpc9Bqn5e8hui (probe fix for train 91, then archive), integrator 23 session_014mnioLVYbzXUW1yaVnerKm, Lane A session_014mnioN6bHveHkiYiUjKXrH.
