@@ -108,7 +108,7 @@ test("create a draft, edit it into version 2, activate it as Super Admin with a 
   await expect(page.getByTestId("discount-detail-page")).toBeVisible();
   await expect(page.getByTestId("offer-saved")).toBeVisible();
   await expect(page.getByTestId("offer-status")).toContainText("Draft");
-  await expect(page.getByTestId("offer-value")).toContainText("৳2.000 off per packet");
+  await expect(page.getByTestId("offer-value")).toContainText("Tk 2.000 off per packet");
 
   await page.getByTestId("offer-edit").click();
   await hydrated(page.getByTestId("offer-form"));
@@ -117,7 +117,7 @@ test("create a draft, edit it into version 2, activate it as Super Admin with a 
   await page.locator("#of-per-unit").fill("3");
   await page.locator("#of-reason").fill("Raise the amount off to three taka");
   await page.getByTestId("of-submit").click();
-  await expect(page.getByTestId("offer-value")).toContainText("৳3.000 off per packet");
+  await expect(page.getByTestId("offer-value")).toContainText("Tk 3.000 off per packet");
   await expect(page.getByTestId("offer-version")).toHaveCount(2);
 
   await page.getByTestId("os-active").click();

@@ -10,13 +10,13 @@ import { Banner } from "@/components/kit/banner";
 import { Button } from "@/components/kit/button";
 import type { Problem } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
-import { LEVELS, OFFER_TYPES, PRODUCT_LEVELS, SCOPE_NODE_TYPES, STACKING, deriveUnits, diffPatch, effFactor, nextAttempt, reunit, validateForm, type FieldError, type OfferForm, type OfferSkuUnit, type RuleSnapshot } from "@/lib/admin/offers";
+import { LEVELS, OFFER_TYPES, PRODUCT_LEVELS, SCOPE_NODE_TYPES, STACKING, deriveUnits, diffPatch, effFactor, nextAttempt, reunit, validateForm, type FieldError, type OfferForm, type RuleSnapshot, type SkuUnit } from "@/lib/admin/offers";
 import { baseWord, qtyText, unitWord } from "@/lib/admin/offers-view";
 import { Field, inputClass } from "./kit/field";
 import { ReasonField } from "./kit/reason-field";
 
 export interface Option { value: string; label: string }
-export interface SkuOption { id: number; label: string; unit: OfferSkuUnit }
+export interface SkuOption { id: number; label: string; unit: SkuUnit }
 type NodeType = (typeof SCOPE_NODE_TYPES)[number];
 
 const POINTER_FIELD: Record<string, string> = { code: "code", group_code: "group_code", title_en: "title_en", title_bn: "title_bn", valid_from: "valid_from", valid_to: "valid_to", discount_bp: "percent", discount_mtk_per_unit: "perUnit", threshold_qty_base: "threshold", reward_sku_id: "rewardSku", reward_qty_base: "rewardQty", change_reason: "reason", qualifying: "qualifying", scope: "scope" };
@@ -38,7 +38,7 @@ export function OfferFormView({ mode, offerId, version, initial, original, skus,
   const setUnitInput = (patch: Partial<Pick<OfferForm, "qualifying" | "rewardSku">>) => setF((s) => reunit({ ...s, ...patch }, s, deriveUnits(s, unitOf), deriveUnits({ ...s, ...patch }, unitOf)));
 
   const skuById = useMemo(() => new Map(skus.map((s) => [s.id, s])), [skus]);
-  const unitOf = (id: number): OfferSkuUnit | undefined => skuById.get(id)?.unit;
+  const unitOf = (id: number): SkuUnit | undefined => skuById.get(id)?.unit;
   const units = useMemo(() => deriveUnits(f, (id) => skuById.get(id)?.unit), [f, skuById]);
   const qualUnits = units.qualifying;
   const rewardUnits = units.reward;
