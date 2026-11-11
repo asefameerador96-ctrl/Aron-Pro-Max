@@ -29,7 +29,7 @@ import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.rules.UiLocale
 
-object LiveTags { const val SALES = "live_sales"; const val STRIKE = "live_strike"; const val GEO = "live_geo"; const val LOGIN = "live_login"; const val ROUTE = "live_route"; const val AMO = "live_amo" }
+object LiveTags { const val SALES = "live_sales"; const val STRIKE = "live_strike"; const val GEO = "live_geo"; const val LOGIN = "live_login"; const val ROUTE = "live_route"; const val AMO = "live_amo"; const val FILTER = "live_filter" }
 
 /** The key figures of the purple panel: cyan on the deep purple in the normal look; the panel's own ink in Sunlight (solid, 7:1). */
 @Composable
@@ -143,7 +143,7 @@ fun LiveDataContent(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AmoDropdown(amoName, emptyList(), {}, Modifier.weight(1f).testTag(LiveTags.AMO), enabled = false, small = true)
             AmoDropdown(routeValue, routeOptions, onRoute, Modifier.weight(1f).testTag(LiveTags.ROUTE), small = true)
-            androidx.compose.material3.IconButton(onClick = onFilter) { TeamIcon(R.drawable.amo_team_ic_filter, tint = look.purple, size = 28.dp) }
+            androidx.compose.material3.IconButton(onClick = onFilter, modifier = Modifier.testTag(LiveTags.FILTER)) { TeamIcon(R.drawable.amo_team_ic_filter, tint = look.purple, size = 28.dp) }
         }
         if (routeNote) AmoNotice(stringResource(R.string.amo_live_route_note))
         if (d == null) { AmoEmpty(stringResource(R.string.amo_live_none)); return@AmoPage }
