@@ -85,3 +85,7 @@ Then the full local gate (assemble x3, android unit tests `--max-workers=2`, lin
 ## A2 #4 narrow round (2026-11-11; D-AMO-CALLS-31)
 - Done: negative `memos_*` are no figure; a route 404 or 501 is "route detail unavailable" (403 only is "not in your reach"); a refused zone asks no route; lighter fixtures use `box` (one `pack` alias case kept).
 - Follow-ups listed in D-AMO-CALLS-31, none done.
+
+## A2 #4 flake round (2026-11-11; D-AMO-CALLS-32)
+- Root cause of the AmoControlCallHostTest flake (INT ci #1958): the Unconfined test Recomposer runs a whole frame on a Room executor thread when a composition coroutine's Room query ends there. Fixed in the harness: `hostComposeRule()` (StandardTestDispatcher) in the five app-amo host classes; regression test `HostComposeRuleTest`. The app-sr and feature-tickets classes with `createEmptyComposeRule()` have the same exposure (recipe in D-AMO-CALLS-32 (4)), not changed here.
+- D-31 lows done (KDoc, first-value memo guard, refused zone drops kept route copies, negative zone-sum test, double forget).

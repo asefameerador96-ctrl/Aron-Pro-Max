@@ -6,7 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -29,7 +28,7 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34], application = Application::class, qualifiers = "w360dp-h800dp")
 class AmoTeamPerformanceHostTest {
-    @get:Rule val compose = createEmptyComposeRule()
+    @get:Rule val compose = hostComposeRule()
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private lateinit var f: AmoLockFixture
 

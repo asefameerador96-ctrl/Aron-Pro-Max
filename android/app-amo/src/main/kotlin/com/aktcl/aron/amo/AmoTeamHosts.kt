@@ -72,7 +72,7 @@ internal fun rememberTargetNodes(day: AmoDay, members: Members?): TargetNodes? {
     LaunchedEffect(day, members) {
         members ?: return@LaunchedEffect
         val month = day.businessDate().take(7)
-        loadTargetNodes({ day.api.brandTargets(month, null) }, { id -> day.api.routeTargets(month, id) }, members.rows.map { it.routeId }.distinct().take(MAX_ROUTE_CARDS), { id -> members.rows.firstOrNull { it.routeId == id }?.routeName }) { out = it }
+        loadTargetNodes({ day.api.brandTargets(month, null) }, { id -> day.api.routeTargets(month, id) }, members.rows.map { it.routeId }.distinct().take(MAX_ROUTE_CARDS), { id -> members.rows.firstOrNull { it.routeId == id }?.routeName }, { ids -> day.api.forgetRouteTargets(month, ids) }) { out = it }
     }
     return out
 }
@@ -80,10 +80,10 @@ internal fun rememberTargetNodes(day: AmoDay, members: Members?): TargetNodes? {
 private const val MAX_ROUTE_CARDS = 20
 
 /**
- * The zone, then one route at a time (`level=route&node_id=`), publishing after each answer. A refused zone (403) ends it at once (one refusal, no ask per route). A 403 on a route marks THAT route out of reach and the loop goes on with the
- * rest; a 400 (the server has no route level) ends the loop with one note and no banner; an offline or unreadable answer ends it too. Nothing is asked twice.
+ * The zone, then one route at a time (`level=route&node_id=`), publishing after each answer. A refused zone (any Gone: 403, 404 or 501) ends it at once (one refusal, no ask per route) and drops the kept route copies through [purgeRoutes]. A 403 on a route marks THAT route out of reach and the loop goes on with the
+ * rest; a 400, 404 or 501 (the server has no route level) ends the loop with one note and no banner; an offline or unreadable answer ends it too. Nothing is asked twice.
  */
-internal suspend fun loadTargetNodes(fetchZone: suspend () -> AmoFetch, fetchRoute: suspend (Long) -> RouteTargetsRead, routeIds: List<Long>, routeName: (Long) -> String?, publish: (TargetNodes) -> Unit) {
+internal suspend fun loadTargetNodes(fetchZone: suspend () -> AmoFetch, fetchRoute: suspend (Long) -> RouteTargetsRead, routeIds: List<Long>, routeName: (Long) -> String?, purgeRoutes: (List<Long>) -> Unit = {}, publish: (TargetNodes) -> Unit) {
     val zoneFetch = fetchZone()
     val zone = TeamTargets.parse(zoneFetch.jsonOrNull())
     var stale = zoneFetch is AmoFetch.Cached
@@ -92,7 +92,7 @@ internal suspend fun loadTargetNodes(fetchZone: suspend () -> AmoFetch, fetchRou
     var unavailable = false
     fun emit() = publish(TargetNodes(zone, acc.toList(), stale, zoneFetch.isMissing(), zoneGone, out.toList(), unavailable))
     emit()
-    if (zoneGone) return // the zone itself is refused: one refusal, the routes are not asked
+    if (zoneGone) { purgeRoutes(routeIds); return } // the zone itself is refused: one refusal, the routes are not asked, and their old copies are dropped
     for (id in routeIds) {
         val r = fetchRoute(id)
         if (r.notOffered) { unavailable = true; emit(); break }

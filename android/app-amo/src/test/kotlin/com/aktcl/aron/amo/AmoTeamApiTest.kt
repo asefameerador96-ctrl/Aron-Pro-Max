@@ -109,4 +109,14 @@ class AmoTeamApiTest {
         val r403 = a.routeTargets("2026-11", 11L)
         assertTrue(r403.fetch is AmoFetch.Gone); assertFalse(r403.notOffered)
     }
+
+    /** D-AMO-CALLS-32: a refused zone drops the kept route copies (no old copy of a reach the server now refuses). */
+    @Test fun forgettingRouteTargetsDropsTheirKeptCopies() = runBlocking {
+        val a = api()
+        assertTrue(a.routeTargets("2026-11", 11L).fetch is AmoFetch.Fresh); assertTrue(a.routeTargets("2026-11", 12L).fetch is AmoFetch.Fresh)
+        a.forgetRouteTargets("2026-11", listOf(11L, 12L))
+        down = true
+        assertTrue(a.routeTargets("2026-11", 11L).fetch is AmoFetch.Unavailable); assertTrue(a.routeTargets("2026-11", 12L).fetch is AmoFetch.Unavailable)
+        down = false
+    }
 }

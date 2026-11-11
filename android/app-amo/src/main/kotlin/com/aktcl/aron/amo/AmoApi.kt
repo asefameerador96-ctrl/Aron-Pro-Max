@@ -14,11 +14,11 @@ sealed interface AmoFetch {
     data class Fresh(val json: String) : AmoFetch
     data class Cached(val json: String) : AmoFetch
     data object Unavailable : AmoFetch
-    /** The server refuses or does not offer it (403, 404, 501): no old copy is served and the screen says so instead of "offline". */
+    /** The server refuses or does not offer it (403, 404, 501): no old copy is served and the screen says so instead of "offline". On a ROUTE targets read only 403 is Gone ([RouteTargetsRead] maps 400, 404 and 501 to "not offered"). */
     data object Gone : AmoFetch
 }
 
-/** A route's targets: the read, and [notOffered] when the server answered 400 (it has no route level). */
+/** A route's targets: the read, and [notOffered] when the server answered 400, 404 or 501 (it has no route level, or no node_id was understood); a 403 is [AmoFetch.Gone] for that route alone. */
 class RouteTargetsRead(val fetch: AmoFetch, val notOffered: Boolean)
 
 fun AmoFetch.jsonOrNull(): String? = when (this) { is AmoFetch.Fresh -> json; is AmoFetch.Cached -> json; else -> null }
@@ -81,11 +81,16 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
      * is [AmoFetch.Gone] for THAT route only; 400 (no node_id), 404 and 501 (the level is not offered) are [RouteTargetsRead.notOffered], a server that has no route level and not
      * an access problem. Neither serves an old copy.
      */
+    /** Drops the kept copies of these routes' targets (the zone itself was refused: nothing of that reach may still be shown from an old copy). */
+    fun forgetRouteTargets(month: String, routeIds: List<Long>) = routeIds.forEach { forget("targets_brand_${it}_$month") }
+
     suspend fun routeTargets(month: String, routeId: Long): RouteTargetsRead {
         val key = "targets_brand_${routeId}_$month"
         val (f, status) = getRaw("/v1/dashboards/targets", key, linkedMapOf("month" to month, "product_level" to "brand", "level" to "route", "node_id" to routeId.toString()))
         // 400 (no node_id), 404 and 501 (no such route level / not implemented) all say the server has no route detail; only 403 says "not yours"
-        if (status == 400 || status == 404 || status == 501) { forget(key); return RouteTargetsRead(AmoFetch.Unavailable, true) }
+        // (getRaw already forgot the copy of a 404 or 501, which it reads as Gone; a 400 it would have served from the copy, so that one is forgotten here)
+        if (status == 400) forget(key)
+        if (status == 400 || status == 404 || status == 501) return RouteTargetsRead(AmoFetch.Unavailable, true)
         return RouteTargetsRead(f, false)
     }
 
