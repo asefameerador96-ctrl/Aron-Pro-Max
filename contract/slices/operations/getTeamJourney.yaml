@@ -25,6 +25,10 @@ operation:
     `closed_at - opened_at` and `gap_to_next_s` is `next.opened_at - closed_at`. `phone_masked` never carries the
     full number.
 
+    `business_date` is at most 90 days back and never in the future (else 400 `ERR_VALIDATION`, `query.business_date`
+
+    `out_of_range`); the window is judged before the reach, so a bad date is a 400 and carries no data.
+
     '
   parameters:
   - name: user_id
