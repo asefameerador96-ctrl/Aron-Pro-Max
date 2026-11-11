@@ -24,7 +24,7 @@ data class StdMatrix(
 
 /** The card of one node (zone or route) of the sales-till-now summary (screenshot 72). Cells are strings already formatted by [SalesTillNow]. */
 data class TillRow(val category: String, val target: String, val sales: String, val pct: String, val memo: String, val unit: String? = null)
-data class TillCard(val heading: String, val isZone: Boolean, val routeId: Long?, val rows: List<TillRow>)
+data class TillCard(val heading: String, val isZone: Boolean, val routeId: Long?, val rows: List<TillRow>, val outOfReach: Boolean = false)
 
 /** A brand line of the route detail: target, sales, percent, memos (a dash where the server sends nothing). */
 data class BrandLine(val brand: String, val target: String, val sales: String, val pct: String, val memo: String, val unit: String? = null)
@@ -70,11 +70,18 @@ object TeamReports {
     fun summaryPeriod(today: String): Pair<String, String> = monthToToday(today)
 
     /**
-     * Memos per category for a till-now card: ONLY what the server counts (`CategoryVolume.memos` = accepted memos with at least one line in
-     * that category, same window; D-AMO-TEAM-10). A category without the field is absent and the card prints a dash. No figure is derived
-     * on the phone: the sales-summary has brand memo counts only, and summing them would present an upper bound as a count.
+     * Memos per category for a till-now card (contract 1.11.2): the server's own counts, never derived here. A route's are the `memos_<category>`
+     * members of its sales-summary rows ([RouteCard.categoryMemos]); a category the server did not send is absent and the card prints a dash.
+     * `CategoryVolume.memos` (the Live Data panel) is the one-day window of `login-submit`; these cover the report window, month to today.
      */
     fun categoryMemos(cats: List<CategorySales>): Map<String, Long> = cats.mapNotNull { c -> c.memos?.let { c.code to it } }.toMap()
+
+    /**
+     * The zone card's memos per category: the sum of every route card's server count (a memo belongs to one route, so the sum is exact), only for a
+     * category EVERY route reported; with no cards, or one route without the member, that category is absent (a dash), never a partial sum.
+     */
+    fun zoneMemos(cards: List<RouteCard>): Map<String, Long> =
+        if (cards.isEmpty()) emptyMap() else Reports.MEMO_CATEGORIES.filter { c -> cards.all { c in it.categoryMemos } }.associateWith { c -> cards.sumOf { it.categoryMemos.getValue(c) } }
 
     private fun fmt(n: Long?, l: UiLocale) = TeamTargets.qty(n, l)
 

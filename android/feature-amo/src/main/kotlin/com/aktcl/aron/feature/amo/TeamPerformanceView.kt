@@ -29,10 +29,10 @@ import com.aktcl.aron.core.ui.entryUnitLabel
 import com.aktcl.aron.rules.Band
 import com.aktcl.aron.rules.Formats
 
-object TeamPerfTags { const val CARD = "team_perf_card_"; const val DETAILS = "team_perf_details_"; const val CAT = "team_perf_cat_"; const val TAB = "team_perf_tab" }
+object TeamPerfTags { const val ROUTE_NOTE = "team_perf_route_note"; const val OUT_OF_REACH = "team_perf_out_of_reach_"; const val CARD = "team_perf_card_"; const val DETAILS = "team_perf_details_"; const val CAT = "team_perf_cat_"; const val TAB = "team_perf_tab" }
 
 /** What Team Performance shows: the zone card first, then one card per route. [detail] set means the brand table of that node is open. */
-data class PerfCards(val zone: TeamTargetNode?, val routes: List<TeamTargetNode>)
+data class PerfCards(val zone: TeamTargetNode?, val routes: List<TeamTargetNode>, val outOfReach: List<RouteOutOfReach> = emptyList(), val routeLevelUnavailable: Boolean = false)
 
 @Composable
 private fun categoryName(code: String): String = when (code) {
@@ -87,6 +87,16 @@ private fun PerfCard(
     }
 }
 
+@Composable
+internal fun OutOfReachCard(heading: String, tag: String) {
+    val look = LocalAronLook.current
+    val shape = RoundedCornerShape(20.dp)
+    Column(Modifier.fillMaxWidth().shadow(2.dp, shape).clip(shape).background(look.card).padding(16.dp).testTag(tag), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(heading, style = amoText(18, bold = true))
+        Text(stringResource(R.string.amo_team_route_out_of_reach), style = amoText(14, color = look.inkMuted))
+    }
+}
+
 /** The tint of the zone card (screenshot 34, about #DCE5E2). */
 private val ZONE_TINT = Color(0xFFDCE5E2)
 
@@ -102,9 +112,13 @@ fun TeamPerformanceListContent(
         cards.zone?.let { z ->
             PerfCard(stringResource(R.string.amo_team_perf_zone, z.name.orEmpty()), TeamTargets.categoryCards(z.rows, z.periodDays), tab, true, TeamPerfTags.CARD + "zone", null, null) { onDetails(z) }
         }
+        // the server has no route level (400): the zone card stands and one line says so, never an access problem
+        if (cards.routeLevelUnavailable) Text(stringResource(R.string.amo_team_route_unavailable), style = amoText(14, color = LocalAronLook.current.inkMuted), modifier = Modifier.testTag(TeamPerfTags.ROUTE_NOTE))
         cards.routes.forEach { r ->
             PerfCard(stringResource(R.string.amo_team_perf_route, r.name.orEmpty()), TeamTargets.categoryCards(r.rows, r.periodDays), tab, false, TeamPerfTags.CARD + r.id, null, null) { onDetails(r) }
         }
+        // a route outside the caller's reach (403) says so on its own row; the other routes carry on
+        cards.outOfReach.forEach { r -> OutOfReachCard(stringResource(R.string.amo_team_perf_route, r.name.orEmpty()), TeamPerfTags.OUT_OF_REACH + r.routeId) }
     }
 }
 

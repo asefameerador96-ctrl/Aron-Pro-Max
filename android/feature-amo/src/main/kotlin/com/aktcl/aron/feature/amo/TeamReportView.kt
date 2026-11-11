@@ -167,13 +167,14 @@ private fun TillCardView(c: TillCard, onDetails: (() -> Unit)?) {
 
 /** Sales till now (screenshot 72 left): the zone card then one card per route with Category, Target, Sales, % and Memo. */
 @Composable
-fun TillNowContent(cards: List<TillCard>, onDetails: (TillCard) -> Unit, stale: Boolean, failed: Boolean, refused: Boolean = false, modifier: Modifier = Modifier, memoPending: Boolean = false, truncated: Boolean = false) {
+fun TillNowContent(cards: List<TillCard>, onDetails: (TillCard) -> Unit, stale: Boolean, failed: Boolean, refused: Boolean = false, modifier: Modifier = Modifier, memoPending: Boolean = false, truncated: Boolean = false, routeLevelUnavailable: Boolean = false) {
     AmoPage(modifier) {
         AmoFetchBanner(failed, stale, refused)
         if (cards.isEmpty()) AmoEmpty(stringResource(R.string.amo_rep_empty), hint = stringResource(R.string.amo_rep_empty_hint))
         if (truncated) AmoBanner(stringResource(R.string.amo_rep_truncated), kind = BannerKind.Warning)
         if (memoPending && cards.isNotEmpty()) AmoBanner(stringResource(R.string.amo_team_memo_pending))
-        cards.forEach { c -> TillCardView(c, { onDetails(c) }) }
+        if (routeLevelUnavailable) Text(stringResource(R.string.amo_team_route_unavailable), style = amoText(14, color = LocalAronLook.current.inkMuted), modifier = Modifier.testTag(TeamPerfTags.ROUTE_NOTE))
+        cards.forEach { c -> if (c.outOfReach) OutOfReachCard(c.heading, TeamPerfTags.OUT_OF_REACH + c.routeId) else TillCardView(c, { onDetails(c) }) }
     }
 }
 
