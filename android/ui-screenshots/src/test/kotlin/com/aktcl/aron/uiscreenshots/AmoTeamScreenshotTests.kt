@@ -169,7 +169,11 @@ class AmoTeamScreenshotTests {
     )
 
     private val liveJson = """{"as_of":"2026-11-06T10:00:00Z","business_date":"2026-11-06","kpis":{"target_routes":1,"logged_in_routes":1,"sales_submitted_routes":0,"target_outlets":641,"successful_calls":259,"active_memo_count":38,"net_mtk":161500},
-        "geo_valid_visits":288,"photo_valid_visits":1,"visits_total":290,"sales_by_category":[{"category_code":"cigarette","base_unit":"stick","qty_base":44310},{"category_code":"bidi","base_unit":"stick","qty_base":0},{"category_code":"lighter","base_unit":"piece","qty_base":80},{"category_code":"match","base_unit":"dozen","qty_base":103}],
+        "geo_valid_visits":288,"photo_valid_visits":1,"visits_total":290,"sales_by_category":[
+        {"category_code":"cigarette","base_unit":"stick","qty_base":44310,"entry_unit":"pack","qty_entered":"2931.000","memos":31},
+        {"category_code":"bidi","base_unit":"stick","qty_base":0,"entry_unit":"pack","qty_entered":"0.000","memos":0},
+        {"category_code":"lighter","base_unit":"piece","qty_base":80,"entry_unit":"pack","qty_entered":"3.200","memos":12},
+        {"category_code":"match","base_unit":"dozen","qty_base":103,"entry_unit":"dozen","qty_entered":"103.000","memos":9}],
         "not_logged_in":[],"logged_in_not_submitted":[{"route_id":1}],"submitted":[]}"""
     @Composable private fun live(perRoute: Boolean) = LiveDataContent(LiveDataParser.parse(liveJson), "AMO-GulshanAMO", "Gulshan-1 Daily", listOf("all" to "All routes", "1" to "Gulshan-1 Daily"), perRoute, {}, {}, false, false)
 
@@ -185,16 +189,26 @@ class AmoTeamScreenshotTests {
     )
 
     @Composable private fun reportsMenu() = ReportsTilesContent({}, {})
-    private val std = TeamReports.stdMatrix(
-        "Laxipur",
-        listOf(RouteCategory("Laxmipur", "cigarette", 202_000, "stick", 0), RouteCategory("Laxmipur", "lighter", 730, "piece", 0), RouteCategory("Tempu Stand", "cigarette", 206_680, "stick", 0), RouteCategory("Tempu Stand", "lighter", 840, "piece", 0), RouteCategory("Miar Bazer", "cigarette", 167_360, "stick", 0), RouteCategory("Miar Bazer", "lighter", 562, "piece", 0), RouteCategory("Kuptola", "cigarette", 61_280, "stick", 0), RouteCategory("Kuptola", "match", 30, "dozen", 0)),
+    /** One `route-std` row as `RouteStdReport` sends it (backend ReportHandlersA): integer `route_id` + `route_code`, `category_name` (no category code), `entry_unit` + `base_per_pack`. */
+    private fun stdRow(routeId: Int, route: String, sku: String, categoryName: String, base: Long, entry: String, perPack: Long, unit: String) =
+        """{"route_code":"R$routeId","route_id":$routeId,"route_name":"$route","sku_code":"$sku","sku_name":"$sku","category_name":"$categoryName","base_unit":"$unit","entry_unit":"$entry","base_per_pack":$perPack,"sold_qty_base":$base,"free_qty_base":0,"gross_mtk":0,"memos":1}"""
+    private fun stdRows(id: Int, route: String, c20: Long, c10: Long, lighter: Long, matchDozens: Long) = listOfNotNull(
+        stdRow(id, route, "CIG-20S", "Cigarette", c20, "pack", 20, "stick"), stdRow(id, route, "CIG-10S", "Cigarette", c10, "pack", 10, "stick"),
+        if (lighter > 0) stdRow(id, route, "LTR-25", "Lighter", lighter, "pack", 25, "piece") else null,
+        if (matchDozens > 0) stdRow(id, route, "MTC-DZ", "Match", matchDozens, "dozen", 1, "dozen") else null,
     )
+    private val stdRowJson = stdRows(1, "Laxmipur", 120_000, 82_000, 730, 0) + stdRows(2, "Tempu Stand", 120_000, 86_680, 840, 0) +
+        stdRows(3, "Miar Bazer", 100_000, 67_360, 562, 0) + stdRows(4, "Kuptola", 40_000, 21_280, 0, 30)
+    private val stdReportData = Reports.parse("""{"as_of":"x","columns":[],"rows":[${stdRowJson.joinToString(",")}],"total_rows":${stdRowJson.size}}""")!!
+    private val std = TeamReports.stdMatrix("Laxipur", Reports.routeCategories(stdReportData))
     @Composable private fun stdReport() = StdMatrixContent("2026-11-01", "2026-11-06", "2026-11-06", { _, _ -> }, std, false, false)
+    /** What the app feeds today: no month-to-date category memo count exists (D-AMO-TEAM-18), so every Memo cell is a dash and the screen says pending. */
+    private val catMemos = TeamReports.categoryMemos(emptyList())
     private val tillCards = listOf(
-        TeamReports.tillCard("Zone: Dariapur", dariapur, true, mapOf("cigarette" to 7_553L), com.aktcl.aron.rules.UiLocale.EN),
-        TeamReports.tillCard("Route: Math Bazer", mathBazer, false, mapOf("cigarette" to 571L), com.aktcl.aron.rules.UiLocale.EN),
+        TeamReports.tillCard("Zone: Dariapur", dariapur, true, catMemos, com.aktcl.aron.rules.UiLocale.EN),
+        TeamReports.tillCard("Route: Math Bazer", mathBazer, false, catMemos, com.aktcl.aron.rules.UiLocale.EN),
     )
-    @Composable private fun tillNow() = TillNowContent(tillCards, {}, false, false)
+    @Composable private fun tillNow() = TillNowContent(tillCards, {}, false, false, memoPending = catMemos.isEmpty())
     @Composable private fun tillRoute() = TillRouteDetailContent(
         "79.67", "572",
         listOf(BrandLine("Marise", "88,235.29", "67,120", "76.07%", "279"), BrandLine("Black Diamond", "12,864.71", "53,410", "415.17%", "268"), BrandLine("Existing Abul Bidi/ 42 No. Abul Bidi", "352.94", "500", "141.67%", "1")),

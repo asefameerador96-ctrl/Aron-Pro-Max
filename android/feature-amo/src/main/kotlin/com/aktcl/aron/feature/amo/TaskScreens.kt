@@ -38,7 +38,7 @@ private fun statusText(t: AssignedTask): String = stringResource(
     },
 )
 
-object TaskTags { const val CARD = "task_card_"; const val CHIP = "task_chip_"; const val FAB = "task_fab"; const val SAVED = "task_saved"; const val FORM_SAVE = "task_form_save" }
+object TaskTags { const val CARD = "task_card_"; const val CHIP = "task_chip_"; const val FAB = "task_fab"; const val SAVED = "task_saved"; const val FORM_SAVE = "task_form_save"; const val ASSIGNEE = "task_assignee_"; const val RESOLUTION = "task_resolution_" }
 
 @Composable
 private fun chipText(c: TaskChip): String = stringResource(
@@ -95,6 +95,13 @@ fun AssignedTasksContent(
                             TeamIcon(R.drawable.amo_team_ic_flag, tint = look.inkMuted, size = 16.dp)
                             androidx.compose.material3.Text(stringResource(R.string.amo_team_task_completion, d), style = amoText(14, color = look.inkMuted))
                         }
+                    }
+                    // F-AMO-018: a completed task keeps its resolution (date, note) and the SR who did it, under the chip.
+                    if (chip == TaskChip.DONE) {
+                        srNames[t.assigneeId]?.let { n -> androidx.compose.material3.Text(stringResource(R.string.amo_team_task_to, n), style = amoText(14, color = look.inkMuted), modifier = Modifier.testTag(TaskTags.ASSIGNEE + t.uuid)) }
+                        val done = t.resolvedAt?.take(10)?.let { stringResource(R.string.amo_task_done_on, localizedDigits(it)) }
+                        val resolution = listOfNotNull(done, t.resolutionNote?.takeIf { it.isNotBlank() }).joinToString(" · ")
+                        if (resolution.isNotEmpty()) androidx.compose.material3.Text(resolution, style = amoText(14, color = look.inkMuted), modifier = Modifier.testTag(TaskTags.RESOLUTION + t.uuid))
                     }
                 }
             }

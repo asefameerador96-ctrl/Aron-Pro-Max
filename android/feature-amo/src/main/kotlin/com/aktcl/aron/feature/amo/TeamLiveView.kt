@@ -47,7 +47,7 @@ private fun SalesPanel(d: LiveData, perRoute: Boolean) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             if (perRoute) d.columns().take(4).forEach { c ->
                 val field = c.field()
-                PanelColumn(field?.let { FieldQty.plain(it.first) } ?: c.qtyBase.toString(), categoryLabel(c.code), field?.let { com.aktcl.aron.core.ui.entryUnitLabel(it.second) } ?: (UnitWords.key(c.baseUnit, c.code) ?: FieldQty.baseUnitKey(c.code))?.let { com.aktcl.aron.core.ui.entryUnitLabel(it) }, fig, memo = c.memos?.let { stringResource(R.string.amo_team_live_memos, it) } ?: stringResource(R.string.amo_team_live_memos_none))
+                PanelColumn(field?.let { FieldQty.plain(it.first) } ?: c.qtyBase.toString(), categoryLabel(c.code), field?.let { com.aktcl.aron.core.ui.entryUnitLabel(it.second) } ?: (UnitWords.key(c.baseUnit, c.code) ?: FieldQty.baseUnitKey(c.code))?.let { com.aktcl.aron.core.ui.entryUnitLabel(it) }, fig, memo = c.memos?.let { stringResource(R.string.amo_team_live_memos, it.toString()) } ?: stringResource(R.string.amo_team_live_memos_none))
             } else {
                 PanelColumn(d.memoCount.toString(), stringResource(R.string.amo_live_total_sales), null, fig)
                 PanelColumn(d.totalTaka(), stringResource(R.string.amo_live_total_taka), null, fig)

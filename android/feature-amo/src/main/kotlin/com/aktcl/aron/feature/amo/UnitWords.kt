@@ -1,6 +1,7 @@
 package com.aktcl.aron.feature.amo
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.entryUnitLabel
 
 /**
@@ -23,18 +24,18 @@ object UnitWords {
 
 /**
  * The localised unit word for a server or stored unit code of a SKU of [categoryCode]; the raw code when unknown, nothing when the server sent none.
- * [quantityText] (the exact quantity as text) picks the English singular for exactly 1 ("1 packet", "2 packets", "62.5 packets"); the dozen has no plural.
+ * [quantityText] (the exact quantity as text) picks the English singular when the exact value is 1 ("1 packet", "2 packets", "62.5 packets"); the dozen has no plural.
  */
 @Composable
 fun fieldUnitWord(wire: String, categoryCode: String = "", quantityText: String? = null): String {
     val key = UnitWords.key(wire, categoryCode) ?: return wire
-    val count = if (quantityText?.trim() == "1") 1 else 2
-    val res = androidx.compose.ui.platform.LocalContext.current.resources
+    // the exact Decimal3 text decides (1 = singular); plain strings, not plurals: the quantity is a decimal, not an int count
+    val one = quantityText?.trim()?.let { runCatching { java.math.BigDecimal(it).compareTo(java.math.BigDecimal.ONE) == 0 }.getOrDefault(false) } == true
     return when (key) {
-        "packet" -> res.getQuantityString(R.plurals.amo_unit_packet, count)
-        "box" -> res.getQuantityString(R.plurals.amo_unit_box, count)
-        "piece" -> res.getQuantityString(R.plurals.amo_unit_piece, count)
-        "stick" -> res.getQuantityString(R.plurals.amo_unit_stick, count)
+        "packet" -> stringResource(if (one) R.string.amo_field_unit_packet_one else R.string.amo_field_unit_packet)
+        "box" -> stringResource(if (one) R.string.amo_field_unit_box_one else R.string.amo_field_unit_box)
+        "piece" -> stringResource(if (one) R.string.amo_field_unit_piece_one else R.string.amo_field_unit_piece)
+        "stick" -> stringResource(if (one) R.string.amo_field_unit_stick_one else R.string.amo_field_unit_stick)
         else -> entryUnitLabel(key) // dozen: the same word for one and many
     }
 }

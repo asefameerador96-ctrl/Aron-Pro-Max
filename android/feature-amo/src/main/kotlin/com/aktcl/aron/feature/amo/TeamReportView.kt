@@ -179,9 +179,12 @@ fun TillNowContent(cards: List<TillCard>, onDetails: (TillCard) -> Unit, stale: 
 
 /** The route detail (screenshot 72 right): CPR and total memos, then the brand table (Brand, Target, Sales, %, Memo). */
 @Composable
-fun TillRouteDetailContent(cpr: String, totalMemo: String, brands: List<BrandLine>, modifier: Modifier = Modifier) {
+fun TillRouteDetailContent(
+    cpr: String, totalMemo: String, brands: List<BrandLine>, modifier: Modifier = Modifier, stale: Boolean = false, failed: Boolean = false, refused: Boolean = false,
+) {
     val look = LocalAronLook.current
     AmoPage(modifier) {
+        AmoFetchBanner(failed, stale, refused) // the kept-copy / offline / refused note of its sibling cards
         val shape = RoundedCornerShape(14.dp)
         Row(Modifier.fillMaxWidth().shadow(2.dp, shape).clip(shape).background(look.card).padding(14.dp)) {
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) { Text(stringResource(R.string.amo_team_till_cpr), style = amoText(13, color = look.inkMuted)); Text(cpr, style = amoText(22, bold = true, color = look.purple)) }

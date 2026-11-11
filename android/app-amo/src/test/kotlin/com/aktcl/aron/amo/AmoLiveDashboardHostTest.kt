@@ -71,9 +71,9 @@ class AmoLiveDashboardHostTest {
         compose.onNodeWithText("List from the last time you were online.").assertExists() // the kept-copy notice
         compose.onAllNodesWithText("81")[0].assertExists() // target outlets of the kept answer
         compose.onNodeWithText("No figures for this scope yet.").assertDoesNotExist()
-        // A2 #3's field-unit and bare-count assertions (62.5 packets, Cigarette, Geo/Photo validation, Total outlet visits) belong to `LiveDashboardContent`,
-        // which no host uses any more: this Live Data screen shows the day's category columns in BASE units as screenshot 39 does, and they are
-        // asserted by `LiveDashboardCategoriesTest` (content level, EN and BN) and `LiveDataTest`; moved, not dropped (D-AMO-CALLS-25).
+        // The old Live Dashboard panel is deleted (D-AMO-CALLS-27). The field-unit figure, category and counts of the route variant are asserted by
+        // `theRouteVariantFromAKeptCopyShowsTheFieldUnitCategoryAndCounts` (English; the Bangla field units are a golden, `amo_team_live_route_bn`, and the
+        // parse and unit-word rules are `LiveDashboardCategoriesTest` / `LiveDataTest`).
     }
 
     @Test fun offlineWithNoKeptAnswerShowsNothingInsteadOfInventedFigures() {

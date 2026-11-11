@@ -77,7 +77,7 @@ fun AmoReportHub(day: AmoDay, onBack: () -> Unit) {
                 if (leaf == ReportLeaf.ROUTE && openNode != null) {
                     val rc = TeamReports.cardFor(reportCards, openNode.id, members?.rows?.firstOrNull { it.routeId == openNode.id }?.routeCode)
                     val brands = openNode.rows.map { r -> TeamReports.brandLine(r, rc?.brands?.firstOrNull { it.name.equals(r.name, ignoreCase = true) }?.memos, l) }
-                    TillRouteDetailContent(rc?.let { TeamReports.cprText(it.successfulCalls, it.targetOutlets, l) } ?: Percent.DASH, rc?.let { Formats.integer(it.memos, l) } ?: Percent.DASH, brands)
+                    TillRouteDetailContent(rc?.let { TeamReports.cprText(it.successfulCalls, it.targetOutlets, l) } ?: Percent.DASH, rc?.let { Formats.integer(it.memos, l) } ?: Percent.DASH, brands, stale = loaded.stale || nodes.stale, failed = (loaded.failed || nodes.failed) && nodes.zone == null, refused = loaded.refused || nodes.refused)
                 } else TillNowContent(cards, { c -> route = c.routeId; if (c.routeId != null) leaf = ReportLeaf.ROUTE }, loaded.stale || nodes.stale, (loaded.failed || nodes.failed) && nodes.zone == null, loaded.refused || nodes.refused, memoPending = catMemos.isEmpty(), truncated = summaryCut)
             }
         }

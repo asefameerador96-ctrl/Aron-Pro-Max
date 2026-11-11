@@ -1,32 +1,12 @@
 package com.aktcl.aron.feature.amo
 
-import android.content.Context
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
-import androidx.test.core.app.ApplicationProvider
-import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.aktcl.aron.core.common.AppLanguage
-import com.aktcl.aron.core.ui.AppLocale
-import com.aktcl.aron.core.ui.AronTheme
-import com.aktcl.aron.rules.Formats
-import com.aktcl.aron.rules.UiLocale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.annotation.Config
 
-/** Contract 1.11.1: the AMO members of `GET /v1/dashboards/login-submit` (geo/photo valid visits, `sales_by_category`) in the field units, exact, online and from the kept copy. */
-@RunWith(AndroidJUnit4::class)
-@Config(sdk = [34])
+/** Contract 1.11.1: the AMO members of `GET /v1/dashboards/login-submit` (geo/photo valid visits, `sales_by_category`) parsed in the field units, exact, never a float. */
 class LiveDashboardCategoriesTest {
-    @get:Rule val compose = createComposeRule()
-
     private val summary = """{"as_of":"2026-11-10T05:00:00Z","kpis":{"target_routes":2,"logged_in_routes":2,"login_pct":100.0,"sales_submitted_routes":0,"submit_pct_of_logged_in":0.0,"target_outlets":81,"visited_outlets":3,"successful_calls":1,"strike_rate_pct":1.23,"gross_mtk":125000,"net_mtk":120000,"geo_valid_pct":50.0,"force_sale_pct":0.0,"mock_visits":0,"suspicious_visits":0}}"""
     private val login = """{"kpis":{"target_routes":2,"logged_in_routes":2,"login_pct":100.0,"sales_submitted_routes":0,"submit_pct_of_logged_in":0.0},"not_logged_in":[],"logged_in_not_submitted":[{"route_id":3}],"submitted":[],
       "geo_valid_visits":2,"photo_valid_visits":1,"visits_total":7,
@@ -66,36 +46,5 @@ class LiveDashboardCategoriesTest {
     @Test fun decimalTextKeepsTheDigitsExact() {
         assertEquals("10", LiveDashboard.decimalText("10.000")); assertEquals("0.125", LiveDashboard.decimalText("0.125")); assertEquals("100", LiveDashboard.decimalText("100.000"))
         assertEquals("0", LiveDashboard.decimalText("0.000")); assertNull(LiveDashboard.decimalText("abc"))
-    }
-
-    private fun show(language: AppLanguage, stale: Boolean, failed: Boolean = false) {
-        val figures = LiveDashboard.parse(summary, login)
-        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
-        val loc = if (language == AppLanguage.BN) UiLocale.BN else UiLocale.EN
-        compose.setContent {
-            CompositionLocalProvider(LocalContext provides ctx) {
-                AronTheme(language, amo = true) { LiveDashboardContent(figures, "10/11 11:00", "Zone", false, stale, failed, { Formats.money(it, loc) }, {}) }
-            }
-        }
-    }
-
-    @Test fun theSalesCardShowsEveryCategoryInEnglishWithMoneyAndMemos() {
-        show(AppLanguage.EN, stale = false)
-        compose.onNodeWithText("62.5").assertIsDisplayed(); compose.onNodeWithText("packets").assertIsDisplayed()
-        compose.onNodeWithText("${Formats.money(80_000_000, UiLocale.EN)} · 4 memos").assertIsDisplayed()
-        assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasText("3")).fetchSemanticsNodes().isNotEmpty()); compose.onNodeWithText("boxes").assertExists()
-        compose.onNodeWithText(Formats.money(12_500_000, UiLocale.EN)).assertExists() // no memo count when the server sends null
-        // bare counts as screenshot 39 has them (below the fold): geo validation, photo validation and the total outlet visits as its own figure
-        listOf("Geo validation", "Photo validation", "Total outlet visits").forEach { compose.onNodeWithText(it).assertExists() }
-        // the values: 7 is the total visits (distinct from the lighter's 3 boxes and the 2 and 1 counts) and shows in the card
-        assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasText("7")).fetchSemanticsNodes().isNotEmpty())
-    }
-
-    @Test fun theBanglaScreenUsesBanglaDigitsAndWordsAndTheKeptCopyKeepsTheFigures() {
-        show(AppLanguage.BN, stale = true) // offline: the last answer kept on the phone, said so
-        compose.onNodeWithText("সিগারেট").assertIsDisplayed()
-        compose.onNodeWithText("৬২.৫").assertIsDisplayed(); compose.onNodeWithText("প্যাকেট").assertIsDisplayed()
-        assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasText("৩")).fetchSemanticsNodes().isNotEmpty()); compose.onNodeWithText("বক্স").assertExists() // the lighter: 3 boxes of 25
-        compose.onNodeWithText("ছবি ভ্যালিডেশন").assertExists(); listOf("জিও ভ্যালিডেশন", "ছবি ভ্যালিডেশন", "মোট আউটলেট ভ্রমণ").forEach { compose.onNodeWithText(it).assertExists() }
     }
 }
