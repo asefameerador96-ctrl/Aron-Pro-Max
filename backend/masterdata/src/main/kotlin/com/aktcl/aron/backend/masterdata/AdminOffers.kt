@@ -417,6 +417,10 @@ private fun refsExist(h: Handle, s: Spec) {
         val ok = if (level == "sku") h.exists("SELECT 1 FROM app.sku WHERE id = :i", id) else h.exists("SELECT 1 FROM app.product_node WHERE id = :i AND level = '$level'", id)
         if (!ok) adminBad("body.qualifying[$i]", "not_found")
     }
+    // Quantities are entered in whole packs in the field (docs/34 s4.2), so a base quantity must be a multiple of the pack size of the SKU it counts.
+    fun pack(id: Long): Int = h.createQuery("SELECT base_per_pack FROM app.sku WHERE id = :i").bind("i", id).mapTo(Int::class.java).one()
+    s.rewardSku?.let { id -> s.rewardQty?.let { q -> if (q % pack(id) != 0) adminBad("body.reward_qty_base", "not_a_multiple_of_pack_factor") } }
+    s.threshold?.let { t -> s.qualifying.filter { it.first == "sku" }.forEach { (_, id) -> if (t % pack(id) != 0) adminBad("body.threshold_qty_base", "not_a_multiple_of_pack_factor") } }
     s.scope.forEachIndexed { i, (type, id) ->
         val table = when (type) { "wing" -> "app.wing"; "division" -> "app.division"; "territory" -> "app.territory"; "zone" -> "app.zone"; "route" -> "app.route"; "sub_channel" -> "app.sub_channel"; else -> adminBad("body.scope[$i]", "channel_not_supported") }
         if (!h.exists("SELECT 1 FROM $table WHERE id = :i", id)) adminBad("body.scope[$i]", "not_found")
@@ -459,13 +463,13 @@ private fun specOf(o: OfferOut) = Spec(
     o.scope.map { it.node_type to it.node_id }.sortedWith(compareBy({ it.first }, { it.second })),
 )
 
-private fun insertVersion(h: Handle, offerId: Long, no: Int, s: Spec, reason: String, uuid: UUID, fp: String, actor: AronPrincipal): Long {
+private fun insertVersion(h: Handle, offerId: Long, no: Int, s: Spec, reason: String, uuid: UUID, fp: String, actor: AronPrincipal, resultRow: Int): Long {
     val vid = h.createQuery(
         "INSERT INTO app.offer_version (offer_id, version_no, offer_type, level, title_en, title_bn, valid_from, valid_to, threshold_qty_base, discount_bp, discount_mtk_per_unit, " +
-            "reward_sku_id, reward_qty_base, stacking, change_reason, created_by, request_uuid, request_fingerprint) VALUES (:o, :n, :t, :l, :te, :tb, :vf, :vt, :th, :bp, :mtk, :rs, :rq, :st, :why, :by, :u, :fp) RETURNING id",
+            "reward_sku_id, reward_qty_base, stacking, change_reason, created_by, request_uuid, request_fingerprint, result_row_version) VALUES (:o, :n, :t, :l, :te, :tb, :vf, :vt, :th, :bp, :mtk, :rs, :rq, :st, :why, :by, :u, :fp, :rr) RETURNING id",
     ).bind("o", offerId).bind("n", no).bind("t", s.type).bind("l", s.level).bind("te", s.titleEn).bindAny("tb", s.titleBn).bind("vf", s.from).bind("vt", s.to)
         .bindAny("th", s.threshold).bindAny("bp", s.bp).bindAny("mtk", s.mtk).bindAny("rs", s.rewardSku).bindAny("rq", s.rewardQty).bind("st", s.stacking)
-        .bind("why", reason).bind("by", actor.userId).bind("u", uuid).bind("fp", fp).mapTo(Long::class.java).one()
+        .bind("why", reason).bind("by", actor.userId).bind("u", uuid).bind("fp", fp).bind("rr", resultRow).mapTo(Long::class.java).one()
     s.qualifying.forEach { (level, id) -> h.createUpdate("INSERT INTO app.offer_version_product (offer_version_id, product_level, product_id) VALUES (:v, :l, :i)").bind("v", vid).bind("l", level).bind("i", id).execute() }
     s.scope.forEach { (type, id) -> h.createUpdate("INSERT INTO app.offer_version_scope (offer_version_id, node_type, node_id) VALUES (:v, :t, :i)").bind("v", vid).bind("t", type).bind("i", id).execute() }
     return vid
@@ -475,16 +479,19 @@ private fun org.jdbi.v3.core.statement.Query.bindAny(name: String, v: Any?): org
 
 private fun lockRequest(h: Handle, uuid: UUID) { h.createQuery("SELECT pg_advisory_xact_lock(hashtext(:k))").bind("k", "offer_req:$uuid").mapTo(String::class.java).findOne() }
 
-private data class Prior(val versionId: Long, val offerId: Long, val versionNo: Int, val fingerprint: String?)
+private data class Prior(val versionId: Long, val offerId: Long, val versionNo: Int, val fingerprint: String?, val resultRow: Int?)
 
-private fun priorRequest(h: Handle, uuid: UUID): Prior? = h.createQuery("SELECT id, offer_id, version_no, request_fingerprint FROM app.offer_version WHERE request_uuid = :u").bind("u", uuid)
-    .map { rs, _ -> Prior(rs.getLong(1), rs.getLong(2), rs.getInt(3), rs.getString(4)) }.findOne().orElse(null)
+private fun priorRequest(h: Handle, uuid: UUID): Prior? = h.createQuery("SELECT id, offer_id, version_no, request_fingerprint, result_row_version FROM app.offer_version WHERE request_uuid = :u").bind("u", uuid)
+    .map { rs, _ -> Prior(rs.getLong(1), rs.getLong(2), rs.getInt(3), rs.getString(4), rs.getObject(5) as Int?) }.findOne().orElse(null)
 
 /** A request_uuid is one call: if it already made a status move, a create or a patch with it is a conflict (and the reverse in [setStatus]). */
 private fun uuidUsedByStatus(h: Handle, uuid: UUID): Boolean =
     h.createQuery("SELECT 1 FROM app.offer_status_change WHERE request_uuid = :u").bind("u", uuid).mapTo(Int::class.java).findOne().isPresent
 
 private fun uuidUsedByVersion(h: Handle, uuid: UUID): Boolean = priorRequest(h, uuid) != null
+
+/** A replay answers the first result: the status and ETag the offer had right after the first call (null = a row from before V0157: the current ones). */
+private fun firstResult(o: OfferOut, status: String, rowVersion: Int?) = if (rowVersion == null) o else o.copy(status = status, version = rowVersion)
 
 private fun conflict(msg: String) = ApiProblem(ProblemCode.ERR_CONFLICT, msg, errors = listOf(FieldError("body.request_uuid", "reused")))
 
@@ -505,7 +512,7 @@ private suspend fun createOffer(call: ApplicationCall, d: AdminOffersDeps): Pair
             lockRequest(h, uuid)
             priorRequest(h, uuid)?.let { prior ->
                 if (prior.fingerprint != fp || prior.versionNo != 1) throw conflict("request_uuid already used for a different call")
-                return@inTransaction loadOffer(h, prior.offerId, prior.versionId)!! to HttpStatusCode.Created
+                return@inTransaction firstResult(loadOffer(h, prior.offerId, prior.versionId)!!, "draft", prior.resultRow) to HttpStatusCode.Created
             }
             if (uuidUsedByStatus(h, uuid)) throw conflict("request_uuid already used for a status change")
             if (h.createQuery("SELECT 1 FROM app.offer WHERE code = :c").bind("c", code).mapTo(Int::class.java).findOne().isPresent)
@@ -513,7 +520,7 @@ private suspend fun createOffer(call: ApplicationCall, d: AdminOffersDeps): Pair
             refsExist(h, spec)
             val id = h.createQuery("INSERT INTO app.offer (code, group_code, status, created_by, updated_by) VALUES (:c, :g, 'draft', :by, :by) RETURNING id")
                 .bind("c", code).bind("g", group).bind("by", p.userId).mapTo(Long::class.java).one()
-            val vid = insertVersion(h, id, 1, spec, reason, uuid, fp, p)
+            val vid = insertVersion(h, id, 1, spec, reason, uuid, fp, p, resultRow = 2)   // insert (1) + the link to the first version (2)
             h.createUpdate("UPDATE app.offer SET current_version_id = :v WHERE id = :o").bind("v", vid).bind("o", id).execute()
             val after = JsonObject(specJson(spec) + mapOf("code" to JsonPrimitive(code), "group_code" to JsonPrimitive(group), "status" to JsonPrimitive("draft"), "version_no" to JsonPrimitive(1), "request_uuid" to JsonPrimitive(uuid.toString())))
             AuditWriter.write(h, p, "offer", id.toString(), "create", null, after, reason, call.requestId)
@@ -538,7 +545,7 @@ private suspend fun updateOffer(call: ApplicationCall, d: AdminOffersDeps): Offe
             lockRequest(h, uuid)
             priorRequest(h, uuid)?.let { prior ->
                 if (prior.fingerprint != fp || prior.offerId != id) throw conflict("request_uuid already used for a different call")
-                return@inTransaction loadOffer(h, prior.offerId, prior.versionId)!!
+                return@inTransaction firstResult(loadOffer(h, prior.offerId, prior.versionId)!!, "draft", prior.resultRow)
             }
             if (uuidUsedByStatus(h, uuid)) throw conflict("request_uuid already used for a status change")
             val cur = loadOffer(h, id, lock = true) ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no discount programme with this id")
@@ -549,7 +556,7 @@ private suspend fun updateOffer(call: ApplicationCall, d: AdminOffersDeps): Offe
             if (spec == before) adminBad("body", "no_change")
             refsExist(h, spec)
             val no = h.createQuery("SELECT max(version_no) + 1 FROM app.offer_version WHERE offer_id = :o").bind("o", id).mapTo(Int::class.java).one()
-            val vid = insertVersion(h, id, no, spec, reason, uuid, fp, p)
+            val vid = insertVersion(h, id, no, spec, reason, uuid, fp, p, resultRow = cur.version + 1)   // the one update that follows adds 1
             h.createUpdate("UPDATE app.offer SET current_version_id = :v, updated_by = :by WHERE id = :o").bind("v", vid).bind("by", p.userId).bind("o", id).execute()
             AuditWriter.write(
                 h, p, "offer", id.toString(), "new_version",
@@ -575,10 +582,10 @@ private suspend fun setStatus(call: ApplicationCall, d: AdminOffersDeps): OfferO
     return mapDb {
         d.db.jdbi.inTransaction<OfferOut, Exception> { h ->
             lockRequest(h, uuid)
-            h.createQuery("SELECT offer_id, to_status, reason FROM app.offer_status_change WHERE request_uuid = :u").bind("u", uuid)
-                .map { rs, _ -> Triple(rs.getLong(1), rs.getString(2), rs.getString(3)) }.findOne().orElse(null)?.let { (offer, status, why) ->
-                    if (offer != id || status != to || why != reason) throw conflict("request_uuid already used for a different call")
-                    return@inTransaction loadOffer(h, id)!!
+            h.createQuery("SELECT offer_id, to_status, reason, result_row_version FROM app.offer_status_change WHERE request_uuid = :u").bind("u", uuid)
+                .map { rs, _ -> arrayOf<Any?>(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getObject(4) as Int?) }.findOne().orElse(null)?.let { r ->
+                    if (r[0] != id || r[1] != to || r[2] != reason) throw conflict("request_uuid already used for a different call")
+                    return@inTransaction firstResult(loadOffer(h, id)!!, to, r[3] as Int?)
                 }
             if (uuidUsedByVersion(h, uuid)) throw conflict("request_uuid already used for a create or an update")
             val cur = loadOffer(h, id, lock = true) ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no discount programme with this id")
@@ -588,8 +595,8 @@ private suspend fun setStatus(call: ApplicationCall, d: AdminOffersDeps): OfferO
             if (!allowed) throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "a ${cur.status} programme cannot move to $to (allowed: draft to active, active to inactive)")
             if (to == "active" && LocalDate.parse(cur.valid_to).isBefore(today(d)))
                 throw ApiProblem(ProblemCode.ERR_VALIDATION, "the programme ended on ${cur.valid_to}; make a new version with a later valid_to first", errors = listOf(FieldError("valid_to", "past")))
-            h.createUpdate("INSERT INTO app.offer_status_change (offer_id, from_status, to_status, request_uuid, reason, actor) VALUES (:o, :f, :t, :u, :r, :a)")
-                .bind("o", id).bind("f", cur.status).bind("t", to).bind("u", uuid).bind("r", reason).bind("a", p.userId).execute()
+            h.createUpdate("INSERT INTO app.offer_status_change (offer_id, from_status, to_status, request_uuid, reason, actor, result_row_version) VALUES (:o, :f, :t, :u, :r, :a, :rr)")
+                .bind("o", id).bind("f", cur.status).bind("t", to).bind("u", uuid).bind("r", reason).bind("a", p.userId).bind("rr", cur.version + 1).execute()
             h.createUpdate("UPDATE app.offer SET status = :t, updated_by = :by WHERE id = :o").bind("t", to).bind("by", p.userId).bind("o", id).execute()
             AuditWriter.write(
                 h, p, "offer", id.toString(), if (to == "active") "activate" else "end",
