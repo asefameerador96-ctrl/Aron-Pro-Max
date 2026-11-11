@@ -15,7 +15,7 @@ import org.junit.Test
  * `LaunchedEffect(memo, dayLocked, pulls, dayLock) { editRefused = kit.editRefusal(memo) }` was cancelled by the key change while its query was in flight; the query was
  * wrapped in `runCatching`, which returned null for the cancellation, and the cancelled coroutine then wrote `editRefused = null` AFTER the newer run had written FINAL_SUBMIT.
  * No clock, no threads, no scheduling luck: the run is cancelled while suspended, so the outcome is the same every time (with `runCatching(..).getOrNull()` in place of the helper,
- * [cancelledRunNeverReturnsAValue] fails every time).
+ * [cancelledRunNeverReturnsAValue] and [aSupersededRunCannotOverwriteTheNewerAnswer], 2 of the 3 tests, fail every time; D-AMO-CALLS-37 adds the same pair for [orDefaultKeepingCancellation]).
  */
 class CancellationTest {
     @Test fun cancelledRunNeverReturnsAValue() = runBlocking {
@@ -46,5 +46,22 @@ class CancellationTest {
         assertNull(orNullKeepingCancellation<String> { error("query failed") })
         assertNull(orNullKeepingCancellation<String> { null })
         assertEquals("x", orNullKeepingCancellation { "x" })
+    }
+
+    @Test fun cancelledRunNeverFallsBackToTheDefault() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        var wrote = false
+        val run = launch(start = CoroutineStart.UNDISPATCHED) {
+            orDefaultKeepingCancellation(emptyList<Int>()) { gate.await(); listOf(1) }
+            wrote = true // refreshLock: _dayLock.value = ... computed from the (default) answer
+        }
+        run.cancel(); run.join()
+        assertTrue(run.isCancelled)
+        assertFalse("a cancelled refreshLock must not write the default over the shared lock", wrote)
+    }
+
+    @Test fun defaultAppliesToOtherFailuresOnly() = runBlocking {
+        assertEquals(emptyList<Int>(), orDefaultKeepingCancellation(emptyList<Int>()) { error("read failed") })
+        assertEquals(listOf(1), orDefaultKeepingCancellation(emptyList<Int>()) { listOf(1) })
     }
 }

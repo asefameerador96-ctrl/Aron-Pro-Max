@@ -389,8 +389,9 @@ class AmoDay(
     suspend fun refreshLock() {
         val date = businessDate()
         // owner decision 2026-11-04: closed routes count (and the banner shows) only while the late-sale policy locks
-        val closed = runCatching { FinalSubmitLock.lockedRoutes(db, date, zoneRoutes.keys.sorted(), iso(clock.nowMs())) }.getOrDefault(emptyList())
-        val acks = runCatching { FinalSubmitLock.metLock(db, date) }.getOrDefault(LockAcks(0, 0))
+        // not runCatching: a refreshLock cancelled mid-read (a banner or dialog effect that left composition) must not go on to write the default over the shared lock (D-AMO-CALLS-37)
+        val closed = com.aktcl.aron.core.common.orDefaultKeepingCancellation(emptyList()) { FinalSubmitLock.lockedRoutes(db, date, zoneRoutes.keys.sorted(), iso(clock.nowMs())) }
+        val acks = com.aktcl.aron.core.common.orDefaultKeepingCancellation(LockAcks(0, 0)) { FinalSubmitLock.metLock(db, date) }
         _dayLock.value = if (closed.isNotEmpty() || acks.any) AmoDayLock(closed, acks) else null
     }
 

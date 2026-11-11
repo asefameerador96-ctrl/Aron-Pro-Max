@@ -10,3 +10,7 @@ import kotlin.coroutines.cancellation.CancellationException
  */
 inline fun <T : Any> orNullKeepingCancellation(block: () -> T?): T? =
     try { block() } catch (e: CancellationException) { throw e } catch (e: Throwable) { null }
+
+/** The `runCatching { block() }.getOrDefault(default)` counterpart of [orNullKeepingCancellation] (D-AMO-CALLS-37): cancellation propagates, any other failure gives [default]. */
+inline fun <T> orDefaultKeepingCancellation(default: T, block: () -> T): T =
+    try { block() } catch (e: CancellationException) { throw e } catch (e: Throwable) { default }
