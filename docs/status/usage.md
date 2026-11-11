@@ -2073,3 +2073,6 @@
 ### 2026-11-10 23:54 UTC — integrator 23 pushed train 85 to INT (lead note)
 - Integrator message 23:53: INT = bf113f461cfa2cebc590b22315c7e3ae1ff53bea (train 85 commit over lead docs 7c198fdf + lane/lead-train85 052b04c56), ci 42927007694 (#1913); no conflicts; DECISIONS 310 (expected 310), 0 markers, 0 duplicate D- lines, 0 INT lines lost; db/migrations vs previous INT: V0150 and V0151 added only; files differing from the lane head = lead docs/status only. It watches ci then runs the REAL deploy; a migrate failure stops it with the console quoted.
 - Lead: background watch on ci 42927007694; the 00:45 UTC landing check-in stays armed. Nothing needs the owner.
+
+### 2026-11-11 00:32 UTC — INT ci #1913 green; deploy #323 (REAL, V0150/V0151) running (lead note)
+- ci 42927007694 (#1913) on INT bf113f461: completed success 00:31, 11 success / 0 failed / 1 skipped (the one skip is the area-filtered job). Deploy 42932022812 (#323) started 00:31:29 on bf113f461 with the migrations; the integrator watches it and reports the console verbatim. Lead background watch on the deploy run; landing check-in 00:45 stays armed.
