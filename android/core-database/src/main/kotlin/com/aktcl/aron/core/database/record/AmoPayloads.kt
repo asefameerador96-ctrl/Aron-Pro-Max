@@ -25,7 +25,7 @@ object AmoPayloads {
         Shape("PriceComplianceCheckPayload", setOf("visit_client_uuid", "sku_id", "price_type", "reference_price_mtk", "observed_price_mtk", "compliant"),
             setOf("visit_client_uuid", "sku_id", "price_type", "reference_price_mtk", "observed_price_mtk", "compliant", "note")),
         Shape("RiskReviewPayload", setOf("signal_id", "action"), setOf("signal_id", "action", "note")),
-        Shape("OutletRequestVerificationPayload", setOf("request_uuid", "decision", "fix"), setOf("request_uuid", "decision", "sub_channel_id", "geo_class", "fix", "photo_uuid", "note")),
+        Shape("OutletRequestVerificationPayload", setOf("request_uuid", "decision", "fix"), setOf("request_uuid", "decision", "sub_channel_id", "geo_class", "fix", "photo_uuid", "note", "route_id", "cluster_id")),
         Shape("TaskPayload", setOf("task_type_code", "assignee_user_id", "title"),
             setOf("task_type_code", "assignee_user_id", "outlet_id", "title", "description", "due_date", "source_visit_client_uuid")),
     ).associateBy { it.schema }.let { m ->
@@ -95,12 +95,12 @@ object AmoPayloads {
     }
 
     /** [fix] is the contract `GeoFix` object (from the stored fix row). */
-    fun outletRequestVerification(requestUuid: String, decision: String, subChannelId: Long?, geoClass: String?, fix: JsonObject, photoUuid: String?, note: String?): JsonObject {
+    fun outletRequestVerification(requestUuid: String, decision: String, subChannelId: Long?, geoClass: String?, fix: JsonObject, photoUuid: String?, note: String?, routeId: Long? = null, clusterId: Long? = null): JsonObject {
         require(decision == "verified" || decision == "discarded") { "decision" }
         require(geoClass == null || geoClass in setOf("Hill", "Urban", "SemiUrban", "Rural")) { "geo_class" }
         return buildJsonObject {
             put("request_uuid", requestUuid); put("decision", decision); opt("sub_channel_id", subChannelId); opt("geo_class", geoClass)
-            put("fix", fix); opt("photo_uuid", photoUuid); opt("note", note?.take(500))
+            put("fix", fix); opt("photo_uuid", photoUuid); opt("note", note?.take(500)); opt("route_id", routeId); opt("cluster_id", clusterId)   // contract 1.11.0: the route and cluster chosen on the form
         }
     }
 

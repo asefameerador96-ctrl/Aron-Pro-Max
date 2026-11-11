@@ -1,0 +1,34 @@
+path: /v1/team/members
+method: get
+operation:
+  tags:
+  - team
+  operationId: getTeamMembers
+  summary: The SR list of the reach, one row per route, with vacant routes (contract 1.11.0, D-AMO-MAN-09).
+  description: 'Supervisor roles (AMO, TSO, DMO, WM, national read roles); SR and the other roles 403. One row per
+    active SR route in
+
+    the reach with the SR assigned on the date (the day''s acting SR, else the primary assignment); a route with
+    nobody is
+
+    `vacant` (`user_id`, `full_name` null). `phone` is in clear only for an AMO on routes of the own home zone,
+    `null`
+
+    for every other reader; `phone_masked` is always the masked form. `route_days` are ISO weekdays (1 = Monday).
+
+    '
+  parameters:
+  - $ref: '#/components/parameters/BusinessDateQuery'
+  responses:
+    '200':
+      description: The team.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TeamMemberList'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

@@ -22,6 +22,8 @@ import com.aktcl.aron.feature.memo.domain.PrintNames
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -73,6 +75,10 @@ class MemoDayLockTest {
     }
 
     @After fun tearDown() {
+        // an unconfined test Main can resume view-model work on a Room IO thread after the test body ended: stop every view model's scope and wait for it
+        // BEFORE the database closes, so no query can reach a closed pool and leak into the next test (CI run 42910355828; D-AMO-CALLS-17)
+        runBlocking { viewModels.forEach { it.viewModelScope.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin() } }
+        viewModels.clear()
         Thread.setDefaultUncaughtExceptionHandler(previousDefault); Thread.currentThread().uncaughtExceptionHandler = previousOwn
         db.close()
         Dispatchers.resetMain()
@@ -104,11 +110,13 @@ class MemoDayLockTest {
      * The memo screen as the kits build it: [VisitDueCollectionWriter] with [ownRoute] as the caller's own route (the SR's
      * day route; null for the AMO outside a call), and Mark Paid's check from that writer (the view model's default).
      */
+    private val viewModels = Collections.synchronizedList(ArrayList<MemoViewModel>())
+
     private fun vm(store: MemoStore = RoomMemoStore(db), ownRoute: Long? = route) = MemoViewModel(
         store, VisitDueCollectionWriter(db, repo, { rid -> meta(rid ?: ownRoute) }, { date }),
         object : MemoReprinter { override suspend fun print(memoUuid: String, memo: com.aktcl.aron.core.printing.doc.MemoPrint): PrintAttempt { prints += memoUuid; return PrintAttempt.Done } },
         { PrintNames({ "S$it" }, { "O$it" }, "sr", "r") }, { date },
-    )
+    ).also { viewModels += it }
 
     private fun salesSubmitted() = runBlocking {
         repo.recordDaySubmit(DaySubmitEntity(ClientIds.newUuid(), meta(), "route_day", 1, "{}", MONEY, 0, 0, 0, false, 0, 0, false))

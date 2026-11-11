@@ -95,4 +95,25 @@ class BundleRubricsTest {
         }
         assertEquals(emptyList(), rubrics("SR"))
     }
+
+    /** Contract 1.11.0 (D-AMO-MAN-10): a criterion's section and guidance lines reach the AMO bundle, only where the version has them. */
+    @Test
+    fun sectionsAndGuidanceReachTheBundleOnlyWhereTheVersionHasThem() {
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            val id = h.createQuery("INSERT INTO app.rubric (kind, version, status) VALUES ('joint_call', 2, 'active') RETURNING id").mapTo(Long::class.java).one()
+            h.execute("INSERT INTO app.rubric_version (rubric_id, version, criteria) VALUES (?, 1, CAST(? AS jsonb))", id, """[{"criterion_id":1,"key":"a","label_en":"A","label_bn":null,"answer_type":"score_1_5"}]""")
+            h.execute(
+                "INSERT INTO app.rubric_version (rubric_id, version, criteria) VALUES (?, 2, CAST(? AS jsonb))", id,
+                """[{"criterion_id":1,"key":"a","label_en":"A","label_bn":"ক","answer_type":"score_1_5","section":"S1","section_bn":"বি১","guidance_en":"look","guidance_bn":"দেখুন"},
+                    {"criterion_id":2,"key":"b","label_en":"B","label_bn":null,"answer_type":"score_1_5","section":null,"guidance_en":null}]""",
+            )
+        }
+        val joint = rubrics("AMO").single { it["kind"]!!.jsonPrimitive.content == "joint_call" }
+        val cs = joint["criteria"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(2, joint["version"]!!.jsonPrimitive.int)
+        assertEquals(listOf("S1", "বি১", "look", "দেখুন"), listOf("section", "section_bn", "guidance_en", "guidance_bn").map { cs[0][it]!!.jsonPrimitive.content })
+        assertTrue(listOf("section", "section_bn", "guidance_en", "guidance_bn").none { it in cs[1].keys }, "a null member is left out, never sent as null: ${cs[1]}")
+        val allowed = setOf("criterion_id", "label_bn", "label_en", "answer_type", "enabled", "key", "section", "section_bn", "guidance_en", "guidance_bn")
+        assertTrue(cs.all { allowed.containsAll(it.keys) }, "RubricDef criteria are closed")
+    }
 }

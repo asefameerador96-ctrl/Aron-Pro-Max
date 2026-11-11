@@ -36,7 +36,11 @@ class TsoManualContractTest {
     }
 
     @Test
-    fun versionIs110() = assertEquals("1.10.0", map(OpenApi.doc["info"])["version"])
+    fun versionIsAtLeast110() {
+        // 1.10.0 added everything this class pins; a later minor version (1.11.0, AMO manual build) keeps all of it.
+        val v = map(OpenApi.doc["info"])["version"].toString().split(".").map { it.toInt() }
+        assertTrue(v[0] > 1 || (v[0] == 1 && v[1] >= 10), "contract version ${v.joinToString(".")} is below 1.10.0")
+    }
 
     /** The changelog names the integration-round amendments (R-W-06) and says they are additive and optional. */
     @Test
