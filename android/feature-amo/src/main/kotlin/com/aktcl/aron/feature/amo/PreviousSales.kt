@@ -100,8 +100,8 @@ object PreviousSales {
         return SaleHistory(date, lines, SaleHistorySource.LOCAL)
     }
 
-    /** The server lines carry no category: the phone's SKU list gives it, so the server's `pack` reads packet, box or dozen per category. */
-    fun withCategories(h: SaleHistory, skus: Map<Long, SkuInfo>): SaleHistory = h.copy(lines = h.lines.map { l -> l.copy(categoryCode = skus[l.skuId]?.categoryCode.orEmpty()) })
+    /** The server lines carry no category: the phone's SKU table (every SKU, inactive ones too) gives it, so the server's `pack` reads packet, box or dozen per category. */
+    fun withCategories(h: SaleHistory, categoryOf: Map<Long, String>): SaleHistory = h.copy(lines = h.lines.map { l -> l.copy(categoryCode = categoryOf[l.skuId].orEmpty()) })
 
     data class LocalMemoLine(val skuId: Long, val qtyBase: Long, val grossMtk: Long)
     data class LocalMemo(val memoUuid: String, val supersedesUuid: String?, val lines: List<LocalMemoLine>)
@@ -134,7 +134,7 @@ fun PreviousSalesContent(date: String, today: String, history: SaleHistory?, onS
             history.lines.isEmpty() -> AmoEmpty(stringResource(R.string.amo_ps_empty), Modifier.testTag(PreviousSalesTags.EMPTY))
             else -> {
                 history.lines.forEach { l ->
-                    AmoPackRow(l.skuId.toString(), l.name, Modifier.testTag(PreviousSalesTags.row(l.skuId)), subtitle = com.aktcl.aron.core.ui.localizedDigits(l.qtyReport.stripTrailingZeros().toPlainString()) + " " + fieldUnitWord(l.reportUnit, l.categoryCode), figure = Formats.digits(com.aktcl.aron.rules.Money.formatTaka(l.valueMtk, 2), loc))
+                    AmoPackRow(l.skuId.toString(), l.name, Modifier.testTag(PreviousSalesTags.row(l.skuId)), subtitle = l.qtyReport.stripTrailingZeros().toPlainString().let { q -> com.aktcl.aron.core.ui.localizedDigits(q) + fieldUnitWord(l.reportUnit, l.categoryCode, q).let { w -> if (w.isEmpty()) "" else " $w" } }, figure = Formats.digits(com.aktcl.aron.rules.Money.formatTaka(l.valueMtk, 2), loc))
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(stringResource(R.string.amo_ps_total), style = amoText(18, bold = true))

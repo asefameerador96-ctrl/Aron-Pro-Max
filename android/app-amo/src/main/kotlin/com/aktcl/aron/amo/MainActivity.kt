@@ -243,6 +243,7 @@ class MainActivity : ComponentActivity() {
                                     AmoScreen.LIVE_DASHBOARD to { back -> AmoTeamHub(d, reach, back, start = AmoLeaf.LIVE_DASHBOARD) },
                                     AmoScreen.SR_STOCK to { back -> AmoTeamHub(d, reach, back, start = AmoLeaf.SR_STOCK) },
                                     AmoScreen.EXCEPTIONS to { back -> AmoTeamHub(d, reach, back, startExceptions = true) },
+                                    AmoScreen.SALES_JOURNEY to { back -> AmoJourneyHost(d, back) },
                                     AmoScreen.STOCK to { back -> AmoSaleHub(d, back, start = AmoLeaf.STOCK) },
                                     AmoScreen.SALE to { back -> AmoSaleHub(d, back, start = AmoLeaf.SALE) },
                                     AmoScreen.MEMO to { back -> AmoSaleHub(d, back, start = AmoLeaf.MEMO) },

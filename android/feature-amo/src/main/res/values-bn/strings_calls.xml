@@ -40,11 +40,12 @@
     <string name="amo_mf_due">বাকিঃ %1$s</string>
     <string name="amo_ps_unreadable">%1$s টি লাইন পড়া যায়নি, তাই দেখানো হয়নি।</string>
     <string name="amo_mf_overpaid">অতিরিক্ত আদায়ঃ %1$s</string>
-    <string name="amo_live_cat_cigarette">সিগারেট</string>
-    <string name="amo_live_cat_bidi">বিড়ি</string>
-    <string name="amo_live_cat_lighter">লাইটার</string>
-    <string name="amo_live_cat_match">ম্যাচ</string>
-    <string name="amo_live_photo_valid">ছবি ভ্যালিডেশন</string>
-    <string name="amo_live_memos">%1$s টি মেমো</string>
-    <string name="amo_live_geo_visits">জিও ভ্যালিডেশন</string>
+    <string name="amo_field_unit_packet_one">প্যাকেট</string>
+    <string name="amo_field_unit_packet">প্যাকেট</string>
+    <string name="amo_field_unit_box_one">বক্স</string>
+    <string name="amo_field_unit_box">বক্স</string>
+    <string name="amo_field_unit_piece_one">পিস</string>
+    <string name="amo_field_unit_piece">পিস</string>
+    <string name="amo_field_unit_stick_one">স্টিক</string>
+    <string name="amo_field_unit_stick">স্টিক</string>
 </resources>

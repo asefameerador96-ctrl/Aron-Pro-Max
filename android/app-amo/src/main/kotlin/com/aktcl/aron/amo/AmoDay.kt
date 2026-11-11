@@ -592,8 +592,8 @@ class AmoDay(
     suspend fun saleHistory(outletId: Long, date: String): com.aktcl.aron.feature.amo.SaleHistory {
         val fetch = runCatching { api.salesByDate(outletId, date) }.getOrDefault(AmoFetch.Unavailable)
         when (fetch) {
-            is AmoFetch.Fresh -> com.aktcl.aron.feature.amo.PreviousSales.parseServer(fetch.json, date)?.let { return com.aktcl.aron.feature.amo.PreviousSales.withCategories(it, runCatching { skuInfo() }.getOrDefault(emptyMap())) }
-            is AmoFetch.Cached -> com.aktcl.aron.feature.amo.PreviousSales.parseServer(fetch.json, date, com.aktcl.aron.feature.amo.SaleHistorySource.KEPT_COPY)?.let { return com.aktcl.aron.feature.amo.PreviousSales.withCategories(it, runCatching { skuInfo() }.getOrDefault(emptyMap())) }
+            is AmoFetch.Fresh -> com.aktcl.aron.feature.amo.PreviousSales.parseServer(fetch.json, date)?.let { return com.aktcl.aron.feature.amo.PreviousSales.withCategories(it, skuCategoryMap()) }
+            is AmoFetch.Cached -> com.aktcl.aron.feature.amo.PreviousSales.parseServer(fetch.json, date, com.aktcl.aron.feature.amo.SaleHistorySource.KEPT_COPY)?.let { return com.aktcl.aron.feature.amo.PreviousSales.withCategories(it, skuCategoryMap()) }
             else -> Unit
         }
         val memos = runCatching { com.aktcl.aron.feature.memo.ui.RoomMemoStore(db).memos(date) }.getOrDefault(emptyList()).filter { it.outletId == outletId }
@@ -676,6 +676,9 @@ class AmoDay(
         suspend fun cfg(k: String) = runCatching { reference.config(k, iso(clock.nowMs())) }.getOrNull()?.trim('"')
         return com.aktcl.aron.core.map.MapSettings.of(cfg("cfg.map.provider"), cfg("cfg.map.tile_cache_mb")?.toIntOrNull())
     }
+
+    /** Every SKU of the bundle with its category, withdrawn ones too (a previous-sale line of a SKU since withdrawn still has its category). */
+    suspend fun skuCategoryMap(): Map<Long, String> = runCatching { db.referenceDao().skuCategories().associate { it.skuId to it.categoryCode } }.getOrDefault(emptyMap())
 
     suspend fun skuInfo(): Map<Long, com.aktcl.aron.feature.amo.SkuInfo> =
         db.referenceDao().activeSkus().associate { it.skuId to com.aktcl.aron.feature.amo.SkuInfo(it.name, it.nameBn, it.categoryCode, com.aktcl.aron.rules.EntryUnits.resolve(it.baseUnit, it.basePerPack, it.entryUnitDefault)) }

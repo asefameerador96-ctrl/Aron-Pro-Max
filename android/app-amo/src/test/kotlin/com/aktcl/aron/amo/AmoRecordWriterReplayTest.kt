@@ -489,6 +489,7 @@ class AmoRecordWriterReplayTest {
             val rows = payloads("visit").filter { it.contains(v.clientUuid) }
             assertEquals(1, rows.size)
             assertTrue(rows[0].contains("\"force_reason_code\":\"${reason.code}\""))
+            assertTrue("contract 1.11.1: the top-level force_sale_reason carries the same user reason", rows[0].contains("\"force_sale_reason\":\"${reason.code}\""))
             assertEquals(1, claims.count { it[0] == v.geoForcePhotoUuid && it[0].isNotEmpty() }) // the override photo is claimed once
             // a second confirm (a double tap) is refused: the flow is already open
             assertTrue(controller.confirm(reason, outlet) is com.aktcl.aron.feature.outlet.ForceSaleResult.NotAvailable)
