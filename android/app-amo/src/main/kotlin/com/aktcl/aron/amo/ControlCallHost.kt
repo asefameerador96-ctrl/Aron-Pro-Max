@@ -89,7 +89,7 @@ fun ControlCallHost(
     // A call already open (kill and relaunch): back on its screen, never a second visit; the drop-downs show its route and retailer.
     val open by day.visitSession.current.collectAsState()
     LaunchedEffect(open) {
-        calledToday = runCatching { day.calledTodayOutletIds() }.getOrDefault(emptySet())
+        calledToday = com.aktcl.aron.core.common.orDefaultKeepingCancellation(emptySet()) { day.calledTodayOutletIds() }
         open?.let { v ->
             if (v.routeId != 0L) routeId = v.routeId
             outletId = v.outletId
@@ -384,7 +384,8 @@ private fun SurveyStep(day: AmoDay, onDone: () -> Unit) {
     val bn = com.aktcl.aron.core.ui.LocalAppLanguage.current == com.aktcl.aron.core.common.AppLanguage.BN
     var loaded by remember { mutableStateOf<Pair<com.aktcl.aron.core.database.entity.SurveyEntity, List<com.aktcl.aron.core.database.entity.SurveyQuestionEntity>>?>(null) }
     var checked by remember { mutableStateOf(false) }
-    LaunchedEffect(day, visit?.visitUuid) { loaded = visit?.let { runCatching { day.pendingSurvey(it.visitUuid) }.getOrNull() }; checked = true }
+    // a superseded run is cancelled before it can write loaded/checked over the new visit's survey (D-AMO-CALLS-37)
+    LaunchedEffect(day, visit?.visitUuid) { loaded = visit?.let { com.aktcl.aron.core.common.orNullKeepingCancellation { day.pendingSurvey(it.visitUuid) } }; checked = true }
     if (!checked) return
     val questions = remember(loaded, bn) { loaded?.let { com.aktcl.aron.feature.amo.AmoSurvey.questions(it.second, bn) }.orEmpty() }
     var answers by rememberSaveable(stateSaver = AnswersSaver) { mutableStateOf<Map<String, com.aktcl.aron.feature.outlet.SurveyAnswer>>(emptyMap()) }

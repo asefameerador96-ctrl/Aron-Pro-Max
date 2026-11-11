@@ -125,13 +125,13 @@ object FinalSubmitLock {
      * its value unreadable, as the server falls back to accept_and_flag (IngestService). X4a fix round (checker medium): a
      * time-limited quarantine or reject stops locking at its `effective_to`, as the server stops applying it there
      * ([ReferenceRepository.configInForce]; the key is global-only, so what follows it is the registry default,
-     * accept_and_flag, unless a scheduled value says otherwise). Pure reads, never throws.
+     * accept_and_flag, unless a scheduled value says otherwise). Pure reads, never throws (a failed read gives false; a CANCELLATION of the caller still propagates, D-AMO-CALLS-38).
      */
-    suspend fun lockApplies(db: AronDatabase, nowIso: String): Boolean = runCatching {
+    suspend fun lockApplies(db: AronDatabase, nowIso: String): Boolean = com.aktcl.aron.core.common.orDefaultKeepingCancellation(false) {
         val text = ReferenceRepository(db).configInForce(KEY_LATE_POLICY, nowIso) ?: return false
         val policy = (json.parseToJsonElement(text) as? JsonPrimitive)?.takeIf { it.isString }?.content
         policy in LOCKING_POLICIES
-    }.getOrDefault(false)
+    }
 
     /**
      * True when the phone locks the route-day [routeId] on [businessDate]: the lock applies ([lockApplies] at [nowIso]) and
@@ -139,7 +139,7 @@ object FinalSubmitLock {
      * route check read it. Pure reads, never throws.
      */
     suspend fun locks(db: AronDatabase, businessDate: String, routeId: Long, nowIso: String): Boolean =
-        runCatching { lockApplies(db, nowIso) && isFinal(db, businessDate, routeId) }.getOrDefault(false)
+        com.aktcl.aron.core.common.orDefaultKeepingCancellation(false) { lockApplies(db, nowIso) && isFinal(db, businessDate, routeId) }
 
     /** The routes among [routeIds] the phone locks on [businessDate] ([locks]); empty while the lock does not apply. */
     suspend fun lockedRoutes(db: AronDatabase, businessDate: String, routeIds: List<Long>, nowIso: String): List<Long> =
@@ -219,28 +219,28 @@ object FinalSubmitLock {
      * before the lock, counted only when accepted) and refused (`day_final_submitted`, captured after it). The SR and AMO
      * day banners show them, so a rep knows a sale was not lost and why it does not count yet.
      */
-    suspend fun metLock(db: AronDatabase, businessDate: String): LockAcks = runCatching {
+    suspend fun metLock(db: AronDatabase, businessDate: String): LockAcks = com.aktcl.aron.core.common.orDefaultKeepingCancellation(LockAcks(0, 0)) {
         val box = db.outboxDao()
         val rows = box.refusedUuids(businessDate).mapNotNull { box.byClientUuid(it) }.filter { it.businessDate == businessDate }
         LockAcks(
             held = rows.count { it.state == OutboxState.QUARANTINED && it.lastCode == HELD },
             refused = rows.count { it.state == OutboxState.REJECTED && it.lastCode == REFUSED },
         )
-    }.getOrDefault(LockAcks(0, 0))
+    }
 
-    private suspend fun sectionFinal(db: AronDatabase, businessDate: String, routeId: Long): Boolean = runCatching {
+    private suspend fun sectionFinal(db: AronDatabase, businessDate: String, routeId: Long): Boolean = com.aktcl.aron.core.common.orDefaultKeepingCancellation(false) {
         val text = ReferenceRepository(db).section("route.$routeId") ?: return false
         val day = (json.parseToJsonElement(text) as? JsonObject)?.get("day_state") as? JsonObject ?: return false
         day.long("route_id").let { it == null || it == routeId } && isFinalState(day, businessDate)
-    }.getOrDefault(false)
+    }
 
     private suspend fun syncFinal(db: AronDatabase, businessDate: String, routeId: Long): Boolean =
         syncStates(db).any { it.long("route_id") == routeId && isFinalState(it, businessDate) }
 
-    private suspend fun syncStates(db: AronDatabase): List<JsonObject> = runCatching {
+    private suspend fun syncStates(db: AronDatabase): List<JsonObject> = com.aktcl.aron.core.common.orDefaultKeepingCancellation(emptyList()) {
         val text = db.referenceDao().meta(KEY_SYNC_DAY_STATES) ?: return emptyList()
         (json.parseToJsonElement(text) as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
-    }.getOrDefault(emptyList())
+    }
 
     private fun isFinalState(o: JsonObject, businessDate: String): Boolean =
         o.str("business_date") == businessDate && (o.str("state") == "final_submitted" || o.str("final_submitted_at") != null)

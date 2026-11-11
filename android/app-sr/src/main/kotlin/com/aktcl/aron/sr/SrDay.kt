@@ -196,7 +196,8 @@ class SrDay(
         val date = businessDate()
         // owner decision 2026-11-04: the lock (and its banner) only while the late-sale policy locks (FinalSubmitLock.locks)
         val locked = routeId?.let { FinalSubmitLock.locks(db, date, it, iso(clock.nowMs())) } ?: false
-        val acks = runCatching { FinalSubmitLock.metLock(db, date) }.getOrDefault(LockAcks(0, 0))
+        // not runCatching: a cancelled refreshLock must not write the default over the shared lock (D-AMO-CALLS-37)
+        val acks = com.aktcl.aron.core.common.orDefaultKeepingCancellation(LockAcks(0, 0)) { FinalSubmitLock.metLock(db, date) }
         _dayLock.value = if (locked || acks.any) DayLock(locked, acks) else null
     }
 
