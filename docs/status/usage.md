@@ -2358,3 +2358,7 @@
 
 ### 2026-11-11 05:36 UTC — train 88 deploy #326 success; train 88 live on dev (lead record)
 - Deploy 42964386174 (#326) on INT 2ffcfd0ba: completed success 05:36:22 (job 130338097463); health build 2ffcfd0ba. Lead verified by git (INT contains ff7330467), API (ci #1950 + deploy #326 success) and health. Waiting for integrator 23's verbatim report (smoke, worker revision, APK) before the landing actions (INT line, lanes told, archives, A2 #4 docs-only follow-up).
+
+### 2026-11-11 05:38 UTC — TRAIN 88 LANDED (lead verification; integrator's verbatim report pending)
+- INT 2ffcfd0ba contains ff7330467 and lead docs 75fb4023; DECISIONS 357; ci #1950 and deploy #326 success by the API; health 2ffcfd0ba on repeated reads. Dev now serves contract 1.11.2 (field-unit target rows, memos per category on sales-summary, level=route targets, sales-by-date lighters "box"); the AMO APK 1950 carries the team screens step 2 with units rule 5, memos on Live Data, the restored task-card resolution, the call-targets client and the verification pickers.
+- Landing actions: A2 #4 told (one docs-only follow-up push allowed: HANDOVER refresh + D-AMO-CALLS-28; then hold; the field-unit wiring to the new members is its next code item after the owner report); foundation #3 told and archived (HANDOVER 4 on INT); A2 #3 and A3 #2 archived (A2 #3's HANDOVER on INT; A3 #2's HANDOVER 3 is docs-only on lane/android-amo-team 19d5f26a0 and rides the next train). Overnight trains 85, 86, 87 and 88 all landed with real deploys where backend changed.
