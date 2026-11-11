@@ -17,7 +17,6 @@ import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.LocalAronLook
-import com.aktcl.aron.core.ui.entryUnitLabel
 import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.rules.Formats
 import com.aktcl.aron.rules.UiLocale
@@ -132,7 +131,7 @@ fun PreviousSalesContent(date: String, today: String, history: SaleHistory?, onS
             history.lines.isEmpty() -> AmoEmpty(stringResource(R.string.amo_ps_empty), Modifier.testTag(PreviousSalesTags.EMPTY))
             else -> {
                 history.lines.forEach { l ->
-                    AmoPackRow(l.skuId.toString(), l.name, Modifier.testTag(PreviousSalesTags.row(l.skuId)), subtitle = com.aktcl.aron.core.ui.localizedDigits(l.qtyReport.stripTrailingZeros().toPlainString()) + " " + entryUnitLabel(l.reportUnit), figure = Formats.digits(com.aktcl.aron.rules.Money.formatTaka(l.valueMtk, 2), loc))
+                    AmoPackRow(l.skuId.toString(), l.name, Modifier.testTag(PreviousSalesTags.row(l.skuId)), subtitle = com.aktcl.aron.core.ui.localizedDigits(l.qtyReport.stripTrailingZeros().toPlainString()) + " " + fieldUnitWord(l.reportUnit), figure = Formats.digits(com.aktcl.aron.rules.Money.formatTaka(l.valueMtk, 2), loc))
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(stringResource(R.string.amo_ps_total), style = amoText(18, bold = true))

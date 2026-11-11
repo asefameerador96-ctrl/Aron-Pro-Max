@@ -30,7 +30,7 @@ private fun liveCategoryName(code: String): String = when (code) {
 
 /** "62.5 packets": the exact quantity text in the field unit (digits localised, never rounded). */
 @Composable
-private fun liveCategoryQty(c: LiveCategory): String = localizedDigits(c.qtyText) + " " + com.aktcl.aron.core.ui.entryUnitLabel(c.unitKey)
+private fun liveCategoryQty(c: LiveCategory): String = localizedDigits(c.qtyText) + " " + fieldUnitWord(c.unitKey)
 
 /** "80,000.00 ৳ · 4 memos": the category's money and, when the server has it, its memo count. */
 @Composable
