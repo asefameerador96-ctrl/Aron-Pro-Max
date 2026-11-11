@@ -23,8 +23,8 @@ class AmoManualContractTest {
     }
 
     @Test
-    fun versionIs1121() {
-        assertEquals("1.12.1", map(OpenApi.doc["info"])["version"].toString(), "the exact shipped contract version (1.12.1: discount portal routes and discounts module; 1.12.0 was the schema and contract)")
+    fun versionIs1122() {
+        assertEquals("1.12.2", map(OpenApi.doc["info"])["version"].toString(), "the exact shipped contract version (1.12.2: optional If-Match on setOfferStatus; 1.12.1 the discount portal routes and discounts module; 1.12.0 the schema and contract)")
     }
 
     @Test

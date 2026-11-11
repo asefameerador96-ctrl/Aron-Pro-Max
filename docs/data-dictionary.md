@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 173 | 2908 |
+| `app` | 173 | 2910 |
 | `dw` | 72 | 1157 |
 
 ## Index
@@ -2666,6 +2666,7 @@ Append-only trail of offer status moves (draft, active, inactive) with the reaso
 | `reason` | text | not null |  | Why the offer moved, 10 to 500 characters, mandatory. |
 | `actor` | bigint | not null |  | User (app.app_user) who made the move. |
 | `at` | timestamp with time zone | not null |  | UTC instant of the move. |
+| `result_row_version` | integer | null |  | Row version (ETag) that app.offer had right after this status move; a replay of the same request_uuid answers with it. Null for moves made before V0157. |
 
 Keys: `UNIQUE (request_uuid)`; `PRIMARY KEY (id)`
 
@@ -2700,6 +2701,7 @@ One immutable version of an offer's rule, validity and reward: a rule change is 
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
 | `request_uuid` | uuid | null |  | Client-generated UUID of the portal call that created this version (create or update); a replay of the same call returns this version instead of a new one. Null for versions not made by the portal. |
 | `request_fingerprint` | text | null |  | SHA-256 (hex) of the normalised portal request that made this version; with request_uuid it tells a true replay from a reused UUID. Null for versions not made by the portal. |
+| `result_row_version` | integer | null |  | Row version (ETag) that app.offer had right after the call that made this version; a replay of the same request_uuid answers with it. Null for versions made before V0157 and for versions not made by the portal. |
 
 Keys: `UNIQUE (offer_id, version_no)`; `PRIMARY KEY (id)`
 
