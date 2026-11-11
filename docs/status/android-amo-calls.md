@@ -100,7 +100,8 @@ Then the full local gate (assemble x3, android unit tests `--max-workers=2`, lin
 - Follow-up (D-AMO-CALLS-37, lead's ruling after the Opus pass): same cancellation fix in `AmoDay.refreshLock` (+ `SrDay.refreshLock`), the `ControlCallHost` survey effect and `AmoSaleHosts` rowGroups/label (`orDefaultKeepingCancellation`, `orNullKeepingCancellation`); `CancellationTest` +2 tests. One push, then hold.
 - Follow-up 2 (D-AMO-CALLS-38, after the Opus FAIL on 2181efc6e): the `FinalSubmitLock` reads (`RouteDayLock.kt`), `reconcileConfig`/`priceComplianceTile` and the lows (`AmoStockCorrectHost`, `calledToday`, `refusedCode/held`, `AmoTaskHub`) keep cancellation; `FinalSubmitLockCancellationTest` (core-database) added; D-AMO-CALLS-37 corrected in place. One push, then hold.
 
-## NEXT ROUND (handover note, 2026-11-11; the lead's list from the Opus pass on 9863e4a30, follow-ups not regressions; wait for the lead's word after train 96 lands)
+## HANDOVER (A2 #5, session_014mnioKvaUNuVExtai6L3ur, 2026-11-11 17:26 UTC; docs only; 9863e4a30 is on INT in train 96 = d162c75c4; the next AMO round opens fresh from this note)
+Next round = the lead's list from the Opus pass on 9863e4a30 (follow-ups, not regressions):
 The D-AMO-CALLS-35/37/38 pattern (`runCatching` around a suspend call turns the caller's cancellation into a default that the cancelled caller then writes) still stands at these sites:
 - The five outer `runCatching` wrappers around `CaptureRepository.dayRefusal`: `SrSaleKit.kt:211` `newCallRefusal`, `AmoDayLockGate.kt:87` `newCallRefusal`, `SrDay.kt:733` `SrCallLock.refusal`, `AmoDay.kt:779` `AmoCallLock.endedBy`, `AmoDay.kt:427` `restoreOpenVisit`. Two of them feed Compose state: `ControlCallHost.kt:154` `lockedOut`, `SrApp.kt:465`, `SrSaleHosts.kt:72` `closed`.
 - `MainActivity.kt:192`: `runCatching` around `reload`.
