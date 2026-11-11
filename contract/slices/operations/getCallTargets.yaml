@@ -8,8 +8,10 @@ operation:
   description: 'AMO only (anyone else 403 `ERR_FORBIDDEN`). Done = the caller''s own closed visits of kind `amo_control_call`
     or
 
-    `amo_joint_call` that are not voided and not `abandoned` (or `not_reached`) in the month (`month`, `YYYY-MM`,
-    default
+    `amo_joint_call` that are closed (an outcome is recorded), not voided and whose outcome is neither `abandoned`
+    nor
+
+    `not_reached`, in the month (`month`, `YYYY-MM`, default
 
     the current Dhaka month) or on the Dhaka business date (today). The targets are three admin config numbers (the
 
@@ -29,7 +31,8 @@ operation:
     schema:
       type: string
       pattern: ^[0-9]{4}-(0[1-9]|1[0-2])$
-    description: Dhaka calendar month; default the current one. Only the current and past months are served.
+    description: Dhaka calendar month; default the current one. The current and the previous 12 months are served;
+      a later month or one more than 12 months back is 400 `ERR_VALIDATION` (`query.month` `out_of_range`).
   responses:
     '200':
       description: The four cards.

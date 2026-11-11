@@ -11,9 +11,10 @@ operation:
     Supervisor roles only (SR and the other roles 403). `business_date` defaults to today and must lie within the
 
     last 90 days (else 400 `ERR_VALIDATION`). Lines are per SKU in the SKU''s field unit (`report_unit`: pack for
-    cigarettes,
+    cigarettes
 
-    bidi and lighters, dozen for matches; docs/34 s4.2) and in base units, from active sale memo lines only.
+    and bidi, box (of 25) for lighters, dozen for matches; docs/34 s4.2) and in base units, from active sale memo
+    lines only.
 
     '
   parameters:
