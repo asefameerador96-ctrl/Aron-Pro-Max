@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 
 /**
  * V0150 / V0151 and the seed 09 (AMO manual build F1, docs/requests/amo-manual-build-2026-11.md s2): the force-sale reason
- * on a visit with its two CHECKs, the verification event's route and cluster, the nine config keys, the view contract 1.5
+ * on a visit with its two CHECKs, the verification event's route and cluster, the nine config keys, the view contract 1.6 (1.5 at V0151)
  * with `dw.v_visit.force_sale_reason`, and the dev content (Joint Call version 2, the brand list).
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -79,8 +79,8 @@ class AmoManualV0150Test {
     }
 
     @Test
-    fun theViewContractIs15AndTheVisitViewCarriesTheReasonBeforeIsEffective() = db.connect().use { c ->
-        assertEquals("1.5", c.scalar("SELECT dw.view_contract_version()"))
+    fun theViewContractIs16AndTheVisitViewCarriesTheReasonBeforeIsEffective() = db.connect().use { c ->
+        assertEquals("1.6", c.scalar("SELECT dw.view_contract_version()"))   // V0152 (was 1.5 at V0151)
         val cols = c.column("SELECT column_name FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'v_visit' ORDER BY ordinal_position").filterNotNull()
         assertEquals("is_effective", cols.last())
         assertEquals(cols.indexOf("geo_action") + 1, cols.indexOf("force_sale_reason"))

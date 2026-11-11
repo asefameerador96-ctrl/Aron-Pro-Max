@@ -55,32 +55,35 @@ Offer:
       - integer
       - 'null'
       minimum: 1
-      description: Quantity that triggers the offer (drp_slide - empties collected; free_qty - bought).
+      description: 'Quantity in base units (sticks, pieces, dozens) that triggers the offer (free_qty: bought; drp_slide:
+        empties collected).'
     discount_bp:
       type:
       - integer
       - 'null'
       minimum: 1
       maximum: 10000
-      description: pct_discount in basis points of line gross.
+      description: pct_discount in basis points of the line gross (100 = 1 percent).
     discount_mtk_per_unit:
       type:
       - integer
       - 'null'
       format: int64
       minimum: 1
-      description: amount_per_unit per base unit.
+      description: amount_per_unit in integer milli-taka per base unit (stick, piece or dozen, not per packet).
     reward_sku_id:
       type:
       - integer
       - 'null'
       format: int64
       minimum: 1
+      description: The SKU given free (free_qty).
     reward_qty_base:
       type:
       - integer
       - 'null'
       minimum: 1
+      description: Free quantity in base units of the reward SKU.
     qualifying:
       type: array
       maxItems: 100
@@ -124,9 +127,34 @@ Offer:
       - exclusive
       - stackable
     status:
-      $ref: '#/components/schemas/ActiveStatus'
+      $ref: '#/components/schemas/OfferStatus'
     version:
       type: integer
       minimum: 1
+      description: Row version of the offer (ETag / If-Match).
     offer_version_id:
       $ref: '#/components/schemas/Id'
+    version_no:
+      type: integer
+      minimum: 1
+      description: Number of the current offer version (1.12.0).
+    change_reason:
+      type:
+      - string
+      - 'null'
+      description: Reason recorded with the current version (1.12.0).
+    created_at:
+      type: string
+      format: date-time
+      description: UTC instant the offer was created (1.12.0).
+    updated_at:
+      type: string
+      format: date-time
+      description: UTC instant the offer last changed (1.12.0).
+    sku_units:
+      type: array
+      maxItems: 101
+      description: Pack size of every SKU the rule names (the reward SKU and `sku`-level qualifying products), so
+        a client can show base-unit fields in field units (packets, boxes, dozens) without a second call (1.12.0).
+      items:
+        $ref: '#/components/schemas/OfferSkuUnit'

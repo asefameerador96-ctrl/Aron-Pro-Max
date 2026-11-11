@@ -1,0 +1,10 @@
+OfferStatus:
+  type: string
+  enum:
+  - draft
+  - active
+  - inactive
+  description: Offer lifecycle (1.12.0). `draft` is being prepared and still editable; `active`; `inactive` is ended
+    (the portal shows "Ended"). Moves are draft -> active -> inactive only, through `POST /v1/admin/offers/{id}/status`.
+    Active in the portal does not reach the field (the bundle `offers` array and the memo offer line stay empty
+    and zero, docs/27).
