@@ -7,7 +7,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
@@ -32,7 +31,7 @@ import com.aktcl.aron.feature.home.R as HomeR
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [36])
 class SrFrameTest {
-    @get:Rule val compose = createEmptyComposeRule()
+    @get:Rule val compose = hostComposeRule()
 
     @Test fun theBarsBackRunsTheDeepestEnabledBackHandlerFirst() {
         val context = ApplicationProvider.getApplicationContext<Context>()

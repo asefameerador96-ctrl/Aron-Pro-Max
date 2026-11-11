@@ -7,7 +7,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -42,7 +41,7 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [36], qualifiers = "w360dp-h800dp")
 class SrRefusalHostsTest {
-    @get:Rule val compose = createEmptyComposeRule()
+    @get:Rule val compose = hostComposeRule()
     private val app = ApplicationProvider.getApplicationContext<Context>()
     private lateinit var f: SrLockFixture
 
