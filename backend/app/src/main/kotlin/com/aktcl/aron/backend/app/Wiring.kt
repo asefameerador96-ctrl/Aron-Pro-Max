@@ -82,6 +82,7 @@ import com.aktcl.aron.backend.masterdata.WebEntryDeps
 import com.aktcl.aron.backend.masterdata.webEntryRoutes
 import com.aktcl.aron.backend.masterdata.DeviceOtpDeps
 import com.aktcl.aron.backend.masterdata.GeoRepository
+import com.aktcl.aron.backend.masterdata.AdminOffersDeps
 import com.aktcl.aron.backend.masterdata.AdminPricesDeps
 import com.aktcl.aron.backend.masterdata.AdminProductsDeps
 import com.aktcl.aron.backend.masterdata.OtpCipher
@@ -104,6 +105,7 @@ import com.aktcl.aron.backend.masterdata.feedbackRoutes
 import com.aktcl.aron.backend.masterdata.AdminContentDeps
 import com.aktcl.aron.backend.masterdata.adminContentRoutes
 import com.aktcl.aron.backend.masterdata.BlobSasIssuer
+import com.aktcl.aron.backend.masterdata.adminOffersRoutes
 import com.aktcl.aron.backend.masterdata.adminPricesRoutes
 import com.aktcl.aron.backend.masterdata.adminProductsRoutes
 import com.aktcl.aron.backend.masterdata.deviceReplaceRoutes
@@ -372,6 +374,7 @@ class Wiring(
                 adminMasterRoutes(AdminMasterDeps(db, geo, reach, guard, PasswordHasher()::hash, clock, config = config))
                 adminProductsRoutes(AdminProductsDeps(db, guard, clock, blob))
                 adminPricesRoutes(AdminPricesDeps(db, config, guard, clock))
+                adminOffersRoutes(AdminOffersDeps(db, reach, guard, clock))
                 configToolRoutes(toolsDeps)
                 configPermissionRoutes(permDeps)
                 configPublicRoutes(publicDeps)

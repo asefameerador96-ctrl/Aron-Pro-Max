@@ -497,8 +497,9 @@ class TsoManualContractTest {
     /** R-F-11: admin module `support` in the enum `Me.modules` and `UserAccess.modules` key on, and in the mirror. */
     @Test
     fun adminModuleSupportIsInTheContract() {
-        assertEquals("support", OpenApi.enumOf("AdminModule").last())
-        assertEquals(AdminModule.SUPPORT, AdminModule.entries.last())
+        // `support` was appended last by contract 1.10.0; contract 1.12.1 appended `discounts` after it (portal-discount-api, V0154).
+        assertEquals(listOf("support", "discounts"), OpenApi.enumOf("AdminModule").takeLast(2))
+        assertEquals(listOf(AdminModule.SUPPORT, AdminModule.DISCOUNTS), AdminModule.entries.takeLast(2))
         val meModules = (prop("Me", "modules")["oneOf"] as List<Map<String, Any?>>).single { it["type"] == "object" }
         assertEquals("AdminModule", (map(meModules["propertyNames"])["\$ref"] as String).substringAfterLast('/'))
         for (s in listOf("UserAccess", "UserAccessWrite")) assertEquals("AdminModule", (map(prop(s, "modules")["propertyNames"])["\$ref"] as String).substringAfterLast('/'), s)

@@ -91,6 +91,7 @@ describe("(7) support is a grant module (R-F-11) and the editor offers it", () =
     expect(yaml?.split(",").map((s) => s.trim())).toEqual([...GRANT_MODULES]);
     const typed: readonly Schemas["AdminModule"][] = GRANT_MODULES; // a module the contract does not know fails the typecheck
     expect(typed).toContain("support");
+    expect(typed).toContain("discounts"); // contract 1.12.1 lists it: the temporary exception of portal-discount-web is gone
     expect(MODULE_KEYS.support).toBe("grant.module.support");
   });
   const access: UserAccess = { user_id: 3001, role: "ADMIN", version: 2, modules: { support: "w", outlets: "r" }, brand_ids: [] };

@@ -17,7 +17,7 @@ export const USER_ROLE_OPTIONS = [...PORTAL_LEVELS, ...APP_ONLY_ROLES, ...SERVIC
 export const isAppOnly = (role: string): boolean => (APP_ONLY_ROLES as readonly string[]).includes(role);
 
 /** Modules an ADMIN can be granted, read or write (docs/34 s1 row 2; fifteen, lead 2026-10-22; `support` sixteenth, R-F-11). */
-export const GRANT_MODULES = ["masterdata", "routes", "outlets", "products", "prices", "users", "targets", "credentials", "mdm", "reports", "config", "data_entry", "indent", "leaderboard", "daily_tracking", "support"] as const; // tso-manual W1: + support (R-F-11)
+export const GRANT_MODULES = ["masterdata", "routes", "outlets", "products", "prices", "users", "targets", "credentials", "mdm", "reports", "config", "data_entry", "indent", "leaderboard", "daily_tracking", "support", "discounts"] as const; // tso-manual W1: + support (R-F-11); portal-discount-web: + discounts (D-DISC-WEB-01)
 export type GrantModule = (typeof GRANT_MODULES)[number];
 export type GrantLevel = "none" | "r" | "w";
 
@@ -38,6 +38,7 @@ export const MODULE_KEYS: Record<GrantModule, MessageKey> = {
   leaderboard: "grant.module.leaderboard",
   daily_tracking: "grant.module.daily_tracking",
   support: "grant.module.support", // tso-manual W1 (R-F-11)
+  discounts: "grant.module.discounts", // portal-discount-web (D-DISC-WEB-01)
 };
 
 /** What a role's access page offers: module grants for ADMIN, brand scope for BRAND, nothing for the rest. */

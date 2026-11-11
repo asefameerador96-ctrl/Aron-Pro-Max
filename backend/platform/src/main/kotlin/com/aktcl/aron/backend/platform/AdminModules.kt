@@ -44,6 +44,7 @@ object AdminModules {
         "masterdata", "routes", "outlets", "products", "prices", "users", "targets", "credentials", "mdm", "reports",
         "config", "data_entry", "indent", "leaderboard", "daily_tracking",
         "support", // tso-manual B1 (R-F-11): the support desk's ticket routes
+        "discounts", // portal-discount-api (D-DISC-API-03, brief s8 Q4): the discount-programme portal, moved off `targets`
     )
 
     private fun p(path: String) = PortalLevels.Pattern("*", path)
@@ -98,7 +99,7 @@ object AdminModules {
         p("/v1/admin/sales-plans/**") to "targets",
         // Deferred programmes (docs/27): hooks only; their admin pages sit with targets.
         p("/v1/admin/programmes/**") to "targets",
-        p("/v1/admin/offers/**") to "targets",
+        p("/v1/admin/offers/**") to "discounts", // was `targets` until the discount portal (V0154); today's ADMIN access was carried over by the migration
         p("/v1/admin/gifts/**") to "targets",
         p("/v1/programmes/**") to "targets",
         p("/v1/admin/devices/**") to "mdm",

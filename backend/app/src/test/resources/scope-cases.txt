@@ -31,6 +31,9 @@ GET /v1/admin/devices/{device_id}/status-history -> gap: backend-reports
 GET /v1/admin/enrolment-tokens -> case DeviceEnrolmentTest#dmoAndWmListTheTokensOfTheirZonesWithoutTheSecretPrefixOrNote
 GET /v1/admin/geo/{level} -> case AdminMasterTest#readersSeeOnlyTheirReachAndOnlyAdminsWrite
 GET /v1/admin/geo/{level}/{id} -> case AdminMasterTest#readersSeeOnlyTheirReachAndOnlyAdminsWrite
+GET /v1/admin/offers -> case AdminOffersTest#theScopeMatrixOverTheSevenPortalLevelsAndTheRefusedRoles
+GET /v1/admin/offers/{id} -> case AdminOffersTest#theScopeMatrixOverTheSevenPortalLevelsAndTheRefusedRoles
+GET /v1/admin/offers/{id}/versions -> case AdminOffersTest#theScopeMatrixOverTheSevenPortalLevelsAndTheRefusedRoles
 GET /v1/admin/outlets -> case ScopeLeakHttpTest#twoHundredRandomisedHttpQueriesFindZeroCrossScopeRows
 GET /v1/admin/outlets/{id} -> case AdminOutletsTest#outletScopeAndRoles
 GET /v1/admin/permissions -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
@@ -74,6 +77,8 @@ GET /v1/memos -> case SyncReadsTest#memosAreReadByNumberOrOutletWithLinesAndNeve
 GET /v1/outlets -> case ScopeLeakHttpTest#theFieldReadForEveryRoleFindsZeroCrossScopeRows
 GET /v1/outlets/nearby -> case NearbyOutletsTest#nearbyOutletsAreTheSeededOnesInsideTheCircleAndTheReachNearestFirst
 GET /v1/risk-signals -> case RiskSignalsTest#supervisorsSeeOnlySignalsInTheirReachAndFieldRepsNone
+POST /v1/admin/offers -> case AdminOffersTest#theScopeMatrixOverTheSevenPortalLevelsAndTheRefusedRoles
+POST /v1/admin/offers/{id}/status -> case AdminOffersTest#theScopeMatrixOverTheSevenPortalLevelsAndTheRefusedRoles
 POST /v1/client-errors -> exempt: stores the caller's own error report (user from the token); reads no rows
 POST /v1/risk-signals/{signal_id}/review -> case RiskSignalsTest#aReviewIsAnIdempotentEventAndOutOfReachIsNotFound
 GET /v1/outlet-requests -> case OutletRequestsTest#aNewOutletRequestIsVerifiedThenApprovedIntoTheMasterOnce
@@ -107,6 +112,7 @@ GET /v1/visit-plans -> case VisitPlansTest#randomisedReadsNeverLeakAPlanOutsideT
 PATCH /v1/admin/clusters/{id} -> gap: backend-admin
 PATCH /v1/admin/content/{id} -> gap: backend-admin
 PATCH /v1/admin/geo/{level}/{id} -> gap: backend-admin
+PATCH /v1/admin/offers/{id} -> case AdminOffersTest#theScopeMatrixOverTheSevenPortalLevelsAndTheRefusedRoles
 PATCH /v1/admin/outlets/{id} -> case AdminOutletsTest#outletScopeAndRoles
 PATCH /v1/admin/product-nodes/{level}/{id} -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
 PATCH /v1/admin/releases/{release_id} -> exempt: company-wide app releases, identical for every reach; role-gated (SUPPORT reads, ADMIN drafts, SUPERADMIN publishes), no geography rows

@@ -34,6 +34,7 @@ class AdminModulesTest {
         "indent" to ("GET /v1/indent/requests" to "POST /v1/indent/requests"),
         "leaderboard" to ("GET /v1/leaderboard" to "POST /v1/leaderboard/refresh"),
         "daily_tracking" to ("GET /v1/dashboards/daily-tracking" to "POST /v1/tasks"),
+        "discounts" to ("GET /v1/admin/offers" to "POST /v1/admin/offers/12/status"),
         "support" to ("GET /v1/support/tickets" to "PATCH /v1/support/tickets/6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10"), // tso-manual B1
     )
 
