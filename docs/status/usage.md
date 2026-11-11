@@ -2349,3 +2349,6 @@
 
 ### 2026-11-11 04:46 UTC — 2-hourly lane check (lead)
 - Notifications: the lane-check trigger only; no owner message. Heads: INT 2ffcfd0ba (train 88 commit; ci #1950 running; real deploy follows); lane/amo-foundation a4c70b80b, lane/android-amo-calls ee807c763 (both in train 88, lanes holding); lane/android-amo-team 19d5f26a0 (A3 #2 idle, code inside A2's head); lane/qa-ci fd790f8fd (landed in train 87, holding); lane/lead-train88 ff7330467. Health c7ecd8252 (train 87) until deploy #326 lands. No lane overdue; A1 #2 and A4 archived at 04:40. Nothing needs the owner.
+
+### 2026-11-11 05:15 UTC — INT ci #1950 green; deploy #326 (REAL, no migrations) running (lead record)
+- ci 42960538648 (#1950) on INT 2ffcfd0ba (train 88): completed success 05:14 (11 success, 1 skipped). Deploy 42964386174 (#326) started 05:13:58 — the real no-migration deploy with contract 1.11.2 (backend image + worker; dblogins/seed/smoke). Lead background watch on the deploy; landing check-in 05:20 armed.
