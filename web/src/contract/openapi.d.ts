@@ -2221,10 +2221,21 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Offer and promotion rules (data, not code). */
+        /**
+         * Offer and promotion rules (data, not code).
+         * @description Discount programmes of the portal (1.12.0). Permission module `discounts`: SUPERADMIN, or ADMIN with the `r` grant, read all; NATIONAL
+         *     reads all; BRAND, WING_MANAGER, DMO and TSO read the offers within their server-side scope (the client never sends scope ids);
+         *     SR, AMO and SUPPORT are refused `403`. Newest first; `limit` and `cursor` page it.
+         */
         get: operations["listOffers"];
         put?: never;
-        /** Create an offer rule (future-dated `valid_from`). */
+        /**
+         * Create an offer as a draft (version 1).
+         * @description Always creates `status: draft` with version 1; activate it with `POST /v1/admin/offers/{id}/status`. SUPERADMIN, or ADMIN with the
+         *     `w` grant on module `discounts`. Idempotent by `request_uuid` (required by the server): a repeat of the same call returns the first
+         *     result with `201`; the same `request_uuid` with different content, or a `code` that exists, is `409`. `valid_to >= valid_from`; money is
+         *     integer milli-taka per base unit or basis points; quantities are base units (see `sku_units` for the SKU pack size).
+         */
         post: operations["createOffer"];
         delete?: never;
         options?: never;
@@ -2239,14 +2250,66 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * One offer with its current version (1.12.0).
+         * @description Same read rules as `listOffers`; an offer outside the caller's server-side scope is `404`.
+         */
+        get: operations["getOffer"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** Change an offer; a rule change creates a new offer version (memos keep the version they used). */
+        /**
+         * Change an offer; a rule change creates a new offer version (memos keep the version they used).
+         * @description Only while the offer is `draft` (1.12.0): every accepted change appends an immutable offer version; an `active` or `inactive` offer is `409`
+         *     (end it and create a new one). The status moves through `POST /v1/admin/offers/{id}/status`; a `status` member here is `400`. Idempotent by
+         *     `request_uuid` (required by the server). SUPERADMIN, or ADMIN with the `w` grant on module `discounts`.
+         */
         patch: operations["updateOffer"];
+        trace?: never;
+    };
+    "/v1/admin/offers/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every version of an offer, newest first (1.12.0).
+         * @description Same read rules as `listOffers`. Versions are immutable.
+         */
+        get: operations["listOfferVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/offers/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate a draft or end an active offer (1.12.0).
+         * @description Allowed moves: draft -> active (SUPERADMIN only, as for prices), active -> inactive (SUPERADMIN, or ADMIN with the `w` grant on module
+         *     `discounts`). Anything else is `409`. Activation needs a current version whose `valid_to` is not in the past (Asia/Dhaka business date). The move is
+         *     recorded with its reason in the append-only status trail and in the audit log. Idempotent by `request_uuid`: a repeat returns the first
+         *     result; the same `request_uuid` with a different move is `409`. Activating does not change the field: the bundle `offers` array stays empty.
+         */
+        post: operations["setOfferStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/admin/users": {
@@ -4483,6 +4546,11 @@ export interface components {
         Abi: "universal" | "arm64-v8a" | "armeabi-v7a";
         /** @enum {string} */
         ActiveStatus: "active" | "inactive";
+        /**
+         * @description Offer lifecycle (1.12.0). `draft` is being prepared and still editable; `active`; `inactive` is ended (the portal shows "Ended"). Moves are draft -> active -> inactive only, through `POST /v1/admin/offers/{id}/status`. Active in the portal does not reach the field (the bundle `offers` array and the memo offer line stay empty and zero, docs/27).
+         * @enum {string}
+         */
+        OfferStatus: "draft" | "active" | "inactive";
         /** @enum {string} */
         OutletStatus: "active" | "closed" | "merged" | "archived";
         /** @enum {string} */
@@ -8905,11 +8973,86 @@ export interface components {
             }[];
             /** @enum {string} */
             stacking: "exclusive" | "stackable";
-            status: components["schemas"]["ActiveStatus"];
+            status: components["schemas"]["OfferStatus"];
+            /** @description Row version of the offer (ETag / If-Match). */
             version: number;
             offer_version_id?: components["schemas"]["Id"];
+            /** @description Number of the current offer version (1.12.0). */
+            version_no?: number;
+            /** @description Reason recorded with the current version (1.12.0). */
+            change_reason?: string | null;
+            /**
+             * Format: date-time
+             * @description UTC instant the offer was created (1.12.0).
+             */
+            created_at?: string;
+            /**
+             * Format: date-time
+             * @description UTC instant the offer last changed (1.12.0).
+             */
+            updated_at?: string;
+            /** @description Pack size of every SKU the rule names (the reward SKU and `sku`-level qualifying products), so a client can show base-unit fields in field units (packets, boxes, dozens) without a second call (1.12.0). */
+            sku_units?: components["schemas"]["OfferSkuUnit"][];
+        };
+        OfferSkuUnit: {
+            sku_id: components["schemas"]["Id"];
+            /** @enum {string} */
+            base_unit: "stick" | "piece" | "dozen";
+            /** @description Base units per pack (app.sku.base_per_pack); base quantity = field quantity x pack_factor. */
+            pack_factor: number;
+        };
+        /** @description One immutable version of an offer (1.12.0). */
+        OfferVersion: {
+            offer_version_id: components["schemas"]["Id"];
+            offer_id: components["schemas"]["Id"];
+            version_no: number;
+            is_current: boolean;
+            /** @enum {string} */
+            offer_type: "pct_discount" | "amount_per_unit" | "free_qty" | "drp_slide";
+            /** @enum {string} */
+            level: "line" | "memo";
+            title_en: string;
+            title_bn?: string | null;
+            valid_from: components["schemas"]["BusinessDate"];
+            valid_to: components["schemas"]["BusinessDate"];
+            threshold_qty_base?: number | null;
+            discount_bp?: number | null;
+            /** Format: int64 */
+            discount_mtk_per_unit?: number | null;
+            /** Format: int64 */
+            reward_sku_id?: number | null;
+            reward_qty_base?: number | null;
+            qualifying: {
+                product_level: components["schemas"]["ProductLevel"];
+                product_id: components["schemas"]["Id"];
+            }[];
+            scope: {
+                /** @enum {string} */
+                node_type: "wing" | "division" | "territory" | "zone" | "route" | "channel" | "sub_channel";
+                node_id: components["schemas"]["Id"];
+            }[];
+            /** @enum {string} */
+            stacking: "exclusive" | "stackable";
+            change_reason?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            sku_units?: components["schemas"]["OfferSkuUnit"][];
+        };
+        OfferVersionPage: {
+            items: components["schemas"]["OfferVersion"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        OfferStatusChange: {
+            request_uuid: components["schemas"]["Uuid"];
+            /**
+             * @description draft -> active or active -> inactive.
+             * @enum {string}
+             */
+            to_status: "active" | "inactive";
+            reason: components["schemas"]["ChangeReason"];
         };
         OfferWrite: {
+            request_uuid?: components["schemas"]["Uuid"];
             code: string;
             group_code: string;
             /** @enum {string} */
@@ -8941,15 +9084,35 @@ export interface components {
             change_reason: components["schemas"]["ChangeReason"];
         };
         OfferPatch: {
+            request_uuid?: components["schemas"]["Uuid"];
             title_en?: string;
             title_bn?: string | null;
+            valid_from?: components["schemas"]["BusinessDate"];
             valid_to?: components["schemas"]["BusinessDate"];
+            /** @description Refused with 400 since 1.12.0; use POST /v1/admin/offers/{id}/status. */
             status?: components["schemas"]["ActiveStatus"];
+            /** @enum {string} */
+            offer_type?: "pct_discount" | "amount_per_unit" | "free_qty" | "drp_slide";
+            /** @enum {string} */
+            level?: "line" | "memo";
+            /** @enum {string} */
+            stacking?: "exclusive" | "stackable";
             discount_bp?: number | null;
             /** Format: int64 */
             discount_mtk_per_unit?: number | null;
             threshold_qty_base?: number | null;
+            /** Format: int64 */
+            reward_sku_id?: number | null;
             reward_qty_base?: number | null;
+            qualifying?: {
+                product_level: components["schemas"]["ProductLevel"];
+                product_id: components["schemas"]["Id"];
+            }[];
+            scope?: {
+                /** @enum {string} */
+                node_type: "wing" | "division" | "territory" | "zone" | "route" | "channel" | "sub_channel";
+                node_id: components["schemas"]["Id"];
+            }[];
             change_reason: components["schemas"]["ChangeReason"];
         };
         OfferPage: {
@@ -15211,7 +15374,7 @@ export interface operations {
     listOffers: {
         parameters: {
             query?: {
-                status?: components["parameters"]["StatusQuery"];
+                status?: components["schemas"]["OfferStatus"];
                 valid_on?: components["schemas"]["BusinessDate"];
                 /** @description Page size. */
                 limit?: components["parameters"]["Limit"];
@@ -15250,7 +15413,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Created. */
+            /** @description Created (or the stored first result of a replayed `request_uuid`). */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -15263,6 +15426,32 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The offer. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Offer"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     updateOffer: {
@@ -15296,7 +15485,69 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
+        };
+    };
+    listOfferVersions: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of versions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfferVersionPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setOfferStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfferStatusChange"];
+            };
+        };
+        responses: {
+            /** @description The offer after the move (or the stored first result of a replay). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Offer"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listUsers: {

@@ -4,7 +4,20 @@ operation:
   tags:
   - admin-products
   operationId: createOffer
-  summary: Create an offer rule (future-dated `valid_from`).
+  summary: Create an offer as a draft (version 1).
+  description: 'Always creates `status: draft` with version 1; activate it with `POST /v1/admin/offers/{id}/status`.
+    SUPERADMIN, or ADMIN with the
+
+    `w` grant on module `discounts`. Idempotent by `request_uuid` (required by the server): a repeat of the same
+    call returns the first
+
+    result with `201`; the same `request_uuid` with different content, or a `code` that exists, is `409`. `valid_to
+    >= valid_from`; money is
+
+    integer milli-taka per base unit or basis points; quantities are base units (see `sku_units` for the SKU pack
+    size).
+
+    '
   requestBody:
     required: true
     content:
@@ -13,7 +26,7 @@ operation:
           $ref: '#/components/schemas/OfferWrite'
   responses:
     '201':
-      description: Created.
+      description: Created (or the stored first result of a replayed `request_uuid`).
       content:
         application/json:
           schema:

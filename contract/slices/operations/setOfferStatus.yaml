@@ -1,0 +1,45 @@
+path: /v1/admin/offers/{id}/status
+method: post
+operation:
+  tags:
+  - admin-products
+  operationId: setOfferStatus
+  summary: Activate a draft or end an active offer (1.12.0).
+  description: 'Allowed moves: draft -> active (SUPERADMIN only, as for prices), active -> inactive (SUPERADMIN,
+    or ADMIN with the `w` grant on module
+
+    `discounts`). Anything else is `409`. Activation needs a current version whose `valid_to` is not in the past
+    (Asia/Dhaka business date). The move is
+
+    recorded with its reason in the append-only status trail and in the audit log. Idempotent by `request_uuid`:
+    a repeat returns the first
+
+    result; the same `request_uuid` with a different move is `409`. Activating does not change the field: the bundle
+    `offers` array stays empty.
+
+    '
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/OfferStatusChange'
+  responses:
+    '200':
+      description: The offer after the move (or the stored first result of a replay).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Offer'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

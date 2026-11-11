@@ -1,0 +1,26 @@
+path: /v1/admin/offers/{id}
+method: get
+operation:
+  tags:
+  - admin-products
+  operationId: getOffer
+  summary: One offer with its current version (1.12.0).
+  description: Same read rules as `listOffers`; an offer outside the caller's server-side scope is `404`.
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  responses:
+    '200':
+      description: The offer.
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Offer'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

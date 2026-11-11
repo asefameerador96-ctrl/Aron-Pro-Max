@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.11.2
+  version: 1.12.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -3396,8 +3396,15 @@ paths:
       tags: [admin-products]
       operationId: listOffers
       summary: Offer and promotion rules (data, not code).
+      description: |
+        Discount programmes of the portal (1.12.0). Permission module `discounts`: SUPERADMIN, or ADMIN with the `r` grant, read all; NATIONAL
+        reads all; BRAND, WING_MANAGER, DMO and TSO read the offers within their server-side scope (the client never sends scope ids);
+        SR, AMO and SUPPORT are refused `403`. Newest first; `limit` and `cursor` page it.
       parameters:
-        - $ref: '#/components/parameters/StatusQuery'
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/OfferStatus' }
         - name: valid_on
           in: query
           required: false
@@ -3415,7 +3422,12 @@ paths:
     post:
       tags: [admin-products]
       operationId: createOffer
-      summary: Create an offer rule (future-dated `valid_from`).
+      summary: Create an offer as a draft (version 1).
+      description: |
+        Always creates `status: draft` with version 1; activate it with `POST /v1/admin/offers/{id}/status`. SUPERADMIN, or ADMIN with the
+        `w` grant on module `discounts`. Idempotent by `request_uuid` (required by the server): a repeat of the same call returns the first
+        result with `201`; the same `request_uuid` with different content, or a `code` that exists, is `409`. `valid_to >= valid_from`; money is
+        integer milli-taka per base unit or basis points; quantities are base units (see `sku_units` for the SKU pack size).
       requestBody:
         required: true
         content:
@@ -3423,7 +3435,7 @@ paths:
             schema: { $ref: '#/components/schemas/OfferWrite' }
       responses:
         '201':
-          description: Created.
+          description: Created (or the stored first result of a replayed `request_uuid`).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Offer' }
@@ -3432,10 +3444,32 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
   /v1/admin/offers/{id}:
+    get:
+      tags: [admin-products]
+      operationId: getOffer
+      summary: One offer with its current version (1.12.0).
+      description: Same read rules as `listOffers`; an offer outside the caller's server-side scope is `404`.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: The offer.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Offer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [admin-products]
       operationId: updateOffer
       summary: Change an offer; a rule change creates a new offer version (memos keep the version they used).
+      description: |
+        Only while the offer is `draft` (1.12.0): every accepted change appends an immutable offer version; an `active` or `inactive` offer is `409`
+        (end it and create a new one). The status moves through `POST /v1/admin/offers/{id}/status`; a `status` member here is `400`. Idempotent by
+        `request_uuid` (required by the server). SUPERADMIN, or ADMIN with the `w` grant on module `discounts`.
       parameters:
         - $ref: '#/components/parameters/IdPath'
         - $ref: '#/components/parameters/IfMatch'
@@ -3454,7 +3488,55 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/PreconditionFailed' }
+  /v1/admin/offers/{id}/versions:
+    get:
+      tags: [admin-products]
+      operationId: listOfferVersions
+      summary: Every version of an offer, newest first (1.12.0).
+      description: Same read rules as `listOffers`. Versions are immutable.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of versions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OfferVersionPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/offers/{id}/status:
+    post:
+      tags: [admin-products]
+      operationId: setOfferStatus
+      summary: Activate a draft or end an active offer (1.12.0).
+      description: |
+        Allowed moves: draft -> active (SUPERADMIN only, as for prices), active -> inactive (SUPERADMIN, or ADMIN with the `w` grant on module
+        `discounts`). Anything else is `409`. Activation needs a current version whose `valid_to` is not in the past (Asia/Dhaka business date). The move is
+        recorded with its reason in the append-only status trail and in the audit log. Idempotent by `request_uuid`: a repeat returns the first
+        result; the same `request_uuid` with a different move is `409`. Activating does not change the field: the bundle `offers` array stays empty.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OfferStatusChange' }
+      responses:
+        '200':
+          description: The offer after the move (or the stored first result of a replay).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Offer' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /v1/admin/users:
     get:
@@ -7122,6 +7204,10 @@ components:
     ActiveStatus:
       type: string
       enum: [active, inactive]
+    OfferStatus:
+      type: string
+      enum: [draft, active, inactive]
+      description: Offer lifecycle (1.12.0). `draft` is being prepared and still editable; `active`; `inactive` is ended (the portal shows "Ended"). Moves are draft -> active -> inactive only, through `POST /v1/admin/offers/{id}/status`. Active in the portal does not reach the field (the bundle `offers` array and the memo offer line stay empty and zero, docs/27).
     OutletStatus:
       type: string
       enum: [active, closed, merged, archived]
@@ -14067,14 +14153,100 @@ components:
               node_type: { type: string, enum: [wing, division, territory, zone, route, channel, sub_channel] }
               node_id: { $ref: '#/components/schemas/Id' }
         stacking: { type: string, enum: [exclusive, stackable] }
-        status: { $ref: '#/components/schemas/ActiveStatus' }
-        version: { type: integer, minimum: 1 }
+        status: { $ref: '#/components/schemas/OfferStatus' }
+        version: { type: integer, minimum: 1, description: Row version of the offer (ETag / If-Match). }
         offer_version_id: { $ref: '#/components/schemas/Id' }
+        version_no: { type: integer, minimum: 1, description: Number of the current offer version (1.12.0). }
+        change_reason: { type: [string, 'null'], description: Reason recorded with the current version (1.12.0). }
+        created_at: { type: string, format: date-time, description: UTC instant the offer was created (1.12.0). }
+        updated_at: { type: string, format: date-time, description: UTC instant the offer last changed (1.12.0). }
+        sku_units:
+          type: array
+          maxItems: 101
+          description: Pack size of every SKU the rule names (the reward SKU and `sku`-level qualifying products), so a client can show base-unit fields in field units (packets, boxes, dozens) without a second call (1.12.0).
+          items: { $ref: '#/components/schemas/OfferSkuUnit' }
+    OfferSkuUnit:
+      type: object
+      required: [sku_id, base_unit, pack_factor]
+      additionalProperties: false
+      properties:
+        sku_id: { $ref: '#/components/schemas/Id' }
+        base_unit: { type: string, enum: [stick, piece, dozen] }
+        pack_factor: { type: integer, minimum: 1, maximum: 1000, description: Base units per pack (app.sku.base_per_pack); base quantity = field quantity x pack_factor. }
+    OfferVersion:
+      type: object
+      description: One immutable version of an offer (1.12.0).
+      required: [offer_version_id, offer_id, version_no, is_current, offer_type, level, title_en, valid_from, valid_to, qualifying, scope, stacking, created_at]
+      additionalProperties: false
+      properties:
+        offer_version_id: { $ref: '#/components/schemas/Id' }
+        offer_id: { $ref: '#/components/schemas/Id' }
+        version_no: { type: integer, minimum: 1 }
+        is_current: { type: boolean }
+        offer_type: { type: string, enum: [pct_discount, amount_per_unit, free_qty, drp_slide] }
+        level: { type: string, enum: [line, memo] }
+        title_en: { type: string, maxLength: 200 }
+        title_bn: { type: [string, 'null'], maxLength: 200 }
+        valid_from: { $ref: '#/components/schemas/BusinessDate' }
+        valid_to: { $ref: '#/components/schemas/BusinessDate' }
+        threshold_qty_base: { type: [integer, 'null'], minimum: 1 }
+        discount_bp: { type: [integer, 'null'], minimum: 1, maximum: 10000 }
+        discount_mtk_per_unit: { type: [integer, 'null'], format: int64, minimum: 1 }
+        reward_sku_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        reward_qty_base: { type: [integer, 'null'], minimum: 1 }
+        qualifying:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [product_level, product_id]
+            additionalProperties: false
+            properties:
+              product_level: { $ref: '#/components/schemas/ProductLevel' }
+              product_id: { $ref: '#/components/schemas/Id' }
+        scope:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            required: [node_type, node_id]
+            additionalProperties: false
+            properties:
+              node_type: { type: string, enum: [wing, division, territory, zone, route, channel, sub_channel] }
+              node_id: { $ref: '#/components/schemas/Id' }
+        stacking: { type: string, enum: [exclusive, stackable] }
+        change_reason: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        sku_units:
+          type: array
+          maxItems: 101
+          items: { $ref: '#/components/schemas/OfferSkuUnit' }
+    OfferVersionPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OfferVersion' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    OfferStatusChange:
+      type: object
+      required: [request_uuid, to_status, reason]
+      additionalProperties: false
+      properties:
+        request_uuid: { $ref: '#/components/schemas/Uuid' }
+        to_status: { type: string, enum: [active, inactive], description: draft -> active or active -> inactive. }
+        reason: { $ref: '#/components/schemas/ChangeReason' }
     OfferWrite:
       type: object
       required: [code, group_code, offer_type, level, title_en, valid_from, valid_to, qualifying, scope, stacking, change_reason]
       additionalProperties: false
       properties:
+        request_uuid: { $ref: '#/components/schemas/Uuid' }
         code: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$' }
         group_code: { type: string, maxLength: 40 }
         offer_type: { type: string, enum: [pct_discount, amount_per_unit, free_qty, drp_slide] }
@@ -14116,14 +14288,42 @@ components:
       required: [change_reason]
       additionalProperties: false
       properties:
+        request_uuid: { $ref: '#/components/schemas/Uuid' }
         title_en: { type: string, maxLength: 200 }
         title_bn: { type: [string, 'null'], maxLength: 200 }
+        valid_from: { $ref: '#/components/schemas/BusinessDate' }
         valid_to: { $ref: '#/components/schemas/BusinessDate' }
-        status: { $ref: '#/components/schemas/ActiveStatus' }
+        status:
+          $ref: '#/components/schemas/ActiveStatus'
+          description: Refused with 400 since 1.12.0; use POST /v1/admin/offers/{id}/status.
+        offer_type: { type: string, enum: [pct_discount, amount_per_unit, free_qty, drp_slide] }
+        level: { type: string, enum: [line, memo] }
+        stacking: { type: string, enum: [exclusive, stackable] }
         discount_bp: { type: [integer, 'null'], minimum: 1, maximum: 10000 }
         discount_mtk_per_unit: { type: [integer, 'null'], format: int64, minimum: 1 }
         threshold_qty_base: { type: [integer, 'null'], minimum: 1 }
+        reward_sku_id: { type: [integer, 'null'], format: int64, minimum: 1 }
         reward_qty_base: { type: [integer, 'null'], minimum: 1 }
+        qualifying:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [product_level, product_id]
+            additionalProperties: false
+            properties:
+              product_level: { $ref: '#/components/schemas/ProductLevel' }
+              product_id: { $ref: '#/components/schemas/Id' }
+        scope:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            required: [node_type, node_id]
+            additionalProperties: false
+            properties:
+              node_type: { type: string, enum: [wing, division, territory, zone, route, channel, sub_channel] }
+              node_id: { $ref: '#/components/schemas/Id' }
         change_reason: { $ref: '#/components/schemas/ChangeReason' }
     OfferPage:
       type: object

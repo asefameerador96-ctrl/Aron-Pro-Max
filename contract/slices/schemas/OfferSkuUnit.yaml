@@ -1,0 +1,21 @@
+OfferSkuUnit:
+  type: object
+  required:
+  - sku_id
+  - base_unit
+  - pack_factor
+  additionalProperties: false
+  properties:
+    sku_id:
+      $ref: '#/components/schemas/Id'
+    base_unit:
+      type: string
+      enum:
+      - stick
+      - piece
+      - dozen
+    pack_factor:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      description: Base units per pack (app.sku.base_per_pack); base quantity = field quantity x pack_factor.

@@ -43,6 +43,7 @@ class DwViewContractTest {
         "1.3" to "99cf75f028e708d5982586c4b8562da302241c9efd3b4256e1e11d9d40a9fc17",           // V0140 TSO manual views
         "1.4" to "99cf75f028e708d5982586c4b8562da302241c9efd3b4256e1e11d9d40a9fc17",           // V0148 v_route_day.zone_final_submitted rule (columns unchanged)
         "1.5" to "c60b8adf0fb3ab71aa8490fbc3f95165cf102df4077ac543e5a3199d50889656",           // V0151 v_visit.force_sale_reason (AMO manual build)
+        "1.6" to "eb4ed1a091e459c00756095b00d3bfd24dd9f19f1f5cdf10c6992f32bb67be65",           // V0152 dw.v_offer, dw.v_offer_version (discount portal; additive views)
     )
 
     private fun views(c: Connection): Map<String, List<String>> =

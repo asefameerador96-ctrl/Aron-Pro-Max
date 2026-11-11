@@ -5,8 +5,21 @@ operation:
   - admin-products
   operationId: listOffers
   summary: Offer and promotion rules (data, not code).
+  description: 'Discount programmes of the portal (1.12.0). Permission module `discounts`: SUPERADMIN, or ADMIN
+    with the `r` grant, read all; NATIONAL
+
+    reads all; BRAND, WING_MANAGER, DMO and TSO read the offers within their server-side scope (the client never
+    sends scope ids);
+
+    SR, AMO and SUPPORT are refused `403`. Newest first; `limit` and `cursor` page it.
+
+    '
   parameters:
-  - $ref: '#/components/parameters/StatusQuery'
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/OfferStatus'
   - name: valid_on
     in: query
     required: false

@@ -124,9 +124,34 @@ Offer:
       - exclusive
       - stackable
     status:
-      $ref: '#/components/schemas/ActiveStatus'
+      $ref: '#/components/schemas/OfferStatus'
     version:
       type: integer
       minimum: 1
+      description: Row version of the offer (ETag / If-Match).
     offer_version_id:
       $ref: '#/components/schemas/Id'
+    version_no:
+      type: integer
+      minimum: 1
+      description: Number of the current offer version (1.12.0).
+    change_reason:
+      type:
+      - string
+      - 'null'
+      description: Reason recorded with the current version (1.12.0).
+    created_at:
+      type: string
+      format: date-time
+      description: UTC instant the offer was created (1.12.0).
+    updated_at:
+      type: string
+      format: date-time
+      description: UTC instant the offer last changed (1.12.0).
+    sku_units:
+      type: array
+      maxItems: 101
+      description: Pack size of every SKU the rule names (the reward SKU and `sku`-level qualifying products), so
+        a client can show base-unit fields in field units (packets, boxes, dozens) without a second call (1.12.0).
+      items:
+        $ref: '#/components/schemas/OfferSkuUnit'
