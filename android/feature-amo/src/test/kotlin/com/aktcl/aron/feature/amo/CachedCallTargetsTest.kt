@@ -33,7 +33,7 @@ class CachedCallTargetsTest {
         assertEquals(CallTarget(3, 5), t.today)
         assertEquals(CallTarget(42, 130), t.month)
         assertEquals(CallTarget(12, null), t.control)
-        assertEquals("—", CallTargetMath.figure(t.control))
+        assertEquals("12/—", CallTargetMath.figure(t.control)) // done over a dash (D-AMO-SHELL-11)
         assertEquals("3/5", CallTargetMath.figure(t.today))
         assertEquals("4/20", CallTargetMath.figure(t.joint))
     }
@@ -89,6 +89,31 @@ class CachedCallTargetsTest {
         val store = MemStore(mutableMapOf("2026-10" to other))
         val r = feed(store, CallTargetsFetch.Unavailable).load("2026-11")
         assertEquals(CallTargetsStatus.Failed, r.status) // October's copy is never shown for November
+    }
+
+    @Test fun aMonthRolloverNeverKeepsTheOldMonthsNumbers() = runBlocking {
+        // the store cannot hold copies, so only the in-memory last good value exists: it belongs to October and must not be shown for November
+        val store = MemStore(failWrites = true)
+        val f = feed(store, CallTargetsFetch.Fresh(answer), CallTargetsFetch.Unavailable, CallTargetsFetch.Unavailable)
+        assertEquals(CallTargetsStatus.Fresh, f.load("2026-10").status)
+        val november = f.load("2026-11")
+        assertEquals(CallTargetsStatus.Failed, november.status)
+        assertNull(november.targets) // dashes, not October's figures
+        assertEquals(CallTargetsStatus.Failed, f.load("2026-11").status)
+    }
+
+    @Test fun aMalformedAnswerWithNoCopyIsFailed() = runBlocking {
+        val r = feed(MemStore(), CallTargetsFetch.Fresh("""{"today":{"done":1}}""")).load("2026-11")
+        assertEquals(CallTargetsStatus.Failed, r.status)
+        assertNull(r.targets)
+    }
+
+    @Test fun aRefusalForOneMonthLeavesAnotherMonthsCopy() = runBlocking {
+        val store = MemStore(mutableMapOf("2026-10" to other, "2026-11" to answer))
+        val f = feed(store, CallTargetsFetch.Gone)
+        f.load("2026-11")
+        assertNull(store.rows["2026-11"])
+        assertEquals(other, store.rows["2026-10"])
     }
 
     @Test fun aSlowReadIsCutAndTheCopyIsShown() = runBlocking {

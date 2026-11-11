@@ -131,6 +131,13 @@ object CallTargetMath {
         )
     }
 
-    /** "done/target" in Latin digits (the caller localises the digits), or "—" while the target is unset. */
-    fun figure(t: CallTarget?, dash: String = "—"): String = if (t?.target == null) dash else "${t.done}/${t.target}"
+    /**
+     * "done/target" in Latin digits (the caller localises the digits). A target that is not set prints "done/—" (D-AMO-SHELL-11: the AMO
+     * sees their own count even while the target programme is deferred); "—" alone only when there is no card data at all.
+     */
+    fun figure(t: CallTarget?, dash: String = "—"): String = when {
+        t == null -> dash
+        t.target == null -> "${t.done}/$dash"
+        else -> "${t.done}/${t.target}"
+    }
 }

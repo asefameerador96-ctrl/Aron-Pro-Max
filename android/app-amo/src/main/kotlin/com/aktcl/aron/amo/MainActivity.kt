@@ -194,17 +194,22 @@ class MainActivity : ComponentActivity() {
                                 runCatching { d.attachMedia(mediaShell.componentsFor(s.user.userId, d::businessDate)) }
                                 day = d
                             }
-                            // D-AMO-SHELL-10: the four Home target cards (`GET /v1/supervisor/call-targets`), read in the background after sign-in and
-                            // whenever a bundle is applied (resume); never in the way of the screen. A failed read keeps what the cards hold (the Room copy
-                            // per month, else the last good values) and says so; the cards never blank to "—" because a read failed.
+                            // D-AMO-SHELL-10/11: the four Home target cards (`GET /v1/supervisor/call-targets`), read in the background after sign-in, whenever
+                            // a bundle is applied and on resume while the numbers are stale or failed; never in the way of the screen. The kept copy (Room, else
+                            // the last good values) is held per MONTH inside CachedCallTargets, so a failed read never blanks the cards and never shows another month.
                             var targets by remember(s.user.userId) { mutableStateOf<com.aktcl.aron.feature.amo.CallTargets?>(null) }
                             var targetsStatus by remember(s.user.userId) { mutableStateOf(com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) }
-                            LaunchedEffect(day, home.businessDate, bundleTick) {
+                            var resumeTick by remember(s.user.userId) { mutableStateOf(0) }
+                            // coming back to the foreground: a session left open across Dhaka midnight shows the new date; a stale or failed card set tries again (8 s cap, no polling)
+                            androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                                vm.onResume()
+                                if (targetsStatus != com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) resumeTick++
+                            }
+                            LaunchedEffect(day, home.businessDate, bundleTick, resumeTick) {
                                 val d = day ?: return@LaunchedEffect
                                 val r = runCatching { d.callTargets.load(home.businessDate.take(7)) }.getOrNull() ?: return@LaunchedEffect
-                                val failedWithNothing = r.targets == null && r.status == com.aktcl.aron.feature.amo.CallTargetsStatus.Failed
-                                if (!failedWithNothing) targets = r.targets
-                                targetsStatus = if (failedWithNothing && targets != null) com.aktcl.aron.feature.amo.CallTargetsStatus.Stale else r.status
+                                targets = r.targets
+                                targetsStatus = r.status
                             }
                             // D-AMO-BUNDLE-01 (F-SYS-006): the day's bundle goes into Room in the background, as the SR app does at day start
                             // and on resume: the full bundle when this phone holds none for today, otherwise a delta at most every 30 minutes.

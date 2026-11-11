@@ -281,7 +281,7 @@ class AmoAppTest {
         show(AppLanguage.EN, targets = twelveOfNull)
         compose.onNodeWithTag(AmoHomeTags.TARGETS).performScrollTo()
         compose.onNodeWithTag(AmoHomeTags.target("today")).assertTextContains("3/5", substring = true)
-        compose.onNodeWithTag(AmoHomeTags.target("control")).assertTextContains("—", substring = true)
+        compose.onNodeWithTag(AmoHomeTags.target("control")).assertTextContains("12/—", substring = true) // done over a dash
         compose.onNodeWithTag(AmoHomeTags.TARGETS_NOTE).assertDoesNotExist()
     }
 
@@ -299,6 +299,13 @@ class AmoAppTest {
         compose.onNodeWithTag(AmoHomeTags.TARGETS).performScrollTo()
         compose.onNodeWithTag(AmoHomeTags.target("today")).assertTextContains("—", substring = true)
         compose.onNodeWithTag(AmoHomeTags.TARGETS_NOTE).assertIsDisplayed().assertTextEquals(context.getString(R.string.amo_shell_targets_failed))
+    }
+
+    @Test
+    @org.robolectric.annotation.Config(fontScale = 2.0f, qualifiers = "bn-w360dp-h2400dp")
+    fun theFailedLineIsDisplayedAtTwoHundredPercent() {
+        show(AppLanguage.BN, targets = null, targetsStatus = CallTargetsStatus.Failed)
+        compose.onNodeWithTag(AmoHomeTags.TARGETS_NOTE).performScrollTo().assertIsDisplayed()
     }
 
     @Test

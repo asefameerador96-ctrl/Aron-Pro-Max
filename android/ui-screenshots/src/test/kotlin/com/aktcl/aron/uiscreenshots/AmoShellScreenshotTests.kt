@@ -80,7 +80,7 @@ class AmoShellScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h1500dp") fun amo_home_targets_bn() = shot("amo_home_targets_bn", AppLanguage.BN) { Home(set) }
     @Test @Config(qualifiers = "w360dp-h1500dp") fun amo_home_targets_unset_en() = shot("amo_home_targets_unset_en", AppLanguage.EN) { Home(null) }
     @Test @Config(qualifiers = "bn-w360dp-h1500dp") fun amo_home_targets_stale_bn() = shot("amo_home_targets_stale_bn", AppLanguage.BN) { Home(set, status = com.aktcl.aron.feature.amo.CallTargetsStatus.Stale) }
-    @Test @Config(qualifiers = "bn-w360dp-h1500dp") fun amo_home_targets_failed_bn_fs2() = shot("amo_home_targets_failed_bn_fs2", AppLanguage.BN, fontScale = 2f) { Home(null, status = com.aktcl.aron.feature.amo.CallTargetsStatus.Failed) }
+    @Test @Config(qualifiers = "bn-w360dp-h2400dp") fun amo_home_targets_failed_bn_fs2() = shot("amo_home_targets_failed_bn_fs2", AppLanguage.BN, fontScale = 2f) { Home(null, status = com.aktcl.aron.feature.amo.CallTargetsStatus.Failed) }
     @Test @Config(qualifiers = "bn-w360dp-h1500dp") fun amo_home_targets_sunlight_bn() = shot("amo_home_targets_sunlight_bn", AppLanguage.BN, sunlight = true) { Home(set) }
 
     // ---- push 2: Login (rows 3, R1), Attendance (14 to 16, R7), Stock (41), Settings (75, R16) ----
