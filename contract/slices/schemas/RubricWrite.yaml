@@ -34,6 +34,26 @@ RubricWrite:
             - string
             - 'null'
             maxLength: 300
+          section:
+            type:
+            - string
+            - 'null'
+            maxLength: 120
+          section_bn:
+            type:
+            - string
+            - 'null'
+            maxLength: 120
+          guidance_en:
+            type:
+            - string
+            - 'null'
+            maxLength: 500
+          guidance_bn:
+            type:
+            - string
+            - 'null'
+            maxLength: 500
           answer_type:
             type: string
             enum:

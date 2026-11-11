@@ -45,6 +45,8 @@ data class DashboardKpis(
 @Serializable
 data class CategoryVolume(
     val category_code: String, val base_unit: String, val qty_base: Long, val net_mtk: Long, val report_unit: String? = null, val qty_report: String? = null, val entry_unit: String? = null, val qty_entered: String? = null,
+    /** Contract 1.11.1 (D-AMO-MAN-18): accepted memos with at least one sale line of the category in the window, each memo once per category; null when not computed. */
+    val memos: Int? = null,
 )
 
 @Serializable
@@ -369,6 +371,18 @@ class DashboardService(
             }.list()
         }
 
+        // D-AMO-MAN-18: memos per category = distinct active memos with a sale line of the category in the window (a memo of two categories counts once in each,
+        // a memo with two brands of one category once), from the dw memo lines on the same product, geography and scope basis as the quantities above.
+        val categoryMemos: Map<String, Int> = h.q(
+            """
+            SELECT p.category_code, count(DISTINCT l.memo_client_uuid)::int
+              FROM dw.fact_memo_line l ${AsWasSql.product("p", "l.sku_id", "l.business_date", lo = ":f", hi = ":t", plain = asWas.product)} ${AsWasSql.geo("g", "l.route_id", "l.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
+             WHERE l.business_date BETWEEN :f AND :t AND l.line_kind = 'sale' AND NOT l.voided AND l.memo_status = 'active' AND ${ns.clause("g.zone_id", "l.route_id")}${ns.inNode("g")}${if (brandOnly) " AND p.brand_id = ANY(:scopeBrands)" else ""}
+             GROUP BY 1
+            """,
+        ) { it.map { rs, _ -> rs.getString(1) to rs.getInt(2) }.list().toMap() }
+        val byCategoryWithMemos = byCategory.map { it.copy(memos = categoryMemos[it.category_code] ?: 0) }
+
         // The segment rollup carries no brand, so a BRAND caller reads the SKU rollup (the product tree as it was on each day, brand filter on the
         // brand then) and gets no memo count: memos of the caller's brands in one segment cannot be added across brands without double counting.
         val bySegment = h.q(
@@ -471,7 +485,7 @@ class DashboardService(
             ) { it.map { rs, _ -> DashboardChild(NodeRefDto("route", rs.getLong("cid"), rs.getString("ccode"), rs.getString("cname")), kpisOf(rs, zones = false).withSet(set[rs.getLong("cid")] ?: SetFigures(), zones = false)) }.list() }
         }
         val shown = if (brandOnly) brandKpis(byBrand.sumOf { it.net_mtk }) else kpis
-        return DashboardSummary(asOf.wire(), from.toString(), to.toString(), nodeRef, shown, byCategory, byChannel, byBrand, children, bySegment)
+        return DashboardSummary(asOf.wire(), from.toString(), to.toString(), nodeRef, shown, byCategoryWithMemos, byChannel, byBrand, children, bySegment)
     }
 
     /**

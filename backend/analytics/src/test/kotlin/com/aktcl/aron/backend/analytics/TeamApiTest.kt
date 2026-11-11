@@ -86,8 +86,10 @@ class TeamApiTest : ReportFixture() {
     fun teamStockIsIssuedSoldReturnedAndCurrentWithoutPhoneNumbers() = app {
         val r = get(11, Role.TSO, "/v1/team/stock?business_date=2026-10-04"); assertEquals(HttpStatusCode.OK, r.status)
         val body = r.bodyAsText()
-        assertFalse(body.contains("contact") || body.contains("phone") || body.contains("01711"))
+        assertFalse(body.contains("contact") || body.contains("01711"))
         val items = Json.parseToJsonElement(body).jsonObject["items"]!!.jsonArray.map { it.jsonObject }
+        // Contract 1.11.0 (D-AMO-MAN-09): the member `phone` exists, but only an AMO of the zone reads a number; a TSO gets null for every SR.
+        assertTrue(items.isNotEmpty() && items.all { it["phone"] is kotlinx.serialization.json.JsonNull }, "a TSO reads no phone number: $items")
         val sr1 = items.first { it["full_name"]!!.jsonPrimitive.content == "SR One" }["by_sku"]!!.jsonArray.map { it.jsonObject }
         assertEquals(2, sr1.size)
         val sku1 = sr1.first { it["issued_qty_base"]!!.jsonPrimitive.content.toLong() == 100L }

@@ -1,0 +1,44 @@
+SalesByDateLine:
+  type: object
+  required:
+  - sku
+  - qty_report
+  - report_unit
+  - qty_base
+  - value_mtk
+  additionalProperties: false
+  properties:
+    sku:
+      type: object
+      required:
+      - sku_id
+      - sku_code
+      - short_name
+      additionalProperties: false
+      properties:
+        sku_id:
+          $ref: '#/components/schemas/Id'
+        sku_code:
+          type: string
+          maxLength: 40
+        short_name:
+          type:
+          - string
+          - 'null'
+          maxLength: 120
+    qty_report:
+      $ref: '#/components/schemas/Decimal3'
+    report_unit:
+      type: string
+      enum:
+      - stick
+      - piece
+      - dozen
+      - box
+      - pack
+    qty_base:
+      type: integer
+      format: int64
+      minimum: 0
+    value_mtk:
+      $ref: '#/components/schemas/Mtk'

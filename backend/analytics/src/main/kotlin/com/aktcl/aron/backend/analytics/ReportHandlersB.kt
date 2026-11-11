@@ -371,15 +371,23 @@ object FreeSampleReport : ReportHandler {
     }
 }
 
-/** `sales-summary` (F-API-017b): the AMO app's Sales Summary Up To Now: a card per route (CPR, memos, net) with its brand table (memos with the brand, BSR). */
+/**
+ * `sales-summary` (F-API-017b): the AMO app's Sales Summary Up To Now: a card per route (CPR, memos, net) with its brand table (memos with the brand, BSR).
+ * Contract 1.11.0 (D-AMO-FND-09): `target_qty_base` / `target_value_mtk` are the brand's target on the route and `route_target_qty_base` /
+ * `route_target_value_mtk` the route's whole target (repeated on every row of the route like `net_mtk`), from `app.route_monthly_target` of the Dhaka
+ * month of the period's last day (D-TARGET-MIN-01); null when no target row exists. The value is the target quantity priced at the outlet price in
+ * force on that day, half up per SKU row; a target SKU without a price adds nothing to the value.
+ */
 object SalesSummaryReport : ReportHandler {
     override val roles = REPORT_ROLES + Role.AMO
     override val definition = definition(
         "sales-summary", "Sales Summary Up To Now", "sales", "route x brand",
         listOf(
-            col("route_code", "Route", "string"), col("route_name", "Route name", "string"), col("target_outlets", "Target outlets", "integer"), col("successful_calls", "Successful calls", "integer"),
+            col("route_code", "Route", "string"), col("route_id", "Route id", "integer"), col("route_name", "Route name", "string"), col("target_outlets", "Target outlets", "integer"), col("successful_calls", "Successful calls", "integer"),
             col("cpr_pct", "CPR %", "pct", unit = "%"), col("memos", "Memos", "integer"), col("net_mtk", "Net", "mtk", unit = "mtk"), col("brand_name", "Brand", "string"),
             col("brand_memos", "Memos with brand", "integer"), col("bsr_pct", "BSR %", "pct", unit = "%"),
+            col("target_qty_base", "Brand target (base units)", "integer"), col("target_value_mtk", "Brand target value", "mtk", unit = "mtk"),
+            col("route_target_qty_base", "Route target (base units)", "integer"), col("route_target_value_mtk", "Route target value", "mtk", unit = "mtk"),
         ),
         listOf("period", "geo"),
     )
@@ -388,11 +396,23 @@ object SalesSummaryReport : ReportHandler {
         """
         WITH rt AS (SELECT route_id, sum(target_outlets) FILTER (WHERE planned AND NOT exception_approved) AS t, sum(successful_calls) AS sc, sum(active_memo_count) AS memos, sum(net_mtk) AS net
                       FROM dw.agg_daily_route WHERE ${ctx.dateClause("business_date")} AND ${ctx.zoneClause("zone_id")} AND ${ctx.routeClause("route_id")} GROUP BY route_id),
-        br AS (SELECT route_id, brand_id, sum(memo_count) AS bm FROM dw.agg_daily_route_brand WHERE ${ctx.dateClause("business_date")} GROUP BY 1, 2)
-        SELECT g.route_code, g.route_name, coalesce(rt.t, 0)::int AS target_outlets, rt.sc::int AS successful_calls, round(100.0 * rt.sc / nullif(rt.t, 0), 2) AS cpr_pct,
-               rt.memos::int AS memos, rt.net::bigint AS net_mtk, p.brand_name, br.bm::int AS brand_memos, round(100.0 * br.bm / nullif(rt.memos, 0), 2) AS bsr_pct
-          FROM rt JOIN dw.dim_geo g ON g.route_id = rt.route_id LEFT JOIN br ON br.route_id = rt.route_id
-          LEFT JOIN LATERAL (SELECT coalesce((SELECT name FROM app.product_node WHERE id = br.brand_id), 'n' || br.brand_id) AS brand_name) p ON true
+        br AS (SELECT route_id, brand_id, sum(memo_count) AS bm FROM dw.agg_daily_route_brand WHERE ${ctx.dateClause("business_date")} GROUP BY 1, 2),
+        tg AS (SELECT t.route_id, p.brand_id, sum(t.qty_base)::bigint AS q,
+                      sum((t.qty_base * pr.amount_mtk * 2 + pr.per_base_qty) / (2 * pr.per_base_qty)) FILTER (WHERE pr.amount_mtk IS NOT NULL)::bigint AS v
+                 FROM app.route_monthly_target t JOIN rt ON rt.route_id = t.route_id JOIN dw.dim_product p ON p.sku_id = t.sku_id
+                 LEFT JOIN LATERAL (SELECT x.amount_mtk, x.per_base_qty FROM app.sku_price x
+                                     WHERE x.sku_id = t.sku_id AND x.price_type = 'outlet' AND x.valid_from <= :to AND (x.valid_to IS NULL OR x.valid_to > :to)
+                                     ORDER BY x.valid_from DESC LIMIT 1) pr ON true
+                WHERE t.month = date_trunc('month', CAST(:to AS timestamp))::date GROUP BY 1, 2),
+        tr AS (SELECT route_id, sum(q)::bigint AS q, sum(v)::bigint AS v FROM tg GROUP BY 1),
+        bb AS (SELECT route_id, brand_id FROM br UNION SELECT route_id, brand_id FROM tg)
+        SELECT g.route_code, rt.route_id, g.route_name, coalesce(rt.t, 0)::int AS target_outlets, rt.sc::int AS successful_calls, round(100.0 * rt.sc / nullif(rt.t, 0), 2) AS cpr_pct,
+               rt.memos::int AS memos, rt.net::bigint AS net_mtk, p.brand_name, br.bm::int AS brand_memos, round(100.0 * br.bm / nullif(rt.memos, 0), 2) AS bsr_pct,
+               tg.q AS target_qty_base, tg.v AS target_value_mtk, tr.q AS route_target_qty_base, tr.v AS route_target_value_mtk
+          FROM rt JOIN dw.dim_geo g ON g.route_id = rt.route_id LEFT JOIN bb ON bb.route_id = rt.route_id
+          LEFT JOIN br ON br.route_id = bb.route_id AND br.brand_id = bb.brand_id
+          LEFT JOIN tg ON tg.route_id = bb.route_id AND tg.brand_id = bb.brand_id LEFT JOIN tr ON tr.route_id = rt.route_id
+          LEFT JOIN LATERAL (SELECT coalesce((SELECT name FROM app.product_node WHERE id = bb.brand_id), 'n' || bb.brand_id) AS brand_name) p ON true
         """,
     )
 }

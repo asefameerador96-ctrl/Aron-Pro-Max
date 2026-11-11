@@ -8,7 +8,7 @@ object RouteMemoReport : ReportHandler {
     override val definition = definition(
         "route-memo", "Route-wise Memo", "sales", "route x period",
         listOf(
-            col("route_code", "Route code", "string"), col("route_name", "Route", "string"), col("period", "Period", "string"),
+            col("route_code", "Route code", "string"), col("route_id", "Route id", "integer"), col("route_name", "Route", "string"), col("period", "Period", "string"),
             col("memos", "Memos", "integer"), col("gross_mtk", "Gross", "mtk", unit = "mtk"), col("net_mtk", "Net", "mtk", unit = "mtk"),
             col("paid_mtk", "Paid", "mtk", unit = "mtk"), col("due_mtk", "Due", "mtk", unit = "mtk"),
         ),
@@ -17,11 +17,11 @@ object RouteMemoReport : ReportHandler {
 
     override fun spec(ctx: ReportContext) = SqlSpec(
         """
-        SELECT g.route_code, g.route_name, ${periodExpr(ctx, "a.business_date")} AS period, sum(a.active_memo_count)::bigint AS memos,
+        SELECT g.route_code, g.route_id, g.route_name, ${periodExpr(ctx, "a.business_date")} AS period, sum(a.active_memo_count)::bigint AS memos,
                sum(a.gross_mtk)::bigint AS gross_mtk, sum(a.net_mtk)::bigint AS net_mtk, sum(a.paid_mtk)::bigint AS paid_mtk, sum(a.due_mtk)::bigint AS due_mtk
           FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
          WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("a.zone_id")} AND ${ctx.routeClause("a.route_id")}
-         GROUP BY 1, 2, 3
+         GROUP BY 1, 2, 3, 4
         """,
         totalColumns = listOf("memos", "gross_mtk", "net_mtk", "paid_mtk", "due_mtk"),
     )
@@ -45,7 +45,7 @@ object StdMemoReport : ReportHandler {
     override val definition = definition(
         "std-memo", "STD Memo", "sales", "memo",
         listOf(
-            col("business_date", "Date", "date"), col("memo_no", "Memo no", "string"), col("status", "Status", "string"), col("route_code", "Route", "string"),
+            col("business_date", "Date", "date"), col("memo_no", "Memo no", "string"), col("status", "Status", "string"), col("route_code", "Route", "string"), col("route_id", "Route id", "integer"),
             col("outlet_code", "Outlet code", "string"), col("outlet_name", "Outlet", "string"), col("committed_at", "Time", "timestamp"), col("line_count", "Lines", "integer"), col("lines", "SKU lines", "string"),
             col("gross_mtk", "Gross", "mtk", unit = "mtk"), col("offer_discount_mtk", "Offer discount", "mtk", unit = "mtk"), col("drp_discount_mtk", "DRP discount", "mtk", unit = "mtk"),
             col("qc_deduction_mtk", "QC deduction", "mtk", unit = "mtk"), col("net_mtk", "Net", "mtk", unit = "mtk"), col("paid_mtk", "Paid", "mtk", unit = "mtk"), col("due_mtk", "Due", "mtk", unit = "mtk"),
@@ -55,7 +55,7 @@ object StdMemoReport : ReportHandler {
 
     override fun spec(ctx: ReportContext) = SqlSpec(
         """
-        SELECT m.business_date, m.memo_no, m.status, g.route_code, o.outlet_code, o.outlet_name, m.committed_at, m.line_count::int AS line_count,
+        SELECT m.business_date, m.memo_no, m.status, g.route_code, m.route_id, o.outlet_code, o.outlet_name, m.committed_at, m.line_count::int AS line_count,
                (SELECT string_agg(s.code || ' x' || ml.qty_base, ', ' ORDER BY ml.line_no) FROM app.memo_line ml JOIN app.sku s ON s.id = ml.sku_id
                  WHERE ml.memo_client_uuid = m.memo_client_uuid AND ml.business_date = m.business_date AND ml.voided_at IS NULL) AS lines, m.gross_mtk,
                m.offer_discount_mtk, m.drp_discount_mtk, m.qc_deduction_mtk, m.net_mtk, m.paid_mtk, m.due_mtk
@@ -108,7 +108,7 @@ object RouteStdReport : ReportHandler {
     override val definition = definition(
         "route-std", "Route-wise STD", "sales", "route x SKU",
         listOf(
-            col("route_code", "Route", "string"), col("route_name", "Route name", "string"), col("sku_code", "SKU", "string"), col("sku_name", "SKU name", "string"),
+            col("route_code", "Route", "string"), col("route_id", "Route id", "integer"), col("route_name", "Route name", "string"), col("sku_code", "SKU", "string"), col("sku_name", "SKU name", "string"),
             col("category_name", "Category", "string"), col("base_unit", "Unit", "string"), col("entry_unit", "Entry unit", "string"), col("base_per_pack", "Base per entry unit", "integer"), col("sold_qty_base", "Sold", "integer"), col("free_qty_base", "Free", "integer"), col("gross_mtk", "Gross", "mtk", unit = "mtk"), col("memos", "Memos", "integer"),
         ),
         listOf("period", "geo", "category", "product_type", "products"),
@@ -118,12 +118,12 @@ object RouteStdReport : ReportHandler {
         val (prod, binds) = productClause(ctx, "p")
         return SqlSpec(
             """
-            SELECT g.route_code, g.route_name, p.sku_code, p.short_name AS sku_name, p.category_name, p.base_unit,
+            SELECT g.route_code, g.route_id, g.route_name, p.sku_code, p.short_name AS sku_name, p.category_name, p.base_unit,
                    CASE WHEN p.base_unit = 'dozen' THEN 'dozen' ELSE 'pack' END AS entry_unit, CASE WHEN p.base_unit = 'dozen' THEN 1 ELSE p.base_per_pack END AS base_per_pack, sum(a.sold_qty_base)::bigint AS sold_qty_base,
                    sum(a.free_qty_base)::bigint AS free_qty_base, sum(a.gross_mtk)::bigint AS gross_mtk, sum(a.memo_count)::int AS memos
               FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN", lo = ":from", hi = ":to")} ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":from", hi = ":to")}
              WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("a.route_id")} AND $prod
-             GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
+             GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9
             """,
             binds, listOf("gross_mtk"),   // quantities are in different base units per category (stick, piece, dozen): never summed across SKUs
         )

@@ -95,6 +95,8 @@ object BundleContent {
             put("criterion_id", c.getValue("criterion_id")); put("label_en", c.getValue("label_en")); put("label_bn", c["label_bn"] ?: JsonNull)
             put("answer_type", type); put("enabled", true)
             c["key"]?.takeIf { it !is JsonNull }?.let { put("key", it) }
+            // Contract 1.11.0 (D-AMO-MAN-10): sections and the "what to look for" lines, only where the version has them.
+            for (k in listOf("section", "section_bn", "guidance_en", "guidance_bn")) c[k]?.takeIf { it !is JsonNull }?.let { put(k, it) }
         }
     }
 

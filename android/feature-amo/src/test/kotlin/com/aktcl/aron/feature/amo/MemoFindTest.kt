@@ -82,4 +82,13 @@ class MemoFindTest {
         assertEquals(4_000_000L + 0L, r.outstandingMtk) // the edited chain (1M due, 3M collected) contributes 0, not -2M
         assertEquals(2_000_000L, r.overpaidMtk)
     }
+
+    // lead low 3: the Dhaka day turns over at 18:00Z (00:00 +06:00)
+    @Test fun theDhakaDayBoundaryIsEighteenHundredUtc() {
+        assertEquals("2026-11-06", MemoFind.dhakaDate("2026-11-06T17:59:59Z"))
+        assertEquals("2026-11-07", MemoFind.dhakaDate("2026-11-06T18:00:00Z"))
+        val at = { iso: String -> LocalDue("a", "2026-11-05", "2026-11-05T04:00:00Z", 5_000_000, null, listOf(iso to 2_000_000L)) }
+        assertEquals(10_000_000L, MemoFind.outstandingMtk(10_000_000, "2026-11-06", listOf(at("2026-11-06T17:59:00Z")))) // same Dhaka day: already in the figure
+        assertEquals(10_000_000L - 2_000_000L, MemoFind.outstandingMtk(10_000_000, "2026-11-06", listOf(at("2026-11-06T18:00:00Z")))) // next Dhaka day: not yet
+    }
 }

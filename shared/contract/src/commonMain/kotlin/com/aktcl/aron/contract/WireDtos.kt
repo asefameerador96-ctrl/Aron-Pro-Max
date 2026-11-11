@@ -422,6 +422,7 @@ data class VisitPayload(
     @SerialName("assessed_user_id") val assessedUserId: Long? = null,
     @Serializable(with = GeoFixWire::class) @SerialName("fix") val fix: GeoFix,
     @SerialName("geo") val geo: DeviceGeoVerdict,
+    @SerialName("force_sale_reason") val forceSaleReason: String? = null,
 )
 
 @Serializable
@@ -1279,3 +1280,152 @@ object TargetAchievementWire : JsonTransformingSerializer<TargetAchievement>(Tar
     override fun transformSerialize(element: JsonElement): JsonElement =
         if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
 }
+
+// ---- AMO Dashboard target cards (contract 1.11.0) ----
+
+@Serializable
+data class CallTargetCard(
+    @SerialName("done") val done: Int,
+    @SerialName("target") val target: Int?,
+)
+
+/** Encode CallTargetCard with this serializer at the top level (a member of type CallTargetCard or List<CallTargetCard> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object CallTargetCardWire : JsonTransformingSerializer<CallTargetCard>(CallTargetCard.serializer()) {
+    private val alwaysEmitted = listOf("target")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+/** The four target cards of the AMO Dashboard (contract 1.11.0). */
+@Serializable
+data class CallTargets(
+    @SerialName("as_of") val asOf: String,
+    @SerialName("business_date") val businessDate: String,
+    @SerialName("period") val period: String,
+    @Serializable(with = CallTargetCardWire::class) @SerialName("today") val today: CallTargetCard,
+    @Serializable(with = CallTargetCardWire::class) @SerialName("month") val month: CallTargetCard,
+    @Serializable(with = CallTargetCardWire::class) @SerialName("control") val control: CallTargetCard,
+    @Serializable(with = CallTargetCardWire::class) @SerialName("joint") val joint: CallTargetCard,
+)
+
+// ---- AMO team reads: Sales Journey, SR list, previous sale data (contract 1.11.0, train F2) ----
+
+@Serializable
+data class JourneyOutlet(
+    @SerialName("id") val id: Long,
+    @SerialName("name") val name: String,
+    @SerialName("code") val code: String,
+    @SerialName("phone_masked") val phoneMasked: String?,
+    @SerialName("cluster") val cluster: String?,
+) {
+    override fun toString(): String = "JourneyOutlet(id=${id}, name=${name}, code=***, phoneMasked=${phoneMasked}, cluster=${cluster})"
+}
+
+/** Encode JourneyOutlet with this serializer at the top level (a member of type JourneyOutlet or List<JourneyOutlet> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object JourneyOutletWire : JsonTransformingSerializer<JourneyOutlet>(JourneyOutlet.serializer()) {
+    private val alwaysEmitted = listOf("phone_masked", "cluster")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+@Serializable
+data class JourneyCall(
+    @SerialName("visit_uuid") val visitUuid: String,
+    @Serializable(with = JourneyOutletWire::class) @SerialName("outlet") val outlet: JourneyOutlet,
+    @SerialName("status") val status: String,
+    @SerialName("opened_at") val openedAt: String,
+    @SerialName("closed_at") val closedAt: String?,
+    @SerialName("duration_s") val durationS: Int?,
+    @SerialName("distance_from_prev_m") val distanceFromPrevM: Double?,
+    @SerialName("distance_so_far_m") val distanceSoFarM: Double,
+    @SerialName("gap_to_next_s") val gapToNextS: Int?,
+)
+
+/** Encode JourneyCall with this serializer at the top level (a member of type JourneyCall or List<JourneyCall> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object JourneyCallWire : JsonTransformingSerializer<JourneyCall>(JourneyCall.serializer()) {
+    private val alwaysEmitted = listOf("closed_at", "duration_s", "distance_from_prev_m", "gap_to_next_s")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+@Serializable
+data class TeamJourneyUser(
+    @SerialName("user_id") val userId: Long,
+    @SerialName("full_name") val fullName: String,
+)
+
+@Serializable
+data class TeamJourneyRoute(
+    @SerialName("route_id") val routeId: Long,
+    @SerialName("name") val name: String,
+)
+
+/** The Sales Journey of one SR on one route and day (contract 1.11.0). */
+@Serializable
+data class TeamJourney(
+    @SerialName("user") val user: TeamJourneyUser,
+    @SerialName("route") val route: TeamJourneyRoute,
+    @SerialName("business_date") val businessDate: String,
+    @SerialName("calls") val calls: List<@Serializable(with = JourneyCallWire::class) JourneyCall>,
+    @SerialName("distance_m") val distanceM: Double,
+)
+
+@Serializable
+data class TeamMemberRow(
+    @SerialName("user_id") val userId: Long?,
+    @SerialName("full_name") val fullName: String?,
+    @SerialName("route_id") val routeId: Long,
+    @SerialName("route_code") val routeCode: String,
+    @SerialName("route_name") val routeName: String,
+    @SerialName("route_days") val routeDays: List<Int>,
+    @SerialName("phone") val phone: String?,
+    @SerialName("phone_masked") val phoneMasked: String?,
+    @SerialName("total_outlets") val totalOutlets: Int,
+    @SerialName("vacant") val vacant: Boolean,
+)
+
+/** Encode TeamMemberRow with this serializer at the top level (a member of type TeamMemberRow or List<TeamMemberRow> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object TeamMemberRowWire : JsonTransformingSerializer<TeamMemberRow>(TeamMemberRow.serializer()) {
+    private val alwaysEmitted = listOf("user_id", "full_name", "phone", "phone_masked")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+@Serializable
+data class TeamMemberList(
+    @SerialName("as_of") val asOf: String,
+    @SerialName("business_date") val businessDate: String,
+    @SerialName("items") val items: List<@Serializable(with = TeamMemberRowWire::class) TeamMemberRow>,
+)
+
+@Serializable
+data class SalesByDateLineSku(
+    @SerialName("sku_id") val skuId: Long,
+    @SerialName("sku_code") val skuCode: String,
+    @SerialName("short_name") val shortName: String?,
+)
+
+/** Encode SalesByDateLineSku with this serializer at the top level (a member of type SalesByDateLineSku or List<SalesByDateLineSku> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object SalesByDateLineSkuWire : JsonTransformingSerializer<SalesByDateLineSku>(SalesByDateLineSku.serializer()) {
+    private val alwaysEmitted = listOf("short_name")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+@Serializable
+data class SalesByDateLine(
+    @Serializable(with = SalesByDateLineSkuWire::class) @SerialName("sku") val sku: SalesByDateLineSku,
+    @SerialName("qty_report") val qtyReport: String,
+    @SerialName("report_unit") val reportUnit: String,
+    @SerialName("qty_base") val qtyBase: Long,
+    @SerialName("value_mtk") val valueMtk: Long,
+)
+
+@Serializable
+data class SalesByDate(
+    @SerialName("outlet_id") val outletId: Long,
+    @SerialName("business_date") val businessDate: String,
+    @SerialName("lines") val lines: List<SalesByDateLine>,
+    @SerialName("total_qty_base") val totalQtyBase: Long,
+    @SerialName("total_value_mtk") val totalValueMtk: Long,
+)

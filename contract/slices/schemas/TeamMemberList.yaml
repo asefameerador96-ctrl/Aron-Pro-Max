@@ -1,0 +1,16 @@
+TeamMemberList:
+  type: object
+  required:
+  - as_of
+  - business_date
+  - items
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    items:
+      type: array
+      items:
+        $ref: '#/components/schemas/TeamMemberRow'

@@ -25,6 +25,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
+import androidx.compose.ui.test.assertCountEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Before
@@ -148,8 +149,8 @@ class AmoControlCallHostTest {
         assertEquals(1, visits().size)
         org.junit.Assert.assertTrue(visits()[0].payloadJson.contains("\"force_reason_code\":\"internet_problem\""))
         org.junit.Assert.assertTrue(visits()[0].payloadJson.contains("\"action\":\"force_sale\""))
-        // a second tap on Continue (a replay of the same submit) cannot add a visit
-        runCatching { compose.onNodeWithText("Continue").performClick(); compose.waitForIdle() }
+        // the committed call moves the screen on: the Continue button is gone, so no second submit of the same override can be tapped
+        compose.onAllNodes(androidx.compose.ui.test.hasText("Continue")).assertCountEquals(0)
         assertEquals(1, visits().size)
     }
 }

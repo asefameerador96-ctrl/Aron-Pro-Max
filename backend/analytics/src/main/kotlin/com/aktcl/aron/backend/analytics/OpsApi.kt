@@ -73,6 +73,8 @@ data class RouteDayStateDto(
 data class LoginSubmitStatus(
     val as_of: String, val business_date: String, val kpis: DashboardKpis, val not_logged_in: List<RouteDayStateDto>, val logged_in_not_submitted: List<RouteDayStateDto>,
     val submitted: List<RouteDayStateDto>, val exceptions: List<RouteDayStateDto>, val zones: List<ZoneFinalDto> = emptyList(),
+    /** Contract 1.11.0 (D-AMO-MAN-11): the AMO's Live Dashboard counts, only for an AMO caller (null for every other role). */
+    val geo_valid_visits: Int? = null, val photo_valid_visits: Int? = null, val visits_total: Int? = null, val sales_by_category: List<CategoryVolume>? = null,
 )
 
 @Serializable
@@ -223,7 +225,7 @@ class OpsService(
     /** One route-day of the login/submit lists; [loggedIn] = successful login (login, download and check-in). */
     private data class LoginDay(val dto: RouteDayStateDto, val excused: Boolean, val submitted: Boolean, val loggedIn: Boolean)
 
-    fun loginSubmit(reach: Reach, dashboards: DashboardService, date: LocalDate, level: String?, nodeId: Long?): LoginSubmitStatus {
+    fun loginSubmit(reach: Reach, dashboards: DashboardService, date: LocalDate, level: String?, nodeId: Long?, amoCounts: Boolean = false): LoginSubmitStatus {
         val summary = dashboards.summary(reach, level, nodeId, date, date)
         val days = db.readJdbi.withHandle<List<LoginDay>, Exception> { h ->
             val node = resolveScopedNode(h, reach, level, nodeId, from = date)
@@ -262,10 +264,24 @@ class OpsService(
             node.bind(h.createQuery(sql).bind("d", date))
                 .map { rs, _ -> ZoneFinalDto(rs.getLong(1), rs.getBoolean(2)) }.list()
         }
+        // D-AMO-MAN-11: the AMO's Live Dashboard shows the zone's call counts (geo-validated, photo-validated, all) beside the category volumes.
+        val counts = if (!amoCounts) null else db.readJdbi.withHandle<List<Int>, Exception> { h ->
+            val node = resolveScopedNode(h, reach, level, nodeId, from = date)
+            node.bind(
+                h.createQuery(
+                    """
+                    SELECT count(*)::int AS total, (count(*) FILTER (WHERE f.within_fence))::int AS geo, (count(*) FILTER (WHERE f.force_photo_uuid IS NOT NULL))::int AS photo
+                      FROM dw.fact_visit f JOIN dw.dim_geo g ON g.route_id = f.route_id
+                     WHERE f.business_date = :d AND NOT f.voided AND f.visit_kind = 'sr_call' AND ${node.clause("g.zone_id", "g.route_id")}
+                    """,
+                ).bind("d", date),
+            ).map { rs, _ -> listOf(rs.getInt("total"), rs.getInt("geo"), rs.getInt("photo")) }.one()
+        }
         return LoginSubmitStatus(
             summary.as_of, date.toString(), summary.kpis,
             live.filter { !it.loggedIn }.map { it.dto }, live.filter { it.loggedIn && !it.submitted }.map { it.dto },
             live.filter { it.loggedIn && it.submitted }.map { it.dto }, days.filter { it.excused }.map { it.dto }, zones,
+            geo_valid_visits = counts?.get(1), photo_valid_visits = counts?.get(2), visits_total = counts?.get(0), sales_by_category = if (amoCounts) summary.by_category else null,
         )
     }
 
@@ -376,9 +392,10 @@ fun Route.opsRoutes(d: OpsDeps) {
         }
         get("/dashboards/login-submit") {
             val p = call.principal
-            if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
+            // D-AMO-MAN-11: the AMO reads the Live Dashboard of the own zone (reach from the token); the national endpoints stay closed to AMO.
+            if (p.role !in DASHBOARD_ROLES && p.role != Role.AMO) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
             val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
-            call.respond(d.service.loginSubmit(d.reach.reach(p.userId, p.role, p.scopeVersion, today), d.dashboards, call.date("business_date", true)!!, call.request.queryParameters["level"], call.nodeId()))
+            call.respond(d.service.loginSubmit(d.reach.reach(p.userId, p.role, p.scopeVersion, today), d.dashboards, call.date("business_date", true)!!, call.request.queryParameters["level"], call.nodeId(), amoCounts = p.role == Role.AMO))
         }
         get("/admin/quarantine") {
             val p = call.principal

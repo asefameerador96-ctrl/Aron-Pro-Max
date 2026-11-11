@@ -433,7 +433,7 @@ class AuthzAuditTest {
             RouteSpec("GET /v1/dashboards/geo-validation", g, { "/v1/dashboards/geo-validation?from=$day&to=$day" }, null, dashDocs),
             RouteSpec("GET /v1/dashboards/daily-tracking", g, { "/v1/dashboards/daily-tracking?business_date=$day" }, null, dashDocs),
             RouteSpec("POST /v1/dashboards/daily-tracking/actions", p, { "/v1/dashboards/daily-tracking/actions" }, { actionBody().toString() }, setOf("TSO", "DMO", "WM", "ADMIN", "SUPERADMIN")),
-            RouteSpec("GET /v1/dashboards/login-submit", g, { "/v1/dashboards/login-submit?business_date=$day" }, null, dashDocs),
+            RouteSpec("GET /v1/dashboards/login-submit", g, { "/v1/dashboards/login-submit?business_date=$day" }, null, dashDocs + "AMO"),   // contract 1.11.0: the AMO Live Dashboard (own zone)
             RouteSpec("GET /v1/dashboards/sync-health", g, { "/v1/dashboards/sync-health?business_date=$day" }, null, dashDocs + "SUPPORT"),
             // Everyone lists their own exports (ReportApi); judged per owner in exports().
             RouteSpec("GET /v1/report-exports", g, { "/v1/report-exports" }, null, all),
