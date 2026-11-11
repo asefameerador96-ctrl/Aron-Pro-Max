@@ -14,9 +14,12 @@ sealed interface AmoFetch {
     data class Fresh(val json: String) : AmoFetch
     data class Cached(val json: String) : AmoFetch
     data object Unavailable : AmoFetch
-    /** The server refuses or does not offer it (403, 404, 501): no old copy is served and the screen says so instead of "offline". */
+    /** The server refuses or does not offer it (403, 404, 501): no old copy is served and the screen says so instead of "offline". On a ROUTE targets read only 403 is Gone ([RouteTargetsRead] maps 400, 404 and 501 to "not offered"). */
     data object Gone : AmoFetch
 }
+
+/** A route's targets: the read, and [notOffered] when the server answered 400, 404 or 501 (it has no route level, or no node_id was understood); a 403 is [AmoFetch.Gone] for that route alone. */
+class RouteTargetsRead(val fetch: AmoFetch, val notOffered: Boolean)
 
 fun AmoFetch.jsonOrNull(): String? = when (this) { is AmoFetch.Fresh -> json; is AmoFetch.Cached -> json; else -> null }
 
@@ -68,10 +71,28 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
 
     /**
      * `GET /v1/dashboards/targets` of one node at brand level (Team Performance, screenshots 34 to 36): [routeId] null is the caller's own
-     * top node (the zone); a route is asked by `level=route&node_id=` (an id the server itself listed; it answers 403 outside the reach).
+     * top node (the zone); a route is asked by `level=route&node_id=` (an id the server itself listed; see [routeTargets] for its 403 and 400).
      */
     suspend fun brandTargets(month: String, routeId: Long?): AmoFetch =
         get("/v1/dashboards/targets", "targets_brand_${routeId ?: 0}_$month", linkedMapOf("month" to month, "product_level" to "brand") + (routeId?.let { mapOf("level" to "route", "node_id" to it.toString()) } ?: emptyMap()))
+
+    /** Drops the kept copies of these routes' targets (the zone itself was refused: nothing of that reach may still be shown from an old copy). */
+    fun forgetRouteTargets(month: String, routeIds: List<Long>) = routeIds.forEach { forget("targets_brand_${it}_$month") }
+
+    /**
+     * One route of `GET /v1/dashboards/targets` (contract 1.11.2) with the two ways the server says no told apart: 403 (outside the reach, `ERR_OUT_OF_SCOPE`)
+     * is [AmoFetch.Gone] for THAT route only; 400 (no node_id), 404 and 501 (the level is not offered) are [RouteTargetsRead.notOffered], a server that has no route level and not
+     * an access problem. Neither serves an old copy.
+     */
+    suspend fun routeTargets(month: String, routeId: Long): RouteTargetsRead {
+        val key = "targets_brand_${routeId}_$month"
+        val (f, status) = getRaw("/v1/dashboards/targets", key, linkedMapOf("month" to month, "product_level" to "brand", "level" to "route", "node_id" to routeId.toString()))
+        // 400 (no node_id), 404 and 501 (no such route level / not implemented) all say the server has no route detail; only 403 says "not yours"
+        // (getRaw already forgot the copy of a 404 or 501, which it reads as Gone; a 400 it would have served from the copy, so that one is forgotten here)
+        if (status == 400) forget(key)
+        if (status == 400 || status == 404 || status == 501) return RouteTargetsRead(AmoFetch.Unavailable, true)
+        return RouteTargetsRead(f, false)
+    }
 
     /** The Live Dashboard of one route (`level=route`), or null from the server when it does not offer that level. */
     suspend fun liveDashboardRoute(date: String, routeId: Long): AmoFetch = get("/v1/dashboards/login-submit", "live_r${routeId}_$date", mapOf("business_date" to date, "level" to "route", "node_id" to routeId.toString()))
@@ -127,17 +148,20 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
         return AmoFetch.Fresh(all)
     }
 
-    private suspend fun get(path: String, key: String?, query: Map<String, String> = emptyMap()): AmoFetch {
+    private suspend fun get(path: String, key: String?, query: Map<String, String> = emptyMap()): AmoFetch = getRaw(path, key, query).first
+
+    /** The read and the HTTP status of a failure (null on success or when the network never answered). */
+    private suspend fun getRaw(path: String, key: String?, query: Map<String, String> = emptyMap()): Pair<AmoFetch, Int?> {
         val r = client.call(
             path = path, auth = CallAuth.Grant(Grant.FULL),
             build = { url(query.entries.fold(client.origin.path(path).newBuilder()) { b, (k, v) -> b.addQueryParameter(k, v) }.build()); get() },
             decode = { body, _ -> body },
         )
         return when (r) {
-            is ApiResult.Success -> { if (key != null) remember(key, r.value); AmoFetch.Fresh(r.value) }
+            is ApiResult.Success -> { if (key != null) remember(key, r.value); AmoFetch.Fresh(r.value) to null }
             // Out of reach or gone: never serve an old copy of something the server now refuses.
-            is ApiResult.Failure -> if (r.httpStatus == 403 || r.httpStatus == 404 || r.httpStatus == 501) { key?.let(::forget); AmoFetch.Gone } else key?.let(::cached) ?: AmoFetch.Unavailable
-            else -> key?.let(::cached) ?: AmoFetch.Unavailable
+            is ApiResult.Failure -> (if (r.httpStatus == 403 || r.httpStatus == 404 || r.httpStatus == 501) { key?.let(::forget); AmoFetch.Gone } else key?.let(::cached) ?: AmoFetch.Unavailable) to r.httpStatus
+            else -> (key?.let(::cached) ?: AmoFetch.Unavailable) to null
         }
     }
 

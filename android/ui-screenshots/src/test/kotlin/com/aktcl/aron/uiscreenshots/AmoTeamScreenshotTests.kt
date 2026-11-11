@@ -127,6 +127,11 @@ class AmoTeamScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_till_route_bn() = shot("amo_team_till_route_bn", AppLanguage.BN, "Motiharpol") { tillRoute() }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_till_route_bn_fs2() = shot("amo_team_till_route_bn_fs2", AppLanguage.BN, "Motiharpol", fontScale = 2f) { tillRoute() }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_till_route_sunlight_bn() = shot("amo_team_till_route_sunlight_bn", AppLanguage.BN, "Motiharpol", sunlight = true) { tillRoute() }
+    // contract 1.11.2: the server's field-unit members (packets, box, dozen; one route answered in its base unit), and the route states of the lead's ruling 2026-11-11 06:00 UTC
+    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_team_perf_fieldunits_en() = shot("amo_team_perf_fieldunits_en", AppLanguage.EN, "Team Performance") { fieldUnitList() }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_perf_fieldunits_bn() = shot("amo_team_perf_fieldunits_bn", AppLanguage.BN, "টিম পারফর্মেন্স") { fieldUnitList() }
+    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_team_perf_route_states_en() = shot("amo_team_perf_route_states_en", AppLanguage.EN, "Team Performance") { routeStates() }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_perf_route_states_bn() = shot("amo_team_perf_route_states_bn", AppLanguage.BN, "টিম পারফর্মেন্স") { routeStates() }
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_team_journey_cards_en() = shot("amo_team_journey_cards_en", AppLanguage.EN, "Sales Journey") { journeyCards() }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_journey_cards_bn() = shot("amo_team_journey_cards_bn", AppLanguage.BN, "বিক্রয় যাত্রা") { journeyCards() }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_journey_cards_bn_fs2() = shot("amo_team_journey_cards_bn_fs2", AppLanguage.BN, "বিক্রয় যাত্রা", fontScale = 2f) { journeyCards() }
@@ -153,6 +158,23 @@ class AmoTeamScreenshotTests {
 
     @Composable private fun perfList(tab: PerfTab) = TeamPerformanceListContent(PerfCards(dariapur, listOf(mathBazer, dariapurRoute)), tab, {}, {}, false, false)
     @Composable private fun perfDetails(tab: PerfTab, cat: String?) = TeamPerformanceDetailsContent(agrabad, tab, {}, cat, {}, false, false)
+
+    // ---- 1.11.2 fixtures: parsed from the server's JSON shape (base members unchanged, `report_unit` and the `*_qty_report` members added)
+    private fun targetRow(name: String, cat: String, tBase: Long, aBase: Long, extra: String) =
+        """{"name":"$name","category_code":"$cat","target_qty_base":$tBase,"achieved_qty_base":$aBase,"tilldate_target_qty_base":$tBase $extra}"""
+    private fun members(unit: String, t: String, a: String, remaining: String) =
+        ""","report_unit":"$unit","target_qty_report":"$t","achieved_qty_report":"$a","tilldate_target_qty_report":"$t","remaining_qty_report":"$remaining","remaining_tilldate_qty_report":"$remaining""""
+    private fun node(type: String, id: Long, name: String, vararg rows: String) =
+        TeamTargets.parse("""{"node":{"type":"$type","id":$id,"name":"$name"},"period_days":30,"rows":[${rows.joinToString(",")}]}""")!!
+    private val gulshan = node(
+        "zone", 5, "Gulshan",
+        targetRow("Marise", "cigarette", 2_270_000, 1_598_680, members("pack", "113500.000", "86233.250", "27266.750")), // 20s and 10s summed after conversion
+        targetRow("Aster", "lighter", 6_600, 2_570, members("box", "264.000", "102.800", "161.200")), targetRow("Salmon", "match", 5_447, 5_276, members("dozen", "5447.000", "5276.000", "171.000")),
+    )
+    private val banani = node("route", 11, "Banani", targetRow("Marise", "cigarette", 246_000, 143_380, members("pack", "12300.000", "7410.500", "4889.500")), targetRow("Aster", "lighter", 700, 210, members("box", "28.000", "8.400", "19.600")))
+    private val mixedRoute = node("route", 12, "Gulshan-2", targetRow("Marise", "cigarette", 347_600, 286_960, members("stick", "347600.000", "286960.000", "60640.000"))) // the server answered this route in its base unit
+    @Composable private fun fieldUnitList() = TeamPerformanceListContent(PerfCards(gulshan, listOf(banani, mixedRoute)), PerfTab.MONTHLY, {}, {}, false, false)
+    @Composable private fun routeStates() = TeamPerformanceListContent(PerfCards(gulshan, listOf(banani), listOf(RouteOutOfReach(13, "Dhanmondi")), routeLevelUnavailable = true), PerfTab.MONTHLY, {}, {}, false, false)
 
     @Composable private fun locContent() = TeamLocationContent(
         listOf(LocationChoice(1, "Mahmud Hasan", "01712345678"), LocationChoice(2, "Shafikul Islam", "01812345678"), LocationChoice(3, "Md. Al Amin (Mitali)", "01912345678")),

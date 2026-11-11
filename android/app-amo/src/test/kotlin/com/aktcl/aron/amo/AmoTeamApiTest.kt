@@ -73,4 +73,69 @@ class AmoTeamApiTest {
         down = true
         assertTrue("a refusal removed the copy", a.teamMembers("2026-11-06") is AmoFetch.Unavailable)
     }
+
+    /** Contract 1.11.2, lead ruling 2026-11-11 06:00 UTC: a route read tells its two refusals apart (403 outside the reach = Gone for that route; 400 = the server has no route level), never an old copy. */
+    @Test fun aRouteTargetReadTellsA403FromA400AndKeepsNoOldCopy() = runBlocking {
+        val a = api()
+        assertTrue(a.routeTargets("2026-11", 11L).fetch is AmoFetch.Fresh)
+        assertTrue(seen.any { it.path == "/v1/dashboards/targets" && it.query == "month=2026-11&product_level=brand&level=route&node_id=11" })
+        status = 403
+        val r403 = a.routeTargets("2026-11", 11L)
+        assertTrue(r403.fetch is AmoFetch.Gone); assertFalse(r403.notOffered)
+        down = true; assertTrue("403 left no old copy", a.routeTargets("2026-11", 11L).fetch is AmoFetch.Unavailable); down = false
+        status = 200; assertTrue(a.routeTargets("2026-11", 11L).fetch is AmoFetch.Fresh)
+        status = 400
+        val r400 = a.routeTargets("2026-11", 11L)
+        assertTrue(r400.notOffered); assertFalse("a 400 is not an access refusal", r400.fetch is AmoFetch.Gone)
+        down = true; assertTrue("400 left no old copy", a.routeTargets("2026-11", 11L).fetch is AmoFetch.Unavailable); down = false
+        // offline is neither: it is just unavailable, and the zone read keeps its meaning
+        status = 200; assertTrue(a.routeTargets("2026-11", 11L).fetch is AmoFetch.Fresh)
+        down = true; val off = a.routeTargets("2026-11", 11L); assertFalse(off.notOffered); assertTrue(off.fetch is AmoFetch.Cached); down = false
+        status = 400; assertFalse(a.brandTargets("2026-11", null) is AmoFetch.Gone)
+    }
+
+    /** D-AMO-CALLS-31 (3): only 403 is "not yours"; 404 and 501 (no route level) are route detail unavailable, like 400, and leave no old copy. */
+    @Test fun aRoute404Or501IsRouteDetailUnavailableNotOutOfReach() = runBlocking {
+        val a = api()
+        assertTrue(a.routeTargets("2026-11", 11L).fetch is AmoFetch.Fresh)
+        for (code in listOf(404, 501)) {
+            status = code
+            val r = a.routeTargets("2026-11", 11L)
+            assertTrue("$code is not offered", r.notOffered); assertFalse("$code is not an out-of-reach refusal", r.fetch is AmoFetch.Gone)
+            down = true; assertTrue("$code left no old copy", a.routeTargets("2026-11", 11L).fetch is AmoFetch.Unavailable); down = false
+            status = 200; assertTrue(a.routeTargets("2026-11", 11L).fetch is AmoFetch.Fresh)
+        }
+        status = 403
+        val r403 = a.routeTargets("2026-11", 11L)
+        assertTrue(r403.fetch is AmoFetch.Gone); assertFalse(r403.notOffered)
+    }
+
+    /** D-AMO-CALLS-32/33: forgetting drops exactly the named route copies; other routes and other months stay. */
+    @Test fun forgettingRouteTargetsDropsTheirKeptCopiesAndOnlyThose() = runBlocking {
+        val a = api()
+        for (id in listOf(11L, 12L, 13L)) assertTrue(a.routeTargets("2026-11", id).fetch is AmoFetch.Fresh)
+        assertTrue(a.routeTargets("2026-10", 11L).fetch is AmoFetch.Fresh)
+        a.forgetRouteTargets("2026-11", listOf(11L, 12L))
+        down = true
+        assertTrue(a.routeTargets("2026-11", 11L).fetch is AmoFetch.Unavailable); assertTrue(a.routeTargets("2026-11", 12L).fetch is AmoFetch.Unavailable)
+        assertTrue("another route's copy survives", a.routeTargets("2026-11", 13L).fetch is AmoFetch.Cached)
+        assertTrue("another month's copy survives", a.routeTargets("2026-10", 11L).fetch is AmoFetch.Cached)
+        down = false
+    }
+
+    /** D-AMO-CALLS-33 (6): the function the screens call purges EVERY member route (25 here, only 20 are ever asked) when the zone is refused, and nothing else. */
+    @Test fun aRefusedZonePurgesTheKeptCopiesOfEveryMemberRouteThroughTheScreensEntryPoint() = runBlocking {
+        val a = api()
+        val members = (1L..25L).toList()
+        for (id in members) assertTrue(a.routeTargets("2026-11", id).fetch is AmoFetch.Fresh)
+        assertTrue(a.routeTargets("2026-11", 99L).fetch is AmoFetch.Fresh) // not a member of this AMO's list
+        status = 403
+        val published = mutableListOf<TargetNodes>()
+        loadTargetNodesFromApi(a, "2026-11", members, { null }) { published += it }
+        assertTrue("the zone refusal is published", published.last().refused)
+        status = 200; down = true
+        for (id in members) assertTrue("member route $id has no old copy", a.routeTargets("2026-11", id).fetch is AmoFetch.Unavailable)
+        assertTrue("a route outside the list keeps its copy", a.routeTargets("2026-11", 99L).fetch is AmoFetch.Cached)
+        down = false
+    }
 }

@@ -39,6 +39,7 @@ import com.aktcl.aron.feature.amo.TeamMember
 import com.aktcl.aron.feature.amo.TeamPerformanceDetailsContent
 import com.aktcl.aron.feature.amo.TeamPerformanceListContent
 import com.aktcl.aron.feature.amo.TeamStock
+import com.aktcl.aron.feature.amo.RouteOutOfReach
 import com.aktcl.aron.feature.amo.TeamTargetNode
 import com.aktcl.aron.feature.amo.TeamTargets
 import com.aktcl.aron.feature.amo.R as AmoR
@@ -59,7 +60,11 @@ internal fun rememberMembers(day: AmoDay): Members? {
 }
 
 /** The zone node and one node per route (brand rows) for Team Performance and the sales-till-now summary; routes fill in as they arrive. */
-internal class TargetNodes(val zone: TeamTargetNode?, val routes: List<TeamTargetNode>, val stale: Boolean, val failed: Boolean, val refused: Boolean = false)
+internal class TargetNodes(
+    val zone: TeamTargetNode?, val routes: List<TeamTargetNode>, val stale: Boolean, val failed: Boolean, val refused: Boolean = false,
+    /** Routes the server refused with 403 (their own row says so) and the 400 case of a server without the route level (one line, no access banner). */
+    val outOfReach: List<RouteOutOfReach> = emptyList(), val routeLevelUnavailable: Boolean = false,
+)
 
 @Composable
 internal fun rememberTargetNodes(day: AmoDay, members: Members?): TargetNodes? {
@@ -67,28 +72,44 @@ internal fun rememberTargetNodes(day: AmoDay, members: Members?): TargetNodes? {
     LaunchedEffect(day, members) {
         members ?: return@LaunchedEffect
         val month = day.businessDate().take(7)
-        val zoneFetch = day.api.brandTargets(month, null)
-        val zone = TeamTargets.parse(zoneFetch.jsonOrNull())
-        var stale = zoneFetch is AmoFetch.Cached
-        out = TargetNodes(zone, emptyList(), stale, zoneFetch.isMissing(), zoneFetch is AmoFetch.Gone)
-        val ids = members.rows.map { it.routeId }.distinct().take(MAX_ROUTE_CARDS)
-        val acc = mutableListOf<TeamTargetNode>()
-        for (id in ids) {
-            val f = day.api.brandTargets(month, id)
-            stale = stale || f is AmoFetch.Cached
-            // a server without the route level answers 400 for every route: stop after the first miss instead of asking 20 times
-            if (f.jsonOrNull() == null) break
-            TeamTargets.parse(f.jsonOrNull())?.let { n ->
-                // the route's name from the members list when the node carries none
-                acc += if (n.name.isNullOrBlank()) n.copy(name = members.rows.firstOrNull { it.routeId == id }?.routeName) else n
-                out = TargetNodes(zone, acc.toList(), stale, zoneFetch.isMissing(), zoneFetch is AmoFetch.Gone)
-            }
-        }
+        loadTargetNodesFromApi(day.api, month, members.rows.map { it.routeId }.distinct(), { id -> members.rows.firstOrNull { it.routeId == id }?.routeName }) { out = it }
     }
     return out
 }
 
 private const val MAX_ROUTE_CARDS = 20
+
+/** What the screens call: [loadTargetNodes] wired to the API. At most [MAX_ROUTE_CARDS] routes are asked; a refused zone drops the kept copies of every member route. */
+internal suspend fun loadTargetNodesFromApi(api: AmoApi, month: String, memberRouteIds: List<Long>, routeName: (Long) -> String?, publish: (TargetNodes) -> Unit) =
+    loadTargetNodes({ api.brandTargets(month, null) }, { id -> api.routeTargets(month, id) }, memberRouteIds.take(MAX_ROUTE_CARDS), routeName, { api.forgetRouteTargets(month, memberRouteIds) }, publish)
+
+/**
+ * The zone, then one route at a time (`level=route&node_id=`), publishing after each answer. A refused zone (any Gone: 403, 404 or 501) ends it at once (one refusal, no ask per route) and drops the kept route copies of EVERY member route through [purgeRoutes] (not only the first [MAX_ROUTE_CARDS] that would have been asked). A 403 on a route marks THAT route out of reach and the loop goes on with the
+ * rest; a 400, 404 or 501 (the server has no route level) ends the loop with one note and no banner; an offline or unreadable answer ends it too. Nothing is asked twice.
+ */
+internal suspend fun loadTargetNodes(fetchZone: suspend () -> AmoFetch, fetchRoute: suspend (Long) -> RouteTargetsRead, routeIds: List<Long>, routeName: (Long) -> String?, purgeRoutes: () -> Unit = {}, publish: (TargetNodes) -> Unit) {
+    val zoneFetch = fetchZone()
+    val zone = TeamTargets.parse(zoneFetch.jsonOrNull())
+    var stale = zoneFetch is AmoFetch.Cached
+    val zoneGone = zoneFetch is AmoFetch.Gone
+    val acc = mutableListOf<TeamTargetNode>(); val out = mutableListOf<RouteOutOfReach>()
+    var unavailable = false
+    fun emit() = publish(TargetNodes(zone, acc.toList(), stale, zoneFetch.isMissing(), zoneGone, out.toList(), unavailable))
+    emit()
+    if (zoneGone) { purgeRoutes(); return } // the zone itself is refused: one refusal, the routes are not asked, and their old copies are dropped
+    for (id in routeIds) {
+        val r = fetchRoute(id)
+        if (r.notOffered) { unavailable = true; emit(); break }
+        stale = stale || r.fetch is AmoFetch.Cached
+        if (r.fetch is AmoFetch.Gone) { out += RouteOutOfReach(id, routeName(id)); emit(); continue }
+        if (r.fetch.jsonOrNull() == null) { emit(); break }
+        TeamTargets.parse(r.fetch.jsonOrNull())?.let { n ->
+            // the route's name from the members list when the node carries none
+            acc += if (n.name.isNullOrBlank()) n.copy(name = routeName(id)) else n
+            emit()
+        }
+    }
+}
 
 /** Team Performance (screenshots 34 to 36): the zone card and the route cards; Details opens the brand table; a category tap filters it. */
 @Composable
@@ -104,7 +125,7 @@ fun AmoTeamPerformanceHost(day: AmoDay, onBack: () -> Unit) {
     AmoFrame(open?.name ?: stringResource(AmoR.string.amo_leaf_team_performance), { if (detail != null) { category = null; detail = null } else onBack() }, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_team_performance) {
         if (nodes == null) { AronLoadingScreen(); return@AmoFrame }
         if (open != null) TeamPerformanceDetailsContent(open, tab, { tab = it }, category, { category = TeamTargets.toggle(category, it) }, nodes.stale, nodes.failed, nodes.refused)
-        else TeamPerformanceListContent(PerfCards(nodes.zone, nodes.routes), tab, { tab = it }, { n -> category = null; detail = if (n === nodes.zone) "zone" else n.id.toString() }, nodes.stale, nodes.failed, nodes.refused)
+        else TeamPerformanceListContent(PerfCards(nodes.zone, nodes.routes, nodes.outOfReach, nodes.routeLevelUnavailable), tab, { tab = it }, { n -> category = null; detail = if (n === nodes.zone) "zone" else n.id.toString() }, nodes.stale, nodes.failed, nodes.refused)
     }
 }
 
