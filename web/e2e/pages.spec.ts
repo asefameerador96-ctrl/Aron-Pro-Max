@@ -1,7 +1,7 @@
 // Dashboard pages in a real browser against the seeded mock: login (F-WEB-043), credentials (F-WEB-033), tracking (F-WEB-038/039/028),
 // sync health (F-WEB-045), exceptions (F-WEB-057), leave (F-WEB-046), tutorial (F-WEB-035), routes (F-WEB-010), products, reports.
 import { expect, test, type Page } from "@playwright/test";
-import { MOCK, login, loginOk, resetMock } from "./helpers";
+import { MOCK, login, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -35,6 +35,7 @@ test("login: Remember me off gives session cookies, on gives persistent ones", a
   await context.clearCookies();
   await page.goto("/login");
   const form = page.getByTestId("login-form");
+  await hydrated(form.locator('input[name="username"]')); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await form.locator('input[name="username"]').fill("tso334");
   await form.locator('input[name="password"]').fill("tso-pass-1");
   await page.getByTestId("remember-me").check();
@@ -144,6 +145,7 @@ test("exceptions: the re-sampled signal is marked and a confirm closes it", asyn
   await english(page);
   await page.goto("/exceptions");
   await expect(page.getByTestId("resampled-badge")).toBeVisible();
+  await hydrated(page.getByTestId("review-confirmed-900")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("review-confirmed-900").click();
   await expect(page.getByTestId("table-empty")).toBeVisible();
   await page.goto("/exceptions?status=confirmed");
@@ -155,6 +157,7 @@ test("leave: a DMO approves and the TSO sees the new status; a TSO has no button
   await english(page);
   await page.goto("/leave");
   await expect(page.locator("tbody tr")).toHaveCount(2);
+  await hydrated(page.getByTestId("approve-11111111-1111-4111-8111-111111111111")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("approve-11111111-1111-4111-8111-111111111111").click();
   await expect(page.locator("tbody tr")).toHaveCount(1);
   await context.clearCookies();

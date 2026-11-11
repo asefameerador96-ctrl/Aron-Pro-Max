@@ -35,8 +35,8 @@ const bnDigits = (s: string) => s.replace(/\d/g, (d) => BN[Number(d)] ?? d);
 
 /** formatter id -> (entry, locale) -> [actual, expected]. */
 const CHECKS: Record<string, (e: Entry, l: Locale) => [string, string]> = {
-  // Hero/stat card: formatTakaDisplay plus the " ৳" the Money component appends (components/kit/hero-card.tsx).
-  "reports/format.formatTakaDisplay+sign:money2": (e, l) => [`${formatTakaDisplay(l, e.mtk)} ${corpus.taka_sign}`, e.expect.money2[l]],
+  // Hero/stat card: formatTakaDisplay plus the sign the Money component appends (components/kit/hero-card.tsx): " ৳" in Bangla, " Tk" on English pages (D-WEB-FIX-01; the shared fixture keeps ৳, the apps use it).
+  "reports/format.formatTakaDisplay+sign:money2": (e, l) => [`${formatTakaDisplay(l, e.mtk)} ${l === "en" ? "Tk" : corpus.taka_sign}`, l === "en" ? e.expect.money2[l].replace(corpus.taka_sign, "Tk") : e.expect.money2[l]],
   "reports/format.formatTakaDisplay:amount2": (e, l) => [formatTakaDisplay(l, e.mtk), e.expect.amount2[l]],
   "admin/money.formatMtk:amount2": (e, l) => [formatMtk(l, e.mtk), e.expect.amount2[l]],
   "reports/format.formatTaka:money3": (e, l) => [formatTaka(l, e.mtk), e.expect.money3[l]],

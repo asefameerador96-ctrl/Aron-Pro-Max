@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { resetMock } from "./helpers";
+import { resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -7,6 +7,7 @@ test.beforeEach(async () => {
 
 test("a new administrator sets up an authenticator at the second step, keeps the recovery codes, and signs in", async ({ page }) => {
   await page.goto("/login");
+  await hydrated(page.locator('input[name="username"]')); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.locator('input[name="username"]').fill("newadmin1");
   await page.locator('input[name="password"]').fill("newadmin-pass-1");
   await page.locator('form button[type="submit"]').first().click();

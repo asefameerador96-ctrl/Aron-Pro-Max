@@ -12,6 +12,7 @@ export const en = {
   "common.loading": "Loading…",
   "common.save": "Save",
   "common.cancel": "Cancel",
+  "common.taka_word": "Tk",
   "common.create": "Create",
   "common.edit": "Edit",
   "common.search": "Search",

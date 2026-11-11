@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import writeExcelFile from "write-excel-file/node";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -53,6 +53,7 @@ test("targets: upload, validation report, server preview, commit with a reason, 
 test("targets: a wrong file type and an unreadable workbook are refused with a message", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/route-targets");
+  await hydrated(page.getByTestId("rt-file")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("rt-file").setInputFiles({ name: "t.csv", mimeType: "text/csv", buffer: Buffer.from("a,b") });
   await expect(page.getByTestId("rt-file-error")).toBeVisible();
   await page.getByTestId("rt-file").setInputFiles({ name: "t.xlsx", mimeType: XLSX, buffer: Buffer.from("not a zip") });
