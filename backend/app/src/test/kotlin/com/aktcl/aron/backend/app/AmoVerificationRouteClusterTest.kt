@@ -107,7 +107,8 @@ class AmoVerificationRouteClusterTest {
             val q = rows("SELECT code, detail FROM app.sync_quarantine WHERE client_uuid = CAST('$cu' AS uuid)").single()
             assertEquals("scope_out_of_reach", q["code"]); assertTrue(q["detail"].toString().startsWith("zone "), "the detail names the zone: ${q["detail"]}")
             // read-back as the caller: the request is still pending and shows no verified step
-            val back = getAs(amo, "/v1/outlet-requests/$reqA").bodyAsText()
+            val backRes = getAs(amo, "/v1/outlet-requests/$reqA"); val back = backRes.bodyAsText()
+            assertEquals(io.ktor.http.HttpStatusCode.OK, backRes.status, back)
             assertFalse(back.contains("\"verified\""), back)
             // a cluster alone, of the other zone, is the same
             val cu2 = UUID.randomUUID().toString()

@@ -46,8 +46,9 @@ class AmoFoundationF3Test {
                 assertEquals(HttpStatusCode.BadRequest, r.status, body)
                 assertTrue("ERR_VALIDATION" in body && "query.business_date" in body && "out_of_range" in body, body)
             }
-            // the window is checked before reach: an SR (403) is still refused before any date is judged, and a bad date is a 400 with no data in it
+            // order: role (SR 403) -> date window (400) -> reach/lookup (404/403): a bad date for an SR that does not exist is a 400, never a 404
             assertEquals(HttpStatusCode.Forbidden, getAs(sr, q(today().minusDays(91))).status)
+            assertEquals(HttpStatusCode.BadRequest, getAs(amo, "/v1/team/journey?user_id=987654&route_id=$route&business_date=${today().minusDays(91)}").status)
         }
     }
 
