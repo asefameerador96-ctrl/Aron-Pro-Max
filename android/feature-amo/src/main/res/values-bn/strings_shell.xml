@@ -14,4 +14,6 @@
     <string name="amo_shell_header_zone">%1$s AMO, %2$s</string>
     <string name="amo_shell_header_plain">AMO, %1$s</string>
     <string name="amo_shell_no_target">—</string>
+    <string name="amo_shell_targets_stale">সংরক্ষিত সংখ্যা দেখাচ্ছে। অনলাইনে এলে নতুন সংখ্যা আসবে।</string>
+    <string name="amo_shell_targets_failed">টার্গেট আনা যায়নি। অনলাইনে এলে আবার আসবে।</string>
 </resources>

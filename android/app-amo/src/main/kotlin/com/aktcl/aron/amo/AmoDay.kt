@@ -85,6 +85,19 @@ class AmoDay(
     /** Fixed client uuids of the forms that queue a record, across a kill ([FormDrafts]). */
     val drafts: FormDrafts by lazy { FormDrafts(context, userId) }
     val api: AmoApi by lazy { AmoApi(components.apiClient, context, userId) }
+    /** D-AMO-SHELL-10: the Home target cards (`GET /v1/supervisor/call-targets`) with a kept copy per month in Room. */
+    val callTargets: com.aktcl.aron.feature.amo.CallTargetsFeed by lazy {
+        com.aktcl.aron.feature.amo.CachedCallTargets(
+            fetch = { month ->
+                when (val r = api.callTargets(month)) {
+                    is AmoFetch.Fresh -> com.aktcl.aron.feature.amo.CallTargetsFetch.Fresh(r.json)
+                    AmoFetch.Gone -> com.aktcl.aron.feature.amo.CallTargetsFetch.Gone
+                    else -> com.aktcl.aron.feature.amo.CallTargetsFetch.Unavailable
+                }
+            },
+            store = RoomCallTargetsStore(db.referenceDao()),
+        )
+    }
     val capture = CaptureRepository(db) { iso(clock.nowMs()) }
     val reference = ReferenceRepository(db)
 

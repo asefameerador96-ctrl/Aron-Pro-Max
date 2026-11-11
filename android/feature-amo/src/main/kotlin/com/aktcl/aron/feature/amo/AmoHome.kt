@@ -160,7 +160,7 @@ private data class Card(val key: String, @androidx.annotation.StringRes val labe
 
 /** The four target cards (screenshot 9): sky-blue rounded cards, a white icon, the white label and the white bold "done/target" or "—". */
 @Composable
-private fun AmoTargetCards(targets: CallTargets?, modifier: Modifier = Modifier) {
+private fun AmoTargetCards(targets: CallTargets?, modifier: Modifier = Modifier, status: CallTargetsStatus = CallTargetsStatus.Fresh) {
     val look = LocalAronLook.current
     val dash = stringResource(R.string.amo_shell_no_target)
     val cards = listOf(
@@ -189,6 +189,13 @@ private fun AmoTargetCards(targets: CallTargets?, modifier: Modifier = Modifier)
                 }
             }
         }
+        // the state line: shown only when the numbers are the kept copy (stale) or could not be read at all
+        val note = when (status) {
+            CallTargetsStatus.Stale -> R.string.amo_shell_targets_stale
+            CallTargetsStatus.Failed -> R.string.amo_shell_targets_failed
+            CallTargetsStatus.Fresh -> null
+        }
+        if (note != null) Text(stringResource(note), style = MaterialTheme.typography.bodySmall.copy(color = look.ink), modifier = Modifier.testTag(AmoHomeTags.TARGETS_NOTE))
     }
 }
 
@@ -197,6 +204,7 @@ object AmoHomeTags {
     const val TARGETS = "amo_targets"
     const val COLLAPSE = "amo_collapse"
     const val LOGOUT_DIALOG = "amo_logout_dialog"
+    const val TARGETS_NOTE = "amo_targets_note"
     const val LOGOUT_YES = "amo_logout_yes"
     const val LOGOUT_NO = "amo_logout_no"
     /** Stable names: today, total, control, joint. */
@@ -224,6 +232,7 @@ fun AmoHomeContent(
     onSync: (() -> Unit)? = null,
     /** The four target cards; null prints "—" on each (the server endpoint has not answered or is not built yet). */
     targets: CallTargets? = null,
+    targetsStatus: CallTargetsStatus = CallTargetsStatus.Fresh,
     /** The day card's money text (milli-taka in the user's digits), formatted by the host. */
     money: @Composable (Long) -> String = { com.aktcl.aron.rules.Formats.money(it, if (LocalAppLanguage.current == AppLanguage.BN) com.aktcl.aron.rules.UiLocale.BN else com.aktcl.aron.rules.UiLocale.EN) },
 ) {
@@ -264,7 +273,7 @@ fun AmoHomeContent(
                     contentAlignment = Alignment.Center,
                 ) { androidx.compose.material3.Icon(if (gridOpen) AronIcons.ExpandLess else AronIcons.ExpandMore, contentDescription = null, tint = look.choiceFill ?: look.purple, modifier = Modifier.size(28.dp)) }
             }
-            AmoTargetCards(targets)
+            AmoTargetCards(targets, status = targetsStatus)
             (hero as? RoleHero.Amo)?.let { h -> AmoDayCard(h, money(h.teamSalesMtk), Modifier.padding(horizontal = 4.dp)) }
             // the shared sync-status footer of the AMO and TSO homes: the sync state, then what today's data check found and the device figures (F-SR-064)
             val status = amoSyncText(sync)
