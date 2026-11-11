@@ -265,8 +265,9 @@ class TargetAchievementTest {
             assertEquals(0, gulshan.periodDays)
             for (row in gulshan.rows) {
                 assertNull(row.tilldateTargetQtyBase, row.name); assertNull(row.remainingTilldateQtyBase, row.name); assertNull(row.tilldateAchievementPctBp, row.name)
-                assertEquals("0.000", row.tilldateTargetQty, row.name)
+                assertEquals("0.000", row.tilldateTargetQty, row.name); assertNull(row.remainingTilldateQtyReport, row.name)
             }
+            assertEquals("0.000", terr.tilldateTargetQtyReport); assertEquals("0.000", terr.remainingTilldateQtyReport, "a node with a period and a 0 till-date target has nothing remaining")
             assertEquals(3000L, gulshan.rows.of("Cigarette").targetQtyBase)
             // Gulshan alone has n = 0 at its own node.
             val z = ask(21, month = "2026-11", level = "zone", node = ids.getValue("Z2"), cfg = working)
@@ -408,6 +409,9 @@ class TargetAchievementTest {
         val ten = sku.of("Marise Special Blend 10s")
         assertEquals("pack", ten.reportUnit); assertEquals("300.000", ten.targetQtyReport)
         assertEquals(java.math.BigDecimal(ten.tilldateTargetQtyBase!!).divide(java.math.BigDecimal(10)).setScale(3).toPlainString(), ten.tilldateTargetQtyReport)
+        // remaining till date = max(T' - A, 0) in packets, from the printed values (Marise 10s: T' 241.900, nothing sold in the fixture of it)
+        val expRemTd = (java.math.BigDecimal(ten.tilldateTargetQtyReport) - java.math.BigDecimal(ten.achievedQtyReport)).max(java.math.BigDecimal.ZERO).setScale(3).toPlainString()
+        assertEquals(expRemTd, ten.remainingTilldateQtyReport)
         // remaining is max(T - A, 0) in the report unit; the base members are untouched
         for (r in rows) assertTrue(java.math.BigDecimal(r.remainingQtyReport!!) == (java.math.BigDecimal(r.targetQtyReport!!) - java.math.BigDecimal(r.achievedQtyReport!!)).max(java.math.BigDecimal.ZERO), r.name)
     }
