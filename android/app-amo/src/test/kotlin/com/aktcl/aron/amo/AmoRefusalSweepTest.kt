@@ -22,7 +22,6 @@ import com.aktcl.aron.feature.sale.domain.VisitOutcomeCode
 import com.aktcl.aron.feature.stock.StockLoad
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -84,7 +83,8 @@ class AmoRefusalSweepTest {
 
     private fun printTapPrintsNothing() {
         f.day.printUnprintedStock()
-        runBlocking { delay(300) }
+        // joins the print launch (and Room's executor) instead of sleeping 300 ms: a print that was going to start has started or finished by now
+        assertTrue("the print launch settled", f.work.awaitSettled())
         assertNull("no stock slip print started", f.day.stockAttempt.value)
         assertEquals("no print_event queued", 0, queued("print_event"))
     }
