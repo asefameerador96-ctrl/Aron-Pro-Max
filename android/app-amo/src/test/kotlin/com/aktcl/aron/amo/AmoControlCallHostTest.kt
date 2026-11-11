@@ -7,7 +7,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithText
@@ -42,7 +41,7 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34], application = Application::class, qualifiers = "w360dp-h800dp")
 class AmoControlCallHostTest {
-    @get:Rule val compose = createEmptyComposeRule()
+    @get:Rule val compose = hostComposeRule()
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private lateinit var f: AmoLockFixture
     private var activity: ComponentActivity? = null
@@ -120,6 +119,7 @@ class AmoControlCallHostTest {
         assertEquals(null, f.day.visitSession.current.value)
         compose.onNodeWithText("Internet problem").performClick(); compose.waitForIdle()
         // the chosen reason goes on to the override photo step (the visit is committed only after the photo)
+        f.work.awaitSettled(); compose.mainClock.advanceTimeByFrame() // let any work the tap started finish and a frame run before the NEGATIVE check
         assertEquals(null, f.day.visitSession.current.value)
     }
 

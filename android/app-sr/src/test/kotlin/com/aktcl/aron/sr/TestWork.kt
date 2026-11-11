@@ -98,7 +98,8 @@ internal class TestWork {
     /**
      * True once nothing the test started is still in flight: the view models' and the day's coroutines are done and Room's
      * executor is idle (the main looper is idled on each poll, so work posted there runs). A UI check awaits this state, then
-     * asserts the screen; [ms] is only a hang guard, not a tuned delay (D-QA-CI-03).
+     * asserts the screen; [ms] is only a hang guard, not a tuned delay (D-QA-CI-03). It does NOT cover composition coroutines (a `LaunchedEffect` or
+     * `rememberAsyncLoad` in a shown screen): before a NEGATIVE assertion a test also advances a frame (`compose.mainClock.advanceTimeByFrame()`), D-AMO-CALLS-33.
      */
     fun awaitSettled(ms: Long = HANG_GUARD_MS): Boolean = waitUntil(ms) { inFlight().isEmpty() && roomExecutor.isIdle() }
 
