@@ -186,7 +186,7 @@ internal fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGon
     val cluster = Pick(clusterOptions, effCluster, { clusterSel = it })
     val sub = Pick(subs.map { AmoOption(it.id, if (bangla) it.labelBn ?: it.labelEn else it.labelEn) }, subId, { subId = it })
     val head = listOfNotNull(
-        refusedCode?.let { c -> AmoFormItem.Notice(stringResource(when (OutletVerify.decisionProblem(c)) { "unknown_route" -> AmoR.string.amo_out_why_unknown_route; "cluster" -> AmoR.string.amo_out_why_cluster; "scope" -> AmoR.string.amo_out_why_scope; else -> AmoR.string.amo_out_why_other }), com.aktcl.aron.core.ui.BannerKind.Warning) },
+        refusedCode?.let { c -> AmoFormItem.Notice(stringResource(if (held && OutletVerify.decisionProblem(c) != "scope") AmoR.string.amo_out_why_held else when (OutletVerify.decisionProblem(c)) { "unknown_route" -> AmoR.string.amo_out_why_unknown_route; "cluster" -> AmoR.string.amo_out_why_cluster; "scope" -> AmoR.string.amo_out_why_scope; else -> AmoR.string.amo_out_why_other }), com.aktcl.aron.core.ui.BannerKind.Warning) },
     ) + listOf(
         com.aktcl.aron.feature.amo.routeItem(route, emptySet()), com.aktcl.aron.feature.amo.clusterItem(cluster, formErrors),
     )
