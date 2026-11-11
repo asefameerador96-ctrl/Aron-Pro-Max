@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -32,6 +32,7 @@ test("houses: the duplicate pair is listed, one is deactivated with a reason, th
 test("houses: the duplicate is merged into the kept house through the server operation", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/house-dedupe");
+  await hydrated(page.getByTestId("hd-merge-start")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("hd-merge-start").click();
   await expect(page.getByTestId("hd-merge-keep")).toHaveValue("10"); // the oldest active house
   await page.locator("#reason").fill("Same depot entered twice");

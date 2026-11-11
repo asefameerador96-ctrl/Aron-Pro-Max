@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -48,6 +48,7 @@ test("access: a brand user keeps at least one brand", async ({ page }) => {
   await loginOk(page, "msuper1", "super-pass-1", "123456");
   await page.goto("/admin/user-access/5002");
   await expect(page.getByTestId("brand-5")).toBeChecked();
+  await hydrated(page.getByTestId("brand-5")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("brand-5").uncheck();
   await page.locator("#reason").fill("Removing the only brand to test the guard");
   await page.getByTestId("access-save").click();
@@ -78,6 +79,7 @@ test("access: granting Users write and Credentials write shows a warning and sti
   await loginOk(page, "msuper1", "super-pass-1", "123456");
   await page.goto("/admin/user-access/3001");
   await expect(page.getByTestId("access-creds-warning")).toHaveCount(0);
+  await hydrated(page.getByTestId("grant-users").locator('input[value="w"]')); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("grant-users").locator('input[value="w"]').check();
   await expect(page.getByTestId("access-creds-warning")).toHaveCount(0);
   await page.getByTestId("grant-credentials").locator('input[value="w"]').check();

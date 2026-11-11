@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -8,6 +8,7 @@ const state = async () => (await fetch(`${MOCK}/__mock/state`)).json();
 
 async function openOutlet(page: Page, query: string, id: number) {
   await page.goto("/admin/outlet-change");
+  await hydrated(page.getByTestId("och-search").locator('input[name="q"]')); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("och-search").locator('input[name="q"]').fill(query);
   await page.getByTestId("och-search").locator('button[type="submit"]').click();
   await page.getByTestId(`och-pick-${id}`).click();

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -8,6 +8,7 @@ test.beforeEach(async () => {
 test("F-TSO-025: a TSO proposes a radius for its own territory and sees that it waits for approval", async ({ page }) => {
   await loginOk(page, "mtso1", "tso-pass-1");
   await page.goto("/admin/radius");
+  await hydrated(page.locator("#f-radius")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.locator("#f-radius").fill("120");
   await page.locator("#reason").fill("Dense market near the station");
   await page.getByTestId("radius-submit").click();

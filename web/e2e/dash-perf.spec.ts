@@ -2,9 +2,7 @@
 // JS bytes on the wire for a cold load, LCP, and layout shift during load and after an in-place refresh. The numbers are
 // attached to the report so docs/status/web-dashboard.md can record them.
 import { expect, test } from "@playwright/test";
-import { loginOk, resetMock } from "./helpers";
-
-export const BUDGET = { jsKbGzip: 300, lcpMs: 3500, cls: 0.1 };
+import { BUDGET, loginOk, resetMock } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();

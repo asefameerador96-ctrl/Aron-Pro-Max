@@ -1,6 +1,6 @@
 // Checker ADM-1 (F-ADM-001/002/003/007): browser-level checks of the write pages, the one-time password and a11y basics.
 import { expect, test } from "@playwright/test";
-import { loginOk, resetMock } from "./helpers";
+import { loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -18,6 +18,7 @@ test("CE1: SUPPORT gets HTTP 403 on write pages even when the id or slug is perc
 test("CE2: the one-time panel shows localised labels and a localised expiry, not raw member names and an ISO string", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/users/new");
+  await hydrated(page.locator("#f-username")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.locator("#f-username").fill("chk001");
   await page.locator("#f-full_name").fill("Checker Rep");
   await page.locator("#reason").fill("Checker creates a user for the panel");

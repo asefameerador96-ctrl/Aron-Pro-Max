@@ -93,6 +93,9 @@ describe("integer money, percent and quantity", () => {
     expect(displayUnit(DOZ)).toBe("dozen");
     expect(displayUnit({ field_unit: "piece", base_unit: "piece" })).toBe("piece");
     expect(displayUnit({ field_unit: "stick", base_unit: "stick" })).toBe("stick");
+    // an explicit base word wins over the category word: a cigarette counted in sticks stays "stick", a match counted in packs is a dozen
+    expect(displayUnit({ field_unit: "stick", base_unit: "stick", category_code: "cigarette" })).toBe("stick");
+    expect(displayUnit({ field_unit: "pack", base_unit: "stick", category_code: "match" })).toBe("dozen");
     expect(unitCtx([BOX])).toEqual({ packFactor: 25, fieldUnit: "box", baseUnit: "piece" });
     expect(qtyText("en", 50, unitCtx([BOX]))).toBe("2 box(es) (50 piece(s))");
     expect(qtyText("bn", 50, unitCtx([BOX]))).toContain("২ বক্স");

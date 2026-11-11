@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MOCK, dhakaPlus, loginOk, resetMock } from "./helpers";
+import { MOCK, dhakaPlus, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -63,6 +63,7 @@ test("assignments: overlap is refused, a cover is accepted, an open one can be e
 test("users: create shows the temporary password once; reset by support; disable keeps the row", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/users/new");
+  await hydrated(page.locator("#f-username")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.locator("#f-username").fill("sr999001");
   await page.locator("#f-full_name").fill("New Field Rep");
   await page.locator("#f-role").selectOption("SR");

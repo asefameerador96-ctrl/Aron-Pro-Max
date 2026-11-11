@@ -198,6 +198,7 @@ test("generated CRUD page: list, filter, edit with a mandatory reason, audit row
 test("create needs a reason too; the BFF refuses a write without one", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/clusters/new");
+  await hydrated(page.locator("#f-name")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.locator("#f-name").fill("New Haat");
   await page.locator("#f-zone_id").selectOption({ label: "Z-335-1 · Mirpur Zone 1" });
   await page.getByRole("button", { name: "তৈরি করুন" }).click();

@@ -2,7 +2,7 @@
 // role gate, Bangla at phone width and an axe pass.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { loginOk, resetMock } from "./helpers";
+import { loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -29,6 +29,7 @@ test("the flag filter narrows the list and the picker keeps the date range", asy
   await loginOk(page, "wm1", "wm-pass-1");
   await english(page);
   await page.goto(DAY);
+  await hydrated(page.getByRole("combobox", { name: "Flag" })); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByRole("combobox", { name: "Flag" }).selectOption("price_mismatch");
   await page.getByTestId("flagged-filter").getByRole("button", { name: "Filter" }).click();
   await expect(page).toHaveURL(/flag=price_mismatch/);
@@ -48,6 +49,7 @@ test("cursor paging: 55 rows are two pages, next then first page", async ({ page
   await english(page);
   await page.goto("/flagged-memos?from=2026-10-05&to=2026-10-05");
   await expect(page.getByTestId("data-table").locator("tbody tr")).toHaveCount(50);
+  await hydrated(page.getByTestId("flagged-next")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("flagged-next").click();
   await expect(page).toHaveURL(/cursor=/);
   await expect(page.getByTestId("data-table").locator("tbody tr")).toHaveCount(5);

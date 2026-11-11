@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -9,6 +9,7 @@ test("F-ADM-026: a PDF manual is uploaded to the SAS URL and listed, with an aud
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/tutorials");
   await expect(page.getByTestId("data-table")).toContainText("Taking a first order");
+  await hydrated(page.locator("#f-kind")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.locator("#f-kind").selectOption("manual");
   await page.locator("#f-title_en").fill("TSO manual");
   await page.getByTestId("role-TSO").check();
@@ -23,6 +24,7 @@ test("F-ADM-026: a PDF manual is uploaded to the SAS URL and listed, with an aud
 test("a wrong file type is refused before any upload", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/tutorials");
+  await hydrated(page.locator("#f-title_en")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.locator("#f-title_en").fill("Bad file");
   await page.getByTestId("role-SR").check();
   await page.locator("#f-file").setInputFiles({ name: "m.txt", mimeType: "text/plain", buffer: Buffer.from("x") });

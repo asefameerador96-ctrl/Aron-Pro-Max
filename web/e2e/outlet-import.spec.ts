@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import writeExcelFile from "write-excel-file/node";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -33,6 +33,7 @@ test("outlet form: the channel is required, it cannot be left empty", async ({ p
 test("outlet import: a row without a channel is refused in the report; a good sheet is previewed and committed", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/outlet-import");
+  await hydrated(page.getByTestId("oi-file")); // a click or fill before React attaches is lost or reverted (D-WEB-FIX-01)
   await page.getByTestId("oi-file").setInputFiles(await sheet([["Store A", "Owner A", "Z-334-1", "Banani Market", "", "retail"], ["Store B", "Owner B", "Z-334-1", "Banani Market", "Wholesale", "retail"]]));
   await expect(page.getByTestId("oi-issues").locator("tbody tr")).toHaveCount(2);
   await expect(page.getByTestId("oi-check")).toHaveCount(0);

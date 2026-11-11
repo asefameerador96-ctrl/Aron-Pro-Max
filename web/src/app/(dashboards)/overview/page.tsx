@@ -429,6 +429,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             testId="tile-sales"
             valueTestId="sales-net"
             plain
+            locale={locale}
             className="col-span-full md:col-span-6 lg:col-span-12 xl:col-span-6"
             label={t(locale, "dashboard.kpi.net")}
             amount={formatLakhCrore(locale, mtkToTaka(k.net_mtk), lw)}
