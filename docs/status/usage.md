@@ -2900,3 +2900,6 @@
 - GO train 102 sent to integrator 24 (train head 30230e3cc, expected DECISIONS 414, deploy skipped by design).
 - L-B told to start its alignment round on 1.13.0 (seven items from the request file, typed paths, its held loginOk fix).
 - S2 fix round `f5522eb49`: static gate clean incl. the scans (Room v8 to v9, paired request transaction, request identity, journey rule per contract; DECISIONS 408); lane ci 43209036731 running; Opus re-check wkoahag0q running. It conflicts in code with trains 102/103 (SrSaleHosts.kt, strings): lane-side INT merge after they land.
+
+### 2026-11-12 11:40 UTC — train 102 on INT
+- Integrator 24 pushed train 102: INT `12f56c8bb` (DECISIONS 414, 0 lost lines; differs from the train head only by the two train.md rows), ci #2051 43210959546 running. S3, S5, S6 told to merge INT and report with gate script results and lane CI ids; S2 told to hold its push until the re-check result and prepare the merge.
