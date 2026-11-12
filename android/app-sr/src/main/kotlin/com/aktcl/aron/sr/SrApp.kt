@@ -446,7 +446,7 @@ fun SrApp(
                                 opening = false; screen = SrScreen.VISIT
                             }
                         }
-                    })
+                    }, manualRows = true)
                 }
             }
         }

@@ -137,4 +137,17 @@
     <string name="out_compass_w">west</string>
     <string name="out_compass_nw">north-west</string>
     <string name="out_own_load_failed">Could not load your requests</string>
+    <string name="out_sale_history_btn">Sale History</string>
+    <string name="out_today_target_btn">Today\'s target</string>
+    <string name="out_call_question">Do you want to start the call?</string>
+    <string name="out_call_yes">Yes</string>
+    <string name="out_call_no">No</string>
+    <string name="out_proceed">Proceed</string>
+    <string name="out_call_first_title">Start the call</string>
+    <string name="out_call_first">Please start the call to continue.</string>
+    <string name="out_ok">OK</string>
+    <string name="out_call_photo_title">Take a photo of the outlet</string>
+    <string name="out_call_photo_note">The photo and your location are recorded together for this call.</string>
+    <string name="out_call_photo_continue">Continue</string>
+    <string name="out_call_photo_skip">The camera is not working: continue without a photo</string>
 </resources>

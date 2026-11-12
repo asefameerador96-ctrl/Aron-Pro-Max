@@ -101,6 +101,13 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     /** When each call was started (the SR tapped Yes on the start prompt); read when the visit closes. */
     val callStarted = java.util.concurrent.ConcurrentHashMap<String, String>()
 
+    /**
+     * `cfg.sale.call_photo_required` (SR manual s8 / 20, owner Q8 default true): the outlet photo after হ্যাঁ. OFF in TRAIN 1 on purpose: a photo with no
+     * `call_photo_uuid` on the visit record and no media purpose for it cannot be linked on the server, so asking the rep for it would cost a
+     * minute per call for nothing. TRAIN 2 adds the contract members, reads the config and turns this on (D-SR-MAN-S4-07).
+     */
+    val callPhotoRequired: Boolean = false
+
     /** The fresh geofence fix of the edit in progress (F-SR-033): taken by [prepareEdit], consumed by the commit, never reused. */
     @Volatile private var editReading: FixReading? = null
     private val editFixUuid get() = editFixId ?: ClientIds.newUuid().also { editFixId = it }

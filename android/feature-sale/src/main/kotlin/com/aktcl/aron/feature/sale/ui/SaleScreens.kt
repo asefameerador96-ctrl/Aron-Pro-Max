@@ -264,9 +264,22 @@ fun SaleEntryScreen(
     retailerLabel: String? = null,
     /** Text of the previous-sales button when the host wants its own (the AMO's "বিক্রয় ইতিহাস"); null keeps the SR wording. */
     historyLabel: String? = null,
+    /**
+     * The SR's zero-sale reason picker (screenshot 32, D-SR-MAN-S4-03): non-null makes "yes" on the zero-sale question open the four-reason
+     * dialog and report the choice here instead of calling [onZeroSaleConfirmed]; null (AMO, tests) keeps the one-step confirm.
+     */
+    onZeroSaleReason: ((com.aktcl.aron.feature.sale.domain.ZeroSaleReason) -> Unit)? = null,
+    /**
+     * The SR's quantity popup (manual s8 / 22, D-SR-MAN-S4-05): true makes a tap on a SKU's picture or code open [QuantityPopup] with the quick
+     * buttons and the আগের দিন / ADS / SDLW figures from [skuStats]; the inline stepper stays for fast edits. False (AMO, tests) is unchanged.
+     */
+    quantityPopup: Boolean = false,
+    skuStats: Map<Long, com.aktcl.aron.feature.sale.domain.SkuStats> = emptyMap(),
 ) {
     val look = LocalAronLook.current
     var askZero by remember { mutableStateOf(false) }
+    var askReason by remember { mutableStateOf(false) }
+    var popupSkuId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
     val lines = review?.lines.orEmpty().associateBy { it.sku.skuId }
     // a recent SKU is listed first, once: it leaves its category order (one row, one control set, per SKU); the list has no filter row
     val ordered = skus.sortedWith(compareBy({ it.skuId !in recentSkuIds }, { categoryRank(it.categoryCode) }))
@@ -286,7 +299,7 @@ fun SaleEntryScreen(
                         Modifier.weight(1f),
                         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        items(ordered, key = { it.skuId }, contentType = { "sku" }) { sku -> SaleSkuRow(sku, qtyOf(sku.skuId), lines[sku.skuId], onQuantity) }
+                        items(ordered, key = { it.skuId }, contentType = { "sku" }) { sku -> SaleSkuRow(sku, qtyOf(sku.skuId), lines[sku.skuId], onQuantity, onOpen = if (quantityPopup) ({ popupSkuId = sku.skuId }) else null) }
                     }
                 }
             }
@@ -308,9 +321,15 @@ fun SaleEntryScreen(
         AronConfirmDialog(
             stringResource(R.string.sale_zero_confirm_title), stringResource(R.string.sale_zero_confirm_message),
             stringResource(R.string.sale_yes), stringResource(R.string.sale_no),
-            onConfirm = { askZero = false; onZeroSaleConfirmed() }, onDismiss = { askZero = false },
+            onConfirm = { askZero = false; if (onZeroSaleReason != null) askReason = true else onZeroSaleConfirmed() }, onDismiss = { askZero = false },
         )
     }
+    popupSkuId?.let { id ->
+        skus.firstOrNull { it.skuId == id }?.let { sku ->
+            QuantityPopup(sku, qtyOf(id), skuStats[id], onSave = { q -> onQuantity(id, q.coerceIn(0L, MaxLineQty)); popupSkuId = null }, onClose = { popupSkuId = null })
+        } ?: run { popupSkuId = null }
+    }
+    if (askReason && onZeroSaleReason != null) ZeroSaleReasonDialog(onChosen = { askReason = false; onZeroSaleReason(it) }, onCancel = { askReason = false })
 }
 
 /** The full-width green button of the manual (SR-S-32: "পূর্বের সেল ডাটা দেখুন", a history glyph and the label). */
@@ -344,7 +363,7 @@ private fun LinkText(label: String, onClick: () -> Unit, modifier: Modifier = Mo
  * Each control carries its own TalkBack label with the SKU name (minus, the quantity field, plus).
  */
 @Composable
-private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (Long, Long) -> Unit) {
+private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (Long, Long) -> Unit, onOpen: (() -> Unit)? = null) {
     val look = LocalAronLook.current
     val unit = entryUnitLabel(sku.entryLabelKey)
     val name = skuDisplayName(sku)
@@ -362,7 +381,7 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (
             quantityLabel = stringResource(R.string.sale_qty_a11y, localizedNumber(qty), unit) + ", " + name,
             packBadge = line?.takeIf { entry.unit != QtyUnit.PACK && sku.packFactor > 1 && it.packBadge.first > 0 }?.let { localizedNumber(it.packBadge.first.toLong()) },
             category = packCategoryOf(sku.categoryCode),
-            minusEnabled = qty > 0, plusEnabled = qty < max,
+            minusEnabled = qty > 0, plusEnabled = qty < max, onOpen = onOpen,
         )
         // the over-stock state stays visible (a warning, never a block): the stock figure is named in red under the card
         if (line?.exceedsStock == true) {
@@ -402,7 +421,7 @@ internal fun packCategoryOf(code: String): PackCategory = when (code) {
 }
 
 /** The stepper's ceiling per line (unchanged rule). */
-private const val MaxLineQty = 999_999L
+internal const val MaxLineQty = 999_999L
 
 /** Scroll movement under this many pixels does not flip the dock (a finger resting on the list). */
 private const val ScrollSlackPx = 4

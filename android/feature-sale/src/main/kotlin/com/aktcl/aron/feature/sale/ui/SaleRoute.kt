@@ -36,6 +36,10 @@ fun SaleRoute(
     retailerLabel: String? = null, outletLines: List<String> = emptyList(),
     /** The previous-sales button of the entry screen (the AMO's "Sale History", 24/26); null hides it, as in the SR app. [historyLabel] overrides its text. */
     onPreviousSales: (() -> Unit)? = null, historyLabel: String? = null,
+    /** The SR asks for the zero-sale reason after "yes" (manual s10); the AMO keeps the one-step confirm. */
+    zeroSaleReasonPicker: Boolean = false,
+    /** The SR's quantity popup and its reference figures (manual s8 / 22); off for the AMO. */
+    quantityPopup: Boolean = false, skuStats: Map<Long, com.aktcl.aron.feature.sale.domain.SkuStats> = emptyMap(),
 ) {
     val ui by vm.state.collectAsState()
     var stage by remember { mutableStateOf(SaleStage.Entry) }
@@ -60,6 +64,8 @@ fun SaleRoute(
                         // an edit never starts a QC-only sale: completed QC would lock the edit for good (F-SR-033)
                         onQcOnly = if (draft?.edit == null) ({ qcBefore = emptyList(); qcOnlyStarted = true; vm.startQcOnly(); stage = SaleStage.Qc }) else null,
                         onZeroSaleConfirmed = { vm.confirmZeroSale(); stage = SaleStage.Review },
+                        quantityPopup = quantityPopup, skuStats = skuStats,
+                        onZeroSaleReason = if (zeroSaleReasonPicker) ({ r -> vm.confirmZeroSale(r.code); stage = SaleStage.Review }) else null,
                         retailerLabel = retailerLabel,
                         onPreviousSales = onPreviousSales, historyLabel = historyLabel,
                     )

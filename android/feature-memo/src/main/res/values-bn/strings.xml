@@ -83,4 +83,8 @@
     <string name="memo_total_category">মোট %1$s</string>
     <string name="memo_due_chip_amount">বাকি %1$s</string>
     <string name="summary_qty_rem">%1$s %2$s %3$s</string>
+    <string name="sale_data_title">সেল ডাটা</string>
+    <string name="sale_data_none">এই তারিখে এই আউটলেটে কোনো বিক্রয় নেই।</string>
+    <string name="sale_data_ok">ওকে</string>
+    <string name="sale_data_cancel">বাতিল</string>
 </resources>
