@@ -23,8 +23,8 @@ class AmoManualContractTest {
     }
 
     @Test
-    fun versionIs1131() {
-        assertEquals("1.15.0", map(OpenApi.doc["info"])["version"].toString(), "the exact shipped contract version (1.15.0: the field side of loyalty and Astha; 1.13.1: description-only corrections of the loyalty portal text; 1.13.0: the loyalty portal, schema and contract; 1.12.2: optional If-Match on setOfferStatus; 1.12.1 the discount portal routes and discounts module; 1.12.0 the schema and contract)")
+    fun versionIs1150() {
+        assertEquals("1.15.0", map(OpenApi.doc["info"])["version"].toString(), "the exact shipped contract version (1.15.0: the field side of loyalty and Astha; 1.14.0: SR manual train 1, additive; 1.13.1: description-only patch of the loyalty portal; 1.13.0: the loyalty portal, schema and contract; 1.12.2: optional If-Match on setOfferStatus; 1.12.1 the discount portal routes and discounts module; 1.12.0 the schema and contract)")
     }
 
     @Test
@@ -110,7 +110,7 @@ class AmoManualContractTest {
     fun theJourneyMembersAndSalesByDateSchemasKeepTheNamesThePhonesBuildAgainst() {
         assertEquals(listOf("user", "route", "business_date", "calls", "distance_m"), required("TeamJourney"))
         assertEquals(listOf("visit_uuid", "outlet", "status", "opened_at", "closed_at", "duration_s", "distance_from_prev_m", "distance_so_far_m", "gap_to_next_s"), required("JourneyCall"))
-        assertEquals(listOf("new_sale", "edited_sale", "no_sale"), props("JourneyCall").getValue("status")["enum"])
+        assertEquals(listOf("new_sale", "edited_sale", "no_sale", "repeat_sale"), props("JourneyCall").getValue("status")["enum"])
         assertTrue((props("JourneyCall").getValue("distance_from_prev_m")["type"] as List<*>).contains("null"), "the first call has no previous outlet")
         assertEquals(listOf("id", "name", "code", "phone_masked", "cluster"), required("JourneyOutlet"))
         assertEquals(listOf("user_id", "full_name", "route_id", "route_code", "route_name", "route_days", "phone", "phone_masked", "total_outlets", "vacant"), required("TeamMemberRow"))

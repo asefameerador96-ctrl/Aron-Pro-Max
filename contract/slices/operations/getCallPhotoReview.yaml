@@ -1,0 +1,56 @@
+path: /v1/supervisor/call-photos
+method: get
+operation:
+  tags:
+  - team
+  operationId: getCallPhotoReview
+  summary: Call-start photos for review, by business date (contract 1.14.0, SRM-A-27).
+  description: 'AMO, TSO, DMO, WM, support, admin and superadmin; the rows are limited to the caller''s reach on
+    the server (zones and routes from the token, the same rule as the media read;
+
+    national roles see all; nothing in the request widens it). One row per `sr_call` visit of the date, newest first,
+    with the photo (`call_photo_uuid`, read through
+
+    `getMediaReadUrl`), the capture fix of the media record, or the recorded skip reason. A visit with neither a
+    photo nor a skip
+
+    reason is listed with `photo_uuid` null so a reviewer sees missing photos too. The media record is joined only
+    when it belongs to the visit''s own
+
+    user and has the purpose `outlet_call` (a rep cannot point at another rep''s or another purpose''s photo: then
+    `photo_uuid` is null; with no media
+
+    record at all it stays as sent, the photo may still arrive); `media_status` is null until the media record has
+    arrived, in either order with the visit.
+
+    `reason_code_unlisted` marks a close whose zero-sale or skip code was not on the list when stored.
+
+    '
+  parameters:
+  - name: business_date
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/BusinessDate'
+  - name: route_id
+    in: query
+    required: false
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: One page.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CallPhotoReviewPage'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

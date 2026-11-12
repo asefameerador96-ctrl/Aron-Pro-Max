@@ -36,6 +36,19 @@ data class RejectedRecordViewDto(
     val last_received_at: String,
 )
 
+/** Contract 1.14.0 `SubmitBusinessTotals` (SRM-B-25): the day's business figures, computed with the dashboard aggregates' rules. */
+@Serializable
+data class SkuQtyBaseDto(val sku_id: Long, val qty_base: Long)
+
+@Serializable
+data class SubmitBusinessTotalsDto(
+    val outlets_visited: Int,
+    val sold: List<SkuQtyBaseDto>,
+    val stock_issued: List<SkuQtyBaseDto>,
+    val qc: List<SkuQtyBaseDto>,
+    val promotion_mtk: Long,
+)
+
 @Serializable
 data class SalesSubmitDigestDto(
     val business_date: String,
@@ -43,6 +56,7 @@ data class SalesSubmitDigestDto(
     val by_type: Map<String, DigestTypeCountsDto>,
     val rejected: List<RejectedRecordViewDto>,
     val rejected_truncated: Boolean,
+    val business_totals: SubmitBusinessTotalsDto? = null,
 )
 
 /**
@@ -127,7 +141,43 @@ class SalesSubmitDigestService(private val db: Database, private val clock: com.
         val refs = rows.filter { it.view.memo_no == null && it.memoRef != null }.map { it.memoRef!! }.distinct()
         val refNo = if (refs.isEmpty()) emptyMap() else memoNumbers(h, userId, refs)
         val views = rows.take(MAX_REJECTED).map { r -> if (r.view.memo_no != null || r.memoRef == null) r.view else r.view.copy(memo_no = refNo[r.memoRef]) }
-        return SalesSubmitDigestDto(date.toString(), deviceUuid?.takeIf { dev != null }, byType, views, rows.size > MAX_REJECTED)
+        return SalesSubmitDigestDto(date.toString(), deviceUuid?.takeIf { dev != null }, byType, views, rows.size > MAX_REJECTED, businessTotals(h, userId, date))
+    }
+
+    /**
+     * Contract 1.14.0 (SRM-B-25). The rules stated in the contract (`SubmitBusinessTotals`); the phone lane adopts these, they are not claimed to be the phone's rules today. Aggregator-shaped (`dw.agg_daily_route`, `agg_daily_route_sku`), read straight from the
+     * stored rows of the login and date rather than from the worker's summaries, so the figure never lags the sync it is compared with:
+     * a visit counts when it is an `sr_call`, not voided, not abandoned and not call_declined (a declined call is not a visit made); a memo when active with a line; sold quantity is the `sale` lines only, per SKU in base units
+     * (the phone converts with each SKU's pack factor); issued stock is `stock_movement` kinds `issue` and `adjustment`; QC is the stored `qc_line` quantity; promotion is offer + DRP discount.
+     */
+    fun businessTotals(h: Handle, userId: Long, date: LocalDate): SubmitBusinessTotalsDto {
+        val visited = h.createQuery(
+            "SELECT count(DISTINCT outlet_id) FROM app.visit WHERE user_id = :u AND business_date = :d AND visit_kind = 'sr_call' AND voided_at IS NULL AND outcome_code IS DISTINCT FROM 'abandoned' AND call_declined IS NOT TRUE",
+        ).bind("u", userId).bind("d", date).mapTo(Int::class.java).one()
+        fun byCategory(sql: String) = h.createQuery(sql).bind("u", userId).bind("d", date)
+            .map { rs, _ -> SkuQtyBaseDto(rs.getLong("sku"), rs.getLong("q")) }.list()
+        val sold = byCategory(
+            """
+            SELECT ml.sku_id AS sku, sum(ml.qty_base)::bigint AS q
+              FROM app.memo_line ml
+              JOIN app.memo m ON m.client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
+              WHERE m.user_id = :u AND m.business_date = :d AND m.status = 'active' AND m.line_count > 0 AND m.voided_at IS NULL
+               AND ml.voided_at IS NULL AND ml.line_kind = 'sale'
+             GROUP BY ml.sku_id HAVING sum(ml.qty_base) > 0 ORDER BY ml.sku_id
+            """.trimIndent(),
+        )
+        val issued = byCategory(
+            "SELECT sm.sku_id AS sku, sum(sm.qty_base)::bigint AS q FROM app.stock_movement sm " +
+                "WHERE sm.user_id = :u AND sm.business_date = :d AND sm.voided_at IS NULL AND sm.kind IN ('issue', 'adjustment') GROUP BY sm.sku_id HAVING sum(sm.qty_base) <> 0 ORDER BY sm.sku_id",
+        )
+        val qc = byCategory(
+            "SELECT q.sku_id AS sku, sum(q.qty_base)::bigint AS q FROM app.qc_entry_line q " +
+                "WHERE q.user_id = :u AND q.business_date = :d AND q.voided_at IS NULL GROUP BY q.sku_id HAVING sum(q.qty_base) > 0 ORDER BY q.sku_id",
+        )
+        val promo = h.createQuery(
+            "SELECT coalesce(sum(offer_discount_mtk + drp_discount_mtk), 0)::bigint FROM app.memo m WHERE m.user_id = :u AND m.business_date = :d AND m.status = 'active' AND m.line_count > 0 AND m.voided_at IS NULL",
+        ).bind("u", userId).bind("d", date).mapTo(Long::class.java).one()
+        return SubmitBusinessTotalsDto(visited, sold, issued, qc, promo)
     }
 
     private class Row(val view: RejectedRecordViewDto, val memoRef: String?)

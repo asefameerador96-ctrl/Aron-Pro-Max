@@ -79,8 +79,8 @@ class AmoManualV0150Test {
     }
 
     @Test
-    fun theViewContractIs16AndTheVisitViewCarriesTheReasonBeforeIsEffective() = db.connect().use { c ->
-        assertEquals("1.7", c.scalar("SELECT dw.view_contract_version()"))   // V0162 (1.6 at V0152, 1.5 at V0151)
+    fun theViewContractIs18AndTheVisitViewCarriesTheReasonBeforeIsEffective() = db.connect().use { c ->
+        assertEquals("1.8", c.scalar("SELECT dw.view_contract_version()"))   // V0175 (1.7 at V0162, 1.6 at V0152, 1.5 at V0151)
         val cols = c.column("SELECT column_name FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'v_visit' ORDER BY ordinal_position").filterNotNull()
         assertEquals("is_effective", cols.last())
         assertEquals(cols.indexOf("geo_action") + 1, cols.indexOf("force_sale_reason"))

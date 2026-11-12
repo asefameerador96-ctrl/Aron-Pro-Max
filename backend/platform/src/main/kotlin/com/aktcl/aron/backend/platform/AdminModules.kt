@@ -128,6 +128,7 @@ object AdminModules {
         p("/v1/report-exports/**") to "reports",
         p("/v1/app/home") to "reports",
         p("/v1/team/**") to "reports",
+        p("/v1/supervisor/call-photos") to "reports", // contract 1.14.0, getCallPhotoReview: reach-scoped like the team reads; an ADMIN needs the reports grant
         p("/v1/memos/**") to "reports",
         p("/v1/feedback/**") to "reports",
         p("/v1/media/**") to "reports",
@@ -141,6 +142,7 @@ object AdminModules {
     val NOT_ADMIN: List<PortalLevels.Pattern> = listOf(
         p("/v1/sync/**"), p("/v1/devices/**"), p("/v1/auth/**"), p("/v1/client-errors"),
         p("/v1/app/**"),
+        p("/v1/supervisor/device-otps"), // TSO-only list of today's device OTPs (contract 1.14.0, getTeamDeviceOtps): the handler refuses every other role
         p("/v1/supervisor/call-targets"), // AMO-only cards (contract 1.11.0, getCallTargets): the handler refuses every other role
     )
 

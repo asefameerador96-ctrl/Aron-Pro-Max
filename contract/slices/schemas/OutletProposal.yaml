@@ -1,6 +1,8 @@
 OutletProposal:
   type: object
-  description: Proposed outlet facts; which members are required depends on the request type (docs/24 s12.2).
+  description: Proposed outlet facts; which members are required depends on the request type (docs/24 s12.2). A
+    `cluster_id` that is gone, or outside the outlet's zone on an `info` request, is dropped from the stored proposal
+    and the request is flagged `cluster_dropped`; the rest of the proposal is kept.
   additionalProperties: false
   properties:
     name:

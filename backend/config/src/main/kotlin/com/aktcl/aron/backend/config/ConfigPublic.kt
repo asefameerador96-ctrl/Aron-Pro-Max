@@ -38,7 +38,9 @@ data class AppReleaseDto(
 )
 
 @Serializable
-data class UpdateCheckDto(val update_available: Boolean, val blocked: Boolean, val min_version_code: Int, val latest: AppReleaseDto?, val prompt_policy: String, val wifi_only: Boolean)
+data class UpdateCheckDto(val update_available: Boolean, val blocked: Boolean, val min_version_code: Int, val latest: AppReleaseDto?, val prompt_policy: String, val wifi_only: Boolean,
+    /** Contract 1.14.0: copies of `latest.notes_en` / `notes_bn` (null without an update or a note). */
+    val notes_en: String? = null, val notes_bn: String? = null)
 
 /**
  * `GET /v1/config/public` (F-API-042, unauthenticated, cached by Front Door for 60 s, no user data) and
@@ -82,7 +84,7 @@ class ConfigPublic(private val db: Database, private val resolver: ConfigResolve
                 )
             }.list()
         }.firstOrNull { inRollout(it, deviceUuid) }
-        return UpdateCheckDto(latest != null, blocked, min, latest, policy, wifi)
+        return UpdateCheckDto(latest != null, blocked, min, latest, policy, wifi, latest?.notes_en, latest?.notes_bn)
     }
 
     /** Staged exposure: a stable hash of device and release decides, so a phone's answer never flips between calls. */

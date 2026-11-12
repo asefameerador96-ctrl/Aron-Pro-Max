@@ -1,0 +1,14 @@
+SkuQtyBase:
+  type: object
+  required:
+  - sku_id
+  - qty_base
+  additionalProperties: false
+  properties:
+    sku_id:
+      $ref: '#/components/schemas/Id'
+    qty_base:
+      type: integer
+      format: int64
+      description: Base units as stored (sticks, pieces, dozens). The phone converts to packets with the SKU's pack_factor;
+        a category total cannot be converted back when it mixes pack sizes.
