@@ -496,15 +496,16 @@ private fun BusinessTable(device: BusinessTotals, server: BusinessTotals?, typeL
     val waiting = stringResource(R.string.submit_row_waiting)
     val mismatch = stringResource(R.string.submit_row_mismatch)
     val units = listOf("packet", "box", "dozen", "piece", "stick").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
-    val other = stringResource(R.string.submit_biz_other)
     @Composable fun qty(rows: List<CategoryQty>, unit: (String) -> String): String {
         val lines = ArrayList<String>()
         for (r in rows) {
             if (r.qtyBase == 0L && r.entered == 0L) continue
-            // a SKU the phone has no master row for is counted under "other", never dropped
-            val name = if (r.categoryCode == OTHER_CATEGORY) other else categoryLabel(r.categoryCode)
-            val rem = if (r.remBase != 0L) " +" + localizedNumber(r.remBase) + " " + (units[com.aktcl.aron.rules.EntryUnits.baseLabelKey(r.categoryCode)] ?: "") else ""
-            lines += (name + " " + localizedNumber(r.entered) + " " + unit(r.unitKey) + rem).replace("  ", " ").trim()
+            if (r.categoryCode == OTHER_CATEGORY) { // a SKU with no master row: its own line, base units, never added to another
+                lines += stringResource(R.string.submit_biz_other_sku, r.skuId?.let { localizedNumber(it) } ?: "") + " " + localizedNumber(r.qtyBase)
+                continue
+            }
+            val rem = if (r.remBase != 0L) " " + com.aktcl.aron.core.ui.remWithUnit(r.remBase, units[com.aktcl.aron.rules.EntryUnits.baseLabelKey(r.categoryCode)] ?: "") else ""
+            lines += (categoryLabel(r.categoryCode) + " " + localizedNumber(r.entered) + " " + unit(r.unitKey) + rem).replace("  ", " ").trim()
         }
         return if (lines.isEmpty()) localizedNumber(0) else lines.joinToString("\n")
     }

@@ -74,5 +74,5 @@
     <string name="submit_rejected_other_phone">other phone or earlier install</string>
     <string name="submit_dismissed_title">Dismissed older records (%1$s)</string>
     <string name="submit_dismissed_note">These were not accepted and are older than %1$s days. They hold no sale or money. Nothing more to do.</string>
-    <string name="submit_biz_other">Other</string>
+    <string name="submit_biz_other_sku">Other (SKU %1$s)</string>
 </resources>

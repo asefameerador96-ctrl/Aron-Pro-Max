@@ -35,7 +35,7 @@ Branch `lane/android-sr-manual-s5` from INT `claude/wonderful-thompson-k6ejnf`. 
 ## Needed from SV (contract 1.14.0) for SRM-B-25
 Per route-day in the submit digest (the `server_totals` / `SubmitDigest` read the Sales Submit screen already uses), additive and optional:
 - `outlets_visited` (int, distinct outlets with a `visit` record that date)
-- `sold` / `stock_issued` / `qc`: lists of `{category_code, qty_base}` (live memos only for `sold`: a superseded memo is not counted; `stock_issued` = issue + adjustment `stock_movement` qty; `qc` = sum of `qc_line.qty_base`); base units only, the phone converts to field units
+- `sold` / `stock_issued` / `qc`: lists of `{sku_id, qty_base}` PER SKU (the lead's ruling: per category cannot be turned back into packets when a category mixes pack factors; live memos only for `sold`: a superseded memo is not counted; `stock_issued` = issue + adjustment `stock_movement` qty; `qc` = sum of `qc_line.qty_base`); base units only, the phone converts to field units
 - `promotion_mtk` (integer milli-taka text/int as the contract's money type: sum of live memos' discount lines, zero while the programmes are deferred)
 Then the lane wires `ServerBusiness` (`BusinessTotals.kt`) in its train 2; until then the column is blank and each row says "Waiting".
 
