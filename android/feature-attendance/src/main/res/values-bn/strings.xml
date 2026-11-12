@@ -34,6 +34,7 @@
     <string name="att_submit_first_open">Sales Submit খুলুন</string>
     <string name="att_submit_first_offline">অফলাইন — Sales Submit হয়নি। নেটওয়ার্ক ফিরলেই ডেটা নিজে থেকে যাবে; তারপর সাবমিট করে চেক আউট করুন।</string>
     <!-- the AMO style of the attendance screen (amo-shell A1, screenshots 14 to 16) -->
+    <string name="att_sr_out_done">চেক আউট সম্পন্ন হয়েছে</string>
     <string name="att_amo_in_done">চেক ইন সম্পন্ন হয়েছে</string>
     <string name="att_amo_out_after">চেক আউট %1$sটার পরে সক্রিয় হবে</string>
     <string name="att_amo_already_in">ইতিমধ্যে চেক ইন করা হয়েছে</string>
