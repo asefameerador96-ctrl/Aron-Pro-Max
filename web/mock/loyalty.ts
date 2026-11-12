@@ -39,7 +39,7 @@ export function freshLoyaltyStore(): LoyaltyStore {
   const s: LoyaltyStore = { rows: [], enrolments: [], gifts: [], nextId: 1, nextVersionId: 1, nextGiftId: 1, nextEnrolId: 1, uuids: new Map(), giftUuids: new Map(), batches: new Map() };
   const seed = (kind: string, code: string, status: Row["status"], w: Parameters<typeof version>[3], at: string) => {
     const id = s.nextId++;
-    s.rows.push({ id, kind, code, status, version: 1, created_at: at, updated_at: at, versions: [version(s.nextVersionId++, id, 1, w, "Seed programme for the portal mock", at)] });
+    s.rows.push({ id, kind, code, status, version: 2, created_at: at, updated_at: at, versions: [version(s.nextVersionId++, id, 1, w, "Seed programme for the portal mock", at)] });
     return id;
   };
   const astha = seed("astha", "ASTHA-Q4", "active", { name_en: "Astha 2026 Q4", name_bn: "আস্থা ২০২৬ চতুর্থ ত্রৈমাসিক", period_label: "2026-Q4", active_from: "2026-10-01", active_to: "2099-12-31", scope: [{ node_type: "sub_channel", node_id: 11 }], tiers: [t("silver", 1, "Silver", "সিলভার", null), t("gold", 2, "Gold", "গোল্ড", "3000.500"), t("platinum", 3, "Platinum", "প্ল্যাটিনাম", "5000.000")] }, "2026-09-28T05:00:00.000Z");
@@ -133,11 +133,15 @@ const ldate = (o: Body, k: string, p = `body.${k}`): string | null => {
   return v as string;
 };
 const uuidOf = (o: Body, k: string): string => {
-  const v = str(o, k, 36, 36, true)!;
+  const v = str(o, k, 1, 64, true)!;
   if (!UUID.test(v)) bad(`body.${k}`, "not_a_uuid");
   return v;
 };
-const reasonOf = (o: Body, k = "change_reason"): string => str(o, k, 10, 500, true)!;
+const reasonOf = (o: Body, k = "change_reason"): string => {
+  const t = str(o, k, 1, 2000, true)!.trim(); // the server trims, then judges 10..500
+  if (Array.from(t).length < 10 || Array.from(t).length > 500) bad(`body.${k}`, "length");
+  return t;
+};
 const pathId = (raw: string): number => { const n = /^\d{1,18}$/.test(raw) ? Number(raw) : NaN; return Number.isSafeInteger(n) && n >= 1 ? n : bad("path.id"); };
 const ifMatchOf = (raw: string | string[] | undefined): number => { const m = typeof raw === "string" ? /^"([0-9]{1,10})"$/.exec(raw) : null; return m ? Number(m[1]) : bad("header.If-Match"); };
 const pageLimit = (q: URLSearchParams): number => { const v = q.get("limit"); if (v === null) return 100; const n = /^-?\d+$/.test(v) ? Number(v) : NaN; return n >= 1 && n <= 500 ? n : bad("query.limit", "out_of_range"); };
@@ -154,7 +158,8 @@ const zonesOf = (type: string, id: number): number[] => {
   if (type === "route") return ROUTE_ZONE[id] === undefined ? [] : [ROUTE_ZONE[id]!];
   return [];
 };
-/** A version is visible to the caller: all for ADMIN-and-up / NATIONAL / TOP; BRAND: no product named or one of its brands; WM / DMO / TSO: no geography
+/** (BRAND reach is brand-level only here; the server also counts a variant, sku or category under the user's brand.)
+ *  A version is visible to the caller: all for ADMIN-and-up / NATIONAL / TOP; BRAND: no product named or one of its brands; WM / DMO / TSO: no geography
  *  named (channel nodes do not narrow) or a named node that contains a zone of the caller's reach. */
 function visible(me: LoyaltyCaller, v: Pick<Version, "qualifying" | "scope">): boolean {
   if (NATIONAL.includes(me.role)) return true;
@@ -192,11 +197,11 @@ function readTiers(o: Body): Tier[] {
     only(t, ["tier_code", "sort_order", "label_en", "label_bn", "threshold", "threshold_basis"]);
     return t;
   }).map((t, i) => {
-    const code = str(t, "tier_code", 2, 41, true, false, `body.tiers[${i}].tier_code`)!;
+    const code = str(t, "tier_code", 2, 41, true)!; // required / length name the FLAT member (a server shortcoming); the pattern is indexed
     if (!TIER_RE.test(code)) bad(`body.tiers[${i}].tier_code`, "pattern");
     const order = lint(t, "sort_order", 1, 10, `body.tiers[${i}].sort_order`) ?? bad(`body.tiers[${i}].sort_order`, "required");
-    const labelEn = str(t, "label_en", 1, 80, true, false, `body.tiers[${i}].label_en`)!;
-    const labelBn = str(t, "label_bn", 0, 80, false, true, `body.tiers[${i}].label_bn`);
+    const labelEn = str(t, "label_en", 1, 80, true)!;
+    const labelBn = str(t, "label_bn", 0, 80, false, true);
     if (t.threshold_basis !== undefined && t.threshold_basis !== "std") bad(`body.tiers[${i}].threshold_basis`, "not_in_enum");
     let th: string | null = null;
     if (t.threshold !== undefined && t.threshold !== null) {
@@ -228,7 +233,7 @@ function readPairs(o: Body, k: "qualifying" | "scope", max: number): { a: string
     if (seen.has(`${kind}:${id}`)) bad(`body.${k}[${i}]`, "duplicate");
     seen.add(`${kind}:${id}`);
     return { a: kind, b: id };
-  });
+  }).sort((x, y) => (x.a < y.a ? -1 : x.a > y.a ? 1 : x.b - y.b)); // sorted by kind then id, as the server
 }
 /** readSpec: the members present in `o` over `base` (null base = a create). Order of checks as the server. */
 function readSpec(o: Body, base: Spec | null): Spec {
@@ -266,11 +271,11 @@ function readEnrolRows(o: Body, programmeId: number): EnrolRow[] {
     if (e === null || typeof e !== "object" || Array.isArray(e)) bad(`body.rows[${i}]`, "not_an_object");
     const r = e as Body;
     only(r, ["programme_id", "outlet_id", "league_label", "tier_code", "base_target", "valid_from", "valid_to"]);
-    const pid = idOf(r, "programme_id", true, `body.rows[${i}].programme_id`)!;
+    const pid = idOf(r, "programme_id", true)!; // flat member pointers, as the server (str / id / ldate do not know the row)
     if (pid !== programmeId) bad(`body.rows[${i}].programme_id`, "path_mismatch");
-    const outlet = idOf(r, "outlet_id", true, `body.rows[${i}].outlet_id`)!;
-    const league = str(r, "league_label", 0, 40, false, true, `body.rows[${i}].league_label`);
-    const tier = str(r, "tier_code", 0, 41, false, true, `body.rows[${i}].tier_code`)?.trim() || null;
+    const outlet = idOf(r, "outlet_id", true)!;
+    const league = str(r, "league_label", 0, 40, false, true) || null; // "" becomes null
+    const tier = str(r, "tier_code", 0, 41, false, true) || null;
     if (tier !== null && !TIER_RE.test(tier)) bad(`body.rows[${i}].tier_code`, "pattern");
     let target: string | null = null;
     if (r.base_target !== undefined && r.base_target !== null) {
@@ -278,8 +283,8 @@ function readEnrolRows(o: Body, programmeId: number): EnrolRow[] {
       if ((r.base_target as string).startsWith("-") && Number(r.base_target) !== 0) bad(`body.rows[${i}].base_target`, "negative"); // the -37,500% bug
       target = decimalWire((r.base_target as string).replace(/^-/, ""));
     }
-    const from = ldate(r, "valid_from", `body.rows[${i}].valid_from`) ?? bad(`body.rows[${i}].valid_from`, "required");
-    const to = ldate(r, "valid_to", `body.rows[${i}].valid_to`);
+    const from = ldate(r, "valid_from") ?? bad(`body.rows[${i}].valid_from`, "required");
+    const to = ldate(r, "valid_to");
     if (to !== null && to <= from) bad(`body.rows[${i}].valid_to`, "before_valid_from"); // exclusive end
     if (seen.has(`${outlet}:${from}`)) bad(`body.rows[${i}]`, "duplicate");
     seen.add(`${outlet}:${from}`);
@@ -416,7 +421,7 @@ export async function handleLoyalty(s: LoyaltyStore, ctx: Ctx, me: LoyaltyCaller
       refsExist(sp);
       const at = new Date().toISOString();
       const id = s.nextId++;
-      const r: Row = { id, kind, code, status: "draft", version: 1, created_at: at, updated_at: at, versions: [] };
+      const r: Row = { id, kind, code, status: "draft", version: 2, created_at: at, updated_at: at, versions: [] }; // the server: the insert plus the link to the first version make the row version 2
       r.versions.push(version(s.nextVersionId++, id, 1, { name_en: sp.nameEn, name_bn: sp.nameBn, period_label: sp.period, active_from: sp.from, active_to: sp.to, tiers: sp.tiers, qualifying: sp.qualifying, scope: sp.scope }, reason, at));
       s.rows.push(r);
       ctx.audit("programme", id, "create", {}, { code, status: "draft" }, reason);

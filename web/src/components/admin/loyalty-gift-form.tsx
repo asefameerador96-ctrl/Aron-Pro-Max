@@ -8,7 +8,7 @@ import { Banner } from "@/components/kit/banner";
 import { Button } from "@/components/kit/button";
 import type { Problem } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
-import { emptyGiftForm, failureKey, fieldErrorsOf, giftUnchanged, nextAttempt, validateGift, type FieldError, type Gift, type GiftForm, type GiftPatch, type Tier } from "@/lib/admin/loyalty";
+import { emptyGiftForm, failureKey, fieldErrorsOf, unplacedText, giftUnchanged, nextAttempt, validateGift, type FieldError, type Gift, type GiftForm, type GiftPatch, type Tier } from "@/lib/admin/loyalty";
 import { tierName } from "@/lib/admin/loyalty-view";
 import { Field, inputClass } from "./kit/field";
 import { ReasonField } from "./kit/reason-field";
@@ -53,10 +53,10 @@ export function LoyaltyGiftForm({ mode, giftId, version, initial, original, prog
         return;
       }
       const errs = data.errors as { pointer: string; code: string }[] | undefined;
-      const { byField } = fieldErrorsOf(errs, "gift");
+      const { byField, rest: unplaced } = fieldErrorsOf(errs, "gift");
       setErrors(Object.fromEntries(Object.entries(byField).map(([f, c]) => [f, t(`loy.err.${c}` as MessageKey)])));
       const key = failureKey(res.status, data.code, errs, "gift");
-      setBanner({ tone: "danger", text: key ? t(key) : problem(data.code) });
+      setBanner({ tone: "danger", text: key ? t(key) : unplaced.length > 0 ? unplacedText(unplaced, (c) => t(`loy.err.${c}` as MessageKey)) : problem(data.code) });
     } catch {
       setBanner({ tone: "danger", text: t("error.network") });
     } finally {

@@ -27,19 +27,22 @@ Pattern followed: `docs/status/portal-discount-web.md`. Contract on INT: 1.12.2 
 
 ## Tested
 
-- Unit: `tests/loyalty.test.ts` (role matrix, module wiring, menu, exact numbers, form to wire body, display), `tests/loyalty-bff.test.ts` (create / replay / conflicts / If-Match / status / enrolments / gifts / grants against the mock).
-- e2e: `e2e/loyalty.spec.ts` (12: gating by role and grant, list filters, detail, create-edit-activate-end journey, enrol, ADMIN cannot activate, gifts, server failure banner, long Bangla phone and laptop), `e2e/loyalty-quality.spec.ts` (axe light/dark/bn on ten screens and three action states; perf BUDGET on the list).
-- Gates at the train 1 head: lint 0, typecheck 0, vitest 2058 passed (1 skipped, i18n parity included), build 0, money-float-scan 0 open, tools/ci test_gates OK (60 tests). e2e: loyalty.spec + loyalty-quality.spec alone 3 of 3 green (18 each); full suite 364 passed, 5 failed = the five known pixel-snapshot specs only (config-tiers tiers A/B/C, national-shots route map and sale position). Perf (Fast 3G, 4x CPU, 360 px): JS 236 KB, LCP 1.4 s, CLS 0.01 against BUDGET 300 KB / 3500 ms / 0.1.
+- Unit (`web/tests`): `loyalty.test.ts` (46: role matrix, module wiring, menu and path roles, exact BigInt numbers, form to wire body, pointer-to-field mapping in both styles, failure messages by server code, no-change, enrolment window, cursors, banner text for unplaced pointers, display bn/en) and `loyalty-bff.test.ts` (51: the BFF routes against the mock, asserting the SERVER's behaviour: one first error, check order, newest-first keyset paging, containment reach, replay keys, row versions, flat versus indexed pointers). Both run against `web/mock/loyalty.ts`, which follows `AdminLoyalty.kt` of lane portal-loyalty-api (what is equal and what still differs: DECISIONS D-LOY-WEB-05).
+- e2e: `e2e/loyalty.spec.ts` (15: gating by role and grant, list filters, detail, create-edit-activate-end journey, enrol, field highlight and no-change, enrolment refusals, gift refusals, gifts, server-failure banner, long Bangla at phone and laptop width) and `e2e/loyalty-quality.spec.ts` (6: axe WCAG A/AA light, dark and Bangla on ten screens plus three action states; the shared perf BUDGET on the list).
+- Gates at the train 5 head (numbers in the train report to the lead): lint 0, tsc 0, build 0, vitest 2108 passed (1 skipped, i18n parity included), money-float-scan 0 open, date-pin-scan 0 new, `tools/ci` unittest OK. Loyalty e2e alone 3 of 3 green (21 each); the full e2e has the five known pixel snapshots failing locally (config-tiers tiers A/B/C, national-shots route map and sale position), identical on clean INT, so the lane CI run is the proof, not the local run.
 
 ## Not done
 
-- Switch from `rawRequest` and local types to the typed `apiClient` once contract 1.13.0 is on INT; align the ASSUMED members (D-LOY-WEB-01); drop the pending-module exception in `tests/tso-integration-web.test.tsx` (it removes itself, then restore the plain typed check).
-- Read view for NATIONAL / BRAND / WM / DMO / TSO (Q6): `LOYALTY_READ_ROLES` plus one `ADMIN_PATH_ROLES` line; the admin shell is for the portal roles today.
-- Product and geography scope pickers, gift image upload, outlet picker, multi-row enrolment, Superstar slabs / campaign gift list, report rebuilds (all per brief s5 NOT-in-v1 or owner questions).
-- Authenticated pass on the dev server (no pilot login for lanes; the screens are verified against the mock only).
+- Read views and menu entries for NATIONAL / BRAND / WM / DMO / TSO (directive 16, seven levels): the admin shell admits only SUPPORT, ADMIN and SUPERADMIN; the server already scopes their reads. Needs a shell for those roles, `ADMIN_PATH_ROLES` lines and scope-aware empty states.
+- Scope and product pickers (the form creates with an empty scope and keeps the scope on edit; the detail lists nodes by type and id), gift image upload, an outlet picker, multi-row enrolment, Superstar slabs and the campaign gift list, report rebuilds.
+- Progress views: 1.13.x has no progress operation; the panel says so and shows no numbers. The tested helpers (`guardedPercent`, `remainingStd`, `cashValueMtk`) are ready for when it exists.
+- The switch from the mock to the live API (a base-URL change) and the e2e journeys against it, when L-A's routes are on INT; an authenticated dev pass needs a pilot login lanes do not have.
+- Regenerate the types when contract 1.13.1 (description text only) is merged.
+- The flat pointers inside tiers and rows are a server shortcoming reported to the API lane; the form lights the right row once the server indexes them.
 
 ## HANDOVER
 
-- Start: read `DECISIONS.md` D-LOY-WEB-01, this file, `web/src/lib/admin/loyalty.ts` (all rules), `web/mock/loyalty.ts` (what the mock models).
-- Switching to the real API: the loaders (`lib/admin/loyalty-load.ts`) and BFF (`lib/admin/loyalty-server.ts`) call contract paths through `rawRequest`; replace with `apiClient` typed calls and delete the local wire types when `openapi.d.ts` has them. The mock is only the e2e/unit base URL target.
+- Start: read `DECISIONS.md` D-LOY-WEB-03, -04, -05 (today's truth), this file, `web/src/lib/admin/loyalty.ts` (all rules), `web/mock/loyalty.ts` (what the mock models and how it follows the server).
+- Calls: every loyalty read (`lib/admin/loyalty-load.ts`) and write (`lib/admin/loyalty-server.ts`, BFF routes under `/api/bff/admin/loyalty`) uses `apiClient` with the generated types, so a contract drift fails tsc. The mock is only the base-URL target of the unit and e2e runs; switching to the live API changes `ARON_API_BASE_URL` and nothing else.
 - Run: `cd web && npm ci && npm run lint && npm run typecheck && npm test && npm run build && PW_CHROMIUM_PATH=/opt/pw-browsers/chromium npx playwright test e2e/loyalty.spec.ts e2e/loyalty-quality.spec.ts --trace off`.
+- Rules for the next round: keep the mock equal to `AdminLoyalty.kt` (re-read the file, not the contract, for check order and pointers); never claim equality beyond what a test asserts; the hydrated() rule before the first interaction after goto and the shared `BUDGET` apply to every new e2e.

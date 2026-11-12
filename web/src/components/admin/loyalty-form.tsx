@@ -10,7 +10,7 @@ import { Banner } from "@/components/kit/banner";
 import { Button } from "@/components/kit/button";
 import type { Problem } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
-import { PROGRAMME_KINDS, emptyTier, failureKey, fieldErrorsOf, nextAttempt, programmeUnchanged, validateForm, type FieldError, type LoyaltyForm, type Programme, type ProgrammePatch } from "@/lib/admin/loyalty";
+import { PROGRAMME_KINDS, emptyTier, failureKey, fieldErrorsOf, unplacedText, nextAttempt, programmeUnchanged, validateForm, type FieldError, type LoyaltyForm, type Programme, type ProgrammePatch } from "@/lib/admin/loyalty";
 import { Field, inputClass } from "./kit/field";
 import { ReasonField } from "./kit/reason-field";
 
@@ -59,7 +59,7 @@ export function LoyaltyFormView({ mode, programmeId, version, initial, original,
       const { byField, rest: unplaced } = fieldErrorsOf(data.errors as { pointer: string; code: string }[] | undefined, "programme");
       setErrors(Object.fromEntries(Object.entries(byField).map(([f, c]) => [f, t(`loy.err.${c}` as MessageKey)])));
       const key = failureKey(res.status, data.code, data.errors as { pointer: string; code: string }[] | undefined, mode === "edit" ? "programme-edit" : "programme-create");
-      setBanner({ tone: "danger", text: key ? t(key) : Object.keys(byField).length > 0 && unplaced.length === 0 ? t("loy.form.errors_summary") : problem(data.code) });
+      setBanner({ tone: "danger", text: key ? t(key) : unplaced.length > 0 ? unplacedText(unplaced, (c) => t(`loy.err.${c}` as MessageKey)) : Object.keys(byField).length > 0 ? t("loy.form.errors_summary") : problem(data.code) });
     } catch {
       setBanner({ tone: "danger", text: t("error.network") });
     } finally {

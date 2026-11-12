@@ -7,7 +7,7 @@ import { accessFor, ADMIN_PATH_ROLES } from "@/lib/auth/roles";
 import { MENU, menuFor } from "@/lib/menu/menu";
 import { t } from "@/lib/i18n";
 import {
-  activationBlocked, basisUnit, cursorParam, failureKey, fieldErrorsOf, giftUnchanged, ID_RE, pointerToField, programmeUnchanged, serverFieldCode, canActivateProgramme, canReadLoyalty, canWriteGifts, canWriteLoyalty, cashValueMtk, decimal3Text, decimal3Wire, emptyEnrolForm, emptyForm, emptyGiftForm, emptyTier,
+  activationBlocked, basisUnit, cursorParam, failureKey, memberOf, unplacedText, fieldErrorsOf, giftUnchanged, ID_RE, pointerToField, programmeUnchanged, serverFieldCode, canActivateProgramme, canReadLoyalty, canWriteGifts, canWriteLoyalty, cashValueMtk, decimal3Text, decimal3Wire, emptyEnrolForm, emptyForm, emptyGiftForm, emptyTier,
   formFromProgramme, guardedPercent, loyaltyAccess, nextAttempt, nextProgrammeStatuses, parseDecimal3, parsePoints, remainingStd, validateEnrol, validateForm, validateGift, type LoyaltyForm, type Programme,
 } from "@/lib/admin/loyalty";
 import { groupedDecimal, kindLabel, nameOf, percentText, pointsText, programmePeriod, qualifyingLabel, scopeLabel, statusLabel, stdText, thresholdText, tierName } from "@/lib/admin/loyalty-view";
@@ -377,5 +377,23 @@ describe("page cursors from the URL", () => {
   it("the ended-programme gift message says only what the server does (new gifts)", () => {
     expect(t("en", "loy.gifts.ended")).toBe("An ended programme takes no new gifts.");
     expect(t("bn", "loy.gifts.ended")).not.toContain("পরিবর্তন");
+  });
+});
+
+describe("pointers that name no field are said in the banner with the member name", () => {
+  it("memberOf strips the prefix in both styles", () => {
+    expect(memberOf("body.label_en")).toBe("label_en");
+    expect(memberOf("/label_en")).toBe("label_en");
+    expect(memberOf("header.If-Match")).toBe("header.If-Match");
+    expect(memberOf("body")).toBe("body");
+  });
+  it("a flat tier / row member from the server is not dropped: 'label_en: This is too long.'", () => {
+    const rest = fieldErrorsOf([{ pointer: "body.label_en", code: "length" }, { pointer: "body.tier_code", code: "required" }], "programme").rest;
+    expect(rest).toHaveLength(2); // neither names a programme field
+    expect(unplacedText(rest, (c) => t("en", `loy.err.${c}`))).toBe("label_en: This is too long. · tier_code: This field is required.");
+  });
+  it("the indexed form (once the API sends it) lights the row; a flat row member on the one-row enrolment form still lights its field", () => {
+    expect(fieldErrorsOf([{ pointer: "body.tiers[1].label_en", code: "length" }], "programme").byField).toEqual({ "tier.1.label_en": "too_long" });
+    expect(fieldErrorsOf([{ pointer: "body.outlet_id", code: "out_of_range" }, { pointer: "body.valid_from", code: "not_a_date" }], "enrol").byField).toEqual({ outlet_id: "range", valid_from: "invalid" });
   });
 });

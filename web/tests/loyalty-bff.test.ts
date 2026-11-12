@@ -120,7 +120,7 @@ describe("create (a draft, version 1) and its replay", () => {
     const id = ((await (await create(c)).json()) as { programme_id: number }).programme_id;
     const r = await api(c, `/v1/admin/programmes/${id}`);
     expect(r.status).toBe(200);
-    expect(r.headers.get("etag")).toBe('"1"');
+    expect(r.headers.get("etag")).toBe('"2"'); // the server: the insert plus the link to the first version make it 2
     expect(await r.json()).toMatchObject({ code: "NEW-1", status: "draft" });
     expect((await api(c, "/v1/admin/programmes/9999")).status).toBe(404);
   });
@@ -516,7 +516,7 @@ describe("lists are newest first with numeric keyset cursors", () => {
     const s0 = await superadmin();
     const d = (await (await direct(s0, "POST", "/v1/admin/programmes", prog({ request_uuid: U(101), code: "CUT-1" }))).json()) as { programme_id: number; version: number };
     await direct(s0, "PATCH", `/v1/admin/programmes/${d.programme_id}`, { ...progPatch({ request_uuid: U(102), name_en: "v2" }), scope: [{ node_type: "zone", node_id: 15 }] }, { "If-Match": `"${d.version}"` });
-    await direct(s0, "PATCH", `/v1/admin/programmes/${d.programme_id}`, { ...progPatch({ request_uuid: U(103), name_en: "v3" }), scope: [] }, { "If-Match": '"2"' });
+    await direct(s0, "PATCH", `/v1/admin/programmes/${d.programme_id}`, { ...progPatch({ request_uuid: U(103), name_en: "v3" }), scope: [] }, { "If-Match": '"3"' });
     const t = await as("tso334", "tso-pass-1"); // reach zone 14: v1 (no geography) and v3 (none) are visible, v2 (zone 15) is not
     const page = (await (await api(t, `/v1/admin/programmes/${d.programme_id}/versions?limit=1`)).json()) as { items: { version_no: number }[]; next_cursor: string | null };
     expect(page.items.map((v) => v.version_no)).toEqual([3]);
@@ -534,17 +534,17 @@ describe("order of checks and replays", () => {
     expect(await codeOf(await direct(c, "PATCH", `/v1/admin/programmes/${live.programme_id}`, progPatch({ request_uuid: U(104), active_from: "2026-02-31" }), { "If-Match": `"${live.version}"` }))).toBe("ERR_REQUEST_STATE");
     const d = (await (await create(c)).json()) as { programme_id: number };
     expect((await direct(c, "PATCH", `/v1/admin/programmes/${d.programme_id}`, progPatch({ request_uuid: U(105), active_from: "2026-02-31" }), { "If-Match": '"9"' })).status).toBe(412);
-    expect((await direct(c, "PATCH", `/v1/admin/programmes/${d.programme_id}`, progPatch({ request_uuid: U(106), active_from: "2026-02-31" }), { "If-Match": '"1"' })).status).toBe(400);
+    expect((await direct(c, "PATCH", `/v1/admin/programmes/${d.programme_id}`, progPatch({ request_uuid: U(106), active_from: "2026-02-31" }), { "If-Match": '"2"' })).status).toBe(400);
   });
   it("status: the ADMIN activation is 403 before the body's later problems are reached in the tx; a replay answers before If-Match is judged; a stale If-Match is 412 before the state check", async () => {
     const s0 = await superadmin();
     const d = (await (await create(s0)).json()) as { programme_id: number };
     expect((await direct(await admin(), "POST", `/v1/admin/programmes/${d.programme_id}/status`, { request_uuid: U(107), to_status: "active", reason: REASON })).status).toBe(403);
     const mv = { request_uuid: U(108), to_status: "active", reason: REASON };
-    expect((await direct(s0, "POST", `/v1/admin/programmes/${d.programme_id}/status`, mv, { "If-Match": '"1"' })).status).toBe(200);
+    expect((await direct(s0, "POST", `/v1/admin/programmes/${d.programme_id}/status`, mv, { "If-Match": '"2"' })).status).toBe(200);
     const again = await direct(s0, "POST", `/v1/admin/programmes/${d.programme_id}/status`, mv, { "If-Match": "garbage" }); // replay: even a malformed ETag gets the first result
     expect(again.status).toBe(200);
-    expect(((await again.json()) as { status: string; version: number }).version).toBe(2);
+    expect(((await again.json()) as { status: string; version: number }).version).toBe(3);
     expect((await direct(s0, "POST", `/v1/admin/programmes/${d.programme_id}/status`, { ...mv, request_uuid: U(109), to_status: "inactive" }, { "If-Match": '"1"' })).status).toBe(412); // stale before the state is judged
     expect((await problemOf(await direct(s0, "POST", `/v1/admin/programmes/${d.programme_id}/status`, { ...mv, request_uuid: U(110), to_status: "inactive" }, { "If-Match": "garbage" }))).errors).toEqual([{ pointer: "header.If-Match", code: "invalid_value" }]);
   });
@@ -579,5 +579,57 @@ describe("order of checks and replays", () => {
     const res = await giftUpdate(c, 3, { request_uuid: U(120), name_en: "Tornado fan", name_bn: "টর্নেডো ফ্যান", points_cost: 400, tier_codes: [], status: "active", change_reason: REASON, version: 1 });
     expect(res.status).toBe(400);
     expect((await problemOf(res)).errors).toEqual([{ pointer: "body", code: "no_change" }]);
+  });
+});
+
+describe("row versions are the server's (ETags)", () => {
+  it("a created programme is version 2 (ETag \"2\"), one patch makes 3, a status move +1; a gift starts at 1 and each update +1", async () => {
+    const c = await superadmin();
+    const made = (await (await create(c)).json()) as { programme_id: number; version: number };
+    expect(made.version).toBe(2);
+    expect((await direct(c, "PATCH", `/v1/admin/programmes/${made.programme_id}`, progPatch({ request_uuid: U(130), name_en: "Changed" }), { "If-Match": '"1"' })).status).toBe(412); // "1" would be stale on the real API
+    const upd = await patch(c, made.programme_id, { ...progPatch({ request_uuid: U(131), name_en: "Changed" }), version: 2 });
+    expect(upd.status).toBe(200);
+    expect(((await upd.json()) as { version: number; version_no: number })).toMatchObject({ version: 3, version_no: 2 });
+    const mv = await status(c, made.programme_id, { request_uuid: U(132), to_status: "active", reason: REASON });
+    expect(((await mv.json()) as { version: number }).version).toBe(4);
+    const g = await gift(c, { request_uuid: U(133), programme_id: 2, code: "v_gift", name_en: "V", name_bn: null, points_cost: 5, tier_codes: [], status: "active", change_reason: REASON });
+    const gj = (await g.json()) as { gift_id: number; version: number };
+    expect(gj.version).toBe(1);
+    const gu = await giftUpdate(c, gj.gift_id, { request_uuid: U(134), name_en: "V2", name_bn: null, points_cost: 5, tier_codes: [], status: "active", change_reason: REASON, version: 1 });
+    expect(((await gu.json()) as { version: number }).version).toBe(2);
+  });
+});
+
+describe("pointers inside tiers[] and rows[]: exactly what the server answers today", () => {
+  it("the flat-member helpers name the FLAT member, only the explicitly indexed ones are indexed", async () => {
+    const c = await superadmin();
+    const first = async (tiers: unknown[]) => (await problemOf(await direct(c, "POST", "/v1/admin/programmes", prog({ tiers })))).errors;
+    expect(await first([{ tier_code: "gold", sort_order: 1, label_en: "", threshold: null }])).toEqual([{ pointer: "body.label_en", code: "length" }]); // flat
+    expect(await first([{ sort_order: 1, label_en: "G" }])).toEqual([{ pointer: "body.tier_code", code: "required" }]); // flat
+    expect(await first([{ tier_code: "G!", sort_order: 1, label_en: "Gold" }])).toEqual([{ pointer: "body.tiers[0].tier_code", code: "pattern" }]); // indexed
+    expect(await first([{ tier_code: "gold", label_en: "Gold" }])).toEqual([{ pointer: "body.tiers[0].sort_order", code: "required" }]); // indexed
+    expect(await first([{ tier_code: "gold", sort_order: 1, label_en: "Gold", threshold: "1.2345" }])).toEqual([{ pointer: "body.tiers[0].threshold", code: "not_a_decimal" }]); // indexed
+    expect(await first([{ tier_code: "gold", sort_order: 1, label_en: "Gold", extra: 1 }])).toEqual([{ pointer: "body.extra", code: "unknown_field" }]); // only(): flat
+    const rows = async (row: Record<string, unknown>) => (await problemOf(await direct(c, "PUT", "/v1/admin/programmes/1/enrolments", { batch_uuid: U(140), change_reason: REASON, rows: [{ programme_id: 1, outlet_id: 5, valid_from: "2027-01-01", ...row }] }))).errors;
+    expect(await rows({ outlet_id: 0 })).toEqual([{ pointer: "body.outlet_id", code: "out_of_range" }]); // flat
+    expect(await rows({ valid_from: "2027-02-31" })).toEqual([{ pointer: "body.valid_from", code: "not_a_date" }]); // flat
+    expect(await rows({ valid_from: undefined })).toEqual([{ pointer: "body.rows[0].valid_from", code: "required" }]); // indexed
+    expect(await rows({ valid_to: "2026-12-31" })).toEqual([{ pointer: "body.rows[0].valid_to", code: "before_valid_from" }]); // indexed
+    expect(await rows({ base_target: "-3" })).toEqual([{ pointer: "body.rows[0].base_target", code: "negative" }]); // indexed
+    expect(await rows({ tier_code: "Bad!" })).toEqual([{ pointer: "body.rows[0].tier_code", code: "pattern" }]); // indexed
+  });
+  it("small server details: league_label \"\" becomes null; qualifying and scope come back sorted by kind then id; the reason is trimmed before 10..500; a uuid is checked up to 64 characters", async () => {
+    const c = await superadmin();
+    const en = await enrol(c, 1, { batch_uuid: U(141), rows: [{ programme_id: 1, outlet_id: 11, league_label: "", tier_code: "gold", valid_from: "2027-01-01" }], change_reason: REASON });
+    expect(en.status).toBe(200);
+    expect(((await (await api(c, "/v1/admin/programmes/1/enrolments?limit=1")).json()) as { items: { league_label: string | null }[] }).items[0]!.league_label).toBeNull();
+    const made = (await (await direct(c, "POST", "/v1/admin/programmes", prog({ request_uuid: U(142), code: "SRT-1", scope: [{ node_type: "zone", node_id: 14 }, { node_type: "wing", node_id: 1 }, { node_type: "zone", node_id: 2 }], qualifying: [{ product_level: "sku", product_id: 9 }, { product_level: "brand", product_id: 3 }, { product_level: "brand", product_id: 1 }] }))).json()) as { scope: unknown; qualifying: unknown };
+    expect(made.scope).toEqual([{ node_type: "wing", node_id: 1 }, { node_type: "zone", node_id: 2 }, { node_type: "zone", node_id: 14 }]);
+    expect(made.qualifying).toEqual([{ product_level: "brand", product_id: 1 }, { product_level: "brand", product_id: 3 }, { product_level: "sku", product_id: 9 }]);
+    expect((await direct(c, "POST", "/v1/admin/programmes", prog({ request_uuid: U(143), code: "TRM-1", change_reason: "   too short " }))).status).toBe(400); // trimmed to 9
+    expect((await direct(c, "POST", "/v1/admin/programmes", prog({ request_uuid: U(144), code: "TRM-2", change_reason: "  ten chars!  " }))).status).toBe(201);
+    expect((await problemOf(await direct(c, "POST", "/v1/admin/programmes", prog({ request_uuid: "x".repeat(65), code: "UU-1" })))).errors).toEqual([{ pointer: "body.request_uuid", code: "length" }]);
+    expect((await problemOf(await direct(c, "POST", "/v1/admin/programmes", prog({ request_uuid: "not-a-uuid", code: "UU-2" })))).errors).toEqual([{ pointer: "body.request_uuid", code: "not_a_uuid" }]);
   });
 });

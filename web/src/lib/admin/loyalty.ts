@@ -283,7 +283,7 @@ export function pointerToField(pointer: string, form: "programme" | "gift" | "en
   if (p === "" || pointer.startsWith("header.") || pointer.startsWith("query.")) return null;
   if (form === "enrol") {
     const m = /^rows\.\d+\.(\w+)$/.exec(p);
-    const k = m ? m[1]! : p === "change_reason" ? "reason" : null;
+    const k = m ? m[1]! : p === "change_reason" ? "reason" : p; // a flat member names the only row of this one-row form
     return k && ["outlet_id", "tier_code", "league_label", "base_target", "valid_from", "valid_to", "reason"].includes(k) ? k : null;
   }
   if (form === "gift") {
@@ -324,6 +324,13 @@ export function fieldErrorsOf(errors: readonly { pointer: string; code: string }
   }
   return { byField, rest };
 }
+
+/** The member a pointer names, for the banner ("body.label_en" -> "label_en"). The server names the FLAT member inside a tier or a row for most checks
+ *  (a server shortcoming being reported); such an error has no row to light, so it is said in the banner with the member name and never dropped. */
+export const memberOf = (pointer: string): string => pointer.replace(/^\/+/, "").replace(/^body[./]?/, "") || pointer;
+/** Banner text for the errors that name no field of the form: "member: message" joined. */
+export const unplacedText = (rest: readonly { pointer: string; code: string }[], message: (c: FieldErrorCode) => string): string =>
+  rest.map((e) => `${memberOf(e.pointer)}: ${message(serverFieldCode(e.code))}`).join(" · ");
 
 export type WriteKind = "programme-create" | "programme-edit" | "status" | "enrol" | "gift";
 /** The message key for a failed write: 409 and 400 codes the server uses, said for the action that failed. null = use the generic problem text. */
