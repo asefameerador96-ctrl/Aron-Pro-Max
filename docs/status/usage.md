@@ -2815,3 +2815,7 @@
 ### 2026-11-12 09:37 UTC — S5 and S6 round 2 started
 - S5 fix round `495255d1a`: static gate clean (25 files +158/-22 on 997b72a0d; one test renamed as asked; DECISIONS 394; lane ci 43192841453); Opus re-check wekacfd8t running.
 - S6 fix round `67ebb0d7a`: static gate clean (four keys and four goldens back to INT; 6 goldens still changed for declared wording; DECISIONS 393; lane ci 43192863255); re-check launched (settings flow, wording/shared keys). S6 reports call_start_title is still rendered by CallPrompts.kt:25 on S4's head (feature-sale), to check when S4 lands.
+
+### 2026-11-12 09:39 UTC — S3 PASS, train 100 built
+- S3 fix round `4a7dcbcc0` Opus re-check w88z3tdex: PASS (2 lenses, no blocking; lows sent to S3 as a follow-up after landing). wt-s3 removed.
+- Train 100 = INT ab78d0d4b + docs tip 168b7c450 + S3 4a7dcbcc0 (--no-ff), head `62036ab2a` on lane/lead-train100. Tree checks: android == S3 android; docs == docs branch + S3 status file; DECISIONS 400 (392 + 5 docs + 3 S3), 0 removed, 0 markers; money-float 13/13, date-pin 0 new, slices up to date, gitleaks clean. CI 43193235441 running. Android + docs only: deploy will be skipped by design; APK of record follows from the INT run.
