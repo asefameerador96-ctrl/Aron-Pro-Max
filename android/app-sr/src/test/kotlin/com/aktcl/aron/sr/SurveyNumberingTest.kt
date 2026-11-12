@@ -13,4 +13,13 @@ class SurveyNumberingTest {
     @Test fun aQuestionWhoseParentIsMissingCountsAsTopLevel() {
         assertEquals(mapOf("a" to "1", "b" to "2"), SurveyNumbering.of(listOf("a" to null, "b" to "gone")))
     }
+
+    // SRM-B-06: the host drops a sub-question whose parent is unsupported before numbering, so the numbers do not skip
+    @Test fun numbersDoNotSkipWhenASubQuestionsParentIsUnsupported() {
+        val all = listOf(Triple("a", null, true), Triple("t", null, false), Triple("t1", "t", true), Triple("b", null, true))
+        val ok = all.filter { it.third }
+        val keys = ok.map { it.first }.toSet()
+        val kept = ok.filter { it.second == null || it.second in keys }.map { it.first to it.second }
+        assertEquals(mapOf("a" to "1", "b" to "2"), SurveyNumbering.of(kept))
+    }
 }

@@ -50,7 +50,7 @@
     <string name="review_paid">Paid</string>
     <string name="review_due">Due</string>
     <string name="review_credit">On credit</string>
-    <string name="review_credit_switch">Mark this sale as credit</string>
+    <string name="review_credit_switch">Mark this sale as due</string>
     <string name="review_credit_due">Due %1$s</string>
     <string name="review_print_later">You can print later from the Memo section.</string>
     <string name="review_save">Print</string>

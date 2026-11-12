@@ -1,5 +1,8 @@
 package com.aktcl.aron.feature.memo.ui
 
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
@@ -49,6 +52,13 @@ class MemoManualScreensTest {
         show { MemoDetailView(MemoMenu.detail(memo), false, 0, { names.getValue(it) }, {}, {}, {}, skuCategory = { cats[it] }) }
         compose.onNodeWithText("Total Cigarette").assertExists()
         compose.onAllNodesWithText("3 packets").assertCountEquals(0)
+        // the AMO/TSO category row is the two-column row (name, amount), not the SR's three-column one
+        compose.onNode(hasTestTag(TWO_COLUMN_ROW) and hasAnyDescendant(hasText("Total Cigarette"))).assertExists()
+    }
+
+    @Test fun srCategoryRowIsNotTheTwoColumnRow() {
+        show { MemoDetailView(MemoMenu.detail(memo), false, 0, { names.getValue(it) }, {}, {}, {}, skuCategory = { cats[it] }, subtotalQuantities = true) }
+        compose.onNode(hasTestTag(TWO_COLUMN_ROW) and hasAnyDescendant(hasText("Total Cigarette"))).assertDoesNotExist()
     }
 
     // a letter filter never makes a "Total" partial: the cigarette row still adds both cigarette lines
@@ -57,6 +67,7 @@ class MemoManualScreensTest {
         compose.onNodeWithText("B").performClick(); compose.waitForIdle()
         compose.onNodeWithText("Avon-20S").assertDoesNotExist()
         compose.onNodeWithText("Total Cigarette").assertExists()
+        compose.onNodeWithText("Total Match").assertDoesNotExist() // the hidden category has no row
         compose.onNodeWithText("3 packets").assertExists()
         compose.onNodeWithText("50.00", substring = true).assertExists() // 40.00 + 10.00
     }

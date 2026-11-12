@@ -135,7 +135,7 @@ class RoomSaleReadsTest {
         assertEquals(77L, cig.single().qtyBase) // 60 + 17 sticks; the superseded 40 is not counted
         assertEquals(4L, cig.single().entered); assertEquals(7L, cig.single().remBase) // 3 packets of 20 + 17 sticks = 1 packet of 10 + 7
         assertEquals(listOf(4L), t.sold.filter { it.categoryCode == "match" }.map { it.qtyBase })
-        assertEquals("a SKU with no master row is counted, not dropped", listOf(5L), t.sold.filter { it.categoryCode == OTHER_CATEGORY }.map { it.qtyBase })
+        assertEquals("a SKU with no master row is counted, not dropped, on its own row", listOf(999L to 5L), t.sold.filter { it.categoryCode == OTHER_CATEGORY }.map { it.skuId!! to it.qtyBase })
         assertEquals(listOf(200L), t.stockIssued.filter { it.categoryCode == "cigarette" }.map { it.qtyBase })
         assertEquals(0L, t.promotionMtk)
     }
