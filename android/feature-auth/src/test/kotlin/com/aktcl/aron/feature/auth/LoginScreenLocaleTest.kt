@@ -47,7 +47,7 @@ class LoginScreenLocaleTest {
     fun banglaShowsBanglaTextBengaliDigitsAndTheBengaliFont() {
         val family = render(AppLanguage.BN, LoginUiState(message = LoginMessage.InvalidCredentials))
         assertEquals(AronFonts.Bengali, family)
-        compose.onNodeWithText("লগইন করুন").assertIsDisplayed()
+        compose.onNodeWithText("লগইন").assertIsDisplayed() // SR manual 03: the button says "লগইন" (SRM-A-03)
         compose.onNodeWithText("ইউজারনেম").assertIsDisplayed()
         compose.onNodeWithText("সংস্করণ ০.১.০ (১২)").assertExists() // below the fold on the small test screen
         compose.onNodeWithText("ইউজারনেম বা পাসওয়ার্ড ভুল।").assertIsDisplayed()
