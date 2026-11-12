@@ -1,6 +1,6 @@
 # Lane sr-server (SV): SR manual build, server side
 
-Branch `lane/sr-server`, from INT `claude/wonderful-thompson-k6ejnf` at ab78d0d4 (INT has since moved to ce9d92bf7 with contract 1.13.0 and V0158..V0162: NOT yet merged here). **WIP: not "checked".** Brief: `docs/requests/sr-manual-lane-brief.md` (lead docs branch). Request file: `docs/requests/contract-1.14-sr-manual.md`. Records: D-SV1-01 to 10 (DECISIONS.md).
+Branch `lane/sr-server`, from INT `claude/wonderful-thompson-k6ejnf` at ab78d0d4 (INT has since moved to ce9d92bf7 with contract 1.13.0 and V0158..V0162: NOT yet merged here). **State: train 1 merged onto INT ce9d92bf7; see "Gates" for what is green. A "checked" claim is made only in the report to the lead.** Brief: `docs/requests/sr-manual-lane-brief.md` (lead docs branch). Request file: `docs/requests/contract-1.14-sr-manual.md`. Records: D-SV1-01 to 10 (DECISIONS.md).
 
 ## State of train 1
 
@@ -36,3 +36,16 @@ V0163 (visit columns, guards, code lists, `cfg.sale.call_photo_required`), V0164
 1. Late-row flag and survey report: lead asked for them in this contract; shipping them in train 2 under the same version (additive). OK?
 2. dw view contract number 1.7 may collide with the Loyalty lane.
 3. Task type `poor_brand_visibility` has no Bangla label (part B owner question 4).
+
+
+## Train 2 handover (for a fresh session; everything below is NOT started unless it says otherwise)
+
+Rules: same brief; contract stays 1.14.0 (additive, same request file; the lead approves it as D-LEAD-CONTRACT-114-01); migrations continue at V0166; dw view contract continues at 1.9 (1.8 is V0165). Every write idempotent by client UUID with duplicate / out-of-order property tests; supervisor reads stay under server-side scope with tests (the two new reads, `getTeamDeviceOtps` and `getCallPhotoReview`, have role and reach tests in `SrManualSv1ApiTest`; add a second-zone user to prove the negative case when a second TSO exists in the seed).
+
+1. **(e) Clusters.** (i) Bundle section `clusters` (cluster_id, name, route_id, route_name) scoped to the SR's routes server-side (`BundleService`, `BundleDtos`, `BundleDelta`); (ii) cluster-creation record: new record type (`cluster_request`: client_uuid, name, route_id, fix), table + `ingest_registry` / `TypeRules` / `PayloadShapes` entries, widening of the record-type CHECK (V0007 list) NOT VALID + VALIDATE, AMO verification (record or `outlet_request_verification`-like), portal approval (`POST /v1/admin/clusters` exists as `createCluster`; add the approve path), default **live after approval** (part B owner question 3), duplicate names on one route refused with a clear code; (iii) the new-shop proposal may point to a pending cluster by client uuid (`OutletProposal.cluster_request_uuid`). Lane S2 stores cluster requests locally and needs both the section and the record.
+2. **(h) `outlet_sku_stats`** bundle section (versioned reference data): outlet x SKU previous-day, ADS, SDLW. State the unit in the schema description: base units (`ads_hundredths` = average daily sales in base units x 100, integer), the phone converts with `pack_factor`. Formulas = part A Q4 default (ADS = achieved / elapsed days over the last 30 days with sales, SDLW = same weekday last week). Size check: 70 outlets x 40 SKUs.
+3. **`posm-survey` report key** (SRM-B-08): add to the report enum (openapi.yaml `ReportKey`), a `dw` view of `survey_response` (outlet, date, question, answer, photo flag; no media id in a reuse view: see D-SV1-02), a handler in `ReportHandlers*`, scope tests.
+4. **Late-row flag** (SRM-B-30): `app.route_day.late_rows_after_sales_submit` counted in `DayStates` when a memo / due_collection with `committed_at` after `sales_submitted_at` is stored (flag, never refuse: offline-safe), expose as an optional member of the route-day status read and `dw.v_route_day`; test with two phones.
+5. **Journey shared rule** (`JourneyTimeline`, S2 asks): the server journey (`getTeamJourney`) must classify `repeat_sale` (second or later sale at the same outlet on the same day) with the same rule the phone uses; the enum value is in the contract, the classifier in `TeamApi` is not changed yet.
+6. **Seeds and labels:** `poor_brand_visibility` has no Bangla label (owner question 4); dev seed `04_dev_config_and_codes.sql` still carries older edit codes (harmless: ON CONFLICT).
+7. **Half done / known:** nothing half done in train 1 beyond the above; Android lanes still need the `ads_hundredths` unit rule before wiring. `MediaModule` accepts `outlet_call` uploads but the retention / Wi-Fi-first rule for the new purpose is the existing photo rule (no per-purpose override).
