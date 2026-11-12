@@ -101,7 +101,7 @@ info:
       inactive (V0156).
     - 1.14.0 (SR manual build, lane sr-server train 1, D-SV1-01 to 12; approval D-LEAD-CONTRACT-114-01, gate file
       `docs/requests/contract-1.14-sr-manual.md`; 1.13.0 is the Loyalty portal and is not on INT when this is written), additive only:
-      `VisitClosePayload.zero_sale_reason_code` (code list `zero_sale_reason`, only with `is_zero_sale`), `VisitPayload.call_photo_uuid`
+      `VisitClosePayload.zero_sale_reason_code` (code list `zero_sale_reason`, only with `is_zero_sale`), `VisitClosePayload.call_photo_uuid`
       and `call_photo_skip_reason_code`, media purpose `outlet_call`, code list keys `zero_sale_reason` and `call_photo_skip`, config key `cfg.sale.call_photo_required`, `SalesSubmitDigest.business_totals`
       (new schema `SubmitBusinessTotals`), `UpdateCheck.notes_en` and `notes_bn`, `JourneyCall.status` value `repeat_sale`, `getTeamDeviceOtps`
       (`GET /v1/supervisor/device-otps`), `getCallPhotoReview` (`GET /v1/supervisor/call-photos`), the late-row count and the `posm-survey` report key (below), and the seeded codes `wrong_sku_qty` and
@@ -8798,15 +8798,6 @@ components:
         assessed_user_id: { type: [integer, 'null'], format: int64, minimum: 1, description: SR assessed on an AMO joint call (the route's active assignee). }
         fix: { $ref: '#/components/schemas/GeoFix' }
         geo: { $ref: '#/components/schemas/DeviceGeoVerdict' }
-        call_photo_uuid:
-          description: 'media_uuid of the outlet photo taken at call start (media purpose `outlet_call`, ref type `visit`, contract 1.14.0, SRM-A-27). Idempotent: the media record is keyed by this UUID. Null or absent when no photo was taken.'
-          oneOf:
-            - { $ref: '#/components/schemas/Uuid' }
-            - type: 'null'
-        call_photo_skip_reason_code:
-          type: [string, 'null']
-          pattern: '^[a-z][a-z0-9_]{1,40}$'
-          description: 'Why no call-start photo was taken (code list `call_photo_skip`, first value `camera_unavailable`; a reasoned skip never blocks the sale). Allowed only when `call_photo_uuid` is null and the code is an active item of the list; any other combination is rejected `schema_invalid`.'
         force_sale_reason:
           type: [string, 'null']
           enum: [internet_problem, location_change, null]
@@ -8825,10 +8816,19 @@ components:
         call_declined: { type: boolean, description: '"না" at the start-call prompt; not counted as visited.' }
         ended_at: { $ref: '#/components/schemas/Timestamp' }
         is_zero_sale: { type: boolean }
+        call_photo_uuid:
+          description: 'media_uuid of the outlet photo taken after the call started (media purpose `outlet_call`, ref type `visit`, contract 1.14.0, SRM-A-27). Idempotent: the media record is keyed by this UUID. Null or absent when no photo was taken. When the phone asks for a photo (cfg.sale.call_photo_required) and takes none, `call_photo_skip_reason_code` is sent instead (that is the phone''s contract; the server cannot require it of an older app).'
+          oneOf:
+            - { $ref: '#/components/schemas/Uuid' }
+            - type: 'null'
+        call_photo_skip_reason_code:
+          type: [string, 'null']
+          pattern: '^[a-z][a-z0-9_]{1,40}$'
+          description: 'Why no call-start photo was taken (code list `call_photo_skip`, first value `camera_unavailable`; a reasoned skip never blocks the sale). Allowed only when `call_photo_uuid` is null and the code is an active item of the list; any other combination is rejected `schema_invalid`.'
         zero_sale_reason_code:
           type: [string, 'null']
           pattern: '^[a-z][a-z0-9_]{1,40}$'
-          description: 'Why the SR made a zero sale (code list `zero_sale_reason`, contract 1.14.0, SRM-A-40). Allowed only when `is_zero_sale` is true and the code is an active item of the list; otherwise rejected `schema_invalid`.'
+          description: 'Why the SR made a zero sale (code list `zero_sale_reason`, contract 1.14.0, SRM-A-40). Allowed only when `is_zero_sale` is true and the code is an active item of the list; otherwise rejected `schema_invalid`. The phone sends it for every SR zero-sale memo and leaves it null for a QC-only sale (`is_zero_sale` false).'
     VisitSkipPayload:
       type: object
       required: [outlet_id, reason_code]
@@ -9589,13 +9589,13 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/SubmitBusinessTotals' }
             - type: 'null'
-    CategoryQtyBase:
+    SkuQtyBase:
       type: object
-      required: [category_code, qty_base]
+      required: [sku_id, qty_base]
       additionalProperties: false
       properties:
-        category_code: { type: string, maxLength: 40, description: 'The SKU category code (cigarette, bidi, lighter, match).' }
-        qty_base: { type: integer, format: int64, description: 'Base units (sticks, pieces, dozens as stored).' }
+        sku_id: { $ref: '#/components/schemas/Id' }
+        qty_base: { type: integer, format: int64, description: 'Base units as stored (sticks, pieces, dozens). The phone converts to packets with the SKU''s pack_factor; a category total cannot be converted back when it mixes pack sizes.' }
     SubmitBusinessTotals:
       type: object
       description: >-
@@ -9609,16 +9609,16 @@ components:
         outlets_visited: { type: integer, minimum: 0, description: Distinct outlets with a stored sr_call visit that is not abandoned. }
         sold:
           type: array
-          description: 'Sold quantity in base units (sticks, pieces) per SKU category code; live memos only (a superseded or voided memo is not counted), `sale` lines only. A category with no sale is absent. Ordered by category_code.'
-          items: { $ref: '#/components/schemas/CategoryQtyBase' }
+          description: 'Sold quantity in base units per SKU; live memos only (a superseded or voided memo is not counted), `sale` lines only. A SKU with no sale is absent. Ordered by sku_id.'
+          items: { $ref: '#/components/schemas/SkuQtyBase' }
         stock_issued:
           type: array
-          description: 'Stock issued in base units per category: `stock_movement` kinds `issue` and `adjustment` (signed), not voided. Ordered by category_code.'
-          items: { $ref: '#/components/schemas/CategoryQtyBase' }
+          description: 'Stock issued in base units per SKU: `stock_movement` kinds `issue` and `adjustment` (signed), not voided. Ordered by sku_id.'
+          items: { $ref: '#/components/schemas/SkuQtyBase' }
         qc:
           type: array
-          description: 'Stored `qc_line` quantity in base units per category (a defect count, SRM-A-34), not voided. Ordered by category_code.'
-          items: { $ref: '#/components/schemas/CategoryQtyBase' }
+          description: 'Stored `qc_line` quantity in base units per SKU (a defect count, SRM-A-34), not voided. Ordered by sku_id.'
+          items: { $ref: '#/components/schemas/SkuQtyBase' }
         promotion_mtk: { $ref: '#/components/schemas/MtkNonNegative', description: 'offer + DRP discount of the active memos, milli-taka; zero while the discount programmes are deferred.' }
     DigestTypeCounts:
       type: object

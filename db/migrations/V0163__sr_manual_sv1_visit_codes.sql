@@ -2,7 +2,7 @@
 --
 -- 1. app.visit.zero_sale_reason_code: why the SR made a zero sale (SRM-A-40, screenshot 32); set by visit_close, only when
 --    is_zero_sale (CHECK). Code list zero_sale_reason, four rows (Q12 default labels).
--- 2. app.visit.call_photo_uuid / call_photo_skip_reason_code: the outlet photo taken at call start (SRM-A-27, screenshot 20).
+-- 2. app.visit.call_photo_uuid / call_photo_skip_reason_code: the outlet photo taken after the call starts, filled by visit_close (SRM-A-27, screenshot 20).
 --    A skip carries a reason and no photo (CHECK). media.purpose gains outlet_call.
 -- 3. Code lists: zero_sale_reason (new key), edit_reason + wrong_sku_qty, promotion_issue (SRM-B-15), task_type +
 --    poor_brand_visibility (SRM-B-49). Labels Bangla verbatim from the manual / Q12 defaults.
@@ -53,10 +53,10 @@ BEGIN
 END $$;
 
 -- visit_immutable names the columns a synced visit row may still change; the close fills zero_sale_reason_code once, so it joins the
--- write-once list ('='). call_photo_* are set at insert only and stay immutable (not named). Recreated, never edited (V0007 is history).
+-- write-once list ('='). the close also fills call_photo_uuid and call_photo_skip_reason_code once (write-once). Recreated, never edited (V0007 is history).
 CREATE OR REPLACE TRIGGER visit_immutable BEFORE UPDATE OR DELETE ON app.visit
   FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'server_verdict', 'server_distance_m', 'server_radius_m', 'server_max_accuracy_m', 'server_checked_at', '=close_client_uuid', '=close_received_at', '=close_captured_at', '=outcome_code', '=call_started_at', '=call_declined', '=ended_at', '=is_zero_sale',
-    '=zone_id', '=cluster_id', '=outlet_channel', '=outlet_geo_class', '=zero_sale_reason_code', 'data_origin');
+    '=zone_id', '=cluster_id', '=outlet_channel', '=outlet_geo_class', '=zero_sale_reason_code', '=call_photo_uuid', '=call_photo_skip_reason_code', 'data_origin');
 
 
 COMMENT ON COLUMN app.visit.zero_sale_reason_code IS 'Why the call ended with a zero-sale memo (code list zero_sale_reason); set by visit_close, only when is_zero_sale (CHECK). Null on every other visit.';
@@ -77,6 +77,8 @@ INSERT INTO app.code_list_item (list_key, code, label_en, label_bn, sort, attrs)
   ('call_photo_skip', 'permission_denied',   'Camera permission denied', 'ক্যামেরার অনুমতি নেই',   2, '{}'),
   ('call_photo_skip', 'storage_full',        'Storage full',         'ফোনের জায়গা শেষ',            3, '{}'),
   ('call_photo_skip', 'other',               'Other',                'অন্যান্য',                    4, '{}'),
+  ('edit_reason',      'wrong_quantity',    'Wrong quantity',               'ভুল পরিমাণ',                  4, '{}'),
+  ('edit_reason',      'wrong_price_type',  'Wrong price type',             'ভুল মূল্যের ধরন',             5, '{}'),
   ('edit_reason',      'wrong_sku_qty',     'Wrong SKU quantity',           'ভুল SKU পরিমাণ',             2, '{}'),
   ('edit_reason',      'promotion_issue',   'Promotion issue',              'প্রমোশন ইস্যু',              3, '{}'),
   ('task_type',        'poor_brand_visibility', 'Poor Brand Visibility',    NULL,                          4, '{}')

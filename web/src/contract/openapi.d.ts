@@ -5818,10 +5818,6 @@ export interface components {
             assessed_user_id?: number | null;
             fix: components["schemas"]["GeoFix"];
             geo: components["schemas"]["DeviceGeoVerdict"];
-            /** @description media_uuid of the outlet photo taken at call start (media purpose `outlet_call`, ref type `visit`, contract 1.14.0, SRM-A-27). Idempotent: the media record is keyed by this UUID. Null or absent when no photo was taken. */
-            call_photo_uuid?: components["schemas"]["Uuid"] | null;
-            /** @description Why no call-start photo was taken (code list `call_photo_skip`, first value `camera_unavailable`; a reasoned skip never blocks the sale). Allowed only when `call_photo_uuid` is null and the code is an active item of the list; any other combination is rejected `schema_invalid`. */
-            call_photo_skip_reason_code?: string | null;
             /**
              * @description Why the sale is made outside the geo-fence, chosen on the phone (contract 1.11.0, D-AMO-MAN-08). Allowed only when `geo.action` is `force_sale`; any other combination is rejected `schema_invalid`.
              * @enum {string|null}
@@ -5836,7 +5832,11 @@ export interface components {
             call_declined: boolean;
             ended_at: components["schemas"]["Timestamp"];
             is_zero_sale: boolean;
-            /** @description Why the SR made a zero sale (code list `zero_sale_reason`, contract 1.14.0, SRM-A-40). Allowed only when `is_zero_sale` is true and the code is an active item of the list; otherwise rejected `schema_invalid`. */
+            /** @description media_uuid of the outlet photo taken after the call started (media purpose `outlet_call`, ref type `visit`, contract 1.14.0, SRM-A-27). Idempotent: the media record is keyed by this UUID. Null or absent when no photo was taken. When the phone asks for a photo (cfg.sale.call_photo_required) and takes none, `call_photo_skip_reason_code` is sent instead (that is the phone's contract; the server cannot require it of an older app). */
+            call_photo_uuid?: components["schemas"]["Uuid"] | null;
+            /** @description Why no call-start photo was taken (code list `call_photo_skip`, first value `camera_unavailable`; a reasoned skip never blocks the sale). Allowed only when `call_photo_uuid` is null and the code is an active item of the list; any other combination is rejected `schema_invalid`. */
+            call_photo_skip_reason_code?: string | null;
+            /** @description Why the SR made a zero sale (code list `zero_sale_reason`, contract 1.14.0, SRM-A-40). Allowed only when `is_zero_sale` is true and the code is an active item of the list; otherwise rejected `schema_invalid`. The phone sends it for every SR zero-sale memo and leaves it null for a QC-only sale (`is_zero_sale` false). */
             zero_sale_reason_code?: string | null;
         };
         VisitSkipPayload: {
@@ -6380,12 +6380,11 @@ export interface components {
             /** @description The business figures of the login's day, for the Sales Submit table (contract 1.14.0, SRM-B-25). Optional so an older server omits it; the record-count gate does not read it. */
             business_totals?: components["schemas"]["SubmitBusinessTotals"] | null;
         };
-        CategoryQtyBase: {
-            /** @description The SKU category code (cigarette, bidi, lighter, match). */
-            category_code: string;
+        SkuQtyBase: {
+            sku_id: components["schemas"]["Id"];
             /**
              * Format: int64
-             * @description Base units (sticks, pieces, dozens as stored).
+             * @description Base units as stored (sticks, pieces, dozens). The phone converts to packets with the SKU's pack_factor; a category total cannot be converted back when it mixes pack sizes.
              */
             qty_base: number;
         };
@@ -6393,12 +6392,12 @@ export interface components {
         SubmitBusinessTotals: {
             /** @description Distinct outlets with a stored sr_call visit that is not abandoned. */
             outlets_visited: number;
-            /** @description Sold quantity in base units (sticks, pieces) per SKU category code; live memos only (a superseded or voided memo is not counted), `sale` lines only. A category with no sale is absent. Ordered by category_code. */
-            sold: components["schemas"]["CategoryQtyBase"][];
-            /** @description Stock issued in base units per category: `stock_movement` kinds `issue` and `adjustment` (signed), not voided. Ordered by category_code. */
-            stock_issued: components["schemas"]["CategoryQtyBase"][];
-            /** @description Stored `qc_line` quantity in base units per category (a defect count, SRM-A-34), not voided. Ordered by category_code. */
-            qc: components["schemas"]["CategoryQtyBase"][];
+            /** @description Sold quantity in base units per SKU; live memos only (a superseded or voided memo is not counted), `sale` lines only. A SKU with no sale is absent. Ordered by sku_id. */
+            sold: components["schemas"]["SkuQtyBase"][];
+            /** @description Stock issued in base units per SKU: `stock_movement` kinds `issue` and `adjustment` (signed), not voided. Ordered by sku_id. */
+            stock_issued: components["schemas"]["SkuQtyBase"][];
+            /** @description Stored `qc_line` quantity in base units per SKU (a defect count, SRM-A-34), not voided. Ordered by sku_id. */
+            qc: components["schemas"]["SkuQtyBase"][];
             /** @description offer + DRP discount of the active memos, milli-taka; zero while the discount programmes are deferred. */
             promotion_mtk: components["schemas"]["MtkNonNegative"];
         };

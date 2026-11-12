@@ -991,7 +991,7 @@ class IngestService(
                 .bind("c", code).bind("d", bd).mapTo(Boolean::class.java).one()
             if (!ok) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "zero_sale_reason_code $code is not an active zero_sale_reason")
         }
-        if (r.type == "visit") payload.str("call_photo_skip_reason_code")?.let { code ->
+        if (r.type == "visit_close") payload.str("call_photo_skip_reason_code")?.let { code ->
             val ok = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.code_list_item WHERE list_key = 'call_photo_skip' AND code = :c AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d))")
                 .bind("c", code).bind("d", bd).mapTo(Boolean::class.java).one()
             if (!ok) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "call_photo_skip_reason_code $code is not an active call_photo_skip")
@@ -1733,16 +1733,15 @@ class IngestService(
                 if (action != "force_sale") return "force_sale_reason is allowed only with geo.action force_sale"
             }
         }
+        // Contract 1.14.0 (SRM-A-40): a zero-sale reason exists only on a zero sale; the code itself is checked against the list in step 5c.
         // Contract 1.14.0 (SRM-A-27): a call-start photo and a reasoned skip are exclusive; a paper entry has neither (nobody stood at the outlet).
-        if (r.type == "visit") {
+        if (r.type == "visit_close") {
             val photo = payload["call_photo_uuid"]?.takeIf { it !is JsonNull }
             val skip = payload["call_photo_skip_reason_code"]?.takeIf { it !is JsonNull }
-            if (manual && (photo != null || skip != null)) return "a paper entry has no call photo"
             if (photo != null && skip != null) return "call_photo_skip_reason_code is allowed only without call_photo_uuid"
             if (photo != null && (photo !is JsonPrimitive || !photo.isString || !UUID_V4.matches(photo.content))) return "call_photo_uuid is not a lower-case UUID v4"
             if (skip != null && ((skip as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { CODE_RE.matches(it) } != true)) return "call_photo_skip_reason_code must be a lower-case code"
         }
-        // Contract 1.14.0 (SRM-A-40): a zero-sale reason exists only on a zero sale; the code itself is checked against the list in step 5c.
         if (r.type == "visit_close") {
             val reason = payload["zero_sale_reason_code"]?.takeIf { it !is JsonNull }
             if (reason != null) {

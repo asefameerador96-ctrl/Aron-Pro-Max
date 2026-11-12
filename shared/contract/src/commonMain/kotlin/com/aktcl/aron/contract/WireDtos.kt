@@ -422,8 +422,6 @@ data class VisitPayload(
     @SerialName("assessed_user_id") val assessedUserId: Long? = null,
     @Serializable(with = GeoFixWire::class) @SerialName("fix") val fix: GeoFix,
     @SerialName("geo") val geo: DeviceGeoVerdict,
-    @SerialName("call_photo_uuid") val callPhotoUuid: String? = null,
-    @SerialName("call_photo_skip_reason_code") val callPhotoSkipReasonCode: String? = null,
     @SerialName("force_sale_reason") val forceSaleReason: String? = null,
 )
 
@@ -435,6 +433,8 @@ data class VisitClosePayload(
     @SerialName("call_declined") val callDeclined: Boolean,
     @SerialName("ended_at") val endedAt: String,
     @SerialName("is_zero_sale") val isZeroSale: Boolean,
+    @SerialName("call_photo_uuid") val callPhotoUuid: String? = null,
+    @SerialName("call_photo_skip_reason_code") val callPhotoSkipReasonCode: String? = null,
     @SerialName("zero_sale_reason_code") val zeroSaleReasonCode: String? = null,
 )
 

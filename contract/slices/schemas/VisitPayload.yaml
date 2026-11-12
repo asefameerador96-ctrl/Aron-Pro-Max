@@ -36,21 +36,6 @@ VisitPayload:
       $ref: '#/components/schemas/GeoFix'
     geo:
       $ref: '#/components/schemas/DeviceGeoVerdict'
-    call_photo_uuid:
-      description: 'media_uuid of the outlet photo taken at call start (media purpose `outlet_call`, ref type `visit`,
-        contract 1.14.0, SRM-A-27). Idempotent: the media record is keyed by this UUID. Null or absent when no photo
-        was taken.'
-      oneOf:
-      - $ref: '#/components/schemas/Uuid'
-      - type: 'null'
-    call_photo_skip_reason_code:
-      type:
-      - string
-      - 'null'
-      pattern: ^[a-z][a-z0-9_]{1,40}$
-      description: Why no call-start photo was taken (code list `call_photo_skip`, first value `camera_unavailable`;
-        a reasoned skip never blocks the sale). Allowed only when `call_photo_uuid` is null and the code is an active
-        item of the list; any other combination is rejected `schema_invalid`.
     force_sale_reason:
       type:
       - string

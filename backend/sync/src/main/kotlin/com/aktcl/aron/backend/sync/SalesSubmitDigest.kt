@@ -38,14 +38,14 @@ data class RejectedRecordViewDto(
 
 /** Contract 1.14.0 `SubmitBusinessTotals` (SRM-B-25): the day's business figures, computed with the dashboard aggregates' rules. */
 @Serializable
-data class CategoryQtyBaseDto(val category_code: String, val qty_base: Long)
+data class SkuQtyBaseDto(val sku_id: Long, val qty_base: Long)
 
 @Serializable
 data class SubmitBusinessTotalsDto(
     val outlets_visited: Int,
-    val sold: List<CategoryQtyBaseDto>,
-    val stock_issued: List<CategoryQtyBaseDto>,
-    val qc: List<CategoryQtyBaseDto>,
+    val sold: List<SkuQtyBaseDto>,
+    val stock_issued: List<SkuQtyBaseDto>,
+    val qc: List<SkuQtyBaseDto>,
     val promotion_mtk: Long,
 )
 
@@ -147,33 +147,32 @@ class SalesSubmitDigestService(private val db: Database, private val clock: com.
     /**
      * Contract 1.14.0 (SRM-B-25). The same rules as `Aggregator` (`dw.agg_daily_route`, `agg_daily_route_sku`), read straight from the
      * stored rows of the login and date rather than from the worker's summaries, so the figure never lags the sync it is compared with:
-     * a visit counts when it is an `sr_call` and not abandoned; a memo when active with a line; sold quantity is the `sale` lines only;
-     * issued stock is `stock_movement` kind `issue`; QC is the stored `qc_line` quantity; promotion is offer + DRP discount.
+     * a visit counts when it is an `sr_call` and not abandoned; a memo when active with a line; sold quantity is the `sale` lines only, per SKU in base units
+     * (the phone converts with each SKU's pack factor); issued stock is `stock_movement` kinds `issue` and `adjustment`; QC is the stored `qc_line` quantity; promotion is offer + DRP discount.
      */
     fun businessTotals(h: Handle, userId: Long, date: LocalDate): SubmitBusinessTotalsDto {
         val visited = h.createQuery(
             "SELECT count(DISTINCT outlet_id) FROM app.visit WHERE user_id = :u AND business_date = :d AND visit_kind = 'sr_call' AND voided_at IS NULL AND outcome_code IS DISTINCT FROM 'abandoned'",
         ).bind("u", userId).bind("d", date).mapTo(Int::class.java).one()
         fun byCategory(sql: String) = h.createQuery(sql).bind("u", userId).bind("d", date)
-            .map { rs, _ -> CategoryQtyBaseDto(rs.getString("cat"), rs.getLong("q")) }.list()
+            .map { rs, _ -> SkuQtyBaseDto(rs.getLong("sku"), rs.getLong("q")) }.list()
         val sold = byCategory(
             """
-            SELECT coalesce(s.category_code, '') AS cat, sum(ml.qty_base)::bigint AS q
+            SELECT ml.sku_id AS sku, sum(ml.qty_base)::bigint AS q
               FROM app.memo_line ml
               JOIN app.memo m ON m.client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
-              JOIN app.sku s ON s.id = ml.sku_id
-             WHERE m.user_id = :u AND m.business_date = :d AND m.status = 'active' AND m.line_count > 0 AND m.voided_at IS NULL
+              WHERE m.user_id = :u AND m.business_date = :d AND m.status = 'active' AND m.line_count > 0 AND m.voided_at IS NULL
                AND ml.voided_at IS NULL AND ml.line_kind = 'sale'
-             GROUP BY 1 HAVING sum(ml.qty_base) > 0 ORDER BY 1
+             GROUP BY ml.sku_id HAVING sum(ml.qty_base) > 0 ORDER BY ml.sku_id
             """.trimIndent(),
         )
         val issued = byCategory(
-            "SELECT coalesce(s.category_code, '') AS cat, sum(sm.qty_base)::bigint AS q FROM app.stock_movement sm JOIN app.sku s ON s.id = sm.sku_id " +
-                "WHERE sm.user_id = :u AND sm.business_date = :d AND sm.voided_at IS NULL AND sm.kind IN ('issue', 'adjustment') GROUP BY 1 HAVING sum(sm.qty_base) <> 0 ORDER BY 1",
+            "SELECT sm.sku_id AS sku, sum(sm.qty_base)::bigint AS q FROM app.stock_movement sm " +
+                "WHERE sm.user_id = :u AND sm.business_date = :d AND sm.voided_at IS NULL AND sm.kind IN ('issue', 'adjustment') GROUP BY sm.sku_id HAVING sum(sm.qty_base) <> 0 ORDER BY sm.sku_id",
         )
         val qc = byCategory(
-            "SELECT coalesce(s.category_code, '') AS cat, sum(q.qty_base)::bigint AS q FROM app.qc_entry_line q JOIN app.sku s ON s.id = q.sku_id " +
-                "WHERE q.user_id = :u AND q.business_date = :d AND q.voided_at IS NULL GROUP BY 1 HAVING sum(q.qty_base) > 0 ORDER BY 1",
+            "SELECT q.sku_id AS sku, sum(q.qty_base)::bigint AS q FROM app.qc_entry_line q " +
+                "WHERE q.user_id = :u AND q.business_date = :d AND q.voided_at IS NULL GROUP BY q.sku_id HAVING sum(q.qty_base) > 0 ORDER BY q.sku_id",
         )
         val promo = h.createQuery(
             "SELECT coalesce(sum(offer_discount_mtk + drp_discount_mtk), 0)::bigint FROM app.memo m WHERE m.user_id = :u AND m.business_date = :d AND m.status = 'active' AND m.line_count > 0 AND m.voided_at IS NULL",

@@ -89,9 +89,12 @@ class SrManualSv1ApiTest {
                        "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}},
                 "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}$extra}"""
             val a = UUID.randomUUID().toString(); val b = UUID.randomUUID().toString(); val c = UUID.randomUUID().toString()
+            fun close(v: String, extra: String) = """{"visit_client_uuid":"$v","outcome_code":"sold","call_declined":false,"ended_at":"${now.get().minusSeconds(300)}","is_zero_sale":false$extra}"""
             val answer = sync(sr, listOf(
-                record("visit", visit(outlets[0], ""","call_photo_uuid":"$photo"""", 1), route, cu = a, family = a),
-                record("visit", visit(outlets[1], ""","call_photo_skip_reason_code":"permission_denied"""", 2), route, cu = b, family = b),
+                record("visit", visit(outlets[0], "", 1), route, cu = a, family = a),
+                record("visit_close", close(a, ""","call_photo_uuid":"$photo""""), route, family = a, rank = 1),
+                record("visit", visit(outlets[1], "", 2), route, cu = b, family = b),
+                record("visit_close", close(b, ""","call_photo_skip_reason_code":"permission_denied""""), route, family = b, rank = 1),
                 record("visit", visit(outlets[2], "", 3), route, cu = c, family = c),
             ))
             listOf(a, b, c).forEach { assertEquals("accepted", ack(answer, it).status()) }

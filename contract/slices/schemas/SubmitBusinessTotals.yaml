@@ -19,22 +19,22 @@ SubmitBusinessTotals:
       description: Distinct outlets with a stored sr_call visit that is not abandoned.
     sold:
       type: array
-      description: Sold quantity in base units (sticks, pieces) per SKU category code; live memos only (a superseded
-        or voided memo is not counted), `sale` lines only. A category with no sale is absent. Ordered by category_code.
+      description: Sold quantity in base units per SKU; live memos only (a superseded or voided memo is not counted),
+        `sale` lines only. A SKU with no sale is absent. Ordered by sku_id.
       items:
-        $ref: '#/components/schemas/CategoryQtyBase'
+        $ref: '#/components/schemas/SkuQtyBase'
     stock_issued:
       type: array
-      description: 'Stock issued in base units per category: `stock_movement` kinds `issue` and `adjustment` (signed),
-        not voided. Ordered by category_code.'
+      description: 'Stock issued in base units per SKU: `stock_movement` kinds `issue` and `adjustment` (signed),
+        not voided. Ordered by sku_id.'
       items:
-        $ref: '#/components/schemas/CategoryQtyBase'
+        $ref: '#/components/schemas/SkuQtyBase'
     qc:
       type: array
-      description: Stored `qc_line` quantity in base units per category (a defect count, SRM-A-34), not voided.
-        Ordered by category_code.
+      description: Stored `qc_line` quantity in base units per SKU (a defect count, SRM-A-34), not voided. Ordered
+        by sku_id.
       items:
-        $ref: '#/components/schemas/CategoryQtyBase'
+        $ref: '#/components/schemas/SkuQtyBase'
     promotion_mtk:
       $ref: '#/components/schemas/MtkNonNegative'
       description: offer + DRP discount of the active memos, milli-taka; zero while the discount programmes are

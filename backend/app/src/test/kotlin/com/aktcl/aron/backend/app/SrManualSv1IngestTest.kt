@@ -171,8 +171,8 @@ class SrManualSv1IngestTest {
            "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}$extra}""",
     )
 
-    private fun closeJson(visit: String, zero: Boolean, reason: String?, outcome: String = "zero_sale_stock_ok") = json(
-        """{"visit_client_uuid":"$visit","outcome_code":"$outcome","call_declined":false,"ended_at":"${day}T03:50:00.000Z","is_zero_sale":$zero${if (reason == null) "" else ",\"zero_sale_reason_code\":\"$reason\""}}""",
+    private fun closeJson(visit: String, zero: Boolean, reason: String?, outcome: String = "zero_sale_stock_ok", extra: String = "") = json(
+        """{"visit_client_uuid":"$visit","outcome_code":"$outcome","call_declined":false,"ended_at":"${day}T03:50:00.000Z","is_zero_sale":$zero${if (reason == null) "" else ",\"zero_sale_reason_code\":\"$reason\""}$extra}""",
     )
 
     private fun str(q: String): String? = fresh.db.jdbi.withHandle<String?, Exception> { h -> h.createQuery(q).mapTo(String::class.java).findOne().orElse(null) }
@@ -224,33 +224,43 @@ class SrManualSv1IngestTest {
 
     // ---------------------------------------------------------------------------------------------- (b) call photo
 
+    private fun outletAt(offset: Int) = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.outlet WHERE route_id = $routeId ORDER BY id OFFSET $offset LIMIT 1").mapTo(Long::class.java).one() }
+
     @Test
-    fun aCallPhotoOrAReasonedSkipIsStoredOnceAndTheTwoNeverMix() {
+    fun aCallPhotoOrAReasonedSkipIsStoredByTheCloseOnceAndTheTwoNeverMix() {
         val photo = uuid()
-        val o2 = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.outlet WHERE route_id = $routeId ORDER BY id OFFSET 10 LIMIT 1").mapTo(Long::class.java).one() }
-        val v1 = uuid()
-        val withPhoto = envelope("visit", v1, v1, 0, visitJson(o2, ""","call_photo_uuid":"$photo"""", 30), routeId)
-        repeat(3) { send(sr, listOf(withPhoto)) }
+        val v1 = uuid(); val c1 = uuid()
+        val open1 = envelope("visit", v1, v1, 0, visitJson(outletAt(10), "", 30), routeId)
+        val close1 = envelope("visit_close", c1, v1, 1, closeJson(v1, false, null, "sold", ""","call_photo_uuid":"$photo""""), routeId)
+        send(sr, listOf(close1, open1)); repeat(3) { send(sr, listOf(open1, close1).shuffled(Random(it))) }
         assertEquals(1L, count("SELECT count(*) FROM app.visit WHERE client_uuid = '$v1'"))
-        assertEquals(photo, str("SELECT call_photo_uuid::text FROM app.visit WHERE client_uuid = '$v1'"))
-        val o3 = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.outlet WHERE route_id = $routeId ORDER BY id OFFSET 11 LIMIT 1").mapTo(Long::class.java).one() }
+        assertEquals(photo, str("SELECT call_photo_uuid::text FROM app.visit WHERE client_uuid = '$v1'"), "stored once, kept under resends")
         val v2 = uuid()
-        val skip = envelope("visit", v2, v2, 0, visitJson(o3, ""","call_photo_skip_reason_code":"camera_unavailable"""", 31), routeId)
-        assertEquals("accepted", send(sr, listOf(skip)).ack(skip))
+        val open2 = envelope("visit", v2, v2, 0, visitJson(outletAt(11), "", 31), routeId)
+        val close2 = envelope("visit_close", uuid(), v2, 1, closeJson(v2, false, null, "sold", ""","call_photo_skip_reason_code":"camera_unavailable""""), routeId)
+        assertEquals("accepted", send(sr, listOf(open2, close2)).ack(close2))
         assertEquals("camera_unavailable", str("SELECT call_photo_skip_reason_code FROM app.visit WHERE client_uuid = '$v2'"))
-        val o4 = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.outlet WHERE route_id = $routeId ORDER BY id OFFSET 12 LIMIT 1").mapTo(Long::class.java).one() }
+        assertEquals(null, str("SELECT call_photo_uuid::text FROM app.visit WHERE client_uuid = '$v2'"))
+        // a visit sent without a photo member (an older app, or the photo step off) closes as before
+        val v3 = uuid()
+        val open3 = envelope("visit", v3, v3, 0, visitJson(outletAt(12), "", 32), routeId)
+        val close3 = envelope("visit_close", uuid(), v3, 1, closeJson(v3, false, null, "sold"), routeId)
+        assertEquals("accepted", send(sr, listOf(open3, close3)).ack(close3))
         for ((name, extra) in mapOf(
             "both" to ""","call_photo_uuid":"${uuid()}","call_photo_skip_reason_code":"other"""",
-            "bad skip code" to ""","call_photo_skip_reason_code":"lazy"""",
+            "unknown skip code" to ""","call_photo_skip_reason_code":"lazy"""",
+            "skip code shape" to ""","call_photo_skip_reason_code":"Camera Broken"""",
             "bad uuid" to ""","call_photo_uuid":"NOT-A-UUID"""",
         )) {
             val v = uuid()
-            val rec = envelope("visit", v, v, 0, visitJson(o4, extra, 32), routeId)
-            val a = send(sr, listOf(rec)).ack(rec)
+            val open = envelope("visit", v, v, 0, visitJson(outletAt(13), "", 33), routeId)
+            send(sr, listOf(open))
+            val close = envelope("visit_close", uuid(), v, 1, closeJson(v, false, null, "sold", extra), routeId)
+            val a = send(sr, listOf(close)).ack(close)
             assertTrue(a.startsWith("rejected"), "$name: $a")
-            assertEquals(0L, count("SELECT count(*) FROM app.visit WHERE client_uuid = '$v'"), "$name: nothing stored")
+            assertEquals(null, str("SELECT close_client_uuid::text FROM app.visit WHERE client_uuid = '$v'"), "$name: the visit stays open")
         }
-        // a photo record of purpose outlet_call must belong to a visit
+        // the photo itself is a media record of purpose outlet_call that must belong to a visit
         val m = uuid()
         val media = envelope("media_meta", m, m, 0, json(
             """{"purpose":"outlet_call","ref_type":"memo","ref_client_uuid":"${uuid()}","sha256":"${"ab".repeat(32)}","bytes":2000,"width":640,"height":480,"mime":"image/jpeg",
@@ -269,9 +279,9 @@ class SrManualSv1IngestTest {
         repeat(3) { send(sr, family.shuffled(Random(it))) }
         val after = fresh.db.jdbi.withHandle<com.aktcl.aron.backend.sync.SubmitBusinessTotalsDto, Exception> { h -> svc.businessTotals(h, sr, java.time.LocalDate.parse("2027-01-03")) }
         val expectedBase = 3 * priced[3] + 2
-        val cat = str("SELECT category_code FROM app.sku WHERE id = ${priced[0]}") ?: ""
-        fun List<com.aktcl.aron.backend.sync.CategoryQtyBaseDto>.of(c: String) = firstOrNull { it.category_code == c }?.qty_base ?: 0L
-        assertEquals(before.sold.of(cat) + expectedBase, after.sold.of(cat), "sold quantity in base units under the SKU's category")
+        fun List<com.aktcl.aron.backend.sync.SkuQtyBaseDto>.of(sku: Long) = firstOrNull { it.sku_id == sku }?.qty_base ?: 0L
+        assertEquals(before.sold.of(priced[0]) + expectedBase, after.sold.of(priced[0]), "sold quantity in base units under the SKU, once for all resends")
+        assertEquals(after.sold.map { it.sku_id }, after.sold.map { it.sku_id }.sorted(), "ordered by sku_id")
         assertEquals(0L, after.promotion_mtk - before.promotion_mtk, "no discount while the programmes are deferred")
         assertTrue(after.outlets_visited >= before.outlets_visited + (if (before.outlets_visited == 0) 1 else 0), "the visit counts once")
         // the digest served by the ingest service carries the same figures

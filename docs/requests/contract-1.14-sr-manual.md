@@ -13,13 +13,13 @@ Records: D-SV1-01 to 12 (DECISIONS.md).
 |---|---|---|
 | `VisitClosePayload.zero_sale_reason_code` (string or null, code list `zero_sale_reason`; only with `is_zero_sale`, an active item on the business date) | sync record `visit_close` | SRM-A-40 |
 | code list key `zero_sale_reason` (`CodeListKey`), four items: stock_available, outlet_closed_during_visit, absence_of_owner, insufficient_cash (Bangla labels = the Q12 defaults) | bundle code lists, admin code lists | SRM-A-40 |
-| `VisitPayload.call_photo_uuid` (uuid or null) and `call_photo_skip_reason_code` (code list `call_photo_skip`: camera_unavailable, permission_denied, storage_full, other; exclusive with the uuid; an active item) | sync record `visit` | SRM-A-27 |
+| `VisitClosePayload.call_photo_uuid` (uuid or null) and `call_photo_skip_reason_code` (code list `call_photo_skip`: camera_unavailable, permission_denied, storage_full, other; exclusive with the uuid; an active item) | sync record `visit_close` (the photo is taken after the visit opened, whose payload is immutable) | SRM-A-27 |
 | code list key `call_photo_skip` (`CodeListKey`); config key `cfg.sale.call_photo_required` (default true; global and role scope) | bundle code lists, config | SRM-A-27 |
 | `MediaPurpose` value `outlet_call` (a `media_meta` of this purpose must have `ref_type` `visit`) | `media_meta`, `createMediaUploadUrls` | SRM-A-27 |
-| `SalesSubmitDigest.business_totals` (new schemas `SubmitBusinessTotals`, `CategoryQtyBase`: `outlets_visited`, and `sold`, `stock_issued`, `qc` as lists of {category_code, qty_base}, and `promotion_mtk`; sold = live memos' sale lines, stock_issued = issue + adjustment) | `GET /v1/sync/totals` digest | SRM-B-25 |
+| `SalesSubmitDigest.business_totals` (new schemas `SubmitBusinessTotals`, `SkuQtyBase`: `outlets_visited`, and `sold`, `stock_issued`, `qc` as lists of {sku_id, qty_base} (per SKU: a category mixing 10s and 20s packs cannot be converted back to packets), and `promotion_mtk`; sold = live memos' sale lines, stock_issued = issue + adjustment) | `GET /v1/sync/totals` digest | SRM-B-25 |
 | `UpdateCheck.notes_en`, `notes_bn` (copies of `latest.notes_*`; the release admin already stores them) | `GET /v1/app/update-check` | SRM-A-09 |
 | `JourneyCall.status` value `repeat_sale` | `getTeamJourney` | part B s6 programmes |
-| seeded codes: `edit_reason` wrong_sku_qty, promotion_issue; `task_type` poor_brand_visibility | bundle code lists | SRM-B-15, SRM-B-49 |
+| seeded codes: `edit_reason` wrong_sku_qty, promotion_issue, and the so far unseeded wrong_quantity, wrong_price_type (labels for reports; the server never checked the code, only the pattern); `task_type` poor_brand_visibility | bundle code lists | SRM-B-15, SRM-B-49 |
 | `getTeamDeviceOtps`: `GET /v1/supervisor/device-otps` (TSO only; schemas `TeamDeviceOtp`, `TeamDeviceOtpPage`) | TSO app | SRM-A-06 |
 | `getCallPhotoReview`: `GET /v1/supervisor/call-photos` (AMO, TSO, DMO, WM, support, admin; schemas `CallPhotoReviewRow`, `CallPhotoReviewPage`) | portal / AMO | SRM-A-27 |
 
@@ -47,7 +47,7 @@ V0158 to V0162 are the Loyalty lane's; the dw contract version 1.7 may collide w
 ## Moved to train 2
 
 (e) the bundle `clusters` section and the cluster-creation record with AMO verification and portal approval (needs a new record type,
-a table and the portal page); (h) `outlet_sku_stats` (`ads_hundredths`, previous day, SDLW) bundle section with its formulas; the
+a table and the portal page); (h) `outlet_sku_stats` (`ads_hundredths` stated in base units, the phone converts by pack_factor; previous day, SDLW) bundle section with its formulas; the
 survey report key `posm-survey` with its dw view (SRM-B-08); the late-rows-after-Sales-Submit flag (SRM-B-30: a route-day column
 counted at ingest and a member of the route-day status read). The lead asked for the last two in this file; they are declared here
 and ship in train 2 with the same contract version (additive). The targets bundle sections belong to the targets-kpi lane.

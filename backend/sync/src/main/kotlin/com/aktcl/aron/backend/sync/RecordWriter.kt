@@ -182,11 +182,11 @@ object RecordWriter {
         val id = h.createQuery(
             """
             UPDATE app.visit SET close_client_uuid = CAST(:cu AS uuid), close_received_at = :now, close_captured_at = CAST(:cap AS timestamptz),
-                outcome_code = :oc, call_started_at = CAST(:cs AS timestamptz), call_declined = :cd, ended_at = CAST(:ea AS timestamptz), is_zero_sale = :z, zero_sale_reason_code = :zr
+                outcome_code = :oc, call_started_at = CAST(:cs AS timestamptz), call_declined = :cd, ended_at = CAST(:ea AS timestamptz), is_zero_sale = :z, zero_sale_reason_code = :zr, call_photo_uuid = CAST(:cp AS uuid), call_photo_skip_reason_code = :cs2
             WHERE client_uuid = CAST(:v AS uuid) AND close_client_uuid IS NULL RETURNING id
             """.trimIndent(),
         ).bind("cu", clientUuid).bind("now", IngestService.ts(now)).bind("cap", env.str("captured_at")).bind("oc", p.str("outcome_code"))
-            .bind("cs", p.str("call_started_at")).bind("cd", p.bool("call_declined")).bind("ea", p.str("ended_at")).bind("z", p.bool("is_zero_sale")).bind("zr", p.str("zero_sale_reason_code"))
+            .bind("cs", p.str("call_started_at")).bind("cd", p.bool("call_declined")).bind("ea", p.str("ended_at")).bind("z", p.bool("is_zero_sale")).bind("zr", p.str("zero_sale_reason_code")).bind("cp", p.str("call_photo_uuid")).bind("cs2", p.str("call_photo_skip_reason_code"))
             .bind("v", visit).mapTo(Long::class.java).findOne().orElse(null)
         if (id != null) return Result.Stored(id)
         val existing = h.createQuery("SELECT id, close_client_uuid::text FROM app.visit WHERE client_uuid = CAST(:v AS uuid) LIMIT 1").bind("v", visit)
