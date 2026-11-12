@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 180 | 2974 |
+| `app` | 180 | 2975 |
 | `dw` | 75 | 1211 |
 
 ## Index
