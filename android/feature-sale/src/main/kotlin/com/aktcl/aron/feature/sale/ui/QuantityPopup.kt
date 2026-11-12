@@ -67,7 +67,7 @@ object QtyPopupTags {
 
 /**
  * The quantity popup (SR manual s8 / 22, D-SR-MAN-S4-05): the SKU's picture with its packs badge, a -/+ stepper around the typed quantity,
- * the quick buttons (+n on the left, -n on the right, in the entry unit: packets, boxes or dozens, rule 5), the আগের দিন / ADS / SDLW
+ * the quick buttons (n on the left, -n on the right, in the entry unit: packets, boxes or dozens, rule 5), the আগের দিন / ADS / SDLW
  * panel, and সংরক্ষণ. The quantity is edited locally and reaches the sale only on সংরক্ষণ, so the red close drops a half-typed number.
  * Quick buttons clamp to 0 and [MaxLineQty]; the figures are whole units, integer math only. Stats unknown or kept in another unit read "N/A".
  */
@@ -131,7 +131,7 @@ fun QuantityPopup(sku: SaleSku, qty: Long, stats: SkuStats?, onSave: (Long) -> U
             // the kit's primary button pairs its own ink with its fill in every look (Sunlight included)
             com.aktcl.aron.core.ui.aron.AronPrimaryButton(
                 stringResource(R.string.qty_popup_save), { onSave(value) }, Modifier.align(Alignment.CenterHorizontally).testTag(QtyPopupTags.SAVE),
-                icon = androidx.compose.ui.graphics.vector.rememberVectorPainter(AronIcons.Save),
+                glyph = com.aktcl.aron.core.ui.aron.ButtonGlyph.Save,
             )
             Spacer(Modifier.size(2.dp))
         }

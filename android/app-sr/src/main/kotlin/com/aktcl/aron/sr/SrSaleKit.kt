@@ -88,8 +88,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     fun outletName(id: Long): String = day.dayData.value.outlets.firstOrNull { it.outletId == id }?.let { it.name + " (" + it.code + ")" } ?: id.toString()
     fun skuCategoryCode(id: Long): String? = skuCategory[id]
 
-    /** The outlet pill of the call-start screen (digits are localised by the screen): the picker label `Name (code-phone-cluster)` when the day holds the outlet, else [outletName]. */
-    fun callOutletLabel(id: Long): String = callOutletLabel(day.dayData.value.outlets.firstOrNull { it.outletId == id }, id)
+    /** The outlet pill of the call-start screen (digits are localised by the screen): the picker label `Name (code-phone-cluster)` when the day holds the outlet, else the bare outlet id (the day's outlets are not loaded). */
     fun callOutletLabel(outlet: com.aktcl.aron.core.database.entity.OutletEntity?, id: Long): String =
         outlet?.let { com.aktcl.aron.feature.outlet.OutletPicker.label(it) } ?: outletName(id)
     fun names() = PrintNames(::skuName, ::outletName, day.userDisplayName, day.dayData.value.route?.name.orEmpty(), category = { id -> com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, skuCategory[id]) }, categoryCode = { id -> skuCategory[id].orEmpty() })

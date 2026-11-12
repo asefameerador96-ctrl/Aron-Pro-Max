@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.text.font.FontWeight
 import com.aktcl.aron.core.ui.AronLook
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -605,7 +604,7 @@ private fun CallCartBar(onProceed: () -> Unit) {
         Icon(AronIcons.Sale, contentDescription = null, tint = look.onPanel, modifier = Modifier.size(28.dp))
         Text(localizedDigits("0.00"), color = look.onPanel, fontSize = 22.sp, modifier = Modifier.weight(1f))
         com.aktcl.aron.core.ui.aron.AronPrimaryButton(
-            stringResource(R.string.out_proceed), onProceed, Modifier.widthIn(min = 140.dp).testTag(CallQuestionTags.PROCEED), icon = rememberVectorPainter(AronIcons.ArrowForward),
+            stringResource(R.string.out_proceed), onProceed, Modifier.widthIn(min = 140.dp).testTag(CallQuestionTags.PROCEED), glyph = com.aktcl.aron.core.ui.aron.ButtonGlyph.Arrow,
         )
     }
 }

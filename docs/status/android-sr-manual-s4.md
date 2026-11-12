@@ -58,3 +58,10 @@ Three consecutive runs, each after cleaning the test tasks of the six modules, e
 
 Fixed: না is the kit's secondary button (paired ink and fill); সংরক্ষণ is the kit's primary button; `TokenContrastTest.callFlowButtonsAndTextHoldTheirContrastInEveryLook` checks every pair the call flow draws in the Default and Sunlight looks (the TSO night look has no call flow, so it is not checked there). The outlet pill on the call-start screen is read-only (no caret, no dropdown role; `RetailerPickerField(readOnly = true)`); the same pill on the sale entry screen still has its old caret (not touched: screenshot goldens). Unused import removed. `SrCallStartHostTest` now asserts the leave half of `onSaleData`, tells the picker label from the id fallback (`SrSaleKit.callOutletLabel`), and waits 5 s like the other host tests.
 All test runs here were JVM / Robolectric unit tests in the lane container (not CI, not a device).
+
+## Third pass (glyph ink)
+
+Fixed: the Save and Proceed arrows were black vectors in the primary button's untinted `icon` slot (about 1.35:1 on purple in Sunlight). They now use kit glyphs drawn in the label's ink: `ButtonGlyph.Save` for সংরক্ষণ, new `ButtonGlyph.Arrow` for the two এগিয়ে যান buttons (call-start cart bar and, pre-existing, the sale entry bar shared with the AMO; the AMO's bar loses a black arrow for a white one, no AMO test or golden asserts the arrow). The contrast test now holds the glyph pair at 3:1 on the ramp.
+**Kit finding for the lead (not changed in this lane):** the primary ramp start `#D5484A` under white is 4.33:1, below the 4.5:1 an 18 sp bold label needs (large text starts at 18.66 sp bold). The test asserts middle and end at 7:1 and leaves the start unasserted rather than lowering the bar.
+Cleanup: the one-argument `callOutletLabel` is gone; KDocs say the fallback is the bare id and "n" not "+n".
+`StartCallPrompt` and the strings `call_start_title` / `call_start_message` are no longer rendered by the SR app (the call-start screen replaced them); the strings and the composable stay because S6 and a feature-sale test still reference them.

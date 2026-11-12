@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.items
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.ui.LocalAronLook
@@ -313,7 +312,7 @@ fun SaleEntryScreen(
             MoneyText(moneyBare(review?.totals?.grossMtk ?: 0), style = MaterialTheme.typography.headlineMedium, color = look.onPanel, modifier = Modifier.weight(1f))
             AronPrimaryButton(
                 stringResource(R.string.sale_review), onClick = { if (hasLines) onReview() else askZero = true },
-                modifier = Modifier.widthIn(min = 140.dp), icon = rememberVectorPainter(AronIcons.ArrowForward),
+                modifier = Modifier.widthIn(min = 140.dp), glyph = ButtonGlyph.Arrow,
             )
         }
     }

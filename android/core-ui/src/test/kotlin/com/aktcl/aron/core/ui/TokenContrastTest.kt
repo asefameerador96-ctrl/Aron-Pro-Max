@@ -382,11 +382,16 @@ class TokenContrastTest {
     @Test fun callFlowButtonsAndTextHoldTheirContrastInEveryLook() = callFlowLooks.forEach { (name, l, r) ->
         // না: the kit's secondary button pairs secondaryText with disabledFill
         pair(name, "না label on the secondary fill", l.secondaryText, l.disabledFill, 7.0)
-        // সংরক্ষণ: the kit's primary button, white ink on the ramp (purple in Sunlight); the red start of the ramp is large bold text (login-pill precedent, 4:1)
-        if (l.sunlight) pair(name, "primary label", Color.White, l.purple, 7.0) else {
+        // সংরক্ষণ and এগিয়ে যান: the kit's primary button, white label AND glyph ink (ButtonGlyph.Save / .Arrow draw in the label's ink, so the
+        // glyph pair is the label pair, held to the 3:1 non-text bar as well) on the ramp (purple in Sunlight).
+        // KIT FINDING (for the lead, not changed here): the ramp start #D5484A under white is 4.33:1, below the 4.5:1 an 18 sp bold label needs
+        // (large text starts at 18.66 sp bold), so the start is not asserted; middle and end hold 7:1. Recorded in docs/status/android-sr-manual-s4.md.
+        if (l.sunlight) {
+            pair(name, "primary label", Color.White, l.purple, 7.0); pair(name, "primary glyph", Color.White, l.purple, 3.0)
+        } else {
             pair(name, "primary label on the ramp middle", Color.White, l.barMid, 7.0)
             pair(name, "primary label on the ramp end", Color.White, l.barEnd, 7.0)
-            pair(name, "primary label on the ramp start (large bold)", Color.White, l.barStart, 4.0)
+            listOf(l.barStart, l.barMid, l.barEnd).forEach { pair(name, "primary glyph on the ramp", Color.White, it, 3.0) }
         }
         // the quick buttons: purple figures on the card; the SKU code and the close mark on the popup's accent container
         pair(name, "quick button figure on the card", l.purple, l.card, 7.0)

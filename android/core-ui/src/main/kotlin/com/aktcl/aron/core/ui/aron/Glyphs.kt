@@ -104,6 +104,15 @@ internal object Glyph {
         drawLine(color, Offset(center.x - s * 0.12f, center.y + s * 0.32f), Offset(center.x - s * 0.30f, center.y + s * 0.14f), w, StrokeCap.Round)
     }
 
+    /** A right arrow in the label's ink (shaft and head), the "go ahead" mark of the Proceed buttons; it is never darker or lighter than the label. */
+    fun DrawScope.arrowForward(color: Color) {
+        val s = min(size.width, size.height)
+        val w = s * 0.12f
+        drawLine(color, Offset(center.x - s * 0.34f, center.y), Offset(center.x + s * 0.32f, center.y), w, StrokeCap.Round)
+        drawLine(color, Offset(center.x + s * 0.08f, center.y - s * 0.26f), Offset(center.x + s * 0.34f, center.y), w, StrokeCap.Round)
+        drawLine(color, Offset(center.x + s * 0.08f, center.y + s * 0.26f), Offset(center.x + s * 0.34f, center.y), w, StrokeCap.Round)
+    }
+
     /** Floppy-disk "save" glyph of the reference Save button. */
     /** Map pin (sr/attendance.png location card). */
     fun DrawScope.pin(color: Color, hole: Color) {
