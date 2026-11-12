@@ -2903,3 +2903,7 @@
 
 ### 2026-11-12 11:40 UTC — train 102 on INT
 - Integrator 24 pushed train 102: INT `12f56c8bb` (DECISIONS 414, 0 lost lines; differs from the train head only by the two train.md rows), ci #2051 43210959546 running. S3, S5, S6 told to merge INT and report with gate script results and lane CI ids; S2 told to hold its push until the re-check result and prepare the merge.
+
+### 2026-11-12 11:43 UTC — Flyway proof for train 101; one worker error under watch
+- ops-diagnose run 43210886472 (read by a Haiku reader, 104 k tokens): migrate execution caj-aron-dev-migrate-i9m3ypf 11:24:24 to 11:24:41 UTC, "Current version of schema public: 0157", migrating to 0158, 0159, 0160, 0161, 0162, "Successfully applied 5 migrations to schema public, now at version v0162", exit code 0, no ERROR/FATAL in the migrate job. Integrator report: PITR point 11:22:19Z, smoke PASSED (login, route, outlet, sale 92000 mtk), APK aron-release-signed-dev-2039 (41,630,051 bytes).
+- One ERROR in the same log from the worker: "aron.analytics.worker aggregation pass failed" at 11:34:54 UTC, five seconds after the new worker revision (--0000188) started. Cause not visible in that excerpt. A second ops-diagnose (window 11:30 to 12:05) is dispatched and a Haiku reader will say whether it repeats and what the exception is. Not yet known whether it is a start-up one-off or tied to V0158..V0162.
