@@ -50,6 +50,8 @@ fun TsoSettingsContent(
     updateAvailable: Boolean = false,
     onSupport: (() -> Unit)? = null,
     onChangePassword: (() -> Unit)? = null,
+    /** SR manual 04: the Device OTP screen (the codes a rep needs for a new phone); null hides the row. */
+    onDeviceOtp: (() -> Unit)? = null,
 ) {
     val language = LocalAppLanguage.current
     AronScaffold(
@@ -83,6 +85,9 @@ fun TsoSettingsContent(
             if (onSupport != null) AronListRow(stringResource(R.string.set_support), Modifier.testTag(RoleHomeTags.SET_SUPPORT), trailing = ">", onClick = onSupport)
             if (onChangePassword != null) {
                 AronListRow(stringResource(com.aktcl.aron.feature.tso.R.string.tso_cp_row), Modifier.testTag(TsoSettingsTags.CHANGE_PASSWORD), trailing = ">", onClick = onChangePassword)
+            }
+            if (onDeviceOtp != null) {
+                AronListRow(stringResource(com.aktcl.aron.feature.tso.R.string.tso_otp_row), Modifier.testTag(TsoSettingsTags.DEVICE_OTP), trailing = ">", onClick = onDeviceOtp)
             }
         }
     }

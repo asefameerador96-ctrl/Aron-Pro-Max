@@ -98,7 +98,8 @@ class LoginViewModel(
         if (!s.otp.canVerify) return
         _state.update { it.copy(otp = it.otp.copy(busy = true, error = null)) }
         viewModelScope.launch {
-            val outcome = runCatching { bindCall(token, s.otp.digits, s.password) }.getOrElse { BindOutcome.Failed(null) }
+            // cancellation propagates (the scope was cancelled: no state is written); any other failure is a refused bind
+            val outcome = com.aktcl.aron.core.common.orDefaultKeepingCancellation<BindOutcome>(BindOutcome.Failed(null)) { bindCall(token, s.otp.digits, s.password) }
             _state.update {
                 when {
                     outcome is BindOutcome.Bound -> it.copy(password = "", bindToken = null, otp = OtpModel.succeeded(it.otp))

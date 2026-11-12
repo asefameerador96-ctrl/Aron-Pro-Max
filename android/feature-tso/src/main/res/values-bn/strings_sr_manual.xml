@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tso_otp_title">ডিভাইস OTP</string>
+    <string name="tso_otp_row">ডিভাইস OTP (SR-এর ফোনের জন্য)</string>
+    <string name="tso_otp_note">যে SR নতুন ফোন সেট করছেন তাঁকে ৪ সংখ্যার কোডটি দিন। কোডটি একবারই কাজ করে এবং মেয়াদ শেষ হয়। ইন্টারনেট লাগবে।</string>
+    <string name="tso_otp_empty">আপনার এলাকার কোনো SR এখন কোডের অপেক্ষায় নেই।</string>
+    <string name="tso_otp_offline">সংযোগ নেই। কোড ফোনে রাখা হয় না: ইন্টারনেটে যুক্ত হয়ে টেনে রিফ্রেশ করুন।</string>
+    <string name="tso_otp_refused">এই অ্যাকাউন্ট ডিভাইস OTP ব্যবহার করতে পারে না।</string>
+    <string name="tso_otp_unreadable">সার্ভারের উত্তর পড়া যায়নি। টেনে রিফ্রেশ করুন।</string>
+    <string name="tso_otp_issue_offline">সংযোগ নেই। কোড দেওয়া হয়নি। অনলাইনে আবার চেষ্টা করুন।</string>
+    <string name="tso_otp_issue_refused">সার্ভার কোড দেয়নি (এই SR আপনার এলাকার বাইরে হতে পারে, অথবা অনেকবার কোড চাওয়া হয়েছে)। পরে আবার চেষ্টা করুন।</string>
+    <string name="tso_otp_issue">OTP দিন</string>
+    <string name="tso_otp_more">আরও দেখুন</string>
+    <string name="tso_otp_valid_until">%1$s পর্যন্ত বৈধ</string>
+    <string name="tso_otp_row_desc_code">%1$s, কোড %2$s</string>
+    <string name="tso_otp_row_desc_none">%1$s, এখনো কোড নেই</string>
+    <string name="tso_otp_session_expired">আপনার সাইন-ইন শেষ হয়েছে। লগ আউট করে আবার লগইন করুন, তারপর ডিভাইস OTP খুলুন।</string>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="otp_manual_heading">OTP লিখুন</string>
+    <string name="otp_manual_hint">আপনার TSO-এর দেওয়া ৪ সংখ্যার OTP লিখুন।</string>
+    <string name="otp_manual_notice">মনে হচ্ছে আপনি নতুন ফোনে লগইন করছেন, তাই লগইন সম্পূর্ণ করতে এই ফোনটি যাচাই করতে হবে।</string>
+</resources>

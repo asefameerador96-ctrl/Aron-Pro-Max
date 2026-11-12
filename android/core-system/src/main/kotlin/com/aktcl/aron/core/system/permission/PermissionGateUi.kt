@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,7 +45,17 @@ object PermissionGateTags {
  * coming back from Settings opens the feature without another tap.
  */
 @Composable
-fun PermissionGate(feature: GatedFeature, onBack: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun PermissionGate(
+    feature: GatedFeature,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    /**
+     * The system prompt appears by itself the first time the feature opens (SR manual 05: the camera sheet shows when the camera opens);
+     * the blocked screen only follows a denial. Default: the camera. Location keeps the explained screen first (the rep needs the reason).
+     */
+    askOnFirstOpen: Boolean = feature.needs == RuntimePermission.CAMERA,
+    content: @Composable () -> Unit,
+) {
     val context = LocalContext.current
     val activity = context.findActivity()
     var snapshot by remember { mutableStateOf(activity?.let(AndroidPermissions::snapshot) ?: AndroidPermissions.snapshotOf(context)) }
@@ -54,7 +65,10 @@ fun PermissionGate(feature: GatedFeature, onBack: () -> Unit, modifier: Modifier
         AndroidPermissions.markAsked(context, feature.needs)
         refresh()
     }
-    when (val d = PermissionPolicy.decide(feature, snapshot)) {
+    val decision = PermissionPolicy.decide(feature, snapshot)
+    val firstAsk = askOnFirstOpen && decision is GateDecision.Blocked && decision.action == GateAction.ASK_AGAIN && snapshot.status(decision.permission) == PermissionStatus.NOT_ASKED
+    LaunchedEffect(firstAsk) { if (firstAsk) launcher.launch(AndroidPermissions.manifestNames(feature.needs).toTypedArray()) }
+    when (val d = decision) {
         GateDecision.Allowed -> content()
         is GateDecision.Blocked -> PermissionBlockedContent(
             d,

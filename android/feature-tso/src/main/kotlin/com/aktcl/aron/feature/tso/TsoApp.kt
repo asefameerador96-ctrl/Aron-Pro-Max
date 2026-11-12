@@ -149,6 +149,7 @@ private fun TsoRouteContent(
             sunlight = sunlight, onSunlight = onSunlight, onUpdate = onUpdate, updateAvailable = updateAvailable,
             onSupport = if (support != null) ({ nav.open(TsoScreen.SUPPORT_UPLOAD) }) else null,
             onChangePassword = if (changePassword != null) ({ nav.open(TsoScreen.CHANGE_PASSWORD) }) else null,
+            onDeviceOtp = if (screens.containsKey(TsoScreen.DEVICE_OTP)) ({ nav.open(TsoScreen.DEVICE_OTP) }) else null,
         )
         route.screen == TsoScreen.CHANGE_PASSWORD && changePassword != null -> {
             // a fresh form (and no typed password kept) every time the screen is opened
@@ -189,6 +190,10 @@ private fun placeholderLabel(s: TsoScreen): Int = when (s) {
     TsoScreen.TARGET_STATUS, TsoScreen.TARGET_DETAILS -> com.aktcl.aron.feature.tso.R.string.tso_drawer_target_status
     TsoScreen.FEEDBACK_NEW -> com.aktcl.aron.feature.tso.R.string.tso_drawer_feedback_new
     TsoScreen.FEEDBACK_LIST -> com.aktcl.aron.feature.tso.R.string.tso_drawer_feedback_list
+    TsoScreen.DEVICE_OTP -> com.aktcl.aron.feature.tso.R.string.tso_otp_title
 }
 
-object TsoSettingsTags { const val CHANGE_PASSWORD = "tso_settings_change_password" }
+object TsoSettingsTags {
+    const val CHANGE_PASSWORD = "tso_settings_change_password"
+    const val DEVICE_OTP = "tso_settings_device_otp"
+}

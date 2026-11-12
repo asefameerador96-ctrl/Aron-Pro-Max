@@ -58,6 +58,17 @@ enum class BundleOutcome {
     NEW_DATE,
 }
 
+/** Step counter of one bundle download: [stepsDone] of [stepCount] (the head, each page, the apply). Called from the downloading coroutine; keep it cheap. */
+fun interface BundleProgress {
+    fun report(stepsDone: Int, stepCount: Int)
+}
+
+/** A progress callback runs inside the downloader's lock: whatever it throws (except cancellation) must never abort a staged download. */
+internal fun BundleProgress?.safely(stepsDone: Int, stepCount: Int) {
+    if (this == null) return
+    try { report(stepsDone, stepCount) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+}
+
 data class BundleReport(
     val outcome: BundleOutcome, val bundleVersion: String? = null, val businessDate: String? = null, val code: String? = null,
     /** The HTTP status of a refused request (FAILED, AUTH_REQUIRED, NOT_READY); null otherwise. */
@@ -84,7 +95,7 @@ class BundleDownloader(
     private val lock = Mutex()
 
     /** Fetches and applies the bundle of [forDate] (default: today's Dhaka business date). Offline it changes nothing. */
-    suspend fun download(forDate: String = BusinessDate.of(clock.nowMs()).toString()): BundleReport = lock.withLock { downloadLocked(forDate) }
+    suspend fun download(forDate: String = BusinessDate.of(clock.nowMs()).toString(), progress: BundleProgress? = null): BundleReport = lock.withLock { downloadLocked(forDate, progress) }
 
     /** True when this downloader works on [d] (a TSO wipe closes the user's database; a later sign-in opens a new one). */
     internal fun uses(d: AronDatabase): Boolean = db === d
@@ -100,7 +111,7 @@ class BundleDownloader(
         return refreshOnForeground() ?: BundleReport(BundleOutcome.UNCHANGED, repo.bundleVersion(), date)
     }
 
-    private suspend fun downloadLocked(forDate: String): BundleReport {
+    private suspend fun downloadLocked(forDate: String, progress: BundleProgress? = null): BundleReport {
         val today = BusinessDate.of(clock.nowMs()).toString()
         val isDay = forDate <= today // a later date is a prefetch: stored aside, never the day's login
         val prefetchEtag = repo.prefetch()?.takeIf { it.first == forDate }?.second
@@ -112,7 +123,7 @@ class BundleDownloader(
             else -> repo.etag().takeIf { repo.businessDate() == forDate }
         }
         val configVersion = meta.meta(ReferenceRepository.KEY_CONFIG_VERSION)?.toLongOrNull()
-        val report = fetch(forDate, isDay, onPrefetch, ifNoneMatch, configVersion)
+        val report = fetch(forDate, isDay, onPrefetch, ifNoneMatch, configVersion, progress)
         if (isDay && report.outcome !in setOf(BundleOutcome.APPLIED, BundleOutcome.UNCHANGED, BundleOutcome.OLDER_IGNORED) && repo.businessDate() != forDate) {
             // No fresh bundle for a new day: start it on the stored prefetch, if one was fetched for it.
             if (repo.promotePrefetch(forDate) == ApplyResult.APPLIED) {
@@ -203,7 +214,7 @@ class BundleDownloader(
         return downloadLocked(date)
     }
 
-    private suspend fun fetch(forDate: String, isDay: Boolean, onPrefetch: Boolean, ifNoneMatch: String?, configVersion: Long?): BundleReport {
+    private suspend fun fetch(forDate: String, isDay: Boolean, onPrefetch: Boolean, ifNoneMatch: String?, configVersion: Long?, progress: BundleProgress? = null): BundleReport {
         return when (val r = api.bundle(forDate, ifNoneMatch, configVersion)) {
             is ApiResult.NotModified -> {
                 if (onPrefetch) {
@@ -212,7 +223,7 @@ class BundleDownloader(
                         return BundleReport(BundleOutcome.PREFETCH_PROMOTED, repo.bundleVersion(), repo.businessDate())
                     }
                     // The stored prefetch could not be used: ask again without a condition, never report a stale day as current.
-                    return fetch(forDate, isDay, onPrefetch = false, ifNoneMatch = null, configVersion = configVersion)
+                    return fetch(forDate, isDay, onPrefetch = false, ifNoneMatch = null, configVersion = configVersion, progress = progress)
                 }
                 if (isDay) markLoggedIn(forDate)
                 BundleReport(BundleOutcome.UNCHANGED, if (isDay) repo.bundleVersion() else repo.prefetch()?.first, forDate)
@@ -234,6 +245,10 @@ class BundleDownloader(
                         ?.forEach { it.deleteRecursively() }
                     stage.mkdirs()
                 }
+                // Steps for the SR manual's "Processing(n/N)" counter (screen 08): the head, every page, the apply.
+                val totalSteps = 2 + download.head.meta.pagedSections.sumOf { it.pages }
+                var doneSteps = 1
+                progress.safely(doneSteps, totalSteps)
                 val pages = HashMap<String, MutableList<JsonElement>>()
                 // The `outlets` pages (the bulk of an AMO/TSO bundle) are never merged into one tree: they are checked here one
                 // page at a time and streamed into Room page by page by the apply (heap = one page, not 11,000 outlets).
@@ -261,6 +276,7 @@ class BundleDownloader(
                             return BundleReport(BundleOutcome.FAILED, version, code = "malformed_page")
                         }
                         if (streamed) { streamedRows += rows.size; outletFiles += file } else pages.getOrPut(paged.section) { ArrayList() }.addAll(rows)
+                        progress.safely(++doneSteps, totalSteps)
                     }
                     val got = if (streamed) streamedRows else pages[paged.section].orEmpty().size
                     if (paged.rows > 0 && got != paged.rows) {
@@ -282,7 +298,7 @@ class BundleDownloader(
                 withContext(Dispatchers.IO) { stage.deleteRecursively() }
                 if (isDay) markLoggedIn(forDate)
                 when (applied) {
-                    ApplyResult.APPLIED -> BundleReport(BundleOutcome.APPLIED, repo.bundleVersion(), repo.businessDate())
+                    ApplyResult.APPLIED -> { progress.safely(totalSteps, totalSteps); BundleReport(BundleOutcome.APPLIED, repo.bundleVersion(), repo.businessDate()) }
                     ApplyResult.OLDER_IGNORED -> BundleReport(BundleOutcome.OLDER_IGNORED, repo.bundleVersion(), repo.businessDate())
                     ApplyResult.PREFETCH_STORED -> BundleReport(BundleOutcome.PREFETCH_STORED, version, bundle.meta.validForBusinessDate)
                 }

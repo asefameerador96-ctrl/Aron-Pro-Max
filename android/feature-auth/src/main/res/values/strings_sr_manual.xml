@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SR manual train 1 (D-SR-MAN-S1): screens 03 and 04 of the owner's SR manual. Bangla in values-bn. -->
+<resources>
+    <string name="auth_sr_footer" translatable="false">SR App\n(version - %1$s)</string>
+    <string name="otp_manual_heading">Enter OTP</string>
+    <string name="otp_manual_hint">Enter the 4-digit OTP provided by your TSO.</string>
+    <string name="otp_manual_notice">It looks like you are logging in on a new device, so you need to verify this device to complete the login.</string>
+</resources>

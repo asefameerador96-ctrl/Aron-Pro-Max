@@ -78,7 +78,6 @@ import com.aktcl.aron.feature.attendance.AttendanceState
 import com.aktcl.aron.feature.home.AppPermission
 import com.aktcl.aron.feature.home.BundleFreshness
 import com.aktcl.aron.feature.home.DeviceHealth
-import com.aktcl.aron.feature.home.FirstBundleContent
 import com.aktcl.aron.feature.home.FirstBundleState
 import com.aktcl.aron.feature.home.HomeContent
 import com.aktcl.aron.feature.home.HomeDayModel
@@ -87,6 +86,8 @@ import com.aktcl.aron.feature.home.HomeTile
 import com.aktcl.aron.feature.home.HomeTiles
 import com.aktcl.aron.feature.home.HomeUser
 import com.aktcl.aron.feature.home.PermissionOnboardingContent
+import com.aktcl.aron.feature.home.DataUpdateContent
+import com.aktcl.aron.feature.home.DataUpdatePhase
 import com.aktcl.aron.feature.home.PlannedRoute
 import com.aktcl.aron.feature.home.RouteKind
 import com.aktcl.aron.feature.home.RoutePicker
@@ -339,16 +340,16 @@ fun SrApp(
             AronScreen(Modifier.fillMaxSize()) {} // the page background until the local day is read (no splash, no spinner)
         } else if (data.freshness is BundleFreshness.Missing && !skipFirstBundle) {
             // F-SR-001: a phone with no bundle yet shows the first-bundle download (resumable); check-in never waits for it.
+            // SR manual 08 (SRM-A-11): while the download runs, "অ্যাপ আপডেট হচ্ছে" with the real step counter; when it stopped
+            // (offline, failed, sign-in ended) the Bangla "new updates found" prompt, whose আপডেট button is the retry (resumable).
             val outcome by day.bundleOutcome.collectAsState()
-            FirstBundleContent(
-                state = when {
-                    data.downloading -> FirstBundleState.DOWNLOADING
-                    outcome == BundleOutcome.OFFLINE -> FirstBundleState.OFFLINE
-                    outcome == BundleOutcome.AUTH_REQUIRED -> FirstBundleState.AUTH
-                    outcome == null && !data.downloading -> FirstBundleState.DOWNLOADING
-                    else -> FirstBundleState.FAILED
-                },
-                onRetry = { scope.launch { startBundleDownload(); day.taskBoard.load() } },
+            val progress by day.bundleProgress.collectAsState()
+            val ui = SrDataUpdate.ui(data.downloading, outcome, progress)
+            DataUpdateContent(
+                phase = ui.phase,
+                versionName = SrDataUpdate.versionName(), // the version NAME only, never "name (code)"
+                onUpdate = { scope.launch { startBundleDownload(); day.taskBoard.load() } },
+                stepsDone = ui.stepsDone, stepCount = ui.stepCount, reason = ui.reason,
                 onSkip = { skipFirstBundle = true },
             )
         } else {
