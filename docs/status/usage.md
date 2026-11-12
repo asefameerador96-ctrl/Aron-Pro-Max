@@ -2855,3 +2855,7 @@
 - INT `0b5eba27a`: ci #2031 43195702644 success (5 ok, 6 skipped by path, no re-run); deploy #338 43197459595 skipped ("nothing deployable changed"); health build ab78d0d4b unchanged. APK of record: **aron-release-signed-dev-2031**, 41,630,189 bytes (contents and signature not inspected by the integrator). SR manual S3 and S5 are on INT; device walk pending (owner).
 - S4 merged head `df7e5a1a9` (INT merged, conflicts in SaleRoute.kt, SrSaleHosts.kt, strings, DECISIONS; Save and arrow glyph fix): static gate clean (DECISIONS 410; lane ci 43197100274); Opus merge gate wkb47jjm0 running.
 - S5 train 2 lows `457a1da95` reported; gate after S4 lands (it merges INT again).
+
+### 2026-11-12 10:12 UTC — S4 merge gate: resolution correct, stale goldens to re-record
+- S4 `df7e5a1a9` Opus merge gate wkb47jjm0 (11 agents): merge resolution correct (SaleRoute.kt, SrSaleHosts.kt carry both parents; one assist holder on Sale; strings union 145/145 and 91/91, no duplicates; 0 INT lines lost); glyph fix sound (white ink, about 15.5:1 in Sunlight). Blocking: the arrow change leaves 11 goldens stale under the 0.2% Roborazzi threshold (amo_sale_entry_bn + ten SR sale_* shots) and status line 64 is false. Asked: re-record exactly those, correct the line; then diff-only check and train. wt-s4 removed.
+- Kit finding taken by the lead: primary label on the Default ramp start (#D5484A under white) is 4.33:1 for an 18 sp bold label (below 4.5); pre-existing kit ramp from the owner's look (14a); to raise with the design tokens, not in a lane.
