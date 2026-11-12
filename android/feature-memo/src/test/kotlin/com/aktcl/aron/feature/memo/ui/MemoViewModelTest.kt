@@ -51,6 +51,31 @@ class MemoViewModelTest {
         assertFalse(v.state.value.canMarkPaid); assertEquals(0, v.state.value.outletDueMtk)
     }
 
+    // SRM-B-20: a stored collection shows the "marked as paid" modal until OK; it comes from state, so it survives a recomposition
+    @Test fun aStoredMarkPaidRaisesThePaidModalOnceAndOkClearsIt() {
+        val f = Fake(credit); val v = vm(f)
+        v.open("m1")
+        assertFalse(v.state.value.paidDone)
+        v.markPaid()
+        assertTrue(v.state.value.paidDone)
+        v.refresh(); assertTrue("a reload keeps it until OK", v.state.value.paidDone)
+        v.dismissPaidDone()
+        assertFalse(v.state.value.paidDone)
+        v.markPaid() // nothing left to pay: no second collection and no second modal
+        assertEquals(1, f.writes.size); assertFalse(v.state.value.paidDone)
+    }
+
+    @Test fun aRefusedMarkPaidRaisesNoPaidModal() {
+        val f = object : MemoStore, DueCollectionWriter {
+            override suspend fun memos(businessDate: String) = listOf(credit)
+            override suspend fun collections(businessDate: String) = emptyList<StoredCollection>()
+            override suspend fun write(draft: DueCollectionDraft) { throw com.aktcl.aron.core.database.repo.RouteDaySubmittedException("2026-10-05", 1L) }
+        }
+        val v = MemoViewModel(f, f, object : MemoReprinter { override suspend fun print(memoUuid: String, memo: com.aktcl.aron.core.printing.doc.MemoPrint) = PrintAttempt.Done }, { PrintNames({ "S$it" }, { "O$it" }, "sr", "r") }, { "2026-10-05" })
+        v.open("m1"); v.markPaid()
+        assertTrue(v.state.value.submitRefused); assertFalse(v.state.value.paidDone)
+    }
+
     @Test fun reprintGoesThroughThePrinterPortWithTheStoredMemo() {
         val f = Fake(credit); val prints = ArrayList<String>(); val v = vm(f, prints)
         v.open("m1"); v.reprint()

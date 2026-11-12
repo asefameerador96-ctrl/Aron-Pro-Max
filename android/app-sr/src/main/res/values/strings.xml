@@ -65,4 +65,6 @@
     <string name="sr_photo_body">Photo Capture is for the gift and campaign programmes, which start later. Nothing to capture today.</string>
     <string name="sr_review_route">Route: %1$s</string>
     <string name="sr_review_cluster">Cluster: %1$s</string>
+    <string name="sr_survey_answer">Answer:</string>
+    <string name="sr_survey_pick">Select</string>
 </resources>

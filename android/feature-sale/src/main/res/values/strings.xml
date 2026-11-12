@@ -113,4 +113,10 @@
     <string name="sale_col_stock">Stock</string>
     <string name="sale_price_per_unit">৳ %1$s / %2$s</string>
     <string name="review_problem_qty_large">Quantity too large for SKU %1$s.</string>
+    <string name="edit_reason_wrong_sku_qty">Wrong SKU quantity</string>
+    <string name="edit_reason_promotion_issue">Promotion issue</string>
+    <string name="edit_reason_dialog_title">Please enter the reason for editing this sale</string>
+    <string name="edit_reason_pick">Select a reason</string>
+    <string name="edit_reason_cancel">Cancel</string>
+    <string name="edit_reason_submit">Submit</string>
 </resources>

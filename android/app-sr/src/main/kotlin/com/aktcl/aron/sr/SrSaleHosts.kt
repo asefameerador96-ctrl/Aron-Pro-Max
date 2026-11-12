@@ -1,6 +1,7 @@
 package com.aktcl.aron.sr
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,6 +30,8 @@ import com.aktcl.aron.feature.memo.ui.JourneyScreen
 import com.aktcl.aron.feature.memo.ui.KpiStripView
 import com.aktcl.aron.feature.memo.ui.MemoDetailView
 import com.aktcl.aron.feature.memo.ui.MemoMenuScreen
+import com.aktcl.aron.feature.memo.ui.MemoSwitchOption
+import com.aktcl.aron.feature.memo.ui.MemoSwitcher
 import com.aktcl.aron.feature.memo.ui.MoneyCardsView
 import com.aktcl.aron.feature.memo.ui.ReprintDialogs
 import com.aktcl.aron.feature.memo.ui.SaleHistoryScreen
@@ -38,6 +41,7 @@ import com.aktcl.aron.feature.sale.domain.EditReason
 import com.aktcl.aron.feature.sale.domain.VisitOutcomeCode
 import com.aktcl.aron.feature.outlet.VisitCheckContent
 import com.aktcl.aron.feature.outlet.VisitUiState
+import com.aktcl.aron.feature.sale.ui.EditReasonDialog
 import com.aktcl.aron.feature.sale.ui.EditReasonScreen
 import com.aktcl.aron.feature.sale.ui.SaleRoute
 import com.aktcl.aron.feature.sale.ui.StartCallPrompt
@@ -173,6 +177,10 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
     val st by vm.state.collectAsState()
     var history by remember { mutableStateOf<com.aktcl.aron.feature.memo.domain.SaleHistory?>(null) }
     val scope = rememberCoroutineScope()
+    // SRM-B-09/11: the outlet as the sale picker names it: name (code-phone-cluster), digits per language
+    val outlets = day.dayData.collectAsState().value.outlets
+    val labels = outlets.associate { it.outletId to com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) }
+    val outletLabel: (Long) -> String = { id -> labels[id] ?: kit.outletName(id) }
     LaunchedEffect(Unit) { kit.prepare(); vm.refresh() }
     // tso-manual X4a (R-W-11): the push day_final_submitted pulls the delta; Mark Paid and Edit follow the lock while on screen
     var pulls by remember { mutableStateOf(0) }
@@ -184,7 +192,7 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
         when {
             !st.loaded -> com.aktcl.aron.core.ui.aron.AronLoadingScreen()
             h != null -> SaleHistoryScreen(h, offlineBanner = true, skuName = kit::skuName, skuCategory = kit::skuCategoryCode)
-            sel == null -> MemoMenuScreen(st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
+            sel == null -> MemoMenuScreen(st.rows, outletLabel, onOpen = { vm.open(it.memoUuid) }, banner = stringResource(com.aktcl.aron.feature.memo.R.string.memo_banner_manual))
             else -> {
                 // an edit is a new memo: on a route-day closed by Final Submit it is disabled with the lock text (Print stays);
                 // checked again on every applied push pull (fix round), not only when Mark Paid's own check changes;
@@ -193,6 +201,14 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
                 LaunchedEffect(sel.memo.memoUuid, st.dayLocked, pulls) { editRefused = kit.editRefusal(sel.memo.memoUuid) }
                 MemoDetailView(
                     sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid, skuCategory = kit::skuCategoryCode,
+                    // SRM-B-11/19/10/12/14/20: the outlet heads the memo, the due box is the dashed one with the button beside the sentence,
+                    // the selector and letter bar, the category quantities, the banner with Print and Edit in a row, the "marked as paid" modal
+                    outletName = outletLabel(sel.memo.outletId), dashedDueBox = true, dueSideBySide = true, subtotalQuantities = true, letterFilter = true,
+                    switcher = MemoSwitcher(
+                        st.rows.map { MemoSwitchOption(it.memoUuid, outletLabel(it.outletId), it.dueMtk) }, sel.memo.memoUuid, onSelect = { vm.open(it) },
+                    ),
+                    detailBanner = stringResource(com.aktcl.aron.feature.memo.R.string.memo_banner_manual), buttonsInRow = true,
+                    paidDialog = st.paidDone, onPaidDialogOk = vm::dismissPaidDone,
                     editDisabledReason = when (editRefused) {
                         DayRefusal.FINAL_SUBMIT -> stringResource(R.string.sr_lock_body)
                         DayRefusal.SALES_SUBMIT -> stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_blocked_done)
@@ -231,10 +247,12 @@ fun SummaryHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit) {
     val kit = day.sale
     var bundle by remember { mutableStateOf<SummaryBundle?>(null) }
     val attempt by day.summaryAttempt.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(Unit) { bundle = kit.summary() }
     val b = bundle
     if (b == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen() else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) })
+        // SRM-B-22: the category rows in the app language, never the raw codes
+        SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) }, categoryLabel = { com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, it).ifBlank { it } })
     }
     com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(
         attempt, onAnswer = day::answerSummaryPrint, onClose = day::closeSummaryAttempt,
@@ -246,6 +264,7 @@ fun SummaryHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit) {
 fun SubmitHost(day: SrDay) {
     val vm = viewModel(key = "submit-" + day.userId) { day.sale.newSubmitViewModel() }
     val st by vm.state.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(Unit) { vm.refresh() }
     val recordLabels = mapOf(
         "visit" to stringResource(R.string.sr_rec_visit), "memo" to stringResource(R.string.sr_rec_memo), "stock_movement" to stringResource(R.string.sr_rec_stock_movement),
@@ -256,6 +275,8 @@ fun SubmitHost(day: SrDay) {
         online = st.online, counts = st.counts, gate = st.gate, progress = st.progress, typeLabel = { recordLabels[it] ?: it },
         onSync = vm::sync, onSubmit = vm::submit, syncing = st.syncing,
         rejected = st.rejected, dismissed = st.dismissed, serverKnown = st.serverKnown, today = day.businessDate(), // D-NIGHT-DAYCLOSE-01
+        business = st.business, serverBusiness = st.serverBusiness, categoryLabel = { com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, it).ifBlank { it } },
+        vendorDialogs = true, checkoutHint = true, // SRM-B-27/29: the manual's dues modal and the success modal over the table (shots 40, 41)
     )
 }
 
@@ -308,13 +329,27 @@ fun EditHost(day: SrDay, memoUuid: String, sunlight: Boolean, onSunlight: (Boole
     val r = reason
     when {
         !checked -> com.aktcl.aron.core.ui.aron.AronLoadingScreen(label = stringResource(R.string.sr_edit_checking))
-        denied != null || r == null -> EditReasonScreen(denied, onReason = { reason = it })
+        denied != null -> EditReasonScreen(denied, onReason = { reason = it }, reasons = EditReason.manual)
+        // SRM-B-16 (shot 37): the reason is a modal with the dropdown, বাতিল and জমা দিন; জমা দিন starts the edit
+        r == null -> { Box(Modifier.fillMaxSize()); EditReasonDialog(onSubmit = { reason = it }, onCancel = onDone) }
         else -> {
             LaunchedEffect(r) { kit.beginEdit(memoUuid, r); ready = true }
             if (ready) {
                 val vm = viewModel(key = "edit-" + memoUuid) { kit.newSaleViewModel() }
+                // SRM-B-18: the outlet, route and cluster lines of a normal sale
+                val data = day.dayData.collectAsState().value
+                val editOutlet = data.outlets.firstOrNull { it.outletId == vm.state.collectAsState().value.draft?.outletId }
                 Column(Modifier.fillMaxSize()) {
-                    SaleRoute(vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f), onFinished = { onDone() })
+                    SaleRoute(
+                        vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f),
+                        retailerLabel = editOutlet?.let { com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) },
+                        outletLines = listOfNotNull(
+                            editOutlet?.let { "${it.name} (${com.aktcl.aron.core.ui.localizedDigits(it.code)})" },
+                            data.route?.name?.let { stringResource(R.string.sr_review_route, it) },
+                            editOutlet?.clusterName?.let { stringResource(R.string.sr_review_cluster, it) },
+                        ),
+                        onFinished = { onDone() },
+                    )
                 }
             }
         }

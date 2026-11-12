@@ -88,6 +88,35 @@ class SalesSubmitScreenTest {
         compose.onNodeWithText("Sales submitted successfully").assertDoesNotExist()
     }
 
+    // SRM-B-29: with the SR's checkoutHint the table stays behind the modal and the check-out reminder stays under it after OK
+    @Test fun settledSrKeepsTheTableAndTheCheckoutHintAfterOk() {
+        val counts = listOf(CountRow("memo", 6, 6))
+        val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), true)
+        var progress by androidx.compose.runtime.mutableStateOf(SubmitProgress.Idle)
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, progress, { it }, {}, {}, vendorDialogs = true, checkoutHint = true) } }
+        compose.onNodeWithText("Check out", substring = true).assertDoesNotExist()
+        progress = SubmitProgress.Settled; compose.waitForIdle()
+        compose.onNodeWithText("OK").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Check out", substring = true).assertExists()
+    }
+
+    // SRM-B-25 (shot 40): business figures replace the record counts; the server column is blank until the digest carries them, then compared per category
+    @Test fun businessTableShowsFiguresDeviceVsServerAndBlankUntilTheDigestHasThem() {
+        val counts = listOf(CountRow("memo", 6, 6))
+        val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), false)
+        val device = BusinessTotals(39, listOf(CategoryQty("cigarette", 300, 30, "packet")), listOf(CategoryQty("cigarette", 1000, 100, "packet")), emptyList(), 1_234_500)
+        var server by androidx.compose.runtime.mutableStateOf<BusinessTotals?>(null)
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { it }, {}, {}, business = device, serverBusiness = server, categoryLabel = { it.replaceFirstChar { c -> c.uppercase() } }) } }
+        compose.onNodeWithText("39", substring = true).assertExists()
+        compose.onNodeWithText("Cigarette 30 packets", substring = true).assertExists()
+        compose.onNodeWithText("1,234.50", substring = true).assertExists()
+        compose.onAllNodesWithText("Waiting", substring = true).assertCountEquals(5)
+        server = BusinessTotals(39, listOf(CategoryQty("cigarette", 200, 20, "packet")), listOf(CategoryQty("cigarette", 1000, 100, "packet")), emptyList(), 1_234_500)
+        compose.waitForIdle()
+        compose.onAllNodesWithText("Waiting", substring = true).assertCountEquals(0)
+        compose.onAllNodesWithText("Not matching", substring = true).assertCountEquals(1) // only the sale row: 200 < 300
+    }
+
     // L4: reopening the screen on an already settled day shows no success modal again
     @Test fun aSettledDayReopenedShowsNoSuccessModal() {
         val counts = listOf(CountRow("memo", 6, 6))

@@ -75,6 +75,8 @@ data class MemoUiState(
      * after the button was drawn); nothing was stored. The host says the day's sales are submitted until [MemoViewModel.dismissLockRefusal].
      */
     val submitRefused: Boolean = false,
+    /** SRM-B-20: a Mark Paid was stored; the host shows "marked as paid" with OK until [MemoViewModel.dismissPaidDone]. */
+    val paidDone: Boolean = false,
 )
 
 /**
@@ -115,8 +117,10 @@ class MemoViewModel(
                 // failure stores nothing either and leaves the due and the button as they were; nothing leaves this scope.
                 var lock = false
                 var submitted = false
+                var stored = false
                 try {
                     dues.write(draft)
+                    stored = true
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (_: RouteDayFinalSubmittedException) {
@@ -126,7 +130,7 @@ class MemoViewModel(
                 } catch (_: Exception) {
                 }
                 // one state write: the screen never sees the refusal before Mark Paid has gone with the reload
-                reloadLocked(m.memoUuid) { it.copy(lockRefused = it.lockRefused || lock, submitRefused = it.submitRefused || submitted) }
+                reloadLocked(m.memoUuid) { it.copy(lockRefused = it.lockRefused || lock, submitRefused = it.submitRefused || submitted, paidDone = it.paidDone || stored) }
             }
         }
     }
@@ -157,6 +161,9 @@ class MemoViewModel(
 
     /** Closes the text of a refused Mark Paid, the Final Submit lock or the Sales Submit (tso-manual X4a). */
     fun dismissLockRefusal() { _state.value = _state.value.copy(lockRefused = false, submitRefused = false) }
+
+    /** SRM-B-20: closes the "marked as paid" modal. */
+    fun dismissPaidDone() { _state.value = _state.value.copy(paidDone = false) }
 
     /** Retry from a failed print, or dismiss it ("print later"): the memo stays reprintable. */
     fun retryPrint() = reprint()
