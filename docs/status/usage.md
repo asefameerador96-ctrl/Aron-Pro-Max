@@ -2922,3 +2922,7 @@
 - INT `12f56c8bb` ci #2051 43210959546 success (11 jobs: 5 ok, 6 skipped by path); deploy #340 43212804371 is the skip run; APK of record **aron-release-signed-dev-2051**, 41,731,551 bytes (S3 + S5 + S4 corrections; not walked on a device).
 - GO train 103 (S1, head f12c32707, CI 43208539789 green, expected DECISIONS 426) sent to integrator 24, to push once #340 completes.
 - S6 merged head `14071b794` (INT 12f56c8bb merged; conflicts in feature-sale strings, DECISIONS, SrApp.kt attendance call): static gate clean incl. scans (DECISIONS 415; 6 goldens re-recorded for its wording; lane ci 43212897003 running). Merge gate launched (Opus merge/code, Sonnet strings/goldens/records), worktree wt-s6.
+
+### 2026-11-12 11:56 UTC — train 103 on INT
+- Integrator 24: train 102 landed (deploy #340 skipped: "nothing deployable changed"; health ce9d92bf7); train 103 pushed: INT `3d2340b3a` (DECISIONS 426, 0 lost lines), ci #2054 43213228309 running.
+- Trial merges on the new INT: S5 9086c180b merges with no conflict at all; S6 14071b794 conflicts only in core-system values/strings.xml (told to merge). S3 and S2 told to merge 3d2340b3a.
