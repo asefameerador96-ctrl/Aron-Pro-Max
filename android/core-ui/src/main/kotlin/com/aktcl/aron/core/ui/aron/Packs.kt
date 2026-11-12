@@ -3,6 +3,7 @@ package com.aktcl.aron.core.ui.aron
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -191,9 +192,12 @@ fun PackCard(
     plusEnabled: Boolean = true,
     editable: Boolean = true,
     caption: String? = null,
+    /** Tapping the packshot or the code opens the host's quantity popup (SR manual s8 / 22); null keeps the card as it was. The controls keep their own taps. */
+    onOpen: (() -> Unit)? = null,
 ) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(AronLook.CardRadius)
+    val open = if (onOpen != null) Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onOpen) else Modifier
     val screen = screenWidth()
     val qtyField = qtyFieldFor(screen)
     val narrow = isNarrowScreen(screen)
@@ -206,14 +210,14 @@ fun PackCard(
             .padding(start = 6.dp, top = 6.dp, bottom = 6.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.padding(end = AronLook.PackBadge / 2)) {
+        Box(Modifier.then(open).padding(end = AronLook.PackBadge / 2)) {
             PackshotImage(skuId, Modifier.size(packshotWidthFor(screen), AronLook.PackshotHeight), packshotDescription, category)
             if (packBadge != null) PackBadge(packBadge, Modifier.align(Alignment.BottomEnd).offset(x = AronLook.PackBadge / 2, y = (-6).dp))
         }
         Spacer(Modifier.width(if (narrow) 2.dp else 6.dp))
         // one line, shrinking from 18 sp down to 14 sp (sr/stock.webp shows the code on one line); a longer name such as "Prime Gold
         // 10S" then wraps between words, each word shrinking to at most 12 sp: no code is ever cut
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).then(open)) {
             FitText(skuCode, lookStyle(18.sp, medium = true, color = look.purple), 12.sp, oneLineDown = 14.sp)
             // [caption]: price per unit and, once the quantity is set, the line total (ui-sr-a), inside the card under the code
             if (caption != null) Text(caption, style = lookStyle(12.sp, color = look.inkMuted))

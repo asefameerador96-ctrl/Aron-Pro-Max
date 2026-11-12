@@ -69,7 +69,7 @@ class SaleFlow(
     suspend fun setSlide(skuId: Long, emptyPackets: Long) = edit { SaleDraftOps.setSlide(it, skuId, emptyPackets) }
     suspend fun setQc(entry: QcEntry) = edit { SaleDraftOps.setQc(it, entry) }
     suspend fun setPaid(paidMtk: Long?) = edit { SaleDraftOps.setPaid(it, paidMtk) }
-    suspend fun confirmZeroSale() = edit { SaleDraftOps.confirmZeroSale(it) }
+    suspend fun confirmZeroSale(reasonCode: String? = null) = edit { SaleDraftOps.confirmZeroSale(it, reasonCode) }
     suspend fun startQcOnly() = edit { SaleDraftOps.startQcOnly(it) }
     suspend fun cancelQcOnly() = edit { SaleDraftOps.cancelQcOnly(it) }
     suspend fun withEdit(edit: EditContext) = edit { check(!it.qcCompleted) { "a sale cannot be edited after QC" }; it.copy(edit = edit) }
