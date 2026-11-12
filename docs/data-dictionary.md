@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 180 | 2973 |
+| `app` | 180 | 2974 |
 | `dw` | 75 | 1211 |
 
 ## Index
@@ -5288,7 +5288,8 @@ One outlet visit with the phone's and the server's geo verdicts, distance, outco
 | `force_sale_reason` | text | null |  | Why the sale was made outside the geo-fence, chosen on the phone: internet_problem or location_change. Only set when geo_action is force_sale (CHECK); null otherwise. Separate from force_reason_code (the older free code). |
 | `zero_sale_reason_code` | text | null |  | Why the call ended with a zero-sale memo (code list zero_sale_reason); set by visit_close, only when is_zero_sale (CHECK). Null on every other visit. |
 | `call_photo_uuid` | uuid | null |  | media_uuid of the outlet photo taken at call start (media purpose outlet_call, ref_type visit); null when none was taken (see call_photo_skip_reason_code). |
-| `call_photo_skip_reason_code` | text | null |  | Why no call-start photo was taken: camera_failed, permission_denied, storage_full or other. Set only when call_photo_uuid is null (CHECK). |
+| `call_photo_skip_reason_code` | text | null |  | Why no call-start photo was taken: camera_unavailable, permission_denied, storage_full or other (the call_photo_skip list). Set only when call_photo_uuid is null (CHECK). |
+| `reason_code_unlisted` | boolean | null |  | True when the visit_close carried a zero_sale_reason_code or call_photo_skip_reason_code that the code list did not hold (unknown or retired on the business date) when it was stored. The close is stored with the code as sent and never refused for it; null otherwise. |
 
 Keys: `UNIQUE (client_uuid, business_date)`; `UNIQUE (external_ref, business_date)`; `PRIMARY KEY (id, business_date)`
 

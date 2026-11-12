@@ -82,7 +82,7 @@ class SrManualSv1ApiTest {
             val lkxTso = phone("lkxtso1001", "tso")
             val srId = one("SELECT id FROM app.app_user WHERE username = 'sr1001'")
             val lkxSrId = one("SELECT id FROM app.app_user WHERE username = 'lkxsr1001'")
-            fun ids(p: TsoPhone): Set<Long> {
+            suspend fun ids(p: TsoPhone): Set<Long> {
                 val r = getAs(p, "/v1/supervisor/device-otps")
                 assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
                 assertEquals("no-store", r.headers["Cache-Control"], "a live code is never cached")
@@ -253,20 +253,21 @@ class SrManualSv1ApiTest {
                 record("visit", visit(outlet, seq), route, cu = v, family = v),
                 record("visit_close", close(v, photo), route, family = v, rank = 1),
             )
-            fun rowsOf(): Map<String, kotlinx.serialization.json.JsonObject> =
+            suspend fun rowsOf(): Map<String, kotlinx.serialization.json.JsonObject> =
                 json(getAs(tso, "/v1/supervisor/call-photos?business_date=$d&limit=500").also { assertEquals(HttpStatusCode.OK, it.status, it.bodyAsText()) }.bodyAsText())["items"]!!.jsonArray
                     .map { it.jsonObject }.associateBy { it["visit_uuid"]!!.jsonPrimitive.content }
-            fun statusOf(v: String): String? = rowsOf().getValue(v)["media_status"]!!.let { if (it is kotlinx.serialization.json.JsonNull) null else it.jsonPrimitive.content }
+            suspend fun statusOf(v: String): String? = rowsOf().getValue(v)["media_status"]!!.let { if (it is kotlinx.serialization.json.JsonNull) null else it.jsonPrimitive.content }
 
             // (1a) the media record arrives BEFORE its visit family
             val vBefore = UUID.randomUUID().toString(); val photoBefore = UUID.randomUUID().toString()
-            val mAck = ack(sync(sr, listOf(media(photoBefore, vBefore))), photoBefore)
+            val mediaBefore = media(photoBefore, vBefore)
+            val mAck = ack(sync(sr, listOf(mediaBefore)), photoBefore)
             val famBefore = family(vBefore, photoBefore, outlets[0], 51)
             val answerBefore = sync(sr, famBefore)
             assertEquals("accepted", ack(answerBefore, vBefore).status(), answerBefore.toString())
             // an out-of-order media may be held, then released by its visit; or stored at once. Either way it is joined once the row exists.
-            if (scalar("SELECT count(*) FROM app.media WHERE client_uuid = '$photoBefore'") == "0") sync(sr, listOf(media(photoBefore, vBefore)))
-            assertEquals("1", scalar("SELECT count(*) FROM app.media WHERE client_uuid = '$photoBefore'"), "the media row exists (first answer was ${mAck.status()} ${mAck.code()})")
+            val resend = if (scalar("SELECT count(*) FROM app.media WHERE client_uuid = '$photoBefore'") == "0") ack(sync(sr, listOf(mediaBefore)), photoBefore) else null
+            assertEquals("1", scalar("SELECT count(*) FROM app.media WHERE client_uuid = '$photoBefore'"), "the media row exists (first answer was ${mAck.status()} ${mAck["code"]} ${mAck["retryable"]}; resend $resend)")
             assertNotNull(statusOf(vBefore), "(1a) media sent before its visit is joined")
 
             // (1b) the media record arrives AFTER its visit family

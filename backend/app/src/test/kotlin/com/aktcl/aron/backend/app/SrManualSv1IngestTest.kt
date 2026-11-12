@@ -410,8 +410,10 @@ class SrManualSv1IngestTest {
 
         // (a) a normal sale counts once in sold (base units) and its outlet once
         val a = sale(memoNo(), listOf(L(priced, 4, "stick", 1)), outlet = fresh6[0])
+        val aAck = send(sr, a)
         repeat(2) { send(sr, a.shuffled(Random(it))) }
         val afterA = totals()
+        a.forEach { assertEquals("accepted", aAck.ack(it), "(a) every record of the sale family is stored: ${typeOf(it)}") }
         assertEquals(before.sold.of(sku) + 4, afterA.sold.of(sku), "(a) sold once, in base units")
         assertEquals(before.outlets_visited + 1, afterA.outlets_visited, "(a) its outlet counts once")
 
@@ -422,7 +424,7 @@ class SrManualSv1IngestTest {
         assertEquals(afterA.sold.of(sku) + 6 + 9, totals().sold.of(sku), "both memos are live until changed")
         val memoB = uuidOf(b.single { typeOf(it) == "memo" }); val memoC = uuidOf(c.single { typeOf(it) == "memo" })
         replica { h ->
-            h.execute("UPDATE app.memo SET status = 'superseded' WHERE client_uuid = CAST('$memoB' AS uuid)")
+            h.execute("UPDATE app.memo SET status = 'superseded', superseded_by_client_uuid = gen_random_uuid() WHERE client_uuid = CAST('$memoB' AS uuid)")
             h.execute("UPDATE app.memo SET voided_at = now() WHERE client_uuid = CAST('$memoC' AS uuid)")
         }
         val afterBC = totals()

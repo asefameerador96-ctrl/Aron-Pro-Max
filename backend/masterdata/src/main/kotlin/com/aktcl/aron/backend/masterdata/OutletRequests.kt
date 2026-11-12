@@ -672,7 +672,7 @@ class OutletChangeRequestHandler : RecordHandler {
             SELECT client_uuid::text FROM app.outlet_change_request
              WHERE user_id = :u AND request_type = 'new' AND voided_at IS NULL AND status IN ('pending', 'verified', 'approved')
                AND client_uuid <> CAST(:c AS uuid) AND business_date BETWEEN :since AND :today
-               AND lower(regexp_replace(btrim(proposed ->> 'name'), '\\s+', ' ', 'g')) = :n AND proposed ->> 'contact_number' = :p
+               AND lower(regexp_replace(btrim(proposed ->> 'name'), '\s+', ' ', 'g')) = :n AND proposed ->> 'contact_number' = :p
              ORDER BY id LIMIT 1
             """.trimIndent(),
         ).bind("u", rec.userId).bind("c", rec.clientUuid).bind("since", rec.businessDate.minusDays(7)).bind("today", rec.businessDate)
