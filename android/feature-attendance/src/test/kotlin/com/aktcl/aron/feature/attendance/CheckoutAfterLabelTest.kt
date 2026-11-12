@@ -5,7 +5,7 @@ import org.junit.Test
 
 /** The hour of the configured check-out time on the 12-hour clock for the dashed orange box (screenshot 15: "চেক আউট ৫টার পরে সক্রিয় হবে"). */
 class CheckoutAfterLabelTest {
-    private val words = { p: PeriodOfDay -> when (p) { PeriodOfDay.MORNING -> "M"; PeriodOfDay.NOON -> "N"; PeriodOfDay.NIGHT -> "X" } }
+    private val words = { p: PeriodOfDay -> when (p) { PeriodOfDay.MORNING -> "M"; PeriodOfDay.NOON -> "N"; PeriodOfDay.EVENING -> "E"; PeriodOfDay.NIGHT -> "X" } }
 
     @Test fun banglaGetsTheBareHourAndEnglishAMeridiem() {
         assertEquals("5", checkoutAfterLabel("17:00", bangla = true))
@@ -23,6 +23,13 @@ class CheckoutAfterLabelTest {
         assertEquals("M 9", checkoutAfterLabel("09:00", bangla = true, words))
         assertEquals("X 10:30", checkoutAfterLabel("22:30", bangla = true, words))
         assertEquals("1", checkoutAfterLabel("13:00", bangla = true, words))
+        // 17:00 stays the bare "5" of screenshot 12; from 18:00 the bare hour could read as morning, so evening and night get a word
+        assertEquals("5", checkoutAfterLabel("17:00", bangla = true, words))
+        assertEquals("5:59", checkoutAfterLabel("17:59", bangla = true, words))
+        assertEquals("E 6", checkoutAfterLabel("18:00", bangla = true, words))
+        assertEquals("E 7:30", checkoutAfterLabel("19:30", bangla = true, words))
+        assertEquals("X 8", checkoutAfterLabel("20:00", bangla = true, words))
+        assertEquals("X 9:59", checkoutAfterLabel("21:59", bangla = true, words))
         assertEquals("noon and midnight differ in Bangla", true, checkoutAfterLabel("12:00", bangla = true, words) != checkoutAfterLabel("00:00", bangla = true, words))
     }
 

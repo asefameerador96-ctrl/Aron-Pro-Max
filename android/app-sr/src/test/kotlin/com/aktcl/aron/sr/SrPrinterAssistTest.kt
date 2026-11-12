@@ -78,7 +78,7 @@ class SrPrinterAssistTest {
         ShadowToast.reset()
         val m = manager()
         ActivityScenario.launch(ComponentActivity::class.java).use { scenario ->
-            scenario.onActivity { it.setContent { AronTheme(AppLanguage.BN) { SrFrame("memo", null, null, null, printer = m) {} /* the frame default, as the MEMO, SUMMARY and VISIT frames use it */ } } }
+            scenario.onActivity { it.setContent { AronTheme(AppLanguage.BN) { SrFrame("memo", null, null, null, printer = m) {} /* the frame default, as every frame but STOCK and VISIT uses it (MEMO, SUMMARY, ...) */ } } }
             settle(m)
             assertEquals(0, ShadowToast.shownToastCount())
         }
@@ -87,7 +87,7 @@ class SrPrinterAssistTest {
     /** The production call sites, read from source: SrApp passes `printerAssist` only through printerAssistFor (STOCK and VISIT frames); the SR sale host does NOT pass it to SaleRoute (one holder per screen). */
     @Test fun productionCallSitesAreWiredAsDocumented() {
         fun src(vararg candidates: String) = candidates.map { java.io.File(it) }.first { it.exists() }.readText()
-        fun code(t: String) = t.lines().filterNot { it.trim().startsWith("*") || it.trim().startsWith("//") || it.trim().startsWith("/**") }.joinToString("\n")
+        fun code(t: String) = t.replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), "").replace(Regex("//[^\\n]*"), "") // block comments, KDoc and inline // comments
         val srApp = code(src("src/main/kotlin/com/aktcl/aron/sr/SrApp.kt", "app-sr/src/main/kotlin/com/aktcl/aron/sr/SrApp.kt"))
         val assists = Regex("printerAssist = (printerAssistFor\\(SrScreen\\.\\w+\\)|\\w+)").findAll(srApp).map { it.groupValues[1] }.filter { it != "printerAssist" }.toList()
         assertEquals(listOf("printerAssistFor(SrScreen.STOCK)", "printerAssistFor(SrScreen.VISIT)"), assists)

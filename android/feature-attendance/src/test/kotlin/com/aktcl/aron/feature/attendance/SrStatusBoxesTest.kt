@@ -78,6 +78,11 @@ class SrStatusBoxesTest {
         compose.onNodeWithText("চেক আউট দুপুর ১২টার পরে সক্রিয় হবে").assertExists()
     }
 
+    @Test fun eveningHoursCarryTheirWordInTheAmberBoxInBangla() {
+        render(AppLanguage.BN, checkedIn, label = "19:00")
+        compose.onNodeWithText("চেক আউট সন্ধ্যা ৭টার পরে সক্রিয় হবে").assertExists()
+    }
+
     @Test fun englishLabels() {
         render(AppLanguage.EN, checkedIn.copy(checkedOutAt = "2026-11-12T11:00:00Z"))
         compose.onNodeWithText("Check-out done").assertExists()

@@ -36,6 +36,7 @@
     <!-- the AMO style of the attendance screen (amo-shell A1, screenshots 14 to 16) -->
     <string name="att_period_morning">সকাল</string>
     <string name="att_period_noon">দুপুর</string>
+    <string name="att_period_evening">সন্ধ্যা</string>
     <string name="att_period_night">রাত</string>
     <string name="att_sr_out_done">চেক আউট সম্পন্ন হয়েছে</string>
     <string name="att_amo_in_done">চেক ইন সম্পন্ন হয়েছে</string>

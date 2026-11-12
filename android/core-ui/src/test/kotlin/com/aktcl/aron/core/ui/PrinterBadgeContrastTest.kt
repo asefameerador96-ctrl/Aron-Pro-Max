@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.pow
 
-/** D-SR-MAN-S3-02: the green connected-printer badge keeps its contrast on the badge chip in every look that draws it. */
+/** D-SR-MAN-S3-04: the green connected-printer badge keeps its contrast on the badge chip in every look that draws it. */
 class PrinterBadgeContrastTest {
     private fun lin(c: Float) = if (c <= 0.03928f) c / 12.92 else ((c + 0.055) / 1.055).pow(2.4)
     private fun lum(c: Color) = 0.2126 * lin(c.red) + 0.7152 * lin(c.green) + 0.0722 * lin(c.blue)
@@ -21,11 +21,20 @@ class PrinterBadgeContrastTest {
     @Test fun greenOnThePageInTheInCardFormSrAndAmo() = assertTrue(contrast(AronLook.Default.printerOn, AronLook.Default.page) >= 4.5)
     @Test fun greenOnThePageInTheInCardFormSunlight() = assertTrue(contrast(AronLook.Sunlight.printerOn, AronLook.Sunlight.page) >= 7.0)
     @Test fun tsoNightInCardForm() = assertTrue(contrast(AronLook.TsoNight.printerOn, AronLook.TsoNight.page) >= 4.5)
-    // TSO Sunlight is Sunlight with the night roles: it inherits the Sunlight green (recorded in D-SR-MAN-S3-02)
+    // TSO Sunlight is Sunlight with the night roles: it inherits the Sunlight green (recorded in D-SR-MAN-S3-04)
     @Test fun tsoSunlightInheritsTheSunlightGreen() {
         assertTrue(AronLook.TsoSunlight.printerOn == AronLook.Sunlight.printerOn)
         assertTrue(contrast(AronLook.TsoSunlight.printerOn, AronLook.TsoSunlight.card) >= 7.0)
         assertTrue(contrast(AronLook.TsoSunlight.printerOn, AronLook.TsoSunlight.page) >= 7.0)
+    }
+    // the AMO look (AronLook.AmoPurple, and its Sunlight twin) draws the same badge: chip form and in-card form
+    @Test fun amoPurpleChipAndInCard() {
+        assertTrue(contrast(AronLook.AmoPurple.printerOn, AronLook.AmoPurple.card) >= 4.5)
+        assertTrue(contrast(AronLook.AmoPurple.printerOn, AronLook.AmoPurple.page) >= 4.5)
+    }
+    @Test fun amoSunlightChipAndInCard() {
+        assertTrue(contrast(AronLook.AmoSunlight.printerOn, AronLook.AmoSunlight.card) >= 7.0)
+        assertTrue(contrast(AronLook.AmoSunlight.printerOn, AronLook.AmoSunlight.page) >= 7.0)
     }
     @Test fun theBadgeIsGreenNotPurple() { val c = AronLook.Default.printerOn; assertTrue(c.green > c.red && c.green > c.blue) }
 }

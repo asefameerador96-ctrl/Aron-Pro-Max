@@ -33,9 +33,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowToast
 
 /**
- * D-SR-MAN-S3-02 (second review, low 1): the PRODUCTION sale wiring. The real `SaleHost` (which calls the real `SaleRoute(printerAssist = true)`)
- * inside the real `SrFrame` with the VISIT screen's own `printerAssistFor(VISIT)`: one connect of a saved printer gives one toast.
- * And the checked-in label of `SrDay` with a configured minute (low 5).
+ * D-SR-MAN-S3-04 (amends S3-02): the PRODUCTION sale wiring. The real `SaleHost` and the real `SaleRoute` it opens after "Start the call?", inside the real
+ * `SrFrame` with the VISIT screen's own `printerAssistFor(VISIT)` (the one holder of the sale): one connect of a saved printer gives one toast, entering
+ * the sale gives none, and a reconnect while the sale is up gives exactly one more. Also the checked-in label of `SrDay` with a configured minute.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -44,11 +44,14 @@ class SrSaleAssistHostTest {
     @get:Rule val compose = hostComposeRule()
     private val app = ApplicationProvider.getApplicationContext<Context>()
     private var f: SrLockFixture? = null
+    private var opened = 0
+    private val dropFirst = kotlinx.coroutines.CompletableDeferred<Unit>()
 
-    private class Live : PrinterTransport {
+    /** A live link; the first one drops (read returns -1, as a switched-off printer does) when [dropFirst] completes. */
+    private class Live(private val drop: kotlinx.coroutines.CompletableDeferred<Unit>?) : PrinterTransport {
         override suspend fun connect() {}
         override suspend fun write(bytes: ByteArray) {}
-        override suspend fun read(): Int = awaitCancellation()
+        override suspend fun read(): Int { if (drop == null) awaitCancellation() else { drop.await(); return -1 } }
         override fun close() {}
     }
 
@@ -57,7 +60,7 @@ class SrSaleAssistHostTest {
 
     @Test fun theRealSaleHostInTheRealVisitFrameToastsOnce() {
         ShadowToast.reset()
-        val fx = SrLockFixture(app, latePolicy = null, printerTransports = PrinterTransportFactory { Live() }).also { f = it }
+        val fx = SrLockFixture(app, latePolicy = null, printerTransports = PrinterTransportFactory { if (opened++ == 0) Live(dropFirst) else Live(null) }).also { f = it }
         val v = fx.openCall()
         fx.day.visitSession.restore(v)
         shadowOf(app.packageManager).addActivityIfNotPresent(ComponentName(app, ComponentActivity::class.java))
@@ -79,8 +82,17 @@ class SrSaleAssistHostTest {
         assertEquals("one connect, one toast at the VISIT frame", 1, ShadowToast.shownToastCount())
         // go on into the real sale (Yes, then the AV/KV/POSM steps are skipped without content): SaleRoute holds the printer too and must not toast again
         compose.onNodeWithText("Yes").performClick()
+        // SaleRoute really composed (its entry screen's "Proceed" button), before the count is read
+        compose.waitUntil(10_000) { runCatching { compose.onNodeWithText("Proceed").assertExists() }.isSuccess }
         repeat(30) { compose.mainClock.advanceTimeByFrame() }
         assertEquals("the sale screen does not toast a second time", 1, ShadowToast.shownToastCount())
+        // mid-sale: the printer is switched off (the link drops), then it comes back: exactly one more toast
+        dropFirst.complete(Unit)
+        compose.waitUntil(10_000) { fx.day.printerManager.state.value != PrinterState.Connected }
+        compose.waitUntil(30_000) { fx.day.printerManager.state.value == PrinterState.Connected }
+        repeat(30) { compose.mainClock.advanceTimeByFrame() }
+        compose.onNodeWithText("Proceed").assertExists() // still in the sale
+        assertEquals("a reconnect while the sale is up gives exactly one more toast", 2, ShadowToast.shownToastCount())
     }
 
     @Test fun theCheckoutLabelReadsTheConfiguredMinute() {
