@@ -17,6 +17,8 @@ import com.nimbusds.jwt.SignedJWT
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.header
 import io.ktor.client.request.request
+import io.ktor.client.request.setBody
+import io.ktor.http.contentType
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
@@ -37,6 +39,8 @@ import java.time.LocalDate
 import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -149,7 +153,8 @@ class AdminLoyaltyTest {
     /** A stand-in blob store: the read URL of a stored asset is derived from its path. */
     private val blob = object : BlobSasIssuer {
         override fun writeSas(blobPath: String, maxBytes: Long, expiresAt: Instant) = "https://blob.test/w/$blobPath"
-        override fun readUrl(blobPath: String) = "https://blob.test/r/$blobPath"
+        // Signature-shaped, as the real issuer returns: the test below proves no such URL is ever stored in a journal or an audit row.
+        override fun readUrl(blobPath: String) = "https://blob.test/r/$blobPath?sv=2024-11-04&se=2099-01-01T00%3A00%3A00Z&sig=SECRETSIG%2Babc"
     }
 
     private fun app(block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
@@ -270,7 +275,7 @@ class AdminLoyaltyTest {
         create(adminNone).expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN")
         for (t in listOf(nat, brand1, tok("lwm1", Role.WM), tok("ldmo1", Role.DMO), tok("ltso1", Role.TSO), tok("lamo1", Role.AMO), tok("lsup1", Role.SUPPORT), tok("lana1", Role.ANALYST)))
             create(t).expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN")
-        create(tok("ltso1", Role.TSO, flavour = "tso")).also { assertTrue(it.status == HttpStatusCode.Forbidden || it.status == HttpStatusCode.Unauthorized, "a phone token never reaches the portal screens: ${it.status}") }
+        create(tok("ltso1", Role.TSO, flavour = "tso")).expect(HttpStatusCode.Unauthorized, "ERR_DEVICE_PROOF_INVALID")    // a phone token without its device proof stops at the guard
         assertEquals(0, count("SELECT count(*) FROM app.programme WHERE code LIKE 'LOY-%' AND created_by IN (${ids.getValue("lwm1")}, ${ids.getValue("lbrand1")}, ${ids.getValue("lnat1")})"))
     }
 
@@ -395,7 +400,7 @@ class AdminLoyaltyTest {
         call(HttpMethod.Post, "/v1/admin/programmes/$id/status", super1, body(""""to_status":"active","reason":"$why","x":1""")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.x")
         call(HttpMethod.Post, "/v1/admin/programmes/999999/status", super1, body(""""to_status":"active","reason":"$why"""")).expect(HttpStatusCode.NotFound, "ERR_NOT_FOUND")
         val old = createId(createBody(activeFrom = longAgo, activeTo = past))
-        activate(old).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "active_to")
+        activate(old).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.active_to")
         assertEquals("draft", scalar("SELECT status FROM app.programme WHERE id = $old"))
         assertEquals(0, count("SELECT count(*) FROM app.programme_status_change WHERE programme_id = $old"))
     }
@@ -526,7 +531,7 @@ class AdminLoyaltyTest {
         sql("INSERT INTO app.admin_asset (asset_id, purpose, mime, bytes, sha256, blob_path) VALUES ('$other', 'sku_image', 'image/png', 1000, decode(repeat('cd', 32), 'hex'), 'skus/$other.png')")
         createGift(super1, giftBody(prog, extra = ",\"image_asset_id\":\"$other\"")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.image_asset_id")   // wrong purpose
         val g = createGift(super1, giftBody(prog, extra = ",\"image_asset_id\":\"$img\"")); g.expect(HttpStatusCode.Created)
-        assertEquals("https://blob.test/r/gifts/$img.png", g.obj().getValue("image_url").jsonPrimitive.content)
+        assertTrue(g.obj().getValue("image_url").jsonPrimitive.content.startsWith("https://blob.test/r/gifts/$img.png?"), "the answer carries a freshly resolved URL")
         val id = g.obj().getValue("gift_id").jsonPrimitive.content.toLong()
         val v = scalar("SELECT version FROM app.gift WHERE id = $id").toInt()
         val cleared = call(HttpMethod.Patch, "/v1/admin/gifts/$id", super1, "{\"request_uuid\":\"${uuid()}\",\"image_asset_id\":null,\"change_reason\":\"$why\"}", v)
@@ -534,6 +539,110 @@ class AdminLoyaltyTest {
         assertTrue(cleared.obj().getValue("image_url") is kotlinx.serialization.json.JsonNull)
         call(HttpMethod.Patch, "/v1/admin/gifts/$id", super1, "{\"request_uuid\":\"${uuid()}\",\"image_asset_id\":\"$img\",\"change_reason\":\"$why\"}", v + 1).expect(HttpStatusCode.OK)
         assertEquals(img, scalar("SELECT image_asset_id::text FROM app.gift WHERE id = $id"))
+        // The house rule: a signed read URL (a time-limited secret) is never stored in an append-only row. The journal keeps the asset id; the URL is resolved on every answer, replays included.
+        val leaked = count("SELECT count(*) FROM app.gift_change WHERE gift_id = $id AND (snapshot::text LIKE '%SECRETSIG%' OR snapshot::text LIKE '%sig=%' OR snapshot::text LIKE '%blob.test%')")
+        assertEquals(0, leaked, "app.gift_change.snapshot keeps a signed URL")
+        assertEquals(0, count("SELECT count(*) FROM app.audit_log WHERE entity = 'gift' AND entity_id = '$id' AND (after::text LIKE '%SECRETSIG%' OR before::text LIKE '%SECRETSIG%')"), "audit_log keeps a signed URL")
+        assertEquals(3, count("SELECT count(*) FROM app.gift_change WHERE gift_id = $id AND snapshot ->> 'image_asset_id' = '$img'") + count("SELECT count(*) FROM app.gift_change WHERE gift_id = $id AND snapshot -> 'image_asset_id' = 'null'::jsonb"), "the snapshot keeps image_asset_id")
+        val againReq = uuid()
+        val first = call(HttpMethod.Patch, "/v1/admin/gifts/$id", super1, "{\"request_uuid\":\"$againReq\",\"points_cost\":321,\"change_reason\":\"$why\"}", v + 2); first.expect(HttpStatusCode.OK)
+        val replay = call(HttpMethod.Patch, "/v1/admin/gifts/$id", super1, "{\"request_uuid\":\"$againReq\",\"points_cost\":321,\"change_reason\":\"$why\"}", v + 2); replay.expect(HttpStatusCode.OK)
+        assertTrue(replay.obj().getValue("image_url").jsonPrimitive.content.contains("sig=SECRETSIG"), "a replay resolves the URL again from the asset")
+        assertEquals(0, count("SELECT count(*) FROM app.gift_change WHERE gift_id = $id AND snapshot::text LIKE '%SECRETSIG%'"))
+    }
+
+    // ------------------------------------------------------------------------------------------------ review fixes (Opus pass on 17be785bd)
+
+    @Test
+    fun versionsAreCutByTheirOwnScopeAndTheProgrammeBySeenThroughItsCurrentVersion() = app {
+        // P1: v1 = brand 2 / zone B, v2 (current) = brand 1 / zone A.  P2: v1 = brand 1 / zone A, v2 (current) = brand 2 / zone B.
+        suspend fun twoVersions(first: Pair<Long, Long>, second: Pair<Long, Long>): Long {
+            val id = createId(createBody(qualifying = "[${q("brand", first.first)}]", scope = "[${s("zone", first.second)}]"))
+            call(HttpMethod.Patch, "/v1/admin/programmes/$id", super1, patchBody(""""qualifying":[${q("brand", second.first)}],"scope":[${s("zone", second.second)}],"""), rowVersion(id)).expect(HttpStatusCode.OK)
+            return id
+        }
+        val p1 = twoVersions(fx["b2"]!! to fx["zoneB"]!!, fx["b1"]!! to fx["zoneA"]!!)
+        val p2 = twoVersions(fx["b1"]!! to fx["zoneA"]!!, fx["b2"]!! to fx["zoneB"]!!)
+        suspend fun versionsOf(token: String, id: Long): List<Int>? = call(HttpMethod.Get, "/v1/admin/programmes/$id/versions", token).let {
+            if (it.status == HttpStatusCode.NotFound) null else { it.expect(HttpStatusCode.OK); it.obj().getValue("items").jsonArray.map { v -> v.jsonObject.getValue("version_no").jsonPrimitive.content.toInt() } }
+        }
+        // SUPERADMIN, ADMIN and NATIONAL see every version of both.
+        for (t in listOf(super1, adminR, adminW, nat)) { assertEquals(listOf(2, 1), versionsOf(t, p1)); assertEquals(listOf(2, 1), versionsOf(t, p2)) }
+        // BRAND 1 and WM (zones A and O) and TSO 1 (zone A): P1 shows only its in-reach v2, P2 is invisible (its current version is out of reach: 404).
+        for (t in listOf(brand1, tok("lwm1", Role.WM), tok("ltso1", Role.TSO))) { assertEquals(listOf(2), versionsOf(t, p1), "P1 v1 is out of reach"); assertEquals(null, versionsOf(t, p2)) }
+        // DMO (zone B): the mirror image.
+        val dmo = tok("ldmo1", Role.DMO)
+        assertEquals(null, versionsOf(dmo, p1)); assertEquals(listOf(2), versionsOf(dmo, p2))
+        // A TSO whose reach is route B only sees neither; one with no reach neither (but brand-free place rows narrow only geography, so both are 404 here).
+        for (u in listOf("ltso2", "ltso3")) { assertEquals(null, versionsOf(tok(u, Role.TSO), p1)); assertEquals(null, versionsOf(tok(u, Role.TSO), p2)) }
+        // The cursor pages what the caller may see only.
+        val page = call(HttpMethod.Get, "/v1/admin/programmes/$p1/versions?limit=1", brand1).obj()
+        assertEquals(listOf(2), page.getValue("items").jsonArray.map { it.jsonObject.getValue("version_no").jsonPrimitive.content.toInt() })
+        assertTrue(page.getValue("next_cursor") is kotlinx.serialization.json.JsonNull, "no hidden version is hinted at by a cursor")
+    }
+
+    @Test
+    fun theSameRequestUuidRacedByTwoThreadsMakesOneRowAndTheSecondIsAReplay() = app {
+        val request = uuid(); val code = code()
+        val body = createBody(code, request)
+        val both = kotlinx.coroutines.coroutineScope {
+            listOf(async(kotlinx.coroutines.Dispatchers.IO) { create(super1, body) }, async(kotlinx.coroutines.Dispatchers.IO) { create(super1, body) }).awaitAll()
+        }
+        both.forEach { it.expect(HttpStatusCode.Created) }
+        assertEquals(1, both.map { it.obj().getValue("programme_id").jsonPrimitive.content }.toSet().size, "one programme answered twice")
+        assertEquals(1, count("SELECT count(*) FROM app.programme WHERE code = '$code'"))
+        assertEquals(1, count("SELECT count(*) FROM app.programme_version WHERE request_uuid = '$request'"))
+        assertEquals(1, count("SELECT count(*) FROM app.audit_log a JOIN app.programme p ON p.id::text = a.entity_id WHERE a.entity = 'programme' AND a.action = 'create' AND p.code = '$code'"))
+        // The same race on a status move: one trail row.
+        val id = both[0].obj().getValue("programme_id").jsonPrimitive.content.toLong(); val move = uuid()
+        val moves = kotlinx.coroutines.coroutineScope { listOf(async(kotlinx.coroutines.Dispatchers.IO) { activate(id, super1, move) }, async(kotlinx.coroutines.Dispatchers.IO) { activate(id, super1, move) }).awaitAll() }
+        moves.forEach { it.expect(HttpStatusCode.OK) }
+        assertEquals(1, count("SELECT count(*) FROM app.programme_status_change WHERE request_uuid = '$move'"))
+    }
+
+    @Test
+    fun theSameBatchUuidRacedByTwoThreadsEnrolsOnceAndTheSecondIsAReplay() = app {
+        val prog = createId(createBody())
+        val batch = uuid()
+        val body = enrolBody(prog, batch, enrolRow(prog, fx["L-O1"]!!, null, "100") + "," + enrolRow(prog, fx["L-O2"]!!))
+        val both = kotlinx.coroutines.coroutineScope {
+            listOf(async(kotlinx.coroutines.Dispatchers.IO) { call(HttpMethod.Put, "/v1/admin/programmes/$prog/enrolments", adminW, body) },
+                async(kotlinx.coroutines.Dispatchers.IO) { call(HttpMethod.Put, "/v1/admin/programmes/$prog/enrolments", adminW, body) }).awaitAll()
+        }
+        both.forEach { it.expect(HttpStatusCode.OK) }
+        assertEquals(listOf(2, 2), both.map { it.obj().getValue("inserted").jsonPrimitive.content.toInt() }, "both answers carry the first counts")
+        assertEquals(2, count("SELECT count(*) FROM app.programme_enrolment WHERE programme_id = $prog"))
+        assertEquals(1, count("SELECT count(*) FROM app.programme_enrolment_batch WHERE batch_uuid = '$batch'"))
+    }
+
+    @Test
+    fun aProgrammeMadeBeforeThePortalHasNoVersionAndCannotBeChangedOrActivatedThroughIt() = app {
+        sql("INSERT INTO app.programme (kind, code, name_en, active_from, active_to) VALUES ('astha', 'LEGACY-NOVER', 'Legacy', CURRENT_DATE, CURRENT_DATE + 29)")
+        val id = scalar("SELECT id FROM app.programme WHERE code = 'LEGACY-NOVER'").toLong()
+        val read = call(HttpMethod.Get, "/v1/admin/programmes/$id", adminR); read.expect(HttpStatusCode.OK)
+        assertTrue("programme_version_id" !in read.obj() && "tiers" !in read.obj(), "the optional version members are absent, not null")
+        assertEquals(emptyList(), call(HttpMethod.Get, "/v1/admin/programmes/$id/versions", adminR).obj().getValue("items").jsonArray.toList())
+        call(HttpMethod.Patch, "/v1/admin/programmes/$id", adminW, patchBody(""""name_en":"Renamed","""), rowVersion(id)).expect(HttpStatusCode.Conflict, "ERR_REQUEST_STATE")
+        activate(id).expect(HttpStatusCode.Conflict, "ERR_REQUEST_STATE")
+        assertEquals("draft", scalar("SELECT status FROM app.programme WHERE id = $id"))
+        assertEquals(0, count("SELECT count(*) FROM app.programme_version WHERE programme_id = $id"))
+    }
+
+    @Test
+    fun aPhoneTokenIsRefusedWithTheExactCodeOnEveryOperation() = app {
+        val prog = createId(createBody())
+        val phone = tok("ltso1", Role.TSO, flavour = "tso")
+        val calls = listOf(HttpMethod.Get to "/v1/admin/programmes", HttpMethod.Get to "/v1/admin/programmes/$prog", HttpMethod.Post to "/v1/admin/programmes", HttpMethod.Get to "/v1/admin/gifts", HttpMethod.Get to "/v1/admin/programmes/$prog/enrolments")
+        for ((method, path) in calls) {
+            // Without the device proof the guard stops it: 401 ERR_DEVICE_PROOF_INVALID.
+            call(method, path, phone, if (method == HttpMethod.Post) createBody() else null).expect(HttpStatusCode.Unauthorized, "ERR_DEVICE_PROOF_INVALID")
+            // With a matching device proof the portal handler itself refuses it: 403 ERR_FORBIDDEN (a phone token is never a portal caller).
+            val withProof = client.request(path) {
+                this.method = method; bearerAuth(phone); header("X-Device-Id", phoneDevice)
+                if (method == HttpMethod.Post) { contentType(io.ktor.http.ContentType.Application.Json); setBody(createBody()) }
+            }
+            withProof.expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN")
+        }
     }
 
     // ------------------------------------------------------------------------------------------------ enrolments
@@ -664,12 +773,12 @@ class AdminLoyaltyTest {
     fun theRefusedRolesAndPhoneTokensNeverReachAnyOperation() = app {
         val prog = createId(createBody())
         val gid = createGift(super1, giftBody(prog)).obj().getValue("gift_id").jsonPrimitive.content
-        val refused = listOf(tok("lamo1", Role.AMO), tok("lsup1", Role.SUPPORT), tok("lana1", Role.ANALYST), tok("ltso1", Role.TSO, flavour = "tso"))
+        val refused = listOf(tok("lamo1", Role.AMO), tok("lsup1", Role.SUPPORT), tok("lana1", Role.ANALYST))
         val calls = listOf(
             HttpMethod.Get to "/v1/admin/programmes", HttpMethod.Get to "/v1/admin/programmes/$prog", HttpMethod.Get to "/v1/admin/programmes/$prog/versions",
             HttpMethod.Get to "/v1/admin/programmes/$prog/enrolments", HttpMethod.Get to "/v1/admin/gifts", HttpMethod.Get to "/v1/admin/gifts/$gid",
         )
-        for (t in refused) for ((method, path) in calls) call(method, path, t).also { assertTrue(it.status == HttpStatusCode.Forbidden || it.status == HttpStatusCode.Unauthorized, "$method $path -> ${it.status}") }
+        for (t in refused) for ((method, path) in calls) call(method, path, t).expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN")
         // NATIONAL and the module-less ADMIN read per their rules and never write.
         call(HttpMethod.Post, "/v1/admin/gifts", nat, giftBody(prog)).expect(HttpStatusCode.Forbidden)
         call(HttpMethod.Put, "/v1/admin/programmes/$prog/enrolments", nat, enrolBody(prog, rows = enrolRow(prog, fx["L-O1"]!!))).expect(HttpStatusCode.Forbidden)

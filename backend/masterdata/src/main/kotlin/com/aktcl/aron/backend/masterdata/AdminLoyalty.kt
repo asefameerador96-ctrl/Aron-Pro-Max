@@ -325,14 +325,15 @@ private fun listProgrammeVersions(call: ApplicationCall, d: AdminLoyaltyDeps): P
     val id = call.pathId(); val limit = call.pageLimit(); val cursor = call.pageCursor()
     return d.db.jdbi.withHandle<ProgrammeVersionPageOut, Exception> { h ->
         val vis = loyVisSql(loyVisibility(h, p, d), "v")
-        // The programme must be visible through its current version; the whole version list of a visible programme is then shown (the rule is one history).
+        // The programme must be visible through its current version; then each version is judged on its OWN scope (a version outside the caller's reach is not listed,
+        // as for discounts): the visibility SQL runs on the version row.
         h.createQuery("SELECT p.id FROM app.programme p LEFT JOIN app.programme_version v ON v.id = p.current_version_id WHERE p.id = :o" + (vis?.let { " AND " + it.sql } ?: "")).bind("o", id).bindLVis(vis)
             .mapTo(Long::class.java).findOne().orElse(null) ?: throw noProgramme()
         val rows = h.createQuery(
             "SELECT v.id, v.version_no, v.name_en, v.name_bn, v.period_label, v.active_from, v.active_to, v.points_expire_on, CAST(v.rules AS text), v.change_reason, v.created_at, " +
                 "(v.id = p.current_version_id) AS is_current FROM app.programme_version v JOIN app.programme p ON p.id = v.programme_id WHERE v.programme_id = :o" +
-                (if (cursor != null) " AND v.version_no < :c" else "") + " ORDER BY v.version_no DESC LIMIT :lim",
-        ).bind("o", id).bind("lim", limit + 1).also { if (cursor != null) it.bind("c", cursor) }
+                (if (cursor != null) " AND v.version_no < :c" else "") + (vis?.let { " AND " + it.sql } ?: "") + " ORDER BY v.version_no DESC LIMIT :lim",
+        ).bind("o", id).bind("lim", limit + 1).also { if (cursor != null) it.bind("c", cursor) }.bindLVis(vis)
             .map { rs, _ -> VRow(rs.getLong(1), rs.getInt(2), rs.getString(3), rs.getString(4), rs.getString(5), rs.getObject(6, LocalDate::class.java), rs.getObject(7, LocalDate::class.java),
                 rs.getObject(8, LocalDate::class.java), rs.getString(9), rs.getString(10), rs.getObject(11, OffsetDateTime::class.java), rs.getBoolean(12)) }.list()
         val page = rows.take(limit)
@@ -462,12 +463,22 @@ private fun readSpec(o: JsonObject, base: ProgSpec?): ProgSpec {
 
 private fun refsExist(h: Handle, s: ProgSpec) {
     s.qualifying.forEachIndexed { i, (level, id) ->
-        val ok = if (level == "sku") h.lexists("SELECT 1 FROM app.sku WHERE id = :i", id) else h.lexists("SELECT 1 FROM app.product_node WHERE id = :i AND level = '$level'", id)
+        val ok = if (level == "sku") h.lexists("SELECT 1 FROM app.sku WHERE id = :i", id)
+        else h.createQuery("SELECT 1 FROM app.product_node WHERE id = :i AND level = :l").bind("i", id).bind("l", level).mapTo(Int::class.java).findOne().isPresent
         if (!ok) adminBad("body.qualifying[$i]", "not_found")
     }
     s.scope.forEachIndexed { i, (type, id) ->
-        val table = when (type) { "wing" -> "app.wing"; "division" -> "app.division"; "territory" -> "app.territory"; "zone" -> "app.zone"; "route" -> "app.route"; "sub_channel" -> "app.sub_channel"; else -> adminBad("body.scope[$i]", "channel_not_supported") }
-        if (!h.lexists("SELECT 1 FROM $table WHERE id = :i", id)) adminBad("body.scope[$i]", "not_found")
+        // A closed choice of literal statements: no text is ever put into SQL.
+        val exists = when (type) {
+            "wing" -> h.lexists("SELECT 1 FROM app.wing WHERE id = :i", id)
+            "division" -> h.lexists("SELECT 1 FROM app.division WHERE id = :i", id)
+            "territory" -> h.lexists("SELECT 1 FROM app.territory WHERE id = :i", id)
+            "zone" -> h.lexists("SELECT 1 FROM app.zone WHERE id = :i", id)
+            "route" -> h.lexists("SELECT 1 FROM app.route WHERE id = :i", id)
+            "sub_channel" -> h.lexists("SELECT 1 FROM app.sub_channel WHERE id = :i", id)
+            else -> adminBad("body.scope[$i]", "channel_not_supported")
+        }
+        if (!exists) adminBad("body.scope[$i]", "not_found")
     }
 }
 
@@ -639,7 +650,8 @@ private suspend fun setProgrammeStatus(call: ApplicationCall, d: AdminLoyaltyDep
     val uuid = loyRequestUuid(o)
     val to = o.enum("to_status", setOf("active", "inactive"), required = true)!!
     val reason = loyReason(o, "reason")
-    val ifMatchGiven: Int? = call.request.headers["If-Match"]?.let { call.ifMatch() }
+    // A replay of a stored request_uuid is answered BEFORE If-Match is parsed or judged (a retry that carries a stale or even malformed ETag still gets the first result).
+    val ifMatchRaw: String? = call.request.headers["If-Match"]
     // Activation is the owner's decision (brief s10 Q3, as for prices and discounts): SUPERADMIN only. Ending is a write like any other.
     if (to == "active" && p.role != Role.SUPERADMIN) throw loyForbidden("only a SUPERADMIN activates a loyalty programme")
     val fp = fingerprint("status", id, o)
@@ -652,15 +664,16 @@ private suspend fun setProgrammeStatus(call: ApplicationCall, d: AdminLoyaltyDep
                     return@inTransaction loadProgramme(h, id)!!.let { cur -> (r[3] as Int?)?.let { rv -> replayStatus(h, id, r[2] as String, rv) } ?: cur }
                 }
             if (uuidUsedByVersion(h, uuid)) throw loyConflict("request_uuid already used for a create or an update")
+            // An If-Match is optional here (the move is judged by the status itself); when given it must be well formed and the programme's current row version.
+            val ifMatchGiven: Int? = ifMatchRaw?.let { call.ifMatch() }
             val cur = loadProgramme(h, id, lock = true) ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no loyalty programme with this id")
-            // An If-Match is optional here (the move is judged by the status itself); when given it must be the programme's current row version.
             ifMatchGiven?.let { if (it != cur.version) preconditionFailed(cur.version) }
             val allowed = (cur.status == "draft" && to == "active") || (cur.status == "active" && to == "inactive")
             if (!allowed) throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "a ${cur.status} programme cannot move to $to (allowed: draft to active, active to inactive)")
             if (to == "active") {
                 if (cur.currentVid == null) throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "this programme has no version to activate")
                 if (cur.activeTo.isBefore(today(d)))
-                    throw ApiProblem(ProblemCode.ERR_VALIDATION, "the programme ended on ${cur.activeTo}; make a new version with a later active_to first", errors = listOf(FieldError("active_to", "past")))
+                    throw ApiProblem(ProblemCode.ERR_VALIDATION, "the programme ended on ${cur.activeTo}; make a new version with a later active_to first", errors = listOf(FieldError("body.active_to", "past")))
             }
             h.createUpdate("INSERT INTO app.programme_status_change (programme_id, from_status, to_status, request_uuid, request_fingerprint, reason, result_row_version, actor) VALUES (:o, :f, :t, :u, :fp, :r, :rr, :a)")
                 .bind("o", id).bind("f", cur.status).bind("t", to).bind("u", uuid).bind("fp", fp).bind("r", reason).bind("rr", cur.version + 1).bind("a", p.userId).execute()
@@ -850,7 +863,22 @@ private fun checkGiftImage(h: Handle, asset: String) {
     if (purpose != "gift_image") adminBad("body.image_asset_id", "wrong_purpose")
 }
 
-private fun giftSnapshotJson(g: GiftOut): String = Json.encodeToString(GiftOut.serializer(), g)
+/**
+ * The first result of a gift call, as stored in the append-only journal: the gift with `image_url` NULL plus the `image_asset_id` it was made with. A signed
+ * read URL never goes into a journal row (it expires, and an append-only row could never lose it); the URL is resolved again whenever the gift is answered.
+ */
+private fun giftSnapshotJson(g: GiftOut, asset: String?): String =
+    JsonObject(Json.encodeToJsonElement(GiftOut.serializer(), g.copy(image_url = null)).let { it as JsonObject } + mapOf("image_asset_id" to (asset?.let { JsonPrimitive(it) } ?: JsonNull))).toString()
+
+private class PriorGift(val giftId: Long, val fingerprint: String, val kind: String, val gift: GiftOut, val asset: String?)
+
+/** A stored first result answered again: the picture URL is resolved now from the asset. */
+private fun resolvedGift(h: Handle, d: AdminLoyaltyDeps, prior: PriorGift): GiftOut {
+    val url = prior.asset?.let { a ->
+        h.createQuery("SELECT blob_path FROM app.admin_asset WHERE asset_id = CAST(:a AS uuid)").bind("a", a).mapTo(String::class.java).findOne().orElse(null)?.let { runCatching { d.blob.readUrl(it) }.getOrNull() }
+    }
+    return prior.gift.copy(image_url = url)
+}
 
 private fun giftAudit(g: GiftOut, asset: String?) = buildJsonObject {
     put("programme_id", g.programme_id); put("code", g.code); put("name_en", g.name_en); put("name_bn", g.name_bn); put("points_cost", g.points_cost)
@@ -859,9 +887,15 @@ private fun giftAudit(g: GiftOut, asset: String?) = buildJsonObject {
 
 private fun giftAssetOf(h: Handle, id: Long): String? = h.createQuery("SELECT image_asset_id::text FROM app.gift WHERE id = :g").bind("g", id).mapTo(String::class.java).findOne().orElse(null)
 
-private fun priorGift(h: Handle, uuid: UUID): Triple<Long, String, Pair<String, GiftOut>>? =
+private val SnapshotJson = Json { ignoreUnknownKeys = true }
+
+private fun priorGift(h: Handle, uuid: UUID): PriorGift? =
     h.createQuery("SELECT gift_id, request_fingerprint, change_kind, CAST(snapshot AS text) FROM app.gift_change WHERE request_uuid = :u").bind("u", uuid)
-        .map { rs, _ -> Triple(rs.getLong(1), rs.getString(2), rs.getString(3) to Json.decodeFromString(GiftOut.serializer(), rs.getString(4))) }.findOne().orElse(null)
+        .map { rs, _ ->
+            val text = rs.getString(4)
+            val asset = (Json.parseToJsonElement(text) as JsonObject)["image_asset_id"]?.let { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+            PriorGift(rs.getLong(1), rs.getString(2), rs.getString(3), SnapshotJson.decodeFromString(GiftOut.serializer(), text), asset)
+        }.findOne().orElse(null)
 
 private suspend fun createGift(call: ApplicationCall, d: AdminLoyaltyDeps): Pair<GiftOut, HttpStatusCode> {
     val p = call.loyaltyPrincipal(Need.SUPER)
@@ -881,9 +915,9 @@ private suspend fun createGift(call: ApplicationCall, d: AdminLoyaltyDeps): Pair
     return mapDb {
         d.db.jdbi.inTransaction<Pair<GiftOut, HttpStatusCode>, Exception> { h ->
             lockRequest(h, uuid, "gift_req")
-            priorGift(h, uuid)?.let { (_, prevFp, snap) ->
-                if (prevFp != fp || snap.first != "create") throw loyConflict("request_uuid already used for a different call")
-                return@inTransaction snap.second to HttpStatusCode.Created
+            priorGift(h, uuid)?.let { prior ->
+                if (prior.fingerprint != fp || prior.kind != "create") throw loyConflict("request_uuid already used for a different call")
+                return@inTransaction resolvedGift(h, d, prior) to HttpStatusCode.Created
             }
             val prog = loadProgramme(h, programmeId, lock = true) ?: adminBad("body.programme_id", "not_found")
             if (prog.status == "inactive") throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "an ended programme takes no new gifts")
@@ -896,7 +930,7 @@ private suspend fun createGift(call: ApplicationCall, d: AdminLoyaltyDeps): Pair
             ).bind("p", programmeId).bind("c", code).bind("ne", nameEn).bind("nb", nameBn as Any?).bind("pc", cost as Any?).bind("tc", "{" + tiers.joinToString(",") + "}").bind("st", status).bind("img", asset as Any?).mapTo(Long::class.java).one()
             val g = loadGift(h, d, id)!!
             h.createUpdate("INSERT INTO app.gift_change (gift_id, change_kind, request_uuid, request_fingerprint, reason, snapshot, result_row_version, actor) VALUES (:g, 'create', :u, :fp, :r, CAST(:s AS jsonb), :rv, :a)")
-                .bind("g", id).bind("u", uuid).bind("fp", fp).bind("r", reason).bind("s", giftSnapshotJson(g)).bind("rv", g.version).bind("a", p.userId).execute()
+                .bind("g", id).bind("u", uuid).bind("fp", fp).bind("r", reason).bind("s", giftSnapshotJson(g, asset)).bind("rv", g.version).bind("a", p.userId).execute()
             AuditWriter.write(h, p, "gift", id.toString(), "create", null, JsonObject(giftAudit(g, asset) + mapOf("request_uuid" to JsonPrimitive(uuid.toString()))), reason, call.requestId)
             g to HttpStatusCode.Created
         }
@@ -923,9 +957,9 @@ private suspend fun updateGift(call: ApplicationCall, d: AdminLoyaltyDeps): Gift
     return mapDb {
         d.db.jdbi.inTransaction<GiftOut, Exception> { h ->
             lockRequest(h, uuid, "gift_req")
-            priorGift(h, uuid)?.let { (giftId, prevFp, snap) ->
-                if (prevFp != fp || giftId != id || snap.first != "update") throw loyConflict("request_uuid already used for a different call")
-                return@inTransaction snap.second
+            priorGift(h, uuid)?.let { prior ->
+                if (prior.fingerprint != fp || prior.giftId != id || prior.kind != "update") throw loyConflict("request_uuid already used for a different call")
+                return@inTransaction resolvedGift(h, d, prior)
             }
             val cur = loadGift(h, d, id, lock = true) ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no gift with this id")
             if (cur.version != ifMatch) preconditionFailed(cur.version)
@@ -941,7 +975,7 @@ private suspend fun updateGift(call: ApplicationCall, d: AdminLoyaltyDeps): Gift
                 .bind("ne", next.name_en).bind("nb", next.name_bn as Any?).bind("pc", next.points_cost as Any?).bind("tc", "{" + next.tier_codes.joinToString(",") + "}").bind("st", next.status).bind("img", nextAsset as Any?).bind("g", id).execute()
             val after = loadGift(h, d, id)!!
             h.createUpdate("INSERT INTO app.gift_change (gift_id, change_kind, request_uuid, request_fingerprint, reason, snapshot, result_row_version, actor) VALUES (:g, 'update', :u, :fp, :r, CAST(:s AS jsonb), :rv, :a)")
-                .bind("g", id).bind("u", uuid).bind("fp", fp).bind("r", reason).bind("s", giftSnapshotJson(after)).bind("rv", after.version).bind("a", p.userId).execute()
+                .bind("g", id).bind("u", uuid).bind("fp", fp).bind("r", reason).bind("s", giftSnapshotJson(after, nextAsset)).bind("rv", after.version).bind("a", p.userId).execute()
             AuditWriter.write(h, p, "gift", id.toString(), "update", giftAudit(cur, curAsset), JsonObject(giftAudit(after, nextAsset) + mapOf("request_uuid" to JsonPrimitive(uuid.toString()))), reason, call.requestId)
             after
         }

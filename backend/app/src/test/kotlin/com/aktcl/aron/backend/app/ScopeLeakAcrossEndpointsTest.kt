@@ -148,6 +148,22 @@ class ScopeLeakAcrossEndpointsTest {
             fun rowId(sql: String) = h.createQuery(sql).mapTo(Long::class.java).findOne().orElse(null)?.toString()
             rowId("SELECT max(id) FROM app.entry_unlock WHERE reason LIKE 'LKX%'")?.let { world.otherPathValues["unlock_id"] = it }
             rowId("SELECT max(id) FROM app.dues_adjustment WHERE reason LIKE 'LKX%'")?.let { world.otherPathValues["adjustment_id"] = it }
+            // portal-loyalty-api (D-LOY-API-05): the id probes of /admin/programmes/{id} (+ /versions, /enrolments) and /admin/gifts/{id} aim at the other division's seeded rows;
+            // an own-division programme and gift (scoped to the own zone) are the positive control, so a hit on the id is a leak and a miss for the own id would be a blind probe.
+            h.execute("INSERT INTO app.programme (kind, code, name_en, active_from, active_to) VALUES ('astha', 'OWN-PRG', 'OWN seeded programme', '${ApiWorld.BUSINESS_DATE}'::date, '${ApiWorld.BUSINESS_DATE}'::date + 30)")
+            h.execute(
+                "INSERT INTO app.programme_version (programme_id, version_no, name_en, active_from, active_to, change_reason, request_uuid, request_fingerprint) " +
+                    "SELECT id, 1, 'OWN seeded programme', '${ApiWorld.BUSINESS_DATE}'::date, '${ApiWorld.BUSINESS_DATE}'::date + 30, 'own seeded programme version', gen_random_uuid(), 'own' FROM app.programme WHERE code = 'OWN-PRG'",
+            )
+            h.execute("UPDATE app.programme SET current_version_id = (SELECT v.id FROM app.programme_version v WHERE v.programme_id = app.programme.id) WHERE code = 'OWN-PRG'")
+            h.execute("INSERT INTO app.programme_version_scope (programme_version_id, node_type, node_id) SELECT current_version_id, 'zone', ${world.ids["zones"]} FROM app.programme WHERE code = 'OWN-PRG'")
+            h.execute("INSERT INTO app.gift (programme_id, code, name_en, points_cost) SELECT id, 'own_gift', 'OWN seeded gift', 100 FROM app.programme WHERE code = 'OWN-PRG'")
+            for ((kind, table, own, theirs) in listOf(
+                listOf("programmes", "programme", "OWN-PRG", "LKX-PRG"), listOf("gifts", "gift", "own_gift", "lkx_gift"),
+            )) {
+                val ownId = rowId("SELECT id FROM app.$table WHERE code = '$own'")!!.toLong(); val theirId = rowId("SELECT id FROM app.$table WHERE code = '$theirs'")!!.toLong()
+                world.ids[kind] = ownId; world.otherIds[kind] = theirId; otherIds[kind] = setOf(theirId)
+            }
             // A missing value would silently drop the other-path probe of its writes.
             val aimedAt = setOf("request_uuid", "task_uuid", "leave_uuid", "feedback_uuid", "unlock_id", "adjustment_id")
             check(world.otherPathValues.keys.containsAll(aimedAt)) { "other-division rows missing for ${aimedAt - world.otherPathValues.keys}" }

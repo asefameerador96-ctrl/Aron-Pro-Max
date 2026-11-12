@@ -2054,7 +2054,7 @@ Append-only journal of gift create and update calls from the portal with a snaps
 | `request_uuid` | uuid | not null |  | Client-generated UUID of the call; unique, so a replay returns the first result. |
 | `request_fingerprint` | text | not null |  | SHA-256 (hex) of the normalised request; a reused request_uuid with different content is told apart (409). |
 | `reason` | text | not null |  | Why the gift changed, 10 to 500 characters, mandatory. |
-| `snapshot` | jsonb | not null |  | The gift as the first result of the call returned it (JSON, contract member names). |
+| `snapshot` | jsonb | not null |  | The gift as the first result of the call returned it (JSON, contract member names) with image_url null, plus image_asset_id. The picture URL is a signed, expiring address and is never stored here: it is resolved from the asset again whenever the call is answered, replays included. |
 | `result_row_version` | integer | not null |  | Row version (ETag) of the gift right after the call. |
 | `actor` | bigint | not null |  | User (app.app_user) who made the call. |
 | `at` | timestamp with time zone | not null |  | UTC instant of the call. |

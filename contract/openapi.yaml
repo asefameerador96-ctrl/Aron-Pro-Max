@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.13.0
+  version: 1.13.1
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -112,6 +112,10 @@ info:
       are immutable, and a client that still sends them gets `400` (the portal BFF aligns in the web lane's next train); `putProgrammeEnrolments` gains `409`; `listProgrammes` takes `status` as `ProgrammeStatus` and an optional `kind`. Tier
       thresholds are STD as stored (units rule 5, brief Q1 default), never negative; no money member is added. The field is unchanged: loyalty
       in the apps stays deferred (docs/27), the bundle `programmes` stays null, no points are earned or redeemed.
+    - 1.13.1 (loyalty-programme portal, train 2 of lane portal-loyalty-api, D-LOY-API-05 and -06; description-only, no schema, operation or status change, so no
+      request file is needed beyond the note in `docs/requests/contract-1.13-loyalty-portal.md`): the 1.13.0 entry above is as it shipped. `listProgrammeVersions` says each
+      version is judged on its own scope; `listProgrammeEnrolments` carries the read rules (reach cut, BRAND `403`, `zone_id` outside the reach `403`) that were wrongly
+      written on `putProgrammeEnrolments`, which now states its write rules; the list and path reads state their `400` on a bad query or path value.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -6096,7 +6100,7 @@ paths:
       description: >-
         Loyalty programmes of the portal (1.13.0). Permission module `loyalty`: SUPERADMIN, or ADMIN with the `r` grant, read all; NATIONAL (and the
         retired TOP, read the same way) reads all; BRAND, WM, DMO and TSO read the programmes within their server-side scope (the client never sends
-        scope ids); SR, AMO, SUPPORT and ANALYST are refused `403`. Loyalty in the field stays deferred (docs/27).
+        scope ids); SR, AMO, SUPPORT and ANALYST are refused `403`. A bad `status` or `kind` value is `400`. Loyalty in the field stays deferred (docs/27).
       parameters:
         - name: status
           in: query
@@ -6143,7 +6147,7 @@ paths:
       tags: [admin-content]
       operationId: getProgramme
       summary: One programme with its current version (1.13.0).
-      description: Same read rules as `listProgrammes`; a programme outside the caller's server-side scope is `404` (its existence is not revealed).
+      description: Same read rules as `listProgrammes`; a programme outside the caller's server-side scope is `404` (its existence is not revealed); a bad path id is `400`.
       parameters:
         - $ref: '#/components/parameters/IdPath'
       responses:
@@ -6191,7 +6195,9 @@ paths:
       tags: [admin-content]
       operationId: listProgrammeVersions
       summary: Every version of a programme, newest first (1.13.0).
-      description: Same read rules as `listProgrammes`. Versions are immutable.
+      description: >-
+        Same read rules as `listProgrammes`; the programme must be visible through its current version, and then each version is judged on its OWN scope (the products and places that
+        version names): a version outside the caller's server-side reach is not listed, and the cursor never hints at one. Versions are immutable. A bad `limit`, `cursor` or path id is `400`.
       parameters:
         - $ref: '#/components/parameters/IdPath'
         - $ref: '#/components/parameters/Limit'
@@ -6247,6 +6253,9 @@ paths:
       tags: [admin-content]
       operationId: listProgrammeEnrolments
       summary: Outlets enrolled in a programme with league, tier or slab and base target.
+      description: >-
+        Enrolled outlets are outlet data, cut to the caller's server-side reach: SUPERADMIN, ADMIN with the `r` grant and NATIONAL read all; WM, DMO and TSO see the outlets of their zones and
+        routes; a BRAND user is refused `403`; a `zone_id` outside the caller's reach is `403`. A programme outside the caller's reach is `404`. A bad `limit`, `cursor`, `zone_id` or path id is `400`.
       parameters:
         - $ref: '#/components/parameters/IdPath'
         - $ref: '#/components/parameters/ZoneIdQuery'
@@ -6266,9 +6275,9 @@ paths:
       operationId: putProgrammeEnrolments
       summary: Upsert enrolments (idempotent by batch_uuid, all-or-nothing).
       description: >-
-        Permission module `loyalty`, `w` grant. A repeat of a `batch_uuid` returns the first counts; the same `batch_uuid` with different rows is `409`
-        (1.13.0). A `tier_code` must be one of the current version's tiers when it has any; an outlet that does not exist is `400` (the writers, SUPERADMIN and ADMIN, hold no geography scope; WM, DMO and TSO cannot write). Reading enrolments is cut to the caller's reach: WM, DMO and TSO see the outlets of their zones and routes, a BRAND user is refused `403` (outlet data), `zone_id` outside the reach is `403`.
-        An enrolment never overlaps another of the same programme and outlet (`409`).
+        Permission module `loyalty`, `w` grant (SUPERADMIN, or ADMIN with `w`). A repeat of a `batch_uuid` returns the first counts; the same `batch_uuid` with different rows is `409`
+        (1.13.0). A `tier_code` must be one of the current version's tiers when it has any; an outlet that does not exist is `400` (the writers hold no geography scope; WM, DMO and TSO cannot
+        write). An enrolment never overlaps another of the same programme and outlet (`409`); an ended programme takes no new enrolments (`409`).
       parameters:
         - $ref: '#/components/parameters/IdPath'
       requestBody:
@@ -6292,6 +6301,9 @@ paths:
       tags: [admin-content]
       operationId: listGifts
       summary: Gift catalogue (points cost for Diamond League, tier for Astha, cash-back line).
+      description: >-
+        Permission module `loyalty`; the readers of `listProgrammes`. A gift is listed when its programme is visible to the caller (server-side scope, judged on the programme's current version).
+        The picture is `image_url`, a read address resolved when the gift is answered. A bad `programme_id` or `status` value is `400`.
       parameters:
         - { name: programme_id, in: query, required: false, schema: { $ref: '#/components/schemas/Id' }, description: One programme. }
         - $ref: '#/components/parameters/StatusQuery'
@@ -6331,7 +6343,7 @@ paths:
       tags: [admin-content]
       operationId: getGift
       summary: One gift (1.13.0).
-      description: Same read rules as `listGifts`.
+      description: Same read rules as `listGifts`; a gift whose programme is outside the caller's server-side scope is `404`; a bad path id is `400`.
       parameters:
         - $ref: '#/components/parameters/IdPath'
       responses:

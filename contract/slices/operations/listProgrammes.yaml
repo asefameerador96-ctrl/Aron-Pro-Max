@@ -8,7 +8,7 @@ operation:
   description: 'Loyalty programmes of the portal (1.13.0). Permission module `loyalty`: SUPERADMIN, or ADMIN with
     the `r` grant, read all; NATIONAL (and the retired TOP, read the same way) reads all; BRAND, WM, DMO and TSO
     read the programmes within their server-side scope (the client never sends scope ids); SR, AMO, SUPPORT and
-    ANALYST are refused `403`. Loyalty in the field stays deferred (docs/27).'
+    ANALYST are refused `403`. A bad `status` or `kind` value is `400`. Loyalty in the field stays deferred (docs/27).'
   parameters:
   - name: status
     in: query
