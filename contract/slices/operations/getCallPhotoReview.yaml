@@ -1,0 +1,47 @@
+path: /v1/supervisor/call-photos
+method: get
+operation:
+  tags:
+  - team
+  operationId: getCallPhotoReview
+  summary: Call-start photos for review, by business date (contract 1.14.0, SRM-A-27).
+  description: 'AMO, TSO, DMO, WM, support, admin and superadmin; the rows are limited to the caller''s reach on
+    the server (zones from the token;
+
+    national roles see all). One row per `sr_call` visit of the date, newest first, with the photo (`call_photo_uuid`,
+    read through
+
+    `getMediaReadUrl`), the capture fix of the media record, or the recorded skip reason. A visit with neither a
+    photo nor a skip
+
+    reason is listed with `photo_uuid` null so a reviewer sees missing photos too.
+
+    '
+  parameters:
+  - name: business_date
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/BusinessDate'
+  - name: route_id
+    in: query
+    required: false
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: One page.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CallPhotoReviewPage'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

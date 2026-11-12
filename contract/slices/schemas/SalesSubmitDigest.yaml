@@ -42,3 +42,9 @@ SalesSubmitDigest:
     rejected_truncated:
       type: boolean
       description: True when more than 200 rows qualify (the oldest are left out).
+    business_totals:
+      description: The business figures of the login's day, for the Sales Submit table (contract 1.14.0, SRM-B-25).
+        Optional so an older server omits it; the record-count gate does not read it.
+      oneOf:
+      - $ref: '#/components/schemas/SubmitBusinessTotals'
+      - type: 'null'

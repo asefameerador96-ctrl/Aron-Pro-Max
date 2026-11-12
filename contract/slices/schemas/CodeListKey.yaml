@@ -20,5 +20,7 @@ CodeListKey:
   - geo_class
   - ticket_issue_type
   - ticket_resolution_code
-  description: Business code lists (docs/24 s12.1). `ticket_issue_type` (the 31 Annex A issue types, attrs priority,
-    category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
+  - zero_sale_reason
+  description: Business code lists (docs/24 s12.1). `zero_sale_reason` (the four reasons of SR manual screenshot
+    32) from contract 1.14.0. `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency,
+    icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).

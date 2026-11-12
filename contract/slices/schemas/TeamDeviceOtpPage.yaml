@@ -1,0 +1,18 @@
+TeamDeviceOtpPage:
+  type: object
+  required:
+  - business_date
+  - items
+  - next_cursor
+  additionalProperties: false
+  properties:
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    items:
+      type: array
+      items:
+        $ref: '#/components/schemas/TeamDeviceOtp'
+    next_cursor:
+      oneOf:
+      - $ref: '#/components/schemas/PageCursor'
+      - type: 'null'

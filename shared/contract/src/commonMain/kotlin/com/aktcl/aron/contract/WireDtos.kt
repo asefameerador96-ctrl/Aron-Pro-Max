@@ -422,6 +422,8 @@ data class VisitPayload(
     @SerialName("assessed_user_id") val assessedUserId: Long? = null,
     @Serializable(with = GeoFixWire::class) @SerialName("fix") val fix: GeoFix,
     @SerialName("geo") val geo: DeviceGeoVerdict,
+    @SerialName("call_photo_uuid") val callPhotoUuid: String? = null,
+    @SerialName("call_photo_skip_reason") val callPhotoSkipReason: String? = null,
     @SerialName("force_sale_reason") val forceSaleReason: String? = null,
 )
 
@@ -433,6 +435,7 @@ data class VisitClosePayload(
     @SerialName("call_declined") val callDeclined: Boolean,
     @SerialName("ended_at") val endedAt: String,
     @SerialName("is_zero_sale") val isZeroSale: Boolean,
+    @SerialName("zero_sale_reason_code") val zeroSaleReasonCode: String? = null,
 )
 
 /** Memo header committed with its lines, discount lines and QC lines in one phone transaction. Server-checked */
@@ -1241,7 +1244,6 @@ data class TargetAchievementRow(
     @SerialName("remaining_tilldate_qty_base") val remainingTilldateQtyBase: Long?,
     @SerialName("achievement_pct_bp") val achievementPctBp: Long?,
     @SerialName("tilldate_achievement_pct_bp") val tilldateAchievementPctBp: Long?,
-    // Contract 1.11.2 (D-AMO-FND-16): the same figures in the field unit (rule 5), summed per SKU after conversion; absent from older servers.
     @SerialName("report_unit") val reportUnit: String? = null,
     @SerialName("target_qty_report") val targetQtyReport: String? = null,
     @SerialName("achieved_qty_report") val achievedQtyReport: String? = null,

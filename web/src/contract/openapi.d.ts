@@ -1128,6 +1128,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/supervisor/device-otps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Today's pending device OTPs of the SRs in the caller's territory (contract 1.14.0, SRM-A-06).
+         * @description TSO only (anyone else 403 `ERR_FORBIDDEN`). One row per active SR in the caller's reach (server-side, from the token; no
+         *     zone or user list is read from the request) that has a live, unconsumed OTP created on the Dhaka business date. The code is
+         *     shown to the TSO, who gives it to the SR; it is never written to a log, and the audit event holds counts only. The issue
+         *     operation `issueDeviceOtp` and its rate limits are unchanged. Online only by nature (a code is issued by the server).
+         */
+        get: operations["getTeamDeviceOtps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/supervisor/call-photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Call-start photos for review, by business date (contract 1.14.0, SRM-A-27).
+         * @description AMO, TSO, DMO, WM, support, admin and superadmin; the rows are limited to the caller's reach on the server (zones from the token;
+         *     national roles see all). One row per `sr_call` visit of the date, newest first, with the photo (`call_photo_uuid`, read through
+         *     `getMediaReadUrl`), the capture fix of the media record, or the recorded skip reason. A visit with neither a photo nor a skip
+         *     reason is listed with `photo_uuid` null so a reviewer sees missing photos too.
+         */
+        get: operations["getCallPhotoReview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/supervisor/call-targets": {
         parameters: {
             query?: never;
@@ -4597,7 +4643,7 @@ export interface components {
         /** @enum {string} */
         AttendanceKind: "check_in" | "check_out";
         /** @enum {string} */
-        MediaPurpose: "force_sale" | "outlet_capture" | "outlet_verification" | "survey" | "feedback" | "support" | "gift_photo";
+        MediaPurpose: "force_sale" | "outlet_capture" | "outlet_verification" | "survey" | "feedback" | "support" | "gift_photo" | "call_start";
         /** @enum {string} */
         SyncTrigger: "write_debounce" | "foreground" | "connectivity" | "workmanager_connectivity" | "periodic" | "manual" | "day_submit" | "checkout" | "resync" | "digest_resend" | "directive";
         /**
@@ -4613,10 +4659,10 @@ export interface components {
         /** @enum {string} */
         QuarantineStatus: "open" | "accepted" | "accepted_with_fix" | "discarded";
         /**
-         * @description Business code lists (docs/24 s12.1). `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
+         * @description Business code lists (docs/24 s12.1). `zero_sale_reason` (the four reasons of SR manual screenshot 32) from contract 1.14.0. `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
          * @enum {string}
          */
-        CodeListKey: "force_reason" | "edit_reason" | "void_reason" | "visit_outcome" | "skip_reason" | "day_exception_reason" | "stock_variance_reason" | "task_type" | "leave_type" | "feedback_category" | "qc_fault_type" | "payment_mode" | "outlet_close_reason" | "submit_void_reason" | "channel" | "sub_channel" | "geo_class" | "ticket_issue_type" | "ticket_resolution_code";
+        CodeListKey: "force_reason" | "edit_reason" | "void_reason" | "visit_outcome" | "skip_reason" | "day_exception_reason" | "stock_variance_reason" | "task_type" | "leave_type" | "feedback_category" | "qc_fault_type" | "payment_mode" | "outlet_close_reason" | "submit_void_reason" | "channel" | "sub_channel" | "geo_class" | "ticket_issue_type" | "ticket_resolution_code" | "zero_sale_reason";
         /** @enum {string} */
         BundleSectionName: "outlets" | "open_memos" | "prices" | "offers" | "tasks" | "team" | "pending_outlet_requests" | "programmes" | "content";
         /**
@@ -5772,6 +5818,13 @@ export interface components {
             assessed_user_id?: number | null;
             fix: components["schemas"]["GeoFix"];
             geo: components["schemas"]["DeviceGeoVerdict"];
+            /** @description media_uuid of the outlet photo taken at call start (media purpose `call_start`, contract 1.14.0, SRM-A-27). Idempotent: the media record is keyed by this UUID. Null or absent when no photo was taken. */
+            call_photo_uuid?: components["schemas"]["Uuid"] | null;
+            /**
+             * @description Why no call-start photo was taken (a reasoned skip never blocks the sale). Allowed only when `call_photo_uuid` is null; any other combination is rejected `schema_invalid`.
+             * @enum {string|null}
+             */
+            call_photo_skip_reason?: "camera_failed" | "permission_denied" | "storage_full" | "other" | null;
             /**
              * @description Why the sale is made outside the geo-fence, chosen on the phone (contract 1.11.0, D-AMO-MAN-08). Allowed only when `geo.action` is `force_sale`; any other combination is rejected `schema_invalid`.
              * @enum {string|null}
@@ -5786,6 +5839,8 @@ export interface components {
             call_declined: boolean;
             ended_at: components["schemas"]["Timestamp"];
             is_zero_sale: boolean;
+            /** @description Why the SR made a zero sale (code list `zero_sale_reason`, contract 1.14.0, SRM-A-40). Allowed only when `is_zero_sale` is true and the code is an active item of the list; otherwise rejected `schema_invalid`. */
+            zero_sale_reason_code?: string | null;
         };
         VisitSkipPayload: {
             outlet_id: components["schemas"]["Id"];
@@ -6325,6 +6380,29 @@ export interface components {
             rejected: components["schemas"]["RejectedRecordView"][];
             /** @description True when more than 200 rows qualify (the oldest are left out). */
             rejected_truncated: boolean;
+            /** @description The business figures of the login's day, for the Sales Submit table (contract 1.14.0, SRM-B-25). Optional so an older server omits it; the record-count gate does not read it. */
+            business_totals?: components["schemas"]["SubmitBusinessTotals"] | null;
+        };
+        /** @description Per login and business date, from the stored (not voided, not rejected) rows with the same rules as the dashboard aggregates (`dw.agg_daily_route`, `agg_daily_route_sku`): a memo counts when it is active with at least one line; a sale quantity is the `sale` lines only (free and DRP lines are left out); a visit counts when it is an `sr_call` that is not abandoned. The phone compares its own local figures (same rules, base units) with these; a difference means rows not yet acknowledged. */
+        SubmitBusinessTotals: {
+            /** @description Distinct outlets with a stored sr_call visit that is not abandoned. */
+            outlets_visited: number;
+            /** @description Sold quantity in base units (sticks, pieces) per SKU category code (cigarette, bidi, lighter, match); a category with no sale is absent. */
+            sold_qty_base: {
+                [key: string]: number;
+            };
+            /**
+             * Format: int64
+             * @description Sum of stock_movement kind issue, base units.
+             */
+            stock_issued_qty_base: number;
+            /**
+             * Format: int64
+             * @description Sum of stored qc_line quantity, base units (a defect count, SRM-A-34).
+             */
+            qc_qty_base: number;
+            /** @description offer + DRP discount of the active memos, milli-taka; zero while the discount programmes are deferred. */
+            promotion_mtk: components["schemas"]["MtkNonNegative"];
         };
         DigestTypeCounts: {
             /** @description Null without a phone token. */
@@ -6800,6 +6878,10 @@ export interface components {
             /** @enum {string} */
             prompt_policy?: "silent" | "prompt" | "force_after_date";
             wifi_only?: boolean;
+            /** @description What is new, English; a copy of `latest.notes_en` (contract 1.14.0), null when there is no update or no note. */
+            notes_en?: string | null;
+            /** @description What is new, Bangla; a copy of `latest.notes_bn`. */
+            notes_bn?: string | null;
         };
         AppHome: {
             as_of: components["schemas"]["Timestamp"];
@@ -7249,8 +7331,11 @@ export interface components {
             /** Format: uuid */
             visit_uuid: string;
             outlet: components["schemas"]["JourneyOutlet"];
-            /** @enum {string} */
-            status: "new_sale" | "edited_sale" | "no_sale";
+            /**
+             * @description repeat_sale (contract 1.14.0): a second or later sale at the same outlet on the same day. An older reader must treat an unknown status as new_sale.
+             * @enum {string}
+             */
+            status: "new_sale" | "edited_sale" | "no_sale" | "repeat_sale";
             opened_at: components["schemas"]["Timestamp"];
             closed_at: components["schemas"]["Timestamp"] | null;
             duration_s: number | null;
@@ -7322,6 +7407,53 @@ export interface components {
             done: number;
             /** @description Null when the config key is not set (the card prints a dash). */
             target: number | null;
+        };
+        TeamDeviceOtp: {
+            user_id: components["schemas"]["Id"];
+            username: components["schemas"]["Username"];
+            full_name: string;
+            /** @description The SR's active routes. */
+            route_names: string[];
+            /** @description The live code (cfg.auth.otp_length digits). Sensitive: shown, never logged. */
+            otp: string;
+            created_at: components["schemas"]["Timestamp"];
+            expires_at: components["schemas"]["Timestamp"];
+            attempts: number;
+        };
+        TeamDeviceOtpPage: {
+            business_date: components["schemas"]["BusinessDate"];
+            items: components["schemas"]["TeamDeviceOtp"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        CallPhotoReviewRow: {
+            visit_uuid: components["schemas"]["Uuid"];
+            business_date: components["schemas"]["BusinessDate"];
+            opened_at: components["schemas"]["Timestamp"];
+            outlet_id: components["schemas"]["Id"];
+            outlet_name: string;
+            user_id: components["schemas"]["Id"];
+            user_name: string;
+            /** Format: int64 */
+            route_id: number | null;
+            photo_uuid: components["schemas"]["Uuid"] | null;
+            /** @enum {string|null} */
+            skip_reason: "camera_failed" | "permission_denied" | "storage_full" | "other" | null;
+            /**
+             * @description Null when no photo record has reached the server yet (the blob may still be queued on the phone).
+             * @enum {string|null}
+             */
+            media_status: "pending_blob" | "stored" | "mismatch" | "missing" | null;
+            taken_at: components["schemas"]["Timestamp"] | null;
+            fix_lat: number | null;
+            fix_lng: number | null;
+            fix_accuracy_m: number | null;
+            fix_is_mock: boolean | null;
+            /** @description The call's distance from the outlet point */
+            distance_m: number | null;
+        };
+        CallPhotoReviewPage: {
+            items: components["schemas"]["CallPhotoReviewRow"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
         };
         /** @description The four target cards of the AMO Dashboard (contract 1.11.0). */
         CallTargets: {
@@ -13313,6 +13445,64 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getTeamDeviceOtps: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pending codes, ordered by user id. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamDeviceOtpPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getCallPhotoReview: {
+        parameters: {
+            query: {
+                business_date: components["schemas"]["BusinessDate"];
+                route_id?: number;
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallPhotoReviewPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getCallTargets: {

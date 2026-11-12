@@ -23,3 +23,10 @@ VisitClosePayload:
       $ref: '#/components/schemas/Timestamp'
     is_zero_sale:
       type: boolean
+    zero_sale_reason_code:
+      type:
+      - string
+      - 'null'
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+      description: Why the SR made a zero sale (code list `zero_sale_reason`, contract 1.14.0, SRM-A-40). Allowed
+        only when `is_zero_sale` is true and the code is an active item of the list; otherwise rejected `schema_invalid`.

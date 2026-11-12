@@ -23,6 +23,9 @@ JourneyCall:
       - new_sale
       - edited_sale
       - no_sale
+      - repeat_sale
+      description: 'repeat_sale (contract 1.14.0): a second or later sale at the same outlet on the same day. An
+        older reader must treat an unknown status as new_sale.'
     opened_at:
       $ref: '#/components/schemas/Timestamp'
     closed_at:

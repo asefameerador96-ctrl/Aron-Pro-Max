@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.12.2
+  version: 1.14.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -99,6 +99,15 @@ info:
       of the SKU's pack size (`reward_qty_base` against the reward SKU, `threshold_qty_base` against each `sku`-level qualifying product) is
       refused `400` with the field code `not_a_multiple_of_pack_factor`. The database also refuses any status move but draft to active to
       inactive (V0156).
+    - 1.14.0 (SR manual build, lane sr-server train 1, D-SV1-01 to 12; approval D-LEAD-CONTRACT-114-01, gate file
+      `docs/requests/contract-1.14-sr-manual.md`; 1.13.0 is the Loyalty portal and is not on INT when this is written), additive only:
+      `VisitClosePayload.zero_sale_reason_code` (code list `zero_sale_reason`, only with `is_zero_sale`), `VisitPayload.call_photo_uuid`
+      and `call_photo_skip_reason`, media purpose `call_start`, code list key `zero_sale_reason`, `SalesSubmitDigest.business_totals`
+      (new schema `SubmitBusinessTotals`), `UpdateCheck.notes_en` and `notes_bn`, `JourneyCall.status` value `repeat_sale`, `getTeamDeviceOtps`
+      (`GET /v1/supervisor/device-otps`), `getCallPhotoReview` (`GET /v1/supervisor/call-photos`), and the seeded codes `wrong_sku_qty` and
+      `promotion_issue` (`edit_reason`) and `poor_brand_visibility` (`task_type`). The server now also accepts `cluster_id` in an `info`
+      outlet request and requires it in a `route_add` proposal. Moved to train 2: the bundle `clusters` section, the cluster-creation
+      record and `outlet_sku_stats`.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -1622,6 +1631,58 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/supervisor/device-otps:
+    get:
+      tags: [team]
+      operationId: getTeamDeviceOtps
+      summary: Today's pending device OTPs of the SRs in the caller's territory (contract 1.14.0, SRM-A-06).
+      description: |
+        TSO only (anyone else 403 `ERR_FORBIDDEN`). One row per active SR in the caller's reach (server-side, from the token; no
+        zone or user list is read from the request) that has a live, unconsumed OTP created on the Dhaka business date. The code is
+        shown to the TSO, who gives it to the SR; it is never written to a log, and the audit event holds counts only. The issue
+        operation `issueDeviceOtp` and its rate limits are unchanged. Online only by nature (a code is issued by the server).
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: The pending codes, ordered by user id.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamDeviceOtpPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/supervisor/call-photos:
+    get:
+      tags: [team]
+      operationId: getCallPhotoReview
+      summary: Call-start photos for review, by business date (contract 1.14.0, SRM-A-27).
+      description: |
+        AMO, TSO, DMO, WM, support, admin and superadmin; the rows are limited to the caller's reach on the server (zones from the token;
+        national roles see all). One row per `sr_call` visit of the date, newest first, with the photo (`call_photo_uuid`, read through
+        `getMediaReadUrl`), the capture fix of the media record, or the recorded skip reason. A visit with neither a photo nor a skip
+        reason is listed with `photo_uuid` null so a reviewer sees missing photos too.
+      parameters:
+        - name: business_date
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/BusinessDate' }
+        - name: route_id
+          in: query
+          required: false
+          schema: { type: integer, format: int64, minimum: 1 }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CallPhotoReviewPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /v1/supervisor/call-targets:
     get:
       tags: [team]
@@ -7318,7 +7379,7 @@ components:
       enum: [check_in, check_out]
     MediaPurpose:
       type: string
-      enum: [force_sale, outlet_capture, outlet_verification, survey, feedback, support, gift_photo]
+      enum: [force_sale, outlet_capture, outlet_verification, survey, feedback, support, gift_photo, call_start]
     SyncTrigger:
       type: string
       enum: [write_debounce, foreground, connectivity, workmanager_connectivity, periodic, manual, day_submit, checkout, resync, digest_resend, directive]
@@ -7340,8 +7401,8 @@ components:
       enum: [open, accepted, accepted_with_fix, discarded]
     CodeListKey:
       type: string
-      enum: [force_reason, edit_reason, void_reason, visit_outcome, skip_reason, day_exception_reason, stock_variance_reason, task_type, leave_type, feedback_category, qc_fault_type, payment_mode, outlet_close_reason, submit_void_reason, channel, sub_channel, geo_class, ticket_issue_type, ticket_resolution_code]
-      description: Business code lists (docs/24 s12.1). `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
+      enum: [force_reason, edit_reason, void_reason, visit_outcome, skip_reason, day_exception_reason, stock_variance_reason, task_type, leave_type, feedback_category, qc_fault_type, payment_mode, outlet_close_reason, submit_void_reason, channel, sub_channel, geo_class, ticket_issue_type, ticket_resolution_code, zero_sale_reason]
+      description: Business code lists (docs/24 s12.1). `zero_sale_reason` (the four reasons of SR manual screenshot 32) from contract 1.14.0. `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
     BundleSectionName:
       type: string
       enum: [outlets, open_memos, prices, offers, tasks, team, pending_outlet_requests, programmes, content]
@@ -8737,6 +8798,15 @@ components:
         assessed_user_id: { type: [integer, 'null'], format: int64, minimum: 1, description: SR assessed on an AMO joint call (the route's active assignee). }
         fix: { $ref: '#/components/schemas/GeoFix' }
         geo: { $ref: '#/components/schemas/DeviceGeoVerdict' }
+        call_photo_uuid:
+          description: 'media_uuid of the outlet photo taken at call start (media purpose `call_start`, contract 1.14.0, SRM-A-27). Idempotent: the media record is keyed by this UUID. Null or absent when no photo was taken.'
+          oneOf:
+            - { $ref: '#/components/schemas/Uuid' }
+            - type: 'null'
+        call_photo_skip_reason:
+          type: [string, 'null']
+          enum: [camera_failed, permission_denied, storage_full, other, null]
+          description: 'Why no call-start photo was taken (a reasoned skip never blocks the sale). Allowed only when `call_photo_uuid` is null; any other combination is rejected `schema_invalid`.'
         force_sale_reason:
           type: [string, 'null']
           enum: [internet_problem, location_change, null]
@@ -8755,6 +8825,10 @@ components:
         call_declined: { type: boolean, description: '"না" at the start-call prompt; not counted as visited.' }
         ended_at: { $ref: '#/components/schemas/Timestamp' }
         is_zero_sale: { type: boolean }
+        zero_sale_reason_code:
+          type: [string, 'null']
+          pattern: '^[a-z][a-z0-9_]{1,40}$'
+          description: 'Why the SR made a zero sale (code list `zero_sale_reason`, contract 1.14.0, SRM-A-40). Allowed only when `is_zero_sale` is true and the code is an active item of the list; otherwise rejected `schema_invalid`.'
     VisitSkipPayload:
       type: object
       required: [outlet_id, reason_code]
@@ -9510,6 +9584,29 @@ components:
             the `ReasonTexts` text of `code`, also for a row it no longer holds (an earlier install).
           items: { $ref: '#/components/schemas/RejectedRecordView' }
         rejected_truncated: { type: boolean, description: True when more than 200 rows qualify (the oldest are left out). }
+        business_totals:
+          description: 'The business figures of the login''s day, for the Sales Submit table (contract 1.14.0, SRM-B-25). Optional so an older server omits it; the record-count gate does not read it.'
+          oneOf:
+            - { $ref: '#/components/schemas/SubmitBusinessTotals' }
+            - type: 'null'
+    SubmitBusinessTotals:
+      type: object
+      description: >-
+        Per login and business date, from the stored (not voided, not rejected) rows with the same rules as the dashboard aggregates
+        (`dw.agg_daily_route`, `agg_daily_route_sku`): a memo counts when it is active with at least one line; a sale quantity is the
+        `sale` lines only (free and DRP lines are left out); a visit counts when it is an `sr_call` that is not abandoned. The phone
+        compares its own local figures (same rules, base units) with these; a difference means rows not yet acknowledged.
+      required: [outlets_visited, sold_qty_base, stock_issued_qty_base, qc_qty_base, promotion_mtk]
+      additionalProperties: false
+      properties:
+        outlets_visited: { type: integer, minimum: 0, description: Distinct outlets with a stored sr_call visit that is not abandoned. }
+        sold_qty_base:
+          type: object
+          description: Sold quantity in base units (sticks, pieces) per SKU category code (cigarette, bidi, lighter, match); a category with no sale is absent.
+          additionalProperties: { type: integer, format: int64, minimum: 0 }
+        stock_issued_qty_base: { type: integer, format: int64, minimum: 0, description: 'Sum of stock_movement kind issue, base units.' }
+        qc_qty_base: { type: integer, format: int64, minimum: 0, description: 'Sum of stored qc_line quantity, base units (a defect count, SRM-A-34).' }
+        promotion_mtk: { $ref: '#/components/schemas/MtkNonNegative', description: 'offer + DRP discount of the active memos, milli-taka; zero while the discount programmes are deferred.' }
     DigestTypeCounts:
       type: object
       required: [device, login]
@@ -10324,6 +10421,8 @@ components:
             - type: 'null'
         prompt_policy: { type: string, enum: [silent, prompt, force_after_date] }
         wifi_only: { type: boolean }
+        notes_en: { type: [string, 'null'], maxLength: 2000, description: 'What is new, English; a copy of `latest.notes_en` (contract 1.14.0), null when there is no update or no note.' }
+        notes_bn: { type: [string, 'null'], maxLength: 2000, description: 'What is new, Bangla; a copy of `latest.notes_bn`.' }
     AppHome:
       type: object
       required: [as_of, business_date, node, kpis]
@@ -10983,7 +11082,7 @@ components:
       properties:
         visit_uuid: { type: string, format: uuid }
         outlet: { $ref: '#/components/schemas/JourneyOutlet' }
-        status: { type: string, enum: [new_sale, edited_sale, no_sale] }
+        status: { type: string, enum: [new_sale, edited_sale, no_sale, repeat_sale], description: 'repeat_sale (contract 1.14.0): a second or later sale at the same outlet on the same day. An older reader must treat an unknown status as new_sale.' }
         opened_at: { $ref: '#/components/schemas/Timestamp' }
         closed_at: { oneOf: [ { $ref: '#/components/schemas/Timestamp' }, { type: 'null' } ] }
         duration_s: { type: [integer, 'null'], minimum: 0 }
@@ -11080,6 +11179,62 @@ components:
       properties:
         done: { type: integer, minimum: 0 }
         target: { type: [integer, 'null'], minimum: 0, description: 'Null when the config key is not set (the card prints a dash).' }
+    TeamDeviceOtp:
+      type: object
+      required: [user_id, username, full_name, route_names, otp, created_at, expires_at, attempts]
+      additionalProperties: false
+      properties:
+        user_id: { $ref: '#/components/schemas/Id' }
+        username: { $ref: '#/components/schemas/Username' }
+        full_name: { type: string, maxLength: 120 }
+        route_names: { type: array, maxItems: 20, items: { type: string, maxLength: 120 }, description: The SR's active routes. }
+        otp: { type: string, pattern: '^[0-9]{4,8}$', description: 'The live code (cfg.auth.otp_length digits). Sensitive: shown, never logged.' }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        attempts: { type: integer, minimum: 0 }
+    TeamDeviceOtpPage:
+      type: object
+      required: [business_date, items, next_cursor]
+      additionalProperties: false
+      properties:
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        items: { type: array, items: { $ref: '#/components/schemas/TeamDeviceOtp' } }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    CallPhotoReviewRow:
+      type: object
+      required: [visit_uuid, business_date, opened_at, outlet_id, outlet_name, user_id, user_name, route_id, photo_uuid, skip_reason, media_status, taken_at, fix_lat, fix_lng, fix_accuracy_m, fix_is_mock, distance_m]
+      additionalProperties: false
+      properties:
+        visit_uuid: { $ref: '#/components/schemas/Uuid' }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        opened_at: { $ref: '#/components/schemas/Timestamp' }
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        outlet_name: { type: string, maxLength: 120 }
+        user_id: { $ref: '#/components/schemas/Id' }
+        user_name: { type: string, maxLength: 120 }
+        route_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        photo_uuid: { oneOf: [ { $ref: '#/components/schemas/Uuid' }, { type: 'null' } ] }
+        skip_reason: { type: [string, 'null'], enum: [camera_failed, permission_denied, storage_full, other, null] }
+        media_status: { type: [string, 'null'], enum: [pending_blob, stored, mismatch, missing, null], description: 'Null when no photo record has reached the server yet (the blob may still be queued on the phone).' }
+        taken_at: { oneOf: [ { $ref: '#/components/schemas/Timestamp' }, { type: 'null' } ] }
+        fix_lat: { type: [number, 'null'] }
+        fix_lng: { type: [number, 'null'] }
+        fix_accuracy_m: { type: [number, 'null'], minimum: 0 }
+        fix_is_mock: { type: [boolean, 'null'] }
+        distance_m: { type: [number, 'null'], minimum: 0, description: The call's distance from the outlet point, metres. }
+    CallPhotoReviewPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/CallPhotoReviewRow' } }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
     CallTargets:
       type: object
       description: The four target cards of the AMO Dashboard (contract 1.11.0).

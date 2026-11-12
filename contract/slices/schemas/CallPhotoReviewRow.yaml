@@ -1,0 +1,97 @@
+CallPhotoReviewRow:
+  type: object
+  required:
+  - visit_uuid
+  - business_date
+  - opened_at
+  - outlet_id
+  - outlet_name
+  - user_id
+  - user_name
+  - route_id
+  - photo_uuid
+  - skip_reason
+  - media_status
+  - taken_at
+  - fix_lat
+  - fix_lng
+  - fix_accuracy_m
+  - fix_is_mock
+  - distance_m
+  additionalProperties: false
+  properties:
+    visit_uuid:
+      $ref: '#/components/schemas/Uuid'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    opened_at:
+      $ref: '#/components/schemas/Timestamp'
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    outlet_name:
+      type: string
+      maxLength: 120
+    user_id:
+      $ref: '#/components/schemas/Id'
+    user_name:
+      type: string
+      maxLength: 120
+    route_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    photo_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    skip_reason:
+      type:
+      - string
+      - 'null'
+      enum:
+      - camera_failed
+      - permission_denied
+      - storage_full
+      - other
+      - null
+    media_status:
+      type:
+      - string
+      - 'null'
+      enum:
+      - pending_blob
+      - stored
+      - mismatch
+      - missing
+      - null
+      description: Null when no photo record has reached the server yet (the blob may still be queued on the phone).
+    taken_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    fix_lat:
+      type:
+      - number
+      - 'null'
+    fix_lng:
+      type:
+      - number
+      - 'null'
+    fix_accuracy_m:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+    fix_is_mock:
+      type:
+      - boolean
+      - 'null'
+    distance_m:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      description: The call's distance from the outlet point
+      metres.: null
