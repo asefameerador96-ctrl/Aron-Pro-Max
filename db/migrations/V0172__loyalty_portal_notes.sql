@@ -1,0 +1,21 @@
+-- V0172 loyalty portal, notes for the data dictionary (lane portal-loyalty-api; D-LOY-API-06 and -08). Comments only: no table, column, grant or data changes.
+-- V0170/V0171 are already in a green lane push (CI compares with it), so the corrections below live in this migration, forward-only:
+-- (a) The header of V0170 quotes "D-DISC-API-10" for the Discount precedent; that sentence is in docs/status/portal-discount-api.md ("an old ADMIN token without
+--     the `discounts` claim gets 401 ERR_SCOPE_CHANGED until refresh"), not under that id in DECISIONS.md.
+-- (b) Side effects of the V0170 scope_version UPDATE: the app_user touch trigger also raises app_user.version, so a user editor open on such an ADMIN gets one 412
+--     and reloads; an ADMIN in the middle of the MFA step signs in again.
+-- (c) V0170 point 1 says no expiring address is stored for a gift picture and that app.gift.image_url (V0007) is unused by the portal. The first build of the routes
+--     broke both (it kept the signed read URL in app.gift_change.snapshot and fell back to image_url); the routes of this head store the snapshot with image_url null
+--     plus image_asset_id, resolve the URL when they answer (a replay included) and never read image_url.
+-- (d) The table comments below restate those of V0016/V0158/V0162 with what train 2 learned (a programme with a version is never deleted; the writer rule; paging at
+--     final-account size).
+SET lock_timeout = '5s';
+COMMENT ON TABLE app.programme IS 'Loyalty programme definition (Diamond League month, Astha quarter, campaign, Superstar). The loyalty portal (V0158) manages drafts, versions and the lifecycle; nothing in the field reads it (docs/27: loyalty in the field is deferred; bundle programmes null). A programme that has a version can never be deleted: the API role holds no DELETE and app.programme_version references it; end it instead (status inactive). Writer rule: the portal copies the new version''s name, period, dates, points expiry and rules into this row in the same transaction that sets current_version_id, only while the programme is a draft; the API enforces that rule, the database enforces only the status moves (draft to active to inactive), that the pointer changes only while draft and that the pointer names a version of this programme.
+owner: backend:masterdata | capture: ONLINE | retention: master | pii: none';
+COMMENT ON TABLE app.programme_enrolment IS 'Enrolment of an outlet in a programme for a period, with league, tier and base target. Written by PUT /v1/admin/programmes/{id}/enrolments (batch UUID, app.programme_enrolment_batch). Sizing note for the final account: reads page by id within a programme and rely on the exclusion constraint index and the outlet index; add a btree on (programme_id, id) if a programme passes about 100000 enrolments.
+owner: backend:masterdata | capture: ONLINE | retention: master | pii: none';
+COMMENT ON TABLE app.gift IS 'A gift of a loyalty programme with points cost (integer points, no taka value in v1) and tiers. Written only by the portal (SUPERADMIN) through app.gift_change; a gift is never deleted, set it inactive. The picture is image_asset_id (V0170); image_url of V0007 is legacy and unused by the portal.
+owner: backend:masterdata | capture: ONLINE | retention: master | pii: none';
+COMMENT ON COLUMN app.gift_change.snapshot IS 'The gift as the first result of the call returned it (JSON, contract member names) with image_url null, plus image_asset_id. The picture URL is a signed, expiring address and is never stored here: it is resolved from the asset again whenever the call is answered, replays included.';
+COMMENT ON COLUMN app.app_user.scope_version IS 'Counter bumped on any change of role, status, scope or assignment; tokens carrying an older value are refused. V0170 raised it once for every ADMIN holding a loyalty grant (their pre-V0160 tokens lack the claim); the touch trigger raises app_user.version with it, so an open user editor gets one 412.';
+COMMENT ON COLUMN app.gift.image_url IS 'Legacy address column of V0007. The loyalty portal never reads or writes it: the picture is image_asset_id (V0170), resolved to a read URL when a gift is answered.';

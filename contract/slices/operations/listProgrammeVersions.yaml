@@ -5,7 +5,10 @@ operation:
   - admin-content
   operationId: listProgrammeVersions
   summary: Every version of a programme, newest first (1.13.0).
-  description: Same read rules as `listProgrammes`. Versions are immutable.
+  description: 'Same read rules as `listProgrammes`; the programme must be visible through its current version,
+    and then each version is judged on its OWN scope (the products and places that version names): a version outside
+    the caller''s server-side reach is not listed, and the cursor never hints at one. Versions are immutable. A
+    bad `limit`, `cursor` or path id is `400`.'
   parameters:
   - $ref: '#/components/parameters/IdPath'
   - $ref: '#/components/parameters/Limit'

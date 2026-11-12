@@ -82,6 +82,7 @@ import com.aktcl.aron.backend.masterdata.WebEntryDeps
 import com.aktcl.aron.backend.masterdata.webEntryRoutes
 import com.aktcl.aron.backend.masterdata.DeviceOtpDeps
 import com.aktcl.aron.backend.masterdata.GeoRepository
+import com.aktcl.aron.backend.masterdata.AdminLoyaltyDeps
 import com.aktcl.aron.backend.masterdata.AdminOffersDeps
 import com.aktcl.aron.backend.masterdata.AdminPricesDeps
 import com.aktcl.aron.backend.masterdata.AdminProductsDeps
@@ -107,6 +108,7 @@ import com.aktcl.aron.backend.masterdata.feedbackRoutes
 import com.aktcl.aron.backend.masterdata.AdminContentDeps
 import com.aktcl.aron.backend.masterdata.adminContentRoutes
 import com.aktcl.aron.backend.masterdata.BlobSasIssuer
+import com.aktcl.aron.backend.masterdata.adminLoyaltyRoutes
 import com.aktcl.aron.backend.masterdata.adminOffersRoutes
 import com.aktcl.aron.backend.masterdata.adminPricesRoutes
 import com.aktcl.aron.backend.masterdata.adminProductsRoutes
@@ -378,6 +380,7 @@ class Wiring(
                 adminProductsRoutes(AdminProductsDeps(db, guard, clock, blob))
                 adminPricesRoutes(AdminPricesDeps(db, config, guard, clock))
                 adminOffersRoutes(AdminOffersDeps(db, reach, guard, clock))
+                adminLoyaltyRoutes(AdminLoyaltyDeps(db, reach, guard, blob, clock))
                 configToolRoutes(toolsDeps)
                 configPermissionRoutes(permDeps)
                 configPublicRoutes(publicDeps)

@@ -241,3 +241,15 @@ POST /v1/dashboards/national/segment-share -> case SegmentShareTest#overHttpTheS
 POST /v1/dashboards/national/login-submit/users -> case LoginSubmitUsersTest#overHttpTheScopeComesFromTheTokenAndTheClientCannotWidenIt
 # tso-manual B3
 POST /v1/day/reopen -> case DayApiTest#reopenIsAuditedIdempotentAndBoundToRoleWindowAndReach
+GET /v1/admin/programmes -> case AdminLoyaltyTest#theScopeMatrixOverTheSevenPortalLevelsAndTheRefusedRoles
+GET /v1/admin/programmes/{id} -> case AdminLoyaltyTest#theScopeMatrixOverTheSevenPortalLevelsAndTheRefusedRoles
+GET /v1/admin/programmes/{id}/versions -> case AdminLoyaltyTest#theScopeMatrixOverTheSevenPortalLevelsAndTheRefusedRoles
+GET /v1/admin/programmes/{id}/enrolments -> case AdminLoyaltyTest#enrolmentReadsAreCutToTheCallersReachAndNeverGoToBrand
+GET /v1/admin/gifts -> case AdminLoyaltyTest#theScopeMatrixOverTheSevenPortalLevelsAndTheRefusedRoles
+GET /v1/admin/gifts/{id} -> case AdminLoyaltyTest#theScopeMatrixOverTheSevenPortalLevelsAndTheRefusedRoles
+POST /v1/admin/programmes -> case AdminLoyaltyTest#createIsRefusedToEveryRoleButSuperadminAndAdminWithTheWriteGrant
+PATCH /v1/admin/programmes/{id} -> case AdminLoyaltyTest#updateRefusalsStaleEtagNoChangeImmutableMembersFinalProgrammesAndMissingProgramme
+POST /v1/admin/programmes/{id}/status -> case AdminLoyaltyTest#statusMovesDraftToActiveBySuperadminAndActiveToEndedByAdminWithTheTrailAndReplay
+PUT /v1/admin/programmes/{id}/enrolments -> case AdminLoyaltyTest#enrolmentsUpsertIdempotentlyByBatchWithCountsAndRefusals
+POST /v1/admin/gifts -> case AdminLoyaltyTest#giftCreateIsSuperadminOnlyWithReplayDuplicateAndRefusals
+PATCH /v1/admin/gifts/{id} -> case AdminLoyaltyTest#giftUpdateGetListWithPreconditionNoChangeAndFirstResultReplay

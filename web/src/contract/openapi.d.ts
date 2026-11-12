@@ -4058,7 +4058,7 @@ export interface paths {
         };
         /**
          * Programme definitions (Diamond League, Astha, campaigns, Superstar).
-         * @description Loyalty programmes of the portal (1.13.0). Permission module `loyalty`: SUPERADMIN, or ADMIN with the `r` grant, read all; NATIONAL (and the retired TOP, read the same way) reads all; BRAND, WM, DMO and TSO read the programmes within their server-side scope (the client never sends scope ids); SR, AMO, SUPPORT and ANALYST are refused `403`. Loyalty in the field stays deferred (docs/27).
+         * @description Loyalty programmes of the portal (1.13.0). Permission module `loyalty`: SUPERADMIN, or ADMIN with the `r` grant, read all; NATIONAL (and the retired TOP, read the same way) reads all; BRAND, WM, DMO and TSO read the programmes within their server-side scope (the client never sends scope ids); SR, AMO, SUPPORT and ANALYST are refused `403`. A bad `status` or `kind` value is `400`. Loyalty in the field stays deferred (docs/27).
          */
         get: operations["listProgrammes"];
         put?: never;
@@ -4082,7 +4082,7 @@ export interface paths {
         };
         /**
          * One programme with its current version (1.13.0).
-         * @description Same read rules as `listProgrammes`; a programme outside the caller's server-side scope is `404` (its existence is not revealed).
+         * @description Same read rules as `listProgrammes`; a programme outside the caller's server-side scope is `404` (its existence is not revealed); a bad path id is `400`.
          */
         get: operations["getProgramme"];
         put?: never;
@@ -4106,7 +4106,7 @@ export interface paths {
         };
         /**
          * Every version of a programme, newest first (1.13.0).
-         * @description Same read rules as `listProgrammes`. Versions are immutable.
+         * @description Same read rules as `listProgrammes`; the programme must be visible through its current version, and then each version is judged on its OWN scope (the products and places that version names): a version outside the caller's server-side reach is not listed, and the cursor never hints at one. Versions are immutable. A bad `limit`, `cursor` or path id is `400`.
          */
         get: operations["listProgrammeVersions"];
         put?: never;
@@ -4144,11 +4144,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Outlets enrolled in a programme with league, tier or slab and base target. */
+        /**
+         * Outlets enrolled in a programme with league, tier or slab and base target.
+         * @description Enrolled outlets are outlet data, cut to the caller's server-side reach: SUPERADMIN, ADMIN with the `r` grant and NATIONAL read all; WM, DMO and TSO see the outlets of their zones and routes; a BRAND user is refused `403`; a `zone_id` outside the caller's reach is `403`. A programme outside the caller's reach is `404`. A bad `limit`, `cursor`, `zone_id` or path id is `400`.
+         */
         get: operations["listProgrammeEnrolments"];
         /**
          * Upsert enrolments (idempotent by batch_uuid, all-or-nothing).
-         * @description Permission module `loyalty`, `w` grant. A repeat of a `batch_uuid` returns the first counts; the same `batch_uuid` with different rows is `409` (1.13.0). A `tier_code` must be one of the current version's tiers when it has any; an outlet outside the caller's server-side scope is `400`. An enrolment never overlaps another of the same programme and outlet (`409`).
+         * @description Permission module `loyalty`, `w` grant (SUPERADMIN, or ADMIN with `w`). A repeat of a `batch_uuid` returns the first counts; the same `batch_uuid` with different rows is `409` (1.13.0). A `tier_code` must be one of the current version's tiers when it has any; an outlet that does not exist is `400` (the writers hold no geography scope; WM, DMO and TSO cannot write). An enrolment never overlaps another of the same programme and outlet (`409`); an ended programme takes no new enrolments (`409`).
          */
         put: operations["putProgrammeEnrolments"];
         post?: never;
@@ -4165,7 +4168,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Gift catalogue (points cost for Diamond League, tier for Astha, cash-back line). */
+        /**
+         * Gift catalogue (points cost for Diamond League, tier for Astha, cash-back line).
+         * @description Permission module `loyalty`; the readers of `listProgrammes`. A gift is listed when its programme is visible to the caller (server-side scope, judged on the programme's current version). The picture is `image_url`, a read address resolved when the gift is answered. A bad `programme_id` or `status` value is `400`.
+         */
         get: operations["listGifts"];
         put?: never;
         /**
@@ -4188,7 +4194,7 @@ export interface paths {
         };
         /**
          * One gift (1.13.0).
-         * @description Same read rules as `listGifts`.
+         * @description Same read rules as `listGifts`; a gift whose programme is outside the caller's server-side scope is `404`; a bad path id is `400`.
          */
         get: operations["getGift"];
         put?: never;
