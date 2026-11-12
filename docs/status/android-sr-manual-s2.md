@@ -50,3 +50,18 @@ Photo Capture BN (see above); "Completion on:" stays English by the reference. `
 4. `route_add` proposal: confirm `cluster_id` (carried now) and whether the target route is also required.
 5. `JourneyCall.status` `repeat_sale`, computed with `JourneyTimeline` rules (shared/rules).
 6. `task_type` `poor_brand_visibility`.
+
+
+## Train 1 fix round (the lead's Opus FAIL, 2026-11-12)
+| # | Finding | State |
+|---|---|---|
+| 1 | Created clusters in prefs, labelled "waiting to be sent" | Fixed: Room table `cluster_create` (DB v8 to v9, AutoMigration + `Migration89Test`) with client uuid, name, route, route name and the GEO fix (`CaptureRepository.recordClusterCreate`, one transaction, idempotent); LOCAL ONLY (no outbox row, test proves it); label "এই ফোনে সংরক্ষিত; সার্ভারে পাঠানো এখনো চালু হয়নি" / "Saved on this phone; sending is not available yet"; never offered for a new shop; the list is filtered by the route. SV train 2 adds the record and moves these rows to the outbox |
+| 2 | Info + cluster change = two commits from a composition scope | Fixed: `OutletRequests.submitPair` validates BOTH first, `CaptureRepository.recordOutletRequests` writes both in ONE Room transaction, started in the day's scope (`SrDay.submitOutletRequest`, not `rememberCoroutineScope`). Tests: second invalid writes nothing, failing commit propagates, Room rollback leaves neither row |
+| 3 | Success-dialog state lost on recreate | Fixed: `rememberRequestIdentity` (kind, both uuids, saved flag are `rememberSaveable` with per-kind keys); a form opened on a stored request shows "saved" (`SrDay.requestStored`). Test `RequestIdentityTest` saves and restores the saveable registry |
+| 4 | Zero-sale memo counted as a sale | Fixed: sold = an ACTIVE memo of kind `sale`; superseded memos do not count; edited = the server's test. Room-level tests with zero_sale, superseded and edit rows |
+| 5 | "Same rule as the server" | Now follows `getTeamJourney`: abandoned calls kept, each leg rounded to 2 decimals, `total = r2(total + r2(leg))`, km rounded once (1004.995 m prints 1.00). Declared differences (KDoc in `JourneyTimeline`): `repeat_sale` does not exist on the server until 1.14.0; `in_progress` is phone only. For SV: use `JourneyTimeline` rules for `repeat_sale` |
+| 6 | Tasks | Fixed per note 47: type alone in red, outlet line with the orange status at its right, "Completion on: 2026-11-11" in Latin digits; test that a confirm resolves exactly once and a double tap on the confirm still once. Premise corrected: the SR host is the only production caller of `TaskContent` (the `manual` flag stays default-off only for its existing tests and goldens) |
+| 7 | Programme tiles | Astha, Loyalty Point, Match Program are gated on `cfg.flag.astha_ui` / `loyalty_ui` (default on) / `superstar_ui` (default off) through `HomeTiles.resolve(enabledForUser)` (`SrDay.enabledProgrammeTiles`); the "unknown config key adds no tile" assertion is back. Not yet gated: "the bundle has an active programme of that kind" (no such section in the bundle yet) |
+| 8 | Smaller items | `journeyOutletLine` uses `OutletPicker.label` + `localizedDigits`; Clusters header without the icon; ROUTE_ADD requires a cluster on the phone (`CLUSTER_REQUIRED`); no synchronous prefs commit (prefs store removed); dead `SrSaleKit.journey()` removed; `JourneyScreen` kept because the AMO app calls it; KDoc of the programme tiles corrected |
+
+Not on a device. Gate results are in the report to the lead.

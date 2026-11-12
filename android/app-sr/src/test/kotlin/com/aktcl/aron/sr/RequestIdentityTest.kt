@@ -63,7 +63,7 @@ class RequestIdentityTest {
 
             // another kind is another form: new uuids, not saved
             compose.runOnIdle { kind = OutletRequestKind.CLOSE }
-            compose.waitForIdle()
+            compose.waitUntil(5_000) { identity.requestUuid != request } // the host rule runs queued frames on waitUntil polls, not on waitForIdle
             assertNotEquals(request, identity.requestUuid)
             assertEquals(false, identity.savedState.value)
         }
