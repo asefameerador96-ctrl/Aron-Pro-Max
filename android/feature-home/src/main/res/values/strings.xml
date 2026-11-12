@@ -134,4 +134,15 @@
     <string name="set_group_status">Phone status</string>
     <string name="hm_qty_unit_rem">%1$s %2$s + %3$s %4$s</string>
     <string name="set_printer">Printer diagnostics</string>
+    <string name="set_update_config">Update Configuration</string>
+    <string name="set_update_config_busy">Updating…</string>
+    <string name="set_config_done_title">Configuration updated Successfully!</string>
+    <string name="set_config_done_message">The new configuration is applied now. The app does not need to close; continue your daily operation.</string>
+    <string name="set_config_failed_title">Configuration not updated</string>
+    <string name="set_config_failed_message">Turn the internet on and try again. Your saved work is safe.</string>
+    <string name="set_ok">OK</string>
+    <string name="set_submit_warning_title">Today\'s sales are not submitted</string>
+    <string name="set_submit_warning_message">Submit your sales (Bikroy Joma) before you log out.</string>
+    <string name="set_submit_warning_submit">Sales Submit</string>
+    <string name="set_submit_warning_anyway">Log out anyway</string>
 </resources>

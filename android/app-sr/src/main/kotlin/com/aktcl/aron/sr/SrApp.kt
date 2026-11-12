@@ -394,7 +394,7 @@ fun SrApp(
                 // D-NIGHT-CHECKOUT-01: the local Sales Submit is read on every visit (also back from the Sales Submit screen)
                 LaunchedEffect(Unit) { day.attendance.refreshSubmit() }
                 AttendanceContent(
-                    attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
+                    attendance, day.checkoutEarliestText(), onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
                     userTitle = who.title, userSubtitle = who.subtitle, // Latin digits, as in the reference
                     onOpenSalesSubmit = { screen = SrScreen.SUBMIT },
                     offline = !day.isOnline(), // read on each composition of the screen (one capabilities read, no callback)
@@ -414,6 +414,15 @@ fun SrApp(
                 onPhotosWifiOnly = { on -> wifiOnly = on; mediaShell?.setWifiOnly(on) },
                 onSupport = shell?.let { { screen = SrScreen.SUPPORT } },
                 onPrinter = { screen = SrScreen.PRINTER_DIAG },
+                onUpdateConfig = {
+                    // SRM-B-52 (owner question 5 default): pull the bundle and configuration now, applied in place
+                    if (!day.isOnline()) false else {
+                        startBundleDownload()
+                        resumeTick++
+                        day.bundleOutcome.value.let { it == BundleOutcome.APPLIED || it == BundleOutcome.UNCHANGED || it == BundleOutcome.PREFETCH_PROMOTED }
+                    }
+                },
+                submitPending = { day.salesSubmitPending() }, onSalesSubmit = { screen = SrScreen.SUBMIT },
                 onBack = goBack, sunlight = sunlight, onSunlight = onSunlight, sync = sync, onSync = openSync, health = health ?: deviceHealth,
             )
         }

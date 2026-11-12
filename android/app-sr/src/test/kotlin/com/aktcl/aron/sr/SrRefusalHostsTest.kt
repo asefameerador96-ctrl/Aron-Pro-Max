@@ -120,7 +120,7 @@ class SrRefusalHostsTest {
         var done = 0
         show { SaleHost(f.day, sunlight = false, onSunlight = {}, onNoSale = {}, onDone = { done++ }) }
         shows(SUBMITTED)
-        compose.onNodeWithText("Start the call?").assertDoesNotExist()
+        compose.onNodeWithText("Do you want to start the call?").assertDoesNotExist()
         compose.onNodeWithText("OK").performClick()
         compose.waitUntil(5_000) { done == 1 }
         assertNull("the call ended on the phone", f.day.visitSession.current.value)

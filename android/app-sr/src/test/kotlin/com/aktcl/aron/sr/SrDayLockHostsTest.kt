@@ -104,7 +104,7 @@ class SrDayLockHostsTest {
         var done = 0
         show { SaleHost(f.day, sunlight = false, onSunlight = {}, onNoSale = {}, onDone = { done++ }) }
         compose.onNodeWithText("Day closed by Final Submit").assertDoesNotExist()
-        compose.onNodeWithText("Start the call?").assertExists()
+        compose.onNodeWithText("Do you want to start the call?").assertExists()
         assertEquals("the rep stays in the valid call", 0, done)
         assertEquals(next.visitUuid, f.day.visitSession.current.value?.visitUuid)
     }

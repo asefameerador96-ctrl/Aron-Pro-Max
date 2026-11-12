@@ -1,6 +1,14 @@
 package com.aktcl.aron.feature.home
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.res.painterResource
+import com.aktcl.aron.core.ui.aron.AronTile
+import kotlinx.coroutines.launch
 import androidx.compose.material3.Text
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.unit.dp
@@ -62,6 +70,9 @@ object SettingsTags {
     const val PRINTER = "set_printer"
     const val SUNLIGHT = "set_sunlight"
     const val LANGUAGE = "set_language"
+    const val UPDATE_CONFIG = "set_update_config"
+    const val CONFIG_DIALOG = "set_config_dialog"
+    const val SUBMIT_WARNING = "set_submit_warning"
 }
 
 /**
@@ -97,9 +108,26 @@ fun SettingsContent(
     onSync: (() -> Unit)? = null,
     /** The device line (battery, free storage, pending uploads, last sync; moved here from Home): shown when non-null. */
     health: DeviceHealth? = null,
+    /**
+     * "Update Configuration" tile (SRM-B-52): pulls the bundle and configuration now and returns true when the phone holds
+     * the current one (applied in place, nothing closes; owner question 5 default), false when it could not (offline, refused).
+     * Shown when non-null.
+     */
+    onUpdateConfig: (suspend () -> Boolean)? = null,
+    /**
+     * SRM-B-55: asked when Log out is tapped; true = today has sales or visits and no Sales Submit, so the rep is reminded
+     * first. Null = no check (AMO, TSO and previews log out as before).
+     */
+    submitPending: (suspend () -> Boolean)? = null,
+    /** The warning's "বিক্রয় জমা" button: opens the Sales Submit screen. */
+    onSalesSubmit: (() -> Unit)? = null,
 ) {
     val look = LocalAronLook.current
     var confirm by rememberSaveable { mutableStateOf(false) }
+    var submitWarning by rememberSaveable { mutableStateOf(false) }
+    var configBusy by rememberSaveable { mutableStateOf(false) }
+    var configResult by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val language = LocalAppLanguage.current
     ParityScaffold(
         modifier = modifier,
@@ -114,14 +142,36 @@ fun SettingsContent(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // language: the kit tabs, the current language selected
-            GroupLabel(stringResource(R.string.set_language))
-            val options = listOf(stringResource(CoreR.string.core_ui_language_bangla), stringResource(CoreR.string.core_ui_language_english))
-            AronTabs(
-                options, selected = if (language == AppLanguage.BN) 0 else 1,
-                onSelect = { i -> val target = if (i == 0) AppLanguage.BN else AppLanguage.EN; if (target != language) onLanguageSelect(target) },
-                modifier = Modifier.testTag(SettingsTags.LANGUAGE),
-            )
+            // the reference tiles (screenshot 63/64): language drop-down, PDA টু সাপোর্ট, Update Configuration, লগ আউট
+            val tiles = buildList<@Composable (Modifier) -> Unit> {
+                add { m -> LanguageTile(language, onLanguageSelect, m) }
+                onSupport?.let { go -> add { m -> AronTile(stringResource(R.string.set_support), painterResource(CoreR.drawable.aron_art_settings), go, m.testTag(SettingsTags.SUPPORT)) } }
+                onUpdateConfig?.let { run ->
+                    add { m ->
+                        AronTile(
+                            stringResource(if (configBusy) R.string.set_update_config_busy else R.string.set_update_config), painterResource(CoreR.drawable.aron_art_settings),
+                            { if (!configBusy) { configBusy = true; scope.launch { val ok = try { run() } finally { configBusy = false }; configResult = ok } } },
+                            m.testTag(SettingsTags.UPDATE_CONFIG),
+                        )
+                    }
+                }
+                add { m ->
+                    AronTile(
+                        stringResource(R.string.set_logout), null,
+                        {
+                            if (submitPending == null) confirm = true
+                            else scope.launch { if (submitPending()) submitWarning = true else confirm = true }
+                        },
+                        m.testTag(SettingsTags.LOGOUT),
+                    )
+                }
+            }
+            tiles.chunked(2).forEach { pair ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    pair.forEach { t -> t(Modifier.weight(1f)) }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
             // display: the sun switch and the photo rule
             if (sunlight != null || photosWifiOnly != null) {
                 GroupLabel(stringResource(R.string.set_group_display))
@@ -133,10 +183,9 @@ fun SettingsContent(
                 }
             }
             // device: PDA to Support
-            if (onSupport != null || onPrinter != null) {
+            if (onPrinter != null) {
                 GroupLabel(stringResource(R.string.set_group_device))
                 onPrinter?.let { AronListRow(stringResource(R.string.set_printer), Modifier.testTag(SettingsTags.PRINTER), onClick = it, trailing = "›") }
-                onSupport?.let { AronListRow(stringResource(R.string.set_support), Modifier.testTag(SettingsTags.SUPPORT), onClick = it, trailing = "›") }
             }
             // device status: the line Home no longer carries (battery, free storage, waiting uploads, last sync)
             health?.let { h ->
@@ -155,8 +204,22 @@ fun SettingsContent(
                     onClick = onUpdate, trailing = "›",
                 )
             }
-            AronLogoutButton(stringResource(R.string.set_logout), { confirm = true }, Modifier.fillMaxWidth().padding(top = 8.dp).testTag(SettingsTags.LOGOUT))
         }
+    }
+    if (submitWarning) {
+        AronConfirmDialog(
+            stringResource(R.string.set_submit_warning_title), stringResource(R.string.set_submit_warning_message),
+            stringResource(R.string.set_submit_warning_submit), stringResource(R.string.set_submit_warning_anyway),
+            onConfirm = { submitWarning = false; if (onSalesSubmit != null) onSalesSubmit() else confirm = true },
+            onDismiss = { submitWarning = false; confirm = true },
+        )
+    }
+    configResult?.let { ok ->
+        com.aktcl.aron.core.ui.AronInfoDialog(
+            stringResource(if (ok) R.string.set_config_done_title else R.string.set_config_failed_title),
+            stringResource(if (ok) R.string.set_config_done_message else R.string.set_config_failed_message),
+            stringResource(R.string.set_ok), onDismiss = { configResult = null },
+        )
     }
     if (confirm) {
         AronConfirmDialog(
@@ -171,4 +234,20 @@ fun SettingsContent(
 @Composable
 private fun GroupLabel(text: String) {
     Text(text, color = LocalAronLook.current.inkMuted, fontSize = 14.sp, modifier = Modifier.padding(start = 6.dp, top = 6.dp).semantics { heading() })
+}
+
+/** The language drop-down tile: the current language ("en" / "বাংলা"), a menu of the two on tap. */
+@Composable
+private fun LanguageTile(current: AppLanguage, onSelect: (AppLanguage) -> Unit, modifier: Modifier) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    val bn = stringResource(CoreR.string.core_ui_language_bangla)
+    val en = stringResource(CoreR.string.core_ui_language_english)
+    Box(modifier) {
+        AronTile(if (current == AppLanguage.BN) bn else en, null, { open = true }, Modifier.fillMaxWidth().testTag(SettingsTags.LANGUAGE))
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            listOf(AppLanguage.BN to bn, AppLanguage.EN to en).forEach { (l, label) ->
+                DropdownMenuItem(text = { Text(label) }, onClick = { open = false; if (l != current) onSelect(l) })
+            }
+        }
+    }
 }

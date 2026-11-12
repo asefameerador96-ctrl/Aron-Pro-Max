@@ -55,7 +55,7 @@
     <string name="journey_not_visited">ভিজিট হয়নি</string>
     <string name="journey_visited">ভিজিট হয়েছে</string>
     <string name="journey_sold">বিক্রয় হয়েছে</string>
-    <string name="kpi_visited">আউটলেট ভিজিট</string>
+    <string name="kpi_visited">আউটলেট ভ্রমণ</string>
     <string name="kpi_ratio">%1$s/%2$s</string>
     <string name="kpi_strike">স্ট্রাইক রেট</string>
     <string name="kpi_percent">%1$s%%</string>
@@ -70,7 +70,7 @@
     <string name="money_drp">স্লাইড ডিসকাউন্ট</string>
     <string name="money_qc">মোট QC</string>
     <string name="money_grand">সর্বমোট</string>
-    <string name="history_title">বিক্রয়ের ইতিহাস</string>
+    <string name="history_title">সেল ডাটা</string>
     <string name="history_offline">সংযোগ নেই: এই ফোনের শেষ ৭ দিনের তথ্য, অথবা আগে নামানো সার্ভারের তালিকা দেখানো হচ্ছে।</string>
     <string name="history_col_memo">মেমো</string>
     <string name="history_pick_date">তারিখ বেছে নিন</string>

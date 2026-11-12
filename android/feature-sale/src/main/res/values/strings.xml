@@ -50,7 +50,7 @@
     <string name="review_paid">Paid</string>
     <string name="review_due">Due</string>
     <string name="review_credit">On credit</string>
-    <string name="review_credit_switch">Mark this sale as credit</string>
+    <string name="review_credit_switch">Mark this sale as due</string>
     <string name="review_credit_due">Due %1$s</string>
     <string name="review_print_later">You can print later from the Memo section.</string>
     <string name="review_save">Print</string>
@@ -93,12 +93,12 @@
     <string name="qc_type_damaged_in_transit">Stock damaged during route service</string>
     <string name="qc_type_taste">Taste-related problem</string>
     <string name="qc_locked">QC is done at this outlet; the sale can no longer be edited.</string>
-    <string name="call_start_title">Start the call?</string>
+    <string name="call_start_title">Do you want to start the call?</string>
     <string name="call_start_message">You are at %1$s. Start the call now?</string>
     <string name="edit_reason_title">Why are you editing this sale?</string>
     <string name="edit_reason_wrong_sku">Wrong SKU</string>
-    <string name="edit_reason_wrong_quantity">Wrong quantity</string>
-    <string name="edit_reason_wrong_price_type">Wrong price type</string>
+    <string name="edit_reason_wrong_quantity">Wrong SKU quantity</string>
+    <string name="edit_reason_wrong_price_type">Promotion issue</string>
     <string name="edit_denied_outside">You can edit a sale only at the shop, inside the geofence.</string>
     <string name="edit_denied_qc">QC is done at this outlet; the sale cannot be edited.</string>
     <string name="edit_denied_superseded">This memo was already replaced by a newer one.</string>
@@ -113,4 +113,5 @@
     <string name="sale_col_stock">Stock</string>
     <string name="sale_price_per_unit">৳ %1$s / %2$s</string>
     <string name="review_problem_qty_large">Quantity too large for SKU %1$s.</string>
+    <string name="sale_submit_plain">Submit</string>
 </resources>

@@ -29,7 +29,7 @@
     <string name="sr_outcome_refused">Refused to buy</string>
     <string name="sr_outcome_competitor">Sells a competitor only</string>
     <string name="sr_outcome_not_reached">Could not reach the shop</string>
-    <string name="sr_sale_history">Sale history of this shop</string>
+    <string name="sr_sale_history">Sale data</string>
     <string name="sr_rec_visit">Outlet</string>
     <string name="sr_rec_memo">Sale</string>
     <string name="sr_rec_stock_movement">Stock</string>

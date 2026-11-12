@@ -45,7 +45,7 @@ class SettingsTutorialShot {
     }
 
     @Test fun settings_bn() = shot("settings_bn") {
-        SettingsContent("0.1.0 (12)", {}, {}, onUpdate = {}, updateAvailable = true, photosWifiOnly = true, onSupport = {}, onBack = {}, sunlight = false)
+        SettingsContent("0.1.0 (12)", {}, {}, onUpdate = {}, updateAvailable = true, photosWifiOnly = true, onSupport = {}, onUpdateConfig = { true }, onBack = {}, sunlight = false)
     }
 
     @Test fun tutorial_bn() = shot("tutorial_bn") {

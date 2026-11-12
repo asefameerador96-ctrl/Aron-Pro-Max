@@ -110,7 +110,7 @@
     <string name="out_start_call">Start call</string>
     <string name="out_reason_wait_fix">Enabled once your location is read</string>
     <string name="out_open_maps">Open in Maps</string>
-    <string name="out_history">View previous sales</string>
+    <string name="out_history">Sale data</string>
     <string name="out_no_sale">No sale</string>
     <string name="out_turn_on_location">Turn on location</string>
     <string name="out_go_back">Go back</string>

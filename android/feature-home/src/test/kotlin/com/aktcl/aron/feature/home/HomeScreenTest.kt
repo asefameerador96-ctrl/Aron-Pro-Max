@@ -227,6 +227,60 @@ class SettingsScreenTest {
         assertEquals(1, update); assertEquals(1, support)
     }
 
+    @Test fun updateConfigurationTilePullsAndConfirmsInPlace() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        var pulls = 0
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, {}, onUpdateConfig = { pulls++; true }) } } }
+        compose.onNodeWithTag(SettingsTags.UPDATE_CONFIG).performClick()
+        compose.onNodeWithText("Configuration updated Successfully!").assertExists()
+        assertEquals(1, pulls)
+        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithText("Configuration updated Successfully!").assertDoesNotExist()
+    }
+
+    @Test fun updateConfigurationTellsTheRepWhenItCouldNotPull() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, {}, onUpdateConfig = { false }) } } }
+        compose.onNodeWithTag(SettingsTags.UPDATE_CONFIG).performClick()
+        compose.onNodeWithText("Configuration not updated").assertExists()
+    }
+
+    @Test fun updateConfigurationTileIsHiddenWithoutACallback() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, {}) } } }
+        compose.onNodeWithTag(SettingsTags.UPDATE_CONFIG).assertDoesNotExist()
+    }
+
+    @Test fun logoutWithUnsubmittedSalesWarnsFirstAndOffersSalesSubmit() {
+        var out = 0; var submit = 0
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, { out++ }, submitPending = { true }, onSalesSubmit = { submit++ }) } } }
+        compose.onNodeWithTag(SettingsTags.LOGOUT).performClick()
+        compose.onNodeWithText("Today's sales are not submitted").assertExists()
+        compose.onNodeWithText("Sales Submit").performClick()
+        assertEquals(1, submit); assertEquals(0, out)
+    }
+
+    @Test fun logoutAnywayGoesOnToTheNormalConfirm() {
+        var out = 0
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, { out++ }, submitPending = { true }, onSalesSubmit = {}) } } }
+        compose.onNodeWithTag(SettingsTags.LOGOUT).performClick()
+        compose.onNodeWithText("Log out anyway").performClick()
+        assertEquals(0, out)
+        compose.onNodeWithText("Your saved work stays on this phone and will still upload.").assertExists()
+        compose.onAllNodesWithText("Log out").onLast().performClick()
+        assertEquals(1, out)
+    }
+
+    @Test fun logoutWithNothingPendingSkipsTheWarning() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, {}, submitPending = { false }, onSalesSubmit = {}) } } }
+        compose.onNodeWithTag(SettingsTags.LOGOUT).performClick()
+        compose.onNodeWithText("Today's sales are not submitted").assertDoesNotExist()
+        compose.onNodeWithText("Your saved work stays on this phone and will still upload.").assertExists()
+    }
+
     @Test fun settingsCarriesTheDeviceLineThatLeftHome() {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
         compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, {}, health = DeviceHealthModel.of(35, 450, 3, 30)) } } }
