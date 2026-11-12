@@ -16,3 +16,10 @@ Branch `lane/android-sr-manual-s3` from INT. Decisions D-SR-MAN-S3-01..03 (end o
 
 Needs contract: none. Owner questions: Q5, Q6 (as in the gap table). Device-pending: all acceptances (no phone here), including the permission prompt order and the toast.
 Not covered by an automated test: the `assist` permission prompt itself (system dialog); the transition logic of the toast is covered by `PrinterToastTest`.
+
+## Review fixes (lead review of be15cd1a8 = FAIL; D-SR-MAN-S3-01/02 revised in place)
+1. One assist holder per SR screen (Stock frame, SaleRoute); VISIT/MEMO/SUMMARY frames do not assist; `SrPrinterAssistTest` (one connect, one toast; memo frame none).
+2. "Asked once" persisted per install (`PrinterAssistPrompt`), assist limited to Stock and Sale.
+3. Notes 12/13: centred check-out message in the amber state, day lines hidden with the boxes (one STATUS node); asserted in `SrStatusBoxesTest` and `SrAttendanceWiringTest`.
+4. Green badge: Default (SR/AMO) and Sunlight set, TSO night restored to 0xB9A6FF; KDoc fixed; `PrinterBadgeContrastTest`; goldens re-recorded: amo_stock_connected_saved_bn, amo_stock_connected_saved_bn_sunlight (no other golden shows a connected badge).
+5. Real SR wiring host test (`SrAttendanceWiringTest` via `SrAttendanceContent`); trusted-time gate cited (`AttendanceFlowTest`); amber label reads the configured minutes (`SrDay.checkoutAtLabel`, tested with 18:30).

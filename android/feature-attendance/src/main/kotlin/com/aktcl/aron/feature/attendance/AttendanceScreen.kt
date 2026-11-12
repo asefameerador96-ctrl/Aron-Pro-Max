@@ -204,12 +204,13 @@ fun AttendanceContent(
                 )
             }
             LocationCard(state, onRefreshFix, amoStyle)
-            if (!amoStyle) DayLines(state, checkoutAtLabel)
+            if (!boxes) DayLines(state, checkoutAtLabel) // the boxes say the same (screenshots 12, 13): no repeated lines, one STATUS node
             Spacer(Modifier.height(32.dp)) // with the column gap, about 56 to 64 dp between the location card and the message (sr/attendance.png)
             // the reference message once, centred above the two big buttons (screens-sr s3)
             val prompt = when {
                 !checkOutPhase && state.showCheckInPrompt -> stringResource(R.string.att_prompt_checkin)
-                checkOutPhase && !dayComplete && state.checkOutEnabled -> stringResource(R.string.att_prompt_checkout)
+                // screenshots 12 and 13: the checked-out message sits above the amber box as well as above the red button
+                checkOutPhase && !dayComplete && (state.checkOutEnabled || statusBoxes) -> stringResource(R.string.att_prompt_checkout)
                 boxes && dayComplete -> stringResource(R.string.att_day_complete_message)
                 else -> null
             }

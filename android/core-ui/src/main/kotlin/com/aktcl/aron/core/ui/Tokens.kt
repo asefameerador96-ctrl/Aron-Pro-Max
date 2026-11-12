@@ -398,7 +398,7 @@ object AronLook {
 
     /** Optional outdoor theme: solid white bars and panels with black ink (key figures far above 7:1); the accents stay. */
     val Sunlight = Default.copy(
-        sunlight = true,
+        sunlight = true, printerOn = hex(0x0F5A24), // D-SR-MAN-S3-02: green printer, >= 7:1 on the white chip
         barStart = hex(0xFFFFFF), barMid = hex(0xFFFFFF), barEnd = hex(0xFFFFFF), onBar = hex(0x000000),
         red = hex(0xB0001C), minus = hex(0xB0001C), purple = hex(0x2A0A6B), panel = hex(0xFFFFFF), onPanel = hex(0x000000), onPanelMuted = hex(0x202020),
         page = hex(0xF4F4F4), tileLabel = hex(0x1B0F5C), tileLabelOutlet = hex(0x8A0016), panelDark = hex(0x202020), tableHeader = hex(0x202020),
@@ -426,7 +426,7 @@ object AronLook {
         disabledFill = hex(0x2A3556), disabledText = hex(0xB8C2E5), secondaryText = hex(0xFFFFFF),
         ink = hex(0xFFFFFF), inkMuted = hex(0xB8C2E5), columnHeader = hex(0xB8C2E5), underline = hex(0x5A6690),
         silhouette = hex(0x1C2A5A), silhouetteInk = hex(0xB8C2E5),
-        badge = hex(0xD32F2F), printerOff = hex(0xFF7A7A), printerOn = hex(0x6FD68F),
+        badge = hex(0xD32F2F), printerOff = hex(0xFF7A7A), printerOn = hex(0xB9A6FF),
         noticeFill = hex(0x3B1A2A), online = hex(0x5BD16A), offlineDot = hex(0x8A93B8), rowRule = hex(0x1D3A60), primaryDisabled = hex(0x2A3556),
         avatarSquare = hex(0x1C2A5A), pinSquare = hex(0x1C2A5A), locationCard = hex(0x101C42),
         goStart = hex(0xA4C81A), goEnd = hex(0x62B843), neutralStart = hex(0x2A3556), neutralEnd = hex(0x4A5680),

@@ -6,6 +6,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -42,6 +45,10 @@ class SrStatusBoxesTest {
         compose.onNodeWithText("চেক ইন সম্পন্ন হয়েছে").assertExists()
         compose.onNodeWithText("চেক আউট ৫টার পরে সক্রিয় হবে").assertExists()
         compose.onNodeWithTag(AttendanceTags.HOLD).assertDoesNotExist()
+        // screenshot 12 (left): the centred check-out message is there in the amber state too, and the old day lines do not repeat the boxes
+        compose.onNodeWithText("আপনি এখনো চেক আউট করেননি। আজকের কাজ শেষ করার আগে অনুগ্রহ করে চেক আউট করুন।").assertExists()
+        compose.onAllNodesWithText("চেক ইন সম্পন্ন হয়েছে").assertCountEquals(1)
+        compose.onAllNodesWithTag(AttendanceTags.STATUS).assertCountEquals(1)
     }
 
     @Test fun afterFiveTheRedCheckOutOpensTheHoldSheetWithLatinDigitTime() {
