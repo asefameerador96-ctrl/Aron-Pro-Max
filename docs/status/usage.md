@@ -2961,3 +2961,7 @@
 
 ### 2026-11-12 12:32 UTC — lane CI confirmations
 - S5 lane ci 43214455578 (91234ef05) and S6 lane ci 43214715189 (8fe12d962): both completed success (11 jobs ok each), confirming the heads that train 104 carries. S3 status: mid-run on the INT 20fe1d4fb merge (ec8cf4bdb pushed earlier; lane ci 43214864833 in progress). S2 pushed fb63804d3 (not yet reported). L-B lane ci 43217342984 in progress.
+
+### 2026-11-12 12:34 UTC — train 105 built (S2 + Loyalty web)
+- S2 `fb63804d3` (train 104 head merged; own-uuid lookup before name validation; Journey error state; unused import): I read its own commit (6 files +31/-11): correct.
+- Train 105 = INT 20fe1d4fb + docs 854b38e5b + S2 fb63804d3 + L-B d25d1fdd7, head `64af1e14a` on lane/lead-train105: only DECISIONS.md conflicted (union; 432 = 427 + 3 S2 + 2 L-B; 0 lines missing from INT, S2 or L-B); android/shared == S2; web == L-B; no duplicate string names; money-float 13/13, date-pin 0 new, gate unit tests OK, slices up to date, gitleaks clean. CI 43218993558 running. GO needs: this run green, train 104 INT run 43218050788 complete, L-B lane 43217342984 green, S2 lane run green on Repository gates. Real web deploy expected (web changed); Android carries the Room v8 to v9 AutoMigration.
