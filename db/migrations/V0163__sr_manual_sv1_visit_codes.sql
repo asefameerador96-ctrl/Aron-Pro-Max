@@ -58,7 +58,6 @@ CREATE OR REPLACE TRIGGER visit_immutable BEFORE UPDATE OR DELETE ON app.visit
   FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'server_verdict', 'server_distance_m', 'server_radius_m', 'server_max_accuracy_m', 'server_checked_at', '=close_client_uuid', '=close_received_at', '=close_captured_at', '=outcome_code', '=call_started_at', '=call_declined', '=ended_at', '=is_zero_sale',
     '=zone_id', '=cluster_id', '=outlet_channel', '=outlet_geo_class', '=zero_sale_reason_code', 'data_origin');
 
-CREATE INDEX IF NOT EXISTS visit_call_photo_uuid_idx ON app.visit (call_photo_uuid) WHERE call_photo_uuid IS NOT NULL;
 
 COMMENT ON COLUMN app.visit.zero_sale_reason_code IS 'Why the call ended with a zero-sale memo (code list zero_sale_reason); set by visit_close, only when is_zero_sale (CHECK). Null on every other visit.';
 COMMENT ON COLUMN app.visit.call_photo_uuid IS 'media_uuid of the outlet photo taken at call start (media purpose outlet_call, ref_type visit); null when none was taken (see call_photo_skip_reason_code).';
