@@ -1,0 +1,11 @@
+LoyaltyProductRef:
+  type: object
+  required:
+  - product_level
+  - product_id
+  additionalProperties: false
+  properties:
+    product_level:
+      $ref: '#/components/schemas/ProductLevel'
+    product_id:
+      $ref: '#/components/schemas/Id'

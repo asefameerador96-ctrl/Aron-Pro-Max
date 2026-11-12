@@ -163,7 +163,7 @@ class DiscountPortalV0152Test {
     fun theViewsShowTheCurrentVersionWithProductAndScopeRowsAndTheContractIs16() = db.connect().use { c ->
         c.autoCommit = false
         try {
-            assertEquals("1.6", c.scalar("SELECT dw.view_contract_version()"))
+            assertEquals("1.7", c.scalar("SELECT dw.view_contract_version()"))
             val o = c.offer("W1", "active")
             val v1 = c.version(o, 1, null)
             val v2 = c.version(o, 2, null)

@@ -19,8 +19,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 173 | 2910 |
-| `dw` | 72 | 1157 |
+| `app` | 180 | 2970 |
+| `dw` | 75 | 1207 |
 
 ## Index
 
@@ -87,6 +87,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.geo_version`](#appgeo_version) | table | db | SERVER | master | none | One row: the geography version, one higher after every statement that changed app.wing, division, territory, house, zone or route (V0145); caches of the geography reload when it is newer than theirs. |
 | [`app.gift`](#appgift) | table | backend:masterdata | ONLINE | master | none | A gift of a loyalty programme with points cost and tiers. |
 | [`app.gift_assignment`](#appgift_assignment) | table | backend:masterdata | ONLINE | transaction | none | An Astha gift chosen for an outlet and quarter, locked by the hand-over photo. |
+| [`app.gift_change`](#appgift_change) | table | backend:masterdata | ONLINE | audit | none | Append-only journal of gift create and update calls from the portal with a snapshot of the first result, so a retried call (same request UUID) is answered with that result. |
 | [`app.gift_photo`](#appgift_photo) | table | backend:sync | OFFLINE | transaction | personal | Hand-over photo record of a gift, one per Astha assignment or redeemed campaign unit. |
 | [`app.house`](#apphouse) | table | backend:masterdata | ONLINE | master | none | Distribution house that a zone may belong to; it carries no rules in Phase 1. |
 | [`app.house_history`](#apphouse_history) | table | db | SERVER | master | none | One row is a period of the territory a distribution house belonged to and its status (V0119); written by the history trigger on app.house, seeded from app.audit_log. |
@@ -125,8 +126,14 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.print_template`](#appprint_template) | table | backend:masterdata | ONLINE | master | none | One row is an immutable version of a thermal-print template for one slip kind, in force from effective_from. |
 | [`app.product_node`](#appproduct_node) | table | backend:masterdata | ONLINE | master | none | One node of the product tree (category, segment, brand or variant). |
 | [`app.product_node_history`](#appproduct_node_history) | table | db | SERVER | master | none | One row is a period of the parent of a product tree node, its sales switch and status (V0119); written by the history trigger on app.product_node, seeded from app.audit_log. |
-| [`app.programme`](#appprogramme) | table | backend:masterdata | ONLINE | master | none | A loyalty or incentive programme (Diamond League, Astha, campaign, Superstar) with period and rules. |
+| [`app.programme`](#appprogramme) | table | backend:masterdata | ONLINE | master | none | Loyalty programme definition (Diamond League month, Astha quarter, campaign, Superstar). The loyalty portal (V0158) manages drafts, versions and the lifecycle; nothing in the field reads it (docs/27: loyalty in the field is deferred; bundle programmes null). |
 | [`app.programme_enrolment`](#appprogramme_enrolment) | table | backend:masterdata | ONLINE | master | none | Enrolment of an outlet in a programme for a period, with league, tier and base target. |
+| [`app.programme_enrolment_batch`](#appprogramme_enrolment_batch) | table | backend:masterdata | ONLINE | audit | none | Append-only ledger of PUT /v1/admin/programmes/{id}/enrolments batches; the batch UUID makes a retried batch idempotent (the first counts are answered again). |
+| [`app.programme_status_change`](#appprogramme_status_change) | table | backend:masterdata | ONLINE | audit | none | Append-only trail of programme status moves (draft, active, inactive) with the reason and the person; the request UUID makes a retried move idempotent. |
+| [`app.programme_version`](#appprogramme_version) | table | backend:masterdata | ONLINE | master | none | One immutable version of a loyalty programme's definition (names, period, dates, rules, tiers, scope): a rule change is a new row, never an UPDATE (trigger and grant). The loyalty portal creates them (V0158); the field does not read them (docs/27: loyalty in the field is deferred, bundle programmes null). |
+| [`app.programme_version_product`](#appprogramme_version_product) | table | backend:masterdata | ONLINE | master | none | Products (category, brand, variant or SKU) a programme version applies to; none = all products. Immutable with its version. |
+| [`app.programme_version_scope`](#appprogramme_version_scope) | table | backend:masterdata | ONLINE | master | none | Places and channels a programme version applies to; none = everywhere. Immutable with its version. |
+| [`app.programme_version_tier`](#appprogramme_version_tier) | table | backend:masterdata | ONLINE | master | none | Tier rules of one programme version: code, labels and the threshold in STD as stored (the unit of the existing target model, brief Q1 default). Thresholds are data the owner supplies; none is invented. Immutable with its version. |
 | [`app.push_token`](#apppush_token) | table | backend:notify | ONLINE | ops | secret | FCM push token of a user on a phone. |
 | [`app.qc_entry`](#appqc_entry) | table | backend:sync | SERVER | transaction | none | QC header created by the server for a visit from its QC fault lines. |
 | [`app.qc_entry_line`](#appqc_entry_line) | table | backend:sync | OFFLINE | transaction | none | One QC fault line (faulty units) of a visit, optionally deducted on the memo. |
@@ -254,6 +261,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_feedback`](#dwv_feedback) | view | backend:masterdata | OFFLINE | transaction | none | Stable view: one row per TSO feedback with its category and inbox status (app.feedback, app.feedback_status); no title or description. is_effective = not data-voided. |
 | [`dw.v_final_submit_log`](#dwv_final_submit_log) | view | worker | SERVER | audit | none | Stable view: per zone and business date the first Final Submit (second submits ignored, Brief 07), the number of submits and the reopen state. |
 | [`dw.v_geo_integrity`](#dwv_geo_integrity) | view | worker | SERVER | event_fact | none | Stable view: per user and business date, geo-validation outcomes of visits and mock-location evidence of fixes. |
+| [`dw.v_gift`](#dwv_gift) | view | backend:masterdata | ONLINE | master | none | Stable view: the gift catalogue (app.gift) with its programme code and the points cost; no taka value in v1. is_effective = an active gift of an active programme. |
 | [`dw.v_leave_application`](#dwv_leave_application) | view | backend:masterdata | OFFLINE | transaction | none | Stable view: one row per leave application with its dates, day count and decision (app.leave_application); no reason or decision note. is_effective = not data-voided. |
 | [`dw.v_memo`](#dwv_memo) | view | worker | SERVER | event_fact | none | Stable view: one row per memo (dw.fact_memo) with its money, scope keys and SCD2 keys; the memo UUID, never the printed memo number (personal: it embeds the login). is_effective = active with at least one line. |
 | [`dw.v_memo_flags`](#dwv_memo_flags) | view | worker | SERVER | event_fact | personal | Stable view: one row per memo the server flagged (app.memo.server_flags non-empty: zero price line, price, arithmetic or pack-factor mismatch and the like), with its scope keys; voided and superseded memos included with their status (counts use status = 'active' AND voided_at IS NULL). |
@@ -262,6 +270,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_offer_version`](#dwv_offer_version) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per immutable offer version with its rule, validity, reward and the product and scope rows as JSON arrays (empty scope = everywhere). is_effective = the current version of an active offer. |
 | [`dw.v_outlet_masked`](#dwv_outlet_masked) | view | backend:masterdata | ONLINE | master | none | Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107). |
 | [`dw.v_outlet_sku_daily`](#dwv_outlet_sku_daily) | view | worker | SERVER | event_fact | none | Stable view: quantity sold and memo count per outlet, SKU and business date (dw.agg_daily_outlet_sku). is_effective = true. |
+| [`dw.v_programme`](#dwv_programme) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per loyalty programme (app.programme: Diamond League, Astha, campaign, Superstar) with the definition of its current version and its tiers as a JSON array. The portal exists; the field does not use it (no points earned or redeemed, bundle programmes null, docs/27). is_effective = status active. |
+| [`dw.v_programme_version`](#dwv_programme_version) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per immutable programme version with its window, rules, tiers, products and scope as JSON arrays (empty products or scope = everything). is_effective = the current version of an active programme. |
 | [`dw.v_route_day`](#dwv_route_day) | view | worker | SERVER | event_fact | none | Stable view: one row per route and business date (dw.agg_daily_route) with the zone-day flags derived per route (target route, successful login, sales submitted) and the Final Submit of the zone the route-day was stamped with; summing over a caller's routes gives the route-scoped dashboard totals. is_effective = true. |
 | [`dw.v_route_day_channel`](#dwv_route_day_channel) | view | worker | SERVER | event_fact | none | Stable view: active memos, outlets sold to, gross and net per route, business date and the outlet channel frozen on the memo at capture (dw.fact_memo, app.memo.outlet_channel); follows the route that sold, never a later outlet move. is_effective = true. |
 | [`dw.v_route_monthly_target`](#dwv_route_monthly_target) | view | worker | SERVER | master | none | Stable view: route x SKU monthly targets in base units with the month's working days and the derived daily target (D-TARGET-MIN-01). |
@@ -2029,6 +2039,29 @@ Keys: `UNIQUE (programme_id, quarter, outlet_id)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (chosen_by_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (gift_id) REFERENCES app.gift(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`
 
+## app.gift_change
+
+Append-only journal of gift create and update calls from the portal with a snapshot of the first result, so a retried call (same request UUID) is answered with that result.
+
+`owner: backend:masterdata | capture: ONLINE | retention: audit | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `gift_id` | bigint | not null |  | Gift (app.gift) the call created or changed. |
+| `change_kind` | text | not null |  | create or update. |
+| `request_uuid` | uuid | not null |  | Client-generated UUID of the call; unique, so a replay returns the first result. |
+| `request_fingerprint` | text | not null |  | SHA-256 (hex) of the normalised request; a reused request_uuid with different content is told apart (409). |
+| `reason` | text | not null |  | Why the gift changed, 10 to 500 characters, mandatory. |
+| `snapshot` | jsonb | not null |  | The gift as the first result of the call returned it (JSON, contract member names). |
+| `result_row_version` | integer | not null |  | Row version (ETag) of the gift right after the call. |
+| `actor` | bigint | not null |  | User (app.app_user) who made the call. |
+| `at` | timestamp with time zone | not null |  | UTC instant of the call. |
+
+Keys: `UNIQUE (request_uuid)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (actor) REFERENCES app.app_user(id)`; `FOREIGN KEY (gift_id) REFERENCES app.gift(id)`
+
 ## app.gift_photo
 
 Hand-over photo record of a gift, one per Astha assignment or redeemed campaign unit.
@@ -3245,7 +3278,7 @@ References: `FOREIGN KEY (node_id) REFERENCES app.product_node(id) ON DELETE CAS
 
 ## app.programme
 
-A loyalty or incentive programme (Diamond League, Astha, campaign, Superstar) with period and rules.
+Loyalty programme definition (Diamond League month, Astha quarter, campaign, Superstar). The loyalty portal (V0158) manages drafts, versions and the lifecycle; nothing in the field reads it (docs/27: loyalty in the field is deferred; bundle programmes null).
 
 `owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
 
@@ -3261,15 +3294,18 @@ A loyalty or incentive programme (Diamond League, Astha, campaign, Superstar) wi
 | `active_to` | date | not null |  | Last Dhaka date the programme is active. |
 | `points_expire_on` | date | null |  | Date earned points expire; null when they do not expire. |
 | `rules` | jsonb | not null |  | JSON rules of the programme. |
-| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
+| `status` | text | not null |  | Lifecycle: draft (being prepared, rule may still change), active, inactive (ended; shown as "Ended" in the portal). Moves go draft -> active -> inactive through app.programme_status_change. Active in the portal does not reach the field: the bundle programmes array stays null and no points are earned or redeemed (docs/27). |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
 | `updated_by` | bigint | null |  | User who last updated the row. |
+| `current_version_id` | bigint | null |  | Programme version (app.programme_version.id) in force; null for programmes made before the portal (V0158). Changes only while the programme is a draft. |
 
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (current_version_id) REFERENCES app.programme_version(id)`
 
 ## app.programme_enrolment
 
@@ -3293,6 +3329,133 @@ Enrolment of an outlet in a programme for a period, with league, tier and base t
 Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`
+
+## app.programme_enrolment_batch
+
+Append-only ledger of PUT /v1/admin/programmes/{id}/enrolments batches; the batch UUID makes a retried batch idempotent (the first counts are answered again).
+
+`owner: backend:masterdata | capture: ONLINE | retention: audit | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `batch_uuid` | uuid | not null |  | Client-generated UUID of the batch. |
+| `programme_id` | bigint | not null |  | Programme the batch enrolled outlets into. |
+| `request_fingerprint` | text | not null |  | SHA-256 (hex) of the normalised batch; a reused batch_uuid with different rows is told apart (409). |
+| `row_count` | integer | not null |  | Rows in the batch. |
+| `inserted` | integer | not null |  | Enrolments the batch created. |
+| `updated` | integer | not null |  | Enrolments the batch changed. |
+| `unchanged` | integer | not null |  | Rows that already matched. |
+| `reason` | text | not null |  | Why the batch was made, 10 to 500 characters, mandatory. |
+| `actor` | bigint | not null |  | User (app.app_user) who made the batch. |
+| `at` | timestamp with time zone | not null |  | UTC instant of the batch. |
+
+Keys: `PRIMARY KEY (batch_uuid)`
+
+References: `FOREIGN KEY (actor) REFERENCES app.app_user(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`
+
+## app.programme_status_change
+
+Append-only trail of programme status moves (draft, active, inactive) with the reason and the person; the request UUID makes a retried move idempotent.
+
+`owner: backend:masterdata | capture: ONLINE | retention: audit | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `programme_id` | bigint | not null |  | Programme (app.programme) whose status moved. |
+| `from_status` | text | not null |  | Status before the move: draft, active or inactive. |
+| `to_status` | text | not null |  | Status after the move; always different from from_status. |
+| `request_uuid` | uuid | not null |  | Client-generated UUID of the status call; unique, so a retried call returns this row instead of moving the programme twice. |
+| `request_fingerprint` | text | not null |  | SHA-256 (hex) of the normalised status request; a reused request_uuid with a different move is told apart (409). |
+| `reason` | text | not null |  | Why the programme moved, 10 to 500 characters, mandatory. |
+| `result_row_version` | integer | null |  | Row version (ETag) that app.programme had right after this move; a replay answers with it. |
+| `actor` | bigint | not null |  | User (app.app_user) who made the move. |
+| `at` | timestamp with time zone | not null |  | UTC instant of the move. |
+
+Keys: `UNIQUE (request_uuid)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (actor) REFERENCES app.app_user(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`
+
+## app.programme_version
+
+One immutable version of a loyalty programme's definition (names, period, dates, rules, tiers, scope): a rule change is a new row, never an UPDATE (trigger and grant). The loyalty portal creates them (V0158); the field does not read them (docs/27: loyalty in the field is deferred, bundle programmes null).
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `programme_id` | bigint | not null |  | Programme (app.programme) the version belongs to. |
+| `version_no` | integer | not null |  | Version number within the programme, from 1. |
+| `name_en` | text | not null |  | English name of the programme in this version. |
+| `name_bn` | text | null |  | Bangla name in this version; null when none. |
+| `period_label` | text | null |  | Period label such as 2026-10 (Diamond League month) or 2026-Q4 (Astha quarter); null when none. |
+| `active_from` | date | not null |  | First business date (Asia/Dhaka) of the programme window in this version. |
+| `active_to` | date | not null |  | Last business date (Asia/Dhaka, inclusive) of the programme window in this version. |
+| `points_expire_on` | date | null |  | Date after which points of the period expire (Diamond League); null when they do not expire. Never before active_to. |
+| `rules` | jsonb | not null |  | Kind-specific rules as data (Superstar slabs and criteria, campaign gift list). Empty object in v1: no slab is invented (docs/27). |
+| `change_reason` | text | not null |  | Why this version was made, 10 to 500 characters, mandatory (the audit log carries the same reason). |
+| `request_uuid` | uuid | not null |  | Client-generated UUID of the portal call that made this version (create or update); a replay of the same call returns this version instead of a new one. |
+| `request_fingerprint` | text | not null |  | SHA-256 (hex) of the normalised portal request that made this version; with request_uuid it tells a true replay from a reused UUID (409). |
+| `result_row_version` | integer | null |  | Row version (ETag) that app.programme had right after the call that made this version; a replay answers with it. Null for rows made before it was stored. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the version was made. |
+| `created_by` | bigint | null |  | User (app.app_user) who made the version. |
+
+Keys: `UNIQUE (programme_id, version_no)`; `UNIQUE (request_uuid)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (created_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`
+
+## app.programme_version_product
+
+Products (category, brand, variant or SKU) a programme version applies to; none = all products. Immutable with its version.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `programme_version_id` | bigint | not null |  | Programme version (app.programme_version.id). |
+| `product_level` | text | not null |  | Product-tree level: category, brand, variant or sku. |
+| `product_id` | bigint | not null |  | Id of the product node or SKU at that level. |
+
+Keys: `PRIMARY KEY (programme_version_id, product_level, product_id)`
+
+References: `FOREIGN KEY (programme_version_id) REFERENCES app.programme_version(id)`
+
+## app.programme_version_scope
+
+Places and channels a programme version applies to; none = everywhere. Immutable with its version.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `programme_version_id` | bigint | not null |  | Programme version (app.programme_version.id). |
+| `node_type` | text | not null |  | wing, division, territory, zone, route, channel or sub_channel. |
+| `node_id` | bigint | not null |  | Id of the node of that type. |
+
+Keys: `PRIMARY KEY (programme_version_id, node_type, node_id)`
+
+References: `FOREIGN KEY (programme_version_id) REFERENCES app.programme_version(id)`
+
+## app.programme_version_tier
+
+Tier rules of one programme version: code, labels and the threshold in STD as stored (the unit of the existing target model, brief Q1 default). Thresholds are data the owner supplies; none is invented. Immutable with its version.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `programme_version_id` | bigint | not null |  | Programme version (app.programme_version.id). |
+| `tier_code` | text | not null |  | Tier code (lower-case, as app.programme_enrolment.tier_code uses it). |
+| `sort_order` | integer | not null |  | Rank of the tier within the version, 1 = lowest; thresholds rise with it. |
+| `label_en` | text | not null |  | English label of the tier. |
+| `label_bn` | text | null |  | Bangla label of the tier; null when none. |
+| `threshold` | numeric(16,3) | null |  | Qualifying threshold in STD (numeric 16,3, never negative); null when the owner has not supplied one. |
+| `threshold_basis` | text | not null |  | Unit of threshold: std (the standard unit of the target model). Other bases wait for the owner's answer on units. |
+
+Keys: `UNIQUE (programme_version_id, sort_order)`; `PRIMARY KEY (programme_version_id, tier_code)`
+
+References: `FOREIGN KEY (programme_version_id) REFERENCES app.programme_version(id)`
 
 ## app.push_token
 
@@ -4980,7 +5143,7 @@ Per-module access of an ADMIN user (D-ROLES-02, docs/34 s1): r = read, w = read 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
 | `user_id` | bigint | not null |  | ADMIN user holding the grant (app.app_user). |
-| `module` | text | not null |  | Admin-portal module (contract AdminModule): masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking, support (the support desk, V0135) or discounts (the discount-programme portal, V0154). |
+| `module` | text | not null |  | Admin-portal module (contract AdminModule): masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking, support (the support desk, V0135), discounts (the discount-programme portal, V0154) or loyalty (the loyalty-programme portal, V0160). |
 | `access` | text | not null |  | r = read only, w = read and write. |
 | `granted_at` | timestamp with time zone | not null |  | UTC instant the grant was set or last changed. |
 | `granted_by` | bigint | null |  | SUPERADMIN who set the grant; null for the V0089 seed of existing admins. |
@@ -6785,6 +6948,29 @@ Stable view: per user and business date, geo-validation outcomes of visits and m
 | `data_origin` | app.data_origin | null |  | Most synthetic origin among the visits and fixes of the user-day. |
 | `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
 
+## dw.v_gift
+
+Stable view: the gift catalogue (app.gift) with its programme code and the points cost; no taka value in v1. is_effective = an active gift of an active programme.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `gift_id` | bigint | null |  | Gift (app.gift.id). |
+| `programme_id` | bigint | null |  | Programme (app.programme.id) the gift belongs to. |
+| `programme_code` | text | null |  | Stable business code of the programme. |
+| `gift_code` | text | null |  | Gift code, unique within its programme. |
+| `name_en` | text | null |  | English name of the gift. |
+| `name_bn` | text | null |  | Bangla name; null when none. |
+| `points_cost` | integer | null |  | Points a Diamond League redemption costs (1 to 100000); null for gifts that are chosen, not redeemed (Astha). No taka value is stored in v1. |
+| `tier_codes` | text[] | null |  | Tier codes the gift is offered to (Astha); empty = all tiers. |
+| `image_url` | text | null |  | Address of the gift picture (uploaded through the admin asset store); null when none. |
+| `status` | text | null |  | active or inactive. |
+| `created_at` | timestamp with time zone | null |  | UTC instant the gift was created. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant the gift last changed. |
+| `data_origin` | app.data_origin | null |  | Always production: gifts carry no origin of their own. |
+| `is_effective` | boolean | null |  | True for an active gift of an active programme. |
+
 ## dw.v_leave_application
 
 Stable view: one row per leave application with its dates, day count and decision (app.leave_application); no reason or decision note. is_effective = not data-voided.
@@ -7011,6 +7197,60 @@ Stable view: quantity sold and memo count per outlet, SKU and business date (dw.
 | `updated_at` | timestamp with time zone | null |  | UTC time the row was last rebuilt. |
 | `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its outlet, route and the memos, visits and collections of the outlet-day; set by trigger on every write. |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
+
+## dw.v_programme
+
+Stable view: one row per loyalty programme (app.programme: Diamond League, Astha, campaign, Superstar) with the definition of its current version and its tiers as a JSON array. The portal exists; the field does not use it (no points earned or redeemed, bundle programmes null, docs/27). is_effective = status active.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `programme_id` | bigint | null |  | Programme (app.programme.id). |
+| `kind` | text | null |  | diamond_league, astha, campaign or superstar. |
+| `programme_code` | text | null |  | Stable business code of the programme (app.programme.code). |
+| `status` | text | null |  | Lifecycle status: draft, active or inactive (Ended in the portal). |
+| `current_version_id` | bigint | null |  | Programme version (app.programme_version.id) in force; null for programmes made before the portal. |
+| `current_version_no` | integer | null |  | Version number of the current version, from 1; null when there is none. |
+| `name_en` | text | null |  | English name of the programme (current definition). |
+| `name_bn` | text | null |  | Bangla name; null when none. |
+| `period_label` | text | null |  | Period label such as 2026-10 or 2026-Q4; null when none. |
+| `active_from` | date | null |  | First business date (Asia/Dhaka) of the programme window. |
+| `active_to` | date | null |  | Last business date (Asia/Dhaka, inclusive) of the programme window. |
+| `points_expire_on` | date | null |  | Date after which points of the period expire; null when they do not. |
+| `tiers` | jsonb | null |  | JSON array of the current version's tiers {tier_code, sort_order, label_en, label_bn, threshold, threshold_basis}; threshold is STD as stored (never negative, may be null); empty when none. |
+| `version_count` | integer | null |  | Number of versions the programme has had. |
+| `created_at` | timestamp with time zone | null |  | UTC instant the programme was created. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant the programme row last changed (status or current version). |
+| `data_origin` | app.data_origin | null |  | Always production: programmes carry no origin of their own. |
+| `is_effective` | boolean | null |  | True when the programme status is active. |
+
+## dw.v_programme_version
+
+Stable view: one row per immutable programme version with its window, rules, tiers, products and scope as JSON arrays (empty products or scope = everything). is_effective = the current version of an active programme.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `programme_version_id` | bigint | null |  | Programme version (app.programme_version.id). |
+| `programme_id` | bigint | null |  | Programme (app.programme.id) the version belongs to. |
+| `programme_code` | text | null |  | Stable business code of the programme. |
+| `version_no` | integer | null |  | Version number within the programme, from 1. |
+| `is_current` | boolean | null |  | True for the version in force (app.programme.current_version_id). |
+| `name_en` | text | null |  | English name in this version. |
+| `name_bn` | text | null |  | Bangla name in this version; null when none. |
+| `period_label` | text | null |  | Period label in this version; null when none. |
+| `active_from` | date | null |  | First business date (Asia/Dhaka) of the window in this version. |
+| `active_to` | date | null |  | Last business date (Asia/Dhaka, inclusive) of the window in this version. |
+| `points_expire_on` | date | null |  | Date after which points of the period expire; null when they do not. |
+| `rules` | jsonb | null |  | Kind-specific rules as JSON (empty object in v1; no slabs are invented, docs/27). |
+| `tiers` | jsonb | null |  | JSON array of {tier_code, sort_order, label_en, label_bn, threshold, threshold_basis}; threshold is STD as stored. |
+| `products` | jsonb | null |  | JSON array of {product_level, product_id} rows (category, brand, variant or sku); empty = every product. |
+| `scope` | jsonb | null |  | JSON array of {node_type, node_id} place rows (wing, division, territory, zone, route, channel, sub_channel); empty = everywhere. |
+| `created_at` | timestamp with time zone | null |  | UTC instant the version was made. |
+| `data_origin` | app.data_origin | null |  | Always production: programmes carry no origin of their own. |
+| `is_effective` | boolean | null |  | True for the current version of an active programme. |
 
 ## dw.v_route_day
 

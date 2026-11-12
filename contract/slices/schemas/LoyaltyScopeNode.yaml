@@ -1,0 +1,19 @@
+LoyaltyScopeNode:
+  type: object
+  required:
+  - node_type
+  - node_id
+  additionalProperties: false
+  properties:
+    node_type:
+      type: string
+      enum:
+      - wing
+      - division
+      - territory
+      - zone
+      - route
+      - channel
+      - sub_channel
+    node_id:
+      $ref: '#/components/schemas/Id'
