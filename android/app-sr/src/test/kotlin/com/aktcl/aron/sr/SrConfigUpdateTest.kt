@@ -12,6 +12,7 @@ class SrConfigUpdateTest {
             BundleOutcome.PREFETCH_PROMOTED to ConfigUpdate.UPDATED,
             BundleOutcome.UNCHANGED to ConfigUpdate.ALREADY_CURRENT,
             BundleOutcome.OLDER_IGNORED to ConfigUpdate.ALREADY_CURRENT,
+            BundleOutcome.PREFETCH_STORED to ConfigUpdate.ALREADY_CURRENT,
         )
         BundleOutcome.entries.forEach { assertEquals(it.name, expected[it] ?: ConfigUpdate.FAILED, configUpdateOf(it)) }
         assertEquals(ConfigUpdate.FAILED, configUpdateOf(null))

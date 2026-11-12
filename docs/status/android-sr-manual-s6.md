@@ -24,7 +24,7 @@ Branch `lane/android-sr-manual-s6` from INT `claude/wonderful-thompson-k6ejnf` (
 | 94 | needs server | আগের দিন / ADS / SDLW need `outlet_sku_stats` (SV part A s7). Strings added with the data by the sale lane. |
 | 95 | done | `out_history` (feature-outlet), `history_title` (feature-memo) and `sr_sale_history` (app-sr) say "সেল ডাটা". `sale_history` keeps "পূর্বের সেল ডাটা দেখুন" (the manual button SR-S-32). |
 | 96 | not changed (lead ruling) | `edit_reason_wrong_quantity` / `edit_reason_wrong_price_type` stay as on INT: they are AMO's legacy list and relabelling changes the meaning of a stored code. The SR list is S5's new keys `edit_reason_wrong_sku_qty` / `edit_reason_promotion_issue` with new wire codes. |
-| 97 | kept কারণ | Standard spelling kept (audit recommendation); the manual copied the vendor's "কারন". Lead/owner may overrule; one-line change in feature-sale values-bn. |
+| 97 | follows the standing ruling | The spelling follows D-TSO-PARITY-SPELLING-01 (S5 corrects its own `edit_reason_dialog_title` to "কারণ"); the SR dialog title key is S5's and this lane does not edit it. This lane's `edit_reason_title` already says "কারণ". |
 | 98 | done | core-system `support_title` bn "PDA টু সাপোর্ট". |
 | 99 | done | see 53. |
 | 100 | done | app-sr `sr_ok` and core-ui `core_ui_kit_gallery_ok` are "ওকে". "ছাপা ঠিক আছে?" (print confirmation question) is a different sentence and stays. |
@@ -39,7 +39,7 @@ Branch `lane/android-sr-manual-s6` from INT `claude/wonderful-thompson-k6ejnf` (
 | 113 | done | `submit_success` "বিক্রয় সফল ভাবে জমা হয়েছে।". `memo_paid_done` outside the manual quote, unchanged. |
 
 ## Goldens re-recorded (wording legitimately changed)
-`visit_in_bn_light`, `visit_in_bn_sunlight`, `visit_out_bn_light`, `visit_out_bn_sunlight` (out_history "সেল ডাটা"), `memo_bn_light` (the sale-data link under the memo, `history_title` now "সেল ডাটা"; not kpi_visited), `review_en_light` ("Mark this sale as due"). No AMO or TSO golden changed. `settings_bn` is a record-only kit shot (no committed golden).
+`visit_in_bn_light`, `visit_in_bn_sunlight`, `visit_out_bn_light`, `visit_out_bn_sunlight` (out_history "সেল ডাটা"), `memo_bn_light` (the sale-data link under the memo: `history_title` "সেল ডাটা"; drawn only by the screenshot fixture and the kit default, the SR itself shows `sr_sale_history`), `review_en_light` ("Mark this sale as due"). No AMO or TSO golden changed. `settings_bn` is a record-only kit shot (no committed golden).
 
 ## Tests
 No existing test edited. New in `SettingsScreenTest`: update tile confirms in place, already-current text, failure dialog, busy while a download runs, tile hidden without callback; language drop-down switches; logout warns and offers Sales Submit, back cancels, "Log out anyway" reaches the normal confirm, nothing pending skips the warning, a failed read falls back to the confirm.
@@ -56,10 +56,13 @@ No existing test edited. New in `SettingsScreenTest`: update tile confirms in pl
 _Not run on a device: all checks are JVM host tests, lint and Roborazzi._
 
 ## For others
-- S5: wire `sale_submit_plain`; keep the edit-reason code names.
 - SV: nothing needed for this lane's rows (94 needs `outlet_sku_stats`).
 - Lead: Opus Bangla check on the Update Configuration Bangla body and the logout warning text.
 
 
 ## After the merge of INT 12f56c8bb
 `history_title` (feature-memo) and S4's new `sale_data_title` both say "সেল ডাটা": one meaning, one value, nothing contradicts; I kept `history_title`, `out_history`, `sr_sale_history` = "সেল ডাটা" and `sale_history` = "পূর্বের সেল ডাটা দেখুন" (lead rules on that button with S4). Gate scripts: money-float 13/13 exit 0, date-pin 106 baselined 0 new, `tools/ci` test_gates OK (60 tests, 9 skipped). Goldens: unchanged since the previous push (visit_in/out_bn_light/sunlight for `out_history`; memo_bn_light for `history_title`; review_en_light for "Mark this sale as due"); none re-recorded after the merge.
+
+## Golden re-record check (lead's request)
+The shots that could draw this lane's keys were deleted and re-recorded with `-Proborazzi.record=true --no-build-cache`: memo_bn_light (`history_title`), review_en_light (EN `review_credit_switch` "Mark this sale as due"), memo_bn_sunlight, memo_en_light, memo_bn_detail_reprint_limit, memo_bn_detail_font20 (same memo fixture, `history_title` link). Result: all six came back byte-identical to the committed files, so none is stale and `git` shows no PNG change in this push. The visit_* shots (`out_history`) were re-recorded earlier.
+`configUpdateOf` now also maps PREFETCH_STORED to ALREADY_CURRENT (test extended).
