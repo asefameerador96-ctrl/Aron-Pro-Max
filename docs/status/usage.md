@@ -3058,3 +3058,6 @@
 
 ### 2026-11-12 17:18 UTC — GO train 107
 - Train 107 CI 43260056186 success on 5a3662eb3 (12 jobs ok, squawk and contract-breaking included); L-A lane CI 43259485855 success on 7fb2c471e. INT still f57ce31ed. GO sent to integrator 24 (expected DECISIONS 437, V0172 last, contract 1.13.1, real deploy; ADMIN tokens 401 once then refresh).
+
+### 2026-11-12 17:20 UTC — train 107 on INT
+- Integrator 24 pushed train 107: INT `4739d5d1a` (tree-identical to 5a3662eb3 plus the train.md row; DECISIONS 437; V0170..V0172 added; contract 1.13.1), ci #2084 43268148775 running, real deploy expected. SV2 told to merge and push once with its fixes and V0173..V0175; L-A told to write the train 3 handover and stop; L-B told to merge and regenerate types, no live switch yet.
