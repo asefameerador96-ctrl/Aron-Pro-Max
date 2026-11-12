@@ -2870,3 +2870,7 @@
 
 ### 2026-11-12 10:37 UTC — S1 round 2: code PASS, two false records
 - S1 `755a5cbaf` Opus re-check wkky08qee (8 agents): all nine first-pass items fixed in production code (skip link in every state, version footer, Later kept and AutoInstallGate once per release per process, guarded progress callback, FLAG_SECURE set and cleared, 401 message, wiring tests, bind call keeps cancellation); no OTP logged or saved. Blocking: two false records (OTP bar title language in D-SR-MAN-S1-01 (c); release-notes language in D-SR-MAN-S1-06). Asked: correct them, test count, restore one display assertion, overlapping SecureScreen test. Lands after train 102. wt-s1 removed.
+
+### 2026-11-12 10:43 UTC — train 101 pushed to INT; S1 ready
+- Integrator 24 pushed train 101: INT `ce9d92bf7` (tree-identical to afe417965 plus train.md; DECISIONS 406; V0158..V0162 added; contract 1.13.0), ci #2039 43202049384 running, real deploy expected.
+- S1 `129c335f7` (5 files on 755a5cbaf: records corrected, display assertion restored, SecureScreen ref-counted per window with an overlap test). I read the production change myself: count per window in a WeakHashMap, flag cleared only when the last holder leaves and only if the window was not secure before; correct. S1 is ready for the train after 102.
