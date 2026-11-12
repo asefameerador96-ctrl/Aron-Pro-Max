@@ -2795,3 +2795,7 @@
 - Ruling: S5's three-reason list with new wire codes ships (server accepts: pattern CHECK only, V0007:715); S6's relabel of the two old keys to be dropped (to tell S6 with its review result).
 - SV told: digest lists per SKU {sku_id, qty_base} (category base totals cannot be converted to packets with mixed pack factors); seed the edit reason codes; ADS unit stated; call photo uuid on visit close; zero-sale reason rule.
 - S4 fix round `364c5596b`: static gate clean (DECISIONS 400; two lines corrected in place, -08 added; lane ci 43190742124); Opus re-check wob1z79qe running.
+
+### 2026-11-12 09:25 UTC — S6 review FAIL
+- S6 `4f7492912` review w5i2roblp (18 agents): FAIL, 4 survivors, all wording on shared keys against the screenshots (rule 14a): out_picker_select and credit_body must stay "রিটেইলার", out_req_owner stays "দোকানের মালিকের নাম", legacy edit-reason keys must not be relabelled (AMO list; stored code meaning). Settings flow and data safety PASS (Update Configuration reuses the single-flight atomic bundle download; logout path unchanged). Required with it: config tile stuck-on-rotation, already-running download, 304 wording, neutral failure text, back on the logout warning cancels, tests on tags after S4. Fix-up sent; wt-s6 removed.
+- Landing order set: S4 first (if round 2 passes), then S5, S6 after merging INT.
