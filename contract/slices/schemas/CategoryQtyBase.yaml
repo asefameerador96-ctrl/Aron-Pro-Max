@@ -12,6 +12,4 @@ CategoryQtyBase:
     qty_base:
       type: integer
       format: int64
-      description: Base units (sticks
-      pieces: null
-      dozens as stored).: null
+      description: Base units (sticks, pieces, dozens as stored).

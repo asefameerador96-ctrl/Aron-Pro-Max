@@ -6385,7 +6385,7 @@ export interface components {
             category_code: string;
             /**
              * Format: int64
-             * @description Base units (sticks
+             * @description Base units (sticks, pieces, dozens as stored).
              */
             qty_base: number;
         };
@@ -7446,7 +7446,7 @@ export interface components {
             fix_lng: number | null;
             fix_accuracy_m: number | null;
             fix_is_mock: boolean | null;
-            /** @description The call's distance from the outlet point */
+            /** @description The call's distance from the outlet point (metres). */
             distance_m: number | null;
         };
         CallPhotoReviewPage: {

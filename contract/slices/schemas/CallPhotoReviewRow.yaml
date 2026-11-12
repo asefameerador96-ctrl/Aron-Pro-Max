@@ -89,5 +89,4 @@ CallPhotoReviewRow:
       - number
       - 'null'
       minimum: 0
-      description: The call's distance from the outlet point
-      metres.: null
+      description: The call's distance from the outlet point (metres).
