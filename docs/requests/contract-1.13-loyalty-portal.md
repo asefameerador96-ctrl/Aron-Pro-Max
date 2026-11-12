@@ -3,7 +3,7 @@
 For the lead's approval as **D-LEAD-CONTRACT-113-01** (DECISIONS.md; the lead appends that ruling and this file cites it by id). The change
 is additive except two response enums that gain a value; the oasdiff gate (`tools/ci/contract-breaking.sh`) reports those as breaking, and
 this file is the lead-approved request that lets the same push (info.version 1.12.2 to 1.13.0) pass. No shipped client reads either: the
-apps do not call the programme or gift operations, the bundle `programmes` stays null, and the web page does not exist yet. The field is
+apps do not call the programme or gift operations, the bundle `programmes` stays null, and the web Loyalty section (INT train 99) runs on mocks against its own assumed paths; the divergences it must close after 1.13.0 lands are listed below. The field is
 unchanged (loyalty in the apps stays deferred, docs/27; no points earned or redeemed; memo offer line zero). Records: D-LOY-API-01 to 03.
 
 ## The enum additions (the breaking-by-rule changes)
@@ -43,6 +43,10 @@ in the backend module map (invisible to oasdiff).
   breaking change), `points_expire_on`, `tiers`, `qualifying`, `scope`; its `status` member stays (deprecated, refused with 400).
 - `GiftWrite`: optional `request_uuid`.
 - `Programme`: optional `programme_version_id`, `version_no`, `tiers`, `qualifying`, `scope`, `change_reason`, `created_at`, `updated_at`.
+
+## Web divergences to close after 1.13.0 lands (web lane, not this lane)
+
+The BFF calls `/v1/admin/loyalty/programmes/{id}/status` (web/src/lib/admin/loyalty-server.ts:115), `/versions` and `/progress` (loyalty-load.ts:19, :23), while the contract has `/v1/admin/programmes/{id}/status` and `/versions` and no progress operation (deferred, D-LOY-API-02); `createProgramme` sends tier `threshold_value` without `sort_order` and a `channels` array, which the closed `ProgrammeWrite`/`ProgrammeTier` refuse (the contract names the tier member `threshold` as a decimal string with `threshold_basis`, `sort_order` is required, and channels are `scope` nodes of type `channel`/`sub_channel`); the PATCH bodies send `kind`/`code` and `programme_id`/`code`; `web/src/lib/admin/modules.ts:46` still maps `/v1/admin/loyalty/**`; `web/tests/tso-integration-web.test.tsx` (about line 96) keeps a now-unneeded typecheck exception for `loyalty`.
 
 ## Database view contract
 
