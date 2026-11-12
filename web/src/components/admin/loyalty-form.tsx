@@ -10,7 +10,7 @@ import { Banner } from "@/components/kit/banner";
 import { Button } from "@/components/kit/button";
 import type { Problem } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
-import { CHANNELS, PROGRAMME_KINDS, emptyTier, nextAttempt, validateForm, type FieldError, type LoyaltyForm } from "@/lib/admin/loyalty";
+import { PROGRAMME_KINDS, emptyTier, nextAttempt, validateForm, type FieldError, type LoyaltyForm } from "@/lib/admin/loyalty";
 import { Field, inputClass } from "./kit/field";
 import { ReasonField } from "./kit/reason-field";
 
@@ -121,10 +121,10 @@ export function LoyaltyFormView({ mode, programmeId, version, initial, backHref 
                     <input id={`lf-tier-${i}-threshold`} inputMode="decimal" value={tier.threshold} onChange={(ev) => setTier(i, { threshold: ev.target.value })} className={inputClass} />
                   </Field>
                   <Field label={t("loy.form.tier_label_en")} htmlFor={`lf-tier-${i}-en`} required error={err(`tier.${i}.label_en`)}>
-                    <input id={`lf-tier-${i}-en`} value={tier.label_en} onChange={(ev) => setTier(i, { label_en: ev.target.value })} maxLength={60} className={inputClass} />
+                    <input id={`lf-tier-${i}-en`} value={tier.label_en} onChange={(ev) => setTier(i, { label_en: ev.target.value })} maxLength={80} className={inputClass} />
                   </Field>
                   <Field label={t("loy.form.tier_label_bn")} htmlFor={`lf-tier-${i}-bn`} error={err(`tier.${i}.label_bn`)}>
-                    <input id={`lf-tier-${i}-bn`} value={tier.label_bn} onChange={(ev) => setTier(i, { label_bn: ev.target.value })} maxLength={60} className={inputClass} lang="bn" />
+                    <input id={`lf-tier-${i}-bn`} value={tier.label_bn} onChange={(ev) => setTier(i, { label_bn: ev.target.value })} maxLength={80} className={inputClass} lang="bn" />
                   </Field>
                 </div>
               </li>
@@ -132,21 +132,6 @@ export function LoyaltyFormView({ mode, programmeId, version, initial, backHref 
           </ol>
         )}
         <Button type="button" variant="secondary" onClick={() => set("tiers", [...f.tiers, emptyTier()])} testId="lf-add-tier">{t("loy.form.add_tier")}</Button>
-      </section>
-
-      <section className="glass-card space-y-3 p-(--card-pad)" aria-labelledby="lf-ch-h">
-        <div>
-          <h2 id="lf-ch-h" className="text-heading text-primary">{t("loy.form.channels")}</h2>
-          <p className="text-caption text-secondary">{t("loy.form.channels_hint")}</p>
-        </div>
-        <div className="flex flex-wrap gap-x-6 gap-y-2" role="group" aria-labelledby="lf-ch-h">
-          {CHANNELS.map((c) => (
-            <label key={c} className="flex min-h-11 items-center gap-2 text-body text-primary">
-              <input type="checkbox" checked={f.channels.includes(c)} onChange={(ev) => set("channels", ev.target.checked ? [...f.channels, c] : f.channels.filter((x) => x !== c))} data-testid={`lf-channel-${c}`} className="size-5" />
-              {t(`loy.channel.${c}` as MessageKey)}
-            </label>
-          ))}
-        </div>
       </section>
 
       <section className="glass-card space-y-4 p-(--card-pad)">

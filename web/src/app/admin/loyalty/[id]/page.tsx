@@ -10,10 +10,9 @@ import { LoyaltyStatusPanel } from "@/components/admin/loyalty-status-panel";
 import { Card, PageHeading, one, type SearchParams } from "@/components/admin/kit/page";
 import { apiClient, outcome } from "@/lib/api/client";
 import { loadGrants } from "@/lib/admin/modules";
-import { activationBlocked, canReadLoyalty, canWriteLoyalty, cashValueMtk, guardedPercent, nextProgrammeStatuses, remainingStd, type Enrolment, type ProgrammeVersion } from "@/lib/admin/loyalty";
-import { loadEnrolments, loadGifts, loadProgramme, loadProgress, loadVersions } from "@/lib/admin/loyalty-load";
-import { channelLabel, groupedDecimal, kindLabel, nameOf, percentText, pointsText, statusLabel, stdText, thresholdText, tierName } from "@/lib/admin/loyalty-view";
-import { formatMtkExact } from "@/lib/admin/money";
+import { activationBlocked, canReadLoyalty, canWriteLoyalty, nextProgrammeStatuses, type Enrolment, type ProgrammeVersion } from "@/lib/admin/loyalty";
+import { loadEnrolments, loadGifts, loadProgramme, loadVersions } from "@/lib/admin/loyalty-load";
+import { kindLabel, nameOf, pointsText, qualifyingLabel, scopeLabel, statusLabel, stdText, thresholdText, tierName } from "@/lib/admin/loyalty-view";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { businessDate, formatBusinessDate, formatDateTime, formatNumber, t } from "@/lib/i18n";
@@ -28,7 +27,7 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
   const back = <Link href="/admin/loyalty" className="text-body-strong text-accent hover:underline">{t(locale, "loy.back")}</Link>;
   const numeric = /^\d{1,15}$/.test(id) ? Number(id) : null;
   const r = numeric === null ? null : await loadProgramme(session.at, numeric);
-  if (!r || !r.ok || r.data === null) {
+  if (!r || !r.ok) {
     const offline = r !== null && !r.ok && r.offline;
     return (
       <div className="space-y-4" data-testid="loyalty-missing">
@@ -39,9 +38,8 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
   }
   const p = r.data;
   const api = apiClient(session.at);
-  const [versions, progress, enrolments, gifts, hist] = await Promise.all([
+  const [versions, enrolments, gifts, hist] = await Promise.all([
     loadVersions(session.at, p.programme_id),
-    loadProgress(session.at, p.programme_id),
     loadEnrolments(session.at, p.programme_id),
     loadGifts(session.at, p.programme_id),
     outcome(api.GET("/v1/admin/audit", { params: { query: { entity: "programme", entity_id: String(p.programme_id), limit: 20 } } })),
@@ -50,7 +48,8 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
   const canWrite = canWriteLoyalty(role, grants);
   const moves = nextProgrammeStatuses(p.status, role, grants);
   const tiers = p.tiers ?? [];
-  const channels = p.channels ?? [];
+  const scope = p.scope ?? [];
+  const qualifying = p.qualifying ?? [];
   const saved = one(sp.saved);
   const dl = (label: string, value: string) => (
     <div className="min-w-0"><dt className="text-label text-secondary">{label}</dt><dd className="text-body text-primary [overflow-wrap:anywhere]">{value}</dd></div>
@@ -67,9 +66,6 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
     { key: "from", header: t(locale, "loy.enrol.col.from"), render: (e) => formatBusinessDate(locale, e.valid_from) },
     { key: "to", header: t(locale, "loy.enrol.col.to"), render: (e) => (e.valid_to ? formatBusinessDate(locale, e.valid_to) : "—") },
   ];
-  const prog = progress.ok ? progress.data : null;
-  const pointsTotal = prog ? prog.points.earned + prog.points.redeemed + prog.points.expiring : 0;
-  const cash = prog && prog.cash_rate_mtk_per_point != null ? cashValueMtk(prog.points.redeemed, prog.cash_rate_mtk_per_point) : null;
   return (
     <div className="space-y-4" data-testid="loyalty-detail-page">
       <PageHeading
@@ -94,57 +90,18 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
       <Card title={t(locale, "loy.detail.tiers")} testId="programme-tiers">
         {tiers.length === 0 ? <p className="text-body text-secondary" data-testid="programme-tiers-none">{t(locale, "loy.detail.tiers_none")}</p> : (
           <ol className="space-y-1">
-            {tiers.map((x) => <li key={x.tier_code} className="flex flex-wrap justify-between gap-2 [overflow-wrap:anywhere]" data-testid={`tier-${x.tier_code}`}><span className="text-body-strong text-primary">{tierName(locale, x)}</span><span className="text-body text-primary">{thresholdText(locale, x)}</span></li>)}
+            {[...tiers].sort((a, b) => a.sort_order - b.sort_order).map((x) => <li key={x.tier_code} className="flex flex-wrap justify-between gap-2 [overflow-wrap:anywhere]" data-testid={`tier-${x.tier_code}`}><span className="text-body-strong text-primary">{tierName(locale, x)}</span><span className="text-body text-primary">{thresholdText(locale, x)}</span></li>)}
           </ol>
         )}
         <h3 className="text-label text-secondary">{t(locale, "loy.detail.scope")}</h3>
-        <p className="text-body text-primary [overflow-wrap:anywhere]" data-testid="programme-channels">{channels.length === 0 ? t(locale, "loy.detail.scope_all") : channels.map((c) => channelLabel(locale, c)).join(", ")}</p>
+        <p className="text-body text-primary [overflow-wrap:anywhere]" data-testid="programme-scope">{scope.length === 0 ? t(locale, "loy.detail.scope_all") : scope.map((n) => scopeLabel(locale, n)).join(", ")}</p>
+        <h3 className="text-label text-secondary">{t(locale, "loy.detail.qualifying")}</h3>
+        <p className="text-body text-primary [overflow-wrap:anywhere]" data-testid="programme-qualifying">{qualifying.length === 0 ? t(locale, "loy.detail.qualifying_all") : qualifying.map((q) => qualifyingLabel(locale, q)).join(", ")}</p>
+        {canWrite && p.status === "draft" ? <p className="text-caption text-secondary">{t(locale, "loy.detail.scope_kept")}</p> : null}
       </Card>
       {canWrite ? <LoyaltyStatusPanel programmeId={p.programme_id} moves={moves} pastEnd={activationBlocked(p.active_to, businessDate())} superOnlyNote={p.status === "draft" && moves.length === 0} /> : null}
       <Card title={t(locale, "loy.progress.heading")} testId="programme-progress">
-        {!progress.ok ? <p role="alert" className="text-body text-secondary" data-testid="progress-failed">{t(locale, progress.offline ? "loy.offline" : "loy.progress.failed")}</p> : prog && prog.tiers.length === 0 ? <p className="text-body text-secondary" data-testid="progress-empty">{t(locale, "loy.progress.empty")}</p> : prog ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-body" data-testid="progress-table">
-              <caption className="sr-only">{t(locale, "loy.progress.heading")}</caption>
-              <thead><tr className="text-label text-secondary">
-                <th scope="col" className="py-1 pe-3 text-start">{t(locale, "loy.progress.tier")}</th>
-                <th scope="col" className="py-1 pe-3 text-end">{t(locale, "loy.progress.outlets")}</th>
-                <th scope="col" className="py-1 pe-3 text-end">{t(locale, "loy.progress.target")}</th>
-                <th scope="col" className="py-1 pe-3 text-end">{t(locale, "loy.progress.achieved")}</th>
-                <th scope="col" className="py-1 pe-3 text-end">{t(locale, "loy.progress.remaining")}</th>
-                <th scope="col" className="py-1 text-end">{t(locale, "loy.progress.percent")}</th>
-              </tr></thead>
-              <tbody>
-                {prog.tiers.map((x) => {
-                  const rem = remainingStd(x.achieved_std, x.target_std);
-                  return (
-                    <tr key={x.tier_code} data-testid={`progress-${x.tier_code}`}>
-                      <th scope="row" className="py-1 pe-3 text-start text-body-strong text-primary">{tierLabel(x.tier_code)}</th>
-                      <td className="py-1 pe-3 text-end tabular-nums">{formatNumber(locale, x.enrolled_outlets)}</td>
-                      <td className="py-1 pe-3 text-end tabular-nums">{stdText(locale, x.target_std)}</td>
-                      <td className="py-1 pe-3 text-end tabular-nums">{stdText(locale, x.achieved_std)}</td>
-                      <td className="py-1 pe-3 text-end tabular-nums">{rem === null ? "—" : t(locale, "loy.std_value", { value: groupedDecimal(locale, rem) })}</td>
-                      <td className="py-1 text-end text-body-strong tabular-nums text-primary" data-testid={`progress-pct-${x.tier_code}`}>{percentText(locale, guardedPercent(x.achieved_std, x.target_std))}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-        {prog ? (
-          <>
-            <h3 className="text-label text-secondary">{t(locale, "loy.progress.points_heading")}</h3>
-            {pointsTotal === 0 ? <p className="text-body text-secondary" data-testid="points-empty">{t(locale, "loy.progress.points_empty")}</p> : (
-              <dl className="grid gap-4 md:grid-cols-3" data-testid="points">
-                {dl(t(locale, "loy.progress.earned"), pointsText(locale, prog.points.earned))}
-                {dl(t(locale, "loy.progress.redeemed"), pointsText(locale, prog.points.redeemed))}
-                {dl(t(locale, "loy.progress.expiring"), pointsText(locale, prog.points.expiring))}
-                {cash !== null ? dl(t(locale, "loy.progress.cash"), t(locale, "loy.cash_value", { amount: formatMtkExact(locale, cash) })) : null}
-              </dl>
-            )}
-          </>
-        ) : null}
+        <p role="note" className="text-body text-secondary" data-testid="progress-unavailable">{t(locale, "loy.progress.unavailable")}</p>
       </Card>
       <Card title={t(locale, "loy.enrol.heading")} testId="programme-enrolments">
         {!enrolments.ok ? <p role="alert" className="text-body text-secondary" data-testid="enrol-failed">{t(locale, "loy.enrol.failed")}</p> : <DataTable columns={enrolCols} rows={enrolments.data} rowKey={(e) => `${e.outlet_id}:${e.valid_from}`} empty={t(locale, "loy.enrol.empty")} caption={t(locale, "loy.enrol.heading")} />}
