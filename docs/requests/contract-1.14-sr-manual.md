@@ -13,8 +13,8 @@ Records: D-SV1-01 to 12 (DECISIONS.md).
 |---|---|---|
 | `VisitClosePayload.zero_sale_reason_code` (string or null, code list `zero_sale_reason`; only with `is_zero_sale`, an active item on the business date) | sync record `visit_close` | SRM-A-40 |
 | code list key `zero_sale_reason` (`CodeListKey`), four items: stock_available, outlet_closed, owner_absent, insufficient_cash (Bangla labels = the Q12 defaults) | bundle code lists, admin code lists | SRM-A-40 |
-| `VisitPayload.call_photo_uuid` (uuid or null) and `call_photo_skip_reason` (camera_failed, permission_denied, storage_full, other, or null; exclusive with the uuid) | sync record `visit` | SRM-A-27 |
-| `MediaPurpose` value `call_start` (a `media_meta` of this purpose must have `ref_type` `visit`) | `media_meta`, `createMediaUploadUrls` | SRM-A-27 |
+| `VisitPayload.call_photo_uuid` (uuid or null) and `call_photo_skip_reason_code` (camera_failed, permission_denied, storage_full, other, or null; exclusive with the uuid) | sync record `visit` | SRM-A-27 |
+| `MediaPurpose` value `outlet_call` (a `media_meta` of this purpose must have `ref_type` `visit`) | `media_meta`, `createMediaUploadUrls` | SRM-A-27 |
 | `SalesSubmitDigest.business_totals` (new schema `SubmitBusinessTotals`: outlets_visited, sold_qty_base per category, stock_issued_qty_base, qc_qty_base, promotion_mtk) | `GET /v1/sync/totals` digest | SRM-B-25 |
 | `UpdateCheck.notes_en`, `notes_bn` (copies of `latest.notes_*`; the release admin already stores them) | `GET /v1/app/update-check` | SRM-A-09 |
 | `JourneyCall.status` value `repeat_sale` | `getTeamJourney` | part B s6 programmes |
@@ -33,11 +33,11 @@ normalised name and mobile, 7 days) is acked `duplicate` with the first request'
 (media_meta). Expect `response-property-enum-value-added` and `request-property-enum-value-added`-type lines from
 `tools/ci/contract-breaking.sh`; this file is the request that lets the push pass. No shipped client reads any of them: the AMO
 journey parser maps an unknown status to `new_sale` (train 2 of the AMO lane adds `repeat_sale`), and the phones that cannot send
-`call_start` today never do.
+`outlet_call` today never do.
 
 ## Database (V0163 to V0165)
 
-V0163: `app.visit.zero_sale_reason_code`, `call_photo_uuid`, `call_photo_skip_reason` (nullable, CHECKs NOT VALID), `visit_immutable`
+V0163: `app.visit.zero_sale_reason_code`, `call_photo_uuid`, `call_photo_skip_reason_code` (nullable, CHECKs NOT VALID), `visit_immutable`
 recreated with `zero_sale_reason_code` write-once, `media.purpose` and `code_list.list_key` CHECKs widened NOT VALID, the code-list
 rows. V0164: the four VALIDATE statements. V0165: dw view contract 1.6 to 1.7 (`dw.fact_visit.zero_sale_reason_code`,
 `call_photo_uuid`; `dw.v_visit.zero_sale_reason_code` and `call_capture_taken`, a boolean: a media id never appears in a reuse view).

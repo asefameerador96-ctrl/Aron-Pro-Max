@@ -38,11 +38,14 @@ data class RejectedRecordViewDto(
 
 /** Contract 1.14.0 `SubmitBusinessTotals` (SRM-B-25): the day's business figures, computed with the dashboard aggregates' rules. */
 @Serializable
+data class CategoryQtyBaseDto(val category_code: String, val qty_base: Long)
+
+@Serializable
 data class SubmitBusinessTotalsDto(
     val outlets_visited: Int,
-    val sold_qty_base: Map<String, Long>,
-    val stock_issued_qty_base: Long,
-    val qc_qty_base: Long,
+    val sold: List<CategoryQtyBaseDto>,
+    val stock_issued: List<CategoryQtyBaseDto>,
+    val qc: List<CategoryQtyBaseDto>,
     val promotion_mtk: Long,
 )
 
@@ -151,7 +154,9 @@ class SalesSubmitDigestService(private val db: Database, private val clock: com.
         val visited = h.createQuery(
             "SELECT count(DISTINCT outlet_id) FROM app.visit WHERE user_id = :u AND business_date = :d AND visit_kind = 'sr_call' AND voided_at IS NULL AND outcome_code IS DISTINCT FROM 'abandoned'",
         ).bind("u", userId).bind("d", date).mapTo(Int::class.java).one()
-        val sold = h.createQuery(
+        fun byCategory(sql: String) = h.createQuery(sql).bind("u", userId).bind("d", date)
+            .map { rs, _ -> CategoryQtyBaseDto(rs.getString("cat"), rs.getLong("q")) }.list()
+        val sold = byCategory(
             """
             SELECT coalesce(s.category_code, '') AS cat, sum(ml.qty_base)::bigint AS q
               FROM app.memo_line ml
@@ -161,11 +166,15 @@ class SalesSubmitDigestService(private val db: Database, private val clock: com.
                AND ml.voided_at IS NULL AND ml.line_kind = 'sale'
              GROUP BY 1 HAVING sum(ml.qty_base) > 0 ORDER BY 1
             """.trimIndent(),
-        ).bind("u", userId).bind("d", date).map { rs, _ -> rs.getString("cat") to rs.getLong("q") }.list().toMap(sortedMapOf())
-        val issued = h.createQuery("SELECT coalesce(sum(qty_base), 0)::bigint FROM app.stock_movement WHERE user_id = :u AND business_date = :d AND voided_at IS NULL AND kind = 'issue'")
-            .bind("u", userId).bind("d", date).mapTo(Long::class.java).one()
-        val qc = h.createQuery("SELECT coalesce(sum(qty_base), 0)::bigint FROM app.qc_line WHERE user_id = :u AND business_date = :d AND voided_at IS NULL")
-            .bind("u", userId).bind("d", date).mapTo(Long::class.java).one()
+        )
+        val issued = byCategory(
+            "SELECT coalesce(s.category_code, '') AS cat, sum(sm.qty_base)::bigint AS q FROM app.stock_movement sm JOIN app.sku s ON s.id = sm.sku_id " +
+                "WHERE sm.user_id = :u AND sm.business_date = :d AND sm.voided_at IS NULL AND sm.kind IN ('issue', 'adjustment') GROUP BY 1 HAVING sum(sm.qty_base) <> 0 ORDER BY 1",
+        )
+        val qc = byCategory(
+            "SELECT coalesce(s.category_code, '') AS cat, sum(q.qty_base)::bigint AS q FROM app.qc_line q JOIN app.sku s ON s.id = q.sku_id " +
+                "WHERE q.user_id = :u AND q.business_date = :d AND q.voided_at IS NULL GROUP BY 1 HAVING sum(q.qty_base) > 0 ORDER BY 1",
+        )
         val promo = h.createQuery(
             "SELECT coalesce(sum(offer_discount_mtk + drp_discount_mtk), 0)::bigint FROM app.memo m WHERE m.user_id = :u AND m.business_date = :d AND m.status = 'active' AND m.line_count > 0 AND m.voided_at IS NULL",
         ).bind("u", userId).bind("d", date).mapTo(Long::class.java).one()

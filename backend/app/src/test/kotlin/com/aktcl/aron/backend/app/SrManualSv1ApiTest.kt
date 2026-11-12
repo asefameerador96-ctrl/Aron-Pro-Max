@@ -91,7 +91,7 @@ class SrManualSv1ApiTest {
             val a = UUID.randomUUID().toString(); val b = UUID.randomUUID().toString(); val c = UUID.randomUUID().toString()
             val answer = sync(sr, listOf(
                 record("visit", visit(outlets[0], ""","call_photo_uuid":"$photo"""", 1), route, cu = a, family = a),
-                record("visit", visit(outlets[1], ""","call_photo_skip_reason":"permission_denied"""", 2), route, cu = b, family = b),
+                record("visit", visit(outlets[1], ""","call_photo_skip_reason_code":"permission_denied"""", 2), route, cu = b, family = b),
                 record("visit", visit(outlets[2], "", 3), route, cu = c, family = c),
             ))
             listOf(a, b, c).forEach { assertEquals("accepted", ack(answer, it).status()) }

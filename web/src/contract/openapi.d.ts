@@ -4643,7 +4643,7 @@ export interface components {
         /** @enum {string} */
         AttendanceKind: "check_in" | "check_out";
         /** @enum {string} */
-        MediaPurpose: "force_sale" | "outlet_capture" | "outlet_verification" | "survey" | "feedback" | "support" | "gift_photo" | "call_start";
+        MediaPurpose: "force_sale" | "outlet_capture" | "outlet_verification" | "survey" | "feedback" | "support" | "gift_photo" | "outlet_call";
         /** @enum {string} */
         SyncTrigger: "write_debounce" | "foreground" | "connectivity" | "workmanager_connectivity" | "periodic" | "manual" | "day_submit" | "checkout" | "resync" | "digest_resend" | "directive";
         /**
@@ -4659,10 +4659,10 @@ export interface components {
         /** @enum {string} */
         QuarantineStatus: "open" | "accepted" | "accepted_with_fix" | "discarded";
         /**
-         * @description Business code lists (docs/24 s12.1). `zero_sale_reason` (the four reasons of SR manual screenshot 32) from contract 1.14.0. `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
+         * @description Business code lists (docs/24 s12.1). `zero_sale_reason` (the four reasons of SR manual screenshot 32) and `call_photo_skip` from contract 1.14.0. `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
          * @enum {string}
          */
-        CodeListKey: "force_reason" | "edit_reason" | "void_reason" | "visit_outcome" | "skip_reason" | "day_exception_reason" | "stock_variance_reason" | "task_type" | "leave_type" | "feedback_category" | "qc_fault_type" | "payment_mode" | "outlet_close_reason" | "submit_void_reason" | "channel" | "sub_channel" | "geo_class" | "ticket_issue_type" | "ticket_resolution_code" | "zero_sale_reason";
+        CodeListKey: "force_reason" | "edit_reason" | "void_reason" | "visit_outcome" | "skip_reason" | "day_exception_reason" | "stock_variance_reason" | "task_type" | "leave_type" | "feedback_category" | "qc_fault_type" | "payment_mode" | "outlet_close_reason" | "submit_void_reason" | "channel" | "sub_channel" | "geo_class" | "ticket_issue_type" | "ticket_resolution_code" | "zero_sale_reason" | "call_photo_skip";
         /** @enum {string} */
         BundleSectionName: "outlets" | "open_memos" | "prices" | "offers" | "tasks" | "team" | "pending_outlet_requests" | "programmes" | "content";
         /**
@@ -5818,13 +5818,10 @@ export interface components {
             assessed_user_id?: number | null;
             fix: components["schemas"]["GeoFix"];
             geo: components["schemas"]["DeviceGeoVerdict"];
-            /** @description media_uuid of the outlet photo taken at call start (media purpose `call_start`, contract 1.14.0, SRM-A-27). Idempotent: the media record is keyed by this UUID. Null or absent when no photo was taken. */
+            /** @description media_uuid of the outlet photo taken at call start (media purpose `outlet_call`, ref type `visit`, contract 1.14.0, SRM-A-27). Idempotent: the media record is keyed by this UUID. Null or absent when no photo was taken. */
             call_photo_uuid?: components["schemas"]["Uuid"] | null;
-            /**
-             * @description Why no call-start photo was taken (a reasoned skip never blocks the sale). Allowed only when `call_photo_uuid` is null; any other combination is rejected `schema_invalid`.
-             * @enum {string|null}
-             */
-            call_photo_skip_reason?: "camera_failed" | "permission_denied" | "storage_full" | "other" | null;
+            /** @description Why no call-start photo was taken (code list `call_photo_skip`, first value `camera_unavailable`; a reasoned skip never blocks the sale). Allowed only when `call_photo_uuid` is null and the code is an active item of the list; any other combination is rejected `schema_invalid`. */
+            call_photo_skip_reason_code?: string | null;
             /**
              * @description Why the sale is made outside the geo-fence, chosen on the phone (contract 1.11.0, D-AMO-MAN-08). Allowed only when `geo.action` is `force_sale`; any other combination is rejected `schema_invalid`.
              * @enum {string|null}
@@ -6383,24 +6380,25 @@ export interface components {
             /** @description The business figures of the login's day, for the Sales Submit table (contract 1.14.0, SRM-B-25). Optional so an older server omits it; the record-count gate does not read it. */
             business_totals?: components["schemas"]["SubmitBusinessTotals"] | null;
         };
+        CategoryQtyBase: {
+            /** @description The SKU category code (cigarette, bidi, lighter, match). */
+            category_code: string;
+            /**
+             * Format: int64
+             * @description Base units (sticks
+             */
+            qty_base: number;
+        };
         /** @description Per login and business date, from the stored (not voided, not rejected) rows with the same rules as the dashboard aggregates (`dw.agg_daily_route`, `agg_daily_route_sku`): a memo counts when it is active with at least one line; a sale quantity is the `sale` lines only (free and DRP lines are left out); a visit counts when it is an `sr_call` that is not abandoned. The phone compares its own local figures (same rules, base units) with these; a difference means rows not yet acknowledged. */
         SubmitBusinessTotals: {
             /** @description Distinct outlets with a stored sr_call visit that is not abandoned. */
             outlets_visited: number;
-            /** @description Sold quantity in base units (sticks, pieces) per SKU category code (cigarette, bidi, lighter, match); a category with no sale is absent. */
-            sold_qty_base: {
-                [key: string]: number;
-            };
-            /**
-             * Format: int64
-             * @description Sum of stock_movement kind issue, base units.
-             */
-            stock_issued_qty_base: number;
-            /**
-             * Format: int64
-             * @description Sum of stored qc_line quantity, base units (a defect count, SRM-A-34).
-             */
-            qc_qty_base: number;
+            /** @description Sold quantity in base units (sticks, pieces) per SKU category code; live memos only (a superseded or voided memo is not counted), `sale` lines only. A category with no sale is absent. Ordered by category_code. */
+            sold: components["schemas"]["CategoryQtyBase"][];
+            /** @description Stock issued in base units per category: `stock_movement` kinds `issue` and `adjustment` (signed), not voided. Ordered by category_code. */
+            stock_issued: components["schemas"]["CategoryQtyBase"][];
+            /** @description Stored `qc_line` quantity in base units per category (a defect count, SRM-A-34), not voided. Ordered by category_code. */
+            qc: components["schemas"]["CategoryQtyBase"][];
             /** @description offer + DRP discount of the active memos, milli-taka; zero while the discount programmes are deferred. */
             promotion_mtk: components["schemas"]["MtkNonNegative"];
         };
@@ -7436,8 +7434,8 @@ export interface components {
             /** Format: int64 */
             route_id: number | null;
             photo_uuid: components["schemas"]["Uuid"] | null;
-            /** @enum {string|null} */
-            skip_reason: "camera_failed" | "permission_denied" | "storage_full" | "other" | null;
+            /** @description Code of the list `call_photo_skip`. */
+            skip_reason: string | null;
             /**
              * @description Null when no photo record has reached the server yet (the blob may still be queued on the phone).
              * @enum {string|null}

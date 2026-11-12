@@ -62,7 +62,7 @@ private fun review(call: io.ktor.server.application.ApplicationCall, d: CallPhot
     val rows = d.db.readJdbi.withHandle<List<Pair<CallPhotoReviewRowDto, Long>>, Exception> { h ->
         val sql = """
             SELECT v.id, v.client_uuid::text AS vu, v.business_date, v.opened_at, v.outlet_id, o.name AS outlet_name, v.user_id, u.full_name, v.route_id,
-                   v.call_photo_uuid::text AS photo, v.call_photo_skip_reason, m.status AS media_status, m.taken_at, m.fix_lat, m.fix_lng, m.fix_accuracy_m,
+                   v.call_photo_uuid::text AS photo, v.call_photo_skip_reason_code, m.status AS media_status, m.taken_at, m.fix_lat, m.fix_lng, m.fix_accuracy_m,
                    m.fix_is_mock, v.distance_m
               FROM app.visit v
               JOIN app.outlet o ON o.id = v.outlet_id
@@ -84,7 +84,7 @@ private fun review(call: io.ktor.server.application.ApplicationCall, d: CallPhot
             CallPhotoReviewRowDto(
                 rs.getString("vu"), rs.getObject("business_date", LocalDate::class.java).toString(), rs.getObject("opened_at", OffsetDateTime::class.java).toInstant().wire(),
                 rs.getLong("outlet_id"), rs.getString("outlet_name"), rs.getLong("user_id"), rs.getString("full_name"), rs.getObject("route_id") as Long?,
-                rs.getString("photo"), rs.getString("call_photo_skip_reason"), rs.getString("media_status"),
+                rs.getString("photo"), rs.getString("call_photo_skip_reason_code"), rs.getString("media_status"),
                 rs.getObject("taken_at", OffsetDateTime::class.java)?.toInstant()?.wire(), dbl("fix_lat"), dbl("fix_lng"), dbl("fix_accuracy_m"),
                 rs.getObject("fix_is_mock") as Boolean?, dbl("distance_m"),
             ) to rs.getLong("id")

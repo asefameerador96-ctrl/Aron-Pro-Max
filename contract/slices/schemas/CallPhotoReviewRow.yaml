@@ -50,12 +50,8 @@ CallPhotoReviewRow:
       type:
       - string
       - 'null'
-      enum:
-      - camera_failed
-      - permission_denied
-      - storage_full
-      - other
-      - null
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+      description: Code of the list `call_photo_skip`.
     media_status:
       type:
       - string

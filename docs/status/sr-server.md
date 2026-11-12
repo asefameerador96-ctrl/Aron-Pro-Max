@@ -7,7 +7,7 @@ Branch `lane/sr-server`, from INT `claude/wonderful-thompson-k6ejnf` (ab78d0d4).
 | item | rows | state |
 |---|---|---|
 | (a) zero-sale reason: `zero_sale_reason_code`, code list `zero_sale_reason`, ingest + server re-check, dw | SRM-A-40 | done (needs the Android reason picker, lane S4) |
-| (b) call photo: `call_photo_uuid`, `call_photo_skip_reason`, media purpose `call_start`, review read `getCallPhotoReview` | SRM-A-27 | done (needs the camera step, lane S4) |
+| (b) call photo: `call_photo_uuid`, `call_photo_skip_reason_code`, media purpose `outlet_call`, review read `getCallPhotoReview` | SRM-A-27 | done (needs the camera step, lane S4) |
 | (c) Sales Submit business totals in the digest | SRM-B-25 | done (needs lane S5 to show them) |
 | (d) outlet requests: `info` cluster_id, `route_add` keeps cluster, duplicate new-shop protection | SRM-B-35, 40, 42 | done server side (app must also reuse the request uuid on reopen: lane S2) |
 | (e) bundle `clusters`, cluster-creation record | SRM-B-33, 43, 44 | train 2 (new record type, table, portal approval) |

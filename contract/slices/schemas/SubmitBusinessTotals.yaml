@@ -7,9 +7,9 @@ SubmitBusinessTotals:
     with these; a difference means rows not yet acknowledged.'
   required:
   - outlets_visited
-  - sold_qty_base
-  - stock_issued_qty_base
-  - qc_qty_base
+  - sold
+  - stock_issued
+  - qc
   - promotion_mtk
   additionalProperties: false
   properties:
@@ -17,24 +17,24 @@ SubmitBusinessTotals:
       type: integer
       minimum: 0
       description: Distinct outlets with a stored sr_call visit that is not abandoned.
-    sold_qty_base:
-      type: object
-      description: Sold quantity in base units (sticks, pieces) per SKU category code (cigarette, bidi, lighter,
-        match); a category with no sale is absent.
-      additionalProperties:
-        type: integer
-        format: int64
-        minimum: 0
-    stock_issued_qty_base:
-      type: integer
-      format: int64
-      minimum: 0
-      description: Sum of stock_movement kind issue, base units.
-    qc_qty_base:
-      type: integer
-      format: int64
-      minimum: 0
-      description: Sum of stored qc_line quantity, base units (a defect count, SRM-A-34).
+    sold:
+      type: array
+      description: Sold quantity in base units (sticks, pieces) per SKU category code; live memos only (a superseded
+        or voided memo is not counted), `sale` lines only. A category with no sale is absent. Ordered by category_code.
+      items:
+        $ref: '#/components/schemas/CategoryQtyBase'
+    stock_issued:
+      type: array
+      description: 'Stock issued in base units per category: `stock_movement` kinds `issue` and `adjustment` (signed),
+        not voided. Ordered by category_code.'
+      items:
+        $ref: '#/components/schemas/CategoryQtyBase'
+    qc:
+      type: array
+      description: Stored `qc_line` quantity in base units per category (a defect count, SRM-A-34), not voided.
+        Ordered by category_code.
+      items:
+        $ref: '#/components/schemas/CategoryQtyBase'
     promotion_mtk:
       $ref: '#/components/schemas/MtkNonNegative'
       description: offer + DRP discount of the active memos, milli-taka; zero while the discount programmes are

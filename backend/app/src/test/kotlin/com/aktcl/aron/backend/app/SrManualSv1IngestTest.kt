@@ -180,7 +180,7 @@ class SrManualSv1IngestTest {
 
     @Test
     fun aZeroSaleReasonIsStoredOnceUnderDuplicatesAndAnyOrder() {
-        val codes = listOf("stock_available", "outlet_closed", "owner_absent", "insufficient_cash")
+        val codes = listOf("stock_available", "outlet_closed_during_visit", "absence_of_owner", "insufficient_cash")
         for (seed in 1..8) {
             val rnd = Random(seed)
             val v = uuid(); val c = uuid()
@@ -206,10 +206,10 @@ class SrManualSv1IngestTest {
             val a = send(sr, listOf(rec)).ack(rec)
             assertTrue(a.startsWith("rejected schema_invalid"), "$name: $a")
         }
-        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.code_list_item SET valid_to = DATE '2026-12-01' WHERE list_key = 'zero_sale_reason' AND code = 'owner_absent'") }
-        val retired = envelope("visit_close", uuid(), v, 1, closeJson(v, true, "owner_absent"), routeId)
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.code_list_item SET valid_to = DATE '2026-12-01' WHERE list_key = 'zero_sale_reason' AND code = 'absence_of_owner'") }
+        val retired = envelope("visit_close", uuid(), v, 1, closeJson(v, true, "absence_of_owner"), routeId)
         assertTrue(send(sr, listOf(retired)).ack(retired).startsWith("rejected schema_invalid"), "a retired code is refused")
-        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.code_list_item SET valid_to = NULL WHERE list_key = 'zero_sale_reason' AND code = 'owner_absent'") }
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.code_list_item SET valid_to = NULL WHERE list_key = 'zero_sale_reason' AND code = 'absence_of_owner'") }
         assertEquals(null, str("SELECT zero_sale_reason_code FROM app.visit WHERE client_uuid = '$v'"), "nothing was stored")
         assertEquals(null, str("SELECT close_client_uuid::text FROM app.visit WHERE client_uuid = '$v'"), "the visit stays open")
         // a close without a reason (older app) is still valid, and the first close stands
@@ -233,13 +233,13 @@ class SrManualSv1IngestTest {
         assertEquals(photo, str("SELECT call_photo_uuid::text FROM app.visit WHERE client_uuid = '$v1'"))
         val o3 = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.outlet WHERE route_id = $routeId ORDER BY id OFFSET 11 LIMIT 1").mapTo(Long::class.java).one() }
         val v2 = uuid()
-        val skip = envelope("visit", v2, v2, 0, visitJson(o3, ""","call_photo_skip_reason":"camera_failed"""", 31), routeId)
+        val skip = envelope("visit", v2, v2, 0, visitJson(o3, ""","call_photo_skip_reason_code":"camera_unavailable"""", 31), routeId)
         assertEquals("accepted", send(sr, listOf(skip)).ack(skip))
-        assertEquals("camera_failed", str("SELECT call_photo_skip_reason FROM app.visit WHERE client_uuid = '$v2'"))
+        assertEquals("camera_unavailable", str("SELECT call_photo_skip_reason_code FROM app.visit WHERE client_uuid = '$v2'"))
         val o4 = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.outlet WHERE route_id = $routeId ORDER BY id OFFSET 12 LIMIT 1").mapTo(Long::class.java).one() }
         for ((name, extra) in mapOf(
-            "both" to ""","call_photo_uuid":"${uuid()}","call_photo_skip_reason":"other"""",
-            "bad skip code" to ""","call_photo_skip_reason":"lazy"""",
+            "both" to ""","call_photo_uuid":"${uuid()}","call_photo_skip_reason_code":"other"""",
+            "bad skip code" to ""","call_photo_skip_reason_code":"lazy"""",
             "bad uuid" to ""","call_photo_uuid":"NOT-A-UUID"""",
         )) {
             val v = uuid()
@@ -248,13 +248,13 @@ class SrManualSv1IngestTest {
             assertTrue(a.startsWith("rejected"), "$name: $a")
             assertEquals(0L, count("SELECT count(*) FROM app.visit WHERE client_uuid = '$v'"), "$name: nothing stored")
         }
-        // a photo record of purpose call_start must belong to a visit
+        // a photo record of purpose outlet_call must belong to a visit
         val m = uuid()
         val media = envelope("media_meta", m, m, 0, json(
-            """{"purpose":"call_start","ref_type":"memo","ref_client_uuid":"${uuid()}","sha256":"${"ab".repeat(32)}","bytes":2000,"width":640,"height":480,"mime":"image/jpeg",
+            """{"purpose":"outlet_call","ref_type":"memo","ref_client_uuid":"${uuid()}","sha256":"${"ab".repeat(32)}","bytes":2000,"width":640,"height":480,"mime":"image/jpeg",
                "blob_path":"photos/$day/${uuid()}/$m.jpg","taken_at":"${day}T03:40:00Z"}""",
         ), routeId)
-        assertTrue(send(sr, listOf(media)).ack(media).startsWith("rejected"), "call_start on a memo is refused")
+        assertTrue(send(sr, listOf(media)).ack(media).startsWith("rejected"), "outlet_call on a memo is refused")
     }
 
     // ---------------------------------------------------------------------------------------------- (c) business totals
@@ -268,7 +268,8 @@ class SrManualSv1IngestTest {
         val after = fresh.db.jdbi.withHandle<com.aktcl.aron.backend.sync.SubmitBusinessTotalsDto, Exception> { h -> svc.businessTotals(h, sr, java.time.LocalDate.parse("2027-01-03")) }
         val expectedBase = 3 * priced[3] + 2
         val cat = str("SELECT category_code FROM app.sku WHERE id = ${priced[0]}") ?: ""
-        assertEquals((before.sold_qty_base[cat] ?: 0L) + expectedBase, after.sold_qty_base[cat], "sold quantity in base units under the SKU's category")
+        fun List<com.aktcl.aron.backend.sync.CategoryQtyBaseDto>.of(c: String) = firstOrNull { it.category_code == c }?.qty_base ?: 0L
+        assertEquals(before.sold.of(cat) + expectedBase, after.sold.of(cat), "sold quantity in base units under the SKU's category")
         assertEquals(0L, after.promotion_mtk - before.promotion_mtk, "no discount while the programmes are deferred")
         assertTrue(after.outlets_visited >= before.outlets_visited + (if (before.outlets_visited == 0) 1 else 0), "the visit counts once")
         // the digest served by the ingest service carries the same figures
@@ -276,7 +277,7 @@ class SrManualSv1IngestTest {
         assertEquals(after, d.business_totals)
         // a login with nothing stored has an empty, well-formed block
         val none = fresh.db.jdbi.withHandle<com.aktcl.aron.backend.sync.SubmitBusinessTotalsDto, Exception> { h -> svc.businessTotals(h, sr2, java.time.LocalDate.parse("2027-01-03")) }
-        assertEquals(0, none.outlets_visited); assertTrue(none.sold_qty_base.isEmpty()); assertEquals(0L, none.qc_qty_base)
+        assertEquals(0, none.outlets_visited); assertTrue(none.sold.isEmpty()); assertTrue(none.stock_issued.isEmpty()); assertTrue(none.qc.isEmpty())
     }
 
     // ---------------------------------------------------------------------------------------------- (d) outlet requests
