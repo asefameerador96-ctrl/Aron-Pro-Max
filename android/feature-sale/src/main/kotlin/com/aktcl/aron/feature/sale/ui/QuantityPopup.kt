@@ -75,13 +75,14 @@ object QtyPopupTags {
 @Composable
 fun QuantityPopup(sku: SaleSku, qty: Long, stats: SkuStats?, onSave: (Long) -> Unit, onClose: () -> Unit) {
     val look = LocalAronLook.current
+    val c = com.aktcl.aron.core.ui.LocalAronColors.current
     var value by rememberSaveable { mutableLongStateOf(qty) }
     val unit = entryUnitLabel(sku.entryLabelKey)
     val name = skuDisplayName(sku)
     val usable = stats?.takeIf { it.unit == sku.entry.unit.wire }
     Dialog(onDismissRequest = onClose) {
         Column(
-            Modifier.fillMaxWidth().testTag(QtyPopupTags.POPUP).clip(RoundedCornerShape(AronLook.CardRadius + 4.dp)).background(Color(0xFFF1EAFB))
+            Modifier.fillMaxWidth().testTag(QtyPopupTags.POPUP).clip(RoundedCornerShape(AronLook.CardRadius + 4.dp)).background(c.accentContainer)
                 .heightIn(max = 640.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -115,13 +116,13 @@ fun QuantityPopup(sku: SaleSku, qty: Long, stats: SkuStats?, onSave: (Long) -> U
             ) {
                 QuickSteps.forCategory(sku.categoryCode).forEach { n ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        QuickButton("+" + localizedNumber(n), Modifier.weight(1f).testTag(QtyPopupTags.plus(n))) { value = (value + n).coerceAtMost(MaxLineQty) }
+                        QuickButton(localizedNumber(n), Modifier.weight(1f).testTag(QtyPopupTags.plus(n))) { value = (value + n).coerceAtMost(MaxLineQty) }
                         QuickButton("-" + localizedNumber(n), Modifier.weight(1f).testTag(QtyPopupTags.minus(n))) { value = (value - n).coerceAtLeast(0) }
                     }
                 }
             }
             Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Brush.horizontalGradient(listOf(Color(0xFFFF9800), Color(0xFFFFC107)))).padding(horizontal = 14.dp, vertical = 10.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SolidColor(c.warningContainer)).padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 StatLine(stringResource(R.string.qty_stat_prev), usable?.previousDay?.let { localizedNumber(it) }, QtyPopupTags.PREV)
@@ -133,8 +134,8 @@ fun QuantityPopup(sku: SaleSku, qty: Long, stats: SkuStats?, onSave: (Long) -> U
                     .testTag(QtyPopupTags.SAVE).background(Brush.horizontalGradient(listOf(look.purple, look.red))).clickable(role = Role.Button) { onSave(value) }.padding(horizontal = 28.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Icon(AronIcons.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-                Text(stringResource(R.string.qty_popup_save), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                Icon(AronIcons.Save, contentDescription = null, tint = look.onBar, modifier = Modifier.size(22.dp))
+                Text(stringResource(R.string.qty_popup_save), color = look.onBar, fontSize = 17.sp, fontWeight = FontWeight.Medium)
             }
             Spacer(Modifier.size(2.dp))
         }
@@ -144,7 +145,7 @@ fun QuantityPopup(sku: SaleSku, qty: Long, stats: SkuStats?, onSave: (Long) -> U
 @Composable
 private fun QuickButton(label: String, modifier: Modifier, onClick: () -> Unit) {
     Box(
-        modifier.heightIn(min = AronLook.Touch).clip(RoundedCornerShape(8.dp)).background(Color.White).clickable(role = Role.Button, onClick = onClick),
+        modifier.heightIn(min = AronLook.Touch).clip(RoundedCornerShape(8.dp)).background(LocalAronLook.current.card).clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { Text(label, color = LocalAronLook.current.purple, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
 }
@@ -152,8 +153,8 @@ private fun QuickButton(label: String, modifier: Modifier, onClick: () -> Unit) 
 @Composable
 private fun StatLine(label: String, value: String?, tag: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = Color(0xFF3A2200), fontSize = 16.sp, fontWeight = FontWeight.Medium)
-        Text(value ?: stringResource(R.string.qty_stat_na), color = Color(0xFF3A2200), fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.testTag(tag))
+        Text(label, color = com.aktcl.aron.core.ui.LocalAronColors.current.warningOnContainer, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+        Text(value ?: stringResource(R.string.qty_stat_na), color = com.aktcl.aron.core.ui.LocalAronColors.current.warningOnContainer, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.testTag(tag))
     }
 }
 

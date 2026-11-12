@@ -277,8 +277,8 @@ fun SaleEntryScreen(
     skuStats: Map<Long, com.aktcl.aron.feature.sale.domain.SkuStats> = emptyMap(),
 ) {
     val look = LocalAronLook.current
-    var askZero by remember { mutableStateOf(false) }
-    var askReason by remember { mutableStateOf(false) }
+    var askZero by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var askReason by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var popupSkuId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
     val lines = review?.lines.orEmpty().associateBy { it.sku.skuId }
     // a recent SKU is listed first, once: it leaves its category order (one row, one control set, per SKU); the list has no filter row

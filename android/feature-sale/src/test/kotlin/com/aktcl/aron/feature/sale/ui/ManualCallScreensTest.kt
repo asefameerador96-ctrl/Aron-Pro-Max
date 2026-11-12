@@ -75,6 +75,12 @@ class ManualCallScreensTest {
         assertEquals(MaxLineQty, big)
     }
 
+    @Test fun quickButtonsCarryNoPlusSignAsInTheManual() {
+        show(AppLanguage.EN) { QuantityPopup(cig, 0, null, {}, {}) }
+        compose.onNodeWithTag(QtyPopupTags.plus(20)).assertTextEquals("20")
+        compose.onNodeWithTag(QtyPopupTags.minus(20)).assertTextEquals("-20")
+    }
+
     @Test fun closeDropsTheHalfTypedNumber() {
         var saved: Long? = null; var closed = 0
         show(AppLanguage.EN) { QuantityPopup(cig, 3, null, { saved = it }, { closed++ }) }

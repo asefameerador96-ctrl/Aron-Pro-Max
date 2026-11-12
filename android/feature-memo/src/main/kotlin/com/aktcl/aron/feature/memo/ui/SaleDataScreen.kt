@@ -55,13 +55,13 @@ object SaleDataTags {
 }
 
 /** True when [iso] (`yyyy-MM-dd`) may be chosen on a day whose business date is [today]: today and the past, never the future. */
-fun saleDataSelectable(iso: String, today: String): Boolean = iso <= today
+fun saleDataSelectable(iso: String, today: String, oldest: String? = null): Boolean = iso <= today && (oldest == null || iso >= oldest)
 
 /**
  * "সেল ডাটা" (SR manual s8 / 23, D-SR-MAN-S4-04): the outlet's sales on one chosen date. A white date field with a purple outline and a
  * calendar icon opens the Material date picker with every date after [today] greyed and unselectable; the ISO date sits under the field;
  * then the table SKU / quantity / value and the total row. The quantity of each line is in its entry unit (packets, boxes, dozens: rule 5),
- * so the total row carries the value only (adding packets to dozens would mean nothing). A date with no sale says so.
+ * so the total row carries the value only (adding packets to dozens would mean nothing). A date inside the local window with no sale says so; dates older than the window ([oldest]) are disabled.
  * Reads the same local window and server fallback as [SaleHistoryScreen]; the AMO keeps that screen unchanged.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,6 +69,8 @@ fun saleDataSelectable(iso: String, today: String): Boolean = iso <= today
 fun SaleDataScreen(
     h: SaleHistory, today: String, outletLabel: String?, offlineBanner: Boolean, modifier: Modifier = Modifier,
     skuName: (Long) -> String = { it.toString() }, skuUnit: (Long) -> String = { "" }, skuCategory: (Long) -> String? = { null },
+    /** The oldest date the phone holds sales for (the local window); older dates are disabled in the picker instead of reading "no sale". Null = no lower limit. */
+    oldest: String? = null,
 ) {
     val look = LocalAronLook.current
     var picked by rememberSaveable { mutableStateOf<String?>(null) }
@@ -110,11 +112,11 @@ fun SaleDataScreen(
         }
     }
     if (open) {
-        val limit = LocalDate.parse(today).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli()
         val state = rememberDatePickerState(
             initialSelectedDateMillis = LocalDate.parse(iso).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli(),
             selectableDates = object : SelectableDates {
-                override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis <= limit
+                override fun isSelectableDate(utcTimeMillis: Long) =
+                    saleDataSelectable(Instant.ofEpochMilli(utcTimeMillis).atZone(ZoneOffset.UTC).toLocalDate().toString(), today, oldest)
                 override fun isSelectableYear(year: Int) = year <= LocalDate.parse(today).year
             },
         )
@@ -124,7 +126,7 @@ fun SaleDataScreen(
                 TextButton(onClick = {
                     state.selectedDateMillis?.let { ms ->
                         val d = Instant.ofEpochMilli(ms).atZone(ZoneOffset.UTC).toLocalDate().toString()
-                        if (saleDataSelectable(d, today)) picked = d
+                        if (saleDataSelectable(d, today, oldest)) picked = d
                     }
                     open = false
                 }) { Text(stringResource(R.string.sale_data_ok)) }

@@ -102,8 +102,6 @@ object OutletTags {
     const val ROW_LABEL = "out_row_label"
 }
 
-/** The yellow-orange status dot before each outlet of the manual's list (s8 / 18). */
-private val OutletDot = Color(0xFFFFB300)
 
 /** What today's visits say about one outlet on the picker (screens-sr s5): visited with its memo total, or a skip outcome. */
 data class PickerMark(val visited: Boolean = false, val memoTotalMtk: Long? = null, val outcomeCode: String? = null)
@@ -233,7 +231,7 @@ private fun PickerRowView(r: PickerRow, mark: PickerMark?, showDistance: Boolean
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
             if (manualRow) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                    Box(Modifier.size(10.dp).clip(androidx.compose.foundation.shape.CircleShape).background(OutletDot).testTag(OutletTags.DOT))
+                    Box(Modifier.size(10.dp).clip(androidx.compose.foundation.shape.CircleShape).background(c.warning).testTag(OutletTags.DOT))
                     Text(localizedDigits(r.label), style = MaterialTheme.typography.titleSmall, color = look.ink, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag(OutletTags.ROW_LABEL))
                 }
             } else {
@@ -539,6 +537,8 @@ private fun niceScale(m: Double): Double {
 
 /** What the SR's call-start screen needs beyond the visit: the two outlet buttons and the "start the call first" answer (D-SR-MAN-S4-01). */
 class CallQuestion(
+    /** The outlet as `Name (code-phone-cluster)` in the pill at the top (manual note 19); shown on the relaunch path too. */
+    val outletLabel: String?,
     val onSaleHistory: () -> Unit,
     val onTodayTarget: () -> Unit,
     /** The cart bar's এগিয়ে যান before the call is started: the host shows the "Please start the call to continue." box. */
@@ -552,36 +552,36 @@ object CallQuestionTags {
     const val HISTORY = "call_q_history"
     const val TARGET = "call_q_target"
     const val QUESTION = "call_q_question"
+    const val OUTLET = "call_q_outlet"
+    const val FIRST_BOX = "call_q_first_box"
     const val YES = "call_q_yes"
     const val NO = "call_q_no"
     const val PROCEED = "call_q_proceed"
 }
 
-private val HistoryBlue = Color(0xFFE3F2FD)
-private val HistoryBlueInk = Color(0xFF0D5AA7)
-private val TargetGreen = Color(0xFFE6F4EA)
-private val TargetGreenInk = Color(0xFF1E7B3A)
 
 @Composable
 private fun CallQuestionBlock(q: CallQuestion, onYes: (() -> Unit)?) {
     val look = LocalAronLook.current
+    val c = LocalAronColors.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+        q.outletLabel?.let { RetailerPickerField(value = it, placeholder = "", onClick = {}, modifier = Modifier.testTag(CallQuestionTags.OUTLET)) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            OutlineChip(stringResource(R.string.out_sale_history_btn), AronIcons.Clock, HistoryBlue, HistoryBlueInk, q.onSaleHistory, Modifier.weight(1f).testTag(CallQuestionTags.HISTORY))
-            OutlineChip(stringResource(R.string.out_today_target_btn), AronIcons.Target, TargetGreen, TargetGreenInk, q.onTodayTarget, Modifier.weight(1f).testTag(CallQuestionTags.TARGET))
+            OutlineChip(stringResource(R.string.out_sale_history_btn), AronIcons.Clock, c.accentContainer, c.accentOnContainer, q.onSaleHistory, Modifier.weight(1f).testTag(CallQuestionTags.HISTORY))
+            OutlineChip(stringResource(R.string.out_today_target_btn), AronIcons.Target, c.successContainer, c.successOnContainer, q.onTodayTarget, Modifier.weight(1f).testTag(CallQuestionTags.TARGET))
         }
         Column(Modifier.fillMaxWidth().padding(top = AronTokens.Space.S), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            Icon(AronIcons.Info, contentDescription = null, tint = HistoryBlueInk, modifier = Modifier.size(32.dp))
-            Text(stringResource(R.string.out_call_question), color = HistoryBlueInk, fontSize = 18.sp, textAlign = TextAlign.Center, modifier = Modifier.testTag(CallQuestionTags.QUESTION))
+            Icon(AronIcons.Info, contentDescription = null, tint = c.accentOnContainer, modifier = Modifier.size(32.dp))
+            Text(stringResource(R.string.out_call_question), color = c.accentOnContainer, fontSize = 18.sp, textAlign = TextAlign.Center, modifier = Modifier.testTag(CallQuestionTags.QUESTION))
         }
         com.aktcl.aron.core.ui.aron.AronPrimaryButton(
             stringResource(R.string.out_call_yes), { onYes?.invoke() }, Modifier.fillMaxWidth().testTag(CallQuestionTags.YES), enabled = onYes != null,
         )
         Box(
-            Modifier.fillMaxWidth().heightIn(min = AronLook.ButtonHeight).clip(RoundedCornerShape(AronLook.ButtonRadius)).background(Color(0xFF616161))
+            Modifier.fillMaxWidth().heightIn(min = AronLook.ButtonHeight).clip(RoundedCornerShape(AronLook.ButtonRadius)).background(look.panelDark)
                 .clickable(role = Role.Button, onClick = q.onNo).testTag(CallQuestionTags.NO),
             contentAlignment = Alignment.Center,
-        ) { Text(stringResource(R.string.out_call_no), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Medium) }
+        ) { Text(stringResource(R.string.out_call_no), color = look.onPanel, fontSize = 17.sp, fontWeight = FontWeight.Medium) }
     }
 }
 
@@ -614,8 +614,14 @@ private fun CallCartBar(onProceed: () -> Unit) {
     }
 }
 
-/** The English box of the manual (screenshot 19, right) with its Bangla line; ওকে closes it. */
+/** The box of the manual (screenshot 19, right): a warning triangle, the sentence (English line, then Bangla in Bangla mode) and ওকে. No title. */
 @Composable
 fun StartCallFirstDialog(onOk: () -> Unit) {
-    com.aktcl.aron.core.ui.AronInfoDialog(stringResource(R.string.out_call_first_title), stringResource(R.string.out_call_first), stringResource(R.string.out_ok), onOk)
+    val c = LocalAronColors.current
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onOk, containerColor = c.surfaceSolid, textContentColor = c.textPrimary,
+        icon = { Icon(AronIcons.Warning, contentDescription = null, tint = c.warning) },
+        text = { Text(stringResource(R.string.out_call_first), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().testTag(CallQuestionTags.FIRST_BOX)) },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onOk, modifier = Modifier.heightIn(min = AronTokens.Touch.Min)) { Text(stringResource(R.string.out_ok)) } },
+    )
 }

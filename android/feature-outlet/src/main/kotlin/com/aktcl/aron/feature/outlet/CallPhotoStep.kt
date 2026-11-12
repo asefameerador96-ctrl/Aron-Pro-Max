@@ -30,8 +30,9 @@ const val CALL_PHOTO_SKIP_CAMERA = "camera_unavailable"
 /**
  * The outlet photo at call start (SR manual s8 / 20, D-SR-MAN-S4-07): shown after হ্যাঁ, inside the geofence. The shutter takes the photo and
  * the fix together ([GeoPhotoBlock], one retake); the call continues once both exist. The camera never blocks the sale: [onSkip] lets the
- * rep go on without a photo, and the skip is recorded (flag plus [CALL_PHOTO_SKIP_CAMERA]) for the anti-fraud report. The photo is queued
- * as a media record with a client UUID, so it uploads later on Wi-Fi and a replay cannot double it.
+ * rep go on without a photo. TRAIN 1 records NOTHING about the skip or the photo against the visit (no contract field yet): the step is off
+ * in production (`SrSaleKit.callPhotoRequired = false`). TRAIN 2 must persist the photo UUID once per visit, record the skip with a mandatory
+ * reason ([CALL_PHOTO_SKIP_CAMERA] is the first code), and link the media record to the visit.
  */
 @Composable
 fun CallPhotoStep(state: GeoPhotoState, onShutter: () -> Unit, onContinue: () -> Unit, onSkip: (() -> Unit)?, modifier: Modifier = Modifier) {

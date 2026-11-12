@@ -143,7 +143,6 @@
     <string name="out_call_yes">Yes</string>
     <string name="out_call_no">No</string>
     <string name="out_proceed">Proceed</string>
-    <string name="out_call_first_title">Start the call</string>
     <string name="out_call_first">Please start the call to continue.</string>
     <string name="out_ok">OK</string>
     <string name="out_call_photo_title">Take a photo of the outlet</string>

@@ -37,9 +37,11 @@ class ManualCallStartTest {
 
     @Test fun theQuestionOffersYesNoHistoryAndTargetAndEachAnswersItsCallback() {
         var yes = 0; var no = 0; var hist = 0; var target = 0; var blocked = 0
-        val q = CallQuestion(onSaleHistory = { hist++ }, onTodayTarget = { target++ }, onProceedBlocked = { blocked++ }, onNo = { no++ })
+        val q = CallQuestion(outletLabel = "Ruku Store (2681268-01778553683-Agora Goli)", onSaleHistory = { hist++ }, onTodayTarget = { target++ }, onProceedBlocked = { blocked++ }, onNo = { no++ })
         show(AppLanguage.BN) { VisitCheckContent(open, {}, {}, {}, null, onStartCall = { yes++ }, callQuestion = q) }
         compose.onNodeWithText("আপনি কি কল শুরু করতে চান?").assertExists()
+        compose.onNodeWithTag(CallQuestionTags.OUTLET).assertExists() // the outlet stays on the call-start screen (manual note 19)
+        compose.onNodeWithText("Ruku Store", substring = true).assertExists()
         compose.onNodeWithText("Sale History").assertExists(); compose.onNodeWithText("আজকের টার্গেট").assertExists()
         compose.onNodeWithTag(CallQuestionTags.HISTORY).performClick(); compose.onNodeWithTag(CallQuestionTags.TARGET).performClick()
         compose.onNodeWithTag(CallQuestionTags.NO).performClick()
@@ -51,9 +53,10 @@ class ManualCallStartTest {
     @Test fun theBoxSaysStartTheCallFirstInEnglishAndBangla() {
         show(AppLanguage.EN) { StartCallFirstDialog {} }
         compose.onNodeWithText("Please start the call to continue.").assertExists()
+        compose.onNodeWithText("Start the call").assertDoesNotExist() // no title: a triangle, the sentence and ওকে only
     }
 
-    @Test fun banglaBoxKeepsTheManualsEnglishLineAndAddsBangla() {
+    @Test @Config(sdk = [36], qualifiers = "bn-rBD") fun banglaBoxKeepsTheManualsEnglishLineAndAddsBangla() {
         show(AppLanguage.BN) { StartCallFirstDialog {} }
         compose.onNodeWithText("Please start the call to continue.\nকল শুরু না করে বিক্রয় করা যাবে না।").assertExists()
         compose.onNodeWithText("ওকে").assertExists()

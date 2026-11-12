@@ -43,5 +43,8 @@ class SaleDataScreenTest {
         assertTrue(saleDataSelectable("2026-11-11", "2026-11-11")); assertTrue(saleDataSelectable("2026-11-10", "2026-11-11"))
         assertFalse(saleDataSelectable("2026-11-12", "2026-11-11")); assertFalse(saleDataSelectable("2027-01-01", "2026-11-11"))
         assertEquals("November 10, 2026", longDate("2026-11-10"))
+        // older than the local window: disabled in the picker instead of reading "no sale"
+        assertTrue(saleDataSelectable("2026-11-05", "2026-11-11", oldest = "2026-11-05"))
+        assertFalse(saleDataSelectable("2026-11-04", "2026-11-11", oldest = "2026-11-05"))
     }
 }

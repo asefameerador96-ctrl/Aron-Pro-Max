@@ -24,7 +24,6 @@ import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.database.repo.DayRefusal
 import com.aktcl.aron.feature.dayclose.SalesSubmitScreen
-import com.aktcl.aron.feature.memo.domain.SaleHistoryBuilder
 import com.aktcl.aron.feature.memo.ui.JourneyScreen
 import com.aktcl.aron.feature.memo.ui.KpiStripView
 import com.aktcl.aron.feature.memo.ui.MemoDetailView
@@ -39,7 +38,6 @@ import com.aktcl.aron.feature.outlet.VisitCheckContent
 import com.aktcl.aron.feature.outlet.VisitUiState
 import com.aktcl.aron.feature.sale.ui.EditReasonScreen
 import com.aktcl.aron.feature.sale.ui.SaleRoute
-import com.aktcl.aron.feature.sale.ui.StartCallPrompt
 import kotlinx.coroutines.launch
 
 /**
@@ -48,7 +46,7 @@ import kotlinx.coroutines.launch
  * (the sun switch lives on Home and in the sync sheet, screens-sr s0).
  */
 @Composable
-fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoSale: () -> Unit, onDone: () -> Unit) {
+fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoSale: () -> Unit, onDone: () -> Unit, onSaleData: (Boolean) -> Unit = {}) {
     val open by day.visitSession.current.collectAsState()
     val v = open ?: return
     val kit = day.sale
@@ -86,16 +84,20 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
         var showTarget by rememberSaveable(v.visitUuid) { mutableStateOf(false) }
         var startFirst by rememberSaveable(v.visitUuid) { mutableStateOf(false) }
         val h = history
+        // the frame's title is "সেল ডাটা" while that screen is up (the frame is SrApp's)
+        LaunchedEffect(h != null) { onSaleData(h != null) }
+        androidx.compose.runtime.DisposableEffect(Unit) { onDispose { onSaleData(false) } }
         BackHandler(enabled = h != null) { history = null }
         if (h != null) {
             com.aktcl.aron.feature.memo.ui.SaleDataScreen(
                 h, today = day.businessDate(), outletLabel = outletRow?.let { com.aktcl.aron.feature.outlet.OutletPicker.label(it) }, offlineBanner = true,
-                skuName = kit::skuName, skuCategory = kit::skuCategoryCode,
+                skuName = kit::skuName, skuCategory = kit::skuCategoryCode, oldest = kit.historyOldest(),
             )
             return
         }
         val q = com.aktcl.aron.feature.outlet.CallQuestion(
-            onSaleHistory = { scope.launch { history = SaleHistoryBuilder.build(kit.history(), v.outletId) } },
+            outletLabel = outletRow?.let { com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) } ?: kit.outletName(v.outletId),
+            onSaleHistory = { scope.launch { history = kit.saleHistory(v.outletId) } },
             onTodayTarget = { showTarget = true },
             onProceedBlocked = { startFirst = true },
         )
@@ -142,16 +144,9 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
     }
     val vm = viewModel(key = "sale-" + v.visitUuid) { kit.newSaleViewModel() }
     LaunchedEffect(v.visitUuid) { kit.prepare(); vm.start(kit.saleVisit(v)) }
-    // the quantity popup's আগের দিন and SDLW: this outlet's sales already on the phone (the 7-day local window); ADS stays N/A until the bundle carries it
+    // the quantity popup's আগের দিন and SDLW: this outlet's sales already on the phone (eight local days, SDLW is seven back); ADS stays N/A until the bundle carries it
     var skuStats by remember(v.visitUuid) { mutableStateOf<Map<Long, com.aktcl.aron.feature.sale.domain.SkuStats>>(emptyMap()) }
-    LaunchedEffect(v.visitUuid) {
-        val rows = com.aktcl.aron.core.common.orDefaultKeepingCancellation(emptyList()) {
-            SaleHistoryBuilder.build(kit.history(), v.outletId).days.flatMap { d ->
-                d.skuRows.map { r -> com.aktcl.aron.feature.sale.domain.StatRow(d.businessDate, r.skuId, r.qtyEntered, r.unitEntered) }
-            }
-        }
-        skuStats = com.aktcl.aron.feature.sale.domain.SkuStatsBuilder.build(rows, day.businessDate())
-    }
+    LaunchedEffect(v.visitUuid) { skuStats = kit.skuStats(v.outletId) }
     val outlet = day.dayData.collectAsState().value.outlets.firstOrNull { it.outletId == v.outletId }
     val route = day.dayData.collectAsState().value.route
     Column(Modifier.fillMaxSize()) {
@@ -213,7 +208,7 @@ private val outcomeRows = listOf(
 
 /** Memo menu, detail with Print, Edit and Mark paid, and the outlet's sale history (F-SR-030/031/032/054). */
 @Composable
-fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdit: (String) -> Unit) {
+fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdit: (String) -> Unit, onSaleData: (Boolean) -> Unit = {}) {
     val kit = day.sale
     val vm = viewModel(key = "memo-" + day.userId) { kit.newMemoViewModel() }
     val st by vm.state.collectAsState()
@@ -223,6 +218,8 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
     // tso-manual X4a (R-W-11): the push day_final_submitted pulls the delta; Mark Paid and Edit follow the lock while on screen
     var pulls by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { pulls++; vm.refresh() } }
+    LaunchedEffect(history != null) { onSaleData(history != null) }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { onSaleData(false) } }
     BackHandler(enabled = st.selected != null || history != null) { if (history != null) history = null else vm.open("") }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         val sel = st.selected
@@ -231,7 +228,7 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
             !st.loaded -> com.aktcl.aron.core.ui.aron.AronLoadingScreen()
             h != null -> com.aktcl.aron.feature.memo.ui.SaleDataScreen(
                 h, today = day.businessDate(), outletLabel = kit.outletName(sel?.memo?.outletId ?: 0L), offlineBanner = true,
-                skuName = kit::skuName, skuCategory = kit::skuCategoryCode,
+                skuName = kit::skuName, skuCategory = kit::skuCategoryCode, oldest = kit.historyOldest(),
             )
             sel == null -> MemoMenuScreen(st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
             else -> {
@@ -250,7 +247,7 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
                 )
                 AronSecondaryButton(
                     stringResource(R.string.sr_sale_history),
-                    { scope.launch { history = SaleHistoryBuilder.build(kit.history(), sel.memo.outletId) } },
+                    { scope.launch { history = kit.saleHistory(sel.memo.outletId) } },
                     Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.L),
                 )
                 ReprintDialogs(vm)

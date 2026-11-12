@@ -143,7 +143,6 @@
     <string name="out_call_yes">হ্যাঁ</string>
     <string name="out_call_no">না</string>
     <string name="out_proceed">এগিয়ে যান</string>
-    <string name="out_call_first_title">কল শুরু করুন</string>
     <string name="out_call_first">Please start the call to continue.\nকল শুরু না করে বিক্রয় করা যাবে না।</string>
     <string name="out_ok">ওকে</string>
     <string name="out_call_photo_title">আউটলেটের ছবি তুলুন</string>
