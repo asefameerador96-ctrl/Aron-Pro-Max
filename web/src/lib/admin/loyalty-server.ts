@@ -1,16 +1,16 @@
-// BFF handlers of the loyalty-programme writes (portal-loyalty-web, D-LOY-WEB-01): createProgramme, updateProgramme (If-Match),
-// status change, putProgrammeEnrolments, createGift, updateGift (If-Match). The browser sends the body (with its client request_uuid /
+// BFF handlers of the loyalty-programme writes (portal-loyalty-web, D-LOY-WEB-01/03): createProgramme, updateProgramme (If-Match),
+// setProgrammeStatus, putProgrammeEnrolments, createGift, updateGift (If-Match), all typed from the generated contract 1.13.0. The browser sends the body (with its client request_uuid /
 // batch_uuid); this layer checks the session, the role and the `loyalty` grant, validates the body again (zod, strict: no unknown
 // member) and forwards it with the token the browser never sees. The browser never sends scope: the API derives it from the token.
 // The API stays the authority on activation rights and every state rule (403 / 404 / 409 / 412 pass through unchanged).
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import type { Problem } from "@/contract/types";
-import { rawRequest } from "@/lib/api/raw";
+import { apiClient, outcome } from "@/lib/api/client";
 import { authenticate, problemResponse } from "@/lib/api/guard";
 import { toFieldErrors } from "@/components/admin/crud/validation";
 import { loadGrants } from "./modules";
-import { canActivateProgramme, canWriteGifts, canWriteLoyalty, GIFT_CODE, PROGRAMME_CODE, PROGRAMME_KINDS, TIER_CODE } from "./loyalty";
+import { canActivateProgramme, canWriteGifts, canWriteLoyalty, GIFT_CODE, PROGRAMME_CODE, PROGRAMME_KINDS, parseDecimal3, TIER_CODE } from "./loyalty";
 
 const UUID = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -18,27 +18,40 @@ const DEC3 = z.string().regex(/^\d{1,13}(\.\d{1,3})?$/); // not negative: a nega
 const REASON = z.string().trim().refine((v) => Array.from(v).length >= 10 && Array.from(v).length <= 500, { message: "reason" });
 const TIER = z.object({
   tier_code: z.string().regex(TIER_CODE),
-  label_en: z.string().min(1).max(60),
-  label_bn: z.string().max(60).nullable(),
-  threshold_value: DEC3.nullable(),
+  sort_order: z.number().int().min(1).max(10),
+  label_en: z.string().min(1).max(80),
+  label_bn: z.string().max(80).nullable().optional(),
+  threshold: DEC3.nullable().optional(),
   threshold_basis: z.literal("std"),
 }).strict();
-const CHANNEL = z.enum(["GT", "DCC", "Astha", "RCC", "MT", "HoReCa"]);
-const PROGRAMME = {
+/** Tiers: at most 10, unique codes, sort_order 1..n in order, thresholds (when given) rising by sort_order (the API stays the authority). */
+const TIERS = z.array(TIER).max(10).superRefine((tiers, ctx) => {
+  const codes = new Set<string>();
+  let last: bigint | null = null;
+  tiers.forEach((t, i) => {
+    if (codes.has(t.tier_code)) ctx.addIssue({ code: "custom", path: [i, "tier_code"], message: "duplicate" });
+    codes.add(t.tier_code);
+    if (t.sort_order !== i + 1) ctx.addIssue({ code: "custom", path: [i, "sort_order"], message: "order" });
+    const v = t.threshold == null ? null : parseDecimal3(t.threshold);
+    if (v !== null) {
+      if (last !== null && v <= last) ctx.addIssue({ code: "custom", path: [i, "threshold"], message: "not_rising" });
+      last = v;
+    }
+  });
+});
+const PROGRAMME_COMMON = {
   request_uuid: UUID,
-  kind: z.enum(PROGRAMME_KINDS),
-  code: z.string().regex(PROGRAMME_CODE),
   name_en: z.string().min(1).max(120),
   name_bn: z.string().max(120).nullable(),
   period_label: z.string().max(40).nullable(),
   active_from: DAY,
   active_to: DAY,
-  tiers: z.array(TIER).max(20),
-  channels: z.array(CHANNEL).max(6),
+  tiers: TIERS,
   change_reason: REASON,
 };
-const ProgrammeBody = z.object(PROGRAMME).strict();
-const ProgrammePatch = z.object({ version: z.number().int().min(1).max(9_999_999_999), ...PROGRAMME }).strict();
+// createProgramme and updateProgramme are closed in the contract: a create names kind and code; a patch never does.
+const ProgrammeBody = z.object({ ...PROGRAMME_COMMON, kind: z.enum(PROGRAMME_KINDS), code: z.string().regex(PROGRAMME_CODE) }).strict();
+const ProgrammePatch = z.object({ version: z.number().int().min(1).max(9_999_999_999), ...PROGRAMME_COMMON }).strict();
 const StatusBody = z.object({ request_uuid: UUID, to_status: z.enum(["active", "inactive"]), reason: REASON }).strict();
 const EnrolBody = z.object({
   batch_uuid: UUID,
@@ -53,10 +66,8 @@ const EnrolBody = z.object({
   }).strict()).min(1).max(20_000),
   change_reason: REASON,
 }).strict();
-const GIFT = {
+const GIFT_COMMON = {
   request_uuid: UUID,
-  programme_id: z.number().int().min(1),
-  code: z.string().regex(GIFT_CODE),
   name_en: z.string().min(1).max(120),
   name_bn: z.string().max(120).nullable(),
   points_cost: z.number().int().min(1).max(100_000).nullable(),
@@ -64,13 +75,14 @@ const GIFT = {
   status: z.enum(["active", "inactive"]),
   change_reason: REASON,
 };
-const GiftBody = z.object(GIFT).strict();
-const GiftPatch = z.object({ version: z.number().int().min(1).max(9_999_999_999), ...GIFT }).strict();
+const GiftBody = z.object({ ...GIFT_COMMON, programme_id: z.number().int().min(1), code: z.string().regex(GIFT_CODE) }).strict();
+const GiftPatch = z.object({ version: z.number().int().min(1).max(9_999_999_999), ...GIFT_COMMON }).strict();
 
 const ID = /^[0-9]{1,15}$/;
 const invalid = (e: z.ZodError): NextResponse => problemResponse(400, "ERR_VALIDATION", { errors: toFieldErrors(e, "") });
-const pass = (r: { ok: true; status: number; data: unknown } | { ok: false; status: number; problem: Problem }): NextResponse =>
-  r.ok ? NextResponse.json(r.data, { status: r.status }) : NextResponse.json(r.problem, { status: r.status, headers: { "Content-Type": "application/problem+json" } });
+const pass = (r: { ok: true; status: number; data: unknown } | { ok: false; status: number; problem: unknown }): NextResponse =>
+  r.ok ? NextResponse.json(r.data, { status: r.status }) : NextResponse.json(r.problem as Problem, { status: r.status, headers: { "Content-Type": "application/problem+json" } });
+const ifMatch = (version: number): string => `"${version}"`;
 
 type Auth = Exclude<Awaited<ReturnType<typeof authenticate>>, NextResponse>;
 async function gate(req: NextRequest, rule: "programme" | "gift") {
@@ -90,7 +102,7 @@ export async function handleProgrammeCreate(req: NextRequest): Promise<NextRespo
   if (g.res) return g.res;
   const parsed = ProgrammeBody.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
-  return g.auth!.finish(pass(await rawRequest({ method: "POST", path: "/v1/admin/programmes", token: g.auth!.session.at, body: parsed.data })));
+  return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).POST("/v1/admin/programmes", { body: parsed.data }))));
 }
 
 /** PATCH /api/bff/admin/loyalty/{id}: updateProgramme (a new version while draft); `version` is the row version for If-Match. */
@@ -101,7 +113,7 @@ export async function handleProgrammeUpdate(req: NextRequest, id: string): Promi
   const parsed = ProgrammePatch.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
   const { version, ...body } = parsed.data;
-  return g.auth!.finish(pass(await rawRequest({ method: "PATCH", path: `/v1/admin/programmes/${id}`, token: g.auth!.session.at, body, ifMatch: `"${version}"` })));
+  return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).PATCH("/v1/admin/programmes/{id}", { params: { path: { id: Number(id) }, header: { "If-Match": ifMatch(version) } }, body }))));
 }
 
 /** POST /api/bff/admin/loyalty/{id}/status: draft -> active is a Super Admin act; the API refuses it for others too. */
@@ -112,7 +124,7 @@ export async function handleProgrammeStatus(req: NextRequest, id: string): Promi
   const parsed = StatusBody.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
   if (parsed.data.to_status === "active" && !canActivateProgramme(g.role)) return g.auth!.finish(problemResponse(403, "ERR_FORBIDDEN"));
-  return g.auth!.finish(pass(await rawRequest({ method: "POST", path: `/v1/admin/loyalty/programmes/${id}/status`, token: g.auth!.session.at, body: parsed.data })));
+  return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).POST("/v1/admin/programmes/{id}/status", { params: { path: { id: Number(id) } }, body: parsed.data }))));
 }
 
 /** PUT /api/bff/admin/loyalty/{id}/enrolments: putProgrammeEnrolments (idempotent by batch_uuid, all or nothing). */
@@ -123,7 +135,7 @@ export async function handleEnrolments(req: NextRequest, id: string): Promise<Ne
   const parsed = EnrolBody.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
   if (parsed.data.rows.some((r) => r.programme_id !== Number(id))) return g.auth!.finish(problemResponse(400, "ERR_VALIDATION", { errors: [{ pointer: "/rows/programme_id", code: "invalid" }] }));
-  return g.auth!.finish(pass(await rawRequest({ method: "PUT", path: `/v1/admin/programmes/${id}/enrolments`, token: g.auth!.session.at, body: parsed.data })));
+  return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).PUT("/v1/admin/programmes/{id}/enrolments", { params: { path: { id: Number(id) } }, body: parsed.data }))));
 }
 
 /** POST /api/bff/admin/loyalty/gifts: createGift. Super Admin only (Q3 default). */
@@ -132,7 +144,7 @@ export async function handleGiftCreate(req: NextRequest): Promise<NextResponse> 
   if (g.res) return g.res;
   const parsed = GiftBody.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
-  return g.auth!.finish(pass(await rawRequest({ method: "POST", path: "/v1/admin/gifts", token: g.auth!.session.at, body: parsed.data })));
+  return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).POST("/v1/admin/gifts", { body: parsed.data }))));
 }
 
 /** PATCH /api/bff/admin/loyalty/gifts/{id}: updateGift (If-Match = the gift's version). */
@@ -143,5 +155,5 @@ export async function handleGiftUpdate(req: NextRequest, id: string): Promise<Ne
   const parsed = GiftPatch.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
   const { version, ...body } = parsed.data;
-  return g.auth!.finish(pass(await rawRequest({ method: "PATCH", path: `/v1/admin/gifts/${id}`, token: g.auth!.session.at, body, ifMatch: `"${version}"` })));
+  return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).PATCH("/v1/admin/gifts/{id}", { params: { path: { id: Number(id) }, header: { "If-Match": ifMatch(version) } }, body }))));
 }
