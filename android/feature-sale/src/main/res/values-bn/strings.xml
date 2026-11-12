@@ -61,7 +61,7 @@
     <string name="review_problem_qc_cap">একটি পণ্যের QC সর্বোচ্চ সীমার বেশি।</string>
     <string name="review_problem_other">অনুগ্রহ করে বিক্রয়টি দেখুন।</string>
     <string name="credit_title">পরিশোধিত টাকার পরিমাণ লিখুন</string>
-    <string name="credit_body">এখন আপনি খুচরা বিক্রেতার কাছ থেকে কত টাকা সংগ্রহ করছেন?</string>
+    <string name="credit_body">এখন আপনি রিটেইলার থেকে কত টাকা সংগ্রহ করছেন?</string>
     <string name="credit_paid_label">আদায়কৃত অর্থ</string>
     <string name="credit_due_label">বাকিঃ %1$s</string>
     <string name="credit_error">আদায়ের অঙ্ক মোটের চেয়ে কম হতে হবে।</string>
@@ -92,12 +92,12 @@
     <string name="qc_type_damaged_in_transit">স্টক ড্যামেজড – রুট সার্ভিস কালীন</string>
     <string name="qc_type_taste">স্বাদ সংক্রান্ত সমস্যা</string>
     <string name="qc_locked">এই আউটলেটে QC সম্পন্ন হয়েছে; বিক্রয় আর সম্পাদনা করা যাবে না।</string>
-    <string name="call_start_title">আপনি কি কল শুরু করতে চান?</string>
+    <string name="call_start_title">কল শুরু করবেন?</string>
     <string name="call_start_message">আপনি %1$s এ আছেন। এখনই কল শুরু করবেন?</string>
     <string name="edit_reason_title">দয়া করে বিক্রয় এডিট করার কারণ লিখুন</string>
     <string name="edit_reason_wrong_sku">ভুল SKU নির্বাচিত।</string>
-    <string name="edit_reason_wrong_quantity">ভুল SKU পরিমাণ</string>
-    <string name="edit_reason_wrong_price_type">প্রমোশন ইস্যু</string>
+    <string name="edit_reason_wrong_quantity">ভুল পরিমাণ</string>
+    <string name="edit_reason_wrong_price_type">ভুল মূল্যের ধরন</string>
     <string name="edit_denied_outside">বিক্রয় এডিট করা যায় শুধু দোকানে, জিওফেন্সের ভিতরে।</string>
     <string name="edit_denied_qc">এই আউটলেটে QC সম্পন্ন; বিক্রয় এডিট করা যাবে না।</string>
     <string name="edit_denied_superseded">এই মেমোর জায়গায় নতুন মেমো এসেছে।</string>

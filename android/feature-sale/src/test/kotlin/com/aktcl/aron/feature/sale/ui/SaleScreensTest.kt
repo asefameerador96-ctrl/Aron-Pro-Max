@@ -231,7 +231,7 @@ class CallPromptsTest {
     @Test fun editOffersThreeReasonsOrExplainsTheDenial() {
         var picked: String? = null
         compose.setContent { AronTheme(AppLanguage.EN) { EditReasonScreen(null, { picked = it.wire }) } }
-        compose.onNodeWithText("Wrong SKU quantity").performClick()
+        compose.onNodeWithText("Wrong quantity").performClick()
         assertEquals("wrong_quantity", picked)
     }
 

@@ -92,6 +92,7 @@ import com.aktcl.aron.feature.home.RoutePicker
 import com.aktcl.aron.feature.home.RoutePickerContent
 import com.aktcl.aron.feature.home.SettingsContent
 import com.aktcl.aron.core.sync.BundleOutcome
+import kotlinx.coroutines.flow.first
 import com.aktcl.aron.feature.outlet.ClusterOption
 import com.aktcl.aron.feature.outlet.ForceReason
 import com.aktcl.aron.feature.outlet.ForceSaleContent
@@ -415,13 +416,19 @@ fun SrApp(
                 onSupport = shell?.let { { screen = SrScreen.SUPPORT } },
                 onPrinter = { screen = SrScreen.PRINTER_DIAG },
                 onUpdateConfig = {
-                    // SRM-B-52 (owner question 5 default): pull the bundle and configuration now, applied in place
-                    if (!day.isOnline()) false else {
-                        startBundleDownload()
+                    // SRM-B-52 (owner question 5 default): pull the bundle and configuration now, applied in place.
+                    // A download already running is waited for and its outcome reported, never a second request.
+                    if (!day.isOnline()) com.aktcl.aron.feature.home.ConfigUpdate.FAILED else {
+                        if (day.dayData.value.downloading) day.dayData.first { !it.downloading } else startBundleDownload()
                         resumeTick++
-                        day.bundleOutcome.value.let { it == BundleOutcome.APPLIED || it == BundleOutcome.UNCHANGED || it == BundleOutcome.PREFETCH_PROMOTED }
+                        when (day.bundleOutcome.value) {
+                            BundleOutcome.APPLIED, BundleOutcome.PREFETCH_PROMOTED -> com.aktcl.aron.feature.home.ConfigUpdate.UPDATED
+                            BundleOutcome.UNCHANGED -> com.aktcl.aron.feature.home.ConfigUpdate.ALREADY_CURRENT
+                            else -> com.aktcl.aron.feature.home.ConfigUpdate.FAILED
+                        }
                     }
                 },
+                configDownloading = data.downloading,
                 submitPending = { day.salesSubmitPending() }, onSalesSubmit = { screen = SrScreen.SUBMIT },
                 onBack = goBack, sunlight = sunlight, onSunlight = onSunlight, sync = sync, onSync = openSync, health = health ?: deviceHealth,
             )

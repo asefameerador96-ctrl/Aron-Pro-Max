@@ -130,14 +130,16 @@
     <string name="hm_qty_unit_rem">%1$s %2$s + %3$s %4$s</string>
     <string name="set_printer">প্রিন্টার পরীক্ষা</string>
     <string name="set_update_config">Update Configuration</string>
-    <string name="set_update_config_busy">হালনাগাদ হচ্ছে…</string>
+    <string name="set_update_config_busy">আপডেট হচ্ছে…</string>
     <string name="set_config_done_title">Configuration updated Successfully!</string>
-    <string name="set_config_done_message">নতুন কনফিগারেশন এখনই প্রয়োগ হয়েছে। অ্যাপ বন্ধ করতে হবে না, আপনার দৈনন্দিন কাজ চালিয়ে যান।</string>
+    <string name="set_config_done_message">নতুন কনফিগারেশন চালু হয়েছে। অ্যাপ বন্ধ করতে হবে না, আপনার কাজ চালিয়ে যান।</string>
     <string name="set_config_failed_title">কনফিগারেশন আপডেট হয়নি</string>
-    <string name="set_config_failed_message">ইন্টারনেট চালু করে আবার চেষ্টা করুন। আপনার সংরক্ষিত কাজ নিরাপদ আছে।</string>
+    <string name="set_config_failed_message">নেটওয়ার্ক বা সার্ভারে সমস্যা হয়েছে। একটু পরে আবার চেষ্টা করুন। আপনার সংরক্ষিত কাজ নিরাপদ আছে।</string>
     <string name="set_ok">ওকে</string>
     <string name="set_submit_warning_title">আজকের বিক্রয় জমা দেওয়া হয়নি</string>
     <string name="set_submit_warning_message">লগ আউটের আগে বিক্রয় জমা দিন।</string>
     <string name="set_submit_warning_submit">বিক্রয় জমা</string>
     <string name="set_submit_warning_anyway">তবুও লগ আউট</string>
+    <string name="set_config_current_title">কনফিগারেশন হালনাগাদ আছে</string>
+    <string name="set_config_current_message">এই ফোনে সর্বশেষ কনফিগারেশন আগে থেকেই আছে।</string>
 </resources>

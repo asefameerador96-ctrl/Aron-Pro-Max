@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="out_picker_title">বিক্রয়</string>
-    <string name="out_picker_select">খুচরা বিক্রেতা নির্বাচন করুন</string>
+    <string name="out_picker_select">রিটেইলার নির্বাচন করুন</string>
     <string name="out_picker_empty">বিক্রয় চালিয়ে যেতে একজন খুচরা বিক্রেতা নির্বাচন করুন</string>
     <string name="out_picker_none">আজকের রুটে কোনো আউটলেট নেই</string>
     <string name="out_chip_all">All</string>
@@ -47,7 +47,7 @@
     <string name="out_req_cluster">ক্লাস্টার</string>
     <string name="out_req_route_add">এই আউটলেট আমার রুটে যোগ করুন</string>
     <string name="out_req_name">দোকানের নাম</string>
-    <string name="out_req_owner">মালিকের নাম</string>
+    <string name="out_req_owner">দোকানের মালিকের নাম</string>
     <string name="out_req_mobile">মোবাইল নম্বর</string>
     <string name="out_req_cluster_pick">ক্লাস্টার নির্বাচন করুন</string>
     <string name="out_req_note">কারণ বা মন্তব্য</string>

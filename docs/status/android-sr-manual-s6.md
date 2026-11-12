@@ -7,10 +7,10 @@ Branch `lane/android-sr-manual-s6` from INT `claude/wonderful-thompson-k6ejnf` (
 | Row | State | What |
 |---|---|---|
 | SRM-B-51 | done | `SettingsContent` (feature-home) opens with the reference tile grid, two per row: language drop-down tile (current language, menu বাংলা / English), PDA টু সাপোর্ট, Update Configuration, লগ আউট. The extra rows (sun, Wi-Fi photos, printer, device status, version, app update) follow as before. Tags kept (`set_support`, `set_logout`, `set_language`). Art: the settings gear for PDA and Update Configuration; the language and log-out tiles use the kit gradient square (no exit/globe art in the repo, owner/designer to supply). AMO and TSO settings are separate screens and untouched. |
-| SRM-B-52 | done, in place | New tile `onUpdateConfig` (suspend, returns applied or not). SR wires it to the bundle download (config rides the bundle; `downloadBundle` already applies it in place and refreshes `DayConfig`). Success dialog "Configuration updated Successfully!" + OK; offline or failed shows "Configuration not updated". **The app does not close** (owner question 5 default; nothing in the outbox is at risk). The vendor's "your app will be closed" sentence is replaced by an in-place sentence; Bangla body written by this lane, **needs the Opus Bangla check**. Tile label stays English "Update Configuration" in both languages (the manual shows it only in English). |
+| SRM-B-52 | done, in place | New tile `onUpdateConfig` (suspend, returns `ConfigUpdate` UPDATED / ALREADY_CURRENT / FAILED). SR wires it to the bundle download (config rides the bundle; `downloadBundle` applies it in place and refreshes `DayConfig`). A download already running is waited for and its outcome reported (no second request, no false failure); 304/UNCHANGED says the phone already has the latest configuration; failure text is neutral (network or server problem, saved work safe). The busy label follows the day's `downloading` flag plus a non-saved local flag, so a rotation cannot leave the tile stuck. **The app does not close** (owner question 5 default). Bangla texts as the lead worded them. Tile label stays English "Update Configuration" in both languages. |
 | SRM-B-53 | done (screen kept) | SR `SupportHost` shows the dialog সফল / ডাটা ফাইল পাঠানো হয়েছে। / ওকে once the file is confirmed sent (status Sent). New keys in core-system: `support_done_*`. The Support screen stays (tile opens it); title is "PDA টু সাপোর্ট" (SRM-B-98). AMO keeps its own English dialog (not in this lane's scope). |
 | SRM-B-54 | MATCH | none |
-| SRM-B-55 | done | `submitPending` + `onSalesSubmit` on `SettingsContent`; SR reads `SrDay.salesSubmitPending()` (today has a memo or visit in the outbox, no local Sales Submit, no Final Submit lock; offline read). The warning "আজকের বিক্রয় জমা দেওয়া হয়নি" offers "বিক্রয় জমা" (opens Sales Submit) or "তবুও লগ আউট" (continues to the normal confirm). AMO/TSO pass nothing, so no change there. |
+| SRM-B-55 | done | `submitPending` + `onSalesSubmit` on `SettingsContent`; SR reads `SrDay.salesSubmitPending()` (memo or visit today, no local Sales Submit, no Final Submit lock; offline read). The warning offers "বিক্রয় জমা" (opens Sales Submit) or "তবুও লগ আউট" (goes on to the normal confirm); back or a tap outside cancels and stays in Settings. A failed read falls back to the normal confirm (CancellationException rethrown). AMO/TSO pass nothing. |
 | SRM-B-56 | done | Attendance label now from `SrDay.checkoutEarliestText()` (cfg.day.checkout_earliest_time via `DayConfig`) instead of the literal "17:00". EN `review_credit_switch` is "Mark this sale as due". |
 | tutorial | no row in the table | the tutorial list exists (`tutorial_bn` shot); no change needed. |
 
@@ -19,11 +19,11 @@ Branch `lane/android-sr-manual-s6` from INT `claude/wonderful-thompson-k6ejnf` (
 | Row | State | What |
 |---|---|---|
 | 91 | MATCH | none |
-| 92 | done | `call_start_title` bn "আপনি কি কল শুরু করতে চান?", en "Do you want to start the call?" (body line kept). |
+| 92 | not changed | `call_start_title` stays as on INT ("কল শুরু করবেন?"): S4 (364c5596b) renders the call question itself in feature-outlet (`CallQuestionTags.QUESTION`). `call_start_title` is still used by `CallPrompts.kt` in feature-sale on that branch. |
 | 93 | deferred | আজকের টার্গেট / টার্গেট: target programme (docs/27), hook only. |
 | 94 | needs server | আগের দিন / ADS / SDLW need `outlet_sku_stats` (SV part A s7). Strings added with the data by the sale lane. |
-| 95 | done | `out_history` (feature-outlet), `history_title` (feature-memo) and `sr_sale_history` (app-sr) say "সেল ডাটা". The full-width button `sale_history` keeps "পূর্বের সেল ডাটা দেখুন": that is the exact manual button (SR-S-32) and the row does not list it. |
-| 96 | done | `edit_reason_wrong_quantity` "ভুল SKU পরিমাণ"; `edit_reason_wrong_price_type` "প্রমোশন ইস্যু" (en "Wrong SKU quantity", "Promotion issue"). The `EditReason` code sent to the server is unchanged. |
+| 95 | done | `out_history` (feature-outlet), `history_title` (feature-memo) and `sr_sale_history` (app-sr) say "সেল ডাটা". `sale_history` keeps "পূর্বের সেল ডাটা দেখুন" (the manual button SR-S-32). |
+| 96 | not changed (lead ruling) | `edit_reason_wrong_quantity` / `edit_reason_wrong_price_type` stay as on INT: they are AMO's legacy list and relabelling changes the meaning of a stored code. The SR list is S5's new keys `edit_reason_wrong_sku_qty` / `edit_reason_promotion_issue` with new wire codes. |
 | 97 | kept কারণ | Standard spelling kept (audit recommendation); the manual copied the vendor's "কারন". Lead/owner may overrule; one-line change in feature-sale values-bn. |
 | 98 | done | core-system `support_title` bn "PDA টু সাপোর্ট". |
 | 99 | done | see 53. |
@@ -33,16 +33,21 @@ Branch `lane/android-sr-manual-s6` from INT `claude/wonderful-thompson-k6ejnf` (
 | 103 to 107 | deferred | Astha, gifts, loyalty, target tile, নিশ্চিত করুন: programmes (docs/27, D-OWNER-SR-PROGRAMMES-01), strings come with those screens. |
 | 108 | not mine | journey দূরত্ব / মোট: S7 (B7). |
 | 109 | done | `kpi_visited` bn "আউটলেট ভ্রমণ". |
-| 110 | partly | খুচরা বিক্রেতা now in `out_picker_select` and `credit_body`. The dues dialogs keep "রিটেইলার": the manual's own quoted dialog (row 27) says "রিটেইলারের". The printed memo label "খুচরা বিক্রেতাঃ" is left (print wording only where the manual shows it; it shows no such label). |
-| 111 | done | `out_req_owner` "মালিকের নাম". |
+| 110 | not changed | খুচরা বিক্রেতা only where a screenshot shows it; `out_picker_select`, `credit_body` and the dues dialogs keep "রিটেইলার" (notes 18, 27; shared with AMO). Memo print label unchanged. |
+| 111 | manual prose vs screenshot, screenshot kept | `out_req_owner` stays "দোকানের মালিকের নাম" (notes 42:12, 43:31, 44:12; AMO manual too). |
 | 112 | intentional difference | The manual does not show the printed paper, so print labels (শূন্য মেমো, সংশোধিত মেমো, ক্রেডিট মেমো, দৈনিক সারাংশ) are unchanged. Layout untouched. |
 | 113 | done | `submit_success` "বিক্রয় সফল ভাবে জমা হয়েছে।". `memo_paid_done` outside the manual quote, unchanged. |
 
 ## Goldens re-recorded (wording legitimately changed)
-`credit_bn_prompt` (credit_body), `picker_bn_empty`, `picker_bn_light`, `picker_bn_sunlight` (picker title), `visit_in_bn_light`, `visit_in_bn_sunlight`, `visit_out_bn_light`, `visit_out_bn_sunlight` (out_history "সেল ডাটা"), `memo_bn_light` (KPI "আউটলেট ভ্রমণ"/history title), `review_en_light` ("Mark this sale as due"). No AMO or TSO golden changed. `settings_bn` is a record-only kit shot (no committed golden).
+`visit_in_bn_light`, `visit_in_bn_sunlight`, `visit_out_bn_light`, `visit_out_bn_sunlight` (out_history "সেল ডাটা"), `memo_bn_light` (KPI "আউটলেট ভ্রমণ"/history title), `review_en_light` ("Mark this sale as due"). No AMO or TSO golden changed. `settings_bn` is a record-only kit shot (no committed golden).
 
 ## Tests
-Wording assertions updated: `SaleScreensTest` ("Wrong SKU quantity"), `SrRefusalHostsTest`, `SrDayLockHostsTest` ("Do you want to start the call?"). New in `SettingsScreenTest`: update tile confirms in place; failure dialog; tile hidden without callback; logout warns, offers Sales Submit; "Log out anyway" reaches the normal confirm; nothing pending skips the warning.
+No existing test edited. New in `SettingsScreenTest`: update tile confirms in place, already-current text, failure dialog, busy while a download runs, tile hidden without callback; language drop-down switches; logout warns and offers Sales Submit, back cancels, "Log out anyway" reaches the normal confirm, nothing pending skips the warning, a failed read falls back to the confirm.
+
+## Shared-key effects that remain
+`support_title` "PDA টু সাপোর্ট" also changes the TSO Support heading; `kpi_visited` "আউটলেট ভ্রমণ" also reaches AMO: both match the AMO manual. `out_history` / `history_title` "সেল ডাটা" are shared with AMO's sale-data screens (matches the manual wording).
+
+_Not run on a device: all checks are JVM host tests, lint and Roborazzi._
 
 ## For others
 - S5: wire `sale_submit_plain`; keep the edit-reason code names.

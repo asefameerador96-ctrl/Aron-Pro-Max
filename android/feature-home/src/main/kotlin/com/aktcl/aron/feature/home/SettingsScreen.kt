@@ -15,10 +15,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronListRow
-import com.aktcl.aron.core.ui.aron.AronLogoutButton
 import com.aktcl.aron.core.ui.aron.AronScaffold as ParityScaffold
 import com.aktcl.aron.core.ui.aron.AronSwitchRow
-import com.aktcl.aron.core.ui.aron.AronTabs
 import com.aktcl.aron.core.ui.aron.AronTopBar as ParityTopBar
 import com.aktcl.aron.core.ui.R as CoreR
 import androidx.compose.foundation.layout.Column
@@ -33,6 +31,9 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import com.aktcl.aron.core.ui.AronYesButton
+import com.aktcl.aron.core.ui.AronNoButton
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -60,6 +61,9 @@ import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.core.ui.RowPosition
 import com.aktcl.aron.core.ui.SyncChipState
 import com.aktcl.aron.core.ui.localizedDigits
+
+/** What the Update Configuration tile found (SRM-B-52): a new one applied, the phone already had the latest, or it could not pull. */
+enum class ConfigUpdate { UPDATED, ALREADY_CURRENT, FAILED }
 
 object SettingsTags {
     const val LOGOUT = "set_logout"
@@ -109,11 +113,12 @@ fun SettingsContent(
     /** The device line (battery, free storage, pending uploads, last sync; moved here from Home): shown when non-null. */
     health: DeviceHealth? = null,
     /**
-     * "Update Configuration" tile (SRM-B-52): pulls the bundle and configuration now and returns true when the phone holds
-     * the current one (applied in place, nothing closes; owner question 5 default), false when it could not (offline, refused).
-     * Shown when non-null.
+     * "Update Configuration" tile (SRM-B-52): pulls the bundle and configuration now (applied in place, nothing closes; owner
+     * question 5 default) and says what it found. Shown when non-null. [configDownloading] is the day's own download flag, so a
+     * pull that something else started also shows the busy label.
      */
-    onUpdateConfig: (suspend () -> Boolean)? = null,
+    onUpdateConfig: (suspend () -> ConfigUpdate)? = null,
+    configDownloading: Boolean = false,
     /**
      * SRM-B-55: asked when Log out is tapped; true = today has sales or visits and no Sales Submit, so the rep is reminded
      * first. Null = no check (AMO, TSO and previews log out as before).
@@ -125,8 +130,10 @@ fun SettingsContent(
     val look = LocalAronLook.current
     var confirm by rememberSaveable { mutableStateOf(false) }
     var submitWarning by rememberSaveable { mutableStateOf(false) }
-    var configBusy by rememberSaveable { mutableStateOf(false) }
-    var configResult by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    // not saved: the pull's job lives in this composition's scope, so a recreated screen starts with the tile free again
+    var configRunning by remember { mutableStateOf(false) }
+    var configResult by rememberSaveable { mutableStateOf<ConfigUpdate?>(null) }
+    val configBusy = configRunning || configDownloading
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val language = LocalAppLanguage.current
     ParityScaffold(
@@ -150,7 +157,7 @@ fun SettingsContent(
                     add { m ->
                         AronTile(
                             stringResource(if (configBusy) R.string.set_update_config_busy else R.string.set_update_config), painterResource(CoreR.drawable.aron_art_settings),
-                            { if (!configBusy) { configBusy = true; scope.launch { val ok = try { run() } finally { configBusy = false }; configResult = ok } } },
+                            { if (!configBusy) { configRunning = true; scope.launch { try { configResult = run() } finally { configRunning = false } } } },
                             m.testTag(SettingsTags.UPDATE_CONFIG),
                         )
                     }
@@ -160,7 +167,11 @@ fun SettingsContent(
                         stringResource(R.string.set_logout), null,
                         {
                             if (submitPending == null) confirm = true
-                            else scope.launch { if (submitPending()) submitWarning = true else confirm = true }
+                            else scope.launch {
+                                // a failed read must not block Log out: it falls back to the normal confirm
+                                val pending = try { submitPending() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { false }
+                                if (pending) submitWarning = true else confirm = true
+                            }
                         },
                         m.testTag(SettingsTags.LOGOUT),
                     )
@@ -207,17 +218,19 @@ fun SettingsContent(
         }
     }
     if (submitWarning) {
-        AronConfirmDialog(
-            stringResource(R.string.set_submit_warning_title), stringResource(R.string.set_submit_warning_message),
-            stringResource(R.string.set_submit_warning_submit), stringResource(R.string.set_submit_warning_anyway),
-            onConfirm = { submitWarning = false; if (onSalesSubmit != null) onSalesSubmit() else confirm = true },
-            onDismiss = { submitWarning = false; confirm = true },
+        // back or a tap outside cancels and stays in Settings; only "Log out anyway" goes on to the logout confirm
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { submitWarning = false },
+            title = { Text(stringResource(R.string.set_submit_warning_title)) },
+            text = { Text(stringResource(R.string.set_submit_warning_message)) },
+            confirmButton = { AronYesButton(stringResource(R.string.set_submit_warning_submit), { submitWarning = false; if (onSalesSubmit != null) onSalesSubmit() }) },
+            dismissButton = { AronNoButton(stringResource(R.string.set_submit_warning_anyway), { submitWarning = false; confirm = true }) },
         )
     }
-    configResult?.let { ok ->
+    configResult?.let { r ->
         com.aktcl.aron.core.ui.AronInfoDialog(
-            stringResource(if (ok) R.string.set_config_done_title else R.string.set_config_failed_title),
-            stringResource(if (ok) R.string.set_config_done_message else R.string.set_config_failed_message),
+            stringResource(when (r) { ConfigUpdate.UPDATED -> R.string.set_config_done_title; ConfigUpdate.ALREADY_CURRENT -> R.string.set_config_current_title; ConfigUpdate.FAILED -> R.string.set_config_failed_title }),
+            stringResource(when (r) { ConfigUpdate.UPDATED -> R.string.set_config_done_message; ConfigUpdate.ALREADY_CURRENT -> R.string.set_config_current_message; ConfigUpdate.FAILED -> R.string.set_config_failed_message }),
             stringResource(R.string.set_ok), onDismiss = { configResult = null },
         )
     }
