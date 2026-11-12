@@ -73,4 +73,11 @@
     <string name="update_amo_updating">Updating the app</string>
     <string name="update_amo_version">Version %1$s available</string>
     <string name="update_amo_download">Download App &amp; Install</string>
+    <!-- the SR app's update page (SR manual screenshots 06 and 07, SRM-A-09/10) -->
+    <string name="update_sr_network_status">Network Status</string>
+    <string name="update_sr_online">Online</string>
+    <string name="update_sr_offline">Offline</string>
+    <string name="update_sr_downloading">Downloading %1$d%%</string>
+    <string name="update_sr_completed">Download completed</string>
+    <string name="update_sr_do_not_close">Please do not close the app while downloading</string>
 </resources>

@@ -386,4 +386,32 @@ class BundleDownloaderTest {
             r(BundleOutcome.FAILED, 500), r(BundleOutcome.FAILED, 429), r(BundleOutcome.FAILED, 400), r(BundleOutcome.FAILED), r(BundleOutcome.UNCHANGED),
         ))
     }
+
+    // ---- SR manual 08 (SRM-A-11): the real step counter "Processing(n/total)" ----
+
+    @Test fun anInlineBundleReportsTwoStepsThenDone() = runBlocking {
+        val seen = ArrayList<Pair<Int, Int>>()
+        assertEquals(BundleOutcome.APPLIED, downloader().download(progress = BundleProgress { d, t -> seen += d to t }).outcome)
+        assertEquals(listOf(1 to 2, 2 to 2), seen)
+    }
+
+    @Test fun aPagedBundleCountsTheHeadEachPageAndTheApplyAndNeverGoesBackwards() = runBlocking {
+        paged = true
+        val seen = ArrayList<Pair<Int, Int>>()
+        assertEquals(BundleOutcome.APPLIED, downloader().download(progress = BundleProgress { d, t -> seen += d to t }).outcome)
+        assertEquals(listOf(1 to 4, 2 to 4, 3 to 4, 4 to 4), seen)
+        assertEquals(200, db.referenceDao().outletCount())
+    }
+
+    @Test fun aNotModifiedAnswerReportsNoStepsAndAFailedDownloadNeverReportsDone() = runBlocking {
+        downloader().download()
+        val none = ArrayList<Pair<Int, Int>>()
+        assertEquals(BundleOutcome.UNCHANGED, downloader().download(progress = BundleProgress { d, t -> none += d to t }).outcome)
+        assertTrue(none.isEmpty())
+        paged = true; dropPage2 = 1
+        db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG)
+        val partial = ArrayList<Pair<Int, Int>>()
+        assertEquals(BundleOutcome.OFFLINE, downloader().download(progress = BundleProgress { d, t -> partial += d to t }).outcome)
+        assertTrue(partial.none { it.first == it.second })
+    }
 }

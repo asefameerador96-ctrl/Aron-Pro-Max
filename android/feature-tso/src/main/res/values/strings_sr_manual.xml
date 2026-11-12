@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SR manual 04 (SRM-A-06): the TSO's Device OTP screen. Bangla in values-bn. -->
+<resources>
+    <string name="tso_otp_title">Device OTP</string>
+    <string name="tso_otp_row">Device OTP (for SR phones)</string>
+    <string name="tso_otp_note">Give the 4-digit code to the rep who is setting up a new phone. It works once and expires. Needs internet.</string>
+    <string name="tso_otp_empty">No reps in your area are waiting for a code.</string>
+    <string name="tso_otp_offline">No connection. Codes are never kept on the phone: connect to the internet and pull to refresh.</string>
+    <string name="tso_otp_refused">This account cannot use Device OTP.</string>
+    <string name="tso_otp_unreadable">The server answer could not be read. Pull to refresh.</string>
+    <string name="tso_otp_issue_offline">No connection. The code was not issued. Try again online.</string>
+    <string name="tso_otp_issue_refused">The server did not issue a code (this rep may be outside your area, or too many codes were asked for). Try again later.</string>
+    <string name="tso_otp_issue">Issue OTP</string>
+    <string name="tso_otp_more">Show more</string>
+    <string name="tso_otp_valid_until">Valid until %1$s</string>
+    <string name="tso_otp_row_desc_code">%1$s, code %2$s</string>
+    <string name="tso_otp_row_desc_none">%1$s, no code yet</string>
+</resources>
