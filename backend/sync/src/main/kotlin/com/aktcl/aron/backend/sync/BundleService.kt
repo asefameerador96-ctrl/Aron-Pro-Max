@@ -22,6 +22,7 @@ import kotlinx.datetime.toJavaLocalDate
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -171,7 +172,15 @@ class BundleService(
                 supervisor = supReach?.let { SupervisorBundle.section(h, user.id, p.role, it, date, (plans.map { r -> r.routeId } + zonePlans.map { r -> r.routeId }).distinct()) },
                 reason_texts = ReasonTexts.ALL,
                 device_policy_version = configVersion,
-                programmes = null,
+                programmes = BundleProgrammes.section(
+                    h, own.map { it.route_id }, routes.flatMap { r -> r.outlets.map { it.outlet_id } }.toSet(), date, now,
+                    BundleProgrammes.Flags(
+                        loyalty = cfg.value("cfg.flag.loyalty_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
+                        astha = cfg.value("cfg.flag.astha_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
+                        superstar = cfg.value("cfg.flag.superstar_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
+                    ),
+                    cfg.value("cfg.astha.quarter_start_month", userChain)?.jsonPrimitive?.intOrNull ?: 1,
+                ),
                 content = BundleContent.content(h, date, date.plusDays(horizonDays.toLong()), routes.flatMap { r -> r.outlets.map { it.outlet_id } }.toSet()),
                 tutorials = emptyList(),
             )
