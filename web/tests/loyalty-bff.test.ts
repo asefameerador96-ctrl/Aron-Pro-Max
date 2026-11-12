@@ -111,7 +111,7 @@ describe("create (a draft, version 1) and its replay", () => {
     expect((await create(c, bodyNotRising)).status).toBe(400);
     const direct = await fetch(`${base}/v1/admin/programmes`, { method: "POST", headers: { Authorization: `Bearer ${await sessionToken(c)}`, "Content-Type": "application/json" }, body: JSON.stringify(bodyNotRising) });
     expect(direct.status).toBe(400);
-    expect((await problemOf(direct)).errors?.[0]).toEqual({ pointer: "/tiers/1/threshold", code: "not_rising" });
+    expect((await problemOf(direct)).errors?.[0]).toEqual({ pointer: "body.tiers", code: "thresholds_not_rising" });
     expect(((await (await api(c, "/v1/admin/programmes")).json()) as { items: { code: string }[] }).items.some((p) => p.code === "NEW-1")).toBe(false);
   });
   it("getProgramme returns the row with its ETag; a missing one is 404", async () => {
@@ -265,13 +265,192 @@ describe("gifts (Super Admin only)", () => {
 });
 
 describe("reads follow the grant", () => {
-  it("SUPERADMIN, a write ADMIN and a read ADMIN list; an ungranted ADMIN and a TSO get 403", async () => {
+  it("SUPERADMIN, a write ADMIN, a read ADMIN and a TSO list; an ungranted ADMIN gets 403", async () => {
     for (const who of [await superadmin(), await admin(), await reader()]) expect((await api(who, "/v1/admin/programmes")).status).toBe(200);
     expect((await api(await ungranted(), "/v1/admin/programmes")).status).toBe(403);
     expect((await api(await ungranted(), "/v1/admin/gifts")).status).toBe(403);
-    expect((await api(await as("tso334", "tso-pass-1"), "/v1/admin/programmes")).status).toBe(403);
+    expect((await api(await as("tso334", "tso-pass-1"), "/v1/admin/programmes")).status).toBe(200); // a TSO reads within its reach (docs/34), as the server does
   });
   it("the seed has the three states: active, draft, ended", async () => {
     expect((await list(await superadmin())).map((p) => `${p.code}:${p.status}`).sort()).toEqual(["ASTHA-Q3:inactive", "ASTHA-Q4:active", "DL-OCT:active", "SS-NOV:draft"]);
+  });
+});
+
+// ---- the mock equals the real server (D-LOY-WEB-04): pointers, codes, order of checks, reach ----
+const direct = async (c: Record<string, string>, method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
+  fetch(`${base}${path}`, { method, headers: { Authorization: `Bearer ${await sessionToken(c)}`, "Content-Type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
+const codeOf = async (r: Response) => ((await r.json()) as { code?: string }).code;
+
+describe("field errors carry the server's pointers and codes", () => {
+  it("body.* pointers with unknown_field, not_a_decimal, thresholds_not_rising", async () => {
+    const c = await superadmin();
+    const res = await direct(c, "POST", "/v1/admin/programmes", { ...prog({ extra: 1 }), tiers: [tier("gold", 1, "x1"), tier("silver", 2, "5"), tier("bronze", 3, "4")] });
+    expect(res.status).toBe(400);
+    const errs = (await problemOf(res)).errors!;
+    expect(errs).toContainEqual({ pointer: "body.extra", code: "unknown_field" });
+    expect(errs).toContainEqual({ pointer: "body.tiers[0].threshold", code: "not_a_decimal" });
+    expect(errs).toContainEqual({ pointer: "body.tiers", code: "thresholds_not_rising" });
+  });
+  it("status is refused on a create (use the status endpoint); header.If-Match is required on a patch", async () => {
+    const c = await superadmin();
+    expect((await problemOf(await direct(c, "POST", "/v1/admin/programmes", prog({ status: "active" })))).errors).toContainEqual({ pointer: "body.status", code: "use_status_endpoint" });
+    const d = (await (await create(c)).json()) as { programme_id: number };
+    const noHeader = await direct(c, "PATCH", `/v1/admin/programmes/${d.programme_id}`, progPatch({ request_uuid: U(60) }));
+    expect(noHeader.status).toBe(400);
+    expect((await problemOf(noHeader)).errors).toContainEqual({ pointer: "header.If-Match", code: "required" });
+  });
+  it("an unknown member of the status body and of an enrolment row is refused", async () => {
+    const c = await superadmin();
+    const st = await direct(c, "POST", "/v1/admin/programmes/1/status", { request_uuid: U(61), to_status: "inactive", reason: REASON, extra: 1 });
+    expect((await problemOf(st)).errors).toContainEqual({ pointer: "body.extra", code: "unknown_field" });
+    const en = await direct(c, "PUT", "/v1/admin/programmes/1/enrolments", { batch_uuid: U(62), change_reason: REASON, rows: [{ programme_id: 1, outlet_id: 5, valid_from: "2027-01-01", extra: 1 }] });
+    expect((await problemOf(en)).errors).toContainEqual({ pointer: "body.rows[0].extra", code: "unknown_field" });
+  });
+  it("query values outside the enum are 400 and the filters are honoured", async () => {
+    const c = await superadmin();
+    expect((await problemOf(await api(c, "/v1/admin/programmes?status=bogus"))).errors).toEqual([{ pointer: "query.status", code: "not_in_enum" }]);
+    expect((await api(c, "/v1/admin/programmes?kind=bogus")).status).toBe(400);
+    expect((await api(c, "/v1/admin/gifts?status=draft")).status).toBe(400); // gifts are active or inactive
+    const act = ((await (await api(c, "/v1/admin/programmes?status=active&kind=astha")).json()) as { items: { code: string }[] }).items;
+    expect(act.map((p) => p.code)).toEqual(["ASTHA-Q4"]);
+    await giftUpdate(c, 1, { ...{ request_uuid: U(63), name_en: "Kitchen rack", name_bn: null, points_cost: 200, tier_codes: [], status: "inactive", change_reason: REASON }, version: 1 });
+    expect(((await (await api(c, "/v1/admin/gifts?status=inactive")).json()) as { items: { code: string }[] }).items.map((g) => g.code)).toEqual(["kitchen_rack"]);
+  });
+});
+
+describe("409 codes and the order of checks", () => {
+  it("non-draft patch = ERR_REQUEST_STATE; taken code = ERR_MASTER_DUPLICATE_CODE; reused uuid = ERR_CONFLICT; ended programme enrolment / gift = ERR_REQUEST_STATE; overlap = ERR_MASTER_OVERLAP", async () => {
+    const c = await superadmin();
+    const live = (await list(c)).find((p) => p.code === "ASTHA-Q4")!;
+    expect(await codeOf(await patch(c, live.programme_id, { ...progPatch({ request_uuid: U(64) }), version: live.version }))).toBe("ERR_REQUEST_STATE");
+    expect(await codeOf(await create(c, prog({ request_uuid: U(65), code: "ASTHA-Q4" })))).toBe("ERR_MASTER_DUPLICATE_CODE");
+    expect((await create(c, prog({ request_uuid: U(66) }))).status).toBe(201);
+    expect(await codeOf(await create(c, prog({ request_uuid: U(66), name_en: "Other" })))).toBe("ERR_CONFLICT");
+    expect(await codeOf(await enrol(c, 4, { batch_uuid: U(67), rows: [{ programme_id: 4, outlet_id: 5, tier_code: "gold", valid_from: "2027-01-01" }], change_reason: REASON }))).toBe("ERR_REQUEST_STATE");
+    expect(await codeOf(await gift(c, { request_uuid: U(68), programme_id: 4, code: "late_gift", name_en: "Late", name_bn: null, points_cost: 5, tier_codes: [], status: "active", change_reason: REASON }))).toBe("ERR_REQUEST_STATE");
+    const row = (outlet: number, from: string, to: string | null) => ({ programme_id: 1, outlet_id: outlet, tier_code: "gold", valid_from: from, valid_to: to });
+    expect((await enrol(c, 1, { batch_uuid: U(69), rows: [row(7, "2027-01-01", "2027-02-01")], change_reason: REASON })).status).toBe(200);
+    expect(await codeOf(await enrol(c, 1, { batch_uuid: U(70), rows: [row(7, "2027-01-15", null)], change_reason: REASON }))).toBe("ERR_MASTER_OVERLAP");
+    expect((await enrol(c, 1, { batch_uuid: U(71), rows: [row(7, "2027-02-01", null)], change_reason: REASON })).status).toBe(200); // back to back: the end is exclusive
+    expect(await codeOf(await enrol(c, 1, { batch_uuid: U(69), rows: [row(8, "2027-01-01", null)], change_reason: REASON }))).toBe("ERR_CONFLICT"); // batch_uuid reused with other content
+  });
+  it("a stale ETag on a non-draft programme is 409 before 412; on a draft it is 412", async () => {
+    const c = await superadmin();
+    const live = (await list(c)).find((p) => p.code === "ASTHA-Q4")!;
+    expect((await direct(c, "PATCH", `/v1/admin/programmes/${live.programme_id}`, progPatch({ request_uuid: U(72) }), { "If-Match": '"99"' })).status).toBe(409);
+    const d = (await (await create(c)).json()) as { programme_id: number };
+    expect((await direct(c, "PATCH", `/v1/admin/programmes/${d.programme_id}`, progPatch({ request_uuid: U(73) }), { "If-Match": '"99"' })).status).toBe(412);
+  });
+  it("an ADMIN who activates gets 403 before any state check (even on an already active programme)", async () => {
+    const a = await admin();
+    const r = await direct(a, "POST", "/v1/admin/programmes/1/status", { request_uuid: U(74), to_status: "active", reason: REASON });
+    expect(r.status).toBe(403);
+  });
+});
+
+describe("no_change: a save that changes nothing is 400 and makes no version", () => {
+  it("programme patch and gift patch", async () => {
+    const c = await superadmin();
+    const d = (await (await create(c)).json()) as { programme_id: number; version: number };
+    const same = { ...progPatch({ request_uuid: U(75) }), version: d.version };
+    const res = await patch(c, d.programme_id, same);
+    expect(res.status).toBe(400);
+    expect((await problemOf(res)).errors).toContainEqual({ pointer: "body", code: "no_change" });
+    expect((await list(c)).find((p) => p.programme_id === d.programme_id)!.version_no).toBe(1);
+    const g = await gift(c, { request_uuid: U(76), programme_id: 2, code: "tea_set", name_en: "Tea set", name_bn: null, points_cost: 90, tier_codes: [], status: "active", change_reason: REASON });
+    const gid = ((await g.json()) as { gift_id: number }).gift_id;
+    const gp = { request_uuid: U(77), name_en: "Tea set", name_bn: null, points_cost: 90, tier_codes: [], status: "active", change_reason: REASON, version: 1 };
+    const gr = await giftUpdate(c, gid, gp);
+    expect(gr.status).toBe(400);
+    expect((await problemOf(gr)).errors).toContainEqual({ pointer: "body", code: "no_change" });
+  });
+  it("editing a draft that HAS scope and qualifying keeps both unchanged (the patch leaves them out)", async () => {
+    const c = await superadmin();
+    const before = (await list(c)).find((p) => p.code === "SS-NOV")! as unknown as { programme_id: number; version: number; scope: unknown; qualifying: unknown };
+    expect(before.scope).toEqual([{ node_type: "sub_channel", node_id: 11 }, { node_type: "wing", node_id: 1 }]);
+    const res = await patch(c, before.programme_id, { ...progPatch({ request_uuid: U(78), name_en: "Superstar renamed", active_from: "2026-11-15", active_to: "2099-12-31", period_label: "2026-11", tiers: [] }), version: before.version });
+    expect(res.status).toBe(200);
+    const got = (await (await api(c, `/v1/admin/programmes/${before.programme_id}`)).json()) as { name_en: string; scope: unknown; qualifying: unknown; version_no: number };
+    expect(got).toMatchObject({ name_en: "Superstar renamed", version_no: 2 });
+    expect(got.scope).toEqual(before.scope);
+    expect(got.qualifying).toEqual(before.qualifying);
+  });
+});
+
+describe("other refusals the real server makes", () => {
+  it("unknown outlet = 400 not_found; an enrolment tier outside the tiers = unknown_tier; a programme without tiers takes any tier code", async () => {
+    const c = await superadmin();
+    const bad = await enrol(c, 1, { batch_uuid: U(80), rows: [{ programme_id: 1, outlet_id: 5000, tier_code: "nope", valid_from: "2027-01-01" }], change_reason: REASON });
+    expect(bad.status).toBe(400);
+    expect((await problemOf(bad)).errors).toEqual([{ pointer: "body.rows[0].tier_code", code: "unknown_tier" }, { pointer: "body.rows[0].outlet_id", code: "not_found" }]);
+    expect((await enrol(c, 2, { batch_uuid: U(81), rows: [{ programme_id: 2, outlet_id: 9, tier_code: "free_code", valid_from: "2027-01-01" }], change_reason: REASON })).status).toBe(200); // DL-OCT has no tiers
+  });
+  it("enrolment valid_to must be after valid_from (equal is refused)", async () => {
+    const res = await enrol(await superadmin(), 1, { batch_uuid: U(82), rows: [{ programme_id: 1, outlet_id: 9, tier_code: "gold", valid_from: "2027-01-01", valid_to: "2027-01-01" }], change_reason: REASON });
+    expect(res.status).toBe(400);
+    expect((await problemOf(res)).errors).toEqual([{ pointer: "body.rows[0].valid_to", code: "before_valid_from" }]);
+  });
+  it("gift tier_codes outside the current tiers = unknown_tier; the gift code is unique per programme, not global; an image asset must exist", async () => {
+    const c = await superadmin();
+    const g = (over: Record<string, unknown>) => ({ request_uuid: U(83), programme_id: 1, code: "mug", name_en: "Mug", name_bn: null, points_cost: null, tier_codes: ["gold"], status: "active", change_reason: REASON, ...over });
+    expect((await gift(c, g({ tier_codes: ["diamond"] }))).status).toBe(400);
+    expect((await gift(c, g({ request_uuid: U(84), tier_codes: ["gold"] }))).status).toBe(201);
+    expect(await codeOf(await gift(c, g({ request_uuid: U(85) })))).toBe("ERR_MASTER_DUPLICATE_CODE"); // same programme
+    expect((await gift(c, g({ request_uuid: U(86), programme_id: 2, tier_codes: [] }))).status).toBe(201); // another programme: the same code is fine
+    const img = await direct(c, "POST", "/v1/admin/gifts", g({ request_uuid: U(87), code: "mug2", image_asset_id: "0b6d6c0e-8a5b-4d56-9f0a-000000000001" }));
+    expect((await problemOf(img)).errors).toEqual([{ pointer: "body.image_asset_id", code: "not_found" }]);
+  });
+  it("ids are at least 1 with no leading zero", async () => {
+    const c = await superadmin();
+    for (const id of ["0", "007", "01"]) {
+      const res = await updatePatch(J(`/api/bff/admin/loyalty/${id}`, "PATCH", { ...progPatch(), version: 1 }, c), { params: Promise.resolve({ id }) });
+      expect(res.status, id).toBe(404);
+    }
+    expect((await api(c, "/v1/admin/programmes/007")).status).toBe(404);
+  });
+  it("versions and enrolments page by cursor", async () => {
+    const c = await superadmin();
+    const first = (await (await api(c, "/v1/admin/programmes/1/enrolments?limit=2")).json()) as { items: unknown[]; next_cursor: string | null };
+    expect(first.items).toHaveLength(2);
+    expect(first.next_cursor).not.toBeNull();
+    const second = (await (await api(c, `/v1/admin/programmes/1/enrolments?limit=2&cursor=${first.next_cursor}`)).json()) as { items: unknown[]; next_cursor: string | null };
+    expect(second.items).toHaveLength(1);
+    expect(second.next_cursor).toBeNull();
+    const d = (await (await create(c)).json()) as { programme_id: number; version: number };
+    await patch(c, d.programme_id, { ...progPatch({ request_uuid: U(88), name_en: "Second" }), version: d.version });
+    const v1 = (await (await api(c, `/v1/admin/programmes/${d.programme_id}/versions?limit=1`)).json()) as { items: { version_no: number }[]; next_cursor: string | null };
+    expect(v1.items.map((v) => v.version_no)).toEqual([2]);
+    expect(v1.next_cursor).not.toBeNull();
+  });
+});
+
+describe("roles below ADMIN read within their reach (same as the server)", () => {
+  it("NATIONAL reads everything, including a zone outside any reach; a write is 403", async () => {
+    const n = await as("nat1", "nat-pass-1");
+    expect(((await (await api(n, "/v1/admin/programmes")).json()) as { items: unknown[] }).items).toHaveLength(4);
+    expect((await api(n, "/v1/admin/programmes/1/enrolments?zone_id=99")).status).toBe(200);
+    expect((await create(n)).status).toBe(403);
+  });
+  it("BRAND: a programme of other brands is 404 and absent from the list; enrolments are 403; gifts of a hidden programme are hidden", async () => {
+    const s = await superadmin();
+    const hidden = (await (await direct(s, "POST", "/v1/admin/programmes", prog({ request_uuid: U(90), code: "OTHER-BRAND", qualifying: [{ product_level: "brand", product_id: 2 }] }))).json()) as { programme_id: number };
+    const b = await as("brand1", "brand-pass-1");
+    const codes = ((await (await api(b, "/v1/admin/programmes")).json()) as { items: { code: string }[] }).items.map((p) => p.code);
+    expect(codes).not.toContain("OTHER-BRAND");
+    expect(codes).toContain("DL-OCT");
+    expect((await api(b, `/v1/admin/programmes/${hidden.programme_id}`)).status).toBe(404);
+    expect((await api(b, "/v1/admin/programmes/1/enrolments")).status).toBe(403);
+    expect((await api(b, "/v1/admin/gifts")).status).toBe(200);
+  });
+  it("TSO / WM / DMO: a programme whose places lie outside the reach is 404; a zone outside the reach is 403", async () => {
+    for (const [u, p] of [["tso334", "tso-pass-1"], ["wm1", "wm-pass-1"], ["dmo1", "dmo-pass-1"]] as const) {
+      const c = await as(u, p);
+      const codes = ((await (await api(c, "/v1/admin/programmes")).json()) as { items: { code: string }[] }).items.map((x) => x.code);
+      expect(codes, u).not.toContain("SS-NOV"); // it names a wing
+      expect(codes, u).toContain("ASTHA-Q4");
+      expect((await api(c, "/v1/admin/programmes/3")).status, u).toBe(404);
+      expect((await api(c, "/v1/admin/programmes/1/enrolments?zone_id=99")).status, u).toBe(403);
+      expect((await api(c, "/v1/admin/programmes/1/enrolments?zone_id=14")).status, u).toBe(200);
+    }
   });
 });

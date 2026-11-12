@@ -1,5 +1,9 @@
 # Lane portal-loyalty-web (Lane L-B): status
 
+## Train 3 (D-LOY-WEB-04): the mock equals the server
+
+Server pointers/codes mapped to fields, per-action 409 messages, no-change detection, cursor paging for versions and enrolments, exclusive enrolment end, the server's other refusals and role reach in the mock, ids `^[1-9]\d{0,14}$`. Next: switch from the mock to the live API when L-A's routes are on INT (a base-URL change; run the e2e journeys against it).
+
 ## Train 2 (D-LOY-WEB-03): aligned to contract 1.13.0
 
 INT ce9d92bf7 merged. All loyalty calls are typed from the generated contract (no `rawRequest`), the contract paths replace the sketch paths, getProgramme/getGift serve the detail, closed ProgrammeWrite/Patch and GiftWrite/Patch bodies are sent, the progress panel says "not available yet" (no operation in 1.13.0), the channel checkboxes are gone (scope nodes need ids: see the decision), the tso-integration exception and the `/v1/admin/loyalty/**` map line are gone, and the `loginOk` landing wait (D-LOY-WEB-02) is included. Gate numbers are in the train 2 report. The Not-done list below still holds for pickers, image upload, read views and report rebuilds; the "switch to typed apiClient" item is done.

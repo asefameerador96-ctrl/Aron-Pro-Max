@@ -59,6 +59,8 @@ export const REASON_MAX = 500;
 export const PROGRAMME_CODE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/;
 export const TIER_CODE = /^[a-z][a-z0-9_]{1,40}$/;
 export const GIFT_CODE = /^[a-z][a-z0-9_]{1,40}$/;
+/** A path id: at least 1, no leading zeros. */
+export const ID_RE = /^[1-9]\d{0,14}$/;
 export const MAX_TIERS = 10; // contract: tiers maxItems 10, sort_order 1..10
 export const POINTS_MAX = 100_000;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -129,7 +131,7 @@ export function formFromProgramme(p: Programme): LoyaltyForm {
   };
 }
 
-export type FieldErrorCode = "required" | "invalid" | "pattern" | "too_long" | "range" | "duplicate" | "not_rising" | "too_many" | "reason_short" | "reason_long";
+export type FieldErrorCode = "required" | "invalid" | "pattern" | "too_long" | "range" | "duplicate" | "not_rising" | "too_many" | "reason_short" | "reason_long" | "unknown_tier" | "not_found";
 export interface FieldError { field: string; code: FieldErrorCode }
 const len = (s: string): number => Array.from(s.trim()).length;
 const isoDay = (s: string): boolean => DATE.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s);
@@ -247,7 +249,7 @@ export function validateEnrol(f: EnrolForm, programmeId: number, batchUuid: stri
   }
   if (!isoDay(f.valid_from)) err("valid_from", f.valid_from ? "invalid" : "required");
   if (f.valid_to && !isoDay(f.valid_to)) err("valid_to", "invalid");
-  else if (f.valid_to && isoDay(f.valid_from) && f.valid_to < f.valid_from) err("valid_to", "range");
+  else if (f.valid_to && isoDay(f.valid_from) && f.valid_to <= f.valid_from) err("valid_to", "range"); // the end is exclusive: it must be after the start
   const r = len(f.reason);
   if (r < REASON_MIN) err("reason", "reason_short");
   else if (r > REASON_MAX) err("reason", "reason_long");
@@ -269,3 +271,83 @@ export function nextAttempt(prev: { key: string; uuid: string } | null, key: str
 
 /** Activation answered on the client so the button says why: the active window must not have ended (Asia/Dhaka date). */
 export const activationBlocked = (activeTo: string, today: string): boolean => activeTo < today;
+
+// ---------- what the server says back (D-LOY-WEB-04) ----------
+
+/** The form field a server pointer names. The server writes "body.tiers[0].threshold", "body.rows[0].outlet_id", "header.If-Match"; the BFF's own
+ *  zod errors write "/tiers/0/threshold". Both styles map to the form's field names; null = not a field (shown in the banner). */
+export function pointerToField(pointer: string, form: "programme" | "gift" | "enrol"): string | null {
+  const p = pointer.replace(/^\/+/, "").replace(/^body[./]?/, "").replace(/\[(\d+)\]/g, ".$1").replace(/\//g, ".");
+  if (p === "" || pointer.startsWith("header.") || pointer.startsWith("query.")) return null;
+  if (form === "enrol") {
+    const m = /^rows\.\d+\.(\w+)$/.exec(p);
+    const k = m ? m[1]! : p === "change_reason" ? "reason" : null;
+    return k && ["outlet_id", "tier_code", "league_label", "base_target", "valid_from", "valid_to", "reason"].includes(k) ? k : null;
+  }
+  if (form === "gift") {
+    const k = p === "change_reason" ? "reason" : p === "points_cost" ? "points" : /^tier_codes(\.\d+)?$/.test(p) ? "tier_codes" : p;
+    return ["programme_id", "code", "name_en", "name_bn", "points", "tier_codes", "status", "reason"].includes(k) ? k : null;
+  }
+  if (p === "change_reason") return "reason";
+  const t = /^tiers\.(\d+)\.(tier_code|label_en|label_bn|threshold|sort_order)$/.exec(p);
+  if (t) return `tier.${t[1]}.${t[2] === "sort_order" ? "tier_code" : t[2]}`;
+  if (p === "tiers") return "tiers";
+  return ["kind", "code", "name_en", "name_bn", "period_label", "active_from", "active_to"].includes(p) ? p : null;
+}
+
+/** The server's field-error code as the form's message code. */
+export function serverFieldCode(code: string): FieldErrorCode {
+  switch (code) {
+    case "required": return "required";
+    case "pattern": return "pattern";
+    case "length": return "too_long";
+    case "out_of_range": case "before_active_from": case "before_valid_from": case "before_active_to": case "past": return "range";
+    case "thresholds_not_rising": case "not_rising": return "not_rising";
+    case "duplicate": case "duplicate_tier_code": case "duplicate_sort_order": return "duplicate";
+    case "unknown_tier": return "unknown_tier";
+    case "not_found": return "not_found";
+    case "negative": case "not_a_decimal": case "not_a_date": case "not_an_integer": case "not_a_uuid": case "wrong_purpose": return "invalid";
+    default: return "invalid";
+  }
+}
+
+/** Field errors of a problem body as {field: code}. A pointer that names no field of the form is returned in `rest` (for the banner). */
+export function fieldErrorsOf(errors: readonly { pointer: string; code: string }[] | undefined, form: "programme" | "gift" | "enrol"): { byField: Record<string, FieldErrorCode>; rest: { pointer: string; code: string }[] } {
+  const byField: Record<string, FieldErrorCode> = {};
+  const rest: { pointer: string; code: string }[] = [];
+  for (const e of errors ?? []) {
+    const f = pointerToField(e.pointer, form);
+    if (f) byField[f] ??= serverFieldCode(e.code);
+    else rest.push(e);
+  }
+  return { byField, rest };
+}
+
+export type WriteKind = "programme-create" | "programme-edit" | "status" | "enrol" | "gift";
+/** The message key for a failed write: 409 and 400 codes the server uses, said for the action that failed. null = use the generic problem text. */
+export function failureKey(status: number, code: string | undefined, errors: readonly { pointer: string; code: string }[] | undefined, kind: WriteKind): "loy.draft_only" | "loy.enrol.ended" | "loy.gifts.ended" | "loy.status.bad_move" | "loy.enrol.overlap" | "loy.err.duplicate_code" | "loy.err.reused" | "loy.err.no_change" | "loy.err.stale" | null {
+  if (status === 400 && (errors ?? []).some((e) => e.code === "no_change")) return "loy.err.no_change";
+  if (status === 412) return "loy.err.stale";
+  if (status === 409 && code === "ERR_REQUEST_STATE") return kind === "programme-edit" ? "loy.draft_only" : kind === "enrol" ? "loy.enrol.ended" : kind === "gift" ? "loy.gifts.ended" : kind === "status" ? "loy.status.bad_move" : null;
+  if (status === 409 && code === "ERR_MASTER_DUPLICATE_CODE") return "loy.err.duplicate_code";
+  if (status === 409 && code === "ERR_MASTER_OVERLAP") return "loy.enrol.overlap";
+  if (status === 409 && code === "ERR_CONFLICT") return "loy.err.reused";
+  return null;
+}
+
+// ---------- "nothing changed" (the server answers 400 no_change to a save that changes nothing) ----------
+
+const sortedTiers = (tiers: readonly Tier[]): Tier[] => [...tiers].sort((a, b) => a.sort_order - b.sort_order);
+const decNorm = (v: string | null | undefined): string | null => (v == null ? null : (() => { const d = parseDecimal3(v); return d === null ? v : decimal3Wire(d); })());
+/** The edit body against the programme as it is now: true when no member the form sends would change (name, period, dates, tiers). */
+export function programmeUnchanged(p: Programme, body: Pick<ProgrammePatch, "name_en" | "name_bn" | "period_label" | "active_from" | "active_to" | "tiers">): boolean {
+  const key = (t: Tier) => JSON.stringify([t.tier_code, t.sort_order, t.label_en, t.label_bn ?? null, decNorm(t.threshold), t.threshold_basis ?? "std"]);
+  const a = sortedTiers(p.tiers ?? []).map(key);
+  const b = sortedTiers(body.tiers ?? []).map(key);
+  return p.name_en === body.name_en && (p.name_bn || null) === (body.name_bn || null) && (p.period_label || null) === (body.period_label || null) && p.active_from === body.active_from && p.active_to === body.active_to && a.length === b.length && a.every((x, i) => x === b[i]);
+}
+/** The gift edit body against the gift as it is now. */
+export function giftUnchanged(g: Gift, body: Pick<GiftPatch, "name_en" | "name_bn" | "points_cost" | "tier_codes" | "status">): boolean {
+  const codes = (x: readonly string[] | undefined) => [...(x ?? [])].sort().join(",");
+  return g.name_en === body.name_en && (g.name_bn || null) === (body.name_bn || null) && (g.points_cost ?? null) === (body.points_cost ?? null) && codes(g.tier_codes) === codes(body.tier_codes) && g.status === body.status;
+}

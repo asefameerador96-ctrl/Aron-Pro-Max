@@ -8,14 +8,14 @@ import { Banner } from "@/components/kit/banner";
 import { Button } from "@/components/kit/button";
 import type { Problem } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
-import { emptyGiftForm, nextAttempt, validateGift, type FieldError, type GiftForm, type Tier } from "@/lib/admin/loyalty";
+import { emptyGiftForm, failureKey, fieldErrorsOf, giftUnchanged, nextAttempt, validateGift, type FieldError, type Gift, type GiftForm, type GiftPatch, type Tier } from "@/lib/admin/loyalty";
 import { tierName } from "@/lib/admin/loyalty-view";
 import { Field, inputClass } from "./kit/field";
 import { ReasonField } from "./kit/reason-field";
 
 export interface ProgrammeChoice { id: number; label: string; tiers: Tier[] }
 
-export function LoyaltyGiftForm({ mode, giftId, version, initial, programmes, cancelHref }: { mode: "create" | "edit"; giftId?: number; version?: number; initial?: GiftForm; programmes: ProgrammeChoice[]; cancelHref: string }) {
+export function LoyaltyGiftForm({ mode, giftId, version, initial, original, programmes, cancelHref }: { mode: "create" | "edit"; giftId?: number; version?: number; initial?: GiftForm; original?: Gift; programmes: ProgrammeChoice[]; cancelHref: string }) {
   const { t, problem, locale } = useI18n();
   const router = useRouter();
   const [f, setF] = useState<GiftForm>(initial ?? emptyGiftForm());
@@ -34,6 +34,10 @@ export function LoyaltyGiftForm({ mode, giftId, version, initial, programmes, ca
     for (const x of checked.errors as FieldError[]) map[x.field] = t(`loy.err.${x.code}` as MessageKey);
     setErrors(map);
     if (!checked.body) return;
+    if (mode === "edit" && original && giftUnchanged(original, checked.body as GiftPatch)) {
+      setBanner({ tone: "danger", text: t("loy.err.no_change") });
+      return;
+    }
     const { request_uuid: _drop, ...rest } = checked.body;
     void _drop;
     attempt.current = nextAttempt(attempt.current, `${mode}:${giftId ?? ""}:${JSON.stringify(rest)}`);
@@ -48,7 +52,11 @@ export function LoyaltyGiftForm({ mode, giftId, version, initial, programmes, ca
         router.refresh();
         return;
       }
-      setBanner({ tone: "danger", text: problem(data.code) });
+      const errs = data.errors as { pointer: string; code: string }[] | undefined;
+      const { byField } = fieldErrorsOf(errs, "gift");
+      setErrors(Object.fromEntries(Object.entries(byField).map(([f, c]) => [f, t(`loy.err.${c}` as MessageKey)])));
+      const key = failureKey(res.status, data.code, errs, "gift");
+      setBanner({ tone: "danger", text: key ? t(key) : problem(data.code) });
     } catch {
       setBanner({ tone: "danger", text: t("error.network") });
     } finally {
