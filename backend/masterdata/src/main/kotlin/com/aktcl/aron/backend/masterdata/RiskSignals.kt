@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.masterdata
 
+import com.aktcl.aron.backend.platform.exitIfFatal
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.ServerConfig
@@ -171,7 +172,7 @@ class RiskSignalJob(private val evaluator: RiskSignalEvaluator, private val cloc
             runCatching {
                 val today = AdminSupport.today(clock)
                 evaluator.evaluateDay(today); evaluator.evaluateDay(today.minusDays(1))
-            }.onFailure { log.error("risk signal evaluation failed", it) }
+            }.onFailure { it.exitIfFatal(log, "risk signals"); log.error("risk signal evaluation failed", it) }
         }, 1, everyMin, TimeUnit.MINUTES)
     }
 }

@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.masterdata
 
+import com.aktcl.aron.backend.platform.exitIfFatal
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.rules.BusinessDate
@@ -41,7 +42,7 @@ class OutletRequestLapseJob(private val db: Database, private val clock: AronClo
 
     fun start() {
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "outlet-request-lapse").apply { isDaemon = true } }.scheduleWithFixedDelay({
-            runCatching { runOnce() }.onSuccess { if (it > 0) log.info("outlet requests lapsed: {}", it) }.onFailure { log.error("outlet request lapse failed", it) }
+            runCatching { runOnce() }.onSuccess { if (it > 0) log.info("outlet requests lapsed: {}", it) }.onFailure { it.exitIfFatal(log, "outlet request lapse"); log.error("outlet request lapse failed", it) }
         }, 7, 60, TimeUnit.MINUTES)
     }
 }

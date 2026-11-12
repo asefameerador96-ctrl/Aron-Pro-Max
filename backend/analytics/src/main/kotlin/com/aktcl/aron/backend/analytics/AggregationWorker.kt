@@ -2,6 +2,7 @@ package com.aktcl.aron.backend.analytics
 
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
+import com.aktcl.aron.backend.platform.exitIfFatal
 import org.jdbi.v3.core.Handle
 import org.slf4j.LoggerFactory
 import kotlinx.datetime.toJavaLocalDate
@@ -273,12 +274,13 @@ class AggregationWorker(
     /**
      * One loop pass. A failure is logged at ERROR with what a diagnosis needs and nothing that can carry data: the exception class, the classes of
      * the cause chain, the SQLState of an SQLException (a code), and the stack frames (class, method, file, line), never an exception message.
-     * Only an Exception is caught: an Error propagates; an interrupt restores the flag and ends the pass quietly.
+     * An Exception is logged and the loop goes on; an Error is logged once and ends the process ([exitIfFatal]), so the platform restarts the revision (a worker that is alive but no longer aggregates is the worst state); an interrupt restores the flag and ends the pass quietly.
      */
     internal fun pass() {
         try { passBody() }
         catch (e: InterruptedException) { Thread.currentThread().interrupt() }
         catch (e: Exception) { log.error("aggregation pass failed: {}", scrubbed(e)) }
+        catch (e: Error) { e.exitIfFatal(log, "aggregation pass") }
     }
 
     /** Background loop for the `worker` role: poll every [interval] (default 5 s keeps the 60 s freshness goal with room). */

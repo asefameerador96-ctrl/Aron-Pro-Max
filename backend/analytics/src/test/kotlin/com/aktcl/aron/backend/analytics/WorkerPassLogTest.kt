@@ -43,7 +43,7 @@ class WorkerPassLogTest {
     }
 
     @Test
-    fun anInterruptRestoresTheFlagAndAnErrorIsNotSwallowed() {
+    fun anInterruptRestoresTheFlagAndAnErrorExitsTheProcess() {
         val fresh = FreshDb.create(migrate = false)
         try {
             val w = AggregationWorker(fresh.db)
@@ -51,10 +51,21 @@ class WorkerPassLogTest {
             val (_, events) = captured { w.pass() }
             assertTrue(Thread.interrupted(), "the interrupt flag is restored (and cleared here for the next test)")
             assertEquals(0, events.size)
-            w.passBody = { throw OutOfMemoryError(marker) }
-            var thrown: Throwable? = null
-            captured { try { w.pass() } catch (t: Throwable) { thrown = t } }
-            assertTrue(thrown is OutOfMemoryError, "an Error propagates")
+            val exits = mutableListOf<Int>()
+            val saved = com.aktcl.aron.backend.platform.WorkerExit.hook
+            com.aktcl.aron.backend.platform.WorkerExit.hook = { exits += it }
+            try {
+                w.passBody = { throw OutOfMemoryError(marker) }
+                val (_, fatal) = captured { w.pass() }
+                assertEquals(listOf(70), exits, "an Error ends the process with a non-zero code (hook, not System.exit)")
+                assertEquals(1, fatal.size)
+                val text = fatal.single().formattedMessage
+                assertTrue(text.contains("java.lang.OutOfMemoryError") && text.contains("WorkerPassLogTest"), text)
+                assertFalse(text.contains(marker), "no message in the log: $text")
+                w.passBody = { throw IllegalStateException(marker) }
+                captured { w.pass() }
+                assertEquals(1, exits.size, "an Exception logs and the loop goes on: no second exit")
+            } finally { com.aktcl.aron.backend.platform.WorkerExit.hook = saved }
         } finally { fresh.close() }
     }
 }

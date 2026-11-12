@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.analytics
 
+import com.aktcl.aron.backend.platform.exitIfFatal
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.AronPrincipal
 import com.aktcl.aron.backend.platform.Database
@@ -102,7 +103,7 @@ class ExportJobService(
 
     fun start(scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO), pollMs: Long = 5_000) = scope.launch {
         while (isActive) {
-            val worked = runCatching { runNext() }.getOrDefault(false)
+            val worked = runCatching { runNext() }.onFailure { it.exitIfFatal(org.slf4j.LoggerFactory.getLogger("aron.export"), "export job") }.getOrDefault(false)
             if (!worked) delay(pollMs)
         }
     }
