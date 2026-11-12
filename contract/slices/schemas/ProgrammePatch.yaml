@@ -1,0 +1,58 @@
+ProgrammePatch:
+  type: object
+  minProperties: 2
+  required:
+  - change_reason
+  additionalProperties: false
+  description: Draft programmes only. Members left out keep the current version's value; tiers, qualifying and scope,
+    when given, replace the whole list.
+  properties:
+    request_uuid:
+      $ref: '#/components/schemas/Uuid'
+    name_en:
+      type: string
+      minLength: 1
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    period_label:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    active_from:
+      $ref: '#/components/schemas/BusinessDate'
+    active_to:
+      $ref: '#/components/schemas/BusinessDate'
+    points_expire_on:
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'
+    rules:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/JsonScalar'
+    tiers:
+      type: array
+      maxItems: 10
+      items:
+        $ref: '#/components/schemas/ProgrammeTier'
+    qualifying:
+      type: array
+      maxItems: 100
+      items:
+        $ref: '#/components/schemas/LoyaltyProductRef'
+    scope:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/LoyaltyScopeNode'
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
+      deprecated: true
+      description: Refused with 400; use POST /v1/admin/programmes/{id}/status.
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

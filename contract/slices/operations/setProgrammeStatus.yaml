@@ -1,0 +1,48 @@
+path: /v1/admin/programmes/{id}/status
+method: post
+operation:
+  tags:
+  - admin-content
+  operationId: setProgrammeStatus
+  summary: Activate a draft or end an active programme (1.13.0).
+  description: 'Allowed moves: draft -> active (SUPERADMIN only, brief Q3 default), active -> inactive (SUPERADMIN,
+    or ADMIN with the `w` grant on module `loyalty`). Anything else is `409`. Activation needs a current version
+    whose `active_to` is not in the past (Asia/Dhaka business date), else `400`. The move is recorded with its reason
+    in the append-only status trail and in the audit log. Idempotent by `request_uuid`: a repeat returns the first
+    result; the same `request_uuid` with a different move is `409`. Activating does not change the field: no points
+    are earned or redeemed and the bundle `programmes` stays null.'
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  - name: If-Match
+    in: header
+    required: false
+    description: Optional. The ETag of the programme being moved; when given and stale the move is refused `412`.
+      A replay of a stored `request_uuid` is answered before `If-Match` is judged.
+    schema:
+      type: string
+      pattern: ^"[0-9]{1,10}"$
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ProgrammeStatusChange'
+  responses:
+    '200':
+      description: The programme after the move (or the stored first result of a replay).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Programme'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'
+    '412':
+      $ref: '#/components/responses/PreconditionFailed'

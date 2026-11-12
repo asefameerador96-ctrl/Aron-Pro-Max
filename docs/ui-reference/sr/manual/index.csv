@@ -1,0 +1,66 @@
+screenshot_no,file,screen,parts
+1,01-find_the_apk_and_install.jpg,Find the APK and install,2
+2,02-installation_complete.jpg,Installation complete,2
+3,03-login_and_location_permission.jpg,Login and location permission,2
+4,04-otp_verification_first_login_on_a_device.jpg,OTP verification (first login on a device),2
+5,05-camera_and_audio_permission.jpg,Camera and audio permission,2
+6,06-new_update_available.jpg,New update available,2
+7,07-download_and_update.jpg,Download and update,2
+8,08-update_inside_the_app.jpg,Update inside the app,2
+9,09-dashboard.jpg,Dashboard,2
+10,10-target_and_achievement_by_sku.jpg,Target and achievement by SKU,1
+11,11-check_in.jpg,Check in,2
+12,12-check_out.jpg,Check out,2
+13,13-check_out_done.jpg,Check out done,2
+14,14-stock_issue.jpg,Stock issue,2
+15,15-turn_on_bluetooth.jpg,Turn on Bluetooth,2
+16,16-pair_with_pin.jpg,Pair with PIN,2
+17,17-connect_in_the_app.jpg,Connect in the app,2
+18,18-select_the_outlet.jpg,Select the outlet,2
+19,19-start_the_call.jpg,Start the call,2
+20,20-outlet_photo.jpg,Outlet photo,2
+21,21-outlet_target.jpg,Outlet target,2
+22,22-enter_quantity.jpg,Enter quantity,2
+23,23-sale_history.jpg,Sale history,2
+24,24-review.jpg,Review (নিরীক্ষণ),2
+25,25-product_qc.jpg,Product QC,2
+26,26-qc_entry.jpg,QC entry,2
+27,27-partial_payment_due.jpg,Partial payment (due),2
+28,28-confirm_and_print.jpg,Confirm and print,2
+29,29-sale_saved.jpg,Sale saved,1
+30,30-outside_the_outlet_s_range.jpg,Outside the outlet's range,2
+31,31-force_sale_reason.jpg,Force sale reason,1
+32,32-zero_sale.jpg,Zero sale,2
+33,33-drp_slide_collection.jpg,DRP slide collection,2
+34,34-enter_slides_and_save.jpg,Enter slides and save,2
+35,35-kv_and_posm_survey.jpg,KV and POSM survey,2
+36,36-find_a_memo.jpg,Find a memo,2
+37,37-edit_a_sale.jpg,Edit a sale,2
+38,38-collect_a_due.jpg,Collect a due,2
+39,39-sales_summary.jpg,Sales summary (বিক্রয় সারসংক্ষেপ),1
+40,40-sync_and_submit.jpg,Sync and submit,2
+41,41-sales_submitted.jpg,Sales submitted,1
+42,42-new_shop.jpg,New shop,2
+43,43-permanent_close.jpg,Permanent close,2
+44,44-change_information.jpg,Change information,1
+45,45-clusters.jpg,Clusters,2
+46,46-tutorial.jpg,Tutorial,1
+47,47-tasks_from_the_amo.jpg,Tasks from the AMO,2
+48,48-astha_menu.jpg,Astha menu,2
+49,49-choose_year_and_quarter.jpg,Choose year and quarter,2
+50,50-route_std_and_memo_target.jpg,Route STD and memo target,2
+51,51-shop_wise_info.jpg,Shop-wise info,2
+52,52-astha_gift_selection.jpg,Astha gift selection,2
+53,53-gift_redemption.jpg,Gift redemption,2
+54,54-confirm_redemption.jpg,Confirm redemption,2
+55,55-outlet_points.jpg,Outlet points,1
+56,56-photo_capture_menu.jpg,Photo Capture menu,2
+57,57-astha_gift_photo.jpg,Astha gift photo,2
+58,58-campaign_gift_photo.jpg,Campaign gift photo,2
+59,59-sales_journey.jpg,Sales Journey,2
+60,60-kpi_dashboard.jpg,KPI Dashboard,1
+61,61-brand_wise_kpi.jpg,Brand wise KPI,2
+62,62-match_box_lifting_star.jpg,Match Box Lifting Star,1
+63,63-settings_and_language.jpg,Settings and language,1
+64,64-configuration_and_data_file.jpg,Configuration and data file,2
+65,65-log_out.jpg,Log Out,1

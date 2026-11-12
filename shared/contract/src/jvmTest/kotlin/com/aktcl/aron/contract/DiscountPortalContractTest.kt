@@ -76,8 +76,8 @@ class DiscountPortalContractTest {
     }
 
     @Test
-    fun theAdminModuleGainsDiscountsLast() {
-        assertEquals("discounts", OpenApi.enumOf("AdminModule").last())
+    fun theAdminModuleGainsDiscountsAfterSupport() {
+        assertEquals("discounts", OpenApi.enumOf("AdminModule")[OpenApi.enumOf("AdminModule").indexOf("support") + 1])
     }
 
     @Test

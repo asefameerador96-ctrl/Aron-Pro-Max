@@ -97,4 +97,9 @@
     <string name="journey_w_m">m</string>
     <string name="journey_w_km">km</string>
     <string name="journey_calls_empty">No calls yet today</string>
+
+    <string name="memo_ok">OK</string>
+    <string name="memo_letter_all">All</string>
+    <string name="memo_banner_manual">Select an outlet to see its memo. You can also reprint the memo from here.</string>
+    <string name="memo_glyph_dropdown">▾</string>
 </resources>

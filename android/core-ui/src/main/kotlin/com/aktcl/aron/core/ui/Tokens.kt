@@ -393,12 +393,12 @@ object AronLook {
         disabledFill = hex(0xE8E8E8), disabledText = hex(0xA5A5A5), secondaryText = hex(0x303030),
         ink = hex(0x111111), inkMuted = hex(0x505050), columnHeader = hex(0x505050), underline = hex(0x9E9E9E),
         silhouette = hex(0xD9D9D9), silhouetteInk = hex(0x8A8A8A),
-        badge = hex(0xD5484A), printerOff = hex(0xE53935), printerOn = hex(0x4B1C97),
+        badge = hex(0xD5484A), printerOff = hex(0xE53935), printerOn = hex(0x1B7F3A),
     )
 
     /** Optional outdoor theme: solid white bars and panels with black ink (key figures far above 7:1); the accents stay. */
     val Sunlight = Default.copy(
-        sunlight = true,
+        sunlight = true, printerOn = hex(0x0F5A24), // D-SR-MAN-S3-02: green printer, >= 7:1 on the white chip
         barStart = hex(0xFFFFFF), barMid = hex(0xFFFFFF), barEnd = hex(0xFFFFFF), onBar = hex(0x000000),
         red = hex(0xB0001C), minus = hex(0xB0001C), purple = hex(0x2A0A6B), panel = hex(0xFFFFFF), onPanel = hex(0x000000), onPanelMuted = hex(0x202020),
         page = hex(0xF4F4F4), tileLabel = hex(0x1B0F5C), tileLabelOutlet = hex(0x8A0016), panelDark = hex(0x202020), tableHeader = hex(0x202020),

@@ -5,6 +5,9 @@ operation:
   - admin-content
   operationId: updateGift
   summary: Change cost, labels or status of a gift (memos and redemptions keep the cost they used).
+  description: 'Permission module `loyalty`; SUPERADMIN only (brief Q3 default). The `code` and the programme of
+    a gift never change. Idempotent by `request_uuid` (required by the server): a repeat is answered before `If-Match`
+    is judged and returns the first result.'
   parameters:
   - $ref: '#/components/parameters/IdPath'
   - $ref: '#/components/parameters/IfMatch'
@@ -13,7 +16,7 @@ operation:
     content:
       application/json:
         schema:
-          $ref: '#/components/schemas/GiftWrite'
+          $ref: '#/components/schemas/GiftPatch'
   responses:
     '200':
       description: Updated.
@@ -29,5 +32,7 @@ operation:
       $ref: '#/components/responses/Forbidden'
     '404':
       $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'
     '412':
       $ref: '#/components/responses/PreconditionFailed'
