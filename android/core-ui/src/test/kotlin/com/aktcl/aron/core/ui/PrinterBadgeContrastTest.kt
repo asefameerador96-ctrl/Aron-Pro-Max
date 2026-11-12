@@ -17,5 +17,15 @@ class PrinterBadgeContrastTest {
         assertTrue(AronLook.TsoNight.printerOn == Color(0xFFB9A6FF))
         assertTrue(contrast(AronLook.TsoNight.printerOn, AronLook.TsoNight.card) >= 4.5)
     }
+    // the in-card form (AronPrinterBadge inside an AronInfoCard) draws the printer on look.page, not on the white chip
+    @Test fun greenOnThePageInTheInCardFormSrAndAmo() = assertTrue(contrast(AronLook.Default.printerOn, AronLook.Default.page) >= 4.5)
+    @Test fun greenOnThePageInTheInCardFormSunlight() = assertTrue(contrast(AronLook.Sunlight.printerOn, AronLook.Sunlight.page) >= 7.0)
+    @Test fun tsoNightInCardForm() = assertTrue(contrast(AronLook.TsoNight.printerOn, AronLook.TsoNight.page) >= 4.5)
+    // TSO Sunlight is Sunlight with the night roles: it inherits the Sunlight green (recorded in D-SR-MAN-S3-02)
+    @Test fun tsoSunlightInheritsTheSunlightGreen() {
+        assertTrue(AronLook.TsoSunlight.printerOn == AronLook.Sunlight.printerOn)
+        assertTrue(contrast(AronLook.TsoSunlight.printerOn, AronLook.TsoSunlight.card) >= 7.0)
+        assertTrue(contrast(AronLook.TsoSunlight.printerOn, AronLook.TsoSunlight.page) >= 7.0)
+    }
     @Test fun theBadgeIsGreenNotPurple() { val c = AronLook.Default.printerOn; assertTrue(c.green > c.red && c.green > c.blue) }
 }

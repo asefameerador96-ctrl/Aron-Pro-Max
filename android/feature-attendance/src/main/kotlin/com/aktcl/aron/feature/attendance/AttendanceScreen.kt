@@ -176,7 +176,7 @@ fun AttendanceContent(
     amoStyle: Boolean = false,
     /**
      * D-SR-MAN-S3-01 (manual screenshots 11 to 13): the SR host shows the dashed status boxes ("চেক ইন সম্পন্ন হয়েছে", the amber "after 5" box,
-     * "চেক আউট সম্পন্ন হয়েছে"), the white dome hold sheet and Latin-digit time chip; the rest of the SR screen (user card, location card, day lines) is unchanged.
+     * "চেক আউট সম্পন্ন হয়েছে"), the centred check-out message above the amber box, the white dome hold sheet and the Latin-digit time chip. The old day lines are not drawn with the boxes (they repeated the box texts); the user card and location card are unchanged.
      */
     statusBoxes: Boolean = false,
 ) {
@@ -546,13 +546,20 @@ private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, timeTe
 }
 
 
-/** "5" / "5:30" in Bangla (the string adds "টার"), "5 PM" / "5:30 PM" in English: the hour of the configured check-out time on the 12-hour clock. */
+/**
+ * The hour of the configured check-out time for the amber box. English: "5 PM" / "5:30 PM". Bangla (the string adds "টার"): the bare 12-hour
+ * number for the afternoon and evening (13:00 to 21:59, so 17:00 stays "5" as in screenshot 12), and a period word where the bare number would be
+ * ambiguous: "দুপুর 12" at noon, "রাত 12" at midnight, "সকাল" from 05:00 to 11:59, "রাত" from 22:00 to 04:59.
+ */
 internal fun checkoutAfterLabel(hhmm: String, bangla: Boolean): String = runCatching {
     val (h, m) = hhmm.split(":").map { it.trim().toInt() }
     require(h in 0..23 && m in 0..59)
     val h12 = if (h % 12 == 0) 12 else h % 12
     val body = if (m == 0) "$h12" else "$h12:" + "%02d".format(java.util.Locale.ROOT, m)
-    if (bangla) body else body + if (h < 12) " AM" else " PM"
+    if (bangla) {
+        val period = when (h) { in 5..11 -> "সকাল "; 12 -> "দুপুর "; in 13..21 -> ""; else -> "রাত " }
+        period + body
+    } else body + if (h < 12) " AM" else " PM"
 }.getOrDefault(hhmm)
 
 private val DoneGreen = Color(0xFF00642F)

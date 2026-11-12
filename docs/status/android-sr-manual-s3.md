@@ -6,7 +6,7 @@ Branch `lane/android-sr-manual-s3` from INT. Decisions D-SR-MAN-S3-01..03 (end o
 |---|---|---|
 | SRM-A-16 day cards | MATCH | unchanged (units: rule 5); strike-rate formula check left to the device lab |
 | SRM-A-17 sales card | MATCH | unchanged |
-| SRM-A-18 check-in | MATCH | unchanged; existing `AttendanceScreenTest` covers prompt, buttons, hold sheet |
+| SRM-A-18 check-in | MATCH | the screen content is as before, but the check-in state now renders through the `statusBoxes` path of SRM-A-19 (green check-in and grey check-out boxes/buttons from the same row, dome hold sheet, Latin-digit chip, no day lines); covered by `AttendanceScreenTest` and `SrStatusBoxesTest` |
 | SRM-A-19 after check-in boxes | GAP | **done**: `statusBoxes` for SR (done box, amber box, red button after 17:00 trusted time); `SrStatusBoxesTest`; owner question Q5 (Sales Submit before check-out) still open, behaviour kept |
 | SRM-A-20 check-out done | MATCH+box | **done**: "চেক আউট সম্পন্ন হয়েছে" box beside the check-in box and the thank-you message |
 | SRM-A-21 stock issue | MATCH | unchanged (`StockScreenTest`); badge meaning is owner question Q6 |
@@ -23,3 +23,6 @@ Not covered by an automated test: the `assist` permission prompt itself (system 
 3. Notes 12/13: centred check-out message in the amber state, day lines hidden with the boxes (one STATUS node); asserted in `SrStatusBoxesTest` and `SrAttendanceWiringTest`.
 4. Green badge: Default (SR/AMO) and Sunlight set, TSO night restored to 0xB9A6FF; KDoc fixed; `PrinterBadgeContrastTest`; goldens re-recorded: amo_stock_connected_saved_bn, amo_stock_connected_saved_bn_sunlight (no other golden shows a connected badge).
 5. Real SR wiring host test (`SrAttendanceWiringTest` via `SrAttendanceContent`); trusted-time gate cited (`AttendanceFlowTest`); amber label reads the configured minutes (`SrDay.checkoutAtLabel`, tested with 18:30).
+
+## Follow-up round (second review lows; D-SR-MAN-S3-04)
+All five lows done; one design change worth the lead's eye: the sale's printer assist moved from SaleRoute to the VISIT frame (SaleRoute appears only after Start-call/AV/KV/POSM, when a granted printer is already connected, so its toast could not show). Goldens re-recorded again: amo_stock_connected_saved_bn, amo_stock_connected_saved_bn_sunlight (new green 0x17692F). Remaining: owner questions Q5 and Q6; device-pending acceptances.

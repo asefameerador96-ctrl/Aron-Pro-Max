@@ -16,7 +16,12 @@ class CheckoutAfterLabelTest {
         assertEquals("12 PM", checkoutAfterLabel("12:00", bangla = false))
         assertEquals("12 AM", checkoutAfterLabel("00:00", bangla = false))
         assertEquals("9 AM", checkoutAfterLabel("09:00", bangla = false))
-        assertEquals("12", checkoutAfterLabel("12:00", bangla = true))
+        assertEquals("দুপুর 12", checkoutAfterLabel("12:00", bangla = true))
+        assertEquals("রাত 12", checkoutAfterLabel("00:00", bangla = true))
+        assertEquals("সকাল 9", checkoutAfterLabel("09:00", bangla = true))
+        assertEquals("রাত 10:30", checkoutAfterLabel("22:30", bangla = true))
+        assertEquals("1", checkoutAfterLabel("13:00", bangla = true))
+        assertEquals("noon and midnight differ in Bangla", true, checkoutAfterLabel("12:00", bangla = true) != checkoutAfterLabel("00:00", bangla = true))
     }
 
     @Test fun badInputComesBackUnchanged() {
