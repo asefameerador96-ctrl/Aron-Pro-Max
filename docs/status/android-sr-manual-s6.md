@@ -11,7 +11,7 @@ Branch `lane/android-sr-manual-s6` from INT `claude/wonderful-thompson-k6ejnf` (
 | SRM-B-53 | done (screen kept) | SR `SupportHost` shows the dialog সফল / ডাটা ফাইল পাঠানো হয়েছে। / ওকে once the file is confirmed sent (status Sent). New keys in core-system: `support_done_*`. The Support screen stays (tile opens it); title is "PDA টু সাপোর্ট" (SRM-B-98). AMO keeps its own English dialog (not in this lane's scope). |
 | SRM-B-54 | MATCH | none |
 | SRM-B-55 | done | `submitPending` + `onSalesSubmit` on `SettingsContent`; SR reads `SrDay.salesSubmitPending()` (memo or visit today, no local Sales Submit, no Final Submit lock; offline read). The warning offers "বিক্রয় জমা" (opens Sales Submit) or "তবুও লগ আউট" (goes on to the normal confirm); back or a tap outside cancels and stays in Settings. A failed read falls back to the normal confirm (CancellationException rethrown). AMO/TSO pass nothing. |
-| SRM-B-56 | done | Attendance label now from `SrDay.checkoutEarliestText()` (cfg.day.checkout_earliest_time via `DayConfig`) instead of the literal "17:00". EN `review_credit_switch` is "Mark this sale as due". |
+| SRM-B-56 | done (INT version kept) | After merging INT 12f56c8bb the Attendance label comes from INT's `SrDay.checkoutAtLabel()` (this lane's duplicate `checkoutEarliestText` is removed). EN `review_credit_switch` is "Mark this sale as due". |
 | tutorial | no row in the table | the tutorial list exists (`tutorial_bn` shot); no change needed. |
 
 ## Glossary (B4), one pass over the string files
@@ -28,7 +28,7 @@ Branch `lane/android-sr-manual-s6` from INT `claude/wonderful-thompson-k6ejnf` (
 | 98 | done | core-system `support_title` bn "PDA টু সাপোর্ট". |
 | 99 | done | see 53. |
 | 100 | done | app-sr `sr_ok` and core-ui `core_ui_kit_gallery_ok` are "ওকে". "ছাপা ঠিক আছে?" (print confirmation question) is a different sentence and stays. |
-| 101 | key added | `sale_submit_plain` ("জমা দিন" / "Submit") in feature-sale; the slide and edit-reason screens have no submit button today (edit-reason picks on tap), so wiring it belongs to the sale-side lane (S5). |
+| 101 | done by S5 | S5's `edit_reason_submit` ("জমা দিন") is the one key; this lane's `sale_submit_plain` is removed after the merge. |
 | 102 | not mine | cluster list/create strings are new keys: S2 (A2 + B2 outlets/clusters). |
 | 103 to 107 | deferred | Astha, gifts, loyalty, target tile, নিশ্চিত করুন: programmes (docs/27, D-OWNER-SR-PROGRAMMES-01), strings come with those screens. |
 | 108 | not mine | journey দূরত্ব / মোট: S7 (B7). |
@@ -59,3 +59,7 @@ _Not run on a device: all checks are JVM host tests, lint and Roborazzi._
 - S5: wire `sale_submit_plain`; keep the edit-reason code names.
 - SV: nothing needed for this lane's rows (94 needs `outlet_sku_stats`).
 - Lead: Opus Bangla check on the Update Configuration Bangla body and the logout warning text.
+
+
+## After the merge of INT 12f56c8bb
+`history_title` (feature-memo) and S4's new `sale_data_title` both say "সেল ডাটা": one meaning, one value, nothing contradicts; I kept `history_title`, `out_history`, `sr_sale_history` = "সেল ডাটা" and `sale_history` = "পূর্বের সেল ডাটা দেখুন" (lead rules on that button with S4). Gate scripts: money-float 13/13 exit 0, date-pin 106 baselined 0 new, `tools/ci` test_gates OK (60 tests, 9 skipped). Goldens: unchanged since the previous push (visit_in/out_bn_light/sunlight for `out_history`; memo_bn_light for `history_title`; review_en_light for "Mark this sale as due"); none re-recorded after the merge.
