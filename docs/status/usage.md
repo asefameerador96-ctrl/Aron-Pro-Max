@@ -3061,3 +3061,6 @@
 
 ### 2026-11-12 17:20 UTC — train 107 on INT
 - Integrator 24 pushed train 107: INT `4739d5d1a` (tree-identical to 5a3662eb3 plus the train.md row; DECISIONS 437; V0170..V0172 added; contract 1.13.1), ci #2084 43268148775 running, real deploy expected. SV2 told to merge and push once with its fixes and V0173..V0175; L-A told to write the train 3 handover and stop; L-B told to merge and regenerate types, no live switch yet.
+
+### 2026-11-12 17:23 UTC — L-A handed over and archived
+- L-A pushed the train 3 handover (40c1e1c60, docs only) and stopped; archived at USD 18.42. Its lane CI on the landed head 7fb2c471e was success. Train 3 (field loyalty: bundle programmes sections, Astha targets, gift choice, redemption, gift photo, expiry job; plus indexed error pointers, set-based enrolment upsert, progress reads) waits for a fresh session.
