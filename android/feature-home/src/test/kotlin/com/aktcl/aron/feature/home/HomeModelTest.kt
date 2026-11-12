@@ -21,12 +21,15 @@ class HomeModelTest {
 
     @Test fun headerWithoutARouteShowsOnlyTheDate() = assertEquals("2026-10-05", HomeModel.header("SR", "A", "a", null, null, "2026-10-05").subtitle)
 
-    @Test fun tilesInScreenshotOrderWithPhotoCaptureAndWithoutLoyalty() {
-        // sr/home-1-tiles.webp: Photo Capture is in the grid after Task Delegation; Astha and Loyalty stay out (docs/27)
+    @Test fun fifteenTilesInTheManualsOrder() {
+        // manual screenshot 09 (SRM-A-13): Astha and Loyalty Point after Task Delegation, Photo Capture, Journey, KPI, Match Program last
         val keys = HomeTiles.resolve(emptySet(), 0).map { it.tile.key }
-        assertEquals(listOf("attendance", "stock", "sale", "memo", "summary", "sales_submit", "outlet", "tutorial", "tasks", "photo_capture", "sales_journey", "kpi"), keys)
-        assertFalse("loyalty" in keys)
-        assertTrue(HomeTiles.resolve(setOf("loyalty"), 0).none { it.tile.key == "loyalty" })
+        assertEquals(
+            listOf("attendance", "stock", "sale", "memo", "summary", "sales_submit", "outlet", "tutorial", "tasks", "astha", "loyalty_point", "photo_capture", "sales_journey", "kpi", "match_program"),
+            keys,
+        )
+        assertEquals(15, keys.size)
+        assertTrue(HomeTile.entries.filter { it.isProgramme }.map { it.key }.containsAll(listOf("astha", "loyalty_point", "match_program", "photo_capture")))
     }
 
     @Test fun taskBadgeEqualsTheOpenCountAndIsHiddenAtZero() {

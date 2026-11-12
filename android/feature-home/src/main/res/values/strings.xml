@@ -134,4 +134,17 @@
     <string name="set_group_status">Phone status</string>
     <string name="hm_qty_unit_rem">%1$s %2$s + %3$s %4$s</string>
     <string name="set_printer">Printer diagnostics</string>
+    <string name="hm_tile_astha">Astha</string>
+    <string name="hm_tile_loyalty_point">Loyalty Point</string>
+    <string name="hm_tile_match_program">Match Program</string>
+    <string name="hm_soon_title">Coming soon</string>
+    <string name="hm_soon_body">This screen comes with the next update. Your work today is not affected.</string>
+    <string name="hm_soon_back">Back to Home</string>
+    <string name="hm_std_title">Target &amp; Achievement (SKU List)</string>
+    <string name="hm_std_label">STD</string>
+    <string name="hm_std_none">—</string>
+    <string name="hm_std_spoken">STD achievement %1$s</string>
+    <string name="hm_std_spoken_none">STD achievement is not available yet</string>
+    <string name="hm_tile_sales_manual">Sales</string>
+    <string name="hm_tile_tasks_manual">Task Delegation</string>
 </resources>

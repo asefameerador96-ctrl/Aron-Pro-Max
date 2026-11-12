@@ -427,6 +427,10 @@ fun AronTargetCard(
     percentText: String? = null,
     detailsLabel: String? = null,
     onDetails: (() -> Unit)? = null,
+    /** Manual screenshot 09: a solid fill for the bar (green) with the figure in white; null keeps the kit's red-on-grey bar. */
+    barColor: Color? = null,
+    /** With no [percent]: an empty grey track carrying this text ("—" while the target is not known); null draws no bar. */
+    emptyTrackText: String? = null,
 ) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(AronLook.CardRadius)
@@ -443,9 +447,9 @@ fun AronTargetCard(
             BoxWithConstraints(Modifier.fillMaxWidth().heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.track)) {
                 val fraction = percent.coerceIn(1, 100) / 100f
                 val fill = maxWidth * fraction
-                Box(Modifier.width(fill).heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.trackFill))
+                Box(Modifier.width(fill).heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(barColor ?: look.trackFill))
                 if (percentText != null) {
-                    val inside = fraction > 0.75f
+                    val inside = barColor != null || fraction > 0.75f
                     Text(
                         percentText,
                         style = lookStyle(13.sp, bold = true, color = if (inside) Color.White else look.trackFill),
@@ -453,6 +457,12 @@ fun AronTargetCard(
                         else Modifier.align(Alignment.CenterStart).padding(start = fill + 6.dp),
                     )
                 }
+            }
+        }
+        if (percent == null && emptyTrackText != null) {
+            Spacer(Modifier.height(6.dp))
+            Box(Modifier.fillMaxWidth().heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.track), contentAlignment = Alignment.CenterEnd) {
+                Text(emptyTrackText, style = lookStyle(13.sp, bold = true, color = look.trackFill), modifier = Modifier.padding(end = 10.dp))
             }
         }
         if (detailsLabel != null && onDetails != null) {

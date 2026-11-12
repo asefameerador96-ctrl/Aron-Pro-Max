@@ -18,6 +18,7 @@ import com.aktcl.aron.feature.memo.domain.SummaryMemo
 import com.aktcl.aron.feature.memo.domain.SummarySku
 import com.aktcl.aron.feature.memo.ui.RoomMemoStore
 import com.aktcl.aron.feature.sale.domain.SaleSku
+import com.aktcl.aron.rules.JourneyCallInput
 import com.aktcl.aron.rules.EntrySpec
 import com.aktcl.aron.rules.EntryUnits
 import com.aktcl.aron.feature.stock.StockTracker
@@ -68,6 +69,36 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
     }
 
     /**
+     * Today's calls for the Sales Journey (SRM-B-82), from the stored visit, visit_close and memo rows whether synced or not.
+     * Sold = the call ended `sold` or already holds a memo; edited = one of its memos supersedes another or was superseded;
+     * `abandoned` calls are not calls. The base point is the outlet's own (SRM-B-84 default), else the point the visit stored.
+     */
+    suspend fun journeyCalls(date: String): List<SalesJourneyOutletCall> {
+        val closes = dao.visitClosesOn(date).associateBy { it.visitClientUuid }
+        val memos = dao.memosOn(date)
+        val memoVisits = memos.map { it.visitClientUuid }.toSet()
+        val superseded = memos.mapNotNull { it.supersedesClientUuid }.toSet()
+        val editedVisits = memos.filter { it.supersedesClientUuid != null || it.clientUuid in superseded }.map { it.visitClientUuid }.toSet()
+        val refs = db.referenceDao()
+        val cache = HashMap<Long, OutletEntity?>()
+        return dao.visitsOn(date).filter { it.visitKind == "sr_call" && closes[it.clientUuid]?.outcomeCode != "abandoned" }.mapNotNull { v ->
+            val opened = parseMs(v.openedAt) ?: return@mapNotNull null
+            val close = closes[v.clientUuid]
+            val o = cache.getOrPut(v.outletId) { refs.outlet(v.outletId) }
+            val sold = close?.outcomeCode == "sold" || v.clientUuid in memoVisits
+            SalesJourneyOutletCall(
+                JourneyCallInput(
+                    v.clientUuid, v.outletId, opened, close?.let { parseMs(it.endedAt) }, o?.lat ?: v.geoOutletLat, o?.lng ?: v.geoOutletLng,
+                    sold, v.clientUuid in editedVisits,
+                ),
+                o,
+            )
+        }
+    }
+
+    private fun parseMs(iso: String): Long? = try { java.time.Instant.parse(iso).toEpochMilli() } catch (_: java.time.format.DateTimeParseException) { null }
+
+    /**
      * Cigarette and bidi packets sold today (the Home sales panel headline, packets since docs/34 s4.2): sold quantities of the same
      * tracker as the sale warning, each SKU in its own entry unit (packets of 10, packets of 20, ...), never a stick total.
      */
@@ -98,3 +129,6 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
 
     private companion object { val PACKET_CATEGORIES = setOf("cigarette", "bidi") }
 }
+
+/** A stored call with its outlet row (null when the outlet is no longer in the local bundle). */
+data class SalesJourneyOutletCall(val input: JourneyCallInput, val outlet: OutletEntity?)

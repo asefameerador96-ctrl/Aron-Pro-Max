@@ -26,11 +26,19 @@ object HomeModel {
     }
 }
 
-/** The Home tiles in screenshot order (F-SR-009). Loyalty is deferred (docs/27) and has no entry at all. */
+/**
+ * The Home tiles in the manual's order (screenshot 09, SRM-A-13): fifteen, four to a row. Astha, Loyalty Point and Match
+ * Program are in scope since D-OWNER-SR-PROGRAMMES-01; a tile whose screen is not built yet opens the plain
+ * "coming with the next update" screen of the app ([isPlaceholderUntilBuilt] is only a hint for tests and the host).
+ */
 enum class HomeTile(val key: String, val alwaysShown: Boolean) {
     ATTENDANCE("attendance", true), STOCK("stock", true), SALE("sale", true), MEMO("memo", true),
     SUMMARY("summary", true), SALES_SUBMIT("sales_submit", true), OUTLET("outlet", true), TUTORIAL("tutorial", true),
-    TASKS("tasks", true), PHOTO_CAPTURE("photo_capture", true), SALES_JOURNEY("sales_journey", true), KPI("kpi", true),
+    TASKS("tasks", true), ASTHA("astha", true), LOYALTY_POINT("loyalty_point", true), PHOTO_CAPTURE("photo_capture", true),
+    SALES_JOURNEY("sales_journey", true), KPI("kpi", true), MATCH_PROGRAM("match_program", true);
+
+    /** The tiles of the programmes lane family: their screens come from other lanes (S8, S9). */
+    val isProgramme: Boolean get() = this == ASTHA || this == LOYALTY_POINT || this == MATCH_PROGRAM || this == PHOTO_CAPTURE
 }
 
 data class ResolvedTile(val tile: HomeTile, val badge: Int?)
@@ -162,3 +170,23 @@ data class HomeMoneyLines(
     val grossBare: String = grossText, val offerDiscountBare: String = "0.00", val qcBare: String = "0.00", val netBare: String = grandTotalText,
     val totalDiscountBare: String = "0.00", val drpDiscountBare: String = "0.00", val totalQcBare: String = "0.00",
 )
+
+/**
+ * The STD (standard SKU list) achievement of the Target & Achievement card (SRM-A-14). [achieved] and [target] are in the same
+ * unit (base sticks) and come from the targets lane's bundle section; until it exists the host passes null and the card shows "—".
+ * Never a wrong number: a missing or zero target gives no percentage at all, and the percentage may exceed 100 (the manual's
+ * test account shows past 1000 %).
+ */
+data class HomeStd(val achieved: Long?, val target: Long?) {
+    /** Whole percent (rounded half up), or null when either figure is missing or the target is not positive. */
+    val percent: Int?
+        get() {
+            val a = achieved ?: return null
+            val t = target ?: return null
+            if (t <= 0L || a < 0L) return null
+            return ((a * 200L + t) / (t * 2L)).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        }
+
+    /** The bar's fill, capped at 100 so a past-target SR sees a full bar while the text keeps the real figure. */
+    val barPercent: Int? get() = percent?.coerceAtMost(100)
+}

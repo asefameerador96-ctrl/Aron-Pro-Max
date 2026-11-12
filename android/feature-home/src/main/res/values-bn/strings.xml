@@ -129,4 +129,17 @@
     <string name="set_group_status">ফোনের অবস্থা</string>
     <string name="hm_qty_unit_rem">%1$s %2$s + %3$s %4$s</string>
     <string name="set_printer">প্রিন্টার পরীক্ষা</string>
+    <string name="hm_tile_astha">আস্থা</string>
+    <string name="hm_tile_loyalty_point">লয়্যালটি পয়েন্ট</string>
+    <string name="hm_tile_match_program">Match Program</string>
+    <string name="hm_soon_title">শীঘ্রই আসছে</string>
+    <string name="hm_soon_body">এই স্ক্রিনটি পরবর্তী আপডেটে আসছে। আজকের কাজে কোনো সমস্যা হবে না।</string>
+    <string name="hm_soon_back">হোমে ফিরুন</string>
+    <string name="hm_std_title">টার্গেট ও অ্যাচিভমেন্ট (SKU List)</string>
+    <string name="hm_std_label">এস টি ডি</string>
+    <string name="hm_std_none">—</string>
+    <string name="hm_std_spoken">এস টি ডি অর্জন %1$s</string>
+    <string name="hm_std_spoken_none">এস টি ডি অর্জনের তথ্য এখনো নেই</string>
+    <string name="hm_tile_sales_manual">বিক্রয়</string>
+    <string name="hm_tile_tasks_manual">টাস্ক ডেলিগেশন</string>
 </resources>

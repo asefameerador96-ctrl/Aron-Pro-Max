@@ -216,6 +216,9 @@ class SrDay(
     @Volatile var requestKind: com.aktcl.aron.feature.outlet.OutletRequestKind = com.aktcl.aron.feature.outlet.OutletRequestKind.NEW
     @Volatile var requestOutlet: OutletEntity? = null
 
+    /** The clusters this SR created on the phone and the server has not confirmed (SRM-B-44; interim local store). */
+    val pendingClusters: com.aktcl.aron.feature.outlet.PendingClusterStore = PrefsPendingClusters(context, userId)
+
     /**
      * Placeholder end of a call until the sale screens exist: no memo, so the visit closes `abandoned` (docs/24 s4.2).
      * tso-manual A3 (D-A3-22): on a route-day closed by its zone's Final Submit the call ends on the phone, never a crash;
