@@ -101,6 +101,8 @@ POST /v1/media/sas -> exempt: write grants for the calling phone's own photo pat
 POST /v1/media/upload -> exempt: one feedback or support photo of the caller (user and device from the token, the path built from them); no read of other rows
 POST /v1/sync/digest -> exempt: the calling phone's own uploads only (user and device from the token; a body device_uuid that differs is refused)
 GET /v1/tasks -> case TasksCheckerTest#listScope
+GET /v1/supervisor/call-photos -> case SrManualSv1ApiTest#theCallPhotoReviewListsTheVisitsOfTheDayInReachWithAndWithoutAPhoto
+GET /v1/supervisor/device-otps -> case SrManualSv1ApiTest#theTsoSeesTodaysPendingCodesOfItsOwnSrsAndNobodyElseDoes
 GET /v1/supervisor/call-targets -> case AmoFoundationF1Test#getSupervisorCallTargetsIsForAnAmoOnlyAndNeverReadsAnotherAmosVisits
 GET /v1/outlets/{outlet_id}/sales-by-date -> case AmoFoundationF2Test#salesByDateScopeSrAndForeignDivisionsAreRefusedTsoAndDmoInsideTheirReachAreServed
 GET /v1/team/journey -> case AmoFoundationF2Test#journeyScopeSupervisorsInsideTheirReachOnlyAndNeverAnSrOrAnotherDivision
