@@ -2982,3 +2982,6 @@
 
 ### 2026-11-12 13:05 UTC — GO train 105
 - Train 105 CI 43218993558 green on 64af1e14a (12 jobs ok, web e2e included: the first full web run with L-B's loginOk fix). Lane runs: S2 43218821381 (fb63804d3) success; L-B 43217342984 (d25d1fdd7) success. Train 104 INT run complete. GO sent to integrator 24 (expected DECISIONS 432, real web deploy, schema stays v0162).
+
+### 2026-11-12 13:07 UTC — train 105 on INT
+- Integrator 24 pushed train 105: INT `155edd899` (tree-identical to 64af1e14a plus the train.md row; DECISIONS 432; migrations end at V0162; contract 1.13.0), ci #2070 43224115378 running, real deploy expected. All six SR manual lanes (S1 to S6) now have their first round on INT.
