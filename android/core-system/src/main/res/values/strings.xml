@@ -85,4 +85,7 @@
     <string name="update_sr_downloading" translatable="false">Downloading %1$s%%</string>
     <string name="update_sr_completed" translatable="false">Download completed</string>
     <string name="update_sr_do_not_close" translatable="false">Please do not close the app while downloading</string>
+    <string name="support_done_title">Success</string>
+    <string name="support_done_message">The data file has been sent.</string>
+    <string name="support_done_ok">OK</string>
 </resources>

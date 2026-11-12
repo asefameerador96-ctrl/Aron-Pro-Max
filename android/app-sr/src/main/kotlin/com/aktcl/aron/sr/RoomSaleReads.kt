@@ -73,18 +73,18 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
         fun rows(perSku: Map<Long, Long>): List<CategoryQty> {
             // one row per category and unit word; the base total of a category is the sum of its rows (different units are never added)
             val out = LinkedHashMap<Pair<String, String>, LongArray>()
+            val other = ArrayList<CategoryQty>()
             for ((id, q) in perSku.toSortedMap()) {
                 val k = skus[id]
-                if (k == null) { // no master row: counted under "other" in base units, never dropped
-                    val acc = out.getOrPut(OTHER_CATEGORY to "") { LongArray(3) }
-                    acc[0] += q; acc[1] += q
+                if (k == null) { // no master row: its own "other" row in base units (units unknown, so never added to another SKU), never dropped
+                    other += CategoryQty(OTHER_CATEGORY, q, q, "", 0L, id)
                     continue
                 }
                 val spec = EntryUnits.resolve(k.baseUnit, k.basePerPack, k.entryUnitDefault)
                 val acc = out.getOrPut(k.categoryCode to EntryUnits.labelKey(k.categoryCode, spec.unit)) { LongArray(3) }
                 acc[0] += q; acc[1] += spec.fromBase(q); acc[2] += spec.remainderBase(q)
             }
-            return out.map { (key, v) -> CategoryQty(key.first, v[0], v[1], key.second, v[2]) }
+            return out.map { (key, v) -> CategoryQty(key.first, v[0], v[1], key.second, v[2]) } + other
         }
         val stock = StockTracker.of(db, date)
         val memos = store.memos(date)

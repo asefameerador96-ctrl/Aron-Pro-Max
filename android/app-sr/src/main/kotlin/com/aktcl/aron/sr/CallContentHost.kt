@@ -199,7 +199,12 @@ private fun SurveyStep(
     // "উত্তরঃ" dropdown, the photo box under a sub-question, and "সাবমিট →" in a bar pinned to the bottom
     val shown = questions.filter { it.first.key in visible && it.first.answerType in supported }
     // numbered over the supported questions only (a hidden or unsupported one leaves no gap), in Latin digits as the manual shows (shot 35)
-    val numbers = remember(questions) { SurveyNumbering.of(questions.filter { it.first.answerType in supported }.map { it.first.key to it.first.showIfKey }) }
+    val numbers = remember(questions) {
+        val ok = questions.filter { it.first.answerType in supported }
+        val keys = ok.map { it.first.key }.toSet()
+        // a sub-question whose parent is unsupported can never be shown: it takes no number
+        SurveyNumbering.of(ok.filter { it.first.showIfKey == null || it.first.showIfKey in keys }.map { it.first.key to it.first.showIfKey })
+    }
     Column(Modifier.fillMaxSize()) {
         ContentBand(stringResource(R.string.sr_survey_title))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {

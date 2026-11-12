@@ -52,7 +52,7 @@
     <string name="update_day_blocked">ARON-এর এই সংস্করণ দিয়ে নতুন দিন শুরু করা যাবে না। এখনই আপডেট করুন। না-পাঠানো বিক্রি তবুও যাবে।</string>
     <string name="update_now">এখনই আপডেট</string>
     <!-- F-SYS-021 PDA to Support -->
-    <string name="support_title">পিডিএ টু সাপোর্ট</string>
+    <string name="support_title">PDA টু সাপোর্ট</string>
     <string name="support_what">আপনার ডাটা ফাইল AKTCL সাপোর্টে পাঠায়: না-পাঠানো বিক্রি ও রেকর্ড, সাম্প্রতিক সিঙ্কের তথ্য এবং অ্যাপের তথ্য। ফাইলটি এনক্রিপ্ট করা; শুধু সাপোর্ট খুলতে পারে।</string>
     <string name="support_version">অ্যাপ সংস্করণ: %1$s</string>
     <string name="support_last_sync">শেষ সিঙ্ক: %1$s</string>
@@ -73,4 +73,7 @@
     <string name="update_amo_updating">অ্যাপ আপডেট হচ্ছে</string>
     <string name="update_amo_version">সংস্করণ %1$s পাওয়া যাচ্ছে</string>
     <string name="update_amo_download">অ্যাপ ডাউনলোড ও ইনস্টল করুন</string>
+    <string name="support_done_title">সফল</string>
+    <string name="support_done_message">ডাটা ফাইল পাঠানো হয়েছে।</string>
+    <string name="support_done_ok">ওকে</string>
 </resources>

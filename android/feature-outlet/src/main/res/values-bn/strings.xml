@@ -110,7 +110,7 @@
     <string name="out_start_call">কল শুরু করুন</string>
     <string name="out_reason_wait_fix">লোকেশন পেলে চালু হবে</string>
     <string name="out_open_maps">Maps অ্যাপে খুলুন</string>
-    <string name="out_history">পূর্বের বিক্রয় দেখুন</string>
+    <string name="out_history">সেল ডাটা</string>
     <string name="out_no_sale">বিক্রয় হবে না</string>
     <string name="out_turn_on_location">লোকেশন চালু করুন</string>
     <string name="out_go_back">ফিরে যান</string>
