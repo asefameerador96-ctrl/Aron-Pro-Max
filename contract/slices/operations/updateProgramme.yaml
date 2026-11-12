@@ -4,7 +4,12 @@ operation:
   tags:
   - admin-content
   operationId: updateProgramme
-  summary: Change dates, rules or status of a programme.
+  summary: Change a programme; a rule change creates a new programme version.
+  description: 'Only while the programme is `draft` (1.13.0): every accepted change appends an immutable programme
+    version; an `active` or `inactive` programme is `409` (end it and create a new one). The status moves through
+    `POST /v1/admin/programmes/{id}/status`; a `status` member here is `400`. Idempotent by `request_uuid` (required
+    by the server): a repeat is answered before `If-Match` is judged. SUPERADMIN, or ADMIN with the `w` grant on
+    module `loyalty`.'
   parameters:
   - $ref: '#/components/parameters/IdPath'
   - $ref: '#/components/parameters/IfMatch'
@@ -13,7 +18,7 @@ operation:
     content:
       application/json:
         schema:
-          $ref: '#/components/schemas/ProgrammeWrite'
+          $ref: '#/components/schemas/ProgrammePatch'
   responses:
     '200':
       description: Updated.
@@ -29,5 +34,7 @@ operation:
       $ref: '#/components/responses/Forbidden'
     '404':
       $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'
     '412':
       $ref: '#/components/responses/PreconditionFailed'

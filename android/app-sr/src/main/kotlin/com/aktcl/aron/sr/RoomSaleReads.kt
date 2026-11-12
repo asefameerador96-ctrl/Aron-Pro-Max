@@ -3,6 +3,9 @@ package com.aktcl.aron.sr
 import com.aktcl.aron.core.database.AronDatabase
 import com.aktcl.aron.core.database.entity.OutletEntity
 import com.aktcl.aron.core.database.repo.ReferenceRepository
+import com.aktcl.aron.feature.dayclose.BusinessTotals
+import com.aktcl.aron.feature.dayclose.CategoryQty
+import com.aktcl.aron.feature.dayclose.OTHER_CATEGORY
 import com.aktcl.aron.feature.memo.domain.DaySummaryCalculator
 import com.aktcl.aron.feature.memo.domain.HomeMoney
 import com.aktcl.aron.feature.memo.domain.HomeMoneyBuilder
@@ -57,6 +60,43 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
         val superseded = memos.mapNotNull { it.supersedesUuid }.toSet()
         val live = memos.filter { it.memoUuid !in superseded }
         return SummaryBundle(DaySummaryCalculator.compute(sm, cats, issued, entryOf = entryOf), live.sumOf { it.qcDeductionMtk }, live.sumOf { it.dueMtk.coerceAtLeast(0) }) // a QC credit (negative due) is not money the outlet owes: it must not cancel real dues
+    }
+
+    /**
+     * SRM-B-25 (shot 40): the Sales Submit table's business figures from this phone's own rows: distinct outlets visited, the sold quantity
+     * of the live memos, the stock issued (issue + adjustment), the QC lines' quantity and the live memos' discount value (offer + DRP;
+     * zero while the programmes are deferred). Quantities per category in the field unit of rule 5 and in base units. Local rows only.
+     */
+    suspend fun businessTotals(date: String): BusinessTotals {
+        val skus = reference.skus().associateBy { it.skuId }
+        fun rows(perSku: Map<Long, Long>): List<CategoryQty> {
+            // one row per category and unit word; the base total of a category is the sum of its rows (different units are never added)
+            val out = LinkedHashMap<Pair<String, String>, LongArray>()
+            for ((id, q) in perSku.toSortedMap()) {
+                val k = skus[id]
+                if (k == null) { // no master row: counted under "other" in base units, never dropped
+                    val acc = out.getOrPut(OTHER_CATEGORY to "") { LongArray(3) }
+                    acc[0] += q; acc[1] += q
+                    continue
+                }
+                val spec = EntryUnits.resolve(k.baseUnit, k.basePerPack, k.entryUnitDefault)
+                val acc = out.getOrPut(k.categoryCode to EntryUnits.labelKey(k.categoryCode, spec.unit)) { LongArray(3) }
+                acc[0] += q; acc[1] += spec.fromBase(q); acc[2] += spec.remainderBase(q)
+            }
+            return out.map { (key, v) -> CategoryQty(key.first, v[0], v[1], key.second, v[2]) }
+        }
+        val stock = StockTracker.of(db, date)
+        val memos = store.memos(date)
+        val superseded = memos.mapNotNull { it.supersedesUuid }.toSet()
+        val live = memos.filter { it.memoUuid !in superseded }
+        val qc = dao.qcLinesOn(date).groupBy { it.skuId }.mapValues { (_, v) -> v.sumOf { it.qtyBase } }
+        return BusinessTotals(
+            outletsVisited = dao.visitsOn(date).map { it.outletId }.toSet().size,
+            sold = rows(stock.mapValues { (_, b) -> b.sold }.filterValues { it != 0L }),
+            stockIssued = rows(stock.mapValues { (_, b) -> b.issued + b.adjusted }.filterValues { it != 0L }),
+            qc = rows(qc.filterValues { it != 0L }),
+            promotionMtk = live.sumOf { m -> m.discounts.sumOf { it.valueMtk } },
+        )
     }
 
     /** Route progress of the planned [outlets] from stored visits and closes (F-SR-067). */

@@ -216,6 +216,17 @@ internal class SrLockFixture(context: Context, latePolicy: String?) : AutoClosea
         memo
     }
 
+    /** A zero-money memo with one QC line on [v]: "QC entered for the outlet" for the SRM-B-17 gate. */
+    fun qcLineOn(v: OpenVisit) = runBlocking {
+        val m = meta(v.routeId)
+        val memo = ClientIds.newUuid()
+        day.capture.recordSale(SaleCapture(
+            MemoEntity(memo, m, v.visitUuid, v.outletId, "sr334001-qc-" + memo.take(4), "sale", m.capturedAt, date, "outlet", 0, 0, 0, 0, 0, 0, 0, 0, false, null, 0, 0, 1),
+            emptyList(),
+            qcLines = listOf(com.aktcl.aron.core.database.entity.QcLineEntity(ClientIds.newUuid(), m, v.visitUuid, memo, true, 105, "f", "g", 1, 1_000, 1_000)),
+        ))
+    }
+
     /** One priced SKU (matches, by the dozen) in the bundle, nothing issued yet (the Stock screen's catalog). */
     fun catalogOnly() = runBlocking {
         db.referenceDao().insertSkus(listOf(SkuEntity(105, "S105", 105, "match", "n105", "Aster105", null, "dozen", 10, "base", null, "1.000", 105, "active", 1)))

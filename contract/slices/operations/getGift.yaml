@@ -1,0 +1,26 @@
+path: /v1/admin/gifts/{id}
+method: get
+operation:
+  tags:
+  - admin-content
+  operationId: getGift
+  summary: One gift (1.13.0).
+  description: Same read rules as `listGifts`.
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  responses:
+    '200':
+      description: The gift.
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Gift'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
