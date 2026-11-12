@@ -5,6 +5,7 @@ import com.aktcl.aron.core.database.entity.OutletEntity
 import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.feature.dayclose.BusinessTotals
 import com.aktcl.aron.feature.dayclose.CategoryQty
+import com.aktcl.aron.feature.dayclose.OTHER_CATEGORY
 import com.aktcl.aron.feature.memo.domain.DaySummaryCalculator
 import com.aktcl.aron.feature.memo.domain.HomeMoney
 import com.aktcl.aron.feature.memo.domain.HomeMoneyBuilder
@@ -72,7 +73,12 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
             // one row per category and unit word; the base total of a category is the sum of its rows (different units are never added)
             val out = LinkedHashMap<Pair<String, String>, LongArray>()
             for ((id, q) in perSku.toSortedMap()) {
-                val k = skus[id] ?: continue
+                val k = skus[id]
+                if (k == null) { // no master row: counted under "other" in base units, never dropped
+                    val acc = out.getOrPut(OTHER_CATEGORY to "") { LongArray(3) }
+                    acc[0] += q; acc[1] += q
+                    continue
+                }
                 val spec = EntryUnits.resolve(k.baseUnit, k.basePerPack, k.entryUnitDefault)
                 val acc = out.getOrPut(k.categoryCode to EntryUnits.labelKey(k.categoryCode, spec.unit)) { LongArray(3) }
                 acc[0] += q; acc[1] += spec.fromBase(q); acc[2] += spec.remainderBase(q)

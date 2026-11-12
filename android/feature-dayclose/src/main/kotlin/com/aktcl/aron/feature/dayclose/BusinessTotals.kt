@@ -26,6 +26,9 @@ fun interface BusinessSource { suspend fun totals(businessDate: String): Busines
 /** The server's business figures for the date from the submit digest; null until the digest carries them (the column then shows "—"). */
 fun interface ServerBusiness { suspend fun totals(businessDate: String): BusinessTotals? }
 
+/** The category a SKU without a master row on the phone is counted under: shown as "other", never dropped. */
+const val OTHER_CATEGORY = "other"
+
 enum class BusinessKey(val recordKey: String) {
     OUTLET("visit"), SALE("memo"), STOCK("stock_movement"), QC("qc_line"), PROMOTION("memo_discount"),
 }

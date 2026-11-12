@@ -192,7 +192,7 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
         when {
             !st.loaded -> com.aktcl.aron.core.ui.aron.AronLoadingScreen()
             h != null -> SaleHistoryScreen(h, offlineBanner = true, skuName = kit::skuName, skuCategory = kit::skuCategoryCode)
-            sel == null -> MemoMenuScreen(st.rows, outletLabel, onOpen = { vm.open(it.memoUuid) }, banner = stringResource(com.aktcl.aron.feature.memo.R.string.memo_banner_manual))
+            sel == null -> MemoMenuScreen(st.rows.map { it.copy(dueMtk = st.remainingByMemo[it.memoUuid] ?: it.dueMtk) }, outletLabel, onOpen = { vm.open(it.memoUuid) }, banner = stringResource(com.aktcl.aron.feature.memo.R.string.memo_banner_manual))
             else -> {
                 // an edit is a new memo: on a route-day closed by Final Submit it is disabled with the lock text (Print stays);
                 // checked again on every applied push pull (fix round), not only when Mark Paid's own check changes;
@@ -205,7 +205,7 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
                     // the selector and letter bar, the category quantities, the banner with Print and Edit in a row, the "marked as paid" modal
                     outletName = outletLabel(sel.memo.outletId), dashedDueBox = true, dueSideBySide = true, subtotalQuantities = true, letterFilter = true,
                     switcher = MemoSwitcher(
-                        st.rows.map { MemoSwitchOption(it.memoUuid, outletLabel(it.outletId), it.dueMtk) }, sel.memo.memoUuid, onSelect = { vm.open(it) },
+                        st.rows.map { MemoSwitchOption(it.memoUuid, outletLabel(it.outletId), st.remainingByMemo[it.memoUuid] ?: it.dueMtk) }, sel.memo.memoUuid, onSelect = { vm.open(it) },
                     ),
                     detailBanner = stringResource(com.aktcl.aron.feature.memo.R.string.memo_banner_manual), buttonsInRow = true,
                     paidDialog = st.paidDone, onPaidDialogOk = vm::dismissPaidDone,

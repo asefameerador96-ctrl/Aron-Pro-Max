@@ -46,7 +46,9 @@ class MemoViewModelTest {
         val f = Fake(credit); val v = vm(f)
         v.open("m1")
         assertTrue(v.state.value.canMarkPaid); assertEquals(50_000, v.state.value.remainingDueMtk)
+        assertEquals(50_000L, v.state.value.remainingByMemo["m1"])
         v.markPaid(); v.markPaid() // a double tap
+        assertEquals("the selector's due follows the collection", 0L, v.state.value.remainingByMemo["m1"])
         assertEquals(1, f.writes.size); assertEquals(50_000, f.writes.single().amountMtk)
         assertFalse(v.state.value.canMarkPaid); assertEquals(0, v.state.value.outletDueMtk)
     }

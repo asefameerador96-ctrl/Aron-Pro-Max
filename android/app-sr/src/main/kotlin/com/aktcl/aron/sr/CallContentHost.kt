@@ -110,7 +110,7 @@ private fun ContentItemStep(day: SrDay, visitUuid: String, item: ContentItemEnti
     // SRM-B-05 (shot 35 left): a gradient title band ("AV" or "KV"), the item centred, a full-width gradient "× বন্ধ করুন" at the bottom
     val close = { finish(if (item.kind == "av") ContentOutcome.SKIPPED_USER else ContentOutcome.VIEWED) }
     Column(Modifier.fillMaxSize()) {
-        ContentBand(if (item.kind == "av") "AV" else "KV")
+        ContentBand(stringResource(if (item.kind == "av") R.string.sr_content_av else R.string.sr_content_kv))
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
             if (item.kind == "av") {
                 AndroidView(
@@ -134,7 +134,7 @@ private fun ContentItemStep(day: SrDay, visitUuid: String, item: ContentItemEnti
             }
         }
         // the SR can always close an item; closing an AV early counts as skipped by the user.
-        AronPrimaryButton("× " + stringResource(R.string.sr_content_close), close, Modifier.fillMaxWidth().padding(AronTokens.Space.L))
+        AronPrimaryButton(stringResource(R.string.sr_content_close_x), close, Modifier.fillMaxWidth().padding(AronTokens.Space.L))
     }
 }
 
@@ -198,7 +198,8 @@ private fun SurveyStep(
     // SRM-B-06 (shot 35 right): the "সার্ভে" band, the survey's own name in red, the info card, numbered questions ("1*", "1.1*") with a
     // "উত্তরঃ" dropdown, the photo box under a sub-question, and "সাবমিট →" in a bar pinned to the bottom
     val shown = questions.filter { it.first.key in visible && it.first.answerType in supported }
-    val numbers = remember(questions) { SurveyNumbering.of(questions.map { it.first.key to it.first.showIfKey }) }
+    // numbered over the supported questions only (a hidden or unsupported one leaves no gap), in Latin digits as the manual shows (shot 35)
+    val numbers = remember(questions) { SurveyNumbering.of(questions.filter { it.first.answerType in supported }.map { it.first.key to it.first.showIfKey }) }
     Column(Modifier.fillMaxSize()) {
         ContentBand(stringResource(R.string.sr_survey_title))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
@@ -209,7 +210,7 @@ private fun SurveyStep(
                 val no = numbers[q.key].orEmpty()
                 Text(
                     androidx.compose.ui.text.buildAnnotatedString {
-                        append(com.aktcl.aron.core.ui.localizedDigits(no)); if (q.required) withStyle(androidx.compose.ui.text.SpanStyle(color = look.red)) { append("*") }
+                        append(no); if (q.required) withStyle(androidx.compose.ui.text.SpanStyle(color = look.red)) { append("*") }
                         append(" "); append(label)
                     },
                     style = MaterialTheme.typography.titleMedium,
@@ -227,7 +228,7 @@ private fun SurveyStep(
                                 stringResource(R.string.sr_survey_answer) + " " + (cur?.bool?.let { stringResource(if (it) R.string.sr_yes else R.string.sr_no) } ?: stringResource(R.string.sr_survey_pick)),
                                 style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f),
                             )
-                            Text("▾", color = look.inkMuted)
+                            Text(stringResource(R.string.sr_glyph_dropdown), color = look.inkMuted)
                         }
                         androidx.compose.material3.DropdownMenu(open, { open = false }) {
                             listOf(true to R.string.sr_yes, false to R.string.sr_no).forEach { (v, res) ->

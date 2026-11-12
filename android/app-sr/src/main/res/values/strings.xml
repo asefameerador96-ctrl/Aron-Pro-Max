@@ -67,4 +67,8 @@
     <string name="sr_review_cluster">Cluster: %1$s</string>
     <string name="sr_survey_answer">Answer:</string>
     <string name="sr_survey_pick">Select</string>
+    <string name="sr_content_kv">KV</string>
+    <string name="sr_content_av">AV</string>
+    <string name="sr_content_close_x">× Close</string>
+    <string name="sr_glyph_dropdown">▾</string>
 </resources>

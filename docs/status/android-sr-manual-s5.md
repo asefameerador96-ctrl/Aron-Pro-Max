@@ -42,3 +42,6 @@ Then the lane wires `ServerBusiness` (`BusinessTotals.kt`) in its train 2; until
 ## Needed from other lanes
 - SrApp.kt owner: add `printer = day.printerManager` to the EDIT frame (SRM-B-18).
 - S6: fold `memo_banner_manual` / `sr_survey_answer` wording into the glossary pass if the owner's words differ.
+
+## Fix round after the Opus pass on 997b72a0d (D-SR-MAN-S5-02)
+Fixed: AMO category row regression (default path test), survey Latin numbering over supported questions, whole-category totals under a letter filter, selector/list due after Mark Paid, base unit word on leftovers, "other" line for unknown SKUs, record-count check kept visible until the server figures exist, string resources for KV/AV/×/▾, stale test renamed, tests through `RoomSaleReads.businessTotals` and `SrSaleKit.prepareEdit` (two visits, one outlet). Declared: duesWarning card kept beside the dues modal (B-27); list rows keep "মেমো <no> · <time>" (B-09); the A-Z bar filters the open memo's SKUs only (B-10); device business figures span all routes on the phone while the server's are per route-day (open, train 2). Server digest will be per SKU `{sku_id, qty_base}`; `ServerBusiness` is planned for that in train 2.

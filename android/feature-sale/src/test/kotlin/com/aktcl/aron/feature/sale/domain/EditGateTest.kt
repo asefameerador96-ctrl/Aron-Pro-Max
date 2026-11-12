@@ -13,7 +13,7 @@ class EditGateTest {
         assertEquals(EditDenied.NoLiveMemo, EditGate.check(true, false, true, memoExists = false))
     }
 
-    @Test fun threeReasonsAreOfferedWithListedWireCodes() {
+    @Test fun everyReasonHasItsWireCodeAndTheSrListIsTheManuals() {
         assertEquals(listOf("wrong_sku", "wrong_quantity", "wrong_price_type", "wrong_sku_qty", "promotion_issue"), EditReason.entries.map { it.wire })
         // SRM-B-15: the SR's three reasons are the manual's, in its order; the AMO keeps its earlier three
         assertEquals(listOf("wrong_sku", "wrong_sku_qty", "promotion_issue"), EditReason.manual.map { it.wire })

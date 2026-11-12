@@ -86,4 +86,5 @@
     <string name="memo_ok">ওকে</string>
     <string name="memo_letter_all">All</string>
     <string name="memo_banner_manual">আপনি আউটলেট নির্বাচন করে একটি মেমো দেখতে পারেন। এছাড়াও আপনি এখান থেকে মেমো পুনরায় প্রিন্ট করতে পারেন।</string>
+    <string name="memo_glyph_dropdown">▾</string>
 </resources>

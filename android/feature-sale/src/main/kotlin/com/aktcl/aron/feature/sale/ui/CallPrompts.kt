@@ -106,7 +106,7 @@ fun EditReasonDialog(onSubmit: (EditReason) -> Unit, onCancel: () -> Unit, reaso
                         chosen?.let { stringResource(reasonLabel(it)) } ?: stringResource(R.string.edit_reason_pick),
                         style = MaterialTheme.typography.bodyLarge, color = if (chosen == null) Color(0xFF616161) else Color(0xFF212121), modifier = Modifier.weight(1f),
                     )
-                    Text("▾", color = Color(0xFF616161))
+                    Text(stringResource(R.string.edit_reason_glyph_dropdown), color = Color(0xFF616161))
                 }
                 DropdownMenu(open, { open = false }) {
                     reasons.forEach { r -> DropdownMenuItem(text = { Text(stringResource(reasonLabel(r))) }, onClick = { picked = r.wire; open = false }) }

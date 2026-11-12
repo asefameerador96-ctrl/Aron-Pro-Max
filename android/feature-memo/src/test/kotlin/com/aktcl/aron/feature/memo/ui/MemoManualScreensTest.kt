@@ -44,6 +44,23 @@ class MemoManualScreensTest {
         compose.onAllNodesWithText("4 dozen").assertCountEquals(2) // the line and its category row, each in dozens
     }
 
+    // the default path (AMO, TSO): the category row keeps its two columns and carries no quantity; only the SR opts in
+    @Test fun defaultCategoryRowHasNoQuantityColumn() {
+        show { MemoDetailView(MemoMenu.detail(memo), false, 0, { names.getValue(it) }, {}, {}, {}, skuCategory = { cats[it] }) }
+        compose.onNodeWithText("Total Cigarette").assertExists()
+        compose.onAllNodesWithText("3 packets").assertCountEquals(0)
+    }
+
+    // a letter filter never makes a "Total" partial: the cigarette row still adds both cigarette lines
+    @Test fun categoryTotalStaysWholeWhileALetterIsSelected() {
+        show { MemoDetailView(MemoMenu.detail(memo), false, 0, { names.getValue(it) }, {}, {}, {}, skuCategory = { cats[it] }, subtotalQuantities = true, letterFilter = true) }
+        compose.onNodeWithText("B").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Avon-20S").assertDoesNotExist()
+        compose.onNodeWithText("Total Cigarette").assertExists()
+        compose.onNodeWithText("3 packets").assertExists()
+        compose.onNodeWithText("50.00", substring = true).assertExists() // 40.00 + 10.00
+    }
+
     @Test fun letterBarFiltersTheLinesAndAllBringsThemBack() {
         show { MemoDetailView(MemoMenu.detail(memo), false, 0, { names.getValue(it) }, {}, {}, {}, skuCategory = { cats[it] }, letterFilter = true) }
         compose.onNodeWithText("Avon-20S").assertExists(); compose.onNodeWithText("Boss-10S").assertExists()

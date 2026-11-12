@@ -111,9 +111,11 @@ class SalesSubmitScreenTest {
         compose.onNodeWithText("Cigarette 30 packets", substring = true).assertExists()
         compose.onNodeWithText("1,234.50", substring = true).assertExists()
         compose.onAllNodesWithText("Waiting", substring = true).assertCountEquals(5)
+        compose.onAllNodesWithText("memo").assertCountEquals(1) // the record-count check stays on screen until the server has figures
         server = BusinessTotals(39, listOf(CategoryQty("cigarette", 200, 20, "packet")), listOf(CategoryQty("cigarette", 1000, 100, "packet")), emptyList(), 1_234_500)
         compose.waitForIdle()
         compose.onAllNodesWithText("Waiting", substring = true).assertCountEquals(0)
+        compose.onAllNodesWithText("memo").assertCountEquals(0)
         compose.onAllNodesWithText("Not matching", substring = true).assertCountEquals(1) // only the sale row: 200 < 300
     }
 

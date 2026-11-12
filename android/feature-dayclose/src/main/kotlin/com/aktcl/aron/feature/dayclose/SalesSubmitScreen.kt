@@ -226,7 +226,9 @@ fun SalesSubmitScreen(
                     val money = Formats.money(d.outstandingMtk, if (bn) UiLocale.BN else UiLocale.EN)
                     NoticeCard(stringResource(R.string.submit_dues_warning, localizedNumber(d.retailersWithDues.toLong()), money), Notice.Warning)
                 }
-                if (business != null) BusinessTable(business, serverBusiness, shownLabel, categoryLabel) else CountsTable(
+                if (business != null) BusinessTable(business, serverBusiness, shownLabel, categoryLabel)
+                // until the server's business figures exist the record-count check (device = server) stays on screen beside the figures
+                if (business == null || serverBusiness == null) CountsTable(
                     if (rowGroups == null && legacyFiveRows) SubmitDisplay.legacyFive(counts).ifEmpty { SubmitDisplay.views(counts, null) } else SubmitDisplay.views(counts, rowGroups), shownLabel,
                     serverKnown = serverKnown ?: counts.any { it.server != null },
                 )
@@ -493,15 +495,19 @@ private fun BusinessTable(device: BusinessTotals, server: BusinessTotals?, typeL
     val blank = stringResource(R.string.submit_server_blank)
     val waiting = stringResource(R.string.submit_row_waiting)
     val mismatch = stringResource(R.string.submit_row_mismatch)
+    val units = listOf("packet", "box", "dozen", "piece", "stick").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
+    val other = stringResource(R.string.submit_biz_other)
     @Composable fun qty(rows: List<CategoryQty>, unit: (String) -> String): String {
         val lines = ArrayList<String>()
         for (r in rows) {
             if (r.qtyBase == 0L && r.entered == 0L) continue
-            lines += categoryLabel(r.categoryCode) + " " + localizedNumber(r.entered) + " " + unit(r.unitKey) + (if (r.remBase != 0L) " +" + localizedNumber(r.remBase) else "")
+            // a SKU the phone has no master row for is counted under "other", never dropped
+            val name = if (r.categoryCode == OTHER_CATEGORY) other else categoryLabel(r.categoryCode)
+            val rem = if (r.remBase != 0L) " +" + localizedNumber(r.remBase) + " " + (units[com.aktcl.aron.rules.EntryUnits.baseLabelKey(r.categoryCode)] ?: "") else ""
+            lines += (name + " " + localizedNumber(r.entered) + " " + unit(r.unitKey) + rem).replace("  ", " ").trim()
         }
         return if (lines.isEmpty()) localizedNumber(0) else lines.joinToString("\n")
     }
-    val units = listOf("packet", "box", "dozen", "piece", "stick").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
     val unitWord: (String) -> String = { units[it] ?: it }
     val money = { v: Long -> Formats.money(v, if (bn) UiLocale.BN else UiLocale.EN) }
     @Composable fun text(t: BusinessTotals, key: BusinessKey): String = when (key) {

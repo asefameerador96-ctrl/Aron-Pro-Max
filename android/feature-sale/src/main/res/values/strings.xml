@@ -119,4 +119,5 @@
     <string name="edit_reason_pick">Select a reason</string>
     <string name="edit_reason_cancel">Cancel</string>
     <string name="edit_reason_submit">Submit</string>
+    <string name="edit_reason_glyph_dropdown">▾</string>
 </resources>

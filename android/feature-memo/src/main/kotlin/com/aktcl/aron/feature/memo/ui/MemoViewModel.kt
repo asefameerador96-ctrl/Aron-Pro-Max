@@ -77,6 +77,8 @@ data class MemoUiState(
     val submitRefused: Boolean = false,
     /** SRM-B-20: a Mark Paid was stored; the host shows "marked as paid" with OK until [MemoViewModel.dismissPaidDone]. */
     val paidDone: Boolean = false,
+    /** SRM-B-10: the due still open on each of today's memos (after the collections), for the selector's "বাকি" tag; [MemoMenuRow.dueMtk] is the stored due. */
+    val remainingByMemo: Map<String, Long> = emptyMap(),
 )
 
 /**
@@ -182,7 +184,7 @@ class MemoViewModel(
             rows = MemoMenu.rows(memos), selected = m?.let(MemoMenu::detail), remainingDueMtk = remaining,
             canMarkPaid = m != null && !locked && DueLedger.markPaid(m, collections, 0) != null, dayLocked = locked,
             outletDueMtk = m?.let { DueLedger.outletOutstanding(memos, collections, it.outletId) } ?: 0L,
-            loaded = true,
+            loaded = true, remainingByMemo = memos.associate { it.memoUuid to DueLedger.remaining(it, collections) },
         ))
     }
 }

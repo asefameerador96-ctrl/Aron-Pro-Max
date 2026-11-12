@@ -274,13 +274,16 @@ fun MemoDetailView(
                 val shown = detail.items.filter { i -> letter == null || names[i.skuId]?.firstOrNull()?.uppercaseChar() == letter }
                 TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
                 shown.forEach { i -> TableRow(skuName(i.skuId), lineQtyText(i.qtyEntered, i.unitEntered, skuCategory(i.skuId), i.qtyBase, skuUnit(i.skuId)), amount(i.grossMtk)) }
-                // M3: a money subtotal per category, in first-seen order (quantities of different units are never added)
-                shown.filter { MemoCategories.label(skuCategory(it.skuId)).isNotBlank() }.groupBy { skuCategory(it.skuId) }.forEach { (code, items) ->
-                    TableRow(
-                        stringResource(R.string.memo_total_category, MemoCategories.label(code)),
-                        if (subtotalQuantities) categoryQtyText(items, code, skuUnit) else "", amount(items.sumOf { it.grossMtk }),
-                    )
-                }
+                // M3: a money subtotal per category, in first-seen order (quantities of different units are never added). It is always the
+                // whole category of the memo, never only the lines a letter filter leaves on screen, so a "Total" is never partial.
+                val shownCategories = shown.map { skuCategory(it.skuId) }.toSet()
+                detail.items.filter { MemoCategories.label(skuCategory(it.skuId)).isNotBlank() && skuCategory(it.skuId) in shownCategories }
+                    .groupBy { skuCategory(it.skuId) }.forEach { (code, items) ->
+                        val name = stringResource(R.string.memo_total_category, MemoCategories.label(code))
+                        // the AMO and TSO keep the two-column row; the SR's carries the quantity (SRM-B-12)
+                        if (subtotalQuantities) TableRow(name, categoryQtyText(items, code, skuUnit), amount(items.sumOf { it.grossMtk }))
+                        else TableRow2(name, amount(items.sumOf { it.grossMtk }))
+                    }
                 if (detail.discountTable.isNotEmpty()) {
                     CardDivider()
                     TableHeader(stringResource(R.string.memo_discount_section), stringResource(R.string.memo_col_qty), stringResource(R.string.summary_col_value))
@@ -747,7 +750,7 @@ private fun MemoSwitcherBar(sw: MemoSwitcher) {
             Row(Modifier.fillMaxWidth().heightIn(min = AronLook.Touch).padding(AronTokens.Space.L), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                 Text(cur?.label.orEmpty(), style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2, modifier = Modifier.weight(1f))
                 if ((cur?.dueMtk ?: 0) > 0) Text(stringResource(R.string.memo_due_chip_amount, money(cur!!.dueMtk)), style = MaterialTheme.typography.labelMedium, color = look.red)
-                Text("▾", color = look.inkMuted)
+                Text(stringResource(R.string.memo_glyph_dropdown), color = look.inkMuted)
             }
         }
         androidx.compose.material3.DropdownMenu(open, { open = false }) {
