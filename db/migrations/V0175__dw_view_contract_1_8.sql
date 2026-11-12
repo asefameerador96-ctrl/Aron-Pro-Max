@@ -1,4 +1,4 @@
--- V0174 dw view contract 1.7 -> 1.8 (SR manual build, sr-server train 1; D-SV1-01, D-SV1-02).
+-- V0175 dw view contract 1.7 -> 1.8 (SR manual build, sr-server train 1; D-SV1-01, D-SV1-02).
 -- dw.fact_visit gains zero_sale_reason_code and call_photo_uuid (copied by the worker's visit rebuild from app.visit); dw.v_visit gains
 -- zero_sale_reason_code and call_capture_taken (a boolean: a media id is never in a reuse view) after force_sale_reason (`is_effective` stays last). A view cannot take a column in the middle, so
 -- it is dropped and recreated; comments are saved and restored, grants re-applied. Minor version: columns added only.
@@ -15,7 +15,7 @@ BEGIN
       EXIT;
     EXCEPTION WHEN lock_not_available THEN
       n := n + 1;
-      IF n >= 120 THEN RAISE EXCEPTION 'V0174: dw.fact_visit stayed locked for 60 s (is the worker paused?)'; END IF;
+      IF n >= 120 THEN RAISE EXCEPTION 'V0175: dw.fact_visit stayed locked for 60 s (is the worker paused?)'; END IF;
       PERFORM pg_sleep(0.5);
     END;
   END LOOP;

@@ -1,4 +1,4 @@
--- V0172 SR manual build, sr-server train 1 (docs/requests/contract-1.14-sr-manual.md; D-SR-MAN-01, D-SV1-01 to 06).
+-- V0173 SR manual build, sr-server train 1 (docs/requests/contract-1.14-sr-manual.md; D-SR-MAN-01, D-SV1-01 to 06).
 --
 -- 1. app.visit.zero_sale_reason_code: why the SR made a zero sale (SRM-A-40, screenshot 32); set by visit_close, only when
 --    is_zero_sale (CHECK). Code list zero_sale_reason, four rows (Q12 default labels).
@@ -6,7 +6,7 @@
 --    A skip carries a reason and no photo (CHECK). media.purpose gains outlet_call.
 -- 3. Code lists: zero_sale_reason (new key), edit_reason + wrong_sku_qty, promotion_issue (SRM-B-15), task_type +
 --    poor_brand_visibility (SRM-B-49). Labels Bangla verbatim from the manual / Q12 defaults.
--- All CHECKs that widen or are new are NOT VALID here (every existing row satisfies them) and validated by V0173 in a
+-- All CHECKs that widen or are new are NOT VALID here (every existing row satisfies them) and validated by V0174 in a
 -- transaction of its own (squawk rule). Migrations are forward-only; ADD COLUMN is nullable without default (no rewrite).
 -- Locks: app.visit and app.media are taken by ONE LOCK ... NOWAIT retried for about 60 s (V0144 pattern).
 
@@ -21,7 +21,7 @@ BEGIN
       EXIT;
     EXCEPTION WHEN lock_not_available THEN
       n := n + 1;
-      IF n >= 120 THEN RAISE EXCEPTION 'V0172: app.visit or app.media stayed locked for 60 s'; END IF;
+      IF n >= 120 THEN RAISE EXCEPTION 'V0173: app.visit or app.media stayed locked for 60 s'; END IF;
       PERFORM pg_sleep(0.5);
     END;
   END LOOP;

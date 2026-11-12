@@ -45,7 +45,7 @@ class DwViewContractTest {
         "1.5" to "c60b8adf0fb3ab71aa8490fbc3f95165cf102df4077ac543e5a3199d50889656",           // V0151 v_visit.force_sale_reason (AMO manual build)
         "1.6" to "5b1f10c70f4a7c260e270c586b8df8c3019aeb10de696efeb6b7e9e7e1c8244a",           // V0152 dw.v_offer, dw.v_offer_version (discount portal; additive views)
         "1.7" to "c68e8ac735e7c67f4d5502908f1b662b0367c5caf87ac23fddefb6833fab85dc",           // V0162 dw.v_programme, dw.v_programme_version, dw.v_gift (loyalty portal; additive views)
-        "1.8" to "148f72fe6b1bdd11d898b14f138bdf33a8259d2658e14434fef2e2968706d34a",           // V0174 v_visit.zero_sale_reason_code, call_capture_taken (SR manual build, sr-server train 1)
+        "1.8" to "148f72fe6b1bdd11d898b14f138bdf33a8259d2658e14434fef2e2968706d34a",           // V0175 v_visit.zero_sale_reason_code, call_capture_taken (SR manual build, sr-server train 1)
     )
 
     private fun views(c: Connection): Map<String, List<String>> =

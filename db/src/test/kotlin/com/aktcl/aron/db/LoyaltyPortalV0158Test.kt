@@ -177,7 +177,7 @@ class LoyaltyPortalV0158Test {
     fun theViewsShowTheCurrentVersionWithTiersProductAndScopeAndTheContractIs17() = db.connect().use { c ->
         c.autoCommit = false
         try {
-            assertEquals("1.8", c.scalar("SELECT dw.view_contract_version()"))   // 1.7 at V0162, 1.8 at V0174
+            assertEquals("1.8", c.scalar("SELECT dw.view_contract_version()"))   // 1.7 at V0162, 1.8 at V0175
             val p = c.programme("W1", "draft")
             val v1 = c.version(p, 1, "c0ffee00-0000-4000-8000-0000000a0601")
             val v2 = c.version(p, 2, "c0ffee00-0000-4000-8000-0000000a0602")
