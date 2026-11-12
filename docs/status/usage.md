@@ -2889,3 +2889,8 @@
 
 ### 2026-11-12 11:10 UTC — S2 Opus FAIL
 - S2 `efef6763e` Opus pass w4fk7w464 (24 agents): FAIL. Survivors: create-cluster stored only in SharedPreferences while the card says "Waiting to be sent"; change-information + cluster change saved in two transactions from a composition scope; success-dialog window where a recreate mints a new request uuid (double request); zero-sale call shown as New Sale (any memo counted as sold). Required with it: the phone/server journey rule is not identical (abandoned calls, leg rounding) and must not be claimed so; km double rounding; tasks per note 47; programme tiles gated on the config flags. Checked OK: payloads fit the server, GEO/mock/photo unchanged, Home order, STD math, no AMO/TSO regression. Fix-up sent; wt-s2 removed. Ruling recorded: S2 owns SRM-B-82..85 (Sales Journey); 86..90 to the KPI lane.
+
+### 2026-11-12 11:22 UTC — S1 green; train 103 rebuilt; deploy #339 running
+- S1 `93f5972fd`: step counters renamed (8 files, +27/-27; no allow entry, scan untouched); lane CI 43205492690 success incl. Repository gates; my local money-float 13/13 exit 0, date-pin 0 new, gate unit tests OK on the merged train.
+- Train 103 rebuilt = train 102 30230e3cc + S1 93f5972fd, head `f12c32707` on lane/lead-train103 (my own branch force-pushed): DECISIONS 426 (414 + 12), 0 lines missing from either side, gitleaks clean. CI 43208539789 running.
+- Train 101 INT ci #2039 43202049384 success; deploy #339 43207815739 running; health still ab78d0d4b. Watching.
