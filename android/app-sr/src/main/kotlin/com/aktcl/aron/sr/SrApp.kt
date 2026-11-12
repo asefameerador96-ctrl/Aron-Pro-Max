@@ -156,7 +156,7 @@ fun SrFrame(
     bottomBar: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
-    if (printer != null) HoldPrinter(printer)
+    if (printer != null) HoldPrinter(printer, assist = true)
     val back = stringResource(com.aktcl.aron.core.ui.R.string.core_ui_back)
     // the gradient bar of the reference: back chevron, the screen's tile art and the white title; the printer state hangs on the bar's bottom edge
     ParityScaffold(
@@ -396,7 +396,7 @@ fun SrApp(
                 AttendanceContent(
                     attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
                     userTitle = who.title, userSubtitle = who.subtitle, // Latin digits, as in the reference
-                    onOpenSalesSubmit = { screen = SrScreen.SUBMIT },
+                    onOpenSalesSubmit = { screen = SrScreen.SUBMIT }, statusBoxes = true,
                     offline = !day.isOnline(), // read on each composition of the screen (one capabilities read, no callback)
                 )
             }

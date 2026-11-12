@@ -174,7 +174,13 @@ fun AttendanceContent(
      * false: the SR screen and its goldens do not change.
      */
     amoStyle: Boolean = false,
+    /**
+     * D-SR-MAN-S3-01 (manual screenshots 11 to 13): the SR host shows the dashed status boxes ("চেক ইন সম্পন্ন হয়েছে", the amber "after 5" box,
+     * "চেক আউট সম্পন্ন হয়েছে"), the white dome hold sheet and Latin-digit time chip; the rest of the SR screen (user card, location card, day lines) is unchanged.
+     */
+    statusBoxes: Boolean = false,
 ) {
+    val boxes = amoStyle || statusBoxes
     val c = LocalAronColors.current
     val look = LocalAronLook.current
     var hold by rememberSaveable { mutableStateOf<String?>(null) }
@@ -190,7 +196,7 @@ fun AttendanceContent(
         ScrollColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (userTitle != null) UserCard(userTitle, userSubtitle, amoStyle)
             if (state.lastFixMock) AronBanner(stringResource(R.string.att_mock_warning), kind = BannerKind.Warning)
-            if (dayComplete && !amoStyle) AronBanner(stringResource(R.string.att_day_complete_message), kind = BannerKind.Success)
+            if (dayComplete && !boxes) AronBanner(stringResource(R.string.att_day_complete_message), kind = BannerKind.Success)
             if (state.fixFailed && !state.readingFix && !state.busy) {
                 AronBanner(
                     stringResource(R.string.att_fix_none), kind = BannerKind.Warning,
@@ -204,7 +210,7 @@ fun AttendanceContent(
             val prompt = when {
                 !checkOutPhase && state.showCheckInPrompt -> stringResource(R.string.att_prompt_checkin)
                 checkOutPhase && !dayComplete && state.checkOutEnabled -> stringResource(R.string.att_prompt_checkout)
-                amoStyle && dayComplete -> stringResource(R.string.att_day_complete_message)
+                boxes && dayComplete -> stringResource(R.string.att_day_complete_message)
                 else -> null
             }
             // D-NIGHT-CHECKOUT-01: no check-out before the day's Sales Submit; one tap to the Sales Submit screen
@@ -221,7 +227,7 @@ fun AttendanceContent(
                     modifier = Modifier.fillMaxWidth().testTag(AttendanceTags.PROMPT).padding(vertical = 8.dp),
                 )
             }
-            if (amoStyle) AmoStatusRow(state, checkoutAtLabel, checkOutPhase, dayComplete, onIn = { hold = HOLD_IN }, onOut = { hold = HOLD_OUT })
+            if (boxes) AmoStatusRow(state, checkoutAtLabel, checkOutPhase, dayComplete, srLabels = !amoStyle, onIn = { hold = HOLD_IN }, onOut = { hold = HOLD_OUT })
             else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 // green in, red out once open, grey while not available (sr/attendance.png); a tap opens the hold sheet, never commits
                 BigAction(
@@ -238,7 +244,7 @@ fun AttendanceContent(
         var lastHold by remember { mutableStateOf(HOLD_IN) }
         hold?.let { lastHold = it }
         val out = lastHold == HOLD_OUT
-        val time = remember(hold) { clock12(dhakaClock(nowIso())) }.let { if (amoStyle) it else localizedDigits(it) } // R4: the AMO chip keeps Latin digits (screenshots 15, 16)
+        val time = remember(hold) { clock12(dhakaClock(nowIso())) }.let { if (boxes) it else localizedDigits(it) } // R4: the AMO chip keeps Latin digits (screenshots 15, 16)
         val fixLine = state.fixAccuracyM?.let { stringResource(R.string.att_fix_line, localizedNumber(it.toLong())) } ?: stringResource(R.string.att_fix_line_none)
         HoldSheet(
             visible = hold != null,
@@ -247,7 +253,7 @@ fun AttendanceContent(
             timeText = time, fixLine = fixLine, tint = if (out) LocalAronColors.current.noFill else LocalAronColors.current.yesFill,
             onCancel = { hold = null },
             onConfirmed = { hold = null; if (out) onCheckOut() else onCheckIn() },
-            amoStyle = amoStyle,
+            amoStyle = boxes,
         )
     }
 }
@@ -577,7 +583,7 @@ private fun StatusBox(text: String, icon: ImageVector, color: Color, tag: String
  * "check-in done" box and either the dashed orange "active after <time>" box or the red Check Out; at the end the two "Already" boxes.
  */
 @Composable
-private fun AmoStatusRow(state: AttendanceState, checkoutAtLabel: String, checkOutPhase: Boolean, dayComplete: Boolean, onIn: () -> Unit, onOut: () -> Unit) {
+private fun AmoStatusRow(state: AttendanceState, checkoutAtLabel: String, checkOutPhase: Boolean, dayComplete: Boolean, srLabels: Boolean, onIn: () -> Unit, onOut: () -> Unit) {
     val look = LocalAronLook.current
     val bangla = LocalAppLanguage.current == AppLanguage.BN
     val green = look.primaryStart ?: DoneGreen
@@ -585,8 +591,8 @@ private fun AmoStatusRow(state: AttendanceState, checkoutAtLabel: String, checkO
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         when {
             dayComplete -> {
-                StatusBox(stringResource(R.string.att_amo_already_in), AronIcons.CheckCircle, green, AttendanceTags.STATUS, Modifier.weight(1f))
-                StatusBox(stringResource(R.string.att_amo_already_out), AronIcons.CheckCircle, red, AttendanceTags.CHECKED_OUT, Modifier.weight(1f))
+                StatusBox(stringResource(if (srLabels) R.string.att_amo_in_done else R.string.att_amo_already_in), AronIcons.CheckCircle, green, AttendanceTags.STATUS, Modifier.weight(1f))
+                StatusBox(stringResource(if (srLabels) R.string.att_sr_out_done else R.string.att_amo_already_out), AronIcons.CheckCircle, red, AttendanceTags.CHECKED_OUT, Modifier.weight(1f))
             }
             checkOutPhase -> {
                 StatusBox(stringResource(R.string.att_amo_in_done), AronIcons.CheckCircle, green, AttendanceTags.STATUS, Modifier.weight(1f))

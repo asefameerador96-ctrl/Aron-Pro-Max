@@ -35,6 +35,7 @@
     <string name="att_submit_first_open">Open Sales Submit</string>
     <string name="att_submit_first_offline">Offline — Sales Submit not done yet. Your data goes out as soon as the network returns; then submit and check out.</string>
     <!-- the AMO style of the attendance screen (amo-shell A1, screenshots 14 to 16) -->
+    <string name="att_sr_out_done">Check-out done</string>
     <string name="att_amo_in_done">Check-in done</string>
     <string name="att_amo_out_after">Check Out will be active after %1$s</string>
     <string name="att_amo_already_in">Already Checked-In</string>

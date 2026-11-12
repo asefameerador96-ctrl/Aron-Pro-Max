@@ -393,7 +393,7 @@ object AronLook {
         disabledFill = hex(0xE8E8E8), disabledText = hex(0xA5A5A5), secondaryText = hex(0x303030),
         ink = hex(0x111111), inkMuted = hex(0x505050), columnHeader = hex(0x505050), underline = hex(0x9E9E9E),
         silhouette = hex(0xD9D9D9), silhouetteInk = hex(0x8A8A8A),
-        badge = hex(0xD5484A), printerOff = hex(0xE53935), printerOn = hex(0x4B1C97),
+        badge = hex(0xD5484A), printerOff = hex(0xE53935), printerOn = hex(0x1B7F3A),
     )
 
     /** Optional outdoor theme: solid white bars and panels with black ink (key figures far above 7:1); the accents stay. */
@@ -426,7 +426,7 @@ object AronLook {
         disabledFill = hex(0x2A3556), disabledText = hex(0xB8C2E5), secondaryText = hex(0xFFFFFF),
         ink = hex(0xFFFFFF), inkMuted = hex(0xB8C2E5), columnHeader = hex(0xB8C2E5), underline = hex(0x5A6690),
         silhouette = hex(0x1C2A5A), silhouetteInk = hex(0xB8C2E5),
-        badge = hex(0xD32F2F), printerOff = hex(0xFF7A7A), printerOn = hex(0xB9A6FF),
+        badge = hex(0xD32F2F), printerOff = hex(0xFF7A7A), printerOn = hex(0x6FD68F),
         noticeFill = hex(0x3B1A2A), online = hex(0x5BD16A), offlineDot = hex(0x8A93B8), rowRule = hex(0x1D3A60), primaryDisabled = hex(0x2A3556),
         avatarSquare = hex(0x1C2A5A), pinSquare = hex(0x1C2A5A), locationCard = hex(0x101C42),
         goStart = hex(0xA4C81A), goEnd = hex(0x62B843), neutralStart = hex(0x2A3556), neutralEnd = hex(0x4A5680),

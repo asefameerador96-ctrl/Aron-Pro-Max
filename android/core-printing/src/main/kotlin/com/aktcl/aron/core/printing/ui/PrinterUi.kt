@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,13 +76,28 @@ data class PrinterIndicator(val green: Boolean, val slashed: Boolean, val busy: 
     }
 }
 
-/** Keeps the printer link while the calling screen is visible (connects now; releases on leave). */
+/**
+ * Keeps the printer link while the calling screen is visible (connects now; releases on leave).
+ *
+ * [assist] (SR manual screenshot 17, D-SR-MAN-S3-02): on entering the screen, if the nearby-devices permission (BLUETOOTH_CONNECT,
+ * Android 12+) is missing, the system prompt is shown once, and the link is taken as soon as it is granted; and the visible toast
+ * "প্রিন্টার কানেক্ট করা হয়েছে" appears when the printer turns from not connected to connected. A denial changes nothing else: the
+ * screen stays usable and printing is refused later with the usual message. Default false: AMO screens keep their own behaviour.
+ */
 @Composable
-fun HoldPrinter(manager: PrinterManager) {
-    DisposableEffect(manager) {
+fun HoldPrinter(manager: PrinterManager, assist: Boolean = false) {
+    val context = LocalContext.current
+    var granted by remember { mutableStateOf(!assist || BluetoothSppTransport.hasConnectPermission(context)) }
+    if (assist && !granted) {
+        var asked by rememberSaveable { mutableStateOf(false) }
+        val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = BluetoothSppTransport.hasConnectPermission(context) }
+        LaunchedEffect(Unit) { if (!asked) { asked = true; launcher.launch(Manifest.permission.BLUETOOTH_CONNECT) } }
+    }
+    DisposableEffect(manager, granted) {
         val release = manager.hold()
         onDispose { release() }
     }
+    if (assist) PrinterConnectedToast(manager)
 }
 
 /** The printer icon: green printer when connected, red slashed when not; tap opens the picker. */
