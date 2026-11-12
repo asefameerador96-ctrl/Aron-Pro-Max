@@ -88,6 +88,7 @@ private const val REPLAY_WINDOW_S = 60L
 fun Route.deviceOtpRoutes(d: DeviceOtpDeps) {
     authenticated(d.guard) {
         get("/admin/device-otps") { call.respond(listOtps(call, d)) }
+        get("/supervisor/device-otps") { call.respond(teamOtps(call, d)) }
         post("/admin/device-otps") { call.respond(HttpStatusCode.Created, issue(call, d)) }
     }
 }
@@ -145,6 +146,55 @@ private fun listOtps(call: ApplicationCall, d: DeviceOtpDeps): DeviceOtpPage {
     }
     val page = rows.take(limit)
     return DeviceOtpPage(page.map { it.first }, if (rows.size > limit) page.last().second.toString() else null)
+}
+
+@Serializable
+data class TeamDeviceOtpDto(val user_id: Long, val username: String, val full_name: String, val route_names: List<String>, val otp: String, val created_at: String, val expires_at: String, val attempts: Int)
+
+@Serializable
+data class TeamDeviceOtpPageDto(val business_date: String, val items: List<TeamDeviceOtpDto>, val next_cursor: String?)
+
+/**
+ * `GET /v1/supervisor/device-otps` (contract getTeamDeviceOtps, 1.14.0, SRM-A-06): the TSO's list of today's pending codes for the
+ * active SRs of the caller's reach. Reach comes from the token; nothing is read from the request but the page. A code is shown, never
+ * logged: the audit event carries counts only. Same cipher, TTL, attempts limit and rate limits as the admin panel.
+ */
+private fun teamOtps(call: ApplicationCall, d: DeviceOtpDeps): TeamDeviceOtpPageDto {
+    val p = call.principal
+    if (p.role != Role.TSO) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "the team device OTP list is for a TSO")
+    val q = call.request.queryParameters
+    val limit = q["limit"]?.let { it.toIntOrNull()?.takeIf { v -> v in 1..500 } ?: bad("query.limit", "out_of_range") } ?: 100
+    val cursor = q["cursor"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: bad("query.cursor") }
+    val (national, zones) = reachZones(d, call)
+    val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
+    if (!national && zones.isEmpty()) return TeamDeviceOtpPageDto(today.toString(), emptyList(), null)
+    val now = OffsetDateTime.ofInstant(d.clock.now(), ZoneOffset.UTC)
+    val maxAttempts = d.config.int("cfg.auth.otp_max_attempts")
+    val rows = d.db.jdbi.inTransaction<List<Pair<TeamDeviceOtpDto, Long>>, Exception> { h ->
+        val zoneFilter = if (national) "" else "AND $USER_ZONE IN (<zones>)"
+        val sql = "SELECT u.id, u.username, u.full_name, o.otp_cipher, o.created_at, o.expires_at, o.attempts, " +
+            "(SELECT coalesce(array_agg(r.name ORDER BY r.name), '{}') FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id " +
+            "  WHERE a.user_id = u.id AND a.ended_at IS NULL AND a.valid_from <= :today AND (a.valid_to IS NULL OR a.valid_to > :today)) AS routes " +
+            "FROM app.app_user u JOIN LATERAL (SELECT * FROM app.device_otp x WHERE x.user_id = u.id AND x.consumed_at IS NULL AND x.revoked_at IS NULL " +
+            "  AND x.expires_at > :now AND x.attempts < :maxAtt AND (x.created_at AT TIME ZONE 'Asia/Dhaka')::date = :today ORDER BY x.created_at DESC LIMIT 1) o ON true " +
+            "WHERE u.role = 'SR' AND u.status = 'active' $zoneFilter ${if (cursor != null) "AND u.id > :c" else ""} ORDER BY u.id LIMIT :lim"
+        val query = h.createQuery(sql).bind("now", now).bind("lim", limit + 1).bind("today", today).bind("maxAtt", maxAttempts)
+        if (!national) query.bindList("zones", zones.toList())
+        if (cursor != null) query.bind("c", cursor)
+        val out = query.map { rs, _ ->
+            val uid = rs.getLong("id")
+            val code = d.cipher.open(rs.getBytes("otp_cipher"), uid)
+            @Suppress("UNCHECKED_CAST") val routes = (rs.getArray("routes").array as Array<String>).toList()
+            code?.let {
+                TeamDeviceOtpDto(uid, rs.getString("username"), rs.getString("full_name"), routes, it,
+                    rs.getObject("created_at", OffsetDateTime::class.java).toInstant().wire(), rs.getObject("expires_at", OffsetDateTime::class.java).toInstant().wire(), rs.getInt("attempts")) to uid
+            }
+        }.list().filterNotNull()
+        AuditWriter.write(h, p, "device_otp", "team", "view", null, buildJsonObject { put("rows", minOf(out.size, limit)) }, null, call.requestId)
+        out
+    }
+    val page = rows.take(limit)
+    return TeamDeviceOtpPageDto(today.toString(), page.map { it.first }, if (rows.size > limit) page.last().second.toString() else null)
 }
 
 private suspend fun issue(call: ApplicationCall, d: DeviceOtpDeps): DeviceOtpDto {

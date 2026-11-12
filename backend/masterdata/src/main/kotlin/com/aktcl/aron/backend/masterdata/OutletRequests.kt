@@ -13,6 +13,7 @@ import com.aktcl.aron.backend.platform.principal
 import com.aktcl.aron.backend.platform.receiveStrict
 import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ProblemCode
+import com.aktcl.aron.contract.RecordOutcomeCode
 import com.aktcl.aron.contract.Role
 import com.aktcl.aron.rules.BusinessDate
 import io.ktor.http.HttpStatusCode
@@ -443,7 +444,7 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
     /** The members each web request type requires (docs/24 s12.2); closed objects: unknown members are refused. */
     private fun validateProposal(type: String, p: JsonObject) {
         val allowed = mapOf(
-            "info" to setOf("name", "name_bn", "owner_name", "contact_number", "address", "sub_channel_id"),
+            "info" to setOf("name", "name_bn", "owner_name", "contact_number", "address", "sub_channel_id", "cluster_id"),
             "location" to setOf("lat", "lng"), "cluster" to setOf("cluster_id"), "close" to setOf("close_reason_code"),
         ).getValue(type)
         p.keys.firstOrNull { it !in allowed }?.let { bad("/proposed/$it", "not_allowed") }
@@ -593,9 +594,20 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                 return id
             }
             "close" -> update(mapOf("status" to "closed"))
-            "info" -> update(p.keys.filter { it in setOf("name", "name_bn", "owner_name", "contact_number", "address", "sub_channel_id") }.associateWith { if (it == "sub_channel_id") id(it) else text(it) })
+            "info" -> {
+                // Contract 1.14.0 (SRM-B-40): an info request may also carry the outlet's new cluster; it must be a cluster of the outlet's own zone.
+                val newCluster = id("cluster_id")
+                if (newCluster != null) {
+                    val cz = h.row("SELECT zone_id FROM app.cluster WHERE id = :c", "c" to newCluster)?.get("zone_id") ?: bad("/proposed/cluster_id", "unknown_cluster")
+                    val oz = h.row("SELECT zone_id FROM app.outlet WHERE id = :o", "o" to outletId)?.get("zone_id")
+                    if (oz != null && (oz as Number).toLong() != (cz as Number).toLong()) bad("/proposed/cluster_id", "cluster_not_in_outlet_zone")
+                }
+                update(p.keys.filter { it in setOf("name", "name_bn", "owner_name", "contact_number", "address", "sub_channel_id", "cluster_id") }.associateWith { if (it == "sub_channel_id" || it == "cluster_id") id(it) else text(it) })
+            }
             "cluster" -> update(mapOf("cluster_id" to (id("cluster_id") ?: bad("/proposed/cluster_id", "required"))))
-            "route_add" -> update(mapOf("cluster_id" to (id("cluster_id") ?: bad("/proposed/cluster_id", "required")), "route_id" to (req.route_id ?: (r["route_id"] as Number?)?.toLong() ?: bad("/route_id", "required"))))
+            "route_add" -> update(mapOf(
+                // SRM-B-42: a route_add from the SR app may carry no cluster; then the outlet keeps the cluster it has (never a 400 that strands the request).
+                "cluster_id" to (id("cluster_id") ?: (h.row("SELECT cluster_id FROM app.outlet WHERE id = :o", "o" to outletId)?.get("cluster_id") as Number?)?.toLong() ?: bad("/proposed/cluster_id", "required")), "route_id" to (req.route_id ?: (r["route_id"] as Number?)?.toLong() ?: bad("/route_id", "required"))))
             "location" -> {
                 update(mapOf("lat" to (num("lat") ?: bad("/proposed/lat", "required")), "lng" to (num("lng") ?: bad("/proposed/lng", "required"))))
                 h.createUpdate("UPDATE app.outlet SET location_confirmed = true WHERE id = :o").bind("o", outletId).execute()
@@ -616,6 +628,49 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
  * verifier is not the requester (otherwise the event stays in the trail and the request is unchanged). A guarded UPDATE
  * in the record's transaction, so a resend or a second verification never moves it twice.
  */
+/**
+ * The SR app's `outlet_change_request` record (contract 1.14.0, SRM-B-35, SRM-B-40, SRM-B-42):
+ * - a proposed `cluster_id` must name a cluster that exists; on an `info` request it must also be a cluster of the outlet's zone
+ *   (a final `schema_invalid`, nothing is stored);
+ * - [sameAs]: a `new` request is the same fact as the user's own earlier live request for the same shop (same normalised name and
+ *   mobile number) in the last 7 days, whatever its client_uuid (a rep who reopens the form gets a new uuid). The resend is acked
+ *   `duplicate` with the first request's id and nothing is stored, so no second request reaches the AMO. A different shop, a
+ *   discarded or rejected earlier request, or another user's request never matches.
+ */
+class OutletChangeRequestHandler : RecordHandler {
+    override val types: Set<String> = setOf("outlet_change_request")
+
+    override fun check(h: Handle, rec: IngestRecord): RecordRefusal? {
+        val proposed = rec.payload["proposed"] as? JsonObject ?: return null
+        val cluster = proposed["cluster_id"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.longOrNull ?: return null
+        val cz = h.createQuery("SELECT zone_id FROM app.cluster WHERE id = :c").bind("c", cluster).mapTo(Long::class.java).findOne().orElse(null)
+            ?: return RecordRefusal(RecordOutcomeCode.SCHEMA_INVALID, "cluster $cluster does not exist")
+        if (rec.payload["request_type"]?.jsonPrimitive?.contentOrNull == "info") {
+            val outlet = rec.payload["outlet_id"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.longOrNull ?: return null
+            val oz = h.createQuery("SELECT zone_id FROM app.outlet WHERE id = :o").bind("o", outlet).mapTo(Long::class.java).findOne().orElse(null) ?: return null
+            if (oz != cz) return RecordRefusal(RecordOutcomeCode.SCHEMA_INVALID, "cluster $cluster is not in the zone of outlet $outlet")
+        }
+        return null
+    }
+
+    override fun sameAs(h: Handle, rec: IngestRecord): Long? {
+        if (rec.payload["request_type"]?.jsonPrimitive?.contentOrNull != "new") return null
+        val proposed = rec.payload["proposed"] as? JsonObject ?: return null
+        val name = proposed["name"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()?.replace(Regex("\\s+"), " ") ?: return null
+        val phone = proposed["contact_number"]?.jsonPrimitive?.contentOrNull ?: return null
+        return h.createQuery(
+            """
+            SELECT id FROM app.outlet_change_request
+             WHERE user_id = :u AND request_type = 'new' AND voided_at IS NULL AND status IN ('pending', 'verified', 'approved')
+               AND client_uuid <> CAST(:c AS uuid) AND created_at > :since
+               AND lower(regexp_replace(btrim(proposed ->> 'name'), '\s+', ' ', 'g')) = :n AND proposed ->> 'contact_number' = :p
+             ORDER BY id LIMIT 1
+            """.trimIndent(),
+        ).bind("u", rec.userId).bind("c", rec.clientUuid).bind("since", java.time.OffsetDateTime.ofInstant(rec.receivedAt.minusSeconds(7 * 86400L), java.time.ZoneOffset.UTC))
+            .bind("n", name).bind("p", phone).mapTo(Long::class.java).findOne().orElse(null)
+    }
+}
+
 class OutletRequestVerificationHandler(private val reach: ReachResolver? = null) : RecordHandler {
     override val types: Set<String> = setOf("outlet_request_verification")
 

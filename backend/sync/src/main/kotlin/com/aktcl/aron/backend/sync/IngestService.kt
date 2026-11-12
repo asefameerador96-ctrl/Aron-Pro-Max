@@ -984,6 +984,17 @@ class IngestService(
             if (zone != null && !scopeAccepted && !ctx.reachOn(bd).coversZone(zone)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "zone $zone on $bd")
         }
 
+        // 5c. Contract 1.14.0: the zero-sale reason is an active item of the code list on the record's business date (a retired or unknown
+        // code is a final schema_invalid, like any unknown reference); a call-start photo is a media record of the visit.
+        if (r.type == "visit_close") payload.str("zero_sale_reason_code")?.let { code ->
+            val ok = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.code_list_item WHERE list_key = 'zero_sale_reason' AND code = :c AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d))")
+                .bind("c", code).bind("d", bd).mapTo(Boolean::class.java).one()
+            if (!ok) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "zero_sale_reason_code $code is not an active zero_sale_reason")
+        }
+        if (r.type == "media_meta" && payload.str("purpose") == "call_start" && payload.str("ref_type") != "visit") {
+            return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "a call_start photo belongs to a visit")
+        }
+
         if (!scopeAccepted) env.long("acting_for_user_id")?.let { a ->
             if (!actingForValid(h, ctx, routeId, a, bd)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "acting_for_user_id $a without a cover of route $routeId")
         }
@@ -1717,6 +1728,24 @@ class IngestService(
                 if (action != "force_sale") return "force_sale_reason is allowed only with geo.action force_sale"
             }
         }
+        // Contract 1.14.0 (SRM-A-27): a call-start photo and a reasoned skip are exclusive; a paper entry has neither (nobody stood at the outlet).
+        if (r.type == "visit") {
+            val photo = payload["call_photo_uuid"]?.takeIf { it !is JsonNull }
+            val skip = payload["call_photo_skip_reason"]?.takeIf { it !is JsonNull }
+            if (manual && (photo != null || skip != null)) return "a paper entry has no call photo"
+            if (photo != null && skip != null) return "call_photo_skip_reason is allowed only without call_photo_uuid"
+            if (photo != null && (photo !is JsonPrimitive || !photo.isString || !UUID_V4.matches(photo.content))) return "call_photo_uuid is not a lower-case UUID v4"
+            if (skip != null && ((skip as? JsonPrimitive)?.takeIf { it.isString }?.content !in CALL_PHOTO_SKIP_REASONS)) return "call_photo_skip_reason must be camera_failed, permission_denied, storage_full or other"
+        }
+        // Contract 1.14.0 (SRM-A-40): a zero-sale reason exists only on a zero sale; the code itself is checked against the list in step 5c.
+        if (r.type == "visit_close") {
+            val reason = payload["zero_sale_reason_code"]?.takeIf { it !is JsonNull }
+            if (reason != null) {
+                val code = (reason as? JsonPrimitive)?.takeIf { it.isString }?.content
+                if (code == null || !CODE_RE.matches(code)) return "zero_sale_reason_code must be a lower-case code"
+                if ((payload["is_zero_sale"] as? JsonPrimitive)?.booleanOrNull != true) return "zero_sale_reason_code is allowed only when is_zero_sale is true"
+            }
+        }
         return null
     }
 
@@ -1969,6 +1998,8 @@ class IngestService(
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         private val FORCE_SALE_REASONS = setOf("internet_problem", "location_change")
+        private val CALL_PHOTO_SKIP_REASONS = setOf("camera_failed", "permission_denied", "storage_full", "other")
+        private val CODE_RE = Regex("^[a-z][a-z0-9_]{1,40}$")
         private val TYPE_PATTERN = Regex("^[a-z][a-z_]{1,40}$")
 
         /** Record type a parent reference must name. */

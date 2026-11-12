@@ -36,6 +36,16 @@ data class RejectedRecordViewDto(
     val last_received_at: String,
 )
 
+/** Contract 1.14.0 `SubmitBusinessTotals` (SRM-B-25): the day's business figures, computed with the dashboard aggregates' rules. */
+@Serializable
+data class SubmitBusinessTotalsDto(
+    val outlets_visited: Int,
+    val sold_qty_base: Map<String, Long>,
+    val stock_issued_qty_base: Long,
+    val qc_qty_base: Long,
+    val promotion_mtk: Long,
+)
+
 @Serializable
 data class SalesSubmitDigestDto(
     val business_date: String,
@@ -43,6 +53,7 @@ data class SalesSubmitDigestDto(
     val by_type: Map<String, DigestTypeCountsDto>,
     val rejected: List<RejectedRecordViewDto>,
     val rejected_truncated: Boolean,
+    val business_totals: SubmitBusinessTotalsDto? = null,
 )
 
 /**
@@ -127,7 +138,38 @@ class SalesSubmitDigestService(private val db: Database, private val clock: com.
         val refs = rows.filter { it.view.memo_no == null && it.memoRef != null }.map { it.memoRef!! }.distinct()
         val refNo = if (refs.isEmpty()) emptyMap() else memoNumbers(h, userId, refs)
         val views = rows.take(MAX_REJECTED).map { r -> if (r.view.memo_no != null || r.memoRef == null) r.view else r.view.copy(memo_no = refNo[r.memoRef]) }
-        return SalesSubmitDigestDto(date.toString(), deviceUuid?.takeIf { dev != null }, byType, views, rows.size > MAX_REJECTED)
+        return SalesSubmitDigestDto(date.toString(), deviceUuid?.takeIf { dev != null }, byType, views, rows.size > MAX_REJECTED, businessTotals(h, userId, date))
+    }
+
+    /**
+     * Contract 1.14.0 (SRM-B-25). The same rules as `Aggregator` (`dw.agg_daily_route`, `agg_daily_route_sku`), read straight from the
+     * stored rows of the login and date rather than from the worker's summaries, so the figure never lags the sync it is compared with:
+     * a visit counts when it is an `sr_call` and not abandoned; a memo when active with a line; sold quantity is the `sale` lines only;
+     * issued stock is `stock_movement` kind `issue`; QC is the stored `qc_line` quantity; promotion is offer + DRP discount.
+     */
+    fun businessTotals(h: Handle, userId: Long, date: LocalDate): SubmitBusinessTotalsDto {
+        val visited = h.createQuery(
+            "SELECT count(DISTINCT outlet_id) FROM app.visit WHERE user_id = :u AND business_date = :d AND visit_kind = 'sr_call' AND voided_at IS NULL AND outcome_code IS DISTINCT FROM 'abandoned'",
+        ).bind("u", userId).bind("d", date).mapTo(Int::class.java).one()
+        val sold = h.createQuery(
+            """
+            SELECT coalesce(s.category_code, '') AS cat, sum(ml.qty_base)::bigint AS q
+              FROM app.memo_line ml
+              JOIN app.memo m ON m.client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
+              JOIN app.sku s ON s.id = ml.sku_id
+             WHERE m.user_id = :u AND m.business_date = :d AND m.status = 'active' AND m.line_count > 0 AND m.voided_at IS NULL
+               AND ml.voided_at IS NULL AND ml.line_kind = 'sale'
+             GROUP BY 1 HAVING sum(ml.qty_base) > 0 ORDER BY 1
+            """.trimIndent(),
+        ).bind("u", userId).bind("d", date).map { rs, _ -> rs.getString("cat") to rs.getLong("q") }.list().toMap(sortedMapOf())
+        val issued = h.createQuery("SELECT coalesce(sum(qty_base), 0)::bigint FROM app.stock_movement WHERE user_id = :u AND business_date = :d AND voided_at IS NULL AND kind = 'issue'")
+            .bind("u", userId).bind("d", date).mapTo(Long::class.java).one()
+        val qc = h.createQuery("SELECT coalesce(sum(qty_base), 0)::bigint FROM app.qc_line WHERE user_id = :u AND business_date = :d AND voided_at IS NULL")
+            .bind("u", userId).bind("d", date).mapTo(Long::class.java).one()
+        val promo = h.createQuery(
+            "SELECT coalesce(sum(offer_discount_mtk + drp_discount_mtk), 0)::bigint FROM app.memo m WHERE m.user_id = :u AND m.business_date = :d AND m.status = 'active' AND m.line_count > 0 AND m.voided_at IS NULL",
+        ).bind("u", userId).bind("d", date).mapTo(Long::class.java).one()
+        return SubmitBusinessTotalsDto(visited, sold, issued, qc, promo)
     }
 
     private class Row(val view: RejectedRecordViewDto, val memoRef: String?)

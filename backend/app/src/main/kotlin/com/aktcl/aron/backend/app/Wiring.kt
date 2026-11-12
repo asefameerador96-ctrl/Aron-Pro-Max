@@ -90,6 +90,8 @@ import com.aktcl.aron.backend.masterdata.AdminMasterDeps
 import com.aktcl.aron.backend.masterdata.adminMasterRoutes
 import com.aktcl.aron.backend.masterdata.CallTargetsDeps
 import com.aktcl.aron.backend.masterdata.callTargetsRoutes
+import com.aktcl.aron.backend.masterdata.CallPhotoReviewDeps
+import com.aktcl.aron.backend.masterdata.callPhotoReviewRoutes
 import com.aktcl.aron.backend.masterdata.VisitPlanDeps
 import com.aktcl.aron.backend.masterdata.visitPlanRoutes
 import com.aktcl.aron.backend.masterdata.RouteAssignmentsDeps
@@ -312,7 +314,7 @@ class Wiring(
             // locked under quarantine unlocks with the change, and a quarantine set after the close locks it.
             val latePolicyPush = com.aktcl.aron.backend.sync.LatePolicyPush(db, com.aktcl.aron.backend.notify.ConfigPullPush(db, config, push), clock)
             configService.committed = com.aktcl.aron.backend.config.ConfigCommitListener { _, keys -> latePolicyPush.onConfigCommitted(keys) }
-            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock, reach = reach), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + extraRecordHandlers)), db, config, clock)
+            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock, reach = reach), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + com.aktcl.aron.backend.masterdata.OutletChangeRequestHandler() + extraRecordHandlers)), db, config, clock)
             ingestForReview = sync.ingest
             val hikari = db.write as? com.zaxxer.hikari.HikariDataSource
             val admission = com.aktcl.aron.backend.analytics.AdmissionControl(
@@ -348,6 +350,7 @@ class Wiring(
                 deviceReplaceRoutes(otpDeps)
                 visitPlanRoutes(VisitPlanDeps(db, reach, config, guard, clock))
                 callTargetsRoutes(CallTargetsDeps(db, reach, config, configResolver, guard, clock))
+                callPhotoReviewRoutes(CallPhotoReviewDeps(db, reach, guard, clock))
                 routeAssignmentRoutes(RouteAssignmentsDeps(db, reach, guard, clock))
                 leaveRoutes(LeaveDeps(db, reach, config, guard, clock, nudger = push)) // tso-manual B3: push after a leave decision (D-TSO-MAN-26)
                 tutorialRoutes(TutorialsDeps(db, blob, guard))
