@@ -2799,3 +2799,6 @@
 ### 2026-11-12 09:25 UTC — S6 review FAIL
 - S6 `4f7492912` review w5i2roblp (18 agents): FAIL, 4 survivors, all wording on shared keys against the screenshots (rule 14a): out_picker_select and credit_body must stay "রিটেইলার", out_req_owner stays "দোকানের মালিকের নাম", legacy edit-reason keys must not be relabelled (AMO list; stored code meaning). Settings flow and data safety PASS (Update Configuration reuses the single-flight atomic bundle download; logout path unchanged). Required with it: config tile stuck-on-rotation, already-running download, 304 wording, neutral failure text, back on the logout warning cancels, tests on tags after S4. Fix-up sent; wt-s6 removed.
 - Landing order set: S4 first (if round 2 passes), then S5, S6 after merging INT.
+
+### 2026-11-12 09:27 UTC — S4 round 2 FAIL (Sunlight contrast)
+- S4 `364c5596b` Opus re-check wob1z79qe (8 agents): all seven first-pass items verified fixed; FAIL on two new defects from the colour-token change, confirmed by me in code: না button look.panelDark + look.onPanel (black on #202020 in Sunlight), সংরক্ষণ gradient with look.onBar (black in Sunlight). Round 3 requested with a contrast test for the pairings. wt-s4 removed.
