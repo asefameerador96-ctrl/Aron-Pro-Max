@@ -156,6 +156,22 @@ class SrRequestFlowTest {
         assertEquals(1, stored.size)
     }
 
+    @Test fun aFailedClusterSaveShowsTheErrorAndTheButtonWorksAgainWithTheSameUuid() {
+        val calls = mutableListOf<String>()
+        show(AppLanguage.BN) {
+            ClustersContent(emptyList(), onCreate = { name, uuid -> calls += uuid; if (calls.size == 1) ClusterNameError.NOT_SAVED else null })
+        }
+        compose.onNodeWithTag(ClustersTags.FAB).performClick()
+        compose.onNodeWithTag(ClustersTags.NAME).performTextInput("Lakepar")
+        compose.onNodeWithTag(ClustersTags.SUBMIT).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("ক্লাস্টার সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।").assertExists() // told, not silent
+        compose.onNodeWithTag(ClustersTags.SUBMIT).performClick() // the button is not stuck off
+        compose.waitForIdle()
+        assertEquals(2, calls.size)
+        assertEquals("the retry is the same record (one client uuid per opening)", calls[0], calls[1])
+    }
+
     @Test fun clusterNamesAreValidatedAndTheListMergesPendingOnes() {
         val real = listOf(SrCluster(1, null, "Lakepar", "R", false))
         assertEquals(ClusterNameError.EMPTY, SrClusters.validate("  ", real))

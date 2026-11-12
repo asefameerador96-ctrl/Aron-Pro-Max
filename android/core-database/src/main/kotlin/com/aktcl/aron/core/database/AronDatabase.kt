@@ -81,7 +81,7 @@ abstract class AronDatabase : RoomDatabase() {
         val DEVICE_TABLES: List<String> = listOf(
             "geo_fix", "attendance_event", "stock_movement", "visit", "visit_close", "memo", "memo_line", "memo_discount", "qc_line",
             "due_collection", "visit_skip", "day_submit", "outlet_change_request", "task_event", "print_event",
-            "content_view", "survey_response",
+            "content_view", "survey_response", "cluster_create",
         )
 
         fun fileName(userId: Long): String {

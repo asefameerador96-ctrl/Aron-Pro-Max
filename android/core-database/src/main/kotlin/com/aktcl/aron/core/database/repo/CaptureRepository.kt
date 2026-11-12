@@ -351,13 +351,15 @@ class CaptureRepository(
     }
 
     /**
-     * A cluster the SR created on the phone, with the GEO fix of the creation, in ONE transaction (SRM-B-44). Idempotent by the client uuid
-     * (a replay writes nothing). LOCAL ONLY: no outbox row until the contract has the cluster-creation record. Returns true when written.
+     * A cluster the SR created on the phone, with the GEO fix of the creation, in ONE transaction (SRM-B-44). Idempotent by the client uuid:
+     * a replay of a cluster already stored writes nothing and returns TRUE (it IS saved); a purged uuid writes nothing and returns false.
+     * LOCAL ONLY: no outbox row until the contract has the cluster-creation record. Returns true when the cluster is on the phone.
      */
     suspend fun recordClusterCreate(c: com.aktcl.aron.core.database.entity.ClusterCreateEntity, fix: GeoFixEntity): Boolean = db.withTransaction {
-        if (capture.clusterCreates().any { it.clientUuid == c.clientUuid }) return@withTransaction false
+        if (capture.clusterCreates().any { it.clientUuid == c.clientUuid }) return@withTransaction true
+        if (purged(c.clientUuid)) return@withTransaction false
         requireUuids(c.clientUuid, fix.clientUuid)
-        require(c.fixClientUuid == fix.clientUuid) { "the fix must be the cluster's own" }
+        requireFixOf(fix, c.clientUuid, c.fixClientUuid)
         capture.insertFix(fix)
         capture.insertClusterCreate(c) > 0L
     }

@@ -238,6 +238,8 @@ fun SrApp(
     val activity = context as? Activity
     var screen by rememberSaveable { mutableStateOf(SrScreen.HOME) }
     var soonTile by rememberSaveable { mutableStateOf(HomeTile.ASTHA) }
+    // the request form's kind lives here (saveable): the frame title AND the form read the same value after a recreate or process death
+    var requestKind by rememberSaveable { mutableStateOf(day.requestKind) }
     var skipFirstBundle by rememberSaveable { mutableStateOf(false) }
     val loaded by day.loaded.collectAsState() // the local day has been read once (survives recreation; no first-bundle flash)
     val scope = rememberCoroutineScope()
@@ -540,7 +542,7 @@ fun SrApp(
         }
         SrScreen.OUTLET_MENU -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync, icon = CoreR.drawable.aron_art_outlet) {
             OutletMenuContent(onKind = { k ->
-                day.requestKind = k
+                day.requestKind = k; requestKind = k
                 day.requestOutlet = null
                 // the outlet (close, change information) is chosen inside the form (SRM-B-37, 39); the cluster tile is the Clusters list (SRM-B-43)
                 screen = if (k == OutletRequestKind.CLUSTER) SrScreen.CLUSTERS else SrScreen.REQUEST_FORM
@@ -550,11 +552,11 @@ fun SrApp(
             ClustersHost(day, data.route, data.outlets)
         }
         SrScreen.REQUEST_FORM -> {
-            val k = day.requestKind
+            val k = requestKind
             val art = when (k) { OutletRequestKind.NEW -> CoreR.drawable.aron_art_outlet_new; OutletRequestKind.CLOSE -> CoreR.drawable.aron_art_outlet_close; else -> CoreR.drawable.aron_art_outlet_edit }
             SrFrame(stringResource(srRequestTitle(k)), goBack, sync, openSync, icon = art) {
                 PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = goBack) {
-                    RequestHost(day, data.outlets, onDone = { screen = SrScreen.OUTLET_MENU })
+                    RequestHost(day, data.outlets, kind = k, onKind = { requestKind = it; day.requestKind = it }, onDone = { screen = SrScreen.OUTLET_MENU })
                 }
             }
         }
@@ -669,9 +671,8 @@ internal fun rememberRequestIdentity(kind: OutletRequestKind, newUuid: () -> Str
  * ([SrDay.submitOutletRequest]), and a form that opens on a request already stored shows "saved", not an editable form (SRM-B-35).
  */
 @Composable
-private fun RequestHost(day: SrDay, outlets: List<OutletEntity>, onDone: () -> Unit) {
+private fun RequestHost(day: SrDay, outlets: List<OutletEntity>, kind: OutletRequestKind, onKind: (OutletRequestKind) -> Unit, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var kind by rememberSaveable { mutableStateOf(day.requestKind) }
     var outletId by rememberSaveable { mutableStateOf(day.requestOutlet?.outletId) }
     val outlet = outletId?.let { id -> outlets.firstOrNull { it.outletId == id } }
     val identity = rememberRequestIdentity(kind) { day.outletRequests.newRequestUuid() }
@@ -696,7 +697,7 @@ private fun RequestHost(day: SrDay, outlets: List<OutletEntity>, onDone: () -> U
             clusterRequestUuid = day.outletRequests.newRequestUuid() // a different shop is a different cluster change
         },
         onShutter = { scope.launch { capture.shutter() } },
-        onAddToRoute = { kind = OutletRequestKind.ROUTE_ADD; day.requestKind = OutletRequestKind.ROUTE_ADD },
+        onAddToRoute = { onKind(OutletRequestKind.ROUTE_ADD) },
         onSavedOk = onDone,
         onSave = {
             // one save at a time: the button is off while it runs; a second tap that slips in is ignored, and the same uuid makes a replay a no-op
@@ -711,8 +712,12 @@ private fun RequestHost(day: SrDay, outlets: List<OutletEntity>, onDone: () -> U
                         kind = OutletRequestKind.CLUSTER, outletId = form.outletId, clusterId = form.clusterId, currentClusterId = form.currentClusterId,
                         note = clusterNote, fix = cap.fix, confirmed = true, requestUuid = clusterRequestUuid,
                     )
-                    when (val r = day.submitOutletRequest(toSend, companion).await()) {
-                        is RequestValidation.Invalid -> { errors = r.errors; saving = false }
+                    // the save runs in the day's scope; a failure of it (a Room error) is shown as an error and the form stays editable,
+                    // never a crash. A cancelled composition is rethrown, not swallowed.
+                    val result = try { day.submitOutletRequest(toSend, companion).await() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
+                    when (result) {
+                        null -> { errors = setOf(RequestError.SAVE_FAILED); saving = false }
+                        is RequestValidation.Invalid -> { errors = result.errors; saving = false }
                         is RequestValidation.Ok -> { errors = emptySet(); savedDialog = true }
                     }
                 }
@@ -733,7 +738,9 @@ private fun ClustersHost(day: SrDay, route: com.aktcl.aron.core.database.entity.
     ClustersContent(clusters, onCreate = { name, uuid ->
         SrClusters.validate(name, clusters) ?: run {
             // stored in the day's scope with the GEO fix of the moment; on a failure the rep is told, never a silent "saved"
-            if (routeId == null || !day.createCluster(name, uuid, routeId, routeName).await()) ClusterNameError.NOT_SAVED else { tick++; null }
+            // a failure of the day-scoped save is told to the rep (NOT_SAVED), never a crash; cancellation is rethrown
+            val stored = routeId != null && try { day.createCluster(name, uuid, routeId, routeName).await() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { false }
+            if (!stored) ClusterNameError.NOT_SAVED else { tick++; null }
         }
     })
 }

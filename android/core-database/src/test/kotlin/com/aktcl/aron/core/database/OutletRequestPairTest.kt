@@ -49,10 +49,17 @@ class OutletRequestPairTest {
         assertEquals(0, db.outboxDao().countInState(com.aktcl.aron.core.database.entity.OutboxState.PENDING))
     }
 
+    @Test fun aFixThatIsNotTheClustersOwnIsRefusedAndNothingIsWritten() = runTest {
+        val c = ClusterCreateEntity(a, "Lakepar", 5, "R", "2026-11-12T04:00:00.000Z", "2026-11-12", fa)
+        assertTrue(runCatching { repo.recordClusterCreate(c, fix(fa, b)) }.isFailure) // the fix belongs to another record
+        assertTrue(runCatching { repo.recordClusterCreate(c, fix(fb, a)) }.isFailure) // not the fix the cluster references
+        assertEquals(0, db.captureDao().clusterCreateCount())
+    }
+
     @Test fun aCreatedClusterIsStoredWithItsFixOnceAndNeverQueuedForSync() = runTest {
         val c = ClusterCreateEntity(a, "Lakepar", 5, "Agora GoliDaily", "2026-11-12T04:00:00.000Z", "2026-11-12", fa)
         assertTrue(repo.recordClusterCreate(c, fix(fa, a)))
-        assertFalse("a replay of the same client uuid writes nothing", repo.recordClusterCreate(c, fix(fa, a)))
+        assertTrue("a replay of a stored client uuid reports saved (it is saved) and writes nothing", repo.recordClusterCreate(c, fix(fa, a)))
         assertEquals(1, db.captureDao().clusterCreateCount())
         assertEquals("Lakepar", db.captureDao().clusterCreates().single().name)
         assertEquals("local only: no outbox row until the contract record exists", 0, db.outboxDao().countInState(com.aktcl.aron.core.database.entity.OutboxState.PENDING))

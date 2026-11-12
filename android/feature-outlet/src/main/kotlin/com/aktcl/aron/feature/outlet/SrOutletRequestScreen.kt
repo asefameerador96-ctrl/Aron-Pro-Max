@@ -168,6 +168,7 @@ private fun errorText(e: RequestError): String = stringResource(
         RequestError.POINT_TOO_FAR -> R.string.out_req_err_point_far
         RequestError.MOCK_FIX -> R.string.out_req_err_mock
         RequestError.MOVE_TOO_FAR -> R.string.out_req_err_move_far
+        RequestError.SAVE_FAILED -> R.string.out_req_err_save_failed
         else -> R.string.out_req_err_reason
     },
 )

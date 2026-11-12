@@ -318,7 +318,8 @@ private fun ManualTaskList(items: List<TaskItem>, onResolve: (String) -> Unit, t
     if (pick != null) {
         com.aktcl.aron.core.ui.aron.AronDialog(
             resolveTitle, pick.title, resolveText,
-            onConfirm = { asking = null; onResolve(pick.taskUuid) }, onDismiss = { asking = null }, dismissText = cancelText,
+            // read the state at tap time: a second tap on the same dialog (it is still drawn for a frame) finds it null and resolves nothing
+            onConfirm = { val id = asking; asking = null; if (id != null) onResolve(id) }, onDismiss = { asking = null }, dismissText = cancelText,
         )
     }
 }

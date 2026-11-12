@@ -435,16 +435,7 @@ class SrDay(
      * default on) show Astha and Loyalty Point, `cfg.flag.superstar_ui` (registry default off) shows Match Program. A key absent from the
      * stored config falls back to the registry default; the tile keys are those of [com.aktcl.aron.feature.home.HomeTile].
      */
-    suspend fun enabledProgrammeTiles(): Set<String> {
-        val now = com.aktcl.aron.core.sync.SyncEngine.iso(clock.nowMs())
-        suspend fun flag(key: String, default: Boolean): Boolean =
-            com.aktcl.aron.core.common.orNullKeepingCancellation { reference.config(key, now) }?.trim()?.let { it == "true" } ?: default
-        return setOfNotNull(
-            "astha".takeIf { flag("cfg.flag.astha_ui", true) },
-            "loyalty_point".takeIf { flag("cfg.flag.loyalty_ui", true) },
-            "match_program".takeIf { flag("cfg.flag.superstar_ui", false) },
-        )
-    }
+    suspend fun enabledProgrammeTiles(): Set<String> = ProgrammeFlags.enabledTiles(reference, com.aktcl.aron.core.sync.SyncEngine.iso(clock.nowMs()))
 
     /** The last `cfg.memo.reprint_max` and `cfg.print.confirm_after_print` read from the stored config (contract defaults until the first read). */
     @Volatile private var printConfig = PrintConfig()

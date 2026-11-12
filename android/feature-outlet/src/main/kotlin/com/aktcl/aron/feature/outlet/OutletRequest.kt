@@ -48,6 +48,8 @@ data class OutletRequestForm(
 enum class RequestError {
     DUES_BLOCK_CLOSE, OUTLET_REQUIRED, NAME_INVALID, OWNER_INVALID, MOBILE_INVALID, CLUSTER_REQUIRED, CLUSTER_UNCHANGED, REASON_REQUIRED,
     GEO_REQUIRED, PHOTO_REQUIRED, CONFIRMATION_REQUIRED, NOTE_TOO_LONG, TOO_MANY_PHOTOS, POINT_TOO_FAR, MOCK_FIX, MOVE_TOO_FAR,
+    /** The save itself failed (a database error), not the form: never produced by [OutletRequests.validate]. */
+    SAVE_FAILED,
 }
 
 /** The request as committed: the proposed facts in contract shape (mobile is always the normalised 11 digits). */

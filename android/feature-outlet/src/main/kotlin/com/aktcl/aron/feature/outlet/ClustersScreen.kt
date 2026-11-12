@@ -111,7 +111,9 @@ private fun CreateClusterDialog(onDismiss: () -> Unit, onCreate: suspend (String
     var error by remember { mutableStateOf<ClusterNameError?>(null) }
     // generated once per opening: a double tap on সাবমিট can only ever store one record
     val uuid = rememberSaveable { SrClusters.newUuid() }
-    var done by rememberSaveable { mutableStateOf(false) }
+    // NOT saveable: a recreate mid-save cancels the launch below, so a saved "busy" flag would leave the button off for good. The uuid IS
+    // saved, so tapping again after a recreate is a replay of the same record (stored once, reported as saved).
+    var done by remember { mutableStateOf(false) }
     // read outside the dialog window: its content composes with the window's own context, which may not carry the app language
     val title = stringResource(R.string.out_cluster_create_title)
     val hint = stringResource(R.string.out_cluster_name_hint)

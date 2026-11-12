@@ -154,7 +154,8 @@ class ScreenshotTests {
     private val header = HomeModel.header("SR", "Testing Banani", "sr334001", "Apsis RouteDaily", "daily", "2026-10-05")
 
     @Composable
-    private fun Home(language: AppLanguage) {
+    /** [flags]: the programme tile keys switched on; the default shots assume ALL THREE on (15 tiles), the registry defaults give 14 (Match Program off). */
+    private fun Home(language: AppLanguage, flags: Set<String> = setOf("astha", "loyalty_point", "match_program")) {
         val locale = if (language == AppLanguage.BN) UiLocale.BN else UiLocale.EN
         val piece = stringResource(SaleR.string.sale_unit_piece)
         val dozen = stringResource(SaleR.string.sale_unit_dozen)
@@ -163,7 +164,7 @@ class ScreenshotTests {
         val match = "Match"
         val cigarette = "Cigarette"
         HomeContent(
-            header, HomeTiles.resolve(setOf("astha", "loyalty_point", "match_program"), 2), BundleFreshness.Fresh, false, DeviceHealthModel.of(62, 1_200, 3, 12), onTile = {},
+            header, HomeTiles.resolve(flags, 2), BundleFreshness.Fresh, false, DeviceHealthModel.of(62, 1_200, 3, 12), onTile = {},
             onSettings = {}, hero = HomeHero(Formats.money(4_391_000, locale), 6, 60, "08:52", HomeDayState.IN_FIELD),
             kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine(cigarette, 12_000, 9_800, stick), HomeStockLine(lighter, 400, 25, piece), HomeStockLine(match, 400, 394, dozen))),
             money = HomeMoneyLines(
@@ -352,6 +353,8 @@ class ScreenshotTests {
     // ---- Home ----
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun home_bn_light() = shot("home_bn_light", AppLanguage.BN) { Home(AppLanguage.BN) }
     @Test fun home_en_light() = shot("home_en_light", AppLanguage.EN) { Home(AppLanguage.EN) }
+    // the registry defaults (cfg.flag.astha_ui and loyalty_ui on, superstar_ui off): what an SR sees before any flag is set, 14 tiles
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun home_bn_default_flags() = shot("home_bn_default_flags", AppLanguage.BN) { Home(AppLanguage.BN, setOf("astha", "loyalty_point")) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun home_bn_sunlight() = shot("home_bn_sunlight", AppLanguage.BN, sunlight = true) { Home(AppLanguage.BN) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun home_bn_light_font13() = shot("home_bn_light_font13", AppLanguage.BN, fontScale = 1.3f) { Home(AppLanguage.BN) }
 
