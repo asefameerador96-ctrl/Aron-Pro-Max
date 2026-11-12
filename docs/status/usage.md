@@ -2930,3 +2930,34 @@
 ### 2026-11-12 11:59 UTC — S6 merge gate: code PASS, records and goldens to finish; spelling ruling applied to S5
 - S6 `14071b794` merge gate wfinnp9dh (8 agents): merge resolution and code PASS (INT whole; no duplicate keys; no S3/S4/S5 value changed). To finish in its INT 3d2340b3a merge push: records ("কারণ kept" is false after the merge; stale line about sale_submit_plain), re-record four memo goldens that draw its changed keys (two of its re-records were under the 0.2% threshold, so "a stale golden would fail" does not hold), PREFETCH_STORED mapped to ALREADY_CURRENT. wt-s6 removed.
 - Ruling applied: S5's edit_reason_dialog_title (on INT since train 100) carries the vendor misspelling "কারন"; standing ruling D-TSO-PARITY-SPELLING-01 says "কারণ". S5 told to correct its key in its next push (with the INT merge). My S5 review missed it; the manual-conformity lens accepted the manual's own spelling.
+
+### 2026-11-12 12:04 UTC — train 104 built (S5 follow-up)
+- S5 `91234ef05` (INT 3d2340b3a merged, no conflicts): 13 files +59/-18 on INT; edit_reason_dialog_title now "কারণ" per D-TSO-PARITY-SPELLING-01; "Other (SKU n)" with base-unit words and no digit grouping; I read the string and production diff. Lane ci 43214455578 queued.
+- Train 104 = INT 3d2340b3a + docs tip 7a7820728 + S5 91234ef05, head `840b3fb89` on lane/lead-train104: clean merges, DECISIONS 426 (no new D-line), 0 INT lines missing, android == S5 android, money-float 13/13, date-pin 0 new, gitleaks clean. CI 43214553623 queued. GO after the train 103 INT run (43213228309) completes and this run and the S5 lane run are green.
+- S6 `12f119734` (INT 3d2340b3a merged) received; it crossed my merge-gate message, so records/goldens corrections come in its next push.
+
+### 2026-11-12 12:06 UTC — S6 verified; train 104 rebuilt with S5 + S6
+- S6 `8fe12d962` (INT 3d2340b3a merged at 12f119734; then records, PREFETCH_STORED mapping + test): delta read by me (4 files +10/-6 on top of the strings-only merge); the six goldens it re-recorded came back byte-identical (none stale). Merge gate wfinnp9dh had passed code and merge; records now true. Lane ci 43214715189 running.
+- Train 104 rebuilt (my own branch force-pushed; first run 43214553623 superseded) = INT 3d2340b3a + docs 7a7820728 + S5 91234ef05 + S6 8fe12d962, head `39a478a41`: all merges clean, DECISIONS 427, 0 lines missing from INT or S6, no duplicate string names in any changed strings.xml, money-float 13/13, date-pin 0 new, gitleaks clean. CI 43214886290. GO needs: this run green, S5 lane 43214455578 green, S6 lane 43214715189 green, train 103 INT run 43213228309 complete.
+
+### 2026-11-12 12:11 UTC — S2 merged head under the merge gate
+- S2 `859deafe0` (INT 12f56c8bb then 3d2340b3a merged; records; guards; ProgrammeFlags; default-flags golden): static gate clean incl. scans (DECISIONS 429; goldens: nine home_* modified + home_bn_default_flags added; lane ci 43215411048 running). Opus merge gate launched (merge resolution; delta code and records), worktree wt-s2. Trial merge on train 104 conflicts only in DECISIONS.md and feature-home strings (S6): one more lane-side merge after train 104 lands.
+
+### 2026-11-12 12:12 UTC — train 103 LANDED
+- INT `3d2340b3a` ci #2054 43213228309 success (11 jobs: 5 ok, 6 skipped by path). APK of record: **aron-release-signed-dev-2054**, 41,794,740 bytes (S1 + S3 + S4 + S5 first rounds; not walked on a device). The first train 104 run (840b3fb89) shows cancelled: superseded by my rebuild with S6.
+
+### 2026-11-12 12:18 UTC — S2 merge gate PASS
+- S2 `859deafe0` Opus merge gate w2r9nofys (2 lenses, no blocking): both merge resolutions correct (every INT line present, nothing of S3/S4/S5/S1 lost; strings union, no duplicates), delta sound (task confirm once; cluster replay reports saved; awaits rethrow cancellation; DEVICE_TABLES only drives a schema test; Room v9 unchanged), records true. Lows sent (cluster retry after recreate says "duplicate"; JourneyHost error state; unused import). S2 told to merge the train 104 head 39a478a41 now so it rides train 105 without another round. wt-s2 removed.
+
+### 2026-11-12 12:24 UTC — L-B train 2 under review
+- L-B `d25d1fdd7` (web aligned to contract 1.13.0; base INT ce9d92bf7; 17 files +326/-386): static gate clean (web + 2 docs; no skip/only/fixme, no new timeouts; five test titles removed or renamed: to be checked; DECISIONS 408, 0 INT lines missing; money-float 13/13; gitleaks clean; merges on train 104 with only DECISIONS conflicting). Lane ci 43217342984 running. Sonnet review launched (contract alignment call by call; tests, UX honesty, records), worktree wt-lb. Lane decision to rule on: channel checkboxes removed until an id source exists.
+
+### 2026-11-12 12:26 UTC — GO train 104; L-B train 2 PASS
+- Train 104 CI 43214886290 green on 39a478a41 (5 ok, 6 skipped by path). Lane runs of S5 (43214455578) and S6 (43214715189): Repository gates, Android unit tests/lint and release APK jobs all success; only their Web job still running (not touched by these lanes). GO sent to integrator 24 (expected DECISIONS 427, deploy skipped).
+- L-B `d25d1fdd7` Sonnet review wrrbke62j (2 lenses, 319 k tokens): PASS, no blocking; call-by-call match with contract 1.13.0, BigInt thresholds, honest progress panel, replaced tests equal or stronger, records true. Ruling: channel checkboxes removed until an id source exists (accepted). Rides train 105 with S2 once its lane ci 43217342984 is green (real web deploy). wt-lb removed.
+
+### 2026-11-12 12:28 UTC — train 104 on INT
+- Integrator 24 pushed train 104: INT `20fe1d4fb` (tree-identical to 39a478a41 plus the train.md row; DECISIONS 427; 0 lost lines), ci #2064 43218050788 running. S3 told to merge this head (no report from S3 since 10:20; asked where it stands).
+
+### 2026-11-12 12:32 UTC — lane CI confirmations
+- S5 lane ci 43214455578 (91234ef05) and S6 lane ci 43214715189 (8fe12d962): both completed success (11 jobs ok each), confirming the heads that train 104 carries. S3 status: mid-run on the INT 20fe1d4fb merge (ec8cf4bdb pushed earlier; lane ci 43214864833 in progress). S2 pushed fb63804d3 (not yet reported). L-B lane ci 43217342984 in progress.

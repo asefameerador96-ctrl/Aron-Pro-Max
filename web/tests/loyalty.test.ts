@@ -10,7 +10,7 @@ import {
   activationBlocked, basisUnit, canActivateProgramme, canReadLoyalty, canWriteGifts, canWriteLoyalty, cashValueMtk, decimal3Text, decimal3Wire, emptyEnrolForm, emptyForm, emptyGiftForm, emptyTier,
   formFromProgramme, guardedPercent, loyaltyAccess, nextAttempt, nextProgrammeStatuses, parseDecimal3, parsePoints, remainingStd, validateEnrol, validateForm, validateGift, type LoyaltyForm, type Programme,
 } from "@/lib/admin/loyalty";
-import { channelLabel, groupedDecimal, kindLabel, nameOf, percentText, pointsText, programmePeriod, statusLabel, stdText, thresholdText, tierName } from "@/lib/admin/loyalty-view";
+import { groupedDecimal, kindLabel, nameOf, percentText, pointsText, programmePeriod, qualifyingLabel, scopeLabel, statusLabel, stdText, thresholdText, tierName } from "@/lib/admin/loyalty-view";
 
 const U = "0b6d6c0e-8a5b-4d56-9f0a-000000000001";
 const good = (over: Partial<LoyaltyForm> = {}): LoyaltyForm => ({ ...emptyForm(), code: "ASTHA-Q1", name_en: "Astha Q1", active_from: "2027-01-01", active_to: "2027-03-31", reason: "Owner approved the quarter", ...over });
@@ -48,7 +48,7 @@ describe("role matrix and wiring", () => {
     expect(MODULE_KEYS.loyalty).toBe("grant.module.loyalty");
     expect(moduleOfPage("/admin/loyalty")).toBe("loyalty");
     expect(moduleOfPage("/admin/loyalty/12/edit")).toBe("loyalty");
-    for (const p of ["/v1/admin/programmes", "/v1/admin/programmes/3/enrolments", "/v1/admin/gifts", "/v1/admin/gifts/4", "/v1/admin/loyalty/programmes/3/status"]) expect(moduleOfApiPath(p), p).toBe("loyalty");
+    for (const p of ["/v1/admin/programmes", "/v1/admin/programmes/3/enrolments", "/v1/admin/gifts", "/v1/admin/gifts/4", "/v1/admin/programmes/3/status", "/v1/admin/programmes/3/versions"]) expect(moduleOfApiPath(p), p).toBe("loyalty");
     expect(moduleOfApiPath("/v1/programmes/loyalty-balances")).not.toBe("loyalty"); // the phone surface stays on targets while it is 501
     expect(ADMIN_PATH_ROLES.find((o) => o.prefix === "/admin/loyalty")?.roles).toEqual(["ADMIN", "SUPERADMIN"]);
     expect(accessFor("SUPERADMIN", "/admin/loyalty")).toBe("ok");
@@ -125,17 +125,23 @@ describe("exact numbers (BigInt, no float)", () => {
 });
 
 describe("programme form to the wire body", () => {
-  it("a good form maps to ProgrammeWrite with integer-exact STD thresholds and the request_uuid", () => {
-    const r = validateForm(good({ tiers: [{ tier_code: "gold", label_en: "Gold", label_bn: "", threshold: "3000.5" }, { tier_code: "platinum", label_en: "Platinum", label_bn: "প্ল্যাটিনাম", threshold: "5000" }], channels: ["Astha"] }), "create", U);
+  it("a good form maps to ProgrammeWrite (closed shape): sort_order, threshold as Decimal3 text, threshold_basis std, no channels", () => {
+    const r = validateForm(good({ tiers: [{ tier_code: "gold", label_en: "Gold", label_bn: "", threshold: "3000.5" }, { tier_code: "platinum", label_en: "Platinum", label_bn: "প্ল্যাটিনাম", threshold: "5000" }] }), "create", U);
     expect(r.errors).toEqual([]);
     expect(r.body).toEqual({
-      request_uuid: U, kind: "astha", code: "ASTHA-Q1", name_en: "Astha Q1", name_bn: null, period_label: null, active_from: "2027-01-01", active_to: "2027-03-31", channels: ["Astha"], change_reason: "Owner approved the quarter",
-      tiers: [{ tier_code: "gold", label_en: "Gold", label_bn: null, threshold_value: "3000.500", threshold_basis: "std" }, { tier_code: "platinum", label_en: "Platinum", label_bn: "প্ল্যাটিনাম", threshold_value: "5000.000", threshold_basis: "std" }],
+      request_uuid: U, kind: "astha", code: "ASTHA-Q1", name_en: "Astha Q1", name_bn: null, period_label: null, active_from: "2027-01-01", active_to: "2027-03-31", change_reason: "Owner approved the quarter",
+      tiers: [{ tier_code: "gold", sort_order: 1, label_en: "Gold", label_bn: null, threshold: "3000.500", threshold_basis: "std" }, { tier_code: "platinum", sort_order: 2, label_en: "Platinum", label_bn: "প্ল্যাটিনাম", threshold: "5000.000", threshold_basis: "std" }],
     });
+    expect(Object.keys(r.body!)).not.toContain("channels");
+  });
+  it("an edit maps to ProgrammePatch: neither kind nor code, no scope or qualifying (they keep their value)", () => {
+    const r = validateForm(good({ code: "", tiers: [] }), "edit", U);
+    expect(r.errors).toEqual([]);
+    expect(Object.keys(r.body!).sort()).toEqual(["active_from", "active_to", "change_reason", "name_bn", "name_en", "period_label", "request_uuid", "tiers"]);
   });
   it("an empty threshold stays null: nothing is invented", () => {
     const r = validateForm(good({ tiers: [{ ...emptyTier(), tier_code: "silver", label_en: "Silver" }] }), "create", U);
-    expect(r.body?.tiers[0]?.threshold_value).toBeNull();
+    expect(r.body?.tiers?.[0]?.threshold).toBeNull();
   });
   it("required fields, patterns, lengths and the date range", () => {
     expect(codes(validateForm(emptyForm(), "create", U))).toEqual(["code:required", "name_en:required", "active_from:required", "active_to:required", "reason:reason_short"]);
@@ -162,16 +168,15 @@ describe("programme form to the wire body", () => {
     expect(codes(validateForm(good({ tiers: [tier("gold", "1.2345")] }), "create", U))).toEqual(["tier.0.threshold:invalid"]);
     expect(codes(validateForm(good({ tiers: [tier("gold", "10"), tier("silver", ""), tier("bronze", "5")] }), "create", U))).toEqual(["tier.2.threshold:not_rising"]); // an empty one is skipped, the order still rises
     expect(validateForm(good({ tiers: [{ tier_code: "gold", label_en: "", label_bn: "", threshold: "" }] }), "create", U).errors).toEqual([{ field: "tier.0.label_en", code: "required" }]);
-    expect(codes(validateForm(good({ tiers: Array.from({ length: 21 }, (_, i) => tier(`t${i}x`, String(i + 1))) }), "create", U))).toContain("tiers:too_many");
+    expect(codes(validateForm(good({ tiers: Array.from({ length: 11 }, (_, i) => tier(`t${i}x`, String(i + 1))) }), "create", U))).toContain("tiers:too_many");
   });
-  it("a programme opens into the form with thresholds as short text and the reason empty", () => {
-    const p: Programme = { programme_id: 1, kind: "astha", code: "A", name_en: "A", name_bn: null, period_label: "2026-Q4", active_from: "2026-10-01", active_to: "2026-12-31", status: "draft", version: 3, channels: ["GT"], tiers: [{ tier_code: "gold", label_en: "Gold", label_bn: null, threshold_value: "3000.500", threshold_basis: "std" }, { tier_code: "silver", label_en: "Silver", label_bn: "সিলভার", threshold_value: null, threshold_basis: "std" }] };
+  it("a programme opens into the form in tier order with thresholds as short text and the reason empty", () => {
+    const p: Programme = { programme_id: 1, kind: "astha", code: "A", name_en: "A", name_bn: null, period_label: "2026-Q4", active_from: "2026-10-01", active_to: "2026-12-31", status: "draft", version: 3, tiers: [{ tier_code: "silver", sort_order: 2, label_en: "Silver", label_bn: "সিলভার", threshold: null, threshold_basis: "std" }, { tier_code: "gold", sort_order: 1, label_en: "Gold", label_bn: null, threshold: "3000.500", threshold_basis: "std" }] };
     const f = formFromProgramme(p);
     expect(f.tiers).toEqual([{ tier_code: "gold", label_en: "Gold", label_bn: "", threshold: "3000.5" }, { tier_code: "silver", label_en: "Silver", label_bn: "সিলভার", threshold: "" }]);
     expect(f.reason).toBe("");
-    expect(f.channels).toEqual(["GT"]);
     // opening and saving again changes nothing on the wire
-    expect(validateForm({ ...f, reason: "Same programme saved again" }, "edit", U).body?.tiers).toEqual(p.tiers);
+    expect(validateForm({ ...f, reason: "Same programme saved again" }, "edit", U).body?.tiers).toEqual([p.tiers![1], p.tiers![0]].map((x, i) => ({ ...x, sort_order: i + 1 })));
   });
 });
 
@@ -179,6 +184,9 @@ describe("gift and enrolment forms", () => {
   const gift = (over = {}) => ({ ...emptyGiftForm("7"), code: "chair", name_en: "Chair", points: "200", reason: "Owner approved the gift", ...over });
   it("a gift maps to GiftWrite; points stay an integer; empty points mean an Astha gift", () => {
     expect(validateGift(gift(), "create", U).body).toEqual({ request_uuid: U, programme_id: 7, code: "chair", name_en: "Chair", name_bn: null, points_cost: 200, tier_codes: [], status: "active", change_reason: "Owner approved the gift" });
+    expect(Object.keys(validateGift(gift(), "edit", U).body!)).not.toContain("code"); // GiftPatch is closed: neither the code nor the programme
+    expect(Object.keys(validateGift(gift(), "edit", U).body!)).not.toContain("programme_id");
+    expect(validateGift(gift({ programme_id: "৭" }), "create", U).body).toMatchObject({ programme_id: 7 }); // Bangla digits
     expect(validateGift(gift({ points: "" }), "create", U).body?.points_cost).toBeNull();
   });
   it("gift checks: programme, code pattern, points range, name, reason", () => {
@@ -224,8 +232,9 @@ describe("display text (en and bn)", () => {
     expect(statusLabel("bn", "draft")).toBe("খসড়া");
     expect(kindLabel("en", "diamond_league")).toBe("Diamond League");
     expect(kindLabel("bn", "astha")).toBe("আস্থা");
-    expect(channelLabel("en", "HoReCa")).toBe("HoReCa");
-    expect(channelLabel("en", "ZZ")).toBe("ZZ");
+    expect(scopeLabel("en", { node_type: "sub_channel", node_id: 11 })).toBe("Sub-channel · #11");
+    expect(scopeLabel("bn", { node_type: "channel", node_id: 3 })).toContain("#3");
+    expect(qualifyingLabel("en", { product_level: "brand", product_id: 2 })).toBe("Brand · #2");
     expect(nameOf("bn", { name_en: "A", name_bn: "ক" })).toBe("ক");
     expect(nameOf("bn", { name_en: "A", name_bn: null })).toBe("A");
     expect(t("en", "loy.cash_value", { amount: "398" })).toBe("Tk 398");
@@ -237,8 +246,8 @@ describe("display text (en and bn)", () => {
     expect(stdText("en", null)).toBe("—");
     expect(stdText("en", "bad")).toBe("—");
     expect(groupedDecimal("en", "1234567.25")).toBe("1,234,567.25");
-    expect(thresholdText("en", { tier_code: "a", label_en: "A", label_bn: null, threshold_value: null, threshold_basis: "std" })).toBe("Not set");
-    expect(thresholdText("en", { tier_code: "a", label_en: "A", label_bn: null, threshold_value: "10.000", threshold_basis: "std" })).toBe("10 STD");
+    expect(thresholdText("en", { threshold: null })).toBe("Not set");
+    expect(thresholdText("en", { threshold: "10.000" })).toBe("10 STD");
     expect(tierName("bn", { label_en: "Gold", label_bn: "গোল্ড" })).toBe("গোল্ড");
     expect(tierName("bn", { label_en: "Gold", label_bn: null })).toBe("Gold");
   });

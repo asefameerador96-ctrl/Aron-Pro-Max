@@ -46,12 +46,13 @@ class HomeScreenTest {
     private fun show(
         language: AppLanguage, tasks: Int = 0, freshness: BundleFreshness = BundleFreshness.Fresh, health: DeviceHealth? = null, onTile: (HomeTile) -> Unit = {},
         hero: HomeHero? = null, kpis: HomeKpis? = null, money: HomeMoneyLines? = null, dock: HomeDock? = null, sync: SyncChipState? = null, offline: Boolean = false,
+        enabled: Set<String> = emptySet(),
     ) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         compose.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
                 AronTheme(language) {
-                    HomeContent(header, HomeTiles.resolve(emptySet(), tasks), freshness, offline, health, onTile, hero = hero, kpis = kpis, money = money, dock = dock, sync = sync, onSettings = {})
+                    HomeContent(header, HomeTiles.resolve(enabled, tasks), freshness, offline, health, onTile, hero = hero, kpis = kpis, money = money, dock = dock, sync = sync, onSettings = {})
                 }
             }
         }
@@ -74,10 +75,11 @@ class HomeScreenTest {
     @Test fun heroKpiAndMoneyPanelsShowTheirFigures() {
         show(AppLanguage.EN, hero = hero, kpis = kpis, money = money, dock = HomeDock.START_SELLING, sync = SyncChipState.Waiting(3))
         compose.onNodeWithTag(HomeScreenTags.HERO).assertExists()
-        compose.onNodeWithText("Today's total").assertExists()
+        // the Target & Achievement card of the manual: title, STD label, "—" until the targets lane provides the figures (SRM-A-14)
+        compose.onNodeWithText("Target & Achievement (SKU List)").assertExists(); compose.onNodeWithText("STD").assertExists(); compose.onNodeWithText("—").assertExists()
         // the six KPI tiles of the reference: visited/planned, strike rate, issue, current stock, non-visit, no sale
         compose.onNodeWithTag(HomeScreenTags.KPI).assertExists()
-        compose.onAllNodesWithText("6/60", substring = true)[0].assertExists() // the tile and the target card bar
+        compose.onNodeWithText("6/60").assertExists() // the outlets-visited day tile; the card no longer carries it
         listOf("Strike rate", "Issue", "Current stock", "Non-visit", "No sale").forEach { compose.onNodeWithText(it).assertExists() }
         compose.onNodeWithText("10%").assertExists(); compose.onNodeWithText("54").assertExists()
         // issue and current stock are listed per category in the category's own unit, never added across units (docs/34 s4.2)
@@ -89,6 +91,32 @@ class HomeScreenTest {
         compose.onNodeWithText("Total discount").assertExists(); compose.onNodeWithText("DRP discount").assertExists(); compose.onNodeWithText("Total QC").assertExists()
         // the sync chip and the device line are not on Home any more (Settings carries them)
         compose.onNodeWithTag(HomeScreenTags.CHIP).assertDoesNotExist()
+    }
+
+    @Test fun stdCardShowsTheAchievementPastOneHundredPercentAndNeverAWrongNumber() {
+        assertEquals(1235, HomeStd(12_350, 1_000).percent)
+        assertEquals(100, HomeStd(12_350, 1_000).barPercent)
+        assertEquals(50, HomeStd(1, 2).percent) // half rounds up
+        assertEquals(null, HomeStd(5, null).percent); assertEquals(null, HomeStd(null, 5).percent); assertEquals(null, HomeStd(5, 0).percent)
+        compose.setContent { AronTheme(AppLanguage.EN) { HomeContent(header, HomeTiles.resolve(emptySet(), 0), BundleFreshness.Fresh, false, null, {}, hero = hero, std = HomeStd(12_350, 1_000)) } }
+        compose.onNodeWithText("1,235%").assertExists()
+        compose.onNodeWithText("—").assertDoesNotExist()
+    }
+
+    @Test fun fifteenTilesAreOnTheGridAndTheProgrammeTilesAreTappable() {
+        var got: HomeTile? = null
+        show(AppLanguage.EN, onTile = { got = it }, enabled = setOf("astha", "loyalty_point", "match_program"))
+        listOf("Sales", "Task Delegation", "Astha", "Loyalty Point", "Photo Capture", "Match Program").forEach { compose.onNodeWithText(it).assertExists() }
+        listOf(HomeTile.ASTHA, HomeTile.LOYALTY_POINT, HomeTile.MATCH_PROGRAM, HomeTile.PHOTO_CAPTURE).forEach {
+            compose.onNodeWithTag(HomeScreenTags.tile(it)).performScrollTo().performClick()
+            assertEquals(it, got)
+        }
+    }
+
+    @Test fun programmeTilesAreAbsentWhileTheirFlagsAreOff() {
+        show(AppLanguage.EN)
+        listOf(HomeTile.ASTHA, HomeTile.LOYALTY_POINT, HomeTile.MATCH_PROGRAM).forEach { compose.onNodeWithTag(HomeScreenTags.tile(it)).assertDoesNotExist() }
+        compose.onNodeWithTag(HomeScreenTags.tile(HomeTile.PHOTO_CAPTURE)).assertExists()
     }
 
     @Test fun aDiscountCanNeverRenderUnderTheQcLabel() {

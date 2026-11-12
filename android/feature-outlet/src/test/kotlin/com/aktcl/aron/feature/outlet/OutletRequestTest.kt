@@ -44,7 +44,7 @@ class OutletRequestTest {
     @Test fun theSameFormSubmittedTwiceCarriesOneRequestUuid() = runTest {
         var n = 0
         val s = OutletRequests({ saved += it }, { "00000000-0000-4000-8000-%012d".format(++n) })
-        val f = OutletRequestForm(OutletRequestKind.ROUTE_ADD, outletId = 9, note = "x", requestUuid = s.newRequestUuid())
+        val f = OutletRequestForm(OutletRequestKind.ROUTE_ADD, outletId = 9, note = "x", clusterId = 3, requestUuid = s.newRequestUuid())
         s.submit(f); s.submit(f)
         assertEquals(1, saved.map { it.requestUuid }.toSet().size)
     }
@@ -72,8 +72,9 @@ class OutletRequestTest {
     }
 
     @Test fun routeAddNeedsOutletAndNote() {
-        assertEquals(setOf(RequestError.OUTLET_REQUIRED, RequestError.REASON_REQUIRED), errors(OutletRequestForm(OutletRequestKind.ROUTE_ADD)))
-        assertTrue(svc.validate(OutletRequestForm(OutletRequestKind.ROUTE_ADD, outletId = 9, note = "belongs on my route")) is RequestValidation.Ok)
+        // SRM-B-42: the approval reads /proposed/cluster_id, so the cluster is required too
+        assertEquals(setOf(RequestError.OUTLET_REQUIRED, RequestError.REASON_REQUIRED, RequestError.CLUSTER_REQUIRED), errors(OutletRequestForm(OutletRequestKind.ROUTE_ADD)))
+        assertTrue(svc.validate(OutletRequestForm(OutletRequestKind.ROUTE_ADD, outletId = 9, note = "belongs on my route", clusterId = 3)) is RequestValidation.Ok)
     }
 
     @Test fun invalidSubmitQueuesNothing() = runTest {

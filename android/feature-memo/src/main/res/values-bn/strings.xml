@@ -83,6 +83,21 @@
     <string name="memo_total_category">মোট %1$s</string>
     <string name="memo_due_chip_amount">বাকি %1$s</string>
     <string name="summary_qty_rem">%1$s %2$s %3$s</string>
+    <string name="journey_s_new">New Sale</string>
+    <string name="journey_s_edited">Edited Sale</string>
+    <string name="journey_s_repeat">Repeat Sale</string>
+    <string name="journey_s_none">বিক্রি নেই</string>
+    <string name="journey_s_open">চলমান</string>
+    <string name="journey_distance">দূরত্ব: %1$s</string>
+    <string name="journey_total">মোট: %1$s</string>
+    <string name="journey_gap">%1$s পরে</string>
+    <string name="journey_w_min">মিনিট</string>
+    <string name="journey_w_sec">সেকেন্ড</string>
+    <string name="journey_w_m">মি</string>
+    <string name="journey_w_km">কি.মি</string>
+    <string name="journey_calls_empty">আজ এখনো কোনো কল নেই</string>
+
+
     <string name="sale_data_title">সেল ডাটা</string>
     <string name="sale_data_none">এই তারিখে এই আউটলেটে কোনো বিক্রয় নেই।</string>
     <string name="sale_data_ok">ওকে</string>

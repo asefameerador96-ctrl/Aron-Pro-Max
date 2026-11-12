@@ -4,6 +4,7 @@ import com.aktcl.aron.feature.memo.domain.SaleHistoryBuilder
 import android.content.Context
 import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.entity.GeoFixEntity
+import com.aktcl.aron.core.database.entity.OutletEntity
 import com.aktcl.aron.core.database.repo.DayRefusal
 import com.aktcl.aron.core.database.repo.ReconciliationRepository
 import com.aktcl.aron.core.printing.doc.DaySummaryPrint
@@ -15,9 +16,6 @@ import com.aktcl.aron.feature.dayclose.ServerCounts
 import com.aktcl.aron.feature.memo.domain.DaySummary
 import com.aktcl.aron.feature.memo.domain.HomeMoney
 import com.aktcl.aron.feature.memo.domain.HomeMoneyBuilder
-import com.aktcl.aron.feature.memo.domain.Journey
-import com.aktcl.aron.feature.memo.domain.JourneyBuilder
-import com.aktcl.aron.feature.memo.domain.JourneyVisit
 import com.aktcl.aron.feature.memo.domain.KpiStrip
 import com.aktcl.aron.feature.memo.domain.KpiStripBuilder
 import com.aktcl.aron.feature.memo.domain.PlannedOutlet
@@ -355,7 +353,12 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     }
 
     suspend fun summary(): SummaryBundle { prepare(); return reads.summary(day.businessDate()) }
-    suspend fun journey(): Journey = reads.journey(day.businessDate(), day.dayData.value.outlets)
+    /** The call timeline of today (SRM-B-82): rows by the shared rule, with their outlet for the "Name (code-phone-cluster)" line. */
+    suspend fun journeyCalls(): List<Pair<com.aktcl.aron.rules.JourneyCallRow, OutletEntity?>> {
+        val calls = reads.journeyCalls(day.businessDate())
+        val byId = calls.associate { it.input.visitUuid to it.outlet }
+        return com.aktcl.aron.rules.JourneyTimeline.build(calls.map { it.input }).map { it to byId[it.input.visitUuid] }
+    }
     suspend fun packetsSold(): Long { prepare(); return reads.packetsSold(day.businessDate()) }
     suspend fun kpi(): Pair<KpiStrip, HomeMoney> { prepare(); return reads.kpi(day.businessDate(), day.dayData.value.outlets) }
 
