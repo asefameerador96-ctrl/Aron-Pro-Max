@@ -62,6 +62,22 @@ class SrKitLockTest {
         }
     }
 
+    // SRM-B-17 through the kit: QC entered in a LATER visit of the same outlet the same day blocks the edit of the first visit's memo; QC at another outlet does not
+    @Test fun editIsBlockedByQcEnteredInALaterVisitOfTheSameOutletOnly() {
+        val first = f.openCall(outletId = 50001, seq = 1)
+        val memo = f.creditMemo(first)
+        val kit = f.day.sale
+        runBlocking { kit.prepare() }
+        // QC at another outlet: the QC gate is not what stops the edit (the geofence check after it decides, and has no fix source here)
+        val otherVisit = f.openCall(outletId = 50002, seq = 2)
+        runBlocking { f.qcLineOn(otherVisit) }
+        assertTrue("QC elsewhere does not block", runBlocking { kit.prepareEdit(memo) } != com.aktcl.aron.feature.sale.domain.EditDenied.QcDone)
+        // QC in a second visit of the SAME outlet
+        val later = f.openCall(outletId = 50001, seq = 3)
+        runBlocking { f.qcLineOn(later) }
+        assertEquals(com.aktcl.aron.feature.sale.domain.EditDenied.QcDone, runBlocking { kit.prepareEdit(memo) })
+    }
+
     private fun collections() = runBlocking { f.db.captureDao().dueCollectionsOn(f.date) }
 
     @Test fun markPaidIsHiddenAfterTheSrsOwnSalesSubmitAndATapItBeatIsWordedNotACrash() {

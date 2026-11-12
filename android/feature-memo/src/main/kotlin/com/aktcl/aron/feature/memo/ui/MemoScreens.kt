@@ -60,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -153,11 +154,13 @@ fun MemoMenuScreen(
     bannerDismissed: Boolean = false,
     onDismissBanner: (() -> Unit)? = null,
     printerBadge: (@Composable () -> Unit)? = null,
+    /** SRM-B-14: the manual's wording of the info card; null keeps the common one. */
+    banner: String? = null,
 ) {
     val look = LocalAronLook.current
     ScrollColumn(modifier.background(look.page), contentPadding = PaddingValues(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
         if (!bannerDismissed) {
-            AronInfoCard(stringResource(R.string.memo_banner), trailing = printerBadge)
+            AronInfoCard(banner ?: stringResource(R.string.memo_banner), trailing = printerBadge)
             if (onDismissBanner != null) AronTextButton(stringResource(R.string.memo_banner_dismiss), onDismissBanner, Modifier.align(Alignment.End))
         }
         if (rows.isEmpty()) {
@@ -228,12 +231,29 @@ fun MemoDetailView(
     routeName: String? = null,
     /** The AMO's due box is dashed red with the yellow card icon (43); the SR keeps the pink notice card. */
     dashedDueBox: Boolean = false,
+    /** SRM-B-19: the SR's due box lays the red sentence and the green button side by side (shot 38); the AMO's stays stacked. */
+    dueSideBySide: Boolean = false,
+    /** SRM-B-12: "মোট <category>" rows carry the category's quantity in its field unit (SR; units of different kinds are never added). */
+    subtotalQuantities: Boolean = false,
+    /** SRM-B-10: the outlet selector at the top and the A-Z letter filter above the lines; null / false keep the AMO's detail as it was. */
+    switcher: MemoSwitcher? = null,
+    letterFilter: Boolean = false,
+    /** SRM-B-14: the info card on the detail too, with the host's printer badge; Print and Edit side by side at the bottom. */
+    detailBanner: String? = null,
+    printerBadge: (@Composable () -> Unit)? = null,
+    buttonsInRow: Boolean = false,
+    /** SRM-B-20: the vendor's "marked as paid" modal (green tick, text, ওকে) stays until [onPaidDialogOk]. */
+    paidDialog: Boolean = false,
+    onPaidDialogOk: () -> Unit = {},
 ) {
     val look = LocalAronLook.current
     var confirm by remember { mutableStateOf(false) }
     val memo = detail.memo
+    var letter by remember(memo.memoUuid) { mutableStateOf<Char?>(null) }
     ScrollColumn(modifier.background(look.page), contentPadding = PaddingValues(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
         if (paidBanner) AronInfoCard(stringResource(R.string.memo_paid_done))
+        if (detailBanner != null) AronInfoCard(detailBanner, trailing = printerBadge)
+        if (switcher != null) MemoSwitcherBar(switcher)
         // header: the outlet (or the memo number), the memo number and time, the reprint and supersede markers
         WhiteCard {
             Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
@@ -249,12 +269,21 @@ fun MemoDetailView(
         // the lines table: SKU, quantity in its own unit, price (৳)
         WhiteCard {
             Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                val names = detail.items.associate { it.skuId to skuName(it.skuId) }
+                if (letterFilter) LetterBar(names.values.mapNotNull { it.firstOrNull()?.uppercaseChar() }.filter { it.isLetter() }.distinct().sorted(), letter) { letter = it }
+                val shown = detail.items.filter { i -> letter == null || names[i.skuId]?.firstOrNull()?.uppercaseChar() == letter }
                 TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
-                detail.items.forEach { i -> TableRow(skuName(i.skuId), lineQtyText(i.qtyEntered, i.unitEntered, skuCategory(i.skuId), i.qtyBase, skuUnit(i.skuId)), amount(i.grossMtk)) }
-                // M3: a money subtotal per category, in first-seen order (quantities of different units are never added)
-                detail.items.filter { MemoCategories.label(skuCategory(it.skuId)).isNotBlank() }.groupBy { skuCategory(it.skuId) }.forEach { (code, items) ->
-                    TableRow2(stringResource(R.string.memo_total_category, MemoCategories.label(code)), amount(items.sumOf { it.grossMtk }))
-                }
+                shown.forEach { i -> TableRow(skuName(i.skuId), lineQtyText(i.qtyEntered, i.unitEntered, skuCategory(i.skuId), i.qtyBase, skuUnit(i.skuId)), amount(i.grossMtk)) }
+                // M3: a money subtotal per category, in first-seen order (quantities of different units are never added). It is always the
+                // whole category of the memo, never only the lines a letter filter leaves on screen, so a "Total" is never partial.
+                val shownCategories = shown.map { skuCategory(it.skuId) }.toSet()
+                detail.items.filter { MemoCategories.label(skuCategory(it.skuId)).isNotBlank() && skuCategory(it.skuId) in shownCategories }
+                    .groupBy { skuCategory(it.skuId) }.forEach { (code, items) ->
+                        val name = stringResource(R.string.memo_total_category, MemoCategories.label(code))
+                        // the AMO and TSO keep the two-column row; the SR's carries the quantity (SRM-B-12)
+                        if (subtotalQuantities) TableRow(name, categoryQtyText(items, code, skuUnit), amount(items.sumOf { it.grossMtk }))
+                        else TableRow2(name, amount(items.sumOf { it.grossMtk }))
+                    }
                 if (detail.discountTable.isNotEmpty()) {
                     CardDivider()
                     TableHeader(stringResource(R.string.memo_discount_section), stringResource(R.string.memo_col_qty), stringResource(R.string.summary_col_value))
@@ -281,12 +310,35 @@ fun MemoDetailView(
                 }
             }
         }
-        if (dueMtk > 0) CreditBox(money(dueMtk), canMarkPaid, dashedDueBox) { confirm = true }
+        if (dueMtk > 0) CreditBox(money(dueMtk), canMarkPaid, dashedDueBox, dueSideBySide) { confirm = true }
         // a disabled action always says why, above the buttons
         listOfNotNull(printDisabledReason, editDisabledReason).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = look.inkMuted) }
-        AronPrimaryButton(stringResource(R.string.memo_print), onPrint, Modifier.fillMaxWidth(), enabled = printDisabledReason == null && !printing, glyph = ButtonGlyph.Print)
-        AronSolidButton(stringResource(R.string.memo_edit), onEdit, Modifier.fillMaxWidth(), tone = SolidTone.Amber, enabled = editDisabledReason == null)
+        if (buttonsInRow) {
+            // SRM-B-14 (shot 38): Print (gradient) and Edit (amber) side by side
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                AronPrimaryButton(stringResource(R.string.memo_print), onPrint, Modifier.weight(1f), enabled = printDisabledReason == null && !printing, glyph = ButtonGlyph.Print)
+                AronSolidButton(stringResource(R.string.memo_edit), onEdit, Modifier.weight(1f), tone = SolidTone.Amber, enabled = editDisabledReason == null)
+            }
+        } else {
+            AronPrimaryButton(stringResource(R.string.memo_print), onPrint, Modifier.fillMaxWidth(), enabled = printDisabledReason == null && !printing, glyph = ButtonGlyph.Print)
+            AronSolidButton(stringResource(R.string.memo_edit), onEdit, Modifier.fillMaxWidth(), tone = SolidTone.Amber, enabled = editDisabledReason == null)
+        }
         if (onHistory != null) AronTextButton(stringResource(R.string.history_title), onHistory, Modifier.fillMaxWidth())
+    }
+    if (paidDialog) {
+        // SRM-B-20 (shot 38 right): the vendor's modal, shown from view-model state until OK, so a saved collection is never silent
+        androidx.compose.ui.window.Dialog(onDismissRequest = onPaidDialogOk) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White).padding(AronTokens.Space.L),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+            ) {
+                Box(Modifier.size(56.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF43A047)), contentAlignment = Alignment.Center) {
+                    Icon(AronIcons.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(36.dp))
+                }
+                Text(stringResource(R.string.memo_paid_done), style = MaterialTheme.typography.titleMedium, color = Color(0xFF1565C0), textAlign = TextAlign.Center)
+                AronSolidButton(stringResource(R.string.memo_ok), onPaidDialogOk, Modifier.fillMaxWidth(), tone = SolidTone.Green)
+            }
+        }
     }
     if (confirm) {
         AronConfirmDialog(
@@ -298,7 +350,7 @@ fun MemoDetailView(
 
 /** The credit box: the pink notice card with the red edge, the due, and the green "Mark paid" inside it. */
 @Composable
-private fun CreditBox(dueText: String, canMarkPaid: Boolean, dashed: Boolean, onMarkPaid: () -> Unit) {
+private fun CreditBox(dueText: String, canMarkPaid: Boolean, dashed: Boolean, sideBySide: Boolean, onMarkPaid: () -> Unit) {
     val look = LocalAronLook.current
     if (dashed) {
         // screenshot 43: a dashed red rounded outline, the yellow card icon, the red sentence, the green "পরিশোধিত করুন"
@@ -311,10 +363,12 @@ private fun CreditBox(dueText: String, canMarkPaid: Boolean, dashed: Boolean, on
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                 Icon(AronIcons.Warning, contentDescription = null, tint = Color(0xFFFFB300), modifier = Modifier.size(AronTokens.Size.IconSmall))
-                Text(stringResource(R.string.memo_credit_title), style = MaterialTheme.typography.titleSmall, color = red)
+                Text(stringResource(R.string.memo_credit_title), style = MaterialTheme.typography.titleSmall, color = red, modifier = Modifier.weight(1f))
+                // SRM-B-19 (shot 38): the sentence on the left, the green button on the right
+                if (canMarkPaid && sideBySide) AronSolidButton(stringResource(R.string.memo_mark_paid), onMarkPaid, tone = SolidTone.Green)
             }
             Text(stringResource(R.string.memo_due, dueText), style = MaterialTheme.typography.bodyLarge, color = look.ink)
-            if (canMarkPaid) AronSolidButton(stringResource(R.string.memo_mark_paid), onMarkPaid, Modifier.fillMaxWidth(), tone = SolidTone.Green)
+            if (canMarkPaid && !sideBySide) AronSolidButton(stringResource(R.string.memo_mark_paid), onMarkPaid, Modifier.fillMaxWidth(), tone = SolidTone.Green)
         }
         return
     }
@@ -679,3 +733,68 @@ internal fun lineQtyText(qtyEntered: Long, unitEntered: String, category: String
 @Composable
 internal fun qtyText(qty: Long, unit: String): String =
     if (unit.isEmpty()) localizedNumber(qty) else stringResource(R.string.summary_qty_unit, localizedNumber(qty), unit)
+
+/** SRM-B-10: one memo of the selector: the outlet label, its memo and the due still open (the red "বাকি" tag). */
+data class MemoSwitchOption(val memoUuid: String, val label: String, val dueMtk: Long)
+
+/** The outlet selector of the memo screen (shot 36 right): [options] are today's live memos; [onSelect] opens another one. */
+data class MemoSwitcher(val options: List<MemoSwitchOption>, val selectedMemoUuid: String, val onSelect: (String) -> Unit)
+
+@Composable
+private fun MemoSwitcherBar(sw: MemoSwitcher) {
+    val look = LocalAronLook.current
+    var open by remember { mutableStateOf(false) }
+    val cur = sw.options.firstOrNull { it.memoUuid == sw.selectedMemoUuid }
+    Box(Modifier.fillMaxWidth()) {
+        WhiteCard(Modifier.clickable(role = Role.DropdownList) { open = true }) {
+            Row(Modifier.fillMaxWidth().heightIn(min = AronLook.Touch).padding(AronTokens.Space.L), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                Text(cur?.label.orEmpty(), style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2, modifier = Modifier.weight(1f))
+                if ((cur?.dueMtk ?: 0) > 0) Text(stringResource(R.string.memo_due_chip_amount, money(cur!!.dueMtk)), style = MaterialTheme.typography.labelMedium, color = look.red)
+                Text(stringResource(R.string.memo_glyph_dropdown), color = look.inkMuted)
+            }
+        }
+        androidx.compose.material3.DropdownMenu(open, { open = false }) {
+            sw.options.forEach { o ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = {
+                        Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                            Text(o.label, color = look.ink)
+                            if (o.dueMtk > 0) Text(stringResource(R.string.memo_due_chip_amount, money(o.dueMtk)), color = look.red)
+                        }
+                    },
+                    onClick = { open = false; if (o.memoUuid != sw.selectedMemoUuid) sw.onSelect(o.memoUuid) },
+                )
+            }
+        }
+    }
+}
+
+/** SRM-B-10: the "All A B C ..." letter bar above the lines (only the letters the memo has); a tap filters the rows. */
+@Composable
+private fun LetterBar(letters: List<Char>, selected: Char?, onPick: (Char?) -> Unit) {
+    if (letters.size < 2) return
+    val look = LocalAronLook.current
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+        @Composable
+        fun chip(text: String, on: Boolean, pick: () -> Unit) {
+            Box(
+                Modifier.heightIn(min = AronLook.Touch).widthIn(min = AronLook.Touch).clip(RoundedCornerShape(AronLook.CardRadius))
+                    .background(if (on) look.purple else look.page).clickable(role = Role.Button, onClick = pick).padding(horizontal = AronTokens.Space.M),
+                contentAlignment = Alignment.Center,
+            ) { Text(text, style = MaterialTheme.typography.labelLarge, color = if (on) Color.White else look.ink) }
+        }
+        chip(stringResource(R.string.memo_letter_all), selected == null) { onPick(null) }
+        letters.forEach { c -> chip(c.toString(), selected == c) { onPick(c) } }
+    }
+}
+
+/**
+ * SRM-B-12: the quantity of a category's lines in the field unit of the lines (rule 5): lines in the same unit are added, lines in
+ * different units stay apart ("30 packet + 2 dozen"); quantities of different categories are never added.
+ */
+@Composable
+internal fun categoryQtyText(items: List<com.aktcl.aron.feature.memo.domain.MemoItem>, category: String?, skuUnit: (Long) -> String): String {
+    val parts = items.groupBy { if (it.unitEntered.isNotEmpty()) entryUnitLabel(category.orEmpty(), it.unitEntered) else skuUnit(it.skuId) }
+        .map { (unit, rows) -> qtyText(rows.sumOf { if (it.unitEntered.isNotEmpty()) it.qtyEntered else it.qtyBase }, unit) }
+    return parts.joinToString(" + ")
+}
