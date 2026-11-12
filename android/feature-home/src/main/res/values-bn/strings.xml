@@ -140,6 +140,6 @@
     <string name="set_submit_warning_message">লগ আউটের আগে বিক্রয় জমা দিন।</string>
     <string name="set_submit_warning_submit">বিক্রয় জমা</string>
     <string name="set_submit_warning_anyway">তবুও লগ আউট</string>
-    <string name="set_config_current_title">কনফিগারেশন হালনাগাদ আছে</string>
+    <string name="set_config_current_title">কনফিগারেশন হালনাগাদ করা আছে</string>
     <string name="set_config_current_message">এই ফোনে সর্বশেষ কনফিগারেশন আগে থেকেই আছে।</string>
 </resources>

@@ -39,13 +39,19 @@ Branch `lane/android-sr-manual-s6` from INT `claude/wonderful-thompson-k6ejnf` (
 | 113 | done | `submit_success` "বিক্রয় সফল ভাবে জমা হয়েছে।". `memo_paid_done` outside the manual quote, unchanged. |
 
 ## Goldens re-recorded (wording legitimately changed)
-`visit_in_bn_light`, `visit_in_bn_sunlight`, `visit_out_bn_light`, `visit_out_bn_sunlight` (out_history "সেল ডাটা"), `memo_bn_light` (KPI "আউটলেট ভ্রমণ"/history title), `review_en_light` ("Mark this sale as due"). No AMO or TSO golden changed. `settings_bn` is a record-only kit shot (no committed golden).
+`visit_in_bn_light`, `visit_in_bn_sunlight`, `visit_out_bn_light`, `visit_out_bn_sunlight` (out_history "সেল ডাটা"), `memo_bn_light` (the sale-data link under the memo, `history_title` now "সেল ডাটা"; not kpi_visited), `review_en_light` ("Mark this sale as due"). No AMO or TSO golden changed. `settings_bn` is a record-only kit shot (no committed golden).
 
 ## Tests
 No existing test edited. New in `SettingsScreenTest`: update tile confirms in place, already-current text, failure dialog, busy while a download runs, tile hidden without callback; language drop-down switches; logout warns and offers Sales Submit, back cancels, "Log out anyway" reaches the normal confirm, nothing pending skips the warning, a failed read falls back to the confirm.
 
-## Shared-key effects that remain
-`support_title` "PDA টু সাপোর্ট" also changes the TSO Support heading; `kpi_visited` "আউটলেট ভ্রমণ" also reaches AMO: both match the AMO manual. `out_history` / `history_title` "সেল ডাটা" are shared with AMO's sale-data screens (matches the manual wording).
+## Shared-key effects that remain (AMO and TSO)
+- AMO shows the changed `support_title` (app-amo `SystemScreens.kt:31`), `submit_success` (the Sales Submit success text) and the English `review_credit_switch`. TSO shows `support_title`. All match the manuals.
+- AMO does not render `kpi_visited` (`KpiStripView` is only imported), `out_history` or `history_title` (AMO passes no `onPreviousSales` / `onHistory`).
+
+## Declared differences from notes 63/64 (settings)
+- Tile layout: two tiles per row, art on the gear tiles only; the language and log-out tiles use the kit gradient square (no globe/exit art in the repo). The extra rows (sun, Wi-Fi photos, printer, device status, version, app update) follow below the tiles.
+- Language label: the tile shows "English" / "বাংলা" (the kit's names); the reference shows "en" / "বাংলা".
+- Update Configuration: applied in place, not closed (owner question 5 default), so the dialog text differs from the vendor's.
 
 _Not run on a device: all checks are JVM host tests, lint and Roborazzi._
 

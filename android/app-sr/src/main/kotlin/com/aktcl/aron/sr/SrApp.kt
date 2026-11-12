@@ -421,11 +421,7 @@ fun SrApp(
                     if (!day.isOnline()) com.aktcl.aron.feature.home.ConfigUpdate.FAILED else {
                         if (day.dayData.value.downloading) day.dayData.first { !it.downloading } else startBundleDownload()
                         resumeTick++
-                        when (day.bundleOutcome.value) {
-                            BundleOutcome.APPLIED, BundleOutcome.PREFETCH_PROMOTED -> com.aktcl.aron.feature.home.ConfigUpdate.UPDATED
-                            BundleOutcome.UNCHANGED -> com.aktcl.aron.feature.home.ConfigUpdate.ALREADY_CURRENT
-                            else -> com.aktcl.aron.feature.home.ConfigUpdate.FAILED
-                        }
+                        configUpdateOf(day.bundleOutcome.value)
                     }
                 },
                 configDownloading = data.downloading,
