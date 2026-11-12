@@ -38,13 +38,13 @@ class LoyaltyPortalV0158Test {
     private fun Connection.programme(code: String, status: String? = null, kind: String = "astha"): String =
         scalar(
             "INSERT INTO app.programme (kind, code, name_en, active_from, active_to${if (status != null) ", status" else ""}) " +
-                "VALUES ('$kind', '$code', 'P $code', '2026-11-01', '2026-11-30'${if (status != null) ", '$status'" else ""}) RETURNING id",
+                "VALUES ('$kind', '$code', 'P $code', CURRENT_DATE, (CURRENT_DATE + 29)${if (status != null) ", '$status'" else ""}) RETURNING id",
         )!!
 
     private fun Connection.version(programmeId: String, no: Int, uuid: String): String =
         scalar(
             "INSERT INTO app.programme_version (programme_id, version_no, name_en, active_from, active_to, change_reason, request_uuid, request_fingerprint) " +
-                "VALUES ($programmeId, $no, 'V$no', '2026-11-01', '2026-11-30', 'created for the test', '$uuid', 'fp$no') RETURNING id",
+                "VALUES ($programmeId, $no, 'V$no', CURRENT_DATE, (CURRENT_DATE + 29), 'created for the test', '$uuid', 'fp$no') RETURNING id",
         )!!
 
     @Test
@@ -52,7 +52,7 @@ class LoyaltyPortalV0158Test {
         c.autoCommit = false
         try {
             c.programme("D1", "draft"); c.programme("A1", "active"); c.programme("I1", "inactive")
-            assertEquals("23514", c.refused("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('astha', 'X1', 'x', '2026-11-01', '2026-11-30', 'ended')"))
+            assertEquals("23514", c.refused("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('astha', 'X1', 'x', CURRENT_DATE, (CURRENT_DATE + 29), 'ended')"))
             assertEquals("draft", c.scalar("SELECT status FROM app.programme WHERE id = ${c.programme("NOSTATUS")}"))
             assertEquals("2", c.scalar("SELECT count(*) FROM pg_constraint WHERE conname IN ('programme_status_check', 'programme_current_version_fk') AND convalidated"))
         } finally { c.rollback(); c.autoCommit = true }
@@ -65,15 +65,15 @@ class LoyaltyPortalV0158Test {
             val p = c.programme("V1")
             val v1 = c.version(p, 1, "c0ffee00-0000-4000-8000-0000000a0001")
             assertEquals("23505", c.refused("INSERT INTO app.programme_version (programme_id, version_no, name_en, active_from, active_to, change_reason, request_uuid, request_fingerprint) " +
-                "VALUES ($p, 2, 'dup', '2026-11-01', '2026-11-30', 'created for the test', 'c0ffee00-0000-4000-8000-0000000a0001', 'x')"))
+                "VALUES ($p, 2, 'dup', CURRENT_DATE, (CURRENT_DATE + 29), 'created for the test', 'c0ffee00-0000-4000-8000-0000000a0001', 'x')"))
             assertEquals("23505", c.refused("INSERT INTO app.programme_version (programme_id, version_no, name_en, active_from, active_to, change_reason, request_uuid, request_fingerprint) " +
-                "VALUES ($p, 1, 'dup', '2026-11-01', '2026-11-30', 'created for the test', 'c0ffee00-0000-4000-8000-0000000a0002', 'x')"), "version_no unique per programme")
+                "VALUES ($p, 1, 'dup', CURRENT_DATE, (CURRENT_DATE + 29), 'created for the test', 'c0ffee00-0000-4000-8000-0000000a0002', 'x')"), "version_no unique per programme")
             assertEquals("23514", c.refused("INSERT INTO app.programme_version (programme_id, version_no, name_en, active_from, active_to, change_reason, request_uuid, request_fingerprint) " +
-                "VALUES ($p, 2, 'x', '2026-11-30', '2026-11-01', 'created for the test', 'c0ffee00-0000-4000-8000-0000000a0003', 'x')"), "window reversed")
+                "VALUES ($p, 2, 'x', (CURRENT_DATE + 29), CURRENT_DATE, 'created for the test', 'c0ffee00-0000-4000-8000-0000000a0003', 'x')"), "window reversed")
             assertEquals("23514", c.refused("INSERT INTO app.programme_version (programme_id, version_no, name_en, active_from, active_to, change_reason, request_uuid, request_fingerprint) " +
-                "VALUES ($p, 2, 'x', '2026-11-01', '2026-11-30', 'short', 'c0ffee00-0000-4000-8000-0000000a0004', 'x')"), "reason under 10 characters")
+                "VALUES ($p, 2, 'x', CURRENT_DATE, (CURRENT_DATE + 29), 'short', 'c0ffee00-0000-4000-8000-0000000a0004', 'x')"), "reason under 10 characters")
             assertEquals("23514", c.refused("INSERT INTO app.programme_version (programme_id, version_no, name_en, active_from, active_to, points_expire_on, change_reason, request_uuid, request_fingerprint) " +
-                "VALUES ($p, 2, 'x', '2026-11-01', '2026-11-30', '2026-11-29', 'created for the test', 'c0ffee00-0000-4000-8000-0000000a0005', 'x')"), "points cannot expire before the window ends")
+                "VALUES ($p, 2, 'x', CURRENT_DATE, (CURRENT_DATE + 29), (CURRENT_DATE + 28), 'created for the test', 'c0ffee00-0000-4000-8000-0000000a0005', 'x')"), "points cannot expire before the window ends")
             assertEquals("42501", c.refused("UPDATE app.programme_version SET name_en = 'changed' WHERE id = $v1"))
             assertEquals("42501", c.refused("DELETE FROM app.programme_version WHERE id = $v1"))
         } finally { c.rollback(); c.autoCommit = true }
