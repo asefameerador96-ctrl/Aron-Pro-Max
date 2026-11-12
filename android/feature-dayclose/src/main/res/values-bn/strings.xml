@@ -48,7 +48,7 @@
     <string name="submit_yes">হ্যাঁ</string>
     <string name="submit_no">না</string>
     <string name="submit_queued">জমা সংরক্ষিত হয়েছে; অনলাইনে এলে পাঠানো হবে।</string>
-    <string name="submit_success">বিক্রয় সফলভাবে জমা হয়েছে।</string>
+    <string name="submit_success">বিক্রয় সফল ভাবে জমা হয়েছে।</string>
     <string name="submit_success_records">%1$s টি রেকর্ড সার্ভারে পৌঁছেছে।</string>
     <string name="submit_success_checkout">দিনের কাজ শেষে বিকাল ৫টার পর চেক আউট করুন।</string>
     <string name="submit_sync_again">আবার সিঙ্ক</string>
@@ -73,5 +73,6 @@
     <string name="submit_rejected_other_phone">অন্য ফোন বা আগের ইনস্টল</string>
     <string name="submit_dismissed_title">সরানো পুরনো রেকর্ড (%1$s)</string>
     <string name="submit_dismissed_note">এগুলো গ্রহণ করা হয়নি এবং %1$s দিনের বেশি পুরনো। এতে কোনো বিক্রয় বা টাকা নেই। আর কিছু করার নেই।</string>
-    <string name="submit_biz_other">অন্যান্য</string>
+    <string name="submit_biz_other_sku">অন্যান্য (SKU %1$s)</string>
+    <string name="submit_biz_base_units">বেস ইউনিট</string>
 </resources>

@@ -326,6 +326,15 @@ class SrDay(
 
     fun isOnline(): Boolean = online()
 
+    /** SRM-B-55: today has sales or visits on this phone and no Sales Submit yet (offline read). */
+    suspend fun salesSubmitPending(): Boolean {
+        val source = com.aktcl.aron.feature.dayclose.RoomDaySource(db)
+        val date = businessDate()
+        if (source.alreadySubmitted(date) || finalLocked()) return false
+        val c = source.deviceCounts(date)
+        return (c["memo"] ?: 0) + (c["visit"] ?: 0) > 0
+    }
+
     private fun online(): Boolean {
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return false
         val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
