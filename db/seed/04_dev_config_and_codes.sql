@@ -26,7 +26,7 @@ INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, con
 -- evidenced labels (idempotent; codes are never deleted).
 UPDATE app.code_list_item SET valid_to = DATE '2026-10-07'
  WHERE valid_to IS NULL AND (list_key, code) IN (
-   ('force_reason','gps_not_found'), ('skip_reason','outlet_closed'), ('edit_reason','wrong_quantity'),
+   ('force_reason','gps_not_found'), ('skip_reason','outlet_closed'),
    ('void_reason','duplicate_memo'), ('stock_variance_reason','counting_error'), ('stock_variance_reason','damaged_in_transit'),
    ('qc_fault_type','loose_tobacco'), ('qc_fault_type','torn_pack'), ('day_exception_reason','rain'),
    ('outlet_close_reason','shop_closed_permanently'), ('submit_void_reason','late_sale_entry'));

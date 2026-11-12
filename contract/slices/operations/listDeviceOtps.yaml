@@ -5,6 +5,7 @@ operation:
   - admin-devices
   operationId: listDeviceOtps
   summary: SR Device OTP panel (view-only for the TSO; one aggregated audit event per page view).
+  description: 'The response carries `Cache-Control: no-store` (a live code is in the body).'
   parameters:
   - $ref: '#/components/parameters/ZoneIdQuery'
   - $ref: '#/components/parameters/Search'

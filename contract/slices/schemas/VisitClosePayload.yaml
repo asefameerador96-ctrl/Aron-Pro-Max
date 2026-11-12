@@ -23,3 +23,32 @@ VisitClosePayload:
       $ref: '#/components/schemas/Timestamp'
     is_zero_sale:
       type: boolean
+    call_photo_uuid:
+      description: 'media_uuid of the outlet photo taken after the call started (media purpose `outlet_call`, ref
+        type `visit`, contract 1.14.0, SRM-A-27). Idempotent: the media record is keyed by this UUID. Null or absent
+        when no photo was taken. When the phone asks for a photo (cfg.sale.call_photo_required) and takes none,
+        `call_photo_skip_reason_code` is sent instead (that is the phone''s contract; the server cannot require
+        it of an older app).'
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    call_photo_skip_reason_code:
+      type:
+      - string
+      - 'null'
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+      description: Why no call-start photo was taken (code list `call_photo_skip`, first value `camera_unavailable`;
+        a reasoned skip never blocks the sale). Allowed only when `call_photo_uuid` is null (otherwise `schema_invalid`).
+        A code that is not an active item of the list on the business date (unknown or retired) is STORED AS SENT
+        and the visit is flagged `reason_code_unlisted`; the close is never rejected for an optional label (the
+        phone cannot know the list offline).
+    zero_sale_reason_code:
+      type:
+      - string
+      - 'null'
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+      description: Why the SR made a zero sale (code list `zero_sale_reason`, contract 1.14.0, SRM-A-40). Allowed
+        only when `is_zero_sale` is true (otherwise `schema_invalid`). A code that is not an active item of the
+        list on the business date (unknown or retired) is STORED AS SENT and the visit is flagged `reason_code_unlisted`;
+        the close is never rejected for an optional label. The phone sends it for every SR zero-sale memo and leaves
+        it null for a QC-only sale (`is_zero_sale` false).

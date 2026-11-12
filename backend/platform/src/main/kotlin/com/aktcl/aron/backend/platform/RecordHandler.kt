@@ -54,6 +54,13 @@ interface RecordHandler {
     fun check(h: Handle, rec: IngestRecord): RecordRefusal? = null
 
     /**
+     * A replacement payload to store instead of the one sent (contract 1.14.0: an optional reference the server cannot honour, such as a
+     * cluster that is gone, is dropped and flagged, never a reason to lose the record). Null keeps the payload. Runs after [check]; the record's
+     * content fingerprint (replay and conflict detection) is still that of the payload as sent.
+     */
+    fun rewrite(h: Handle, rec: IngestRecord): JsonObject? = null
+
+    /**
      * The server id of an earlier stored row that is the same fact under another client_uuid (a domain duplicate, e.g.
      * a consent re-accepted after a wipe); the record is then acked `duplicate` with that id and nothing is stored.
      * Runs after [check], in the record's savepoint; take any lock the answer needs here.

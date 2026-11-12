@@ -178,10 +178,12 @@ internal object DashboardSummaries {
 
         // V0151 (contract 1.5) adds force_sale_reason; probed on its own so the rest of the summaries keep working on either side of it.
         val forceReason = h.createQuery("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'fact_visit' AND column_name = 'force_sale_reason')").mapTo(Boolean::class.java).one()
+        // V0175 (contract 1.8) adds zero_sale_reason_code and call_photo_uuid; probed the same way.
+        val srCols = h.createQuery("SELECT count(*) = 2 FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'fact_visit' AND column_name IN ('zero_sale_reason_code', 'call_photo_uuid')").mapTo(Boolean::class.java).one()
         h.createUpdate(
             """
             UPDATE dw.fact_visit f SET radius_m = v.radius_m_used, outlet_lat = v.outlet_lat, outlet_lng = v.outlet_lng, fix_lat = v.fix_lat,
-                   fix_lng = v.fix_lng, force_photo_uuid = v.force_photo_uuid, ${if (forceReason) "force_sale_reason = v.force_sale_reason," else ""}
+                   fix_lng = v.fix_lng, force_photo_uuid = v.force_photo_uuid, ${if (forceReason) "force_sale_reason = v.force_sale_reason," else ""} ${if (srCols) "zero_sale_reason_code = v.zero_sale_reason_code, call_photo_uuid = v.call_photo_uuid," else ""}
                    completed = (v.visit_kind = 'sr_call' AND v.voided_at IS NULL AND v.outcome_code IS NOT NULL AND v.outcome_code NOT IN ('abandoned', 'not_reached'))
               FROM app.visit v
              WHERE f.visit_client_uuid = v.client_uuid AND f.business_date = v.business_date AND v.route_id = :r AND v.business_date = :d

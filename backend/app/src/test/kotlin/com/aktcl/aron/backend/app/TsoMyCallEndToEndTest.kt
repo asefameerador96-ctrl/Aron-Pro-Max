@@ -65,7 +65,7 @@ class TsoMyCallEndToEndTest {
             val tb = getAs(tso, "/v1/sync/bundle").let { r -> assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText()); json(r.bodyAsText()) }
             assertEquals(listOf("casual", "sick", "earn"), codes(tb, "leave_type"))
             assertEquals(listOf("suggestion", "feedback"), codes(tb, "feedback_category"))
-            assertEquals(listOf("oos", "general", "irregular_visit"), codes(tb, "task_type"))
+            assertEquals(listOf("oos", "general", "irregular_visit", "poor_brand_visibility"), codes(tb, "task_type"))
             assertEquals(31, codes(tb, "ticket_issue_type").size, "the 31 Annex A issue types")
             val issue = tb.list("code_lists").single { it["list_key"]!!.jsonPrimitive.content == "ticket_issue_type" }.list("items").first()
             assertEquals("p1", issue["attrs"]!!.jsonObject["priority"]!!.jsonPrimitive.content)

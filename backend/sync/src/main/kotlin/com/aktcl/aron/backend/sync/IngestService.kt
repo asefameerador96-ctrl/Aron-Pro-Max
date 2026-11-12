@@ -976,12 +976,22 @@ class IngestService(
         // 5a. D-AMO-MAN-12: the route and cluster an AMO corrected on a verification form exist, belong together (the cluster is in the
         // route's zone) and sit in the uploader's reach; anything else is a final schema_invalid, never stored.
         if (r.type == "outlet_request_verification") {
+            // `decision` is a required member with a closed contract enum; it becomes the request event kind, so a value outside it (such as a
+            // server flag kind) is never stored.
+            if (payload.str("decision") !in setOf("verified", "discarded")) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "decision is not verified or discarded")
             val vRoute = payload.long("route_id"); val vCluster = payload.long("cluster_id")
             val rz = vRoute?.let { id -> h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", id).mapTo(Long::class.java).findOne().orElse(null) ?: return finalReject(h, ctx, r, RecordOutcomeCode.UNKNOWN_ROUTE, "route $id") }
             val cz = vCluster?.let { id -> h.createQuery("SELECT zone_id FROM app.cluster WHERE id = :c").bind("c", id).mapTo(Long::class.java).findOne().orElse(null) ?: return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "cluster $id") }
             if (rz != null && cz != null && rz != cz) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "cluster $vCluster is not in the zone of route $vRoute")
             val zone = rz ?: cz
             if (zone != null && !scopeAccepted && !ctx.reachOn(bd).coversZone(zone)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "zone $zone on $bd")
+        }
+
+        // 5c. Contract 1.14.0: the zero-sale reason and the call-photo skip reason are optional labels. A code that is unknown or retired on the
+        // record's business date is NEVER a reason to refuse the close (the phone cannot know the list offline): RecordWriter stores the close
+        // with the code as sent and sets app.visit.reason_code_unlisted. Only a code that is not code-shaped is a schema error (PayloadShapes).
+        if (r.type == "media_meta" && payload.str("purpose") == "outlet_call" && payload.str("ref_type") != "visit") {
+            return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "an outlet_call photo belongs to a visit")
         }
 
         if (!scopeAccepted) env.long("acting_for_user_id")?.let { a ->
@@ -1164,7 +1174,8 @@ class IngestService(
         // app.media.sha256 is bytea with CHECK (length = 32). The generic writer's jsonb_populate_record reads plain text
         // as escape-format bytea (64 bytes), so every photo's metadata was refused schema_invalid (SQLSTATE 23514); the
         // writer gets it in bytea's hex input form.
-        val written = if (r.type == "media_meta") payload.str("sha256")?.let { JsonObject(payload + ("sha256" to JsonPrimitive("\\x$it"))) } ?: payload else payload
+        val rewritten = hs.firstNotNullOfOrNull { it.rewrite(h, ingestRec!!) } ?: payload
+        val written = if (r.type == "media_meta") rewritten.str("sha256")?.let { JsonObject(rewritten + ("sha256" to JsonPrimitive("\\x$it"))) } ?: rewritten else rewritten
         val stored = RecordWriter.write(h, r.type, rule, env, written, ctx.up, ctx.batchUuid, ctx.now, enteredBy = ctx.manual?.actorUserId)
         return when (stored) {
             is RecordWriter.Result.Stored -> {
@@ -1717,6 +1728,23 @@ class IngestService(
                 if (action != "force_sale") return "force_sale_reason is allowed only with geo.action force_sale"
             }
         }
+        // Contract 1.14.0 (SRM-A-40): a zero-sale reason exists only on a zero sale; the code itself is checked against the list in step 5c.
+        // Contract 1.14.0 (SRM-A-27): a call-start photo and a reasoned skip are exclusive; a paper entry has neither (nobody stood at the outlet).
+        if (r.type == "visit_close") {
+            val photo = payload["call_photo_uuid"]?.takeIf { it !is JsonNull }
+            val skip = payload["call_photo_skip_reason_code"]?.takeIf { it !is JsonNull }
+            if (photo != null && skip != null) return "call_photo_skip_reason_code is allowed only without call_photo_uuid"
+            if (photo != null && (photo !is JsonPrimitive || !photo.isString || !UUID_V4.matches(photo.content))) return "call_photo_uuid is not a lower-case UUID v4"
+            if (skip != null && ((skip as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { CODE_RE.matches(it) } != true)) return "call_photo_skip_reason_code must be a lower-case code"
+        }
+        if (r.type == "visit_close") {
+            val reason = payload["zero_sale_reason_code"]?.takeIf { it !is JsonNull }
+            if (reason != null) {
+                val code = (reason as? JsonPrimitive)?.takeIf { it.isString }?.content
+                if (code == null || !CODE_RE.matches(code)) return "zero_sale_reason_code must be a lower-case code"
+                if ((payload["is_zero_sale"] as? JsonPrimitive)?.booleanOrNull != true) return "zero_sale_reason_code is allowed only when is_zero_sale is true"
+            }
+        }
         return null
     }
 
@@ -1969,6 +1997,7 @@ class IngestService(
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         private val FORCE_SALE_REASONS = setOf("internet_problem", "location_change")
+        private val CODE_RE = Regex("^[a-z][a-z0-9_]{1,40}$")
         private val TYPE_PATTERN = Regex("^[a-z][a-z_]{1,40}$")
 
         /** Record type a parent reference must name. */
