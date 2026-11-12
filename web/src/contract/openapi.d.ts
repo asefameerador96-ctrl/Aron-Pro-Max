@@ -10284,6 +10284,19 @@ export interface components {
             std_achieved: components["schemas"]["Decimal3"];
             memo_target: number;
             memo_achieved: number;
+            /** @description Value target in integer milli-taka (a string; parse as a 64-bit integer), never negative, "0" until uploaded (owner Q5). Percent on the phone is achieved / target with 2 decimals rounded half-up and 0.00% when the target is 0. */
+            value_target_mtk?: string;
+            /** @description Integer milli-taka sold by the outlet for the brand in the month up to `as_of`: the gross of SALE lines of memos that are active (voided and superseded memos, voided lines and free or reward lines are out). The memo offer line is zero (docs/27). The phone adds only its own unsynced memos created after `as_of`, keyed by memo_uuid, recomputed from scratch after each bundle. */
+            value_achieved_mtk?: string;
+            /** @description UTC instant the server computed the achievement figures (std, memo and value) at. */
+            as_of?: components["schemas"]["Timestamp"];
+            /** @description Achievement per pack size of the brand, base units (sticks, pieces), one entry per `pack_factor` with a sale in the month, ordered by `pack_factor`; empty on the All Brand row and when nothing sold. The phone shows ONE LINE PER PACK SIZE (20s and 10s are separate lines, rule 5) and never sums across pack sizes; the `std_achieved` of the entries add up to the row`s `std_achieved`. The target per pack size is not defined yet (owner question) and is absent. */
+            by_pack?: {
+                /** @description Base units (sticks or pieces) in one pack of the SKUs counted in this entry (the SKU `base_per_pack`). */
+                pack_factor: number;
+                /** @description Base units sold in the month for this pack size. */
+                std_achieved: components["schemas"]["Decimal3"];
+            }[];
         };
         AsthaTargetPage: {
             quarter: string;
@@ -10302,6 +10315,8 @@ export interface components {
                 /** @description Never negative. */
                 std_target: string;
                 memo_target: number;
+                /** @description Optional (1.15.0). Integer milli-taka, never negative or fractional (`400 ERR_VALIDATION`, pointer `body.rows[i].value_target_mtk`); omitted means "0". */
+                value_target_mtk?: string;
             }[];
             change_reason: components["schemas"]["ChangeReason"];
         };
@@ -10350,7 +10365,7 @@ export interface components {
             qty: number;
             photos_captured: number;
         };
-        /** @description Programme data for the user's routes (docs/24 s4.10, s4.14). Balances are as of the previous business day. */
+        /** @description Programme data for the user's routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user's reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS Dhaka business date); `astha_targets` carry server achievement as of their own `as_of` (units in `AsthaTargetRow`); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `gifts[].image_url` is null in this version. */
         ProgrammesSection: {
             programmes: components["schemas"]["Programme"][];
             loyalty: components["schemas"]["LoyaltyBalance"][];

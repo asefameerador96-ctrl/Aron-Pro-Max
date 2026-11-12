@@ -42,5 +42,10 @@ AsthaTargetWrite:
           memo_target:
             type: integer
             minimum: 0
+          value_target_mtk:
+            type: string
+            pattern: ^(0|[1-9][0-9]{0,17})$
+            description: Optional (1.15.0). Integer milli-taka, never negative or fractional (`400 ERR_VALIDATION`,
+              pointer `body.rows[i].value_target_mtk`); omitted means "0".
     change_reason:
       $ref: '#/components/schemas/ChangeReason'

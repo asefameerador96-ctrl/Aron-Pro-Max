@@ -1,7 +1,7 @@
 # Contract 1.15.0: loyalty and Astha, the FIELD side (lane portal-loyalty-api, train 3, 2026-11-12)
 
-For the lead's approval as a ruling id (the lead appends it to DECISIONS.md; this file then cites it). **Status: proposal, nothing in
-`contract/openapi.yaml` has changed yet.** 1.15.0 is additive on 1.14.0 (lane sr-server, V0173 to V0175). Migrations of this train start at
+Approved by the lead as **D-LEAD-CONTRACT-115-01** (2026-11-12; the lead appends the DECISIONS line when the push is gated). **Status: applied in `contract/openapi.yaml`
+(info.version 1.15.0) with push B.** Rulings: (1) the three value members and the optional upload member, additive; (2) `by_pack` with the member named `pack_factor`, achievement only; (3) V0180 and V0181 are working numbers; (4) `programmes` null when no programme is active in the reach. If sr-server is gated first it takes 1.15.0 and this moves to 1.16.0. 1.15.0 is additive on 1.14.0 (lane sr-server, V0173 to V0175). Migrations of this train start at
 V0180 and follow LANDING order (the lead may order one rename at merge time). Owner basis: D-OWNER-SR-PROGRAMMES-01 (2026-11-12) puts the SR
 programme screens in scope; memo discount lines stay zero (docs/27, rule 2). Rows cited: SRM-B-61..81 and 143..148 of
 `docs/requests/sr-manual-build-2026-11-part-b.md`.
@@ -34,12 +34,14 @@ falling back to the outlet's sub-channel name; `league_label` carries the Diamon
 ## 2. `AsthaTargetRow` gains three members (additive; SRM-B-63, 64, 146)
 
 - `value_target_mtk`: string, integer milli-taka, `>= 0`, `"0"` until the target is uploaded (owner default Q5). A string because milli-taka exceed 2^53 in sums; the phone parses with a 64-bit integer.
-- `value_achieved_mtk`: string, integer milli-taka. Net memo value of the (outlet, brand, month) up to `as_of`, summed from memos on the server: memos that were superseded or voided are excluded (follow `supersedes_uuid`), the memo offer line is zero so net equals gross. Brand `null` = the whole outlet.
+- `value_achieved_mtk`: string, integer milli-taka. Gross milli-taka of the SALE lines of the (outlet, brand, month) up to `as_of`, summed from memos on the server: memos that were superseded or voided are excluded (follow `supersedes_uuid`), the memo offer line is zero so net equals gross. Brand `null` = the whole outlet.
 - `as_of`: `Timestamp` (UTC). The achievement counts every memo the server had received before `as_of`. The phone adds ONLY its own unsynced memos created after `as_of` (the local outbox), keyed by `memo_uuid`, recomputed from scratch after every bundle (adding is idempotent: a memo that already synced is in the server figure and not in the outbox).
 - Percent: the phone shows `achieved / target` as a percentage with 2 decimals, rounded half-up, and `0.00%` when the target is 0 (the -37,500% bug: targets are `>= 0` and every percentage guards the divide by zero).
 - Units on the phone (rule 5): `std_target` / `std_achieved` (Decimal3) stay in base units (sticks) on the server; the phone shows packets for cigarettes and dozens for matches, one line PER PACK SIZE for a brand with 20s and 10s, never summed (SRM-B-146; rule 5 wins over the owner's screenshot).
 
-**For the one-line-per-pack-size rule a new optional member is needed** (the existing row grain is brand and month, base units, so it cannot be split by pack size on the phone): `by_pack`: array (max 6) of `{ base_per_pack: integer 1..1000, std_target: Decimal3, std_achieved: Decimal3 }`, base units, one entry per pack size of the brand that has a target or a sale in the month. `std_target` / `std_achieved` of the row stay the totals. **This needs the lead's ruling** (it also needs a target upload grain by pack size; default if no ruling: `by_pack` carries achievement only, `std_target` is shown on the first line with its pack size, owner question for the lead).
+**One line per pack size (ruling 2): `by_pack`**, optional, max 6 entries `{ pack_factor, std_achieved }`: `pack_factor` is the SKU base units per pack (20 or 10 for cigarettes), `std_achieved` is Decimal3 in the row's own base units. One entry per pack size with a sale in the month, ordered by `pack_factor`; empty on the All Brand row. The phone shows one line per entry and never sums across pack sizes (rule 5). The entries add up to the row's `std_achieved` (server test). The TARGET per pack size is not defined: it stays absent until the owner answers (owner question below).
+
+**Owner question for the lead to carry:** the Astha STD target is uploaded per brand and month, not per pack size. Should the target be split by pack size (20s and 10s each with their own target)? Until the owner answers, the phone shows the brand target on its own line and one achievement line per pack size.
 
 ## 3. Phone reads and the portal upload
 

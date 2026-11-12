@@ -1,7 +1,11 @@
 ProgrammesSection:
   type: object
-  description: Programme data for the user's routes (docs/24 s4.10, s4.14). Balances are as of the previous business
-    day.
+  description: 'Programme data for the user''s routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme
+    is active in the user''s reach, else the bundle member is null. Cut to the outlets and routes of the bundle
+    (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS
+    Dhaka business date); `astha_targets` carry server achievement as of their own `as_of` (units in `AsthaTargetRow`);
+    a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `gifts[].image_url` is null
+    in this version.'
   required:
   - programmes
   - loyalty

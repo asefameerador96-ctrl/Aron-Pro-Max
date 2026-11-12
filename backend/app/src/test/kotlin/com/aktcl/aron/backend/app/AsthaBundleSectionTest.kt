@@ -140,6 +140,10 @@ class AsthaBundleSectionTest {
         assertEquals("120.500", brandRow.str("std_target")); assertEquals((3 * pack).toString() + ".000", brandRow.str("std_achieved"))
         assertEquals("500000", brandRow.str("value_target_mtk")); assertEquals((3 * pack * 100).toString(), brandRow.str("value_achieved_mtk"))
         assertEquals(today.toString().substring(0, 7), brandRow.str("month")); assertNotNull(brandRow.str("as_of"))
+        // by_pack: achievement per pack size in base units; the entries sum to the row total (never summed across pack sizes on the phone).
+        val packs = brandRow["by_pack"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf(pack.toString()), packs.map { it.str("pack_factor") })
+        assertEquals(brandRow.str("std_achieved"), packs.fold(java.math.BigDecimal.ZERO) { a, p -> a + java.math.BigDecimal(p.str("std_achieved")!!) }.toPlainString(), "sum of by_pack equals the row total")
         // The All Brand row counts active sale memos: A has one; B has two memos, one superseded, so one counts.
         assertEquals("1", rows.single { it.str("outlet_id") == outletA.toString() && it.str("brand_id") == null }.str("memo_achieved"))
         assertEquals("1", rows.single { it.str("outlet_id") == outletB.toString() && it.str("brand_id") == null }.str("memo_achieved"))

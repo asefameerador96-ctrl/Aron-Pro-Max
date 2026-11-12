@@ -124,7 +124,7 @@ object BundleProgrammes {
 
     /**
      * Astha target rows of the quarter's months for the caller's routes, with server-side achievement up to `as_of` = [now]: value = sum of the
-     * SALE lines' gross milli-taka per brand (memo-level deductions are not split by brand; the memo offer line is zero), qty in base units (STD basis),
+     * SALE lines' gross milli-taka per brand (memo-level deductions are not split by brand; the memo offer line is zero), qty in base units (STD basis) in total and per `pack_factor` (the SKU's base units per pack: `by_pack`, whose std_achieved sum to the row total),
      * memos `active` and not voided only (a superseded memo is replaced by its editing memo). The brand-NULL row is the memo target: achievement is the
      * count of active sale memos of the outlet in the month.
      */
@@ -134,8 +134,8 @@ object BundleProgrammes {
             """
             WITH t AS (
               SELECT * FROM app.astha_target WHERE route_id = ANY(CAST(:routes AS bigint[])) AND month >= :first AND month < :after AND (outlet_id IS NULL OR outlet_id = ANY(CAST(:outlets AS bigint[])))
-            ), sales AS (
-              SELECT m.outlet_id, date_trunc('month', m.business_date)::date AS month, b.id AS brand_id,
+            ), sp AS (
+              SELECT m.outlet_id, date_trunc('month', m.business_date)::date AS month, b.id AS brand_id, s.base_per_pack,
                      SUM(ml.qty_base)::numeric(16,3) AS std, SUM(ml.gross_mtk)::bigint AS value_mtk
               FROM app.memo m
               JOIN app.memo_line ml ON ml.memo_client_uuid = m.client_uuid AND ml.business_date = m.business_date AND ml.voided_at IS NULL AND ml.line_kind = 'sale'
@@ -144,14 +144,18 @@ object BundleProgrammes {
               JOIN app.product_node b ON b.id = v.parent_id
               WHERE m.status = 'active' AND m.voided_at IS NULL AND m.memo_kind = 'sale' AND m.business_date >= :first AND m.business_date < :after
                 AND m.outlet_id = ANY(CAST(:outlets AS bigint[]))
-              GROUP BY 1, 2, 3
+              GROUP BY 1, 2, 3, 4
+            ), sales AS (
+              SELECT outlet_id, month, brand_id, SUM(std)::numeric(16,3) AS std, SUM(value_mtk)::bigint AS value_mtk,
+                     jsonb_agg(jsonb_build_object('pack_factor', base_per_pack, 'std_achieved', std::text) ORDER BY base_per_pack)::text AS packs
+              FROM sp GROUP BY 1, 2, 3
             ), memos AS (
               SELECT m.outlet_id, date_trunc('month', m.business_date)::date AS month, count(*)::int AS n
               FROM app.memo m WHERE m.status = 'active' AND m.voided_at IS NULL AND m.memo_kind = 'sale' AND m.business_date >= :first AND m.business_date < :after
                 AND m.outlet_id = ANY(CAST(:outlets AS bigint[])) GROUP BY 1, 2
             )
             SELECT t.route_id, t.outlet_id, t.brand_id, t.month, t.std_target::text AS std_target, t.memo_target, t.value_target_mtk,
-                   COALESCE(s.std, 0)::text AS std_achieved, COALESCE(s.value_mtk, 0) AS value_achieved, COALESCE(mm.n, 0) AS memo_achieved
+                   COALESCE(s.std, 0)::text AS std_achieved, COALESCE(s.value_mtk, 0) AS value_achieved, COALESCE(s.packs, '[]') AS packs, COALESCE(mm.n, 0) AS memo_achieved
             FROM t
             LEFT JOIN sales s ON t.brand_id IS NOT NULL AND s.outlet_id = t.outlet_id AND s.month = t.month AND s.brand_id = t.brand_id
             LEFT JOIN memos mm ON t.brand_id IS NULL AND mm.outlet_id = t.outlet_id AND mm.month = t.month
@@ -166,6 +170,7 @@ object BundleProgrammes {
                 put("std_target", rs.getString("std_target")); put("std_achieved", rs.getString("std_achieved"))
                 put("memo_target", rs.getInt("memo_target")); put("memo_achieved", rs.getInt("memo_achieved"))
                 put("value_target_mtk", rs.getLong("value_target_mtk").toString()); put("value_achieved_mtk", rs.getLong("value_achieved").toString())
+                put("by_pack", if (rs.getObject("brand_id") == null) JsonArray(emptyList()) else Json.parseToJsonElement(rs.getString("packs")))
                 put("as_of", now.toString())
             }
         }.list()

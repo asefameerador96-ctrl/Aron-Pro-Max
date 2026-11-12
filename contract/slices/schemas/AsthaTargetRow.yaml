@@ -36,3 +36,42 @@ AsthaTargetRow:
     memo_achieved:
       type: integer
       minimum: 0
+    value_target_mtk:
+      type: string
+      pattern: ^(0|[1-9][0-9]{0,17})$
+      description: Value target in integer milli-taka (a string; parse as a 64-bit integer), never negative, "0"
+        until uploaded (owner Q5). Percent on the phone is achieved / target with 2 decimals rounded half-up and
+        0.00% when the target is 0.
+    value_achieved_mtk:
+      type: string
+      pattern: ^(0|[1-9][0-9]{0,17})$
+      description: 'Integer milli-taka sold by the outlet for the brand in the month up to `as_of`: the gross of
+        SALE lines of memos that are active (voided and superseded memos, voided lines and free or reward lines
+        are out). The memo offer line is zero (docs/27). The phone adds only its own unsynced memos created after
+        `as_of`, keyed by memo_uuid, recomputed from scratch after each bundle.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+      description: UTC instant the server computed the achievement figures (std, memo and value) at.
+    by_pack:
+      type: array
+      maxItems: 6
+      description: Achievement per pack size of the brand, base units (sticks, pieces), one entry per `pack_factor`
+        with a sale in the month, ordered by `pack_factor`; empty on the All Brand row and when nothing sold. The
+        phone shows ONE LINE PER PACK SIZE (20s and 10s are separate lines, rule 5) and never sums across pack sizes;
+        the `std_achieved` of the entries add up to the row`s `std_achieved`. The target per pack size is not defined
+        yet (owner question) and is absent.
+      items:
+        type: object
+        required:
+        - pack_factor
+        - std_achieved
+        additionalProperties: false
+        properties:
+          pack_factor:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            description: Base units (sticks or pieces) in one pack of the SKUs counted in this entry (the SKU `base_per_pack`).
+          std_achieved:
+            $ref: '#/components/schemas/Decimal3'
+            description: Base units sold in the month for this pack size.

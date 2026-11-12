@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.13.1
+  version: 1.15.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -112,6 +112,11 @@ info:
       are immutable, and a client that still sends them gets `400` (the portal BFF aligns in the web lane's next train); `putProgrammeEnrolments` gains `409`; `listProgrammes` takes `status` as `ProgrammeStatus` and an optional `kind`. Tier
       thresholds are STD as stored (units rule 5, brief Q1 default), never negative; no money member is added. The field is unchanged: loyalty
       in the apps stays deferred (docs/27), the bundle `programmes` stays null, no points are earned or redeemed.
+    - 1.15.0 (loyalty and Astha, the FIELD side, train 3 of lane portal-loyalty-api, D-LEAD-CONTRACT-115-01, `docs/requests/contract-1.15-loyalty-field.md`; additive only): the bundle
+      `programmes` section is filled (an object when a programme is active in the user's reach, else `null`; units, rounding and as-of are in each member's description).
+      `AsthaTargetRow` gains `value_target_mtk`, `value_achieved_mtk` (integer milli-taka as strings), `as_of` and `by_pack` (achievement per `pack_factor`, base units;
+      target per pack size stays absent until the owner answers). `AsthaTargetWrite` rows gain the optional `value_target_mtk`. Migration V0180 (value target column and
+      the upload batch ledger). No operation, status code or enum value is added or removed here; the `gift_choice` record, redemption posting and gift photos are push C.
     - 1.13.1 (loyalty-programme portal, train 2 of lane portal-loyalty-api, D-LOY-API-05 and -06; description-only, no schema, operation or status change, so no
       request file is needed beyond the note in `docs/requests/contract-1.13-loyalty-portal.md`): the 1.13.0 entry above is as it shipped. `listProgrammeVersions` says each
       version is judged on its own scope; `listProgrammeEnrolments` carries the read rules (reach cut, BRAND `403`, `zone_id` outside the reach `403`) that were wrongly
@@ -16050,6 +16055,20 @@ components:
         std_achieved: { $ref: '#/components/schemas/Decimal3' }
         memo_target: { type: integer, minimum: 0 }
         memo_achieved: { type: integer, minimum: 0 }
+        value_target_mtk: { type: string, pattern: '^(0|[1-9][0-9]{0,17})$', description: 'Value target in integer milli-taka (a string; parse as a 64-bit integer), never negative, "0" until uploaded (owner Q5). Percent on the phone is achieved / target with 2 decimals rounded half-up and 0.00% when the target is 0.' }
+        value_achieved_mtk: { type: string, pattern: '^(0|[1-9][0-9]{0,17})$', description: 'Integer milli-taka sold by the outlet for the brand in the month up to `as_of`: the gross of SALE lines of memos that are active (voided and superseded memos, voided lines and free or reward lines are out). The memo offer line is zero (docs/27). The phone adds only its own unsynced memos created after `as_of`, keyed by memo_uuid, recomputed from scratch after each bundle.' }
+        as_of: { $ref: '#/components/schemas/Timestamp', description: 'UTC instant the server computed the achievement figures (std, memo and value) at.' }
+        by_pack:
+          type: array
+          maxItems: 6
+          description: 'Achievement per pack size of the brand, base units (sticks, pieces), one entry per `pack_factor` with a sale in the month, ordered by `pack_factor`; empty on the All Brand row and when nothing sold. The phone shows ONE LINE PER PACK SIZE (20s and 10s are separate lines, rule 5) and never sums across pack sizes; the `std_achieved` of the entries add up to the row`s `std_achieved`. The target per pack size is not defined yet (owner question) and is absent.'
+          items:
+            type: object
+            required: [pack_factor, std_achieved]
+            additionalProperties: false
+            properties:
+              pack_factor: { type: integer, minimum: 1, maximum: 1000, description: Base units (sticks or pieces) in one pack of the SKUs counted in this entry (the SKU `base_per_pack`). }
+              std_achieved: { $ref: '#/components/schemas/Decimal3', description: Base units sold in the month for this pack size. }
     AsthaTargetPage:
       type: object
       required: [quarter, as_of, items, next_cursor]
@@ -16085,6 +16104,7 @@ components:
               month: { $ref: '#/components/schemas/Month' }
               std_target: { type: string, pattern: '^\d{1,13}(\.\d{1,3})?$', description: Never negative. }
               memo_target: { type: integer, minimum: 0 }
+              value_target_mtk: { type: string, pattern: '^(0|[1-9][0-9]{0,17})$', description: 'Optional (1.15.0). Integer milli-taka, never negative or fractional (`400 ERR_VALIDATION`, pointer `body.rows[i].value_target_mtk`); omitted means "0".' }
         change_reason: { $ref: '#/components/schemas/ChangeReason' }
     GiftAssignment:
       type: object
@@ -16162,7 +16182,7 @@ components:
         photos_captured: { type: integer, minimum: 0, maximum: 50 }
     ProgrammesSection:
       type: object
-      description: Programme data for the user's routes (docs/24 s4.10, s4.14). Balances are as of the previous business day.
+      description: 'Programme data for the user''s routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user''s reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS Dhaka business date); `astha_targets` carry server achievement as of their own `as_of` (units in `AsthaTargetRow`); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `gifts[].image_url` is null in this version.'
       required: [programmes, loyalty, gifts, astha_targets, gift_assignments, pending_gift_verifications]
       additionalProperties: false
       properties:
