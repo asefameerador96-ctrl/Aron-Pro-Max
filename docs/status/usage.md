@@ -2867,3 +2867,6 @@
 ### 2026-11-12 10:37 UTC — GO train 101
 - Train 101 CI 43195921949 green on afe417965 (12 jobs ok). INT still 0b5eba27a (train 100 run complete). GO sent to integrator 24: train head only, expected DECISIONS 406, V0162 last, contract 1.13.0, real deploy.
 - S3 follow-up `bbcc5b99c` (assist moved to the VISIT frame) held until train 102 lands. S1 fix round `755a5cbaf`: static gate clean, merges on train 102 with only DECISIONS conflicting; Opus re-check wkky08qee running.
+
+### 2026-11-12 10:37 UTC — S1 round 2: code PASS, two false records
+- S1 `755a5cbaf` Opus re-check wkky08qee (8 agents): all nine first-pass items fixed in production code (skip link in every state, version footer, Later kept and AutoInstallGate once per release per process, guarded progress callback, FLAG_SECURE set and cleared, 401 message, wiring tests, bind call keeps cancellation); no OTP logged or saved. Blocking: two false records (OTP bar title language in D-SR-MAN-S1-01 (c); release-notes language in D-SR-MAN-S1-06). Asked: correct them, test count, restore one display assertion, overlapping SecureScreen test. Lands after train 102. wt-s1 removed.
