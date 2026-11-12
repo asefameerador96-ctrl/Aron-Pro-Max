@@ -1,6 +1,24 @@
 package com.aktcl.aron.feature.auth
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +68,8 @@ object OtpTags {
     const val VERIFY = "otp_verify"
     const val MESSAGE = "otp_message"
     const val BACK = "otp_back"
+    const val MANUAL_HEADING = "otp_manual_heading"
+    const val MANUAL_NOTICE = "otp_manual_notice"
 }
 
 /** The four OTP boxes of screens-sr s1: 56 x 64 dp with 12 dp gaps (260 dp, centred). */
@@ -75,6 +95,7 @@ fun OtpContent(
     onSunlight: ((Boolean) -> Unit)? = null,
 ) {
     val c = LocalAronColors.current
+    com.aktcl.aron.core.ui.SecureScreen() // the typed code is not in recents or screenshots
     ScreenWithBar(modifier.fillMaxSize(), bar = {
         Column(Modifier.fillMaxWidth()) {
             // the disabled primary says why (android-glass s6.1); the reason slot stays reserved so the bar never jumps at the fourth digit
@@ -141,13 +162,13 @@ private fun DangerLine(text: String, modifier: Modifier = Modifier) {
  * box shows one digit in the current language's digits; the box after the last digit carries the focus ring.
  */
 @Composable
-private fun OtpBoxes(digits: String, onDigits: (String) -> Unit, enabled: Boolean, error: Boolean) {
+private fun OtpBoxes(digits: String, onDigits: (String) -> Unit, enabled: Boolean, error: Boolean, outline: Color? = null, digitColor: Color? = null) {
     val c = LocalAronColors.current
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val shown = localizedDigits(digits)
     val fill = if (enabled) c.surfaceSolidRaised else c.stateDisabledFill
-    val idle = if (error) c.danger else c.borderInput
+    val idle = if (error) c.danger else outline ?: c.borderInput
     val focus = c.borderFocus
     val hairline = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
     val ring = if (c.sunlight) AronTokens.Stroke.SunlightFocus else AronTokens.Stroke.Focus
@@ -165,7 +186,7 @@ private fun OtpBoxes(digits: String, onDigits: (String) -> Unit, enabled: Boolea
                     },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(shown.getOrNull(i)?.toString().orEmpty(), style = MaterialTheme.typography.headlineLarge, color = LocalAronLook.current.ink, textAlign = TextAlign.Center)
+                    Text(shown.getOrNull(i)?.toString().orEmpty(), style = MaterialTheme.typography.headlineLarge, color = digitColor ?: LocalAronLook.current.ink, textAlign = TextAlign.Center)
                 }
             }
         }
@@ -181,5 +202,71 @@ private fun OtpBoxes(digits: String, onDigits: (String) -> Unit, enabled: Boolea
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
             interactionSource = interaction,
         )
+    }
+}
+
+/**
+ * The OTP step of the owner's SR manual (screenshot 04, SRM-A-06): the gradient bar with the back chevron and "OTP যাচাইকরণ", the red
+ * "Enter OTP" heading, the grey instruction, four boxes with a red outline and indigo digits (one hidden field underneath, as
+ * [OtpContent]), the green full-width "Verify" pill, and the red explanation paragraph. The code errors replace the instruction in the
+ * danger line; the other refusals are banners under the boxes. No resend, timer or phone number (the vendor shows none). Back returns to
+ * login. The pill is disabled until four digits, with the reason as its description.
+ */
+@Composable
+fun OtpManualContent(state: OtpState, onDigits: (String) -> Unit, onVerify: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    com.aktcl.aron.core.ui.SecureScreen() // the typed code is not in recents or screenshots
+    Column(modifier.fillMaxSize().background(look.page)) {
+        com.aktcl.aron.core.ui.aron.AronTopBar(stringResource(R.string.otp_title), onBack = onBack, backLabel = stringResource(R.string.otp_back))
+        Column(
+            Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)).imePadding()
+                .padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.L),
+            verticalArrangement = Arrangement.spacedBy(AronTokens.Space.L), horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                stringResource(R.string.otp_manual_heading), style = TextStyle(color = look.red, fontSize = 30.sp, fontWeight = FontWeight.Bold),
+                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().testTag(OtpTags.MANUAL_HEADING),
+            )
+            val codeError = state.error?.takeIf { it == OtpError.INVALID || it == OtpError.EXPIRED || it == OtpError.ATTEMPTS_EXCEEDED }
+            if (codeError != null) {
+                DangerLine(stringResource(when (codeError) { OtpError.INVALID -> R.string.otp_invalid; OtpError.EXPIRED -> R.string.otp_expired; else -> R.string.otp_attempts }), Modifier.testTag(OtpTags.MESSAGE))
+            } else {
+                Text(stringResource(R.string.otp_manual_hint), style = MaterialTheme.typography.bodyLarge, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            }
+            OtpBoxes(state.digits, onDigits, enabled = !state.bound && !state.busy, error = codeError != null, outline = look.red, digitColor = look.printStart)
+            state.error?.takeIf { codeError == null }?.let {
+                AuthBanner(
+                    stringResource(when (it) {
+                        OtpError.LOCKED -> R.string.otp_locked
+                        OtpError.OFFLINE -> R.string.otp_offline
+                        OtpError.DEVICE_LIMIT -> R.string.otp_device_limit
+                        OtpError.SIGN_IN_AGAIN -> R.string.otp_sign_in_again
+                        else -> R.string.otp_other
+                    }),
+                    Modifier.testTag(OtpTags.MESSAGE), if (it == OtpError.OFFLINE) BannerKind.Offline else BannerKind.Error,
+                )
+            }
+            if (state.bound) AuthBanner(stringResource(R.string.otp_bound), kind = BannerKind.Success)
+            val green = if (look.sunlight) Color(0xFF14493E) else Color(0xFF26806F)
+            val enabled = state.canVerify
+            val reason = stringResource(R.string.otp_reason_digits)
+            Box(
+                Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(50)).background(if (enabled) green else look.primaryDisabled)
+                    .clickable(enabled = enabled, role = Role.Button, onClick = onVerify)
+                    .semantics { if (!enabled) stateDescription = reason }
+                    .testTag(OtpTags.VERIFY),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    stringResource(if (state.busy) R.string.auth_logging_in else R.string.otp_verify),
+                    style = TextStyle(color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold), textAlign = TextAlign.Center,
+                )
+            }
+            Text(
+                stringResource(R.string.otp_manual_notice), style = TextStyle(color = look.red, fontSize = 15.sp), textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().testTag(OtpTags.MANUAL_NOTICE),
+            )
+        }
     }
 }

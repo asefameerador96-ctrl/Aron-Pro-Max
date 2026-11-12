@@ -45,7 +45,7 @@ import com.aktcl.aron.core.ui.aron.NightGlowField
 import com.aktcl.aron.core.ui.aron.nightRoles
 
 /** Which login screen an app shows: the shared field-app login (SR, AMO) or the TSO screen of screenshot 5 (D-TSO-MAN-15). */
-enum class LoginVariant { Standard, Tso, Amo }
+enum class LoginVariant { Standard, Tso, Amo, Sr }
 
 /** Test tags of the TSO login only (the fields and the button keep [LoginTags]). */
 object TsoLoginTags {
