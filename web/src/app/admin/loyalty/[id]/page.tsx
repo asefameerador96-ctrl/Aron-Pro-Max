@@ -10,7 +10,7 @@ import { LoyaltyStatusPanel } from "@/components/admin/loyalty-status-panel";
 import { Card, NextLink, PageHeading, one, qs, type SearchParams } from "@/components/admin/kit/page";
 import { apiClient, outcome } from "@/lib/api/client";
 import { loadGrants } from "@/lib/admin/modules";
-import { activationBlocked, canReadLoyalty, ID_RE, canWriteLoyalty, nextProgrammeStatuses, type Enrolment, type ProgrammeVersion } from "@/lib/admin/loyalty";
+import { activationBlocked, canReadLoyalty, cursorParam, ID_RE, canWriteLoyalty, nextProgrammeStatuses, type Enrolment, type ProgrammeVersion } from "@/lib/admin/loyalty";
 import { loadEnrolments, loadGifts, loadProgramme, loadVersions } from "@/lib/admin/loyalty-load";
 import { kindLabel, nameOf, pointsText, qualifyingLabel, scopeLabel, statusLabel, stdText, thresholdText, tierName } from "@/lib/admin/loyalty-view";
 import { requireSession } from "@/lib/auth/require";
@@ -39,8 +39,8 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
   const p = r.data;
   const api = apiClient(session.at);
   const [versions, enrolments, gifts, hist] = await Promise.all([
-    loadVersions(session.at, p.programme_id, one(sp.vc, 200)),
-    loadEnrolments(session.at, p.programme_id, one(sp.ec, 200)),
+    loadVersions(session.at, p.programme_id, cursorParam(one(sp.vc, 20))),
+    loadEnrolments(session.at, p.programme_id, cursorParam(one(sp.ec, 20))),
     loadGifts(session.at, p.programme_id),
     outcome(api.GET("/v1/admin/audit", { params: { query: { entity: "programme", entity_id: String(p.programme_id), limit: 20 } } })),
   ]);
@@ -105,7 +105,7 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
       </Card>
       <Card title={t(locale, "loy.enrol.heading")} testId="programme-enrolments">
         {!enrolments.ok ? <p role="alert" className="text-body text-secondary" data-testid="enrol-failed">{t(locale, "loy.enrol.failed")}</p> : <DataTable columns={enrolCols} rows={enrolments.data.items} rowKey={(e) => `${e.outlet_id}:${e.valid_from}`} empty={t(locale, "loy.enrol.empty")} caption={t(locale, "loy.enrol.heading")} />}
-        {enrolments.ok ? <NextLink href={enrolments.data.next ? `/admin/loyalty/${p.programme_id}${qs({ vc: one(sp.vc, 200), ec: enrolments.data.next })}` : null} label={t(locale, "loy.more")} /> : null}
+        {enrolments.ok ? <NextLink href={enrolments.data.next ? `/admin/loyalty/${p.programme_id}${qs({ vc: cursorParam(one(sp.vc, 20)), ec: enrolments.data.next })}` : null} label={t(locale, "loy.more")} /> : null}
         {canWrite ? (p.status === "inactive" ? <p className="text-body text-secondary" data-testid="enrol-ended">{t(locale, "loy.enrol.ended")}</p> : <LoyaltyEnrolForm programmeId={p.programme_id} tiers={tiers} />) : null}
       </Card>
       <Card title={t(locale, "loy.gifts.title")} testId="programme-gifts">
@@ -127,7 +127,7 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
             ))}
           </ol>
         )}
-        {versions.ok ? <NextLink href={versions.data.next ? `/admin/loyalty/${p.programme_id}${qs({ ec: one(sp.ec, 200), vc: versions.data.next })}` : null} label={t(locale, "loy.more")} /> : null}
+        {versions.ok ? <NextLink href={versions.data.next ? `/admin/loyalty/${p.programme_id}${qs({ ec: cursorParam(one(sp.ec, 20)), vc: versions.data.next })}` : null} label={t(locale, "loy.more")} /> : null}
       </Card>
       <AuditHistory entries={hist.ok ? hist.data.items : []} failed={!hist.ok} locale={locale} />
     </div>

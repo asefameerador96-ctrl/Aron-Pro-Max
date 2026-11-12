@@ -7,7 +7,7 @@ import { accessFor, ADMIN_PATH_ROLES } from "@/lib/auth/roles";
 import { MENU, menuFor } from "@/lib/menu/menu";
 import { t } from "@/lib/i18n";
 import {
-  activationBlocked, basisUnit, failureKey, fieldErrorsOf, giftUnchanged, ID_RE, pointerToField, programmeUnchanged, serverFieldCode, canActivateProgramme, canReadLoyalty, canWriteGifts, canWriteLoyalty, cashValueMtk, decimal3Text, decimal3Wire, emptyEnrolForm, emptyForm, emptyGiftForm, emptyTier,
+  activationBlocked, basisUnit, cursorParam, failureKey, fieldErrorsOf, giftUnchanged, ID_RE, pointerToField, programmeUnchanged, serverFieldCode, canActivateProgramme, canReadLoyalty, canWriteGifts, canWriteLoyalty, cashValueMtk, decimal3Text, decimal3Wire, emptyEnrolForm, emptyForm, emptyGiftForm, emptyTier,
   formFromProgramme, guardedPercent, loyaltyAccess, nextAttempt, nextProgrammeStatuses, parseDecimal3, parsePoints, remainingStd, validateEnrol, validateForm, validateGift, type LoyaltyForm, type Programme,
 } from "@/lib/admin/loyalty";
 import { groupedDecimal, kindLabel, nameOf, percentText, pointsText, programmePeriod, qualifyingLabel, scopeLabel, statusLabel, stdText, thresholdText, tierName } from "@/lib/admin/loyalty-view";
@@ -365,5 +365,17 @@ describe("roles below ADMIN have no portal page (the server scopes them; the adm
       expect(accessFor(r, "/admin/loyalty"), r).toBe("forbidden");
       expect(accessFor(r, "/api/bff/admin/loyalty"), r).toBe("forbidden");
     }
+  });
+});
+
+describe("page cursors from the URL", () => {
+  it("only a numeric keyset value reaches the server", () => {
+    expect(cursorParam("12")).toBe("12");
+    for (const bad of ["0", "012", "abc", "1x", "-1", "", "1".repeat(19)]) expect(cursorParam(bad), bad).toBeUndefined();
+    expect(cursorParam(undefined)).toBeUndefined();
+  });
+  it("the ended-programme gift message says only what the server does (new gifts)", () => {
+    expect(t("en", "loy.gifts.ended")).toBe("An ended programme takes no new gifts.");
+    expect(t("bn", "loy.gifts.ended")).not.toContain("পরিবর্তন");
   });
 });

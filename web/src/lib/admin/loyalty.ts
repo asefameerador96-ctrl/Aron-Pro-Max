@@ -61,6 +61,8 @@ export const TIER_CODE = /^[a-z][a-z0-9_]{1,40}$/;
 export const GIFT_CODE = /^[a-z][a-z0-9_]{1,40}$/;
 /** A path id: at least 1, no leading zeros. */
 export const ID_RE = /^[1-9]\d{0,14}$/;
+/** A page cursor from the URL: numeric keyset value >= 1 (the server answers 400 query.cursor to anything else), else none. */
+export const cursorParam = (v: string | undefined): string | undefined => (v !== undefined && /^[1-9]\d{0,17}$/.test(v) ? v : undefined);
 export const MAX_TIERS = 10; // contract: tiers maxItems 10, sort_order 1..10
 export const POINTS_MAX = 100_000;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;

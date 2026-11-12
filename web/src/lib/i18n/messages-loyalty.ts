@@ -110,7 +110,7 @@ const pairs = {
   "loy.err.reused": ["This request was already used for different content. Reload the page and try again.", "এই অনুরোধটি আগে অন্য বিষয়বস্তুর জন্য ব্যবহৃত হয়েছে। পাতা রিলোড করে আবার চেষ্টা করুন।"],
   "loy.status.bad_move": ["The programme is not in a state that allows this move. Reload the page.", "কর্মসূচির বর্তমান অবস্থায় এই পরিবর্তন সম্ভব নয়। পাতা রিলোড করুন।"],
   "loy.enrol.overlap": ["This outlet is already enrolled in this programme for part of these dates.", "এই আউটলেট এই তারিখগুলোর কিছু অংশে ইতিমধ্যে এই কর্মসূচিতে তালিকাভুক্ত।"],
-  "loy.gifts.ended": ["An ended programme takes no new gifts or gift changes.", "সমাপ্ত কর্মসূচিতে নতুন উপহার বা উপহার পরিবর্তন করা যায় না।"],
+  "loy.gifts.ended": ["An ended programme takes no new gifts.", "সমাপ্ত কর্মসূচিতে নতুন উপহার যোগ করা যায় না।"],
   "loy.more": ["Next page", "পরের পাতা"],
   "loy.detail.title": ["Programme {code}", "কর্মসূচি {code}"],
   "loy.detail.current": ["Current version {n}", "বর্তমান সংস্করণ {n}"],

@@ -1,5 +1,9 @@
 # Lane portal-loyalty-web (Lane L-B): status
 
+## Train 4 (D-LOY-WEB-05): the mock follows AdminLoyalty.kt (the lead's FAIL on train 3)
+
+What ran: lint, tsc, vitest (`tests/loyalty-bff.test.ts` asserts the SERVER's behaviour: first error only, newest first, keyset paging, containment reach, replay keys, check order), the loyalty e2e files alone 3 times, the full e2e once, the three gate scripts, and the lane CI run (id in the train report). The five pixel snapshots (config-tiers tiers A/B/C, national-shots route map and sale position) fail in this container's local runs, identical on clean INT; the lane CI run is the proof, not the local run. What is still different from the server, and the open work for the NATIONAL / BRAND / WM / DMO / TSO levels (no page or menu entry yet), are listed in D-LOY-WEB-05.
+
 ## Train 3 (D-LOY-WEB-04): the mock equals the server
 
 Server pointers/codes mapped to fields, per-action 409 messages, no-change detection, cursor paging for versions and enrolments, exclusive enrolment end, the server's other refusals and role reach in the mock, ids `^[1-9]\d{0,14}$`. Next: switch from the mock to the live API when L-A's routes are on INT (a base-URL change; run the e2e journeys against it).
