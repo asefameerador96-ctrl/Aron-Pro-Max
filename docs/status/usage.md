@@ -2985,3 +2985,7 @@
 
 ### 2026-11-12 13:07 UTC — train 105 on INT
 - Integrator 24 pushed train 105: INT `155edd899` (tree-identical to 64af1e14a plus the train.md row; DECISIONS 432; migrations end at V0162; contract 1.13.0), ci #2070 43224115378 running, real deploy expected. All six SR manual lanes (S1 to S6) now have their first round on INT.
+
+### 2026-11-12 13:24 UTC — train 106 built (S3 follow-up)
+- S3 `238d95abb` (train 105 head merged without conflicts; records and comments; reconnect and SaleRoute-composed assertions; AMO badge contrast; evening period word): own commit read by me (11 files +67/-25; production change = the period table 13:00-17:59 bare, 18:00-19:59 সন্ধ্যা, 20:00-04:59 রাত, plus one string pair). Lane ci 43222154368 in progress (Android, release APK, Repository gates already success).
+- Train 106 = INT 155edd899 + docs eb09a1066 + S3 238d95abb, head `738d6df3e` on lane/lead-train106: clean merges, DECISIONS 433 (432 + 1), 0 lines missing, android == S3, no duplicate string names, money-float 13/13, date-pin 0 new, gitleaks clean. CI 43226857187 running. GO after the train 105 INT run and deploy complete and this run and the S3 lane run are green. Android + docs only: deploy skipped by design.
