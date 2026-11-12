@@ -68,7 +68,7 @@ export interface OfferCaller { role: Role; username: string }
 export function offerAccess(c: OfferCaller): "none" | "r" | "w" {
   if (c.role === "SUPERADMIN") return "w";
   if (c.role !== "ADMIN") return "none";
-  return c.username === "mgrant1" ? "none" : c.username === "mdisc1" ? "r" : "w";
+  return c.username === "mgrant1" || c.username === "mloy1" ? "none" : c.username === "mdisc1" ? "r" : "w";
 }
 
 const RULE_KEYS = ["offer_type", "level", "title_en", "title_bn", "valid_from", "valid_to", "threshold_qty_base", "discount_bp", "discount_mtk_per_unit", "reward_sku_id", "reward_qty_base", "qualifying", "scope", "stacking"] as const;

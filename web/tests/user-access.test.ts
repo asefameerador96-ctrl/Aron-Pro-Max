@@ -28,9 +28,9 @@ describe("portal levels", () => {
 });
 
 describe("modules", () => {
-  it("seventeen modules including data entry, indent, leaderboard, daily tracking, support (R-F-11) and discounts (portal-discount-web)", () => {
-    expect(GRANT_MODULES).toHaveLength(17); // tso-manual W1: + support (R-F-11); portal-discount-web: + discounts
-    for (const m of ["data_entry", "indent", "leaderboard", "daily_tracking", "support", "discounts"]) expect(GRANT_MODULES as readonly string[]).toContain(m);
+  it("eighteen modules including data entry, indent, leaderboard, daily tracking, support (R-F-11), discounts (portal-discount-web) and loyalty (portal-loyalty-web)", () => {
+    expect(GRANT_MODULES).toHaveLength(18); // tso-manual W1: + support (R-F-11); portal-discount-web: + discounts; portal-loyalty-web: + loyalty
+    for (const m of ["data_entry", "indent", "leaderboard", "daily_tracking", "support", "discounts", "loyalty"]) expect(GRANT_MODULES as readonly string[]).toContain(m);
   });
 });
 
