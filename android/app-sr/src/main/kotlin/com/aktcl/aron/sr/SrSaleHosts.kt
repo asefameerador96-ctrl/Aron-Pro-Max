@@ -333,11 +333,13 @@ internal fun journeyOutletLine(o: OutletEntity?, outletId: Long): String = o?.le
 /** The Sales Journey: today's calls in time order from the device's own rows, offline (SRM-B-82 to 85). */
 @Composable
 fun JourneyHost(day: SrDay, locale: com.aktcl.aron.rules.UiLocale) {
-    var calls by remember { mutableStateOf<List<com.aktcl.aron.feature.memo.ui.SalesJourneyCall>?>(null) }
-    LaunchedEffect(Unit) {
-        calls = day.sale.journeyCalls().map { (row, o) -> com.aktcl.aron.feature.memo.ui.SalesJourneyCall(row, journeyOutletLine(o, row.input.outletId)) }
+    // a failed read is an error with a retry, never a crash (rememberAsyncLoad rethrows a cancellation and catches the rest)
+    val load = com.aktcl.aron.core.ui.aron.rememberAsyncLoad {
+        day.sale.journeyCalls().map { (row, o) -> com.aktcl.aron.feature.memo.ui.SalesJourneyCall(row, journeyOutletLine(o, row.input.outletId)) }
     }
-    calls?.let { com.aktcl.aron.feature.memo.ui.SalesJourneyScreen(it, locale) } ?: com.aktcl.aron.core.ui.aron.AronLoadingScreen()
+    com.aktcl.aron.core.ui.aron.AronLoaded(load, stringResource(R.string.sr_journey_load_failed), stringResource(com.aktcl.aron.feature.home.R.string.fb_retry)) { calls ->
+        com.aktcl.aron.feature.memo.ui.SalesJourneyScreen(calls, locale)
+    }
 }
 
 /** The KPI strip and the two money cards of F-SR-010/069, read from Room only. */

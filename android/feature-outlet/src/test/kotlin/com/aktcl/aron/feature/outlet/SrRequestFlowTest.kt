@@ -172,6 +172,15 @@ class SrRequestFlowTest {
         assertEquals("the retry is the same record (one client uuid per opening)", calls[0], calls[1])
     }
 
+    @Test fun aRetryAfterARecreateFindsItsOwnStoredClusterAndReportsSavedNotDuplicate() {
+        val stored = listOf(SrCluster(null, "uuid-mine", "Lakepar", "R", true))
+        // the same name, but THIS dialog's own uuid is already stored: it is saved (null), checked before the duplicate-name rule
+        assertNull(SrClusters.validate("Lakepar", stored, ownUuid = "uuid-mine"))
+        // another opening typing the same name is a real duplicate
+        assertEquals(ClusterNameError.DUPLICATE, SrClusters.validate("Lakepar", stored, ownUuid = "uuid-other"))
+        assertEquals(ClusterNameError.DUPLICATE, SrClusters.validate("Lakepar", stored))
+    }
+
     @Test fun clusterNamesAreValidatedAndTheListMergesPendingOnes() {
         val real = listOf(SrCluster(1, null, "Lakepar", "R", false))
         assertEquals(ClusterNameError.EMPTY, SrClusters.validate("  ", real))

@@ -96,7 +96,6 @@ import com.aktcl.aron.feature.home.RoutePickerContent
 import com.aktcl.aron.feature.home.SettingsContent
 import com.aktcl.aron.core.sync.BundleOutcome
 import kotlinx.coroutines.flow.first
-import com.aktcl.aron.feature.outlet.ClusterOption
 import com.aktcl.aron.feature.outlet.R as OutR
 import com.aktcl.aron.feature.outlet.srRequestTitle
 import com.aktcl.aron.feature.outlet.SrOutletRequestContent
@@ -749,11 +748,14 @@ private fun ClustersHost(day: SrDay, route: com.aktcl.aron.core.database.entity.
     LaunchedEffect(tick, routeId) { pending = if (routeId == null) emptyList() else day.pendingClusters(routeId) }
     val clusters = remember(outlets, pending) { SrClusters.list(outlets, routeName, pending) }
     ClustersContent(clusters, onCreate = { name, uuid ->
-        SrClusters.validate(name, clusters) ?: run {
-            // stored in the day's scope with the GEO fix of the moment; on a failure the rep is told, never a silent "saved"
-            // a failure of the day-scoped save is told to the rep (NOT_SAVED), never a crash; cancellation is rethrown
-            val stored = routeId != null && try { day.createCluster(name, uuid, routeId, routeName).await() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { false }
-            if (!stored) ClusterNameError.NOT_SAVED else { tick++; null }
+        // the dialog's own uuid is looked up in the stored rows FIRST: a retry after a recreate finds its record and reports saved
+        val onPhone = if (routeId == null) emptyList() else SrClusters.list(outlets, routeName, day.pendingClusters(routeId))
+        if (onPhone.any { it.clientUuid == uuid }) { tick++; null }
+        else SrClusters.validate(name, onPhone, ownUuid = uuid) ?: run {
+            // stored in the day's scope with the GEO fix of the moment; a failure of that save is told to the rep (NOT_SAVED), never a
+            // crash or a silent "saved"; cancellation is rethrown
+            val ok = routeId != null && try { day.createCluster(name, uuid, routeId, routeName).await() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { false }
+            if (!ok) ClusterNameError.NOT_SAVED else { tick++; null }
         }
     })
 }

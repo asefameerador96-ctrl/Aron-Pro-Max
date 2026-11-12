@@ -34,7 +34,12 @@ object SrClusters {
     /** Clusters a new shop may be put in: confirmed ones only. */
     fun selectable(all: List<SrCluster>): List<ClusterOption> = all.mapNotNull { c -> c.clusterId?.let { ClusterOption(it, c.name) } }
 
-    fun validate(name: String, existing: List<SrCluster>): ClusterNameError? {
+    /**
+     * null = fine. [ownUuid] is the client uuid of THIS dialog opening: when a cluster with that uuid is already stored the answer is null
+     * (it IS saved) BEFORE any name check, so a retry after a recreate that finds its own record reports saved, never "duplicate".
+     */
+    fun validate(name: String, existing: List<SrCluster>, ownUuid: String? = null): ClusterNameError? {
+        if (ownUuid != null && existing.any { it.clientUuid == ownUuid }) return null
         val n = name.trim()
         return when {
             n.isEmpty() -> ClusterNameError.EMPTY
