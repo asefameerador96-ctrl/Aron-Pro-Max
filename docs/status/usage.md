@@ -2819,3 +2819,8 @@
 ### 2026-11-12 09:39 UTC — S3 PASS, train 100 built
 - S3 fix round `4a7dcbcc0` Opus re-check w88z3tdex: PASS (2 lenses, no blocking; lows sent to S3 as a follow-up after landing). wt-s3 removed.
 - Train 100 = INT ab78d0d4b + docs tip 168b7c450 + S3 4a7dcbcc0 (--no-ff), head `62036ab2a` on lane/lead-train100. Tree checks: android == S3 android; docs == docs branch + S3 status file; DECISIONS 400 (392 + 5 docs + 3 S3), 0 removed, 0 markers; money-float 13/13, date-pin 0 new, slices up to date, gitleaks clean. CI 43193235441 running. Android + docs only: deploy will be skipped by design; APK of record follows from the INT run.
+
+### 2026-11-12 09:41 UTC — S5 PASS; train 100 rebuilt with S3 + S5; S4 round 3 under review
+- S5 fix round `495255d1a` Opus re-check wekacfd8t: PASS (2 lenses, no blocking; lows sent as the start of its train 2). wt-s5 removed.
+- Train 100 rebuilt (my own branch force-pushed; first run 43193235441 superseded): INT ab78d0d4b + docs 168b7c450 + S3 4a7dcbcc0 + S5 495255d1a, head `d6ede1843`. Only DECISIONS.md conflicted (union, 402 = 392 + 5 + 3 + 2, 0 removed, 0 markers); SrSaleHosts.kt touched by both lanes merged cleanly, S3 hunks verified intact on top of S5. money-float 13/13, date-pin 0 new, gitleaks clean. CI 43193498991 running.
+- S4 round 3 `e241c1109`: static gate clean; Opus re-check wz0sjqpir running. S4 conflicts with S3 in SrSaleHosts.kt and SaleRoute.kt (code), so it lands after train 100 on a lane-side INT merge; S4 told.
