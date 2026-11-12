@@ -333,9 +333,7 @@ private fun JsonObject.pairs(k: String, max: Int, idKey: String, kindKey: String
     val out = LinkedHashSet<Pair<String, Long>>()
     v.forEachIndexed { i, e ->
         val o = e as? JsonObject ?: adminBad("body.$k[$i]", "not_an_object")
-        o.only(setOf(kindKey, idKey))
-        val kind = o.enum(kindKey, kinds, required = true)!!
-        val id = o.id(idKey, required = true)!!
+        val (kind, id) = atElement("body.$k[$i]") { o.only(setOf(kindKey, idKey)); o.enum(kindKey, kinds, required = true)!! to o.id(idKey, required = true)!! }
         if (!out.add(kind to id)) adminBad("body.$k[$i]", "duplicate")
     }
     return out.sortedWith(compareBy({ it.first }, { it.second }))

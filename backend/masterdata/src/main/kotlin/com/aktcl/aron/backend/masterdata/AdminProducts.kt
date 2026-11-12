@@ -74,6 +74,16 @@ class AdminProductsDeps(val db: Database, val guard: AuthGuardDeps, val clock: A
 internal fun adminBad(pointer: String, code: String = "invalid_value"): Nothing =
     throw ApiProblem(ProblemCode.ERR_VALIDATION, "invalid $pointer", errors = listOf(FieldError(pointer, code)))
 
+/**
+ * Runs [block] (a read of one array element) and rewrites the flat `body.<member>` pointers of the helpers (`str`, `id`, `enum`, `only` ...) to
+ * `<prefix>.<member>`, so a failure inside `tiers[3]` or `rows[2]` names `body.tiers[3].label_en` and the form can light the right row.
+ * A pointer that already carries an index (`body.tiers[3].tier_code`) is left as it is.
+ */
+internal inline fun <T> atElement(prefix: String, block: () -> T): T = try { block() } catch (e: ApiProblem) {
+    if (e.errors.none { it.pointer.startsWith("body.") && '[' !in it.pointer }) throw e
+    throw ApiProblem(e.code, e.detail, e.errors.map { if (it.pointer.startsWith("body.") && '[' !in it.pointer) it.copy(pointer = prefix + it.pointer.removePrefix("body")) else it }, e.retryAfterS, e.context, e.headers, e)
+}
+
 internal fun ApplicationCall.masterReader(): AronPrincipal = principal.also { if (it.role !in MASTER_READERS) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "products and prices are not available to this role") }
 internal fun ApplicationCall.masterWriter(): AronPrincipal = principal.also { if (it.role !in MASTER_WRITERS) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "changing products and prices needs the ADMIN or SUPERADMIN role") }
 

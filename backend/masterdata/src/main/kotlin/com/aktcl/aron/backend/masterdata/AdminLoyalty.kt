@@ -406,6 +406,7 @@ private fun readTiers(o: JsonObject): List<TierSpec> {
     if (v.size > 10) adminBad("body.tiers", "out_of_range")
     val out = v.mapIndexed { i, e ->
         val t = e as? JsonObject ?: adminBad("body.tiers[$i]", "not_an_object")
+        atElement("body.tiers[$i]") {
         t.only(setOf("tier_code", "sort_order", "label_en", "label_bn", "threshold", "threshold_basis"))
         val code = t.str("tier_code", 2, 41, required = true)!!.also { if (!TIER_CODE.matches(it)) adminBad("body.tiers[$i].tier_code", "pattern") }
         val order = (t.lint("sort_order", 1, 10, "body.tiers[$i].sort_order") ?: adminBad("body.tiers[$i].sort_order", "required")).toInt()
@@ -420,6 +421,7 @@ private fun readTiers(o: JsonObject): List<TierSpec> {
             }
         }
         TierSpec(code, order, labelEn, labelBn, th)
+        }
     }
     if (out.map { it.code }.toSet().size != out.size) adminBad("body.tiers", "duplicate_tier_code")
     if (out.map { it.order }.toSet().size != out.size) adminBad("body.tiers", "duplicate_sort_order")
@@ -434,9 +436,7 @@ private fun readPairs(o: JsonObject, k: String, max: Int, idKey: String, kindKey
     val out = LinkedHashSet<Pair<String, Long>>()
     v.forEachIndexed { i, e ->
         val x = e as? JsonObject ?: adminBad("body.$k[$i]", "not_an_object")
-        x.only(setOf(kindKey, idKey))
-        val kind = x.enum(kindKey, kinds, required = true)!!
-        val id = x.id(idKey, required = true)!!
+        val (kind, id) = atElement("body.$k[$i]") { x.only(setOf(kindKey, idKey)); x.enum(kindKey, kinds, required = true)!! to x.id(idKey, required = true)!! }
         if (!out.add(kind to id)) adminBad("body.$k[$i]", "duplicate")
     }
     return out.sortedWith(compareBy({ it.first }, { it.second }))
@@ -737,6 +737,7 @@ private fun readEnrolRows(o: JsonObject, programmeId: Long): List<EnrolRow> {
     val seen = HashSet<Pair<Long, LocalDate>>()
     return a.mapIndexed { i, e ->
         val r = e as? JsonObject ?: adminBad("body.rows[$i]", "not_an_object")
+        atElement("body.rows[$i]") {
         r.only(setOf("programme_id", "outlet_id", "league_label", "tier_code", "base_target", "valid_from", "valid_to"))
         val pid = r.id("programme_id", required = true)!!
         if (pid != programmeId) adminBad("body.rows[$i].programme_id", "path_mismatch")
@@ -755,6 +756,7 @@ private fun readEnrolRows(o: JsonObject, programmeId: Long): List<EnrolRow> {
         if (to != null && !to.isAfter(from)) adminBad("body.rows[$i].valid_to", "before_valid_from")      // exclusive end, as the table CHECK
         if (!seen.add(outlet to from)) adminBad("body.rows[$i]", "duplicate")
         EnrolRow(outlet, league, tier, target, from, to)
+        }
     }
 }
 

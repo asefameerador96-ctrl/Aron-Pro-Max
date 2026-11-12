@@ -267,13 +267,35 @@ class AggregationWorker(
         ).bind("from", today.minusDays(maxDays.toLong())).mapTo(Int::class.java).one()
     }
 
+    @Volatile private var schemaReady = false
+    private var waitLogged = false
+
+    /**
+     * True once no migration is pending or failed (then cached: a worker revision only ever sees a newer schema while it runs). A false answer or an
+     * error from the check skips the pass, so the first pass never reads half-migrated tables while the migrate job of the same deploy still runs.
+     */
+    internal fun migrationsSettled(pending: () -> Int = { com.aktcl.aron.backend.platform.Migrator.pendingOrFailed(db.write) }): Boolean {
+        if (schemaReady) return true
+        val n = runCatching(pending).getOrElse { log.warn("aggregation worker waits: schema check failed ({})", it.javaClass.name); return false }
+        if (n > 0) {
+            if (!waitLogged) { waitLogged = true; log.info("aggregation worker waits for {} pending migration(s)", n) }
+            return false
+        }
+        schemaReady = true
+        return true
+    }
+
+    /** One loop pass; a failure is logged with the exception classes only (a message can carry data). */
+    internal fun pass() {
+        if (!migrationsSettled()) return
+        runCatching { rebuildOnce(ASWAS_MARKER); refreshDimensionsIfDue(); runUntilIdle(); reconcileIfDue() }
+            .onFailure { log.error("aggregation pass failed: {} (cause {})", it.javaClass.name, it.cause?.javaClass?.name ?: "none") }
+    }
+
     /** Background loop for the `worker` role: poll every [interval] (default 5 s keeps the 60 s freshness goal with room). */
     fun start(interval: Duration = Duration.ofSeconds(5)): ScheduledExecutorService {
         val ex = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "aggregation-worker").apply { isDaemon = true } }
-        ex.scheduleWithFixedDelay({
-            runCatching { rebuildOnce(ASWAS_MARKER); refreshDimensionsIfDue(); runUntilIdle(); reconcileIfDue() }
-                .onFailure { log.error("aggregation pass failed", it) }
-        }, 0, interval.toMillis(), TimeUnit.MILLISECONDS)
+        ex.scheduleWithFixedDelay({ pass() }, 0, interval.toMillis(), TimeUnit.MILLISECONDS)
         return ex
     }
 

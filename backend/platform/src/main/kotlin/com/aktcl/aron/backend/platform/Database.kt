@@ -74,6 +74,13 @@ object Migrator {
         configure(ds, connectRetries, connectRetriesIntervalS).load().migrate().migrationsExecuted
 
     /**
+     * Migrations on the classpath that this database has not applied (or has applied and failed), read with Flyway's `info()`: no lock, no write,
+     * no checksum validation. The worker waits for 0 before its first pass, so a deploy that starts the worker while the migrate job still runs
+     * does not read half-migrated tables (found 2026-11-12: one "aggregation pass failed" ERROR about 20 s before "aron worker started" on each deploy that migrates).
+     */
+    fun pendingOrFailed(ds: DataSource): Int = configure(ds).load().info().let { i -> i.pending().size + i.all().count { it.state.isFailed } }
+
+    /**
      * Every Aron PostgreSQL server sets `idle_in_transaction_session_timeout = 30000` (30 s; `infra/modules/postgres.bicep`,
      * parameter `idle_in_transaction_session_timeout`) so a pooled api or worker session that stalls inside a transaction cannot
      * hold locks or a replica's cleanup horizon for long. The migrate role is exempt on purpose: Flyway runs a migration on
