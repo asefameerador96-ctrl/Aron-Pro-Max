@@ -40,7 +40,7 @@ parser maps an unknown status to `new_sale` (the AMO lane adds `repeat_sale`), a
 
 V0163: `app.visit.zero_sale_reason_code`, `call_photo_uuid`, `call_photo_skip_reason_code` (nullable, CHECKs NOT VALID), `visit_immutable`
 recreated with `zero_sale_reason_code` write-once, `media.purpose` and `code_list.list_key` CHECKs widened NOT VALID, the code-list
-rows. V0164: the four VALIDATE statements. V0165: dw view contract 1.6 to 1.7 (`dw.fact_visit.zero_sale_reason_code`,
+rows. V0164: the four VALIDATE statements. V0165: dw view contract 1.7 to 1.8 (`dw.fact_visit.zero_sale_reason_code`,
 `call_photo_uuid`; `dw.v_visit.zero_sale_reason_code` and `call_capture_taken`, a boolean: a media id never appears in a reuse view).
 V0158 to V0162 are the Loyalty lane's; the dw contract version 1.7 may collide with their view change, which the lead orders.
 

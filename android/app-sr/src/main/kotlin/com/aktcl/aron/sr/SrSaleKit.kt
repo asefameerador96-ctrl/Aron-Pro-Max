@@ -261,7 +261,8 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         val memo = dao.memo(memoUuid)
         val date = day.businessDate()
         val live = memo != null && dao.memosOn(date).none { it.supersedesClientUuid == memoUuid }
-        val qcDone = memo != null && dao.qcLinesOn(date).any { it.visitClientUuid == memo.visitClientUuid }
+        // SRM-B-17: QC "entered for the outlet" on the business date, whichever visit of that outlet recorded it
+        val qcDone = memo != null && EditGate.qcEnteredForOutlet(memo.outletId, dao.qcLinesOn(date).map { dao.visit(it.visitClientUuid)?.outletId })
         EditGate.check(inGeofenceNow = true, qcCompleted = qcDone, memoIsLive = live, memoExists = memo != null)?.let { return it }
         val o = day.dayData.value.outlets.firstOrNull { it.outletId == memo!!.outletId }?.let(day::visitOutlet) ?: return EditDenied.OutsideGeofence
         val reading = day.fixSource.readFix("memo_edit")
@@ -334,6 +335,8 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         day.userId, day::businessDate, RoomDaySource(db), com.aktcl.aron.feature.dayclose.DigestServerCounts(serverCounts, day.submitDigests, db),
         RoomDaySubmitWriter(db, day.capture, { day.metaProvider.meta(0L) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() }),
         syncScheduler, online,
+        // SRM-B-25: the device figures are this phone's rows; the server column waits for the digest members of contract 1.14.0 (SV lane): until then it shows "—"
+        businessSource = com.aktcl.aron.feature.dayclose.BusinessSource { date -> prepare(); reads.businessTotals(date) },
     )
 
     /** The sync response's `server_totals` as accepted + rejected + quarantined per record type; null before the first answer. */

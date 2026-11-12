@@ -1,4 +1,4 @@
--- V0165 dw view contract 1.6 -> 1.7 (SR manual build, sr-server train 1; D-SV1-01, D-SV1-02).
+-- V0165 dw view contract 1.7 -> 1.8 (SR manual build, sr-server train 1; D-SV1-01, D-SV1-02).
 -- dw.fact_visit gains zero_sale_reason_code and call_photo_uuid (copied by the worker's visit rebuild from app.visit); dw.v_visit gains
 -- zero_sale_reason_code and call_capture_taken (a boolean: a media id is never in a reuse view) after force_sale_reason (`is_effective` stays last). A view cannot take a column in the middle, so
 -- it is dropped and recreated; comments are saved and restored, grants re-applied. Minor version: columns added only.
@@ -52,6 +52,6 @@ COMMENT ON COLUMN dw.v_visit.call_capture_taken IS 'True when the call has an ou
 
 CREATE OR REPLACE FUNCTION dw.view_contract_version() RETURNS text
 LANGUAGE sql IMMUTABLE
-AS $$ SELECT '1.7' $$;
+AS $$ SELECT '1.8' $$;
 
 SELECT app.apply_db_role_grants();

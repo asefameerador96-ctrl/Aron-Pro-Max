@@ -1,4 +1,4 @@
-package com.aktcl.aron.amo
+package com.aktcl.aron.core.printing.ui
 
 import com.aktcl.aron.core.printing.bt.PrinterState
 import org.junit.Assert.assertFalse

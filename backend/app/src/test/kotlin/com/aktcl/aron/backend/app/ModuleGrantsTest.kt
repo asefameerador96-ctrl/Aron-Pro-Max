@@ -130,8 +130,8 @@ class ModuleGrantsTest {
         val sup = login("superm1")["access_token"]!!.jsonPrimitive.content
         assertEquals(null, claims(sup)["modules"])
         val me = json(get("/v1/me", sup).bodyAsText())
-        assertEquals(com.aktcl.aron.backend.platform.AdminModules.ALL.size, me["modules"]!!.jsonObject.size) // tso-manual B1: 16 with support (R-F-11), 17 with discounts (V0154)
-        assertEquals(17, me["modules"]!!.jsonObject.size)
+        assertEquals(com.aktcl.aron.backend.platform.AdminModules.ALL.size, me["modules"]!!.jsonObject.size) // tso-manual B1: 16 with support (R-F-11), 17 with discounts (V0154), 18 with loyalty (V0160)
+        assertEquals(18, me["modules"]!!.jsonObject.size)
         assertEquals(setOf("w"), me["modules"]!!.jsonObject.values.map { it.jsonPrimitive.content }.toSet())
         assertEquals(HttpStatusCode.OK, get("/v1/admin/skus", sup).status)
 

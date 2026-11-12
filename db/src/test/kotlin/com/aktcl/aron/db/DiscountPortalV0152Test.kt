@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 
 /**
  * V0152 / V0153 (discount portal schema, D-DISC-API-01): the offer status CHECK with draft, the version request UUID, the
- * immutable versions and the append-only status trail, the grants of the API role, and the two dw views at contract 1.6.
+ * immutable versions and the append-only status trail, the grants of the API role, and the two dw views (view contract 1.6 at V0152; the test checks 1.7 since V0162).
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class DiscountPortalV0152Test {

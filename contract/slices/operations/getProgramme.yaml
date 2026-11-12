@@ -1,0 +1,27 @@
+path: /v1/admin/programmes/{id}
+method: get
+operation:
+  tags:
+  - admin-content
+  operationId: getProgramme
+  summary: One programme with its current version (1.13.0).
+  description: Same read rules as `listProgrammes`; a programme outside the caller's server-side scope is `404`
+    (its existence is not revealed).
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  responses:
+    '200':
+      description: The programme.
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Programme'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
