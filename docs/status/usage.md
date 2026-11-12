@@ -3078,3 +3078,7 @@
 
 ### 2026-11-12 18:47 UTC — lane check (2-hourly)
 - INT 4739d5d1a (train 107), NOT deployed: ci #2084 attempt 2 running, the "Shared, db and backend" job 21 minutes in (build-and-test step), no result yet; health build 155edd899. Train 108 run 43278190589 running. SV2 working on its fix and merge push (tip unchanged fe023e1d2, last message 16:35; inside 90 minutes of its instruction at 17:20). L-B waits (53ff6055b on train 108). L-A archived. Nothing for the owner.
+
+### 2026-11-12 19:12 UTC — train 107 INT run green on attempt 2; deploy #346 running
+- ci #2084 43268148775 attempt 2 success at 19:09: the re-run "Shared, db and backend" job took 41 min 37 s (build-and-test step 41 min), the same as the three earlier green runs. Cause of attempt 1 (65 min, cancelled) stays UNPROVEN: slow runner or hang; the job has about 18 minutes of headroom, which is too little. Follow-up stands: cut the AdminLoyaltyTest cost in the next server lane.
+- Deploy 43286972144 (#346) started 19:07 on 4739d5d1a. Train 108 stays held until it completes and Flyway V0170..V0172 is proven.
