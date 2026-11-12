@@ -36,6 +36,8 @@ fun SaleRoute(
     retailerLabel: String? = null, outletLines: List<String> = emptyList(),
     /** The previous-sales button of the entry screen (the AMO's "Sale History", 24/26); null hides it, as in the SR app. [historyLabel] overrides its text. */
     onPreviousSales: (() -> Unit)? = null, historyLabel: String? = null,
+    /** D-SR-MAN-S3-02: ask the nearby-devices permission on entering and toast "printer connected" (the SR manual, screenshot 17); AMO keeps false. */
+    printerAssist: Boolean = false,
 ) {
     val ui by vm.state.collectAsState()
     var stage by remember { mutableStateOf(SaleStage.Entry) }
@@ -44,7 +46,7 @@ fun SaleRoute(
     val draft = ui.draft
     val review = ui.review
     val skus = ui.catalog.values.toList()
-    HoldPrinter(printer)
+    HoldPrinter(printer, assist = printerAssist)
     Column(modifier.fillMaxSize()) {
         // the printer state hangs on the host's top bar (the kit badge); nothing printer-shaped is drawn in here any more
         Box(Modifier.weight(1f).fillMaxWidth()) {
