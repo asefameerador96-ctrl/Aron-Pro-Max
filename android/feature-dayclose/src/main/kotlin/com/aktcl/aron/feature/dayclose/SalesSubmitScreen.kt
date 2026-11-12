@@ -501,7 +501,7 @@ private fun BusinessTable(device: BusinessTotals, server: BusinessTotals?, typeL
         for (r in rows) {
             if (r.qtyBase == 0L && r.entered == 0L) continue
             if (r.categoryCode == OTHER_CATEGORY) { // a SKU with no master row: its own line, base units, never added to another
-                lines += stringResource(R.string.submit_biz_other_sku, r.skuId?.let { localizedNumber(it) } ?: "") + " " + localizedNumber(r.qtyBase)
+                lines += stringResource(R.string.submit_biz_other_sku, r.skuId?.let { com.aktcl.aron.core.ui.localizedDigits(it.toString()) } ?: "") + " " + localizedNumber(r.qtyBase) + " " + stringResource(R.string.submit_biz_base_units)
                 continue
             }
             val rem = if (r.remBase != 0L) " " + com.aktcl.aron.core.ui.remWithUnit(r.remBase, units[com.aktcl.aron.rules.EntryUnits.baseLabelKey(r.categoryCode)] ?: "") else ""

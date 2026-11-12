@@ -140,7 +140,7 @@
     <string name="qc_pack_equiv_both">= %1$s %2$s + %3$s %4$s</string>
     <string name="edit_reason_wrong_sku_qty">ভুল SKU পরিমাণ</string>
     <string name="edit_reason_promotion_issue">প্রমোশন ইস্যু</string>
-    <string name="edit_reason_dialog_title">দয়া করে বিক্রয় এডিট করার কারন লিখুন</string>
+    <string name="edit_reason_dialog_title">দয়া করে বিক্রয় এডিট করার কারণ লিখুন</string>
     <string name="edit_reason_pick">কারণ নির্বাচন করুন</string>
     <string name="edit_reason_cancel">বাতিল</string>
     <string name="edit_reason_submit">জমা দিন</string>
