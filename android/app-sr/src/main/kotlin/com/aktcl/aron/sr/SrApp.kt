@@ -100,6 +100,7 @@ import com.aktcl.aron.feature.outlet.srRequestTitle
 import com.aktcl.aron.feature.outlet.SrOutletRequestContent
 import com.aktcl.aron.feature.outlet.SrClusters
 import com.aktcl.aron.feature.outlet.PendingCluster
+import com.aktcl.aron.feature.outlet.ClusterNameError
 import com.aktcl.aron.feature.outlet.ClustersContent
 import com.aktcl.aron.feature.outlet.ForceReason
 import com.aktcl.aron.feature.outlet.ForceSaleContent
@@ -319,6 +320,9 @@ fun SrApp(
     )
     val unitLabels = listOf("packet", "box", "dozen", "stick", "piece").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
     var homeSnap by remember { mutableStateOf<SrHomeSnapshot?>(null) }
+    // SRM-B-61: Astha, Loyalty Point and Match Program show only when their cfg.flag.* is on for this user
+    var enabledTiles by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(data, resumeTick) { enabledTiles = day.enabledProgrammeTiles() }
     val onHome = screen == SrScreen.HOME
     LaunchedEffect(data, attendance, resumeTick, onHome, loaded) {
         if (loaded && onHome) homeSnap = runCatching { SrHomeReads.snapshot(day, attendance, locale, { categoryLabels[it] ?: it }, { unitLabels[it] ?: it }) }.getOrNull()
@@ -361,7 +365,7 @@ fun SrApp(
             val header = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
             val snap = homeSnap
             HomeContent(
-                header, HomeTiles.resolve(emptySet(), tasks.openCount), data.freshness, user.offline, health ?: deviceHealth,
+                header, HomeTiles.resolve(enabledTiles, tasks.openCount), data.freshness, user.offline, health ?: deviceHealth,
                 onTile = { t ->
                     when (t) {
                         HomeTile.ATTENDANCE -> screen = SrScreen.ATTENDANCE
@@ -540,7 +544,7 @@ fun SrApp(
                 screen = if (k == OutletRequestKind.CLUSTER) SrScreen.CLUSTERS else SrScreen.REQUEST_FORM
             })
         }
-        SrScreen.CLUSTERS -> SrFrame(stringResource(OutR.string.out_clusters_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_cluster) {
+        SrScreen.CLUSTERS -> SrFrame(stringResource(OutR.string.out_clusters_title), goBack, sync, openSync) { // no title icon: screenshot 45
             ClustersHost(day, data.route, data.outlets)
         }
         SrScreen.REQUEST_FORM -> {
@@ -627,59 +631,87 @@ private fun SrSyncSheet(snapshot: SrSyncSnapshot?, chip: SyncChipState?, sunligh
     }
 }
 
-/** The form of a fresh request of [kind] for [o] (null for a new shop or before the outlet is chosen); a new uuid, the shop's own values prefilled. */
-private fun requestForm(day: SrDay, kind: OutletRequestKind, o: OutletEntity?) = OutletRequestForm(
-    kind = kind, outletId = o?.outletId, requestUuid = day.outletRequests.newRequestUuid(), currentClusterId = o?.clusterId,
+/** The form of a fresh request of [kind] for [o] (null for a new shop or before the outlet is chosen); the shop's own values prefilled, [uuid] the request's one client uuid. */
+private fun requestForm(kind: OutletRequestKind, o: OutletEntity?, uuid: String) = OutletRequestForm(
+    kind = kind, outletId = o?.outletId, requestUuid = uuid, currentClusterId = o?.clusterId,
     // SRM-B-40/42: change information and add-to-route start on the shop's own cluster
     clusterId = if (kind == OutletRequestKind.INFO || kind == OutletRequestKind.ROUTE_ADD) o?.clusterId else null,
     name = if (kind == OutletRequestKind.INFO) o?.name else null, ownerName = if (kind == OutletRequestKind.INFO) o?.ownerName else null,
     mobile = if (kind == OutletRequestKind.INFO) o?.contactNumber else null, openDueMtk = o?.openDueMtk ?: 0,
 )
 
+/**
+ * The identity of one outlet request form: its client uuid, the uuid of the cluster change that may travel with it (SRM-B-40) and the
+ * "saved" flag. All three are `rememberSaveable`, so a rotation, a language switch or process death before OK never mints a second uuid
+ * (a re-save would otherwise file the request twice). A new [kind] is a new form with new uuids.
+ */
+internal class RequestIdentity(
+    private val requestUuidState: androidx.compose.runtime.MutableState<String>,
+    val clusterRequestUuidState: androidx.compose.runtime.MutableState<String>,
+    val savedState: androidx.compose.runtime.MutableState<Boolean>,
+) {
+    val requestUuid: String get() = requestUuidState.value
+}
+
+@Composable
+internal fun rememberRequestIdentity(kind: OutletRequestKind, newUuid: () -> String): RequestIdentity {
+    val request = rememberSaveable(kind) { mutableStateOf(newUuid()) }
+    val cluster = rememberSaveable(kind) { mutableStateOf(newUuid()) }
+    val saved = rememberSaveable(kind) { mutableStateOf(false) }
+    return remember(request, cluster, saved) { RequestIdentity(request, cluster, saved) }
+}
+
+/**
+ * The outlet request form. Its identity survives a rotation, a language switch and process death: the kind, the chosen outlet, BOTH client
+ * uuids and the "saved" state are `rememberSaveable`, so a recreate before OK can never mint a second uuid. A save runs in the DAY's scope
+ * ([SrDay.submitOutletRequest]), and a form that opens on a request already stored shows "saved", not an editable form (SRM-B-35).
+ */
 @Composable
 private fun RequestHost(day: SrDay, outlets: List<OutletEntity>, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var kind by remember { mutableStateOf(day.requestKind) }
-    var outlet by remember { mutableStateOf(day.requestOutlet) }
-    var form by remember(kind) { mutableStateOf(requestForm(day, kind, outlet)) }
-    // the cluster change that travels with a change-information request has its own client uuid, made when the form opens (SRM-B-40)
-    var clusterRequestUuid by remember(kind, outlet?.outletId) { mutableStateOf(day.outletRequests.newRequestUuid()) }
-    val capture = remember(kind, outlet?.outletId) { day.newCapture("outlet_capture") }
+    var kind by rememberSaveable { mutableStateOf(day.requestKind) }
+    var outletId by rememberSaveable { mutableStateOf(day.requestOutlet?.outletId) }
+    val outlet = outletId?.let { id -> outlets.firstOrNull { it.outletId == id } }
+    val identity = rememberRequestIdentity(kind) { day.outletRequests.newRequestUuid() }
+    val requestUuid = identity.requestUuid
+    var clusterRequestUuid by identity.clusterRequestUuidState
+    var form by remember(kind, requestUuid) { mutableStateOf(requestForm(kind, outlet, requestUuid)) }
+    val capture = remember(kind, outletId) { day.newCapture("outlet_capture") }
     val cap by capture.state.collectAsState()
     var errors by remember { mutableStateOf<Set<RequestError>>(emptySet()) }
-    val clusterNote = stringResource(OutR.string.out_info_cluster_note)
     var saving by remember { mutableStateOf(false) }
-    var savedDialog by remember { mutableStateOf(false) }
-    val clusters = remember(outlets, day.pendingClusters) { SrClusters.selectable(SrClusters.list(outlets, "", day.pendingClusters.all())) }
+    var savedDialog by identity.savedState
+    // a re-entry (recreate, process death, Back then in again) on a request that is already stored shows "saved"
+    LaunchedEffect(requestUuid) { if (!savedDialog && day.requestStored(requestUuid)) savedDialog = true }
+    val clusterNote = stringResource(OutR.string.out_info_cluster_note)
+    // only confirmed clusters can take a new shop; a cluster created on the phone is never offered here (SRM-B-44)
+    val clusters = remember(outlets) { SrClusters.selectable(SrClusters.list(outlets, "", emptyList())) }
     SrOutletRequestContent(
-        form = form, errors = errors, clusters = clusters, outlets = outlets, capture = cap, saving = saving, savedDialog = savedDialog,
+        form = form, errors = errors, clusters = clusters, outlets = outlets, capture = cap, saving = saving || savedDialog, savedDialog = savedDialog,
         onChange = { form = it },
-        onPickOutlet = { o -> outlet = o; day.requestOutlet = o; form = requestForm(day, kind, o); errors = emptySet() },
+        onPickOutlet = { o ->
+            outletId = o.outletId; day.requestOutlet = o; form = requestForm(kind, o, requestUuid); errors = emptySet()
+            clusterRequestUuid = day.outletRequests.newRequestUuid() // a different shop is a different cluster change
+        },
         onShutter = { scope.launch { capture.shutter() } },
         onAddToRoute = { kind = OutletRequestKind.ROUTE_ADD; day.requestKind = OutletRequestKind.ROUTE_ADD },
         onSavedOk = onDone,
         onSave = {
-            // one save at a time: the button is disabled while it runs and a second tap that slips in is ignored (no duplicate request)
-            if (!saving) {
+            // one save at a time: the button is off while it runs; a second tap that slips in is ignored, and the same uuid makes a replay a no-op
+            if (!saving && !savedDialog) {
                 saving = true
                 scope.launch {
                     val toSend = form.copy(fix = cap.fix, photoUuids = listOfNotNull(cap.photo?.photoUuid))
-                    when (val r = day.outletRequests.submit(toSend)) {
+                    // SRM-B-40: a changed cluster is its own `cluster` request, committed WITH the information request in ONE Room transaction
+                    // (until the info proposal takes cluster_id); both are validated first, so either both are stored or none
+                    val moved = kind == OutletRequestKind.INFO && form.clusterId != null && form.clusterId != form.currentClusterId
+                    val companion = if (!moved) null else OutletRequestForm(
+                        kind = OutletRequestKind.CLUSTER, outletId = form.outletId, clusterId = form.clusterId, currentClusterId = form.currentClusterId,
+                        note = clusterNote, fix = cap.fix, confirmed = true, requestUuid = clusterRequestUuid,
+                    )
+                    when (val r = day.submitOutletRequest(toSend, companion).await()) {
                         is RequestValidation.Invalid -> { errors = r.errors; saving = false }
-                        is RequestValidation.Ok -> {
-                            errors = emptySet()
-                            // SRM-B-40: a changed cluster goes as its own `cluster` request in the same save (until contract 1.14.0 adds cluster_id to info)
-                            val moved = kind == OutletRequestKind.INFO && form.clusterId != null && form.clusterId != form.currentClusterId
-                            if (moved) {
-                                day.outletRequests.submit(
-                                    OutletRequestForm(
-                                        kind = OutletRequestKind.CLUSTER, outletId = form.outletId, clusterId = form.clusterId, currentClusterId = form.currentClusterId,
-                                        note = clusterNote, fix = cap.fix, confirmed = true, requestUuid = clusterRequestUuid,
-                                    ),
-                                )
-                            }
-                            savedDialog = true
-                        }
+                        is RequestValidation.Ok -> { errors = emptySet(); savedDialog = true }
                     }
                 }
             }
@@ -687,17 +719,19 @@ private fun RequestHost(day: SrDay, outlets: List<OutletEntity>, onDone: () -> U
     )
 }
 
-/** The Clusters list and the create dialog (SRM-B-43, 44); the interim local store until the clusters section and the record arrive. */
+/** The Clusters list and the create dialog (SRM-B-43, 44); the clusters come from the route's outlets plus this phone's own `cluster_create` rows. */
 @Composable
 private fun ClustersHost(day: SrDay, route: com.aktcl.aron.core.database.entity.RouteEntity?, outlets: List<OutletEntity>) {
     var tick by remember { mutableStateOf(0) }
+    var pending by remember { mutableStateOf<List<PendingCluster>>(emptyList()) }
+    val routeId = route?.routeId
     val routeName = route?.name.orEmpty()
-    val clusters = remember(outlets, tick) { SrClusters.list(outlets, routeName, day.pendingClusters.all()) }
+    LaunchedEffect(tick, routeId) { pending = if (routeId == null) emptyList() else day.pendingClusters(routeId) }
+    val clusters = remember(outlets, pending) { SrClusters.list(outlets, routeName, pending) }
     ClustersContent(clusters, onCreate = { name, uuid ->
         SrClusters.validate(name, clusters) ?: run {
-            day.pendingClusters.add(PendingCluster(uuid, name, route?.routeId ?: 0L, routeName, day.iso(day.currentMs())))
-            tick++
-            null
+            // stored in the day's scope with the GEO fix of the moment; on a failure the rep is told, never a silent "saved"
+            if (routeId == null || !day.createCluster(name, uuid, routeId, routeName).await()) ClusterNameError.NOT_SAVED else { tick++; null }
         }
     })
 }

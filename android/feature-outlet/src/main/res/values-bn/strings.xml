@@ -151,7 +151,7 @@
     <string name="out_clusters_title">ক্লাস্টারসমূহ</string>
     <string name="out_clusters_empty">আপনার রুটে এখনো কোনো ক্লাস্টার নেই। নতুন ক্লাস্টারের জন্য + চাপুন।</string>
     <string name="out_cluster_route">Route: %1$s</string>
-    <string name="out_cluster_pending">পাঠানোর অপেক্ষায়</string>
+    <string name="out_cluster_pending">এই ফোনে সংরক্ষিত; সার্ভারে পাঠানো এখনো চালু হয়নি</string>
     <string name="out_cluster_create_title">ক্লাস্টার তৈরি করুন</string>
     <string name="out_cluster_name_hint">Enter cluster name</string>
     <string name="out_cluster_cancel">বাতিল</string>
@@ -161,4 +161,5 @@
     <string name="out_cluster_err_dup">এই ক্লাস্টার আপনার রুটে আগেই আছে।</string>
     <string name="out_info_cluster_note">দোকানের তথ্যের সাথে ক্লাস্টারও পরিবর্তন করা হয়েছে।</string>
     <string name="out_menu_clusters">ক্লাস্টার</string>
+    <string name="out_cluster_err_not_saved">ক্লাস্টার সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।</string>
 </resources>

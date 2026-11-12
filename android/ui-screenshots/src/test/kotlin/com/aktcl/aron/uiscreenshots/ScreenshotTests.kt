@@ -163,7 +163,7 @@ class ScreenshotTests {
         val match = "Match"
         val cigarette = "Cigarette"
         HomeContent(
-            header, HomeTiles.resolve(emptySet(), 2), BundleFreshness.Fresh, false, DeviceHealthModel.of(62, 1_200, 3, 12), onTile = {},
+            header, HomeTiles.resolve(setOf("astha", "loyalty_point", "match_program"), 2), BundleFreshness.Fresh, false, DeviceHealthModel.of(62, 1_200, 3, 12), onTile = {},
             onSettings = {}, hero = HomeHero(Formats.money(4_391_000, locale), 6, 60, "08:52", HomeDayState.IN_FIELD),
             kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine(cigarette, 12_000, 9_800, stick), HomeStockLine(lighter, 400, 25, piece), HomeStockLine(match, 400, 394, dozen))),
             money = HomeMoneyLines(

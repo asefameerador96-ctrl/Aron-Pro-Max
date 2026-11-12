@@ -350,6 +350,18 @@ class CaptureRepository(
         outbox.insert(listOf(RecordMapping.daySubmit(submit, nowIso())))
     }
 
+    /**
+     * A cluster the SR created on the phone, with the GEO fix of the creation, in ONE transaction (SRM-B-44). Idempotent by the client uuid
+     * (a replay writes nothing). LOCAL ONLY: no outbox row until the contract has the cluster-creation record. Returns true when written.
+     */
+    suspend fun recordClusterCreate(c: com.aktcl.aron.core.database.entity.ClusterCreateEntity, fix: GeoFixEntity): Boolean = db.withTransaction {
+        if (capture.clusterCreates().any { it.clientUuid == c.clientUuid }) return@withTransaction false
+        requireUuids(c.clientUuid, fix.clientUuid)
+        require(c.fixClientUuid == fix.clientUuid) { "the fix must be the cluster's own" }
+        capture.insertFix(fix)
+        capture.insertClusterCreate(c) > 0L
+    }
+
     /** A new-outlet, edit, relocation or closure request with the fix taken for it. */
     suspend fun recordOutletRequest(request: OutletChangeRequestEntity, fix: GeoFixEntity) = db.withTransaction {
         if (purged(request.clientUuid) || capture.outletRequestCount(request.clientUuid) > 0) return@withTransaction emptyList() // a replay of a request already on this phone writes nothing
@@ -364,6 +376,14 @@ class CaptureRepository(
         capture.insertFix(fix)
         capture.insertOutletRequest(request)
         outbox.insert(listOf(RecordMapping.outletRequest(request, fix, nowIso())))
+    }
+
+    /**
+     * Several outlet requests (each with its fix) in ONE transaction: if any of them is refused or fails, none is written (SRM-B-40:
+     * change information and its cluster change). Each one is idempotent on replay, as [recordOutletRequest].
+     */
+    suspend fun recordOutletRequests(requests: List<Pair<OutletChangeRequestEntity, GeoFixEntity>>) = db.withTransaction {
+        requests.forEach { (r, f) -> recordOutletRequest(r, f) }
     }
 
     /** Resolves a task: the local task turns `completed` and its `task_event` is queued, in one transaction. */

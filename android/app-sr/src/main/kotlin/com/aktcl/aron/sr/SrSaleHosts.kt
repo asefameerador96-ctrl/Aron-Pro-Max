@@ -280,20 +280,15 @@ fun SubmitHost(day: SrDay) {
     )
 }
 
-/** The outlet line of the journey: `Name (code-phone-cluster)` with the parts that exist (screenshot 59); the Bangla name when the app is in Bangla. */
-internal fun journeyOutletLine(o: OutletEntity?, outletId: Long, bn: Boolean): String {
-    if (o == null) return "#$outletId"
-    val name = if (bn) (o.nameBn?.takeIf { it.isNotBlank() } ?: o.name) else o.name
-    val tail = listOfNotNull(o.code.takeIf { it.isNotBlank() }, o.contactNumber?.takeIf { it.isNotBlank() }, o.clusterName.takeIf { it.isNotBlank() }).joinToString("-")
-    return if (tail.isEmpty()) name else "$name ($tail)"
-}
+/** The outlet line of the journey: the picker's own `name (code-phone-cluster)` (one copy of the format); the screen localizes the digits. */
+internal fun journeyOutletLine(o: OutletEntity?, outletId: Long): String = o?.let { com.aktcl.aron.feature.outlet.OutletPicker.label(it) } ?: "#$outletId"
 
 /** The Sales Journey: today's calls in time order from the device's own rows, offline (SRM-B-82 to 85). */
 @Composable
 fun JourneyHost(day: SrDay, locale: com.aktcl.aron.rules.UiLocale) {
     var calls by remember { mutableStateOf<List<com.aktcl.aron.feature.memo.ui.SalesJourneyCall>?>(null) }
     LaunchedEffect(Unit) {
-        calls = day.sale.journeyCalls().map { (row, o) -> com.aktcl.aron.feature.memo.ui.SalesJourneyCall(row, journeyOutletLine(o, row.input.outletId, locale == com.aktcl.aron.rules.UiLocale.BN)) }
+        calls = day.sale.journeyCalls().map { (row, o) -> com.aktcl.aron.feature.memo.ui.SalesJourneyCall(row, journeyOutletLine(o, row.input.outletId)) }
     }
     calls?.let { com.aktcl.aron.feature.memo.ui.SalesJourneyScreen(it, locale) } ?: com.aktcl.aron.core.ui.aron.AronLoadingScreen()
 }

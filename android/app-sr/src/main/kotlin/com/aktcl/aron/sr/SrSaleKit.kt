@@ -15,9 +15,6 @@ import com.aktcl.aron.feature.dayclose.ServerCounts
 import com.aktcl.aron.feature.memo.domain.DaySummary
 import com.aktcl.aron.feature.memo.domain.HomeMoney
 import com.aktcl.aron.feature.memo.domain.HomeMoneyBuilder
-import com.aktcl.aron.feature.memo.domain.Journey
-import com.aktcl.aron.feature.memo.domain.JourneyBuilder
-import com.aktcl.aron.feature.memo.domain.JourneyVisit
 import com.aktcl.aron.feature.memo.domain.KpiStrip
 import com.aktcl.aron.feature.memo.domain.KpiStripBuilder
 import com.aktcl.aron.feature.memo.domain.PlannedOutlet
@@ -316,8 +313,6 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     suspend fun history(): List<StoredMemo> = store.history(day.businessDate())
 
     suspend fun summary(): SummaryBundle { prepare(); return reads.summary(day.businessDate()) }
-    suspend fun journey(): Journey = reads.journey(day.businessDate(), day.dayData.value.outlets)
-
     /** The call timeline of today (SRM-B-82): rows by the shared rule, with their outlet for the "Name (code-phone-cluster)" line. */
     suspend fun journeyCalls(): List<Pair<com.aktcl.aron.rules.JourneyCallRow, OutletEntity?>> {
         val calls = reads.journeyCalls(day.businessDate())

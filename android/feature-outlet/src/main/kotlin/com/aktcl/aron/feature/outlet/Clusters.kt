@@ -9,17 +9,10 @@ import com.aktcl.aron.core.common.ClientIds
  */
 data class SrCluster(val clusterId: Long?, val clientUuid: String?, val name: String, val routeName: String, val pending: Boolean)
 
-/** A cluster created offline by the SR: the client uuid is generated when the dialog opens, so a double tap or a retry is one record. */
+/** A cluster created on the phone by the SR (a `cluster_create` row, local only until the contract record exists): the client uuid is made when the dialog opens. */
 data class PendingCluster(val clientUuid: String, val name: String, val routeId: Long, val routeName: String, val createdAt: String)
 
-/** Where the pending clusters of the signed-in SR live on the phone (survives a kill and relaunch). */
-interface PendingClusterStore {
-    fun all(): List<PendingCluster>
-    /** Idempotent by [PendingCluster.clientUuid]. */
-    fun add(c: PendingCluster)
-}
-
-enum class ClusterNameError { EMPTY, TOO_SHORT, TOO_LONG, DUPLICATE }
+enum class ClusterNameError { EMPTY, TOO_SHORT, TOO_LONG, DUPLICATE, NOT_SAVED }
 
 object SrClusters {
     const val MIN = 2

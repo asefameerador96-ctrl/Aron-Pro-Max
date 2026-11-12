@@ -6,6 +6,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -42,7 +43,7 @@ class ManualTaskScreenTest {
         compose.onNodeWithTag(TaskTags.type("a")).assertExists(); compose.onAllNodesWithText("OOS").assertCountEquals(2)
         compose.onNodeWithText("চলমান").assertExists(); compose.onNodeWithText("সম্পন্ন").assertExists()
         compose.onAllNodesWithText("রুকু স্টোরে দ্রুত প্রোডাক্ট দেও").assertCountEquals(2)
-        compose.onAllNodesWithText("Completion on: ২০২৬-১১-১১", substring = true).assertCountEquals(2) // digits follow the language, the words stay English as in the reference
+        compose.onAllNodesWithText("Completion on: 2026-11-11").assertCountEquals(2) // Latin ISO digits in both languages, as screenshot 47
         compose.onNodeWithText("আউটলেট: Ruku Store").assertDoesNotExist() // no "Outlet:" prefix
     }
 
@@ -57,12 +58,24 @@ class ManualTaskScreenTest {
         assertEquals(0, resolved)
     }
 
-    @Test fun theSecondaryResolveAlsoAsksAndThenResolvesOnce() {
+    @Test fun confirmResolvesExactlyOnceAndADoubleConfirmStillOnce() {
+        val resolved = mutableListOf<String>()
+        show(AppLanguage.EN, TaskListState(listOf(t("a")), 1), onResolve = { resolved += it })
+        compose.onNodeWithTag(TaskTags.resolve("a")).performClick()
+        assertEquals(emptyList<String>(), resolved)
+        // the dialog's confirm carries the word "Resolve" too: it is the last node with that text
+        val confirm = compose.onAllNodesWithText("Resolve").onLast()
+        confirm.performClick(); confirm.performClick() // a double tap
+        compose.waitForIdle()
+        assertEquals(listOf("a"), resolved)
+        compose.onNodeWithText("Resolve this task?").assertDoesNotExist()
+    }
+
+    @Test fun theSecondaryResolveAlsoAsksFirst() {
         var resolved = 0
         show(AppLanguage.EN, TaskListState(listOf(t("a")), 1), onResolve = { resolved++ })
         compose.onNodeWithTag(TaskTags.resolve("a")).performClick()
         assertEquals(0, resolved)
-        // the dialog's confirm button carries the same word "Resolve"
         compose.onNodeWithText("Resolve this task?").assertExists()
     }
 }

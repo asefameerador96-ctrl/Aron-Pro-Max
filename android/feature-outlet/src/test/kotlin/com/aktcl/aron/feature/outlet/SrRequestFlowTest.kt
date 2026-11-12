@@ -142,8 +142,8 @@ class SrRequestFlowTest {
         }
         compose.onNodeWithText("111 No Road").assertExists()
         compose.onAllNodesWithText("Route: Agora GoliDaily").assertCountEquals(2)
-        compose.onNodeWithText("Waiting to be sent").assertDoesNotExist() // BN app: the pending tag is Bangla
-        compose.onNodeWithText("পাঠানোর অপেক্ষায়").assertExists()
+        compose.onNodeWithText("Waiting to be sent").assertDoesNotExist()
+        compose.onNodeWithText("এই ফোনে সংরক্ষিত; সার্ভারে পাঠানো এখনো চালু হয়নি").assertExists() // honest: not queued
         compose.onNodeWithTag(ClustersTags.FAB).performClick()
         compose.onNodeWithTag(ClustersTags.NAME).assertExists()
         compose.onNodeWithTag(ClustersTags.NAME).performTextInput("111 no road") // duplicate (any case) is refused with words
@@ -167,6 +167,48 @@ class SrRequestFlowTest {
         assertEquals(listOf("111 No Road", "Lakepar", "Pink City"), listed.map { it.name }) // a pending twin of a real cluster is not listed twice
         assertTrue(listed.last().pending && listed.last().routeName == "Agora GoliDaily")
         assertEquals("only confirmed clusters can take a new shop", listOf(1L, 2L), SrClusters.selectable(listed).map { it.clusterId })
+    }
+
+    private class Recorder(var failSecond: Boolean = false) : OutletRequestCommitter {
+        val committed = mutableListOf<OutletRequestDraft>()
+        override suspend fun commit(draft: OutletRequestDraft) { committed += draft }
+        override suspend fun commitAll(drafts: List<OutletRequestDraft>) { if (failSecond) error("second row failed") else committed += drafts }
+    }
+
+    private fun infoForm(clusterId: Long?, uuid: String) = OutletRequestForm(
+        OutletRequestKind.INFO, outletId = 10, name = "Mojammel Store", ownerName = "Owner", mobile = "01711000001", clusterId = clusterId, currentClusterId = 1,
+        fix = FixReading("ok", 23.78, 90.40, 10.0, false), photoUuids = listOf("00000000-0000-4000-8000-0000000000aa"), confirmed = true, requestUuid = uuid,
+    )
+    private fun clusterForm(clusterId: Long?, uuid: String, note: String? = "same save") = OutletRequestForm(
+        OutletRequestKind.CLUSTER, outletId = 10, clusterId = clusterId, currentClusterId = 1, note = note, fix = FixReading("ok", 23.78, 90.40, 10.0, false), confirmed = true, requestUuid = uuid,
+    )
+
+    @Test fun theInfoAndClusterPairIsValidatedFirstAndCommittedTogetherOrNotAtAll() = kotlinx.coroutines.test.runTest {
+        val rec = Recorder()
+        val svc = OutletRequests(rec)
+        // a second request that fails validation writes NOTHING, not even the first
+        val bad = svc.submitPair(infoForm(2, "00000000-0000-4000-8000-000000000001"), clusterForm(1, "00000000-0000-4000-8000-000000000002")) // cluster unchanged
+        assertTrue(bad is RequestValidation.Invalid)
+        assertTrue((bad as RequestValidation.Invalid).errors.contains(RequestError.CLUSTER_UNCHANGED))
+        assertTrue(rec.committed.isEmpty())
+        // a failing first request also stops the pair
+        assertTrue(svc.submitPair(infoForm(2, "00000000-0000-4000-8000-000000000001").copy(name = ""), clusterForm(2, "00000000-0000-4000-8000-000000000002")) is RequestValidation.Invalid)
+        assertTrue(rec.committed.isEmpty())
+        // both valid: ONE commitAll call with both drafts, in order
+        assertTrue(svc.submitPair(infoForm(2, "00000000-0000-4000-8000-000000000001"), clusterForm(2, "00000000-0000-4000-8000-000000000002")) is RequestValidation.Ok)
+        assertEquals(listOf(OutletRequestKind.INFO, OutletRequestKind.CLUSTER), rec.committed.map { it.kind })
+        assertEquals(listOf("00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"), rec.committed.map { it.requestUuid })
+        // a failure of the second row inside the commit propagates (the Room committer rolls the whole transaction back)
+        val failing = Recorder(failSecond = true)
+        val threw = runCatching { OutletRequests(failing).submitPair(infoForm(2, "00000000-0000-4000-8000-000000000001"), clusterForm(2, "00000000-0000-4000-8000-000000000002")) }
+        assertTrue(threw.isFailure); assertTrue(failing.committed.isEmpty())
+    }
+
+    @Test fun anAddToRouteRequestWithoutAClusterIsRefusedOnThePhone() = kotlinx.coroutines.test.runTest {
+        val svc = OutletRequests(Recorder())
+        val f = OutletRequestForm(OutletRequestKind.ROUTE_ADD, outletId = 10, note = "mine now", requestUuid = "00000000-0000-4000-8000-000000000003")
+        assertTrue((svc.validate(f) as RequestValidation.Invalid).errors.contains(RequestError.CLUSTER_REQUIRED))
+        assertTrue(svc.validate(f.copy(clusterId = 2)) is RequestValidation.Ok)
     }
 
     @Test fun routeAddCarriesTheClusterAndTheTitleFollowsTheKind() {

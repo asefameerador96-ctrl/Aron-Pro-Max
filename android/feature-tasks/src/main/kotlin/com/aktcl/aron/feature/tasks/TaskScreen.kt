@@ -130,7 +130,8 @@ fun TaskContent(
     /**
      * The SR manual's card and gesture (SRM-B-47, 48; screenshot 47): one list (ongoing first, completed below), the type in red with the
      * status at the top right, the outlet name, the description and "Completion on: date"; a swipe reveals a red "Resolve" panel and the
-     * resolve is confirmed before it is queued, so a sideways scroll can never resolve a task. Off (AMO, TSO) keeps the earlier card.
+     * resolve is confirmed before it is queued, so a sideways scroll can never resolve a task. The SR host is the only production caller;
+     * the earlier card stays the default only because its tests and goldens (and the AMO/TSO task lists, which have their own screens) exist.
      */
     manual: Boolean = false,
 ) {
@@ -367,16 +368,18 @@ private fun ManualTaskCard(t: TaskItem, typeLabels: Map<String, TaskTypeLabel>, 
             .then(if (onResolveTap != null) Modifier.semantics { customActions = listOf(CustomAccessibilityAction(resolveLabel) { onResolveTap(); true }) } else Modifier),
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
     ) {
+        // screenshot 47: the type in red on its own line; the outlet name with the orange status at its right
+        Text(
+            typeLabels[t.taskTypeCode]?.text(bangla) ?: t.taskTypeCode.uppercase(java.util.Locale.ROOT),
+            Modifier.fillMaxWidth().testTag(TaskTags.type(t.taskUuid)), style = MaterialTheme.typography.titleSmall, color = RedType, maxLines = 2, overflow = TextOverflow.Ellipsis,
+        )
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                typeLabels[t.taskTypeCode]?.text(bangla) ?: t.taskTypeCode.uppercase(java.util.Locale.ROOT),
-                Modifier.weight(1f).testTag(TaskTags.type(t.taskUuid)), style = MaterialTheme.typography.titleSmall, color = RedType, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            )
+            Text(t.outletName.orEmpty(), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = look.ink)
             Text(stringResource(if (ongoing) R.string.tsk_status_ongoing else R.string.tsk_status_completed), style = MaterialTheme.typography.labelLarge, color = OrangeStatus, maxLines = 1)
         }
-        t.outletName?.let { Text(it, style = MaterialTheme.typography.titleSmall, color = look.ink) }
         t.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = look.ink, maxLines = 4, overflow = TextOverflow.Ellipsis) }
-        t.dueDate?.let { MetaLine(AronIcons.Flag, stringResource(R.string.tsk_completion_on, dueDateText(it))) }
+        // Latin ISO digits in both languages, as screenshot 47
+        t.dueDate?.let { MetaLine(AronIcons.Flag, stringResource(R.string.tsk_completion_on, it)) }
         if (onResolveTap != null) {
             // secondary on purpose: the card's main action is the swipe; this is the one-tap alternative and also asks first
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {

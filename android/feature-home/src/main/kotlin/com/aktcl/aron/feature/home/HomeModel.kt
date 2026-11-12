@@ -34,8 +34,8 @@ object HomeModel {
 enum class HomeTile(val key: String, val alwaysShown: Boolean) {
     ATTENDANCE("attendance", true), STOCK("stock", true), SALE("sale", true), MEMO("memo", true),
     SUMMARY("summary", true), SALES_SUBMIT("sales_submit", true), OUTLET("outlet", true), TUTORIAL("tutorial", true),
-    TASKS("tasks", true), ASTHA("astha", true), LOYALTY_POINT("loyalty_point", true), PHOTO_CAPTURE("photo_capture", true),
-    SALES_JOURNEY("sales_journey", true), KPI("kpi", true), MATCH_PROGRAM("match_program", true);
+    TASKS("tasks", true), ASTHA("astha", false), LOYALTY_POINT("loyalty_point", false), PHOTO_CAPTURE("photo_capture", true),
+    SALES_JOURNEY("sales_journey", true), KPI("kpi", true), MATCH_PROGRAM("match_program", false);
 
     /** The tiles of the programmes lane family: their screens come from other lanes (S8, S9). */
     val isProgramme: Boolean get() = this == ASTHA || this == LOYALTY_POINT || this == MATCH_PROGRAM || this == PHOTO_CAPTURE

@@ -38,6 +38,19 @@ class JourneyTimelineTest {
         )
     }
 
+    @Test fun anEditedCallIsEditedEvenWithoutAnActiveSaleMemoAndLegsAreRoundedLikeTheServer() {
+        val rows = JourneyTimeline.build(listOf(
+            call("1", 1, 0, 10, 23.7800, 90.4000, edited = true, sold = false),
+            call("2", 2, 20, 30, 23.78003, 90.4000),
+            call("3", 3, 40, 50, 23.78006, 90.4000),
+        ))
+        assertEquals(JourneyCallStatus.EDITED_SALE, rows[0].status)
+        val l2 = Geo.haversineM(23.7800, 90.4000, 23.78003, 90.4000); val l3 = Geo.haversineM(23.78003, 90.4000, 23.78006, 90.4000)
+        fun r2(v: Double) = kotlin.math.floor(v * 100.0 + 0.5) / 100.0
+        assertEquals(r2(l2), rows[1].distanceFromPrevM!!, 0.0)
+        assertEquals(r2(r2(l2) + r2(l3)), rows[2].runningM, 0.0) // the running total adds the ROUNDED legs
+    }
+
     @Test fun firstCallHasNoDistanceAndRunningTotalAddsKnownLegs() {
         val rows = JourneyTimeline.build(listOf(
             call("1", 1, 0, 10, 23.7800, 90.4000),
@@ -58,6 +71,8 @@ class JourneyTimelineTest {
         assertEquals("0.00 m", JourneyFormat.distance(0.0, en, UiLocale.EN))
         assertEquals("999.99 m", JourneyFormat.distance(999.994, en, UiLocale.EN))
         assertEquals("1.00 km", JourneyFormat.distance(999.996, en, UiLocale.EN))
+        assertEquals("1.00 km", JourneyFormat.distance(1004.995, en, UiLocale.EN)) // rounded once from the raw metres, never 1.01
+        assertEquals("1.01 km", JourneyFormat.distance(1005.0, en, UiLocale.EN))
         assertEquals("৭.৬০ কি.মি", JourneyFormat.distance(7_600.0, bn, UiLocale.BN))
         assertEquals("7.71 km", JourneyFormat.distance(7_714.9, en, UiLocale.EN))
         assertEquals("0.00 m", JourneyFormat.distance(Double.NaN, en, UiLocale.EN))

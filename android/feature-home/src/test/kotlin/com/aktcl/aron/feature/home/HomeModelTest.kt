@@ -21,14 +21,18 @@ class HomeModelTest {
 
     @Test fun headerWithoutARouteShowsOnlyTheDate() = assertEquals("2026-10-05", HomeModel.header("SR", "A", "a", null, null, "2026-10-05").subtitle)
 
-    @Test fun fifteenTilesInTheManualsOrder() {
+    @Test fun programmeTilesShowOnlyWhenTheirFlagIsOnAndKeepTheManualsOrder() {
         // manual screenshot 09 (SRM-A-13): Astha and Loyalty Point after Task Delegation, Photo Capture, Journey, KPI, Match Program last
-        val keys = HomeTiles.resolve(emptySet(), 0).map { it.tile.key }
+        val base = listOf("attendance", "stock", "sale", "memo", "summary", "sales_submit", "outlet", "tutorial", "tasks", "photo_capture", "sales_journey", "kpi")
+        assertEquals(base, HomeTiles.resolve(emptySet(), 0).map { it.tile.key })
+        val all = HomeTiles.resolve(setOf("astha", "loyalty_point", "match_program"), 0).map { it.tile.key }
         assertEquals(
             listOf("attendance", "stock", "sale", "memo", "summary", "sales_submit", "outlet", "tutorial", "tasks", "astha", "loyalty_point", "photo_capture", "sales_journey", "kpi", "match_program"),
-            keys,
+            all,
         )
-        assertEquals(15, keys.size)
+        assertEquals(listOf("astha"), HomeTiles.resolve(setOf("astha"), 0).map { it.tile.key }.filter { it !in base })
+        // an unknown config key adds no tile
+        assertEquals(base, HomeTiles.resolve(setOf("loyalty", "superstar_ui", "nonsense"), 0).map { it.tile.key })
         assertTrue(HomeTile.entries.filter { it.isProgramme }.map { it.key }.containsAll(listOf("astha", "loyalty_point", "match_program", "photo_capture")))
     }
 

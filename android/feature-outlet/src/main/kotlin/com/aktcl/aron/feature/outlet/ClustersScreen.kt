@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -59,7 +60,7 @@ object ClustersTags {
  * it returns the validation error, or null when the cluster was stored.
  */
 @Composable
-fun ClustersContent(clusters: List<SrCluster>, onCreate: (name: String, clientUuid: String) -> ClusterNameError?, modifier: Modifier = Modifier) {
+fun ClustersContent(clusters: List<SrCluster>, onCreate: suspend (name: String, clientUuid: String) -> ClusterNameError?, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
     var creating by rememberSaveable { mutableStateOf(false) }
     Box(modifier.fillMaxSize().background(look.page)) {
@@ -103,7 +104,8 @@ private fun ClusterCard(c: SrCluster) {
 }
 
 @Composable
-private fun CreateClusterDialog(onDismiss: () -> Unit, onCreate: (String, String) -> ClusterNameError?) {
+private fun CreateClusterDialog(onDismiss: () -> Unit, onCreate: suspend (String, String) -> ClusterNameError?) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val look = LocalAronLook.current
     var name by rememberSaveable { mutableStateOf("") }
     var error by remember { mutableStateOf<ClusterNameError?>(null) }
@@ -132,8 +134,11 @@ private fun CreateClusterDialog(onDismiss: () -> Unit, onCreate: (String, String
                     submit, color = Color(0xFF2E9E44), style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.clickable(role = Role.Button, enabled = !done) {
                         if (!done) {
-                            val e = onCreate(name.trim(), uuid)
-                            if (e == null) { done = true; onDismiss() } else error = e
+                            done = true // one tap, one record: the button is off while the (day-scoped) save runs
+                            scope.launch {
+                                val e = onCreate(name.trim(), uuid)
+                                if (e == null) onDismiss() else { error = e; done = false }
+                            }
                         }
                     }.padding(horizontal = 16.dp, vertical = 12.dp).testTag(ClustersTags.SUBMIT),
                 )
@@ -146,4 +151,5 @@ private fun clusterErrorText(e: ClusterNameError): Int = when (e) {
     ClusterNameError.EMPTY, ClusterNameError.TOO_SHORT -> R.string.out_cluster_err_short
     ClusterNameError.TOO_LONG -> R.string.out_cluster_err_long
     ClusterNameError.DUPLICATE -> R.string.out_cluster_err_dup
+    ClusterNameError.NOT_SAVED -> R.string.out_cluster_err_not_saved
 }

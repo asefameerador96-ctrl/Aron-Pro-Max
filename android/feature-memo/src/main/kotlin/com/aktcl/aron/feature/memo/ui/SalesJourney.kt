@@ -129,7 +129,7 @@ private fun CallItem(c: SalesJourneyCall, w: JourneyWords, locale: UiLocale, fir
                     Box(Modifier.size(12.dp).clip(CircleShape).let { m -> if (tone == null) m.border(2.dp, ink, CircleShape) else m.background(tone) })
                     Text(statusText, Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodyMedium.copy(color = ink, fontSize = 15.sp))
                 }
-                Text(c.outletLine, style = MaterialTheme.typography.titleSmall.copy(color = OutletRed, fontSize = 16.sp), maxLines = 3, overflow = TextOverflow.Ellipsis)
+                Text(com.aktcl.aron.core.ui.localizedDigits(c.outletLine), style = MaterialTheme.typography.titleSmall.copy(color = OutletRed, fontSize = 16.sp), maxLines = 3, overflow = TextOverflow.Ellipsis)
                 Text(JourneyFormat.range(r.input.openedAtMs, r.input.closedAtMs), style = MaterialTheme.typography.bodyMedium.copy(color = look.secondaryText, fontSize = 14.sp))
                 r.durationS?.let {
                     Text(JourneyFormat.duration(it, w, locale), style = MaterialTheme.typography.bodyMedium.copy(color = look.secondaryText, fontSize = 14.sp))

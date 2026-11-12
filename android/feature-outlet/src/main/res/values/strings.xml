@@ -151,7 +151,7 @@
     <string name="out_clusters_title">Clusters</string>
     <string name="out_clusters_empty">No cluster on your route yet. Tap + to create one.</string>
     <string name="out_cluster_route">Route: %1$s</string>
-    <string name="out_cluster_pending">Waiting to be sent</string>
+    <string name="out_cluster_pending">Saved on this phone; sending is not available yet</string>
     <string name="out_cluster_create_title">Create cluster</string>
     <string name="out_cluster_name_hint">Enter cluster name</string>
     <string name="out_cluster_cancel">Cancel</string>
@@ -161,4 +161,5 @@
     <string name="out_cluster_err_dup">This cluster is already on your route.</string>
     <string name="out_info_cluster_note">Cluster changed together with the shop information.</string>
     <string name="out_menu_clusters">Clusters</string>
+    <string name="out_cluster_err_not_saved">Could not save the cluster. Try again.</string>
 </resources>

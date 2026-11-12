@@ -44,12 +44,13 @@ class HomeScreenTest {
     private fun show(
         language: AppLanguage, tasks: Int = 0, freshness: BundleFreshness = BundleFreshness.Fresh, health: DeviceHealth? = null, onTile: (HomeTile) -> Unit = {},
         hero: HomeHero? = null, kpis: HomeKpis? = null, money: HomeMoneyLines? = null, dock: HomeDock? = null, sync: SyncChipState? = null, offline: Boolean = false,
+        enabled: Set<String> = emptySet(),
     ) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         compose.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
                 AronTheme(language) {
-                    HomeContent(header, HomeTiles.resolve(emptySet(), tasks), freshness, offline, health, onTile, hero = hero, kpis = kpis, money = money, dock = dock, sync = sync, onSettings = {})
+                    HomeContent(header, HomeTiles.resolve(enabled, tasks), freshness, offline, health, onTile, hero = hero, kpis = kpis, money = money, dock = dock, sync = sync, onSettings = {})
                 }
             }
         }
@@ -102,12 +103,18 @@ class HomeScreenTest {
 
     @Test fun fifteenTilesAreOnTheGridAndTheProgrammeTilesAreTappable() {
         var got: HomeTile? = null
-        show(AppLanguage.EN, onTile = { got = it })
+        show(AppLanguage.EN, onTile = { got = it }, enabled = setOf("astha", "loyalty_point", "match_program"))
         listOf("Sales", "Task Delegation", "Astha", "Loyalty Point", "Photo Capture", "Match Program").forEach { compose.onNodeWithText(it).assertExists() }
         listOf(HomeTile.ASTHA, HomeTile.LOYALTY_POINT, HomeTile.MATCH_PROGRAM, HomeTile.PHOTO_CAPTURE).forEach {
             compose.onNodeWithTag(HomeScreenTags.tile(it)).performScrollTo().performClick()
             assertEquals(it, got)
         }
+    }
+
+    @Test fun programmeTilesAreAbsentWhileTheirFlagsAreOff() {
+        show(AppLanguage.EN)
+        listOf(HomeTile.ASTHA, HomeTile.LOYALTY_POINT, HomeTile.MATCH_PROGRAM).forEach { compose.onNodeWithTag(HomeScreenTags.tile(it)).assertDoesNotExist() }
+        compose.onNodeWithTag(HomeScreenTags.tile(HomeTile.PHOTO_CAPTURE)).assertExists()
     }
 
     @Test fun aDiscountCanNeverRenderUnderTheQcLabel() {
