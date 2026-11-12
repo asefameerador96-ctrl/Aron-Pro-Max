@@ -15,6 +15,10 @@
 -- 6. app.programme_lifecycle_guard: the database refuses any programme status move but draft -> active -> inactive and any
 --    change of current_version_id once the programme has left draft (V0156 pattern).
 -- 7. The versions, their children and the three trails are immutable/append-only (trigger + the API role loses UPDATE).
+-- Writer rule (for the routes of train 2): the portal copies the new version's name, period, dates and points expiry into app.programme in the same
+--    transaction that sets current_version_id, only while the programme is a draft, and never edits those columns of an active or inactive row.
+--    dw.v_programme reads them from app.programme; the version row is the immutable record. The foreign key above makes the database refuse a
+--    current_version_id that belongs to another programme.
 -- Thresholds are in STD as stored (units rule 5, brief Q1 default); no float or money column is added.
 
 SET lock_timeout = '5s';
@@ -45,10 +49,12 @@ CREATE TABLE app.programme_version (
   created_at          timestamptz NOT NULL DEFAULT now(),
   created_by          bigint REFERENCES app.app_user(id),
   UNIQUE (programme_id, version_no),
+  UNIQUE (programme_id, id),                        -- target of the same-programme foreign key from app.programme
   CHECK (active_to >= active_from),
   CHECK (points_expire_on IS NULL OR points_expire_on >= active_to)
 );
-ALTER TABLE app.programme ADD CONSTRAINT programme_current_version_fk FOREIGN KEY (current_version_id) REFERENCES app.programme_version(id) NOT VALID;
+-- Composite: the current version must belong to THIS programme (MATCH SIMPLE: no check while current_version_id is null).
+ALTER TABLE app.programme ADD CONSTRAINT programme_current_version_fk FOREIGN KEY (id, current_version_id) REFERENCES app.programme_version(programme_id, id) NOT VALID;
 
 -- Tier rules: thresholds are DATA the owner supplies (nothing invented, docs/27); STD as stored (brief Q1 default).
 CREATE TABLE app.programme_version_tier (

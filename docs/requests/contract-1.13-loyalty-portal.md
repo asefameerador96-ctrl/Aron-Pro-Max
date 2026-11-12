@@ -23,9 +23,15 @@ unchanged (loyalty in the apps stays deferred, docs/27; no points earned or rede
   with `w`; optional `If-Match`, `412`).
 - `getGift`: `GET /v1/admin/gifts/{id}`.
 
+The new operations sit under `/v1/admin/programmes/{id}/...` and `/v1/admin/gifts/{id}` (the existing paths), not under `/v1/admin/loyalty/...`
+as brief s7 sketched: a recorded difference from the brief, so the old paths keep one home.
+
 `listProgrammes`, `createProgramme`, `updateProgramme`, `putProgrammeEnrolments`, `listGifts`, `createGift` and `updateGift` keep their
 paths. `listProgrammes` takes its `status` filter as `ProgrammeStatus` (a wider request enum) and an optional `kind`; `updateProgramme`
-and `updateGift` take the new `ProgrammePatch` and `GiftPatch` (fewer required members than `ProgrammeWrite`/`GiftWrite`) and gain `409`;
+and `updateGift` take the new `ProgrammePatch` and `GiftPatch` (fewer required members than `ProgrammeWrite`/`GiftWrite`) and gain `409`.
+**Plainly: these two request bodies become closed schemas that no longer accept `kind` and `code` (programme) or `programme_id` and `code` (gift)**:
+they are immutable, and a client that still sends them gets `400` from the routes of train 2. The INT web BFF (`web/src/lib/admin/loyalty-server.ts`,
+its update schemas) still sends them; the web lane aligns in its next train. oasdiff reports only minProperties/minLength warnings for this;
 `putProgrammeEnrolments` gains `409`. The old `/v1/admin/programmes` and `/gifts` paths are re-homed to the permission module `loyalty`
 in the backend module map (invisible to oasdiff).
 
@@ -37,6 +43,11 @@ in the backend module map (invisible to oasdiff).
   breaking change), `points_expire_on`, `tiers`, `qualifying`, `scope`; its `status` member stays (deprecated, refused with 400).
 - `GiftWrite`: optional `request_uuid`.
 - `Programme`: optional `programme_version_id`, `version_no`, `tiers`, `qualifying`, `scope`, `change_reason`, `created_at`, `updated_at`.
+
+## Database view contract
+
+`dw.view_contract_version()` moves 1.6 to 1.7 (V0162: `dw.v_programme`, `dw.v_programme_version`, `dw.v_gift`, additive views;
+`docs/dw-view-contract.md` regenerated). The database contract is separate from this API contract.
 
 ## Units and money
 

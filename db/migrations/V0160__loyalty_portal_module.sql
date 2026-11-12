@@ -1,6 +1,7 @@
 -- V0160 loyalty portal, admin module (lane portal-loyalty-api; D-LOY-API-01; brief s6 and s10 lead decisions).
--- New admin-portal module `loyalty` (its own permission module, moved off `targets` in AdminModules.kt for the programme,
--- gift and enrolment paths). The app.user_module_grant.module CHECK gains it (NOT VALID here, VALIDATE in V0161).
+-- New admin-portal module `loyalty` (its own permission module). AdminModules.kt maps /v1/admin/programmes/** (versions, status and
+-- enrolments included) and /v1/admin/gifts/** to it instead of `targets`; the phone paths /v1/programmes/** stay on `targets` while they
+-- answer 501 (docs/27). The seed 07_admin_module_grants gives the pilot ADMINs `loyalty` (guarded by this CHECK). The app.user_module_grant.module CHECK gains it (NOT VALID here, VALIDATE in V0161).
 -- Today's reach is kept: /v1/admin/programmes/**, /gifts/** sat under `targets`, so every ADMIN gets `loyalty` with the
 -- access they hold on `targets` (r stays r, w stays w); a later narrowing in the grants screen stays (idempotent).
 SET lock_timeout = '5s';

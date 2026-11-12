@@ -104,10 +104,12 @@ info:
       `Programme.status` is now `ProgrammeStatus` (draft, active, inactive; a response enum gains `draft`, no shipped client reads it). New
       operations under the existing paths: `getProgramme`, `listProgrammeVersions`, `setProgrammeStatus` (optional `If-Match`, `412`), `getGift`.
       New schemas `ProgrammeStatus`, `ProgrammeTier`, `ProgrammeVersion`, `ProgrammeVersionPage`, `ProgrammeStatusChange`, `ProgrammePatch`,
-      `GiftPatch`, `LoyaltyProductRef`, `LoyaltyScopeNode`; optional `request_uuid`, `tiers`, `qualifying` and `scope` on `ProgrammeWrite`, optional
+      `GiftPatch`, `LoyaltyProductRef`, `LoyaltyScopeNode`; the new operations sit under `/v1/admin/programmes/{id}/...` and `/v1/admin/gifts/{id}`
+      (a recorded difference from brief s7, which sketched `/v1/admin/loyalty/...`); optional `request_uuid`, `tiers`, `qualifying` and `scope` on `ProgrammeWrite`, optional
       `request_uuid` on `GiftWrite`, optional `programme_version_id`, `version_no`, `tiers`, `qualifying`, `scope`, `change_reason`, `created_at`
       and `updated_at` on `Programme`. `updateProgramme` and `updateGift` take the new `ProgrammePatch` and `GiftPatch` (fewer required members)
-      and gain `409`; `putProgrammeEnrolments` gains `409`; `listProgrammes` takes `status` as `ProgrammeStatus` and an optional `kind`. Tier
+      and gain `409`. These two bodies are closed and no longer accept `kind` and `code` (programme) or `programme_id` and `code` (gift): both
+      are immutable, and a client that still sends them gets `400` (the portal BFF aligns in the web lane's next train); `putProgrammeEnrolments` gains `409`; `listProgrammes` takes `status` as `ProgrammeStatus` and an optional `kind`. Tier
       thresholds are STD as stored (units rule 5, brief Q1 default), never negative; no money member is added. The field is unchanged: loyalty
       in the apps stays deferred (docs/27), the bundle `programmes` stays null, no points are earned or redeemed.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept

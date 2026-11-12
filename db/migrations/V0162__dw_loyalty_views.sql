@@ -41,7 +41,7 @@ SELECT g.id AS gift_id, g.programme_id, p.code AS programme_code, g.code AS gift
   FROM app.gift g
   JOIN app.programme p ON p.id = g.programme_id;
 
-COMMENT ON VIEW dw.v_programme IS 'Stable view: one row per loyalty programme (app.programme: Diamond League, Astha, campaign, Superstar) with the definition of its current version and its tiers as a JSON array. The portal exists; the field does not use it (no points earned or redeemed, bundle programmes null, docs/27). is_effective = status active.
+COMMENT ON VIEW dw.v_programme IS 'Stable view: one row per loyalty programme (app.programme: Diamond League, Astha, campaign, Superstar) with its definition and its tiers as a JSON array. The name, period and window are the columns of app.programme, which the portal copies from the current version in the same transaction while the programme is a draft (never edited afterwards); the tiers are those of the current version. The portal exists; the field does not use it (no points earned or redeemed, bundle programmes null, docs/27). is_effective = status active.
 owner: backend:masterdata | capture: ONLINE | retention: master | pii: none';
 COMMENT ON VIEW dw.v_programme_version IS 'Stable view: one row per immutable programme version with its window, rules, tiers, products and scope as JSON arrays (empty products or scope = everything). is_effective = the current version of an active programme.
 owner: backend:masterdata | capture: ONLINE | retention: master | pii: none';
@@ -54,7 +54,7 @@ COMMENT ON COLUMN dw.v_programme.programme_code IS 'Stable business code of the 
 COMMENT ON COLUMN dw.v_programme.status IS 'Lifecycle status: draft, active or inactive (Ended in the portal).';
 COMMENT ON COLUMN dw.v_programme.current_version_id IS 'Programme version (app.programme_version.id) in force; null for programmes made before the portal.';
 COMMENT ON COLUMN dw.v_programme.current_version_no IS 'Version number of the current version, from 1; null when there is none.';
-COMMENT ON COLUMN dw.v_programme.name_en IS 'English name of the programme (current definition).';
+COMMENT ON COLUMN dw.v_programme.name_en IS 'English name of the programme (app.programme, copied from the current version by the portal).';
 COMMENT ON COLUMN dw.v_programme.name_bn IS 'Bangla name; null when none.';
 COMMENT ON COLUMN dw.v_programme.period_label IS 'Period label such as 2026-10 or 2026-Q4; null when none.';
 COMMENT ON COLUMN dw.v_programme.active_from IS 'First business date (Asia/Dhaka) of the programme window.';
