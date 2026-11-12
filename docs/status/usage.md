@@ -2824,3 +2824,6 @@
 - S5 fix round `495255d1a` Opus re-check wekacfd8t: PASS (2 lenses, no blocking; lows sent as the start of its train 2). wt-s5 removed.
 - Train 100 rebuilt (my own branch force-pushed; first run 43193235441 superseded): INT ab78d0d4b + docs 168b7c450 + S3 4a7dcbcc0 + S5 495255d1a, head `d6ede1843`. Only DECISIONS.md conflicted (union, 402 = 392 + 5 + 3 + 2, 0 removed, 0 markers); SrSaleHosts.kt touched by both lanes merged cleanly, S3 hunks verified intact on top of S5. money-float 13/13, date-pin 0 new, gitleaks clean. CI 43193498991 running.
 - S4 round 3 `e241c1109`: static gate clean; Opus re-check wz0sjqpir running. S4 conflicts with S3 in SrSaleHosts.kt and SaleRoute.kt (code), so it lands after train 100 on a lane-side INT merge; S4 told.
+
+### 2026-11-12 09:44 UTC — L-A train 1 fix-up under review
+- L-A `be79c0e3a` (code head 304f829d8 + status doc; INT merged): static gate clean (53 files +2263/-84; V0158..V0162 added only; DECISIONS 396, 0 removed; slices up to date; gitleaks clean; three tests renamed 17->18 modules / 1.12.2->1.13.0; web/src/contract/openapi.d.ts regenerated). Lane ci 43191574789 (on 304f829d8) in progress. Opus re-check launched (module wiring/security, migrations/dw, contract/clients/records), worktree wt-la.
