@@ -2894,3 +2894,9 @@
 - S1 `93f5972fd`: step counters renamed (8 files, +27/-27; no allow entry, scan untouched); lane CI 43205492690 success incl. Repository gates; my local money-float 13/13 exit 0, date-pin 0 new, gate unit tests OK on the merged train.
 - Train 103 rebuilt = train 102 30230e3cc + S1 93f5972fd, head `f12c32707` on lane/lead-train103 (my own branch force-pushed): DECISIONS 426 (414 + 12), 0 lines missing from either side, gitleaks clean. CI 43208539789 running.
 - Train 101 INT ci #2039 43202049384 success; deploy #339 43207815739 running; health still ab78d0d4b. Watching.
+
+### 2026-11-12 11:38 UTC — train 101 DEPLOYED; GO train 102
+- Train 101: INT `ce9d92bf7` ci #2039 green, deploy #339 43207815739 success, health build ce9d92bf7 (read by me at 11:37:59 UTC). Flyway proof: ops-diagnose dispatched on INT (window 11:15 to 11:45, caj-aron-dev-migrate); a Haiku reader extracts the lines.
+- GO train 102 sent to integrator 24 (train head 30230e3cc, expected DECISIONS 414, deploy skipped by design).
+- L-B told to start its alignment round on 1.13.0 (seven items from the request file, typed paths, its held loginOk fix).
+- S2 fix round `f5522eb49`: static gate clean incl. the scans (Room v8 to v9, paired request transaction, request identity, journey rule per contract; DECISIONS 408); lane ci 43209036731 running; Opus re-check wkoahag0q running. It conflicts in code with trains 102/103 (SrSaleHosts.kt, strings): lane-side INT merge after they land.
