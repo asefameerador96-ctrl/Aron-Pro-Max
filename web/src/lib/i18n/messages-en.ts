@@ -2,6 +2,7 @@ import { nationalEn } from "./messages-national-en";
 import { w4En } from "./messages-wave4";
 import { tsomanEn } from "./messages-tsoman"; // tso-manual W1
 import { discEn } from "./messages-discounts"; // portal-discount-web
+import { loyEn } from "./messages-loyalty"; // portal-loyalty-web
 import { dashEn } from "./messages-dash-en";
 import { cfgEn } from "./messages-config";
 import { mdmEn } from "./messages-mdm";
@@ -443,6 +444,7 @@ export const en = {
   ...w4En,
   ...tsomanEn, // tso-manual W1
   ...discEn, // portal-discount-web
+  ...loyEn, // portal-loyalty-web
   "menu.admin.sr_lifecycle": "SR lifecycle",
   "lifecycle.create.title": "Create the SR",
   "lifecycle.create.hint": "Add the user with the SR role, a phone number and a home zone. A temporary password is shown once.",
