@@ -56,7 +56,7 @@ END $$;
 -- write-once list ('='). call_photo_* are set at insert only and stay immutable (not named). Recreated, never edited (V0007 is history).
 CREATE OR REPLACE TRIGGER visit_immutable BEFORE UPDATE OR DELETE ON app.visit
   FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'server_verdict', 'server_distance_m', 'server_radius_m', 'server_max_accuracy_m', 'server_checked_at', '=close_client_uuid', '=close_received_at', '=close_captured_at', '=outcome_code', '=call_started_at', '=call_declined', '=ended_at', '=is_zero_sale',
-    '=zone_id', '=cluster_id', '=outlet_channel', '=outlet_geo_class', '=zero_sale_reason_code');
+    '=zone_id', '=cluster_id', '=outlet_channel', '=outlet_geo_class', '=zero_sale_reason_code', 'data_origin');
 
 CREATE INDEX IF NOT EXISTS visit_call_photo_uuid_idx ON app.visit (call_photo_uuid) WHERE call_photo_uuid IS NOT NULL;
 
