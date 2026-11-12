@@ -37,3 +37,5 @@ COMMENT ON COLUMN app.astha_target_batch.unchanged IS 'Rows that already matched
 COMMENT ON COLUMN app.astha_target_batch.reason IS 'Why the batch was made, 10 to 500 characters, mandatory.';
 COMMENT ON COLUMN app.astha_target_batch.actor IS 'User (app.app_user) who made the batch.';
 COMMENT ON COLUMN app.astha_target_batch.at IS 'UTC instant of the batch.';
+
+SELECT app.apply_db_role_grants();
