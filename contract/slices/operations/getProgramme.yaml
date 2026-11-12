@@ -6,7 +6,7 @@ operation:
   operationId: getProgramme
   summary: One programme with its current version (1.13.0).
   description: Same read rules as `listProgrammes`; a programme outside the caller's server-side scope is `404`
-    (its existence is not revealed).
+    (its existence is not revealed); a bad path id is `400`.
   parameters:
   - $ref: '#/components/parameters/IdPath'
   responses:

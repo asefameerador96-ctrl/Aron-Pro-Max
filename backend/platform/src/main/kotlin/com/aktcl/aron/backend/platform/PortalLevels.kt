@@ -73,8 +73,18 @@ object PortalLevels {
         Pattern("GET", "/v1/admin/offers"), Pattern("GET", "/v1/admin/offers/{id}"), Pattern("GET", "/v1/admin/offers/{id}/versions"),
     )
 
+    /**
+     * The loyalty-programme reads (portal-loyalty-api, D-LOY-API-05, brief s3): a BRAND user lists and opens only the programmes and gifts whose
+     * product scope touches its brands (the handler cuts the rows by `app.user_brand_scope`, not by the token). Enrolments are outlet data and
+     * stay refused; no write.
+     */
+    private val LOYALTY_READS: List<Pattern> = listOf(
+        Pattern("GET", "/v1/admin/programmes"), Pattern("GET", "/v1/admin/programmes/{id}"), Pattern("GET", "/v1/admin/programmes/{id}/versions"),
+        Pattern("GET", "/v1/admin/gifts"), Pattern("GET", "/v1/admin/gifts/{id}"),
+    )
+
     /** BRAND's whole surface (row 3 adds the brand-filtered reads as they are built); R-W-08 adds its own inbox (read and mark read). */
-    val BRAND_ROUTES: List<Pattern> = OWN_SESSION + listOf(Pattern("GET", "/v1/me"), OWN_INBOX_READ) + BRAND_DASHBOARD + DISCOUNT_READS
+    val BRAND_ROUTES: List<Pattern> = OWN_SESSION + listOf(Pattern("GET", "/v1/me"), OWN_INBOX_READ) + BRAND_DASHBOARD + DISCOUNT_READS + LOYALTY_READS
 
     /** The path the router matches: decoded segments, empty ones dropped (the same normalisation as the MFA check). */
     fun normalise(rawPath: String): String? {
