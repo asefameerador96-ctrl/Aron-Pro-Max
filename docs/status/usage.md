@@ -2930,3 +2930,8 @@
 ### 2026-11-12 11:59 UTC — S6 merge gate: code PASS, records and goldens to finish; spelling ruling applied to S5
 - S6 `14071b794` merge gate wfinnp9dh (8 agents): merge resolution and code PASS (INT whole; no duplicate keys; no S3/S4/S5 value changed). To finish in its INT 3d2340b3a merge push: records ("কারণ kept" is false after the merge; stale line about sale_submit_plain), re-record four memo goldens that draw its changed keys (two of its re-records were under the 0.2% threshold, so "a stale golden would fail" does not hold), PREFETCH_STORED mapped to ALREADY_CURRENT. wt-s6 removed.
 - Ruling applied: S5's edit_reason_dialog_title (on INT since train 100) carries the vendor misspelling "কারন"; standing ruling D-TSO-PARITY-SPELLING-01 says "কারণ". S5 told to correct its key in its next push (with the INT merge). My S5 review missed it; the manual-conformity lens accepted the manual's own spelling.
+
+### 2026-11-12 12:04 UTC — train 104 built (S5 follow-up)
+- S5 `91234ef05` (INT 3d2340b3a merged, no conflicts): 13 files +59/-18 on INT; edit_reason_dialog_title now "কারণ" per D-TSO-PARITY-SPELLING-01; "Other (SKU n)" with base-unit words and no digit grouping; I read the string and production diff. Lane ci 43214455578 queued.
+- Train 104 = INT 3d2340b3a + docs tip 7a7820728 + S5 91234ef05, head `840b3fb89` on lane/lead-train104: clean merges, DECISIONS 426 (no new D-line), 0 INT lines missing, android == S5 android, money-float 13/13, date-pin 0 new, gitleaks clean. CI 43214553623 queued. GO after the train 103 INT run (43213228309) completes and this run and the S5 lane run are green.
+- S6 `12f119734` (INT 3d2340b3a merged) received; it crossed my merge-gate message, so records/goldens corrections come in its next push.
