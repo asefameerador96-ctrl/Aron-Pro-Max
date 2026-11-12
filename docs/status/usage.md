@@ -2846,3 +2846,7 @@
 
 ### 2026-11-12 09:54 UTC — GO train 100
 - Train 100 CI 43193498991 green on d6ede1843 (11 jobs: 5 ok, 6 skipped by path, 0 failed). INT still ab78d0d4b. GO sent to integrator 24: merge the train head only, expected DECISIONS 402, deploy skipped by design, report the signed APK.
+
+### 2026-11-12 09:57 UTC — train 100 on INT; train 101 built
+- Integrator 24 pushed train 100: INT `0b5eba27a` (tree-identical to d6ede1843 plus the train.md row; DECISIONS 402; 0 lost INT lines), INT ci 43195702644 running. S3, S5 told to merge INT and start their follow-ups; S4 told to merge INT, resolve SrSaleHosts.kt/SaleRoute.kt and fix the Save glyph.
+- Train 101 = INT 0b5eba27a + docs tip c2bd629d8 + L-A ffe9eee50, head `afe417965` on lane/lead-train101: code tree == L-A for backend/db/contract/shared/web, android untouched, migrations V0158..V0162 added only, DECISIONS 406 (402 + 4), 0 INT and 0 L-A lines missing, slices up to date, money-float 13/13, date-pin 0 new, gate unit tests OK, gitleaks clean. CI 43195921949 running. GO only after the train 100 INT run completes (one INT push per cycle). Real deploy expected; Flyway V0158..V0162 to prove via ops-diagnose.
