@@ -2945,3 +2945,6 @@
 
 ### 2026-11-12 12:12 UTC — train 103 LANDED
 - INT `3d2340b3a` ci #2054 43213228309 success (11 jobs: 5 ok, 6 skipped by path). APK of record: **aron-release-signed-dev-2054**, 41,794,740 bytes (S1 + S3 + S4 + S5 first rounds; not walked on a device). The first train 104 run (840b3fb89) shows cancelled: superseded by my rebuild with S6.
+
+### 2026-11-12 12:18 UTC — S2 merge gate PASS
+- S2 `859deafe0` Opus merge gate w2r9nofys (2 lenses, no blocking): both merge resolutions correct (every INT line present, nothing of S3/S4/S5/S1 lost; strings union, no duplicates), delta sound (task confirm once; cluster replay reports saved; awaits rethrow cancellation; DEVICE_TABLES only drives a schema test; Room v9 unchanged), records true. Lows sent (cluster retry after recreate says "duplicate"; JourneyHost error state; unused import). S2 told to merge the train 104 head 39a478a41 now so it rides train 105 without another round. wt-s2 removed.
