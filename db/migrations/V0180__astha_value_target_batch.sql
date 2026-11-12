@@ -3,6 +3,8 @@
 -- 2. app.astha_target_batch: append-only ledger of PUT /v1/programmes/astha/targets batches; the batch UUID makes a retried upload idempotent and a
 --    reused UUID with other rows is told apart by the fingerprint.
 
+SET lock_timeout = '5s';
+
 ALTER TABLE app.astha_target ADD COLUMN value_target_mtk bigint NOT NULL DEFAULT 0 CHECK (value_target_mtk >= 0);
 
 CREATE TABLE app.astha_target_batch (
