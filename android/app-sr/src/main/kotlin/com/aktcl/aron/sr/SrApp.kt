@@ -347,7 +347,7 @@ fun SrApp(
                 phase = ui.phase,
                 versionName = SrDataUpdate.versionName(), // the version NAME only, never "name (code)"
                 onUpdate = { scope.launch { startBundleDownload(); day.taskBoard.load() } },
-                done = ui.done, total = ui.total, reason = ui.reason,
+                stepsDone = ui.stepsDone, stepCount = ui.stepCount, reason = ui.reason,
                 onSkip = { skipFirstBundle = true },
             )
         } else {
