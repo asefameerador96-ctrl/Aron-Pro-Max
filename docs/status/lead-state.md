@@ -1,6 +1,6 @@
 # Lead state (read by every two-hourly lane check; the cron prompt is only a pointer here)
 
-Updated: 2026-11-10 19:05 UTC by the lead (CATCH-UP after the worker outage 05:20 11-07 → 18:50 11-10; train 82 landed; the owner pushed 5e78569a straight to INT; train 83 = lane/lead-train83 024d4865 in flight; morning one-shot trig_01PBRogNENyHdFLFf9GLi8BK) (session_01MbUQSxrP7AB9tbyANjUTPS). Update this file whenever the train state, the active set or an owner row changes; commit it on lane/lead-docs-1022.
+Updated: 2026-11-12 15:01 UTC by the lead (evening report; trains 99 to 106 landed today; active: integrator 24, L-A, L-B, SV2, S5, S6; see docs/status/evening-2026-11-12.md)
 
 ## Train state
 - **INT `f57ce31ed` (train 106, pushed 2026-11-12 14:08 UTC): SR manual S3 follow-up LANDED; ci #2073 43233960026 green; deploy #344 skipped by design; health stays 155edd899; APK of record aron-release-signed-dev-2073 (41,846,624 bytes).**

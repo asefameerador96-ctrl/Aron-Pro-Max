@@ -3022,3 +3022,6 @@
 - INT `f57ce31ed` (train 106 landed); health build 155edd899 (latest deployable). Docs branch merged INT (0 markers, DECISIONS 433).
 - Lanes moving: SV2 pushed 03065c6d8 at 14:35 (proving train 1); L-A pushed a8923a13f at 14:31 (fix round, 1.13.1); L-B preparing the mock-versus-server round (tip d25d1fdd7). S1 to S6 first rounds and the S3/S5 follow-ups are landed; their next rounds wait for contract 1.14.0 or for assignments in the evening plan.
 - Lead session: USD 4,076.29, context about 690 k of 980 k (autocompact at about 900 k); seven_day status "allowed_warning" (not "rejected"): pause stays lifted.
+
+### 2026-11-12 15:01 UTC — evening report
+- Verified: INT f57ce31ed (author Claude, 14:07), ci #2073 and deploy #344 success; health build 155edd899; scheduled CodeQL 02:15 and cost-report 09:24 success. Sessions read by get_session: lead USD 4,076.29 (690 k); lanes as in docs/status/evening-2026-11-12.md; all "allowed_warning". Archived SV, S1, S2, S3, S4. Evening file written; morning (06:30) and midday (09:30) one-shots for 2026-11-13 armed.
