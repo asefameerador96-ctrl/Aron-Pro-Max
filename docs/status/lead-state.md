@@ -3,7 +3,7 @@
 Updated: 2026-11-10 19:05 UTC by the lead (CATCH-UP after the worker outage 05:20 11-07 → 18:50 11-10; train 82 landed; the owner pushed 5e78569a straight to INT; train 83 = lane/lead-train83 024d4865 in flight; morning one-shot trig_01PBRogNENyHdFLFf9GLi8BK) (session_01MbUQSxrP7AB9tbyANjUTPS). Update this file whenever the train state, the active set or an owner row changes; commit it on lane/lead-docs-1022.
 
 ## Train state
-- **INT `f57ce31ed` (train 106, pushed 2026-11-12 14:08 UTC): SR manual S3 follow-up on INT; ci #2073 43233960026 running; deploy skipped by design; health stays 155edd899.**
+- **INT `f57ce31ed` (train 106, pushed 2026-11-12 14:08 UTC): SR manual S3 follow-up LANDED; ci #2073 43233960026 green; deploy #344 skipped by design; health stays 155edd899; APK of record aron-release-signed-dev-2073 (41,846,624 bytes).**
 - **INT `155edd899` (train 105, pushed 2026-11-12 13:07 UTC): SR manual S2 + Loyalty portal web (1.13.0 alignment) on INT; ci #2070 43224115378 green (12 jobs, web e2e incl.); deploy #343 43230024509 success, health build 155edd899 at 14:06 UTC; APK of record aron-release-signed-dev-2070 (41,846,663 bytes). LANDED and DEPLOYED.**
 - **INT `20fe1d4fb` (train 104, pushed 2026-11-12 12:28 UTC): SR manual S5 follow-up + S6 (settings, wording) LANDED; ci #2064 43218050788 green; deploy skipped by design; health stays ce9d92bf7; APK of record aron-release-signed-dev-2064 (41804726 bytes).**
 - **INT `3d2340b3a` (train 103, pushed 2026-11-12 11:55 UTC): SR manual S1 (login, OTP screens, permissions, app update, data update) LANDED; ci #2054 43213228309 green; deploy skipped by design; health stays ce9d92bf7; APK of record aron-release-signed-dev-2054 (41,794,740 bytes).**

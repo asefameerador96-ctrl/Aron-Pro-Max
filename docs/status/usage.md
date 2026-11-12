@@ -3008,3 +3008,7 @@
 
 ### 2026-11-12 14:13 UTC — sr-server handed over to SV2
 - SV pushed 6ba7d9ee3 (renumbered to V0172..V0174, INT f57ce31ed merged) and stopped per the context rule; no full gate run is green yet (its container restarted mid-run). SV2 (session_014mnioKvYziK3eUgdKsYvuP, Sonnet) created from lane/sr-server with the handover file as its brief. Lead ruling in the brief: GET /v1/supervisor/call-photos is not scope-blind debt; it returns only the caller's reach, with a ScopeLeak test. SV told to stop pushing.
+
+### 2026-11-12 14:22 UTC — train 106 LANDED
+- INT `f57ce31ed` ci #2073 43233960026 success (5 ok, 6 skipped by path, no re-run); deploy #344 43236035741 skipped ("nothing deployable changed"); health build 155edd899 at 14:22. APK of record: **aron-release-signed-dev-2073**, 41,846,624 bytes (all six SR manual lanes first round + S5 and S3 follow-ups; contents and signature not inspected; not walked on a device).
+- Trains landed today: 99 (08:17), 100, 101 (deployed, Flyway v0162 proven), 102, 103, 104, 105 (deployed), 106.
