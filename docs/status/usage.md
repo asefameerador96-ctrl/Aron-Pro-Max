@@ -2807,3 +2807,7 @@
 - INT `ab78d0d4b`, health build ab78d0d4b (first try). No owner message. Nothing landed since train 99.
 - Lane tips: L-A 304f829d8 (09:27, fix-up pushed, no "checked" message yet); L-B aa81dfa47 (holding); S2 efef6763e (09:12, no report yet); S3 be15cd1a8 (fix-up in progress); S4 364c5596b (round 3 requested); S5 997b72a0d and S6 4f7492912 (fix-ups requested); S1 and SV no branch yet (inside 90 min of their last message).
 - Nothing needs the owner.
+
+### 2026-11-12 09:33 UTC — S1 gate and S3 round 2 started
+- S1 `a97835fe3` (SRM-A-01..12: login, OTP, permissions, update, data update): static gate clean (50 files +2136/-35, 2 login goldens re-recorded, no test removed, DECISIONS 401, gitleaks clean; one Float = progress bar fraction, display only); lane ci 43192320280; Opus pass wkxja7xds launched (auth/OTP security, permissions/update/bundle, manual/shared/tests).
+- S3 fix round `4a7dcbcc0`: static gate clean (14 files +280/-16 on be15cd1a8; 2 AMO goldens re-recorded for the green badge; DECISIONS 395); lane ci 43192385629; Opus re-check launched (printer assist, attendance/records).
