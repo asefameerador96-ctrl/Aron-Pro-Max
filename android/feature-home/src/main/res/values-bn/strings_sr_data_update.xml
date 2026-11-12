@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="du_prompt">কিছু নতুন আপডেট পাওয়া গেছে. এই অ্যাপটি ব্যবহার চালিয়ে যেতে, আপনাকে অবশ্যই আপডেট করতে হবে!</string>
+    <string name="du_button">আপডেট</string>
+    <string name="du_updating">অ্যাপ আপডেট হচ্ছে</string>
+    <string name="du_processing">প্রসেসিং(%1$s/%2$s)</string>
+    <string name="du_tip">টিপস: অ্যাপটি বন্ধ করবেন না</string>
+</resources>

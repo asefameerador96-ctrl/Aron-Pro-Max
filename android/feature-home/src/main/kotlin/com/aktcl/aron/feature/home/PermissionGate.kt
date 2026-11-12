@@ -12,13 +12,17 @@ enum class AppPermission(val manifestName: String) {
 
 enum class PermissionStatus { GRANTED, DENIED, DENIED_PERMANENTLY, NOT_ASKED }
 
-data class PermissionState(val statuses: Map<AppPermission, PermissionStatus>) {
+data class PermissionState(
+    val statuses: Map<AppPermission, PermissionStatus>,
+    /** Asked later, at the moment a feature needs it (the SR camera, SR manual 05), so the first-run list skips it. */
+    val deferred: Set<AppPermission> = emptySet(),
+) {
     /** Location is mandatory for the visit screen (docs/24 s11.2); camera and Bluetooth gate their own screens only. */
     val canOpenVisit: Boolean get() = statuses[AppPermission.PRECISE_LOCATION] == PermissionStatus.GRANTED
     val canTakePhoto: Boolean get() = statuses[AppPermission.CAMERA] == PermissionStatus.GRANTED
     val canPrint: Boolean get() = statuses[AppPermission.BLUETOOTH] == PermissionStatus.GRANTED
     /** What the onboarding still has to ask, in order, with Bangla rationale shown before each request. */
-    val toAsk: List<AppPermission> get() = AppPermission.entries.filter { (statuses[it] ?: PermissionStatus.NOT_ASKED) == PermissionStatus.NOT_ASKED }
+    val toAsk: List<AppPermission> get() = AppPermission.entries.filter { it !in deferred && (statuses[it] ?: PermissionStatus.NOT_ASKED) == PermissionStatus.NOT_ASKED }
     /** Denied for good: the screen sends the rep to the system settings page. */
     val needsSettings: List<AppPermission> get() = statuses.filterValues { it == PermissionStatus.DENIED_PERMANENTLY }.keys.toList()
 }
