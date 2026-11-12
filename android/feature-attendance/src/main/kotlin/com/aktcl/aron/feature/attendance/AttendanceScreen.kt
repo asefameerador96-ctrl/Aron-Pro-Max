@@ -546,19 +546,22 @@ private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, timeTe
 }
 
 
+/** The period words of the Bangla check-out hour (strings `att_period_*`; the screen resolves them, the function stays pure). */
+internal enum class PeriodOfDay { MORNING, NOON, NIGHT }
+
 /**
  * The hour of the configured check-out time for the amber box. English: "5 PM" / "5:30 PM". Bangla (the string adds "টার"): the bare 12-hour
  * number for the afternoon and evening (13:00 to 21:59, so 17:00 stays "5" as in screenshot 12), and a period word where the bare number would be
  * ambiguous: "দুপুর 12" at noon, "রাত 12" at midnight, "সকাল" from 05:00 to 11:59, "রাত" from 22:00 to 04:59.
  */
-internal fun checkoutAfterLabel(hhmm: String, bangla: Boolean): String = runCatching {
+internal fun checkoutAfterLabel(hhmm: String, bangla: Boolean, periodWord: (PeriodOfDay) -> String = { "" }): String = runCatching {
     val (h, m) = hhmm.split(":").map { it.trim().toInt() }
     require(h in 0..23 && m in 0..59)
     val h12 = if (h % 12 == 0) 12 else h % 12
     val body = if (m == 0) "$h12" else "$h12:" + "%02d".format(java.util.Locale.ROOT, m)
     if (bangla) {
-        val period = when (h) { in 5..11 -> "সকাল "; 12 -> "দুপুর "; in 13..21 -> ""; else -> "রাত " }
-        period + body
+        val period = when (h) { in 5..11 -> PeriodOfDay.MORNING; 12 -> PeriodOfDay.NOON; in 13..21 -> null; else -> PeriodOfDay.NIGHT }
+        (period?.let { periodWord(it) + " " } ?: "") + body
     } else body + if (h < 12) " AM" else " PM"
 }.getOrDefault(hhmm)
 
@@ -594,6 +597,7 @@ private fun StatusBox(text: String, icon: ImageVector, color: Color, tag: String
 private fun AmoStatusRow(state: AttendanceState, checkoutAtLabel: String, checkOutPhase: Boolean, dayComplete: Boolean, srLabels: Boolean, onIn: () -> Unit, onOut: () -> Unit) {
     val look = LocalAronLook.current
     val bangla = LocalAppLanguage.current == AppLanguage.BN
+    val morning = stringResource(R.string.att_period_morning); val noon = stringResource(R.string.att_period_noon); val night = stringResource(R.string.att_period_night)
     val green = look.primaryStart ?: DoneGreen
     val red = look.stopFill ?: DoneRed
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -611,7 +615,7 @@ private fun AmoStatusRow(state: AttendanceState, checkoutAtLabel: String, checkO
                     // the time has passed: something else holds check-out (Sales Submit first, a busy flow); the notice above says what
                     stringResource(R.string.att_check_out), AronIcons.Logout, {}, AttendanceTags.CHECK_OUT, enabled = false, enabledColors = listOf(red, red), modifier = Modifier.weight(1f),
                 ) else StatusBox(
-                    stringResource(R.string.att_amo_out_after, localizedDigits(checkoutAfterLabel(checkoutAtLabel, bangla))), AronIcons.Warning, if (look.sunlight) look.ink else WaitOrange,
+                    stringResource(R.string.att_amo_out_after, localizedDigits(checkoutAfterLabel(checkoutAtLabel, bangla) { when (it) { PeriodOfDay.MORNING -> morning; PeriodOfDay.NOON -> noon; PeriodOfDay.NIGHT -> night } })), AronIcons.Warning, if (look.sunlight) look.ink else WaitOrange,
                     AttendanceTags.CHECK_OUT, Modifier.weight(1f),
                 )
             }
