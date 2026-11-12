@@ -165,8 +165,8 @@ class LoyaltyPortalV0158Test {
             assertEquals("23514", c.refused("UPDATE app.programme SET status = 'active' WHERE id = $p"), "inactive -> active")
             c.exec("UPDATE app.programme SET external_ref = 'EXT-1' WHERE id = $p")           // other columns stay editable
             // the current version must belong to the same programme (composite foreign key)
-            val other = c.programme("LC2"); val ov = c.version(other, 1, "c0ffee00-0000-4000-8000-0000000a0504")
-            assertEquals("23503", c.refused("UPDATE app.programme SET current_version_id = $ov WHERE id = $p"), "a version of another programme")
+            val draft = c.programme("LC3"); val other = c.programme("LC2"); val ov = c.version(other, 1, "c0ffee00-0000-4000-8000-0000000a0504")
+            assertEquals("23503", c.refused("UPDATE app.programme SET current_version_id = $ov WHERE id = $draft"), "a version of another programme")
             // a legacy active programme (no version yet) may take its first version
             val legacy = c.programme("LEG1", "active"); val lv = c.version(legacy, 1, "c0ffee00-0000-4000-8000-0000000a0503")
             c.exec("UPDATE app.programme SET current_version_id = $lv WHERE id = $legacy")

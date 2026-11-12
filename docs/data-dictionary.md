@@ -270,7 +270,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_offer_version`](#dwv_offer_version) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per immutable offer version with its rule, validity, reward and the product and scope rows as JSON arrays (empty scope = everywhere). is_effective = the current version of an active offer. |
 | [`dw.v_outlet_masked`](#dwv_outlet_masked) | view | backend:masterdata | ONLINE | master | none | Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107). |
 | [`dw.v_outlet_sku_daily`](#dwv_outlet_sku_daily) | view | worker | SERVER | event_fact | none | Stable view: quantity sold and memo count per outlet, SKU and business date (dw.agg_daily_outlet_sku). is_effective = true. |
-| [`dw.v_programme`](#dwv_programme) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per loyalty programme (app.programme: Diamond League, Astha, campaign, Superstar) with the definition of its current version and its tiers as a JSON array. The portal exists; the field does not use it (no points earned or redeemed, bundle programmes null, docs/27). is_effective = status active. |
+| [`dw.v_programme`](#dwv_programme) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per loyalty programme (app.programme: Diamond League, Astha, campaign, Superstar) with its definition and its tiers as a JSON array. The name, period and window are the columns of app.programme, which the portal copies from the current version in the same transaction while the programme is a draft (never edited afterwards); the tiers are those of the current version. The portal exists; the field does not use it (no points earned or redeemed, bundle programmes null, docs/27). is_effective = status active. |
 | [`dw.v_programme_version`](#dwv_programme_version) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per immutable programme version with its window, rules, tiers, products and scope as JSON arrays (empty products or scope = everything). is_effective = the current version of an active programme. |
 | [`dw.v_route_day`](#dwv_route_day) | view | worker | SERVER | event_fact | none | Stable view: one row per route and business date (dw.agg_daily_route) with the zone-day flags derived per route (target route, successful login, sales submitted) and the Final Submit of the zone the route-day was stamped with; summing over a caller's routes gives the route-scoped dashboard totals. is_effective = true. |
 | [`dw.v_route_day_channel`](#dwv_route_day_channel) | view | worker | SERVER | event_fact | none | Stable view: active memos, outlets sold to, gross and net per route, business date and the outlet channel frozen on the memo at capture (dw.fact_memo, app.memo.outlet_channel); follows the route that sold, never a later outlet move. is_effective = true. |
@@ -3305,7 +3305,7 @@ Loyalty programme definition (Diamond League month, Astha quarter, campaign, Sup
 
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
-References: `FOREIGN KEY (current_version_id) REFERENCES app.programme_version(id)`
+References: `FOREIGN KEY (id, current_version_id) REFERENCES app.programme_version(programme_id, id)`
 
 ## app.programme_enrolment
 
@@ -3401,7 +3401,7 @@ One immutable version of a loyalty programme's definition (names, period, dates,
 | `created_at` | timestamp with time zone | not null |  | UTC instant the version was made. |
 | `created_by` | bigint | null |  | User (app.app_user) who made the version. |
 
-Keys: `UNIQUE (programme_id, version_no)`; `UNIQUE (request_uuid)`; `PRIMARY KEY (id)`
+Keys: `UNIQUE (programme_id, id)`; `UNIQUE (programme_id, version_no)`; `UNIQUE (request_uuid)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (created_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`
 
@@ -7200,7 +7200,7 @@ Stable view: quantity sold and memo count per outlet, SKU and business date (dw.
 
 ## dw.v_programme
 
-Stable view: one row per loyalty programme (app.programme: Diamond League, Astha, campaign, Superstar) with the definition of its current version and its tiers as a JSON array. The portal exists; the field does not use it (no points earned or redeemed, bundle programmes null, docs/27). is_effective = status active.
+Stable view: one row per loyalty programme (app.programme: Diamond League, Astha, campaign, Superstar) with its definition and its tiers as a JSON array. The name, period and window are the columns of app.programme, which the portal copies from the current version in the same transaction while the programme is a draft (never edited afterwards); the tiers are those of the current version. The portal exists; the field does not use it (no points earned or redeemed, bundle programmes null, docs/27). is_effective = status active.
 
 `owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · view
 
@@ -7212,7 +7212,7 @@ Stable view: one row per loyalty programme (app.programme: Diamond League, Astha
 | `status` | text | null |  | Lifecycle status: draft, active or inactive (Ended in the portal). |
 | `current_version_id` | bigint | null |  | Programme version (app.programme_version.id) in force; null for programmes made before the portal. |
 | `current_version_no` | integer | null |  | Version number of the current version, from 1; null when there is none. |
-| `name_en` | text | null |  | English name of the programme (current definition). |
+| `name_en` | text | null |  | English name of the programme (app.programme, copied from the current version by the portal). |
 | `name_bn` | text | null |  | Bangla name; null when none. |
 | `period_label` | text | null |  | Period label such as 2026-10 or 2026-Q4; null when none. |
 | `active_from` | date | null |  | First business date (Asia/Dhaka) of the programme window. |
