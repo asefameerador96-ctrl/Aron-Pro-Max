@@ -27,7 +27,6 @@ class AggregationWorker(
     private val lease: Duration = Duration.ofMinutes(2),
     private val config: com.aktcl.aron.backend.platform.ServerConfig? = null,
     private val gapGrace: Duration = Duration.ofSeconds(60),
-    private val waitWarnEvery: Duration = Duration.ofMinutes(5),
 ) {
     /** Test seam: runs inside the rebuild transaction, just before the key is released. */
     internal var beforeRelease: (kind: String, subject: Long, date: LocalDate) -> Unit = { _, _, _ -> }
@@ -268,39 +267,18 @@ class AggregationWorker(
         ).bind("from", today.minusDays(maxDays.toLong())).mapTo(Int::class.java).one()
     }
 
-    @Volatile private var schemaReady = false
-    private var waitingSince: Instant? = null
-    private var lastWarn: Instant? = null
-    /** Test seam: WARN lines written while waiting. */
-    internal var waitWarns = 0
+    /** Test seam: the pass body. */
+    internal var passBody: () -> Unit = { rebuildOnce(ASWAS_MARKER); refreshDimensionsIfDue(); runUntilIdle(); reconcileIfDue() }
 
     /**
-     * True once no migration is pending or failed (then cached: a worker revision only ever sees a newer schema while it runs). A false answer or an
-     * error from the check skips the pass, so the first pass never reads half-migrated tables while the migrate job of the same deploy still runs.
-     * The wait is bounded in what it hides, not in length: one INFO when it starts, then one WARN every [waitWarnEvery] while migrations stay
-     * pending or failed (never an ERROR per pass), so a stuck deploy is visible and the worker is never silently idle.
+     * One loop pass. A failure is logged at ERROR with what a diagnosis needs and nothing that can carry data: the exception class, the classes of
+     * the cause chain, the SQLState of an SQLException (a code), and the stack frames (class, method, file, line), never an exception message.
+     * Only an Exception is caught: an Error propagates; an interrupt restores the flag and ends the pass quietly.
      */
-    internal fun migrationsSettled(pending: () -> Int = { com.aktcl.aron.backend.platform.Migrator.pendingOrFailed(db.write) }): Boolean {
-        if (schemaReady) return true
-        val now = clock.now()
-        val n = runCatching(pending).getOrNull()
-        if (n == 0) { schemaReady = true; waitingSince?.let { log.info("aggregation worker: schema settled after {} s", Duration.between(it, now).seconds) }; return true }
-        val since = waitingSince
-        if (since == null) {
-            waitingSince = now; lastWarn = now
-            log.info("aggregation worker waits for migrations ({})", n?.let { "$it pending or failed" } ?: "schema check failed")
-        } else if (Duration.between(lastWarn, now) >= waitWarnEvery) {
-            lastWarn = now; waitWarns++
-            log.warn("aggregation worker still waiting for migrations after {} s ({})", Duration.between(since, now).seconds, n?.let { "$it pending or failed" } ?: "schema check failed")
-        }
-        return false
-    }
-
-    /** One loop pass; a failure is logged with the exception classes only (a message can carry data). */
     internal fun pass() {
-        if (!migrationsSettled()) return
-        runCatching { rebuildOnce(ASWAS_MARKER); refreshDimensionsIfDue(); runUntilIdle(); reconcileIfDue() }
-            .onFailure { log.error("aggregation pass failed: {} (cause {})", it.javaClass.name, it.cause?.javaClass?.name ?: "none") }
+        try { passBody() }
+        catch (e: InterruptedException) { Thread.currentThread().interrupt() }
+        catch (e: Exception) { log.error("aggregation pass failed: {}", scrubbed(e)) }
     }
 
     /** Background loop for the `worker` role: poll every [interval] (default 5 s keeps the 60 s freshness goal with room). */
@@ -339,4 +317,12 @@ class AggregationWorker(
     private fun threshold(): Int = runCatching { config?.int("cfg.geo.suspicious_score_threshold") }.getOrNull() ?: Aggregator.DEFAULT_SUSPICIOUS_THRESHOLD
 
     companion object { const val CONSUMER = "dw-projector"; const val RECONCILE_CONSUMER = "dw-reconcile"; const val MAX_ATTEMPTS = 8; private const val BACKOFF_BASE_SECONDS = 5; private const val BACKOFF_CAP_SECONDS = 900; const val ASWAS_MARKER = "dw-rebuild-aswas-1"; private const val MAX_TRACKED_GAP = 10_000L }
+}
+
+/** Class names, SQLStates and stack frames of [t] and its cause chain: no message, so nothing a row could have put into one. */
+internal fun scrubbed(t: Throwable): String {
+    val chain = generateSequence(t) { it.cause }.take(8).toList()
+    val states = chain.mapNotNull { (it as? java.sql.SQLException)?.sqlState }
+    val frames = chain.last().stackTrace.take(12).joinToString(" <- ")
+    return "class=${t.javaClass.name} causes=${chain.drop(1).joinToString(">") { it.javaClass.name }.ifEmpty { "none" }} sqlstate=${states.firstOrNull() ?: "none"} frames=$frames"
 }

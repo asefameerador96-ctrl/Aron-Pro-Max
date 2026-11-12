@@ -81,7 +81,9 @@ internal fun adminBad(pointer: String, code: String = "invalid_value"): Nothing 
  */
 internal inline fun <T> atElement(prefix: String, block: () -> T): T = try { block() } catch (e: ApiProblem) {
     if (e.errors.none { it.pointer.startsWith("body.") && '[' !in it.pointer }) throw e
-    throw ApiProblem(e.code, e.detail, e.errors.map { if (it.pointer.startsWith("body.") && '[' !in it.pointer) it.copy(pointer = prefix + it.pointer.removePrefix("body")) else it }, e.retryAfterS, e.context, e.headers, e)
+    val errors = e.errors.map { if (it.pointer.startsWith("body.") && '[' !in it.pointer) it.copy(pointer = prefix + it.pointer.removePrefix("body")) else it }
+    val detail = e.errors.firstOrNull()?.pointer?.let { old -> e.detail?.replace(old, errors.first().pointer) } ?: e.detail
+    throw ApiProblem(e.code, detail, errors, e.retryAfterS, e.context, e.headers, e)
 }
 
 internal fun ApplicationCall.masterReader(): AronPrincipal = principal.also { if (it.role !in MASTER_READERS) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "products and prices are not available to this role") }
