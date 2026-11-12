@@ -76,7 +76,7 @@ class SrUpdateUiTest {
     @Test fun downloadingShowsTheBarThePercentAndTheRedWarningAndNoDownloadButton() {
         show(AppLanguage.EN, download = DownloadUi.Downloading(24))
         rule.onNodeWithTag(SrUpdateTags.PROGRESS).assertIsDisplayed()
-        rule.onNodeWithText("Downloading 24%").assertExists()
+        rule.onNodeWithText("Downloading 24%").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag(SrUpdateTags.WARNING).assertExists()
         rule.onNodeWithText("Please do not close the app while downloading").assertExists()
         rule.onNodeWithTag(UpdateTags.DOWNLOAD).assertDoesNotExist()
@@ -86,7 +86,7 @@ class SrUpdateUiTest {
 
     @Test @Config(qualifiers = "bn") fun downloadingOnABanglaPhoneKeepsTheScreenshotsEnglishAndLatinDigits() {
         show(AppLanguage.BN, download = DownloadUi.Downloading(24))
-        rule.onNodeWithText("Downloading 24%").assertExists()
+        rule.onNodeWithText("Downloading 24%").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Please do not close the app while downloading").assertExists()
     }
 

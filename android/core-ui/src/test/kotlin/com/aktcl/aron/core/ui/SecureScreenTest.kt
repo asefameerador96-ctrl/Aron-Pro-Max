@@ -39,4 +39,17 @@ class SecureScreenTest {
         rule.waitForIdle()
         assertEquals(WindowManager.LayoutParams.FLAG_SECURE, secure())
     }
+
+    @Test fun twoOverlappingHoldersKeepTheFlagUntilTheLastLeaves() {
+        var first by mutableStateOf(true)
+        var second by mutableStateOf(true)
+        rule.setContent { if (first) SecureScreen(); if (second) SecureScreen() }
+        rule.waitForIdle()
+        first = false
+        rule.waitForIdle()
+        assertEquals(WindowManager.LayoutParams.FLAG_SECURE, secure()) // the second still shows
+        second = false
+        rule.waitForIdle()
+        assertEquals(0, secure())
+    }
 }

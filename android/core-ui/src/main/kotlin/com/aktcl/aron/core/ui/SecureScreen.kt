@@ -18,9 +18,28 @@ fun SecureScreen() {
     val context = LocalContext.current
     DisposableEffect(context) {
         val window = context.findActivity()?.window
-        val had = window != null && (window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE) != 0
-        window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        onDispose { if (!had) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+        if (window != null) SecureHolders.acquire(window)
+        onDispose { if (window != null) SecureHolders.release(window) }
+    }
+}
+
+/** Reference count per window: two screens that overlap (a transition) keep the flag until the last one leaves. Main thread only. */
+private object SecureHolders {
+    private class Hold(var count: Int, val wasSecure: Boolean)
+    private val holds = java.util.WeakHashMap<android.view.Window, Hold>()
+
+    fun acquire(window: android.view.Window) {
+        val hold = holds[window]
+        if (hold != null) { hold.count++; return }
+        holds[window] = Hold(1, (window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE) != 0)
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
+
+    fun release(window: android.view.Window) {
+        val hold = holds[window] ?: return
+        if (--hold.count > 0) return
+        holds.remove(window)
+        if (!hold.wasSecure) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 }
 
