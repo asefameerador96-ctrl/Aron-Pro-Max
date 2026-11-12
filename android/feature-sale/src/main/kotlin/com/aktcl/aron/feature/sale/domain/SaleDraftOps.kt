@@ -15,7 +15,7 @@ object SaleDraftOps {
         var qc = if (qtyEntered == 0L) d.qc.filterNot { it.skuId == skuId } else d.qc
         // a QC-only sale (D-18) had QC on SKUs with no line; once a line is sold the rows follow the lines again
         if (d.zeroSale && lines.isNotEmpty()) qc = qc.filter { q -> lines.any { it.skuId == q.skuId } }
-        return d.copy(lines = lines, qc = qc, zeroSale = if (lines.isNotEmpty()) false else d.zeroSale)
+        return d.copy(lines = lines, qc = qc, zeroSale = if (lines.isNotEmpty()) false else d.zeroSale, zeroReasonCode = if (lines.isNotEmpty()) null else d.zeroReasonCode)
     }
 
     fun setSlide(d: SaleDraft, skuId: Long, emptyPackets: Long): SaleDraft {
@@ -42,9 +42,10 @@ object SaleDraftOps {
     }
 
     /** Proceed with no SKU: the SR confirms a zero sale (F-SR-029). Refused when lines exist. */
-    fun confirmZeroSale(d: SaleDraft): SaleDraft {
+    fun confirmZeroSale(d: SaleDraft, reasonCode: String? = null): SaleDraft {
         check(d.lines.isEmpty()) { "a zero sale has no lines" }
-        return d.copy(zeroSale = true, paidMtk = null)
+        require(reasonCode == null || ZeroSaleReason.isKnown(reasonCode)) { "unknown zero-sale reason" }
+        return d.copy(zeroSale = true, paidMtk = null, zeroReasonCode = reasonCode)
     }
 
     /**
@@ -57,7 +58,7 @@ object SaleDraftOps {
     /** Cancel on the QC-only path: back to an untouched entry, the zero sale the rep never confirmed is not left behind. */
     fun cancelQcOnly(d: SaleDraft): SaleDraft {
         check(!d.qcCompleted) { "QC is locked once completed" }
-        return if (d.lines.isEmpty()) d.copy(zeroSale = false, qc = emptyList()) else d
+        return if (d.lines.isEmpty()) d.copy(zeroSale = false, zeroReasonCode = null, qc = emptyList()) else d
     }
 
     /** Puts back the QC rows saved when the QC screen opened (Cancel discards what was typed since). */

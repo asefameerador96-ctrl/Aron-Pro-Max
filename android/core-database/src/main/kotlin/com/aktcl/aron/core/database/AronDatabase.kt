@@ -43,7 +43,7 @@ import com.aktcl.aron.core.database.entity.VisitEntity
  * a Migration with a test, and destructive migration is never enabled.
  */
 @Database(
-    version = 8,
+    version = 9,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), // v2 (F-SYS-006): price, config_value, bundle_section
@@ -53,6 +53,7 @@ import com.aktcl.aron.core.database.entity.VisitEntity
         AutoMigration(from = 5, to = 6), // v6 (F-AMO): amo_record, the AMO's own records (assessments, distribution, verifications, tasks, reviews)
         AutoMigration(from = 6, to = 7), // v7: purged_uuid, the tombstones that stop a replay of a purged record from being captured again
         AutoMigration(from = 7, to = 8), // v8 (PARITY-SPEC s2.6): sku.image_asset_id, the pack picture of the bundle
+        AutoMigration(from = 8, to = 9), // v9 (SRM-B-44): cluster_create, the clusters an SR created on the phone (local only until the contract record exists)
     ],
     entities = [
         RouteEntity::class, OutletEntity::class, SkuEntity::class,
@@ -66,7 +67,7 @@ import com.aktcl.aron.core.database.entity.VisitEntity
         com.aktcl.aron.core.database.entity.ContentItemEntity::class, com.aktcl.aron.core.database.entity.OutletContentAssignmentEntity::class,
         com.aktcl.aron.core.database.entity.SurveyEntity::class, com.aktcl.aron.core.database.entity.SurveyQuestionEntity::class,
         com.aktcl.aron.core.database.entity.ContentViewEntity::class, com.aktcl.aron.core.database.entity.SurveyResponseEntity::class,
-        com.aktcl.aron.core.database.entity.AmoRecordEntity::class, com.aktcl.aron.core.database.entity.PurgedUuidEntity::class,
+        com.aktcl.aron.core.database.entity.AmoRecordEntity::class, com.aktcl.aron.core.database.entity.PurgedUuidEntity::class, com.aktcl.aron.core.database.entity.ClusterCreateEntity::class,
     ],
 )
 abstract class AronDatabase : RoomDatabase() {
@@ -80,7 +81,7 @@ abstract class AronDatabase : RoomDatabase() {
         val DEVICE_TABLES: List<String> = listOf(
             "geo_fix", "attendance_event", "stock_movement", "visit", "visit_close", "memo", "memo_line", "memo_discount", "qc_line",
             "due_collection", "visit_skip", "day_submit", "outlet_change_request", "task_event", "print_event",
-            "content_view", "survey_response",
+            "content_view", "survey_response", "cluster_create",
         )
 
         fun fileName(userId: Long): String {

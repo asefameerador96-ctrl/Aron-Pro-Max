@@ -28,11 +28,11 @@ import org.robolectric.annotation.Config
 class SrStatusBoxesTest {
     @get:Rule val compose = createComposeRule()
 
-    private fun render(language: AppLanguage, state: AttendanceState, onOut: () -> Unit = {}) {
+    private fun render(language: AppLanguage, state: AttendanceState, onOut: () -> Unit = {}, label: String = "17:00") {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         compose.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
-                AronTheme(language) { AttendanceContent(state, "17:00", {}, onOut, nowIso = { "2026-11-12T11:47:00.000Z" }, statusBoxes = true) }
+                AronTheme(language) { AttendanceContent(state, label, {}, onOut, nowIso = { "2026-11-12T11:47:00.000Z" }, statusBoxes = true) }
             }
         }
         compose.waitForIdle()
@@ -71,6 +71,16 @@ class SrStatusBoxesTest {
         compose.onNodeWithText("চেক ইন সম্পন্ন হয়েছে").assertExists()
         compose.onNodeWithText("চেক আউট সম্পন্ন হয়েছে").assertExists()
         compose.onNodeWithText("আপনি আজকের জন্য চেক ইন এবং চেক আউট সম্পন্ন করেছেন। সহযোগিতার জন্য ধন্যবাদ।").assertExists()
+    }
+
+    @Test fun noonAndMidnightReadDifferentlyInTheAmberBoxInBangla() {
+        render(AppLanguage.BN, checkedIn, label = "12:00")
+        compose.onNodeWithText("চেক আউট দুপুর ১২টার পরে সক্রিয় হবে").assertExists()
+    }
+
+    @Test fun eveningHoursCarryTheirWordInTheAmberBoxInBangla() {
+        render(AppLanguage.BN, checkedIn, label = "19:00")
+        compose.onNodeWithText("চেক আউট সন্ধ্যা ৭টার পরে সক্রিয় হবে").assertExists()
     }
 
     @Test fun englishLabels() {

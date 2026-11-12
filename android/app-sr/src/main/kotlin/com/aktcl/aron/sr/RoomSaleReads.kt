@@ -21,6 +21,7 @@ import com.aktcl.aron.feature.memo.domain.SummaryMemo
 import com.aktcl.aron.feature.memo.domain.SummarySku
 import com.aktcl.aron.feature.memo.ui.RoomMemoStore
 import com.aktcl.aron.feature.sale.domain.SaleSku
+import com.aktcl.aron.rules.JourneyCallInput
 import com.aktcl.aron.rules.EntrySpec
 import com.aktcl.aron.rules.EntryUnits
 import com.aktcl.aron.feature.stock.StockTracker
@@ -72,18 +73,18 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
         fun rows(perSku: Map<Long, Long>): List<CategoryQty> {
             // one row per category and unit word; the base total of a category is the sum of its rows (different units are never added)
             val out = LinkedHashMap<Pair<String, String>, LongArray>()
+            val other = ArrayList<CategoryQty>()
             for ((id, q) in perSku.toSortedMap()) {
                 val k = skus[id]
-                if (k == null) { // no master row: counted under "other" in base units, never dropped
-                    val acc = out.getOrPut(OTHER_CATEGORY to "") { LongArray(3) }
-                    acc[0] += q; acc[1] += q
+                if (k == null) { // no master row: its own "other" row in base units (units unknown, so never added to another SKU), never dropped
+                    other += CategoryQty(OTHER_CATEGORY, q, q, "", 0L, id)
                     continue
                 }
                 val spec = EntryUnits.resolve(k.baseUnit, k.basePerPack, k.entryUnitDefault)
                 val acc = out.getOrPut(k.categoryCode to EntryUnits.labelKey(k.categoryCode, spec.unit)) { LongArray(3) }
                 acc[0] += q; acc[1] += spec.fromBase(q); acc[2] += spec.remainderBase(q)
             }
-            return out.map { (key, v) -> CategoryQty(key.first, v[0], v[1], key.second, v[2]) }
+            return out.map { (key, v) -> CategoryQty(key.first, v[0], v[1], key.second, v[2]) } + other
         }
         val stock = StockTracker.of(db, date)
         val memos = store.memos(date)
@@ -106,6 +107,37 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
         val planned = outlets.mapIndexed { i, o -> PlannedOutlet(o.outletId, o.name, o.visitSequence ?: (i + 1)) }
         return JourneyBuilder.build(planned, visits)
     }
+
+    /**
+     * Today's calls for the Sales Journey (SRM-B-82), from the stored visit, visit_close and memo rows whether synced or not, by the
+     * server's own tests (`getTeamJourney`): every `sr_call` visit (abandoned ones too); sold = an ACTIVE memo of kind `sale` (a
+     * zero-sale or QC-only memo is not a sale; a superseded memo is not active); edited = an active memo that supersedes another, or a
+     * memo that an active edit superseded. The base point is the outlet's own (SRM-B-84 default), else the point the visit stored.
+     */
+    suspend fun journeyCalls(date: String): List<SalesJourneyOutletCall> {
+        val closes = dao.visitClosesOn(date).associateBy { it.visitClientUuid }
+        val memos = dao.memosOn(date)
+        val superseded = memos.mapNotNull { it.supersedesClientUuid }.toSet()
+        val active = memos.filter { it.clientUuid !in superseded }
+        val soldVisits = active.filter { it.memoKind == "sale" }.map { it.visitClientUuid }.toSet()
+        val editedVisits = (active.filter { it.supersedesClientUuid != null } + memos.filter { it.clientUuid in superseded }).map { it.visitClientUuid }.toSet()
+        val refs = db.referenceDao()
+        val cache = HashMap<Long, OutletEntity?>()
+        return dao.visitsOn(date).filter { it.visitKind == "sr_call" }.mapNotNull { v ->
+            val opened = parseMs(v.openedAt) ?: return@mapNotNull null
+            val close = closes[v.clientUuid]
+            val o = cache.getOrPut(v.outletId) { refs.outlet(v.outletId) }
+            SalesJourneyOutletCall(
+                JourneyCallInput(
+                    v.clientUuid, v.outletId, opened, close?.let { parseMs(it.endedAt) }, o?.lat ?: v.geoOutletLat, o?.lng ?: v.geoOutletLng,
+                    v.clientUuid in soldVisits, v.clientUuid in editedVisits,
+                ),
+                o,
+            )
+        }
+    }
+
+    private fun parseMs(iso: String): Long? = try { java.time.Instant.parse(iso).toEpochMilli() } catch (_: java.time.format.DateTimeParseException) { null }
 
     /**
      * Cigarette and bidi packets sold today (the Home sales panel headline, packets since docs/34 s4.2): sold quantities of the same
@@ -138,3 +170,6 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
 
     private companion object { val PACKET_CATEGORIES = setOf("cigarette", "bidi") }
 }
+
+/** A stored call with its outlet row (null when the outlet is no longer in the local bundle). */
+data class SalesJourneyOutletCall(val input: JourneyCallInput, val outlet: OutletEntity?)

@@ -1,121 +1,29 @@
 // Loyalty programmes (portal-loyalty-web, D-LOY-WEB-01). Pure logic, no I/O: the role matrix (one place), exact decimal and integer
 // helpers (BigInt, never a float: STD targets are Decimal3 strings, points are integers, money is integer milli-taka text), the
-// form checks and the mapping from the form to the wire bodies. Wire shapes are the contract 1.12.2 programme/gift shapes plus the
-// members the brief's API sketch adds for 1.13.0 (marked ASSUMED in D-LOY-WEB-01); they are typed here until the contract lands.
-import type { Role } from "@/contract/types";
+// form checks and the mapping from the form to the wire bodies. Wire shapes are the generated contract 1.13.0 types (D-LOY-WEB-03).
+import type { Role, Schemas } from "@/contract/types";
 import { accessOf, type ModuleAccess, type ModuleGrants } from "./modules";
 import { displayUnit, type DisplayUnit } from "./offers";
 import { latinDigits } from "./taka";
 
-// ---------- wire types ----------
+// ---------- wire types (generated from contract 1.13.0: a drift fails tsc) ----------
 
-export const PROGRAMME_KINDS = ["astha", "diamond_league", "superstar", "campaign"] as const;
-export type ProgrammeKind = (typeof PROGRAMME_KINDS)[number];
-/** ASSUMED 1.13.0: `ProgrammeStatus` (draft, active, inactive) replaces `ActiveStatus` on Programme, as OfferStatus did. */
-export const PROGRAMME_STATUSES = ["draft", "active", "inactive"] as const;
-export type ProgrammeStatus = (typeof PROGRAMME_STATUSES)[number];
-/** Outlet channels the scope may name (brief s5; docs/34 s3). */
-export const CHANNELS = ["GT", "DCC", "Astha", "RCC", "MT", "HoReCa"] as const;
-export type Channel = (typeof CHANNELS)[number];
+export type Programme = Schemas["Programme"];
+export type ProgrammeVersion = Schemas["ProgrammeVersion"];
+export type ProgrammeWrite = Schemas["ProgrammeWrite"];
+export type ProgrammePatch = Schemas["ProgrammePatch"];
+export type Tier = Schemas["ProgrammeTier"];
+export type ScopeNode = Schemas["LoyaltyScopeNode"];
+export type Gift = Schemas["Gift"];
+export type GiftWrite = Schemas["GiftWrite"];
+export type GiftPatch = Schemas["GiftPatch"];
+export type Enrolment = Schemas["ProgrammeEnrolment"];
+export type ProgrammeKind = Schemas["ProgrammeKind"];
+export type ProgrammeStatus = Schemas["ProgrammeStatus"];
+export const PROGRAMME_KINDS = ["astha", "diamond_league", "superstar", "campaign"] as const satisfies readonly ProgrammeKind[];
+export const PROGRAMME_STATUSES = ["draft", "active", "inactive"] as const satisfies readonly ProgrammeStatus[];
 /** Q1 default: thresholds are STD as stored. */
 export type ThresholdBasis = "std";
-
-export interface Tier {
-  tier_code: string;
-  label_en: string;
-  label_bn: string | null;
-  /** Decimal3 text (STD as stored) or null when the owner has not supplied a threshold (nothing is invented). */
-  threshold_value: string | null;
-  threshold_basis: ThresholdBasis;
-}
-export interface Programme {
-  programme_id: number;
-  kind: ProgrammeKind;
-  code: string;
-  name_en: string;
-  name_bn: string | null;
-  period_label: string | null;
-  active_from: string;
-  active_to: string;
-  points_expire_on?: string | null;
-  rules?: Record<string, string | number | boolean | null>;
-  status: ProgrammeStatus;
-  /** Row version: also the ETag for If-Match. */
-  version: number;
-  /** ASSUMED 1.13.0. */
-  version_no?: number;
-  tiers?: Tier[];
-  channels?: string[];
-  change_reason?: string | null;
-  created_at?: string;
-  updated_at?: string;
-}
-export interface ProgrammeVersion {
-  programme_version_id: number;
-  programme_id: number;
-  version_no: number;
-  is_current: boolean;
-  name_en: string;
-  name_bn: string | null;
-  active_from: string;
-  active_to: string;
-  tiers: Tier[];
-  channels: string[];
-  change_reason: string | null;
-  created_at: string;
-}
-export interface ProgrammeWrite {
-  request_uuid: string;
-  kind: ProgrammeKind;
-  code: string;
-  name_en: string;
-  name_bn: string | null;
-  period_label: string | null;
-  active_from: string;
-  active_to: string;
-  tiers: Tier[];
-  channels: string[];
-  change_reason: string;
-}
-export interface Gift {
-  gift_id: number;
-  programme_id: number;
-  code: string;
-  name_en: string;
-  name_bn: string | null;
-  points_cost: number | null;
-  tier_codes?: string[];
-  image_url?: string | null;
-  status: "active" | "inactive";
-  version: number;
-}
-export interface GiftWrite {
-  request_uuid: string;
-  programme_id: number;
-  code: string;
-  name_en: string;
-  name_bn: string | null;
-  points_cost: number | null;
-  tier_codes: string[];
-  status: "active" | "inactive";
-  change_reason: string;
-}
-export interface Enrolment {
-  programme_id: number;
-  outlet_id: number;
-  league_label?: string | null;
-  tier_code?: string | null;
-  base_target?: string | null;
-  valid_from: string;
-  valid_to?: string | null;
-}
-/** ASSUMED 1.13.0: GET /v1/admin/loyalty/programmes/{id}/progress. Targets and achievement are Decimal3 STD; points are integers. */
-export interface Progress {
-  tiers: { tier_code: string; enrolled_outlets: number; target_std: string; achieved_std: string }[];
-  points: { earned: number; redeemed: number; expiring: number };
-  /** Milli-taka per point, when the server states it (LoyaltyMath cash rate). Absent: no cash line is shown. */
-  cash_rate_mtk_per_point?: number | null;
-}
 
 // ---------- role matrix (one place) ----------
 
@@ -151,7 +59,7 @@ export const REASON_MAX = 500;
 export const PROGRAMME_CODE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/;
 export const TIER_CODE = /^[a-z][a-z0-9_]{1,40}$/;
 export const GIFT_CODE = /^[a-z][a-z0-9_]{1,40}$/;
-export const MAX_TIERS = 20;
+export const MAX_TIERS = 10; // contract: tiers maxItems 10, sort_order 1..10
 export const POINTS_MAX = 100_000;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -208,17 +116,16 @@ export interface LoyaltyForm {
   active_from: string;
   active_to: string;
   tiers: TierForm[];
-  channels: string[];
   reason: string;
 }
-export const emptyForm = (): LoyaltyForm => ({ kind: "astha", code: "", name_en: "", name_bn: "", period_label: "", active_from: "", active_to: "", tiers: [], channels: [], reason: "" });
+export const emptyForm = (): LoyaltyForm => ({ kind: "astha", code: "", name_en: "", name_bn: "", period_label: "", active_from: "", active_to: "", tiers: [], reason: "" });
 export const emptyTier = (): TierForm => ({ tier_code: "", label_en: "", label_bn: "", threshold: "" });
 
 export function formFromProgramme(p: Programme): LoyaltyForm {
   return {
     kind: p.kind, code: p.code, name_en: p.name_en, name_bn: p.name_bn ?? "", period_label: p.period_label ?? "", active_from: p.active_from, active_to: p.active_to,
-    tiers: (p.tiers ?? []).map((t) => ({ tier_code: t.tier_code, label_en: t.label_en, label_bn: t.label_bn ?? "", threshold: t.threshold_value === null ? "" : decimal3Text(parseDecimal3(t.threshold_value) ?? 0n) })),
-    channels: [...(p.channels ?? [])], reason: "",
+    tiers: [...(p.tiers ?? [])].sort((x, y) => x.sort_order - y.sort_order).map((t) => ({ tier_code: t.tier_code, label_en: t.label_en, label_bn: t.label_bn ?? "", threshold: t.threshold == null ? "" : decimal3Text(parseDecimal3(t.threshold) ?? 0n) })),
+    reason: "",
   };
 }
 
@@ -227,8 +134,9 @@ export interface FieldError { field: string; code: FieldErrorCode }
 const len = (s: string): number => Array.from(s.trim()).length;
 const isoDay = (s: string): boolean => DATE.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s);
 
-/** Shared checks of a create and an edit (the contract's patterns and lengths; thresholds rising by tier, brief s7). */
-export function validateForm(f: LoyaltyForm, mode: "create" | "edit", requestUuid: string): { errors: FieldError[]; body: ProgrammeWrite | null } {
+/** Shared checks of a create and an edit (the contract's patterns and lengths; thresholds rising by tier, brief s7). A create is a
+ *  ProgrammeWrite; an edit is a ProgrammePatch (kind and code never change; scope and qualifying are left out so they keep their value). */
+export function validateForm(f: LoyaltyForm, mode: "create" | "edit", requestUuid: string): { errors: FieldError[]; body: ProgrammeWrite | ProgrammePatch | null } {
   const errors: FieldError[] = [];
   const err = (field: string, code: FieldErrorCode) => errors.push({ field, code });
   const code = f.code.trim();
@@ -258,8 +166,8 @@ export function validateForm(f: LoyaltyForm, mode: "create" | "edit", requestUui
     else if (seen.has(tc)) err(k("tier_code"), "duplicate");
     seen.add(tc);
     if (!t.label_en.trim()) err(k("label_en"), "required");
-    else if (len(t.label_en) > 60) err(k("label_en"), "too_long");
-    if (len(t.label_bn) > 60) err(k("label_bn"), "too_long");
+    else if (len(t.label_en) > 80) err(k("label_en"), "too_long");
+    if (len(t.label_bn) > 80) err(k("label_bn"), "too_long");
     let value: bigint | null = null;
     if (t.threshold.trim()) {
       value = parseDecimal3(t.threshold);
@@ -267,16 +175,14 @@ export function validateForm(f: LoyaltyForm, mode: "create" | "edit", requestUui
       else if (last !== null && value <= last) err(k("threshold"), "not_rising");
       if (value !== null) last = value;
     }
-    tiers.push({ tier_code: tc, label_en: t.label_en.trim(), label_bn: t.label_bn.trim() ? t.label_bn.trim() : null, threshold_value: value === null ? null : decimal3Wire(value), threshold_basis: "std" });
+    tiers.push({ tier_code: tc, sort_order: i + 1, label_en: t.label_en.trim(), label_bn: t.label_bn.trim() ? t.label_bn.trim() : null, threshold: value === null ? null : decimal3Wire(value), threshold_basis: "std" });
   });
   if (errors.length > 0) return { errors, body: null };
-  return {
-    errors,
-    body: {
-      request_uuid: requestUuid, kind: f.kind, code, name_en: f.name_en.trim(), name_bn: f.name_bn.trim() ? f.name_bn.trim() : null, period_label: f.period_label.trim() ? f.period_label.trim() : null,
-      active_from: f.active_from, active_to: f.active_to, tiers, channels: [...f.channels], change_reason: f.reason.trim(),
-    },
+  const common = {
+    request_uuid: requestUuid, name_en: f.name_en.trim(), name_bn: f.name_bn.trim() ? f.name_bn.trim() : null, period_label: f.period_label.trim() ? f.period_label.trim() : null,
+    active_from: f.active_from, active_to: f.active_to, tiers, change_reason: f.reason.trim(),
   };
+  return { errors, body: mode === "create" ? { ...common, kind: f.kind, code } : common };
 }
 
 // ---------- gift form ----------
@@ -294,12 +200,13 @@ export function parsePoints(text: string): number | null | "invalid" {
   return n >= 1 && n <= POINTS_MAX ? n : "invalid";
 }
 
-export function validateGift(f: GiftForm, mode: "create" | "edit", requestUuid: string): { errors: FieldError[]; body: GiftWrite | null } {
+export function validateGift(f: GiftForm, mode: "create" | "edit", requestUuid: string): { errors: FieldError[]; body: GiftWrite | GiftPatch | null } {
   const errors: FieldError[] = [];
   const err = (field: string, code: FieldErrorCode) => errors.push({ field, code });
-  const pid = Number(f.programme_id);
-  if (!f.programme_id) err("programme_id", "required");
-  else if (!Number.isSafeInteger(pid) || pid < 1) err("programme_id", "invalid");
+  const pidText = latinDigits(f.programme_id.trim());
+  const pid = Number(pidText);
+  if (!pidText) err("programme_id", "required");
+  else if (!/^\d{1,15}$/.test(pidText) || pid < 1) err("programme_id", "invalid");
   const code = f.code.trim();
   if (mode === "create") {
     if (!code) err("code", "required");
@@ -315,10 +222,9 @@ export function validateGift(f: GiftForm, mode: "create" | "edit", requestUuid: 
   if (r < REASON_MIN) err("reason", "reason_short");
   else if (r > REASON_MAX) err("reason", "reason_long");
   if (errors.length > 0 || points === "invalid") return { errors, body: null };
-  return {
-    errors,
-    body: { request_uuid: requestUuid, programme_id: pid, code, name_en: f.name_en.trim(), name_bn: f.name_bn.trim() ? f.name_bn.trim() : null, points_cost: points, tier_codes: [...f.tier_codes], status: f.status, change_reason: f.reason.trim() },
-  };
+  const common = { request_uuid: requestUuid, name_en: f.name_en.trim(), name_bn: f.name_bn.trim() ? f.name_bn.trim() : null, points_cost: points, tier_codes: [...f.tier_codes], status: f.status, change_reason: f.reason.trim() };
+  // The code and the programme of a gift never change (GiftPatch is closed): an edit sends neither.
+  return { errors, body: mode === "create" ? { ...common, programme_id: pid, code } : common };
 }
 
 // ---------- enrolment form ----------

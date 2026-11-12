@@ -241,4 +241,48 @@ class TsoApiTest {
         assertEquals(4 * cards, seen.size)
         assertTrue(seen.takeLast(cards).all { it.body == """{"date":"2026-10-30"}""" })
     }
+
+    // ---- SR manual 04 (SRM-A-06): the Device OTP panel of the TSO's own zones ----
+
+    @Test fun theDeviceOtpListIsAGetWithOnlyALimitAndACursorNeverAScopeAndIsNeverKept() = runBlocking {
+        val dir = tmp.newFolder("otp")
+        val api = TsoApi(client(), dir)
+        assertTrue(api.deviceOtps() is TsoFetch.Fresh)
+        assertTrue(api.deviceOtps("c2") is TsoFetch.Fresh)
+        assertEquals(listOf("limit=50", "limit=50&cursor=c2"), seen.map { it.query })
+        assertTrue(seen.all { it.method == "GET" && it.path == "/v1/admin/device-otps" })
+        assertFalse(seen.any { it.query!!.contains("zone") || it.query!!.contains("scope") })
+        // a code is a secret: nothing is written to the cache folder, so offline there is nothing to show
+        assertTrue(dir.listFiles().orEmpty().isEmpty())
+        transportDown = true
+        assertTrue(api.deviceOtps() is TsoFetch.Unavailable)
+    }
+
+    @Test fun aRefusedListIsGoneAndNeverServesAnything() = runBlocking {
+        status["/v1/admin/device-otps"] = 403
+        assertTrue(TsoApi(client(), tmp.newFolder("otp")).deviceOtps() is TsoFetch.Gone)
+    }
+
+    @Test fun issuingPostsOnlyTheUserIdAndAReasonAndMapsTheAnswers() = runBlocking {
+        val api = TsoApi(client(), tmp.newFolder("otp"))
+        val body = com.aktcl.aron.feature.tso.deviceotp.TsoDeviceOtps.issueBody(12, "Issued by the TSO in the TSO app")
+        assertTrue(api.issueDeviceOtp(12, body) is TsoApi.IssueOtp.Issued)
+        val call = seen.single()
+        assertEquals("POST", call.method)
+        assertEquals("/v1/admin/device-otps", call.path)
+        assertEquals(body, call.body)
+        status["/v1/admin/device-otps"] = 403
+        assertTrue(api.issueDeviceOtp(12, body) is TsoApi.IssueOtp.Rejected)
+        status["/v1/admin/device-otps"] = 500
+        assertTrue(api.issueDeviceOtp(12, body) is TsoApi.IssueOtp.NoAnswer)
+        status.clear(); transportDown = true
+        assertTrue(api.issueDeviceOtp(12, body) is TsoApi.IssueOtp.NoAnswer)
+    }
+
+    @Test fun aSignedOutSessionIsNotNoConnectionForTheDeviceOtpReadOrIssue() = runBlocking {
+        val api = TsoApi(client(), tmp.newFolder("otp"))
+        status["/v1/admin/device-otps"] = 401
+        assertTrue(api.deviceOtps() is TsoFetch.Unauthorized)
+        assertTrue(api.issueDeviceOtp(12, com.aktcl.aron.feature.tso.deviceotp.TsoDeviceOtps.issueBody(12, "Issued by the TSO in the TSO app")) is TsoApi.IssueOtp.Unauthorized)
+    }
 }

@@ -5,7 +5,7 @@ package com.aktcl.aron.feature.dayclose
  * field unit of rule 5 ([entered] in [unitKey]: packet, box, dozen, stick or piece, plus [remBase] base units left over after whole units),
  * and the same quantity in base units ([qtyBase]; what the server stores and compares). Quantities of different categories are never added.
  */
-data class CategoryQty(val categoryCode: String, val qtyBase: Long, val entered: Long, val unitKey: String, val remBase: Long = 0L)
+data class CategoryQty(val categoryCode: String, val qtyBase: Long, val entered: Long, val unitKey: String, val remBase: Long = 0L, val skuId: Long? = null)
 
 /**
  * The five figures of the manual's table. [outletsVisited] counts distinct outlets (a revisit counts once); [sold], [stockIssued] and [qc]
@@ -35,7 +35,7 @@ enum class BusinessKey(val recordKey: String) {
 
 object BusinessCompare {
     /** Base-unit total per category of [rows]. */
-    private fun byCategory(rows: List<CategoryQty>): Map<String, Long> = rows.groupBy { it.categoryCode }.mapValues { (_, v) -> v.sumOf { it.qtyBase } }
+    private fun byCategory(rows: List<CategoryQty>): Map<String, Long> = rows.groupBy { it.categoryCode + (it.skuId?.let { id -> "#$id" } ?: "") }.mapValues { (_, v) -> v.sumOf { it.qtyBase } }
 
     /**
      * The compare rule of the count table (device ⊆ server, D-NIGHT-DAYCLOSE-01): the row is in sync when the server holds at least what

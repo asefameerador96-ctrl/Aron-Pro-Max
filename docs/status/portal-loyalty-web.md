@@ -1,5 +1,9 @@
 # Lane portal-loyalty-web (Lane L-B): status
 
+## Train 2 (D-LOY-WEB-03): aligned to contract 1.13.0
+
+INT ce9d92bf7 merged. All loyalty calls are typed from the generated contract (no `rawRequest`), the contract paths replace the sketch paths, getProgramme/getGift serve the detail, closed ProgrammeWrite/Patch and GiftWrite/Patch bodies are sent, the progress panel says "not available yet" (no operation in 1.13.0), the channel checkboxes are gone (scope nodes need ids: see the decision), the tso-integration exception and the `/v1/admin/loyalty/**` map line are gone, and the `loginOk` landing wait (D-LOY-WEB-02) is included. Gate numbers are in the train 2 report. The Not-done list below still holds for pickers, image upload, read views and report rebuilds; the "switch to typed apiClient" item is done.
+
 Branch `lane/portal-loyalty-web` from INT `claude/wonderful-thompson-k6ejnf` (f46f8047f). Records: `DECISIONS.md` D-LOY-WEB-01 and later.
 Spec: `docs/status/portal-loyalty-brief.md` (s5 v1 slice, s7 API sketch, s8 web sketch, s10 owner questions with the defaults applied).
 Pattern followed: `docs/status/portal-discount-web.md`. Contract on INT: 1.12.2 (1.13.0 of portal-loyalty-api not landed; assumed members listed in D-LOY-WEB-01).

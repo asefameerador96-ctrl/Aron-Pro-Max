@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt" android:width="48dp" android:height="48dp" android:viewportWidth="48" android:viewportHeight="48">
+<!-- Astha tile: a shield with a star, drawn here (the vendor raster logo is not copied). -->
+<path android:pathData="M24,4L40,10V23C40,33 33,41 24,44C15,41 8,33 8,23V10Z"><aapt:attr name="android:fillColor"><gradient android:type="linear" android:startX="6" android:startY="4" android:endX="42" android:endY="46"><item android:offset="0" android:color="#FFEC2D7E"/><item android:offset="0.5" android:color="#FF9B3BE0"/><item android:offset="1" android:color="#FF2F86F0"/></gradient></aapt:attr></path>
+<path android:fillColor="#FFFFFFFF" android:pathData="M24,14L26.9,20.2L33.5,21L28.6,25.6L29.9,32.2L24,29L18.1,32.2L19.4,25.6L14.5,21L21.1,20.2Z"/>
+</vector>

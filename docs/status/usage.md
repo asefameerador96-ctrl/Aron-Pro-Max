@@ -2846,3 +2846,142 @@
 
 ### 2026-11-12 09:54 UTC — GO train 100
 - Train 100 CI 43193498991 green on d6ede1843 (11 jobs: 5 ok, 6 skipped by path, 0 failed). INT still ab78d0d4b. GO sent to integrator 24: merge the train head only, expected DECISIONS 402, deploy skipped by design, report the signed APK.
+
+### 2026-11-12 09:57 UTC — train 100 on INT; train 101 built
+- Integrator 24 pushed train 100: INT `0b5eba27a` (tree-identical to d6ede1843 plus the train.md row; DECISIONS 402; 0 lost INT lines), INT ci 43195702644 running. S3, S5 told to merge INT and start their follow-ups; S4 told to merge INT, resolve SrSaleHosts.kt/SaleRoute.kt and fix the Save glyph.
+- Train 101 = INT 0b5eba27a + docs tip c2bd629d8 + L-A ffe9eee50, head `afe417965` on lane/lead-train101: code tree == L-A for backend/db/contract/shared/web, android untouched, migrations V0158..V0162 added only, DECISIONS 406 (402 + 4), 0 INT and 0 L-A lines missing, slices up to date, money-float 13/13, date-pin 0 new, gate unit tests OK, gitleaks clean. CI 43195921949 running. GO only after the train 100 INT run completes (one INT push per cycle). Real deploy expected; Flyway V0158..V0162 to prove via ops-diagnose.
+
+### 2026-11-12 10:10 UTC — train 100 LANDED
+- INT `0b5eba27a`: ci #2031 43195702644 success (5 ok, 6 skipped by path, no re-run); deploy #338 43197459595 skipped ("nothing deployable changed"); health build ab78d0d4b unchanged. APK of record: **aron-release-signed-dev-2031**, 41,630,189 bytes (contents and signature not inspected by the integrator). SR manual S3 and S5 are on INT; device walk pending (owner).
+- S4 merged head `df7e5a1a9` (INT merged, conflicts in SaleRoute.kt, SrSaleHosts.kt, strings, DECISIONS; Save and arrow glyph fix): static gate clean (DECISIONS 410; lane ci 43197100274); Opus merge gate wkb47jjm0 running.
+- S5 train 2 lows `457a1da95` reported; gate after S4 lands (it merges INT again).
+
+### 2026-11-12 10:12 UTC — S4 merge gate: resolution correct, stale goldens to re-record
+- S4 `df7e5a1a9` Opus merge gate wkb47jjm0 (11 agents): merge resolution correct (SaleRoute.kt, SrSaleHosts.kt carry both parents; one assist holder on Sale; strings union 145/145 and 91/91, no duplicates; 0 INT lines lost); glyph fix sound (white ink, about 15.5:1 in Sunlight). Blocking: the arrow change leaves 11 goldens stale under the 0.2% Roborazzi threshold (amo_sale_entry_bn + ten SR sale_* shots) and status line 64 is false. Asked: re-record exactly those, correct the line; then diff-only check and train. wt-s4 removed.
+- Kit finding taken by the lead: primary label on the Default ramp start (#D5484A under white) is 4.33:1 for an 18 sp bold label (below 4.5); pre-existing kit ramp from the owner's look (14a); to raise with the design tokens, not in a lane.
+
+### 2026-11-12 10:21 UTC — S4 golden fix verified; train 102 built
+- S4 `b92ce3b7b`: diff on df7e5a1a9 = 11 goldens + status file only (verified); my pixel diff of three of them (amo_sale_entry_bn, sale_bn_sunlight, sale_bn_packshots): same size, difference confined to one 16x14 box at the arrow. Lane ci on df7e5a1a9 green (43197100274); new run 43199383235 in progress.
+- Train 102 = train 101 head afe417965 + S4 b92ce3b7b (--no-ff, clean merge), head `30230e3cc` on lane/lead-train102: android == S4 android; backend/db/contract/web == train 101; DECISIONS 414 (406 + 8), 0 lines missing from either side, 0 markers; money-float 13/13, date-pin 0 new, gitleaks clean. GO only after train 101 has landed and deployed. Android-only on top of 101: deploy skipped by design; new APK of record expected.
+
+### 2026-11-12 10:37 UTC — GO train 101
+- Train 101 CI 43195921949 green on afe417965 (12 jobs ok). INT still 0b5eba27a (train 100 run complete). GO sent to integrator 24: train head only, expected DECISIONS 406, V0162 last, contract 1.13.0, real deploy.
+- S3 follow-up `bbcc5b99c` (assist moved to the VISIT frame) held until train 102 lands. S1 fix round `755a5cbaf`: static gate clean, merges on train 102 with only DECISIONS conflicting; Opus re-check wkky08qee running.
+
+### 2026-11-12 10:37 UTC — S1 round 2: code PASS, two false records
+- S1 `755a5cbaf` Opus re-check wkky08qee (8 agents): all nine first-pass items fixed in production code (skip link in every state, version footer, Later kept and AutoInstallGate once per release per process, guarded progress callback, FLAG_SECURE set and cleared, 401 message, wiring tests, bind call keeps cancellation); no OTP logged or saved. Blocking: two false records (OTP bar title language in D-SR-MAN-S1-01 (c); release-notes language in D-SR-MAN-S1-06). Asked: correct them, test count, restore one display assertion, overlapping SecureScreen test. Lands after train 102. wt-s1 removed.
+
+### 2026-11-12 10:43 UTC — train 101 pushed to INT; S1 ready
+- Integrator 24 pushed train 101: INT `ce9d92bf7` (tree-identical to afe417965 plus train.md; DECISIONS 406; V0158..V0162 added; contract 1.13.0), ci #2039 43202049384 running, real deploy expected.
+- S1 `129c335f7` (5 files on 755a5cbaf: records corrected, display assertion restored, SecureScreen ref-counted per window with an overlap test). I read the production change myself: count per window in a WeakHashMap, flag cleared only when the last holder leaves and only if the window was not secure before; correct. S1 is ready for the train after 102.
+
+### 2026-11-12 10:48 UTC — lane check (2-hourly)
+- INT `ce9d92bf7` (train 101), ci #2039 43202049384 running (no failure), deploy pending; health build still ab78d0d4b (expected until the deploy). Train 102 run 43199553152 running (no failure).
+- S2: its "checked efef6763e" (09:18) never reached me as a message; found by get_session (status: holding for the gate). Static gate clean (lane ci 43189430574 green; 9 home goldens re-recorded; one test renamed; DECISIONS 393); Opus pass w4fk7w464 launched (outlet requests/sync, journey/home math, tasks/shared/records). Base is ab78d0d4b: needs an INT merge after train 102.
+- SV: no branch on origin, idle since 09:27, context about 466 k (past the 450 k recycle mark). Nudged once: push WIP, write the handover status file, report.
+- L-B holding (aa81dfa47) for the 1.13.0 alignment list after train 101 deploys. S1 ready (129c335f7). S3 follow-up, S5 follow-up, S6 wait for train 102.
+- Usage: lane sessions report seven_day status "allowed_warning" (not "rejected"): pause stays lifted per D-LEAD-STALL-02; owner to be told in the evening report.
+
+### 2026-11-12 10:56 UTC — train 102 green; S1 pulled back (red repository gate); my gate gap closed
+- Train 102 CI 43199553152 green on 30230e3cc (12 jobs ok). GO waits for train 101 to deploy (INT run 43202049384 still in progress).
+- I pre-built train 103 = train 102 + S1 129c335f7 (head b648843b6) and my local money-float scan failed on it: DataUpdateScreens.kt:122 (progress fraction on a line naming `total`). S1's own lane CI was red on Repository gates for both heads (43200950181, 43202736576); I had not read the lane CI result before building. Train 103 run 43204583751 cancelled (my own branch). S1 told: rename the step counters (no allow entry, scan untouched), run the three gate scripts, report with the lane CI result.
+- Lead gate gap (mine): tools/sgate.sh did not run the money-float and date-pin scans on the lane head and I did not require a green lane CI before a train. Fixed: both scans now run in sgate.sh; rule added for myself: no train is built from a head whose lane CI is not green on Repository gates. Heads already landed are unaffected (trains 100, 101 and 102 ran the full CI green).
+
+### 2026-11-12 11:10 UTC — S2 Opus FAIL
+- S2 `efef6763e` Opus pass w4fk7w464 (24 agents): FAIL. Survivors: create-cluster stored only in SharedPreferences while the card says "Waiting to be sent"; change-information + cluster change saved in two transactions from a composition scope; success-dialog window where a recreate mints a new request uuid (double request); zero-sale call shown as New Sale (any memo counted as sold). Required with it: the phone/server journey rule is not identical (abandoned calls, leg rounding) and must not be claimed so; km double rounding; tasks per note 47; programme tiles gated on the config flags. Checked OK: payloads fit the server, GEO/mock/photo unchanged, Home order, STD math, no AMO/TSO regression. Fix-up sent; wt-s2 removed. Ruling recorded: S2 owns SRM-B-82..85 (Sales Journey); 86..90 to the KPI lane.
+
+### 2026-11-12 11:22 UTC — S1 green; train 103 rebuilt; deploy #339 running
+- S1 `93f5972fd`: step counters renamed (8 files, +27/-27; no allow entry, scan untouched); lane CI 43205492690 success incl. Repository gates; my local money-float 13/13 exit 0, date-pin 0 new, gate unit tests OK on the merged train.
+- Train 103 rebuilt = train 102 30230e3cc + S1 93f5972fd, head `f12c32707` on lane/lead-train103 (my own branch force-pushed): DECISIONS 426 (414 + 12), 0 lines missing from either side, gitleaks clean. CI 43208539789 running.
+- Train 101 INT ci #2039 43202049384 success; deploy #339 43207815739 running; health still ab78d0d4b. Watching.
+
+### 2026-11-12 11:38 UTC — train 101 DEPLOYED; GO train 102
+- Train 101: INT `ce9d92bf7` ci #2039 green, deploy #339 43207815739 success, health build ce9d92bf7 (read by me at 11:37:59 UTC). Flyway proof: ops-diagnose dispatched on INT (window 11:15 to 11:45, caj-aron-dev-migrate); a Haiku reader extracts the lines.
+- GO train 102 sent to integrator 24 (train head 30230e3cc, expected DECISIONS 414, deploy skipped by design).
+- L-B told to start its alignment round on 1.13.0 (seven items from the request file, typed paths, its held loginOk fix).
+- S2 fix round `f5522eb49`: static gate clean incl. the scans (Room v8 to v9, paired request transaction, request identity, journey rule per contract; DECISIONS 408); lane ci 43209036731 running; Opus re-check wkoahag0q running. It conflicts in code with trains 102/103 (SrSaleHosts.kt, strings): lane-side INT merge after they land.
+
+### 2026-11-12 11:40 UTC — train 102 on INT
+- Integrator 24 pushed train 102: INT `12f56c8bb` (DECISIONS 414, 0 lost lines; differs from the train head only by the two train.md rows), ci #2051 43210959546 running. S3, S5, S6 told to merge INT and report with gate script results and lane CI ids; S2 told to hold its push until the re-check result and prepare the merge.
+
+### 2026-11-12 11:43 UTC — Flyway proof for train 101; one worker error under watch
+- ops-diagnose run 43210886472 (read by a Haiku reader, 104 k tokens): migrate execution caj-aron-dev-migrate-i9m3ypf 11:24:24 to 11:24:41 UTC, "Current version of schema public: 0157", migrating to 0158, 0159, 0160, 0161, 0162, "Successfully applied 5 migrations to schema public, now at version v0162", exit code 0, no ERROR/FATAL in the migrate job. Integrator report: PITR point 11:22:19Z, smoke PASSED (login, route, outlet, sale 92000 mtk), APK aron-release-signed-dev-2039 (41,630,051 bytes).
+- One ERROR in the same log from the worker: "aron.analytics.worker aggregation pass failed" at 11:34:54 UTC, five seconds after the new worker revision (--0000188) started. Cause not visible in that excerpt. A second ops-diagnose (window 11:30 to 12:05) is dispatched and a Haiku reader will say whether it repeats and what the exception is. Not yet known whether it is a start-up one-off or tied to V0158..V0162.
+
+### 2026-11-12 11:44 UTC — S2 round 2: production fixes real, records + INT merge asked
+- S2 `f5522eb49` Opus re-check wkoahag0q (8 agents): overall PASS on code (Room v9 AutoMigration additive, schema json matches, no destructive fallback, AMO/TSO migrate the same way; pair in one transaction from the day scope; request identity survives recreate; sold = active sale memo; leg rounding equals AmoTeamReads). Records not yet true (three undeclared phone/server journey differences; D-SR-MAN-S2-01 still describes the old behaviour). Asked in one push: INT merge (train 102), records, small guards, a default-flags home golden. wt-s2 removed.
+
+### 2026-11-12 11:47 UTC — worker aggregation error: one-off at start-up
+- Second ops-diagnose (run 43211525557, Haiku reader 101 k tokens): exactly ONE "aggregation pass failed" at 11:34:54.937 UTC, about 20 s before the worker's own "aron worker started" line (11:35:13) on new revision --0000188; no further aron.* ERROR or WARN up to the query time (about 11:43); bundle pre-generation ran at 11:36:09 (coverage 100% of 4 users). The exception text is not in the excerpt (lines are cut at 200 chars).
+- My reading of the code: AggregationWorker.start schedules a pass every 5 seconds from delay 0 and logs this line on every failed pass (AggregationWorker.kt:273-275). One line in about eight minutes means later passes did not fail, so this was the first pass at start-up, not a failure caused by V0158..V0162 (which would repeat every 5 s). Cause of the one failed pass still unknown (not visible). Low: the diagnose excerpt should carry the exception class; note for the infra lane.
+
+### 2026-11-12 11:50 UTC — S5 follow-up read and accepted
+- S5 `9086c180b` (lows + INT 12f56c8bb merged, no conflicts): +53/-17 on INT in 12 files. Static gate clean incl. scans. I read the production diff myself (the final-diff pass for this small delta): survey numbering drops sub-questions of unsupported parents; unknown SKUs get one row each in base units and the compare is keyed per SKU; leftovers via core-ui remWithUnit; a test tag on the two-column row; strings submit_biz_other replaced by submit_biz_other_sku (lane-own key). Correct. Lows kept for its train 2: the "Other (SKU n)" line has no unit word and formats the id with digit grouping. Lane ci 43212463465 running; it rides the next train once green (batched with S3 / S6 if they are ready).
+
+### 2026-11-12 11:54 UTC — train 102 LANDED; GO train 103; S6 merge gate started
+- INT `12f56c8bb` ci #2051 43210959546 success (11 jobs: 5 ok, 6 skipped by path); deploy #340 43212804371 is the skip run; APK of record **aron-release-signed-dev-2051**, 41,731,551 bytes (S3 + S5 + S4 corrections; not walked on a device).
+- GO train 103 (S1, head f12c32707, CI 43208539789 green, expected DECISIONS 426) sent to integrator 24, to push once #340 completes.
+- S6 merged head `14071b794` (INT 12f56c8bb merged; conflicts in feature-sale strings, DECISIONS, SrApp.kt attendance call): static gate clean incl. scans (DECISIONS 415; 6 goldens re-recorded for its wording; lane ci 43212897003 running). Merge gate launched (Opus merge/code, Sonnet strings/goldens/records), worktree wt-s6.
+
+### 2026-11-12 11:56 UTC — train 103 on INT
+- Integrator 24: train 102 landed (deploy #340 skipped: "nothing deployable changed"; health ce9d92bf7); train 103 pushed: INT `3d2340b3a` (DECISIONS 426, 0 lost lines), ci #2054 43213228309 running.
+- Trial merges on the new INT: S5 9086c180b merges with no conflict at all; S6 14071b794 conflicts only in core-system values/strings.xml (told to merge). S3 and S2 told to merge 3d2340b3a.
+
+### 2026-11-12 11:59 UTC — S6 merge gate: code PASS, records and goldens to finish; spelling ruling applied to S5
+- S6 `14071b794` merge gate wfinnp9dh (8 agents): merge resolution and code PASS (INT whole; no duplicate keys; no S3/S4/S5 value changed). To finish in its INT 3d2340b3a merge push: records ("কারণ kept" is false after the merge; stale line about sale_submit_plain), re-record four memo goldens that draw its changed keys (two of its re-records were under the 0.2% threshold, so "a stale golden would fail" does not hold), PREFETCH_STORED mapped to ALREADY_CURRENT. wt-s6 removed.
+- Ruling applied: S5's edit_reason_dialog_title (on INT since train 100) carries the vendor misspelling "কারন"; standing ruling D-TSO-PARITY-SPELLING-01 says "কারণ". S5 told to correct its key in its next push (with the INT merge). My S5 review missed it; the manual-conformity lens accepted the manual's own spelling.
+
+### 2026-11-12 12:04 UTC — train 104 built (S5 follow-up)
+- S5 `91234ef05` (INT 3d2340b3a merged, no conflicts): 13 files +59/-18 on INT; edit_reason_dialog_title now "কারণ" per D-TSO-PARITY-SPELLING-01; "Other (SKU n)" with base-unit words and no digit grouping; I read the string and production diff. Lane ci 43214455578 queued.
+- Train 104 = INT 3d2340b3a + docs tip 7a7820728 + S5 91234ef05, head `840b3fb89` on lane/lead-train104: clean merges, DECISIONS 426 (no new D-line), 0 INT lines missing, android == S5 android, money-float 13/13, date-pin 0 new, gitleaks clean. CI 43214553623 queued. GO after the train 103 INT run (43213228309) completes and this run and the S5 lane run are green.
+- S6 `12f119734` (INT 3d2340b3a merged) received; it crossed my merge-gate message, so records/goldens corrections come in its next push.
+
+### 2026-11-12 12:06 UTC — S6 verified; train 104 rebuilt with S5 + S6
+- S6 `8fe12d962` (INT 3d2340b3a merged at 12f119734; then records, PREFETCH_STORED mapping + test): delta read by me (4 files +10/-6 on top of the strings-only merge); the six goldens it re-recorded came back byte-identical (none stale). Merge gate wfinnp9dh had passed code and merge; records now true. Lane ci 43214715189 running.
+- Train 104 rebuilt (my own branch force-pushed; first run 43214553623 superseded) = INT 3d2340b3a + docs 7a7820728 + S5 91234ef05 + S6 8fe12d962, head `39a478a41`: all merges clean, DECISIONS 427, 0 lines missing from INT or S6, no duplicate string names in any changed strings.xml, money-float 13/13, date-pin 0 new, gitleaks clean. CI 43214886290. GO needs: this run green, S5 lane 43214455578 green, S6 lane 43214715189 green, train 103 INT run 43213228309 complete.
+
+### 2026-11-12 12:11 UTC — S2 merged head under the merge gate
+- S2 `859deafe0` (INT 12f56c8bb then 3d2340b3a merged; records; guards; ProgrammeFlags; default-flags golden): static gate clean incl. scans (DECISIONS 429; goldens: nine home_* modified + home_bn_default_flags added; lane ci 43215411048 running). Opus merge gate launched (merge resolution; delta code and records), worktree wt-s2. Trial merge on train 104 conflicts only in DECISIONS.md and feature-home strings (S6): one more lane-side merge after train 104 lands.
+
+### 2026-11-12 12:12 UTC — train 103 LANDED
+- INT `3d2340b3a` ci #2054 43213228309 success (11 jobs: 5 ok, 6 skipped by path). APK of record: **aron-release-signed-dev-2054**, 41,794,740 bytes (S1 + S3 + S4 + S5 first rounds; not walked on a device). The first train 104 run (840b3fb89) shows cancelled: superseded by my rebuild with S6.
+
+### 2026-11-12 12:18 UTC — S2 merge gate PASS
+- S2 `859deafe0` Opus merge gate w2r9nofys (2 lenses, no blocking): both merge resolutions correct (every INT line present, nothing of S3/S4/S5/S1 lost; strings union, no duplicates), delta sound (task confirm once; cluster replay reports saved; awaits rethrow cancellation; DEVICE_TABLES only drives a schema test; Room v9 unchanged), records true. Lows sent (cluster retry after recreate says "duplicate"; JourneyHost error state; unused import). S2 told to merge the train 104 head 39a478a41 now so it rides train 105 without another round. wt-s2 removed.
+
+### 2026-11-12 12:24 UTC — L-B train 2 under review
+- L-B `d25d1fdd7` (web aligned to contract 1.13.0; base INT ce9d92bf7; 17 files +326/-386): static gate clean (web + 2 docs; no skip/only/fixme, no new timeouts; five test titles removed or renamed: to be checked; DECISIONS 408, 0 INT lines missing; money-float 13/13; gitleaks clean; merges on train 104 with only DECISIONS conflicting). Lane ci 43217342984 running. Sonnet review launched (contract alignment call by call; tests, UX honesty, records), worktree wt-lb. Lane decision to rule on: channel checkboxes removed until an id source exists.
+
+### 2026-11-12 12:26 UTC — GO train 104; L-B train 2 PASS
+- Train 104 CI 43214886290 green on 39a478a41 (5 ok, 6 skipped by path). Lane runs of S5 (43214455578) and S6 (43214715189): Repository gates, Android unit tests/lint and release APK jobs all success; only their Web job still running (not touched by these lanes). GO sent to integrator 24 (expected DECISIONS 427, deploy skipped).
+- L-B `d25d1fdd7` Sonnet review wrrbke62j (2 lenses, 319 k tokens): PASS, no blocking; call-by-call match with contract 1.13.0, BigInt thresholds, honest progress panel, replaced tests equal or stronger, records true. Ruling: channel checkboxes removed until an id source exists (accepted). Rides train 105 with S2 once its lane ci 43217342984 is green (real web deploy). wt-lb removed.
+
+### 2026-11-12 12:28 UTC — train 104 on INT
+- Integrator 24 pushed train 104: INT `20fe1d4fb` (tree-identical to 39a478a41 plus the train.md row; DECISIONS 427; 0 lost lines), ci #2064 43218050788 running. S3 told to merge this head (no report from S3 since 10:20; asked where it stands).
+
+### 2026-11-12 12:32 UTC — lane CI confirmations
+- S5 lane ci 43214455578 (91234ef05) and S6 lane ci 43214715189 (8fe12d962): both completed success (11 jobs ok each), confirming the heads that train 104 carries. S3 status: mid-run on the INT 20fe1d4fb merge (ec8cf4bdb pushed earlier; lane ci 43214864833 in progress). S2 pushed fb63804d3 (not yet reported). L-B lane ci 43217342984 in progress.
+
+### 2026-11-12 12:34 UTC — train 105 built (S2 + Loyalty web)
+- S2 `fb63804d3` (train 104 head merged; own-uuid lookup before name validation; Journey error state; unused import): I read its own commit (6 files +31/-11): correct.
+- Train 105 = INT 20fe1d4fb + docs 854b38e5b + S2 fb63804d3 + L-B d25d1fdd7, head `64af1e14a` on lane/lead-train105: only DECISIONS.md conflicted (union; 432 = 427 + 3 S2 + 2 L-B; 0 lines missing from INT, S2 or L-B); android/shared == S2; web == L-B; no duplicate string names; money-float 13/13, date-pin 0 new, gate unit tests OK, slices up to date, gitleaks clean. CI 43218993558 running. GO needs: this run green, train 104 INT run 43218050788 complete, L-B lane 43217342984 green, S2 lane run green on Repository gates. Real web deploy expected (web changed); Android carries the Room v8 to v9 AutoMigration.
+
+### 2026-11-12 12:40 UTC — S3 follow-up under the gate
+- S3 `db71bc4f1` (INT 20fe1d4fb merged; follow-up round: printer assist moved from SaleRoute to the VISIT frame, Default badge green 0x17692F, check-out label period words, tests reworked): static gate clean incl. scans (16 files +214/-51 on INT; three test names removed/renamed in SrPrinterAssistTest: to be checked; one AMO golden re-recorded; DECISIONS 428; lane ci 43219842152 queued). Opus gate launched (assist design; tokens, label, merge, records), worktree wt-s3.
+- S3's earlier lane run 43214864833 (ec8cf4bdb) failed only in the Web e2e job (job 131171516068); this lane touches no web code. A Haiku reader inside the same workflow extracts the failing test(s) to see whether it is the known route-targets login flake (fix rides train 105 with L-B).
+
+### 2026-11-12 12:45 UTC — train 104 LANDED; S3 follow-up PASS
+- INT `20fe1d4fb` ci #2064 43218050788 success. APK of record: **aron-release-signed-dev-2064 (41804726 bytes)** (S1, S3, S4, S5 incl. follow-up, S6; not walked on a device).
+- S3 follow-up `db71bc4f1` Opus gate wi48v272q (2 Opus lenses + 1 Haiku reader, 424 k tokens): PASS, no blocking. One assist holder per screen with the assist on the VISIT frame; token 0x17692F is 5.53:1 on the page and 6.78:1 on the chip; period words correct; replaced tests equal or stronger. Lows sent (stale comments and status lines, two test strengthenings, wording of evening hours). Lands on train 106 after it merges the train 105 head. wt-s3 removed.
+- Web e2e failure in S3's earlier lane run 43214864833 (Haiku read): support-menu.spec.ts:24 failed on both attempts with "page.goto: net::ERR_ABORTED" right after loginOk, and master.spec.ts:88 was flaky the same way; route-targets.spec.ts passed. Same family as the login-redirect race (a goto issued while the post-login redirect is still navigating); L-B's loginOk fix (wait for the URL to leave /login and for network idle) is on train 105. To confirm on the train 105 web run; cause not proven by this log alone.
+
+### 2026-11-12 12:47 UTC — lane check (2-hourly)
+- INT `20fe1d4fb` (train 104 landed, deploy #342 skipped); health build ce9d92bf7 (latest deployable). Docs branch merged INT (0 markers).
+- Active lanes: SV working (branch lane/sr-server 79d530f2e at 12:14, a module run in progress, context about 529 k, finishing train 1 then handing over); L-A had been HOLDING since 09:53 with train 1 landed: go for train 2 (admin routes for 1.13.0) sent now, my omission; reserved for L-A: contract 1.15.0 if needed, migrations V0170..V0174 (SV owns 1.14.0 and V0163..V0169). L-B d25d1fdd7 and S2 fb63804d3 on train 105 (CI running). S3 db71bc4f1 passed, doing a small records/tests push on the train 105 head for train 106. S1, S4, S5, S6 landed; S5 waits for 1.14.0.
+- Usage: lane sessions still report seven_day "allowed_warning" (not "rejected"); pause stays lifted.
+
+### 2026-11-12 13:05 UTC — GO train 105
+- Train 105 CI 43218993558 green on 64af1e14a (12 jobs ok, web e2e included: the first full web run with L-B's loginOk fix). Lane runs: S2 43218821381 (fb63804d3) success; L-B 43217342984 (d25d1fdd7) success. Train 104 INT run complete. GO sent to integrator 24 (expected DECISIONS 432, real web deploy, schema stays v0162).
+
+### 2026-11-12 13:07 UTC — train 105 on INT
+- Integrator 24 pushed train 105: INT `155edd899` (tree-identical to 64af1e14a plus the train.md row; DECISIONS 432; migrations end at V0162; contract 1.13.0), ci #2070 43224115378 running, real deploy expected. All six SR manual lanes (S1 to S6) now have their first round on INT.

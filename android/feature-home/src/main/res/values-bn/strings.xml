@@ -129,4 +129,31 @@
     <string name="set_group_status">ফোনের অবস্থা</string>
     <string name="hm_qty_unit_rem">%1$s %2$s + %3$s %4$s</string>
     <string name="set_printer">প্রিন্টার পরীক্ষা</string>
+    <string name="hm_tile_astha">আস্থা</string>
+    <string name="hm_tile_loyalty_point">লয়্যালটি পয়েন্ট</string>
+    <string name="hm_tile_match_program">Match Program</string>
+    <string name="hm_soon_title">শীঘ্রই আসছে</string>
+    <string name="hm_soon_body">এই স্ক্রিনটি পরবর্তী আপডেটে আসছে। আজকের কাজে কোনো সমস্যা হবে না।</string>
+    <string name="hm_soon_back">হোমে ফিরুন</string>
+    <string name="hm_std_title">টার্গেট ও অ্যাচিভমেন্ট (SKU List)</string>
+    <string name="hm_std_label">এস টি ডি</string>
+    <string name="hm_std_none">—</string>
+    <string name="hm_std_spoken">এস টি ডি অর্জন %1$s</string>
+    <string name="hm_std_spoken_none">এস টি ডি অর্জনের তথ্য এখনো নেই</string>
+    <string name="hm_tile_sales_manual">বিক্রয়</string>
+    <string name="hm_tile_tasks_manual">টাস্ক ডেলিগেশন</string>
+
+    <string name="set_update_config">Update Configuration</string>
+    <string name="set_update_config_busy">আপডেট হচ্ছে…</string>
+    <string name="set_config_done_title">Configuration updated Successfully!</string>
+    <string name="set_config_done_message">নতুন কনফিগারেশন চালু হয়েছে। অ্যাপ বন্ধ করতে হবে না, আপনার কাজ চালিয়ে যান।</string>
+    <string name="set_config_failed_title">কনফিগারেশন আপডেট হয়নি</string>
+    <string name="set_config_failed_message">নেটওয়ার্ক বা সার্ভারে সমস্যা হয়েছে। একটু পরে আবার চেষ্টা করুন। আপনার সংরক্ষিত কাজ নিরাপদ আছে।</string>
+    <string name="set_ok">ওকে</string>
+    <string name="set_submit_warning_title">আজকের বিক্রয় জমা দেওয়া হয়নি</string>
+    <string name="set_submit_warning_message">লগ আউটের আগে বিক্রয় জমা দিন।</string>
+    <string name="set_submit_warning_submit">বিক্রয় জমা</string>
+    <string name="set_submit_warning_anyway">তবুও লগ আউট</string>
+    <string name="set_config_current_title">কনফিগারেশন হালনাগাদ করা আছে</string>
+    <string name="set_config_current_message">এই ফোনে সর্বশেষ কনফিগারেশন আগে থেকেই আছে।</string>
 </resources>

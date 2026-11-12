@@ -71,7 +71,7 @@
     <string name="money_drp">Slide discount</string>
     <string name="money_qc">Total QC</string>
     <string name="money_grand">Grand total</string>
-    <string name="history_title">Sale history</string>
+    <string name="history_title">Sale data</string>
     <string name="history_offline">No connection: showing the last 7 days from this phone, or the server list when it was loaded.</string>
     <string name="history_col_memo">Memo</string>
     <string name="history_pick_date">Choose a date</string>
@@ -84,6 +84,25 @@
     <string name="memo_total_category">Total %1$s</string>
     <string name="memo_due_chip_amount">Due %1$s</string>
     <string name="summary_qty_rem">%1$s %2$s %3$s</string>
+    <string name="journey_s_new">New Sale</string>
+    <string name="journey_s_edited">Edited Sale</string>
+    <string name="journey_s_repeat">Repeat Sale</string>
+    <string name="journey_s_none">No Sale</string>
+    <string name="journey_s_open">In progress</string>
+    <string name="journey_distance">Distance: %1$s</string>
+    <string name="journey_total">Total: %1$s</string>
+    <string name="journey_gap">after %1$s</string>
+    <string name="journey_w_min">min</string>
+    <string name="journey_w_sec">s</string>
+    <string name="journey_w_m">m</string>
+    <string name="journey_w_km">km</string>
+    <string name="journey_calls_empty">No calls yet today</string>
+
+
+    <string name="sale_data_title">Sale data</string>
+    <string name="sale_data_none">No sale at this outlet on this date.</string>
+    <string name="sale_data_ok">OK</string>
+    <string name="sale_data_cancel">Cancel</string>
     <string name="memo_ok">OK</string>
     <string name="memo_letter_all">All</string>
     <string name="memo_banner_manual">Select an outlet to see its memo. You can also reprint the memo from here.</string>

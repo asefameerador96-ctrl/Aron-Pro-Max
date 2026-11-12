@@ -207,3 +207,19 @@ data class QcLineEntity(
     @ColumnInfo(name = "unit_price_mtk") val unitPriceMtk: Long,
     @ColumnInfo(name = "settlement_mtk") val settlementMtk: Long,
 )
+
+/**
+ * A cluster the SR created on the phone (SRM-B-44). It is LOCAL ONLY today: no outbox row is written because the contract has no
+ * cluster-creation record yet (sr-server lane, contract 1.14.0); the row carries what that record will need (client uuid, name, route,
+ * the GEO fix of the creation) so a later migration can queue it. It is never offered for a new shop.
+ */
+@Entity(tableName = "cluster_create", indices = [Index("route_id")])
+data class ClusterCreateEntity(
+    @PrimaryKey @ColumnInfo(name = "client_uuid") val clientUuid: String,
+    val name: String,
+    @ColumnInfo(name = "route_id") val routeId: Long,
+    @ColumnInfo(name = "route_name") val routeName: String,
+    @ColumnInfo(name = "created_at") val createdAt: String,
+    @ColumnInfo(name = "business_date") val businessDate: String,
+    @ColumnInfo(name = "fix_client_uuid") val fixClientUuid: String,
+)

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt" android:width="48dp" android:height="48dp" android:viewportWidth="48" android:viewportHeight="48">
+<!-- Match Program tile: a target with an arrow. -->
+<path android:fillType="evenOdd" android:pathData="M6,26a18,18 0 1 0 36,0a18,18 0 1 0 -36,0zM13,26a11,11 0 1 1 22,0a11,11 0 1 1 -22,0z"><aapt:attr name="android:fillColor"><gradient android:type="linear" android:startX="6" android:startY="4" android:endX="42" android:endY="46"><item android:offset="0" android:color="#FFEC2D7E"/><item android:offset="0.5" android:color="#FF9B3BE0"/><item android:offset="1" android:color="#FF2F86F0"/></gradient></aapt:attr></path>
+<path android:pathData="M19,26a5,5 0 1 0 10,0a5,5 0 1 0 -10,0z"><aapt:attr name="android:fillColor"><gradient android:type="linear" android:startX="6" android:startY="4" android:endX="42" android:endY="46"><item android:offset="0" android:color="#FFEC2D7E"/><item android:offset="0.5" android:color="#FF9B3BE0"/><item android:offset="1" android:color="#FF2F86F0"/></gradient></aapt:attr></path>
+<path android:strokeColor="#FF4F1F99" android:strokeWidth="3" android:strokeLineCap="round" android:pathData="M24,26L40,10M40,10L40,17M40,10L33,10"/>
+</vector>

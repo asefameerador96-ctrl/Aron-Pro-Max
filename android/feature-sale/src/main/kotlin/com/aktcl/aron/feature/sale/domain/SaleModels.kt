@@ -88,6 +88,11 @@ data class SaleDraft(
     val qc: List<QcEntry> = emptyList(),
     val paidMtk: Long? = null,
     val zeroSale: Boolean = false,
+    /**
+     * Why the SR sold nothing (manual s10 / screenshot 32, D-SR-MAN-S4-03): one of [ZeroSaleReason]. Kept on the phone with the draft;
+     * it reaches the server only once the contract carries `zero_sale_reason_code` (TRAIN 2). Null for an older draft and for a QC-only sale.
+     */
+    val zeroReasonCode: String? = null,
     val edit: EditContext? = null,
     /** True once Product QC was completed at this outlet: sale edits are locked (F-SR-027). */
     val qcCompleted: Boolean = false,

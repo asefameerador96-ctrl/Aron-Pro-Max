@@ -78,22 +78,31 @@ import com.aktcl.aron.feature.attendance.AttendanceState
 import com.aktcl.aron.feature.home.AppPermission
 import com.aktcl.aron.feature.home.BundleFreshness
 import com.aktcl.aron.feature.home.DeviceHealth
-import com.aktcl.aron.feature.home.FirstBundleContent
 import com.aktcl.aron.feature.home.FirstBundleState
 import com.aktcl.aron.feature.home.HomeContent
 import com.aktcl.aron.feature.home.HomeDayModel
 import com.aktcl.aron.feature.home.HomeModel
+import com.aktcl.aron.feature.home.ComingSoonContent
 import com.aktcl.aron.feature.home.HomeTile
 import com.aktcl.aron.feature.home.HomeTiles
 import com.aktcl.aron.feature.home.HomeUser
 import com.aktcl.aron.feature.home.PermissionOnboardingContent
+import com.aktcl.aron.feature.home.DataUpdateContent
+import com.aktcl.aron.feature.home.DataUpdatePhase
 import com.aktcl.aron.feature.home.PlannedRoute
 import com.aktcl.aron.feature.home.RouteKind
 import com.aktcl.aron.feature.home.RoutePicker
 import com.aktcl.aron.feature.home.RoutePickerContent
 import com.aktcl.aron.feature.home.SettingsContent
 import com.aktcl.aron.core.sync.BundleOutcome
-import com.aktcl.aron.feature.outlet.ClusterOption
+import kotlinx.coroutines.flow.first
+import com.aktcl.aron.feature.outlet.R as OutR
+import com.aktcl.aron.feature.outlet.srRequestTitle
+import com.aktcl.aron.feature.outlet.SrOutletRequestContent
+import com.aktcl.aron.feature.outlet.SrClusters
+import com.aktcl.aron.feature.outlet.PendingCluster
+import com.aktcl.aron.feature.outlet.ClusterNameError
+import com.aktcl.aron.feature.outlet.ClustersContent
 import com.aktcl.aron.feature.outlet.ForceReason
 import com.aktcl.aron.feature.outlet.ForceSaleContent
 import com.aktcl.aron.feature.outlet.ForceSaleMissing
@@ -115,14 +124,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.aktcl.aron.feature.home.R as HomeR
 
-enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_OUTLET, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL }
+enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS }
 
 /** The screen tree of the SR app: Back and the top bar's back button follow the same parent mapping; depth drives the transition direction. */
 object SrNav {
     fun parent(s: SrScreen): SrScreen = when (s) {
         SrScreen.FORCE, SrScreen.NO_SALE -> SrScreen.VISIT
         SrScreen.SUPPORT, SrScreen.PRINTER_DIAG -> SrScreen.SETTINGS
-        SrScreen.OWN_REQUESTS, SrScreen.REQUEST_FORM, SrScreen.REQUEST_OUTLET -> SrScreen.OUTLET_MENU
+        SrScreen.OWN_REQUESTS, SrScreen.REQUEST_FORM, SrScreen.CLUSTERS -> SrScreen.OUTLET_MENU
         SrScreen.SKIP -> SrScreen.PICKER
         SrScreen.EDIT -> SrScreen.MEMO
         else -> SrScreen.HOME
@@ -151,7 +160,7 @@ fun SrFrame(
     onSync: (() -> Unit)?,
     modifier: Modifier = Modifier,
     printer: PrinterManager? = null,
-    /** Ask the nearby-devices permission and toast "printer connected" from this frame: only Stock ([printerAssistFor]); the sale asks inside `SaleRoute`. */
+    /** Ask the nearby-devices permission and toast "printer connected" from this frame: Stock and the sale's VISIT frame ([printerAssistFor]); `SaleRoute` does not ask (one holder per screen). */
     printerAssist: Boolean = false,
     /** The drawable of the screen's tile art (`R.drawable.aron_art_*` of core-ui), shown beside the title. */
     icon: Int? = null,
@@ -229,11 +238,16 @@ fun SrApp(
     val context = LocalContext.current
     val activity = context as? Activity
     var screen by rememberSaveable { mutableStateOf(SrScreen.HOME) }
+    var soonTile by rememberSaveable { mutableStateOf(HomeTile.ASTHA) }
+    // the request form's kind lives here (saveable): the frame title AND the form read the same value after a recreate or process death
+    var requestKind by rememberSaveable { mutableStateOf(day.requestKind) }
     var skipFirstBundle by rememberSaveable { mutableStateOf(false) }
     val loaded by day.loaded.collectAsState() // the local day has been read once (survives recreation; no first-bundle flash)
     val scope = rememberCoroutineScope()
     var editMemo by rememberSaveable { mutableStateOf("") }
     var skipOutlet by remember { mutableStateOf<OutletEntity?>(null) }
+    // "সেল ডাটা" is up inside the sale or memo host: the frame says so (SaleHost and MemoHost report it)
+    var saleData by remember { mutableStateOf(false) }
     val data by day.dayData.collectAsState()
     val tasks by day.taskBoard.state.collectAsState()
     val stockAttempt by day.stockAttempt.collectAsState()
@@ -311,6 +325,9 @@ fun SrApp(
     )
     val unitLabels = listOf("packet", "box", "dozen", "stick", "piece").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
     var homeSnap by remember { mutableStateOf<SrHomeSnapshot?>(null) }
+    // SRM-B-61: Astha, Loyalty Point and Match Program show only when their cfg.flag.* is on for this user
+    var enabledTiles by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(data, resumeTick) { enabledTiles = day.enabledProgrammeTiles() }
     val onHome = screen == SrScreen.HOME
     LaunchedEffect(data, attendance, resumeTick, onHome, loaded) {
         if (loaded && onHome) homeSnap = runCatching { SrHomeReads.snapshot(day, attendance, locale, { categoryLabels[it] ?: it }, { unitLabels[it] ?: it }) }.getOrNull()
@@ -337,30 +354,23 @@ fun SrApp(
             AronScreen(Modifier.fillMaxSize()) {} // the page background until the local day is read (no splash, no spinner)
         } else if (data.freshness is BundleFreshness.Missing && !skipFirstBundle) {
             // F-SR-001: a phone with no bundle yet shows the first-bundle download (resumable); check-in never waits for it.
+            // SR manual 08 (SRM-A-11): while the download runs, "অ্যাপ আপডেট হচ্ছে" with the real step counter; when it stopped
+            // (offline, failed, sign-in ended) the Bangla "new updates found" prompt, whose আপডেট button is the retry (resumable).
             val outcome by day.bundleOutcome.collectAsState()
-            FirstBundleContent(
-                state = when {
-                    data.downloading -> FirstBundleState.DOWNLOADING
-                    outcome == BundleOutcome.OFFLINE -> FirstBundleState.OFFLINE
-                    outcome == BundleOutcome.AUTH_REQUIRED -> FirstBundleState.AUTH
-                    outcome == null && !data.downloading -> FirstBundleState.DOWNLOADING
-                    else -> FirstBundleState.FAILED
-                },
-                onRetry = { scope.launch { startBundleDownload(); day.taskBoard.load() } },
+            val progress by day.bundleProgress.collectAsState()
+            val ui = SrDataUpdate.ui(data.downloading, outcome, progress)
+            DataUpdateContent(
+                phase = ui.phase,
+                versionName = SrDataUpdate.versionName(), // the version NAME only, never "name (code)"
+                onUpdate = { scope.launch { startBundleDownload(); day.taskBoard.load() } },
+                stepsDone = ui.stepsDone, stepCount = ui.stepCount, reason = ui.reason,
                 onSkip = { skipFirstBundle = true },
             )
         } else {
             val header = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
             val snap = homeSnap
-            var photoNotice by rememberSaveable { mutableStateOf(false) }
-            if (photoNotice) {
-                com.aktcl.aron.core.ui.aron.AronDialog(
-                    stringResource(R.string.sr_photo_title), stringResource(R.string.sr_photo_body), stringResource(R.string.sr_ok),
-                    onConfirm = { photoNotice = false }, onDismiss = { photoNotice = false },
-                )
-            }
             HomeContent(
-                header, HomeTiles.resolve(emptySet(), tasks.openCount), data.freshness, user.offline, health ?: deviceHealth,
+                header, HomeTiles.resolve(enabledTiles, tasks.openCount), data.freshness, user.offline, health ?: deviceHealth,
                 onTile = { t ->
                     when (t) {
                         HomeTile.ATTENDANCE -> screen = SrScreen.ATTENDANCE
@@ -374,8 +384,9 @@ fun SrApp(
                         HomeTile.SALES_JOURNEY -> screen = SrScreen.JOURNEY
                         HomeTile.KPI -> screen = SrScreen.KPI
                         HomeTile.TUTORIAL -> screen = SrScreen.TUTORIAL
-                        // Photo Capture belongs to the gift and campaign programmes docs/27 defers: the tile shows, the tap says so
-                        HomeTile.PHOTO_CAPTURE -> photoNotice = true
+                        // the programme tiles (Astha, Loyalty Point, Photo Capture, Match Program) open the plain "coming with the next
+                        // update" screen until the lane that owns the screen has built it (SRM-A-13); never a dead tile
+                        HomeTile.ASTHA, HomeTile.LOYALTY_POINT, HomeTile.PHOTO_CAPTURE, HomeTile.MATCH_PROGRAM -> { soonTile = t; screen = SrScreen.COMING_SOON }
                         else -> onOtherTile(t)
                     }
                 },
@@ -417,6 +428,17 @@ fun SrApp(
                 onPhotosWifiOnly = { on -> wifiOnly = on; mediaShell?.setWifiOnly(on) },
                 onSupport = shell?.let { { screen = SrScreen.SUPPORT } },
                 onPrinter = { screen = SrScreen.PRINTER_DIAG },
+                onUpdateConfig = {
+                    // SRM-B-52 (owner question 5 default): pull the bundle and configuration now, applied in place.
+                    // A download already running is waited for and its outcome reported, never a second request.
+                    if (!day.isOnline()) com.aktcl.aron.feature.home.ConfigUpdate.FAILED else {
+                        if (day.dayData.value.downloading) day.dayData.first { !it.downloading } else startBundleDownload()
+                        resumeTick++
+                        configUpdateOf(day.bundleOutcome.value)
+                    }
+                },
+                configDownloading = data.downloading,
+                submitPending = { day.salesSubmitPending() }, onSalesSubmit = { screen = SrScreen.SUBMIT },
                 onBack = goBack, sunlight = sunlight, onSunlight = onSunlight, sync = sync, onSync = openSync, health = health ?: deviceHealth,
             )
         }
@@ -449,16 +471,16 @@ fun SrApp(
                                 opening = false; screen = SrScreen.VISIT
                             }
                         }
-                    })
+                    }, manualRows = true)
                 }
             }
         }
-        SrScreen.VISIT -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_sale) {
+        SrScreen.VISIT -> SrFrame(if (saleData) stringResource(com.aktcl.aron.feature.memo.R.string.sale_data_title) else stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, printer = day.printerManager, printerAssist = printerAssistFor(SrScreen.VISIT), icon = CoreR.drawable.aron_art_sale) {
             PermissionGate(GatedFeature.SALE, onBack = goBack) {
                 val st by day.visitFlow.state.collectAsState()
                 val open by day.visitSession.current.collectAsState()
                 if (open != null) {
-                    SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME })
+                    SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME }, onSaleData = { saleData = it })
                 } else {
                     // tso-manual X4a (R-W-11): the lock landed while the fix was read, so the committer refused the call (nothing
                     // stored): the lock text instead of the generic failed commit and its retry; follow-up (R-W-23): the submit
@@ -482,15 +504,16 @@ fun SrApp(
         SrScreen.SKIP -> SrFrame(stringResource(R.string.sr_skip_outlet), goBack, sync, openSync) {
             skipOutlet?.let { o -> SkipHost(day, o, onDone = { screen = SrScreen.HOME }) } ?: LaunchedEffect(Unit) { screen = SrScreen.PICKER }
         }
-        SrScreen.MEMO -> SrFrame(stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_memo) {
-            MemoHost(day, sunlight, onSunlight, onEdit = { editMemo = it; screen = SrScreen.EDIT })
+        SrScreen.MEMO -> SrFrame(if (saleData) stringResource(com.aktcl.aron.feature.memo.R.string.sale_data_title) else stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_memo) {
+            MemoHost(day, sunlight, onSunlight, onEdit = { editMemo = it; screen = SrScreen.EDIT }, onSaleData = { saleData = it })
         }
         SrScreen.EDIT -> SrFrame(stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync, icon = CoreR.drawable.aron_art_memo) { EditHost(day, editMemo, sunlight, onSunlight, onDone = { screen = SrScreen.MEMO }) }
         SrScreen.SUMMARY -> SrFrame(stringResource(com.aktcl.aron.feature.memo.R.string.summary_title), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_summary) { SummaryHost(day, sunlight, onSunlight) }
         SrScreen.SUBMIT -> SrFrame(stringResource(HomeR.string.hm_tile_sales_submit), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_submit) { SubmitHost(day) }
-        SrScreen.JOURNEY -> SrFrame(stringResource(HomeR.string.hm_tile_sales_journey), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_journey) { JourneyHost(day) }
+        SrScreen.JOURNEY -> SrFrame(stringResource(HomeR.string.hm_tile_sales_journey), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_journey) { JourneyHost(day, locale) }
         SrScreen.KPI -> SrFrame(stringResource(HomeR.string.hm_tile_kpi), goBack, sync, openSync, icon = CoreR.drawable.aron_art_kpi) { KpiHost(day) }
         SrScreen.TUTORIAL -> TutorialHost(day, onBack = goBack)
+        SrScreen.COMING_SOON -> SrFrame(stringResource(soonTitle(soonTile)), goBack, sync, openSync) { ComingSoonContent(onBack = goBack) }
         SrScreen.FORCE -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sale) {
             val st by day.visitFlow.state.collectAsState()
             val capture = remember { day.newCapture("outlet_capture") }
@@ -520,7 +543,7 @@ fun SrApp(
         }
         SrScreen.TASKS -> SrFrame(stringResource(R.string.sr_tasks_title), goBack, sync, openSync) {
             LaunchedEffect(Unit) { day.taskBoard.load() }
-            TaskContent(tasks, onResolve = { id -> scope.launch { day.taskBoard.resolve(id) } }, onMyRequests = { screen = SrScreen.OWN_REQUESTS })
+            TaskContent(tasks, onResolve = { id -> scope.launch { day.taskBoard.resolve(id) } }, onMyRequests = { screen = SrScreen.OWN_REQUESTS }, manual = true)
         }
         SrScreen.OWN_REQUESTS -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync, icon = CoreR.drawable.aron_art_outlet) {
             // a failed read is an error with a retry, not an empty list that says "no requests"
@@ -531,18 +554,22 @@ fun SrApp(
         }
         SrScreen.OUTLET_MENU -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync, icon = CoreR.drawable.aron_art_outlet) {
             OutletMenuContent(onKind = { k ->
-                day.requestKind = k
-                screen = if (k == OutletRequestKind.NEW) SrScreen.REQUEST_FORM.also { day.requestOutlet = null } else SrScreen.REQUEST_OUTLET
+                day.requestKind = k; requestKind = k
+                day.requestOutlet = null
+                // the outlet (close, change information) is chosen inside the form (SRM-B-37, 39); the cluster tile is the Clusters list (SRM-B-43)
+                screen = if (k == OutletRequestKind.CLUSTER) SrScreen.CLUSTERS else SrScreen.REQUEST_FORM
             })
         }
-        SrScreen.REQUEST_OUTLET -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync, icon = CoreR.drawable.aron_art_outlet) {
-            val all = OutletPicker.rows(data.outlets)
-            var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
-            OutletPickerContent(OutletPicker.rows(data.outlets, chip), OutletPicker.chips(all), chip, { chip = it }, { r -> day.requestOutlet = r.outlet; screen = SrScreen.REQUEST_FORM })
+        SrScreen.CLUSTERS -> SrFrame(stringResource(OutR.string.out_clusters_title), goBack, sync, openSync) { // no title icon: screenshot 45
+            ClustersHost(day, data.route, data.outlets)
         }
-        SrScreen.REQUEST_FORM -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync, icon = CoreR.drawable.aron_art_outlet) {
-            PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = goBack) {
-                RequestHost(day, data.outlets, onDone = { screen = SrScreen.OUTLET_MENU })
+        SrScreen.REQUEST_FORM -> {
+            val k = requestKind
+            val art = when (k) { OutletRequestKind.NEW -> CoreR.drawable.aron_art_outlet_new; OutletRequestKind.CLOSE -> CoreR.drawable.aron_art_outlet_close; else -> CoreR.drawable.aron_art_outlet_edit }
+            SrFrame(stringResource(srRequestTitle(k)), goBack, sync, openSync, icon = art) {
+                PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = goBack) {
+                    RequestHost(day, data.outlets, kind = k, onKind = { requestKind = it; day.requestKind = it }, onDone = { screen = SrScreen.OUTLET_MENU })
+                }
             }
         }
         }
@@ -620,39 +647,117 @@ private fun SrSyncSheet(snapshot: SrSyncSnapshot?, chip: SyncChipState?, sunligh
     }
 }
 
+/** The form of a fresh request of [kind] for [o] (null for a new shop or before the outlet is chosen); the shop's own values prefilled, [uuid] the request's one client uuid. */
+private fun requestForm(kind: OutletRequestKind, o: OutletEntity?, uuid: String) = OutletRequestForm(
+    kind = kind, outletId = o?.outletId, requestUuid = uuid, currentClusterId = o?.clusterId,
+    // SRM-B-40/42: change information and add-to-route start on the shop's own cluster
+    clusterId = if (kind == OutletRequestKind.INFO || kind == OutletRequestKind.ROUTE_ADD) o?.clusterId else null,
+    name = if (kind == OutletRequestKind.INFO) o?.name else null, ownerName = if (kind == OutletRequestKind.INFO) o?.ownerName else null,
+    mobile = if (kind == OutletRequestKind.INFO) o?.contactNumber else null, openDueMtk = o?.openDueMtk ?: 0,
+)
+
+/**
+ * The identity of one outlet request form: its client uuid, the uuid of the cluster change that may travel with it (SRM-B-40) and the
+ * "saved" flag. All three are `rememberSaveable`, so a rotation, a language switch or process death before OK never mints a second uuid
+ * (a re-save would otherwise file the request twice). A new [kind] is a new form with new uuids.
+ */
+internal class RequestIdentity(
+    private val requestUuidState: androidx.compose.runtime.MutableState<String>,
+    val clusterRequestUuidState: androidx.compose.runtime.MutableState<String>,
+    val savedState: androidx.compose.runtime.MutableState<Boolean>,
+) {
+    val requestUuid: String get() = requestUuidState.value
+}
+
 @Composable
-private fun RequestHost(day: SrDay, outlets: List<OutletEntity>, onDone: () -> Unit) {
+internal fun rememberRequestIdentity(kind: OutletRequestKind, newUuid: () -> String): RequestIdentity {
+    val request = rememberSaveable(kind, key = "req-uuid-$kind") { mutableStateOf(newUuid()) }
+    val cluster = rememberSaveable(kind, key = "req-cluster-uuid-$kind") { mutableStateOf(newUuid()) }
+    val saved = rememberSaveable(kind, key = "req-saved-$kind") { mutableStateOf(false) }
+    return remember(request, cluster, saved) { RequestIdentity(request, cluster, saved) }
+}
+
+/**
+ * The outlet request form. Its identity survives a rotation, a language switch and process death: the kind, the chosen outlet, BOTH client
+ * uuids and the "saved" state are `rememberSaveable`, so a recreate before OK can never mint a second uuid. A save runs in the DAY's scope
+ * ([SrDay.submitOutletRequest]), and a form that opens on a request already stored shows "saved", not an editable form (SRM-B-35).
+ */
+@Composable
+private fun RequestHost(day: SrDay, outlets: List<OutletEntity>, kind: OutletRequestKind, onKind: (OutletRequestKind) -> Unit, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var kind by remember { mutableStateOf(day.requestKind) }
-    val outlet = day.requestOutlet
-    var form by remember(kind, outlet?.outletId) {
-        mutableStateOf(
-            OutletRequestForm(
-                kind = kind, outletId = outlet?.outletId, requestUuid = day.outletRequests.newRequestUuid(), currentClusterId = outlet?.clusterId,
-                name = if (kind == OutletRequestKind.INFO) outlet?.name else null, ownerName = if (kind == OutletRequestKind.INFO) outlet?.ownerName else null,
-                mobile = if (kind == OutletRequestKind.INFO) outlet?.contactNumber else null, openDueMtk = outlet?.openDueMtk ?: 0,
-            ),
-        )
-    }
-    val capture = remember(kind, outlet?.outletId) { day.newCapture("outlet_capture") }
+    var outletId by rememberSaveable { mutableStateOf(day.requestOutlet?.outletId) }
+    val outlet = outletId?.let { id -> outlets.firstOrNull { it.outletId == id } }
+    val identity = rememberRequestIdentity(kind) { day.outletRequests.newRequestUuid() }
+    val requestUuid = identity.requestUuid
+    var clusterRequestUuid by identity.clusterRequestUuidState
+    var form by remember(kind, requestUuid) { mutableStateOf(requestForm(kind, outlet, requestUuid)) }
+    val capture = remember(kind, outletId) { day.newCapture("outlet_capture") }
     val cap by capture.state.collectAsState()
     var errors by remember { mutableStateOf<Set<RequestError>>(emptySet()) }
-    var saved by remember { mutableStateOf(false) }
-    val clusters = remember(outlets) { outlets.map { ClusterOption(it.clusterId, it.clusterName) }.distinctBy { it.clusterId } }
-    OutletRequestContent(
-        form = form, errors = errors, clusters = clusters, capture = cap, saved = saved, warnOpenDues = form.openDueMtk > 0,
-        onChange = { form = it }, onShutter = { scope.launch { capture.shutter() } },
-        onAddToRoute = { kind = OutletRequestKind.ROUTE_ADD; day.requestKind = OutletRequestKind.ROUTE_ADD },
+    var saving by remember { mutableStateOf(false) }
+    var savedDialog by identity.savedState
+    // a re-entry (recreate, process death, Back then in again) on a request that is already stored shows "saved"
+    LaunchedEffect(requestUuid) { if (!savedDialog && day.requestStored(requestUuid)) savedDialog = true }
+    val clusterNote = stringResource(OutR.string.out_info_cluster_note)
+    // only confirmed clusters can take a new shop; a cluster created on the phone is never offered here (SRM-B-44)
+    val clusters = remember(outlets) { SrClusters.selectable(SrClusters.list(outlets, "", emptyList())) }
+    SrOutletRequestContent(
+        form = form, errors = errors, clusters = clusters, outlets = outlets, capture = cap, saving = saving || savedDialog, savedDialog = savedDialog,
+        onChange = { form = it },
+        onPickOutlet = { o ->
+            outletId = o.outletId; day.requestOutlet = o; form = requestForm(kind, o, requestUuid); errors = emptySet()
+            clusterRequestUuid = day.outletRequests.newRequestUuid() // a different shop is a different cluster change
+        },
+        onShutter = { scope.launch { capture.shutter() } },
+        onAddToRoute = { onKind(OutletRequestKind.ROUTE_ADD) },
+        onSavedOk = onDone,
         onSave = {
-            scope.launch {
-                val toSend = form.copy(fix = cap.fix, photoUuids = listOfNotNull(cap.photo?.photoUuid))
-                when (val r = day.outletRequests.submit(toSend)) {
-                    is RequestValidation.Invalid -> { errors = r.errors; saved = false }
-                    is RequestValidation.Ok -> { errors = emptySet(); saved = true; onDone() }
+            // one save at a time: the button is off while it runs; a second tap that slips in is ignored, and the same uuid makes a replay a no-op
+            if (!saving && !savedDialog) {
+                saving = true
+                scope.launch {
+                    val toSend = form.copy(fix = cap.fix, photoUuids = listOfNotNull(cap.photo?.photoUuid))
+                    // SRM-B-40: a changed cluster is its own `cluster` request, committed WITH the information request in ONE Room transaction
+                    // (until the info proposal takes cluster_id); both are validated first, so either both are stored or none
+                    val moved = kind == OutletRequestKind.INFO && form.clusterId != null && form.clusterId != form.currentClusterId
+                    val companion = if (!moved) null else OutletRequestForm(
+                        kind = OutletRequestKind.CLUSTER, outletId = form.outletId, clusterId = form.clusterId, currentClusterId = form.currentClusterId,
+                        note = clusterNote, fix = cap.fix, confirmed = true, requestUuid = clusterRequestUuid,
+                    )
+                    // the save runs in the day's scope; a failure of it (a Room error) is shown as an error and the form stays editable,
+                    // never a crash. A cancelled composition is rethrown, not swallowed.
+                    val result = try { day.submitOutletRequest(toSend, companion).await() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
+                    when (result) {
+                        null -> { errors = setOf(RequestError.SAVE_FAILED); saving = false }
+                        is RequestValidation.Invalid -> { errors = result.errors; saving = false }
+                        is RequestValidation.Ok -> { errors = emptySet(); savedDialog = true }
+                    }
                 }
             }
         },
     )
+}
+
+/** The Clusters list and the create dialog (SRM-B-43, 44); the clusters come from the route's outlets plus this phone's own `cluster_create` rows. */
+@Composable
+private fun ClustersHost(day: SrDay, route: com.aktcl.aron.core.database.entity.RouteEntity?, outlets: List<OutletEntity>) {
+    var tick by remember { mutableStateOf(0) }
+    var pending by remember { mutableStateOf<List<PendingCluster>>(emptyList()) }
+    val routeId = route?.routeId
+    val routeName = route?.name.orEmpty()
+    LaunchedEffect(tick, routeId) { pending = if (routeId == null) emptyList() else day.pendingClusters(routeId) }
+    val clusters = remember(outlets, pending) { SrClusters.list(outlets, routeName, pending) }
+    ClustersContent(clusters, onCreate = { name, uuid ->
+        // the dialog's own uuid is looked up in the stored rows FIRST: a retry after a recreate finds its record and reports saved
+        val onPhone = if (routeId == null) emptyList() else SrClusters.list(outlets, routeName, day.pendingClusters(routeId))
+        if (onPhone.any { it.clientUuid == uuid }) { tick++; null }
+        else SrClusters.validate(name, onPhone, ownUuid = uuid) ?: run {
+            // stored in the day's scope with the GEO fix of the moment; a failure of that save is told to the rep (NOT_SAVED), never a
+            // crash or a silent "saved"; cancellation is rethrown
+            val ok = routeId != null && try { day.createCluster(name, uuid, routeId, routeName).await() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { false }
+            if (!ok) ClusterNameError.NOT_SAVED else { tick++; null }
+        }
+    })
 }
 
 /**
@@ -695,11 +800,21 @@ internal fun StockHost(day: SrDay) {
     refused?.let { SrRefusalDialog(it, onOk = { refused = null }) }
 }
 
+/** The title of the "coming soon" screen: the tile's own name. */
+internal fun soonTitle(t: HomeTile): Int = when (t) {
+    HomeTile.ASTHA -> HomeR.string.hm_tile_astha
+    HomeTile.LOYALTY_POINT -> HomeR.string.hm_tile_loyalty_point
+    HomeTile.MATCH_PROGRAM -> HomeR.string.hm_tile_match_program
+    else -> HomeR.string.hm_tile_photo_capture
+}
+
 /**
- * D-SR-MAN-S3-02 (lead review of be15cd1a8): the screen frames that may ask the nearby-devices permission and toast "printer connected".
- * Stock only; the sale does it once inside `SaleRoute(printerAssist = true)`, so the visit frame, Memo and Summary never repeat the prompt or the toast.
+ * D-SR-MAN-S3-02: the screen frames that may ask the nearby-devices permission and toast "printer connected": Stock and the sale's VISIT frame, ONE holder
+ * per screen. The sale is asked at the frame, not inside `SaleRoute`: the frame is composed when the call opens, so it sees the link coming up (the
+ * toast), while `SaleRoute` only appears after "Start the call?" and the AV/KV/POSM steps, when a granted printer is long connected and no toast
+ * would ever show. Memo, Summary and every other frame never repeat the prompt or the toast.
  */
-internal fun printerAssistFor(screen: SrScreen): Boolean = screen == SrScreen.STOCK
+internal fun printerAssistFor(screen: SrScreen): Boolean = screen == SrScreen.STOCK || screen == SrScreen.VISIT
 
 /**
  * The SR attendance screen as the app shows it (D-SR-MAN-S3-01): the shared content with the manual's dashed status boxes

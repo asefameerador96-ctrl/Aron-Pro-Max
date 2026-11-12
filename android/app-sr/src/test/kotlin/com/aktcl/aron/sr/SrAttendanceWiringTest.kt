@@ -61,7 +61,7 @@ class SrAttendanceWiringTest {
 
     @Test fun theAmberBoxReadsTheConfiguredTimeNotAFixedFive() {
         show(checkedIn, "18:30")
-        compose.onNodeWithText("চেক আউট ৬:৩০টার পরে সক্রিয় হবে").assertExists()
+        compose.onNodeWithText("চেক আউট সন্ধ্যা ৬:৩০টার পরে সক্রিয় হবে").assertExists()
     }
 
     @Test fun doneStateShowsBothBoxesAndTheThankYou() {

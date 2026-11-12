@@ -64,6 +64,7 @@ import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.AronLookColors
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.aron.Glyph.arrowForward
 import com.aktcl.aron.core.ui.aron.Glyph.bar
 import com.aktcl.aron.core.ui.aron.Glyph.chevronBack
 import com.aktcl.aron.core.ui.aron.Glyph.gear
@@ -281,7 +282,7 @@ fun AronHomeHeader(
 const val AronHomeSettingsTag = "aron_home_settings"
 
 /** The leading glyph of a button (sr/stock.webp: Save has a disk, Print a printer). */
-enum class ButtonGlyph { Save, Print, Sync, Submit }
+enum class ButtonGlyph { Save, Print, Sync, Submit, Arrow }
 
 @Composable
 private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink: Color, gap: Color, bold: Boolean = true) {
@@ -292,6 +293,7 @@ private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink
             glyph == ButtonGlyph.Print -> GlyphCanvas(Modifier.size(15.dp)) { printer(ink, crossed = false, gap = gap) }
             glyph == ButtonGlyph.Sync -> GlyphCanvas(Modifier.size(20.dp)) { sync(ink) }
             glyph == ButtonGlyph.Submit -> GlyphCanvas(Modifier.size(18.dp)) { save(ink, gap) }
+            glyph == ButtonGlyph.Arrow -> GlyphCanvas(Modifier.size(20.dp)) { arrowForward(ink) }
         }
         if (icon != null || glyph != null) Spacer(Modifier.width(6.dp))
         Text(text, style = lookStyle(18.sp, bold = bold, color = ink, align = TextAlign.Center))
@@ -427,6 +429,10 @@ fun AronTargetCard(
     percentText: String? = null,
     detailsLabel: String? = null,
     onDetails: (() -> Unit)? = null,
+    /** Manual screenshot 09: a solid fill for the bar (green) with the figure in white; null keeps the kit's red-on-grey bar. */
+    barColor: Color? = null,
+    /** With no [percent]: an empty grey track carrying this text ("—" while the target is not known); null draws no bar. */
+    emptyTrackText: String? = null,
 ) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(AronLook.CardRadius)
@@ -443,9 +449,9 @@ fun AronTargetCard(
             BoxWithConstraints(Modifier.fillMaxWidth().heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.track)) {
                 val fraction = percent.coerceIn(1, 100) / 100f
                 val fill = maxWidth * fraction
-                Box(Modifier.width(fill).heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.trackFill))
+                Box(Modifier.width(fill).heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(barColor ?: look.trackFill))
                 if (percentText != null) {
-                    val inside = fraction > 0.75f
+                    val inside = barColor != null || fraction > 0.75f
                     Text(
                         percentText,
                         style = lookStyle(13.sp, bold = true, color = if (inside) Color.White else look.trackFill),
@@ -453,6 +459,12 @@ fun AronTargetCard(
                         else Modifier.align(Alignment.CenterStart).padding(start = fill + 6.dp),
                     )
                 }
+            }
+        }
+        if (percent == null && emptyTrackText != null) {
+            Spacer(Modifier.height(6.dp))
+            Box(Modifier.fillMaxWidth().heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.track), contentAlignment = Alignment.CenterEnd) {
+                Text(emptyTrackText, style = lookStyle(13.sp, bold = true, color = look.trackFill), modifier = Modifier.padding(end = 10.dp))
             }
         }
         if (detailsLabel != null && onDetails != null) {

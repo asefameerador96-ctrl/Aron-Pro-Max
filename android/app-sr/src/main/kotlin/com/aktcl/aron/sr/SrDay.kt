@@ -44,6 +44,7 @@ import com.aktcl.aron.feature.tasks.TaskBoard
 import com.aktcl.aron.rules.BusinessDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -85,6 +86,8 @@ class SrDay(
      * job, so it can let the day's work finish, cancel it and join it before it closes the database (CI run 41750277921).
      */
     parentJob: kotlinx.coroutines.Job? = null,
+    /** The configured earliest check-out in minutes after midnight (`cfg.day.checkout_earliest_time`); null on the phone (read from [deviceRuntime]), a test passes its own. */
+    private val checkoutMinutes: (() -> Int)? = null,
 ) {
     /** Work started from the day that nobody waits for (the resume config check, settings reloads). */
     private val background = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Default)
@@ -216,6 +219,7 @@ class SrDay(
     @Volatile var requestKind: com.aktcl.aron.feature.outlet.OutletRequestKind = com.aktcl.aron.feature.outlet.OutletRequestKind.NEW
     @Volatile var requestOutlet: OutletEntity? = null
 
+
     /**
      * Placeholder end of a call until the sale screens exist: no memo, so the visit closes `abandoned` (docs/24 s4.2).
      * tso-manual A3 (D-A3-22): on a route-day closed by its zone's Final Submit the call ends on the phone, never a crash;
@@ -267,6 +271,11 @@ class SrDay(
     /** How the last day-start download ended (null while one runs or none ran); the first-bundle screen reads it. */
     val bundleOutcome: StateFlow<BundleOutcome?> = _bundleOutcome.asStateFlow()
 
+    private val _bundleProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+
+    /** Steps done and the step count of the bundle download in flight (SR manual 08 "Processing(n/N)"); null when none runs or the size is not known yet. */
+    val bundleProgress: StateFlow<Pair<Int, Int>?> = _bundleProgress.asStateFlow()
+
     /** Day start: the first bundle download (resumable, F-SYS-006) in the background; the day never waits for it. */
     suspend fun downloadBundle(downloaders: BundleDownloaders) {
         // One run at a time, in the day's own scope: a rotation or language switch recreates the screen but never cancels
@@ -277,7 +286,7 @@ class SrDay(
         background.launch {
             try {
                 val outcome = try {
-                    downloaders.of(userId).download(businessDate()).outcome
+                    downloaders.of(userId).download(businessDate()) { stepsDone, stepCount -> _bundleProgress.value = stepsDone to stepCount }.outcome
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -289,6 +298,7 @@ class SrDay(
                     deviceRuntime?.refreshDayConfig(userId, db)
                 }
             } finally {
+                _bundleProgress.value = null
                 data.value = data.value.copy(downloading = false)
                 bundleRunning.set(false)
             }
@@ -320,6 +330,15 @@ class SrDay(
 
     fun isOnline(): Boolean = online()
 
+    /** SRM-B-55: today has sales or visits on this phone and no Sales Submit yet (offline read). */
+    suspend fun salesSubmitPending(): Boolean {
+        val source = com.aktcl.aron.feature.dayclose.RoomDaySource(db)
+        val date = businessDate()
+        if (source.alreadySubmitted(date) || finalLocked()) return false
+        val c = source.deviceCounts(date)
+        return (c["memo"] ?: 0) + (c["visit"] ?: 0) > 0
+    }
+
     private fun online(): Boolean {
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return false
         val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
@@ -347,7 +366,9 @@ class SrDay(
     )
 
     /** "HH:mm" of the configured earliest check-out (`cfg.day.checkout_earliest_time`), for the amber "after 5" box (D-SR-MAN-S3-01). */
-    fun checkoutAtLabel(): String = checkoutLabel(deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: com.aktcl.aron.core.sync.device.DayConfig.DEFAULT_CHECKOUT_MINUTES)
+    fun checkoutAtLabel(): String = checkoutLabel(configuredCheckoutMinutes())
+
+    private fun configuredCheckoutMinutes(): Int = checkoutMinutes?.invoke() ?: deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: com.aktcl.aron.core.sync.device.DayConfig.DEFAULT_CHECKOUT_MINUTES
 
     val attendance = AttendanceFlow(
         fixes = fixSource, metaProvider = metaProvider,
@@ -366,7 +387,7 @@ class SrDay(
         },
         routeIdOf = { routeId }, nowIso = { iso(clock.nowMs()) }, dhakaMinutesNow = ::dhakaMinutesNow,
         // cfg.day.checkout_earliest_time from the user's bundle (DayConfig), 17:00 until it is read.
-        checkoutEarliestMinutes = { deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: com.aktcl.aron.core.sync.device.DayConfig.DEFAULT_CHECKOUT_MINUTES },
+        checkoutEarliestMinutes = { configuredCheckoutMinutes() },
         // F-SYS-074: the address resolves online only (platform geocoder, after the commit, display only); offline the
         // coordinates stay, with the last resolved address when the fix is near it.
         addressResolver = { lat, lng -> addressResolver.displayText(context, lat, lng) },
@@ -427,6 +448,13 @@ class SrDay(
             reprintMax = { printConfig.reprintMax }, confirmAfterPrint = { printConfig.confirmAfterPrint },
         )
     }
+
+    /**
+     * The Home tiles of the programmes this user's config switches on (SRM-B-61): `cfg.flag.astha_ui` and `cfg.flag.loyalty_ui` (registry
+     * default on) show Astha and Loyalty Point, `cfg.flag.superstar_ui` (registry default off) shows Match Program. A key absent from the
+     * stored config falls back to the registry default; the tile keys are those of [com.aktcl.aron.feature.home.HomeTile].
+     */
+    suspend fun enabledProgrammeTiles(): Set<String> = ProgrammeFlags.enabledTiles(reference, com.aktcl.aron.core.sync.SyncEngine.iso(clock.nowMs()))
 
     /** The last `cfg.memo.reprint_max` and `cfg.print.confirm_after_print` read from the stored config (contract defaults until the first read). */
     @Volatile private var printConfig = PrintConfig()
@@ -622,16 +650,49 @@ class SrDay(
     // ---- outlet requests (F-SR-037/038/039/076, N-040): one Room commit with the request's own fix
     private val requestFixUuids = java.util.concurrent.ConcurrentHashMap<String, String>()
     val outletRequests = OutletRequests(
-        committer = { draft ->
-            val fix = draft.fix ?: fixSource.readFix("outlet_capture")
-            // One fix uuid per request across commit retries: the photo's stamp names the fix row that is finally stored.
-            val fixUuid = requestFixUuids.getOrPut(draft.requestUuid) { com.aktcl.aron.core.common.ClientIds.newUuid() }
-            val (entity, fixEntity) = draft.toEntities(metaProvider.meta(0L), fix, fixUuid)
-            draft.photoUuids.forEach { claimPhoto(it, "outlet_capture", "outlet_change_request", entity.clientUuid, fixEntity) }
-            capture.recordOutletRequest(entity, fixEntity)
-            runCatching { requestSync() }
+        committer = object : com.aktcl.aron.feature.outlet.OutletRequestCommitter {
+            override suspend fun commit(draft: com.aktcl.aron.feature.outlet.OutletRequestDraft) = commitAll(listOf(draft))
+
+            /** Every draft of one save in ONE Room transaction (a failure of a later one leaves none), photos claimed first as before. */
+            override suspend fun commitAll(drafts: List<com.aktcl.aron.feature.outlet.OutletRequestDraft>) {
+                val rows = drafts.map { draft ->
+                    val fix = draft.fix ?: fixSource.readFix("outlet_capture")
+                    // One fix uuid per request across commit retries: the photo's stamp names the fix row that is finally stored.
+                    val fixUuid = requestFixUuids.getOrPut(draft.requestUuid) { com.aktcl.aron.core.common.ClientIds.newUuid() }
+                    val (entity, fixEntity) = draft.toEntities(metaProvider.meta(0L), fix, fixUuid)
+                    draft.photoUuids.forEach { claimPhoto(it, "outlet_capture", "outlet_change_request", entity.clientUuid, fixEntity) }
+                    entity to fixEntity
+                }
+                capture.recordOutletRequests(rows)
+                runCatching { requestSync() }
+            }
         },
     )
+
+    /**
+     * Saves one outlet request, or a change-information request with its cluster change ([companion]), in the DAY's own scope: a
+     * rotation, a language switch or leaving the screen recreates the composition but never cancels a save that has started.
+     */
+    fun submitOutletRequest(form: com.aktcl.aron.feature.outlet.OutletRequestForm, companion: com.aktcl.aron.feature.outlet.OutletRequestForm? = null): kotlinx.coroutines.Deferred<com.aktcl.aron.feature.outlet.RequestValidation> =
+        background.async { if (companion == null) outletRequests.submit(form) else outletRequests.submitPair(form, companion) }
+
+    /** True when a request with this client uuid is already stored on the phone (the form re-opened after a save shows "saved", not an editable form). */
+    suspend fun requestStored(requestUuid: String): Boolean = db.captureDao().outletRequestCount(requestUuid) > 0
+
+    /** The clusters this SR created on the phone for [routeId] (SRM-B-44): local only, see [ClusterCreateEntity]. */
+    suspend fun pendingClusters(routeId: Long): List<com.aktcl.aron.feature.outlet.PendingCluster> =
+        db.captureDao().clusterCreates().filter { it.routeId == routeId }.map { com.aktcl.aron.feature.outlet.PendingCluster(it.clientUuid, it.name, it.routeId, it.routeName, it.createdAt) }
+
+    /**
+     * Stores a cluster the SR created, with the GEO fix of the moment, in one Room transaction and in the day's scope (idempotent by
+     * [clientUuid]). LOCAL ONLY: nothing is queued for the server until the contract has the cluster-creation record.
+     */
+    fun createCluster(name: String, clientUuid: String, routeId: Long, routeName: String): kotlinx.coroutines.Deferred<Boolean> = background.async {
+        val fix = fixSource.readFix("outlet_capture")
+        val fixUuid = com.aktcl.aron.core.common.ClientIds.newUuid()
+        val entity = com.aktcl.aron.core.database.entity.ClusterCreateEntity(clientUuid, name, routeId, routeName, iso(clock.nowMs()), businessDate(), fixUuid)
+        capture.recordClusterCreate(entity, fix.toEntity(fixUuid, clientUuid, "outlet_capture", 0))
+    }
 
     /** F-SR-040: the bundle's own requests (30 days, status, reason) merged with those still only on this phone. Local reads only. */
     suspend fun ownRequests(): List<com.aktcl.aron.feature.outlet.OwnRequestRow> {

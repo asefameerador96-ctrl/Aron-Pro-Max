@@ -31,4 +31,10 @@ class BusinessTotalsTest {
         val s = BusinessTotals(0, listOf(q("cigarette", 300)), emptyList(), emptyList(), 0)
         assertEquals(false, BusinessCompare.matches(BusinessKey.SALE, d, s))
     }
+
+    @Test fun unknownSkusAreNeverAddedToEachOther() {
+        val d = BusinessTotals(0, listOf(CategoryQty(OTHER_CATEGORY, 5, 5, "", 0, 998), CategoryQty(OTHER_CATEGORY, 5, 5, "", 0, 999)), emptyList(), emptyList(), 0)
+        val s = BusinessTotals(0, listOf(CategoryQty(OTHER_CATEGORY, 10, 10, "", 0, 999)), emptyList(), emptyList(), 0)
+        assertEquals(false, BusinessCompare.matches(BusinessKey.SALE, d, s)) // 998 is missing on the server; 999's 10 does not cover it
+    }
 }

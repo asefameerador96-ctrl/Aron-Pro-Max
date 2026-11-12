@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -480,7 +481,7 @@ internal fun TableHeader2(name: String, value: String) {
 @Composable
 internal fun TableRow2(name: String, value: String) {
     val look = LocalAronLook.current
-    Row(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.M), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+    Row(Modifier.testTag(TWO_COLUMN_ROW).fillMaxWidth().padding(horizontal = AronTokens.Space.M), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
         Text(name, style = MaterialTheme.typography.bodyLarge, color = look.purple, maxLines = 2, modifier = Modifier.weight(1f))
         MoneyText(value, if (tablesStacked()) Modifier else Modifier.widthIn(min = PriceColumn), style = MaterialTheme.typography.titleSmall, color = look.purple, textAlign = TextAlign.End)
     }
@@ -798,3 +799,6 @@ internal fun categoryQtyText(items: List<com.aktcl.aron.feature.memo.domain.Memo
         .map { (unit, rows) -> qtyText(rows.sumOf { if (it.unitEntered.isNotEmpty()) it.qtyEntered else it.qtyBase }, unit) }
     return parts.joinToString(" + ")
 }
+
+/** Test tag of the two-column table row (name and amount) the AMO and TSO category rows use. */
+internal const val TWO_COLUMN_ROW = "memo-two-column-row"

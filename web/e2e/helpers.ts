@@ -23,6 +23,11 @@ export async function login(page: Page, username: string, password: string, totp
 export async function loginOk(page: Page, username: string, password: string, totp?: string): Promise<void> {
   await login(page, username, password, totp);
   await expect(page.getByTestId("who")).toBeVisible();
+  // The sign-in finishes with client navigations: away from /login to "/", and for a role whose home redirects (SUPPORT: "/" -> /sync-health)
+  // a second one. A `goto` issued while they are still in flight is superseded and aborts (net::ERR_ABORTED, route-targets "SUPPORT reads").
+  // Wait for the landing and for the network to settle so every spec's next goto starts from a settled page.
+  await page.waitForURL((u) => !u.pathname.startsWith("/login"));
+  await page.waitForLoadState("networkidle");
 }
 
 /** A Dhaka business date `n` days from now (the portal refuses past dates, so tests use relative ones). */

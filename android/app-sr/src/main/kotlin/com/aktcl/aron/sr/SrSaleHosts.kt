@@ -25,8 +25,8 @@ import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.database.repo.DayRefusal
 import com.aktcl.aron.feature.dayclose.SalesSubmitScreen
-import com.aktcl.aron.feature.memo.domain.SaleHistoryBuilder
-import com.aktcl.aron.feature.memo.ui.JourneyScreen
+import com.aktcl.aron.core.database.entity.OutletEntity
+
 import com.aktcl.aron.feature.memo.ui.KpiStripView
 import com.aktcl.aron.feature.memo.ui.MemoDetailView
 import com.aktcl.aron.feature.memo.ui.MemoMenuScreen
@@ -34,7 +34,6 @@ import com.aktcl.aron.feature.memo.ui.MemoSwitchOption
 import com.aktcl.aron.feature.memo.ui.MemoSwitcher
 import com.aktcl.aron.feature.memo.ui.MoneyCardsView
 import com.aktcl.aron.feature.memo.ui.ReprintDialogs
-import com.aktcl.aron.feature.memo.ui.SaleHistoryScreen
 import com.aktcl.aron.feature.memo.ui.SummaryScreen
 import com.aktcl.aron.feature.sale.domain.EditDenied
 import com.aktcl.aron.feature.sale.domain.EditReason
@@ -44,7 +43,6 @@ import com.aktcl.aron.feature.outlet.VisitUiState
 import com.aktcl.aron.feature.sale.ui.EditReasonDialog
 import com.aktcl.aron.feature.sale.ui.EditReasonScreen
 import com.aktcl.aron.feature.sale.ui.SaleRoute
-import com.aktcl.aron.feature.sale.ui.StartCallPrompt
 import kotlinx.coroutines.launch
 
 /**
@@ -53,7 +51,7 @@ import kotlinx.coroutines.launch
  * (the sun switch lives on Home and in the sync sheet, screens-sr s0).
  */
 @Composable
-fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoSale: () -> Unit, onDone: () -> Unit) {
+fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoSale: () -> Unit, onDone: () -> Unit, onSaleData: (Boolean) -> Unit = {}) {
     val open by day.visitSession.current.collectAsState()
     val v = open ?: return
     val kit = day.sale
@@ -81,13 +79,39 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
     }
     var started by rememberSaveable(v.visitUuid) { mutableStateOf(false) }
     if (!started) {
-        val name = day.dayData.collectAsState().value.outlets.firstOrNull { it.outletId == v.outletId }?.name.orEmpty()
+        val outletRow = day.dayData.collectAsState().value.outlets.firstOrNull { it.outletId == v.outletId }
         val geo by day.visitSession.geo.collectAsState()
         val g = geo
         val start = { kit.callStarted[v.visitUuid] = day.iso(day.currentMs()); started = true }
+        // the manual's call start (s8 / 19, D-SR-MAN-S4-01): Sale History and today's target, then "আপনি কি কল শুরু করতে চান?" with হ্যাঁ and না;
+        // না keeps the outlet on screen (the visit is not abandoned; the back arrow does that), and the cart bar says "start the call first"
+        var history by remember(v.visitUuid) { mutableStateOf<com.aktcl.aron.feature.memo.domain.SaleHistory?>(null) }
+        var showTarget by rememberSaveable(v.visitUuid) { mutableStateOf(false) }
+        var startFirst by rememberSaveable(v.visitUuid) { mutableStateOf(false) }
+        val h = history
+        // the frame's title is "সেল ডাটা" while that screen is up (the frame is SrApp's)
+        LaunchedEffect(h != null) { onSaleData(h != null) }
+        androidx.compose.runtime.DisposableEffect(Unit) { onDispose { onSaleData(false) } }
+        BackHandler(enabled = h != null) { history = null }
+        if (h != null) {
+            com.aktcl.aron.feature.memo.ui.SaleDataScreen(
+                h, today = day.businessDate(), outletLabel = outletRow?.let { com.aktcl.aron.feature.outlet.OutletPicker.label(it) }, offlineBanner = true,
+                skuName = kit::skuName, skuCategory = kit::skuCategoryCode, oldest = kit.historyOldest(),
+            )
+            return
+        }
+        val q = com.aktcl.aron.feature.outlet.CallQuestion(
+            outletLabel = com.aktcl.aron.core.ui.localizedDigits(kit.callOutletLabel(outletRow, v.outletId)),
+            onSaleHistory = { scope.launch { history = kit.saleHistory(v.outletId) } },
+            onTodayTarget = { showTarget = true },
+            onProceedBlocked = { startFirst = true },
+        )
         if (g == null) {
-            // restored after a relaunch: no fix on the phone to show, so the plain prompt
-            StartCallPrompt(name, onYes = start, onNo = { leave { day.closeVisitAbandoned() } })
+            // restored after a relaunch: no fix on the phone to show, so no distance panel; the same question
+            VisitCheckContent(
+                VisitUiState.Open(v), onRefresh = {}, onForceSale = {}, onRetry = {}, onMap = null, onStartCall = start, onNoSale = onNoSale,
+                onBack = { leave { day.closeVisitAbandoned() } }, callQuestion = q,
+            )
         } else {
             // the confirm step (D-MAP-02): distance, radius, verdict and the lite map from the fix the visit already took
             val context = androidx.compose.ui.platform.LocalContext.current
@@ -97,9 +121,23 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
                 onMap =
                     { context.startActivity(OutletMapActivity.intent(context, g.outletName, g.outletLat, g.outletLng, g.radiusM, g.phoneLat, g.phoneLng)) },
                 onStartCall = start, onNoSale = onNoSale, geo = g, mapSlot = mapSlot, geoPanel = true,
-                onBack = { leave { day.closeVisitAbandoned() } },
+                onBack = { leave { day.closeVisitAbandoned() } }, callQuestion = q,
             )
         }
+        if (startFirst) com.aktcl.aron.feature.outlet.StartCallFirstDialog(onOk = { startFirst = false })
+        if (showTarget) {
+            // the outlet's target for the month is not in the bundle yet (contract outlet_targets[], TRAIN 2): the popup says so
+            com.aktcl.aron.feature.sale.ui.OutletTargetPopup(
+                outletRow?.let { com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) }.orEmpty(), target = null, onOkay = { showTarget = false },
+            )
+        }
+        return
+    }
+    var photoDone by rememberSaveable(v.visitUuid) { mutableStateOf(!kit.callPhotoRequired) }
+    if (!photoDone) {
+        val capture = remember(v.visitUuid) { day.newCapture("outlet_call") }
+        val cs by capture.state.collectAsState()
+        com.aktcl.aron.feature.outlet.CallPhotoStep(cs, onShutter = { scope.launch { capture.shutter() } }, onContinue = { photoDone = true }, onSkip = { photoDone = true })
         return
     }
     // AV, then KV, then the POSM survey, then the sale (F-SR-020/021); every item reads local data and a missing one is skipped.
@@ -111,13 +149,17 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
     }
     val vm = viewModel(key = "sale-" + v.visitUuid) { kit.newSaleViewModel() }
     LaunchedEffect(v.visitUuid) { kit.prepare(); vm.start(kit.saleVisit(v)) }
+    // the quantity popup's আগের দিন and SDLW: this outlet's sales already on the phone (eight local days, SDLW is seven back); ADS stays N/A until the bundle carries it
+    var skuStats by remember(v.visitUuid) { mutableStateOf<Map<Long, com.aktcl.aron.feature.sale.domain.SkuStats>>(emptyMap()) }
+    LaunchedEffect(v.visitUuid) { skuStats = kit.skuStats(v.outletId) }
     val outlet = day.dayData.collectAsState().value.outlets.firstOrNull { it.outletId == v.outletId }
     val route = day.dayData.collectAsState().value.route
     Column(Modifier.fillMaxSize()) {
         // the outlet stays on screen from quantity entry to the commit-and-print tap (parity audit E1/R1): as the retailer pill on the list
         // and as the three header lines of the review (outlet and code, route, cluster)
         SaleRoute(
-            vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f), printerAssist = true,
+            vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f),
+            zeroSaleReasonPicker = true, quantityPopup = true, skuStats = skuStats,
             retailerLabel = outlet?.let { com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) },
             outletLines = listOfNotNull(
                 outlet?.let { "${it.name} (${com.aktcl.aron.core.ui.localizedDigits(it.code)})" },
@@ -171,7 +213,7 @@ private val outcomeRows = listOf(
 
 /** Memo menu, detail with Print, Edit and Mark paid, and the outlet's sale history (F-SR-030/031/032/054). */
 @Composable
-fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdit: (String) -> Unit) {
+fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdit: (String) -> Unit, onSaleData: (Boolean) -> Unit = {}) {
     val kit = day.sale
     val vm = viewModel(key = "memo-" + day.userId) { kit.newMemoViewModel() }
     val st by vm.state.collectAsState()
@@ -185,13 +227,18 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
     // tso-manual X4a (R-W-11): the push day_final_submitted pulls the delta; Mark Paid and Edit follow the lock while on screen
     var pulls by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { pulls++; vm.refresh() } }
+    LaunchedEffect(history != null) { onSaleData(history != null) }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { onSaleData(false) } }
     BackHandler(enabled = st.selected != null || history != null) { if (history != null) history = null else vm.open("") }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         val sel = st.selected
         val h = history
         when {
             !st.loaded -> com.aktcl.aron.core.ui.aron.AronLoadingScreen()
-            h != null -> SaleHistoryScreen(h, offlineBanner = true, skuName = kit::skuName, skuCategory = kit::skuCategoryCode)
+            h != null -> com.aktcl.aron.feature.memo.ui.SaleDataScreen(
+                h, today = day.businessDate(), outletLabel = outletLabel(sel?.memo?.outletId ?: 0L), offlineBanner = true,
+                skuName = kit::skuName, skuCategory = kit::skuCategoryCode, oldest = kit.historyOldest(),
+            )
             sel == null -> MemoMenuScreen(st.rows.map { it.copy(dueMtk = st.remainingByMemo[it.memoUuid] ?: it.dueMtk) }, outletLabel, onOpen = { vm.open(it.memoUuid) }, banner = stringResource(com.aktcl.aron.feature.memo.R.string.memo_banner_manual))
             else -> {
                 // an edit is a new memo: on a route-day closed by Final Submit it is disabled with the lock text (Print stays);
@@ -217,7 +264,7 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
                 )
                 AronSecondaryButton(
                     stringResource(R.string.sr_sale_history),
-                    { scope.launch { history = SaleHistoryBuilder.build(kit.history(), sel.memo.outletId) } },
+                    { scope.launch { history = kit.saleHistory(sel.memo.outletId) } },
                     Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.L),
                 )
                 ReprintDialogs(vm)
@@ -280,11 +327,19 @@ fun SubmitHost(day: SrDay) {
     )
 }
 
+/** The outlet line of the journey: the picker's own `name (code-phone-cluster)` (one copy of the format); the screen localizes the digits. */
+internal fun journeyOutletLine(o: OutletEntity?, outletId: Long): String = o?.let { com.aktcl.aron.feature.outlet.OutletPicker.label(it) } ?: "#$outletId"
+
+/** The Sales Journey: today's calls in time order from the device's own rows, offline (SRM-B-82 to 85). */
 @Composable
-fun JourneyHost(day: SrDay) {
-    var j by remember { mutableStateOf<com.aktcl.aron.feature.memo.domain.Journey?>(null) }
-    LaunchedEffect(Unit) { j = day.sale.journey() }
-    j?.let { JourneyScreen(it) } ?: com.aktcl.aron.core.ui.aron.AronLoadingScreen()
+fun JourneyHost(day: SrDay, locale: com.aktcl.aron.rules.UiLocale) {
+    // a failed read is an error with a retry, never a crash (rememberAsyncLoad rethrows a cancellation and catches the rest)
+    val load = com.aktcl.aron.core.ui.aron.rememberAsyncLoad {
+        day.sale.journeyCalls().map { (row, o) -> com.aktcl.aron.feature.memo.ui.SalesJourneyCall(row, journeyOutletLine(o, row.input.outletId)) }
+    }
+    com.aktcl.aron.core.ui.aron.AronLoaded(load, stringResource(R.string.sr_journey_load_failed), stringResource(com.aktcl.aron.feature.home.R.string.fb_retry)) { calls ->
+        com.aktcl.aron.feature.memo.ui.SalesJourneyScreen(calls, locale)
+    }
 }
 
 /** The KPI strip and the two money cards of F-SR-010/069, read from Room only. */

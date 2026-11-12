@@ -19,6 +19,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -44,12 +46,13 @@ class HomeScreenTest {
     private fun show(
         language: AppLanguage, tasks: Int = 0, freshness: BundleFreshness = BundleFreshness.Fresh, health: DeviceHealth? = null, onTile: (HomeTile) -> Unit = {},
         hero: HomeHero? = null, kpis: HomeKpis? = null, money: HomeMoneyLines? = null, dock: HomeDock? = null, sync: SyncChipState? = null, offline: Boolean = false,
+        enabled: Set<String> = emptySet(),
     ) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         compose.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
                 AronTheme(language) {
-                    HomeContent(header, HomeTiles.resolve(emptySet(), tasks), freshness, offline, health, onTile, hero = hero, kpis = kpis, money = money, dock = dock, sync = sync, onSettings = {})
+                    HomeContent(header, HomeTiles.resolve(enabled, tasks), freshness, offline, health, onTile, hero = hero, kpis = kpis, money = money, dock = dock, sync = sync, onSettings = {})
                 }
             }
         }
@@ -72,10 +75,11 @@ class HomeScreenTest {
     @Test fun heroKpiAndMoneyPanelsShowTheirFigures() {
         show(AppLanguage.EN, hero = hero, kpis = kpis, money = money, dock = HomeDock.START_SELLING, sync = SyncChipState.Waiting(3))
         compose.onNodeWithTag(HomeScreenTags.HERO).assertExists()
-        compose.onNodeWithText("Today's total").assertExists()
+        // the Target & Achievement card of the manual: title, STD label, "—" until the targets lane provides the figures (SRM-A-14)
+        compose.onNodeWithText("Target & Achievement (SKU List)").assertExists(); compose.onNodeWithText("STD").assertExists(); compose.onNodeWithText("—").assertExists()
         // the six KPI tiles of the reference: visited/planned, strike rate, issue, current stock, non-visit, no sale
         compose.onNodeWithTag(HomeScreenTags.KPI).assertExists()
-        compose.onAllNodesWithText("6/60", substring = true)[0].assertExists() // the tile and the target card bar
+        compose.onNodeWithText("6/60").assertExists() // the outlets-visited day tile; the card no longer carries it
         listOf("Strike rate", "Issue", "Current stock", "Non-visit", "No sale").forEach { compose.onNodeWithText(it).assertExists() }
         compose.onNodeWithText("10%").assertExists(); compose.onNodeWithText("54").assertExists()
         // issue and current stock are listed per category in the category's own unit, never added across units (docs/34 s4.2)
@@ -87,6 +91,32 @@ class HomeScreenTest {
         compose.onNodeWithText("Total discount").assertExists(); compose.onNodeWithText("DRP discount").assertExists(); compose.onNodeWithText("Total QC").assertExists()
         // the sync chip and the device line are not on Home any more (Settings carries them)
         compose.onNodeWithTag(HomeScreenTags.CHIP).assertDoesNotExist()
+    }
+
+    @Test fun stdCardShowsTheAchievementPastOneHundredPercentAndNeverAWrongNumber() {
+        assertEquals(1235, HomeStd(12_350, 1_000).percent)
+        assertEquals(100, HomeStd(12_350, 1_000).barPercent)
+        assertEquals(50, HomeStd(1, 2).percent) // half rounds up
+        assertEquals(null, HomeStd(5, null).percent); assertEquals(null, HomeStd(null, 5).percent); assertEquals(null, HomeStd(5, 0).percent)
+        compose.setContent { AronTheme(AppLanguage.EN) { HomeContent(header, HomeTiles.resolve(emptySet(), 0), BundleFreshness.Fresh, false, null, {}, hero = hero, std = HomeStd(12_350, 1_000)) } }
+        compose.onNodeWithText("1,235%").assertExists()
+        compose.onNodeWithText("—").assertDoesNotExist()
+    }
+
+    @Test fun fifteenTilesAreOnTheGridAndTheProgrammeTilesAreTappable() {
+        var got: HomeTile? = null
+        show(AppLanguage.EN, onTile = { got = it }, enabled = setOf("astha", "loyalty_point", "match_program"))
+        listOf("Sales", "Task Delegation", "Astha", "Loyalty Point", "Photo Capture", "Match Program").forEach { compose.onNodeWithText(it).assertExists() }
+        listOf(HomeTile.ASTHA, HomeTile.LOYALTY_POINT, HomeTile.MATCH_PROGRAM, HomeTile.PHOTO_CAPTURE).forEach {
+            compose.onNodeWithTag(HomeScreenTags.tile(it)).performScrollTo().performClick()
+            assertEquals(it, got)
+        }
+    }
+
+    @Test fun programmeTilesAreAbsentWhileTheirFlagsAreOff() {
+        show(AppLanguage.EN)
+        listOf(HomeTile.ASTHA, HomeTile.LOYALTY_POINT, HomeTile.MATCH_PROGRAM).forEach { compose.onNodeWithTag(HomeScreenTags.tile(it)).assertDoesNotExist() }
+        compose.onNodeWithTag(HomeScreenTags.tile(HomeTile.PHOTO_CAPTURE)).assertExists()
     }
 
     @Test fun aDiscountCanNeverRenderUnderTheQcLabel() {
@@ -225,6 +255,108 @@ class SettingsScreenTest {
         compose.onNodeWithTag(SettingsTags.SUPPORT).performScrollTo().performClick()
         compose.onNodeWithTag(SettingsTags.PHOTOS_WIFI).assertExists()
         assertEquals(1, update); assertEquals(1, support)
+    }
+
+    @Test fun updateConfigurationTilePullsAndConfirmsInPlace() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        var pulls = 0
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, {}, onUpdateConfig = { pulls++; ConfigUpdate.UPDATED }) } } }
+        compose.onNodeWithTag(SettingsTags.UPDATE_CONFIG).performClick()
+        compose.onNodeWithText("Configuration updated Successfully!").assertExists()
+        assertEquals(1, pulls)
+        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithText("Configuration updated Successfully!").assertDoesNotExist()
+    }
+
+    @Test fun updateConfigurationTellsTheRepWhenItCouldNotPull() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, {}, onUpdateConfig = { ConfigUpdate.FAILED }) } } }
+        compose.onNodeWithTag(SettingsTags.UPDATE_CONFIG).performClick()
+        compose.onNodeWithText("Configuration not updated").assertExists()
+    }
+
+    @Test fun updateConfigurationSaysWhenThePhoneAlreadyHasTheLatest() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, {}, onUpdateConfig = { ConfigUpdate.ALREADY_CURRENT }) } } }
+        compose.onNodeWithTag(SettingsTags.UPDATE_CONFIG).performClick()
+        compose.onNodeWithText("This phone already has the latest configuration.").assertExists()
+        compose.onNodeWithText("The new configuration is on. The app does not need to close; continue your work.").assertDoesNotExist()
+    }
+
+    @Test fun updateConfigurationTileShowsBusyWhileADownloadRuns() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        var starts = 0
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, {}, onUpdateConfig = { starts++; ConfigUpdate.UPDATED }, configDownloading = true) } } }
+        compose.onNodeWithText("Updating…").assertExists()
+        compose.onNodeWithTag(SettingsTags.UPDATE_CONFIG).performClick()
+        assertEquals(0, starts) // busy: a second tap starts nothing
+    }
+
+    @Test fun updateConfigurationTileIsHiddenWithoutACallback() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, {}) } } }
+        compose.onNodeWithTag(SettingsTags.UPDATE_CONFIG).assertDoesNotExist()
+    }
+
+    @Test fun logoutWithUnsubmittedSalesWarnsFirstAndOffersSalesSubmit() {
+        var out = 0; var submit = 0
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, { out++ }, submitPending = { true }, onSalesSubmit = { submit++ }) } } }
+        compose.onNodeWithTag(SettingsTags.LOGOUT).performClick()
+        compose.onNodeWithText("Today's sales are not submitted").assertExists()
+        compose.onNodeWithText("Sales Submit").performClick()
+        assertEquals(1, submit); assertEquals(0, out)
+    }
+
+    @Test fun backOnTheLogoutWarningStaysInSettings() {
+        var out = 0
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, { out++ }, submitPending = { true }, onSalesSubmit = {}) } } }
+        compose.onNodeWithTag(SettingsTags.LOGOUT).performClick()
+        compose.onNodeWithText("Today's sales are not submitted").assertExists()
+        // back on the shown dialog window (the Compose Dialog is a ComponentDialog)
+        compose.runOnUiThread { (org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.activity.ComponentDialog).onBackPressedDispatcher.onBackPressed() }
+        compose.waitForIdle()
+        compose.onNodeWithText("Today's sales are not submitted").assertDoesNotExist()
+        compose.onNodeWithText("Your saved work stays on this phone and will still upload.").assertDoesNotExist()
+        compose.onNodeWithTag(SettingsTags.LOGOUT).assertExists()
+        assertEquals(0, out)
+    }
+
+    @Test fun aFailedPendingReadFallsBackToTheNormalLogoutConfirm() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, {}, submitPending = { error("room closed") }, onSalesSubmit = {}) } } }
+        compose.onNodeWithTag(SettingsTags.LOGOUT).performClick()
+        compose.onNodeWithText("Your saved work stays on this phone and will still upload.").assertExists()
+    }
+
+    @Test fun languageDropDownShowsTheCurrentLanguageAndSwitches() {
+        var picked: AppLanguage? = null
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", { picked = it }, {}) } } }
+        compose.onNodeWithTag(SettingsTags.LANGUAGE).performClick()
+        compose.onNodeWithText("বাংলা").performClick()
+        assertEquals(AppLanguage.BN, picked)
+    }
+
+    @Test fun logoutAnywayGoesOnToTheNormalConfirm() {
+        var out = 0
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, { out++ }, submitPending = { true }, onSalesSubmit = {}) } } }
+        compose.onNodeWithTag(SettingsTags.LOGOUT).performClick()
+        compose.onNodeWithText("Log out anyway").performClick()
+        assertEquals(0, out)
+        compose.onNodeWithText("Your saved work stays on this phone and will still upload.").assertExists()
+        compose.onAllNodesWithText("Log out").onLast().performClick()
+        assertEquals(1, out)
+    }
+
+    @Test fun logoutWithNothingPendingSkipsTheWarning() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, {}, submitPending = { false }, onSalesSubmit = {}) } } }
+        compose.onNodeWithTag(SettingsTags.LOGOUT).performClick()
+        compose.onNodeWithText("Today's sales are not submitted").assertDoesNotExist()
+        compose.onNodeWithText("Your saved work stays on this phone and will still upload.").assertExists()
     }
 
     @Test fun settingsCarriesTheDeviceLineThatLeftHome() {

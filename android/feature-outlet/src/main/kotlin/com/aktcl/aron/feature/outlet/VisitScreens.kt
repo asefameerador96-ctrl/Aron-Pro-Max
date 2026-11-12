@@ -1,6 +1,12 @@
 package com.aktcl.aron.feature.outlet
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.font.FontWeight
+import com.aktcl.aron.core.ui.AronLook
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +27,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -90,7 +97,10 @@ object OutletTags {
     const val MAP = "out_map"
     const val RETRY = "out_retry"
     const val MESSAGE = "out_message"
+    const val DOT = "out_row_dot"
+    const val ROW_LABEL = "out_row_label"
 }
+
 
 /** What today's visits say about one outlet on the picker (screens-sr s5): visited with its memo total, or a skip outcome. */
 data class PickerMark(val visited: Boolean = false, val memoTotalMtk: Long? = null, val outcomeCode: String? = null)
@@ -135,6 +145,8 @@ fun OutletPickerContent(
      * the route, not of the letter. Null means [rows] is the route.
      */
     allRows: List<PickerRow>? = null,
+    /** The SR manual's rows (s8 / 18, D-SR-MAN-S4-01): one string `Name (code-phone-cluster)` after a yellow-orange dot; false keeps the two-line rows (AMO). */
+    manualRows: Boolean = false,
 ) {
     val look = LocalAronLook.current
     // sr/sale-select.png: the pill field and the A-Z panel first; the route list opens when the SR taps the field or a letter
@@ -182,7 +194,7 @@ fun OutletPickerContent(
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = AronTokens.Space.S), verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             items(visible, key = { it.outlet.outletId }, contentType = { "outlet" }) { r ->
-                                PickerRowView(r, marks[r.outlet.outletId], showDistance, onPick = { onPick(r) })
+                                PickerRowView(r, marks[r.outlet.outletId], showDistance, onPick = { onPick(r) }, manualRow = manualRows)
                             }
                         }
                     }
@@ -198,7 +210,7 @@ fun OutletPickerContent(
  * or the outcome word. The whole row (72 dp or more) is the target, painted like the kit's flat row.
  */
 @Composable
-private fun PickerRowView(r: PickerRow, mark: PickerMark?, showDistance: Boolean, onPick: () -> Unit) {
+private fun PickerRowView(r: PickerRow, mark: PickerMark?, showDistance: Boolean, onPick: () -> Unit, manualRow: Boolean = false) {
     val c = LocalAronColors.current
     val look = LocalAronLook.current
     val outcome = mark?.outcomeCode?.let { outcomeWord(it) }
@@ -216,8 +228,15 @@ private fun PickerRowView(r: PickerRow, mark: PickerMark?, showDistance: Boolean
         horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-            Text(r.outlet.name, style = MaterialTheme.typography.titleSmall, color = look.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(captionOf(r.outlet), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
+            if (manualRow) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                    Box(Modifier.size(10.dp).clip(androidx.compose.foundation.shape.CircleShape).background(c.warning).testTag(OutletTags.DOT))
+                    Text(localizedDigits(r.label), style = MaterialTheme.typography.titleSmall, color = look.ink, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag(OutletTags.ROW_LABEL))
+                }
+            } else {
+                Text(r.outlet.name, style = MaterialTheme.typography.titleSmall, color = look.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(captionOf(r.outlet), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
+            }
             if (r.outlet.openDueMtk > 0) {
                 StatusPill(stringResource(R.string.out_due_chip, outletMoney(r.outlet.openDueMtk)), AronIcons.Wallet, c.warningContainer, c.warningOnContainer, Modifier.padding(top = AronTokens.Space.Xs))
             }
@@ -308,6 +327,12 @@ fun VisitCheckContent(
     mapSlot: GeoMapSlot? = null,
     /** The SR's D-MAP-02 panel on the out-of-range step; false keeps the AMO's earlier range view and wording. */
     geoPanel: Boolean = false,
+    /**
+     * The SR's call-start screen of the manual (s8 / 19, D-SR-MAN-S4-01): on an open visit show the Sale History and today's-target buttons and the
+     * question "আপনি কি কল শুরু করতে চান?" with হ্যাঁ ([onStartCall]) and না (stays on the outlet), above the cart bar whose এগিয়ে যান says
+     * "Please start the call to continue." Null keeps the AMO's single start-call bar.
+     */
+    callQuestion: CallQuestion? = null,
 ) {
     val c = LocalAronColors.current
     val startLabel = stringResource(R.string.out_start_call)
@@ -382,10 +407,11 @@ fun VisitCheckContent(
                     if (geo != null) VisitGeoPanel(geo, mapSlot = mapSlot, onOpenMaps = onMap)
                 }
             }
-            if (onPreviousSales != null || onNoSale != null || (state is VisitUiState.Open && onBack != null)) {
+            if (callQuestion != null && state is VisitUiState.Open) CallQuestionBlock(callQuestion, onStartCall)
+            if (callQuestion == null && (onPreviousSales != null || onNoSale != null || (state is VisitUiState.Open && onBack != null)) || callQuestion != null && (onNoSale != null || (state is VisitUiState.Open && onBack != null))) {
                 // the two text buttons share a line when both fit (English) and wrap one under the other otherwise (Bangla on 360 dp)
                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                    if (onPreviousSales != null) AronTextButton(stringResource(R.string.out_history), onPreviousSales)
+                    if (onPreviousSales != null && callQuestion == null) AronTextButton(stringResource(R.string.out_history), onPreviousSales)
                     if (onNoSale != null) AronTextButton(stringResource(R.string.out_no_sale), onNoSale)
                     // leaving the start step without a sale: the host abandons the visit (F-SR-060)
                     if (state is VisitUiState.Open && onBack != null) AronTextButton(stringResource(R.string.out_go_back), onBack)
@@ -412,7 +438,7 @@ fun VisitCheckContent(
             is VisitUiState.LocationBlocked -> if (onOpenLocationSettings != null) OutletBar(BarAction(stringResource(R.string.out_turn_on_location), onOpenLocationSettings))
             // D-SRFIX-03b: a refused day cannot start a call, so a retry would only be refused again: only a storage failure retries
             is VisitUiState.CommitFailed -> if (state.failure == CommitFailure.STORAGE) OutletBar(BarAction(stringResource(R.string.out_retry_short), onRetry, OutletTags.RETRY, icon = AronIcons.Refresh))
-            is VisitUiState.Open -> if (onStartCall != null) OutletBar(BarAction(startLabel, onStartCall, icon = AronIcons.ArrowForward))
+            is VisitUiState.Open -> if (callQuestion != null) CallCartBar(callQuestion.onProceedBlocked) else if (onStartCall != null) OutletBar(BarAction(startLabel, onStartCall, icon = AronIcons.ArrowForward))
             VisitUiState.Idle -> Unit
         }
     }
@@ -506,4 +532,91 @@ internal val RangeViewHeight = 180.dp
 private fun niceScale(m: Double): Double {
     val steps = doubleArrayOf(10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0)
     return steps.lastOrNull { it <= m } ?: steps.first()
+}
+
+/** What the SR's call-start screen needs beyond the visit: the two outlet buttons and the "start the call first" answer (D-SR-MAN-S4-01). */
+class CallQuestion(
+    /** The outlet as `Name (code-phone-cluster)` in the pill at the top (manual note 19); shown on the relaunch path too. */
+    val outletLabel: String?,
+    val onSaleHistory: () -> Unit,
+    val onTodayTarget: () -> Unit,
+    /** The cart bar's এগিয়ে যান before the call is started: the host shows the "Please start the call to continue." box. */
+    val onProceedBlocked: () -> Unit,
+    /** Whether the SR already answered না: the question stays, nothing is abandoned. */
+    val declined: Boolean = false,
+    val onNo: () -> Unit = {},
+)
+
+object CallQuestionTags {
+    const val HISTORY = "call_q_history"
+    const val TARGET = "call_q_target"
+    const val QUESTION = "call_q_question"
+    const val OUTLET = "call_q_outlet"
+    const val FIRST_BOX = "call_q_first_box"
+    const val YES = "call_q_yes"
+    const val NO = "call_q_no"
+    const val PROCEED = "call_q_proceed"
+}
+
+
+@Composable
+private fun CallQuestionBlock(q: CallQuestion, onYes: (() -> Unit)?) {
+    val look = LocalAronLook.current
+    val c = LocalAronColors.current
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+        q.outletLabel?.let { RetailerPickerField(value = it, placeholder = "", onClick = {}, modifier = Modifier.testTag(CallQuestionTags.OUTLET), readOnly = true) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+            OutlineChip(stringResource(R.string.out_sale_history_btn), AronIcons.Clock, c.accentContainer, c.accentOnContainer, q.onSaleHistory, Modifier.weight(1f).testTag(CallQuestionTags.HISTORY))
+            OutlineChip(stringResource(R.string.out_today_target_btn), AronIcons.Target, c.successContainer, c.successOnContainer, q.onTodayTarget, Modifier.weight(1f).testTag(CallQuestionTags.TARGET))
+        }
+        Column(Modifier.fillMaxWidth().padding(top = AronTokens.Space.S), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+            Icon(AronIcons.Info, contentDescription = null, tint = c.accentOnContainer, modifier = Modifier.size(32.dp))
+            Text(stringResource(R.string.out_call_question), color = c.accentOnContainer, fontSize = 18.sp, textAlign = TextAlign.Center, modifier = Modifier.testTag(CallQuestionTags.QUESTION))
+        }
+        com.aktcl.aron.core.ui.aron.AronPrimaryButton(
+            stringResource(R.string.out_call_yes), { onYes?.invoke() }, Modifier.fillMaxWidth().testTag(CallQuestionTags.YES), enabled = onYes != null,
+        )
+        com.aktcl.aron.core.ui.aron.AronSecondaryButton(stringResource(R.string.out_call_no), q.onNo, Modifier.fillMaxWidth().testTag(CallQuestionTags.NO))
+    }
+}
+
+@Composable
+private fun OutlineChip(label: String, icon: ImageVector, bg: Color, ink: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(AronLook.ButtonRadius)
+    Row(
+        modifier.heightIn(min = AronTokens.Touch.Min).clip(shape).background(bg).border(1.dp, ink, shape).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label, color = ink, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 2)
+    }
+}
+
+/** The purple cart bar of the manual with the cart at 0.00 and এগিয়ে যান; before the call it only answers "start the call first". */
+@Composable
+private fun CallCartBar(onProceed: () -> Unit) {
+    val look = LocalAronLook.current
+    Row(
+        Modifier.fillMaxWidth().background(look.panel).windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(AronIcons.Sale, contentDescription = null, tint = look.onPanel, modifier = Modifier.size(28.dp))
+        Text(localizedDigits("0.00"), color = look.onPanel, fontSize = 22.sp, modifier = Modifier.weight(1f))
+        com.aktcl.aron.core.ui.aron.AronPrimaryButton(
+            stringResource(R.string.out_proceed), onProceed, Modifier.widthIn(min = 140.dp).testTag(CallQuestionTags.PROCEED), glyph = com.aktcl.aron.core.ui.aron.ButtonGlyph.Arrow,
+        )
+    }
+}
+
+/** The box of the manual (screenshot 19, right): a warning triangle, the sentence (English line, then Bangla in Bangla mode) and ওকে. No title. */
+@Composable
+fun StartCallFirstDialog(onOk: () -> Unit) {
+    val c = LocalAronColors.current
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onOk, containerColor = c.surfaceSolid, textContentColor = c.textPrimary,
+        icon = { Icon(AronIcons.Warning, contentDescription = null, tint = c.warning) },
+        text = { Text(stringResource(R.string.out_call_first), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().testTag(CallQuestionTags.FIRST_BOX)) },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onOk, modifier = Modifier.heightIn(min = AronTokens.Touch.Min)) { Text(stringResource(R.string.out_ok)) } },
+    )
 }
