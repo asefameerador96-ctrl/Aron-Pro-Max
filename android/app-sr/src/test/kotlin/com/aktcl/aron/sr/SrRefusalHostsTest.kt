@@ -16,6 +16,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
+import com.aktcl.aron.feature.outlet.CallQuestionTags
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -120,7 +121,7 @@ class SrRefusalHostsTest {
         var done = 0
         show { SaleHost(f.day, sunlight = false, onSunlight = {}, onNoSale = {}, onDone = { done++ }) }
         shows(SUBMITTED)
-        compose.onNodeWithText("Start the call?").assertDoesNotExist()
+        compose.onNodeWithTag(CallQuestionTags.QUESTION).assertDoesNotExist()
         compose.onNodeWithText("OK").performClick()
         compose.waitUntil(5_000) { done == 1 }
         assertNull("the call ended on the phone", f.day.visitSession.current.value)

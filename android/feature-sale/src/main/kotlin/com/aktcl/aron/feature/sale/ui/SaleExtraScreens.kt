@@ -60,6 +60,7 @@ import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.core.ui.MoneyText
+import com.aktcl.aron.core.ui.entryUnitLabel
 import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.feature.sale.R
 import com.aktcl.aron.feature.sale.domain.PaidInput
@@ -171,6 +172,21 @@ object QcTags {
     const val CARD = "qc_card"
     const val QTY_FIELD = "qc_qty_field"
     const val SUMMARY_ROW = "qc_summary_row"
+    const val PACK_EQUIV = "qc_pack_equiv"
+}
+
+/** `= 2 packets + 5 sticks` for [qtyBase] sticks of a stick-based SKU with a pack factor; null when there is nothing to convert. Integer math. */
+@Composable
+internal fun qcPackEquivalent(sku: SaleSku, qtyBase: Long): String? {
+    if (sku.baseUnit != "stick" || sku.packFactor <= 1 || qtyBase <= 0) return null
+    val packs = qtyBase / sku.packFactor
+    val rest = qtyBase % sku.packFactor
+    val packWord = entryUnitLabel("packet")
+    return when {
+        packs == 0L -> null
+        rest == 0L -> stringResource(R.string.qc_pack_equiv, localizedNumber(packs), packWord)
+        else -> stringResource(R.string.qc_pack_equiv_both, localizedNumber(packs), packWord, localizedNumber(rest), unitLabel(sku.baseUnit))
+    }
 }
 
 @Composable
@@ -230,6 +246,8 @@ fun QcScreen(
                                     AronPlus({ if (!locked) onQty(sku.skuId, type.code, (cur + 1).coerceAtMost(max).toLong()) }, stringResource(R.string.sale_more), enabled = !locked && cur < max)
                                     Spacer(Modifier.width(AronTokens.Space.S))
                                     Text(unitLabel(sku.baseUnit), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                                    // the QC count stays in sticks (a defect count, not a trade unit, D-SR-MAN-S4-06); the packet equivalent sits beside it
+                                    qcPackEquivalent(sku, cur.toLong())?.let { Text(it, Modifier.testTag(QcTags.PACK_EQUIV), style = MaterialTheme.typography.bodySmall, color = c.textSecondary) }
                                     Spacer(Modifier.width(AronTokens.Space.S))
                                     // D-17: a rep may type the count; a number above what is left is accepted down to it and flagged
                                     AronQtyField(

@@ -1,5 +1,6 @@
 package com.aktcl.aron.sr
 
+import com.aktcl.aron.feature.memo.domain.SaleHistoryBuilder
 import android.content.Context
 import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.entity.GeoFixEntity
@@ -86,6 +87,10 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     fun skuName(id: Long): String = skuNames[id] ?: id.toString()
     fun outletName(id: Long): String = day.dayData.value.outlets.firstOrNull { it.outletId == id }?.let { it.name + " (" + it.code + ")" } ?: id.toString()
     fun skuCategoryCode(id: Long): String? = skuCategory[id]
+
+    /** The outlet pill of the call-start screen (digits are localised by the screen): the picker label `Name (code-phone-cluster)` when the day holds the outlet, else the bare outlet id (the day's outlets are not loaded). */
+    fun callOutletLabel(outlet: com.aktcl.aron.core.database.entity.OutletEntity?, id: Long): String =
+        outlet?.let { com.aktcl.aron.feature.outlet.OutletPicker.label(it) } ?: outletName(id)
     fun names() = PrintNames(::skuName, ::outletName, day.userDisplayName, day.dayData.value.route?.name.orEmpty(), category = { id -> com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, skuCategory[id]) }, categoryCode = { id -> skuCategory[id].orEmpty() })
 
     /** Prices of the bundle and the day's stock (docs/24 s7.2, F-SYS-045). */
@@ -100,6 +105,13 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
 
     /** When each call was started (the SR tapped Yes on the start prompt); read when the visit closes. */
     val callStarted = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /**
+     * `cfg.sale.call_photo_required` (SR manual s8 / 20, owner Q8 default true): the outlet photo after হ্যাঁ. OFF in TRAIN 1 on purpose: a photo with no
+     * `call_photo_uuid` on the visit record and no media purpose for it cannot be linked on the server, so asking the rep for it would cost a
+     * minute per call for nothing. TRAIN 2 adds the contract members, reads the config and turns this on (D-SR-MAN-S4-07).
+     */
+    val callPhotoRequired: Boolean = false
 
     /** The fresh geofence fix of the edit in progress (F-SR-033): taken by [prepareEdit], consumed by the commit, never reused. */
     @Volatile private var editReading: FixReading? = null
@@ -261,7 +273,8 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         val memo = dao.memo(memoUuid)
         val date = day.businessDate()
         val live = memo != null && dao.memosOn(date).none { it.supersedesClientUuid == memoUuid }
-        val qcDone = memo != null && dao.qcLinesOn(date).any { it.visitClientUuid == memo.visitClientUuid }
+        // SRM-B-17: QC "entered for the outlet" on the business date, whichever visit of that outlet recorded it
+        val qcDone = memo != null && EditGate.qcEnteredForOutlet(memo.outletId, dao.qcLinesOn(date).map { dao.visit(it.visitClientUuid)?.outletId })
         EditGate.check(inGeofenceNow = true, qcCompleted = qcDone, memoIsLive = live, memoExists = memo != null)?.let { return it }
         val o = day.dayData.value.outlets.firstOrNull { it.outletId == memo!!.outletId }?.let(day::visitOutlet) ?: return EditDenied.OutsideGeofence
         val reading = day.fixSource.readFix("memo_edit")
@@ -311,7 +324,35 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         MemoPrintingReprinter(day.printing), ::names, day::businessDate,
     )
 
-    suspend fun history(): List<StoredMemo> = store.history(day.businessDate())
+    /** [days] local days ending today; Sale History keeps the 7-day window. */
+    suspend fun history(days: Int = LOCAL_HISTORY_DAYS): List<StoredMemo> = store.history(day.businessDate(), days)
+
+    /** An outlet's sales on the phone for Sale History / "সেল ডাটা"; cancellation propagates, any other failure reads as no sales. */
+    suspend fun saleHistory(outletId: Long): com.aktcl.aron.feature.memo.domain.SaleHistory =
+        com.aktcl.aron.core.common.orDefaultKeepingCancellation(com.aktcl.aron.feature.memo.domain.SaleHistory(emptyList(), 0L, false)) {
+            SaleHistoryBuilder.build(history(), outletId)
+        }
+
+    /** The oldest date the local window holds (today and the six days before it): older dates cannot be shown offline. */
+    fun historyOldest(): String = java.time.LocalDate.parse(day.businessDate()).minusDays((LOCAL_HISTORY_DAYS - 1).toLong()).toString()
+
+    /**
+     * The quantity popup's আগের দিন and SDLW for one outlet (D-SR-MAN-S4-05). SDLW is exactly seven days back, so the window is eight local
+     * days (today and the seven before it); Sale History keeps its seven. The read keeps cancellation; any other failure shows no figures.
+     */
+    suspend fun skuStats(outletId: Long): Map<Long, com.aktcl.aron.feature.sale.domain.SkuStats> {
+        val rows = com.aktcl.aron.core.common.orDefaultKeepingCancellation(emptyList()) {
+            SaleHistoryBuilder.build(history(STATS_DAYS), outletId).days.flatMap { d ->
+                d.skuRows.map { r -> com.aktcl.aron.feature.sale.domain.StatRow(d.businessDate, r.skuId, r.qtyEntered, r.unitEntered) }
+            }
+        }
+        return com.aktcl.aron.feature.sale.domain.SkuStatsBuilder.build(rows, day.businessDate())
+    }
+
+    companion object {
+        const val LOCAL_HISTORY_DAYS = 7
+        const val STATS_DAYS = 8
+    }
 
     suspend fun summary(): SummaryBundle { prepare(); return reads.summary(day.businessDate()) }
     suspend fun journey(): Journey = reads.journey(day.businessDate(), day.dayData.value.outlets)
@@ -334,6 +375,8 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         day.userId, day::businessDate, RoomDaySource(db), com.aktcl.aron.feature.dayclose.DigestServerCounts(serverCounts, day.submitDigests, db),
         RoomDaySubmitWriter(db, day.capture, { day.metaProvider.meta(0L) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() }),
         syncScheduler, online,
+        // SRM-B-25: the device figures are this phone's rows; the server column waits for the digest members of contract 1.14.0 (SV lane): until then it shows "—"
+        businessSource = com.aktcl.aron.feature.dayclose.BusinessSource { date -> prepare(); reads.businessTotals(date) },
     )
 
     /** The sync response's `server_totals` as accepted + rejected + quarantined per record type; null before the first answer. */

@@ -92,10 +92,10 @@ private fun TotalsRow(line: TotalsLine, size: TextUnit, color: Color) {
 
 /**
  * The white pill "select a retailer" field with its caret (PARITY-SPEC s2.9, sr/sale-select.png). Shows [value] or the grey
- * [placeholder]; [onClick] opens the caller's list (use this form for long retailer lists with search).
+ * [placeholder]; [onClick] opens the caller's list (use this form for long retailer lists with search). [readOnly] draws the chosen retailer as a plain pill: no caret, no tap, no dropdown role (the call-start and sale screens, where the outlet is already fixed).
  */
 @Composable
-fun RetailerPickerField(value: String?, placeholder: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun RetailerPickerField(value: String?, placeholder: String, onClick: () -> Unit, modifier: Modifier = Modifier, readOnly: Boolean = false) {
     val look = LocalAronLook.current
     Row(
         modifier
@@ -103,12 +103,12 @@ fun RetailerPickerField(value: String?, placeholder: String, onClick: () -> Unit
             .heightIn(min = 52.dp)
             .clip(RoundedCornerShape(50))
             .background(look.card)
-            .clickable(role = Role.DropdownList, onClick = onClick)
-            .padding(start = 20.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+            .then(if (readOnly) Modifier else Modifier.clickable(role = Role.DropdownList, onClick = onClick))
+            .padding(start = 20.dp, end = if (readOnly) 20.dp else 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(value ?: placeholder, style = lookStyle(17.sp, color = if (value == null) look.hint else look.ink), modifier = Modifier.weight(1f))
-        GlyphCanvas(Modifier.size(24.dp)) { caretDown(look.caret) }
+        if (!readOnly) GlyphCanvas(Modifier.size(24.dp)) { caretDown(look.caret) }
     }
 }
 

@@ -13,8 +13,18 @@ class EditGateTest {
         assertEquals(EditDenied.NoLiveMemo, EditGate.check(true, false, true, memoExists = false))
     }
 
-    @Test fun threeReasonsAreOfferedWithListedWireCodes() {
-        assertEquals(listOf("wrong_sku", "wrong_quantity", "wrong_price_type"), EditReason.entries.map { it.wire })
+    @Test fun everyReasonHasItsWireCodeAndTheSrListIsTheManuals() {
+        assertEquals(listOf("wrong_sku", "wrong_quantity", "wrong_price_type", "wrong_sku_qty", "promotion_issue"), EditReason.entries.map { it.wire })
+        // SRM-B-15: the SR's three reasons are the manual's, in its order; the AMO keeps its earlier three
+        assertEquals(listOf("wrong_sku", "wrong_sku_qty", "promotion_issue"), EditReason.manual.map { it.wire })
+        assertEquals(listOf("wrong_sku", "wrong_quantity", "wrong_price_type"), EditReason.legacy.map { it.wire })
+    }
+
+    @Test fun qcIsPerOutletAndDayWhicheverVisitEnteredIt() {
+        // SRM-B-17: QC entered in a later visit of the same outlet blocks the edit; QC at another outlet does not
+        assertEquals(true, EditGate.qcEnteredForOutlet(7, listOf(3L, 7L)))
+        assertEquals(false, EditGate.qcEnteredForOutlet(7, listOf(3L, null)))
+        assertEquals(false, EditGate.qcEnteredForOutlet(7, emptyList()))
     }
 
     @Test fun prefillKeepsTheOutletAndLinesAndSupersedesTheOldMemo() {

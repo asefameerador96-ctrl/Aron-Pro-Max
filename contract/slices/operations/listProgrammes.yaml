@@ -5,8 +5,21 @@ operation:
   - admin-content
   operationId: listProgrammes
   summary: Programme definitions (Diamond League, Astha, campaigns, Superstar).
+  description: 'Loyalty programmes of the portal (1.13.0). Permission module `loyalty`: SUPERADMIN, or ADMIN with
+    the `r` grant, read all; NATIONAL (and the retired TOP, read the same way) reads all; BRAND, WM, DMO and TSO
+    read the programmes within their server-side scope (the client never sends scope ids); SR, AMO, SUPPORT and
+    ANALYST are refused `403`. Loyalty in the field stays deferred (docs/27).'
   parameters:
-  - $ref: '#/components/parameters/StatusQuery'
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/ProgrammeStatus'
+  - name: kind
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/ProgrammeKind'
   responses:
     '200':
       description: Programmes.

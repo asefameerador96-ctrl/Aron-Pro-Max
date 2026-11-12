@@ -64,6 +64,7 @@ import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.AronLookColors
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.aron.Glyph.arrowForward
 import com.aktcl.aron.core.ui.aron.Glyph.bar
 import com.aktcl.aron.core.ui.aron.Glyph.chevronBack
 import com.aktcl.aron.core.ui.aron.Glyph.gear
@@ -162,7 +163,7 @@ fun AronTopBar(
 
 /**
  * The printer state at the end of the top bar (sr/stock.webp): a light round badge with a red crossed printer while no printer is
- * connected, a purple printer once one is. [label] is the TalkBack text of the state; tapping it opens the connect flow. Inside an
+ * connected, a green printer once one is (SR manual screenshot 17). [label] is the TalkBack text of the state; tapping it opens the connect flow. Inside an
  * [AronInfoCard] it is drawn flat, grey and with a smaller printer, as on sr/summary.png.
  */
 @Composable
@@ -281,7 +282,7 @@ fun AronHomeHeader(
 const val AronHomeSettingsTag = "aron_home_settings"
 
 /** The leading glyph of a button (sr/stock.webp: Save has a disk, Print a printer). */
-enum class ButtonGlyph { Save, Print, Sync, Submit }
+enum class ButtonGlyph { Save, Print, Sync, Submit, Arrow }
 
 @Composable
 private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink: Color, gap: Color, bold: Boolean = true) {
@@ -292,6 +293,7 @@ private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink
             glyph == ButtonGlyph.Print -> GlyphCanvas(Modifier.size(15.dp)) { printer(ink, crossed = false, gap = gap) }
             glyph == ButtonGlyph.Sync -> GlyphCanvas(Modifier.size(20.dp)) { sync(ink) }
             glyph == ButtonGlyph.Submit -> GlyphCanvas(Modifier.size(18.dp)) { save(ink, gap) }
+            glyph == ButtonGlyph.Arrow -> GlyphCanvas(Modifier.size(20.dp)) { arrowForward(ink) }
         }
         if (icon != null || glyph != null) Spacer(Modifier.width(6.dp))
         Text(text, style = lookStyle(18.sp, bold = bold, color = ink, align = TextAlign.Center))

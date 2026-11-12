@@ -1,0 +1,39 @@
+GiftPatch:
+  type: object
+  minProperties: 2
+  required:
+  - change_reason
+  additionalProperties: false
+  description: The code and the programme of a gift never change. Members left out keep their value.
+  properties:
+    request_uuid:
+      $ref: '#/components/schemas/Uuid'
+    name_en:
+      type: string
+      minLength: 1
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    points_cost:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      maximum: 100000
+    tier_codes:
+      type: array
+      maxItems: 10
+      items:
+        type: string
+        pattern: ^[a-z][a-z0-9_]{1,40}$
+    image_asset_id:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

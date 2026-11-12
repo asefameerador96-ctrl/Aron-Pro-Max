@@ -320,12 +320,6 @@ class SrDay(
 
     fun isOnline(): Boolean = online()
 
-    /** SRM-B-56: the configured earliest check-out time as "HH:mm" (cfg.day.checkout_earliest_time), for the Attendance label. */
-    fun checkoutEarliestText(): String {
-        val m = deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: com.aktcl.aron.core.sync.device.DayConfig.DEFAULT_CHECKOUT_MINUTES
-        return "%02d:%02d".format(java.util.Locale.ROOT, m / 60, m % 60)
-    }
-
     /** SRM-B-55: today has sales or visits on this phone and no Sales Submit yet (offline read). */
     suspend fun salesSubmitPending(): Boolean {
         val source = com.aktcl.aron.feature.dayclose.RoomDaySource(db)
@@ -360,6 +354,9 @@ class SrDay(
         language = { com.aktcl.aron.core.ui.AppLocale.current(context) },
         last = com.aktcl.aron.core.map.PrefsLastAddressStore(context, userId),
     )
+
+    /** "HH:mm" of the configured earliest check-out (`cfg.day.checkout_earliest_time`), for the amber "after 5" box (D-SR-MAN-S3-01). */
+    fun checkoutAtLabel(): String = checkoutLabel(deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: com.aktcl.aron.core.sync.device.DayConfig.DEFAULT_CHECKOUT_MINUTES)
 
     val attendance = AttendanceFlow(
         fixes = fixSource, metaProvider = metaProvider,
@@ -842,3 +839,6 @@ object SrDayLockTags { const val BANNER = "sr_day_lock_banner" }
 
 private const val LINE_BREAK = "\n"
 
+
+/** Minutes after midnight as "HH:mm". */
+internal fun checkoutLabel(minutes: Int): String = "%02d:%02d".format(java.util.Locale.ROOT, minutes / 60, minutes % 60)

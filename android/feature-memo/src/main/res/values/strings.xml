@@ -84,4 +84,12 @@
     <string name="memo_total_category">Total %1$s</string>
     <string name="memo_due_chip_amount">Due %1$s</string>
     <string name="summary_qty_rem">%1$s %2$s %3$s</string>
+    <string name="sale_data_title">Sale data</string>
+    <string name="sale_data_none">No sale at this outlet on this date.</string>
+    <string name="sale_data_ok">OK</string>
+    <string name="sale_data_cancel">Cancel</string>
+    <string name="memo_ok">OK</string>
+    <string name="memo_letter_all">All</string>
+    <string name="memo_banner_manual">Select an outlet to see its memo. You can also reprint the memo from here.</string>
+    <string name="memo_glyph_dropdown">▾</string>
 </resources>
