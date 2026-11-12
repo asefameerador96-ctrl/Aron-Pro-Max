@@ -2874,3 +2874,10 @@
 ### 2026-11-12 10:43 UTC — train 101 pushed to INT; S1 ready
 - Integrator 24 pushed train 101: INT `ce9d92bf7` (tree-identical to afe417965 plus train.md; DECISIONS 406; V0158..V0162 added; contract 1.13.0), ci #2039 43202049384 running, real deploy expected.
 - S1 `129c335f7` (5 files on 755a5cbaf: records corrected, display assertion restored, SecureScreen ref-counted per window with an overlap test). I read the production change myself: count per window in a WeakHashMap, flag cleared only when the last holder leaves and only if the window was not secure before; correct. S1 is ready for the train after 102.
+
+### 2026-11-12 10:48 UTC — lane check (2-hourly)
+- INT `ce9d92bf7` (train 101), ci #2039 43202049384 running (no failure), deploy pending; health build still ab78d0d4b (expected until the deploy). Train 102 run 43199553152 running (no failure).
+- S2: its "checked efef6763e" (09:18) never reached me as a message; found by get_session (status: holding for the gate). Static gate clean (lane ci 43189430574 green; 9 home goldens re-recorded; one test renamed; DECISIONS 393); Opus pass w4fk7w464 launched (outlet requests/sync, journey/home math, tasks/shared/records). Base is ab78d0d4b: needs an INT merge after train 102.
+- SV: no branch on origin, idle since 09:27, context about 466 k (past the 450 k recycle mark). Nudged once: push WIP, write the handover status file, report.
+- L-B holding (aa81dfa47) for the 1.13.0 alignment list after train 101 deploys. S1 ready (129c335f7). S3 follow-up, S5 follow-up, S6 wait for train 102.
+- Usage: lane sessions report seven_day status "allowed_warning" (not "rejected"): pause stays lifted per D-LEAD-STALL-02; owner to be told in the evening report.
