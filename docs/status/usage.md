@@ -3064,3 +3064,8 @@
 
 ### 2026-11-12 17:23 UTC — L-A handed over and archived
 - L-A pushed the train 3 handover (40c1e1c60, docs only) and stopped; archived at USD 18.42. Its lane CI on the landed head 7fb2c471e was success. Train 3 (field loyalty: bundle programmes sections, Astha targets, gift choice, redemption, gift photo, expiry job; plus indexed error pointers, set-based enrolment upsert, progress reads) waits for a fresh session.
+
+### 2026-11-12 18:17 UTC — L-B head read; train 108 built
+- L-B `53ff6055b` (lane ci 43272573296 success): delta on 35c23479c read by me (9 files +125/-40): mock versions as the server (created programme 2), flat pointers as the server answers today with the form saying an unplaced error in the banner as "member: message" (never dropped), sorted qualifying/scope, records and status doc corrected. The lane had NOT merged INT 4739d5d1a (it does not touch the generated types), so the train merge supplies the 1.13.1 types; only DECISIONS.md conflicted.
+- Train 108 = INT 4739d5d1a + docs tip + L-B 53ff6055b, head `8261a1742` on lane/lead-train108: DECISIONS 439 (437 + 2), 0 lines missing, web only (17 files), backend/db/contract/android untouched, money-float 13/13, date-pin 0 new, gitleaks clean. CI 43278190589 running (web tsc, vitest and e2e run against the 1.13.1 types here). GO after train 107's INT run and deploy complete.
+- Train 107 INT run 43268148775: 11 of 12 jobs done, none failed, at 18:16; health still 155edd899.
