@@ -1164,7 +1164,8 @@ export interface paths {
          *     national roles see all; nothing in the request widens it). One row per `sr_call` visit of the date, newest first, with the photo (`call_photo_uuid`, read through
          *     `getMediaReadUrl`), the capture fix of the media record, or the recorded skip reason. A visit with neither a photo nor a skip
          *     reason is listed with `photo_uuid` null so a reviewer sees missing photos too. The media record is joined only when it belongs to the visit's own
-         *     user (a rep cannot point at another rep's photo); `media_status` is null until the media record has arrived, in either order with the visit.
+         *     user and has the purpose `outlet_call` (a rep cannot point at another rep's or another purpose's photo: then `photo_uuid` is null; with no media
+         *     record at all it stays as sent, the photo may still arrive); `media_status` is null until the media record has arrived, in either order with the visit.
          *     `reason_code_unlisted` marks a close whose zero-sale or skip code was not on the list when stored.
          */
         get: operations["getCallPhotoReview"];
@@ -6467,7 +6468,7 @@ export interface components {
         };
         /** @description Per login and business date (the login of the token; a covering rep's rows count under the covering rep's own login), read at request time from the stored rows, never from the worker's summaries. Exactly what is counted: a visit counts when it is an `sr_call` that is not voided, not `abandoned` and not `call_declined` (a declined call is not counted as an outlet visited); a memo counts when it is `active`, not voided and has at least one line; a sold quantity is the `sale` lines of such memos only (free and DRP lines are left out); stock issued is the `issue` and `adjustment` stock movements (signed), not voided; qc is the stored `qc_line` quantities, not voided; promotion is the offer plus DRP discount of such memos. The phone lane (S5 train 2) adopts these rules for its local figures; until then a difference is not by itself a sign of rows not yet acknowledged. These are not described as the phone's rules today. */
         SubmitBusinessTotals: {
-            /** @description Distinct outlets with a stored sr_call visit that is not abandoned. */
+            /** @description Distinct outlets with a stored sr_call visit that is not voided */
             outlets_visited: number;
             /** @description Sold quantity in base units per SKU; live memos only (a superseded or voided memo is not counted), `sale` lines only. A SKU with no sale is absent. Ordered by sku_id. */
             sold: components["schemas"]["SkuQtyBase"][];

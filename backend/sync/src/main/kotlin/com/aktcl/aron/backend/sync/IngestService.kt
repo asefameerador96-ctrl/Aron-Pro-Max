@@ -976,6 +976,9 @@ class IngestService(
         // 5a. D-AMO-MAN-12: the route and cluster an AMO corrected on a verification form exist, belong together (the cluster is in the
         // route's zone) and sit in the uploader's reach; anything else is a final schema_invalid, never stored.
         if (r.type == "outlet_request_verification") {
+            // `decision` is a required member with a closed contract enum; it becomes the request event kind, so a value outside it (such as a
+            // server flag kind) is never stored.
+            if (payload.str("decision") !in setOf("verified", "discarded")) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "decision is not verified or discarded")
             val vRoute = payload.long("route_id"); val vCluster = payload.long("cluster_id")
             val rz = vRoute?.let { id -> h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", id).mapTo(Long::class.java).findOne().orElse(null) ?: return finalReject(h, ctx, r, RecordOutcomeCode.UNKNOWN_ROUTE, "route $id") }
             val cz = vCluster?.let { id -> h.createQuery("SELECT zone_id FROM app.cluster WHERE id = :c").bind("c", id).mapTo(Long::class.java).findOne().orElse(null) ?: return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "cluster $id") }

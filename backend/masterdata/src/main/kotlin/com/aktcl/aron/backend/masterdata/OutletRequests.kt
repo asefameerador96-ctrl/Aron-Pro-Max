@@ -277,7 +277,8 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         // the request's own app.geo_fix row (BC-84). A web request carries no fix, so the member is null.
         val fix = requestFix(h, r, viewer.pii || (r["user_id"] as Number).toLong() == viewer.userId)
         val (moved, tso) = movement(h, r)
-        val flagEvents = events.filter { (it["event"] as String).startsWith("flag_") }.map { (it["event"] as String).removePrefix("flag_") to it["note"] as String? }
+        // Only the server's own flag events (via job, no actor) are flags; a device record can never write one.
+        val flagEvents = events.filter { (it["event"] as String).startsWith("flag_") && it["via"] == "job" && it["actor_user_id"] == null }.map { (it["event"] as String).removePrefix("flag_") to it["note"] as String? }
         val status = r["status"] as String
         val verifiedVia = events.lastOrNull { it["event"] == "verified" }?.get("via")?.let { if (it == "device") "app" else "web" }
         val photos = (r["photo_uuids"] as java.sql.Array?)?.let { a -> (a.array as Array<*>).map { it.toString() } } ?: emptyList()

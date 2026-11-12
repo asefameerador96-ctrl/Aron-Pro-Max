@@ -17,8 +17,11 @@ operation:
     reason is listed with `photo_uuid` null so a reviewer sees missing photos too. The media record is joined only
     when it belongs to the visit''s own
 
-    user (a rep cannot point at another rep''s photo); `media_status` is null until the media record has arrived,
-    in either order with the visit.
+    user and has the purpose `outlet_call` (a rep cannot point at another rep''s or another purpose''s photo: then
+    `photo_uuid` is null; with no media
+
+    record at all it stays as sent, the photo may still arrive); `media_status` is null until the media record has
+    arrived, in either order with the visit.
 
     `reason_code_unlisted` marks a close whose zero-sale or skip code was not on the list when stored.
 

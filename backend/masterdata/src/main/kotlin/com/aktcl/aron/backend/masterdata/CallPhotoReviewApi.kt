@@ -63,13 +63,14 @@ private fun review(call: io.ktor.server.application.ApplicationCall, d: CallPhot
     val rows = d.db.readJdbi.withHandle<List<Pair<CallPhotoReviewRowDto, Long>>, Exception> { h ->
         val sql = """
             SELECT v.id, v.client_uuid::text AS vu, v.business_date, v.opened_at, v.outlet_id, o.name AS outlet_name, v.user_id, u.full_name, v.route_id,
-                   v.call_photo_uuid::text AS photo, v.call_photo_skip_reason_code, m.status AS media_status, m.taken_at, m.fix_lat, m.fix_lng, m.fix_accuracy_m,
+                   CASE WHEN fm.client_uuid IS NOT NULL THEN NULL ELSE v.call_photo_uuid::text END AS photo, v.call_photo_skip_reason_code, m.status AS media_status, m.taken_at, m.fix_lat, m.fix_lng, m.fix_accuracy_m,
                    m.fix_is_mock, v.distance_m, coalesce(v.reason_code_unlisted, false) AS unlisted
               FROM app.visit v
               JOIN app.outlet o ON o.id = v.outlet_id
               JOIN app.app_user u ON u.id = v.user_id
               LEFT JOIN app.route r ON r.id = v.route_id
-              LEFT JOIN app.media m ON m.client_uuid = v.call_photo_uuid AND m.user_id = v.user_id AND m.voided_at IS NULL
+              LEFT JOIN app.media m ON m.client_uuid = v.call_photo_uuid AND m.user_id = v.user_id AND m.purpose = 'outlet_call' AND m.voided_at IS NULL
+              LEFT JOIN app.media fm ON fm.client_uuid = v.call_photo_uuid AND fm.voided_at IS NULL AND (fm.user_id <> v.user_id OR fm.purpose <> 'outlet_call')
              WHERE v.business_date = :d AND v.visit_kind = 'sr_call' AND v.voided_at IS NULL
                ${if (reach.national) "" else "AND (coalesce(r.zone_id, o.zone_id) = ANY(:zones) OR v.route_id = ANY(:routes))"}
                ${if (route != null) "AND v.route_id = :r" else ""}

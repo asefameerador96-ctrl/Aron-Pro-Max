@@ -20,7 +20,8 @@ SubmitBusinessTotals:
     outlets_visited:
       type: integer
       minimum: 0
-      description: Distinct outlets with a stored sr_call visit that is not abandoned.
+      description: Distinct outlets with a stored sr_call visit that is not voided
+      not abandoned and not call_declined.: null
     sold:
       type: array
       description: Sold quantity in base units per SKU; live memos only (a superseded or voided memo is not counted),

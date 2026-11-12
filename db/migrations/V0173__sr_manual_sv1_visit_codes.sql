@@ -8,7 +8,7 @@
 --    poor_brand_visibility (SRM-B-49). Labels Bangla verbatim from the manual / Q12 defaults.
 -- All CHECKs that widen or are new are NOT VALID here (every existing row satisfies them) and validated by V0174 in a
 -- transaction of its own (squawk rule). Migrations are forward-only; ADD COLUMN is nullable without default (no rewrite).
--- Locks: app.visit and app.media are taken by ONE LOCK ... NOWAIT retried for about 60 s (V0144 pattern).
+-- Locks: app.visit, app.media, app.outlet_request_event and app.code_list (the tables whose constraints change) are taken by ONE LOCK ... NOWAIT retried for about 60 s (V0144 pattern).
 
 SET lock_timeout = '5s';
 
@@ -17,11 +17,11 @@ DECLARE n int := 0;
 BEGIN
   LOOP
     BEGIN
-      LOCK TABLE app.visit, app.media, app.outlet_request_event IN ACCESS EXCLUSIVE MODE NOWAIT;
+      LOCK TABLE app.visit, app.media, app.outlet_request_event, app.code_list IN ACCESS EXCLUSIVE MODE NOWAIT;
       EXIT;
     EXCEPTION WHEN lock_not_available THEN
       n := n + 1;
-      IF n >= 120 THEN RAISE EXCEPTION 'V0173: app.visit, app.media or app.outlet_request_event stayed locked for 60 s'; END IF;
+      IF n >= 120 THEN RAISE EXCEPTION 'V0173: app.visit, app.media, app.outlet_request_event or app.code_list stayed locked for 60 s'; END IF;
       PERFORM pg_sleep(0.5);
     END;
   END LOOP;

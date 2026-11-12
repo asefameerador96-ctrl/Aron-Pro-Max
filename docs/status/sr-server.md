@@ -40,6 +40,10 @@ Rules: same brief; contract stays 1.14.0 (additive, same request file; D-LEAD-CO
 6. **Seeds and labels:** `poor_brand_visibility` has no Bangla label (owner question 4); dev seed `04_dev_config_and_codes.sql` still carries older edit codes (harmless: ON CONFLICT).
 7. **Half done / known:** nothing half done in train 1 beyond the above; Android lanes still need the `ads_hundredths` unit rule before wiring. `MediaModule` accepts `outlet_call` uploads but the retention / Wi-Fi-first rule for the new purpose is the existing photo rule (no per-purpose override).
 
+## Train 2 additions from the lead's review of ac5ee55e8 (do not do in train 1)
+
+`cluster` request with a gone cluster (store-and-flag vs refuse) and the zone check for `new` / `cluster` requests naming another zone's cluster; route-only reach test and HTTP-level tests of the new flags; replay-ack assertions on a rewritten request; the business date of the unlisted-code check = the visit's, not the close envelope's; `Cache-Control: no-store` on `POST /v1/admin/device-otps`; reach for a past business_date; `USER_ZONE` vs current route for the OTP list; second-territory-in-the-same-division scope tests; route_add cluster/zone; a db-module test class for V0173 to V0175 (write-once columns, NOT VALID then VALID, new event kinds); deterministic state of `edit_reason` `wrong_quantity` on dev vs a fresh database (a migration that sets valid_to explicitly); the worker logs "aggregation pass failed" once at start-up on deploys with migrations (find the first-pass race, log the exception class); cut AdminLoyaltyTest runtime (one database per class).
+
 ## How to run the gates in a lane container (lessons from this session)
 
 - PostgreSQL 16 is installed but not running after a container restart: `pg_ctlcluster 16 main start`. One-time: role `aron` (SUPERUSER CREATEDB, password aron), `ALTER SYSTEM SET max_connections = 600` (the default 100 gives `too many clients already` and floods the db module with millisecond failures), `fsync = off` for speed, restart.

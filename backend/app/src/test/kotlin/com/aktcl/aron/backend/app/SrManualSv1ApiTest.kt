@@ -230,13 +230,35 @@ class SrManualSv1ApiTest {
         }
     }
 
+    @Test
+    fun aVerificationWhoseDecisionIsAServerFlagKindIsRefusedAndShowsNoFlag() = world.withApi {
+        with(world) {
+            val route = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
+            val outlet = longs("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id LIMIT 1").single()
+            val req = UUID.randomUUID().toString()
+            val fix = """{"purpose":"outlet_capture","fix_status":"ok","lat":23.8069,"lng":90.3687,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                       "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}"""
+            val filed = sync(sr, listOf(record("outlet_change_request", """{"request_type":"info","outlet_id":$outlet,"proposed":{"name":"Flag Probe Store"},"photo_uuids":[],"fix":$fix}""", route, cu = req, family = req)))
+            assertEquals("accepted", ack(filed, req).status(), filed.toString())
+            for (bad in listOf("flag_possible_duplicate", "flag_cluster_dropped", "approved")) {
+                val cu = UUID.randomUUID().toString()
+                val a = ack(sync(amo, listOf(record("outlet_request_verification", """{"request_uuid":"$req","decision":"$bad","fix":$fix}""", route, cu = cu))), cu)
+                assertEquals("rejected", a.status(), "decision $bad: $a")
+            }
+            assertEquals("0", scalar("SELECT count(*) FROM app.outlet_request_event WHERE request_uuid = '$req' AND event LIKE 'flag_%'"), "no flag event was written")
+            val read = json(getWeb("admin1001", "/v1/outlet-requests/$req").also { assertEquals(HttpStatusCode.OK, it.status, it.bodyAsText()) }.bodyAsText())
+            assertTrue(read["flags"]!!.jsonArray.none { it.jsonPrimitive.content.startsWith("possible") || it.jsonPrimitive.content == "cluster_dropped" }, "and none is shown")
+            assertTrue(read["possible_duplicate_of"] == null || read["possible_duplicate_of"] is kotlinx.serialization.json.JsonNull)
+        }
+    }
+
     // ------------------------------------------------------------------------------------------------ call photo media join
 
     @Test
     fun theCallPhotoReviewJoinsTheMediaWhetherItArrivesBeforeOrAfterItsVisitAndOnlyOfTheSameUser() = world.withApi {
         with(world) {
             val route = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
-            val outlets = longs("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id DESC LIMIT 3")
+            val outlets = longs("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id DESC LIMIT 4")
             val d = today().toString()
             fun visit(outlet: Long, seq: Int) = """{"visit_kind":"sr_call","outlet_id":$outlet,"opened_at":"${now.get().minusSeconds(600)}","sequence_no":$seq,"planned":true,
                 "fix":{"purpose":"visit_open","fix_status":"ok","lat":23.8069,"lng":90.3687,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
@@ -295,9 +317,27 @@ class SrManualSv1ApiTest {
             }
             assertEquals("1", scalar("SELECT count(*) FROM app.media WHERE client_uuid = '$photoForeign'"))
             val foreignRow = rowsOf().getValue(vForeign)
-            assertEquals(photoForeign, foreignRow["photo_uuid"]!!.jsonPrimitive.content)
+            assertTrue(foreignRow["photo_uuid"] is kotlinx.serialization.json.JsonNull, "(2) the uuid names another user's media: it is not offered as this visit's photo")
             assertNull(statusOf(vForeign), "(2) a media row owned by another user is not joined")
             assertTrue(foreignRow["taken_at"] is kotlinx.serialization.json.JsonNull, "none of its fields leak either")
+            // (4) the SR's own media of another purpose (a force-sale photo) is no call photo either
+            val vOther = UUID.randomUUID().toString(); val photoOther = UUID.randomUUID().toString()
+            val answerOther = sync(sr, family(vOther, photoOther, outlets[3], 54))
+            assertEquals("accepted", ack(answerOther, vOther).status(), answerOther.toString())
+            val srId = one("SELECT id FROM app.app_user WHERE username = 'sr1001'")
+            fresh.db.jdbi.useHandle<Exception> { h ->
+                h.execute("SET session_replication_role = replica")
+                try {
+                    h.execute(
+                        "INSERT INTO app.media (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, purpose, ref_type, ref_client_uuid, sha256, bytes, width, height, blob_path, taken_at, status, stored_at, blob_bytes, blob_sha256) " +
+                            "VALUES ('$photoOther', gen_random_uuid(), DATE '$d', $srId, now(), 0, 'force_sale', 'visit', '$vOther', decode(repeat('ab', 32), 'hex'), 1000, 640, 480, " +
+                            "'photos/$d/${UUID.randomUUID()}/$photoOther.jpg', now(), 'stored', now(), 1000, decode(repeat('ab', 32), 'hex'))",
+                    )
+                } finally { h.execute("SET session_replication_role = origin") }
+            }
+            val otherRow = rowsOf().getValue(vOther)
+            assertTrue(otherRow["photo_uuid"] is kotlinx.serialization.json.JsonNull, "(4) a force-sale photo uuid is not offered as the call photo")
+            assertNull(statusOf(vOther), "(4) and not joined")
             // (3) a TSO whose reach is a route only: not built here, no helper creates such a user in TsoWorld
         }
     }
