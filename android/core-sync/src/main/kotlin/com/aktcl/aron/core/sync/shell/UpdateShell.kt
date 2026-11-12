@@ -78,7 +78,20 @@ class UpdateShell(
 
     val laterFor: StateFlow<Int?> = _laterFor.asStateFlow()
 
-    fun later(release: ReleaseInfo) { _laterFor.value = release.versionCode }
+    /**
+     * SR manual 07: the system installer opens by itself once a download completes, at most once per release in this process, and never
+     * for a release the rep put off with "Later" (until the rep taps Download or Install themselves).
+     */
+    private val autoInstall = AutoInstallGate()
+
+    fun later(release: ReleaseInfo) { autoInstall.later(release.versionCode); _laterFor.value = release.versionCode }
+
+    /** Opens the installer for the finished download of [release] if the [AutoInstallGate] allows it; true when it was started. */
+    fun installWhenReady(release: ReleaseInfo): Boolean {
+        if (_download.value != DownloadUi.Ready || !autoInstall.claim(release.versionCode)) return false
+        work.launch { install(release) }
+        return true
+    }
 
     /**
      * Settings > App update: shows the page for any available release, a silent one included (the row is where a silent
@@ -110,13 +123,13 @@ class UpdateShell(
     private val work = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Starts the download of [release] (resumable, SHA-256 checked); refuses mobile data for a Wi-Fi-only release. */
-    fun startDownload(release: ReleaseInfo) { work.launch { download(release) } }
+    fun startDownload(release: ReleaseInfo) { autoInstall.chosenByRep(release.versionCode); work.launch { download(release) } }
 
     /** "Update now" on the day block: a fresh check (the throttle is skipped). */
     fun startCheck() { work.launch { check(atLogin = true) } }
 
     /** Starts the install of the downloaded [release] once no sync batch is running. */
-    fun startInstall(release: ReleaseInfo) { work.launch { install(release) } }
+    fun startInstall(release: ReleaseInfo) { autoInstall.chosenByRep(release.versionCode); work.launch { install(release) } }
 
     internal suspend fun download(release: ReleaseInfo) = lock.withLock {
         val wifiOnly = when (val s = _state.value) { is UpdateState.Available -> s.wifiOnly; is UpdateState.Required -> s.wifiOnly; else -> true }
@@ -193,3 +206,23 @@ fun updateScreen(state: UpdateState, laterFor: Int?, gate: DayGate): UpdateScree
 
 /** `laterFor` value set by [UpdateShell.openPage]: no version is put off and a silent release is shown too. */
 const val SHOW_ANY: Int = Int.MIN_VALUE
+
+/**
+ * Decides when the installer may start by itself (SR manual 07): once per release per process, and never after "Later". Lives in the
+ * shell (one per process), not in a composition or in saved state, so a recreation or a second screen cannot start it twice.
+ */
+class AutoInstallGate {
+    private val claimed = HashSet<Int>()
+    private val declined = HashSet<Int>()
+
+    @Synchronized fun later(versionCode: Int) { declined += versionCode }
+
+    /** The rep tapped Download or Install themselves: the put-off no longer applies (the automatic start stays once-only). */
+    @Synchronized fun chosenByRep(versionCode: Int) { declined -= versionCode }
+
+    /** True exactly once per release, and never while it is put off. */
+    @Synchronized fun claim(versionCode: Int): Boolean {
+        if (versionCode in declined) return false
+        return claimed.add(versionCode)
+    }
+}

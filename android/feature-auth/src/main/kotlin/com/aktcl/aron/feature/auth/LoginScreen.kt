@@ -79,9 +79,20 @@ fun LoginScreen(
     }
     if (state.bindToken != null) {
         androidx.activity.compose.BackHandler(onBack = viewModel::onOtpBack)
-        OtpContent(
-            state.otp, viewModel::onOtpDigits, viewModel::onOtpVerify, onBack = viewModel::onOtpBack,
-            appTitle = appTitle, onLanguageSelect = onLanguageSelect, sunlight = sunlight, onSunlight = onSunlight,
+        if (variant == LoginVariant.Sr) {
+            OtpManualContent(state.otp, viewModel::onOtpDigits, viewModel::onOtpVerify, onBack = viewModel::onOtpBack)
+        } else {
+            OtpContent(
+                state.otp, viewModel::onOtpDigits, viewModel::onOtpVerify, onBack = viewModel::onOtpBack,
+                appTitle = appTitle, onLanguageSelect = onLanguageSelect, sunlight = sunlight, onSunlight = onSunlight,
+            )
+        }
+        return
+    }
+    if (variant == LoginVariant.Sr) {
+        SrLoginContent(
+            state, versionName, viewModel::onUsernameChange, viewModel::onPasswordChange, viewModel::onTogglePasswordVisible, viewModel::onSubmit,
+            onLanguageSelect, onEnrol, sunlight, onSunlight,
         )
         return
     }

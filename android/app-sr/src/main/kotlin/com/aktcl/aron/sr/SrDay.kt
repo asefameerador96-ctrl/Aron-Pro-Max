@@ -267,6 +267,11 @@ class SrDay(
     /** How the last day-start download ended (null while one runs or none ran); the first-bundle screen reads it. */
     val bundleOutcome: StateFlow<BundleOutcome?> = _bundleOutcome.asStateFlow()
 
+    private val _bundleProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+
+    /** Steps done and the step count of the bundle download in flight (SR manual 08 "Processing(n/N)"); null when none runs or the size is not known yet. */
+    val bundleProgress: StateFlow<Pair<Int, Int>?> = _bundleProgress.asStateFlow()
+
     /** Day start: the first bundle download (resumable, F-SYS-006) in the background; the day never waits for it. */
     suspend fun downloadBundle(downloaders: BundleDownloaders) {
         // One run at a time, in the day's own scope: a rotation or language switch recreates the screen but never cancels
@@ -277,7 +282,7 @@ class SrDay(
         background.launch {
             try {
                 val outcome = try {
-                    downloaders.of(userId).download(businessDate()).outcome
+                    downloaders.of(userId).download(businessDate()) { stepsDone, stepCount -> _bundleProgress.value = stepsDone to stepCount }.outcome
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -289,6 +294,7 @@ class SrDay(
                     deviceRuntime?.refreshDayConfig(userId, db)
                 }
             } finally {
+                _bundleProgress.value = null
                 data.value = data.value.copy(downloading = false)
                 bundleRunning.set(false)
             }

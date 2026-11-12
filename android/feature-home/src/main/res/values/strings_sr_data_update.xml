@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SR manual 08 (SRM-A-11): the in-app data update. Bangla in values-bn. -->
+<resources>
+    <string name="du_prompt">Some new updates have been found. To keep using this app, you must update!</string>
+    <string name="du_button">Update</string>
+    <string name="du_current_version" translatable="false">Current version SR App %1$s</string>
+    <string name="du_updating">App is updating</string>
+    <string name="du_processing">Processing(%1$s/%2$s)</string>
+    <string name="du_tip">Tip: do not close the app</string>
+</resources>

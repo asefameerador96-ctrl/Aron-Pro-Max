@@ -38,6 +38,7 @@ fun <T> TsoFetch.toLoad(parse: (String?) -> T?): CardLoad<T> = when (this) {
     is TsoFetch.Cached -> CardLoad(parse(json), kept = true, failure = TsoFailure.OFFLINE)
     TsoFetch.Unavailable -> CardLoad(null, failure = TsoFailure.OFFLINE)
     TsoFetch.Gone -> CardLoad(null, failure = TsoFailure.REFUSED)
+    TsoFetch.Unauthorized -> CardLoad(null, failure = TsoFailure.OFFLINE) // a read that is never kept (older inbox page) answered 401: as before, nothing to show
 }
 
 /** The Dashboard state from one read of every card (pure: [dashboardStateOf] is what TsoApiTest checks). */

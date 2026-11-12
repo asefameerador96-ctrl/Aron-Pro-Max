@@ -233,6 +233,7 @@ class MainActivity : ComponentActivity() {
                             val dashboard = remember(host) { dashboardScreens(host, api, inbox, readScope) }
                             val targets = remember(host) { targetScreens(host, api, readScope) }
                             val inboxScreen = remember(host) { inboxScreens(host, inbox) }
+                            val deviceOtp = remember(api) { deviceOtpScreens(api) } // SR manual 04: the codes an SR needs for a new phone
                             val openRequest by pushOpen.collectAsStateWithLifecycle()
                             val areas = remember(host) { areaScreens(AreasHostDeps(host)) }
                             val tickets = remember(host) { ticketScreens(TicketsHostDeps(host)) }
@@ -293,7 +294,7 @@ class MainActivity : ComponentActivity() {
                                     com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.set_support), onBack = back) }) { SupportHost(systemShell, s.user.userId, versionName) }
                                 },
                                 // A1: the Dashboard (root) and Login & Bikroy Joma Status; A3 areas; A2 tickets
-                                screens = dashboard + targets + inboxScreen + areas + tickets, // tso-manual A1: Target Status, inbox
+                                screens = dashboard + targets + inboxScreen + areas + tickets + deviceOtp, // tso-manual A1: Target Status, inbox
                                 unread = inbox.unread,
                                 openRequest = openRequest,
                                 onOpenRequestHandled = { pushOpen.value = null },

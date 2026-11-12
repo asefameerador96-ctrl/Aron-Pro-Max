@@ -25,6 +25,8 @@ sealed interface TsoFetch {
     data class Cached(val json: String) : TsoFetch
     data object Unavailable : TsoFetch
     data object Gone : TsoFetch
+    /** 401 on a read that is never kept (the Device OTP list): the session ended, which is not "no connection". */
+    data object Unauthorized : TsoFetch
 }
 
 fun TsoFetch.jsonOrNull(): String? = when (this) { is TsoFetch.Fresh -> json; is TsoFetch.Cached -> json; else -> null }
@@ -105,6 +107,37 @@ class TsoApi(private val client: AronApiClient, private val dir: java.io.File) {
         }
     }
 
+    /**
+     * SR manual 04: the Device OTP panel of the TSO's own zones (`GET /v1/admin/device-otps`, the scope is the token's; the client names
+     * none). A code is a secret: this read is never kept on the phone (no key), so offline there is nothing to show. [cursor] is the
+     * server's `next_cursor`. Nothing here is logged.
+     */
+    suspend fun deviceOtps(cursor: String? = null): TsoFetch =
+        get(DEVICE_OTPS, null, linkedMapOf("limit" to "$DEVICE_OTP_PAGE").also { if (cursor != null) it["cursor"] = cursor })
+
+    /** What `POST /v1/admin/device-otps` gave for one rep: the issued code's row, a refusal, or no answer. */
+    sealed interface IssueOtp {
+        data class Issued(val json: String) : IssueOtp
+        data object Rejected : IssueOtp
+        data object Unauthorized : IssueOtp
+        data object NoAnswer : IssueOtp
+    }
+
+    /** Issues (or replays) a bind code for [userId], a rep the panel listed; the server checks the rep is in the TSO's zones. */
+    suspend fun issueDeviceOtp(userId: Long, body: String): IssueOtp {
+        val r = client.call(
+            path = DEVICE_OTPS, auth = CallAuth.Grant(Grant.FULL),
+            build = { url(client.origin.path(DEVICE_OTPS)); post(body.toRequestBody(JSON)) },
+            decode = { b, _ -> b },
+        )
+        return when {
+            r is ApiResult.Success -> IssueOtp.Issued(r.value)
+            r is ApiResult.Failure && r.httpStatus == 401 -> IssueOtp.Unauthorized
+            r is ApiResult.Failure && r.httpStatus in 400..499 && r.httpStatus != 408 -> IssueOtp.Rejected
+            else -> IssueOtp.NoAnswer
+        }
+    }
+
     /** One read: fresh (kept under [key]), the kept copy when the server cannot be reached, or Gone when refused (the copy is dropped). */
     private suspend fun send(path: String, key: String?, query: Map<String, String>, body: String?): TsoFetch {
         val r = client.call(
@@ -119,6 +152,7 @@ class TsoApi(private val client: AronApiClient, private val dir: java.io.File) {
         return when {
             r is ApiResult.Success -> { if (key != null) withContext(Dispatchers.IO) { remember(key, r.value) }; TsoFetch.Fresh(r.value) }
             r is ApiResult.Failure && (r.httpStatus == 403 || r.httpStatus == 404 || r.httpStatus == 501) -> { if (key != null) withContext(Dispatchers.IO) { file(key).delete() }; TsoFetch.Gone }
+            r is ApiResult.Failure && r.httpStatus == 401 && key == null -> TsoFetch.Unauthorized
             key == null -> TsoFetch.Unavailable
             else -> withContext(Dispatchers.IO) { cached(key) }
         }
@@ -148,6 +182,8 @@ class TsoApi(private val client: AronApiClient, private val dir: java.io.File) {
         const val TARGETS = "/v1/dashboards/targets"
         const val INBOX = "/v1/me/notifications"
         const val INBOX_READ = "/v1/me/notifications/read"
+        const val DEVICE_OTPS = "/v1/admin/device-otps"
+        const val DEVICE_OTP_PAGE = 50
         const val INBOX_PAGE = 50
         val JSON = "application/json".toMediaType()
         const val MAX_FILES = 60; const val MAX_COPY_CHARS = 400_000; const val MAX_AGE_MS = 3L * 24 * 3600 * 1000
