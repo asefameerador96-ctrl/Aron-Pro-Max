@@ -7,7 +7,7 @@ import { LoyaltyGiftForm } from "@/components/admin/loyalty-gift-form";
 import { DataTable, type Column } from "@/components/admin/kit/data-table";
 import { PageHeading, one, type SearchParams } from "@/components/admin/kit/page";
 import { loadGrants } from "@/lib/admin/modules";
-import { canReadLoyalty, canWriteGifts, giftFormFrom, type Gift } from "@/lib/admin/loyalty";
+import { canReadLoyalty, canWriteGifts, giftFormFrom, ID_RE, type Gift } from "@/lib/admin/loyalty";
 import { loadGifts, loadProgrammes } from "@/lib/admin/loyalty-load";
 import { nameOf, pointsText } from "@/lib/admin/loyalty-view";
 import { requireSession } from "@/lib/auth/require";
@@ -24,7 +24,7 @@ export default async function LoyaltyGiftsPage({ searchParams }: { searchParams:
   const progs = programmes.ok ? programmes.data : [];
   const choices = progs.map((p) => ({ id: p.programme_id, label: `${p.code} · ${nameOf(locale, p)}`, tiers: p.tiers ?? [] }));
   const programmeLabel = (id: number): string => choices.find((c) => c.id === id)?.label ?? `#${id}`;
-  const editId = /^\d{1,15}$/.test(one(sp.edit) ?? "") ? Number(one(sp.edit)) : null;
+  const editId = ID_RE.test(one(sp.edit) ?? "") ? Number(one(sp.edit)) : null;
   const editing = editId !== null && gifts.ok ? gifts.data.find((g) => g.gift_id === editId) : undefined;
   const showNew = canWrite && one(sp.new) === "1";
   const columns: Column<Gift>[] = [
@@ -46,7 +46,7 @@ export default async function LoyaltyGiftsPage({ searchParams }: { searchParams:
       {one(sp.saved) === "1" ? <Banner tone="success" role="status" testId="gift-saved">{t(locale, "loy.gifts.saved")}</Banner> : null}
       {!canWrite ? <p className="text-caption text-secondary" data-testid="gifts-super-only">{t(locale, "loy.gifts.super_only")}</p> : null}
       {showNew ? <LoyaltyGiftForm mode="create" programmes={choices} cancelHref="/admin/loyalty/gifts" /> : null}
-      {canWrite && editing ? <LoyaltyGiftForm key={editing.gift_id} mode="edit" giftId={editing.gift_id} version={editing.version} initial={giftFormFrom(editing)} programmes={choices} cancelHref="/admin/loyalty/gifts" /> : null}
+      {canWrite && editing ? <LoyaltyGiftForm key={editing.gift_id} mode="edit" giftId={editing.gift_id} version={editing.version} initial={giftFormFrom(editing)} original={editing} programmes={choices} cancelHref="/admin/loyalty/gifts" /> : null}
       {!gifts.ok ? (
         <Banner tone={gifts.offline ? "offline" : "danger"} role="alert" testId="gifts-error">{t(locale, gifts.offline ? "loy.offline" : "loy.gifts.failed")}</Banner>
       ) : (
