@@ -27,6 +27,7 @@ class AggregationWorker(
     private val lease: Duration = Duration.ofMinutes(2),
     private val config: com.aktcl.aron.backend.platform.ServerConfig? = null,
     private val gapGrace: Duration = Duration.ofSeconds(60),
+    private val waitWarnEvery: Duration = Duration.ofMinutes(5),
 ) {
     /** Test seam: runs inside the rebuild transaction, just before the key is released. */
     internal var beforeRelease: (kind: String, subject: Long, date: LocalDate) -> Unit = { _, _, _ -> }
@@ -268,21 +269,31 @@ class AggregationWorker(
     }
 
     @Volatile private var schemaReady = false
-    private var waitLogged = false
+    private var waitingSince: Instant? = null
+    private var lastWarn: Instant? = null
+    /** Test seam: WARN lines written while waiting. */
+    internal var waitWarns = 0
 
     /**
      * True once no migration is pending or failed (then cached: a worker revision only ever sees a newer schema while it runs). A false answer or an
      * error from the check skips the pass, so the first pass never reads half-migrated tables while the migrate job of the same deploy still runs.
+     * The wait is bounded in what it hides, not in length: one INFO when it starts, then one WARN every [waitWarnEvery] while migrations stay
+     * pending or failed (never an ERROR per pass), so a stuck deploy is visible and the worker is never silently idle.
      */
     internal fun migrationsSettled(pending: () -> Int = { com.aktcl.aron.backend.platform.Migrator.pendingOrFailed(db.write) }): Boolean {
         if (schemaReady) return true
-        val n = runCatching(pending).getOrElse { log.warn("aggregation worker waits: schema check failed ({})", it.javaClass.name); return false }
-        if (n > 0) {
-            if (!waitLogged) { waitLogged = true; log.info("aggregation worker waits for {} pending migration(s)", n) }
-            return false
+        val now = clock.now()
+        val n = runCatching(pending).getOrNull()
+        if (n == 0) { schemaReady = true; waitingSince?.let { log.info("aggregation worker: schema settled after {} s", Duration.between(it, now).seconds) }; return true }
+        val since = waitingSince
+        if (since == null) {
+            waitingSince = now; lastWarn = now
+            log.info("aggregation worker waits for migrations ({})", n?.let { "$it pending or failed" } ?: "schema check failed")
+        } else if (Duration.between(lastWarn, now) >= waitWarnEvery) {
+            lastWarn = now; waitWarns++
+            log.warn("aggregation worker still waiting for migrations after {} s ({})", Duration.between(since, now).seconds, n?.let { "$it pending or failed" } ?: "schema check failed")
         }
-        schemaReady = true
-        return true
+        return false
     }
 
     /** One loop pass; a failure is logged with the exception classes only (a message can carry data). */

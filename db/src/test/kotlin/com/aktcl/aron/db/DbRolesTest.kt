@@ -184,7 +184,7 @@ class DbRolesTest {
     fun concurrentRoleMigrationsAndRepairsDoNotRace() {
         val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
         try {
-            val migrations = (1..2).map { pool.submit<String> { TestPostgres.createDatabase().use { d -> d.migrated(); d.name } } }
+            val migrations = (1..2).map { pool.submit<String> { TestPostgres.createDatabase().use { d -> d.migratedByFlyway(); d.name } } }
             val repairs = pool.submit { repeat(5) { aRoleLeftWithAWrongAttributeIsRepairedByTheNextMigration() } }
             migrations.forEach { assertTrue(it.get(10, java.util.concurrent.TimeUnit.MINUTES).startsWith("aron_db_test_")) }
             repairs.get(10, java.util.concurrent.TimeUnit.MINUTES)
