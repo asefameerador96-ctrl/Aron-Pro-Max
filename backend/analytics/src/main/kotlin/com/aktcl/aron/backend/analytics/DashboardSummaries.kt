@@ -178,7 +178,7 @@ internal object DashboardSummaries {
 
         // V0151 (contract 1.5) adds force_sale_reason; probed on its own so the rest of the summaries keep working on either side of it.
         val forceReason = h.createQuery("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'fact_visit' AND column_name = 'force_sale_reason')").mapTo(Boolean::class.java).one()
-        // V0165 (contract 1.6) adds zero_sale_reason_code and call_photo_uuid; probed the same way.
+        // V0174 (contract 1.6) adds zero_sale_reason_code and call_photo_uuid; probed the same way.
         val srCols = h.createQuery("SELECT count(*) = 2 FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'fact_visit' AND column_name IN ('zero_sale_reason_code', 'call_photo_uuid')").mapTo(Boolean::class.java).one()
         h.createUpdate(
             """

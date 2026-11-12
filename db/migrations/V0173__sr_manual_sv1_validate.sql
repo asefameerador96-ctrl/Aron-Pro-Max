@@ -1,4 +1,4 @@
--- V0164 validates what V0163 added NOT VALID (separate transaction, squawk rule). Every existing row satisfies the checks:
+-- V0173 validates what V0172 added NOT VALID (separate transaction, squawk rule). Every existing row satisfies the checks:
 -- the new visit columns are NULL, no media row has the new purpose, every code_list key was already allowed.
 SET lock_timeout = '5s';
 ALTER TABLE app.visit VALIDATE CONSTRAINT visit_zero_sale_reason_needs_zero_sale;

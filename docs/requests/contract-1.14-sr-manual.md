@@ -36,11 +36,11 @@ normalised name and mobile, 7 days) is acked `duplicate` with the first request'
 request the phones of this build send; oasdiff does not flag it. No shipped client reads the new response values: the AMO journey
 parser maps an unknown status to `new_sale` (the AMO lane adds `repeat_sale`), and a phone ignores a code list it does not know.
 
-## Database (V0163 to V0165)
+## Database (V0172 to V0174)
 
-V0163: `app.visit.zero_sale_reason_code`, `call_photo_uuid`, `call_photo_skip_reason_code` (nullable, CHECKs NOT VALID), `visit_immutable`
+V0172: `app.visit.zero_sale_reason_code`, `call_photo_uuid`, `call_photo_skip_reason_code` (nullable, CHECKs NOT VALID), `visit_immutable`
 recreated with `zero_sale_reason_code` write-once, `media.purpose` and `code_list.list_key` CHECKs widened NOT VALID, the code-list
-rows. V0164: the four VALIDATE statements. V0165: dw view contract 1.7 to 1.8 (`dw.fact_visit.zero_sale_reason_code`,
+rows. V0173: the four VALIDATE statements. V0174: dw view contract 1.7 to 1.8 (`dw.fact_visit.zero_sale_reason_code`,
 `call_photo_uuid`; `dw.v_visit.zero_sale_reason_code` and `call_capture_taken`, a boolean: a media id never appears in a reuse view).
 V0158 to V0162 are the Loyalty lane's (on INT); V0152 took dw contract 1.6 and V0162 1.7, so this train is 1.8.
 
