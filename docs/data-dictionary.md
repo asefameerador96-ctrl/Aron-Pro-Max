@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 180 | 2970 |
+| `app` | 180 | 2971 |
 | `dw` | 75 | 1207 |
 
 ## Index
@@ -85,7 +85,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.geo_class_def`](#appgeo_class_def) | table | db | REFERENCE | master | none | Lookup giving each geography class an integer ordinal for config scoping. |
 | [`app.geo_fix`](#appgeo_fix) | partitioned table | backend:sync | OFFLINE | fix | personal | One location fix carried by a record, with accuracy, provider and sensor evidence used for the server re-check and risk rules. |
 | [`app.geo_version`](#appgeo_version) | table | db | SERVER | master | none | One row: the geography version, one higher after every statement that changed app.wing, division, territory, house, zone or route (V0145); caches of the geography reload when it is newer than theirs. |
-| [`app.gift`](#appgift) | table | backend:masterdata | ONLINE | master | none | A gift of a loyalty programme with points cost and tiers. |
+| [`app.gift`](#appgift) | table | backend:masterdata | ONLINE | master | none | A gift of a loyalty programme with points cost (integer points, no taka value in v1) and tiers. Written only by the portal (SUPERADMIN) through app.gift_change; a gift is never deleted, set it inactive. The picture is image_asset_id (V0170); image_url of V0007 is legacy and unused by the portal. |
 | [`app.gift_assignment`](#appgift_assignment) | table | backend:masterdata | ONLINE | transaction | none | An Astha gift chosen for an outlet and quarter, locked by the hand-over photo. |
 | [`app.gift_change`](#appgift_change) | table | backend:masterdata | ONLINE | audit | none | Append-only journal of gift create and update calls from the portal with a snapshot of the first result, so a retried call (same request UUID) is answered with that result. |
 | [`app.gift_photo`](#appgift_photo) | table | backend:sync | OFFLINE | transaction | personal | Hand-over photo record of a gift, one per Astha assignment or redeemed campaign unit. |
@@ -126,8 +126,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.print_template`](#appprint_template) | table | backend:masterdata | ONLINE | master | none | One row is an immutable version of a thermal-print template for one slip kind, in force from effective_from. |
 | [`app.product_node`](#appproduct_node) | table | backend:masterdata | ONLINE | master | none | One node of the product tree (category, segment, brand or variant). |
 | [`app.product_node_history`](#appproduct_node_history) | table | db | SERVER | master | none | One row is a period of the parent of a product tree node, its sales switch and status (V0119); written by the history trigger on app.product_node, seeded from app.audit_log. |
-| [`app.programme`](#appprogramme) | table | backend:masterdata | ONLINE | master | none | Loyalty programme definition (Diamond League month, Astha quarter, campaign, Superstar). The loyalty portal (V0158) manages drafts, versions and the lifecycle; nothing in the field reads it (docs/27: loyalty in the field is deferred; bundle programmes null). |
-| [`app.programme_enrolment`](#appprogramme_enrolment) | table | backend:masterdata | ONLINE | master | none | Enrolment of an outlet in a programme for a period, with league, tier and base target. |
+| [`app.programme`](#appprogramme) | table | backend:masterdata | ONLINE | master | none | Loyalty programme definition (Diamond League month, Astha quarter, campaign, Superstar). The loyalty portal (V0158) manages drafts, versions and the lifecycle; nothing in the field reads it (docs/27: loyalty in the field is deferred; bundle programmes null). A programme that has a version can never be deleted: the API role holds no DELETE and app.programme_version references it; end it instead (status inactive). Writer rule: the portal copies the new version's name, period, dates, points expiry and rules into this row in the same transaction that sets current_version_id, only while the programme is a draft; the API enforces that rule, the database enforces only the status moves (draft to active to inactive), that the pointer changes only while draft and that the pointer names a version of this programme. |
+| [`app.programme_enrolment`](#appprogramme_enrolment) | table | backend:masterdata | ONLINE | master | none | Enrolment of an outlet in a programme for a period, with league, tier and base target. Written by PUT /v1/admin/programmes/{id}/enrolments (batch UUID, app.programme_enrolment_batch). Sizing note for the final account: reads page by id within a programme and rely on the exclusion constraint index and the outlet index; add a btree on (programme_id, id) if a programme passes about 100000 enrolments. |
 | [`app.programme_enrolment_batch`](#appprogramme_enrolment_batch) | table | backend:masterdata | ONLINE | audit | none | Append-only ledger of PUT /v1/admin/programmes/{id}/enrolments batches; the batch UUID makes a retried batch idempotent (the first counts are answered again). |
 | [`app.programme_status_change`](#appprogramme_status_change) | table | backend:masterdata | ONLINE | audit | none | Append-only trail of programme status moves (draft, active, inactive) with the reason and the person; the request UUID makes a retried move idempotent. |
 | [`app.programme_version`](#appprogramme_version) | table | backend:masterdata | ONLINE | master | none | One immutable version of a loyalty programme's definition (names, period, dates, rules, tiers, scope): a rule change is a new row, never an UPDATE (trigger and grant). The loyalty portal creates them (V0158); the field does not read them (docs/27: loyalty in the field is deferred, bundle programmes null). |
@@ -1988,7 +1988,7 @@ Keys: `PRIMARY KEY (id)`
 
 ## app.gift
 
-A gift of a loyalty programme with points cost and tiers.
+A gift of a loyalty programme with points cost (integer points, no taka value in v1) and tiers. Written only by the portal (SUPERADMIN) through app.gift_change; a gift is never deleted, set it inactive. The picture is image_asset_id (V0170); image_url of V0007 is legacy and unused by the portal.
 
 `owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
 
@@ -2006,10 +2006,11 @@ A gift of a loyalty programme with points cost and tiers.
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
+| `image_asset_id` | uuid | null |  | Uploaded picture of the gift (app.admin_asset, purpose gift_image); the portal API turns it into a read URL when it answers. Null when the gift has no picture. |
 
 Keys: `UNIQUE (programme_id, code)`; `PRIMARY KEY (id)`
 
-References: `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`
+References: `FOREIGN KEY (image_asset_id) REFERENCES app.admin_asset(asset_id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`
 
 ## app.gift_assignment
 
@@ -3278,7 +3279,7 @@ References: `FOREIGN KEY (node_id) REFERENCES app.product_node(id) ON DELETE CAS
 
 ## app.programme
 
-Loyalty programme definition (Diamond League month, Astha quarter, campaign, Superstar). The loyalty portal (V0158) manages drafts, versions and the lifecycle; nothing in the field reads it (docs/27: loyalty in the field is deferred; bundle programmes null).
+Loyalty programme definition (Diamond League month, Astha quarter, campaign, Superstar). The loyalty portal (V0158) manages drafts, versions and the lifecycle; nothing in the field reads it (docs/27: loyalty in the field is deferred; bundle programmes null). A programme that has a version can never be deleted: the API role holds no DELETE and app.programme_version references it; end it instead (status inactive). Writer rule: the portal copies the new version's name, period, dates, points expiry and rules into this row in the same transaction that sets current_version_id, only while the programme is a draft; the API enforces that rule, the database enforces only the status moves (draft to active to inactive), that the pointer changes only while draft and that the pointer names a version of this programme.
 
 `owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
 
@@ -3309,7 +3310,7 @@ References: `FOREIGN KEY (id, current_version_id) REFERENCES app.programme_versi
 
 ## app.programme_enrolment
 
-Enrolment of an outlet in a programme for a period, with league, tier and base target.
+Enrolment of an outlet in a programme for a period, with league, tier and base target. Written by PUT /v1/admin/programmes/{id}/enrolments (batch UUID, app.programme_enrolment_batch). Sizing note for the final account: reads page by id within a programme and rely on the exclusion constraint index and the outlet index; add a btree on (programme_id, id) if a programme passes about 100000 enrolments.
 
 `owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
 

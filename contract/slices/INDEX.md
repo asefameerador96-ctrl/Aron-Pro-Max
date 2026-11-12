@@ -902,7 +902,7 @@ Source: contract/openapi.yaml, version 1.13.0.
 - `operations/listProgrammeVersions.yaml`  GET /v1/admin/programmes/{id}/versions (767 B)
 - `operations/setProgrammeStatus.yaml`  POST /v1/admin/programmes/{id}/status (1935 B)
 - `operations/listProgrammeEnrolments.yaml`  GET /v1/admin/programmes/{id}/enrolments (769 B)
-- `operations/putProgrammeEnrolments.yaml`  PUT /v1/admin/programmes/{id}/enrolments (1263 B)
+- `operations/putProgrammeEnrolments.yaml`  PUT /v1/admin/programmes/{id}/enrolments (1538 B)
 - `operations/listGifts.yaml`  GET /v1/admin/gifts (667 B)
 - `operations/createGift.yaml`  POST /v1/admin/gifts (1150 B)
 - `operations/getGift.yaml`  GET /v1/admin/gifts/{id} (640 B)

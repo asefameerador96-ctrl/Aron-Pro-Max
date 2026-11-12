@@ -5,10 +5,12 @@ operation:
   - admin-content
   operationId: putProgrammeEnrolments
   summary: Upsert enrolments (idempotent by batch_uuid, all-or-nothing).
-  description: Permission module `loyalty`, `w` grant. A repeat of a `batch_uuid` returns the first counts; the
-    same `batch_uuid` with different rows is `409` (1.13.0). A `tier_code` must be one of the current version's
-    tiers when it has any; an outlet outside the caller's server-side scope is `400`. An enrolment never overlaps
-    another of the same programme and outlet (`409`).
+  description: 'Permission module `loyalty`, `w` grant. A repeat of a `batch_uuid` returns the first counts; the
+    same `batch_uuid` with different rows is `409` (1.13.0). A `tier_code` must be one of the current version''s
+    tiers when it has any; an outlet that does not exist is `400` (the writers, SUPERADMIN and ADMIN, hold no geography
+    scope; WM, DMO and TSO cannot write). Reading enrolments is cut to the caller''s reach: WM, DMO and TSO see
+    the outlets of their zones and routes, a BRAND user is refused `403` (outlet data), `zone_id` outside the reach
+    is `403`. An enrolment never overlaps another of the same programme and outlet (`409`).'
   parameters:
   - $ref: '#/components/parameters/IdPath'
   requestBody:
