@@ -2863,3 +2863,7 @@
 ### 2026-11-12 10:21 UTC — S4 golden fix verified; train 102 built
 - S4 `b92ce3b7b`: diff on df7e5a1a9 = 11 goldens + status file only (verified); my pixel diff of three of them (amo_sale_entry_bn, sale_bn_sunlight, sale_bn_packshots): same size, difference confined to one 16x14 box at the arrow. Lane ci on df7e5a1a9 green (43197100274); new run 43199383235 in progress.
 - Train 102 = train 101 head afe417965 + S4 b92ce3b7b (--no-ff, clean merge), head `30230e3cc` on lane/lead-train102: android == S4 android; backend/db/contract/web == train 101; DECISIONS 414 (406 + 8), 0 lines missing from either side, 0 markers; money-float 13/13, date-pin 0 new, gitleaks clean. GO only after train 101 has landed and deployed. Android-only on top of 101: deploy skipped by design; new APK of record expected.
+
+### 2026-11-12 10:37 UTC — GO train 101
+- Train 101 CI 43195921949 green on afe417965 (12 jobs ok). INT still 0b5eba27a (train 100 run complete). GO sent to integrator 24: train head only, expected DECISIONS 406, V0162 last, contract 1.13.0, real deploy.
+- S3 follow-up `bbcc5b99c` (assist moved to the VISIT frame) held until train 102 lands. S1 fix round `755a5cbaf`: static gate clean, merges on train 102 with only DECISIONS conflicting; Opus re-check wkky08qee running.
