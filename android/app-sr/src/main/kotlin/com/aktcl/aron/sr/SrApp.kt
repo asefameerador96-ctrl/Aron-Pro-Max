@@ -243,6 +243,8 @@ fun SrApp(
     val scope = rememberCoroutineScope()
     var editMemo by rememberSaveable { mutableStateOf("") }
     var skipOutlet by remember { mutableStateOf<OutletEntity?>(null) }
+    // "সেল ডাটা" is up inside the sale or memo host: the frame says so (SaleHost and MemoHost report it)
+    var saleData by remember { mutableStateOf(false) }
     val data by day.dayData.collectAsState()
     val tasks by day.taskBoard.state.collectAsState()
     val stockAttempt by day.stockAttempt.collectAsState()
@@ -455,16 +457,16 @@ fun SrApp(
                                 opening = false; screen = SrScreen.VISIT
                             }
                         }
-                    })
+                    }, manualRows = true)
                 }
             }
         }
-        SrScreen.VISIT -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_sale) {
+        SrScreen.VISIT -> SrFrame(if (saleData) stringResource(com.aktcl.aron.feature.memo.R.string.sale_data_title) else stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_sale) {
             PermissionGate(GatedFeature.SALE, onBack = goBack) {
                 val st by day.visitFlow.state.collectAsState()
                 val open by day.visitSession.current.collectAsState()
                 if (open != null) {
-                    SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME })
+                    SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME }, onSaleData = { saleData = it })
                 } else {
                     // tso-manual X4a (R-W-11): the lock landed while the fix was read, so the committer refused the call (nothing
                     // stored): the lock text instead of the generic failed commit and its retry; follow-up (R-W-23): the submit
@@ -488,8 +490,8 @@ fun SrApp(
         SrScreen.SKIP -> SrFrame(stringResource(R.string.sr_skip_outlet), goBack, sync, openSync) {
             skipOutlet?.let { o -> SkipHost(day, o, onDone = { screen = SrScreen.HOME }) } ?: LaunchedEffect(Unit) { screen = SrScreen.PICKER }
         }
-        SrScreen.MEMO -> SrFrame(stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_memo) {
-            MemoHost(day, sunlight, onSunlight, onEdit = { editMemo = it; screen = SrScreen.EDIT })
+        SrScreen.MEMO -> SrFrame(if (saleData) stringResource(com.aktcl.aron.feature.memo.R.string.sale_data_title) else stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_memo) {
+            MemoHost(day, sunlight, onSunlight, onEdit = { editMemo = it; screen = SrScreen.EDIT }, onSaleData = { saleData = it })
         }
         SrScreen.EDIT -> SrFrame(stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync, icon = CoreR.drawable.aron_art_memo) { EditHost(day, editMemo, sunlight, onSunlight, onDone = { screen = SrScreen.MEMO }) }
         SrScreen.SUMMARY -> SrFrame(stringResource(com.aktcl.aron.feature.memo.R.string.summary_title), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_summary) { SummaryHost(day, sunlight, onSunlight) }
