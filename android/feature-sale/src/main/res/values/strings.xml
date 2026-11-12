@@ -139,4 +139,11 @@
     <string name="qty_stat_na">N/A</string>
     <string name="qc_pack_equiv">= %1$s %2$s</string>
     <string name="qc_pack_equiv_both">= %1$s %2$s + %3$s %4$s</string>
+    <string name="edit_reason_wrong_sku_qty">Wrong SKU quantity</string>
+    <string name="edit_reason_promotion_issue">Promotion issue</string>
+    <string name="edit_reason_dialog_title">Please enter the reason for editing this sale</string>
+    <string name="edit_reason_pick">Select a reason</string>
+    <string name="edit_reason_cancel">Cancel</string>
+    <string name="edit_reason_submit">Submit</string>
+    <string name="edit_reason_glyph_dropdown">▾</string>
 </resources>

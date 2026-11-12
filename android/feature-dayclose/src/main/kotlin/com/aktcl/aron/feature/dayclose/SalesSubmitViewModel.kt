@@ -54,6 +54,9 @@ data class SubmitUiState(
     val dismissed: List<RejectedRow> = emptyList(),
     /** A digest (server totals) has answered at least once for the date: before it, "Nothing to compare yet". */
     val serverKnown: Boolean = false,
+    /** SRM-B-25: the day's business figures on the device and, once the digest carries them, on the server. Null: the host shows the record counts. */
+    val business: BusinessTotals? = null,
+    val serverBusiness: BusinessTotals? = null,
 )
 
 /**
@@ -68,6 +71,9 @@ class SalesSubmitViewModel(
     private val writer: DaySubmitWriter,
     private val scheduler: SyncScheduler,
     private val online: () -> Boolean,
+    /** SRM-B-25: null keeps the record-count table; the gate and the submit never read it. */
+    private val businessSource: BusinessSource? = null,
+    private val serverBusiness: ServerBusiness = ServerBusiness { null },
 ) : ViewModel() {
     private val lock = Mutex()
     private val _state = MutableStateFlow(SubmitUiState())
@@ -119,7 +125,11 @@ class SalesSubmitViewModel(
         val states = trueStates.copy(rejected = (trueStates.rejected - dismissed.size).coerceAtLeast(0))
         val uploadGate = SalesSubmitRules.gate(trueStates, counts, source.dues(d), alreadySubmitted = submitted && prev == SubmitProgress.Idle)
         val gate = SalesSubmitRules.gate(states, counts, source.dues(d), alreadySubmitted = submitted && prev == SubmitProgress.Idle)
+        // the business figures are display only: a failing read leaves the record-count table, it never blocks or changes the gate
+        val biz = try { businessSource?.totals(d) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+        val bizServer = if (biz == null) null else try { serverBusiness.totals(d) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
         _state.value = _state.value.copy(
+            business = biz, serverBusiness = bizServer,
             online = online(), counts = counts, gate = gate, uploadGate = uploadGate, rejected = rejected, dismissed = dismissed, serverKnown = srv != null,
             progress = when { settled -> SubmitProgress.Settled; submitted || prev == SubmitProgress.Queued -> SubmitProgress.Queued; else -> SubmitProgress.Idle },
         )

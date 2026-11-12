@@ -163,7 +163,7 @@ fun AronTopBar(
 
 /**
  * The printer state at the end of the top bar (sr/stock.webp): a light round badge with a red crossed printer while no printer is
- * connected, a purple printer once one is. [label] is the TalkBack text of the state; tapping it opens the connect flow. Inside an
+ * connected, a green printer once one is (SR manual screenshot 17). [label] is the TalkBack text of the state; tapping it opens the connect flow. Inside an
  * [AronInfoCard] it is drawn flat, grey and with a smaller printer, as on sr/summary.png.
  */
 @Composable
