@@ -524,7 +524,7 @@ class TsoManualV0130Test {
         }
         assertTrue(
             c.scalar("SELECT col_description('app.user_module_grant'::regclass, (SELECT attnum FROM pg_attribute WHERE attrelid = 'app.user_module_grant'::regclass AND attname = 'module'))")!!
-                .contains("daily_tracking, support (the support desk, V0135) or discounts"), // V0154 appended discounts after support
+                .contains("daily_tracking, support (the support desk, V0135), discounts (the discount-programme portal, V0154) or loyalty"), // V0154 appended discounts, V0160 loyalty
         )
     }
 
@@ -713,7 +713,7 @@ class TsoManualV0130Test {
     @Test
     fun theTsoViewsShowTheRowsWithoutFreeText() = db.connect().use { c ->
         val views = listOf("v_support_ticket", "v_leave_application", "v_feedback", "v_visit_plan_outlet", "v_call_assessment", "v_task")
-        assertEquals("1.6", c.scalar("SELECT dw.view_contract_version()"))   // V0152 (1.5 at V0151)
+        assertEquals("1.7", c.scalar("SELECT dw.view_contract_version()"))   // V0162 (1.6 at V0152, 1.5 at V0151)
         for (v in views) {
             val cols = c.column("SELECT column_name FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = '$v' ORDER BY ordinal_position").filterNotNull()
             assertEquals(listOf("data_origin", "is_effective"), cols.takeLast(2), v)

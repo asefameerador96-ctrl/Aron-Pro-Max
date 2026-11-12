@@ -1,0 +1,73 @@
+ProgrammeVersion:
+  type: object
+  description: One immutable version of a programme's definition (1.13.0).
+  required:
+  - programme_version_id
+  - programme_id
+  - version_no
+  - is_current
+  - name_en
+  - active_from
+  - active_to
+  - tiers
+  - qualifying
+  - scope
+  - created_at
+  additionalProperties: false
+  properties:
+    programme_version_id:
+      $ref: '#/components/schemas/Id'
+    programme_id:
+      $ref: '#/components/schemas/Id'
+    version_no:
+      type: integer
+      minimum: 1
+    is_current:
+      type: boolean
+    name_en:
+      type: string
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    period_label:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    active_from:
+      $ref: '#/components/schemas/BusinessDate'
+    active_to:
+      $ref: '#/components/schemas/BusinessDate'
+    points_expire_on:
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'
+    rules:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/JsonScalar'
+    tiers:
+      type: array
+      maxItems: 10
+      items:
+        $ref: '#/components/schemas/ProgrammeTier'
+    qualifying:
+      type: array
+      maxItems: 100
+      items:
+        $ref: '#/components/schemas/LoyaltyProductRef'
+    scope:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/LoyaltyScopeNode'
+    change_reason:
+      type:
+      - string
+      - 'null'
+    created_at:
+      type: string
+      format: date-time

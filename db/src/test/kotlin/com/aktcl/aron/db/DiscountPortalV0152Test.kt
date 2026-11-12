@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 
 /**
  * V0152 / V0153 (discount portal schema, D-DISC-API-01): the offer status CHECK with draft, the version request UUID, the
- * immutable versions and the append-only status trail, the grants of the API role, and the two dw views at contract 1.6.
+ * immutable versions and the append-only status trail, the grants of the API role, and the two dw views (view contract 1.6 at V0152; the test checks 1.7 since V0162).
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class DiscountPortalV0152Test {
@@ -163,7 +163,7 @@ class DiscountPortalV0152Test {
     fun theViewsShowTheCurrentVersionWithProductAndScopeRowsAndTheContractIs16() = db.connect().use { c ->
         c.autoCommit = false
         try {
-            assertEquals("1.6", c.scalar("SELECT dw.view_contract_version()"))
+            assertEquals("1.7", c.scalar("SELECT dw.view_contract_version()"))
             val o = c.offer("W1", "active")
             val v1 = c.version(o, 1, null)
             val v2 = c.version(o, 2, null)

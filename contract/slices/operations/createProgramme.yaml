@@ -4,7 +4,12 @@ operation:
   tags:
   - admin-content
   operationId: createProgramme
-  summary: Create a programme period (for example "Diamond League (October)" or a campaign).
+  summary: Create a programme period as a draft (version 1).
+  description: 'Always creates `status: draft` with version 1; activate it with `POST /v1/admin/programmes/{id}/status`.
+    SUPERADMIN, or ADMIN with the `w` grant on module `loyalty`. Idempotent by `request_uuid` (required by the server):
+    a repeat of the same call returns the first result with `201`; the same `request_uuid` with different content,
+    or a `code` that exists, is `409`. `active_to >= active_from`; tier thresholds are STD as stored, never negative,
+    rising with the tier order; none is invented by the server (docs/27).'
   requestBody:
     required: true
     content:
