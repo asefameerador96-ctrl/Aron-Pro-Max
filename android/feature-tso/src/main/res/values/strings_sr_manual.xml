@@ -16,4 +16,5 @@
     <string name="tso_otp_row_desc_code">%1$s, code %2$s</string>
     <string name="tso_otp_row_desc_none">%1$s, no code yet</string>
     <string name="tso_otp_session_expired">Your sign-in has ended. Log out and log in again, then open Device OTP.</string>
+    <string name="tso_otp_issue_reason" translatable="false">Issued by the TSO in the TSO app so an SR can bind a new phone</string>
 </resources>

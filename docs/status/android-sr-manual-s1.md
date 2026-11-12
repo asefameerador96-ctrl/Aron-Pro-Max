@@ -55,3 +55,5 @@ Suite totals (unit tests, all green): feature-auth 62, feature-home 77, feature-
 9. `LoginViewModel` bind: `orDefaultKeepingCancellation` instead of `runCatching` (cancellation test).
 
 All test runs here are JVM/Robolectric (no device).
+
+Final three full runs (JVM/Robolectric only, merged INT incl. train 100; unit tests + lintDebug + ui-screenshots goldens, all green). Suite totals: core-ui 181, feature-auth 64, feature-home 79, feature-tso 289, core-system 116, core-sync 306, app-sr 120, app-amo 120, app-tso 86. core-ui was added to the run set this round: its `HardcodedStringScanTest` caught three literals ("i" glyph now drawn, the audit reason now the resource `tso_otp_issue_reason`, a code-hiding toString replaced by a plain class).

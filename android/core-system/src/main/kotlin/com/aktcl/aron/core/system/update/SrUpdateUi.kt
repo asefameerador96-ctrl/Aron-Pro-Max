@@ -195,8 +195,11 @@ private fun SrProgress(percent: Int) {
 private fun SrDoNotClose() {
     val look = LocalAronLook.current
     Row(Modifier.fillMaxWidth().testTag(SrUpdateTags.WARNING), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(20.dp).clip(CircleShape).background(look.red), contentAlignment = Alignment.Center) {
-            Text("i", color = Color.White, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+        // the round "i" glyph, drawn (a stem and a dot): no text literal, no bitmap
+        Canvas(Modifier.size(20.dp)) {
+            drawCircle(look.red)
+            drawCircle(Color.White, radius = size.width * 0.07f, center = Offset(size.width / 2, size.height * 0.3f))
+            drawLine(Color.White, Offset(size.width / 2, size.height * 0.45f), Offset(size.width / 2, size.height * 0.78f), size.width * 0.13f, androidx.compose.ui.graphics.StrokeCap.Round)
         }
         Text(stringResource(R.string.update_sr_do_not_close), color = look.red, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f, fill = false))
     }

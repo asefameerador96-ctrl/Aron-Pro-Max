@@ -265,7 +265,7 @@ class TsoApiTest {
 
     @Test fun issuingPostsOnlyTheUserIdAndAReasonAndMapsTheAnswers() = runBlocking {
         val api = TsoApi(client(), tmp.newFolder("otp"))
-        val body = com.aktcl.aron.feature.tso.deviceotp.TsoDeviceOtps.issueBody(12)
+        val body = com.aktcl.aron.feature.tso.deviceotp.TsoDeviceOtps.issueBody(12, "Issued by the TSO in the TSO app")
         assertTrue(api.issueDeviceOtp(12, body) is TsoApi.IssueOtp.Issued)
         val call = seen.single()
         assertEquals("POST", call.method)
@@ -283,6 +283,6 @@ class TsoApiTest {
         val api = TsoApi(client(), tmp.newFolder("otp"))
         status["/v1/admin/device-otps"] = 401
         assertTrue(api.deviceOtps() is TsoFetch.Unauthorized)
-        assertTrue(api.issueDeviceOtp(12, com.aktcl.aron.feature.tso.deviceotp.TsoDeviceOtps.issueBody(12)) is TsoApi.IssueOtp.Unauthorized)
+        assertTrue(api.issueDeviceOtp(12, com.aktcl.aron.feature.tso.deviceotp.TsoDeviceOtps.issueBody(12, "Issued by the TSO in the TSO app")) is TsoApi.IssueOtp.Unauthorized)
     }
 }

@@ -25,8 +25,7 @@ class DeviceOtpRow(
     val expiresAt: String,
     val attempts: Int,
 ) {
-    // no toString on purpose: a data class would print the code into any log line that holds the row
-    override fun toString(): String = "DeviceOtpRow(user=$userId)"
+    // a plain class on purpose (not a data class): the default toString never prints the code into a log line that holds the row
 }
 
 /** One page of `DeviceOtpPage`: the rows and the cursor of the next page. */
@@ -34,9 +33,6 @@ class DeviceOtpPage(val rows: List<DeviceOtpRow>, val nextCursor: String?)
 
 /** Parsing and the issue request of the TSO's Device OTP screen (contract `listDeviceOtps` and `issueDeviceOtp`). No network. */
 object TsoDeviceOtps {
-    /** The audit text stored with a code the TSO issues from the app (the contract needs 10 to 500 characters). */
-    const val ISSUE_REASON = "Issued by the TSO in the TSO app so an SR can bind a new phone"
-
     private fun obj(json: String?): JsonObject? = runCatching { Json.parseToJsonElement(json ?: return null) as? JsonObject }.getOrNull()
     private fun s(o: JsonObject, k: String) = (o[k] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull
     private fun l(o: JsonObject, k: String) = (o[k] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.longOrNull
@@ -63,9 +59,12 @@ object TsoDeviceOtps {
     /** A `DeviceOtp` answer of the issue call. */
     fun parseIssued(json: String?): DeviceOtpRow? = obj(json)?.let(::row)
 
-    /** The body of `POST /v1/admin/device-otps`: the rep's id (from a row the server returned) and the audit reason. */
-    fun issueBody(userId: Long): String =
-        JsonObject(mapOf("user_id" to JsonPrimitive(userId), "reason" to JsonPrimitive(ISSUE_REASON))).toString()
+    /**
+     * The body of `POST /v1/admin/device-otps`: the rep's id (from a row the server returned) and the audit [reason] (the contract needs 10
+     * to 500 characters; the host passes the `tso_otp_issue_reason` resource).
+     */
+    fun issueBody(userId: Long, reason: String): String =
+        JsonObject(mapOf("user_id" to JsonPrimitive(userId), "reason" to JsonPrimitive(reason))).toString()
 
     /** Merges a freshly issued code into the rows (same rep replaced) and keeps the order rule. */
     fun withIssued(rows: List<DeviceOtpRow>, issued: DeviceOtpRow): List<DeviceOtpRow> =

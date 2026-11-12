@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 import com.aktcl.aron.feature.tso.R as TsoR
 
 /** The TSO's Device OTP model over [TsoApi]: reads and issues are online only and nothing is kept (a code is a secret). */
-fun deviceOtpModel(api: TsoApi): TsoDeviceOtpModel = TsoDeviceOtpModel(
+fun deviceOtpModel(api: TsoApi, issueReason: String): TsoDeviceOtpModel = TsoDeviceOtpModel(
     read = { cursor ->
         when (val r = api.deviceOtps(cursor)) {
             is TsoFetch.Fresh -> DeviceOtpFetch.Fresh(r.json)
@@ -29,7 +29,7 @@ fun deviceOtpModel(api: TsoApi): TsoDeviceOtpModel = TsoDeviceOtpModel(
         }
     },
     issue = { userId ->
-        when (val r = api.issueDeviceOtp(userId, TsoDeviceOtps.issueBody(userId))) {
+        when (val r = api.issueDeviceOtp(userId, TsoDeviceOtps.issueBody(userId, issueReason))) {
             is TsoApi.IssueOtp.Issued -> DeviceOtpIssue.Issued(r.json)
             TsoApi.IssueOtp.Rejected -> DeviceOtpIssue.Refused
             TsoApi.IssueOtp.Unauthorized -> DeviceOtpIssue.SessionExpired
@@ -42,7 +42,8 @@ fun deviceOtpModel(api: TsoApi): TsoDeviceOtpModel = TsoDeviceOtpModel(
 @Composable
 fun TsoDeviceOtpHost(api: TsoApi, nav: TsoNav) {
     com.aktcl.aron.core.ui.SecureScreen() // the codes are not in recents or screenshots (they are still read aloud: the row keeps its description)
-    val model = remember(api) { deviceOtpModel(api) }
+    val reason = stringResource(TsoR.string.tso_otp_issue_reason)
+    val model = remember(api, reason) { deviceOtpModel(api, reason) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(model) { model.refresh() }
     TsoFrame(stringResource(TsoR.string.tso_otp_title), nav, homeButton = TsoFab.of(TsoScreen.DEVICE_OTP)) {

@@ -52,13 +52,12 @@ class TsoDeviceOtpTest {
         assertNull(TsoDeviceOtps.parse("not json"))
         assertNull(TsoDeviceOtps.parse("""{"nope":1}"""))
         val r = TsoDeviceOtps.parse(page)!!.rows.first()
-        assertFalse(r.toString().contains("3560"))
+        assertFalse(r.toString().contains("3560")) // a plain class: the default toString has no fields
     }
 
     @Test fun theIssueBodyCarriesOnlyTheUserIdAndALongEnoughReason() {
-        val b = kotlinx.serialization.json.Json.parseToJsonElement(TsoDeviceOtps.issueBody(12)) as kotlinx.serialization.json.JsonObject
+        val b = kotlinx.serialization.json.Json.parseToJsonElement(TsoDeviceOtps.issueBody(12, "Issued by the TSO in the TSO app")) as kotlinx.serialization.json.JsonObject
         assertEquals(setOf("user_id", "reason"), b.keys)
-        assertTrue(TsoDeviceOtps.ISSUE_REASON.length in 10..500)
     }
 
     private fun model(read: DeviceOtpFetch = DeviceOtpFetch.Fresh(page), issue: DeviceOtpIssue = DeviceOtpIssue.Offline, issued: MutableList<Long> = ArrayList()) =
@@ -166,5 +165,10 @@ class TsoDeviceOtpTest {
         val m = model(); runBlocking { m.refresh() }
         show(AppLanguage.EN, m)
         compose.onNode(androidx.compose.ui.test.hasContentDescription("Abdul, code 3 5 6 0")).assertExists()
+    }
+
+    @Test fun theAuditReasonResourceFitsTheContractLimits() {
+        val reason = ApplicationProvider.getApplicationContext<android.content.Context>().getString(com.aktcl.aron.feature.tso.R.string.tso_otp_issue_reason)
+        assertTrue(reason.length in 10..500)
     }
 }
