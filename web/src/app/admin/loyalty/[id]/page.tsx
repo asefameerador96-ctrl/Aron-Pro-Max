@@ -7,10 +7,10 @@ import { AuditHistory } from "@/components/admin/audit-history";
 import { DataTable, type Column } from "@/components/admin/kit/data-table";
 import { LoyaltyEnrolForm } from "@/components/admin/loyalty-enrol-form";
 import { LoyaltyStatusPanel } from "@/components/admin/loyalty-status-panel";
-import { Card, PageHeading, one, type SearchParams } from "@/components/admin/kit/page";
+import { Card, NextLink, PageHeading, one, qs, type SearchParams } from "@/components/admin/kit/page";
 import { apiClient, outcome } from "@/lib/api/client";
 import { loadGrants } from "@/lib/admin/modules";
-import { activationBlocked, canReadLoyalty, canWriteLoyalty, nextProgrammeStatuses, type Enrolment, type ProgrammeVersion } from "@/lib/admin/loyalty";
+import { activationBlocked, canReadLoyalty, cursorParam, ID_RE, canWriteLoyalty, nextProgrammeStatuses, type Enrolment, type ProgrammeVersion } from "@/lib/admin/loyalty";
 import { loadEnrolments, loadGifts, loadProgramme, loadVersions } from "@/lib/admin/loyalty-load";
 import { kindLabel, nameOf, pointsText, qualifyingLabel, scopeLabel, statusLabel, stdText, thresholdText, tierName } from "@/lib/admin/loyalty-view";
 import { requireSession } from "@/lib/auth/require";
@@ -25,7 +25,7 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
   const grants = await loadGrants(session.at, session.user.role);
   if (!canReadLoyalty(session.user.role, grants)) return <Forbidden locale={locale} />;
   const back = <Link href="/admin/loyalty" className="text-body-strong text-accent hover:underline">{t(locale, "loy.back")}</Link>;
-  const numeric = /^\d{1,15}$/.test(id) ? Number(id) : null;
+  const numeric = ID_RE.test(id) ? Number(id) : null;
   const r = numeric === null ? null : await loadProgramme(session.at, numeric);
   if (!r || !r.ok) {
     const offline = r !== null && !r.ok && r.offline;
@@ -39,8 +39,8 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
   const p = r.data;
   const api = apiClient(session.at);
   const [versions, enrolments, gifts, hist] = await Promise.all([
-    loadVersions(session.at, p.programme_id),
-    loadEnrolments(session.at, p.programme_id),
+    loadVersions(session.at, p.programme_id, cursorParam(one(sp.vc, 20))),
+    loadEnrolments(session.at, p.programme_id, cursorParam(one(sp.ec, 20))),
     loadGifts(session.at, p.programme_id),
     outcome(api.GET("/v1/admin/audit", { params: { query: { entity: "programme", entity_id: String(p.programme_id), limit: 20 } } })),
   ]);
@@ -104,7 +104,8 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
         <p role="note" className="text-body text-secondary" data-testid="progress-unavailable">{t(locale, "loy.progress.unavailable")}</p>
       </Card>
       <Card title={t(locale, "loy.enrol.heading")} testId="programme-enrolments">
-        {!enrolments.ok ? <p role="alert" className="text-body text-secondary" data-testid="enrol-failed">{t(locale, "loy.enrol.failed")}</p> : <DataTable columns={enrolCols} rows={enrolments.data} rowKey={(e) => `${e.outlet_id}:${e.valid_from}`} empty={t(locale, "loy.enrol.empty")} caption={t(locale, "loy.enrol.heading")} />}
+        {!enrolments.ok ? <p role="alert" className="text-body text-secondary" data-testid="enrol-failed">{t(locale, "loy.enrol.failed")}</p> : <DataTable columns={enrolCols} rows={enrolments.data.items} rowKey={(e) => `${e.outlet_id}:${e.valid_from}`} empty={t(locale, "loy.enrol.empty")} caption={t(locale, "loy.enrol.heading")} />}
+        {enrolments.ok ? <NextLink href={enrolments.data.next ? `/admin/loyalty/${p.programme_id}${qs({ vc: cursorParam(one(sp.vc, 20)), ec: enrolments.data.next })}` : null} label={t(locale, "loy.more")} /> : null}
         {canWrite ? (p.status === "inactive" ? <p className="text-body text-secondary" data-testid="enrol-ended">{t(locale, "loy.enrol.ended")}</p> : <LoyaltyEnrolForm programmeId={p.programme_id} tiers={tiers} />) : null}
       </Card>
       <Card title={t(locale, "loy.gifts.title")} testId="programme-gifts">
@@ -115,9 +116,9 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
         )}
       </Card>
       <Card title={t(locale, "loy.detail.versions")} testId="programme-versions" data>
-        {!versions.ok ? <p role="alert" className="text-body text-secondary" data-testid="versions-failed">{t(locale, "loy.detail.versions_failed")}</p> : versions.data.length === 0 ? <p className="text-body text-secondary">{t(locale, "loy.detail.versions_empty")}</p> : (
+        {!versions.ok ? <p role="alert" className="text-body text-secondary" data-testid="versions-failed">{t(locale, "loy.detail.versions_failed")}</p> : versions.data.items.length === 0 ? <p className="text-body text-secondary">{t(locale, "loy.detail.versions_empty")}</p> : (
           <ol className="space-y-3">
-            {versions.data.map((v: ProgrammeVersion) => (
+            {versions.data.items.map((v: ProgrammeVersion) => (
               <li key={v.programme_version_id} className="border-l-2 border-divider ps-3" data-testid="programme-version">
                 <p className="text-body-strong text-primary">{t(locale, "loy.detail.version_n", { n: formatNumber(locale, v.version_no) })}{v.is_current ? ` · ${t(locale, "loy.detail.is_current")}` : ""} · <time dateTime={v.created_at}>{formatDateTime(locale, v.created_at)}</time></p>
                 <p className="text-body text-secondary [overflow-wrap:anywhere]">{nameOf(locale, v)} · {formatBusinessDate(locale, v.active_from)} – {formatBusinessDate(locale, v.active_to)} · {t(locale, "loy.col.tiers")}: {formatNumber(locale, v.tiers.length)}</p>
@@ -126,6 +127,7 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
             ))}
           </ol>
         )}
+        {versions.ok ? <NextLink href={versions.data.next ? `/admin/loyalty/${p.programme_id}${qs({ ec: cursorParam(one(sp.ec, 20)), vc: versions.data.next })}` : null} label={t(locale, "loy.more")} /> : null}
       </Card>
       <AuditHistory entries={hist.ok ? hist.data.items : []} failed={!hist.ok} locale={locale} />
     </div>
