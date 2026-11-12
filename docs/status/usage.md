@@ -2951,3 +2951,7 @@
 
 ### 2026-11-12 12:24 UTC — L-B train 2 under review
 - L-B `d25d1fdd7` (web aligned to contract 1.13.0; base INT ce9d92bf7; 17 files +326/-386): static gate clean (web + 2 docs; no skip/only/fixme, no new timeouts; five test titles removed or renamed: to be checked; DECISIONS 408, 0 INT lines missing; money-float 13/13; gitleaks clean; merges on train 104 with only DECISIONS conflicting). Lane ci 43217342984 running. Sonnet review launched (contract alignment call by call; tests, UX honesty, records), worktree wt-lb. Lane decision to rule on: channel checkboxes removed until an id source exists.
+
+### 2026-11-12 12:26 UTC — GO train 104; L-B train 2 PASS
+- Train 104 CI 43214886290 green on 39a478a41 (5 ok, 6 skipped by path). Lane runs of S5 (43214455578) and S6 (43214715189): Repository gates, Android unit tests/lint and release APK jobs all success; only their Web job still running (not touched by these lanes). GO sent to integrator 24 (expected DECISIONS 427, deploy skipped).
+- L-B `d25d1fdd7` Sonnet review wrrbke62j (2 lenses, 319 k tokens): PASS, no blocking; call-by-call match with contract 1.13.0, BigInt thresholds, honest progress panel, replaced tests equal or stronger, records true. Ruling: channel checkboxes removed until an id source exists (accepted). Rides train 105 with S2 once its lane ci 43217342984 is green (real web deploy). wt-lb removed.
