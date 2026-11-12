@@ -9772,7 +9772,7 @@ components:
       required: [outlets_visited, sold, stock_issued, qc, promotion_mtk]
       additionalProperties: false
       properties:
-        outlets_visited: { type: integer, minimum: 0, description: Distinct outlets with a stored sr_call visit that is not voided, not abandoned and not call_declined. }
+        outlets_visited: { type: integer, minimum: 0, description: 'Distinct outlets with a stored sr_call visit that is not voided, not abandoned and not call_declined.' }
         sold:
           type: array
           description: 'Sold quantity in base units per SKU; live memos only (a superseded or voided memo is not counted), `sale` lines only. A SKU with no sale is absent. Ordered by sku_id.'

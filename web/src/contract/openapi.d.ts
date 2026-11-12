@@ -6468,7 +6468,7 @@ export interface components {
         };
         /** @description Per login and business date (the login of the token; a covering rep's rows count under the covering rep's own login), read at request time from the stored rows, never from the worker's summaries. Exactly what is counted: a visit counts when it is an `sr_call` that is not voided, not `abandoned` and not `call_declined` (a declined call is not counted as an outlet visited); a memo counts when it is `active`, not voided and has at least one line; a sold quantity is the `sale` lines of such memos only (free and DRP lines are left out); stock issued is the `issue` and `adjustment` stock movements (signed), not voided; qc is the stored `qc_line` quantities, not voided; promotion is the offer plus DRP discount of such memos. The phone lane (S5 train 2) adopts these rules for its local figures; until then a difference is not by itself a sign of rows not yet acknowledged. These are not described as the phone's rules today. */
         SubmitBusinessTotals: {
-            /** @description Distinct outlets with a stored sr_call visit that is not voided */
+            /** @description Distinct outlets with a stored sr_call visit that is not voided, not abandoned and not call_declined. */
             outlets_visited: number;
             /** @description Sold quantity in base units per SKU; live memos only (a superseded or voided memo is not counted), `sale` lines only. A SKU with no sale is absent. Ordered by sku_id. */
             sold: components["schemas"]["SkuQtyBase"][];

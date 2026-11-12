@@ -220,7 +220,7 @@ Source: contract/openapi.yaml, version 1.14.0.
 - `schemas/SyncTotalsResponse.yaml` (698 B)
 - `schemas/SalesSubmitDigest.yaml` (2308 B)
 - `schemas/SkuQtyBase.yaml` (411 B)
-- `schemas/SubmitBusinessTotals.yaml` (2289 B)
+- `schemas/SubmitBusinessTotals.yaml` (2278 B)
 - `schemas/DigestTypeCounts.yaml` (323 B)
 - `schemas/DigestDeviceCounts.yaml` (489 B)
 - `schemas/DigestLoginCounts.yaml` (281 B)
