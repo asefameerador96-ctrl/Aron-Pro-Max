@@ -18,7 +18,7 @@ val UnconfiguredBlobBytesReader = BlobBytesReader { _, _ ->
  * GET /v1/sku-images/{asset_id} (contract getSkuImage, PARITY-SPEC s2.6; lead ruling 2026-10-18): the bytes of a SKU's
  * pack picture, streamed by the API so no signed URL ever leaves it. The bundle carries the stable `image_asset_id`; an
  * asset never changes (a new file is a new asset), so the answer is cacheable for a year and its ETag is the asset id.
- * Served only when the asset exists, is of purpose `sku_image`, is at most [MAX_BYTES] and a SKU binds it; anything else
+ * Served only when the asset exists, is at most [MAX_BYTES] and is bound by a SKU (purpose `sku_image`) or by an active gift (purpose `gift_image`, lane portal-loyalty-api, contract 1.15.0); anything else
  * (a malformed id included) is a bare 404, so the endpoint cannot be used to probe other assets. Any signed-in caller:
  * pack art is the same for every role and reach.
  */
@@ -30,8 +30,9 @@ internal class SkuImageRead(private val d: MediaDeps) {
         val id = rawId?.takeIf { UUID_RE.matches(it) }?.lowercase() ?: throw notFound()
         return d.db.readJdbi.withHandle<Meta?, Exception> { h ->
             h.createQuery(
-                "SELECT a.blob_path, a.mime FROM app.admin_asset a WHERE a.asset_id = :id AND a.purpose = 'sku_image' AND a.bytes <= :max " +
-                    "AND a.mime IN ('image/jpeg', 'image/png') AND EXISTS (SELECT 1 FROM app.sku s WHERE s.image_asset_id = a.asset_id)",
+                "SELECT a.blob_path, a.mime FROM app.admin_asset a WHERE a.asset_id = :id AND a.bytes <= :max AND a.mime IN ('image/jpeg', 'image/png') AND " +
+                    "((a.purpose = 'sku_image' AND EXISTS (SELECT 1 FROM app.sku s WHERE s.image_asset_id = a.asset_id)) " +
+                    "OR (a.purpose = 'gift_image' AND EXISTS (SELECT 1 FROM app.gift g WHERE g.image_asset_id = a.asset_id AND g.status = 'active')))",
             ).bind("id", UUID.fromString(id)).bind("max", MAX_BYTES)
                 .map { rs, _ -> Meta(rs.getString(1), rs.getString(2), "\"" + id + "\"") }.findOne().orElse(null)
         } ?: throw notFound()

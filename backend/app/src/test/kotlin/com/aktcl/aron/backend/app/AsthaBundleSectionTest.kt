@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.app
 
+import com.aktcl.aron.backend.platform.AsthaQuarter
 import com.aktcl.aron.backend.sync.BundleProgrammes
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -31,6 +32,7 @@ class AsthaBundleSectionTest {
     private var route = 0L
     private var outletA = 0L
     private var outletB = 0L
+    private var outletC = 0L
     private var outletOther = 0L
     private var brand = 0L
     private var programme = 0L
@@ -41,6 +43,8 @@ class AsthaBundleSectionTest {
     private val mA = "00000000-0000-4000-8000-0000000a5101"
     private val mBold = "00000000-0000-4000-8000-0000000a5102"
     private val mBnew = "00000000-0000-4000-8000-0000000a5103"
+    private val mCold = "00000000-0000-4000-8000-0000000a5104"
+    private val mCnew = "00000000-0000-4000-8000-0000000a5105"
 
     @BeforeAll
     fun setUp() {
@@ -49,8 +53,8 @@ class AsthaBundleSectionTest {
             today = today()
             userId = one("SELECT id FROM app.app_user WHERE username = 'sr1001'")
             route = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
-            val o = longs("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id LIMIT 2")
-            outletA = o[0]; outletB = o[1]
+            val o = longs("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id LIMIT 3")
+            outletA = o[0]; outletB = o[1]; outletC = o[2]
             outletOther = one("SELECT id FROM app.outlet WHERE route_id <> $route AND status = 'active' ORDER BY id LIMIT 1")
             cigaretteSku = one("SELECT id FROM app.sku WHERE entry_unit_default = 'pack' AND category_code = 'cigarette' ORDER BY id LIMIT 1")
             pack = one("SELECT base_per_pack FROM app.sku WHERE id = $cigaretteSku").toInt()
@@ -62,10 +66,16 @@ class AsthaBundleSectionTest {
             exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target, value_target_mtk) VALUES ($programme, DATE '$first', $route, $outletA, $brand, 120.5, 0, 500000)")
             exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '$first', $route, $outletA, NULL, 0, 10)")
             exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '$first', $route, $outletB, NULL, 0, 4)")
+            exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '$first', $route, $outletC, NULL, 0, 4)")
+            // Outlet C: 100 points expiring in 5 days, 80 spent: balance 20, so the expiring points are capped at 20 (debits are not matched to credits).
+            exec("INSERT INTO app.programme_enrolment (programme_id, outlet_id, tier_code, valid_from) VALUES ($programme, $outletC, 'silver', DATE '${today.minusDays(30)}')")
+            exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on) VALUES ($outletC, $programme, 'adjustment', 'c1', 100, DATE '${today.minusDays(3)}', DATE '${today.plusDays(5)}')")
+            exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date) VALUES ($outletC, $programme, 'redemption', 'c2', -80, DATE '${today.minusDays(1)}')")
             exec("INSERT INTO app.gift (programme_id, code, name_en, tier_codes) VALUES ($programme, 'gift_a', 'Gift A', '{gold}')")
-            val q = BundleProgrammes.Quarter.of(today, 1).label
+            val q = AsthaQuarter.of(today, 1).label
             exec("INSERT INTO app.gift_assignment (programme_id, quarter, outlet_id, route_id, gift_id, tier_code, chosen_by_user_id, chosen_at) SELECT $programme, '$q', $outletA, $route, id, 'gold', $userId, now() FROM app.gift WHERE code = 'gift_a'")
             exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on) VALUES ($outletA, $programme, 'adjustment', 'a1', 100, DATE '${today.minusDays(2)}', DATE '${today.plusDays(3)}')")
+            exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on) VALUES ($outletA, $programme, 'adjustment', 'a3', 40, DATE '${today.minusDays(2)}', DATE '${today.plusDays(30)}')")
             exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date) VALUES ($outletA, $programme, 'adjustment', 'a2', 50, DATE '$today')")
             exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date) VALUES ($outletA, $programme, 'redemption', 'r1', -30, DATE '${today.minusDays(1)}')")
             sales()
@@ -110,22 +120,31 @@ class AsthaBundleSectionTest {
         memo(mBnew, outletB, "sr1001-270103-003", supersedes = mBold)
         line(mBold, 1, 5, 5 * pack * 100L)                    // belongs to a superseded memo: out
         line(mBnew, 1, 2, 2 * pack * 100L)
+        // Out-of-order edit: the edited memo arrived and names its original (supersedes_client_uuid) but the original still reads `active` (its status flip is not visible
+        // yet, or never happened). The achievement follows supersedes_client_uuid: the original is out, the edit counts once.
+        memo(mCold, outletC, "sr1001-270103-004")
+        memo(mCnew, outletC, "sr1001-270103-005", supersedes = mCold)
+        line(mCold, 1, 7, 7 * pack * 100L)
+        line(mCnew, 1, 1, 1 * pack * 100L)
     }
 
     private fun section(outlets: Set<Long>, flags: BundleProgrammes.Flags = BundleProgrammes.Flags(true, true, true)): JsonObject? =
-        world.fresh.db.jdbi.withHandle<JsonObject?, Exception> { h -> BundleProgrammes.section(h, listOf(route), outlets, today, java.time.Instant.parse("2026-01-01T00:00:00Z"), flags, 1) }
+        world.fresh.db.jdbi.withHandle<JsonObject?, Exception> { h -> BundleProgrammes.section(h, listOf(route), outlets, today, flags, 1) }
 
     private fun JsonObject.str(k: String) = this[k]!!.let { if (it is JsonNull) null else it.jsonPrimitive.content }
 
     @Test
     fun theSectionCarriesTheProgrammeItsBalancesTargetsAndGift() {
-        val s = assertNotNull(section(setOf(outletA, outletB)))
+        val s = assertNotNull(section(setOf(outletA, outletB, outletC)))
         assertEquals(listOf("ASTHA-T"), s["programmes"]!!.jsonArray.map { it.jsonObject.str("code") })
         assertEquals("active", s["programmes"]!!.jsonArray[0].jsonObject.str("status"))
-        // Balance as of the previous business day: +100 (two days ago) -30 (yesterday); today's +50 is not in it; 100 expire within 7 days, capped by the balance 70.
+        // Balance as of the previous business day: +100 (expires in 3 days) +40 (expires in 30 days) -30 (yesterday); today's +50 is not in it. Expiring = the credits of the
+        // EARLIEST upcoming expiry date (100, not the 30-day batch), capped by the balance; the expiry date is that date (D24-68: expiry_days counts from the period end).
         val a = s["loyalty"]!!.jsonArray.map { it.jsonObject }.single { it.str("outlet_id") == outletA.toString() }
-        assertEquals("70", a.str("balance_points")); assertEquals("70", a.str("expiring_points")); assertEquals(today.plusDays(3).toString(), a.str("expiry_date"))
+        assertEquals("110", a.str("balance_points")); assertEquals("100", a.str("expiring_points")); assertEquals(today.plusDays(3).toString(), a.str("expiry_date"))
         assertEquals(today.minusDays(1).toString(), a.str("as_of_date"))
+        val c = s["loyalty"]!!.jsonArray.map { it.jsonObject }.single { it.str("outlet_id") == outletC.toString() }
+        assertEquals("20", c.str("balance_points")); assertEquals("20", c.str("expiring_points"), "capped by the balance, never above it"); assertEquals(today.plusDays(5).toString(), c.str("expiry_date"))
         assertEquals("0", s["loyalty"]!!.jsonArray.map { it.jsonObject }.single { it.str("outlet_id") == outletB.toString() }.str("balance_points"))
         assertEquals(listOf("gift_a"), s["gifts"]!!.jsonArray.map { it.jsonObject.str("code") })
         assertEquals(listOf("gold"), s["gift_assignments"]!!.jsonArray.map { it.jsonObject.str("tier_code") })
@@ -152,6 +171,24 @@ class AsthaBundleSectionTest {
     }
 
     @Test
+    fun anEditedMemoReplacesItsOriginalByTheSupersedesLinkEvenBeforeTheOriginalsStatusFlips() {
+        val rows = assertNotNull(section(setOf(outletC)))["astha_targets"]!!.jsonArray.map { it.jsonObject }
+        assertEquals("1", rows.single { it.str("outlet_id") == outletC.toString() && it.str("brand_id") == null }.str("memo_achieved"), "only the superseding memo counts")
+    }
+
+    @Test
+    fun asOfIsContentDerivedSoRebuildingTheBundleGivesTheSameBytesUntilAMemoArrives() {
+        val a = assertNotNull(section(setOf(outletA, outletB, outletC))); Thread.sleep(20); val b = assertNotNull(section(setOf(outletA, outletB, outletC)))
+        assertEquals(a.toString(), b.toString(), "a wall-clock as_of would give every build a new digest and a new bundle snapshot")
+    }
+
+    @Test
+    fun theGiftCarriesItsStableAssetIdAndNeverASignedUrl() {
+        val g = assertNotNull(section(setOf(outletA)))["gifts"]!!.jsonArray[0].jsonObject
+        assertNull(g.str("image_url")); assertTrue(g.containsKey("image_asset_id"))
+    }
+
+    @Test
     fun theReachCutAndTheFlagsDecideWhatIsSent() {
         // An outlet outside the caller's reach contributes nothing; with no enrolled outlet in reach there is no section at all.
         assertNull(section(setOf(outletOther)))
@@ -164,8 +201,20 @@ class AsthaBundleSectionTest {
     }
 
     @Test
+    fun aQuarterLabelParsesBackToItsMonths() {
+        fun p(l: String, start: Int) = AsthaQuarter.parse(l, start)?.months?.map { it.toString() }
+        assertEquals(listOf("2026-10-01", "2026-11-01", "2026-12-01"), p("2026-Q4", 1))
+        assertEquals(listOf("2026-11-01", "2026-12-01", "2027-01-01"), p("2026-Q1", 11))
+        assertEquals(listOf("2027-01-01", "2027-02-01", "2027-03-01"), p("2027-Q2", 10))
+        assertNull(p("2026-Q5", 1)); assertNull(p("26-Q1", 1))
+        for (start in 1..12) for (d in listOf("2026-01-01", "2026-05-17", "2026-11-12", "2027-02-28")) {   // parse(of(date)) is the same quarter
+            val q = AsthaQuarter.of(LocalDate.parse(d), start); assertEquals(q.months, AsthaQuarter.parse(q.label, start)?.months, "$d start $start")
+        }
+    }
+
+    @Test
     fun theQuarterFollowsTheConfiguredStartMonth() {
-        fun q(date: String, start: Int) = BundleProgrammes.Quarter.of(LocalDate.parse(date), start)
+        fun q(date: String, start: Int) = AsthaQuarter.of(LocalDate.parse(date), start)
         assertEquals("2026-Q4", q("2026-11-12", 1).label); assertEquals(listOf("2026-10-01", "2026-11-01", "2026-12-01"), q("2026-11-12", 1).months.map { it.toString() })
         assertEquals("2026-Q1", q("2026-11-12", 11).label); assertEquals("2026-11-01", q("2026-11-12", 11).months.first().toString())
         assertEquals("2027-Q2", q("2027-01-05", 10).label) // an October-start year: Oct-Dec is its Q1, Jan-Mar its Q2, labelled by the year the quarter starts in

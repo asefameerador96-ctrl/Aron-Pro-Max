@@ -4,8 +4,11 @@ ProgrammesSection:
     is active in the user''s reach, else the bundle member is null. Cut to the outlets and routes of the bundle
     (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS
     Dhaka business date); `astha_targets` carry server achievement as of their own `as_of` (units in `AsthaTargetRow`);
-    a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `gifts[].image_url` is null
-    in this version.'
+    a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `gifts[].image_url` is always
+    null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`.
+    The `as_of` of the Astha rows is the server''s newest memo ingest in the quarter (content-derived, so a rebuild
+    without a new memo has the same bytes); the phone adds every local memo the server had not acknowledged by `meta.generated_at`,
+    keyed by memo_uuid.'
   required:
   - programmes
   - loyalty

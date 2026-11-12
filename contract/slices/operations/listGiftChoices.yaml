@@ -5,6 +5,7 @@ operation:
   - programmes
   operationId: listGiftChoices
   summary: Astha gift choice per outlet (TSO panel and Astha Gift Choice report source).
+  description: Same reach and narrowing rules as `listAsthaTargets`.
   parameters:
   - name: quarter
     in: query
@@ -29,6 +30,8 @@ operation:
         application/json:
           schema:
             $ref: '#/components/schemas/GiftAssignmentPage'
+    '400':
+      $ref: '#/components/responses/BadRequest'
     '401':
       $ref: '#/components/responses/Unauthorized'
     '403':

@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.sync
 
+import com.aktcl.aron.backend.platform.AsthaQuarter
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -23,40 +24,27 @@ object BundleProgrammes {
         fun kinds(): List<String> = buildList { if (loyalty) { add("diamond_league"); add("campaign") }; if (astha) add("astha"); if (superstar) add("superstar") }
     }
 
-    /** The Astha quarter containing [date]: calendar quarters shifted by `cfg.astha.quarter_start_month` (default 1). Label is `YYYY-Qn` of the year the quarter starts in. */
-    data class Quarter(val label: String, val months: List<LocalDate>) {
-        companion object {
-            fun of(date: LocalDate, startMonth: Int): Quarter {
-                val sm = startMonth.coerceIn(1, 12)
-                val monthsSinceStart = Math.floorMod(date.monthValue - sm, 12)
-                val first = date.withDayOfMonth(1).minusMonths((monthsSinceStart % 3).toLong())
-                val qIndex = (Math.floorMod(first.monthValue - sm, 12)) / 3 + 1
-                return Quarter("${first.year}-Q$qIndex", (0L..2L).map { first.plusMonths(it) })
-            }
-        }
-    }
-
-    fun section(h: Handle, routeIds: List<Long>, outletIds: Set<Long>, date: LocalDate, now: Instant, flags: Flags, quarterStartMonth: Int, expiryWarningDays: Int = 7): JsonObject? {
+    fun section(h: Handle, routeIds: List<Long>, outletIds: Set<Long>, date: LocalDate, flags: Flags, quarterStartMonth: Int): JsonObject? {
         val kinds = flags.kinds()
         if (kinds.isEmpty() || outletIds.isEmpty()) return null
         val outlets = outletIds.toList()
         val programmes = programmes(h, date, kinds, outlets)
         if (programmes.isEmpty()) return null
         val ids = programmes.map { it.first }
-        val q = Quarter.of(date, quarterStartMonth)
+        val q = AsthaQuarter.of(date, quarterStartMonth)
         val asthaIds = programmes.filter { it.second == "astha" }.map { it.first }
         return buildJsonObject {
             put("programmes", JsonArray(programmes.map { it.third }))
-            put("loyalty", JsonArray(loyalty(h, outlets, ids, date, expiryWarningDays)))
+            put("loyalty", JsonArray(loyalty(h, outlets, ids, date, date.minusDays(1))))
             put("gifts", JsonArray(gifts(h, ids)))
-            put("astha_targets", JsonArray(if (asthaIds.isEmpty()) emptyList() else asthaTargets(h, routeIds, outlets, q, now)))
+            put("astha_targets", JsonArray(if (asthaIds.isEmpty()) emptyList() else asthaTargets(h, routeIds, outlets, q, contentAsOf(h, outlets, q))))
             put("gift_assignments", JsonArray(if (asthaIds.isEmpty()) emptyList() else giftAssignments(h, asthaIds, outlets, q)))
             put("pending_gift_verifications", JsonArray(emptyList()))
         }
     }
 
     /** (id, kind, JSON) of the active programmes covering [date] whose kind is shown and that enrol one of [outlets] (a campaign needs no enrolment). */
-    private fun programmes(h: Handle, date: LocalDate, kinds: List<String>, outlets: List<Long>): List<Triple<Long, String, JsonObject>> = h.createQuery(
+    internal fun programmes(h: Handle, date: LocalDate, kinds: List<String>, outlets: List<Long>): List<Triple<Long, String, JsonObject>> = h.createQuery(
         """
         SELECT p.id, p.kind, p.code, p.name_en, p.name_bn, p.period_label, p.active_from, p.active_to, p.points_expire_on, p.rules::text AS rules, p.version,
                v.id AS vid, v.version_no,
@@ -83,34 +71,42 @@ object BundleProgrammes {
     }.list()
 
     /**
-     * Ledger balance per enrolled outlet and programme as of the PREVIOUS business date (`as_of_date`). `expiring_points` is the credits that expire
-     * within [warnDays] days of [date], capped by the balance (never negative); `expiry_date` is the earliest such date.
+     * Ledger balance per enrolled outlet and programme as of [cut] (`as_of_date`; the bundle sends the PREVIOUS business date, the live read today).
+     * `expiry_date` is the earliest `expires_on` on or after [date] among the outlet's credits and `expiring_points` the credits expiring on that date, capped by the
+     * balance and never negative (debits are not matched to credits yet: no FIFO). `cfg.loyalty.expiry_days` is the lifetime AFTER THE PERIOD END (D24-68: April
+     * points expire on 7 May), so it sets `expires_on` when points are posted; it is not a warning window. A credit with no `expires_on` never expires.
      */
-    private fun loyalty(h: Handle, outlets: List<Long>, programmeIds: List<Long>, date: LocalDate, warnDays: Int): List<JsonObject> = h.createQuery(
+    internal fun loyalty(h: Handle, outlets: List<Long>, programmeIds: List<Long>, date: LocalDate, cut: LocalDate, limit: Int = 11000): List<JsonObject> = h.createQuery(
         """
+        WITH nx AS (
+          SELECT outlet_id, programme_id, MIN(expires_on) AS exp FROM app.loyalty_ledger
+          WHERE business_date <= :cut AND points > 0 AND expires_on >= :d AND outlet_id = ANY(CAST(:outlets AS bigint[])) AND programme_id = ANY(CAST(:pids AS bigint[]))
+          GROUP BY 1, 2
+        )
         SELECT e.outlet_id, e.programme_id, e.league_label,
-               COALESCE(SUM(l.points) FILTER (WHERE l.business_date < :d), 0)::bigint AS balance,
-               COALESCE(SUM(l.points) FILTER (WHERE l.business_date < :d AND l.points > 0 AND l.expires_on >= :d AND l.expires_on <= :d + CAST(:warn AS int)), 0)::bigint AS expiring,
-               MIN(l.expires_on) FILTER (WHERE l.business_date < :d AND l.points > 0 AND l.expires_on >= :d AND l.expires_on <= :d + CAST(:warn AS int)) AS expiry_date
+               COALESCE(SUM(l.points) FILTER (WHERE l.business_date <= :cut), 0)::bigint AS balance,
+               COALESCE(SUM(l.points) FILTER (WHERE l.business_date <= :cut AND l.points > 0 AND l.expires_on = nx.exp), 0)::bigint AS expiring,
+               MAX(nx.exp) AS expiry_date
         FROM app.programme_enrolment e
         LEFT JOIN app.loyalty_ledger l ON l.outlet_id = e.outlet_id AND l.programme_id = e.programme_id
+        LEFT JOIN nx ON nx.outlet_id = e.outlet_id AND nx.programme_id = e.programme_id
         WHERE e.programme_id = ANY(CAST(:pids AS bigint[])) AND e.outlet_id = ANY(CAST(:outlets AS bigint[])) AND e.valid_from <= :d AND (e.valid_to IS NULL OR e.valid_to > :d)
         GROUP BY e.outlet_id, e.programme_id, e.league_label
         ORDER BY e.programme_id, e.outlet_id
-        LIMIT 11000
+        LIMIT :limit
         """.trimIndent(),
-    ).bind("d", date).bind("warn", warnDays).bindArray("pids", Long::class.javaObjectType, programmeIds).bindArray("outlets", Long::class.javaObjectType, outlets).map { rs, _ ->
+    ).bind("d", date).bind("cut", cut).bind("limit", limit).bindArray("pids", Long::class.javaObjectType, programmeIds).bindArray("outlets", Long::class.javaObjectType, outlets).map { rs, _ ->
         val balance = rs.getLong("balance")
         buildJsonObject {
             put("outlet_id", rs.getLong("outlet_id")); put("programme_id", rs.getLong("programme_id")); put("league_label", rs.getString("league_label"))
             put("balance_points", balance); put("expiring_points", rs.getLong("expiring").coerceIn(0, maxOf(balance, 0)))
-            put("expiry_date", rs.getObject("expiry_date", LocalDate::class.java)?.toString()); put("as_of_date", date.minusDays(1).toString())
+            put("expiry_date", rs.getObject("expiry_date", LocalDate::class.java)?.toString()); put("as_of_date", cut.toString())
         }
     }.list()
 
-    /** Active gifts of the sent programmes. The picture URL is resolved from the asset by the portal; the bundle sends `image_url` null until the bundle builder gets a blob issuer. */
-    private fun gifts(h: Handle, programmeIds: List<Long>): List<JsonObject> = h.createQuery(
-        "SELECT id, programme_id, code, name_en, name_bn, points_cost, tier_codes, version FROM app.gift WHERE status = 'active' AND programme_id = ANY(CAST(:pids AS bigint[])) ORDER BY id LIMIT 200",
+    /** Active gifts of the sent programmes. `image_url` stays null in the bundle (a signed URL would change the content digest on every build and be cached); the stable `image_asset_id` is sent and the phone fetches the bytes with GET /v1/sku-images/{asset_id}, which serves purpose gift_image assets too. */
+    internal fun gifts(h: Handle, programmeIds: List<Long>): List<JsonObject> = h.createQuery(
+        "SELECT id, programme_id, code, name_en, name_bn, points_cost, tier_codes, version, image_asset_id::text AS image_asset_id FROM app.gift WHERE status = 'active' AND programme_id = ANY(CAST(:pids AS bigint[])) ORDER BY id LIMIT 200",
     ).bindArray("pids", Long::class.javaObjectType, programmeIds).map { rs, _ ->
         @Suppress("UNCHECKED_CAST")
         val tiers = (rs.getArray("tier_codes").array as Array<String>).toList()
@@ -118,9 +114,22 @@ object BundleProgrammes {
             put("gift_id", rs.getLong("id")); put("programme_id", rs.getLong("programme_id")); put("code", rs.getString("code"))
             put("name_en", rs.getString("name_en")); put("name_bn", rs.getString("name_bn"))
             put("points_cost", rs.getObject("points_cost")?.let { (it as Number).toInt() }); put("tier_codes", JsonArray(tiers.map { JsonPrimitive(it) }))
-            put("image_url", JsonNull); put("status", "active"); put("version", rs.getInt("version"))
+            put("image_url", JsonNull); put("image_asset_id", rs.getString("image_asset_id")); put("status", "active"); put("version", rs.getInt("version"))
         }
     }.list()
+
+    /**
+     * The `as_of` of the bundle's Astha figures: the server's newest ingest (memo `received_at` or status change) among the memos of the quarter in reach, so equal
+     * content gives equal bytes and a rebuild moves the bundle version only when a memo arrived (a wall-clock `as_of` would mint a new snapshot on every build). The
+     * quarter's first instant when there is none. The phone adds every memo it holds that the server had not acknowledged by the bundle's `meta.generated_at`.
+     */
+    internal fun contentAsOf(h: Handle, outlets: List<Long>, q: AsthaQuarter): Instant {
+        val first = q.months.first(); val after = q.months.last().plusMonths(1)
+        return h.createQuery(
+            "SELECT max(GREATEST(received_at, status_changed_at)) FROM app.memo WHERE business_date >= :first AND business_date < :after AND outlet_id = ANY(CAST(:outlets AS bigint[]))",
+        ).bind("first", first).bind("after", after).bindArray("outlets", Long::class.javaObjectType, outlets)
+            .map { rs, _ -> rs.getObject(1, java.time.OffsetDateTime::class.java)?.toInstant() }.findOne().orElse(null) ?: first.atStartOfDay(java.time.ZoneOffset.UTC).toInstant()
+    }
 
     /**
      * Astha target rows of the quarter's months for the caller's routes, with server-side achievement up to `as_of` = [now]: value = sum of the
@@ -128,7 +137,7 @@ object BundleProgrammes {
      * memos `active` and not voided only (a superseded memo is replaced by its editing memo). The brand-NULL row is the memo target: achievement is the
      * count of active sale memos of the outlet in the month.
      */
-    private fun asthaTargets(h: Handle, routeIds: List<Long>, outlets: List<Long>, q: Quarter, now: Instant): List<JsonObject> {
+    internal fun asthaTargets(h: Handle, routeIds: List<Long>, outlets: List<Long>, q: AsthaQuarter, asOf: Instant, limit: Int = 20000, offset: Int = 0): List<JsonObject> {
         val first = q.months.first(); val after = q.months.last().plusMonths(1)
         return h.createQuery(
             """
@@ -144,6 +153,7 @@ object BundleProgrammes {
               JOIN app.product_node b ON b.id = v.parent_id
               WHERE m.status = 'active' AND m.voided_at IS NULL AND m.memo_kind = 'sale' AND m.business_date >= :first AND m.business_date < :after
                 AND m.outlet_id = ANY(CAST(:outlets AS bigint[]))
+                AND NOT EXISTS (SELECT 1 FROM app.memo e WHERE e.supersedes_client_uuid = m.client_uuid AND e.status = 'active' AND e.voided_at IS NULL)
               GROUP BY 1, 2, 3, 4
             ), sales AS (
               SELECT outlet_id, month, brand_id, SUM(std)::numeric(16,3) AS std, SUM(value_mtk)::bigint AS value_mtk,
@@ -152,7 +162,7 @@ object BundleProgrammes {
             ), memos AS (
               SELECT m.outlet_id, date_trunc('month', m.business_date)::date AS month, count(*)::int AS n
               FROM app.memo m WHERE m.status = 'active' AND m.voided_at IS NULL AND m.memo_kind = 'sale' AND m.business_date >= :first AND m.business_date < :after
-                AND m.outlet_id = ANY(CAST(:outlets AS bigint[])) GROUP BY 1, 2
+                AND m.outlet_id = ANY(CAST(:outlets AS bigint[])) AND NOT EXISTS (SELECT 1 FROM app.memo e WHERE e.supersedes_client_uuid = m.client_uuid AND e.status = 'active' AND e.voided_at IS NULL) GROUP BY 1, 2
             )
             SELECT t.route_id, t.outlet_id, t.brand_id, t.month, t.std_target::text AS std_target, t.memo_target, t.value_target_mtk,
                    COALESCE(s.std, 0)::text AS std_achieved, COALESCE(s.value_mtk, 0) AS value_achieved, COALESCE(s.packs, '[]') AS packs, COALESCE(mm.n, 0) AS memo_achieved
@@ -160,9 +170,9 @@ object BundleProgrammes {
             LEFT JOIN sales s ON t.brand_id IS NOT NULL AND s.outlet_id = t.outlet_id AND s.month = t.month AND s.brand_id = t.brand_id
             LEFT JOIN memos mm ON t.brand_id IS NULL AND mm.outlet_id = t.outlet_id AND mm.month = t.month
             ORDER BY t.month, t.route_id, t.outlet_id NULLS FIRST, t.brand_id NULLS FIRST
-            LIMIT 20000
+            LIMIT :limit OFFSET :offset
             """.trimIndent(),
-        ).bind("first", first).bind("after", after).bindArray("routes", Long::class.javaObjectType, routeIds).bindArray("outlets", Long::class.javaObjectType, outlets).map { rs, _ ->
+        ).bind("limit", limit).bind("offset", offset).bind("first", first).bind("after", after).bindArray("routes", Long::class.javaObjectType, routeIds).bindArray("outlets", Long::class.javaObjectType, outlets).map { rs, _ ->
             buildJsonObject {
                 put("route_id", rs.getLong("route_id")); put("outlet_id", rs.getObject("outlet_id")?.let { (it as Number).toLong() })
                 put("brand_id", rs.getObject("brand_id")?.let { (it as Number).toLong() })
@@ -171,24 +181,32 @@ object BundleProgrammes {
                 put("memo_target", rs.getInt("memo_target")); put("memo_achieved", rs.getInt("memo_achieved"))
                 put("value_target_mtk", rs.getLong("value_target_mtk").toString()); put("value_achieved_mtk", rs.getLong("value_achieved").toString())
                 put("by_pack", if (rs.getObject("brand_id") == null) JsonArray(emptyList()) else Json.parseToJsonElement(rs.getString("packs")))
-                put("as_of", now.toString())
+                put("as_of", asOf.toString())
             }
         }.list()
     }
 
-    private fun giftAssignments(h: Handle, programmeIds: List<Long>, outlets: List<Long>, q: Quarter): List<JsonObject> = h.createQuery(
+    /** Gift assignments of the quarter on [routeIds] (the TSO panel and report read), paged by offset. */
+    internal fun giftAssignmentsOf(h: Handle, routeIds: List<Long>, q: AsthaQuarter, limit: Int, offset: Int): List<JsonObject> = h.createQuery(
+        """
+        SELECT id, quarter, outlet_id, route_id, gift_id, tier_code, photo_media_uuid, locked_at, chosen_by_user_id, chosen_at
+        FROM app.gift_assignment WHERE quarter = :q AND route_id = ANY(CAST(:routes AS bigint[])) ORDER BY id LIMIT :limit OFFSET :offset
+        """.trimIndent(),
+    ).bind("q", q.label).bind("limit", limit).bind("offset", offset).bindArray("routes", Long::class.javaObjectType, routeIds).map { rs, _ -> assignmentJson(rs) }.list()
+
+    private fun giftAssignments(h: Handle, programmeIds: List<Long>, outlets: List<Long>, q: AsthaQuarter): List<JsonObject> = h.createQuery(
         """
         SELECT id, quarter, outlet_id, route_id, gift_id, tier_code, photo_media_uuid, locked_at, chosen_by_user_id, chosen_at
         FROM app.gift_assignment WHERE programme_id = ANY(CAST(:pids AS bigint[])) AND quarter = :q AND outlet_id = ANY(CAST(:outlets AS bigint[])) ORDER BY id LIMIT 2000
         """.trimIndent(),
-    ).bind("q", q.label).bindArray("pids", Long::class.javaObjectType, programmeIds).bindArray("outlets", Long::class.javaObjectType, outlets).map { rs, _ ->
-        buildJsonObject {
-            put("gift_assignment_id", rs.getLong("id")); put("quarter", rs.getString("quarter")); put("outlet_id", rs.getLong("outlet_id"))
-            put("route_id", rs.getLong("route_id")); put("gift_id", rs.getLong("gift_id")); put("tier_code", rs.getString("tier_code"))
-            put("photo_captured", rs.getObject("photo_media_uuid") != null); put("photo_media_uuid", rs.getString("photo_media_uuid"))
-            put("locked", rs.getObject("locked_at") != null)
-            put("chosen_by_user_id", rs.getObject("chosen_by_user_id")?.let { (it as Number).toLong() })
-            put("chosen_at", rs.getObject("chosen_at", java.time.OffsetDateTime::class.java)?.toInstant()?.toString())
-        }
-    }.list()
+    ).bind("q", q.label).bindArray("pids", Long::class.javaObjectType, programmeIds).bindArray("outlets", Long::class.javaObjectType, outlets).map { rs, _ -> assignmentJson(rs) }.list()
+
+    private fun assignmentJson(rs: java.sql.ResultSet): JsonObject = buildJsonObject {
+        put("gift_assignment_id", rs.getLong("id")); put("quarter", rs.getString("quarter")); put("outlet_id", rs.getLong("outlet_id"))
+        put("route_id", rs.getLong("route_id")); put("gift_id", rs.getLong("gift_id")); put("tier_code", rs.getString("tier_code"))
+        put("photo_captured", rs.getObject("photo_media_uuid") != null); put("photo_media_uuid", rs.getString("photo_media_uuid"))
+        put("locked", rs.getObject("locked_at") != null)
+        put("chosen_by_user_id", rs.getObject("chosen_by_user_id")?.let { (it as Number).toLong() })
+        put("chosen_at", rs.getObject("chosen_at", java.time.OffsetDateTime::class.java)?.toInstant()?.toString())
+    }
 }

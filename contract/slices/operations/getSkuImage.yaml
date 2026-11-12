@@ -5,8 +5,8 @@ operation:
   - media
   operationId: getSkuImage
   summary: The bytes of a SKU's pack picture (PARITY-SPEC s2.6), by the stable `Sku.image_asset_id` of the bundle.
-  description: 'Any signed-in user (pack art is the same for every role and reach). The API streams the bytes itself:
-    no signed
+  description: 'Any signed-in user (pack art and gift pictures are the same for every role and reach). The API streams
+    the bytes itself: no signed
 
     URL leaves it. An asset never changes (a new file is a new asset id), so the answer is cacheable for a year
     and
@@ -14,9 +14,11 @@ operation:
     its ETag is the asset id; the phone keeps the bytes in its bounded cache under the asset id and fetches once
     per
 
-    new id. Served only when the asset exists, has purpose `sku_image`, is at most 300 KB and a SKU binds it;
+    new id. Served only when the asset exists, is at most 300 KB and is bound by a SKU (purpose `sku_image`) or,
+    since 1.15.0, by an
 
-    anything else, a malformed id included, is 404 without detail.
+    active gift (purpose `gift_image`, `Gift.image_asset_id` of the bundle''s `programmes.gifts`); anything else,
+    a malformed id included, is 404 without detail.
 
     '
   parameters:

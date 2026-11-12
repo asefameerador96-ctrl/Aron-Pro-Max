@@ -13,7 +13,7 @@ import kotlin.test.assertFailsWith
 
 /**
  * GET /v1/sku-images/{asset_id} (contract getSkuImage, PARITY-SPEC s2.6): the API streams the bytes of a pack picture
- * that a SKU binds now, with the asset id as its ETag; an unknown or malformed id, another purpose's asset, an unbound
+ * that a SKU binds now (or, since 1.15.0, the picture of an active gift), with the asset id as its ETag; an unknown or malformed id, another purpose's asset, an unbound
  * picture, an over-cap asset or a missing blob is a bare 404; storage down is 503. No URL is ever produced.
  */
 class SkuImageReadTest {
@@ -75,6 +75,24 @@ class SkuImageReadTest {
             assertEquals("ERR_NOT_FOUND", code(gone), "the row exists but the blob is gone")
             assertEquals("ERR_SERVICE_UNAVAILABLE", assertFailsWith<ApiProblem> { read(f, BlobBytesReader { _, _ -> error("storage down") }).let { it.bytes(it.meta(bound)) } }.code.name)
             assertEquals("ERR_SERVICE_UNAVAILABLE", assertFailsWith<ApiProblem> { read(f, UnconfiguredBlobBytesReader).let { it.bytes(it.meta(bound)) } }.code.name)
+        }
+    }
+
+    @Test fun aGiftPictureIsServedOnlyWhileAnActiveGiftBindsIt() {
+        fixture().use { f ->
+            val r = read(f)
+            fun code(id: String) = assertFailsWith<ApiProblem> { r.bytes(r.meta(id)) }.code.name
+            f.db.jdbi.useHandle<Exception> { h ->
+                h.execute("INSERT INTO app.programme (kind, code, name_en, active_from, active_to) VALUES ('astha', 'IMG-PRG', 'Image programme', DATE '2027-01-01', DATE '2027-03-01')")
+                h.execute("INSERT INTO app.gift (programme_id, code, name_en, image_asset_id) SELECT id, 'img_gift', 'Image gift', CAST(? AS uuid) FROM app.programme WHERE code = 'IMG-PRG'", gift)
+                // A sku_image asset bound by a GIFT is not a gift picture (purpose and binding must agree).
+                h.execute("INSERT INTO app.gift (programme_id, code, name_en, image_asset_id) SELECT id, 'img_wrong', 'Wrong purpose', CAST(? AS uuid) FROM app.programme WHERE code = 'IMG-PRG'", unbound)
+            }
+            assertEquals("\"$gift\"", r.meta(gift).etag, "the bound, active gift's picture is served with its asset id as ETag")
+            assertContentEquals(png, read(f).bytes(r.meta(gift)))
+            assertEquals("ERR_NOT_FOUND", code(unbound), "a sku_image asset a gift binds is still not a gift picture")
+            f.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.gift SET status = 'inactive' WHERE code = 'img_gift'") }
+            assertEquals("ERR_NOT_FOUND", code(gift), "an inactive gift's picture is no longer served")
         }
     }
 

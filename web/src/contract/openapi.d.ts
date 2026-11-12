@@ -554,11 +554,11 @@ export interface paths {
         };
         /**
          * The bytes of a SKU's pack picture (PARITY-SPEC s2.6), by the stable `Sku.image_asset_id` of the bundle.
-         * @description Any signed-in user (pack art is the same for every role and reach). The API streams the bytes itself: no signed
+         * @description Any signed-in user (pack art and gift pictures are the same for every role and reach). The API streams the bytes itself: no signed
          *     URL leaves it. An asset never changes (a new file is a new asset id), so the answer is cacheable for a year and
          *     its ETag is the asset id; the phone keeps the bytes in its bounded cache under the asset id and fetches once per
-         *     new id. Served only when the asset exists, has purpose `sku_image`, is at most 300 KB and a SKU binds it;
-         *     anything else, a malformed id included, is 404 without detail.
+         *     new id. Served only when the asset exists, is at most 300 KB and is bound by a SKU (purpose `sku_image`) or, since 1.15.0, by an
+         *     active gift (purpose `gift_image`, `Gift.image_asset_id` of the bundle's `programmes.gifts`); anything else, a malformed id included, is 404 without detail.
          */
         get: operations["getSkuImage"];
         put?: never;
@@ -3343,7 +3343,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Astha targets and achievement by outlet and brand for a quarter (route and shop information, web reads). */
+        /**
+         * Astha targets and achievement by outlet and brand for a quarter (route and shop information, web reads).
+         * @description A national reader (reach of the whole network) must narrow by `route_id` or `zone_id` (`400`, pointer `query.route_id`); a `route_id` or `zone_id` outside the caller's reach is `403 ERR_OUT_OF_SCOPE`. Paged by `limit` and `cursor`; achievement is as of the read (`as_of`), computed by the same query as the bundle.
+         */
         get: operations["listAsthaTargets"];
         /**
          * Upsert Astha targets for a quarter (roles in cfg.astha.target_entry_roles; targets never negative).
@@ -3364,7 +3367,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Astha gift choice per outlet (TSO panel and Astha Gift Choice report source). */
+        /**
+         * Astha gift choice per outlet (TSO panel and Astha Gift Choice report source).
+         * @description Same reach and narrowing rules as `listAsthaTargets`.
+         */
         get: operations["listGiftChoices"];
         /**
          * Save gift choices explicitly (roles in cfg.astha.gift_choice_roles); a choice locks once the SR's photo exists.
@@ -10366,8 +10372,13 @@ export interface components {
             points_cost: number | null;
             /** @description Astha tiers the gift is offered to. */
             tier_codes?: string[];
-            /** Format: uri */
+            /**
+             * Format: uri
+             * @description Short-lived signed read URL in portal answers; ALWAYS null in the phone bundle (a signed URL would change the bundle fingerprint on every build and would be cached). The phone uses `image_asset_id`.
+             */
             image_url?: string | null;
+            /** @description 1.15.0. Stable id of the gift picture; the phone fetches the bytes once per id with `GET /v1/sku-images/{asset_id}` (also serves gift pictures, at most 300 KB) and keeps them in its bounded image cache. Null when the gift has no picture. */
+            image_asset_id?: components["schemas"]["Uuid"] | null;
             status: components["schemas"]["ActiveStatus"];
             version: number;
         };
@@ -10427,7 +10438,7 @@ export interface components {
             value_target_mtk?: string;
             /** @description Integer milli-taka sold by the outlet for the brand in the month up to `as_of`: the gross of SALE lines of memos that are active (voided and superseded memos, voided lines and free or reward lines are out). The memo offer line is zero (docs/27). The phone adds only its own unsynced memos created after `as_of`, keyed by memo_uuid, recomputed from scratch after each bundle. */
             value_achieved_mtk?: string;
-            /** @description UTC instant the server computed the achievement figures (std, memo and value) at. */
+            /** @description UTC instant of the newest memo the achievement figures (std, memo and value) include: in the bundle the newest memo ingest of the quarter in reach (not the build time, so equal content has equal bytes); in `listAsthaTargets` the instant of the read. */
             as_of?: components["schemas"]["Timestamp"];
             /** @description Achievement per pack size of the brand, base units (sticks, pieces), one entry per `pack_factor` with a sale in the month, ordered by `pack_factor`; empty on the All Brand row and when nothing sold. The phone shows ONE LINE PER PACK SIZE (20s and 10s are separate lines, rule 5) and never sums across pack sizes; the `std_achieved` of the entries add up to the row`s `std_achieved`. The target per pack size is not defined yet (owner question) and is absent. */
             by_pack?: {
@@ -10504,7 +10515,7 @@ export interface components {
             qty: number;
             photos_captured: number;
         };
-        /** @description Programme data for the user's routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user's reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS Dhaka business date); `astha_targets` carry server achievement as of their own `as_of` (units in `AsthaTargetRow`); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `gifts[].image_url` is null in this version. */
+        /** @description Programme data for the user's routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user's reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS Dhaka business date); `astha_targets` carry server achievement as of their own `as_of` (units in `AsthaTargetRow`); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. The `as_of` of the Astha rows is the server's newest memo ingest in the quarter (content-derived, so a rebuild without a new memo has the same bytes); the phone adds every local memo the server had not acknowledged by `meta.generated_at`, keyed by memo_uuid. */
         ProgrammesSection: {
             programmes: components["schemas"]["Programme"][];
             loyalty: components["schemas"]["LoyaltyBalance"][];
@@ -17845,7 +17856,7 @@ export interface operations {
     getLoyaltyBalances: {
         parameters: {
             query?: {
-                /** @description Outlets to read; omitted = the outlets of the caller's routes today. */
+                /** @description Outlets to read; omitted = the outlets of the caller's routes today (a national reader must name outlets: `400`). Outlets outside the caller's reach are left out of the answer, never an error. Balances are live (the ledger up to and including today), where the bundle's are as of the previous business day. */
                 outlet_id?: components["schemas"]["Id"][];
                 /** @description One programme. */
                 programme_id?: components["schemas"]["Id"];
@@ -17865,6 +17876,7 @@ export interface operations {
                     "application/json": components["schemas"]["LoyaltyBalanceList"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             429: components["responses"]["TooManyRequests"];
@@ -17961,6 +17973,7 @@ export interface operations {
                     "application/json": components["schemas"]["GiftAssignmentPage"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
         };

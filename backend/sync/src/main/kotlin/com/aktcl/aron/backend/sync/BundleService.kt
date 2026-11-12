@@ -173,7 +173,7 @@ class BundleService(
                 reason_texts = ReasonTexts.ALL,
                 device_policy_version = configVersion,
                 programmes = BundleProgrammes.section(
-                    h, own.map { it.route_id }, routes.flatMap { r -> r.outlets.map { it.outlet_id } }.toSet(), date, now,
+                    h, own.map { it.route_id }, routes.flatMap { r -> r.outlets.map { it.outlet_id } }.toSet(), date,
                     BundleProgrammes.Flags(
                         loyalty = cfg.value("cfg.flag.loyalty_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
                         astha = cfg.value("cfg.flag.astha_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
