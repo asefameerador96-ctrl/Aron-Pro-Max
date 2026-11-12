@@ -5,6 +5,10 @@ operation:
   - admin-content
   operationId: listProgrammeEnrolments
   summary: Outlets enrolled in a programme with league, tier or slab and base target.
+  description: 'Enrolled outlets are outlet data, cut to the caller''s server-side reach: SUPERADMIN, ADMIN with
+    the `r` grant and NATIONAL read all; WM, DMO and TSO see the outlets of their zones and routes; a BRAND user
+    is refused `403`; a `zone_id` outside the caller''s reach is `403`. A programme outside the caller''s reach
+    is `404`. A bad `limit`, `cursor`, `zone_id` or path id is `400`.'
   parameters:
   - $ref: '#/components/parameters/IdPath'
   - $ref: '#/components/parameters/ZoneIdQuery'

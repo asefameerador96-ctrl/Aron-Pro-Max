@@ -89,6 +89,24 @@ class AdminModulesTest {
     }
 
     @Test
+    fun theLoyaltyPathsBelongToTheLoyaltyModuleAndThePhonePathsStayOnTargets() {
+        // Moved off `targets` by V0160 (D-LOY-API-04): programmes, their versions, status and enrolments, and gifts.
+        for (path in listOf("/v1/admin/programmes", "/v1/admin/programmes/7", "/v1/admin/programmes/7/versions", "/v1/admin/programmes/7/status", "/v1/admin/programmes/7/enrolments", "/v1/admin/gifts", "/v1/admin/gifts/7"))
+            for (m in listOf("GET", "POST", "PUT", "PATCH")) assertEquals("loyalty", AdminModules.moduleOf(m, path), "$m $path")
+        // The phone loyalty operations answer 501 and stay with `targets` until the field build (docs/27).
+        for (path in listOf("/v1/programmes/loyalty/balances", "/v1/programmes/astha/targets", "/v1/programmes/astha/gift-choices")) assertEquals("targets", AdminModules.moduleOf("GET", path), path)
+        // A `targets` grant no longer opens the loyalty paths, and a `loyalty` grant does not open the target paths.
+        val targetsOnly = p(Role.ADMIN, mapOf("targets" to "w"))
+        assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(targetsOnly, "GET", "/v1/admin/programmes"))
+        assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(targetsOnly, "GET", "/v1/admin/gifts/7"))
+        val loyaltyOnly = p(Role.ADMIN, mapOf("loyalty" to "r"))
+        assertEquals(null, outcome(loyaltyOnly, "GET", "/v1/admin/programmes/7/versions"))
+        assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(loyaltyOnly, "POST", "/v1/admin/programmes/7/status"))
+        assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(loyaltyOnly, "GET", "/v1/admin/route-targets"))
+        assertEquals(null, outcome(p(Role.ADMIN, mapOf("loyalty" to "w")), "PUT", "/v1/admin/programmes/7/enrolments"))
+    }
+
+    @Test
     fun unmappedRoutesAreRefusedForAdmin() {
         val all = p(Role.ADMIN, AdminModules.ALL.associateWith { "w" })
         listOf("GET /v1/admin/brand-new-thing", "GET /v1/secret", "POST /v1/admin")

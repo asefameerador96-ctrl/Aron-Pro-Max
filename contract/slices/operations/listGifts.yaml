@@ -5,6 +5,9 @@ operation:
   - admin-content
   operationId: listGifts
   summary: Gift catalogue (points cost for Diamond League, tier for Astha, cash-back line).
+  description: Permission module `loyalty`; the readers of `listProgrammes`. A gift is listed when its programme
+    is visible to the caller (server-side scope, judged on the programme's current version). The picture is `image_url`,
+    a read address resolved when the gift is answered. A bad `programme_id` or `status` value is `400`.
   parameters:
   - name: programme_id
     in: query

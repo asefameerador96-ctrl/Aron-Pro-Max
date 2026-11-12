@@ -92,6 +92,6 @@ class LoyaltyPortalContractTest {
     fun theChangelogNamesTheLoyaltyPortalAdditions() {
         val info = flat(map(OpenApi.doc["info"])["description"])
         for (member in listOf("1.13.0 (loyalty-programme portal", "`getProgramme`", "`listProgrammeVersions`", "`setProgrammeStatus`", "`getGift`", "`ProgrammeStatus`", "`ProgrammeTier`",
-            "`AdminModule` gains `loyalty`", "D-LEAD-CONTRACT-113-01", "contract-1.13-loyalty-portal.md", "STD as stored")) assertTrue(info.contains(member), "changelog names $member")
+            "1.13.1 (loyalty-programme portal", "each version is judged on its own scope", "`AdminModule` gains `loyalty`", "D-LEAD-CONTRACT-113-01", "contract-1.13-loyalty-portal.md", "STD as stored")) assertTrue(info.contains(member), "changelog names $member")
     }
 }

@@ -58,3 +58,12 @@ The BFF calls `/v1/admin/loyalty/programmes/{id}/status` (web/src/lib/admin/loya
 No money member is added. Tier `threshold` is a non-negative decimal string in STD as stored (the unit of the existing target model, owner
 question Q1 default), with `threshold_basis: std`; no threshold is invented (docs/27:15). `points_cost` stays integer points. Quantities
 that appear later (progress views) stay in base units for storage and aggregates, shown per rule 5.
+
+## 1.13.1 (description-only; lane portal-loyalty-api train 2, after the lead's Opus pass on 17be785bd)
+
+No schema, operation, parameter or status code changes, so there is no oasdiff finding and nothing new to approve; the version moves 1.13.0 to 1.13.1 because the
+text of released 1.13.0 was corrected (house rule: a description-only change is a patch bump, as 1.2.1, 1.12.1, 1.12.2). The corrections: `listProgrammeVersions` says each
+version is judged on its own scope (the routes did not do that in the first build; they do from this head); the read rules of the enrolments moved from `putProgrammeEnrolments`
+to `listProgrammeEnrolments`; `listGifts` gained its read rules; the list and path reads state their `400`. The only existing test that pins the exact version is
+`AmoManualContractTest` (1.13.0 to 1.13.1).
+
