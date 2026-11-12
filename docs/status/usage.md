@@ -3025,3 +3025,7 @@
 
 ### 2026-11-12 15:01 UTC — evening report
 - Verified: INT f57ce31ed (author Claude, 14:07), ci #2073 and deploy #344 success; health build 155edd899; scheduled CodeQL 02:15 and cost-report 09:24 success. Sessions read by get_session: lead USD 4,076.29 (690 k); lanes as in docs/status/evening-2026-11-12.md; all "allowed_warning". Archived SV, S1, S2, S3, S4. Evening file written; morning (06:30) and midday (09:30) one-shots for 2026-11-13 armed.
+
+### 2026-11-12 15:35 UTC — L-B train 3 and L-A train 2 fix round under review
+- L-B `4de0a96a9` (mock equal to the real routes: error pointers, 409 codes, no_change, paging, exclusive valid_to, roles; base INT f57ce31ed; 17 files +712/-142): static gate clean (one test title replaced; DECISIONS 434, 0 missing; money-float 13/13; gitleaks clean); lane ci 43244277559 success. Sonnet review wb6rasad0 running (mock versus AdminLoyalty.kt; forms/tests/records incl. the seven-portal-levels gap).
+- L-A `d6f8bd795` (fix round: per-version scope cut, no signed URL in the gift journal, contract 1.13.1, bound SQL, replay before If-Match, race tests; INT f57ce31ed merged): static gate clean (V0170/V0171 added only versus INT; DECISIONS 436, 0 missing; slices up to date; one pinned test renamed to 1.13.1; gitleaks clean). Its lane ci 43238206671 on a8923a13f failed only the repo-gate Migrations step (lane compares with its previous push, where V0170 already existed and was then edited in place); new run pending. Opus re-check launched (scope and secret; contract, tests, records), worktree wt-la2.
