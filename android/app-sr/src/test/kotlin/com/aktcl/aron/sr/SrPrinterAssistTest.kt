@@ -56,30 +56,8 @@ class SrPrinterAssistTest {
         repeat(10) { compose.mainClock.advanceTimeByFrame() }
     }
 
-    @Test fun onlyStockFrameAssists() {
-        SrScreen.entries.forEach { assertEquals(it.name, it == SrScreen.STOCK, printerAssistFor(it)) }
-    }
-
-    @Test fun theSalePathToastsOnceWhenTheVisitFrameAndSaleRouteBothHoldThePrinter() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        shadowOf(context.packageManager).addActivityIfNotPresent(ComponentName(context, ComponentActivity::class.java))
-        ShadowToast.reset()
-        val m = manager()
-        ActivityScenario.launch(ComponentActivity::class.java).use { scenario ->
-            scenario.onActivity { activity ->
-                activity.setContent {
-                    AronTheme(AppLanguage.BN) {
-                        // the VISIT frame (printerAssistFor(VISIT) is false) around SaleRoute's own HoldPrinter(assist = true)
-                        SrFrame("sale", null, null, null, printer = m, printerAssist = printerAssistFor(SrScreen.VISIT)) { HoldPrinter(m, assist = true) }
-                    }
-                }
-            }
-            settle(m)
-            assertEquals("one connect, one toast", 1, ShadowToast.shownToastCount())
-            // the test activity runs in English; the Bangla text of the same resource is pinned below
-            assertEquals("Printer connected", ShadowToast.getTextOfLatestToast())
-            assertEquals("প্রিন্টার কানেক্ট করা হয়েছে", com.aktcl.aron.core.ui.AppLocale.wrap(context, AppLanguage.BN).getString(com.aktcl.aron.core.printing.R.string.printer_connected))
-        }
+    @Test fun onlyStockAndVisitFramesAssist() {
+        SrScreen.entries.forEach { assertEquals(it.name, it == SrScreen.STOCK || it == SrScreen.VISIT, printerAssistFor(it)) }
     }
 
     @Test fun theStockFrameAloneToastsOnce() {
@@ -100,16 +78,53 @@ class SrPrinterAssistTest {
         ShadowToast.reset()
         val m = manager()
         ActivityScenario.launch(ComponentActivity::class.java).use { scenario ->
-            scenario.onActivity { it.setContent { AronTheme(AppLanguage.BN) { SrFrame("memo", null, null, null, printer = m, printerAssist = printerAssistFor(SrScreen.MEMO)) {} } } }
+            scenario.onActivity { it.setContent { AronTheme(AppLanguage.BN) { SrFrame("memo", null, null, null, printer = m) {} /* the frame default, as every frame but STOCK and VISIT uses it (MEMO, SUMMARY, ...) */ } } }
             settle(m)
             assertEquals(0, ShadowToast.shownToastCount())
         }
     }
 
-    @Test fun theNearbyPermissionPromptIsRememberedAcrossVisits() {
+    /** The production call sites, read from source: SrApp passes `printerAssist` only through printerAssistFor (STOCK and VISIT frames); the SR sale host does NOT pass it to SaleRoute (one holder per screen). */
+    @Test fun productionCallSitesAreWiredAsDocumented() {
+        fun src(vararg candidates: String) = candidates.map { java.io.File(it) }.first { it.exists() }.readText()
+        fun code(t: String) = t.replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), "").replace(Regex("//[^\\n]*"), "") // block comments, KDoc and inline // comments
+        val srApp = code(src("src/main/kotlin/com/aktcl/aron/sr/SrApp.kt", "app-sr/src/main/kotlin/com/aktcl/aron/sr/SrApp.kt"))
+        val assists = Regex("printerAssist = (printerAssistFor\\(SrScreen\\.\\w+\\)|\\w+)").findAll(srApp).map { it.groupValues[1] }.filter { it != "printerAssist" }.toList()
+        assertEquals(listOf("printerAssistFor(SrScreen.STOCK)", "printerAssistFor(SrScreen.VISIT)"), assists)
+        assertTrue(srApp.contains("HoldPrinter(printer, assist = printerAssist)"))
+        val hosts = code(src("src/main/kotlin/com/aktcl/aron/sr/SrSaleHosts.kt", "app-sr/src/main/kotlin/com/aktcl/aron/sr/SrSaleHosts.kt"))
+        assertFalse("the SR sale does not make a second holder", hosts.contains("printerAssist"))
+        val route = code(src("../feature-sale/src/main/kotlin/com/aktcl/aron/feature/sale/ui/SaleRoute.kt", "feature-sale/src/main/kotlin/com/aktcl/aron/feature/sale/ui/SaleRoute.kt"))
+        assertTrue(route.contains("HoldPrinter(printer, assist = printerAssist)"))
+    }
+
+    /** Two entries to a screen that asks (enter, leave, enter): the system prompt is launched once, not on every entry (composed, with a counting registry). */
+    @Test fun theNearbyPermissionPromptIsLaunchedOnceAcrossTwoComposedEntries() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        assertFalse(com.aktcl.aron.core.printing.ui.PrinterAssistPrompt.asked(context))
-        com.aktcl.aron.core.printing.ui.PrinterAssistPrompt.markAsked(context)
-        assertTrue(com.aktcl.aron.core.printing.ui.PrinterAssistPrompt.asked(context)) // a new screen entry (new composition) reads this, not saved state
+        shadowOf(context.packageManager).addActivityIfNotPresent(ComponentName(context, ComponentActivity::class.java))
+        val launches = mutableListOf<String>()
+        val registry = object : androidx.activity.result.ActivityResultRegistry() {
+            override fun <I, O> onLaunch(requestCode: Int, contract: androidx.activity.result.contract.ActivityResultContract<I, O>, input: I, options: androidx.core.app.ActivityOptionsCompat?) {
+                launches += input.toString()
+            }
+        }
+        val owner = object : androidx.activity.result.ActivityResultRegistryOwner { override val activityResultRegistry = registry }
+        val entered = androidx.compose.runtime.mutableStateOf(true)
+        val m = manager()
+        ActivityScenario.launch(ComponentActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                activity.setContent {
+                    androidx.compose.runtime.CompositionLocalProvider(androidx.activity.compose.LocalActivityResultRegistryOwner provides owner) {
+                        AronTheme(AppLanguage.BN) { if (entered.value) HoldPrinter(m, assist = true) }
+                    }
+                }
+            }
+            repeat(10) { compose.mainClock.advanceTimeByFrame() }
+            assertEquals("first entry asks once", listOf(android.Manifest.permission.BLUETOOTH_CONNECT), launches)
+            entered.value = false; repeat(10) { compose.mainClock.advanceTimeByFrame() }
+            entered.value = true; repeat(10) { compose.mainClock.advanceTimeByFrame() }
+            assertEquals("the second entry does not ask again", 1, launches.size)
+            assertTrue(com.aktcl.aron.core.printing.ui.PrinterAssistPrompt.asked(context))
+        }
     }
 }

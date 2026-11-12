@@ -393,7 +393,7 @@ object AronLook {
         disabledFill = hex(0xE8E8E8), disabledText = hex(0xA5A5A5), secondaryText = hex(0x303030),
         ink = hex(0x111111), inkMuted = hex(0x505050), columnHeader = hex(0x505050), underline = hex(0x9E9E9E),
         silhouette = hex(0xD9D9D9), silhouetteInk = hex(0x8A8A8A),
-        badge = hex(0xD5484A), printerOff = hex(0xE53935), printerOn = hex(0x1B7F3A),
+        badge = hex(0xD5484A), printerOff = hex(0xE53935), printerOn = hex(0x17692F),
     )
 
     /** Optional outdoor theme: solid white bars and panels with black ink (key figures far above 7:1); the accents stay. */

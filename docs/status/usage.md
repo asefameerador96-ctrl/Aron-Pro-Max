@@ -2961,3 +2961,27 @@
 
 ### 2026-11-12 12:32 UTC — lane CI confirmations
 - S5 lane ci 43214455578 (91234ef05) and S6 lane ci 43214715189 (8fe12d962): both completed success (11 jobs ok each), confirming the heads that train 104 carries. S3 status: mid-run on the INT 20fe1d4fb merge (ec8cf4bdb pushed earlier; lane ci 43214864833 in progress). S2 pushed fb63804d3 (not yet reported). L-B lane ci 43217342984 in progress.
+
+### 2026-11-12 12:34 UTC — train 105 built (S2 + Loyalty web)
+- S2 `fb63804d3` (train 104 head merged; own-uuid lookup before name validation; Journey error state; unused import): I read its own commit (6 files +31/-11): correct.
+- Train 105 = INT 20fe1d4fb + docs 854b38e5b + S2 fb63804d3 + L-B d25d1fdd7, head `64af1e14a` on lane/lead-train105: only DECISIONS.md conflicted (union; 432 = 427 + 3 S2 + 2 L-B; 0 lines missing from INT, S2 or L-B); android/shared == S2; web == L-B; no duplicate string names; money-float 13/13, date-pin 0 new, gate unit tests OK, slices up to date, gitleaks clean. CI 43218993558 running. GO needs: this run green, train 104 INT run 43218050788 complete, L-B lane 43217342984 green, S2 lane run green on Repository gates. Real web deploy expected (web changed); Android carries the Room v8 to v9 AutoMigration.
+
+### 2026-11-12 12:40 UTC — S3 follow-up under the gate
+- S3 `db71bc4f1` (INT 20fe1d4fb merged; follow-up round: printer assist moved from SaleRoute to the VISIT frame, Default badge green 0x17692F, check-out label period words, tests reworked): static gate clean incl. scans (16 files +214/-51 on INT; three test names removed/renamed in SrPrinterAssistTest: to be checked; one AMO golden re-recorded; DECISIONS 428; lane ci 43219842152 queued). Opus gate launched (assist design; tokens, label, merge, records), worktree wt-s3.
+- S3's earlier lane run 43214864833 (ec8cf4bdb) failed only in the Web e2e job (job 131171516068); this lane touches no web code. A Haiku reader inside the same workflow extracts the failing test(s) to see whether it is the known route-targets login flake (fix rides train 105 with L-B).
+
+### 2026-11-12 12:45 UTC — train 104 LANDED; S3 follow-up PASS
+- INT `20fe1d4fb` ci #2064 43218050788 success. APK of record: **aron-release-signed-dev-2064 (41804726 bytes)** (S1, S3, S4, S5 incl. follow-up, S6; not walked on a device).
+- S3 follow-up `db71bc4f1` Opus gate wi48v272q (2 Opus lenses + 1 Haiku reader, 424 k tokens): PASS, no blocking. One assist holder per screen with the assist on the VISIT frame; token 0x17692F is 5.53:1 on the page and 6.78:1 on the chip; period words correct; replaced tests equal or stronger. Lows sent (stale comments and status lines, two test strengthenings, wording of evening hours). Lands on train 106 after it merges the train 105 head. wt-s3 removed.
+- Web e2e failure in S3's earlier lane run 43214864833 (Haiku read): support-menu.spec.ts:24 failed on both attempts with "page.goto: net::ERR_ABORTED" right after loginOk, and master.spec.ts:88 was flaky the same way; route-targets.spec.ts passed. Same family as the login-redirect race (a goto issued while the post-login redirect is still navigating); L-B's loginOk fix (wait for the URL to leave /login and for network idle) is on train 105. To confirm on the train 105 web run; cause not proven by this log alone.
+
+### 2026-11-12 12:47 UTC — lane check (2-hourly)
+- INT `20fe1d4fb` (train 104 landed, deploy #342 skipped); health build ce9d92bf7 (latest deployable). Docs branch merged INT (0 markers).
+- Active lanes: SV working (branch lane/sr-server 79d530f2e at 12:14, a module run in progress, context about 529 k, finishing train 1 then handing over); L-A had been HOLDING since 09:53 with train 1 landed: go for train 2 (admin routes for 1.13.0) sent now, my omission; reserved for L-A: contract 1.15.0 if needed, migrations V0170..V0174 (SV owns 1.14.0 and V0163..V0169). L-B d25d1fdd7 and S2 fb63804d3 on train 105 (CI running). S3 db71bc4f1 passed, doing a small records/tests push on the train 105 head for train 106. S1, S4, S5, S6 landed; S5 waits for 1.14.0.
+- Usage: lane sessions still report seven_day "allowed_warning" (not "rejected"); pause stays lifted.
+
+### 2026-11-12 13:05 UTC — GO train 105
+- Train 105 CI 43218993558 green on 64af1e14a (12 jobs ok, web e2e included: the first full web run with L-B's loginOk fix). Lane runs: S2 43218821381 (fb63804d3) success; L-B 43217342984 (d25d1fdd7) success. Train 104 INT run complete. GO sent to integrator 24 (expected DECISIONS 432, real web deploy, schema stays v0162).
+
+### 2026-11-12 13:07 UTC — train 105 on INT
+- Integrator 24 pushed train 105: INT `155edd899` (tree-identical to 64af1e14a plus the train.md row; DECISIONS 432; migrations end at V0162; contract 1.13.0), ci #2070 43224115378 running, real deploy expected. All six SR manual lanes (S1 to S6) now have their first round on INT.

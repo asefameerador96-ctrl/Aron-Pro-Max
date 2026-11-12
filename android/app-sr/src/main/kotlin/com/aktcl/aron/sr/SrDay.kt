@@ -86,6 +86,8 @@ class SrDay(
      * job, so it can let the day's work finish, cancel it and join it before it closes the database (CI run 41750277921).
      */
     parentJob: kotlinx.coroutines.Job? = null,
+    /** The configured earliest check-out in minutes after midnight (`cfg.day.checkout_earliest_time`); null on the phone (read from [deviceRuntime]), a test passes its own. */
+    private val checkoutMinutes: (() -> Int)? = null,
 ) {
     /** Work started from the day that nobody waits for (the resume config check, settings reloads). */
     private val background = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob(parentJob) + kotlinx.coroutines.Dispatchers.Default)
@@ -364,7 +366,9 @@ class SrDay(
     )
 
     /** "HH:mm" of the configured earliest check-out (`cfg.day.checkout_earliest_time`), for the amber "after 5" box (D-SR-MAN-S3-01). */
-    fun checkoutAtLabel(): String = checkoutLabel(deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: com.aktcl.aron.core.sync.device.DayConfig.DEFAULT_CHECKOUT_MINUTES)
+    fun checkoutAtLabel(): String = checkoutLabel(configuredCheckoutMinutes())
+
+    private fun configuredCheckoutMinutes(): Int = checkoutMinutes?.invoke() ?: deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: com.aktcl.aron.core.sync.device.DayConfig.DEFAULT_CHECKOUT_MINUTES
 
     val attendance = AttendanceFlow(
         fixes = fixSource, metaProvider = metaProvider,
@@ -383,7 +387,7 @@ class SrDay(
         },
         routeIdOf = { routeId }, nowIso = { iso(clock.nowMs()) }, dhakaMinutesNow = ::dhakaMinutesNow,
         // cfg.day.checkout_earliest_time from the user's bundle (DayConfig), 17:00 until it is read.
-        checkoutEarliestMinutes = { deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: com.aktcl.aron.core.sync.device.DayConfig.DEFAULT_CHECKOUT_MINUTES },
+        checkoutEarliestMinutes = { configuredCheckoutMinutes() },
         // F-SYS-074: the address resolves online only (platform geocoder, after the commit, display only); offline the
         // coordinates stay, with the last resolved address when the fix is near it.
         addressResolver = { lat, lng -> addressResolver.displayText(context, lat, lng) },
