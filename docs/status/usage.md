@@ -2917,3 +2917,8 @@
 
 ### 2026-11-12 11:50 UTC — S5 follow-up read and accepted
 - S5 `9086c180b` (lows + INT 12f56c8bb merged, no conflicts): +53/-17 on INT in 12 files. Static gate clean incl. scans. I read the production diff myself (the final-diff pass for this small delta): survey numbering drops sub-questions of unsupported parents; unknown SKUs get one row each in base units and the compare is keyed per SKU; leftovers via core-ui remWithUnit; a test tag on the two-column row; strings submit_biz_other replaced by submit_biz_other_sku (lane-own key). Correct. Lows kept for its train 2: the "Other (SKU n)" line has no unit word and formats the id with digit grouping. Lane ci 43212463465 running; it rides the next train once green (batched with S3 / S6 if they are ready).
+
+### 2026-11-12 11:54 UTC — train 102 LANDED; GO train 103; S6 merge gate started
+- INT `12f56c8bb` ci #2051 43210959546 success (11 jobs: 5 ok, 6 skipped by path); deploy #340 43212804371 is the skip run; APK of record **aron-release-signed-dev-2051**, 41,731,551 bytes (S3 + S5 + S4 corrections; not walked on a device).
+- GO train 103 (S1, head f12c32707, CI 43208539789 green, expected DECISIONS 426) sent to integrator 24, to push once #340 completes.
+- S6 merged head `14071b794` (INT 12f56c8bb merged; conflicts in feature-sale strings, DECISIONS, SrApp.kt attendance call): static gate clean incl. scans (DECISIONS 415; 6 goldens re-recorded for its wording; lane ci 43212897003 running). Merge gate launched (Opus merge/code, Sonnet strings/goldens/records), worktree wt-s6.
