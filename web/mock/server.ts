@@ -14,6 +14,7 @@ import { freshMdmStore, type MdmStore } from "./mdm";
 import { freshDashStore, handleDash, type DashStore } from "./dash";
 import { freshTicketStore, handleTickets, type TicketStore } from "./tickets"; // tso-manual W1
 import { freshOfferStore, handleOffers, type OfferStore } from "./offers"; // portal-discount-web
+import { freshLoyaltyStore, handleLoyalty, type LoyaltyStore } from "./loyalty"; // portal-loyalty-web
 import { freshTsoManStore, handleTsoManual, type TsoManStore } from "./tso-manual"; // tso-manual W1 (step 2)
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
@@ -50,6 +51,7 @@ function users(): Record<string, MockUser> {
     // An ADMIN with module grants (D-ROLES-02): Me.modules lists targets and masterdata at r, outlets at w.
     mgrant1: { ...u(3106, "mgrant1", "Limited Admin", "ADMIN", "grant-pass-1", nationalScope, true), master: true },
     mdisc1: { ...u(3107, "mdisc1", "Discount Reader", "ADMIN", "disc-pass-1", nationalScope, true), master: true }, // ADMIN with `discounts: r` (portal-discount-web)
+    mloy1: { ...u(3108, "mloy1", "Loyalty Reader", "ADMIN", "loy-pass-1", nationalScope, true), master: true }, // ADMIN with `loyalty: r` (portal-loyalty-web)
     madmin1: { ...u(3101, "madmin1", "Salma Akter", "ADMIN", "admin-pass-1", nationalScope, true), master: true },
     msuper1: { ...u(3105, "msuper1", "Rafiq Chowdhury", "SUPERADMIN", "super-pass-1", nationalScope, true), master: true },
     msupport1: { ...u(3102, "msupport1", "Tanvir Ahmed", "SUPPORT", "support-pass-1", nationalScope, true), master: true },
@@ -105,6 +107,8 @@ export interface State {
   tickets: TicketStore;
   /** portal-discount-web: discount programmes (mock/offers.ts, contract 1.12.0). */
   offers: OfferStore;
+  /** portal-loyalty-web: loyalty programmes, gifts, enrolments (mock/loyalty.ts, contract 1.12.2 + the brief's 1.13.0 sketch). */
+  loyalty: LoyaltyStore;
   /** tso-manual W1 (step 2): day reopen and the notifications inbox (mock/tso-manual.ts). */
   tsoman: TsoManStore;
 }
@@ -127,7 +131,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
   const tables = seedTables();
-  return { failPrefix: null, reauthFails: new Map(), piiWindowS: 900, stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, mdm: freshMdmStore(), codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["mgrant1", "mdisc1", "admin1", "madmin1", "msuper1", "msupport1", "support1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore(), tickets: freshTicketStore(), offers: freshOfferStore(), tsoman: freshTsoManStore() }; // tso-manual W1: tsoman
+  return { failPrefix: null, reauthFails: new Map(), piiWindowS: 900, stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, mdm: freshMdmStore(), codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["mgrant1", "mdisc1", "mloy1", "admin1", "madmin1", "msuper1", "msupport1", "support1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore(), tickets: freshTicketStore(), offers: freshOfferStore(), loyalty: freshLoyaltyStore(), tsoman: freshTsoManStore() }; // tso-manual W1: tsoman
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -389,7 +393,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   if (path === "/v1/me") {
     const pii = revealer && a.piiUntil !== null;
     const perms = user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"];
-    const me: Me = { user: user.summary, permissions: revealer ? [...perms, "pii.reveal"] : perms, scope: user.scope, pii, pii_until: revealer && a.piiUntil !== null ? new Date(a.piiUntil).toISOString() : null, mfa_enabled: user.mfa, ...(user.summary.role === "TSO" ? { menus: [{ menu_id: "dashboard", actions: ["view"] as ("view")[] }] } : {}), ...(user.summary.username === "mgrant1" ? { modules: { targets: "r" as const, masterdata: "r" as const, outlets: "w" as const } } : user.summary.username === "mdisc1" ? { modules: { discounts: "r" as const } } : {}), support_desk: hasDesk(user) }; // tso-manual W1: support_desk
+    const me: Me = { user: user.summary, permissions: revealer ? [...perms, "pii.reveal"] : perms, scope: user.scope, pii, pii_until: revealer && a.piiUntil !== null ? new Date(a.piiUntil).toISOString() : null, mfa_enabled: user.mfa, ...(user.summary.role === "TSO" ? { menus: [{ menu_id: "dashboard", actions: ["view"] as ("view")[] }] } : {}), ...(user.summary.username === "mgrant1" ? { modules: { targets: "r" as const, masterdata: "r" as const, outlets: "w" as const } } : user.summary.username === "mdisc1" ? { modules: { discounts: "r" as const } } : user.summary.username === "mloy1" ? { modules: { loyalty: "r" as const } } : {}), support_desk: hasDesk(user) }; // tso-manual W1: support_desk
     return send(res, 200, me);
   }
 
@@ -405,6 +409,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
 
   // portal-discount-web: the discount programmes (contract 1.12.0); after the stubs, so a test can still answer any offer path itself
   if (!(state.failPrefix && path.startsWith(state.failPrefix)) && await handleOffers(state.offers, { send, problem, readJson, audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason) }, { role: user.summary.role, username: user.summary.username }, method, url, req, res)) return;
+  if (!(state.failPrefix && path.startsWith(state.failPrefix)) && await handleLoyalty(state.loyalty, { send, problem, readJson, audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason) }, { role: user.summary.role, username: user.summary.username }, method, url, req, res)) return;
   // tso-manual W1: the support desk (contract 1.10.0); after the stubs, so a test can still answer any ticket path itself
   if (await handleTickets(state.tickets, { send, problem, readJson, audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason) }, { user_id: user.summary.user_id, role: user.summary.role, desk: deskRoutes(user) }, method, url, req, res)) return;
   // tso-manual W1 (step 2): POST /v1/day/reopen and the notifications inbox (contract 1.10.0)

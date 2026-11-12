@@ -45,6 +45,8 @@ export const ADMIN_PATH_ROLES: readonly { prefix: string; roles: RoleList }[] = 
   { prefix: "/admin/mdm", roles: ["ADMIN", "SUPERADMIN"] },
   { prefix: "/admin/discounts", roles: ["ADMIN", "SUPERADMIN"] }, // portal-discount-web (offers-roles in lib/admin/offers.ts)
   { prefix: "/api/bff/admin/offers", roles: ["ADMIN", "SUPERADMIN"] },
+  { prefix: "/admin/loyalty", roles: ["ADMIN", "SUPERADMIN"] }, // portal-loyalty-web (loyalty-roles in lib/admin/loyalty.ts)
+  { prefix: "/api/bff/admin/loyalty", roles: ["ADMIN", "SUPERADMIN"] },
   { prefix: "/api/bff/admin-export/audit", roles: AUDIT_READ_ROLES },
 ];
 
