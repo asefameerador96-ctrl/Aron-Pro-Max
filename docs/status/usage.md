@@ -2997,3 +2997,7 @@
 ### 2026-11-12 14:06 UTC — train 105 DEPLOYED; GO train 106
 - Deploy #343 43230024509 success; health build 155edd899 read by me at 14:06:30 UTC. Web now serves the Loyalty section aligned to contract 1.13.0 (still on mocks until L-A's routes land). Integrator's detailed deploy report (images, migrate outcome, smoke) requested for the record.
 - GO train 106 sent (train head 738d6df3e, expected DECISIONS 433, deploy skipped by design).
+
+### 2026-11-12 14:08 UTC — train 105 integrator report; train 106 on INT
+- Train 105 (integrator 24, for the record): web vitest 2061 passed 1 skipped; e2e 369 passed, 0 flaky, 0 failed; deploy #343 real: PITR point 13:49:40Z, backend and web images replaced, worker paused then resumed (revision --0000191, 0 restarts after 90 s), migrate job caj-aron-dev-migrate-ykklbij exit 0 in 8 s (console not ingested, so "nothing to apply" is not read from Flyway text; no new migration was in the train), smoke PASSED (sale 92000 mtk, duplicate 4 of 4 acked with totals unchanged, dashboard tile 0 to 1 in 3 s, void cleanup). APK aron-release-signed-dev-2070.
+- Train 106 pushed: INT `f57ce31ed` (tree-identical to 738d6df3e plus the train.md row; DECISIONS 433; 0 lost), ci #2073 43233960026 running.
