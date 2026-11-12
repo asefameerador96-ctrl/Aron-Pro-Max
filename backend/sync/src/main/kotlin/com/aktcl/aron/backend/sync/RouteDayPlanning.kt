@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.sync
 
+import com.aktcl.aron.backend.platform.exitIfFatal
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.DayPlan
@@ -129,7 +130,7 @@ class RouteDayPlanningJob(
     fun start() {
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "route-day-planning").apply { isDaemon = true } }.scheduleWithFixedDelay({
             runCatching { tick() }.onSuccess { if (it > 0) log.info("route-day planning created {} route-day(s)", it) }
-                .onFailure { log.error("route-day planning failed", it) }
+                .onFailure { it.exitIfFatal(log, "route-day planning"); log.error("route-day planning failed", it) }
         }, 1, everyMin, TimeUnit.MINUTES)
     }
 
