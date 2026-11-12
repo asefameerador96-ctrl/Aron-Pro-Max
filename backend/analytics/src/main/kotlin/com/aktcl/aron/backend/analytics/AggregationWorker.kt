@@ -268,17 +268,29 @@ class AggregationWorker(
         ).bind("from", today.minusDays(maxDays.toLong())).mapTo(Int::class.java).one()
     }
 
+    private val firstPassLogged = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val lastInterruptLogNanos = java.util.concurrent.atomic.AtomicLong(0L)
+
     /** Test seam: the pass body. */
     internal var passBody: () -> Unit = { rebuildOnce(ASWAS_MARKER); refreshDimensionsIfDue(); runUntilIdle(); reconcileIfDue() }
 
     /**
      * One loop pass. A failure is logged at ERROR with what a diagnosis needs and nothing that can carry data: the exception class, the classes of
      * the cause chain, the SQLState of an SQLException (a code), and the stack frames (class, method, file, line), never an exception message.
-     * An Exception is logged and the loop goes on; an Error is logged once and ends the process ([exitIfFatal]), so the platform restarts the revision (a worker that is alive but no longer aggregates is the worst state); an interrupt restores the flag and ends the pass quietly.
+     * An Exception is logged and the loop goes on; an Error is logged once and ends the process ([exitIfFatal]), so the platform restarts the revision (a worker that is alive but no longer aggregates is the worst state); an interrupt restores the flag and logs a WARN with the class only, at most once a minute; the first successful pass of the process logs one INFO with its duration.
      */
     internal fun pass() {
-        try { passBody() }
-        catch (e: InterruptedException) { Thread.currentThread().interrupt() }
+        val started = System.nanoTime()
+        try {
+            passBody()
+            if (firstPassLogged.compareAndSet(false, true)) log.info("first aggregation pass completed in {} ms", (System.nanoTime() - started) / 1_000_000)   // a deploy log shows positively that the worker aggregates
+        }
+        catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            // Not silent: the class only (never a message), at most once a minute.
+            val now = System.nanoTime(); val last = lastInterruptLogNanos.get()
+            if ((last == 0L || now - last >= 60_000_000_000L) && lastInterruptLogNanos.compareAndSet(last, now)) log.warn("aggregation pass interrupted: {}", e.javaClass.name)
+        }
         catch (e: Exception) { log.error("aggregation pass failed: {}", scrubbed(e)) }
         catch (e: Error) { e.exitIfFatal(log, "aggregation pass") }
     }
