@@ -51,6 +51,14 @@ class PortalLevelsTest {
             Triple(Role.BRAND, "GET /v1/me/notifications/1", forbidden), Triple(Role.BRAND, "POST /v1/me/notifications", forbidden),
             Triple(Role.BRAND, "POST /v1/dashboards/national/segment-share", null), Triple(Role.BRAND, "GET /v1/dashboards/national/segment-share", forbidden),
             Triple(Role.BRAND, "POST /v1/dashboards/national/cpr", forbidden), Triple(Role.BRAND, "POST /v1/dashboards/national/final-submit", forbidden),
+            // Loyalty portal (D-LOY-API-05): BRAND reads programmes (list, one, versions) and gifts (list, one); never enrolments (outlet data), never a write.
+            Triple(Role.BRAND, "GET /v1/admin/programmes", null), Triple(Role.BRAND, "GET /v1/admin/programmes/7", null), Triple(Role.BRAND, "GET /v1/admin/programmes/7/versions", null),
+            Triple(Role.BRAND, "GET /v1/admin/gifts", null), Triple(Role.BRAND, "GET /v1/admin/gifts/7", null),
+            Triple(Role.BRAND, "GET /v1/admin/programmes/7/enrolments", forbidden), Triple(Role.BRAND, "PUT /v1/admin/programmes/7/enrolments", forbidden),
+            Triple(Role.BRAND, "POST /v1/admin/programmes", forbidden), Triple(Role.BRAND, "PATCH /v1/admin/programmes/7", forbidden),
+            Triple(Role.BRAND, "POST /v1/admin/programmes/7/status", forbidden), Triple(Role.BRAND, "POST /v1/admin/gifts", forbidden), Triple(Role.BRAND, "PATCH /v1/admin/gifts/7", forbidden),
+            Triple(Role.BRAND, "GET /v1/admin/programmes/7/versions/1", forbidden), Triple(Role.BRAND, "GET /v1/programmes/loyalty/balances", forbidden),
+            Triple(Role.NATIONAL, "GET /v1/admin/programmes/7/enrolments", null), Triple(Role.NATIONAL, "POST /v1/admin/programmes", forbidden), Triple(Role.NATIONAL, "POST /v1/admin/gifts", forbidden),
             // Everyone else passes to the handlers unchanged.
             Triple(Role.TSO, "POST /v1/tasks", null), Triple(Role.ADMIN, "POST /v1/admin/users", null), Triple(Role.SUPERADMIN, "PUT /v1/admin/x", null),
             Triple(Role.ANALYST, "GET /v1/reports", null), Triple(Role.SUPPORT, "POST /v1/admin/device-otps", null),
