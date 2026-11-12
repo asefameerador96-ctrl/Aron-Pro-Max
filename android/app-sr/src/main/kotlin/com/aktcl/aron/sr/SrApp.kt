@@ -151,7 +151,7 @@ fun SrFrame(
     onSync: (() -> Unit)?,
     modifier: Modifier = Modifier,
     printer: PrinterManager? = null,
-    /** Ask the nearby-devices permission and toast "printer connected" from this frame: Stock and the sale's VISIT frame ([printerAssistFor]); `SaleRoute` does not ask (one holder per screen).
+    /** Ask the nearby-devices permission and toast "printer connected" from this frame: Stock and the sale's VISIT frame ([printerAssistFor]); `SaleRoute` does not ask (one holder per screen). */
     printerAssist: Boolean = false,
     /** The drawable of the screen's tile art (`R.drawable.aron_art_*` of core-ui), shown beside the title. */
     icon: Int? = null,
