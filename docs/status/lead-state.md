@@ -3,6 +3,7 @@
 Updated: 2026-11-10 19:05 UTC by the lead (CATCH-UP after the worker outage 05:20 11-07 → 18:50 11-10; train 82 landed; the owner pushed 5e78569a straight to INT; train 83 = lane/lead-train83 024d4865 in flight; morning one-shot trig_01PBRogNENyHdFLFf9GLi8BK) (session_01MbUQSxrP7AB9tbyANjUTPS). Update this file whenever the train state, the active set or an owner row changes; commit it on lane/lead-docs-1022.
 
 ## Train state
+- **INT `20fe1d4fb` (train 104, pushed 2026-11-12 12:28 UTC): SR manual S5 follow-up + S6 (settings, wording) on INT; ci #2064 43218050788 running; deploy skipped by design; health stays ce9d92bf7.**
 - **INT `3d2340b3a` (train 103, pushed 2026-11-12 11:55 UTC): SR manual S1 (login, OTP screens, permissions, app update, data update) LANDED; ci #2054 43213228309 green; deploy skipped by design; health stays ce9d92bf7; APK of record aron-release-signed-dev-2054 (41,794,740 bytes).**
 - **INT `12f56c8bb` (train 102, pushed 2026-11-12 11:39 UTC): SR manual S4 (sale call flow) LANDED; ci #2051 43210959546 green; deploy #340 skip run; health stays ce9d92bf7; APK of record aron-release-signed-dev-2051 (41,731,551 bytes).**
 - **INT `ce9d92bf7` (train 101, pushed 2026-11-12 10:38 UTC): Loyalty portal train 1 (V0158..V0162, contract 1.13.0, loyalty module) LANDED and DEPLOYED: ci #2039 43202049384 green, deploy #339 43207815739 success, health build ce9d92bf7 at 11:37 UTC; Flyway PROVEN (ops-diagnose 43210886472: 0157 -> v0162, 5 migrations applied, exit 0).**

@@ -2955,3 +2955,6 @@
 ### 2026-11-12 12:26 UTC — GO train 104; L-B train 2 PASS
 - Train 104 CI 43214886290 green on 39a478a41 (5 ok, 6 skipped by path). Lane runs of S5 (43214455578) and S6 (43214715189): Repository gates, Android unit tests/lint and release APK jobs all success; only their Web job still running (not touched by these lanes). GO sent to integrator 24 (expected DECISIONS 427, deploy skipped).
 - L-B `d25d1fdd7` Sonnet review wrrbke62j (2 lenses, 319 k tokens): PASS, no blocking; call-by-call match with contract 1.13.0, BigInt thresholds, honest progress panel, replaced tests equal or stronger, records true. Ruling: channel checkboxes removed until an id source exists (accepted). Rides train 105 with S2 once its lane ci 43217342984 is green (real web deploy). wt-lb removed.
+
+### 2026-11-12 12:28 UTC — train 104 on INT
+- Integrator 24 pushed train 104: INT `20fe1d4fb` (tree-identical to 39a478a41 plus the train.md row; DECISIONS 427; 0 lost lines), ci #2064 43218050788 running. S3 told to merge this head (no report from S3 since 10:20; asked where it stands).
