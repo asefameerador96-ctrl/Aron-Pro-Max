@@ -2993,3 +2993,7 @@
 ### 2026-11-12 13:56 UTC — train 105 INT run green; deploy #343 running; train 106 green
 - INT `155edd899` ci #2070 43224115378 success (12 jobs, 11 ok + Infra skipped; Web e2e green on INT with the loginOk fix). Deploy #343 43230024509 in progress since 13:43; health still ce9d92bf7 at 13:56. APK of record: **aron-release-signed-dev-2070**, 41,846,663 bytes (all six SR manual lanes, first rounds; not walked on a device).
 - Train 106 CI 43226857187 success on 738d6df3e (12 jobs ok, web included). S3 lane run 43222154368 ended "cancelled": its Web job was cancelled after Android, release APK, Repository gates and backend jobs had succeeded; the S3 branch did not move (238d95abb), and the train run covers the same content fully. GO train 106 after deploy #343 completes.
+
+### 2026-11-12 14:06 UTC — train 105 DEPLOYED; GO train 106
+- Deploy #343 43230024509 success; health build 155edd899 read by me at 14:06:30 UTC. Web now serves the Loyalty section aligned to contract 1.13.0 (still on mocks until L-A's routes land). Integrator's detailed deploy report (images, migrate outcome, smoke) requested for the record.
+- GO train 106 sent (train head 738d6df3e, expected DECISIONS 433, deploy skipped by design).
