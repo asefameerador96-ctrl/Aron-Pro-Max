@@ -2843,3 +2843,6 @@
 ### 2026-11-12 09:53 UTC — L-A records corrected; gate-tool defect found and fixed
 - L-A `ffe9eee50`: docs-only on be79c0e3a (3 files, +11/-5: DECISIONS.md two unshipped lines corrected in place, request file, status doc). Verified by diff. Ready for train 101 after train 100.
 - Lead gate defect (mine): the "removed DECISIONS lines" count in my static gate used a pattern that cannot match a removed line that itself starts with "- " (every D-line), so it always printed 0. Fixed in scratchpad tools/sgate.sh. Re-proved by a direct set comparison: 0 D-lines missing on INT ab78d0d4b versus each INT head of trains 93 to 98 and versus 60 first-parent commits back; 0 INT lines missing on train 100, on L-A ffe9eee50 and on the docs branch. The Opus checkers' "every INT line still present" comparisons had covered the lane heads independently.
+
+### 2026-11-12 09:54 UTC — GO train 100
+- Train 100 CI 43193498991 green on d6ede1843 (11 jobs: 5 ok, 6 skipped by path, 0 failed). INT still ab78d0d4b. GO sent to integrator 24: merge the train head only, expected DECISIONS 402, deploy skipped by design, report the signed APK.
