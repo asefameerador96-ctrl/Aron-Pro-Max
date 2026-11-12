@@ -74,10 +74,10 @@ import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.core.ui.SyncChipState
 import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.feature.attendance.AttendanceContent
+import com.aktcl.aron.feature.attendance.AttendanceState
 import com.aktcl.aron.feature.home.AppPermission
 import com.aktcl.aron.feature.home.BundleFreshness
 import com.aktcl.aron.feature.home.DeviceHealth
-import com.aktcl.aron.feature.home.FirstBundleContent
 import com.aktcl.aron.feature.home.FirstBundleState
 import com.aktcl.aron.feature.home.HomeContent
 import com.aktcl.aron.feature.home.HomeDayModel
@@ -86,12 +86,15 @@ import com.aktcl.aron.feature.home.HomeTile
 import com.aktcl.aron.feature.home.HomeTiles
 import com.aktcl.aron.feature.home.HomeUser
 import com.aktcl.aron.feature.home.PermissionOnboardingContent
+import com.aktcl.aron.feature.home.DataUpdateContent
+import com.aktcl.aron.feature.home.DataUpdatePhase
 import com.aktcl.aron.feature.home.PlannedRoute
 import com.aktcl.aron.feature.home.RouteKind
 import com.aktcl.aron.feature.home.RoutePicker
 import com.aktcl.aron.feature.home.RoutePickerContent
 import com.aktcl.aron.feature.home.SettingsContent
 import com.aktcl.aron.core.sync.BundleOutcome
+import kotlinx.coroutines.flow.first
 import com.aktcl.aron.feature.outlet.ClusterOption
 import com.aktcl.aron.feature.outlet.ForceReason
 import com.aktcl.aron.feature.outlet.ForceSaleContent
@@ -150,13 +153,15 @@ fun SrFrame(
     onSync: (() -> Unit)?,
     modifier: Modifier = Modifier,
     printer: PrinterManager? = null,
+    /** Ask the nearby-devices permission and toast "printer connected" from this frame: only Stock ([printerAssistFor]); the sale asks inside `SaleRoute`. */
+    printerAssist: Boolean = false,
     /** The drawable of the screen's tile art (`R.drawable.aron_art_*` of core-ui), shown beside the title. */
     icon: Int? = null,
     subtitle: String? = null,
     bottomBar: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
-    if (printer != null) HoldPrinter(printer)
+    if (printer != null) HoldPrinter(printer, assist = printerAssist)
     val back = stringResource(com.aktcl.aron.core.ui.R.string.core_ui_back)
     // the gradient bar of the reference: back chevron, the screen's tile art and the white title; the printer state hangs on the bar's bottom edge
     ParityScaffold(
@@ -231,6 +236,8 @@ fun SrApp(
     val scope = rememberCoroutineScope()
     var editMemo by rememberSaveable { mutableStateOf("") }
     var skipOutlet by remember { mutableStateOf<OutletEntity?>(null) }
+    // "সেল ডাটা" is up inside the sale or memo host: the frame says so (SaleHost and MemoHost report it)
+    var saleData by remember { mutableStateOf(false) }
     val data by day.dayData.collectAsState()
     val tasks by day.taskBoard.state.collectAsState()
     val stockAttempt by day.stockAttempt.collectAsState()
@@ -334,16 +341,16 @@ fun SrApp(
             AronScreen(Modifier.fillMaxSize()) {} // the page background until the local day is read (no splash, no spinner)
         } else if (data.freshness is BundleFreshness.Missing && !skipFirstBundle) {
             // F-SR-001: a phone with no bundle yet shows the first-bundle download (resumable); check-in never waits for it.
+            // SR manual 08 (SRM-A-11): while the download runs, "অ্যাপ আপডেট হচ্ছে" with the real step counter; when it stopped
+            // (offline, failed, sign-in ended) the Bangla "new updates found" prompt, whose আপডেট button is the retry (resumable).
             val outcome by day.bundleOutcome.collectAsState()
-            FirstBundleContent(
-                state = when {
-                    data.downloading -> FirstBundleState.DOWNLOADING
-                    outcome == BundleOutcome.OFFLINE -> FirstBundleState.OFFLINE
-                    outcome == BundleOutcome.AUTH_REQUIRED -> FirstBundleState.AUTH
-                    outcome == null && !data.downloading -> FirstBundleState.DOWNLOADING
-                    else -> FirstBundleState.FAILED
-                },
-                onRetry = { scope.launch { startBundleDownload(); day.taskBoard.load() } },
+            val progress by day.bundleProgress.collectAsState()
+            val ui = SrDataUpdate.ui(data.downloading, outcome, progress)
+            DataUpdateContent(
+                phase = ui.phase,
+                versionName = SrDataUpdate.versionName(), // the version NAME only, never "name (code)"
+                onUpdate = { scope.launch { startBundleDownload(); day.taskBoard.load() } },
+                stepsDone = ui.stepsDone, stepCount = ui.stepCount, reason = ui.reason,
                 onSkip = { skipFirstBundle = true },
             )
         } else {
@@ -393,8 +400,8 @@ fun SrApp(
                 val who = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
                 // D-NIGHT-CHECKOUT-01: the local Sales Submit is read on every visit (also back from the Sales Submit screen)
                 LaunchedEffect(Unit) { day.attendance.refreshSubmit() }
-                AttendanceContent(
-                    attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
+                SrAttendanceContent(
+                    attendance, day.checkoutAtLabel(), onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
                     userTitle = who.title, userSubtitle = who.subtitle, // Latin digits, as in the reference
                     onOpenSalesSubmit = { screen = SrScreen.SUBMIT },
                     offline = !day.isOnline(), // read on each composition of the screen (one capabilities read, no callback)
@@ -414,13 +421,24 @@ fun SrApp(
                 onPhotosWifiOnly = { on -> wifiOnly = on; mediaShell?.setWifiOnly(on) },
                 onSupport = shell?.let { { screen = SrScreen.SUPPORT } },
                 onPrinter = { screen = SrScreen.PRINTER_DIAG },
+                onUpdateConfig = {
+                    // SRM-B-52 (owner question 5 default): pull the bundle and configuration now, applied in place.
+                    // A download already running is waited for and its outcome reported, never a second request.
+                    if (!day.isOnline()) com.aktcl.aron.feature.home.ConfigUpdate.FAILED else {
+                        if (day.dayData.value.downloading) day.dayData.first { !it.downloading } else startBundleDownload()
+                        resumeTick++
+                        configUpdateOf(day.bundleOutcome.value)
+                    }
+                },
+                configDownloading = data.downloading,
+                submitPending = { day.salesSubmitPending() }, onSalesSubmit = { screen = SrScreen.SUBMIT },
                 onBack = goBack, sunlight = sunlight, onSunlight = onSunlight, sync = sync, onSync = openSync, health = health ?: deviceHealth,
             )
         }
         SrScreen.SUPPORT -> SrFrame(stringResource(HomeR.string.set_support), goBack, sync, openSync) { shell?.let { SupportHost(it, day.userId, versionText) } }
         // D-PRINT-02: no HoldPrinter here, the diagnostics open their own link (the printer takes one at a time)
         SrScreen.PRINTER_DIAG -> SrFrame(stringResource(HomeR.string.set_printer), goBack, sync, openSync) { PrinterDiagnosticsScreen(day.printerManager, versionText) }
-        SrScreen.STOCK -> SrFrame(stringResource(HomeR.string.hm_tile_stock), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_stock) { StockHost(day) }
+        SrScreen.STOCK -> SrFrame(stringResource(HomeR.string.hm_tile_stock), goBack, sync, openSync, printer = day.printerManager, printerAssist = printerAssistFor(SrScreen.STOCK), icon = CoreR.drawable.aron_art_stock) { StockHost(day) }
         SrScreen.PICKER -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sale) {
             PermissionGate(GatedFeature.SALE, onBack = goBack) {
                 var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
@@ -446,16 +464,16 @@ fun SrApp(
                                 opening = false; screen = SrScreen.VISIT
                             }
                         }
-                    })
+                    }, manualRows = true)
                 }
             }
         }
-        SrScreen.VISIT -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_sale) {
+        SrScreen.VISIT -> SrFrame(if (saleData) stringResource(com.aktcl.aron.feature.memo.R.string.sale_data_title) else stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_sale) {
             PermissionGate(GatedFeature.SALE, onBack = goBack) {
                 val st by day.visitFlow.state.collectAsState()
                 val open by day.visitSession.current.collectAsState()
                 if (open != null) {
-                    SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME })
+                    SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME }, onSaleData = { saleData = it })
                 } else {
                     // tso-manual X4a (R-W-11): the lock landed while the fix was read, so the committer refused the call (nothing
                     // stored): the lock text instead of the generic failed commit and its retry; follow-up (R-W-23): the submit
@@ -479,8 +497,8 @@ fun SrApp(
         SrScreen.SKIP -> SrFrame(stringResource(R.string.sr_skip_outlet), goBack, sync, openSync) {
             skipOutlet?.let { o -> SkipHost(day, o, onDone = { screen = SrScreen.HOME }) } ?: LaunchedEffect(Unit) { screen = SrScreen.PICKER }
         }
-        SrScreen.MEMO -> SrFrame(stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_memo) {
-            MemoHost(day, sunlight, onSunlight, onEdit = { editMemo = it; screen = SrScreen.EDIT })
+        SrScreen.MEMO -> SrFrame(if (saleData) stringResource(com.aktcl.aron.feature.memo.R.string.sale_data_title) else stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_memo) {
+            MemoHost(day, sunlight, onSunlight, onEdit = { editMemo = it; screen = SrScreen.EDIT }, onSaleData = { saleData = it })
         }
         SrScreen.EDIT -> SrFrame(stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync, icon = CoreR.drawable.aron_art_memo) { EditHost(day, editMemo, sunlight, onSunlight, onDone = { screen = SrScreen.MEMO }) }
         SrScreen.SUMMARY -> SrFrame(stringResource(com.aktcl.aron.feature.memo.R.string.summary_title), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_summary) { SummaryHost(day, sunlight, onSunlight) }
@@ -691,3 +709,23 @@ internal fun StockHost(day: SrDay) {
     }
     refused?.let { SrRefusalDialog(it, onOk = { refused = null }) }
 }
+
+/**
+ * D-SR-MAN-S3-02 (lead review of be15cd1a8): the screen frames that may ask the nearby-devices permission and toast "printer connected".
+ * Stock only; the sale does it once inside `SaleRoute(printerAssist = true)`, so the visit frame, Memo and Summary never repeat the prompt or the toast.
+ */
+internal fun printerAssistFor(screen: SrScreen): Boolean = screen == SrScreen.STOCK
+
+/**
+ * The SR attendance screen as the app shows it (D-SR-MAN-S3-01): the shared content with the manual's dashed status boxes
+ * (`statusBoxes = true`, screenshots 11 to 13) and the configured check-out time in the amber box. A function of its own so a host test
+ * exercises the real wiring.
+ */
+@Composable
+internal fun SrAttendanceContent(
+    attendance: AttendanceState, checkoutAtLabel: String, onCheckIn: () -> Unit, onCheckOut: () -> Unit,
+    userTitle: String?, userSubtitle: String?, onOpenSalesSubmit: () -> Unit, offline: Boolean,
+) = AttendanceContent(
+    attendance, checkoutAtLabel, onCheckIn = onCheckIn, onCheckOut = onCheckOut, userTitle = userTitle, userSubtitle = userSubtitle,
+    onOpenSalesSubmit = onOpenSalesSubmit, offline = offline, statusBoxes = true,
+)

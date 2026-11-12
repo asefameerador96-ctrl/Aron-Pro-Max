@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
@@ -15,6 +16,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
+import com.aktcl.aron.feature.outlet.CallQuestionTags
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -104,7 +106,7 @@ class SrDayLockHostsTest {
         var done = 0
         show { SaleHost(f.day, sunlight = false, onSunlight = {}, onNoSale = {}, onDone = { done++ }) }
         compose.onNodeWithText("Day closed by Final Submit").assertDoesNotExist()
-        compose.onNodeWithText("Start the call?").assertExists()
+        compose.onNodeWithTag(CallQuestionTags.QUESTION).assertExists() // the manual's question replaced the plain prompt (D-SR-MAN-S4-01)
         assertEquals("the rep stays in the valid call", 0, done)
         assertEquals(next.visitUuid, f.day.visitSession.current.value?.visitUuid)
     }

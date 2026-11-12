@@ -22,6 +22,13 @@ fun SupportHost(shell: SystemShell, userId: Long, versionName: String) {
         val s = shell.support(userId, versionName)
         support = s; status = s.status(); lastSync = s.lastSyncText()
     }
+    // SRM-B-53 (manual 64): once the file is confirmed sent the vendor shows "সফল / ডাটা ফাইল পাঠানো হয়েছে" with ওকে
+    var sentDialog by remember { mutableStateOf(false) }
+    if (sentDialog) com.aktcl.aron.core.ui.AronInfoDialog(
+        androidx.compose.ui.res.stringResource(com.aktcl.aron.core.system.R.string.support_done_title),
+        androidx.compose.ui.res.stringResource(com.aktcl.aron.core.system.R.string.support_done_message),
+        androidx.compose.ui.res.stringResource(com.aktcl.aron.core.system.R.string.support_done_ok), onDismiss = { sentDialog = false },
+    )
     SupportContent(
         status = status, appVersion = versionName, lastSyncText = lastSync,
         onSend = {
@@ -32,6 +39,7 @@ fun SupportHost(shell: SystemShell, userId: Long, versionName: String) {
                 status = try { s.send() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {
                     SupportStatus.Failed(com.aktcl.aron.core.system.support.SupportFailure.BUILD_FAILED)
                 }
+                if (status is SupportStatus.Sent) sentDialog = true
                 lastSync = runCatching { s.lastSyncText() }.getOrNull()
             }
         },

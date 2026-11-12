@@ -50,7 +50,7 @@
     <string name="review_paid">Paid</string>
     <string name="review_due">Due</string>
     <string name="review_credit">On credit</string>
-    <string name="review_credit_switch">Mark this sale as credit</string>
+    <string name="review_credit_switch">Mark this sale as due</string>
     <string name="review_credit_due">Due %1$s</string>
     <string name="review_print_later">You can print later from the Memo section.</string>
     <string name="review_save">Print</string>
@@ -113,4 +113,37 @@
     <string name="sale_col_stock">Stock</string>
     <string name="sale_price_per_unit">৳ %1$s / %2$s</string>
     <string name="review_problem_qty_large">Quantity too large for SKU %1$s.</string>
+    <string name="sale_yes_ok">OK</string>
+    <string name="zero_reason_title">Why is there no sale?</string>
+    <string name="zero_reason_stock_available">Stock Available</string>
+    <string name="zero_reason_outlet_closed">Outlet Closed during visit</string>
+    <string name="zero_reason_owner_absent">Absence of owner</string>
+    <string name="zero_reason_insufficient_cash">Insufficient Cash</string>
+    <string name="target_none">No target is set for this outlet yet.</string>
+    <string name="target_std">Target STD</string>
+    <string name="target_ach_std">Achievement STD</string>
+    <string name="target_rem_std">Remaining STD</string>
+    <string name="target_memo">Target Memo</string>
+    <string name="target_ach_memo">Achievement Memo</string>
+    <string name="target_rem_memo">Remaining Memo</string>
+    <string name="target_okay">Okay</string>
+    <string name="target_col_sku">SKU</string>
+    <string name="target_col_target">Target</string>
+    <string name="target_col_sales">Sales</string>
+    <string name="target_col_pct">%</string>
+    <string name="qty_popup_close">Close</string>
+    <string name="qty_popup_save">Save</string>
+    <string name="qty_stat_prev">Previous day</string>
+    <string name="qty_stat_ads">ADS</string>
+    <string name="qty_stat_sdlw">SDLW</string>
+    <string name="qty_stat_na">N/A</string>
+    <string name="qc_pack_equiv">= %1$s %2$s</string>
+    <string name="qc_pack_equiv_both">= %1$s %2$s + %3$s %4$s</string>
+    <string name="edit_reason_wrong_sku_qty">Wrong SKU quantity</string>
+    <string name="edit_reason_promotion_issue">Promotion issue</string>
+    <string name="edit_reason_dialog_title">Please enter the reason for editing this sale</string>
+    <string name="edit_reason_pick">Select a reason</string>
+    <string name="edit_reason_cancel">Cancel</string>
+    <string name="edit_reason_submit">Submit</string>
+    <string name="edit_reason_glyph_dropdown">▾</string>
 </resources>

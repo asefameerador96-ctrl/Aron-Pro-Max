@@ -110,7 +110,7 @@
     <string name="out_start_call">কল শুরু করুন</string>
     <string name="out_reason_wait_fix">লোকেশন পেলে চালু হবে</string>
     <string name="out_open_maps">Maps অ্যাপে খুলুন</string>
-    <string name="out_history">পূর্বের বিক্রয় দেখুন</string>
+    <string name="out_history">সেল ডাটা</string>
     <string name="out_no_sale">বিক্রয় হবে না</string>
     <string name="out_turn_on_location">লোকেশন চালু করুন</string>
     <string name="out_go_back">ফিরে যান</string>
@@ -137,4 +137,16 @@
     <string name="out_compass_w">পশ্চিম</string>
     <string name="out_compass_nw">উত্তর-পশ্চিম</string>
     <string name="out_own_load_failed">অনুরোধের তালিকা আনা যায়নি</string>
+    <string name="out_sale_history_btn">Sale History</string>
+    <string name="out_today_target_btn">আজকের টার্গেট</string>
+    <string name="out_call_question">আপনি কি কল শুরু করতে চান?</string>
+    <string name="out_call_yes">হ্যাঁ</string>
+    <string name="out_call_no">না</string>
+    <string name="out_proceed">এগিয়ে যান</string>
+    <string name="out_call_first">Please start the call to continue.\nকল শুরু না করে বিক্রয় করা যাবে না।</string>
+    <string name="out_ok">ওকে</string>
+    <string name="out_call_photo_title">আউটলেটের ছবি তুলুন</string>
+    <string name="out_call_photo_note">এই কলের জন্য ছবি ও আপনার অবস্থান একসাথে সংরক্ষিত হবে।</string>
+    <string name="out_call_photo_continue">এগিয়ে যান</string>
+    <string name="out_call_photo_skip">ক্যামেরা কাজ করছে না: ছবি ছাড়াই চালিয়ে যান</string>
 </resources>

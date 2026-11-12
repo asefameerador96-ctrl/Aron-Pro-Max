@@ -3,6 +3,15 @@ package com.aktcl.aron.sr
 import android.graphics.BitmapFactory
 import android.widget.VideoView
 import androidx.compose.foundation.Image
+import androidx.compose.ui.unit.dp
+import com.aktcl.aron.core.ui.aron.barBrush
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -98,34 +107,45 @@ private fun ContentItemStep(day: SrDay, visitUuid: String, item: ContentItemEnti
             onEnded()
         }
     }
-    Box(Modifier.fillMaxSize()) {
-        if (item.kind == "av") {
-            AndroidView(
-                factory = { ctx ->
-                    VideoView(ctx).apply {
-                        setVideoPath(f.absolutePath)
-                        setOnCompletionListener { finish(ContentOutcome.VIEWED) }
-                        setOnErrorListener { _, _, _ -> finish(ContentOutcome.SKIPPED_MISSING); true }
-                        start()
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            val bitmap = remember(f.absolutePath) { runCatching { BitmapFactory.decodeFile(f.absolutePath)?.asImageBitmap() }.getOrNull() }
-            if (bitmap == null) {
-                LaunchedEffect(f.absolutePath) { finish(ContentOutcome.SKIPPED_MISSING) }
+    // SRM-B-05 (shot 35 left): a gradient title band ("AV" or "KV"), the item centred, a full-width gradient "× বন্ধ করুন" at the bottom
+    val close = { finish(if (item.kind == "av") ContentOutcome.SKIPPED_USER else ContentOutcome.VIEWED) }
+    Column(Modifier.fillMaxSize()) {
+        ContentBand(stringResource(if (item.kind == "av") R.string.sr_content_av else R.string.sr_content_kv))
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            if (item.kind == "av") {
+                AndroidView(
+                    factory = { ctx ->
+                        VideoView(ctx).apply {
+                            setVideoPath(f.absolutePath)
+                            setOnCompletionListener { finish(ContentOutcome.VIEWED) }
+                            setOnErrorListener { _, _, _ -> finish(ContentOutcome.SKIPPED_MISSING); true }
+                            start()
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
             } else {
-                Image(bitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                val bitmap = remember(f.absolutePath) { runCatching { BitmapFactory.decodeFile(f.absolutePath)?.asImageBitmap() }.getOrNull() }
+                if (bitmap == null) {
+                    LaunchedEffect(f.absolutePath) { finish(ContentOutcome.SKIPPED_MISSING) }
+                } else {
+                    Image(bitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                }
             }
         }
-        // "বন্ধ করুন": the SR can always close an item; closing an AV early counts as skipped by the user.
-        AronSecondaryButton(
-            stringResource(R.string.sr_content_close),
-            { finish(if (item.kind == "av") ContentOutcome.SKIPPED_USER else ContentOutcome.VIEWED) },
-            Modifier.padding(AronTokens.Space.L).align(androidx.compose.ui.Alignment.TopEnd),
-        )
+        // the SR can always close an item; closing an AV early counts as skipped by the user.
+        AronPrimaryButton(stringResource(R.string.sr_content_close_x), close, Modifier.fillMaxWidth().padding(AronTokens.Space.L))
     }
+}
+
+/** The red-to-purple title band of a content or survey step (shots 35): in the kit's bar brush, no status-bar inset (the frame's bar is above). */
+@Composable
+internal fun ContentBand(title: String) {
+    val look = com.aktcl.aron.core.ui.LocalAronLook.current
+    Box(
+        Modifier.fillMaxWidth().background(look.barBrush()).heightIn(min = 48.dp).padding(horizontal = AronTokens.Space.L),
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) { Text(title, style = MaterialTheme.typography.titleMedium, color = look.onBar, modifier = Modifier.semantics { heading() }) }
 }
 
 private const val SEP = "\u0001"
@@ -174,31 +194,67 @@ private fun SurveyStep(
             answers = answers + (key to (answers[key] ?: SurveyAnswer()).copy(photoUuid = shot.photoUuid))
         }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-        Text(stringResource(R.string.sr_survey_title), style = MaterialTheme.typography.headlineSmall)
-        val shown = questions.filter { it.first.key in visible && it.first.answerType in supported }
-        // the reference's info card (X3): starred questions must be answered
-        if (shown.any { it.first.required }) AronBanner(stringResource(R.string.sr_survey_required_info), kind = BannerKind.Info)
-        shown.forEach { (q, label) ->
-            Text(if (q.required) "$label (*)" else label, style = MaterialTheme.typography.titleMedium)
-            val cur = answers[q.key]
-            if (q.answerType == AnswerType.BOOL) {
-                androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                    val yes = { answers = answers + (q.key to (cur ?: SurveyAnswer()).copy(bool = true)) }
-                    val no = { answers = answers + (q.key to (cur ?: SurveyAnswer()).copy(bool = false)) }
-                    if (cur?.bool == true) AronPrimaryButton(stringResource(R.string.sr_yes), yes, Modifier.weight(1f)) else AronSecondaryButton(stringResource(R.string.sr_yes), yes, Modifier.weight(1f))
-                    if (cur?.bool == false) AronPrimaryButton(stringResource(R.string.sr_no), no, Modifier.weight(1f)) else AronSecondaryButton(stringResource(R.string.sr_no), no, Modifier.weight(1f))
+    val look = com.aktcl.aron.core.ui.LocalAronLook.current
+    // SRM-B-06 (shot 35 right): the "সার্ভে" band, the survey's own name in red, the info card, numbered questions ("1*", "1.1*") with a
+    // "উত্তরঃ" dropdown, the photo box under a sub-question, and "সাবমিট →" in a bar pinned to the bottom
+    val shown = questions.filter { it.first.key in visible && it.first.answerType in supported }
+    // numbered over the supported questions only (a hidden or unsupported one leaves no gap), in Latin digits as the manual shows (shot 35)
+    val numbers = remember(questions) {
+        val ok = questions.filter { it.first.answerType in supported }
+        val keys = ok.map { it.first.key }.toSet()
+        // a sub-question whose parent is unsupported can never be shown: it takes no number
+        SurveyNumbering.of(ok.filter { it.first.showIfKey == null || it.first.showIfKey in keys }.map { it.first.key to it.first.showIfKey })
+    }
+    Column(Modifier.fillMaxSize()) {
+        ContentBand(stringResource(R.string.sr_survey_title))
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            (if (bn) survey.titleBn ?: survey.titleEn else survey.titleEn ?: survey.titleBn)?.let { Text(it, style = MaterialTheme.typography.titleLarge, color = look.red) }
+            // the reference's info card (X3): starred questions must be answered
+            if (shown.any { it.first.required }) AronBanner(stringResource(R.string.sr_survey_required_info), kind = BannerKind.Info)
+            shown.forEach { (q, label) ->
+                val no = numbers[q.key].orEmpty()
+                Text(
+                    androidx.compose.ui.text.buildAnnotatedString {
+                        append(no); if (q.required) withStyle(androidx.compose.ui.text.SpanStyle(color = look.red)) { append("*") }
+                        append(" "); append(label)
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                val cur = answers[q.key]
+                if (q.answerType == AnswerType.BOOL) {
+                    var open by remember(q.key) { mutableStateOf(false) }
+                    Box(Modifier.fillMaxWidth()) {
+                        androidx.compose.foundation.layout.Row(
+                            Modifier.fillMaxWidth().heightIn(min = 48.dp).border(1.dp, look.inkMuted, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                .clickable(role = androidx.compose.ui.semantics.Role.DropdownList) { open = true }.padding(horizontal = AronTokens.Space.M),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                stringResource(R.string.sr_survey_answer) + " " + (cur?.bool?.let { stringResource(if (it) R.string.sr_yes else R.string.sr_no) } ?: stringResource(R.string.sr_survey_pick)),
+                                style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f),
+                            )
+                            Text(stringResource(R.string.sr_glyph_dropdown), color = look.inkMuted)
+                        }
+                        androidx.compose.material3.DropdownMenu(open, { open = false }) {
+                            listOf(true to R.string.sr_yes, false to R.string.sr_no).forEach { (v, res) ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text(stringResource(res)) },
+                                    onClick = { answers = answers + (q.key to (cur ?: SurveyAnswer()).copy(bool = v)); open = false },
+                                )
+                            }
+                        }
+                    }
+                }
+                if (q.requiresPhoto) {
+                    val taken = cur?.photoUuid != null
+                    AronSecondaryButton(stringResource(if (taken) R.string.sr_survey_photo_retake else R.string.sr_survey_photo), { takePhoto(q.key) }, Modifier.fillMaxWidth())
+                    if (taken) Text(stringResource(R.string.sr_survey_photo_taken), style = MaterialTheme.typography.labelLarge)
                 }
             }
-            if (q.requiresPhoto) {
-                val taken = cur?.photoUuid != null
-                AronSecondaryButton(stringResource(if (taken) R.string.sr_survey_photo_retake else R.string.sr_survey_photo), { takePhoto(q.key) }, Modifier.fillMaxWidth())
-                if (taken) Text(stringResource(R.string.sr_survey_photo_taken), style = MaterialTheme.typography.labelLarge)
-            }
+            // The sale is never blocked: if the survey cannot be completed (no camera, no light) the SR can go on to the sale without saving it.
+            AronSecondaryButton(stringResource(R.string.sr_survey_skip), { if (!saving) onDone() }, Modifier.fillMaxWidth())
         }
-        AronPrimaryButton(stringResource(R.string.sr_survey_submit), { confirm = true }, Modifier.fillMaxWidth(), enabled = !saving && PosmSurvey.canSubmit(defs, answers))
-        // The sale is never blocked: if the survey cannot be completed (no camera, no light) the SR can go on to the sale without saving it.
-        AronSecondaryButton(stringResource(R.string.sr_survey_skip), { if (!saving) onDone() }, Modifier.fillMaxWidth())
+        AronPrimaryButton(stringResource(R.string.sr_survey_submit), { confirm = true }, Modifier.fillMaxWidth().padding(AronTokens.Space.L), enabled = !saving && PosmSurvey.canSubmit(defs, answers))
     }
     if (confirm) {
         AronConfirmDialog(
@@ -214,5 +270,21 @@ private fun SurveyStep(
             },
             onDismiss = { confirm = false },
         )
+    }
+}
+
+/** SRM-B-06: question numbers as the manual shows them: top-level 1, 2, ...; a sub-question (shown only for its parent) 1.1, 1.2. Pure, tested. */
+internal object SurveyNumbering {
+    /** [questions] are (key, showIfKey) in screen order; the result maps each key to its number. */
+    fun of(questions: List<Pair<String, String?>>): Map<String, String> {
+        val out = LinkedHashMap<String, String>()
+        var top = 0
+        val subs = HashMap<String, Int>()
+        for ((key, parent) in questions) {
+            val parentNo = parent?.let { out[it] }
+            if (parentNo == null) { top++; out[key] = top.toString() }
+            else { val n = (subs[parent] ?: 0) + 1; subs[parent] = n; out[key] = "$parentNo.$n" }
+        }
+        return out
     }
 }

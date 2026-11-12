@@ -1,0 +1,9 @@
+ProgrammeStatus:
+  type: string
+  enum:
+  - draft
+  - active
+  - inactive
+  description: Programme lifecycle (1.13.0). `draft` is being prepared and still editable; `active`; `inactive`
+    is ended (the portal shows "Ended"). Moves are draft -> active -> inactive only, through `POST /v1/admin/programmes/{id}/status`.
+    Active in the portal does not reach the field (no points earned or redeemed, bundle `programmes` null, docs/27).

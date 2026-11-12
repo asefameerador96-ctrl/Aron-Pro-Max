@@ -112,4 +112,37 @@
     <string name="sale_col_stock">স্টক</string>
     <string name="sale_price_per_unit">৳ %1$s / %2$s</string>
     <string name="review_problem_qty_large">%1$s এর পরিমাণ অনেক বেশি।</string>
+    <string name="sale_yes_ok">ওকে</string>
+    <string name="zero_reason_title">বিক্রয় না হওয়ার কারণ কী?</string>
+    <string name="zero_reason_stock_available">স্টক আছে</string>
+    <string name="zero_reason_outlet_closed">ভিজিটের সময় দোকান বন্ধ</string>
+    <string name="zero_reason_owner_absent">মালিক অনুপস্থিত</string>
+    <string name="zero_reason_insufficient_cash">পর্যাপ্ত নগদ নেই</string>
+    <string name="target_none">এই আউটলেটের জন্য এখনও কোনো টার্গেট দেওয়া হয়নি।</string>
+    <string name="target_std">Target STD</string>
+    <string name="target_ach_std">Achievement STD</string>
+    <string name="target_rem_std">Remaining STD</string>
+    <string name="target_memo">Target Memo</string>
+    <string name="target_ach_memo">Achievement Memo</string>
+    <string name="target_rem_memo">Remaining Memo</string>
+    <string name="target_okay">Okay</string>
+    <string name="target_col_sku">এসকেইউ</string>
+    <string name="target_col_target">টার্গেট</string>
+    <string name="target_col_sales">বিক্রয়</string>
+    <string name="target_col_pct">%</string>
+    <string name="qty_popup_close">বন্ধ করুন</string>
+    <string name="qty_popup_save">সংরক্ষণ</string>
+    <string name="qty_stat_prev">আগের দিন</string>
+    <string name="qty_stat_ads">ADS</string>
+    <string name="qty_stat_sdlw">SDLW</string>
+    <string name="qty_stat_na">N/A</string>
+    <string name="qc_pack_equiv">= %1$s %2$s</string>
+    <string name="qc_pack_equiv_both">= %1$s %2$s + %3$s %4$s</string>
+    <string name="edit_reason_wrong_sku_qty">ভুল SKU পরিমাণ</string>
+    <string name="edit_reason_promotion_issue">প্রমোশন ইস্যু</string>
+    <string name="edit_reason_dialog_title">দয়া করে বিক্রয় এডিট করার কারণ লিখুন</string>
+    <string name="edit_reason_pick">কারণ নির্বাচন করুন</string>
+    <string name="edit_reason_cancel">বাতিল</string>
+    <string name="edit_reason_submit">জমা দিন</string>
+    <string name="edit_reason_glyph_dropdown">▾</string>
 </resources>

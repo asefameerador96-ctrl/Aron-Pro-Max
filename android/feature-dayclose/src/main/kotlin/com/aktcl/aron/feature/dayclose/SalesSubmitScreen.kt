@@ -153,6 +153,12 @@ fun SalesSubmitScreen(
     today: String? = null,
     /** Row 66 (AMO): the due warning and the success message are modal dialogs over the table, as the vendor shows them; the SR keeps its own. */
     vendorDialogs: Boolean = false,
+    /** SRM-B-29: with [vendorDialogs], the check-out hint stays under the table once the success modal is closed (the SR; the AMO keeps its own). */
+    checkoutHint: Boolean = false,
+    /** SRM-B-25: the business figures (device vs server) in place of the record-count rows; the gate notices above still name any record-count mismatch. */
+    business: BusinessTotals? = null,
+    serverBusiness: BusinessTotals? = null,
+    categoryLabel: (String) -> String = { it },
 ) {
     // A type the host has no label for (memo_line, day_submit, ...) still reads in words, never as its wire name (checker)
     val known = recordTypeLabels()
@@ -220,11 +226,16 @@ fun SalesSubmitScreen(
                     val money = Formats.money(d.outstandingMtk, if (bn) UiLocale.BN else UiLocale.EN)
                     NoticeCard(stringResource(R.string.submit_dues_warning, localizedNumber(d.retailersWithDues.toLong()), money), Notice.Warning)
                 }
-                CountsTable(
+                if (business != null) BusinessTable(business, serverBusiness, shownLabel, categoryLabel)
+                // until the server's business figures exist the record-count check (device = server) stays on screen beside the figures
+                if (business == null || serverBusiness == null) CountsTable(
                     if (rowGroups == null && legacyFiveRows) SubmitDisplay.legacyFive(counts).ifEmpty { SubmitDisplay.views(counts, null) } else SubmitDisplay.views(counts, rowGroups), shownLabel,
                     serverKnown = serverKnown ?: counts.any { it.server != null },
                 )
                 if (progress == SubmitProgress.Idle) { Spacer(Modifier.height(AronTokens.Space.M)); NoticeCard(stringResource(R.string.submit_info), Notice.Warning) }
+                if (checkoutHint && vendorDialogs && progress == SubmitProgress.Settled) {
+                    Text(stringResource(R.string.submit_success_checkout), style = MaterialTheme.typography.bodyMedium, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                }
             }
             AronPrimaryButton(
                 stringResource(R.string.submit_sync), onSync, Modifier.fillMaxWidth(),
@@ -476,3 +487,43 @@ private fun blockText(b: SubmitBlock, typeLabel: (String) -> String): String = w
     is SubmitBlock.Quarantined -> stringResource(R.string.submit_note_quarantined, localizedNumber(b.count.toLong()))
 }
 
+
+/** SRM-B-25: the manual's table (item, device, server) with business figures: outlets, sale, stock, QC, promotion; the server shows "—" until the digest has them. */
+@Composable
+private fun BusinessTable(device: BusinessTotals, server: BusinessTotals?, typeLabel: (String) -> String, categoryLabel: (String) -> String) {
+    val bn = LocalAppLanguage.current == AppLanguage.BN
+    val blank = stringResource(R.string.submit_server_blank)
+    val waiting = stringResource(R.string.submit_row_waiting)
+    val mismatch = stringResource(R.string.submit_row_mismatch)
+    val units = listOf("packet", "box", "dozen", "piece", "stick").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
+    @Composable fun qty(rows: List<CategoryQty>, unit: (String) -> String): String {
+        val lines = ArrayList<String>()
+        for (r in rows) {
+            if (r.qtyBase == 0L && r.entered == 0L) continue
+            if (r.categoryCode == OTHER_CATEGORY) { // a SKU with no master row: its own line, base units, never added to another
+                lines += stringResource(R.string.submit_biz_other_sku, r.skuId?.let { com.aktcl.aron.core.ui.localizedDigits(it.toString()) } ?: "") + " " + localizedNumber(r.qtyBase) + " " + stringResource(R.string.submit_biz_base_units)
+                continue
+            }
+            val rem = if (r.remBase != 0L) " " + com.aktcl.aron.core.ui.remWithUnit(r.remBase, units[com.aktcl.aron.rules.EntryUnits.baseLabelKey(r.categoryCode)] ?: "") else ""
+            lines += (categoryLabel(r.categoryCode) + " " + localizedNumber(r.entered) + " " + unit(r.unitKey) + rem).replace("  ", " ").trim()
+        }
+        return if (lines.isEmpty()) localizedNumber(0) else lines.joinToString("\n")
+    }
+    val unitWord: (String) -> String = { units[it] ?: it }
+    val money = { v: Long -> Formats.money(v, if (bn) UiLocale.BN else UiLocale.EN) }
+    @Composable fun text(t: BusinessTotals, key: BusinessKey): String = when (key) {
+        BusinessKey.OUTLET -> localizedNumber(t.outletsVisited.toLong())
+        BusinessKey.SALE -> qty(t.sold, unitWord)
+        BusinessKey.STOCK -> qty(t.stockIssued, unitWord)
+        BusinessKey.QC -> qty(t.qc, unitWord)
+        BusinessKey.PROMOTION -> money(t.promotionMtk)
+    }
+    AronDataTable(
+        headers = listOf(stringResource(R.string.submit_col_item), stringResource(R.string.submit_col_device), stringResource(R.string.submit_col_server)),
+        weights = listOf(1.2f, 1.4f, 1.4f),
+        rows = BusinessKey.entries.map { key ->
+            val word = when (BusinessCompare.matches(key, device, server)) { null -> if (server == null) waiting else null; false -> mismatch; true -> null }
+            listOf(listOfNotNull(typeLabel(key.recordKey), word).joinToString("\n"), text(device, key), server?.let { text(it, key) } ?: blank)
+        },
+    )
+}

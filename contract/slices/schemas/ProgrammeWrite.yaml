@@ -9,6 +9,8 @@ ProgrammeWrite:
   - change_reason
   additionalProperties: false
   properties:
+    request_uuid:
+      $ref: '#/components/schemas/Uuid'
     kind:
       $ref: '#/components/schemas/ProgrammeKind'
     code:
@@ -31,11 +33,32 @@ ProgrammeWrite:
       $ref: '#/components/schemas/BusinessDate'
     active_to:
       $ref: '#/components/schemas/BusinessDate'
+    points_expire_on:
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'
     rules:
       type: object
       additionalProperties:
         $ref: '#/components/schemas/JsonScalar'
+    tiers:
+      type: array
+      maxItems: 10
+      items:
+        $ref: '#/components/schemas/ProgrammeTier'
+    qualifying:
+      type: array
+      maxItems: 100
+      items:
+        $ref: '#/components/schemas/LoyaltyProductRef'
+    scope:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/LoyaltyScopeNode'
     status:
       $ref: '#/components/schemas/ActiveStatus'
+      deprecated: true
+      description: Refused with 400 since 1.13.0 (a programme is created as a draft); use POST /v1/admin/programmes/{id}/status.
     change_reason:
       $ref: '#/components/schemas/ChangeReason'

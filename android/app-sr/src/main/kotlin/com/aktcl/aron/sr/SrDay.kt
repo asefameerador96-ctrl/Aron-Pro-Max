@@ -267,6 +267,11 @@ class SrDay(
     /** How the last day-start download ended (null while one runs or none ran); the first-bundle screen reads it. */
     val bundleOutcome: StateFlow<BundleOutcome?> = _bundleOutcome.asStateFlow()
 
+    private val _bundleProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+
+    /** Steps done and the step count of the bundle download in flight (SR manual 08 "Processing(n/N)"); null when none runs or the size is not known yet. */
+    val bundleProgress: StateFlow<Pair<Int, Int>?> = _bundleProgress.asStateFlow()
+
     /** Day start: the first bundle download (resumable, F-SYS-006) in the background; the day never waits for it. */
     suspend fun downloadBundle(downloaders: BundleDownloaders) {
         // One run at a time, in the day's own scope: a rotation or language switch recreates the screen but never cancels
@@ -277,7 +282,7 @@ class SrDay(
         background.launch {
             try {
                 val outcome = try {
-                    downloaders.of(userId).download(businessDate()).outcome
+                    downloaders.of(userId).download(businessDate()) { stepsDone, stepCount -> _bundleProgress.value = stepsDone to stepCount }.outcome
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -289,6 +294,7 @@ class SrDay(
                     deviceRuntime?.refreshDayConfig(userId, db)
                 }
             } finally {
+                _bundleProgress.value = null
                 data.value = data.value.copy(downloading = false)
                 bundleRunning.set(false)
             }
@@ -320,6 +326,15 @@ class SrDay(
 
     fun isOnline(): Boolean = online()
 
+    /** SRM-B-55: today has sales or visits on this phone and no Sales Submit yet (offline read). */
+    suspend fun salesSubmitPending(): Boolean {
+        val source = com.aktcl.aron.feature.dayclose.RoomDaySource(db)
+        val date = businessDate()
+        if (source.alreadySubmitted(date) || finalLocked()) return false
+        val c = source.deviceCounts(date)
+        return (c["memo"] ?: 0) + (c["visit"] ?: 0) > 0
+    }
+
     private fun online(): Boolean {
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return false
         val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
@@ -345,6 +360,9 @@ class SrDay(
         language = { com.aktcl.aron.core.ui.AppLocale.current(context) },
         last = com.aktcl.aron.core.map.PrefsLastAddressStore(context, userId),
     )
+
+    /** "HH:mm" of the configured earliest check-out (`cfg.day.checkout_earliest_time`), for the amber "after 5" box (D-SR-MAN-S3-01). */
+    fun checkoutAtLabel(): String = checkoutLabel(deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: com.aktcl.aron.core.sync.device.DayConfig.DEFAULT_CHECKOUT_MINUTES)
 
     val attendance = AttendanceFlow(
         fixes = fixSource, metaProvider = metaProvider,
@@ -827,3 +845,6 @@ object SrDayLockTags { const val BANNER = "sr_day_lock_banner" }
 
 private const val LINE_BREAK = "\n"
 
+
+/** Minutes after midnight as "HH:mm". */
+internal fun checkoutLabel(minutes: Int): String = "%02d:%02d".format(java.util.Locale.ROOT, minutes / 60, minutes % 60)
