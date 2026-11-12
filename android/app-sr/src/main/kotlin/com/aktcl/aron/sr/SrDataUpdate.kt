@@ -5,7 +5,7 @@ import com.aktcl.aron.feature.home.DataUpdatePhase
 import com.aktcl.aron.feature.home.FirstBundleState
 
 /** What the SR's data-update page shows for the bundle download of the moment (SR manual 08). */
-data class SrDataUpdateUi(val phase: DataUpdatePhase, val reason: FirstBundleState?, val done: Int?, val total: Int?)
+data class SrDataUpdateUi(val phase: DataUpdatePhase, val reason: FirstBundleState?, val stepsDone: Int?, val stepCount: Int?)
 
 /** The pure mapping behind the data-update page of [SrApp], so it is tested without a screen. */
 object SrDataUpdate {
@@ -26,7 +26,7 @@ object SrDataUpdate {
                 outcome == BundleOutcome.AUTH_REQUIRED -> FirstBundleState.AUTH
                 else -> FirstBundleState.FAILED
             },
-            done = progress?.first, total = progress?.second,
+            stepsDone = progress?.first, stepCount = progress?.second,
         )
     }
 }

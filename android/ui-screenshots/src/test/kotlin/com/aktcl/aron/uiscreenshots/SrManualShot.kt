@@ -61,5 +61,5 @@ class SrManualShot {
     @Test fun updateDownloading() = shot("srmanual_07_downloading_bn") { SrUpdateContent(release, true, NetworkStatus.WIFI, DownloadUi.Downloading(24), {}, {}, {}, {}) }
     @Test fun updateCompleted() = shot("srmanual_07_completed_bn") { SrUpdateContent(release, true, NetworkStatus.WIFI, DownloadUi.Ready, {}, {}, {}, {}) }
     @Test fun dataPrompt() = shot("srmanual_08_prompt_bn") { DataUpdateContent(DataUpdatePhase.PROMPT, "1.0.1", {}) }
-    @Test fun dataRunning() = shot("srmanual_08_running_bn") { DataUpdateContent(DataUpdatePhase.RUNNING, "1.0.1", {}, done = 14, total = 87) }
+    @Test fun dataRunning() = shot("srmanual_08_running_bn") { DataUpdateContent(DataUpdatePhase.RUNNING, "1.0.1", {}, stepsDone = 14, stepCount = 87) }
 }

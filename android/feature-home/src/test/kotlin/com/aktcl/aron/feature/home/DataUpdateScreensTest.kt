@@ -23,19 +23,19 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
-/** SR manual 08 (SRM-A-11): the data update prompt and its "প্রসেসিং(n/total)" progress page, Bangla and English. */
+/** SR manual 08 (SRM-A-11): the data update prompt and its "প্রসেসিং(n/stepCount)" progress page, Bangla and English. */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [36], qualifiers = "w360dp-h800dp")
 class DataUpdateScreensTest {
     @get:Rule val compose = createComposeRule()
 
     private fun show(
-        language: AppLanguage, phase: DataUpdatePhase, done: Int? = null, total: Int? = null, reason: FirstBundleState? = null,
+        language: AppLanguage, phase: DataUpdatePhase, stepsDone: Int? = null, stepCount: Int? = null, reason: FirstBundleState? = null,
         onUpdate: () -> Unit = {}, onSkip: (() -> Unit)? = null,
     ) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         compose.setContent {
-            CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { DataUpdateContent(phase, "1.0.1", onUpdate, done = done, total = total, reason = reason, onSkip = onSkip) } }
+            CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { DataUpdateContent(phase, "1.0.1", onUpdate, stepsDone = stepsDone, stepCount = stepCount, reason = reason, onSkip = onSkip) } }
         }
         compose.waitForIdle()
     }
@@ -57,7 +57,7 @@ class DataUpdateScreensTest {
     }
 
     @Test fun progressShowsTheStepCounterInBanglaDigitsTheHeadingAndTheRedTip() {
-        show(AppLanguage.BN, DataUpdatePhase.RUNNING, done = 14, total = 87)
+        show(AppLanguage.BN, DataUpdatePhase.RUNNING, stepsDone = 14, stepCount = 87)
         compose.onNodeWithText("অ্যাপ আপডেট হচ্ছে").assertIsDisplayed()
         compose.onNodeWithTag(DataUpdateTags.COUNTER).assertTextEquals("প্রসেসিং(১৪/৮৭)")
         compose.onNodeWithTag(DataUpdateTags.TIP).assertTextEquals("টিপস: অ্যাপটি বন্ধ করবেন না")
@@ -66,12 +66,12 @@ class DataUpdateScreensTest {
     }
 
     @Test fun progressInEnglishUsesLatinDigits() {
-        show(AppLanguage.EN, DataUpdatePhase.RUNNING, done = 3, total = 4)
+        show(AppLanguage.EN, DataUpdatePhase.RUNNING, stepsDone = 3, stepCount = 4)
         compose.onNodeWithTag(DataUpdateTags.COUNTER).assertTextEquals("Processing(3/4)")
     }
 
     @Test fun whileTheSizeIsNotKnownYetThereIsNoCounterAndNeverAZeroOverZero() {
-        show(AppLanguage.EN, DataUpdatePhase.RUNNING, done = null, total = null)
+        show(AppLanguage.EN, DataUpdatePhase.RUNNING, stepsDone = null, stepCount = null)
         compose.onNodeWithTag(DataUpdateTags.COUNTER).assertDoesNotExist()
         compose.onNodeWithTag(DataUpdateTags.BAR).assertIsDisplayed()
     }
@@ -86,13 +86,13 @@ class DataUpdateScreensTest {
 
     @Test fun theSkipLinkIsThereWhileTheDownloadRunsToo() {
         var skips = 0
-        show(AppLanguage.EN, DataUpdatePhase.RUNNING, done = 1, total = 4, onSkip = { skips++ })
+        show(AppLanguage.EN, DataUpdatePhase.RUNNING, stepsDone = 1, stepCount = 4, onSkip = { skips++ })
         compose.onNodeWithTag(DataUpdateTags.SKIP).performScrollTo().performClick()
         assertEquals(1, skips)
     }
 
     @Test fun theSkipLinkIsThereBeforeTheFirstStepIsKnownRightAfterARelaunch() {
-        show(AppLanguage.EN, DataUpdatePhase.RUNNING, done = null, total = null, onSkip = {})
+        show(AppLanguage.EN, DataUpdatePhase.RUNNING, stepsDone = null, stepCount = null, onSkip = {})
         compose.onNodeWithTag(DataUpdateTags.SKIP).assertExists()
     }
 

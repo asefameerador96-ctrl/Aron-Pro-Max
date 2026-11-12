@@ -15,7 +15,7 @@ class SrDataUpdateTest {
         val r = SrDataUpdate.ui(downloading = true, outcome = BundleOutcome.OFFLINE, progress = 14 to 87)
         assertEquals(DataUpdatePhase.RUNNING, r.phase)
         assertNull(r.reason)
-        assertEquals(14, r.done); assertEquals(87, r.total)
+        assertEquals(14, r.stepsDone); assertEquals(87, r.stepCount)
     }
 
     @Test fun aStoppedAttemptIsThePromptWithItsReason() {

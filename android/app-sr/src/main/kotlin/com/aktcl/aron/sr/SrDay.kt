@@ -269,7 +269,7 @@ class SrDay(
 
     private val _bundleProgress = MutableStateFlow<Pair<Int, Int>?>(null)
 
-    /** Steps done and total of the bundle download in flight (SR manual 08 "Processing(n/total)"); null when none runs or the size is not known yet. */
+    /** Steps done and the step count of the bundle download in flight (SR manual 08 "Processing(n/N)"); null when none runs or the size is not known yet. */
     val bundleProgress: StateFlow<Pair<Int, Int>?> = _bundleProgress.asStateFlow()
 
     /** Day start: the first bundle download (resumable, F-SYS-006) in the background; the day never waits for it. */
@@ -282,7 +282,7 @@ class SrDay(
         background.launch {
             try {
                 val outcome = try {
-                    downloaders.of(userId).download(businessDate()) { done, total -> _bundleProgress.value = done to total }.outcome
+                    downloaders.of(userId).download(businessDate()) { stepsDone, stepCount -> _bundleProgress.value = stepsDone to stepCount }.outcome
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (_: Exception) {

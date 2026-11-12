@@ -48,7 +48,7 @@ enum class DataUpdatePhase {
     /** The "new updates found" prompt with the আপডেট button (also the way back after an offline, failed or refused attempt). */
     PROMPT,
 
-    /** The download runs: "অ্যাপ আপডেট হচ্ছে" with the bar and the "প্রসেসিং(n/total)" counter. */
+    /** The download runs: "অ্যাপ আপডেট হচ্ছে" with the bar and the "প্রসেসিং(n/stepCount)" counter. */
     RUNNING,
 }
 
@@ -67,7 +67,7 @@ object DataUpdateTags {
 /**
  * The data update of the SR manual (screenshot 08): two white pages without a top bar. The prompt says in Bangla that new updates were
  * found and that the rep must update, with a vertical red-to-purple "আপডেট" button and the footer "Current version SR App x". Pressing it
- * (or the download already running) shows "অ্যাপ আপডেট হচ্ছে" with a bar and "প্রসেসিং(n/total)" in Bangla digits and the red tip "টিপস:
+ * (or the download already running) shows "অ্যাপ আপডেট হচ্ছে" with a bar and "প্রসেসিং(n/stepCount)" in Bangla digits and the red tip "টিপস:
  * অ্যাপটি বন্ধ করবেন না". The steps are the bundle's own: the head, each page, the apply (core-sync BundleProgress), so the counter is
  * real. Nothing here deletes anything: the bundle replaces reference data in one transaction and unsent records are never touched; a kill
  * resumes with the staged pages. [reason] explains why the prompt is back (offline, failed, sign in again). The vendor has no way past
@@ -80,8 +80,8 @@ fun DataUpdateContent(
     versionName: String,
     onUpdate: () -> Unit,
     modifier: Modifier = Modifier,
-    done: Int? = null,
-    total: Int? = null,
+    stepsDone: Int? = null,
+    stepCount: Int? = null,
     reason: FirstBundleState? = null,
     onSkip: (() -> Unit)? = null,
 ) {
@@ -119,13 +119,13 @@ fun DataUpdateContent(
         } else {
             SyncArt()
             Text(stringResource(R.string.du_updating), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), color = look.purple)
-            val frac = if (done != null && total != null && total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else 0f
+            val frac = if (stepsDone != null && stepCount != null && stepCount > 0) (stepsDone.toFloat() / stepCount).coerceIn(0f, 1f) else 0f
             Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(look.track).testTag(DataUpdateTags.BAR)) {
                 Box(Modifier.fillMaxWidth(frac).height(8.dp).background(look.purple))
             }
-            if (done != null && total != null && total > 0) {
+            if (stepsDone != null && stepCount != null && stepCount > 0) {
                 Text(
-                    stringResource(R.string.du_processing, localizedNumber(done.toLong()), localizedNumber(total.toLong())),
+                    stringResource(R.string.du_processing, localizedNumber(stepsDone.toLong()), localizedNumber(stepCount.toLong())),
                     style = MaterialTheme.typography.bodyMedium, color = look.purple, modifier = Modifier.testTag(DataUpdateTags.COUNTER),
                 )
             }

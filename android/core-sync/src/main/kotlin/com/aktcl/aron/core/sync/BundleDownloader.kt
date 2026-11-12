@@ -58,15 +58,15 @@ enum class BundleOutcome {
     NEW_DATE,
 }
 
-/** Step counter of one bundle download: [done] of [total] (the head, each page, the apply). Called from the downloading coroutine; keep it cheap. */
+/** Step counter of one bundle download: [stepsDone] of [stepCount] (the head, each page, the apply). Called from the downloading coroutine; keep it cheap. */
 fun interface BundleProgress {
-    fun report(done: Int, total: Int)
+    fun report(stepsDone: Int, stepCount: Int)
 }
 
 /** A progress callback runs inside the downloader's lock: whatever it throws (except cancellation) must never abort a staged download. */
-internal fun BundleProgress?.safely(done: Int, total: Int) {
+internal fun BundleProgress?.safely(stepsDone: Int, stepCount: Int) {
     if (this == null) return
-    try { report(done, total) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+    try { report(stepsDone, stepCount) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
 }
 
 data class BundleReport(
@@ -245,7 +245,7 @@ class BundleDownloader(
                         ?.forEach { it.deleteRecursively() }
                     stage.mkdirs()
                 }
-                // Steps for the SR manual's "Processing(n/total)" counter (screen 08): the head, every page, the apply.
+                // Steps for the SR manual's "Processing(n/N)" counter (screen 08): the head, every page, the apply.
                 val totalSteps = 2 + download.head.meta.pagedSections.sumOf { it.pages }
                 var doneSteps = 1
                 progress.safely(doneSteps, totalSteps)
