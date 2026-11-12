@@ -33,6 +33,7 @@ class AsthaBundleSectionTest {
     private var outletA = 0L
     private var outletB = 0L
     private var outletC = 0L
+    private var outletD = 0L
     private var outletOther = 0L
     private var brand = 0L
     private var programme = 0L
@@ -53,8 +54,8 @@ class AsthaBundleSectionTest {
             today = today()
             userId = one("SELECT id FROM app.app_user WHERE username = 'sr1001'")
             route = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
-            val o = longs("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id LIMIT 3")
-            outletA = o[0]; outletB = o[1]; outletC = o[2]
+            val o = longs("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id LIMIT 4")
+            outletA = o[0]; outletB = o[1]; outletC = o[2]; outletD = o[3]
             outletOther = one("SELECT id FROM app.outlet WHERE route_id <> $route AND status = 'active' ORDER BY id LIMIT 1")
             cigaretteSku = one("SELECT id FROM app.sku WHERE entry_unit_default = 'pack' AND category_code = 'cigarette' ORDER BY id LIMIT 1")
             pack = one("SELECT base_per_pack FROM app.sku WHERE id = $cigaretteSku").toInt()
@@ -67,6 +68,11 @@ class AsthaBundleSectionTest {
             exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '$first', $route, $outletA, NULL, 0, 10)")
             exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '$first', $route, $outletB, NULL, 0, 4)")
             exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '$first', $route, $outletC, NULL, 0, 4)")
+            // The bundle's cut: an outlet with a target but no enrolment (D), an all-zero route row, and a row of ANOTHER month of the quarter are not sent; the quarter read still has the last.
+            exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '$first', $route, $outletD, NULL, 0, 9)")
+            exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '$first', $route, NULL, NULL, 0, 0)")
+            val otherMonth = AsthaQuarter.of(today, 1).months.first { it != first }
+            exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '$otherMonth', $route, $outletA, NULL, 0, 77)")
             // Outlet C: 100 points expiring in 5 days, 80 spent: balance 20, so the expiring points are capped at 20 (debits are not matched to credits).
             exec("INSERT INTO app.programme_enrolment (programme_id, outlet_id, tier_code, valid_from) VALUES ($programme, $outletC, 'silver', DATE '${today.minusDays(30)}')")
             exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on) VALUES ($outletC, $programme, 'adjustment', 'c1', 100, DATE '${today.minusDays(3)}', DATE '${today.plusDays(5)}')")
@@ -158,7 +164,7 @@ class AsthaBundleSectionTest {
         val brandRow = rows.single { it.str("outlet_id") == outletA.toString() && it.str("brand_id") == brand.toString() }
         assertEquals("120.500", brandRow.str("std_target")); assertEquals((3 * pack).toString() + ".000", brandRow.str("std_achieved"))
         assertEquals("500000", brandRow.str("value_target_mtk")); assertEquals((3 * pack * 100).toString(), brandRow.str("value_achieved_mtk"))
-        assertEquals(today.toString().substring(0, 7), brandRow.str("month")); assertNotNull(brandRow.str("as_of"))
+        assertEquals(today.toString().substring(0, 7), brandRow.str("month")); assertNull(brandRow["as_of"], "the bundle rows carry no as_of"); assertNotNull(assertNotNull(section(setOf(outletA, outletB, outletC)))["astha_as_of"])
         // by_pack: achievement per pack size in base units; the entries sum to the row total (never summed across pack sizes on the phone).
         val packs = brandRow["by_pack"]!!.jsonArray.map { it.jsonObject }
         assertEquals(listOf(pack.toString()), packs.map { it.str("pack_factor") })
@@ -168,6 +174,20 @@ class AsthaBundleSectionTest {
         assertEquals("1", rows.single { it.str("outlet_id") == outletB.toString() && it.str("brand_id") == null }.str("memo_achieved"))
         // The value target is 0 until uploaded; an unset target never shows a negative or a percentage base.
         assertEquals("0", rows.single { it.str("outlet_id") == outletB.toString() }.str("value_target_mtk"))
+    }
+
+    @Test
+    fun theBundleCarriesOnlyTheCurrentMonthEnrolledOutletsAndNoAllZeroRow() {
+        val rows = assertNotNull(section(setOf(outletA, outletB, outletC, outletD)))["astha_targets"]!!.jsonArray.map { it.jsonObject }
+        assertTrue(rows.none { it.str("outlet_id") == outletD.toString() }, "an outlet with no active enrolment sends no row")
+        assertTrue(rows.none { it.str("outlet_id") == "null" || it["outlet_id"] is JsonNull }, "the all-zero route row is cut")
+        assertTrue(rows.all { it.str("month") == today.toString().substring(0, 7) }, "only the month of the business date")
+        assertTrue(rows.none { it.str("memo_target") == "77" })
+        assertEquals("false", assertNotNull(section(setOf(outletA)))["astha_truncated"]!!.toString())
+        // The quarter read (listAsthaTargets) keeps every month and every row.
+        val q = AsthaQuarter.of(today, 1)
+        val all = world.fresh.db.jdbi.withHandle<List<JsonObject>, Exception> { h -> BundleProgrammes.asthaTargets(h, listOf(route), listOf(outletA, outletD), q, java.time.Instant.EPOCH) }
+        assertTrue(all.any { it.str("memo_target") == "77" } && all.any { it.str("outlet_id") == outletD.toString() })
     }
 
     @Test

@@ -16252,7 +16252,7 @@ components:
         memo_achieved: { type: integer, minimum: 0 }
         value_target_mtk: { type: string, pattern: '^(0|[1-9][0-9]{0,17})$', description: 'Value target in integer milli-taka (a string; parse as a 64-bit integer), never negative, "0" until uploaded (owner Q5). Percent on the phone is achieved / target with 2 decimals rounded half-up and 0.00% when the target is 0.' }
         value_achieved_mtk: { type: string, pattern: '^(0|[1-9][0-9]{0,17})$', description: 'Integer milli-taka sold by the outlet for the brand in the month up to `as_of`: the gross of SALE lines of memos that are active (voided and superseded memos, voided lines and free or reward lines are out). The memo offer line is zero (docs/27). The phone adds only its own unsynced memos created after `as_of`, keyed by memo_uuid, recomputed from scratch after each bundle.' }
-        as_of: { $ref: '#/components/schemas/Timestamp', description: 'UTC instant of the newest memo the achievement figures (std, memo and value) include: in the bundle the newest memo ingest of the quarter in reach (not the build time, so equal content has equal bytes); in `listAsthaTargets` the instant of the read.' }
+        as_of: { $ref: '#/components/schemas/Timestamp', description: 'Absent in the bundle (see `ProgrammesSection.astha_as_of`). UTC instant of the newest memo the achievement figures (std, memo and value) include: in the bundle the newest memo ingest of the quarter in reach (not the build time, so equal content has equal bytes); in `listAsthaTargets` the instant of the read.' }
         by_pack:
           type: array
           maxItems: 6
@@ -16377,7 +16377,7 @@ components:
         photos_captured: { type: integer, minimum: 0, maximum: 50 }
     ProgrammesSection:
       type: object
-      description: 'Programme data for the user''s routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user''s reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS Dhaka business date); `astha_targets` carry server achievement as of their own `as_of` (units in `AsthaTargetRow`); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. The `as_of` of the Astha rows is the server''s newest memo ingest in the quarter (content-derived, so a rebuild without a new memo has the same bytes); the phone adds every local memo the server had not acknowledged by `meta.generated_at`, keyed by memo_uuid.'
+      description: 'Programme data for the user''s routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user''s reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS Dhaka business date); `astha_targets` carry server achievement as of their own `as_of` (units in `AsthaTargetRow`); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries only the CURRENT month of the bundle''s business date (earlier or later months of the quarter are read online with `listAsthaTargets`), only outlets enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user: past that the server sends the first 1,000, logs a warning and sets `astha_truncated` true, which the phone shows (never a silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. The `as_of` of the Astha rows is the server''s newest memo ingest in the quarter (content-derived, so a rebuild without a new memo has the same bytes); the phone adds every local memo the server had not acknowledged by `meta.generated_at`, keyed by memo_uuid.'
       required: [programmes, loyalty, gifts, astha_targets, gift_assignments, pending_gift_verifications]
       additionalProperties: false
       properties:
@@ -16393,9 +16393,11 @@ components:
           type: array
           maxItems: 200
           items: { $ref: '#/components/schemas/Gift' }
+        astha_as_of: { $ref: '#/components/schemas/Timestamp', description: '1.15.0. The `as_of` of every row of `astha_targets` in the bundle (the rows carry none, to save bytes): the newest memo ingest of the month in reach. Phone rule: add every local memo the server had not acknowledged by `meta.generated_at`.' }
+        astha_truncated: { type: boolean, description: '1.15.0. True when the user''s routes had more than 1,000 Astha rows for the month and the list was cut; the phone shows a notice and reads the rest with `listAsthaTargets`. Absent counts as false.' }
         astha_targets:
           type: array
-          maxItems: 20000
+          maxItems: 1000
           items: { $ref: '#/components/schemas/AsthaTargetRow' }
         gift_assignments:
           type: array

@@ -16,12 +16,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Size of the bundle's `programmes` section (lane portal-loyalty-api, train 3, push B; docs/04: "keep it compact, gzip it, delta refresh"). One SR route of 120 outlets,
- * three programmes (Astha, Diamond League, a campaign), 30 gifts and five ledger rows per outlet and programme. Two measurements through GET /v1/sync/bundle:
- *   realistic: 12 brands, so 120 outlets x 3 months x (12 brand rows + 1 memo row) = 4,680 target rows;
- *   worst case: 55 brands, so the section's 20,000-row cap is reached (120 x 3 x 56 = 20,160 rows asked for).
- * docs/04 sets no number for the bundle, so the assertions below are this lane's own bounds (stated in the status file), and the numbers go to
- * build/programmes-bundle-size.txt. gzip is measured here with the JDK's default level, as the server's Compression plugin would send it.
+ * Size of the bundle's `programmes` section (lane portal-loyalty-api, push B2; docs/04 budget set by the lead: the whole section at most 300 KB raw and 32 KB gzip for a
+ * 120-outlet SR). One SR route of 120 outlets, three programmes (Astha, Diamond League, a campaign), 30 gifts, five ledger rows per outlet and programme. The bundle carries the
+ * current month only, outlets enrolled in an active Astha programme only and no all-zero row; past 1,000 Astha rows it cuts loudly (`astha_truncated`). The numbers go to
+ * build/programmes-bundle-size.txt. gzip is the JDK's default level, as the server's Compression plugin would send it.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ProgrammesBundleSizeTest {
@@ -72,21 +70,26 @@ class ProgrammesBundleSizeTest {
                 exec("INSERT INTO app.gift (programme_id, code, name_en, name_bn, points_cost, tier_codes) SELECT $p, 'sz_gift_' || n, 'Size gift ' || n, 'উপহার ' || n, 100 * n, '{gold,silver}' FROM generate_series(1, 10) n")
             }
             exec("INSERT INTO app.gift_assignment (programme_id, quarter, outlet_id, route_id, gift_id, tier_code, chosen_at) SELECT $astha, '${com.aktcl.aron.backend.platform.AsthaQuarter.of(today, 1).label}', o.id, $route, (SELECT min(id) FROM app.gift WHERE programme_id = $astha), 'gold', now() FROM app.outlet o WHERE o.route_id = $route AND o.status = 'active'")
-            val months = com.aktcl.aron.backend.platform.AsthaQuarter.of(today, 1).months
+            val month = today.withDayOfMonth(1)   // the bundle carries the current month only
             fun targets(skip: Int, count: Int) {
-                for (m in months) {
-                    exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target, value_target_mtk) SELECT $astha, DATE '$m', $route, o.id, b.id, 100, 0, 250000 FROM app.outlet o, (SELECT id FROM app.product_node WHERE code LIKE 'SZB-%' ORDER BY id OFFSET $skip LIMIT $count) b WHERE o.route_id = $route AND o.status = 'active'")
-                }
+                exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target, value_target_mtk) SELECT $astha, DATE '$month', $route, o.id, b.id, 100, 0, 250000 FROM app.outlet o, (SELECT id FROM app.product_node WHERE code LIKE 'SZB-%' ORDER BY id OFFSET $skip LIMIT $count) b WHERE o.route_id = $route AND o.status = 'active'")
             }
-            for (m in months) exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) SELECT $astha, DATE '$m', $route, o.id, NULL, 0, 6 FROM app.outlet o WHERE o.route_id = $route AND o.status = 'active'")
+            exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) SELECT $astha, DATE '$month', $route, o.id, NULL, 0, 6 FROM app.outlet o WHERE o.route_id = $route AND o.status = 'active'")
+            // A previous-month row per outlet and an all-zero row per outlet: neither may reach the bundle.
+            exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) SELECT $astha, DATE '${month.minusMonths(1)}', $route, o.id, NULL, 0, 6 FROM app.outlet o WHERE o.route_id = $route AND o.status = 'active'")
+            exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) SELECT $astha, DATE '$month', $route, o.id, (SELECT id FROM app.product_node WHERE code = 'SZB-55'), 0, 0 FROM app.outlet o WHERE o.route_id = $route AND o.status = 'active'")
 
-            targets(0, 12); val realisticRows = measureNow("realistic (12 brands)")
-            targets(12, 43); val worstRows = measureNow("worst case (55 brands, 20,000-row cap)")
-            assertEquals(120 * 3 * 13, realisticRows.rows, "120 outlets x 3 months x (12 brands + the memo row)")
-            assertEquals(20_000, worstRows.rows, "the section caps the Astha rows at 20,000")
-            // This lane's own bounds (docs/04 has no number): a realistic route stays under 64 KB gzipped for the section, the cap under 256 KB (measured: 19 KB and 71 KB).
-            assertTrue(realisticRows.sectionGz < 64 * 1024, "realistic section gzip ${realisticRows.sectionGz} B")
-            assertTrue(worstRows.sectionGz < 256 * 1024, "worst-case section gzip ${worstRows.sectionGz} B")
+            // Realistic: 6 brands with a target per outlet (+ the memo-target row) for the month.
+            targets(0, 6); val realistic = measureNow("realistic (6 brands with targets, current month)")
+            assertEquals(120 * 7, realistic.rows, "120 outlets x (6 brands + the memo row); the previous-month and all-zero rows are cut")
+            // The lead's budget (docs/04): the whole programmes section at most 300 KB raw and 32 KB gzip for a 120-outlet SR.
+            assertTrue(realistic.sectionRaw <= 300 * 1024, "section raw ${realistic.sectionRaw} B over 300 KB")
+            assertTrue(realistic.sectionGz <= 32 * 1024, "section gzip ${realistic.sectionGz} B over 32 KB")
+            // Over the bound: 54 more brands would be 6,500+ rows. The builder cuts at 1,000 rows, loudly: the flag is true, never a silent cut.
+            targets(6, 48); val capped = measureNow("over the bound (54 brands with targets)")
+            assertEquals(BundleProgrammesBound, capped.rows); assertTrue(capped.truncated, "astha_truncated must be true")
+            assertTrue(!realistic.truncated)
+            assertTrue(capped.sectionRaw <= 300 * 1024 && capped.sectionGz <= 32 * 1024, "even cut at the bound the section stays in budget: ${capped.sectionRaw} B raw, ${capped.sectionGz} B gzip")
             // Equal content, equal version: with no memo arriving in between, a rebuild is the same bundle version (a wall-clock `as_of` in the target rows would make every
             // build a new snapshot and every delta non-empty).
             val v1 = json(bundleText())["meta"]!!.jsonObject["bundle_version"].toString(); val v2 = json(bundleText())["meta"]!!.jsonObject["bundle_version"].toString()
@@ -94,14 +97,16 @@ class ProgrammesBundleSizeTest {
         }
     }
 
-    private class Size(val rows: Int, val sectionRaw: Int, val sectionGz: Int, val restRaw: Int, val restGz: Int)
+    private val BundleProgrammesBound = com.aktcl.aron.backend.sync.BundleProgrammes.MAX_ASTHA_ROWS
+
+    private class Size(val rows: Int, val sectionRaw: Int, val sectionGz: Int, val restRaw: Int, val restGz: Int, val truncated: Boolean)
 
     private suspend fun io.ktor.client.HttpClient.measureNow(label: String): Size {
         val doc = json(bundleText())
         val section = doc["programmes"]!!.jsonObject
         val rest = kotlinx.serialization.json.JsonObject(doc.filterKeys { it != "programmes" }).toString()
         val rows = section["astha_targets"]!!.jsonArray.size
-        val size = Size(rows, section.toString().length, gz(section.toString()), rest.length, gz(rest))
+        val size = Size(rows, section.toString().length, gz(section.toString()), rest.length, gz(rest), section["astha_truncated"]?.toString() == "true")
         report.appendLine("$label: astha_targets=$rows loyalty=${section["loyalty"]!!.jsonArray.size} gifts=${section["gifts"]!!.jsonArray.size} assignments=${section["gift_assignments"]!!.jsonArray.size}; " +
             "programmes section raw ${size.sectionRaw} B, gzip ${size.sectionGz} B; rest of the bundle raw ${size.restRaw} B, gzip ${size.restGz} B; total gzip ${size.sectionGz + size.restGz} B (sum of the parts)")
         return size

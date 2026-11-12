@@ -19,6 +19,15 @@ import java.time.LocalDate
  * milli-taka sent as a STRING, STD figures are base units (sticks, pieces) as Decimal3 text. `null` when nothing is active in the caller's reach.
  */
 object BundleProgrammes {
+    private val log = org.slf4j.LoggerFactory.getLogger(BundleProgrammes::class.java)
+
+    /** Hard bound on the Astha rows one user's bundle carries (about 250 bytes a row raw); past it the section is cut LOUDLY: a warning in the log and `astha_truncated` true for the phone to show. */
+    const val MAX_ASTHA_ROWS = 1000
+
+    internal fun enrolledOutlets(h: Handle, programmeIds: List<Long>, outlets: List<Long>, date: LocalDate): List<Long> = h.createQuery(
+        "SELECT DISTINCT outlet_id FROM app.programme_enrolment WHERE programme_id = ANY(CAST(:pids AS bigint[])) AND outlet_id = ANY(CAST(:outlets AS bigint[])) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d) ORDER BY 1",
+    ).bind("d", date).bindArray("pids", Long::class.javaObjectType, programmeIds).bindArray("outlets", Long::class.javaObjectType, outlets).mapTo(Long::class.java).list()
+
     /** Which programme kinds the caller's flags show: the loyalty tiles (`cfg.flag.loyalty_ui`), Astha (`astha_ui`), Superstar (`superstar_ui`). */
     data class Flags(val loyalty: Boolean, val astha: Boolean, val superstar: Boolean) {
         fun kinds(): List<String> = buildList { if (loyalty) { add("diamond_league"); add("campaign") }; if (astha) add("astha"); if (superstar) add("superstar") }
@@ -37,7 +46,17 @@ object BundleProgrammes {
             put("programmes", JsonArray(programmes.map { it.third }))
             put("loyalty", JsonArray(loyalty(h, outlets, ids, date, date.minusDays(1))))
             put("gifts", JsonArray(gifts(h, ids)))
-            put("astha_targets", JsonArray(if (asthaIds.isEmpty()) emptyList() else asthaTargets(h, routeIds, outlets, q, contentAsOf(h, outlets, q))))
+            val month = date.withDayOfMonth(1); val after = month.plusMonths(1)
+            // The cut (lead ruling, push B2): only the CURRENT month (earlier months are the online read), only outlets enrolled in an active Astha programme, no all-zero row.
+            val enrolled = if (asthaIds.isEmpty()) emptyList() else enrolledOutlets(h, asthaIds, outlets, date)
+            val asOf = if (enrolled.isEmpty()) month.atStartOfDay(java.time.ZoneOffset.UTC).toInstant() else contentAsOf(h, enrolled, month, after)
+            // One `astha_as_of` for the section instead of one `as_of` per row (about 30 bytes x up to 1,000 rows).
+            val rows = if (enrolled.isEmpty()) emptyList() else asthaTargets(h, routeIds, enrolled, month, after, asOf, MAX_ASTHA_ROWS + 1, 0, dropEmpty = true, perRowAsOf = false)
+            put("astha_as_of", asOf.toString())
+            val truncated = rows.size > MAX_ASTHA_ROWS
+            if (truncated) log.warn("bundle programmes section: more than {} Astha rows for the user's routes; sent the first {} and set astha_truncated", MAX_ASTHA_ROWS, MAX_ASTHA_ROWS)
+            put("astha_targets", JsonArray(rows.take(MAX_ASTHA_ROWS)))
+            put("astha_truncated", truncated)
             put("gift_assignments", JsonArray(if (asthaIds.isEmpty()) emptyList() else giftAssignments(h, asthaIds, outlets, q)))
             put("pending_gift_verifications", JsonArray(emptyList()))
         }
@@ -123,8 +142,7 @@ object BundleProgrammes {
      * content gives equal bytes and a rebuild moves the bundle version only when a memo arrived (a wall-clock `as_of` would mint a new snapshot on every build). The
      * quarter's first instant when there is none. The phone adds every memo it holds that the server had not acknowledged by the bundle's `meta.generated_at`.
      */
-    internal fun contentAsOf(h: Handle, outlets: List<Long>, q: AsthaQuarter): Instant {
-        val first = q.months.first(); val after = q.months.last().plusMonths(1)
+    internal fun contentAsOf(h: Handle, outlets: List<Long>, first: LocalDate, after: LocalDate): Instant {
         return h.createQuery(
             "SELECT max(GREATEST(received_at, status_changed_at)) FROM app.memo WHERE business_date >= :first AND business_date < :after AND outlet_id = ANY(CAST(:outlets AS bigint[]))",
         ).bind("first", first).bind("after", after).bindArray("outlets", Long::class.javaObjectType, outlets)
@@ -137,8 +155,11 @@ object BundleProgrammes {
      * memos `active` and not voided only (a superseded memo is replaced by its editing memo). The brand-NULL row is the memo target: achievement is the
      * count of active sale memos of the outlet in the month.
      */
-    internal fun asthaTargets(h: Handle, routeIds: List<Long>, outlets: List<Long>, q: AsthaQuarter, asOf: Instant, limit: Int = 20000, offset: Int = 0): List<JsonObject> {
-        val first = q.months.first(); val after = q.months.last().plusMonths(1)
+    fun asthaTargets(h: Handle, routeIds: List<Long>, outlets: List<Long>, q: AsthaQuarter, asOf: Instant, limit: Int = 20000, offset: Int = 0): List<JsonObject> =
+        asthaTargets(h, routeIds, outlets, q.months.first(), q.months.last().plusMonths(1), asOf, limit, offset, dropEmpty = false)
+
+    /** The rows of the months in [first, after); [dropEmpty] leaves out a row whose targets and achievements are all zero (the bundle's cut). */
+    internal fun asthaTargets(h: Handle, routeIds: List<Long>, outlets: List<Long>, first: LocalDate, after: LocalDate, asOf: Instant, limit: Int, offset: Int, dropEmpty: Boolean, perRowAsOf: Boolean = true): List<JsonObject> {
         return h.createQuery(
             """
             WITH t AS (
@@ -169,10 +190,11 @@ object BundleProgrammes {
             FROM t
             LEFT JOIN sales s ON t.brand_id IS NOT NULL AND s.outlet_id = t.outlet_id AND s.month = t.month AND s.brand_id = t.brand_id
             LEFT JOIN memos mm ON t.brand_id IS NULL AND mm.outlet_id = t.outlet_id AND mm.month = t.month
+            WHERE (NOT CAST(:dropEmpty AS boolean) OR t.std_target > 0 OR t.memo_target > 0 OR t.value_target_mtk > 0 OR COALESCE(s.std, 0) > 0 OR COALESCE(s.value_mtk, 0) > 0 OR COALESCE(mm.n, 0) > 0)
             ORDER BY t.month, t.route_id, t.outlet_id NULLS FIRST, t.brand_id NULLS FIRST
             LIMIT :limit OFFSET :offset
             """.trimIndent(),
-        ).bind("limit", limit).bind("offset", offset).bind("first", first).bind("after", after).bindArray("routes", Long::class.javaObjectType, routeIds).bindArray("outlets", Long::class.javaObjectType, outlets).map { rs, _ ->
+        ).bind("limit", limit).bind("offset", offset).bind("dropEmpty", dropEmpty).bind("first", first).bind("after", after).bindArray("routes", Long::class.javaObjectType, routeIds).bindArray("outlets", Long::class.javaObjectType, outlets).map { rs, _ ->
             buildJsonObject {
                 put("route_id", rs.getLong("route_id")); put("outlet_id", rs.getObject("outlet_id")?.let { (it as Number).toLong() })
                 put("brand_id", rs.getObject("brand_id")?.let { (it as Number).toLong() })
@@ -181,7 +203,7 @@ object BundleProgrammes {
                 put("memo_target", rs.getInt("memo_target")); put("memo_achieved", rs.getInt("memo_achieved"))
                 put("value_target_mtk", rs.getLong("value_target_mtk").toString()); put("value_achieved_mtk", rs.getLong("value_achieved").toString())
                 put("by_pack", if (rs.getObject("brand_id") == null) JsonArray(emptyList()) else Json.parseToJsonElement(rs.getString("packs")))
-                put("as_of", asOf.toString())
+                if (perRowAsOf) put("as_of", asOf.toString())
             }
         }.list()
     }

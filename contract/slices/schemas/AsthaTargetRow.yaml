@@ -51,9 +51,9 @@ AsthaTargetRow:
         `as_of`, keyed by memo_uuid, recomputed from scratch after each bundle.'
     as_of:
       $ref: '#/components/schemas/Timestamp'
-      description: 'UTC instant of the newest memo the achievement figures (std, memo and value) include: in the
-        bundle the newest memo ingest of the quarter in reach (not the build time, so equal content has equal bytes);
-        in `listAsthaTargets` the instant of the read.'
+      description: 'Absent in the bundle (see `ProgrammesSection.astha_as_of`). UTC instant of the newest memo the
+        achievement figures (std, memo and value) include: in the bundle the newest memo ingest of the quarter in
+        reach (not the build time, so equal content has equal bytes); in `listAsthaTargets` the instant of the read.'
     by_pack:
       type: array
       maxItems: 6
