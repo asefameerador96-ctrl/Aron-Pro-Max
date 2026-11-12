@@ -2942,3 +2942,6 @@
 
 ### 2026-11-12 12:11 UTC — S2 merged head under the merge gate
 - S2 `859deafe0` (INT 12f56c8bb then 3d2340b3a merged; records; guards; ProgrammeFlags; default-flags golden): static gate clean incl. scans (DECISIONS 429; goldens: nine home_* modified + home_bn_default_flags added; lane ci 43215411048 running). Opus merge gate launched (merge resolution; delta code and records), worktree wt-s2. Trial merge on train 104 conflicts only in DECISIONS.md and feature-home strings (S6): one more lane-side merge after train 104 lands.
+
+### 2026-11-12 12:12 UTC — train 103 LANDED
+- INT `3d2340b3a` ci #2054 43213228309 success (11 jobs: 5 ok, 6 skipped by path). APK of record: **aron-release-signed-dev-2054**, 41,794,740 bytes (S1 + S3 + S4 + S5 first rounds; not walked on a device). The first train 104 run (840b3fb89) shows cancelled: superseded by my rebuild with S6.
