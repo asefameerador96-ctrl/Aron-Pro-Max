@@ -3140,3 +3140,7 @@
 
 ### 2026-11-12 22:50 UTC — lane check (2-hourly)
 - INT f9708b594 (train 109) deployed, health build f9708b594 (22:39), Flyway v0175 proven. Train 110 (c767d7d0d) CI re-run in progress; GO when green. SV3 (opened 21:35): push A bd03ed6d up, not yet "checked" (inside 90 minutes). L-A3: push A in train 110; push B started, rulings on its 1.15 request sent 22:47 (by_pack achievement only, V0180/V0181 working numbers); it reports a high token count and will hand over before 400 k. Integrator 24 idle. Nothing for the owner.
+
+### 2026-11-12 23:16 UTC — train 110 on INT; fixture gain confirmed with V0173..V0175 included
+- Train 110 run 43314877127 attempt 2 on c767d7d0d: success, 12 of 12. Job minutes: Shared/db/backend 6.0 (train 109 INT run: 42.1), Backend app tests 12.2 (32.0), analytics a 4.4 (23.4), b 4.6 (26.7), Android 5.7, release APKs 7.5, web 29.7 (e2e, untouched). GO sent 23:10; integrator 24 pushed INT `55fe9e15b` at 23:11 (DECISIONS 453, 0 lost, no migration, contract 1.14.0); ci 43326574914 (#2102) running.
+- L-A3 reported push B part 1 (40a48df6f: contract 1.15.0, V0180, bundle programmes section) and a high token count; archived at 378 k; L-A4 opened to finish push B before I gate it (bundle size not measured, harness entries and three reads missing). Rulings recorded for D-LEAD-CONTRACT-115-01 (line to be written at the gate).
