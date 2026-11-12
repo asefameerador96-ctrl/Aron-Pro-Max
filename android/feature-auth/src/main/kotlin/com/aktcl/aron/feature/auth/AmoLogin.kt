@@ -128,7 +128,7 @@ fun AmoLoginContent(
 
 /** A label above a grey rounded box with a thin outline (red when [error]); the tag goes on the editable node, [label] is its accessible name. */
 @Composable
-private fun AmoLoginField(
+internal fun AmoLoginField(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,
@@ -140,6 +140,8 @@ private fun AmoLoginField(
     onImeAction: (() -> Unit)? = null,
     password: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
+    /** The SR login (manual screenshot 03): the thin outline is the red-to-purple bar ramp instead of plain purple. */
+    gradientOutline: Boolean = false,
 ) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(12.dp)
@@ -156,7 +158,7 @@ private fun AmoLoginField(
             decorationBox = { inner ->
                 Row(
                     Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(shape).background(look.page)
-                        .border(BorderStroke(1.5.dp, if (error) look.red else look.purple), shape).padding(horizontal = 16.dp),
+                        .border(if (error) BorderStroke(1.5.dp, look.red) else if (gradientOutline) BorderStroke(1.5.dp, look.barBrush()) else BorderStroke(1.5.dp, look.purple), shape).padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(Modifier.weight(1f)) { inner() }

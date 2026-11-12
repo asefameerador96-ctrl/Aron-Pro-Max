@@ -73,6 +73,18 @@
     <string name="update_amo_updating">Updating the app</string>
     <string name="update_amo_version">Version %1$s available</string>
     <string name="update_amo_download">Download App &amp; Install</string>
+    <!-- the SR app's update page (SR manual screenshots 06 and 07, SRM-A-09/10): the screenshots show these words in English (the status word in
+         Bangla) on every phone, so they are the same in both languages (rule 14a, D-SR-MAN-S1-10); values only, never translated -->
+    <string name="update_sr_ribbon" translatable="false">NEW UPDATE</string>
+    <string name="update_sr_heading" translatable="false">Update Available</string>
+    <string name="update_sr_version" translatable="false">Version %1$s available</string>
+    <string name="update_sr_download" translatable="false">Download App &amp; Install</string>
+    <string name="update_sr_network_status" translatable="false">Network Status</string>
+    <string name="update_sr_online" translatable="false">অনলাইন</string>
+    <string name="update_sr_offline" translatable="false">অফলাইন</string>
+    <string name="update_sr_downloading" translatable="false">Downloading %1$s%%</string>
+    <string name="update_sr_completed" translatable="false">Download completed</string>
+    <string name="update_sr_do_not_close" translatable="false">Please do not close the app while downloading</string>
     <string name="support_done_title">Success</string>
     <string name="support_done_message">The data file has been sent.</string>
     <string name="support_done_ok">OK</string>

@@ -149,7 +149,8 @@ class MainActivity : ComponentActivity() {
                         ) { onEnrol ->
                             // The bind step (OTP from /device-otp) follows the first login of an enrolled phone.
                             val vm = viewModel { LoginViewModel(components.session::login).also { it.bind = components.session::bindDevice } }
-                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol)
+                            // SR manual 03/04 (D-SR-MAN-S1-01): the manual login and OTP; the footer shows the version name only ("SR App (version - x)")
+                            LoginScreen(vm, stringResource(R.string.app_name), BuildConfig.VERSION_NAME, onLanguageSelect, onEnrol, variant = com.aktcl.aron.feature.auth.LoginVariant.Sr)
                         }
                         is SessionState.Active -> {
                             val holder = viewModel(key = "sr-day-" + s.user.userId) { SrDayHolder() }.also { dayHolder = it }
@@ -172,13 +173,14 @@ class MainActivity : ComponentActivity() {
                             LaunchedEffect(s.user.userId) { sunlight = sunlightPref.enabled }
                             // F-SYS-020: an open day (checked in, not submitted) is never interrupted by a required update.
                             // F-SYS-075: the location notice before anything else of the day (no sale before acceptance when required).
-                            day?.let { d -> com.aktcl.aron.feature.auth.LocationNoticeGate(
+                            day?.let { d -> SrLocationGates(notice = { inner -> com.aktcl.aron.feature.auth.LocationNoticeGate(
                                 key = s.user.userId,
                                 load = { locationNotice.state(s.user.userId).let { com.aktcl.aron.feature.auth.NoticeNeed(it.needed, it.required) } },
                                 accept = { shownAt -> locationNotice.accept(s.user.userId, language.tag, shownAt) },
                                 nowMs = components.trustedClock::nowMs,
                                 onLogout = { srLogout(s.user.userId) },
-                            ) { UpdateHost(updateShell, dayOpen = { d.dayOpen() }, serverSaidTooOld = s.updateRequired, onLogout = { srLogout(s.user.userId) }) {
+                                content = inner,
+                            ) }) { UpdateHost(updateShell, dayOpen = { d.dayOpen() }, serverSaidTooOld = s.updateRequired, onLogout = { srLogout(s.user.userId) }) {
                                 SrApp(
                                     day = d,
                                     user = HomeUser(

@@ -42,6 +42,17 @@ object SrPermissions {
                     else -> PermissionStatus.DENIED_PERMANENTLY
                 }
             },
+            // SR manual 05: the camera prompt appears when the camera first opens (core-system PermissionGate), not in the first-run list
+            deferred = setOf(AppPermission.CAMERA),
         )
     }
+}
+
+/**
+ * The first system prompt after login (SR manual 03, SRM-A-04): precise location is asked at once, before the location notice and the
+ * permission list. [firstAskNeeded] is pure: asked only when precise location is not granted and was never asked (a denial is then
+ * handled by the usual gates, which explain and offer the app's settings page).
+ */
+object FirstLocationAsk {
+    fun firstAskNeeded(fineGranted: Boolean, alreadyAsked: Boolean): Boolean = !fineGranted && !alreadyAsked
 }

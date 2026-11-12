@@ -33,6 +33,7 @@ class TsoNavTest {
                 "DASHBOARD", "LOGIN_SUBMIT_STATUS", "NOTIFICATIONS", "SETTINGS", "CHANGE_PASSWORD", "SUPPORT_UPLOAD",
                 "TICKET_DASHBOARD", "TICKET_LIST", "TICKET_QUICK", "TICKET_CREATE", "TICKET_DETAIL", "LEAVE", "FINAL_SUBMIT", "MY_TEAM", "RETAILER",
                 "MY_VISIT_PLAN", "SET_PLAN", "TARGET_STATUS", "TARGET_DETAILS", "FEEDBACK_NEW", "FEEDBACK_LIST",
+                "DEVICE_OTP", // SR manual 04 (D-SR-MAN-S1-05): appended after the contract list, reached from Settings
             ),
             TsoScreen.entries.map { it.name },
         )
