@@ -2926,3 +2926,7 @@
 ### 2026-11-12 11:56 UTC — train 103 on INT
 - Integrator 24: train 102 landed (deploy #340 skipped: "nothing deployable changed"; health ce9d92bf7); train 103 pushed: INT `3d2340b3a` (DECISIONS 426, 0 lost lines), ci #2054 43213228309 running.
 - Trial merges on the new INT: S5 9086c180b merges with no conflict at all; S6 14071b794 conflicts only in core-system values/strings.xml (told to merge). S3 and S2 told to merge 3d2340b3a.
+
+### 2026-11-12 11:59 UTC — S6 merge gate: code PASS, records and goldens to finish; spelling ruling applied to S5
+- S6 `14071b794` merge gate wfinnp9dh (8 agents): merge resolution and code PASS (INT whole; no duplicate keys; no S3/S4/S5 value changed). To finish in its INT 3d2340b3a merge push: records ("কারণ kept" is false after the merge; stale line about sale_submit_plain), re-record four memo goldens that draw its changed keys (two of its re-records were under the 0.2% threshold, so "a stale golden would fail" does not hold), PREFETCH_STORED mapped to ALREADY_CURRENT. wt-s6 removed.
+- Ruling applied: S5's edit_reason_dialog_title (on INT since train 100) carries the vendor misspelling "কারন"; standing ruling D-TSO-PARITY-SPELLING-01 says "কারণ". S5 told to correct its key in its next push (with the INT merge). My S5 review missed it; the manual-conformity lens accepted the manual's own spelling.
