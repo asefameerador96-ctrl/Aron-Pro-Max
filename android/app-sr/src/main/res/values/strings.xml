@@ -71,4 +71,5 @@
     <string name="sr_content_av">AV</string>
     <string name="sr_content_close_x">× Close</string>
     <string name="sr_glyph_dropdown">▾</string>
+    <string name="sr_journey_load_failed">Could not load the Sales Journey</string>
 </resources>

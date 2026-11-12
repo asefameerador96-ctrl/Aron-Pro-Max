@@ -48,6 +48,8 @@ data class OutletRequestForm(
 enum class RequestError {
     DUES_BLOCK_CLOSE, OUTLET_REQUIRED, NAME_INVALID, OWNER_INVALID, MOBILE_INVALID, CLUSTER_REQUIRED, CLUSTER_UNCHANGED, REASON_REQUIRED,
     GEO_REQUIRED, PHOTO_REQUIRED, CONFIRMATION_REQUIRED, NOTE_TOO_LONG, TOO_MANY_PHOTOS, POINT_TOO_FAR, MOCK_FIX, MOVE_TOO_FAR,
+    /** The save itself failed (a database error), not the form: never produced by [OutletRequests.validate]. */
+    SAVE_FAILED,
 }
 
 /** The request as committed: the proposed facts in contract shape (mobile is always the normalised 11 digits). */
@@ -78,6 +80,12 @@ sealed interface RequestValidation {
 /** Commits the request and its outbox record in one transaction; works offline (REQUEST: docs/requests/android-sr-a-outlet-request-capture.md). */
 fun interface OutletRequestCommitter {
     suspend fun commit(draft: OutletRequestDraft)
+
+    /**
+     * Commits [drafts] together. The default commits them one by one; a committer that can (the SR's Room one) overrides it to write them
+     * all in ONE transaction, so a failure of a later one leaves none of them behind.
+     */
+    suspend fun commitAll(drafts: List<OutletRequestDraft>) { drafts.forEach { commit(it) } }
 }
 
 /** Outlet request forms: pure validation plus an offline save. */
@@ -112,6 +120,8 @@ class OutletRequests(
         }
         if (k == OutletRequestKind.CLOSE && f.openDueMtk > 0 && closeBlockIfDues()) e += RequestError.DUES_BLOCK_CLOSE
         if (k == OutletRequestKind.ROUTE_ADD && f.note.isNullOrBlank()) e += RequestError.REASON_REQUIRED
+        // SRM-B-42: the approval of a route_add reads /proposed/cluster_id, so a request without one could be verified but never approved
+        if (k == OutletRequestKind.ROUTE_ADD && f.clusterId == null) e += RequestError.CLUSTER_REQUIRED
         if (k.needsGeoPhoto) {
             if (f.fix == null || !f.fix.isOk) e += RequestError.GEO_REQUIRED
             if (f.photoUuids.isEmpty()) e += RequestError.PHOTO_REQUIRED
@@ -141,6 +151,19 @@ class OutletRequests(
         val v = validate(f)
         if (v is RequestValidation.Ok) committer.commit(v.draft)
         return v
+    }
+
+    /**
+     * Two requests of one save (change information plus its cluster change, SRM-B-40): BOTH are validated first (any error of either is
+     * returned and nothing is written), then both are committed together by [OutletRequestCommitter.commitAll].
+     */
+    suspend fun submitPair(first: OutletRequestForm, second: OutletRequestForm): RequestValidation {
+        val a = validate(first)
+        val b = validate(second)
+        if (a is RequestValidation.Invalid) return a
+        if (b is RequestValidation.Invalid) return b
+        committer.commitAll(listOf((a as RequestValidation.Ok).draft, (b as RequestValidation.Ok).draft))
+        return a
     }
 
     companion object { const val DEFAULT_UPDATE_BASE_MAX_M = 100; const val DEFAULT_UPDATE_BASE_MAX_MOVE_M = 1000 }

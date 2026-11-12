@@ -42,7 +42,10 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.background
@@ -124,6 +127,13 @@ fun TaskContent(
     state: TaskListState, onResolve: (String) -> Unit, modifier: Modifier = Modifier, onMyRequests: (() -> Unit)? = null, nowMs: Long = System.currentTimeMillis(),
     // tso-manual A3 (D-TSO-MAN-35, XA-01): the task type's label from the bundle code list `task_type`, never the code
     typeLabels: Map<String, TaskTypeLabel> = TaskTypeLabels.current,
+    /**
+     * The SR manual's card and gesture (SRM-B-47, 48; screenshot 47): one list (ongoing first, completed below), the type in red with the
+     * status at the top right, the outlet name, the description and "Completion on: date"; a swipe reveals a red "Resolve" panel and the
+     * resolve is confirmed before it is queued, so a sideways scroll can never resolve a task. The SR host is the only production caller;
+     * the earlier card stays the default only because its tests and goldens (and the AMO/TSO task lists, which have their own screens) exist.
+     */
+    manual: Boolean = false,
 ) {
     val open = state.items.filter { it.status == ONGOING }
     val done = state.items.filter { it.status != ONGOING }
@@ -137,6 +147,8 @@ fun TaskContent(
         Column(Modifier.weight(1f).fillMaxWidth()) {
             if (state.showEmptyState) {
                 EmptyTasks(stringResource(R.string.tsk_empty), synced.takeIf { stale }, Modifier.testTag(TaskTags.EMPTY))
+            } else if (manual) {
+                ManualTaskList(open + done, onResolve, typeLabels, Modifier.weight(1f))
             } else {
                 AronTabs(
                     listOf(
@@ -280,3 +292,103 @@ internal fun dhakaStamp(iso: String): String = runCatching {
     val local = java.time.Instant.parse(iso).plusSeconds(6 * 3600L).atOffset(java.time.ZoneOffset.UTC)
     java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", java.util.Locale.ROOT).format(local)
 }.getOrDefault(iso.take(16).replace('T', ' '))
+
+
+private val OrangeStatus = Color(0xFFE07B00)
+private val RedType = Color(0xFFC8423F)
+
+/** The one list of the manual's task screen: every task a white card, the ongoing ones swipe-to-resolve with a confirmation. */
+@Composable
+private fun ManualTaskList(items: List<TaskItem>, onResolve: (String) -> Unit, typeLabels: Map<String, TaskTypeLabel>, modifier: Modifier = Modifier) {
+    var asking by rememberSaveable { mutableStateOf<String?>(null) }
+    val resolveTitle = stringResource(R.string.tsk_resolve_confirm_title)
+    val resolveText = stringResource(R.string.tsk_resolve)
+    val cancelText = stringResource(R.string.tsk_cancel)
+    LazyColumn(
+        modifier.fillMaxWidth().testTag(TaskTags.LIST),
+        contentPadding = PaddingValues(start = AronTokens.Space.Screen, end = AronTokens.Space.Screen, top = AronTokens.Space.M, bottom = AronTokens.Space.L),
+        verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+    ) {
+        itemsIndexed(items, key = { _, t -> t.taskUuid }) { _, t ->
+            if (t.status == ONGOING) ManualSwipe({ asking = t.taskUuid }, Modifier.testTag(TaskTags.item(t.taskUuid))) { ManualTaskCard(t, typeLabels, onResolveTap = { asking = t.taskUuid }) }
+            else ManualTaskCard(t, typeLabels, null, Modifier.testTag(TaskTags.item(t.taskUuid)))
+        }
+    }
+    val pick = asking?.let { id -> items.firstOrNull { it.taskUuid == id } }
+    if (pick != null) {
+        com.aktcl.aron.core.ui.aron.AronDialog(
+            resolveTitle, pick.title, resolveText,
+            // read the state at tap time: a second tap on the same dialog (it is still drawn for a frame) finds it null and resolves nothing
+            onConfirm = { val id = asking; asking = null; if (id != null) onResolve(id) }, onDismiss = { asking = null }, dismissText = cancelText,
+        )
+    }
+}
+
+/** Swipe start to end reveals the red "Resolve" panel; the swipe itself resolves nothing, it asks ([onAsk]) and the card springs back. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ManualSwipe(onAsk: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val haptic = LocalHapticFeedback.current
+    var armed by remember { mutableStateOf(true) }
+    val box = rememberSwipeToDismissBoxState(
+        confirmValueChange = { v ->
+            if (v == SwipeToDismissBoxValue.StartToEnd && armed) { armed = false; haptic.performHapticFeedback(HapticFeedbackType.Confirm); onAsk() }
+            false
+        },
+        positionalThreshold = { it * SWIPE_RESOLVE_FRACTION },
+    )
+    LaunchedEffect(box.targetValue) { if (box.targetValue == SwipeToDismissBoxValue.Settled) armed = true }
+    val label = stringResource(R.string.tsk_swipe_resolve)
+    SwipeToDismissBox(
+        state = box, modifier = modifier, enableDismissFromEndToStart = false,
+        backgroundContent = {
+            Box(
+                Modifier.fillMaxSize().drawBehind { drawRoundRect(Color(0xFFD32F2F), cornerRadius = CornerRadius(AronTokens.Radius.Card.toPx())) }.padding(horizontal = AronTokens.Space.L),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                    Icon(AronIcons.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(AronTokens.Size.Icon))
+                    Text(label, style = MaterialTheme.typography.labelLarge, color = Color.White)
+                }
+            }
+        },
+        content = { content() },
+    )
+}
+
+/** The manual's card (screenshot 47): red type left, orange status right, outlet, description, flag and "Completion on: date". */
+@Composable
+private fun ManualTaskCard(t: TaskItem, typeLabels: Map<String, TaskTypeLabel>, onResolveTap: (() -> Unit)? = null, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    val ongoing = t.status == ONGOING
+    val bangla = com.aktcl.aron.core.ui.LocalAppLanguage.current == com.aktcl.aron.core.common.AppLanguage.BN
+    val resolveLabel = stringResource(R.string.tsk_resolve)
+    Column(
+        modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card).padding(AronTokens.Space.L)
+            // TalkBack cannot swipe: the same confirmed resolve is one custom action away
+            .then(if (onResolveTap != null) Modifier.semantics { customActions = listOf(CustomAccessibilityAction(resolveLabel) { onResolveTap(); true }) } else Modifier),
+        verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
+    ) {
+        // screenshot 47: the type in red on its own line; the outlet name with the orange status at its right
+        Text(
+            typeLabels[t.taskTypeCode]?.text(bangla) ?: t.taskTypeCode.uppercase(java.util.Locale.ROOT),
+            Modifier.fillMaxWidth().testTag(TaskTags.type(t.taskUuid)), style = MaterialTheme.typography.titleSmall, color = RedType, maxLines = 2, overflow = TextOverflow.Ellipsis,
+        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(t.outletName.orEmpty(), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = look.ink)
+            Text(stringResource(if (ongoing) R.string.tsk_status_ongoing else R.string.tsk_status_completed), style = MaterialTheme.typography.labelLarge, color = OrangeStatus, maxLines = 1)
+        }
+        t.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = look.ink, maxLines = 4, overflow = TextOverflow.Ellipsis) }
+        // Latin ISO digits in both languages, as screenshot 47
+        t.dueDate?.let { MetaLine(AronIcons.Flag, stringResource(R.string.tsk_completion_on, it)) }
+        if (onResolveTap != null) {
+            // secondary on purpose: the card's main action is the swipe; this is the one-tap alternative and also asks first
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Text(
+                    resolveLabel, style = MaterialTheme.typography.labelLarge, color = look.purple,
+                    modifier = Modifier.heightIn(min = AronLook.Touch).testTag(TaskTags.resolve(t.taskUuid)).clickable(role = Role.Button, onClick = onResolveTap).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.S),
+                )
+            }
+        }
+    }
+}
