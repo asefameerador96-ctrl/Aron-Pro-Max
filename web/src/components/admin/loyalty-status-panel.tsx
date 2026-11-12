@@ -7,7 +7,7 @@ import { useI18n } from "@/components/i18n-provider";
 import { Banner } from "@/components/kit/banner";
 import { Button } from "@/components/kit/button";
 import type { Problem } from "@/contract/types";
-import { nextAttempt, REASON_MIN } from "@/lib/admin/loyalty";
+import { failureKey, nextAttempt, REASON_MIN } from "@/lib/admin/loyalty";
 import { ReasonField } from "./kit/reason-field";
 
 export function LoyaltyStatusPanel({ programmeId, moves, pastEnd, superOnlyNote }: { programmeId: number; moves: ("active" | "inactive")[]; pastEnd: boolean; superOnlyNote: boolean }) {
@@ -44,7 +44,8 @@ export function LoyaltyStatusPanel({ programmeId, moves, pastEnd, superOnlyNote 
         router.refresh();
         return;
       }
-      setBanner({ tone: "danger", text: problem(data.code) });
+      const key = failureKey(res.status, data.code, undefined, "status");
+      setBanner({ tone: "danger", text: key ? t(key) : problem(data.code) });
     } catch {
       setBanner({ tone: "danger", text: t("error.network") });
     } finally {

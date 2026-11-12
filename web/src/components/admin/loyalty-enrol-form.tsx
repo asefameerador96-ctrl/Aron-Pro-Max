@@ -8,7 +8,7 @@ import { Banner } from "@/components/kit/banner";
 import { Button } from "@/components/kit/button";
 import type { Problem } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
-import { emptyEnrolForm, nextAttempt, validateEnrol, type EnrolForm, type FieldError, type Tier } from "@/lib/admin/loyalty";
+import { emptyEnrolForm, failureKey, fieldErrorsOf, unplacedText, nextAttempt, validateEnrol, type EnrolForm, type FieldError, type Tier } from "@/lib/admin/loyalty";
 import { tierName } from "@/lib/admin/loyalty-view";
 import { Field, inputClass } from "./kit/field";
 import { ReasonField } from "./kit/reason-field";
@@ -45,7 +45,11 @@ export function LoyaltyEnrolForm({ programmeId, tiers }: { programmeId: number; 
         router.refresh();
         return;
       }
-      setBanner({ tone: "danger", text: problem(data.code) });
+      const errs = data.errors as { pointer: string; code: string }[] | undefined;
+      const { byField, rest: unplaced } = fieldErrorsOf(errs, "enrol");
+      setErrors(Object.fromEntries(Object.entries(byField).map(([f, c]) => [f, t(`loy.err.${c}` as MessageKey)])));
+      const key = failureKey(res.status, data.code, errs, "enrol");
+      setBanner({ tone: "danger", text: key ? t(key) : unplaced.length > 0 ? unplacedText(unplaced, (c) => t(`loy.err.${c}` as MessageKey)) : problem(data.code) });
     } catch {
       setBanner({ tone: "danger", text: t("error.network") });
     } finally {
@@ -76,7 +80,7 @@ export function LoyaltyEnrolForm({ programmeId, tiers }: { programmeId: number; 
         <Field label={t("loy.enrol.from")} htmlFor="le-from" required error={errors.valid_from}>
           <input id="le-from" type="date" value={f.valid_from} onChange={(ev) => set("valid_from", ev.target.value)} className={inputClass} />
         </Field>
-        <Field label={t("loy.enrol.to")} htmlFor="le-to" error={errors.valid_to}>
+        <Field label={t("loy.enrol.to")} htmlFor="le-to" hint={t("loy.enrol.to_hint")} error={errors.valid_to}>
           <input id="le-to" type="date" value={f.valid_to} onChange={(ev) => set("valid_to", ev.target.value)} className={inputClass} />
         </Field>
       </div>

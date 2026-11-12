@@ -333,6 +333,40 @@ class ContractConformanceTest {
                 }, capture = { _, b, x -> x["offer_row"] = b.path("version").asText() }),
             "POST /v1/admin/offers/{}/status" to Fx(after = listOf("PATCH /v1/admin/offers/{}"), path = { _, x -> mapOf("id" to x.need("offer_id")) },
                 body = { n, _, _ -> n.removeAll(); n.put("request_uuid", java.util.UUID.randomUUID().toString()); n.put("to_status", "active"); n.put("reason", "conformance check activation") }),
+            // Loyalty portal (D-LOY-API-05): a programme draft is created, read, changed (row version as If-Match), enrolled into, activated by the SUPERADMIN; a gift is
+            // added, read and changed (SUPERADMIN only). Every body is explicit: a generated one names tiers or members the closed schemas refuse.
+            "POST /v1/admin/programmes" to Fx(body = { n, c, _ ->
+                n.removeAll()
+                n.put("request_uuid", java.util.UUID.randomUUID().toString()); n.put("kind", "astha"); n.put("code", "QA-LOY-${c.user}-${java.util.UUID.randomUUID().toString().take(6)}")
+                n.put("name_en", "QA programme"); n.put("active_from", FUTURE); n.put("active_to", java.time.LocalDate.parse(FUTURE).plusDays(30).toString())
+                n.putArray("tiers").addObject().put("tier_code", "silver").put("sort_order", 1).put("label_en", "Silver").put("threshold", "100")
+                n.putArray("qualifying"); n.putArray("scope"); n.put("change_reason", "conformance check programme")
+            }, capture = { _, b, x -> if (x["programme_id"] == null) { x["programme_id"] = b.path("programme_id").asText(); x["programme_row"] = b.path("version").asText() } }),
+            "GET /v1/admin/programmes/{}" to Fx(after = listOf("POST /v1/admin/programmes"), path = { _, x -> mapOf("id" to x.need("programme_id")) }),
+            "GET /v1/admin/programmes/{}/versions" to Fx(after = listOf("POST /v1/admin/programmes"), path = { _, x -> mapOf("id" to x.need("programme_id")) }),
+            "PATCH /v1/admin/programmes/{}" to Fx(after = listOf("POST /v1/admin/programmes"), path = { _, x -> mapOf("id" to x.need("programme_id")) },
+                headers = { _, x -> mapOf("If-Match" to "\"${x.need("programme_row")}\"") },
+                body = { n, _, _ -> n.removeAll(); n.put("request_uuid", java.util.UUID.randomUUID().toString()); n.put("name_en", "QA programme renamed"); n.put("change_reason", "conformance check change") },
+                capture = { _, b, x -> x["programme_row"] = b.path("version").asText() }),
+            "PUT /v1/admin/programmes/{}/enrolments" to Fx(after = listOf("PATCH /v1/admin/programmes/{}"), path = { _, x -> mapOf("id" to x.need("programme_id")) },
+                body = { n, _, x ->
+                    val outlet = x.world.fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT min(id) FROM app.outlet").mapTo(Long::class.java).one() }
+                    n.removeAll(); n.put("batch_uuid", java.util.UUID.randomUUID().toString()); n.put("change_reason", "conformance check enrolment")
+                    n.putArray("rows").addObject().put("programme_id", x.need("programme_id").toLong()).put("outlet_id", outlet).put("tier_code", "silver").put("base_target", "100").put("valid_from", FUTURE)
+                }),
+            "GET /v1/admin/programmes/{}/enrolments" to Fx(after = listOf("PUT /v1/admin/programmes/{}/enrolments"), path = { _, x -> mapOf("id" to x.need("programme_id")) }),
+            "POST /v1/admin/programmes/{}/status" to Fx(after = listOf("PATCH /v1/admin/programmes/{}", "PUT /v1/admin/programmes/{}/enrolments"), path = { _, x -> mapOf("id" to x.need("programme_id")) },
+                body = { n, _, _ -> n.removeAll(); n.put("request_uuid", java.util.UUID.randomUUID().toString()); n.put("to_status", "active"); n.put("reason", "conformance check activation") }),
+            "POST /v1/admin/gifts" to Fx(after = listOf("POST /v1/admin/programmes"), body = { n, _, x ->
+                n.removeAll(); n.put("request_uuid", java.util.UUID.randomUUID().toString()); n.put("programme_id", x.need("programme_id").toLong())
+                n.put("code", "qa_gift_" + java.util.UUID.randomUUID().toString().take(6).replace("-", "a")); n.put("name_en", "QA gift"); n.put("points_cost", 200); n.putArray("tier_codes").add("silver")
+                n.put("change_reason", "conformance check gift")
+            }, capture = { _, b, x -> if (x["gift_id"] == null) { x["gift_id"] = b.path("gift_id").asText(); x["gift_row"] = b.path("version").asText() } }),
+            "GET /v1/admin/gifts/{}" to Fx(after = listOf("POST /v1/admin/gifts"), path = { _, x -> mapOf("id" to x.need("gift_id")) }),
+            "PATCH /v1/admin/gifts/{}" to Fx(after = listOf("POST /v1/admin/gifts"), path = { _, x -> mapOf("id" to x.need("gift_id")) },
+                headers = { _, x -> mapOf("If-Match" to "\"${x.need("gift_row")}\"") },
+                body = { n, _, _ -> n.removeAll(); n.put("request_uuid", java.util.UUID.randomUUID().toString()); n.put("points_cost", 250); n.put("change_reason", "conformance check change") },
+                capture = { _, b, x -> x["gift_row"] = b.path("version").asText() }),
             "POST /v1/admin/prices/preview" to Fx(body = { n, _, _ -> n.put("valid_from", FUTURE) }),
             // Publishing prices needs the preview of the same batch first (ERR_REQUEST_STATE otherwise).
             "POST /v1/admin/prices" to Fx(after = listOf("POST /v1/admin/prices/preview"), body = { n, _, _ -> n.put("valid_from", FUTURE) }),

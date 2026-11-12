@@ -10,13 +10,11 @@ import { Banner } from "@/components/kit/banner";
 import { Button } from "@/components/kit/button";
 import type { Problem } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
-import { PROGRAMME_KINDS, emptyTier, nextAttempt, validateForm, type FieldError, type LoyaltyForm } from "@/lib/admin/loyalty";
+import { PROGRAMME_KINDS, emptyTier, failureKey, fieldErrorsOf, unplacedText, nextAttempt, programmeUnchanged, validateForm, type FieldError, type LoyaltyForm, type Programme, type ProgrammePatch } from "@/lib/admin/loyalty";
 import { Field, inputClass } from "./kit/field";
 import { ReasonField } from "./kit/reason-field";
 
-const POINTER_FIELD: Record<string, string> = { code: "code", name_en: "name_en", name_bn: "name_bn", period_label: "period_label", active_from: "active_from", active_to: "active_to", change_reason: "reason", kind: "kind" };
-
-export function LoyaltyFormView({ mode, programmeId, version, initial, backHref }: { mode: "create" | "edit"; programmeId?: number; version?: number; initial: LoyaltyForm; backHref: string }) {
+export function LoyaltyFormView({ mode, programmeId, version, initial, original, backHref }: { mode: "create" | "edit"; programmeId?: number; version?: number; initial: LoyaltyForm; original?: Programme; backHref: string }) {
   const { t, problem } = useI18n();
   const router = useRouter();
   const [f, setF] = useState<LoyaltyForm>(initial);
@@ -39,6 +37,11 @@ export function LoyaltyFormView({ mode, programmeId, version, initial, backHref 
       if (Object.keys(map).length > 0) setBanner({ tone: "danger", text: t("loy.form.errors_summary") });
       return;
     }
+    // The server answers 400 no_change to a save that changes nothing: say so here and send nothing.
+    if (mode === "edit" && original && programmeUnchanged(original, checked.body as ProgrammePatch)) {
+      setBanner({ tone: "danger", text: t("loy.err.no_change") });
+      return;
+    }
     const { request_uuid: _drop, ...rest } = checked.body;
     void _drop;
     attempt.current = nextAttempt(attempt.current, `${mode}:${programmeId ?? ""}:${JSON.stringify(rest)}`);
@@ -53,13 +56,10 @@ export function LoyaltyFormView({ mode, programmeId, version, initial, backHref 
         router.refresh();
         return;
       }
-      const serverErrors: Record<string, string> = {};
-      for (const pe of (data.errors ?? []) as { pointer: string }[]) {
-        const field = POINTER_FIELD[pe.pointer.replace(/^\//, "").split("/")[0] ?? ""];
-        if (field) serverErrors[field] = t("loy.err.invalid");
-      }
-      setErrors(serverErrors);
-      setBanner({ tone: "danger", text: res.status === 409 && mode === "edit" ? t("loy.draft_only") : problem(data.code) });
+      const { byField, rest: unplaced } = fieldErrorsOf(data.errors as { pointer: string; code: string }[] | undefined, "programme");
+      setErrors(Object.fromEntries(Object.entries(byField).map(([f, c]) => [f, t(`loy.err.${c}` as MessageKey)])));
+      const key = failureKey(res.status, data.code, data.errors as { pointer: string; code: string }[] | undefined, mode === "edit" ? "programme-edit" : "programme-create");
+      setBanner({ tone: "danger", text: key ? t(key) : unplaced.length > 0 ? unplacedText(unplaced, (c) => t(`loy.err.${c}` as MessageKey)) : Object.keys(byField).length > 0 ? t("loy.form.errors_summary") : problem(data.code) });
     } catch {
       setBanner({ tone: "danger", text: t("error.network") });
     } finally {

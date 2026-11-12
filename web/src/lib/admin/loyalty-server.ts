@@ -10,7 +10,7 @@ import { apiClient, outcome } from "@/lib/api/client";
 import { authenticate, problemResponse } from "@/lib/api/guard";
 import { toFieldErrors } from "@/components/admin/crud/validation";
 import { loadGrants } from "./modules";
-import { canActivateProgramme, canWriteGifts, canWriteLoyalty, GIFT_CODE, PROGRAMME_CODE, PROGRAMME_KINDS, parseDecimal3, TIER_CODE } from "./loyalty";
+import { canActivateProgramme, canWriteGifts, canWriteLoyalty, GIFT_CODE, ID_RE, PROGRAMME_CODE, PROGRAMME_KINDS, parseDecimal3, TIER_CODE } from "./loyalty";
 
 const UUID = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -78,7 +78,7 @@ const GIFT_COMMON = {
 const GiftBody = z.object({ ...GIFT_COMMON, programme_id: z.number().int().min(1), code: z.string().regex(GIFT_CODE) }).strict();
 const GiftPatch = z.object({ version: z.number().int().min(1).max(9_999_999_999), ...GIFT_COMMON }).strict();
 
-const ID = /^[0-9]{1,15}$/;
+const ID = ID_RE; // at least 1, no leading zeros
 const invalid = (e: z.ZodError): NextResponse => problemResponse(400, "ERR_VALIDATION", { errors: toFieldErrors(e, "") });
 const pass = (r: { ok: true; status: number; data: unknown } | { ok: false; status: number; problem: unknown }): NextResponse =>
   r.ok ? NextResponse.json(r.data, { status: r.status }) : NextResponse.json(r.problem as Problem, { status: r.status, headers: { "Content-Type": "application/problem+json" } });
