@@ -4,8 +4,8 @@ Branch `lane/sr-server`. Brief: `docs/requests/sr-manual-lane-brief.md` (lead do
 
 ## State (SV2, 2026-11-12)
 
-- **Base:** INT f57ce31ed is merged. Loyalty train 2 (contract 1.13.1, V0170 to V0172, train 107) is NOT merged yet: the lead says when. My contract version is 1.14.0 on top of 1.13.1; my migrations are **V0173, V0174, V0175**; dw view contract 1.8.
-- **Gates:** the full gate list was green on fe023e1d2 (contract 115, db 362, platform 98, sync 39, masterdata 261, config 75, media 17, analytics 359, app 564 tests; Python gates, squawk, oasdiff, Redocly). The lead's Opus review of fe023e1d2 FAILED with must-fixes (D-SV1-13). They are implemented in the working tree after that sha; the gates are re-run after the INT merge. Nothing is claimed green for the new head until the report says so.
+- **Base:** INT 4739d5d1a (train 107: Loyalty routes, contract 1.13.1, V0170 to V0172) is merged. Contract 1.14.0 on top of 1.13.1; my migrations V0173, V0174, V0175; dw view contract 1.8.
+- **Gates (SV2, on fbbc71d2f, the merged head):** all green. Python gates (slice-contract, money-float, date-pin, tools/ci unittest 104, migrations-check + squawk, contract-breaking + oasdiff, Redocly) and Gradle one module at a time: contract 115, db 364, platform 99, sync 39, masterdata 285, config 75, media 17, analytics 359, app 568 (2 pre-existing skips: GeoRecheckCheckerTest, MoneyIngestOracleTest); 0 failures. Not run: Android modules (untouched), a three-times-green repeat. The lead's Opus review of fe023e1d2 (FAIL) is answered by D-SV1-13.
 - **Train 1 items:** (a) zero-sale reason, (b) call photo, (c) digest business totals, (d) outlet requests, (f) edit reasons / task type / repeat_sale status, (g) update notes and TSO device OTPs: done; the review fixes of D-SV1-13 changed (a), (b), (c), (d), (g).
 - **Train 1 not started (train 2):** (e) clusters section and cluster-creation record, (h) `outlet_sku_stats`, `posm-survey`, late-row flag, journey classifier.
 
