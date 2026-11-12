@@ -1,0 +1,25 @@
+path: /v1/admin/programmes/{id}/versions
+method: get
+operation:
+  tags:
+  - admin-content
+  operationId: listProgrammeVersions
+  summary: Every version of a programme, newest first (1.13.0).
+  description: Same read rules as `listProgrammes`. Versions are immutable.
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of versions.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProgrammeVersionPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
