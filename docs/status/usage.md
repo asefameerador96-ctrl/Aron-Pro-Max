@@ -2979,3 +2979,6 @@
 - INT `20fe1d4fb` (train 104 landed, deploy #342 skipped); health build ce9d92bf7 (latest deployable). Docs branch merged INT (0 markers).
 - Active lanes: SV working (branch lane/sr-server 79d530f2e at 12:14, a module run in progress, context about 529 k, finishing train 1 then handing over); L-A had been HOLDING since 09:53 with train 1 landed: go for train 2 (admin routes for 1.13.0) sent now, my omission; reserved for L-A: contract 1.15.0 if needed, migrations V0170..V0174 (SV owns 1.14.0 and V0163..V0169). L-B d25d1fdd7 and S2 fb63804d3 on train 105 (CI running). S3 db71bc4f1 passed, doing a small records/tests push on the train 105 head for train 106. S1, S4, S5, S6 landed; S5 waits for 1.14.0.
 - Usage: lane sessions still report seven_day "allowed_warning" (not "rejected"); pause stays lifted.
+
+### 2026-11-12 13:05 UTC — GO train 105
+- Train 105 CI 43218993558 green on 64af1e14a (12 jobs ok, web e2e included: the first full web run with L-B's loginOk fix). Lane runs: S2 43218821381 (fb63804d3) success; L-B 43217342984 (d25d1fdd7) success. Train 104 INT run complete. GO sent to integrator 24 (expected DECISIONS 432, real web deploy, schema stays v0162).
