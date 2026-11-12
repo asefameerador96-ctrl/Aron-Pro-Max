@@ -2948,3 +2948,6 @@
 
 ### 2026-11-12 12:18 UTC — S2 merge gate PASS
 - S2 `859deafe0` Opus merge gate w2r9nofys (2 lenses, no blocking): both merge resolutions correct (every INT line present, nothing of S3/S4/S5/S1 lost; strings union, no duplicates), delta sound (task confirm once; cluster replay reports saved; awaits rethrow cancellation; DEVICE_TABLES only drives a schema test; Room v9 unchanged), records true. Lows sent (cluster retry after recreate says "duplicate"; JourneyHost error state; unused import). S2 told to merge the train 104 head 39a478a41 now so it rides train 105 without another round. wt-s2 removed.
+
+### 2026-11-12 12:24 UTC — L-B train 2 under review
+- L-B `d25d1fdd7` (web aligned to contract 1.13.0; base INT ce9d92bf7; 17 files +326/-386): static gate clean (web + 2 docs; no skip/only/fixme, no new timeouts; five test titles removed or renamed: to be checked; DECISIONS 408, 0 INT lines missing; money-float 13/13; gitleaks clean; merges on train 104 with only DECISIONS conflicting). Lane ci 43217342984 running. Sonnet review launched (contract alignment call by call; tests, UX honesty, records), worktree wt-lb. Lane decision to rule on: channel checkboxes removed until an id source exists.
