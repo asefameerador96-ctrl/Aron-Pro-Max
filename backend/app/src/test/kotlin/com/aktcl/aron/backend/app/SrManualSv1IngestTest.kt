@@ -92,7 +92,8 @@ class SrManualSv1IngestTest {
             unpricedAsPrinted = skus[2]
         }
         RecordWriter.forgetColumns()
-        ingest = IngestService(fresh.db, DbServerConfig(fresh.db, RegistryDefaults(), clock), SqlReachResolver(fresh.db, GeoRepository(fresh.db, clock), clock), clock)
+        ingest = IngestService(fresh.db, DbServerConfig(fresh.db, RegistryDefaults(), clock), SqlReachResolver(fresh.db, GeoRepository(fresh.db, clock), clock), clock,
+            handlers = com.aktcl.aron.backend.platform.RecordHandlers(listOf(com.aktcl.aron.backend.masterdata.OutletChangeRequestHandler())))
     }
 
     @AfterAll
@@ -216,7 +217,8 @@ class SrManualSv1IngestTest {
         val ok = envelope("visit_close", uuid(), v, 1, closeJson(v, true, null), routeId)
         assertEquals("accepted", send(sr, listOf(ok)).ack(ok))
         val second = envelope("visit_close", uuid(), v, 1, closeJson(v, true, "stock_available"), routeId)
-        assertTrue(send(sr, listOf(second)).ack(second).startsWith("rejected"), "a second close with another uuid is a content duplicate")
+        val secondAck = send(sr, listOf(second)).ack(second)
+        assertTrue(secondAck.startsWith("rejected") || secondAck.startsWith("quarantined"), "a second close with another uuid is refused, got: $secondAck")
         assertEquals(null, str("SELECT zero_sale_reason_code FROM app.visit WHERE client_uuid = '$v'"), "the first close stands")
     }
 

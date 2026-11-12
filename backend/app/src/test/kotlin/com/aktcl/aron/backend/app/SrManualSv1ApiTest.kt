@@ -119,9 +119,9 @@ class SrManualSv1ApiTest {
     fun theUpdateCheckCarriesTheReleaseNotesAtTopLevelToo() = world.withApi {
         with(world) {
             exec(
-                """INSERT INTO app.app_release (flavour, version_name, version_code, abi, sha256, size_bytes, download_url, signing_cert_sha256, status, rollout_pct, notes_en, notes_bn, published_at, created_by)
+                """INSERT INTO app.app_release (flavour, version_name, version_code, abi, sha256, size_bytes, download_url, signing_cert_sha256, status, rollout_pct, notes_en, notes_bn, published_at, created_by, published_by)
                    SELECT 'sr', '9.9.9', 99999, 'universal', decode(repeat('ab', 32), 'hex'), 1000, 'https://example.invalid/sr.apk', decode(repeat('cd', 32), 'hex'), 'published', 100,
-                          'Faster sync', 'দ্রুত সিঙ্ক', now(), id FROM app.app_user WHERE username = 'aron.system'""",
+                          'Faster sync', 'দ্রুত সিঙ্ক', now(), a.id, p.id FROM app.app_user a, app.app_user p WHERE a.username = 'admin1001' AND p.username = 'superadmin1001'""",
             )
             val r = json(getAs(sr, "/v1/app/update-check?flavour=sr&version_code=1&abi=universal").also { assertEquals(HttpStatusCode.OK, it.status, it.bodyAsText()) }.bodyAsText())
             assertEquals("Faster sync", r["notes_en"]!!.jsonPrimitive.content); assertEquals("দ্রুত সিঙ্ক", r["notes_bn"]!!.jsonPrimitive.content)
@@ -150,9 +150,9 @@ class SrManualSv1ApiTest {
             val answer = sync(sr, listOf(record("outlet_change_request", payload, route, cu = req, family = req)))
             assertEquals("accepted", ack(answer, req).status(), answer.toString())
             val sub = one("SELECT id FROM app.sub_channel WHERE status = 'active' ORDER BY id LIMIT 1")
-            val verified = postWeb("amo1001", "/v1/outlet-requests/$req/verify", """{"sub_channel_id":$sub}""")
+            val verified = postWeb("admin1001", "/v1/outlet-requests/$req/verify", """{"sub_channel_id":$sub}""")
             assertEquals(HttpStatusCode.OK, verified.status, verified.bodyAsText())
-            val approved = postWeb("dmo1001", "/v1/outlet-requests/$req/approve", """{"route_id":$route,"change_reason":"SR asked to add this outlet to the route"}""")
+            val approved = postWeb("superadmin1001", "/v1/outlet-requests/$req/approve", """{"route_id":$route,"change_reason":"SR asked to add this outlet to the route"}""")
             assertEquals(HttpStatusCode.OK, approved.status, approved.bodyAsText())
             assertEquals(route, one("SELECT route_id FROM app.outlet WHERE id = $outlet"), "the outlet is on the SR's route")
             assertEquals(cluster, one("SELECT cluster_id FROM app.outlet WHERE id = $outlet"), "it keeps the cluster it had")

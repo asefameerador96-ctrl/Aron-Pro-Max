@@ -172,7 +172,7 @@ class SalesSubmitDigestService(private val db: Database, private val clock: com.
                 "WHERE sm.user_id = :u AND sm.business_date = :d AND sm.voided_at IS NULL AND sm.kind IN ('issue', 'adjustment') GROUP BY 1 HAVING sum(sm.qty_base) <> 0 ORDER BY 1",
         )
         val qc = byCategory(
-            "SELECT coalesce(s.category_code, '') AS cat, sum(q.qty_base)::bigint AS q FROM app.qc_line q JOIN app.sku s ON s.id = q.sku_id " +
+            "SELECT coalesce(s.category_code, '') AS cat, sum(q.qty_base)::bigint AS q FROM app.qc_entry_line q JOIN app.sku s ON s.id = q.sku_id " +
                 "WHERE q.user_id = :u AND q.business_date = :d AND q.voided_at IS NULL GROUP BY 1 HAVING sum(q.qty_base) > 0 ORDER BY 1",
         )
         val promo = h.createQuery(

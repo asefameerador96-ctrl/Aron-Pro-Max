@@ -633,7 +633,7 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
  * - a proposed `cluster_id` must name a cluster that exists; on an `info` request it must also be a cluster of the outlet's zone
  *   (a final `schema_invalid`, nothing is stored);
  * - [sameAs]: a `new` request is the same fact as the user's own earlier live request for the same shop (same normalised name and
- *   mobile number) in the last 7 days, whatever its client_uuid (a rep who reopens the form gets a new uuid). The resend is acked
+ *   mobile number) in the 7 business days up to the record's date, whatever its client_uuid (a rep who reopens the form gets a new uuid). The resend is acked
  *   `duplicate` with the first request's id and nothing is stored, so no second request reaches the AMO. A different shop, a
  *   discarded or rejected earlier request, or another user's request never matches.
  */
@@ -662,11 +662,11 @@ class OutletChangeRequestHandler : RecordHandler {
             """
             SELECT id FROM app.outlet_change_request
              WHERE user_id = :u AND request_type = 'new' AND voided_at IS NULL AND status IN ('pending', 'verified', 'approved')
-               AND client_uuid <> CAST(:c AS uuid) AND created_at > :since
+               AND client_uuid <> CAST(:c AS uuid) AND business_date BETWEEN :since AND :today
                AND lower(regexp_replace(btrim(proposed ->> 'name'), '\s+', ' ', 'g')) = :n AND proposed ->> 'contact_number' = :p
              ORDER BY id LIMIT 1
             """.trimIndent(),
-        ).bind("u", rec.userId).bind("c", rec.clientUuid).bind("since", java.time.OffsetDateTime.ofInstant(rec.receivedAt.minusSeconds(7 * 86400L), java.time.ZoneOffset.UTC))
+        ).bind("u", rec.userId).bind("c", rec.clientUuid).bind("since", rec.businessDate.minusDays(7)).bind("today", rec.businessDate)
             .bind("n", name).bind("p", phone).mapTo(Long::class.java).findOne().orElse(null)
     }
 }
