@@ -414,4 +414,24 @@ class BundleDownloaderTest {
         assertEquals(BundleOutcome.OFFLINE, downloader().download(progress = BundleProgress { d, t -> partial += d to t }).outcome)
         assertTrue(partial.none { it.first == it.second })
     }
+
+    @Test fun aThrowingProgressCallbackNeverAbortsTheDownloadOrTheApply() = runBlocking {
+        paged = true
+        var calls = 0
+        val r = downloader().download(progress = BundleProgress { _, _ -> calls++; error("a broken screen") })
+        assertEquals(BundleOutcome.APPLIED, r.outcome)
+        assertEquals(200, db.referenceDao().outletCount())
+        assertEquals(4, calls) // every step was still reported to it, and the staged pages were applied once
+    }
+
+    @Test fun theBarIsCompleteOnlyWhenTheSnapshotWasApplied() = runBlocking {
+        downloader().download() // version 3 held
+        paged = true
+        bundleBody = { fullBundle().replace("2026-10-05:3", "2026-10-05:2") } // a server snapshot OLDER than the held one
+        db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG)
+        val seen = ArrayList<Pair<Int, Int>>()
+        val r = downloader().download(progress = BundleProgress { d, t -> seen += d to t })
+        assertTrue(r.outcome != BundleOutcome.APPLIED)
+        assertTrue("never complete without an apply: $seen", seen.none { it.first == it.second })
+    }
 }

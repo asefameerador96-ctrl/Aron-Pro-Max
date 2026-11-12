@@ -145,4 +145,26 @@ class TsoDeviceOtpTest {
         compose.onNodeWithTag(TsoDeviceOtpTags.PROBLEM).assertIsDisplayed()
         compose.onNodeWithText("Codes are never kept on the phone", substring = true).assertExists()
     }
+
+    @Test fun anExpiredSessionIsNotSaidToBeNoConnectionForReadsOrIssues() = runBlocking {
+        val m = TsoDeviceOtpModel({ DeviceOtpFetch.SessionExpired }, { DeviceOtpIssue.SessionExpired })
+        m.refresh()
+        assertEquals(DeviceOtpProblem.SESSION_EXPIRED, m.problem)
+        val n = model(issue = DeviceOtpIssue.SessionExpired)
+        n.refresh(); n.issueFor(12)
+        assertEquals(DeviceOtpProblem.SESSION_EXPIRED, n.problem)
+    }
+
+    @Test fun theSessionExpiredScreenTextIsNotTheOfflineText() {
+        val m = TsoDeviceOtpModel({ DeviceOtpFetch.SessionExpired }, { DeviceOtpIssue.Offline }); runBlocking { m.refresh() }
+        show(AppLanguage.EN, m)
+        compose.onNodeWithText("Your sign-in has ended", substring = true).assertExists()
+        compose.onNodeWithText("No connection", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun theCodeIsReadAloudByTheRowDescription() {
+        val m = model(); runBlocking { m.refresh() }
+        show(AppLanguage.EN, m)
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("Abdul, code 3 5 6 0")).assertExists()
+    }
 }

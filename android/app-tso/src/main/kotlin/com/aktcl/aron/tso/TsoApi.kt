@@ -25,6 +25,8 @@ sealed interface TsoFetch {
     data class Cached(val json: String) : TsoFetch
     data object Unavailable : TsoFetch
     data object Gone : TsoFetch
+    /** 401 on a read that is never kept (the Device OTP list): the session ended, which is not "no connection". */
+    data object Unauthorized : TsoFetch
 }
 
 fun TsoFetch.jsonOrNull(): String? = when (this) { is TsoFetch.Fresh -> json; is TsoFetch.Cached -> json; else -> null }
@@ -117,6 +119,7 @@ class TsoApi(private val client: AronApiClient, private val dir: java.io.File) {
     sealed interface IssueOtp {
         data class Issued(val json: String) : IssueOtp
         data object Rejected : IssueOtp
+        data object Unauthorized : IssueOtp
         data object NoAnswer : IssueOtp
     }
 
@@ -129,7 +132,8 @@ class TsoApi(private val client: AronApiClient, private val dir: java.io.File) {
         )
         return when {
             r is ApiResult.Success -> IssueOtp.Issued(r.value)
-            r is ApiResult.Failure && r.httpStatus in 400..499 && r.httpStatus != 401 && r.httpStatus != 408 -> IssueOtp.Rejected
+            r is ApiResult.Failure && r.httpStatus == 401 -> IssueOtp.Unauthorized
+            r is ApiResult.Failure && r.httpStatus in 400..499 && r.httpStatus != 408 -> IssueOtp.Rejected
             else -> IssueOtp.NoAnswer
         }
     }
@@ -148,6 +152,7 @@ class TsoApi(private val client: AronApiClient, private val dir: java.io.File) {
         return when {
             r is ApiResult.Success -> { if (key != null) withContext(Dispatchers.IO) { remember(key, r.value) }; TsoFetch.Fresh(r.value) }
             r is ApiResult.Failure && (r.httpStatus == 403 || r.httpStatus == 404 || r.httpStatus == 501) -> { if (key != null) withContext(Dispatchers.IO) { file(key).delete() }; TsoFetch.Gone }
+            r is ApiResult.Failure && r.httpStatus == 401 && key == null -> TsoFetch.Unauthorized
             key == null -> TsoFetch.Unavailable
             else -> withContext(Dispatchers.IO) { cached(key) }
         }

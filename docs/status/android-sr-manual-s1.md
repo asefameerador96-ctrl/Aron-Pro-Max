@@ -41,3 +41,17 @@ Suite totals (unit tests, all green): feature-auth 62, feature-home 77, feature-
 - Device behaviour was not run on a phone (no emulator here); Robolectric host tests only. Device-lab checks to add: first-login location sheet then notice, camera sheet at first camera open, installer dialog after "Download completed", Bangla digits and fonts on the update pages.
 - SR login hero is drawn (no bitmap); the logo plate uses the existing brand mark, not the vendor's pastel disc.
 - Sunlight: the hero is solid; the green Verify uses a darker green in Sunlight (contrast not computed in a token test).
+
+## Fix round after the Opus pass (2026-11-12)
+
+1. Skip link ("continue without the route") now in every data-update state, running included (test: RUNNING with steps, RUNNING before the first step).
+2. Data-update footer shows `versionName` only through `SrDataUpdate.versionName()` (tested at the call-site helper, also the phase mapping used by `SrApp`); D-SR-MAN-S1-01/-08 corrected.
+3. SR update page keeps "Later" for an optional update while it downloads (`SrUpdateUiTest` changed: it pinned the hidden state; reason: offline-first, a rep is never held on a screen; a required update still has none). Auto-install is decided by `AutoInstallGate` in `UpdateShell` (once per release per process, never after "Later" until the rep taps; 3 tests).
+4. Update page words are English as in screenshots 06/07 (status word Bangla), `translatable="false"`, values only (D-SR-MAN-S1-10).
+5. Declared differences for the owner (D-SR-MAN-S1-01): show-password link kept; OTP step has no language toggle/sun switch; OTP bar title "OTP যাচাইকরণ" in both languages.
+6. FLAG_SECURE on the TSO Device OTP screen and the SR/AMO OTP entry (`SecureScreen`, 2 core-ui tests + 1 auth test); the code stays in the row's contentDescription (read aloud) by design; 401 has its own "sign-in has ended" message (model, API and screen tests).
+7. `BundleProgress` callback guarded (`safely`), complete only on APPLIED (2 new BundleDownloader tests).
+8. Wiring tests: `SrLocationGates` order, `SrDataUpdate` mapping, TSO Settings row opens `DEVICE_OTP` (+ no row without a host).
+9. `LoginViewModel` bind: `orDefaultKeepingCancellation` instead of `runCatching` (cancellation test).
+
+All test runs here are JVM/Robolectric (no device).

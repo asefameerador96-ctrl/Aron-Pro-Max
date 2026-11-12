@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.assertTextEquals
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -81,6 +82,18 @@ class DataUpdateScreensTest {
         compose.onNodeWithTag(DataUpdateTags.REASON).assertIsDisplayed()
         compose.onNodeWithTag(DataUpdateTags.SKIP).performClick()
         assertEquals(1, skips)
+    }
+
+    @Test fun theSkipLinkIsThereWhileTheDownloadRunsToo() {
+        var skips = 0
+        show(AppLanguage.EN, DataUpdatePhase.RUNNING, done = 1, total = 4, onSkip = { skips++ })
+        compose.onNodeWithTag(DataUpdateTags.SKIP).performScrollTo().performClick()
+        assertEquals(1, skips)
+    }
+
+    @Test fun theSkipLinkIsThereBeforeTheFirstStepIsKnownRightAfterARelaunch() {
+        show(AppLanguage.EN, DataUpdatePhase.RUNNING, done = null, total = null, onSkip = {})
+        compose.onNodeWithTag(DataUpdateTags.SKIP).assertExists()
     }
 
     @Test fun withoutASkipCallbackThereIsNoSkipLink() {

@@ -11,6 +11,8 @@ sealed interface DeviceOtpFetch {
     data object Unavailable : DeviceOtpFetch
     /** 403/404: this account may not use the panel. */
     data object Refused : DeviceOtpFetch
+    /** 401: the sign-in ended (not "no connection"): log in again. */
+    data object SessionExpired : DeviceOtpFetch
 }
 
 /** What an issue call gave. */
@@ -19,9 +21,10 @@ sealed interface DeviceOtpIssue {
     data object Offline : DeviceOtpIssue
     /** The server refused (outside the TSO's zones, rate limit, not allowed). */
     data object Refused : DeviceOtpIssue
+    data object SessionExpired : DeviceOtpIssue
 }
 
-enum class DeviceOtpProblem { OFFLINE, REFUSED, UNREADABLE, ISSUE_OFFLINE, ISSUE_REFUSED }
+enum class DeviceOtpProblem { OFFLINE, REFUSED, UNREADABLE, ISSUE_OFFLINE, ISSUE_REFUSED, SESSION_EXPIRED }
 
 /**
  * State of the TSO Device OTP screen. [read] fetches a page (null cursor: the first), [issue] asks the server for a new code for one rep
@@ -68,6 +71,7 @@ class TsoDeviceOtpModel(
     private fun apply(r: DeviceOtpFetch, append: Boolean) {
         when (r) {
             DeviceOtpFetch.Unavailable -> problem = DeviceOtpProblem.OFFLINE
+            DeviceOtpFetch.SessionExpired -> problem = DeviceOtpProblem.SESSION_EXPIRED
             DeviceOtpFetch.Refused -> { rows = emptyList(); nextCursor = null; problem = DeviceOtpProblem.REFUSED }
             is DeviceOtpFetch.Fresh -> {
                 val page = TsoDeviceOtps.parse(r.json)
@@ -93,6 +97,7 @@ class TsoDeviceOtpModel(
                 }
                 DeviceOtpIssue.Offline -> problem = DeviceOtpProblem.ISSUE_OFFLINE
                 DeviceOtpIssue.Refused -> problem = DeviceOtpProblem.ISSUE_REFUSED
+                DeviceOtpIssue.SessionExpired -> problem = DeviceOtpProblem.SESSION_EXPIRED
             }
         } finally {
             issuing = null

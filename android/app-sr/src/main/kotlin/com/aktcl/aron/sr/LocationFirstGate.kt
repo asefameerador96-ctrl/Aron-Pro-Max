@@ -38,3 +38,12 @@ fun LocationFirstGate(content: @Composable () -> Unit) {
 
 private fun alreadyAsked(context: Context): Boolean =
     context.getSharedPreferences("aron-permissions", Context.MODE_PRIVATE).getBoolean(AppPermission.PRECISE_LOCATION.name, false)
+
+/**
+ * The two location steps after login, in the manual's order (SR manual 03): first the system sheet ([LocationFirstGate]), then the
+ * location notice ([notice], the HR/legal screen), then [content]. One composable, so a test can pin the order.
+ */
+@Composable
+fun SrLocationGates(notice: @Composable (content: @Composable () -> Unit) -> Unit, content: @Composable () -> Unit) {
+    LocationFirstGate { notice(content) }
+}

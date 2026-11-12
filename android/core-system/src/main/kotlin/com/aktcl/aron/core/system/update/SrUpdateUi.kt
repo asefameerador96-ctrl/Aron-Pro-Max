@@ -37,16 +37,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.system.R
 import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
-import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.LocalAronLook
-import com.aktcl.aron.core.ui.localizedDigits
 
 /** Test tags of the SR update page (manual screenshots 06 and 07). */
 object SrUpdateTags {
@@ -64,7 +61,7 @@ object SrUpdateTags {
  * downloads the button gives way to a red bar with "Downloading n%" and the red warning "Please do not close the app while
  * downloading"; at the end "Download completed" and the Install button stays as the way back after the system installer's Cancel. The
  * states the vendor does not draw (Wi-Fi only, no space, failed, unknown sources, sync busy) keep our banners and actions. Resumable
- * download, checksum and signature checks are unchanged (the shell). A required update has no "Later".
+ * download, checksum and signature checks are unchanged (the shell). "Later" stays for an optional update in every state, the download included; a required update has none.
  */
 @Composable
 fun SrUpdateContent(
@@ -85,23 +82,24 @@ fun SrUpdateContent(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(AronTokens.Space.L),
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M), horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            SrRibbon(stringResource(R.string.update_amo_ribbon))
+            SrRibbon(stringResource(R.string.update_sr_ribbon))
             SrCloud()
             Text(
-                stringResource(R.string.update_amo_heading), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), color = look.ink,
+                stringResource(R.string.update_sr_heading), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), color = look.ink,
                 modifier = Modifier.testTag(UpdateTags.AMO_HEADING),
             )
-            Text(stringResource(R.string.update_amo_version, release.versionName), style = MaterialTheme.typography.bodyLarge, color = look.ink)
-            val notes = if (LocalAppLanguage.current == AppLanguage.BN) release.notesBn ?: release.notesEn else release.notesEn ?: release.notesBn
+            Text(stringResource(R.string.update_sr_version, release.versionName), style = MaterialTheme.typography.bodyLarge, color = look.ink)
+            // the screenshots show the notes in English: English first, Bangla only when the release has no English notes
+            val notes = release.notesEn?.takeIf { it.isNotBlank() } ?: release.notesBn
             notes?.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.testTag(SrUpdateTags.NOTES))
             }
             when (download) {
-                DownloadUi.Idle -> SrRedButton(stringResource(R.string.update_amo_download), onDownload, enabled = network != NetworkStatus.OFFLINE, tag = UpdateTags.DOWNLOAD)
+                DownloadUi.Idle -> SrRedButton(stringResource(R.string.update_sr_download), onDownload, enabled = network != NetworkStatus.OFFLINE, tag = UpdateTags.DOWNLOAD)
                 is DownloadUi.Downloading -> {
                     SrProgress(download.percent)
                     Text(
-                        localizedDigits(stringResource(R.string.update_sr_downloading, download.percent)), style = MaterialTheme.typography.bodyLarge, color = look.ink,
+                        stringResource(R.string.update_sr_downloading, download.percent.toString()), style = MaterialTheme.typography.bodyLarge, color = look.ink,
                         modifier = Modifier.testTag(SrUpdateTags.PROGRESS_TEXT),
                     )
                     SrDoNotClose()
@@ -127,7 +125,8 @@ fun SrUpdateContent(
                     AronPrimaryButton(stringResource(R.string.update_open_settings), onOpenUnknownSources, Modifier.fillMaxWidth().testTag(UpdateTags.UNKNOWN_SOURCES))
                 }
             }
-            if (!required && download !is DownloadUi.Downloading) AronSecondaryButton(stringResource(R.string.update_later), onLater, Modifier.fillMaxWidth().testTag(UpdateTags.LATER))
+            // an optional update can always be put off, also while it downloads (the download goes on in the background); a required one cannot
+            if (!required) AronSecondaryButton(stringResource(R.string.update_later), onLater, Modifier.fillMaxWidth().testTag(UpdateTags.LATER))
         }
     }
 }

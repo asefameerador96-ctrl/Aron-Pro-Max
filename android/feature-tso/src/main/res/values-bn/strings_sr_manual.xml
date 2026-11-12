@@ -14,4 +14,5 @@
     <string name="tso_otp_valid_until">%1$s পর্যন্ত বৈধ</string>
     <string name="tso_otp_row_desc_code">%1$s, কোড %2$s</string>
     <string name="tso_otp_row_desc_none">%1$s, এখনো কোড নেই</string>
+    <string name="tso_otp_session_expired">আপনার সাইন-ইন শেষ হয়েছে। লগ আউট করে আবার লগইন করুন, তারপর ডিভাইস OTP খুলুন।</string>
 </resources>

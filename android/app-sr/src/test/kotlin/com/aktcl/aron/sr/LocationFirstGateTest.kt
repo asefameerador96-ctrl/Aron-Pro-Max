@@ -97,4 +97,45 @@ class LocationFirstGateTest {
         assertTrue(launched.isEmpty())
         compose.onNodeWithText("next-step").assertExists()
     }
+
+    @Test fun theNoticeAndTheAppWaitForTheSheetAndFollowInOrder() {
+        shadowOf(app).denyPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        app.getSharedPreferences("aron-permissions", Context.MODE_PRIVATE).edit().putBoolean("PRECISE_LOCATION", false).commit()
+        shadowOf(app.packageManager).addActivityIfNotPresent(android.content.ComponentName(app, ComponentActivity::class.java))
+        val events = ArrayList<String>()
+        scenario = ActivityScenario.launch(ComponentActivity::class.java)
+        scenario!!.onActivity { a ->
+            a.setContent {
+                CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner(answer = false, hold = true)) {
+                    SrLocationGates(notice = { inner -> events += "notice"; Text("notice"); inner() }) { Text("app") }
+                }
+            }
+        }
+        compose.waitUntil(10_000) { launched.isNotEmpty() }
+        // while the sheet is open neither the notice nor the app is composed
+        assertTrue(events.isEmpty())
+        compose.onNodeWithText("notice").assertDoesNotExist()
+        compose.onNodeWithText("app").assertDoesNotExist()
+    }
+
+    @Test fun afterTheSheetTheNoticeComesFirstThenTheApp() {
+        shadowOf(app).denyPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        app.getSharedPreferences("aron-permissions", Context.MODE_PRIVATE).edit().putBoolean("PRECISE_LOCATION", false).commit()
+        shadowOf(app.packageManager).addActivityIfNotPresent(android.content.ComponentName(app, ComponentActivity::class.java))
+        val order = ArrayList<String>()
+        scenario = ActivityScenario.launch(ComponentActivity::class.java)
+        scenario!!.onActivity { a ->
+            a.setContent {
+                CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner(answer = false)) {
+                    SrLocationGates(notice = { inner -> androidx.compose.runtime.SideEffect { order += "notice" }; Text("notice"); inner() }) {
+                        androidx.compose.runtime.SideEffect { order += "app" }
+                        Text("app")
+                    }
+                }
+            }
+        }
+        compose.waitUntil(10_000) { launched.isNotEmpty() && order.size >= 2 }
+        assertEquals(listOf("notice", "app"), order) // the sheet came first (launched), then the notice, then the app
+        assertEquals(1, launched.size)
+    }
 }

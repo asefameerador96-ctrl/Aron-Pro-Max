@@ -63,6 +63,12 @@ fun interface BundleProgress {
     fun report(done: Int, total: Int)
 }
 
+/** A progress callback runs inside the downloader's lock: whatever it throws (except cancellation) must never abort a staged download. */
+internal fun BundleProgress?.safely(done: Int, total: Int) {
+    if (this == null) return
+    try { report(done, total) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+}
+
 data class BundleReport(
     val outcome: BundleOutcome, val bundleVersion: String? = null, val businessDate: String? = null, val code: String? = null,
     /** The HTTP status of a refused request (FAILED, AUTH_REQUIRED, NOT_READY); null otherwise. */
@@ -242,7 +248,7 @@ class BundleDownloader(
                 // Steps for the SR manual's "Processing(n/total)" counter (screen 08): the head, every page, the apply.
                 val totalSteps = 2 + download.head.meta.pagedSections.sumOf { it.pages }
                 var doneSteps = 1
-                progress?.report(doneSteps, totalSteps)
+                progress.safely(doneSteps, totalSteps)
                 val pages = HashMap<String, MutableList<JsonElement>>()
                 // The `outlets` pages (the bulk of an AMO/TSO bundle) are never merged into one tree: they are checked here one
                 // page at a time and streamed into Room page by page by the apply (heap = one page, not 11,000 outlets).
@@ -270,7 +276,7 @@ class BundleDownloader(
                             return BundleReport(BundleOutcome.FAILED, version, code = "malformed_page")
                         }
                         if (streamed) { streamedRows += rows.size; outletFiles += file } else pages.getOrPut(paged.section) { ArrayList() }.addAll(rows)
-                        progress?.report(++doneSteps, totalSteps)
+                        progress.safely(++doneSteps, totalSteps)
                     }
                     val got = if (streamed) streamedRows else pages[paged.section].orEmpty().size
                     if (paged.rows > 0 && got != paged.rows) {
@@ -291,9 +297,8 @@ class BundleDownloader(
                 }
                 withContext(Dispatchers.IO) { stage.deleteRecursively() }
                 if (isDay) markLoggedIn(forDate)
-                progress?.report(totalSteps, totalSteps)
                 when (applied) {
-                    ApplyResult.APPLIED -> BundleReport(BundleOutcome.APPLIED, repo.bundleVersion(), repo.businessDate())
+                    ApplyResult.APPLIED -> { progress.safely(totalSteps, totalSteps); BundleReport(BundleOutcome.APPLIED, repo.bundleVersion(), repo.businessDate()) }
                     ApplyResult.OLDER_IGNORED -> BundleReport(BundleOutcome.OLDER_IGNORED, repo.bundleVersion(), repo.businessDate())
                     ApplyResult.PREFETCH_STORED -> BundleReport(BundleOutcome.PREFETCH_STORED, version, bundle.meta.validForBusinessDate)
                 }

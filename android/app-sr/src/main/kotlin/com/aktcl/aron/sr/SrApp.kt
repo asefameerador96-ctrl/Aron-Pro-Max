@@ -339,18 +339,12 @@ fun SrApp(
             // (offline, failed, sign-in ended) the Bangla "new updates found" prompt, whose আপডেট button is the retry (resumable).
             val outcome by day.bundleOutcome.collectAsState()
             val progress by day.bundleProgress.collectAsState()
-            val running = data.downloading || outcome == null
+            val ui = SrDataUpdate.ui(data.downloading, outcome, progress)
             DataUpdateContent(
-                phase = if (running) DataUpdatePhase.RUNNING else DataUpdatePhase.PROMPT,
-                versionName = versionText,
+                phase = ui.phase,
+                versionName = SrDataUpdate.versionName(), // the version NAME only, never "name (code)"
                 onUpdate = { scope.launch { startBundleDownload(); day.taskBoard.load() } },
-                done = progress?.first, total = progress?.second,
-                reason = when {
-                    running -> null
-                    outcome == BundleOutcome.OFFLINE -> FirstBundleState.OFFLINE
-                    outcome == BundleOutcome.AUTH_REQUIRED -> FirstBundleState.AUTH
-                    else -> FirstBundleState.FAILED
-                },
+                done = ui.done, total = ui.total, reason = ui.reason,
                 onSkip = { skipFirstBundle = true },
             )
         } else {

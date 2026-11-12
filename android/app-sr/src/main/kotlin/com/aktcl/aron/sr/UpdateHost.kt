@@ -5,11 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -50,12 +47,9 @@ fun UpdateHost(
         UpdateScreen.None -> content()
         is UpdateScreen.Prompt -> {
             val network = remember(download, s.release) { shell.network() }
-            // SR manual 07: when the file is complete the system installer asks "Do you want to update this app?" by itself. Once per
-            // downloaded release; its Cancel leaves the Install button as the way back (the downloaded file stays).
-            var autoInstalled by rememberSaveable(s.release.versionCode) { mutableStateOf(false) }
-            LaunchedEffect(download, s.release.versionCode) {
-                if (download == DownloadUi.Ready && !autoInstalled) { autoInstalled = true; shell.startInstall(s.release) }
-            }
+            // SR manual 07: when the file is complete the system installer asks "Do you want to update this app?" by itself. The shell
+            // decides (once per release in this process, never after "Later"); its Cancel leaves the Install button.
+            LaunchedEffect(download, s.release.versionCode) { if (download == DownloadUi.Ready) shell.installWhenReady(s.release) }
             SrUpdateContent(
                 s.release, s.required, network, download,
                 onDownload = { shell.startDownload(s.release) },

@@ -36,12 +36,13 @@ class SrManualAuthScreensTest {
     private var calls = 0
     private var boundWith: String? = null
 
-    private fun render(language: AppLanguage, outcome: LoginOutcome = LoginOutcome.InvalidCredentials, onBack: Boolean = false): Context {
+    private fun render(language: AppLanguage, outcome: LoginOutcome = LoginOutcome.InvalidCredentials, activityContext: Boolean = false): Context {
         val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         val vm = LoginViewModel { _, _ -> calls++; outcome }
         vm.bind = { _, otp, _ -> boundWith = otp; com.aktcl.aron.core.session.BindOutcome.Failed("ERR_AUTH_OTP_INVALID") }
         compose.setContent {
-            CompositionLocalProvider(LocalContext provides context) {
+            // activityContext: the real activity as LocalContext, as in the app (FLAG_SECURE needs a window)
+            CompositionLocalProvider(LocalContext provides (if (activityContext) LocalContext.current else context)) {
                 AronTheme(language) { LoginScreen(vm, "ARON SR", "1.0.25", {}, variant = LoginVariant.Sr) }
             }
         }
@@ -130,5 +131,16 @@ class SrManualAuthScreensTest {
         compose.onNodeWithContentDescription("Back to login").performClick()
         compose.waitForIdle()
         compose.onNodeWithTag(LoginTags.SUBMIT).assertExists()
+    }
+
+    @Test fun theOtpStepIsSecureForTheScreenCaptureAndTheLoginIsNot() {
+        render(AppLanguage.EN, LoginOutcome.BindRequired("tok"), activityContext = true)
+        val secure = { compose.activity.window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SECURE }
+        assertEquals(0, secure())
+        goToOtp()
+        assertEquals(android.view.WindowManager.LayoutParams.FLAG_SECURE, secure())
+        compose.onNodeWithContentDescription("Back to login").performClick()
+        compose.waitForIdle()
+        assertEquals(0, secure())
     }
 }

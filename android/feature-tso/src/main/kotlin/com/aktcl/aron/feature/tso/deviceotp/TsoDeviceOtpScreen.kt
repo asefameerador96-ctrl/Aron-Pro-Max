@@ -69,6 +69,7 @@ fun TsoDeviceOtpContent(model: TsoDeviceOtpModel, onRefresh: () -> Unit, onIssue
                             DeviceOtpProblem.UNREADABLE -> R.string.tso_otp_unreadable
                             DeviceOtpProblem.ISSUE_OFFLINE -> R.string.tso_otp_issue_offline
                             DeviceOtpProblem.ISSUE_REFUSED -> R.string.tso_otp_issue_refused
+                            DeviceOtpProblem.SESSION_EXPIRED -> R.string.tso_otp_session_expired
                         }),
                         Modifier.testTag(TsoDeviceOtpTags.PROBLEM),
                     )

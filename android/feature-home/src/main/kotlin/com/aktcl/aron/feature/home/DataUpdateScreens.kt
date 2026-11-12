@@ -71,7 +71,7 @@ object DataUpdateTags {
  * অ্যাপটি বন্ধ করবেন না". The steps are the bundle's own: the head, each page, the apply (core-sync BundleProgress), so the counter is
  * real. Nothing here deletes anything: the bundle replaces reference data in one transaction and unsent records are never touched; a kill
  * resumes with the staged pages. [reason] explains why the prompt is back (offline, failed, sign in again). The vendor has no way past
- * this page; ours keeps a quiet [onSkip] link because check-in, selling from the held data and printing never depend on the network
+ * this page; ours keeps a quiet [onSkip] link in every state, the running one too, because check-in, selling from the held data and printing never depend on the network
  * (CLAUDE.md constraint 1).
  */
 @Composable
@@ -112,7 +112,6 @@ fun DataUpdateContent(
                 DownloadGlyph(look.onBar)
                 Text(stringResource(R.string.du_button), color = look.onBar, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
             }
-            if (onSkip != null) AronSecondaryButton(stringResource(R.string.fb_skip), onSkip, Modifier.testTag(DataUpdateTags.SKIP))
             Text(
                 stringResource(R.string.du_current_version, versionName), style = MaterialTheme.typography.bodySmall, color = look.inkMuted,
                 textAlign = TextAlign.Center, modifier = Modifier.testTag(DataUpdateTags.VERSION),
@@ -135,6 +134,8 @@ fun DataUpdateContent(
                 textAlign = TextAlign.Center, modifier = Modifier.testTag(DataUpdateTags.TIP),
             )
         }
+        // in EVERY state, the running download included (a slow link or a relaunch must never hold a rep off check-in; F-SR-001)
+        if (onSkip != null) AronSecondaryButton(stringResource(R.string.fb_skip), onSkip, Modifier.testTag(DataUpdateTags.SKIP))
     }
 }
 

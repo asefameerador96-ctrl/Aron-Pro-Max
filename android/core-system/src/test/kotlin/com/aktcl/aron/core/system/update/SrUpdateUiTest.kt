@@ -33,7 +33,7 @@ class SrUpdateUiTest {
         var tapped = 0
         show(AppLanguage.EN, onDownload = { tapped++ })
         rule.onNodeWithText("Network Status").assertIsDisplayed()
-        rule.onNodeWithText("Online").assertIsDisplayed()
+        rule.onNodeWithText("অনলাইন").assertIsDisplayed()
         rule.onNodeWithText("NEW UPDATE").assertIsDisplayed()
         rule.onNodeWithText("Update Available").assertIsDisplayed()
         rule.onNodeWithText("Version 1.0.25 available").assertIsDisplayed()
@@ -43,14 +43,21 @@ class SrUpdateUiTest {
         assertEquals(1, tapped)
     }
 
-    @Test @Config(qualifiers = "bn") fun theBanglaPageShowsBanglaWordsAndTheBanglaNotes() {
+    @Test @Config(qualifiers = "bn") fun theBanglaPhoneShowsTheSameEnglishPageAsTheScreenshotsWithTheBanglaStatusWord() {
         show(AppLanguage.BN)
         rule.onNodeWithText("অনলাইন").assertIsDisplayed()
-        rule.onNodeWithText("নতুন আপডেট").assertExists()
-        rule.onNodeWithText("আপডেট পাওয়া যাচ্ছে").assertExists()
-        rule.onNodeWithText("অ্যাপ ডাউনলোড ও ইনস্টল করুন").assertExists()
+        rule.onNodeWithText("NEW UPDATE").assertExists()
+        rule.onNodeWithText("Update Available").assertExists()
+        rule.onNodeWithText("Download App & Install").assertExists()
+        rule.onNodeWithText("Version 1.0.25 available").assertExists()
+        // notes: English first (the screenshots), the Bangla notes only when there are no English ones
+        rule.onNodeWithText("New promotion modality., Login time 2FA verification.").assertExists()
+        rule.onNodeWithText("নতুন সুবিধা, লগইনের সময় যাচাই।").assertDoesNotExist()
+    }
+
+    @Test fun theBanglaNotesShowWhenTheReleaseHasNoEnglishOnes() {
+        show(AppLanguage.EN, release = notes.copy(notesEn = null))
         rule.onNodeWithText("নতুন সুবিধা, লগইনের সময় যাচাই।").assertExists()
-        rule.onNodeWithText("New promotion modality., Login time 2FA verification.").assertDoesNotExist()
     }
 
     @Test fun noNotesMeansNoNotesLineAndNeverAPlaceholder() {
@@ -61,25 +68,26 @@ class SrUpdateUiTest {
     @Test fun offlineShowsTheOfflineWordAndTheDownloadCannotStart() {
         var tapped = 0
         show(AppLanguage.EN, network = NetworkStatus.OFFLINE, onDownload = { tapped++ })
-        rule.onNodeWithText("Offline").assertIsDisplayed()
+        rule.onNodeWithText("অফলাইন").assertIsDisplayed()
         rule.onNodeWithTag(UpdateTags.DOWNLOAD).performClick()
         assertEquals(0, tapped)
     }
 
-    @Test fun downloadingShowsTheBarThePercentAndTheRedWarningAndNoButtons() {
+    @Test fun downloadingShowsTheBarThePercentAndTheRedWarningAndNoDownloadButton() {
         show(AppLanguage.EN, download = DownloadUi.Downloading(24))
         rule.onNodeWithTag(SrUpdateTags.PROGRESS).assertIsDisplayed()
-        rule.onNodeWithText("Downloading 24%").assertIsDisplayed()
+        rule.onNodeWithText("Downloading 24%").assertExists()
         rule.onNodeWithTag(SrUpdateTags.WARNING).assertExists()
         rule.onNodeWithText("Please do not close the app while downloading").assertExists()
         rule.onNodeWithTag(UpdateTags.DOWNLOAD).assertDoesNotExist()
-        rule.onNodeWithTag(UpdateTags.LATER).assertDoesNotExist() // no way off the page mid-download
+        // an optional update can be put off mid-download (offline-first: a rep is never held on a screen); the download goes on in the background
+        rule.onNodeWithTag(UpdateTags.LATER).assertExists()
     }
 
-    @Test @Config(qualifiers = "bn") fun downloadingInBanglaUsesBanglaDigits() {
+    @Test @Config(qualifiers = "bn") fun downloadingOnABanglaPhoneKeepsTheScreenshotsEnglishAndLatinDigits() {
         show(AppLanguage.BN, download = DownloadUi.Downloading(24))
-        rule.onNodeWithText("ডাউনলোড হচ্ছে ২৪%").assertIsDisplayed()
-        rule.onNodeWithText("ডাউনলোডের সময় অনুগ্রহ করে অ্যাপটি বন্ধ করবেন না").assertExists()
+        rule.onNodeWithText("Downloading 24%").assertExists()
+        rule.onNodeWithText("Please do not close the app while downloading").assertExists()
     }
 
     @Test fun completedSaysSoAndKeepsTheInstallButtonAsTheWayBackAfterCancel() {
@@ -88,6 +96,11 @@ class SrUpdateUiTest {
         rule.onNodeWithText("Download completed").assertIsDisplayed()
         rule.onNodeWithTag(UpdateTags.INSTALL).performScrollTo().performClick()
         assertEquals(1, installs)
+    }
+
+    @Test fun aRequiredUpdateHasNoLaterNotEvenWhileItDownloads() {
+        show(AppLanguage.EN, required = true, download = DownloadUi.Downloading(10))
+        rule.onNodeWithTag(UpdateTags.LATER).assertDoesNotExist()
     }
 
     @Test fun aRequiredUpdateHasNoLaterAndAnOptionalOneHasIt() {

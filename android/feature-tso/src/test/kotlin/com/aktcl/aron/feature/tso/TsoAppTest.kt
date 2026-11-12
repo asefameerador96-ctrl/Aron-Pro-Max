@@ -33,14 +33,14 @@ class TsoAppTest {
     private val user = HomeUser("Testing Dhaka North", "tso1001", "TSO", offline = false, reauthRequired = true, updateRequired = false)
     private val languages = mutableListOf<AppLanguage>()
 
-    private fun show(language: AppLanguage, sunlight: Boolean = false): Context {
+    private fun show(language: AppLanguage, sunlight: Boolean = false, screens: Map<TsoScreen, TsoScreenContent> = emptyMap()): Context {
         val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         compose.setContent {
             CompositionLocalProvider(LocalContext provides context) {
                 TsoLoginTheme(language, sunlight = sunlight, loggedOut = false) {
                     TsoApp(
                         user, "2026-10-05", BundleStatus.Ready("b-17", "2026-10-05"), "0.1.0 (1)", onLanguageSelect = { languages += it }, onLogout = {},
-                        sunlight = sunlight, onSunlight = {}, changePassword = { _, _ -> CpOutcome.Ok },
+                        sunlight = sunlight, onSunlight = {}, changePassword = { _, _ -> CpOutcome.Ok }, screens = screens,
                     )
                 }
             }
@@ -59,6 +59,19 @@ class TsoAppTest {
         compose.onNodeWithText("শুভ দিন, Testing Dhaka North").assertIsDisplayed()
         compose.onNodeWithTag(TsoShellTags.PLACEHOLDER).assertExists()
         compose.onNodeWithTag(HomeTags.HEADER).assertDoesNotExist() // the tile Home is retired
+    }
+
+    @Test fun theDeviceOtpRowOfSettingsOpensTheDeviceOtpScreenAndBackReturnsToSettings() {
+        show(AppLanguage.EN, screens = mapOf(TsoScreen.DEVICE_OTP to { _, _ -> androidx.compose.material3.Text("device-otp-screen") }))
+        openSettings()
+        compose.onNodeWithTag(TsoSettingsTags.DEVICE_OTP).performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithText("device-otp-screen").assertExists()
+    }
+
+    @Test fun withoutAHostForTheDeviceOtpScreenSettingsHasNoSuchRow() {
+        show(AppLanguage.EN)
+        openSettings()
+        compose.onNodeWithTag(TsoSettingsTags.DEVICE_OTP).assertDoesNotExist()
     }
 
     @Test fun settingsHasLanguageSunlightVersionAndChangePasswordButNoLogout() {

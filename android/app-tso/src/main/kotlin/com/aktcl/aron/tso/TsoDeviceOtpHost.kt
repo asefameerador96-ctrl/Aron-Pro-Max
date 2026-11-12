@@ -24,6 +24,7 @@ fun deviceOtpModel(api: TsoApi): TsoDeviceOtpModel = TsoDeviceOtpModel(
         when (val r = api.deviceOtps(cursor)) {
             is TsoFetch.Fresh -> DeviceOtpFetch.Fresh(r.json)
             TsoFetch.Gone -> DeviceOtpFetch.Refused
+            TsoFetch.Unauthorized -> DeviceOtpFetch.SessionExpired
             else -> DeviceOtpFetch.Unavailable
         }
     },
@@ -31,6 +32,7 @@ fun deviceOtpModel(api: TsoApi): TsoDeviceOtpModel = TsoDeviceOtpModel(
         when (val r = api.issueDeviceOtp(userId, TsoDeviceOtps.issueBody(userId))) {
             is TsoApi.IssueOtp.Issued -> DeviceOtpIssue.Issued(r.json)
             TsoApi.IssueOtp.Rejected -> DeviceOtpIssue.Refused
+            TsoApi.IssueOtp.Unauthorized -> DeviceOtpIssue.SessionExpired
             TsoApi.IssueOtp.NoAnswer -> DeviceOtpIssue.Offline
         }
     },
@@ -39,6 +41,7 @@ fun deviceOtpModel(api: TsoApi): TsoDeviceOtpModel = TsoDeviceOtpModel(
 /** The screen: reads when it opens and on pull-to-refresh, issues on a tap; the model lives only while the screen is shown. */
 @Composable
 fun TsoDeviceOtpHost(api: TsoApi, nav: TsoNav) {
+    com.aktcl.aron.core.ui.SecureScreen() // the codes are not in recents or screenshots (they are still read aloud: the row keeps its description)
     val model = remember(api) { deviceOtpModel(api) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(model) { model.refresh() }

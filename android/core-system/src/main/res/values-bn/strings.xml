@@ -73,11 +73,4 @@
     <string name="update_amo_updating">অ্যাপ আপডেট হচ্ছে</string>
     <string name="update_amo_version">সংস্করণ %1$s পাওয়া যাচ্ছে</string>
     <string name="update_amo_download">অ্যাপ ডাউনলোড ও ইনস্টল করুন</string>
-    <!-- the SR app's update page (SR manual screenshots 06 and 07, SRM-A-09/10) -->
-    <string name="update_sr_network_status">Network Status</string>
-    <string name="update_sr_online">অনলাইন</string>
-    <string name="update_sr_offline">অফলাইন</string>
-    <string name="update_sr_downloading">ডাউনলোড হচ্ছে %1$d%%</string>
-    <string name="update_sr_completed">ডাউনলোড সম্পন্ন হয়েছে</string>
-    <string name="update_sr_do_not_close">ডাউনলোডের সময় অনুগ্রহ করে অ্যাপটি বন্ধ করবেন না</string>
 </resources>

@@ -173,13 +173,14 @@ class MainActivity : ComponentActivity() {
                             LaunchedEffect(s.user.userId) { sunlight = sunlightPref.enabled }
                             // F-SYS-020: an open day (checked in, not submitted) is never interrupted by a required update.
                             // F-SYS-075: the location notice before anything else of the day (no sale before acceptance when required).
-                            day?.let { d -> LocationFirstGate { com.aktcl.aron.feature.auth.LocationNoticeGate(
+                            day?.let { d -> SrLocationGates(notice = { inner -> com.aktcl.aron.feature.auth.LocationNoticeGate(
                                 key = s.user.userId,
                                 load = { locationNotice.state(s.user.userId).let { com.aktcl.aron.feature.auth.NoticeNeed(it.needed, it.required) } },
                                 accept = { shownAt -> locationNotice.accept(s.user.userId, language.tag, shownAt) },
                                 nowMs = components.trustedClock::nowMs,
                                 onLogout = { srLogout(s.user.userId) },
-                            ) { UpdateHost(updateShell, dayOpen = { d.dayOpen() }, serverSaidTooOld = s.updateRequired, onLogout = { srLogout(s.user.userId) }) {
+                                content = inner,
+                            ) }) { UpdateHost(updateShell, dayOpen = { d.dayOpen() }, serverSaidTooOld = s.updateRequired, onLogout = { srLogout(s.user.userId) }) {
                                 SrApp(
                                     day = d,
                                     user = HomeUser(
@@ -198,7 +199,7 @@ class MainActivity : ComponentActivity() {
                                     openTasks = openTasks,
                                     shell = systemShell,
                                 )
-                            } } } }
+                            } } }
                             // Drawn after the screens so the camera covers them while a capture is open (F-SYS-030).
                             day?.media?.let { com.aktcl.aron.core.media.CameraCaptureOverlay(it.camera) }
                         }

@@ -149,4 +149,15 @@ class LoginViewModelTest {
         assertEquals(null, vm.state.value.bindToken)
         assertEquals(LoginMessage.BindRequired, vm.state.value.message)
     }
+
+    @Test
+    fun aCancelledBindIsNeverTurnedIntoAFailureOrASuccess() {
+        val vm = LoginViewModel { _, _ -> LoginOutcome.BindRequired("tok") }
+        vm.bind = { _, _, _ -> throw kotlinx.coroutines.CancellationException("scope cancelled") }
+        vm.onUsernameChange("sr334001"); vm.onPasswordChange("pw"); vm.onSubmit()
+        vm.onOtpDigits("1234"); vm.onOtpVerify()
+        // cancellation propagates out of the launch: no error was written (it is not an OTHER failure), and no bind happened
+        assertEquals(null, vm.state.value.otp.error)
+        assertFalse(vm.state.value.otp.bound)
+    }
 }

@@ -278,4 +278,11 @@ class TsoApiTest {
         status.clear(); transportDown = true
         assertTrue(api.issueDeviceOtp(12, body) is TsoApi.IssueOtp.NoAnswer)
     }
+
+    @Test fun aSignedOutSessionIsNotNoConnectionForTheDeviceOtpReadOrIssue() = runBlocking {
+        val api = TsoApi(client(), tmp.newFolder("otp"))
+        status["/v1/admin/device-otps"] = 401
+        assertTrue(api.deviceOtps() is TsoFetch.Unauthorized)
+        assertTrue(api.issueDeviceOtp(12, com.aktcl.aron.feature.tso.deviceotp.TsoDeviceOtps.issueBody(12)) is TsoApi.IssueOtp.Unauthorized)
+    }
 }

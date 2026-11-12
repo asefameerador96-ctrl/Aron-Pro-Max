@@ -95,6 +95,7 @@ fun OtpContent(
     onSunlight: ((Boolean) -> Unit)? = null,
 ) {
     val c = LocalAronColors.current
+    com.aktcl.aron.core.ui.SecureScreen() // the typed code is not in recents or screenshots
     ScreenWithBar(modifier.fillMaxSize(), bar = {
         Column(Modifier.fillMaxWidth()) {
             // the disabled primary says why (android-glass s6.1); the reason slot stays reserved so the bar never jumps at the fourth digit
@@ -214,6 +215,7 @@ private fun OtpBoxes(digits: String, onDigits: (String) -> Unit, enabled: Boolea
 @Composable
 fun OtpManualContent(state: OtpState, onDigits: (String) -> Unit, onVerify: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
+    com.aktcl.aron.core.ui.SecureScreen() // the typed code is not in recents or screenshots
     Column(modifier.fillMaxSize().background(look.page)) {
         com.aktcl.aron.core.ui.aron.AronTopBar(stringResource(R.string.otp_title), onBack = onBack, backLabel = stringResource(R.string.otp_back))
         Column(
