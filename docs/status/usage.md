@@ -3055,3 +3055,6 @@
 ### 2026-11-12 17:07 UTC — L-B train 4 focused re-check: three items left
 - L-B `35c23479c` focused Sonnet re-check w4rn1boss (8 agents, 1.0 M tokens; scoped to the nine findings): items 1 to 7 closed line for line; order of checks of the twelve operations matches. Left: created programme version starts at 1 in the mock but 2 on the server (four tests hard-code the mock's numbers); pointers inside tiers[] and rows[] (the server names the flat member for most fields; the mock indexes them) with an overclaiming record; stale status-doc sections. Fix list sent; next head gated by my own diff read. wt-lb removed.
 - Note for the API lane's successor (train 3 session): error pointers inside tiers[] and rows[] should be indexed (body.tiers[i].label_en, body.rows[i].outlet_id) so the web can light the right row; today the server's helpers name the flat member.
+
+### 2026-11-12 17:18 UTC — GO train 107
+- Train 107 CI 43260056186 success on 5a3662eb3 (12 jobs ok, squawk and contract-breaking included); L-A lane CI 43259485855 success on 7fb2c471e. INT still f57ce31ed. GO sent to integrator 24 (expected DECISIONS 437, V0172 last, contract 1.13.1, real deploy; ADMIN tokens 401 once then refresh).
