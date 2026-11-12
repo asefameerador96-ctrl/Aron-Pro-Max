@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.notify
 
+import com.aktcl.aron.backend.platform.exitIfFatal
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.AuthGuardDeps
@@ -165,7 +166,7 @@ class InboxPruneJob(
     fun start() {
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "inbox-prune").apply { isDaemon = true } }.scheduleWithFixedDelay({
             runCatching { runOnce() }.onSuccess { if (it > 0) log.info("inbox: {} notification(s) past {} pruned", it, RETENTION_KEY) }
-                .onFailure { log.error("inbox prune failed", it) }
+                .onFailure { it.exitIfFatal(log, "inbox prune"); log.error("inbox prune failed", it) }
         }, 11, everyHours * 60, TimeUnit.MINUTES)
     }
 

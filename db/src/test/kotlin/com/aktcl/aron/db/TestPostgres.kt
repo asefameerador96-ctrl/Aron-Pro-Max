@@ -44,18 +44,67 @@ object TestPostgres {
     fun createDatabase(): TestDatabase {
         val name = "aron_db_test_" + UUID.randomUUID().toString().replace("-", "").take(16)
         connect(server.baseUrl).use { c -> c.createStatement().use { it.execute("CREATE DATABASE $name") } }
-        return TestDatabase(name, urlFor(name)) {
-            // FORCE cannot terminate an autovacuum worker of another role (42501); it ends within moments, so retry.
-            for (attempt in 1..20) {
-                try {
-                    connect(server.baseUrl).use { c -> c.createStatement().use { it.execute("DROP DATABASE IF EXISTS $name WITH (FORCE)") } }
-                    break
-                } catch (e: java.sql.SQLException) {
-                    if (e.sqlState != "42501" || attempt == 20) throw e
-                    Thread.sleep(250)
+        return TestDatabase(name, urlFor(name)) { dropDatabase(name) }
+    }
+
+    private fun dropDatabase(name: String) {
+        // FORCE cannot terminate an autovacuum worker of another role (42501); it ends within moments, so retry.
+        for (attempt in 1..20) {
+            try {
+                connect(server.baseUrl).use { c -> c.createStatement().use { it.execute("DROP DATABASE IF EXISTS $name WITH (FORCE)") } }
+                break
+            } catch (e: java.sql.SQLException) {
+                if (e.sqlState != "42501" || attempt == 20) throw e
+                Thread.sleep(250)
+            }
+        }
+    }
+
+    /**
+     * A migrated database for tests that only need the finished schema: a copy (CREATE DATABASE ... TEMPLATE) of a template that is migrated once
+     * per server and migration set, built and copied under [RoleDdlLock]. A full Flyway run per class cost about 11 s and grew with every migration
+     * (push A2 profile of the "Shared, db and backend" job, docs/status/portal-loyalty-api.md). Tests whose subject is the migration run itself
+     * use [TestDatabase.migratedByFlyway].
+     */
+    internal fun createMigratedCopy(): TestDatabase {
+        val name = "aron_db_test_" + UUID.randomUUID().toString().replace("-", "").take(16)
+        RoleDdlLock.hold {
+            connect(server.baseUrl).use { c ->
+                val tpl = "aron_dbtpl_" + fingerprint
+                val exists = c.createStatement().use { st -> st.executeQuery("SELECT 1 FROM pg_database WHERE datname = '$tpl'").use { it.next() } }
+                if (!exists) {
+                    val wip = "aron_dbtplwip_" + UUID.randomUUID().toString().replace("-", "").take(12)
+                    c.createStatement().use { it.execute("CREATE DATABASE $wip") }
+                    try {
+                        Flyway.configure().dataSource(urlFor(wip), server.user, server.password).locations(DbMigrations.LOCATION).cleanDisabled(true).validateOnMigrate(true).load().migrate()
+                        c.createStatement().use { it.execute("ALTER DATABASE $wip RENAME TO $tpl") }
+                    } catch (e: Throwable) {
+                        runCatching { c.createStatement().use { it.execute("DROP DATABASE IF EXISTS $wip WITH (FORCE)") } }
+                        throw e
+                    }
+                }
+                for (attempt in 1..40) {          // a template must have no session; an autovacuum worker may touch it for a moment
+                    try { c.createStatement().use { it.execute("CREATE DATABASE $name TEMPLATE $tpl") }; break }
+                    catch (e: java.sql.SQLException) { if (e.sqlState != "55006" || attempt == 40) throw e; Thread.sleep(250) }
                 }
             }
         }
+        return TestDatabase(name, urlFor(name)) { dropDatabase(name) }
+    }
+
+    /** Digest of the packaged migrations (name and bytes): a changed or added migration gives a new template. */
+    private val fingerprint: String by lazy {
+        val files = sortedMapOf<String, ByteArray>()
+        for (u in TestPostgres::class.java.classLoader.getResources("db/migration")) {
+            if (u.protocol == "file") java.nio.file.Files.list(java.nio.file.Path.of(u.toURI())).use { st -> st.forEach { f -> if (f.fileName.toString().endsWith(".sql")) files[f.fileName.toString()] = java.nio.file.Files.readAllBytes(f) } }
+            else if (u.protocol == "jar") (u.openConnection() as java.net.JarURLConnection).jarFile.let { jar ->
+                jar.entries().asSequence().filter { it.name.startsWith("db/migration/") && it.name.endsWith(".sql") }.forEach { e -> files[e.name.substringAfterLast('/')] = jar.getInputStream(e).use { it.readBytes() } }
+            }
+        }
+        check(files.isNotEmpty()) { "no db/migration resources on the classpath" }
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        files.forEach { (n, b) -> md.update(n.toByteArray()); md.update(0); md.update(b); md.update(0) }
+        md.digest().joinToString("") { "%02x".format(it) }.take(16)
     }
 
     fun flyway(url: String, location: String = DbMigrations.LOCATION): Flyway =
@@ -123,8 +172,11 @@ class TestDatabase(val name: String, val url: String, private val drop: () -> Un
     fun connect(): Connection = TestPostgres.connect(url)
     fun flyway(location: String = DbMigrations.LOCATION): Flyway = TestPostgres.flyway(url, location)
 
-    /** Applies every packaged migration and returns this database. */
-    fun migrated(): TestDatabase = apply { flyway().migrate() }
+    /** Returns a database holding the finished schema: [TestPostgres.createMigratedCopy] (this empty database is dropped). Use [migratedByFlyway] to run the migrations here. */
+    fun migrated(): TestDatabase = TestPostgres.createMigratedCopy().also { close() }
+
+    /** Applies every packaged migration with Flyway, on this database, and returns it: for tests whose subject is the migration run. */
+    fun migratedByFlyway(): TestDatabase = apply { flyway().migrate() }
 
     override fun close() = drop()
 }

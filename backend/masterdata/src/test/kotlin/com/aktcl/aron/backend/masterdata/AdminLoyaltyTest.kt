@@ -235,6 +235,29 @@ class AdminLoyaltyTest {
     }
 
     @Test
+    fun errorsInsideArraysCarryTheElementIndex() = app {
+        fun tier(code: String, order: Int, extra: String = "") = """{"tier_code":"$code","sort_order":$order,"label_en":"T"$extra}"""
+        // A failure in the 2nd and in the 3rd tier names that element, not the flat member.
+        create(super1, createBody(tiers = "[${tier("a1", 1)},{\"tier_code\":\"a2\",\"sort_order\":2},${tier("a3", 3)}]")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.tiers[1].label_en")
+        create(super1, createBody(tiers = "[${tier("a1", 1)},${tier("a2", 2)},{\"tier_code\":\"a3\",\"sort_order\":3,\"label_en\":\"\"}]")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.tiers[2].label_en")
+        create(super1, createBody(tiers = "[${tier("a1", 1)},${tier("a2", 2, ",\"bogus\":1")}]")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.tiers[1].bogus")
+        create(super1, createBody(tiers = "[${tier("a1", 1)},${tier("a2", 2)},${tier("a3", 3, ",\"label_bn\":5")}]")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.tiers[2].label_bn")
+        create(super1, createBody(tiers = "[${tier("a1", 1)},{\"tier_code\":\"a2\",\"sort_order\":2}]")).bodyAsText().also { assertTrue(it.contains("invalid body.tiers[1].label_en"), "detail and pointer agree: $it") }
+        // Qualifying and scope pairs.
+        create(super1, createBody(qualifying = "[${q("brand", fx["b1"]!!)},{\"product_level\":\"brand\"}]")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.qualifying[1].product_id")
+        create(super1, createBody(scope = "[${s("zone", fx["zoneA"]!!)},${s("zone", fx["zoneB"]!!)},{\"node_type\":\"zone\",\"node_id\":0}]")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.scope[2].node_id")
+        // Enrolment rows: the 2nd and the 3rd row.
+        val prog = createId(createBody())
+        val o1 = fx["L-O1"]!!
+        suspend fun put(rows: String) = call(HttpMethod.Put, "/v1/admin/programmes/$prog/enrolments", super1, enrolBody(prog, rows = rows))
+        put(enrolRow(prog, o1) + "," + """{"programme_id":$prog,"valid_from":"$from"}""").expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.rows[1].outlet_id")
+        put(enrolRow(prog, o1) + "," + enrolRow(prog, fx["L-O2"]!!) + "," + """{"programme_id":$prog,"outlet_id":"x","valid_from":"$from"}""").expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.rows[2].outlet_id")
+        put(enrolRow(prog, o1) + "," + """{"programme_id":$prog,"outlet_id":${fx["L-O2"]},"valid_from":"$from","league_label":7}""").expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.rows[1].league_label")
+        put(enrolRow(prog, o1) + "," + enrolRow(prog, fx["L-O2"]!!) + "," + """{"programme_id":$prog,"outlet_id":${fx["L-O3"]},"valid_from":"$from","extra":1}""").expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.rows[2].extra")
+        assertEquals(0, count("SELECT count(*) FROM app.programme_enrolment WHERE programme_id = $prog"), "a refused batch writes nothing")
+    }
+
+    @Test
     fun createRefusalsAreFieldPrecise() = app {
         fun with(vararg kv: Pair<String, String>): String {
             var b = createBody()
