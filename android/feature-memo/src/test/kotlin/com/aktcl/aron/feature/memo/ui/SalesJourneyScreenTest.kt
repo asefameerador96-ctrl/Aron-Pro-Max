@@ -59,7 +59,7 @@ class SalesJourneyScreenTest {
         // calls b, c and d each have a leg of 111.20 m; the first call has no distance row at all
         compose.onAllNodesWithText("দূরত্ব", substring = true).assertCountEquals(3)
         compose.onAllNodesWithText("দূরত্ব: ১১১.২০ মি", substring = true).assertCountEquals(3)
-        compose.onNodeWithText("মোট: ৩৩৩.৫৯ মি", substring = true).assertExists() // the running total after the third leg (3 x 111.1951)
+        compose.onNodeWithText("মোট: ৩৩৩.৬০ মি", substring = true).assertExists() // the running total of the ROUNDED legs: 3 x 111.20
     }
 
     @Test fun englishUsesLatinDigitsAndTheLastCallHasNoGapRow() {

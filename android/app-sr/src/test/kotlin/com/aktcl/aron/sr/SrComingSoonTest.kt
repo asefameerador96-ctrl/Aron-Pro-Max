@@ -10,7 +10,8 @@ class SrComingSoonTest {
     @Test fun everyProgrammeTileHasATitleOfItsOwn() {
         val titles = HomeTile.entries.filter { it.isProgramme }.map { soonTitle(it) }
         assertEquals(4, titles.distinct().size)
-        assertTrue(HomeTile.entries.filter { it.isProgramme }.all { it.alwaysShown })
+        // Astha, Loyalty Point and Match Program are flag-gated; Photo Capture is always on the grid
+        assertTrue(HomeTile.PHOTO_CAPTURE.alwaysShown && !HomeTile.ASTHA.alwaysShown && !HomeTile.LOYALTY_POINT.alwaysShown && !HomeTile.MATCH_PROGRAM.alwaysShown)
     }
 
     @Test fun clustersAndTheSoonScreenReturnToTheirParents() {

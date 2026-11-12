@@ -655,9 +655,9 @@ internal class RequestIdentity(
 
 @Composable
 internal fun rememberRequestIdentity(kind: OutletRequestKind, newUuid: () -> String): RequestIdentity {
-    val request = rememberSaveable(kind) { mutableStateOf(newUuid()) }
-    val cluster = rememberSaveable(kind) { mutableStateOf(newUuid()) }
-    val saved = rememberSaveable(kind) { mutableStateOf(false) }
+    val request = rememberSaveable(kind, key = "req-uuid-$kind") { mutableStateOf(newUuid()) }
+    val cluster = rememberSaveable(kind, key = "req-cluster-uuid-$kind") { mutableStateOf(newUuid()) }
+    val saved = rememberSaveable(kind, key = "req-saved-$kind") { mutableStateOf(false) }
     return remember(request, cluster, saved) { RequestIdentity(request, cluster, saved) }
 }
 

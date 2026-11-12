@@ -59,11 +59,11 @@ class JourneyTimelineTest {
             call("4", 4, 60, 70, 23.7818, 90.4000),
         ))
         assertNull(rows[0].distanceFromPrevM)
-        val leg = Geo.haversineM(23.7800, 90.4000, 23.7809, 90.4000)
-        assertEquals(leg, rows[1].distanceFromPrevM!!, 1e-9)
+        val leg = kotlin.math.floor(Geo.haversineM(23.7800, 90.4000, 23.7809, 90.4000) * 100.0 + 0.5) / 100.0 // the server rounds each leg to two decimals
+        assertEquals(leg, rows[1].distanceFromPrevM!!, 0.0)
         assertNull(rows[2].distanceFromPrevM) // no base point
         assertNull(rows[3].distanceFromPrevM) // previous has no point
-        assertEquals(leg, rows[3].runningM, 1e-9)
+        assertEquals(leg, rows[3].runningM, 0.0)
     }
 
     @Test fun distanceSwitchesToKilometresAfterRounding() {
