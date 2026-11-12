@@ -811,12 +811,12 @@ private suspend fun putEnrolments(call: ApplicationCall, d: AdminLoyaltyDeps): B
 
 // ------------------------------------------------------------------------------------------------ gifts
 
-private const val GIFT_SELECT = "SELECT g.id, g.programme_id, g.code, g.name_en, g.name_bn, g.points_cost, g.tier_codes, g.status, g.version, g.image_url, a.blob_path " +
+private const val GIFT_SELECT = "SELECT g.id, g.programme_id, g.code, g.name_en, g.name_bn, g.points_cost, g.tier_codes, g.status, g.version, a.blob_path " +
     "FROM app.gift g JOIN app.programme p ON p.id = g.programme_id LEFT JOIN app.programme_version v ON v.id = p.current_version_id LEFT JOIN app.admin_asset a ON a.asset_id = g.image_asset_id"
 
 private fun giftOf(rs: java.sql.ResultSet, d: AdminLoyaltyDeps) = GiftOut(
     rs.getLong("id"), rs.getLong("programme_id"), rs.getString("code"), rs.getString("name_en"), rs.getString("name_bn"), rs.getObject("points_cost") as Int?,
-    (rs.getArray("tier_codes").array as Array<*>).map { it.toString() }, rs.getString("blob_path")?.let { runCatching { d.blob.readUrl(it) }.getOrNull() } ?: rs.getString("image_url"),
+    (rs.getArray("tier_codes").array as Array<*>).map { it.toString() }, rs.getString("blob_path")?.let { runCatching { d.blob.readUrl(it) }.getOrNull() },   // the portal resolves the picture from image_asset_id only (the V0007 image_url column is never read)
     rs.getString("status"), rs.getInt("version"),
 )
 

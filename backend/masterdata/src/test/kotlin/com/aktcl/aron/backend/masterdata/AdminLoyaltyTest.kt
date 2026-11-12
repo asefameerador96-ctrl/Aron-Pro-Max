@@ -154,8 +154,10 @@ class AdminLoyaltyTest {
     private val blob = object : BlobSasIssuer {
         override fun writeSas(blobPath: String, maxBytes: Long, expiresAt: Instant) = "https://blob.test/w/$blobPath"
         // Signature-shaped, as the real issuer returns: the test below proves no such URL is ever stored in a journal or an audit row.
-        override fun readUrl(blobPath: String) = "https://blob.test/r/$blobPath?sv=2024-11-04&se=2099-01-01T00%3A00%3A00Z&sig=SECRETSIG%2Babc"
+        override fun readUrl(blobPath: String) = standIn(blobPath)
     }
+
+    private fun standIn(blobPath: String) = "https://blob.test/r/$blobPath?sv=2024-11-04&se=2099-01-01T00%3A00%3A00Z&sig=SECRETSIG%2Babc"
 
     private fun app(block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
         application {
@@ -531,7 +533,7 @@ class AdminLoyaltyTest {
         sql("INSERT INTO app.admin_asset (asset_id, purpose, mime, bytes, sha256, blob_path) VALUES ('$other', 'sku_image', 'image/png', 1000, decode(repeat('cd', 32), 'hex'), 'skus/$other.png')")
         createGift(super1, giftBody(prog, extra = ",\"image_asset_id\":\"$other\"")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.image_asset_id")   // wrong purpose
         val g = createGift(super1, giftBody(prog, extra = ",\"image_asset_id\":\"$img\"")); g.expect(HttpStatusCode.Created)
-        assertTrue(g.obj().getValue("image_url").jsonPrimitive.content.startsWith("https://blob.test/r/gifts/$img.png?"), "the answer carries a freshly resolved URL")
+        assertEquals(standIn("gifts/$img.png"), g.obj().getValue("image_url").jsonPrimitive.content, "the answer carries the freshly resolved URL")
         val id = g.obj().getValue("gift_id").jsonPrimitive.content.toLong()
         val v = scalar("SELECT version FROM app.gift WHERE id = $id").toInt()
         val cleared = call(HttpMethod.Patch, "/v1/admin/gifts/$id", super1, "{\"request_uuid\":\"${uuid()}\",\"image_asset_id\":null,\"change_reason\":\"$why\"}", v)
@@ -547,8 +549,32 @@ class AdminLoyaltyTest {
         val againReq = uuid()
         val first = call(HttpMethod.Patch, "/v1/admin/gifts/$id", super1, "{\"request_uuid\":\"$againReq\",\"points_cost\":321,\"change_reason\":\"$why\"}", v + 2); first.expect(HttpStatusCode.OK)
         val replay = call(HttpMethod.Patch, "/v1/admin/gifts/$id", super1, "{\"request_uuid\":\"$againReq\",\"points_cost\":321,\"change_reason\":\"$why\"}", v + 2); replay.expect(HttpStatusCode.OK)
-        assertTrue(replay.obj().getValue("image_url").jsonPrimitive.content.contains("sig=SECRETSIG"), "a replay resolves the URL again from the asset")
+        assertEquals(standIn("gifts/$img.png"), replay.obj().getValue("image_url").jsonPrimitive.content, "a replay resolves the same URL again from the asset")
         assertEquals(0, count("SELECT count(*) FROM app.gift_change WHERE gift_id = $id AND snapshot::text LIKE '%SECRETSIG%'"))
+    }
+
+    /**
+     * Deterministic race: a second JDBC handle holds the advisory lock the routes take for [lockKey]; every call in [calls] is fired, the helper waits until each of them is
+     * blocked on that lock (pg_locks shows them ungranted), then releases it. The calls therefore enter their transactions together and the later ones must be answered as replays.
+     */
+    private suspend fun <T> raced(lockKey: String, vararg calls: suspend () -> T): List<T> {
+        val holder = env.fresh.db.jdbi.open()
+        holder.begin()
+        holder.createQuery("SELECT pg_advisory_xact_lock(hashtext(:k))").bind("k", lockKey).mapTo(String::class.java).findOne()
+        try {
+            return kotlinx.coroutines.coroutineScope {
+                val pending = calls.map { c -> async(kotlinx.coroutines.Dispatchers.IO) { c() } }
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    var waited = 0
+                    while (count("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted") < calls.size) {
+                        Thread.sleep(50); waited += 50
+                        check(waited < 20_000) { "the calls never reached the lock" }
+                    }
+                }
+                holder.commit()
+                pending.awaitAll()
+            }
+        } finally { holder.close() }
     }
 
     // ------------------------------------------------------------------------------------------------ review fixes (Opus pass on 17be785bd)
@@ -582,37 +608,40 @@ class AdminLoyaltyTest {
     }
 
     @Test
-    fun theSameRequestUuidRacedByTwoThreadsMakesOneRowAndTheSecondIsAReplay() = app {
+    fun theSameRequestUuidRacedByTwoCallsMakesOneRowAndTheSecondIsAReplay() = app {
         val request = uuid(); val code = code()
         val body = createBody(code, request)
-        val both = kotlinx.coroutines.coroutineScope {
-            listOf(async(kotlinx.coroutines.Dispatchers.IO) { create(super1, body) }, async(kotlinx.coroutines.Dispatchers.IO) { create(super1, body) }).awaitAll()
-        }
+        val both = raced("programme_req:$request", { create(super1, body) }, { create(super1, body) })
         both.forEach { it.expect(HttpStatusCode.Created) }
         assertEquals(1, both.map { it.obj().getValue("programme_id").jsonPrimitive.content }.toSet().size, "one programme answered twice")
         assertEquals(1, count("SELECT count(*) FROM app.programme WHERE code = '$code'"))
         assertEquals(1, count("SELECT count(*) FROM app.programme_version WHERE request_uuid = '$request'"))
         assertEquals(1, count("SELECT count(*) FROM app.audit_log a JOIN app.programme p ON p.id::text = a.entity_id WHERE a.entity = 'programme' AND a.action = 'create' AND p.code = '$code'"))
-        // The same race on a status move: one trail row.
+        // The same race on a status move: one trail row, both answers are the move.
         val id = both[0].obj().getValue("programme_id").jsonPrimitive.content.toLong(); val move = uuid()
-        val moves = kotlinx.coroutines.coroutineScope { listOf(async(kotlinx.coroutines.Dispatchers.IO) { activate(id, super1, move) }, async(kotlinx.coroutines.Dispatchers.IO) { activate(id, super1, move) }).awaitAll() }
-        moves.forEach { it.expect(HttpStatusCode.OK) }
+        val moves = raced("programme_req:$move", { activate(id, super1, move) }, { activate(id, super1, move) })
+        moves.forEach { it.expect(HttpStatusCode.OK); assertEquals("active", it.obj().getValue("status").jsonPrimitive.content) }
         assertEquals(1, count("SELECT count(*) FROM app.programme_status_change WHERE request_uuid = '$move'"))
+        assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'programme' AND entity_id = '$id' AND action = 'activate'"))
+        // And on a gift create (its own lock namespace).
+        val greq = uuid(); val gbody = giftBody(id, gcode(), greq)
+        val gifts = raced("gift_req:$greq", { createGift(super1, gbody) }, { createGift(super1, gbody) })
+        gifts.forEach { it.expect(HttpStatusCode.Created) }
+        assertEquals(1, gifts.map { it.obj().getValue("gift_id").jsonPrimitive.content }.toSet().size)
+        assertEquals(1, count("SELECT count(*) FROM app.gift_change WHERE request_uuid = '$greq'"))
     }
 
     @Test
-    fun theSameBatchUuidRacedByTwoThreadsEnrolsOnceAndTheSecondIsAReplay() = app {
+    fun theSameBatchUuidRacedByTwoCallsEnrolsOnceAndTheSecondIsAReplay() = app {
         val prog = createId(createBody())
         val batch = uuid()
         val body = enrolBody(prog, batch, enrolRow(prog, fx["L-O1"]!!, null, "100") + "," + enrolRow(prog, fx["L-O2"]!!))
-        val both = kotlinx.coroutines.coroutineScope {
-            listOf(async(kotlinx.coroutines.Dispatchers.IO) { call(HttpMethod.Put, "/v1/admin/programmes/$prog/enrolments", adminW, body) },
-                async(kotlinx.coroutines.Dispatchers.IO) { call(HttpMethod.Put, "/v1/admin/programmes/$prog/enrolments", adminW, body) }).awaitAll()
-        }
+        val both = raced("enrol_batch:$batch", { call(HttpMethod.Put, "/v1/admin/programmes/$prog/enrolments", adminW, body) }, { call(HttpMethod.Put, "/v1/admin/programmes/$prog/enrolments", adminW, body) })
         both.forEach { it.expect(HttpStatusCode.OK) }
         assertEquals(listOf(2, 2), both.map { it.obj().getValue("inserted").jsonPrimitive.content.toInt() }, "both answers carry the first counts")
         assertEquals(2, count("SELECT count(*) FROM app.programme_enrolment WHERE programme_id = $prog"))
         assertEquals(1, count("SELECT count(*) FROM app.programme_enrolment_batch WHERE batch_uuid = '$batch'"))
+        assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'programme' AND entity_id = '$prog' AND action = 'enrol'"))
     }
 
     @Test
@@ -629,17 +658,57 @@ class AdminLoyaltyTest {
     }
 
     @Test
+    fun aHiddenVersionBetweenTwoVisibleOnesLeavesNoEmptyPageAndNoCursorAtIt() = app {
+        // v1 and v3 are in brand 1's reach, v2 (brand 2) is not: limit 1 gives [3], then [1], then the end.
+        val id = createId(createBody(qualifying = "[${q("brand", fx["b1"]!!)}]"))
+        call(HttpMethod.Patch, "/v1/admin/programmes/$id", super1, patchBody(""""qualifying":[${q("brand", fx["b2"]!!)}],"""), rowVersion(id)).expect(HttpStatusCode.OK)
+        call(HttpMethod.Patch, "/v1/admin/programmes/$id", super1, patchBody(""""qualifying":[${q("brand", fx["b1"]!!)}],"""), rowVersion(id)).expect(HttpStatusCode.OK)
+        fun nos(r: kotlinx.serialization.json.JsonObject) = r.getValue("items").jsonArray.map { it.jsonObject.getValue("version_no").jsonPrimitive.content.toInt() }
+        val p1 = call(HttpMethod.Get, "/v1/admin/programmes/$id/versions?limit=1", brand1).obj()
+        assertEquals(listOf(3), nos(p1))
+        val c1 = p1.getValue("next_cursor").jsonPrimitive.content
+        assertEquals("3", c1, "the cursor names the last visible row, never the hidden one")
+        val p2 = call(HttpMethod.Get, "/v1/admin/programmes/$id/versions?limit=1&cursor=$c1", brand1).obj()
+        assertEquals(listOf(1), nos(p2), "the hidden v2 is skipped inside the SQL: no empty page")
+        assertTrue(p2.getValue("next_cursor") is kotlinx.serialization.json.JsonNull)
+        assertEquals(listOf(3, 2, 1), nos(call(HttpMethod.Get, "/v1/admin/programmes/$id/versions", super1).obj()))
+        assertEquals(listOf(3, 1), nos(call(HttpMethod.Get, "/v1/admin/programmes/$id/versions?limit=2", brand1).obj()))
+    }
+
+    @Test
+    fun aPreportalGiftWithALegacyImageUrlAnswersNoPictureAndTheReplayAnswersTheSame() = app {
+        val prog = createId(createBody())
+        sql("INSERT INTO app.gift (programme_id, code, name_en, points_cost, image_url) VALUES ($prog, 'legacy_pic', 'Legacy', 100, 'https://legacy.example/pic.png')")
+        val gid = scalar("SELECT id FROM app.gift WHERE code = 'legacy_pic' AND programme_id = $prog").toLong()
+        call(HttpMethod.Get, "/v1/admin/gifts/$gid", adminR).also { it.expect(HttpStatusCode.OK); assertTrue(it.obj().getValue("image_url") is kotlinx.serialization.json.JsonNull, "the V0007 column is not read") }
+        val v = scalar("SELECT version FROM app.gift WHERE id = $gid").toInt(); val req = uuid()
+        val patch = "{\"request_uuid\":\"$req\",\"points_cost\":150,\"change_reason\":\"$why\"}"
+        val first = call(HttpMethod.Patch, "/v1/admin/gifts/$gid", super1, patch, v); first.expect(HttpStatusCode.OK)
+        val replay = call(HttpMethod.Patch, "/v1/admin/gifts/$gid", super1, patch, v); replay.expect(HttpStatusCode.OK)
+        assertEquals(first.obj().toString(), replay.obj().toString(), "first answer equals replay")
+        assertTrue(first.obj().getValue("image_url") is kotlinx.serialization.json.JsonNull)
+    }
+
+    @Test
     fun aPhoneTokenIsRefusedWithTheExactCodeOnEveryOperation() = app {
         val prog = createId(createBody())
+        val gid = createGift(super1, giftBody(prog)).obj().getValue("gift_id").jsonPrimitive.content
         val phone = tok("ltso1", Role.TSO, flavour = "tso")
-        val calls = listOf(HttpMethod.Get to "/v1/admin/programmes", HttpMethod.Get to "/v1/admin/programmes/$prog", HttpMethod.Post to "/v1/admin/programmes", HttpMethod.Get to "/v1/admin/gifts", HttpMethod.Get to "/v1/admin/programmes/$prog/enrolments")
+        val calls = listOf(
+            HttpMethod.Get to "/v1/admin/programmes", HttpMethod.Get to "/v1/admin/programmes/$prog", HttpMethod.Get to "/v1/admin/programmes/$prog/versions",
+            HttpMethod.Get to "/v1/admin/programmes/$prog/enrolments", HttpMethod.Get to "/v1/admin/gifts", HttpMethod.Get to "/v1/admin/gifts/$gid",
+            HttpMethod.Post to "/v1/admin/programmes", HttpMethod.Patch to "/v1/admin/programmes/$prog", HttpMethod.Post to "/v1/admin/programmes/$prog/status",
+            HttpMethod.Put to "/v1/admin/programmes/$prog/enrolments", HttpMethod.Post to "/v1/admin/gifts", HttpMethod.Patch to "/v1/admin/gifts/$gid",
+        )
         for ((method, path) in calls) {
+            val body = if (method == HttpMethod.Get) null else "{}"
             // Without the device proof the guard stops it: 401 ERR_DEVICE_PROOF_INVALID.
-            call(method, path, phone, if (method == HttpMethod.Post) createBody() else null).expect(HttpStatusCode.Unauthorized, "ERR_DEVICE_PROOF_INVALID")
+            call(method, path, phone, body, if (method == HttpMethod.Patch) 1 else null).expect(HttpStatusCode.Unauthorized, "ERR_DEVICE_PROOF_INVALID")
             // With a matching device proof the portal handler itself refuses it: 403 ERR_FORBIDDEN (a phone token is never a portal caller).
             val withProof = client.request(path) {
                 this.method = method; bearerAuth(phone); header("X-Device-Id", phoneDevice)
-                if (method == HttpMethod.Post) { contentType(io.ktor.http.ContentType.Application.Json); setBody(createBody()) }
+                if (method == HttpMethod.Patch) header("If-Match", "\"1\"")
+                if (body != null) { contentType(io.ktor.http.ContentType.Application.Json); setBody(body) }
             }
             withProof.expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN")
         }
