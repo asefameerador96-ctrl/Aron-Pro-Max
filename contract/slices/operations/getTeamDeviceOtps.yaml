@@ -1,0 +1,37 @@
+path: /v1/supervisor/device-otps
+method: get
+operation:
+  tags:
+  - team
+  operationId: getTeamDeviceOtps
+  summary: Today's pending device OTPs of the SRs in the caller's territory (contract 1.14.0, SRM-A-06).
+  description: 'TSO only (anyone else 403 `ERR_FORBIDDEN`). One row per active SR in the caller''s reach (server-side,
+    from the token; no
+
+    zone or user list is read from the request) that has a live, unconsumed OTP created on the Dhaka business date.
+    The code is
+
+    shown to the TSO, who gives it to the SR; it is never written to a log, and the audit event holds counts only.
+    The issue
+
+    operation `issueDeviceOtp` and its rate limits are unchanged. Online only by nature (a code is issued by the
+    server). A code that is consumed, revoked, expired, out of attempts or created on another business date is not
+    listed. The response carries `Cache-Control: no-store` (a live code is in the body).
+
+    '
+  parameters:
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: The pending codes, ordered by user id.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TeamDeviceOtpPage'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

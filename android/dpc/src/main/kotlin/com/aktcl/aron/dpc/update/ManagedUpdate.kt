@@ -38,6 +38,9 @@ data class UpdateCheckDto(
     val latest: AppReleaseDto? = null,
     @SerialName("prompt_policy") val promptPolicy: String? = null,
     @SerialName("wifi_only") val wifiOnly: Boolean? = null,
+    /** Contract 1.14.0 (SRM-A-09): the release notes at top level; the DPC does not use them. */
+    @SerialName("notes_en") val notesEn: String? = null,
+    @SerialName("notes_bn") val notesBn: String? = null,
 )
 
 /** What this phone runs. */

@@ -61,6 +61,15 @@ OutletRequest:
         - moved_to_home
         - low_accuracy
         - mocked_fix
+        - possible_duplicate
+        - cluster_dropped
+    possible_duplicate_of:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+      description: 'With the flag `possible_duplicate`: the earlier request of the same user that looks like this
+        one (same normalised name and mobile, within 7 days). Null otherwise. The request is stored and decided
+        on its own.'
     photos:
       type: array
       maxItems: 6

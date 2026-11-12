@@ -144,7 +144,7 @@ internal class MediaSas(private val d: MediaDeps) {
         const val MAX_ITEMS = 10
         const val MAX_BYTES = 307_200L
         const val VALID_S = 15 * 60L
-        val PURPOSES = setOf("force_sale", "outlet_capture", "outlet_verification", "survey", "feedback", "support", "gift_photo")
+        val PURPOSES = setOf("force_sale", "outlet_capture", "outlet_verification", "survey", "feedback", "support", "gift_photo", "outlet_call")
         val UUID_RE = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
         val SHA_RE = Regex("^[0-9a-f]{64}$")
         val DATE_RE = Regex("^\\d{4}-\\d{2}-\\d{2}$")

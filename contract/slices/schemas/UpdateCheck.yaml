@@ -26,3 +26,16 @@ UpdateCheck:
       - force_after_date
     wifi_only:
       type: boolean
+    notes_en:
+      type:
+      - string
+      - 'null'
+      maxLength: 2000
+      description: What is new, English; a copy of `latest.notes_en` (contract 1.14.0), null when there is no update
+        or no note.
+    notes_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 2000
+      description: What is new, Bangla; a copy of `latest.notes_bn`.

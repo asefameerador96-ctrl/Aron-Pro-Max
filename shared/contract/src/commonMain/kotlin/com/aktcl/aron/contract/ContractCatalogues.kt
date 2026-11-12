@@ -233,6 +233,10 @@ enum class CodeListKey(val wire: String) {
     @SerialName("ticket_issue_type") TICKET_ISSUE_TYPE("ticket_issue_type"),
     /** Contract 1.10.0 (D-TSO-MAN-20): the resolution codes the support desk picks when it resolves a ticket. */
     @SerialName("ticket_resolution_code") TICKET_RESOLUTION_CODE("ticket_resolution_code"),
+    /** Contract 1.14.0 (SRM-A-40): why an SR made a zero sale. */
+    @SerialName("zero_sale_reason") ZERO_SALE_REASON("zero_sale_reason"),
+    /** Contract 1.14.0 (SRM-A-27): why no outlet photo was taken at call start. */
+    @SerialName("call_photo_skip") CALL_PHOTO_SKIP("call_photo_skip"),
 }
 
 /** Why a photo was taken (docs/24 s4.11). */
@@ -245,6 +249,8 @@ enum class MediaPurpose(val wire: String) {
     @SerialName("feedback") FEEDBACK("feedback"),
     @SerialName("support") SUPPORT("support"),
     @SerialName("gift_photo") GIFT_PHOTO("gift_photo"),
+    /** Contract 1.14.0 (SRM-A-27): the outlet photo taken at call start. */
+    @SerialName("outlet_call") OUTLET_CALL("outlet_call"),
 }
 
 /** Bundle sections that may be paged or delta-updated (docs/24 s4.10). */
