@@ -4005,10 +4005,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Programme definitions (Diamond League, Astha, campaigns, Superstar). */
+        /**
+         * Programme definitions (Diamond League, Astha, campaigns, Superstar).
+         * @description Loyalty programmes of the portal (1.13.0). Permission module `loyalty`: SUPERADMIN, or ADMIN with the `r` grant, read all; NATIONAL (and the retired TOP, read the same way) reads all; BRAND, WM, DMO and TSO read the programmes within their server-side scope (the client never sends scope ids); SR, AMO, SUPPORT and ANALYST are refused `403`. Loyalty in the field stays deferred (docs/27).
+         */
         get: operations["listProgrammes"];
         put?: never;
-        /** Create a programme period (for example "Diamond League (October)" or a campaign). */
+        /**
+         * Create a programme period as a draft (version 1).
+         * @description Always creates `status: draft` with version 1; activate it with `POST /v1/admin/programmes/{id}/status`. SUPERADMIN, or ADMIN with the `w` grant on module `loyalty`. Idempotent by `request_uuid` (required by the server): a repeat of the same call returns the first result with `201`; the same `request_uuid` with different content, or a `code` that exists, is `409`. `active_to >= active_from`; tier thresholds are STD as stored, never negative, rising with the tier order; none is invented by the server (docs/27).
+         */
         post: operations["createProgramme"];
         delete?: never;
         options?: never;
@@ -4023,14 +4029,61 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * One programme with its current version (1.13.0).
+         * @description Same read rules as `listProgrammes`; a programme outside the caller's server-side scope is `404` (its existence is not revealed).
+         */
+        get: operations["getProgramme"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** Change dates, rules or status of a programme. */
+        /**
+         * Change a programme; a rule change creates a new programme version.
+         * @description Only while the programme is `draft` (1.13.0): every accepted change appends an immutable programme version; an `active` or `inactive` programme is `409` (end it and create a new one). The status moves through `POST /v1/admin/programmes/{id}/status`; a `status` member here is `400`. Idempotent by `request_uuid` (required by the server): a repeat is answered before `If-Match` is judged. SUPERADMIN, or ADMIN with the `w` grant on module `loyalty`.
+         */
         patch: operations["updateProgramme"];
+        trace?: never;
+    };
+    "/v1/admin/programmes/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every version of a programme, newest first (1.13.0).
+         * @description Same read rules as `listProgrammes`. Versions are immutable.
+         */
+        get: operations["listProgrammeVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/programmes/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate a draft or end an active programme (1.13.0).
+         * @description Allowed moves: draft -> active (SUPERADMIN only, brief Q3 default), active -> inactive (SUPERADMIN, or ADMIN with the `w` grant on module `loyalty`). Anything else is `409`. Activation needs a current version whose `active_to` is not in the past (Asia/Dhaka business date), else `400`. The move is recorded with its reason in the append-only status trail and in the audit log. Idempotent by `request_uuid`: a repeat returns the first result; the same `request_uuid` with a different move is `409`. Activating does not change the field: no points are earned or redeemed and the bundle `programmes` stays null.
+         */
+        post: operations["setProgrammeStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/admin/programmes/{id}/enrolments": {
@@ -4042,7 +4095,10 @@ export interface paths {
         };
         /** Outlets enrolled in a programme with league, tier or slab and base target. */
         get: operations["listProgrammeEnrolments"];
-        /** Upsert enrolments (idempotent by batch_uuid, all-or-nothing). */
+        /**
+         * Upsert enrolments (idempotent by batch_uuid, all-or-nothing).
+         * @description Permission module `loyalty`, `w` grant. A repeat of a `batch_uuid` returns the first counts; the same `batch_uuid` with different rows is `409` (1.13.0). A `tier_code` must be one of the current version's tiers when it has any; an outlet outside the caller's server-side scope is `400`. An enrolment never overlaps another of the same programme and outlet (`409`).
+         */
         put: operations["putProgrammeEnrolments"];
         post?: never;
         delete?: never;
@@ -4061,7 +4117,10 @@ export interface paths {
         /** Gift catalogue (points cost for Diamond League, tier for Astha, cash-back line). */
         get: operations["listGifts"];
         put?: never;
-        /** Add a gift to a programme's catalogue (code immutable). */
+        /**
+         * Add a gift to a programme's catalogue (code immutable).
+         * @description Permission module `loyalty`; gift-catalogue changes are SUPERADMIN only (brief Q3 default). Idempotent by `request_uuid` (required by the server): a repeat returns the first result with `201`; the same `request_uuid` with different content, or a `code` that exists in the programme, is `409`. `points_cost` is points (1 to 100000), null for a gift that is chosen, not redeemed; no taka value is stored in v1 (brief Q4 default).
+         */
         post: operations["createGift"];
         delete?: never;
         options?: never;
@@ -4076,13 +4135,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * One gift (1.13.0).
+         * @description Same read rules as `listGifts`.
+         */
+        get: operations["getGift"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** Change cost, labels or status of a gift (memos and redemptions keep the cost they used). */
+        /**
+         * Change cost, labels or status of a gift (memos and redemptions keep the cost they used).
+         * @description Permission module `loyalty`; SUPERADMIN only (brief Q3 default). The `code` and the programme of a gift never change. Idempotent by `request_uuid` (required by the server): a repeat is answered before `If-Match` is judged and returns the first result.
+         */
         patch: operations["updateGift"];
         trace?: never;
     };
@@ -9995,10 +10061,112 @@ export interface components {
             rules?: {
                 [key: string]: components["schemas"]["JsonScalar"];
             };
-            status: components["schemas"]["ActiveStatus"];
+            status: components["schemas"]["ProgrammeStatus"];
+            /** @description Row version of the programme; also its ETag. */
             version: number;
+            programme_version_id?: components["schemas"]["Id"];
+            /** @description Number of the current definition version (1.13.0). */
+            version_no?: number;
+            tiers?: components["schemas"]["ProgrammeTier"][];
+            /** @description Products the programme applies to; empty = all. */
+            qualifying?: components["schemas"]["LoyaltyProductRef"][];
+            /** @description Places and channels the programme applies to; empty = everywhere. */
+            scope?: components["schemas"]["LoyaltyScopeNode"][];
+            change_reason?: string | null;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /**
+         * @description Programme lifecycle (1.13.0). `draft` is being prepared and still editable; `active`; `inactive` is ended (the portal shows "Ended"). Moves are draft -> active -> inactive only, through `POST /v1/admin/programmes/{id}/status`. Active in the portal does not reach the field (no points earned or redeemed, bundle `programmes` null, docs/27).
+         * @enum {string}
+         */
+        ProgrammeStatus: "draft" | "active" | "inactive";
+        LoyaltyProductRef: {
+            product_level: components["schemas"]["ProductLevel"];
+            product_id: components["schemas"]["Id"];
+        };
+        LoyaltyScopeNode: {
+            /** @enum {string} */
+            node_type: "wing" | "division" | "territory" | "zone" | "route" | "channel" | "sub_channel";
+            node_id: components["schemas"]["Id"];
+        };
+        /** @description One tier rule. The threshold is data the owner supplies (docs/27 forbids inventing one); STD as stored, never negative. */
+        ProgrammeTier: {
+            tier_code: string;
+            /** @description 1 = lowest tier; thresholds rise with it. */
+            sort_order: number;
+            label_en: string;
+            label_bn?: string | null;
+            /** @description Qualifying threshold in STD (up to 3 fraction digits, as a string); null until the owner supplies it. */
+            threshold?: string | null;
+            /**
+             * @description Unit of the threshold: the standard unit of the target model (brief Q1 default). Other bases wait for the owner.
+             * @default std
+             * @enum {string}
+             */
+            threshold_basis: "std";
+        };
+        /** @description One immutable version of a programme's definition (1.13.0). */
+        ProgrammeVersion: {
+            programme_version_id: components["schemas"]["Id"];
+            programme_id: components["schemas"]["Id"];
+            version_no: number;
+            is_current: boolean;
+            name_en: string;
+            name_bn?: string | null;
+            period_label?: string | null;
+            active_from: components["schemas"]["BusinessDate"];
+            active_to: components["schemas"]["BusinessDate"];
+            points_expire_on?: components["schemas"]["BusinessDate"] | null;
+            rules?: {
+                [key: string]: components["schemas"]["JsonScalar"];
+            };
+            tiers: components["schemas"]["ProgrammeTier"][];
+            qualifying: components["schemas"]["LoyaltyProductRef"][];
+            scope: components["schemas"]["LoyaltyScopeNode"][];
+            change_reason?: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ProgrammeVersionPage: {
+            items: components["schemas"]["ProgrammeVersion"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        ProgrammeStatusChange: {
+            request_uuid: components["schemas"]["Uuid"];
+            /**
+             * @description draft -> active or active -> inactive.
+             * @enum {string}
+             */
+            to_status: "active" | "inactive";
+            reason: components["schemas"]["ChangeReason"];
+        };
+        /** @description Draft programmes only. Members left out keep the current version's value; tiers, qualifying and scope, when given, replace the whole list. */
+        ProgrammePatch: {
+            request_uuid?: components["schemas"]["Uuid"];
+            name_en?: string;
+            name_bn?: string | null;
+            period_label?: string | null;
+            active_from?: components["schemas"]["BusinessDate"];
+            active_to?: components["schemas"]["BusinessDate"];
+            points_expire_on?: components["schemas"]["BusinessDate"] | null;
+            rules?: {
+                [key: string]: components["schemas"]["JsonScalar"];
+            };
+            tiers?: components["schemas"]["ProgrammeTier"][];
+            qualifying?: components["schemas"]["LoyaltyProductRef"][];
+            scope?: components["schemas"]["LoyaltyScopeNode"][];
+            /**
+             * @deprecated
+             * @description Refused with 400; use POST /v1/admin/programmes/{id}/status.
+             */
+            status?: components["schemas"]["ActiveStatus"];
+            change_reason: components["schemas"]["ChangeReason"];
         };
         ProgrammeWrite: {
+            request_uuid?: components["schemas"]["Uuid"];
             kind: components["schemas"]["ProgrammeKind"];
             code: string;
             name_en: string;
@@ -10006,9 +10174,17 @@ export interface components {
             period_label?: string | null;
             active_from: components["schemas"]["BusinessDate"];
             active_to: components["schemas"]["BusinessDate"];
+            points_expire_on?: components["schemas"]["BusinessDate"] | null;
             rules?: {
                 [key: string]: components["schemas"]["JsonScalar"];
             };
+            tiers?: components["schemas"]["ProgrammeTier"][];
+            qualifying?: components["schemas"]["LoyaltyProductRef"][];
+            scope?: components["schemas"]["LoyaltyScopeNode"][];
+            /**
+             * @deprecated
+             * @description Refused with 400 since 1.13.0 (a programme is created as a draft); use POST /v1/admin/programmes/{id}/status.
+             */
             status?: components["schemas"]["ActiveStatus"];
             change_reason: components["schemas"]["ChangeReason"];
         };
@@ -10051,9 +10227,21 @@ export interface components {
             version: number;
         };
         GiftWrite: {
+            request_uuid?: components["schemas"]["Uuid"];
             programme_id: components["schemas"]["Id"];
             code: string;
             name_en: string;
+            name_bn?: string | null;
+            points_cost?: number | null;
+            tier_codes?: string[];
+            image_asset_id?: components["schemas"]["Uuid"] | null;
+            status?: components["schemas"]["ActiveStatus"];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        /** @description The code and the programme of a gift never change. Members left out keep their value. */
+        GiftPatch: {
+            request_uuid?: components["schemas"]["Uuid"];
+            name_en?: string;
             name_bn?: string | null;
             points_cost?: number | null;
             tier_codes?: string[];
@@ -10831,10 +11019,10 @@ export interface components {
             reason: components["schemas"]["ChangeReason"];
         };
         /**
-         * @description The fixed module list of an ADMIN user's grants (docs/34 s1). `discounts` from contract 1.12.1: the discount-programme portal (`/v1/admin/offers` and everything under it, moved off `targets`). `support` from contract 1.10.0 (lead ruling R-F-11): the support ticket routes (`/v1/support/tickets` and every path under it) belong to it; the support-desk permission stays `support.ticket.manage` (`Me.support_desk`).
+         * @description The fixed module list of an ADMIN user's grants (docs/34 s1). `loyalty` from contract 1.13.0: the loyalty-programme portal (`/v1/admin/programmes`, `/v1/admin/gifts` and everything under them, moved off `targets`). `discounts` from contract 1.12.1: the discount-programme portal (`/v1/admin/offers` and everything under it, moved off `targets`). `support` from contract 1.10.0 (lead ruling R-F-11): the support ticket routes (`/v1/support/tickets` and every path under it) belong to it; the support-desk permission stays `support.ticket.manage` (`Me.support_desk`).
          * @enum {string}
          */
-        AdminModule: "masterdata" | "routes" | "outlets" | "products" | "prices" | "users" | "targets" | "credentials" | "mdm" | "reports" | "config" | "data_entry" | "indent" | "leaderboard" | "daily_tracking" | "support" | "discounts";
+        AdminModule: "masterdata" | "routes" | "outlets" | "products" | "prices" | "users" | "targets" | "credentials" | "mdm" | "reports" | "config" | "data_entry" | "indent" | "leaderboard" | "daily_tracking" | "support" | "discounts" | "loyalty";
         UserAccess: {
             user_id: components["schemas"]["Id"];
             role: components["schemas"]["Role"];
@@ -18959,7 +19147,8 @@ export interface operations {
     listProgrammes: {
         parameters: {
             query?: {
-                status?: components["parameters"]["StatusQuery"];
+                status?: components["schemas"]["ProgrammeStatus"];
+                kind?: components["schemas"]["ProgrammeKind"];
             };
             header?: never;
             path?: never;
@@ -19008,6 +19197,32 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    getProgramme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The programme. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Programme"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     updateProgramme: {
         parameters: {
             query?: never;
@@ -19022,7 +19237,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ProgrammeWrite"];
+                "application/json": components["schemas"]["ProgrammePatch"];
             };
         };
         responses: {
@@ -19039,6 +19254,72 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["PreconditionFailed"];
+        };
+    };
+    listProgrammeVersions: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of versions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgrammeVersionPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setProgrammeStatus: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The ETag of the programme being moved; when given and stale the move is refused `412`. A replay of a stored `request_uuid` is answered before `If-Match` is judged. */
+                "If-Match"?: string;
+            };
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgrammeStatusChange"];
+            };
+        };
+        responses: {
+            /** @description The programme after the move (or the stored first result of a replay). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Programme"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
         };
     };
@@ -19102,6 +19383,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listGifts: {
@@ -19158,6 +19440,32 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    getGift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The gift. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Gift"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     updateGift: {
         parameters: {
             query?: never;
@@ -19172,7 +19480,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["GiftWrite"];
+                "application/json": components["schemas"]["GiftPatch"];
             };
         };
         responses: {
@@ -19189,6 +19497,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
         };
     };

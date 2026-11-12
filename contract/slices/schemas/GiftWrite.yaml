@@ -7,6 +7,8 @@ GiftWrite:
   - change_reason
   additionalProperties: false
   properties:
+    request_uuid:
+      $ref: '#/components/schemas/Uuid'
     programme_id:
       $ref: '#/components/schemas/Id'
     code:
