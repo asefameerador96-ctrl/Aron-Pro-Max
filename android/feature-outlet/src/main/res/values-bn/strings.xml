@@ -137,6 +137,32 @@
     <string name="out_compass_w">পশ্চিম</string>
     <string name="out_compass_nw">উত্তর-পশ্চিম</string>
     <string name="out_own_load_failed">অনুরোধের তালিকা আনা যায়নি</string>
+    <string name="out_pick_cluster">ক্লাস্টার নির্বাচন করুন</string>
+    <string name="out_pick_search">জায়গা সার্চ করুন</string>
+    <string name="out_pick_retailer">রিটেইলার নির্বাচন করুন</string>
+    <string name="out_pick_clear">সার্চ মুছুন</string>
+    <string name="out_pick_none">কিছু পাওয়া যায়নি</string>
+    <string name="out_pick_all">সব</string>
+    <string name="out_detail_name">দোকানের নাম:</string>
+    <string name="out_detail_owner">দোকানের মালিকের নাম:</string>
+    <string name="out_detail_mobile">মোবাইল নম্বর:</string>
+    <string name="out_req_saved_title">সফল</string>
+    <string name="out_req_saved_ok">ওকে</string>
+    <string name="out_clusters_title">ক্লাস্টারসমূহ</string>
+    <string name="out_clusters_empty">আপনার রুটে এখনো কোনো ক্লাস্টার নেই। নতুন ক্লাস্টারের জন্য + চাপুন।</string>
+    <string name="out_cluster_route">Route: %1$s</string>
+    <string name="out_cluster_pending">এই ফোনে সংরক্ষিত; সার্ভারে পাঠানো এখনো চালু হয়নি</string>
+    <string name="out_cluster_create_title">ক্লাস্টার তৈরি করুন</string>
+    <string name="out_cluster_name_hint">Enter cluster name</string>
+    <string name="out_cluster_cancel">বাতিল</string>
+    <string name="out_cluster_submit">সাবমিট</string>
+    <string name="out_cluster_err_short">ক্লাস্টারের নাম লিখুন (কমপক্ষে ২ অক্ষর)।</string>
+    <string name="out_cluster_err_long">ক্লাস্টারের নাম অনেক বড়।</string>
+    <string name="out_cluster_err_dup">এই ক্লাস্টার আপনার রুটে আগেই আছে।</string>
+    <string name="out_info_cluster_note">দোকানের তথ্যের সাথে ক্লাস্টারও পরিবর্তন করা হয়েছে।</string>
+    <string name="out_menu_clusters">ক্লাস্টার</string>
+    <string name="out_cluster_err_not_saved">ক্লাস্টার সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।</string>
+
     <string name="out_sale_history_btn">Sale History</string>
     <string name="out_today_target_btn">আজকের টার্গেট</string>
     <string name="out_call_question">আপনি কি কল শুরু করতে চান?</string>
@@ -149,4 +175,5 @@
     <string name="out_call_photo_note">এই কলের জন্য ছবি ও আপনার অবস্থান একসাথে সংরক্ষিত হবে।</string>
     <string name="out_call_photo_continue">এগিয়ে যান</string>
     <string name="out_call_photo_skip">ক্যামেরা কাজ করছে না: ছবি ছাড়াই চালিয়ে যান</string>
+    <string name="out_req_err_save_failed">সংরক্ষণ করা যায়নি। কিছু পাঠানো হয়নি; আবার চেষ্টা করুন।</string>
 </resources>

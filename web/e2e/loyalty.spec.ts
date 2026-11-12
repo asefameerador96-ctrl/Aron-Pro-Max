@@ -1,4 +1,4 @@
-// Loyalty programmes (portal-loyalty-web, D-LOY-WEB-01): gating by role and grant, list, detail (tiers, progress with guarded percent,
+// Loyalty programmes (portal-loyalty-web, D-LOY-WEB-01): gating by role and grant, list, detail (tiers, progress panel "not available yet",
 // enrolments, gifts, versions), create a draft with tiers, edit it (a new version), activate (Super Admin) and end it with a reason,
 // enrol an outlet, the gift catalogue, plus the error, offline and long-Bangla states. Seed ids: 1 ASTHA-Q4 (active), 2 DL-OCT (active),
 // 3 SS-NOV (draft), 4 ASTHA-Q3 (ended).
@@ -78,7 +78,7 @@ test("list: the seeded programmes with kind and status, filters by status, kind 
   await expect(page.getByTestId("table-empty")).toBeVisible();
 });
 
-test("detail: tiers with STD thresholds, channels, progress with a guarded percent, enrolments, gifts, versions and the audit trail", async ({ page }) => {
+test("detail: tiers with STD thresholds, places and products, the progress panel, enrolments, gifts, versions and the audit trail", async ({ page }) => {
   await superEnglish(page);
   await page.goto("/admin/loyalty");
   await hydrated(page.getByTestId("programme-link-ASTHA-Q4"));
@@ -86,20 +86,17 @@ test("detail: tiers with STD thresholds, channels, progress with a guarded perce
   await expect(page.getByTestId("tier-platinum")).toContainText("5,000 STD");
   await expect(page.getByTestId("tier-gold")).toContainText("3,000.5 STD");
   await expect(page.getByTestId("tier-silver")).toContainText("Not set"); // nothing invented
-  await expect(page.getByTestId("programme-channels")).toContainText("Astha outlets");
-  await expect(page.getByTestId("progress-pct-platinum")).toHaveText("50.00%");
-  await expect(page.getByTestId("progress-pct-gold")).toHaveText("50.00%");
-  await expect(page.getByTestId("progress-pct-silver")).toHaveText("—"); // zero target: no percent, no infinity
-  await expect(page.getByTestId("progress-platinum")).toContainText("3,000 STD");
-  await expect(page.getByTestId("points-empty")).toBeVisible();
+  await expect(page.getByTestId("programme-scope")).toContainText("Sub-channel · #11");
+  await expect(page.getByTestId("programme-qualifying")).toContainText("All products");
+  await expect(page.getByTestId("progress-unavailable")).toBeVisible(); // 1.13.0 has no progress operation: no fake numbers
+  await expect(page.getByTestId("progress-table")).toHaveCount(0);
   await expect(page.getByTestId("programme-enrolments")).toContainText("#101");
   await expect(page.getByTestId("programme-gifts")).toContainText("Rice cooker");
   await expect(page.getByTestId("programme-version")).toHaveCount(1);
   await expect(page.getByTestId("audit-history")).toBeVisible();
   await expect(page.getByTestId("loyalty-status-panel")).toBeVisible(); // active: End programme is offered
   await page.goto("/admin/loyalty/2");
-  await expect(page.getByTestId("points")).toContainText("1,200 points");
-  await expect(page.getByTestId("points")).toContainText("Tk 800.000"); // 400 points x 2,000 milli-taka
+  await expect(page.getByTestId("programme-qualifying")).toContainText("Brand · #1");
   await page.goto("/admin/loyalty/9999");
   await expect(page.getByTestId("loyalty-missing")).toBeVisible();
 });
@@ -126,7 +123,6 @@ test("create a draft with tiers, edit it into version 2, activate it as Super Ad
   await page.locator("#lf-tier-1-code").fill("platinum");
   await page.locator("#lf-tier-1-en").fill("Platinum");
   await page.locator("#lf-tier-1-threshold").fill("3000.5"); // not rising
-  await page.getByTestId("lf-channel-Astha").check();
   await page.locator("#lf-reason").fill(REASON);
   await page.getByTestId("lf-submit").click();
   await expect(page.getByTestId("error-lf-tier-1-threshold")).toBeVisible();

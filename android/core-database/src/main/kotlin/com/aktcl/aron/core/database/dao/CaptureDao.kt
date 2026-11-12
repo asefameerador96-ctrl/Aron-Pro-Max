@@ -31,6 +31,9 @@ interface CaptureDao {
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertVisit(row: VisitEntity)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertVisitClose(row: VisitCloseEntity)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertMemo(row: MemoEntity)
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertClusterCreate(row: com.aktcl.aron.core.database.entity.ClusterCreateEntity): Long
+    @Query("SELECT * FROM cluster_create ORDER BY created_at, client_uuid") suspend fun clusterCreates(): List<com.aktcl.aron.core.database.entity.ClusterCreateEntity>
+    @Query("SELECT COUNT(*) FROM cluster_create") suspend fun clusterCreateCount(): Int
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertMemoLines(rows: List<MemoLineEntity>)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertMemoDiscounts(rows: List<MemoDiscountEntity>)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertQcLines(rows: List<QcLineEntity>)

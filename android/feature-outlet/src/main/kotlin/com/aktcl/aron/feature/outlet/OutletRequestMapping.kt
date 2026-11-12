@@ -31,7 +31,8 @@ fun OutletRequestDraft.toEntities(meta: CaptureMeta, fix: FixReading, fixUuid: S
             OutletRequestKind.CLOSE -> put("close_reason_code", closeReasonCode ?: "shop_closed")
             OutletRequestKind.CLUSTER -> clusterId?.let { put("cluster_id", it) }
             OutletRequestKind.LOCATION -> if (pointLat != null && pointLng != null) { put("lat", pointLat); put("lng", pointLng) } else if (fix.isOk) { put("lat", fix.lat!!); put("lng", fix.lng!!) }
-            OutletRequestKind.ROUTE_ADD -> Unit
+            // SRM-B-42: the approval of a route_add reads /proposed/cluster_id, so the SR's request carries the cluster the shop joins
+            OutletRequestKind.ROUTE_ADD -> clusterId?.let { put("cluster_id", it) }
         }
     }
     val entity = OutletChangeRequestEntity(

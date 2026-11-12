@@ -64,4 +64,5 @@
     <string name="sr_content_av">AV</string>
     <string name="sr_content_close_x">× বন্ধ করুন</string>
     <string name="sr_glyph_dropdown">▾</string>
+    <string name="sr_journey_load_failed">বিক্রয় যাত্রা লোড করা যায়নি</string>
 </resources>
