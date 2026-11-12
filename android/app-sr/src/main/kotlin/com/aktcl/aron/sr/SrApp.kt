@@ -74,6 +74,7 @@ import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.core.ui.SyncChipState
 import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.feature.attendance.AttendanceContent
+import com.aktcl.aron.feature.attendance.AttendanceState
 import com.aktcl.aron.feature.home.AppPermission
 import com.aktcl.aron.feature.home.BundleFreshness
 import com.aktcl.aron.feature.home.DeviceHealth
@@ -150,13 +151,15 @@ fun SrFrame(
     onSync: (() -> Unit)?,
     modifier: Modifier = Modifier,
     printer: PrinterManager? = null,
+    /** Ask the nearby-devices permission and toast "printer connected" from this frame: only Stock ([printerAssistFor]); the sale asks inside `SaleRoute`. */
+    printerAssist: Boolean = false,
     /** The drawable of the screen's tile art (`R.drawable.aron_art_*` of core-ui), shown beside the title. */
     icon: Int? = null,
     subtitle: String? = null,
     bottomBar: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
-    if (printer != null) HoldPrinter(printer)
+    if (printer != null) HoldPrinter(printer, assist = printerAssist)
     val back = stringResource(com.aktcl.aron.core.ui.R.string.core_ui_back)
     // the gradient bar of the reference: back chevron, the screen's tile art and the white title; the printer state hangs on the bar's bottom edge
     ParityScaffold(
@@ -393,8 +396,8 @@ fun SrApp(
                 val who = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
                 // D-NIGHT-CHECKOUT-01: the local Sales Submit is read on every visit (also back from the Sales Submit screen)
                 LaunchedEffect(Unit) { day.attendance.refreshSubmit() }
-                AttendanceContent(
-                    attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
+                SrAttendanceContent(
+                    attendance, day.checkoutAtLabel(), onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
                     userTitle = who.title, userSubtitle = who.subtitle, // Latin digits, as in the reference
                     onOpenSalesSubmit = { screen = SrScreen.SUBMIT },
                     offline = !day.isOnline(), // read on each composition of the screen (one capabilities read, no callback)
@@ -420,7 +423,7 @@ fun SrApp(
         SrScreen.SUPPORT -> SrFrame(stringResource(HomeR.string.set_support), goBack, sync, openSync) { shell?.let { SupportHost(it, day.userId, versionText) } }
         // D-PRINT-02: no HoldPrinter here, the diagnostics open their own link (the printer takes one at a time)
         SrScreen.PRINTER_DIAG -> SrFrame(stringResource(HomeR.string.set_printer), goBack, sync, openSync) { PrinterDiagnosticsScreen(day.printerManager, versionText) }
-        SrScreen.STOCK -> SrFrame(stringResource(HomeR.string.hm_tile_stock), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_stock) { StockHost(day) }
+        SrScreen.STOCK -> SrFrame(stringResource(HomeR.string.hm_tile_stock), goBack, sync, openSync, printer = day.printerManager, printerAssist = printerAssistFor(SrScreen.STOCK), icon = CoreR.drawable.aron_art_stock) { StockHost(day) }
         SrScreen.PICKER -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sale) {
             PermissionGate(GatedFeature.SALE, onBack = goBack) {
                 var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
@@ -691,3 +694,23 @@ internal fun StockHost(day: SrDay) {
     }
     refused?.let { SrRefusalDialog(it, onOk = { refused = null }) }
 }
+
+/**
+ * D-SR-MAN-S3-02 (lead review of be15cd1a8): the screen frames that may ask the nearby-devices permission and toast "printer connected".
+ * Stock only; the sale does it once inside `SaleRoute(printerAssist = true)`, so the visit frame, Memo and Summary never repeat the prompt or the toast.
+ */
+internal fun printerAssistFor(screen: SrScreen): Boolean = screen == SrScreen.STOCK
+
+/**
+ * The SR attendance screen as the app shows it (D-SR-MAN-S3-01): the shared content with the manual's dashed status boxes
+ * (`statusBoxes = true`, screenshots 11 to 13) and the configured check-out time in the amber box. A function of its own so a host test
+ * exercises the real wiring.
+ */
+@Composable
+internal fun SrAttendanceContent(
+    attendance: AttendanceState, checkoutAtLabel: String, onCheckIn: () -> Unit, onCheckOut: () -> Unit,
+    userTitle: String?, userSubtitle: String?, onOpenSalesSubmit: () -> Unit, offline: Boolean,
+) = AttendanceContent(
+    attendance, checkoutAtLabel, onCheckIn = onCheckIn, onCheckOut = onCheckOut, userTitle = userTitle, userSubtitle = userSubtitle,
+    onOpenSalesSubmit = onOpenSalesSubmit, offline = offline, statusBoxes = true,
+)

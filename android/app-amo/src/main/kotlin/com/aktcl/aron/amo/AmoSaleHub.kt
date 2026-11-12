@@ -55,7 +55,7 @@ fun AmoSaleHub(day: AmoDay, onBack: () -> Unit, start: com.aktcl.aron.feature.am
             BackHandler(onBack = back)
             // Stock, Memo and Summary show the printer status (manual: icon and "printer connected" banner), as the SR screens do.
             val printed = leaf == SaleLeaf.STOCK || leaf == SaleLeaf.MEMO || leaf == SaleLeaf.SUMMARY
-            if (printed) { com.aktcl.aron.core.printing.ui.HoldPrinter(day.printerManager); PrinterConnectedToast(day.printerManager) }
+            if (printed) { com.aktcl.aron.core.printing.ui.HoldPrinter(day.printerManager); com.aktcl.aron.core.printing.ui.PrinterConnectedToast(day.printerManager) }
             AmoFrame(
                 stringResource(
                     when (leaf) {
