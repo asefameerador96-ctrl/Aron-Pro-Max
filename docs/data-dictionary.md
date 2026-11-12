@@ -455,7 +455,7 @@ One person who can log in, field or web, with role, status, locale and Argon2id 
 | `must_change_password` | boolean | not null |  | True when the user must set a new password at the next login. |
 | `mfa_enabled` | boolean | not null |  | True when TOTP is confirmed for the user. |
 | `pilot` | boolean | not null |  | True when the user is in the pilot group for the cutover. |
-| `scope_version` | bigint | not null |  | Counter bumped on any change of role, status, scope or assignment; tokens carrying an older value are refused. |
+| `scope_version` | bigint | not null |  | Counter bumped on any change of role, status, scope or assignment; tokens carrying an older value are refused. V0170 raised it once for every ADMIN holding a loyalty grant (their pre-V0160 tokens lack the claim); the touch trigger raises app_user.version with it, so an open user editor gets one 412. |
 | `last_login_at` | timestamp with time zone | null |  | UTC time of the most recent successful login. |
 | `disabled_at` | timestamp with time zone | null |  | UTC time the account was disabled; null while active. |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
@@ -2001,7 +2001,7 @@ A gift of a loyalty programme with points cost (integer points, no taka value in
 | `name_bn` | text | null |  | Display name in Bangla. |
 | `points_cost` | integer | null |  | Points needed to redeem the gift; null for Astha gifts, which are chosen rather than redeemed. |
 | `tier_codes` | text[] | not null |  | Programme tier codes the gift is available to. |
-| `image_url` | text | null |  | URL of the gift image. |
+| `image_url` | text | null |  | Legacy address column of V0007. The loyalty portal never reads or writes it: the picture is image_asset_id (V0170), resolved to a read URL when a gift is answered. |
 | `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |

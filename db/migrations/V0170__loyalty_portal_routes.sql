@@ -1,13 +1,11 @@
 -- V0170 loyalty portal, train 2 (lane portal-loyalty-api; D-LOY-API-05).
--- 1. app.gift.image_asset_id: the gift picture is an uploaded admin asset (purpose gift_image); the API resolves it to a read URL when it answers (a replay
---    included), so no signed, expiring address is stored in this table, in app.gift_change.snapshot or in an audit row (image_url of V0007 stays as it was, unused). The foreign key is added NOT VALID here and
+-- 1. app.gift.image_asset_id: the gift picture is an uploaded admin asset (purpose gift_image); the API resolves it to a read URL when it answers,
+--    so no expiring address is stored (image_url of V0007 stays as it was, unused by the portal). The foreign key is added NOT VALID here and
 --    validated by V0171 (squawk rule); the table holds no gift yet (the portal is the first writer).
 -- 2. V0160 carried the `targets` grants of every ADMIN over to `loyalty` without bumping app.app_user.scope_version, so an ADMIN access token
 --    minted before V0160 has no `loyalty` claim and stays valid until it expires. Bumping the version of every ADMIN who now holds a `loyalty`
---    grant makes such a token answer 401 ERR_SCOPE_CHANGED, the client refreshes, and the new token carries the claim (the Discount precedent: the
---    follow-up note in docs/status/portal-discount-api.md, "an old ADMIN token without the `discounts` claim gets 401 ERR_SCOPE_CHANGED until refresh").
---    Idempotent in effect: a second run only bumps again. Side effects of the UPDATE: the app_user touch trigger also raises app_user.version, so a user
---    editor open on such an ADMIN gets one 412 and reloads; an ADMIN in the middle of the MFA step signs in again.
+--    grant makes such a token answer 401 ERR_SCOPE_CHANGED, the client refreshes, and the new token carries the claim (the Discount precedent,
+--    D-DISC-API-10: "old ADMIN tokens ... 401 until refresh"). Idempotent in effect: a second run only bumps again.
 SET lock_timeout = '5s';
 
 ALTER TABLE app.gift ADD COLUMN image_asset_id uuid;
@@ -24,6 +22,5 @@ COMMENT ON TABLE app.programme_enrolment IS 'Enrolment of an outlet in a program
 owner: backend:masterdata | capture: ONLINE | retention: master | pii: none';
 COMMENT ON TABLE app.gift IS 'A gift of a loyalty programme with points cost (integer points, no taka value in v1) and tiers. Written only by the portal (SUPERADMIN) through app.gift_change; a gift is never deleted, set it inactive. The picture is image_asset_id (V0170); image_url of V0007 is legacy and unused by the portal.
 owner: backend:masterdata | capture: ONLINE | retention: master | pii: none';
-COMMENT ON COLUMN app.gift_change.snapshot IS 'The gift as the first result of the call returned it (JSON, contract member names) with image_url null, plus image_asset_id. The picture URL is a signed, expiring address and is never stored here: it is resolved from the asset again whenever the call is answered, replays included.';
 
 SELECT app.apply_db_role_grants();
