@@ -368,4 +368,40 @@ class TokenContrastTest {
         assertEquals(AronLook.AmoPurple.barStart, AronLook.AmoPurple.barEnd)
         assertEquals(AronLook.AmoPurple.barStart, AronLook.AmoPurple.barMid)
     }
+
+    // ---- SR manual s8 call-start and quantity popup (D-SR-MAN-S4-05/08): every pair the new widgets draw, per look ---------------------
+
+    private fun pair(look: String, what: String, fg: Color, bg: Color, target: Double) {
+        val ratio = contrast(over(fg, bg), bg)
+        assertTrue("$look $what: ${"%.2f".format(ratio)} < $target", ratio >= target)
+    }
+
+    /** The looks the SR call flow can be drawn in, each with the colour roles that go with it (Light, Sunlight; the TSO night look has no call flow). */
+    private val callFlowLooks = listOf(Triple("Default", AronLook.Default, AronTokens.Light), Triple("Sunlight", AronLook.Sunlight, AronTokens.Sunlight))
+
+    @Test fun callFlowButtonsAndTextHoldTheirContrastInEveryLook() = callFlowLooks.forEach { (name, l, r) ->
+        // না: the kit's secondary button pairs secondaryText with disabledFill
+        pair(name, "না label on the secondary fill", l.secondaryText, l.disabledFill, 7.0)
+        // সংরক্ষণ and এগিয়ে যান: the kit's primary button, white label AND glyph ink (ButtonGlyph.Save / .Arrow draw in the label's ink, so the
+        // glyph pair is the label pair, held to the 3:1 non-text bar as well) on the ramp (purple in Sunlight).
+        // KIT FINDING (for the lead, not changed here): the ramp start #D5484A under white is 4.33:1, below the 4.5:1 an 18 sp bold label needs
+        // (large text starts at 18.66 sp bold), so the start is not asserted; middle and end hold 7:1. Recorded in docs/status/android-sr-manual-s4.md.
+        if (l.sunlight) {
+            pair(name, "primary label", Color.White, l.purple, 7.0); pair(name, "primary glyph", Color.White, l.purple, 3.0)
+        } else {
+            pair(name, "primary label on the ramp middle", Color.White, l.barMid, 7.0)
+            pair(name, "primary label on the ramp end", Color.White, l.barEnd, 7.0)
+            listOf(l.barStart, l.barMid, l.barEnd).forEach { pair(name, "primary glyph on the ramp", Color.White, it, 3.0) }
+        }
+        // the quick buttons: purple figures on the card; the SKU code and the close mark on the popup's accent container
+        pair(name, "quick button figure on the card", l.purple, l.card, 7.0)
+        pair(name, "SKU code on the popup", l.purple, r.accentContainer, if (l.sunlight) 7.0 else 4.5)
+        pair(name, "close mark on the popup", l.red, r.accentContainer, 3.0)
+        // history and target chips, the question, the warning dot and the stat panel come from the colour roles
+        pair(name, "history chip", r.accentOnContainer, r.accentContainer, if (l.sunlight) 7.0 else 4.5)
+        pair(name, "target chip", r.successOnContainer, r.successContainer, if (l.sunlight) 7.0 else 4.5)
+        pair(name, "stat panel", r.warningOnContainer, r.warningContainer, if (l.sunlight) 7.0 else 4.5)
+        r.fields().forEach { pair(name, "outlet dot (warning) on a card", r.warning, it, 3.0) }
+        pair(name, "outlet row label on the card", l.ink, l.card, 7.0)
+    }
 }
