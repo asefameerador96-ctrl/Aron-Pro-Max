@@ -3,6 +3,7 @@
 Updated: 2026-11-12 15:01 UTC by the lead (evening report; trains 99 to 106 landed today; active: integrator 24, L-A, L-B, SV2, S5, S6; see docs/status/evening-2026-11-12.md)
 
 ## Train state
+- **INT `4739d5d1a` (train 107, pushed 2026-11-12 17:19 UTC): Loyalty portal train 2 (admin routes, contract 1.13.1, V0170..V0172) on INT; ci #2084 43268148775 running; real deploy expected; Flyway proof pending.**
 - **INT `f57ce31ed` (train 106, pushed 2026-11-12 14:08 UTC): SR manual S3 follow-up LANDED; ci #2073 43233960026 green; deploy #344 skipped by design; health stays 155edd899; APK of record aron-release-signed-dev-2073 (41,846,624 bytes).**
 - **INT `155edd899` (train 105, pushed 2026-11-12 13:07 UTC): SR manual S2 + Loyalty portal web (1.13.0 alignment) on INT; ci #2070 43224115378 green (12 jobs, web e2e incl.); deploy #343 43230024509 success, health build 155edd899 at 14:06 UTC; APK of record aron-release-signed-dev-2070 (41,846,663 bytes). LANDED and DEPLOYED.**
 - **INT `20fe1d4fb` (train 104, pushed 2026-11-12 12:28 UTC): SR manual S5 follow-up + S6 (settings, wording) LANDED; ci #2064 43218050788 green; deploy skipped by design; health stays ce9d92bf7; APK of record aron-release-signed-dev-2064 (41804726 bytes).**
