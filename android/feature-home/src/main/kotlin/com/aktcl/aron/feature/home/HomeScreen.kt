@@ -110,16 +110,19 @@ private fun tileLabel(t: HomeTile): String = stringResource(
     when (t) {
         HomeTile.ATTENDANCE -> R.string.hm_tile_attendance
         HomeTile.STOCK -> R.string.hm_tile_stock
-        HomeTile.SALE -> R.string.hm_tile_sale
+        HomeTile.SALE -> R.string.hm_tile_sales_manual // the manual's tile word "Sales"; the shared hm_tile_sale (AMO) is untouched
         HomeTile.MEMO -> R.string.hm_tile_memo
         HomeTile.SUMMARY -> R.string.hm_tile_summary
         HomeTile.SALES_SUBMIT -> R.string.hm_tile_sales_submit
         HomeTile.OUTLET -> R.string.hm_tile_outlet
         HomeTile.TUTORIAL -> R.string.hm_tile_tutorial
-        HomeTile.TASKS -> R.string.hm_tile_tasks
+        HomeTile.TASKS -> R.string.hm_tile_tasks_manual
         HomeTile.PHOTO_CAPTURE -> R.string.hm_tile_photo_capture
         HomeTile.SALES_JOURNEY -> R.string.hm_tile_sales_journey
         HomeTile.KPI -> R.string.hm_tile_kpi
+        HomeTile.ASTHA -> R.string.hm_tile_astha
+        HomeTile.LOYALTY_POINT -> R.string.hm_tile_loyalty_point
+        HomeTile.MATCH_PROGRAM -> R.string.hm_tile_match_program
     },
 )
 
@@ -137,6 +140,9 @@ fun tileIcon(t: HomeTile): ImageVector = when (t) {
     HomeTile.PHOTO_CAPTURE -> AronIcons.Camera
     HomeTile.SALES_JOURNEY -> AronIcons.Journey
     HomeTile.KPI -> AronIcons.Kpi
+    HomeTile.ASTHA -> AronIcons.Tasks
+    HomeTile.LOYALTY_POINT -> AronIcons.Summary
+    HomeTile.MATCH_PROGRAM -> AronIcons.Kpi
 }
 
 @Composable
@@ -205,8 +211,10 @@ fun HomeContent(
     updateRequired: Boolean = false,
     /** No route is planned for the date (screens-sr s2 "No route today"): an info banner, the hero shows zero. */
     noRoute: Boolean = false,
-    /** The hero's tap target (the Summary tile by default). */
+    /** The "Details" link of the Target card: the Target & Achievement by SKU page (SRM-A-15); the Summary tile when null. */
     onHero: (() -> Unit)? = null,
+    /** STD achievement of the card; null while the targets lane has no data (the card shows "—", never a made-up figure). */
+    std: HomeStd? = null,
 ) {
     val kind = routeKindLabel ?: routeKindLabel(header.routeKind)
     val compact = LocalConfiguration.current.screenHeightDp < COMPACT_WINDOW_HEIGHT_DP
@@ -242,21 +250,20 @@ fun HomeContent(
             if (reauthRequired) HomeBanner(stringResource(R.string.home_reauth_required), BannerKind.Warning)
             if (updateRequired) HomeBanner(stringResource(R.string.home_update_required), BannerKind.Warning)
             if (hero?.dayState == HomeDayState.COMPLETE) HomeBanner(stringResource(R.string.hm_day_complete), BannerKind.Success, Modifier.testTag(HomeScreenTags.DAY_DONE))
-            // the tile grid of the reference: 4 columns, one list, the order of the screenshot; Astha and Loyalty have no tile (docs/27)
+            // the tile grid of the reference: 4 columns, one list, the order of the screenshot; fifteen tiles with Astha, Loyalty Point and Match Program (SRM-A-13)
             Column(Modifier.fillMaxWidth().padding(horizontal = HOME_GUTTER, vertical = AronTokens.Space.S).traversal(Traversal.TILES)) {
                 AronTileGrid(tiles) { rt, mod -> HomeTileItem(rt, freshness, dock, mod, onTile) }
             }
-            // the "Target and achievement" card shell: the day's sales and the outlet progress; no target percentage (deferred, docs/27)
+            // the "Target & Achievement (SKU List)" card of the manual (screenshot 09, SRM-A-14): the STD label, the green bar with the
+            // achievement (may pass 100 %), "—" until the targets lane provides the figures, and the details link to the SKU page
             if (hero != null || loading) {
-                val visited = hero?.visited ?: 0
-                val planned = hero?.target ?: 1
-                val meterText = stringResource(R.string.hm_meter_value, localizedNumber(visited.toLong()), localizedNumber(planned.toLong()))
-                val spoken = stringResource(R.string.hm_meter_spoken, localizedNumber(visited.toLong()), localizedNumber(planned.toLong()))
+                val pct = std?.percent
+                val pctText = pct?.let { localizedNumber(it.toLong()) + "%" }
+                val spoken = if (pctText != null) stringResource(R.string.hm_std_spoken, pctText) else stringResource(R.string.hm_std_spoken_none)
                 AronTargetCard(
-                    title = stringResource(R.string.hm_target_title), label = stringResource(R.string.hm_hero_total),
-                    value = hero?.grandTotalText ?: localizedNumber(0L),
-                    percentText = meterText,
-                    percent = if (planned > 0) (visited * 100 / planned).coerceAtLeast(1) else null,
+                    title = stringResource(R.string.hm_std_title), label = stringResource(R.string.hm_std_label),
+                    percentText = pctText, percent = std?.barPercent,
+                    barColor = if (pct != null) StdGreen else null, emptyTrackText = stringResource(R.string.hm_std_none),
                     detailsLabel = stringResource(R.string.hm_target_details), onDetails = onHero ?: { onTile(HomeTile.SUMMARY) },
                     modifier = Modifier
                         .padding(horizontal = HOME_GUTTER, vertical = AronTokens.Space.S)
@@ -285,6 +292,8 @@ fun HomeContent(
 private val HOME_GUTTER = 12.dp
 
 private val KpiContainer = Color(0xFFF7F4FA)
+/** The solid green bar of the manual (screenshot 09). */
+private val StdGreen = Color(0xFF2E9E44)
 private val KpiOutline = Color(0xFF5C3DA8)
 
 /**
@@ -479,6 +488,9 @@ private fun tilePainterRes(t: HomeTile): Int = when (t) {
     HomeTile.PHOTO_CAPTURE -> CoreR.drawable.aron_art_photo_capture
     HomeTile.SALES_JOURNEY -> CoreR.drawable.aron_art_sales_journey
     HomeTile.KPI -> CoreR.drawable.aron_art_kpi
+    HomeTile.ASTHA -> CoreR.drawable.aron_art_astha
+    HomeTile.LOYALTY_POINT -> CoreR.drawable.aron_art_loyalty_point
+    HomeTile.MATCH_PROGRAM -> CoreR.drawable.aron_art_match_program
 }
 
 /** Danger only under this much free storage (screens-sr s2 "the one danger case"). */

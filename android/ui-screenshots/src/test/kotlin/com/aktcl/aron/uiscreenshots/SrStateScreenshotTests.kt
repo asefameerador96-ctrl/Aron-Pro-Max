@@ -154,7 +154,7 @@ class SrStateScreenshotTests {
         val dozen = stringResource(SaleR.string.sale_unit_dozen)
         val stick = stringResource(SaleR.string.sale_unit_stick)
         HomeContent(
-            header, HomeTiles.resolve(emptySet(), 2), freshness, false, DeviceHealthModel.of(62, 1_200, 3, 12), onTile = {},
+            header, HomeTiles.resolve(setOf("astha", "loyalty_point", "match_program"), 2), freshness, false, DeviceHealthModel.of(62, 1_200, 3, 12), onTile = {},
             onSettings = {}, hero = HomeHero(Formats.money(4_391_000, locale), 6, 60, "08:52", dayState),
             kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("Cigarette", 12_000, 9_800, stick), HomeStockLine("Lighter", 400, 25, piece), HomeStockLine("Match", 400, 394, dozen))),
             money = HomeMoneyLines(
@@ -170,13 +170,13 @@ class SrStateScreenshotTests {
 
     @Composable
     private fun LoadingHome() = HomeContent(
-        header, HomeTiles.resolve(emptySet(), 0), BundleFreshness.Fresh, false, null, onTile = {}, onSettings = {},
+        header, HomeTiles.resolve(setOf("astha", "loyalty_point", "match_program"), 0), BundleFreshness.Fresh, false, null, onTile = {}, onSettings = {},
         loading = true, sync = SyncChipState.Syncing, onSync = {}, onSunlight = {}, routeKindLabel = "Daily",
     )
 
     @Composable
     private fun NoRouteHome() = HomeContent(
-        noRoute, HomeTiles.resolve(emptySet(), 0), BundleFreshness.Fresh, true, null, onTile = {}, onSettings = {},
+        noRoute, HomeTiles.resolve(setOf("astha", "loyalty_point", "match_program"), 0), BundleFreshness.Fresh, true, null, onTile = {}, onSettings = {},
         hero = HomeHero(Formats.money(0, UiLocale.BN), 0, 0, null, HomeDayState.NOT_CHECKED_IN), noRoute = true,
         sync = SyncChipState.Offline, onSync = {}, onSunlight = {}, dock = HomeDock.CHECK_IN,
     )

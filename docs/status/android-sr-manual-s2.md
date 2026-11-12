@@ -1,0 +1,74 @@
+# Status: lane android-sr-manual S2 (2026-11-12), branch `lane/android-sr-manual-s2`
+
+Scope: SR Home (SRM-A-13, SRM-A-14), Sales Journey (SRM-B-82 to 85), Outlet menu, clusters and tasks (SRM-B-31 to 50). Built on INT `ab78d0d4b`.
+Legend: done / needs contract / needs server / needs owner. Nothing below is claimed beyond what its test proves; where a proof needs another lane it says so.
+
+## Train 1 (this push)
+| Row | State | What is on the phone | Needs |
+|---|---|---|---|
+| SRM-A-13 | done | 15 tiles in the manual's order (`HomeTile`): Astha after Task Delegation, Loyalty Point, Photo Capture, Sales Journey, KPI, Match Program last; Task badge kept; EN tile words "Sales" and "Task Delegation" through NEW keys `hm_tile_sales_manual` / `hm_tile_tasks_manual` (the shared `hm_tile_sale` / `hm_tile_tasks` are untouched: AMO uses them and its goldens would move). Astha, Loyalty Point, Photo Capture and Match Program open `ComingSoonContent` (title = the tile's name, "Back to Home"), never a dead tile. Three new vector tile icons (the vendor's raster Astha logo is not copied). | S8/S9 replace the placeholder per tile; design may replace the three vectors |
+| SRM-A-13 (note) | owner question | **Photo Capture stays English** in BN, as screenshot 09 shows it (the row text says "translate"; the screenshot wins, PARITY-SPEC). | confirm |
+| SRM-A-14 | partly: card done, data not wired | Card titled "টার্গেট ও অ্যাচিভমেন্ট (SKU List)", label "এস টি ডি", green bar with the percentage at its right end (can pass 100: bar capped, text real), "বিস্তারিত" link. `HomeStd(achieved, target)`: a missing or zero target gives no percentage, so the host's `std = null` today shows "—" and an empty track: never a wrong number. Outlets visited/planned stays as a day card (first tile of the KPI grid). | **targets-kpi server**: STD target and MTD achievement in the bundle (RouteSnapshot `targets` / `achievement_mtd`), then S2 train 2 passes `HomeStd` from Room + today's local memos. SRM-A-15 SKU page: "বিস্তারিত" opens Summary until that page exists. Owner Q3 (unit of the "বিক্রয় ১,৫০০" block): the sales panel keeps its packets headline (docs/34 s4.2) |
+| SRM-B-82 | done | Sales Journey from Room (visit + visit_close + memo rows of the business date, synced or not, `abandoned` excluded), ordered by `opened_at`, a pink timeline with a card per call; offline, no network | none |
+| SRM-B-83 | done on the phone, needs contract | Status rule in shared rules `JourneyTimeline` (one rule for phone and server): sold + edited = Edited Sale (purple), sold and an earlier sold call at the same outlet = Repeat Sale (blue), first sold call = New Sale (hollow), not sold = No Sale (grey, owner Q8 default), still open = In progress (phone only). | **sr-server (SV)** `JourneyCall.status` `repeat_sale` (1.14.0), same rule; AMO parser must accept it |
+| SRM-B-84 | done | Haversine on the outlet base points (owner Q9 default), none on the first call, running total of the known legs; `< 1,000 m` as "মি", else "কি.মি", two decimals HALF_UP, unit chosen after rounding (999.996 m is "1.00 কি.মি") | SV to use `JourneyTimeline` for the server value (test: same rule) |
+| SRM-B-85 | done | "9:53:35 AM - 9:59:02 AM" (Dhaka, 12-hour, Latin), "৫ মিনিট ২৭ সেকেন্ড", walking gap "... পরে"; duration truncated closed - opened (owner Q10 default); an open call shows only its start | AMO `TeamJourneys.duration/clock12` still have their own copies (same output); moving AMO onto `JourneyFormat` is train 2 (needs the AMO golden run) |
+| SRM-B-86 to 90 | not in S2 | KPI Dashboard rows are the KPI/match lane (S9, B7 part 2): they need the monthly KPI bundle section. Lead to confirm | S9 |
+| SRM-B-31 | match | unchanged | |
+| SRM-B-32 | done | New shop: cluster card first (drop-down), then a searchable dialog "ক্লাস্টার নির্বাচন করুন" with "জায়গা সার্চ করুন" and a clear button; then name, owner, mobile; then GEO and photo and save. `SrOutletRequestContent` is a NEW screen: the shared `OutletRequestContent` (AMO uses it) is untouched | |
+| SRM-B-33 | needs server | The list is the distinct clusters of the route's outlets + the SR's own pending ones (`SrClusters.list`); a cluster with no outlet cannot be chosen yet | SV `clusters` bundle section (id, name, route_id, route_name) |
+| SRM-B-34 | done | The top bar follows the kind (নতুন দোকান / স্থায়ী বন্ধ / তথ্য পরিবর্তন করুন with the outlet_new / close / edit art); the in-body title is gone | |
+| SRM-B-35 | done | Success dialog ("সফল" + the saved line + "ওকে") before the form closes; the save button is off while a save runs and a second tap is ignored; the request uuid is made once per form, a replay writes nothing | |
+| SRM-B-36 | match | unchanged | |
+| SRM-B-37 | done | Close: cluster drop-down narrows the retailer drop-down ("● name (code-phone-cluster)"), a read-only details card (দোকানের নাম:, দোকানের মালিকের নাম:, মোবাইল নম্বর:), then save and the existing confirmation | |
+| SRM-B-38 | match | unchanged | |
+| SRM-B-39 | done (look differs in one point) | Change information starts with the outlet drop-down and an alphabet bar of chips that narrows it (the manual's dark bar is drawn with the kit's chips) | |
+| SRM-B-40 | done interim, optional contract | Prefilled cluster drop-down on change information. A changed cluster is saved as its own `cluster` request (own client uuid, same fix, note "দোকানের তথ্যের সাথে ক্লাস্টারও পরিবর্তন করা হয়েছে।") in the same save; both are idempotent on replay | SV may add `cluster_id` to the `info` proposal (1.14.0); then train 2 drops the paired request |
+| SRM-B-41 | match | unchanged (owner Q2 default: GEO on change information stays evidence only; it does not move the pin) | |
+| SRM-B-42 | done on the phone | The add-to-route request carries `cluster_id` (prefilled with the shop's cluster) in its proposal; the approval already reads `/proposed/cluster_id`. Target route is not sent | an end-to-end test SR record to DMO approval (SV or seeds/proof lane); SV to say whether the route must be in the proposal |
+| SRM-B-43 | done interim | Clusters screen "ক্লাস্টারসমূহ": card per cluster with the building icon, name, "Route: <route name>" and the red + | the `clusters` section (SRM-B-33) |
+| SRM-B-44 | UI and local store done, record missing | "ক্লাস্টার তৈরি করুন" dialog (name box, বাতিল / সাবমিট); name validated (2 to 80 chars, no duplicate on the route, any case); client uuid made when the dialog opens so a double tap is one record; stored per user in SharedPreferences (`PrefsPendingClusters`, survives a kill) and listed with "পাঠানোর অপেক্ষায়". **It is NOT sent to the server yet and cannot be used for a new shop yet.** | **SV**: cluster-creation record (client uuid, name, route_id, fix), ingest, AMO verify list, portal approval; a new-shop proposal pointing to a pending cluster by client uuid. Train 2: move the store to a Room table + outbox record (needs a migration in core-database: not done here so as not to collide with other lanes) |
+| SRM-B-45 | done | Tile "ক্লাস্টার" / EN "Clusters" through the NEW key `out_menu_clusters` (the old `out_req_cluster` "Change cluster" is used by the AMO hub and is untouched); screen title ক্লাস্টারসমূহ; dialog strings | |
+| SRM-B-46 | match | unchanged | |
+| SRM-B-47 | done (SR only) | `TaskContent(manual = true)`: one list (ongoing first), red type, orange status at the top right, outlet name, description, flag + "Completion on: date" (words English as in the reference, digits follow the language). AMO and TSO keep the earlier card (default `manual = false`) | |
+| SRM-B-48 | done (SR only) | A swipe reveals the red "Resolve" panel and ASKS ("টাস্কটি সমাধান করবেন?"); nothing resolves until the confirm; the card's secondary "Resolve" and a TalkBack custom action open the same question | |
+| SRM-B-49 | needs seeds | `poor_brand_visibility` enum value and code-list row (forward migration). The card shows the bundle label, else the upper-cased code | seeds / SV; owner Q4 (full list of task types) |
+| SRM-B-50 | match | unchanged | |
+
+## Files
+New: `shared/rules/.../JourneyTimeline.kt` (+ test), `feature-memo/.../ui/SalesJourney.kt`, `feature-home/.../ComingSoon.kt`, `feature-outlet/.../{SearchPicker,Clusters,ClustersScreen,SrOutletRequestScreen}.kt`, `app-sr/.../PrefsPendingClusters.kt`, three `aron_art_*` vectors in core-ui, strings (new keys only; no existing value changed).
+Changed: `HomeModel/HomeScreen` (feature-home), `AronTargetCard` (core-ui: two optional params, defaults keep the old look), `TaskScreen` (feature-tasks: optional `manual`), `OutletRequestMapping` (route_add carries `cluster_id`), `OutletMenu` (tile label key), `SrApp`/`SrSaleKit`/`RoomSaleReads`/`SrSaleHosts`/`SrDay` (app-sr).
+Goldens: the nine `home_*` PNGs (15 tiles, new card); no other golden moved (AMO goldens verified unchanged after the shared-key revert).
+
+## Strings the lane needs S6 to word (wording owner)
+Photo Capture BN (see above); "Completion on:" stays English by the reference. `hm_tile_sale` EN "Sale" on the SR screen titles (sale picker etc.) still reads "Sale" while the Home tile reads "Sales": S6 to decide whether the shared key becomes "Sales" for every role.
+
+## Needs from SV (contract 1.14.0), exact list
+1. Bundle `clusters` section: `cluster_id`, `name`, `route_id`, `route_name`, scoped to the SR's routes.
+2. Cluster-creation record: client uuid, name, route_id, fix; AMO verify list; portal approval; new-shop proposal may reference a pending cluster by client uuid.
+3. `info` proposal accepts `cluster_id` (optional: the paired `cluster` request works today).
+4. `route_add` proposal: confirm `cluster_id` (carried now) and whether the target route is also required.
+5. `JourneyCall.status` `repeat_sale`, computed with `JourneyTimeline` rules (shared/rules).
+6. `task_type` `poor_brand_visibility`.
+
+
+## Train 1 fix round (the lead's Opus FAIL, 2026-11-12)
+| # | Finding | State |
+|---|---|---|
+| 1 | Created clusters in prefs, labelled "waiting to be sent" | Fixed: Room table `cluster_create` (DB v8 to v9, AutoMigration + `Migration89Test`) with client uuid, name, route, route name and the GEO fix (`CaptureRepository.recordClusterCreate`, one transaction, idempotent); LOCAL ONLY (no outbox row, test proves it); label "এই ফোনে সংরক্ষিত; সার্ভারে পাঠানো এখনো চালু হয়নি" / "Saved on this phone; sending is not available yet"; never offered for a new shop; the list is filtered by the route. SV train 2 adds the record and moves these rows to the outbox |
+| 2 | Info + cluster change = two commits from a composition scope | Fixed: `OutletRequests.submitPair` validates BOTH first, `CaptureRepository.recordOutletRequests` writes both in ONE Room transaction, started in the day's scope (`SrDay.submitOutletRequest`, not `rememberCoroutineScope`). Tests: second invalid writes nothing, failing commit propagates, Room rollback leaves neither row |
+| 3 | Success-dialog state lost on recreate | Fixed: `rememberRequestIdentity` (kind, both uuids, saved flag are `rememberSaveable` with per-kind keys); a form opened on a stored request shows "saved" (`SrDay.requestStored`). Test `RequestIdentityTest` saves and restores the saveable registry |
+| 4 | Zero-sale memo counted as a sale | Fixed: sold = an ACTIVE memo of kind `sale`; superseded memos do not count; edited = the server's test. Room-level tests with zero_sale, superseded and edit rows |
+| 5 | "Same rule as the server" | Now follows `getTeamJourney`: abandoned calls kept, each leg rounded to 2 decimals, `total = r2(total + r2(leg))`, km rounded once (1004.995 m prints 1.00). Declared differences (KDoc in `JourneyTimeline`): `repeat_sale` does not exist on the server until 1.14.0; `in_progress` is phone only. For SV: use `JourneyTimeline` rules for `repeat_sale` |
+| 6 | Tasks | Fixed per note 47: type alone in red, outlet line with the orange status at its right, "Completion on: 2026-11-11" in Latin digits; test that a confirm resolves exactly once and a double tap on the confirm still once. Premise corrected: the SR host is the only production caller of `TaskContent` (the `manual` flag stays default-off only for its existing tests and goldens) |
+| 7 | Programme tiles | Astha, Loyalty Point, Match Program are gated on `cfg.flag.astha_ui` / `loyalty_ui` (default on) / `superstar_ui` (default off) through `HomeTiles.resolve(enabledForUser)` (`SrDay.enabledProgrammeTiles`); the "unknown config key adds no tile" assertion is back. Not yet gated: "the bundle has an active programme of that kind" (no such section in the bundle yet) |
+| 8 | Smaller items | `journeyOutletLine` uses `OutletPicker.label` + `localizedDigits`; Clusters header without the icon; ROUTE_ADD requires a cluster on the phone (`CLUSTER_REQUIRED`); no synchronous prefs commit (prefs store removed); dead `SrSaleKit.journey()` removed; `JourneyScreen` is kept because `MemoScreensTest` and the `CloseShot` golden use it (the AMO app only imports it); KDoc of the programme tiles corrected |
+
+Not on a device. Gate results are in the report to the lead.
+
+## Second Opus pass (the lead's list B, C, D)
+- **Journey, FIVE phone/server differences (for SV's train 2):** (a) `repeat_sale` phone only until 1.14.0; (b) `in_progress` phone only; (c) the phone falls back to the visit's stored point when the outlet row has no base point (`RoomSaleReads.journeyCalls`), the server does not; (d) the phone does not filter by route (it holds one SR's calls), the server filters by `route_id` (`AmoTeamReads.journey`); (e) the phone checks coordinate validity before a leg, the server only null-checks. Equal on the phone and the server: call set (abandoned kept), order, sold, edited, per-leg rounding, running total, duration, gap.
+- **Code (list C):** task confirm guarded (read-at-tap, test: a double tap resolves once); `recordClusterCreate` replay reports saved; `requireFixOf` + purged check; `cluster_create` in `DEVICE_TABLES`; `Migration89Test` seeds a pending outbox row and a device row; the day-scoped awaits turn a failure into an error state (`RequestError.SAVE_FAILED`, cluster `NOT_SAVED`); the cluster dialog's busy flag is not saveable; the form kind is saveable at the host (frame title follows it after process death); `ProgrammeFlags` with its own tests (quotes, case, junk, absent).
+- **Goldens (list D):** the shots `home_*` assume all three programme flags on (15 tiles: astha, loyalty_point, match_program). With the registry defaults (astha_ui and loyalty_ui on, superstar_ui off) an SR sees 14 tiles: pinned by `home_bn_default_flags`.
+- **How the tests ran:** JVM only (JUnit 4/5, Robolectric SDK 36, in-memory Room, Compose host rule); no device, no instrumented test.
+- **Not tested here:** the host-level error state after a failed day-scoped save (`RequestHost` is private; the pair, the rollback and the validation are tested below it).

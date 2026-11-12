@@ -84,6 +84,21 @@
     <string name="memo_total_category">Total %1$s</string>
     <string name="memo_due_chip_amount">Due %1$s</string>
     <string name="summary_qty_rem">%1$s %2$s %3$s</string>
+    <string name="journey_s_new">New Sale</string>
+    <string name="journey_s_edited">Edited Sale</string>
+    <string name="journey_s_repeat">Repeat Sale</string>
+    <string name="journey_s_none">No Sale</string>
+    <string name="journey_s_open">In progress</string>
+    <string name="journey_distance">Distance: %1$s</string>
+    <string name="journey_total">Total: %1$s</string>
+    <string name="journey_gap">after %1$s</string>
+    <string name="journey_w_min">min</string>
+    <string name="journey_w_sec">s</string>
+    <string name="journey_w_m">m</string>
+    <string name="journey_w_km">km</string>
+    <string name="journey_calls_empty">No calls yet today</string>
+
+
     <string name="sale_data_title">Sale data</string>
     <string name="sale_data_none">No sale at this outlet on this date.</string>
     <string name="sale_data_ok">OK</string>

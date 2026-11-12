@@ -46,7 +46,7 @@ fun OutletMenuContent(onKind: (OutletRequestKind) -> Unit, modifier: Modifier = 
         val columns = if (scale >= AronTokens.Size.OneColumnFontScale) 1 else if (scale >= 1.3f) 2 else 3
         AronTileGrid(tiles, columns = columns) { k, mod ->
             AronTile(
-                label = stringResource(when (k) { OutletRequestKind.NEW -> R.string.out_req_new; OutletRequestKind.CLOSE -> R.string.out_req_close; OutletRequestKind.INFO -> R.string.out_req_info; else -> R.string.out_req_cluster }),
+                label = stringResource(when (k) { OutletRequestKind.NEW -> R.string.out_req_new; OutletRequestKind.CLOSE -> R.string.out_req_close; OutletRequestKind.INFO -> R.string.out_req_info; else -> R.string.out_menu_clusters }),
                 icon = painterResource(
                     when (k) {
                         OutletRequestKind.NEW -> com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_new

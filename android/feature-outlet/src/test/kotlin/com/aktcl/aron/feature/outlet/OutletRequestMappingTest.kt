@@ -28,7 +28,9 @@ class OutletRequestMappingTest {
     @Test fun closeAndClusterAndRouteAddCarryOnlyTheirFacts() {
         assertEquals(setOf("close_reason_code"), Json.parseToJsonElement(draft(OutletRequestKind.CLOSE).toEntities(meta, fix).first.proposedJson).jsonObject.keys)
         assertEquals(setOf("cluster_id"), Json.parseToJsonElement(draft(OutletRequestKind.CLUSTER).toEntities(meta, fix).first.proposedJson).jsonObject.keys)
-        assertTrue(Json.parseToJsonElement(draft(OutletRequestKind.ROUTE_ADD).toEntities(meta, fix).first.proposedJson).jsonObject.isEmpty())
+        // SRM-B-42: an add-to-route request carries the cluster the shop joins (the approval reads /proposed/cluster_id)
+        assertEquals(setOf("cluster_id"), Json.parseToJsonElement(draft(OutletRequestKind.ROUTE_ADD).toEntities(meta, fix).first.proposedJson).jsonObject.keys)
+        assertTrue(Json.parseToJsonElement(draft(OutletRequestKind.ROUTE_ADD).copy(clusterId = null).toEntities(meta, fix).first.proposedJson).jsonObject.isEmpty())
     }
 
     @Test fun aFailedFixLeavesPositionOutOfTheProposal() {

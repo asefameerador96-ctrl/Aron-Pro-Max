@@ -17,4 +17,8 @@
     <string name="tsk_badge_open">%1$s open</string>
     <!-- "30 November": the due date as day and month name (screens-sr s12) -->
     <string name="tsk_my_requests">My outlet requests</string>
+    <string name="tsk_completion_on">Completion on: %1$s</string>
+    <string name="tsk_swipe_resolve">Resolve</string>
+    <string name="tsk_resolve_confirm_title">Resolve this task?</string>
+    <string name="tsk_cancel">Cancel</string>
 </resources>

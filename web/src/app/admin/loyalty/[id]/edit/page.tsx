@@ -17,7 +17,7 @@ export default async function EditLoyaltyPage({ params }: { params: Promise<{ id
   if (!canWriteLoyalty(session.user.role, grants)) return <Forbidden locale={locale} />;
   const back = `/admin/loyalty/${id}`;
   const r = /^\d{1,15}$/.test(id) ? await loadProgramme(session.at, Number(id)) : null;
-  if (!r || !r.ok || r.data === null) {
+  if (!r || !r.ok) {
     const offline = r !== null && !r.ok && r.offline;
     return <Banner tone={offline ? "offline" : "danger"} role="alert" testId="loyalty-missing">{t(locale, offline ? "loy.offline" : "loy.not_found")} <Link href="/admin/loyalty" className="underline">{t(locale, "loy.back")}</Link></Banner>;
   }

@@ -43,7 +43,7 @@ const API_ROUTES: readonly (readonly [string, GrantModule])[] = [
   ["/v1/admin/skus/**", "products"], ["/v1/admin/product-nodes/**", "products"], ["/v1/admin/assets/**", "products"], ["/v1/sku-images/**", "products"],
   ["/v1/admin/prices/**", "prices"],
   ["/v1/admin/offers/**", "discounts"], // portal-discount-web: Lane A moves it off `targets` (brief Q4 default)
-  ["/v1/admin/programmes/**", "loyalty"], ["/v1/admin/gifts/**", "loyalty"], ["/v1/admin/loyalty/**", "loyalty"], // portal-loyalty-web: re-homed off `targets` (brief s7; /v1/programmes/** of the phone stays on targets)
+  ["/v1/admin/programmes/**", "loyalty"], ["/v1/admin/gifts/**", "loyalty"], // portal-loyalty-web: the contract 1.13.0 paths (programmes, versions, status, enrolments, gifts), moved off `targets`; /v1/programmes/** of the phone stays on targets
   ["/v1/admin/targets/**", "targets"], ["/v1/admin/route-targets/**", "targets"], ["/v1/admin/target-revisions/**", "targets"], ["/v1/admin/supervisor-targets/**", "targets"], ["/v1/admin/sales-plans/**", "targets"],
   ["/v1/admin/devices/**", "mdm"], ["/v1/admin/enrolment-tokens/**", "mdm"], ["/v1/admin/releases/**", "mdm"], ["/v1/admin/mdm/**", "mdm"], ["/v1/admin/notifications/**", "mdm"],
   ["/v1/support/tickets/**", "support"], // tso-manual W1: the support desk routes (R-F-11, B1 AdminModules); before /v1/support/** (first match wins)
