@@ -455,7 +455,7 @@ One person who can log in, field or web, with role, status, locale and Argon2id 
 | `must_change_password` | boolean | not null |  | True when the user must set a new password at the next login. |
 | `mfa_enabled` | boolean | not null |  | True when TOTP is confirmed for the user. |
 | `pilot` | boolean | not null |  | True when the user is in the pilot group for the cutover. |
-| `scope_version` | bigint | not null |  | Counter bumped on any change of role, status, scope or assignment; tokens carrying an older value are refused. V0170 raised it once for every ADMIN holding a loyalty grant (their pre-V0160 tokens lack the claim); the touch trigger raises app_user.version with it, so an open user editor gets one 412. |
+| `scope_version` | bigint | not null |  | Counter bumped on any change of role, status, scope or assignment; tokens carrying an older value are refused. |
 | `last_login_at` | timestamp with time zone | null |  | UTC time of the most recent successful login. |
 | `disabled_at` | timestamp with time zone | null |  | UTC time the account was disabled; null while active. |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
@@ -2006,7 +2006,7 @@ A gift of a loyalty programme with points cost (integer points, no taka value in
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
-| `image_asset_id` | uuid | null |  | Uploaded picture of the gift (app.admin_asset, purpose gift_image); the portal API turns it into a read URL when it answers, so no signed address is stored in this table, in app.gift_change.snapshot or in an audit row. Null when the gift has no picture. |
+| `image_asset_id` | uuid | null |  | Uploaded picture of the gift (app.admin_asset, purpose gift_image); the portal API turns it into a read URL when it answers. Null when the gift has no picture. |
 
 Keys: `UNIQUE (programme_id, code)`; `PRIMARY KEY (id)`
 
