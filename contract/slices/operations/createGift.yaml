@@ -5,6 +5,10 @@ operation:
   - admin-content
   operationId: createGift
   summary: Add a gift to a programme's catalogue (code immutable).
+  description: 'Permission module `loyalty`; gift-catalogue changes are SUPERADMIN only (brief Q3 default). Idempotent
+    by `request_uuid` (required by the server): a repeat returns the first result with `201`; the same `request_uuid`
+    with different content, or a `code` that exists in the programme, is `409`. `points_cost` is points (1 to 100000),
+    null for a gift that is chosen, not redeemed; no taka value is stored in v1 (brief Q4 default).'
   requestBody:
     required: true
     content:

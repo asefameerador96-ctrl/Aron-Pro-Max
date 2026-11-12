@@ -45,6 +45,7 @@ object AdminModules {
         "config", "data_entry", "indent", "leaderboard", "daily_tracking",
         "support", // tso-manual B1 (R-F-11): the support desk's ticket routes
         "discounts", // portal-discount-api (D-DISC-API-03, brief s8 Q4): the discount-programme portal, moved off `targets`
+        "loyalty", // portal-loyalty-api (D-LOY-API-01/04, brief s6): the loyalty-programme portal, moved off `targets` (programmes, gifts)
     )
 
     private fun p(path: String) = PortalLevels.Pattern("*", path)
@@ -97,10 +98,10 @@ object AdminModules {
         p("/v1/admin/target-revisions/**") to "targets",
         p("/v1/admin/supervisor-targets/**") to "targets",
         p("/v1/admin/sales-plans/**") to "targets",
-        // Deferred programmes (docs/27): hooks only; their admin pages sit with targets.
-        p("/v1/admin/programmes/**") to "targets",
+        // Loyalty programmes: the portal (roadmap item 2) has its own module since V0160; the field stays deferred (/v1/programmes/** below).
+        p("/v1/admin/programmes/**") to "loyalty", // was `targets` until the loyalty portal (V0160); today's ADMIN access was carried over by the migration
         p("/v1/admin/offers/**") to "discounts", // was `targets` until the discount portal (V0154); today's ADMIN access was carried over by the migration
-        p("/v1/admin/gifts/**") to "targets",
+        p("/v1/admin/gifts/**") to "loyalty", // was `targets` until the loyalty portal (V0160)
         p("/v1/programmes/**") to "targets",
         p("/v1/admin/devices/**") to "mdm",
         p("/v1/admin/enrolment-tokens/**") to "mdm",

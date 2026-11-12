@@ -2815,3 +2815,34 @@
 ### 2026-11-12 09:37 UTC — S5 and S6 round 2 started
 - S5 fix round `495255d1a`: static gate clean (25 files +158/-22 on 997b72a0d; one test renamed as asked; DECISIONS 394; lane ci 43192841453); Opus re-check wekacfd8t running.
 - S6 fix round `67ebb0d7a`: static gate clean (four keys and four goldens back to INT; 6 goldens still changed for declared wording; DECISIONS 393; lane ci 43192863255); re-check launched (settings flow, wording/shared keys). S6 reports call_start_title is still rendered by CallPrompts.kt:25 on S4's head (feature-sale), to check when S4 lands.
+
+### 2026-11-12 09:39 UTC — S3 PASS, train 100 built
+- S3 fix round `4a7dcbcc0` Opus re-check w88z3tdex: PASS (2 lenses, no blocking; lows sent to S3 as a follow-up after landing). wt-s3 removed.
+- Train 100 = INT ab78d0d4b + docs tip 168b7c450 + S3 4a7dcbcc0 (--no-ff), head `62036ab2a` on lane/lead-train100. Tree checks: android == S3 android; docs == docs branch + S3 status file; DECISIONS 400 (392 + 5 docs + 3 S3), 0 removed, 0 markers; money-float 13/13, date-pin 0 new, slices up to date, gitleaks clean. CI 43193235441 running. Android + docs only: deploy will be skipped by design; APK of record follows from the INT run.
+
+### 2026-11-12 09:41 UTC — S5 PASS; train 100 rebuilt with S3 + S5; S4 round 3 under review
+- S5 fix round `495255d1a` Opus re-check wekacfd8t: PASS (2 lenses, no blocking; lows sent as the start of its train 2). wt-s5 removed.
+- Train 100 rebuilt (my own branch force-pushed; first run 43193235441 superseded): INT ab78d0d4b + docs 168b7c450 + S3 4a7dcbcc0 + S5 495255d1a, head `d6ede1843`. Only DECISIONS.md conflicted (union, 402 = 392 + 5 + 3 + 2, 0 removed, 0 markers); SrSaleHosts.kt touched by both lanes merged cleanly, S3 hunks verified intact on top of S5. money-float 13/13, date-pin 0 new, gitleaks clean. CI 43193498991 running.
+- S4 round 3 `e241c1109`: static gate clean; Opus re-check wz0sjqpir running. S4 conflicts with S3 in SrSaleHosts.kt and SaleRoute.kt (code), so it lands after train 100 on a lane-side INT merge; S4 told.
+
+### 2026-11-12 09:44 UTC — L-A train 1 fix-up under review
+- L-A `be79c0e3a` (code head 304f829d8 + status doc; INT merged): static gate clean (53 files +2263/-84; V0158..V0162 added only; DECISIONS 396, 0 removed; slices up to date; gitleaks clean; three tests renamed 17->18 modules / 1.12.2->1.13.0; web/src/contract/openapi.d.ts regenerated). Lane ci 43191574789 (on 304f829d8) in progress. Opus re-check launched (module wiring/security, migrations/dw, contract/clients/records), worktree wt-la.
+
+### 2026-11-12 09:44 UTC — S6 round 2: code PASS, records fix asked
+- S6 `67ebb0d7a` re-check wqtrx4qri: settings flow PASS, wording PASS (reverts byte-identical to INT), one blocking item on records only (wrong list of AMO effects in the status file and D-SR-MAN-S6-01 (7)). Asked: correct in place, declare notes 63/64 layout differences, map OLDER_IGNORED to ALREADY_CURRENT with a pure-function test, one Bangla polish. S6 lands after train 100 and S4 on a lane-side INT merge; that head gated by diff. wt-s6 removed.
+
+### 2026-11-12 09:46 UTC — S1 FAIL, S4 round 3 one item left
+- S1 `a97835fe3` Opus pass wkxja7xds (15 agents): FAIL, 2 survivors: data-update page lost the skip link while the download runs (F-SR-001 regression, false comment and D-SR-MAN-S1-07); D-SR-MAN-S1-08 false (footer shows "name (code)"). Auth/OTP security lens PASS. Required with it: "Later" kept during an optional update download, update page in English per notes 06/07, FLAG_SECURE on OTP screens, guarded progress callback, wiring tests, LoginViewModel runCatching around suspend bind. Fix-up sent; wt-s1 removed.
+- S4 round 3 `e241c1109` re-check wz0sjqpir: না and সংরক্ষণ label fixed; one blocking item left (Save icon untinted black on purple). To fix in the same push as its INT merge after train 100. wt-s4 removed.
+- Backend fact confirmed by the S1 review: update-check already fills notes_en/notes_bn (ConfigPublic.kt:75-81).
+
+### 2026-11-12 09:52 UTC — L-A train 1 fix-up: code PASS, records correction asked
+- L-A `be79c0e3a` Opus re-check w81ko2fhp (6 agents): overall PASS (module wiring per Discount precedent, V0158..V0162 safe on the live db, dw contract 1.7, contract 1.13.0 breaks neither Android nor the INT web build). One records finding was voted non-blocking by the refuters but is a false statement (request file says the web page does not exist; D-LOY-API-03 says web and contract are consistent), so I asked a docs-only correction before training it: list the real web divergences (status/versions/progress paths, createProgramme body, modules.ts mapping), test file count, status plan line, two deploy hazard notes. Lane ci 43191574789 still running (no failure so far).
+- Train order: 100 (S3 + S5, in CI) -> 101 (L-A, real deploy, Flyway proof) -> S4 -> S6 on lane-side INT merges.
+
+### 2026-11-12 09:53 UTC — L-A records corrected; gate-tool defect found and fixed
+- L-A `ffe9eee50`: docs-only on be79c0e3a (3 files, +11/-5: DECISIONS.md two unshipped lines corrected in place, request file, status doc). Verified by diff. Ready for train 101 after train 100.
+- Lead gate defect (mine): the "removed DECISIONS lines" count in my static gate used a pattern that cannot match a removed line that itself starts with "- " (every D-line), so it always printed 0. Fixed in scratchpad tools/sgate.sh. Re-proved by a direct set comparison: 0 D-lines missing on INT ab78d0d4b versus each INT head of trains 93 to 98 and versus 60 first-parent commits back; 0 INT lines missing on train 100, on L-A ffe9eee50 and on the docs branch. The Opus checkers' "every INT line still present" comparisons had covered the lane heads independently.
+
+### 2026-11-12 09:54 UTC — GO train 100
+- Train 100 CI 43193498991 green on d6ede1843 (11 jobs: 5 ok, 6 skipped by path, 0 failed). INT still ab78d0d4b. GO sent to integrator 24: merge the train head only, expected DECISIONS 402, deploy skipped by design, report the signed APK.
