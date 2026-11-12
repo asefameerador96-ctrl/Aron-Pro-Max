@@ -160,7 +160,7 @@ fun SrFrame(
     onSync: (() -> Unit)?,
     modifier: Modifier = Modifier,
     printer: PrinterManager? = null,
-    /** Ask the nearby-devices permission and toast "printer connected" from this frame: only Stock ([printerAssistFor]); the sale asks inside `SaleRoute`. */
+    /** Ask the nearby-devices permission and toast "printer connected" from this frame: Stock and the sale's VISIT frame ([printerAssistFor]); `SaleRoute` does not ask (one holder per screen). */
     printerAssist: Boolean = false,
     /** The drawable of the screen's tile art (`R.drawable.aron_art_*` of core-ui), shown beside the title. */
     icon: Int? = null,
@@ -475,7 +475,7 @@ fun SrApp(
                 }
             }
         }
-        SrScreen.VISIT -> SrFrame(if (saleData) stringResource(com.aktcl.aron.feature.memo.R.string.sale_data_title) else stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_sale) {
+        SrScreen.VISIT -> SrFrame(if (saleData) stringResource(com.aktcl.aron.feature.memo.R.string.sale_data_title) else stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, printer = day.printerManager, printerAssist = printerAssistFor(SrScreen.VISIT), icon = CoreR.drawable.aron_art_sale) {
             PermissionGate(GatedFeature.SALE, onBack = goBack) {
                 val st by day.visitFlow.state.collectAsState()
                 val open by day.visitSession.current.collectAsState()
@@ -809,10 +809,12 @@ internal fun soonTitle(t: HomeTile): Int = when (t) {
 }
 
 /**
- * D-SR-MAN-S3-02 (lead review of be15cd1a8): the screen frames that may ask the nearby-devices permission and toast "printer connected".
- * Stock only; the sale does it once inside `SaleRoute(printerAssist = true)`, so the visit frame, Memo and Summary never repeat the prompt or the toast.
+ * D-SR-MAN-S3-02: the screen frames that may ask the nearby-devices permission and toast "printer connected": Stock and the sale's VISIT frame, ONE holder
+ * per screen. The sale is asked at the frame, not inside `SaleRoute`: the frame is composed when the call opens, so it sees the link coming up (the
+ * toast), while `SaleRoute` only appears after "Start the call?" and the AV/KV/POSM steps, when a granted printer is long connected and no toast
+ * would ever show. Memo, Summary and every other frame never repeat the prompt or the toast.
  */
-internal fun printerAssistFor(screen: SrScreen): Boolean = screen == SrScreen.STOCK
+internal fun printerAssistFor(screen: SrScreen): Boolean = screen == SrScreen.STOCK || screen == SrScreen.VISIT
 
 /**
  * The SR attendance screen as the app shows it (D-SR-MAN-S3-01): the shared content with the manual's dashed status boxes

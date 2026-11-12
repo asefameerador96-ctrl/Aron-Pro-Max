@@ -158,7 +158,7 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
         // the outlet stays on screen from quantity entry to the commit-and-print tap (parity audit E1/R1): as the retailer pill on the list
         // and as the three header lines of the review (outlet and code, route, cluster)
         SaleRoute(
-            vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f), printerAssist = true,
+            vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f),
             zeroSaleReasonPicker = true, quantityPopup = true, skuStats = skuStats,
             retailerLabel = outlet?.let { com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) },
             outletLines = listOfNotNull(

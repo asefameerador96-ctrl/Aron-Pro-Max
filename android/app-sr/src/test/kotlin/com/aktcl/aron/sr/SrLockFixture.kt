@@ -58,7 +58,11 @@ import java.io.File
  * `day.sale.new…ViewModel()` directly) and hands a screen it shows to [own]. [close] lets that work finish, cancels and
  * joins it, drains Room, and only then closes the database; a test restores its exception catchers after [close].
  */
-internal class SrLockFixture(context: Context, latePolicy: String?) : AutoCloseable {
+internal class SrLockFixture(
+    context: Context, latePolicy: String?, checkoutMinutes: Int? = null,
+    /** A transport factory for a SAVED printer (the printer assist tests); null: no printer is saved, as before. */
+    printerTransports: com.aktcl.aron.core.printing.bt.PrinterTransportFactory? = null,
+) : AutoCloseable {
     val work = TestWork()
     val db: AronDatabase = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries()
         .setQueryExecutor(work.roomExecutor).setTransactionExecutor(work.roomExecutor).build()
@@ -100,12 +104,12 @@ internal class SrLockFixture(context: Context, latePolicy: String?) : AutoClosea
         components.trustedClock,
     )
 
-    private val printerManager = PrinterManager({ error("no printer in this test") }, object : SavedPrinterStore {
-        override fun load(): SavedPrinter? = null
+    private val printerManager = PrinterManager(printerTransports ?: com.aktcl.aron.core.printing.bt.PrinterTransportFactory { error("no printer in this test") }, object : SavedPrinterStore {
+        override fun load(): SavedPrinter? = if (printerTransports != null) SavedPrinter("00:11:22:33:44:55", "MP-58N") else null
         override fun save(printer: SavedPrinter?) = Unit
     }, work.printerScope)
 
-    val day = SrDay(7L, context, db, components, SyncScheduler.None, fixManager, printerManager, "sr", memoNumbering = MemoNumbering("sr334001", 0, 500), parentJob = work.dayJob)
+    val day = SrDay(7L, context, db, components, SyncScheduler.None, fixManager, printerManager, "sr", memoNumbering = MemoNumbering("sr334001", 0, 500), parentJob = work.dayJob, checkoutMinutes = checkoutMinutes?.let { m -> { m } })
         .also { it.routeId = route } // reload() would read it from the bundle
 
     val date: String get() = day.businessDate()
