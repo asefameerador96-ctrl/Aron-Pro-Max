@@ -2827,3 +2827,6 @@
 
 ### 2026-11-12 09:44 UTC — L-A train 1 fix-up under review
 - L-A `be79c0e3a` (code head 304f829d8 + status doc; INT merged): static gate clean (53 files +2263/-84; V0158..V0162 added only; DECISIONS 396, 0 removed; slices up to date; gitleaks clean; three tests renamed 17->18 modules / 1.12.2->1.13.0; web/src/contract/openapi.d.ts regenerated). Lane ci 43191574789 (on 304f829d8) in progress. Opus re-check launched (module wiring/security, migrations/dw, contract/clients/records), worktree wt-la.
+
+### 2026-11-12 09:44 UTC — S6 round 2: code PASS, records fix asked
+- S6 `67ebb0d7a` re-check wqtrx4qri: settings flow PASS, wording PASS (reverts byte-identical to INT), one blocking item on records only (wrong list of AMO effects in the status file and D-SR-MAN-S6-01 (7)). Asked: correct in place, declare notes 63/64 layout differences, map OLDER_IGNORED to ALREADY_CURRENT with a pure-function test, one Bangla polish. S6 lands after train 100 and S4 on a lane-side INT merge; that head gated by diff. wt-s6 removed.
