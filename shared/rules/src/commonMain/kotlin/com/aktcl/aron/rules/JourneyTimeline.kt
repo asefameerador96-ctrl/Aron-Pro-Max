@@ -28,6 +28,12 @@ data class JourneyCallRow(
 /**
  * The call timeline of one business date (SRM-B-82 to 85). Same figures as the server's `getTeamJourney` (AmoTeamReads.journey) where the
  * contract defines them, and the differences are declared here, not hidden:
+ * FIVE declared differences from the server (listed for SV's train 2): (1) `repeat_sale`, (2) `in_progress`, (3) the PHONE caller falls back
+ * to the point the visit stored when the outlet row has no base point (`RoomSaleReads.journeyCalls`; the server has no fallback), (4) the
+ * phone does not filter calls by route (it holds one SR's own calls; the server filters by `route_id`), (5) this rule treats a point that
+ * fails [Geo.isValidCoordinate] as missing (the server only null-checks). Everything else is equal: the call set (abandoned kept), the
+ * order, sold, edited, per-leg rounding, the running total, duration and gap.
+ *
  *  - order: opened_at, ties by visit uuid (the server's order);
  *  - calls: every `sr_call` visit of the day, abandoned ones included (the server keeps them; they read `no_sale`);
  *  - status: `edited_sale` when [JourneyCallInput.edited]; else `new_sale` when [JourneyCallInput.sold]; else `no_sale`. DIFFERENCES from
