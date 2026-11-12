@@ -2830,3 +2830,8 @@
 
 ### 2026-11-12 09:44 UTC — S6 round 2: code PASS, records fix asked
 - S6 `67ebb0d7a` re-check wqtrx4qri: settings flow PASS, wording PASS (reverts byte-identical to INT), one blocking item on records only (wrong list of AMO effects in the status file and D-SR-MAN-S6-01 (7)). Asked: correct in place, declare notes 63/64 layout differences, map OLDER_IGNORED to ALREADY_CURRENT with a pure-function test, one Bangla polish. S6 lands after train 100 and S4 on a lane-side INT merge; that head gated by diff. wt-s6 removed.
+
+### 2026-11-12 09:46 UTC — S1 FAIL, S4 round 3 one item left
+- S1 `a97835fe3` Opus pass wkxja7xds (15 agents): FAIL, 2 survivors: data-update page lost the skip link while the download runs (F-SR-001 regression, false comment and D-SR-MAN-S1-07); D-SR-MAN-S1-08 false (footer shows "name (code)"). Auth/OTP security lens PASS. Required with it: "Later" kept during an optional update download, update page in English per notes 06/07, FLAG_SECURE on OTP screens, guarded progress callback, wiring tests, LoginViewModel runCatching around suspend bind. Fix-up sent; wt-s1 removed.
+- S4 round 3 `e241c1109` re-check wz0sjqpir: না and সংরক্ষণ label fixed; one blocking item left (Save icon untinted black on purple). To fix in the same push as its INT merge after train 100. wt-s4 removed.
+- Backend fact confirmed by the S1 review: update-check already fills notes_en/notes_bn (ConfigPublic.kt:75-81).
