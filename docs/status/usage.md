@@ -2881,3 +2881,8 @@
 - SV: no branch on origin, idle since 09:27, context about 466 k (past the 450 k recycle mark). Nudged once: push WIP, write the handover status file, report.
 - L-B holding (aa81dfa47) for the 1.13.0 alignment list after train 101 deploys. S1 ready (129c335f7). S3 follow-up, S5 follow-up, S6 wait for train 102.
 - Usage: lane sessions report seven_day status "allowed_warning" (not "rejected"): pause stays lifted per D-LEAD-STALL-02; owner to be told in the evening report.
+
+### 2026-11-12 10:56 UTC — train 102 green; S1 pulled back (red repository gate); my gate gap closed
+- Train 102 CI 43199553152 green on 30230e3cc (12 jobs ok). GO waits for train 101 to deploy (INT run 43202049384 still in progress).
+- I pre-built train 103 = train 102 + S1 129c335f7 (head b648843b6) and my local money-float scan failed on it: DataUpdateScreens.kt:122 (progress fraction on a line naming `total`). S1's own lane CI was red on Repository gates for both heads (43200950181, 43202736576); I had not read the lane CI result before building. Train 103 run 43204583751 cancelled (my own branch). S1 told: rename the step counters (no allow entry, scan untouched), run the three gate scripts, report with the lane CI result.
+- Lead gate gap (mine): tools/sgate.sh did not run the money-float and date-pin scans on the lane head and I did not require a green lane CI before a train. Fixed: both scans now run in sgate.sh; rule added for myself: no train is built from a head whose lane CI is not green on Repository gates. Heads already landed are unaffected (trains 100, 101 and 102 ran the full CI green).
