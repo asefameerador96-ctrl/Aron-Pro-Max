@@ -96,7 +96,7 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
             return
         }
         val q = com.aktcl.aron.feature.outlet.CallQuestion(
-            outletLabel = outletRow?.let { com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) } ?: kit.outletName(v.outletId),
+            outletLabel = com.aktcl.aron.core.ui.localizedDigits(kit.callOutletLabel(outletRow, v.outletId)),
             onSaleHistory = { scope.launch { history = kit.saleHistory(v.outletId) } },
             onTodayTarget = { showTarget = true },
             onProceedBlocked = { startFirst = true },

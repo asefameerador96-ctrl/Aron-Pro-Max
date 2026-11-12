@@ -27,7 +27,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -129,14 +128,11 @@ fun QuantityPopup(sku: SaleSku, qty: Long, stats: SkuStats?, onSave: (Long) -> U
                 StatLine(stringResource(R.string.qty_stat_ads), usable?.adsHundredths?.let { hundredths(it) }, QtyPopupTags.ADS)
                 StatLine(stringResource(R.string.qty_stat_sdlw), usable?.sdlw?.let { localizedNumber(it) }, QtyPopupTags.SDLW)
             }
-            Row(
-                Modifier.align(Alignment.CenterHorizontally).heightIn(min = AronLook.ButtonHeight).clip(RoundedCornerShape(AronLook.ButtonRadius))
-                    .testTag(QtyPopupTags.SAVE).background(Brush.horizontalGradient(listOf(look.purple, look.red))).clickable(role = Role.Button) { onSave(value) }.padding(horizontal = 28.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(AronIcons.Save, contentDescription = null, tint = look.onBar, modifier = Modifier.size(22.dp))
-                Text(stringResource(R.string.qty_popup_save), color = look.onBar, fontSize = 17.sp, fontWeight = FontWeight.Medium)
-            }
+            // the kit's primary button pairs its own ink with its fill in every look (Sunlight included)
+            com.aktcl.aron.core.ui.aron.AronPrimaryButton(
+                stringResource(R.string.qty_popup_save), { onSave(value) }, Modifier.align(Alignment.CenterHorizontally).testTag(QtyPopupTags.SAVE),
+                icon = androidx.compose.ui.graphics.vector.rememberVectorPainter(AronIcons.Save),
+            )
             Spacer(Modifier.size(2.dp))
         }
     }

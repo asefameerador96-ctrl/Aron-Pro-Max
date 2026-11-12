@@ -565,7 +565,7 @@ private fun CallQuestionBlock(q: CallQuestion, onYes: (() -> Unit)?) {
     val look = LocalAronLook.current
     val c = LocalAronColors.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-        q.outletLabel?.let { RetailerPickerField(value = it, placeholder = "", onClick = {}, modifier = Modifier.testTag(CallQuestionTags.OUTLET)) }
+        q.outletLabel?.let { RetailerPickerField(value = it, placeholder = "", onClick = {}, modifier = Modifier.testTag(CallQuestionTags.OUTLET), readOnly = true) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             OutlineChip(stringResource(R.string.out_sale_history_btn), AronIcons.Clock, c.accentContainer, c.accentOnContainer, q.onSaleHistory, Modifier.weight(1f).testTag(CallQuestionTags.HISTORY))
             OutlineChip(stringResource(R.string.out_today_target_btn), AronIcons.Target, c.successContainer, c.successOnContainer, q.onTodayTarget, Modifier.weight(1f).testTag(CallQuestionTags.TARGET))
@@ -577,11 +577,7 @@ private fun CallQuestionBlock(q: CallQuestion, onYes: (() -> Unit)?) {
         com.aktcl.aron.core.ui.aron.AronPrimaryButton(
             stringResource(R.string.out_call_yes), { onYes?.invoke() }, Modifier.fillMaxWidth().testTag(CallQuestionTags.YES), enabled = onYes != null,
         )
-        Box(
-            Modifier.fillMaxWidth().heightIn(min = AronLook.ButtonHeight).clip(RoundedCornerShape(AronLook.ButtonRadius)).background(look.panelDark)
-                .clickable(role = Role.Button, onClick = q.onNo).testTag(CallQuestionTags.NO),
-            contentAlignment = Alignment.Center,
-        ) { Text(stringResource(R.string.out_call_no), color = look.onPanel, fontSize = 17.sp, fontWeight = FontWeight.Medium) }
+        com.aktcl.aron.core.ui.aron.AronSecondaryButton(stringResource(R.string.out_call_no), q.onNo, Modifier.fillMaxWidth().testTag(CallQuestionTags.NO))
     }
 }
 

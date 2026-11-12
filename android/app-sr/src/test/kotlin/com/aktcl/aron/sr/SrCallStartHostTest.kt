@@ -67,7 +67,9 @@ class SrCallStartHostTest {
         f.day.visitSession.restore(v) // a relaunch: the session holds the visit and no fix
         show { SaleHost(f.day, sunlight = false, onSunlight = {}, onNoSale = {}, onDone = {}) }
         compose.onNodeWithTag(CallQuestionTags.OUTLET).assertExists()
-        compose.onNodeWithText("50001", substring = true).assertExists()
+        // the fixture's day holds no outlet row, so this is the fallback (the id); the label path is asserted in the next test
+        compose.onNodeWithText("50001").assertExists()
+        compose.onNodeWithText("Rahim Store 50001", substring = true).assertDoesNotExist()
         compose.onNodeWithTag(CallQuestionTags.QUESTION).assertExists()
         compose.onNodeWithTag(CallQuestionTags.PROCEED).performClick()
         compose.onNodeWithTag(CallQuestionTags.FIRST_BOX).assertExists()
@@ -77,10 +79,21 @@ class SrCallStartHostTest {
         val v = f.openCall()
         f.day.visitSession.restore(v)
         val seen = mutableListOf<Boolean>()
-        show { SaleHost(f.day, sunlight = false, onSunlight = {}, onNoSale = {}, onDone = {}, onSaleData = { seen += it }) }
+        val on = androidx.compose.runtime.mutableStateOf(true)
+        show { if (on.value) SaleHost(f.day, sunlight = false, onSunlight = {}, onNoSale = {}, onDone = {}, onSaleData = { seen += it }) }
         compose.onNodeWithTag(CallQuestionTags.HISTORY).performClick()
-        compose.waitUntil(30_000) { seen.lastOrNull() == true }
+        compose.waitUntil(5_000) { seen.lastOrNull() == true }
         assertTrue(seen.last())
+        // the host leaving composition (the sale moves on, or the rep goes back) reports false, so the frame title returns to বিক্রয়
+        compose.runOnUiThread { on.value = false }
+        compose.waitForIdle()
+        compose.waitUntil(5_000) { seen.lastOrNull() == false }
+        assertEquals("reports: $seen", false, seen.last())
+    }
+
+    @Test fun theCallOutletLabelIsThePickerLabelWhenTheDayHoldsTheOutletElseTheFallback() {
+        assertEquals("Rahim Store 50001 (DHK-50001-01712345678-C)", f.day.sale.callOutletLabel(f.outlet(), 50001))
+        assertEquals("50001", f.day.sale.callOutletLabel(null, 50001))
     }
 
     @Test fun sdlwAndPreviousDayReadThroughTheRoomStoreOverEightDays() {

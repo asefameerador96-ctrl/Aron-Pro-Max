@@ -87,6 +87,11 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     fun skuName(id: Long): String = skuNames[id] ?: id.toString()
     fun outletName(id: Long): String = day.dayData.value.outlets.firstOrNull { it.outletId == id }?.let { it.name + " (" + it.code + ")" } ?: id.toString()
     fun skuCategoryCode(id: Long): String? = skuCategory[id]
+
+    /** The outlet pill of the call-start screen (digits are localised by the screen): the picker label `Name (code-phone-cluster)` when the day holds the outlet, else [outletName]. */
+    fun callOutletLabel(id: Long): String = callOutletLabel(day.dayData.value.outlets.firstOrNull { it.outletId == id }, id)
+    fun callOutletLabel(outlet: com.aktcl.aron.core.database.entity.OutletEntity?, id: Long): String =
+        outlet?.let { com.aktcl.aron.feature.outlet.OutletPicker.label(it) } ?: outletName(id)
     fun names() = PrintNames(::skuName, ::outletName, day.userDisplayName, day.dayData.value.route?.name.orEmpty(), category = { id -> com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, skuCategory[id]) }, categoryCode = { id -> skuCategory[id].orEmpty() })
 
     /** Prices of the bundle and the day's stock (docs/24 s7.2, F-SYS-045). */
