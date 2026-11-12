@@ -2958,3 +2958,6 @@
 
 ### 2026-11-12 12:28 UTC — train 104 on INT
 - Integrator 24 pushed train 104: INT `20fe1d4fb` (tree-identical to 39a478a41 plus the train.md row; DECISIONS 427; 0 lost lines), ci #2064 43218050788 running. S3 told to merge this head (no report from S3 since 10:20; asked where it stands).
+
+### 2026-11-12 12:32 UTC — lane CI confirmations
+- S5 lane ci 43214455578 (91234ef05) and S6 lane ci 43214715189 (8fe12d962): both completed success (11 jobs ok each), confirming the heads that train 104 carries. S3 status: mid-run on the INT 20fe1d4fb merge (ec8cf4bdb pushed earlier; lane ci 43214864833 in progress). S2 pushed fb63804d3 (not yet reported). L-B lane ci 43217342984 in progress.
