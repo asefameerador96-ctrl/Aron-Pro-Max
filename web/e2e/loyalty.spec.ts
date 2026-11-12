@@ -253,3 +253,74 @@ for (const [name, size] of [["phone", { width: 360, height: 740 }], ["laptop", {
     expect(overPanel, `open status panel overflows by ${overPanel}px`).toBeLessThanOrEqual(1);
   });
 }
+
+test("server refusals light the field and say the right thing: a taken code, a draft with nothing changed, scope kept on edit", async ({ page }) => {
+  await superEnglish(page);
+  await page.goto("/admin/loyalty/new");
+  await hydrated(page.getByTestId("loyalty-form"));
+  await hydrated(page.locator("#lf-code"));
+  await page.locator("#lf-code").fill("ASTHA-Q4"); // taken
+  await page.locator("#lf-name-en").fill("Second Astha");
+  await page.locator("#lf-from").fill("2027-01-01");
+  await page.locator("#lf-to").fill("2099-12-31");
+  await page.locator("#lf-reason").fill(REASON);
+  await page.getByTestId("lf-submit").click();
+  await expect(page.getByTestId("loyalty-form-banner")).toContainText("already used");
+  await expect(page.getByTestId("error-lf-code")).toBeVisible(); // the server's body.code pointer reaches the field
+
+  await page.goto("/admin/loyalty/3/edit"); // SS-NOV: a draft that has places and a product scope
+  await hydrated(page.getByTestId("loyalty-form"));
+  await hydrated(page.locator("#lf-reason"));
+  await page.locator("#lf-reason").fill("Saved again without a change");
+  await page.getByTestId("lf-submit").click();
+  await expect(page.getByTestId("loyalty-form-banner")).toContainText("Nothing was changed"); // said here, nothing sent
+  await page.locator("#lf-name-en").fill("Superstar renamed");
+  await page.locator("#lf-reason").fill("Only the name changes here");
+  await page.getByTestId("lf-submit").click();
+  await expect(page.getByTestId("programme-saved")).toBeVisible();
+  await expect(page.getByTestId("programme-scope")).toContainText("Sub-channel · #11, Wing · #1"); // kept
+  await expect(page.getByTestId("programme-qualifying")).toContainText("Brand · #1");
+  await expect(page.getByTestId("programme-version")).toHaveCount(2);
+});
+
+test("enrolment refusals: end not after start, an unknown outlet, an overlapping window, an ended programme", async ({ page }) => {
+  await superEnglish(page);
+  await page.goto("/admin/loyalty/1");
+  await hydrated(page.getByTestId("loyalty-enrol-form"));
+  await hydrated(page.locator("#le-outlet"));
+  await page.locator("#le-outlet").fill("5000");
+  await page.locator("#le-from").fill("2027-01-01");
+  await page.locator("#le-to").fill("2027-01-01");
+  await page.locator("#le-reason").fill("Owner enrolled the outlet");
+  await page.getByTestId("le-submit").click();
+  await expect(page.getByTestId("error-le-to")).toBeVisible(); // the end is exclusive: not after the start
+  await page.locator("#le-to").fill("2027-02-01");
+  await page.getByTestId("le-submit").click();
+  await expect(page.getByTestId("error-le-outlet")).toContainText("Nothing with this number exists"); // the server's rows[0].outlet_id pointer
+  await page.locator("#le-outlet").fill("102"); // enrolled open-ended since 2026-10-01
+  await page.getByTestId("le-submit").click();
+  await expect(page.getByTestId("loyalty-enrol-banner")).toContainText("already enrolled");
+  await page.goto("/admin/loyalty/4");
+  await expect(page.getByTestId("enrol-ended")).toBeVisible(); // an ended programme takes none
+});
+
+test("gift refusals: the same code in the same programme, and an edit with nothing changed", async ({ page }) => {
+  await superEnglish(page);
+  await page.goto("/admin/loyalty/gifts?new=1");
+  await hydrated(page.getByTestId("loyalty-gift-form"));
+  await hydrated(page.locator("#lg-code"));
+  await page.locator("#lg-programme").selectOption({ label: "DL-OCT · Diamond League October" });
+  await page.locator("#lg-code").fill("chair"); // taken in DL-OCT
+  await page.locator("#lg-name-en").fill("Another chair");
+  await page.locator("#lg-points").fill("210");
+  await page.locator("#lg-reason").fill("Owner added a gift to the catalogue");
+  await page.getByTestId("lg-submit").click();
+  await expect(page.getByTestId("loyalty-gift-banner")).toContainText("already used");
+  await expect(page.getByTestId("error-lg-code")).toBeVisible();
+  await page.goto("/admin/loyalty/gifts?edit=2");
+  await hydrated(page.getByTestId("loyalty-gift-form"));
+  await hydrated(page.locator("#lg-reason"));
+  await page.locator("#lg-reason").fill("Saved again without a change");
+  await page.getByTestId("lg-submit").click();
+  await expect(page.getByTestId("loyalty-gift-banner")).toContainText("Nothing was changed");
+});
