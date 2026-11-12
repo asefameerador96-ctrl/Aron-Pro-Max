@@ -88,13 +88,10 @@ describe("(2) the leave decision note allows 500 characters (DecisionRequest.not
 describe("(7) support is a grant module (R-F-11) and the editor offers it", () => {
   it("GRANT_MODULES is exactly the contract's AdminModule enum, support included", () => {
     const yaml = /\n {4}AdminModule:\n {6}type: string\n {6}enum: \[([^\]]+)\]/.exec(CONTRACT)?.[1];
-    // portal-loyalty-web: `loyalty` is listed by contract 1.13.0 (portal-loyalty-api). Until that is on INT it is the ONE pending
-    // module; the exception removes itself once the contract lists it (then the equality must hold with nothing pending).
-    const listed = yaml?.split(",").map((s) => s.trim()) ?? [];
-    const pending = (["loyalty"] as const).filter((m) => !listed.includes(m));
-    expect([...listed, ...pending]).toEqual([...GRANT_MODULES]);
-    const typed: readonly Schemas["AdminModule"][] = GRANT_MODULES.filter((m): m is Exclude<typeof m, "loyalty"> => m !== "loyalty"); // a module the contract does not know fails the typecheck
+    expect(yaml?.split(",").map((s) => s.trim())).toEqual([...GRANT_MODULES]);
+    const typed: readonly Schemas["AdminModule"][] = GRANT_MODULES; // a module the contract does not know fails the typecheck
     expect(typed).toContain("support");
+    expect(typed).toContain("loyalty"); // contract 1.13.0 lists it: the temporary exception of portal-loyalty-web is gone (D-LOY-WEB-03)
     expect(typed).toContain("discounts"); // contract 1.12.1 lists it: the temporary exception of portal-discount-web is gone
     expect(MODULE_KEYS.support).toBe("grant.module.support");
   });

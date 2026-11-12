@@ -25,7 +25,8 @@ import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.database.repo.DayRefusal
 import com.aktcl.aron.feature.dayclose.SalesSubmitScreen
-import com.aktcl.aron.feature.memo.ui.JourneyScreen
+import com.aktcl.aron.core.database.entity.OutletEntity
+
 import com.aktcl.aron.feature.memo.ui.KpiStripView
 import com.aktcl.aron.feature.memo.ui.MemoDetailView
 import com.aktcl.aron.feature.memo.ui.MemoMenuScreen
@@ -326,11 +327,19 @@ fun SubmitHost(day: SrDay) {
     )
 }
 
+/** The outlet line of the journey: the picker's own `name (code-phone-cluster)` (one copy of the format); the screen localizes the digits. */
+internal fun journeyOutletLine(o: OutletEntity?, outletId: Long): String = o?.let { com.aktcl.aron.feature.outlet.OutletPicker.label(it) } ?: "#$outletId"
+
+/** The Sales Journey: today's calls in time order from the device's own rows, offline (SRM-B-82 to 85). */
 @Composable
-fun JourneyHost(day: SrDay) {
-    var j by remember { mutableStateOf<com.aktcl.aron.feature.memo.domain.Journey?>(null) }
-    LaunchedEffect(Unit) { j = day.sale.journey() }
-    j?.let { JourneyScreen(it) } ?: com.aktcl.aron.core.ui.aron.AronLoadingScreen()
+fun JourneyHost(day: SrDay, locale: com.aktcl.aron.rules.UiLocale) {
+    // a failed read is an error with a retry, never a crash (rememberAsyncLoad rethrows a cancellation and catches the rest)
+    val load = com.aktcl.aron.core.ui.aron.rememberAsyncLoad {
+        day.sale.journeyCalls().map { (row, o) -> com.aktcl.aron.feature.memo.ui.SalesJourneyCall(row, journeyOutletLine(o, row.input.outletId)) }
+    }
+    com.aktcl.aron.core.ui.aron.AronLoaded(load, stringResource(R.string.sr_journey_load_failed), stringResource(com.aktcl.aron.feature.home.R.string.fb_retry)) { calls ->
+        com.aktcl.aron.feature.memo.ui.SalesJourneyScreen(calls, locale)
+    }
 }
 
 /** The KPI strip and the two money cards of F-SR-010/069, read from Room only. */

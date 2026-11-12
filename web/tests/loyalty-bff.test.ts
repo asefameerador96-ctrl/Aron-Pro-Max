@@ -43,11 +43,15 @@ const ungranted = () => as("mgrant1", "grant-pass-1", "123456"); // ADMIN whose 
 
 const U = (n: number) => `0b6d6c0e-8a5b-4d56-9f0a-${String(n).padStart(12, "0")}`;
 const REASON = "Owner approved this change";
+const tier = (tier_code: string, sort_order: number, threshold: string | null, over: Record<string, unknown> = {}) => ({ tier_code, sort_order, label_en: tier_code, label_bn: null, threshold, threshold_basis: "std", ...over });
+// The closed ProgrammeWrite of contract 1.13.0 (kind and code only on a create).
 const prog = (over: Record<string, unknown> = {}) => ({
-  request_uuid: U(1), kind: "astha", code: "NEW-1", name_en: "New programme", name_bn: null, period_label: "2027-Q1", active_from: "2027-01-01", active_to: "2099-12-31", channels: ["Astha"],
-  tiers: [{ tier_code: "gold", label_en: "Gold", label_bn: null, threshold_value: "3000.500", threshold_basis: "std" }, { tier_code: "platinum", label_en: "Platinum", label_bn: null, threshold_value: "5000.000", threshold_basis: "std" }],
+  request_uuid: U(1), kind: "astha", code: "NEW-1", name_en: "New programme", name_bn: null, period_label: "2027-Q1", active_from: "2027-01-01", active_to: "2099-12-31",
+  tiers: [tier("gold", 1, "3000.500"), tier("platinum", 2, "5000.000")],
   change_reason: REASON, ...over,
 });
+// The closed ProgrammePatch: no kind, no code.
+const progPatch = (over: Record<string, unknown> = {}) => { const { kind: _k, code: _c, ...rest } = prog(over); void _k; void _c; return rest; };
 const J = (path: string, method: string, b: unknown, c: Record<string, string>) => req(path, method, b, c);
 const create = (c: Record<string, string>, b = prog()) => createPost(J("/api/bff/admin/loyalty", "POST", b, c));
 const status = (c: Record<string, string>, id: number, b: Record<string, unknown>) => statusPost(J(`/api/bff/admin/loyalty/${id}/status`, "POST", b, c), { params: Promise.resolve({ id: String(id) }) });
@@ -70,7 +74,7 @@ describe("create (a draft, version 1) and its replay", () => {
     expect(r1.status).toBe(201);
     const first = await r1.json();
     expect(first).toMatchObject({ code: "NEW-1", status: "draft", version_no: 1, kind: "astha" });
-    expect(first.tiers[0].threshold_value).toBe("3000.500");
+    expect(first.tiers[0]).toMatchObject({ threshold: "3000.500", sort_order: 1, threshold_basis: "std" });
     const again = await create(c);
     expect(again.status).toBe(201);
     expect((await again.json()).programme_id).toBe(first.programme_id);
@@ -87,10 +91,13 @@ describe("create (a draft, version 1) and its replay", () => {
   it("the BFF re-validates: unknown member, bad code, negative threshold, a short reason, a bad basis, an unknown channel", async () => {
     const c = await superadmin();
     for (const bad of [
-      { extra: 1 }, { code: "-x" }, { change_reason: "short" }, { kind: "gold" }, { channels: ["XX"] }, { request_uuid: "nope" },
-      { tiers: [{ tier_code: "gold", label_en: "Gold", label_bn: null, threshold_value: "-5", threshold_basis: "std" }] },
-      { tiers: [{ tier_code: "gold", label_en: "Gold", label_bn: null, threshold_value: "1.2345", threshold_basis: "std" }] },
-      { tiers: [{ tier_code: "gold", label_en: "Gold", label_bn: null, threshold_value: "1", threshold_basis: "packet" }] },
+      { extra: 1 }, { channels: ["GT"] }, { status: "active" }, { code: "-x" }, { change_reason: "short" }, { kind: "gold" }, { request_uuid: "nope" },
+      { tiers: [tier("gold", 1, "-5")] }, { tiers: [tier("gold", 1, "1.2345")] }, { tiers: [tier("gold", 1, "1", { threshold_basis: "packet" })] },
+      { tiers: [{ tier_code: "gold", label_en: "Gold", label_bn: null, threshold_value: "5", threshold_basis: "std" }] }, // the old member names
+      { tiers: [tier("gold", 2, "1")] }, // sort_order must run 1..n
+      { tiers: [tier("gold", 1, "50"), tier("silver", 2, "50")] }, // not rising: refused at the BFF
+      { tiers: [tier("gold", 1, "1"), tier("gold", 2, "2")] }, // duplicate code
+      { tiers: Array.from({ length: 11 }, (_, i) => tier(`t${i}x`, i + 1, String(i + 1))) },
     ]) {
       const res = await create(c, prog(bad) as ReturnType<typeof prog>);
       expect(res.status, JSON.stringify(bad)).toBe(400);
@@ -98,10 +105,23 @@ describe("create (a draft, version 1) and its replay", () => {
     }
     expect((await list(c)).map((p) => p.code)).not.toContain("NEW-1");
   });
-  it("the API refuses thresholds that do not rise (400 with the pointer)", async () => {
-    const res = await create(await superadmin(), prog({ tiers: [{ tier_code: "gold", label_en: "Gold", label_bn: null, threshold_value: "50", threshold_basis: "std" }, { tier_code: "silver", label_en: "Silver", label_bn: null, threshold_value: "50", threshold_basis: "std" }] }));
-    expect(res.status).toBe(400);
-    expect((await problemOf(res)).errors?.[0]).toEqual({ pointer: "/tiers/1/threshold_value", code: "not_rising" });
+  it("thresholds that do not rise never reach the API (400 at the BFF); the mock refuses them too", async () => {
+    const c = await superadmin();
+    const bodyNotRising = prog({ tiers: [tier("gold", 1, "50"), tier("silver", 2, "50")] });
+    expect((await create(c, bodyNotRising)).status).toBe(400);
+    const direct = await fetch(`${base}/v1/admin/programmes`, { method: "POST", headers: { Authorization: `Bearer ${await sessionToken(c)}`, "Content-Type": "application/json" }, body: JSON.stringify(bodyNotRising) });
+    expect(direct.status).toBe(400);
+    expect((await problemOf(direct)).errors?.[0]).toEqual({ pointer: "/tiers/1/threshold", code: "not_rising" });
+    expect(((await (await api(c, "/v1/admin/programmes")).json()) as { items: { code: string }[] }).items.some((p) => p.code === "NEW-1")).toBe(false);
+  });
+  it("getProgramme returns the row with its ETag; a missing one is 404", async () => {
+    const c = await superadmin();
+    const id = ((await (await create(c)).json()) as { programme_id: number }).programme_id;
+    const r = await api(c, `/v1/admin/programmes/${id}`);
+    expect(r.status).toBe(200);
+    expect(r.headers.get("etag")).toBe('"1"');
+    expect(await r.json()).toMatchObject({ code: "NEW-1", status: "draft" });
+    expect((await api(c, "/v1/admin/programmes/9999")).status).toBe(404);
   });
 });
 
@@ -112,31 +132,39 @@ describe("update (a new version while draft; If-Match)", () => {
   it("appends version 2, bumps the row version, and the old one stays", async () => {
     const c = await superadmin();
     const d = await draft(c);
-    const res = await patch(c, d.programme_id, { ...prog({ request_uuid: U(5), name_en: "Renamed" }), version: d.version });
+    const res = await patch(c, d.programme_id, { ...progPatch({ request_uuid: U(5), name_en: "Renamed" }), version: d.version });
     expect(res.status).toBe(200);
     const upd = await res.json();
     expect(upd).toMatchObject({ name_en: "Renamed", version_no: 2, status: "draft" });
-    const versions = (await (await api(c, `/v1/admin/loyalty/programmes/${d.programme_id}/versions`)).json()).items as { version_no: number; is_current: boolean; name_en: string }[];
+    const versions = (await (await api(c, `/v1/admin/programmes/${d.programme_id}/versions`)).json()).items as { version_no: number; is_current: boolean; name_en: string }[];
     expect(versions.map((v) => [v.version_no, v.is_current, v.name_en])).toEqual([[2, true, "Renamed"], [1, false, "New programme"]]);
   });
   it("a stale version is 412; a retry of the same request replays; the same uuid with another body is 409; an active programme is 409", async () => {
     const c = await superadmin();
     const d = await draft(c);
-    const body = { ...prog({ request_uuid: U(6), name_en: "Second" }), version: d.version };
+    const body = { ...progPatch({ request_uuid: U(6), name_en: "Second" }), version: d.version };
     expect((await patch(c, d.programme_id, body)).status).toBe(200);
     expect((await patch(c, d.programme_id, body)).status).toBe(200); // replay: first result, no third version
     expect((await patch(c, d.programme_id, { ...body, name_en: "Other" })).status).toBe(409);
-    expect((await patch(c, d.programme_id, { ...prog({ request_uuid: U(7) }), version: d.version })).status).toBe(412); // version moved on
+    expect((await patch(c, d.programme_id, { ...progPatch({ request_uuid: U(7) }), version: d.version })).status).toBe(412); // version moved on
     const cur = (await list(c)).find((p) => p.programme_id === d.programme_id)!;
     expect(cur.version_no).toBe(2);
     expect((await status(c, d.programme_id, { request_uuid: U(8), to_status: "active", reason: REASON })).status).toBe(200);
     const live = (await list(c)).find((p) => p.programme_id === d.programme_id)!;
-    expect((await patch(c, d.programme_id, { ...prog({ request_uuid: U(9) }), version: live.version })).status).toBe(409);
+    expect((await patch(c, d.programme_id, { ...progPatch({ request_uuid: U(9) }), version: live.version })).status).toBe(409);
+  });
+  it("a patch is closed: kind, code or channels never reach the API", async () => {
+    const c = await superadmin();
+    const d = await draft(c);
+    for (const extra of [{ kind: "astha" }, { code: "NEW-1" }, { channels: ["GT"] }, { status: "active" }]) {
+      expect((await patch(c, d.programme_id, { ...progPatch({ request_uuid: U(11) }), ...extra, version: d.version })).status, JSON.stringify(extra)).toBe(400);
+    }
+    expect((await list(c)).find((p) => p.programme_id === d.programme_id)!.version_no).toBe(1);
   });
   it("an unknown id is 404 and a non-numeric id never reaches the API", async () => {
     const c = await superadmin();
-    expect((await patch(c, 9999, { ...prog({ request_uuid: U(10) }), version: 1 })).status).toBe(404);
-    const res = await updatePatch(J("/api/bff/admin/loyalty/abc", "PATCH", { ...prog(), version: 1 }, c), { params: Promise.resolve({ id: "abc" }) });
+    expect((await patch(c, 9999, { ...progPatch({ request_uuid: U(10) }), version: 1 })).status).toBe(404);
+    const res = await updatePatch(J("/api/bff/admin/loyalty/abc", "PATCH", { ...progPatch(), version: 1 }, c), { params: Promise.resolve({ id: "abc" }) });
     expect(res.status).toBe(404);
   });
 });
@@ -176,7 +204,7 @@ describe("status: draft -> active (Super Admin) -> inactive", () => {
   });
 });
 
-describe("enrolments (idempotent by batch_uuid, no overlap) and progress", () => {
+describe("enrolments (idempotent by batch_uuid, no overlap)", () => {
   const row = (over: Record<string, unknown> = {}) => ({ programme_id: 1, outlet_id: 201, tier_code: "gold", league_label: null, base_target: "1000.500", valid_from: "2027-01-01", valid_to: null, ...over });
   it("enrols, replays the same batch, refuses an overlap, and a negative target never leaves the BFF", async () => {
     const c = await superadmin();
@@ -198,12 +226,9 @@ describe("enrolments (idempotent by batch_uuid, no overlap) and progress", () =>
     expect((await enrol(c, 4, { batch_uuid: U(35), rows: [row({ programme_id: 4, outlet_id: 204, tier_code: "gold" })], change_reason: REASON })).status).toBe(409); // ASTHA-Q3 ended
     expect((await enrol(await reader(), 1, { batch_uuid: U(36), rows: [row({ outlet_id: 205 })], change_reason: REASON })).status).toBe(403);
   });
-  it("progress states targets and achievement as Decimal3 text and the zero-target tier is there to be guarded", async () => {
-    const c = await superadmin();
-    const p = (await (await api(c, "/v1/admin/loyalty/programmes/1/progress")).json()) as { tiers: { tier_code: string; enrolled_outlets: number; target_std: string; achieved_std: string }[]; points: Record<string, number> };
-    const silver = p.tiers.find((x) => x.tier_code === "silver")!;
-    expect(silver).toMatchObject({ enrolled_outlets: 1, target_std: "0.000", achieved_std: "400.000" });
-    expect(p.points).toEqual({ earned: 0, redeemed: 0, expiring: 0 });
+  it("there is no progress operation in 1.13.0: the old sketch path is unknown (404), and nothing fakes the figures", async () => {
+    expect((await api(await superadmin(), "/v1/admin/loyalty/programmes/1/progress")).status).toBe(404);
+    expect((await api(await superadmin(), "/v1/admin/programmes/1/progress")).status).toBe(404);
   });
 });
 
@@ -217,10 +242,13 @@ describe("gifts (Super Admin only)", () => {
     expect(first).toMatchObject({ code: "water_filter", points_cost: 300, version: 1 });
     expect((await (await gift(c, g())).json()).gift_id).toBe(first.gift_id);
     expect((await gift(c, g({ request_uuid: U(41) }))).status).toBe(409);
-    const upd = await giftUpdate(c, first.gift_id, { ...g({ request_uuid: U(42), points_cost: 350 }), version: 1 });
-    expect(upd.status).toBe(200);
-    expect(await upd.json()).toMatchObject({ points_cost: 350, version: 2 });
-    expect((await giftUpdate(c, first.gift_id, { ...g({ request_uuid: U(43), points_cost: 360 }), version: 1 })).status).toBe(412);
+    const gp = (over: Record<string, unknown>) => { const { programme_id: _p, code: _c, ...rest } = g(over); void _p; void _c; return { ...rest, version: 1 }; }; // GiftPatch is closed: no programme_id, no code
+    expect((await giftUpdate(c, first.gift_id, { ...g({ request_uuid: U(47), points_cost: 350 }), version: 1 })).status).toBe(400);
+    const upd = await giftUpdate(c, first.gift_id, gp({ request_uuid: U(42), points_cost: 350 }));
+    const updBody = await upd.clone().json();
+    expect(upd.status, JSON.stringify(updBody)).toBe(200);
+    expect(updBody).toMatchObject({ points_cost: 350, version: 2 });
+    expect((await giftUpdate(c, first.gift_id, gp({ request_uuid: U(43), points_cost: 360 }))).status).toBe(412);
   });
   it("an ADMIN with the write grant, a reader and an ungranted ADMIN cannot change the catalogue", async () => {
     for (const who of [await admin(), await reader(), await ungranted()]) expect((await gift(who, g({ request_uuid: U(44), code: "other_gift" }))).status).toBe(403);
