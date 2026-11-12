@@ -1140,7 +1140,7 @@ export interface paths {
          * @description TSO only (anyone else 403 `ERR_FORBIDDEN`). One row per active SR in the caller's reach (server-side, from the token; no
          *     zone or user list is read from the request) that has a live, unconsumed OTP created on the Dhaka business date. The code is
          *     shown to the TSO, who gives it to the SR; it is never written to a log, and the audit event holds counts only. The issue
-         *     operation `issueDeviceOtp` and its rate limits are unchanged. Online only by nature (a code is issued by the server).
+         *     operation `issueDeviceOtp` and its rate limits are unchanged. Online only by nature (a code is issued by the server). A code that is consumed, revoked, expired, out of attempts or created on another business date is not listed. The response carries `Cache-Control: no-store` (a live code is in the body).
          */
         get: operations["getTeamDeviceOtps"];
         put?: never;
@@ -1160,10 +1160,12 @@ export interface paths {
         };
         /**
          * Call-start photos for review, by business date (contract 1.14.0, SRM-A-27).
-         * @description AMO, TSO, DMO, WM, support, admin and superadmin; the rows are limited to the caller's reach on the server (zones from the token;
-         *     national roles see all). One row per `sr_call` visit of the date, newest first, with the photo (`call_photo_uuid`, read through
+         * @description AMO, TSO, DMO, WM, support, admin and superadmin; the rows are limited to the caller's reach on the server (zones and routes from the token, the same rule as the media read;
+         *     national roles see all; nothing in the request widens it). One row per `sr_call` visit of the date, newest first, with the photo (`call_photo_uuid`, read through
          *     `getMediaReadUrl`), the capture fix of the media record, or the recorded skip reason. A visit with neither a photo nor a skip
-         *     reason is listed with `photo_uuid` null so a reviewer sees missing photos too.
+         *     reason is listed with `photo_uuid` null so a reviewer sees missing photos too. The media record is joined only when it belongs to the visit's own
+         *     user (a rep cannot point at another rep's photo); `media_status` is null until the media record has arrived, in either order with the visit.
+         *     `reason_code_unlisted` marks a close whose zero-sale or skip code was not on the list when stored.
          */
         get: operations["getCallPhotoReview"];
         put?: never;
@@ -2903,7 +2905,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** SR Device OTP panel (view-only for the TSO; one aggregated audit event per page view). */
+        /**
+         * SR Device OTP panel (view-only for the TSO; one aggregated audit event per page view).
+         * @description The response carries `Cache-Control: no-store` (a live code is in the body).
+         */
         get: operations["listDeviceOtps"];
         put?: never;
         /** Re-issue a device OTP for a user (support and ops roles; the TSO for own zones). */
@@ -5900,9 +5905,9 @@ export interface components {
             is_zero_sale: boolean;
             /** @description media_uuid of the outlet photo taken after the call started (media purpose `outlet_call`, ref type `visit`, contract 1.14.0, SRM-A-27). Idempotent: the media record is keyed by this UUID. Null or absent when no photo was taken. When the phone asks for a photo (cfg.sale.call_photo_required) and takes none, `call_photo_skip_reason_code` is sent instead (that is the phone's contract; the server cannot require it of an older app). */
             call_photo_uuid?: components["schemas"]["Uuid"] | null;
-            /** @description Why no call-start photo was taken (code list `call_photo_skip`, first value `camera_unavailable`; a reasoned skip never blocks the sale). Allowed only when `call_photo_uuid` is null and the code is an active item of the list; any other combination is rejected `schema_invalid`. */
+            /** @description Why no call-start photo was taken (code list `call_photo_skip`, first value `camera_unavailable`; a reasoned skip never blocks the sale). Allowed only when `call_photo_uuid` is null (otherwise `schema_invalid`). A code that is not an active item of the list on the business date (unknown or retired) is STORED AS SENT and the visit is flagged `reason_code_unlisted`; the close is never rejected for an optional label (the phone cannot know the list offline). */
             call_photo_skip_reason_code?: string | null;
-            /** @description Why the SR made a zero sale (code list `zero_sale_reason`, contract 1.14.0, SRM-A-40). Allowed only when `is_zero_sale` is true and the code is an active item of the list; otherwise rejected `schema_invalid`. The phone sends it for every SR zero-sale memo and leaves it null for a QC-only sale (`is_zero_sale` false). */
+            /** @description Why the SR made a zero sale (code list `zero_sale_reason`, contract 1.14.0, SRM-A-40). Allowed only when `is_zero_sale` is true (otherwise `schema_invalid`). A code that is not an active item of the list on the business date (unknown or retired) is STORED AS SENT and the visit is flagged `reason_code_unlisted`; the close is never rejected for an optional label. The phone sends it for every SR zero-sale memo and leaves it null for a QC-only sale (`is_zero_sale` false). */
             zero_sale_reason_code?: string | null;
         };
         VisitSkipPayload: {
@@ -6046,7 +6051,7 @@ export interface components {
             answer_text?: string | null;
             photo_uuid?: components["schemas"]["Uuid"] | null;
         };
-        /** @description Proposed outlet facts; which members are required depends on the request type (docs/24 s12.2). */
+        /** @description Proposed outlet facts; which members are required depends on the request type (docs/24 s12.2). A `cluster_id` that is gone, or outside the outlet's zone on an `info` request, is dropped from the stored proposal and the request is flagged `cluster_dropped`; the rest of the proposal is kept. */
         OutletProposal: {
             name?: string;
             name_bn?: string | null;
@@ -6454,7 +6459,7 @@ export interface components {
              */
             qty_base: number;
         };
-        /** @description Per login and business date, from the stored (not voided, not rejected) rows with the same rules as the dashboard aggregates (`dw.agg_daily_route`, `agg_daily_route_sku`): a memo counts when it is active with at least one line; a sale quantity is the `sale` lines only (free and DRP lines are left out); a visit counts when it is an `sr_call` that is not abandoned. The phone compares its own local figures (same rules, base units) with these; a difference means rows not yet acknowledged. */
+        /** @description Per login and business date (the login of the token; a covering rep's rows count under the covering rep's own login), read at request time from the stored rows, never from the worker's summaries. Exactly what is counted: a visit counts when it is an `sr_call` that is not voided, not `abandoned` and not `call_declined` (a declined call is not counted as an outlet visited); a memo counts when it is `active`, not voided and has at least one line; a sold quantity is the `sale` lines of such memos only (free and DRP lines are left out); stock issued is the `issue` and `adjustment` stock movements (signed), not voided; qc is the stored `qc_line` quantities, not voided; promotion is the offer plus DRP discount of such memos. The phone lane (S5 train 2) adopts these rules for its local figures; until then a difference is not by itself a sign of rows not yet acknowledged. These are not described as the phone's rules today. */
         SubmitBusinessTotals: {
             /** @description Distinct outlets with a stored sr_call visit that is not abandoned. */
             outlets_visited: number;
@@ -7256,7 +7261,9 @@ export interface components {
             request_fix?: components["schemas"]["GeoFix"] | null;
             moved_m?: number | null;
             requires_tso?: boolean;
-            flags?: ("remote_verification" | "moved_to_home" | "low_accuracy" | "mocked_fix")[];
+            flags?: ("remote_verification" | "moved_to_home" | "low_accuracy" | "mocked_fix" | "possible_duplicate" | "cluster_dropped")[];
+            /** @description With the flag `possible_duplicate`: the earlier request of the same user that looks like this one (same normalised name and mobile, within 7 days). Null otherwise. The request is stored and decided on its own. */
+            possible_duplicate_of?: components["schemas"]["Uuid"] | null;
             photos: components["schemas"]["Uuid"][];
             /** Format: int64 */
             verified_by_user_id?: number | null;
@@ -7513,6 +7520,8 @@ export interface components {
             fix_is_mock: boolean | null;
             /** @description The call's distance from the outlet point (metres). */
             distance_m: number | null;
+            /** @description True when the visit_close carried a zero-sale or call-photo skip code that the code list did not hold on the business date (stored as sent); false or absent otherwise. */
+            reason_code_unlisted?: boolean;
         };
         CallPhotoReviewPage: {
             items: components["schemas"]["CallPhotoReviewRow"][];

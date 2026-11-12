@@ -90,3 +90,7 @@ CallPhotoReviewRow:
       - 'null'
       minimum: 0
       description: The call's distance from the outlet point (metres).
+    reason_code_unlisted:
+      type: boolean
+      description: True when the visit_close carried a zero-sale or call-photo skip code that the code list did
+        not hold on the business date (stored as sent); false or absent otherwise.

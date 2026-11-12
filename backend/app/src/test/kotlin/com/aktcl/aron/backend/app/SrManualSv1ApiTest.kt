@@ -76,6 +76,41 @@ class SrManualSv1ApiTest {
         }
     }
 
+    @Test
+    fun aTsoOfAnotherTerritoryNeverSeesTheCodesAndConsumedExpiredOrOtherDayCodesAreNotListed() = world.withApi {
+        with(world) {
+            val lkxTso = phone("lkxtso1001", "tso")
+            val srId = one("SELECT id FROM app.app_user WHERE username = 'sr1001'")
+            val lkxSrId = one("SELECT id FROM app.app_user WHERE username = 'lkxsr1001'")
+            fun ids(p: TsoPhone): Set<Long> {
+                val r = getAs(p, "/v1/supervisor/device-otps")
+                assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+                assertEquals("no-store", r.headers["Cache-Control"], "a live code is never cached")
+                return json(r.bodyAsText())["items"]!!.jsonArray.map { it.jsonObject["user_id"]!!.jsonPrimitive.content.toLong() }.toSet()
+            }
+            val mine = postAs(tso, "/v1/admin/device-otps", """{"user_id":$srId,"reason":"New phone for the Mirpur route"}""")
+            assertEquals(HttpStatusCode.Created, mine.status, mine.bodyAsText())
+            val theirs = postAs(lkxTso, "/v1/admin/device-otps", """{"user_id":$lkxSrId,"reason":"New phone for the other route"}""")
+            assertEquals(HttpStatusCode.Created, theirs.status, theirs.bodyAsText())
+            val mineCode = json(mine.bodyAsText())["otp"]!!.jsonPrimitive.content
+            val theirCode = json(theirs.bodyAsText())["otp"]!!.jsonPrimitive.content
+            assertEquals(setOf(srId), ids(tso), "the Mirpur TSO sees its own SR only")
+            assertEquals(setOf(lkxSrId), ids(lkxTso), "and the reverse")
+            val mineBody = getAs(tso, "/v1/supervisor/device-otps").bodyAsText()
+            assertFalse(mineBody.contains(theirCode) || mineBody.contains("lkxsr1001"), "nothing of the other territory in the body")
+            assertTrue(getAs(lkxTso, "/v1/supervisor/device-otps").bodyAsText().let { !it.contains(mineCode) || mineCode == theirCode })
+            // the admin panel read carries no-store too
+            assertEquals("no-store", getAs(tso, "/v1/admin/device-otps").headers["Cache-Control"])
+            // consumed, expired and other-day codes are not listed
+            exec("UPDATE app.device_otp SET consumed_at = created_at WHERE user_id = $srId")
+            assertEquals(emptySet(), ids(tso), "a consumed code")
+            exec("UPDATE app.device_otp SET consumed_at = NULL, created_at = created_at - interval '10 minutes', expires_at = created_at - interval '5 minutes' WHERE user_id = $srId")
+            assertEquals(emptySet(), ids(tso), "an expired code")
+            exec("UPDATE app.device_otp SET created_at = created_at - interval '1 day', expires_at = expires_at + interval '1 day' WHERE user_id = $lkxSrId")
+            assertEquals(emptySet(), ids(lkxTso), "a code created on another business day")
+        }
+    }
+
     // ------------------------------------------------------------------------------------------------ getCallPhotoReview
 
     @Test
@@ -192,6 +227,77 @@ class SrManualSv1ApiTest {
             assertEquals(HttpStatusCode.OK, approved.status, approved.bodyAsText())
             assertEquals(route, one("SELECT route_id FROM app.outlet WHERE id = $outlet"), "the outlet is on the SR's route")
             assertEquals(cluster, one("SELECT cluster_id FROM app.outlet WHERE id = $outlet"), "it keeps the cluster it had")
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------------ call photo media join
+
+    @Test
+    fun theCallPhotoReviewJoinsTheMediaWhetherItArrivesBeforeOrAfterItsVisitAndOnlyOfTheSameUser() = world.withApi {
+        with(world) {
+            val route = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
+            val outlets = longs("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id DESC LIMIT 3")
+            val d = today().toString()
+            fun visit(outlet: Long, seq: Int) = """{"visit_kind":"sr_call","outlet_id":$outlet,"opened_at":"${now.get().minusSeconds(600)}","sequence_no":$seq,"planned":true,
+                "fix":{"purpose":"visit_open","fix_status":"ok","lat":23.8069,"lng":90.3687,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                       "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}},
+                "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}"""
+            fun close(v: String, photo: String) = """{"visit_client_uuid":"$v","outcome_code":"sold","call_photo_uuid":"$photo","call_declined":false,"ended_at":"${now.get().minusSeconds(300)}","is_zero_sale":false}"""
+            fun media(photo: String, visit: String) = record(
+                "media_meta",
+                """{"purpose":"outlet_call","ref_type":"visit","ref_client_uuid":"$visit","sha256":"${"ab".repeat(32)}","bytes":2000,"width":640,"height":480,"mime":"image/jpeg",
+                   "blob_path":"photos/$d/${UUID.randomUUID()}/$photo.jpg","taken_at":"${now.get().minusSeconds(700)}"}""",
+                route, cu = photo, family = photo,
+            )
+            fun family(v: String, photo: String, outlet: Long, seq: Int) = listOf(
+                record("visit", visit(outlet, seq), route, cu = v, family = v),
+                record("visit_close", close(v, photo), route, family = v, rank = 1),
+            )
+            fun rowsOf(): Map<String, kotlinx.serialization.json.JsonObject> =
+                json(getAs(tso, "/v1/supervisor/call-photos?business_date=$d&limit=500").also { assertEquals(HttpStatusCode.OK, it.status, it.bodyAsText()) }.bodyAsText())["items"]!!.jsonArray
+                    .map { it.jsonObject }.associateBy { it["visit_uuid"]!!.jsonPrimitive.content }
+            fun statusOf(v: String): String? = rowsOf().getValue(v)["media_status"]!!.let { if (it is kotlinx.serialization.json.JsonNull) null else it.jsonPrimitive.content }
+
+            // (1a) the media record arrives BEFORE its visit family
+            val vBefore = UUID.randomUUID().toString(); val photoBefore = UUID.randomUUID().toString()
+            val mAck = ack(sync(sr, listOf(media(photoBefore, vBefore))), photoBefore)
+            val famBefore = family(vBefore, photoBefore, outlets[0], 51)
+            val answerBefore = sync(sr, famBefore)
+            assertEquals("accepted", ack(answerBefore, vBefore).status(), answerBefore.toString())
+            // an out-of-order media may be held, then released by its visit; or stored at once. Either way it is joined once the row exists.
+            if (scalar("SELECT count(*) FROM app.media WHERE client_uuid = '$photoBefore'") == "0") sync(sr, listOf(media(photoBefore, vBefore)))
+            assertEquals("1", scalar("SELECT count(*) FROM app.media WHERE client_uuid = '$photoBefore'"), "the media row exists (first answer was ${mAck.status()} ${mAck.code()})")
+            assertNotNull(statusOf(vBefore), "(1a) media sent before its visit is joined")
+
+            // (1b) the media record arrives AFTER its visit family
+            val vAfter = UUID.randomUUID().toString(); val photoAfter = UUID.randomUUID().toString()
+            val answerAfter = sync(sr, family(vAfter, photoAfter, outlets[1], 52))
+            assertEquals("accepted", ack(answerAfter, vAfter).status(), answerAfter.toString())
+            assertNull(statusOf(vAfter), "no media row yet: nothing to join")
+            assertEquals("accepted", ack(sync(sr, listOf(media(photoAfter, vAfter))), photoAfter).status())
+            assertNotNull(statusOf(vAfter), "(1b) media sent after its visit is joined")
+
+            // (2) a media row of ANOTHER user under the same uuid is never joined
+            val vForeign = UUID.randomUUID().toString(); val photoForeign = UUID.randomUUID().toString()
+            val answerForeign = sync(sr, family(vForeign, photoForeign, outlets[2], 53))
+            assertEquals("accepted", ack(answerForeign, vForeign).status(), answerForeign.toString())
+            val amoId = one("SELECT id FROM app.app_user WHERE username = 'amo1001'")
+            fresh.db.jdbi.useHandle<Exception> { h ->
+                h.execute("SET session_replication_role = replica")
+                try {
+                    h.execute(
+                        "INSERT INTO app.media (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, purpose, ref_type, ref_client_uuid, sha256, bytes, width, height, blob_path, taken_at, status, stored_at, blob_bytes, blob_sha256) " +
+                            "VALUES ('$photoForeign', gen_random_uuid(), DATE '$d', $amoId, now(), 0, 'outlet_capture', 'visit', '$vForeign', decode(repeat('ab', 32), 'hex'), 1000, 640, 480, " +
+                            "'photos/$d/${UUID.randomUUID()}/$photoForeign.jpg', now(), 'stored', now(), 1000, decode(repeat('ab', 32), 'hex'))",
+                    )
+                } finally { h.execute("SET session_replication_role = origin") }
+            }
+            assertEquals("1", scalar("SELECT count(*) FROM app.media WHERE client_uuid = '$photoForeign'"))
+            val foreignRow = rowsOf().getValue(vForeign)
+            assertEquals(photoForeign, foreignRow["photo_uuid"]!!.jsonPrimitive.content)
+            assertNull(statusOf(vForeign), "(2) a media row owned by another user is not joined")
+            assertTrue(foreignRow["taken_at"] is kotlinx.serialization.json.JsonNull, "none of its fields leak either")
+            // (3) a TSO whose reach is a route only: not built here, no helper creates such a user in TsoWorld
         }
     }
 }

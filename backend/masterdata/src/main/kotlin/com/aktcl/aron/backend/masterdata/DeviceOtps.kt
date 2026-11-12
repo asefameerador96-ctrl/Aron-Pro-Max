@@ -87,8 +87,9 @@ private const val REPLAY_WINDOW_S = 60L
 /** `GET` and `POST /v1/admin/device-otps` (contract listDeviceOtps, issueDeviceOtp). */
 fun Route.deviceOtpRoutes(d: DeviceOtpDeps) {
     authenticated(d.guard) {
-        get("/admin/device-otps") { call.respond(listOtps(call, d)) }
-        get("/supervisor/device-otps") { call.respond(teamOtps(call, d)) }
+        // A live code is in the body: never cached by a proxy or the browser.
+        get("/admin/device-otps") { call.response.headers.append(io.ktor.http.HttpHeaders.CacheControl, "no-store"); call.respond(listOtps(call, d)) }
+        get("/supervisor/device-otps") { call.response.headers.append(io.ktor.http.HttpHeaders.CacheControl, "no-store"); call.respond(teamOtps(call, d)) }
         post("/admin/device-otps") { call.respond(HttpStatusCode.Created, issue(call, d)) }
     }
 }
@@ -170,7 +171,7 @@ private fun teamOtps(call: ApplicationCall, d: DeviceOtpDeps): TeamDeviceOtpPage
     if (!national && zones.isEmpty()) return TeamDeviceOtpPageDto(today.toString(), emptyList(), null)
     val now = OffsetDateTime.ofInstant(d.clock.now(), ZoneOffset.UTC)
     val maxAttempts = d.config.int("cfg.auth.otp_max_attempts")
-    val rows = d.db.jdbi.inTransaction<List<Pair<TeamDeviceOtpDto, Long>>, Exception> { h ->
+    val rows = d.db.jdbi.inTransaction<List<Pair<TeamDeviceOtpDto?, Long>>, Exception> { h ->
         val zoneFilter = if (national) "" else "AND $USER_ZONE IN (<zones>)"
         val sql = "SELECT u.id, u.username, u.full_name, o.otp_cipher, o.created_at, o.expires_at, o.attempts, " +
             "(SELECT coalesce(array_agg(r.name ORDER BY r.name), '{}') FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id " +
@@ -185,16 +186,17 @@ private fun teamOtps(call: ApplicationCall, d: DeviceOtpDeps): TeamDeviceOtpPage
             val uid = rs.getLong("id")
             val code = d.cipher.open(rs.getBytes("otp_cipher"), uid)
             @Suppress("UNCHECKED_CAST") val routes = (rs.getArray("routes").array as Array<String>).toList()
-            code?.let {
+            // A row whose code cannot be opened stays in the page position (so the cursor and next_cursor never skip it) and is left out of the items.
+            (code?.let {
                 TeamDeviceOtpDto(uid, rs.getString("username"), rs.getString("full_name"), routes, it,
-                    rs.getObject("created_at", OffsetDateTime::class.java).toInstant().wire(), rs.getObject("expires_at", OffsetDateTime::class.java).toInstant().wire(), rs.getInt("attempts")) to uid
-            }
-        }.list().filterNotNull()
-        AuditWriter.write(h, p, "device_otp", "team", "view", null, buildJsonObject { put("rows", minOf(out.size, limit)) }, null, call.requestId)
+                    rs.getObject("created_at", OffsetDateTime::class.java).toInstant().wire(), rs.getObject("expires_at", OffsetDateTime::class.java).toInstant().wire(), rs.getInt("attempts"))
+            }) to uid
+        }.list()
+        AuditWriter.write(h, p, "device_otp", "team", "view", null, buildJsonObject { put("rows", out.take(limit).count { it.first != null }) }, null, call.requestId)
         out
     }
     val page = rows.take(limit)
-    return TeamDeviceOtpPageDto(today.toString(), page.map { it.first }, if (rows.size > limit) page.last().second.toString() else null)
+    return TeamDeviceOtpPageDto(today.toString(), page.mapNotNull { it.first }, if (rows.size > limit) page.last().second.toString() else null)
 }
 
 private suspend fun issue(call: ApplicationCall, d: DeviceOtpDeps): DeviceOtpDto {

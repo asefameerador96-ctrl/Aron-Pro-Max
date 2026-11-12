@@ -984,18 +984,9 @@ class IngestService(
             if (zone != null && !scopeAccepted && !ctx.reachOn(bd).coversZone(zone)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "zone $zone on $bd")
         }
 
-        // 5c. Contract 1.14.0: the zero-sale reason is an active item of the code list on the record's business date (a retired or unknown
-        // code is a final schema_invalid, like any unknown reference); a call-start photo is a media record of the visit.
-        if (r.type == "visit_close") payload.str("zero_sale_reason_code")?.let { code ->
-            val ok = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.code_list_item WHERE list_key = 'zero_sale_reason' AND code = :c AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d))")
-                .bind("c", code).bind("d", bd).mapTo(Boolean::class.java).one()
-            if (!ok) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "zero_sale_reason_code $code is not an active zero_sale_reason")
-        }
-        if (r.type == "visit_close") payload.str("call_photo_skip_reason_code")?.let { code ->
-            val ok = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.code_list_item WHERE list_key = 'call_photo_skip' AND code = :c AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d))")
-                .bind("c", code).bind("d", bd).mapTo(Boolean::class.java).one()
-            if (!ok) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "call_photo_skip_reason_code $code is not an active call_photo_skip")
-        }
+        // 5c. Contract 1.14.0: the zero-sale reason and the call-photo skip reason are optional labels. A code that is unknown or retired on the
+        // record's business date is NEVER a reason to refuse the close (the phone cannot know the list offline): RecordWriter stores the close
+        // with the code as sent and sets app.visit.reason_code_unlisted. Only a code that is not code-shaped is a schema error (PayloadShapes).
         if (r.type == "media_meta" && payload.str("purpose") == "outlet_call" && payload.str("ref_type") != "visit") {
             return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "an outlet_call photo belongs to a visit")
         }
@@ -1180,7 +1171,8 @@ class IngestService(
         // app.media.sha256 is bytea with CHECK (length = 32). The generic writer's jsonb_populate_record reads plain text
         // as escape-format bytea (64 bytes), so every photo's metadata was refused schema_invalid (SQLSTATE 23514); the
         // writer gets it in bytea's hex input form.
-        val written = if (r.type == "media_meta") payload.str("sha256")?.let { JsonObject(payload + ("sha256" to JsonPrimitive("\\x$it"))) } ?: payload else payload
+        val rewritten = hs.firstNotNullOfOrNull { it.rewrite(h, ingestRec!!) } ?: payload
+        val written = if (r.type == "media_meta") rewritten.str("sha256")?.let { JsonObject(rewritten + ("sha256" to JsonPrimitive("\\x$it"))) } ?: rewritten else rewritten
         val stored = RecordWriter.write(h, r.type, rule, env, written, ctx.up, ctx.batchUuid, ctx.now, enteredBy = ctx.manual?.actorUserId)
         return when (stored) {
             is RecordWriter.Result.Stored -> {

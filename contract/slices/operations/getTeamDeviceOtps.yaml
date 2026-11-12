@@ -15,7 +15,8 @@ operation:
     The issue
 
     operation `issueDeviceOtp` and its rate limits are unchanged. Online only by nature (a code is issued by the
-    server).
+    server). A code that is consumed, revoked, expired, out of attempts or created on another business date is not
+    listed. The response carries `Cache-Control: no-store` (a live code is in the body).
 
     '
   parameters:

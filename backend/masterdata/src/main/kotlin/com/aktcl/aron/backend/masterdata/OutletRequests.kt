@@ -52,7 +52,7 @@ data class OutletRequestEventDto(val event: String, val actor_user_id: Long, val
 data class OutletRequestDto(
     val request_uuid: String, val request_type: String, val status: String, val outlet_id: Long?, val proposed: JsonObject,
     val route_id: Long?, val cluster_id: Long?, val requested_by_user_id: Long, val requested_at: String, val request_fix: JsonObject?,
-    val moved_m: Double?, val requires_tso: Boolean, val flags: List<String>, val photos: List<String>,
+    val moved_m: Double?, val requires_tso: Boolean, val flags: List<String>, val photos: List<String>, val possible_duplicate_of: String? = null,
     val verified_by_user_id: Long?, val verified_at: String?, val verified_via: String?, val approved_by_user_id: Long?, val approved_at: String?,
     val rejection_reason: String?, val resulting_outlet_id: Long?, val events: List<OutletRequestEventDto>,
 )
@@ -277,13 +277,14 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         // the request's own app.geo_fix row (BC-84). A web request carries no fix, so the member is null.
         val fix = requestFix(h, r, viewer.pii || (r["user_id"] as Number).toLong() == viewer.userId)
         val (moved, tso) = movement(h, r)
+        val flagEvents = events.filter { (it["event"] as String).startsWith("flag_") }.map { (it["event"] as String).removePrefix("flag_") to it["note"] as String? }
         val status = r["status"] as String
         val verifiedVia = events.lastOrNull { it["event"] == "verified" }?.get("via")?.let { if (it == "device") "app" else "web" }
         val photos = (r["photo_uuids"] as java.sql.Array?)?.let { a -> (a.array as Array<*>).map { it.toString() } } ?: emptyList()
         return OutletRequestDto(
             u, r["request_type"] as String, status, (r["outlet_id"] as Number?)?.toLong(), proposed, (r["route_id"] as Number?)?.toLong(),
             proposed["cluster_id"]?.jsonPrimitive?.longOrNull, (r["user_id"] as Number).toLong(), ts(r["captured_at"])!!, fix, moved, tso,
-            if (r["fix_is_mock"] == true) listOf("mocked_fix") else emptyList(), photos,
+            (if (r["fix_is_mock"] == true) listOf("mocked_fix") else emptyList()) + flagEvents.map { it.first }, photos, flagEvents.firstOrNull { it.first == "possible_duplicate" }?.second,
             (r["verified_by"] as Number?)?.toLong(), ts(r["verified_at"]), verifiedVia,
             if (status == "approved") (r["decided_by"] as Number?)?.toLong() else null, if (status == "approved") ts(r["decided_at"]) else null,
             if (status == "rejected" || status == "discarded") r["decision_reason"] as String? else null, (r["created_outlet_id"] as Number?)?.toLong() ?: if (status == "approved") (r["outlet_id"] as Number?)?.toLong() else null,
@@ -629,45 +630,65 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
  * in the record's transaction, so a resend or a second verification never moves it twice.
  */
 /**
- * The SR app's `outlet_change_request` record (contract 1.14.0, SRM-B-35, SRM-B-40, SRM-B-42):
- * - a proposed `cluster_id` must name a cluster that exists; on an `info` request it must also be a cluster of the outlet's zone
- *   (a final `schema_invalid`, nothing is stored);
- * - [sameAs]: a `new` request is the same fact as the user's own earlier live request for the same shop (same normalised name and
- *   mobile number) in the 7 business days up to the record's date, whatever its client_uuid (a rep who reopens the form gets a new uuid). The resend is acked
- *   `duplicate` with the first request's id and nothing is stored, so no second request reaches the AMO. A different shop, a
- *   discarded or rejected earlier request, or another user's request never matches.
+ * The SR app's `outlet_change_request` record (contract 1.14.0, SRM-B-35, SRM-B-40, SRM-B-42). A request is never lost for an optional label:
+ * - a proposed `cluster_id` that names no cluster, or (on an `info` request) a cluster outside the outlet's zone, is DROPPED from the stored
+ *   proposal ([rewrite]) and the request carries the flag `cluster_dropped` (an `outlet_request_event` of kind `flag_cluster_dropped`, note =
+ *   the cluster id sent), so the approver sees it; the name, phone and address change are stored as sent;
+ * - a `new` request that looks like the user's own earlier live request for the same shop (same normalised name and mobile number in the 7
+ *   business days up to the record's date, another client_uuid) is STORED as its own request and carries the flag `possible_duplicate`
+ *   (event `flag_possible_duplicate`, note = the earlier request's uuid) for the AMO / approver; the phone's ack stays `accepted`. Only the same
+ *   client_uuid is a replay (the registry answers `duplicate`).
+ * The flag events are server events (`via = job`, no actor), written once per request in [afterStored], and read by [dto] as `flags` and
+ * `possible_duplicate_of`.
  */
 class OutletChangeRequestHandler : RecordHandler {
     override val types: Set<String> = setOf("outlet_change_request")
 
-    override fun check(h: Handle, rec: IngestRecord): RecordRefusal? {
+    private fun clusterDropped(h: Handle, rec: IngestRecord): Long? {
         val proposed = rec.payload["proposed"] as? JsonObject ?: return null
         val cluster = proposed["cluster_id"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.longOrNull ?: return null
-        val cz = h.createQuery("SELECT zone_id FROM app.cluster WHERE id = :c").bind("c", cluster).mapTo(Long::class.java).findOne().orElse(null)
-            ?: return RecordRefusal(RecordOutcomeCode.SCHEMA_INVALID, "cluster $cluster does not exist")
+        val cz = h.createQuery("SELECT zone_id FROM app.cluster WHERE id = :c").bind("c", cluster).mapTo(Long::class.java).findOne().orElse(null) ?: return cluster
         if (rec.payload["request_type"]?.jsonPrimitive?.contentOrNull == "info") {
             val outlet = rec.payload["outlet_id"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.longOrNull ?: return null
             val oz = h.createQuery("SELECT zone_id FROM app.outlet WHERE id = :o").bind("o", outlet).mapTo(Long::class.java).findOne().orElse(null) ?: return null
-            if (oz != cz) return RecordRefusal(RecordOutcomeCode.SCHEMA_INVALID, "cluster $cluster is not in the zone of outlet $outlet")
+            if (oz != cz) return cluster
         }
         return null
     }
 
-    override fun sameAs(h: Handle, rec: IngestRecord): Long? {
+    override fun rewrite(h: Handle, rec: IngestRecord): JsonObject? {
+        if (clusterDropped(h, rec) == null) return null
+        val proposed = rec.payload["proposed"] as JsonObject
+        return JsonObject(rec.payload + ("proposed" to JsonObject(proposed - "cluster_id")))
+    }
+
+    private fun lookAlike(h: Handle, rec: IngestRecord): String? {
         if (rec.payload["request_type"]?.jsonPrimitive?.contentOrNull != "new") return null
         val proposed = rec.payload["proposed"] as? JsonObject ?: return null
         val name = proposed["name"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()?.replace(Regex("\\s+"), " ") ?: return null
         val phone = proposed["contact_number"]?.jsonPrimitive?.contentOrNull ?: return null
         return h.createQuery(
             """
-            SELECT id FROM app.outlet_change_request
+            SELECT client_uuid::text FROM app.outlet_change_request
              WHERE user_id = :u AND request_type = 'new' AND voided_at IS NULL AND status IN ('pending', 'verified', 'approved')
                AND client_uuid <> CAST(:c AS uuid) AND business_date BETWEEN :since AND :today
-               AND lower(regexp_replace(btrim(proposed ->> 'name'), '\s+', ' ', 'g')) = :n AND proposed ->> 'contact_number' = :p
+               AND lower(regexp_replace(btrim(proposed ->> 'name'), '\\s+', ' ', 'g')) = :n AND proposed ->> 'contact_number' = :p
              ORDER BY id LIMIT 1
             """.trimIndent(),
         ).bind("u", rec.userId).bind("c", rec.clientUuid).bind("since", rec.businessDate.minusDays(7)).bind("today", rec.businessDate)
-            .bind("n", name).bind("p", phone).mapTo(Long::class.java).findOne().orElse(null)
+            .bind("n", name).bind("p", phone).mapTo(String::class.java).findOne().orElse(null)
+    }
+
+    override fun afterStored(h: Handle, rec: IngestRecord, serverId: Long?) {
+        fun flag(kind: String, note: String) = h.createUpdate(
+            """
+            INSERT INTO app.outlet_request_event (request_uuid, event, actor_user_id, via, business_date, at, note)
+            SELECT CAST(:u AS uuid), :k, NULL, 'job', :bd, :at, :n
+             WHERE NOT EXISTS (SELECT 1 FROM app.outlet_request_event WHERE request_uuid = CAST(:u AS uuid) AND event = :k)
+            """.trimIndent(),
+        ).bind("u", rec.clientUuid).bind("k", kind).bind("bd", rec.businessDate).bind("at", OffsetDateTime.ofInstant(rec.receivedAt, java.time.ZoneOffset.UTC)).bind("n", note).execute()
+        clusterDropped(h, rec)?.let { flag("flag_cluster_dropped", it.toString()) }
+        lookAlike(h, rec)?.let { flag("flag_possible_duplicate", it) }
     }
 }
 

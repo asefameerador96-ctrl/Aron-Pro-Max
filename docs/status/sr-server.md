@@ -1,47 +1,36 @@
-# Lane sr-server (SV): SR manual build, server side
+# Lane sr-server (SV, then SV2): SR manual build, server side
 
-Branch `lane/sr-server`, from INT `claude/wonderful-thompson-k6ejnf` at ab78d0d4 (INT has since moved to ce9d92bf7 with contract 1.13.0 and V0158..V0162: NOT yet merged here). **State: train 1 merged onto INT ce9d92bf7; see "Gates" for what is green. A "checked" claim is made only in the report to the lead.** Brief: `docs/requests/sr-manual-lane-brief.md` (lead docs branch). Request file: `docs/requests/contract-1.14-sr-manual.md`. Records: D-SV1-01 to 10 (DECISIONS.md).
+Branch `lane/sr-server`. Brief: `docs/requests/sr-manual-lane-brief.md` (lead docs branch). Request file: `docs/requests/contract-1.14-sr-manual.md`. Records: D-SV1-01 to 13 (DECISIONS.md). A "checked" claim is made only in the report to the lead, for a named sha.
 
-## State of train 1
+## State (SV2, 2026-11-12)
 
-| item | rows | state |
-|---|---|---|
-| (a) zero-sale reason: `VisitClosePayload.zero_sale_reason_code`, code list `zero_sale_reason` (stock_available, outlet_closed_during_visit, absence_of_owner, insufficient_cash), ingest + code-list re-check, dw | SRM-A-40 | done, tested (SrManualSv1IngestTest) |
-| (b) call photo: `VisitClosePayload.call_photo_uuid` + `call_photo_skip_reason_code` (code list `call_photo_skip`), media purpose `outlet_call`, `cfg.sale.call_photo_required`, review read `getCallPhotoReview` | SRM-A-27 | done, tested |
-| (c) digest `business_totals`: outlets_visited, sold / stock_issued / qc as lists of {sku_id, qty_base}, promotion_mtk | SRM-B-25 | done, tested |
-| (d) outlet requests: `info` cluster_id (same zone), `route_add` keeps cluster, duplicate new-shop request acked `duplicate` | SRM-B-35, 40, 42 | done, tested incl. end-to-end approval |
-| (f) edit reasons wrong_sku_qty, promotion_issue (+ wrong_quantity, wrong_price_type seeded), task type poor_brand_visibility, `JourneyCall.status` repeat_sale | SRM-B-15, 49 | done |
-| (g) `UpdateCheck.notes_en/bn`; `GET /v1/supervisor/device-otps` (TSO) | SRM-A-06, 09 | done, tested |
-| (e) bundle `clusters`, cluster-creation record, AMO verify, portal approval | SRM-B-33, 43, 44 | NOT started (train 2) |
-| (h) `outlet_sku_stats` (`ads_hundredths`, base units, phone converts by pack_factor) | SRM-A-29 | NOT started (train 2) |
-| survey report `posm-survey` + dw view; late-rows-after-Sales-Submit flag | SRM-B-08, 30 | NOT started (train 2; declared in the request file) |
+- **Base:** INT f57ce31ed is merged. Loyalty train 2 (contract 1.13.1, V0170 to V0172, train 107) is NOT merged yet: the lead says when. My contract version is 1.14.0 on top of 1.13.1; my migrations are **V0173, V0174, V0175**; dw view contract 1.8.
+- **Gates:** the full gate list was green on fe023e1d2 (contract 115, db 362, platform 98, sync 39, masterdata 261, config 75, media 17, analytics 359, app 564 tests; Python gates, squawk, oasdiff, Redocly). The lead's Opus review of fe023e1d2 FAILED with must-fixes (D-SV1-13). They are implemented in the working tree after that sha; the gates are re-run after the INT merge. Nothing is claimed green for the new head until the report says so.
+- **Train 1 items:** (a) zero-sale reason, (b) call photo, (c) digest business totals, (d) outlet requests, (f) edit reasons / task type / repeat_sale status, (g) update notes and TSO device OTPs: done; the review fixes of D-SV1-13 changed (a), (b), (c), (d), (g).
+- **Train 1 not started (train 2):** (e) clusters section and cluster-creation record, (h) `outlet_sku_stats`, `posm-survey`, late-row flag, journey classifier.
 
-## Half done / open on this branch
+## Review fixes (D-SV1-13): where they are
 
-- The last full run (command below) found real misses, now being fixed: docs/24 s9.5 config-key registry (`cfg.sale.call_photo_required`), docs/24 Appendix A operation list (`getTeamDeviceOtps`, `getCallPhotoReview`), `AmoManualContractTest` (pins version 1.12.2 and the journey status enum), `CodeListsTest`, `DataDictionaryTest`, `AdminMasterTest` (code-list counts / dictionary regeneration). Not claimed green.
-- INT ce9d92bf7 is merged (contract 1.13.0 under 1.14.0); the lead's later INT f57ce31ed (Android only) and the Loyalty train 2 (V0170, V0171, Wiring.kt, AdminModules tests, dictionary, contract description text) still have to be merged before the final gate run; expect conflicts in those files. The dw view contract is 1.8 (V0175; V0152 took 1.6, V0162 1.7).
+1. Unknown or retired optional labels are stored and flagged (`app.visit.reason_code_unlisted`), never rejected: `IngestService` 5c removed, `RecordWriter.closeVisit`, V0173 column + write-once guard.
+2. `info` request with a gone or other-zone cluster: kept, cluster dropped (`RecordHandler.rewrite`), flag event `flag_cluster_dropped`. Look-alike new shop: stored, `flag_possible_duplicate`; `sameAs` removed. Events are server events (`via = job`); `OutletRequest.flags` and `possible_duplicate_of` read them.
+3. Device OTP reads: `Cache-Control: no-store`; paging by raw rows; tests for another territory and for consumed / expired / other-day codes.
+4. `cfg.sale.call_photo_required` ships false.
+5. Records: contract changelog, request file, seed, dictionary, comments, this file.
+6. Call-photo review: media joined by the visit's own user; reach = zones or routes like `MediaRead`; row member `reason_code_unlisted`. Digest: `call_declined` is not a visit made; contract text states exactly what is counted and does not claim the phone's rules.
 
 ## Migrations used
 
-Renumbered at the lead's order (Flyway has no outOfOrder): V0163-V0165, then V0172-V0174, now V0173-V0175 because the Loyalty train 2 carries V0170, V0171 and V0172 (comment-only notes). Local rename only until the lead releases the push. V0173 (visit columns, guards, code lists, `cfg.sale.call_photo_required`), V0174 (VALIDATE), V0175 (dw contract 1.8: `fact_visit.zero_sale_reason_code`, `call_photo_uuid`; `v_visit.zero_sale_reason_code`, `call_capture_taken`). squawk clean.
+V0173 (visit columns incl. `reason_code_unlisted`, guards, `outlet_request_event.event` flag kinds, code lists, `cfg.sale.call_photo_required` = false), V0174 (VALIDATE), V0175 (dw view contract 1.8: `fact_visit.zero_sale_reason_code`, `call_photo_uuid`; `v_visit.zero_sale_reason_code`, `call_capture_taken`). History: V0163 to V0165, then V0172 to V0174, renamed at the lead's orders because Flyway here has no outOfOrder.
 
-## Gates run and results
+## Open questions
 
-- Green: `python3 tools/slice-contract.py --check`; `tools/ci/money-float-scan.py`; `tools/ci/date-pin-scan.py`; `python3 -m unittest discover` in tools/ci (104 tests); `tools/ci/migrations-check.sh <INT ab78d0d> squawk`; `tools/ci/contract-breaking.sh <INT ab78d0d> oasdiff` (9 enum-value warnings, approved by the request file); Redocly `npx @redocly/cli@2.59.0 lint contract/openapi.yaml --config contract/redocly.yaml` (0 problems); `./gradlew :backend:app:test --tests '*SrManualSv1*'` (10 tests green).
-- Last full run: `ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/postgres?user=aron&password=aron ./gradlew --no-daemon -q --continue :shared:contract:jvmTest :db:test :backend:platform:test :backend:sync:test :backend:masterdata:test :backend:config:test :backend:media:test :backend:analytics:test :backend:app:test` -> NOT green (failures listed above); a first attempt was void (stale Gradle JVMs collided).
-- SV2 2026-11-12 on 03065c6d8: green = Python gates, squawk, oasdiff, Redocly, :shared:contract:jvmTest, :db:test, :backend:platform/sync/masterdata/config/media/analytics, ScopeLeakAcrossEndpointsTest (7, call-photos debt line removed, cross-territory test added in SrManualSv1ApiTest), SrManualSv1*. Full :backend:app:test then green too (564 tests, 2 pre-existing skips in GeoRecheckCheckerTest and MoneyIngestOracleTest, not touched by this lane). Counts: contract 115, db 362, platform 98, sync 39, masterdata 261, config 75, media 17, analytics 359, app 564; 0 failures. Android modules not run (not touched). Waiting for Loyalty train 2 on INT before the merge and the final 'checked'.
-- Not yet run: the Android modules (none touched), `ScopeLeak` / `RouteInventory` / `ContractConformance` inside `:backend:app:test` (part of the full run, results pending), three-times-green repeat.
-
-## Open questions (none needs the owner for train 1)
-
-1. Late-row flag and survey report: lead asked for them in this contract; shipping them in train 2 under the same version (additive). OK?
-2. dw view contract number 1.7 may collide with the Loyalty lane.
-3. Task type `poor_brand_visibility` has no Bangla label (part B owner question 4).
+1. Task type `poor_brand_visibility` has no Bangla label (part B owner question 4).
+2. `reason_code_unlisted` is not in the dw views yet (train 2 may add it with the next dw contract number).
 
 
 ## Train 2 handover (for a fresh session; everything below is NOT started unless it says otherwise)
 
-Rules: same brief; contract stays 1.14.0 (additive, same request file; the lead approves it as D-LEAD-CONTRACT-114-01); migrations continue after V0175 (V0170 to V0172 are the Loyalty lane's train 2; the lead gives the next free number); dw view contract continues at 1.9 (1.8 is V0175). Every write idempotent by client UUID with duplicate / out-of-order property tests; supervisor reads stay under server-side scope with tests (the two new reads, `getTeamDeviceOtps` and `getCallPhotoReview`, have role and reach tests in `SrManualSv1ApiTest`; add a second-zone user to prove the negative case when a second TSO exists in the seed).
+Rules: same brief; contract stays 1.14.0 (additive, same request file; D-LEAD-CONTRACT-114-01 is requested, the lead approves it); migrations continue after V0175 (V0170 to V0172 are the Loyalty lane's train 2; the lead gives the next free number); dw view contract continues at 1.9 (1.8 is V0175). Every write idempotent by client UUID with duplicate / out-of-order property tests; supervisor reads stay under server-side scope with tests (the two new reads, `getTeamDeviceOtps` and `getCallPhotoReview`, have role and reach tests in `SrManualSv1ApiTest`; add a second-zone user to prove the negative case when a second TSO exists in the seed).
 
 1. **(e) Clusters.** (i) Bundle section `clusters` (cluster_id, name, route_id, route_name) scoped to the SR's routes server-side (`BundleService`, `BundleDtos`, `BundleDelta`); (ii) cluster-creation record: new record type (`cluster_request`: client_uuid, name, route_id, fix), table + `ingest_registry` / `TypeRules` / `PayloadShapes` entries, widening of the record-type CHECK (V0007 list) NOT VALID + VALIDATE, AMO verification (record or `outlet_request_verification`-like), portal approval (`POST /v1/admin/clusters` exists as `createCluster`; add the approve path), default **live after approval** (part B owner question 3), duplicate names on one route refused with a clear code; (iii) the new-shop proposal may point to a pending cluster by client uuid (`OutletProposal.cluster_request_uuid`). Lane S2 stores cluster requests locally and needs both the section and the record.
 2. **(h) `outlet_sku_stats`** bundle section (versioned reference data): outlet x SKU previous-day, ADS, SDLW. State the unit in the schema description: base units (`ads_hundredths` = average daily sales in base units x 100, integer), the phone converts with `pack_factor`. Formulas = part A Q4 default (ADS = achieved / elapsed days over the last 30 days with sales, SDLW = same weekday last week). Size check: 70 outlets x 40 SKUs.
@@ -58,4 +47,4 @@ Rules: same brief; contract stays 1.14.0 (additive, same request file; the lead 
 - `backend:platform` `DatabaseSmokeTest` migrates the `postgres` database itself: before a run after any migration edit or rename, `drop schema app cascade; drop schema dw cascade; drop table public.flyway_schema_history cascade;` there, else Flyway reports a checksum mismatch.
 - Run ONE Gradle at a time (`--no-daemon`), module by module: `:shared:contract:jvmTest`, `:db:test`, `:backend:platform:test`, `:backend:sync:test`, `:backend:masterdata:test`, `:backend:config:test`, `:backend:media:test`, `:backend:analytics:test`, `:backend:app:test` (the app module is about two hours). Two overlapping runs leave hundreds of test databases and connections and every later class fails at once. Kill leftovers with `pkill -9 -f org.gradle` and drop `aron_%` databases before a re-run.
 - Python gates need `npm ci` in `web/` (for `gen:contract`) and the pinned binaries from `tools/ci/install-tool.sh oasdiff|squawk <dir>`; delete `tools/ci/__pycache__` before the backend run (`NoSecretsInRepoTest` flags the .pyc files).
-- State at c03e44625: Python gates, squawk, oasdiff, Redocly and the 10 `SrManualSv1*` tests were green; the full module run has NOT completed since the last fixes (scope registry, `reports` module mapping for `call-photos`, task-type and code-list-count expectations, renumbering): `:backend:platform:test` and `:shared:contract:jvmTest` were green after them; db, sync, masterdata, config, media, analytics and app were not re-run to the end. Do not report "checked" until they are.
+- State history (superseded by the State section above): at c03e44625: Python gates, squawk, oasdiff, Redocly and the 10 `SrManualSv1*` tests were green; the full module run has NOT completed since the last fixes (scope registry, `reports` module mapping for `call-photos`, task-type and code-list-count expectations, renumbering): `:backend:platform:test` and `:shared:contract:jvmTest` were green after them; db, sync, masterdata, config, media, analytics and app were not re-run to the end. Do not report "checked" until they are.

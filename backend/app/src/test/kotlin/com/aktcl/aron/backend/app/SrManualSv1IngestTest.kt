@@ -196,30 +196,69 @@ class SrManualSv1IngestTest {
         }
     }
 
+    private fun flagOf(v: String) = str("SELECT reason_code_unlisted::text FROM app.visit WHERE client_uuid = '$v'")
+
     @Test
-    fun aReasonOnASaleAnUnknownCodeOrARetiredCodeIsRefusedForGoodAndNothingChanges() {
+    fun aMalformedOrMisplacedReasonIsRefusedButAnUnknownOrRetiredCodeIsStoredAsSentAndFlagged() {
         val outlet = outletId
+        // shape and combination errors stay schema_invalid and leave the visit open
         val v = uuid()
         send(sr, listOf(envelope("visit", v, v, 0, visitJson(outlet, seq = 20), routeId)))
-        val cases = mapOf("sale with reason" to closeJson(v, false, "stock_available"), "unknown code" to closeJson(v, true, "battery_dead"), "bad shape" to closeJson(v, true, "Stock Available"))
-        for ((name, payload) in cases) {
+        for ((name, payload) in mapOf("sale with reason" to closeJson(v, false, "stock_available"), "bad shape" to closeJson(v, true, "Stock Available"))) {
             val rec = envelope("visit_close", uuid(), v, 1, payload, routeId)
             val a = send(sr, listOf(rec)).ack(rec)
             assertTrue(a.startsWith("rejected schema_invalid"), "$name: $a")
         }
-        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.code_list_item SET valid_to = DATE '2026-12-01' WHERE list_key = 'zero_sale_reason' AND code = 'absence_of_owner'") }
-        val retired = envelope("visit_close", uuid(), v, 1, closeJson(v, true, "absence_of_owner"), routeId)
-        assertTrue(send(sr, listOf(retired)).ack(retired).startsWith("rejected schema_invalid"), "a retired code is refused")
-        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.code_list_item SET valid_to = NULL WHERE list_key = 'zero_sale_reason' AND code = 'absence_of_owner'") }
-        assertEquals(null, str("SELECT zero_sale_reason_code FROM app.visit WHERE client_uuid = '$v'"), "nothing was stored")
         assertEquals(null, str("SELECT close_client_uuid::text FROM app.visit WHERE client_uuid = '$v'"), "the visit stays open")
-        // a close without a reason (older app) is still valid, and the first close stands
-        val ok = envelope("visit_close", uuid(), v, 1, closeJson(v, true, null), routeId)
-        assertEquals("accepted", send(sr, listOf(ok)).ack(ok))
-        val second = envelope("visit_close", uuid(), v, 1, closeJson(v, true, "stock_available"), routeId)
+        // an unknown code: the close is stored with the code as sent, flagged, idempotent, and a different body under the same uuid is a conflict
+        val unknown = closeJson(v, true, "battery_dead")
+        val rec = envelope("visit_close", uuid(), v, 1, unknown, routeId)
+        assertEquals("accepted", send(sr, listOf(rec)).ack(rec), "an unknown optional label never costs the close")
+        repeat(3) { assertEquals("duplicate", send(sr, listOf(rec)).ack(rec).substringBefore(' '), "replay") }
+        assertEquals("battery_dead", str("SELECT zero_sale_reason_code FROM app.visit WHERE client_uuid = '$v'"))
+        assertEquals("true", flagOf(v), "flagged for the reports and the portal")
+        assertEquals(1L, count("SELECT count(*) FROM app.visit WHERE client_uuid = '$v' AND close_client_uuid IS NOT NULL"))
+        val changed = envelope("visit_close", (rec["client_uuid"] as JsonPrimitive).content, v, 1, closeJson(v, true, "stock_available"), routeId)
+        assertTrue(send(sr, listOf(changed)).ack(changed).contains("payload_conflict"), "same uuid, different content")
+        assertEquals("battery_dead", str("SELECT zero_sale_reason_code FROM app.visit WHERE client_uuid = '$v'"), "the first copy stands")
+        // a code retired on the business date: stored as sent, flagged
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.code_list_item SET valid_to = DATE '2026-12-01' WHERE list_key = 'zero_sale_reason' AND code = 'absence_of_owner'") }
+        try {
+            val w = uuid()
+            val open = envelope("visit", w, w, 0, visitJson(outletAt(14), seq = 21), routeId)
+            val close = envelope("visit_close", uuid(), w, 1, closeJson(w, true, "absence_of_owner"), routeId)
+            assertEquals("accepted", send(sr, listOf(open, close)).ack(close), "a retired code is stored")
+            assertEquals("absence_of_owner", str("SELECT zero_sale_reason_code FROM app.visit WHERE client_uuid = '$w'"))
+            assertEquals("true", flagOf(w))
+            send(sr, listOf(close)); assertEquals("true", flagOf(w), "a replay keeps the flag")
+        } finally {
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.code_list_item SET valid_to = NULL WHERE list_key = 'zero_sale_reason' AND code = 'absence_of_owner'") }
+        }
+        // a listed code is not flagged
+        val x = uuid()
+        val openX = envelope("visit", x, x, 0, visitJson(outletAt(15), seq = 22), routeId)
+        val closeX = envelope("visit_close", uuid(), x, 1, closeJson(x, true, "stock_available"), routeId)
+        send(sr, listOf(openX, closeX)); assertEquals(null, flagOf(x), "no flag on a listed code")
+        // an older app's close without a reason is valid and the first close stands
+        val y = uuid()
+        val openY = envelope("visit", y, y, 0, visitJson(outletAt(16), seq = 23), routeId)
+        val okY = envelope("visit_close", uuid(), y, 1, closeJson(y, true, null), routeId)
+        assertEquals("accepted", send(sr, listOf(openY, okY)).ack(okY))
+        val second = envelope("visit_close", uuid(), y, 1, closeJson(y, true, "stock_available"), routeId)
         val secondAck = send(sr, listOf(second)).ack(second)
         assertTrue(secondAck.startsWith("rejected") || secondAck.startsWith("quarantined"), "a second close with another uuid is refused, got: $secondAck")
-        assertEquals(null, str("SELECT zero_sale_reason_code FROM app.visit WHERE client_uuid = '$v'"), "the first close stands")
+        assertEquals(null, str("SELECT zero_sale_reason_code FROM app.visit WHERE client_uuid = '$y'"), "the first close stands")
+    }
+
+    @Test
+    fun anUnknownCallPhotoSkipCodeIsStoredAsSentAndFlagged() {
+        val v = uuid()
+        val open = envelope("visit", v, v, 0, visitJson(outletAt(17), "", 34), routeId)
+        val close = envelope("visit_close", uuid(), v, 1, closeJson(v, false, null, "sold", ""","call_photo_skip_reason_code":"lazy""""), routeId)
+        assertEquals("accepted", send(sr, listOf(open, close)).ack(close))
+        repeat(2) { send(sr, listOf(close)) }
+        assertEquals("lazy", str("SELECT call_photo_skip_reason_code FROM app.visit WHERE client_uuid = '$v'"))
+        assertEquals("true", flagOf(v))
     }
 
     // ---------------------------------------------------------------------------------------------- (b) call photo
@@ -248,7 +287,6 @@ class SrManualSv1IngestTest {
         assertEquals("accepted", send(sr, listOf(open3, close3)).ack(close3))
         for ((name, extra) in mapOf(
             "both" to ""","call_photo_uuid":"${uuid()}","call_photo_skip_reason_code":"other"""",
-            "unknown skip code" to ""","call_photo_skip_reason_code":"lazy"""",
             "skip code shape" to ""","call_photo_skip_reason_code":"Camera Broken"""",
             "bad uuid" to ""","call_photo_uuid":"NOT-A-UUID"""",
         )) {
@@ -300,35 +338,154 @@ class SrManualSv1IngestTest {
                   "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}}""",
     )
 
+    private fun flagsOf(request: String) = fresh.db.jdbi.withHandle<List<String>, Exception> { h ->
+        h.createQuery("SELECT event || ':' || coalesce(note, '') FROM app.outlet_request_event WHERE request_uuid = CAST(:u AS uuid) AND event LIKE 'flag_%' ORDER BY event").bind("u", request).mapTo(String::class.java).list()
+    }
+
     @Test
-    fun aSecondNewShopRequestForTheSameShopIsAnsweredDuplicateAndStoresNothing() {
+    fun aLookAlikeNewShopIsStoredAsItsOwnRequestAckedAcceptedAndFlaggedForTheApprover() {
         val cluster = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.cluster WHERE zone_id = (SELECT zone_id FROM app.route WHERE id = $routeId) ORDER BY id LIMIT 1").mapTo(Long::class.java).one() }
         val proposed = """{"name":"  Rahim  Store ","owner_name":"Rahim Uddin","contact_number":"01711223344","cluster_id":$cluster}"""
         val first = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("new", null, proposed), routeId)
         val again = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("new", null, proposed.replace("  Rahim  Store ", "rahim store")), routeId)
         val other = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("new", null, proposed.replace("01711223344", "01711223355")), routeId)
         assertEquals("accepted", send(sr, listOf(first)).ack(first))
-        assertEquals("duplicate", send(sr, listOf(again)).ack(again).substringBefore(' '), "same shop, new uuid (the form was reopened)")
+        assertEquals("accepted", send(sr, listOf(again)).ack(again), "a look-alike is stored, never swallowed (it may be a correction or a second shop)")
         assertEquals("accepted", send(sr, listOf(other)).ack(other), "another mobile number is another shop")
+        // only the SAME client uuid is a replay
         repeat(2) { send(sr, listOf(first, again, other).shuffled(Random(it))) }
-        assertEquals(2L, count("SELECT count(*) FROM app.outlet_change_request WHERE request_type = 'new' AND user_id = $sr"), "one row per shop")
+        assertEquals(3L, count("SELECT count(*) FROM app.outlet_change_request WHERE request_type = 'new' AND user_id = $sr AND client_uuid IN ('${uuidOf(first)}', '${uuidOf(again)}', '${uuidOf(other)}')"), "one row per client uuid")
+        assertEquals("duplicate", send(sr, listOf(again)).ack(again).substringBefore(' '), "the same uuid is a replay")
+        assertEquals(emptyList(), flagsOf(uuidOf(first)), "the first request carries no flag")
+        assertEquals(listOf("flag_possible_duplicate:${uuidOf(first)}"), flagsOf(uuidOf(again)), "the look-alike points at the earlier one, once, under resends")
+        assertEquals(emptyList(), flagsOf(uuidOf(other)))
     }
 
     @Test
-    fun anInfoRequestMayCarryAClusterOfTheOutletsZoneAndNoOtherCluster() {
+    fun anInfoRequestKeepsItsChangesWhenTheClusterIsGoneOrInAnotherZoneAndFlagsIt() {
         val zone = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT zone_id FROM app.route WHERE id = $routeId").mapTo(Long::class.java).one() }
         val inZone = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.cluster WHERE zone_id = $zone ORDER BY id DESC LIMIT 1").mapTo(Long::class.java).one() }
         val elsewhere = fresh.db.jdbi.withHandle<Long?, Exception> { h -> h.createQuery("SELECT id FROM app.cluster WHERE zone_id <> $zone ORDER BY id LIMIT 1").mapTo(Long::class.java).findOne().orElse(null) }
         val ok = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("info", outletId, """{"name":"Karim Store","cluster_id":$inZone}"""), routeId)
         assertEquals("accepted", send(sr, listOf(ok)).ack(ok))
-        val ghost = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("info", outletId, """{"cluster_id":987654321}"""), routeId)
-        assertTrue(send(sr, listOf(ghost)).ack(ghost).startsWith("rejected schema_invalid"), "an unknown cluster")
+        assertEquals(emptyList(), flagsOf(uuidOf(ok)))
+        assertEquals(inZone.toString(), str("SELECT proposed ->> 'cluster_id' FROM app.outlet_change_request WHERE client_uuid = '${uuidOf(ok)}'"))
+        val ghost = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("info", outletId, """{"name":"Karim Store 2","contact_number":"01811223344","cluster_id":987654321}"""), routeId)
+        assertEquals("accepted", send(sr, listOf(ghost)).ack(ghost), "a gone cluster never costs the request")
+        repeat(2) { send(sr, listOf(ghost)) }
+        assertEquals(null, str("SELECT proposed ->> 'cluster_id' FROM app.outlet_change_request WHERE client_uuid = '${uuidOf(ghost)}'"), "the cluster is dropped from the proposal")
+        assertEquals("Karim Store 2", str("SELECT proposed ->> 'name' FROM app.outlet_change_request WHERE client_uuid = '${uuidOf(ghost)}'"), "the change itself is kept")
+        assertEquals("01811223344", str("SELECT proposed ->> 'contact_number' FROM app.outlet_change_request WHERE client_uuid = '${uuidOf(ghost)}'"))
+        assertEquals(listOf("flag_cluster_dropped:987654321"), flagsOf(uuidOf(ghost)))
         if (elsewhere != null) {
-            val far = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("info", outletId, """{"cluster_id":$elsewhere}"""), routeId)
-            assertTrue(send(sr, listOf(far)).ack(far).startsWith("rejected schema_invalid"), "a cluster of another zone")
+            val far = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("info", outletId, """{"name":"Karim Far","cluster_id":$elsewhere}"""), routeId)
+            assertEquals("accepted", send(sr, listOf(far)).ack(far), "a cluster of another zone never costs the request")
+            assertEquals(null, str("SELECT proposed ->> 'cluster_id' FROM app.outlet_change_request WHERE client_uuid = '${uuidOf(far)}'"))
+            assertEquals(listOf("flag_cluster_dropped:$elsewhere"), flagsOf(uuidOf(far)))
         }
         // a route_add may carry the cluster (the end-to-end approval is in SrManualSv1ApiTest)
         val add = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("route_add", outletId, """{"cluster_id":$inZone}"""), routeId)
         assertEquals("accepted", send(sr, listOf(add)).ack(add))
+    }
+
+    // ---------------------------------------------------------------------------------------------- (c2) business totals, rule by rule
+
+    @Test
+    fun theBusinessTotalsCountExactlyWhatTheContractSays() {
+        val svc = com.aktcl.aron.backend.sync.SalesSubmitDigestService(fresh.db, clock)
+        val date = java.time.LocalDate.parse(day)
+        fun totals() = fresh.db.jdbi.withHandle<com.aktcl.aron.backend.sync.SubmitBusinessTotalsDto, Exception> { h -> svc.businessTotals(h, sr, date) }
+        fun List<com.aktcl.aron.backend.sync.SkuQtyBaseDto>.of(sku: Long) = firstOrNull { it.sku_id == sku }?.qty_base ?: 0L
+        fun replica(block: (org.jdbi.v3.core.Handle) -> Unit) = fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("SET session_replication_role = replica")
+            try { block(h) } finally { h.execute("SET session_replication_role = origin") }
+        }
+        // six outlets of the route that the login has no visit on yet, so every delta of outlets_visited is a whole outlet
+        val fresh6 = fresh.db.jdbi.withHandle<List<Long>, Exception> { h ->
+            h.createQuery("SELECT id FROM app.outlet WHERE route_id = $routeId AND id NOT IN (SELECT outlet_id FROM app.visit WHERE user_id = $sr) ORDER BY id DESC LIMIT 6").mapTo(Long::class.java).list()
+        }
+        assertEquals(6, fresh6.size, "the seed route has six outlets without a visit of this login")
+        val sku = priced[0]
+        val before = totals()
+
+        // (a) a normal sale counts once in sold (base units) and its outlet once
+        val a = sale(memoNo(), listOf(L(priced, 4, "stick", 1)), outlet = fresh6[0])
+        repeat(2) { send(sr, a.shuffled(Random(it))) }
+        val afterA = totals()
+        assertEquals(before.sold.of(sku) + 4, afterA.sold.of(sku), "(a) sold once, in base units")
+        assertEquals(before.outlets_visited + 1, afterA.outlets_visited, "(a) its outlet counts once")
+
+        // (b) a memo marked superseded is not sold; (c) a voided memo is not sold. The visit of each is still a visit made.
+        val b = sale(memoNo(), listOf(L(priced, 6, "stick", 1)), outlet = fresh6[1])
+        val c = sale(memoNo(), listOf(L(priced, 9, "stick", 1)), outlet = fresh6[2])
+        send(sr, b); send(sr, c)
+        assertEquals(afterA.sold.of(sku) + 6 + 9, totals().sold.of(sku), "both memos are live until changed")
+        val memoB = uuidOf(b.single { typeOf(it) == "memo" }); val memoC = uuidOf(c.single { typeOf(it) == "memo" })
+        replica { h ->
+            h.execute("UPDATE app.memo SET status = 'superseded' WHERE client_uuid = CAST('$memoB' AS uuid)")
+            h.execute("UPDATE app.memo SET voided_at = now() WHERE client_uuid = CAST('$memoC' AS uuid)")
+        }
+        val afterBC = totals()
+        assertEquals(afterA.sold.of(sku), afterBC.sold.of(sku), "(b)(c) a superseded and a voided memo are not counted")
+        assertEquals(afterA.outlets_visited + 2, afterBC.outlets_visited, "the calls made still count as outlets visited")
+        assertEquals(0L, afterBC.promotion_mtk - before.promotion_mtk)
+
+        // (d) an abandoned visit does not raise outlets_visited; (e) a declined call does not either
+        val d = uuid()
+        val dOpen = envelope("visit", d, d, 0, visitJson(fresh6[3], seq = 41), routeId)
+        val dClose = envelope("visit_close", uuid(), d, 1, closeJson(d, false, null, "abandoned"), routeId)
+        val dAck = send(sr, listOf(dOpen, dClose))
+        assertEquals("accepted", dAck.ack(dOpen), "the visit is stored")
+        assertEquals("accepted", dAck.ack(dClose), "the abandoned close is stored")
+        assertEquals(afterBC.outlets_visited, totals().outlets_visited, "(d) an abandoned visit is not an outlet visited")
+        val e = uuid()
+        val eOpen = envelope("visit", e, e, 0, visitJson(fresh6[4], seq = 42), routeId)
+        val eCloseBody = json(closeJson(e, false, null, "refused").toString().replace("\"call_declined\":false", "\"call_declined\":true"))
+        val eClose = envelope("visit_close", uuid(), e, 1, eCloseBody, routeId)
+        val eAck = send(sr, listOf(eOpen, eClose))
+        assertEquals("accepted", eAck.ack(eOpen)); assertEquals("accepted", eAck.ack(eClose), "the declined close is stored")
+        assertEquals("true", str("SELECT call_declined::text FROM app.visit WHERE client_uuid = '$e'"), "the decline is stored")
+        assertEquals(afterBC.outlets_visited, totals().outlets_visited, "(e) a declined call is not an outlet visited")
+        // control: a visit closed normally on the last outlet does count
+        val f = uuid()
+        val fOpen = envelope("visit", f, f, 0, visitJson(fresh6[5], seq = 43), routeId)
+        val fClose = envelope("visit_close", uuid(), f, 1, closeJson(f, true, "stock_available"), routeId)
+        send(sr, listOf(fOpen, fClose))
+        assertEquals(afterBC.outlets_visited + 1, totals().outlets_visited, "a normally closed visit counts")
+
+        // (f) stock: issue + adjustment only, not return, not voided
+        val preStock = totals().stock_issued.of(sku)
+        fun stock(kind: String, qty: Int, reason: String?, voided: Boolean) = replica { h ->
+            val cu = uuid()
+            h.execute(
+                "INSERT INTO app.stock_movement (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, kind, sku_id, qty_entered, unit_entered, pack_factor, qty_base, reason_code, slip_printed, voided_at) " +
+                    "VALUES (CAST('$cu' AS uuid), CAST('$cu' AS uuid), DATE '$day', $sr, $routeId, TIMESTAMPTZ '${day}T03:00:00Z', 1, '$kind', $sku, $qty, 'stick', 1, $qty, " +
+                    "${if (reason == null) "NULL" else "'$reason'"}, false, ${if (voided) "now()" else "NULL"})",
+            )
+        }
+        stock("issue", 10, null, false); stock("adjustment", -3, "count_fix", false); stock("issue", 50, null, true); stock("return", 4, null, false)
+        assertEquals(preStock + 7, totals().stock_issued.of(sku), "(f) issue + adjustment (signed) only; a voided row and a return are left out")
+
+        // (g) qc: a stored qc_line counts, a voided one does not
+        val preQc = totals().qc.of(sku)
+        val entry = uuid()
+        replica { h ->
+            val entryId = h.createQuery("INSERT INTO app.qc_entry (visit_client_uuid, business_date, user_id, route_id, outlet_id) VALUES (CAST('$entry' AS uuid), DATE '$day', $sr, $routeId, ${fresh6[0]}) RETURNING id").mapTo(Long::class.java).one()
+            fun line(qty: Int, voided: Boolean) {
+                val cu = uuid()
+                h.execute(
+                    "INSERT INTO app.qc_entry_line (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, qc_entry_id, visit_client_uuid, applied_to_memo, sku_id, " +
+                        "fault_type_code, fault_group, qty_base, unit_price_mtk, settlement_mtk, voided_at) VALUES (CAST('$cu' AS uuid), CAST('$entry' AS uuid), DATE '$day', $sr, $routeId, " +
+                        "TIMESTAMPTZ '${day}T03:00:00Z', 1, $entryId, CAST('$entry' AS uuid), false, $sku, 'damaged', 'MFC', $qty, 1000, 0, ${if (voided) "now()" else "NULL"})",
+                )
+            }
+            line(5, false); line(11, true)
+        }
+        assertEquals(preQc + 5, totals().qc.of(sku), "(g) a stored qc line counts, a voided one does not")
+
+        // the digest served by the service carries the same figures; the figures are ordered by sku
+        val final = totals()
+        assertEquals(final, svc.digest(sr, device.first, device.second, date).business_totals)
+        for (list in listOf(final.sold, final.stock_issued, final.qc)) assertEquals(list.map { it.sku_id }, list.map { it.sku_id }.sorted())
     }
 }

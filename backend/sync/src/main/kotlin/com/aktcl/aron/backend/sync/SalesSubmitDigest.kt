@@ -145,14 +145,14 @@ class SalesSubmitDigestService(private val db: Database, private val clock: com.
     }
 
     /**
-     * Contract 1.14.0 (SRM-B-25). The same rules as `Aggregator` (`dw.agg_daily_route`, `agg_daily_route_sku`), read straight from the
+     * Contract 1.14.0 (SRM-B-25). The rules stated in the contract (`SubmitBusinessTotals`); the phone lane adopts these, they are not claimed to be the phone's rules today. Aggregator-shaped (`dw.agg_daily_route`, `agg_daily_route_sku`), read straight from the
      * stored rows of the login and date rather than from the worker's summaries, so the figure never lags the sync it is compared with:
-     * a visit counts when it is an `sr_call` and not abandoned; a memo when active with a line; sold quantity is the `sale` lines only, per SKU in base units
+     * a visit counts when it is an `sr_call`, not voided, not abandoned and not call_declined (a declined call is not a visit made); a memo when active with a line; sold quantity is the `sale` lines only, per SKU in base units
      * (the phone converts with each SKU's pack factor); issued stock is `stock_movement` kinds `issue` and `adjustment`; QC is the stored `qc_line` quantity; promotion is offer + DRP discount.
      */
     fun businessTotals(h: Handle, userId: Long, date: LocalDate): SubmitBusinessTotalsDto {
         val visited = h.createQuery(
-            "SELECT count(DISTINCT outlet_id) FROM app.visit WHERE user_id = :u AND business_date = :d AND visit_kind = 'sr_call' AND voided_at IS NULL AND outcome_code IS DISTINCT FROM 'abandoned'",
+            "SELECT count(DISTINCT outlet_id) FROM app.visit WHERE user_id = :u AND business_date = :d AND visit_kind = 'sr_call' AND voided_at IS NULL AND outcome_code IS DISTINCT FROM 'abandoned' AND call_declined IS NOT TRUE",
         ).bind("u", userId).bind("d", date).mapTo(Int::class.java).one()
         fun byCategory(sql: String) = h.createQuery(sql).bind("u", userId).bind("d", date)
             .map { rs, _ -> SkuQtyBaseDto(rs.getLong("sku"), rs.getLong("q")) }.list()

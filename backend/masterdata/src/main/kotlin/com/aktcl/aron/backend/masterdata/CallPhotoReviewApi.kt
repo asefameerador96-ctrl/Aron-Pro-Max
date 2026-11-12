@@ -26,6 +26,7 @@ data class CallPhotoReviewRowDto(
     val visit_uuid: String, val business_date: String, val opened_at: String, val outlet_id: Long, val outlet_name: String,
     val user_id: Long, val user_name: String, val route_id: Long?, val photo_uuid: String?, val skip_reason: String?, val media_status: String?,
     val taken_at: String?, val fix_lat: Double?, val fix_lng: Double?, val fix_accuracy_m: Double?, val fix_is_mock: Boolean?, val distance_m: Double?,
+    val reason_code_unlisted: Boolean = false,
 )
 
 @Serializable
@@ -37,7 +38,7 @@ private val REVIEWERS = setOf(Role.AMO, Role.TSO, Role.DMO, Role.WM, Role.SUPPOR
 
 /**
  * `GET /v1/supervisor/call-photos?business_date=&route_id=` (contract getCallPhotoReview). The rows are the `sr_call` visits of the date
- * inside the caller's reach (zones from the token; a national role sees all), newest first, keyset-paged by visit id. A visit without a
+ * inside the caller's reach (zones and routes from the token, the same rule as MediaRead and coversRoute; a national role sees all), newest first, keyset-paged by visit id. A visit without a
  * photo and without a skip reason is listed too (photo_uuid null): a reviewer must see the missing ones.
  */
 fun Route.callPhotoReviewRoutes(d: CallPhotoReviewDeps) {
@@ -58,25 +59,28 @@ private fun review(call: io.ktor.server.application.ApplicationCall, d: CallPhot
     val cursor = q["cursor"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 1 } ?: bad("query.cursor") }
     val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
     val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
-    if (!reach.national && reach.zoneIds.isEmpty()) return CallPhotoReviewPageDto(emptyList(), null)
+    if (!reach.national && reach.zoneIds.isEmpty() && reach.routeIds.isEmpty()) return CallPhotoReviewPageDto(emptyList(), null)
     val rows = d.db.readJdbi.withHandle<List<Pair<CallPhotoReviewRowDto, Long>>, Exception> { h ->
         val sql = """
             SELECT v.id, v.client_uuid::text AS vu, v.business_date, v.opened_at, v.outlet_id, o.name AS outlet_name, v.user_id, u.full_name, v.route_id,
                    v.call_photo_uuid::text AS photo, v.call_photo_skip_reason_code, m.status AS media_status, m.taken_at, m.fix_lat, m.fix_lng, m.fix_accuracy_m,
-                   m.fix_is_mock, v.distance_m
+                   m.fix_is_mock, v.distance_m, coalesce(v.reason_code_unlisted, false) AS unlisted
               FROM app.visit v
               JOIN app.outlet o ON o.id = v.outlet_id
               JOIN app.app_user u ON u.id = v.user_id
               LEFT JOIN app.route r ON r.id = v.route_id
-              LEFT JOIN app.media m ON m.client_uuid = v.call_photo_uuid AND m.voided_at IS NULL
+              LEFT JOIN app.media m ON m.client_uuid = v.call_photo_uuid AND m.user_id = v.user_id AND m.voided_at IS NULL
              WHERE v.business_date = :d AND v.visit_kind = 'sr_call' AND v.voided_at IS NULL
-               ${if (reach.national) "" else "AND coalesce(r.zone_id, o.zone_id) IN (<zones>)"}
+               ${if (reach.national) "" else "AND (coalesce(r.zone_id, o.zone_id) = ANY(:zones) OR v.route_id = ANY(:routes))"}
                ${if (route != null) "AND v.route_id = :r" else ""}
                ${if (cursor != null) "AND v.id < :c" else ""}
              ORDER BY v.id DESC LIMIT :lim
         """.trimIndent()
         val query = h.createQuery(sql).bind("d", date).bind("lim", limit + 1)
-        if (!reach.national) query.bindList("zones", reach.zoneIds.toList())
+        if (!reach.national) {
+            query.bindArray("zones", Long::class.javaObjectType, reach.zoneIds.toList())
+            query.bindArray("routes", Long::class.javaObjectType, reach.routeIds.toList())
+        }
         if (route != null) query.bind("r", route)
         if (cursor != null) query.bind("c", cursor)
         query.map { rs, _ ->
@@ -86,7 +90,7 @@ private fun review(call: io.ktor.server.application.ApplicationCall, d: CallPhot
                 rs.getLong("outlet_id"), rs.getString("outlet_name"), rs.getLong("user_id"), rs.getString("full_name"), rs.getObject("route_id") as Long?,
                 rs.getString("photo"), rs.getString("call_photo_skip_reason_code"), rs.getString("media_status"),
                 rs.getObject("taken_at", OffsetDateTime::class.java)?.toInstant()?.wire(), dbl("fix_lat"), dbl("fix_lng"), dbl("fix_accuracy_m"),
-                rs.getObject("fix_is_mock") as Boolean?, dbl("distance_m"),
+                rs.getObject("fix_is_mock") as Boolean?, dbl("distance_m"), rs.getBoolean("unlisted"),
             ) to rs.getLong("id")
         }.list()
     }

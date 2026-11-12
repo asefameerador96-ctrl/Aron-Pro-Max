@@ -179,14 +179,21 @@ object RecordWriter {
     /** visit_close fills the close columns of its visit once; the first close stands (s4.2). */
     private fun closeVisit(h: Handle, clientUuid: String, env: JsonObject, p: JsonObject, now: Instant): Result {
         val visit = p.str("visit_client_uuid")!!
+        // The optional labels are stored as sent; a code the lists do not hold (unknown, or retired on the business date) only raises the flag.
+        val day = env.str("business_date")
+        fun unlisted(list: String, code: String?) = code != null && !h.createQuery(
+            "SELECT EXISTS (SELECT 1 FROM app.code_list_item WHERE list_key = :l AND code = :c AND valid_from <= CAST(:d AS date) AND (valid_to IS NULL OR valid_to > CAST(:d AS date)))",
+        ).bind("l", list).bind("c", code).bind("d", day).mapTo(Boolean::class.java).one()
+        val flagged = unlisted("zero_sale_reason", p.str("zero_sale_reason_code")) || unlisted("call_photo_skip", p.str("call_photo_skip_reason_code"))
         val id = h.createQuery(
             """
             UPDATE app.visit SET close_client_uuid = CAST(:cu AS uuid), close_received_at = :now, close_captured_at = CAST(:cap AS timestamptz),
-                outcome_code = :oc, call_started_at = CAST(:cs AS timestamptz), call_declined = :cd, ended_at = CAST(:ea AS timestamptz), is_zero_sale = :z, zero_sale_reason_code = :zr, call_photo_uuid = CAST(:cp AS uuid), call_photo_skip_reason_code = :cs2
+                outcome_code = :oc, call_started_at = CAST(:cs AS timestamptz), call_declined = :cd, ended_at = CAST(:ea AS timestamptz), is_zero_sale = :z, zero_sale_reason_code = :zr, call_photo_uuid = CAST(:cp AS uuid), call_photo_skip_reason_code = :cs2,
+                reason_code_unlisted = :ru
             WHERE client_uuid = CAST(:v AS uuid) AND close_client_uuid IS NULL RETURNING id
             """.trimIndent(),
         ).bind("cu", clientUuid).bind("now", IngestService.ts(now)).bind("cap", env.str("captured_at")).bind("oc", p.str("outcome_code"))
-            .bind("cs", p.str("call_started_at")).bind("cd", p.bool("call_declined")).bind("ea", p.str("ended_at")).bind("z", p.bool("is_zero_sale")).bind("zr", p.str("zero_sale_reason_code")).bind("cp", p.str("call_photo_uuid")).bind("cs2", p.str("call_photo_skip_reason_code"))
+            .bind("cs", p.str("call_started_at")).bind("cd", p.bool("call_declined")).bind("ea", p.str("ended_at")).bind("z", p.bool("is_zero_sale")).bind("zr", p.str("zero_sale_reason_code")).bind("cp", p.str("call_photo_uuid")).bind("cs2", p.str("call_photo_skip_reason_code")).bind("ru", if (flagged) true else null)
             .bind("v", visit).mapTo(Long::class.java).findOne().orElse(null)
         if (id != null) return Result.Stored(id)
         val existing = h.createQuery("SELECT id, close_client_uuid::text FROM app.visit WHERE client_uuid = CAST(:v AS uuid) LIMIT 1").bind("v", visit)
