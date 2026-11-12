@@ -116,6 +116,39 @@ class SrManualSv1ApiTest {
         }
     }
 
+    @Test
+    fun aCallPhotoOfAnotherTerritoryIsNeverReturnedToTheTsoOrAmoButItsOwnTsoSeesIt() = world.withApi {
+        with(world) {
+            // ScopeLeak: a call photo in the second (LKX) division. The reach comes from the token; no query value can widen it.
+            val lkxSr = one("SELECT id FROM app.app_user WHERE username = 'lkxsr1001'")
+            val route = one("SELECT id FROM app.route WHERE code LIKE 'LKX-%' AND kind = 'sr' AND status = 'active' ORDER BY id LIMIT 1")
+            val outlet = one("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id LIMIT 1")
+            val visit = UUID.randomUUID().toString(); val photo = UUID.randomUUID().toString()
+            val d = today().toString()
+            fresh.db.jdbi.useHandle<Exception> { h ->
+                h.execute("SET session_replication_role = replica")
+                try {
+                    h.execute(
+                        """INSERT INTO app.visit (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, visit_kind, outlet_id, opened_at, sequence_no, planned,
+                                                  verdict, radius_m_used, max_accuracy_m_used, location_basis, geo_action, call_photo_uuid)
+                           VALUES ('$visit'::uuid, '$visit'::uuid, DATE '$d', $lkxSr, $route, now(), 0, 'sr_call', $outlet, now(), 1, false, 'in_range', 100, 50, 'master', 'sale_allowed', '$photo'::uuid)""",
+                    )
+                } finally { h.execute("SET session_replication_role = origin") }
+            }
+            val lkxTso = phone("lkxtso1001", "tso"); val lkxAmo = phone("lkxamo1001", "amo")
+            for (own in listOf(lkxTso, lkxAmo)) {
+                val seen = json(getAs(own, "/v1/supervisor/call-photos?business_date=$d").also { assertEquals(HttpStatusCode.OK, it.status) }.bodyAsText())["items"]!!.jsonArray
+                assertTrue(seen.any { it.jsonObject["visit_uuid"]!!.jsonPrimitive.content == visit }, "the territory's own reviewer sees its photo")
+            }
+            for (other in listOf(tso, amo)) {
+                for (q in listOf("", "&route_id=$route", "&limit=500")) {
+                    val text = getAs(other, "/v1/supervisor/call-photos?business_date=$d$q").also { assertEquals(HttpStatusCode.OK, it.status) }.bodyAsText()
+                    assertFalse(text.contains(visit) || text.contains(photo) || text.contains("\"outlet_id\":$outlet,"), "another territory's call photo leaked: $q")
+                }
+            }
+        }
+    }
+
     // ------------------------------------------------------------------------------------------------ checkForUpdate
 
     @Test
