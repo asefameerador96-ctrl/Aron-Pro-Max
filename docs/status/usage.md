@@ -2811,3 +2811,7 @@
 ### 2026-11-12 09:33 UTC — S1 gate and S3 round 2 started
 - S1 `a97835fe3` (SRM-A-01..12: login, OTP, permissions, update, data update): static gate clean (50 files +2136/-35, 2 login goldens re-recorded, no test removed, DECISIONS 401, gitleaks clean; one Float = progress bar fraction, display only); lane ci 43192320280; Opus pass wkxja7xds launched (auth/OTP security, permissions/update/bundle, manual/shared/tests).
 - S3 fix round `4a7dcbcc0`: static gate clean (14 files +280/-16 on be15cd1a8; 2 AMO goldens re-recorded for the green badge; DECISIONS 395); lane ci 43192385629; Opus re-check launched (printer assist, attendance/records).
+
+### 2026-11-12 09:37 UTC — S5 and S6 round 2 started
+- S5 fix round `495255d1a`: static gate clean (25 files +158/-22 on 997b72a0d; one test renamed as asked; DECISIONS 394; lane ci 43192841453); Opus re-check wekacfd8t running.
+- S6 fix round `67ebb0d7a`: static gate clean (four keys and four goldens back to INT; 6 goldens still changed for declared wording; DECISIONS 393; lane ci 43192863255); re-check launched (settings flow, wording/shared keys). S6 reports call_start_title is still rendered by CallPrompts.kt:25 on S4's head (feature-sale), to check when S4 lands.
