@@ -2784,3 +2784,8 @@
 - S5 `997b72a0d` (SRM-B-04..30 train 1): static gate clean (INT ancestor, android + 2 docs, 25 files +818/-68, no test removed, no golden, no migration, DECISIONS 393, gitleaks clean; one runCatching around BitmapFactory.decodeFile, non-suspend). Lane ci 43188833813 in progress. Opus pass whr8hn03l launched (3 lenses + refutation), worktree wt-s5.
 - S5's server needs (digest members, edit reason codes, late-row flag, posm-survey report key) forwarded to SV for contract 1.14.0. Asked SV how the server treats an unknown edit reason code today.
 - S4 Opus pass wclzfw5es still running.
+
+### 2026-11-12 09:13 UTC — S4 Opus FAIL, S6 gate started
+- S4 `777a0ad04` Opus pass wclzfw5es (21 agents): FAIL, 3 survivors: SDLW never shows (7-day window vs today-7), call-start screen shows no outlet (note 19), "সেল ডাটা" title unused (row 31). Also required: dead negative assertion SrRefusalHostsTest:123, three green runs, declared deviations. Math, visit lifecycle, geofence, day lock, AMO isolation checked OK. Fix-up sent; wt-s4 removed.
+- S6 `4f7492912` (settings B-51..56, glossary B-91..113): static gate clean (35 files +284/-37, 10 goldens re-recorded for wording, 3 wording assertions edited, DECISIONS 393, gitleaks clean); lane ci 43189261235 in progress; review w5i2roblp launched (Opus flow safety, Opus Bangla, Sonnet shared-module regressions).
+- Foreseen merge clash S4/S5/S6: call-start wording + SrDayLockHostsTest (S4 told to assert on tags), edit reasons (S6 relabels existing codes, S5 adds new wire codes: to settle on the S5 result).
