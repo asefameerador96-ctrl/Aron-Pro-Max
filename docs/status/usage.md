@@ -3150,3 +3150,7 @@
 - SR sale smoke SKIPPED for the fourth deploy in a row (2026-11-13 not a selling day).
 - ops-diagnose dispatched for the worker's new scrubbed log line (the first dispatch answered 502 but did start run 43331114078; a second run is queued behind it); Haiku reader waiting on it.
 - L-A4 (opened 23:13) pushed the rest of push B at 23:38 (f7b0cbecc; lane ci 43330506207). Rulings sent: bundle carries the current Astha period only, budget 300 KB raw / 32 KB gzip for a 120-outlet SR written into docs/04, page if exceeded, never truncate silently; loyalty paths move to admin module `loyalty`. Opus pass on the whole of push B after its B2.
+
+### 2026-11-12 23:58 UTC — worker log after train 110 (ops-diagnose 43331114078, Haiku reader)
+- Migrate job caj-aron-dev-migrate-wohdbh5: "Schema public is up to date. No migration necessary", current version 0175, exit 0.
+- Worker: revision --0000202 (still the OLD image) logged the old-format "aggregation pass failed" at 23:29:44, 25 s before its start line; revision --0000203 (new image) started 23:39:08 and logged NO failure up to 23:55. So no class/SQLState evidence yet. One observation, not a fix; and the new code ends a pass quietly on an interrupt, which could hide the same failure. Asked L-A4 to log an interrupted pass at WARN (class only) and one INFO after the first successful pass, in its next push. Cause still UNKNOWN.
