@@ -22,10 +22,14 @@ LoyaltyBalance:
       maxLength: 40
     balance_points:
       type: integer
-      description: 'The PLAIN SUM of all ledger rows up to `as_of_date`, `expiry` rows included. Points lapse only
-        when the nightly expiry job posts its debit (computed FIFO: the oldest credit is consumed first, so a credit
-        that was partly redeemed lapses only for what is left of it); before that job has run the balance may still
-        include points past their date. Negative only after a flagged overdraw.'
+      description: Every ledger row posted so far for the outlet and programme (`expiry` rows included), MINUS the
+        points of stored, non-voided redemptions the ledger job has not posted yet (so an acknowledged redemption
+        is in the figure at once; a posted redemption that was voided and not reversed yet is added back), read
+        in one snapshot. There is NO business-date cut. The phone subtracts its own redemptions that had not been
+        acknowledged when it sent the request (the one phone rule of `ProgrammesSection`). Points lapse only when
+        the ledger job has posted their expiry row (replayed in business-date order; a debit never consumes a credit
+        that had lapsed on its date; a later credit first settles unfunded debt); before then the balance may still
+        include points past their date. A negative balance means the outlet is overdrawn.
     overdrawn:
       type: boolean
       description: '1.16.0. True exactly when `balance_points` is below zero: a negative balance is the overdraw
@@ -33,11 +37,14 @@ LoyaltyBalance:
     expiring_points:
       type: integer
       minimum: 0
-      description: The credits expiring on the EARLIEST upcoming `expires_on` (that date is `expiry_date`), capped
-        by the balance and never negative; no window. Debits are not matched to credits in this read.
+      description: 'What the EARLIEST upcoming expiry (`expiry_date`) will take: the credits expiring on that date
+        as the ledger replay leaves them AFTER debits (oldest expiry consumed first) and after unfunded debt has
+        been settled by later credits, capped by the balance and never negative; no window.'
     expiry_date:
       oneOf:
       - $ref: '#/components/schemas/BusinessDate'
       - type: 'null'
     as_of_date:
       $ref: '#/components/schemas/BusinessDate'
+      description: 'DISPLAY ONLY: the business date the figures were read on ("figures include everything the server
+        held when the bundle was built"). It is not a cut: no ledger row is left out because of its date.'

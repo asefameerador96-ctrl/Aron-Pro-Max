@@ -64,6 +64,10 @@ UPDATE app.cfg_key SET default_value = '["SR", "TSO"]'::jsonb, updated_at = now(
 -- cfg.loyalty.negative_balance_policy = reject is NOT enforced at ingest or in the ledger job (not built): the job posts every stored
 -- redemption and overdraw is the derived LoyaltyBalance.overdrawn (balance < 0). Until reject is built, the bounds enum refuses it (contract 1.16.0).
 UPDATE app.cfg_key SET bounds = '{"enum": ["accept_and_flag"]}'::jsonb, updated_at = now() WHERE key = 'cfg.loyalty.negative_balance_policy';
+-- A value already set to `reject` on a database that ran V0009's bounds (dev) must not keep showing a value the bounds now refuse: cfg_value rows are close-only, so an open row holding
+-- `reject` is CLOSED (effective_to) and the key's default, accept_and_flag, applies again. Nothing enforced `reject`, so no behaviour changes; no new config version is minted.
+UPDATE app.cfg_value SET effective_to = GREATEST(now(), effective_from + interval '1 second')
+ WHERE key = 'cfg.loyalty.negative_balance_policy' AND value = '"reject"'::jsonb AND (effective_to IS NULL OR effective_to > now());
 
 COMMENT ON TABLE app.gift_choice IS 'The Astha gift an outlet chose for a quarter, one immutable row per choice a phone sent; the handler keeps app.gift_assignment in step (later captured_at wins until the hand-over photo locks the outlet).
 owner: backend:sync | capture: OFFLINE | retention: transaction | pii: personal';

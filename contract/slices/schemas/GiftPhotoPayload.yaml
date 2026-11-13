@@ -1,11 +1,18 @@
 GiftPhotoPayload:
   type: object
-  description: 'Hand-over photo of a gift: an Astha gift assignment (one photo per assignment, cfg.astha.one_photo_per_outlet)
+  description: 'Hand-over photo of a gift: of an Astha gift assignment or of one redeemed campaign gift unit (Gift
+    Verify). Several photos may be sent: the FIRST by `captured_at` (tie: client
 
-    or one redeemed campaign gift (Gift Verify). The FIRST photo by `captured_at` (tie: client uuid) wins the lock
-    and locks the Astha choice; a later photo is stored as a
+    uuid) is the winner and locks the Astha choice; every other photo is STORED as a flagged duplicate, never refused
+    or deleted (cfg.astha.one_photo_per_outlet is the phone''s own
 
-    flagged duplicate, never refused or deleted.
+    count rule). A campaign-unit photo whose redemption is FINAL (refused, voided, or a line of it voided or refused)
+    or that fails the server checks is stored and flagged
+
+    (`check_flag`: parent_refused, parent_voided, unit_out_of_range, gift_not_in_redemption, outlet_mismatch, out_of_reach),
+    never the unit''s photo; only a redemption that has
+
+    genuinely not arrived yet answers `parent_missing` (retryable).
 
     '
   required:

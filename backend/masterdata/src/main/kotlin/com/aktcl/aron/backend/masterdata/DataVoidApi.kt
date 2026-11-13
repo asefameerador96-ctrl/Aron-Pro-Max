@@ -120,6 +120,8 @@ private suspend fun voidDay(call: ApplicationCall, d: DataVoidDeps): DataVoidOut
         val voidedUuids = mutableListOf<String>()
         val voidedMemos = mutableListOf<String>()
         for (t in tables) {
+            // Lock order advisory, then rows (V0185): a gift photo's key locks are taken before its rows are updated, so a void and a concurrent photo insert cannot deadlock.
+            if (t == "gift_photo") h.createQuery("SELECT app.gift_photo_lock_keys(:r, :d)").bind("r", req.route_id).bind("d", date).mapTo(Int::class.java).one()
             val uuids = h.createQuery("UPDATE app.$t SET voided_at = :now WHERE route_id = :r AND business_date = :d AND voided_at IS NULL RETURNING client_uuid").bind("now", now).bind("r", req.route_id).bind("d", date)
                 .map { rs, _ -> rs.getString(1) }.list()
             if (uuids.isNotEmpty()) counts[t] = uuids.size

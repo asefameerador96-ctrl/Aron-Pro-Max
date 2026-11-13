@@ -299,4 +299,44 @@ class GiftPhotoRecordsTest {
             assertEquals("in_range", rows(sel).single()["server_verdict"]); assertEquals(true, rows(sel).single()["c"])
         }
     }
+
+    // ---- C-R2 finding 4: nothing is retryable for ever ----
+
+    private fun finalFlag(red: String, g: Long = cGift, expect: String) = world.withApi {
+        with(world) {
+            val p = photo(null, 100, unit = red to 1, giftId = g)
+            repeat(2) { n -> val a = ack(sync(sr, listOf(p)), cu(p)); assertEquals(if (n == 0) "accepted" else "duplicate", a.status(), "send $n: stored once, never parked: $a") }
+            val row = flag(p)
+            assertEquals(expect, row["check_flag"]); assertEquals(true, row["is_duplicate"], "flagged, so never the unit's photo")
+            assertEquals(emptyList(), winnersOfUnit(red, 1, g))
+        }
+    }
+
+    @Test
+    fun aPhotoWhoseRedemptionWasVoidedBeforeItSyncedIsStoredAndFlaggedNotParked() {
+        val red = redemption(outlet, listOf(cGift to 1)); world.exec("UPDATE app.redemption SET voided_at = now() WHERE client_uuid = CAST('$red' AS uuid)")
+        finalFlag(red, expect = "parent_voided")
+    }
+
+    @Test
+    fun aPhotoOfAVoidedLineIsStoredAndFlaggedAndALineThatNeverArrivesBecauseItWasRefusedToo() {
+        val voidedLine = redemption(outlet, listOf(cGift to 1, cGift2 to 1)); world.exec("UPDATE app.redemption_line SET voided_at = now() WHERE redemption_client_uuid = CAST('$voidedLine' AS uuid) AND gift_id = $cGift")
+        finalFlag(voidedLine, cGift, "parent_voided")
+        val refusedLine = redemption(outlet, listOf(cGift to 1), lineCount = 2)   // the second line was refused: it will never be stored
+        world.exec("INSERT INTO app.ingest_registry (client_uuid, record_type, family_uuid, payload_sha256, status, outcome_code, user_id, first_batch_uuid) SELECT gen_random_uuid(), 'redemption_line', family_uuid, decode(repeat('00', 32), 'hex'), 'rejected', 'schema_invalid', $userId, gen_random_uuid() FROM app.redemption WHERE client_uuid = CAST('$refusedLine' AS uuid)")
+        finalFlag(refusedLine, expect = "parent_refused")
+    }
+
+    @Test
+    fun aPhotoWhoseRedemptionWasRefusedIsStoredAndFlaggedAndTheOutOfRangeUnitOfAFullyStoredOneToo() {
+        val refused = UUID.randomUUID().toString()   // the redemption itself was refused: its registry row is rejected and no row exists
+        world.exec("INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, status, outcome_code, user_id, first_batch_uuid) VALUES ('$refused', 'redemption', decode(repeat('00', 32), 'hex'), 'rejected', 'schema_invalid', $userId, gen_random_uuid())")
+        finalFlag(refused, expect = "parent_refused")
+        val full = redemption(outlet, listOf(cGift to 1))   // fully stored: judged by the ordinary checks (unit 2 of a 1-unit gift)
+        world.withApi {
+            with(world) {
+                val p = photo(null, 100, unit = full to 2); assertEquals("accepted", ack(sync(sr, listOf(p)), cu(p)).status()); assertEquals("unit_out_of_range", flag(p)["check_flag"])
+            }
+        }
+    }
 }

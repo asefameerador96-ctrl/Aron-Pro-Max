@@ -11,6 +11,11 @@ Ruling: D-LEAD-CONTRACT-116-01 (lead, written at the gate). Predecessor: `docs/r
 - `gift_photo`, first photo wins (V0185): the FIRST photo by `captured_at` (tie: client uuid) takes the lock; a later one is stored as a flagged duplicate, never refused or deleted. `gift_photo_exists` stays in the enum for old rows but is no longer produced. `GiftPhotoPayload` text is updated.
 - Config: default of `cfg.astha.gift_choice_roles` is SR and TSO (V0182; explicit values untouched).
 
+## Round C-R2 (description-only changes inside 1.16.0, no member added)
+
+- `LoyaltyBalance.balance_points` = every ledger row posted so far less the stored, non-voided redemptions not yet posted (a posted-then-voided one with no reversal yet is added back); NO business-date cut; one function for the bundle and the live read; `as_of_date` is display only ("figures include everything the server held when the bundle was built"); the phone subtracts its own redemptions not acknowledged when it sent the request (ACHIEVEMENT RULE of `ProgrammesSection`, the one rule). `expiring_points` is what the earliest upcoming expiry takes after debits and after later credits settled unfunded debt.
+- `GiftPhotoPayload`: several photos may be sent; the first is the winner, the rest are flagged duplicates; a campaign-unit photo of a FINAL redemption (voided, refused, a line voided or refused) is stored and flagged `parent_voided` / `parent_refused` (new `check_flag` values, a server-side column, not a contract enum); only a redemption not synced yet answers `parent_missing`.
+
 ## Not built
 
 `cfg.loyalty.negative_balance_policy = reject` is NOT enforced at ingest (not built; the ledger job posts every stored redemption and the overdraw is the derived `overdrawn` flag). Config validation refuses the value `reject` until it is built (V0182 narrows the validation to `["accept_and_flag"]`).

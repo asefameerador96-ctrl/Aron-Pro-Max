@@ -36,7 +36,7 @@ import java.util.Base64
 
 // ---------------------------------------------------------------------------------------------------------------------
 // The read-only online refreshes of the loyalty field side (contract 1.15.0; lane portal-loyalty-api, train 3, push B):
-//   GET /v1/programmes/loyalty/balances   getLoyaltyBalances: the LIVE balance (the ledger up to and including today), where the bundle has the previous day's
+//   GET /v1/programmes/loyalty/balances   getLoyaltyBalances: the SAME balance function as the bundle (every ledger row posted so far less the redemptions not posted yet), read now
 //   GET /v1/programmes/astha/targets      listAsthaTargets: the quarter's target rows with achievement as of the read
 //   GET /v1/programmes/astha/gift-choices listGiftChoices: the quarter's gift choices
 // The bundle stays the offline source: a failed refresh keeps the bundle figure with its age (phone). Scope comes from the token only (SR: assigned routes; AMO, TSO,
@@ -114,7 +114,7 @@ internal class ProgrammeReads(private val d: ProgrammeReadDeps) {
             if (outlets.isEmpty()) return@withHandle BundleProgrammes.Capped(emptyList(), false)
             // The programme filter is applied INSIDE the programme query (before its cap); the shared geography predicate keeps out-of-scope campaigns.
             val programmes = BundleProgrammes.programmes(h, date, listOf("diamond_league", "astha", "campaign", "superstar"), outlets, BundleProgrammes.scopeOf(h, sc.reach, outlets), programme).items.map { it.first }
-            if (programmes.isEmpty()) BundleProgrammes.Capped(emptyList(), false) else BundleProgrammes.loyalty(h, outlets, programmes, date, date, MAX_BALANCES)
+            if (programmes.isEmpty()) BundleProgrammes.Capped(emptyList(), false) else BundleProgrammes.loyalty(h, outlets, programmes, date, MAX_BALANCES)
         }
         return buildJsonObject { put("as_of", d.clock.now().wire()); put("truncated", got.truncated); put("items", JsonArray(got.items)) }
     }

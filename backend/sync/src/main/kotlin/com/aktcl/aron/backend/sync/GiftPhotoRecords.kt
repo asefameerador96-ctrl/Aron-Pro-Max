@@ -24,8 +24,9 @@ import java.time.ZoneOffset
  * This handler adds what a trigger cannot:
  *  - check: an Astha photo names an existing assignment whose outlet is in the uploader's reach (else `schema_invalid` / `scope_out_of_reach`);
  *  - a campaign-unit photo (no assignment) is judged against its redemption: unit_no within the redeemed qty, the gift is a line of it, the outlet is the redemption's, the outlet is in the uploader's
- *    reach and in the programme's scope ([ProgrammeScopeParams]). One that fails is STORED and flagged (`check_flag`, never the unit's photo), never refused; one whose redemption lines have not all
- *    arrived yet is parked (`parent_missing`, retryable) because it cannot be judged yet;
+ *    reach and in the programme's scope ([ProgrammeScopeParams]). One that fails is STORED and flagged (`check_flag`, never the unit's photo), never refused. NOTHING IS RETRYABLE FOR EVER (C-R2): a
+ *    photo whose redemption is FINAL is stored and flagged too - `parent_voided` (the redemption or the gift's line is voided), `parent_refused` (the redemption or a line of it was refused);
+ *    only a redemption that has genuinely not arrived yet (header not synced, or lines still on their way) answers `parent_missing` (retryable). A reviewer's accept waives only what [GiftHolds] says.
  *  - the server geofence re-check of the photo fix with the same function as the visit ([GeoRecheckHandler.recheck]); stored beside the phone's data, never a reason to refuse;
  *  - the lock: with `cfg.astha.gift_choice_lock` = `on_sr_photo` (default) the assignment gets `locked_at` (kept once set) and `photo_media_uuid` = the winner's photo, recomputed from the table on
  *    every arrival, so a late arrival of an earlier photo moves the winner and the order of arrival never changes the outcome.
@@ -42,26 +43,42 @@ class GiftPhotoRecords(private val reach: ReachResolver, private val config: Ser
 
     private fun unitVerdict(h: Handle, rec: IngestRecord): UnitVerdict {
         val red = (rec.payload["redemption_client_uuid"] as? JsonPrimitive)?.contentOrNull ?: return UnitVerdict("gift_not_in_redemption", false)
-        val head = h.createQuery("SELECT outlet_id, programme_id, line_count FROM app.redemption WHERE client_uuid = CAST(:r AS uuid)").bind("r", red)
-            .map { rs, _ -> Triple(rs.getLong(1), rs.getLong(2), rs.getInt(3)) }.findOne().orElse(null) ?: return UnitVerdict(null, true)
+        class Head(val outlet: Long, val programme: Long, val lineCount: Int, val voided: Boolean, val family: String)
+        val head = h.createQuery("SELECT outlet_id, programme_id, line_count, voided_at IS NOT NULL, family_uuid::text FROM app.redemption WHERE client_uuid = CAST(:r AS uuid)").bind("r", red)
+            .map { rs, _ -> Head(rs.getLong(1), rs.getLong(2), rs.getInt(3), rs.getBoolean(4), rs.getString(5)) }.findOne().orElse(null)
+        // NOTHING IS RETRYABLE FOR EVER (C-R2): only a parent that is genuinely not synced yet is pending. A parent that is final - refused, voided, or fully stored - is judged now: the photo is
+        // stored and flagged (parent_refused, parent_voided, or the unit/gift/outlet checks below).
+        if (head == null) {
+            val refused = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.ingest_registry WHERE client_uuid = CAST(:r AS uuid) AND status = 'rejected')").bind("r", red).mapTo(Boolean::class.java).one()
+            return if (refused) UnitVerdict("parent_refused", false) else UnitVerdict(null, true)
+        }
+        if (head.voided) return UnitVerdict("parent_voided", false)
         val giftId = long(rec, "gift_id")
-        val stored = h.createQuery("SELECT count(*) FROM app.redemption_line WHERE redemption_client_uuid = CAST(:r AS uuid) AND voided_at IS NULL").bind("r", red).mapTo(Int::class.java).one()
-        if (stored < head.third) return UnitVerdict(null, true)   // the lines are children of the same family and still on their way
-        if (long(rec, "outlet_id") != head.first) return UnitVerdict("outlet_mismatch", false)
+        // all stored lines count toward "fully stored", a voided line included (it is stored, and final)
+        val stored = h.createQuery("SELECT count(*) FROM app.redemption_line WHERE redemption_client_uuid = CAST(:r AS uuid)").bind("r", red).mapTo(Int::class.java).one()
+        if (stored < head.lineCount) {
+            val refusedLine = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.ingest_registry WHERE family_uuid = CAST(:f AS uuid) AND record_type = 'redemption_line' AND status = 'rejected')").bind("f", head.family).mapTo(Boolean::class.java).one()
+            return if (refusedLine) UnitVerdict("parent_refused", false) else UnitVerdict(null, true)   // a line is still on its way
+        }
+        if (long(rec, "outlet_id") != head.outlet) return UnitVerdict("outlet_mismatch", false)
         val qty = h.createQuery("SELECT sum(qty) FROM app.redemption_line WHERE redemption_client_uuid = CAST(:r AS uuid) AND gift_id = :g AND voided_at IS NULL")
-            .bind("r", red).bind("g", giftId).mapTo(Long::class.javaObjectType).findOne().orElse(null) ?: return UnitVerdict("gift_not_in_redemption", false)
+            .bind("r", red).bind("g", giftId).mapTo(Long::class.javaObjectType).findOne().orElse(null)
+            ?: return UnitVerdict(
+                if (h.createQuery("SELECT EXISTS (SELECT 1 FROM app.redemption_line WHERE redemption_client_uuid = CAST(:r AS uuid) AND gift_id = :g)").bind("r", red).bind("g", giftId).mapTo(Boolean::class.java).one()) "parent_voided" else "gift_not_in_redemption",
+                false,
+            )
         val unit = long(rec, "unit_no")
         if (unit == null || unit < 1 || unit > qty) return UnitVerdict("unit_out_of_range", false)
-        val o = h.createQuery("SELECT route_id, zone_id FROM app.outlet WHERE id = :o").bind("o", head.first).map { rs, _ -> (rs.getObject("route_id") as Number?)?.toLong() to rs.getLong("zone_id") }.findOne().orElse(null)
+        val o = h.createQuery("SELECT route_id, zone_id FROM app.outlet WHERE id = :o").bind("o", head.outlet).map { rs, _ -> (rs.getObject("route_id") as Number?)?.toLong() to rs.getLong("zone_id") }.findOne().orElse(null)
             ?: return UnitVerdict("outlet_mismatch", false)
         val r = reach.reach(rec.userId, rec.role, 0, rec.businessDate)
         val inReach = if (r.ownRecordsOnly) o.first in r.routeIds else r.coversZone(o.second) || o.first in r.routeIds
-        if (!inReach) return UnitVerdict("out_of_reach", false)
+        if (!inReach && !GiftHolds.waives(rec.released, GiftHolds.Check.REACH)) return UnitVerdict("out_of_reach", false)   // a reviewer's accept of a scope hold waives the uploader's reach only
         // the programme's geography, through the one predicate every loyalty read uses
         val scope = ProgrammeScopeParams.of(h, r, listOfNotNull(o.first))
         val inScope = h.createQuery(
             "SELECT EXISTS (SELECT 1 FROM app.programme p LEFT JOIN app.programme_version v ON v.id = p.current_version_id JOIN app.outlet o ON o.id = :o WHERE p.id = :p AND ${ProgrammeScopeSql.geo("v")} AND ${ProgrammeScopeSql.outlet("v", "o")})",
-        ).bind("o", head.first).bind("p", head.second).also { scope.bindTo(it) }.mapTo(Boolean::class.java).one()
+        ).bind("o", head.outlet).bind("p", head.programme).also { scope.bindTo(it) }.mapTo(Boolean::class.java).one()
         return UnitVerdict(if (inScope) null else "out_of_reach", false)
     }
 
@@ -73,7 +90,7 @@ class GiftPhotoRecords(private val reach: ReachResolver, private val config: Ser
         if (long(rec, "outlet_id") != a.first) return RecordRefusal(RecordOutcomeCode.SCHEMA_INVALID, "outlet_id does not match assignment $assignment")
         val r = reach.reach(rec.userId, rec.role, 0, rec.businessDate)
         val inReach = if (r.ownRecordsOnly) a.second in r.routeIds else r.coversZone(a.third) || a.second in r.routeIds
-        return if (inReach) null else RecordRefusal(RecordOutcomeCode.SCOPE_OUT_OF_REACH, "assignment $assignment outside the uploader's reach")
+        return if (inReach || GiftHolds.waives(rec.released, GiftHolds.Check.REACH)) null else RecordRefusal(RecordOutcomeCode.SCOPE_OUT_OF_REACH, "assignment $assignment outside the uploader's reach")
     }
 
     override fun afterStored(h: Handle, rec: IngestRecord, serverId: Long?) {

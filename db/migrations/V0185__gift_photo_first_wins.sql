@@ -9,6 +9,7 @@
 -- 5. Ties: the order of a key's photos is (captured_at, client_uuid), the same in the BEFORE INSERT trigger and in app.gift_photo_elect, so the winner never depends on arrival.
 -- 6. A campaign-unit photo that fails the handler's checks (unit_no within the redeemed qty, the gift is a line of that redemption, the outlet is the redemption's, the
 --    uploader's reach) is STORED and flagged: check_flag names the reason and is_duplicate is true, so it never counts as the unit's photo and the next eligible photo is elected.
+-- 6a. A photo whose parent redemption is FINAL (voided, or refused, or a line of it voided or refused) is stored and flagged parent_voided / parent_refused: nothing is parked for ever.
 -- 7. An admin data void of the winner promotes the earliest remaining eligible photo and the assignment (photo_media_uuid, locked_at) follows: app.gift_photo_elect.
 
 SET lock_timeout = '5s';
@@ -16,14 +17,14 @@ SET lock_timeout = '5s';
 ALTER TABLE app.gift_photo
   ADD COLUMN is_duplicate boolean NOT NULL DEFAULT false,
   ADD COLUMN flagged_at timestamptz,
-  ADD COLUMN check_flag text CHECK (check_flag IN ('unit_out_of_range','gift_not_in_redemption','outlet_mismatch','out_of_reach')),
+  ADD COLUMN check_flag text CHECK (check_flag IN ('unit_out_of_range','gift_not_in_redemption','outlet_mismatch','out_of_reach','parent_voided','parent_refused')),
   ADD COLUMN server_verdict text CHECK (server_verdict IN ('in_range','out_of_range','accuracy_too_low','no_fix','mocked','no_outlet_location')),
   ADD COLUMN server_distance_m double precision CHECK (server_distance_m >= 0),
   ADD COLUMN server_radius_m int CHECK (server_radius_m > 0),
   ADD COLUMN server_checked_at timestamptz;
 COMMENT ON COLUMN app.gift_photo.is_duplicate IS 'True for a photo that is not the first by captured_at for its assignment or unit; stored and kept, never counted as the lock (V0185).';
 COMMENT ON COLUMN app.gift_photo.flagged_at IS 'When the photo was flagged as a duplicate or as failing its checks.';
-COMMENT ON COLUMN app.gift_photo.check_flag IS 'Why a campaign-unit photo failed the ingest checks (unit_out_of_range, gift_not_in_redemption, outlet_mismatch, out_of_reach); null when it passed. Such a photo is stored, flagged (is_duplicate) and never the unit''s photo.';
+COMMENT ON COLUMN app.gift_photo.check_flag IS 'Why a campaign-unit photo failed the ingest checks (unit_out_of_range, gift_not_in_redemption, outlet_mismatch, out_of_reach, parent_voided, parent_refused); null when it passed. Such a photo is stored, flagged (is_duplicate) and never the unit''s photo.';
 COMMENT ON COLUMN app.gift_photo.server_verdict IS 'The server re-check of the photo fix against the outlet location (same function as the phone, docs/24 s11.3); the photo is never refused for it.';
 COMMENT ON COLUMN app.gift_photo.server_distance_m IS 'Metres between the photo fix and the outlet location at capture, from the server re-check; null when there was no usable fix or location.';
 COMMENT ON COLUMN app.gift_photo.server_radius_m IS 'The geofence radius in metres the server re-check used (the value in force at capture).';
@@ -102,6 +103,25 @@ BEGIN
      WHERE id = p_assignment AND (photo_media_uuid IS DISTINCT FROM win.photo_uuid OR (win.id IS NULL AND locked_at IS NOT NULL));
   END IF;
   RETURN win.id;
+END $$;
+
+-- LOCK ORDER (C-R2): advisory lock first, rows second, everywhere. The insert trigger takes the key's advisory lock and then updates the current winner's row; a void that updated the
+-- winner's row first and took the advisory lock in its AFTER trigger could deadlock with it. So a void path calls this BEFORE its UPDATE: it takes the advisory locks of every key
+-- with a live photo on the route-day, in one deterministic order, and the rows are touched only afterwards (the AFTER trigger then re-takes locks it already holds).
+CREATE FUNCTION app.gift_photo_lock_keys(p_route bigint, p_date date) RETURNS integer
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  k text; n integer := 0;
+BEGIN
+  FOR k IN
+    SELECT DISTINCT CASE WHEN gift_assignment_id IS NOT NULL THEN 'gift_photo:a:' || gift_assignment_id
+                         ELSE 'gift_photo:u:' || redemption_client_uuid || ':' || gift_id || ':' || coalesce(unit_no, 0) END AS lk
+      FROM app.gift_photo WHERE route_id = p_route AND business_date = p_date AND voided_at IS NULL ORDER BY 1
+  LOOP
+    PERFORM pg_advisory_xact_lock(hashtextextended(k, 0)); n := n + 1;
+  END LOOP;
+  RETURN n;
 END $$;
 
 CREATE FUNCTION app.gift_photo_after_void() RETURNS trigger

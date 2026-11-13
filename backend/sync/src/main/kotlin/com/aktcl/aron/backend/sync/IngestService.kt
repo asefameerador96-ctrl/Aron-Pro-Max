@@ -1105,6 +1105,8 @@ class IngestService(
                     ?.let { (PARENT_TYPES[field] ?: t) to it }
             }
             if (found == null) {
+                // A gift photo whose redemption was refused (final) is stored and flagged parent_refused by its handler (GiftPhotoRecords): a parent that can never arrive must not park it for ever.
+                if (r.type == "gift_photo" && field == "redemption_client_uuid" && reg?.get(2) == "rejected") continue
                 // The child of a quarantined parent is held with it (same code), so a review that accepts the parent
                 // finds its children; parking it would let the phone give up on it.
                 // A memo refused for its number (final) takes its own children with it: they can never be stored.

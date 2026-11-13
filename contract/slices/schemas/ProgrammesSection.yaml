@@ -2,8 +2,9 @@ ProgrammesSection:
   type: object
   description: 'Programme data for the user''s routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme
     is active in the user''s reach, else the bundle member is null. Cut to the outlets and routes of the bundle
-    (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS
-    Dhaka business date; see `LoyaltyBalance`); `astha_targets` carry server achievement (units in `AsthaTargetRow`;
+    (token scope). `loyalty.balance_points` and `expiring_points` are integer points: everything the server held
+    when the bundle was built (`as_of_date` is display only; see `LoyaltyBalance`; the phone subtracts its own redemptions
+    not acknowledged when it sent the request); `astha_targets` carry server achievement (units in `AsthaTargetRow`;
     `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends
     no rows. `astha_targets` carries only the CURRENT month of the bundle''s business date (earlier or later months
     of the quarter are read online with `listAsthaTargets`), only outlets enrolled in an active Astha programme,
@@ -15,7 +16,10 @@ ProgrammesSection:
     section is read in ONE read-only REPEATABLE READ snapshot on the primary database, and it includes every memo
     of this user whose sync acknowledgement was sent before this bundle request was received. Phone rule: the phone
     adds its own memos that had NOT been acknowledged when it SENT this bundle request, keyed by memo_uuid, recomputed
-    from scratch after each bundle; the phone never uploads records while a bundle request is in flight (single-flight
+    from scratch after each bundle; the SAME rule covers the loyalty balances: every `loyalty` figure includes every
+    redemption of this user acknowledged before the request was received (and everything the ledger holds, with
+    no business-date cut), and the phone subtracts its own redemptions that had NOT been acknowledged when it sent
+    the request, keyed by redemption uuid; the phone never uploads records while a bundle request is in flight (single-flight
     sync), and if an acknowledgement arrives during the request it discards the section''s achievement and refetches.
     `astha_as_of` and a row''s `as_of` are display only ("data as of"), never part of the rule. Caps are never silent:
     `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200), gift_assignments

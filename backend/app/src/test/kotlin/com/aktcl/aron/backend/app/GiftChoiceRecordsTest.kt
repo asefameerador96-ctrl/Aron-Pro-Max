@@ -146,8 +146,8 @@ class GiftChoiceRecordsTest {
 
     private val fakeReach = com.aktcl.aron.backend.platform.ReachResolver { uid, role, _, d -> Reach(uid, role, d, false, emptySet(), setOf(route), true, emptyList()) }
     private fun handler() = GiftChoiceRecords(fakeReach, world.wiring.config)
-    private fun ingest(r: JsonObject, released: RecordOutcomeCode? = null) = IngestRecord(
-        "gift_choice", r["client_uuid"].toString().trim('"'), today, r, r["payload"]!!.jsonObject, sr.userId, Role.SR, sr.deviceId, UUID.randomUUID().toString(), world.now.get(), released,
+    private fun ingest(r: JsonObject, released: RecordOutcomeCode? = null, role: Role = Role.SR) = IngestRecord(
+        "gift_choice", r["client_uuid"].toString().trim('"'), today, r, r["payload"]!!.jsonObject, sr.userId, role, sr.deviceId, UUID.randomUUID().toString(), world.now.get(), released,
     )
 
     /** A programme of its own (code per test) with every outlet of the route enrolled and one gift for every tier, so a test owns its assignments. */
@@ -249,6 +249,62 @@ class GiftChoiceRecordsTest {
             }
             assertEquals(0L, one("SELECT count(*) FROM app.gift_assignment WHERE programme_id = $p"))
             val ok = choice(outletSilver, g); assertEquals("accepted", ack(sync(tso, listOf(ok)), ok["client_uuid"].toString().trim('"')).status(), "the open quarter is accepted")
+        }
+    }
+
+    // ---- C-R2 finding 3: the one table of waived checks, a test per hold code ----
+
+    /** A programme of the given kind whose gift has no tier list; [enrol] enrols the Gold outlet. */
+    private fun programmeOf(kind: String, tag: String, enrol: Boolean): Long = with(world) {
+        val p = one("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('$kind', '$tag', 'Hold $tag', DATE '${today.minusDays(40)}', DATE '${today.plusDays(40)}', 'active') RETURNING id")
+        if (enrol) exec("INSERT INTO app.programme_enrolment (programme_id, outlet_id, tier_code, valid_from) VALUES ($p, $outletGold, 'gold', DATE '${today.minusDays(30)}')")
+        one("INSERT INTO app.gift (programme_id, code, name_en) VALUES ($p, 'g_${tag.lowercase()}', 'Gift $tag') RETURNING id")
+    }
+
+    /** The codes a record can be held under before or at a gift handler (every quarantined RecordOutcomeCode), and the generic ones that have no handler check behind them. */
+    private val generic = setOf(RecordOutcomeCode.BUSINESS_DATE_OUT_OF_WINDOW, RecordOutcomeCode.DEVICE_NOT_ENROLLED, RecordOutcomeCode.DEVICE_INTEGRITY_FAILED, RecordOutcomeCode.CONTENT_DUPLICATE, RecordOutcomeCode.AFTER_FINAL_SUBMIT)
+
+    private fun refusal(r: JsonObject, released: RecordOutcomeCode?, role: Role = Role.SR): RecordOutcomeCode? =
+        world.fresh.db.jdbi.inTransaction<RecordOutcomeCode?, Exception> { h -> handler().check(h, ingest(r, released, role))?.code }
+
+    @Test
+    fun theTableMapsEveryHoldCodeToTheSingleCheckItWaivesAndNothingElse() {
+        val (_, gOk) = ownProgramme("H1")
+        val outOfReach = choice(outletLkx, gOk)                                  // the outlet is not on the uploader's route
+        val wrongRole = choice(outletGold, gOk)                                  // an AMO does not choose Astha gifts (cfg.astha.gift_choice_roles)
+        val gDiamond = programmeOf("diamond_league", "H-DL", enrol = true); val kindFails = choice(outletGold, gDiamond)
+        val gNoEnrol = programmeOf("astha", "H-NE", enrol = false); val notEnrolled = choice(outletGold, gNoEnrol)
+        val gBoth = programmeOf("diamond_league", "H-BOTH", enrol = false); val bothFail = choice(outletGold, gBoth)
+        val c = RecordOutcomeCode
+        // scope_out_of_reach: the WHO check (role and reach); no other code waives the role check
+        assertEquals(c.SCOPE_OUT_OF_REACH, refusal(outOfReach, null)); assertNull(refusal(outOfReach, c.SCOPE_OUT_OF_REACH))
+        assertEquals(c.SCOPE_OUT_OF_REACH, refusal(wrongRole, null, Role.AMO)); assertNull(refusal(wrongRole, c.SCOPE_OUT_OF_REACH, Role.AMO))
+        // no_assignment_on_date: the REACH check on the record's date (the cover day) - the finding's case - but not the role check
+        assertNull(refusal(outOfReach, c.NO_ASSIGNMENT_ON_DATE), "a cover day accepted by a reviewer is not judged out of reach again")
+        assertEquals(c.SCOPE_OUT_OF_REACH, refusal(wrongRole, c.NO_ASSIGNMENT_ON_DATE, Role.AMO), "it does not waive the role check")
+        // programme_inactive: the status/kind check when it fails, else the enrolment check; never both
+        assertEquals(c.PROGRAMME_INACTIVE, refusal(kindFails, null)); assertNull(refusal(kindFails, c.PROGRAMME_INACTIVE))
+        assertEquals(c.PROGRAMME_INACTIVE, refusal(notEnrolled, null)); assertNull(refusal(notEnrolled, c.PROGRAMME_INACTIVE))
+        assertEquals(c.PROGRAMME_INACTIVE, refusal(bothFail, c.PROGRAMME_INACTIVE), "an accept made for one of the two checks does not also waive the other")
+        // every other code waives none of the above; and no code at all waives the tier, the lock or the quarter
+        val tierFail = choice(outletGold, gSilver)
+        val quarterFail = choice(outletGold2, gOk, q = AsthaQuarter.of(today.minusMonths(3), 1).label)
+        for (code in RecordOutcomeCode.entries) {
+            if (code != c.SCOPE_OUT_OF_REACH && code != c.NO_ASSIGNMENT_ON_DATE) assertEquals(c.SCOPE_OUT_OF_REACH, refusal(outOfReach, code), "$code must not waive the reach check")
+            if (code != c.PROGRAMME_INACTIVE) { assertEquals(c.PROGRAMME_INACTIVE, refusal(kindFails, code), "$code must not waive the kind check"); assertEquals(c.PROGRAMME_INACTIVE, refusal(notEnrolled, code), "$code must not waive the enrolment check") }
+            assertEquals(c.GIFT_NOT_FOR_TIER, refusal(tierFail, code), "$code must not waive the tier check")
+            assertEquals(c.SCHEMA_INVALID, refusal(quarterFail, code), "$code must not waive the open-quarter check")
+        }
+        for (code in generic) assertEquals(setOf<RecordOutcomeCode>(), setOf(code).filter { com.aktcl.aron.backend.sync.GiftHolds.WAIVES.containsKey(it) }.toSet(), "$code has no handler check behind it")
+    }
+
+    @Test
+    fun aCoverDayChoiceAcceptedByAReviewerIsAppliedNotJudgedOutOfReachAgain() {
+        val (p, g) = ownProgramme("H2")
+        with(world) {
+            val r = choice(outletLkx, g); val rec = ingest(r, RecordOutcomeCode.NO_ASSIGNMENT_ON_DATE)
+            fresh.db.jdbi.useTransaction<Exception> { h -> assertNull(handler().check(h, rec)); handler().afterStored(h, rec, null) }
+            assertEquals(g, rows("SELECT gift_id FROM app.gift_assignment WHERE programme_id = $p AND quarter = '$quarter' AND outlet_id = $outletLkx").single()["gift_id"], "the assignment follows the accepted cover-day choice")
         }
     }
 }
