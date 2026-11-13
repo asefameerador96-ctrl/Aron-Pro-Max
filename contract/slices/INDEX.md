@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.16.0.
 
 
-## Schemas (647)
+## Schemas (648)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -248,8 +248,9 @@ Source: contract/openapi.yaml, version 1.16.0.
 - `schemas/RubricDef.yaml` (2518 B)
 - `schemas/SurveyDef.yaml` (2209 B)
 - `schemas/BundleCluster.yaml` (446 B)
-- `schemas/OutletSkuStat.yaml` (1621 B)
-- `schemas/Bundle.yaml` (4148 B)
+- `schemas/OutletSkuStat.yaml` (759 B)
+- `schemas/OutletSkuStatItem.yaml` (1077 B)
+- `schemas/Bundle.yaml` (4181 B)
 - `schemas/BundlePage.yaml` (872 B)
 - `schemas/SectionDelta.yaml` (1012 B)
 - `schemas/BundleDelta.yaml` (2482 B)

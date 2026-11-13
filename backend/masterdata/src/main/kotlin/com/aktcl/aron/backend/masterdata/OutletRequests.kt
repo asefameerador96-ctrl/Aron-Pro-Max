@@ -565,7 +565,10 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         val q = h.row("SELECT status, created_cluster_id FROM app.outlet_change_request WHERE client_uuid = :u AND request_type = 'cluster_create' AND voided_at IS NULL", "u" to u)
             ?: bad("/proposed/cluster_request_uuid", "unknown_cluster_request")
         (q["created_cluster_id"] as Number?)?.let { return it.toLong() }
-        throw ApiProblem(ProblemCode.ERR_CONFLICT, "the cluster request is ${q["status"]}; approve it first", context = mapOf("guard" to JsonPrimitive("cluster_request_pending")))
+        // A refused / lapsed / discarded cluster request will never make a cluster: the approver must give the shop another cluster (or reject it); a pending one is approved first.
+        val refused = q["status"] in setOf("rejected", "lapsed", "discarded")
+        throw ApiProblem(ProblemCode.ERR_CONFLICT, if (refused) "the cluster request was ${q["status"]}; choose another cluster for the shop" else "the cluster request is ${q["status"]}; approve it first",
+            context = mapOf("guard" to JsonPrimitive(if (refused) "cluster_request_refused" else "cluster_request_pending")))
     }
 
     /** Applies an approved request to the outlet master; returns the new outlet's id for a `new` request. */

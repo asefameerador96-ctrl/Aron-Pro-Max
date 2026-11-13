@@ -40,7 +40,7 @@ data class Bundle(
     val tutorials: List<JsonObject>,
     /** Contract 1.16.0 (SRM-B-35/40, part B): the clusters a new shop or an outlet change may name, per route of the SR. SR only; empty for other roles. */
     val clusters: List<BundleCluster> = emptyList(),
-    /** Contract 1.16.0 (SRM-A-29): previous sale day, ADS and SDLW per outlet x SKU of the SR's own routes, integer hundredths in BASE units. SR only. */
+    /** Contract 1.16.0 (SRM-A-29): previous sale day, ADS and SDLW per outlet (one entry each) with its SKUs, integer hundredths in BASE units. SR only. */
     val outlet_sku_stats: List<OutletSkuStat> = emptyList(),
 )
 
@@ -49,13 +49,19 @@ data class Bundle(
 data class BundleCluster(val cluster_id: Long, val name: String, val route_id: Long, val route_name: String)
 
 /**
- * Sales history of one outlet x SKU in BASE units (sticks / pieces; the phone converts to packets with the SKU's pack_factor). [previous_day] is the outlet's
- * most recent sale day before the bundle date (null when none in the 30-day window), [previous_day_qty_base] the quantity of this SKU on that day.
- * [ads_hundredths] = average quantity per selling day x 100 over the 30 days before the bundle date (selling day = a day the outlet had a live memo), rounded
- * half up; [sdlw_qty_base] = the quantity on the same weekday last week (bundle date minus 7).
+ * Sales history of one outlet in BASE units (sticks / pieces; the phone converts to packets with each SKU's pack_factor), one compact entry per outlet (contract 1.16.0).
+ * [previous_day] is the outlet's most recent selling day before the bundle date within the last 30 business days; [items] are its SKUs with a sale in that window.
  */
 @Serializable
-data class OutletSkuStat(val outlet_id: Long, val sku_id: Long, val previous_day: String?, val previous_day_qty_base: Long, val ads_hundredths: Long, val sdlw_qty_base: Long)
+data class OutletSkuStat(val outlet_id: Long, val previous_day: String, val items: List<OutletSkuStatItem>)
+
+/**
+ * One SKU of an [OutletSkuStat]. [sku] = SKU id; [prev] = base-unit quantity on the outlet's previous_day (omitted when 0); [ads] = average quantity per selling day x 100,
+ * an integer in hundredths of a base unit (30 business days before the bundle date, rounded half up); [sdlw] = base-unit quantity on the same weekday last week, bundle date
+ * minus 7 days (omitted when 0). Short member names keep the section small on the 2 GB phones; an omitted member is 0.
+ */
+@Serializable
+data class OutletSkuStatItem(val sku: Long, val prev: Long? = null, val ads: Long, val sdlw: Long? = null)
 
 @Serializable
 data class PagedSection(val section: String, val pages: Int, val rows: Int)

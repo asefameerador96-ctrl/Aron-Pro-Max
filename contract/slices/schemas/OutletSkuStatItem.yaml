@@ -1,0 +1,29 @@
+OutletSkuStatItem:
+  type: object
+  description: 'One SKU of an `OutletSkuStat`; short member names keep the section inside its budget (docs/04: at
+    most 150 KB raw and 20 KB gzip at 70 outlets x 40 SKUs, every pair dense). An omitted `prev` or `sdlw` is 0.
+    Only SKUs with a sale in the 30-business-day window are listed.'
+  required:
+  - sku
+  - ads
+  additionalProperties: false
+  properties:
+    sku:
+      $ref: '#/components/schemas/Id'
+    prev:
+      type: integer
+      format: int64
+      minimum: 1
+      description: Base units (sticks / pieces) of this SKU on the outlet's previous_day; omitted when 0.
+    ads:
+      type: integer
+      format: int64
+      minimum: 0
+      description: 'Average quantity per selling day x 100, in hundredths of a base unit (30 business days before
+        the bundle date, rounded half up): 250 = 2.5 base units.'
+    sdlw:
+      type: integer
+      format: int64
+      minimum: 1
+      description: Base units (sticks / pieces) of this SKU on the same weekday last week (bundle date minus 7 days);
+        omitted when 0.

@@ -86,16 +86,17 @@ class SrServerTrain2ApiTest {
             val res = getAs(sr, "/v1/sync/bundle")
             assertEquals(HttpStatusCode.OK, res.status, res.bodyAsText())
             val bundle = json(res.bodyAsText())
-            val stats = bundle["outlet_sku_stats"]!!.jsonArray.map { it.jsonObject }.filter { it["outlet_id"]!!.jsonPrimitive.content.toLong() == outlet }
-            fun row(code: String): JsonObject = stats.single { it["sku_id"]!!.jsonPrimitive.content.toLong() == skuId(code) }
+            val entry = bundle["outlet_sku_stats"]!!.jsonArray.map { it.jsonObject }.single { it["outlet_id"]!!.jsonPrimitive.content.toLong() == outlet }
+            fun item(code: String): JsonObject = entry["items"]!!.jsonArray.map { it.jsonObject }.single { it["sku"]!!.jsonPrimitive.content.toLong() == skuId(code) }
+            fun JsonObject.num(k: String) = this[k]?.jsonPrimitive?.content?.toLong() ?: 0L   // an omitted member is 0
             // 3 selling days (d-7, d-3, d-1): A total 19 -> ADS 633.33 -> 633 hundredths; B total 4 -> 133
-            assertEquals(day(1), row(a)["previous_day"]!!.jsonPrimitive.content)
-            assertEquals(3L, row(a)["previous_day_qty_base"]!!.jsonPrimitive.content.toLong(), "previous sale day quantity in base units")
-            assertEquals(633L, row(a)["ads_hundredths"]!!.jsonPrimitive.content.toLong())
-            assertEquals(10L, row(a)["sdlw_qty_base"]!!.jsonPrimitive.content.toLong(), "same weekday last week")
-            assertEquals(0L, row(b)["previous_day_qty_base"]!!.jsonPrimitive.content.toLong(), "B was not sold on the previous sale day")
-            assertEquals(133L, row(b)["ads_hundredths"]!!.jsonPrimitive.content.toLong())
-            assertEquals(0L, row(b)["sdlw_qty_base"]!!.jsonPrimitive.content.toLong())
+            assertEquals(day(1), entry["previous_day"]!!.jsonPrimitive.content)
+            assertEquals(3L, item(a).num("prev"), "previous sale day quantity in base units")
+            assertEquals(633L, item(a).num("ads"))
+            assertEquals(10L, item(a).num("sdlw"), "same weekday last week")
+            assertFalse(item(b).containsKey("prev"), "B was not sold on the previous sale day: the zero member is omitted")
+            assertEquals(133L, item(b).num("ads"))
+            assertFalse(item(b).containsKey("sdlw"))
             // every stat row belongs to an outlet of the SR's own routes
             val own = bundle["routes"]!!.jsonArray.map { it.jsonObject }.flatMap { r -> r["outlets"]!!.jsonArray.map { it.jsonObject["outlet_id"]!!.jsonPrimitive.content.toLong() } }.toSet()
             assertTrue(bundle["outlet_sku_stats"]!!.jsonArray.all { it.jsonObject["outlet_id"]!!.jsonPrimitive.content.toLong() in own }, "stats of own outlets only")
@@ -146,7 +147,13 @@ class SrServerTrain2ApiTest {
             val dup = UUID.randomUUID().toString()
             val dupAck = ack(sync(sr, listOf(record("outlet_change_request", payload.replace(name, existing.lowercase()), route, cu = dup, family = dup))), dup)
             assertEquals("cluster_name_exists", dupAck["code"]!!.jsonPrimitive.content, dupAck.toString())
-            assertEquals(0L, scalar("SELECT count(*) FROM app.outlet_change_request WHERE client_uuid IN ('$twin', '$dup')")!!.toLong(), "nothing stored for a refused name")
+            assertEquals(0L, scalar("SELECT count(*) FROM app.outlet_change_request WHERE client_uuid IN ('$twin', '$dup')")!!.toLong(), "no second request row for a refused name")
+            // the field record is NOT lost: a final rejection keeps the whole payload in sync_rejected for the helpdesk, and a resend gets the same final answer
+            assertEquals(2L, scalar("SELECT count(*) FROM app.sync_rejected WHERE client_uuid IN ('$twin', '$dup') AND code = 'cluster_name_exists' AND payload IS NOT NULL")!!.toLong())
+            assertEquals("cluster_name_exists", ack(sync(sr, listOf(record("outlet_change_request", payload.replace(name, name.uppercase()), route, cu = twin, family = twin))), twin)["code"]!!.jsonPrimitive.content, "the same uuid again: the same answer")
+            // reach is the route's zone from the token: another division's AMO cannot see or verify the Mirpur proposal
+            val lkxSub = one("SELECT id FROM app.sub_channel WHERE status = 'active' ORDER BY id LIMIT 1")
+            assertEquals(HttpStatusCode.NotFound, postWeb("lkxamo1001", "/v1/outlet-requests/$req/verify", """{"sub_channel_id":$lkxSub}""").status, "outside the other division's reach")
             // a cluster proposal names no outlet
             val withOutlet = UUID.randomUUID().toString()
             val wo = ack(sync(sr, listOf(record("outlet_change_request", payload.replace("\"request_type\"", "\"outlet_id\":${one("SELECT min(id) FROM app.outlet")},\"request_type\"").replace(name, name + "x"), route, cu = withOutlet, family = withOutlet))), withOutlet)
@@ -165,6 +172,7 @@ class SrServerTrain2ApiTest {
             postWeb("admin1001", "/v1/outlet-requests/$shopReq/verify", """{"sub_channel_id":$sub}""")
             val early = postWeb("superadmin1001", "/v1/outlet-requests/$shopReq/approve", """{"route_id":$route,"change_reason":"approve the shop before its cluster"}""")
             assertEquals(HttpStatusCode.Conflict, early.status, early.bodyAsText())
+            assertTrue(early.bodyAsText().contains("cluster_request_pending"), early.bodyAsText())
             val approved = postWeb("superadmin1001", "/v1/outlet-requests/$req/approve", """{"route_id":$route,"change_reason":"the SR works lane 7 and it is a new bazar"}""")
             assertEquals(HttpStatusCode.OK, approved.status, approved.bodyAsText())
             val made = one("SELECT created_cluster_id FROM app.outlet_change_request WHERE client_uuid = '$req'")
@@ -262,14 +270,41 @@ class SrServerTrain2ApiTest {
         }
     }
     @Test
-    fun theWorstCaseStatsSectionStaysSmallOnTheWire() {
-        // docs/04 sets no byte figure for the bundle ("compact, gzip it"); the section is measured and bounded here: 70 outlets x 40 SKUs, every pair with history (the real section is sparser).
+    fun theWorstCaseStatsAndClustersSectionsStayInsideTheirBudgets() {
+        // docs/04: outlet_sku_stats at most 150 KB raw and 20 KB gzip at 70 outlets x 40 SKUs, every pair dense (every member present and non-zero); clusters small.
         val rnd = java.util.Random(7)
-        val rows = (1L..70L).flatMap { o -> (1L..40L).map { k -> com.aktcl.aron.backend.sync.OutletSkuStat(1000 + o, 200 + k, "2026-11-10", rnd.nextInt(500).toLong(), rnd.nextInt(60000).toLong(), rnd.nextInt(500).toLong()) } }
-        val json = com.aktcl.aron.backend.platform.ResponseJson.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.aktcl.aron.backend.sync.OutletSkuStat.serializer()), rows)
-        val gz = java.io.ByteArrayOutputStream().also { java.util.zip.GZIPOutputStream(it).use { z -> z.write(json.toByteArray()) } }.size()
-        println("MEASURED outlet_sku_stats 2800 rows: raw=${json.length} bytes, gzip=$gz bytes")
-        assertTrue(json.length < 400_000, "raw ${json.length}")
-        assertTrue(gz < 50_000, "gzip $gz")
+        val rows = (1L..70L).map { o -> com.aktcl.aron.backend.sync.OutletSkuStat(1000 + o, "2026-11-10", (1L..40L).map { k ->
+            com.aktcl.aron.backend.sync.OutletSkuStatItem(200 + k, 1L + rnd.nextInt(500), 1L + rnd.nextInt(60000), 1L + rnd.nextInt(500)) }) }
+        val enc = com.aktcl.aron.backend.platform.ResponseJson
+        val json = enc.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.aktcl.aron.backend.sync.OutletSkuStat.serializer()), rows)
+        fun gz(t: String) = java.io.ByteArrayOutputStream().also { java.util.zip.GZIPOutputStream(it).use { z -> z.write(t.toByteArray()) } }.size()
+        println("MEASURED outlet_sku_stats 70 outlets x 40 SKUs dense: raw=${json.length} bytes, gzip=${gz(json)} bytes")
+        assertTrue(json.length <= 150_000, "raw ${json.length}")
+        assertTrue(gz(json) <= 20_000, "gzip ${gz(json)}")
+        val clusters = (1L..600L).map { com.aktcl.aron.backend.sync.BundleCluster(it, "Cluster number $it of the zone", 1 + it % 6, "Route name $it") }
+        val cj = enc.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.aktcl.aron.backend.sync.BundleCluster.serializer()), clusters)
+        println("MEASURED clusters 600 rows (contract maximum): raw=${cj.length} bytes, gzip=${gz(cj)} bytes")
+        assertTrue(cj.length <= 80_000 && gz(cj) <= 8_000, "clusters raw ${cj.length} gzip ${gz(cj)}")
+    }
+    @Test
+    fun aShopThatNamesARefusedClusterRequestCannotBeApprovedUntilTheApproverChoosesAnotherCluster() = world.withApi {
+        with(world) {
+            val route = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
+            val sub = one("SELECT id FROM app.sub_channel WHERE status = 'active' ORDER BY id LIMIT 1")
+            val cr = UUID.randomUUID().toString(); val shopReq = UUID.randomUUID().toString()
+            val name = "Refused Bazar " + UUID.randomUUID().toString().take(5)
+            val c = sync(sr, listOf(record("outlet_change_request", """{"request_type":"cluster_create","proposed":{"name":"$name"},"photo_uuids":[],"fix":$fix}""", route, cu = cr, family = cr)))
+            assertEquals("accepted", ack(c, cr).status())
+            val shop = """{"request_type":"new","proposed":{"name":"Refused Shop ${UUID.randomUUID().toString().take(4)}","owner_name":"Rahim Uddin","contact_number":"01966778899","cluster_request_uuid":"$cr"},"photo_uuids":[],"fix":$fix}"""
+            assertEquals("accepted", ack(sync(sr, listOf(record("outlet_change_request", shop, route, cu = shopReq, family = shopReq))), shopReq).status(), "the shop record is kept whatever the cluster request does")
+            postWeb("admin1001", "/v1/outlet-requests/$shopReq/verify", """{"sub_channel_id":$sub}""")
+            val rej = postWeb("superadmin1001", "/v1/outlet-requests/$cr/reject", """{"reason":"not a real cluster, use the existing one"}""")
+            assertEquals(HttpStatusCode.OK, rej.status, rej.bodyAsText())
+            assertEquals(0L, scalar("SELECT count(*) FROM app.cluster WHERE name = '$name'")!!.toLong(), "a refused request makes no cluster")
+            val r = postWeb("superadmin1001", "/v1/outlet-requests/$shopReq/approve", """{"route_id":$route,"change_reason":"approve the shop with its refused cluster"}""")
+            assertEquals(HttpStatusCode.Conflict, r.status, r.bodyAsText())
+            assertTrue(r.bodyAsText().contains("cluster_request_refused"), r.bodyAsText())
+            assertEquals("verified", scalar("SELECT status FROM app.outlet_change_request WHERE client_uuid = '$shopReq'"), "the shop request is unchanged and waits for the approver")
+        }
     }
 }

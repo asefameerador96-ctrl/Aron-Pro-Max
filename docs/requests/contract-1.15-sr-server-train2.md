@@ -54,11 +54,32 @@ Flow: the SR files the proposal offline (the phone shows it as pending and may o
 question 3) and `Bundle.clusters` lists it for the route at the next bundle. A rejected / lapsed / discarded request makes no cluster; a shop that named it keeps its request, and its approval
 answers 400 (`unknown_cluster_request`) or 409 (`cluster_request_pending`) so the approver sees why. The AMO's verification of a `cluster_create` ignores sub-channel and geo class.
 
-**For the Android lanes (S2):** `android/core-database` `CaptureRepository` (line about `OutletRequestType.NEW` and `outletId == null`) asserts "no outlet only for `new`"; a `cluster_create`
-also has no outlet. The phone side is theirs; this lane touched no Android file. A shipped phone never sends `cluster_create` and ignores `Bundle.clusters` / `outlet_sku_stats`.
+**For the Android lanes**
+
+(S2; lead ruling 5 of 2026-11-13) `android/core-database` `CaptureRepository` (line about `OutletRequestType.NEW` and `outletId == null`) asserts "no outlet only for `new`"; a `cluster_create`
+also has no outlet. The phone side is theirs; this lane touched no Android file. A shipped phone never sends `cluster_create` and ignores `Bundle.clusters` / `outlet_sku_stats`. Mirrored DTO members (nullable, default null): `RouteDayState.late_rows_after_sales_submit`, `OutletRequestType.CLUSTER_CREATE` in `shared/contract`.
 
 ## Database (V0183, V0184)
 
 V0183: `app.outlet_change_request.created_cluster_id` (FK to `app.cluster`, NOT VALID), `request_type` CHECK widened, the outlet rule CHECK `(request_type IN ('new','cluster_create')) = (outlet_id IS NULL)`,
 `sync_rejected.code` CHECK widened by `cluster_name_exists`, the immutability trigger recreated with `=created_cluster_id` (write-once). V0184: the four VALIDATE statements. V0180 and V0181 are the
 Loyalty lane's; V0182 is unused here.
+
+## What the phone shows, and what it must do (S2) — the lead's conditions of 2026-11-13
+
+- **`cluster_name_exists` (ack `rejected`, final).** Nothing is lost: the server keeps the whole record in `sync_rejected` (helpdesk-visible) and a resend of the same client uuid gets the same final answer. The phone marks its
+  local cluster proposal "already exists", shows the Bangla / English text of `reason_texts.cluster_name_exists` ("A cluster with this name already exists; use it instead.") and offers the existing cluster; **nothing needs re-entry
+  except choosing that cluster**. A new shop that pointed at the proposal through `cluster_request_uuid` must be re-pointed to the existing cluster by `cluster_id` before it is sent (or, if it was already sent, the approver
+  corrects it: see below). Same client uuid = replay only; two DIFFERENT requests for one name in a zone: the first is kept, the second gets this outcome.
+- **A shop that names a cluster request (`cluster_request_uuid`) is always accepted by `POST /v1/sync/batch`** (never lost, never parked: the reference is resolved at approval, not at ingest). The 409 `cluster_request_pending`
+  / `cluster_request_refused` is the **portal's answer to the approver** on `POST /v1/outlet-requests/{uuid}/approve`; the phone never sees it and has nothing to retry or remember (offline-first). The approver approves the
+  cluster request first (then the shop approves in the new cluster) or, when the cluster request was refused, gives the shop another cluster (409 `cluster_request_refused` says so).
+- **Reach:** a proposal is judged on the zone of the route on its envelope, from the approver's token (another division's AMO / DMO gets 404).
+- **The phone's pending-cluster list:** show a proposal as pending until `my_outlet_requests` / the request read says `approved` (then `resulting_cluster_id` is the cluster id, and it arrives in `Bundle.clusters` at the next bundle), `rejected`, `lapsed` or `discarded`.
+
+## `outlet_sku_stats` shape and budget (lead ruling 2 of 2026-11-13)
+
+`Bundle.outlet_sku_stats` is one compact entry per outlet: `{outlet_id, previous_day, items: [{sku, prev?, ads, sdlw?}]}`; an omitted `prev` / `sdlw` is 0; pairs with all three figures zero are not sent
+(by construction every listed SKU has `ads > 0`). Member meanings and units (all BASE units): `prev` = quantity on `previous_day`; `ads` = average quantity per selling day x 100 (integer hundredths); `sdlw` =
+quantity on the same weekday last week; `previous_day` = the outlet's last selling day in the 30-business-day window. Budget (docs/04): at most 150 KB raw and 20 KB gzip at 70 outlets x 40 SKUs dense; asserted in
+`SrServerTrain2ApiTest.theWorstCaseStatsAndClustersSectionsStayInsideTheirBudgets`. This replaces the first flat shape (365 KB raw / 35 KB gzip).

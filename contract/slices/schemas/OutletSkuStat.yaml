@@ -1,42 +1,21 @@
 OutletSkuStat:
   type: object
-  description: 'Sales history of one outlet x SKU in BASE units (sticks / pieces; contract 1.16.0). `previous_day`
-    is the outlet''s most recent sale day before the bundle date within the last 30 business days (null when none),
-    `previous_day_qty_base` the quantity of this SKU on that day (0 when the SKU was not sold then). `ads_hundredths`
-    = average quantity per selling day x 100 over the 30 business days before the bundle date (a selling day is
-    a day the outlet had a live memo; only sale lines of active, non-voided memos), rounded half up, an integer:
-    250 means 2.5 sticks per selling day. `sdlw_qty_base` = the quantity on the same weekday last week (bundle date
-    minus 7 days). The phone shows packets by dividing with the SKU''s pack_factor.'
+  description: Sales history of one outlet in BASE units (sticks / pieces; contract 1.16.0), one entry per outlet
+    of the SR's own routes that sold in the last 30 business days. `previous_day` is the outlet's most recent selling
+    day (a day it had a live memo) before the bundle date within that window. The phone shows packets by dividing
+    each SKU quantity with the SKU's pack_factor.
   required:
   - outlet_id
-  - sku_id
   - previous_day
-  - previous_day_qty_base
-  - ads_hundredths
-  - sdlw_qty_base
+  - items
   additionalProperties: false
   properties:
     outlet_id:
       $ref: '#/components/schemas/Id'
-    sku_id:
-      $ref: '#/components/schemas/Id'
     previous_day:
-      oneOf:
-      - $ref: '#/components/schemas/BusinessDate'
-      - type: 'null'
-    previous_day_qty_base:
-      type: integer
-      format: int64
-      minimum: 0
-      description: Base units (sticks / pieces).
-    ads_hundredths:
-      type: integer
-      format: int64
-      minimum: 0
-      description: Average quantity per selling day x 100
-      in base units.: null
-    sdlw_qty_base:
-      type: integer
-      format: int64
-      minimum: 0
-      description: Base units (sticks / pieces) on the same weekday last week.
+      $ref: '#/components/schemas/BusinessDate'
+    items:
+      type: array
+      maxItems: 400
+      items:
+        $ref: '#/components/schemas/OutletSkuStatItem'

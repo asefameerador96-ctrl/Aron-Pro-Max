@@ -637,8 +637,10 @@ class BundleService(
          GROUP BY s.outlet_id, s.sku_id, od.prev, od.days ORDER BY s.outlet_id, s.sku_id
         """.trimIndent(),
     ).bindArray("o", Long::class.javaObjectType, outletIds).bind("from", date.minusDays(30)).bind("d", date).bind("sdlw", date.minusDays(7)).map { rs, _ ->
-        OutletSkuStat(rs.getLong("outlet_id"), rs.getLong("sku_id"), rs.getObject("prev", LocalDate::class.java)?.toString(), rs.getLong("prev_q"), rs.getLong("ads"), rs.getLong("sdlw"))
-    }.list()
+        Triple(rs.getLong("outlet_id"), rs.getObject("prev", LocalDate::class.java).toString(),
+            OutletSkuStatItem(rs.getLong("sku_id"), rs.getLong("prev_q").takeIf { it != 0L }, rs.getLong("ads"), rs.getLong("sdlw").takeIf { it != 0L }))
+    }.list().filter { it.third.ads != 0L || it.third.prev != null || it.third.sdlw != null }   // a pair with all three figures zero carries nothing
+        .groupBy({ it.first to it.second }, { it.third }).map { (k, v) -> OutletSkuStat(k.first, k.second, v) }
 
     private fun openMemos(h: Handle, outletIds: List<Long>): List<OpenMemo> = if (outletIds.isEmpty()) emptyList() else h.createQuery(
         """
