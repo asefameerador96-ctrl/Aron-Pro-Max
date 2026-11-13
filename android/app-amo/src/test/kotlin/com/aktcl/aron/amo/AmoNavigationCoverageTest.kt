@@ -31,9 +31,9 @@ class AmoNavigationCoverageTest {
 
     @Test fun everyHomeTileHasItsOwnNavigationEntryAndAScreen() {
         val tiles = AmoMenu.tiles(AmoReach(subordinateSrs = 3, pendingVerifications = 0))
-        assertEquals("seventeen tiles (D-AMO-MAN-02)", 17, tiles.size)
+        assertEquals("nineteen tiles: the old app's order with the two deferred hooks (D-PAR-AMO-01)", 19, tiles.size)
         // AmoApp itself draws Home, Settings and the Sales Journey empty state (lane A3 fills the journey); every other tile is built in MainActivity
-        val inApp = setOf(AmoScreen.SETTINGS, AmoScreen.SALES_JOURNEY)
+        val inApp = setOf(AmoScreen.SETTINGS, AmoScreen.SALES_JOURNEY, AmoScreen.ASTHA, AmoScreen.CAMPAIGN_ENROLLMENT)
         tiles.forEach { t ->
             val screen = AmoScreen.of(t)
             assertTrue("tile ${t.id} maps to a screen of its own", screen.tileId == t.id)

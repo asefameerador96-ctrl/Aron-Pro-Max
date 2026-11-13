@@ -75,16 +75,16 @@ class AmoAppTest {
     }
 
     @Test
-    fun catalogueIsTheManualsSeventeenTilesInOrderAndHidesAstha() {
+    fun catalogueIsTheOldAppsNineteenTilesInOrderWithTheDeferredHooks() {
         val tiles = AmoMenu.tiles(AmoReach(3, 0), mapOf("outlet" to 3))
         assertEquals(
             listOf(
                 "attendance", "joint_call", "control_call", "team_location", "team_performance", "task_delegation", "live_dashboard", "sr_stock",
-                "outlet", "stock", "sale", "memo", "summary", "sales_submit", "report", "sales_journey", "settings",
+                "outlet", "stock", "sale", "memo", "summary", "sales_submit", "astha", "report", "sales_journey", "campaign_enrollment", "settings",
             ),
             tiles.map { it.id },
         )
-        assertFalse(tiles.any { it.id.contains("astha") || it.id.contains("campaign") || it.id.contains("target") })
+        assertFalse(tiles.any { it.id.contains("target") }) // the Astha and Campaign Enrollment hooks open "coming later" (D-PAR-AMO-01)
         assertEquals(3, tiles.first { it.id == "outlet" }.badge)
         assertEquals(0, tiles.first { it.id == "sale" }.badge)
         // every tile maps to its own screen
@@ -116,7 +116,7 @@ class AmoAppTest {
         compose.onNodeWithText(context.getString(HomeR.string.home_bundle_offline)).assertDoesNotExist()
         compose.onNodeWithTag(RoleHomeTags.HERO).assertExists()
         AmoMenu.tiles(AmoReach(3, 0)).forEach { compose.onNodeWithTag(RoleHomeTags.tile(it.id)).assertExists() }
-        compose.onNodeWithTag(RoleHomeTags.tile("astha")).assertDoesNotExist()
+        compose.onNodeWithTag(RoleHomeTags.tile("astha")).assertExists() // hook tile in the old position
         compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.AmoTile.ATTENDANCE)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(context.getString(HomeR.string.rh_amo_control_call)).assertExists()
         // the Outlet badge is announced with Bengali digits

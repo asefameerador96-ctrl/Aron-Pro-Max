@@ -139,10 +139,7 @@ class AmoControlCallHostTest {
         awaitOverride()
         compose.onNodeWithTag("amo_cp_override").performClick()
         compose.onNodeWithText("Internet problem").performClick(); compose.waitForIdle()
-        compose.waitUntil(8_000) { present(com.aktcl.aron.feature.outlet.ForceSaleTags.PHOTO) }
-        compose.onNodeWithTag(com.aktcl.aron.feature.outlet.ForceSaleTags.PHOTO).performClick(); compose.waitForIdle()
-        compose.waitUntil(8_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("Continue")).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Continue").performClick(); compose.waitForIdle()
+        // D-PAR-AMO-02: the camera opens at once and the photo confirms the override, no Photo or Continue tap
         compose.waitUntil(8_000) { f.day.visitSession.current.value != null }
         val visits = { kotlinx.coroutines.runBlocking { f.day.database.outboxDao().nextPending(1000) }.filter { it.recordType == "visit" } }
         assertEquals(1, visits().size)
