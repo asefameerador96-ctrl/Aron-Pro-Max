@@ -54,6 +54,12 @@ owner's screenshots in `docs/ui-reference/`: **not done yet** for any row (see "
 | 27 | Memo list | pass | Memo 1002 (15:20, 184.00 BDT, Friends Store) is listed next to the earlier 1001 | |
 | 28 | Sales Submit after the sale | **D1 unchanged** | Still "6 records were rejected by the server" with the new sale not yet on the server | |
 
+| 29 | Kill and relaunch, between screens | **pass** (partial) | `adb shell am force-stop` did **not** end the SR process (same pid before and after; SR is the device owner, so the OS probably protects it), and SR even reopened on the screen it was on. `adb shell am kill` (from the background) did end it. Cold start after that: 477 ms, the app returns to the last screen (Sales Submit) with its data, no crash, and Home stock went from 28 to 27 packets, matching the one-packet sale of row 26 (nothing lost, nothing doubled) | |
+| 30 | Leave the sale screen mid-sale | **pass** | The cart (draft with an item) was still there after leaving the screen and coming back | |
+| 31 | Kill in the middle of a sale, of a memo save and of a sync | **not done** | A mid-sale kill needs another force sale with a shop photo (owner's hands). Not tested: kill during memo save or during a sync | |
+
+Correction to the note below: after the process was killed and restarted, Friends Store was out of range again (556 m, 3 refreshes), so the earlier "within the outlet's range" was force-sale state kept only while the app process stayed alive. That matches the rule that a force sale must never count as a clean geo sale; the server-side flags were not checked.
+
 Also seen on the second visit to Friends Store: the outlet screen said "You are within the outlet's range" although the phone had not moved (earlier 556 m). The force-sale state for this outlet probably carried over; to be confirmed, since a force sale must never count as a clean geo sale (docs/05).
 
 Units: every quantity seen on SR (home cards, Stock, Sales Submit, KPI) uses field units (packets, boxes, dozen), as the owner's rule requires.
