@@ -169,50 +169,90 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
   }
 
   if (path === "/v1/admin/outlets/import" && method === "POST") {
+    // Mirrors the server's answer (OutletImportApi, push 1b): the same members (creates, updates, unchanged, skipped, errors, warnings, warnings_by_code), the GT
+    // default on CREATE only, a blank channel keeps the stored one, the phone repaired here (the portal sends the raw text), identical rows unchanged.
     if (!canWrite) return ctx.send(res, 403, ctx.problem(403, "ERR_FORBIDDEN")), true;
-    type R = { code: string | null; name: string; owner_name: string; zone_code: string; cluster: string; channel?: string | null; outlet_kind: string; route_code: string | null; lat: number | null; lng: number | null; contact_number: string | null; address: string | null };
-    const b = (await ctx.readJson(req)) as { batch_uuid?: string; rows?: R[]; dry_run?: boolean; change_reason?: string } | undefined;
+    type R = { code: string | null; name: string; owner_name: string; zone_code: string; cluster: string; channel?: string | null; outlet_kind: string; route_code: string | null; lat: number | null; lng: number | null; contact_number: string | null; address: string | null; sub_channel?: string | null };
+    const b = (await ctx.readJson(req)) as { batch_uuid?: string; rows?: R[]; dry_run?: boolean; change_reason?: string; location_confirmed?: boolean; on_row_error?: string } | undefined;
     if (!b || typeof b.batch_uuid !== "string" || !Array.isArray(b.rows) || b.rows.length < 1 || typeof b.dry_run !== "boolean") return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION")), true;
     if (!b.dry_run && !reasonOk(b.change_reason)) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: [{ pointer: "/change_reason", code: "too_short" }] })), true;
+    const skip = b.on_row_error === "skip_rows";
     const channels = ["GT", "DCC", "Astha", "RCC", "MT", "HoReCa"];
     const errors: { row: number; column: string; code: string }[] = [];
-    const resolved: { r: R; zone: number; cluster: number; route: number | null; existing: Record<string, unknown> | undefined }[] = [];
+    const warnings: { row: number; column: string; code: string }[] = [];
+    const info = new Set(["phone_repaired", "coordinates_rounded", "channel_derived", "astha_without_tier", "tier_source_kept", "phone_source_kept"]);
+    const phoneOf = (raw: string | null): { value: string | null; code?: string } => {
+      const t = (raw ?? "").trim();
+      if (t === "") return { value: null };
+      let d = t.replace(/[\s\-().+]/g, "");
+      if (!/^\d+$/.test(d)) return { value: null, code: "phone_unusable" };
+      if (d.startsWith("00880")) d = d.slice(2);
+      if (d.startsWith("880") && d.length === 13) d = d.slice(2);
+      if (d.length === 10 && d.startsWith("1")) d = "0" + d;
+      return /^01[3-9]\d{8}$/.test(d) ? { value: d, code: d !== t ? "phone_repaired" : undefined } : { value: null, code: "phone_unusable" };
+    };
+    const genCode = (r: R) => "gen." + [...`${r.zone_code}|${r.route_code ?? ""}|${r.cluster}|${r.name}|${r.owner_name}`.toLowerCase()].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(16).padStart(20, "0");
+    const plans: { r: R; fields: Record<string, unknown>; existing: Record<string, unknown> | undefined; changed: boolean }[] = [];
+    const bad = new Set<number>();
+    const by_channel: Record<string, number> = Object.fromEntries(channels.map((c) => [c, 0]));
     b.rows.forEach((r, i) => {
-      r.channel = r.channel ? (channels.find((c) => c.toLowerCase() === r.channel!.toLowerCase().replace(/[^a-z0-9]/g, "").replace(/channel$/, "")) ?? r.channel) : "GT"; // empty: derived (GT here)
-      if (!channels.includes(r.channel)) return void errors.push({ row: i + 1, column: "channel", code: "unknown_channel" });
+      const row = i + 1;
+      const n = errors.length;
+      const code = r.code ?? genCode(r);
       const zone = st.tables.geo!.find((g) => g.level === "zone" && g.code === r.zone_code && g.status === "active");
-      if (!zone) return void errors.push({ row: i + 1, column: "zone_code", code: "unknown_zone" });
-      const cluster = st.tables.clusters!.find((c) => c.zone_id === zone.id && c.name === r.cluster);
-      if (!cluster) errors.push({ row: i + 1, column: "cluster", code: "unknown_cluster" });
-      const route = r.route_code ? st.tables.routes!.find((x) => x.code === r.route_code && x.zone_id === zone.id) : null;
-      if (r.route_code && !route) errors.push({ row: i + 1, column: "route_code", code: "unknown_route" });
-      const existing = r.code ? st.tables.outlets!.find((o) => o.code === r.code) : undefined;
-      if (existing && existing.zone_id !== zone.id) errors.push({ row: i + 1, column: "code", code: "code_taken" });
-      if (cluster) resolved.push({ r, zone: Number(zone.id), cluster: Number(cluster.id), route: route ? Number(route.id) : null, existing });
+      if (!zone) errors.push({ row, column: "zone_code", code: "unknown_zone" });
+      const cluster = zone ? st.tables.clusters!.find((c) => c.zone_id === zone.id && c.name === r.cluster) : undefined;
+      if (zone && !cluster) errors.push({ row, column: "cluster", code: "unknown_cluster" });
+      const route = zone && r.route_code ? st.tables.routes!.find((x) => x.code === r.route_code && x.zone_id === zone.id) : null;
+      if (zone && r.route_code && !route) errors.push({ row, column: "route_code", code: "unknown_route" });
+      const existing = st.tables.outlets!.find((o) => o.code === code);
+      if (existing && zone && existing.zone_id !== zone.id) errors.push({ row, column: "code", code: "code_taken" });
+      const label = (r.channel ?? "").trim();
+      let channel: string | undefined;
+      if (label === "") {
+        if (existing) channel = String(existing.channel);
+        else { channel = "GT"; warnings.push({ row, column: "channel", code: "channel_defaulted" }); }
+      } else {
+        channel = channels.find((c) => c.toLowerCase() === label.toLowerCase().replace(/[^a-z0-9]/g, "").replace(/channel$/, ""));
+        if (!channel) errors.push({ row, column: "channel", code: "unknown_channel" });
+      }
+      const ph = phoneOf(r.contact_number);
+      if (ph.code) warnings.push({ row, column: "contact_number", code: ph.code });
+      if (ph.code === "phone_unusable") warnings.push({ row, column: "contact_number", code: "phone_source_kept" });
+      if (errors.length > n || !channel || !zone || !cluster) return void bad.add(i);
+      by_channel[channel] = (by_channel[channel] ?? 0) + 1;
+      const fields: Record<string, unknown> = { code, name: r.name, owner_name: r.owner_name, zone_id: Number(zone.id), cluster_id: Number(cluster.id), channel, outlet_kind: r.outlet_kind };
+      if (route || !existing) fields.route_id = route ? Number(route.id) : null;
+      if (ph.value || !existing) fields.contact_number = ph.value;
+      if (r.address || !existing) fields.address = r.address;
+      if (r.lat !== null && r.lng !== null) { fields.lat = r.lat; fields.lng = r.lng; } else if (!existing) { fields.lat = null; fields.lng = null; }
+      const changed = !existing || Object.entries(fields).some(([k, v]) => existing[k] !== v);
+      plans.push({ r, fields, existing, changed });
     });
-    const by_channel: Record<string, number> = {};
-    for (const r of b.rows) by_channel[r.channel!] = (by_channel[r.channel!] ?? 0) + 1;
-    const updates = resolved.filter((x) => x.existing).length;
-    const summary = { batch_uuid: b.batch_uuid, rows: b.rows.length, creates: b.rows.length - updates, updates, by_channel, errors, errors_truncated: false };
-    if (b.dry_run) return ctx.send(res, 200, summary), true;
-    if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `body.rows/${e.row - 1}/${e.column}`, code: e.code })) })), true;
-    const hash = JSON.stringify(b.rows);
+    const creates = plans.filter((x) => !x.existing).length;
+    const updates = plans.filter((x) => x.existing && x.changed).length;
+    const unchanged = plans.length - creates - updates;
+    const warnings_by_code: Record<string, number> = {};
+    for (const w of warnings) warnings_by_code[w.code] = (warnings_by_code[w.code] ?? 0) + 1;
+    const report = { creates, updates, unchanged, skipped: bad.size, by_channel, errors, errors_truncated: false, warnings: warnings.filter((w) => !info.has(w.code)), warnings_truncated: false, warnings_by_code };
+    if (b.dry_run) return ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: b.rows.length, ...report }), true;
+    const hash = JSON.stringify([b.rows, b.location_confirmed ?? false, skip]);
     const seen = st.outletImportBatches.get(b.batch_uuid);
-    if (seen) return seen.hash === hash ? (ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: seen.rows, replayed: true }), true) : (ctx.send(res, 409, ctx.problem(409, "ERR_CONFLICT")), true);
+    if (seen) return seen.hash === hash ? (ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: seen.rows, replayed: true }), true) : (ctx.send(res, 409, ctx.problem(409, "ERR_SYNC_BATCH_UUID_REUSED")), true);
+    if (errors.length && !skip) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `body.rows/${e.row - 1}/${e.column}`, code: e.code })) })), true;
     st.outletImportBatches.set(b.batch_uuid, { hash, rows: b.rows.length });
     const now = new Date().toISOString();
     let nextId = Math.max(0, ...st.tables.outlets!.map((o) => Number(o.id))) + 1;
-    for (const { r, zone, cluster, route, existing } of resolved) {
-      const fields = { name: r.name, owner_name: r.owner_name, contact_number: r.contact_number, address: r.address, zone_id: zone, route_id: route, cluster_id: cluster, channel: r.channel, outlet_kind: r.outlet_kind, lat: r.lat, lng: r.lng };
+    for (const { r, fields, existing, changed } of plans) {
       if (existing) {
+        if (!changed) continue;
         Object.assign(existing, fields);
         existing.version = Number(existing.version) + 1;
         existing.updated_at = now;
-      } else st.tables.outlets!.push({ id: nextId, version: 1, created_at: now, updated_at: now, status: "active", code: r.code ?? `OUT-${nextId}`, name_bn: null, sub_channel_id: null, geo_class: null, location_confirmed: false, price_type: r.outlet_kind === "wholesale" ? "wholesale" : "regular", visit_sequence: null, external_ref: null, ...fields });
-      if (!existing) nextId++;
+      } else st.tables.outlets!.push({ id: nextId++, version: 1, created_at: now, updated_at: now, status: "active", name_bn: null, sub_channel_id: null, geo_class: null, location_confirmed: Boolean(b.location_confirmed) && r.lat !== null, price_type: "outlet", visit_sequence: null, external_ref: null, ...fields });
     }
-    ctx.audit("outlet_import", b.batch_uuid, "outlet_import.commit", { rows: 0 }, { rows: b.rows.length, creates: summary.creates, updates }, b.change_reason!);
-    return ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: b.rows.length, replayed: false }), true;
+    ctx.audit("outlet_import", b.batch_uuid, "outlet_import.commit", { rows: 0 }, { rows: b.rows.length, creates, updates, unchanged, skipped: bad.size }, b.change_reason!);
+    return ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: b.rows.length, replayed: false, ...report }), true;
   }
 
   const plan = /^\/v1\/admin\/sales-plans\/(\d+)$/.exec(path);

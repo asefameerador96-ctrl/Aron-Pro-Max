@@ -33,7 +33,12 @@ export interface Parsed {
   rows: unknown[];
   sheetRows: number[];
   issues: SheetIssue[];
+  /** Notes that do not stop the load (an unusable pin left out of the row). */
+  notes?: SheetIssue[];
 }
+
+/** Problems of the whole sheet: skip_rows cannot help (there is nothing good to load). */
+const SHEET_LEVEL = new Set(["missing_header", "too_many_rows", "no_rows"]);
 export interface PreviewBase {
   rows: number;
   replaces?: number;
@@ -135,9 +140,12 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
   const flagBody = Object.fromEntries((cfg.flags ?? []).filter((f) => ticked[f.member]).map((f) => [f.member, f.value]));
   const skipOn = (cfg.flags ?? []).some((f) => f.skipsBadRows && ticked[f.member]);
   const body = (dry: boolean) => ({ batch_uuid: batch, rows: parsed!.rows, dry_run: dry, ...flagBody });
+  // (7) push 1b: with "skip rows" ticked, rows the browser already found bad are left out (and listed) and the good rows still load.
+  const clientSkipped = parsed ? new Set(parsed.issues.filter((i) => !SHEET_LEVEL.has(i.code)).map((i) => i.row)).size : 0;
+  const blocked = !parsed || parsed.rows.length === 0 || (parsed.issues.length > 0 && !(skipOn && parsed.issues.every((i) => !SHEET_LEVEL.has(i.code))));
 
   async function check() {
-    if (!parsed || parsed.issues.length || parsed.rows.length === 0) return;
+    if (blocked) return;
     setBusy(true);
     setBanner(null);
     const r = await callOp(cfg.validateOp, body(true));
@@ -159,7 +167,8 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
     setBusy(false);
     if (r.ok) {
       const d = r.data as { rows?: number; replayed?: boolean; skipped?: number } | null;
-      const skipped = cfg.skippedKey && (d?.skipped ?? 0) > 0 ? ` ${t(cfg.skippedKey, { n: number(d?.skipped ?? 0) })}` : "";
+      const nSkipped = (d?.skipped ?? 0) + (skipOn ? clientSkipped : 0);
+      const skipped = cfg.skippedKey && nSkipped > 0 ? ` ${t(cfg.skippedKey, { n: number(nSkipped) })}` : "";
       setBanner({ ok: true, text: d?.replayed ? t("rt.replayed") : t(cfg.committedKey, { rows: d?.rows ?? parsed.rows.length }) + skipped });
       reset();
       router.refresh();
@@ -223,9 +232,10 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
         </section>
       ) : null}
 
-      {parsed && parsed.issues.length === 0 ? (
+      {parsed && !blocked ? (
         <section className="space-y-3" data-testid={`${cfg.tid}-read-ok`}>
           <p role="status" className="text-sm font-medium text-green-800">{t("rt.read_ok", { rows: parsed.rows.length })}</p>
+          {parsed.notes?.length ? <p data-testid={`${cfg.tid}-notes`} className="text-sm text-amber-900">{t("oi.notes", { n: number(parsed.notes.length) })}</p> : null}
           {!preview ? (
             <button type="button" data-testid={`${cfg.tid}-check`} disabled={busy} onClick={() => void check()} className="min-h-11 rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{busy ? t("rt.checking") : t("rt.check")}</button>
           ) : null}

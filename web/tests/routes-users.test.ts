@@ -133,3 +133,14 @@ describe("users", () => {
     expect(users.actions!.find((a) => a.key === "unlock")!.when).toBeUndefined();
   });
 });
+
+describe("routes page visit kind label (push 1b, item 14)", () => {
+  it("shows the label of 'none', never the raw value; an unknown value stays text", async () => {
+    const { visitKindKey } = await import("@/lib/dash/routes");
+    const { t } = await import("@/lib/i18n");
+    expect(t("en", visitKindKey("none")!)).toBe("No visit plan");
+    expect(t("bn", visitKindKey("none")!)).toBe("ভিজিট প্ল্যান নেই");
+    expect(visitKindKey("daily")).toBe("entity.visit.daily");
+    expect(visitKindKey("weekly")).toBeNull();
+  });
+});

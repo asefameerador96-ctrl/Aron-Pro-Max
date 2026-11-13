@@ -18,7 +18,7 @@ describe("parseOutletSheet", () => {
   it("reads a valid row, optional members become null, Bengali digits in phone and coordinates are accepted", () => {
     const r = parseOutletSheet([HEAD, line({ ...ok, lat: "২৩.৭৯৩৭", lng: "90.4043", contact_number: "০১৭১২৩৪৫৬৭৮", route_code: "R-334-01" })]);
     expect(r.issues).toEqual([]);
-    expect(r.rows[0]).toMatchObject({ channel: "GT", lat: 23.7937, lng: 90.4043, contact_number: "01712345678", route_code: "R-334-01", code: null, address: null });
+    expect(r.rows[0]).toMatchObject({ channel: "GT", lat: 23.7937, lng: 90.4043, contact_number: "০১৭১২৩৪৫৬৭৮", route_code: "R-334-01", code: null, address: null });
   });
   it("maps the field's channel labels, leaves empty as null and an unknown text as typed (the server reports it)", () => {
     const labels = ["GT Channel", "Astha Channel", "DCC Channel", "MT Channel", "RCC", "HoReCa", "horeca channel", "gt", "Wholesale", ""];
@@ -36,12 +36,24 @@ describe("parseOutletSheet", () => {
   it("repairs phones, rounds long coordinates to 8 decimals and reads the new columns", () => {
     const r = parseOutletSheet([HEAD, line({ ...ok, contact_number: "1711000001", lat: "23.793712345678", lng: "90.404312345678", sub_channel: "GT", geo_class: "Semi Urban", created_at: "2024-01-05 10:00", updated_at: "2024-02-01" }), line({ ...ok, name: "Two", contact_number: "abc", sub_channel: "--" })]);
     expect(r.issues).toEqual([]);
-    expect(r.rows[0]).toMatchObject({ contact_number: "01711000001", lat: 23.79371235, lng: 90.40431235, sub_channel: "GT", geo_class: "Semi Urban", created_at: "2024-01-05 10:00", updated_at: "2024-02-01" });
-    expect(r.rows[1]).toMatchObject({ contact_number: null, sub_channel: null, geo_class: null, created_at: null });
+    expect(r.rows[0]).toMatchObject({ contact_number: "1711000001", lat: 23.79371235, lng: 90.40431235, sub_channel: "GT", geo_class: "Semi Urban", created_at: "2024-01-05 10:00", updated_at: "2024-02-01" });
+    expect(r.rows[1]).toMatchObject({ contact_number: "abc", sub_channel: null, geo_class: null, created_at: null });
   });
-  it("refuses a too long new-column text and an out-of-range coordinate", () => {
+  it("refuses a too long new-column text; an out-of-range coordinate drops the pin with a note, the row still loads", () => {
     const r = parseOutletSheet([HEAD, line({ ...ok, geo_class: "x".repeat(41) }), line({ ...ok, lat: "91.123456789012", lng: "90" })]);
-    expect(r.issues).toEqual([{ row: 2, column: "geo_class", code: "invalid" }, { row: 3, column: "lat", code: "invalid" }]);
+    expect(r.issues).toEqual([{ row: 2, column: "geo_class", code: "invalid" }]);
+    expect(r.notes).toEqual([{ row: 3, column: "lat", code: "coordinates_invalid" }]);
+    expect(r.rows[0]).toMatchObject({ lat: null, lng: null });
+  });
+  it("B1: sends the phone text as the sheet has it (the server repairs, warns and keeps an unusable text)", () => {
+    const r = parseOutletSheet([HEAD, line({ ...ok, contact_number: "123" }), line({ ...ok, name: "Two", contact_number: "+880 1711-000001" }), line({ ...ok, name: "Three", contact_number: "" })]);
+    expect(r.issues).toEqual([]);
+    expect(r.rows.map((x) => x.contact_number)).toEqual(["123", "+880 1711-000001", null]);
+  });
+  it("(8) an Excel date cell is the sheet's wall clock in Dhaka, never shifted by 6 hours", () => {
+    const d = new Date(Date.UTC(2024, 2, 5, 10, 15, 0)); // read-excel-file: the wall clock in the UTC fields
+    const r = parseOutletSheet([HEAD, line({ ...ok, created_at: d as unknown as string })]);
+    expect(r.rows[0]?.created_at).toBe("2024-03-05 10:15:00");
   });
   it("checks the other required members, kind, coordinates (both or none), phone and duplicate codes", () => {
     const r = parseOutletSheet([
@@ -57,10 +69,10 @@ describe("parseOutletSheet", () => {
       { row: 2, column: "name", code: "required" },
       { row: 2, column: "owner_name", code: "invalid" },
       { row: 3, column: "outlet_kind", code: "invalid" },
-      { row: 4, column: "lat", code: "invalid" },
-      { row: 5, column: "lng", code: "required" },
       { row: 7, column: "code", code: "duplicate" },
     ]);
+    expect(r.notes).toEqual([{ row: 4, column: "lat", code: "coordinates_invalid" }]);
+    expect(r.rows.find((x) => x.lat === 23.7)).toMatchObject({ lat: 23.7, lng: null }); // a half pin goes to the server, which warns
   });
   it("round-trips the downloadable template through a real workbook", async () => {
     const buf = await writeExcelFile(outletTemplateCells().map((r) => r.map((value) => ({ value })))).toBuffer();

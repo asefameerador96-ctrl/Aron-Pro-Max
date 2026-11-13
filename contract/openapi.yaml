@@ -17418,7 +17418,7 @@ components:
         route_code: { type: [string, 'null'], maxLength: 40 }
         lat: { type: [number, 'null'], minimum: -90, maximum: 90, description: 'More than 8 decimals are rounded, never rejected.' }
         lng: { type: [number, 'null'], minimum: -180, maximum: 180 }
-        contact_number: { type: [string, 'null'], description: 'Repaired to 01XXXXXXXXX (10 digits, 880 prefix, spaces, dashes, Bengali digits); one that cannot be repaired is stored empty with the warning phone_unusable.' }
+        contact_number: { type: [string, 'null'], maxLength: 300, description: 'The text as the sheet has it (the portal does not repair it). The server repairs it to 01XXXXXXXXX (10 digits, 880 prefix, spaces, dashes, Bengali digits); one that cannot be repaired is stored empty with the warning phone_unusable and its text is kept in the outlet''s source column (warning phone_source_kept, first 60 characters).' }
         address: { type: [string, 'null'], maxLength: 300 }
         sub_channel: { type: [string, 'null'], maxLength: 40, description: '1.18.0. The sub-channel code (GT, RCC, DCC, MT, HoReCa, or the Astha tier Gold, Diamond, Platinum, Titanium); "--" or empty means none. It is the source of the Astha tier of the outlet. A value that does not belong to the row''s channel, is unknown or retired (Silver) loads with no tier and a warning.' }
         geo_class: { type: [string, 'null'], maxLength: 40, description: '1.18.0. Rural, Urban, Semi Urban (stored as SemiUrban) or Hill; unknown is stored empty with a warning.' }
@@ -17439,11 +17439,11 @@ components:
       type: object
       required: [row, column, code]
       additionalProperties: false
-      description: A row that loaded with something to look at (1.18.0). Counts of every warning code are in warnings_by_code; the list holds the actionable ones (not phone_repaired, coordinates_rounded, channel_derived, astha_without_tier).
+      description: A row that loaded with something to look at (1.18.0). Counts of every warning code are in warnings_by_code; the list holds the actionable ones (not phone_repaired, coordinates_rounded, channel_derived, astha_without_tier, phone_source_kept, tier_source_kept).
       properties:
         row: { type: integer, minimum: 1 }
         column: { type: string }
-        code: { type: string, enum: [phone_unusable, phone_repaired, coordinates_rounded, coordinates_outside_bangladesh, channel_derived, channel_defaulted, sub_channel_mismatch, sub_channel_retired, unknown_sub_channel, astha_without_tier, unknown_geo_class, created_at_unreadable, updated_at_unreadable] }
+        code: { type: string, enum: [phone_unusable, phone_repaired, coordinates_rounded, coordinates_outside_bangladesh, channel_derived, channel_defaulted, sub_channel_mismatch, sub_channel_retired, unknown_sub_channel, astha_without_tier, unknown_geo_class, created_at_unreadable, updated_at_unreadable, phone_source_kept, tier_source_kept, tier_cleared, pin_kept_as_candidate, coordinates_invalid, coordinates_incomplete] }
     OutletImportRowError:
       type: object
       required: [row, column, code]
@@ -17451,7 +17451,7 @@ components:
       properties:
         row: { type: integer, minimum: 1, description: 1-based position in rows. }
         column: { type: string }
-        code: { type: string, enum: [required, invalid, unknown_zone, unknown_cluster, unknown_route, code_taken, duplicate, outlet_merged, unknown_channel] }
+        code: { type: string, enum: [required, invalid, unknown_zone, unknown_cluster, unknown_route, code_taken, duplicate, outlet_merged, unknown_channel, sub_channel_inconsistent] }
     OutletImportPreview:
       type: object
       required: [batch_uuid, rows, creates, updates, by_channel, errors, errors_truncated]
@@ -17461,6 +17461,8 @@ components:
         rows: { type: integer, minimum: 1 }
         creates: { type: integer, minimum: 0 }
         updates: { type: integer, minimum: 0 }
+        unchanged: { type: integer, minimum: 0, description: '1.18.0 (push 1b). Valid rows whose outlet already holds exactly these values; the commit writes nothing for them (no version bump, no audit row).' }
+        skipped: { type: integer, minimum: 0, description: '1.18.0 (push 1b). Rows with a row error: left out by on_row_error skip_rows, else they refuse the commit.' }
         by_channel: { type: object, additionalProperties: { type: integer, minimum: 0 }, description: Valid rows per channel. }
         errors: { type: array, maxItems: 1000, items: { $ref: '#/components/schemas/OutletImportRowError' } }
         errors_truncated: { type: boolean }
@@ -17477,6 +17479,8 @@ components:
         replayed: { type: boolean }
         creates: { type: integer, minimum: 0, description: '1.18.0.' }
         updates: { type: integer, minimum: 0, description: '1.18.0.' }
+        unchanged: { type: integer, minimum: 0, description: '1.18.0 (push 1b). Rows that changed nothing (no write, no version bump, no audit row).' }
+        by_channel: { type: object, additionalProperties: { type: integer, minimum: 0 }, description: '1.18.0 (push 1b). Loaded rows per channel. Not on a replay.' }
         skipped: { type: integer, minimum: 0, description: '1.18.0. Rows left out because of a row error (on_row_error skip_rows).' }
         errors: { type: array, maxItems: 1000, items: { $ref: '#/components/schemas/OutletImportRowError' }, description: '1.18.0. Only with skip_rows.' }
         errors_truncated: { type: boolean, description: '1.18.0.' }

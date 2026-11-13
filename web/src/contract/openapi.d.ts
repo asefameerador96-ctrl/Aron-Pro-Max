@@ -11249,7 +11249,7 @@ export interface components {
             /** @description More than 8 decimals are rounded, never rejected. */
             lat?: number | null;
             lng?: number | null;
-            /** @description Repaired to 01XXXXXXXXX (10 digits, 880 prefix, spaces, dashes, Bengali digits); one that cannot be repaired is stored empty with the warning phone_unusable. */
+            /** @description The text as the sheet has it (the portal does not repair it). The server repairs it to 01XXXXXXXXX (10 digits, 880 prefix, spaces, dashes, Bengali digits); one that cannot be repaired is stored empty with the warning phone_unusable and its text is kept in the outlet's source column (warning phone_source_kept, first 60 characters). */
             contact_number?: string | null;
             address?: string | null;
             /** @description 1.18.0. The sub-channel code (GT, RCC, DCC, MT, HoReCa, or the Astha tier Gold, Diamond, Platinum, Titanium); "--" or empty means none. It is the source of the Astha tier of the outlet. A value that does not belong to the row's channel, is unknown or retired (Silver) loads with no tier and a warning. */
@@ -11278,25 +11278,29 @@ export interface components {
              */
             on_row_error: "reject_batch" | "skip_rows";
         };
-        /** @description A row that loaded with something to look at (1.18.0). Counts of every warning code are in warnings_by_code; the list holds the actionable ones (not phone_repaired, coordinates_rounded, channel_derived, astha_without_tier). */
+        /** @description A row that loaded with something to look at (1.18.0). Counts of every warning code are in warnings_by_code; the list holds the actionable ones (not phone_repaired, coordinates_rounded, channel_derived, astha_without_tier, phone_source_kept, tier_source_kept). */
         OutletImportRowWarning: {
             row: number;
             column: string;
             /** @enum {string} */
-            code: "phone_unusable" | "phone_repaired" | "coordinates_rounded" | "coordinates_outside_bangladesh" | "channel_derived" | "channel_defaulted" | "sub_channel_mismatch" | "sub_channel_retired" | "unknown_sub_channel" | "astha_without_tier" | "unknown_geo_class" | "created_at_unreadable" | "updated_at_unreadable";
+            code: "phone_unusable" | "phone_repaired" | "coordinates_rounded" | "coordinates_outside_bangladesh" | "channel_derived" | "channel_defaulted" | "sub_channel_mismatch" | "sub_channel_retired" | "unknown_sub_channel" | "astha_without_tier" | "unknown_geo_class" | "created_at_unreadable" | "updated_at_unreadable" | "phone_source_kept" | "tier_source_kept" | "tier_cleared" | "pin_kept_as_candidate" | "coordinates_invalid" | "coordinates_incomplete";
         };
         OutletImportRowError: {
             /** @description 1-based position in rows. */
             row: number;
             column: string;
             /** @enum {string} */
-            code: "required" | "invalid" | "unknown_zone" | "unknown_cluster" | "unknown_route" | "code_taken" | "duplicate" | "outlet_merged" | "unknown_channel";
+            code: "required" | "invalid" | "unknown_zone" | "unknown_cluster" | "unknown_route" | "code_taken" | "duplicate" | "outlet_merged" | "unknown_channel" | "sub_channel_inconsistent";
         };
         OutletImportPreview: {
             batch_uuid: components["schemas"]["Uuid"];
             rows: number;
             creates: number;
             updates: number;
+            /** @description 1.18.0 (push 1b). Valid rows whose outlet already holds exactly these values; the commit writes nothing for them (no version bump, no audit row). */
+            unchanged?: number;
+            /** @description 1.18.0 (push 1b). Rows with a row error: left out by on_row_error skip_rows, else they refuse the commit. */
+            skipped?: number;
             /** @description Valid rows per channel. */
             by_channel: {
                 [key: string]: number;
@@ -11320,6 +11324,12 @@ export interface components {
             creates?: number;
             /** @description 1.18.0. */
             updates?: number;
+            /** @description 1.18.0 (push 1b). Rows that changed nothing (no write, no version bump, no audit row). */
+            unchanged?: number;
+            /** @description 1.18.0 (push 1b). Loaded rows per channel. Not on a replay. */
+            by_channel?: {
+                [key: string]: number;
+            };
             /** @description 1.18.0. Rows left out because of a row error (on_row_error skip_rows). */
             skipped?: number;
             /** @description 1.18.0. Only with skip_rows. */

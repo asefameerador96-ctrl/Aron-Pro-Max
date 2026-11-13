@@ -2,6 +2,9 @@
 // +880, 00880, a missing leading zero, spaces and dashes). The repaired value is an 11-digit Bangladeshi mobile number
 // 01[3-9]XXXXXXXX; anything else is unusable (value null). A blank input is no phone (value null, not unusable).
 
+/** Longest phone TEXT an input accepts: the field types "+880 1711-000001" (16) and "(+880) 1711 000 001"; the repaired value is 11 digits. */
+export const PHONE_INPUT_MAX = 24;
+
 const ALLOWED_PUNCT = /^[+ \-().]$/;
 
 function toAscii(raw: string): string {

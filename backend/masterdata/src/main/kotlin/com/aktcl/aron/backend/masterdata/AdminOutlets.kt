@@ -140,7 +140,7 @@ private suspend fun getOutlet(call: ApplicationCall, d: AdminMasterDeps) {
         Triple(
             r,
             h.createQuery("SELECT route_id, cluster_id, valid_from, valid_to FROM app.outlet_placement_history WHERE outlet_id = :o ORDER BY valid_from, id").bind("o", id).mapToMap().list(),
-            h.createQuery("SELECT lat, lng, accuracy_m, source, valid_from FROM app.outlet_location_history WHERE outlet_id = :o AND lat IS NOT NULL ORDER BY valid_from, id").bind("o", id).mapToMap().list(),
+            h.createQuery("SELECT lat, lng, accuracy_m, source, valid_from FROM app.outlet_location_history WHERE outlet_id = :o AND lat IS NOT NULL AND basis <> 'candidate' ORDER BY valid_from, id").bind("o", id).mapToMap().list(),
         )
     }
     com.aktcl.aron.backend.platform.PiiReadBudget.chargeRevealed(d.db, d.guard.config, d.clock, p, 1)

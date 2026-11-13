@@ -6,7 +6,8 @@ OutletImportRowWarning:
   - code
   additionalProperties: false
   description: A row that loaded with something to look at (1.18.0). Counts of every warning code are in warnings_by_code;
-    the list holds the actionable ones (not phone_repaired, coordinates_rounded, channel_derived, astha_without_tier).
+    the list holds the actionable ones (not phone_repaired, coordinates_rounded, channel_derived, astha_without_tier,
+    phone_source_kept, tier_source_kept).
   properties:
     row:
       type: integer
@@ -29,3 +30,9 @@ OutletImportRowWarning:
       - unknown_geo_class
       - created_at_unreadable
       - updated_at_unreadable
+      - phone_source_kept
+      - tier_source_kept
+      - tier_cleared
+      - pin_kept_as_candidate
+      - coordinates_invalid
+      - coordinates_incomplete

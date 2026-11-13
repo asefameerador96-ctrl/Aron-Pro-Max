@@ -71,7 +71,8 @@ class CodeListsTest {
         // D-MD-07: the tiers follow the field (Gold, Diamond, Platinum, Titanium); Silver is retired, never deleted.
         assertEquals(listOf("Astha:Gold:active", "Astha:Diamond:active", "Astha:Platinum:active", "Astha:Titanium:active", "Astha:Silver:inactive"),
             c.column("SELECT channel || ':' || code || ':' || status FROM app.sub_channel WHERE channel = 'Astha' ORDER BY CASE code WHEN 'Gold' THEN 1 WHEN 'Diamond' THEN 2 WHEN 'Platinum' THEN 3 WHEN 'Titanium' THEN 4 ELSE 5 END"))
-        assertEquals("1", c.scalar("SELECT count(*) FROM app.code_list_item WHERE list_key = 'sub_channel' AND code = 'silver' AND valid_to IS NOT NULL"))
+        // push 1b: no valid_to (the bundle would drop the label of every outlet still on Silver); the item is flagged retired, the master row is inactive.
+        assertEquals("1", c.scalar("SELECT count(*) FROM app.code_list_item WHERE list_key = 'sub_channel' AND code = 'silver' AND valid_to IS NULL AND attrs @> '{\"retired\": true}'"))
         assertEquals(listOf("bazar_hub", "commercial_hub", "industrial_hub", "residential", "transit_hub", "university_hub"), c.column("SELECT code FROM app.code_list_item WHERE list_key = 'cluster_type' ORDER BY 1"))
         assertEquals("0", c.scalar("SELECT count(*) FROM app.code_list_item WHERE list_key = 'cluster_type' AND label_bn IS NULL"))
         assertEquals(

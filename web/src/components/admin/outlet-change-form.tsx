@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
-import { normalisePhone } from "@/lib/phone";
+import { normalisePhone, PHONE_INPUT_MAX } from "@/lib/phone";
 import type { MessageKey } from "@/lib/i18n";
 import { asciiDigits, codePoints } from "./crud/validation";
 import { callMasterOp } from "./master-op-client";
@@ -159,7 +159,7 @@ export function OutletChangeForm({ outlet, clusters, subChannels, closeReasons }
             <input id="f-owner_name" {...inv(errors, "owner_name")} maxLength={120} value={v.owner_name} onChange={(ev) => set("owner_name", ev.target.value)} className={inputClass} />
           </Field>
           <Field label={t("entity.field.contact_number")} htmlFor="f-contact_number" hint={t("och.contact_hint")} error={errors.contact_number}>
-            <input id="f-contact_number" {...inv(errors, "contact_number")} inputMode="numeric" maxLength={11} value={v.contact_number} onChange={(ev) => set("contact_number", ev.target.value)} className={`${inputClass} w-48`} />
+            <input id="f-contact_number" {...inv(errors, "contact_number")} type="tel" inputMode="tel" maxLength={PHONE_INPUT_MAX} value={v.contact_number} onChange={(ev) => set("contact_number", ev.target.value)} className={`${inputClass} w-48`} />
           </Field>
           <Field label={t("entity.field.address")} htmlFor="f-address" error={errors.address}>
             <input id="f-address" {...inv(errors, "address")} maxLength={300} value={v.address} onChange={(ev) => set("address", ev.target.value)} className={inputClass} />

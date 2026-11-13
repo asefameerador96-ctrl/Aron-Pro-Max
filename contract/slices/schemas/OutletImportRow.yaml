@@ -63,8 +63,11 @@ OutletImportRow:
       type:
       - string
       - 'null'
-      description: Repaired to 01XXXXXXXXX (10 digits, 880 prefix, spaces, dashes, Bengali digits); one that cannot
-        be repaired is stored empty with the warning phone_unusable.
+      maxLength: 300
+      description: The text as the sheet has it (the portal does not repair it). The server repairs it to 01XXXXXXXXX
+        (10 digits, 880 prefix, spaces, dashes, Bengali digits); one that cannot be repaired is stored empty with
+        the warning phone_unusable and its text is kept in the outlet's source column (warning phone_source_kept,
+        first 60 characters).
     address:
       type:
       - string

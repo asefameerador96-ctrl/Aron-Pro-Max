@@ -44,6 +44,7 @@ class RegistryDefaults(env: ServerEnv = ServerEnv.PROD, private val overrides: M
         "cfg.device.require_enrolled" to JsonPrimitive(env == ServerEnv.PROD),
         "cfg.memo.seq_block_size" to JsonPrimitive(500),
         "cfg.release.min_version_code" to kotlinx.serialization.json.buildJsonObject { put("sr", JsonPrimitive(1)); put("amo", JsonPrimitive(1)); put("tso", JsonPrimitive(1)) },
+        "cfg.release.short_rep_id_version_code" to JsonPrimitive(0),
         "cfg.calendar.weekend_days" to kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive(5))),
         "cfg.api.rl.device_per_min" to JsonPrimitive(120),
         "cfg.api.rl.user_per_min" to JsonPrimitive(300),

@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 181 | 2986 |
+| `app` | 181 | 2990 |
 | `dw` | 75 | 1211 |
 
 ## Index
@@ -2844,6 +2844,10 @@ One retail or wholesale outlet with owner, location, route placement and nationa
 | `trade_license_enc` | bytea | null | sensitive | Trade licence number, envelope-encrypted like nid_enc. |
 | `pii_key_id` | smallint | null |  | app.pii_key that encrypted this row's *_enc values; null when none is set. |
 | `data_origin` | app.data_origin | not null |  | Origin of the outlet: production (default), pilot, test (for example the owner's test outlets) or seed; stamped onto every capture row at this outlet. |
+| `source_created_at` | timestamp with time zone | null |  | Created At of the outlet in the field's master sheet (the import, D-MD-20); our created_at is when this server wrote the row. Null for outlets not imported. |
+| `source_updated_at` | timestamp with time zone | null |  | Updated At of the outlet in the field's master sheet (the import, D-MD-20); our updated_at is when this server last changed the row. Null for outlets not imported. |
+| `source_contact_number` | text | null | personal | The phone text of the field's sheet when it could not be repaired to 01XXXXXXXXX (contact_number then stays empty); kept so the value is not lost, never sent to a device or shown in a report. |
+| `source_sub_channel` | text | null |  | The tier text of the field's sheet when it was NOT stored in sub_channel_id (it disagreed with the channel, is retired or unknown); kept so the value is not lost. |
 
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2946,7 +2950,7 @@ Append-only history of every map pin an outlet has had and where it came from.
 | `lng` | double precision | null |  | Longitude in WGS84 degrees; null when the basis is placeholder or none. |
 | `accuracy_m` | double precision | null |  | Horizontal accuracy radius of the location fix in metres. |
 | `source` | text | not null |  | Where the row came from; allowed values are listed under constraints. |
-| `basis` | text | not null |  | Location basis from valid_from on: master, provisional, placeholder (no usable pin) or none (pin cleared). |
+| `basis` | text | not null |  | Location basis from valid_from on: master, provisional, placeholder (no usable pin), none, or candidate (a master pin the import did NOT apply because the field had confirmed another; never the pin in force). |
 | `source_client_uuid` | uuid | null |  | Client UUID of the outlet_change_request or visit that supplied the fix for this pin. |
 | `valid_from` | timestamp with time zone | not null |  | First day the row is in effect. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
@@ -3919,7 +3923,7 @@ A sales route in a zone with its code, kind, visit days and label.
 | `display_label` | text | null |  | Text printed for the route; never used as a key. |
 | `zone_id` | bigint | not null |  | Zone (app.zone). |
 | `kind` | text | not null |  | Kind of the row; allowed values are listed under constraints. |
-| `visit_kind` | text | null |  | Visit pattern of the route: daily, 3f (three days a week) or 2f (two days). |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, mask 0, never planned). |
 | `visit_days_mask` | smallint | not null |  | Bit mask of visit days: bit0 Saturday through bit6 Friday; 127 means daily; 0 means no visit plan (visit_kind none), never planned. |
 | `sequence_no` | integer | null |  | Order of the row within its parent or day. |
 | `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
@@ -4093,7 +4097,7 @@ One row is a period of a route's kind, visit kind, class and status (its zone is
 | `id` | bigint | not null |  | Server surrogate key. |
 | `route_id` | bigint | not null |  | The app.route row. |
 | `kind` | text | not null |  | Kind of the row (as it was in the period). |
-| `visit_kind` | text | null |  | Visit pattern of the route: daily, 3f (three days a week) or 2f (two days). (as it was in the period). |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, mask 0, never planned). (as it was in the period). |
 | `route_class` | text | not null |  | normal, manual (no-internet, keyed on the web), dummy_br or dummy_institutional; Live CPR, Target Route and Login count normal routes only (V0094). (as it was in the period). |
 | `status` | text | not null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
@@ -4136,7 +4140,7 @@ Planned visit days of a route, effective-dated.
 |---|---|---|---|---|
 | `id` | bigint | not null |  | Server surrogate key. |
 | `route_id` | bigint | not null |  | Route (app.route) being worked. |
-| `visit_kind` | text | null |  | Visit pattern in force for the period: daily, 3f or 2f. |
+| `visit_kind` | text | null |  | Visit pattern in force for the period: daily, 3f, 2f or none (no visit plan, mask 0). |
 | `visit_days_mask` | smallint | not null |  | Bit mask of planned visit days: bit0 Saturday through bit6 Friday; 0 means no visit plan (visit_kind none). |
 | `valid_from` | date | not null |  | First day the row is in effect. |
 | `valid_to` | date | null |  | First date the planned days no longer apply; null means open. |
@@ -5270,7 +5274,7 @@ One outlet visit with the phone's and the server's geo verdicts, distance, outco
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `voided_at` | timestamp with time zone | null |  | UTC time the row was tombstoned (admin data void, or a paper web_entry visit superseded by the phone's visit for the same memo); write-once, the row is never deleted, voided visits never count. |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
-| `visit_kind` | text | not null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `visit_kind` | text | not null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry. A route's own pattern (daily, 3f, 2f, none) is app.route.visit_kind. |
 | `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
 | `opened_at` | timestamp with time zone | not null |  | UTC time the visit was opened on the phone. |
 | `sequence_no` | integer | not null |  | Order of the row within its parent or day. |
@@ -5893,7 +5897,7 @@ Route-level geography dimension flattened through zone, territory, division and 
 | `route_code` | text | not null |  | Code of the route. |
 | `route_name` | text | not null |  | Name of the route. |
 | `route_kind` | text | not null |  | Kind of the route. |
-| `visit_kind` | text | null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned). |
 | `zone_id` | bigint | not null |  | Zone (app.zone). |
 | `zone_name` | text | not null |  | Name of the zone. |
 | `territory_id` | bigint | not null |  | Territory (app.territory). |
@@ -5924,7 +5928,7 @@ One row is a version of geo valid over [valid_from, valid_to) (SCD2): dated by t
 | `route_code` | text | not null |  | Code of the route. |
 | `route_name` | text | not null |  | Name of the route. |
 | `route_kind` | text | not null |  | Kind of the route. |
-| `visit_kind` | text | null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned). (as it was in the period). |
 | `zone_id` | bigint | not null |  | Zone (app.zone). |
 | `zone_name` | text | not null |  | Name of the zone. |
 | `territory_id` | bigint | not null |  | Territory (app.territory). |
@@ -6367,7 +6371,7 @@ One row per visit with device and server verdicts, distances, the outlet base an
 | `route_id` | bigint | null |  | Route (app.route) being worked. |
 | `zone_id` | bigint | null |  | Zone (app.zone). |
 | `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
-| `visit_kind` | text | not null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `visit_kind` | text | not null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry. A route's own pattern (daily, 3f, 2f, none) is in dim_geo.visit_kind. |
 | `opened_at` | timestamp with time zone | not null |  | UTC time the visit was opened. |
 | `ended_at` | timestamp with time zone | null |  | UTC instant the activity ended. |
 | `outcome_code` | text | null |  | Outcome of the visit or check; allowed values are listed under constraints. |
@@ -6580,7 +6584,7 @@ Stable view (contract for BI and other products): KPIs, money and day state per 
 | `route_id` | bigint | null |  | Route (app.route) being worked. |
 | `route_code` | text | null |  | Route code. |
 | `route_name` | text | null |  | Route name. |
-| `visit_kind` | text | null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned). |
 | `zone_id` | bigint | null |  | Zone (app.zone). |
 | `zone_name` | text | null |  | Zone name. |
 | `territory_id` | bigint | null |  | Territory (app.territory). |
@@ -6717,7 +6721,7 @@ Stable view: the current route and geography dimension (dw.dim_geo; versions in 
 | `route_code` | text | null |  | Code of the route. |
 | `route_name` | text | null |  | Name of the route. |
 | `route_kind` | text | null |  | Kind of the route. |
-| `visit_kind` | text | null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned). |
 | `route_class` | text | null |  | Route class copied from app.route.route_class (normal, manual, dummy_br, dummy_institutional). |
 | `zone_id` | bigint | null |  | Zone (app.zone). |
 | `zone_name` | text | null |  | Name of the zone. |
@@ -6749,7 +6753,7 @@ Stable view: a route's place in the geography (zone, house, territory, division,
 | `division_id` | bigint | null |  | Division of the territory in the period. |
 | `wing_id` | bigint | null |  | Wing of the division in the period. |
 | `route_kind` | text | null |  | Route kind (sr, amo) in the period. |
-| `visit_kind` | text | null |  | Visit pattern of the route: daily, 3f (three days a week) or 2f (two days). (as it was in the period). |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned). (as it was in the period). |
 | `route_class` | text | null |  | normal, manual (no-internet, keyed on the web), dummy_br or dummy_institutional; Live CPR, Target Route and Login count normal routes only (V0094). (as it was in the period). |
 | `status` | text | null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the route existed). |
@@ -7463,7 +7467,7 @@ Stable view: one row per visit (dw.fact_visit) with both geo verdicts and distan
 | `route_id` | bigint | null |  | Route (app.route) being worked. |
 | `zone_id` | bigint | null |  | Zone (app.zone). |
 | `outlet_id` | bigint | null |  | Outlet (app.outlet). |
-| `visit_kind` | text | null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `visit_kind` | text | null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry. A route's own pattern (daily, 3f, 2f, none) is in dim_geo.visit_kind. |
 | `opened_at` | timestamp with time zone | null |  | UTC time the visit was opened. |
 | `ended_at` | timestamp with time zone | null |  | UTC instant the activity ended. |
 | `outcome_code` | text | null |  | Outcome of the visit or check; allowed values are listed under constraints. |

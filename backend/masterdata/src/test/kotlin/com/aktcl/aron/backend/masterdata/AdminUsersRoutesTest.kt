@@ -113,6 +113,39 @@ class AdminUsersRoutesTest {
         assertEquals("0", env.sql("SELECT count(*) FROM app.app_user WHERE username = 'newtso2'"))
     }
 
+    /**
+     * B2 (push 1b): the installed app throws on a 3-character memo username, so the server refuses to create an SR/AMO user of fewer than 4 characters (or move
+     * a short-named user into SR/AMO) until cfg.release.short_rep_id_version_code names a release and the minimum app version has reached it.
+     */
+    @Test
+    fun aThreeCharacterRepIdNeedsTheAppReleaseThatAcceptsIt() = env.app {
+        suspend fun post(body: String) = sendA1(HttpMethod.Post, "/admin/users", admin, body)
+        fun setDefault(key: String, json: String) = env.sql("UPDATE app.cfg_key SET default_value = '$json'::jsonb WHERE key = '$key' RETURNING 1")
+        val minBefore = env.sql("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.release.min_version_code'")!!
+        try {
+            val refused = post(userBody("ab1", "SR"))
+            assertEquals(HttpStatusCode.BadRequest, refused.status)
+            assertTrue(refused.bodyAsText().contains("needs_app_release") && refused.bodyAsText().contains("cfg.release.short_rep_id_version_code"), refused.bodyAsText())
+            assertEquals(HttpStatusCode.BadRequest, post(userBody("ab2", "AMO")).status)
+            // a 3-character TSO is not a memo user: allowed; moving it into SR is refused like a create
+            val tso = (post(userBody("ab3", "TSO")).also { assertEquals(HttpStatusCode.Created, it.status) }.objA1()["user"] as JsonObject).lng("id")
+            val v = env.sql("SELECT version FROM app.app_user WHERE id = $tso")!!.toInt()
+            val move = sendA1(HttpMethod.Patch, "/admin/users/$tso", admin, """{"role":"SR","change_reason":"Moved to the sales force"}""", ifMatch = v)
+            assertEquals(HttpStatusCode.BadRequest, move.status, move.bodyAsText())
+            // the release is named but the minimum SR app is older: still refused
+            setDefault("cfg.release.short_rep_id_version_code", "40")
+            setDefault("cfg.release.min_version_code", """{"sr": 39, "amo": 40, "tso": 1}""")
+            assertEquals(HttpStatusCode.BadRequest, post(userBody("ab1", "SR")).status)
+            assertEquals(HttpStatusCode.Created, post(userBody("ab2", "AMO")).status)
+            setDefault("cfg.release.min_version_code", """{"sr": 40, "amo": 40, "tso": 1}""")
+            assertEquals(HttpStatusCode.Created, post(userBody("ab1", "SR")).status)
+            assertEquals(HttpStatusCode.Created, post(userBody("abcd", "SR")).status)
+        } finally {
+            setDefault("cfg.release.short_rep_id_version_code", "0")
+            setDefault("cfg.release.min_version_code", minBefore)
+        }
+    }
+
     @Test
     fun patchUserVersionConflictDisableBumpsScopeVersionAndRevokesFullGrants() = env.app {
         val created = sendA1(HttpMethod.Post, "/admin/users", admin, userBody("patchme1", "SR")).objA1()["user"] as JsonObject

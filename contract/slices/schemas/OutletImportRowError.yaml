@@ -24,3 +24,4 @@ OutletImportRowError:
       - duplicate
       - outlet_merged
       - unknown_channel
+      - sub_channel_inconsistent

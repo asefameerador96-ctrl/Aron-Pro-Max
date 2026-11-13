@@ -25,6 +25,20 @@ internal object ImportRules {
      */
     const val GENERATED_OUTLET_CODE_PREFIX = "gen."
 
+    /**
+     * The stable code of an outlet row that has none (M12, push 1b): `gen.` plus 20 hex characters of a SHA-256 over the row's identifying fields (zone, route,
+     * cluster, name, owner; lower-cased, whitespace collapsed). The same row imported twice gets the same code, so the second import UPDATES (or leaves unchanged)
+     * instead of creating a duplicate. Two rows of ONE batch with the same identifying fields collide and the second is a `duplicate` row error; the bulk loader
+     * passes an [ordinal] to tell genuine twins apart. Contains a lower-case letter and a dot, which no field code does.
+     */
+    fun generatedOutletCode(zone: String, route: String?, cluster: String, name: String, owner: String, ordinal: Int = 0): String {
+        fun n(v: String?) = v.orEmpty().trim().lowercase().replace(Regex("\\s+"), " ")
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        val joined = listOf(n(zone), n(route), n(cluster), n(name), n(owner), if (ordinal == 0) "" else ordinal.toString()).joinToString("\u001f")
+        val h = md.digest(joined.toByteArray(Charsets.UTF_8)).take(10).joinToString("") { "%02x".format(it) }
+        return GENERATED_OUTLET_CODE_PREFIX + h
+    }
+
     // ---- phones (M08) -------------------------------------------------------------------------------------------------------------------------
 
     /** [value] is the canonical national form `01XXXXXXXXX` or null; [repaired] when the stored form differs from the input; [unusable] when text was given but cannot be repaired. */

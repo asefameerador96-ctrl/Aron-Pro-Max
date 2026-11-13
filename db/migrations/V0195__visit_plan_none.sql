@@ -8,6 +8,25 @@
 
 SET lock_timeout = '5s';
 
+-- Lock safety (squawk / V0144 pattern): the ALTERs below take ACCESS EXCLUSIVE on hot tables. All the locks are taken by NOWAIT inside a
+-- sub-transaction and retried (about 60 s); a busy table makes the sub-transaction release everything and sleep holding nothing, so the
+-- migration never queues behind a long transaction and never blocks the sync writers behind its own queued lock request.
+DO $$
+DECLARE n int := 0;
+BEGIN
+  LOOP
+    BEGIN
+      LOCK TABLE app.route IN ACCESS EXCLUSIVE MODE NOWAIT;
+      LOCK TABLE app.route_planned IN ACCESS EXCLUSIVE MODE NOWAIT;
+      EXIT;
+    EXCEPTION WHEN lock_not_available THEN
+      n := n + 1;
+      IF n >= 120 THEN RAISE EXCEPTION 'V0195: the tables stayed locked for 60 s'; END IF;
+      PERFORM pg_sleep(0.5);
+    END;
+  END LOOP;
+END $$;
+
 CREATE OR REPLACE FUNCTION app.visit_kind_matches(p_kind text, p_mask smallint) RETURNS boolean
 LANGUAGE sql IMMUTABLE PARALLEL SAFE
 AS $$ SELECT CASE
@@ -30,3 +49,16 @@ ALTER TABLE app.route_planned ADD CONSTRAINT route_planned_visit_kind_check CHEC
 
 COMMENT ON COLUMN app.route.visit_days_mask IS 'Bit mask of visit days: bit0 Saturday through bit6 Friday; 127 means daily; 0 means no visit plan (visit_kind none), never planned.';
 COMMENT ON COLUMN app.route_planned.visit_days_mask IS 'Bit mask of planned visit days: bit0 Saturday through bit6 Friday; 0 means no visit plan (visit_kind none).';
+
+-- The route-kind columns in the app and dw objects say what 'none' means (V0195 comment rule: the dictionary is the rendering of these comments).
+COMMENT ON COLUMN app.route.visit_kind IS 'Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, mask 0, never planned).';
+COMMENT ON COLUMN app.route_history.visit_kind IS 'Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, mask 0, never planned). (as it was in the period).';
+COMMENT ON COLUMN app.route_planned.visit_kind IS 'Visit pattern in force for the period: daily, 3f, 2f or none (no visit plan, mask 0).';
+COMMENT ON COLUMN dw.dim_geo.visit_kind IS 'Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned).';
+COMMENT ON COLUMN dw.dim_geo_version.visit_kind IS 'Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned). (as it was in the period).';
+COMMENT ON COLUMN dw.v_dim_geo.visit_kind IS 'Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned).';
+COMMENT ON COLUMN dw.v_dim_geo_history.visit_kind IS 'Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned). (as it was in the period).';
+COMMENT ON COLUMN dw.v_daily_route.visit_kind IS 'Visit pattern of the route: daily (every selling day), 3f (three days a week), 2f (two days) or none (no visit plan, never planned).';
+COMMENT ON COLUMN dw.fact_visit.visit_kind IS 'Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry. A route''s own pattern (daily, 3f, 2f, none) is in dim_geo.visit_kind.';
+COMMENT ON COLUMN dw.v_visit.visit_kind IS 'Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry. A route''s own pattern (daily, 3f, 2f, none) is in dim_geo.visit_kind.';
+COMMENT ON COLUMN app.visit.visit_kind IS 'Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry. A route''s own pattern (daily, 3f, 2f, none) is app.route.visit_kind.';

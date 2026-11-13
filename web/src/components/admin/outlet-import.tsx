@@ -16,7 +16,7 @@ export function OutletImport() {
     columnsText: `${t("oi.columns")} ${OUTLET_HEADERS.join(", ")}`,
     columnLabel: (c) => t(`oi.col.${c}` as "oi.col.name"),
     problemKey: (c) => `oi.problem.${c}`,
-    summaryText: (p, number) => t("oi.summary", { rows: number(p.rows), creates: number(p.creates), updates: number(p.updates), channels: Object.entries(p.by_channel).map(([k, v]) => `${k} ${number(v)}`).join(", ") }),
+    summaryText: (p, number) => t("oi.summary", { rows: number(p.rows), creates: number(p.creates), updates: number(p.updates), unchanged: number(p.unchanged ?? 0), channels: Object.entries(p.by_channel).map(([k, v]) => `${k} ${number(v)}`).join(", ") }),
     committedKey: "oi.committed",
     skippedKey: "oi.skipped",
     warningKey: (c) => `oi.warning.${c}`,

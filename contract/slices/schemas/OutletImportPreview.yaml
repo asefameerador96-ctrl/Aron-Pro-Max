@@ -21,6 +21,16 @@ OutletImportPreview:
     updates:
       type: integer
       minimum: 0
+    unchanged:
+      type: integer
+      minimum: 0
+      description: 1.18.0 (push 1b). Valid rows whose outlet already holds exactly these values; the commit writes
+        nothing for them (no version bump, no audit row).
+    skipped:
+      type: integer
+      minimum: 0
+      description: '1.18.0 (push 1b). Rows with a row error: left out by on_row_error skip_rows, else they refuse
+        the commit.'
     by_channel:
       type: object
       additionalProperties:

@@ -21,6 +21,16 @@ OutletImportResult:
       type: integer
       minimum: 0
       description: 1.18.0.
+    unchanged:
+      type: integer
+      minimum: 0
+      description: 1.18.0 (push 1b). Rows that changed nothing (no write, no version bump, no audit row).
+    by_channel:
+      type: object
+      additionalProperties:
+        type: integer
+        minimum: 0
+      description: 1.18.0 (push 1b). Loaded rows per channel. Not on a replay.
     skipped:
       type: integer
       minimum: 0

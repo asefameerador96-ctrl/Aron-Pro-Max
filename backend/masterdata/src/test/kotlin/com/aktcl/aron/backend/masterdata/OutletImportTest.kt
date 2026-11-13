@@ -73,7 +73,7 @@ class OutletImportTest {
 
     /** D-MD-06..08, 01, 16, 20 (M06 M07 M08 M01 M15 M16 M20): the field's rows load as they are, the report names what was repaired, left out or not trusted. */
     @Test
-    fun fieldRowsLoadAsTheyAreAndAReRunChangesNothing() = env.app {
+    fun fieldRowsLoadAsTheyAreAndAnIdenticalReRunChangesNothing() = env.app {
         val ok = ""","lat":23.7806123456789,"lng":90.4,"contact_number":"1711000001","geo_class":"Semi Urban","created_at":"2024-03-05 10:15:00","updated_at":"2025-01-02","sub_channel":"Gold""""
         val rows = listOf(
             row("Fld Gold", ok, channel = "\"Astha Channel\""),
@@ -92,12 +92,19 @@ class OutletImportTest {
         assertTrue("2:sub_channel:sub_channel_mismatch" in w && "3:contact_number:phone_unusable" in w && "3:lat:coordinates_outside_bangladesh" in w && "4:sub_channel:sub_channel_retired" in w && "5:sub_channel:sub_channel_mismatch" in w, w.toString())
         val wbc = dry.getValue("warnings_by_code") as kotlinx.serialization.json.JsonObject
         assertEquals(2L, wbc.lng("phone_repaired")); assertEquals(1L, wbc.lng("coordinates_rounded"))
+        assertEquals(1L, wbc.lng("phone_source_kept")); assertEquals(3L, wbc.lng("tier_source_kept"))
         // location_confirmed=false: the pins load as master but unconfirmed
         val batchId = UUID.randomUUID()
         assertEquals(HttpStatusCode.OK, send(false, false, batchId).status)
         assertEquals("master|false|01711000001|SemiUrban|Gold", env.sql("SELECT location_basis || '|' || location_confirmed || '|' || contact_number || '|' || geo_class || '|' || s.code FROM app.outlet o JOIN app.sub_channel s ON s.id = o.sub_channel_id WHERE o.code = '${code}0'"))
         assertEquals("23.78061235", env.sql("SELECT lat::numeric(10,8)::text FROM app.outlet WHERE code = '${code}0'"))
-        assertEquals("2024-03-05 04:15:00+00", env.sql("SELECT created_at::text FROM app.outlet WHERE code = '${code}0'"))
+        // (1) the sheet's dates go to the source columns; our created_at/updated_at are the time of the write (delta readers see the outlet)
+        assertEquals("2024-03-05 04:15:00+00|2025-01-01 18:00:00+00", env.sql("SELECT source_created_at::text || '|' || source_updated_at::text FROM app.outlet WHERE code = '${code}0'"))
+        assertEquals("true", env.sql("SELECT (updated_at > now() - interval '1 hour' AND created_at > now() - interval '1 hour')::text FROM app.outlet WHERE code = '${code}0'"))
+        // B1: the phone that cannot be repaired is kept in the source column, never lost; (4) a dropped tier keeps the field's text the same way
+        assertEquals("123", env.sql("SELECT source_contact_number FROM app.outlet WHERE code = '${code}2'"))
+        assertEquals("Gold|Silver|GT", env.sql("SELECT string_agg(coalesce(source_sub_channel, '-'), '|' ORDER BY code) FROM app.outlet WHERE code IN ('${code}1', '${code}3', '${code}4')"))
+        assertEquals(null, env.sql("SELECT source_sub_channel FROM app.outlet WHERE code = '${code}0'"))
         assertEquals("01711000002|", env.sql("SELECT contact_number || '|' || coalesce(sub_channel_id::text, '') FROM app.outlet WHERE code = '${code}1'"))
         assertEquals("|true", env.sql("SELECT coalesce(contact_number, '') || '|' || (sub_channel_id IS NULL) FROM app.outlet WHERE code = '${code}2'"))
         assertEquals("true", env.sql("SELECT (sub_channel_id IS NULL AND channel = 'Astha')::text FROM app.outlet WHERE code = '${code}3'"))
@@ -108,7 +115,15 @@ class OutletImportTest {
         assertEquals(5, count("SELECT count(*) FROM app.outlet WHERE code LIKE '$code%'"))
         assertEquals("true", env.sql("SELECT location_confirmed::text FROM app.outlet WHERE code = '${code}0'"))
         assertEquals("false", env.sql("SELECT location_confirmed::text FROM app.outlet WHERE code = '${code}2'"))
-        assertEquals(1, count("SELECT count(*) FROM app.outlet WHERE code = '${code}0' AND version >= 2"))
+        // (2) the run with the switch ON confirmed one pin (a real change); the SAME rows once more change NOTHING: no version bump, no audit row, all unchanged
+        val versions = env.sql("SELECT string_agg(version::text, ',' ORDER BY code) FROM app.outlet WHERE code LIKE '$code%'")
+        val audits = count("SELECT count(*) FROM app.audit_log WHERE entity = 'outlet'")
+        val again = send(false, true).objA1()
+        assertEquals(listOf(0L, 0L, 5L), listOf(again.lng("creates"), again.lng("updates"), again.lng("unchanged")))
+        assertEquals(versions, env.sql("SELECT string_agg(version::text, ',' ORDER BY code) FROM app.outlet WHERE code LIKE '$code%'"))
+        assertEquals(audits, count("SELECT count(*) FROM app.audit_log WHERE entity = 'outlet'"))
+        val dryAgain = send(true, true).objA1()
+        assertEquals(5L, dryAgain.lng("unchanged"), "the dry run says the same")
     }
 
     @Test
@@ -122,11 +137,12 @@ class OutletImportTest {
         val res = sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(rows, true))
         assertEquals(HttpStatusCode.OK, res.status)
         val o = res.objA1()
-        assertEquals(3, o.lng("creates")); assertEquals(0, o.lng("updates")); assertEquals(7, o.lng("rows"))
+        assertEquals(4, o.lng("creates")); assertEquals(0, o.lng("updates")); assertEquals(7, o.lng("rows"))
         assertEquals(1, o.getValue("by_channel").let { (it as kotlinx.serialization.json.JsonObject).lng("Astha") })
         val errs = o.arr("errors").map { it as kotlinx.serialization.json.JsonObject }.map { "${it.lng("row")}:${it.strA1("column")}:${it.strA1("code")}" }
-        assertEquals(listOf("3:zone_code:unknown_zone", "4:cluster:unknown_cluster", "5:route_code:unknown_route", "7:lng:required"), errs)
-        assertEquals(listOf("6:contact_number:phone_unusable"), warnings(o))
+        assertEquals(listOf("3:zone_code:unknown_zone", "4:cluster:unknown_cluster", "5:route_code:unknown_route"), errs)
+        // (6) a half pin never costs the row: it loads without a pin, with a warning
+        assertEquals(listOf("6:contact_number:phone_unusable", "7:lng:coordinates_incomplete"), warnings(o))
         assertEquals(before, count("SELECT count(*) FROM app.outlet"))
         assertEquals(0, count("SELECT count(*) FROM app.audit_log WHERE entity = 'outlet_import'"))
     }
@@ -157,11 +173,12 @@ class OutletImportTest {
         assertEquals(HttpStatusCode.OK, res.status)
         assertEquals("false", res.objA1().getValue("replayed").toString())
         val oid = count("SELECT id FROM app.outlet WHERE name = 'Import Created'")
-        assertEquals("gen.$oid", env.sql("SELECT code FROM app.outlet WHERE id = $oid"))
+        // (3) a codeless row gets a stable code from its identifying fields
+        assertEquals(ImportRules.generatedOutletCode("Z-MIR", routeCode, clusterName, "Import Created", "Owner of Import Created"), env.sql("SELECT code FROM app.outlet WHERE id = $oid"))
         assertEquals("MT|master|retail", env.sql("SELECT concat_ws('|', channel, location_basis, outlet_kind) FROM app.outlet WHERE id = $oid"))
         assertEquals("IMP/1", env.sql("SELECT code FROM app.outlet WHERE name = 'Import Coded'"))
         assertEquals(1, count("SELECT count(*) FROM app.outlet_placement_history WHERE outlet_id = $oid AND valid_to IS NULL"))
-        assertEquals("master", env.sql("SELECT basis FROM app.outlet_location_history WHERE outlet_id = $oid"))
+        assertEquals("master|migration", env.sql("SELECT basis || '|' || source FROM app.outlet_location_history WHERE outlet_id = $oid"))
         assertEquals(1, env.audit("outlet_import", id, "import"))
         assertEquals(reason, env.sql("SELECT reason FROM app.audit_log WHERE entity = 'outlet_import' AND entity_id = '$id'"))
         assertEquals(1, env.audit("outlet", oid, "import_create"))
@@ -224,5 +241,94 @@ class OutletImportTest {
         assertEquals(HttpStatusCode.BadRequest, post("""{"batch_uuid":"$u","rows":[${row("X Row")}],"dry_run":"yes"}"""))
         val nul = sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(listOf(row("Nul\\u0000Name")), true))
         assertEquals(HttpStatusCode.BadRequest, nul.status)
+    }
+
+    private suspend fun io.ktor.server.testing.ApplicationTestBuilder.commit(rows: List<String>, conf: Boolean = false, skip: Boolean = false) =
+        sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(rows, false).replaceFirst("\"dry_run\":false", "\"dry_run\":false,\"location_confirmed\":$conf" + if (skip) ",\"on_row_error\":\"skip_rows\"" else "")).objA1()
+
+    private fun tier(code: String) = env.sql("SELECT o.channel || '|' || coalesce(s.code, '-') FROM app.outlet o LEFT JOIN app.sub_channel s ON s.id = o.sub_channel_id WHERE o.code = '$code'")
+
+    /**
+     * B3 (push 1b): the GT default applies on CREATE only. On an update a blank channel or sub-channel keeps what is stored; a row that changes the channel
+     * must carry a tier of the new channel (or none, which clears a stored tier of the old channel with a warning); a tier of another channel is a row error.
+     */
+    @Test
+    fun aBlankChannelOnAnUpdateKeepsTheStoredChannelAndTier() = env.app {
+        val c = "B3X${System.nanoTime() % 100000}"
+        fun r(channel: String?, sub: String?) = row("Gold Shop", ""","code":"$c"""" + (sub?.let { ""","sub_channel":"$it"""" } ?: ""), channel = channel)
+        assertEquals(1L, commit(listOf(r("\"Astha Channel\"", "Gold"))).lng("creates"))
+        assertEquals("Astha|Gold", tier(c))
+        // blank channel and blank tier: nothing changes (before the fix: GT with Gold)
+        val keep = commit(listOf(r(null, null)))
+        assertEquals(1L, keep.lng("unchanged")); assertEquals("Astha|Gold", tier(c))
+        assertEquals(1L, commit(listOf(r("\"\"", "--"))).lng("unchanged")); assertEquals("Astha|Gold", tier(c))
+        // blank channel, a tier of the stored channel: the tier changes, the channel stays
+        assertEquals(1L, commit(listOf(r(null, "Diamond"))).lng("updates")); assertEquals("Astha|Diamond", tier(c))
+        // blank channel, a tier of another channel: a mismatch warning, nothing changes except the kept source text
+        val mis = commit(listOf(r(null, "GT")))
+        assertTrue(warnings(mis).contains("1:sub_channel:sub_channel_mismatch"), warnings(mis).toString()); assertEquals("Astha|Diamond", tier(c))
+        // a channel change with a tier of a third channel is a row error
+        val dry = sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(listOf(r("\"GT Channel\"", "Gold")), true)).objA1()
+        assertEquals(listOf("1:sub_channel:sub_channel_inconsistent"), errors(dry))
+        // a channel change with no tier clears the old channel's tier, with a warning
+        val gt = commit(listOf(r("\"GT Channel\"", null)))
+        assertTrue(warnings(gt).contains("1:sub_channel:tier_cleared"), warnings(gt).toString()); assertEquals("GT|-", tier(c))
+        // and a channel change with a consistent tier writes both
+        assertEquals(1L, commit(listOf(r("\"Astha\"", "Platinum"))).lng("updates")); assertEquals("Astha|Platinum", tier(c))
+    }
+
+    /** (3) push 1b: a codeless row imported twice is the same outlet (stable generated code); two identical codeless rows in one batch are a duplicate. */
+    @Test
+    fun aCodelessRowImportedTwiceIsNotDuplicated() = env.app {
+        val first = commit(listOf(row("Codeless Twice Shop")))
+        assertEquals(1L, first.lng("creates"))
+        val again = commit(listOf(row("Codeless Twice Shop")))
+        assertEquals(0L, again.lng("creates")); assertEquals(1L, again.lng("unchanged"))
+        assertEquals(1, count("SELECT count(*) FROM app.outlet WHERE name = 'Codeless Twice Shop'"))
+        assertTrue(env.sql("SELECT code FROM app.outlet WHERE name = 'Codeless Twice Shop'")!!.matches(Regex("^gen\\.[0-9a-f]{20}$")))
+        val dup = sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(listOf(row("Codeless Pair"), row("Codeless Pair")), true)).objA1()
+        assertEquals(listOf("2:code:duplicate"), errors(dup))
+    }
+
+    /**
+     * (5) push 1b: a pin the FIELD confirmed is never overwritten or un-confirmed by a master pin when the switch is off; the master pin is recorded as a
+     * candidate (once). With the switch on (the owner says master coordinates are confirmed) the master pin replaces it, confirmed.
+     */
+    @Test
+    fun aFieldConfirmedPinIsKeptAndTheMasterPinBecomesACandidate() = env.app {
+        val c = "PIN${System.nanoTime() % 100000}"
+        fun r(lat: Double, lng: Double) = row("Pin Shop", ""","code":"$c","lat":$lat,"lng":$lng""")
+        commit(listOf(r(23.80, 90.40)))
+        env.sql("UPDATE app.outlet SET lat = 23.801, lng = 90.401, location_confirmed = true WHERE code = '$c' RETURNING 1") // the field verified another spot
+        val id = count("SELECT id FROM app.outlet WHERE code = '$c'")
+        val v = env.sql("SELECT version FROM app.outlet WHERE id = $id")
+        val res = commit(listOf(r(23.80, 90.40)))
+        assertTrue(warnings(res).contains("1:lat:pin_kept_as_candidate"), warnings(res).toString())
+        assertEquals("23.801|90.401|true", env.sql("SELECT lat || '|' || lng || '|' || location_confirmed FROM app.outlet WHERE id = $id"))
+        assertEquals(v, env.sql("SELECT version FROM app.outlet WHERE id = $id"), "the outlet row itself is not touched")
+        assertEquals(1, count("SELECT count(*) FROM app.outlet_location_history WHERE outlet_id = $id AND basis = 'candidate' AND lat = 23.8"))
+        assertEquals(1L, commit(listOf(r(23.80, 90.40))).lng("unchanged"), "the same candidate is not recorded twice")
+        assertEquals(1, count("SELECT count(*) FROM app.outlet_location_history WHERE outlet_id = $id AND basis = 'candidate'"))
+        // the owner says the master coordinates are confirmed: the master pin replaces the field pin, confirmed
+        commit(listOf(r(23.80, 90.40)), conf = true)
+        assertEquals("23.8|90.4|true|master", env.sql("SELECT lat || '|' || lng || '|' || location_confirmed || '|' || location_basis FROM app.outlet WHERE id = $id"))
+    }
+
+    /** (6) push 1b: border and island pins of Bangladesh confirm with the switch on; a pin outside the box or out of range never costs the row. */
+    @Test
+    fun borderAndIslandPinsLoadAndABadPinNeverCostsTheRow() = env.app {
+        val p = "BRD${System.nanoTime() % 100000}"
+        val pins = listOf(
+            "stmartin" to (20.6237 to 92.3236), "banglabandha" to (26.6290 to 88.4220), "west" to (24.2500 to 88.0300), "teknaf" to (20.8600 to 92.3000),
+            "north" to (26.8000 to 88.5000), "india" to (22.5726 to 88.3639 - 1.0),
+        )
+        val rows = pins.mapIndexed { i, (n, ll) -> row("Border $n", ""","code":"$p$i","lat":${ll.first},"lng":${ll.second}""") } +
+            row("Border range", ""","code":"${p}r","lat":95.5,"lng":90.4""") + row("Border text", ""","code":"${p}t","lat":"23.8","lng":90.4""")
+        val res = commit(rows, conf = true)
+        assertEquals(8L, res.lng("creates")); assertEquals(emptyList(), errors(res))
+        assertEquals("true,true,true,true,false,false", env.sql("SELECT string_agg(location_confirmed::text, ',' ORDER BY code) FROM app.outlet WHERE code IN ('${p}0','${p}1','${p}2','${p}3','${p}4','${p}5')"))
+        val w = warnings(res)
+        assertTrue("5:lat:coordinates_outside_bangladesh" in w && "6:lat:coordinates_outside_bangladesh" in w && "7:lat:coordinates_invalid" in w && "8:lat:coordinates_invalid" in w, w.toString())
+        assertEquals("none|none", env.sql("SELECT string_agg(location_basis, '|' ORDER BY code) FROM app.outlet WHERE code IN ('${p}r', '${p}t')"))
     }
 }

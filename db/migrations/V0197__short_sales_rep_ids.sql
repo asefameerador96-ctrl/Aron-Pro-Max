@@ -6,6 +6,27 @@
 
 SET lock_timeout = '5s';
 
+-- Lock safety (squawk / V0144 pattern): the ALTERs below take ACCESS EXCLUSIVE on hot tables. All the locks are taken by NOWAIT inside a
+-- sub-transaction and retried (about 60 s); a busy table makes the sub-transaction release everything and sleep holding nothing, so the
+-- migration never queues behind a long transaction and never blocks the sync writers behind its own queued lock request.
+DO $$
+DECLARE n int := 0;
+BEGIN
+  LOOP
+    BEGIN
+      LOCK TABLE app.app_user IN ACCESS EXCLUSIVE MODE NOWAIT;
+      LOCK TABLE app.memo IN ACCESS EXCLUSIVE MODE NOWAIT;
+      LOCK TABLE app.memo_void IN ACCESS EXCLUSIVE MODE NOWAIT;
+      LOCK TABLE app.sale_abort IN ACCESS EXCLUSIVE MODE NOWAIT;
+      EXIT;
+    EXCEPTION WHEN lock_not_available THEN
+      n := n + 1;
+      IF n >= 120 THEN RAISE EXCEPTION 'V0197: the tables stayed locked for 60 s'; END IF;
+      PERFORM pg_sleep(0.5);
+    END;
+  END LOOP;
+END $$;
+
 ALTER TABLE app.app_user DROP CONSTRAINT app_user_memo_username;
 ALTER TABLE app.app_user ADD CONSTRAINT app_user_memo_username CHECK (role NOT IN ('SR','AMO') OR username ~ '^[a-z][a-z0-9]{2,31}$') NOT VALID;
 
