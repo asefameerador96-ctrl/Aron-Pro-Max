@@ -154,7 +154,7 @@ class GiftChoiceRecordsTest {
     private fun ownProgramme(tag: String): Pair<Long, Long> = with(world) {
         val p = one("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('astha', 'ASTHA-$tag', 'Astha $tag', DATE '${today.minusDays(40)}', DATE '${today.plusDays(40)}', 'active') RETURNING id")
         for (o in listOf(outletGold, outletGold2, outletSilver, outletLkx)) exec("INSERT INTO app.programme_enrolment (programme_id, outlet_id, tier_code, valid_from) VALUES ($p, $o, 'gold', DATE '${today.minusDays(30)}')")
-        p to one("INSERT INTO app.gift (programme_id, code, name_en) VALUES ($p, 'g_$tag', 'Gift $tag') RETURNING id")
+        p to one("INSERT INTO app.gift (programme_id, code, name_en) VALUES ($p, 'g_${tag.lowercase()}', 'Gift $tag') RETURNING id")
     }
 
     @Test
@@ -197,9 +197,16 @@ class GiftChoiceRecordsTest {
             fresh.db.jdbi.useTransaction<Exception> { h ->
                 assertNull(handler().check(h, rec))
                 // the photo's lock UPDATE comes from another connection: it must wait for this record's transaction
-                val blocked = fresh.db.jdbi.withHandle<Boolean, Exception> { other ->
-                    other.begin()
-                    try { other.execute("SET LOCAL lock_timeout = '400ms'"); other.execute("UPDATE app.gift_assignment SET locked_at = now() WHERE id = $aid"); false } catch (e: Exception) { true } finally { other.rollback() }
+                // (a thread of its own: Jdbi hands a nested withHandle on this thread the transaction that holds the lock)
+                val blocked = java.util.concurrent.Executors.newSingleThreadExecutor().let { ex ->
+                    try {
+                        ex.submit<Boolean> {
+                            fresh.db.jdbi.withHandle<Boolean, Exception> { other ->
+                                other.begin()
+                                try { other.execute("SET LOCAL lock_timeout = '400ms'"); other.execute("UPDATE app.gift_assignment SET locked_at = now() WHERE id = $aid"); false } catch (e: Exception) { true } finally { other.rollback() }
+                            }
+                        }.get()
+                    } finally { ex.shutdown() }
                 }
                 assertTrue(blocked, "the assignment row is held between check and afterStored")
                 handler().afterStored(h, rec, null)
@@ -241,7 +248,7 @@ class GiftChoiceRecordsTest {
                 assertEquals(1L, one("SELECT count(*) FROM app.sync_rejected WHERE client_uuid = CAST('$cu' AS uuid)"), "$q is kept, not dropped")
             }
             assertEquals(0L, one("SELECT count(*) FROM app.gift_assignment WHERE programme_id = $p"))
-            val ok = choice(outletGold2, g); assertEquals("accepted", ack(sync(sr, listOf(ok)), ok["client_uuid"].toString().trim('"')).status())
+            val ok = choice(outletSilver, g); assertEquals("accepted", ack(sync(tso, listOf(ok)), ok["client_uuid"].toString().trim('"')).status(), "the open quarter is accepted")
         }
     }
 }

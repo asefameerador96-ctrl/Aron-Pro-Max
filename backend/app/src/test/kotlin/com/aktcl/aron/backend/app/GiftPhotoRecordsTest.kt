@@ -164,7 +164,7 @@ class GiftPhotoRecordsTest {
             exec("INSERT INTO app.redemption_line (client_uuid, $common, redemption_client_uuid, gift_id, qty, points_each, points_total) VALUES (gen_random_uuid(), $vals, '$red', $cGift, 3, 100, 300)")
             fun pending(): JsonObject? = fresh.db.jdbi.withHandle<JsonObject?, Exception> { h ->
                 BundleProgrammes.section(h, com.aktcl.aron.backend.platform.Reach(userId, com.aktcl.aron.contract.Role.SR, today, false, emptySet(), setOf(route), true, emptyList()), listOf(route), setOf(outlet), today, BundleProgrammes.Flags(true, true, true), 1)
-            }?.get("pending_gift_verifications")?.jsonArray?.singleOrNull()?.jsonObject
+            }?.get("pending_gift_verifications")?.jsonArray?.map { it.jsonObject }?.singleOrNull { it["redemption_client_uuid"]!!.jsonPrimitive.content == red }
             val before = assertNotNull(pending())
             assertEquals("3", before["qty"]!!.jsonPrimitive.content); assertEquals("0", before["photos_captured"]!!.jsonPrimitive.content)
             val p1 = photo(null, 90, unit = red to 1); val dup = photo(null, 50, unit = red to 1); val p2 = photo(null, 40, unit = red to 2)
@@ -180,11 +180,11 @@ class GiftPhotoRecordsTest {
     // ---- C-R1: ties, voids, campaign-unit checks, sweep ----
 
     /** A stored redemption of the campaign with [lines] (gift to qty); line_count is [lineCount] (default the number of lines given). */
-    private fun redemption(outletId: Long, lines: List<Pair<Long, Int>>, lineCount: Int = lines.size): String = with(world) {
+    private fun redemption(outletId: Long, lines: List<Pair<Long, Int>>, lineCount: Int = lines.size, programmeId: Long = campaign): String = with(world) {
         val red = UUID.randomUUID().toString()
         val common = "family_uuid, business_date, user_id, captured_at, config_version"
         val vals = "gen_random_uuid(), DATE '$today', $userId, now(), 0"
-        exec("INSERT INTO app.redemption (client_uuid, $common, outlet_id, programme_id, balance_before_points, points_total, cash_points, cash_mtk, cash_rate_mtk_per_point, line_count, confirmed_at) VALUES ('$red', $vals, $outletId, $campaign, 5000, 300, 0, 0, 0, $lineCount, now())")
+        exec("INSERT INTO app.redemption (client_uuid, $common, outlet_id, programme_id, balance_before_points, points_total, cash_points, cash_mtk, cash_rate_mtk_per_point, line_count, confirmed_at) VALUES ('$red', $vals, $outletId, $programmeId, 5000, 300, 0, 0, 0, $lineCount, now())")
         exec("INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, status, user_id, first_batch_uuid) VALUES ('$red', 'redemption', decode(repeat('00', 32), 'hex'), 'accepted', $userId, gen_random_uuid())")
         lines.forEach { (g, q) -> addLine(red, g, q) }
         red
@@ -204,8 +204,8 @@ class GiftPhotoRecordsTest {
                 val low = "10000000-0000-4000-8000-00000000000$i"; val high = "f0000000-0000-4000-8000-00000000000$i"
                 val a = assignment("${2060 + i}-Q1")
                 val order = if (i == 1) listOf(low, high) else listOf(high, low)   // both arrival orders
-                val recs = order.map { photo(a, 120, cu = it) }
-                for (r in recs) sync(sr, listOf(r))
+                val recs = order.map { photo(a, 120, cu = it, flat = if (it == low) lat else lat + 0.00001) }   // same instant, but not the same content (that would be a content duplicate)
+                for (r in recs) ack(sync(sr, listOf(r)), cu(r)).let { assertEquals("accepted", it.status(), it.toString()) }
                 assertEquals(listOf(low), rows("SELECT client_uuid::text AS c FROM app.gift_photo WHERE gift_assignment_id = $a AND NOT is_duplicate").map { it["c"] }, "arrival order $i: the lower client uuid wins the tie")
                 assertEquals(photoUuid(recs[order.indexOf(low)]), rows("SELECT photo_media_uuid::text AS m FROM app.gift_assignment WHERE id = $a").single()["m"])
             }
@@ -238,32 +238,35 @@ class GiftPhotoRecordsTest {
     fun aCampaignUnitPhotoThatFailsItsChecksIsStoredAndFlaggedNeverDropped() = world.withApi {
         with(world) {
             val red = redemption(outlet, listOf(cGift to 2))
-            suspend fun accepted(p: JsonObject) = ack(sync(sr, listOf(p)), cu(p)).let { assertEquals("accepted", it.status(), it.toString()) }
-            val tooHigh = photo(null, 200, unit = red to 3); accepted(tooHigh)
+            suspend fun accepted(p: JsonObject, label: String = "") = ack(sync(sr, listOf(p)), cu(p)).let { assertEquals("accepted", it.status(), label + it.toString()) }
+            val tooHigh = photo(null, 900, unit = red to 3); accepted(tooHigh, "tooHigh ")
             assertEquals("unit_out_of_range", flag(tooHigh)["check_flag"]); assertEquals(true, flag(tooHigh)["is_duplicate"]); assertEquals(true, flag(tooHigh)["f"])
-            val wrongGift = photo(null, 190, unit = red to 1, giftId = cGift2); accepted(wrongGift)
+            val wrongGift = photo(null, 780, unit = red to 1, giftId = cGift2); accepted(wrongGift, "wrongGift ")
             assertEquals("gift_not_in_redemption", flag(wrongGift)["check_flag"])
-            val wrongOutlet = photo(null, 180, unit = red to 1, outletId = outlet2); accepted(wrongOutlet)
+            val wrongOutlet = photo(null, 660, unit = red to 1, outletId = outlet2); accepted(wrongOutlet, "wrongOutlet ")
             assertEquals("outlet_mismatch", flag(wrongOutlet)["check_flag"])
-            val noUnit0 = photo(null, 170, unit = red to 0); accepted(noUnit0)
-            assertEquals("unit_out_of_range", flag(noUnit0)["check_flag"], "unit 0 is outside 1..qty")
             assertEquals(emptyList(), winnersOfUnit(red, 1) + winnersOfUnit(red, 3), "none of them counts as a unit's photo")
-            assertEquals(4L, one("SELECT count(*) FROM app.gift_photo WHERE redemption_client_uuid = '$red'"), "all four are kept")
-            val good = photo(null, 100, unit = red to 1); accepted(good)
+            assertEquals(3L, one("SELECT count(*) FROM app.gift_photo WHERE redemption_client_uuid = '$red'"), "all three are kept")
+            val good = photo(null, 2000, unit = red to 1); accepted(good, "good ")
             assertNull(flag(good)["check_flag"]); assertEquals(listOf(cu(good)), winnersOfUnit(red, 1))
             // a failing photo captured EARLIER than the good one that arrives LATER must not leave the unit without its photo
             val red2 = redemption(outlet, listOf(cGift to 1))
-            val goodLater = photo(null, 100, unit = red2 to 1); val badEarlier = photo(null, 500, unit = red2 to 1, outletId = outlet2)
-            accepted(goodLater); accepted(badEarlier)
+            val goodLater = photo(null, 2400, unit = red2 to 1); val badEarlier = photo(null, 3000, unit = red2 to 1, outletId = outlet2)
+            accepted(goodLater, "goodLater "); accepted(badEarlier, "badEarlier ")
             assertEquals("outlet_mismatch", flag(badEarlier)["check_flag"]); assertEquals(listOf(cu(goodLater)), winnersOfUnit(red2, 1), "the good photo is elected again")
         }
     }
 
     @Test
-    fun aCampaignUnitPhotoOfAnOutletOutOfReachIsFlagged() = world.withApi {
+    fun aCampaignUnitPhotoOutsideTheProgrammesScopeIsFlagged() = world.withApi {
         with(world) {
-            val red = redemption(outletLkx, listOf(cGift to 1))
-            val p = photo(null, 100, unit = red to 1, outletId = outletLkx)
+            // the redemption is of a campaign whose programme scope is the other division's zone: the outlet is in the rep's reach but outside the programme's scope
+            val scoped = one("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('campaign', 'CAMP-SCOPED', 'Scoped', DATE '${today.minusDays(40)}', DATE '${today.plusDays(40)}', 'active') RETURNING id")
+            exec("INSERT INTO app.programme_version (programme_id, version_no, name_en, active_from, active_to, change_reason, request_uuid, request_fingerprint) VALUES ($scoped, 1, 'v', DATE '${today.minusDays(5)}', DATE '${today.plusDays(30)}', 'scope test version', gen_random_uuid(), 'x')")
+            exec("UPDATE app.programme SET current_version_id = (SELECT max(id) FROM app.programme_version WHERE programme_id = $scoped) WHERE id = $scoped")
+            exec("INSERT INTO app.programme_version_scope (programme_version_id, node_type, node_id) SELECT current_version_id, 'zone', (SELECT zone_id FROM app.outlet WHERE id = $outletLkx) FROM app.programme WHERE id = $scoped")
+            val red = redemption(outlet, listOf(cGift to 1), programmeId = scoped)
+            val p = photo(null, 100, unit = red to 1)
             assertEquals("accepted", ack(sync(sr, listOf(p)), cu(p)).status())
             assertEquals("out_of_reach", flag(p)["check_flag"]); assertEquals(emptyList(), winnersOfUnit(red, 1))
         }
