@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="amo_upd_network">Network Status</string>
+    <string name="amo_upd_online">অনলাইন</string>
+    <string name="amo_upd_offline">অফলাইন</string>
+    <string name="amo_upd_heading">Update Available</string>
+    <string name="amo_upd_version">Version %1$s available</string>
+    <string name="amo_upd_download">Download App &amp; Install</string>
+    <string name="amo_upd_mandatory">কিছু নতুন আপডেট পাওয়া গেছে। এই অ্যাপটি ব্যবহার চালিয়ে যেতে, আপনাকে অবশ্যই আপডেট করতে হবে!</string>
+    <string name="amo_upd_button">আপডেট</string>
+    <string name="amo_upd_current">Current version %1$s</string>
+    <string name="amo_upd_steps">প্রসেসিং(%1$d/%2$d)</string>
+    <string name="amo_upd_tip">টিপস: অ্যাপটি বন্ধ করবেন না</string>
+</resources>

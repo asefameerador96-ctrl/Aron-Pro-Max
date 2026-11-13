@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="amo_upd_network">Network Status</string>
+    <string name="amo_upd_online">Online</string>
+    <string name="amo_upd_offline">Offline</string>
+    <string name="amo_upd_heading">Update Available</string>
+    <string name="amo_upd_version">Version %1$s available</string>
+    <string name="amo_upd_download">Download App &amp; Install</string>
+    <string name="amo_upd_mandatory">New updates are available. You must update to keep using this app!</string>
+    <string name="amo_upd_button">Update</string>
+    <string name="amo_upd_current">Current version %1$s</string>
+    <string name="amo_upd_steps">Processing(%1$d/%2$d)</string>
+    <string name="amo_upd_tip">Tip: do not close the app</string>
+</resources>

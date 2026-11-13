@@ -13,3 +13,7 @@ Nothing in this lane is walked on a device. Proof is unit tests, Roborazzi image
 | Control call: tiles in place under route/outlet/alphabet bar | RECORD: code already shows them in place (golden amo_cc_tiles_bn); the audited image was older. Icons now the old art | 5a47720e, 50470e83 | amo_cc_tiles_bn |
 | Control call: alphabet "সব" | FIX: "All" as the old app | 5a47720e, 50470e83 | amo_control_call_pick_* |
 | Control call: extra "মূল্য সম্মতি" tile | KEEP-WITH-REASON: only when the server price-compliance flag is on (default off) | - | - |
+
+## Icons from the owner's screenshots (lead correction 2026-11-13)
+The first version used 112x112 px webp crops of screenshots 08 and 20 (icon content about 85 px, a 720 px-wide screenshot), drawn at 52 to 72 dp: 156 to 216 px on an xxhdpi phone, so upscaled about 2x and blurry. Replaced the same day by vector drawables traced from the same crops (`tools/trace-amo-icons.py`: 3x upscale, 12-colour quantise, vtracer, white background dropped; the gradient becomes colour bands). They are resolution independent, so the draw size no longer matters. The Astha logo (a raster logo in the old app) is vectorised the same way (20 colours).
+Crops contain artwork only: no status bar, name, phone number or other personal data (the words "LIVE" and the Astha mark are part of the icon art). Size: 13 files, 435 KB of vector XML before aapt compiles and the APK compresses it (the earlier webps were 25 KB); APK size to be measured by the lane CI size gate against docs/04.

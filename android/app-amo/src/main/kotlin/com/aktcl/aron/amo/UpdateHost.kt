@@ -17,7 +17,6 @@ import com.aktcl.aron.core.sync.shell.UpdateScreen
 import com.aktcl.aron.core.sync.shell.UpdateShell
 import com.aktcl.aron.core.system.update.DayGate
 import com.aktcl.aron.core.system.update.DayGateBanner
-import com.aktcl.aron.core.system.update.UpdateContent
 import com.aktcl.aron.core.ui.AronTokens
 
 /**
@@ -45,13 +44,12 @@ fun UpdateHost(
         UpdateScreen.None -> content()
         is UpdateScreen.Prompt -> {
             val network = remember(download, s.release) { shell.network() }
-            UpdateContent(
+            AmoUpdateScreen(
                 s.release, s.required, network, download,
                 onDownload = { shell.startDownload(s.release) },
                 onInstall = { shell.startInstall(s.release) },
                 onOpenUnknownSources = { runCatching { context.startActivity(shell.unknownSourcesIntent()) } },
                 onLater = { shell.later(s.release) },
-                amoStyle = true,
             )
         }
         UpdateScreen.Blocked -> Column(Modifier.padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
