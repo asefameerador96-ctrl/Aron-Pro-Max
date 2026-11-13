@@ -252,10 +252,10 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
                     // the selector and letter bar, the category quantities, the banner with Print and Edit in a row, the "marked as paid" modal
                     outletName = outletLabel(sel.memo.outletId), dashedDueBox = true, dueSideBySide = true, subtotalQuantities = true, letterFilter = true,
                     switcher = MemoSwitcher(
-                        st.rows.map { MemoSwitchOption(it.memoUuid, outletLabel(it.outletId), st.remainingByMemo[it.memoUuid] ?: it.dueMtk) }, sel.memo.memoUuid, onSelect = { vm.open(it) },
+                        st.rows.map { MemoSwitchOption(it.memoUuid, outletLabel(it.outletId), st.remainingByMemo[it.memoUuid] ?: it.dueMtk, it.totalMtk) }, sel.memo.memoUuid, onSelect = { vm.open(it) },
                     ),
                     detailBanner = stringResource(com.aktcl.aron.feature.memo.R.string.memo_banner_manual), buttonsInRow = true,
-                    paidDialog = st.paidDone, onPaidDialogOk = vm::dismissPaidDone,
+                    paidDialog = st.paidDone, onPaidDialogOk = vm::dismissPaidDone, vendorLayout = true, // P-SR2: manuals 36, 38
                     editDisabledReason = when (editRefused) {
                         DayRefusal.FINAL_SUBMIT -> stringResource(R.string.sr_lock_body)
                         DayRefusal.SALES_SUBMIT -> stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_blocked_done)

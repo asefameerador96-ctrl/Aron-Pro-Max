@@ -86,13 +86,28 @@ class MemoManualScreensTest {
 
     @Test fun switcherNamesTheOutletWithItsDueAndOpensAnotherMemo() {
         var picked: String? = null
-        val sw = MemoSwitcher(listOf(MemoSwitchOption("m1", "Tasmin (1618415)", 29_150_000), MemoSwitchOption("m2", "Milon Store (2663519)", 0)), "m1") { picked = it }
+        val sw = MemoSwitcher(listOf(MemoSwitchOption("m1", "Tasmin (1618415)", 29_150_000, 29_150_000), MemoSwitchOption("m2", "Milon Store (2663519)", 0)), "m1") { picked = it }
         show { MemoDetailView(MemoMenu.detail(memo), false, 0, { names.getValue(it) }, {}, {}, {}, switcher = sw) }
         compose.onNodeWithText("Tasmin (1618415)").assertExists()
-        compose.onNodeWithText("Due 29,150.00 ৳", substring = true).assertExists()
+        // P-SR2 (manual 38): the outlet, then ": <memo value> ৳", then the word "Due" (বাকি) in red
+        compose.onNodeWithText(": 29,150.00 ৳", substring = true).assertExists()
+        compose.onNodeWithText("Due").assertExists()
         compose.onNodeWithText("Tasmin (1618415)").performClick()
         compose.onNodeWithText("Milon Store (2663519)").performClick()
         assertEquals("m2", picked)
+    }
+
+    @Test fun vendorLayoutHasNoHeaderCardTheMinusLinesAndTheDueBoxWithItsOneTapButton() {
+        var paid = 0
+        show { MemoDetailView(MemoMenu.detail(memo), true, 100_000, { names.getValue(it) }, {}, {}, { paid++ }, skuCategory = { cats[it] }, outletName = "Tasmin (1618415)", vendorLayout = true, letterFilter = true, subtotalQuantities = true) }
+        compose.onNodeWithText("Tasmin (1618415)").assertDoesNotExist() // no selector and no header card without a switcher
+        compose.onNodeWithText("Price").assertExists() // "দাম" without the taka sign
+        compose.onNodeWithText("Total QC").assertExists()
+        compose.onNodeWithText("Grand total").assertExists()
+        compose.onNodeWithText("Total discount").assertDoesNotExist() // the zero discount line stays off the screen (deferred programme)
+        compose.onNodeWithText("Mark paid").performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Are you sure?").assertExists() // the confirm step comes before any write
+        assertEquals(0, paid)
     }
 
     @Test fun bannerShowsOnTheDetailAndPrintAndEditShareARow() {

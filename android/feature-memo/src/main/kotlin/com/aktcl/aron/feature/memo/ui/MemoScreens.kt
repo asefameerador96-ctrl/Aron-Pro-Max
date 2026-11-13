@@ -114,6 +114,9 @@ internal fun amount(mtk: Long): String = Formats.digits(Money.formatTaka(mtk, 2)
 @Composable
 internal fun minusMoney(mtk: Long): String = MINUS + money(kotlin.math.abs(mtk))
 
+/** The vendor's minus line "- ০.০০": a true minus, no taka sign (manuals 36, 38). */
+@Composable internal fun minusMoneyPlain(mtk: Long): String = MINUS + " " + amount(kotlin.math.abs(mtk))
+
 private const val MINUS = "− "
 
 /** The short memo number of a row ("001" of "sr334001-261005-001"): the full number stays on the detail header and the slip. */
@@ -246,6 +249,8 @@ fun MemoDetailView(
     /** SRM-B-20: the vendor's "marked as paid" modal (green tick, text, ওকে) stays until [onPaidDialogOk]. */
     paidDialog: Boolean = false,
     onPaidDialogOk: () -> Unit = {},
+    /** P-SR2 (manuals 36, 38): the vendor's table, letter bar, totals and credit box; false keeps the AMO's and TSO's layout. */
+    vendorLayout: Boolean = false,
 ) {
     val look = LocalAronLook.current
     var confirm by remember { mutableStateOf(false) }
@@ -256,7 +261,8 @@ fun MemoDetailView(
         if (detailBanner != null) AronInfoCard(detailBanner, trailing = printerBadge)
         if (switcher != null) MemoSwitcherBar(switcher)
         // header: the outlet (or the memo number), the memo number and time, the reprint and supersede markers
-        WhiteCard {
+        // (the vendor layout heads the memo with the selector alone: the header card appears only for a marker)
+        if (!vendorLayout || detail.reprintIsDuplicate || memo.supersedesMemoNo != null) WhiteCard {
             Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
                 if (routeName != null) {
                     Text(stringResource(R.string.memo_route_label) + " " + routeName, style = MaterialTheme.typography.titleSmall, color = look.ink, maxLines = 2)
@@ -267,58 +273,88 @@ fun MemoDetailView(
                 memo.supersedesMemoNo?.let { MarkerLine(AronIcons.Edit, stringResource(R.string.memo_replaces, localizedDigits(it))) }
             }
         }
-        // the lines table: SKU, quantity in its own unit, price (৳)
-        WhiteCard {
-            Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                val names = detail.items.associate { it.skuId to skuName(it.skuId) }
-                if (letterFilter) LetterBar(names.values.mapNotNull { it.firstOrNull()?.uppercaseChar() }.filter { it.isLetter() }.distinct().sorted(), letter) { letter = it }
-                val shown = detail.items.filter { i -> letter == null || names[i.skuId]?.firstOrNull()?.uppercaseChar() == letter }
-                TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
-                shown.forEach { i -> TableRow(skuName(i.skuId), lineQtyText(i.qtyEntered, i.unitEntered, skuCategory(i.skuId), i.qtyBase, skuUnit(i.skuId)), amount(i.grossMtk)) }
-                // M3: a money subtotal per category, in first-seen order (quantities of different units are never added). It is always the
-                // whole category of the memo, never only the lines a letter filter leaves on screen, so a "Total" is never partial.
-                val shownCategories = shown.map { skuCategory(it.skuId) }.toSet()
-                detail.items.filter { MemoCategories.label(skuCategory(it.skuId)).isNotBlank() && skuCategory(it.skuId) in shownCategories }
-                    .groupBy { skuCategory(it.skuId) }.forEach { (code, items) ->
-                        val name = stringResource(R.string.memo_total_category, MemoCategories.label(code))
-                        // the AMO and TSO keep the two-column row; the SR's carries the quantity (SRM-B-12)
-                        if (subtotalQuantities) TableRow(name, categoryQtyText(items, code, skuUnit), amount(items.sumOf { it.grossMtk }))
-                        else TableRow2(name, amount(items.sumOf { it.grossMtk }))
-                    }
-                if (detail.discountTable.isNotEmpty()) {
-                    CardDivider()
+        if (vendorLayout) {
+            // manual 36/38: the dark letter bar outside the table, the gradient header, a grey category block, the white total row
+            val names = detail.items.associate { it.skuId to skuName(it.skuId) }
+            if (letterFilter) VendorLetterBar(names.values.mapNotNull { it.firstOrNull()?.uppercaseChar() }.filter { it.isLetter() }.distinct().sorted(), letter) { letter = it }
+            val shown = detail.items.filter { i -> letter == null || names[i.skuId]?.firstOrNull()?.uppercaseChar() == letter }
+            val shownCategories = shown.map { skuCategory(it.skuId) }.toSet()
+            val subtotals = detail.items.filter { MemoCategories.label(skuCategory(it.skuId)).isNotBlank() && skuCategory(it.skuId) in shownCategories }
+                .groupBy { skuCategory(it.skuId) }.map { (code, items) ->
+                    Triple(stringResource(R.string.memo_total_category, MemoCategories.label(code)), categoryQtyText(items, code, skuUnit), amount(items.sumOf { it.grossMtk }))
+                }
+            // quantities of different units are never added (rule 5): the total row carries the money only
+            VendorTable(
+                shown.map { i -> Triple(skuName(i.skuId), lineQtyText(i.qtyEntered, i.unitEntered, skuCategory(i.skuId), i.qtyBase, skuUnit(i.skuId)), amount(i.grossMtk)) },
+                subtotals, stringResource(R.string.memo_total), amount(memo.grossMtk),
+            )
+            if (detail.discountTable.isNotEmpty()) WhiteCard {
+                Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                     TableHeader(stringResource(R.string.memo_discount_section), stringResource(R.string.memo_col_qty), stringResource(R.string.summary_col_value))
                     detail.discountTable.forEach { d ->
                         TableRow(d.skuId?.let(skuName) ?: stringResource(R.string.memo_discount_memo_level), qtyText(d.qtyBase, d.skuId?.let(skuUnit).orEmpty()), amount(d.valueMtk))
                     }
                 }
-                if (detail.totalQcMtk != 0L) {
+            }
+            VendorTotals(
+                minusMoneyPlain(detail.totalQcMtk), amount(detail.grandTotalMtk),
+                discountLine = if (detail.totalDiscountMtk != 0L) minusMoneyPlain(detail.totalDiscountMtk) else null,
+            )
+        } else {
+            // the lines table: SKU, quantity in its own unit, price (৳)
+            WhiteCard {
+                Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                    val names = detail.items.associate { it.skuId to skuName(it.skuId) }
+                    if (letterFilter) LetterBar(names.values.mapNotNull { it.firstOrNull()?.uppercaseChar() }.filter { it.isLetter() }.distinct().sorted(), letter) { letter = it }
+                    val shown = detail.items.filter { i -> letter == null || names[i.skuId]?.firstOrNull()?.uppercaseChar() == letter }
+                    TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
+                    shown.forEach { i -> TableRow(skuName(i.skuId), lineQtyText(i.qtyEntered, i.unitEntered, skuCategory(i.skuId), i.qtyBase, skuUnit(i.skuId)), amount(i.grossMtk)) }
+                    // M3: a money subtotal per category, in first-seen order (quantities of different units are never added). It is always the
+                    // whole category of the memo, never only the lines a letter filter leaves on screen, so a "Total" is never partial.
+                    val shownCategories = shown.map { skuCategory(it.skuId) }.toSet()
+                    detail.items.filter { MemoCategories.label(skuCategory(it.skuId)).isNotBlank() && skuCategory(it.skuId) in shownCategories }
+                        .groupBy { skuCategory(it.skuId) }.forEach { (code, items) ->
+                            val name = stringResource(R.string.memo_total_category, MemoCategories.label(code))
+                            // the AMO and TSO keep the two-column row; the SR's carries the quantity (SRM-B-12)
+                            if (subtotalQuantities) TableRow(name, categoryQtyText(items, code, skuUnit), amount(items.sumOf { it.grossMtk }))
+                            else TableRow2(name, amount(items.sumOf { it.grossMtk }))
+                        }
+                    if (detail.discountTable.isNotEmpty()) {
+                        CardDivider()
+                        TableHeader(stringResource(R.string.memo_discount_section), stringResource(R.string.memo_col_qty), stringResource(R.string.summary_col_value))
+                        detail.discountTable.forEach { d ->
+                            TableRow(d.skuId?.let(skuName) ?: stringResource(R.string.memo_discount_memo_level), qtyText(d.qtyBase, d.skuId?.let(skuUnit).orEmpty()), amount(d.valueMtk))
+                        }
+                    }
+                    if (detail.totalQcMtk != 0L) {
+                        CardDivider()
+                        TableRow(stringResource(R.string.memo_total_qc), "", amount(detail.totalQcMtk))
+                    }
+                }
+            }
+            // totals: gross, the discount and QC lines (zero too, as the manual p44 and the print show them) and net, each with its word and a true minus
+            WhiteCard {
+                Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                    TotalLine(stringResource(R.string.memo_total), money(memo.grossMtk))
+                    DeductionLine(stringResource(R.string.memo_total_discount), minusMoney(detail.totalDiscountMtk))
+                    DeductionLine(stringResource(R.string.memo_total_qc), minusMoney(detail.totalQcMtk))
                     CardDivider()
-                    TableRow(stringResource(R.string.memo_total_qc), "", amount(detail.totalQcMtk))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.memo_grand_total), style = MaterialTheme.typography.titleMedium, color = look.purple, modifier = Modifier.weight(1f))
+                        MoneyText(money(detail.grandTotalMtk), style = MaterialTheme.typography.headlineMedium, color = look.purple, textAlign = TextAlign.End)
+                    }
                 }
             }
         }
-        // totals: gross, the discount and QC lines (zero too, as the manual p44 and the print show them) and net, each with its word and a true minus
-        WhiteCard {
-            Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                TotalLine(stringResource(R.string.memo_total), money(memo.grossMtk))
-                DeductionLine(stringResource(R.string.memo_total_discount), minusMoney(detail.totalDiscountMtk))
-                DeductionLine(stringResource(R.string.memo_total_qc), minusMoney(detail.totalQcMtk))
-                CardDivider()
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.memo_grand_total), style = MaterialTheme.typography.titleMedium, color = look.purple, modifier = Modifier.weight(1f))
-                    MoneyText(money(detail.grandTotalMtk), style = MaterialTheme.typography.headlineMedium, color = look.purple, textAlign = TextAlign.End)
-                }
-            }
-        }
-        if (dueMtk > 0) CreditBox(money(dueMtk), canMarkPaid, dashedDueBox, dueSideBySide) { confirm = true }
+        if (dueMtk > 0) { if (vendorLayout) VendorDueBox(canMarkPaid) { confirm = true } else CreditBox(money(dueMtk), canMarkPaid, dashedDueBox, dueSideBySide) { confirm = true } }
         // a disabled action always says why, above the buttons
         listOfNotNull(printDisabledReason, editDisabledReason).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = look.inkMuted) }
         if (buttonsInRow) {
             // SRM-B-14 (shot 38): Print (gradient) and Edit (amber) side by side
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                 AronPrimaryButton(stringResource(R.string.memo_print), onPrint, Modifier.weight(1f), enabled = printDisabledReason == null && !printing, glyph = ButtonGlyph.Print)
-                AronSolidButton(stringResource(R.string.memo_edit), onEdit, Modifier.weight(1f), tone = SolidTone.Amber, enabled = editDisabledReason == null)
+                if (vendorLayout) VendorEditButton(editDisabledReason == null, onEdit, Modifier.weight(1f))
+                else AronSolidButton(stringResource(R.string.memo_edit), onEdit, Modifier.weight(1f), tone = SolidTone.Amber, enabled = editDisabledReason == null)
             }
         } else {
             AronPrimaryButton(stringResource(R.string.memo_print), onPrint, Modifier.fillMaxWidth(), enabled = printDisabledReason == null && !printing, glyph = ButtonGlyph.Print)
@@ -736,7 +772,7 @@ internal fun qtyText(qty: Long, unit: String): String =
     if (unit.isEmpty()) localizedNumber(qty) else stringResource(R.string.summary_qty_unit, localizedNumber(qty), unit)
 
 /** SRM-B-10: one memo of the selector: the outlet label, its memo and the due still open (the red "বাকি" tag). */
-data class MemoSwitchOption(val memoUuid: String, val label: String, val dueMtk: Long)
+data class MemoSwitchOption(val memoUuid: String, val label: String, val dueMtk: Long, val totalMtk: Long = 0)
 
 /** The outlet selector of the memo screen (shot 36 right): [options] are today's live memos; [onSelect] opens another one. */
 data class MemoSwitcher(val options: List<MemoSwitchOption>, val selectedMemoUuid: String, val onSelect: (String) -> Unit)
@@ -749,8 +785,10 @@ private fun MemoSwitcherBar(sw: MemoSwitcher) {
     Box(Modifier.fillMaxWidth()) {
         WhiteCard(Modifier.clickable(role = Role.DropdownList) { open = true }) {
             Row(Modifier.fillMaxWidth().heightIn(min = AronLook.Touch).padding(AronTokens.Space.L), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                Text(cur?.label.orEmpty(), style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2, modifier = Modifier.weight(1f))
-                if ((cur?.dueMtk ?: 0) > 0) Text(stringResource(R.string.memo_due_chip_amount, money(cur!!.dueMtk)), style = MaterialTheme.typography.labelMedium, color = look.red)
+                // manual 38: the outlet in ink, ": ২৯১.৫০ ৳" in purple, then the red word বাকি when a due is open
+                Text(cur?.label.orEmpty(), style = MaterialTheme.typography.bodyLarge, color = look.ink, maxLines = 2, modifier = Modifier.weight(1f))
+                if ((cur?.totalMtk ?: 0) > 0) Text(stringResource(R.string.memo_selector_total, money(cur!!.totalMtk)), style = MaterialTheme.typography.labelLarge, color = look.purple)
+                if ((cur?.dueMtk ?: 0) > 0) Text(stringResource(R.string.memo_due_word), style = MaterialTheme.typography.labelLarge, color = look.red)
                 Text(stringResource(R.string.memo_glyph_dropdown), color = look.inkMuted)
             }
         }

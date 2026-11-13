@@ -92,13 +92,13 @@ fun EditReasonDialog(onSubmit: (EditReason) -> Unit, onCancel: () -> Unit, reaso
     val chosen = reasons.firstOrNull { it.wire == picked }
     androidx.compose.ui.window.Dialog(onDismissRequest = onCancel) {
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White).padding(16.dp),
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Color(0xFFECE6F0)).padding(16.dp), // manual 37: the lilac dialog
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(stringResource(R.string.edit_reason_dialog_title), style = MaterialTheme.typography.titleMedium, color = Color(0xFF1565C0))
+            Text(stringResource(R.string.edit_reason_dialog_title), style = MaterialTheme.typography.titleMedium, color = Color(0xFF212121), textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth())
             Box(Modifier.fillMaxWidth()) {
                 Row(
-                    Modifier.fillMaxWidth().heightIn(min = 48.dp).border(1.dp, Color(0xFF9E9E9E), RoundedCornerShape(8.dp))
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).background(Color.White).border(1.dp, Color(0xFF616161), RoundedCornerShape(12.dp))
                         .clickable(role = Role.DropdownList) { open = true }.padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
