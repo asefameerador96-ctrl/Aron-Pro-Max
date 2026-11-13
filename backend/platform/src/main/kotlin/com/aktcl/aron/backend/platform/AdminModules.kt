@@ -98,11 +98,11 @@ object AdminModules {
         p("/v1/admin/target-revisions/**") to "targets",
         p("/v1/admin/supervisor-targets/**") to "targets",
         p("/v1/admin/sales-plans/**") to "targets",
-        // Loyalty programmes: the portal (roadmap item 2) has its own module since V0160; the field stays deferred (/v1/programmes/** below).
+        // Loyalty programmes: the portal (roadmap item 2) has its own module since V0160; the field side is /v1/programmes/** below.
         p("/v1/admin/programmes/**") to "loyalty", // was `targets` until the loyalty portal (V0160); today's ADMIN access was carried over by the migration
         p("/v1/admin/offers/**") to "discounts", // was `targets` until the discount portal (V0154); today's ADMIN access was carried over by the migration
         p("/v1/admin/gifts/**") to "loyalty", // was `targets` until the loyalty portal (V0160)
-        p("/v1/programmes/**") to "targets",
+        p("/v1/programmes/**") to "loyalty", // the field side of loyalty and Astha (balances, Astha targets read and upload, gift choices), moved off `targets` in push B2 (D-LOY-API-12); `targets` keeps only the deferred target programme
         p("/v1/admin/devices/**") to "mdm",
         p("/v1/admin/enrolment-tokens/**") to "mdm",
         p("/v1/admin/releases/**") to "mdm",

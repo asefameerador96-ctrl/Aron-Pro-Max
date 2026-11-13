@@ -93,8 +93,14 @@ class AdminModulesTest {
         // Moved off `targets` by V0160 (D-LOY-API-04): programmes, their versions, status and enrolments, and gifts.
         for (path in listOf("/v1/admin/programmes", "/v1/admin/programmes/7", "/v1/admin/programmes/7/versions", "/v1/admin/programmes/7/status", "/v1/admin/programmes/7/enrolments", "/v1/admin/gifts", "/v1/admin/gifts/7"))
             for (m in listOf("GET", "POST", "PUT", "PATCH")) assertEquals("loyalty", AdminModules.moduleOf(m, path), "$m $path")
-        // The phone loyalty operations answer 501 and stay with `targets` until the field build (docs/27).
-        for (path in listOf("/v1/programmes/loyalty/balances", "/v1/programmes/astha/targets", "/v1/programmes/astha/gift-choices")) assertEquals("targets", AdminModules.moduleOf("GET", path), path)
+        // The field side (balances, Astha targets read and upload, gift choices) is loyalty too since push B2: nothing of loyalty stays on `targets`.
+        for (path in listOf("/v1/programmes/loyalty/balances", "/v1/programmes/astha/targets", "/v1/programmes/astha/gift-choices")) assertEquals("loyalty", AdminModules.moduleOf("GET", path), path)
+        assertEquals("loyalty", AdminModules.moduleOf("PUT", "/v1/programmes/astha/targets"))
+        assertEquals("loyalty", AdminModules.moduleOf("PUT", "/v1/programmes/astha/gift-choices"))
+        val targetsOnlyField = p(Role.ADMIN, mapOf("targets" to "w"))
+        assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(targetsOnlyField, "PUT", "/v1/programmes/astha/targets"))
+        assertEquals(null, outcome(p(Role.ADMIN, mapOf("loyalty" to "w")), "PUT", "/v1/programmes/astha/targets"))
+        assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(p(Role.ADMIN, mapOf("loyalty" to "r")), "PUT", "/v1/programmes/astha/targets"))
         // A `targets` grant no longer opens the loyalty paths, and a `loyalty` grant does not open the target paths.
         val targetsOnly = p(Role.ADMIN, mapOf("targets" to "w"))
         assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(targetsOnly, "GET", "/v1/admin/programmes"))

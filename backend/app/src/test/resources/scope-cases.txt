@@ -253,3 +253,7 @@ POST /v1/admin/programmes/{id}/status -> case AdminLoyaltyTest#statusMovesDraftT
 PUT /v1/admin/programmes/{id}/enrolments -> case AdminLoyaltyTest#enrolmentsUpsertIdempotentlyByBatchWithCountsAndRefusals
 POST /v1/admin/gifts -> case AdminLoyaltyTest#giftCreateIsSuperadminOnlyWithReplayDuplicateAndRefusals
 PATCH /v1/admin/gifts/{id} -> case AdminLoyaltyTest#giftUpdateGetListWithPreconditionNoChangeAndFirstResultReplay
+GET /v1/programmes/loyalty/balances -> case LoyaltyFieldRoutesTest#theLiveBalanceIsTheLedgerUpToTodayCutToTheCallersOutlets
+GET /v1/programmes/astha/targets -> case LoyaltyFieldRoutesTest#theTargetListIsCutToTheReachAndRefusesARouteOrZoneOutsideIt
+GET /v1/programmes/astha/gift-choices -> case LoyaltyFieldRoutesTest#theGiftChoiceListIsCutToTheReachAndNationalReadersMustNarrow
+PUT /v1/programmes/astha/targets -> case LoyaltyFieldRoutesTest#onlyTheConfiguredRolesUploadAndATsoOnlyForItsOwnTerritory

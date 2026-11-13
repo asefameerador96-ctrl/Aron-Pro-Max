@@ -45,6 +45,15 @@ Gift:
       - 'null'
       format: uri
       maxLength: 1000
+      description: Short-lived signed read URL in portal answers; ALWAYS null in the phone bundle (a signed URL
+        would change the bundle fingerprint on every build and would be cached). The phone uses `image_asset_id`.
+    image_asset_id:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+      description: 1.15.0. Stable id of the gift picture; the phone fetches the bytes once per id with `GET /v1/sku-images/{asset_id}`
+        (also serves gift pictures, at most 300 KB) and keeps them in its bounded image cache. Null when the gift
+        has no picture.
     status:
       $ref: '#/components/schemas/ActiveStatus'
     version:

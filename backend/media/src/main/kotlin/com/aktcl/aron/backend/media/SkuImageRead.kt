@@ -1,6 +1,7 @@
 package com.aktcl.aron.backend.media
 
 import com.aktcl.aron.backend.platform.ApiProblem
+import com.aktcl.aron.backend.platform.ProgrammeScopeSql
 import com.aktcl.aron.contract.ProblemCode
 import java.util.UUID
 
@@ -18,7 +19,7 @@ val UnconfiguredBlobBytesReader = BlobBytesReader { _, _ ->
  * GET /v1/sku-images/{asset_id} (contract getSkuImage, PARITY-SPEC s2.6; lead ruling 2026-10-18): the bytes of a SKU's
  * pack picture, streamed by the API so no signed URL ever leaves it. The bundle carries the stable `image_asset_id`; an
  * asset never changes (a new file is a new asset), so the answer is cacheable for a year and its ETag is the asset id.
- * Served only when the asset exists, is of purpose `sku_image`, is at most [MAX_BYTES] and a SKU binds it; anything else
+ * Served only when the asset exists, is at most [MAX_BYTES] and is bound by a SKU (purpose `sku_image`) or by an active gift (purpose `gift_image`, lane portal-loyalty-api, contract 1.15.0); anything else
  * (a malformed id included) is a bare 404, so the endpoint cannot be used to probe other assets. Any signed-in caller:
  * pack art is the same for every role and reach.
  */
@@ -26,14 +27,27 @@ internal class SkuImageRead(private val d: MediaDeps) {
     /** What the database says about a servable picture; the blob is not read yet (a 304 never touches storage). */
     class Meta(val path: String, val mime: String, val etag: String)
 
-    fun meta(rawId: String?): Meta {
+    /** Who is asking, for a GIFT picture: the caller's reach (null: gift pictures are not served at all, fail closed). */
+    class GiftScope(val national: Boolean, val scope: com.aktcl.aron.backend.platform.ProgrammeScopeParams)
+
+    /**
+     * A SKU picture is served to any signed-in caller. A GIFT picture (since 1.15.0) only while an ACTIVE gift of an ACTIVE programme in its window binds it AND the programme's
+     * active version scope (the shared [ProgrammeScopeSql]) includes the caller's reach: a draft, ended or out-of-scope programme's pictures are a bare 404 (B5 of the Opus pass).
+     */
+    fun meta(rawId: String?, gift: GiftScope? = null): Meta {
         val id = rawId?.takeIf { UUID_RE.matches(it) }?.lowercase() ?: throw notFound()
+        val today = com.aktcl.aron.rules.BusinessDate.of(d.clock.now().toEpochMilli()).toString()
+        val scopeSql = if (gift == null || gift.national) "TRUE" else ProgrammeScopeSql.geo("gv")
+        val giftOk = if (gift == null) "FALSE" else "(a.purpose = 'gift_image' AND EXISTS (SELECT 1 FROM app.gift g JOIN app.programme gp ON gp.id = g.programme_id " +
+            "LEFT JOIN app.programme_version gv ON gv.id = gp.current_version_id WHERE g.image_asset_id = a.asset_id AND g.status = 'active' AND gp.status = 'active' " +
+            "AND gp.active_from <= CAST(:today AS date) AND gp.active_to >= CAST(:today AS date) AND $scopeSql))"
         return d.db.readJdbi.withHandle<Meta?, Exception> { h ->
-            h.createQuery(
-                "SELECT a.blob_path, a.mime FROM app.admin_asset a WHERE a.asset_id = :id AND a.purpose = 'sku_image' AND a.bytes <= :max " +
-                    "AND a.mime IN ('image/jpeg', 'image/png') AND EXISTS (SELECT 1 FROM app.sku s WHERE s.image_asset_id = a.asset_id)",
-            ).bind("id", UUID.fromString(id)).bind("max", MAX_BYTES)
-                .map { rs, _ -> Meta(rs.getString(1), rs.getString(2), "\"" + id + "\"") }.findOne().orElse(null)
+            val q = h.createQuery(
+                "SELECT a.blob_path, a.mime FROM app.admin_asset a WHERE a.asset_id = :id AND a.bytes <= :max AND a.mime IN ('image/jpeg', 'image/png') AND " +
+                    "((a.purpose = 'sku_image' AND EXISTS (SELECT 1 FROM app.sku s WHERE s.image_asset_id = a.asset_id)) OR $giftOk)",
+            ).bind("id", UUID.fromString(id)).bind("max", MAX_BYTES).bind("today", today)
+            if (gift != null && !gift.national) gift.scope.bindTo(q)
+            q.map { rs, _ -> Meta(rs.getString(1), rs.getString(2), "\"" + id + "\"") }.findOne().orElse(null)
         } ?: throw notFound()
     }
 

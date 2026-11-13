@@ -261,6 +261,8 @@ class ContractConformanceTest {
 
         private const val MDM_PENDING = "7d1c0a52-3b6e-4f08-9a4d-0c2e5b8f1a63"
         /** The id of the proof phone, the target of the MDM fixtures. */
+        private fun mirRoute(x: Ctx): String = x.world.fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.route WHERE code = 'MIR-SR-D'").mapTo(Long::class.java).one() }.toString()
+
         private fun mdmPhoneId(x: Ctx): String = x.world.fresh.db.jdbi.withHandle<Long, Exception> { h ->
             h.createQuery("SELECT id FROM app.device WHERE device_uuid = CAST(:u AS uuid)").bind("u", ApiWorld.PROOF_PHONE).mapTo(Long::class.java).one()
         }.toString()
@@ -354,6 +356,16 @@ class ContractConformanceTest {
                     n.removeAll(); n.put("batch_uuid", java.util.UUID.randomUUID().toString()); n.put("change_reason", "conformance check enrolment")
                     n.putArray("rows").addObject().put("programme_id", x.need("programme_id").toLong()).put("outlet_id", outlet).put("tier_code", "silver").put("base_target", "100").put("valid_from", FUTURE)
                 }),
+            // Loyalty field side (contract 1.15.0): the Astha target upload with an explicit body (a real outlet, a month of the business date's quarter, integers as
+            // milli-taka text); the three reads are narrowed by route for the national callers (a national reader must narrow, else 400, which is declared).
+            "PUT /v1/programmes/astha/targets" to Fx(body = { n, _, x ->
+                val outlet = x.world.fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT o.id FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE r.code = 'MIR-SR-D' AND o.status = 'active' ORDER BY o.id LIMIT 1").mapTo(Long::class.java).one() }
+                val q = com.aktcl.aron.backend.platform.AsthaQuarter.of(java.time.LocalDate.parse(ApiWorld.BUSINESS_DATE), 1)
+                n.removeAll(); n.put("batch_uuid", java.util.UUID.randomUUID().toString()); n.put("quarter", q.label); n.put("change_reason", "conformance check targets")
+                n.putArray("rows").addObject().put("outlet_id", outlet).putNull("brand_id").put("month", q.months.first().toString().substring(0, 7)).put("std_target", "10").put("memo_target", 3).put("value_target_mtk", "30000")
+            }),
+            "GET /v1/programmes/astha/targets" to Fx(after = listOf("PUT /v1/programmes/astha/targets"), query = { _, x -> mapOf("quarter" to com.aktcl.aron.backend.platform.AsthaQuarter.of(java.time.LocalDate.parse(ApiWorld.BUSINESS_DATE), 1).label, "route_id" to mirRoute(x)) }),
+            "GET /v1/programmes/astha/gift-choices" to Fx(query = { _, x -> mapOf("quarter" to com.aktcl.aron.backend.platform.AsthaQuarter.of(java.time.LocalDate.parse(ApiWorld.BUSINESS_DATE), 1).label, "route_id" to mirRoute(x)) }),
             "GET /v1/admin/programmes/{}/enrolments" to Fx(after = listOf("PUT /v1/admin/programmes/{}/enrolments"), path = { _, x -> mapOf("id" to x.need("programme_id")) }),
             "POST /v1/admin/programmes/{}/status" to Fx(after = listOf("PATCH /v1/admin/programmes/{}", "PUT /v1/admin/programmes/{}/enrolments"), path = { _, x -> mapOf("id" to x.need("programme_id")) },
                 body = { n, _, _ -> n.removeAll(); n.put("request_uuid", java.util.UUID.randomUUID().toString()); n.put("to_status", "active"); n.put("reason", "conformance check activation") }),

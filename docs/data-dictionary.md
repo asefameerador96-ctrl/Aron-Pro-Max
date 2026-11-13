@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 180 | 2975 |
+| `app` | 181 | 2986 |
 | `dw` | 75 | 1211 |
 
 ## Index
@@ -33,7 +33,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.app_release`](#appapp_release) | table | backend:config | ONLINE | master | none | One published or draft build of the field app (version, ABI, download URL, signing certificate, rollout percentage). |
 | [`app.app_user`](#appapp_user) | table | backend:masterdata | ONLINE | master | secret | One person who can log in, field or web, with role, status, locale and Argon2id password hash; never deleted. |
 | [`app.archive_manifest`](#apparchive_manifest) | table | db | SERVER | audit | none | One row per exported month partition: planned, exported, verified, dropped, restored; a partition is dropped only after its row is verified. |
-| [`app.astha_target`](#appastha_target) | table | backend:masterdata | ONLINE | master | none | Astha programme target for a route (optionally an outlet and brand) and month, in standard units and memo count. |
+| [`app.astha_target`](#appastha_target) | table | backend:masterdata | ONLINE | master | none | Astha monthly target of a route (outlet_id null), an outlet (brand_id null: the memo target "All Brand") or an outlet and brand; one row per (month, outlet, brand) for outlet rows (index astha_target_outlet_one), so a route change moves the row instead of doubling it. |
+| [`app.astha_target_batch`](#appastha_target_batch) | table | backend:masterdata | ONLINE | audit | none | Append-only ledger of Astha target upload batches (PUT /v1/programmes/astha/targets); the batch UUID makes a retried batch idempotent (the first counts are answered again). |
 | [`app.attendance_event`](#appattendance_event) | table | backend:sync | OFFLINE | transaction | personal | One check-in or check-out of a user with its on-demand location fix. |
 | [`app.audit_log`](#appaudit_log) | table | backend:platform | SERVER | audit | personal | Append-only, hash-chained record of web and admin actions with before and after images and the actor. |
 | [`app.auth_lockout`](#appauth_lockout) | table | backend:auth | SERVER | session | none | Failed-login counter and lock state per lock key, shared by every API replica. |
@@ -496,7 +497,7 @@ Keys: `UNIQUE (partition_name)`; `PRIMARY KEY (id)`
 
 ## app.astha_target
 
-Astha programme target for a route (optionally an outlet and brand) and month, in standard units and memo count.
+Astha monthly target of a route (outlet_id null), an outlet (brand_id null: the memo target "All Brand") or an outlet and brand; one row per (month, outlet, brand) for outlet rows (index astha_target_outlet_one), so a route change moves the row instead of doubling it.
 
 `owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
 
@@ -514,10 +515,34 @@ Astha programme target for a route (optionally an outlet and brand) and month, i
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
+| `value_target_mtk` | bigint | not null |  | Value target in integer milli-taka (money is never a float), at least 0, 0 until the portal upload sets it. |
 
 Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (brand_id) REFERENCES app.product_node(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`
+
+## app.astha_target_batch
+
+Append-only ledger of Astha target upload batches (PUT /v1/programmes/astha/targets); the batch UUID makes a retried batch idempotent (the first counts are answered again).
+
+`owner: backend:masterdata | capture: ONLINE | retention: audit | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `batch_uuid` | uuid | not null |  | Client-generated UUID of the batch. |
+| `quarter` | text | not null |  | Quarter the batch targets, YYYY-Qn. |
+| `request_fingerprint` | text | not null |  | SHA-256 (hex) of the normalised batch; a reused batch_uuid with different rows is told apart (409). |
+| `row_count` | integer | not null |  | Rows in the batch. |
+| `inserted` | integer | not null |  | Target rows the batch created. |
+| `updated` | integer | not null |  | Target rows the batch changed. |
+| `unchanged` | integer | not null |  | Rows that already matched. |
+| `reason` | text | not null |  | Why the batch was made, 10 to 500 characters, mandatory. |
+| `actor` | bigint | not null |  | User (app.app_user) who made the batch. |
+| `at` | timestamp with time zone | not null |  | UTC instant of the batch. |
+
+Keys: `PRIMARY KEY (batch_uuid)`
+
+References: `FOREIGN KEY (actor) REFERENCES app.app_user(id)`
 
 ## app.attendance_event
 

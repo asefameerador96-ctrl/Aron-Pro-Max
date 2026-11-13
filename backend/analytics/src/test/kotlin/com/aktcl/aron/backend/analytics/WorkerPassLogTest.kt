@@ -50,7 +50,12 @@ class WorkerPassLogTest {
             w.passBody = { throw InterruptedException(marker) }
             val (_, events) = captured { w.pass() }
             assertTrue(Thread.interrupted(), "the interrupt flag is restored (and cleared here for the next test)")
-            assertEquals(0, events.size)
+            assertEquals(1, events.size, "an interrupt is not silent")
+            assertEquals(Level.WARN, events.single().level)
+            assertTrue(events.single().formattedMessage.contains("aggregation pass interrupted") && events.single().formattedMessage.contains("java.lang.InterruptedException"))
+            assertFalse(events.single().formattedMessage.contains(marker), "class only, never the message")
+            val (_, again) = captured { w.pass() }; Thread.interrupted()
+            assertEquals(0, again.size, "at most once a minute")
             val exits = mutableListOf<Int>()
             val saved = com.aktcl.aron.backend.platform.WorkerExit.hook
             com.aktcl.aron.backend.platform.WorkerExit.hook = { exits += it }
@@ -66,6 +71,18 @@ class WorkerPassLogTest {
                 captured { w.pass() }
                 assertEquals(1, exits.size, "an Exception logs and the loop goes on: no second exit")
             } finally { com.aktcl.aron.backend.platform.WorkerExit.hook = saved }
+        } finally { fresh.close() }
+    }
+
+    @Test
+    fun theFirstSuccessfulPassLogsOneInfoWithItsDuration() {
+        val fresh = FreshDb.create(migrate = false)
+        try {
+            val w = AggregationWorker(fresh.db)
+            w.passBody = { }
+            val (_, first) = captured { w.pass() }
+            assertEquals(1, first.size); assertEquals(Level.INFO, first.single().level); assertTrue(first.single().formattedMessage.startsWith("first aggregation pass completed in "))
+            assertEquals(0, captured { w.pass() }.second.size, "only the first pass of the process")
         } finally { fresh.close() }
     }
 }

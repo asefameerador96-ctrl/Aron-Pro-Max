@@ -174,7 +174,7 @@ private sealed interface LVis {
     data object All : LVis
     data object Nobody : LVis
     data class Brands(val ids: List<Long>) : LVis
-    data class Geo(val zones: List<Long>, val routes: List<Long>) : LVis
+    data class Geo(val scope: com.aktcl.aron.backend.platform.ProgrammeScopeParams) : LVis
 }
 
 private fun loyVisibility(h: Handle, p: AronPrincipal, d: AdminLoyaltyDeps): LVis = when (p.role) {
@@ -182,7 +182,7 @@ private fun loyVisibility(h: Handle, p: AronPrincipal, d: AdminLoyaltyDeps): LVi
     Role.BRAND -> h.createQuery("SELECT brand_id FROM app.user_brand_scope WHERE user_id = :u ORDER BY brand_id").bind("u", p.userId).mapTo(Long::class.java).list()
         .let { if (it.isEmpty()) LVis.Nobody else LVis.Brands(it) }
     Role.WM, Role.DMO, Role.TSO -> d.reach.reach(p.userId, p.role, p.scopeVersion, today(d)).let { r: Reach ->
-        if (r.national) LVis.All else LVis.Geo(r.zoneIds.toList(), r.routeIds.toList())
+        if (r.national) LVis.All else LVis.Geo(com.aktcl.aron.backend.platform.ProgrammeScopeParams.ofPortal(r))   // the ONE scope class (push B4); the portal keeps its held zones as both sets
     }
     else -> LVis.Nobody
 }
@@ -205,16 +205,7 @@ private fun loyVisSql(vis: LVis, v: String): LVisSql? = when (vis) {
             "OR (x.product_level = 'category' AND EXISTS (SELECT 1 FROM app.product_node br JOIN app.product_node sg ON sg.id = br.parent_id WHERE br.id IN (<vb>) AND sg.parent_id = x.product_id)))))",
         mapOf("vb" to vis.ids),
     )
-    is LVis.Geo -> LVisSql(
-        "(NOT EXISTS (SELECT 1 FROM app.programme_version_scope s WHERE s.programme_version_id = $v.id AND s.node_type IN ('wing','division','territory','zone','route')) " +
-            "OR EXISTS (SELECT 1 FROM app.programme_version_scope s WHERE s.programme_version_id = $v.id AND (" +
-            "(s.node_type = 'zone' AND s.node_id IN (<vz>)) " +
-            "OR (s.node_type = 'territory' AND EXISTS (SELECT 1 FROM app.zone zz WHERE zz.territory_id = s.node_id AND zz.id IN (<vz>))) " +
-            "OR (s.node_type = 'division' AND EXISTS (SELECT 1 FROM app.zone zz JOIN app.territory tt ON tt.id = zz.territory_id WHERE tt.division_id = s.node_id AND zz.id IN (<vz>))) " +
-            "OR (s.node_type = 'wing' AND EXISTS (SELECT 1 FROM app.zone zz JOIN app.territory tt ON tt.id = zz.territory_id JOIN app.division dd ON dd.id = tt.division_id WHERE dd.wing_id = s.node_id AND zz.id IN (<vz>))) " +
-            "OR (s.node_type = 'route' AND EXISTS (SELECT 1 FROM app.route rr WHERE rr.id = s.node_id AND (rr.zone_id IN (<vz>) OR rr.id IN (<vr>)))))))",
-        mapOf("vz" to vis.zones.ifEmpty { listOf(-1L) }, "vr" to vis.routes.ifEmpty { listOf(-1L) }),   // an empty list would be invalid SQL; no id is ever -1
-    )
+    is LVis.Geo -> LVisSql(com.aktcl.aron.backend.platform.ProgrammeScopeSql.geo(v), mapOf("vz" to com.aktcl.aron.backend.platform.ProgrammeScopeSql.ids(vis.scope.outletZones), "vr" to com.aktcl.aron.backend.platform.ProgrammeScopeSql.ids(vis.scope.routes), "vrz" to com.aktcl.aron.backend.platform.ProgrammeScopeSql.ids(vis.scope.reachZones)))   // the shared predicate (push B3/B4)
 }
 
 private fun org.jdbi.v3.core.statement.Query.bindLVis(s: LVisSql?): org.jdbi.v3.core.statement.Query { s?.lists?.forEach { (k, v) -> bindList(k, v) }; return this }
@@ -709,8 +700,8 @@ private fun listEnrolments(call: ApplicationCall, d: AdminLoyaltyDeps): Enrolmen
         if (zone != null) where += "o.zone_id = :zone"
         val geo = vis as? LVis.Geo
         if (geo != null) {
-            if (zone != null && zone !in geo.zones &&
-                h.createQuery("SELECT 1 FROM app.route WHERE zone_id = :z AND id IN (<vr>)").bind("z", zone).bindList("vr", geo.routes.ifEmpty { listOf(-1L) }).mapTo(Int::class.java).findOne().isEmpty
+            if (zone != null && zone !in geo.scope.reachZones &&
+                h.createQuery("SELECT 1 FROM app.route WHERE zone_id = :z AND id IN (<vr>)").bind("z", zone).bindList("vr", geo.scope.routes.ifEmpty { listOf(-1L) }).mapTo(Int::class.java).findOne().isEmpty
             ) throw loyForbidden("zone $zone is outside your reach")
             where += "(o.zone_id IN (<vz>) OR o.route_id IN (<vr>))"
         } else if (vis == LVis.Nobody) where += "FALSE"
@@ -720,7 +711,7 @@ private fun listEnrolments(call: ApplicationCall, d: AdminLoyaltyDeps): Enrolmen
         ).bind("p", id).bind("lim", limit + 1)
         if (cursor != null) q.bind("cursor", cursor)
         if (zone != null) q.bind("zone", zone)
-        if (geo != null) { q.bindList("vz", geo.zones.ifEmpty { listOf(-1L) }); q.bindList("vr", geo.routes.ifEmpty { listOf(-1L) }) }
+        if (geo != null) { q.bindList("vz", geo.scope.reachZones.ifEmpty { listOf(-1L) }); q.bindList("vr", geo.scope.routes.ifEmpty { listOf(-1L) }) }   // held zones and routes, as before B4
         val rows = q.map { rs, _ ->
             rs.getLong(1) to EnrolmentOut(rs.getLong(2), rs.getLong(3), rs.getString(4), rs.getString(5), rs.getBigDecimal(6)?.toPlainString(), rs.getObject(7, LocalDate::class.java).toString(), rs.getObject(8, LocalDate::class.java)?.toString())
         }.list()
