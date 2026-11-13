@@ -74,9 +74,9 @@ class AmoCallsScreenshotTests {
     private val letters = CallPick.letters(outlets)
 
     private val tiles = listOf(
-        MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_sale, com.aktcl.aron.feature.amo.R.string.amo_cc_menu_sale, "t1") {},
-        MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_assessment, com.aktcl.aron.feature.amo.R.string.amo_cc_menu_assessment, "t2") {},
-        MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_survey, com.aktcl.aron.feature.amo.R.string.amo_cc_menu_survey, "t3") {},
+        MenuTile(com.aktcl.aron.feature.amo.R.drawable.amo_art_cc_sale, com.aktcl.aron.feature.amo.R.string.amo_cc_menu_sale, "t1") {},
+        MenuTile(com.aktcl.aron.feature.amo.R.drawable.amo_art_cc_assess, com.aktcl.aron.feature.amo.R.string.amo_cc_menu_assessment, "t2") {},
+        MenuTile(com.aktcl.aron.feature.amo.R.drawable.amo_art_cc_survey, com.aktcl.aron.feature.amo.R.string.amo_cc_menu_survey, "t3") {},
     )
 
     @Composable private fun pick(range: CallRange, outlet: String? = "Basahar Store (2654199-01711111111-Kacha Bazar)") =
