@@ -11,4 +11,5 @@
     <string name="amo_upd_current">Current version %1$s</string>
     <string name="amo_upd_steps">Processing(%1$d/%2$d)</string>
     <string name="amo_upd_tip">Tip: do not close the app</string>
+    <string name="amo_upd_back">Back</string>
 </resources>

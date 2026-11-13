@@ -16,6 +16,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
@@ -26,7 +28,7 @@ import com.aktcl.aron.feature.outlet.GeoPhotoBlock
 import com.aktcl.aron.feature.outlet.GeoPhotoState
 import com.aktcl.aron.feature.outlet.R as OutR
 
-object ManualOverrideTags { const val WAITING = "amo_mo_waiting" }
+object ManualOverrideTags { const val WAITING = "amo_mo_waiting"; const val CAMERA_DENIED = "amo_mo_camera_denied" }
 
 /**
  * Manual Override (manual: the camera comes straight away, one photo, then the menu). Unlike the SR's Force Sale there is no reason question:
@@ -41,9 +43,20 @@ fun ManualOverrideContent(
     modifier: Modifier = Modifier,
     /** The camera is open or the photo is being sent on (screenshot 20: the menu follows the photo): a quiet loading state, not the form. */
     waiting: Boolean = false,
+    /** Camera permission is off: the fallback page says why (the photo cannot be taken until Camera is allowed in the phone's settings). */
+    cameraDenied: Boolean = false,
 ) {
     if (waiting) {
-        Box(modifier.fillMaxSize().testTag(ManualOverrideTags.WAITING), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        val label = stringResource(R.string.amo_mo_waiting)
+        Box(
+            modifier.fillMaxSize().testTag(ManualOverrideTags.WAITING).semantics(mergeDescendants = true) { contentDescription = label },
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                CircularProgressIndicator()
+                Text(label, style = MaterialTheme.typography.bodyLarge, color = LocalAronColors.current.textPrimary)
+            }
+        }
         return
     }
     Column(modifier.fillMaxSize()) {
@@ -52,6 +65,7 @@ fun ManualOverrideContent(
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
         ) {
             Text(stringResource(R.string.amo_cc_manual_override), style = MaterialTheme.typography.titleLarge, color = LocalAronColors.current.textPrimary)
+            if (cameraDenied) AmoBanner(stringResource(R.string.amo_mo_camera_denied), kind = BannerKind.Warning, modifier = Modifier.testTag(ManualOverrideTags.CAMERA_DENIED))
             GeoPhotoBlock(capture, onShutter, note = stringResource(R.string.amo_mo_note))
             if (ForceSaleMissing.PHOTO in missing) AmoBanner(stringResource(OutR.string.out_err_photo), kind = BannerKind.Error)
             if (ForceSaleMissing.LOCATION_PERMISSION in missing) AmoBanner(stringResource(OutR.string.out_err_permission), kind = BannerKind.Error)

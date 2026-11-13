@@ -282,6 +282,7 @@ private fun ManualOverrideStep(day: AmoDay, reason: ForceReason, onStarted: () -
                 com.aktcl.aron.feature.amo.ManualOverrideContent(
                     capture = cap, missing = missing, onShutter = { scope.launch { capture.shutter() } }, onConfirm = confirm,
                     waiting = cap.busy || (cap.complete && missing.isEmpty()),
+                    cameraDenied = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED,
                 )
             }
         }

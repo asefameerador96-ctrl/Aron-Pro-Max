@@ -1,6 +1,8 @@
 package com.aktcl.aron.amo
 
 import com.aktcl.aron.core.system.update.DownloadUi
+import com.aktcl.aron.feature.amo.AmoUpdateLook
+import com.aktcl.aron.feature.amo.amoUpdateLook
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

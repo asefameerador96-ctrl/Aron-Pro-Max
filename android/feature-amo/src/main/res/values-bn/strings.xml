@@ -265,6 +265,8 @@
     <string name="amo_verify_change">আউটলেট সংশোধনের যাচাইকরণ</string>
     <string name="amo_ops_section">দোকান সংক্রান্ত অপারেশন্স</string>
     <string name="amo_mo_note">আউটলেটের ছবি তুলুন। ছবির লোকেশন আউটলেটের অবস্থান সংশোধনের অনুরোধ হিসেবে অনুমোদনের জন্য যাবে।</string>
+    <string name="amo_mo_waiting">অনুগ্রহ করে অপেক্ষা করুন…</string>
+    <string name="amo_mo_camera_denied">ক্যামেরার অনুমতি বন্ধ আছে, তাই আউটলেটের ছবি তোলা যাচ্ছে না। ফোনের সেটিংসে এই অ্যাপের জন্য ক্যামেরা চালু করুন, তারপর দোকানের ছবি তুলুন চাপুন।</string>
     <string name="amo_mo_continue">এগিয়ে যান</string>
     <string name="amo_success_title">সফল</string>
     <string name="amo_summary_title">বিক্রয় সারসংক্ষেপ</string>

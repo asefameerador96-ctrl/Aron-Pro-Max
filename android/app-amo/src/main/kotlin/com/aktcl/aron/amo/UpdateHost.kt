@@ -1,6 +1,7 @@
 package com.aktcl.aron.amo
 
 import com.aktcl.aron.feature.amo.AmoSecondary
+import com.aktcl.aron.feature.amo.AmoUpdateScreen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth

@@ -149,4 +149,72 @@ class AmoControlCallHostTest {
         compose.onAllNodes(androidx.compose.ui.test.hasText("Continue")).assertCountEquals(0)
         assertEquals(1, visits().size)
     }
+
+    private fun visits() = kotlinx.coroutines.runBlocking { f.day.database.outboxDao().nextPending(1000) }.filter { it.recordType == "visit" }
+
+    /** A pipeline whose first [nulls] calls return null (the camera was cancelled) and the later ones return a photo; counts every call. */
+    private class FlakyCamera(private var nulls: Int) : com.aktcl.aron.feature.outlet.PhotoPipeline {
+        var calls = 0; val discarded = mutableListOf<String>()
+        override suspend fun captureAndCompress(photoUuid: String): com.aktcl.aron.feature.outlet.CapturedPhoto? {
+            calls++
+            return if (nulls-- > 0) null else com.aktcl.aron.feature.outlet.CapturedPhoto(photoUuid, "/fake.jpg", 1)
+        }
+        override suspend fun discard(photoUuid: String) { discarded += photoUuid }
+    }
+
+    /**
+     * Lead gate low 1 (2026-11-13): the camera returns null first (cancelled). The old page appears, Continue without a photo passes nobody (the
+     * photo error shows, no visit), a retake then commits exactly one visit, and a REAL second confirm of the same override (the controller, fed a
+     * capture that holds a photo and the outlet of the decision) is refused as not available and adds no second visit.
+     */
+    @Test fun cameraCancelledFirstShowsTheFallbackPageNobodyPassesWithoutAPhotoAndTheReplayLeavesOneVisit() {
+        f.zone(); f.phoneOffsetLat = 0.01
+        val camera = FlakyCamera(nulls = 1)
+        f.day.photoPipeline = camera
+        show { ControlCallHost(f.day, onBack = {}, startWithSale = true) }
+        pickRetailer()
+        compose.onNodeWithTag("amo_cc_sale").performClick()
+        awaitOverride()
+        val decision = f.day.visitFlow.state.value as com.aktcl.aron.feature.outlet.VisitUiState.NeedsDecision
+        compose.onNodeWithTag("amo_cp_override").performClick()
+        compose.onNodeWithText("Internet problem").performClick(); compose.waitForIdle()
+        // the auto-opened camera came back empty: the old page (take photo + Continue) is the fallback, no visit yet
+        compose.waitUntil(8_000) { present(com.aktcl.aron.feature.outlet.ForceSaleTags.PHOTO) }
+        assertEquals(1, camera.calls)
+        compose.onNodeWithText("Continue").assertExists()
+        assertEquals(0, visits().size)
+        // Continue without a photo: refused with the photo error, still no visit
+        compose.onNodeWithText("Continue").performClick(); compose.waitForIdle()
+        compose.waitUntil(8_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("photo", substring = true, ignoreCase = true)).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(0, visits().size)
+        assertEquals(null, f.day.visitSession.current.value)
+        // retake: the photo arrives, the call commits once
+        compose.onNodeWithTag(com.aktcl.aron.feature.outlet.ForceSaleTags.PHOTO).performClick(); compose.waitForIdle()
+        compose.waitUntil(8_000) { f.day.visitSession.current.value != null }
+        assertEquals(2, camera.calls)
+        assertEquals(1, visits().size)
+        org.junit.Assert.assertTrue(visits()[0].payloadJson.contains("\"force_reason_code\":\"internet_problem\""))
+        // the real second confirm: same reason, same outlet, a capture that holds a photo and a good fix
+        val again = f.day.newCapture("outlet_capture")
+        kotlinx.coroutines.runBlocking { again.shutter() }
+        val result = kotlinx.coroutines.runBlocking { f.day.forceSaleController(again) { true }.confirm(com.aktcl.aron.feature.outlet.ForceReason.INTERNET_PROBLEM, decision.outlet) }
+        assertEquals(com.aktcl.aron.feature.outlet.ForceSaleResult.NotAvailable, result)
+        assertEquals(1, visits().size)
+    }
+
+    /** Lead gate low 2: with Camera off the fallback page says why, in English and (see ManualOverrideContentTest) in Bangla, and still offers the photo button. */
+    @Test fun cameraPermissionDeniedTheFallbackPageSaysWhy() {
+        shadowOf(app).denyPermissions(android.Manifest.permission.CAMERA)
+        f.zone(); f.phoneOffsetLat = 0.01
+        f.day.photoPipeline = FlakyCamera(nulls = 5) // no permission: the camera never gives a photo
+        show { ControlCallHost(f.day, onBack = {}, startWithSale = true) }
+        pickRetailer()
+        compose.onNodeWithTag("amo_cc_sale").performClick()
+        awaitOverride()
+        compose.onNodeWithTag("amo_cp_override").performClick()
+        compose.onNodeWithText("Internet problem").performClick(); compose.waitForIdle()
+        compose.waitUntil(8_000) { present(com.aktcl.aron.feature.amo.ManualOverrideTags.CAMERA_DENIED) }
+        compose.onNodeWithTag(com.aktcl.aron.feature.outlet.ForceSaleTags.PHOTO).assertExists()
+        assertEquals(0, visits().size)
+    }
 }

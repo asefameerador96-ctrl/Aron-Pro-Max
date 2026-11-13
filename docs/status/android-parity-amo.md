@@ -1,3 +1,5 @@
+# Lane P-AMO2 (2026-11-13): lows 1 to 5 done (D-PAR-AMO-04); next: slice 2.
+
 # HANDOVER (2026-11-13, lane P-AMO, context near the limit)
 State: branch lane/android-parity-amo head fec17bd5 pushed. Slice 1 gated by the lead at 83678c2c. Done and pushed: Home 19 tiles with hooks, vector icons, Manual Override direct camera, Control call tile art and "All", AMO update screens (05, 07, processing) with tests, lows 6 to 9 of the lead's list.
 Open, in this order: (A) lead's lows 1 to 5 (listed below in "Lead's 9 lows"); (B) rest of slice 2: Sales route/outlet pick (dropdowns, alphabet bar, Sales tile on empty state), Sale entry (packshots + blue badge, outlet card with রুট, rate/discount/stock column, discount zero), Review (printer-off icon, print-later note, paid-amount dialog), Previous sale data (calendar date field). Shared SR screens (feature-sale/stock/memo) must not be edited: parameterise from app-amo (AmoSaleKit.kt, AmoSaleHosts.kt); (C) slices 3 to 5 as in the plan message. Rows not yet in the table: everything from slice 2 on.
@@ -17,6 +19,8 @@ Nothing in this lane is walked on a device. Proof is unit tests, Roborazzi image
 | Control call: Manual Override opens the camera directly | FIX: camera opens on entry, menu follows the photo; page stays as fallback (D-PAR-AMO-02) | 5a47720e, 50470e83 | n/a (system camera) |
 | Control call: tiles in place under route/outlet/alphabet bar | RECORD: code already shows them in place (golden amo_cc_tiles_bn); the audited image was older. Icons now the old art | 5a47720e, 50470e83 | amo_cc_tiles_bn |
 | Control call: alphabet "সব" | FIX: "All" as the old app | 5a47720e, 50470e83 | amo_control_call_pick_* |
+| Control call: Manual Override fallback (camera cancelled, camera off, waiting) | FIX: tested fallback, camera-off reason, labelled waiting state (D-PAR-AMO-04) | this push | amo_manual_override_waiting_en, amo_manual_override_camera_off_bn |
+| Update screens 05 and 07 (look) | FIX: vector back with label, token colours and sizes, Sunlight goldens (D-PAR-AMO-04) | this push | amo_update_* |
 | Control call: extra "মূল্য সম্মতি" tile | KEEP-WITH-REASON: only when the server price-compliance flag is on (default off) | - | - |
 
 ## Icons from the owner's screenshots (lead corrections 2026-11-13)
@@ -25,4 +29,4 @@ Crops hold artwork only: no status bar, name, phone number or other personal dat
 
 ## Lead's 9 lows on gated 83678c2c (2026-11-13): status
 Done: (6) amo_cc_tiles goldens use the real new art (re-record pending in the next push); (7) amo_art_sales_journey.xml deleted (Home keeps the owner art `aron_art_sales_journey`); (8) "এস আর স্টক" with the space (Control Call tile "এসআর পারফ." matches screenshot 20); (9) addendum written in DECISIONS.md.
-OPEN (next lane session): (1) fallback-path test in AmoControlCallHostTest (camera returns null first, old page appears, retake then Continue) and a real second confirm; (2) permission-denied reason on the fallback page (bn and en); (3) ManualOverrideContent(waiting) label and content description, rendered in a test; (4) orphan media record after a kill with the camera open: find the sweeper or state there is none; (5) AmoUpdateScreen: vector back control with a string description, tokens for colours and sizes (contrast, Sunlight), goldens for optional, mandatory and downloading.
+Done in lane P-AMO2 (D-PAR-AMO-04): (1) fallback-path test plus a real second confirm in AmoControlCallHostTest; (2) camera-off reason on the fallback page (bn, en); (3) waiting label and content description, ManualOverrideContentTest; (4) no new sweeper needed: MediaUploader.housekeeping drops an unclaimed CAPTURED photo after 24 h on the next uploader run, MediaStore.sweepUnfinished drops half-written files (MediaUploaderTest pins it); (5) AmoUpdateScreen moved to feature-amo, vector back with a string description, token colours and sizes, 8 update goldens + 2 Manual Override goldens.

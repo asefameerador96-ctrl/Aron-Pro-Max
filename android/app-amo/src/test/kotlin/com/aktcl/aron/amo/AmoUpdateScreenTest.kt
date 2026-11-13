@@ -18,6 +18,8 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.system.update.DownloadUi
+import com.aktcl.aron.feature.amo.AmoUpdateScreen
+import com.aktcl.aron.feature.amo.AmoUpdateTags
 import com.aktcl.aron.core.system.update.NetworkStatus
 import com.aktcl.aron.core.system.update.ReleaseInfo
 import com.aktcl.aron.core.system.update.UpdateTags
@@ -77,5 +79,13 @@ class AmoUpdateScreenTest {
         compose.onNodeWithTag(AmoUpdateTags.PROGRESS).assertExists()
         compose.onNodeWithTag(AmoUpdateTags.STEPS).assertExists()
         compose.onAllNodesWithTag(AmoUpdateTags.BACK).assertCountEquals(0)
+    }
+
+    /** Lead gate low 5: the back control is a vector with a spoken label from the string resources (English "Back", Bangla "পিছনে"), not a "‹" glyph. */
+    @Test fun backControlIsAVectorWithASpokenLabel() {
+        show(required = false)
+        compose.onNodeWithTag(AmoUpdateTags.BACK).assertIsDisplayed()
+        compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Back"), useUnmergedTree = true).assertCountEquals(1)
+        compose.onAllNodes(androidx.compose.ui.test.hasText("‹"), useUnmergedTree = true).assertCountEquals(0)
     }
 }
