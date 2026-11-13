@@ -275,25 +275,24 @@ class GiftChoiceRecordsTest {
         val gDiamond = programmeOf("diamond_league", "H-DL", enrol = true); val kindFails = choice(outletGold, gDiamond)
         val gNoEnrol = programmeOf("astha", "H-NE", enrol = false); val notEnrolled = choice(outletGold, gNoEnrol)
         val gBoth = programmeOf("diamond_league", "H-BOTH", enrol = false); val bothFail = choice(outletGold, gBoth)
-        val c = RecordOutcomeCode
         // scope_out_of_reach: the WHO check (role and reach); no other code waives the role check
-        assertEquals(c.SCOPE_OUT_OF_REACH, refusal(outOfReach, null)); assertNull(refusal(outOfReach, c.SCOPE_OUT_OF_REACH))
-        assertEquals(c.SCOPE_OUT_OF_REACH, refusal(wrongRole, null, Role.AMO)); assertNull(refusal(wrongRole, c.SCOPE_OUT_OF_REACH, Role.AMO))
+        assertEquals(RecordOutcomeCode.SCOPE_OUT_OF_REACH, refusal(outOfReach, null)); assertNull(refusal(outOfReach, RecordOutcomeCode.SCOPE_OUT_OF_REACH))
+        assertEquals(RecordOutcomeCode.SCOPE_OUT_OF_REACH, refusal(wrongRole, null, Role.AMO)); assertNull(refusal(wrongRole, RecordOutcomeCode.SCOPE_OUT_OF_REACH, Role.AMO))
         // no_assignment_on_date: the REACH check on the record's date (the cover day) - the finding's case - but not the role check
-        assertNull(refusal(outOfReach, c.NO_ASSIGNMENT_ON_DATE), "a cover day accepted by a reviewer is not judged out of reach again")
-        assertEquals(c.SCOPE_OUT_OF_REACH, refusal(wrongRole, c.NO_ASSIGNMENT_ON_DATE, Role.AMO), "it does not waive the role check")
+        assertNull(refusal(outOfReach, RecordOutcomeCode.NO_ASSIGNMENT_ON_DATE), "a cover day accepted by a reviewer is not judged out of reach again")
+        assertEquals(RecordOutcomeCode.SCOPE_OUT_OF_REACH, refusal(wrongRole, RecordOutcomeCode.NO_ASSIGNMENT_ON_DATE, Role.AMO), "it does not waive the role check")
         // programme_inactive: the status/kind check when it fails, else the enrolment check; never both
-        assertEquals(c.PROGRAMME_INACTIVE, refusal(kindFails, null)); assertNull(refusal(kindFails, c.PROGRAMME_INACTIVE))
-        assertEquals(c.PROGRAMME_INACTIVE, refusal(notEnrolled, null)); assertNull(refusal(notEnrolled, c.PROGRAMME_INACTIVE))
-        assertEquals(c.PROGRAMME_INACTIVE, refusal(bothFail, c.PROGRAMME_INACTIVE), "an accept made for one of the two checks does not also waive the other")
+        assertEquals(RecordOutcomeCode.PROGRAMME_INACTIVE, refusal(kindFails, null)); assertNull(refusal(kindFails, RecordOutcomeCode.PROGRAMME_INACTIVE))
+        assertEquals(RecordOutcomeCode.PROGRAMME_INACTIVE, refusal(notEnrolled, null)); assertNull(refusal(notEnrolled, RecordOutcomeCode.PROGRAMME_INACTIVE))
+        assertEquals(RecordOutcomeCode.PROGRAMME_INACTIVE, refusal(bothFail, RecordOutcomeCode.PROGRAMME_INACTIVE), "an accept made for one of the two checks does not also waive the other")
         // every other code waives none of the above; and no code at all waives the tier, the lock or the quarter
         val tierFail = choice(outletGold, gSilver)
         val quarterFail = choice(outletGold2, gOk, q = AsthaQuarter.of(today.minusMonths(3), 1).label)
         for (code in RecordOutcomeCode.entries) {
-            if (code != c.SCOPE_OUT_OF_REACH && code != c.NO_ASSIGNMENT_ON_DATE) assertEquals(c.SCOPE_OUT_OF_REACH, refusal(outOfReach, code), "$code must not waive the reach check")
-            if (code != c.PROGRAMME_INACTIVE) { assertEquals(c.PROGRAMME_INACTIVE, refusal(kindFails, code), "$code must not waive the kind check"); assertEquals(c.PROGRAMME_INACTIVE, refusal(notEnrolled, code), "$code must not waive the enrolment check") }
-            assertEquals(c.GIFT_NOT_FOR_TIER, refusal(tierFail, code), "$code must not waive the tier check")
-            assertEquals(c.SCHEMA_INVALID, refusal(quarterFail, code), "$code must not waive the open-quarter check")
+            if (code != RecordOutcomeCode.SCOPE_OUT_OF_REACH && code != RecordOutcomeCode.NO_ASSIGNMENT_ON_DATE) assertEquals(RecordOutcomeCode.SCOPE_OUT_OF_REACH, refusal(outOfReach, code), "$code must not waive the reach check")
+            if (code != RecordOutcomeCode.PROGRAMME_INACTIVE) { assertEquals(RecordOutcomeCode.PROGRAMME_INACTIVE, refusal(kindFails, code), "$code must not waive the kind check"); assertEquals(RecordOutcomeCode.PROGRAMME_INACTIVE, refusal(notEnrolled, code), "$code must not waive the enrolment check") }
+            assertEquals(RecordOutcomeCode.GIFT_NOT_FOR_TIER, refusal(tierFail, code), "$code must not waive the tier check")
+            assertEquals(RecordOutcomeCode.SCHEMA_INVALID, refusal(quarterFail, code), "$code must not waive the open-quarter check")
         }
         for (code in generic) assertEquals(setOf<RecordOutcomeCode>(), setOf(code).filter { com.aktcl.aron.backend.sync.GiftHolds.WAIVES.containsKey(it) }.toSet(), "$code has no handler check behind it")
     }
