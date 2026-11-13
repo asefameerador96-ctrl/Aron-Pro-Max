@@ -35,9 +35,9 @@ knows it is the minimum app version (train 2 rule of `contract-1.14-sr-manual.md
 No existing member, enum value or operation changes: the new members are optional, `ReportKey` gains a value on a response/request enum the report operations already
 carry (`POST /v1/reports/{key}/query` path parameter): the lead's request file is this one. Shipped phones ignore unknown bundle members.
 
-## Database (V0177 to V0179)
+## Database (V0186 to V0188)
 
-V0177: `app.route_day.late_rows_after_sales_submit` (int NOT NULL DEFAULT 0, CHECK NOT VALID), `cfg.sale.journey_repeat_sale_enabled`. V0178: VALIDATE. V0179: dw view
+V0186: `app.route_day.late_rows_after_sales_submit` (int NOT NULL DEFAULT 0, CHECK NOT VALID), `cfg.sale.journey_repeat_sale_enabled`. V0187: VALIDATE. V0188: dw view
 contract 1.8 -> 1.9: `dw.v_route_day.late_rows_after_sales_submit` (dropped and recreated so `is_effective` stays last), new `dw.v_survey_response`.
 
 ## Cluster creation (push B2; D-SV2-04)
@@ -59,10 +59,10 @@ answers 400 (`unknown_cluster_request`) or 409 (`cluster_request_pending`) so th
 (S2; lead ruling 5 of 2026-11-13) `android/core-database` `CaptureRepository` (line about `OutletRequestType.NEW` and `outletId == null`) asserts "no outlet only for `new`"; a `cluster_create`
 also has no outlet. The phone side is theirs; this lane touched no Android file. A shipped phone never sends `cluster_create` and ignores `Bundle.clusters` / `outlet_sku_stats`. Mirrored DTO members (nullable, default null): `RouteDayState.late_rows_after_sales_submit`, `OutletRequestType.CLUSTER_CREATE` in `shared/contract`.
 
-## Database (V0183, V0184)
+## Database (V0189, V0190)
 
-V0183: `app.outlet_change_request.created_cluster_id` (FK to `app.cluster`, NOT VALID), `request_type` CHECK widened, the outlet rule CHECK `(request_type IN ('new','cluster_create')) = (outlet_id IS NULL)`,
-`sync_rejected.code` CHECK widened by `cluster_name_exists`, the immutability trigger recreated with `=created_cluster_id` (write-once). V0184: the four VALIDATE statements. V0180 and V0181 are the
+V0189: `app.outlet_change_request.created_cluster_id` (FK to `app.cluster`, NOT VALID), `request_type` CHECK widened, the outlet rule CHECK `(request_type IN ('new','cluster_create')) = (outlet_id IS NULL)`,
+`sync_rejected.code` CHECK widened by `cluster_name_exists`, the immutability trigger recreated with `=created_cluster_id` (write-once). V0190: the four VALIDATE statements. V0180 and V0181 are the
 Loyalty lane's; V0182 is unused here.
 
 ## What the phone shows, and what it must do (S2) — the lead's conditions of 2026-11-13

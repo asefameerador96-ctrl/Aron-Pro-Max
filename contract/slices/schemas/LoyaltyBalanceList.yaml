@@ -2,11 +2,16 @@ LoyaltyBalanceList:
   type: object
   required:
   - as_of
+  - truncated
   - items
   additionalProperties: false
   properties:
     as_of:
       $ref: '#/components/schemas/Timestamp'
+    truncated:
+      type: boolean
+      description: True when more than 2,000 balances existed and the list was cut (never silent); name outlets
+        or a programme to narrow.
     items:
       type: array
       maxItems: 2000

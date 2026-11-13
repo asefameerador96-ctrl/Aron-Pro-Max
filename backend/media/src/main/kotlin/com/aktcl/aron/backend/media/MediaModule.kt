@@ -103,7 +103,14 @@ fun Route.mediaRoutes(d: MediaDeps) {
         // PARITY-SPEC s2.6: the pack picture's bytes by its stable asset id (no signed URL leaves the API)
         get("/sku-images/{asset_id}") {
             val read = SkuImageRead(d)
-            val meta = withContext(Dispatchers.IO) { read.meta(call.parameters["asset_id"]) }
+            val p = call.principal
+            val meta = withContext(Dispatchers.IO) {
+                val scope = d.reach?.let { r ->
+                    val rc = r.reach(p.userId, p.role, p.scopeVersion, java.time.LocalDate.parse(com.aktcl.aron.rules.BusinessDate.of(d.clock.now().toEpochMilli()).toString()))
+                    SkuImageRead.GiftScope(rc.national, d.db.readJdbi.withHandle<com.aktcl.aron.backend.platform.ProgrammeScopeParams, Exception> { h -> com.aktcl.aron.backend.platform.ProgrammeScopeParams.of(h, rc) })   // the ONE scope function (push B4): an SR gets the zones of its own routes
+                }
+                read.meta(call.parameters["asset_id"], scope)
+            }
             call.response.header(HttpHeaders.CacheControl, SkuImageRead.CACHE_CONTROL)
             call.response.header(HttpHeaders.ETag, meta.etag)
             if (SkuImageRead.notModified(call.request.headers[HttpHeaders.IfNoneMatch], meta.etag)) {

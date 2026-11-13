@@ -59,6 +59,8 @@ One route moves: `not_started → logged_in` (bundle downloaded) `→ in_field` 
 
 ## Data-pack budget
 
+- **`programmes` bundle section (lead ruling 2026-11-12, D-LOY-API-12):** at most 300 KB raw and 32 KB gzip for a 120-outlet SR route, because a 2 GB phone parses the section on every bundle. Content cut: current month only, enrolled outlets only, no all-zero row, one `astha_as_of` per section, at most 1,000 Astha rows (past it `astha_truncated` is true and a warning is logged). Measured by `ProgrammesBundleSizeTest` (3 programmes, 30 gifts, 360 balances, 120 assignments): 840 Astha rows = 261 KB raw / 6.2 KB gzip; at the 1,000-row bound 294 KB raw / 7.0 KB gzip.
+
 - Compress the bundle and all uploads (gzip). Target a normal day's sync well under tens of MB including photos.
 - Photos: compress hard (above), Wi-Fi-preferred upload, allow "sync photos on Wi-Fi only" setting.
 - No background analytics chatter; no auto-updating feeds. (The known 2 GB/day burn is mostly non-app usage — MDM/APN is the company-side lever — but the app itself must be frugal and must never be the cause.)

@@ -15,7 +15,7 @@ BEGIN
       EXIT;
     EXCEPTION WHEN lock_not_available THEN
       n := n + 1;
-      IF n >= 120 THEN RAISE EXCEPTION 'V0179: dw.v_route_day stayed locked for 60 s'; END IF;
+      IF n >= 120 THEN RAISE EXCEPTION 'V0188: dw.v_route_day stayed locked for 60 s'; END IF;
       PERFORM pg_sleep(0.5);
     END;
   END LOOP;

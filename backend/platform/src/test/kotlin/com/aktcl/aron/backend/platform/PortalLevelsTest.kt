@@ -58,6 +58,9 @@ class PortalLevelsTest {
             Triple(Role.BRAND, "POST /v1/admin/programmes", forbidden), Triple(Role.BRAND, "PATCH /v1/admin/programmes/7", forbidden),
             Triple(Role.BRAND, "POST /v1/admin/programmes/7/status", forbidden), Triple(Role.BRAND, "POST /v1/admin/gifts", forbidden), Triple(Role.BRAND, "PATCH /v1/admin/gifts/7", forbidden),
             Triple(Role.BRAND, "GET /v1/admin/programmes/7/versions/1", forbidden), Triple(Role.BRAND, "GET /v1/programmes/loyalty/balances", forbidden),
+            // The field side (push B2): BRAND reads no outlet data and uploads no targets; the TSO reads and the handler judges the upload.
+            Triple(Role.BRAND, "GET /v1/programmes/astha/targets", forbidden), Triple(Role.BRAND, "PUT /v1/programmes/astha/targets", forbidden), Triple(Role.BRAND, "GET /v1/programmes/astha/gift-choices", forbidden),
+            Triple(Role.TSO, "GET /v1/programmes/astha/targets", null), Triple(Role.TSO, "GET /v1/programmes/loyalty/balances", null),
             Triple(Role.NATIONAL, "GET /v1/admin/programmes/7/enrolments", null), Triple(Role.NATIONAL, "POST /v1/admin/programmes", forbidden), Triple(Role.NATIONAL, "POST /v1/admin/gifts", forbidden),
             // Everyone else passes to the handlers unchanged.
             Triple(Role.TSO, "POST /v1/tasks", null), Triple(Role.ADMIN, "POST /v1/admin/users", null), Triple(Role.SUPERADMIN, "PUT /v1/admin/x", null),

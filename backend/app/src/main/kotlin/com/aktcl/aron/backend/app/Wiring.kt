@@ -83,6 +83,10 @@ import com.aktcl.aron.backend.masterdata.webEntryRoutes
 import com.aktcl.aron.backend.masterdata.DeviceOtpDeps
 import com.aktcl.aron.backend.masterdata.GeoRepository
 import com.aktcl.aron.backend.masterdata.AdminLoyaltyDeps
+import com.aktcl.aron.backend.masterdata.AsthaTargetUploadDeps
+import com.aktcl.aron.backend.masterdata.asthaTargetUploadRoutes
+import com.aktcl.aron.backend.sync.ProgrammeReadDeps
+import com.aktcl.aron.backend.sync.programmeReadRoutes
 import com.aktcl.aron.backend.masterdata.AdminOffersDeps
 import com.aktcl.aron.backend.masterdata.AdminPricesDeps
 import com.aktcl.aron.backend.masterdata.AdminProductsDeps
@@ -381,6 +385,8 @@ class Wiring(
                 adminPricesRoutes(AdminPricesDeps(db, config, guard, clock))
                 adminOffersRoutes(AdminOffersDeps(db, reach, guard, clock))
                 adminLoyaltyRoutes(AdminLoyaltyDeps(db, reach, guard, blob, clock))
+                asthaTargetUploadRoutes(AsthaTargetUploadDeps(db, reach, config, guard, clock))   // loyalty train 3: putAsthaTargets
+                programmeReadRoutes(ProgrammeReadDeps(db, config, reach, guard, clock))   // loyalty train 3: the three online reads
                 configToolRoutes(toolsDeps)
                 configPermissionRoutes(permDeps)
                 configPublicRoutes(publicDeps)

@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
-/** V0173 to V0184 (sr-server trains 1 and 2): write-once visit columns, the NOT VALID then VALID constraints, the flag event kinds, the deterministic edit_reason codes. */
+/** V0173 to V0190 (sr-server trains 1 and 2): write-once visit columns, the NOT VALID then VALID constraints, the flag event kinds, the deterministic edit_reason codes. */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SrManualSv1V0173Test {
     private lateinit var db: TestDatabase
@@ -100,7 +100,7 @@ class SrManualSv1V0173Test {
 
     @Test
     fun clusterCreateRequestsAndTheTrainTwoColumnsAreValidatedAndGuarded() = db.connect().use { c ->
-        // V0177 / V0178 / V0183 / V0184: every constraint they add is validated, the new columns exist, created_cluster_id is write-once, cluster_create is a request type without an outlet
+        // V0186 / V0187 / V0189 / V0190: every constraint they add is validated, the new columns exist, created_cluster_id is write-once, cluster_create is a request type without an outlet
         assertEquals("0", c.scalar("SELECT count(*) FROM pg_constraint WHERE NOT convalidated AND conrelid IN ('app.route_day'::regclass, 'app.outlet_change_request'::regclass, 'app.sync_rejected'::regclass)"))
         assertEquals("2", c.scalar("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'app' AND ((table_name = 'route_day' AND column_name = 'late_rows_after_sales_submit') OR (table_name = 'outlet_change_request' AND column_name = 'created_cluster_id'))"))
         assertTrue(c.scalar("SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname = 'outlet_change_request_immutable' AND NOT tgisinternal")!!.contains("'=created_cluster_id'"))
