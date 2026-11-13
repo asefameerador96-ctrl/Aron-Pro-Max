@@ -250,7 +250,9 @@ class MasterDataLoader(private val db: Database, private val options: LoadOption
                 val have = existing(table, codes)
                 val c = report.of(table)
                 c.created += codes.count { it !in have }
-                c.updated += have.size // a dry run cannot say which of the existing rows differ without reading every column: it reports them as "would be looked at"
+                // A dry run does not read every column of every existing row: for the hierarchy it reports what exists as "updated" (would be looked at).
+                // The OUTLET counts of a dry run are exact (created against existing by code), and they are the ones the owner reads.
+                c.updated += have.size
             }
             val c = report.of("cluster")
             c.created += scan.clusters.size
@@ -416,7 +418,8 @@ class MasterDataLoader(private val db: Database, private val options: LoadOption
     private fun writeReps(scan: MasterScan, report: LoadReport) {
         val rc = report.of("sales_rep")
         val ac = report.of("route_assignment")
-        val allowShort = options.allowShortRepIds || !options.dryRun && db.jdbi.withHandle<Boolean, Exception> { h ->
+        // The same question the portal asks (D-MD-24), read on a dry run as well so the dry run says what the real run would do.
+        val allowShort = options.allowShortRepIds || db.jdbi.withHandle<Boolean, Exception> { h ->
             com.aktcl.aron.backend.masterdata.shortRepIdAllowed(h, com.aktcl.aron.contract.Role.SR)
         }
         val held = scan.reps.values.filter { it.id.length < 4 && !allowShort }

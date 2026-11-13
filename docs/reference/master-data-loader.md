@@ -33,7 +33,7 @@ profile (`SyntheticMaster`), generated in the test from a seed.
 
 | Promise | Test |
 |---|---|
-| A dry run writes nothing and produces the full report | `aDryRunWritesNothingAndTheLoadLoadsEveryRowExactlyOnce` |
+| A dry run writes nothing and produces the full report (its OUTLET counts are exact; for the hierarchy levels it reports what already exists as "updated" without comparing every column) | `aDryRunWritesNothingAndTheLoadLoadsEveryRowExactlyOnce` |
 | Every input row is counted exactly once (created, updated, unchanged, held, error); the report states the equality | the same test, and `LoadReport.text()` prints it |
 | Running the same file again changes NOTHING: no row, no version bump, no history row, every row `unchanged` | `loadingTheSameFileAgainChangesNothing` |
 | An interrupted run resumes under the same run id, skips the batches that finished and loses no row | `anInterruptedRunIsResumedAndTheResultIsTheSame` |
