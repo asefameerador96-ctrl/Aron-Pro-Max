@@ -3239,3 +3239,7 @@
 
 ### 2026-11-13 06:12 UTC — morning report written (docs/status/morning-2026-11-13.md)
 - L-A8 handed over (context 367 k, USD 5.59) without starting C-R3; L-A9 opened 06:00 for it. SV4 on round B4. Order of landing is fixed by the numbers: sr-server (V0186..V0191, contract 1.16.0) first, then Loyalty push C (V0192..V0194, contract 1.17.0).
+
+### 2026-11-13 06:32 UTC — morning report trigger
+- Report already written and posted at 06:12. Verified now: health build 4e0645556 on 3 of 3 tries; INT head 4e0645556 (author Claude, 02:25 UTC); lane tips sr-server 787ae0d9d (SV4, round B4 in progress), portal-loyalty-api-c e8ccffc36 (L-A9 on C-R3). Lead: context 676 k, USD 4,277, seven_day "allowed_warning" (pause stays lifted). Sessions table added to the morning file.
+- Evening one-shot armed: trig_0173N8JdpuMwQADh5HaZR4LC (2026-11-13 15:00 UTC); midday 09:30 exists (trig_016kLCJrJVjjt9ktbQK5JhXy).
