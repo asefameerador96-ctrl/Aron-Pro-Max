@@ -50,6 +50,12 @@ owner's screenshots in `docs/ui-reference/`: **not done yet** for any row (see "
 | 24 | Stock guard | **see defect D2** | | |
 | 25 | Memo preview | opens | One line per SKU, totals "1 packets (10 sticks)", Total, Grand total, "Mark this sale as due", Product QC, Print ("You can print later from the Memo section"). **Not saved**: the walk stopped before Print because no printer is paired | |
 
+| 26 | Save and print the sale | **pass** (owner judged the slip) | Second attempt, after the printer ("Thermal Crest", already paired) was switched on: swapped the out-of-stock item for MaxB-20S (stock 1; the cart draft had survived leaving the screen), Proceed, Print, "Are you sure? The sale will be saved", Yes, "Do you want to print this sale?", Yes, "Is the print readable?". The owner confirmed the slip was readable (alignment, totals, cut). I did not see the slip myself, so Bangla glyphs and the long memo are not covered | |
+| 27 | Memo list | pass | Memo 1002 (15:20, 184.00 BDT, Friends Store) is listed next to the earlier 1001 | |
+| 28 | Sales Submit after the sale | **D1 unchanged** | Still "6 records were rejected by the server" with the new sale not yet on the server | |
+
+Also seen on the second visit to Friends Store: the outlet screen said "You are within the outlet's range" although the phone had not moved (earlier 556 m). The force-sale state for this outlet probably carried over; to be confirmed, since a force sale must never count as a clean geo sale (docs/05).
+
 Units: every quantity seen on SR (home cards, Stock, Sales Submit, KPI) uses field units (packets, boxes, dozen), as the owner's rule requires.
 Language was English during this pass; Bangla was not checked.
 
@@ -68,9 +74,9 @@ Language was English during this pass; Bangla was not checked.
 
 ## Not tested yet (and why)
 
-- Saving a sale, due collection, zero sale and memo edit: the force-sale path works up to the memo (rows 22 to 25), but saving the memo
+- Due collection, zero sale and memo edit (the force-sale path and a saved, printed sale are done: rows 22 to 27). The force-sale reason, photo and call start were queued for upload and may have reached dev as a force-sale visit and an outlet-location correction request for Friends Store (BAN11-001); the saved sale (memo 1002) may sync too: check and discard on the server if unwanted.
   is done with Print, and no printer is paired. No memo was saved. The force-sale reason, photo and call start were queued for upload (the badge showed "2 waiting", then "1 waiting"), so they may have reached dev as a force-sale visit and an outlet-location correction request for Friends Store (BAN11-001): check and discard on the server if unwanted.
-- Printing (section 5): needs the owner's hands to pair the printer.
+- Printing, beyond one cash memo (row 26): credit memo, long memo, printer off in the middle, reprint, MP-58N diagnostics screen, slips beside the old app's.
 - Section 4 cases that change phone settings (airplane mode, mock location, date and time, battery or data saver, permission changes): wait for the owner's yes.
 - AMO and TSO walks: the apps are installed but not logged in; the owner logs in once, then they can be driven.
 - Comparison of each screen with `docs/ui-reference/`, Bangla pass, rotation, font size and dark mode, Sunlight mode.
