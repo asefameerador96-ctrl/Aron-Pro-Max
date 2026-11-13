@@ -331,4 +331,19 @@ class OutletImportTest {
         assertTrue("5:lat:coordinates_outside_bangladesh" in w && "6:lat:coordinates_outside_bangladesh" in w && "7:lat:coordinates_invalid" in w && "8:lat:coordinates_invalid" in w, w.toString())
         assertEquals("none|none", env.sql("SELECT string_agg(location_basis, '|' ORDER BY code) FROM app.outlet WHERE code IN ('${p}r', '${p}t')"))
     }
+
+    /** (1) push 1b: the sheet's own dates are compared like any other column: the same row changes nothing, a row whose date really changed is stored. */
+    @Test
+    fun aChangedSheetDateIsStoredAndTheSameRowStillChangesNothing() = env.app {
+        val c = "DTE${System.nanoTime() % 100000}"
+        fun r(updated: String) = row("Date Shop", ""","code":"$c","created_at":"2024-03-05 10:15:00","updated_at":"$updated"""")
+        assertEquals(1L, commit(listOf(r("2025-01-02"))).lng("creates"))
+        assertEquals("2025-01-01 18:00:00+00", env.sql("SELECT source_updated_at::text FROM app.outlet WHERE code = '$c'"))
+        assertEquals(1L, commit(listOf(r("2025-01-02"))).lng("unchanged"))
+        val changed = commit(listOf(r("2025-02-03")))
+        assertEquals(1L, changed.lng("updates"))
+        assertEquals("2025-02-02 18:00:00+00", env.sql("SELECT source_updated_at::text FROM app.outlet WHERE code = '$c'"))
+        // our own updated_at is the time the SERVER wrote the row, never the sheet's
+        assertEquals("true", env.sql("SELECT (updated_at > now() - interval '1 hour')::text FROM app.outlet WHERE code = '$c'"))
+    }
 }

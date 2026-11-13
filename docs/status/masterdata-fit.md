@@ -66,6 +66,10 @@ by_channel, the create-only GT default); (16) a cover assignment of a `none` rou
 `RoutePlanDbTest.aCoverOfANoVisitPlanRouteIsNeverPlannedToday`; (17) dev clusters typed `market` are mapped to `Bazar Hub` (V0199 + the portal mock seed), any other value outside the six raises a
 NOTICE with the query to list them.
 
+Round correction, found while writing push 2: `importLookups` did not SELECT the two new source-date columns, so the import compared them against null and
+reported an identical row as `updated`. Fixed, and the sheet's dates are now compared like any other column: an identical row still changes nothing, and a row
+whose Created At or Updated At really changed is stored instead of being dropped (test `aChangedSheetDateIsStoredAndTheSameRowStillChangesNothing`).
+
 Decisions added: D-MD-23..27. Contract stays 1.18.0 (`unchanged`, `skipped`, `by_channel` on the result, the new warning and error codes, `contact_number` as raw text).
 
 

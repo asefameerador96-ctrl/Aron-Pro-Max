@@ -137,7 +137,7 @@ private class ImportLookups(
 )
 
 private const val OUTLET_COMPARE_COLS = "id, code, zone_id, status, name, owner_name, cluster_id, route_id, channel, outlet_kind, contact_number, address, sub_channel_id, " +
-    "geo_class, lat, lng, location_basis, location_confirmed, source_contact_number, source_sub_channel"
+    "geo_class, lat, lng, location_basis, location_confirmed, source_contact_number, source_sub_channel, source_created_at, source_updated_at"
 
 private fun importLookups(h: Handle, ctx: AdminCtx, rows: List<ImportRow>): ImportLookups {
     val zoneCodes = rows.mapNotNull { it.zone }.distinct()
@@ -306,12 +306,11 @@ private fun checkImport(rows: List<ImportRow>, l: ImportLookups, confirmSwitch: 
                     else rowWarnings += ImportWarning(row, "lat", "pin_kept_as_candidate")
                 }
             }
+            // The sheet's own dates are compared like any other column: an identical row still changes nothing, and a sheet whose dates really changed
+            // is stored instead of being dropped. They never touch our own created_at / updated_at, which stay the time the SERVER wrote the row.
+            if (created != null && (cur["source_created_at"] as java.sql.Timestamp?)?.toInstant() != created) set["source_created_at"] = java.sql.Timestamp.from(created)
+            if (updated != null && (cur["source_updated_at"] as java.sql.Timestamp?)?.toInstant() != updated) set["source_updated_at"] = java.sql.Timestamp.from(updated)
             val placeChanged = "cluster_id" in set || "route_id" in set
-            if (set.isNotEmpty() || pin != PinAction.NONE) {
-                // The sheet's own dates travel with a real change only (they never make an unchanged outlet look changed to the delta readers).
-                if (created != null) set["source_created_at"] = java.sql.Timestamp.from(created)
-                if (updated != null) set["source_updated_at"] = java.sql.Timestamp.from(updated)
-            }
             Plan(if (set.isEmpty() && pin == PinAction.NONE) PlanKind.UNCHANGED else PlanKind.UPDATE, id, channel, defaulted, set, pin, pinConfirmed, placeChanged, cur)
         }
         when (plan.kind) { PlanKind.CREATE -> creates++; PlanKind.UPDATE -> updates++; PlanKind.UNCHANGED -> unchanged++ }
