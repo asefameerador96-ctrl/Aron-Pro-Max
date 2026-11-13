@@ -3270,3 +3270,6 @@
 
 ### 2026-11-13 09:00 UTC — OWNER answered the three credential questions
 - D-OWNER-CREDENTIALS-02: accounts in the FINAL account only, plan to be right now; username mostly the code, names supplied by the owner; workbooks delivered to the owner's Drive folder after the final account. Plan written: docs/reference/credentials-plan.md (six workbooks, username forms, one-time initial passwords, scope per role, idempotent generator proven on synthetic data only, four small questions back).
+
+### 2026-11-13 09:15 UTC — OWNER: parity directive and rulings on the first gaps
+- D-OWNER-PARITY-02: users must not feel anything changed; nothing Apsis captured may be missed; where ours differs from the field's data, ours changes. Rulings on M01 (switch at load time), M03 (store "no plan"), M06/M07 (tiers as in the field, Titanium in, Silver retired), M08 (accept and normalise phones). A master-data lane is opened now on these.
