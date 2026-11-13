@@ -39,13 +39,13 @@ class MasterDataFitV0195Test {
     fun aRouteWithNoVisitPlanIsKindNoneWithMaskZeroAndNothingInBetween() = db.connect().use { c0 -> c0.tx { val c = this
         val zone = c.scalar("SELECT id FROM app.zone ORDER BY id LIMIT 1")
         c.exec("INSERT INTO app.route (code, name, zone_id, kind, visit_kind, visit_days_mask) VALUES ('NP-1', 'No plan', $zone, 'sr', 'none', 0)")
-        c.exec("INSERT INTO app.route_planned (route_id, visit_kind, visit_days_mask, valid_from) SELECT id, 'none', 0, '2026-01-01' FROM app.route WHERE code = 'NP-1'")
+        c.exec("INSERT INTO app.route_planned (route_id, visit_kind, visit_days_mask, valid_from) SELECT id, 'none', 0, '2026-01-01' FROM app.route WHERE code = 'NP-1'") // date-pin-ok: a rolled-back constraint probe, the date is data not a clock
         // existing shapes still hold
         c.exec("INSERT INTO app.route (code, name, zone_id, kind, visit_kind, visit_days_mask) VALUES ('NP-2', 'Daily', $zone, 'sr', 'daily', 127), ('NP-3', 'Free', $zone, 'sr', NULL, 5)")
         for (bad in listOf("'sr', NULL, 0", "'sr', 'daily', 0", "'sr', 'none', 5", "'sr', '3f', 0", "'sr', 'none', 127", "'sr', NULL, 128")) {
             assertEquals("23514", c.refused("INSERT INTO app.route (code, name, zone_id, kind, visit_kind, visit_days_mask) VALUES ('NP-X', 'Bad', $zone, $bad)"), bad)
         }
-        assertEquals("23514", c.refused("INSERT INTO app.route_planned (route_id, visit_kind, visit_days_mask, valid_from) SELECT id, NULL, 0, '2027-01-01' FROM app.route WHERE code = 'NP-1'"))
+        assertEquals("23514", c.refused("INSERT INTO app.route_planned (route_id, visit_kind, visit_days_mask, valid_from) SELECT id, NULL, 0, '2027-01-01' FROM app.route WHERE code = 'NP-1'")) // date-pin-ok: constraint probe
         assertEquals("true", c.scalar("SELECT (app.visit_kind_matches('none', 0::smallint) AND NOT app.visit_kind_matches('none', 5::smallint) AND NOT app.visit_kind_matches(NULL, 0::smallint) AND app.visit_kind_matches('2f', 36::smallint))::text"))
         assertEquals("0", c.scalar("SELECT count(*) FROM pg_constraint WHERE convalidated = false AND connamespace = 'app'::regnamespace AND conname IN ('route_visit_kind_check','route_visit_days_mask_check','route_planned_visit_kind_check','route_planned_visit_days_mask_check','app_user_memo_username','memo_memo_no_check','code_list_list_key_check')"))
     } }

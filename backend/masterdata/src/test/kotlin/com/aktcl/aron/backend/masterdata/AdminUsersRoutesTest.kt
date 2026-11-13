@@ -304,9 +304,12 @@ class AdminUsersRoutesTest {
         val o = c.objA1()
         assertEquals("none", o.strA1("visit_kind")); assertEquals(0, o.lng("visit_days_mask").toInt())
         assertEquals("none|0", env.sql("SELECT visit_kind || '|' || visit_days_mask FROM app.route WHERE code = 'RT-NP1'"))
-        for (bad in listOf(""""visit_kind":"none","visit_days_mask":5""", """"visit_kind":"daily","visit_days_mask":0""", """"visit_days_mask":0""")) {
+        for (bad in listOf(""""visit_kind":"none","visit_days_mask":5""", """"visit_kind":"daily","visit_days_mask":0""")) {
             assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Post, "/admin/routes", admin, """{"code":"RT-NP2","name":"Bad","zone_id":$zid,"kind":"sr",$bad}""").status, bad)
         }
+        // a mask of 0 without a kind IS the explicit no-plan form
+        val implicit = sendA1(HttpMethod.Post, "/admin/routes", admin, """{"code":"RT-NP4","name":"Implicit","zone_id":$zid,"kind":"sr","visit_days_mask":0}""")
+        assertEquals(HttpStatusCode.Created, implicit.status); assertEquals("none", implicit.objA1().strA1("visit_kind"))
         assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Post, "/admin/routes", admin, """{"code":"RT-NP3","name":"Range","zone_id":$zid,"kind":"sr","visit_days_mask":-1}""").status)
     }
 

@@ -74,7 +74,9 @@ internal val ROUTE = MasterEntity(
                 inUse("the route has outlets or live assignments; move them before moving the route to another zone")
         }
         if (cur == null || "visit_kind" in changes || "visit_days_mask" in changes) {
-            if (!kindMatches(h, merged["visit_kind"] as String?, (merged["visit_days_mask"] as Number).toInt()))
+            // A mask of 0 on a route without a kind IS the explicit "no visit plan" (kind none, D-MD-03); the stored kind is set in derive.
+            val kind = (merged["visit_kind"] as String?) ?: if ((merged["visit_days_mask"] as Number).toInt() == 0) "none" else null
+            if (!kindMatches(h, kind, (merged["visit_days_mask"] as Number).toInt()))
                 admBad("body.visit_kind", "mismatch", "the visit kind does not match the number of visit days")
         }
     },
@@ -83,7 +85,7 @@ internal val ROUTE = MasterEntity(
         val pendingDiffers = cur != null && f != null && f.has("effective_from") && (f.has("visit_kind") || f.has("visit_days_mask")) && h.createQuery(
             "SELECT visit_kind IS DISTINCT FROM :k OR visit_days_mask <> :m FROM app.route_planned WHERE route_id = :r ORDER BY valid_from DESC LIMIT 1",
         ).bind("r", cur["id"]).bindAny("k", merged["visit_kind"]).bind("m", (merged["visit_days_mask"] as Number).toInt()).mapTo(Boolean::class.java).findOne().orElse(false)
-        if (cur == null) emptyMap()
+        if (cur == null) (if (merged["visit_kind"] == null && (merged["visit_days_mask"] as Number).toInt() == 0) mapOf("visit_kind" to "none") else emptyMap())
         else if ("visit_kind" in changes || "visit_days_mask" in changes || pendingDiffers) {
             // A visit-days change is effective-dated: the history stays in route_planned, the planner reads it from there (docs/24 s12.1).
             if (f == null || !f.has("effective_from")) admBad("body.effective_from", "required", "a visit-days change needs effective_from (a future Dhaka date)")
