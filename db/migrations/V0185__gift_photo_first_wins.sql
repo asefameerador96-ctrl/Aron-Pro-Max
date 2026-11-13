@@ -65,4 +65,4 @@ CREATE TRIGGER gift_photo_first_wins BEFORE INSERT ON app.gift_photo
   FOR EACH ROW EXECUTE FUNCTION app.gift_photo_first_wins();
 
 CREATE OR REPLACE TRIGGER gift_photo_immutable BEFORE UPDATE OR DELETE ON app.gift_photo
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'data_origin', 'is_duplicate', 'flagged_at', 'server_verdict', 'server_distance_m', 'server_radius_m', 'server_checked_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'is_duplicate', 'flagged_at', 'server_verdict', 'server_distance_m', 'server_radius_m', 'server_checked_at', 'data_origin');
