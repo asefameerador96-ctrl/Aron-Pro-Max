@@ -10411,15 +10411,18 @@ export interface components {
         LoyaltyBalance: {
             outlet_id: components["schemas"]["Id"];
             programme_id: components["schemas"]["Id"];
-            league_label?: string | null;
-            /** @description Ledger balance; negative only after a flagged overdraw. */
+            league_label: string | null;
+            /** @description Ledger balance as of `as_of_date`: credits whose `expires_on` is before the business date of the answer are left out even before an expiry debit is posted (and the `expiry` debit rows themselves, so an expiry is never counted twice). Negative only after a flagged overdraw. */
             balance_points: number;
+            /** @description The credits expiring on the EARLIEST upcoming `expires_on` (that date is `expiry_date`), capped by the balance and never negative; no window. Debits are not matched to credits (no FIFO). */
             expiring_points: number;
-            expiry_date?: components["schemas"]["BusinessDate"] | null;
+            expiry_date: components["schemas"]["BusinessDate"] | null;
             as_of_date: components["schemas"]["BusinessDate"];
         };
         LoyaltyBalanceList: {
             as_of: components["schemas"]["Timestamp"];
+            /** @description True when more than 2,000 balances existed and the list was cut (never silent); name outlets or a programme to narrow. */
+            truncated: boolean;
             items: components["schemas"]["LoyaltyBalance"][];
         };
         /** @description One Astha target line; `outlet_id` null = the route row, `brand_id` null = the All Brand memo row. */
@@ -10435,13 +10438,13 @@ export interface components {
             memo_target: number;
             memo_achieved: number;
             /** @description Value target in integer milli-taka (a string; parse as a 64-bit integer), never negative, "0" until uploaded (owner Q5). Percent on the phone is achieved / target with 2 decimals rounded half-up and 0.00% when the target is 0. */
-            value_target_mtk?: string;
-            /** @description Integer milli-taka sold by the outlet for the brand in the month up to `as_of`: the gross of SALE lines of memos that are active (voided and superseded memos, voided lines and free or reward lines are out). The memo offer line is zero (docs/27). The phone adds only its own unsynced memos created after `as_of`, keyed by memo_uuid, recomputed from scratch after each bundle. */
-            value_achieved_mtk?: string;
-            /** @description Absent in the bundle (see `ProgrammesSection.astha_as_of`). UTC instant of the newest memo the achievement figures (std, memo and value) include: in the bundle the newest memo ingest of the quarter in reach (not the build time, so equal content has equal bytes); in `listAsthaTargets` the instant of the read. */
+            value_target_mtk: string;
+            /** @description Integer milli-taka sold by the outlet for the brand in the month up to `as_of`: the gross of SALE lines of memos that are active (voided and superseded memos, voided lines and free or reward lines are out). The memo offer line is zero (docs/27). The phone adds its own not-yet-acknowledged memos by the rule in `ProgrammesSection` (achievement rule). */
+            value_achieved_mtk: string;
+            /** @description Absent in the bundle (see `ProgrammesSection.astha_as_of`). Display only ("data as of"), never a rule. In `listAsthaTargets` the instant of the read. */
             as_of?: components["schemas"]["Timestamp"];
             /** @description Achievement per pack size of the brand, base units (sticks, pieces), one entry per `pack_factor` with a sale in the month, ordered by `pack_factor`; empty on the All Brand row and when nothing sold. The phone shows ONE LINE PER PACK SIZE (20s and 10s are separate lines, rule 5) and never sums across pack sizes; the `std_achieved` of the entries add up to the row`s `std_achieved`. The target per pack size is not defined yet (owner question) and is absent. */
-            by_pack?: {
+            by_pack: {
                 /** @description Base units (sticks or pieces) in one pack of the SKUs counted in this entry (the SKU `base_per_pack`). */
                 pack_factor: number;
                 /** @description Base units sold in the month for this pack size. */
@@ -10515,15 +10518,17 @@ export interface components {
             qty: number;
             photos_captured: number;
         };
-        /** @description Programme data for the user's routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user's reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS Dhaka business date); `astha_targets` carry server achievement as of their own `as_of` (units in `AsthaTargetRow`); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries only the CURRENT month of the bundle's business date (earlier or later months of the quarter are read online with `listAsthaTargets`), only outlets enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user: past that the server sends the first 1,000, logs a warning and sets `astha_truncated` true, which the phone shows (never a silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. The `as_of` of the Astha rows is the server's newest memo ingest in the quarter (content-derived, so a rebuild without a new memo has the same bytes); the phone adds every local memo the server had not acknowledged by `meta.generated_at`, keyed by memo_uuid. */
+        /** @description Programme data for the user's routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user's reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS Dhaka business date; see `LoyaltyBalance`); `astha_targets` carry server achievement (units in `AsthaTargetRow`; `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries only the CURRENT month of the bundle's business date (earlier or later months of the quarter are read online with `listAsthaTargets`), only outlets enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user: past that the server sends the first 1,000, logs a warning and sets `astha_truncated` true, which the phone shows (never a silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. ACHIEVEMENT RULE (the one rule; every other description refers here). Server guarantee: every figure of this section is read in ONE read-only REPEATABLE READ snapshot on the primary database, and it includes every memo of this user whose sync acknowledgement was sent before this bundle request was received. Phone rule: the phone adds its own memos that had NOT been acknowledged when it SENT this bundle request, keyed by memo_uuid, recomputed from scratch after each bundle; the phone never uploads records while a bundle request is in flight (single-flight sync), and if an acknowledgement arrives during the request it discards the section's achievement and refetches. `astha_as_of` and a row's `as_of` are display only ("data as of"), never part of the rule. Caps are never silent: `truncated_sections` names any of programmes (50), loyalty (11,000 balances) or gifts (200) that was cut, and `astha_truncated` the 1,000-row Astha bound. */
         ProgrammesSection: {
             programmes: components["schemas"]["Programme"][];
             loyalty: components["schemas"]["LoyaltyBalance"][];
             gifts: components["schemas"]["Gift"][];
-            /** @description 1.15.0. The `as_of` of every row of `astha_targets` in the bundle (the rows carry none, to save bytes): the newest memo ingest of the month in reach. Phone rule: add every local memo the server had not acknowledged by `meta.generated_at`. */
-            astha_as_of?: components["schemas"]["Timestamp"];
+            /** @description 1.15.0. Display only ("data as of"), never part of the achievement rule: the newest memo ingest (receipt or status change) among the outlets of the rows actually sent, for the month of the business date; the Dhaka start of the month when there is none. Rows carry no `as_of` in the bundle, to save bytes. */
+            astha_as_of: components["schemas"]["Timestamp"];
+            /** @description 1.15.0. Which of `programmes`, `loyalty`, `gifts` was cut at its cap (50, 11,000, 200); empty when none. A cut is also logged by the server. The phone shows a notice. */
+            truncated_sections: ("programmes" | "loyalty" | "gifts")[];
             /** @description 1.15.0. True when the user's routes had more than 1,000 Astha rows for the month and the list was cut; the phone shows a notice and reads the rest with `listAsthaTargets`. Absent counts as false. */
-            astha_truncated?: boolean;
+            astha_truncated: boolean;
             astha_targets: components["schemas"]["AsthaTargetRow"][];
             gift_assignments: components["schemas"]["GiftAssignment"][];
             pending_gift_verifications: components["schemas"]["PendingGiftVerification"][];

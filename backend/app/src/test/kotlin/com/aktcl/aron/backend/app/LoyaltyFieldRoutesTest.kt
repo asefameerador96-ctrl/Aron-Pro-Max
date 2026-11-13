@@ -308,4 +308,79 @@ class LoyaltyFieldRoutesTest {
             getWeb("support1001", "/v1/programmes/astha/gift-choices?quarter=$q&route_id=$routeMir").expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN")
         }
     }
+
+    // ------------------------------------------------------------------------------------------------ Opus pass B3, B4, B5
+
+    /** B3: after an outlet moved to another route, re-uploading the same quarter updates the ONE row and moves its route; no read ever shows two rows for one outlet, brand and month. */
+    @Test
+    fun aRouteChangeThenAReUploadMovesTheRowInsteadOfDoublingIt() = world.withApi {
+        with(world) {
+            exec("DELETE FROM app.astha_target WHERE batch_uuid IS NOT NULL")
+            val moved = one("SELECT id FROM app.outlet WHERE route_id = $routeMir AND status = 'active' ORDER BY id DESC LIMIT 1")
+            try {
+                putTargets(batch(listOf(row(moved, month0, "50", 2))), web = "superadmin1001").expect(HttpStatusCode.OK)
+                assertEquals(routeMir, one("SELECT route_id FROM app.astha_target WHERE outlet_id = $moved AND month = DATE '${quarter.months[0]}' AND brand_id = $brand"))
+                exec("UPDATE app.outlet SET route_id = $routeLkx, zone_id = $zoneLkx WHERE id = $moved")             // the outlet moves to the other division's route
+                val again = putTargets(batch(listOf(row(moved, month0, "50", 2))), web = "superadmin1001")           // the same numbers: only the route changed
+                again.expect(HttpStatusCode.OK); assertEquals(Triple(0, 1, 0), again.counts(), "a route-only change counts as updated")
+                assertEquals(1L, one("SELECT count(*) FROM app.astha_target WHERE outlet_id = $moved AND month = DATE '${quarter.months[0]}' AND brand_id = $brand"), "one row, not two")
+                assertEquals(routeLkx, one("SELECT route_id FROM app.astha_target WHERE outlet_id = $moved AND month = DATE '${quarter.months[0]}' AND brand_id = $brand"))
+                val lkxList = json(getWeb("lkxtso1001", "/v1/programmes/astha/targets?quarter=${quarter.label}").bodyAsText())["items"]!!.jsonArray.map { it.jsonObject }
+                assertEquals(1, lkxList.count { it["outlet_id"]!!.jsonPrimitive.content.toLong() == moved && it["brand_id"]!!.toString() != "null" }, "the territory read shows the row once")
+                val mirList = json(getWeb("tso1001", "/v1/programmes/astha/targets?quarter=${quarter.label}").bodyAsText())["items"]!!.jsonArray.map { it.jsonObject }
+                assertEquals(0, mirList.count { it["outlet_id"]!!.jsonPrimitive.content.toLong() == moved }, "and no longer in the old territory")
+                // The database itself refuses a second outlet row for the same month, outlet and brand.
+                assertTrue(runCatching { exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '${quarter.months[0]}', $routeMir, $moved, $brand, 1, 1)") }.isFailure)
+            } finally { exec("UPDATE app.outlet SET route_id = $routeMir, zone_id = (SELECT zone_id FROM app.route WHERE id = $routeMir) WHERE id = $moved") }
+        }
+    }
+
+    /** B4: every role is judged by its reach; a malformed, empty or wrongly spelt list fails closed to SUPERADMIN only. */
+    @Test
+    fun everyListedRoleIsJudgedByItsReachAndABadListFailsClosed() = world.withApi {
+        with(world) {
+            exec("DELETE FROM app.astha_target WHERE batch_uuid IS NOT NULL")
+            val own = batch(listOf(row(outletMir1, month0, "61")))
+            val foreign = batch(listOf(row(outletLkx, month0, "62")))
+            try {
+                cfg("cfg.astha.target_entry_roles", """["DMO","AMO","ADMIN"]""")
+                putTargets(own, web = "dmo1001").expect(HttpStatusCode.OK)                                                           // DMO of the Mirpur division: own outlet
+                putTargets(foreign, web = "dmo1001").expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN", "body.rows[0].outlet_id")      // another division's outlet is refused
+                putTargets(foreign, phone = amo).expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN", "body.rows[0].outlet_id")         // AMO: zone reach only
+                putTargets(batch(listOf(row(outletMir2, month0, "63"))), phone = amo).expect(HttpStatusCode.OK)
+                putTargets(foreign, web = "admin1001").expect(HttpStatusCode.OK)                                                     // ADMIN is national: passes BY reach
+                // A replay is judged by the caller's reach before it is answered.
+                val id = uuid(); val mine = batch(listOf(row(outletMir1, month1, "64")), id)
+                putTargets(mine, web = "dmo1001").expect(HttpStatusCode.OK)
+                putTargets(mine, web = "dmo1001").expect(HttpStatusCode.OK)
+                putTargets(mine, phone = sr).expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN")                                       // not a listed role
+                for ((list, who) in listOf("[]" to "tso1001", """["tso"]""" to "tso1001", """"TSO"""" to "tso1001", """["Tso","WM "]""" to "tso1001", "null" to "tso1001")) {
+                    cfg("cfg.astha.target_entry_roles", list)
+                    putTargets(own, web = who).expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN")                                     // fails closed: no fallback list
+                    putTargets(own, web = "superadmin1001").expect(HttpStatusCode.OK)                                                // SUPERADMIN always
+                }
+            } finally { cfg("cfg.astha.target_entry_roles", """["ADMIN","TSO"]""") }
+        }
+    }
+
+    /** B5: a campaign scoped to the other division is not in a Mirpur SR's bundle (nor are its gifts), and is in the LKX SR's. */
+    @Test
+    fun aProgrammeScopedToAnotherDivisionIsNotInTheBundleOrTheReads() = world.withApi {
+        with(world) {
+            for ((code, scope) in listOf("CMP-LKX" to zoneLkx.toString(), "CMP-ALL" to null)) {
+                val id = one("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('campaign', '$code', 'Scope $code', DATE '${today.minusDays(5)}', DATE '${today.plusDays(30)}', 'active') RETURNING id")
+                if (scope != null) {
+                    exec("INSERT INTO app.programme_version (programme_id, version_no, name_en, active_from, active_to, change_reason, request_uuid, request_fingerprint) VALUES ($id, 1, 'v', DATE '${today.minusDays(5)}', DATE '${today.plusDays(30)}', 'scope test version', gen_random_uuid(), 'x')")
+                    exec("UPDATE app.programme SET current_version_id = (SELECT max(id) FROM app.programme_version WHERE programme_id = $id) WHERE id = $id")
+                    exec("INSERT INTO app.programme_version_scope (programme_version_id, node_type, node_id) SELECT current_version_id, 'zone', $scope FROM app.programme WHERE id = $id")
+                }
+                exec("INSERT INTO app.gift (programme_id, code, name_en, points_cost) VALUES ($id, 'g_${code.lowercase().replace("-", "_")}', 'Gift $code', 100)")
+            }
+            suspend fun codes(phone: TsoPhone, key: String) = json(getAs(phone, "/v1/sync/bundle").bodyAsText())["programmes"]!!.jsonObject[key]!!.jsonArray.map { it.jsonObject.let { o -> o["code"]!!.jsonPrimitive.content } }
+            val mirProgrammes = codes(sr, "programmes"); val mirGifts = codes(sr, "gifts")
+            assertTrue("CMP-ALL" in mirProgrammes && "g_cmp_all" in mirGifts, "positive control: an unscoped campaign reaches the Mirpur SR")
+            assertTrue("CMP-LKX" !in mirProgrammes && "g_cmp_lkx" !in mirGifts, "a campaign scoped to the LKX zone does not")
+            assertTrue("CMP-LKX" in codes(lkxSr, "programmes") && "g_cmp_lkx" in codes(lkxSr, "gifts"), "positive control: it reaches the LKX SR")
+        }
+    }
 }

@@ -34,6 +34,7 @@ class AsthaBundleSectionTest {
     private var outletB = 0L
     private var outletC = 0L
     private var outletD = 0L
+    private var outletE = 0L
     private var outletOther = 0L
     private var brand = 0L
     private var programme = 0L
@@ -44,6 +45,7 @@ class AsthaBundleSectionTest {
     private val mA = "00000000-0000-4000-8000-0000000a5101"
     private val mBold = "00000000-0000-4000-8000-0000000a5102"
     private val mBnew = "00000000-0000-4000-8000-0000000a5103"
+    private val mE1 = "00000000-0000-4000-8000-0000000a5106"
     private val mCold = "00000000-0000-4000-8000-0000000a5104"
     private val mCnew = "00000000-0000-4000-8000-0000000a5105"
 
@@ -54,8 +56,8 @@ class AsthaBundleSectionTest {
             today = today()
             userId = one("SELECT id FROM app.app_user WHERE username = 'sr1001'")
             route = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
-            val o = longs("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id LIMIT 4")
-            outletA = o[0]; outletB = o[1]; outletC = o[2]; outletD = o[3]
+            val o = longs("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id LIMIT 5")
+            outletA = o[0]; outletB = o[1]; outletC = o[2]; outletD = o[3]; outletE = o[4]
             outletOther = one("SELECT id FROM app.outlet WHERE route_id <> $route AND status = 'active' ORDER BY id LIMIT 1")
             cigaretteSku = one("SELECT id FROM app.sku WHERE entry_unit_default = 'pack' AND category_code = 'cigarette' ORDER BY id LIMIT 1")
             pack = one("SELECT base_per_pack FROM app.sku WHERE id = $cigaretteSku").toInt()
@@ -73,6 +75,12 @@ class AsthaBundleSectionTest {
             exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '$first', $route, NULL, NULL, 0, 0)")
             val otherMonth = AsthaQuarter.of(today, 1).months.first { it != first }
             exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '$otherMonth', $route, $outletA, NULL, 0, 77)")
+            // Outlet E: the snapshot test's outlet (a memo target, no memo yet) and the expired-credit balance: +40 expired yesterday with its expiry debit row, +10 still valid.
+            exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '$first', $route, $outletE, NULL, 0, 3)")
+            exec("INSERT INTO app.programme_enrolment (programme_id, outlet_id, tier_code, valid_from) VALUES ($programme, $outletE, 'silver', DATE '${today.minusDays(30)}')")
+            exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on) VALUES ($outletE, $programme, 'adjustment', 'e1', 40, DATE '${today.minusDays(5)}', DATE '${today.minusDays(1)}')")
+            exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on) VALUES ($outletE, $programme, 'adjustment', 'e2', 10, DATE '${today.minusDays(5)}', DATE '${today.plusDays(20)}')")
+            exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date) VALUES ($outletE, $programme, 'expiry', 'e3', -40, DATE '${today.minusDays(1)}')")
             // Outlet C: 100 points expiring in 5 days, 80 spent: balance 20, so the expiring points are capped at 20 (debits are not matched to credits).
             exec("INSERT INTO app.programme_enrolment (programme_id, outlet_id, tier_code, valid_from) VALUES ($programme, $outletC, 'silver', DATE '${today.minusDays(30)}')")
             exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on) VALUES ($outletC, $programme, 'adjustment', 'c1', 100, DATE '${today.minusDays(3)}', DATE '${today.plusDays(5)}')")
@@ -174,6 +182,44 @@ class AsthaBundleSectionTest {
         assertEquals("1", rows.single { it.str("outlet_id") == outletB.toString() && it.str("brand_id") == null }.str("memo_achieved"))
         // The value target is 0 until uploaded; an unset target never shows a negative or a percentage base.
         assertEquals("0", rows.single { it.str("outlet_id") == outletB.toString() }.str("value_target_mtk"))
+    }
+
+    @Test
+    fun anExpiredCreditIsOutOfTheBalanceAndItsExpiryDebitIsNotCountedTwice() {
+        val e = assertNotNull(section(setOf(outletE)))["loyalty"]!!.jsonArray.map { it.jsonObject }.single()
+        assertEquals("10", e.str("balance_points"), "the 40 expired yesterday are out whether or not the expiry debit is posted, and the debit row is not subtracted again")
+        assertEquals("10", e.str("expiring_points")); assertEquals(today.plusDays(20).toString(), e.str("expiry_date"))
+    }
+
+    @Test
+    fun timestampsAreMillisecondUtcAndTheCapsAreReported() {
+        val s = assertNotNull(section(setOf(outletA, outletB)))
+        assertTrue(Regex("^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d\\.\\d{3}Z$").matches(s.str("astha_as_of")!!), s.str("astha_as_of"))
+        assertEquals(0, s["truncated_sections"]!!.jsonArray.size); assertEquals("false", s["astha_truncated"]!!.toString())
+        val chosen = s["gift_assignments"]!!.jsonArray[0].jsonObject.str("chosen_at")!!
+        assertTrue(Regex("^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d\\.\\d{3}Z$").matches(chosen), chosen)
+    }
+
+    /**
+     * B1/B2 of the Opus pass: the section is ONE snapshot. A memo committed from another connection while the snapshot is open is not in it (both reads agree), and a request that
+     * starts after the commit sees the memo exactly once: with the phone rule (add what was not acknowledged when the request was SENT) nothing is counted twice or missed.
+     */
+    @Test
+    fun theSectionIsReadInOneRepeatableReadSnapshotAndALaterRequestSeesACommittedMemoOnce() {
+        fun achieved(sec: JsonObject?) = assertNotNull(sec)["astha_targets"]!!.jsonArray.map { it.jsonObject }.single { it.str("outlet_id") == outletE.toString() && it.str("brand_id") == null }.str("memo_achieved")
+        val jdbi = world.fresh.db.jdbi
+        jdbi.inTransaction<Unit, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { h ->
+            h.execute("SET TRANSACTION READ ONLY")
+            val first = BundleProgrammes.section(h, listOf(route), setOf(outletE), today, BundleProgrammes.Flags(true, true, true), 1)
+            assertEquals("0", achieved(first))
+            // committed on ANOTHER connection (another thread: Jdbi would reuse this thread's open handle) while the snapshot is open
+            var failure: Throwable? = null
+            kotlin.concurrent.thread { try { memo(mE1, outletE, "sr1001-270103-006") } catch (t: Throwable) { failure = t } }.join()
+            failure?.let { throw it }
+            val second = BundleProgrammes.section(h, listOf(route), setOf(outletE), today, BundleProgrammes.Flags(true, true, true), 1)
+            assertEquals(first, second, "one snapshot: every read of the section sees the same database")
+        }
+        assertEquals("1", achieved(section(setOf(outletE))), "a request that starts after the commit counts the memo exactly once")
     }
 
     @Test

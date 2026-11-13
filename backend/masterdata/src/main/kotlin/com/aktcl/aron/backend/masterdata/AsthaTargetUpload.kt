@@ -64,10 +64,13 @@ private val MONTH_RE = Regex("^(\\d{4})-(0[1-9]|1[0-2])$")
 
 private class TargetRow(val outlet: Long, val brand: Long?, val month: LocalDate, val std: BigDecimal, val memo: Int, val value: Long)
 
-/** Roles that may enter targets: SUPERADMIN always, plus the configured list (a bad or empty config falls back to the shipped default ADMIN, TSO). */
+/**
+ * Roles that may enter targets: SUPERADMIN always, plus the roles named in `cfg.astha.target_entry_roles`, matched exactly as the contract enum spells them (upper case).
+ * A malformed, missing or empty list FAILS CLOSED: SUPERADMIN only, never a fallback list (B4 of the Opus pass). Unknown names are ignored.
+ */
 internal fun asthaEntryRoles(config: ServerConfig): Set<Role> {
-    val configured = runCatching { config.value("cfg.astha.target_entry_roles").jsonArray.mapNotNull { e -> runCatching { Role.valueOf(e.jsonPrimitive.content) }.getOrNull() }.toSet() }.getOrNull()
-    return (configured?.takeIf { it.isNotEmpty() } ?: setOf(Role.ADMIN, Role.TSO)) + Role.SUPERADMIN
+    val configured = runCatching { config.value("cfg.astha.target_entry_roles").jsonArray.mapNotNull { e -> Role.entries.firstOrNull { it.wire == e.jsonPrimitive.content } }.toSet() }.getOrNull().orEmpty()
+    return configured + Role.SUPERADMIN
 }
 
 private fun readTargetRows(o: JsonObject, quarter: AsthaQuarter): List<TargetRow> {
@@ -127,25 +130,26 @@ private suspend fun putAsthaTargets(call: ApplicationCall, d: AsthaTargetUploadD
     val rows = readTargetRows(o, quarter)
     val fp = fingerprint(quarterLabel, rows, reason)
     val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
-    val reach: Reach? = if (p.role == Role.TSO) d.reach.reach(p.userId, p.role, p.scopeVersion, today) else null   // ADMIN and SUPERADMIN are national; the TSO is cut to the token's reach
+    val reach: Reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)   // every role is judged by its reach (national roles pass BY reach, not by skipping the check)
     return mapDb {
         d.db.jdbi.inTransaction<AsthaBatchResultOut, Exception> { h ->
             h.createQuery("SELECT pg_advisory_xact_lock(hashtext(:k))").bind("k", "astha_batch:$batch").mapTo(String::class.java).findOne()
-            h.createQuery("SELECT request_fingerprint, inserted, updated, unchanged FROM app.astha_target_batch WHERE batch_uuid = :b").bind("b", batch)
-                .map { rs, _ -> arrayOf<Any>(rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getInt(4)) }.findOne().orElse(null)?.let { r ->
-                    // The FIRST result answers a replay before anything else is judged (a reach change since is not re-judged).
-                    if (r[0] != fp) throw ApiProblem(ProblemCode.ERR_CONFLICT, "batch_uuid already used for a different batch", errors = listOf(FieldError("body.batch_uuid", "reused")))
-                    return@inTransaction AsthaBatchResultOut(batch.toString(), r[1] as Int, r[2] as Int, r[3] as Int)
-                }
-            // Serialise the quarter's batches: the counts below are computed against the rows this transaction is about to write.
-            h.createQuery("SELECT pg_advisory_xact_lock(hashtext(:k))").bind("k", "astha_quarter:$quarterLabel").mapTo(String::class.java).findOne()
             val outlets = rows.map { it.outlet }.distinct()
             val route = h.createQuery("SELECT o.id, o.route_id, r.zone_id FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE o.id IN (<ids>)").bindList("ids", outlets)
                 .map { rs, _ -> rs.getLong(1) to (rs.getLong(2) to rs.getLong(3)) }.list().toMap()
             rows.forEachIndexed { i, r ->
                 val (routeId, zoneId) = route[r.outlet] ?: adminBad("body.rows[$i].outlet_id", "not_found")
-                if (reach != null && !reach.coversRoute(routeId, zoneId)) throw forbidden("outlet ${r.outlet} is not in your territory", "body.rows[$i].outlet_id")
+                if (!reach.coversRoute(routeId, zoneId)) throw forbidden("outlet ${r.outlet} is not in your territory", "body.rows[$i].outlet_id")
             }
+            // The caller's reach is judged BEFORE a replay is answered: a replay never shows counts to someone who may no longer upload these outlets.
+            h.createQuery("SELECT request_fingerprint, inserted, updated, unchanged FROM app.astha_target_batch WHERE batch_uuid = :b").bind("b", batch)
+                .map { rs, _ -> arrayOf<Any>(rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getInt(4)) }.findOne().orElse(null)?.let { r ->
+                    // The FIRST result answers a replay (role and reach were judged above).
+                    if (r[0] != fp) throw ApiProblem(ProblemCode.ERR_CONFLICT, "batch_uuid already used for a different batch", errors = listOf(FieldError("body.batch_uuid", "reused")))
+                    return@inTransaction AsthaBatchResultOut(batch.toString(), r[1] as Int, r[2] as Int, r[3] as Int)
+                }
+            // Serialise the quarter's batches: the counts below are computed against the rows this transaction is about to write.
+            h.createQuery("SELECT pg_advisory_xact_lock(hashtext(:k))").bind("k", "astha_quarter:$quarterLabel").mapTo(String::class.java).findOne()
             val brands = rows.mapNotNull { it.brand }.distinct()
             if (brands.isNotEmpty()) {
                 val known = h.createQuery("SELECT id FROM app.product_node WHERE level = 'brand' AND id IN (<ids>)").bindList("ids", brands).mapTo(Long::class.java).list().toSet()
@@ -169,15 +173,15 @@ private suspend fun putAsthaTargets(call: ApplicationCall, d: AsthaTargetUploadD
                 .bindArray("std", String::class.java, stdArr.toList()).bindArray("memo", Int::class.javaObjectType, memoArr.toList()).bindArray("val", Long::class.javaObjectType, valueArr.toList())
             val counts = h.createQuery(
                 "WITH inp AS ($inp) SELECT count(*) FILTER (WHERE a.id IS NULL), " +
-                    "count(*) FILTER (WHERE a.id IS NOT NULL AND (a.std_target <> i.std_target OR a.memo_target <> i.memo_target OR a.value_target_mtk <> i.value_target_mtk)) " +
-                    "FROM inp i LEFT JOIN app.astha_target a ON a.month = i.month AND a.route_id = i.route_id AND coalesce(a.outlet_id, 0) = i.outlet_id AND coalesce(a.brand_id, 0) = i.brand0",
+                    "count(*) FILTER (WHERE a.id IS NOT NULL AND (a.route_id <> i.route_id OR a.std_target <> i.std_target OR a.memo_target <> i.memo_target OR a.value_target_mtk <> i.value_target_mtk)) " +
+                    "FROM inp i LEFT JOIN app.astha_target a ON a.month = i.month AND coalesce(a.brand_id, 0) = i.brand0 AND a.outlet_id = i.outlet_id",
             ).bindRows().map { rs, _ -> rs.getInt(1) to rs.getInt(2) }.one()
             h.createUpdate(
                 "INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target, value_target_mtk, batch_uuid, created_by) " +
                     "SELECT CAST(:prog AS bigint), month, route_id, outlet_id, NULLIF(brand0, 0), std_target, memo_target, value_target_mtk, :batch, :by FROM ($inp) AS x " +
-                    "ON CONFLICT (month, route_id, coalesce(outlet_id, 0), coalesce(brand_id, 0)) DO UPDATE SET std_target = EXCLUDED.std_target, memo_target = EXCLUDED.memo_target, " +
+                    "ON CONFLICT (month, outlet_id, coalesce(brand_id, 0)) WHERE outlet_id IS NOT NULL DO UPDATE SET route_id = EXCLUDED.route_id, std_target = EXCLUDED.std_target, memo_target = EXCLUDED.memo_target, " +
                     "value_target_mtk = EXCLUDED.value_target_mtk, batch_uuid = EXCLUDED.batch_uuid, updated_at = now() " +
-                    "WHERE app.astha_target.std_target <> EXCLUDED.std_target OR app.astha_target.memo_target <> EXCLUDED.memo_target OR app.astha_target.value_target_mtk <> EXCLUDED.value_target_mtk",
+                    "WHERE app.astha_target.route_id <> EXCLUDED.route_id OR app.astha_target.std_target <> EXCLUDED.std_target OR app.astha_target.memo_target <> EXCLUDED.memo_target OR app.astha_target.value_target_mtk <> EXCLUDED.value_target_mtk",
             ).bind("prog", programmeId as Any?).bind("batch", batch).bind("by", p.userId).bindRows().execute()
             val inserted = counts.first; val updated = counts.second; val unchanged = n - inserted - updated
             h.createUpdate(

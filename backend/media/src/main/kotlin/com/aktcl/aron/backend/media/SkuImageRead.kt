@@ -1,6 +1,7 @@
 package com.aktcl.aron.backend.media
 
 import com.aktcl.aron.backend.platform.ApiProblem
+import com.aktcl.aron.backend.platform.ProgrammeScopeSql
 import com.aktcl.aron.contract.ProblemCode
 import java.util.UUID
 
@@ -26,15 +27,27 @@ internal class SkuImageRead(private val d: MediaDeps) {
     /** What the database says about a servable picture; the blob is not read yet (a 304 never touches storage). */
     class Meta(val path: String, val mime: String, val etag: String)
 
-    fun meta(rawId: String?): Meta {
+    /** Who is asking, for a GIFT picture: the caller's reach (null: gift pictures are not served at all, fail closed). */
+    class GiftScope(val national: Boolean, val zones: Collection<Long>, val routes: Collection<Long>)
+
+    /**
+     * A SKU picture is served to any signed-in caller. A GIFT picture (since 1.15.0) only while an ACTIVE gift of an ACTIVE programme in its window binds it AND the programme's
+     * active version scope (the shared [ProgrammeScopeSql]) includes the caller's reach: a draft, ended or out-of-scope programme's pictures are a bare 404 (B5 of the Opus pass).
+     */
+    fun meta(rawId: String?, gift: GiftScope? = null): Meta {
         val id = rawId?.takeIf { UUID_RE.matches(it) }?.lowercase() ?: throw notFound()
+        val today = com.aktcl.aron.rules.BusinessDate.of(d.clock.now().toEpochMilli()).toString()
+        val scopeSql = if (gift == null || gift.national) "TRUE" else ProgrammeScopeSql.geo("gv")
+        val giftOk = if (gift == null) "FALSE" else "(a.purpose = 'gift_image' AND EXISTS (SELECT 1 FROM app.gift g JOIN app.programme gp ON gp.id = g.programme_id " +
+            "LEFT JOIN app.programme_version gv ON gv.id = gp.current_version_id WHERE g.image_asset_id = a.asset_id AND g.status = 'active' AND gp.status = 'active' " +
+            "AND gp.active_from <= CAST(:today AS date) AND gp.active_to >= CAST(:today AS date) AND $scopeSql))"
         return d.db.readJdbi.withHandle<Meta?, Exception> { h ->
-            h.createQuery(
+            val q = h.createQuery(
                 "SELECT a.blob_path, a.mime FROM app.admin_asset a WHERE a.asset_id = :id AND a.bytes <= :max AND a.mime IN ('image/jpeg', 'image/png') AND " +
-                    "((a.purpose = 'sku_image' AND EXISTS (SELECT 1 FROM app.sku s WHERE s.image_asset_id = a.asset_id)) " +
-                    "OR (a.purpose = 'gift_image' AND EXISTS (SELECT 1 FROM app.gift g WHERE g.image_asset_id = a.asset_id AND g.status = 'active')))",
-            ).bind("id", UUID.fromString(id)).bind("max", MAX_BYTES)
-                .map { rs, _ -> Meta(rs.getString(1), rs.getString(2), "\"" + id + "\"") }.findOne().orElse(null)
+                    "((a.purpose = 'sku_image' AND EXISTS (SELECT 1 FROM app.sku s WHERE s.image_asset_id = a.asset_id)) OR $giftOk)",
+            ).bind("id", UUID.fromString(id)).bind("max", MAX_BYTES).bind("today", today)
+            if (gift != null && !gift.national) q.bindList("vz", ProgrammeScopeSql.ids(gift.zones)).bindList("vr", ProgrammeScopeSql.ids(gift.routes))
+            q.map { rs, _ -> Meta(rs.getString(1), rs.getString(2), "\"" + id + "\"") }.findOne().orElse(null)
         } ?: throw notFound()
     }
 

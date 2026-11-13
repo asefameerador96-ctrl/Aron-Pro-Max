@@ -3,22 +3,31 @@ ProgrammesSection:
   description: 'Programme data for the user''s routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme
     is active in the user''s reach, else the bundle member is null. Cut to the outlets and routes of the bundle
     (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS
-    Dhaka business date); `astha_targets` carry server achievement as of their own `as_of` (units in `AsthaTargetRow`);
-    a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries only
-    the CURRENT month of the bundle''s business date (earlier or later months of the quarter are read online with
-    `listAsthaTargets`), only outlets enrolled in an active Astha programme, and no row whose targets and achievements
-    are all zero; it is bounded at 1,000 rows per user: past that the server sends the first 1,000, logs a warning
-    and sets `astha_truncated` true, which the phone shows (never a silent cut). Budget for a 120-outlet SR: the
-    whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle:
-    the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. The `as_of`
-    of the Astha rows is the server''s newest memo ingest in the quarter (content-derived, so a rebuild without
-    a new memo has the same bytes); the phone adds every local memo the server had not acknowledged by `meta.generated_at`,
-    keyed by memo_uuid.'
+    Dhaka business date; see `LoyaltyBalance`); `astha_targets` carry server achievement (units in `AsthaTargetRow`;
+    `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends
+    no rows. `astha_targets` carries only the CURRENT month of the bundle''s business date (earlier or later months
+    of the quarter are read online with `listAsthaTargets`), only outlets enrolled in an active Astha programme,
+    and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user: past that the
+    server sends the first 1,000, logs a warning and sets `astha_truncated` true, which the phone shows (never a
+    silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url`
+    is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`.
+    ACHIEVEMENT RULE (the one rule; every other description refers here). Server guarantee: every figure of this
+    section is read in ONE read-only REPEATABLE READ snapshot on the primary database, and it includes every memo
+    of this user whose sync acknowledgement was sent before this bundle request was received. Phone rule: the phone
+    adds its own memos that had NOT been acknowledged when it SENT this bundle request, keyed by memo_uuid, recomputed
+    from scratch after each bundle; the phone never uploads records while a bundle request is in flight (single-flight
+    sync), and if an acknowledgement arrives during the request it discards the section''s achievement and refetches.
+    `astha_as_of` and a row''s `as_of` are display only ("data as of"), never part of the rule. Caps are never silent:
+    `truncated_sections` names any of programmes (50), loyalty (11,000 balances) or gifts (200) that was cut, and
+    `astha_truncated` the 1,000-row Astha bound.'
   required:
   - programmes
   - loyalty
   - gifts
   - astha_targets
+  - astha_as_of
+  - astha_truncated
+  - truncated_sections
   - gift_assignments
   - pending_gift_verifications
   additionalProperties: false
@@ -40,9 +49,20 @@ ProgrammesSection:
         $ref: '#/components/schemas/Gift'
     astha_as_of:
       $ref: '#/components/schemas/Timestamp'
-      description: '1.15.0. The `as_of` of every row of `astha_targets` in the bundle (the rows carry none, to save
-        bytes): the newest memo ingest of the month in reach. Phone rule: add every local memo the server had not
-        acknowledged by `meta.generated_at`.'
+      description: '1.15.0. Display only ("data as of"), never part of the achievement rule: the newest memo ingest
+        (receipt or status change) among the outlets of the rows actually sent, for the month of the business date;
+        the Dhaka start of the month when there is none. Rows carry no `as_of` in the bundle, to save bytes.'
+    truncated_sections:
+      type: array
+      maxItems: 3
+      description: 1.15.0. Which of `programmes`, `loyalty`, `gifts` was cut at its cap (50, 11,000, 200); empty
+        when none. A cut is also logged by the server. The phone shows a notice.
+      items:
+        type: string
+        enum:
+        - programmes
+        - loyalty
+        - gifts
     astha_truncated:
       type: boolean
       description: 1.15.0. True when the user's routes had more than 1,000 Astha rows for the month and the list

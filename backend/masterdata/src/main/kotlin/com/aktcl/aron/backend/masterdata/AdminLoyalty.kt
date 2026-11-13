@@ -205,16 +205,7 @@ private fun loyVisSql(vis: LVis, v: String): LVisSql? = when (vis) {
             "OR (x.product_level = 'category' AND EXISTS (SELECT 1 FROM app.product_node br JOIN app.product_node sg ON sg.id = br.parent_id WHERE br.id IN (<vb>) AND sg.parent_id = x.product_id)))))",
         mapOf("vb" to vis.ids),
     )
-    is LVis.Geo -> LVisSql(
-        "(NOT EXISTS (SELECT 1 FROM app.programme_version_scope s WHERE s.programme_version_id = $v.id AND s.node_type IN ('wing','division','territory','zone','route')) " +
-            "OR EXISTS (SELECT 1 FROM app.programme_version_scope s WHERE s.programme_version_id = $v.id AND (" +
-            "(s.node_type = 'zone' AND s.node_id IN (<vz>)) " +
-            "OR (s.node_type = 'territory' AND EXISTS (SELECT 1 FROM app.zone zz WHERE zz.territory_id = s.node_id AND zz.id IN (<vz>))) " +
-            "OR (s.node_type = 'division' AND EXISTS (SELECT 1 FROM app.zone zz JOIN app.territory tt ON tt.id = zz.territory_id WHERE tt.division_id = s.node_id AND zz.id IN (<vz>))) " +
-            "OR (s.node_type = 'wing' AND EXISTS (SELECT 1 FROM app.zone zz JOIN app.territory tt ON tt.id = zz.territory_id JOIN app.division dd ON dd.id = tt.division_id WHERE dd.wing_id = s.node_id AND zz.id IN (<vz>))) " +
-            "OR (s.node_type = 'route' AND EXISTS (SELECT 1 FROM app.route rr WHERE rr.id = s.node_id AND (rr.zone_id IN (<vz>) OR rr.id IN (<vr>)))))))",
-        mapOf("vz" to vis.zones.ifEmpty { listOf(-1L) }, "vr" to vis.routes.ifEmpty { listOf(-1L) }),   // an empty list would be invalid SQL; no id is ever -1
-    )
+    is LVis.Geo -> LVisSql(com.aktcl.aron.backend.platform.ProgrammeScopeSql.geo(v), mapOf("vz" to com.aktcl.aron.backend.platform.ProgrammeScopeSql.ids(vis.zones), "vr" to com.aktcl.aron.backend.platform.ProgrammeScopeSql.ids(vis.routes)))   // the shared predicate (push B3)
 }
 
 private fun org.jdbi.v3.core.statement.Query.bindLVis(s: LVisSql?): org.jdbi.v3.core.statement.Query { s?.lists?.forEach { (k, v) -> bindList(k, v) }; return this }

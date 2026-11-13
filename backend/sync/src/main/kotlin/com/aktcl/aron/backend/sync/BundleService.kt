@@ -172,15 +172,20 @@ class BundleService(
                 supervisor = supReach?.let { SupervisorBundle.section(h, user.id, p.role, it, date, (plans.map { r -> r.routeId } + zonePlans.map { r -> r.routeId }).distinct()) },
                 reason_texts = ReasonTexts.ALL,
                 device_policy_version = configVersion,
-                programmes = BundleProgrammes.section(
-                    h, own.map { it.route_id }, routes.flatMap { r -> r.outlets.map { it.outlet_id } }.toSet(), date,
+                programmes = db.jdbi.inTransaction<kotlinx.serialization.json.JsonObject?, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { th ->
+                    // ONE read-only snapshot on the PRIMARY for every figure of the section (never a replica): the figures include every memo of this user whose sync acknowledgement was sent
+                    // before this request was received (the request file, the single phone rule). B1/B2 of the Opus pass.
+                    th.execute("SET TRANSACTION READ ONLY")
+                    BundleProgrammes.section(
+                    th, own.map { it.route_id }, routes.flatMap { r -> r.outlets.map { it.outlet_id } }.toSet(), date,
                     BundleProgrammes.Flags(
                         loyalty = cfg.value("cfg.flag.loyalty_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
                         astha = cfg.value("cfg.flag.astha_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
                         superstar = cfg.value("cfg.flag.superstar_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
                     ),
                     cfg.value("cfg.astha.quarter_start_month", userChain)?.jsonPrimitive?.intOrNull ?: 1,
-                ),
+                )
+                },
                 content = BundleContent.content(h, date, date.plusDays(horizonDays.toLong()), routes.flatMap { r -> r.outlets.map { it.outlet_id } }.toSet()),
                 tutorials = emptyList(),
             )

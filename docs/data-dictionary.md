@@ -33,7 +33,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.app_release`](#appapp_release) | table | backend:config | ONLINE | master | none | One published or draft build of the field app (version, ABI, download URL, signing certificate, rollout percentage). |
 | [`app.app_user`](#appapp_user) | table | backend:masterdata | ONLINE | master | secret | One person who can log in, field or web, with role, status, locale and Argon2id password hash; never deleted. |
 | [`app.archive_manifest`](#apparchive_manifest) | table | db | SERVER | audit | none | One row per exported month partition: planned, exported, verified, dropped, restored; a partition is dropped only after its row is verified. |
-| [`app.astha_target`](#appastha_target) | table | backend:masterdata | ONLINE | master | none | Astha programme target for a route (optionally an outlet and brand) and month, in standard units and memo count. |
+| [`app.astha_target`](#appastha_target) | table | backend:masterdata | ONLINE | master | none | Astha monthly target of a route (outlet_id null), an outlet (brand_id null: the memo target "All Brand") or an outlet and brand; one row per (month, outlet, brand) for outlet rows (index astha_target_outlet_one), so a route change moves the row instead of doubling it. |
 | [`app.astha_target_batch`](#appastha_target_batch) | table | backend:masterdata | ONLINE | audit | none | Append-only ledger of Astha target upload batches (PUT /v1/programmes/astha/targets); the batch UUID makes a retried batch idempotent (the first counts are answered again). |
 | [`app.attendance_event`](#appattendance_event) | table | backend:sync | OFFLINE | transaction | personal | One check-in or check-out of a user with its on-demand location fix. |
 | [`app.audit_log`](#appaudit_log) | table | backend:platform | SERVER | audit | personal | Append-only, hash-chained record of web and admin actions with before and after images and the actor. |
@@ -497,7 +497,7 @@ Keys: `UNIQUE (partition_name)`; `PRIMARY KEY (id)`
 
 ## app.astha_target
 
-Astha programme target for a route (optionally an outlet and brand) and month, in standard units and memo count.
+Astha monthly target of a route (outlet_id null), an outlet (brand_id null: the memo target "All Brand") or an outlet and brand; one row per (month, outlet, brand) for outlet rows (index astha_target_outlet_one), so a route change moves the row instead of doubling it.
 
 `owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
 

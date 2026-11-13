@@ -108,13 +108,14 @@ internal class ProgrammeReads(private val d: ProgrammeReadDeps) {
         if (wanted != null && wanted.size > 200) bad("outlet_id", "too_many")
         val programme = programmeParam?.let { it.toLongOrNull()?.takeIf { v -> v >= 1 } ?: bad("programme_id") }
         val date = today()
-        val items = d.db.readJdbi.withHandle<List<JsonObject>, Exception> { h ->
+        val got = d.db.readJdbi.withHandle<BundleProgrammes.Capped<JsonObject>, Exception> { h ->
             val outlets = scope(h, p, null, null, needNarrowForNational = wanted == null, outletIds = wanted?.distinct()).outlets
-            if (outlets.isEmpty()) return@withHandle emptyList()
-            val programmes = BundleProgrammes.programmes(h, date, listOf("diamond_league", "astha", "campaign", "superstar"), outlets).map { it.first }.filter { programme == null || it == programme }
-            if (programmes.isEmpty()) emptyList() else BundleProgrammes.loyalty(h, outlets, programmes, date, date, MAX_BALANCES)
+            if (outlets.isEmpty()) return@withHandle BundleProgrammes.Capped(emptyList(), false)
+            // The programme filter is applied INSIDE the programme query (before its cap); the shared geography predicate keeps out-of-scope campaigns.
+            val programmes = BundleProgrammes.programmes(h, date, listOf("diamond_league", "astha", "campaign", "superstar"), outlets, programme).items.map { it.first }
+            if (programmes.isEmpty()) BundleProgrammes.Capped(emptyList(), false) else BundleProgrammes.loyalty(h, outlets, programmes, date, date, MAX_BALANCES)
         }
-        return buildJsonObject { put("as_of", d.clock.now().wire()); put("items", JsonArray(items)) }
+        return buildJsonObject { put("as_of", d.clock.now().wire()); put("truncated", got.truncated); put("items", JsonArray(got.items)) }
     }
 
     fun targets(p: AronPrincipal, q: Parameters): JsonObject {

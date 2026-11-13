@@ -8,6 +8,9 @@ AsthaTargetRow:
   - std_achieved
   - memo_target
   - memo_achieved
+  - value_target_mtk
+  - value_achieved_mtk
+  - by_pack
   additionalProperties: false
   properties:
     route_id:
@@ -47,16 +50,15 @@ AsthaTargetRow:
       pattern: ^(0|[1-9][0-9]{0,17})$
       description: 'Integer milli-taka sold by the outlet for the brand in the month up to `as_of`: the gross of
         SALE lines of memos that are active (voided and superseded memos, voided lines and free or reward lines
-        are out). The memo offer line is zero (docs/27). The phone adds only its own unsynced memos created after
-        `as_of`, keyed by memo_uuid, recomputed from scratch after each bundle.'
+        are out). The memo offer line is zero (docs/27). The phone adds its own not-yet-acknowledged memos by the
+        rule in `ProgrammesSection` (achievement rule).'
     as_of:
       $ref: '#/components/schemas/Timestamp'
-      description: 'Absent in the bundle (see `ProgrammesSection.astha_as_of`). UTC instant of the newest memo the
-        achievement figures (std, memo and value) include: in the bundle the newest memo ingest of the quarter in
-        reach (not the build time, so equal content has equal bytes); in `listAsthaTargets` the instant of the read.'
+      description: Absent in the bundle (see `ProgrammesSection.astha_as_of`). Display only ("data as of"), never
+        a rule. In `listAsthaTargets` the instant of the read.
     by_pack:
       type: array
-      maxItems: 6
+      maxItems: 1000
       description: Achievement per pack size of the brand, base units (sticks, pieces), one entry per `pack_factor`
         with a sale in the month, ordered by `pack_factor`; empty on the All Brand row and when nothing sold. The
         phone shows ONE LINE PER PACK SIZE (20s and 10s are separate lines, rule 5) and never sums across pack sizes;

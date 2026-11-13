@@ -78,21 +78,34 @@ class SkuImageReadTest {
         }
     }
 
-    @Test fun aGiftPictureIsServedOnlyWhileAnActiveGiftBindsIt() {
+    @Test fun aGiftPictureIsServedOnlyForAnActiveGiftOfAnActiveInScopeProgramme() {
         fixture().use { f ->
             val r = read(f)
-            fun code(id: String) = assertFailsWith<ApiProblem> { r.bytes(r.meta(id)) }.code.name
+            val national = SkuImageRead.GiftScope(true, emptySet(), emptySet())
+            fun code(id: String, scope: SkuImageRead.GiftScope? = national) = assertFailsWith<ApiProblem> { r.bytes(r.meta(id, scope)) }.code.name
+            val zoneIn = f.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.zone ORDER BY id LIMIT 1").mapTo(Long::class.java).one() }
             f.db.jdbi.useHandle<Exception> { h ->
-                h.execute("INSERT INTO app.programme (kind, code, name_en, active_from, active_to) VALUES ('astha', 'IMG-PRG', 'Image programme', DATE '2027-01-01', DATE '2027-03-01')")
+                h.execute("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('astha', 'IMG-PRG', 'Image programme', DATE '2027-01-01', DATE '2027-03-01', 'active')")
                 h.execute("INSERT INTO app.gift (programme_id, code, name_en, image_asset_id) SELECT id, 'img_gift', 'Image gift', CAST(? AS uuid) FROM app.programme WHERE code = 'IMG-PRG'", gift)
                 // A sku_image asset bound by a GIFT is not a gift picture (purpose and binding must agree).
                 h.execute("INSERT INTO app.gift (programme_id, code, name_en, image_asset_id) SELECT id, 'img_wrong', 'Wrong purpose', CAST(? AS uuid) FROM app.programme WHERE code = 'IMG-PRG'", unbound)
             }
-            assertEquals("\"$gift\"", r.meta(gift).etag, "the bound, active gift's picture is served with its asset id as ETag")
-            assertContentEquals(png, read(f).bytes(r.meta(gift)))
+            assertEquals("\"$gift\"", r.meta(gift, national).etag, "the bound, active gift's picture is served with its asset id as ETag")
+            assertContentEquals(png, read(f).bytes(r.meta(gift, national)))
+            assertEquals("ERR_NOT_FOUND", code(gift, null), "no reach given: gift pictures are not served (fail closed)")
             assertEquals("ERR_NOT_FOUND", code(unbound), "a sku_image asset a gift binds is still not a gift picture")
+            // The programme's active version scope: a version scoped to a zone the caller does not reach hides the picture, a caller of that zone sees it.
+            f.db.jdbi.useHandle<Exception> { h ->
+                h.execute("INSERT INTO app.programme_version (programme_id, version_no, name_en, active_from, active_to, change_reason, request_uuid, request_fingerprint) SELECT id, 1, 'v', DATE '2027-01-01', DATE '2027-03-01', 'scope for the image test', gen_random_uuid(), 'x' FROM app.programme WHERE code = 'IMG-PRG'")
+                h.execute("UPDATE app.programme SET current_version_id = (SELECT v.id FROM app.programme_version v WHERE v.programme_id = app.programme.id) WHERE code = 'IMG-PRG'")
+                h.execute("INSERT INTO app.programme_version_scope (programme_version_id, node_type, node_id) SELECT current_version_id, 'zone', $zoneIn FROM app.programme WHERE code = 'IMG-PRG'")
+            }
+            assertEquals("\"$gift\"", r.meta(gift, SkuImageRead.GiftScope(false, listOf(zoneIn), emptyList())).etag, "a caller of the scoped zone")
+            assertEquals("ERR_NOT_FOUND", code(gift, SkuImageRead.GiftScope(false, listOf(zoneIn + 1000), emptyList())), "a caller outside the programme's scope")
             f.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.gift SET status = 'inactive' WHERE code = 'img_gift'") }
             assertEquals("ERR_NOT_FOUND", code(gift), "an inactive gift's picture is no longer served")
+            f.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.gift SET status = 'active' WHERE code = 'img_gift'"); h.execute("UPDATE app.programme SET status = 'inactive' WHERE code = 'IMG-PRG'") }
+            assertEquals("ERR_NOT_FOUND", code(gift), "an ended programme's gift picture is no longer served")
         }
     }
 

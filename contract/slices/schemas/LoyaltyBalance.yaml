@@ -3,8 +3,10 @@ LoyaltyBalance:
   required:
   - outlet_id
   - programme_id
+  - league_label
   - balance_points
   - expiring_points
+  - expiry_date
   - as_of_date
   additionalProperties: false
   properties:
@@ -19,10 +21,14 @@ LoyaltyBalance:
       maxLength: 40
     balance_points:
       type: integer
-      description: Ledger balance; negative only after a flagged overdraw.
+      description: 'Ledger balance as of `as_of_date`: credits whose `expires_on` is before the business date of
+        the answer are left out even before an expiry debit is posted (and the `expiry` debit rows themselves, so
+        an expiry is never counted twice). Negative only after a flagged overdraw.'
     expiring_points:
       type: integer
       minimum: 0
+      description: The credits expiring on the EARLIEST upcoming `expires_on` (that date is `expiry_date`), capped
+        by the balance and never negative; no window. Debits are not matched to credits (no FIFO).
     expiry_date:
       oneOf:
       - $ref: '#/components/schemas/BusinessDate'
