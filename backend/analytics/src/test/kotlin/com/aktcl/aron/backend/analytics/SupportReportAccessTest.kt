@@ -35,7 +35,7 @@ class SupportReportAccessTest : ReportFixture() {
     @Test
     fun supportGetsForbiddenOnEveryBusinessReportAndKeepsSyncHealth() = app {
         addSupport()
-        assertEquals(33, ReportHandlers.all.size) // tso-manual B3: + tso-visit-log (R-F-12)
+        assertEquals(34, ReportHandlers.all.size) // tso-manual B3: + tso-visit-log (R-F-12); sr-server train 2: + posm-survey (SRM-B-08)
         for (h in ReportHandlers.all) {
             val key = h.definition.report_key
             val r = run(support, Role.SUPPORT, key)

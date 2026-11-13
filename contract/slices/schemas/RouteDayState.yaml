@@ -77,3 +77,26 @@ RouteDayState:
       - 'null'
       maxLength: 120
       description: Full name of the assigned SR, for the supervisor route lists (F-TSO-007).
+    late_rows_after_sales_submit:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: 'Contract 1.16.0 (supervisor reads only; absent in the bundle and the day-state read): memos
+        and due collections of the route-day captured after the same user''s Sales Submit record (its own `captured_at`,
+        phone clock against phone clock) and stored while the zone-day was open. Derived from the stored rows, so
+        it is one number under replay and any arrival order (a memo and its edits count once); never refused (offline-first);
+        after the Final Submit a late row counts under the final-submit counter instead.'
+    late_rows_anchor:
+      type:
+      - string
+      - 'null'
+      enum:
+      - phone
+      - server
+      - null
+      description: '1.16.0 (supervisor reads only): whose clock stamped the route-day Sales Submit that `late_rows_after_sales_submit`
+        is measured from. `phone`: the submit record''s own captured_at (a record, or an online submit that carried
+        `captured_at`); `server`: when ANY user''s current (newest non-voided) Sales Submit on the route-day is
+        server-stamped (an older client''s online submit without `captured_at`, or a phone clock outside the plausibility
+        bound), so the count may be off by clock skew. Null when no route-day Sales Submit is stored.'

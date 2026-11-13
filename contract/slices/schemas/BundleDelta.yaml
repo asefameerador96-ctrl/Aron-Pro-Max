@@ -56,6 +56,35 @@ BundleDelta:
           $ref: '#/components/schemas/SectionDelta'
         pending_outlet_requests:
           $ref: '#/components/schemas/SectionDelta'
+    clusters:
+      type:
+      - array
+      - 'null'
+      maxItems: 600
+      description: 'Contract 1.16.0: the WHOLE `clusters` section when its content differs from the snapshot named
+        by `base_cursor` (replace the phone''s list), null when unchanged.'
+      items:
+        $ref: '#/components/schemas/BundleCluster'
+    clusters_truncated:
+      type:
+      - boolean
+      - 'null'
+      description: 'Contract 1.16.0: the truncation flag that goes with a carried `clusters`; null with it.'
+    outlet_sku_stats:
+      type:
+      - array
+      - 'null'
+      maxItems: 400
+      description: 'Contract 1.16.0: the WHOLE `outlet_sku_stats` section when its content differs from the snapshot
+        named by `base_cursor` (a late-synced memo of an earlier day changes it), null when unchanged.'
+      items:
+        $ref: '#/components/schemas/OutletSkuStat'
+    outlet_sku_stats_truncated:
+      type:
+      - boolean
+      - 'null'
+      description: 'Contract 1.16.0: the truncation flag that goes with a carried `outlet_sku_stats`; null with
+        it.'
     code_lists:
       type: array
       maxItems: 30

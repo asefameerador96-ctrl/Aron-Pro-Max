@@ -148,6 +148,9 @@ class BundleService(
             // ruling 2026-10-18): same builder, scope from the token, paged above cfg.bundle.page_threshold_rows like any section.
             val zoneRoutes = if (supReach != null && (p.role == Role.AMO || p.role == Role.TSO)) routeSnapshots(h, user.id, zonePlans, date, emptyMap(), cfg, roleOrdinal, zoneIds = supReach.zoneIds.toList()) else emptyList()
             val routes = own + zoneRoutes
+            // Contract 1.16.0 caps (600 clusters, 400 outlets of stats): beyond them the rows are cut in a fixed order and the section says so (`*_truncated`), never an over-long section.
+            val clustersCapped = if (p.role == Role.SR) clusters(h, own).capped(MAX_CLUSTERS) else Capped(emptyList(), false)
+            val statsCapped = if (p.role == Role.SR) outletSkuStats(h, own.flatMap { r -> r.outlets.map { it.outlet_id } }, date).capped(MAX_STATS_OUTLETS) else Capped(emptyList(), false)
             val progReach = supReach ?: reach?.reach(user.id, p.role, p.scopeVersion, date)   // the caller's reach for the programme scope (an SR's is ownRecordsOnly: no zone reach)
             val zones = (plans.map { it.zoneId } + listOfNotNull(user.homeZoneId)).distinct()
             Bundle(
@@ -189,6 +192,10 @@ class BundleService(
                 },
                 content = BundleContent.content(h, date, date.plusDays(horizonDays.toLong()), routes.flatMap { r -> r.outlets.map { it.outlet_id } }.toSet()),
                 tutorials = emptyList(),
+                clusters = clustersCapped.rows,
+                clusters_truncated = clustersCapped.truncated,
+                outlet_sku_stats = statsCapped.rows,
+                outlet_sku_stats_truncated = statsCapped.truncated,
             )
         }
         val seq = snapshotSeq(user.id, date, bundle)
@@ -253,6 +260,7 @@ class BundleService(
             meta = DeltaMeta(r.version, sinceRaw!!, r.bundle.meta.cursor, date.toString(), r.bundle.meta.config_version, clock.now().wire()),
             sections = body.sections, code_lists = body.codeLists, templates = body.templates,
             routes_added = body.routesAdded, routes_removed = body.routesRemoved, day_states = body.dayStates, resolutions = resolutions,
+            clusters = body.clusters, clusters_truncated = body.clustersTruncated, outlet_sku_stats = body.skuStats, outlet_sku_stats_truncated = body.skuStatsTruncated,
         )
     }
 
@@ -609,6 +617,61 @@ class BundleService(
         }.list().groupBy { it.route_id }
     }
 
+    private class Capped<T>(val rows: List<T>, val truncated: Boolean)
+    private fun <T> List<T>.capped(max: Int) = capRows(this, max).let { Capped(it.first, it.second) }
+
+    /** The clusters of the SR's own routes (contract 1.16.0): every cluster that has an active outlet on the route, plus the live clusters approved `cluster_create` requests made for it, by name. */
+    private fun clusters(h: Handle, own: List<RouteSnapshot>): List<BundleCluster> {
+        val names = own.associate { it.route_id to it.route.name }
+        if (names.isEmpty()) return emptyList()
+        return h.createQuery(
+            """
+            SELECT cluster_id, name, route_id FROM (
+              SELECT c.id AS cluster_id, c.name, o.route_id FROM app.outlet o JOIN app.cluster c ON c.id = o.cluster_id
+               WHERE o.route_id = ANY(:r) AND o.status = 'active' AND c.status = 'active'
+              UNION
+              SELECT c.id, c.name, q.route_id FROM app.outlet_change_request q JOIN app.cluster c ON c.id = q.created_cluster_id
+               WHERE q.request_type = 'cluster_create' AND q.status = 'approved' AND q.voided_at IS NULL AND q.route_id = ANY(:r) AND c.status = 'active') x
+             ORDER BY route_id, name, cluster_id
+            """.trimIndent(),
+        ).bindArray("r", Long::class.javaObjectType, names.keys.toList()).map { rs, _ ->
+            BundleCluster(rs.getLong("cluster_id"), rs.getString("name"), rs.getLong("route_id"), names.getValue(rs.getLong("route_id")))
+        }.list()
+    }
+
+    /**
+     * Previous sale day, ADS and SDLW per outlet x SKU (contract 1.16.0, part A Q4 defaults), from the live memos of the 30 business days before [date]:
+     * sale lines only, memos active, with lines, not voided (the rule of the Sales Submit digest). Base units; ADS in integer hundredths, rounded half up, = quantity sold in the 30 calendar days before [date] divided by the ELAPSED calendar days of that window (30, or the days since the outlet's first selling memo when younger).
+     */
+    private fun outletSkuStats(h: Handle, outletIds: List<Long>, date: LocalDate): List<OutletSkuStat> = if (outletIds.isEmpty()) emptyList() else h.createQuery(
+        """
+        WITH ls AS (
+          SELECT m.outlet_id, ml.sku_id, m.business_date, sum(ml.qty_base)::bigint AS q
+            FROM app.memo_line ml JOIN app.memo m ON m.client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
+           WHERE m.outlet_id = ANY(:o) AND m.business_date >= :from AND m.business_date < :d
+             AND m.status = 'active' AND m.line_count > 0 AND m.voided_at IS NULL AND ml.voided_at IS NULL AND ml.line_kind = 'sale'
+           GROUP BY m.outlet_id, ml.sku_id, m.business_date),
+        od AS (SELECT outlet_id, max(business_date) AS prev,
+                       -- ELAPSED calendar days of the window (D-SV2-05): 30, or the days since the outlet's first selling memo when it is younger
+                       LEAST(30, :d - (SELECT min(m2.business_date) FROM app.memo m2 WHERE m2.outlet_id = ls.outlet_id AND m2.business_date < :d AND m2.business_date >= :d - 366
+                                         AND m2.status = 'active' AND m2.line_count > 0 AND m2.voided_at IS NULL)) AS days
+                  FROM ls GROUP BY outlet_id)
+        SELECT s.outlet_id, s.sku_id, od.prev,
+               coalesce(sum(s.q) FILTER (WHERE s.business_date = od.prev), 0)::bigint AS prev_q,
+               floor(sum(s.q) * 100.0 / od.days + 0.5)::bigint AS ads,
+               coalesce(sum(s.q) FILTER (WHERE s.business_date = :sdlw), 0)::bigint AS sdlw
+          FROM ls s JOIN od ON od.outlet_id = s.outlet_id
+         GROUP BY s.outlet_id, s.sku_id, od.prev, od.days ORDER BY s.outlet_id, s.sku_id
+        """.trimIndent(),
+    ).bindArray("o", Long::class.javaObjectType, outletIds).bind("from", date.minusDays(30)).bind("d", date).bind("sdlw", date.minusDays(7)).map { rs, _ ->
+        Triple(rs.getLong("outlet_id"), rs.getObject("prev", LocalDate::class.java).toString(), listOf(rs.getLong("sku_id"), rs.getLong("prev_q"), rs.getLong("ads"), rs.getLong("sdlw")))
+    }.list().filter { it.third[1] != 0L || it.third[2] != 0L || it.third[3] != 0L }   // a pair with all three figures zero carries nothing
+        .groupBy({ it.first to it.second }, { it.third }).map { (k, v) ->
+            // items ascend by SKU id; the first carries the id, each later one the DIFFERENCE from the previous item's id (small numbers: the section stays inside its budget)
+            val sorted = v.sortedBy { it[0] }
+            OutletSkuStat(k.first, k.second, sorted.mapIndexed { i, q -> if (i == 0) q else listOf(q[0] - sorted[i - 1][0]) + q.drop(1) })
+        }
+
     /** Credit memos with an open balance in the due ledger (`memo_due` plus collections, voids and supersessions). */
     private fun openMemos(h: Handle, outletIds: List<Long>): List<OpenMemo> = if (outletIds.isEmpty()) emptyList() else h.createQuery(
         """
@@ -721,6 +784,10 @@ class BundleService(
         private val RADIUS_KEYS = arrayOf("cfg.geo.radius_m", "cfg.geo.max_accuracy_m", "cfg.geo.radius_min_m", "cfg.geo.radius_max_m")
 
         private const val PAGE_CACHE_TTL_S = 300L
+        /** The contract caps of `Bundle.clusters` (600) and `Bundle.outlet_sku_stats` (400 outlets). */
+        fun <T> capRows(rows: List<T>, max: Int): Pair<List<T>, Boolean> = rows.take(max) to (rows.size > max)
+        const val MAX_CLUSTERS = 600
+        const val MAX_STATS_OUTLETS = 400
         private const val PAGE_CACHE_BUDGET_ROWS = 150_000
         private val SECTION_NAMES = setOf("outlets", "open_memos", "prices", "offers", "tasks", "team", "pending_outlet_requests", "programmes", "content")
 

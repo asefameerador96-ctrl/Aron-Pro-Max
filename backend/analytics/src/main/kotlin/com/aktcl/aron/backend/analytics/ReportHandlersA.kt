@@ -324,5 +324,6 @@ object ReportHandlers {
         AmoCallReport, SrOutletsReport, DiscountReport, FreeSampleReport, SalesSummaryReport,
         QcReport, SettlementReport, RouteQcReport, RetailerListReport, SkuListReport, GeofenceCalibrationReport,
         TsoVisitLogReport, // tso-manual B3 (XA-03, R-F-12)
+        PosmSurveyReport, // sr-server train 2 (SRM-B-08)
     )
 }

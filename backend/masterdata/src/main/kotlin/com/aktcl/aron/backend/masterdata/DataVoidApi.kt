@@ -37,7 +37,7 @@ data class DataVoidIn(val client_uuid: String, val route_id: Long, val business_
 @Serializable
 data class DataVoidOut(val route_id: Long, val business_date: String, val scope: String, val voided_at: String, val tombstoned_records: Int, val pending_rows_reported: Int?)
 
-class DataVoidDeps(val db: Database, val reach: ReachResolver, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
+class DataVoidDeps(val db: Database, val reach: ReachResolver, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM, val dayInputs: com.aktcl.aron.backend.platform.DayInputsChanged? = null)
 
 /** TSO (own scope) and the ops admins (docs/21 matrix `day.void`). */
 private val VOID_ROLES = setOf(Role.TSO, Role.ADMIN, Role.SUPERADMIN)
@@ -126,6 +126,8 @@ private suspend fun voidDay(call: ApplicationCall, d: DataVoidDeps): DataVoidOut
             voidedUuids += uuids
             if (t == "memo") voidedMemos += uuids
         }
+        // B4: the rows and the Sales Submit anchor of the route-day are tombstoned; its derived late-row count follows, in this transaction.
+        d.dayInputs?.changed(h, listOf(req.route_id), date)
         // An approved dues correction attached to a tombstoned memo would survive the void and leave the balance wrong: refuse the whole void
         // (smallest safe version; reversal through a ledger row is a later row, DECISIONS.md). Read after the tombstoning UPDATE, which waited
         // for any approval holding the memo row, so a concurrent approval is seen (the approval takes FOR SHARE on the memo).

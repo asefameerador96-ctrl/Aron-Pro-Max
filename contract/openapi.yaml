@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.15.0
+  version: 1.16.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -116,6 +116,15 @@ info:
       request file is needed beyond the note in `docs/requests/contract-1.13-loyalty-portal.md`): the 1.13.0 entry above is as it shipped. `listProgrammeVersions` says each
       version is judged on its own scope; `listProgrammeEnrolments` carries the read rules (reach cut, BRAND `403`, `zone_id` outside the reach `403`) that were wrongly
       written on `putProgrammeEnrolments`, which now states its write rules; the list and path reads state their `400` on a bad query or path value.
+    - 1.16.0 (SR manual build, lane sr-server train 2, push B, D-SV2-02 to 07; request file `docs/requests/contract-1.15-sr-server-train2.md`;
+      1.15.0 is the Loyalty lane's), additive only: `Bundle.clusters` (`BundleCluster`: the clusters the SR can name on its own routes) and `Bundle.outlet_sku_stats`
+      (`OutletSkuStat` / `OutletSkuStatItem`: one entry per outlet with previous sale day and, per SKU, previous-day quantity, ADS and SDLW, integer hundredths in BASE units, the phone converts
+      with the SKU's pack_factor), report key `posm-survey`, `RouteDayState.late_rows_after_sales_submit` (memos and due collections captured after the
+      Sales Submit and stored before the Final Submit: counted, never refused) and the config key `cfg.sale.journey_repeat_sale_enabled` (shipped off:
+      while off the server journey never names `repeat_sale`; on, a sold call at an outlet already sold earlier that day is `repeat_sale`, the
+      phone's rule in `shared/rules` JourneyTimeline). Cluster creation (push B2): `OutletRequestType` value `cluster_create` (an `outlet_change_request` record with the SR's
+      route on the envelope and `proposed.name`; AMO verification and the portal approval are the outlet request pipeline's; an approved request is a live cluster of the route's zone),
+      `OutletProposal.cluster_request_uuid`, `OutletRequest.resulting_cluster_id` and the rejected record outcome code `cluster_name_exists`. Review round (push B3): `BundleDelta.clusters`, `clusters_truncated`, `outlet_sku_stats`, `outlet_sku_stats_truncated` (a delta carries each section whole when it changed), `Bundle.clusters_truncated` and `Bundle.outlet_sku_stats_truncated` (the caps 600 and 400), `OutletRequestApproveRequest.cluster_id`, `SalesSubmitRequest.captured_at` (the phone's clock) and `RouteDayState.late_rows_anchor`; the late-row count is derived from the day_submit record's own `captured_at`; ADS is per elapsed calendar day. Review round B5: `DaySubmitPayload.anchor_clock` (optional, server-set on the online Sales Submit). No existing member changes.
     - 1.14.0 (SR manual build, lane sr-server train 1, D-SV1-01 to 13; approval requested as D-LEAD-CONTRACT-114-01, gate file
       `docs/requests/contract-1.14-sr-manual.md`; on top of 1.13.1 (the Loyalty portal)), additive only:
       `VisitClosePayload.zero_sale_reason_code` (code list `zero_sale_reason`, only with `is_zero_sale`), `VisitClosePayload.call_photo_uuid`
@@ -7430,7 +7439,7 @@ components:
         resolved, a close review before resolved) or on another user's ticket. `issue_type_unknown` (rejected, not
         retryable): a `support_ticket` whose `issue_type_code` is not an active `ticket_issue_type` code on its
         business date.
-      enum: [scope_stale, config_version_unknown, parent_missing, outlet_pending_approval, price_list_unknown, schema_invalid, unknown_record_type, unknown_sku, unknown_outlet, unknown_route, arithmetic_mismatch, memo_no_invalid, memo_no_duplicate, edit_not_allowed, chain_too_deep, voided_by_admin, content_duplicate, lines_exceed_max, qty_invalid, price_invalid, attendance_duplicate, checkout_too_early, server_error, payload_conflict, business_date_out_of_window, scope_out_of_reach, no_assignment_on_date, device_integrity_failed, device_not_enrolled, user_disabled, device_revoked, app_version_blocked, after_month_close, unknown_gift, insufficient_points, gift_photo_exists, programme_inactive, after_final_submit, day_final_submitted, ticket_state_invalid, issue_type_unknown]
+      enum: [scope_stale, config_version_unknown, parent_missing, outlet_pending_approval, price_list_unknown, schema_invalid, unknown_record_type, unknown_sku, unknown_outlet, unknown_route, arithmetic_mismatch, memo_no_invalid, memo_no_duplicate, edit_not_allowed, chain_too_deep, voided_by_admin, content_duplicate, lines_exceed_max, qty_invalid, price_invalid, attendance_duplicate, checkout_too_early, server_error, payload_conflict, business_date_out_of_window, scope_out_of_reach, no_assignment_on_date, device_integrity_failed, device_not_enrolled, user_disabled, device_revoked, app_version_blocked, after_month_close, unknown_gift, insufficient_points, gift_photo_exists, programme_inactive, after_final_submit, day_final_submitted, ticket_state_invalid, issue_type_unknown, cluster_name_exists]
     ProblemCode:
       type: string
       description: |
@@ -7484,7 +7493,7 @@ components:
       enum: [active, closed, merged, archived]
     OutletRequestType:
       type: string
-      enum: [new, close, info, cluster, location, route_add]
+      enum: [new, close, info, cluster, location, route_add, cluster_create]
     OutletRequestStatus:
       type: string
       enum: [pending, verified, approved, rejected, lapsed, discarded]
@@ -7583,7 +7592,7 @@ components:
     ReportKey:
       type: string
       description: Report registry keys of this build, programme reports included (docs/24 s12.3). `tso-visit-log` from contract 1.10.0 (lead ruling R-F-12; the TSO visit plans with their answers and delegated tasks).
-      enum: [std-memo, sr-efficiency, route-std, route-memo, route-bsr-cpr, data-entry-log, final-submit-log, final-submit-status, by-outlet, by-outlet-by-day, gigo, attendance, discount, online-offline, tso-top-sheet, daily-tracking, sr-outlets, leaderboard, suspicious-location, sync-health, ds-rrs, dss, amo-call, dues-ageing, settlement, qc-report, stock-summary, memo-number-gaps, sales-summary, task-planner, by-route-geo-capture, free-sample, target-allocation, route-qc, geofence-calibration, astha, astha-gift-choice, campaign-gift-redemption, diamond-league, superstar-campaign, retailer-list, sku-list, tso-visit-log]
+      enum: [std-memo, sr-efficiency, route-std, route-memo, route-bsr-cpr, data-entry-log, final-submit-log, final-submit-status, by-outlet, by-outlet-by-day, gigo, attendance, discount, online-offline, tso-top-sheet, daily-tracking, sr-outlets, leaderboard, suspicious-location, sync-health, ds-rrs, dss, amo-call, dues-ageing, settlement, qc-report, stock-summary, memo-number-gaps, sales-summary, task-planner, by-route-geo-capture, free-sample, target-allocation, route-qc, geofence-calibration, astha, astha-gift-choice, campaign-gift-redemption, diamond-league, superstar-campaign, retailer-list, sku-list, tso-visit-log, posm-survey]
 
     # ---------- problem details ----------
     Problem:
@@ -8930,6 +8939,7 @@ components:
         dues_outstanding_mtk: { $ref: '#/components/schemas/MtkNonNegative' }
         retailers_with_dues: { type: integer, minimum: 0 }
         stock_slip_printed: { type: boolean }
+        anchor_clock: { type: string, enum: [phone, server], description: "1.16.0, optional: whose clock stamped this record's `captured_at`, the anchor of `late_rows_after_sales_submit`. Phones omit it (their own clock). The server sets `server` on the online Sales Submit when the client sent no `captured_at` or one outside the plausibility bound (more than 6 hours from the server clock, or outside the business date +/- 1 day in Dhaka time). It is stored with the record in the same write, so a retry, a quarantine and its release keep it." }
     DayExceptionPayload:
       type: object
       required: [reason_code, route_ids, from_date, to_date]
@@ -9189,6 +9199,7 @@ components:
         contact_number: { $ref: '#/components/schemas/PhoneBd' }
         address: { type: [string, 'null'], maxLength: 300 }
         cluster_id: { $ref: '#/components/schemas/Id' }
+        cluster_request_uuid: { type: string, format: uuid, description: 'Contract 1.16.0 (new shop requests): the client uuid of the SR''s own pending `cluster_create` request whose cluster this shop belongs to, when the cluster does not exist yet. It must name a `cluster_create` request of the SAME user on a route of the SAME zone as the shop: otherwise (another user''s, another zone''s, another type, voided, or one the server refused) the shop is stored with the link dropped and flagged `cluster_dropped`, never refused; a uuid the server has not seen yet is kept (the cluster request may arrive in a later batch) and judged again at approval. When `cluster_id` is sent too and is usable it WINS: the link is ignored, dropped and flagged. Used at approval when `cluster_id` is absent; the shop is not approved before that cluster request is (409 guard `cluster_request_pending`), and a cluster request that was refused, lapsed or discarded needs the approver''s `cluster_id` (`OutletRequestApproveRequest.cluster_id`).' }
         sub_channel_id: { type: [integer, 'null'], format: int64, minimum: 1 }
         geo_class: { type: [string, 'null'], enum: [Hill, Urban, SemiUrban, Rural, null] }
         lat: { type: number, minimum: -90, maximum: 90 }
@@ -9200,7 +9211,7 @@ components:
       additionalProperties: false
       properties:
         request_type: { $ref: '#/components/schemas/OutletRequestType' }
-        outlet_id: { type: [integer, 'null'], format: int64, minimum: 1, description: Null only for request_type new. }
+        outlet_id: { type: [integer, 'null'], format: int64, minimum: 1, description: 'Null only for request_type `new` and `cluster_create` (1.16.0: a cluster request names no outlet and is refused `schema_invalid` when it does).' }
         proposed: { $ref: '#/components/schemas/OutletProposal' }
         fix: { $ref: '#/components/schemas/GeoFix' }
         photo_uuids:
@@ -9583,6 +9594,8 @@ components:
         acting_user_id: { type: [integer, 'null'], format: int64, minimum: 1 }
         assigned_username: { type: [string, 'null'], maxLength: 64, description: 'Login of the assigned SR, for the supervisor route lists (F-TSO-007).' }
         assigned_user_full_name: { type: [string, 'null'], maxLength: 120, description: 'Full name of the assigned SR, for the supervisor route lists (F-TSO-007).' }
+        late_rows_after_sales_submit: { type: [integer, 'null'], minimum: 0, description: 'Contract 1.16.0 (supervisor reads only; absent in the bundle and the day-state read): memos and due collections of the route-day captured after the same user''s Sales Submit record (its own `captured_at`, phone clock against phone clock) and stored while the zone-day was open. Derived from the stored rows, so it is one number under replay and any arrival order (a memo and its edits count once); never refused (offline-first); after the Final Submit a late row counts under the final-submit counter instead.' }
+        late_rows_anchor: { type: [string, 'null'], enum: [phone, server, null], description: "1.16.0 (supervisor reads only): whose clock stamped the route-day Sales Submit that `late_rows_after_sales_submit` is measured from. `phone`: the submit record's own captured_at (a record, or an online submit that carried `captured_at`); `server`: when ANY user's current (newest non-voided) Sales Submit on the route-day is server-stamped (an older client's online submit without `captured_at`, or a phone clock outside the plausibility bound), so the count may be off by clock skew. Null when no route-day Sales Submit is stored." }
     SupervisorDayState:
       type: object
       required: [user_id, business_date, checked_in, sales_submitted]
@@ -10316,6 +10329,41 @@ components:
               show_if_key: { type: [string, 'null'], pattern: '^[a-z][a-z0-9_]{1,40}$' }
               show_if_bool: { type: [boolean, 'null'] }
               photo: { type: boolean, description: 'The `photo` flag as written; `requires_photo` is true when `photo` is true or the answer type is `photo_only`.' }
+    BundleCluster:
+      type: object
+      description: One cluster as seen on one route of the SR (contract 1.16.0).
+      required: [cluster_id, name, route_id, route_name]
+      additionalProperties: false
+      properties:
+        cluster_id: { $ref: '#/components/schemas/Id' }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        route_id: { $ref: '#/components/schemas/Id' }
+        route_name: { type: string, maxLength: 120 }
+    OutletSkuStat:
+      type: object
+      description: >-
+        Sales history of one outlet in BASE units (sticks / pieces; contract 1.16.0), one entry per outlet of the SR's own routes that sold in the last 30 calendar days.
+        `previous_day` is the outlet's most recent selling day (a day it had a live memo) before the bundle date within that window. The phone shows packets by dividing
+        each SKU quantity with the SKU's pack_factor.
+      required: [outlet_id, previous_day, items]
+      additionalProperties: false
+      properties:
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        previous_day: { $ref: '#/components/schemas/BusinessDate' }
+        items:
+          type: array
+          maxItems: 400
+          items: { $ref: '#/components/schemas/OutletSkuStatItem' }
+    OutletSkuStatItem:
+      type: array
+      minItems: 4
+      maxItems: 4
+      description: >-
+        One SKU of an `OutletSkuStat`, a POSITIONAL integer quadruple `[sku_delta, prev, ads, sdlw]` (contract 1.16.0; positional arrays and delta-coded SKU ids keep the section inside its budget, docs/04: at most 150 KB raw
+        and 20 KB gzip at 70 outlets x 40 SKUs, every pair dense). Items ascend by SKU id: `sku_delta` is the SKU id in the first item of an entry and, in every later item, the difference from the previous item's SKU id. `prev` = base units (sticks / pieces) of the SKU on the outlet's `previous_day`; `ads` = average quantity per CALENDAR day x 100, in
+        hundredths of a base unit: the quantity sold in the 30 calendar days before the bundle date divided by the ELAPSED calendar days of that window (30, or the days since the outlet's first selling memo when it is younger), rounded half up: 250 = 2.5 base units per day; the phone shows it as "per day until the next visit"; `sdlw` = base units on the same weekday last week (bundle date minus 7 days). A zero
+        is written 0. Only SKUs with a sale in the 30-calendar-day window are listed.
+      items: { type: integer, format: int64, minimum: 0 }
     Bundle:
       type: object
       description: The day bundle (docs/24 s4.10). One snapshot of all routes assigned to the user for the business date.
@@ -10390,6 +10438,18 @@ components:
           type: array
           maxItems: 100
           items: { $ref: '#/components/schemas/TutorialItem' }
+        clusters:
+          type: array
+          maxItems: 600
+          description: 'Contract 1.16.0 (SR only; absent or empty for other roles): the clusters a new shop or an outlet change may name, one row per cluster and route of the SR''s own routes (a live cluster that has an active outlet on the route, or that an approved `cluster_create` request made for the route). Reach is the SR''s routes, taken from the token. At most 600 rows: beyond that the rows are cut in route, name, id order and `clusters_truncated` is true. A delta carries the section whole when it differs from the phone''s snapshot.'
+          items: { $ref: '#/components/schemas/BundleCluster' }
+        outlet_sku_stats:
+          type: array
+          maxItems: 400
+          description: 'Contract 1.16.0 (SR only; absent or empty for other roles): sales history per outlet (one entry each) with its SKUs, for the SR''s own routes, quantities in BASE units (sticks / pieces; the phone converts to packets with the SKU''s pack_factor), ADS in integer hundredths of a base unit per elapsed calendar day. Only pairs with a sale in the last 30 calendar days are listed. At most 400 outlets: beyond that the entries are cut in outlet id order and `outlet_sku_stats_truncated` is true. ADS elapsed days: 30, or the days since the outlet''s first memo when younger; the first-memo lookback is bounded to 366 days before the bundle date (an outlet with no memo in that window counts 30). Versioned reference data: the bundle version changes when a row does; a delta carries the section whole when it differs from the phone''s snapshot.'
+          items: { $ref: '#/components/schemas/OutletSkuStat' }
+        clusters_truncated: { type: boolean, description: 'Contract 1.16.0: true when the SR holds more than 600 cluster rows and `clusters` was cut. Absent means false.' }
+        outlet_sku_stats_truncated: { type: boolean, description: 'Contract 1.16.0: true when more than 400 outlets have history and `outlet_sku_stats` was cut. Absent means false.' }
         my_outlet_requests:
           type: array
           maxItems: 200
@@ -10478,6 +10538,18 @@ components:
             achievement_mtd: { $ref: '#/components/schemas/SectionDelta' }
             team: { $ref: '#/components/schemas/SectionDelta' }
             pending_outlet_requests: { $ref: '#/components/schemas/SectionDelta' }
+        clusters:
+          type: [array, 'null']
+          maxItems: 600
+          description: 'Contract 1.16.0: the WHOLE `clusters` section when its content differs from the snapshot named by `base_cursor` (replace the phone''s list), null when unchanged.'
+          items: { $ref: '#/components/schemas/BundleCluster' }
+        clusters_truncated: { type: [boolean, 'null'], description: 'Contract 1.16.0: the truncation flag that goes with a carried `clusters`; null with it.' }
+        outlet_sku_stats:
+          type: [array, 'null']
+          maxItems: 400
+          description: 'Contract 1.16.0: the WHOLE `outlet_sku_stats` section when its content differs from the snapshot named by `base_cursor` (a late-synced memo of an earlier day changes it), null when unchanged.'
+          items: { $ref: '#/components/schemas/OutletSkuStat' }
+        outlet_sku_stats_truncated: { type: [boolean, 'null'], description: 'Contract 1.16.0: the truncation flag that goes with a carried `outlet_sku_stats`; null with it.' }
         code_lists:
           type: array
           maxItems: 30
@@ -10664,6 +10736,7 @@ components:
         device_money: { $ref: '#/components/schemas/MoneyTotals' }
         submitted_with_dues: { type: boolean }
         dues_outstanding_mtk: { $ref: '#/components/schemas/MtkNonNegative' }
+        captured_at: { $ref: '#/components/schemas/Timestamp', description: "1.16.0, optional: the phone's own clock at the moment the rep pressed Sales Submit, in the same format and from the same clock as the `captured_at` of the record envelopes. The server stores it as the anchor of `RouteDayState.late_rows_after_sales_submit` (rows the phone captured after it are late). Absent (an older client) or implausible (more than 6 hours from the server clock, or outside the business date +/- 1 day in Dhaka time): the server stamps its own time, records it with the Sales Submit record (`anchor_clock = server`) and the route-day says `late_rows_anchor = server`, so a supervisor knows the count may be off by clock skew. An unparseable value is `400 ERR_VALIDATION` pointer `/captured_at`." }
     FinalSubmitPreview:
       type: object
       required: [zone_id, business_date, already_submitted, routes]
@@ -11098,6 +11171,7 @@ components:
             - type: 'null'
         rejection_reason: { type: [string, 'null'], maxLength: 500 }
         resulting_outlet_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        resulting_cluster_id: { type: [integer, 'null'], format: int64, minimum: 1, description: 'Contract 1.16.0: the live cluster an approved `cluster_create` request made; null for every other request.' }
         events:
           type: array
           maxItems: 50
@@ -11138,6 +11212,7 @@ components:
         outlet_code: { type: [string, 'null'], pattern: '^[0-9A-Za-z][0-9A-Za-z._/-]{0,31}$', description: For new outlets; generated when null. }
         route_id: { type: [integer, 'null'], format: int64, minimum: 1, description: Required for AMO-created new outlets. }
         change_reason: { $ref: '#/components/schemas/ChangeReason' }
+        cluster_id: { type: [integer, 'null'], format: int64, minimum: 1, description: "1.16.0, for request_type `new` and `cluster` only (`400 ERR_VALIDATION` pointer `/cluster_id` for any other type). The cluster the approver gives the shop or the outlet: a LIVE cluster of the route's zone (the outlet's zone for `cluster`), recorded in the request's event trail with the approver. REQUIRED exactly when the request carries no usable cluster (the phone dropped it, the shop's cluster request was refused, lapsed or discarded, or the cluster is no longer live): then approval without it answers `409 ERR_CONFLICT` whose guard is `cluster_required`, `cluster_request_refused` or `cluster_request_pending` and whose text says to give `cluster_id`. Optional otherwise; when given it wins over the proposal's cluster. A pending cluster request alone is approved first (or this member is given)." }
     OutletRequestCreateRequest:
       type: object
       description: 'Body of `POST /v1/outlet-requests` (web source, docs/24 s14a R20). `request_uuid` is generated by the browser (UUID v4) when the form opens: the idempotency key and the identity of the request, in the same key space as the `client_uuid` of an app `outlet_change_request` record. `proposed` carries the members the request type requires (docs/24 s12.2).'

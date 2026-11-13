@@ -114,6 +114,14 @@ OutletRequest:
       - 'null'
       format: int64
       minimum: 1
+    resulting_cluster_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: 'Contract 1.16.0: the live cluster an approved `cluster_create` request made; null for every
+        other request.'
     events:
       type: array
       maxItems: 50

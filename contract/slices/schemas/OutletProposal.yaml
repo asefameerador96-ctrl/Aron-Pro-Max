@@ -27,6 +27,18 @@ OutletProposal:
       maxLength: 300
     cluster_id:
       $ref: '#/components/schemas/Id'
+    cluster_request_uuid:
+      type: string
+      format: uuid
+      description: 'Contract 1.16.0 (new shop requests): the client uuid of the SR''s own pending `cluster_create`
+        request whose cluster this shop belongs to, when the cluster does not exist yet. It must name a `cluster_create`
+        request of the SAME user on a route of the SAME zone as the shop: otherwise (another user''s, another zone''s,
+        another type, voided, or one the server refused) the shop is stored with the link dropped and flagged `cluster_dropped`,
+        never refused; a uuid the server has not seen yet is kept (the cluster request may arrive in a later batch)
+        and judged again at approval. When `cluster_id` is sent too and is usable it WINS: the link is ignored,
+        dropped and flagged. Used at approval when `cluster_id` is absent; the shop is not approved before that
+        cluster request is (409 guard `cluster_request_pending`), and a cluster request that was refused, lapsed
+        or discarded needs the approver''s `cluster_id` (`OutletRequestApproveRequest.cluster_id`).'
     sub_channel_id:
       type:
       - integer

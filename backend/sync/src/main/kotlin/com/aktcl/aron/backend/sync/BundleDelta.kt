@@ -49,6 +49,12 @@ data class BundleDeltaDto(
     val routes_removed: List<Long>,
     val day_states: List<RouteDayStateDto>,
     val resolutions: List<Resolution>,
+    /** Contract 1.16.0 (review R2): the whole `clusters` section when its content differs from the phone's snapshot, else null (unchanged). */
+    val clusters: List<BundleCluster>? = null,
+    val clusters_truncated: Boolean? = null,
+    /** The whole `outlet_sku_stats` section when it differs from the phone's snapshot, else null (unchanged). */
+    val outlet_sku_stats: List<OutletSkuStat>? = null,
+    val outlet_sku_stats_truncated: Boolean? = null,
 )
 
 @Serializable
@@ -89,6 +95,9 @@ class BundleFingerprint(
     val routes: Map<Long, Long>,
     val dayStates: Map<Long, Long>,
     val rest: Long,
+    /** Content hash of each small history section (R2): a delta carries the section whole when it differs. */
+    val clusters: Long = 0,
+    val skuStats: Long = 0,
 ) {
     companion object {
         fun of(b: Bundle): BundleFingerprint = BundleFingerprint(
@@ -108,9 +117,18 @@ class BundleFingerprint(
                         ("products.nodes" to ResponseJson.encodeToJsonElement(BundleProducts.serializer(), b.products).jsonObject.getValue("nodes")),
                 ),
             ),
+            clusters = sectionHash(kotlinx.serialization.builtins.ListSerializer(BundleCluster.serializer()), b.clusters, b.clusters_truncated),
+            skuStats = sectionHash(kotlinx.serialization.builtins.ListSerializer(OutletSkuStat.serializer()), b.outlet_sku_stats, b.outlet_sku_stats_truncated),
         )
 
-        /** Bundle members a delta cannot carry: a change in any of them means fetch the full bundle. */
+        private fun <T> sectionHash(ser: kotlinx.serialization.KSerializer<List<T>>, rows: List<T>, truncated: Boolean): Long =
+            hash(JsonObject(mapOf("rows" to ResponseJson.encodeToJsonElement(ser, rows), "truncated" to JsonPrimitive(truncated))))
+
+        /**
+         * Bundle members a delta cannot carry: a change in any of them means fetch the full bundle. `clusters` and `outlet_sku_stats` (contract 1.16.0) are deliberately NOT here: they change with
+         * every outlet move or late-synced memo, so counting them would turn ordinary deltas into 410s. A delta carries each of them WHOLE when its content hash differs from the
+         * snapshot the phone holds (they are small) and omits it when unchanged (review R2).
+         */
         private val REST_MEMBERS = setOf(
             "user", "calendar", "surveys", "rubrics", "supervisor", "reason_texts", "programmes", "content", "tutorials",
         )
@@ -162,6 +180,10 @@ internal object DeltaDiff {
         val routesAdded: List<RouteSnapshot>,
         val routesRemoved: List<Long>,
         val dayStates: List<RouteDayStateDto>,
+        val clusters: List<BundleCluster>? = null,
+        val clustersTruncated: Boolean? = null,
+        val skuStats: List<OutletSkuStat>? = null,
+        val skuStatsTruncated: Boolean? = null,
     )
 
     fun diff(base: BundleFingerprint, now: Bundle): Body? {
@@ -198,7 +220,13 @@ internal object DeltaDiff {
             codeLists.size > MAX_CODE_LISTS || templates.size > MAX_TEMPLATES ||
             sections.values.any { it.upsert.size > MAX_ROWS || it.delete.size > MAX_ROWS }
         ) return null
-        return Body(sections, codeLists, templates, added, removed, dayStates)
+        val clustersChanged = base.clusters != cur.clusters
+        val statsChanged = base.skuStats != cur.skuStats
+        return Body(
+            sections, codeLists, templates, added, removed, dayStates,
+            clusters = now.clusters.takeIf { clustersChanged }, clustersTruncated = now.clusters_truncated.takeIf { clustersChanged },
+            skuStats = now.outlet_sku_stats.takeIf { statsChanged }, skuStatsTruncated = now.outlet_sku_stats_truncated.takeIf { statsChanged },
+        )
     }
 }
 

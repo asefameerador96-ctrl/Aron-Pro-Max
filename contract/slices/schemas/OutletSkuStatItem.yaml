@@ -1,0 +1,18 @@
+OutletSkuStatItem:
+  type: array
+  minItems: 4
+  maxItems: 4
+  description: 'One SKU of an `OutletSkuStat`, a POSITIONAL integer quadruple `[sku_delta, prev, ads, sdlw]` (contract
+    1.16.0; positional arrays and delta-coded SKU ids keep the section inside its budget, docs/04: at most 150 KB
+    raw and 20 KB gzip at 70 outlets x 40 SKUs, every pair dense). Items ascend by SKU id: `sku_delta` is the SKU
+    id in the first item of an entry and, in every later item, the difference from the previous item''s SKU id.
+    `prev` = base units (sticks / pieces) of the SKU on the outlet''s `previous_day`; `ads` = average quantity per
+    CALENDAR day x 100, in hundredths of a base unit: the quantity sold in the 30 calendar days before the bundle
+    date divided by the ELAPSED calendar days of that window (30, or the days since the outlet''s first selling
+    memo when it is younger), rounded half up: 250 = 2.5 base units per day; the phone shows it as "per day until
+    the next visit"; `sdlw` = base units on the same weekday last week (bundle date minus 7 days). A zero is written
+    0. Only SKUs with a sale in the 30-calendar-day window are listed.'
+  items:
+    type: integer
+    format: int64
+    minimum: 0
