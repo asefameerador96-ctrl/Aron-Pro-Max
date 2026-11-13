@@ -66,6 +66,8 @@ fun main() {
             }
             // Jobs registered so far: the aggregation worker (dirty keys into dw, F-SYS-015). Other lanes append theirs.
             val workerDb = Database.fromSettings(settings)
+            // No schedule starts before ONE successful SELECT 1 on the pool (D-LOY-API-21): a new replica cannot always reach PostgreSQL in its first seconds.
+            com.aktcl.aron.backend.platform.WorkerReadiness().await(workerDb.write)
             // The admin's cfg.geo.suspicious_score_threshold, as the dashboards and reports read it (data-architecture review finding 18).
             AggregationWorker(workerDb, config = com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start()
             run {
