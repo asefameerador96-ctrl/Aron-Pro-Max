@@ -116,7 +116,11 @@ fun ControlCallHost(
     }
     androidx.activity.compose.BackHandler(onBack = goBack)
     val titleRes = when { joint -> AmoR.string.amo_cp_joint_title; startWithSale -> AmoR.string.amo_cp_sales_title; else -> AmoR.string.amo_cc_title }
-    AmoFrame(stringResource(titleRes), goBack, icon = if (joint) com.aktcl.aron.core.ui.R.drawable.aron_ic_joint_call else com.aktcl.aron.core.ui.R.drawable.aron_ic_control_call) {
+    // D-PAR-AMO-05 (screenshot 24): during the sale the printer state sits on the bar (the crossed-out printer when none is connected)
+    AmoFrame(
+        stringResource(titleRes), goBack, icon = if (joint) com.aktcl.aron.core.ui.R.drawable.aron_ic_joint_call else com.aktcl.aron.core.ui.R.drawable.aron_ic_control_call,
+        trailing = if (step == CcStep.SALE) ({ com.aktcl.aron.core.printing.ui.PrinterIcon(day.printerManager) }) else null,
+    ) {
         PermissionGate(GatedFeature.SALE, onBack = onBack) {
             val list = days
             when (step) {
@@ -216,7 +220,10 @@ private fun PickStep(
     )
     val tiles = buildList {
         if (joint) add(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_joint_call, AmoR.string.amo_cp_joint_tile, com.aktcl.aron.feature.amo.AmoCallTags.MENU_ASSESS, onJoint))
-        else if (salesPath) add(com.aktcl.aron.feature.amo.MenuTile(AmoR.drawable.amo_art_cc_sale, AmoR.string.amo_cc_menu_sale, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SALE, { outlet?.let(onSalesTile) }))
+        else if (salesPath) add(com.aktcl.aron.feature.amo.MenuTile(AmoR.drawable.amo_art_cc_sale, AmoR.string.amo_cc_menu_sale, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SALE, {
+            // D-PAR-AMO-05: the tile is there before a retailer is chosen (21, 22); tapped then, it opens the next empty drop-down
+            if (outlet != null) onSalesTile(outlet) else onPanel(if (route == null) Panel.ROUTE else Panel.OUTLET)
+        }))
         else {
             add(com.aktcl.aron.feature.amo.MenuTile(AmoR.drawable.amo_art_cc_sale, AmoR.string.amo_cc_menu_sale, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SALE, onSale))
             add(com.aktcl.aron.feature.amo.MenuTile(AmoR.drawable.amo_art_cc_assess, AmoR.string.amo_cc_menu_assessment, com.aktcl.aron.feature.amo.AmoCallTags.MENU_ASSESS, onAssess))
@@ -230,7 +237,7 @@ private fun PickStep(
         enabledOutlet = route != null, locked = callOpen || checking, // L1: no retailer switch while a range check runs
         onOpenRoute = { onPanel(Panel.ROUTE) }, onOpenOutlet = { onPanel(Panel.OUTLET) }, onChip = onChip,
         onOverride = { if (salesPath) asking = true else onOverride() }, onRefresh = { scope.launch { runCatching { day.visitFlow.refresh() } } },
-        below = { com.aktcl.aron.feature.amo.AmoMenuTiles(tiles) },
+        below = { com.aktcl.aron.feature.amo.AmoMenuTiles(tiles) }, belowWhenIdle = salesPath,
     )
 }
 

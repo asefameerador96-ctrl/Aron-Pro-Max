@@ -51,7 +51,7 @@ class PreviousSalesFallbackTest {
 
     private fun show(language: AppLanguage, history: SaleHistory) {
         val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
-        compose.setContent { CompositionLocalProvider(LocalContext provides context) { AronTheme(language, amo = true) { PreviousSalesContent("2026-11-06", "2026-11-06", history, onShift = {}) } } }
+        compose.setContent { CompositionLocalProvider(LocalContext provides context) { AronTheme(language, amo = true) { PreviousSalesContent("2026-11-06", "2026-11-06", history, onPick = {}) } } }
     }
 
     @Test fun anEmptyOfflineDayStillShowsTheLocalCopyNoteInBothLanguages() {

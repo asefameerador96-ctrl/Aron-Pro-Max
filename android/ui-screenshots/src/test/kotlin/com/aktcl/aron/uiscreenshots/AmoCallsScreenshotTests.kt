@@ -89,7 +89,9 @@ class AmoCallsScreenshotTests {
     @Test fun amo_control_call_menu_bn() = shot("amo_cc_tiles_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি") { pick(CallRange.In) }
     @Test fun amo_control_call_menu_sunlight() = shot("amo_cc_tiles_sunlight_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", sunlight = true) { pick(CallRange.In) }
     @Test fun amo_sales_pick_empty_bn() = shot("amo_sales_pick_empty_bn", AppLanguage.BN, "বিক্রয়") {
-        AmoCallPickContent(null, null, false, emptyList(), "", false, CallRange.Idle, false, false, {}, {}, {}, {}, {})
+        // D-PAR-AMO-05 (screenshot 21): the Sales tile is on the empty state
+        AmoCallPickContent(null, null, false, emptyList(), "", false, CallRange.Idle, false, false, {}, {}, {}, {}, {}, belowWhenIdle = true,
+            below = { com.aktcl.aron.feature.amo.AmoMenuTiles(listOf(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.feature.amo.R.drawable.amo_art_cc_sale, com.aktcl.aron.feature.amo.R.string.amo_cc_menu_sale, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SALE, {}))) })
     }
 
     @Test fun amo_outlet_list_bn() = shot("amo_outlet_list_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি") { AmoOutletPanel(rows, 1L, {}) }
@@ -181,6 +183,11 @@ class AmoCallsScreenshotTests {
         com.aktcl.aron.feature.sale.ui.ReviewScreen(
             enteredReview, {}, outletLine = "$outletPill\nরুট: Savar Bazar(Sat, Mon, Wed)\nক্লাস্টার: Savar Metro", onCreditToggle = {}, onQc = {},
         )
+    }
+
+    // Audit (AMO high, "Paid-amount dialog: not recorded"): the shared paid-amount prompt (screenshot 25) as the AMO shows it, recorded for review
+    @Test fun amo_paid_amount_bn() = shot("amo_paid_amount_bn", AppLanguage.BN, "নিরীক্ষণ") {
+        com.aktcl.aron.feature.sale.ui.CreditPrompt(enteredReview, onPaid = {}, onCancel = {})
     }
 
     @Test fun amo_memo_menu_bn() = shot("amo_memo_menu_bn", AppLanguage.BN, "মেমো") {

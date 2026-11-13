@@ -77,7 +77,11 @@ fun AlphabetBar(letters: List<String>, selected: String?, onSelect: (String?) ->
 /** A date field that opens the calendar; dates before [today] cannot be chosen. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AmoDateField(iso: String, today: String, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
+fun AmoDateField(
+    iso: String, today: String, onPick: (String) -> Unit, modifier: Modifier = Modifier,
+    /** The selectable window, ISO dates, inclusive; the defaults keep the task form's rule (today or later). */
+    min: String? = today, max: String? = null,
+) {
     val look = LocalAronLook.current
     var open by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(8.dp)
@@ -90,10 +94,11 @@ fun AmoDateField(iso: String, today: String, onPick: (String) -> Unit, modifier:
         Text(formDateText(iso), style = amoText(16))
     }
     if (open) {
-        val min = LocalDate.parse(today).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        fun ms(d: String) = LocalDate.parse(d).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val lo = min?.let(::ms); val hi = max?.let(::ms)
         val state = rememberDatePickerState(
-            initialSelectedDateMillis = LocalDate.parse(iso).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
-            selectableDates = object : SelectableDates { override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis >= min },
+            initialSelectedDateMillis = ms(iso),
+            selectableDates = object : SelectableDates { override fun isSelectableDate(utcTimeMillis: Long) = (lo == null || utcTimeMillis >= lo) && (hi == null || utcTimeMillis <= hi) },
         )
         DatePickerDialog(
             onDismissRequest = { open = false },

@@ -1,4 +1,4 @@
-# Lane P-AMO2 (2026-11-13): lows 1 to 5 done (D-PAR-AMO-04); next: slice 2.
+# Lane P-AMO2 (2026-11-13): lows 1 to 5 pushed (6d46b2f9, D-PAR-AMO-04). Slice 2 lane-owned parts committed (D-PAR-AMO-05); shared sale-screen items requested (docs/requests/android-parity-amo.md R-PAR-AMO-01..05).
 
 # HANDOVER (2026-11-13, lane P-AMO, context near the limit)
 State: branch lane/android-parity-amo head fec17bd5 pushed. Slice 1 gated by the lead at 83678c2c. Done and pushed: Home 19 tiles with hooks, vector icons, Manual Override direct camera, Control call tile art and "All", AMO update screens (05, 07, processing) with tests, lows 6 to 9 of the lead's list.
@@ -21,6 +21,13 @@ Nothing in this lane is walked on a device. Proof is unit tests, Roborazzi image
 | Control call: alphabet "সব" | FIX: "All" as the old app | 5a47720e, 50470e83 | amo_control_call_pick_* |
 | Control call: Manual Override fallback (camera cancelled, camera off, waiting) | FIX: tested fallback, camera-off reason, labelled waiting state (D-PAR-AMO-04) | this push | amo_manual_override_waiting_en, amo_manual_override_camera_off_bn |
 | Update screens 05 and 07 (look) | FIX: vector back with label, token colours and sizes, Sunlight goldens (D-PAR-AMO-04) | this push | amo_update_* |
+| Sales pick: Sales tile missing on the empty state (21, 22) | FIX: tile under the fields before a retailer is chosen (D-PAR-AMO-05) | slice 2 | amo_sales_pick_empty_bn |
+| Sales pick: drop-downs, alphabet bar | RECORD: already the old picker (slice 1 code) | - | amo_control_call_pick_* |
+| Sale entry: header card, rate/discount/stock column, blue badge, green ± | REQUEST: shared feature-sale/core-ui (R-PAR-AMO-01, 02) | - | amo_sale_entry_bn |
+| Review: crossed-out printer icon | FIX: printer state on the bar during the sale (D-PAR-AMO-05) | slice 2 | n/a (host) |
+| Review: print-later note; totals with quantity | REQUEST: R-PAR-AMO-03, 05 | - | amo_review_bn |
+| Paid-amount dialog not recorded | RECORD: amo_paid_amount_bn; dialog presentation requested (R-PAR-AMO-04) | slice 2 | amo_paid_amount_bn |
+| Previous sale data: calendar date field | FIX: date field + picker (90-day window) + ISO line (D-PAR-AMO-05) | slice 2 | amo_previous_sales_* |
 | Control call: extra "মূল্য সম্মতি" tile | KEEP-WITH-REASON: only when the server price-compliance flag is on (default off) | - | - |
 
 ## Icons from the owner's screenshots (lead corrections 2026-11-13)
