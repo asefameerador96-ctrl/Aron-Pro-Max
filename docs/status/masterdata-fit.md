@@ -1,29 +1,21 @@
-# HANDOVER (read first; written at push 1b)
+# HANDOVER (read first; written at push 2)
 
-State: push 1b (the lead's Opus findings B1, B2, B3 and lows 1..17) is complete and pushed. Push 2 (bulk loader) is NOT started; MD1's push-2 design below still holds, with these changes: the loader
-calls `ImportRules.generatedOutletCode` for codeless rows (not an ordinal scheme of its own), writes the source columns of V0199, and HOLDS an SR/AMO rep id shorter than 4 characters
-(`shortRepIdAllowed`, D-MD-24) instead of creating the user. Migration number for the loader's staging schema: **V0201 must be confirmed with the lead** (the earlier note claimed it; the lead's
-push-1b message says V0201/V0202 belong to another lane, so ASK BEFORE WRITING THE FILE).
+State: push 1b and push 2 are complete and pushed. What a fresh context needs:
 
-* Environment: gradle works without --offline. PostgreSQL 16: `pg_ctlcluster 16 main start`; this container needed a `host all aron_test 127.0.0.1/32 trust` line added at the TOP of
-  `/etc/postgresql/16/main/pg_hba.conf` plus `CREATE ROLE aron_test SUPERUSER LOGIN` and `CREATE DATABASE aron_test OWNER aron_test` as the `postgres` user, then `SELECT pg_reload_conf()`.
-  `export ARON_TEST_PG_URL='jdbc:postgresql://localhost:5432/aron_test?user=aron_test'` in EVERY shell call. `cd web && npm ci --ignore-scripts`, `npm run gen:contract`, `npx vitest run`.
-  Gate binaries: `tools/ci/install-tool.sh squawk|oasdiff <dir>` works here.
-* All mapping rules stay in `ImportRules.kt`. The importer (`OutletImportApi.kt`) is now PLAN-based: `checkImport` decides per row create / update / unchanged / error and the column -> value map,
-  `applyPlan` writes it. The loader must reuse the same shape (plan, then write) so that the two paths cannot drift.
-* Push 1b changed `app.outlet` (four `source_*` columns), `app.outlet_location_history.basis` (new value `candidate`), the Silver code-list item (no `valid_to`, `attrs.retired`), and added
-  `cfg.release.short_rep_id_version_code`. All in V0199/V0200, which are now SHIPPED-in-this-branch but not merged; after push 1b treat V0195..V0200 as frozen.
-
-## Push 2 design
-* Input: the master CSV (the 32 columns of `docs/reference/master-data-profile-2026-10.md`, header names as there) and an optional supervisor roster CSV (role, username, full name, phone, scope code).
-* Order of upserts (all keyed by code, `ON CONFLICT DO UPDATE ... WHERE changed`, so a re-run changes nothing): wing, division, territory, house, zone (+ `house_id`), route (+ visit plan: the most common pattern of
-  its outlets that have one, `none` when none), cluster (create if missing, normalised name), outlet (placement and location history rows for new outlets only), SR users (username = lower(rep id), role SR,
-  must_change_password, no password hash), route assignments (primary = the rep on more rows of the route, ties by smallest rep id and reported; the others an open-ended `cover`), supervisors + `user_scope`.
-* Reported, not guessed: the four hierarchy exceptions (child with two parents: the parent with most outlets is loaded, the case is listed by code), the seven two-rep routes, routes without a rep (no assignment,
-  outlets get the status chosen by the `unassigned_outlet_status` parameter, default `archived`, owner default of question 7), routes with more than one pattern or a mix of filled and empty outlets (M04), weekend
-  patterns (M19), the 362 tier/channel mismatches (M15), codeless outlet rows (generated `gen.<hash>` code from route + normalised name + ordinal, stable under row order).
-* Report: counts per level (read, created, updated, unchanged, skipped) and per error class, NO personal value (codes of wings/zones/routes/outlets are allowed in `mdload.issue`, never names, phones, owners).
-* Tests: synthetic CSVs generated in the test (a few hundred rows, all six code shapes, the exceptions above), run twice (second run changes nothing), a bad row is a row error, remove everything the test created.
+* **Environment.** Gradle works without --offline. PostgreSQL 16: `pg_ctlcluster 16 main start`; this container needed a `host all aron_test 127.0.0.1/32 trust`
+  line at the TOP of `/etc/postgresql/16/main/pg_hba.conf`, then `CREATE ROLE aron_test SUPERUSER LOGIN` and `CREATE DATABASE aron_test OWNER aron_test` as the
+  `postgres` user and `SELECT pg_reload_conf()`. Export `ARON_TEST_PG_URL='jdbc:postgresql://localhost:5432/aron_test?user=aron_test'` in EVERY shell call.
+  `cd web && npm ci --ignore-scripts`, `npm run gen:contract`, `npx vitest run`. Gate binaries: `tools/ci/install-tool.sh squawk|oasdiff <dir>`.
+  The Gradle daemon keeps the environment it started with, so a new env var for a test needs `./gradlew --stop` first (or hard-code it).
+* **Migrations V0195..V0200 are FROZEN now.** Push 1b edited them under the lead's ruling, which needed four lines in `db/migrations/REPLACED-UNAPPLIED.txt`
+  (the CI gate compares against the last green run on the branch, where they already existed). Any further schema change in this lane is a NEW migration, and
+  the number must be agreed with the lead (V0201/V0202 belong to another lane).
+* **The loader** is `backend/masterdata/.../loader/`, documented in `docs/reference/master-data-loader.md` (what it promises, which test proves each promise,
+  the owner's switches, the measured throughput and the honest estimate for 737,159 rows). Its staging schema `mdload` is created by the tool, not by a
+  migration (D-MD-28). It has never run against the test account and must not.
+* **Not done**, in the order the lane would pick them up: the supervisor roster (M14: AMO/TSO/DMO/WM users and their `user_scope` rows) needs an input file from
+  the owner; a CLI entry point for the loader; matching cluster names with `app.norm_cluster_name` once V0191 lands on the integration branch; and the Android
+  change of finding B2 (`docs/requests/contract-1.18-masterdata-fit.md` s3 item 4), which the lead assigns to an Android lane.
 
 # Lane masterdata-fit (MD1): status
 
@@ -48,7 +40,6 @@ Decisions are `D-MD-nn` in `DECISIONS.md` (nn = gap number). Contract 1.18.0 pro
 | M20 created/updated | importer, D-MD-20 |
 | M22 cluster types | V0199 code list, seeds, D-MD-22 |
 
-## Push 2 (bulk loader): not started at push 1.
 
 ## Push 1b (the lead's Opus pass on 0dbe2eee0: 3 blocking findings, 17 lows)
 
@@ -76,3 +67,31 @@ by_channel, the create-only GT default); (16) a cover assignment of a `none` rou
 NOTICE with the query to list them.
 
 Decisions added: D-MD-23..27. Contract stays 1.18.0 (`unchanged`, `skipped`, `by_channel` on the result, the new warning and error codes, `contact_number` as raw text).
+
+
+## Push 2 (the bulk loader)
+
+Built as MD1's design planned, with the push-1b rules. Full description: `docs/reference/master-data-loader.md`. Decisions D-MD-28, D-MD-29, D-MD-30.
+
+* Two passes: a scan that writes nothing and decides what the file says (hierarchy conflicts, each route's visit plan and primary rep, each cluster's type,
+  duplicate outlet codes), then a batched load (5,000 rows per transaction) of hierarchy, outlets, reps and assignments.
+* Idempotent (a second run changes nothing and reports every row `unchanged`), resumable (a batch is skipped only when its fingerprint matches), dry-runnable
+  (the full report, no write), and every input row is counted exactly once: the report prints the equality against the rows read.
+* The owner's switches: coordinates confirmed or not, outlets with no visit plan STORED, the status of outlets on a route with no rep, and the B2 hold
+  (a rep id shorter than 4 characters is held with its id in the report, never created).
+* Rules are not re-implemented: phones, channels, tiers, geo classes, coordinates, timestamps, visit plans and generated codes all come from `ImportRules`.
+* Reports carry counts and OUR codes only: a test asserts that no outlet name, owner name, rep name or phone number can appear in a report.
+* Proved on SYNTHETIC data shaped like the profile (`SyntheticMaster`: the same 32 columns, the same code shapes, the same proportions of blanks and the same
+  exceptions). **The real workbook was not loaded, here or in the test account.**
+* Throughput measured on this container: 200,000 rows in 55.9 s (3,575 rows/s); a second run 17.7 s. **Estimate** for the real 737,159 rows: about 3.5 minutes,
+  allow 5 to 10 in practice (the real file has 4x the routes and 100x the clusters of the sample, and the final account's database has different I/O).
+
+### What was NOT tested
+
+* The real workbook: never loaded (standing rules 1 and 8). Only synthetic data of the profile's shape.
+* Full fleet size: the largest run was 200,000 rows, not 737,159. The timing for the real file is an estimate from that measurement.
+* The supervisor roster and `user_scope` (M14): not built in this push.
+* A crash in the middle of a batch transaction: the resume test interrupts BETWEEN batches (a truncated file). A torn batch is covered by the transaction
+  itself (it commits whole or not at all) but no test kills a JVM mid-COMMIT.
+* The loader against a database that already holds production rows of another origin: it was proved on a freshly migrated database and on its own re-runs.
+* No CLI: the loader is called from Kotlin, so the final-account runbook step is not yet exercised end to end.
