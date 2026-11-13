@@ -36,11 +36,9 @@ class WorkerReadinessTest {
     @Test
     fun noScheduleStartsBeforeTheFirstSuccessfulSelectOneAndTheWaitIsQuiet() {
         val c = Clock(); val log = mutableListOf<Pair<WorkerReadiness.Level, String>>(); val slept = mutableListOf<Long>(); val attempts = intArrayOf(0); val executed = mutableListOf<String>()
-        var started = false
         val ds = dataSource({ attempts[0] <= 3 }, attempts, executed)   // fails three times, then succeeds
         val failed = gate(c, log, slept).await(ds)
-        started = true   // the schedules start only here
-        assertEquals(3, failed); assertEquals(4, attempts[0]); assertTrue(started)
+        assertEquals(3, failed); assertEquals(4, attempts[0])
         assertEquals(listOf("SELECT 1"), executed, "exactly one statement, nothing else is read")
         assertEquals(listOf(500L, 1000L, 2000L), slept, "short back-off")
         assertEquals(listOf(WorkerReadiness.Level.INFO, WorkerReadiness.Level.INFO), log.map { it.first }, "INFO once when it starts waiting, INFO when ready; no WARN or ERROR within a minute")

@@ -2,7 +2,10 @@ GiftPhotoPayload:
   type: object
   description: 'Hand-over photo of a gift: an Astha gift assignment (one photo per assignment, cfg.astha.one_photo_per_outlet)
 
-    or one redeemed campaign gift (Gift Verify). The first accepted photo locks the Astha choice.
+    or one redeemed campaign gift (Gift Verify). The FIRST photo by `captured_at` (tie: client uuid) wins the lock
+    and locks the Astha choice; a later photo is stored as a
+
+    flagged duplicate, never refused or deleted.
 
     '
   required:

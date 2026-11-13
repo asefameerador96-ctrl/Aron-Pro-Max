@@ -103,7 +103,7 @@ Push B: the `programmes` section and the three reads (contract 1.15.0 members of
 - Worker (no contract change): redemption posting, FIFO expiry and adjustment plumbing, see D-LOY-API-18.
 
 
-## 12. Push C, photos (2026-11-13; contract 1.17.0 PROVISIONAL, the lead confirms the number; the files still read 1.15.0 until he does)
+## 12. Push C, photos (2026-11-13; contract 1.16.0, D-LEAD-CONTRACT-116-01)
 - `gift_photo` (existing record): a second photo for the same Astha assignment or campaign unit is no longer `gift_photo_exists`. The first by `captured_at` is the lock; others are stored as flagged duplicates (V0185), never deleted. The phone gets `accepted` for both. The code `gift_photo_exists` stays in the enum (older rows, other writers).
 - Ingest refuses a photo whose `gift_assignment_id` is unknown (`schema_invalid`) or whose outlet is outside the uploader's reach (`scope_out_of_reach`). The server stores its own geofence verdict of the photo fix; it never refuses for it.
 - `ProgrammesSection.pending_gift_verifications` is filled: per redemption and gift, `qty` units against `photos_captured` (winner photos only), redemptions of the last 30 business days, cap 500. `truncated_sections` gains the value `pending_gift_verifications` (enum addition).

@@ -5755,7 +5755,7 @@ export interface components {
              */
             type: "redemption_line";
         };
-        /** @description The Astha gift an outlet chose for a quarter (contract 1.15.0, SRM-B-66). Idempotent by the envelope `client_uuid`. */
+        /** @description The Astha gift an outlet chose for a quarter (contract 1.16.0, SRM-B-66). Idempotent by the envelope `client_uuid`. */
         GiftChoiceRecord: components["schemas"]["RecordEnvelope"] & {
             /** @constant */
             type: "gift_choice";
@@ -10127,7 +10127,7 @@ export interface components {
             points_total: number;
         };
         /**
-         * @description 1.15.0. The Astha gift an outlet chose for a quarter. The server upserts `app.gift_assignment` (one row per programme, quarter and outlet): the LATER `captured_at` wins until the hand-over
+         * @description 1.16.0. The Astha gift an outlet chose for a quarter. The server upserts `app.gift_assignment` (one row per programme, quarter and outlet): the LATER `captured_at` wins until the hand-over
          *     photo locks the choice; a choice that arrives after the lock is refused `gift_locked` (rejected, not retryable; the phone shows the reason, it is never dropped silently). Who may choose:
          *     the roles of `cfg.astha.gift_choice_roles` (default SR and TSO, owner Q4) for an outlet in their reach, else `scope_out_of_reach`; a gift that is not for the outlet's tier is refused
          *     `gift_not_for_tier`; an unknown or inactive gift `unknown_gift`; an outlet in no active Astha enrolment `programme_inactive`.
@@ -10141,7 +10141,8 @@ export interface components {
         };
         /**
          * @description Hand-over photo of a gift: an Astha gift assignment (one photo per assignment, cfg.astha.one_photo_per_outlet)
-         *     or one redeemed campaign gift (Gift Verify). The first accepted photo locks the Astha choice.
+         *     or one redeemed campaign gift (Gift Verify). The FIRST photo by `captured_at` (tie: client uuid) wins the lock and locks the Astha choice; a later photo is stored as a
+         *     flagged duplicate, never refused or deleted.
          */
         GiftPhotoPayload: {
             programme_kind: components["schemas"]["ProgrammeKind"];
@@ -10439,6 +10440,8 @@ export interface components {
             league_label: string | null;
             /** @description The PLAIN SUM of all ledger rows up to `as_of_date`, `expiry` rows included. Points lapse only when the nightly expiry job posts its debit (computed FIFO: the oldest credit is consumed first, so a credit that was partly redeemed lapses only for what is left of it); before that job has run the balance may still include points past their date. Negative only after a flagged overdraw. */
             balance_points: number;
+            /** @description 1.16.0. True exactly when `balance_points` is below zero: a negative balance is the overdraw signal. Derived on read, never stored on a ledger row. */
+            overdrawn: boolean;
             /** @description The credits expiring on the EARLIEST upcoming `expires_on` (that date is `expiry_date`), capped by the balance and never negative; no window. Debits are not matched to credits in this read. */
             expiring_points: number;
             expiry_date: components["schemas"]["BusinessDate"] | null;
@@ -10550,7 +10553,7 @@ export interface components {
             gifts: components["schemas"]["Gift"][];
             /** @description 1.15.0. Display only ("data as of"), never part of the achievement rule: the newest memo ingest (receipt or status change) among the outlets of the rows actually sent, for the month of the business date; the Dhaka start of the month when there is none. Rows carry no `as_of` in the bundle, to save bytes. */
             astha_as_of: components["schemas"]["Timestamp"];
-            /** @description 1.15.0. Which of `programmes`, `loyalty`, `gifts`, `gift_assignments`, `pending_gift_verifications` was cut at its cap (50, 11,000, 200, 2,000, 500); empty when none. A cut is also logged by the server. The phone shows a notice. */
+            /** @description 1.15.0 (values `gift_assignments` and `pending_gift_verifications`: 1.16.0). Which of `programmes`, `loyalty`, `gifts`, `gift_assignments`, `pending_gift_verifications` was cut at its cap (50, 11,000, 200, 2,000, 500); empty when none. A cut is also logged by the server. The phone shows a notice. */
             truncated_sections: ("programmes" | "loyalty" | "gifts" | "gift_assignments" | "pending_gift_verifications")[];
             /** @description 1.15.0. True when the user's routes had more than 1,000 Astha rows for the month and the list was cut; the phone shows a notice and reads the rest with `listAsthaTargets`. */
             astha_truncated: boolean;

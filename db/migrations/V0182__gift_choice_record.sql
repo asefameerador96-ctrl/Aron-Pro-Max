@@ -59,7 +59,11 @@ ALTER TABLE app.sync_rejected ADD CONSTRAINT sync_rejected_code_check CHECK (cod
   'gift_photo_exists', 'day_final_submitted', 'ticket_state_invalid', 'issue_type_unknown',
   'gift_locked', 'gift_not_for_tier')) NOT VALID;
 
-UPDATE app.cfg_key SET default_value = '["SR", "TSO"]'::jsonb WHERE key = 'cfg.astha.gift_choice_roles';
+UPDATE app.cfg_key SET default_value = '["SR", "TSO"]'::jsonb, updated_at = now() WHERE key = 'cfg.astha.gift_choice_roles';
+
+-- cfg.loyalty.negative_balance_policy = reject is NOT enforced at ingest or in the ledger job (not built): the job posts every stored
+-- redemption and overdraw is the derived LoyaltyBalance.overdrawn (balance < 0). Until reject is built, the bounds enum refuses it (contract 1.16.0).
+UPDATE app.cfg_key SET bounds = '{"enum": ["accept_and_flag"]}'::jsonb, updated_at = now() WHERE key = 'cfg.loyalty.negative_balance_policy';
 
 COMMENT ON TABLE app.gift_choice IS 'The Astha gift an outlet chose for a quarter, one immutable row per choice a phone sent; the handler keeps app.gift_assignment in step (later captured_at wins until the hand-over photo locks the outlet).
 owner: backend:sync | capture: OFFLINE | retention: transaction | pii: personal';

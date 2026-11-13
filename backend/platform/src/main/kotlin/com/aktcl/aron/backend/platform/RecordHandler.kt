@@ -24,6 +24,8 @@ data class IngestRecord(
     val deviceId: Long?,
     val batchUuid: String,
     val receivedAt: Instant,
+    /** The check a reviewer's accept released this record from ([IngestService.acceptQuarantined]); null for a first delivery. A handler that re-judges in [RecordHandler.afterStored] must honour it. */
+    val released: RecordOutcomeCode? = null,
 )
 
 /** A handler's refusal; the outcome code's status decides quarantine, park (retryable) or final rejection (s4.5). */

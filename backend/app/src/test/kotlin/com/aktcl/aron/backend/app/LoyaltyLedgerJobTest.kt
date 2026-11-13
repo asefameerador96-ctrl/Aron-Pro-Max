@@ -54,87 +54,150 @@ class LoyaltyLedgerJobTest {
     private fun credit(programme: Long, points: Int, date: LocalDate, expires: LocalDate?) =
         world.fresh.db.jdbi.withHandle<Boolean, Exception> { h -> LoyaltyLedger.postAdjustment(h, outlet, programme, points, "c-${UUID.randomUUID()}", date, expires) }
 
-    private fun run(programme: Long, date: LocalDate): Pair<Int, Int> = world.fresh.db.jdbi.inTransaction<Pair<Int, Int>, Exception> { h -> LoyaltyLedger.postRedemptions(h) to LoyaltyLedger.expire(h, date) }
+    private var nowAt: LocalDate = LocalDate.now()
+    private fun job() = LoyaltyLedgerJob(world.fresh.db) { nowAt.atTime(12, 0).atZone(java.time.ZoneOffset.ofHours(6)).toInstant() }
 
     private fun balance(programme: Long) = world.one("SELECT COALESCE(SUM(points), 0) FROM app.loyalty_ledger WHERE outlet_id = $outlet AND programme_id = $programme")
+    private fun expirySum(programme: Long) = world.one("SELECT COALESCE(SUM(points), 0) FROM app.loyalty_ledger WHERE outlet_id = $outlet AND programme_id = $programme AND source_type = 'expiry'")
+    private fun positiveExpiry(programme: Long) = world.one("SELECT count(*) FROM app.loyalty_ledger WHERE outlet_id = $outlet AND programme_id = $programme AND source_type = 'expiry' AND points > 0")
     private fun rows(programme: Long) = world.one("SELECT count(*) FROM app.loyalty_ledger WHERE outlet_id = $outlet AND programme_id = $programme")
+    private fun void(cu: String) = world.exec("UPDATE app.redemption SET voided_at = now() WHERE client_uuid = CAST('$cu' AS uuid)")
 
     @Test
     fun aPartlyRedeemedExpiredCreditLapsesOnlyForWhatIsLeftAndOnlyOnce() {
-        val p = newProgramme()
+        val p = newProgramme(); val j = job()
         credit(p, 100, today.minusDays(10), today.minusDays(1))
         redemption(p, 60, today.minusDays(5))
-        assertEquals(1 to 0, run(p, today.minusDays(2)), "the redemption is posted; nothing has expired on that date")
-        assertEquals(40, balance(p))
-        assertEquals(0 to 1, run(p, today), "the nightly expiry lapses the 40 that are left of the credit")
-        assertEquals(0, balance(p))
-        assertEquals("$p:$outlet:$today", world.rows("SELECT source_id FROM app.loyalty_ledger WHERE programme_id = $p AND source_type = 'expiry'").single()["source_id"])
+        nowAt = today.minusDays(2)
+        assertEquals(1 to 0, j.runOnce()); assertEquals(40, balance(p))
+        nowAt = today
+        assertEquals(0 to 1, j.runOnce(), "the expiry lapses the 40 that are left"); assertEquals(0, balance(p))
+        assertEquals("$p:$outlet:$today:1", world.rows("SELECT source_id FROM app.loyalty_ledger WHERE programme_id = $p AND source_type = 'expiry'").single()["source_id"])
         val n = rows(p)
-        assertEquals(0 to 0, run(p, today), "a re-run for the same date posts nothing"); assertEquals(0 to 0, run(p, today.plusDays(3)), "nor does a later run: nothing is left to lapse")
-        assertEquals(n, rows(p))
+        assertEquals(0 to 0, j.runOnce()); nowAt = today.plusDays(3); assertEquals(0 to 0, j.runOnce()); assertEquals(n, rows(p))
     }
 
     @Test
-    fun aRedemptionIsPostedOnceKeptWhenItOverdrawsAndFlagged() {
-        val p = newProgramme()
+    fun everyStoredRedemptionIsPostedOnceNoFlagAndOverdrawIsTheNegativeBalance() {
+        val p = newProgramme(); val j = job(); nowAt = today
         credit(p, 50, today.minusDays(3), null)
-        val ok = redemption(p, 30, today.minusDays(2)); val over = redemption(p, 40, today.minusDays(1))
-        assertEquals(2 to 0, run(p, today)); assertEquals(0 to 0, run(p, today), "replay: the unique (source_type, source_id) makes a retry a no-op")
-        assertEquals(-20, balance(p), "the second phone's redemption is kept: -20, not dropped")
-        val flags = world.rows("SELECT source_id, flags::text AS f FROM app.loyalty_ledger WHERE programme_id = $p AND source_type = 'redemption'").associate { it["source_id"] to it["f"] }
-        assertEquals("{}", flags[ok]); assertEquals("{overdraw}", flags[over], "negative only with the overdraw flag")
+        redemption(p, 30, today.minusDays(2)); redemption(p, 40, today.minusDays(1))
+        assertEquals(2 to 0, j.runOnce()); assertEquals(0 to 0, j.runOnce(), "replay: a retry is a no-op")
+        assertEquals(-20, balance(p), "kept: -20, not dropped")
+        assertEquals(0, world.one("SELECT count(*) FROM app.loyalty_ledger WHERE programme_id = $p AND flags <> '{}'"), "no per-row flag: overdraw is derived from the balance")
     }
 
     @Test
-    fun anAdjustmentIsIdempotentBySourceId() {
+    fun aVoidedRedemptionGetsOneReversalAndAnOldOneIsFoundByTheDailySweep() {
+        val p = newProgramme(); val j = job(); nowAt = today
+        credit(p, 100, today.minusDays(3), null); val cu = redemption(p, 60, today.minusDays(2))
+        j.runOnce(); assertEquals(40, balance(p))
+        void(cu); assertEquals(1 to 0, j.runOnce()); assertEquals(100, balance(p)); assertEquals(0 to 0, j.runOnce())
+        val old = redemption(p, 10, today.minusDays(1)); j.runOnce(); assertEquals(90, balance(p))
+        world.exec("SELECT setval(pg_get_serial_sequence('app.redemption', 'id'), nextval(pg_get_serial_sequence('app.redemption', 'id')) + 2000)")
+        redemption(p, 1, today); j.runOnce(); assertEquals(89, balance(p))
+        void(old); nowAt = today.plusDays(1)
+        assertEquals(1 to 0, j.runOnce(), "the first pass of the next Dhaka day sweeps everything: the old void is reversed"); assertEquals(99, balance(p))
+    }
+
+    @Test
+    fun aLateDebitDatedBeforeTheExpiryGivesBackAndASecondCorrectionOfTheSameDayIsPossible() {
+        val p = newProgramme(); val j = job()
+        credit(p, 100, today.minusDays(5), today.minusDays(1))
+        nowAt = today; assertEquals(0 to 1, j.runOnce()); assertEquals(0, balance(p))
+        redemption(p, 30, today.minusDays(2))   // sold on a valid day, synced late
+        assertEquals(1 to 1, j.runOnce(), "the debit is posted and the lapse is corrected the SAME day (+30)")
+        assertEquals(0, balance(p)); assertEquals(1, positiveExpiry(p)); assertEquals(0 to 0, j.runOnce())
+        assertEquals(setOf("$p:$outlet:$today:1", "$p:$outlet:$today:2"), world.rows("SELECT source_id FROM app.loyalty_ledger WHERE programme_id = $p AND source_type = 'expiry'").map { it["source_id"] }.toSet())
+    }
+
+    @Test
+    fun aDebitNeverConsumesAPointThatHadLapsedOnItsDate() {
+        val p = newProgramme(); val j = job()
+        credit(p, 10, today.minusDays(10), today.minusDays(6)); credit(p, 10, today.minusDays(8), null)
+        redemption(p, 15, today.minusDays(3))   // 10 are lapsed on that date: only the 10 valid ones fund it
+        nowAt = today; j.runOnce()
+        assertEquals(-5, balance(p), "overdrawn by 5 (balance < 0), the lapsed credit is not handed back"); assertEquals(-10, expirySum(p)); assertEquals(0 to 0, j.runOnce())
+    }
+
+    @Test
+    fun anAdjustmentIsIdempotentBySourceIdAndFlagsAreQuoted() {
         val p = newProgramme()
         world.fresh.db.jdbi.useHandle<Exception> { h ->
-            assertTrue(LoyaltyLedger.postAdjustment(h, outlet, p, 25, "adj-1", today)); assertTrue(!LoyaltyLedger.postAdjustment(h, outlet, p, 25, "adj-1", today))
+            assertTrue(LoyaltyLedger.postAdjustment(h, outlet, p, 25, "adj-1", today, null, listOf("a b", "c\"d,e"))); assertTrue(!LoyaltyLedger.postAdjustment(h, outlet, p, 25, "adj-1", today))
         }
-        assertEquals(25, balance(p))
+        assertEquals(25, balance(p)); assertEquals("{\"a b\",\"c\\\"d,e\"}", world.rows("SELECT flags::text AS f FROM app.loyalty_ledger WHERE programme_id = $p").single()["f"])
+    }
+
+    @Test
+    fun onePairFailingDoesNotRollBackTheOthers() {
+        val p1 = newProgramme(); val p2 = newProgramme(); val j = job(); nowAt = today
+        credit(p1, 10, today.minusDays(3), null); credit(p2, 10, today.minusDays(3), null)
+        redemption(p1, 5, today.minusDays(1)); redemption(p2, 5, today.minusDays(1))
+        world.exec("CREATE OR REPLACE FUNCTION app.t_boom() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN IF NEW.programme_id = $p1 THEN RAISE EXCEPTION 'boom'; END IF; RETURN NEW; END \$\$")
+        world.exec("CREATE TRIGGER t_boom BEFORE INSERT ON app.loyalty_ledger FOR EACH ROW WHEN (NEW.source_type = 'redemption') EXECUTE FUNCTION app.t_boom()")
+        try { assertEquals(1 to 0, j.runOnce()) } finally { world.exec("DROP TRIGGER t_boom ON app.loyalty_ledger") }
+        assertEquals(5, balance(p2)); assertEquals(10, balance(p1), "the failed pair rolled back alone")
+        assertEquals(1 to 0, j.runOnce(), "the cursor did not advance: the failed pair is retried and now posts")
+        assertEquals(5, balance(p1))
+    }
+
+    private class Ev(val programme: Int, val pts: Int, val date: LocalDate, val exp: LocalDate?, val debit: Boolean) { var voided = false; var delivered = false; var cu = "" }
+
+    /** The independent day-by-day model of one programme: credits enter on their day (before that day's debits), a debit takes the valid credit that expires first; voided debits do not exist. */
+    private fun model(evs: List<Ev>, today: LocalDate, from: LocalDate): Triple<Long, Long, Long> {   // (balance, lapsed L, unfunded)
+        class C(var left: Long, val exp: LocalDate?)
+        val cs = ArrayList<C>(); var unfunded = 0L
+        var d = from
+        while (!d.isAfter(today)) {
+            evs.filter { it.delivered && !it.debit && it.date == d }.forEach { cs += C(it.pts.toLong(), it.exp) }
+            evs.filter { it.delivered && it.debit && !it.voided && it.date == d }.forEach { e ->
+                var need = e.pts.toLong()
+                for (c in cs.filter { it.left > 0 && (it.exp == null || !it.exp.isBefore(d)) }.sortedBy { it.exp ?: LocalDate.MAX }) { val u = minOf(c.left, need); c.left -= u; need -= u }
+                unfunded += need
+            }
+            d = d.plusDays(1)
+        }
+        val lapsed = cs.filter { it.exp != null && it.exp.isBefore(today) }.sumOf { it.left }
+        return Triple(cs.sumOf { it.left } - lapsed - unfunded, lapsed, unfunded)
     }
 
     /**
-     * Any interleaving of credits, redemptions (some synced late, after an expiry run has already lapsed the credit they belong to) and expiry runs gives balance = the sum of the
-     * unexpired, unspent credits of an independent day-by-day model, never below zero (no overdraw is generated here), and a repeated run changes nothing.
+     * Days pass with gaps; several runs a day; credits, redemptions (late-synced, later-dated ones synced first), voids and two programmes arrive in random order. After EVERY step:
+     * balance = the model's, the expiry rows sum to -L, a positive expiry row exists only when the model's L went DOWN, a repeated run posts nothing.
      */
     @Test
-    fun propertyAnyInterleavingOfCreditsRedemptionsAndExpiryRunsKeepsTheBalanceExact() {
-        class Credit(var left: Int, val exp: LocalDate?)
-        repeat(25) { trial ->
-            val rnd = Random(1000L + trial)
-            val p = newProgramme()
-            val model = ArrayList<Credit>()
-            val pending = ArrayList<Triple<Int, LocalDate, Int>>()   // (points, occurrence day, post on this day index)
-            val base = today.minusDays(40)
-            for (d in 0..13) {
-                val day = base.plusDays(d.toLong())
-                repeat(rnd.nextInt(0, 3)) {
-                    val pts = rnd.nextInt(1, 101); val exp = if (rnd.nextInt(10) == 0) null else day.plusDays(rnd.nextLong(1, 7))
-                    credit(p, pts, day, exp); model += Credit(pts, exp)
-                }
-                // redemptions of the day: the phone spends the oldest points that had not expired on that day (the model is time-aware, the server only sees rows)
-                repeat(rnd.nextInt(0, 3)) {
-                    val avail = model.filter { it.exp == null || it.exp >= day }.sumOf { it.left }
-                    if (avail > 0) {
-                        val pts = rnd.nextInt(1, avail + 1); var need = pts
-                        for (c in model) { if (need == 0) break; if (c.exp == null || c.exp >= day) { val u = minOf(c.left, need); c.left -= u; need -= u } }
-                        if (rnd.nextBoolean()) redemption(p, pts, day) else pending += Triple(pts, day, d + rnd.nextInt(1, 5))
+    fun propertyAgainstAnIndependentDayByDayModel() {
+        repeat(30) { trial ->
+            val rnd = Random(7000L + trial)
+            val progs = listOf(newProgramme(), newProgramme()); val j = job()
+            val base = today.minusDays(60); val evs = ArrayList<Ev>()
+            var prevL = longArrayOf(0, 0); var positiveSeen = longArrayOf(0, 0)
+            var day = 0
+            while (day <= 30) {
+                val date = base.plusDays(day.toLong())
+                // events that OCCUR on this date (not yet delivered unless chosen below)
+                repeat(rnd.nextInt(0, 3)) { val pr = rnd.nextInt(2); evs += Ev(pr, rnd.nextInt(1, 80), date, if (rnd.nextInt(8) == 0) null else date.plusDays(rnd.nextLong(1, 9)), false) }
+                repeat(rnd.nextInt(0, 3)) { evs += Ev(rnd.nextInt(2), rnd.nextInt(1, 60), date, null, true) }
+                repeat(rnd.nextInt(1, 4)) {   // several runs a day, deliveries in between: random subset of the undelivered, any date (late and later-dated-first)
+                    evs.filter { !it.delivered && rnd.nextInt(3) == 0 }.shuffled(rnd).forEach { e ->
+                        e.delivered = true
+                        if (e.debit) e.cu = redemption(progs[e.programme], e.pts, e.date) else credit(progs[e.programme], e.pts, e.date, e.exp)
                     }
+                    evs.filter { it.debit && it.delivered && !it.voided && rnd.nextInt(12) == 0 }.firstOrNull()?.let { it.voided = true; void(it.cu) }
+                    nowAt = date
+                    j.runOnce()
+                    for (i in 0..1) {
+                        val m = model(evs.filter { it.programme == i }, date, base)
+                        assertEquals(m.first, balance(progs[i]), "trial $trial day $day prog $i: balance = model")
+                        assertEquals(-m.second, expirySum(progs[i]), "trial $trial day $day prog $i: expiry rows sum to -L")
+                        if (positiveExpiry(progs[i]) > positiveSeen[i]) { assertTrue(m.second < prevL[i], "trial $trial day $day prog $i: a positive expiry row only when the model's L went down"); positiveSeen[i] = positiveExpiry(progs[i]) }
+                        prevL[i] = m.second
+                    }
+                    val n = progs.sumOf { rows(it) }; assertEquals(0 to 0, j.runOnce(), "trial $trial day $day: a re-run posts nothing"); assertEquals(n, progs.sumOf { rows(it) })
                 }
-                pending.filter { it.third <= d }.also { pending.removeAll(it.toSet()) }.forEach { redemption(p, it.first, it.second) }
-                run(p, day)
-                val after = rows(p); assertEquals(0 to 0, run(p, day), "trial $trial day $d: a second run for the same date posts nothing"); assertEquals(after, rows(p))
-                assertTrue(balance(p) >= 0, "trial $trial day $d: never below zero without an overdraw flag")
+                day += if (rnd.nextInt(4) == 0) rnd.nextInt(2, 6) else 1   // gaps
             }
-            // flush the late redemptions, then run at the end: the give-back path (a late debit of a credit that was already lapsed) must leave the balance exact
-            val end = base.plusDays(14)
-            pending.forEach { redemption(p, it.first, it.second) }; pending.clear()
-            run(p, end)
-            val expected = model.filter { it.exp == null || it.exp >= end }.sumOf { it.left }
-            assertEquals(expected.toLong(), balance(p), "trial $trial: balance = sum of the unexpired, unspent credits")
-            assertEquals(0L, world.one("SELECT count(*) FROM app.loyalty_ledger WHERE programme_id = $p AND 'overdraw' = ANY(flags)"), "trial $trial: no overdraw was generated, so none is flagged: " + world.rows("SELECT id, source_type, points, business_date::text AS bd, expires_on::text AS ex, flags::text AS f FROM app.loyalty_ledger WHERE programme_id = $p ORDER BY business_date, id"))
-            run(p, end.plusDays(30)); assertEquals(model.filter { it.exp == null }.sumOf { it.left }.toLong(), balance(p), "trial $trial: a month later only the credits that never expire remain")
         }
     }
 }

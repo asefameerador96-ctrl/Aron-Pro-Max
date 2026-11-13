@@ -67,7 +67,7 @@ fun main() {
             // Jobs registered so far: the aggregation worker (dirty keys into dw, F-SYS-015). Other lanes append theirs.
             val workerDb = Database.fromSettings(settings)
             // No schedule starts before ONE successful SELECT 1 on the pool (D-LOY-API-21): a new replica cannot always reach PostgreSQL in its first seconds.
-            com.aktcl.aron.backend.platform.WorkerReadiness().await(workerDb.write)
+            startWorker({ com.aktcl.aron.backend.platform.WorkerReadiness().await(workerDb.write) }) {
             // The admin's cfg.geo.suspicious_score_threshold, as the dashboards and reports read it (data-architecture review finding 18).
             AggregationWorker(workerDb, config = com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start()
             run {
@@ -93,10 +93,11 @@ fun main() {
             com.aktcl.aron.backend.sync.GeoRecheckSweepJob(workerDb).start()
             com.aktcl.aron.backend.sync.RetentionJob(workerDb).start()
             com.aktcl.aron.backend.masterdata.OutletRequestLapseJob(workerDb).start()
-            com.aktcl.aron.backend.sync.LoyaltyLedgerJob(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start()   // push C: redemption posting and FIFO expiry
+            com.aktcl.aron.backend.sync.LoyaltyLedgerJob(workerDb).start()   // push C: redemption posting and FIFO expiry
             com.aktcl.aron.backend.notify.InboxPruneJob(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start() // tso-manual B1
             com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env)).let { c -> com.aktcl.aron.backend.sync.AutoFinalSubmitJob(workerDb, c, com.aktcl.aron.backend.masterdata.SqlReachResolver(workerDb, com.aktcl.aron.backend.masterdata.GeoRepository(workerDb)), com.aktcl.aron.backend.notify.PushNotifier(workerDb, c, settings.fcmServiceAccountJson?.let { com.aktcl.aron.backend.notify.FcmPushSender(it) })).start() } // tso-manual B3: midnight auto Final Submit and start-up catch-up (D-TSO-MAN-30)
             log.info("aron worker started (aggregation, risk signals, route-day planning, bundle pre-generation, geo re-check sweep, retention, outlet request lapse, loyalty ledger)")
+            }
             Thread.currentThread().join()
         }
     }
@@ -152,4 +153,12 @@ private fun Route.healthRoutes(w: Wiring) {
         }
         call.respond(Health("ok", ContractInfo.API_BASE_PATH, w.clock.now().wire(), w.generation(), w.build))
     }
+}
+
+/**
+ * The worker's start sequence (D-LOY-API-21): [awaitReady] must return before ANY job is constructed or started; if it throws, no job starts. Extracted from `main` so a test can drive it with a fake.
+ */
+internal fun startWorker(awaitReady: () -> Unit, startJobs: () -> Unit) {
+    awaitReady()
+    startJobs()
 }

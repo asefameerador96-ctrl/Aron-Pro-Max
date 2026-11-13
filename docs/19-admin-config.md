@@ -912,7 +912,7 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 | `cfg.loyalty.expiry_days` | S | int | none (April league expires 2026-05-07; the rule is unknown) | 0 to 365 | G | P | S | srv | C3 | Nightly expiry ledger row. unknown; confirm | D-41; G-man-040 | 5a |
 | `cfg.loyalty.redemption_requires_photo` | S | bool | true | n/a | G | P | B | both | C1 | "Gift Verify" photo | docs/06 | 5a |
 | `cfg.loyalty.redemption_roles` | S | list<role> | [sr, amo] | subset | G | P | B | both | C1 | | docs/06 | 5a |
-| `cfg.loyalty.negative_balance_policy` | S | enum(accept_and_flag, reject) | accept_and_flag | enum | G | P | B | srv | C2 | Accept when the device's balance was sufficient; reject `insufficient_points` when it knew it was not | D-266 | 5a |
+| `cfg.loyalty.negative_balance_policy` | S | enum(accept_and_flag) (reject refused until built, V0182) | accept_and_flag | enum | G | P | B | srv | C2 | Accept when the device's balance was sufficient; reject `insufficient_points` when it knew it was not | D-266 | 5a |
 | `cfg.loyalty.manual_adjust_max_points` | S | int | 1000 (A) | 0 to 100,000 | G | FIN | B | srv | C2 | Above it an adjustment needs two persons | F-ADM-035 | 5a |
 | `cfg.astha.program_active` | S | bool | true (A) | n/a | G W | P | B | both | C2 | unknown; confirm: Q13 | D-41 | 5a |
 | `cfg.astha.quarter_start_month` | S | int | 1 (Q-4 = Oct to Dec) | 1 to 12 | G | P | S | both | C3 | FD | docs/06 | 5a |

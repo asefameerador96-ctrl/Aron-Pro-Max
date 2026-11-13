@@ -1,5 +1,5 @@
 GiftChoiceRecord:
-  description: The Astha gift an outlet chose for a quarter (contract 1.15.0, SRM-B-66). Idempotent by the envelope
+  description: The Astha gift an outlet chose for a quarter (contract 1.16.0, SRM-B-66). Idempotent by the envelope
     `client_uuid`.
   allOf:
   - $ref: '#/components/schemas/RecordEnvelope'

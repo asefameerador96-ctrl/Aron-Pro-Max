@@ -5,6 +5,7 @@ LoyaltyBalance:
   - programme_id
   - league_label
   - balance_points
+  - overdrawn
   - expiring_points
   - expiry_date
   - as_of_date
@@ -25,6 +26,10 @@ LoyaltyBalance:
         when the nightly expiry job posts its debit (computed FIFO: the oldest credit is consumed first, so a credit
         that was partly redeemed lapses only for what is left of it); before that job has run the balance may still
         include points past their date. Negative only after a flagged overdraw.'
+    overdrawn:
+      type: boolean
+      description: '1.16.0. True exactly when `balance_points` is below zero: a negative balance is the overdraw
+        signal. Derived on read, never stored on a ledger row.'
     expiring_points:
       type: integer
       minimum: 0

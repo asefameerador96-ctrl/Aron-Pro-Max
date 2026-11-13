@@ -33,42 +33,56 @@ class GiftChoiceRecords(private val reach: ReachResolver, private val config: Se
         (config.value("cfg.astha.gift_choice_roles") as JsonArray).mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.toSet()
     }.getOrDefault(setOf("TSO"))   // a malformed list fails closed to the narrowest default
 
+    /**
+     * The verdict on one choice. A reviewer's accept ([IngestRecord.released]) waives exactly the check that held the record (scope or programme/enrolment) and nothing else: the open quarter,
+     * the gift, the tier and the lock are still judged, in check() and again in afterStored(), so an accepted choice takes effect and can never get around a refusal that is final.
+     */
     private fun judge(h: Handle, rec: IngestRecord): Pair<RecordRefusal?, Target?> {
+        val waived = rec.released
         val outletId = rec.payload["outlet_id"]?.let { (it as? JsonPrimitive)?.contentOrNull?.toLongOrNull() } ?: return RecordRefusal(RecordOutcomeCode.UNKNOWN_OUTLET, "outlet_id") to null
         val giftId = rec.payload["gift_id"]?.let { (it as? JsonPrimitive)?.contentOrNull?.toLongOrNull() } ?: return RecordRefusal(RecordOutcomeCode.UNKNOWN_GIFT, "gift_id") to null
         val quarter = (rec.payload["quarter"] as? JsonPrimitive)?.contentOrNull ?: return RecordRefusal(RecordOutcomeCode.SCHEMA_INVALID, "quarter") to null
-        if (rec.role.name !in roles()) return RecordRefusal(RecordOutcomeCode.SCOPE_OUT_OF_REACH, "this role does not choose Astha gifts (cfg.astha.gift_choice_roles)") to null
+        if (rec.role.name !in roles() && waived != RecordOutcomeCode.SCOPE_OUT_OF_REACH) return RecordRefusal(RecordOutcomeCode.SCOPE_OUT_OF_REACH, "this role does not choose Astha gifts (cfg.astha.gift_choice_roles)") to null
         val startMonth = runCatching { (config.value("cfg.astha.quarter_start_month") as JsonPrimitive).intOrNull }.getOrNull() ?: 1
         if (AsthaQuarter.parse(quarter, startMonth) == null) return RecordRefusal(RecordOutcomeCode.SCHEMA_INVALID, "quarter $quarter") to null
+        // Only the open quarter on the record's Dhaka business date can be chosen for (final and kept in sync_rejected): a stale or future label would otherwise make a lock-free assignment nobody reads.
+        val open = AsthaQuarter.of(rec.businessDate, startMonth).label
+        if (quarter != open) return RecordRefusal(RecordOutcomeCode.SCHEMA_INVALID, "quarter $quarter is not the open quarter $open on ${rec.businessDate}") to null
         val outlet = h.createQuery("SELECT route_id, zone_id FROM app.outlet WHERE id = :o AND status = 'active'").bind("o", outletId)
             .map { rs, _ -> (rs.getObject("route_id") as Number?)?.toLong() to rs.getLong("zone_id") }.findOne().orElse(null) ?: return RecordRefusal(RecordOutcomeCode.UNKNOWN_OUTLET, "outlet $outletId") to null
         val routeId = outlet.first ?: return RecordRefusal(RecordOutcomeCode.UNKNOWN_OUTLET, "outlet $outletId has no route") to null
         val r = reach.reach(rec.userId, rec.role, 0, rec.businessDate)
         val inReach = if (r.ownRecordsOnly) routeId in r.routeIds else r.coversZone(outlet.second) || routeId in r.routeIds
-        if (!inReach) return RecordRefusal(RecordOutcomeCode.SCOPE_OUT_OF_REACH, "outlet $outletId outside the uploader's reach") to null
+        if (!inReach && waived != RecordOutcomeCode.SCOPE_OUT_OF_REACH) return RecordRefusal(RecordOutcomeCode.SCOPE_OUT_OF_REACH, "outlet $outletId outside the uploader's reach") to null
         val gift = h.createQuery(
             "SELECT g.programme_id, g.tier_codes, p.status AS pstatus, p.kind FROM app.gift g JOIN app.programme p ON p.id = g.programme_id WHERE g.id = :g AND g.status = 'active'",
         ).bind("g", giftId).map { rs, _ -> arrayOf<Any?>(rs.getLong("programme_id"), (rs.getArray("tier_codes").array as Array<*>).map { it.toString() }, rs.getString("pstatus"), rs.getString("kind")) }.findOne().orElse(null)
             ?: return RecordRefusal(RecordOutcomeCode.UNKNOWN_GIFT, "gift $giftId") to null
         val programmeId = gift[0] as Long
         @Suppress("UNCHECKED_CAST") val tiers = gift[1] as List<String>
-        if (gift[2] != "active" || gift[3] != "astha") return RecordRefusal(RecordOutcomeCode.PROGRAMME_INACTIVE, "gift $giftId is not of an active Astha programme") to null
+        val inactiveWaived = waived == RecordOutcomeCode.PROGRAMME_INACTIVE
+        if ((gift[2] != "active" || gift[3] != "astha") && !inactiveWaived) return RecordRefusal(RecordOutcomeCode.PROGRAMME_INACTIVE, "gift $giftId is not of an active Astha programme") to null
         val tier = h.createQuery(
             "SELECT tier_code FROM app.programme_enrolment WHERE programme_id = :p AND outlet_id = :o AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d) ORDER BY valid_from DESC LIMIT 1",
         ).bind("p", programmeId).bind("o", outletId).bind("d", rec.businessDate).map { rs, _ -> rs.getString(1) ?: "" }.findOne().orElse(null)
-            ?: return RecordRefusal(RecordOutcomeCode.PROGRAMME_INACTIVE, "outlet $outletId is not enrolled in the programme") to null
-        if (tiers.isNotEmpty() && tier !in tiers) return RecordRefusal(RecordOutcomeCode.GIFT_NOT_FOR_TIER, "gift $giftId is not for tier '$tier'") to null
-        val locked = h.createQuery("SELECT locked_at IS NOT NULL FROM app.gift_assignment WHERE programme_id = :p AND quarter = :q AND outlet_id = :o")
+            ?: if (inactiveWaived) null else return RecordRefusal(RecordOutcomeCode.PROGRAMME_INACTIVE, "outlet $outletId is not enrolled in the programme") to null
+        // A reviewer who accepted an outlet without an enrolment has no tier to judge the gift against.
+        if (tier != null && tiers.isNotEmpty() && tier !in tiers) return RecordRefusal(RecordOutcomeCode.GIFT_NOT_FOR_TIER, "gift $giftId is not for tier '$tier'") to null
+        // FOR UPDATE: the hand-over photo's lock UPDATE of this row waits for this transaction, so the lock cannot close between check() and afterStored() (both run in the record's transaction).
+        val locked = h.createQuery("SELECT locked_at IS NOT NULL FROM app.gift_assignment WHERE programme_id = :p AND quarter = :q AND outlet_id = :o FOR UPDATE")
             .bind("p", programmeId).bind("q", quarter).bind("o", outletId).mapTo(Boolean::class.java).findOne().orElse(false)
         if (locked) return RecordRefusal(RecordOutcomeCode.GIFT_LOCKED, "the outlet's gift for $quarter is locked by its hand-over photo") to null
-        return null to Target(programmeId, routeId, tier.ifEmpty { null })
+        return null to Target(programmeId, routeId, tier?.ifEmpty { null })
     }
 
     override fun check(h: Handle, rec: IngestRecord): RecordRefusal? = judge(h, rec).first
 
     override fun afterStored(h: Handle, rec: IngestRecord, serverId: Long?) {
         val (refusal, target) = judge(h, rec)
-        if (refusal != null || target == null) return   // the lock may have closed between check and here: the choice row stays as the record, the assignment is not touched
+        // check() already passed in this transaction (with the reviewer's waiver), so a refusal here means the world moved between the two (a programme or gift edit committed in between):
+        // storing the choice and acking it accepted without applying it would be silent, so the record rolls back (acked server_error, retryable) and its resend is judged afresh by check() and
+        // gets the final answer (gift_locked included) - deterministic, and the phone always learns. The photo lock itself cannot close here: judge() holds the assignment row FOR UPDATE.
+        if (refusal != null || target == null) throw IllegalStateException("gift_choice ${rec.clientUuid} no longer passes its checks (${refusal?.code?.wire}); rolled back for a re-judged resend")
         val at = OffsetDateTime.ofInstant(java.time.Instant.parse((rec.envelope["captured_at"] as JsonPrimitive).content), ZoneOffset.UTC)
         h.createUpdate(
             """

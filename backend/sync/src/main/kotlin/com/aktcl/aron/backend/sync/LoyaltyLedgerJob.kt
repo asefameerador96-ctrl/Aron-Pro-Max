@@ -2,126 +2,164 @@ package com.aktcl.aron.backend.sync
 
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
-import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.exitIfFatal
 import com.aktcl.aron.rules.BusinessDate
 import kotlinx.datetime.toJavaLocalDate
-import kotlinx.serialization.json.jsonPrimitive
 import org.jdbi.v3.core.Handle
 import org.slf4j.LoggerFactory
+import java.time.Instant
 import java.time.LocalDate
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * The points ledger's writers (lane portal-loyalty-api, push C; D-LOY-API-18). `app.loyalty_ledger` is append-only and UNIQUE on (source_type, source_id), so every posting below is
- * a plain `INSERT ... ON CONFLICT DO NOTHING`: a retry, a second worker replica or a re-run is a no-op. Integer points only.
+ * The points ledger's writers (lane portal-loyalty-api, push C, round C-R1; D-LOY-API-18, D-LOY-API-22). `app.loyalty_ledger` is append-only and UNIQUE on (source_type,
+ * source_id), so every posting below is a plain `INSERT ... ON CONFLICT DO NOTHING`: a retry, a second worker replica or a re-run is a no-op. Integer points only.
  *
- *  - [postRedemptions]: one NEGATIVE row per `app.redemption` (`source_type` redemption, `source_id` = the redemption's client_uuid). Two phones over one balance: the redemption
- *    is KEPT and, when it has to spend points already expired on its own date (a redemption synced late, after the expiry job lapsed a credit it validly spent, is not an overdraw: the expiry gives that credit back) and `cfg.loyalty.negative_balance_policy` is not `reject`, the row carries the flag `overdraw` for admin review (the worker cannot update the immutable redemption row); it is never dropped. Cash cashback is booked only as `redemption.cash_mtk` (never a memo discount).
- *  - [expire]: the nightly expiry, FIFO. For each (outlet, programme) with a credit past its `expires_on`, the credits are consumed OLDEST FIRST (by `business_date`, then id) by the
- *    sum of all non-expiry debits; what is left of each EXPIRED credit lapses. One row per (programme, outlet, run date), `source_type` expiry, `source_id`
- *    `programme:outlet:date`, points = -(unspent part of the expired credits - what earlier expiry rows already took). So a partly redeemed credit lapses only for what is left
- *    of it and a re-run, or a run for the same date, posts nothing. The balance (plain sum of every row) is then the sum of the unexpired, unspent credits.
+ * LEDGER MODEL. A ledger row is a FACT: a credit (survey_response, adjustment, migration ...), a redemption debit, an adjustment, a reversal of a voided redemption, or an expiry
+ * correction. No row carries a judgement made on a partial view (records arrive late and out of order, the ledger is append-only), so:
+ *  - [postRedemptions] posts EVERY stored, non-voided `app.redemption` exactly once (`source_type` redemption, `source_id` = the client_uuid), always. There is no skip and no flag:
+ *    `cfg.loyalty.negative_balance_policy = reject` is NOT enforced anywhere (not at ingest, not here) and its configuration refuses that value.
+ *  - OVERDRAW IS DERIVED: an (outlet, programme) is overdrawn exactly when its balance (the plain sum of every row) is below zero (`LoyaltyBalance.overdrawn`).
+ *  - [postReversals]: a redemption voided after posting gets one row (+points, `source_type` redemption_void, `source_id` = the redemption's client_uuid, UNIQUE). In the replay a
+ *    voided redemption and its reversal cancel out.
+ *  - EXPIRY IS A TARGET ([lapsing], [expire]): the whole history of the pair is replayed (see [replay]); the points that must have lapsed by today (Dhaka) are L; the points the
+ *    expiry rows already took are E; the run posts ONE correction row of (E - L) when that is not zero (negative: more must lapse; positive: a late-synced debit dated on or
+ *    before the expiry consumed points that had been lapsed). `source_id` = `programme:outlet:date:n` (n = the pair's expiry rows of that day + 1, under the pair's advisory
+ *    lock), so a second correction on the same day is possible. Nothing new = nothing posted.
+ *  - [reconcilePair]: all of the above for ONE pair under its advisory lock in the caller's transaction (the job gives each pair its own).
  *  - [postAdjustment]: the adjustment plumbing (`source_type` adjustment; the portal or a migration, no earning rule is known: owner Q1).
  */
 object LoyaltyLedger {
-    /** Posts the redemptions that have no ledger row yet (oldest first, so the overdraw flag follows the order the balance really moved). Returns how many rows were posted. */
-    fun postRedemptions(h: Handle, rejectOverdraw: Boolean = false, limit: Int = 500): Int {
-        val todo = h.createQuery(
-            """
-            SELECT r.client_uuid::text AS cu, r.outlet_id, r.programme_id, r.points_total, r.business_date
-              FROM app.redemption r
-             WHERE r.voided_at IS NULL AND NOT EXISTS (SELECT 1 FROM app.loyalty_ledger l WHERE l.source_type = 'redemption' AND l.source_id = r.client_uuid::text)
-             ORDER BY r.confirmed_at, r.id LIMIT :limit
-            """.trimIndent(),
-        ).bind("limit", limit).map { rs, _ -> arrayOf<Any>(rs.getString("cu"), rs.getLong("outlet_id"), rs.getLong("programme_id"), rs.getInt("points_total"), rs.getObject("business_date", LocalDate::class.java)) }.list()
-        var posted = 0
-        for (t in todo) {
-            val (cu, outlet, programme) = Triple(t[0] as String, t[1] as Long, t[2] as Long)
-            val points = t[3] as Int; val date = t[4] as LocalDate
-            lockPair(h, outlet, programme)   // one balance, one writer at a time
-            // Overdraw = the redemption had to spend points that were already expired on its own date, judged by the same FIFO replay as the expiry over every row now known
-            // (a redemption synced late, after the expiry lapsed a credit it validly spent, is no overdraw: the next expiry run gives that credit back).
-            val known = h.createQuery("SELECT points, expires_on, source_type, business_date, source_id FROM app.loyalty_ledger WHERE outlet_id = :o AND programme_id = :p AND business_date <= :bd ORDER BY business_date, id")
-                .bind("o", outlet).bind("p", programme).bind("bd", date).map { rs, _ -> Row(rs.getInt(1), rs.getObject(2, LocalDate::class.java), rs.getString(3), rs.getObject(4, LocalDate::class.java), rs.getString(5)) }.list()
-            val overdraw = cu in replay(known + Row(-points, null, "redemption", date, cu)).second
-            if (overdraw && rejectOverdraw) continue   // policy reject: the phone is refused at the till; a redemption that still arrived stays unposted for review, never dropped
-            val n = h.createUpdate(
-                """
-                INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, flags)
-                VALUES (:o, :p, 'redemption', :cu, :pts, :bd, CAST(:flags AS text[])) ON CONFLICT (source_type, source_id) DO NOTHING
-                """.trimIndent(),
-            ).bind("o", outlet).bind("p", programme).bind("cu", cu).bind("pts", -points).bind("bd", date).bind("flags", if (overdraw) "{overdraw}" else "{}").execute()
-            posted += n
-        }
-        return posted
-    }
-
     /** One balance, one writer at a time (a second worker replica waits here until the first commits). */
     private fun lockPair(h: Handle, outlet: Long, programme: Long) {
         h.createQuery("SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))) x").bind("k", "loyalty:$outlet:$programme").mapTo(Int::class.java).one()
     }
 
-    /** One ledger row as the expiry sees it. */
-    data class Row(val points: Int, val expiresOn: LocalDate?, val sourceType: String, val businessDate: LocalDate, val sourceId: String = "")
+    /** One ledger row as the replay sees it. [at] and [id] only break ties deterministically. */
+    data class Row(val points: Int, val expiresOn: LocalDate?, val sourceType: String, val businessDate: LocalDate, val sourceId: String = "", val at: Instant = Instant.EPOCH, val id: Long = 0)
 
-    /** The FIFO expiry as of [today] (Dhaka business date). Returns how many (outlet, programme) rows were posted (a lapse is negative, a correction positive). */
-    fun expire(h: Handle, today: LocalDate): Int {
-        val pairs = h.createQuery(
-            "SELECT DISTINCT outlet_id, programme_id FROM app.loyalty_ledger WHERE points > 0 AND expires_on IS NOT NULL AND expires_on < :d AND source_type <> 'expiry'",
-        ).bind("d", today).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
-        var posted = 0
-        for ((outlet, programme) in pairs) {
-            lockPair(h, outlet, programme)
-            val rows = h.createQuery(
-                "SELECT points, expires_on, source_type, business_date, source_id FROM app.loyalty_ledger WHERE outlet_id = :o AND programme_id = :p ORDER BY business_date, id",
-            ).bind("o", outlet).bind("p", programme).map { rs, _ -> Row(rs.getInt(1), rs.getObject(2, LocalDate::class.java), rs.getString(3), rs.getObject(4, LocalDate::class.java), rs.getString(5)) }.list()
-            val lapse = lapsing(rows, today)
-            if (lapse == 0L) continue
-            posted += h.createUpdate(
-                """
-                INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, flags)
-                VALUES (:o, :p, 'expiry', :sid, :pts, :bd, '{}') ON CONFLICT (source_type, source_id) DO NOTHING
-                """.trimIndent(),
-            ).bind("o", outlet).bind("p", programme).bind("sid", "$programme:$outlet:$today").bind("pts", Math.toIntExact(-lapse)).bind("bd", today).execute()
-        }
-        return posted
-    }
-
-    /**
-     * The points to lapse now (negative: give back) from the rows of one (outlet, programme). Pure, for the property test. Rows are replayed in `business_date, id` order with a
-     * pool of credits: a debit dated d consumes the OLDEST credit that had not expired on d (it spills into expired credits only when nothing else is left: an overdraw). What
-     * is left of the credits with `expires_on < today` is the amount that must have lapsed; the answer is that less what earlier expiry rows already took, so a debit that arrives
-     * late (a sync delay) and belongs to a credit already lapsed is given back, and the balance stays the sum of the unexpired, unspent credits whatever the arrival order.
-     */
-    fun lapsing(rows: List<Row>, today: LocalDate): Long {
-        val (pool, _) = replay(rows)
-        val mustHaveLapsed = pool.filter { it.exp != null && it.exp < today }.sumOf { it.left }
-        val alreadyLapsed = rows.filter { it.sourceType == "expiry" }.sumOf { -it.points.toLong() }
-        return mustHaveLapsed - alreadyLapsed
-    }
+    /** The outcome of [replay]: the points of credits that have lapsed by `today`, the debit points no valid credit could fund, and the net of the rows replayed. */
+    data class Replayed(val lapsed: Long, val unfunded: Long, val net: Long)
 
     class Credit(var left: Long, val exp: LocalDate?)
 
-    /** The pool after replaying [rows] (expiry rows ignored) and the source ids of the debits that had to spill into credits already expired on their date: an overdraw. */
-    fun replay(rows: List<Row>): Pair<List<Credit>, Set<String>> {
-        val pool = ArrayList<Credit>(); val over = HashSet<String>()
-        for (r in rows) {
-            if (r.sourceType == "expiry") continue
+    /**
+     * Pure, deterministic. Replays every non-expiry row of ONE pair in `business_date` order (within a date: credits first, because a credit earned on a day is valid that day, then
+     * the row's created time, then its id). A voided redemption and its reversal are left out together. A debit dated d consumes only credits that were still valid on d
+     * (`expires_on` null or >= d), the one expiring first first; it NEVER consumes a credit that had already lapsed on d. What it cannot fund stays unfunded (that is a negative
+     * balance). `lapsed` = what is left of the credits with `expires_on < today`.
+     */
+    fun replay(rows: List<Row>, today: LocalDate): Replayed {
+        val voided = rows.filter { it.sourceType == VOID }.map { it.sourceId }.toSet()
+        val live = rows.filter { it.sourceType != EXPIRY && it.sourceType != VOID && !(it.sourceType == REDEMPTION && it.sourceId in voided) }
+            .sortedWith(compareBy<Row>({ it.businessDate }, { if (it.points > 0) 0 else 1 }, { it.at }, { it.id }))
+        val pool = ArrayList<Credit>(); var unfunded = 0L; var net = 0L
+        for (r in live) {
+            net += r.points
             if (r.points > 0) { pool += Credit(r.points.toLong(), r.expiresOn); continue }
             var need = -r.points.toLong()
-            for (pass in 0..1) {
-                if (pass == 1 && need > 0) over += r.sourceId
-                for (c in pool) {
-                    if (need == 0L) break
-                    val usable = if (pass == 0) c.exp == null || c.exp >= r.businessDate else c.exp != null && c.exp < r.businessDate
-                    if (!usable) continue
-                    val used = minOf(c.left, need); c.left -= used; need -= used
-                }
+            for (c in pool.filter { it.left > 0 && (it.exp == null || it.exp >= r.businessDate) }.sortedBy { it.exp ?: LocalDate.MAX }) {   // stable: ties keep credit order
+                if (need == 0L) break
+                val used = minOf(c.left, need); c.left -= used; need -= used
             }
+            unfunded += need
         }
-        return pool to over
+        return Replayed(pool.filter { it.exp != null && it.exp < today }.sumOf { it.left }, unfunded, net)
+    }
+
+    /** The points the expiry rows should still take now (L) less what they already took (E): the correction row is `-(L - E)`; 0 = nothing to post. */
+    fun lapsing(rows: List<Row>, today: LocalDate): Long = replay(rows, today).lapsed - rows.filter { it.sourceType == EXPIRY }.sumOf { -it.points.toLong() }
+
+    private fun rowsOf(h: Handle, outlet: Long, programme: Long): List<Row> = h.createQuery(
+        "SELECT points, expires_on, source_type, business_date, source_id, created_at, id FROM app.loyalty_ledger WHERE outlet_id = :o AND programme_id = :p",
+    ).bind("o", outlet).bind("p", programme).map { rs, _ ->
+        Row(rs.getInt(1), rs.getObject(2, LocalDate::class.java), rs.getString(3), rs.getObject(4, LocalDate::class.java), rs.getString(5), rs.getTimestamp(6).toInstant(), rs.getLong(7))
+    }.list()
+
+    /** Posts the pair's stored, non-voided redemptions that have no ledger row yet, oldest first, every one, exactly once. Returns how many rows were posted. */
+    fun postRedemptions(h: Handle, outlet: Long, programme: Long): Int {
+        val todo = h.createQuery(
+            """
+            SELECT r.client_uuid::text, r.points_total, r.business_date FROM app.redemption r
+             WHERE r.outlet_id = :o AND r.programme_id = :p AND r.voided_at IS NULL
+               AND NOT EXISTS (SELECT 1 FROM app.loyalty_ledger l WHERE l.source_type = 'redemption' AND l.source_id = r.client_uuid::text)
+             ORDER BY r.business_date, r.confirmed_at, r.id
+            """.trimIndent(),
+        ).bind("o", outlet).bind("p", programme).map { rs, _ -> Triple(rs.getString(1), rs.getInt(2), rs.getObject(3, LocalDate::class.java)) }.list()
+        return todo.sumOf { (cu, points, date) ->
+            h.createUpdate(
+                "INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, flags) VALUES (:o, :p, 'redemption', :cu, :pts, :bd, '{}') ON CONFLICT (source_type, source_id) DO NOTHING",
+            ).bind("o", outlet).bind("p", programme).bind("cu", cu).bind("pts", -points).bind("bd", date).execute()
+        }
+    }
+
+    /** One reversal row (+points) for every redemption that was posted and voided afterwards. Returns how many were posted. */
+    fun postReversals(h: Handle, outlet: Long, programme: Long, today: LocalDate): Int = h.createQuery(
+        """
+        SELECT r.client_uuid::text, r.points_total FROM app.redemption r
+         WHERE r.outlet_id = :o AND r.programme_id = :p AND r.voided_at IS NOT NULL
+           AND EXISTS (SELECT 1 FROM app.loyalty_ledger l WHERE l.source_type = 'redemption' AND l.source_id = r.client_uuid::text)
+           AND NOT EXISTS (SELECT 1 FROM app.loyalty_ledger v WHERE v.source_type = 'redemption_void' AND v.source_id = r.client_uuid::text)
+         ORDER BY r.id
+        """.trimIndent(),
+    ).bind("o", outlet).bind("p", programme).map { rs, _ -> rs.getString(1) to rs.getInt(2) }.list().sumOf { (cu, points) ->
+        h.createUpdate(
+            "INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, flags) VALUES (:o, :p, 'redemption_void', :cu, :pts, :bd, '{}') ON CONFLICT (source_type, source_id) DO NOTHING",
+        ).bind("o", outlet).bind("p", programme).bind("cu", cu).bind("pts", points).bind("bd", today).execute()
+    }
+
+    /** The expiry correction of one pair as of [today] (Dhaka): at most ONE row (E - L), see the class text. Returns 1 when a row was posted, else 0. */
+    fun expire(h: Handle, outlet: Long, programme: Long, today: LocalDate): Int {
+        val rows = rowsOf(h, outlet, programme)
+        val correction = -lapsing(rows, today)   // = E - L
+        if (correction == 0L) return 0
+        val n = rows.count { it.sourceType == EXPIRY && it.businessDate == today } + 1
+        return h.createUpdate(
+            "INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, flags) VALUES (:o, :p, 'expiry', :sid, :pts, :bd, '{}') ON CONFLICT (source_type, source_id) DO NOTHING",
+        ).bind("o", outlet).bind("p", programme).bind("sid", "$programme:$outlet:$today:$n").bind("pts", Math.toIntExact(-correction)).bind("bd", today).execute()
+    }
+
+    /** Everything for ONE pair under its advisory lock, in the caller's transaction: (redemption and reversal rows posted, expiry rows posted). */
+    fun reconcilePair(h: Handle, outlet: Long, programme: Long, today: LocalDate): Pair<Int, Int> {
+        lockPair(h, outlet, programme)
+        val posted = postRedemptions(h, outlet, programme) + postReversals(h, outlet, programme, today)
+        return posted to expire(h, outlet, programme, today)
+    }
+
+    /** Where the last pass got to (kept in memory; a restart simply makes the next pass a full sweep). */
+    data class Cursor(val ledgerId: Long = 0, val redemptionId: Long = 0, val date: LocalDate? = null, val fullSweepOn: LocalDate? = null)
+
+    /** Ids this far behind the cursor are looked at again: a lower id can commit after a higher one. */
+    private const val OVERLAP = 1_000L
+
+    /**
+     * The pairs one pass must reconcile: pairs with a stored redemption that is not posted yet (or a posted one that was voided and has no reversal yet), pairs with a ledger row
+     * newer than the cursor, and pairs with a credit whose `expires_on` passed since the cursor's date. With no cursor, or on the first pass of a Dhaka day, every pair with an
+     * expiring credit (the daily full sweep, which also finds an old redemption voided since).
+     */
+    fun pairsToReconcile(h: Handle, today: LocalDate, cursor: Cursor): Set<Pair<Long, Long>> {
+        val full = cursor.date == null || cursor.fullSweepOn != today
+        val out = LinkedHashSet<Pair<Long, Long>>()
+        fun add(sql: String, bind: (org.jdbi.v3.core.statement.Query) -> Unit = {}) {
+            h.createQuery(sql).also(bind).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().let(out::addAll)
+        }
+        add(
+            """
+            SELECT DISTINCT r.outlet_id, r.programme_id FROM app.redemption r
+             WHERE (:full OR r.id > :rid) AND (
+                   (r.voided_at IS NULL AND NOT EXISTS (SELECT 1 FROM app.loyalty_ledger l WHERE l.source_type = 'redemption' AND l.source_id = r.client_uuid::text))
+                OR (r.voided_at IS NOT NULL AND EXISTS (SELECT 1 FROM app.loyalty_ledger l WHERE l.source_type = 'redemption' AND l.source_id = r.client_uuid::text)
+                                           AND NOT EXISTS (SELECT 1 FROM app.loyalty_ledger v WHERE v.source_type = 'redemption_void' AND v.source_id = r.client_uuid::text)))
+            """.trimIndent(),
+        ) { it.bind("full", full).bind("rid", maxOf(0L, cursor.redemptionId - OVERLAP)) }
+        if (full) {
+            add("SELECT DISTINCT outlet_id, programme_id FROM app.loyalty_ledger WHERE points > 0 AND expires_on IS NOT NULL")
+        } else {
+            add("SELECT DISTINCT outlet_id, programme_id FROM app.loyalty_ledger WHERE id > :lid AND source_type <> 'expiry'") { it.bind("lid", maxOf(0L, cursor.ledgerId - OVERLAP)) }
+            add("SELECT DISTINCT outlet_id, programme_id FROM app.loyalty_ledger WHERE points > 0 AND expires_on >= :since AND expires_on < :d") { it.bind("since", cursor.date).bind("d", today) }
+        }
+        return out
     }
 
     /** Adjustment plumbing: one signed row, idempotent on [sourceId]. Returns true when it was posted now, false on a replay. */
@@ -133,27 +171,54 @@ object LoyaltyLedger {
             VALUES (:o, :p, 'adjustment', :sid, :pts, :bd, :exp, CAST(:flags AS text[])) ON CONFLICT (source_type, source_id) DO NOTHING
             """.trimIndent(),
         ).bind("o", outletId).bind("p", programmeId).bind("sid", sourceId).bind("pts", points).bind("bd", businessDate).bind("exp", expiresOn)
-            .bind("flags", flags.joinToString(",", "{", "}")).execute() == 1
+            .bind("flags", pgTextArray(flags)).execute() == 1
     }
+
+    /** A PostgreSQL text[] literal with every element quoted and escaped. */
+    internal fun pgTextArray(items: List<String>): String = items.joinToString(",", "{", "}") { "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\"" }
+
+    const val REDEMPTION = "redemption"
+    const val VOID = "redemption_void"
+    const val EXPIRY = "expiry"
 }
 
 /**
- * The worker job around [LoyaltyLedger]: redemptions are posted, then the expiry runs, in one transaction per pass. An Exception is logged and the schedule goes on; an Error
- * ends the process through [exitIfFatal] (lead's ruling on push A3). The first pass is 7 minutes after start (never 0), then every 10 minutes.
+ * The worker job around [LoyaltyLedger] (D-LOY-API-22). One pass = the pairs from [LoyaltyLedger.pairsToReconcile], EACH IN ITS OWN TRANSACTION (one failing pair is logged by class
+ * and does not roll back the others; the cursor does not advance past a failed pass, so it is looked at again). An Exception is logged and the schedule goes on; an Error ends the
+ * process through [exitIfFatal] (lead's ruling on push A3). The first pass is 7 minutes after start (never 0), then every 10 minutes; the first pass after a start and the first of
+ * each Dhaka day is a full sweep.
  */
-class LoyaltyLedgerJob(private val db: Database, private val config: ServerConfig, private val clock: AronClock = AronClock.SYSTEM) {
+class LoyaltyLedgerJob(private val db: Database, private val clock: AronClock = AronClock.SYSTEM) {
     private val log = LoggerFactory.getLogger("aron.loyalty-ledger")
+    private var cursor = LoyaltyLedger.Cursor()
 
-    /** One pass; returns (redemptions posted, expiry rows posted). */
+    /** One pass; returns (redemption and reversal rows posted, expiry rows posted). Called by one thread at a time. */
     fun runOnce(): Pair<Int, Int> {
-        val reject = runCatching { config.value("cfg.loyalty.negative_balance_policy").jsonPrimitive.content == "reject" }.getOrDefault(false)
         val today = BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
-        return db.jdbi.inTransaction<Pair<Int, Int>, Exception> { h -> LoyaltyLedger.postRedemptions(h, reject) to LoyaltyLedger.expire(h, today) }
+        val before = cursor
+        val (lid, rid, pairs) = db.jdbi.withHandle<Triple<Long, Long, Set<Pair<Long, Long>>>, Exception> { h ->
+            Triple(
+                h.createQuery("SELECT COALESCE(max(id), 0) FROM app.loyalty_ledger").mapTo(Long::class.java).one(),
+                h.createQuery("SELECT COALESCE(max(id), 0) FROM app.redemption").mapTo(Long::class.java).one(),
+                LoyaltyLedger.pairsToReconcile(h, today, before),
+            )
+        }
+        var posted = 0; var expired = 0; var failed = 0
+        for ((outlet, programme) in pairs) {
+            try {
+                val (a, b) = db.jdbi.inTransaction<Pair<Int, Int>, Exception> { h -> LoyaltyLedger.reconcilePair(h, outlet, programme, today) }
+                posted += a; expired += b
+            } catch (e: Exception) {
+                failed++; log.error("loyalty ledger pair failed: {}", e.javaClass.simpleName)
+            }
+        }
+        if (failed == 0) cursor = LoyaltyLedger.Cursor(lid, rid, today, if (before.date == null || before.fullSweepOn != today) today else before.fullSweepOn)
+        return posted to expired
     }
 
     fun start() {
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "loyalty-ledger").apply { isDaemon = true } }.scheduleWithFixedDelay({
-            runCatching { runOnce() }.onSuccess { (r, e) -> if (r > 0 || e > 0) log.info("loyalty ledger: {} redemption(s) posted, {} expiry row(s)", r, e) }
+            runCatching { runOnce() }.onSuccess { (r, e) -> if (r > 0 || e > 0) log.info("loyalty ledger: {} redemption row(s) posted, {} expiry row(s)", r, e) }
                 .onFailure { it.exitIfFatal(log, "loyalty ledger"); log.error("loyalty ledger pass failed: {}", it.javaClass.simpleName) }
         }, 7, 10, TimeUnit.MINUTES)
     }

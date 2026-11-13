@@ -199,7 +199,7 @@ object BundleProgrammes {
         val balance = rs.getLong("balance")
         buildJsonObject {
             put("outlet_id", rs.getLong("outlet_id")); put("programme_id", rs.getLong("programme_id")); put("league_label", rs.getString("league_label"))
-            put("balance_points", balance); put("expiring_points", rs.getLong("expiring").coerceIn(0, maxOf(balance, 0)))
+            put("balance_points", balance); put("overdrawn", balance < 0); put("expiring_points", rs.getLong("expiring").coerceIn(0, maxOf(balance, 0)))
             put("expiry_date", rs.getObject("expiry_date", LocalDate::class.java)?.toString()); put("as_of_date", cut.toString())
         }
     }.list().capped(limit)

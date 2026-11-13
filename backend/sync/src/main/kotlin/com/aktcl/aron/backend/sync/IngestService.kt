@@ -1080,7 +1080,7 @@ class IngestService(
         // 8b. Handlers' early checks (before parents): a refusal here is final even when the parent is missing.
         handlers.forType(r.type).let { early ->
             if (early.isNotEmpty()) {
-                val rec = IngestRecord(r.type, r.clientUuid, bd, env, payload, ctx.up.userId, ctx.up.role, ctx.up.deviceId, ctx.batchUuid, ctx.now)
+                val rec = IngestRecord(r.type, r.clientUuid, bd, env, payload, ctx.up.userId, ctx.up.role, ctx.up.deviceId, ctx.batchUuid, ctx.now, ctx.release)
                 for (hd in early) hd.checkEarly(h, rec)?.let { if (!ctx.overrides(it.code)) return refuse(h, ctx, r, bd, it.code, it.detail) }
             }
         }
@@ -1157,7 +1157,7 @@ class IngestService(
         DuesLedger.check(h, r.type, payload)?.let { (code, detail) -> return refuse(h, ctx, r, bd, code, detail) }
         val hs = handlers.forType(r.type)
         val ingestRec = if (hs.isEmpty()) null else IngestRecord(
-            r.type, r.clientUuid, bd, env, payload, ctx.up.userId, ctx.up.role, ctx.up.deviceId, ctx.batchUuid, ctx.now,
+            r.type, r.clientUuid, bd, env, payload, ctx.up.userId, ctx.up.role, ctx.up.deviceId, ctx.batchUuid, ctx.now, ctx.release,
         )
         for (hd in hs) {
             val refusal = hd.check(h, ingestRec!!) ?: continue
