@@ -124,7 +124,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.aktcl.aron.feature.home.R as HomeR
 
-enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS }
+enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS, TARGET_HOOK }
 
 /** The screen tree of the SR app: Back and the top bar's back button follow the same parent mapping; depth drives the transition direction. */
 object SrNav {
@@ -371,6 +371,8 @@ fun SrApp(
             val snap = homeSnap
             HomeContent(
                 header, HomeTiles.resolve(enabledTiles, tasks.openCount), data.freshness, user.offline, health ?: deviceHealth,
+                // P-SR2 (manual 10): "বিস্তারিত" on the target card opens the target hook page, never the Summary
+                onHero = { screen = SrScreen.TARGET_HOOK },
                 onTile = { t ->
                     when (t) {
                         HomeTile.ATTENDANCE -> screen = SrScreen.ATTENDANCE
@@ -513,6 +515,9 @@ fun SrApp(
         SrScreen.JOURNEY -> SrFrame(stringResource(HomeR.string.hm_tile_sales_journey), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_journey) { JourneyHost(day, locale) }
         SrScreen.KPI -> SrFrame(stringResource(HomeR.string.hm_tile_kpi), goBack, sync, openSync, icon = CoreR.drawable.aron_art_kpi) { KpiHost(day) }
         SrScreen.TUTORIAL -> TutorialHost(day, onBack = goBack)
+        SrScreen.TARGET_HOOK -> SrFrame(com.aktcl.aron.feature.memo.ui.programmeHookTitle(com.aktcl.aron.feature.memo.ui.ProgrammeHook.TARGET), goBack, sync, openSync) {
+            com.aktcl.aron.feature.memo.ui.ProgrammeHookContent(com.aktcl.aron.feature.memo.ui.ProgrammeHook.TARGET, onBack = goBack)
+        }
         SrScreen.COMING_SOON -> SrFrame(stringResource(soonTitle(soonTile)), goBack, sync, openSync) { ComingSoonContent(onBack = goBack) }
         SrScreen.FORCE -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sale) {
             val st by day.visitFlow.state.collectAsState()

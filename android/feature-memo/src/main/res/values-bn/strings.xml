@@ -109,4 +109,16 @@
     <string name="memo_col_price_plain">দাম</string>
     <string name="memo_selector_total">: %1$s</string>
     <string name="memo_due_word">বাকি</string>
+    <string name="hook_target_title">টার্গেট ও অ্যাচিভমেন্ট</string>
+    <string name="hook_kpi_title">KPI Dashboard</string>
+    <string name="hook_brand_title">Brand wise KPI</string>
+    <string name="hook_note">এই পেজে আগের অ্যাপের মতোই নিচের তথ্যগুলো দেখানো হবে। হিসাব চালু হলে এখানে দেখা যাবে; এখন কোনো সংখ্যা দেখানো হচ্ছে না।</string>
+    <string name="hook_later">পরে আসবে</string>
+    <string name="hook_target_what">প্রতিটি পণ্যের জন্য: টার্গেট, অ্যাচিভ, বাকি, অর্জন, ADS, TADS, PADS, RADS</string>
+    <string name="hook_kpi_volume">Volume Target vs Achievement</string>
+    <string name="hook_kpi_memo">Memo Target vs Achievement</string>
+    <string name="hook_kpi_blm">BLM Target vs Achievement</string>
+    <string name="hook_kpi_cpr">CPR - Target Call vs Successful Call</string>
+    <string name="hook_brand_what">ব্র্যান্ড অনুযায়ী টার্গেট, KPI আজকের মান ও অর্জন (সিগারেট বিক্রয় ও মেমো)</string>
+    <string name="hook_back">ফিরে যান</string>
 </resources>

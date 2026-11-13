@@ -110,4 +110,16 @@
     <string name="memo_col_price_plain">Price</string>
     <string name="memo_selector_total">: %1$s</string>
     <string name="memo_due_word">Due</string>
+    <string name="hook_target_title">Target and achievement</string>
+    <string name="hook_kpi_title">KPI Dashboard</string>
+    <string name="hook_brand_title">Brand wise KPI</string>
+    <string name="hook_note">This page will show the figures below, as the earlier app does. They appear when the programme is switched on; no figures are shown now.</string>
+    <string name="hook_later">Coming later</string>
+    <string name="hook_target_what">For every product: target, achieved, remaining, achievement, ADS, TADS, PADS, RADS</string>
+    <string name="hook_kpi_volume">Volume Target vs Achievement</string>
+    <string name="hook_kpi_memo">Memo Target vs Achievement</string>
+    <string name="hook_kpi_blm">BLM Target vs Achievement</string>
+    <string name="hook_kpi_cpr">CPR - Target Call vs Successful Call</string>
+    <string name="hook_brand_what">By brand: target, KPI today and achievement (cigarette sales and memos)</string>
+    <string name="hook_back">Go back</string>
 </resources>

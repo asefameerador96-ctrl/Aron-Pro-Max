@@ -165,4 +165,65 @@ class Sr2Shot {
             com.aktcl.aron.feature.tasks.TaskContent(com.aktcl.aron.feature.tasks.TaskListState(emptyList(), 0, null, showEmptyState = true), {}, manual = true)
         }
     }
+
+    // ---- Product QC (manuals 25, 26) ----
+    private val maxr = com.aktcl.aron.feature.sale.domain.SaleSku(100, "MAXR10", "cigarette", "MaxR-10S", null, "stick", 10, 8_000, 1, "2026-09-01", stockBase = 400)
+    private val maxb = com.aktcl.aron.feature.sale.domain.SaleSku(101, "MAXB10", "cigarette", "MaxB-10S", null, "stick", 10, 8_000, 1, "2026-09-01", stockBase = 400)
+    private val qcSkus = listOf(maxr, maxb, com.aktcl.aron.feature.sale.domain.SaleSku(102, "MAXWB10", "cigarette", "MaxWB-10S", null, "stick", 10, 8_000, 1, "2026-09-01", stockBase = 400))
+    private val qcCatalog = qcSkus.associateBy { it.skuId }
+    private fun qcDraft0() = com.aktcl.aron.feature.sale.domain.SaleDraft("v1", 50001, 10231, "2026-11-05", memoUuid = "m1")
+    private val qcBase = com.aktcl.aron.feature.sale.domain.SaleDraftOps.setQuantity(qcDraft0(), 100, 10, com.aktcl.aron.rules.QtyUnit.PACK)
+    private val qcNone = com.aktcl.aron.feature.sale.domain.SaleReviewCalculator.review(qcBase, qcCatalog)
+    private val qcSaved = com.aktcl.aron.feature.sale.domain.SaleReviewCalculator.review(
+        com.aktcl.aron.feature.sale.domain.SaleDraftOps.setQc(com.aktcl.aron.feature.sale.domain.SaleDraftOps.setQc(qcBase, com.aktcl.aron.feature.sale.domain.QcEntry(100, "damaged_crushed", "MFC", 5)), com.aktcl.aron.feature.sale.domain.QcEntry(100, "expired_stock", "MKT", 5)), qcCatalog,
+    )
+
+    @Composable
+    private fun QcFrame(title: String, review: com.aktcl.aron.feature.sale.domain.SaleReview, startOnEntry: Boolean = false) = ParityFrame(title, null) {
+        val qc = review.qc
+        com.aktcl.aron.feature.sale.ui.QcManualScreen(
+            qcSkus, review, { id, code -> qc.firstOrNull { it.entry.skuId == id && it.entry.faultTypeCode == code }?.entry?.defectQty ?: 0L }, { _, _, _ -> }, false, {},
+            capMtkOf = { 594_500L }, startOnEntrySku = if (startOnEntry) 100L else null,
+        )
+    }
+
+    @Config(qualifiers = "bn-w360dp-h700dp") @Test fun qc_tiles_empty_bn() = shot("sr2_qc_tiles_empty_bn") { QcFrame("QC", qcNone) }
+    @Config(qualifiers = "bn-w360dp-h700dp") @Test fun qc_tiles_saved_bn() = shot("sr2_qc_tiles_saved_bn") { QcFrame("QC", qcSaved) }
+    @Config(qualifiers = "bn-w360dp-h900dp") @Test fun qc_entry_bn() = shot("sr2_qc_entry_bn") { QcFrame("QC এন্ট্রি", qcSaved, startOnEntry = true) }
+
+    // ---- DRP slide (manuals 33, 34) ----
+    private val slideSkus = listOf(
+        com.aktcl.aron.feature.sale.domain.SaleSku(100, "MAXR10", "cigarette", "MaxR-10S", null, "stick", 10, 8_000, 1, "2026-09-01", stockBase = 400, drp = com.aktcl.aron.feature.sale.domain.DrpRule(10)),
+        com.aktcl.aron.feature.sale.domain.SaleSku(101, "MAXR20", "cigarette", "MaxR-20S", null, "stick", 20, 16_000, 1, "2026-09-01", stockBase = 400, drp = com.aktcl.aron.feature.sale.domain.DrpRule(10)),
+    )
+    private val slideReview = com.aktcl.aron.feature.sale.domain.SaleReviewCalculator.review(
+        com.aktcl.aron.feature.sale.domain.SaleDraftOps.setQuantity(com.aktcl.aron.feature.sale.domain.SaleDraft("v1", 50001, 10231, "2026-11-05", memoUuid = "m1"), 100, 10, com.aktcl.aron.rules.QtyUnit.PACK),
+        slideSkus.associateBy { it.skuId },
+    )
+
+    @Test fun slide_bn() = shot("sr2_slide_bn") {
+        ParityFrame("স্লাইড", null) {
+            com.aktcl.aron.feature.sale.ui.SlideManualScreen(
+                slideSkus, slideReview, { if (it == 100L) 10L else 0L }, { _, _ -> }, {},
+                listOf("Savar Metro (1618409)", "রুট: Savar BazarDaily", "ক্লাস্টার: Madrasa Road"),
+            )
+        }
+    }
+    @Test fun slide_empty_bn() = shot("sr2_slide_empty_bn") {
+        ParityFrame("স্লাইড", null) {
+            com.aktcl.aron.feature.sale.ui.SlideManualScreen(emptyList(), slideReview, { 0L }, { _, _ -> }, {}, listOf("Savar Metro (1618409)"))
+        }
+    }
+
+    // ---- Programme hook pages (manuals 10, 60, 61) ----
+    @Test fun hook_target_bn() = shot("sr2_hook_target_bn") {
+        ParityFrame(com.aktcl.aron.feature.memo.ui.programmeHookTitle(com.aktcl.aron.feature.memo.ui.ProgrammeHook.TARGET), null) {
+            com.aktcl.aron.feature.memo.ui.ProgrammeHookContent(com.aktcl.aron.feature.memo.ui.ProgrammeHook.TARGET, {})
+        }
+    }
+    @Test fun hook_kpi_bn() = shot("sr2_hook_kpi_bn") {
+        ParityFrame(com.aktcl.aron.feature.memo.ui.programmeHookTitle(com.aktcl.aron.feature.memo.ui.ProgrammeHook.KPI), null) {
+            com.aktcl.aron.feature.memo.ui.ProgrammeHookContent(com.aktcl.aron.feature.memo.ui.ProgrammeHook.KPI, {})
+        }
+    }
 }

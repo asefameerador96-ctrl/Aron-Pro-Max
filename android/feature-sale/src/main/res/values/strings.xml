@@ -146,4 +146,25 @@
     <string name="edit_reason_cancel">Cancel</string>
     <string name="edit_reason_submit">Submit</string>
     <string name="edit_reason_glyph_dropdown">▾</string>
+    <string name="qc_entry_title">QC entry</string>
+    <string name="qc_save">Save</string>
+    <string name="qc_col_fault">Fault type</string>
+    <string name="qc_col_kind">Kind</string>
+    <string name="qc_col_qty">Quantity</string>
+    <string name="qc_col_sku">SKU</string>
+    <string name="qc_col_qctype">QC type</string>
+    <string name="qc_total_settled">Total QC settled</string>
+    <string name="qc_settlement">Settlement amount</string>
+    <string name="qc_kind_mfc">MFC Fault</string>
+    <string name="qc_kind_mkt">MKT Fault</string>
+    <string name="qc_submit_arrow">→</string>
+    <string name="slide_col_empty">Empty packets</string>
+    <string name="slide_col_sku">SKU</string>
+    <string name="slide_offer_ribbon">OFFER</string>
+    <string name="slide_discount_title">Discount</string>
+    <string name="slide_offer_text">%1$s empty packs get 1 pack</string>
+    <string name="slide_close">Close</string>
+    <string name="slide_submit">Submit</string>
+    <string name="slide_save">Save</string>
+    <string name="slide_close_x">Close</string>
 </resources>

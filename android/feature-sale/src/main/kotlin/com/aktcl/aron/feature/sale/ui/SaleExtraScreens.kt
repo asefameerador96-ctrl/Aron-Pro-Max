@@ -169,6 +169,10 @@ object CreditTags {
 
 /** Test tags of the QC screen. */
 object QcTags {
+    const val TILE = "qc_tile"
+    const val SAVE = "qc_save"
+    const val CANCEL = "qc_cancel"
+    const val DELETE = "qc_delete"
     const val CARD = "qc_card"
     const val QTY_FIELD = "qc_qty_field"
     const val SUMMARY_ROW = "qc_summary_row"

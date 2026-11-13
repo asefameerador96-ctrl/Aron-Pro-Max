@@ -159,7 +159,7 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
         // and as the three header lines of the review (outlet and code, route, cluster)
         SaleRoute(
             vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f),
-            zeroSaleReasonPicker = true, quantityPopup = true, skuStats = skuStats,
+            zeroSaleReasonPicker = true, quantityPopup = true, skuStats = skuStats, vendorQc = true,
             retailerLabel = outlet?.let { com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) },
             outletLines = listOfNotNull(
                 outlet?.let { "${it.name} (${com.aktcl.aron.core.ui.localizedDigits(it.code)})" },

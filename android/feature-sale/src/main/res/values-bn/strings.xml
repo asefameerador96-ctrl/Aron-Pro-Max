@@ -145,4 +145,25 @@
     <string name="edit_reason_cancel">বাতিল</string>
     <string name="edit_reason_submit">জমা দিন</string>
     <string name="edit_reason_glyph_dropdown">▾</string>
+    <string name="qc_entry_title">QC এন্ট্রি</string>
+    <string name="qc_save">সংরক্ষণ</string>
+    <string name="qc_col_fault">ফল্ট টাইপ</string>
+    <string name="qc_col_kind">প্রকার</string>
+    <string name="qc_col_qty">পরিমাণ</string>
+    <string name="qc_col_sku">এসকেইউ</string>
+    <string name="qc_col_qctype">QC টাইপ</string>
+    <string name="qc_total_settled">মোট QC নিষ্পত্তি</string>
+    <string name="qc_settlement">সেটেলমেন্ট পরিমাণ</string>
+    <string name="qc_kind_mfc">MFC Fault</string>
+    <string name="qc_kind_mkt">MKT Fault</string>
+    <string name="qc_submit_arrow">→</string>
+    <string name="slide_col_empty">খালি প্যাকেট</string>
+    <string name="slide_col_sku">এসকেইউ</string>
+    <string name="slide_offer_ribbon">OFFER</string>
+    <string name="slide_discount_title">ছাড়</string>
+    <string name="slide_offer_text">প্রতি %1$s টি খালি প্যাকেটে ১ টি প্যাকেট</string>
+    <string name="slide_close">বন্ধ করুন</string>
+    <string name="slide_submit">জমা দিন</string>
+    <string name="slide_save">সংরক্ষণ</string>
+    <string name="slide_close_x">বন্ধ</string>
 </resources>

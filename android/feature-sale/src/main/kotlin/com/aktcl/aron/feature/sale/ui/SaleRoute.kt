@@ -42,6 +42,8 @@ fun SaleRoute(
     quantityPopup: Boolean = false, skuStats: Map<Long, com.aktcl.aron.feature.sale.domain.SkuStats> = emptyMap(),
     /** D-SR-MAN-S3-02: ask the nearby-devices permission on entering and toast "printer connected" (the SR manual, screenshot 17); AMO keeps false. */
     printerAssist: Boolean = false,
+    /** P-SR2 (manuals 25, 26): the vendor's QC pages (tiles, entry table with সংরক্ষণ / বাতিল / ডিলিট); off for the AMO. [onQcEntryPage] tells the host when the entry page is open. */
+    vendorQc: Boolean = false, onQcEntryPage: (Boolean) -> Unit = {},
 ) {
     val ui by vm.state.collectAsState()
     var stage by remember { mutableStateOf(SaleStage.Entry) }
@@ -51,6 +53,10 @@ fun SaleRoute(
     val review = ui.review
     val skus = ui.catalog.values.toList()
     HoldPrinter(printer, assist = printerAssist)
+    // the vendor's QC tile page has no Cancel button: back from it is the old Cancel (a QC-only sale is dropped, otherwise what was typed since Review is put back)
+    androidx.activity.compose.BackHandler(enabled = vendorQc && stage == SaleStage.Qc) {
+        if (qcOnlyStarted) { qcOnlyStarted = false; vm.cancelQcOnly(); stage = SaleStage.Entry } else { vm.restoreQc(qcBefore); stage = SaleStage.Review }
+    }
     Column(modifier.fillMaxSize()) {
         // the printer state hangs on the host's top bar (the kit badge); nothing printer-shaped is drawn in here any more
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -71,8 +77,19 @@ fun SaleRoute(
                         retailerLabel = retailerLabel,
                         onPreviousSales = onPreviousSales, historyLabel = historyLabel,
                     )
-                    SaleStage.Slide -> if (review != null) SlideScreen(skus, review, { id -> draft?.slide?.firstOrNull { it.skuId == id }?.emptyPackets ?: 0L }, { id, n -> vm.setSlide(id, n) })
-                    SaleStage.Qc -> if (review != null) QcScreen(
+                    SaleStage.Slide -> if (review != null && vendorQc) SlideManualScreen(
+                        skus, review, { id -> draft?.slide?.firstOrNull { it.skuId == id }?.emptyPackets ?: 0L }, { id, n -> vm.setSlide(id, n) },
+                        onSubmit = { stage = SaleStage.Review }, outletLines = outletLines,
+                    ) else if (review != null) SlideScreen(skus, review, { id -> draft?.slide?.firstOrNull { it.skuId == id }?.emptyPackets ?: 0L }, { id, n -> vm.setSlide(id, n) })
+                    SaleStage.Qc -> if (review != null && vendorQc) QcManualScreen(
+                        if (draft?.lines.isNullOrEmpty()) skus else skus.filter { s -> draft?.lines?.any { it.skuId == s.skuId } == true }, review,
+                        qtyOf = { id, code -> draft?.qc?.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L },
+                        onQty = { id, code, q -> QcEntryModel.groupOf(code)?.let { g -> vm.setQc(QcEntry(id, code, g, q)) } },
+                        capMtkOf = { id -> ui.qcCapMtkBySku[id] },
+                        onClearSku = { id -> QcEntryModel.APP_TYPES.forEach { t -> vm.setQc(QcEntry(id, t.code, t.group, 0)) } },
+                        locked = draft?.qcCompleted == true, onDone = { qcOnlyStarted = false; vm.completeQc(); stage = SaleStage.Review },
+                        onEntryPage = onQcEntryPage,
+                    ) else if (review != null) QcScreen(
                         // the memo's SKUs; with no sale line the whole catalog is offered (QC-only sale, D-18)
                         if (draft?.lines.isNullOrEmpty()) skus else skus.filter { s -> draft?.lines?.any { it.skuId == s.skuId } == true }, review,
                         qtyOf = { id, code -> draft?.qc?.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L },
