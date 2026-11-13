@@ -124,7 +124,7 @@ private fun TsoRoot(user: HomeUser, unread: Int, nav: TsoNavState, dashboard: Ts
     val n = nightRoles()
     Box(Modifier.fillMaxSize().nightPage(n)) {
         Column(Modifier.fillMaxSize()) {
-            TsoRootTopBar(user.fullName, unread, onMenu = onMenu, onBell = { nav.open(TsoScreen.NOTIFICATIONS) }, onGreeting = { nav.open(TsoScreen.SETTINGS) })
+            TsoRootTopBar(user.fullName, unread, onMenu = onMenu, onBell = { nav.open(TsoScreen.NOTIFICATIONS) })
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (dashboard != null) dashboard(nav, null) else TsoSoon(stringResource(com.aktcl.aron.feature.tso.R.string.tso_dash_title), Modifier)
             }

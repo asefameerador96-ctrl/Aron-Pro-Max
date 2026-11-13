@@ -83,7 +83,7 @@ class TsoShellTest {
 
     @Test fun drawerEntriesKeepTheContractOrder() {
         assertEquals(
-            listOf("dashboard", "tickets", "leave", "final_submit", "periphery", "my_call", "target_status", "feedback", "logout"),
+            listOf("dashboard", "tickets", "leave", "final_submit", "periphery", "my_call", "target_status", "feedback", "settings", "logout"),
             TsoDrawer.entries.map { it.id },
         )
         assertEquals(listOf("ticket_dashboard", "all_tickets", "quick_ticket", "create_ticket"), TsoDrawer.entries[1].children.map { it.id })
@@ -94,7 +94,7 @@ class TsoShellTest {
             listOf(
                 TsoScreen.DASHBOARD, TsoScreen.TICKET_DASHBOARD, TsoScreen.TICKET_LIST, TsoScreen.TICKET_QUICK, TsoScreen.TICKET_CREATE, TsoScreen.LEAVE,
                 TsoScreen.FINAL_SUBMIT, TsoScreen.MY_TEAM, TsoScreen.RETAILER, TsoScreen.MY_VISIT_PLAN, TsoScreen.SET_PLAN, TsoScreen.TARGET_STATUS,
-                TsoScreen.FEEDBACK_NEW, TsoScreen.FEEDBACK_LIST,
+                TsoScreen.FEEDBACK_NEW, TsoScreen.FEEDBACK_LIST, TsoScreen.SETTINGS,
             ),
             TsoDrawer.screens,
         )
@@ -103,8 +103,7 @@ class TsoShellTest {
     @Test fun drawerLabelsAndSubtitlesAreTheScreenshotWords() {
         show()
         openDrawer()
-        compose.onNodeWithText("TSO").assertExists()
-        compose.onNodeWithText("Apsis").assertExists()
+        compose.onNodeWithText("TSO").assertDoesNotExist() // no header block (D-PAR-TSO-01)
         // screenshot 9
         rowHas("dashboard", "Dashboard", "View Dashboard")
         rowHas("tickets", "Tickets", "Raise and manage tickets")
@@ -183,14 +182,13 @@ class TsoShellTest {
         compose.onNodeWithTag("t_dashboard").assertIsDisplayed()
     }
 
-    @Test fun theDrawerHasNoGearAndTheGreetingOpensSettingsAndBackReturns() {
+    @Test fun theDrawerHasNoGearAndTheSettingsRowOpensSettingsAndBackReturns() {
         show()
         openDrawer()
         // D-PAR-TSO-01: the drawer starts with the Dashboard row, no header and no gear
         compose.onNodeWithTag("tso_shell_gear").assertDoesNotExist()
         compose.onNodeWithTag(TsoShellTags.row("dashboard"), useUnmergedTree = true).assertIsDisplayed()
-        systemBack()
-        compose.onNodeWithTag(TsoShellTags.GREETING).performClick(); compose.waitForIdle()
+        tap("settings")
         compose.onNodeWithTag(TsoSettingsTags.CHANGE_PASSWORD).performScrollTo().assertExists()
         compose.onNodeWithTag(TsoKitTags.HOME).assertDoesNotExist()
         systemBack()
@@ -201,7 +199,7 @@ class TsoShellTest {
         assertEquals(
             setOf(
                 TsoScreen.DASHBOARD, TsoScreen.LOGIN_SUBMIT_STATUS, TsoScreen.MY_TEAM, TsoScreen.RETAILER, TsoScreen.SET_PLAN,
-                TsoScreen.MY_VISIT_PLAN, TsoScreen.FEEDBACK_NEW, TsoScreen.FEEDBACK_LIST,
+                TsoScreen.MY_VISIT_PLAN, TsoScreen.FEEDBACK_NEW, TsoScreen.FEEDBACK_LIST, TsoScreen.SETTINGS,
             ),
             TsoFab.screens,
         )

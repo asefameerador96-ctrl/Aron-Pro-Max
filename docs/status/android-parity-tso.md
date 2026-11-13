@@ -10,7 +10,7 @@ Decision key: FIX, RECORD (exists, record every state then compare), KEEP (a sta
 |---|---|---|---|
 | Final Submit 23: five cascading dropdowns on every path | FIX: the flat-zone fallback now also draws Wing, Division, Territory, House (disabled, names unreadable offline) above the flat Zone; screenshot tests use the cascade (D-PAR-TSO-02) | slice 1 | `tso_final_submit_pick_bn`, `_review_en`, `_done_en`, `_200_*` re-recorded |
 | Final Submit 25: red clear icon on cards with data | FIX the icon (D-PAR-TSO-03); the clear action has no server call: request row 1, the icon does nothing until the host wires it | slice 1 | `tso_fs_s25_*` |
-| Drawer header (27, 09, 30) | FIX: no header block, no gear; starts with the Dashboard row; Settings reached by tapping the "Good day, <name>" greeting on the Dashboard top bar, a place the old app has (D-PAR-TSO-01) | slice 1 | drawer goldens `tso_drawer_*` |
+| Drawer header (27, 09, 30) | FIX: no header block, no gear; starts with the Dashboard row; Settings is a plain drawer row above Log Out (lead ruling, D-PAR-TSO-01) | slice 1 | drawer goldens `tso_drawer_*` |
 | My Team 28 and Retailer 29: online map with fullscreen and recentre | FIX in code (D-PAR-TSO-06/07): map card with fullscreen and recentre buttons, legend/as-of/refresh/info rows only on the no-network list; RECORD of the online state is not possible in Robolectric (Google map view): request row 2 | slice 1 | none for the online state |
 | Visit query 37: text fields only | FIX: Yes/No variant removed, questions in Bangla in both languages (D-PAR-TSO-05); golden `tso_visit_query_bn.png` deleted | slice 1 | `tso_visit_query_3line_bn` |
 

@@ -128,6 +128,8 @@ object TsoDrawer {
                 TsoDrawerEntry("feedback_list", R.string.tso_drawer_feedback_list, null, AronIcons.Forum, TsoScreen.FEEDBACK_LIST),
             ),
         ),
+        // D-PAR-TSO-01 (lead ruling): Settings is a plain row, same style as the others, just above Log Out; no gear in the top bar
+        TsoDrawerEntry("settings", R.string.tso_drawer_settings, null, AronIcons.Settings, TsoScreen.SETTINGS),
         TsoDrawerEntry(TsoDrawerEntry.LOGOUT_ID, R.string.tso_drawer_logout, R.string.tso_drawer_logout_sub, AronIcons.Logout),
     )
 
@@ -170,7 +172,7 @@ object TsoFab {
  * (hidden at 0; "99+" above 99). The bell opens the inbox. No back button: the Dashboard is the root.
  */
 @Composable
-fun TsoRootTopBar(fullName: String, unread: Int, onMenu: () -> Unit, onBell: () -> Unit, modifier: Modifier = Modifier, onGreeting: (() -> Unit)? = null) {
+fun TsoRootTopBar(fullName: String, unread: Int, onMenu: () -> Unit, onBell: () -> Unit, modifier: Modifier = Modifier) {
     val n = nightRoles()
     Row(
         modifier
@@ -189,7 +191,7 @@ fun TsoRootTopBar(fullName: String, unread: Int, onMenu: () -> Unit, onBell: () 
         ) { Icon(AronIcons.Menu, contentDescription = null, tint = n.ink, modifier = Modifier.size(28.dp)) }
         Text(
             stringResource(R.string.tso_chrome_greeting, fullName),
-            Modifier.weight(1f).then(if (onGreeting != null) Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onGreeting) else Modifier).padding(start = 4.dp).testTag(TsoShellTags.GREETING),
+            Modifier.weight(1f).padding(start = 4.dp).testTag(TsoShellTags.GREETING),
             style = nightText(17.sp, n.ink), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
         val bellLabel = if (unread > 0) pluralStringResource(R.plurals.tso_chrome_bell_unread, unread, localizedNumber(unread.toLong())) else stringResource(R.string.tso_chrome_notifications)

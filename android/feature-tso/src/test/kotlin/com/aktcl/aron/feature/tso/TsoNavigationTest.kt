@@ -116,11 +116,10 @@ class TsoNavigationTest {
         TsoScreen.LEAVE to listOf("leave"), TsoScreen.FINAL_SUBMIT to listOf("final_submit"),
         TsoScreen.MY_TEAM to listOf("periphery", "my_team"), TsoScreen.RETAILER to listOf("periphery", "retailer"),
         TsoScreen.MY_VISIT_PLAN to listOf("my_call", "visit_plan"), TsoScreen.SET_PLAN to listOf("my_call", "set_plan"),
-        TsoScreen.FEEDBACK_NEW to listOf("feedback", "feedback_new"), TsoScreen.FEEDBACK_LIST to listOf("feedback", "feedback_list"),
+        TsoScreen.SETTINGS to listOf("settings"), TsoScreen.FEEDBACK_NEW to listOf("feedback", "feedback_new"), TsoScreen.FEEDBACK_LIST to listOf("feedback", "feedback_list"),
     )
 
     private fun openFromDrawer(screen: TsoScreen) {
-        if (screen == TsoScreen.SETTINGS) { compose.onNodeWithTag(TsoShellTags.GREETING).performClick(); compose.waitForIdle(); return }
         compose.onNodeWithTag(TsoShellTags.MENU).performClick(); compose.waitForIdle()
         val path = drawerPath.getValue(screen)
         fun click(id: String) { compose.onNodeWithTag(TsoShellTags.row(id), useUnmergedTree = true).performScrollTo().performClick(); compose.waitForIdle() }

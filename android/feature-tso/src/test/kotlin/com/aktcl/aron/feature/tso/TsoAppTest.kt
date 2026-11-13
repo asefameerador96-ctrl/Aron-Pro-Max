@@ -50,7 +50,8 @@ class TsoAppTest {
     }
 
     private fun openSettings() {
-        compose.onNodeWithTag(TsoShellTags.GREETING).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(TsoShellTags.MENU).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(TsoShellTags.row("settings"), useUnmergedTree = true).performScrollTo().performClick(); compose.waitForIdle()
     }
 
     @Test fun banglaRootGreetsTheUserAndADashboardWithoutAHostIsThePlaceholder() {
