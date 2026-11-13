@@ -43,7 +43,7 @@ import kotlin.test.assertTrue
 class SrManualSv1IngestTest {
     private lateinit var fresh: FreshDb
     private lateinit var ingest: IngestService
-    private val now = Instant.parse("2027-01-03T04:00:00Z")
+    @Volatile private var now = Instant.parse("2027-01-03T04:00:00Z")
     private val clock = AronClock { now }
     private val day = "2027-01-03"
     private var routeId = 0L
@@ -106,8 +106,8 @@ class SrManualSv1IngestTest {
     private fun typeOf(r: JsonObject) = (r["type"] as JsonPrimitive).content
     private fun skuOf(r: JsonObject) = ((r["payload"] as JsonObject)["sku_id"] as JsonPrimitive).content.toLong()
 
-    private fun envelope(type: String, cu: String, family: String, rank: Int, payload: JsonObject, route: Long, bd: String = day) = buildJsonObject {
-        val at = Instant.parse("2027-01-02T18:30:00Z").plusSeconds(minute.incrementAndGet() * 60L).toString()
+    private fun envelope(type: String, cu: String, family: String, rank: Int, payload: JsonObject, route: Long, bd: String = day, base: String = "2027-01-02T18:30:00Z") = buildJsonObject {
+        val at = Instant.parse(base).plusSeconds(minute.incrementAndGet() * 60L).toString()
         put("type", type); put("client_uuid", cu); put("family_uuid", family); put("rank", rank); put("schema_version", 1)
         put("business_date", bd); put("captured_at", at); put("captured_elapsed_ms", 18330000); put("boot_count", 412)
         put("clock_offset_ms", 0); put("captured_offline", true); put("route_id", route); put("bundle_version", "$bd:3")
@@ -386,6 +386,64 @@ class SrManualSv1IngestTest {
         // a route_add may carry the cluster (the end-to-end approval is in SrManualSv1ApiTest)
         val add = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("route_add", outletId, """{"cluster_id":$inZone}"""), routeId)
         assertEquals("accepted", send(sr, listOf(add)).ack(add))
+    }
+
+    @Test
+    fun aRewrittenRequestIsAckedDuplicateOnReplayAndAClusterRequestWithAGoneClusterIsRefusedForGood() {
+        val ghost = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("info", outletId, """{"name":"Replay Store","cluster_id":987654322}"""), routeId)
+        assertEquals("accepted", send(sr, listOf(ghost)).ack(ghost))
+        // the content fingerprint is that of the payload AS SENT: a resend of the same body is a replay, a different body under the uuid is a conflict
+        repeat(3) { assertEquals("duplicate", send(sr, listOf(ghost)).ack(ghost).substringBefore(' '), "replay of a rewritten request") }
+        assertEquals(listOf("flag_cluster_dropped:987654322"), flagsOf(uuidOf(ghost)), "the flag is written once under resends")
+        val changed = envelope("outlet_change_request", (ghost["client_uuid"] as JsonPrimitive).content, (ghost["family_uuid"] as JsonPrimitive).content, 0,
+            requestPayload("info", outletId, """{"name":"Replay Store","cluster_id":987654323}"""), routeId)
+        assertTrue(send(sr, listOf(changed)).ack(changed).contains("payload_conflict"), "same uuid, another body")
+        // a `cluster` request exists to move the outlet to that cluster: gone cluster = final schema_invalid, nothing stored, the answer is stable
+        val gone = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("cluster", outletId, """{"cluster_id":987654324}"""), routeId)
+        repeat(2) { assertTrue(send(sr, listOf(gone)).ack(gone).startsWith("rejected schema_invalid"), "a cluster request with a gone cluster is refused") }
+        assertEquals(0L, count("SELECT count(*) FROM app.outlet_change_request WHERE client_uuid = '${uuidOf(gone)}'"))
+    }
+
+    @Test
+    fun aNewOrClusterRequestNamingAnotherZonesClusterIsStoredWithTheClusterDroppedAndFlagged() {
+        val zone = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT zone_id FROM app.route WHERE id = $routeId").mapTo(Long::class.java).one() }
+        val elsewhere = fresh.db.jdbi.withHandle<Long?, Exception> { h -> h.createQuery("SELECT id FROM app.cluster WHERE zone_id <> $zone ORDER BY id LIMIT 1").mapTo(Long::class.java).findOne().orElse(null) } ?: return
+        val inZone = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.cluster WHERE zone_id = $zone ORDER BY id LIMIT 1").mapTo(Long::class.java).one() }
+        val newFar = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("new", null, """{"name":"Far Shop","contact_number":"01911000111","cluster_id":$elsewhere}"""), routeId)
+        val clusterFar = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("cluster", outletId, """{"cluster_id":$elsewhere}"""), routeId)
+        val newNear = envelope("outlet_change_request", uuid(), uuid(), 0, requestPayload("new", null, """{"name":"Near Shop","contact_number":"01911000222","cluster_id":$inZone}"""), routeId)
+        for (r in listOf(newFar, clusterFar, newNear)) {
+            assertEquals("accepted", send(sr, listOf(r)).ack(r), typeOf(r))
+            repeat(2) { assertEquals("duplicate", send(sr, listOf(r)).ack(r).substringBefore(' ')) }
+        }
+        for (r in listOf(newFar, clusterFar)) {
+            assertEquals(null, str("SELECT proposed ->> 'cluster_id' FROM app.outlet_change_request WHERE client_uuid = '${uuidOf(r)}'"), "dropped")
+            assertEquals(listOf("flag_cluster_dropped:$elsewhere"), flagsOf(uuidOf(r)))
+        }
+        assertEquals("Far Shop", str("SELECT proposed ->> 'name' FROM app.outlet_change_request WHERE client_uuid = '${uuidOf(newFar)}'"), "the rest of the proposal is kept")
+        assertEquals(inZone.toString(), str("SELECT proposed ->> 'cluster_id' FROM app.outlet_change_request WHERE client_uuid = '${uuidOf(newNear)}'"))
+        assertEquals(emptyList(), flagsOf(uuidOf(newNear)))
+    }
+
+    @Test
+    fun theUnlistedLabelCheckUsesTheVisitsBusinessDateNotTheCloseEnvelopes() {
+        val tomorrow = java.time.LocalDate.parse(day).plusDays(1).toString()
+        // listed on the visit's day, retired from the next day: a close sent with the NEXT day's business date still belongs to the visit's day
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.code_list_item SET valid_to = DATE '$tomorrow' WHERE list_key = 'zero_sale_reason' AND code = 'insufficient_cash'") }
+        val clockWas = now
+        try {
+            now = Instant.parse("2027-01-04T04:00:00Z")   // the close is sent the next morning
+            val v = uuid()
+            val open = envelope("visit", v, v, 0, visitJson(outletAt(18), seq = 40), routeId)
+            val close = envelope("visit_close", uuid(), v, 1, closeJson(v, true, "insufficient_cash"), routeId, bd = tomorrow, base = "2027-01-03T18:30:00Z")
+            val a = send(sr, listOf(open, close)).ack(close)
+            assertEquals("accepted", a, "the close is stored")
+            assertEquals("insufficient_cash", str("SELECT zero_sale_reason_code FROM app.visit WHERE client_uuid = '$v'"))
+            assertEquals(null, flagOf(v), "the code was listed on the visit's own day")
+        } finally {
+            now = clockWas
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.code_list_item SET valid_to = NULL WHERE list_key = 'zero_sale_reason' AND code = 'insufficient_cash'") }
+        }
     }
 
     // ---------------------------------------------------------------------------------------------- (c2) business totals, rule by rule
