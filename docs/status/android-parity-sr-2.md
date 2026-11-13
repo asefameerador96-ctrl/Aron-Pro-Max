@@ -2,6 +2,14 @@
 
 Branch `lane/android-parity-sr-2` from INT 4e0645556. Lead `session_01MbUQSxrP7AB9tbyANjUTPS`. Directive: D-OWNER-PARITY-02 (no user feels a change), D-OWNER-REA-01 (parity from screenshots and manuals). Spec: audit "SR app" section, manual pages 23-65, `docs/ui-reference/PARITY-SPEC.md`.
 
+## HANDOVER (written at about 300 k tokens; read this first after a recycle)
+- Done and pushed: slices 1 to 3 (Memo vendor layout, edit-reason dialog, সেল ডাটা, Summary order, Sync and submit dues box, Tasks card, Product QC pages, DRP Slide, programme hook pages). CI: slice 2 run 43400564499 green; slice 3 run 43402289068 in progress when written.
+- NOT started: slice 4 = Change information (manual 44: edit form with cluster / shop / owner / mobile and GEO / photo), new shop (42), permanent close (43), clusters (45), outlet photo / Photo Capture menu (20, 56), Sales Journey (59), Tutorial (46), Settings with the fourth green "Update…" tile and its two success dialogs (63, 64), Logout (65; the logout dialog has an extra body line in ours). Audit rows for these are in the table below as PLANNED. Look first at what INT already has (several of these were built in the SRM-S* lanes; the audit rows "not recorded" mean RECORD first, compare once, then fix).
+- How to record an image: add a test to `android/ui-screenshots/src/test/kotlin/com/aktcl/aron/uiscreenshots/Sr2Shot.kt` (pattern there: `shot("sr2_..._bn") { ParityFrame(title, null) { Screen(...) } }`), run `/tmp`-style loop `./gradlew :android:ui-screenshots:testDebugUnitTest --tests '*Sr2Shot*' -Paron.screenshots.recordTo=src/test/screenshots -q`, open the png once beside `docs/ui-reference/sr/manual/NN-*.jpg`.
+- Container setup (new container): cmdline-tools from dl.google.com, `sdkmanager --sdk_root=/opt/android-sdk "platforms;android-37.0" "build-tools;37.0.0" "platform-tools"`, `local.properties` with `sdk.dir=/opt/android-sdk` at the repo ROOT, no `--offline`.
+- Open items for the lead: requests R1 (host titles for QC and Slide), R2 (owner question KPI routing) in `docs/requests/android-parity-sr.md`; KV/POSM survey golden needs the composables moved out of app-sr.
+- Rules kept: core-ui untouched; no new permission, polling or continuous GPS; strings only in the resource catalogue; no test weakened (one test's pinned wording changed to the manual's, named in slice 1).
+
 ## Handover block
 - Local build works: SDK at /opt/android-sdk (cmdline-tools zip from dl.google.com), `local.properties` with `sdk.dir` at the REPO ROOT (git-ignored). No `--offline`. Fast loop: `./gradlew :android:feature-memo:testDebugUnitTest :android:ui-screenshots:testDebugUnitTest -q`.
 - Goldens: `android/ui-screenshots/src/test/kotlin/.../Sr2Shot.kt` (this lane's), record with `-Paron.screenshots.recordTo=src/test/screenshots --tests '*Sr2Shot*'`; images are `sr2_*.png`.
