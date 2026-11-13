@@ -3193,3 +3193,7 @@
 
 ### 2026-11-13 02:10 UTC — Loyalty lane: third hand-over in three hours
 - L-A5 handed over 55 minutes after opening (context large) with push C half built and four commits unpushed; pushed on my order to lane/portal-loyalty-api-c (3d47d389f); L-A6 opened on it. Pattern: L-A3 378 k, L-A4 533 k, L-A5 unknown, each inside one to two hours: these sessions read too much output. L-A6's brief tells it to keep tool output small and hand over at 300 k with everything pushed.
+
+### 2026-11-13 02:28 UTC — GO train 112
+- Train CI 43348250416 on 50adfce86: success, 12 of 12 (01:53 to 02:23). The Loyalty LANE run 43347262046 on 9d7dec20e was red on one web e2e test only: e2e/dash-drill.spec.ts:71 "auto-refresh does not poll faster than 60 s" (expected 0 reads in 30 s of fake clock, received 1; failed on both attempts; 371 of 372 passed; Haiku reader 114 k tokens). Same web code passed on the train run, and the test belongs to the dashboard, which this lane does not touch: a timing-sensitive test, pre-existing. I went ahead on the train run's green and say so; this is an exception to my "lane CI green" rule with the cause read from the log. Follow-up for the next web session: make that test deterministic (find the read that can land inside the window), never loosen it. If the INT run fails only there, one re-run.
+- GO sent 02:27: INT to 50adfce86 (expected DECISIONS 463; contract 1.15.0; V0180, V0181).
