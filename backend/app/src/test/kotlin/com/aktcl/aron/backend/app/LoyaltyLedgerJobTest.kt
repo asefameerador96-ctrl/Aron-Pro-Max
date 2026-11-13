@@ -56,6 +56,15 @@ class LoyaltyLedgerJobTest {
         world.fresh.db.jdbi.withHandle<Boolean, Exception> { h -> LoyaltyLedger.postAdjustment(h, outlet, programme, points, "c-${UUID.randomUUID()}", date, expires) }
 
     private var nowAt: LocalDate = LocalDate.now()
+
+    /** One job pass, counted for the given programmes only (the shared database holds other tests' pairs): (redemption and reversal rows, expiry rows) posted. */
+    private fun step(j: LoyaltyLedgerJob, vararg ps: Long): Pair<Int, Int> {
+        val inList = ps.joinToString(",")
+        fun count(expiry: Boolean) = world.one("SELECT count(*) FROM app.loyalty_ledger WHERE programme_id IN ($inList) AND source_type ${if (expiry) "=" else "<>"} 'expiry' AND source_type IN ('redemption', 'redemption_void', 'expiry')").toInt()
+        val a = count(false); val b = count(true); j.runOnce()
+        return (count(false) - a) to (count(true) - b)
+    }
+
     private fun job() = LoyaltyLedgerJob(world.fresh.db) { nowAt.atTime(12, 0).atZone(java.time.ZoneOffset.ofHours(6)).toInstant() }
 
     private fun balance(programme: Long) = world.one("SELECT COALESCE(SUM(points), 0) FROM app.loyalty_ledger WHERE outlet_id = $outlet AND programme_id = $programme")
@@ -70,12 +79,12 @@ class LoyaltyLedgerJobTest {
         credit(p, 100, today.minusDays(10), today.minusDays(1))
         redemption(p, 60, today.minusDays(5))
         nowAt = today.minusDays(2)
-        assertEquals(1 to 0, j.runOnce()); assertEquals(40, balance(p))
+        assertEquals(1 to 0, step(j, p)); assertEquals(40, balance(p))
         nowAt = today
-        assertEquals(0 to 1, j.runOnce(), "the expiry lapses the 40 that are left"); assertEquals(0, balance(p))
+        assertEquals(0 to 1, step(j, p), "the expiry lapses the 40 that are left"); assertEquals(0, balance(p))
         assertEquals("$p:$outlet:$today:1", world.rows("SELECT source_id FROM app.loyalty_ledger WHERE programme_id = $p AND source_type = 'expiry'").single()["source_id"])
         val n = rows(p)
-        assertEquals(0 to 0, j.runOnce()); nowAt = today.plusDays(3); assertEquals(0 to 0, j.runOnce()); assertEquals(n, rows(p))
+        assertEquals(0 to 0, step(j, p)); nowAt = today.plusDays(3); assertEquals(0 to 0, step(j, p)); assertEquals(n, rows(p))
     }
 
     @Test
@@ -83,7 +92,7 @@ class LoyaltyLedgerJobTest {
         val p = newProgramme(); val j = job(); nowAt = today
         credit(p, 50, today.minusDays(3), null)
         redemption(p, 30, today.minusDays(2)); redemption(p, 40, today.minusDays(1))
-        assertEquals(2 to 0, j.runOnce()); assertEquals(0 to 0, j.runOnce(), "replay: a retry is a no-op")
+        assertEquals(2 to 0, step(j, p)); assertEquals(0 to 0, step(j, p), "replay: a retry is a no-op")
         assertEquals(-20, balance(p), "kept: -20, not dropped")
         assertEquals(0, world.one("SELECT count(*) FROM app.loyalty_ledger WHERE programme_id = $p AND flags <> '{}'"), "no per-row flag: overdraw is derived from the balance")
     }
@@ -92,23 +101,23 @@ class LoyaltyLedgerJobTest {
     fun aVoidedRedemptionGetsOneReversalAndAnOldOneIsFoundByTheDailySweep() {
         val p = newProgramme(); val j = job(); nowAt = today
         credit(p, 100, today.minusDays(3), null); val cu = redemption(p, 60, today.minusDays(2))
-        j.runOnce(); assertEquals(40, balance(p))
-        void(cu); assertEquals(1 to 0, j.runOnce()); assertEquals(100, balance(p)); assertEquals(0 to 0, j.runOnce())
-        val old = redemption(p, 10, today.minusDays(1)); j.runOnce(); assertEquals(90, balance(p))
+        step(j, p); assertEquals(40, balance(p))
+        void(cu); assertEquals(1 to 0, step(j, p)); assertEquals(100, balance(p)); assertEquals(0 to 0, step(j, p))
+        val old = redemption(p, 10, today.minusDays(1)); step(j, p); assertEquals(90, balance(p))
         world.exec("SELECT setval(pg_get_serial_sequence('app.redemption', 'id'), nextval(pg_get_serial_sequence('app.redemption', 'id')) + 2000)")
-        redemption(p, 1, today); j.runOnce(); assertEquals(89, balance(p))
+        redemption(p, 1, today); step(j, p); assertEquals(89, balance(p))
         void(old); nowAt = today.plusDays(1)
-        assertEquals(1 to 0, j.runOnce(), "the first pass of the next Dhaka day sweeps everything: the old void is reversed"); assertEquals(99, balance(p))
+        assertEquals(1 to 0, step(j, p), "the first pass of the next Dhaka day sweeps everything: the old void is reversed"); assertEquals(99, balance(p))
     }
 
     @Test
     fun aLateDebitDatedBeforeTheExpiryGivesBackAndASecondCorrectionOfTheSameDayIsPossible() {
         val p = newProgramme(); val j = job()
         credit(p, 100, today.minusDays(5), today.minusDays(1))
-        nowAt = today; assertEquals(0 to 1, j.runOnce()); assertEquals(0, balance(p))
+        nowAt = today; assertEquals(0 to 1, step(j, p)); assertEquals(0, balance(p))
         redemption(p, 30, today.minusDays(2))   // sold on a valid day, synced late
-        assertEquals(1 to 1, j.runOnce(), "the debit is posted and the lapse is corrected the SAME day (+30)")
-        assertEquals(0, balance(p)); assertEquals(1, positiveExpiry(p)); assertEquals(0 to 0, j.runOnce())
+        assertEquals(1 to 1, step(j, p), "the debit is posted and the lapse is corrected the SAME day (+30)")
+        assertEquals(0, balance(p)); assertEquals(1, positiveExpiry(p)); assertEquals(0 to 0, step(j, p))
         assertEquals(setOf("$p:$outlet:$today:1", "$p:$outlet:$today:2"), world.rows("SELECT source_id FROM app.loyalty_ledger WHERE programme_id = $p AND source_type = 'expiry'").map { it["source_id"] }.toSet())
     }
 
@@ -117,8 +126,8 @@ class LoyaltyLedgerJobTest {
         val p = newProgramme(); val j = job()
         credit(p, 10, today.minusDays(10), today.minusDays(6)); credit(p, 10, today.minusDays(8), null)
         redemption(p, 15, today.minusDays(3))   // 10 are lapsed on that date: only the 10 valid ones fund it
-        nowAt = today; j.runOnce()
-        assertEquals(-5, balance(p), "overdrawn by 5 (balance < 0), the lapsed credit is not handed back"); assertEquals(-10, expirySum(p)); assertEquals(0 to 0, j.runOnce())
+        nowAt = today; step(j, p)
+        assertEquals(-5, balance(p), "overdrawn by 5 (balance < 0), the lapsed credit is not handed back"); assertEquals(-10, expirySum(p)); assertEquals(0 to 0, step(j, p))
     }
 
     @Test
@@ -137,9 +146,9 @@ class LoyaltyLedgerJobTest {
         redemption(p1, 5, today.minusDays(1)); redemption(p2, 5, today.minusDays(1))
         world.exec("CREATE OR REPLACE FUNCTION app.t_boom() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN IF NEW.programme_id = $p1 THEN RAISE EXCEPTION 'boom'; END IF; RETURN NEW; END \$\$")
         world.exec("CREATE TRIGGER t_boom BEFORE INSERT ON app.loyalty_ledger FOR EACH ROW WHEN (NEW.source_type = 'redemption') EXECUTE FUNCTION app.t_boom()")
-        try { assertEquals(1 to 0, j.runOnce()) } finally { world.exec("DROP TRIGGER t_boom ON app.loyalty_ledger") }
+        try { assertEquals(1 to 0, step(j, p1, p2)) } finally { world.exec("DROP TRIGGER t_boom ON app.loyalty_ledger") }
         assertEquals(5, balance(p2)); assertEquals(10, balance(p1), "the failed pair rolled back alone")
-        assertEquals(1 to 0, j.runOnce(), "the cursor did not advance: the failed pair is retried and now posts")
+        assertEquals(1 to 0, step(j, p1, p2), "the cursor did not advance: the failed pair is retried and now posts")
         assertEquals(5, balance(p1))
     }
 
@@ -187,7 +196,7 @@ class LoyaltyLedgerJobTest {
                     }
                     evs.filter { it.debit && it.delivered && !it.voided && rnd.nextInt(12) == 0 }.firstOrNull()?.let { it.voided = true; void(it.cu) }
                     nowAt = date
-                    j.runOnce()
+                    step(j, *progs.toLongArray())
                     for (i in 0..1) {
                         val m = model(evs.filter { it.programme == i }, date, base)
                         assertEquals(m.first, balance(progs[i]), "trial $trial day $day prog $i: balance = model")
@@ -195,7 +204,7 @@ class LoyaltyLedgerJobTest {
                         if (positiveExpiry(progs[i]) > positiveSeen[i]) { assertTrue(m.second < prevL[i], "trial $trial day $day prog $i: a positive expiry row only when the model's L went down"); positiveSeen[i] = positiveExpiry(progs[i]) }
                         prevL[i] = m.second
                     }
-                    val n = progs.sumOf { rows(it) }; assertEquals(0 to 0, j.runOnce(), "trial $trial day $day: a re-run posts nothing"); assertEquals(n, progs.sumOf { rows(it) })
+                    val n = progs.sumOf { rows(it) }; assertEquals(0 to 0, step(j, *progs.toLongArray()), "trial $trial day $day: a re-run posts nothing"); assertEquals(n, progs.sumOf { rows(it) })
                 }
                 day += if (rnd.nextInt(4) == 0) rnd.nextInt(2, 6) else 1   // gaps
             }

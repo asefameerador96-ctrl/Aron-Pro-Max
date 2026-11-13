@@ -117,7 +117,7 @@ object LoyaltyLedger {
         val n = rows.count { it.sourceType == EXPIRY && it.businessDate == today } + 1
         return h.createUpdate(
             "INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, flags) VALUES (:o, :p, 'expiry', :sid, :pts, :bd, '{}') ON CONFLICT (source_type, source_id) DO NOTHING",
-        ).bind("o", outlet).bind("p", programme).bind("sid", "$programme:$outlet:$today:$n").bind("pts", Math.toIntExact(-correction)).bind("bd", today).execute()
+        ).bind("o", outlet).bind("p", programme).bind("sid", "$programme:$outlet:$today:$n").bind("pts", Math.toIntExact(correction)).bind("bd", today).execute()
     }
 
     /** Everything for ONE pair under its advisory lock, in the caller's transaction: (redemption and reversal rows posted, expiry rows posted). */
