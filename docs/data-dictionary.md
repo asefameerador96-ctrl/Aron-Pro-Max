@@ -3920,7 +3920,7 @@ A sales route in a zone with its code, kind, visit days and label.
 | `zone_id` | bigint | not null |  | Zone (app.zone). |
 | `kind` | text | not null |  | Kind of the row; allowed values are listed under constraints. |
 | `visit_kind` | text | null |  | Visit pattern of the route: daily, 3f (three days a week) or 2f (two days). |
-| `visit_days_mask` | smallint | not null |  | Bit mask of visit days: bit0 Saturday through bit6 Friday; 127 means daily. |
+| `visit_days_mask` | smallint | not null |  | Bit mask of visit days: bit0 Saturday through bit6 Friday; 127 means daily; 0 means no visit plan (visit_kind none), never planned. |
 | `sequence_no` | integer | null |  | Order of the row within its parent or day. |
 | `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
@@ -4137,7 +4137,7 @@ Planned visit days of a route, effective-dated.
 | `id` | bigint | not null |  | Server surrogate key. |
 | `route_id` | bigint | not null |  | Route (app.route) being worked. |
 | `visit_kind` | text | null |  | Visit pattern in force for the period: daily, 3f or 2f. |
-| `visit_days_mask` | smallint | not null |  | Bit mask of planned visit days: bit0 Saturday through bit6 Friday. |
+| `visit_days_mask` | smallint | not null |  | Bit mask of planned visit days: bit0 Saturday through bit6 Friday; 0 means no visit plan (visit_kind none). |
 | `valid_from` | date | not null |  | First day the row is in effect. |
 | `valid_to` | date | null |  | First date the planned days no longer apply; null means open. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
