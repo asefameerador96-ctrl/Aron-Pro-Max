@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 182 | 2992 |
+| `app` | 182 | 2993 |
 | `dw` | 76 | 1233 |
 
 ## Index
@@ -94,7 +94,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.house_history`](#apphouse_history) | table | db | SERVER | master | none | One row is a period of the territory a distribution house belonged to and its status (V0119); written by the history trigger on app.house, seeded from app.audit_log. |
 | [`app.indent_movement`](#appindent_movement) | table | backend:masterdata | ONLINE | transaction | none | Phase 2 indent-portal stock ledger with the same shape as stock_movement; empty in Phase 1. |
 | [`app.ingest_registry`](#appingest_registry) | partitioned table | backend:sync | SERVER | ops | none | Global register of every device record's client_uuid and payload hash; the uniqueness point for idempotent sync. |
-| [`app.late_row_fact`](#applate_row_fact) | table | backend:sync | ONLINE | ops | none | One row per memo, due collection or online Sales Submit that needed a classification for the late-row counters: written once, never changed (ON CONFLICT DO NOTHING), so a replay or a recount cannot move a row from one counter to the other. |
+| [`app.late_row_fact`](#applate_row_fact) | table | backend:sync | ONLINE | ops | none | One row per memo or due collection that was stored while its route-day was Final Submitted (absence = stored while the day was open): written once, never changed (api_rw has no UPDATE or DELETE), so a replay or a recount cannot move a row from one late-row counter to the other. Rows stored before this table existed were reconstructed by the V0191 backfill (best available: received_at inside a [final_submit.submitted_at, reopened_at) window of the zone-day). |
 | [`app.leave_application`](#appleave_application) | table | backend:masterdata | OFFLINE | transaction | personal | A TSO leave application with dates and reason, decided on the web. |
 | [`app.loyalty_ledger`](#apployalty_ledger) | table | backend:analytics | SERVER | transaction | none | Append-only points ledger derived on the server, idempotent per source record. |
 | [`app.master_history_map`](#appmaster_history_map) | table | db | SERVER | master | none | Registry of the master history tables (V0119): the master each one follows, its key column and the audit entities its past was recovered from. |
@@ -2267,15 +2267,14 @@ References: `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (u
 
 ## app.late_row_fact
 
-One row per memo, due collection or online Sales Submit that needed a classification for the late-row counters: written once, never changed (ON CONFLICT DO NOTHING), so a replay or a recount cannot move a row from one counter to the other.
+One row per memo or due collection that was stored while its route-day was Final Submitted (absence = stored while the day was open): written once, never changed (api_rw has no UPDATE or DELETE), so a replay or a recount cannot move a row from one late-row counter to the other. Rows stored before this table existed were reconstructed by the V0191 backfill (best available: received_at inside a [final_submit.submitted_at, reopened_at) window of the zone-day).
 
 `owner: backend:sync | capture: ONLINE | retention: ops | pii: none` · table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
-| `client_uuid` | uuid | not null |  | Client uuid of the record (memo, due_collection or day_submit). |
-| `stored_closed` | boolean | not null |  | True when the record was stored while its route-day was Final Submitted (decided under the route-day lock from the committed route-day state, the state that feeds late_rows_after_final). |
-| `anchor_clock` | text | null |  | For a Sales Submit: phone (its captured_at is the phone clock) or server (an online submit of an older client without captured_at; the late-row count may be off by clock skew). Null for memos and due collections. |
+| `client_uuid` | uuid | not null |  | Client uuid of the memo or due collection. |
+| `stored_closed` | boolean | not null |  | Always true: the record was stored while its route-day was Final Submitted (decided under the route-day lock from the committed route-day state, the state that feeds late_rows_after_final). |
 | `created_at` | timestamp with time zone | not null |  | When the fact was written. |
 
 Keys: `PRIMARY KEY (client_uuid)`
@@ -2919,6 +2918,7 @@ A request from the field to add, close, edit, move or relocate an outlet, with p
 | `created_outlet_id` | bigint | null |  | Id of the outlet created when a new-outlet request was approved. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 | `created_cluster_id` | bigint | null |  | The live cluster an approved cluster_create request made (set once at the approval); null for every other request. |
+| `approved_cluster_id` | bigint | null |  | The cluster the approval of a new-shop or cluster request put the outlet in (set once at the approval); null for other request types and for requests not yet approved. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -4073,6 +4073,7 @@ A day_open or day_submit record from a phone or the online Sales Submit.
 | `retailers_with_dues` | integer | null |  | Number of retailers with dues at submit. |
 | `stock_slip_printed` | boolean | null |  | True when the day's stock slip was printed. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `anchor_clock` | text | null |  | day_submit only: whose clock stamped captured_at, the anchor of the late-row count. phone (or null) = the phone's own clock; server = the server stamped it (an online Sales Submit without a phone clock or with an implausible one). Written with the record. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
