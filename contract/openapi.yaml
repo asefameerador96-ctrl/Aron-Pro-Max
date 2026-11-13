@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.14.0
+  version: 1.15.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -132,6 +132,11 @@ info:
       flagged `possible_duplicate` with `possible_duplicate_of`. Not in this version of the train: the bundle `clusters` section, the
       cluster-creation record, `outlet_sku_stats`, the late-row count and the `posm-survey` report key (train 2, same version number, announced
       when they ship).
+    - 1.15.0 (loyalty and Astha, the FIELD side, train 3 of lane portal-loyalty-api, D-LEAD-CONTRACT-115-01, `docs/requests/contract-1.15-loyalty-field.md`; additive only): the bundle
+      `programmes` section is filled (an object when a programme is active in the user's reach, else `null`; units, rounding and as-of are in each member's description).
+      `AsthaTargetRow` gains `value_target_mtk`, `value_achieved_mtk` (integer milli-taka as strings), `as_of` and `by_pack` (achievement per `pack_factor`, base units;
+      target per pack size stays absent until the owner answers). `AsthaTargetWrite` rows gain the optional `value_target_mtk`. Migration V0180 (value target column and
+      the upload batch ledger). `Gift` gains `image_asset_id` and `GET /v1/sku-images/{asset_id}` also serves active gifts' pictures (purpose `gift_image`, 300 KB), so no signed URL is in the bundle. `400` is declared on `getLoyaltyBalances` and `listGiftChoices` (bad query). No operation, enum value or other status code is added or removed here; the `gift_choice` record, redemption posting and gift photos are push C.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -912,11 +917,11 @@ paths:
       operationId: getSkuImage
       summary: The bytes of a SKU's pack picture (PARITY-SPEC s2.6), by the stable `Sku.image_asset_id` of the bundle.
       description: |
-        Any signed-in user (pack art is the same for every role and reach). The API streams the bytes itself: no signed
+        Any signed-in user (pack art and gift pictures are the same for every role and reach). The API streams the bytes itself: no signed
         URL leaves it. An asset never changes (a new file is a new asset id), so the answer is cacheable for a year and
         its ETag is the asset id; the phone keeps the bytes in its bounded cache under the asset id and fetches once per
-        new id. Served only when the asset exists, has purpose `sku_image`, is at most 300 KB and a SKU binds it;
-        anything else, a malformed id included, is 404 without detail.
+        new id. Served only when the asset exists, is at most 300 KB and is bound by a SKU (purpose `sku_image`) or, since 1.15.0, by an
+        active gift (purpose `gift_image`, `Gift.image_asset_id` of the bundle's `programmes.gifts`); anything else, a malformed id included, is 404 without detail.
       parameters:
         - name: asset_id
           in: path
@@ -5116,7 +5121,7 @@ paths:
       operationId: getLoyaltyBalances
       summary: Live loyalty balance of outlets in reach (online refresh of the bundle's previous-day balance).
       parameters:
-        - { name: outlet_id, in: query, required: false, schema: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/Id' } }, style: form, explode: true, description: Outlets to read; omitted = the outlets of the caller's routes today. }
+        - { name: outlet_id, in: query, required: false, schema: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/Id' } }, style: form, explode: true, description: "Outlets to read; omitted = the outlets of the caller's routes today (a national reader must name outlets: `400`). Outlets outside the caller's reach are left out of the answer, never an error. Balances are live (the ledger up to and including today), where the bundle's are as of the previous business day." }
         - { name: programme_id, in: query, required: false, schema: { $ref: '#/components/schemas/Id' }, description: One programme. }
       responses:
         '200':
@@ -5124,6 +5129,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LoyaltyBalanceList' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
@@ -5133,6 +5140,7 @@ paths:
       tags: [programmes]
       operationId: listAsthaTargets
       summary: Astha targets and achievement by outlet and brand for a quarter (route and shop information, web reads).
+      description: "A national reader (reach of the whole network) must narrow by `route_id` or `zone_id` (`400`, pointer `query.route_id`); a `route_id` or `zone_id` outside the caller's reach is `403 ERR_OUT_OF_SCOPE`. Paged by `limit` and `cursor`; achievement is as of the read (`as_of`), computed by the same query as the bundle."
       parameters:
         - { name: quarter, in: query, required: true, schema: { type: string, pattern: '^\d{4}-Q[1-4]$' }, description: 'Quarter `YYYY-Qn` (quarter start month from cfg.astha.quarter_start_month).' }
         - { name: route_id, in: query, required: false, schema: { $ref: '#/components/schemas/Id' }, description: One route (the AMO route selector). }
@@ -5174,6 +5182,7 @@ paths:
       tags: [programmes]
       operationId: listGiftChoices
       summary: Astha gift choice per outlet (TSO panel and Astha Gift Choice report source).
+      description: "Same reach and narrowing rules as `listAsthaTargets`."
       parameters:
         - { name: quarter, in: query, required: true, schema: { type: string, pattern: '^\d{4}-Q[1-4]$' }, description: 'Quarter `YYYY-Qn`.' }
         - { name: route_id, in: query, required: false, schema: { $ref: '#/components/schemas/Id' }, description: One route. }
@@ -5186,6 +5195,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/GiftAssignmentPage' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
     put:
@@ -16157,7 +16168,8 @@ components:
         name_bn: { type: [string, 'null'], maxLength: 120 }
         points_cost: { type: [integer, 'null'], minimum: 1, maximum: 100000, description: 'Null for Astha gifts (chosen, not redeemed).' }
         tier_codes: { type: array, maxItems: 10, items: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }, description: Astha tiers the gift is offered to. }
-        image_url: { type: [string, 'null'], format: uri, maxLength: 1000 }
+        image_url: { type: [string, 'null'], format: uri, maxLength: 1000, description: 'Short-lived signed read URL in portal answers; ALWAYS null in the phone bundle (a signed URL would change the bundle fingerprint on every build and would be cached). The phone uses `image_asset_id`.' }
+        image_asset_id: { oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }], description: '1.15.0. Stable id of the gift picture; the phone fetches the bytes once per id with `GET /v1/sku-images/{asset_id}` (also serves gift pictures, at most 300 KB) and keeps them in its bounded image cache. Null when the gift has no picture.' }
         status: { $ref: '#/components/schemas/ActiveStatus' }
         version: { type: integer, minimum: 1 }
     GiftWrite:
@@ -16201,14 +16213,14 @@ components:
           items: { $ref: '#/components/schemas/Gift' }
     LoyaltyBalance:
       type: object
-      required: [outlet_id, programme_id, balance_points, expiring_points, as_of_date]
+      required: [outlet_id, programme_id, league_label, balance_points, expiring_points, expiry_date, as_of_date]
       additionalProperties: false
       properties:
         outlet_id: { $ref: '#/components/schemas/Id' }
         programme_id: { $ref: '#/components/schemas/Id' }
         league_label: { type: [string, 'null'], maxLength: 40 }
-        balance_points: { type: integer, description: Ledger balance; negative only after a flagged overdraw. }
-        expiring_points: { type: integer, minimum: 0 }
+        balance_points: { type: integer, description: 'The PLAIN SUM of all ledger rows up to `as_of_date`, `expiry` rows included. Points lapse only when the nightly expiry job posts its debit (computed FIFO: the oldest credit is consumed first, so a credit that was partly redeemed lapses only for what is left of it); before that job has run the balance may still include points past their date. Negative only after a flagged overdraw.' }
+        expiring_points: { type: integer, minimum: 0, description: 'The credits expiring on the EARLIEST upcoming `expires_on` (that date is `expiry_date`), capped by the balance and never negative; no window. Debits are not matched to credits in this read.' }
         expiry_date:
           oneOf:
             - { $ref: '#/components/schemas/BusinessDate' }
@@ -16216,10 +16228,11 @@ components:
         as_of_date: { $ref: '#/components/schemas/BusinessDate' }
     LoyaltyBalanceList:
       type: object
-      required: [as_of, items]
+      required: [as_of, truncated, items]
       additionalProperties: false
       properties:
         as_of: { $ref: '#/components/schemas/Timestamp' }
+        truncated: { type: boolean, description: 'True when more than 2,000 balances existed and the list was cut (never silent); name outlets or a programme to narrow.' }
         items:
           type: array
           maxItems: 2000
@@ -16227,7 +16240,7 @@ components:
     AsthaTargetRow:
       type: object
       description: One Astha target line; `outlet_id` null = the route row, `brand_id` null = the All Brand memo row.
-      required: [route_id, month, std_target, std_achieved, memo_target, memo_achieved]
+      required: [route_id, month, std_target, std_achieved, memo_target, memo_achieved, value_target_mtk, value_achieved_mtk, by_pack]
       additionalProperties: false
       properties:
         route_id: { $ref: '#/components/schemas/Id' }
@@ -16238,6 +16251,20 @@ components:
         std_achieved: { $ref: '#/components/schemas/Decimal3' }
         memo_target: { type: integer, minimum: 0 }
         memo_achieved: { type: integer, minimum: 0 }
+        value_target_mtk: { type: string, pattern: '^(0|[1-9][0-9]{0,17})$', description: 'Value target in integer milli-taka (a string; parse as a 64-bit integer), never negative, "0" until uploaded (owner Q5). Percent on the phone is achieved / target with 2 decimals rounded half-up and 0.00% when the target is 0.' }
+        value_achieved_mtk: { type: string, pattern: '^(0|[1-9][0-9]{0,17})$', description: 'Integer milli-taka sold by the outlet for the brand in the month up to `as_of`: the gross of SALE lines of memos that are active (voided and superseded memos, voided lines and free or reward lines are out). The memo offer line is zero (docs/27). The server figure follows the snapshot rule of `ProgrammesSection` (ACHIEVEMENT RULE): it includes every memo of the user whose sync acknowledgement was sent before the bundle request was received; the phone adds the rest by that rule.' }
+        as_of: { $ref: '#/components/schemas/Timestamp', description: 'Absent in the bundle (see `ProgrammesSection.astha_as_of`). Display only ("data as of"), never a rule. In `listAsthaTargets` the instant of the read.' }
+        by_pack:
+          type: array
+          maxItems: 1000
+          description: 'Achievement per pack size of the brand, base units (sticks, pieces), one entry per `pack_factor` with a sale in the month, ordered by `pack_factor`; empty on the All Brand row and when nothing sold. The phone shows ONE LINE PER PACK SIZE (20s and 10s are separate lines, rule 5) and never sums across pack sizes; the `std_achieved` of the entries add up to the row`s `std_achieved`. The target per pack size is not defined yet (owner question) and is absent.'
+          items:
+            type: object
+            required: [pack_factor, std_achieved]
+            additionalProperties: false
+            properties:
+              pack_factor: { type: integer, minimum: 1, maximum: 1000, description: Base units (sticks or pieces) in one pack of the SKUs counted in this entry (the SKU `base_per_pack`). }
+              std_achieved: { $ref: '#/components/schemas/Decimal3', description: Base units sold in the month for this pack size. }
     AsthaTargetPage:
       type: object
       required: [quarter, as_of, items, next_cursor]
@@ -16273,6 +16300,7 @@ components:
               month: { $ref: '#/components/schemas/Month' }
               std_target: { type: string, pattern: '^\d{1,13}(\.\d{1,3})?$', description: Never negative. }
               memo_target: { type: integer, minimum: 0 }
+              value_target_mtk: { type: string, pattern: '^(0|[1-9][0-9]{0,17})$', description: 'Optional (1.15.0). Integer milli-taka, never negative or fractional (`400 ERR_VALIDATION`, pointer `body.rows[i].value_target_mtk`); omitted means "0".' }
         change_reason: { $ref: '#/components/schemas/ChangeReason' }
     GiftAssignment:
       type: object
@@ -16350,8 +16378,8 @@ components:
         photos_captured: { type: integer, minimum: 0, maximum: 50 }
     ProgrammesSection:
       type: object
-      description: Programme data for the user's routes (docs/24 s4.10, s4.14). Balances are as of the previous business day.
-      required: [programmes, loyalty, gifts, astha_targets, gift_assignments, pending_gift_verifications]
+      description: 'Programme data for the user''s routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user''s reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points as of `as_of_date` (the PREVIOUS Dhaka business date; see `LoyaltyBalance`); `astha_targets` carry server achievement (units in `AsthaTargetRow`; `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries only the CURRENT month of the bundle''s business date (earlier or later months of the quarter are read online with `listAsthaTargets`), only outlets enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user: past that the server sends the first 1,000, logs a warning and sets `astha_truncated` true, which the phone shows (never a silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. ACHIEVEMENT RULE (the one rule; every other description refers here). Server guarantee: every figure of this section is read in ONE read-only REPEATABLE READ snapshot on the primary database, and it includes every memo of this user whose sync acknowledgement was sent before this bundle request was received. Phone rule: the phone adds its own memos that had NOT been acknowledged when it SENT this bundle request, keyed by memo_uuid, recomputed from scratch after each bundle; the phone never uploads records while a bundle request is in flight (single-flight sync), and if an acknowledgement arrives during the request it discards the section''s achievement and refetches. `astha_as_of` and a row''s `as_of` are display only ("data as of"), never part of the rule. Caps are never silent: `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200) or gift_assignments (2,000) that was cut, and `astha_truncated` the 1,000-row Astha bound.'
+      required: [programmes, loyalty, gifts, astha_targets, astha_as_of, astha_truncated, truncated_sections, gift_assignments, pending_gift_verifications]
       additionalProperties: false
       properties:
         programmes:
@@ -16366,9 +16394,16 @@ components:
           type: array
           maxItems: 200
           items: { $ref: '#/components/schemas/Gift' }
+        astha_as_of: { $ref: '#/components/schemas/Timestamp', description: '1.15.0. Display only ("data as of"), never part of the achievement rule: the newest memo ingest (receipt or status change) among the outlets of the rows actually sent, for the month of the business date; the Dhaka start of the month when there is none. Rows carry no `as_of` in the bundle, to save bytes.' }
+        truncated_sections:
+          type: array
+          maxItems: 4
+          description: '1.15.0. Which of `programmes`, `loyalty`, `gifts`, `gift_assignments` was cut at its cap (50, 11,000, 200, 2,000); empty when none. A cut is also logged by the server. The phone shows a notice.'
+          items: { type: string, enum: [programmes, loyalty, gifts, gift_assignments] }
+        astha_truncated: { type: boolean, description: '1.15.0. True when the user''s routes had more than 1,000 Astha rows for the month and the list was cut; the phone shows a notice and reads the rest with `listAsthaTargets`.' }
         astha_targets:
           type: array
-          maxItems: 20000
+          maxItems: 1000
           items: { $ref: '#/components/schemas/AsthaTargetRow' }
         gift_assignments:
           type: array

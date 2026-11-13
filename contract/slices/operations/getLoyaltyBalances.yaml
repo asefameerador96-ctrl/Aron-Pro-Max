@@ -16,7 +16,9 @@ operation:
         $ref: '#/components/schemas/Id'
     style: form
     explode: true
-    description: Outlets to read; omitted = the outlets of the caller's routes today.
+    description: 'Outlets to read; omitted = the outlets of the caller''s routes today (a national reader must name
+      outlets: `400`). Outlets outside the caller''s reach are left out of the answer, never an error. Balances
+      are live (the ledger up to and including today), where the bundle''s are as of the previous business day.'
   - name: programme_id
     in: query
     required: false
@@ -30,6 +32,8 @@ operation:
         application/json:
           schema:
             $ref: '#/components/schemas/LoyaltyBalanceList'
+    '400':
+      $ref: '#/components/responses/BadRequest'
     '401':
       $ref: '#/components/responses/Unauthorized'
     '403':

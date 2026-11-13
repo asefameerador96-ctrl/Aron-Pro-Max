@@ -164,6 +164,25 @@ class ScopeLeakAcrossEndpointsTest {
                 val ownId = rowId("SELECT id FROM app.$table WHERE code = '$own'")!!.toLong(); val theirId = rowId("SELECT id FROM app.$table WHERE code = '$theirs'")!!.toLong()
                 world.ids[kind] = ownId; world.otherIds[kind] = theirId; otherIds[kind] = setOf(theirId)
             }
+            // portal-loyalty-api, train 3 (contract 1.15.0): the field reads getLoyaltyBalances, listAsthaTargets and listGiftChoices. One active Astha programme enrols every active outlet of
+            // BOTH divisions and has a ledger row, a target row and a gift choice per outlet; the own division's rows are the positive control, the other division's the leak. The route,
+            // zone and outlet selectors of those reads are aimed at the other division by the generic probes (403 or an empty answer is the pass).
+            val bd = ApiWorld.BUSINESS_DATE
+            val firstMonth = com.aktcl.aron.backend.platform.AsthaQuarter.of(java.time.LocalDate.parse(bd), 1).months.first()
+            val quarterLabel = com.aktcl.aron.backend.platform.AsthaQuarter.of(java.time.LocalDate.parse(bd), 1).label
+            h.execute("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('astha', 'FIELD-PRG', 'Field seeded programme', '$bd'::date - 30, '$bd'::date + 60, 'active')")
+            for (zoneCode in listOf("Z-MIR", "Z-LKX")) {
+                val outlets = "FROM app.programme p, app.outlet o JOIN app.zone z ON z.id = o.zone_id WHERE p.code = 'FIELD-PRG' AND z.code = '$zoneCode' AND o.status = 'active' AND o.route_id IS NOT NULL"
+                h.execute("INSERT INTO app.programme_enrolment (programme_id, outlet_id, tier_code, valid_from) SELECT p.id, o.id, 'gold', '$bd'::date - 20 $outlets")
+                h.execute("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date) SELECT o.id, p.id, 'adjustment', 'seed-' || o.id, 10, '$bd'::date - 1 $outlets")
+                h.execute("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) SELECT p.id, '$firstMonth'::date, o.route_id, o.id, NULL, 0, 5 $outlets")
+            }
+            h.execute("INSERT INTO app.gift (programme_id, code, name_en, tier_codes) SELECT id, 'field_gift', 'Field seeded gift', '{gold}' FROM app.programme WHERE code = 'FIELD-PRG'")
+            h.execute(
+                "INSERT INTO app.gift_assignment (programme_id, quarter, outlet_id, route_id, gift_id, tier_code, chosen_at) " +
+                    "SELECT e.programme_id, '$quarterLabel', e.outlet_id, o.route_id, g.id, 'gold', now() FROM app.programme_enrolment e JOIN app.programme p ON p.id = e.programme_id AND p.code = 'FIELD-PRG' " +
+                    "JOIN app.outlet o ON o.id = e.outlet_id JOIN app.gift g ON g.programme_id = p.id",
+            )
             // A missing value would silently drop the other-path probe of its writes.
             val aimedAt = setOf("request_uuid", "task_uuid", "leave_uuid", "feedback_uuid", "unlock_id", "adjustment_id")
             check(world.otherPathValues.keys.containsAll(aimedAt)) { "other-division rows missing for ${aimedAt - world.otherPathValues.keys}" }

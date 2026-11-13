@@ -5,6 +5,9 @@ operation:
   - programmes
   operationId: listAsthaTargets
   summary: Astha targets and achievement by outlet and brand for a quarter (route and shop information, web reads).
+  description: A national reader (reach of the whole network) must narrow by `route_id` or `zone_id` (`400`, pointer
+    `query.route_id`); a `route_id` or `zone_id` outside the caller's reach is `403 ERR_OUT_OF_SCOPE`. Paged by
+    `limit` and `cursor`; achievement is as of the read (`as_of`), computed by the same query as the bundle.
   parameters:
   - name: quarter
     in: query
