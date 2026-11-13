@@ -645,14 +645,40 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
 class OutletChangeRequestHandler : RecordHandler {
     override val types: Set<String> = setOf("outlet_change_request")
 
+    private fun type(rec: IngestRecord) = rec.payload["request_type"]?.jsonPrimitive?.contentOrNull
+
+    private fun proposedCluster(rec: IngestRecord): Long? =
+        (rec.payload["proposed"] as? JsonObject)?.get("cluster_id")?.takeIf { it !is JsonNull }?.jsonPrimitive?.longOrNull
+
+    /**
+     * The zone the request is for: the outlet's (info, cluster), the envelope route's, else the requester's home zone (new). Null = unknown, no zone check.
+     */
+    private fun requestZone(h: Handle, rec: IngestRecord): Long? {
+        val outlet = rec.payload["outlet_id"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.longOrNull
+        if (outlet != null) h.createQuery("SELECT zone_id FROM app.outlet WHERE id = :o").bind("o", outlet).mapTo(Long::class.java).findOne().orElse(null)?.let { return it }
+        val route = rec.envelope["route_id"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.longOrNull
+        if (route != null) h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", route).mapTo(Long::class.java).findOne().orElse(null)?.let { return it }
+        return h.createQuery("SELECT home_zone_id FROM app.app_user WHERE id = :u").bind("u", rec.userId).mapTo(Long::class.java).findOne().orElse(null)
+    }
+
+    /** A `cluster` request exists to move the outlet to that cluster: a cluster that is gone leaves nothing to store, so it is refused for good (schema_invalid), as before train 1. */
+    override fun check(h: Handle, rec: IngestRecord): RecordRefusal? {
+        if (type(rec) != "cluster") return null
+        val cluster = proposedCluster(rec) ?: return null
+        val there = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.cluster WHERE id = :c)").bind("c", cluster).mapTo(Boolean::class.java).one()
+        return if (there) null else RecordRefusal(com.aktcl.aron.contract.RecordOutcomeCode.SCHEMA_INVALID, "cluster $cluster")
+    }
+
+    /**
+     * The cluster id the server cannot honour, or null. Gone cluster: dropped on info / new / route_add (the `cluster` type is refused in [check]).
+     * Another zone's cluster: dropped on info, new and cluster, judged against [requestZone].
+     */
     private fun clusterDropped(h: Handle, rec: IngestRecord): Long? {
-        val proposed = rec.payload["proposed"] as? JsonObject ?: return null
-        val cluster = proposed["cluster_id"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.longOrNull ?: return null
+        val cluster = proposedCluster(rec) ?: return null
         val cz = h.createQuery("SELECT zone_id FROM app.cluster WHERE id = :c").bind("c", cluster).mapTo(Long::class.java).findOne().orElse(null) ?: return cluster
-        if (rec.payload["request_type"]?.jsonPrimitive?.contentOrNull == "info") {
-            val outlet = rec.payload["outlet_id"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.longOrNull ?: return null
-            val oz = h.createQuery("SELECT zone_id FROM app.outlet WHERE id = :o").bind("o", outlet).mapTo(Long::class.java).findOne().orElse(null) ?: return null
-            if (oz != cz) return cluster
+        if (type(rec) in setOf("info", "new", "cluster")) {
+            val rz = requestZone(h, rec) ?: return null
+            if (rz != cz) return cluster
         }
         return null
     }
