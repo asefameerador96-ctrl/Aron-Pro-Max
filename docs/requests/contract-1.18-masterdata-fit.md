@@ -2,7 +2,11 @@
 
 Owner basis: D-OWNER-MASTERDATA-01 and D-OWNER-PARITY-02 ("when our system launches we don't want any of the users to feel that anything changed"). The real master data
 is the truth; where our build could not hold or would reject it, OUR build changed. Gap numbers (M01..M22) are those of `docs/reference/master-data-mapping.md`; the
-decisions are `D-MD-nn` in `DECISIONS.md`. **Status: applied in `contract/openapi.yaml` (info.version 1.18.0) with push 1 of the lane.** The number is provisional:
+decisions are `D-MD-nn` in `DECISIONS.md`. **Status: applied in `contract/openapi.yaml`. Push 1 of the lane set info.version 1.18.0; push 1b (the lead's review round) adds the report members
+`unchanged`, `skipped` and `by_channel`, the warning codes `phone_source_kept`, `tier_source_kept`, `tier_cleared`, `pin_kept_as_candidate`,
+`coordinates_invalid` and `coordinates_incomplete`, the row-error code `sub_channel_inconsistent`, and `contact_number` as raw text. oasdiff counts a new
+value in a response enum as breaking, so the repository's rule (docs/30 s3) needs a version bump in the same push: info.version is now **1.18.1**. The
+lane's slot is unchanged (still 1.18); the lead may renumber the whole slot at landing as planned.** The number is provisional:
 1.16.0 and 1.17.0 belong to other lanes, landing order decides, the lead may order a rename. Migrations V0195..V0200 (also landing order). Everything is additive for a
 request body; the three response widenings (a new enum value, a lower minimum, a new code-list key) are the reason the breaking-change gate needs this file.
 
