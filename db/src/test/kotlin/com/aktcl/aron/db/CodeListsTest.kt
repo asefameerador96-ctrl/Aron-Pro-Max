@@ -41,7 +41,7 @@ class CodeListsTest {
                     "WHERE i.list_key = l.list_key AND i.valid_to IS NULL) ORDER BY 1",
             ),
         )
-        assertEquals("21", c.scalar("SELECT count(*) FROM app.code_list"))   // V0131: + ticket_issue_type, ticket_resolution_code; V0173: + zero_sale_reason, call_photo_skip
+        assertEquals("22", c.scalar("SELECT count(*) FROM app.code_list"))   // V0199: + cluster_type; V0131: + ticket_issue_type, ticket_resolution_code; V0173: + zero_sale_reason, call_photo_skip
     }
 
     @Test
@@ -63,11 +63,17 @@ class CodeListsTest {
     }
 
     @Test
-    fun theNineSubChannelsOfD258ExistAsMasterRowsAndListItems() = db.connect().use { c ->
+    fun theSubChannelsOfD258AndTheFieldsAsthaTiersExistAsMasterRowsAndListItems() = db.connect().use { c ->
         assertEquals(
-            listOf("Astha:Diamond", "Astha:Gold", "Astha:Platinum", "Astha:Silver", "DCC:DCC", "GT:GT", "HoReCa:HoReCa", "MT:MT", "RCC:RCC"),
+            listOf("Astha:Diamond", "Astha:Gold", "Astha:Platinum", "Astha:Silver", "Astha:Titanium", "DCC:DCC", "GT:GT", "HoReCa:HoReCa", "MT:MT", "RCC:RCC"),
             c.column("SELECT channel || ':' || code FROM app.sub_channel ORDER BY 1"),
         )
+        // D-MD-07: the tiers follow the field (Gold, Diamond, Platinum, Titanium); Silver is retired, never deleted.
+        assertEquals(listOf("Astha:Gold:active", "Astha:Diamond:active", "Astha:Platinum:active", "Astha:Titanium:active", "Astha:Silver:inactive"),
+            c.column("SELECT channel || ':' || code || ':' || status FROM app.sub_channel WHERE channel = 'Astha' ORDER BY CASE code WHEN 'Gold' THEN 1 WHEN 'Diamond' THEN 2 WHEN 'Platinum' THEN 3 WHEN 'Titanium' THEN 4 ELSE 5 END"))
+        assertEquals("1", c.scalar("SELECT count(*) FROM app.code_list_item WHERE list_key = 'sub_channel' AND code = 'silver' AND valid_to IS NOT NULL"))
+        assertEquals(listOf("bazar_hub", "commercial_hub", "industrial_hub", "residential", "transit_hub", "university_hub"), c.column("SELECT code FROM app.code_list_item WHERE list_key = 'cluster_type' ORDER BY 1"))
+        assertEquals("0", c.scalar("SELECT count(*) FROM app.code_list_item WHERE list_key = 'cluster_type' AND label_bn IS NULL"))
         assertEquals(
             "0",
             c.scalar(

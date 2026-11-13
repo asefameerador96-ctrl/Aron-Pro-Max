@@ -23,3 +23,4 @@ OutletImportRowError:
       - code_taken
       - duplicate
       - outlet_merged
+      - unknown_channel

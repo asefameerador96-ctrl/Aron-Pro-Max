@@ -10,7 +10,7 @@ import type { MessageKey } from "@/lib/i18n";
 import { Field, inputClass } from "../kit/field";
 import { ReasonField, REASON_MIN_LENGTH } from "../kit/reason-field";
 
-const MEMO_NO = /^[a-z][a-z0-9]{3,31}-\d{6}-\d{3,4}$/;
+const MEMO_NO = /^[a-z][a-z0-9]{2,31}-\d{6}-\d{3,4}$/;
 const KINDS = ["sale"] as const; // promotion and free lines are deferred (docs/27); the server accepts only sale
 type Line = { sku_id: string; qty: string; kind: (typeof KINDS)[number] };
 

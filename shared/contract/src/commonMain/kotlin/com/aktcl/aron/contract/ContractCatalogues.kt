@@ -237,6 +237,8 @@ enum class CodeListKey(val wire: String) {
     @SerialName("zero_sale_reason") ZERO_SALE_REASON("zero_sale_reason"),
     /** Contract 1.14.0 (SRM-A-27): why no outlet photo was taken at call start. */
     @SerialName("call_photo_skip") CALL_PHOTO_SKIP("call_photo_skip"),
+    /** Contract 1.18.0 (D-MD-22): the six cluster types of the field, with Bangla labels. */
+    @SerialName("cluster_type") CLUSTER_TYPE("cluster_type"),
 }
 
 /** Why a photo was taken (docs/24 s4.11). */

@@ -33,20 +33,82 @@ class OutletImportTest {
 
     private fun count(sql: String) = env.count(sql)
 
+    private fun warnings(o: kotlinx.serialization.json.JsonObject) = o.arr("warnings").map { it as kotlinx.serialization.json.JsonObject }.map { "${it.lng("row")}:${it.strA1("column")}:${it.strA1("code")}" }
+    private fun errors(o: kotlinx.serialization.json.JsonObject) = o.arr("errors").map { it as kotlinx.serialization.json.JsonObject }.map { "${it.lng("row")}:${it.strA1("column")}:${it.strA1("code")}" }
+
+    /** D-MD-05 (M05): the field's channel labels load, an empty channel comes from the sub-channel, a channel we cannot name is a ROW error (never a 400 for the batch). */
     @Test
-    fun channelIsRequiredOnEveryRowEvenOnAPreview() = env.app {
-        for (dry in listOf(true, false)) {
-            val missing = sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(listOf(row("Ok Row"), row("No Channel", channel = null)), dry))
-            assertEquals(HttpStatusCode.BadRequest, missing.status)
-            val t = missing.bodyAsText()
-            assertTrue(t.contains("body.rows/1/channel") && t.contains("required") && t.contains("GT, DCC, Astha, RCC, MT, HoReCa"), t)
-            for (bad in listOf("null", "\"\"", "\"gt\"", "\"Retail\"", "5")) {
-                val r = sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(listOf(row("Bad Channel", channel = bad)), dry))
-                assertEquals(HttpStatusCode.BadRequest, r.status, bad)
-                assertTrue(r.bodyAsText().contains("body.rows/0/channel"), r.bodyAsText())
-            }
-        }
-        assertEquals(0, count("SELECT count(*) FROM app.outlet WHERE name IN ('Ok Row','No Channel','Bad Channel')"))
+    fun channelLabelsAreAcceptedAndABadChannelIsARowErrorNotABatchRefusal() = env.app {
+        val rows = listOf(
+            row("Label Gt", channel = "\"GT Channel\""), row("Label Astha", channel = "\"Astha Channel\"", extra = ""","sub_channel":"Gold""""),
+            row("Label Horeca", channel = "\"HoReCa\""), row("Label Dcc", channel = "\" dcc channel \""),
+            row("Derived From Tier", channel = null, extra = ""","sub_channel":"Diamond""""), row("Derived From Gt", channel = "\"\"", extra = ""","sub_channel":"GT""""),
+            row("Nothing To Derive From", channel = null), row("Bad Channel", channel = "\"Retail\""), row("Number Channel", channel = "5"),
+        )
+        val res = sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(rows, true))
+        assertEquals(HttpStatusCode.OK, res.status)
+        val o = res.objA1()
+        assertEquals(7, o.lng("creates"))
+        assertEquals(listOf("8:channel:unknown_channel", "9:channel:invalid"), errors(o))
+        assertEquals(listOf("7:channel:channel_defaulted"), warnings(o))
+        val by = o.getValue("by_channel") as kotlinx.serialization.json.JsonObject
+        assertEquals(listOf(3L, 1L, 2L, 0L, 0L, 1L), listOf("GT", "DCC", "Astha", "RCC", "MT", "HoReCa").map { by.lng(it) })
+        val wbc = o.getValue("warnings_by_code") as kotlinx.serialization.json.JsonObject
+        assertEquals(2L, wbc.lng("channel_derived")); assertEquals(1L, wbc.lng("channel_defaulted"))
+        // commit with skip_rows loads the good rows and reports the skipped ones; the default refuses the batch on a row error
+        val refused = sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(rows, false))
+        assertEquals(HttpStatusCode.BadRequest, refused.status)
+        assertEquals(0, count("SELECT count(*) FROM app.outlet WHERE name LIKE 'Label %' OR name IN ('Derived From Tier','Derived From Gt','Nothing To Derive From')"))
+        val skip = sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(rows, false).replace("\"dry_run\":false", "\"dry_run\":false,\"on_row_error\":\"skip_rows\""))
+        assertEquals(HttpStatusCode.OK, skip.status)
+        val c = skip.objA1()
+        assertEquals(7L, c.lng("creates")); assertEquals(2L, c.lng("skipped"))
+        assertEquals("GT", env.sql("SELECT channel FROM app.outlet WHERE name = 'Label Gt'"))
+        assertEquals("Astha|Gold", env.sql("SELECT o.channel || '|' || s.code FROM app.outlet o JOIN app.sub_channel s ON s.id = o.sub_channel_id WHERE o.name = 'Label Astha'"))
+        assertEquals("Astha|Diamond", env.sql("SELECT o.channel || '|' || s.code FROM app.outlet o JOIN app.sub_channel s ON s.id = o.sub_channel_id WHERE o.name = 'Derived From Tier'"))
+        assertEquals("GT", env.sql("SELECT channel FROM app.outlet WHERE name = 'Nothing To Derive From'"))
+        assertEquals(0, count("SELECT count(*) FROM app.outlet WHERE name IN ('Bad Channel','Number Channel')"))
+        assertTrue(env.sql("SELECT after::text FROM app.audit_log WHERE entity = 'outlet' AND action = 'import_create' AND after->>'channel_defaulted' = 'true' LIMIT 1") != null, "the defaulted channel is traceable in the audit row")
+    }
+
+    /** D-MD-06..08, 01, 16, 20 (M06 M07 M08 M01 M15 M16 M20): the field's rows load as they are, the report names what was repaired, left out or not trusted. */
+    @Test
+    fun fieldRowsLoadAsTheyAreAndAReRunChangesNothing() = env.app {
+        val ok = ""","lat":23.7806123456789,"lng":90.4,"contact_number":"1711000001","geo_class":"Semi Urban","created_at":"2024-03-05 10:15:00","updated_at":"2025-01-02","sub_channel":"Gold""""
+        val rows = listOf(
+            row("Fld Gold", ok, channel = "\"Astha Channel\""),
+            row("Fld Mismatch", ""","sub_channel":"Gold","contact_number":"+880 1711-000002"""", channel = "\"GT Channel\""),
+            row("Fld Astha Dash", ""","sub_channel":"--","contact_number":"123","lat":51.5,"lng":-0.12""", channel = "\"Astha Channel\""),
+            row("Fld Silver", ""","sub_channel":"Silver"""", channel = "\"Astha\""),
+            row("Fld Astha Gt", ""","sub_channel":"GT"""", channel = "\"Astha Channel\""),
+        )
+        val code = "FLD${System.nanoTime() % 100000}"
+        val withCode = rows.mapIndexed { i, r -> r.replace("{\"name\"", "{\"code\":\"$code$i\",\"name\"") }
+        suspend fun send(dry: Boolean, conf: Boolean, id: UUID = UUID.randomUUID()) =
+            sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(withCode, dry, id).replaceFirst("\"dry_run\":$dry", "\"dry_run\":$dry,\"location_confirmed\":$conf"))
+        val dry = send(true, true).objA1()
+        assertEquals(5L, dry.lng("creates")); assertEquals(emptyList(), errors(dry))
+        val w = warnings(dry)
+        assertTrue("2:sub_channel:sub_channel_mismatch" in w && "3:contact_number:phone_unusable" in w && "3:lat:coordinates_outside_bangladesh" in w && "4:sub_channel:sub_channel_retired" in w && "5:sub_channel:sub_channel_mismatch" in w, w.toString())
+        val wbc = dry.getValue("warnings_by_code") as kotlinx.serialization.json.JsonObject
+        assertEquals(2L, wbc.lng("phone_repaired")); assertEquals(1L, wbc.lng("coordinates_rounded"))
+        // location_confirmed=false: the pins load as master but unconfirmed
+        val batchId = UUID.randomUUID()
+        assertEquals(HttpStatusCode.OK, send(false, false, batchId).status)
+        assertEquals("master|false|01711000001|SemiUrban|Gold", env.sql("SELECT location_basis || '|' || location_confirmed || '|' || contact_number || '|' || geo_class || '|' || s.code FROM app.outlet o JOIN app.sub_channel s ON s.id = o.sub_channel_id WHERE o.code = '${code}0'"))
+        assertEquals("23.78061235", env.sql("SELECT lat::numeric(10,8)::text FROM app.outlet WHERE code = '${code}0'"))
+        assertEquals("2024-03-05 04:15:00+00", env.sql("SELECT created_at::text FROM app.outlet WHERE code = '${code}0'"))
+        assertEquals("01711000002|", env.sql("SELECT contact_number || '|' || coalesce(sub_channel_id::text, '') FROM app.outlet WHERE code = '${code}1'"))
+        assertEquals("|true", env.sql("SELECT coalesce(contact_number, '') || '|' || (sub_channel_id IS NULL) FROM app.outlet WHERE code = '${code}2'"))
+        assertEquals("true", env.sql("SELECT (sub_channel_id IS NULL AND channel = 'Astha')::text FROM app.outlet WHERE code = '${code}3'"))
+        assertEquals("false", env.sql("SELECT location_confirmed::text FROM app.outlet WHERE code = '${code}2'"))
+        // the same batch replays; a re-run with new uuid and the switch ON confirms only pins inside Bangladesh and changes nothing else (no second row)
+        assertEquals(true, send(false, false, batchId).objA1().getValue("replayed").toString() == "true")
+        assertEquals(HttpStatusCode.OK, send(false, true).status)
+        assertEquals(5, count("SELECT count(*) FROM app.outlet WHERE code LIKE '$code%'"))
+        assertEquals("true", env.sql("SELECT location_confirmed::text FROM app.outlet WHERE code = '${code}0'"))
+        assertEquals("false", env.sql("SELECT location_confirmed::text FROM app.outlet WHERE code = '${code}2'"))
+        assertEquals(1, count("SELECT count(*) FROM app.outlet WHERE code = '${code}0' AND version >= 2"))
     }
 
     @Test
@@ -60,10 +122,11 @@ class OutletImportTest {
         val res = sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(rows, true))
         assertEquals(HttpStatusCode.OK, res.status)
         val o = res.objA1()
-        assertEquals(2, o.lng("creates")); assertEquals(0, o.lng("updates")); assertEquals(7, o.lng("rows"))
+        assertEquals(3, o.lng("creates")); assertEquals(0, o.lng("updates")); assertEquals(7, o.lng("rows"))
         assertEquals(1, o.getValue("by_channel").let { (it as kotlinx.serialization.json.JsonObject).lng("Astha") })
         val errs = o.arr("errors").map { it as kotlinx.serialization.json.JsonObject }.map { "${it.lng("row")}:${it.strA1("column")}:${it.strA1("code")}" }
-        assertEquals(listOf("3:zone_code:unknown_zone", "4:cluster:unknown_cluster", "5:route_code:unknown_route", "6:contact_number:invalid", "7:lng:required"), errs)
+        assertEquals(listOf("3:zone_code:unknown_zone", "4:cluster:unknown_cluster", "5:route_code:unknown_route", "7:lng:required"), errs)
+        assertEquals(listOf("6:contact_number:phone_unusable"), warnings(o))
         assertEquals(before, count("SELECT count(*) FROM app.outlet"))
         assertEquals(0, count("SELECT count(*) FROM app.audit_log WHERE entity = 'outlet_import'"))
     }
@@ -94,7 +157,7 @@ class OutletImportTest {
         assertEquals(HttpStatusCode.OK, res.status)
         assertEquals("false", res.objA1().getValue("replayed").toString())
         val oid = count("SELECT id FROM app.outlet WHERE name = 'Import Created'")
-        assertEquals("AD-$oid", env.sql("SELECT code FROM app.outlet WHERE id = $oid"))
+        assertEquals("gen.$oid", env.sql("SELECT code FROM app.outlet WHERE id = $oid"))
         assertEquals("MT|master|retail", env.sql("SELECT concat_ws('|', channel, location_basis, outlet_kind) FROM app.outlet WHERE id = $oid"))
         assertEquals("IMP/1", env.sql("SELECT code FROM app.outlet WHERE name = 'Import Coded'"))
         assertEquals(1, count("SELECT count(*) FROM app.outlet_placement_history WHERE outlet_id = $oid AND valid_to IS NULL"))

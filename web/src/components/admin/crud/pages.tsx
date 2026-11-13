@@ -141,7 +141,7 @@ function toFormField(locale: Locale, f: AnyField, refs: RefOptions = {}, meta?: 
     f.kind === "ref" ? refs[f.name]
     : f.kind === "bool" ? [{ value: "true", label: t(locale, "common.yes") }, { value: "false", label: t(locale, "common.no") }]
     : f.options?.filter((o) => !hidden(meta, role, f.name, o)).map((o) => ({ value: o, label: optionLabel(locale, f, o) }));
-  return { name: f.name, label: t(locale, f.labelKey), section: f.section ? t(locale, f.section) : undefined, kind, required: Boolean(f.required), noDefault: f.noDefault, nullable: Boolean(f.nullable), maxLength: f.maxLength, options, maskBits, assetPurpose: f.kind === "asset" ? f.asset?.purpose : undefined, previewUrl: f.kind === "asset" && f.asset && typeof row?.[f.asset.previewKey] === "string" ? (row[f.asset.previewKey] as string) : undefined };
+  return { name: f.name, label: t(locale, f.labelKey), section: f.section ? t(locale, f.section) : undefined, kind, required: Boolean(f.required), noDefault: f.noDefault, nullable: Boolean(f.nullable), maxLength: f.phone ? undefined : f.maxLength, options, maskBits, assetPurpose: f.kind === "asset" ? f.asset?.purpose : undefined, previewUrl: f.kind === "asset" && f.asset && typeof row?.[f.asset.previewKey] === "string" ? (row[f.asset.previewKey] as string) : undefined };
 }
 
 export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; searchParams: SearchParams }) {

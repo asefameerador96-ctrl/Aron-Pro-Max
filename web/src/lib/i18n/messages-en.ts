@@ -165,6 +165,7 @@ export const en = {
   "entity.visit.daily": "Daily",
   "entity.visit.3f": "3 days a week",
   "entity.visit.2f": "2 days a week",
+  "entity.visit.none": "No visit plan",
   "entity.status.disabled": "Disabled",
   "action.end_assignment": "End assignment",
   "action.reset_password": "Reset password",

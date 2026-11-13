@@ -18,11 +18,13 @@ const REASON = "Reason that is long enough";
 const plus = (n: number) => businessDate(new Date(Date.now() + n * 86_400_000)); // relative: the BFF refuses past dates (Dhaka)
 
 describe("routes", () => {
-  it("validates the day mask (1..127), kind, code and visit kind", () => {
+  it("validates the day mask (0..127; 0 only as no visit plan), kind, code and visit kind", () => {
     const s = valuesSchema(routes, "create");
     const ok = { code: "R-9", name: "Route", zone_id: "14", kind: "sr", visit_days_mask: "21" };
     expect(s.safeParse(ok)).toMatchObject({ success: true, data: { visit_days_mask: 21, zone_id: 14 } });
-    expect(s.safeParse({ ...ok, visit_days_mask: "0" }).success).toBe(false);
+    expect(s.safeParse({ ...ok, visit_days_mask: "0" }).success).toBe(true); // D-MD-03: the server refuses 0 unless visit_kind is none
+    expect(s.safeParse({ ...ok, visit_days_mask: "0", visit_kind: "none" }).success).toBe(true);
+    expect(s.safeParse({ ...ok, visit_days_mask: "-1" }).success).toBe(false);
     expect(s.safeParse({ ...ok, visit_days_mask: "128" }).success).toBe(false);
     expect(s.safeParse({ ...ok, kind: "tso" }).success).toBe(false);
     expect(s.safeParse({ ...ok, visit_kind: "5f" }).success).toBe(false);

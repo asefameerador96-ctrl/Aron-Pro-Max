@@ -3659,8 +3659,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Bulk create-or-update outlets from a sheet; the channel is mandatory on every row (preview with dry_run, commit with a reason).
-         * @description A missing or unknown channel refuses the request (400 at body.rows/<i>/channel), preview included. `dry_run: true` writes nothing and returns the report; `dry_run: false` needs `change_reason`, refuses the whole batch on any row error and is idempotent by `batch_uuid` (same content replays, other content is 409 ERR_SYNC_BATCH_UUID_REUSED). A row whose `code` names an outlet of the same zone updates it (never its status; a blank route, pin, phone or address keeps the stored one).
+         * Bulk create-or-update outlets from a sheet as the field has it (preview with dry_run, commit with a reason).
+         * @description The field's data is accepted as it is (1.18.0). A channel label of the field ("GT Channel") is mapped; an empty channel comes from the sub-channel, else the row loads as GT with the warning `channel_defaulted`; a channel that names none of the six is the row error `unknown_channel` (never a 400 for the batch). Phones are repaired to the national form, coordinates are rounded to 8 decimals, a tier that does not fit the channel loads with no tier and the warning `sub_channel_mismatch`. `dry_run: true` writes nothing and returns the report; `dry_run: false` needs `change_reason` and, with `on_row_error` `reject_batch` (default), refuses the whole batch on any row error; `skip_rows` writes the good rows and lists the skipped ones. Idempotent by `batch_uuid` (same content replays, other content is 409 ERR_SYNC_BATCH_UUID_REUSED). A row whose `code` names an outlet of the same zone updates it (never its status; a blank route, pin, phone, address, tier or geo class keeps the stored one).
          */
         post: operations["importOutlets"];
         delete?: never;
@@ -4562,7 +4562,7 @@ export interface components {
          */
         AppVersionString: string;
         /**
-         * @description Case-insensitive login name. Memo-producing roles (SR, AMO) match `^[a-z][a-z0-9]{3,31}$` (no hyphen, docs/24 s7.5).
+         * @description Case-insensitive login name. Memo-producing roles (SR, AMO) match `^[a-z][a-z0-9]{2,31}$` (no hyphen, docs/24 s7.5).
          * @example sr334001
          */
         Username: string;
@@ -4743,10 +4743,10 @@ export interface components {
         /** @enum {string} */
         QuarantineStatus: "open" | "accepted" | "accepted_with_fix" | "discarded";
         /**
-         * @description Business code lists (docs/24 s12.1). `zero_sale_reason` (the four reasons of SR manual screenshot 32) and `call_photo_skip` from contract 1.14.0. `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
+         * @description Business code lists (`cluster_type` from contract 1.18.0, the six cluster types of the field with Bangla labels) (docs/24 s12.1). `zero_sale_reason` (the four reasons of SR manual screenshot 32) and `call_photo_skip` from contract 1.14.0. `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
          * @enum {string}
          */
-        CodeListKey: "force_reason" | "edit_reason" | "void_reason" | "visit_outcome" | "skip_reason" | "day_exception_reason" | "stock_variance_reason" | "task_type" | "leave_type" | "feedback_category" | "qc_fault_type" | "payment_mode" | "outlet_close_reason" | "submit_void_reason" | "channel" | "sub_channel" | "geo_class" | "ticket_issue_type" | "ticket_resolution_code" | "zero_sale_reason" | "call_photo_skip";
+        CodeListKey: "force_reason" | "edit_reason" | "void_reason" | "visit_outcome" | "skip_reason" | "day_exception_reason" | "stock_variance_reason" | "task_type" | "leave_type" | "feedback_category" | "qc_fault_type" | "payment_mode" | "outlet_close_reason" | "submit_void_reason" | "channel" | "sub_channel" | "geo_class" | "ticket_issue_type" | "ticket_resolution_code" | "zero_sale_reason" | "call_photo_skip" | "cluster_type";
         /** @enum {string} */
         BundleSectionName: "outlets" | "open_memos" | "prices" | "offers" | "tasks" | "team" | "pending_outlet_requests" | "programmes" | "content";
         /**
@@ -8880,9 +8880,12 @@ export interface components {
             zone_id: components["schemas"]["Id"];
             /** @enum {string} */
             kind: "sr" | "amo";
-            /** @enum {string|null} */
-            visit_kind?: "daily" | "3f" | "2f" | null;
-            /** @description bit0 Sat, bit1 Sun, bit2 Mon, bit3 Tue, bit4 Wed, bit5 Thu, bit6 Fri (daily = 127, Sun/Tue/Thu = 42, Sat/Mon/Wed = 21). */
+            /**
+             * @description none (1.18.0) = no visit plan, stored as the field has it: mask 0, never planned, not counted in target outlets; shown as "no visit plan".
+             * @enum {string|null}
+             */
+            visit_kind?: "daily" | "3f" | "2f" | "none" | null;
+            /** @description 0 (1.18.0) = no visit plan (visit_kind none). bit0 Sat, bit1 Sun, bit2 Mon, bit3 Tue, bit4 Wed, bit5 Thu, bit6 Fri (daily = 127, Sun/Tue/Thu = 42, Sat/Mon/Wed = 21). */
             visit_days_mask: number;
             sequence_no?: number | null;
             status: components["schemas"]["ActiveStatus"];
@@ -8901,8 +8904,12 @@ export interface components {
             zone_id: components["schemas"]["Id"];
             /** @enum {string} */
             kind: "sr" | "amo";
-            /** @enum {string|null} */
-            visit_kind?: "daily" | "3f" | "2f" | null;
+            /**
+             * @description none (1.18.0) = no visit plan, stored as the field has it: mask 0, never planned, not counted in target outlets; shown as "no visit plan".
+             * @enum {string|null}
+             */
+            visit_kind?: "daily" | "3f" | "2f" | "none" | null;
+            /** @description 0 only with visit_kind none (no visit plan). */
             visit_days_mask: number;
             sequence_no?: number | null;
         };
@@ -8910,8 +8917,12 @@ export interface components {
             name?: string;
             display_label?: string | null;
             zone_id?: components["schemas"]["Id"];
-            /** @enum {string|null} */
-            visit_kind?: "daily" | "3f" | "2f" | null;
+            /**
+             * @description none (1.18.0) = no visit plan, stored as the field has it: mask 0, never planned, not counted in target outlets; shown as "no visit plan".
+             * @enum {string|null}
+             */
+            visit_kind?: "daily" | "3f" | "2f" | "none" | null;
+            /** @description 0 only with visit_kind none (no visit plan). */
             visit_days_mask?: number;
             sequence_no?: number | null;
             status?: components["schemas"]["ActiveStatus"];
@@ -11230,28 +11241,56 @@ export interface components {
             zone_code: string;
             /** @description Cluster name inside the zone. */
             cluster: string;
-            /** @enum {string} */
-            channel: "GT" | "DCC" | "Astha" | "RCC" | "MT" | "HoReCa";
+            /** @description Since 1.18.0 optional and free text: one of GT, DCC, Astha, RCC, MT, HoReCa or the field's label ("GT Channel", "Astha Channel", "DCC Channel", "MT Channel"), any case. Empty: derived from sub_channel, else GT with the warning channel_defaulted. */
+            channel?: string | null;
             /** @enum {string} */
             outlet_kind: "retail" | "wholesale";
             route_code?: string | null;
+            /** @description More than 8 decimals are rounded, never rejected. */
             lat?: number | null;
             lng?: number | null;
+            /** @description Repaired to 01XXXXXXXXX (10 digits, 880 prefix, spaces, dashes, Bengali digits); one that cannot be repaired is stored empty with the warning phone_unusable. */
             contact_number?: string | null;
             address?: string | null;
+            /** @description 1.18.0. The sub-channel code (GT, RCC, DCC, MT, HoReCa, or the Astha tier Gold, Diamond, Platinum, Titanium); "--" or empty means none. It is the source of the Astha tier of the outlet. A value that does not belong to the row's channel, is unknown or retired (Silver) loads with no tier and a warning. */
+            sub_channel?: string | null;
+            /** @description 1.18.0. Rural, Urban, Semi Urban (stored as SemiUrban) or Hill; unknown is stored empty with a warning. */
+            geo_class?: string | null;
+            /** @description 1.18.0. The field's Created At text (ISO or yyyy-MM-dd HH:mm:ss, dd/MM/yyyy; without an offset it is Asia/Dhaka). Kept on a new outlet; unreadable or future values keep the import time with a warning. */
+            created_at?: string | null;
+            /** @description 1.18.0. The field's Updated At text, same rules; kept on a new outlet. */
+            updated_at?: string | null;
         };
         OutletImportWrite: {
             batch_uuid: components["schemas"]["Uuid"];
             rows: components["schemas"]["OutletImportRow"][];
             dry_run: boolean;
             change_reason?: components["schemas"]["ChangeReason"];
+            /**
+             * @description 1.18.0. The owner's switch at load time: true marks every imported pin inside Bangladesh as confirmed (no first-visit correction); false loads them as the master pin, unconfirmed. A pin outside Bangladesh is never confirmed. A re-run with true confirms pins loaded earlier with false.
+             * @default false
+             */
+            location_confirmed: boolean;
+            /**
+             * @description 1.18.0. reject_batch (the earlier behaviour) refuses the whole commit on any row error; skip_rows writes the good rows and lists the skipped ones.
+             * @default reject_batch
+             * @enum {string}
+             */
+            on_row_error: "reject_batch" | "skip_rows";
+        };
+        /** @description A row that loaded with something to look at (1.18.0). Counts of every warning code are in warnings_by_code; the list holds the actionable ones (not phone_repaired, coordinates_rounded, channel_derived, astha_without_tier). */
+        OutletImportRowWarning: {
+            row: number;
+            column: string;
+            /** @enum {string} */
+            code: "phone_unusable" | "phone_repaired" | "coordinates_rounded" | "coordinates_outside_bangladesh" | "channel_derived" | "channel_defaulted" | "sub_channel_mismatch" | "sub_channel_retired" | "unknown_sub_channel" | "astha_without_tier" | "unknown_geo_class" | "created_at_unreadable" | "updated_at_unreadable";
         };
         OutletImportRowError: {
             /** @description 1-based position in rows. */
             row: number;
             column: string;
             /** @enum {string} */
-            code: "required" | "invalid" | "unknown_zone" | "unknown_cluster" | "unknown_route" | "code_taken" | "duplicate" | "outlet_merged";
+            code: "required" | "invalid" | "unknown_zone" | "unknown_cluster" | "unknown_route" | "code_taken" | "duplicate" | "outlet_merged" | "unknown_channel";
         };
         OutletImportPreview: {
             batch_uuid: components["schemas"]["Uuid"];
@@ -11264,11 +11303,37 @@ export interface components {
             };
             errors: components["schemas"]["OutletImportRowError"][];
             errors_truncated: boolean;
+            /** @description 1.18.0. */
+            warnings?: components["schemas"]["OutletImportRowWarning"][];
+            /** @description 1.18.0. */
+            warnings_truncated?: boolean;
+            /** @description 1.18.0. Count of every warning code, informational ones included. */
+            warnings_by_code?: {
+                [key: string]: number;
+            };
         };
         OutletImportResult: {
             batch_uuid: components["schemas"]["Uuid"];
             rows: number;
             replayed: boolean;
+            /** @description 1.18.0. */
+            creates?: number;
+            /** @description 1.18.0. */
+            updates?: number;
+            /** @description 1.18.0. Rows left out because of a row error (on_row_error skip_rows). */
+            skipped?: number;
+            /** @description 1.18.0. Only with skip_rows. */
+            errors?: components["schemas"]["OutletImportRowError"][];
+            /** @description 1.18.0. */
+            errors_truncated?: boolean;
+            /** @description 1.18.0. Not on a replay. */
+            warnings?: components["schemas"]["OutletImportRowWarning"][];
+            /** @description 1.18.0. */
+            warnings_truncated?: boolean;
+            /** @description 1.18.0. */
+            warnings_by_code?: {
+                [key: string]: number;
+            };
         };
         BulkResult: {
             batch_uuid: components["schemas"]["Uuid"];

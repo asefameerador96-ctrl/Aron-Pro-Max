@@ -168,6 +168,7 @@ export const bn: Record<MessageKey, string> = {
   "entity.visit.daily": "প্রতিদিন",
   "entity.visit.3f": "সপ্তাহে ৩ দিন",
   "entity.visit.2f": "সপ্তাহে ২ দিন",
+  "entity.visit.none": "ভিজিট প্ল্যান নেই",
   "entity.status.disabled": "বন্ধ",
   "action.end_assignment": "দায়িত্ব শেষ করুন",
   "action.reset_password": "পাসওয়ার্ড রিসেট",

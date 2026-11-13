@@ -295,6 +295,21 @@ class AdminUsersRoutesTest {
         assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Post, "/admin/users/$sr/credentials", env.token("support1001", Role.SUPPORT), """{"action":"reset_mfa","reason":"Support may not reset MFA"}""").status)
     }
 
+    /** D-MD-03 (M03): the portal API stores a route with no visit plan; the explicit form is kind none with mask 0, and nothing in between. */
+    @Test
+    fun aRouteWithNoVisitPlanIsStoredAsKindNoneWithMaskZero() = env.app {
+        val zid = zone("Z-MIR")
+        val c = sendA1(HttpMethod.Post, "/admin/routes", admin, """{"code":"RT-NP1","name":"No plan","zone_id":$zid,"kind":"sr","visit_kind":"none","visit_days_mask":0}""")
+        assertEquals(HttpStatusCode.Created, c.status)
+        val o = c.objA1()
+        assertEquals("none", o.strA1("visit_kind")); assertEquals(0, o.lng("visit_days_mask").toInt())
+        assertEquals("none|0", env.sql("SELECT visit_kind || '|' || visit_days_mask FROM app.route WHERE code = 'RT-NP1'"))
+        for (bad in listOf(""""visit_kind":"none","visit_days_mask":5""", """"visit_kind":"daily","visit_days_mask":0""", """"visit_days_mask":0""")) {
+            assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Post, "/admin/routes", admin, """{"code":"RT-NP2","name":"Bad","zone_id":$zid,"kind":"sr",$bad}""").status, bad)
+        }
+        assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Post, "/admin/routes", admin, """{"code":"RT-NP3","name":"Range","zone_id":$zid,"kind":"sr","visit_days_mask":-1}""").status)
+    }
+
     @Test
     fun routesCreatePatchEffectiveDatedVisitDaysDuplicateAndScope() = env.app {
         val zid = zone("Z-MIR")

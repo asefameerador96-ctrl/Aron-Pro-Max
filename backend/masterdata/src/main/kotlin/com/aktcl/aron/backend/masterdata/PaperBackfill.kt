@@ -66,7 +66,7 @@ fun Route.paperBackfillRoutes(d: PaperBackfillDeps) {
     }
 }
 
-private val MEMO_NO = Regex("^[a-z][a-z0-9]{3,31}-\\d{6}-\\d{3,4}$")
+private val MEMO_NO = Regex("^[a-z][a-z0-9]{2,31}-\\d{6}-\\d{3,4}$")
 private val STAMP = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC)
 private val ROLES = setOf(Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 

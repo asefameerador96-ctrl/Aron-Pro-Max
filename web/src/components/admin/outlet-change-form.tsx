@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
+import { normalisePhone } from "@/lib/phone";
 import type { MessageKey } from "@/lib/i18n";
 import { asciiDigits, codePoints } from "./crud/validation";
 import { callMasterOp } from "./master-op-client";
@@ -35,7 +36,6 @@ interface Props {
   closeReasons: Option[];
 }
 
-const PHONE = /^01[3-9][0-9]{8}$/;
 const inv = (errs: Record<string, string>, k: string) => (errs[k] ? { "aria-invalid": true as const, "aria-describedby": `error-f-${k}` } : {});
 const num = (s: string) => Number(String(asciiDigits(s)).trim());
 
@@ -73,11 +73,9 @@ export function OutletChangeForm({ outlet, clusters, subChannels, closeReasons }
         else if (codePoints(bn) > 120) e.name_bn = bad;
         else p.name_bn = bn;
       }
-      const phone = String(asciiDigits(v.contact_number!)).trim();
-      if (phone) {
-        if (!PHONE.test(phone)) e.contact_number = bad;
-        else p.contact_number = phone;
-      }
+      const phone = normalisePhone(v.contact_number!); // repaired like the field keeps it; an unusable value is an error here
+      if (phone.unusable) e.contact_number = bad;
+      else if (phone.value) p.contact_number = phone.value;
       const addr = v.address!.trim();
       if (addr !== outlet.address.trim()) {
         if (!addr || codePoints(addr) > 300) e.address = bad;

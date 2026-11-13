@@ -13,3 +13,39 @@ OutletImportResult:
       minimum: 1
     replayed:
       type: boolean
+    creates:
+      type: integer
+      minimum: 0
+      description: 1.18.0.
+    updates:
+      type: integer
+      minimum: 0
+      description: 1.18.0.
+    skipped:
+      type: integer
+      minimum: 0
+      description: 1.18.0. Rows left out because of a row error (on_row_error skip_rows).
+    errors:
+      type: array
+      maxItems: 1000
+      items:
+        $ref: '#/components/schemas/OutletImportRowError'
+      description: 1.18.0. Only with skip_rows.
+    errors_truncated:
+      type: boolean
+      description: 1.18.0.
+    warnings:
+      type: array
+      maxItems: 1000
+      items:
+        $ref: '#/components/schemas/OutletImportRowWarning'
+      description: 1.18.0. Not on a replay.
+    warnings_truncated:
+      type: boolean
+      description: 1.18.0.
+    warnings_by_code:
+      type: object
+      additionalProperties:
+        type: integer
+        minimum: 0
+      description: 1.18.0.

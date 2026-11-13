@@ -11,7 +11,8 @@ import java.time.LocalDate
  * default Friday), overridden by the most specific holiday, make-up day or emergency off-day on that date.
  */
 object DayPlan {
-    enum class VisitKind(val wire: String, val days: Int) { DAILY("daily", 7), THREE_F("3f", 3), TWO_F("2f", 2) }
+    /** NONE is the explicit "no visit plan" (mask 0): stored as the field has it, never planned, never counted in target outlets (D-MD-03). */
+    enum class VisitKind(val wire: String, val days: Int) { DAILY("daily", 7), THREE_F("3f", 3), TWO_F("2f", 2), NONE("none", 0) }
 
     /** Bit of a weekday in `visit_days_mask`. */
     fun bit(day: DayOfWeek): Int = when (day) {
@@ -23,10 +24,18 @@ object DayPlan {
 
     const val DAILY_MASK = 127
 
+    /** The mask of a route with no visit plan (visit_kind `none`): no bit set, so it is planned on no date. */
+    const val NO_PLAN_MASK = 0
+
     fun visitsOn(mask: Int, date: LocalDate): Boolean = mask and (1 shl bit(date.dayOfWeek)) != 0
 
-    /** The kind a mask describes (daily = all seven days; 3F and 2F by the number of days), null otherwise. */
+    /**
+     * The kind a mask describes (daily = all seven days; 3F and 2F by the number of days; 0 = no plan), null otherwise.
+     * "Daily" is every SELLING day of the zone: a daily route has all seven bits and is planned on a date only when [isSellingDay] says so,
+     * so the weekend (default Friday) stays off, and a make-up Friday in the working calendar plans every daily route on that Friday (D-MD-02).
+     */
     fun kindOf(mask: Int): VisitKind? = when {
+        mask == NO_PLAN_MASK -> VisitKind.NONE
         mask == DAILY_MASK -> VisitKind.DAILY
         Integer.bitCount(mask) == 3 -> VisitKind.THREE_F
         Integer.bitCount(mask) == 2 -> VisitKind.TWO_F

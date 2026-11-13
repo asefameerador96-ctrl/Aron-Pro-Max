@@ -74,4 +74,25 @@ class N017ReviewTest {
         assertTrue(kind == null || DayPlan.consistent(DayPlan.VisitKind.entries.first { it.wire == kind }, r.visitDaysMask),
             "visit_kind $kind does not match mask ${r.visitDaysMask}")
     }
+
+    /** D-MD-03 (M03): a route with NO visit plan (kind none, mask 0) is stored, held by a rep, never planned and never counted in the target outlets. */
+    @Test
+    fun aRouteWithNoVisitPlanIsStoredAndNeverPlannedOrCounted() {
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("INSERT INTO app.cluster (id, zone_id, name) OVERRIDING SYSTEM VALUE VALUES (900, 4, 'No-plan cluster')")
+            h.execute("INSERT INTO app.route (id, code, name, zone_id, kind, visit_kind, visit_days_mask) OVERRIDING SYSTEM VALUE VALUES (91, 'R-NOPLAN', 'No plan', 4, 'sr', 'none', 0)")
+            h.execute("INSERT INTO app.outlet (code, name, owner_name, zone_id, route_id, cluster_id, channel) VALUES ('NP-1', 'No plan outlet', 'Owner', 4, 91, 900, 'GT')")
+            h.execute("INSERT INTO app.app_user (id, username, full_name, role, must_change_password) OVERRIDING SYSTEM VALUE VALUES (694, 'sr694', 'SR 694', 'SR', false)")
+            h.execute("INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from) VALUES (91, 694, 'primary', '2026-01-01')")
+        }
+        val planner = SqlRoutePlanner(fresh.db, GeoRepository(fresh.db), RegistryDefaults())
+        val r = planner.routesFor(694, sunday).single()
+        assertEquals("none", r.visitKind); assertEquals(0, r.visitDaysMask)
+        assertEquals(false, r.plannedToday); assertEquals(0, r.targetOutlets); assertEquals(1, r.activeOutlets)
+        // the schema refuses the in-between states: mask 0 needs kind none, kind none needs mask 0
+        for (bad in listOf("'sr', NULL, 0", "'sr', 'daily', 0", "'sr', 'none', 5")) {
+            val e = runCatching { fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.route (code, name, zone_id, kind, visit_kind, visit_days_mask) VALUES ('R-BAD', 'Bad', 4, $bad)") } }
+            assertTrue(e.isFailure, bad)
+        }
+    }
 }

@@ -32,7 +32,7 @@ BEGIN
            (VALUES ('Z-GUL', 'Gulshan', 'গুলশান', 'Gulshan DEP'), ('Z-BAN', 'Banani', 'বনানী', 'Banani DEP')) AS z(code, name, name_bn, dep)
      WHERE t.code = 'T-DHK-N' AND h.code = 'H-GUL' AND NOT EXISTS (SELECT 1 FROM app.zone x WHERE x.code = z.code);
   INSERT INTO app.cluster (zone_id, name, cluster_type)
-    SELECT z.id, c.name, 'market' FROM app.zone z,
+    SELECT z.id, c.name, 'Transit Hub' FROM app.zone z,
            (VALUES ('Z-GUL', 'Gulshan 2 Circle'), ('Z-GUL', 'Gulshan 1 Circle'), ('Z-BAN', 'Banani Road 11')) AS c(zone, name)
      WHERE z.code = c.zone AND NOT EXISTS (SELECT 1 FROM app.cluster x WHERE x.zone_id = z.id AND x.name = c.name);
 

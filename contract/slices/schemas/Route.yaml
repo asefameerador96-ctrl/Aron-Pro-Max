@@ -40,13 +40,16 @@ Route:
         - daily
         - 3f
         - 2f
+        - none
         - null
+        description: 'none (1.18.0) = no visit plan, stored as the field has it: mask 0, never planned, not counted
+          in target outlets; shown as "no visit plan".'
       visit_days_mask:
         type: integer
-        minimum: 1
+        minimum: 0
         maximum: 127
-        description: bit0 Sat, bit1 Sun, bit2 Mon, bit3 Tue, bit4 Wed, bit5 Thu, bit6 Fri (daily = 127, Sun/Tue/Thu
-          = 42, Sat/Mon/Wed = 21).
+        description: 0 (1.18.0) = no visit plan (visit_kind none). bit0 Sat, bit1 Sun, bit2 Mon, bit3 Tue, bit4
+          Wed, bit5 Thu, bit6 Fri (daily = 127, Sun/Tue/Thu = 42, Sat/Mon/Wed = 21).
       sequence_no:
         type:
         - integer

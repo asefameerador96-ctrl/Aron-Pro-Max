@@ -34,3 +34,18 @@ OutletImportPreview:
         $ref: '#/components/schemas/OutletImportRowError'
     errors_truncated:
       type: boolean
+    warnings:
+      type: array
+      maxItems: 1000
+      items:
+        $ref: '#/components/schemas/OutletImportRowWarning'
+      description: 1.18.0.
+    warnings_truncated:
+      type: boolean
+      description: 1.18.0.
+    warnings_by_code:
+      type: object
+      additionalProperties:
+        type: integer
+        minimum: 0
+      description: 1.18.0. Count of every warning code, informational ones included.

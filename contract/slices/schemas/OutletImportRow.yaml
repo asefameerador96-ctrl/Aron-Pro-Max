@@ -5,7 +5,6 @@ OutletImportRow:
   - owner_name
   - zone_code
   - cluster
-  - channel
   - outlet_kind
   additionalProperties: false
   properties:
@@ -30,14 +29,13 @@ OutletImportRow:
       maxLength: 120
       description: Cluster name inside the zone.
     channel:
-      type: string
-      enum:
-      - GT
-      - DCC
-      - Astha
-      - RCC
-      - MT
-      - HoReCa
+      type:
+      - string
+      - 'null'
+      maxLength: 60
+      description: 'Since 1.18.0 optional and free text: one of GT, DCC, Astha, RCC, MT, HoReCa or the field''s
+        label ("GT Channel", "Astha Channel", "DCC Channel", "MT Channel"), any case. Empty: derived from sub_channel,
+        else GT with the warning channel_defaulted.'
     outlet_kind:
       type: string
       enum:
@@ -54,6 +52,7 @@ OutletImportRow:
       - 'null'
       minimum: -90
       maximum: 90
+      description: More than 8 decimals are rounded, never rejected.
     lng:
       type:
       - number
@@ -64,8 +63,38 @@ OutletImportRow:
       type:
       - string
       - 'null'
+      description: Repaired to 01XXXXXXXXX (10 digits, 880 prefix, spaces, dashes, Bengali digits); one that cannot
+        be repaired is stored empty with the warning phone_unusable.
     address:
       type:
       - string
       - 'null'
       maxLength: 300
+    sub_channel:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+      description: 1.18.0. The sub-channel code (GT, RCC, DCC, MT, HoReCa, or the Astha tier Gold, Diamond, Platinum,
+        Titanium); "--" or empty means none. It is the source of the Astha tier of the outlet. A value that does
+        not belong to the row's channel, is unknown or retired (Silver) loads with no tier and a warning.
+    geo_class:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+      description: 1.18.0. Rural, Urban, Semi Urban (stored as SemiUrban) or Hill; unknown is stored empty with
+        a warning.
+    created_at:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+      description: 1.18.0. The field's Created At text (ISO or yyyy-MM-dd HH:mm:ss, dd/MM/yyyy; without an offset
+        it is Asia/Dhaka). Kept on a new outlet; unreadable or future values keep the import time with a warning.
+    updated_at:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+      description: 1.18.0. The field's Updated At text, same rules; kept on a new outlet.

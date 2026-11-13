@@ -103,12 +103,12 @@ internal enum class Kind { TEXT, LONG, INT, DOUBLE, BOOL, ENUM }
 
 /**
  * One writable column of a master entity. [name] is the JSON member, [sqlName] the column (they differ for `parent_id`).
- * [digits] normalises Bengali digits before validation (phone numbers).
+ * [digits] normalises Bengali digits before validation. [phone] repairs a phone number the way the field stores it (no leading 0, 880 prefix, spaces or dashes: [ImportRules.phone]) before the strict pattern is checked; one that cannot be repaired is a `pattern` error here (a person typing it can correct it; the bulk importer stores it empty with a warning).
  */
 internal class Col(
     val name: String, val kind: Kind, val sqlName: String = name, val required: Boolean = false, val nullable: Boolean = false,
     val onCreate: Boolean = true, val onPatch: Boolean = true, val min: Long = 0, val max: Long = Long.MAX_VALUE,
-    val pattern: Regex? = null, val values: Set<String>? = null, val digits: Boolean = false, val minD: Double = -1e18, val maxD: Double = 1e18,
+    val pattern: Regex? = null, val values: Set<String>? = null, val digits: Boolean = false, val phone: Boolean = false, val minD: Double = -1e18, val maxD: Double = 1e18,
 )
 
 private val BN_DIGITS = "০১২৩৪৫৬৭৮৯"
@@ -132,7 +132,7 @@ internal class Fields(val obj: JsonObject, allowed: Set<String>) {
         return when (c.kind) {
             Kind.TEXT -> {
                 if (!el.isString) admBad(ptr, "invalid_type")
-                val s = if (c.digits) normDigits(el.content) else el.content
+                val s = if (c.phone) (ImportRules.phone(el.content).value ?: el.content) else if (c.digits) normDigits(el.content) else el.content
                 if (s.contains('\u0000')) admBad(ptr, "invalid_character")
                 if (s.length < c.min || s.length > c.max) admBad(ptr, "length")
                 if (c.pattern != null && !c.pattern.matches(s)) admBad(ptr, "pattern")

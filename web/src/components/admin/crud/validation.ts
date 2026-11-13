@@ -1,6 +1,7 @@
 // Server-side validation derived from entity metadata. Strict like the API: unknown members are refused.
 import { z } from "zod";
 import { businessDate } from "@/lib/i18n";
+import { normalisePhone } from "@/lib/phone";
 import type { FieldError } from "./types";
 import { isWritable, type AnyEntity, type AnyField } from "./meta";
 
@@ -49,7 +50,7 @@ function fieldSchema(f: AnyField): z.ZodType {
   }
   if (f.kind === "mask") {
     const bits = f.maskBits?.length ?? 7;
-    return z.preprocess(asciiDigits, z.coerce.number().int().min(1).max(2 ** bits - 1));
+    return z.preprocess(asciiDigits, z.coerce.number().int().min(0).max(2 ** bits - 1));
   }
   if (f.kind === "int" || f.kind === "ref") {
     // Only a non-empty string or a number is a number: "", null, true and [] must not coerce to 0 or 1.
@@ -64,7 +65,8 @@ function fieldSchema(f: AnyField): z.ZodType {
     const e = z.enum((f.options ?? []) as [string, ...string[]]);
     return f.nullable ? z.preprocess((v) => (v === "" ? null : v), e.nullable()) : e;
   }
-  const ascii = (v: unknown) => (f.normalizeDigits ? asciiDigits(v) : v);
+  // A phone is repaired first (the value sent is the repaired one); an unusable text is kept so the pattern reports it.
+  const ascii = (v: unknown) => (f.phone ? (typeof v === "string" ? (normalisePhone(v).value ?? v.trim()) : v) : f.normalizeDigits ? asciiDigits(v) : v);
   let s: z.ZodType<string> = z.preprocess(ascii, z.string().trim()) as unknown as z.ZodType<string>;
   const max = f.maxLength;
   if (max) s = s.refine((v) => codePoints(v) <= max, { message: "too_big" });

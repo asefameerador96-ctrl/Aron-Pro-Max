@@ -38,7 +38,7 @@ internal val OUTLET = MasterEntity(
         Col("name", Kind.TEXT, required = true, min = 2, max = 120),
         Col("name_bn", Kind.TEXT, nullable = true, max = 120),
         Col("owner_name", Kind.TEXT, required = true, min = 2, max = 120),
-        Col("contact_number", Kind.TEXT, nullable = true, pattern = PHONE_RE, digits = true),
+        Col("contact_number", Kind.TEXT, nullable = true, pattern = PHONE_RE, digits = true, phone = true),
         Col("address", Kind.TEXT, nullable = true, max = 300),
         Col("zone_id", Kind.LONG, required = true, onPatch = false, min = 1),
         Col("route_id", Kind.LONG, nullable = true, min = 1),
@@ -87,7 +87,7 @@ internal val OUTLET = MasterEntity(
         if (cur == null) {
             val id = h.scalarLong("SELECT nextval(pg_get_serial_sequence('app.outlet', 'id'))")
             out["id"] = id
-            if (merged["code"] == null) out["code"] = "AD-$id"
+            if (merged["code"] == null) out["code"] = "${ImportRules.GENERATED_OUTLET_CODE_PREFIX}$id"
             out["location_basis"] = if (merged["lat"] != null) "master" else "none"
         } else {
             val newZone = h.createQuery("SELECT zone_id FROM app.cluster WHERE id = :c").bind("c", merged["cluster_id"]).mapTo(Long::class.java).one()

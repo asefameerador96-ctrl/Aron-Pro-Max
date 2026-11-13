@@ -410,13 +410,15 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         if (!UUID_V4.matches(req.request_uuid)) bad("/request_uuid")
         if (req.request_type !in setOf("info", "location", "cluster", "close")) bad("/request_type")
         if ((req.note?.length ?: 0) > 500) bad("/note")
-        validateProposal(req.request_type, req.proposed)
+        // The phone is repaired the way the field stores it before it is checked and kept (D-MD-08); the stored proposal is the repaired one.
+        val proposed = repairedProposal(req.proposed)
+        validateProposal(req.request_type, proposed)
         val u = UUID.fromString(req.request_uuid)
         val reach = reachOf(p)
         return admWrite {
             d.db.jdbi.inTransaction<Pair<HttpStatusCode, OutletRequestDto>, Exception> { h ->
                 h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 4))", "outlet_request:$u")
-                h.row("SELECT user_id, outlet_id, request_type, proposed = CAST(:p AS jsonb) AS same FROM app.outlet_change_request WHERE client_uuid = :u", "u" to u, "p" to req.proposed.toString())?.let { prior ->
+                h.row("SELECT user_id, outlet_id, request_type, proposed = CAST(:p AS jsonb) AS same FROM app.outlet_change_request WHERE client_uuid = :u", "u" to u, "p" to proposed.toString())?.let { prior ->
                     if ((prior["user_id"] as Number).toLong() != p.userId || (prior["outlet_id"] as Number?)?.toLong() != req.outlet_id || prior["request_type"] != req.request_type || prior["same"] != true) {
                         throw ApiProblem(ProblemCode.ERR_CONFLICT, "request_uuid is already used for another request")
                     }
@@ -435,12 +437,19 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                     """.trimIndent(),
                 ).bind("u", u).bind("bd", today).bind("me", p.userId).bindAny("route", outlet["route_id"]).bind("at", odt(now))
                     .bind("cv", runCatching { d.config?.configVersion() }.getOrNull() ?: 0L).bind("t", req.request_type).bind("o", req.outlet_id)
-                    .bind("p", req.proposed.toString()).bindAny("note", req.note).bind("ref", u.toString()).execute()
+                    .bind("p", proposed.toString()).bindAny("note", req.note).bind("ref", u.toString()).execute()
                 h.createUpdate("INSERT INTO app.outlet_request_event (request_uuid, event, actor_user_id, via, business_date, at, note) VALUES (:u, 'created', :me, 'web', :bd, :at, :note)")
                     .bind("u", u).bind("me", p.userId).bind("bd", today).bind("at", odt(now)).bindAny("note", req.note).execute()
                 HttpStatusCode.Created to dto(h, one(h, u, reach, lock = false)!!, p)
             }
         }
+    }
+
+    private fun repairedProposal(p: JsonObject): JsonObject {
+        val c = p["contact_number"] as? JsonPrimitive ?: return p
+        if (!c.isString) return p
+        val v = ImportRules.phone(c.content).value ?: return p
+        return JsonObject(p + ("contact_number" to JsonPrimitive(v)))
     }
 
     /** The members each web request type requires (docs/24 s12.2); closed objects: unknown members are refused. */

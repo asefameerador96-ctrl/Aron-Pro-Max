@@ -196,7 +196,7 @@ class SalesSubmitDigestService(private val db: Database, private val clock: com.
 
     companion object {
         const val MAX_REJECTED = 200
-        private val MEMO_NO = Regex("^[a-z][a-z0-9]{3,31}-\\d{6}-\\d{3,4}$")
+        private val MEMO_NO = Regex("^[a-z][a-z0-9]{2,31}-\\d{6}-\\d{3,4}$")
         private val UUID_RE = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
     }
 }

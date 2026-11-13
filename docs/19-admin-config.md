@@ -917,7 +917,7 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 | `cfg.astha.program_active` | S | bool | true (A) | n/a | G W | P | B | both | C2 | unknown; confirm: Q13 | D-41 | 5a |
 | `cfg.astha.quarter_start_month` | S | int | 1 (Q-4 = Oct to Dec) | 1 to 12 | G | P | S | both | C3 | FD | docs/06 | 5a |
 | `cfg.astha.tier_attribution` | S | enum(enrolment, sale_date) | enrolment (A) | enum | G | P | S | srv | C1 | Which tier a sale counts for when an outlet changes tier mid-quarter; the report shows the choice. Added at the editorial merge from doc 16 s10 | G-16-19; G-analyst-13 | 5a |
-| `cfg.astha.tiers` | S | content(app.sub_channel) | Platinum, Gold, Diamond, Silver | master data | G | P | B | both | C1 | Sub-channels of channel Astha | D-258 | 5a |
+| `cfg.astha.tiers` | S | content(app.sub_channel) | Gold, Diamond, Platinum, Titanium (Silver retired, inactive) | master data | G | P | B | both | C1 | Sub-channels of channel Astha | D-258 | 5a |
 | `cfg.astha.brands_in_scope` | S | list<brand_id> | Maxim, Black Diamond, Abul Bidi Style, Marise, Avon, Supreme, Special Abul Bidi, Abul Bidi Gold | ids exist | G W | P | B | both | C1 | | docs/06 | 5a |
 | `cfg.astha.gift_catalog` | S | content(app.gift_catalog) | Ceiling Fan (56 inch), 24 pcs Dinner Set, 27 pcs Dinner Set, by tier | n/a | G W | P | B | both | C1 | | G-man-047 | 5a |
 | `cfg.astha.gift_choice_roles` | S | list<role> | [tso] | subset | G | P | S | srv | C1 | The web Astha Gift Choice Panel | D-192 | 5a |

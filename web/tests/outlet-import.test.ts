@@ -1,8 +1,9 @@
-// Outlet import (docs/34 s2): the channel is mandatory on every row, in the sheet report, at the proxy and at the server.
+// Outlet import (docs/34 s2, contract 1.18.0): the field's master data is accepted as it is: channel labels mapped, an empty channel left to the server,
+// phones repaired, any number of coordinate decimals, new optional columns.
 import { describe, expect, it } from "vitest";
 import { readSheet } from "read-excel-file/node";
 import writeExcelFile from "write-excel-file/node";
-import { OUTLET_CHANNELS, OUTLET_HEADERS, outletImportRules, outletTemplateCells, parseOutletSheet } from "@/lib/admin/outlet-import";
+import { OUTLET_HEADERS, outletImportRules, outletTemplateCells, parseOutletSheet } from "@/lib/admin/outlet-import";
 import { OPS } from "@/lib/admin/ops";
 import { madmin, op, setupMock, support } from "./helpers/harness";
 
@@ -19,16 +20,28 @@ describe("parseOutletSheet", () => {
     expect(r.issues).toEqual([]);
     expect(r.rows[0]).toMatchObject({ channel: "GT", lat: 23.7937, lng: 90.4043, contact_number: "01712345678", route_code: "R-334-01", code: null, address: null });
   });
-  it("refuses a row with a missing, blank or unknown channel, and a sheet without the channel column", () => {
-    const r = parseOutletSheet([HEAD, line({ ...ok, channel: "" }), line({ ...ok, channel: "gt" }), line({ ...ok, channel: "Wholesale" }), line({ ...ok, channel: "HoReCa" })]);
-    expect(r.issues).toEqual([{ row: 2, column: "channel", code: "required" }, { row: 3, column: "channel", code: "unknown_channel" }, { row: 4, column: "channel", code: "unknown_channel" }]);
-    expect(r.rows).toHaveLength(1);
-    expect(parseOutletSheet([HEAD.filter((x) => x !== "channel"), ["a", "b", "c"]]).issues).toEqual([{ row: 1, column: "channel", code: "missing_header" }]);
-  });
-  it("all six channels are accepted", () => {
-    const r = parseOutletSheet([HEAD, ...OUTLET_CHANNELS.map((c, i) => line({ ...ok, channel: c, name: `Store ${i}` }))]);
+  it("maps the field's channel labels, leaves empty as null and an unknown text as typed (the server reports it)", () => {
+    const labels = ["GT Channel", "Astha Channel", "DCC Channel", "MT Channel", "RCC", "HoReCa", "horeca channel", "gt", "Wholesale", ""];
+    const r = parseOutletSheet([HEAD, ...labels.map((c, i) => line({ ...ok, channel: c, name: `Store ${i}` }))]);
     expect(r.issues).toEqual([]);
-    expect(r.rows.map((x) => x.channel)).toEqual([...OUTLET_CHANNELS]);
+    expect(r.rows.map((x) => x.channel)).toEqual(["GT", "Astha", "DCC", "MT", "RCC", "HoReCa", "HoReCa", "GT", "Wholesale", null]);
+  });
+  it("a sheet without the channel header is accepted; the other headers stay required", () => {
+    const noChannel = HEAD.filter((x) => x !== "channel");
+    const r = parseOutletSheet([noChannel, noChannel.map((k) => (ok as Record<string, string>)[k] ?? "")]);
+    expect(r.issues).toEqual([]);
+    expect(r.rows[0]!.channel).toBeNull();
+    expect(parseOutletSheet([HEAD.filter((x) => x !== "cluster"), ["a"]]).issues).toEqual([{ row: 1, column: "cluster", code: "missing_header" }]);
+  });
+  it("repairs phones, rounds long coordinates to 8 decimals and reads the new columns", () => {
+    const r = parseOutletSheet([HEAD, line({ ...ok, contact_number: "1711000001", lat: "23.793712345678", lng: "90.404312345678", sub_channel: "GT", geo_class: "Semi Urban", created_at: "2024-01-05 10:00", updated_at: "2024-02-01" }), line({ ...ok, name: "Two", contact_number: "abc", sub_channel: "--" })]);
+    expect(r.issues).toEqual([]);
+    expect(r.rows[0]).toMatchObject({ contact_number: "01711000001", lat: 23.79371235, lng: 90.40431235, sub_channel: "GT", geo_class: "Semi Urban", created_at: "2024-01-05 10:00", updated_at: "2024-02-01" });
+    expect(r.rows[1]).toMatchObject({ contact_number: null, sub_channel: null, geo_class: null, created_at: null });
+  });
+  it("refuses a too long new-column text and an out-of-range coordinate", () => {
+    const r = parseOutletSheet([HEAD, line({ ...ok, geo_class: "x".repeat(41) }), line({ ...ok, lat: "91.123456789012", lng: "90" })]);
+    expect(r.issues).toEqual([{ row: 2, column: "geo_class", code: "invalid" }, { row: 3, column: "lat", code: "invalid" }]);
   });
   it("checks the other required members, kind, coordinates (both or none), phone and duplicate codes", () => {
     const r = parseOutletSheet([
@@ -37,7 +50,6 @@ describe("parseOutletSheet", () => {
       line({ ...ok, outlet_kind: "shop" }),
       line({ ...ok, lat: "91", lng: "90" }),
       line({ ...ok, lat: "23.7" }),
-      line({ ...ok, contact_number: "123" }),
       line({ ...ok, code: "A1" }),
       line({ ...ok, code: "A1", name: "Other" }),
     ]);
@@ -47,15 +59,14 @@ describe("parseOutletSheet", () => {
       { row: 3, column: "outlet_kind", code: "invalid" },
       { row: 4, column: "lat", code: "invalid" },
       { row: 5, column: "lng", code: "required" },
-      { row: 6, column: "contact_number", code: "invalid" },
-      { row: 8, column: "code", code: "duplicate" },
+      { row: 7, column: "code", code: "duplicate" },
     ]);
   });
   it("round-trips the downloadable template through a real workbook", async () => {
     const buf = await writeExcelFile(outletTemplateCells().map((r) => r.map((value) => ({ value })))).toBuffer();
     const r = parseOutletSheet((await readSheet(buf)) as unknown[][]);
     expect(r.issues).toEqual([]);
-    expect(r.rows[0]).toMatchObject({ channel: "GT", outlet_kind: "retail" });
+    expect(r.rows[0]).toMatchObject({ channel: "GT", outlet_kind: "retail", sub_channel: "GT", geo_class: "Semi Urban" });
   });
 });
 
@@ -66,14 +77,25 @@ describe("outlet import through the proxy", () => {
     expect(OPS["outlet-import.commit"]).toMatchObject({ reason: "change_reason" });
     expect([...OPS["outlet-import.commit"].roles]).toEqual(["ADMIN", "SUPERADMIN"]);
   });
-  it("the proxy refuses a row without a channel before any API call", async () => {
+  it("the proxy no longer needs a channel; the server reports an unknown one as a row error", async () => {
     const c = await madmin();
-    for (const channel of [undefined, "", null, "XX"]) {
-      const res = await op(c, { op: "outlet-import.validate", body: { batch_uuid: BATCH, rows: [{ ...row, channel }], dry_run: true } });
-      expect(res.status).toBe(400);
+    for (const channel of [undefined, "", null]) {
+      expect(outletImportRules("validate", { batch_uuid: BATCH, rows: [{ ...row, channel }], dry_run: true })).toEqual([]);
     }
-    expect(outletImportRules("validate", { batch_uuid: BATCH, rows: [{ ...row, channel: "" }], dry_run: true })).toContainEqual({ pointer: "/rows/0/channel", code: "required" });
-    expect(h.calls()).toHaveLength(0);
+    expect(outletImportRules("validate", { batch_uuid: BATCH, rows: [{ ...row, channel: 5 }], dry_run: true })).toContainEqual({ pointer: "/rows/0/channel", code: "invalid" });
+    const res = await op(c, { op: "outlet-import.validate", body: { batch_uuid: BATCH, rows: [{ ...row, channel: "XX" }, { ...row, channel: "" }], dry_run: true } });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.errors).toEqual([{ row: 1, column: "channel", code: "unknown_channel" }]);
+  });
+  it("rules: location_confirmed and on_row_error are allowed members with checked values; new row members are allowed", () => {
+    const base = { batch_uuid: BATCH, rows: [{ ...row, sub_channel: "GT", geo_class: null, created_at: null, updated_at: null }], dry_run: true };
+    expect(outletImportRules("validate", { ...base, location_confirmed: true, on_row_error: "skip_rows" })).toEqual([]);
+    expect(outletImportRules("validate", { ...base, on_row_error: "reject_batch" })).toEqual([]);
+    expect(outletImportRules("validate", { ...base, location_confirmed: "yes" })).toContainEqual({ pointer: "/location_confirmed", code: "invalid" });
+    expect(outletImportRules("validate", { ...base, on_row_error: "ignore" })).toContainEqual({ pointer: "/on_row_error", code: "invalid" });
+    expect(outletImportRules("validate", { ...base, surprise: 1 })).toContainEqual({ pointer: "/surprise", code: "unknown_member" });
+    expect(outletImportRules("validate", { ...base, rows: [{ ...row, surprise: 1 }] })).toContainEqual({ pointer: "/rows/0", code: "invalid" });
+    expect(outletImportRules("validate", { ...base, rows: [{ ...row, name: "" }] })).toContainEqual({ pointer: "/rows/0/name", code: "required" });
   });
   it("preview reports unknown zone, cluster and route per row; commit creates, replays and audits", async () => {
     const c = await madmin();

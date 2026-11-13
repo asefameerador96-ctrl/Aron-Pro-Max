@@ -75,7 +75,7 @@ internal data class MemoQuery(
 ) {
     companion object {
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
-        private val MEMO_NO = Regex("^[a-z][a-z0-9]{3,31}-\\d{6}-\\d{3,4}$")
+        private val MEMO_NO = Regex("^[a-z][a-z0-9]{2,31}-\\d{6}-\\d{3,4}$")
         private val CURSOR = Regex("^[A-Za-z0-9_-]{1,512}$")
         const val DEFAULT_LIMIT = 100 // the contract's Limit default
         const val DEFAULT_DAYS = 31L

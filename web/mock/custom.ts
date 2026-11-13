@@ -170,7 +170,7 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
 
   if (path === "/v1/admin/outlets/import" && method === "POST") {
     if (!canWrite) return ctx.send(res, 403, ctx.problem(403, "ERR_FORBIDDEN")), true;
-    type R = { code: string | null; name: string; owner_name: string; zone_code: string; cluster: string; channel: string; outlet_kind: string; route_code: string | null; lat: number | null; lng: number | null; contact_number: string | null; address: string | null };
+    type R = { code: string | null; name: string; owner_name: string; zone_code: string; cluster: string; channel?: string | null; outlet_kind: string; route_code: string | null; lat: number | null; lng: number | null; contact_number: string | null; address: string | null };
     const b = (await ctx.readJson(req)) as { batch_uuid?: string; rows?: R[]; dry_run?: boolean; change_reason?: string } | undefined;
     if (!b || typeof b.batch_uuid !== "string" || !Array.isArray(b.rows) || b.rows.length < 1 || typeof b.dry_run !== "boolean") return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION")), true;
     if (!b.dry_run && !reasonOk(b.change_reason)) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: [{ pointer: "/change_reason", code: "too_short" }] })), true;
@@ -178,7 +178,8 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
     const errors: { row: number; column: string; code: string }[] = [];
     const resolved: { r: R; zone: number; cluster: number; route: number | null; existing: Record<string, unknown> | undefined }[] = [];
     b.rows.forEach((r, i) => {
-      if (!channels.includes(r.channel)) return void errors.push({ row: i + 1, column: "channel", code: r.channel ? "unknown_channel" : "required" });
+      r.channel = r.channel ? (channels.find((c) => c.toLowerCase() === r.channel!.toLowerCase().replace(/[^a-z0-9]/g, "").replace(/channel$/, "")) ?? r.channel) : "GT"; // empty: derived (GT here)
+      if (!channels.includes(r.channel)) return void errors.push({ row: i + 1, column: "channel", code: "unknown_channel" });
       const zone = st.tables.geo!.find((g) => g.level === "zone" && g.code === r.zone_code && g.status === "active");
       if (!zone) return void errors.push({ row: i + 1, column: "zone_code", code: "unknown_zone" });
       const cluster = st.tables.clusters!.find((c) => c.zone_id === zone.id && c.name === r.cluster);
@@ -190,7 +191,7 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
       if (cluster) resolved.push({ r, zone: Number(zone.id), cluster: Number(cluster.id), route: route ? Number(route.id) : null, existing });
     });
     const by_channel: Record<string, number> = {};
-    for (const r of b.rows) by_channel[r.channel] = (by_channel[r.channel] ?? 0) + 1;
+    for (const r of b.rows) by_channel[r.channel!] = (by_channel[r.channel!] ?? 0) + 1;
     const updates = resolved.filter((x) => x.existing).length;
     const summary = { batch_uuid: b.batch_uuid, rows: b.rows.length, creates: b.rows.length - updates, updates, by_channel, errors, errors_truncated: false };
     if (b.dry_run) return ctx.send(res, 200, summary), true;

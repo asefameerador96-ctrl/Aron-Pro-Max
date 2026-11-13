@@ -1,0 +1,31 @@
+OutletImportRowWarning:
+  type: object
+  required:
+  - row
+  - column
+  - code
+  additionalProperties: false
+  description: A row that loaded with something to look at (1.18.0). Counts of every warning code are in warnings_by_code;
+    the list holds the actionable ones (not phone_repaired, coordinates_rounded, channel_derived, astha_without_tier).
+  properties:
+    row:
+      type: integer
+      minimum: 1
+    column:
+      type: string
+    code:
+      type: string
+      enum:
+      - phone_unusable
+      - phone_repaired
+      - coordinates_rounded
+      - coordinates_outside_bangladesh
+      - channel_derived
+      - channel_defaulted
+      - sub_channel_mismatch
+      - sub_channel_retired
+      - unknown_sub_channel
+      - astha_without_tier
+      - unknown_geo_class
+      - created_at_unreadable
+      - updated_at_unreadable
