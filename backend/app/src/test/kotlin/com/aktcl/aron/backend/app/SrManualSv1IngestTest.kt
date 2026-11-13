@@ -684,13 +684,9 @@ class SrManualSv1IngestTest {
 
     private fun eventClock(cu: String) = fresh.db.jdbi.withHandle<String?, Exception> { h -> h.createQuery("SELECT coalesce(anchor_clock, 'phone') FROM app.route_day_event WHERE client_uuid = CAST(:c AS uuid)").bind("c", cu).mapTo(String::class.java).findOne().orElse(null) }
 
-    /** `RouteDayState.late_rows_anchor` as the supervisor route-day list (loginSubmit) shows it for the test route-day. */
-    private fun anchorShown(): String? {
-        val d = java.time.LocalDate.parse(day)
-        val ops = com.aktcl.aron.backend.analytics.OpsService(fresh.db, DbServerConfig(fresh.db, RegistryDefaults(), clock), clock)
-        val reach = com.aktcl.aron.backend.platform.Reach(1, Role.TOP, d, true, emptySet(), emptySet(), false, emptyList())
-        val l = ops.loginSubmit(reach, com.aktcl.aron.backend.analytics.DashboardService(fresh.db, clock), d, null, null)
-        return (l.not_logged_in + l.logged_in_not_submitted + l.submitted + l.exceptions).first { it.route_id == routeId }.late_rows_anchor
+    /** `RouteDayState.late_rows_anchor` for the test route-day: the very expression the supervisor route-day list embeds (LATE_ROWS_ANCHOR_SQL); the list itself needs the dw geo dimension the worker builds. */
+    private fun anchorShown(): String? = fresh.db.jdbi.withHandle<String?, Exception> { h ->
+        h.createQuery("SELECT ${com.aktcl.aron.backend.analytics.LATE_ROWS_ANCHOR_SQL} FROM app.route_day rd WHERE rd.route_id = $routeId AND rd.business_date = DATE '$day'").mapTo(String::class.java).findOne().orElse(null)
     }
 
     private fun ensureUser(name: String): Long = fresh.db.jdbi.withHandle<Long, Exception> { h ->

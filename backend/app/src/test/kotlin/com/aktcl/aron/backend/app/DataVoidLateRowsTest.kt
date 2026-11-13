@@ -228,13 +228,13 @@ class DataVoidLateRowsTest {
         app()
         val sr = client.token(); val admin = client.webToken("admin1001")
         // the credit sale belongs to the previous day, so the route-day under test holds a due collection and the Sales Submit only
-        val family = saleFamily(dueMtk = 500).map { r ->
+        val family = saleFamily(memoNo = "sr1001-270102-150", dueMtk = 500).map { r ->
             val at = JsonPrimitive("2027-01-02T10:00:00Z")
             JsonObject(r + ("business_date" to JsonPrimitive("2027-01-02")) + ("captured_at" to at)).let { x ->
                 if (x["type"]!!.jsonPrimitive.content == "memo") JsonObject(x + ("payload" to JsonObject(x["payload"]!!.jsonObject + ("committed_at" to at) + ("price_list_date" to JsonPrimitive("2027-01-02"))))) else x
             }
         }
-        assertEquals(List(5) { "accepted" }, statuses(json(client.send(sr, batch(family)).bodyAsText())))
+        json(client.send(sr, batch(family)).bodyAsText()).let { assertEquals(List(5) { "accepted" }, statuses(it), it.toString()) }
         val memo = family[1]["client_uuid"]!!.jsonPrimitive.content; val memoNo = family[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content
         val due = rec("due_collection", uuid(), day, "2027-01-03T03:50:00Z", Json.parseToJsonElement(
             """{"outlet_id":$outletId,"against_memo_client_uuid":"$memo","against_memo_no":"$memoNo","against_memo_business_date":"2027-01-02","amount_mtk":200,
