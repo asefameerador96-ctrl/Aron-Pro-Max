@@ -9,7 +9,7 @@ Everything is additive: new optional members, new schemas, a new report key, a n
 
 | change | where | rows |
 |---|---|---|
-| `Bundle.clusters` (new schema `BundleCluster`: `cluster_id`, `name`, `route_id`, `route_name`): the clusters of the SR's OWN routes, one row per cluster and route, taken from the active outlets of the route; reach = the SR's routes from the token; empty for AMO / TSO | `GET /v1/sync/bundle` (a change means a full bundle, not a delta) | SRM-B-35, SRM-B-40 |
+| `Bundle.clusters` (new schema `BundleCluster`: `cluster_id`, `name`, `route_id`, `route_name`): the clusters of the SR's OWN routes, one row per cluster and route, taken from the active outlets of the route; reach = the SR's routes from the token; empty for AMO / TSO | `GET /v1/sync/bundle` (not carried by `GET /v1/sync/delta`: they stay as the day's full bundle gave them until the next full bundle) | SRM-B-35, SRM-B-40 |
 | `Bundle.outlet_sku_stats` (new schemas `OutletSkuStat`: `outlet_id`, `previous_day`, `items`; `OutletSkuStatItem`: positional `[sku_delta, prev, ads, sdlw]`, see the shape section below): sales history per outlet and SKU of the SR's own routes | `GET /v1/sync/bundle` | SRM-A-29 |
 | report key `posm-survey` (answers per outlet, date, question, photo flag) | `ReportKey`, `POST /v1/reports/posm-survey/query` | SRM-B-08 |
 | `RouteDayState.late_rows_after_sales_submit` (integer or null): memos and due collections captured after the Sales Submit and stored before the Final Submit | supervisor route-day reads (`getLoginSubmitStatus` family); not sent in the bundle or the day-state read | SRM-B-30 |

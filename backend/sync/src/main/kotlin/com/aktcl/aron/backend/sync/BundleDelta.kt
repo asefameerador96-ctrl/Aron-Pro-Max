@@ -110,9 +110,12 @@ class BundleFingerprint(
             ),
         )
 
-        /** Bundle members a delta cannot carry: a change in any of them means fetch the full bundle. */
+        /**
+         * Bundle members a delta cannot carry: a change in any of them means fetch the full bundle. `clusters` and `outlet_sku_stats` (contract 1.16.0) are deliberately NOT here: they change with
+         * every outlet move or late-synced memo, so counting them would turn ordinary deltas into 410s; a delta leaves them as the day's full bundle carried them (history figures of the day, refreshed with the next full bundle).
+         */
         private val REST_MEMBERS = setOf(
-            "user", "calendar", "surveys", "rubrics", "supervisor", "reason_texts", "programmes", "content", "tutorials", "clusters", "outlet_sku_stats",
+            "user", "calendar", "surveys", "rubrics", "supervisor", "reason_texts", "programmes", "content", "tutorials",
         )
 
         internal fun routeLevel(r: RouteSnapshot): JsonElement =
