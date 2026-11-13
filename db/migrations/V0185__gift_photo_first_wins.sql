@@ -23,7 +23,10 @@ COMMENT ON COLUMN app.gift_photo.server_distance_m IS 'Metres between the photo 
 COMMENT ON COLUMN app.gift_photo.server_radius_m IS 'The geofence radius in metres the server re-check used (the value in force at capture).';
 COMMENT ON COLUMN app.gift_photo.server_checked_at IS 'When the server re-check ran; null until it has.';
 
+-- The table holds no row before the loyalty field screens ship (programmes were deferred, docs/27); lock_timeout above bounds the wait.
+-- squawk-ignore require-concurrent-index-deletion
 DROP INDEX app.gift_photo_one_per_assignment;
+-- squawk-ignore require-concurrent-index-deletion
 DROP INDEX app.gift_photo_one_per_unit;
 -- squawk-ignore require-concurrent-index-creation
 CREATE UNIQUE INDEX gift_photo_one_per_assignment ON app.gift_photo (gift_assignment_id)
