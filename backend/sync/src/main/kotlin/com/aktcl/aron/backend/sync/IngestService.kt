@@ -716,6 +716,14 @@ class IngestService(
         return processInSavepoint(h, ctx, r)
     }
 
+    /** True when the record's latest item for this exact payload was RETURNED to the device and no item for it is open (the phone may send it again). */
+    private fun returnedWithoutOpenItem(h: Handle, r: Rec): Boolean = h.createQuery(
+        """
+        SELECT EXISTS (SELECT 1 FROM app.sync_quarantine q WHERE q.client_uuid = CAST(:c AS uuid) AND q.payload_sha256 = :h AND q.status = 'discarded' AND q.resolution_note LIKE 'return\_to\_device%')
+           AND NOT EXISTS (SELECT 1 FROM app.sync_quarantine o WHERE o.client_uuid = CAST(:c AS uuid) AND o.status = 'open')
+        """.trimIndent(),
+    ).bind("c", r.clientUuid).bind("h", r.hash).mapTo(Boolean::class.java).one()
+
     private fun closeItem(h: Handle, id: Long, status: String, fixed: JsonObject?, resolver: Long, note: String, now: Instant) {
         h.createUpdate(
             """
@@ -965,7 +973,10 @@ class IngestService(
                 // N-027: a device-gate quarantine (device_not_enrolled, or device_integrity_failed from the gate) is
                 // processed again on every resend while its item is open; the gate and the signature check re-apply,
                 // so under enforce a bad signature is quarantined again with the same outcome.
-                "quarantined" -> if (prior.code !in DEVICE_HOLD_CODES || !openIntegrityItem(h, r)) {
+                // C-R4: a record RETURNED to the device (its item closed, none open) and sent again with the same payload is judged again; held again it re-opens its item (quarantine()).
+                "quarantined" -> if (returnedWithoutOpenItem(h, r)) {
+                    // processed again below
+                } else if (prior.code !in DEVICE_HOLD_CODES || !openIntegrityItem(h, r)) {
                     touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.PAYLOAD_CONFLICT)
                 } else {
                     released = true
@@ -1756,8 +1767,12 @@ class IngestService(
             """
             INSERT INTO app.sync_quarantine (client_uuid, record_type, code, payload_sha256, payload, detail, user_id, device_id, route_id, business_date, batch_uuid, received_at)
             VALUES (CAST(:c AS uuid), :t, :code, :h, CAST(:p AS jsonb), :detail, :u, :d, :route, :bd, CAST(:b AS uuid), :now)
-            ON CONFLICT (client_uuid, payload_sha256) DO UPDATE SET code = EXCLUDED.code, detail = EXCLUDED.detail
-              WHERE app.sync_quarantine.status = 'open' AND app.sync_quarantine.code IN ('device_integrity_failed', 'device_not_enrolled')
+            ON CONFLICT (client_uuid, payload_sha256) DO UPDATE SET code = EXCLUDED.code, detail = EXCLUDED.detail,
+                   reopen_count = app.sync_quarantine.reopen_count + (CASE WHEN app.sync_quarantine.status = 'open' THEN 0 ELSE 1 END),
+                   reopened_at = CASE WHEN app.sync_quarantine.status = 'open' THEN app.sync_quarantine.reopened_at ELSE now() END,
+                   status = 'open', resolved_at = NULL, resolved_by_user_id = NULL, approved_by_user_id = NULL, resolution_note = NULL, resolution_uuid = NULL, fixed_payload = NULL
+              WHERE (app.sync_quarantine.status = 'open' AND app.sync_quarantine.code IN ('device_integrity_failed', 'device_not_enrolled'))
+                 OR (app.sync_quarantine.status = 'discarded' AND app.sync_quarantine.resolution_note LIKE 'return\_to\_device%')
 
             """.trimIndent(),
         ).bind("c", r.clientUuid).bind("t", r.type).bind("code", code.wire).bind("h", r.hash).bind("p", storable(r.json)).bind("detail", detail?.take(1000))

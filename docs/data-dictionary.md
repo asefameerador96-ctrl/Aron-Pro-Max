@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 182 | 3025 |
+| `app` | 182 | 3027 |
 | `dw` | 75 | 1211 |
 
 ## Index
@@ -4865,6 +4865,8 @@ Records held for a human decision with their payload and resolution.
 | `approved_by_user_id` | bigint | null |  | Id of the second user who approved accept_with_fix for data-entry classes. |
 | `resolved_at` | timestamp with time zone | null |  | UTC time the item was resolved. |
 | `resolution_note` | text | null | personal | Free-text note entered with the resolution. |
+| `reopened_at` | timestamp with time zone | null |  | When a returned-to-device item was last re-opened because the phone sent the same record again and it was held again (V0193); null when never. |
+| `reopen_count` | integer | not null |  | How many times the item was re-opened after a return to the device (V0193). |
 
 Keys: `UNIQUE (client_uuid, payload_sha256)`; `UNIQUE (resolution_uuid)`; `PRIMARY KEY (id)`
 

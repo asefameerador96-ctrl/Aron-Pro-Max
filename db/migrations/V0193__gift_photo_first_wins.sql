@@ -156,3 +156,10 @@ CREATE INDEX IF NOT EXISTS ingest_registry_family_unresolved ON app.ingest_regis
 -- indexes lead with (outlet_id, programme_id, ...) or (source_type, source_id), so that probe would read every adjustment row. This partial index holds only adjustments (rare, manual), ordered by date.
 -- squawk-ignore require-concurrent-index-creation
 CREATE INDEX IF NOT EXISTS loyalty_ledger_adjustment_date ON app.loyalty_ledger (business_date) INCLUDE (outlet_id, programme_id) WHERE source_type = 'adjustment';
+
+-- C-R4: a record RETURNED to the device (item discarded, note `return_to_device`) and held again with the SAME payload re-opens its quarantine item (the unique key is client_uuid + payload hash, so a
+-- new row is impossible): status open again, the new code and detail, these two columns say it happened. The earlier decision stays in the audit log (OpsApi writes one per resolve). A discarded
+-- (final) or accepted item is never re-opened.
+ALTER TABLE app.sync_quarantine ADD COLUMN IF NOT EXISTS reopened_at timestamptz, ADD COLUMN IF NOT EXISTS reopen_count int NOT NULL DEFAULT 0;
+COMMENT ON COLUMN app.sync_quarantine.reopened_at IS 'When a returned-to-device item was last re-opened because the phone sent the same record again and it was held again (V0193); null when never.';
+COMMENT ON COLUMN app.sync_quarantine.reopen_count IS 'How many times the item was re-opened after a return to the device (V0193).';

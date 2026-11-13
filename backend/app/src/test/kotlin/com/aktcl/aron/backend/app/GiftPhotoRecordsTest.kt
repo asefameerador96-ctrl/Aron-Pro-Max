@@ -543,4 +543,52 @@ class GiftPhotoRecordsTest {
             val a = ack(sync(sr, listOf(p)), cu(p)); assertEquals("rejected", a.status(), a.toString()); assertEquals("parent_missing", a.code(), "not day_final_submitted: a visit is not its redemption")
         }
     }
+
+    private suspend fun io.ktor.client.HttpClient.returnToDevice(item: Long): HttpStatusCode =
+        with(world) { postWeb("admin1001", "/v1/admin/quarantine/$item/resolve", """{"action":"return_to_device","reason":"send it again please, thank you"}""").status }
+    private fun openItems(uuid: String) = world.one("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = CAST('$uuid' AS uuid) AND status = 'open'")
+    private fun allItems(uuid: String) = world.one("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = CAST('$uuid' AS uuid)")
+
+    @Test
+    fun aRecordReturnedToTheDeviceAndHeldAgainWithTheSamePayloadReopensItsOneItem() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString(); val h = headerRec(head, 1)   // a non-gift-photo record on the generic path
+            assertEquals("quarantined", ack(sync(sr, listOf(h)), head).status()); assertEquals(1L, openItems(head))
+            assertEquals(HttpStatusCode.OK, returnToDevice(itemOf(head))); assertEquals(0L, openItems(head))
+            assertEquals("quarantined", ack(sync(sr, listOf(h)), head).status(), "the same payload sent again is judged again and held again")
+            assertEquals(1L, openItems(head), "exactly one open item"); assertEquals(1L, allItems(head), "the same row, re-opened"); assertEquals(1L, one("SELECT reopen_count FROM app.sync_quarantine WHERE client_uuid = CAST('$head' AS uuid)"))
+            assertEquals(1L, one("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = CAST('$head' AS uuid) AND status = 'open' AND resolved_at IS NULL AND resolution_note IS NULL"))
+            val list = getWeb("admin1001", "/v1/admin/quarantine?status=open&limit=200").bodyAsText()
+            assertEquals(true, list.contains(head), "visible in the review list")
+            assertEquals("quarantined", ack(sync(sr, listOf(h)), head).status()); assertEquals(1L, openItems(head)); assertEquals(1L, one("SELECT reopen_count FROM app.sync_quarantine WHERE client_uuid = CAST('$head' AS uuid)"), "a replay while open changes nothing")
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
+            assertEquals(1L, one("SELECT count(*) FROM app.redemption WHERE client_uuid = CAST('$head' AS uuid)"))
+            assertEquals("duplicate", ack(sync(sr, listOf(h)), head).status())
+        }
+    }
+
+    @Test
+    fun aDiscardedItemIsFinalAndIsNeverReopenedByAResend() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString(); val h = headerRec(head, 1)
+            assertEquals("quarantined", ack(sync(sr, listOf(h)), head).status())
+            assertEquals(HttpStatusCode.OK, discard(itemOf(head)))
+            assertEquals("quarantined", ack(sync(sr, listOf(h)), head).status(), "answered as before"); assertEquals(0L, openItems(head)); assertEquals(0L, one("SELECT reopen_count FROM app.sync_quarantine WHERE client_uuid = CAST('$head' AS uuid)"))
+        }
+    }
+
+    @Test
+    fun aGiftPhotoReturnedToTheDeviceAndHeldAgainReopensItsItemAndTheHeadersAcceptThenReleasesIt() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString()
+            val h = headerRec(head, 1); val l1 = lineRec(head, 90); val p = photo(null, 100, unit = head to 1, flat = lat + 0.00013)
+            assertEquals("quarantined", ack(sync(sr, listOf(h)), head).status()); assertEquals("quarantined", ack(sync(sr, listOf(l1)), cu(l1)).status()); assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status())
+            assertEquals(HttpStatusCode.OK, returnToDevice(itemOf(cu(p)))); assertEquals(0L, openItems(cu(p)))
+            assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status()); assertEquals(1L, openItems(cu(p))); assertEquals(1L, allItems(cu(p)))
+            assertEquals("parent $head is quarantined (business_date_out_of_window)", itemRow(cu(p))["detail"])
+            assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status()); assertEquals(1L, openItems(cu(p)))
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
+            assertEquals(1L, storedPhoto(p)); assertEquals("accepted", itemRow(cu(p))["status"]); assertEquals(0L, openNaming(head))
+        }
+    }
 }
