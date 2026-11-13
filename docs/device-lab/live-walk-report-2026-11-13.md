@@ -43,6 +43,13 @@ owner's screenshots in `docs/ui-reference/`: **not done yet** for any row (see "
 | 18 | Sale: select retailer | opens | Four seeded outlets (Gulshan 1, Gulshan 2, two in Banani), A-Z filter, search | `sr-18-select-retailer.png` |
 | 19 | Sale: pick an outlet far away | **pass** (hard case "outlet far away") | Refused with "Outside the range: 556 m from the outlet, limit 100 m", a direction hint ("the outlet is to the north"), a map with the distance circle, and "Refresh (3 left)". No screenshot kept here: the map shows where the phone is | not kept |
 
+| 20 | Mock location (hard case "location") | **blocked, inconclusive** | Used ADB's built-in test provider (no fake-GPS app installed; the shell app op was allowed for a few minutes and then restored to deny, test providers removed). Only the network provider took the fake fix. SR kept showing 556 m from the outlet, so it did not move to the mocked position; I cannot tell from the screen whether it discarded the mock fix on purpose (as the anti-spoof rule wants) or never received it. The mock flag is not visible in the UI | not kept |
+| 21 | No location fix | observed | After the mock providers were removed the phone showed "Your location could not be read. Refresh and try again." for several refreshes (indoors, no SIM) before a normal fix returned. Refresh is limited to 3 per outlet visit ("No more refreshes") | |
+| 22 | Force Sale offered | **pass** | When refreshes are used up, **Force Sale** appears. It asks "Why are you doing a force sale?" (Internet problem, Location changed; "Location not captured yet" is offered only before a photo is attached) and a **shop photo**; the screen says the photo's location is sent as a request to correct the outlet's address. After the photo it shows "GEO captured +-100 m" and "Photo attached". Continue without choosing a reason is refused with "Choose a reason." | not kept (camera) |
+| 23 | Start the call, SKU list | opens | Question "Do you want to start the call?" (Yes/No/No sale/Go back), then the SKU list with **pack pictures**, price per unit, Sale and Stock columns, cart total and Proceed. Prices per packets, dozen and boxes | |
+| 24 | Stock guard | **see defect D2** | | |
+| 25 | Memo preview | opens | One line per SKU, totals "1 packets (10 sticks)", Total, Grand total, "Mark this sale as due", Product QC, Print ("You can print later from the Memo section"). **Not saved**: the walk stopped before Print because no printer is paired | |
+
 Units: every quantity seen on SR (home cards, Stock, Sales Submit, KPI) uses field units (packets, boxes, dozen), as the owner's rule requires.
 Language was English during this pass; Bangla was not checked.
 
@@ -52,13 +59,17 @@ Language was English during this pass; Bangla was not checked.
   Bidi 3 packets, Lighter 2 boxes, Match 2 dozen) and stock, all marked Waiting, with "-" on the server side, while the status is Online.
   Neither the screen nor the app log says why. A rep would be stuck: the check-out is gated on submitted sales. Needs a server-side look at
   the sync log for this device (the cause is not determined here).
+- **D2. Selling more than the stock is only warned, not blocked.** On the SKU list, adding 1 packet of MaxR-10S (stock 0) showed the red
+  line "Only 0 packets in stock for MaxR-10S.", but the quantity stayed at 1, the cart total counted it (92.00) and Proceed opened the
+  memo with the item. A second tap on + did not raise it. Whether a soft warning is the intended rule needs a ruling (the stock card on Home
+  says issue 31 / stock 28 packets, yet most SKUs show stock 0 or 1 on this list: please compare with the server's issue for this SR).
 - **O1. Attendance says "No location yet"** although check-in is done and location is on. Possibly by design (location is sampled on demand), worth a ruling.
 - **O2. Check Out is gated until 5 PM and until Sales Submit** (by design per the screen text); not exercised.
 
 ## Not tested yet (and why)
 
-- A full sale, due collection, zero sale and memo edit: a sale needs the phone within 100 m of an outlet. The phone is about 556 m from
-  the nearest test outlet, so it needs either mock location (owner's yes and a fake-GPS app, none is installed) or the force-sale path from the manual.
+- Saving a sale, due collection, zero sale and memo edit: the force-sale path works up to the memo (rows 22 to 25), but saving the memo
+  is done with Print, and no printer is paired. No memo was saved. The force-sale reason, photo and call start were queued for upload (the badge showed "2 waiting", then "1 waiting"), so they may have reached dev as a force-sale visit and an outlet-location correction request for Friends Store (BAN11-001): check and discard on the server if unwanted.
 - Printing (section 5): needs the owner's hands to pair the printer.
 - Section 4 cases that change phone settings (airplane mode, mock location, date and time, battery or data saver, permission changes): wait for the owner's yes.
 - AMO and TSO walks: the apps are installed but not logged in; the owner logs in once, then they can be driven.
