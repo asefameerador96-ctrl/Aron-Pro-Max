@@ -142,7 +142,9 @@
     <string name="out_pick_retailer">রিটেইলার নির্বাচন করুন</string>
     <string name="out_pick_clear">সার্চ মুছুন</string>
     <string name="out_pick_none">কিছু পাওয়া যায়নি</string>
-    <string name="out_pick_all">সব</string>
+    <!-- D-PAR-SR2-04: the first-letter bar reads "All" in Bangla too, as the owner's screenshots 20, 44 and 56 show it,
+         because it heads a row of Latin letters (A, B, F, ...) taken from the outlet names themselves. -->
+    <string name="out_pick_all">All</string>
     <string name="out_detail_name">দোকানের নাম:</string>
     <string name="out_detail_owner">দোকানের মালিকের নাম:</string>
     <string name="out_detail_mobile">মোবাইল নম্বর:</string>

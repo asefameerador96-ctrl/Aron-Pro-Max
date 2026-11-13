@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onAllNodesWithText
@@ -63,7 +64,10 @@ class SrRequestFlowTest {
             SrOutletRequestContent(form, emptySet(), clusters, outlets, GeoPhotoState(), saving = false, savedDialog = false, onChange = { form = it }, onPickOutlet = {}, onShutter = {}, onSave = {}, onSavedOk = {})
         }
         compose.onNodeWithTag(SearchPickerTags.field(SrRequestTags.CLUSTER)).assertExists()
-        compose.onNodeWithText("ক্লাস্টার নির্বাচন করুন").assertExists()
+        // D-PAR-SR2-04: the manual (screenshot 42) writes "ক্লাস্টার নির্বাচন করুন" twice on this card — once as the label above
+        // the box and once as the empty box's own placeholder. The assertion was written when the form had the label only.
+        compose.onAllNodesWithText("ক্লাস্টার নির্বাচন করুন").assertCountEquals(2)
+        compose.onNodeWithTag(SearchPickerTags.field(SrRequestTags.CLUSTER)).assertTextContains("ক্লাস্টার নির্বাচন করুন")
         compose.onNodeWithTag(SearchPickerTags.field(SrRequestTags.CLUSTER)).performClick()
         compose.onNodeWithText("জায়গা সার্চ করুন").assertExists()
         compose.onNodeWithTag(SearchPickerTags.DIALOG_SEARCH).performTextInput("lake")

@@ -342,9 +342,14 @@ fun JourneyHost(day: SrDay, locale: com.aktcl.aron.rules.UiLocale) {
     }
 }
 
-/** The KPI strip and the two money cards of F-SR-010/069, read from Room only. */
+/**
+ * The KPI tile's page. Lead ruling 2026-11-13 (owner question R2): the tile opens the vendor's KPI Dashboard (manual 60), not the
+ * plain strip, and "See all brands" opens Brand wise KPI (manual 61). Everything the strip computed — outlets visited, the strike
+ * rate, non-visit, no-sale, and issue and current stock per category — is carried into the dashboard for real; the programme
+ * figures say "later". The two money cards of F-SR-069 stay under it, so no figure the rep had has been taken away.
+ */
 @Composable
-fun KpiHost(day: SrDay) {
+fun KpiHost(day: SrDay, onSeeAllBrands: () -> Unit) {
     var data by remember { mutableStateOf<Pair<com.aktcl.aron.feature.memo.domain.KpiStrip, com.aktcl.aron.feature.memo.domain.HomeMoney>?>(null) }
     LaunchedEffect(Unit) { data = day.sale.kpi() }
     val cats = mapOf(
@@ -352,13 +357,25 @@ fun KpiHost(day: SrDay) {
         "lighter" to stringResource(R.string.sr_cat_lighter), "match" to stringResource(R.string.sr_cat_match),
     )
     val units = listOf("packet", "box", "dozen", "stick", "piece").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
+    val month = remember(day) { srKpiMonth(day.businessDate()) }
     val loaded = data
     if (loaded == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen() else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         val (strip, money) = loaded
-        KpiStripView(strip, categoryLabel = { cats[it] ?: it }, unitLabel = { units[it] ?: it })
+        com.aktcl.aron.feature.memo.ui.KpiDashboardContent(
+            strip, month, categoryLabel = { cats[it] ?: it }, unitLabel = { units[it] ?: it }, onSeeAllBrands = onSeeAllBrands,
+        )
         MoneyCardsView(money, categoryLabel = { cats[it] ?: it })
     }
 }
+
+/** The dashboard's month line from the Dhaka business date: the month as written, the day of the month and the days it has. */
+internal fun srKpiMonth(businessDate: String): com.aktcl.aron.feature.memo.ui.KpiMonth? = runCatching {
+    val d = java.time.LocalDate.parse(businessDate)
+    com.aktcl.aron.feature.memo.ui.KpiMonth(
+        d.month.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.ENGLISH) + " " + d.year,
+        d.dayOfMonth, d.lengthOfMonth(),
+    )
+}.getOrNull()
 
 /** Sale edit (F-SR-033): the gate and a fresh fix first, then the reason, then the pre-filled sale route; Print supersedes the memo. */
 @Composable

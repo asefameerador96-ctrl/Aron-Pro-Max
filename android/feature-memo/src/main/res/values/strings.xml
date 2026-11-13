@@ -122,4 +122,24 @@
     <string name="hook_kpi_cpr">CPR - Target Call vs Successful Call</string>
     <string name="hook_brand_what">By brand: target, KPI today and achievement (cigarette sales and memos)</string>
     <string name="hook_back">Go back</string>
+    <!-- KPI Dashboard and Brand wise KPI (manual 60, 61), D-PAR-SR2-06. The figures this phone really computes are shown;
+         every programme figure says "later" and no number is invented. -->
+    <string name="kpi_dash_warning">A salesman absent from the workplace for more than 2 days in a month is not considered for that month\'s KPI bonus.</string>
+    <string name="kpi_dash_days">%1$s / %2$s</string>
+    <string name="kpi_dash_allocated">Allocated KPI</string>
+    <string name="kpi_dash_achieved">Achieved KPI</string>
+    <string name="kpi_dash_progress">Achievement</string>
+    <string name="kpi_dash_total_target">Total Target</string>
+    <string name="kpi_dash_total_achievement">Total Achievement</string>
+    <string name="kpi_dash_see_all">See all brands</string>
+    <string name="kpi_dash_target_cpr">Target CPR</string>
+    <string name="kpi_dash_achieved_cpr">Achieved CPR</string>
+    <string name="kpi_dash_kpi_today">KPI Achieved Today</string>
+    <string name="kpi_dash_real">From today on this phone</string>
+    <string name="kpi_dash_real_note">Counted on this phone from today\'s own records; it does not need a network.</string>
+    <string name="kpi_brand_cig">KPI on - Cigarette Sales</string>
+    <string name="kpi_brand_memo">KPI on - Memo</string>
+    <string name="kpi_brand_total_volume">Total volume</string>
+    <string name="kpi_brand_total_memo">Total memo</string>
+    <string name="kpi_brand_section">FMC BRANDS</string>
 </resources>

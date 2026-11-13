@@ -121,4 +121,24 @@
     <string name="hook_kpi_cpr">CPR - Target Call vs Successful Call</string>
     <string name="hook_brand_what">ব্র্যান্ড অনুযায়ী টার্গেট, KPI আজকের মান ও অর্জন (সিগারেট বিক্রয় ও মেমো)</string>
     <string name="hook_back">ফিরে যান</string>
+    <!-- KPI Dashboard ও Brand wise KPI (ম্যানুয়াল ৬০, ৬১), D-PAR-SR2-06। ফোন নিজে যে হিসাবগুলো করে সেগুলোই দেখানো হয়;
+         প্রোগ্রামের প্রতিটি সংখ্যা "পরে আসবে" বলে, কোনো সংখ্যা বানানো হয় না। -->
+    <string name="kpi_dash_warning">যদি কোনো সেলসম্যান তার কর্মস্থলে কোনো মাসে ২ দিনের বেশি অনুপস্থিত থাকেন, তাহলে উক্ত সেলসম্যান ঐ মাসের KPI বোনাসের জন্য বিবেচিত হবেন না</string>
+    <string name="kpi_dash_days">%1$s / %2$s</string>
+    <string name="kpi_dash_allocated">বরাদ্দকৃত কেপিআই</string>
+    <string name="kpi_dash_achieved">Achieved KPI</string>
+    <string name="kpi_dash_progress">অর্জন</string>
+    <string name="kpi_dash_total_target">Total Target</string>
+    <string name="kpi_dash_total_achievement">Total Achievement</string>
+    <string name="kpi_dash_see_all">See all brands</string>
+    <string name="kpi_dash_target_cpr">Target CPR</string>
+    <string name="kpi_dash_achieved_cpr">Achieved CPR</string>
+    <string name="kpi_dash_kpi_today">KPI Achieved Today</string>
+    <string name="kpi_dash_real">আজকের হিসাব, এই ফোনের</string>
+    <string name="kpi_dash_real_note">আজকের নিজের রেকর্ড থেকে এই ফোনেই গোনা; নেটওয়ার্ক লাগে না।</string>
+    <string name="kpi_brand_cig">KPI on - Cigarette Sales</string>
+    <string name="kpi_brand_memo">KPI on - Memo</string>
+    <string name="kpi_brand_total_volume">মোট ভলিউম</string>
+    <string name="kpi_brand_total_memo">মোট মেমো</string>
+    <string name="kpi_brand_section">FMC BRANDS</string>
 </resources>

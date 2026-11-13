@@ -1,6 +1,7 @@
 package com.aktcl.aron.feature.outlet
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -64,16 +66,25 @@ fun filterPickItems(items: List<PickItem>, query: String): List<PickItem> {
 fun SearchPickerField(
     title: String, searchHint: String, items: List<PickItem>, selected: PickItem?, onPick: (PickItem) -> Unit, tag: String,
     modifier: Modifier = Modifier, enabled: Boolean = true, emptyText: String? = null, isError: Boolean = false,
+    /** The SR forms draw the manual's purple-outlined box (screenshots 42 to 44); the AMO's form keeps the plain card row. */
+    boxed: Boolean = false,
+    /** The manual's round status marker before a chosen outlet; its colour only repeats what the label already says. */
+    leadingDot: Color? = null,
 ) {
     val look = LocalAronLook.current
     var open by rememberSaveable(tag) { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(if (boxed) 10.dp else 12.dp)
+    val outline = if (isError) look.red else look.purple
     Row(
-        modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).clip(shape).background(look.card)
+        modifier.fillMaxWidth().heightIn(min = if (boxed) 52.dp else AronTokens.Touch.Min).clip(shape).background(look.card)
+            .then(if (boxed) Modifier.border(1.5.dp, outline, shape) else Modifier)
             .clickable(enabled = enabled, role = Role.DropdownList) { open = true }
-            .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M).testTag(SearchPickerTags.field(tag)),
+            .padding(horizontal = if (boxed) 14.dp else AronTokens.Space.L, vertical = AronTokens.Space.M).testTag(SearchPickerTags.field(tag)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (leadingDot != null) {
+            Box(Modifier.padding(end = 10.dp).size(14.dp).clip(androidx.compose.foundation.shape.CircleShape).background(leadingDot))
+        }
         Text(
             selected?.label ?: title, Modifier.weight(1f),
             style = MaterialTheme.typography.bodyLarge, color = if (selected != null) look.ink else if (isError) look.red else look.inkMuted,

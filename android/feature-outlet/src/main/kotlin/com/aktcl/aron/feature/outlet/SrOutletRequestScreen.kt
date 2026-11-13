@@ -1,7 +1,6 @@
 package com.aktcl.aron.feature.outlet
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,9 +21,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import com.aktcl.aron.core.database.entity.OutletEntity
 import com.aktcl.aron.core.ui.AronConfirmDialog
-import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronLook
@@ -89,52 +88,83 @@ fun SrOutletRequestContent(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
         ) {
-            if (kind == OutletRequestKind.CLOSE) {
-                FormNotice(stringResource(R.string.out_req_close_notice), kind = BannerKind.Warning)
-                if (form.openDueMtk > 0) FormNotice(stringResource(R.string.out_req_dues_warning), kind = BannerKind.Warning)
-            }
+            // The manual's Permanent close page carries no standing banner (screenshot 43): the sentence belongs to the confirm
+            // dialog, which asks it on Save. A warning that something is WRONG still shows, and is never silent.
+            if (kind == OutletRequestKind.CLOSE && form.openDueMtk > 0) FormNotice(stringResource(R.string.out_req_dues_warning), kind = BannerKind.Warning)
             when (kind) {
                 OutletRequestKind.NEW -> {
-                    SearchPickerField(clusterTitle, searchHint, clusterItems, clusterItems.firstOrNull { it.key == form.clusterId?.toString() }, { onChange(form.copy(clusterId = it.key.toLongOrNull())) }, SrRequestTags.CLUSTER, isError = RequestError.CLUSTER_REQUIRED in errors)
+                    // manual 42: card 1 the labelled cluster box, card 2 the three labelled boxes
+                    FormCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L)) {
+                            ClusterPicker(clusterTitle, searchHint, clusterItems, form.clusterId, { onChange(form.copy(clusterId = it)) }, RequestError.CLUSTER_REQUIRED in errors)
+                        }
+                    }
                     DetailFields(form, errors, onChange)
                 }
                 OutletRequestKind.CLOSE -> {
                     var clusterFilter by rememberSaveable { mutableStateOf<Long?>(null) }
                     val inCluster = remember(rows, clusterFilter) { rows.filter { clusterFilter == null || it.outlet.clusterId == clusterFilter } }
-                    SearchPickerField(clusterTitle, searchHint, clusterItems, clusterItems.firstOrNull { it.key == clusterFilter?.toString() }, { clusterFilter = it.key.toLongOrNull() }, SrRequestTags.CLUSTER)
+                    FormCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L)) {
+                            ClusterPicker(clusterTitle, searchHint, clusterItems, clusterFilter, { clusterFilter = it }, false)
+                        }
+                    }
                     val retailerTitle = stringResource(R.string.out_pick_retailer)
-                    val pick = rows.firstOrNull { it.outlet.outletId == form.outletId }?.let { PickItem(it.outlet.outletId.toString(), "● " + it.label) }
-                    SearchPickerField(
-                        retailerTitle, searchHint, inCluster.map { PickItem(it.outlet.outletId.toString(), "● " + it.label) }, pick,
-                        { p -> outlets.firstOrNull { it.outletId.toString() == p.key }?.let(onPickOutlet) }, SrRequestTags.RETAILER,
-                        isError = RequestError.OUTLET_REQUIRED in errors,
-                    )
-                    outlets.firstOrNull { it.outletId == form.outletId }?.let { DetailsCard(it) }
+                    val pick = rows.firstOrNull { it.outlet.outletId == form.outletId }?.let { PickItem(it.outlet.outletId.toString(), it.label) }
+                    FormCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L)) {
+                            VendorPicker(
+                                retailerTitle, retailerTitle, searchHint, inCluster.map { PickItem(it.outlet.outletId.toString(), it.label) }, pick,
+                                { p -> outlets.firstOrNull { it.outletId.toString() == p.key }?.let(onPickOutlet) }, SrRequestTags.RETAILER,
+                                isError = RequestError.OUTLET_REQUIRED in errors, dot = VendorOutletDot,
+                            )
+                        }
+                    }
+                    val chosen = outlets.firstOrNull { it.outletId == form.outletId }
+                    // manual 43 left: with nothing chosen the page says, centred, what to do next
+                    if (chosen == null) {
+                        Text(
+                            retailerTitle, Modifier.fillMaxWidth().padding(top = AronTokens.Space.M),
+                            style = MaterialTheme.typography.bodyLarge, color = look.ink, textAlign = TextAlign.Center,
+                        )
+                    } else {
+                        DetailsCard(chosen)
+                    }
                 }
                 OutletRequestKind.INFO, OutletRequestKind.LOCATION -> {
                     OutletSwitcher(rows, form.outletId, onPickOutlet, searchHint)
                     if (form.outletId != null) {
-                        SearchPickerField(clusterTitle, searchHint, clusterItems, clusterItems.firstOrNull { it.key == form.clusterId?.toString() }, { onChange(form.copy(clusterId = it.key.toLongOrNull())) }, SrRequestTags.CLUSTER)
-                        DetailFields(form, errors, onChange)
+                        // manual 44: the cluster box and the three field boxes share one card
+                        FormCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                                ClusterPicker(clusterTitle, searchHint, clusterItems, form.clusterId, { onChange(form.copy(clusterId = it)) }, false)
+                                DetailBoxes(form, errors, onChange)
+                            }
+                        }
                     }
                 }
                 OutletRequestKind.ROUTE_ADD, OutletRequestKind.CLUSTER -> {
-                    SearchPickerField(clusterTitle, searchHint, clusterItems, clusterItems.firstOrNull { it.key == form.clusterId?.toString() }, { onChange(form.copy(clusterId = it.key.toLongOrNull())) }, SrRequestTags.CLUSTER, isError = RequestError.CLUSTER_REQUIRED in errors)
                     FormCard(Modifier.fillMaxWidth()) {
-                        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L)) {
-                            FormField(form.note.orEmpty(), { onChange(form.copy(note = it)) }, stringResource(R.string.out_req_note), fieldModifier = Modifier.testTag(RequestTags.NOTE), isError = RequestError.REASON_REQUIRED in errors, singleLine = false)
+                        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                            ClusterPicker(clusterTitle, searchHint, clusterItems, form.clusterId, { onChange(form.copy(clusterId = it)) }, RequestError.CLUSTER_REQUIRED in errors)
+                            VendorField(form.note.orEmpty(), { onChange(form.copy(note = it)) }, stringResource(R.string.out_req_note), fieldModifier = Modifier.testTag(RequestTags.NOTE), isError = RequestError.REASON_REQUIRED in errors, singleLine = false)
                         }
                     }
                 }
             }
-            if (kind.needsGeoPhoto && (kind != OutletRequestKind.INFO || form.outletId != null)) GeoPhotoBlock(capture, onShutter, note = stringResource(R.string.out_req_photo_note), takeLabel = R.string.out_req_capture_geo_photo)
+            if (kind.needsGeoPhoto && (kind != OutletRequestKind.INFO || form.outletId != null)) {
+                GeoPhotoBlock(capture, onShutter, note = stringResource(R.string.out_req_photo_note), takeLabel = R.string.out_req_capture_geo_photo, vendor = true)
+            }
             fieldErrors.forEach { FormError(errorText(it)) }
             if (kind == OutletRequestKind.INFO && onAddToRoute != null && form.outletId != null) {
                 FormLink(stringResource(R.string.out_req_route_add), onAddToRoute, Modifier.fillMaxWidth().testTag(RequestTags.ROUTE_ADD))
             }
         }
         FormBar(
-            BarAction(stringResource(R.string.out_req_save), { if (kind.needsConfirmation && !form.confirmed) confirm = true else onSave() }, RequestTags.SAVE, enabled = blockingReason == null && !saving, icon = AronIcons.Submit),
+            BarAction(
+                stringResource(R.string.out_req_save), { if (kind.needsConfirmation && !form.confirmed) confirm = true else onSave() }, RequestTags.SAVE,
+                enabled = blockingReason == null && !saving, glyph = com.aktcl.aron.core.ui.aron.ButtonGlyph.Save,
+            ),
             reason = blockingReason,
         )
     }
@@ -173,53 +203,73 @@ private fun errorText(e: RequestError): String = stringResource(
     },
 )
 
+/** The labelled cluster box the manual repeats on every outlet form (screenshots 42 to 44). */
+@Composable
+private fun ClusterPicker(title: String, searchHint: String, items: List<PickItem>, selectedId: Long?, onPick: (Long?) -> Unit, isError: Boolean) {
+    VendorPicker(title, title, searchHint, items, items.firstOrNull { it.key == selectedId?.toString() }, { onPick(it.key.toLongOrNull()) }, SrRequestTags.CLUSTER, isError = isError)
+}
+
+/** The three labelled boxes of the manual's forms: shop name, owner's name, mobile number, in that order. */
+@Composable
+private fun DetailBoxes(form: OutletRequestForm, errors: Set<RequestError>, onChange: (OutletRequestForm) -> Unit) {
+    VendorField(form.name.orEmpty(), { onChange(form.copy(name = it)) }, stringResource(R.string.out_req_name), fieldModifier = Modifier.testTag(RequestTags.NAME), isError = RequestError.NAME_INVALID in errors)
+    VendorField(form.ownerName.orEmpty(), { onChange(form.copy(ownerName = it)) }, stringResource(R.string.out_req_owner), fieldModifier = Modifier.testTag(RequestTags.OWNER), isError = RequestError.OWNER_INVALID in errors)
+    VendorField(
+        form.mobile.orEmpty(), { onChange(form.copy(mobile = it)) }, stringResource(R.string.out_req_mobile), fieldModifier = Modifier.testTag(RequestTags.MOBILE),
+        isError = RequestError.MOBILE_INVALID in errors, keyboardType = KeyboardType.Phone,
+    )
+}
+
 @Composable
 private fun DetailFields(form: OutletRequestForm, errors: Set<RequestError>, onChange: (OutletRequestForm) -> Unit) {
     FormCard(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            FormField(form.name.orEmpty(), { onChange(form.copy(name = it)) }, stringResource(R.string.out_req_name), fieldModifier = Modifier.testTag(RequestTags.NAME), isError = RequestError.NAME_INVALID in errors)
-            FormField(form.ownerName.orEmpty(), { onChange(form.copy(ownerName = it)) }, stringResource(R.string.out_req_owner), fieldModifier = Modifier.testTag(RequestTags.OWNER), isError = RequestError.OWNER_INVALID in errors)
-            FormField(
-                form.mobile.orEmpty(), { onChange(form.copy(mobile = it)) }, stringResource(R.string.out_req_mobile), fieldModifier = Modifier.testTag(RequestTags.MOBILE),
-                isError = RequestError.MOBILE_INVALID in errors, keyboardType = KeyboardType.Phone,
-            )
+            DetailBoxes(form, errors, onChange)
         }
     }
 }
 
-/** The read-only card under the retailer drop-down (SRM-B-37): the shop's name, owner and mobile. */
+/**
+ * The read-only card under the retailer drop-down (SRM-B-37, screenshot 43 right): the shop's name, owner and mobile, the
+ * label in ink and the value beside it. The manual greys the value; here it keeps full-strength ink, because this card is
+ * the only confirmation the rep gets of WHICH shop is about to be closed for good (rule 14a: legibility wins).
+ */
 @Composable
 private fun DetailsCard(o: OutletEntity) {
-    val look = LocalAronLook.current
     FormCard(Modifier.fillMaxWidth().testTag(SrRequestTags.DETAILS)) {
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            DetailLine(stringResource(R.string.out_detail_name), o.name, look.ink)
-            DetailLine(stringResource(R.string.out_detail_owner), o.ownerName, look.ink)
-            DetailLine(stringResource(R.string.out_detail_mobile), o.contactNumber.orEmpty(), look.ink)
+            DetailLine(stringResource(R.string.out_detail_name), OutletPicker.label(o))
+            DetailLine(stringResource(R.string.out_detail_owner), o.ownerName)
+            DetailLine(stringResource(R.string.out_detail_mobile), o.contactNumber.orEmpty())
         }
     }
 }
 
 @Composable
-private fun DetailLine(label: String, value: String, ink: androidx.compose.ui.graphics.Color) {
+private fun DetailLine(label: String, value: String) {
+    val look = LocalAronLook.current
     Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = LocalAronLook.current.secondaryText)
-        Text(value, style = MaterialTheme.typography.bodyMedium, color = ink)
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = look.ink)
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = look.secondaryText)
     }
 }
 
-/** The outlet drop-down with the alphabet bar of the change-information form (SRM-B-39): the letters narrow the drop-down's list. */
+/**
+ * The outlet drop-down with the first-letter bar of the change-information form (SRM-B-39, screenshot 44): a plain white row
+ * with the status dot and the outlet's label, then the dark grey panel whose letters narrow the drop-down's list.
+ */
 @Composable
 private fun OutletSwitcher(rows: List<PickerRow>, selectedId: Long?, onPick: (OutletEntity) -> Unit, searchHint: String) {
     var letter by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
     val shown = remember(rows, letter) { if (letter == OutletPicker.ALL_CHIP) rows else rows.filter { it.chip == letter } }
-    val chosen = rows.firstOrNull { it.outlet.outletId == selectedId }?.let { PickItem(it.outlet.outletId.toString(), "● " + it.label) }
+    val chosen = rows.firstOrNull { it.outlet.outletId == selectedId }?.let { PickItem(it.outlet.outletId.toString(), it.label) }
     SearchPickerField(
-        stringResource(R.string.out_pick_retailer), searchHint, shown.map { PickItem(it.outlet.outletId.toString(), "● " + it.label) }, chosen,
+        stringResource(R.string.out_pick_retailer), searchHint, shown.map { PickItem(it.outlet.outletId.toString(), it.label) }, chosen,
         { p -> rows.firstOrNull { it.outlet.outletId.toString() == p.key }?.let { onPick(it.outlet) } }, SrRequestTags.OUTLET,
+        leadingDot = VendorOutletDot,
     )
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag(SrRequestTags.ALPHA), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        FormChip(stringResource(R.string.out_pick_all), letter == OutletPicker.ALL_CHIP, { letter = OutletPicker.ALL_CHIP }, Modifier.testTag(SrRequestTags.letter("all")))
-        OutletPicker.chips(rows).forEach { l -> FormChip(l, letter == l, { letter = l }, Modifier.testTag(SrRequestTags.letter(l))) }
-    }
+    VendorLetterBar(
+        OutletPicker.chips(rows), letter, stringResource(R.string.out_pick_all), { letter = it },
+        Modifier.testTag(SrRequestTags.ALPHA), tagOf = { SrRequestTags.letter(it) },
+    )
 }
