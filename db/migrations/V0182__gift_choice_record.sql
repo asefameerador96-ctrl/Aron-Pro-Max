@@ -95,3 +95,6 @@ COMMENT ON COLUMN app.gift_choice.fix_lng IS '[pii:personal] Longitude of the us
 COMMENT ON COLUMN app.gift_choice.fix_accuracy_m IS '[pii:personal] Accuracy in metres of the location fix taken with the record.';
 COMMENT ON COLUMN app.gift_choice.fix_is_mock IS 'True when the phone flagged the fix as coming from a mock location provider.';
 COMMENT ON COLUMN app.gift_choice.data_origin IS 'Origin of the row (production, pilot, test, seed), stamped at insert from the user, outlet and route (V0116).';
+
+-- The new table and function get the standard role grants (api_rw, worker_rw, readers; app.apply_db_role_grants).
+SELECT app.apply_db_role_grants();

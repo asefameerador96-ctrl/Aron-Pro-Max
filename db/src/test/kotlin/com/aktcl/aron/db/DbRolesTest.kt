@@ -264,7 +264,7 @@ class DbRolesTest {
             val voidable = listOf(
                 "attendance_event", "route_day_event", "day_exception", "stock_movement", "visit", "visit_skip", "memo", "memo_line", "memo_discount",
                 "qc_entry_line", "print_event", "memo_void", "due_collection", "survey_response", "distribution_check", "distribution_check_line",
-                "call_assessment", "call_assessment_answer", "outlet_change_request", "content_view", "redemption", "redemption_line", "gift_photo", "gift_choice",
+                "call_assessment", "call_assessment_answer", "outlet_change_request", "content_view", "redemption", "redemption_line", "gift_photo",
                 "price_compliance_check", "sale_abort", "geo_fix",
             )
             voidable.forEach { t -> c.exec("UPDATE app.$t SET voided_at = now() WHERE false") }

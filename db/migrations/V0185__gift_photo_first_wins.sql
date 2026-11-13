@@ -66,3 +66,6 @@ CREATE TRIGGER gift_photo_first_wins BEFORE INSERT ON app.gift_photo
 
 CREATE OR REPLACE TRIGGER gift_photo_immutable BEFORE UPDATE OR DELETE ON app.gift_photo
   FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'is_duplicate', 'flagged_at', 'server_verdict', 'server_distance_m', 'server_radius_m', 'server_checked_at', 'data_origin');
+
+-- The new table and function get the standard role grants (api_rw, worker_rw, readers; app.apply_db_role_grants).
+SELECT app.apply_db_role_grants();
