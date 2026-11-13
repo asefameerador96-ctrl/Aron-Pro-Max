@@ -238,7 +238,7 @@ class GiftPhotoRecordsTest {
     fun aCampaignUnitPhotoThatFailsItsChecksIsStoredAndFlaggedNeverDropped() = world.withApi {
         with(world) {
             val red = redemption(outlet, listOf(cGift to 2))
-            fun accepted(p: JsonObject) = ack(sync(sr, listOf(p)), cu(p)).let { assertEquals("accepted", it.status(), it.toString()) }
+            suspend fun accepted(p: JsonObject) = ack(sync(sr, listOf(p)), cu(p)).let { assertEquals("accepted", it.status(), it.toString()) }
             val tooHigh = photo(null, 200, unit = red to 3); accepted(tooHigh)
             assertEquals("unit_out_of_range", flag(tooHigh)["check_flag"]); assertEquals(true, flag(tooHigh)["is_duplicate"]); assertEquals(true, flag(tooHigh)["f"])
             val wrongGift = photo(null, 190, unit = red to 1, giftId = cGift2); accepted(wrongGift)
