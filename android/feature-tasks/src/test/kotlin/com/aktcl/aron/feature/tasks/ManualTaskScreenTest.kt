@@ -62,7 +62,7 @@ class ManualTaskScreenTest {
     @Test fun confirmResolvesExactlyOnceAndADoubleConfirmStillOnce() {
         val resolved = mutableListOf<String>()
         show(AppLanguage.EN, TaskListState(listOf(t("a")), 1), onResolve = { resolved += it })
-        compose.onNodeWithTag(TaskTags.resolve("a")).performClick()
+        invokeResolveAction("a")
         assertEquals(emptyList<String>(), resolved)
         // the dialog's confirm carries the word "Resolve" too: it is the last node with that text
         val confirm = compose.onAllNodesWithText("Resolve").onLast()
@@ -75,8 +75,23 @@ class ManualTaskScreenTest {
     @Test fun theSecondaryResolveAlsoAsksFirst() {
         var resolved = 0
         show(AppLanguage.EN, TaskListState(listOf(t("a")), 1), onResolve = { resolved++ })
-        compose.onNodeWithTag(TaskTags.resolve("a")).performClick()
+        invokeResolveAction("a")
         assertEquals(0, resolved)
         compose.onNodeWithText("Resolve this task?").assertExists()
+    }
+
+    /** The card shows no button (manual 47): the TalkBack custom action is the non-swipe way to the same confirmed resolve. */
+    private fun invokeResolveAction(uuid: String) {
+        val node = compose.onNodeWithTag(TaskTags.resolve(uuid)).fetchSemanticsNode()
+        val action = node.config[androidx.compose.ui.semantics.SemanticsActions.CustomActions].first()
+        compose.runOnUiThread { action.action() }
+        compose.waitForIdle()
+    }
+
+    @Test fun noVisibleResolveButtonAndNoRawCodeOnTheCard() {
+        show(AppLanguage.EN, TaskListState(listOf(t("a").copy(taskTypeCode = "poor_brand_visibility")), 1))
+        compose.onNodeWithText("Poor Brand Visibility").assertExists()
+        compose.onNodeWithText("POOR_BRAND_VISIBILITY").assertDoesNotExist()
+        assertEquals("OOS", humanizeTaskType("oos"))
     }
 }

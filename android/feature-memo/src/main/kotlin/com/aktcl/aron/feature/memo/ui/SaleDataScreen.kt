@@ -8,6 +8,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import com.aktcl.aron.core.ui.MoneyText
+import com.aktcl.aron.core.ui.aron.PackCategory
+import com.aktcl.aron.core.ui.aron.PackshotImage
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DatePicker
@@ -45,6 +53,16 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+/** The total band of "সেল ডাটা": a lilac-purple with white text at 7:1 or better (`SaleDataContrastTest`). */
+internal val LilacBand = Color(0xFF5B3F9E)
+
+internal fun packCategory(code: String?): PackCategory = when (code) {
+    "bidi" -> PackCategory.Bidi
+    "lighter" -> PackCategory.Lighter
+    "match" -> PackCategory.Match
+    else -> PackCategory.Cigarette
+}
 
 object SaleDataTags {
     const val DATE_FIELD = "sale_data_date"
@@ -96,17 +114,31 @@ fun SaleDataScreen(
                 modifier = Modifier.fillMaxWidth().padding(vertical = AronTokens.Space.Xl).testTag(SaleDataTags.EMPTY),
             )
         } else {
-            WhiteCard(Modifier.testTag(SaleDataTags.TABLE)) {
-                Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                    TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
-                    day.skuRows.forEach { r ->
-                        TableRow(skuName(r.skuId), lineQtyText(r.qtyEntered, r.unitEntered, skuCategory(r.skuId), r.qtyBase, skuUnit(r.skuId)), amount(r.valueMtk))
+            // manual 23: a solid deep-purple header, rows with the pack picture alternating white and light grey, the total on a lilac-purple band
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card).testTag(SaleDataTags.TABLE)) {
+                Row(
+                    Modifier.fillMaxWidth().background(look.purple).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.M),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
+                ) {
+                    Text(stringResource(R.string.memo_col_sku), color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.memo_col_qty), color = Color.White, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = Modifier.widthIn(min = 72.dp))
+                    Text(stringResource(R.string.summary_col_value), color = Color.White, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = Modifier.widthIn(min = 72.dp))
+                }
+                day.skuRows.forEachIndexed { i, r ->
+                    Row(
+                        Modifier.fillMaxWidth().background(if (i % 2 == 0) look.card else look.rowAlt).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.S),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
+                    ) {
+                        PackshotImage(r.skuId.toString(), Modifier.size(30.dp, 36.dp), null, packCategory(skuCategory(r.skuId)))
+                        Text(skuName(r.skuId), color = look.purple, fontSize = 16.sp, maxLines = 2, modifier = Modifier.weight(1f))
+                        MoneyText(lineQtyText(r.qtyEntered, r.unitEntered, skuCategory(r.skuId), r.qtyBase, skuUnit(r.skuId)), Modifier.widthIn(min = 72.dp), style = MaterialTheme.typography.titleSmall, color = look.ink, textAlign = TextAlign.End)
+                        MoneyText(amount(r.valueMtk), Modifier.widthIn(min = 72.dp), style = MaterialTheme.typography.titleSmall, color = look.ink, textAlign = TextAlign.End)
                     }
-                    CardDivider()
-                    Row(Modifier.fillMaxWidth().testTag(SaleDataTags.TOTAL), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.history_footer), color = look.purple, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        Text(amount(day.skuTotalMtk), color = look.purple, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
-                    }
+                }
+                // the lilac band: the kit's purple at a lighter step with white text (>= 7:1, tested), never the vendor's pale #9B84C4 (about 3.4:1)
+                Row(Modifier.fillMaxWidth().background(LilacBand).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.M).testTag(SaleDataTags.TOTAL), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.history_footer), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(amount(day.skuTotalMtk), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
                 }
             }
         }

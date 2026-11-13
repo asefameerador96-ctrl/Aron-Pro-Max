@@ -60,6 +60,9 @@ data class DaySummary(
 )
 
 object DaySummaryCalculator {
+    /** The order the field and the vendor list categories in (manual 38, 39): cigarette, bidi, lighter, match, then any other. */
+    private val CATEGORY_ORDER = listOf("cigarette", "bidi", "lighter", "match")
+
     /**
      * Aggregates the day's live memos. A memo that another memo supersedes (an edit) is dropped, so an edited sale is counted once.
      * [issuedBase] and [qcReturnBase] come from the stock tracker; the return column is `issued - sold - qc_return`.
@@ -92,7 +95,7 @@ object DaySummaryCalculator {
                 qtyRemBase = spec?.remainderBase(qty) ?: 0L, returnRemBase = spec?.remainderBase(ret) ?: 0L,
             )
         }
-        val skuCats = rows.groupBy { it.categoryCode to it.unitKey }.toSortedMap(compareBy({ it.first }, { it.second })).map { (key, rs) ->
+        val skuCats = rows.groupBy { it.categoryCode to it.unitKey }.toSortedMap(compareBy({ CATEGORY_ORDER.indexOf(it.first).let { i -> if (i < 0) CATEGORY_ORDER.size else i } }, { it.first }, { it.second })).map { (key, rs) ->
             val c = key.first
             CategorySummaryRow(
                 c, rs.sumOf { it.qtyBase }, rs.sumOf { it.valueMtk }, rs.sumOf { it.discountMtk }, rs.sumOf { it.discountedValueMtk }, rs.sumOf { it.returnQtyBase },

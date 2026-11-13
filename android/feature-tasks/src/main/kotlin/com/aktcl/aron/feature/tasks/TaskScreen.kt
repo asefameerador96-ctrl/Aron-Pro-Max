@@ -366,12 +366,13 @@ private fun ManualTaskCard(t: TaskItem, typeLabels: Map<String, TaskTypeLabel>, 
     Column(
         modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card).padding(AronTokens.Space.L)
             // TalkBack cannot swipe: the same confirmed resolve is one custom action away
-            .then(if (onResolveTap != null) Modifier.semantics { customActions = listOf(CustomAccessibilityAction(resolveLabel) { onResolveTap(); true }) } else Modifier),
+            // P-SR2 (manual 47): the vendor card shows no button, the swipe is the gesture; this action is for TalkBack and keyboard users
+            .then(if (onResolveTap != null) Modifier.testTag(TaskTags.resolve(t.taskUuid)).semantics { customActions = listOf(CustomAccessibilityAction(resolveLabel) { onResolveTap(); true }) } else Modifier),
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
     ) {
         // screenshot 47: the type in red on its own line; the outlet name with the orange status at its right
         Text(
-            typeLabels[t.taskTypeCode]?.text(bangla) ?: t.taskTypeCode.uppercase(java.util.Locale.ROOT),
+            typeLabels[t.taskTypeCode]?.text(bangla) ?: humanizeTaskType(t.taskTypeCode),
             Modifier.fillMaxWidth().testTag(TaskTags.type(t.taskUuid)), style = MaterialTheme.typography.titleSmall, color = RedType, maxLines = 2, overflow = TextOverflow.Ellipsis,
         )
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -381,14 +382,11 @@ private fun ManualTaskCard(t: TaskItem, typeLabels: Map<String, TaskTypeLabel>, 
         t.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = look.ink, maxLines = 4, overflow = TextOverflow.Ellipsis) }
         // Latin ISO digits in both languages, as screenshot 47
         t.dueDate?.let { MetaLine(AronIcons.Flag, stringResource(R.string.tsk_completion_on, it)) }
-        if (onResolveTap != null) {
-            // secondary on purpose: the card's main action is the swipe; this is the one-tap alternative and also asks first
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Text(
-                    resolveLabel, style = MaterialTheme.typography.labelLarge, color = look.purple,
-                    modifier = Modifier.heightIn(min = AronLook.Touch).testTag(TaskTags.resolve(t.taskUuid)).clickable(role = Role.Button, onClick = onResolveTap).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.S),
-                )
-            }
-        }
     }
 }
+
+/** A task type without a bundle label reads as words, never a raw code: `poor_brand_visibility` is "Poor Brand Visibility", `oos` is "OOS". */
+internal fun humanizeTaskType(code: String): String =
+    code.split('_', '-', ' ').filter { it.isNotEmpty() }.joinToString(" ") { w ->
+        if (w.length <= 3) w.uppercase(java.util.Locale.ROOT) else w.replaceFirstChar { it.uppercase(java.util.Locale.ROOT) }
+    }

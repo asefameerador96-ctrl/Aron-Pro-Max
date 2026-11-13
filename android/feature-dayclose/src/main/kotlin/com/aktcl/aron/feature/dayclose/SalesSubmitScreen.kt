@@ -222,7 +222,8 @@ fun SalesSubmitScreen(
                         Notice.Info,
                     )
                 }
-                gate.duesWarning?.let { d ->
+                // P-SR2 (manual 40): the vendor's screen has no warning box for dues; it asks in the dialog when Submit is tapped (the AMO keeps the box)
+                if (!vendorDialogs) gate.duesWarning?.let { d ->
                     val money = Formats.money(d.outstandingMtk, if (bn) UiLocale.BN else UiLocale.EN)
                     NoticeCard(stringResource(R.string.submit_dues_warning, localizedNumber(d.retailersWithDues.toLong()), money), Notice.Warning)
                 }

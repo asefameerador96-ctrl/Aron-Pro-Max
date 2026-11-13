@@ -85,4 +85,84 @@ class Sr2Shot {
     @Config(qualifiers = "bn-w360dp-h1400dp") @Test fun memo_credit_bn() = shot("sr2_memo_credit_bn") { CreditMemo(false) }
     @Config(qualifiers = "bn-w360dp-h1400dp") @Test fun memo_paid_bn() = shot("sr2_memo_paid_bn") { CreditMemo(true) }
     @Test fun memo_credit_font20_bn() = shot("sr2_memo_credit_bn_font20", fontScale = 2.0f) { CreditMemo(false) }
+
+    // ---- Sale data (manual 23) ----
+    private fun histMemo(id: String, date: String, vararg l: MemoItem) =
+        StoredMemo(id, "sr334001-261110-$id", 1, date, "${date}T04:00:00.000Z", null, l.toList(), emptyList(), emptyList(), 0, 0, 0, 0, 0, 0, 0)
+    private val history = com.aktcl.aron.feature.memo.domain.SaleHistoryBuilder.build(
+        listOf(histMemo("001", "2026-11-10", MemoItem(1, 20, 6_500, 130_000), MemoItem(2, 10, 6_500, 65_000), MemoItem(3, 20, 6_500, 130_000))), 1,
+    )
+
+    @Composable
+    private fun SaleData() = ParityFrame(stringResource(com.aktcl.aron.feature.memo.R.string.sale_data_title), null) {
+        com.aktcl.aron.feature.memo.ui.SaleDataScreen(history, today = "2026-11-11", outletLabel = null, offlineBanner = false, skuName = { names[it] ?: "" }, skuCategory = { cats[it] })
+    }
+
+    @Test fun sale_data_bn() = shot("sr2_sale_data_bn") { SaleData() }
+    @Test fun sale_data_sunlight_bn() = shot("sr2_sale_data_sunlight_bn", sunlight = true) { SaleData() }
+
+    // ---- Sales summary with every category incl. the match row (manual 39) ----
+    private val sumNames = mapOf(1L to "MaxR-10S", 2L to "MaxR-20S", 3L to "AB-25s", 4L to "Aster", 5L to "SL")
+    private val summary = com.aktcl.aron.feature.memo.domain.DaySummaryCalculator.compute(
+        listOf(
+            com.aktcl.aron.feature.memo.domain.SummaryMemo("a", null, listOf(
+                com.aktcl.aron.feature.memo.domain.SummaryLine(1, 10, 80_000), com.aktcl.aron.feature.memo.domain.SummaryLine(2, 20, 160_000), com.aktcl.aron.feature.memo.domain.SummaryLine(3, 25, 20_000),
+                com.aktcl.aron.feature.memo.domain.SummaryLine(4, 1, 12_500), com.aktcl.aron.feature.memo.domain.SummaryLine(5, 12, 19_000),
+            ), emptyList(), 0, 291_500),
+        ),
+        cats.mapValues { (id, c) -> com.aktcl.aron.feature.memo.domain.SummarySku(id, c) },
+        mapOf(1L to 100L, 2L to 100L, 3L to 100L, 4L to 10L, 5L to 50L),
+    )
+    private val catNames = mapOf("cigarette" to "সিগারেট", "bidi" to "বিড়ি", "lighter" to "লাইটার", "match" to "ম্যাচ")
+    private val unitNames = mapOf("cigarette" to "স্টিক", "bidi" to "স্টিক", "lighter" to "পিস", "match" to "ডজন")
+
+    @Config(qualifiers = "bn-w360dp-h1000dp")
+    @Test fun summary_bn() = shot("sr2_summary_bn") {
+        ParityFrame(stringResource(com.aktcl.aron.feature.memo.R.string.summary_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, printerConnected = true) {
+            com.aktcl.aron.feature.memo.ui.SummaryScreen(summary, { sumNames[it] ?: "" }, {}, categoryLabel = { catNames[it] ?: it }, unitLabel = { unitNames[it] ?: "" })
+        }
+    }
+
+    // ---- Sync and submit (manual 40, 41): business figures, device against server ----
+    private fun qty(c: String, base: Long, entered: Long, unit: String) = com.aktcl.aron.feature.dayclose.CategoryQty(c, base, entered, unit)
+    private val dev = com.aktcl.aron.feature.dayclose.BusinessTotals(39, listOf(qty("cigarette", 300, 30, "packet"), qty("match", 12, 1, "dozen")), listOf(qty("cigarette", 1000, 100, "packet")), emptyList(), 0)
+    private val srv = com.aktcl.aron.feature.dayclose.BusinessTotals(39, listOf(qty("cigarette", 300, 30, "packet"), qty("match", 12, 1, "dozen")), listOf(qty("cigarette", 1000, 100, "packet")), emptyList(), 0)
+
+    private val recLabels = mapOf("visit" to "আউটলেট", "memo" to "বিক্রয়", "stock_movement" to "স্টক", "qc_line" to "কিউসি", "memo_discount" to "প্রমোশন")
+
+    @Composable
+    private fun Submit(dues: Int, serverFigures: com.aktcl.aron.feature.dayclose.BusinessTotals?) {
+        val counts = listOf(com.aktcl.aron.feature.dayclose.CountRow("memo", 6, 6))
+        val gate = com.aktcl.aron.feature.dayclose.SalesSubmitRules.gate(com.aktcl.aron.feature.dayclose.OutboxStates(0, 0, 0, 0, 0), counts, com.aktcl.aron.feature.dayclose.DuesAtSubmit(dues, if (dues > 0) 84_000 else 0), false)
+        ParityFrame(stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+            com.aktcl.aron.feature.dayclose.SalesSubmitScreen(
+                true, counts, gate, com.aktcl.aron.feature.dayclose.SubmitProgress.Idle, { recLabels[it] ?: it }, {}, {},
+                business = dev, serverBusiness = serverFigures, categoryLabel = { catNames[it] ?: it }, vendorDialogs = true, checkoutHint = true,
+            )
+        }
+    }
+
+    @Test fun submit_bn() = shot("sr2_submit_bn") { Submit(0, srv) }
+    @Test fun submit_due_bn() = shot("sr2_submit_due_bn") { Submit(1, srv) }
+
+    // ---- Tasks (manual 47): the card, the type in red, no raw codes ----
+    private val taskState = com.aktcl.aron.feature.tasks.TaskListState(
+        listOf(
+            com.aktcl.aron.feature.tasks.TaskItem("t1", "poor_brand_visibility", "Poor Brand Visibility", "রুকু স্টোরে দ্রুত প্রোডাক্ট দেও", 5, "Ruku Store", "2026-11-11", "ongoing", null),
+            com.aktcl.aron.feature.tasks.TaskItem("t2", "visit_outlet", "OOS", "Babu Store দোকানে Avon এ OOS আছে", 6, "Babu Store", "2026-11-30", "ongoing", null),
+            com.aktcl.aron.feature.tasks.TaskItem("t3", "collect_due", "Due collection", null, 7, "Tasmin", "2026-11-09", "ongoing", null),
+        ),
+        3, "2026-11-11T04:42:00.000Z",
+    )
+
+    @Test fun tasks_bn() = shot("sr2_tasks_bn") {
+        ParityFrame("টাস্ক", null) {
+            com.aktcl.aron.feature.tasks.TaskContent(taskState, {}, nowMs = java.time.Instant.parse("2026-11-11T05:00:00Z").toEpochMilli(), manual = true)
+        }
+    }
+    @Test fun tasks_empty_bn() = shot("sr2_tasks_empty_bn") {
+        ParityFrame("টাস্ক", null) {
+            com.aktcl.aron.feature.tasks.TaskContent(com.aktcl.aron.feature.tasks.TaskListState(emptyList(), 0, null, showEmptyState = true), {}, manual = true)
+        }
+    }
 }
