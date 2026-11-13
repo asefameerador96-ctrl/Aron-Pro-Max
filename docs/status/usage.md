@@ -3246,3 +3246,7 @@
 
 ### 2026-11-13 06:48 UTC — lane check (2-hourly)
 - INT 4e0645556 deployed, health build 4e0645556 (06:31, 3 of 3). SV4 "checked 787ae0d9d" at 06:41 (round B4: late_row_fact table in V0191, phone anchor on the online submit, recount on void/reopen through a platform interface; lane ci 43375949010 green on every job incl. Android and web e2e except the accepted Migrations step; local gate 0 failures). Static gate clean (DECISIONS 470, contract 1.16.0, slices up to date). Opus re-pass (2 lenses) started 06:45. L-A9 (opened 06:00) on C-R3; tip unchanged e8ccffc36. Nothing for the owner.
+
+### 2026-11-13 07:10 UTC — sr-server push B4: re-pass, 2 narrow blocking left; round B5 ordered
+- Opus re-pass on 787ae0d9d (2 lenses, 11 agents, 1.4 M tokens): the classification under the lock, replay, reopen, the data-void recount and the SQL all hold; migrations V0186..V0190 changed in comments only. Blocking, upheld 3 of 3: (1) the new fact table has no backfill, so rows stored in a closed period before the deploy would be counted twice at the next recount; (2) the "server clock" marker of an online Sales Submit is written in a second transaction and is lost on a retry or a quarantine release. Rulings: backfill in V0191 and store facts only for closed rows; the anchor's clock travels with the submit record atomically, and the route-day label says "server" if any user's anchor is server-stamped.
+- Each round on this counter has been narrower than the last (3 blocking, then 3 in one function, now 2 edge cases).
