@@ -4,6 +4,14 @@ import com.aktcl.aron.backend.app.TsoWorld.Companion.ack
 import com.aktcl.aron.backend.app.TsoWorld.Companion.code
 import com.aktcl.aron.backend.app.TsoWorld.Companion.status
 import com.aktcl.aron.backend.platform.AsthaQuarter
+import com.aktcl.aron.backend.platform.IngestRecord
+import com.aktcl.aron.backend.platform.Reach
+import com.aktcl.aron.backend.sync.GiftChoiceRecords
+import com.aktcl.aron.contract.RecordOutcomeCode
+import com.aktcl.aron.contract.Role
+import io.ktor.http.HttpStatusCode
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.TestInstance
@@ -13,6 +21,8 @@ import java.util.UUID
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -90,11 +100,11 @@ class GiftChoiceRecordsTest {
     @Test
     fun propertyAnyArrivalOrderOfChoicesEndsOnTheLatestCaptured() = world.withApi {
         with(world) {
-            // fresh outlets of the route for each trial would exceed the seed: reuse one outlet per trial with a new quarter label instead
-            val q0 = AsthaQuarter.of(today, 1)
+            // Only the open quarter can be chosen for (S4), so each trial starts from a clean assignment of the open quarter instead of another quarter label.
             repeat(12) { trial ->
                 val rnd = Random(77L + trial)
-                val label = "${q0.label.take(4).toInt() + 1 + trial}-Q${1 + trial % 4}"
+                val label = quarter
+                exec("DELETE FROM app.gift_assignment WHERE programme_id = $programme AND quarter = '$label' AND outlet_id = $outletGold")
                 val recs = (1..5).map { i -> choice(outletGold, if (rnd.nextBoolean()) gA else gB, secondsAgo = 100L * i + trial, q = label) }
                 val latest = recs[0]
                 for (r in recs.shuffled(rnd)) sync(sr, listOf(r))
@@ -129,6 +139,109 @@ class GiftChoiceRecordsTest {
             assertEquals("rejected", a.status()); assertEquals("gift_locked", a.code())
             assertEquals(gB, chosen(outletGold), "the locked gift is untouched")
             assertTrue(world.one("SELECT count(*) FROM app.gift_choice WHERE client_uuid = CAST('${late["client_uuid"].toString().trim('"')}' AS uuid)") == 0L, "a refused choice stores nothing")
+        }
+    }
+
+    // ---- C-R1 B5 / S4 ----
+
+    private val fakeReach = com.aktcl.aron.backend.platform.ReachResolver { uid, role, _, d -> Reach(uid, role, d, false, emptySet(), setOf(route), true, emptyList()) }
+    private fun handler() = GiftChoiceRecords(fakeReach, world.wiring.config)
+    private fun ingest(r: JsonObject, released: RecordOutcomeCode? = null) = IngestRecord(
+        "gift_choice", r["client_uuid"].toString().trim('"'), today, r, r["payload"]!!.jsonObject, sr.userId, Role.SR, sr.deviceId, UUID.randomUUID().toString(), world.now.get(), released,
+    )
+
+    /** A programme of its own (code per test) with every outlet of the route enrolled and one gift for every tier, so a test owns its assignments. */
+    private fun ownProgramme(tag: String): Pair<Long, Long> = with(world) {
+        val p = one("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('astha', 'ASTHA-$tag', 'Astha $tag', DATE '${today.minusDays(40)}', DATE '${today.plusDays(40)}', 'active') RETURNING id")
+        for (o in listOf(outletGold, outletGold2, outletSilver, outletLkx)) exec("INSERT INTO app.programme_enrolment (programme_id, outlet_id, tier_code, valid_from) VALUES ($p, $o, 'gold', DATE '${today.minusDays(30)}')")
+        p to one("INSERT INTO app.gift (programme_id, code, name_en) VALUES ($p, 'g_$tag', 'Gift $tag') RETURNING id")
+    }
+
+    @Test
+    fun aChoiceAcceptedFromQuarantineByAReviewerTakesEffect() = world.withApi {
+        with(world) {
+            val (p, g) = ownProgramme("QA")
+            val r = choice(outletLkx, g); val cu = r["client_uuid"].toString().trim('"')
+            val held = ack(sync(sr, listOf(r)), cu)
+            assertEquals("quarantined", held.status()); assertEquals("scope_out_of_reach", held.code())
+            assertEquals(0L, one("SELECT count(*) FROM app.gift_assignment WHERE programme_id = $p AND outlet_id = $outletLkx"))
+            val qid = one("SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST('$cu' AS uuid) AND status = 'open'")
+            val res = postWeb("admin1001", "/v1/admin/quarantine/$qid/resolve", """{"action":"accept","reason":"checked with the TSO, the outlet is on the rep's day plan"}""")
+            assertEquals(HttpStatusCode.OK, res.status)
+            assertEquals(1L, stored(outletLkx), "the accepted choice is stored once")
+            assertEquals(g, rows("SELECT gift_id FROM app.gift_assignment WHERE programme_id = $p AND quarter = '$quarter' AND outlet_id = $outletLkx").single()["gift_id"], "and the assignment follows it (it used to be acked accepted and never applied)")
+            assertEquals("duplicate", ack(sync(sr, listOf(r)), cu).status())
+        }
+    }
+
+    @Test
+    fun aReviewersAcceptOnlyWaivesTheCheckThatHeldTheRecord() {
+        val (p, g) = ownProgramme("QW")
+        with(world) {
+            val locked = choice(outletLkx, g)
+            exec("INSERT INTO app.gift_assignment (programme_id, quarter, outlet_id, route_id, gift_id, locked_at) SELECT $p, '$quarter', $outletLkx, route_id, $g, now() FROM app.outlet WHERE id = $outletLkx")
+            fresh.db.jdbi.useHandle<Exception> { h ->
+                assertEquals(RecordOutcomeCode.SCOPE_OUT_OF_REACH, handler().check(h, ingest(locked))?.code)
+                assertEquals(RecordOutcomeCode.GIFT_LOCKED, handler().check(h, ingest(locked, RecordOutcomeCode.SCOPE_OUT_OF_REACH))?.code, "the waiver of the scope check still meets the lock")
+            }
+        }
+    }
+
+    @Test
+    fun theHandOverLockCannotCloseBetweenCheckAndAfterStored() {
+        val (p, g) = ownProgramme("QL")
+        with(world) {
+            exec("INSERT INTO app.gift_assignment (programme_id, quarter, outlet_id, route_id, gift_id, chosen_by_user_id, chosen_at) SELECT $p, '$quarter', $outletGold, route_id, $g, ${sr.userId}, now() - interval '10 minutes' FROM app.outlet WHERE id = $outletGold")
+            val aid = one("SELECT id FROM app.gift_assignment WHERE programme_id = $p AND outlet_id = $outletGold")
+            val rec = ingest(choice(outletGold, g, secondsAgo = 5))
+            fresh.db.jdbi.useTransaction<Exception> { h ->
+                assertNull(handler().check(h, rec))
+                // the photo's lock UPDATE comes from another connection: it must wait for this record's transaction
+                val blocked = fresh.db.jdbi.withHandle<Boolean, Exception> { other ->
+                    other.begin()
+                    try { other.execute("SET LOCAL lock_timeout = '400ms'"); other.execute("UPDATE app.gift_assignment SET locked_at = now() WHERE id = $aid"); false } catch (e: Exception) { true } finally { other.rollback() }
+                }
+                assertTrue(blocked, "the assignment row is held between check and afterStored")
+                handler().afterStored(h, rec, null)
+            }
+            assertEquals(null, rows("SELECT locked_at FROM app.gift_assignment WHERE id = $aid").single()["locked_at"])
+            // if it closed anyway (another path, same transaction), the choice is NOT stored-and-silently-dropped: the record rolls back and its resend gets the final answer
+            val late = ingest(choice(outletGold, g, secondsAgo = 1))
+            assertFailsWith<IllegalStateException> {
+                fresh.db.jdbi.useTransaction<Exception> { h ->
+                    assertNull(handler().check(h, late))
+                    h.execute("UPDATE app.gift_assignment SET locked_at = now() WHERE id = $aid")
+                    handler().afterStored(h, late, null)
+                }
+            }
+            assertEquals(null, rows("SELECT locked_at FROM app.gift_assignment WHERE id = $aid").single()["locked_at"], "the failed record rolled back with everything it did")
+        }
+    }
+
+    @Test
+    fun aLockedAnswerIsFinalAndTheSameOnReplay() = world.withApi {
+        with(world) {
+            val (p, g) = ownProgramme("QR")
+            val a = choice(outletGold, g, secondsAgo = 90); sync(sr, listOf(a))
+            exec("UPDATE app.gift_assignment SET locked_at = now() WHERE programme_id = $p AND outlet_id = $outletGold")
+            val late = choice(outletGold, g, secondsAgo = 5); val cu = late["client_uuid"].toString().trim('"')
+            repeat(3) { n -> val x = ack(sync(sr, listOf(late)), cu); assertEquals("rejected" to "gift_locked", x.status() to x.code(), "send $n") }
+            assertEquals(1L, one("SELECT count(*) FROM app.sync_rejected WHERE client_uuid = CAST('$cu' AS uuid)"), "kept once, never dropped")
+        }
+    }
+
+    @Test
+    fun onlyTheOpenQuarterCanBeChosenFor() = world.withApi {
+        with(world) {
+            val (p, g) = ownProgramme("QQ")
+            val stale = AsthaQuarter.of(today.minusMonths(3), 1).label; val future = AsthaQuarter.of(today.plusMonths(3), 1).label
+            for (q in listOf(stale, future)) {
+                val r = choice(outletGold2, g, q = q); val cu = r["client_uuid"].toString().trim('"')
+                repeat(2) { val x = ack(sync(sr, listOf(r)), cu); assertEquals("rejected" to "schema_invalid", x.status() to x.code(), "$q") }
+                assertEquals(1L, one("SELECT count(*) FROM app.sync_rejected WHERE client_uuid = CAST('$cu' AS uuid)"), "$q is kept, not dropped")
+            }
+            assertEquals(0L, one("SELECT count(*) FROM app.gift_assignment WHERE programme_id = $p"))
+            val ok = choice(outletGold2, g); assertEquals("accepted", ack(sync(sr, listOf(ok)), ok["client_uuid"].toString().trim('"')).status())
         }
     }
 }

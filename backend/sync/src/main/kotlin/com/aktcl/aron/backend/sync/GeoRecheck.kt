@@ -192,7 +192,7 @@ class GeoRecheckHandler : RecordHandler {
     }
 }
 
-/** Worker job: [GeoRecheckHandler.sweep] every [everyMin] minutes over the last [days] Dhaka business dates. */
+/** Worker job: [GeoRecheckHandler.sweep] (visits) and [GiftPhotoGeoRecheck.sweep] (gift photos) every [everyMin] minutes over the last [days] Dhaka business dates. */
 class GeoRecheckSweepJob(
     private val db: Database,
     private val clock: AronClock = AronClock.SYSTEM,
@@ -202,13 +202,17 @@ class GeoRecheckSweepJob(
 ) {
     private val log = LoggerFactory.getLogger("aron.geo")
     private val handler = GeoRecheckHandler()
+    private val photos = GiftPhotoGeoRecheck(handler)
 
     /** Up to [limit] rows, [BATCH] per short transaction. */
     fun tick(): Int {
         var stored = 0
         repeat(limit / BATCH) {
             val now = clock.now()
-            stored += db.jdbi.inTransaction<Int, Exception> { h -> handler.sweep(h, LocalDate.ofInstant(now, ZoneId.of("Asia/Dhaka")), days, BATCH, now) }
+            stored += db.jdbi.inTransaction<Int, Exception> { h ->
+                val today = LocalDate.ofInstant(now, ZoneId.of("Asia/Dhaka"))
+                handler.sweep(h, today, days, BATCH, now) + photos.sweep(h, today, days, BATCH, now)   // visits, then gift hand-over photos (V0185)
+            }
         }
         return stored
     }

@@ -5,6 +5,7 @@ import com.aktcl.aron.backend.app.TsoWorld.Companion.code
 import com.aktcl.aron.backend.app.TsoWorld.Companion.status
 import com.aktcl.aron.backend.platform.AsthaQuarter
 import com.aktcl.aron.backend.sync.BundleProgrammes
+import com.aktcl.aron.backend.sync.GeoRecheckSweepJob
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -37,6 +38,8 @@ class GiftPhotoRecordsTest {
     private var campaign = 0L
     private var gift = 0L
     private var cGift = 0L
+    private var cGift2 = 0L
+    private var outlet2 = 0L
     private var outlet = 0L
     private var outletLkx = 0L
     private var userId = 0L
@@ -54,11 +57,13 @@ class GiftPhotoRecordsTest {
             route = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
             outlet = one("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id LIMIT 1")
             outletLkx = one("SELECT o.id FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE r.code = 'LKX-SR-D' AND o.status = 'active' ORDER BY o.id LIMIT 1")
+            outlet2 = one("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' AND id <> $outlet ORDER BY id LIMIT 1")
             exec("UPDATE app.outlet SET location_basis = 'master', lat = $lat, lng = $lng WHERE id = $outlet")
             programme = one("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('astha', 'ASTHA-GP', 'Astha photo', DATE '${today.minusDays(40)}', DATE '${today.plusDays(40)}', 'active') RETURNING id")
             campaign = one("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('campaign', 'CAMP-GP', 'Campaign photo', DATE '${today.minusDays(40)}', DATE '${today.plusDays(40)}', 'active') RETURNING id")
             gift = one("INSERT INTO app.gift (programme_id, code, name_en) VALUES ($programme, 'gp_a', 'Gift') RETURNING id")
             cGift = one("INSERT INTO app.gift (programme_id, code, name_en) VALUES ($campaign, 'gp_c', 'Campaign gift') RETURNING id")
+            cGift2 = one("INSERT INTO app.gift (programme_id, code, name_en) VALUES ($campaign, 'gp_c2', 'Campaign gift 2') RETURNING id")
             lkxAssignment = one("INSERT INTO app.gift_assignment (programme_id, quarter, outlet_id, route_id, gift_id) SELECT $programme, '2031-Q1', $outletLkx, route_id, $gift FROM app.outlet WHERE id = $outletLkx RETURNING id")
         }
     }
@@ -68,9 +73,9 @@ class GiftPhotoRecordsTest {
     private fun assignment(label: String): Long = world.one("INSERT INTO app.gift_assignment (programme_id, quarter, outlet_id, route_id, gift_id) VALUES ($programme, '$label', $outlet, $route, $gift) RETURNING id")
 
     private fun photo(assignment: Long?, secondsAgo: Long, photoUuid: String = UUID.randomUUID().toString(), cu: String = UUID.randomUUID().toString(), flat: Double = lat, outletId: Long = outlet,
-                      unit: Pair<String, Int>? = null): JsonObject {
+                      unit: Pair<String, Int>? = null, giftId: Long? = null): JsonObject {
         val target = if (assignment != null) """"programme_kind":"astha","gift_assignment_id":$assignment""" else """"programme_kind":"campaign","redemption_client_uuid":"${unit!!.first}","unit_no":${unit.second}"""
-        val g = if (assignment != null) gift else cGift
+        val g = giftId ?: if (assignment != null) gift else cGift
         return world.record(
             "gift_photo",
             """{$target,"outlet_id":$outletId,"gift_id":$g,"photo_uuid":"$photoUuid",
@@ -169,6 +174,126 @@ class GiftPhotoRecordsTest {
             val p3 = photo(null, 30, unit = red to 3); sync(sr, listOf(p3))
             assertNull(pending(), "all three units photographed")
             assertTrue(one("SELECT count(*) FROM app.gift_photo WHERE redemption_client_uuid = '$red'") == 4L)
+        }
+    }
+
+    // ---- C-R1: ties, voids, campaign-unit checks, sweep ----
+
+    /** A stored redemption of the campaign with [lines] (gift to qty); line_count is [lineCount] (default the number of lines given). */
+    private fun redemption(outletId: Long, lines: List<Pair<Long, Int>>, lineCount: Int = lines.size): String = with(world) {
+        val red = UUID.randomUUID().toString()
+        val common = "family_uuid, business_date, user_id, captured_at, config_version"
+        val vals = "gen_random_uuid(), DATE '$today', $userId, now(), 0"
+        exec("INSERT INTO app.redemption (client_uuid, $common, outlet_id, programme_id, balance_before_points, points_total, cash_points, cash_mtk, cash_rate_mtk_per_point, line_count, confirmed_at) VALUES ('$red', $vals, $outletId, $campaign, 5000, 300, 0, 0, 0, $lineCount, now())")
+        exec("INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, status, user_id, first_batch_uuid) VALUES ('$red', 'redemption', decode(repeat('00', 32), 'hex'), 'accepted', $userId, gen_random_uuid())")
+        lines.forEach { (g, q) -> addLine(red, g, q) }
+        red
+    }
+
+    private fun addLine(red: String, g: Long, q: Int) = with(world) {
+        exec("INSERT INTO app.redemption_line (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, redemption_client_uuid, gift_id, qty, points_each, points_total) VALUES (gen_random_uuid(), gen_random_uuid(), DATE '$today', $userId, now(), 0, '$red', $g, $q, 100, ${q * 100})")
+    }
+
+    private fun flag(r: JsonObject) = world.rows("SELECT check_flag, is_duplicate, flagged_at IS NOT NULL AS f FROM app.gift_photo WHERE client_uuid = CAST('${cu(r)}' AS uuid)").single()
+    private fun winnersOfUnit(red: String, unit: Int, g: Long = cGift) = world.rows("SELECT client_uuid::text AS c FROM app.gift_photo WHERE redemption_client_uuid = '$red' AND gift_id = $g AND unit_no = $unit AND NOT is_duplicate AND voided_at IS NULL").map { it["c"] }
+
+    @Test
+    fun photosCapturedAtTheSameInstantAreOrderedByClientUuidInAnyArrivalOrder() = world.withApi {
+        with(world) {
+            for (i in 1..2) {
+                val low = "10000000-0000-4000-8000-00000000000$i"; val high = "f0000000-0000-4000-8000-00000000000$i"
+                val a = assignment("${2060 + i}-Q1")
+                val order = if (i == 1) listOf(low, high) else listOf(high, low)   // both arrival orders
+                val recs = order.map { photo(a, 120, cu = it) }
+                for (r in recs) sync(sr, listOf(r))
+                assertEquals(listOf(low), rows("SELECT client_uuid::text AS c FROM app.gift_photo WHERE gift_assignment_id = $a AND NOT is_duplicate").map { it["c"] }, "arrival order $i: the lower client uuid wins the tie")
+                assertEquals(photoUuid(recs[order.indexOf(low)]), rows("SELECT photo_media_uuid::text AS m FROM app.gift_assignment WHERE id = $a").single()["m"])
+            }
+        }
+    }
+
+    @Test
+    fun voidingTheWinnerPromotesTheEarliestRemainingAndTheLockFollows() = world.withApi {
+        with(world) {
+            val a = assignment("2070-Q1")
+            val p1 = photo(a, 400); val p2 = photo(a, 300); val p3 = photo(a, 200)
+            for (p in listOf(p3, p1, p2)) sync(sr, listOf(p))
+            fun winner() = rows("SELECT client_uuid::text AS c FROM app.gift_photo WHERE gift_assignment_id = $a AND NOT is_duplicate AND voided_at IS NULL").map { it["c"] }
+            fun assign() = rows("SELECT photo_media_uuid::text AS m, locked_at IS NOT NULL AS l FROM app.gift_assignment WHERE id = $a").single()
+            assertEquals(listOf(cu(p1)), winner())
+            exec("UPDATE app.gift_photo SET voided_at = now() WHERE client_uuid = CAST('${cu(p1)}' AS uuid)")
+            assertEquals(listOf(cu(p2)), winner(), "the earliest remaining photo takes over"); assertEquals(photoUuid(p2), assign()["m"]); assertEquals(true, assign()["l"])
+            assertEquals(false, flag(p2)["f"], "and it is no longer flagged")
+            exec("UPDATE app.gift_photo SET voided_at = now() WHERE client_uuid = CAST('${cu(p3)}' AS uuid)")   // a duplicate's void changes nothing
+            assertEquals(listOf(cu(p2)), winner()); assertEquals(photoUuid(p2), assign()["m"])
+            exec("UPDATE app.gift_photo SET voided_at = now() WHERE client_uuid = CAST('${cu(p2)}' AS uuid)")
+            assertEquals(emptyList(), winner()); assertNull(assign()["m"]); assertEquals(false, assign()["l"], "with no photo left the assignment is open again")
+            val again = photo(a, 100); sync(sr, listOf(again))
+            assertEquals(listOf(cu(again)), winner(), "a new photo can lock it again"); assertEquals(true, assign()["l"])
+            assertEquals(4L, one("SELECT count(*) FROM app.gift_photo WHERE gift_assignment_id = $a"), "no photo was deleted")
+        }
+    }
+
+    @Test
+    fun aCampaignUnitPhotoThatFailsItsChecksIsStoredAndFlaggedNeverDropped() = world.withApi {
+        with(world) {
+            val red = redemption(outlet, listOf(cGift to 2))
+            fun accepted(p: JsonObject) = ack(sync(sr, listOf(p)), cu(p)).let { assertEquals("accepted", it.status(), it.toString()) }
+            val tooHigh = photo(null, 200, unit = red to 3); accepted(tooHigh)
+            assertEquals("unit_out_of_range", flag(tooHigh)["check_flag"]); assertEquals(true, flag(tooHigh)["is_duplicate"]); assertEquals(true, flag(tooHigh)["f"])
+            val wrongGift = photo(null, 190, unit = red to 1, giftId = cGift2); accepted(wrongGift)
+            assertEquals("gift_not_in_redemption", flag(wrongGift)["check_flag"])
+            val wrongOutlet = photo(null, 180, unit = red to 1, outletId = outlet2); accepted(wrongOutlet)
+            assertEquals("outlet_mismatch", flag(wrongOutlet)["check_flag"])
+            val noUnit0 = photo(null, 170, unit = red to 0); accepted(noUnit0)
+            assertEquals("unit_out_of_range", flag(noUnit0)["check_flag"], "unit 0 is outside 1..qty")
+            assertEquals(emptyList(), winnersOfUnit(red, 1) + winnersOfUnit(red, 3), "none of them counts as a unit's photo")
+            assertEquals(4L, one("SELECT count(*) FROM app.gift_photo WHERE redemption_client_uuid = '$red'"), "all four are kept")
+            val good = photo(null, 100, unit = red to 1); accepted(good)
+            assertNull(flag(good)["check_flag"]); assertEquals(listOf(cu(good)), winnersOfUnit(red, 1))
+            // a failing photo captured EARLIER than the good one that arrives LATER must not leave the unit without its photo
+            val red2 = redemption(outlet, listOf(cGift to 1))
+            val goodLater = photo(null, 100, unit = red2 to 1); val badEarlier = photo(null, 500, unit = red2 to 1, outletId = outlet2)
+            accepted(goodLater); accepted(badEarlier)
+            assertEquals("outlet_mismatch", flag(badEarlier)["check_flag"]); assertEquals(listOf(cu(goodLater)), winnersOfUnit(red2, 1), "the good photo is elected again")
+        }
+    }
+
+    @Test
+    fun aCampaignUnitPhotoOfAnOutletOutOfReachIsFlagged() = world.withApi {
+        with(world) {
+            val red = redemption(outletLkx, listOf(cGift to 1))
+            val p = photo(null, 100, unit = red to 1, outletId = outletLkx)
+            assertEquals("accepted", ack(sync(sr, listOf(p)), cu(p)).status())
+            assertEquals("out_of_reach", flag(p)["check_flag"]); assertEquals(emptyList(), winnersOfUnit(red, 1))
+        }
+    }
+
+    @Test
+    fun aUnitPhotoWhoseRedemptionLinesHaveNotAllArrivedWaitsInsteadOfBeingJudgedOnAPartialView() = world.withApi {
+        with(world) {
+            val red = redemption(outlet, listOf(cGift to 1), lineCount = 2)
+            val p = photo(null, 100, unit = red to 1, giftId = cGift2)   // its gift is the second line, not stored yet
+            val first = ack(sync(sr, listOf(p)), cu(p))
+            assertEquals("rejected" to "parent_missing", first.status() to first.code()); assertEquals(true, first["retryable"]?.jsonPrimitive?.content == "true")
+            addLine(red, cGift2, 1)
+            assertEquals("accepted", ack(sync(sr, listOf(p)), cu(p)).status(), "the resend is judged once the lines are there")
+            assertNull(flag(p)["check_flag"]); assertEquals(listOf(cu(p)), winnersOfUnit(red, 1, cGift2))
+        }
+    }
+
+    @Test
+    fun theGeoRecheckOfAGiftPhotoIsRetriedBySweep() = world.withApi {
+        with(world) {
+            val a = assignment("2080-Q1"); val p = photo(a, 60)
+            sync(sr, listOf(p))
+            val sel = "SELECT server_verdict, server_checked_at IS NOT NULL AS c FROM app.gift_photo WHERE client_uuid = CAST('${cu(p)}' AS uuid)"
+            assertEquals("in_range", rows(sel).single()["server_verdict"])
+            exec("UPDATE app.gift_photo SET server_verdict = NULL, server_distance_m = NULL, server_radius_m = NULL, server_checked_at = NULL WHERE client_uuid = CAST('${cu(p)}' AS uuid)")   // the re-check failed on ingest
+            assertEquals(false, rows(sel).single()["c"])
+            val stored = GeoRecheckSweepJob(wiring.database!!, clock).tick()
+            assertTrue(stored >= 1, "the sweep stored a verdict")
+            assertEquals("in_range", rows(sel).single()["server_verdict"]); assertEquals(true, rows(sel).single()["c"])
         }
     }
 }
