@@ -3273,3 +3273,6 @@
 
 ### 2026-11-13 09:15 UTC — OWNER: parity directive and rulings on the first gaps
 - D-OWNER-PARITY-02: users must not feel anything changed; nothing Apsis captured may be missed; where ours differs from the field's data, ours changes. Rulings on M01 (switch at load time), M03 (store "no plan"), M06/M07 (tiers as in the field, Titanium in, Silver retired), M08 (accept and normalise phones). A master-data lane is opened now on these.
+
+### 2026-11-13 09:40 UTC — OWNER: offered the reverse-engineering tool "rea"; lead's decision; parity audit started
+- The owner says he still finds many mismatches against the Apsis apps and left it to me whether to install github.com/morluto/rea. Read its README through a fetch agent: a reverse-engineering toolkit (JADX APK decompilation, adb, runtime capture). Decision D-LEAD-REA-01: not installed, the vendor app is not decompiled on my own authority (clean-room guardrail, a legal question for the owner, and the tool rewrites agent configuration). Instead: a full parity audit as a workflow (inventory per app, 8-pair compare batches on Sonnet with vision, Opus synthesis) of 196 reference screenshots against our 501 recorded screen images. MD1 sent its plan (V0195..V0198, contract 1.18.0) and started push 1.
