@@ -131,6 +131,9 @@ class SrManualSv1V0173Test {
         assertEquals("false", c.scalar("SELECT has_column_privilege('bi_reader', 'dw.v_survey_response', 'answer_text', 'SELECT')::text"))
         assertEquals("true", c.scalar("SELECT has_column_privilege('bi_reader', 'dw.v_survey_response', 'answer_option_code', 'SELECT')::text"))
         assertEquals("true", c.scalar("SELECT has_column_privilege('web_ro', 'dw.v_survey_response', 'answer_text', 'SELECT')::text"))
+        // B4: the per-record late-row facts
+        assertEquals("true", c.scalar("SELECT (to_regclass('app.late_row_fact') IS NOT NULL)::text"))
+        assertTrue(c.scalar("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'app.late_row_fact'::regclass AND contype = 'c'")!!.contains("server"))
         // item e: the sync_rejected code check keeps EVERY code of V0135 and adds cluster_name_exists (the Loyalty lane's gift codes are added by whichever migration lands second)
         val def = c.scalar("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'sync_rejected_code_check'")!!
         for (code in listOf("scope_stale", "config_version_unknown", "parent_missing", "outlet_pending_approval", "price_list_unknown", "schema_invalid", "unknown_record_type", "unknown_sku", "unknown_outlet", "unknown_route",

@@ -1,8 +1,8 @@
--- V0183 sr-server train 2, push B2 (contract 1.16.0; D-SV2-04): cluster creation rides on the outlet request pipeline.
+-- V0189 sr-server train 2, push B2 (contract 1.16.0; D-SV2-04): cluster creation rides on the outlet request pipeline.
 -- An SR proposes a NEW cluster for the route it works with an `outlet_change_request` record of request_type `cluster_create` (no outlet, the
 -- name in proposed.name, the route on the envelope); the AMO verifies, the portal approves, and the approval makes a live cluster of the route's zone
 -- and records it in `created_cluster_id` (write-once). A rejected `cluster_name_exists` is a new record outcome code (sync_rejected).
--- Every widening CHECK / new FK is NOT VALID here and validated by V0184 (squawk rule). Lock: ONE LOCK ... NOWAIT retried for about 60 s (V0144 pattern).
+-- Every widening CHECK / new FK is NOT VALID here and validated by V0190 (squawk rule). Lock: ONE LOCK ... NOWAIT retried for about 60 s (V0144 pattern).
 SET lock_timeout = '5s';
 
 DO $$

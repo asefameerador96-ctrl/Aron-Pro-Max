@@ -362,7 +362,7 @@ class Wiring(
                 tutorialRoutes(TutorialsDeps(db, blob, guard))
                 supportUploadRoutes(SupportUploadDeps(db, blob, config, guard, clock))
                 feedbackRoutes(FeedbackDeps(db, reach, config, guard, clock))
-                dataVoidRoutes(DataVoidDeps(db, reach, guard, clock))
+                dataVoidRoutes(DataVoidDeps(db, reach, guard, clock, com.aktcl.aron.backend.platform.DayInputsChanged { h, routes, date -> com.aktcl.aron.backend.sync.DayStates.recountLateAfterSubmit(h, routes, date) }))
                 entryUnlockRoutes(EntryUnlockDeps(db, reach, config, guard, clock))
                 duesAdjustmentRoutes(DuesAdjustmentDeps(db, reach, guard, clock))
                 routeTargetRoutes(RouteTargetDeps(db, guard, clock))

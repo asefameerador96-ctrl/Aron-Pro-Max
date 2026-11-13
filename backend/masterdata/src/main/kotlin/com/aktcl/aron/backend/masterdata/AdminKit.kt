@@ -274,7 +274,7 @@ internal fun <T> admWrite(block: () -> T): T = try {
             val msg = c.message.orEmpty()
             when (c.sqlState) {
                 "23505" -> throw ApiProblem(ProblemCode.ERR_MASTER_DUPLICATE_CODE, "a row with this code or name already exists", errors = listOf(FieldError(when {
-                    msg.contains("username") -> "body.username"; msg.contains("external_ref") -> "body.external_ref"; msg.contains("zone_id_name") -> "body.name"; else -> "body.code"
+                    msg.contains("username") -> "body.username"; msg.contains("external_ref") -> "body.external_ref"; msg.contains("zone_id_name") || msg.contains("cluster_zone_name_norm_key") -> "body.name"; else -> "body.code"
                 }, "duplicate")))
                 "22021", "22008", "22003", "22007", "22P02", "22P05" -> throw ApiProblem(ProblemCode.ERR_VALIDATION, "a value is not acceptable", errors = listOf(FieldError("body", "invalid_value")))
                 "23P01" -> throw ApiProblem(ProblemCode.ERR_MASTER_OVERLAP, "the dates overlap an existing row")

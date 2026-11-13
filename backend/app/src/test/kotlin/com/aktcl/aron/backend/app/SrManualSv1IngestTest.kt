@@ -456,7 +456,8 @@ class SrManualSv1IngestTest {
                 h.execute("SET session_replication_role = replica")   // the event table is append-only: a test clean-up only
                 try {
                     h.execute("DELETE FROM app.route_day_event WHERE kind = 'day_submit' AND route_id = $route AND business_date = DATE '$day' AND user_id = $user")
-                    h.execute("UPDATE app.route_day SET late_rows_after_sales_submit = 0, submit_received_at = NULL, sales_submitted_at = NULL, settle_deadline_at = NULL WHERE route_id = $route AND business_date = DATE '$day'")
+                    h.execute("DELETE FROM app.final_submit WHERE zone_id = (SELECT zone_id FROM app.route WHERE id = $route) AND business_date = DATE '$day'")
+                    h.execute("UPDATE app.route_day SET late_rows_after_sales_submit = 0, late_rows_after_final = 0, final_submitted_at = NULL, submit_received_at = NULL, sales_submitted_at = NULL, settle_deadline_at = NULL WHERE route_id = $route AND business_date = DATE '$day'")
                 } finally { h.execute("SET session_replication_role = origin") }
             }
         }
@@ -548,30 +549,130 @@ class SrManualSv1IngestTest {
         assertEquals(2L, lateOf(), "the edit after the submit changes the figures of an on-time memo: counted once")
     }
 
+    private fun dayService() = com.aktcl.aron.backend.sync.DayService(fresh.db, DbServerConfig(fresh.db, RegistryDefaults(), clock), SqlReachResolver(fresh.db, GeoRepository(fresh.db, clock), clock), ingest, clock)
+    private fun principalOf(username: String, role: Role, phone: Boolean = false): com.aktcl.aron.backend.platform.AronPrincipal {
+        val id = count("SELECT id FROM app.app_user WHERE username = '$username'")
+        return com.aktcl.aron.backend.platform.AronPrincipal(id, username, role, 1, com.aktcl.aron.backend.platform.Audience.API, if (phone) device.first else null, if (phone) device.second else null,
+            if (phone) "app_sr" else "web", emptyList(), false, listOf("pwd"), "j", Instant.EPOCH)
+    }
+    private fun zoneOf(route: Long = routeId) = count("SELECT zone_id FROM app.route WHERE id = $route")
+    private fun lateFinal(route: Long = routeId) = count("SELECT late_rows_after_final FROM app.route_day WHERE route_id = $route AND business_date = DATE '$day'")
+    private fun closedFact(memoUuid: String) = fresh.db.jdbi.withHandle<Boolean?, Exception> { h -> h.createQuery("SELECT stored_closed FROM app.late_row_fact WHERE client_uuid = CAST(:u AS uuid)").bind("u", memoUuid).mapTo(Boolean::class.javaObjectType).findOne().orElse(null) }
+    private fun memoOf(r: List<JsonObject>) = uuidOf(r.single { typeOf(it) == "memo" })
+
     @Test
-    fun aRowStoredWhileTheZoneDayWasClosedBelongsToTheFinalCounterAndNotToThisOne() = withCover(sr, routeId) {
-        val o = outletsOfRoute()
+    fun aRowStoredWhileTheZoneDayWasClosedStaysWithTheFinalCounterThroughReplaysAndAReopen() = withCover(sr, routeId) {
+        val o = outletsOfRoute(); val tso = principalOf("tso1001", Role.TSO); val admin = principalOf("admin1001", Role.ADMIN)
         val submit = submitRec(routeId); val a = saleAt(o[3])
         send(sr, listOf(submit) + a)
-        assertEquals(1L, lateOf())
-        // the zone-day closes (Final Submit row at the server clock), then another late memo arrives: late_rows_after_final takes it
-        val zone = count("SELECT zone_id FROM app.route WHERE id = $routeId")
-        fresh.db.jdbi.useHandle<Exception> { h ->
-            h.execute("INSERT INTO app.final_submit (client_uuid, zone_id, business_date, submitted_by, submitted_at, via) VALUES (gen_random_uuid(), $zone, DATE '$day', $sr, TIMESTAMPTZ '2027-01-03T04:30:00Z', 'web')")
-            h.execute("UPDATE app.route_day SET final_submitted_at = TIMESTAMPTZ '2027-01-03T04:30:00Z', state = 'final_submitted' WHERE route_id = $routeId AND business_date = DATE '$day'")
+        assertEquals(1L, lateOf()); assertEquals(false, closedFact(memoOf(a)), "stored while the day was open")
+        dayService().finalSubmit(tso, com.aktcl.aron.backend.sync.FinalSubmitRequest(uuid(), zoneOf(), day))
+        val b = saleAt(o[4])
+        send(sr, b)   // captured before the lock instant, stored after it: accepted and flagged (accept_and_flag), classified closed at store time
+        assertEquals(true, closedFact(memoOf(b)), "stored while the day was Final Submitted")
+        assertEquals(1L, lateOf(), "the closed row is not in the Sales Submit counter"); assertTrue(lateFinal() >= 1L, "its records are in the Final Submit counter (one per record)")
+        val finalAfterB = lateFinal()
+        send(sr, a); send(sr, b); send(sr, listOf(submit))
+        assertEquals(1L, lateOf(), "replays change nothing"); assertEquals(finalAfterB, lateFinal())
+        dayService().reopen(admin, com.aktcl.aron.backend.sync.DayReopenRequest(zoneOf(), day, "reopen for the late-row test", uuid()), null)
+        assertEquals(1L, lateOf(), "a reopen recounts from the persisted facts: the closed row stays out")
+        val c = saleAt(o[5]); send(sr, c)
+        assertEquals(false, closedFact(memoOf(c))); assertEquals(2L, lateOf(), "a row stored after the reopen is an ordinary late row"); assertEquals(finalAfterB, lateFinal())
+    }
+
+    /** A Final Submit racing the SR's batch (two threads, real transactions): the row lands in exactly ONE counter and the persisted fact says which. */
+    @Test
+    fun aFinalSubmitRacingAnSrBatchPutsTheRowInExactlyOneCounter() = withCover(sr, routeId) {
+        val o = outletsOfRoute(); val tso = principalOf("tso1001", Role.TSO); val admin = principalOf("admin1001", Role.ADMIN)
+        send(sr, listOf(submitRec(routeId)))
+        var closed = 0; var open = 0
+        for (i in 0 until 8) {
+            val row = saleAt(o[i % o.size]); val s0 = lateOf(); val f0 = lateFinal()
+            val go = java.util.concurrent.CountDownLatch(1); val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+            val t1 = Thread { try { go.await(); if (i % 2 == 0) Thread.sleep(3); send(sr, row) } catch (e: Throwable) { errors += e } }
+            val t2 = Thread { try { go.await(); if (i % 2 == 1) Thread.sleep(3); dayService().finalSubmit(tso, com.aktcl.aron.backend.sync.FinalSubmitRequest(uuid(), zoneOf(), day)) } catch (e: Throwable) { errors += e } }
+            t1.start(); t2.start(); go.countDown(); t1.join(); t2.join()
+            assertEquals(emptyList<Throwable>(), errors.toList(), "no deadlock or error in either interleaving")
+            val fact = closedFact(memoOf(row)) ?: error("the row is stored and classified")
+            assertEquals(if (fact) 0L else 1L, lateOf() - s0, "iteration $i: closed=$fact: the Sales Submit counter")
+            assertEquals(fact, lateFinal() - f0 > 0L, "iteration $i: closed=$fact: the Final Submit counter moves exactly when the row was stored closed (it counts records)")
+            if (fact) closed++ else open++
+            dayService().reopen(admin, com.aktcl.aron.backend.sync.DayReopenRequest(zoneOf(), day, "reopen for the race test $i", uuid()), null)
+            send(sr, row); assertEquals(true, closedFact(memoOf(row)) == fact, "a replay keeps the first classification")
         }
-        now = Instant.parse("2027-01-03T05:00:00Z")
-        try {
-            send(sr, saleAt(o[4]))
-            assertEquals(1L, lateOf(), "stored after the Final Submit: counted under late_rows_after_final")
-            assertEquals(true, count("SELECT late_rows_after_final FROM app.route_day WHERE route_id = $routeId AND business_date = DATE '$day'") >= 1L)
-        } finally {
-            now = Instant.parse("2027-01-03T04:00:00Z")
-            fresh.db.jdbi.useHandle<Exception> { h ->
-                h.execute("UPDATE app.route_day SET final_submitted_at = NULL, state = 'sales_submitted', late_rows_after_final = 0 WHERE route_id = $routeId AND business_date = DATE '$day'")
-                h.execute("DELETE FROM app.final_submit WHERE zone_id = $zone AND business_date = DATE '$day'")
+        println("RACE interleavings seen: row before the close=$open, row after the close=$closed")
+    }
+
+    @Test
+    fun anAdminVoidOfTheRowsOrOfTheSubmitRecountsInTheSameTransactionAndAReopenFollowsTheFacts() = withCover(sr, routeId) {
+        val o = outletsOfRoute(); val admin = principalOf("admin1001", Role.ADMIN)
+        val submit = submitRec(routeId); val a = saleAt(o[0]); val b = saleAt(o[1])
+        send(sr, listOf(submit) + a + b)
+        assertEquals(2L, lateOf())
+        fun tombstone(sql: String) = fresh.db.jdbi.useHandle<Exception> { h ->
+            h.inTransaction<Unit, Exception> { t ->
+                t.execute(sql)
+                com.aktcl.aron.backend.sync.DayStates.recountLateAfterSubmit(t, listOf(routeId), java.time.LocalDate.parse(day))   // what the data void API does in its transaction
             }
         }
+        // the void of ONE row: 1 late row left; of the submit only: no anchor, 0; both back (un-void is a restore of the tombstone) and all voided: 0
+        tombstone("UPDATE app.memo SET voided_at = now() WHERE client_uuid = CAST('${memoOf(b)}' AS uuid)"); assertEquals(1L, lateOf())
+        tombstone("UPDATE app.route_day_event SET voided_at = now() WHERE client_uuid = CAST('${uuidOf(submit)}' AS uuid)"); assertEquals(0L, lateOf(), "the voided anchor leaves nothing to be late against")
+        tombstone("UPDATE app.memo SET voided_at = now() WHERE client_uuid = CAST('${memoOf(a)}' AS uuid)"); assertEquals(0L, lateOf(), "every row and the anchor voided")
+    }
+
+    @Test
+    fun theDataVoidApiRecountsTheLateRowsInItsOwnTransaction() {
+        // The wiring is the proof: the data void's deps carry the recount (Wiring.kt passes DayStates.recountLateAfterSubmit); DataVoidApi calls it right after the tombstoning loop.
+        val wiring = File(System.getProperty("aron.repoRoot"), "backend/app/src/main/kotlin/com/aktcl/aron/backend/app/Wiring.kt").readText()
+        assertTrue(wiring.contains("DayInputsChanged") && wiring.contains("recountLateAfterSubmit"))
+        val api = File(System.getProperty("aron.repoRoot"), "backend/masterdata/src/main/kotlin/com/aktcl/aron/backend/masterdata/DataVoidApi.kt").readText()
+        assertTrue(api.indexOf("d.dayInputs?.changed") > api.indexOf("for (t in tables)"))
+    }
+
+    @Test
+    fun aSecondSubmitCycleMovesTheAnchorAndCanLowerTheCountAndTwoUsersOfOneRouteDayHaveTheirOwn() = withCover(sr, routeId) {
+        val o = outletsOfRoute()
+        val first = submitRec(routeId, 1); val a = saleAt(o[0]); val second = submitRec(routeId, 2); val b = saleAt(o[1])
+        send(sr, listOf(first) + a + b)
+        assertEquals(2L, lateOf(), "both rows are after submit cycle 1")
+        send(sr, listOf(second))
+        assertEquals(1L, lateOf(), "the newest non-voided cycle is the anchor: only the row after cycle 2 is late (the count went down)")
+        // a third SR (cover of the same route-day, their own phone clock) against their own submit; a user of its own keeps sr2's "nothing stored" digest test clean
+        val sr3 = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.app_user WHERE username = 'sr3003'").mapTo(Long::class.java).findOne().orElseGet { h.createQuery("INSERT INTO app.app_user (username, full_name, role, password_hash) VALUES ('sr3003', 'Third SR', 'SR', 'x') RETURNING id").mapTo(Long::class.java).one() } }
+        withCover(sr3, routeId) {
+            val c = sale("sr3003-270103-${seq.incrementAndGet()}", listOf(L(priced, 1, "stick", 1)), route = routeId, outlet = o[2]); val s2 = submitRec(routeId, 1); val d = sale("sr3003-270103-${seq.incrementAndGet()}", listOf(L(priced, 1, "stick", 1)), route = routeId, outlet = o[3])
+            send(sr3, c + s2 + d)
+            assertEquals(2L, lateOf(), "sr's one late row + sr3's one (d), each against their own submit; sr3's earlier row c is not late")
+        }
+    }
+
+    @Test
+    fun anOnlineSalesSubmitCarriesThePhonesClockAndAnOlderClientIsMarkedServer() = withCover(sr, routeId) {
+        val o = outletsOfRoute(); val phone = principalOf("sr1001", Role.SR, phone = true)
+        fun req(captured: String?) = com.aktcl.aron.backend.sync.SalesSubmitRequest(uuid(), "route_day", routeId, day, 1, buildJsonObject {}, buildJsonObject {
+            for (k in listOf("active_memo_count", "gross_mtk", "offer_discount_mtk", "drp_discount_mtk", "qc_deduction_mtk", "net_mtk", "paid_mtk", "due_mtk", "due_collected_mtk")) put(k, 0)
+            put("net_by_category_mtk", buildJsonObject {}); put("issued_qty_base_by_sku", buildJsonObject {}); put("sold_qty_base_by_sku", buildJsonObject {})
+        }, false, 0, captured)
+        fun anchorClock(cu: String) = fresh.db.jdbi.withHandle<String?, Exception> { h -> h.createQuery("SELECT coalesce((SELECT anchor_clock FROM app.late_row_fact WHERE client_uuid = CAST(:c AS uuid)), 'phone')").bind("c", cu).mapTo(String::class.java).one() }
+        // phone clock: rows captured before it are not late, rows after it are, whatever the server clock says (server now = 04:00Z, after every capture time)
+        val before = saleAt(o[0]); val stamp = Instant.parse("2027-01-02T18:30:00Z").plusSeconds(minute.incrementAndGet() * 60L); val after = saleAt(o[1])
+        send(sr, before + after)
+        val r1 = req(stamp.toString()); dayService().salesSubmit(phone, r1)
+        assertEquals(1L, lateOf(), "measured against the phone's own clock"); assertEquals("phone", anchorClock(r1.client_uuid))
+        val stored = fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT to_char(captured_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') FROM app.route_day_event WHERE client_uuid = CAST('${r1.client_uuid}' AS uuid)").mapTo(String::class.java).one() }
+        assertEquals(stamp, Instant.parse(stored), "the stored anchor is the phone's time")
+        // an older client: no captured_at; the server's time is the anchor and the record says so
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("SET session_replication_role = replica")
+            try { h.execute("DELETE FROM app.route_day_event WHERE kind = 'day_submit' AND route_id = $routeId AND business_date = DATE '$day'") } finally { h.execute("SET session_replication_role = origin") }
+        }
+        val r2 = req(null); dayService().salesSubmit(phone, r2)
+        assertEquals("server", anchorClock(r2.client_uuid)); assertEquals(0L, lateOf(), "stamped with the server clock, which is after every capture time")
+        dayService().salesSubmit(phone, r2)   // a retry changes nothing
+        assertEquals("server", anchorClock(r2.client_uuid))
+        val bad = org.junit.jupiter.api.assertThrows<com.aktcl.aron.backend.platform.ApiProblem> { dayService().salesSubmit(phone, req("yesterday")) }
+        assertTrue(bad.errors.any { it.pointer.contains("captured_at") }, bad.toString())
     }
 
     // ---------------------------------------------------------------------------------------------- (c2) business totals, rule by rule

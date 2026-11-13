@@ -537,7 +537,14 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         val outcome = admWrite {
             d.db.jdbi.inTransaction<OutletRequestDto, Exception> { h ->
                 val r = one(h, u, ctx.reach, lock = true) ?: admNotFound("request not found")
-                if (r["status"] == "approved" && (r["decided_by"] as Number?)?.toLong() == p.userId) return@inTransaction dto(h, r, p)
+                if (r["status"] == "approved" && (r["decided_by"] as Number?)?.toLong() == p.userId) {
+                    // A retry is the same call; the same approver naming ANOTHER cluster than the one the approval used is a conflict, never a silent 200 (review B4).
+                    if (req.cluster_id != null && r["request_type"] in setOf("new", "cluster")) {
+                        val used = h.row("SELECT o.cluster_id FROM app.outlet o WHERE o.id = :o", "o" to (r["created_outlet_id"] ?: r["outlet_id"]))?.get("cluster_id") as Number?
+                        if (used != null && used.toLong() != req.cluster_id) throw ApiProblem(ProblemCode.ERR_CONFLICT, "the request was already approved with cluster ${used.toLong()}", context = mapOf("guard" to JsonPrimitive("already_approved_other_cluster")))
+                    }
+                    return@inTransaction dto(h, r, p)
+                }
                 if (r["status"] != "verified") throw ApiProblem(ProblemCode.ERR_CONFLICT, "only a verified request can be approved (it is ${r["status"]})")
                 sod(p, r)
                 updateBaseGuards(h, r)
@@ -569,7 +576,11 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         // The same user and the same zone as the shop (the ingest drops a mismatch it can see; a request that arrived later is judged here).
         if ((q["user_id"] as Number?)?.toLong() != user || (zone != null && (q["zone_id"] as Number?)?.toLong() != zone))
             throw noUsableCluster("the cluster request is not this requester's in this zone", "cluster_request_refused")
-        (q["created_cluster_id"] as Number?)?.let { return it.toLong() }
+        (q["created_cluster_id"] as Number?)?.let { made ->
+            if (h.row("SELECT 1 AS x FROM app.cluster WHERE id = :c AND status = 'active'", "c" to made.toLong()) == null)
+                throw noUsableCluster("the cluster made by the cluster request is no longer live", "cluster_request_refused")
+            return made.toLong()
+        }
         // A refused / lapsed / discarded cluster request will never make a cluster: the approver gives the shop a cluster on approval (`cluster_id`); a pending one is approved first (or the approver gives `cluster_id` now).
         val refused = q["status"] in setOf("rejected", "lapsed", "discarded")
         throw noUsableCluster(if (refused) "the cluster request was ${q["status"]}" else "the cluster request is ${q["status"]}; approve it first", if (refused) "cluster_request_refused" else "cluster_request_pending")
@@ -642,11 +653,13 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                 val route = (r["route_id"] as Number?)?.toLong() ?: bad("/route_id", "required")
                 val zone = (h.row("SELECT zone_id FROM app.route WHERE id = :r", "r" to route) ?: bad("/route_id", "unknown_route"))["zone_id"] as Number
                 val name = (text("name") ?: bad("/proposed/name", "required")).trim().replace(Regex("\\s+"), " ")
-                if (h.row("SELECT id FROM app.cluster WHERE zone_id = :z AND app.norm_cluster_name(name) = app.norm_cluster_name(:n)", "z" to zone.toLong(), "n" to name) != null)
+                h.row("SELECT id, status FROM app.cluster WHERE zone_id = :z AND app.norm_cluster_name(name) = app.norm_cluster_name(:n)", "z" to zone.toLong(), "n" to name)?.let { hit ->
+                    if (hit["status"] != "active") throw ApiProblem(ProblemCode.ERR_CONFLICT, "a cluster of this name exists in the zone but is inactive (cluster ${hit["id"]}): reactivate it in the cluster list instead of approving a new one", context = mapOf("guard" to JsonPrimitive("cluster_name_inactive")))
                     throw ApiProblem(ProblemCode.ERR_CONFLICT, "a cluster of this name already exists in the zone", context = mapOf("guard" to JsonPrimitive("cluster_name_exists")))
+                }
                 // A concurrent approval of the same name loses at the unique index (V0191) and answers like the check above.
                 val row = try { adminInsert(h, ctx, CLUSTER, linkedMapOf("zone_id" to zone.toLong(), "name" to name), null, reason) } catch (e: Exception) {
-                    if (generateSequence<Throwable>(e) { it.cause }.any { it is java.sql.SQLException && it.sqlState == "23505" && it.message?.contains("cluster_zone_name_norm_key") == true })
+                    if (generateSequence<Throwable>(e) { it.cause }.any { it is java.sql.SQLException && it.sqlState == "23505" && (it.message?.contains("cluster_zone_name_norm_key") == true || it.message?.contains("cluster_zone_id_name_key") == true) })
                         throw ApiProblem(ProblemCode.ERR_CONFLICT, "a cluster of this name already exists in the zone", context = mapOf("guard" to JsonPrimitive("cluster_name_exists")))
                     throw e
                 }
@@ -745,7 +758,7 @@ class OutletChangeRequestHandler : RecordHandler {
         if (name.length !in 1..120) return bad("proposed.name must be 1 to 120 characters")
         val route = rec.envelope["route_id"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.longOrNull ?: return bad("a cluster request is made on a route")
         val zone = h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", route).mapTo(Long::class.java).findOne().orElse(null) ?: return bad("unknown route $route")
-        val taken = h.createQuery("SELECT id FROM app.cluster WHERE zone_id = :z AND app.norm_cluster_name(name) = app.norm_cluster_name(:n) LIMIT 1").bind("z", zone).bind("n", name).mapTo(Long::class.java).findOne().orElse(null)
+        val taken = h.createQuery("SELECT id FROM app.cluster WHERE zone_id = :z AND status = 'active' AND app.norm_cluster_name(name) = app.norm_cluster_name(:n) LIMIT 1").bind("z", zone).bind("n", name).mapTo(Long::class.java).findOne().orElse(null)
         if (taken != null) return RecordRefusal(com.aktcl.aron.contract.RecordOutcomeCode.CLUSTER_NAME_EXISTS, "cluster $taken has this name in the zone")
         val open = h.createQuery(
             """

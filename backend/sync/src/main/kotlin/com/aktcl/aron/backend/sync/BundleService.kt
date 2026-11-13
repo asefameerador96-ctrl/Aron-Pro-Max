@@ -653,7 +653,7 @@ class BundleService(
            GROUP BY m.outlet_id, ml.sku_id, m.business_date),
         od AS (SELECT outlet_id, max(business_date) AS prev,
                        -- ELAPSED calendar days of the window (D-SV2-05): 30, or the days since the outlet's first selling memo when it is younger
-                       LEAST(30, :d - (SELECT min(m2.business_date) FROM app.memo m2 WHERE m2.outlet_id = ls.outlet_id AND m2.business_date < :d
+                       LEAST(30, :d - (SELECT min(m2.business_date) FROM app.memo m2 WHERE m2.outlet_id = ls.outlet_id AND m2.business_date < :d AND m2.business_date >= :d - 366
                                          AND m2.status = 'active' AND m2.line_count > 0 AND m2.voided_at IS NULL)) AS days
                   FROM ls GROUP BY outlet_id)
         SELECT s.outlet_id, s.sku_id, od.prev,

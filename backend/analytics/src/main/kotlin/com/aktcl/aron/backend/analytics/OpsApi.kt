@@ -69,6 +69,8 @@ data class RouteDayStateDto(
     val assigned_user_id: Long?, val acting_user_id: Long?, val assigned_username: String? = null, val assigned_user_full_name: String? = null,
     /** Contract 1.16.0 (SRM-B-30): memos and due collections captured after the Sales Submit and stored before the Final Submit (flag, never refused). */
     val late_rows_after_sales_submit: Int? = null,
+    /** Contract 1.16.0 (review B4): whose clock stamped the Sales Submit the late-row count is measured from: `phone` or `server` (an older client's online submit; the count may be off by clock skew). Null when no route-day Sales Submit is stored. */
+    val late_rows_anchor: String? = null,
 )
 
 @Serializable
@@ -236,7 +238,9 @@ class OpsService(
             node.bind(
                 h.createQuery(
                     """
-                    SELECT rd.*, g.route_code, g.route_name, au.username AS assigned_username, au.full_name AS assigned_user_full_name,
+                    SELECT rd.*, (SELECT coalesce(f.anchor_clock, 'phone') FROM app.route_day_event e LEFT JOIN app.late_row_fact f ON f.client_uuid = e.client_uuid
+                                     WHERE e.kind = 'day_submit' AND e.scope = 'route_day' AND e.route_id = rd.route_id AND e.business_date = rd.business_date AND e.voided_at IS NULL
+                                     ORDER BY e.submit_cycle DESC, e.id DESC LIMIT 1) AS late_rows_anchor, g.route_code, g.route_name, au.username AS assigned_username, au.full_name AS assigned_user_full_name,
                            coalesce(($login), false) AS login_ok,
                            EXISTS (SELECT 1 FROM app.day_exception e WHERE e.status = 'approved' AND e.voided_at IS NULL AND rd.route_id = ANY (e.route_ids) AND rd.business_date BETWEEN e.from_date AND e.to_date) AS excused
                       FROM app.route_day rd ${AsWasSql.geo("g", "rd.route_id", "rd.business_date", lo = ":d", hi = ":d", plain = asWas.geo)} LEFT JOIN app.app_user au ON au.id = rd.assigned_user_id
@@ -250,7 +254,7 @@ class OpsService(
                     RouteDayStateDto(rs.getLong("route_id"), date.toString(), rs.getString("state"), rs.getBoolean("planned"), rs.getInt("submit_cycle"), rs.getBoolean("submit_voided"), rs.getObject("submit_count_mismatch") as Boolean?,
                         t("logged_in_at"), t("sales_submitted_at"), t("final_submitted_at"), rs.getObject("rows_awaited") as Int?, rs.getString("route_code"), rs.getString("route_name"),
                         rs.getObject("assigned_user_id") as Long?, rs.getObject("acting_user_id") as Long?, rs.getString("assigned_username"), rs.getString("assigned_user_full_name"),
-                        rs.getInt("late_rows_after_sales_submit")),
+                        rs.getInt("late_rows_after_sales_submit"), rs.getString("late_rows_anchor")),
                     rs.getBoolean("excused"), rs.getString("state") in setOf("sales_submitted", "final_submitted"), rs.getBoolean("login_ok") && rs.getString("state") != "not_started",
                 )
             }.list()

@@ -97,3 +97,11 @@ All additive on 1.16.0; the wire members are in the openapi changelog. Phones (A
 - **Database V0191.** `app.norm_cluster_name` and the unique index `cluster_zone_name_norm_key (zone_id, norm(name))`; `dw.v_survey_response` joins the visit on the business date, is `pii: personal` and is read by bi_reader without `answer_text`. `dw.view_contract_version()` stays 1.9 (columns unchanged).
 - **ADS.** One rule, per elapsed calendar day (see "Units and formulas"); owner question: "per selling day" as the alternative.
 - **Caps.** 600 clusters and 400 outlets of stats, with the truncated flags (order: route, name, id; outlet id).
+
+## Push B4 (the Opus re-pass on 4ca4e76ca; D-SV2-08)
+
+- **For the Android lanes.** (1) The online Sales Submit (`POST /v1/day/sales-submit`) body carries the new optional `captured_at`: "the phone's clock at the moment the rep pressed Sales Submit", same format and same clock as the record envelopes. Send it: without it the server stamps its own time, `RouteDayState.late_rows_anchor` reads `server` and a supervisor is told the late-row count may be off by the phone's clock skew. (2) `late_rows_after_sales_submit` is measured per user against the newest non-voided Sales Submit cycle of the route-day, so a second submit can lower it. (3) Nothing else on the wire changed in B4.
+- **Late-row classification.** `app.late_row_fact` (V0191): one row per memo, due collection or online Sales Submit, written once under the route-day lock: `stored_closed` (the row was stored while the route-day was Final Submitted: it counts under `late_rows_after_final`, never under `late_rows_after_sales_submit`, whatever a recount or reopen does) and `anchor_clock`.
+- **Recount triggers.** A stored memo, due collection or route-day Sales Submit, an admin data void of a route-day, a Final Submit reopen; platform interface `DayInputsChanged` (implemented by `DayStates.recountLateAfterSubmit`).
+- **Cluster names.** A name held by an inactive cluster: the SR's cluster request is stored; the approval answers 409 `cluster_name_inactive` (reactivate it). A same-approver retry with another `cluster_id` is 409 `already_approved_other_cluster`.
+

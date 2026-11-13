@@ -45,6 +45,8 @@ import java.util.UUID
 data class SalesSubmitRequest(
     val client_uuid: String, val scope: String, val route_id: Long? = null, val business_date: String, val submit_cycle: Int,
     val device_counts: JsonObject, val device_money: JsonObject, val submitted_with_dues: Boolean, val dues_outstanding_mtk: Long,
+    /** 1.16.0, optional: the phone's clock at the moment the rep pressed Sales Submit (same format and clock as the record envelopes); absent from older clients (the server stamps its own time and the route-day says `late_rows_anchor = server`). */
+    val captured_at: String? = null,
 )
 
 @Serializable
@@ -236,6 +238,7 @@ class DayService(
         }
         if (req.submit_cycle !in 1..50) throw invalid("/submit_cycle")
         if (req.dues_outstanding_mtk < 0) throw invalid("/dues_outstanding_mtk")
+        if (req.captured_at != null && runCatching { java.time.Instant.parse(req.captured_at) }.isFailure) throw invalid("/captured_at")
         // A retry of a submit already stored (the first response was lost) skips the ingest: the synthesized record
         // carries the server's time, so a second copy would not be byte-identical. The state is read back either way.
         if (!storedFor(p.userId, req.client_uuid)) {
@@ -251,6 +254,12 @@ class DayService(
                 null
             }
             res?.acks?.single()?.let { ack ->
+                if (ack.status == "accepted" && req.captured_at == null && req.scope == "route_day") {
+                    // An older client sends no phone clock: the anchor of the late-row count is the server's time, and the route-day says so (late_rows_anchor = server).
+                    db.jdbi.useHandle<Exception> { h ->
+                        h.createUpdate("INSERT INTO app.late_row_fact (client_uuid, anchor_clock) VALUES (CAST(:c AS uuid), 'server') ON CONFLICT (client_uuid) DO NOTHING").bind("c", req.client_uuid).execute()
+                    }
+                }
                 if (ack.status != "accepted" && ack.status != "duplicate") {
                     if (ack.code == "schema_invalid") throw ApiProblem(ProblemCode.ERR_VALIDATION, "the Sales Submit does not match the day_submit record shape")
                     throw ApiProblem(ProblemCode.ERR_CONFLICT, "Sales Submit not stored: ${ack.status} ${ack.code ?: ""}".trim(), context = mapOf("record_status" to JsonPrimitive(ack.status), "record_code" to JsonPrimitive(ack.code)))
@@ -295,7 +304,7 @@ class DayService(
         val now = clock.now()
         val record = buildJsonObject {
             put("type", "day_submit"); put("client_uuid", req.client_uuid); put("family_uuid", req.client_uuid); put("rank", 0)
-            put("schema_version", 1); put("business_date", req.business_date); put("captured_at", now.wire())
+            put("schema_version", 1); put("business_date", req.business_date); put("captured_at", (req.captured_at?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() } ?: now).wire())
             put("captured_elapsed_ms", 0); put("boot_count", 0); put("clock_offset_ms", 0); put("captured_offline", false)
             req.route_id?.let { put("route_id", it) }
             put("config_version", 1)

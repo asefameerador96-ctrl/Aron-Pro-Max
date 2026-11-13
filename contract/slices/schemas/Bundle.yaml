@@ -113,10 +113,10 @@ Bundle:
       type: array
       maxItems: 600
       description: 'Contract 1.16.0 (SR only; absent or empty for other roles): the clusters a new shop or an outlet
-        change may name, one row per cluster and route of the SR''s own routes (a cluster that has an active outlet
-        on the route). Reach is the SR''s routes, taken from the token. At most 600 rows: beyond that the rows are
-        cut in route, name, id order and `clusters_truncated` is true. A delta carries the section whole when it
-        differs from the phone''s snapshot.'
+        change may name, one row per cluster and route of the SR''s own routes (a live cluster that has an active
+        outlet on the route, or that an approved `cluster_create` request made for the route). Reach is the SR''s
+        routes, taken from the token. At most 600 rows: beyond that the rows are cut in route, name, id order and
+        `clusters_truncated` is true. A delta carries the section whole when it differs from the phone''s snapshot.'
       items:
         $ref: '#/components/schemas/BundleCluster'
     outlet_sku_stats:

@@ -92,6 +92,16 @@ object DayStates {
         // SRM-B-30 (contract 1.16.0, review R1): `late_rows_after_sales_submit` is DERIVED, never incremented. See [recountLateAfterSubmit].
         // A stored memo, due collection or route-day Sales Submit changes the answer, so each of the three recounts under the route-day lock held above
         // (replay, duplicates, any arrival order and a memo edit then give the same number).
+        if (type == "memo" || type == "due_collection") {
+            // Classify ONCE, here, under the route-day lock held above, from the committed route-day state (the same state that feeds late_rows_after_final):
+            // a row stored while the day is Final Submitted never counts under late_rows_after_sales_submit (review B4, R1). A replay keeps the first answer.
+            env.str("client_uuid")?.let { cu ->
+                h.createUpdate(
+                    "INSERT INTO app.late_row_fact (client_uuid, stored_closed) SELECT CAST(:cu AS uuid), coalesce(bool_or(final_submitted_at IS NOT NULL), false) " +
+                        "FROM app.route_day WHERE route_id = ANY(:r) AND business_date = :d ON CONFLICT (client_uuid) DO NOTHING",
+                ).bind("cu", cu).bindArray("r", Long::class.javaObjectType, routes).bind("d", date).execute()
+            }
+        }
         if (type == "memo" || type == "due_collection" || (type == "day_submit" && p.str("scope") != "supervisor_day")) {
             recountLateAfterSubmit(h, routes, date)
         }
@@ -114,33 +124,36 @@ object DayStates {
     }
 
     /**
-     * `route_day.late_rows_after_sales_submit` (SRM-B-30, review R1): memos and due collections CAPTURED after the same user's Sales Submit
+     * `route_day.late_rows_after_sales_submit` (SRM-B-30, reviews R1 and B4): memos and due collections CAPTURED after the same user's Sales Submit
      * of that route-day, counted from the stored rows, so it is the same number whichever of the submit and the rows arrives first, after a
      * replay, and under any order. The anchor is the `day_submit` record's own `captured_at` (the phone's clock against the same phone's
-     * clock; the server's receipt time plays no part): per user, the newest non-voided cycle of the route-day. A memo chain (an edit
-     * supersedes its predecessor) counts once, at its first member captured after the anchor, so an edit of a memo that was already late adds
-     * nothing; an edit after the submit of a memo captured before it counts that chain once. Rows stored while the zone-day was closed (between a
-     * Final Submit and its reopen) belong to `late_rows_after_final`, never to this counter. Caller holds the route-day row lock.
+     * clock; an online submit of an older client without one is stamped with the server clock and the route-day says `late_rows_anchor = server`): per user, the
+     * NEWEST non-voided cycle of the route-day, so a second submit can LOWER the count (rows captured between the two submits are no longer after the anchor).
+     * A memo chain (an edit supersedes its predecessor) counts once, at its first member captured after the anchor. Voided rows (admin data void) and rows
+     * classified `stored_closed` in `app.late_row_fact` (stored while the day was Final Submitted: they count under `late_rows_after_final`) are left out; timestamps play no
+     * part in that classification. Every event that changes these inputs calls this under the route-day lock: a stored memo, due collection or
+     * Sales Submit, a data void, a Final Submit reopen.
      */
-    internal fun recountLateAfterSubmit(h: Handle, routes: List<Long>, date: LocalDate) {
+    fun recountLateAfterSubmit(h: Handle, routes: List<Long>, date: LocalDate) {
+        if (routes.isEmpty()) return
+        // The lock the ingest holds (KD-1: route_id order); re-taking it in the same transaction is free.
+        h.createQuery("SELECT 1 FROM app.route_day WHERE route_id = ANY(:r) AND business_date = :d ORDER BY route_id FOR NO KEY UPDATE")
+            .bindArray("r", Long::class.javaObjectType, routes.sorted()).bind("d", date).mapTo(Int::class.java).list()
         h.createUpdate(
             """
             WITH anchors AS (
               SELECT DISTINCT ON (route_id, user_id) route_id, user_id, captured_at AS a FROM app.route_day_event
               WHERE kind = 'day_submit' AND scope = 'route_day' AND route_id = ANY(:r) AND business_date = :d AND voided_at IS NULL
               ORDER BY route_id, user_id, submit_cycle DESC, id DESC
-            ), closed AS (
-              SELECT rr.id AS route_id, f.submitted_at, f.reopened_at FROM app.final_submit f JOIN app.route rr ON rr.zone_id = f.zone_id
-              WHERE rr.id = ANY(:r) AND f.business_date = :d
             ), n AS (
               SELECT r.id AS route_id,
                 (SELECT count(*) FROM app.memo m JOIN anchors x ON x.route_id = r.id AND x.user_id = m.user_id
-                  WHERE m.route_id = r.id AND m.business_date = :d AND m.captured_at > x.a
-                    AND NOT EXISTS (SELECT 1 FROM app.memo q WHERE q.client_uuid = m.supersedes_client_uuid AND q.captured_at > x.a)
-                    AND NOT EXISTS (SELECT 1 FROM closed c WHERE c.route_id = r.id AND m.received_at >= c.submitted_at AND (c.reopened_at IS NULL OR m.received_at < c.reopened_at)))
+                  WHERE m.route_id = r.id AND m.business_date = :d AND m.voided_at IS NULL AND m.captured_at > x.a
+                    AND NOT EXISTS (SELECT 1 FROM app.memo q WHERE q.client_uuid = m.supersedes_client_uuid AND q.business_date = :d AND q.voided_at IS NULL AND q.captured_at > x.a)
+                    AND NOT EXISTS (SELECT 1 FROM app.late_row_fact f WHERE f.client_uuid = m.client_uuid AND f.stored_closed))
                 + (SELECT count(*) FROM app.due_collection d JOIN anchors x ON x.route_id = r.id AND x.user_id = d.user_id
-                  WHERE d.route_id = r.id AND d.business_date = :d AND d.captured_at > x.a
-                    AND NOT EXISTS (SELECT 1 FROM closed c WHERE c.route_id = r.id AND d.received_at >= c.submitted_at AND (c.reopened_at IS NULL OR d.received_at < c.reopened_at))) AS c
+                  WHERE d.route_id = r.id AND d.business_date = :d AND d.voided_at IS NULL AND d.captured_at > x.a
+                    AND NOT EXISTS (SELECT 1 FROM app.late_row_fact f WHERE f.client_uuid = d.client_uuid AND f.stored_closed)) AS c
               FROM app.route r WHERE r.id = ANY(:r)
             )
             UPDATE app.route_day rd SET late_rows_after_sales_submit = n.c FROM n
@@ -253,6 +266,7 @@ object DayStates {
             """.trimIndent(),
         ).bindArray("r", Long::class.javaObjectType, routes).bind("d", date).mapTo(Long::class.java).list().sorted()
         reopened.forEach { h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'reopen')", it, date) }
+        recountLateAfterSubmit(h, reopened, date)   // B4: an input changed (the classification of earlier rows is persisted, so the count only follows the facts)
         return reopened
     }
 }

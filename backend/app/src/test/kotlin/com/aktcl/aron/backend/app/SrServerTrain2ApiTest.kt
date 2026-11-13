@@ -543,4 +543,45 @@ class SrServerTrain2ApiTest {
             assertEquals(HttpStatusCode.Conflict, r.status, r.bodyAsText()); assertTrue(r.bodyAsText().contains("cluster_name_exists"), r.bodyAsText())
         }
     }
+
+    @Test
+    fun aRetryWithAnotherClusterIsAConflictAnInactiveNameTellsTheApproverToReactivateAndThePortalReportsTheNameField() = world.withApi {
+        with(world) {
+            val route = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'"); val zone = one("SELECT zone_id FROM app.route WHERE id = $route")
+            val sub = one("SELECT id FROM app.sub_channel WHERE status = 'active' ORDER BY id LIMIT 1")
+            val clusters = longs("SELECT id FROM app.cluster WHERE zone_id = $zone AND status = 'active' ORDER BY id LIMIT 2")
+            // (1) approve a shop with cluster A; the same approver retrying with cluster B is a 409, with A (or none) it is the same 200
+            val shop = UUID.randomUUID().toString()
+            assertEquals("accepted", ack(sync(sr, listOf(record("outlet_change_request", shopJson(clusterId = 987654398L), route, cu = shop, family = shop))), shop).status())
+            postWeb("admin1001", "/v1/outlet-requests/$shop/verify", """{"sub_channel_id":$sub}""")
+            val first = postWeb("superadmin1001", "/v1/outlet-requests/$shop/approve", """{"route_id":$route,"cluster_id":${clusters[0]},"change_reason":"approve with the first cluster"}""")
+            assertEquals(HttpStatusCode.OK, first.status, first.bodyAsText())
+            assertEquals(HttpStatusCode.OK, postWeb("superadmin1001", "/v1/outlet-requests/$shop/approve", """{"route_id":$route,"cluster_id":${clusters[0]},"change_reason":"approve with the first cluster"}""").status)
+            assertEquals(HttpStatusCode.OK, postWeb("superadmin1001", "/v1/outlet-requests/$shop/approve", """{"route_id":$route,"change_reason":"approve with the first cluster"}""").status)
+            val other = postWeb("superadmin1001", "/v1/outlet-requests/$shop/approve", """{"route_id":$route,"cluster_id":${clusters[1]},"change_reason":"approve with the second cluster"}""")
+            assertEquals(HttpStatusCode.Conflict, other.status, other.bodyAsText()); assertTrue(other.bodyAsText().contains("already_approved_other_cluster"), other.bodyAsText())
+            assertEquals(clusters[0], one("SELECT o.cluster_id FROM app.outlet o JOIN app.outlet_change_request q ON q.created_outlet_id = o.id WHERE q.client_uuid = '$shop'"), "the outlet kept the first cluster")
+            // (2) a cluster request whose made cluster went inactive is not a usable cluster for the shop
+            val cr = UUID.randomUUID().toString(); val shop2 = UUID.randomUUID().toString()
+            sync(sr, listOf(record("outlet_change_request", """{"request_type":"cluster_create","proposed":{"name":"Soon Inactive ${UUID.randomUUID().toString().take(5)}"},"photo_uuids":[],"fix":$fix}""", route, cu = cr, family = cr)))
+            sync(sr, listOf(record("outlet_change_request", shopJson(link = cr), route, cu = shop2, family = shop2)))
+            postWeb("admin1001", "/v1/outlet-requests/$cr/verify", """{"sub_channel_id":$sub}"""); postWeb("admin1001", "/v1/outlet-requests/$shop2/verify", """{"sub_channel_id":$sub}""")
+            assertEquals(HttpStatusCode.OK, postWeb("superadmin1001", "/v1/outlet-requests/$cr/approve", """{"route_id":$route,"change_reason":"approve the soon inactive cluster"}""").status)
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.cluster SET status = 'inactive' WHERE id = (SELECT created_cluster_id FROM app.outlet_change_request WHERE client_uuid = '$cr')") }
+            val dead = postWeb("superadmin1001", "/v1/outlet-requests/$shop2/approve", """{"route_id":$route,"change_reason":"approve with an inactive cluster"}""")
+            assertEquals(HttpStatusCode.Conflict, dead.status, dead.bodyAsText()); assertTrue(dead.bodyAsText().contains("give `cluster_id`"), dead.bodyAsText())
+            // (3) a name that belongs to an INACTIVE cluster: the SR's request is stored (the bundle never shows an inactive cluster), the approver is told to reactivate it
+            val inactiveName = "Dormant Bazar " + UUID.randomUUID().toString().take(5)
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.cluster (zone_id, name, status) VALUES ($zone, '$inactiveName', 'inactive')") }
+            val cr3 = UUID.randomUUID().toString()
+            assertEquals("accepted", ack(sync(sr, listOf(record("outlet_change_request", """{"request_type":"cluster_create","proposed":{"name":"${inactiveName.uppercase()}"},"photo_uuids":[],"fix":$fix}""", route, cu = cr3, family = cr3))), cr3).status(), "no refusal naming a cluster the SR never sees")
+            postWeb("admin1001", "/v1/outlet-requests/$cr3/verify", """{"sub_channel_id":$sub}""")
+            val re = postWeb("superadmin1001", "/v1/outlet-requests/$cr3/approve", """{"route_id":$route,"change_reason":"approve a name that an inactive cluster holds"}""")
+            assertEquals(HttpStatusCode.Conflict, re.status, re.bodyAsText()); assertTrue(re.bodyAsText().contains("cluster_name_inactive") && re.bodyAsText().contains("reactivate"), re.bodyAsText())
+            // (4) the portal's own cluster create reports a normalised duplicate on the name field
+            val dup = postWeb("superadmin1001", "/v1/admin/clusters", """{"zone_id":$zone,"name":"  ${inactiveName.lowercase()} "}""")
+            assertTrue(dup.status == HttpStatusCode.Conflict || dup.status == HttpStatusCode.BadRequest, "${dup.status} ${dup.bodyAsText()}")
+            assertTrue(dup.bodyAsText().contains("body.name"), dup.bodyAsText())
+        }
+    }
 }

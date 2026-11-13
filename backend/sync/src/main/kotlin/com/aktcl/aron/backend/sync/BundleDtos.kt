@@ -54,9 +54,9 @@ data class BundleCluster(val cluster_id: Long, val name: String, val route_id: L
 
 /**
  * Sales history of one outlet in BASE units (sticks / pieces; the phone converts to packets with each SKU's pack_factor), one compact entry per outlet (contract 1.16.0).
- * [previous_day] is the outlet's most recent selling day before the bundle date within the last 30 business days. Each of [items] is the POSITIONAL integer quadruple
- * `[sku_delta, prev, ads, sdlw]`: items ascend by SKU id and `sku_delta` is the SKU id of the first item and, in every later item, the DIFFERENCE from the previous item's SKU id; `prev` = base-unit quantity of the SKU on previous_day; `ads` = average quantity per selling day x 100 (integer hundredths of a base unit,
- * 30 business days before the bundle date, rounded half up); `sdlw` = base-unit quantity on the same weekday last week (bundle date minus 7). A zero is written 0.
+ * [previous_day] is the outlet's most recent selling day before the bundle date within the last 30 calendar days. Each of [items] is the POSITIONAL integer quadruple
+ * `[sku_delta, prev, ads, sdlw]`: items ascend by SKU id and `sku_delta` is the SKU id of the first item and, in every later item, the DIFFERENCE from the previous item's SKU id; `prev` = base-unit quantity of the SKU on previous_day; `ads` = quantity sold in the
+ * 30 calendar days before the bundle date x 100 / the elapsed calendar days of that window (30, or the days since the outlet's first selling memo), integer hundredths of a base unit, rounded half up; `sdlw` = base-unit quantity on the same weekday last week (bundle date minus 7). A zero is written 0.
  * Positional arrays keep the section inside its budget on the 2 GB phones (docs/04).
  */
 @Serializable

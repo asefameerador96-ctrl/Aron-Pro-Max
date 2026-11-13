@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 181 | 2988 |
+| `app` | 182 | 2992 |
 | `dw` | 76 | 1233 |
 
 ## Index
@@ -94,6 +94,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.house_history`](#apphouse_history) | table | db | SERVER | master | none | One row is a period of the territory a distribution house belonged to and its status (V0119); written by the history trigger on app.house, seeded from app.audit_log. |
 | [`app.indent_movement`](#appindent_movement) | table | backend:masterdata | ONLINE | transaction | none | Phase 2 indent-portal stock ledger with the same shape as stock_movement; empty in Phase 1. |
 | [`app.ingest_registry`](#appingest_registry) | partitioned table | backend:sync | SERVER | ops | none | Global register of every device record's client_uuid and payload hash; the uniqueness point for idempotent sync. |
+| [`app.late_row_fact`](#applate_row_fact) | table | backend:sync | ONLINE | ops | none | One row per memo, due collection or online Sales Submit that needed a classification for the late-row counters: written once, never changed (ON CONFLICT DO NOTHING), so a replay or a recount cannot move a row from one counter to the other. |
 | [`app.leave_application`](#appleave_application) | table | backend:masterdata | OFFLINE | transaction | personal | A TSO leave application with dates and reason, decided on the web. |
 | [`app.loyalty_ledger`](#apployalty_ledger) | table | backend:analytics | SERVER | transaction | none | Append-only points ledger derived on the server, idempotent per source record. |
 | [`app.master_history_map`](#appmaster_history_map) | table | db | SERVER | master | none | Registry of the master history tables (V0119): the master each one follows, its key column and the audit entities its past was recovered from. |
@@ -2264,6 +2265,21 @@ Keys: `PRIMARY KEY (client_uuid)`
 
 References: `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
+## app.late_row_fact
+
+One row per memo, due collection or online Sales Submit that needed a classification for the late-row counters: written once, never changed (ON CONFLICT DO NOTHING), so a replay or a recount cannot move a row from one counter to the other.
+
+`owner: backend:sync | capture: ONLINE | retention: ops | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `client_uuid` | uuid | not null |  | Client uuid of the record (memo, due_collection or day_submit). |
+| `stored_closed` | boolean | not null |  | True when the record was stored while its route-day was Final Submitted (decided under the route-day lock from the committed route-day state, the state that feeds late_rows_after_final). |
+| `anchor_clock` | text | null |  | For a Sales Submit: phone (its captured_at is the phone clock) or server (an online submit of an older client without captured_at; the late-row count may be off by clock skew). Null for memos and due collections. |
+| `created_at` | timestamp with time zone | not null |  | When the fact was written. |
+
+Keys: `PRIMARY KEY (client_uuid)`
+
 ## app.leave_application
 
 A TSO leave application with dates and reason, decided on the web.
@@ -4002,7 +4018,7 @@ One row per route and business date holding the day state and submit timestamps;
 | `last_bundle_at` | timestamp with time zone | null |  | UTC time of the last full bundle download that carried this route-day (Data Entry Log DOWNLOAD MAX); null before the first. |
 | `bundle_count` | integer | not null |  | Number of full bundle downloads that carried this route-day (Data Entry Log DOWNLOAD count); 304 answers and delta pages are not counted. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
-| `late_rows_after_sales_submit` | integer | not null |  | Memos and due collections of the route-day captured after the same user's Sales Submit record (its own captured_at, phone clock against phone clock) and stored while the zone-day was open. DERIVED from the stored rows (recounted under the route-day lock whenever a memo, a due collection or a route-day Sales Submit is stored), so it is one number under replay and any arrival order; a memo chain counts once. Rows stored after the Final Submit count under late_rows_after_final instead. Never refused. |
+| `late_rows_after_sales_submit` | integer | not null |  | Memos and due collections of the route-day captured after the same user's Sales Submit record (its own captured_at, phone clock against phone clock; the newest non-voided cycle is the anchor, so a second submit can LOWER the count) and not voided and not stored while the day was closed (app.late_row_fact). DERIVED from the stored rows (recounted under the route-day lock whenever a memo, a due collection or a route-day Sales Submit is stored), so it is one number under replay and any arrival order; a memo chain counts once. Rows stored after the Final Submit count under late_rows_after_final instead. Never refused. |
 
 Keys: `UNIQUE (route_id, business_date)`; `PRIMARY KEY (id)`
 

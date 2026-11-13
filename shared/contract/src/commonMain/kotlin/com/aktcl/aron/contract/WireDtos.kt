@@ -810,6 +810,8 @@ data class RouteDayState(
     @SerialName("assigned_user_full_name") val assignedUserFullName: String? = null,
     /** Contract 1.16.0 (supervisor reads only): memos and due collections captured after the Sales Submit and stored before the Final Submit. */
     @SerialName("late_rows_after_sales_submit") val lateRowsAfterSalesSubmit: Int? = null,
+    /** Contract 1.16.0: `phone` or `server`, whose clock stamped the Sales Submit the late-row count is measured from. */
+    @SerialName("late_rows_anchor") val lateRowsAnchor: String? = null,
 )
 
 /** The server's view of one user and business date. */

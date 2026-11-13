@@ -1,7 +1,7 @@
--- V0177 sr-server train 2, push B (contract 1.16.0; D-SV2-02, D-SV2-03).
+-- V0186 sr-server train 2, push B (contract 1.16.0; D-SV2-02, D-SV2-03).
 -- 1. app.route_day.late_rows_after_sales_submit (SRM-B-30): memos and due collections CAPTURED after the route-day's Sales Submit and stored before its
 --    Final Submit are counted, never refused (offline-first). After the Final Submit the row counts under late_rows_after_final instead.
---    Nullable-free constant default (no rewrite); the CHECK is NOT VALID here and validated by V0178 (squawk rule).
+--    Nullable-free constant default (no rewrite); the CHECK is NOT VALID here and validated by V0187 (squawk rule).
 -- 2. cfg.sale.journey_repeat_sale_enabled: the server journey emits `repeat_sale` only when this is on. It ships OFF: the AMO build that knows the value
 --    must be the minimum app version first (request file contract-1.14-sr-manual.md, train 2 rule).
 SET lock_timeout = '5s';
