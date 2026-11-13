@@ -561,6 +561,15 @@ class SrServerTrain2ApiTest {
             val other = postWeb("superadmin1001", "/v1/outlet-requests/$shop/approve", """{"route_id":$route,"cluster_id":${clusters[1]},"change_reason":"approve with the second cluster"}""")
             assertEquals(HttpStatusCode.Conflict, other.status, other.bodyAsText()); assertTrue(other.bodyAsText().contains("already_approved_other_cluster"), other.bodyAsText())
             assertEquals(clusters[0], one("SELECT o.cluster_id FROM app.outlet o JOIN app.outlet_change_request q ON q.created_outlet_id = o.id WHERE q.client_uuid = '$shop'"), "the outlet kept the first cluster")
+            // B5: a retry is judged against the cluster the approval RECORDED, not the outlet's cluster now (a later move to cluster B must not turn the retry with A into a conflict)
+            assertEquals(clusters[0], one("SELECT approved_cluster_id FROM app.outlet_change_request WHERE client_uuid = '$shop'"), "the approval recorded its cluster")
+            fresh.db.jdbi.useHandle<Exception> { h ->
+                h.execute("SET session_replication_role = replica")
+                try { h.execute("UPDATE app.outlet SET cluster_id = ${clusters[1]} WHERE id = (SELECT created_outlet_id FROM app.outlet_change_request WHERE client_uuid = '$shop')") } finally { h.execute("SET session_replication_role = origin") }
+            }
+            assertEquals(HttpStatusCode.OK, postWeb("superadmin1001", "/v1/outlet-requests/$shop/approve", """{"route_id":$route,"cluster_id":${clusters[0]},"change_reason":"approve with the first cluster"}""").status, "the recorded cluster, though the outlet has moved")
+            val moved = postWeb("superadmin1001", "/v1/outlet-requests/$shop/approve", """{"route_id":$route,"cluster_id":${clusters[1]},"change_reason":"approve with the second cluster"}""")
+            assertEquals(HttpStatusCode.Conflict, moved.status, moved.bodyAsText()); assertTrue(moved.bodyAsText().contains("already_approved_other_cluster"), moved.bodyAsText())
             // (2) a cluster request whose made cluster went inactive is not a usable cluster for the shop
             val cr = UUID.randomUUID().toString(); val shop2 = UUID.randomUUID().toString()
             sync(sr, listOf(record("outlet_change_request", """{"request_type":"cluster_create","proposed":{"name":"Soon Inactive ${UUID.randomUUID().toString().take(5)}"},"photo_uuids":[],"fix":$fix}""", route, cu = cr, family = cr)))

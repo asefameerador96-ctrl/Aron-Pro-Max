@@ -5864,6 +5864,11 @@ export interface components {
             dues_outstanding_mtk: components["schemas"]["MtkNonNegative"];
             retailers_with_dues: number;
             stock_slip_printed: boolean;
+            /**
+             * @description 1.16.0, optional: whose clock stamped this record's `captured_at`, the anchor of `late_rows_after_sales_submit`. Phones omit it (their own clock). The server sets `server` on the online Sales Submit when the client sent no `captured_at` or one outside the plausibility bound (more than 6 hours from the server clock, or outside the business date +/- 1 day in Dhaka time). It is stored with the record in the same write, so a retry, a quarantine and its release keep it.
+             * @enum {string}
+             */
+            anchor_clock?: "phone" | "server";
         };
         DayExceptionPayload: {
             /** @description Code list day_exception_reason. */
@@ -6385,7 +6390,7 @@ export interface components {
             /** @description Contract 1.16.0 (supervisor reads only; absent in the bundle and the day-state read): memos and due collections of the route-day captured after the same user's Sales Submit record (its own `captured_at`, phone clock against phone clock) and stored while the zone-day was open. Derived from the stored rows, so it is one number under replay and any arrival order (a memo and its edits count once); never refused (offline-first); after the Final Submit a late row counts under the final-submit counter instead. */
             late_rows_after_sales_submit?: number | null;
             /**
-             * @description 1.16.0 (supervisor reads only): whose clock stamped the route-day Sales Submit that `late_rows_after_sales_submit` is measured from. `phone`: the submit record's own captured_at (a record, or an online submit that carried `captured_at`); `server`: an older client's online submit without it, so the count may be off by the phone's clock skew. Null when no route-day Sales Submit is stored.
+             * @description 1.16.0 (supervisor reads only): whose clock stamped the route-day Sales Submit that `late_rows_after_sales_submit` is measured from. `phone`: the submit record's own captured_at (a record, or an online submit that carried `captured_at`); `server`: when ANY user's current (newest non-voided) Sales Submit on the route-day is server-stamped (an older client's online submit without `captured_at`, or a phone clock outside the plausibility bound), so the count may be off by clock skew. Null when no route-day Sales Submit is stored.
              * @enum {string|null}
              */
             late_rows_anchor?: "phone" | "server" | null;
@@ -6881,7 +6886,7 @@ export interface components {
             tutorials?: components["schemas"]["TutorialItem"][];
             /** @description Contract 1.16.0 (SR only; absent or empty for other roles): the clusters a new shop or an outlet change may name, one row per cluster and route of the SR's own routes (a live cluster that has an active outlet on the route, or that an approved `cluster_create` request made for the route). Reach is the SR's routes, taken from the token. At most 600 rows: beyond that the rows are cut in route, name, id order and `clusters_truncated` is true. A delta carries the section whole when it differs from the phone's snapshot. */
             clusters?: components["schemas"]["BundleCluster"][];
-            /** @description Contract 1.16.0 (SR only; absent or empty for other roles): sales history per outlet (one entry each) with its SKUs, for the SR's own routes, quantities in BASE units (sticks / pieces; the phone converts to packets with the SKU's pack_factor), ADS in integer hundredths of a base unit per elapsed calendar day. Only pairs with a sale in the last 30 calendar days are listed. At most 400 outlets: beyond that the entries are cut in outlet id order and `outlet_sku_stats_truncated` is true. Versioned reference data: the bundle version changes when a row does; a delta carries the section whole when it differs from the phone's snapshot. */
+            /** @description Contract 1.16.0 (SR only; absent or empty for other roles): sales history per outlet (one entry each) with its SKUs, for the SR's own routes, quantities in BASE units (sticks / pieces; the phone converts to packets with the SKU's pack_factor), ADS in integer hundredths of a base unit per elapsed calendar day. Only pairs with a sale in the last 30 calendar days are listed. At most 400 outlets: beyond that the entries are cut in outlet id order and `outlet_sku_stats_truncated` is true. ADS elapsed days: 30, or the days since the outlet's first memo when younger; the first-memo lookback is bounded to 366 days before the bundle date (an outlet with no memo in that window counts 30). Versioned reference data: the bundle version changes when a row does; a delta carries the section whole when it differs from the phone's snapshot. */
             outlet_sku_stats?: components["schemas"]["OutletSkuStat"][];
             /** @description Contract 1.16.0: true when the SR holds more than 600 cluster rows and `clusters` was cut. Absent means false. */
             clusters_truncated?: boolean;
@@ -7039,7 +7044,7 @@ export interface components {
             device_money: components["schemas"]["MoneyTotals"];
             submitted_with_dues: boolean;
             dues_outstanding_mtk: components["schemas"]["MtkNonNegative"];
-            /** @description 1.16.0, optional: the phone's own clock at the moment the rep pressed Sales Submit, in the same format and from the same clock as the `captured_at` of the record envelopes. The server stores it as the anchor of `RouteDayState.late_rows_after_sales_submit` (rows the phone captured after it are late). Absent (an older client): the server stamps its own time and the route-day says `late_rows_anchor = server`, so a supervisor knows the count may be off by clock skew. An unparseable value is `400 ERR_VALIDATION` pointer `/captured_at`. */
+            /** @description 1.16.0, optional: the phone's own clock at the moment the rep pressed Sales Submit, in the same format and from the same clock as the `captured_at` of the record envelopes. The server stores it as the anchor of `RouteDayState.late_rows_after_sales_submit` (rows the phone captured after it are late). Absent (an older client) or implausible (more than 6 hours from the server clock, or outside the business date +/- 1 day in Dhaka time): the server stamps its own time, records it with the Sales Submit record (`anchor_clock = server`) and the route-day says `late_rows_anchor = server`, so a supervisor knows the count may be off by clock skew. An unparseable value is `400 ERR_VALIDATION` pointer `/captured_at`. */
             captured_at?: components["schemas"]["Timestamp"];
         };
         FinalSubmitPreview: {

@@ -126,8 +126,10 @@ Bundle:
         each) with its SKUs, for the SR''s own routes, quantities in BASE units (sticks / pieces; the phone converts
         to packets with the SKU''s pack_factor), ADS in integer hundredths of a base unit per elapsed calendar day.
         Only pairs with a sale in the last 30 calendar days are listed. At most 400 outlets: beyond that the entries
-        are cut in outlet id order and `outlet_sku_stats_truncated` is true. Versioned reference data: the bundle
-        version changes when a row does; a delta carries the section whole when it differs from the phone''s snapshot.'
+        are cut in outlet id order and `outlet_sku_stats_truncated` is true. ADS elapsed days: 30, or the days since
+        the outlet''s first memo when younger; the first-memo lookback is bounded to 366 days before the bundle
+        date (an outlet with no memo in that window counts 30). Versioned reference data: the bundle version changes
+        when a row does; a delta carries the section whole when it differs from the phone''s snapshot.'
       items:
         $ref: '#/components/schemas/OutletSkuStat'
     clusters_truncated:

@@ -37,22 +37,53 @@ BEGIN
   CREATE UNIQUE INDEX cluster_zone_name_norm_key ON app.cluster (zone_id, app.norm_cluster_name(name));
 END $$;
 
--- 3. Per-record facts for the late-row count (review B4, R1): classified ONCE, under the route-day lock, when the record is stored.
---    stored_closed: the memo or due collection was stored while the route-day was Final Submitted (it counts under late_rows_after_final and never under
---    late_rows_after_sales_submit, whatever a later reopen or recount does). anchor_clock: whose clock stamped a route-day Sales Submit's captured_at
---    ('phone' unless an older client's online submit carried none and the server stamped its own time).
+-- 3. Per-record facts for the late-row count (review B4 R1, B5 finding 1): the table holds the EXCEPTIONS, one row for every memo or due collection that was
+--    stored while its route-day was Final Submitted (stored_closed is always true; absence of a row = stored while the day was open). It is classified ONCE, under the
+--    route-day lock, when the record is stored; a recount excludes exactly these rows from late_rows_after_sales_submit (they count under late_rows_after_final).
+--    "Written once": api_rw keeps INSERT and SELECT only (the '*/update' row of the grant map lists the table in its except_tables below).
 CREATE TABLE app.late_row_fact (
   client_uuid   uuid PRIMARY KEY,
-  stored_closed boolean NOT NULL DEFAULT false,
-  anchor_clock  text CHECK (anchor_clock IN ('phone', 'server')),
+  stored_closed boolean NOT NULL DEFAULT true CHECK (stored_closed),
   created_at    timestamptz NOT NULL DEFAULT now()
 );
-COMMENT ON TABLE app.late_row_fact IS 'One row per memo, due collection or online Sales Submit that needed a classification for the late-row counters: written once, never changed (ON CONFLICT DO NOTHING), so a replay or a recount cannot move a row from one counter to the other.
+COMMENT ON TABLE app.late_row_fact IS 'One row per memo or due collection that was stored while its route-day was Final Submitted (absence = stored while the day was open): written once, never changed (api_rw has no UPDATE or DELETE), so a replay or a recount cannot move a row from one late-row counter to the other. Rows stored before this table existed were reconstructed by the V0191 backfill (best available: received_at inside a [final_submit.submitted_at, reopened_at) window of the zone-day).
 owner: backend:sync | capture: ONLINE | retention: ops | pii: none';
-COMMENT ON COLUMN app.late_row_fact.client_uuid IS 'Client uuid of the record (memo, due_collection or day_submit).';
-COMMENT ON COLUMN app.late_row_fact.stored_closed IS 'True when the record was stored while its route-day was Final Submitted (decided under the route-day lock from the committed route-day state, the state that feeds late_rows_after_final).';
-COMMENT ON COLUMN app.late_row_fact.anchor_clock IS 'For a Sales Submit: phone (its captured_at is the phone clock) or server (an online submit of an older client without captured_at; the late-row count may be off by clock skew). Null for memos and due collections.';
+COMMENT ON COLUMN app.late_row_fact.client_uuid IS 'Client uuid of the memo or due collection.';
+COMMENT ON COLUMN app.late_row_fact.stored_closed IS 'Always true: the record was stored while its route-day was Final Submitted (decided under the route-day lock from the committed route-day state, the state that feeds late_rows_after_final).';
 COMMENT ON COLUMN app.late_row_fact.created_at IS 'When the fact was written.';
+
+UPDATE app.db_role_grant SET except_tables = except_tables || '{late_row_fact}'::text[]
+ WHERE role = 'api_rw' AND schema_name = 'app' AND object = '*/update' AND NOT ('late_row_fact' = ANY (except_tables));
+SELECT app.apply_db_role_grants();
+
+-- Backfill (B5): memos and due collections stored BEFORE this table existed while a zone-day was closed have no fact; without one the first recount of such a route-day
+-- would count them under late_rows_after_sales_submit as well as under late_rows_after_final. BEST AVAILABLE RECONSTRUCTION: a row whose received_at lies inside a
+-- [final_submit.submitted_at, reopened_at) window of its zone-day (reopened_at null = still closed) is marked stored_closed. The zone is the route's zone, the rule the
+-- B3 code used; it is exact for a row stored once, and may mark a row of a route that changed zone in between (pilot data, accepted). Runs once per record, no lock needed
+-- on a table that did not exist before this migration. At fleet size run it in batches by business_date (it is one statement here: pilot size).
+INSERT INTO app.late_row_fact (client_uuid)
+SELECT m.client_uuid FROM app.memo m
+  JOIN app.route r ON r.id = m.route_id
+  JOIN app.final_submit f ON f.zone_id = r.zone_id AND f.business_date = m.business_date
+   AND m.received_at >= f.submitted_at AND (f.reopened_at IS NULL OR m.received_at < f.reopened_at)
+UNION
+SELECT d.client_uuid FROM app.due_collection d
+  JOIN app.route r ON r.id = d.route_id
+  JOIN app.final_submit f ON f.zone_id = r.zone_id AND f.business_date = d.business_date
+   AND d.received_at >= f.submitted_at AND (f.reopened_at IS NULL OR d.received_at < f.reopened_at)
+ON CONFLICT (client_uuid) DO NOTHING;
+
+-- 4. The clock of a route-day Sales Submit travels WITH the record (B5 finding 2): written by the same RecordWriter statement as the day_submit row, so a retry, a
+--    quarantine and its release, and a replay all keep it. NULL = phone clock; 'server' = the record's captured_at is the server's time (an older client's online
+--    submit without a phone clock, or a phone clock outside the plausibility bound).
+ALTER TABLE app.route_day_event ADD COLUMN anchor_clock text CHECK (anchor_clock IN ('phone', 'server'));
+COMMENT ON COLUMN app.route_day_event.anchor_clock IS 'day_submit only: whose clock stamped captured_at, the anchor of the late-row count. phone (or null) = the phone''s own clock; server = the server stamped it (an online Sales Submit without a phone clock or with an implausible one). Written with the record.';
+
+-- 5. The cluster an approval used is recorded with it (B5): a retried approval that names ANOTHER cluster is judged against this value, not against the outlet's cluster now.
+ALTER TABLE app.outlet_change_request ADD COLUMN approved_cluster_id bigint;
+COMMENT ON COLUMN app.outlet_change_request.approved_cluster_id IS 'The cluster the approval of a new-shop or cluster request put the outlet in (set once at the approval); null for other request types and for requests not yet approved.';
+CREATE OR REPLACE TRIGGER outlet_change_request_immutable BEFORE UPDATE OR DELETE ON app.outlet_change_request
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'status', 'status_changed_at', '=verified_by', '=verified_at', '=decided_by', '=decided_at', '=decision_reason', '=created_outlet_id', '=created_cluster_id', '=approved_cluster_id', 'data_origin');
 
 CREATE OR REPLACE VIEW dw.v_survey_response AS
 SELECT sr.business_date, sr.client_uuid AS response_uuid, sr.visit_client_uuid, sr.user_id, sr.route_id, rt.zone_id, v.outlet_id,

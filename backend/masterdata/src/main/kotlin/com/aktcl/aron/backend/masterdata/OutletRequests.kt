@@ -540,8 +540,9 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                 if (r["status"] == "approved" && (r["decided_by"] as Number?)?.toLong() == p.userId) {
                     // A retry is the same call; the same approver naming ANOTHER cluster than the one the approval used is a conflict, never a silent 200 (review B4).
                     if (req.cluster_id != null && r["request_type"] in setOf("new", "cluster")) {
-                        val used = h.row("SELECT o.cluster_id FROM app.outlet o WHERE o.id = :o", "o" to (r["created_outlet_id"] ?: r["outlet_id"]))?.get("cluster_id") as Number?
-                        if (used != null && used.toLong() != req.cluster_id) throw ApiProblem(ProblemCode.ERR_CONFLICT, "the request was already approved with cluster ${used.toLong()}", context = mapOf("guard" to JsonPrimitive("already_approved_other_cluster")))
+                        // Compared with the cluster the approval RECORDED (approved_cluster_id, V0191), never with the outlet's cluster now (a later move or info request must not turn a retry into a conflict).
+                        val used = (r["approved_cluster_id"] as Number?)?.toLong()
+                        if (used != null && used != req.cluster_id) throw ApiProblem(ProblemCode.ERR_CONFLICT, "the request was already approved with cluster $used", context = mapOf("guard" to JsonPrimitive("already_approved_other_cluster")))
                     }
                     return@inTransaction dto(h, r, p)
                 }
@@ -552,8 +553,10 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                 if (tso && p.role !in setOf(Role.TSO, Role.ADMIN, Role.SUPERADMIN)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a move above the alert distance is approved by the TSO")
                 if (!tso && p.role == Role.TSO) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "requests are approved by the DMO or an admin")
                 val created = apply(h, ctx, r, req)
-                h.createUpdate("UPDATE app.outlet_change_request SET status = 'approved', status_changed_at = :at, decided_by = :me, decided_at = :at, decision_reason = :why, created_outlet_id = :co WHERE client_uuid = :u")
-                    .bind("at", odt(d.clock.now())).bind("me", p.userId).bind("why", req.change_reason).bindAny("co", created).bind("u", u).execute()
+                // The cluster the approval used, recorded with it (write-once): a retry that names another cluster is a conflict against THIS value.
+                val usedCluster = if (r["request_type"] in setOf("new", "cluster")) (h.row("SELECT cluster_id FROM app.outlet WHERE id = :o", "o" to (created ?: r["outlet_id"]))?.get("cluster_id") as Number?)?.toLong() else null
+                h.createUpdate("UPDATE app.outlet_change_request SET status = 'approved', status_changed_at = :at, decided_by = :me, decided_at = :at, decision_reason = :why, created_outlet_id = :co, approved_cluster_id = :ac WHERE client_uuid = :u")
+                    .bind("at", odt(d.clock.now())).bind("me", p.userId).bind("why", req.change_reason).bindAny("co", created).bindAny("ac", usedCluster).bind("u", u).execute()
                 // R3: a cluster the approver chose is part of the trail (who chose which cluster), not only of the new outlet.
                 event(h, u, "approved", p, if (req.cluster_id != null) "cluster_id=${req.cluster_id} chosen by the approver; ${req.change_reason}" else req.change_reason)
                 dto(h, one(h, u, ctx.reach, lock = false)!!, p)

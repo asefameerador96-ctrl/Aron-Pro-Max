@@ -97,5 +97,6 @@ RouteDayState:
       - null
       description: '1.16.0 (supervisor reads only): whose clock stamped the route-day Sales Submit that `late_rows_after_sales_submit`
         is measured from. `phone`: the submit record''s own captured_at (a record, or an online submit that carried
-        `captured_at`); `server`: an older client''s online submit without it, so the count may be off by the phone''s
-        clock skew. Null when no route-day Sales Submit is stored.'
+        `captured_at`); `server`: when ANY user''s current (newest non-voided) Sales Submit on the route-day is
+        server-stamped (an older client''s online submit without `captured_at`, or a phone clock outside the plausibility
+        bound), so the count may be off by clock skew. Null when no route-day Sales Submit is stored.'

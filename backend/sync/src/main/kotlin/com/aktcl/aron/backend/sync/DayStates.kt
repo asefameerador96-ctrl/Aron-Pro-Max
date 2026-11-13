@@ -94,11 +94,11 @@ object DayStates {
         // (replay, duplicates, any arrival order and a memo edit then give the same number).
         if (type == "memo" || type == "due_collection") {
             // Classify ONCE, here, under the route-day lock held above, from the committed route-day state (the same state that feeds late_rows_after_final):
-            // a row stored while the day is Final Submitted never counts under late_rows_after_sales_submit (review B4, R1). A replay keeps the first answer.
+            // a row stored while the day is Final Submitted never counts under late_rows_after_sales_submit (review B4, R1). A fact exists ONLY for such a row (absence = open); a replay keeps the first answer.
             env.str("client_uuid")?.let { cu ->
                 h.createUpdate(
-                    "INSERT INTO app.late_row_fact (client_uuid, stored_closed) SELECT CAST(:cu AS uuid), coalesce(bool_or(final_submitted_at IS NOT NULL), false) " +
-                        "FROM app.route_day WHERE route_id = ANY(:r) AND business_date = :d ON CONFLICT (client_uuid) DO NOTHING",
+                    "INSERT INTO app.late_row_fact (client_uuid) SELECT CAST(:cu AS uuid) " +
+                        "WHERE EXISTS (SELECT 1 FROM app.route_day WHERE route_id = ANY(:r) AND business_date = :d AND final_submitted_at IS NOT NULL) ON CONFLICT (client_uuid) DO NOTHING",
                 ).bind("cu", cu).bindArray("r", Long::class.javaObjectType, routes).bind("d", date).execute()
             }
         }

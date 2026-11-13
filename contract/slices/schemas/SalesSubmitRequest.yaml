@@ -43,6 +43,7 @@ SalesSubmitRequest:
       description: '1.16.0, optional: the phone''s own clock at the moment the rep pressed Sales Submit, in the
         same format and from the same clock as the `captured_at` of the record envelopes. The server stores it as
         the anchor of `RouteDayState.late_rows_after_sales_submit` (rows the phone captured after it are late).
-        Absent (an older client): the server stamps its own time and the route-day says `late_rows_anchor = server`,
-        so a supervisor knows the count may be off by clock skew. An unparseable value is `400 ERR_VALIDATION` pointer
-        `/captured_at`.'
+        Absent (an older client) or implausible (more than 6 hours from the server clock, or outside the business
+        date +/- 1 day in Dhaka time): the server stamps its own time, records it with the Sales Submit record (`anchor_clock
+        = server`) and the route-day says `late_rows_anchor = server`, so a supervisor knows the count may be off
+        by clock skew. An unparseable value is `400 ERR_VALIDATION` pointer `/captured_at`.'

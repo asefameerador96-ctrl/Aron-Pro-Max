@@ -238,9 +238,10 @@ class OpsService(
             node.bind(
                 h.createQuery(
                     """
-                    SELECT rd.*, (SELECT coalesce(f.anchor_clock, 'phone') FROM app.route_day_event e LEFT JOIN app.late_row_fact f ON f.client_uuid = e.client_uuid
-                                     WHERE e.kind = 'day_submit' AND e.scope = 'route_day' AND e.route_id = rd.route_id AND e.business_date = rd.business_date AND e.voided_at IS NULL
-                                     ORDER BY e.submit_cycle DESC, e.id DESC LIMIT 1) AS late_rows_anchor, g.route_code, g.route_name, au.username AS assigned_username, au.full_name AS assigned_user_full_name,
+                    SELECT rd.*, (SELECT CASE WHEN count(*) = 0 THEN NULL WHEN bool_or(x.anchor_clock = 'server') THEN 'server' ELSE 'phone' END FROM (
+                                       SELECT DISTINCT ON (e.user_id) e.anchor_clock FROM app.route_day_event e
+                                        WHERE e.kind = 'day_submit' AND e.scope = 'route_day' AND e.route_id = rd.route_id AND e.business_date = rd.business_date AND e.voided_at IS NULL
+                                        ORDER BY e.user_id, e.submit_cycle DESC, e.id DESC) x) AS late_rows_anchor, g.route_code, g.route_name, au.username AS assigned_username, au.full_name AS assigned_user_full_name,
                            coalesce(($login), false) AS login_ok,
                            EXISTS (SELECT 1 FROM app.day_exception e WHERE e.status = 'approved' AND e.voided_at IS NULL AND rd.route_id = ANY (e.route_ids) AND rd.business_date BETWEEN e.from_date AND e.to_date) AS excused
                       FROM app.route_day rd ${AsWasSql.geo("g", "rd.route_id", "rd.business_date", lo = ":d", hi = ":d", plain = asWas.geo)} LEFT JOIN app.app_user au ON au.id = rd.assigned_user_id
