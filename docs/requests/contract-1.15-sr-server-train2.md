@@ -3,7 +3,7 @@
 The file is named for the number the lead first gave (1.15.0); the lead then ordered **1.16.0** because the Loyalty lane holds 1.15.0 (it has not landed
 on INT). Version 1.16.0 sits on 1.14.0 (INT f9708b594). Approval REQUESTED from the lead as **D-LEAD-CONTRACT-116-01** (not approved until the lead says so).
 Everything is additive: new optional members, new schemas, a new report key, a new config key. Spec: part A s7 and part B s6 of
-`docs/requests/sr-manual-build-2026-11-part-a.md` / `-part-b.md`; records D-SV2-02 to D-SV2-05 (DECISIONS.md).
+`docs/requests/sr-manual-build-2026-11-part-a.md` / `-part-b.md`; records D-SV2-02 to D-SV2-07 (DECISIONS.md).
 
 ## Members and values (push B1)
 
@@ -12,17 +12,18 @@ Everything is additive: new optional members, new schemas, a new report key, a n
 | `Bundle.clusters` (new schema `BundleCluster`: `cluster_id`, `name`, `route_id`, `route_name`): the clusters of the SR's OWN routes, one row per cluster and route, taken from the active outlets of the route; reach = the SR's routes from the token; empty for AMO / TSO | `GET /v1/sync/bundle` (not carried by `GET /v1/sync/delta`: they stay as the day's full bundle gave them until the next full bundle) | SRM-B-35, SRM-B-40 |
 | `Bundle.outlet_sku_stats` (new schemas `OutletSkuStat`: `outlet_id`, `previous_day`, `items`; `OutletSkuStatItem`: positional `[sku_delta, prev, ads, sdlw]`, see the shape section below): sales history per outlet and SKU of the SR's own routes | `GET /v1/sync/bundle` | SRM-A-29 |
 | report key `posm-survey` (answers per outlet, date, question, photo flag) | `ReportKey`, `POST /v1/reports/posm-survey/query` | SRM-B-08 |
-| `RouteDayState.late_rows_after_sales_submit` (integer or null): memos and due collections captured after the Sales Submit and stored before the Final Submit | supervisor route-day reads (`getLoginSubmitStatus` family); not sent in the bundle or the day-state read | SRM-B-30 |
+| `RouteDayState.late_rows_after_sales_submit` (integer or null): memos and due collections captured after the same user's Sales Submit record (its own `captured_at`: phone clock against phone clock) and stored before the Final Submit; DERIVED from the stored rows, so it is one number under replay and any arrival order | supervisor route-day reads (`getLoginSubmitStatus` family); not sent in the bundle or the day-state read | SRM-B-30 |
 | config key `cfg.sale.journey_repeat_sale_enabled` (bool, default false, global) | config | journey |
 
 ## Units and formulas (stated once)
 
 `outlet_sku_stats` is in **base units** (sticks / pieces), like every server quantity; the phone converts to packets with the SKU's `pack_factor`.
-`ads` (hundredths) is an integer: average quantity per selling day x 100 (250 = 2.5 base units per selling day). Window: the 30 business days before the bundle date;
-a *selling day* is a day the outlet had a live memo (active, with lines, not voided; sale lines only, `drp_reward`/`promo_free`/`free_sample` are left out, the
-rule of the Sales Submit digest); ADS = sum of the SKU's sale quantity in the window x 100 / number of selling days of the OUTLET, rounded half up. `previous_day` is
-the outlet's most recent selling day before the bundle date (null when none in the window), `previous_day_qty_base` the SKU's quantity on it (0 when the SKU was not sold
-then). `sdlw_qty_base` is the quantity on bundle date minus 7 days. Only pairs with a sale in the window are listed. Part A Q4 defaults: ADS = achieved / elapsed days.
+`ads` (hundredths) is an integer: average quantity per CALENDAR day x 100 (250 = 2.5 base units per day). ONE rule (D-SV2-05, the lead's ruling on push B): ADS = the SKU's sale quantity in the 30 calendar
+days before the bundle date x 100 / the ELAPSED calendar days of that window (30, or the days since the outlet's first selling memo when the outlet is younger), rounded half up; the phone shows it as
+"per day until the next visit". A *selling day* is a day the outlet had a live memo (active, with lines, not voided; sale lines only, `drp_reward`/`promo_free`/`free_sample` are left out, the rule of the
+Sales Submit digest); it decides `previous_day` (the outlet's most recent selling day before the bundle date, none = no entry) and the first memo of an outlet, not the divisor. `prev` is the SKU's quantity on it
+(0 when the SKU was not sold then). `sdlw` is the quantity on bundle date minus 7 days. Only pairs with a sale in the window are listed. Example: 19 sticks over 3 visits in 30 days is 0.63 a day (63), not 6.33.
+**Owner question (open):** the field may prefer "per SELLING day" (the same 19 sticks over 3 visits is 6.33 a day: what a visit usually sells). Both are one line of SQL; the contract names only the elapsed-day rule until the owner chooses.
 
 ## Journey `repeat_sale`
 
@@ -81,6 +82,18 @@ Loyalty lane's; V0182 is unused here.
 
 `Bundle.outlet_sku_stats` is one compact entry per outlet: `{outlet_id, previous_day, items: [[sku_delta, prev, ads, sdlw], ...]}`: positional integer quadruples, items ascending by SKU id, `sku_delta` = the SKU id in the first item and the difference from the
 previous item's id in every later one (decode by a running sum); a zero is written 0; pairs with all three figures zero are not sent (by construction every listed SKU has `ads > 0`). Member meanings and units (all BASE units): `prev` = quantity on `previous_day`; `ads` = average quantity per selling day x 100 (integer hundredths); `sdlw` =
-quantity on the same weekday last week; `previous_day` = the outlet's last selling day in the 30-business-day window. Budget (docs/04): at most 150 KB raw and 20 KB gzip at 70 outlets x 40 SKUs dense; measured **50 KB raw / 17.6 KB gzip** with every pair present and uniform random
+quantity on the same weekday last week; `previous_day` = the outlet's last selling day in the 30-calendar-day window. Budget (docs/04): at most 150 KB raw and 20 KB gzip at 70 outlets x 40 SKUs dense; measured **50 KB raw / 17.6 KB gzip** with every pair present and uniform random
 figures (prev and sdlw up to 200, ads up to 20000 hundredths); asserted in `SrServerTrain2ApiTest.theWorstCaseStatsAndClustersSectionsStayInsideTheirBudgets` (the `clusters` maximum of 600 rows: 61 KB raw / 5.5 KB gzip, also asserted).
 This replaces the first flat shape (365 KB raw / 35 KB gzip). Without SKU-id deltas the same data is 55 KB / 20.4 KB gzip (just over), which is why the ids are delta-coded.
+
+## Review round on push B (push B3; D-SV2-05 to D-SV2-07)
+
+All additive on 1.16.0; the wire members are in the openapi changelog. Phones (Android lanes) need: `BundleDelta.clusters` / `clusters_truncated` / `outlet_sku_stats` / `outlet_sku_stats_truncated` (nullable: null = unchanged, a list replaces the phone's whole section),
+`Bundle.clusters_truncated` / `outlet_sku_stats_truncated` (booleans, absent = false) and, for the portal, `OutletRequestApproveRequest.cluster_id`.
+
+- **R1 late rows.** Derived from the `day_submit` record's own `captured_at` and the stored rows of the same route-day and user (see D-SV2-05); tests through the real ingest.
+- **R2 deltas.** A delta carries a changed `clusters` / `outlet_sku_stats` whole (per-section content hash kept with the snapshot's fingerprint), omits an unchanged one; an outlet move stays one outlet upsert; unchanged data keeps the same bundle version.
+- **R3 approval.** `cluster_id` on approval (new shop, cluster move), 409 guards `cluster_required` / `cluster_request_pending` / `cluster_request_refused` that say to give it; the trail records who chose which cluster. At ingest a `cluster_request_uuid` must be the same user's `cluster_create` in the same zone, otherwise it is dropped and flagged `cluster_dropped`; `cluster_id` wins over the link.
+- **Database V0191.** `app.norm_cluster_name` and the unique index `cluster_zone_name_norm_key (zone_id, norm(name))`; `dw.v_survey_response` joins the visit on the business date, is `pii: personal` and is read by bi_reader without `answer_text`. `dw.view_contract_version()` stays 1.9 (columns unchanged).
+- **ADS.** One rule, per elapsed calendar day (see "Units and formulas"); owner question: "per selling day" as the alternative.
+- **Caps.** 600 clusters and 400 outlets of stats, with the truncated flags (order: route, name, id; outlet id).

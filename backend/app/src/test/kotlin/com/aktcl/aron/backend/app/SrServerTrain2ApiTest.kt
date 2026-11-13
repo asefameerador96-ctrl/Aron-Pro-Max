@@ -91,13 +91,14 @@ class SrServerTrain2ApiTest {
             val decoded = entry["items"]!!.jsonArray.map { q -> q.jsonArray.map { it.jsonPrimitive.content.toLong() } }.let { raw -> var id = 0L; raw.map { q -> id += q[0]; listOf(id) + q.drop(1) } }
             assertEquals(decoded.map { it[0] }, decoded.map { it[0] }.sorted(), "ascending by SKU id")
             fun item(code: String): List<Long> = decoded.single { it[0] == skuId(code) }   // [sku, prev, ads, sdlw]
-            // 3 selling days (d-7, d-3, d-1): A total 19 -> ADS 633.33 -> 633 hundredths; B total 4 -> 133
+            // ADS = quantity in the 30 calendar days before the bundle date / the ELAPSED calendar days of the window (30: the first selling memo is 40 days old):
+            // A total 19 (3 visits) -> 19 x 100 / 30 = 63.33 -> 63 hundredths a day (NOT 633, the per-selling-day figure); B total 4 -> 13
             assertEquals(day(1), entry["previous_day"]!!.jsonPrimitive.content)
             assertEquals(3L, item(a)[1], "previous sale day quantity in base units")
-            assertEquals(633L, item(a)[2])
+            assertEquals(63L, item(a)[2], "per elapsed calendar day")
             assertEquals(10L, item(a)[3], "same weekday last week")
             assertEquals(0L, item(b)[1], "B was not sold on the previous sale day")
-            assertEquals(133L, item(b)[2])
+            assertEquals(13L, item(b)[2])
             assertEquals(0L, item(b)[3])
             // every stat row belongs to an outlet of the SR's own routes
             val own = bundle["routes"]!!.jsonArray.map { it.jsonObject }.flatMap { r -> r["outlets"]!!.jsonArray.map { it.jsonObject["outlet_id"]!!.jsonPrimitive.content.toLong() } }.toSet()
@@ -276,6 +277,82 @@ class SrServerTrain2ApiTest {
         }
     }
     @Test
+    fun anOutletYoungerThanTheWindowDividesByTheDaysSinceItsFirstMemoAndAHalfRoundsUp() = world.withApi {
+        with(world) {
+            val d = today()
+            val outlet = longs("SELECT o.id FROM app.outlet o JOIN app.route_assignment a ON a.route_id = o.route_id JOIN app.app_user u ON u.id = a.user_id WHERE u.username = 'sr1001' AND o.status = 'active' ORDER BY o.id DESC LIMIT 1").single()
+            val a = rows("SELECT code FROM app.sku WHERE status = 'active' ORDER BY id LIMIT 1").single()["code"] as String
+            // first memo 10 days ago (10 sticks), a second 2 days ago (3 sticks): elapsed = 10, ADS = 13 x 100 / 10 = 130; a third outlet-less check of rounding below
+            memo(this, UUID.randomUUID().toString(), d.minusDays(10).toString(), outlet, 21, listOf(Triple(a, "sale", 10)))
+            memo(this, UUID.randomUUID().toString(), d.minusDays(2).toString(), outlet, 22, listOf(Triple(a, "sale", 3)))
+            val skuA = one("SELECT id FROM app.sku WHERE code = '$a'")
+            suspend fun ads(): Long {
+                val e = json(getAs(sr, "/v1/sync/bundle").bodyAsText())["outlet_sku_stats"]!!.jsonArray.map { it.jsonObject }.single { it["outlet_id"]!!.jsonPrimitive.content.toLong() == outlet }
+                var id = 0L
+                return e["items"]!!.jsonArray.map { q -> q.jsonArray.map { it.jsonPrimitive.content.toLong() } }.map { q -> id += q[0]; listOf(id) + q.drop(1) }.single { it[0] == skuA }[2]
+            }
+            assertEquals(130L, ads(), "13 sticks over the 10 elapsed days since the first memo")
+            memo(this, UUID.randomUUID().toString(), d.minusDays(1).toString(), outlet, 23, listOf(Triple(a, "sale", 1)))
+            memo(this, UUID.randomUUID().toString(), d.minusDays(4).toString(), outlet, 24, listOf(Triple(a, "sale", 2)))
+            assertEquals(160L, ads(), "16 sticks over 10 days")
+            // half up: a younger outlet, 5 sticks since its first memo 8 days ago = 62.5 -> 63
+            val young = longs("SELECT o.id FROM app.outlet o JOIN app.route_assignment x ON x.route_id = o.route_id JOIN app.app_user u ON u.id = x.user_id WHERE u.username = 'sr1001' AND o.status = 'active' AND o.id <> $outlet ORDER BY o.id DESC LIMIT 1").single()
+            memo(this, UUID.randomUUID().toString(), d.minusDays(8).toString(), young, 25, listOf(Triple(a, "sale", 2)))
+            memo(this, UUID.randomUUID().toString(), d.minusDays(3).toString(), young, 26, listOf(Triple(a, "sale", 3)))
+            val e = json(getAs(sr, "/v1/sync/bundle").bodyAsText())["outlet_sku_stats"]!!.jsonArray.map { it.jsonObject }.single { it["outlet_id"]!!.jsonPrimitive.content.toLong() == young }
+            assertEquals(63L, e["items"]!!.jsonArray.single().jsonArray[2].jsonPrimitive.content.toLong(), "62.5 rounds half up")
+        }
+    }
+    @Test
+    fun aSupersededMemoAndAVoidedLineAreLeftOutAnSkuDeltaLargerThanOneDecodesAndTwoBuildsOfUnchangedDataGiveTheSameVersion() = world.withApi {
+        with(world) {
+            val d = today()
+            val outlet = longs("SELECT o.id FROM app.outlet o JOIN app.route_assignment a ON a.route_id = o.route_id JOIN app.app_user u ON u.id = a.user_id WHERE u.username = 'sr1001' AND o.status = 'active' ORDER BY o.id LIMIT 1 OFFSET 1").single()
+            val codes = rows("SELECT code, id FROM app.sku WHERE status = 'active' ORDER BY id")
+            val first = codes[0]; val third = codes[2]   // ids with a gap: the delta of the second item is larger than 1
+            assertTrue((third["id"] as Number).toLong() - (first["id"] as Number).toLong() > 1)
+            val superseded = UUID.randomUUID().toString(); val replacement = UUID.randomUUID().toString(); val withVoidedLine = UUID.randomUUID().toString()
+            memo(this, superseded, d.minusDays(5).toString(), outlet, 31, listOf(Triple(first["code"] as String, "sale", 40)))
+            memo(this, replacement, d.minusDays(5).toString(), outlet, 32, listOf(Triple(first["code"] as String, "sale", 5)))
+            memo(this, withVoidedLine, d.minusDays(2).toString(), outlet, 33, listOf(Triple(first["code"] as String, "sale", 2), Triple(third["code"] as String, "sale", 7), Triple(third["code"] as String, "sale", 900)))
+            fresh.db.jdbi.useHandle<Exception> { h ->
+                h.execute("SET session_replication_role = replica")
+                try {
+                    h.execute("UPDATE app.memo SET status = 'superseded', superseded_by_client_uuid = CAST('$replacement' AS uuid) WHERE client_uuid = CAST('$superseded' AS uuid)")
+                    h.execute("UPDATE app.memo_line SET voided_at = now() WHERE memo_client_uuid = CAST('$withVoidedLine' AS uuid) AND qty_base = 900")
+                } finally { h.execute("SET session_replication_role = origin") }
+            }
+            val bundle = json(getAs(sr, "/v1/sync/bundle").bodyAsText())
+            val e = bundle["outlet_sku_stats"]!!.jsonArray.map { it.jsonObject }.single { it["outlet_id"]!!.jsonPrimitive.content.toLong() == outlet }
+            val raw = e["items"]!!.jsonArray.map { q -> q.jsonArray.map { it.jsonPrimitive.content.toLong() } }
+            assertEquals(2, raw.size)
+            assertEquals((third["id"] as Number).toLong() - (first["id"] as Number).toLong(), raw[1][0], "the second item carries the DIFFERENCE of the ids, larger than 1")
+            var id = 0L
+            val decoded = raw.map { q -> id += q[0]; listOf(id) + q.drop(1) }
+            assertEquals(listOf((first["id"] as Number).toLong(), (third["id"] as Number).toLong()), decoded.map { it[0] })
+            assertEquals(d.minusDays(2).toString(), e["previous_day"]!!.jsonPrimitive.content)
+            // window d-30..d-1, first selling memo d-5 -> elapsed 5; first: 5 (replacement) + 2 = 7 -> 140; third: 7 only (the 900 line is voided) -> 140
+            assertEquals(listOf(2L, 140L, 0L), decoded[0].drop(1), "the superseded memo (40) is out; the replacement (5) and the 2 count")
+            assertEquals(listOf(7L, 140L, 0L), decoded[1].drop(1), "a voided line (900) is out")
+            // digest stability: unchanged data gives the same bundle version and a 304 on the cursor (two builds)
+            val again = json(getAs(sr, "/v1/sync/bundle").bodyAsText())
+            assertEquals(bundle["meta"]!!.jsonObject["bundle_version"], again["meta"]!!.jsonObject["bundle_version"], "two builds of unchanged data: one version")
+            assertEquals(bundle["outlet_sku_stats"], again["outlet_sku_stats"]); assertEquals(bundle["clusters"], again["clusters"])
+        }
+    }
+    @Test
+    fun theCapsLeaveTheSectionInsideTheContractAndSayTheyTruncated() {
+        val six = (1L..601L).map { it }
+        val capped = six.take(com.aktcl.aron.backend.sync.BundleService.MAX_CLUSTERS)
+        assertEquals(600, capped.size)
+        assertEquals(600, com.aktcl.aron.backend.sync.BundleService.MAX_CLUSTERS)
+        assertEquals(400, com.aktcl.aron.backend.sync.BundleService.MAX_STATS_OUTLETS)
+        val c = com.aktcl.aron.backend.sync.BundleService.capRows(six, 600)
+        assertEquals(600, c.first.size); assertTrue(c.second, "601 rows: truncated"); assertEquals(1L, c.first.first(), "the first rows stay (fixed order)")
+        val ok = com.aktcl.aron.backend.sync.BundleService.capRows(six.take(600), 600)
+        assertEquals(600, ok.first.size); assertFalse(ok.second, "exactly at the cap: not truncated")
+    }
+    @Test
     fun theWorstCaseStatsAndClustersSectionsStayInsideTheirBudgets() {
         // docs/04: outlet_sku_stats at most 150 KB raw and 20 KB gzip at 70 outlets x 40 SKUs, every pair dense (every member present and non-zero); clusters small.
         val rnd = java.util.Random(7)
@@ -311,6 +388,159 @@ class SrServerTrain2ApiTest {
             assertEquals(HttpStatusCode.Conflict, r.status, r.bodyAsText())
             assertTrue(r.bodyAsText().contains("cluster_request_refused"), r.bodyAsText())
             assertEquals("verified", scalar("SELECT status FROM app.outlet_change_request WHERE client_uuid = '$shopReq'"), "the shop request is unchanged and waits for the approver")
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------- review R3: no shop request can be stuck
+
+    private val rnd = java.util.Random(11)
+    private fun phoneNo() = "0191" + (1000000 + rnd.nextInt(8999999))
+    private fun shopJson(link: String? = null, clusterId: Long? = null) =
+        """{"request_type":"new","proposed":{"name":"Stuck Shop ${UUID.randomUUID().toString().take(6)}","owner_name":"Rahim Uddin","contact_number":"${phoneNo()}"${if (clusterId != null) ",\"cluster_id\":$clusterId" else ""}${if (link != null) ",\"cluster_request_uuid\":\"$link\"" else ""}},"photo_uuids":[],"fix":$fix}"""
+    private fun events(w: TsoWorld, u: String) = w.rows("SELECT event, note FROM app.outlet_request_event WHERE request_uuid = '$u' ORDER BY id").map { it["event"] as String to it["note"] as String? }
+    private fun proposedOf(w: TsoWorld, u: String): String = w.scalar("SELECT proposed::text FROM app.outlet_change_request WHERE client_uuid = '$u'")!!
+
+    @Test
+    fun aShopWhoseClusterRequestWasRefusedLapsedOrDiscardedIsApprovedWithTheApproversClusterAndTheTrailSaysWho() = world.withApi {
+        with(world) {
+            val route = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
+            val zone = one("SELECT zone_id FROM app.route WHERE id = $route")
+            val sub = one("SELECT id FROM app.sub_channel WHERE status = 'active' ORDER BY id LIMIT 1")
+            val live = one("SELECT id FROM app.cluster WHERE zone_id = $zone AND status = 'active' ORDER BY id LIMIT 1")
+            for (state in listOf("rejected", "lapsed", "discarded")) {
+                val cr = UUID.randomUUID().toString(); val shopReq = UUID.randomUUID().toString()
+                assertEquals("accepted", ack(sync(sr, listOf(record("outlet_change_request", """{"request_type":"cluster_create","proposed":{"name":"Gone Bazar $state ${UUID.randomUUID().toString().take(5)}"},"photo_uuids":[],"fix":$fix}""", route, cu = cr, family = cr))), cr).status())
+                assertEquals("accepted", ack(sync(sr, listOf(record("outlet_change_request", shopJson(link = cr), route, cu = shopReq, family = shopReq))), shopReq).status(), "$state: the shop is stored whatever happens to its cluster request")
+                postWeb("admin1001", "/v1/outlet-requests/$shopReq/verify", """{"sub_channel_id":$sub}""")
+                // pending first: the 409 for a pending cluster request also says the approver may give a cluster
+                val pending = postWeb("superadmin1001", "/v1/outlet-requests/$shopReq/approve", """{"route_id":$route,"change_reason":"approve while the cluster request is pending"}""")
+                assertEquals(HttpStatusCode.Conflict, pending.status, pending.bodyAsText()); assertTrue(pending.bodyAsText().contains("cluster_request_pending") && pending.bodyAsText().contains("cluster_id"), pending.bodyAsText())
+                when (state) {
+                    "rejected" -> assertEquals(HttpStatusCode.OK, postWeb("superadmin1001", "/v1/outlet-requests/$cr/reject", """{"reason":"not a real cluster, use the existing one"}""").status)
+                    else -> fresh.db.jdbi.useHandle<Exception> { h -> h.execute("SET session_replication_role = replica"); try { h.execute("UPDATE app.outlet_change_request SET status = '$state' WHERE client_uuid = '$cr'") } finally { h.execute("SET session_replication_role = origin") } }
+                }
+                val stuck = postWeb("superadmin1001", "/v1/outlet-requests/$shopReq/approve", """{"route_id":$route,"change_reason":"approve with the $state cluster request"}""")
+                assertEquals(HttpStatusCode.Conflict, stuck.status, stuck.bodyAsText())
+                assertTrue(stuck.bodyAsText().contains("cluster_request_refused") && stuck.bodyAsText().contains("give `cluster_id`"), "the 409 says what to do: ${stuck.bodyAsText()}")
+                assertEquals("verified", scalar("SELECT status FROM app.outlet_change_request WHERE client_uuid = '$shopReq'"))
+                // another zone's, an inactive and an unknown cluster are refused as 400 and change nothing
+                val elsewhere = one("SELECT id FROM app.cluster WHERE zone_id <> $zone AND status = 'active' ORDER BY id LIMIT 1")
+                val inactive = one("INSERT INTO app.cluster (zone_id, name, status) VALUES ($zone, 'Retired $state ${UUID.randomUUID().toString().take(5)}', 'inactive') RETURNING id")
+                for (bad in listOf(elsewhere, inactive, 987654321L)) {
+                    val r = postWeb("superadmin1001", "/v1/outlet-requests/$shopReq/approve", """{"route_id":$route,"cluster_id":$bad,"change_reason":"approve with a bad cluster"}""")
+                    assertEquals(HttpStatusCode.BadRequest, r.status, "$bad: ${r.bodyAsText()}"); assertTrue(r.bodyAsText().contains("cluster_id"), r.bodyAsText())
+                }
+                assertEquals("verified", scalar("SELECT status FROM app.outlet_change_request WHERE client_uuid = '$shopReq'"))
+                val ok = postWeb("superadmin1001", "/v1/outlet-requests/$shopReq/approve", """{"route_id":$route,"cluster_id":$live,"change_reason":"approve with the approver's cluster"}""")
+                assertEquals(HttpStatusCode.OK, ok.status, ok.bodyAsText())
+                assertEquals(live, one("SELECT o.cluster_id FROM app.outlet o JOIN app.outlet_change_request q ON q.created_outlet_id = o.id WHERE q.client_uuid = '$shopReq'"), "$state: the shop sits in the approver's cluster")
+                val approvedEvent = events(this, shopReq).single { it.first == "approved" }
+                assertTrue(approvedEvent.second!!.startsWith("cluster_id=$live chosen by the approver"), "the trail names the cluster the approver chose: ${approvedEvent.second}")
+                assertEquals(1L, scalar("SELECT count(*) FROM app.outlet_request_event WHERE request_uuid = '$shopReq' AND event = 'approved' AND actor_user_id IS NOT NULL")!!.toLong(), "with the approver recorded")
+                // a replay of the approval changes nothing
+                assertEquals(HttpStatusCode.OK, postWeb("superadmin1001", "/v1/outlet-requests/$shopReq/approve", """{"route_id":$route,"cluster_id":$live,"change_reason":"approve with the approver's cluster"}""").status)
+                assertEquals(1L, scalar("SELECT count(*) FROM app.outlet_change_request q JOIN app.outlet o ON o.id = q.created_outlet_id WHERE q.client_uuid = '$shopReq'")!!.toLong())
+            }
+            // cluster_id belongs to a new shop and a cluster move only
+            val cr = UUID.randomUUID().toString()
+            sync(sr, listOf(record("outlet_change_request", """{"request_type":"cluster_create","proposed":{"name":"Typed Bazar ${UUID.randomUUID().toString().take(5)}"},"photo_uuids":[],"fix":$fix}""", route, cu = cr, family = cr)))
+            postWeb("admin1001", "/v1/outlet-requests/$cr/verify", """{"sub_channel_id":$sub}""")
+            val na = postWeb("superadmin1001", "/v1/outlet-requests/$cr/approve", """{"route_id":$route,"cluster_id":$live,"change_reason":"a cluster request takes no cluster"}""")
+            assertEquals(HttpStatusCode.BadRequest, na.status, na.bodyAsText()); assertTrue(na.bodyAsText().contains("not_applicable"), na.bodyAsText())
+        }
+    }
+
+    @Test
+    fun aShopWhoseClusterLinkOrClusterTheServerCannotHonourIsStoredFlaggedAndApprovableWithTheApproversCluster() = world.withApi {
+        with(world) {
+            val route = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
+            val zone = one("SELECT zone_id FROM app.route WHERE id = $route")
+            val sub = one("SELECT id FROM app.sub_channel WHERE status = 'active' ORDER BY id LIMIT 1")
+            val live = one("SELECT id FROM app.cluster WHERE zone_id = $zone AND status = 'active' ORDER BY id LIMIT 1")
+            suspend fun approvedThroughTheApprover(shopReq: String) {
+                postWeb("admin1001", "/v1/outlet-requests/$shopReq/verify", """{"sub_channel_id":$sub}""")
+                val none = postWeb("superadmin1001", "/v1/outlet-requests/$shopReq/approve", """{"route_id":$route,"change_reason":"approve with no cluster at all"}""")
+                assertEquals(HttpStatusCode.Conflict, none.status, none.bodyAsText()); assertTrue(none.bodyAsText().contains("cluster_required") || none.bodyAsText().contains("cluster_request_refused"), none.bodyAsText())
+                val ok = postWeb("superadmin1001", "/v1/outlet-requests/$shopReq/approve", """{"route_id":$route,"cluster_id":$live,"change_reason":"approve with the approver's cluster"}""")
+                assertEquals(HttpStatusCode.OK, ok.status, ok.bodyAsText())
+                assertEquals(live, one("SELECT o.cluster_id FROM app.outlet o JOIN app.outlet_change_request q ON q.created_outlet_id = o.id WHERE q.client_uuid = '$shopReq'"))
+            }
+            // (1) the cluster request is refused AT INGEST (name of an existing cluster) in the same offline batch as the shop that names it
+            val existing = scalar("SELECT name FROM app.cluster WHERE zone_id = $zone ORDER BY id LIMIT 1")!!
+            val cr = UUID.randomUUID().toString(); val shop1 = UUID.randomUUID().toString()
+            val batch = sync(sr, listOf(
+                record("outlet_change_request", """{"request_type":"cluster_create","proposed":{"name":"${existing.lowercase()}"},"photo_uuids":[],"fix":$fix}""", route, cu = cr, family = cr),
+                record("outlet_change_request", shopJson(link = cr), route, cu = shop1, family = shop1),
+            ))
+            assertEquals("rejected", ack(batch, cr).status()); assertEquals("accepted", ack(batch, shop1).status(), "the shop is never refused for its cluster link")
+            assertFalse(proposedOf(this, shop1).contains("cluster_request_uuid"), "the dead link is dropped from the stored proposal")
+            assertTrue(events(this, shop1).any { it.first == "flag_cluster_dropped" && it.second!!.contains("cluster_request_uuid=$cr") }, events(this, shop1).toString())
+            approvedThroughTheApprover(shop1)
+            // (2) a cluster id the server does not know is dropped and flagged (train 1), the shop is approvable the same way
+            val shop2 = UUID.randomUUID().toString()
+            assertEquals("accepted", ack(sync(sr, listOf(record("outlet_change_request", shopJson(clusterId = 987654399L), route, cu = shop2, family = shop2))), shop2).status())
+            assertTrue(events(this, shop2).any { it.first == "flag_cluster_dropped" }, events(this, shop2).toString())
+            approvedThroughTheApprover(shop2)
+            // (3) another division's SR made a cluster request: its uuid is not a Mirpur SR's to use (other user, other zone): stored, link dropped, flagged
+            val lkx = phone("lkxsr1001", "sr")
+            val lkxRoute = one("SELECT id FROM app.route WHERE code LIKE 'LKX-%' AND kind = 'sr' ORDER BY id LIMIT 1")
+            val foreign = UUID.randomUUID().toString()
+            assertEquals("accepted", ack(sync(lkx, listOf(record("outlet_change_request", """{"request_type":"cluster_create","proposed":{"name":"Foreign Bazar ${UUID.randomUUID().toString().take(5)}"},"photo_uuids":[],"fix":$fix}""", lkxRoute, cu = foreign, family = foreign))), foreign).status())
+            val shop3 = UUID.randomUUID().toString()
+            assertEquals("accepted", ack(sync(sr, listOf(record("outlet_change_request", shopJson(link = foreign), route, cu = shop3, family = shop3))), shop3).status())
+            assertFalse(proposedOf(this, shop3).contains("cluster_request_uuid")); assertTrue(events(this, shop3).any { it.first == "flag_cluster_dropped" })
+            // (4) a link that names a request which is not a cluster_create: dropped
+            val notCluster = UUID.randomUUID().toString()
+            val shop4 = UUID.randomUUID().toString()
+            assertEquals("accepted", ack(sync(sr, listOf(record("outlet_change_request", shopJson(), route, cu = notCluster, family = notCluster), record("outlet_change_request", shopJson(link = notCluster), route, cu = shop4, family = shop4))), shop4).status())
+            assertFalse(proposedOf(this, shop4).contains("cluster_request_uuid"))
+            // (5) both sent: a usable cluster_id WINS, the link is dropped and flagged; the shop is approved straight away with that cluster
+            val own = UUID.randomUUID().toString(); val shop5 = UUID.randomUUID().toString()
+            sync(sr, listOf(record("outlet_change_request", """{"request_type":"cluster_create","proposed":{"name":"Both Bazar ${UUID.randomUUID().toString().take(5)}"},"photo_uuids":[],"fix":$fix}""", route, cu = own, family = own)))
+            assertEquals("accepted", ack(sync(sr, listOf(record("outlet_change_request", shopJson(link = own, clusterId = live), route, cu = shop5, family = shop5))), shop5).status())
+            val p5 = proposedOf(this, shop5)
+            assertTrue(p5.contains("\"cluster_id\": $live") || p5.contains("\"cluster_id\":$live"), p5); assertFalse(p5.contains("cluster_request_uuid"), p5)
+            assertTrue(events(this, shop5).any { it.first == "flag_cluster_dropped" && it.second!!.contains("cluster_request_uuid=$own") })
+            postWeb("admin1001", "/v1/outlet-requests/$shop5/verify", """{"sub_channel_id":$sub}""")
+            assertEquals(HttpStatusCode.OK, postWeb("superadmin1001", "/v1/outlet-requests/$shop5/approve", """{"route_id":$route,"change_reason":"approve with the cluster id that won"}""").status)
+            // (6) out of order: the shop arrives BEFORE its own cluster request: the link is kept (not seen yet) and works once that request is approved
+            val late = UUID.randomUUID().toString(); val shop6 = UUID.randomUUID().toString()
+            assertEquals("accepted", ack(sync(sr, listOf(record("outlet_change_request", shopJson(link = late), route, cu = shop6, family = shop6))), shop6).status())
+            assertTrue(proposedOf(this, shop6).contains(late), "an unseen uuid is kept: the cluster request may arrive in a later batch")
+            assertTrue(events(this, shop6).none { it.first == "flag_cluster_dropped" })
+            assertEquals("accepted", ack(sync(sr, listOf(record("outlet_change_request", """{"request_type":"cluster_create","proposed":{"name":"Late Bazar ${UUID.randomUUID().toString().take(5)}"},"photo_uuids":[],"fix":$fix}""", route, cu = late, family = late))), late).status())
+            postWeb("admin1001", "/v1/outlet-requests/$late/verify", """{"sub_channel_id":$sub}""")
+            postWeb("admin1001", "/v1/outlet-requests/$shop6/verify", """{"sub_channel_id":$sub}""")
+            assertEquals(HttpStatusCode.OK, postWeb("superadmin1001", "/v1/outlet-requests/$late/approve", """{"route_id":$route,"change_reason":"approve the late cluster"}""").status)
+            assertEquals(HttpStatusCode.OK, postWeb("superadmin1001", "/v1/outlet-requests/$shop6/approve", """{"route_id":$route,"change_reason":"approve the shop after its cluster"}""").status)
+            assertEquals(one("SELECT created_cluster_id FROM app.outlet_change_request WHERE client_uuid = '$late'"), one("SELECT o.cluster_id FROM app.outlet o JOIN app.outlet_change_request q ON q.created_outlet_id = o.id WHERE q.client_uuid = '$shop6'"))
+        }
+    }
+
+    @Test
+    fun clusterNamesAreUniquePerZoneInTheDatabaseWhateverTheCaseSpacingOrComposition() = world.withApi {
+        with(world) {
+            val zone = one("SELECT zone_id FROM app.route WHERE code = 'MIR-SR-D'")
+            val base = "Norm Test " + UUID.randomUUID().toString().take(5)
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.cluster (zone_id, name) VALUES ($zone, '$base')") }
+            for (variant in listOf(base.uppercase(), "  $base  ", base.replace(" ", "\u00a0"), base.replace(" ", " \u2003 "))) {
+                val e = org.junit.jupiter.api.assertThrows<Exception> { fresh.db.jdbi.useHandle<Exception> { h -> h.createUpdate("INSERT INTO app.cluster (zone_id, name) VALUES (:z, :n)").bind("z", zone).bind("n", variant).execute() } }
+                assertTrue(generateSequence<Throwable>(e) { it.cause }.any { it.message?.contains("cluster_zone_name_norm_key") == true }, "$variant: ${e.message}")
+            }
+            // composed and decomposed forms of the same Bangla / accented letter are one name; another zone may use the name
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.cluster (zone_id, name) VALUES ($zone, 'Caf\u00e9 $base')") }
+            assertTrue(runCatching { fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.cluster (zone_id, name) VALUES ($zone, 'Cafe\u0301 $base')") } }.isFailure, "NFC: composed and decomposed are the same name")
+            val other = one("SELECT id FROM app.zone WHERE id <> $zone ORDER BY id LIMIT 1")
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.cluster (zone_id, name) VALUES ($other, '${base.uppercase()}')") }
+            // the approval of a cluster request whose name was taken in between answers cluster_name_exists (409), not a 500
+            val route = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'"); val sub = one("SELECT id FROM app.sub_channel WHERE status = 'active' ORDER BY id LIMIT 1")
+            val taken = "Taken Later " + UUID.randomUUID().toString().take(5)
+            val cr = UUID.randomUUID().toString()
+            assertEquals("accepted", ack(sync(sr, listOf(record("outlet_change_request", """{"request_type":"cluster_create","proposed":{"name":"$taken"},"photo_uuids":[],"fix":$fix}""", route, cu = cr, family = cr))), cr).status())
+            postWeb("admin1001", "/v1/outlet-requests/$cr/verify", """{"sub_channel_id":$sub}""")
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.cluster (zone_id, name) VALUES ($zone, '  ${taken.uppercase()} ')") }
+            val r = postWeb("superadmin1001", "/v1/outlet-requests/$cr/approve", """{"route_id":$route,"change_reason":"approve a cluster whose name was taken meanwhile"}""")
+            assertEquals(HttpStatusCode.Conflict, r.status, r.bodyAsText()); assertTrue(r.bodyAsText().contains("cluster_name_exists"), r.bodyAsText())
         }
     }
 }

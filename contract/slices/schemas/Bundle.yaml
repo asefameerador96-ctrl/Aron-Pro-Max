@@ -114,7 +114,9 @@ Bundle:
       maxItems: 600
       description: 'Contract 1.16.0 (SR only; absent or empty for other roles): the clusters a new shop or an outlet
         change may name, one row per cluster and route of the SR''s own routes (a cluster that has an active outlet
-        on the route). Reach is the SR''s routes, taken from the token.'
+        on the route). Reach is the SR''s routes, taken from the token. At most 600 rows: beyond that the rows are
+        cut in route, name, id order and `clusters_truncated` is true. A delta carries the section whole when it
+        differs from the phone''s snapshot.'
       items:
         $ref: '#/components/schemas/BundleCluster'
     outlet_sku_stats:
@@ -122,11 +124,20 @@ Bundle:
       maxItems: 400
       description: 'Contract 1.16.0 (SR only; absent or empty for other roles): sales history per outlet (one entry
         each) with its SKUs, for the SR''s own routes, quantities in BASE units (sticks / pieces; the phone converts
-        to packets with the SKU''s pack_factor), ADS in integer hundredths of a base unit. Only pairs with a sale
-        in the last 30 business days are listed. Versioned reference data: the bundle version changes when a row
-        does.'
+        to packets with the SKU''s pack_factor), ADS in integer hundredths of a base unit per elapsed calendar day.
+        Only pairs with a sale in the last 30 calendar days are listed. At most 400 outlets: beyond that the entries
+        are cut in outlet id order and `outlet_sku_stats_truncated` is true. Versioned reference data: the bundle
+        version changes when a row does; a delta carries the section whole when it differs from the phone''s snapshot.'
       items:
         $ref: '#/components/schemas/OutletSkuStat'
+    clusters_truncated:
+      type: boolean
+      description: 'Contract 1.16.0: true when the SR holds more than 600 cluster rows and `clusters` was cut. Absent
+        means false.'
+    outlet_sku_stats_truncated:
+      type: boolean
+      description: 'Contract 1.16.0: true when more than 400 outlets have history and `outlet_sku_stats` was cut.
+        Absent means false.'
     my_outlet_requests:
       type: array
       maxItems: 200

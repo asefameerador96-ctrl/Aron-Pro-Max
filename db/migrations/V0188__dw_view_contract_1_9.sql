@@ -1,6 +1,6 @@
 -- V0179 dw view contract 1.8 -> 1.9 (sr-server train 2, push B; D-SV2-03).
--- 1. dw.v_route_day gains late_rows_after_sales_submit (app.route_day, SRM-B-30) before is_effective (every view ends with it, so the view is dropped
---    and recreated; comments are saved and restored, grants re-applied; nothing depends on it).
+-- 1. dw.v_route_day gains late_rows_after_sales_submit (app.route_day, SRM-B-30): it sits right after late_rows_after_final and before updated_at, data_origin
+--    and is_effective (every view ends with is_effective, so the view is dropped and recreated; comments are saved and restored, grants re-applied; nothing depends on it).
 -- 2. dw.v_survey_response (SRM-B-08, the posm-survey report): one row per answer of a survey on a visit: outlet, date, question, answer, a photo
 --    flag. The media id of the photo is never in a reuse view (D-SV1-02).
 -- Minor version: columns and one view added. Lock: ONE LOCK ... NOWAIT retried for about 60 s (V0144 pattern).

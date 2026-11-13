@@ -83,6 +83,7 @@ RouteDayState:
       - 'null'
       minimum: 0
       description: 'Contract 1.16.0 (supervisor reads only; absent in the bundle and the day-state read): memos
-        and due collections of the route-day captured after its Sales Submit and stored before its Final Submit.
-        Counted once per stored record, never refused (offline-first); after the Final Submit a late row counts
-        under the final-submit counter instead.'
+        and due collections of the route-day captured after the same user''s Sales Submit record (its own `captured_at`,
+        phone clock against phone clock) and stored while the zone-day was open. Derived from the stored rows, so
+        it is one number under replay and any arrival order (a memo and its edits count once); never refused (offline-first);
+        after the Final Submit a late row counts under the final-submit counter instead.'

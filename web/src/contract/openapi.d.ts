@@ -6074,7 +6074,7 @@ export interface components {
             cluster_id?: components["schemas"]["Id"];
             /**
              * Format: uuid
-             * @description Contract 1.16.0 (new shop requests): the client uuid of the SR's own pending `cluster_create` request whose cluster this shop belongs to, when the cluster does not exist yet. Used at approval when `cluster_id` is absent; the shop cannot be approved before that cluster request is (409 guard `cluster_request_pending`).
+             * @description Contract 1.16.0 (new shop requests): the client uuid of the SR's own pending `cluster_create` request whose cluster this shop belongs to, when the cluster does not exist yet. It must name a `cluster_create` request of the SAME user on a route of the SAME zone as the shop: otherwise (another user's, another zone's, another type, voided, or one the server refused) the shop is stored with the link dropped and flagged `cluster_dropped`, never refused; a uuid the server has not seen yet is kept (the cluster request may arrive in a later batch) and judged again at approval. When `cluster_id` is sent too and is usable it WINS: the link is ignored, dropped and flagged. Used at approval when `cluster_id` is absent; the shop is not approved before that cluster request is (409 guard `cluster_request_pending`), and a cluster request that was refused, lapsed or discarded needs the approver's `cluster_id` (`OutletRequestApproveRequest.cluster_id`).
              */
             cluster_request_uuid?: string;
             /** Format: int64 */
@@ -6089,7 +6089,7 @@ export interface components {
             request_type: components["schemas"]["OutletRequestType"];
             /**
              * Format: int64
-             * @description Null only for request_type new.
+             * @description Null only for request_type `new` and `cluster_create` (1.16.0: a cluster request names no outlet and is refused `schema_invalid` when it does).
              */
             outlet_id?: number | null;
             proposed: components["schemas"]["OutletProposal"];
@@ -6382,7 +6382,7 @@ export interface components {
             assigned_username?: string | null;
             /** @description Full name of the assigned SR, for the supervisor route lists (F-TSO-007). */
             assigned_user_full_name?: string | null;
-            /** @description Contract 1.16.0 (supervisor reads only; absent in the bundle and the day-state read): memos and due collections of the route-day captured after its Sales Submit and stored before its Final Submit. Counted once per stored record, never refused (offline-first); after the Final Submit a late row counts under the final-submit counter instead. */
+            /** @description Contract 1.16.0 (supervisor reads only; absent in the bundle and the day-state read): memos and due collections of the route-day captured after the same user's Sales Submit record (its own `captured_at`, phone clock against phone clock) and stored while the zone-day was open. Derived from the stored rows, so it is one number under replay and any arrival order (a memo and its edits count once); never refused (offline-first); after the Final Submit a late row counts under the final-submit counter instead. */
             late_rows_after_sales_submit?: number | null;
         };
         SupervisorDayState: {
@@ -6836,13 +6836,13 @@ export interface components {
             route_id: components["schemas"]["Id"];
             route_name: string;
         };
-        /** @description Sales history of one outlet in BASE units (sticks / pieces; contract 1.16.0), one entry per outlet of the SR's own routes that sold in the last 30 business days. `previous_day` is the outlet's most recent selling day (a day it had a live memo) before the bundle date within that window. The phone shows packets by dividing each SKU quantity with the SKU's pack_factor. */
+        /** @description Sales history of one outlet in BASE units (sticks / pieces; contract 1.16.0), one entry per outlet of the SR's own routes that sold in the last 30 calendar days. `previous_day` is the outlet's most recent selling day (a day it had a live memo) before the bundle date within that window. The phone shows packets by dividing each SKU quantity with the SKU's pack_factor. */
         OutletSkuStat: {
             outlet_id: components["schemas"]["Id"];
             previous_day: components["schemas"]["BusinessDate"];
             items: components["schemas"]["OutletSkuStatItem"][];
         };
-        /** @description One SKU of an `OutletSkuStat`, a POSITIONAL integer quadruple `[sku_delta, prev, ads, sdlw]` (contract 1.16.0; positional arrays and delta-coded SKU ids keep the section inside its budget, docs/04: at most 150 KB raw and 20 KB gzip at 70 outlets x 40 SKUs, every pair dense). Items ascend by SKU id: `sku_delta` is the SKU id in the first item of an entry and, in every later item, the difference from the previous item's SKU id. `prev` = base units (sticks / pieces) of the SKU on the outlet's `previous_day`; `ads` = average quantity per selling day x 100, in hundredths of a base unit (30 business days before the bundle date, rounded half up: 250 = 2.5 base units); `sdlw` = base units on the same weekday last week (bundle date minus 7 days). A zero is written 0. Only SKUs with a sale in the 30-business-day window are listed. */
+        /** @description One SKU of an `OutletSkuStat`, a POSITIONAL integer quadruple `[sku_delta, prev, ads, sdlw]` (contract 1.16.0; positional arrays and delta-coded SKU ids keep the section inside its budget, docs/04: at most 150 KB raw and 20 KB gzip at 70 outlets x 40 SKUs, every pair dense). Items ascend by SKU id: `sku_delta` is the SKU id in the first item of an entry and, in every later item, the difference from the previous item's SKU id. `prev` = base units (sticks / pieces) of the SKU on the outlet's `previous_day`; `ads` = average quantity per CALENDAR day x 100, in hundredths of a base unit: the quantity sold in the 30 calendar days before the bundle date divided by the ELAPSED calendar days of that window (30, or the days since the outlet's first selling memo when it is younger), rounded half up: 250 = 2.5 base units per day; the phone shows it as "per day until the next visit"; `sdlw` = base units on the same weekday last week (bundle date minus 7 days). A zero is written 0. Only SKUs with a sale in the 30-calendar-day window are listed. */
         OutletSkuStatItem: number[];
         /** @description The day bundle (docs/24 s4.10). One snapshot of all routes assigned to the user for the business date. */
         Bundle: {
@@ -6874,10 +6874,14 @@ export interface components {
             /** @description AV and KV items valid today or within cfg.sys.schedule_horizon_days. */
             content?: components["schemas"]["ContentItem"][];
             tutorials?: components["schemas"]["TutorialItem"][];
-            /** @description Contract 1.16.0 (SR only; absent or empty for other roles): the clusters a new shop or an outlet change may name, one row per cluster and route of the SR's own routes (a cluster that has an active outlet on the route). Reach is the SR's routes, taken from the token. */
+            /** @description Contract 1.16.0 (SR only; absent or empty for other roles): the clusters a new shop or an outlet change may name, one row per cluster and route of the SR's own routes (a cluster that has an active outlet on the route). Reach is the SR's routes, taken from the token. At most 600 rows: beyond that the rows are cut in route, name, id order and `clusters_truncated` is true. A delta carries the section whole when it differs from the phone's snapshot. */
             clusters?: components["schemas"]["BundleCluster"][];
-            /** @description Contract 1.16.0 (SR only; absent or empty for other roles): sales history per outlet (one entry each) with its SKUs, for the SR's own routes, quantities in BASE units (sticks / pieces; the phone converts to packets with the SKU's pack_factor), ADS in integer hundredths of a base unit. Only pairs with a sale in the last 30 business days are listed. Versioned reference data: the bundle version changes when a row does. */
+            /** @description Contract 1.16.0 (SR only; absent or empty for other roles): sales history per outlet (one entry each) with its SKUs, for the SR's own routes, quantities in BASE units (sticks / pieces; the phone converts to packets with the SKU's pack_factor), ADS in integer hundredths of a base unit per elapsed calendar day. Only pairs with a sale in the last 30 calendar days are listed. At most 400 outlets: beyond that the entries are cut in outlet id order and `outlet_sku_stats_truncated` is true. Versioned reference data: the bundle version changes when a row does; a delta carries the section whole when it differs from the phone's snapshot. */
             outlet_sku_stats?: components["schemas"]["OutletSkuStat"][];
+            /** @description Contract 1.16.0: true when the SR holds more than 600 cluster rows and `clusters` was cut. Absent means false. */
+            clusters_truncated?: boolean;
+            /** @description Contract 1.16.0: true when more than 400 outlets have history and `outlet_sku_stats` was cut. Absent means false. */
+            outlet_sku_stats_truncated?: boolean;
             /** @description The user's own outlet change requests of the last 30 days with status and rejection reason (SR and AMO own-request list). */
             my_outlet_requests?: components["schemas"]["OutletRequestSummary"][];
         };
@@ -6916,6 +6920,14 @@ export interface components {
                 team?: components["schemas"]["SectionDelta"];
                 pending_outlet_requests?: components["schemas"]["SectionDelta"];
             };
+            /** @description Contract 1.16.0: the WHOLE `clusters` section when its content differs from the snapshot named by `base_cursor` (replace the phone's list), null when unchanged. */
+            clusters?: components["schemas"]["BundleCluster"][] | null;
+            /** @description Contract 1.16.0: the truncation flag that goes with a carried `clusters`; null with it. */
+            clusters_truncated?: boolean | null;
+            /** @description Contract 1.16.0: the WHOLE `outlet_sku_stats` section when its content differs from the snapshot named by `base_cursor` (a late-synced memo of an earlier day changes it), null when unchanged. */
+            outlet_sku_stats?: components["schemas"]["OutletSkuStat"][] | null;
+            /** @description Contract 1.16.0: the truncation flag that goes with a carried `outlet_sku_stats`; null with it. */
+            outlet_sku_stats_truncated?: boolean | null;
             /** @description Lists that changed, replaced whole. */
             code_lists?: components["schemas"]["CodeList"][];
             templates?: components["schemas"]["PrintTemplate"][];
@@ -7347,6 +7359,11 @@ export interface components {
              */
             route_id?: number | null;
             change_reason: components["schemas"]["ChangeReason"];
+            /**
+             * Format: int64
+             * @description 1.16.0, for request_type `new` and `cluster` only (`400 ERR_VALIDATION` pointer `/cluster_id` for any other type). The cluster the approver gives the shop or the outlet: a LIVE cluster of the route's zone (the outlet's zone for `cluster`), recorded in the request's event trail with the approver. REQUIRED exactly when the request carries no usable cluster (the phone dropped it, the shop's cluster request was refused, lapsed or discarded, or the cluster is no longer live): then approval without it answers `409 ERR_CONFLICT` whose guard is `cluster_required`, `cluster_request_refused` or `cluster_request_pending` and whose text says to give `cluster_id`. Optional otherwise; when given it wins over the proposal's cluster. A pending cluster request alone is approved first (or this member is given).
+             */
+            cluster_id?: number | null;
         };
         /** @description Body of `POST /v1/outlet-requests` (web source, docs/24 s14a R20). `request_uuid` is generated by the browser (UUID v4) when the form opens: the idempotency key and the identity of the request, in the same key space as the `client_uuid` of an app `outlet_change_request` record. `proposed` carries the members the request type requires (docs/24 s12.2). */
         OutletRequestCreateRequest: {

@@ -110,4 +110,33 @@ class SrManualSv1V0173Test {
         assertTrue(c.scalar("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'route_day_late_rows_sales_check'")!!.contains(">= 0"))
         assertEquals("false", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.sale.journey_repeat_sale_enabled'"))
     }
+
+    @Test
+    fun v0191OneClusterNameNormalisationAUniqueIndexPerZoneAPersonalSurveyViewAndEveryRejectedCodeStillAllowed() = db.connect().use { c ->
+        fun exec(sql: String) = c.createStatement().use { it.execute(sql) }
+        // the one normalisation: case, Unicode spaces, NFC
+        assertEquals("cafe\u0301 x".let { java.text.Normalizer.normalize(it, java.text.Normalizer.Form.NFC) }.lowercase().replace(Regex("\\s+"), " "), c.scalar("SELECT app.norm_cluster_name(E'  Cafe\u0301\u00a0\u2003X ')"))
+        assertEquals(c.scalar("SELECT app.norm_cluster_name('Bazar 7')"), c.scalar("SELECT app.norm_cluster_name(E'bazar\u00a0\u00a07  ')"))
+        assertEquals("true", c.scalar("SELECT (SELECT provolatile = 'i' FROM pg_proc WHERE proname = 'norm_cluster_name')::text"), "immutable: usable in the index")
+        assertEquals(1, c.scalar("SELECT count(*) FROM pg_indexes WHERE schemaname = 'app' AND indexname = 'cluster_zone_name_norm_key' AND indexdef LIKE 'CREATE UNIQUE%'")!!.toInt())
+        // the index refuses a variant in the same zone and allows it in another
+        exec("INSERT INTO app.zone (code, name, territory_id) SELECT 'Z191A', 'Zone 191A', min(id) FROM app.territory")
+        exec("INSERT INTO app.zone (code, name, territory_id) SELECT 'Z191B', 'Zone 191B', min(id) FROM app.territory")
+        val za = c.scalar("SELECT id FROM app.zone WHERE code = 'Z191A'"); val zb = c.scalar("SELECT id FROM app.zone WHERE code = 'Z191B'")
+        exec("INSERT INTO app.cluster (zone_id, name) VALUES ($za, 'Lane Seven')")
+        assertTrue(runCatching { exec("INSERT INTO app.cluster (zone_id, name) VALUES ($za, E'  LANE\u00a0seven ')") }.isFailure, "same zone, same normalised name")
+        exec("INSERT INTO app.cluster (zone_id, name) VALUES ($zb, 'LANE SEVEN')")
+        // the free-text answer of a survey is personal and not read by bi_reader; the other columns are
+        assertTrue(c.scalar("SELECT obj_description('dw.v_survey_response'::regclass)")!!.endsWith("pii: personal"))
+        assertEquals("false", c.scalar("SELECT has_column_privilege('bi_reader', 'dw.v_survey_response', 'answer_text', 'SELECT')::text"))
+        assertEquals("true", c.scalar("SELECT has_column_privilege('bi_reader', 'dw.v_survey_response', 'answer_option_code', 'SELECT')::text"))
+        assertEquals("true", c.scalar("SELECT has_column_privilege('web_ro', 'dw.v_survey_response', 'answer_text', 'SELECT')::text"))
+        // item e: the sync_rejected code check keeps EVERY code of V0135 and adds cluster_name_exists (the Loyalty lane's gift codes are added by whichever migration lands second)
+        val def = c.scalar("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'sync_rejected_code_check'")!!
+        for (code in listOf("scope_stale", "config_version_unknown", "parent_missing", "outlet_pending_approval", "price_list_unknown", "schema_invalid", "unknown_record_type", "unknown_sku", "unknown_outlet", "unknown_route",
+            "memo_no_invalid", "edit_not_allowed", "chain_too_deep", "voided_by_admin", "lines_exceed_max", "qty_invalid", "price_invalid", "attendance_duplicate", "server_error", "retry_exhausted", "unknown_gift",
+            "insufficient_points", "gift_photo_exists", "day_final_submitted", "ticket_state_invalid", "issue_type_unknown", "cluster_name_exists")) {
+            assertTrue(def.contains("'$code'"), "sync_rejected_code_check lost $code")
+        }
+    }
 }

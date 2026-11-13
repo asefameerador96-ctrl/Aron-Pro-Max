@@ -493,11 +493,12 @@ object TsoVisitLogReport : ReportHandler {
 /**
  * `posm-survey` (SRM-B-08, contract 1.16.0): the answers of the POSM survey (and the other surveys) per outlet, read from the reuse view
  * `dw.v_survey_response`. Scope is the report context's (zone and route clauses on the view's own columns, token reach only); the photo is a flag, the media id
- * is never in the view. Voided answers are left out.
+ * is never in the view. Voided answers are left out. The report lists EVERY survey kind (posm, amo_survey, tso_visit_query: the `Survey` column says which), under the key the owner asked for.
+ * A text answer is free text and can hold a phone number: the view is personal and bi_reader does not read `answer_text` (V0191); this report, behind its own role and scope checks, is where the text is read.
  */
 object PosmSurveyReport : ReportHandler {
     override val definition = definition(
-        "posm-survey", "POSM Survey", "field_force", "survey answer",
+        "posm-survey", "Survey Answers (every survey kind)", "field_force", "survey answer",
         listOf(
             col("business_date", "Date", "date", bn = "তারিখ"), col("zone_name", "Zone", "string", bn = "জোন"), col("route_code", "Route", "string", bn = "রুট"),
             col("outlet_code", "Outlet code", "string", bn = "আউটলেট কোড"), col("outlet_name", "Outlet", "string", bn = "আউটলেট"), col("username", "SR", "string", bn = "এসআর"),
@@ -505,7 +506,7 @@ object PosmSurveyReport : ReportHandler {
             col("photo_taken", "Photo", "bool", bn = "ছবি"),
         ),
         listOf("period", "geo"),
-        bn = "পজম জরিপ",
+        bn = "জরিপের উত্তর (সব ধরনের জরিপ)",
     )
 
     override fun spec(ctx: ReportContext) = SqlSpec(

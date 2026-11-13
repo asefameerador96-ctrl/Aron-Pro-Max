@@ -148,6 +148,9 @@ class BundleService(
             // ruling 2026-10-18): same builder, scope from the token, paged above cfg.bundle.page_threshold_rows like any section.
             val zoneRoutes = if (supReach != null && (p.role == Role.AMO || p.role == Role.TSO)) routeSnapshots(h, user.id, zonePlans, date, emptyMap(), cfg, roleOrdinal, zoneIds = supReach.zoneIds.toList()) else emptyList()
             val routes = own + zoneRoutes
+            // Contract 1.16.0 caps (600 clusters, 400 outlets of stats): beyond them the rows are cut in a fixed order and the section says so (`*_truncated`), never an over-long section.
+            val clustersCapped = if (p.role == Role.SR) clusters(h, own).capped(MAX_CLUSTERS) else Capped(emptyList(), false)
+            val statsCapped = if (p.role == Role.SR) outletSkuStats(h, own.flatMap { r -> r.outlets.map { it.outlet_id } }, date).capped(MAX_STATS_OUTLETS) else Capped(emptyList(), false)
             val progReach = supReach ?: reach?.reach(user.id, p.role, p.scopeVersion, date)   // the caller's reach for the programme scope (an SR's is ownRecordsOnly: no zone reach)
             val zones = (plans.map { it.zoneId } + listOfNotNull(user.homeZoneId)).distinct()
             Bundle(
@@ -189,8 +192,10 @@ class BundleService(
                 },
                 content = BundleContent.content(h, date, date.plusDays(horizonDays.toLong()), routes.flatMap { r -> r.outlets.map { it.outlet_id } }.toSet()),
                 tutorials = emptyList(),
-                clusters = if (p.role == Role.SR) clusters(h, own) else emptyList(),
-                outlet_sku_stats = if (p.role == Role.SR) outletSkuStats(h, own.flatMap { r -> r.outlets.map { it.outlet_id } }, date) else emptyList(),
+                clusters = clustersCapped.rows,
+                clusters_truncated = clustersCapped.truncated,
+                outlet_sku_stats = statsCapped.rows,
+                outlet_sku_stats_truncated = statsCapped.truncated,
             )
         }
         val seq = snapshotSeq(user.id, date, bundle)
@@ -255,6 +260,7 @@ class BundleService(
             meta = DeltaMeta(r.version, sinceRaw!!, r.bundle.meta.cursor, date.toString(), r.bundle.meta.config_version, clock.now().wire()),
             sections = body.sections, code_lists = body.codeLists, templates = body.templates,
             routes_added = body.routesAdded, routes_removed = body.routesRemoved, day_states = body.dayStates, resolutions = resolutions,
+            clusters = body.clusters, clusters_truncated = body.clustersTruncated, outlet_sku_stats = body.skuStats, outlet_sku_stats_truncated = body.skuStatsTruncated,
         )
     }
 
@@ -611,7 +617,9 @@ class BundleService(
         }.list().groupBy { it.route_id }
     }
 
-    /** Credit memos with an open balance in the due ledger (`memo_due` plus collections, voids and supersessions). */
+    private class Capped<T>(val rows: List<T>, val truncated: Boolean)
+    private fun <T> List<T>.capped(max: Int) = capRows(this, max).let { Capped(it.first, it.second) }
+
     /** The clusters of the SR's own routes (contract 1.16.0): every cluster that has an active outlet on the route, plus the live clusters approved `cluster_create` requests made for it, by name. */
     private fun clusters(h: Handle, own: List<RouteSnapshot>): List<BundleCluster> {
         val names = own.associate { it.route_id to it.route.name }
@@ -633,7 +641,7 @@ class BundleService(
 
     /**
      * Previous sale day, ADS and SDLW per outlet x SKU (contract 1.16.0, part A Q4 defaults), from the live memos of the 30 business days before [date]:
-     * sale lines only, memos active, with lines, not voided (the rule of the Sales Submit digest). Base units; ADS in integer hundredths, rounded half up.
+     * sale lines only, memos active, with lines, not voided (the rule of the Sales Submit digest). Base units; ADS in integer hundredths, rounded half up, = quantity sold in the 30 calendar days before [date] divided by the ELAPSED calendar days of that window (30, or the days since the outlet's first selling memo when younger).
      */
     private fun outletSkuStats(h: Handle, outletIds: List<Long>, date: LocalDate): List<OutletSkuStat> = if (outletIds.isEmpty()) emptyList() else h.createQuery(
         """
@@ -643,7 +651,11 @@ class BundleService(
            WHERE m.outlet_id = ANY(:o) AND m.business_date >= :from AND m.business_date < :d
              AND m.status = 'active' AND m.line_count > 0 AND m.voided_at IS NULL AND ml.voided_at IS NULL AND ml.line_kind = 'sale'
            GROUP BY m.outlet_id, ml.sku_id, m.business_date),
-        od AS (SELECT outlet_id, max(business_date) AS prev, count(DISTINCT business_date) AS days FROM ls GROUP BY outlet_id)
+        od AS (SELECT outlet_id, max(business_date) AS prev,
+                       -- ELAPSED calendar days of the window (D-SV2-05): 30, or the days since the outlet's first selling memo when it is younger
+                       LEAST(30, :d - (SELECT min(m2.business_date) FROM app.memo m2 WHERE m2.outlet_id = ls.outlet_id AND m2.business_date < :d
+                                         AND m2.status = 'active' AND m2.line_count > 0 AND m2.voided_at IS NULL)) AS days
+                  FROM ls GROUP BY outlet_id)
         SELECT s.outlet_id, s.sku_id, od.prev,
                coalesce(sum(s.q) FILTER (WHERE s.business_date = od.prev), 0)::bigint AS prev_q,
                floor(sum(s.q) * 100.0 / od.days + 0.5)::bigint AS ads,
@@ -660,6 +672,7 @@ class BundleService(
             OutletSkuStat(k.first, k.second, sorted.mapIndexed { i, q -> if (i == 0) q else listOf(q[0] - sorted[i - 1][0]) + q.drop(1) })
         }
 
+    /** Credit memos with an open balance in the due ledger (`memo_due` plus collections, voids and supersessions). */
     private fun openMemos(h: Handle, outletIds: List<Long>): List<OpenMemo> = if (outletIds.isEmpty()) emptyList() else h.createQuery(
         """
         SELECT l.memo_client_uuid, sum(l.amount_mtk) AS due, m.memo_no, m.business_date, m.outlet_id, m.net_mtk
@@ -771,6 +784,10 @@ class BundleService(
         private val RADIUS_KEYS = arrayOf("cfg.geo.radius_m", "cfg.geo.max_accuracy_m", "cfg.geo.radius_min_m", "cfg.geo.radius_max_m")
 
         private const val PAGE_CACHE_TTL_S = 300L
+        /** The contract caps of `Bundle.clusters` (600) and `Bundle.outlet_sku_stats` (400 outlets). */
+        fun <T> capRows(rows: List<T>, max: Int): Pair<List<T>, Boolean> = rows.take(max) to (rows.size > max)
+        const val MAX_CLUSTERS = 600
+        const val MAX_STATS_OUTLETS = 400
         private const val PAGE_CACHE_BUDGET_ROWS = 150_000
         private val SECTION_NAMES = setOf("outlets", "open_memos", "prices", "offers", "tasks", "team", "pending_outlet_requests", "programmes", "content")
 

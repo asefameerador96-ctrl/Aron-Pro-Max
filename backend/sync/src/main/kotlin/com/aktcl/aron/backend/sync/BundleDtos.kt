@@ -42,6 +42,10 @@ data class Bundle(
     val clusters: List<BundleCluster> = emptyList(),
     /** Contract 1.16.0 (SRM-A-29): previous sale day, ADS and SDLW per outlet (one entry each) with its SKUs, integer hundredths in BASE units. SR only. */
     val outlet_sku_stats: List<OutletSkuStat> = emptyList(),
+    /** True when the SR holds more than 600 cluster rows and the list was cut (in route, name, id order). */
+    val clusters_truncated: Boolean = false,
+    /** True when more than 400 outlets have history and the list was cut (in outlet id order). */
+    val outlet_sku_stats_truncated: Boolean = false,
 )
 
 /** One cluster as seen on one route of the SR (`route_id` is a route of the bundle's own routes). */

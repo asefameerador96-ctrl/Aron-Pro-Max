@@ -19,3 +19,17 @@ OutletRequestApproveRequest:
       description: Required for AMO-created new outlets.
     change_reason:
       $ref: '#/components/schemas/ChangeReason'
+    cluster_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: '1.16.0, for request_type `new` and `cluster` only (`400 ERR_VALIDATION` pointer `/cluster_id`
+        for any other type). The cluster the approver gives the shop or the outlet: a LIVE cluster of the route''s
+        zone (the outlet''s zone for `cluster`), recorded in the request''s event trail with the approver. REQUIRED
+        exactly when the request carries no usable cluster (the phone dropped it, the shop''s cluster request was
+        refused, lapsed or discarded, or the cluster is no longer live): then approval without it answers `409 ERR_CONFLICT`
+        whose guard is `cluster_required`, `cluster_request_refused` or `cluster_request_pending` and whose text
+        says to give `cluster_id`. Optional otherwise; when given it wins over the proposal''s cluster. A pending
+        cluster request alone is approved first (or this member is given).'

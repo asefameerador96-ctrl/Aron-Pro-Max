@@ -1,7 +1,7 @@
 OutletSkuStat:
   type: object
   description: Sales history of one outlet in BASE units (sticks / pieces; contract 1.16.0), one entry per outlet
-    of the SR's own routes that sold in the last 30 business days. `previous_day` is the outlet's most recent selling
+    of the SR's own routes that sold in the last 30 calendar days. `previous_day` is the outlet's most recent selling
     day (a day it had a live memo) before the bundle date within that window. The phone shows packets by dividing
     each SKU quantity with the SKU's pack_factor.
   required:
