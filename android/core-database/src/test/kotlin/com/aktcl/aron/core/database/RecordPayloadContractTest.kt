@@ -27,12 +27,13 @@ import org.junit.Test
 
 /** The record payloads and reference rows use exactly the contract's member names (docs/26 s1: never invent a field). */
 class RecordPayloadContractTest {
-    private fun check(serializer: KSerializer<*>, schema: String, coverAll: Boolean = true) {
+    /** [serverSet]: optional contract members only the SERVER writes (the phone never sends them); they are the one allowed gap in "covers every member". */
+    private fun check(serializer: KSerializer<*>, schema: String, coverAll: Boolean = true, serverSet: Set<String> = emptySet()) {
         val dto = serializer.descriptor.elementNames.toSet()
         val yaml = ContractYaml.propertyNames(schema)
         assertTrue("$schema: not in the contract: ${dto - yaml}", yaml.containsAll(dto))
         assertTrue("$schema: required missing: ${ContractYaml.requiredNames(schema) - dto}", dto.containsAll(ContractYaml.requiredNames(schema)))
-        if (coverAll) assertEquals("$schema must cover every member", yaml, dto)
+        if (coverAll) assertEquals("$schema must cover every member", yaml - serverSet, dto)
     }
 
     @Test fun geoFix() = check(GeoFix.serializer(), "GeoFix")
@@ -48,7 +49,7 @@ class RecordPayloadContractTest {
     @Test fun qcLine() = check(QcLinePayload.serializer(), "QcLinePayload")
     @Test fun dueCollection() = check(com.aktcl.aron.core.database.record.DueCollectionPayload.serializer(), "DueCollectionPayload")
     @Test fun visitSkip() = check(com.aktcl.aron.core.database.record.VisitSkipPayload.serializer(), "VisitSkipPayload")
-    @Test fun daySubmit() = check(com.aktcl.aron.core.database.record.DaySubmitPayload.serializer(), "DaySubmitPayload")
+    @Test fun daySubmit() = check(com.aktcl.aron.core.database.record.DaySubmitPayload.serializer(), "DaySubmitPayload", serverSet = setOf("anchor_clock"))   // 1.16.0: the server stamps the online Sales Submit (B5)
     @Test fun outletRequest() = check(com.aktcl.aron.core.database.record.OutletChangeRequestPayload.serializer(), "OutletChangeRequestPayload")
     @Test fun mediaMeta() = check(com.aktcl.aron.core.database.record.MediaMetaPayload.serializer(), "MediaMetaPayload")
     @Test fun taskEvent() = check(com.aktcl.aron.core.database.record.TaskEventPayload.serializer(), "TaskEventPayload")
