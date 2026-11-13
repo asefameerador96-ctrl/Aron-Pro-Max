@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 182 | 3018 |
+| `app` | 182 | 3024 |
 | `dw` | 75 | 1211 |
 
 ## Index
@@ -2179,6 +2179,12 @@ Hand-over photo record of a gift, one per Astha assignment or redeemed campaign 
 | `fix_accuracy_m` | double precision | null | personal | Accuracy in metres of the location fix taken with the record. |
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `is_duplicate` | boolean | not null |  | True for a photo that is not the first by captured_at for its assignment or unit; stored and kept, never counted as the lock (V0185). |
+| `flagged_at` | timestamp with time zone | null |  | When the photo was flagged as a duplicate. |
+| `server_verdict` | text | null |  | The server re-check of the photo fix against the outlet location (same function as the phone, docs/24 s11.3); the photo is never refused for it. |
+| `server_distance_m` | double precision | null |  | Metres between the photo fix and the outlet location at capture, from the server re-check; null when there was no usable fix or location. |
+| `server_radius_m` | integer | null |  | The geofence radius in metres the server re-check used (the value in force at capture). |
+| `server_checked_at` | timestamp with time zone | null |  | When the server re-check ran; null until it has. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 

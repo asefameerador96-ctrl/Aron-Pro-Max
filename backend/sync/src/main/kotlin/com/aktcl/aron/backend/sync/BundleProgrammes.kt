@@ -31,6 +31,9 @@ object BundleProgrammes {
     const val MAX_BALANCES = 11000
     const val MAX_GIFTS = 200
     const val MAX_GIFT_ASSIGNMENTS = 2000
+    const val MAX_PENDING_VERIFICATIONS = 500
+    /** How far back a redeemed campaign gift is still asked for its photo (business days). */
+    const val PENDING_VERIFICATION_DAYS = 30L
 
     /**
      * TEST SEAM (production leaves it null): called with the section's own handle at the stages "start", "between" (after the balances, gifts and before the Astha rows)
@@ -80,6 +83,7 @@ object BundleProgrammes {
         val balances = loyalty(h, outlets, ids, date, date.minusDays(1), MAX_BALANCES); if (balances.truncated) cut += "loyalty"
         val gifts = gifts(h, ids); if (gifts.truncated) cut += "gifts"
         val assignments = if (asthaIds.isEmpty()) Capped(emptyList(), false) else giftAssignments(h, asthaIds, outlets, q).also { if (it.truncated) cut += "gift_assignments" }
+        val pending = if ("campaign" in kinds) pendingGiftVerifications(h, outlets, date).also { if (it.truncated) cut += "pending_gift_verifications" } else Capped(emptyList(), false)
         probe?.at("between", h)
         val month = date.withDayOfMonth(1); val after = month.plusMonths(1)
         // The cut (lead ruling, push B2): only the CURRENT month (earlier months are the online read), only outlets enrolled in an active Astha programme, no all-zero row.
@@ -102,9 +106,33 @@ object BundleProgrammes {
             put("astha_truncated", truncated)
             put("truncated_sections", JsonArray(cut.map { JsonPrimitive(it) }))
             put("gift_assignments", JsonArray(assignments.items))
-            put("pending_gift_verifications", JsonArray(emptyList()))
+            put("pending_gift_verifications", JsonArray(pending.items))
         }
     }
+
+    /**
+     * Redeemed campaign gifts of [outlets] still short of their Gift Verify photos (SRM-B-77 to 80): per redemption and gift, `qty` units against the photos stored for it (a flagged duplicate does not count,
+     * a voided photo does not count). Redemptions of the last [PENDING_VERIFICATION_DAYS] business days; a partial submit is allowed, so a gift with some photos stays listed with `photos_captured` < `qty`.
+     */
+    internal fun pendingGiftVerifications(h: Handle, outlets: List<Long>, date: LocalDate): Capped<JsonObject> = h.createQuery(
+        """
+        SELECT * FROM (
+          SELECT r.client_uuid::text AS ru, r.outlet_id, l.gift_id, sum(l.qty)::int AS qty,
+                 (SELECT count(*) FROM app.gift_photo p WHERE p.redemption_client_uuid = r.client_uuid AND p.gift_id = l.gift_id AND p.voided_at IS NULL AND NOT p.is_duplicate)::int AS photos
+            FROM app.redemption r
+            JOIN app.programme pr ON pr.id = r.programme_id AND pr.kind = 'campaign'
+            JOIN app.redemption_line l ON l.redemption_client_uuid = r.client_uuid AND l.voided_at IS NULL
+           WHERE r.voided_at IS NULL AND r.outlet_id = ANY(CAST(:o AS bigint[])) AND r.business_date > :from AND r.business_date <= :d
+           GROUP BY r.client_uuid, r.outlet_id, l.gift_id
+        ) x WHERE photos < qty ORDER BY ru, gift_id LIMIT :lim
+        """.trimIndent(),
+    ).bindArray("o", Long::class.javaObjectType, outlets).bind("from", date.minusDays(PENDING_VERIFICATION_DAYS)).bind("d", date).bind("lim", MAX_PENDING_VERIFICATIONS + 1)
+        .map { rs, _ ->
+            buildJsonObject {
+                put("redemption_client_uuid", rs.getString("ru")); put("outlet_id", rs.getLong("outlet_id")); put("gift_id", rs.getLong("gift_id"))
+                put("qty", rs.getInt("qty")); put("photos_captured", rs.getInt("photos"))
+            }
+        }.list().capped(MAX_PENDING_VERIFICATIONS)
 
     /** (id, kind, JSON) of the active programmes covering [date] whose kind is shown and that enrol one of [outlets] (a campaign needs no enrolment). */
     internal fun programmes(h: Handle, date: LocalDate, kinds: List<String>, outlets: List<Long>, scope: ProgrammeScopeParams, only: Long? = null): Capped<Triple<Long, String, JsonObject>> {

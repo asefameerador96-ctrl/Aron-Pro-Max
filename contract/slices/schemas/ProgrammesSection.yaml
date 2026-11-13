@@ -18,8 +18,8 @@ ProgrammesSection:
     from scratch after each bundle; the phone never uploads records while a bundle request is in flight (single-flight
     sync), and if an acknowledgement arrives during the request it discards the section''s achievement and refetches.
     `astha_as_of` and a row''s `as_of` are display only ("data as of"), never part of the rule. Caps are never silent:
-    `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200) or gift_assignments
-    (2,000) that was cut, and `astha_truncated` the 1,000-row Astha bound.'
+    `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200), gift_assignments
+    (2,000) or pending_gift_verifications (500) that was cut, and `astha_truncated` the 1,000-row Astha bound.'
   required:
   - programmes
   - loyalty
@@ -55,8 +55,9 @@ ProgrammesSection:
     truncated_sections:
       type: array
       maxItems: 4
-      description: 1.15.0. Which of `programmes`, `loyalty`, `gifts`, `gift_assignments` was cut at its cap (50,
-        11,000, 200, 2,000); empty when none. A cut is also logged by the server. The phone shows a notice.
+      description: 1.15.0. Which of `programmes`, `loyalty`, `gifts`, `gift_assignments`, `pending_gift_verifications`
+        was cut at its cap (50, 11,000, 200, 2,000, 500); empty when none. A cut is also logged by the server. The
+        phone shows a notice.
       items:
         type: string
         enum:
@@ -64,6 +65,7 @@ ProgrammesSection:
         - loyalty
         - gifts
         - gift_assignments
+        - pending_gift_verifications
     astha_truncated:
       type: boolean
       description: 1.15.0. True when the user's routes had more than 1,000 Astha rows for the month and the list
