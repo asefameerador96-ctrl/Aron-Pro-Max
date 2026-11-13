@@ -50,17 +50,17 @@ class ProgrammeScopeParams(val outletZones: List<Long>, val routes: List<Long>, 
 
     companion object {
         /**
-         * [reach] is the caller's [Reach] (null: fail closed, nothing matches). [routes] are the routes of the outlets in play (default: the caller's own `routeIds`).
-         * - reachZones: the zones the caller holds as zone reach; empty for a field rep (`ownRecordsOnly`, an SR). For a national reader whole programmes are readable, so
-         *   it is the outlet zones (the narrowing the caller asked for does not change which programmes exist).
-         * - outletZones: the zones of [routes] plus the reach zones of a non-SR; for an SR the zones of its own routes.
-         */
-        /**
          * The portal levels (WM, DMO, TSO as readers): the held zones serve as both sets and the routes are the user's own, exactly what `AdminLoyalty` always used (no outlet is in
          * play, so the zones of assigned routes outside the held zones do not widen zone-type nodes: ruling of push B4, no change of portal behaviour).
          */
         fun ofPortal(reach: Reach): ProgrammeScopeParams = reach.zoneIds.toList().let { ProgrammeScopeParams(it, reach.routeIds.toList(), it) }
 
+        /**
+         * [reach] is the caller's [Reach] (null: fail closed, nothing matches). [routes] are the routes of the outlets in play (default: the caller's own `routeIds`).
+         * - reachZones: the zones the caller holds as zone reach; empty for a field rep (`ownRecordsOnly`, an SR). For a national reader whole programmes are readable, so
+         *   it is the outlet zones (the narrowing the caller asked for does not change which programmes exist).
+         * - outletZones: the zones of [routes] plus the reach zones of a non-SR; for an SR the zones of its own routes.
+         */
         fun of(h: org.jdbi.v3.core.Handle, reach: Reach?, routes: Collection<Long>? = null): ProgrammeScopeParams {
             if (reach == null) return ProgrammeScopeParams(emptyList(), emptyList(), emptyList())
             val rs = (routes ?: reach.routeIds).toList()

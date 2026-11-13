@@ -268,7 +268,8 @@ object BundleProgrammes {
             """
             SELECT a.id, a.quarter, a.outlet_id, a.route_id, a.gift_id, a.tier_code, a.photo_media_uuid, a.locked_at, a.chosen_by_user_id, a.chosen_at
             FROM app.gift_assignment a JOIN app.programme p ON p.id = a.programme_id LEFT JOIN app.programme_version v ON v.id = p.current_version_id
-            WHERE a.quarter = :q AND a.route_id = ANY(CAST(:routes AS bigint[])) AND ${ProgrammeScopeSql.geo("v")}
+                 JOIN app.outlet o ON o.id = a.outlet_id
+            WHERE a.quarter = :q AND a.route_id = ANY(CAST(:routes AS bigint[])) AND ${ProgrammeScopeSql.geo("v")} AND ${ProgrammeScopeSql.outlet("v", "o")}
             ORDER BY a.id LIMIT :limit OFFSET :offset
             """.trimIndent(),
         ).bind("q", q.label).bind("limit", limit).bind("offset", offset).bindArray("routes", Long::class.javaObjectType, routeIds)
@@ -277,8 +278,9 @@ object BundleProgrammes {
 
     private fun giftAssignments(h: Handle, programmeIds: List<Long>, outlets: List<Long>, q: AsthaQuarter): Capped<JsonObject> = h.createQuery(
         """
-        SELECT id, quarter, outlet_id, route_id, gift_id, tier_code, photo_media_uuid, locked_at, chosen_by_user_id, chosen_at
-        FROM app.gift_assignment WHERE programme_id = ANY(CAST(:pids AS bigint[])) AND quarter = :q AND outlet_id = ANY(CAST(:outlets AS bigint[])) ORDER BY id LIMIT ${MAX_GIFT_ASSIGNMENTS + 1}
+        SELECT a.id, a.quarter, a.outlet_id, a.route_id, a.gift_id, a.tier_code, a.photo_media_uuid, a.locked_at, a.chosen_by_user_id, a.chosen_at
+        FROM app.gift_assignment a JOIN app.programme p ON p.id = a.programme_id LEFT JOIN app.programme_version v ON v.id = p.current_version_id JOIN app.outlet o ON o.id = a.outlet_id
+        WHERE a.programme_id = ANY(CAST(:pids AS bigint[])) AND a.quarter = :q AND a.outlet_id = ANY(CAST(:outlets AS bigint[])) AND ${ProgrammeScopeSql.outlet("v", "o")} ORDER BY a.id LIMIT ${MAX_GIFT_ASSIGNMENTS + 1}
         """.trimIndent(),
     ).bind("q", q.label).bindArray("pids", Long::class.javaObjectType, programmeIds).bindArray("outlets", Long::class.javaObjectType, outlets).map { rs, _ -> assignmentJson(rs) }.list().capped(MAX_GIFT_ASSIGNMENTS)
 

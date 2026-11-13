@@ -37,6 +37,7 @@ class ProgrammeScopeB4Test {
     private var zone = 0L
     private val zoneGift = UUID.randomUUID().toString()
     private val farGift = UUID.randomUUID().toString()
+    private val routeYGift = UUID.randomUUID().toString()
 
     private fun programme(code: String, nodeType: String?, nodeId: Long?, giftAsset: String? = null) = with(world) {
         val id = one("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('campaign', '$code', 'Scope $code', DATE '${today.minusDays(5)}', DATE '${today.plusDays(30)}', 'active') RETURNING id")
@@ -63,10 +64,11 @@ class ProgrammeScopeB4Test {
             exec("UPDATE app.route_assignment SET valid_to = valid_from + 1 WHERE route_id = $routeY AND user_id = (SELECT id FROM app.app_user WHERE username = 'sr1001')")
             exec("INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason) SELECT $routeY, u.id, 'primary', a.valid_to, 'scope test' FROM app.app_user u, app.route_assignment a WHERE u.username = 'sr1002' AND a.route_id = $routeY AND a.valid_to IS NOT NULL")
             srX = phone("sr1001", "sr"); srY = phone("sr1002", "sr"); tso = phone("tso1001", "tso")
-            for ((asset, path) in listOf(zoneGift to "assets/sku_image/gift-zone.png", farGift to "assets/sku_image/gift-far.png"))
+            for ((asset, path) in listOf(zoneGift to "assets/sku_image/gift-zone.png", farGift to "assets/sku_image/gift-far.png", routeYGift to "assets/sku_image/gift-routey.png"))
                 exec("INSERT INTO app.admin_asset (asset_id, purpose, mime, bytes, sha256, blob_path) VALUES (CAST('$asset' AS uuid), 'gift_image', 'image/png', 70, decode(repeat('ab', 32), 'hex'), '$path')")
             programme("CMP-ROUTE-X", "route", routeX)
             programme("CMP-ZONE", "zone", zone, giftAsset = zoneGift)
+            programme("CMP-ROUTE-Y", "route", routeY, giftAsset = routeYGift)
             programme("CMP-FAR", "zone", one("SELECT max(id) FROM app.zone") + 1000, giftAsset = farGift)
         }
     }
@@ -126,6 +128,20 @@ class ProgrammeScopeB4Test {
             val rows = sec["loyalty"]!!.jsonArray.map { it.jsonObject }.filter { it["programme_id"]!!.jsonPrimitive.content == id.toString() }
             assertEquals(listOf(outletGul.toString()), rows.map { it["outlet_id"]!!.jsonPrimitive.content }, "only the outlet inside the programme's scope has a balance")
             assertEquals("11", rows.single()["balance_points"]!!.jsonPrimitive.content)
+        }
+    }
+
+    /**
+     * reachZones is the ONLY matching path here: the TSO holds no route of its own, so it reads the picture of a gift of a programme scoped to route Y (a route that is not its own) only
+     * through the zone-wide reading of a route node (`rr.zone_id IN (reachZones)`). Deleting that disjunct makes the TSO's read a 404. The SR of route Y has it by its own route; the SR of
+     * route X, in the same zone, must not.
+     */
+    @Test
+    fun theZoneWideReadingOfARouteNodeIsTheOnlyPathForTheTsoAndTheOtherSrsOfTheZoneAreRefused() = world.withApi {
+        with(world) {
+            assertEquals(HttpStatusCode.OK, getAs(tso, "/v1/sku-images/$routeYGift").status, "the zone's TSO: through reachZones only")
+            assertEquals(HttpStatusCode.OK, getAs(srY, "/v1/sku-images/$routeYGift").status, "the SR of route Y: its own route")
+            assertEquals(HttpStatusCode.NotFound, getAs(srX, "/v1/sku-images/$routeYGift").status, "the SR of route X in the same zone: no route-wide reading")
         }
     }
 }
