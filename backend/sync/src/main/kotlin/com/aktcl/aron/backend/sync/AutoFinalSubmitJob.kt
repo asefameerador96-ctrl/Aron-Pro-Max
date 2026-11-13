@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.sync
 
+import com.aktcl.aron.backend.platform.exitIfFatal
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.Inbox
@@ -90,7 +91,7 @@ class AutoFinalSubmitJob(
             val on = switch.value(SWITCH_KEY, ScopedConfig.Chain.of(ConfigScopeType.WING to wing))?.let { runCatching { it.jsonPrimitive.booleanOrNull }.getOrNull() } ?: false
             if (!on) continue
             val closed = runCatching { closeZone(zone, date, tsos.covering(zone)) }
-                .onFailure { e -> log.error("auto Final Submit of zone {} on {} failed", zone, date, e) }.getOrNull() ?: continue
+                .onFailure { e -> e.exitIfFatal(log, "auto Final Submit"); log.error("auto Final Submit of zone {} on {} failed", zone, date, e) }.getOrNull() ?: continue
             out += closed
             // After the commit only (D-TSO-MAN-26, 31): no business data, the phones pull.
             closed.tsoUserIds.forEach { u -> runCatching { nudger.nudge(u, Inbox.PUSH_REASON) } }
@@ -169,7 +170,7 @@ class AutoFinalSubmitJob(
     fun start(): ScheduledExecutorService {
         val ex = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "auto-final-submit").apply { isDaemon = true } }
         fun tick() {
-            runCatching { runOnce() }.onFailure { log.error("auto Final Submit pass failed", it) }
+            runCatching { runOnce() }.onFailure { it.exitIfFatal(log, "auto Final Submit"); log.error("auto Final Submit pass failed", it) }
             ex.schedule({ tick() }, delayToNextRun(clock.now()).toMillis(), TimeUnit.MILLISECONDS)
         }
         ex.execute { tick() }

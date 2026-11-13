@@ -36,7 +36,7 @@ class BackendCoreAsksV0061Test {
             c.exec(File(System.getProperty("aron.seed")).resolve("../../infra/sql/devseed-smoke-outlet.sql").readText())
             outletsBefore = c.scalar(SEED_FINGERPRINT)!!
         }
-        db.migrated()
+        db.migratedByFlyway()
     }
 
     @AfterAll

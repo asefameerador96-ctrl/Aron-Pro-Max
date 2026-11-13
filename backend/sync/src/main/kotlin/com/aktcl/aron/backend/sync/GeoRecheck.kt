@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.sync
 
+import com.aktcl.aron.backend.platform.exitIfFatal
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.IngestRecord
@@ -215,7 +216,7 @@ class GeoRecheckSweepJob(
     fun start() {
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "geo-recheck-sweep").apply { isDaemon = true } }.scheduleWithFixedDelay({
             runCatching { tick() }.onSuccess { if (it > 0) log.info("geo re-check sweep stored {} verdict(s)", it) }
-                .onFailure { log.error("geo re-check sweep failed", it) }
+                .onFailure { it.exitIfFatal(log, "geo re-check sweep"); log.error("geo re-check sweep failed", it) }
         }, 2, everyMin, TimeUnit.MINUTES)
     }
 

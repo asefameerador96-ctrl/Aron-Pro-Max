@@ -2,6 +2,7 @@ package com.aktcl.aron.backend.analytics
 
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
+import com.aktcl.aron.backend.platform.exitIfFatal
 import org.jdbi.v3.core.Handle
 import org.slf4j.LoggerFactory
 import kotlinx.datetime.toJavaLocalDate
@@ -267,13 +268,25 @@ class AggregationWorker(
         ).bind("from", today.minusDays(maxDays.toLong())).mapTo(Int::class.java).one()
     }
 
+    /** Test seam: the pass body. */
+    internal var passBody: () -> Unit = { rebuildOnce(ASWAS_MARKER); refreshDimensionsIfDue(); runUntilIdle(); reconcileIfDue() }
+
+    /**
+     * One loop pass. A failure is logged at ERROR with what a diagnosis needs and nothing that can carry data: the exception class, the classes of
+     * the cause chain, the SQLState of an SQLException (a code), and the stack frames (class, method, file, line), never an exception message.
+     * An Exception is logged and the loop goes on; an Error is logged once and ends the process ([exitIfFatal]), so the platform restarts the revision (a worker that is alive but no longer aggregates is the worst state); an interrupt restores the flag and ends the pass quietly.
+     */
+    internal fun pass() {
+        try { passBody() }
+        catch (e: InterruptedException) { Thread.currentThread().interrupt() }
+        catch (e: Exception) { log.error("aggregation pass failed: {}", scrubbed(e)) }
+        catch (e: Error) { e.exitIfFatal(log, "aggregation pass") }
+    }
+
     /** Background loop for the `worker` role: poll every [interval] (default 5 s keeps the 60 s freshness goal with room). */
     fun start(interval: Duration = Duration.ofSeconds(5)): ScheduledExecutorService {
         val ex = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "aggregation-worker").apply { isDaemon = true } }
-        ex.scheduleWithFixedDelay({
-            runCatching { rebuildOnce(ASWAS_MARKER); refreshDimensionsIfDue(); runUntilIdle(); reconcileIfDue() }
-                .onFailure { log.error("aggregation pass failed", it) }
-        }, 0, interval.toMillis(), TimeUnit.MILLISECONDS)
+        ex.scheduleWithFixedDelay({ pass() }, 0, interval.toMillis(), TimeUnit.MILLISECONDS)
         return ex
     }
 
@@ -306,4 +319,12 @@ class AggregationWorker(
     private fun threshold(): Int = runCatching { config?.int("cfg.geo.suspicious_score_threshold") }.getOrNull() ?: Aggregator.DEFAULT_SUSPICIOUS_THRESHOLD
 
     companion object { const val CONSUMER = "dw-projector"; const val RECONCILE_CONSUMER = "dw-reconcile"; const val MAX_ATTEMPTS = 8; private const val BACKOFF_BASE_SECONDS = 5; private const val BACKOFF_CAP_SECONDS = 900; const val ASWAS_MARKER = "dw-rebuild-aswas-1"; private const val MAX_TRACKED_GAP = 10_000L }
+}
+
+/** Class names, SQLStates and stack frames of [t] and its cause chain: no message, so nothing a row could have put into one. */
+internal fun scrubbed(t: Throwable): String {
+    val chain = generateSequence(t) { it.cause }.take(8).toList()
+    val states = chain.mapNotNull { (it as? java.sql.SQLException)?.sqlState }
+    val frames = chain.last().stackTrace.take(12).joinToString(" <- ")
+    return "class=${t.javaClass.name} causes=${chain.drop(1).joinToString(">") { it.javaClass.name }.ifEmpty { "none" }} sqlstate=${states.firstOrNull() ?: "none"} frames=$frames"
 }

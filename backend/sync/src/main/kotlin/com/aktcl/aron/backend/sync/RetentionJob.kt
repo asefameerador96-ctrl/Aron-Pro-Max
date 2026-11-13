@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.sync
 
+import com.aktcl.aron.backend.platform.exitIfFatal
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.rules.BusinessDate
@@ -125,7 +126,7 @@ class RetentionJob(
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "retention").apply { isDaemon = true } }.scheduleWithFixedDelay({
             runCatching { tick() }.onSuccess { r ->
                 if (r.partitionsCreated > 0 || r.manifestsPlanned > 0) log.info("retention: {} partition(s) created, {} archive manifest(s) planned", r.partitionsCreated, r.manifestsPlanned)
-            }.onFailure { log.error("retention job failed", it) }
+            }.onFailure { it.exitIfFatal(log, "retention"); log.error("retention job failed", it) }
         }, 1, everyHours * 60, TimeUnit.MINUTES)
     }
 }

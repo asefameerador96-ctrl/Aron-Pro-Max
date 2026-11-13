@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.sync
 
+import com.aktcl.aron.backend.platform.exitIfFatal
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.AronPrincipal
 import com.aktcl.aron.backend.platform.Database
@@ -176,7 +177,7 @@ class BundlePreGenerator(
 
     fun start(everyMin: Long = 1) {
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "bundle-pregen").apply { isDaemon = true } }.scheduleWithFixedDelay({
-            runCatching { tick() }.onFailure { log.error("bundle pre-generation tick failed", it) }
+            runCatching { tick() }.onFailure { it.exitIfFatal(log, "bundle pre-generation"); log.error("bundle pre-generation tick failed", it) }
         }, 1, everyMin, TimeUnit.MINUTES)
     }
 
