@@ -54,7 +54,9 @@ DaySubmitPayload:
       - phone
       - server
       description: '1.16.0, optional: whose clock stamped this record''s `captured_at`, the anchor of `late_rows_after_sales_submit`.
-        Phones omit it (their own clock). The server sets `server` on the online Sales Submit when the client sent
-        no `captured_at` or one outside the plausibility bound (more than 6 hours from the server clock, or outside
-        the business date +/- 1 day in Dhaka time). It is stored with the record in the same write, so a retry,
-        a quarantine and its release keep it.'
+        Phones omit it (their own clock). Only the server writes it: on the online Sales Submit it sets `server`
+        when the client sent no `captured_at` or one outside the plausibility bound (more than 6 hours before or
+        more than 5 minutes after the server''s receipt time; the business date plays no part). A device record
+        that carries the member is still accepted, but the member is dropped before anything is stored (a device
+        Sales Submit is `phone` by definition). It is stored with the record in the same write, so a retry, a quarantine
+        and its release keep it.'

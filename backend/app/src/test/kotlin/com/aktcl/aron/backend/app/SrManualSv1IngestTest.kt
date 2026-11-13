@@ -677,7 +677,7 @@ class SrManualSv1IngestTest {
 
     // ---------------------------------------------------------------------------------------------- review B5
 
-    private fun onlineReq(captured: String?, cycle: Int = 1, uuid: String = uuid()) = com.aktcl.aron.backend.sync.SalesSubmitRequest(uuid, "route_day", routeId, day, cycle, buildJsonObject {}, buildJsonObject {
+    private fun onlineReq(captured: String?, cycle: Int = 1, uuid: String = uuid(), date: String = day) = com.aktcl.aron.backend.sync.SalesSubmitRequest(uuid, "route_day", routeId, date, cycle, buildJsonObject {}, buildJsonObject {
         for (k in listOf("active_memo_count", "gross_mtk", "offer_discount_mtk", "drp_discount_mtk", "qc_deduction_mtk", "net_mtk", "paid_mtk", "due_mtk", "due_collected_mtk")) put(k, 0)
         put("net_by_category_mtk", buildJsonObject {}); put("issued_qty_base_by_sku", buildJsonObject {}); put("sold_qty_base_by_sku", buildJsonObject {})
     }, false, 0, captured)
@@ -742,19 +742,47 @@ class SrManualSv1IngestTest {
     }
 
     @Test
-    fun anImplausiblePhoneClockOnTheOnlineSubmitFallsBackToTheServerClock() = withCover(sr, routeId) {
+    fun theOnlineAnchorBoundIsAboutTheClockOnlyAndAsymmetric() = withCover(sr, routeId) {
         val phone = principalOf("sr1001", Role.SR, phone = true)
         fun stored(cu: String) = fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT to_char(captured_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') FROM app.route_day_event WHERE client_uuid = CAST(:c AS uuid)").bind("c", cu).mapTo(String::class.java).one() }
-        for ((label, captured) in listOf("a year ahead" to now.plusSeconds(400L * 86400), "a day behind" to now.minusSeconds(86400), "seven hours behind (past the skew bound)" to now.minusSeconds(7 * 3600), "two days before the business date" to Instant.parse("2026-12-31T04:00:00Z"))) {
+        fun case(label: String, captured: Instant?, want: String, date: String = day) {
             cleanSubmits(sr)
-            val r = onlineReq(captured.toString())
+            val r = onlineReq(captured?.toString(), date = date)
             dayService().salesSubmit(phone, r)
-            assertEquals("server", eventClock(r.client_uuid), label); assertEquals(now, Instant.parse(stored(r.client_uuid)), "$label: the server's time is the anchor")
+            assertEquals(want, eventClock(r.client_uuid), label)
+            assertEquals(if (want == "server" || captured == null) now else captured, Instant.parse(stored(r.client_uuid)), "$label: the anchor is ${if (want == "server") "the server's time" else "the phone's time"}")
         }
+        case("slow clock, inside 6 hours", now.minusSeconds(5 * 3600 + 3000), "phone")
+        case("more than 6 hours in the past", now.minusSeconds(6 * 3600 + 60), "server")
+        case("a little ahead, inside 5 minutes", now.plusSeconds(4 * 60), "phone")
+        case("more than 5 minutes in the future (a future anchor would hide late rows)", now.plusSeconds(5 * 60 + 30), "server")
+        case("a year ahead", now.plusSeconds(400L * 86400), "server")
+        case("no clock at all", null, "server")
+        // a back-dated business date with an accurate phone clock is NOT marked server: the bound is about the clock only (ingest allows cfg.sync.max_backdate_days = 7)
         cleanSubmits(sr)
-        val ok = onlineReq(now.minusSeconds(5 * 3600).toString())   // five hours behind but on the business date: plausible
-        dayService().salesSubmit(phone, ok)
-        assertEquals("phone", eventClock(ok.client_uuid)); assertEquals(now.minusSeconds(5 * 3600), Instant.parse(stored(ok.client_uuid)))
+        val back = onlineReq(now.minusSeconds(60).toString(), date = "2026-12-31")
+        dayService().salesSubmit(phone, back)
+        assertEquals("phone", eventClock(back.client_uuid), "a submit today for business date D-3 keeps the phone's clock")
+    }
+
+    @Test
+    fun aDevicesAnchorClockIsDroppedBeforeAnythingIsStoredAndTheRecordIsStillAccepted() = withCover(sr, routeId) {
+        val rec = submitRec(routeId).let { r -> JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + ("anchor_clock" to JsonPrimitive("server"))))) }
+        val ack = send(sr, listOf(rec))
+        assertEquals("accepted", ack.ack(rec), "an extra member from a client is not a reason to refuse a field record")
+        assertEquals("phone", eventClock(uuidOf(rec)), "stored without it: a device Sales Submit is phone by definition")
+        assertEquals(0L, count("SELECT count(*) FROM app.route_day_event WHERE client_uuid = CAST('${uuidOf(rec)}' AS uuid) AND anchor_clock IS NOT NULL"), "no column value at all")
+        assertEquals("phone", anchorShown(), "the route-day read says phone")
+        assertEquals("duplicate", send(sr, listOf(rec)).ack(rec), "the registry hash is that of the payload as sent: a replay answers duplicate")
+        // a held copy is stripped too: a device record quarantined and later released by a reviewer does not become server-stamped
+        val sr4 = ensureUser("sr4004")
+        val held = JsonObject(rec + ("client_uuid" to JsonPrimitive(uuid())) + ("family_uuid" to JsonPrimitive(uuid())))
+        assertEquals("quarantined", send(sr4, listOf(held)).acks.single().status)
+        val qid = count("SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST('${uuidOf(held)}' AS uuid) ORDER BY id DESC LIMIT 1")
+        assertEquals(0L, count("SELECT count(*) FROM app.sync_quarantine WHERE id = $qid AND jsonb_exists(payload -> 'payload', 'anchor_clock')"), "the held copy has no anchor_clock")
+        ingest.acceptQuarantined(qid, null, ensureUser("admin1001"), "released in the anchor-clock test")
+        assertEquals("phone", eventClock(uuidOf(held)))
+        cleanSubmits(sr4)
     }
 
     @Test
@@ -776,25 +804,15 @@ class SrManualSv1IngestTest {
     }
 
     @Test
-    fun aServerStampedSubmitHeldInQuarantineKeepsItsClockWhenReleased() {
-        // a second SR who does not hold the route uploads an online-style submit: held for review (no assignment), then released by an admin
-        val sr4 = ensureUser("sr4004")
-        val rec = envelope("day_submit", uuid(), uuid(), 0, buildJsonObject {
-            put("scope", "route_day"); put("submit_cycle", 1); put("device_counts", buildJsonObject {})
-            put("device_money", buildJsonObject {
-                for (k in listOf("active_memo_count", "gross_mtk", "offer_discount_mtk", "drp_discount_mtk", "qc_deduction_mtk", "net_mtk", "paid_mtk", "due_mtk", "due_collected_mtk")) put(k, 0)
-                put("net_by_category_mtk", buildJsonObject {}); put("issued_qty_base_by_sku", buildJsonObject {}); put("sold_qty_base_by_sku", buildJsonObject {})
-            })
-            put("rejected_count", 0); put("quarantined_count", 0); put("pending_count", 0); put("submitted_with_dues", false)
-            put("dues_outstanding_mtk", 0); put("retailers_with_dues", 0); put("stock_slip_printed", false); put("anchor_clock", "server")
-        }, routeId)
-        val res = send(sr4, listOf(rec))
-        val ack = res.acks.single()
-        assertEquals("quarantined", ack.status, ack.toString())
-        assertEquals(null, eventClock(uuidOf(rec)), "held: nothing stored yet")
-        val qid = count("SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST('${uuidOf(rec)}' AS uuid) ORDER BY id DESC LIMIT 1")
+    fun aServerStampedOnlineSubmitHeldInQuarantineKeepsItsClockWhenReleased() {
+        // an SR who does not hold the route presses Sales Submit online with an older client (no phone clock): the server holds the record, an admin releases it
+        val sr4 = ensureUser("sr4004"); val phone4 = principalOf("sr4004", Role.SR, phone = true)
+        val r = onlineReq(null)
+        org.junit.jupiter.api.assertThrows<com.aktcl.aron.backend.platform.ApiProblem> { dayService().salesSubmit(phone4, r) }   // 409: not stored, held
+        assertEquals(null, eventClock(r.client_uuid), "held: nothing stored yet")
+        val qid = count("SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST('${r.client_uuid}' AS uuid) ORDER BY id DESC LIMIT 1")
         ingest.acceptQuarantined(qid, null, ensureUser("admin1001"), "released in the anchor-clock test")
-        assertEquals("server", eventClock(uuidOf(rec)), "the clock travelled with the record through quarantine and release")
+        assertEquals("server", eventClock(r.client_uuid), "the clock travelled with the record through quarantine and release")
         assertEquals("server", anchorShown())
         cleanSubmits(sr4)
     }

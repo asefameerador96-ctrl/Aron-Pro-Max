@@ -5865,7 +5865,7 @@ export interface components {
             retailers_with_dues: number;
             stock_slip_printed: boolean;
             /**
-             * @description 1.16.0, optional: whose clock stamped this record's `captured_at`, the anchor of `late_rows_after_sales_submit`. Phones omit it (their own clock). The server sets `server` on the online Sales Submit when the client sent no `captured_at` or one outside the plausibility bound (more than 6 hours from the server clock, or outside the business date +/- 1 day in Dhaka time). It is stored with the record in the same write, so a retry, a quarantine and its release keep it.
+             * @description 1.16.0, optional: whose clock stamped this record's `captured_at`, the anchor of `late_rows_after_sales_submit`. Phones omit it (their own clock). Only the server writes it: on the online Sales Submit it sets `server` when the client sent no `captured_at` or one outside the plausibility bound (more than 6 hours before or more than 5 minutes after the server's receipt time; the business date plays no part). A device record that carries the member is still accepted, but the member is dropped before anything is stored (a device Sales Submit is `phone` by definition). It is stored with the record in the same write, so a retry, a quarantine and its release keep it.
              * @enum {string}
              */
             anchor_clock?: "phone" | "server";
@@ -7044,7 +7044,7 @@ export interface components {
             device_money: components["schemas"]["MoneyTotals"];
             submitted_with_dues: boolean;
             dues_outstanding_mtk: components["schemas"]["MtkNonNegative"];
-            /** @description 1.16.0, optional: the phone's own clock at the moment the rep pressed Sales Submit, in the same format and from the same clock as the `captured_at` of the record envelopes. The server stores it as the anchor of `RouteDayState.late_rows_after_sales_submit` (rows the phone captured after it are late). Absent (an older client) or implausible (more than 6 hours from the server clock, or outside the business date +/- 1 day in Dhaka time): the server stamps its own time, records it with the Sales Submit record (`anchor_clock = server`) and the route-day says `late_rows_anchor = server`, so a supervisor knows the count may be off by clock skew. An unparseable value is `400 ERR_VALIDATION` pointer `/captured_at`. */
+            /** @description 1.16.0, optional: the phone's own clock at the moment the rep pressed Sales Submit, in the same format and from the same clock as the `captured_at` of the record envelopes. The server stores it as the anchor of `RouteDayState.late_rows_after_sales_submit` (rows the phone captured after it are late). Absent (an older client) or implausible (more than 6 hours before or more than 5 minutes after the server's receipt time; the business date plays no part, so a back-dated submit with an accurate clock stays `phone`): the server stamps its own time, records it with the Sales Submit record (`anchor_clock = server`) and the route-day says `late_rows_anchor = server`, so a supervisor knows the count may be off by clock skew. An unparseable value is `400 ERR_VALIDATION` pointer `/captured_at`. */
             captured_at?: components["schemas"]["Timestamp"];
         };
         FinalSubmitPreview: {

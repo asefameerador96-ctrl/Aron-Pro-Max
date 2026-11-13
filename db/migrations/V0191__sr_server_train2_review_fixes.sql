@@ -20,23 +20,6 @@ BEGIN
   END IF;
 END $$;
 
--- The index is built under the same NOWAIT retry as V0186..V0190 (a SHARE lock blocks writers to app.cluster for the build; the table is small).
-DO $$
-DECLARE n int := 0;
-BEGIN
-  LOOP
-    BEGIN
-      LOCK TABLE app.cluster IN SHARE MODE NOWAIT;
-      EXIT;
-    EXCEPTION WHEN lock_not_available THEN
-      n := n + 1;
-      IF n >= 120 THEN RAISE EXCEPTION 'V0191: app.cluster stayed locked for 60 s'; END IF;
-      PERFORM pg_sleep(0.5);
-    END;
-  END LOOP;
-  CREATE UNIQUE INDEX cluster_zone_name_norm_key ON app.cluster (zone_id, app.norm_cluster_name(name));
-END $$;
-
 -- 3. Per-record facts for the late-row count (review B4 R1, B5 finding 1): the table holds the EXCEPTIONS, one row for every memo or due collection that was
 --    stored while its route-day was Final Submitted (stored_closed is always true; absence of a row = stored while the day was open). It is classified ONCE, under the
 --    route-day lock, when the record is stored; a recount excludes exactly these rows from late_rows_after_sales_submit (they count under late_rows_after_final).
@@ -54,24 +37,8 @@ COMMENT ON COLUMN app.late_row_fact.created_at IS 'When the fact was written.';
 
 UPDATE app.db_role_grant SET except_tables = except_tables || '{late_row_fact}'::text[]
  WHERE role = 'api_rw' AND schema_name = 'app' AND object = '*/update' AND NOT ('late_row_fact' = ANY (except_tables));
-SELECT app.apply_db_role_grants();
+-- (the grants are applied once, at the end of this file)
 
--- Backfill (B5): memos and due collections stored BEFORE this table existed while a zone-day was closed have no fact; without one the first recount of such a route-day
--- would count them under late_rows_after_sales_submit as well as under late_rows_after_final. BEST AVAILABLE RECONSTRUCTION: a row whose received_at lies inside a
--- [final_submit.submitted_at, reopened_at) window of its zone-day (reopened_at null = still closed) is marked stored_closed. The zone is the route's zone, the rule the
--- B3 code used; it is exact for a row stored once, and may mark a row of a route that changed zone in between (pilot data, accepted). Runs once per record, no lock needed
--- on a table that did not exist before this migration. At fleet size run it in batches by business_date (it is one statement here: pilot size).
-INSERT INTO app.late_row_fact (client_uuid)
-SELECT m.client_uuid FROM app.memo m
-  JOIN app.route r ON r.id = m.route_id
-  JOIN app.final_submit f ON f.zone_id = r.zone_id AND f.business_date = m.business_date
-   AND m.received_at >= f.submitted_at AND (f.reopened_at IS NULL OR m.received_at < f.reopened_at)
-UNION
-SELECT d.client_uuid FROM app.due_collection d
-  JOIN app.route r ON r.id = d.route_id
-  JOIN app.final_submit f ON f.zone_id = r.zone_id AND f.business_date = d.business_date
-   AND d.received_at >= f.submitted_at AND (f.reopened_at IS NULL OR d.received_at < f.reopened_at)
-ON CONFLICT (client_uuid) DO NOTHING;
 
 -- 4. The clock of a route-day Sales Submit travels WITH the record (B5 finding 2): written by the same RecordWriter statement as the day_submit row, so a retry, a
 --    quarantine and its release, and a replay all keep it. NULL = phone clock; 'server' = the record's captured_at is the server's time (an older client's online
@@ -84,6 +51,49 @@ ALTER TABLE app.outlet_change_request ADD COLUMN approved_cluster_id bigint;
 COMMENT ON COLUMN app.outlet_change_request.approved_cluster_id IS 'The cluster the approval of a new-shop or cluster request put the outlet in (set once at the approval); null for other request types and for requests not yet approved.';
 CREATE OR REPLACE TRIGGER outlet_change_request_immutable BEFORE UPDATE OR DELETE ON app.outlet_change_request
   FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'status', 'status_changed_at', '=verified_by', '=verified_at', '=decided_by', '=decided_at', '=decision_reason', '=created_outlet_id', '=created_cluster_id', '=approved_cluster_id', 'data_origin');
+-- Requests approved BEFORE this migration have no recorded cluster: the outlet's cluster is the best available record of what the approval used, so a retry on an old approval
+-- keeps answering 409 already_approved_other_cluster. (NULL to a value is allowed by the write-once '=' of the trigger above.)
+UPDATE app.outlet_change_request q SET approved_cluster_id = o.cluster_id
+  FROM app.outlet o
+ WHERE q.status = 'approved' AND q.request_type IN ('new', 'cluster') AND q.approved_cluster_id IS NULL AND o.id = coalesce(q.created_outlet_id, q.outlet_id) AND o.cluster_id IS NOT NULL;
+
+-- Backfill (B5, B6): memos and due collections stored BEFORE this table existed while a zone-day was closed have no fact; without one the first recount of such a route-day
+-- would count them under late_rows_after_sales_submit as well as under late_rows_after_final. BEST AVAILABLE RECONSTRUCTION, NOT EXACT: a row whose received_at lies inside a
+-- [final_submit.submitted_at, reopened_at) window of its zone-day (reopened_at null = still closed) is marked stored_closed. received_at is the START time of the batch,
+-- while the live classification happened later, under the route-day lock, so a row whose batch straddled a close or a reopen can be mis-set (in both counters or in neither).
+-- Consequence: only rows stored BEFORE this migration, and only within the moment of a close or reopen; the late-row counts of such a day can be off by the rows of one batch.
+-- The zone is the route's zone (the rule the B3 code used); a route that changed zone in between can be mis-set too (pilot data, accepted).
+-- The final account starts with no such rows unless history is migrated; then the migration loader must write the facts from the vendor's data, not from this rule.
+-- At fleet size this backfill is driven per final_submit row, in batches, outside Flyway.
+INSERT INTO app.late_row_fact (client_uuid)
+SELECT m.client_uuid FROM app.memo m
+  JOIN app.route r ON r.id = m.route_id
+  JOIN app.final_submit f ON f.zone_id = r.zone_id AND f.business_date = m.business_date
+   AND m.received_at >= f.submitted_at AND (f.reopened_at IS NULL OR m.received_at < f.reopened_at)
+UNION
+SELECT d.client_uuid FROM app.due_collection d
+  JOIN app.route r ON r.id = d.route_id
+  JOIN app.final_submit f ON f.zone_id = r.zone_id AND f.business_date = d.business_date
+   AND d.received_at >= f.submitted_at AND (f.reopened_at IS NULL OR d.received_at < f.reopened_at)
+ON CONFLICT (client_uuid) DO NOTHING;
+
+-- Taken AFTER the backfills above (B6): the SHARE lock on app.cluster is held for the shortest time.
+-- The index is built under the same NOWAIT retry as V0186..V0190 (a SHARE lock blocks writers to app.cluster for the build; the table is small).
+DO $$
+DECLARE n int := 0;
+BEGIN
+  LOOP
+    BEGIN
+      LOCK TABLE app.cluster IN SHARE MODE NOWAIT;
+      EXIT;
+    EXCEPTION WHEN lock_not_available THEN
+      n := n + 1;
+      IF n >= 120 THEN RAISE EXCEPTION 'V0191: app.cluster stayed locked for 60 s'; END IF;
+      PERFORM pg_sleep(0.5);
+    END;
+  END LOOP;
+  CREATE UNIQUE INDEX cluster_zone_name_norm_key ON app.cluster (zone_id, app.norm_cluster_name(name));
+END $$;
 
 CREATE OR REPLACE VIEW dw.v_survey_response AS
 SELECT sr.business_date, sr.client_uuid AS response_uuid, sr.visit_client_uuid, sr.user_id, sr.route_id, rt.zone_id, v.outlet_id,

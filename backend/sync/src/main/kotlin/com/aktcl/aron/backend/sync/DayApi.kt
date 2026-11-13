@@ -188,8 +188,9 @@ fun Route.dayRoutes(d: DayDeps) {
 
 private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
 
-/** B5: an online Sales Submit's phone clock further than this from the server clock cannot anchor the late-row count (the server's time is used and marked `server`). */
-internal val ONLINE_ANCHOR_SKEW: Duration = Duration.ofHours(6)
+/** B6: an online Sales Submit's phone clock must lie within these skews of the server's receipt time, else the server's time is the anchor and it is marked `server`. */
+internal val ONLINE_ANCHOR_PAST_SKEW: Duration = Duration.ofHours(6)
+internal val ONLINE_ANCHOR_FUTURE_SKEW: Duration = Duration.ofMinutes(5)
 
 /** The AMO/TSO day state of [userId] on [date] (contract SupervisorDayState); null when the user has no such day. */
 internal fun supervisorDayState(h: Handle, userId: Long, date: LocalDate): SupervisorDayStateDto? =
@@ -251,7 +252,7 @@ class DayService(
                     .mapTo(String::class.java).findOne().orElse(null)
             }
             val res = try {
-                checkNotNull(ingest) { "Sales Submit needs the ingest service" }.ingest(Uploader(p.userId, p.role, p.scopeVersion, deviceId, deviceUuid, key?.let(DeviceProof::publicKey)), onlineBatch(req, deviceUuid))
+                checkNotNull(ingest) { "Sales Submit needs the ingest service" }.ingest(Uploader(p.userId, p.role, p.scopeVersion, deviceId, deviceUuid, key?.let(DeviceProof::publicKey), serverStamped = true), onlineBatch(req, deviceUuid))
             } catch (e: ApiProblem) {
                 // Two copies racing: the first one's record is stored; the second answers its state.
                 if (e.code != ProblemCode.ERR_SYNC_BATCH_UUID_REUSED || !storedFor(p.userId, req.client_uuid)) throw e
@@ -299,15 +300,14 @@ class DayService(
 
     /** The online submit as the record the outbox would carry; counts the request does not hold are zero (online means the day's outbox is empty). */
     /**
-     * The phone's clock for the online Sales Submit, or null when it cannot anchor the late-row count (B5): absent, unparseable, more than [ONLINE_ANCHOR_SKEW] from the
-     * server clock, or outside the business date +/- 1 day in Dhaka time. Null means: the record carries the server's time and `anchor_clock = server`.
+     * The phone's clock for the online Sales Submit, or null when it cannot anchor the late-row count (B5, B6): absent, unparseable, or not within the allowed skew of the server's
+     * receipt time: at most [ONLINE_ANCHOR_PAST_SKEW] in the past (a slow clock, a late send) and at most [ONLINE_ANCHOR_FUTURE_SKEW] in the future (a future anchor would hide late rows).
+     * The bound is about the CLOCK only; the business date plays no part (ingest allows `cfg.sync.max_backdate_days`, so a submit today for an earlier date with an accurate clock is fine).
+     * Null means: the record carries the server's time and `anchor_clock = server`.
      */
     internal fun plausiblePhoneClock(req: SalesSubmitRequest, now: java.time.Instant): java.time.Instant? {
         val t = req.captured_at?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() } ?: return null
-        if (Duration.between(t, now).abs() > ONLINE_ANCHOR_SKEW) return null
-        val day = runCatching { LocalDate.parse(req.business_date) }.getOrNull() ?: return null
-        val dhaka = java.time.ZoneId.of("Asia/Dhaka")
-        if (t < day.minusDays(1).atStartOfDay(dhaka).toInstant() || t >= day.plusDays(2).atStartOfDay(dhaka).toInstant()) return null
+        if (t.isBefore(now.minus(ONLINE_ANCHOR_PAST_SKEW)) || t.isAfter(now.plus(ONLINE_ANCHOR_FUTURE_SKEW))) return null
         return t
     }
 
