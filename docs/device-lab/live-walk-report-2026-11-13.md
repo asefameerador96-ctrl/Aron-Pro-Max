@@ -56,7 +56,8 @@ owner's screenshots in `docs/ui-reference/`: **not done yet** for any row (see "
 
 | 29 | Kill and relaunch, between screens | **pass** (partial) | `adb shell am force-stop` did **not** end the SR process (same pid before and after; SR is the device owner, so the OS probably protects it), and SR even reopened on the screen it was on. `adb shell am kill` (from the background) did end it. Cold start after that: 477 ms, the app returns to the last screen (Sales Submit) with its data, no crash, and Home stock went from 28 to 27 packets, matching the one-packet sale of row 26 (nothing lost, nothing doubled) | |
 | 30 | Leave the sale screen mid-sale | **pass** | The cart (draft with an item) was still there after leaving the screen and coming back | |
-| 31 | Kill in the middle of a sale, of a memo save and of a sync | **not done** | A mid-sale kill needs another force sale with a shop photo (owner's hands). Not tested: kill during memo save or during a sync | |
+| 31 | Kill in the middle of a sale | **pass** | Second force sale (another reason, another shop photo by the owner), call started, one packet in the cart; HOME then `am kill`; relaunch took 476 ms and SR came back on the same sale screen with the item still in the cart and the stock warning. Nothing was saved, nothing doubled. The draft was left unsaved | |
+| 32 | Kill in the middle of a memo save and of a sync | **not done** | Needs a timed kill during Print/save and during Sync data | |
 
 Correction to the note below: after the process was killed and restarted, Friends Store was out of range again (556 m, 3 refreshes), so the earlier "within the outlet's range" was force-sale state kept only while the app process stayed alive. That matches the rule that a force sale must never count as a clean geo sale; the server-side flags were not checked.
 
