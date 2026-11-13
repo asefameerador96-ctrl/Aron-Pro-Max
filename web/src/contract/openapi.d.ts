@@ -6830,27 +6830,14 @@ export interface components {
             route_id: components["schemas"]["Id"];
             route_name: string;
         };
-        /** @description Sales history of one outlet x SKU in BASE units (sticks / pieces; contract 1.16.0). `previous_day` is the outlet's most recent sale day before the bundle date within the last 30 business days (null when none), `previous_day_qty_base` the quantity of this SKU on that day (0 when the SKU was not sold then). `ads_hundredths` = average quantity per selling day x 100 over the 30 business days before the bundle date (a selling day is a day the outlet had a live memo; only sale lines of active, non-voided memos), rounded half up, an integer: 250 means 2.5 sticks per selling day. `sdlw_qty_base` = the quantity on the same weekday last week (bundle date minus 7 days). The phone shows packets by dividing with the SKU's pack_factor. */
+        /** @description Sales history of one outlet in BASE units (sticks / pieces; contract 1.16.0), one entry per outlet of the SR's own routes that sold in the last 30 business days. `previous_day` is the outlet's most recent selling day (a day it had a live memo) before the bundle date within that window. The phone shows packets by dividing each SKU quantity with the SKU's pack_factor. */
         OutletSkuStat: {
             outlet_id: components["schemas"]["Id"];
-            sku_id: components["schemas"]["Id"];
-            previous_day: components["schemas"]["BusinessDate"] | null;
-            /**
-             * Format: int64
-             * @description Base units (sticks / pieces).
-             */
-            previous_day_qty_base: number;
-            /**
-             * Format: int64
-             * @description Average quantity per selling day x 100
-             */
-            ads_hundredths: number;
-            /**
-             * Format: int64
-             * @description Base units (sticks / pieces) on the same weekday last week.
-             */
-            sdlw_qty_base: number;
+            previous_day: components["schemas"]["BusinessDate"];
+            items: components["schemas"]["OutletSkuStatItem"][];
         };
+        /** @description One SKU of an `OutletSkuStat`, a POSITIONAL integer quadruple `[sku_delta, prev, ads, sdlw]` (contract 1.16.0; positional arrays and delta-coded SKU ids keep the section inside its budget, docs/04: at most 150 KB raw and 20 KB gzip at 70 outlets x 40 SKUs, every pair dense). Items ascend by SKU id: `sku_delta` is the SKU id in the first item of an entry and, in every later item, the difference from the previous item's SKU id. `prev` = base units (sticks / pieces) of the SKU on the outlet's `previous_day`; `ads` = average quantity per selling day x 100, in hundredths of a base unit (30 business days before the bundle date, rounded half up: 250 = 2.5 base units); `sdlw` = base units on the same weekday last week (bundle date minus 7 days). A zero is written 0. Only SKUs with a sale in the 30-business-day window are listed. */
+        OutletSkuStatItem: number[];
         /** @description The day bundle (docs/24 s4.10). One snapshot of all routes assigned to the user for the business date. */
         Bundle: {
             meta: components["schemas"]["BundleMeta"];
@@ -6883,7 +6870,7 @@ export interface components {
             tutorials?: components["schemas"]["TutorialItem"][];
             /** @description Contract 1.16.0 (SR only; absent or empty for other roles): the clusters a new shop or an outlet change may name, one row per cluster and route of the SR's own routes (a cluster that has an active outlet on the route). Reach is the SR's routes, taken from the token. */
             clusters?: components["schemas"]["BundleCluster"][];
-            /** @description Contract 1.16.0 (SR only; absent or empty for other roles): sales history per outlet x SKU of the SR's own routes, quantities in BASE units (sticks / pieces; the phone converts to packets with the SKU's pack_factor), ADS in integer hundredths of a base unit. Only pairs with a sale in the last 30 business days are listed. Versioned reference data: the bundle version changes when a row does. */
+            /** @description Contract 1.16.0 (SR only; absent or empty for other roles): sales history per outlet (one entry each) with its SKUs, for the SR's own routes, quantities in BASE units (sticks / pieces; the phone converts to packets with the SKU's pack_factor), ADS in integer hundredths of a base unit. Only pairs with a sale in the last 30 business days are listed. Versioned reference data: the bundle version changes when a row does. */
             outlet_sku_stats?: components["schemas"]["OutletSkuStat"][];
             /** @description The user's own outlet change requests of the last 30 days with status and rejection reason (SR and AMO own-request list). */
             my_outlet_requests?: components["schemas"]["OutletRequestSummary"][];

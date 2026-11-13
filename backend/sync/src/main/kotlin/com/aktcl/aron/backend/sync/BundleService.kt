@@ -637,10 +637,13 @@ class BundleService(
          GROUP BY s.outlet_id, s.sku_id, od.prev, od.days ORDER BY s.outlet_id, s.sku_id
         """.trimIndent(),
     ).bindArray("o", Long::class.javaObjectType, outletIds).bind("from", date.minusDays(30)).bind("d", date).bind("sdlw", date.minusDays(7)).map { rs, _ ->
-        Triple(rs.getLong("outlet_id"), rs.getObject("prev", LocalDate::class.java).toString(),
-            OutletSkuStatItem(rs.getLong("sku_id"), rs.getLong("prev_q").takeIf { it != 0L }, rs.getLong("ads"), rs.getLong("sdlw").takeIf { it != 0L }))
-    }.list().filter { it.third.ads != 0L || it.third.prev != null || it.third.sdlw != null }   // a pair with all three figures zero carries nothing
-        .groupBy({ it.first to it.second }, { it.third }).map { (k, v) -> OutletSkuStat(k.first, k.second, v) }
+        Triple(rs.getLong("outlet_id"), rs.getObject("prev", LocalDate::class.java).toString(), listOf(rs.getLong("sku_id"), rs.getLong("prev_q"), rs.getLong("ads"), rs.getLong("sdlw")))
+    }.list().filter { it.third[1] != 0L || it.third[2] != 0L || it.third[3] != 0L }   // a pair with all three figures zero carries nothing
+        .groupBy({ it.first to it.second }, { it.third }).map { (k, v) ->
+            // items ascend by SKU id; the first carries the id, each later one the DIFFERENCE from the previous item's id (small numbers: the section stays inside its budget)
+            val sorted = v.sortedBy { it[0] }
+            OutletSkuStat(k.first, k.second, sorted.mapIndexed { i, q -> if (i == 0) q else listOf(q[0] - sorted[i - 1][0]) + q.drop(1) })
+        }
 
     private fun openMemos(h: Handle, outletIds: List<Long>): List<OpenMemo> = if (outletIds.isEmpty()) emptyList() else h.createQuery(
         """

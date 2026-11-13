@@ -21,6 +21,9 @@ This is the heart of the system. The SR app must run a full selling day with no 
 
 Downloading the bundle is what the dashboard counts as "logged in". Keep it compact (see size budget); gzip it; allow a delta refresh (`?since=<timestamp>`) so a re-login isn't a full re-download.
 
+**Section budgets (lead ruling 2026-11-13; asserted in tests).** `outlet_sku_stats` (previous sale day, ADS, SDLW per outlet and SKU, base units): at most **150 KB raw and 20 KB gzip** at the dense worst case of 70 outlets x 40 SKUs
+(`SrServerTrain2ApiTest`); it is sent as one compact entry per outlet with short SKU members, zero members omitted. `clusters` (contract maximum 600 rows): at most 80 KB raw and 8 KB gzip. The Loyalty section keeps its own budget.
+
 ## The sync protocol
 
 1. **Capture offline.** Every `visit`, `memo`, `memo_line`, etc. gets a `client_uuid` at creation. The `visit` UUID is created first; its children reference it.

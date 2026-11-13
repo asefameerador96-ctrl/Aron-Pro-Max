@@ -10,7 +10,7 @@ Everything is additive: new optional members, new schemas, a new report key, a n
 | change | where | rows |
 |---|---|---|
 | `Bundle.clusters` (new schema `BundleCluster`: `cluster_id`, `name`, `route_id`, `route_name`): the clusters of the SR's OWN routes, one row per cluster and route, taken from the active outlets of the route; reach = the SR's routes from the token; empty for AMO / TSO | `GET /v1/sync/bundle` (a change means a full bundle, not a delta) | SRM-B-35, SRM-B-40 |
-| `Bundle.outlet_sku_stats` (new schema `OutletSkuStat`: `outlet_id`, `sku_id`, `previous_day`, `previous_day_qty_base`, `ads_hundredths`, `sdlw_qty_base`): sales history per outlet x SKU of the SR's own routes | `GET /v1/sync/bundle` | SRM-A-29 |
+| `Bundle.outlet_sku_stats` (new schemas `OutletSkuStat`: `outlet_id`, `previous_day`, `items`; `OutletSkuStatItem`: positional `[sku_delta, prev, ads, sdlw]`, see the shape section below): sales history per outlet and SKU of the SR's own routes | `GET /v1/sync/bundle` | SRM-A-29 |
 | report key `posm-survey` (answers per outlet, date, question, photo flag) | `ReportKey`, `POST /v1/reports/posm-survey/query` | SRM-B-08 |
 | `RouteDayState.late_rows_after_sales_submit` (integer or null): memos and due collections captured after the Sales Submit and stored before the Final Submit | supervisor route-day reads (`getLoginSubmitStatus` family); not sent in the bundle or the day-state read | SRM-B-30 |
 | config key `cfg.sale.journey_repeat_sale_enabled` (bool, default false, global) | config | journey |
@@ -18,7 +18,7 @@ Everything is additive: new optional members, new schemas, a new report key, a n
 ## Units and formulas (stated once)
 
 `outlet_sku_stats` is in **base units** (sticks / pieces), like every server quantity; the phone converts to packets with the SKU's `pack_factor`.
-`ads_hundredths` is an integer: average quantity per selling day x 100 (250 = 2.5 base units per selling day). Window: the 30 business days before the bundle date;
+`ads` (hundredths) is an integer: average quantity per selling day x 100 (250 = 2.5 base units per selling day). Window: the 30 business days before the bundle date;
 a *selling day* is a day the outlet had a live memo (active, with lines, not voided; sale lines only, `drp_reward`/`promo_free`/`free_sample` are left out, the
 rule of the Sales Submit digest); ADS = sum of the SKU's sale quantity in the window x 100 / number of selling days of the OUTLET, rounded half up. `previous_day` is
 the outlet's most recent selling day before the bundle date (null when none in the window), `previous_day_qty_base` the SKU's quantity on it (0 when the SKU was not sold
@@ -79,7 +79,8 @@ Loyalty lane's; V0182 is unused here.
 
 ## `outlet_sku_stats` shape and budget (lead ruling 2 of 2026-11-13)
 
-`Bundle.outlet_sku_stats` is one compact entry per outlet: `{outlet_id, previous_day, items: [{sku, prev?, ads, sdlw?}]}`; an omitted `prev` / `sdlw` is 0; pairs with all three figures zero are not sent
-(by construction every listed SKU has `ads > 0`). Member meanings and units (all BASE units): `prev` = quantity on `previous_day`; `ads` = average quantity per selling day x 100 (integer hundredths); `sdlw` =
-quantity on the same weekday last week; `previous_day` = the outlet's last selling day in the 30-business-day window. Budget (docs/04): at most 150 KB raw and 20 KB gzip at 70 outlets x 40 SKUs dense; asserted in
-`SrServerTrain2ApiTest.theWorstCaseStatsAndClustersSectionsStayInsideTheirBudgets`. This replaces the first flat shape (365 KB raw / 35 KB gzip).
+`Bundle.outlet_sku_stats` is one compact entry per outlet: `{outlet_id, previous_day, items: [[sku_delta, prev, ads, sdlw], ...]}`: positional integer quadruples, items ascending by SKU id, `sku_delta` = the SKU id in the first item and the difference from the
+previous item's id in every later one (decode by a running sum); a zero is written 0; pairs with all three figures zero are not sent (by construction every listed SKU has `ads > 0`). Member meanings and units (all BASE units): `prev` = quantity on `previous_day`; `ads` = average quantity per selling day x 100 (integer hundredths); `sdlw` =
+quantity on the same weekday last week; `previous_day` = the outlet's last selling day in the 30-business-day window. Budget (docs/04): at most 150 KB raw and 20 KB gzip at 70 outlets x 40 SKUs dense; measured **50 KB raw / 17.6 KB gzip** with every pair present and uniform random
+figures (prev and sdlw up to 200, ads up to 20000 hundredths); asserted in `SrServerTrain2ApiTest.theWorstCaseStatsAndClustersSectionsStayInsideTheirBudgets` (the `clusters` maximum of 600 rows: 61 KB raw / 5.5 KB gzip, also asserted).
+This replaces the first flat shape (365 KB raw / 35 KB gzip). Without SKU-id deltas the same data is 55 KB / 20.4 KB gzip (just over), which is why the ids are delta-coded.

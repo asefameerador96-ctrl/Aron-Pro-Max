@@ -87,16 +87,18 @@ class SrServerTrain2ApiTest {
             assertEquals(HttpStatusCode.OK, res.status, res.bodyAsText())
             val bundle = json(res.bodyAsText())
             val entry = bundle["outlet_sku_stats"]!!.jsonArray.map { it.jsonObject }.single { it["outlet_id"]!!.jsonPrimitive.content.toLong() == outlet }
-            fun item(code: String): JsonObject = entry["items"]!!.jsonArray.map { it.jsonObject }.single { it["sku"]!!.jsonPrimitive.content.toLong() == skuId(code) }
-            fun JsonObject.num(k: String) = this[k]?.jsonPrimitive?.content?.toLong() ?: 0L   // an omitted member is 0
+            // items are [sku_delta, prev, ads, sdlw]: the first sku_delta is the SKU id, later ones the difference from the previous item's id (items ascend by SKU id)
+            val decoded = entry["items"]!!.jsonArray.map { q -> q.jsonArray.map { it.jsonPrimitive.content.toLong() } }.let { raw -> var id = 0L; raw.map { q -> id += q[0]; listOf(id) + q.drop(1) } }
+            assertEquals(decoded.map { it[0] }, decoded.map { it[0] }.sorted(), "ascending by SKU id")
+            fun item(code: String): List<Long> = decoded.single { it[0] == skuId(code) }   // [sku, prev, ads, sdlw]
             // 3 selling days (d-7, d-3, d-1): A total 19 -> ADS 633.33 -> 633 hundredths; B total 4 -> 133
             assertEquals(day(1), entry["previous_day"]!!.jsonPrimitive.content)
-            assertEquals(3L, item(a).num("prev"), "previous sale day quantity in base units")
-            assertEquals(633L, item(a).num("ads"))
-            assertEquals(10L, item(a).num("sdlw"), "same weekday last week")
-            assertFalse(item(b).containsKey("prev"), "B was not sold on the previous sale day: the zero member is omitted")
-            assertEquals(133L, item(b).num("ads"))
-            assertFalse(item(b).containsKey("sdlw"))
+            assertEquals(3L, item(a)[1], "previous sale day quantity in base units")
+            assertEquals(633L, item(a)[2])
+            assertEquals(10L, item(a)[3], "same weekday last week")
+            assertEquals(0L, item(b)[1], "B was not sold on the previous sale day")
+            assertEquals(133L, item(b)[2])
+            assertEquals(0L, item(b)[3])
             // every stat row belongs to an outlet of the SR's own routes
             val own = bundle["routes"]!!.jsonArray.map { it.jsonObject }.flatMap { r -> r["outlets"]!!.jsonArray.map { it.jsonObject["outlet_id"]!!.jsonPrimitive.content.toLong() } }.toSet()
             assertTrue(bundle["outlet_sku_stats"]!!.jsonArray.all { it.jsonObject["outlet_id"]!!.jsonPrimitive.content.toLong() in own }, "stats of own outlets only")
@@ -152,8 +154,12 @@ class SrServerTrain2ApiTest {
             assertEquals(2L, scalar("SELECT count(*) FROM app.sync_rejected WHERE client_uuid IN ('$twin', '$dup') AND code = 'cluster_name_exists' AND payload IS NOT NULL")!!.toLong())
             assertEquals("cluster_name_exists", ack(sync(sr, listOf(record("outlet_change_request", payload.replace(name, name.uppercase()), route, cu = twin, family = twin))), twin)["code"]!!.jsonPrimitive.content, "the same uuid again: the same answer")
             // reach is the route's zone from the token: another division's AMO cannot see or verify the Mirpur proposal
-            val lkxSub = one("SELECT id FROM app.sub_channel WHERE status = 'active' ORDER BY id LIMIT 1")
-            assertEquals(HttpStatusCode.NotFound, postWeb("lkxamo1001", "/v1/outlet-requests/$req/verify", """{"sub_channel_id":$lkxSub}""").status, "outside the other division's reach")
+            val lkxAmo = phone("lkxamo1001", "amo")
+            val vc = UUID.randomUUID().toString()
+            val verif = ack(sync(lkxAmo, listOf(record("outlet_request_verification", """{"request_uuid":"$req","decision":"verified","fix":$fix}""", one("SELECT id FROM app.route WHERE code LIKE 'LKX-%' AND kind = 'sr' ORDER BY id LIMIT 1"), cu = vc, family = vc))), vc)
+            assertEquals("quarantined", verif.status(), verif.toString())
+            assertEquals("scope_out_of_reach", verif["code"]!!.jsonPrimitive.content, "another division's AMO cannot verify the proposal")
+            assertEquals("pending", scalar("SELECT status FROM app.outlet_change_request WHERE client_uuid = '$req'"))
             // a cluster proposal names no outlet
             val withOutlet = UUID.randomUUID().toString()
             val wo = ack(sync(sr, listOf(record("outlet_change_request", payload.replace("\"request_type\"", "\"outlet_id\":${one("SELECT min(id) FROM app.outlet")},\"request_type\"").replace(name, name + "x"), route, cu = withOutlet, family = withOutlet))), withOutlet)
@@ -274,7 +280,7 @@ class SrServerTrain2ApiTest {
         // docs/04: outlet_sku_stats at most 150 KB raw and 20 KB gzip at 70 outlets x 40 SKUs, every pair dense (every member present and non-zero); clusters small.
         val rnd = java.util.Random(7)
         val rows = (1L..70L).map { o -> com.aktcl.aron.backend.sync.OutletSkuStat(1000 + o, "2026-11-10", (1L..40L).map { k ->
-            com.aktcl.aron.backend.sync.OutletSkuStatItem(200 + k, 1L + rnd.nextInt(500), 1L + rnd.nextInt(60000), 1L + rnd.nextInt(500)) }) }
+            listOf(if (k == 1L) 201L else 1L, 1L + rnd.nextInt(200), 1L + rnd.nextInt(20000), 1L + rnd.nextInt(200)) }) }
         val enc = com.aktcl.aron.backend.platform.ResponseJson
         val json = enc.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.aktcl.aron.backend.sync.OutletSkuStat.serializer()), rows)
         fun gz(t: String) = java.io.ByteArrayOutputStream().also { java.util.zip.GZIPOutputStream(it).use { z -> z.write(t.toByteArray()) } }.size()

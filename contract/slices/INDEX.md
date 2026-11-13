@@ -249,7 +249,7 @@ Source: contract/openapi.yaml, version 1.16.0.
 - `schemas/SurveyDef.yaml` (2209 B)
 - `schemas/BundleCluster.yaml` (446 B)
 - `schemas/OutletSkuStat.yaml` (759 B)
-- `schemas/OutletSkuStatItem.yaml` (1077 B)
+- `schemas/OutletSkuStatItem.yaml` (1001 B)
 - `schemas/Bundle.yaml` (4181 B)
 - `schemas/BundlePage.yaml` (872 B)
 - `schemas/SectionDelta.yaml` (1012 B)

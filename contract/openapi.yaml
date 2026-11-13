@@ -10342,17 +10342,15 @@ components:
           maxItems: 400
           items: { $ref: '#/components/schemas/OutletSkuStatItem' }
     OutletSkuStatItem:
-      type: object
+      type: array
+      minItems: 4
+      maxItems: 4
       description: >-
-        One SKU of an `OutletSkuStat`; short member names keep the section inside its budget (docs/04: at most 150 KB raw and 20 KB gzip at 70 outlets x 40 SKUs, every pair dense).
-        An omitted `prev` or `sdlw` is 0. Only SKUs with a sale in the 30-business-day window are listed.
-      required: [sku, ads]
-      additionalProperties: false
-      properties:
-        sku: { $ref: '#/components/schemas/Id' }
-        prev: { type: integer, format: int64, minimum: 1, description: 'Base units (sticks / pieces) of this SKU on the outlet''s previous_day; omitted when 0.' }
-        ads: { type: integer, format: int64, minimum: 0, description: 'Average quantity per selling day x 100, in hundredths of a base unit (30 business days before the bundle date, rounded half up): 250 = 2.5 base units.' }
-        sdlw: { type: integer, format: int64, minimum: 1, description: 'Base units (sticks / pieces) of this SKU on the same weekday last week (bundle date minus 7 days); omitted when 0.' }
+        One SKU of an `OutletSkuStat`, a POSITIONAL integer quadruple `[sku_delta, prev, ads, sdlw]` (contract 1.16.0; positional arrays and delta-coded SKU ids keep the section inside its budget, docs/04: at most 150 KB raw
+        and 20 KB gzip at 70 outlets x 40 SKUs, every pair dense). Items ascend by SKU id: `sku_delta` is the SKU id in the first item of an entry and, in every later item, the difference from the previous item's SKU id. `prev` = base units (sticks / pieces) of the SKU on the outlet's `previous_day`; `ads` = average quantity per selling day x 100, in
+        hundredths of a base unit (30 business days before the bundle date, rounded half up: 250 = 2.5 base units); `sdlw` = base units on the same weekday last week (bundle date minus 7 days). A zero
+        is written 0. Only SKUs with a sale in the 30-business-day window are listed.
+      items: { type: integer, format: int64, minimum: 0 }
     Bundle:
       type: object
       description: The day bundle (docs/24 s4.10). One snapshot of all routes assigned to the user for the business date.
