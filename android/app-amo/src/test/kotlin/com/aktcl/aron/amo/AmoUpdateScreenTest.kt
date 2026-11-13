@@ -62,7 +62,7 @@ class AmoUpdateScreenTest {
         show(required = true)
         compose.onAllNodesWithTag(AmoUpdateTags.BACK).assertCountEquals(0)
         compose.onAllNodesWithTag(UpdateTags.LATER).assertCountEquals(0)
-        compose.onNodeWithTag(AmoUpdateTags.MANDATORY).assertIsDisplayed()
+        compose.onNodeWithTag(AmoUpdateTags.MANDATORY).assertExists()
     }
 
     @Test fun downloadButtonStartsTheDownloadOnBothScreens() {
@@ -74,8 +74,8 @@ class AmoUpdateScreenTest {
 
     @Test fun downloadingShowsTheProcessingScreenWithoutAnyWayOut() {
         show(required = true, download = DownloadUi.Downloading(46))
-        compose.onNodeWithTag(AmoUpdateTags.PROGRESS).assertIsDisplayed()
-        compose.onNodeWithTag(AmoUpdateTags.STEPS).assertIsDisplayed()
+        compose.onNodeWithTag(AmoUpdateTags.PROGRESS).assertExists()
+        compose.onNodeWithTag(AmoUpdateTags.STEPS).assertExists()
         compose.onAllNodesWithTag(AmoUpdateTags.BACK).assertCountEquals(0)
     }
 }

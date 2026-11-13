@@ -85,13 +85,13 @@ fun AmoUpdateScreen(
     when (amoUpdateLook(required, download)) {
         AmoUpdateLook.UPDATING -> UpdatingPage((download as DownloadUi.Downloading).percent, modifier)
         AmoUpdateLook.MANDATORY_PROMPT -> Column(
-            modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).testTag(UpdateTags.SCREEN).testTag(AmoUpdateTags.MANDATORY),
+            modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).testTag(UpdateTags.SCREEN),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(24.dp))
             Image(painterResource(R.drawable.amo_update_mandatory), null, Modifier.fillMaxWidth(0.8f))
             Spacer(Modifier.height(24.dp))
-            Text(stringResource(R.string.amo_upd_mandatory), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center, color = Color(0xFF212121), modifier = Modifier.padding(horizontal = 8.dp))
+            Text(stringResource(R.string.amo_upd_mandatory), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center, color = Color(0xFF212121), modifier = Modifier.padding(horizontal = 8.dp).testTag(AmoUpdateTags.MANDATORY))
             Spacer(Modifier.height(32.dp))
             StateArea(download, onDownload, onInstall, onOpenUnknownSources, stringResource(R.string.amo_upd_button), gradient = true)
             Spacer(Modifier.height(24.dp))
@@ -175,7 +175,7 @@ private fun WideButton(text: String, onClick: () -> Unit, gradient: Boolean, ena
 private fun UpdatingPage(percent: Int, modifier: Modifier) {
     val p = percent.coerceIn(0, 100)
     Column(
-        modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).testTag(UpdateTags.SCREEN).testTag(AmoUpdateTags.PROGRESS),
+        modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).testTag(UpdateTags.SCREEN),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(40.dp))
@@ -183,7 +183,7 @@ private fun UpdatingPage(percent: Int, modifier: Modifier) {
         Spacer(Modifier.height(32.dp))
         Text(stringResource(SysR.string.update_amo_updating), style = MaterialTheme.typography.headlineSmall, color = Deep, modifier = Modifier.testTag(UpdateTags.AMO_HEADING))
         Spacer(Modifier.height(12.dp))
-        Canvas(Modifier.fillMaxWidth().height(14.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(14.dp).testTag(AmoUpdateTags.PROGRESS)) {
             drawRoundRect(Color(0xFFEDEDED), size = Size(size.width, size.height), cornerRadius = CornerRadius(size.height / 2))
             if (p > 0) drawRoundRect(Brush.horizontalGradient(listOf(Color(0xFF0A5CA8), Color(0xFF18B4E8))), size = Size(size.width * p / 100f, size.height), cornerRadius = CornerRadius(size.height / 2))
         }
