@@ -103,6 +103,8 @@
     <string name="out_owner">মালিক: %1$s</string>
     <string name="out_last_visit">শেষ ভিজিট %1$s</string>
     <string name="out_in_range">আপনি আউটলেটের সীমার মধ্যে আছেন।</string>
+    <string name="out_force_sale_open">এই কলটি ফোর্স সেল হিসেবে শুরু হয়েছে, আউটলেটের সীমার ভিতরে নয়।</string>
+    <string name="out_geo_unknown">এই কলের অবস্থান নিশ্চিত করা হয়নি।</string>
     <string name="out_distance_line">আনুমানিক %1$s মি দূরে · সীমা %2$s মি</string>
     <string name="out_refresh_left_line">রিফ্রেশ বাকি: %1$s বার</string>
     <string name="out_no_refresh_left">আর রিফ্রেশ করা যাবে না</string>

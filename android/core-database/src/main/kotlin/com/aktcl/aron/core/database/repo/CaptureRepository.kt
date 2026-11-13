@@ -85,7 +85,8 @@ class CaptureRepository(
         require(movements.isNotEmpty()) { "nothing to save" }
         requireUuids(*movements.map { it.clientUuid }.toTypedArray())
         db.withTransaction {
-            val fresh = movements.filterNot { purged(it.clientUuid) } // a purged movement replayed is not captured again
+            // a purged movement replayed is not captured again; one already stored (a retry of the same Save) is stored once
+            val fresh = movements.filterNot { purged(it.clientUuid) || capture.stockMovement(it.clientUuid) != null }
             if (fresh.isEmpty()) return@withTransaction emptyList()
             fresh.map { it.meta }.distinct().forEach { requireNotFinal(it, STOCK_MOVEMENT) }
             capture.insertStock(fresh)
@@ -109,7 +110,7 @@ class CaptureRepository(
      * Saves a memo with everything that belongs to it. Outbox order inside the transaction follows the family ranks
      * (memo, then lines and discounts, then QC lines), so the batch carries parents before children (s4.2).
      */
-    suspend fun recordSale(sale: SaleCapture) {
+    suspend fun recordSale(sale: SaleCapture, enforceStock: Boolean = false) {
         val m = sale.memo
         require(sale.lines.all { it.memoClientUuid == m.clientUuid }) { "every line must belong to the memo" }
         require(sale.discounts.all { it.memoClientUuid == m.clientUuid }) { "every discount line must belong to the memo" }
@@ -134,6 +135,7 @@ class CaptureRepository(
         db.withTransaction {
             if (purged(m.clientUuid)) return@withTransaction emptyList()
             requireOpenRouteDay(m.meta, "memo") // tso-manual X4a (R-W-11): a sale or an edit (a superseding memo)
+            if (enforceStock && capture.memo(m.clientUuid) == null) requireStockHeld(sale) // a replay of a saved memo aborts below, not here. D-OWNER-PREREQ-01 rule 2, read INSIDE this transaction
             val visit = checkNotNull(capture.visit(m.visitClientUuid)) { "memo ${m.memoNo} has no visit on this phone" }
             require(visit.outletId == m.outletId) { "memo ${m.memoNo} is for another outlet than its visit" }
             sale.editFix?.let {
@@ -155,6 +157,19 @@ class CaptureRepository(
         }
     }
 
+    /**
+     * Rule 2 (stock gate): the memo's lines plus its reward packs may not exceed the stock held, read from the rows stored NOW
+     * (inside the caller's transaction when it has one). An edit gets the superseded memo's quantity back. No stock row = zero.
+     */
+    private suspend fun requireStockHeld(sale: SaleCapture) {
+        val m = sale.memo
+        val requested = StockHeld.requested(sale.lines, sale.discounts)
+        if (requested.isEmpty()) return
+        val held = StockHeld.read(capture, m.meta.businessDate, ignoring = m.supersedesClientUuid)
+        val short = StockHeld.shortages(requested, held)
+        if (short.isNotEmpty()) throw OverStockException(short)
+    }
+
     suspend fun recordVisitClose(close: VisitCloseEntity) = db.withTransaction {
         if (purged(close.clientUuid)) return@withTransaction emptyList()
         requireUuids(close.clientUuid, close.visitClientUuid)
@@ -169,7 +184,7 @@ class CaptureRepository(
      * A sale numbered on this phone (F-SYS-027): the number is reserved in its own committed step, then the sale is written
      * with it in one transaction. Returns the memo number. If the save fails the number is burned, never reused.
      */
-    suspend fun recordNumberedSale(sale: SaleCapture, numbering: MemoNumbering): String {
+    suspend fun recordNumberedSale(sale: SaleCapture, numbering: MemoNumbering, enforceStock: Boolean = false): String {
         // A replay of a sale that was already sent and purged must not burn a memo number or look saved: it fails loudly, as a missing visit would.
         check(!purged(sale.memo.clientUuid)) { "memo ${sale.memo.clientUuid} was already saved and sent from this phone" }
         // A replay of a sale that is still stored (a retry after a kill and relaunch) gets its own number back and burns none.
@@ -177,8 +192,10 @@ class CaptureRepository(
         // tso-manual X4a (D-X4a-03): a sale the Final Submit lock refuses takes no memo number (checked again in recordSale);
         // follow-up (R-W-23): nor does one a standing Sales Submit refuses (the same route-day check, before the reserve)
         requireOpenRouteDay(sale.memo.meta, "memo")
+        // an over-stock sale takes no memo number either (checked again inside the saving transaction)
+        if (enforceStock) requireStockHeld(sale)
         val memoNo = MemoNumbers(db).reserve(sale.memo.meta.businessDate, numbering)
-        recordSale(sale.copy(memo = sale.memo.copy(memoNo = memoNo)))
+        recordSale(sale.copy(memo = sale.memo.copy(memoNo = memoNo)), enforceStock)
         return memoNo
     }
 

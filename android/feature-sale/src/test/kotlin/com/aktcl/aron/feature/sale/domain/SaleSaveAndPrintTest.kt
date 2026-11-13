@@ -32,7 +32,7 @@ class SaleSaveAndPrintTest {
 
     @Test fun theCommitStepSavesTheMemoWithoutAnyPrinterAndReturnsItsPrintModelOnce() = runTest {
         val repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
-        val visitUuid = ClientIds.newUuid(); val (v, f) = Fx.visit(visitUuid); repo.recordVisitOpen(v, f)
+        val visitUuid = ClientIds.newUuid(); val (v, f) = Fx.visit(visitUuid); repo.recordVisitOpen(v, f); Fx.seedStock(repo)
         val committer = SaleCommitter(repo, FakeNumbers(), { _, r -> Fx.meta().copy(routeId = r) }, { "2026-10-05T04:35:00.000Z" }, findMemo = { db.captureDao().memo(it) })
         val flow = SaleFlow(Mem(), { _, _ -> Fx.catalog.values.toList() }, committer)
         flow.start(SaleVisit(visitUuid, 50001, 10231, Fx.DATE, "outlet"))

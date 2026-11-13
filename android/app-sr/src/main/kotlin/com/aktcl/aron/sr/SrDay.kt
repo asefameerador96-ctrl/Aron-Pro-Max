@@ -633,7 +633,7 @@ class SrDay(
         val loaded = db.captureDao().stockBalanceOn(businessDate()).associate { it.skuId to it.qtyBase }
         // the on-hand figure (display only) from the same tracker the sale warning, the KPI strip and the Summary use
         val onHand = com.aktcl.aron.feature.stock.StockTracker.of(db, businessDate()).mapValues { it.value.current }
-        StockLoad(reference.skus(), loaded, guardStore = PrefsGuardStore(context, userId), currentBaseBySku = onHand).also { stock = it }
+        StockLoad(reference.skus(), loaded, currentBaseBySku = onHand).also { stock = it }
     }
     fun forgetStock() { stock = null }
 
@@ -766,13 +766,6 @@ class MediaPhotoPipeline(private val media: com.aktcl.aron.core.media.MediaCompo
 object NoCameraPipeline : PhotoPipeline {
     override suspend fun captureAndCompress(photoUuid: String): CapturedPhoto? = null
     override suspend fun discard(photoUuid: String) = Unit
-}
-
-/** Re-save guard of the stock screen kept across a kill and relaunch. */
-class PrefsGuardStore(context: Context, userId: Long) : StockLoad.GuardStore {
-    private val prefs = context.getSharedPreferences("aron-stock-guard-$userId", Context.MODE_PRIVATE)
-    override fun load(): Pair<String, Long>? = prefs.getString("sig", null)?.let { it to prefs.getLong("at", 0L) }
-    override fun save(signature: String, atMs: Long) { prefs.edit().putString("sig", signature).putLong("at", atMs).apply() }
 }
 
 /**

@@ -103,9 +103,10 @@ class StockScreenTest {
         assertTrue(compose.onAllNodesWithText("৬+১০").fetchSemanticsNodes().isNotEmpty())
     }
 
+    // D-AGATE-01: the refusal is now only "this Save is still running" (a double tap); a real second issue is no longer refused
     @Test fun refusedMessageShowsInBangla() {
         show(AppLanguage.BN, StockMessage.REFUSED_SAME_VALUES)
-        compose.onNodeWithText("এই মানগুলো এইমাত্র সংরক্ষণ করা হয়েছে। মান বদলান বা কয়েক মিনিট অপেক্ষা করুন।").assertExists()
+        compose.onNodeWithText("এই সংরক্ষণ এখনো চলছে। একটু অপেক্ষা করুন।").assertExists()
     }
 
     @Test fun printButtonOnlyAfterASaveAndNeverBlocksSave() {

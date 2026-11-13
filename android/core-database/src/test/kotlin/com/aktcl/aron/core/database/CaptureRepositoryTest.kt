@@ -99,7 +99,12 @@ class CaptureRepositoryTest {
         assertThrows(SQLiteConstraintException::class.java) { kotlinx.coroutines.runBlocking { dao.insertFix(fix.copy(ownerClientUuid = ClientIds.newUuid())) } }
         val stock = TestRows.stock()
         repo.recordStock(listOf(stock))
-        assertThrows(SQLiteConstraintException::class.java) { kotlinx.coroutines.runBlocking { repo.recordStock(listOf(stock.copy(qtyEntered = 99))) } }
+        // D-AGATE-01: a retry of the same Save (the same client uuid) is stored ONCE and changes nothing, instead of throwing;
+        // the stock screen now retries with the same uuids in place of the old 5-minute same-values refusal. The DAO's unique
+        // constraint is unchanged (below).
+        repo.recordStock(listOf(stock.copy(qtyEntered = 99)))
+        assertEquals(stock.qtyEntered, dao.stockMovement(stock.clientUuid)!!.qtyEntered)
+        assertThrows(SQLiteConstraintException::class.java) { kotlinx.coroutines.runBlocking { dao.insertStock(listOf(stock.copy(qtyEntered = 99))) } }
         val (att, attFix) = TestRows.attendance()
         repo.recordAttendance(att, attFix)
         assertThrows(SQLiteConstraintException::class.java) { kotlinx.coroutines.runBlocking { dao.insertAttendance(att) } }

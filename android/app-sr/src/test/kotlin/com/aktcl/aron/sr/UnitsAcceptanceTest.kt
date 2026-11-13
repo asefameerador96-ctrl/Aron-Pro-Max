@@ -83,6 +83,16 @@ class UnitsAcceptanceTest {
             val repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
             var seq = 0
             val committer = SaleCommitter(repo, { _, uuid -> "sr334001-261005-%03d".format(++seq) }, { _, route -> meta.copy(routeId = route) }, { "2026-10-05T04:35:00.000Z" }, findMemo = { db.captureDao().memo(it) })
+            // the stock gate (D-OWNER-PREREQ-01 rule 2): the day's issue is stored first, so every SKU below is really held
+            repo.recordStock(
+                skus.map { k ->
+                    val spec = com.aktcl.aron.rules.EntryUnits.resolve(k.baseUnit, k.basePerPack, k.entryUnitDefault)
+                    com.aktcl.aron.core.database.entity.StockMovementEntity(
+                        clientUuid = ClientIds.newUuid(), meta = meta, kind = "issue", skuId = k.skuId, qtyEntered = 500,
+                        unitEntered = spec.unit.wire, packFactor = spec.factor, qtyBase = spec.toBase(500), slipPrinted = false,
+                    )
+                },
+            )
             val catalog = RoomSaleReads(db, ReferenceRepository(db)).catalog(date, "outlet").associateBy { it.skuId }
             // D-SALE-ZERO-PRICE-01: the zero-price rows of the real catalogue are not offered on Sale, every other row is
             assertEquals(rows.count { it.outletMtk > 0 }, catalog.size)

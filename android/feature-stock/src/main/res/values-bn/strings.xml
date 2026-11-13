@@ -28,7 +28,7 @@
     <string name="stk_reason_save_first">আগে সংরক্ষণ করুন</string>
     <string name="stk_reason_connect_printer">প্রিন্টার কানেক্ট করুন</string>
     <string name="stk_saved">সংরক্ষিত হয়েছে। স্লিপ এখনো প্রিন্ট হয়নি।</string>
-    <string name="stk_refused">এই মানগুলো এইমাত্র সংরক্ষণ করা হয়েছে। মান বদলান বা কয়েক মিনিট অপেক্ষা করুন।</string>
+    <string name="stk_refused">এই সংরক্ষণ এখনো চলছে। একটু অপেক্ষা করুন।</string>
     <string name="stk_nothing">আগে ইস্যুর পরিমাণ দিন।</string>
     <string name="stk_high">পরিমাণটি অনেক বড়। সংরক্ষণের আগে দেখে নিন।</string>
     <string name="stk_slip_not_printed">স্টক স্লিপ এখনো প্রিন্ট হয়নি। বিক্রয় জমার আগে প্রিন্ট করুন।</string>

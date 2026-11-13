@@ -568,7 +568,7 @@ class AmoDay(
 
     suspend fun stockLoad(): StockLoad = stock ?: run {
         val loaded = db.captureDao().stockBalanceOn(businessDate()).associate { it.skuId to it.qtyBase }
-        StockLoad(reference.skus(), loaded, guardStore = PrefsGuardStore(context, userId)).also { stock = it }
+        StockLoad(reference.skus(), loaded).also { stock = it }
     }
     fun forgetStock() { stock = null }
 

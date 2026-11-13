@@ -367,14 +367,15 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (
     val unit = entryUnitLabel(sku.entryLabelKey)
     val name = skuDisplayName(sku)
     val entry = sku.entry
-    val max = MaxLineQty
+    // hard stop at line entry (D-OWNER-PREREQ-01 rule 2): the quantity cannot go above what is held, in this SKU's entry unit
+    val max = minOf(MaxLineQty, entry.fromBase(sku.stockBase.coerceAtLeast(0L)))
     Column {
         // the label is the hyphenated SKU code on one line (sr/stock.webp); nothing is printed between the cards
         PackCard(
             skuId = sku.skuId.toString(), skuCode = sku.code,
             quantity = localizedNumber(qty), onQuantityChange = { onQuantity(sku.skuId, parseQty(it).coerceIn(0L, max)) },
             onMinus = { onQuantity(sku.skuId, (qty - 1).coerceAtLeast(0)) }, onPlus = { onQuantity(sku.skuId, (qty + 1).coerceAtMost(max)) },
-            stock = sku.stockBase?.let { entryStockText(entry, it) } ?: "–",
+            stock = entryStockText(entry, sku.stockBase),
             caption = sku.entryPriceMtk?.let { stringResource(R.string.sale_price_per_unit, moneyBare(it, if (it % 10L == 0L) 2 else 3), unit) },
             minusLabel = stringResource(R.string.sale_less) + ", " + name, plusLabel = stringResource(R.string.sale_more) + ", " + name,
             quantityLabel = stringResource(R.string.sale_qty_a11y, localizedNumber(qty), unit) + ", " + name,
@@ -382,11 +383,13 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (
             category = packCategoryOf(sku.categoryCode),
             minusEnabled = qty > 0, plusEnabled = qty < max, onOpen = onOpen,
         )
-        // the over-stock state stays visible (a warning, never a block): the stock figure is named in red under the card
-        if (line?.exceedsStock == true) {
+        // the stock stop is said in words, not only by a dead plus: how many are held, or that none are (rule 2)
+        if (qty >= max) {
+            val held = entryStockText(entry, sku.stockBase)
             Text(
-                localizedDigits(stringResource(R.string.sale_stock_warning, entryStockText(entry, sku.stockBase ?: 0L), sku.name, unit)),
-                color = look.red, fontSize = 13.sp, modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 16.dp),
+                if (max <= 0L) stringResource(R.string.sale_no_stock, sku.name) else localizedDigits(stringResource(R.string.sale_stock_warning, held, sku.name, unit)),
+                color = if (line?.exceedsStock == true) look.red else look.inkMuted, fontSize = 13.sp,
+                modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 16.dp),
             )
         }
     }
@@ -533,6 +536,7 @@ private fun problemText(p: ReviewProblem): String = when (p) {
     is ReviewProblem.TooManyLines -> localizedDigits(stringResource(R.string.review_problem_too_many_lines, p.max.toString(), p.count.toString()))
     is ReviewProblem.UnitNotAllowed -> stringResource(R.string.review_problem_unit, p.skuId.toString())
     is ReviewProblem.QtyTooLarge -> stringResource(R.string.review_problem_qty_large, p.skuId.toString())
+    is ReviewProblem.OverStock -> localizedDigits(stringResource(R.string.review_problem_over_stock, p.skuName, p.heldEntry.toString(), entryUnitLabel(p.unitKey), p.requestedEntry.toString()))
     is ReviewProblem.PaidOutOfRange, is ReviewProblem.PaidNotPaisa, ReviewProblem.PaidNegative -> stringResource(R.string.review_problem_paid)
     ReviewProblem.NothingToSell -> stringResource(R.string.review_problem_nothing)
     is ReviewProblem.NetNegative -> stringResource(R.string.review_problem_net_negative)

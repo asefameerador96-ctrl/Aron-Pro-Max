@@ -103,6 +103,8 @@
     <string name="out_owner">Owner: %1$s</string>
     <string name="out_last_visit">Last visit %1$s</string>
     <string name="out_in_range">You are within the outlet\'s range.</string>
+    <string name="out_force_sale_open">This call was opened as a force sale, not inside the outlet\'s range.</string>
+    <string name="out_geo_unknown">This call\'s location was not confirmed.</string>
     <string name="out_distance_line">About %1$s m away · limit %2$s m</string>
     <string name="out_refresh_left_line">Refreshes left: %1$s</string>
     <string name="out_no_refresh_left">No more refreshes</string>

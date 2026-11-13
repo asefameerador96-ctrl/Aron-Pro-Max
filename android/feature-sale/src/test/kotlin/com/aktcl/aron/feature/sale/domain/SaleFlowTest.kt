@@ -39,7 +39,9 @@ class SaleFlowTest {
     private fun flow(store: DraftStore) = SaleFlow(store, { _, _ -> Fx.catalog.values.toList() }, committer())
     private suspend fun visit(): SaleVisit {
         val u = ClientIds.newUuid(); val (v, f) = Fx.visit(u)
-        CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }.recordVisitOpen(v, f)
+        val repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
+        repo.recordVisitOpen(v, f)
+        Fx.seedStock(repo)
         return SaleVisit(u, 50001, 10231, Fx.DATE, "outlet")
     }
 

@@ -41,6 +41,7 @@ class CheckerTest {
         visitUuid = ClientIds.newUuid()
         val (v, f) = Fx.visit(visitUuid)
         repo.recordVisitOpen(v, f)
+        Fx.seedStock(repo)
     }
     @After fun tearDown() = db.close()
 

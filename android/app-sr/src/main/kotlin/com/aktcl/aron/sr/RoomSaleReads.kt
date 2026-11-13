@@ -34,7 +34,7 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
     private val dao get() = db.captureDao()
     private val store = RoomMemoStore(db)
 
-    /** SKUs with a positive price of [priceType] on [date]; current stock = issued minus sold on live memos, null when the SKU has no stock row. */
+    /** SKUs with a positive price of [priceType] on [date]; stock held = issued + adjusted - QC returned - sold - reward packs on live memos; zero when the SKU has no stock row. */
     suspend fun catalog(date: String, priceType: String): List<SaleSku> {
         val stock = StockTracker.of(db, date)
         return reference.skus().mapNotNull { s ->
@@ -42,7 +42,7 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
             SaleSku(
                 skuId = s.skuId, code = s.code, categoryCode = s.categoryCode, name = s.shortName, nameBn = s.nameBn, baseUnit = s.baseUnit,
                 packFactor = s.basePerPack, unitPriceMtk = p.amountMtk, pricePerQty = p.perBaseQty, priceValidFrom = p.validFrom, entryUnitDefault = s.entryUnitDefault,
-                stockBase = stock[s.skuId]?.takeIf { it.hasStockRow }?.current,
+                stockBase = stock[s.skuId]?.current ?: 0L, // no stock entry today = zero (D-OWNER-PREREQ-01 rule 2)
             )
         }.filter { it.isOfferable } // D-SALE-ZERO-PRICE-01: a zero price is never offered on Sale (Stock still shows the SKU)
     }
@@ -159,7 +159,8 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
         val memos = store.memos(date)
         val stock = StockTracker.of(db, date)
         val issue = stock.mapValues { (_, b) -> b.issued }.filterValues { it != 0L }
-        val current = stock.filterValues { it.hasStockRow }.mapValues { (_, b) -> b.current }
+        // the SAME figure per SKU as the sale list's stock (D-AGATE-02): the Home category tile is only their sum, never a different read
+        val current = stock.mapValues { (_, b) -> b.current }
         // quantities in the entry unit (packets, boxes, dozens; docs/34 s4.2): the strip's unit is the label key of the category's first SKU
         val spec = skus.associate { it.skuId to EntryUnits.resolve(it.baseUnit, it.basePerPack, it.entryUnitDefault) }
         fun entered(m: Map<Long, Long>) = m.mapValues { (id, base) -> spec[id]?.fromBase(base) ?: base }
