@@ -302,9 +302,10 @@ class GiftPhotoRecordsTest {
 
     // ---- C-R2 finding 4: nothing is retryable for ever ----
 
+    private var finalSeq = 0
     private fun finalFlag(red: String, g: Long = cGift, expect: String) = world.withApi {
         with(world) {
-            val p = photo(null, 100, unit = red to 1, giftId = g)
+            val p = photo(null, 100 + 7L * (++finalSeq), unit = red to 1, giftId = g, flat = lat + 0.00001 * finalSeq)   // distinct content: not a content_duplicate of an earlier test photo
             repeat(2) { n -> val a = ack(sync(sr, listOf(p)), cu(p)); assertEquals(if (n == 0) "accepted" else "duplicate", a.status(), "send $n: stored once, never parked: $a") }
             val row = flag(p)
             assertEquals(expect, row["check_flag"]); assertEquals(true, row["is_duplicate"], "flagged, so never the unit's photo")
@@ -335,7 +336,7 @@ class GiftPhotoRecordsTest {
         val full = redemption(outlet, listOf(cGift to 1))   // fully stored: judged by the ordinary checks (unit 2 of a 1-unit gift)
         world.withApi {
             with(world) {
-                val p = photo(null, 100, unit = full to 2); assertEquals("accepted", ack(sync(sr, listOf(p)), cu(p)).status()); assertEquals("unit_out_of_range", flag(p)["check_flag"])
+                val p = photo(null, 300, unit = full to 2, flat = lat + 0.0005); assertEquals("accepted", ack(sync(sr, listOf(p)), cu(p)).status()); assertEquals("unit_out_of_range", flag(p)["check_flag"])
             }
         }
     }

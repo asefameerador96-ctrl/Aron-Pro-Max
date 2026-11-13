@@ -48,8 +48,8 @@ object LoyaltyLedger {
     class Credit(var left: Long, val exp: LocalDate?)
 
     /**
-     * Pure, deterministic. Replays every non-expiry row of ONE pair in `business_date` order (within a date: credits first, because a credit earned on a day is valid that day, then
-     * the row's created time, then its id). A voided redemption and its reversal are left out together. A debit dated d consumes only credits that were still valid on d
+     * Pure, deterministic. Replays every non-expiry row of ONE pair in `business_date` order (within a date: credits first, because a credit earned on a day is valid that day, and the credits
+     * among themselves by expiry (earliest first, none last), points, source id - NOT by arrival, so which credit absorbs a debt never depends on which synced first; then debits by created time, id). A voided redemption and its reversal are left out together. A debit dated d consumes only credits that were still valid on d
      * (`expires_on` null or >= d), the one expiring first first; it NEVER consumes a credit that had already lapsed on d. What it cannot fund becomes DEBT (that is a negative
      * balance), and EVERY LATER CREDIT FIRST SETTLES THAT DEBT (C-R2): only the remainder of a credit enters the pool, so points that were never really there cannot be handed
      * back or lapse twice (+100 expiring, run -100, an unfunded -100, +100 expiring: the second credit is wholly consumed by the debt and lapses nothing). `lapsed` = what is
@@ -58,7 +58,10 @@ object LoyaltyLedger {
     fun replay(rows: List<Row>, today: LocalDate): Replayed {
         val voided = rows.filter { it.sourceType == VOID }.map { it.sourceId }.toSet()
         val live = rows.filter { it.sourceType != EXPIRY && it.sourceType != VOID && !(it.sourceType == REDEMPTION && it.sourceId in voided) }
-            .sortedWith(compareBy<Row>({ it.businessDate }, { if (it.points > 0) 0 else 1 }, { it.at }, { it.id }))
+            .sortedWith(
+                compareBy<Row>({ it.businessDate }, { if (it.points > 0) 0 else 1 }, { if (it.points > 0) it.expiresOn ?: LocalDate.MAX else LocalDate.MIN },
+                    { if (it.points > 0) it.points else 0 }, { if (it.points > 0) it.sourceId else "" }, { it.at }, { it.id }),
+            )
         val pool = ArrayList<Credit>(); var debt = 0L; var net = 0L
         for (r in live) {
             net += r.points

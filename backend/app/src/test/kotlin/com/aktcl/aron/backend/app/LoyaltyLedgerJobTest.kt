@@ -72,6 +72,7 @@ class LoyaltyLedgerJobTest {
     private fun expirySum(programme: Long) = world.one("SELECT COALESCE(SUM(points), 0) FROM app.loyalty_ledger WHERE outlet_id = $outlet AND programme_id = $programme AND source_type = 'expiry'")
     private fun positiveExpiry(programme: Long) = world.one("SELECT count(*) FROM app.loyalty_ledger WHERE outlet_id = $outlet AND programme_id = $programme AND source_type = 'expiry' AND points > 0")
     private fun rows(programme: Long) = world.one("SELECT count(*) FROM app.loyalty_ledger WHERE outlet_id = $outlet AND programme_id = $programme")
+    private fun rows2(programme: Long) = world.rows("SELECT points, source_type, business_date, expires_on FROM app.loyalty_ledger WHERE outlet_id = $outlet AND programme_id = $programme ORDER BY id").joinToString { "${it["points"]}${it["source_type"].toString().take(3)}@${it["business_date"]}x${it["expires_on"]}" }
     private fun void(cu: String) = world.exec("UPDATE app.redemption SET voided_at = now() WHERE client_uuid = CAST('$cu' AS uuid)")
 
     @Test
@@ -167,7 +168,7 @@ class LoyaltyLedgerJobTest {
         val cs = ArrayList<C>(); var debt = 0L; var everDebt = false
         var d = from
         while (!d.isAfter(today)) {
-            evs.filter { it.delivered && !it.debit && it.date == d }.forEach {
+            evs.filter { it.delivered && !it.debit && it.date == d }.sortedWith(compareBy({ it.exp ?: LocalDate.MAX }, { it.pts })).forEach {   // a day's credits settle debt earliest-expiry first, not in arrival order
                 var amount = it.pts.toLong()
                 if (debt > 0) { val pay = minOf(debt, amount); debt -= pay; amount -= pay; seen?.let { s -> s.debtThenCredit++ } }
                 if (amount > 0) cs += C(amount, it.exp)
@@ -218,7 +219,7 @@ class LoyaltyLedgerJobTest {
                     evs.filter { it.debit && it.delivered && !it.voided }.let(posted::addAll)
                     for (i in 0..1) {
                         val m = model(evs.filter { it.programme == i }, date, base)
-                        assertEquals(m.first, balance(progs[i]), "trial $trial day $day prog $i: balance = model")
+                        assertEquals(m.first, balance(progs[i]), "trial $trial day $day prog $i: balance = model; events=" + evs.filter { it.programme == i }.joinToString { "${if (it.debit) "D" else "C"}${it.pts}@${it.date}exp${it.exp}${if (it.delivered) "" else "(undelivered)"}${if (it.voided) "(void)" else ""}" } + " ledger=" + rows2(progs[i]) + " L=" + m.second + " debt=" + m.third)
                         assertEquals(-m.second, expirySum(progs[i]), "trial $trial day $day prog $i: expiry rows sum to -L")
                         if (positiveExpiry(progs[i]) > positiveSeen[i]) { assertTrue(m.second < prevL[i], "trial $trial day $day prog $i: a positive expiry row only when the model's L went down"); positiveSeen[i] = positiveExpiry(progs[i]) }
                         prevL[i] = m.second

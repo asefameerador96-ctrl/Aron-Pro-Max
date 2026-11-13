@@ -272,9 +272,9 @@ class GiftChoiceRecordsTest {
         val (_, gOk) = ownProgramme("H1")
         val outOfReach = choice(outletLkx, gOk)                                  // the outlet is not on the uploader's route
         val wrongRole = choice(outletGold, gOk)                                  // an AMO does not choose Astha gifts (cfg.astha.gift_choice_roles)
-        val gDiamond = programmeOf("diamond_league", "H-DL", enrol = true); val kindFails = choice(outletGold, gDiamond)
-        val gNoEnrol = programmeOf("astha", "H-NE", enrol = false); val notEnrolled = choice(outletGold, gNoEnrol)
-        val gBoth = programmeOf("diamond_league", "H-BOTH", enrol = false); val bothFail = choice(outletGold, gBoth)
+        val gDiamond = programmeOf("diamond_league", "H_DL", enrol = true); val kindFails = choice(outletGold, gDiamond)
+        val gNoEnrol = programmeOf("astha", "H_NE", enrol = false); val notEnrolled = choice(outletGold, gNoEnrol)
+        val gBoth = programmeOf("diamond_league", "H_BOTH", enrol = false); val bothFail = choice(outletGold, gBoth)
         // scope_out_of_reach: the WHO check (role and reach); no other code waives the role check
         assertEquals(RecordOutcomeCode.SCOPE_OUT_OF_REACH, refusal(outOfReach, null)); assertNull(refusal(outOfReach, RecordOutcomeCode.SCOPE_OUT_OF_REACH))
         assertEquals(RecordOutcomeCode.SCOPE_OUT_OF_REACH, refusal(wrongRole, null, Role.AMO)); assertNull(refusal(wrongRole, RecordOutcomeCode.SCOPE_OUT_OF_REACH, Role.AMO))
