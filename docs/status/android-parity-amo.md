@@ -7,9 +7,9 @@ Nothing in this lane is walked on a device. Proof is unit tests, Roborazzi image
 
 | Finding (audit AMO section) | Decision | Commit | Image |
 |---|---|---|---|
-| Home: row 6 holds Report + Campaign Enrollment, Astha row 5 | FIX: Astha and Campaign Enrollment hook tiles in the old place, open "coming later" (D-PAR-AMO-01) | slice 1 | amo_home_* |
-| Home: old icon set (8 icons) | FIX: icons cropped from the owner's screenshot 08 into feature-amo res (core-ui untouched) | slice 1 | amo_home_* |
-| Control call: Manual Override opens the camera directly | FIX: camera opens on entry, menu follows the photo; page stays as fallback (D-PAR-AMO-02) | slice 1 | n/a (system camera) |
-| Control call: tiles in place under route/outlet/alphabet bar | RECORD: code already shows them in place (golden amo_cc_tiles_bn); the audited image was older. Icons now the old art | slice 1 | amo_cc_tiles_bn |
-| Control call: alphabet "সব" | FIX: "All" as the old app | slice 1 | amo_control_call_pick_* |
+| Home: row 6 holds Report + Campaign Enrollment, Astha row 5 | FIX: Astha and Campaign Enrollment hook tiles in the old place, open "coming later" (D-PAR-AMO-01) | 5a47720e, 50470e83 | amo_home_* |
+| Home: old icon set (8 icons) | FIX: icons cropped from the owner's screenshot 08 into feature-amo res (core-ui untouched) | 5a47720e, 50470e83 | amo_home_* |
+| Control call: Manual Override opens the camera directly | FIX: camera opens on entry, menu follows the photo; page stays as fallback (D-PAR-AMO-02) | 5a47720e, 50470e83 | n/a (system camera) |
+| Control call: tiles in place under route/outlet/alphabet bar | RECORD: code already shows them in place (golden amo_cc_tiles_bn); the audited image was older. Icons now the old art | 5a47720e, 50470e83 | amo_cc_tiles_bn |
+| Control call: alphabet "সব" | FIX: "All" as the old app | 5a47720e, 50470e83 | amo_control_call_pick_* |
 | Control call: extra "মূল্য সম্মতি" tile | KEEP-WITH-REASON: only when the server price-compliance flag is on (default off) | - | - |
