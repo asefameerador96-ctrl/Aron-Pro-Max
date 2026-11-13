@@ -180,7 +180,9 @@ object RecordWriter {
     private fun closeVisit(h: Handle, clientUuid: String, env: JsonObject, p: JsonObject, now: Instant): Result {
         val visit = p.str("visit_client_uuid")!!
         // The optional labels are stored as sent; a code the lists do not hold (unknown, or retired on the business date) only raises the flag.
-        val day = env.str("business_date")
+        // The VISIT's business date decides (a close sent a day later still belongs to the visit's day); the envelope's is only the fallback.
+        val day = h.createQuery("SELECT business_date::text FROM app.visit WHERE client_uuid = CAST(:v AS uuid)").bind("v", visit)
+            .mapTo(String::class.java).findOne().orElse(null) ?: env.str("business_date")
         fun unlisted(list: String, code: String?) = code != null && !h.createQuery(
             "SELECT EXISTS (SELECT 1 FROM app.code_list_item WHERE list_key = :l AND code = :c AND valid_from <= CAST(:d AS date) AND (valid_to IS NULL OR valid_to > CAST(:d AS date)))",
         ).bind("l", list).bind("c", code).bind("d", day).mapTo(Boolean::class.java).one()

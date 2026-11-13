@@ -56,6 +56,7 @@ class SrManualSv1ApiTest {
             assertEquals(today().toString(), empty["business_date"]!!.jsonPrimitive.content)
             val issued = postAs(tso, "/v1/admin/device-otps", """{"user_id":$srId,"reason":"New phone for the route today"}""")
             assertEquals(HttpStatusCode.Created, issued.status, issued.bodyAsText())
+            assertEquals("no-store", issued.headers["Cache-Control"], "the answer that carries a fresh code is never cached")
             val code = json(issued.bodyAsText())["otp"]!!.jsonPrimitive.content
             val page = json(getAs(tso, "/v1/supervisor/device-otps").bodyAsText())
             val row = page["items"]!!.jsonArray.map { it.jsonObject }.single { it["user_id"]!!.jsonPrimitive.content.toLong() == srId }
@@ -108,6 +109,74 @@ class SrManualSv1ApiTest {
             assertEquals(emptySet(), ids(tso), "an expired code")
             exec("UPDATE app.device_otp SET created_at = created_at - interval '1 day', expires_at = expires_at + interval '1 day' WHERE user_id = $lkxSrId")
             assertEquals(emptySet(), ids(lkxTso), "a code created on another business day")
+        }
+    }
+
+    @Test
+    fun theTeamListAndTheIssuePathUseOneZoneRuleTheHomeZoneFirstAndAreTodaysOnly() = world.withApi {
+        with(world) {
+            // D-SV2-01: lkxsr1001 works a route of the other division but its HOME zone is changed to the Mirpur zone: the Mirpur TSO may issue to it
+            // and sees it in its list, the other division's TSO neither issues nor lists it (one rule for both, never a code a TSO cannot list).
+            val lkxTso = phone("lkxtso1001", "tso")
+            val lkxSrId = one("SELECT id FROM app.app_user WHERE username = 'lkxsr1001'")
+            val mirpurZone = one("SELECT home_zone_id FROM app.app_user WHERE username = 'sr1001'")
+            val ownZone = one("SELECT home_zone_id FROM app.app_user WHERE id = $lkxSrId")
+            exec("UPDATE app.app_user SET home_zone_id = $mirpurZone, scope_version = scope_version + 1 WHERE id = $lkxSrId")
+            try {
+                exec("DELETE FROM app.device_otp WHERE user_id = $lkxSrId")
+                assertEquals(HttpStatusCode.Forbidden, postAs(lkxTso, "/v1/admin/device-otps", """{"user_id":$lkxSrId,"reason":"Not my SR any more"}""").status, "outside the other division TSO's reach")
+                val ok = postAs(tso, "/v1/admin/device-otps", """{"user_id":$lkxSrId,"reason":"Moved to the Mirpur zone"}""")
+                assertEquals(HttpStatusCode.Created, ok.status, ok.bodyAsText())
+                fun ids(r: String) = json(r)["items"]!!.jsonArray.map { it.jsonObject["user_id"]!!.jsonPrimitive.content.toLong() }.toSet()
+                assertTrue(lkxSrId in ids(getAs(tso, "/v1/supervisor/device-otps").bodyAsText()), "the issuing TSO lists what it issued")
+                assertFalse(lkxSrId in ids(getAs(lkxTso, "/v1/supervisor/device-otps").bodyAsText()), "the other division's TSO does not")
+                // the list is today's: no business_date (or any other) parameter widens or shifts it
+                assertEquals(today().toString(), json(getAs(tso, "/v1/supervisor/device-otps?business_date=2020-01-01").bodyAsText())["business_date"]!!.jsonPrimitive.content)
+            } finally {
+                exec("UPDATE app.app_user SET home_zone_id = $ownZone, scope_version = scope_version + 1 WHERE id = $lkxSrId")
+                exec("DELETE FROM app.device_otp WHERE user_id = $lkxSrId")
+            }
+        }
+    }
+
+    @Test
+    fun aRouteOnlyReachSeesTheVisitsOfItsRouteAndNotTheRestOfThatZone() = world.withApi {
+        with(world) {
+            // amo1001 covers ONE route of the other division (route_assignment, no zone scope there): the review lists that route's photos only.
+            val lkxSr = one("SELECT id FROM app.app_user WHERE username = 'lkxsr1001'")
+            val amoId = one("SELECT id FROM app.app_user WHERE username = 'amo1001'")
+            val routes = fresh.db.jdbi.withHandle<List<Long>, Exception> { h -> h.createQuery("SELECT id FROM app.route WHERE code LIKE 'LKX-%' AND status = 'active' ORDER BY id LIMIT 2").mapTo(Long::class.java).list() }
+            assertEquals(2, routes.size, "the mirrored division has two routes")
+            val d = today().toString()
+            val visits = routes.mapIndexed { i, route ->
+                val outlet = one("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id LIMIT 1")
+                val v = UUID.randomUUID().toString()
+                fresh.db.jdbi.useHandle<Exception> { h ->
+                    h.execute("SET session_replication_role = replica")
+                    try {
+                        h.execute(
+                            """INSERT INTO app.visit (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, visit_kind, outlet_id, opened_at, sequence_no, planned,
+                                                      verdict, radius_m_used, max_accuracy_m_used, location_basis, geo_action, call_photo_uuid)
+                               VALUES ('$v'::uuid, '$v'::uuid, DATE '$d', $lkxSr, $route, now(), 0, 'sr_call', $outlet, now(), ${50 + i}, false, 'in_range', 100, 50, 'master', 'sale_allowed', gen_random_uuid())""",
+                        )
+                    } finally { h.execute("SET session_replication_role = origin") }
+                }
+                v
+            }
+            suspend fun seen(): Set<String> = json(getAs(amo, "/v1/supervisor/call-photos?business_date=$d&limit=500").also { assertEquals(HttpStatusCode.OK, it.status) }.bodyAsText())["items"]!!.jsonArray
+                .map { it.jsonObject["visit_uuid"]!!.jsonPrimitive.content }.toSet()
+            assertTrue(visits.none { it in seen() }, "no reach there yet")
+            exec("INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason) VALUES (${routes[0]}, $amoId, 'cover', DATE '$d' - 1, 'route-only reach test')")
+            exec("UPDATE app.app_user SET scope_version = scope_version + 1 WHERE id = $amoId")
+            try {
+                val now = seen()
+                assertTrue(visits[0] in now, "the covered route's photo is in reach")
+                assertFalse(visits[1] in now, "the other route of the same zone is not")
+            } finally {
+                exec("DELETE FROM app.route_assignment WHERE user_id = $amoId AND reason = 'route-only reach test'")
+                exec("UPDATE app.app_user SET scope_version = scope_version + 1 WHERE id = $amoId")
+            }
+            assertTrue(visits.none { it in seen() }, "and gone again with the assignment")
         }
     }
 
@@ -249,6 +318,42 @@ class SrManualSv1ApiTest {
             val read = json(getWeb("admin1001", "/v1/outlet-requests/$req").also { assertEquals(HttpStatusCode.OK, it.status, it.bodyAsText()) }.bodyAsText())
             assertTrue(read["flags"]!!.jsonArray.none { it.jsonPrimitive.content.startsWith("possible") || it.jsonPrimitive.content == "cluster_dropped" }, "and none is shown")
             assertTrue(read["possible_duplicate_of"] == null || read["possible_duplicate_of"] is kotlinx.serialization.json.JsonNull)
+        }
+    }
+
+    @Test
+    fun theWebReadShowsTheServerFlagsOfAKeptRequestAndTheListFiltersStayClosed() = world.withApi {
+        with(world) {
+            val route = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
+            val outlet = longs("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id LIMIT 1").single()
+            val zone = one("SELECT zone_id FROM app.route WHERE id = $route")
+            val elsewhere = fresh.db.jdbi.withHandle<Long?, Exception> { h -> h.createQuery("SELECT id FROM app.cluster WHERE zone_id <> $zone ORDER BY id LIMIT 1").mapTo(Long::class.java).findOne().orElse(null) }
+            val fix = """{"purpose":"outlet_capture","fix_status":"ok","lat":23.8069,"lng":90.3687,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                       "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}"""
+            suspend fun file(type: String, outletId: Long?, proposed: String): String {
+                val cu = UUID.randomUUID().toString()
+                val body = """{"request_type":"$type",${if (outletId != null) "\"outlet_id\":$outletId," else ""}"proposed":$proposed,"photo_uuids":[],"fix":$fix}"""
+                assertEquals("accepted", ack(sync(sr, listOf(record("outlet_change_request", body, route, cu = cu, family = cu))), cu).status(), type)
+                return cu
+            }
+            suspend fun read(u: String) = json(getWeb("admin1001", "/v1/outlet-requests/$u").also { assertEquals(HttpStatusCode.OK, it.status, it.bodyAsText()) }.bodyAsText())
+            // a gone cluster on an info request: kept, cluster dropped, flagged cluster_dropped (the stored proposal no longer names it)
+            val dropped = file("info", outlet, """{"name":"Flag Http Store","cluster_id":987654399}""")
+            val r1 = read(dropped)
+            assertEquals(listOf("cluster_dropped"), r1["flags"]!!.jsonArray.map { it.jsonPrimitive.content })
+            assertFalse(r1["proposed"]!!.jsonObject.containsKey("cluster_id"), "the dropped cluster is not in the proposal")
+            // another zone's cluster on a new-shop request
+            if (elsewhere != null) {
+                val far = file("new", null, """{"name":"Flag Far Shop","contact_number":"01933000111","cluster_id":$elsewhere}""")
+                assertEquals(listOf("cluster_dropped"), read(far)["flags"]!!.jsonArray.map { it.jsonPrimitive.content })
+            }
+            // a look-alike new shop points at the earlier one
+            val first = file("new", null, """{"name":"Flag Twin Shop","contact_number":"01933000222"}""")
+            val twin = file("new", null, """{"name":"flag  twin shop","contact_number":"01933000222"}""")
+            val rt = read(twin)
+            assertEquals(listOf("possible_duplicate"), rt["flags"]!!.jsonArray.map { it.jsonPrimitive.content })
+            assertEquals(first, rt["possible_duplicate_of"]!!.jsonPrimitive.content)
+            assertTrue(read(first)["flags"]!!.jsonArray.isEmpty(), "the earlier request is not flagged")
         }
     }
 

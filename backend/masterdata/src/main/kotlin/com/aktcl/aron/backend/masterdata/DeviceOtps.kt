@@ -90,7 +90,7 @@ fun Route.deviceOtpRoutes(d: DeviceOtpDeps) {
         // A live code is in the body: never cached by a proxy or the browser.
         get("/admin/device-otps") { call.response.headers.append(io.ktor.http.HttpHeaders.CacheControl, "no-store"); call.respond(listOtps(call, d)) }
         get("/supervisor/device-otps") { call.response.headers.append(io.ktor.http.HttpHeaders.CacheControl, "no-store"); call.respond(teamOtps(call, d)) }
-        post("/admin/device-otps") { call.respond(HttpStatusCode.Created, issue(call, d)) }
+        post("/admin/device-otps") { call.response.headers.append(io.ktor.http.HttpHeaders.CacheControl, "no-store"); call.respond(HttpStatusCode.Created, issue(call, d)) }
     }
 }
 
@@ -102,7 +102,11 @@ private fun reachZones(d: DeviceOtpDeps, call: ApplicationCall): Pair<Boolean, S
     return r.national to r.zoneIds
 }
 
-/** Zone of a user for the panel: the home zone, else the zone of the primary route assignment. */
+/**
+ * Zone of a user for the panel, the issue path AND the TSO's team list (decision D-SV2-01): the home zone, else the zone of the primary route assignment.
+ * One rule everywhere, so a TSO can list exactly the people it may issue a code to. The home zone is the person's identity zone (changed by a user edit in the portal); a route cover in another zone does not move anyone. Reach is always resolved on TODAY's business date:
+ * a code lives minutes, so a list "as of a past day" has no meaning and the lists take no business_date parameter.
+ */
 private const val USER_ZONE = "COALESCE(u.home_zone_id, (SELECT r.zone_id FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id WHERE a.user_id = u.id AND a.ended_at IS NULL AND (a.valid_to IS NULL OR a.valid_to > :today) AND a.kind = 'primary' AND a.valid_from <= :today ORDER BY a.valid_from DESC LIMIT 1))"
 
 private fun listOtps(call: ApplicationCall, d: DeviceOtpDeps): DeviceOtpPage {
