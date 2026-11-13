@@ -3236,3 +3236,6 @@
 - L-A8 "checked f1097796f" at 05:45 (debt settlement, balance without date cut, hold-code table, final-parent photos, renamed to V0192..V0194, contract 1.17.0; local gate 0 failures; lane ci 43371343351 complete: every job green incl. Android and web e2e except the accepted Migrations step). Static gate clean (DECISIONS 470).
 - Opus re-pass (2 lenses, 8 agents, 1.1 M tokens): LEDGER lens PASS (seven histories by hand, balance read exact, test has an independent model with asserted case counts). Records lens: two blocking, upheld 3 of 3: (1) a gift photo whose redemption line a reviewer DISCARDED is still retried for ever (the code recognises "rejected", not "discarded"); (2) accepting a reach hold also waives the role check. Rulings sent with small items (drop the void add-back that can show points that do not exist for one pass; live read on the primary).
 - Order of landing between the two lanes not fixed yet: whichever passes first; the other merges and renames if needed.
+
+### 2026-11-13 06:12 UTC — morning report written (docs/status/morning-2026-11-13.md)
+- L-A8 handed over (context 367 k, USD 5.59) without starting C-R3; L-A9 opened 06:00 for it. SV4 on round B4. Order of landing is fixed by the numbers: sr-server (V0186..V0191, contract 1.16.0) first, then Loyalty push C (V0192..V0194, contract 1.17.0).
