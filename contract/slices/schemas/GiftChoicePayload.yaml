@@ -1,0 +1,30 @@
+GiftChoicePayload:
+  type: object
+  description: '1.15.0. The Astha gift an outlet chose for a quarter. The server upserts `app.gift_assignment` (one
+    row per programme, quarter and outlet): the LATER `captured_at` wins until the hand-over
+
+    photo locks the choice; a choice that arrives after the lock is refused `gift_locked` (rejected, not retryable;
+    the phone shows the reason, it is never dropped silently). Who may choose:
+
+    the roles of `cfg.astha.gift_choice_roles` (default SR and TSO, owner Q4) for an outlet in their reach, else
+    `scope_out_of_reach`; a gift that is not for the outlet''s tier is refused
+
+    `gift_not_for_tier`; an unknown or inactive gift `unknown_gift`; an outlet in no active Astha enrolment `programme_inactive`.
+
+    '
+  required:
+  - outlet_id
+  - gift_id
+  - quarter
+  additionalProperties: false
+  properties:
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    gift_id:
+      $ref: '#/components/schemas/Id'
+    quarter:
+      type: string
+      pattern: ^[0-9]{4}-Q[1-4]$
+      description: The Astha quarter label (`cfg.astha.quarter_start_month`).
+    fix:
+      $ref: '#/components/schemas/GeoFix'

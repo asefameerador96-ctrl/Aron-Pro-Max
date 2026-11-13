@@ -347,6 +347,10 @@ enum class RecordOutcomeCode(val wire: String, val status: AckStatus, val retrya
     @SerialName("ticket_state_invalid") TICKET_STATE_INVALID("ticket_state_invalid", AckStatus.REJECTED, false),
     /** Contract 1.10.0 (D-TSO-MAN-19): a ticket whose issue type is not an active ticket_issue_type code on its business date. */
     @SerialName("issue_type_unknown") ISSUE_TYPE_UNKNOWN("issue_type_unknown", AckStatus.REJECTED, false),
+    /** Contract 1.15.0: a gift choice that arrived after the hand-over photo locked the outlet's Astha gift (the phone shows the reason). */
+    @SerialName("gift_locked") GIFT_LOCKED("gift_locked", AckStatus.REJECTED, false),
+    /** Contract 1.15.0: the chosen gift is not for the outlet's tier. */
+    @SerialName("gift_not_for_tier") GIFT_NOT_FOR_TIER("gift_not_for_tier", AckStatus.REJECTED, false),
 }
 
 /** Stable RFC 9457 problem code with its HTTP status (docs/24 s3.4). */

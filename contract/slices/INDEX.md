@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.15.0.
 
 
-## Schemas (645)
+## Schemas (647)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -28,9 +28,9 @@ Source: contract/openapi.yaml, version 1.15.0.
 - `schemas/ConfigValueJson.yaml` (1101 B)
 - `schemas/ConfigValueRecord.yaml` (340 B)
 - `schemas/Role.yaml` (616 B)
-- `schemas/RecordType.yaml` (1053 B)
+- `schemas/RecordType.yaml` (1143 B)
 - `schemas/AckStatus.yaml` (483 B)
-- `schemas/RecordOutcomeCode.yaml` (1888 B)
+- `schemas/RecordOutcomeCode.yaml` (1926 B)
 - `schemas/ProblemCode.yaml` (2608 B)
 - `schemas/DayState.yaml` (287 B)
 - `schemas/GeoLevel.yaml` (88 B)
@@ -157,10 +157,11 @@ Source: contract/openapi.yaml, version 1.15.0.
 - `schemas/ConfigAckRecord.yaml` (284 B)
 - `schemas/SupportTicketRecord.yaml` (415 B)
 - `schemas/SupportTicketEventRecord.yaml` (426 B)
-- `schemas/SyncRecord.yaml` (5184 B)
+- `schemas/SyncRecord.yaml` (5293 B)
 - `schemas/ContentViewRecord.yaml` (290 B)
 - `schemas/RedemptionRecord.yaml` (286 B)
 - `schemas/RedemptionLineRecord.yaml` (299 B)
+- `schemas/GiftChoiceRecord.yaml` (422 B)
 - `schemas/GiftPhotoRecord.yaml` (284 B)
 - `schemas/PriceComplianceCheckRecord.yaml` (318 B)
 - `schemas/RiskReviewRecord.yaml` (287 B)
@@ -482,6 +483,7 @@ Source: contract/openapi.yaml, version 1.15.0.
 - `schemas/ContentViewPayload.yaml` (945 B)
 - `schemas/RedemptionPayload.yaml` (1622 B)
 - `schemas/RedemptionLinePayload.yaml` (604 B)
+- `schemas/GiftChoicePayload.yaml` (1162 B)
 - `schemas/GiftPhotoPayload.yaml` (1139 B)
 - `schemas/PriceComplianceCheckPayload.yaml` (757 B)
 - `schemas/RiskReviewPayload.yaml` (511 B)

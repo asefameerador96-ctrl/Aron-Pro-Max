@@ -383,6 +383,7 @@ A **family** is a header record and its children, linked by `family_uuid` (the h
 | `consent_accept` (location notice) | self | 0 | — | all | `user_consent` |
 | `support_ticket` (contract 1.10.0, D-TSO-MAN-18; the only way a ticket is created) | self | 0 | — | TSO (requester roles from config) | `support_ticket` (+ `support_ticket_state`) |
 | `support_ticket_event` (comment or close review, contract 1.10.0) | self | 0 | `ticket_uuid` | TSO (the ticket's requester) | `support_ticket_event` |
+| `gift_choice` (the Astha gift an outlet chose for a quarter, contract 1.15.0, SRM-B-66) | self | 0 | — | roles of `cfg.astha.gift_choice_roles` (default SR, TSO) | `gift_choice` (+ `gift_assignment` upsert) |
 
 Ordering rules (the phone MUST follow them; the server tolerates violations by parking):
 1. Outbox order is commit order (`seq`). A batch is the next rows in `seq` order, whole families first.
@@ -454,6 +455,8 @@ Code catalogue (`RecordOutcomeCode`):
 | `day_final_submitted` | rejected | no | a memo, memo edit, void, return or collection captured (by a trusted clock) at or after its zone-day's Final Submit; `day_submit` and `attendance_event` after the lock are still accepted (contract 1.10.0, D-TSO-MAN-31, R-W-01; s4.9 rule 4) |
 | `ticket_state_invalid` | rejected | no | a `support_ticket_event` the ticket's state does not allow (a comment after the ticket left new and in_progress, a close review before it is resolved) or on another user's ticket (contract 1.10.0, D-TSO-MAN-20, 21) |
 | `issue_type_unknown` | rejected | no | a `support_ticket` whose `issue_type_code` is not an active `ticket_issue_type` code on its business date (contract 1.10.0, D-TSO-MAN-19) |
+| `gift_locked` | rejected | no | a `gift_choice` for an outlet whose Astha gift the hand-over photo already locked (contract 1.15.0); the phone shows the reason |
+| `gift_not_for_tier` | rejected | no | a `gift_choice` for a gift whose `tier_codes` do not include the outlet's enrolment tier (contract 1.15.0) |
 
 ### 4.6 Resume, retry and ordering guarantees
 

@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 181 | 2986 |
+| `app` | 182 | 3018 |
 | `dw` | 75 | 1211 |
 
 ## Index
@@ -89,6 +89,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.gift`](#appgift) | table | backend:masterdata | ONLINE | master | none | A gift of a loyalty programme with points cost (integer points, no taka value in v1) and tiers. Written only by the portal (SUPERADMIN) through app.gift_change; a gift is never deleted, set it inactive. The picture is image_asset_id (V0170); image_url of V0007 is legacy and unused by the portal. |
 | [`app.gift_assignment`](#appgift_assignment) | table | backend:masterdata | ONLINE | transaction | none | An Astha gift chosen for an outlet and quarter, locked by the hand-over photo. |
 | [`app.gift_change`](#appgift_change) | table | backend:masterdata | ONLINE | audit | none | Append-only journal of gift create and update calls from the portal with a snapshot of the first result, so a retried call (same request UUID) is answered with that result. |
+| [`app.gift_choice`](#appgift_choice) | table | backend:sync | OFFLINE | transaction | personal | The Astha gift an outlet chose for a quarter, one immutable row per choice a phone sent; the handler keeps app.gift_assignment in step (later captured_at wins until the hand-over photo locks the outlet). |
 | [`app.gift_photo`](#appgift_photo) | table | backend:sync | OFFLINE | transaction | personal | Hand-over photo record of a gift, one per Astha assignment or redeemed campaign unit. |
 | [`app.house`](#apphouse) | table | backend:masterdata | ONLINE | master | none | Distribution house that a zone may belong to; it carries no rules in Phase 1. |
 | [`app.house_history`](#apphouse_history) | table | db | SERVER | master | none | One row is a period of the territory a distribution house belonged to and its status (V0119); written by the history trigger on app.house, seeded from app.audit_log. |
@@ -2087,6 +2088,51 @@ Append-only journal of gift create and update calls from the portal with a snaps
 Keys: `UNIQUE (request_uuid)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (actor) REFERENCES app.app_user(id)`; `FOREIGN KEY (gift_id) REFERENCES app.gift(id)`
+
+## app.gift_choice
+
+The Astha gift an outlet chose for a quarter, one immutable row per choice a phone sent; the handler keeps app.gift_assignment in step (later captured_at wins until the hand-over photo locks the outlet).
+
+`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: personal` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `client_uuid` | uuid | not null |  | Client-generated UUID v4 of the record; the server upserts by it (idempotency key). |
+| `family_uuid` | uuid | not null |  | client_uuid of the family header the record belongs to (equal to client_uuid on a header). |
+| `business_date` | date | not null |  | Asia/Dhaka date of the trusted capture time. |
+| `business_date_device` | date | null |  | Date on the phone's own clock, kept when the server re-dated the row to a trusted business date. |
+| `user_id` | bigint | not null |  | Database id of the user who captured the record, taken from the token and never from the body. |
+| `device_id` | bigint | null |  | Database id of the phone that captured the record, from the token. |
+| `acting_for_user_id` | bigint | null |  | Assignee of the route when the capturing user worked it as a cover substitute. |
+| `route_id` | bigint | null |  | Route (app.route) being worked. |
+| `captured_at` | timestamp with time zone | not null |  | UTC instant of capture on the phone, from trusted time when an anchor exists. |
+| `captured_elapsed_ms` | bigint | null |  | SystemClock.elapsedRealtime() at capture, in milliseconds since boot. |
+| `boot_count` | integer | null |  | Android boot counter at capture; with captured_elapsed_ms it anchors trusted time. |
+| `clock_offset_ms` | bigint | null |  | Server time minus phone wall clock known at capture, in ms; null if the phone never synced. |
+| `captured_offline` | boolean | not null |  | True when the phone had no connection at capture. |
+| `schema_version` | integer | not null |  | Version of the record payload schema. |
+| `config_version` | bigint | not null |  | Global config version in force for the row (at capture for device records). |
+| `bundle_version` | text | null |  | Version of the day bundle the phone held at capture (<date>:<seq>). |
+| `bundle_stale` | boolean | not null |  | True when the record was captured on a cached bundle older than the business date. |
+| `first_batch_uuid` | uuid | null |  | batch_uuid of the sync batch that first delivered the record. |
+| `received_at` | timestamp with time zone | not null |  | UTC instant the server received the row. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
+| `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
+| `outlet_id` | bigint | not null |  | Outlet (app.outlet) that chose the gift. |
+| `gift_id` | bigint | not null |  | Gift (app.gift) chosen. |
+| `quarter` | text | not null |  | Astha quarter label the choice is for, for example 2026-Q4 (cfg.astha.quarter_start_month). |
+| `fix_status` | text | null |  | Outcome of the fix request: ok, timeout, permission_denied, location_off or provider_unavailable. |
+| `fix_lat` | double precision | null | personal | Latitude of the user's location fix taken with the record (WGS84 degrees). |
+| `fix_lng` | double precision | null | personal | Longitude of the user's location fix taken with the record (WGS84 degrees). |
+| `fix_accuracy_m` | double precision | null | personal | Accuracy in metres of the location fix taken with the record. |
+| `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed), stamped at insert from the user, outlet and route (V0116). |
+
+Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (gift_id) REFERENCES app.gift(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
 ## app.gift_photo
 

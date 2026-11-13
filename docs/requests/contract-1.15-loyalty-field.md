@@ -93,3 +93,12 @@ Push B: the `programmes` section and the three reads (contract 1.15.0 members of
 - **Programme scope, one function.** `ProgrammeScopeParams.of(handle, reach, routes)` builds the parameters for the bundle, `getLoyaltyBalances`, `listGiftChoices`, the gift picture and the portal. Two zone sets: `reachZones` (zones held AS zone reach: TSO, AMO, DMO, WM; empty for an SR) is used only for the zone-wide reading of a route node; `outletZones` (zones that contain an outlet of the caller's reach; for an SR the zones of its own routes) matches zone, territory, division and wing nodes. A campaign scoped to route X therefore reaches the SR of route X and the TSO of the zone, not the SR of route Y in the same zone. The balances apply the programme scope per outlet.
 - **`value_achieved_mtk`** follows the snapshot rule of section 2 (its text no longer refers to `as_of`).
 - **The one phone rule** is section 2. No other text states a rule based on `meta.generated_at`.
+
+## 11. Push C (2026-11-13, same ruling D-LEAD-CONTRACT-115-01, still 1.15.0)
+
+- **New sync record `gift_choice`** (`RecordType` enum value, `GiftChoiceRecord`, `GiftChoicePayload`: `outlet_id`, `gift_id`, `quarter`, optional `fix`). Server table `app.gift_choice` (V0182, immutable, idempotent by `client_uuid`); `GiftChoiceRecords` keeps `app.gift_assignment` in step: later `captured_at` wins in any arrival order until the hand-over photo locks the outlet's gift.
+- **Two new `RecordOutcomeCode` values**, both rejected and not retryable: `gift_locked` (choice after the photo lock) and `gift_not_for_tier`. Other refusals reuse `unknown_gift`, `programme_inactive`, `unknown_outlet`, `scope_out_of_reach` (role outside `cfg.astha.gift_choice_roles` or outlet outside the uploader's reach).
+- **Config default** `cfg.astha.gift_choice_roles`: SR and TSO (owner Q4 default; V0009 had TSO only; V0182 changes the registry default, explicit values are untouched).
+- Android: `RecordType` and `RecordOutcomeCode` gain a value each in `shared/contract`; a phone that does not know `gift_choice` never sends it. Room/outbox: the android lane adds the record and shows the refusal reasons (`gift_locked`, `gift_not_for_tier`).
+- Worker (no contract change): redemption posting, FIFO expiry and adjustment plumbing, see D-LOY-API-18.
+

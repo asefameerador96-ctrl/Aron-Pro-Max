@@ -62,3 +62,5 @@ RecordOutcomeCode:
   - day_final_submitted
   - ticket_state_invalid
   - issue_type_unknown
+  - gift_locked
+  - gift_not_for_tier

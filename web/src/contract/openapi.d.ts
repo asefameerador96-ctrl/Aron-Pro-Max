@@ -4602,10 +4602,10 @@ export interface components {
          */
         Role: "SR" | "AMO" | "TSO" | "DMO" | "WM" | "TOP" | "NATIONAL" | "BRAND" | "ANALYST" | "SUPPORT" | "ADMIN" | "SUPERADMIN";
         /**
-         * @description Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except where docs/24 s12 says otherwise. `support_ticket` and `support_ticket_event` from contract 1.10.0 (D-TSO-MAN-18).
+         * @description Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except where docs/24 s12 says otherwise. `support_ticket` and `support_ticket_event` from contract 1.10.0 (D-TSO-MAN-18); `gift_choice` from 1.15.0 (the Astha gift an outlet chose, SRM-B-66).
          * @enum {string}
          */
-        RecordType: "geo_breadcrumb" | "attendance_event" | "day_open" | "day_submit" | "day_exception" | "stock_movement" | "visit" | "visit_close" | "visit_skip" | "memo" | "memo_line" | "memo_discount" | "qc_line" | "print_event" | "memo_void" | "due_collection" | "survey_response" | "outlet_change_request" | "outlet_request_verification" | "distribution_check" | "distribution_check_line" | "call_assessment" | "call_assessment_answer" | "task" | "task_event" | "visit_plan" | "visit_plan_outlet" | "leave_application" | "feedback" | "media_meta" | "device_status" | "config_ack" | "content_view" | "redemption" | "redemption_line" | "gift_photo" | "price_compliance_check" | "risk_review" | "activity_log" | "app_error" | "sale_abort" | "consent_accept" | "support_ticket" | "support_ticket_event";
+        RecordType: "geo_breadcrumb" | "attendance_event" | "day_open" | "day_submit" | "day_exception" | "stock_movement" | "visit" | "visit_close" | "visit_skip" | "memo" | "memo_line" | "memo_discount" | "qc_line" | "print_event" | "memo_void" | "due_collection" | "survey_response" | "outlet_change_request" | "outlet_request_verification" | "distribution_check" | "distribution_check_line" | "call_assessment" | "call_assessment_answer" | "task" | "task_event" | "visit_plan" | "visit_plan_outlet" | "leave_application" | "feedback" | "media_meta" | "device_status" | "config_ack" | "content_view" | "redemption" | "redemption_line" | "gift_photo" | "price_compliance_check" | "risk_review" | "activity_log" | "app_error" | "sale_abort" | "consent_accept" | "support_ticket" | "support_ticket_event" | "gift_choice";
         /**
          * @description accepted: stored now. duplicate: already stored with the same payload hash (the phone marks it synced).
          *     rejected: not stored as a business row; `code` says why and `retryable` says whether to resend after a
@@ -4626,7 +4626,7 @@ export interface components {
          *     business date.
          * @enum {string}
          */
-        RecordOutcomeCode: "scope_stale" | "config_version_unknown" | "parent_missing" | "outlet_pending_approval" | "price_list_unknown" | "schema_invalid" | "unknown_record_type" | "unknown_sku" | "unknown_outlet" | "unknown_route" | "arithmetic_mismatch" | "memo_no_invalid" | "memo_no_duplicate" | "edit_not_allowed" | "chain_too_deep" | "voided_by_admin" | "content_duplicate" | "lines_exceed_max" | "qty_invalid" | "price_invalid" | "attendance_duplicate" | "checkout_too_early" | "server_error" | "payload_conflict" | "business_date_out_of_window" | "scope_out_of_reach" | "no_assignment_on_date" | "device_integrity_failed" | "device_not_enrolled" | "user_disabled" | "device_revoked" | "app_version_blocked" | "after_month_close" | "unknown_gift" | "insufficient_points" | "gift_photo_exists" | "programme_inactive" | "after_final_submit" | "day_final_submitted" | "ticket_state_invalid" | "issue_type_unknown";
+        RecordOutcomeCode: "scope_stale" | "config_version_unknown" | "parent_missing" | "outlet_pending_approval" | "price_list_unknown" | "schema_invalid" | "unknown_record_type" | "unknown_sku" | "unknown_outlet" | "unknown_route" | "arithmetic_mismatch" | "memo_no_invalid" | "memo_no_duplicate" | "edit_not_allowed" | "chain_too_deep" | "voided_by_admin" | "content_duplicate" | "lines_exceed_max" | "qty_invalid" | "price_invalid" | "attendance_duplicate" | "checkout_too_early" | "server_error" | "payload_conflict" | "business_date_out_of_window" | "scope_out_of_reach" | "no_assignment_on_date" | "device_integrity_failed" | "device_not_enrolled" | "user_disabled" | "device_revoked" | "app_version_blocked" | "after_month_close" | "unknown_gift" | "insufficient_points" | "gift_photo_exists" | "programme_inactive" | "after_final_submit" | "day_final_submitted" | "ticket_state_invalid" | "issue_type_unknown" | "gift_locked" | "gift_not_for_tier";
         /**
          * @description Stable problem codes (HTTP status in docs/24 s3.4). From contract 1.10.0 (409): `ERR_TICKET_TRANSITION_INVALID`
          *     (a support-desk status change the ticket's state does not allow, D-TSO-MAN-20), `ERR_TICKET_COMMENTS_CLOSED` (a
@@ -5721,7 +5721,7 @@ export interface components {
             type: "support_ticket_event";
         };
         /** @description One outbox record; `type` selects the payload schema. */
-        SyncRecord: components["schemas"]["GeoBreadcrumbRecord"] | components["schemas"]["AttendanceEventRecord"] | components["schemas"]["DayOpenRecord"] | components["schemas"]["DaySubmitRecord"] | components["schemas"]["DayExceptionRecord"] | components["schemas"]["StockMovementRecord"] | components["schemas"]["VisitRecord"] | components["schemas"]["VisitCloseRecord"] | components["schemas"]["VisitSkipRecord"] | components["schemas"]["MemoRecord"] | components["schemas"]["MemoLineRecord"] | components["schemas"]["MemoDiscountRecord"] | components["schemas"]["QcLineRecord"] | components["schemas"]["PrintEventRecord"] | components["schemas"]["MemoVoidRecord"] | components["schemas"]["DueCollectionRecord"] | components["schemas"]["SurveyResponseRecord"] | components["schemas"]["OutletChangeRequestRecord"] | components["schemas"]["OutletRequestVerificationRecord"] | components["schemas"]["DistributionCheckRecord"] | components["schemas"]["DistributionCheckLineRecord"] | components["schemas"]["CallAssessmentRecord"] | components["schemas"]["CallAssessmentAnswerRecord"] | components["schemas"]["TaskRecord"] | components["schemas"]["TaskEventRecord"] | components["schemas"]["VisitPlanRecord"] | components["schemas"]["VisitPlanOutletRecord"] | components["schemas"]["LeaveApplicationRecord"] | components["schemas"]["FeedbackRecord"] | components["schemas"]["MediaMetaRecord"] | components["schemas"]["DeviceStatusRecord"] | components["schemas"]["ConfigAckRecord"] | components["schemas"]["ContentViewRecord"] | components["schemas"]["RedemptionRecord"] | components["schemas"]["RedemptionLineRecord"] | components["schemas"]["GiftPhotoRecord"] | components["schemas"]["PriceComplianceCheckRecord"] | components["schemas"]["RiskReviewRecord"] | components["schemas"]["ActivityLogRecord"] | components["schemas"]["AppErrorRecord"] | components["schemas"]["SaleAbortRecord"] | components["schemas"]["ConsentAcceptRecord"] | components["schemas"]["SupportTicketRecord"] | components["schemas"]["SupportTicketEventRecord"];
+        SyncRecord: components["schemas"]["GeoBreadcrumbRecord"] | components["schemas"]["AttendanceEventRecord"] | components["schemas"]["DayOpenRecord"] | components["schemas"]["DaySubmitRecord"] | components["schemas"]["DayExceptionRecord"] | components["schemas"]["StockMovementRecord"] | components["schemas"]["VisitRecord"] | components["schemas"]["VisitCloseRecord"] | components["schemas"]["VisitSkipRecord"] | components["schemas"]["MemoRecord"] | components["schemas"]["MemoLineRecord"] | components["schemas"]["MemoDiscountRecord"] | components["schemas"]["QcLineRecord"] | components["schemas"]["PrintEventRecord"] | components["schemas"]["MemoVoidRecord"] | components["schemas"]["DueCollectionRecord"] | components["schemas"]["SurveyResponseRecord"] | components["schemas"]["OutletChangeRequestRecord"] | components["schemas"]["OutletRequestVerificationRecord"] | components["schemas"]["DistributionCheckRecord"] | components["schemas"]["DistributionCheckLineRecord"] | components["schemas"]["CallAssessmentRecord"] | components["schemas"]["CallAssessmentAnswerRecord"] | components["schemas"]["TaskRecord"] | components["schemas"]["TaskEventRecord"] | components["schemas"]["VisitPlanRecord"] | components["schemas"]["VisitPlanOutletRecord"] | components["schemas"]["LeaveApplicationRecord"] | components["schemas"]["FeedbackRecord"] | components["schemas"]["MediaMetaRecord"] | components["schemas"]["DeviceStatusRecord"] | components["schemas"]["ConfigAckRecord"] | components["schemas"]["ContentViewRecord"] | components["schemas"]["RedemptionRecord"] | components["schemas"]["RedemptionLineRecord"] | components["schemas"]["GiftPhotoRecord"] | components["schemas"]["GiftChoiceRecord"] | components["schemas"]["PriceComplianceCheckRecord"] | components["schemas"]["RiskReviewRecord"] | components["schemas"]["ActivityLogRecord"] | components["schemas"]["AppErrorRecord"] | components["schemas"]["SaleAbortRecord"] | components["schemas"]["ConsentAcceptRecord"] | components["schemas"]["SupportTicketRecord"] | components["schemas"]["SupportTicketEventRecord"];
         ContentViewRecord: components["schemas"]["RecordEnvelope"] & {
             /** @constant */
             type: "content_view";
@@ -5754,6 +5754,18 @@ export interface components {
              * @enum {string}
              */
             type: "redemption_line";
+        };
+        /** @description The Astha gift an outlet chose for a quarter (contract 1.15.0, SRM-B-66). Idempotent by the envelope `client_uuid`. */
+        GiftChoiceRecord: components["schemas"]["RecordEnvelope"] & {
+            /** @constant */
+            type: "gift_choice";
+            payload: components["schemas"]["GiftChoicePayload"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "gift_choice";
         };
         GiftPhotoRecord: components["schemas"]["RecordEnvelope"] & {
             /** @constant */
@@ -10113,6 +10125,19 @@ export interface components {
             points_each: number;
             /** @description qty x points_each. */
             points_total: number;
+        };
+        /**
+         * @description 1.15.0. The Astha gift an outlet chose for a quarter. The server upserts `app.gift_assignment` (one row per programme, quarter and outlet): the LATER `captured_at` wins until the hand-over
+         *     photo locks the choice; a choice that arrives after the lock is refused `gift_locked` (rejected, not retryable; the phone shows the reason, it is never dropped silently). Who may choose:
+         *     the roles of `cfg.astha.gift_choice_roles` (default SR and TSO, owner Q4) for an outlet in their reach, else `scope_out_of_reach`; a gift that is not for the outlet's tier is refused
+         *     `gift_not_for_tier`; an unknown or inactive gift `unknown_gift`; an outlet in no active Astha enrolment `programme_inactive`.
+         */
+        GiftChoicePayload: {
+            outlet_id: components["schemas"]["Id"];
+            gift_id: components["schemas"]["Id"];
+            /** @description The Astha quarter label (`cfg.astha.quarter_start_month`). */
+            quarter: string;
+            fix?: components["schemas"]["GeoFix"];
         };
         /**
          * @description Hand-over photo of a gift: an Astha gift assignment (one photo per assignment, cfg.astha.one_photo_per_outlet)

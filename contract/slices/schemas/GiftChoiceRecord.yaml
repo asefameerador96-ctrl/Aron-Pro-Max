@@ -1,0 +1,15 @@
+GiftChoiceRecord:
+  description: The Astha gift an outlet chose for a quarter (contract 1.15.0, SRM-B-66). Idempotent by the envelope
+    `client_uuid`.
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: gift_choice
+      payload:
+        $ref: '#/components/schemas/GiftChoicePayload'
+  unevaluatedProperties: false
