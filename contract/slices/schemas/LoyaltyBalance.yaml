@@ -32,7 +32,7 @@ LoyaltyBalance:
         include points past their date. A negative balance means the outlet is overdrawn.
     overdrawn:
       type: boolean
-      description: '1.16.0. True exactly when `balance_points` is below zero: a negative balance is the overdraw
+      description: '1.17.0. True exactly when `balance_points` is below zero: a negative balance is the overdraw
         signal. Derived on read, never stored on a ledger row.'
     expiring_points:
       type: integer

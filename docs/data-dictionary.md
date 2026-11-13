@@ -2179,7 +2179,7 @@ Hand-over photo record of a gift, one per Astha assignment or redeemed campaign 
 | `fix_accuracy_m` | double precision | null | personal | Accuracy in metres of the location fix taken with the record. |
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
-| `is_duplicate` | boolean | not null |  | True for a photo that is not the first by captured_at for its assignment or unit; stored and kept, never counted as the lock (V0185). |
+| `is_duplicate` | boolean | not null |  | True for a photo that is not the first by captured_at for its assignment or unit; stored and kept, never counted as the lock (V0193). |
 | `flagged_at` | timestamp with time zone | null |  | When the photo was flagged as a duplicate or as failing its checks. |
 | `check_flag` | text | null |  | Why a campaign-unit photo failed the ingest checks (unit_out_of_range, gift_not_in_redemption, outlet_mismatch, out_of_reach); null when it passed. Such a photo is stored, flagged (is_duplicate) and never the unit's photo. |
 | `server_verdict` | text | null |  | The server re-check of the photo fix against the outlet location (same function as the phone, docs/24 s11.3); the photo is never refused for it. |

@@ -1,4 +1,4 @@
--- V0182 (lane portal-loyalty-api, push C): the sync record `gift_choice` (contract 1.15.0, SRM-B-66, D-LOY-API-19).
+-- V0192 (lane portal-loyalty-api, push C): the sync record `gift_choice` (contract 1.15.0, SRM-B-66, D-LOY-API-19).
 -- 1. app.gift_choice: one immutable row per choice a phone sent (idempotency by client_uuid, like every field record). The handler (backend:sync GiftChoiceRecords)
 --    upserts app.gift_assignment from it: last writer by captured_at until the hand-over photo locks the outlet's gift.
 -- 2. Two outcome codes: gift_locked (choice after the photo lock) and gift_not_for_tier. The CHECK is re-created NOT VALID like V0112/V0135 (new rows are checked; a later
@@ -57,12 +57,13 @@ ALTER TABLE app.sync_rejected ADD CONSTRAINT sync_rejected_code_check CHECK (cod
   'edit_not_allowed', 'chain_too_deep', 'voided_by_admin', 'lines_exceed_max', 'qty_invalid', 'price_invalid',
   'attendance_duplicate', 'server_error', 'retry_exhausted', 'unknown_gift', 'insufficient_points',
   'gift_photo_exists', 'day_final_submitted', 'ticket_state_invalid', 'issue_type_unknown',
+  'cluster_name_exists',   -- sr-server's V0189 adds this code; the list here is the V0135 list + that + ours, so whichever lands first leaves a CHECK that holds all of them
   'gift_locked', 'gift_not_for_tier')) NOT VALID;
 
 UPDATE app.cfg_key SET default_value = '["SR", "TSO"]'::jsonb, updated_at = now() WHERE key = 'cfg.astha.gift_choice_roles';
 
 -- cfg.loyalty.negative_balance_policy = reject is NOT enforced at ingest or in the ledger job (not built): the job posts every stored
--- redemption and overdraw is the derived LoyaltyBalance.overdrawn (balance < 0). Until reject is built, the bounds enum refuses it (contract 1.16.0).
+-- redemption and overdraw is the derived LoyaltyBalance.overdrawn (balance < 0). Until reject is built, the bounds enum refuses it (contract 1.17.0).
 UPDATE app.cfg_key SET bounds = '{"enum": ["accept_and_flag"]}'::jsonb, updated_at = now() WHERE key = 'cfg.loyalty.negative_balance_policy';
 -- A value already set to `reject` on a database that ran V0009's bounds (dev) must not keep showing a value the bounds now refuse: cfg_value rows are close-only, so an open row holding
 -- `reject` is CLOSED (effective_to) and the key's default, accept_and_flag, applies again. Nothing enforced `reject`, so no behaviour changes; no new config version is minted.

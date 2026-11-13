@@ -1,7 +1,7 @@
 # Contract 1.15.0: loyalty and Astha, the FIELD side (lane portal-loyalty-api, train 3, 2026-11-12)
 
 Approved by the lead as **D-LEAD-CONTRACT-115-01** (2026-11-12; the lead appends the DECISIONS line when the push is gated). **Status: applied in `contract/openapi.yaml`
-(info.version 1.15.0) with push B.** Rulings: (1) the three value members and the optional upload member, additive; (2) `by_pack` with the member named `pack_factor`, achievement only; (3) V0180, V0181 and V0182 are working numbers; (4) `programmes` null when no programme is active in the reach. If sr-server is gated first it takes 1.15.0 and this moves to 1.16.0. 1.15.0 is additive on 1.14.0 (lane sr-server, V0173 to V0175). Migrations of this train start at
+(info.version 1.15.0) with push B.** Rulings: (1) the three value members and the optional upload member, additive; (2) `by_pack` with the member named `pack_factor`, achievement only; (3) V0180, V0181 and V0192 are working numbers; (4) `programmes` null when no programme is active in the reach. If sr-server is gated first it takes 1.15.0 and this moves to 1.17.0. 1.15.0 is additive on 1.14.0 (lane sr-server, V0173 to V0175). Migrations of this train start at
 V0180 and follow LANDING order (the lead may order one rename at merge time). Owner basis: D-OWNER-SR-PROGRAMMES-01 (2026-11-12) puts the SR
 programme screens in scope; memo discount lines stay zero (docs/27, rule 2). Rows cited: SRM-B-61..81 and 143..148 of
 `docs/requests/sr-manual-build-2026-11-part-b.md`.
@@ -62,7 +62,7 @@ No new wire member: `redemption` / `redemption_line` / `gift_photo` already exis
 
 - V0180: `app.astha_target.value_target_mtk bigint NOT NULL DEFAULT 0 CHECK (>= 0)`; `app.astha_target_batch` (append-only ledger of upload batches: `batch_uuid` PK, request fingerprint, counts, first result), grants as the V0158 ledgers.
 - V0181 (push B3, done): unique index `astha_target_outlet_one` on `app.astha_target (month, outlet_id, coalesce(brand_id, 0)) WHERE outlet_id IS NOT NULL`; a route change moves the row (it fails loudly if duplicates already exist, nothing is deleted).
-- V0182 (Push C): `app.gift_assignment.client_uuid uuid UNIQUE`, `captured_at timestamptz`; the `gift_choice` ingest-registry entry is code, not SQL.
+- V0192 (Push C): `app.gift_assignment.client_uuid uuid UNIQUE`, `captured_at timestamptz`; the `gift_choice` ingest-registry entry is code, not SQL.
 - Dictionary comments and `dw` views follow in the same migrations.
 
 ## 7. What the Android lanes get when
@@ -88,7 +88,7 @@ Push B: the `programmes` section and the three reads (contract 1.15.0 members of
 
 ## 10. Push B4 (the lead's re-pass of 2026-11-13; same ruling, still 1.15.0)
 
-- **Balance (replaces the expiry sentences of sections 1 and 8).** `balance_points` = the PLAIN SUM of ALL ledger rows up to `as_of_date`, `expiry` rows included. Points lapse only when the nightly expiry job posts its debit, computed FIFO (oldest credit consumed first, so exact and idempotent: `source_id` `programme:outlet:date`). Until that job exists or has run for a date, a lapsed credit stays in the balance: expiry is posted by a nightly job; before it runs the balance may still include points past their date. A credit of +100 expiring 7 Nov with -60 redeemed on 5 Nov is 40 on 8 Nov until the job's -40 row, then 0. The balance is never negative unless an overdraw was flagged (`negative_balance_policy`). `expiring_points` is unchanged (the credits on the earliest upcoming `expires_on`, capped by the balance, floor 0). **Superseded in round C-R2:** there is no date cut at all; see the C-R2 section of docs/requests/contract-1.16-loyalty-gift-choice.md.
+- **Balance (replaces the expiry sentences of sections 1 and 8).** `balance_points` = the PLAIN SUM of ALL ledger rows up to `as_of_date`, `expiry` rows included. Points lapse only when the nightly expiry job posts its debit, computed FIFO (oldest credit consumed first, so exact and idempotent: `source_id` `programme:outlet:date`). Until that job exists or has run for a date, a lapsed credit stays in the balance: expiry is posted by a nightly job; before it runs the balance may still include points past their date. A credit of +100 expiring 7 Nov with -60 redeemed on 5 Nov is 40 on 8 Nov until the job's -40 row, then 0. The balance is never negative unless an overdraw was flagged (`negative_balance_policy`). `expiring_points` is unchanged (the credits on the earliest upcoming `expires_on`, capped by the balance, floor 0). **Superseded in round C-R2:** there is no date cut at all; see the C-R2 section of docs/requests/contract-1.17-loyalty-gift-choice.md.
 - **`ProgrammesSection.truncated_sections`** also names `gift_assignments` (the 2,000 cap; additive enum value, response only).
 - **Programme scope, one function.** `ProgrammeScopeParams.of(handle, reach, routes)` builds the parameters for the bundle, `getLoyaltyBalances`, `listGiftChoices`, the gift picture and the portal. Two zone sets: `reachZones` (zones held AS zone reach: TSO, AMO, DMO, WM; empty for an SR) is used only for the zone-wide reading of a route node; `outletZones` (zones that contain an outlet of the caller's reach; for an SR the zones of its own routes) matches zone, territory, division and wing nodes. A campaign scoped to route X therefore reaches the SR of route X and the TSO of the zone, not the SR of route Y in the same zone. The balances apply the programme scope per outlet.
 - **`value_achieved_mtk`** follows the snapshot rule of section 2 (its text no longer refers to `as_of`).
@@ -96,15 +96,15 @@ Push B: the `programmes` section and the three reads (contract 1.15.0 members of
 
 ## 11. Push C (2026-11-13, same ruling D-LEAD-CONTRACT-115-01, still 1.15.0)
 
-- **New sync record `gift_choice`** (`RecordType` enum value, `GiftChoiceRecord`, `GiftChoicePayload`: `outlet_id`, `gift_id`, `quarter`, optional `fix`). Server table `app.gift_choice` (V0182, immutable, idempotent by `client_uuid`); `GiftChoiceRecords` keeps `app.gift_assignment` in step: later `captured_at` wins in any arrival order until the hand-over photo locks the outlet's gift.
+- **New sync record `gift_choice`** (`RecordType` enum value, `GiftChoiceRecord`, `GiftChoicePayload`: `outlet_id`, `gift_id`, `quarter`, optional `fix`). Server table `app.gift_choice` (V0192, immutable, idempotent by `client_uuid`); `GiftChoiceRecords` keeps `app.gift_assignment` in step: later `captured_at` wins in any arrival order until the hand-over photo locks the outlet's gift.
 - **Two new `RecordOutcomeCode` values**, both rejected and not retryable: `gift_locked` (choice after the photo lock) and `gift_not_for_tier`. Other refusals reuse `unknown_gift`, `programme_inactive`, `unknown_outlet`, `scope_out_of_reach` (role outside `cfg.astha.gift_choice_roles` or outlet outside the uploader's reach).
-- **Config default** `cfg.astha.gift_choice_roles`: SR and TSO (owner Q4 default; V0009 had TSO only; V0182 changes the registry default, explicit values are untouched).
+- **Config default** `cfg.astha.gift_choice_roles`: SR and TSO (owner Q4 default; V0009 had TSO only; V0192 changes the registry default, explicit values are untouched).
 - Android: `RecordType` and `RecordOutcomeCode` gain a value each in `shared/contract`; a phone that does not know `gift_choice` never sends it. Room/outbox: the android lane adds the record and shows the refusal reasons (`gift_locked`, `gift_not_for_tier`).
 - Worker (no contract change): redemption posting, FIFO expiry and adjustment plumbing, see D-LOY-API-18.
 
 
-## 12. Push C, photos (2026-11-13; contract 1.16.0, D-LEAD-CONTRACT-116-01)
-- `gift_photo` (existing record): a second photo for the same Astha assignment or campaign unit is no longer `gift_photo_exists`. The first by `captured_at` is the lock; others are stored as flagged duplicates (V0185), never deleted. The phone gets `accepted` for both. The code `gift_photo_exists` stays in the enum (older rows, other writers).
+## 12. Push C, photos (2026-11-13; contract 1.17.0, D-LEAD-CONTRACT-117-01)
+- `gift_photo` (existing record): a second photo for the same Astha assignment or campaign unit is no longer `gift_photo_exists`. The first by `captured_at` is the lock; others are stored as flagged duplicates (V0193), never deleted. The phone gets `accepted` for both. The code `gift_photo_exists` stays in the enum (older rows, other writers).
 - Ingest refuses a photo whose `gift_assignment_id` is unknown (`schema_invalid`) or whose outlet is outside the uploader's reach (`scope_out_of_reach`). The server stores its own geofence verdict of the photo fix; it never refuses for it.
 - `ProgrammesSection.pending_gift_verifications` is filled: per redemption and gift, `qty` units against `photos_captured` (winner photos only), redemptions of the last 30 business days, cap 500. `truncated_sections` gains the value `pending_gift_verifications` (enum addition).
 - Android: no DTO mirrors these members (the bundle section is JSON); nothing changes in android/ or shared/.

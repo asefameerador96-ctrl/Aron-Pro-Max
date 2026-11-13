@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.16.0
+  version: 1.17.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -132,11 +132,11 @@ info:
       flagged `possible_duplicate` with `possible_duplicate_of`. Not in this version of the train: the bundle `clusters` section, the
       cluster-creation record, `outlet_sku_stats`, the late-row count and the `posm-survey` report key (train 2, same version number, announced
       when they ship).
-    - 1.16.0 (loyalty and Astha, push C of lane portal-loyalty-api, D-LEAD-CONTRACT-116-01, `docs/requests/contract-1.16-loyalty-gift-choice.md`; additive only): `RecordType` gains `gift_choice`
+    - 1.17.0 (loyalty and Astha, push C of lane portal-loyalty-api, D-LEAD-CONTRACT-117-01, `docs/requests/contract-1.17-loyalty-gift-choice.md`; additive only): `RecordType` gains `gift_choice`
       (`GiftChoiceRecord`/`GiftChoicePayload`) and `gift_photo` keeps its first-photo-wins rule (the FIRST photo by `captured_at` takes the lock; a later one is stored as a flagged duplicate, never refused or deleted).
       Outcome codes `gift_locked` and `gift_not_for_tier` are added. `ProgrammesSection` gains `pending_gift_verifications` and the `truncated_sections` values `gift_assignments` and
       `pending_gift_verifications` (maxItems 5). `LoyaltyBalance` gains the required boolean `overdrawn` (= balance_points < 0, derived, never stored). `cfg.loyalty.negative_balance_policy=reject`
-      is not enforced at ingest (not built) and is refused by config validation until it is. Migrations V0182 to V0186.
+      is not enforced at ingest (not built) and is refused by config validation until it is. Migrations V0192 to V0194.
     - 1.15.0 (loyalty and Astha, the FIELD side, train 3 of lane portal-loyalty-api, D-LEAD-CONTRACT-115-01, `docs/requests/contract-1.15-loyalty-field.md`; additive only): the bundle
       `programmes` section is filled (an object when a programme is active in the user's reach, else `null`; units, rounding and as-of are in each member's description).
       `AsthaTargetRow` gains `value_target_mtk`, `value_achieved_mtk` (integer milli-taka as strings), `as_of` and `by_pack` (achievement per `pack_factor`, base units;
@@ -8829,7 +8829,7 @@ components:
             payload: { $ref: '#/components/schemas/RedemptionLinePayload' }
       unevaluatedProperties: false
     GiftChoiceRecord:
-      description: The Astha gift an outlet chose for a quarter (contract 1.16.0, SRM-B-66). Idempotent by the envelope `client_uuid`.
+      description: The Astha gift an outlet chose for a quarter (contract 1.17.0, SRM-B-66). Idempotent by the envelope `client_uuid`.
       allOf:
         - { $ref: '#/components/schemas/RecordEnvelope' }
         - type: object
@@ -15854,7 +15854,7 @@ components:
     GiftChoicePayload:
       type: object
       description: |
-        1.16.0. The Astha gift an outlet chose for a quarter. The server upserts `app.gift_assignment` (one row per programme, quarter and outlet): the LATER `captured_at` wins until the hand-over
+        1.17.0. The Astha gift an outlet chose for a quarter. The server upserts `app.gift_assignment` (one row per programme, quarter and outlet): the LATER `captured_at` wins until the hand-over
         photo locks the choice; a choice that arrives after the lock is refused `gift_locked` (rejected, not retryable; the phone shows the reason, it is never dropped silently). Who may choose:
         the roles of `cfg.astha.gift_choice_roles` (default SR and TSO, owner Q4) for an outlet in their reach, else `scope_out_of_reach`; a gift that is not for the outlet's tier is refused
         `gift_not_for_tier`; an unknown or inactive gift `unknown_gift`; an outlet in no active Astha enrolment `programme_inactive`.
@@ -16254,7 +16254,7 @@ components:
         programme_id: { $ref: '#/components/schemas/Id' }
         league_label: { type: [string, 'null'], maxLength: 40 }
         balance_points: { type: integer, description: 'Every ledger row posted so far for the outlet and programme (`expiry` rows included), MINUS the points of stored, non-voided redemptions the ledger job has not posted yet (so an acknowledged redemption is in the figure at once; a posted redemption that was voided and not reversed yet is added back), read in one snapshot. There is NO business-date cut. The phone subtracts its own redemptions that had not been acknowledged when it sent the request (the one phone rule of `ProgrammesSection`). Points lapse only when the ledger job has posted their expiry row (replayed in business-date order; a debit never consumes a credit that had lapsed on its date; a later credit first settles unfunded debt); before then the balance may still include points past their date. A negative balance means the outlet is overdrawn.' }
-        overdrawn: { type: boolean, description: '1.16.0. True exactly when `balance_points` is below zero: a negative balance is the overdraw signal. Derived on read, never stored on a ledger row.' }
+        overdrawn: { type: boolean, description: '1.17.0. True exactly when `balance_points` is below zero: a negative balance is the overdraw signal. Derived on read, never stored on a ledger row.' }
         expiring_points: { type: integer, minimum: 0, description: 'What the EARLIEST upcoming expiry (`expiry_date`) will take: the credits expiring on that date as the ledger replay leaves them AFTER debits (oldest expiry consumed first) and after unfunded debt has been settled by later credits, capped by the balance and never negative; no window.' }
         expiry_date:
           oneOf:
@@ -16433,7 +16433,7 @@ components:
         truncated_sections:
           type: array
           maxItems: 5
-          description: '1.15.0 (values `gift_assignments` and `pending_gift_verifications`: 1.16.0). Which of `programmes`, `loyalty`, `gifts`, `gift_assignments`, `pending_gift_verifications` was cut at its cap (50, 11,000, 200, 2,000, 500); empty when none. A cut is also logged by the server. The phone shows a notice.'
+          description: '1.15.0 (values `gift_assignments` and `pending_gift_verifications`: 1.17.0). Which of `programmes`, `loyalty`, `gifts`, `gift_assignments`, `pending_gift_verifications` was cut at its cap (50, 11,000, 200, 2,000, 500); empty when none. A cut is also logged by the server. The phone shows a notice.'
           items: { type: string, enum: [programmes, loyalty, gifts, gift_assignments, pending_gift_verifications] }
         astha_truncated: { type: boolean, description: '1.15.0. True when the user''s routes had more than 1,000 Astha rows for the month and the list was cut; the phone shows a notice and reads the rest with `listAsthaTargets`.' }
         astha_targets:

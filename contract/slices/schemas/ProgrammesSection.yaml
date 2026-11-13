@@ -59,7 +59,7 @@ ProgrammesSection:
     truncated_sections:
       type: array
       maxItems: 5
-      description: '1.15.0 (values `gift_assignments` and `pending_gift_verifications`: 1.16.0). Which of `programmes`,
+      description: '1.15.0 (values `gift_assignments` and `pending_gift_verifications`: 1.17.0). Which of `programmes`,
         `loyalty`, `gifts`, `gift_assignments`, `pending_gift_verifications` was cut at its cap (50, 11,000, 200,
         2,000, 500); empty when none. A cut is also logged by the server. The phone shows a notice.'
       items:

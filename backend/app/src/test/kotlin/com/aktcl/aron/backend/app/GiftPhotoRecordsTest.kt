@@ -24,7 +24,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Push C: the `gift_photo` sync record (contract 1.16.0, SRM-B-77 to 80) through POST /v1/sync/batch. The first photo by captured_at locks the outlet's gift (`locked_at`, `photo_media_uuid`) in ANY arrival
+ * Push C: the `gift_photo` sync record (contract 1.17.0, SRM-B-77 to 80) through POST /v1/sync/batch. The first photo by captured_at locks the outlet's gift (`locked_at`, `photo_media_uuid`) in ANY arrival
  * order; every other photo is stored as a flagged duplicate (never deleted, never refused); the server re-checks the photo fix against the outlet; an assignment outside the uploader's reach is refused;
  * `pending_gift_verifications` lists redeemed campaign gifts short of photos.
  */

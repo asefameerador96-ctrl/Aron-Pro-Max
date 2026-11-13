@@ -62,7 +62,7 @@ enum class RecordType(val wire: String) {
     @SerialName("support_ticket") SUPPORT_TICKET("support_ticket"),
     /** Contract 1.10.0 (D-TSO-MAN-20, 21): the reporter's comment on, or close review of, its own ticket. */
     @SerialName("support_ticket_event") SUPPORT_TICKET_EVENT("support_ticket_event"),
-    @SerialName("gift_choice") GIFT_CHOICE("gift_choice"),   // contract 1.16.0
+    @SerialName("gift_choice") GIFT_CHOICE("gift_choice"),   // contract 1.17.0
 }
 
 /** Roles (docs/24 s8.5). */

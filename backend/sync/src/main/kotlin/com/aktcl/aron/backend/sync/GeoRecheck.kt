@@ -211,7 +211,7 @@ class GeoRecheckSweepJob(
             val now = clock.now()
             stored += db.jdbi.inTransaction<Int, Exception> { h ->
                 val today = LocalDate.ofInstant(now, ZoneId.of("Asia/Dhaka"))
-                handler.sweep(h, today, days, BATCH, now) + photos.sweep(h, today, days, BATCH, now)   // visits, then gift hand-over photos (V0185)
+                handler.sweep(h, today, days, BATCH, now) + photos.sweep(h, today, days, BATCH, now)   // visits, then gift hand-over photos (V0193)
             }
         }
         return stored

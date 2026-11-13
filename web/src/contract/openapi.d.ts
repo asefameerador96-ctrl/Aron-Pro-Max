@@ -5755,7 +5755,7 @@ export interface components {
              */
             type: "redemption_line";
         };
-        /** @description The Astha gift an outlet chose for a quarter (contract 1.16.0, SRM-B-66). Idempotent by the envelope `client_uuid`. */
+        /** @description The Astha gift an outlet chose for a quarter (contract 1.17.0, SRM-B-66). Idempotent by the envelope `client_uuid`. */
         GiftChoiceRecord: components["schemas"]["RecordEnvelope"] & {
             /** @constant */
             type: "gift_choice";
@@ -10127,7 +10127,7 @@ export interface components {
             points_total: number;
         };
         /**
-         * @description 1.16.0. The Astha gift an outlet chose for a quarter. The server upserts `app.gift_assignment` (one row per programme, quarter and outlet): the LATER `captured_at` wins until the hand-over
+         * @description 1.17.0. The Astha gift an outlet chose for a quarter. The server upserts `app.gift_assignment` (one row per programme, quarter and outlet): the LATER `captured_at` wins until the hand-over
          *     photo locks the choice; a choice that arrives after the lock is refused `gift_locked` (rejected, not retryable; the phone shows the reason, it is never dropped silently). Who may choose:
          *     the roles of `cfg.astha.gift_choice_roles` (default SR and TSO, owner Q4) for an outlet in their reach, else `scope_out_of_reach`; a gift that is not for the outlet's tier is refused
          *     `gift_not_for_tier`; an unknown or inactive gift `unknown_gift`; an outlet in no active Astha enrolment `programme_inactive`.
@@ -10442,7 +10442,7 @@ export interface components {
             league_label: string | null;
             /** @description Every ledger row posted so far for the outlet and programme (`expiry` rows included), MINUS the points of stored, non-voided redemptions the ledger job has not posted yet (so an acknowledged redemption is in the figure at once; a posted redemption that was voided and not reversed yet is added back), read in one snapshot. There is NO business-date cut. The phone subtracts its own redemptions that had not been acknowledged when it sent the request (the one phone rule of `ProgrammesSection`). Points lapse only when the ledger job has posted their expiry row (replayed in business-date order; a debit never consumes a credit that had lapsed on its date; a later credit first settles unfunded debt); before then the balance may still include points past their date. A negative balance means the outlet is overdrawn. */
             balance_points: number;
-            /** @description 1.16.0. True exactly when `balance_points` is below zero: a negative balance is the overdraw signal. Derived on read, never stored on a ledger row. */
+            /** @description 1.17.0. True exactly when `balance_points` is below zero: a negative balance is the overdraw signal. Derived on read, never stored on a ledger row. */
             overdrawn: boolean;
             /** @description What the EARLIEST upcoming expiry (`expiry_date`) will take: the credits expiring on that date as the ledger replay leaves them AFTER debits (oldest expiry consumed first) and after unfunded debt has been settled by later credits, capped by the balance and never negative; no window. */
             expiring_points: number;
@@ -10556,7 +10556,7 @@ export interface components {
             gifts: components["schemas"]["Gift"][];
             /** @description 1.15.0. Display only ("data as of"), never part of the achievement rule: the newest memo ingest (receipt or status change) among the outlets of the rows actually sent, for the month of the business date; the Dhaka start of the month when there is none. Rows carry no `as_of` in the bundle, to save bytes. */
             astha_as_of: components["schemas"]["Timestamp"];
-            /** @description 1.15.0 (values `gift_assignments` and `pending_gift_verifications`: 1.16.0). Which of `programmes`, `loyalty`, `gifts`, `gift_assignments`, `pending_gift_verifications` was cut at its cap (50, 11,000, 200, 2,000, 500); empty when none. A cut is also logged by the server. The phone shows a notice. */
+            /** @description 1.15.0 (values `gift_assignments` and `pending_gift_verifications`: 1.17.0). Which of `programmes`, `loyalty`, `gifts`, `gift_assignments`, `pending_gift_verifications` was cut at its cap (50, 11,000, 200, 2,000, 500); empty when none. A cut is also logged by the server. The phone shows a notice. */
             truncated_sections: ("programmes" | "loyalty" | "gifts" | "gift_assignments" | "pending_gift_verifications")[];
             /** @description 1.15.0. True when the user's routes had more than 1,000 Astha rows for the month and the list was cut; the phone shows a notice and reads the rest with `listAsthaTargets`. */
             astha_truncated: boolean;

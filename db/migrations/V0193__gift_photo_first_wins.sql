@@ -1,4 +1,4 @@
--- V0185 (lane portal-loyalty-api, push C): gift hand-over photos, first by captured_at wins (contract 1.16.0, SRM-B-77 to 80, D-LOY-API-20).
+-- V0193 (lane portal-loyalty-api, push C): gift hand-over photos, first by captured_at wins (contract 1.17.0, SRM-B-77 to 80, D-LOY-API-20).
 -- V0007 allowed ONE photo per Astha assignment and per campaign unit and refused the second as gift_photo_exists. The brief says otherwise: the first photo by
 -- captured_at is the lock and a later one is STORED, flagged, never deleted and never refused silently. So:
 -- 1. app.gift_photo gets is_duplicate / flagged_at. A BEFORE INSERT trigger decides it under an advisory lock per assignment (or unit): the new photo is the winner only if its
@@ -22,7 +22,7 @@ ALTER TABLE app.gift_photo
   ADD COLUMN server_distance_m double precision CHECK (server_distance_m >= 0),
   ADD COLUMN server_radius_m int CHECK (server_radius_m > 0),
   ADD COLUMN server_checked_at timestamptz;
-COMMENT ON COLUMN app.gift_photo.is_duplicate IS 'True for a photo that is not the first by captured_at for its assignment or unit; stored and kept, never counted as the lock (V0185).';
+COMMENT ON COLUMN app.gift_photo.is_duplicate IS 'True for a photo that is not the first by captured_at for its assignment or unit; stored and kept, never counted as the lock (V0193).';
 COMMENT ON COLUMN app.gift_photo.flagged_at IS 'When the photo was flagged as a duplicate or as failing its checks.';
 COMMENT ON COLUMN app.gift_photo.check_flag IS 'Why a campaign-unit photo failed the ingest checks (unit_out_of_range, gift_not_in_redemption, outlet_mismatch, out_of_reach, parent_voided, parent_refused); null when it passed. Such a photo is stored, flagged (is_duplicate) and never the unit''s photo.';
 COMMENT ON COLUMN app.gift_photo.server_verdict IS 'The server re-check of the photo fix against the outlet location (same function as the phone, docs/24 s11.3); the photo is never refused for it.';

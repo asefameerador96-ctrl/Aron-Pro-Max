@@ -1,6 +1,6 @@
 GiftChoicePayload:
   type: object
-  description: '1.16.0. The Astha gift an outlet chose for a quarter. The server upserts `app.gift_assignment` (one
+  description: '1.17.0. The Astha gift an outlet chose for a quarter. The server upserts `app.gift_assignment` (one
     row per programme, quarter and outlet): the LATER `captured_at` wins until the hand-over
 
     photo locks the choice; a choice that arrives after the lock is refused `gift_locked` (rejected, not retryable;

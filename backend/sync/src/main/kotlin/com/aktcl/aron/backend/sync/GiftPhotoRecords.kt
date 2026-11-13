@@ -18,8 +18,8 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
 /**
- * The ingest side of the `gift_photo` record (contract 1.16.0, SRM-B-77 to 80; lane portal-loyalty-api, push C, D-LOY-API-20). The generic writer stores the photo row (idempotent by client_uuid);
- * V0185's BEFORE INSERT trigger decides which photo of an assignment or unit is the FIRST by captured_at (the winner) and stores any other as a flagged duplicate: never deleted, never refused.
+ * The ingest side of the `gift_photo` record (contract 1.17.0, SRM-B-77 to 80; lane portal-loyalty-api, push C, D-LOY-API-20). The generic writer stores the photo row (idempotent by client_uuid);
+ * V0193's BEFORE INSERT trigger decides which photo of an assignment or unit is the FIRST by captured_at (the winner) and stores any other as a flagged duplicate: never deleted, never refused.
  * The winner is the earliest by (captured_at, client_uuid) in the trigger and in app.gift_photo_elect (after an admin void of the winner, or after a unit photo fails its checks), so arrival never decides.
  * This handler adds what a trigger cannot:
  *  - check: an Astha photo names an existing assignment whose outlet is in the uploader's reach (else `schema_invalid` / `scope_out_of_reach`);
