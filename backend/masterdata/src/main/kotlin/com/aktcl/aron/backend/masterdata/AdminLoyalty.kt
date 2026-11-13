@@ -182,7 +182,7 @@ private fun loyVisibility(h: Handle, p: AronPrincipal, d: AdminLoyaltyDeps): LVi
     Role.BRAND -> h.createQuery("SELECT brand_id FROM app.user_brand_scope WHERE user_id = :u ORDER BY brand_id").bind("u", p.userId).mapTo(Long::class.java).list()
         .let { if (it.isEmpty()) LVis.Nobody else LVis.Brands(it) }
     Role.WM, Role.DMO, Role.TSO -> d.reach.reach(p.userId, p.role, p.scopeVersion, today(d)).let { r: Reach ->
-        if (r.national) LVis.All else LVis.Geo(com.aktcl.aron.backend.platform.ProgrammeScopeParams.of(h, r))   // the ONE scope function (push B4)
+        if (r.national) LVis.All else LVis.Geo(com.aktcl.aron.backend.platform.ProgrammeScopeParams.ofPortal(r))   // the ONE scope class (push B4); the portal keeps its held zones as both sets
     }
     else -> LVis.Nobody
 }
