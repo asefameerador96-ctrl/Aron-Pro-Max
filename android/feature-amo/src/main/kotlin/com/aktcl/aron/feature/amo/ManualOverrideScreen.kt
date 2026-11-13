@@ -1,7 +1,11 @@
 package com.aktcl.aron.feature.amo
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -22,6 +26,8 @@ import com.aktcl.aron.feature.outlet.GeoPhotoBlock
 import com.aktcl.aron.feature.outlet.GeoPhotoState
 import com.aktcl.aron.feature.outlet.R as OutR
 
+object ManualOverrideTags { const val WAITING = "amo_mo_waiting" }
+
 /**
  * Manual Override (manual: the camera comes straight away, one photo, then the menu). Unlike the SR's Force Sale there is no reason question:
  * the AMO overrides because the outlet's position is wrong, and the photo's fix goes for approval as a location correction (F-AMO-005).
@@ -33,7 +39,13 @@ fun ManualOverrideContent(
     onShutter: () -> Unit,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The camera is open or the photo is being sent on (screenshot 20: the menu follows the photo): a quiet loading state, not the form. */
+    waiting: Boolean = false,
 ) {
+    if (waiting) {
+        Box(modifier.fillMaxSize().testTag(ManualOverrideTags.WAITING), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
     Column(modifier.fillMaxSize()) {
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),

@@ -89,22 +89,24 @@ import com.aktcl.aron.core.ui.R as CoreR
 @DrawableRes
 internal fun amoTileIcon(tileId: String): Int? = when (tileId) {
     "attendance" -> CoreR.drawable.aron_art_attendance
-    "joint_call" -> CoreR.drawable.aron_ic_joint_call
-    "control_call" -> CoreR.drawable.aron_ic_control_call
-    "team_location" -> CoreR.drawable.aron_ic_team_location
-    "team_performance" -> CoreR.drawable.aron_ic_team_performance
+    "joint_call" -> R.drawable.amo_art_joint_call
+    "control_call" -> R.drawable.amo_art_control_call
+    "team_location" -> R.drawable.amo_art_team_location
+    "team_performance" -> R.drawable.amo_art_team_performance
     "task_delegation" -> CoreR.drawable.aron_art_task_delegation
-    "live_dashboard" -> CoreR.drawable.aron_ic_live_dashboard
-    "sr_stock" -> CoreR.drawable.aron_ic_sr_stock
+    "live_dashboard" -> R.drawable.amo_art_live_dashboard
+    "sr_stock" -> R.drawable.amo_art_sr_stock
     "outlet" -> CoreR.drawable.aron_art_outlet
     "stock" -> CoreR.drawable.aron_art_stock
     "sale" -> CoreR.drawable.aron_art_sale
     "memo" -> CoreR.drawable.aron_art_memo
     "summary" -> CoreR.drawable.aron_art_summary
     "sales_submit" -> CoreR.drawable.aron_art_sales_submit
-    "report" -> CoreR.drawable.aron_ic_report
+    "report" -> R.drawable.amo_art_report
     "sales_journey" -> CoreR.drawable.aron_art_sales_journey
     "settings" -> CoreR.drawable.aron_art_settings
+    "astha" -> R.drawable.amo_art_astha
+    "campaign_enrollment" -> R.drawable.amo_art_campaign
     else -> null
 }
 

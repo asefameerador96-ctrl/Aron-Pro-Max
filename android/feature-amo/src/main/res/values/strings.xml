@@ -132,6 +132,7 @@
     <string name="amo_leaf_team_location">Team Location</string>
     <string name="amo_leaf_team_performance">Team Performance</string>
     <string name="amo_leaf_task_delegation">Task Delegation</string>
+    <string name="amo_leaf_campaign_enrollment">Campaign Enrollment</string>
     <string name="amo_leaf_live_dashboard">Live Dashboard</string>
     <string name="amo_leaf_sr_stock">SR Stock</string>
     <string name="amo_verify_sep">" · "</string>

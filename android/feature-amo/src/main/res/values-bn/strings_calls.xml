@@ -2,7 +2,7 @@
 <resources>
     <string name="amo_cp_route_placeholder">একটি রুট সিলেক্ট করুন</string>
     <string name="amo_cp_outlet_placeholder">রিটেইলার নির্বাচন করুন</string>
-    <string name="amo_cp_all">সব</string>
+    <string name="amo_cp_all">All</string>
     <string name="amo_cp_live">LIVE</string>
     <string name="amo_cp_out_of_range">AMO এবং রিটেইলার রেঞ্জের মধ্যে নেই।</string>
     <string name="amo_cp_override">ম্যানুয়াল ওভাররাইড</string>

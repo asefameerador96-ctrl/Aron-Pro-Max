@@ -19,20 +19,21 @@ class AmoMenuTest {
         assertTrue(AmoLeaf.SETTINGS in AmoMenu.leaves(full))
     }
 
-    @Test fun homeTilesFollowTheManualsOrderAndHideTheDeferredOnes() {
+    @Test fun homeTilesFollowTheOldAppsOrderWithTheDeferredHooksInPlace() {
         val tiles = AmoMenu.tiles(AmoReach.parse(section(3, "pending" to 5L), 99), AmoMenu.badges(AmoReach.parse(section(3, "pending" to 5L), 99)))
         assertEquals(
             listOf(
                 "attendance", "joint_call", "control_call", "team_location", "team_performance", "task_delegation", "live_dashboard", "sr_stock",
-                "outlet", "stock", "sale", "memo", "summary", "sales_submit", "report", "sales_journey", "settings",
+                "outlet", "stock", "sale", "memo", "summary", "sales_submit", "astha", "report", "sales_journey", "campaign_enrollment", "settings",
             ),
             tiles.map { it.id },
         )
-        // Astha and Campaign Enrollment are hidden (docs/27); the Outlet tile carries the pending count, no other tile a badge
-        assertTrue(tiles.none { it.id == "astha" || it.id.contains("campaign") })
+        // Astha and Campaign Enrollment are hook tiles in the old app's place (docs/27, D-PAR-AMO-01); the Outlet tile carries the pending count, no other tile a badge
+        assertTrue(AmoMenu.isHook("astha") && AmoMenu.isHook("campaign_enrollment") && !AmoMenu.isHook("report"))
         assertEquals(mapOf("outlet" to 1), tiles.filter { it.badge > 0 }.associate { it.id to it.badge })
-        // a user with Astha outlets still gets no Astha tile in this build
-        assertEquals(17, AmoMenu.tiles(AmoReach(3, 0, asthaOutlets = true)).size)
+        // the hook tiles show whatever the bundle says: the tile count is the same with or without Astha outlets
+        assertEquals(19, AmoMenu.tiles(AmoReach(3, 0, asthaOutlets = true)).size)
+        assertEquals(19, AmoMenu.tiles(AmoReach(3, 0)).size)
     }
 
     @Test fun ssUserHasFourteenWithoutTeamLocationPerformanceAndSrStock() {

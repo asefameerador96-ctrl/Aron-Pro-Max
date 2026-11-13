@@ -216,11 +216,11 @@ private fun PickStep(
     )
     val tiles = buildList {
         if (joint) add(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_joint_call, AmoR.string.amo_cp_joint_tile, com.aktcl.aron.feature.amo.AmoCallTags.MENU_ASSESS, onJoint))
-        else if (salesPath) add(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_sale, AmoR.string.amo_cc_menu_sale, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SALE, { outlet?.let(onSalesTile) }))
+        else if (salesPath) add(com.aktcl.aron.feature.amo.MenuTile(AmoR.drawable.amo_art_cc_sale, AmoR.string.amo_cc_menu_sale, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SALE, { outlet?.let(onSalesTile) }))
         else {
-            add(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_sale, AmoR.string.amo_cc_menu_sale, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SALE, onSale))
-            add(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_assessment, AmoR.string.amo_cc_menu_assessment, com.aktcl.aron.feature.amo.AmoCallTags.MENU_ASSESS, onAssess))
-            add(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_survey, AmoR.string.amo_cc_menu_survey, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SURVEY, onSurvey))
+            add(com.aktcl.aron.feature.amo.MenuTile(AmoR.drawable.amo_art_cc_sale, AmoR.string.amo_cc_menu_sale, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SALE, onSale))
+            add(com.aktcl.aron.feature.amo.MenuTile(AmoR.drawable.amo_art_cc_assess, AmoR.string.amo_cc_menu_assessment, com.aktcl.aron.feature.amo.AmoCallTags.MENU_ASSESS, onAssess))
+            add(com.aktcl.aron.feature.amo.MenuTile(AmoR.drawable.amo_art_cc_survey, AmoR.string.amo_cc_menu_survey, com.aktcl.aron.feature.amo.AmoCallTags.MENU_SURVEY, onSurvey))
             if (showPrice) add(com.aktcl.aron.feature.amo.MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_price_compliance, AmoR.string.amo_cc_menu_price, com.aktcl.aron.feature.amo.AmoCallTags.MENU_PRICE, onPrice))
         }
     }
@@ -257,22 +257,31 @@ private fun ManualOverrideStep(day: AmoDay, reason: ForceReason, onStarted: () -
                 val controller = remember {
                     day.forceSaleController(capture) { ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED }
                 }
-                com.aktcl.aron.feature.amo.ManualOverrideContent(
-                    capture = cap, missing = missing, onShutter = { scope.launch { capture.shutter() } },
-                    onConfirm = {
-                        if (!confirming) {
-                            confirming = true
-                            scope.launch {
-                                try {
-                                    when (val r = runCatching { controller.confirm(reason, decision.outlet) }.getOrDefault(ForceSaleResult.NotAvailable)) {
-                                        is ForceSaleResult.Invalid -> missing = r.missing
-                                        is ForceSaleResult.Started -> onStarted()
-                                        ForceSaleResult.NotAvailable -> onBack()
-                                    }
-                                } finally { confirming = false }
-                            }
+                val confirm: () -> Unit = {
+                    if (!confirming) {
+                        confirming = true
+                        scope.launch {
+                            try {
+                                when (val r = com.aktcl.aron.core.common.orDefaultKeepingCancellation(ForceSaleResult.NotAvailable) { controller.confirm(reason, decision.outlet) }) {
+                                    is ForceSaleResult.Invalid -> missing = r.missing
+                                    is ForceSaleResult.Started -> onStarted()
+                                    ForceSaleResult.NotAvailable -> onBack()
+                                }
+                            } finally { confirming = false }
                         }
-                    },
+                    }
+                }
+                // D-PAR-AMO-02 (screenshot 20): Manual Override opens the camera at once and the menu follows the photo; the page below stays only
+                // as the fallback when the camera was cancelled or the fix failed (retake, then Continue).
+                var autoOpened by rememberSaveable { mutableStateOf(false) }
+                LaunchedEffect(Unit) {
+                    if (!autoOpened && cap.photo == null) { autoOpened = true; com.aktcl.aron.core.common.orNullKeepingCancellation { capture.shutter() } }
+                }
+                var autoConfirmed by rememberSaveable { mutableStateOf(false) }
+                LaunchedEffect(cap.complete) { if (cap.complete && !autoConfirmed) { autoConfirmed = true; confirm() } }
+                com.aktcl.aron.feature.amo.ManualOverrideContent(
+                    capture = cap, missing = missing, onShutter = { scope.launch { capture.shutter() } }, onConfirm = confirm,
+                    waiting = cap.busy || (cap.complete && missing.isEmpty()),
                 )
             }
         }

@@ -227,7 +227,7 @@ fun AmoMenuTiles(tiles: List<MenuTile>, modifier: Modifier = Modifier) {
                     .testTag(t.tag).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = t.onClick).padding(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
             ) {
-                androidx.compose.foundation.Image(painterResource(t.icon), null, Modifier.size(44.dp))
+                androidx.compose.foundation.Image(painterResource(t.icon), null, Modifier.size(52.dp))
                 Text(stringResource(t.label), style = amoText(14, color = look.tileLabel, align = TextAlign.Center), modifier = Modifier.padding(top = 6.dp).widthIn(max = 140.dp))
             }
         }
