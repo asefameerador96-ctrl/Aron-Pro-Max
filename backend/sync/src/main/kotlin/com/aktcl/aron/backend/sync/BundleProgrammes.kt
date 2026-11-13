@@ -167,10 +167,12 @@ object BundleProgrammes {
     /**
      * Ledger balance per enrolled outlet and programme: ONE function for the bundle and the live read (C-R2, D-LOY-API-24), NO business-date cut.
      * `balance_points` = the sum of ALL ledger rows posted so far for the pair (`expiry` rows included) MINUS the points of stored, non-voided redemptions the ledger job has not
-     * posted yet (so an acknowledged redemption is in the figure at once, not ten minutes later), PLUS the points of a posted redemption that has been voided and whose reversal is
-     * not posted yet. Posting the redemption, or its reversal, later does not change the figure. All of it is ONE statement (one snapshot, so the job cannot post between the
+     * posted yet (so an acknowledged redemption is in the figure at once, not ten minutes later). Posting the redemption later does not change the figure. All of it is ONE statement (one snapshot, so the job cannot post between the
      * parts) and the caller reads it inside the section's repeatable-read snapshot. The phone subtracts its own redemptions that had not been acknowledged when it sent the
      * request (the one phone rule of `ProgrammesSection`). Points past their date stay in the figure until the job has posted their expiry row.
+     * TRANSIENTS (C-R3, D-LOY-API-25), the only three, each gone after the next ledger-job pass (at most about ten minutes): (1) a debit that synced late with an earlier business date is in the
+     * figure before the expiry give-back it causes is posted (LESS favourable); (2) a redemption voided after it was posted keeps its debit until the pass posts the reversal (LESS favourable; the
+     * read does NOT add it back: with a credit that has lapsed since, that would show points that no longer exist); (3) points whose date has passed stay until the first pass after Dhaka midnight posts their expiry row.
      * `expiring_points` and `expiry_date`: what the EARLIEST upcoming expiry (`expires_on >= date`) will take AFTER debt settlement ([LoyaltyLedger.upcoming]: the same replay the
      * job uses, over the same rows), capped by the balance, never negative; no window. `cfg.loyalty.expiry_days` is the lifetime AFTER THE PERIOD END (D24-68), so it sets
      * `expires_on` when points are posted. A credit with no `expires_on` never expires. `as_of_date` is DISPLAY ONLY: [date], the business date the figures were read on
@@ -204,11 +206,6 @@ object BundleProgrammes {
             SELECT r.outlet_id, r.programme_id, -r.points_total, NULL, 'redemption', r.business_date, r.client_uuid::text, r.confirmed_at, r.id
               FROM app.redemption r WHERE r.outlet_id = ANY(CAST(:outlets AS bigint[])) AND r.programme_id = ANY(CAST(:pids AS bigint[])) AND r.voided_at IS NULL
                AND NOT EXISTS (SELECT 1 FROM app.loyalty_ledger p WHERE p.source_type = 'redemption' AND p.source_id = r.client_uuid::text)
-            UNION ALL
-            SELECT r.outlet_id, r.programme_id, r.points_total, NULL, 'redemption_void', :d, r.client_uuid::text, r.confirmed_at, r.id
-              FROM app.redemption r WHERE r.outlet_id = ANY(CAST(:outlets AS bigint[])) AND r.programme_id = ANY(CAST(:pids AS bigint[])) AND r.voided_at IS NOT NULL
-               AND EXISTS (SELECT 1 FROM app.loyalty_ledger p WHERE p.source_type = 'redemption' AND p.source_id = r.client_uuid::text)
-               AND NOT EXISTS (SELECT 1 FROM app.loyalty_ledger v WHERE v.source_type = 'redemption_void' AND v.source_id = r.client_uuid::text)
             """.trimIndent(),
         ).bind("d", date).bindArray("pids", Long::class.javaObjectType, programmeIds).bindArray("outlets", Long::class.javaObjectType, outlets).map { rs, _ ->
             (rs.getLong(1) to rs.getLong(2)) to LoyaltyLedger.Row(

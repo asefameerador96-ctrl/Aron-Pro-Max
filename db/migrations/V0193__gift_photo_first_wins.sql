@@ -141,3 +141,9 @@ CREATE OR REPLACE TRIGGER gift_photo_immutable BEFORE UPDATE OR DELETE ON app.gi
 
 -- The new table and function get the standard role grants (api_rw, worker_rw, readers; app.apply_db_role_grants).
 SELECT app.apply_db_role_grants();
+
+-- C-R3 (f): a gift photo asks "which lines of this redemption were refused or are held in review?" by the redemption's family_uuid (app.ingest_registry is hash-partitioned by client_uuid,
+-- so without an index the probe would read every partition). The index holds only the registry rows that are neither stored nor voided (rejected, quarantined), so it stays small;
+-- a partitioned index cannot be built CONCURRENTLY, so the build is marked for squawk (same as V0120); lock_timeout bounds the wait.
+-- squawk-ignore require-concurrent-index-creation
+CREATE INDEX ingest_registry_family_unresolved ON app.ingest_registry (family_uuid, record_type) WHERE status IN ('rejected', 'quarantined');

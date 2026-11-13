@@ -11,20 +11,21 @@ import com.aktcl.aron.contract.RecordOutcomeCode
  *
  * | hold code                                | waives (handler check)                                                                                     |
  * |------------------------------------------|------------------------------------------------------------------------------------------------------------|
- * | scope_out_of_reach                       | [Check.WHO]: the uploader's role may choose (gift_choice) and the outlet is in the uploader's reach           |
+ * | scope_out_of_reach                       | [Check.REACH] only: the outlet is in the uploader's reach (C-R3: it never waives the role check)               |
  * | no_assignment_on_date                    | [Check.REACH]: the outlet is in the uploader's reach ON THE RECORD'S DATE (a cover day, a re-assigned route)  |
  * | programme_inactive                       | the EARLIEST failing of [Check.PROGRAMME] (the gift's programme is an active Astha programme) and             |
  * |                                          | [Check.ENROLMENT] (the outlet is enrolled on the date), never both: [firstProgrammeCheck]                      |
  * | business_date_out_of_window, device_not_enrolled, device_integrity_failed, content_duplicate, after_final_submit, anything else | nothing                                             |
  *
- * The kind, status, tier, open quarter and lock checks are never waived by any code.
+ * The role check (cfg.astha.gift_choice_roles) is a FINAL refusal of the handler (schema_invalid), never a hold, so no reviewer's accept reaches it. The kind, status, tier,
+ * open quarter and lock checks are never waived by any code. One hold code waives one check: a record failing two checks stays refused after an accept for either of them.
  */
 object GiftHolds {
-    enum class Check { WHO, REACH, PROGRAMME, ENROLMENT }
+    enum class Check { REACH, PROGRAMME, ENROLMENT }
 
     /** The table. A code not in it waives nothing. */
     val WAIVES: Map<RecordOutcomeCode, Set<Check>> = mapOf(
-        RecordOutcomeCode.SCOPE_OUT_OF_REACH to setOf(Check.WHO, Check.REACH),
+        RecordOutcomeCode.SCOPE_OUT_OF_REACH to setOf(Check.REACH),
         RecordOutcomeCode.NO_ASSIGNMENT_ON_DATE to setOf(Check.REACH),
         RecordOutcomeCode.PROGRAMME_INACTIVE to setOf(Check.PROGRAMME, Check.ENROLMENT),
     )

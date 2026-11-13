@@ -424,6 +424,10 @@ class IngestService(
                 if (o != null && (o.status == "accepted" || o.status == "duplicate")) {
                     closeItem(h, child.id, "accepted", null, resolverUserId, "released with parent ${item.clientUuid}", now)
                     h.release(sp)
+                } else if (o != null && o.status == "quarantined" && child.payload.str("type") == "gift_photo" && regoldPhoto(h, child)) {
+                    // C-R3: a photo held with this line is now held with ANOTHER open line of its redemption: it follows that one (the item's code and detail move), so accepting
+                    // or discarding that line finds it. Nothing is stored; the savepoint is kept because the registry row now names the new hold.
+                    h.release(sp)
                 } else {
                     // Held for a reason of its own (or a failure): it stays open for its own review.
                     h.rollbackToSavepoint(sp)
@@ -444,6 +448,43 @@ class IngestService(
         }
         // Inside the caller's transaction this runs before its commit; the handlers' after-commit work is notification only.
         log.info("quarantine accepted id=$quarantineId resolver=$resolverUserId fix=${fixedRecord != null}")
+    }
+
+    /**
+     * C-R3: a reviewer DISCARDED the held record [quarantineId]. A gift photo held with it (`parent <uuid> is quarantined`, same code) follows the decision: it is processed again as a
+     * reviewed record with no hold code (so no check is waived), the parent step now reads the parent as DISCARDED ([GiftParents]), and the photo is STORED and flagged `parent_refused`
+     * instead of staying in review for ever. A photo whose release fails for its own reason stays open for its own review. Runs in the caller's transaction (OpsApi holds the item's lock).
+     */
+    fun followDiscardedParent(quarantineId: Long, resolverUserId: Long) {
+        val now = clock.now()
+        db.jdbi.inTransaction<Unit, Exception> { h ->
+            val item = heldItem(h, "id = :id", quarantineId) ?: return@inTransaction
+            if (item.status != "discarded") return@inTransaction
+            for (child in heldChildren(h, item.clientUuid, item.code).filter { it.payload.str("type") == "gift_photo" }) {
+                val sp = "follow_${child.id}"
+                h.savepoint(sp)
+                val batch = child.batchUuid ?: UUID.nameUUIDFromBytes("quarantine:${child.id}".toByteArray()).toString()
+                val o = runCatching { release(h, Ctx(uploaderOf(h, child.userId, child.deviceId), batch, now, release = null, reviewed = true), Rec(0, child.payload)) }
+                    .getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
+                if (o != null && (o.status == "accepted" || o.status == "duplicate")) {
+                    closeItem(h, child.id, "accepted", null, resolverUserId, "followed the discarded parent ${item.clientUuid}", now)
+                    h.release(sp)
+                } else {
+                    h.rollbackToSavepoint(sp)
+                    log.info("held photo stays quarantined client_uuid=${child.clientUuid} discarded parent=${item.clientUuid} outcome=${o?.status} ${o?.code?.wire}")
+                }
+            }
+        }
+    }
+
+    /** Moves a photo's open quarantine item to the open parent line its item names now (see the accept loop); false when it is not held with a line. */
+    private fun regoldPhoto(h: Handle, child: HeldItem): Boolean {
+        val red = (child.payload["payload"] as? JsonObject)?.str("redemption_client_uuid") ?: return false
+        val family = h.createQuery("SELECT family_uuid::text FROM app.redemption WHERE client_uuid = CAST(:r AS uuid)").bind("r", red).mapTo(String::class.java).findOne().orElse(null) ?: return false
+        val hold = GiftParents.missingLines(h, family)
+        if (hold.state != GiftParents.State.OPEN || hold.uuid == null || hold.code == null) return false
+        h.createUpdate("UPDATE app.sync_quarantine SET code = :c, detail = :d WHERE id = :id AND status = 'open'").bind("c", hold.code).bind("d", "parent ${hold.uuid} is quarantined (${hold.code})").bind("id", child.id).execute()
+        return true
     }
 
     /**
@@ -696,7 +737,7 @@ class IngestService(
                 while (true) {
                     ctx.afterCommit.clear()
                     try {
-                        db.jdbi.inTransaction<Unit, Exception> { h -> family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
+                        db.jdbi.inTransaction<Unit, Exception> { h -> lockPhotoKeys(h, family); family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
                         break
                     } catch (e: Exception) {
                         if (++attempt >= FAMILY_TRIES || !isTransientDbFailure(e) || clock.now().isAfter(familyStart.plusMillis(FAMILY_RETRY_BUDGET_MS))) throw e
@@ -1106,7 +1147,8 @@ class IngestService(
             }
             if (found == null) {
                 // A gift photo whose redemption was refused (final) is stored and flagged parent_refused by its handler (GiftPhotoRecords): a parent that can never arrive must not park it for ever.
-                if (r.type == "gift_photo" && field == "redemption_client_uuid" && reg?.get(2) == "rejected") continue
+                // The parent function (GiftParents): refused, or its quarantine item DISCARDED by a reviewer = final; open in review = held with it below; anything else waits.
+                if (r.type == "gift_photo" && field == "redemption_client_uuid" && GiftParents.state(h, parent, "redemption").state.isRefused) continue
                 // The child of a quarantined parent is held with it (same code), so a review that accepts the parent
                 // finds its children; parking it would let the phone give up on it.
                 // A memo refused for its number (final) takes its own children with it: they can never be stored.
@@ -1163,7 +1205,7 @@ class IngestService(
         )
         for (hd in hs) {
             val refusal = hd.check(h, ingestRec!!) ?: continue
-            if (ctx.overrides(refusal.code)) continue
+            if (!hd.judgesWaiver && ctx.overrides(refusal.code)) continue
             return refuse(h, ctx, r, bd, refusal.code, refusal.detail)
         }
         // A domain duplicate (the same fact under a new client_uuid): registered as accepted with the first row's id,
@@ -1209,6 +1251,22 @@ class IngestService(
             is RecordWriter.Result.AlreadyThere -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.duplicate(stored.serverId) }
             is RecordWriter.Result.Refused -> refuse(h, ctx, r, bd, stored.code, stored.detail)
         }
+    }
+
+    /**
+     * C-R3 (e): the gift photos of a family segment take their advisory keys (V0193's insert trigger) in ONE sorted order BEFORE any record runs, the order the admin void path
+     * takes them in (`app.gift_photo_lock_keys`: sorted by the database), so a batch whose photos arrive in the opposite order to another batch's or to a void cannot deadlock. The sort is
+     * done by the database (its collation, like the void path's ORDER BY), the key text is the trigger's.
+     */
+    private fun lockPhotoKeys(h: Handle, family: List<Rec>) {
+        val keys = family.filter { it.type == "gift_photo" }.mapNotNull { r ->
+            val p = r.json["payload"] as? JsonObject ?: return@mapNotNull null
+            p.long("gift_assignment_id")?.let { "gift_photo:a:$it" }
+                ?: p.str("redemption_client_uuid")?.takeIf { UUID_V4.matches(it) }?.let { u -> p.long("gift_id")?.let { g -> "gift_photo:u:${u.lowercase()}:$g:${p.long("unit_no") ?: 0}" } }
+        }.distinct()
+        if (keys.isEmpty()) return
+        h.createQuery("SELECT k FROM unnest(CAST(:ks AS text[])) AS k ORDER BY 1").bind("ks", keys.toTypedArray()).mapTo(String::class.java).list()
+            .forEach { k -> h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))::text").bind("k", k).mapTo(String::class.java).findOne() }
     }
 
     /** A refusal by the writer or a handler: the outcome code's status decides quarantine, park or final reject. */

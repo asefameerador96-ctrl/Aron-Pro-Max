@@ -93,10 +93,13 @@ data class QuarantinePage(val items: List<QuarantineItemDto>, val next_cursor: S
 data class QuarantineResolveRequest(val action: String, val fixed_record: JsonElement? = null, val reason: String)
 
 /** Accepting a quarantined record re-ingests it (the sync module owns that path). Until it is wired, accept and accept_with_fix answer 503. */
-fun interface QuarantineAcceptor {
+interface QuarantineAcceptor {
     fun accept(quarantineId: Long, fixedRecord: JsonObject?, resolver: Long, reason: String)
+
+    /** A reviewer DISCARDED the item (called in the same transaction, after the item is closed): records held with it follow the decision (C-R3: a gift photo is stored and flagged). */
+    fun discarded(quarantineId: Long, resolver: Long) {}
     companion object {
-        val UNAVAILABLE = QuarantineAcceptor { _, _, _, _ -> throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "accepting a quarantined record needs the ingest hook (docs/requests/backend-reports-quarantine-accept.md)", retryAfterS = 60, headers = mapOf("Retry-After" to "60")) }
+        val UNAVAILABLE = object : QuarantineAcceptor { override fun accept(quarantineId: Long, fixedRecord: JsonObject?, resolver: Long, reason: String): Unit = throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "accepting a quarantined record needs the ingest hook (docs/requests/backend-reports-quarantine-accept.md)", retryAfterS = 60, headers = mapOf("Retry-After" to "60")) }
     }
 }
 
@@ -332,9 +335,12 @@ class OpsService(
             }
             when (req.action) {
                 "accept", "accept_with_fix" -> { acceptor.accept(id, req.fixed_record as? JsonObject, p.userId, req.reason) }
-                else -> h.createUpdate(
+                else -> { h.createUpdate(
                     "UPDATE app.sync_quarantine SET status = 'discarded', resolution_uuid = :ru, resolved_by_user_id = :u, resolved_at = now(), resolution_note = :note WHERE id = :id",
                 ).bind("ru", UUID.nameUUIDFromBytes("quarantine:$id:${req.action}:${p.userId}".toByteArray())).bind("u", p.userId).bind("note", (if (req.action == "return_to_device") "return_to_device: " else "") + req.reason.take(470)).bind("id", id).execute()
+                    // C-R3: a gift photo held with the record follows a DISCARD (a return to the device leaves it in review: the phone may send the record again)
+                    if (req.action == "discard") acceptor.discarded(id, p.userId)
+                }
             }
             AuditLog.write(
                 h, p, "quarantine", id.toString(), req.action,

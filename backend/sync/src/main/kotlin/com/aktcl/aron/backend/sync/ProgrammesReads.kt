@@ -108,7 +108,7 @@ internal class ProgrammeReads(private val d: ProgrammeReadDeps) {
         if (wanted != null && wanted.size > 200) bad("outlet_id", "too_many")
         val programme = programmeParam?.let { it.toLongOrNull()?.takeIf { v -> v >= 1 } ?: bad("programme_id") }
         val date = today()
-        val got = d.db.readJdbi.withHandle<BundleProgrammes.Capped<JsonObject>, Exception> { h ->
+        val got = d.db.jdbi.withHandle<BundleProgrammes.Capped<JsonObject>, Exception> { h ->
             val sc = scope(h, p, null, null, needNarrowForNational = wanted == null, outletIds = wanted?.distinct())
             val outlets = sc.outlets
             if (outlets.isEmpty()) return@withHandle BundleProgrammes.Capped(emptyList(), false)

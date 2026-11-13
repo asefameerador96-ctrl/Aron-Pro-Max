@@ -133,6 +133,30 @@ class LoyaltyLedgerJobTest {
     }
 
     @Test
+    fun anAdjustmentThatExpiresBeforeItsBusinessDateIsRefused() {
+        val p = newProgramme()
+        world.fresh.db.jdbi.useHandle<Exception> { h ->
+            kotlin.test.assertFailsWith<IllegalArgumentException> { LoyaltyLedger.postAdjustment(h, outlet, p, 25, "adj-dead", today, today.minusDays(1)) }
+            assertTrue(LoyaltyLedger.postAdjustment(h, outlet, p, 25, "adj-same-day", today, today), "expiring on its own date is allowed")
+        }
+        assertEquals(25, balance(p))
+    }
+
+    /** C-R3 (d): an adjustment whose row sits BELOW the id window is still found, by the first pass of the Dhaka day (like an unposted redemption). */
+    @Test
+    fun anAdjustmentBelowTheIdWindowIsFoundByTheDailySweep() {
+        val p = newProgramme()
+        world.fresh.db.jdbi.useHandle<Exception> { h -> LoyaltyLedger.postAdjustment(h, outlet, p, 30, "adj-late-${UUID.randomUUID()}", today, today.plusDays(5)) }
+        val top = world.one("SELECT COALESCE(max(id), 0) FROM app.loyalty_ledger")
+        world.fresh.db.jdbi.useHandle<Exception> { h ->
+            val ordinary = LoyaltyLedger.pairsToReconcile(h, today, LoyaltyLedger.Cursor(top + 5_000, today, today))
+            assertTrue(outlet to p !in ordinary, "an ordinary pass does not look: the id window is past it")
+            val sweep = LoyaltyLedger.pairsToReconcile(h, today.plusDays(1), LoyaltyLedger.Cursor(top + 5_000, today, today))
+            assertTrue(outlet to p in sweep, "the first pass of the next Dhaka day takes every pair with an adjustment of the last 90 business dates")
+        }
+    }
+
+    @Test
     fun anAdjustmentIsIdempotentBySourceIdAndFlagsAreQuoted() {
         val p = newProgramme()
         world.fresh.db.jdbi.useHandle<Exception> { h ->
@@ -271,8 +295,22 @@ class LoyaltyLedgerJobTest {
         val cu = redemption(p, 40, today.minusDays(1))
         assertEquals(100L, balance(p)); assertEquals(60L to 60L, bundleBalance(p), "stored, not yet posted: subtracted already (60), expiring follows the replay")
         step(j, p); assertEquals(60L, balance(p)); assertEquals(60L to 60L, bundleBalance(p), "after the job posted it the figure does not change")
-        void(cu); assertEquals(100L to 100L, bundleBalance(p), "a voided one, posted but not yet reversed, is added back at once")
+        void(cu); assertEquals(60L to 60L, bundleBalance(p), "a voided one, posted but not yet reversed, keeps its debit until the pass (a transient, never added back: C-R3 a)")
         step(j, p); assertEquals(100L, balance(p)); assertEquals(100L to 100L, bundleBalance(p))
+    }
+
+    /** C-R3 (a): the lead's case. A credit that lapsed after the redemption consumed it: voiding the redemption must never show MORE than the pass later settles on. */
+    @Test
+    fun aVoidBeforeThePassNeverShowsMoreThanTheTruth() {
+        val p = newProgramme(); val j = job(); nowAt = today
+        credit(p, 100, today.minusDays(40), today.minusDays(10))           // lapses 10 days ago
+        val cu = redemption(p, 100, today.minusDays(20))                    // consumed it while it was valid
+        step(j, p)
+        void(cu)
+        val before = bundleBalance(p).first      // the figure as the bundle and the live read compute it, before the pass has posted the reversal
+        step(j, p)
+        val after = bundleBalance(p).first
+        assertTrue(before <= after, "the figure before the pass ($before) is not above the settled one ($after)")
     }
 
     /** (balance_points, expiring_points) of this outlet and programme as the bundle and the live read compute them. */

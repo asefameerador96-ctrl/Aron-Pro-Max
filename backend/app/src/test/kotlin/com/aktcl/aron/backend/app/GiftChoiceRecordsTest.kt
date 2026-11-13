@@ -9,6 +9,7 @@ import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.backend.sync.GiftChoiceRecords
 import com.aktcl.aron.contract.RecordOutcomeCode
 import com.aktcl.aron.contract.Role
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -22,6 +23,7 @@ import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -122,7 +124,7 @@ class GiftChoiceRecordsTest {
             assertEquals("rejected" to "gift_not_for_tier", outcome(sr, choice(outletGold, gSilver)), "a silver gift for a gold outlet")
             assertEquals("rejected" to "unknown_gift", outcome(sr, choice(outletGold, 9_999_999)))
             assertEquals("quarantined" to "scope_out_of_reach", outcome(sr, choice(outletLkx, gA)), "an outlet of another division")
-            assertEquals("quarantined" to "scope_out_of_reach", outcome(amo, choice(outletGold, gA)), "the AMO is not in cfg.astha.gift_choice_roles (default SR and TSO)")
+            assertEquals("rejected" to "schema_invalid", outcome(amo, choice(outletGold, gA)), "the AMO is not in cfg.astha.gift_choice_roles (default SR and TSO): a FINAL refusal, not a hold a reach accept could release (C-R3)")
             assertEquals("accepted", outcome(tso, choice(outletSilver, gSilver)).first, "the zone's TSO may choose")
             assertEquals(gSilver, chosen(outletSilver))
         }
@@ -275,12 +277,11 @@ class GiftChoiceRecordsTest {
         val gDiamond = programmeOf("diamond_league", "H_DL", enrol = true); val kindFails = choice(outletGold, gDiamond)
         val gNoEnrol = programmeOf("astha", "H_NE", enrol = false); val notEnrolled = choice(outletGold, gNoEnrol)
         val gBoth = programmeOf("diamond_league", "H_BOTH", enrol = false); val bothFail = choice(outletGold, gBoth)
-        // scope_out_of_reach: the WHO check (role and reach); no other code waives the role check
+        // scope_out_of_reach: the REACH check only. The role check is a FINAL refusal (schema_invalid): no code at all releases it (C-R3)
         assertEquals(RecordOutcomeCode.SCOPE_OUT_OF_REACH, refusal(outOfReach, null)); assertNull(refusal(outOfReach, RecordOutcomeCode.SCOPE_OUT_OF_REACH))
-        assertEquals(RecordOutcomeCode.SCOPE_OUT_OF_REACH, refusal(wrongRole, null, Role.AMO)); assertNull(refusal(wrongRole, RecordOutcomeCode.SCOPE_OUT_OF_REACH, Role.AMO))
-        // no_assignment_on_date: the REACH check on the record's date (the cover day) - the finding's case - but not the role check
+        for (code in listOf<RecordOutcomeCode?>(null) + RecordOutcomeCode.entries) assertEquals(RecordOutcomeCode.SCHEMA_INVALID, refusal(wrongRole, code, Role.AMO), "$code must not release a role refusal")
+        // no_assignment_on_date: the REACH check on the record's date (the cover day) - the finding's case
         assertNull(refusal(outOfReach, RecordOutcomeCode.NO_ASSIGNMENT_ON_DATE), "a cover day accepted by a reviewer is not judged out of reach again")
-        assertEquals(RecordOutcomeCode.SCOPE_OUT_OF_REACH, refusal(wrongRole, RecordOutcomeCode.NO_ASSIGNMENT_ON_DATE, Role.AMO), "it does not waive the role check")
         // programme_inactive: the status/kind check when it fails, else the enrolment check; never both
         assertEquals(RecordOutcomeCode.PROGRAMME_INACTIVE, refusal(kindFails, null)); assertNull(refusal(kindFails, RecordOutcomeCode.PROGRAMME_INACTIVE))
         assertEquals(RecordOutcomeCode.PROGRAMME_INACTIVE, refusal(notEnrolled, null)); assertNull(refusal(notEnrolled, RecordOutcomeCode.PROGRAMME_INACTIVE))
@@ -295,6 +296,47 @@ class GiftChoiceRecordsTest {
             assertEquals(RecordOutcomeCode.SCHEMA_INVALID, refusal(quarterFail, code), "$code must not waive the open-quarter check")
         }
         for (code in generic) assertEquals(setOf<RecordOutcomeCode>(), setOf(code).filter { com.aktcl.aron.backend.sync.GiftHolds.WAIVES.containsKey(it) }.toSet(), "$code has no handler check behind it")
+    }
+
+    /**
+     * C-R3: ONE hold code waives ONE check. A record that fails TWO checks at once stays refused after an accept for ANY code (an accept that waived both would apply it): the pairs are
+     * reach + role, reach + programme kind, reach + enrolment, kind + enrolment, and each code is tried against each. The table itself is also asserted: no code maps to more than one
+     * check, except programme_inactive, whose two checks are applied one at a time (firstProgrammeCheck).
+     */
+    @Test
+    fun noHoldCodeWaivesMoreThanOneOfTwoFailingChecks() {
+        val (_, gOk) = ownProgramme("H3")
+        val gDiamond = programmeOf("diamond_league", "H3_DL", enrol = false)   // kind fails AND the outlet is not enrolled
+        val reachAndRole = choice(outletLkx, gOk)                              // AMO below: outside cfg.astha.gift_choice_roles, and outside its reach
+        val reachAndKind = choice(outletLkx, gDiamond)
+        val kindAndEnrolment = choice(outletGold, gDiamond)
+        for ((code, checks) in com.aktcl.aron.backend.sync.GiftHolds.WAIVES) {
+            if (code != RecordOutcomeCode.PROGRAMME_INACTIVE) assertEquals(1, checks.size, "$code waives one check")
+        }
+        for (code in RecordOutcomeCode.entries) {
+            assertEquals(RecordOutcomeCode.SCHEMA_INVALID, refusal(reachAndRole, code, Role.AMO), "$code: reach + role (the role refusal is final)")
+            assertNotNull(refusal(reachAndKind, code), "$code must not release reach + programme at once")
+            assertNotNull(refusal(kindAndEnrolment, code), "$code must not release programme kind + enrolment at once")
+        }
+        assertEquals(RecordOutcomeCode.PROGRAMME_INACTIVE, refusal(reachAndKind, RecordOutcomeCode.SCOPE_OUT_OF_REACH), "a reach accept leaves the programme check")
+        assertEquals(RecordOutcomeCode.SCOPE_OUT_OF_REACH, refusal(reachAndKind, RecordOutcomeCode.PROGRAMME_INACTIVE), "a programme accept leaves the reach check")
+    }
+
+    /** C-R3: on the REAL accept path a second failing check comes back to the reviewer as a clear refusal (409 ERR_REQUEST_STATE naming the code), never as a server_error from afterStored. */
+    @Test
+    fun acceptingAHoldWhoseRecordFailsASecondCheckIsRefusedClearly() = world.withApi {
+        with(world) {
+            val gBoth = programmeOf("diamond_league", "H4_BOTH", enrol = false)   // programme_inactive twice: kind AND enrolment
+            val r = choice(outletGold, gBoth)
+            val a = ack(sync(sr, listOf(r)), r["client_uuid"].toString().trim('"'))
+            assertEquals("quarantined", a.status()); assertEquals("programme_inactive", a.code())
+            val id = one("SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST('${r["client_uuid"].toString().trim('"')}' AS uuid) ORDER BY id DESC LIMIT 1")
+            val res = postWeb("admin1001", "/v1/admin/quarantine/$id/resolve", """{"action":"accept","reason":"checked with the TSO on the phone"}""")
+            assertEquals(HttpStatusCode.Conflict, res.status, res.bodyAsText())
+            assertTrue(res.bodyAsText().contains("programme_inactive"), "the refusal names the second failing check's code")
+            assertEquals("open", rows("SELECT status FROM app.sync_quarantine WHERE id = $id").single()["status"], "the item stays open for the reviewer")
+            assertEquals(0L, one("SELECT count(*) FROM app.gift_choice WHERE client_uuid = CAST('${r["client_uuid"].toString().trim('"')}' AS uuid)"), "nothing was stored")
+        }
     }
 
     @Test

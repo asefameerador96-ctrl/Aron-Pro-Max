@@ -37,12 +37,19 @@ class WorkerStartTest {
     fun mainStartsEveryJobInsideStartWorker() {
         val root = java.io.File(System.getProperty("aron.repoRoot") ?: "../..")
         val src = java.io.File(root, "backend/app/src/main/kotlin/com/aktcl/aron/backend/app/Main.kt").readText()
-        val pool = src.indexOf("val workerDb = Database.fromSettings(settings)")
+        // C-R3 (g): the window is the WHOLE worker branch (from its arm to the join that ends it), not only the part after the pool is built: a job started before the pool, or after
+        // the "started" log line, is a start outside the block too.
+        val branch = src.indexOf("ServerRole.WORKER ->")
+        val pool = src.indexOf("val workerDb = Database.fromSettings(settings)", branch)
         val open = src.indexOf("startWorker({", pool)
         val done = src.indexOf("aron worker started", pool)
-        assertTrue(pool in 0 until open && open < done, "the worker branch of Main has the expected shape")
-        val starts = Regex("""\.start\(\)""").findAll(src.substring(pool, done)).map { pool + it.range.first }.toList()
+        val end = src.indexOf("Thread.currentThread().join()", done)
+        assertTrue(branch in 0 until pool && pool < open && open < done && done < end, "the worker branch of Main has the expected shape")
+        val starts = Regex("""\.start\(\)""").findAll(src.substring(branch, end)).map { branch + it.range.first }.toList()
         assertTrue(starts.size >= 10, "the block starts the jobs (found ${starts.size})")
         assertEquals(emptyList(), starts.filter { it < open }, "no job starts before startWorker's block opens")
+        val blockEnd = src.indexOf("\n            }\n", done)   // the line that closes the startWorker block, right after the "started" log
+        assertTrue(blockEnd in done until end, "the block closes before the branch's final join")
+        assertEquals(emptyList(), starts.filter { it > blockEnd }, "no job starts after the startWorker block closes")
     }
 }

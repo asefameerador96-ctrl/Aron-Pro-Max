@@ -166,7 +166,7 @@ object LoyaltyLedger {
      * The pairs one pass must reconcile (C-R2). WHAT CAN MAKE E != L (the expiry rows taken vs the points that must have lapsed) is only: (i) a stored redemption with no ledger row
      * yet or a voided one with no reversal (found by "no ledger row" through the unique index on (source_type, source_id), NOT by an id window: a slow ingest transaction can
      * commit a low id a day late; an ordinary pass looks [LOOKBACK_DAYS] back on the business_date index, the first pass of each Dhaka day looks at all of them); (ii) a new ledger
-     * row (ids past the cursor less [OVERLAP]); (iii) time passing: a credit whose `expires_on` fell between the cursor's date and today (the daily sweep: since the previous
+     * row (ids past the cursor less [OVERLAP]; an ADJUSTMENT also by the daily sweep over the last [LOOKBACK_DAYS] business dates, because its row is the fact itself and has no "missing row" to look for); (iii) time passing: a credit whose `expires_on` fell between the cursor's date and today (the daily sweep: since the previous
      * sweep's date); (iv) a pair that failed before ([retry]). With no cursor (a start) every pair with an expiring credit is taken once. Nothing else needs a look, so the daily
      * sweep is bounded by the credits that expired since the last one, not by every pair that ever had a credit.
      */
@@ -190,6 +190,9 @@ object LoyaltyLedger {
             add("SELECT DISTINCT outlet_id, programme_id FROM app.loyalty_ledger WHERE points > 0 AND expires_on IS NOT NULL")
         } else {
             add("SELECT DISTINCT outlet_id, programme_id FROM app.loyalty_ledger WHERE id > :lid AND source_type <> 'expiry'") { it.bind("lid", maxOf(0L, cursor.ledgerId - OVERLAP)) }
+            // C-R3 (d): an adjustment is found like a redemption, not only through the id window (a slow transaction can commit a low id late): the first pass of each Dhaka day takes
+            // every pair with an adjustment of the last LOOKBACK_DAYS business dates (business_date index), so a late-committed one is reconciled at the latest in that pass.
+            if (sweepDay) add("SELECT DISTINCT outlet_id, programme_id FROM app.loyalty_ledger WHERE source_type = 'adjustment' AND business_date >= :lookback") { it.bind("lookback", today.minusDays(LOOKBACK_DAYS)) }
             val since = if (sweepDay) cursor.fullSweepOn ?: cursor.date else cursor.date
             add("SELECT DISTINCT outlet_id, programme_id FROM app.loyalty_ledger WHERE points > 0 AND expires_on >= :since AND expires_on < :d") { it.bind("since", since).bind("d", today) }
         }
@@ -199,6 +202,7 @@ object LoyaltyLedger {
     /** Adjustment plumbing: one signed row, idempotent on [sourceId]. Returns true when it was posted now, false on a replay. */
     fun postAdjustment(h: Handle, outletId: Long, programmeId: Long, points: Int, sourceId: String, businessDate: LocalDate, expiresOn: LocalDate? = null, flags: List<String> = emptyList()): Boolean {
         require(points != 0 && sourceId.length in 1..64)
+        require(expiresOn == null || !expiresOn.isBefore(businessDate)) { "an adjustment cannot expire before its business date" }   // C-R3 (b): a credit that is dead on arrival is refused, not posted
         return h.createUpdate(
             """
             INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on, flags)

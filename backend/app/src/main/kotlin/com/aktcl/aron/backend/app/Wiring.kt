@@ -237,8 +237,11 @@ class Wiring(
             val deviceEnrolment = DeviceDeps(DeviceService(db, config, keys, enrolment, clock, integrity = integrityDecoder), reach, guard, clock)
             // Accepting a quarantined record re-runs it through ingest (the sync service is built below).
             var ingestForReview: com.aktcl.aron.backend.sync.IngestService? = null
-            val acceptor = com.aktcl.aron.backend.analytics.QuarantineAcceptor { id, fix, resolver, why ->
-                (ingestForReview ?: throw com.aktcl.aron.backend.platform.ApiProblem(com.aktcl.aron.contract.ProblemCode.ERR_SERVICE_UNAVAILABLE, "ingest is not ready")).acceptQuarantined(id, fix, resolver, why)
+            val acceptor = object : com.aktcl.aron.backend.analytics.QuarantineAcceptor {
+                private fun ingest() = ingestForReview ?: throw com.aktcl.aron.backend.platform.ApiProblem(com.aktcl.aron.contract.ProblemCode.ERR_SERVICE_UNAVAILABLE, "ingest is not ready")
+                override fun accept(quarantineId: Long, fixedRecord: kotlinx.serialization.json.JsonObject?, resolver: Long, reason: String) = ingest().acceptQuarantined(quarantineId, fixedRecord, resolver, reason)
+                // C-R3: a gift photo held with a record a reviewer discards is stored and flagged, not left in review for ever
+                override fun discarded(quarantineId: Long, resolver: Long) = ingest().followDiscardedParent(quarantineId, resolver)
             }
             val ops = OpsDeps(OpsService(db, config, clock, acceptor), dashboardService, reach, guard, clock)
             val tracking = DailyTrackingDeps(DailyTrackingService(db, config, clock), reach, guard, clock)

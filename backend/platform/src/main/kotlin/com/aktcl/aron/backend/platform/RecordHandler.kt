@@ -56,6 +56,12 @@ interface RecordHandler {
     fun check(h: Handle, rec: IngestRecord): RecordRefusal? = null
 
     /**
+     * True when [check] applies a reviewer's accept itself (it reads [IngestRecord.released] and waives exactly one check). The ingest then does NOT skip a refusal
+     * whose code equals the released code: such a refusal is a SECOND failing check, and the accept answers 409 with it instead of letting [afterStored] fail.
+     */
+    val judgesWaiver: Boolean get() = false
+
+    /**
      * A replacement payload to store instead of the one sent (contract 1.14.0: an optional reference the server cannot honour, such as a
      * cluster that is gone, is dropped and flagged, never a reason to lose the record). Null keeps the payload. Runs after [check]; the record's
      * content fingerprint (replay and conflict detection) is still that of the payload as sent.

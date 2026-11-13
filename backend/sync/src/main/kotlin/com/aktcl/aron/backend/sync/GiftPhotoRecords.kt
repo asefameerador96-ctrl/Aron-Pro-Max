@@ -26,20 +26,21 @@ import java.time.ZoneOffset
  *  - a campaign-unit photo (no assignment) is judged against its redemption: unit_no within the redeemed qty, the gift is a line of it, the outlet is the redemption's, the outlet is in the uploader's
  *    reach and in the programme's scope ([ProgrammeScopeParams]). One that fails is STORED and flagged (`check_flag`, never the unit's photo), never refused. NOTHING IS RETRYABLE FOR EVER (C-R2): a
  *    photo whose redemption is FINAL is stored and flagged too - `parent_voided` (the redemption or the gift's line is voided), `parent_refused` (the redemption or a line of it was refused);
- *    only a redemption that has genuinely not arrived yet (header not synced, or lines still on their way) answers `parent_missing` (retryable). A reviewer's accept waives only what [GiftHolds] says.
+ *    only a redemption that has genuinely not arrived yet (header not synced, or lines still on their way) answers `parent_missing` (retryable). C-R3: the states of a parent come from ONE function ([GiftParents]); a parent still OPEN in review holds the photo with it and the photo follows the reviewer (discard: stored and flagged `parent_refused`). A reviewer's accept waives only what [GiftHolds] says.
  *  - the server geofence re-check of the photo fix with the same function as the visit ([GeoRecheckHandler.recheck]); stored beside the phone's data, never a reason to refuse;
  *  - the lock: with `cfg.astha.gift_choice_lock` = `on_sr_photo` (default) the assignment gets `locked_at` (kept once set) and `photo_media_uuid` = the winner's photo, recomputed from the table on
  *    every arrival, so a late arrival of an earlier photo moves the winner and the order of arrival never changes the outcome.
  */
 class GiftPhotoRecords(private val reach: ReachResolver, private val config: ServerConfig) : RecordHandler {
     override val types = setOf("gift_photo")
+    override val judgesWaiver = true
     private val geoCheck = GiftPhotoGeoRecheck()
     private val log = LoggerFactory.getLogger(GiftPhotoRecords::class.java)
 
     private fun long(rec: IngestRecord, k: String) = (rec.payload[k] as? JsonPrimitive)?.contentOrNull?.toLongOrNull()
 
     /** The verdict on a campaign-unit photo: a `check_flag` reason, or null when it passes; [pending] when the redemption's lines are not all stored yet. */
-    private class UnitVerdict(val flag: String?, val pending: Boolean)
+    private class UnitVerdict(val flag: String?, val pending: Boolean, val hold: GiftParents.Verdict? = null)
 
     private fun unitVerdict(h: Handle, rec: IngestRecord): UnitVerdict {
         val red = (rec.payload["redemption_client_uuid"] as? JsonPrimitive)?.contentOrNull ?: return UnitVerdict("gift_not_in_redemption", false)
@@ -49,16 +50,25 @@ class GiftPhotoRecords(private val reach: ReachResolver, private val config: Ser
         // NOTHING IS RETRYABLE FOR EVER (C-R2): only a parent that is genuinely not synced yet is pending. A parent that is final - refused, voided, or fully stored - is judged now: the photo is
         // stored and flagged (parent_refused, parent_voided, or the unit/gift/outlet checks below).
         if (head == null) {
-            val refused = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.ingest_registry WHERE client_uuid = CAST(:r AS uuid) AND status = 'rejected')").bind("r", red).mapTo(Boolean::class.java).one()
-            return if (refused) UnitVerdict("parent_refused", false) else UnitVerdict(null, true)
+            // the one parent function (GiftParents): a refused or DISCARDED header is final; one still open in review holds the photo (the generic parent step normally does it first)
+            val p = GiftParents.state(h, red, "redemption")
+            return when {
+                p.state.isRefused -> UnitVerdict("parent_refused", false)
+                p.state == GiftParents.State.OPEN -> UnitVerdict(null, true, p)
+                else -> UnitVerdict(null, true)
+            }
         }
         if (head.voided) return UnitVerdict("parent_voided", false)
         val giftId = long(rec, "gift_id")
         // all stored lines count toward "fully stored", a voided line included (it is stored, and final)
         val stored = h.createQuery("SELECT count(*) FROM app.redemption_line WHERE redemption_client_uuid = CAST(:r AS uuid)").bind("r", red).mapTo(Int::class.java).one()
         if (stored < head.lineCount) {
-            val refusedLine = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.ingest_registry WHERE family_uuid = CAST(:f AS uuid) AND record_type = 'redemption_line' AND status = 'rejected')").bind("f", head.family).mapTo(Boolean::class.java).one()
-            return if (refusedLine) UnitVerdict("parent_refused", false) else UnitVerdict(null, true)   // a line is still on its way
+            val p = GiftParents.missingLines(h, head.family)
+            return when {
+                p.state.isRefused -> UnitVerdict("parent_refused", false)   // a line was refused or discarded: the redemption can never be complete
+                p.state == GiftParents.State.OPEN -> UnitVerdict(null, true, p)   // a line is held in review: the photo is held with it
+                else -> UnitVerdict(null, true)   // a line is still on its way
+            }
         }
         if (long(rec, "outlet_id") != head.outlet) return UnitVerdict("outlet_mismatch", false)
         val qty = h.createQuery("SELECT sum(qty) FROM app.redemption_line WHERE redemption_client_uuid = CAST(:r AS uuid) AND gift_id = :g AND voided_at IS NULL")
@@ -83,7 +93,16 @@ class GiftPhotoRecords(private val reach: ReachResolver, private val config: Ser
     }
 
     override fun check(h: Handle, rec: IngestRecord): RecordRefusal? {
-        val assignment = long(rec, "gift_assignment_id") ?: return if (unitVerdict(h, rec).pending) RecordRefusal(RecordOutcomeCode.PARENT_MISSING, "the redemption or its lines are not stored yet") else null
+        val assignment = long(rec, "gift_assignment_id") ?: return unitVerdict(h, rec).let { v ->
+            val hold = v.hold
+            val code = hold?.code?.let { c -> RecordOutcomeCode.entries.firstOrNull { it.wire == c } }
+            when {
+                // held with the parent that is open in review (same code, `parent <uuid> is quarantined (<code>)`: the shape the accept path releases children by)
+                hold != null && code != null -> RecordRefusal(code, "parent ${hold.uuid} is quarantined (${hold.code})")
+                v.pending -> RecordRefusal(RecordOutcomeCode.PARENT_MISSING, "the redemption or its lines are not stored yet")
+                else -> null
+            }
+        }
         val a = h.createQuery("SELECT a.outlet_id, a.route_id, o.zone_id FROM app.gift_assignment a JOIN app.outlet o ON o.id = a.outlet_id WHERE a.id = :a").bind("a", assignment)
             .map { rs, _ -> Triple(rs.getLong(1), rs.getLong(2), rs.getLong(3)) }.findOne().orElse(null)
             ?: return RecordRefusal(RecordOutcomeCode.SCHEMA_INVALID, "gift_assignment_id $assignment")

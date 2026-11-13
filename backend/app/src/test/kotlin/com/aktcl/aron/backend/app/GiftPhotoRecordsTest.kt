@@ -6,6 +6,9 @@ import com.aktcl.aron.backend.app.TsoWorld.Companion.status
 import com.aktcl.aron.backend.platform.AsthaQuarter
 import com.aktcl.aron.backend.sync.BundleProgrammes
 import com.aktcl.aron.backend.sync.GeoRecheckSweepJob
+import com.aktcl.aron.backend.sync.GiftParents
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -338,6 +341,107 @@ class GiftPhotoRecordsTest {
             with(world) {
                 val p = photo(null, 300, unit = full to 2, flat = lat + 0.0005); assertEquals("accepted", ack(sync(sr, listOf(p)), cu(p)).status()); assertEquals("unit_out_of_range", flag(p)["check_flag"])
             }
+        }
+    }
+
+    // ---- C-R3 finding 1: ONE parent function (GiftParents), a test per state, and the photo follows the reviewer's decision ----
+
+    private val zeroSha = "decode(repeat('00', 32), 'hex')"
+    private fun registry(uuid: String, type: String, status: String, code: String? = null, family: String? = null) = world.exec(
+        "INSERT INTO app.ingest_registry (client_uuid, record_type, ${if (family != null) "family_uuid, " else ""}payload_sha256, status, outcome_code, user_id, first_batch_uuid) VALUES ('$uuid', '$type', ${if (family != null) "'$family', " else ""}$zeroSha, '$status', ${code?.let { "'$it'" } ?: "NULL"}, $userId, gen_random_uuid())",
+    )
+    /** A quarantine item of a held record: open, or resolved as [status] (a note starting `return_to_device` marks a returned one). */
+    private fun held(uuid: String, type: String, status: String = "open", code: String = "scope_out_of_reach", note: String? = null, family: String? = null): Unit {
+        registry(uuid, type, "quarantined", code, family)
+        world.exec(
+            "INSERT INTO app.sync_quarantine (client_uuid, record_type, code, status, payload_sha256, payload, user_id, route_id, business_date, resolved_at, resolved_by_user_id, resolution_note) " +
+                "VALUES ('$uuid', '$type', '$code', '$status', decode(repeat('01', 32), 'hex'), '{\"type\":\"$type\"}', $userId, $route, DATE '$today', ${if (status == "open") "NULL" else "now()"}, ${if (status == "open") "NULL" else userId}, ${note?.let { "'$it'" } ?: "NULL"})",
+        )
+    }
+    private fun familyOf(red: String) = world.rows("SELECT family_uuid::text AS f FROM app.redemption WHERE client_uuid = CAST('$red' AS uuid)").single()["f"] as String
+    private fun state(uuid: String, type: String) = world.fresh.db.jdbi.withHandle<GiftParents.Verdict, Exception> { h -> GiftParents.state(h, uuid, type) }
+    private fun line(red: String, g: Long, voided: Boolean = false): String {
+        val u = UUID.randomUUID().toString()
+        world.exec("INSERT INTO app.redemption_line (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, redemption_client_uuid, gift_id, qty, points_each, points_total${if (voided) ", voided_at" else ""}) VALUES ('$u', gen_random_uuid(), DATE '$today', $userId, now(), 0, '$red', $g, 1, 100, 100${if (voided) ", now()" else ""})")
+        return u
+    }
+
+    @Test
+    fun theParentFunctionAnswersEveryStateOfAHeaderAndOfALine() {
+        val S = GiftParents.State.entries
+        // header
+        val stored = redemption(outlet, listOf(cGift to 1)); assertEquals(GiftParents.State.STORED, state(stored, "redemption").state)
+        val voided = redemption(outlet, listOf(cGift to 1)); world.exec("UPDATE app.redemption SET voided_at = now() WHERE client_uuid = CAST('$voided' AS uuid)"); assertEquals(GiftParents.State.VOIDED, state(voided, "redemption").state)
+        val rejected = UUID.randomUUID().toString(); registry(rejected, "redemption", "rejected", "schema_invalid"); assertEquals(GiftParents.State.REJECTED, state(rejected, "redemption").state)
+        val discarded = UUID.randomUUID().toString(); held(discarded, "redemption", "discarded"); assertEquals(GiftParents.State.DISCARDED, state(discarded, "redemption").state)
+        val open = UUID.randomUUID().toString(); held(open, "redemption"); state(open, "redemption").let { assertEquals(GiftParents.State.OPEN, it.state); assertEquals(open, it.uuid); assertEquals("scope_out_of_reach", it.code) }
+        assertEquals(GiftParents.State.MISSING, state(UUID.randomUUID().toString(), "redemption").state, "not synced yet")
+        val returned = UUID.randomUUID().toString(); held(returned, "redemption", "discarded", note = "return_to_device: fix and send again"); assertEquals(GiftParents.State.MISSING, state(returned, "redemption").state, "a returned item may still arrive: not final")
+        val otherType = UUID.randomUUID().toString(); registry(otherType, "memo", "rejected", "schema_invalid"); assertEquals(GiftParents.State.MISSING, state(otherType, "redemption").state, "a refused record of another type is not a refused redemption")
+        // line
+        val red = redemption(outlet, listOf(cGift to 1), lineCount = 6)
+        assertEquals(GiftParents.State.STORED, state(line(red, cGift2), "redemption_line").state)
+        assertEquals(GiftParents.State.VOIDED, state(line(red, cGift2, voided = true), "redemption_line").state)
+        val rl = UUID.randomUUID().toString(); registry(rl, "redemption_line", "rejected", "schema_invalid", familyOf(red)); assertEquals(GiftParents.State.REJECTED, state(rl, "redemption_line").state)
+        val dl = UUID.randomUUID().toString(); held(dl, "redemption_line", "discarded", family = familyOf(red)); assertEquals(GiftParents.State.DISCARDED, state(dl, "redemption_line").state)
+        val ol = UUID.randomUUID().toString(); held(ol, "redemption_line", family = familyOf(red)); assertEquals(GiftParents.State.OPEN, state(ol, "redemption_line").state)
+        assertEquals(GiftParents.State.MISSING, state(UUID.randomUUID().toString(), "redemption_line").state)
+        assertTrue(S.filter { it.isFinal }.toSet() == setOf(GiftParents.State.STORED, GiftParents.State.VOIDED, GiftParents.State.REJECTED, GiftParents.State.DISCARDED), "final = stored, voided, rejected, discarded; open and missing wait")
+        // the lines of one redemption together: a refused/discarded line beats a held one, a held one beats nothing, nothing = still on its way
+        val r2 = redemption(outlet, listOf(cGift to 1), lineCount = 4); val f2 = familyOf(r2)
+        fun lines() = world.fresh.db.jdbi.withHandle<GiftParents.Verdict, Exception> { h -> GiftParents.missingLines(h, f2) }
+        assertEquals(GiftParents.State.MISSING, lines().state)
+        val o2 = UUID.randomUUID().toString(); held(o2, "redemption_line", family = f2); assertEquals(GiftParents.State.OPEN, lines().state); assertEquals(o2, lines().uuid)
+        registry(UUID.randomUUID().toString(), "redemption_line", "rejected", "schema_invalid", f2); assertTrue(lines().state.isRefused, "a refused line makes the redemption incomplete for good")
+    }
+
+    private suspend fun io.ktor.client.HttpClient.discard(item: Long): HttpStatusCode =
+        with(world) { postWeb("admin1001", "/v1/admin/quarantine/$item/resolve", """{"action":"discard","reason":"not a real redemption, discarded by the reviewer"}""").status }
+    private fun itemOf(uuid: String) = world.one("SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST('$uuid' AS uuid) ORDER BY id DESC LIMIT 1")
+
+    @Test
+    fun aPhotoHeldWithAnOpenHeaderFollowsTheReviewersDiscardAndIsStoredAndFlagged() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString(); held(head, "redemption")      // the redemption is held in review
+            val p = photo(null, 200, unit = head to 1, flat = lat + 0.00003)
+            val a = ack(sync(sr, listOf(p)), cu(p))
+            assertEquals("quarantined", a.status(), "an OPEN parent holds the photo in review, not in the phone's retry loop: $a"); assertEquals("scope_out_of_reach", a.code())
+            assertEquals("parent $head is quarantined (scope_out_of_reach)", rows("SELECT detail FROM app.sync_quarantine WHERE client_uuid = CAST('${cu(p)}' AS uuid)").single()["detail"], "the reason names the parent")
+            assertEquals(0L, one("SELECT count(*) FROM app.gift_photo WHERE client_uuid = CAST('${cu(p)}' AS uuid)"))
+            assertEquals(HttpStatusCode.OK, discard(itemOf(head)))
+            assertEquals("parent_refused", flag(p)["check_flag"], "the photo follows the discard: stored and flagged"); assertEquals(true, flag(p)["is_duplicate"])
+            assertEquals("accepted", rows("SELECT status FROM app.sync_quarantine WHERE client_uuid = CAST('${cu(p)}' AS uuid)").single()["status"])
+            assertEquals("duplicate", ack(sync(sr, listOf(p)), cu(p)).status())
+            // a photo that arrives AFTER the discard is stored and flagged at once
+            val late = photo(null, 190, unit = head to 2, flat = lat + 0.00004)
+            assertEquals("accepted", ack(sync(sr, listOf(late)), cu(late)).status()); assertEquals("parent_refused", flag(late)["check_flag"])
+        }
+    }
+
+    @Test
+    fun aPhotoWhoseRedemptionLineIsHeldInReviewIsHeldWithItAndFollowsItsDiscard() = world.withApi {
+        with(world) {
+            val red = redemption(outlet, listOf(cGift to 1), lineCount = 2)   // line 1 stored; line 2 held in review
+            val l2 = UUID.randomUUID().toString(); held(l2, "redemption_line", family = familyOf(red))
+            val p = photo(null, 210, unit = red to 1, flat = lat + 0.00005)
+            val a = ack(sync(sr, listOf(p)), cu(p))
+            assertEquals("quarantined", a.status(), a.toString()); assertEquals("scope_out_of_reach", a.code())
+            assertEquals("parent $l2 is quarantined (scope_out_of_reach)", rows("SELECT detail FROM app.sync_quarantine WHERE client_uuid = CAST('${cu(p)}' AS uuid)").single()["detail"])
+            assertEquals(HttpStatusCode.OK, discard(itemOf(l2)))
+            assertEquals("parent_refused", flag(p)["check_flag"], "the line was discarded: the redemption can never be complete, the photo is stored and flagged")
+            val after = photo(null, 205, unit = red to 1, flat = lat + 0.00006, cu = UUID.randomUUID().toString())
+            assertEquals("accepted", ack(sync(sr, listOf(after)), cu(after)).status()); assertEquals("parent_refused", flag(after)["check_flag"], "and a later photo of it likewise")
+        }
+    }
+
+    @Test
+    fun aRefusedRecordOfAnotherTypeInTheFamilyIsNotAnotherLineAndItsLookupHasAnIndex() = world.withApi {
+        with(world) {
+            val red = redemption(outlet, listOf(cGift to 1), lineCount = 2)
+            registry(UUID.randomUUID().toString(), "visit", "rejected", "schema_invalid", familyOf(red))
+            val p = photo(null, 220, unit = red to 1, flat = lat + 0.00007)
+            val a = ack(sync(sr, listOf(p)), cu(p)); assertEquals("rejected", a.status()); assertEquals("parent_missing", a.code(), "a line is still on its way: retryable, not parent_refused")
+            assertEquals(1L, one("SELECT count(*) FROM pg_indexes WHERE schemaname = 'app' AND tablename = 'ingest_registry' AND indexname = 'ingest_registry_family_unresolved'"))
         }
     }
 }

@@ -42,7 +42,8 @@ class GiftChoiceRecords(private val reach: ReachResolver, private val config: Se
         val outletId = rec.payload["outlet_id"]?.let { (it as? JsonPrimitive)?.contentOrNull?.toLongOrNull() } ?: return RecordRefusal(RecordOutcomeCode.UNKNOWN_OUTLET, "outlet_id") to null
         val giftId = rec.payload["gift_id"]?.let { (it as? JsonPrimitive)?.contentOrNull?.toLongOrNull() } ?: return RecordRefusal(RecordOutcomeCode.UNKNOWN_GIFT, "gift_id") to null
         val quarter = (rec.payload["quarter"] as? JsonPrimitive)?.contentOrNull ?: return RecordRefusal(RecordOutcomeCode.SCHEMA_INVALID, "quarter") to null
-        if (rec.role.name !in roles() && !GiftHolds.waives(waived, GiftHolds.Check.WHO)) return RecordRefusal(RecordOutcomeCode.SCOPE_OUT_OF_REACH, "this role does not choose Astha gifts (cfg.astha.gift_choice_roles)") to null
+        // C-R3: a role outside cfg.astha.gift_choice_roles is a FINAL refusal; no hold code waives it (a reach accept must not release it)
+        if (rec.role.name !in roles()) return RecordRefusal(RecordOutcomeCode.SCHEMA_INVALID, "role_not_allowed: this role does not choose Astha gifts (cfg.astha.gift_choice_roles)") to null
         val startMonth = runCatching { (config.value("cfg.astha.quarter_start_month") as JsonPrimitive).intOrNull }.getOrNull() ?: 1
         if (AsthaQuarter.parse(quarter, startMonth) == null) return RecordRefusal(RecordOutcomeCode.SCHEMA_INVALID, "quarter $quarter") to null
         // Only the open quarter on the record's Dhaka business date can be chosen for (final and kept in sync_rejected): a stale or future label would otherwise make a lock-free assignment nobody reads.
@@ -76,6 +77,8 @@ class GiftChoiceRecords(private val reach: ReachResolver, private val config: Se
         if (locked) return RecordRefusal(RecordOutcomeCode.GIFT_LOCKED, "the outlet's gift for $quarter is locked by its hand-over photo") to null
         return null to Target(programmeId, routeId, tier?.ifEmpty { null })
     }
+
+    override val judgesWaiver = true
 
     override fun check(h: Handle, rec: IngestRecord): RecordRefusal? = judge(h, rec).first
 
