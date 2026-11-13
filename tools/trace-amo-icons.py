@@ -1,29 +1,52 @@
-import vtracer, glob, os, re, io, sys
+#!/usr/bin/env python3
+"""Trace AMO artwork crops (owner screenshots, docs/ui-reference/amo) into small vector drawables.
+Usage: trace-amo-icons.py   (edit JOBS). Per job it tries 12, 10, 8, 7, 6 colours and keeps the richest result within MAX_KB and MAX_PATHS."""
+import vtracer, re, io, os, sys
 from PIL import Image, ImageFilter
-import cairosvg
-res='android/feature-amo/src/main/res/drawable-nodpi'
-tmp='/tmp/claude-0/-home-user-Aron-Pro-Max/6a48f321-6121-5b84-86ff-c599aaad1e9c/scratchpad/vec'
-K=int(sys.argv[1]); S=int(sys.argv[2])
-tot=0; shots=[]
-for f in sorted(glob.glob(res+'/amo_art_*.webp')):
-    n=os.path.basename(f)[:-5]
-    if n=='amo_art_astha': continue
-    im=Image.open(f).convert('RGB'); W=im.size[0]*S
-    im=im.resize((W,W),Image.LANCZOS).filter(ImageFilter.MedianFilter(3))
-    q=im.quantize(K,method=Image.Quantize.MEDIANCUT,dither=Image.Dither.NONE).convert('RGB')
-    png=f'{tmp}/{n}.png'; q.save(png); svg=f'{tmp}/{n}.svg'
-    vtracer.convert_image_to_svg_py(png,svg,colormode='color',hierarchical='stacked',mode='spline',filter_speckle=12,color_precision=8,layer_difference=1,corner_threshold=60,length_threshold=5.0,splice_threshold=45,path_precision=0)
-    s=open(svg).read()
-    paths=re.findall(r'<path d="([^"]+)" fill="(#[0-9A-Fa-f]{6})" transform="translate\(([-\d.]+),([-\d.]+)\)"/>',s)
-    out=[f'<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="56dp" android:height="56dp" android:viewportWidth="{W}" android:viewportHeight="{W}">']
-    for d,c,tx,ty in paths:
-        r,g,b=int(c[1:3],16),int(c[3:5],16),int(c[5:7],16)
-        if r>236 and g>236 and b>236: continue
-        out.append(f'<group android:translateX="{tx}" android:translateY="{ty}"><path android:fillColor="{c}" android:pathData="{re.sub(chr(92)+"s+"," ",d)}"/></group>')
-    out.append('</vector>')
-    x='\n'.join(out); open(f'{res}/{n}.xml','w').write(x); tot+=len(x)
-    shots.append(Image.open(io.BytesIO(cairosvg.svg2png(url=svg,output_width=168,output_height=168,background_color='white'))).convert('RGB'))
-print(tot//1024,'KB')
-m=Image.new('RGB',(168*6,336),'white')
-for i,s_ in enumerate(shots): m.paste(s_,((i%6)*168,(i//6)*168))
-m.save(tmp+'/montage.png')
+MAX_KB, MAX_PATHS = 14.0, 80
+TMP = os.environ.get('TRACE_TMP', '/tmp/trace')
+os.makedirs(TMP, exist_ok=True)
+
+def shift(d, tx, ty):
+    nums = re.findall(r'-?\d+(?:\.\d+)?', d); cmds = re.findall(r'[MCLZ]', d)
+    out = []; i = 0
+    for tok in re.findall(r'[MCLZ]|-?\d+(?:\.\d+)?', d):
+        if tok in 'MCLZ': out.append(tok); continue
+        out.append(tok)
+    # absolute coords alternate x,y after each command letter
+    res = []; k = 0
+    for tok in re.findall(r'[MCLZ]|-?\d+(?:\.\d+)?', d):
+        if tok in ('M', 'C', 'L', 'Z'): res.append(tok); k = 0; continue
+        v = float(tok) + (tx if k % 2 == 0 else ty); k += 1
+        res.append(str(int(round(v))))
+    return ' '.join(res)
+
+def trace(im, name, dp, S, K, speckle, out_dir):
+    w, h = im.size; W, H = w * S, h * S
+    c = im.resize((W, H), Image.LANCZOS).filter(ImageFilter.MedianFilter(3))
+    q = c.quantize(K, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).convert('RGB'); p = f'{TMP}/{name}.png'; q.save(p)
+    vtracer.convert_image_to_svg_py(p, f'{TMP}/{name}.svg', colormode='color', hierarchical='stacked', mode='spline', filter_speckle=speckle,
+                                    color_precision=8, layer_difference=1, corner_threshold=60, length_threshold=10.0, splice_threshold=45, path_precision=0)
+    s = open(f'{TMP}/{name}.svg').read()
+    paths = re.findall(r'<path d="([^"]+)" fill="(#[0-9A-Fa-f]{6})" transform="translate\(([-\d.]+),([-\d.]+)\)"/>', s)
+    out = [f'<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="{dp}dp" android:height="{round(dp*H/W)}dp" android:viewportWidth="{W}" android:viewportHeight="{H}">']
+    n = 0
+    for d, col, tx, ty in paths:
+        r, g, b = int(col[1:3], 16), int(col[3:5], 16), int(col[5:7], 16)
+        if r > 238 and g > 236 and b > 238: continue
+        out.append(f'<path android:fillColor="{col}" android:pathData="{shift(d, float(tx), float(ty))}"/>'); n += 1
+    out.append('</vector>'); x = '\n'.join(out)
+    return x, n
+
+def best(im, name, dp, S, out_dir):
+    for K, sp in ((12, 16), (10, 20), (8, 24), (7, 28), (6, 32)):
+        x, n = trace(im, name, dp, S, K, sp, out_dir)
+        if len(x) / 1024 <= MAX_KB and n <= MAX_PATHS:
+            break
+    open(f'{out_dir}/{name}.xml', 'w').write(x)
+    print(f'{name}: {len(x)/1024:.1f} KB, {n} paths, {K} colours')
+    return len(x), n, K
+
+if __name__ == '__main__':
+    A = 'docs/ui-reference/amo/'
+    exec(open(sys.argv[1]).read()) if len(sys.argv) > 1 else None
