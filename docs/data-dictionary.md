@@ -19,8 +19,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 180 | 2975 |
-| `dw` | 75 | 1211 |
+| `app` | 180 | 2977 |
+| `dw` | 76 | 1233 |
 
 ## Index
 
@@ -277,6 +277,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_route_monthly_target`](#dwv_route_monthly_target) | view | worker | SERVER | master | none | Stable view: route x SKU monthly targets in base units with the month's working days and the derived daily target (D-TARGET-MIN-01). |
 | [`dw.v_stock_movement`](#dwv_stock_movement) | view | backend:sync | OFFLINE | transaction | none | Stable view: every stock movement (issue, return and the other kinds of app.stock_movement) in entered and base units. is_effective = not voided. |
 | [`dw.v_support_ticket`](#dwv_support_ticket) | view | backend:masterdata | OFFLINE | transaction | none | Stable view: one row per support ticket with its current status, priority and lifecycle times (app.support_ticket and app.support_ticket_state); no title, description or notes. is_effective = not data-voided. |
+| [`dw.v_survey_response`](#dwv_survey_response) | view | backend:sync | OFFLINE | transaction | none | Stable view: one row per answered question of a survey taken on a visit (the POSM survey of the SR, the AMO survey, the TSO visit query): outlet, date, question, answer, photo flag. The photo itself (a media id) is never in a reuse view. is_effective = not voided. |
 | [`dw.v_task`](#dwv_task) | view | backend:notify | OFFLINE | transaction | none | Stable view: one row per task (TSO Assign Task, AMO or web task) with its type, creator, assignee, outlet, route, due date and status; no title or description. is_effective = not data-voided. |
 | [`dw.v_visit`](#dwv_visit) | view | worker | SERVER | event_fact | none | Stable view: one row per visit (dw.fact_visit) with both geo verdicts and distances, no coordinates and no photo. is_effective = not voided. |
 | [`dw.v_visit_plan_outlet`](#dwv_visit_plan_outlet) | view | backend:masterdata | OFFLINE | transaction | none | Stable view: one row per outlet of a TSO visit plan (Set Plan) with the plan's date and route and the first Visit Query that completed it. is_effective = neither the outlet row nor its plan is data-voided. |
@@ -2856,7 +2857,7 @@ A request from the field to add, close, edit, move or relocate an outlet, with p
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
-| `request_type` | text | not null |  | Kind of request: new, close, info, cluster, location or route_add. |
+| `request_type` | text | not null |  | Kind of request: new, close, info, cluster, location, route_add or cluster_create (a proposed new cluster for the route the SR works; no outlet). |
 | `outlet_id` | bigint | null |  | Outlet (app.outlet). |
 | `proposed` | jsonb | not null | sensitive | JSON outlet proposal (names, contacts, ids, location) as submitted. |
 | `fix_status` | text | null |  | Outcome of the fix request: ok, timeout, permission_denied, location_off or provider_unavailable. |
@@ -2876,10 +2877,11 @@ A request from the field to add, close, edit, move or relocate an outlet, with p
 | `decision_reason` | text | null |  | Reason given for approving or rejecting the request. |
 | `created_outlet_id` | bigint | null |  | Id of the outlet created when a new-outlet request was approved. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `created_cluster_id` | bigint | null |  | The live cluster an approved cluster_create request made (set once at the approval); null for every other request. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
-References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (created_outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (decided_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (verified_by) REFERENCES app.app_user(id)`
+References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (created_cluster_id) REFERENCES app.cluster(id)`; `FOREIGN KEY (created_outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (decided_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (verified_by) REFERENCES app.app_user(id)`
 
 ## app.outlet_class_history
 
@@ -3975,6 +3977,7 @@ One row per route and business date holding the day state and submit timestamps;
 | `last_bundle_at` | timestamp with time zone | null |  | UTC time of the last full bundle download that carried this route-day (Data Entry Log DOWNLOAD MAX); null before the first. |
 | `bundle_count` | integer | not null |  | Number of full bundle downloads that carried this route-day (Data Entry Log DOWNLOAD count); 304 answers and delta pages are not counted. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `late_rows_after_sales_submit` | integer | not null |  | Memos and due collections of the route-day captured after its Sales Submit and stored before its Final Submit (counted once per stored record, never refused). After the Final Submit a late row counts under late_rows_after_final instead. |
 
 Keys: `UNIQUE (route_id, business_date)`; `PRIMARY KEY (id)`
 
@@ -7306,6 +7309,7 @@ Stable view: one row per route and business date (dw.agg_daily_route) with the z
 | `due_mtk` | bigint | null |  | Amount left on credit (due) in milli-taka. |
 | `dues_collected_mtk` | bigint | null |  | Dues collected against earlier credit memos, in milli-taka. |
 | `late_rows_after_final` | integer | null |  | Rows of the route-day captured before the zone-day's Final Submit that arrived after it. |
+| `late_rows_after_sales_submit` | integer | null |  | Memos and due collections of the route-day captured after its Sales Submit and stored before its Final Submit (counted once per stored record, never refused). After the Final Submit a late row counts under late_rows_after_final instead. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
 | `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its route and the memos, visits, stock movements and collections of the route-day; set by trigger on every write. |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
@@ -7402,6 +7406,36 @@ Stable view: one row per support ticket with its current status, priority and li
 | `has_affected_user` | boolean | null |  | True when the ticket was raised for another user (affected_username set). |
 | `data_origin` | app.data_origin | null |  | Origin of the ticket (app.support_ticket.data_origin, stamped at capture). |
 | `is_effective` | boolean | null |  | True when the ticket is not data-voided (voided_at is null). |
+
+## dw.v_survey_response
+
+Stable view: one row per answered question of a survey taken on a visit (the POSM survey of the SR, the AMO survey, the TSO visit query): outlet, date, question, answer, photo flag. The photo itself (a media id) is never in a reuse view. is_effective = not voided.
+
+`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | null |  | Business date (Asia/Dhaka) of the answer. |
+| `response_uuid` | uuid | null |  | Client uuid of the answer record (idempotency key). |
+| `visit_client_uuid` | uuid | null |  | The visit the survey was taken on. |
+| `user_id` | bigint | null |  | The user who took the survey (from the token). |
+| `route_id` | bigint | null |  | Route of the record; null when none. |
+| `zone_id` | bigint | null |  | Zone of the route; null when the record has no route. |
+| `outlet_id` | bigint | null |  | Outlet of the visit; null when the visit row is not known. |
+| `survey_id` | bigint | null |  | Survey definition (app.survey.id). |
+| `survey_kind` | text | null |  | posm, amo_survey or tso_visit_query. |
+| `survey_version` | integer | null |  | Version of the survey the question belongs to. |
+| `question_id` | bigint | null |  | Question id inside the survey version. |
+| `question_label_en` | text | null |  | English label of the question in that version; null when the version no longer holds it. |
+| `answer_type` | text | null |  | bool, num, option, text or photo_only. |
+| `answer_bool` | boolean | null |  | The answer of a bool question; null otherwise. |
+| `answer_num` | numeric | null |  | The answer of a num question; null otherwise. |
+| `answer_option_code` | text | null |  | The chosen option code of an option question; null otherwise. |
+| `answer_text` | text | null |  | The answer of a text question; null otherwise. |
+| `photo_taken` | boolean | null |  | True when the answer carries a photo (the media id is not exposed). |
+| `captured_at` | timestamp with time zone | null |  | When the phone captured the answer (UTC instant). |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, test, ...). |
+| `is_effective` | boolean | null |  | True unless an admin voided the row. |
 
 ## dw.v_task
 

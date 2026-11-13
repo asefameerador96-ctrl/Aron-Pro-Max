@@ -109,6 +109,23 @@ Bundle:
       maxItems: 100
       items:
         $ref: '#/components/schemas/TutorialItem'
+    clusters:
+      type: array
+      maxItems: 600
+      description: 'Contract 1.16.0 (SR only; absent or empty for other roles): the clusters a new shop or an outlet
+        change may name, one row per cluster and route of the SR''s own routes (a cluster that has an active outlet
+        on the route). Reach is the SR''s routes, taken from the token.'
+      items:
+        $ref: '#/components/schemas/BundleCluster'
+    outlet_sku_stats:
+      type: array
+      maxItems: 12000
+      description: 'Contract 1.16.0 (SR only; absent or empty for other roles): sales history per outlet x SKU of
+        the SR''s own routes, quantities in BASE units (sticks / pieces; the phone converts to packets with the
+        SKU''s pack_factor), ADS in integer hundredths of a base unit. Only pairs with a sale in the last 30 business
+        days are listed. Versioned reference data: the bundle version changes when a row does.'
+      items:
+        $ref: '#/components/schemas/OutletSkuStat'
     my_outlet_requests:
       type: array
       maxItems: 200

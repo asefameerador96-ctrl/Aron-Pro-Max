@@ -38,7 +38,24 @@ data class Bundle(
     val programmes: JsonObject?,
     val content: List<JsonObject>,
     val tutorials: List<JsonObject>,
+    /** Contract 1.16.0 (SRM-B-35/40, part B): the clusters a new shop or an outlet change may name, per route of the SR. SR only; empty for other roles. */
+    val clusters: List<BundleCluster> = emptyList(),
+    /** Contract 1.16.0 (SRM-A-29): previous sale day, ADS and SDLW per outlet x SKU of the SR's own routes, integer hundredths in BASE units. SR only. */
+    val outlet_sku_stats: List<OutletSkuStat> = emptyList(),
 )
+
+/** One cluster as seen on one route of the SR (`route_id` is a route of the bundle's own routes). */
+@Serializable
+data class BundleCluster(val cluster_id: Long, val name: String, val route_id: Long, val route_name: String)
+
+/**
+ * Sales history of one outlet x SKU in BASE units (sticks / pieces; the phone converts to packets with the SKU's pack_factor). [previous_day] is the outlet's
+ * most recent sale day before the bundle date (null when none in the 30-day window), [previous_day_qty_base] the quantity of this SKU on that day.
+ * [ads_hundredths] = average quantity per selling day x 100 over the 30 days before the bundle date (selling day = a day the outlet had a live memo), rounded
+ * half up; [sdlw_qty_base] = the quantity on the same weekday last week (bundle date minus 7).
+ */
+@Serializable
+data class OutletSkuStat(val outlet_id: Long, val sku_id: Long, val previous_day: String?, val previous_day_qty_base: Long, val ads_hundredths: Long, val sdlw_qty_base: Long)
 
 @Serializable
 data class PagedSection(val section: String, val pages: Int, val rows: Int)

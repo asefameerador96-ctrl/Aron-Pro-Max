@@ -89,6 +89,15 @@ object DayStates {
                 """.trimIndent(),
             ).bindArray("r", Long::class.javaObjectType, routes).bind("d", date).execute()
         }
+        // SRM-B-30 (contract 1.16.0): a memo or a due collection CAPTURED after the route-day's Sales Submit and stored before its Final Submit is counted
+        // (`late_rows_after_sales_submit`) and stays an ordinary row: flag, never refuse (the phone is offline-first and may sell on after submitting).
+        // After the Final Submit the row counts under late_rows_after_final instead, so the two counters never double count. Once per stored record.
+        if (type == "memo" || type == "due_collection") {
+            h.createUpdate(
+                "UPDATE app.route_day SET late_rows_after_sales_submit = late_rows_after_sales_submit + 1 " +
+                    "WHERE route_id = ANY(:r) AND business_date = :d AND sales_submitted_at IS NOT NULL AND sales_submitted_at < :cap AND final_submitted_at IS NULL",
+            ).bindArray("r", Long::class.javaObjectType, routes).bind("d", date).bind("cap", ts(captured)).execute()
+        }
         val set = when (type) {
             "day_open" -> if (p.bool("offline_start") == true) "logged_in_at = COALESCE(logged_in_at, :at)" else null
             "visit" -> "in_field_at = COALESCE(in_field_at, :at)"

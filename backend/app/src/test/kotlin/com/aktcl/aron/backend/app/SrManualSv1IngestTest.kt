@@ -446,6 +446,33 @@ class SrManualSv1IngestTest {
         }
     }
 
+    @Test
+    fun aMemoCapturedAfterTheSalesSubmitIsStoredAndCountedOnceAndOneCapturedBeforeIsNot() {
+        // the fixture user holds no assignment: a cover of the route for the test (a route-day exists only for a route the uploader holds)
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason) VALUES ($routeId, $sr, 'cover', DATE '2026-01-01', 'late rows test')") }
+        try { lateRowsCase() } finally { fresh.db.jdbi.useHandle<Exception> { h -> h.execute("DELETE FROM app.route_assignment WHERE user_id = $sr AND reason = 'late rows test'") } }
+    }
+
+    private fun lateRowsCase() {
+        fun late() = count("SELECT coalesce((SELECT late_rows_after_sales_submit FROM app.route_day WHERE route_id = $routeId AND business_date = DATE '$day'), -1)")
+        val first = sale(memoNo(), listOf(L(priced, 1, "stick", 1)), outlet = outletId)
+        val firstAck = send(sr, first)
+        first.forEach { assertEquals("accepted", firstAck.ack(it), "before any submit every record is stored: ${typeOf(it)}") }
+        assertEquals(0L, late(), "no Sales Submit yet: nothing is late")
+        // the route-day's Sales Submit (server state) sits BEFORE everything captured from now on
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.route_day SET sales_submitted_at = TIMESTAMPTZ '2027-01-02T18:00:00Z' WHERE route_id = $routeId AND business_date = DATE '$day'") }
+        val after = sale(memoNo(), listOf(L(priced, 2, "stick", 1)), outlet = outletId)
+        val ack = send(sr, after)
+        after.forEach { assertEquals("accepted", ack.ack(it), "a row after the Sales Submit is stored, never refused: ${typeOf(it)}") }
+        repeat(2) { send(sr, after.shuffled(Random(it))) }
+        assertEquals(1L, late(), "the memo counts once under resends and any order")
+        // a row captured before the submit instant (it only arrived late) is not 'after the submit'
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.route_day SET sales_submitted_at = TIMESTAMPTZ '2027-01-03T18:00:00Z' WHERE route_id = $routeId AND business_date = DATE '$day'") }
+        val early = sale(memoNo(), listOf(L(priced, 1, "stick", 1)), outlet = outletId)
+        send(sr, early)
+        assertEquals(1L, late(), "captured before the submit: not counted")
+    }
+
     // ---------------------------------------------------------------------------------------------- (c2) business totals, rule by rule
 
     @Test

@@ -8,8 +8,9 @@ import java.sql.SQLException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
-/** V0173 to V0176 (sr-server trains 1 and 2): write-once visit columns, the NOT VALID then VALID constraints, the flag event kinds, the deterministic edit_reason codes. */
+/** V0173 to V0184 (sr-server trains 1 and 2): write-once visit columns, the NOT VALID then VALID constraints, the flag event kinds, the deterministic edit_reason codes. */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SrManualSv1V0173Test {
     private lateinit var db: TestDatabase
@@ -95,5 +96,18 @@ class SrManualSv1V0173Test {
             exec(sql.lines().filter { !it.trimStart().startsWith("--") }.joinToString("\n"))
             assertEquals("1", scalar("SELECT count(*) FROM app.code_list_item WHERE list_key = 'edit_reason' AND code = 'wrong_quantity'"))
         }
+    }
+
+    @Test
+    fun clusterCreateRequestsAndTheTrainTwoColumnsAreValidatedAndGuarded() = db.connect().use { c ->
+        // V0177 / V0178 / V0183 / V0184: every constraint they add is validated, the new columns exist, created_cluster_id is write-once, cluster_create is a request type without an outlet
+        assertEquals("0", c.scalar("SELECT count(*) FROM pg_constraint WHERE NOT convalidated AND conrelid IN ('app.route_day'::regclass, 'app.outlet_change_request'::regclass, 'app.sync_rejected'::regclass)"))
+        assertEquals("2", c.scalar("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'app' AND ((table_name = 'route_day' AND column_name = 'late_rows_after_sales_submit') OR (table_name = 'outlet_change_request' AND column_name = 'created_cluster_id'))"))
+        assertTrue(c.scalar("SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname = 'outlet_change_request_immutable' AND NOT tgisinternal")!!.contains("'=created_cluster_id'"))
+        val rule = c.scalar("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'outlet_change_request_outlet_rule'")!!
+        assertTrue(rule.contains("cluster_create") && rule.contains("new"), rule)
+        assertTrue(c.scalar("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'sync_rejected_code_check'")!!.contains("cluster_name_exists"))
+        assertTrue(c.scalar("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'route_day_late_rows_sales_check'")!!.contains(">= 0"))
+        assertEquals("false", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.sale.journey_repeat_sale_enabled'"))
     }
 }

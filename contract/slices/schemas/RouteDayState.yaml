@@ -77,3 +77,12 @@ RouteDayState:
       - 'null'
       maxLength: 120
       description: Full name of the assigned SR, for the supervisor route lists (F-TSO-007).
+    late_rows_after_sales_submit:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: 'Contract 1.16.0 (supervisor reads only; absent in the bundle and the day-state read): memos
+        and due collections of the route-day captured after its Sales Submit and stored before its Final Submit.
+        Counted once per stored record, never refused (offline-first); after the Final Submit a late row counts
+        under the final-submit counter instead.'

@@ -300,6 +300,7 @@ export const en = {
   "req.type.cluster": "Cluster change",
   "req.type.location": "Location change",
   "req.type.route_add": "Add to route",
+  "req.type.cluster_create": "New cluster",
   "entity.outlet_requests": "Outlet approval",
   "entity.outlet_requests.singular": "request",
   "menu.admin.outlet_requests": "Outlet approval",

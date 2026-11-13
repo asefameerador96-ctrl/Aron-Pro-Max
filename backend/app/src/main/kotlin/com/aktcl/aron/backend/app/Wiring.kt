@@ -339,7 +339,7 @@ class Wiring(
                 dashboardRoutes(dashboards)
                 nationalDashboardRoutes(national)
                 appTeamRoutes(team)
-                amoTeamRoutes(team, AmoTeamReads(db, clock))
+                amoTeamRoutes(team, AmoTeamReads(db, clock) { config.bool("cfg.sale.journey_repeat_sale_enabled") })
                 dailyTrackingRoutes(tracking)
                 opsRoutes(ops)
                 deviceRoutes(deviceEnrolment)

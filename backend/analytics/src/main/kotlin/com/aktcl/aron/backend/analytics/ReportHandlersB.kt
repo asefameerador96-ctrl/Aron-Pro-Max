@@ -489,3 +489,38 @@ object TsoVisitLogReport : ReportHandler {
         """,
     )
 }
+
+/**
+ * `posm-survey` (SRM-B-08, contract 1.16.0): the answers of the POSM survey (and the other surveys) per outlet, read from the reuse view
+ * `dw.v_survey_response`. Scope is the report context's (zone and route clauses on the view's own columns, token reach only); the photo is a flag, the media id
+ * is never in the view. Voided answers are left out.
+ */
+object PosmSurveyReport : ReportHandler {
+    override val definition = definition(
+        "posm-survey", "POSM Survey", "field_force", "survey answer",
+        listOf(
+            col("business_date", "Date", "date", bn = "তারিখ"), col("zone_name", "Zone", "string", bn = "জোন"), col("route_code", "Route", "string", bn = "রুট"),
+            col("outlet_code", "Outlet code", "string", bn = "আউটলেট কোড"), col("outlet_name", "Outlet", "string", bn = "আউটলেট"), col("username", "SR", "string", bn = "এসআর"),
+            col("survey_kind", "Survey", "string", bn = "জরিপ"), col("question", "Question", "string", bn = "প্রশ্ন"), col("answer", "Answer", "string", bn = "উত্তর"),
+            col("photo_taken", "Photo", "bool", bn = "ছবি"),
+        ),
+        listOf("period", "geo"),
+        bn = "পজম জরিপ",
+    )
+
+    override fun spec(ctx: ReportContext) = SqlSpec(
+        """
+        SELECT sv.business_date, z.name AS zone_name, r.code AS route_code, o.code AS outlet_code, o.name AS outlet_name, u.username, sv.survey_kind,
+               coalesce(sv.question_label_en, '#' || sv.question_id) AS question,
+               coalesce(sv.answer_text, sv.answer_option_code, CASE sv.answer_bool WHEN true THEN 'yes' WHEN false THEN 'no' END, sv.answer_num::text) AS answer,
+               sv.photo_taken
+          FROM dw.v_survey_response sv
+          JOIN app.app_user u ON u.id = sv.user_id
+          LEFT JOIN app.outlet o ON o.id = sv.outlet_id
+          LEFT JOIN app.route r ON r.id = sv.route_id
+          LEFT JOIN app.zone z ON z.id = coalesce(sv.zone_id, o.zone_id)
+         WHERE sv.is_effective AND ${ctx.dateClause("sv.business_date")}
+           AND ${ctx.zoneClause("coalesce(sv.zone_id, o.zone_id)")} AND ${ctx.routeClause("coalesce(sv.route_id, -1)")}
+        """,
+    )
+}

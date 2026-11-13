@@ -112,7 +112,7 @@ class BundleFingerprint(
 
         /** Bundle members a delta cannot carry: a change in any of them means fetch the full bundle. */
         private val REST_MEMBERS = setOf(
-            "user", "calendar", "surveys", "rubrics", "supervisor", "reason_texts", "programmes", "content", "tutorials",
+            "user", "calendar", "surveys", "rubrics", "supervisor", "reason_texts", "programmes", "content", "tutorials", "clusters", "outlet_sku_stats",
         )
 
         internal fun routeLevel(r: RouteSnapshot): JsonElement =

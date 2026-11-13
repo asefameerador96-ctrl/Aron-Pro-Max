@@ -4620,7 +4620,7 @@ export interface components {
          *     business date.
          * @enum {string}
          */
-        RecordOutcomeCode: "scope_stale" | "config_version_unknown" | "parent_missing" | "outlet_pending_approval" | "price_list_unknown" | "schema_invalid" | "unknown_record_type" | "unknown_sku" | "unknown_outlet" | "unknown_route" | "arithmetic_mismatch" | "memo_no_invalid" | "memo_no_duplicate" | "edit_not_allowed" | "chain_too_deep" | "voided_by_admin" | "content_duplicate" | "lines_exceed_max" | "qty_invalid" | "price_invalid" | "attendance_duplicate" | "checkout_too_early" | "server_error" | "payload_conflict" | "business_date_out_of_window" | "scope_out_of_reach" | "no_assignment_on_date" | "device_integrity_failed" | "device_not_enrolled" | "user_disabled" | "device_revoked" | "app_version_blocked" | "after_month_close" | "unknown_gift" | "insufficient_points" | "gift_photo_exists" | "programme_inactive" | "after_final_submit" | "day_final_submitted" | "ticket_state_invalid" | "issue_type_unknown";
+        RecordOutcomeCode: "scope_stale" | "config_version_unknown" | "parent_missing" | "outlet_pending_approval" | "price_list_unknown" | "schema_invalid" | "unknown_record_type" | "unknown_sku" | "unknown_outlet" | "unknown_route" | "arithmetic_mismatch" | "memo_no_invalid" | "memo_no_duplicate" | "edit_not_allowed" | "chain_too_deep" | "voided_by_admin" | "content_duplicate" | "lines_exceed_max" | "qty_invalid" | "price_invalid" | "attendance_duplicate" | "checkout_too_early" | "server_error" | "payload_conflict" | "business_date_out_of_window" | "scope_out_of_reach" | "no_assignment_on_date" | "device_integrity_failed" | "device_not_enrolled" | "user_disabled" | "device_revoked" | "app_version_blocked" | "after_month_close" | "unknown_gift" | "insufficient_points" | "gift_photo_exists" | "programme_inactive" | "after_final_submit" | "day_final_submitted" | "ticket_state_invalid" | "issue_type_unknown" | "cluster_name_exists";
         /**
          * @description Stable problem codes (HTTP status in docs/24 s3.4). From contract 1.10.0 (409): `ERR_TICKET_TRANSITION_INVALID`
          *     (a support-desk status change the ticket's state does not allow, D-TSO-MAN-20), `ERR_TICKET_COMMENTS_CLOSED` (a
@@ -4668,7 +4668,7 @@ export interface components {
         /** @enum {string} */
         OutletStatus: "active" | "closed" | "merged" | "archived";
         /** @enum {string} */
-        OutletRequestType: "new" | "close" | "info" | "cluster" | "location" | "route_add";
+        OutletRequestType: "new" | "close" | "info" | "cluster" | "location" | "route_add" | "cluster_create";
         /** @enum {string} */
         OutletRequestStatus: "pending" | "verified" | "approved" | "rejected" | "lapsed" | "discarded";
         /** @enum {string} */
@@ -4747,7 +4747,7 @@ export interface components {
          * @description Report registry keys of this build, programme reports included (docs/24 s12.3). `tso-visit-log` from contract 1.10.0 (lead ruling R-F-12; the TSO visit plans with their answers and delegated tasks).
          * @enum {string}
          */
-        ReportKey: "std-memo" | "sr-efficiency" | "route-std" | "route-memo" | "route-bsr-cpr" | "data-entry-log" | "final-submit-log" | "final-submit-status" | "by-outlet" | "by-outlet-by-day" | "gigo" | "attendance" | "discount" | "online-offline" | "tso-top-sheet" | "daily-tracking" | "sr-outlets" | "leaderboard" | "suspicious-location" | "sync-health" | "ds-rrs" | "dss" | "amo-call" | "dues-ageing" | "settlement" | "qc-report" | "stock-summary" | "memo-number-gaps" | "sales-summary" | "task-planner" | "by-route-geo-capture" | "free-sample" | "target-allocation" | "route-qc" | "geofence-calibration" | "astha" | "astha-gift-choice" | "campaign-gift-redemption" | "diamond-league" | "superstar-campaign" | "retailer-list" | "sku-list" | "tso-visit-log";
+        ReportKey: "std-memo" | "sr-efficiency" | "route-std" | "route-memo" | "route-bsr-cpr" | "data-entry-log" | "final-submit-log" | "final-submit-status" | "by-outlet" | "by-outlet-by-day" | "gigo" | "attendance" | "discount" | "online-offline" | "tso-top-sheet" | "daily-tracking" | "sr-outlets" | "leaderboard" | "suspicious-location" | "sync-health" | "ds-rrs" | "dss" | "amo-call" | "dues-ageing" | "settlement" | "qc-report" | "stock-summary" | "memo-number-gaps" | "sales-summary" | "task-planner" | "by-route-geo-capture" | "free-sample" | "target-allocation" | "route-qc" | "geofence-calibration" | "astha" | "astha-gift-choice" | "campaign-gift-redemption" | "diamond-league" | "superstar-campaign" | "retailer-list" | "sku-list" | "tso-visit-log" | "posm-survey";
         /** @description RFC 9457 problem details with Aron extension members. */
         Problem: {
             /**
@@ -6066,6 +6066,11 @@ export interface components {
             contact_number?: components["schemas"]["PhoneBd"];
             address?: string | null;
             cluster_id?: components["schemas"]["Id"];
+            /**
+             * Format: uuid
+             * @description Contract 1.16.0 (new shop requests): the client uuid of the SR's own pending `cluster_create` request whose cluster this shop belongs to, when the cluster does not exist yet. Used at approval when `cluster_id` is absent; the shop cannot be approved before that cluster request is (409 guard `cluster_request_pending`).
+             */
+            cluster_request_uuid?: string;
             /** Format: int64 */
             sub_channel_id?: number | null;
             /** @enum {string|null} */
@@ -6371,6 +6376,8 @@ export interface components {
             assigned_username?: string | null;
             /** @description Full name of the assigned SR, for the supervisor route lists (F-TSO-007). */
             assigned_user_full_name?: string | null;
+            /** @description Contract 1.16.0 (supervisor reads only; absent in the bundle and the day-state read): memos and due collections of the route-day captured after its Sales Submit and stored before its Final Submit. Counted once per stored record, never refused (offline-first); after the Final Submit a late row counts under the final-submit counter instead. */
+            late_rows_after_sales_submit?: number | null;
         };
         SupervisorDayState: {
             user_id: components["schemas"]["Id"];
@@ -6816,6 +6823,34 @@ export interface components {
                 photo?: boolean;
             }[];
         };
+        /** @description One cluster as seen on one route of the SR (contract 1.16.0). */
+        BundleCluster: {
+            cluster_id: components["schemas"]["Id"];
+            name: string;
+            route_id: components["schemas"]["Id"];
+            route_name: string;
+        };
+        /** @description Sales history of one outlet x SKU in BASE units (sticks / pieces; contract 1.16.0). `previous_day` is the outlet's most recent sale day before the bundle date within the last 30 business days (null when none), `previous_day_qty_base` the quantity of this SKU on that day (0 when the SKU was not sold then). `ads_hundredths` = average quantity per selling day x 100 over the 30 business days before the bundle date (a selling day is a day the outlet had a live memo; only sale lines of active, non-voided memos), rounded half up, an integer: 250 means 2.5 sticks per selling day. `sdlw_qty_base` = the quantity on the same weekday last week (bundle date minus 7 days). The phone shows packets by dividing with the SKU's pack_factor. */
+        OutletSkuStat: {
+            outlet_id: components["schemas"]["Id"];
+            sku_id: components["schemas"]["Id"];
+            previous_day: components["schemas"]["BusinessDate"] | null;
+            /**
+             * Format: int64
+             * @description Base units (sticks / pieces).
+             */
+            previous_day_qty_base: number;
+            /**
+             * Format: int64
+             * @description Average quantity per selling day x 100
+             */
+            ads_hundredths: number;
+            /**
+             * Format: int64
+             * @description Base units (sticks / pieces) on the same weekday last week.
+             */
+            sdlw_qty_base: number;
+        };
         /** @description The day bundle (docs/24 s4.10). One snapshot of all routes assigned to the user for the business date. */
         Bundle: {
             meta: components["schemas"]["BundleMeta"];
@@ -6846,6 +6881,10 @@ export interface components {
             /** @description AV and KV items valid today or within cfg.sys.schedule_horizon_days. */
             content?: components["schemas"]["ContentItem"][];
             tutorials?: components["schemas"]["TutorialItem"][];
+            /** @description Contract 1.16.0 (SR only; absent or empty for other roles): the clusters a new shop or an outlet change may name, one row per cluster and route of the SR's own routes (a cluster that has an active outlet on the route). Reach is the SR's routes, taken from the token. */
+            clusters?: components["schemas"]["BundleCluster"][];
+            /** @description Contract 1.16.0 (SR only; absent or empty for other roles): sales history per outlet x SKU of the SR's own routes, quantities in BASE units (sticks / pieces; the phone converts to packets with the SKU's pack_factor), ADS in integer hundredths of a base unit. Only pairs with a sale in the last 30 business days are listed. Versioned reference data: the bundle version changes when a row does. */
+            outlet_sku_stats?: components["schemas"]["OutletSkuStat"][];
             /** @description The user's own outlet change requests of the last 30 days with status and rejection reason (SR and AMO own-request list). */
             my_outlet_requests?: components["schemas"]["OutletRequestSummary"][];
         };
@@ -7283,6 +7322,11 @@ export interface components {
             rejection_reason?: string | null;
             /** Format: int64 */
             resulting_outlet_id?: number | null;
+            /**
+             * Format: int64
+             * @description Contract 1.16.0: the live cluster an approved `cluster_create` request made; null for every other request.
+             */
+            resulting_cluster_id?: number | null;
             events: {
                 /** @enum {string} */
                 event: "requested" | "verified" | "discarded" | "rejected" | "approved" | "lapsed";

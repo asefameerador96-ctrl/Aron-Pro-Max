@@ -55,6 +55,8 @@ data class OutletRequestDto(
     val moved_m: Double?, val requires_tso: Boolean, val flags: List<String>, val photos: List<String>, val possible_duplicate_of: String? = null,
     val verified_by_user_id: Long?, val verified_at: String?, val verified_via: String?, val approved_by_user_id: Long?, val approved_at: String?,
     val rejection_reason: String?, val resulting_outlet_id: Long?, val events: List<OutletRequestEventDto>,
+    /** Contract 1.16.0: the cluster an approved `cluster_create` request made; null for every other request. */
+    val resulting_cluster_id: Long? = null,
 )
 
 /** Contract OutletRequestSummary. */
@@ -143,7 +145,7 @@ internal data class OutletRequestQuery(
 ) {
     companion object {
         val STATUSES = setOf("pending", "verified", "approved", "rejected", "lapsed", "discarded")
-        val TYPES = setOf("new", "close", "info", "cluster", "location", "route_add")
+        val TYPES = setOf("new", "close", "info", "cluster", "location", "route_add", "cluster_create")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         private val CURSOR = Regex("^[A-Za-z0-9_-]{1,512}$")
 
@@ -289,7 +291,7 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
             (r["verified_by"] as Number?)?.toLong(), ts(r["verified_at"]), verifiedVia,
             if (status == "approved") (r["decided_by"] as Number?)?.toLong() else null, if (status == "approved") ts(r["decided_at"]) else null,
             if (status == "rejected" || status == "discarded") r["decision_reason"] as String? else null, (r["created_outlet_id"] as Number?)?.toLong() ?: if (status == "approved") (r["outlet_id"] as Number?)?.toLong() else null,
-            trail,
+            trail, (r["created_cluster_id"] as Number?)?.toLong(),
         )
     }
 
@@ -496,10 +498,12 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                 if (r["status"] == "verified" && (r["verified_by"] as Number?)?.toLong() == p.userId) return@inTransaction dto(h, r, p)
                 if (r["status"] != "pending") throw ApiProblem(ProblemCode.ERR_CONFLICT, "the request is ${r["status"]}")
                 if ((r["user_id"] as Number).toLong() == p.userId) throw ApiProblem(ProblemCode.ERR_SEPARATION_OF_DUTIES, "the requester cannot verify their own request")
-                if (h.row("SELECT id FROM app.sub_channel WHERE id = :s AND status = 'active'", "s" to req.sub_channel_id) == null) bad("/sub_channel_id", "unknown_sub_channel")
+                // A cluster proposal has no sub-channel: the value is required by the schema but ignored and not recorded for it.
+                val shop = r["request_type"] != "cluster_create"
+                if (shop && h.row("SELECT id FROM app.sub_channel WHERE id = :s AND status = 'active'", "s" to req.sub_channel_id) == null) bad("/sub_channel_id", "unknown_sub_channel")
                 h.createUpdate("UPDATE app.outlet_change_request SET status = 'verified', status_changed_at = :at, verified_by = :me, verified_at = :at WHERE client_uuid = :u")
                     .bind("at", odt(d.clock.now())).bind("me", p.userId).bind("u", u).execute()
-                event(h, u, "verified", p, req.note, req.sub_channel_id, req.geo_class)
+                event(h, u, "verified", p, req.note, if (shop) req.sub_channel_id else null, if (shop) req.geo_class else null)
                 dto(h, one(h, u, reach, lock = false)!!, p)
             }
         }
@@ -551,6 +555,19 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         return outcome
     }
 
+    /**
+     * The cluster a new shop names by the client uuid of its own `cluster_create` request (contract 1.16.0): the live cluster that request made. Null when no uuid is given;
+     * a request that is not approved yet is a 409 `cluster_request_pending` (approve the cluster first), an unknown one a 400.
+     */
+    private fun clusterOfRequest(h: Handle, uuid: String?): Long? {
+        if (uuid == null) return null
+        val u = runCatching { UUID.fromString(uuid) }.getOrNull() ?: bad("/proposed/cluster_request_uuid")
+        val q = h.row("SELECT status, created_cluster_id FROM app.outlet_change_request WHERE client_uuid = :u AND request_type = 'cluster_create' AND voided_at IS NULL", "u" to u)
+            ?: bad("/proposed/cluster_request_uuid", "unknown_cluster_request")
+        (q["created_cluster_id"] as Number?)?.let { return it.toLong() }
+        throw ApiProblem(ProblemCode.ERR_CONFLICT, "the cluster request is ${q["status"]}; approve it first", context = mapOf("guard" to JsonPrimitive("cluster_request_pending")))
+    }
+
     /** Applies an approved request to the outlet master; returns the new outlet's id for a `new` request. */
     private fun apply(h: Handle, ctx: AdminCtx, r: Map<String, Any?>, req: OutletRequestApproveDto): Long? {
         val p = Json.parseToJsonElement(r["proposed"].toString()).jsonObject
@@ -578,7 +595,7 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
             "new" -> {
                 val sub = (verification?.get("sub_channel_id") as Number?)?.toLong() ?: id("sub_channel_id") ?: bad("/proposed/sub_channel_id", "required")
                 val channel = h.row("SELECT channel FROM app.sub_channel WHERE id = :s", "s" to sub)?.get("channel") ?: bad("/proposed/sub_channel_id", "unknown_sub_channel")
-                val cluster = id("cluster_id") ?: bad("/proposed/cluster_id", "required")
+                val cluster = id("cluster_id") ?: clusterOfRequest(h, text("cluster_request_uuid")) ?: bad("/proposed/cluster_id", "required")
                 val zone = h.row("SELECT zone_id FROM app.cluster WHERE id = :c", "c" to cluster)?.get("zone_id") ?: bad("/proposed/cluster_id", "unknown_cluster")
                 val route = req.route_id ?: (r["route_id"] as Number?)?.toLong() ?: bad("/route_id", "required")
                 val vals = linkedMapOf<String, Any?>(
@@ -596,6 +613,17 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                 return id
             }
             "close" -> update(mapOf("status" to "closed"))
+            "cluster_create" -> {
+                // Contract 1.16.0 (SRM-B-35): an approved cluster proposal is a LIVE cluster of the route's zone at once (owner default, part B question 3).
+                val route = (r["route_id"] as Number?)?.toLong() ?: bad("/route_id", "required")
+                val zone = (h.row("SELECT zone_id FROM app.route WHERE id = :r", "r" to route) ?: bad("/route_id", "unknown_route"))["zone_id"] as Number
+                val name = (text("name") ?: bad("/proposed/name", "required")).trim().replace(Regex("\\s+"), " ")
+                if (h.row("SELECT id FROM app.cluster WHERE zone_id = :z AND lower(btrim(name)) = lower(:n)", "z" to zone.toLong(), "n" to name) != null)
+                    throw ApiProblem(ProblemCode.ERR_CONFLICT, "a cluster of this name already exists in the zone", context = mapOf("guard" to JsonPrimitive("cluster_name_exists")))
+                val row = adminInsert(h, ctx, CLUSTER, linkedMapOf("zone_id" to zone.toLong(), "name" to name), null, reason)
+                h.createUpdate("UPDATE app.outlet_change_request SET created_cluster_id = :c WHERE client_uuid = :u").bind("c", (row["id"] as Number).toLong()).bind("u", r["client_uuid"]).execute()
+                return null
+            }
             "info" -> {
                 // Contract 1.14.0 (SRM-B-40): an info request may also carry the outlet's new cluster; it must be a cluster of the outlet's own zone.
                 val newCluster = id("cluster_id")
@@ -661,12 +689,38 @@ class OutletChangeRequestHandler : RecordHandler {
         return h.createQuery("SELECT home_zone_id FROM app.app_user WHERE id = :u").bind("u", rec.userId).mapTo(Long::class.java).findOne().orElse(null)
     }
 
-    /** A `cluster` request exists to move the outlet to that cluster: a cluster that is gone leaves nothing to store, so it is refused for good (schema_invalid), as before train 1. */
+    /**
+     * A `cluster` request exists to move the outlet to that cluster: a cluster that is gone leaves nothing to store, so it is refused for good (schema_invalid), as before train 1.
+     * A `cluster_create` request (contract 1.16.0) proposes a NEW cluster for the route it was made on: it needs a name and the envelope's route, carries no outlet, and its name must
+     * not repeat a cluster of the route's zone or another open cluster request of that zone (CLUSTER_NAME_EXISTS, final, the detail names the existing cluster: the SR uses it instead).
+     */
     override fun check(h: Handle, rec: IngestRecord): RecordRefusal? {
+        if (type(rec) == "cluster_create") return checkClusterCreate(h, rec)
         if (type(rec) != "cluster") return null
         val cluster = proposedCluster(rec) ?: return null
         val there = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.cluster WHERE id = :c)").bind("c", cluster).mapTo(Boolean::class.java).one()
         return if (there) null else RecordRefusal(com.aktcl.aron.contract.RecordOutcomeCode.SCHEMA_INVALID, "cluster $cluster")
+    }
+
+    private fun checkClusterCreate(h: Handle, rec: IngestRecord): RecordRefusal? {
+        fun bad(why: String) = RecordRefusal(com.aktcl.aron.contract.RecordOutcomeCode.SCHEMA_INVALID, why)
+        if (rec.payload["outlet_id"]?.takeIf { it !is JsonNull } != null) return bad("a cluster request names no outlet")
+        val name = ((rec.payload["proposed"] as? JsonObject)?.get("name") as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
+            ?.trim()?.replace(Regex("\\s+"), " ") ?: return bad("proposed.name is required")
+        if (name.length !in 1..120) return bad("proposed.name must be 1 to 120 characters")
+        val route = rec.envelope["route_id"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.longOrNull ?: return bad("a cluster request is made on a route")
+        val zone = h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", route).mapTo(Long::class.java).findOne().orElse(null) ?: return bad("unknown route $route")
+        val taken = h.createQuery("SELECT id FROM app.cluster WHERE zone_id = :z AND lower(btrim(name)) = lower(:n) LIMIT 1").bind("z", zone).bind("n", name).mapTo(Long::class.java).findOne().orElse(null)
+        if (taken != null) return RecordRefusal(com.aktcl.aron.contract.RecordOutcomeCode.CLUSTER_NAME_EXISTS, "cluster $taken has this name in the zone")
+        val open = h.createQuery(
+            """
+            SELECT q.client_uuid::text FROM app.outlet_change_request q JOIN app.route r ON r.id = q.route_id
+             WHERE q.request_type = 'cluster_create' AND q.voided_at IS NULL AND q.status IN ('pending', 'verified') AND r.zone_id = :z
+               AND q.client_uuid <> CAST(:c AS uuid) AND lower(btrim(regexp_replace(q.proposed ->> 'name', '\s+', ' ', 'g'))) = lower(:n) LIMIT 1
+            """.trimIndent(),
+        ).bind("z", zone).bind("c", rec.clientUuid).bind("n", name).mapTo(String::class.java).findOne().orElse(null)
+        if (open != null) return RecordRefusal(com.aktcl.aron.contract.RecordOutcomeCode.CLUSTER_NAME_EXISTS, "request $open already proposes this name in the zone")
+        return null
     }
 
     /**

@@ -174,6 +174,8 @@ class BundleService(
                 programmes = null,
                 content = BundleContent.content(h, date, date.plusDays(horizonDays.toLong()), routes.flatMap { r -> r.outlets.map { it.outlet_id } }.toSet()),
                 tutorials = emptyList(),
+                clusters = if (p.role == Role.SR) clusters(h, own) else emptyList(),
+                outlet_sku_stats = if (p.role == Role.SR) outletSkuStats(h, own.flatMap { r -> r.outlets.map { it.outlet_id } }, date) else emptyList(),
             )
         }
         val seq = snapshotSeq(user.id, date, bundle)
@@ -595,6 +597,49 @@ class BundleService(
     }
 
     /** Credit memos with an open balance in the due ledger (`memo_due` plus collections, voids and supersessions). */
+    /** The clusters of the SR's own routes (contract 1.16.0): every cluster that has an active outlet on the route, plus the live clusters approved `cluster_create` requests made for it, by name. */
+    private fun clusters(h: Handle, own: List<RouteSnapshot>): List<BundleCluster> {
+        val names = own.associate { it.route_id to it.route.name }
+        if (names.isEmpty()) return emptyList()
+        return h.createQuery(
+            """
+            SELECT cluster_id, name, route_id FROM (
+              SELECT c.id AS cluster_id, c.name, o.route_id FROM app.outlet o JOIN app.cluster c ON c.id = o.cluster_id
+               WHERE o.route_id = ANY(:r) AND o.status = 'active' AND c.status = 'active'
+              UNION
+              SELECT c.id, c.name, q.route_id FROM app.outlet_change_request q JOIN app.cluster c ON c.id = q.created_cluster_id
+               WHERE q.request_type = 'cluster_create' AND q.status = 'approved' AND q.voided_at IS NULL AND q.route_id = ANY(:r) AND c.status = 'active') x
+             ORDER BY route_id, name, cluster_id
+            """.trimIndent(),
+        ).bindArray("r", Long::class.javaObjectType, names.keys.toList()).map { rs, _ ->
+            BundleCluster(rs.getLong("cluster_id"), rs.getString("name"), rs.getLong("route_id"), names.getValue(rs.getLong("route_id")))
+        }.list()
+    }
+
+    /**
+     * Previous sale day, ADS and SDLW per outlet x SKU (contract 1.16.0, part A Q4 defaults), from the live memos of the 30 business days before [date]:
+     * sale lines only, memos active, with lines, not voided (the rule of the Sales Submit digest). Base units; ADS in integer hundredths, rounded half up.
+     */
+    private fun outletSkuStats(h: Handle, outletIds: List<Long>, date: LocalDate): List<OutletSkuStat> = if (outletIds.isEmpty()) emptyList() else h.createQuery(
+        """
+        WITH ls AS (
+          SELECT m.outlet_id, ml.sku_id, m.business_date, sum(ml.qty_base)::bigint AS q
+            FROM app.memo_line ml JOIN app.memo m ON m.client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
+           WHERE m.outlet_id = ANY(:o) AND m.business_date >= :from AND m.business_date < :d
+             AND m.status = 'active' AND m.line_count > 0 AND m.voided_at IS NULL AND ml.voided_at IS NULL AND ml.line_kind = 'sale'
+           GROUP BY m.outlet_id, ml.sku_id, m.business_date),
+        od AS (SELECT outlet_id, max(business_date) AS prev, count(DISTINCT business_date) AS days FROM ls GROUP BY outlet_id)
+        SELECT s.outlet_id, s.sku_id, od.prev,
+               coalesce(sum(s.q) FILTER (WHERE s.business_date = od.prev), 0)::bigint AS prev_q,
+               floor(sum(s.q) * 100.0 / od.days + 0.5)::bigint AS ads,
+               coalesce(sum(s.q) FILTER (WHERE s.business_date = :sdlw), 0)::bigint AS sdlw
+          FROM ls s JOIN od ON od.outlet_id = s.outlet_id
+         GROUP BY s.outlet_id, s.sku_id, od.prev, od.days ORDER BY s.outlet_id, s.sku_id
+        """.trimIndent(),
+    ).bindArray("o", Long::class.javaObjectType, outletIds).bind("from", date.minusDays(30)).bind("d", date).bind("sdlw", date.minusDays(7)).map { rs, _ ->
+        OutletSkuStat(rs.getLong("outlet_id"), rs.getLong("sku_id"), rs.getObject("prev", LocalDate::class.java)?.toString(), rs.getLong("prev_q"), rs.getLong("ads"), rs.getLong("sdlw"))
+    }.list()
+
     private fun openMemos(h: Handle, outletIds: List<Long>): List<OpenMemo> = if (outletIds.isEmpty()) emptyList() else h.createQuery(
         """
         SELECT l.memo_client_uuid, sum(l.amount_mtk) AS due, m.memo_no, m.business_date, m.outlet_id, m.net_mtk

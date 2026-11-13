@@ -67,6 +67,8 @@ data class RouteDayStateDto(
     val route_id: Long, val business_date: String, val state: String, val planned: Boolean, val submit_cycle: Int, val submit_voided: Boolean, val submit_count_mismatch: Boolean?,
     val logged_in_at: String?, val sales_submitted_at: String?, val final_submitted_at: String?, val rows_awaited: Int?, val route_code: String?, val route_name: String?,
     val assigned_user_id: Long?, val acting_user_id: Long?, val assigned_username: String? = null, val assigned_user_full_name: String? = null,
+    /** Contract 1.16.0 (SRM-B-30): memos and due collections captured after the Sales Submit and stored before the Final Submit (flag, never refused). */
+    val late_rows_after_sales_submit: Int? = null,
 )
 
 @Serializable
@@ -247,7 +249,8 @@ class OpsService(
                 LoginDay(
                     RouteDayStateDto(rs.getLong("route_id"), date.toString(), rs.getString("state"), rs.getBoolean("planned"), rs.getInt("submit_cycle"), rs.getBoolean("submit_voided"), rs.getObject("submit_count_mismatch") as Boolean?,
                         t("logged_in_at"), t("sales_submitted_at"), t("final_submitted_at"), rs.getObject("rows_awaited") as Int?, rs.getString("route_code"), rs.getString("route_name"),
-                        rs.getObject("assigned_user_id") as Long?, rs.getObject("acting_user_id") as Long?, rs.getString("assigned_username"), rs.getString("assigned_user_full_name")),
+                        rs.getObject("assigned_user_id") as Long?, rs.getObject("acting_user_id") as Long?, rs.getString("assigned_username"), rs.getString("assigned_user_full_name"),
+                        rs.getInt("late_rows_after_sales_submit")),
                     rs.getBoolean("excused"), rs.getString("state") in setOf("sales_submitted", "final_submitted"), rs.getBoolean("login_ok") && rs.getString("state") != "not_started",
                 )
             }.list()

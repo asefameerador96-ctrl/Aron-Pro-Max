@@ -27,6 +27,12 @@ OutletProposal:
       maxLength: 300
     cluster_id:
       $ref: '#/components/schemas/Id'
+    cluster_request_uuid:
+      type: string
+      format: uuid
+      description: 'Contract 1.16.0 (new shop requests): the client uuid of the SR''s own pending `cluster_create`
+        request whose cluster this shop belongs to, when the cluster does not exist yet. Used at approval when `cluster_id`
+        is absent; the shop cannot be approved before that cluster request is (409 guard `cluster_request_pending`).'
     sub_channel_id:
       type:
       - integer

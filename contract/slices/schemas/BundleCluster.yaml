@@ -1,0 +1,21 @@
+BundleCluster:
+  type: object
+  description: One cluster as seen on one route of the SR (contract 1.16.0).
+  required:
+  - cluster_id
+  - name
+  - route_id
+  - route_name
+  additionalProperties: false
+  properties:
+    cluster_id:
+      $ref: '#/components/schemas/Id'
+    name:
+      type: string
+      minLength: 1
+      maxLength: 120
+    route_id:
+      $ref: '#/components/schemas/Id'
+    route_name:
+      type: string
+      maxLength: 120
