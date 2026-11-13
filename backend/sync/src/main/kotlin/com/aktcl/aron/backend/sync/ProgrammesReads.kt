@@ -72,7 +72,7 @@ private fun bad(pointer: String, code: String = "invalid_value"): Nothing =
     throw ApiProblem(ProblemCode.ERR_VALIDATION, "invalid $pointer", errors = listOf(FieldError("query.$pointer", code)))
 
 internal class ProgrammeReads(private val d: ProgrammeReadDeps) {
-    private class Scope(val routes: List<Long>, val outlets: List<Long>)
+    private class Scope(val routes: List<Long>, val outlets: List<Long>, val reach: Reach)
 
     private fun today() = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
 
@@ -88,7 +88,7 @@ internal class ProgrammeReads(private val d: ProgrammeReadDeps) {
             val visible = h.createQuery("SELECT id, route_id, zone_id FROM app.outlet WHERE id = ANY(CAST(:ids AS bigint[])) AND status = 'active' AND route_id IS NOT NULL ORDER BY id")
                 .bindArray("ids", Long::class.javaObjectType, outletIds).map { rs, _ -> Triple(rs.getLong(1), rs.getLong(2), rs.getLong(3)) }.list()
                 .filter { (_, rid, zid) -> if (reach.ownRecordsOnly) rid in reach.routeIds else reach.coversZone(zid) || rid in reach.routeIds }
-            return Scope(visible.map { it.second }.distinct(), visible.map { it.first })
+            return Scope(visible.map { it.second }.distinct(), visible.map { it.first }, reach)
         }
         if (needNarrowForNational && reach.national && !reach.ownRecordsOnly && routeId == null && zoneId == null) bad("route_id", "required_for_national_reach")
         val routes = h.createQuery(
@@ -99,7 +99,7 @@ internal class ProgrammeReads(private val d: ProgrammeReadDeps) {
         if (routeId != null && routeId !in routes) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "route_id is outside your reach")
         val outlets = if (routes.isEmpty()) emptyList() else h.createQuery("SELECT id FROM app.outlet WHERE route_id = ANY(CAST(:routes AS bigint[])) AND status = 'active' ORDER BY id")
             .bindArray("routes", Long::class.javaObjectType, routes).mapTo(Long::class.java).list()
-        return Scope(routes, outlets)
+        return Scope(routes, outlets, reach)
     }
 
     /** Outlets listed in `outlet_id` that are NOT in the caller's reach are left out of the answer (never an error that would tell which ids exist). */
@@ -109,10 +109,11 @@ internal class ProgrammeReads(private val d: ProgrammeReadDeps) {
         val programme = programmeParam?.let { it.toLongOrNull()?.takeIf { v -> v >= 1 } ?: bad("programme_id") }
         val date = today()
         val got = d.db.readJdbi.withHandle<BundleProgrammes.Capped<JsonObject>, Exception> { h ->
-            val outlets = scope(h, p, null, null, needNarrowForNational = wanted == null, outletIds = wanted?.distinct()).outlets
+            val sc = scope(h, p, null, null, needNarrowForNational = wanted == null, outletIds = wanted?.distinct())
+            val outlets = sc.outlets
             if (outlets.isEmpty()) return@withHandle BundleProgrammes.Capped(emptyList(), false)
             // The programme filter is applied INSIDE the programme query (before its cap); the shared geography predicate keeps out-of-scope campaigns.
-            val programmes = BundleProgrammes.programmes(h, date, listOf("diamond_league", "astha", "campaign", "superstar"), outlets, programme).items.map { it.first }
+            val programmes = BundleProgrammes.programmes(h, date, listOf("diamond_league", "astha", "campaign", "superstar"), outlets, BundleProgrammes.scopeOf(h, sc.reach, outlets), programme).items.map { it.first }
             if (programmes.isEmpty()) BundleProgrammes.Capped(emptyList(), false) else BundleProgrammes.loyalty(h, outlets, programmes, date, date, MAX_BALANCES)
         }
         return buildJsonObject { put("as_of", d.clock.now().wire()); put("truncated", got.truncated); put("items", JsonArray(got.items)) }
@@ -146,7 +147,7 @@ internal class ProgrammeReads(private val d: ProgrammeReadDeps) {
         val (limit, offset) = page(q)
         val rows = d.db.readJdbi.withHandle<List<JsonObject>, Exception> { h ->
             val scope = scope(h, p, routeId, zoneId, needNarrowForNational = true)
-            if (scope.routes.isEmpty()) emptyList() else BundleProgrammes.giftAssignmentsOf(h, scope.routes, quarter, limit + 1, offset)
+            if (scope.routes.isEmpty()) emptyList() else BundleProgrammes.giftAssignmentsOf(h, scope.reach, scope.routes, quarter, limit + 1, offset)
         }
         return buildJsonObject {
             put("items", JsonArray(rows.take(limit)))

@@ -18,8 +18,8 @@ ProgrammesSection:
     from scratch after each bundle; the phone never uploads records while a bundle request is in flight (single-flight
     sync), and if an acknowledgement arrives during the request it discards the section''s achievement and refetches.
     `astha_as_of` and a row''s `as_of` are display only ("data as of"), never part of the rule. Caps are never silent:
-    `truncated_sections` names any of programmes (50), loyalty (11,000 balances) or gifts (200) that was cut, and
-    `astha_truncated` the 1,000-row Astha bound.'
+    `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200) or gift_assignments
+    (2,000) that was cut, and `astha_truncated` the 1,000-row Astha bound.'
   required:
   - programmes
   - loyalty
@@ -54,19 +54,20 @@ ProgrammesSection:
         the Dhaka start of the month when there is none. Rows carry no `as_of` in the bundle, to save bytes.'
     truncated_sections:
       type: array
-      maxItems: 3
-      description: 1.15.0. Which of `programmes`, `loyalty`, `gifts` was cut at its cap (50, 11,000, 200); empty
-        when none. A cut is also logged by the server. The phone shows a notice.
+      maxItems: 4
+      description: 1.15.0. Which of `programmes`, `loyalty`, `gifts`, `gift_assignments` was cut at its cap (50,
+        11,000, 200, 2,000); empty when none. A cut is also logged by the server. The phone shows a notice.
       items:
         type: string
         enum:
         - programmes
         - loyalty
         - gifts
+        - gift_assignments
     astha_truncated:
       type: boolean
       description: 1.15.0. True when the user's routes had more than 1,000 Astha rows for the month and the list
-        was cut; the phone shows a notice and reads the rest with `listAsthaTargets`. Absent counts as false.
+        was cut; the phone shows a notice and reads the rest with `listAsthaTargets`.
     astha_targets:
       type: array
       maxItems: 1000

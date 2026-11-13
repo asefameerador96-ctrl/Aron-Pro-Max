@@ -28,7 +28,7 @@ internal class SkuImageRead(private val d: MediaDeps) {
     class Meta(val path: String, val mime: String, val etag: String)
 
     /** Who is asking, for a GIFT picture: the caller's reach (null: gift pictures are not served at all, fail closed). */
-    class GiftScope(val national: Boolean, val zones: Collection<Long>, val routes: Collection<Long>)
+    class GiftScope(val national: Boolean, val scope: com.aktcl.aron.backend.platform.ProgrammeScopeParams)
 
     /**
      * A SKU picture is served to any signed-in caller. A GIFT picture (since 1.15.0) only while an ACTIVE gift of an ACTIVE programme in its window binds it AND the programme's
@@ -46,7 +46,7 @@ internal class SkuImageRead(private val d: MediaDeps) {
                 "SELECT a.blob_path, a.mime FROM app.admin_asset a WHERE a.asset_id = :id AND a.bytes <= :max AND a.mime IN ('image/jpeg', 'image/png') AND " +
                     "((a.purpose = 'sku_image' AND EXISTS (SELECT 1 FROM app.sku s WHERE s.image_asset_id = a.asset_id)) OR $giftOk)",
             ).bind("id", UUID.fromString(id)).bind("max", MAX_BYTES).bind("today", today)
-            if (gift != null && !gift.national) q.bindList("vz", ProgrammeScopeSql.ids(gift.zones)).bindList("vr", ProgrammeScopeSql.ids(gift.routes))
+            if (gift != null && !gift.national) gift.scope.bindTo(q)
             q.map { rs, _ -> Meta(rs.getString(1), rs.getString(2), "\"" + id + "\"") }.findOne().orElse(null)
         } ?: throw notFound()
     }

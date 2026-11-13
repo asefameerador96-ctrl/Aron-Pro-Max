@@ -1,7 +1,9 @@
 package com.aktcl.aron.backend.sync
 
 import com.aktcl.aron.backend.platform.AsthaQuarter
+import com.aktcl.aron.backend.platform.ProgrammeScopeParams
 import com.aktcl.aron.backend.platform.ProgrammeScopeSql
+import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.backend.platform.wire
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -28,20 +30,29 @@ object BundleProgrammes {
     const val MAX_PROGRAMMES = 50
     const val MAX_BALANCES = 11000
     const val MAX_GIFTS = 200
+    const val MAX_GIFT_ASSIGNMENTS = 2000
+
+    /**
+     * TEST SEAM (production leaves it null): called with the section's own handle at the stages "start", "between" (after the balances, gifts and before the Astha rows)
+     * and "end", so a test can assert the isolation level and read-only mode the section is really read in and commit a memo from another connection in between.
+     */
+    fun interface Probe { fun at(stage: String, h: Handle) }
+
+    @Volatile var probe: Probe? = null
 
     /** A list cut at its cap: [truncated] is true when more rows existed (never a silent cut). */
     class Capped<T>(val items: List<T>, val truncated: Boolean)
 
     private fun <T> List<T>.capped(cap: Int) = Capped(take(cap), size > cap)
 
-    /** The routes and zones of [outlets] (for the shared programme geography predicate). */
-    internal fun reachOfOutlets(h: Handle, outlets: List<Long>): Pair<List<Long>, List<Long>> {
-        val routes = h.createQuery("SELECT DISTINCT route_id FROM app.outlet WHERE id = ANY(CAST(:o AS bigint[])) AND route_id IS NOT NULL").bindArray("o", Long::class.javaObjectType, outlets).mapTo(Long::class.java).list()
-        return reachOfRoutes(h, routes)
-    }
-
-    internal fun reachOfRoutes(h: Handle, routes: List<Long>): Pair<List<Long>, List<Long>> =
-        routes to h.createQuery("SELECT DISTINCT zone_id FROM app.route WHERE id = ANY(CAST(:r AS bigint[]))").bindArray("r", Long::class.javaObjectType, routes).mapTo(Long::class.java).list()
+    /**
+     * The programme scope parameters of the caller (ONE function for the bundle, the three reads and the portal: [ProgrammeScopeParams.of]) over the routes of [outlets].
+     * [reach] is the caller's reach from the token (null fails closed: only programmes that name no place match).
+     */
+    internal fun scopeOf(h: Handle, reach: Reach?, outlets: List<Long>): ProgrammeScopeParams = ProgrammeScopeParams.of(
+        h, reach,
+        h.createQuery("SELECT DISTINCT route_id FROM app.outlet WHERE id = ANY(CAST(:o AS bigint[])) AND route_id IS NOT NULL").bindArray("o", Long::class.javaObjectType, outlets).mapTo(Long::class.java).list(),
+    )
 
     internal fun enrolledOutlets(h: Handle, programmeIds: List<Long>, outlets: List<Long>, date: LocalDate): List<Long> = h.createQuery(
         "SELECT DISTINCT outlet_id FROM app.programme_enrolment WHERE programme_id = ANY(CAST(:pids AS bigint[])) AND outlet_id = ANY(CAST(:outlets AS bigint[])) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d) ORDER BY 1",
@@ -52,11 +63,13 @@ object BundleProgrammes {
         fun kinds(): List<String> = buildList { if (loyalty) { add("diamond_league"); add("campaign") }; if (astha) add("astha"); if (superstar) add("superstar") }
     }
 
-    fun section(h: Handle, routeIds: List<Long>, outletIds: Set<Long>, date: LocalDate, flags: Flags, quarterStartMonth: Int): JsonObject? {
+    fun section(h: Handle, reach: Reach?, routeIds: List<Long>, outletIds: Set<Long>, date: LocalDate, flags: Flags, quarterStartMonth: Int): JsonObject? {
+        probe?.at("start", h)
         val kinds = flags.kinds()
         if (kinds.isEmpty() || outletIds.isEmpty()) return null
         val outlets = outletIds.toList()
-        val progs = programmes(h, date, kinds, outlets)
+        val scope = scopeOf(h, reach, outlets)
+        val progs = programmes(h, date, kinds, outlets, scope)
         if (progs.items.isEmpty()) return null
         val programmes = progs.items
         val ids = programmes.map { it.first }
@@ -66,6 +79,8 @@ object BundleProgrammes {
         if (progs.truncated) cut += "programmes"
         val balances = loyalty(h, outlets, ids, date, date.minusDays(1), MAX_BALANCES); if (balances.truncated) cut += "loyalty"
         val gifts = gifts(h, ids); if (gifts.truncated) cut += "gifts"
+        val assignments = if (asthaIds.isEmpty()) Capped(emptyList(), false) else giftAssignments(h, asthaIds, outlets, q).also { if (it.truncated) cut += "gift_assignments" }
+        probe?.at("between", h)
         val month = date.withDayOfMonth(1); val after = month.plusMonths(1)
         // The cut (lead ruling, push B2): only the CURRENT month (earlier months are the online read), only outlets enrolled in an active Astha programme, no all-zero row.
         val enrolled = if (asthaIds.isEmpty()) emptyList() else enrolledOutlets(h, asthaIds, outlets, date)
@@ -77,6 +92,7 @@ object BundleProgrammes {
         val asOf = contentAsOf(h, sentOutlets, month, after)
         if (truncated) log.warn("bundle programmes section: more than {} Astha rows for the user's routes; sent the first {} and set astha_truncated", MAX_ASTHA_ROWS, MAX_ASTHA_ROWS)
         if (cut.isNotEmpty()) log.warn("bundle programmes section: cap reached for {}", cut)
+        probe?.at("end", h)
         return buildJsonObject {
             put("programmes", JsonArray(programmes.map { it.third }))
             put("loyalty", JsonArray(balances.items))
@@ -85,14 +101,13 @@ object BundleProgrammes {
             put("astha_as_of", asOf.wire())
             put("astha_truncated", truncated)
             put("truncated_sections", JsonArray(cut.map { JsonPrimitive(it) }))
-            put("gift_assignments", JsonArray(if (asthaIds.isEmpty()) emptyList() else giftAssignments(h, asthaIds, outlets, q)))
+            put("gift_assignments", JsonArray(assignments.items))
             put("pending_gift_verifications", JsonArray(emptyList()))
         }
     }
 
     /** (id, kind, JSON) of the active programmes covering [date] whose kind is shown and that enrol one of [outlets] (a campaign needs no enrolment). */
-    internal fun programmes(h: Handle, date: LocalDate, kinds: List<String>, outlets: List<Long>, only: Long? = null): Capped<Triple<Long, String, JsonObject>> {
-        val (routes, zones) = reachOfOutlets(h, outlets)
+    internal fun programmes(h: Handle, date: LocalDate, kinds: List<String>, outlets: List<Long>, scope: ProgrammeScopeParams, only: Long? = null): Capped<Triple<Long, String, JsonObject>> {
         return h.createQuery(
         """
         SELECT p.id, p.kind, p.code, p.name_en, p.name_bn, p.period_label, p.active_from, p.active_to, p.points_expire_on, p.rules::text AS rules, p.version,
@@ -107,7 +122,7 @@ object BundleProgrammes {
                                                AND e.valid_from <= :d AND (e.valid_to IS NULL OR e.valid_to > :d)))
         ORDER BY p.id LIMIT ${MAX_PROGRAMMES + 1}
         """.trimIndent(),
-    ).bind("d", date).bind("only", only).bindList("vz", ProgrammeScopeSql.ids(zones)).bindList("vr", ProgrammeScopeSql.ids(routes)).bindArray("kinds", String::class.java, kinds).bindArray("outlets", Long::class.javaObjectType, outlets).map { rs, _ ->
+    ).bind("d", date).bind("only", only).also { scope.bindTo(it) }.bindArray("kinds", String::class.java, kinds).bindArray("outlets", Long::class.javaObjectType, outlets).map { rs, _ ->
         val id = rs.getLong("id")
         Triple(id, rs.getString("kind"), buildJsonObject {
             put("programme_id", id); put("kind", rs.getString("kind")); put("code", rs.getString("code"))
@@ -123,10 +138,12 @@ object BundleProgrammes {
 
     /**
      * Ledger balance per enrolled outlet and programme as of [cut] (`as_of_date`; the bundle sends the PREVIOUS business date, the live read today).
-     * The balance leaves out credits whose `expires_on` is before [date] even before an expiry debit is posted (and the `expiry` debit rows themselves, so an expiry is never counted
-     * twice). `expiry_date` is the earliest `expires_on` on or after [date] among the outlet's credits and `expiring_points` the credits expiring on that date, capped by the
-     * balance and never negative (debits are not matched to credits yet: no FIFO); no window. `cfg.loyalty.expiry_days` is the lifetime AFTER THE PERIOD END (D24-68: April
-     * points expire on 7 May), so it sets `expires_on` when points are posted. A credit with no `expires_on` never expires.
+     * `balance_points` is the PLAIN SUM of ALL ledger rows up to [cut], `expiry` rows included (lead ruling, push B4): points lapse only when the nightly expiry job posts its
+     * debit (computed FIFO, so a credit that was partly redeemed lapses only for what is left of it). Until that job has run, the balance may still include points past their
+     * date. `expiry_date` is the earliest `expires_on` on or after [date] among the outlet's credits and `expiring_points` the credits on that date, capped by the balance and never
+     * negative (debits are not matched to credits in this read); no window. `cfg.loyalty.expiry_days` is the lifetime AFTER THE PERIOD END (D24-68: April points expire on 7
+     * May), so it sets `expires_on` when points are posted. A credit with no `expires_on` never expires.
+     * The programme's scope is applied PER OUTLET ([ProgrammeScopeSql.outlet]): an AMO who covers two zones gets no balance for an outlet outside the programme's scope.
      */
     internal fun loyalty(h: Handle, outlets: List<Long>, programmeIds: List<Long>, date: LocalDate, cut: LocalDate, limit: Int = MAX_BALANCES): Capped<JsonObject> = h.createQuery(
         """
@@ -136,13 +153,16 @@ object BundleProgrammes {
           GROUP BY 1, 2
         )
         SELECT e.outlet_id, e.programme_id, e.league_label,
-               COALESCE(SUM(l.points) FILTER (WHERE l.business_date <= :cut AND l.source_type <> 'expiry' AND (l.points < 0 OR l.expires_on IS NULL OR l.expires_on >= :d)), 0)::bigint AS balance,
+               COALESCE(SUM(l.points) FILTER (WHERE l.business_date <= :cut), 0)::bigint AS balance,
                COALESCE(SUM(l.points) FILTER (WHERE l.business_date <= :cut AND l.points > 0 AND l.expires_on = nx.exp), 0)::bigint AS expiring,
                MAX(nx.exp) AS expiry_date
         FROM app.programme_enrolment e
+        JOIN app.outlet o ON o.id = e.outlet_id
+        JOIN app.programme pp ON pp.id = e.programme_id LEFT JOIN app.programme_version pv ON pv.id = pp.current_version_id
         LEFT JOIN app.loyalty_ledger l ON l.outlet_id = e.outlet_id AND l.programme_id = e.programme_id
         LEFT JOIN nx ON nx.outlet_id = e.outlet_id AND nx.programme_id = e.programme_id
         WHERE e.programme_id = ANY(CAST(:pids AS bigint[])) AND e.outlet_id = ANY(CAST(:outlets AS bigint[])) AND e.valid_from <= :d AND (e.valid_to IS NULL OR e.valid_to > :d)
+          AND ${ProgrammeScopeSql.outlet("pv", "o")}
         GROUP BY e.outlet_id, e.programme_id, e.league_label
         ORDER BY e.programme_id, e.outlet_id
         LIMIT :limit
@@ -173,7 +193,7 @@ object BundleProgrammes {
     /**
      * The `as_of` of the bundle's Astha figures: the server's newest ingest (memo `received_at` or status change) among the memos of the MONTH at [outlets], so equal
      * content gives equal bytes and a rebuild moves the bundle version only when a memo arrived (a wall-clock `as_of` would mint a new snapshot on every build). The
-     * Dhaka start of the MONTH when there is none. The phone adds every memo it holds that the server had not acknowledged by the bundle's `meta.generated_at`.
+     * Dhaka start of the MONTH when there is none. Display only; the achievement rule (what the phone adds) is the ACHIEVEMENT RULE of the contract's `ProgrammesSection`, stated once there.
      */
     internal fun contentAsOf(h: Handle, outlets: List<Long>, first: LocalDate, after: LocalDate): Instant {
         return h.createQuery(
@@ -242,8 +262,8 @@ object BundleProgrammes {
     }
 
     /** Gift assignments of the quarter on [routeIds] (the TSO panel and report read), paged by offset. */
-    internal fun giftAssignmentsOf(h: Handle, routeIds: List<Long>, q: AsthaQuarter, limit: Int, offset: Int): List<JsonObject> {
-        val (routes, zones) = reachOfRoutes(h, routeIds)
+    internal fun giftAssignmentsOf(h: Handle, reach: Reach?, routeIds: List<Long>, q: AsthaQuarter, limit: Int, offset: Int): List<JsonObject> {
+        val scope = ProgrammeScopeParams.of(h, reach, routeIds)
         return h.createQuery(
             """
             SELECT a.id, a.quarter, a.outlet_id, a.route_id, a.gift_id, a.tier_code, a.photo_media_uuid, a.locked_at, a.chosen_by_user_id, a.chosen_at
@@ -252,15 +272,15 @@ object BundleProgrammes {
             ORDER BY a.id LIMIT :limit OFFSET :offset
             """.trimIndent(),
         ).bind("q", q.label).bind("limit", limit).bind("offset", offset).bindArray("routes", Long::class.javaObjectType, routeIds)
-            .bindList("vz", ProgrammeScopeSql.ids(zones)).bindList("vr", ProgrammeScopeSql.ids(routes)).map { rs, _ -> assignmentJson(rs) }.list()
+            .also { scope.bindTo(it) }.map { rs, _ -> assignmentJson(rs) }.list()
     }
 
-    private fun giftAssignments(h: Handle, programmeIds: List<Long>, outlets: List<Long>, q: AsthaQuarter): List<JsonObject> = h.createQuery(
+    private fun giftAssignments(h: Handle, programmeIds: List<Long>, outlets: List<Long>, q: AsthaQuarter): Capped<JsonObject> = h.createQuery(
         """
         SELECT id, quarter, outlet_id, route_id, gift_id, tier_code, photo_media_uuid, locked_at, chosen_by_user_id, chosen_at
-        FROM app.gift_assignment WHERE programme_id = ANY(CAST(:pids AS bigint[])) AND quarter = :q AND outlet_id = ANY(CAST(:outlets AS bigint[])) ORDER BY id LIMIT 2000
+        FROM app.gift_assignment WHERE programme_id = ANY(CAST(:pids AS bigint[])) AND quarter = :q AND outlet_id = ANY(CAST(:outlets AS bigint[])) ORDER BY id LIMIT ${MAX_GIFT_ASSIGNMENTS + 1}
         """.trimIndent(),
-    ).bind("q", q.label).bindArray("pids", Long::class.javaObjectType, programmeIds).bindArray("outlets", Long::class.javaObjectType, outlets).map { rs, _ -> assignmentJson(rs) }.list()
+    ).bind("q", q.label).bindArray("pids", Long::class.javaObjectType, programmeIds).bindArray("outlets", Long::class.javaObjectType, outlets).map { rs, _ -> assignmentJson(rs) }.list().capped(MAX_GIFT_ASSIGNMENTS)
 
     private fun assignmentJson(rs: java.sql.ResultSet): JsonObject = buildJsonObject {
         put("gift_assignment_id", rs.getLong("id")); put("quarter", rs.getString("quarter")); put("outlet_id", rs.getLong("outlet_id"))

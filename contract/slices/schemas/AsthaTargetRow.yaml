@@ -50,8 +50,9 @@ AsthaTargetRow:
       pattern: ^(0|[1-9][0-9]{0,17})$
       description: 'Integer milli-taka sold by the outlet for the brand in the month up to `as_of`: the gross of
         SALE lines of memos that are active (voided and superseded memos, voided lines and free or reward lines
-        are out). The memo offer line is zero (docs/27). The phone adds its own not-yet-acknowledged memos by the
-        rule in `ProgrammesSection` (achievement rule).'
+        are out). The memo offer line is zero (docs/27). The server figure follows the snapshot rule of `ProgrammesSection`
+        (ACHIEVEMENT RULE): it includes every memo of the user whose sync acknowledgement was sent before the bundle
+        request was received; the phone adds the rest by that rule.'
     as_of:
       $ref: '#/components/schemas/Timestamp'
       description: Absent in the bundle (see `ProgrammesSection.astha_as_of`). Display only ("data as of"), never

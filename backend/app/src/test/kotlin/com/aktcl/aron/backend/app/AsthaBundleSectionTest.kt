@@ -35,6 +35,7 @@ class AsthaBundleSectionTest {
     private var outletC = 0L
     private var outletD = 0L
     private var outletE = 0L
+    private var outletF = 0L
     private var outletOther = 0L
     private var brand = 0L
     private var programme = 0L
@@ -46,6 +47,8 @@ class AsthaBundleSectionTest {
     private val mBold = "00000000-0000-4000-8000-0000000a5102"
     private val mBnew = "00000000-0000-4000-8000-0000000a5103"
     private val mE1 = "00000000-0000-4000-8000-0000000a5106"
+    private val mF1 = "00000000-0000-4000-8000-0000000a5107"
+    private val mF2 = "00000000-0000-4000-8000-0000000a5108"
     private val mCold = "00000000-0000-4000-8000-0000000a5104"
     private val mCnew = "00000000-0000-4000-8000-0000000a5105"
 
@@ -56,8 +59,8 @@ class AsthaBundleSectionTest {
             today = today()
             userId = one("SELECT id FROM app.app_user WHERE username = 'sr1001'")
             route = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
-            val o = longs("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id LIMIT 5")
-            outletA = o[0]; outletB = o[1]; outletC = o[2]; outletD = o[3]; outletE = o[4]
+            val o = longs("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id LIMIT 6")
+            outletA = o[0]; outletB = o[1]; outletC = o[2]; outletD = o[3]; outletE = o[4]; outletF = o[5]
             outletOther = one("SELECT id FROM app.outlet WHERE route_id <> $route AND status = 'active' ORDER BY id LIMIT 1")
             cigaretteSku = one("SELECT id FROM app.sku WHERE entry_unit_default = 'pack' AND category_code = 'cigarette' ORDER BY id LIMIT 1")
             pack = one("SELECT base_per_pack FROM app.sku WHERE id = $cigaretteSku").toInt()
@@ -81,6 +84,12 @@ class AsthaBundleSectionTest {
             exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on) VALUES ($outletE, $programme, 'adjustment', 'e1', 40, DATE '${today.minusDays(5)}', DATE '${today.minusDays(1)}')")
             exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on) VALUES ($outletE, $programme, 'adjustment', 'e2', 10, DATE '${today.minusDays(5)}', DATE '${today.plusDays(20)}')")
             exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date) VALUES ($outletE, $programme, 'expiry', 'e3', -40, DATE '${today.minusDays(1)}')")
+            // Outlet F (push B4): a credit of +100 that expired yesterday and was PARTLY redeemed (-60 before it lapsed). The balance is the plain sum (40) until the expiry job posts its
+            // FIFO debit of what is left (-40); the test posts that row and sees 0.
+            exec("INSERT INTO app.programme_enrolment (programme_id, outlet_id, tier_code, valid_from) VALUES ($programme, $outletF, 'silver', DATE '${today.minusDays(30)}')")
+            exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target) VALUES ($programme, DATE '$first', $route, $outletF, NULL, 0, 3)")   // the snapshot tests' memo counter
+            exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on) VALUES ($outletF, $programme, 'adjustment', 'f1', 100, DATE '${today.minusDays(12)}', DATE '${today.minusDays(1)}')")
+            exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date) VALUES ($outletF, $programme, 'redemption', 'f2', -60, DATE '${today.minusDays(6)}')")
             // Outlet C: 100 points expiring in 5 days, 80 spent: balance 20, so the expiring points are capped at 20 (debits are not matched to credits).
             exec("INSERT INTO app.programme_enrolment (programme_id, outlet_id, tier_code, valid_from) VALUES ($programme, $outletC, 'silver', DATE '${today.minusDays(30)}')")
             exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on) VALUES ($outletC, $programme, 'adjustment', 'c1', 100, DATE '${today.minusDays(3)}', DATE '${today.plusDays(5)}')")
@@ -142,8 +151,11 @@ class AsthaBundleSectionTest {
         line(mCnew, 1, 1, 1 * pack * 100L)
     }
 
+    /** sr1001's reach as the token gives it: a field rep (own routes only, no zone reach). */
+    private fun srReach() = com.aktcl.aron.backend.platform.Reach(userId, com.aktcl.aron.contract.Role.SR, today, false, emptySet(), setOf(route), true, emptyList())
+
     private fun section(outlets: Set<Long>, flags: BundleProgrammes.Flags = BundleProgrammes.Flags(true, true, true)): JsonObject? =
-        world.fresh.db.jdbi.withHandle<JsonObject?, Exception> { h -> BundleProgrammes.section(h, listOf(route), outlets, today, flags, 1) }
+        world.fresh.db.jdbi.withHandle<JsonObject?, Exception> { h -> BundleProgrammes.section(h, srReach(), listOf(route), outlets, today, flags, 1) }
 
     private fun JsonObject.str(k: String) = this[k]!!.let { if (it is JsonNull) null else it.jsonPrimitive.content }
 
@@ -185,10 +197,19 @@ class AsthaBundleSectionTest {
     }
 
     @Test
-    fun anExpiredCreditIsOutOfTheBalanceAndItsExpiryDebitIsNotCountedTwice() {
+    fun theBalanceIsThePlainSumOfAllLedgerRowsAndAnExpiredCreditLapsesOnlyThroughTheExpiryJobsDebit() {
+        fun balance(outlet: Long) = assertNotNull(section(setOf(outlet)))["loyalty"]!!.jsonArray.map { it.jsonObject }.single().str("balance_points")
+        // E: +40 (expired yesterday), +10, and the expiry job's debit -40 posted yesterday: the plain sum is 10 (the debit is NOT skipped, the expired credit is NOT dropped).
         val e = assertNotNull(section(setOf(outletE)))["loyalty"]!!.jsonArray.map { it.jsonObject }.single()
-        assertEquals("10", e.str("balance_points"), "the 40 expired yesterday are out whether or not the expiry debit is posted, and the debit row is not subtracted again")
-        assertEquals("10", e.str("expiring_points")); assertEquals(today.plusDays(20).toString(), e.str("expiry_date"))
+        assertEquals("10", e.str("balance_points")); assertEquals("10", e.str("expiring_points")); assertEquals(today.plusDays(20).toString(), e.str("expiry_date"))
+        // F: +100 expired yesterday, -60 redeemed before it lapsed. Before the job's row the lapsed credit is still in the balance: 100 - 60 = 40 (never 60 less, never -60).
+        assertEquals("40", balance(outletF), "a partly redeemed expired credit: 40 before the expiry job has run")
+        world.exec("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date) VALUES ($outletF, $programme, 'expiry', '$programme:$outletF:${today.minusDays(1)}', -40, DATE '${today.minusDays(1)}')")
+        assertEquals("0", balance(outletF), "after the job's FIFO debit of what was left of the credit: 0")
+        // A balance is negative only after a flagged overdraw: no outlet of this fixture is below zero, and none has an overdraw row.
+        val all = assertNotNull(section(setOf(outletA, outletB, outletC, outletE, outletF)))["loyalty"]!!.jsonArray.map { it.jsonObject }
+        assertTrue(all.all { it.str("balance_points")!!.toLong() >= 0 }, "no balance below zero without an overdraw flag")
+        assertEquals(0L, world.one("SELECT count(*) FROM app.loyalty_ledger WHERE 'overdraw' = ANY(flags)"))
     }
 
     @Test
@@ -210,16 +231,72 @@ class AsthaBundleSectionTest {
         val jdbi = world.fresh.db.jdbi
         jdbi.inTransaction<Unit, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { h ->
             h.execute("SET TRANSACTION READ ONLY")
-            val first = BundleProgrammes.section(h, listOf(route), setOf(outletE), today, BundleProgrammes.Flags(true, true, true), 1)
+            val first = BundleProgrammes.section(h, srReach(), listOf(route), setOf(outletE), today, BundleProgrammes.Flags(true, true, true), 1)
             assertEquals("0", achieved(first))
             // committed on ANOTHER connection (another thread: Jdbi would reuse this thread's open handle) while the snapshot is open
             var failure: Throwable? = null
             kotlin.concurrent.thread { try { memo(mE1, outletE, "sr1001-270103-006") } catch (t: Throwable) { failure = t } }.join()
             failure?.let { throw it }
-            val second = BundleProgrammes.section(h, listOf(route), setOf(outletE), today, BundleProgrammes.Flags(true, true, true), 1)
+            val second = BundleProgrammes.section(h, srReach(), listOf(route), setOf(outletE), today, BundleProgrammes.Flags(true, true, true), 1)
             assertEquals(first, second, "one snapshot: every read of the section sees the same database")
         }
         assertEquals("1", achieved(section(setOf(outletE))), "a request that starts after the commit counts the memo exactly once")
+    }
+
+    private fun realBundleService(): com.aktcl.aron.backend.sync.BundleService {
+        val db = world.fresh.db
+        val config = com.aktcl.aron.backend.platform.DbServerConfig(db, com.aktcl.aron.backend.platform.RegistryDefaults(), world.clock)
+        val geo = com.aktcl.aron.backend.masterdata.GeoRepository(db, world.clock)
+        return com.aktcl.aron.backend.sync.BundleService(db, config, com.aktcl.aron.backend.masterdata.SqlRoutePlanner(db, geo, config), world.clock, reach = com.aktcl.aron.backend.masterdata.SqlReachResolver(db, geo, world.clock))
+    }
+
+    private fun srPrincipal() = com.aktcl.aron.backend.platform.AronPrincipal(userId, "sr1001", com.aktcl.aron.contract.Role.SR, 0, "api", null, null, "sr", emptyList(), false, emptyList(), "j", world.clock.now().plusSeconds(600))
+
+    /**
+     * B4 (4) of the lead's re-pass: the REAL paths. `BundleService.bundle` (a login/download and the worker's `prebuild = true`) and the nightly `BundlePreGenerator` call the section;
+     * a probe in the section reads, INSIDE the section's own transaction, `transaction_isolation` and `transaction_read_only`, and the memo count of an outlet at three points. A memo is committed
+     * from ANOTHER connection (another thread) between the first and the last read: the last read must not see it. If `BundleService` dropped the REPEATABLE READ transaction or the read-only mode,
+     * or read the section on a handle outside it, this test fails (verified by mutation, see the status file).
+     */
+    @Test
+    fun theRealBundleAndThePreGenerationPathReadTheSectionInOneReadOnlyRepeatableReadSnapshot() {
+        class Seen(val stage: String, val isolation: String, val readOnly: String, val memos: Long)
+        fun achievedF(sec: JsonObject?) = assertNotNull(sec)["astha_targets"]!!.jsonArray.map { it.jsonObject }.single { it.str("outlet_id") == outletF.toString() && it.str("brand_id") == null }.str("memo_achieved")
+        fun run(label: String, injectUuid: String, no: String, call: () -> Unit): List<Seen> {
+            val seen = java.util.concurrent.CopyOnWriteArrayList<Seen>()
+            var injected = false
+            BundleProgrammes.probe = BundleProgrammes.Probe { stage, h ->
+                seen += Seen(stage, h.createQuery("SHOW transaction_isolation").mapTo(String::class.java).one(), h.createQuery("SHOW transaction_read_only").mapTo(String::class.java).one(),
+                    h.createQuery("SELECT count(*) FROM app.memo WHERE outlet_id = $outletF").mapTo(Long::class.java).one())
+                if (stage == "between" && !injected) {   // committed on ANOTHER connection while the snapshot is open (another thread: Jdbi reuses this thread's open handle)
+                    injected = true
+                    var failure: Throwable? = null
+                    kotlin.concurrent.thread { try { memo(injectUuid, outletF, no) } catch (t: Throwable) { failure = t } }.join()
+                    failure?.let { throw it }
+                }
+            }
+            try { call() } finally { BundleProgrammes.probe = null }
+            assertEquals(listOf("start", "between", "end"), seen.map { it.stage }, "$label: the section was read through its three stages")
+            assertTrue(seen.all { it.isolation == "repeatable read" }, "$label: every read inside the snapshot is REPEATABLE READ, saw ${seen.map { it.isolation }}")
+            assertTrue(seen.all { it.readOnly == "on" }, "$label: every read inside the snapshot is read only, saw ${seen.map { it.readOnly }}")
+            assertEquals(seen.first().memos, seen.last().memos, "$label: a memo committed between two reads of the section is not seen by the later one")
+            assertEquals(seen.first().memos, seen[1].memos)
+            return seen
+        }
+        val service = realBundleService()
+        run("bundle", mF1, "sr1001-270103-009") { service.bundle(srPrincipal(), null, "1.0.0+1") }
+        assertEquals("1", achievedF(section(setOf(outletF))), "a request after the commit counts the memo once")
+        run("prebuild", mF2, "sr1001-270103-010") { service.bundle(srPrincipal(), null, "1.0.0+1", prebuild = true) }
+        assertEquals("2", achievedF(section(setOf(outletF))))
+        val db = world.fresh.db
+        val config = com.aktcl.aron.backend.platform.DbServerConfig(db, com.aktcl.aron.backend.platform.RegistryDefaults(), world.clock)
+        val seen = java.util.concurrent.CopyOnWriteArrayList<Pair<String, String>>()
+        BundleProgrammes.probe = BundleProgrammes.Probe { stage, h -> seen += stage to h.createQuery("SHOW transaction_isolation").mapTo(String::class.java).one() + "/" + h.createQuery("SHOW transaction_read_only").mapTo(String::class.java).one() }
+        try {
+            val r = com.aktcl.aron.backend.sync.BundlePreGenerator(db, config, service, world.clock) {}.generate(today.plusDays(1))!!
+            assertTrue(r.built >= 1 && r.failed == 0, "the nightly pass built bundles: ${r.built} built, ${r.failed} failed")
+        } finally { BundleProgrammes.probe = null }
+        assertTrue(seen.isNotEmpty() && seen.all { it.second == "repeatable read/on" }, "the nightly pre-generation reads the section in a read-only REPEATABLE READ snapshot: $seen")
     }
 
     @Test

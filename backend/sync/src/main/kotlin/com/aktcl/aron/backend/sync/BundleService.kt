@@ -148,6 +148,7 @@ class BundleService(
             // ruling 2026-10-18): same builder, scope from the token, paged above cfg.bundle.page_threshold_rows like any section.
             val zoneRoutes = if (supReach != null && (p.role == Role.AMO || p.role == Role.TSO)) routeSnapshots(h, user.id, zonePlans, date, emptyMap(), cfg, roleOrdinal, zoneIds = supReach.zoneIds.toList()) else emptyList()
             val routes = own + zoneRoutes
+            val progReach = supReach ?: reach?.reach(user.id, p.role, p.scopeVersion, date)   // the caller's reach for the programme scope (an SR's is ownRecordsOnly: no zone reach)
             val zones = (plans.map { it.zoneId } + listOfNotNull(user.homeZoneId)).distinct()
             Bundle(
                 meta = PLACEHOLDER_META,
@@ -172,12 +173,12 @@ class BundleService(
                 supervisor = supReach?.let { SupervisorBundle.section(h, user.id, p.role, it, date, (plans.map { r -> r.routeId } + zonePlans.map { r -> r.routeId }).distinct()) },
                 reason_texts = ReasonTexts.ALL,
                 device_policy_version = configVersion,
-                programmes = db.jdbi.inTransaction<kotlinx.serialization.json.JsonObject?, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { th ->
+                programmes = h.inTransaction<kotlinx.serialization.json.JsonObject?, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { th ->   // on the handle already held (the PRIMARY), never Jdbi's thread-scoped reuse
                     // ONE read-only snapshot on the PRIMARY for every figure of the section (never a replica): the figures include every memo of this user whose sync acknowledgement was sent
                     // before this request was received (the request file, the single phone rule). B1/B2 of the Opus pass.
                     th.execute("SET TRANSACTION READ ONLY")
                     BundleProgrammes.section(
-                    th, own.map { it.route_id }, routes.flatMap { r -> r.outlets.map { it.outlet_id } }.toSet(), date,
+                    th, progReach, own.map { it.route_id }, routes.flatMap { r -> r.outlets.map { it.outlet_id } }.toSet(), date,
                     BundleProgrammes.Flags(
                         loyalty = cfg.value("cfg.flag.loyalty_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
                         astha = cfg.value("cfg.flag.astha_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,

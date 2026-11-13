@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.media
 
+import com.aktcl.aron.backend.platform.ProgrammeScopeParams
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.FreshDb
@@ -81,7 +82,7 @@ class SkuImageReadTest {
     @Test fun aGiftPictureIsServedOnlyForAnActiveGiftOfAnActiveInScopeProgramme() {
         fixture().use { f ->
             val r = read(f)
-            val national = SkuImageRead.GiftScope(true, emptySet(), emptySet())
+            val national = SkuImageRead.GiftScope(true, ProgrammeScopeParams(emptyList(), emptyList(), emptyList()))
             fun code(id: String, scope: SkuImageRead.GiftScope? = national) = assertFailsWith<ApiProblem> { r.bytes(r.meta(id, scope)) }.code.name
             val zoneIn = f.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.zone ORDER BY id LIMIT 1").mapTo(Long::class.java).one() }
             f.db.jdbi.useHandle<Exception> { h ->
@@ -100,8 +101,8 @@ class SkuImageReadTest {
                 h.execute("UPDATE app.programme SET current_version_id = (SELECT v.id FROM app.programme_version v WHERE v.programme_id = app.programme.id) WHERE code = 'IMG-PRG'")
                 h.execute("INSERT INTO app.programme_version_scope (programme_version_id, node_type, node_id) SELECT current_version_id, 'zone', $zoneIn FROM app.programme WHERE code = 'IMG-PRG'")
             }
-            assertEquals("\"$gift\"", r.meta(gift, SkuImageRead.GiftScope(false, listOf(zoneIn), emptyList())).etag, "a caller of the scoped zone")
-            assertEquals("ERR_NOT_FOUND", code(gift, SkuImageRead.GiftScope(false, listOf(zoneIn + 1000), emptyList())), "a caller outside the programme's scope")
+            assertEquals("\"$gift\"", r.meta(gift, SkuImageRead.GiftScope(false, ProgrammeScopeParams(listOf(zoneIn), emptyList(), emptyList()))).etag, "a caller of the scoped zone")
+            assertEquals("ERR_NOT_FOUND", code(gift, SkuImageRead.GiftScope(false, ProgrammeScopeParams(listOf(zoneIn + 1000), emptyList(), emptyList()))), "a caller outside the programme's scope")
             f.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.gift SET status = 'inactive' WHERE code = 'img_gift'") }
             assertEquals("ERR_NOT_FOUND", code(gift), "an inactive gift's picture is no longer served")
             f.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.gift SET status = 'active' WHERE code = 'img_gift'"); h.execute("UPDATE app.programme SET status = 'inactive' WHERE code = 'IMG-PRG'") }

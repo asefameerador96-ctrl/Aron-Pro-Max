@@ -107,7 +107,7 @@ fun Route.mediaRoutes(d: MediaDeps) {
             val meta = withContext(Dispatchers.IO) {
                 val scope = d.reach?.let { r ->
                     val rc = r.reach(p.userId, p.role, p.scopeVersion, java.time.LocalDate.parse(com.aktcl.aron.rules.BusinessDate.of(d.clock.now().toEpochMilli()).toString()))
-                    SkuImageRead.GiftScope(rc.national, rc.zoneIds, rc.routeIds)
+                    SkuImageRead.GiftScope(rc.national, d.db.readJdbi.withHandle<com.aktcl.aron.backend.platform.ProgrammeScopeParams, Exception> { h -> com.aktcl.aron.backend.platform.ProgrammeScopeParams.of(h, rc) })   // the ONE scope function (push B4): an SR gets the zones of its own routes
                 }
                 read.meta(call.parameters["asset_id"], scope)
             }
