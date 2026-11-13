@@ -75,7 +75,6 @@ Language was English during this pass; Bangla was not checked.
 ## Not tested yet (and why)
 
 - Due collection, zero sale and memo edit (the force-sale path and a saved, printed sale are done: rows 22 to 27). The force-sale reason, photo and call start were queued for upload and may have reached dev as a force-sale visit and an outlet-location correction request for Friends Store (BAN11-001); the saved sale (memo 1002) may sync too: check and discard on the server if unwanted.
-  is done with Print, and no printer is paired. No memo was saved. The force-sale reason, photo and call start were queued for upload (the badge showed "2 waiting", then "1 waiting"), so they may have reached dev as a force-sale visit and an outlet-location correction request for Friends Store (BAN11-001): check and discard on the server if unwanted.
 - Printing, beyond one cash memo (row 26): credit memo, long memo, printer off in the middle, reprint, MP-58N diagnostics screen, slips beside the old app's.
 - Section 4 cases that change phone settings (airplane mode, mock location, date and time, battery or data saver, permission changes): wait for the owner's yes.
 - AMO and TSO walks: the apps are installed but not logged in; the owner logs in once, then they can be driven.
