@@ -29,7 +29,6 @@
     <string name="tso_fs_kind_3f">3F</string>
     <string name="tso_fs_kind_2f">2F</string>
     <string name="tso_fs_kind_amo">এএমও</string>
-    <string name="tso_fs_not_uploaded">আপলোড হয়নি</string>
     <string name="tso_fs_warn_title">আপলোড না হওয়া রুট</string>
     <string name="tso_fs_warn_body">এই রুটগুলো বিক্রয় আপলোড করেনি:\n%1$s\nজমা দিলে এই জোনের দিনটি বন্ধ হয়ে যাবে।</string>
     <string name="tso_fs_submit_anyway">তবুও জমা দিন</string>
@@ -85,4 +84,7 @@
     <string name="tso_fb_gallery_too_large">ছবিটি অনেক বড়। অন্য একটি বেছে নিন।</string>
     <string name="tso_fb_gallery_failed">ছবিটি পড়া যায়নি। অন্য একটি বেছে নিন।</string>
     <string name="tso_fb_gallery_unavailable">এই ফোনে ছবি বাছার ব্যবস্থা নেই।</string>
+    <string name="tso_pe_map_full">ম্যাপ ফুল স্ক্রিন</string>
+    <string name="tso_pe_map_exit_full">ফুল স্ক্রিন থেকে ফিরুন</string>
+    <string name="tso_pe_map_recentre">ম্যাপ মাঝখানে আনুন</string>
 </resources>

@@ -120,8 +120,8 @@ class TsoNavigationTest {
     )
 
     private fun openFromDrawer(screen: TsoScreen) {
+        if (screen == TsoScreen.SETTINGS) { compose.onNodeWithTag(TsoShellTags.GREETING).performClick(); compose.waitForIdle(); return }
         compose.onNodeWithTag(TsoShellTags.MENU).performClick(); compose.waitForIdle()
-        if (screen == TsoScreen.SETTINGS) { compose.onNodeWithTag(TsoShellTags.GEAR).performScrollTo().performClick(); compose.waitForIdle(); return }
         val path = drawerPath.getValue(screen)
         fun click(id: String) { compose.onNodeWithTag(TsoShellTags.row(id), useUnmergedTree = true).performScrollTo().performClick(); compose.waitForIdle() }
         // the drawer keeps the last open group: expand only when the row is not shown yet

@@ -50,8 +50,7 @@ class TsoAppTest {
     }
 
     private fun openSettings() {
-        compose.onNodeWithTag(TsoShellTags.MENU).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(TsoShellTags.GEAR).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(TsoShellTags.GREETING).performClick(); compose.waitForIdle()
     }
 
     @Test fun banglaRootGreetsTheUserAndADashboardWithoutAHostIsThePlaceholder() {

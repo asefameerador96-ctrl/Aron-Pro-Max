@@ -258,8 +258,10 @@ class FinalSubmitScreenTest {
         compose.onNodeWithText("AMO-Apsis Route AMO").assertExists()
         compose.onNodeWithText("Apsis Route Daily").assertExists()
         compose.onNodeWithTag(FsTags.ff(1)).assertExists(); compose.onNodeWithText("FF: SR - Testing Banani").assertExists()
-        compose.onNodeWithTag(FsTags.notUploaded(5)).performScrollTo().assertExists(); compose.onNodeWithTag(FsTags.notUploaded(4)).assertDoesNotExist()
-        compose.onNodeWithText("Not uploaded").assertExists()
+        // D-PAR-TSO-04: no "Not uploaded" pill and no "not due" line on a route card (screenshot 25); the warning dialog still names the routes
+        compose.onNodeWithText("Not uploaded").assertDoesNotExist(); compose.onNodeWithText("not due").assertDoesNotExist()
+        // D-PAR-TSO-03: the red clear icon sits on a card that holds data
+        compose.onNodeWithTag(FsTags.clear(4)).performScrollTo().assertExists(); compose.onNodeWithTag(FsTags.clear(1)).assertDoesNotExist(); compose.onNodeWithTag(FsTags.clear(6)).assertDoesNotExist()
         compose.onNodeWithText("4,391", substring = true).assertDoesNotExist() // the memo and net line is dropped (screenshot 25)
         compose.onNodeWithTag(FsTags.SUBMIT).performClick(); compose.waitForIdle()
         assertTrue("the warning comes first", api.submits.isEmpty())
@@ -278,24 +280,24 @@ class FinalSubmitScreenTest {
     @Test fun banglaAlertIsTheVerbatimBanglaMessage() {
         val s = FinalSubmitState(Api(previews = mutableListOf(FsPreviewOutcome.Ok(preview(true)))), 7) { D }
         show(AppLanguage.BN, s)
-        compose.onNodeWithTag(FsTags.FLAT_ZONE).performClick(); compose.waitForIdle() // filter options unreadable: the flat zone list
+        // filter options unreadable: the five dropdowns stay (the four upper ones disabled), the zone is the flat list (D-PAR-TSO-02)
+        (0..3).forEach { compose.onNodeWithTag(FsTags.level(it)).assertExists() }
+        compose.onNodeWithTag(FsTags.FLAT_ZONE).performClick(); compose.waitForIdle()
         compose.onNodeWithText("জোন ১০").performClick(); compose.waitForIdle()
         compose.onNodeWithTag(FsTags.GET).performScrollTo().performClick(); compose.waitForIdle()
         compose.onNodeWithText("আপনি ইতিমধ্যেই আজকের জন্য 'FINAL SUBMIT' জমা দিয়েছেন!").assertExists()
     }
 
-    private fun showNotDue(lang: AppLanguage, word: String) {
+    private fun showNoNotDueLine(lang: AppLanguage, word: String) {
         val s = FinalSubmitState(Api(options = FinalSubmitCascadeTest.screenshot23), 7) { D }
         show(lang, s)
         runBlocking { s.pickLevel(4, 41); s.getSalesData() }; compose.waitForIdle()
-        compose.onNodeWithTag(FsTags.notDue(8)).performScrollTo().assertExists()
-        assertEquals(2, compose.onAllNodesWithText(word, useUnmergedTree = true).fetchSemanticsNodes().size) // the AMO route 1 and the BR route 8
-        compose.onNodeWithTag(FsTags.notDue(4)).assertDoesNotExist(); compose.onNodeWithTag(FsTags.notDue(5)).assertDoesNotExist()
+        assertEquals(0, compose.onAllNodesWithText(word, useUnmergedTree = true).fetchSemanticsNodes().size)
     }
 
-    @Test fun notDueRouteCardIsLabelledInEnglish() = showNotDue(AppLanguage.EN, "not due")
+    @Test fun noNotDueLineOnARouteCardInEnglish() = showNoNotDueLine(AppLanguage.EN, "not due")
 
-    @Test fun notDueRouteCardIsLabelledInBangla() = showNotDue(AppLanguage.BN, "আজ নির্ধারিত নয়")
+    @Test fun noNotDueLineOnARouteCardInBangla() = showNoNotDueLine(AppLanguage.BN, "আজ নির্ধারিত নয়")
 
     @Test fun aReopenedZoneSaysSoOverTheRoutes() {
         val api = Api(

@@ -49,7 +49,7 @@ class MyCallScreenTest {
     private fun systemBack() { compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle() }
     private fun screenBack() { compose.onNodeWithContentDescription("Back").performClick(); compose.waitForIdle() }
 
-    private val boolRubric = Rubric(5, 1, listOf(Criterion(1, "এসআর কি নিয়মিত ভিজিট করে?", "Does the SR visit regularly?"), Criterion(2, null, "Does the SR print memos regularly?")))
+    private val boolRubric = Rubric(5, 1, listOf(Criterion(1, "এসআর কি নিয়মিত ভিজিট করে?", "Does the SR visit regularly?", text = true), Criterion(2, null, "Does the SR print memos regularly?", text = true)))
     /** The questionnaire as V0139 seeds it: two free-text questions (D-TSO-MAN-35). */
     private val seeded = Rubric(9, 1, listOf(
         Criterion(1, "SR আপনার দোকান নিয়মিত ভিজিট করে?", "Does the SR visit your shop regularly?", text = true),
@@ -232,6 +232,16 @@ class MyCallScreenTest {
         compose.onNodeWithText("এসআর কি নিয়মিত ভিজিট করে?").assertIsDisplayed()
         compose.onNodeWithText("Does the SR print memos regularly?").assertIsDisplayed() // no Bangla label: English falls back, never blank
         compose.onNodeWithText("কাজ দিতে চান?").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun questionsAreTextFieldsOnlyAndStayBanglaInEnglishMode() {
+        // D-PAR-TSO-05 (screenshot 37): no Yes/No radios for a question, and the Bangla wording shows in English mode too
+        val st = VisitQueryState(boolRubric, "p", 1, 1) { true }
+        show(AppLanguage.EN) { VisitQueryScreen(st, "Shop One", onDone = {}, onBack = {}) }
+        compose.onNodeWithText("এসআর কি নিয়মিত ভিজিট করে?").assertIsDisplayed()
+        compose.onNodeWithTag(MyCallTags.text(1)).assertExists()
+        compose.onNodeWithTag(MyCallTags.yes(1)).assertDoesNotExist()
+        compose.onNodeWithTag(MyCallTags.DELEGATE_YES).performScrollTo().assertExists()
     }
 
     @Test fun submitThenDelegateYesCallsOnDone() {

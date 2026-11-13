@@ -408,7 +408,6 @@ private fun YesNo(value: Boolean?, onPick: (Boolean) -> Unit, yesTag: String, no
 fun VisitQueryScreen(state: VisitQueryState, outletTitle: String, onDone: (delegate: Boolean) -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier, nav: TsoNav = backOnly(onBack)) {
     val ui by state.ui.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    val bn = LocalAppLanguage.current == AppLanguage.BN
     val look = LocalAronLook.current
     val submitted = ui.result as? QueryResult.Submitted
     LaunchedEffect(submitted) { submitted?.let { onDone(it.delegate) } }
@@ -419,16 +418,13 @@ fun VisitQueryScreen(state: VisitQueryState, outletTitle: String, onDone: (deleg
         },
     ) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            state.criteria.forEach { c ->
-                if (c.text) {
-                    TsoGlowField(
-                        ui.texts[c.id].orEmpty(), { state.text(c.id, it) }, Modifier.testTag(MyCallTags.text(c.id)),
-                        label = c.label(bn), placeholder = stringResource(R.string.tso_mc_enter_answer), singleLine = false, minLines = 1,
-                    )
-                } else {
-                    Text(c.label(bn), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = look.ink)
-                    YesNo(ui.answers[c.id], { state.answer(c.id, it) }, MyCallTags.yes(c.id), MyCallTags.no(c.id))
-                }
+            // D-PAR-TSO-05: the questions are text fields only (screenshot 37; the Yes/No variant is gone) and read in Bangla in both
+            // languages, as the old app shows them
+            state.criteria.filter { it.text }.forEach { c ->
+                TsoGlowField(
+                    ui.texts[c.id].orEmpty(), { state.text(c.id, it) }, Modifier.testTag(MyCallTags.text(c.id)),
+                    label = c.labelBn ?: c.labelEn, placeholder = stringResource(R.string.tso_mc_enter_answer), singleLine = false, minLines = 1,
+                )
             }
             Text(stringResource(R.string.tso_mc_delegate), Modifier.padding(top = AronTokens.Space.M), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = look.ink)
             YesNo(ui.delegate, { state.delegate(it) }, MyCallTags.DELEGATE_YES, MyCallTags.DELEGATE_NO)

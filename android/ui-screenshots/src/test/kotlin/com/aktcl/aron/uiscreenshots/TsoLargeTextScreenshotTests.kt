@@ -17,6 +17,8 @@ import com.aktcl.aron.feature.tso.TsoApp
 import com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitApi
 import com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitScreen
 import com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitState
+import com.aktcl.aron.feature.tso.finalsubmit.FsFilterNode
+import com.aktcl.aron.feature.tso.finalsubmit.FsFilterOptions
 import com.aktcl.aron.feature.tso.finalsubmit.FsPreview
 import com.aktcl.aron.feature.tso.finalsubmit.FsPreviewOutcome
 import com.aktcl.aron.feature.tso.finalsubmit.FsResult
@@ -83,7 +85,7 @@ class TsoLargeTextScreenshotTests {
     }
     // screenshot 10 (the Tickets group open) at 200 percent, next to tso_drawer_tickets_en and tso_drawer_tickets_bn (R-W-12 (8))
     @Test fun drawer_tickets_200_bn() = shot("tso_drawer_tickets_200_bn", AppLanguage.BN) {
-        com.aktcl.aron.feature.tso.TsoDrawerContent(user.fullName, {}, {}, {}, initiallyExpanded = "tickets")
+        com.aktcl.aron.feature.tso.TsoDrawerContent({}, {}, initiallyExpanded = "tickets")
     }
     @Test fun login_200_en() = shot("tso_login_200_en", AppLanguage.EN) {
         com.aktcl.aron.feature.auth.TsoLoginContent(com.aktcl.aron.feature.auth.LoginUiState(message = com.aktcl.aron.feature.auth.LoginMessage.OfflineNeverOnline), {}, {}, {}, {}, {})
@@ -102,7 +104,7 @@ class TsoLargeTextScreenshotTests {
     }
     @Test fun logout_dialog_200_bn() = shot("tso_logout_dialog_200_bn", AppLanguage.BN) {
         androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
-            com.aktcl.aron.feature.tso.TsoDrawerContent(user.fullName, {}, {}, {}, androidx.compose.ui.Modifier.fillMaxWidth(0.85f).fillMaxHeight(), initiallyExpanded = "feedback")
+            com.aktcl.aron.feature.tso.TsoDrawerContent({}, {}, androidx.compose.ui.Modifier.fillMaxWidth(0.85f).fillMaxHeight(), initiallyExpanded = "feedback")
             androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.32f)))
             com.aktcl.aron.feature.tso.TsoLogoutDialogContent({}, {}, androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.Center).padding(horizontal = 32.dp))
         }
@@ -115,17 +117,18 @@ class TsoLargeTextScreenshotTests {
 
     private val api = object : FinalSubmitApi {
         override suspend fun zones() = listOf(10L, 11L)
+        override suspend fun filterOptions() = FsFilterOptions(listOf(FsFilterNode(1, "Wing", null)), listOf(FsFilterNode(1, "Division", 1)), listOf(FsFilterNode(1, "Territory", 1)), listOf(FsFilterNode(1, "House", 1)), listOf(FsFilterNode(10, "Zone", 1)))
         override suspend fun preview(zoneId: Long, date: String) = FsPreviewOutcome.Ok(FsPreview(zoneId, date, false, null, null, listOf(
             FsRoute(1, "DHK-R1", "ঢাকা উত্তর রুট এক", "sr", "রহিম উদ্দিন আহমেদ", "sales_submitted", true, 12, 4_391_000, 0), FsRoute(2, "DHK-R2", "Route Two", "amo", null, "in_field", true, 0, 0, null)), emptyList()))
         override suspend fun submit(clientUuid: String, zoneId: Long, date: String) = FsSubmitOutcome.Ok(FsResult(zoneId, date, "t", 2, 12, 4_391_000))
     }
 
-    @Test fun final_submit_pick_200_bn() = shot("tso_final_submit_pick_200_bn", AppLanguage.BN) { val st = FinalSubmitState(api, 7) { "2026-10-17" }; runBlocking { st.loadZones(); st.pickZone(10) }; FinalSubmitScreen(st, onBack = {}) }
-    @Test fun final_submit_review_200_en() = shot("tso_final_submit_review_200_en", AppLanguage.EN) { val st = FinalSubmitState(api, 7) { "2026-10-17" }; runBlocking { st.loadZones(); st.pickZone(10); st.getSalesData() }; FinalSubmitScreen(st, onBack = {}) }
+    @Test fun final_submit_pick_200_bn() = shot("tso_final_submit_pick_200_bn", AppLanguage.BN) { val st = FinalSubmitState(api, 7) { "2026-10-17" }; runBlocking { st.loadCascade() }; FinalSubmitScreen(st, onBack = {}) }
+    @Test fun final_submit_review_200_en() = shot("tso_final_submit_review_200_en", AppLanguage.EN) { val st = FinalSubmitState(api, 7) { "2026-10-17" }; runBlocking { st.loadCascade(); st.getSalesData() }; FinalSubmitScreen(st, onBack = {}) }
 
     @Test fun visit_query_three_line_bn() = shot("tso_visit_query_3line_bn", AppLanguage.BN) {
         val long = "এসআর কি নিয়মিত আপনার দোকানে এসে ভিজিট করে এবং প্রতিটি ভিজিটে দোকানের স্টক দেখে প্রয়োজনমতো নতুন অর্ডার নিয়ে যায় কিনা বলুন?"
-        val st = VisitQueryState(Rubric(5, 1, listOf(Criterion(1, long, "Does the SR visit regularly?"))), "p", 1, 1) { true }
+        val st = VisitQueryState(Rubric(5, 1, listOf(Criterion(1, long, "Does the SR visit regularly?", text = true))), "p", 1, 1) { true }
         VisitQueryScreen(st, "রহমান স্টোর অ্যান্ড জেনারেল ট্রেডার্স কাওরান বাজার ঢাকা", onDone = {}, onBack = {})
     }
 

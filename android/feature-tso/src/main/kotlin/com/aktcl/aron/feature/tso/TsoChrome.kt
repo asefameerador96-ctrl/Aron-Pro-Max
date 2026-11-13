@@ -67,7 +67,6 @@ object TsoShellTags {
     const val BELL = "tso_shell_bell"
     const val BADGE = "tso_shell_badge"
     const val DRAWER = "tso_shell_drawer"
-    const val GEAR = "tso_shell_gear"
     const val PLACEHOLDER = "tso_shell_placeholder"
     const val LOGOUT_DIALOG = "tso_logout_dialog"
     const val INFO_DIALOG = "tso_info_dialog"
@@ -171,7 +170,7 @@ object TsoFab {
  * (hidden at 0; "99+" above 99). The bell opens the inbox. No back button: the Dashboard is the root.
  */
 @Composable
-fun TsoRootTopBar(fullName: String, unread: Int, onMenu: () -> Unit, onBell: () -> Unit, modifier: Modifier = Modifier) {
+fun TsoRootTopBar(fullName: String, unread: Int, onMenu: () -> Unit, onBell: () -> Unit, modifier: Modifier = Modifier, onGreeting: (() -> Unit)? = null) {
     val n = nightRoles()
     Row(
         modifier
@@ -189,7 +188,8 @@ fun TsoRootTopBar(fullName: String, unread: Int, onMenu: () -> Unit, onBell: () 
             contentAlignment = Alignment.Center,
         ) { Icon(AronIcons.Menu, contentDescription = null, tint = n.ink, modifier = Modifier.size(28.dp)) }
         Text(
-            stringResource(R.string.tso_chrome_greeting, fullName), Modifier.weight(1f).padding(start = 4.dp).testTag(TsoShellTags.GREETING),
+            stringResource(R.string.tso_chrome_greeting, fullName),
+            Modifier.weight(1f).then(if (onGreeting != null) Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onGreeting) else Modifier).padding(start = 4.dp).testTag(TsoShellTags.GREETING),
             style = nightText(17.sp, n.ink), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
         val bellLabel = if (unread > 0) pluralStringResource(R.plurals.tso_chrome_bell_unread, unread, localizedNumber(unread.toLong())) else stringResource(R.string.tso_chrome_notifications)
@@ -210,16 +210,13 @@ fun TsoRootTopBar(fullName: String, unread: Int, onMenu: () -> Unit, onBell: () 
 }
 
 /**
- * The drawer sheet (screenshots 9, 10, 27, 30, 44): "TSO" over the bold [fullName] with the Settings gear at the end (improvement),
- * a rule, then the rows of [TsoDrawer.entries]: icon, title, subtitle, and a chevron (">" opens, "˅" expands a group and turns to
+ * The drawer sheet (screenshots 9, 10, 27, 30, 44, D-PAR-TSO-01): no header block and no gear, it starts with the Dashboard row, then the rows of [TsoDrawer.entries]: icon, title, subtitle, and a chevron (">" opens, "˅" expands a group and turns to
  * "˄"; an open group sits between two rules, its children indented). [onOpen] gets the chosen screen, [onLogout] the Log Out row.
  * One group is open at a time, as on the screenshots; which one survives recreation.
  */
 @Composable
 fun TsoDrawerContent(
-    fullName: String,
     onOpen: (TsoScreen) -> Unit,
-    onSettings: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
     /** The group open when the drawer is first drawn (goldens of screenshots 10, 27, 30); null: all closed. */
@@ -234,18 +231,6 @@ fun TsoDrawerContent(
             .verticalScroll(rememberScrollState())
             .testTag(TsoShellTags.DRAWER),
     ) {
-        Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 8.dp, top = 40.dp, bottom = 56.dp), verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.tso_drawer_role), style = nightText(28.sp, n.ink))
-                Text(fullName, style = nightText(32.sp, n.ink, bold = true), maxLines = 2, modifier = Modifier.semantics { heading() })
-            }
-            val gear = stringResource(R.string.tso_drawer_settings)
-            Box(
-                Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onSettings).semantics { contentDescription = gear }.testTag(TsoShellTags.GEAR),
-                contentAlignment = Alignment.Center,
-            ) { Icon(AronIcons.Settings, contentDescription = null, tint = n.ink, modifier = Modifier.size(26.dp)) }
-        }
-        Rule()
         TsoDrawer.entries.forEach { e ->
             val open = expanded == e.id
             if (open) Rule()

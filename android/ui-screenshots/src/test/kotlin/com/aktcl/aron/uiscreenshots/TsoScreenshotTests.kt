@@ -162,7 +162,7 @@ class TsoScreenshotTests {
         androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
             Root(dash())
             androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.32f)))
-            TsoDrawerContent(name, {}, {}, {}, androidx.compose.ui.Modifier.fillMaxWidth(0.85f).fillMaxHeight(), initiallyExpanded = open)
+            TsoDrawerContent({}, {}, androidx.compose.ui.Modifier.fillMaxWidth(0.85f).fillMaxHeight(), initiallyExpanded = open)
         }
     }
     @Test fun drawer_en() = shot("tso_drawer_en", AppLanguage.EN) { Drawer(null) }

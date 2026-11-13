@@ -183,10 +183,14 @@ class TsoShellTest {
         compose.onNodeWithTag("t_dashboard").assertIsDisplayed()
     }
 
-    @Test fun theGearOpensSettingsAndBackReturns() {
+    @Test fun theDrawerHasNoGearAndTheGreetingOpensSettingsAndBackReturns() {
         show()
         openDrawer()
-        compose.onNodeWithTag(TsoShellTags.GEAR).performClick(); compose.waitForIdle()
+        // D-PAR-TSO-01: the drawer starts with the Dashboard row, no header and no gear
+        compose.onNodeWithTag("tso_shell_gear").assertDoesNotExist()
+        compose.onNodeWithTag(TsoShellTags.row("dashboard"), useUnmergedTree = true).assertIsDisplayed()
+        systemBack()
+        compose.onNodeWithTag(TsoShellTags.GREETING).performClick(); compose.waitForIdle()
         compose.onNodeWithTag(TsoSettingsTags.CHANGE_PASSWORD).performScrollTo().assertExists()
         compose.onNodeWithTag(TsoKitTags.HOME).assertDoesNotExist()
         systemBack()

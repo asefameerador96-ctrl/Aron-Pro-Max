@@ -31,7 +31,6 @@
     <string name="tso_fs_kind_3f">3F</string>
     <string name="tso_fs_kind_2f">2F</string>
     <string name="tso_fs_kind_amo">AMO</string>
-    <string name="tso_fs_not_uploaded">Not uploaded</string>
     <string name="tso_fs_warn_title">Routes not uploaded</string>
     <string name="tso_fs_warn_body">These routes have not uploaded their sales:\n%1$s\nSubmitting locks the day for this zone.</string>
     <string name="tso_fs_submit_anyway">Submit anyway</string>
@@ -87,4 +86,7 @@
     <string name="tso_fb_gallery_too_large">This picture is too large. Pick another one.</string>
     <string name="tso_fb_gallery_failed">This picture could not be read. Pick another one.</string>
     <string name="tso_fb_gallery_unavailable">This phone has no picture picker.</string>
+    <string name="tso_pe_map_full">Full screen map</string>
+    <string name="tso_pe_map_exit_full">Leave full screen</string>
+    <string name="tso_pe_map_recentre">Recentre the map</string>
 </resources>
