@@ -1,5 +1,9 @@
 # Status: lane portal-loyalty-api (Lane L-A), started 2026-11-12
 
+## C-R1 DONE (L-A7, 2026-11-13; see D-LOY-API-22 and the report to the lead)
+Built: ledger model L1 to L6 (`LoyaltyLedgerJob.kt` rewritten; `LoyaltyLedgerJobTest` 8 tests incl. a 30-trial model property test; mutation "debit may consume lapsed credits" turns 2 red), B5 (override honoured via `IngestRecord.released`; lock held FOR UPDATE; a lock-closed choice is kept in sync_rejected as final `gift_locked`, not stored as applied=false), B6 (contract 1.16.0, request file, `overdrawn`, V0182 refuses `reject`), smaller items (V0185 ties/void promotion/check_flag, unit checks, open quarter, photo geo sweep, `startWorker` + `WorkerStartTest`). Scripts run against INT 4e0645556: contract-breaking ok, slice check ok, migrations-check ok, Redocly valid, date-pin and money-float ok.
+Known limits: the ledger cursor is in memory (restart = one full sweep); a void of an old redemption is reversed at the first pass of the next Dhaka day. Android lane ci job NOT verified by me.
+
 ## C-R1: THE LEAD'S ROUND AFTER THE OPUS PASS ON 12e127a51 (verbatim, received 2026-11-13 03:29Z by L-A6; NOT STARTED, a fresh session does it)
 L-A6 handed over before starting because its context was already large (honest estimate: close to the 250 k line); the message below is unedited (it contains HTML-escaped `&lt;` for `<`). Work on `lane/portal-loyalty-api-c` (head before this note: 12e127a51), push only that branch. Lessons from L-A6: the lane Migrations gate compares with the PREVIOUS PUSH, so editing V0182/V0185/V0186 in this round turns that step red once (the lead accepts it); a local gate needs a FRESH database per run (a stale one fails DatabaseSmokeTest on checksums); the full-gate command is in the old HANDOVER text below; `tools/ci/install-tool.sh squawk|oasdiff <bin-dir>` installs the lint tools; delete `tools/ci/__pycache__` after running python tests (NoSecretsInRepoTest scans it).
 
