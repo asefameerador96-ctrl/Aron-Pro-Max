@@ -46,6 +46,8 @@ object ReasonTexts {
         RecordOutcomeCode.INSUFFICIENT_POINTS to ("যথেষ্ট পয়েন্ট নেই।" to "Not enough points."),
         RecordOutcomeCode.GIFT_PHOTO_EXISTS to ("এই উপহারের ছবি আগেই তোলা হয়েছে।" to "A photo for this gift was already captured."),
         RecordOutcomeCode.PROGRAMME_INACTIVE to ("প্রোগ্রামটি চালু নেই; পর্যালোচনার জন্য রাখা হয়েছে।" to "The programme is not active; held for review."),
+        RecordOutcomeCode.GIFT_LOCKED to ("হস্তান্তরের ছবি তোলার পর এই আউটলেটের উপহার লক হয়ে গেছে; আর বদলানো যাবে না।" to "The outlet's gift is locked by its hand-over photo and can no longer be changed."),
+        RecordOutcomeCode.GIFT_NOT_FOR_TIER to ("এই উপহারটি আউটলেটের স্তরের জন্য নয়।" to "This gift is not for the outlet's tier."),
         // tso-manual F1: contract 1.10.0 codes (D-TSO-MAN-19, 20, 21, 31)
         RecordOutcomeCode.AFTER_FINAL_SUBMIT to ("জোনের ফাইনাল সাবমিটের আগে তোলা, কিন্তু পরে পৌঁছেছে; পর্যালোচনার জন্য রাখা হয়েছে।" to "Captured before the zone's Final Submit but arrived after it; held for review."),
         RecordOutcomeCode.DAY_FINAL_SUBMITTED to ("জোনের ফাইনাল সাবমিটের পরে তোলা; এই দিনের বিক্রি আর বদলানো যাবে না।" to "Captured after the zone's Final Submit; this day's sales can no longer change."),
