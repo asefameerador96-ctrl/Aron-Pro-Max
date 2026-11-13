@@ -512,7 +512,7 @@ Source: contract/openapi.yaml, version 1.17.0.
 - `schemas/GiftWrite.yaml` (897 B)
 - `schemas/GiftPatch.yaml` (875 B)
 - `schemas/GiftList.yaml` (195 B)
-- `schemas/LoyaltyBalance.yaml` (2758 B)
+- `schemas/LoyaltyBalance.yaml` (3103 B)
 - `schemas/LoyaltyBalanceList.yaml` (477 B)
 - `schemas/AsthaTargetRow.yaml` (3150 B)
 - `schemas/AsthaTargetPage.yaml` (447 B)

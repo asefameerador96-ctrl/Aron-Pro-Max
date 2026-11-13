@@ -16,6 +16,11 @@ Ruling: D-LEAD-CONTRACT-117-01 (lead, written at the gate). Predecessor: `docs/r
 - `LoyaltyBalance.balance_points` = every ledger row posted so far less the stored, non-voided redemptions not yet posted; a posted-then-voided one keeps its debit until the pass posts the reversal (a transient, never added back); NO business-date cut; one function for the bundle and the live read; `as_of_date` is display only ("figures include everything the server held when the bundle was built"); the phone subtracts its own redemptions not acknowledged when it sent the request (ACHIEVEMENT RULE of `ProgrammesSection`, the one rule). `expiring_points` is what the earliest upcoming expiry takes after debits and after later credits settled unfunded debt.
 - `GiftPhotoPayload`: several photos may be sent; the first is the winner, the rest are flagged duplicates; a campaign-unit photo of a FINAL redemption (voided, refused, a line voided or refused) is stored and flagged `parent_voided` / `parent_refused` (new `check_flag` values, a server-side column, not a contract enum); only a redemption not synced yet answers `parent_missing`.
 
+## Round C-R4 (text and migration notes inside 1.17.0, no member added)
+
+- `LoyaltyBalance.balance_points` names a FOURTH transient: a backdated adjustment committed late is found by the first pass of the next Dhaka day (up to one Dhaka day); meanwhile only the expiry correction is off, the balance sum is exact.
+- V0193 builds `ingest_registry_family_unresolved` (16 partitions of `app.ingest_registry`) with `CREATE INDEX IF NOT EXISTS`: it holds SHARE on each partition for the whole build inside a migration that already holds ACCESS EXCLUSIVE on the gift tables. Pilot size: accepted. FLEET SIZE: build the index per partition CONCURRENTLY, outside Flyway, before the migration runs; the migration then finds it. V0193 also adds the partial index `loyalty_ledger_adjustment_date` for the daily sweep's adjustment probe.
+
 ## Not built
 
 `cfg.loyalty.negative_balance_policy = reject` is NOT enforced at ingest (not built; the ledger job posts every stored redemption and the overdraw is the derived `overdrawn` flag). Config validation refuses the value `reject` until it is built (V0192 narrows the validation to `["accept_and_flag"]`).

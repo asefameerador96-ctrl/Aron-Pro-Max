@@ -145,5 +145,14 @@ SELECT app.apply_db_role_grants();
 -- C-R3 (f): a gift photo asks "which lines of this redemption were refused or are held in review?" by the redemption's family_uuid (app.ingest_registry is hash-partitioned by client_uuid,
 -- so without an index the probe would read every partition). The index holds only the registry rows that are neither stored nor voided (rejected, quarantined), so it stays small;
 -- a partitioned index cannot be built CONCURRENTLY, so the build is marked for squawk (same as V0120); lock_timeout bounds the wait.
+-- C-R4 FLEET-SIZE NOTE: this build holds SHARE on each of the 16 partitions for its whole duration, inside a migration transaction that already holds ACCESS EXCLUSIVE on the gift tables. At
+-- pilot size (the test account) that is milliseconds and accepted. At fleet size (the final account) the index is built per partition CONCURRENTLY, outside Flyway, BEFORE this migration runs
+-- (CREATE INDEX CONCURRENTLY ingest_registry_p<n>_family_unresolved ON ONLY the partition, then ATTACH to a parent index created ON ONLY app.ingest_registry); the statement below then finds it
+-- (IF NOT EXISTS) and does nothing. The same is written in docs/requests/contract-1.17-loyalty-gift-choice.md.
 -- squawk-ignore require-concurrent-index-creation
-CREATE INDEX ingest_registry_family_unresolved ON app.ingest_registry (family_uuid, record_type) WHERE status IN ('rejected', 'quarantined');
+CREATE INDEX IF NOT EXISTS ingest_registry_family_unresolved ON app.ingest_registry (family_uuid, record_type) WHERE status IN ('rejected', 'quarantined');
+
+-- C-R4: the daily sweep of the loyalty ledger job (LoyaltyLedgerJob.pairsToReconcile) asks "which pairs had an ADJUSTMENT in the last LOOKBACK_DAYS business dates?". The ledger's existing
+-- indexes lead with (outlet_id, programme_id, ...) or (source_type, source_id), so that probe would read every adjustment row. This partial index holds only adjustments (rare, manual), ordered by date.
+-- squawk-ignore require-concurrent-index-creation
+CREATE INDEX IF NOT EXISTS loyalty_ledger_adjustment_date ON app.loyalty_ledger (business_date) INCLUDE (outlet_id, programme_id) WHERE source_type = 'adjustment';

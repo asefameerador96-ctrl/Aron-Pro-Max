@@ -444,4 +444,103 @@ class GiftPhotoRecordsTest {
             assertEquals(1L, one("SELECT count(*) FROM pg_indexes WHERE schemaname = 'app' AND tablename = 'ingest_registry' AND indexname = 'ingest_registry_family_unresolved'"))
         }
     }
+
+    // ---- C-R4: the accept loop through the REAL records and the REAL accept endpoint ----
+    private val oldSecs = 15L * 86_400   // outside the 7-day backdate window: held as business_date_out_of_window until a reviewer accepts
+
+    private fun headerRec(h: String, lineCount: Int, secondsAgo: Long = oldSecs) = world.record(
+        "redemption",
+        """{"balance_before_points":5000,"cash_mtk":0,"cash_points":0,"cash_rate_mtk_per_point":0,"confirmed_at":"${java.time.Instant.now()}","line_count":$lineCount,"outlet_id":$outlet,"points_total":${lineCount * 100},"programme_id":$campaign}""",
+        routeId = route, cu = h, family = h, secondsAgo = secondsAgo,
+    )
+    private fun lineRec(h: String, secondsAgo: Long, cu: String = UUID.randomUUID().toString()) = world.record(
+        "redemption_line", """{"gift_id":$cGift,"points_each":100,"points_total":100,"qty":1,"redemption_client_uuid":"$h"}""", routeId = route, cu = cu, family = h, secondsAgo = secondsAgo,
+    )
+    private suspend fun io.ktor.client.HttpClient.accept(item: Long): HttpStatusCode =
+        with(world) { postWeb("admin1001", "/v1/admin/quarantine/$item/resolve", """{"action":"accept","reason":"the reviewer accepts the late redemption"}""").status }
+    private fun itemRow(uuid: String) = world.rows("SELECT id, status, code, detail, resolution_note FROM app.sync_quarantine WHERE client_uuid = CAST('$uuid' AS uuid) ORDER BY id DESC LIMIT 1").single()
+    private fun openNaming(parent: String) = world.one("SELECT count(*) FROM app.sync_quarantine WHERE status = 'open' AND detail LIKE 'parent $parent%'")
+    private fun storedPhoto(r: JsonObject) = world.one("SELECT count(*) FROM app.gift_photo WHERE client_uuid = CAST('${cu(r)}' AS uuid)")
+
+    @Test
+    fun acceptingAHeaderWhileALineHasNotSyncedYieldsThePhotoToTheOrdinaryRetryPath() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString()
+            val h = headerRec(head, 2); val l1 = lineRec(head, 120); val p = photo(null, 100, unit = head to 1, flat = lat + 0.00008)
+            assertEquals("quarantined", ack(sync(sr, listOf(h)), head).status())
+            assertEquals("quarantined", ack(sync(sr, listOf(l1)), cu(l1)).status()); assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status())
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
+            assertEquals(1L, one("SELECT count(*) FROM app.redemption WHERE client_uuid = CAST('$head' AS uuid)")); assertEquals(1L, one("SELECT count(*) FROM app.redemption_line WHERE redemption_client_uuid = CAST('$head' AS uuid)"))
+            assertEquals(0L, openNaming(head), "no child stays open naming the accepted header")
+            assertEquals("discarded", itemRow(cu(p))["status"]); assertEquals(true, (itemRow(cu(p))["resolution_note"] as String).startsWith("return_to_device"), "the phone is told to send it again")
+            assertEquals(0L, storedPhoto(p))
+            val again = ack(sync(sr, listOf(p)), cu(p)); assertEquals("rejected", again.status(), again.toString()); assertEquals("parent_missing", again.code(), "the ordinary retry path")
+            // the second line arrives after the accept; the photo's resend is then processed normally
+            val l2 = lineRec(head, 90); assertEquals("accepted", ack(sync(sr, listOf(l2)), cu(l2)).status())
+            assertEquals("accepted", ack(sync(sr, listOf(p)), cu(p)).status()); assertEquals(1L, storedPhoto(p)); assertEquals(null, flag(p)["check_flag"])
+            // replays: the photo, the accept (idempotent), the line
+            assertEquals("duplicate", ack(sync(sr, listOf(p)), cu(p)).status()); assertEquals("duplicate", ack(sync(sr, listOf(l2)), cu(l2)).status())
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
+            assertEquals(1L, storedPhoto(p)); assertEquals(0L, openNaming(head))
+        }
+    }
+
+    @Test
+    fun aPhotoAndALateLineHeldWithTheHeaderAreReleasedInDependencyOrderByOneAccept() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString()
+            val h = headerRec(head, 1); val p = photo(null, 100, unit = head to 1, flat = lat + 0.00009); val l1 = lineRec(head, 90)
+            assertEquals("quarantined", ack(sync(sr, listOf(h)), head).status())
+            assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status())   // the photo is item N ...
+            assertEquals("quarantined", ack(sync(sr, listOf(l1)), cu(l1)).status()) // ... and the line item N+1: ids order the photo first
+            assertEquals(true, itemOf(cu(p)) < itemOf(cu(l1)))
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
+            assertEquals(1L, storedPhoto(p), "released after its line, so it is judged on a complete redemption"); assertEquals(null, flag(p)["check_flag"])
+            assertEquals("accepted", itemRow(cu(p))["status"]); assertEquals("accepted", itemRow(cu(l1))["status"]); assertEquals(0L, openNaming(head)); assertEquals(0L, openNaming(cu(l1)))
+            assertEquals("duplicate", ack(sync(sr, listOf(p)), cu(p)).status()); assertEquals("duplicate", ack(sync(sr, listOf(l1)), cu(l1)).status())
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
+            assertEquals(1L, storedPhoto(p))
+        }
+    }
+
+    @Test
+    fun aPhotoOfAnotherUploaderHeldForItsOwnReasonKeepsItsOwnCodeNextToAnOpenLine() = world.withApi {
+        with(world) {
+            val tso = phone("tso1001", "tso")
+            val head = UUID.randomUUID().toString()
+            val h = headerRec(head, 2); val l1 = lineRec(head, 120)
+            val l2 = lineRec(head, oldSecs)   // held for its own reason (the window) and stays open for its own review: a line that is open next to the photo
+            val p = photo(null, 100, unit = head to 1, flat = lat + 0.0001)
+            assertEquals("quarantined", ack(sync(sr, listOf(h)), head).status()); assertEquals("quarantined", ack(sync(sr, listOf(l1)), cu(l1)).status())
+            assertEquals("quarantined", ack(sync(sr, listOf(l2)), cu(l2)).status()); assertEquals("quarantined", ack(sync(tso, listOf(p)), cu(p)).status())
+            assertEquals("parent $head is quarantined (business_date_out_of_window)", itemRow(cu(p))["detail"])
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
+            val q = itemRow(cu(p))
+            assertEquals("open", q["status"], "it is a real separate hold"); assertEquals("scope_out_of_reach", q["code"], "its OWN code: the header is accepted and the photo is of another user, not the open line's code")
+            assertEquals(true, (q["detail"] as String).contains("belongs to another user"), q.toString()); assertEquals(0L, openNaming(head))
+            assertEquals("open", itemRow(cu(l2))["status"], "the other line is untouched")
+            assertEquals("quarantined", ack(sync(tso, listOf(p)), cu(p)).status(), "a resend is still answered quarantined"); assertEquals(0L, storedPhoto(p))
+        }
+    }
+
+    @Test
+    fun aPhotoAfterAReturnToDeviceOfItsHeaderIsParentMissingNotHeldUnderAClosedItem() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString()
+            assertEquals("quarantined", ack(sync(sr, listOf(headerRec(head, 1))), head).status())
+            assertEquals(HttpStatusCode.OK, postWeb("admin1001", "/v1/admin/quarantine/${itemOf(head)}/resolve", """{"action":"return_to_device","reason":"send the redemption again please"}""").status)
+            val p = photo(null, 100, unit = head to 1, flat = lat + 0.00011)
+            val a = ack(sync(sr, listOf(p)), cu(p)); assertEquals("rejected", a.status(), a.toString()); assertEquals("parent_missing", a.code())
+            assertEquals(0L, one("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = CAST('${cu(p)}' AS uuid)"), "no item is created for it")
+        }
+    }
+
+    @Test
+    fun aRefusedRecordOfAnotherTypeUnderTheParentUuidIsNotADayFinalRefusalOfThePhoto() = world.withApi {
+        with(world) {
+            val other = UUID.randomUUID().toString(); registry(other, "visit", "rejected", "day_final_submitted")
+            val p = photo(null, 100, unit = other to 1, flat = lat + 0.00012)
+            val a = ack(sync(sr, listOf(p)), cu(p)); assertEquals("rejected", a.status(), a.toString()); assertEquals("parent_missing", a.code(), "not day_final_submitted: a visit is not its redemption")
+        }
+    }
 }

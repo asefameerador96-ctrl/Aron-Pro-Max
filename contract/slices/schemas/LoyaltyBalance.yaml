@@ -29,11 +29,14 @@ LoyaltyBalance:
         Points lapse only when the ledger job has posted their expiry row (replayed in business-date order; a debit
         never consumes a credit that had lapsed on its date; a later credit first settles unfunded debt); before
         then the balance may still include points past their date. A negative balance means the outlet is overdrawn.
-        Transients (each is gone after the next ledger-job pass, at most about ten minutes): a debit that synced
-        late with an earlier business date is in the figure before the expiry give-back it causes is posted (the
-        figure is LESS favourable until then); a redemption voided after it was posted keeps its debit until the
-        pass posts the reversal (LESS favourable); and points whose date has passed stay in the figure until the
-        first pass after Dhaka midnight posts their expiry row.'
+        Transients (the first three are gone after the next ledger-job pass, at most about ten minutes): a debit
+        that synced late with an earlier business date is in the figure before the expiry give-back it causes is
+        posted (the figure is LESS favourable until then); a redemption voided after it was posted keeps its debit
+        until the pass posts the reversal (LESS favourable); and points whose date has passed stay in the figure
+        until the first pass after Dhaka midnight posts their expiry row; and, the fourth, a backdated adjustment
+        whose transaction committed late is found at the latest by the first pass of the next Dhaka day (up to one
+        Dhaka day): until then only the expiry correction it causes is off, while the balance sum is exact (the
+        adjustment row is in the sum as soon as it is committed).'
     overdrawn:
       type: boolean
       description: '1.17.0. True exactly when `balance_points` is below zero: a negative balance is the overdraw

@@ -191,7 +191,7 @@ object LoyaltyLedger {
         } else {
             add("SELECT DISTINCT outlet_id, programme_id FROM app.loyalty_ledger WHERE id > :lid AND source_type <> 'expiry'") { it.bind("lid", maxOf(0L, cursor.ledgerId - OVERLAP)) }
             // C-R3 (d): an adjustment is found like a redemption, not only through the id window (a slow transaction can commit a low id late): the first pass of each Dhaka day takes
-            // every pair with an adjustment of the last LOOKBACK_DAYS business dates (business_date index), so a late-committed one is reconciled at the latest in that pass.
+            // every pair with an adjustment of the last LOOKBACK_DAYS business dates (partial index loyalty_ledger_adjustment_date, V0193), so a late-committed one is reconciled at the latest in that pass.
             if (sweepDay) add("SELECT DISTINCT outlet_id, programme_id FROM app.loyalty_ledger WHERE source_type = 'adjustment' AND business_date >= :lookback") { it.bind("lookback", today.minusDays(LOOKBACK_DAYS)) }
             val since = if (sweepDay) cursor.fullSweepOn ?: cursor.date else cursor.date
             add("SELECT DISTINCT outlet_id, programme_id FROM app.loyalty_ledger WHERE points > 0 AND expires_on >= :since AND expires_on < :d") { it.bind("since", since).bind("d", today) }

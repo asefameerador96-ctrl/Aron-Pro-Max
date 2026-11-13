@@ -88,7 +88,7 @@ class IngestService(
     private val salesSubmitDigest = SalesSubmitDigestService(db, clock)
 
     /** Outcome of one record before the ack is built. */
-    private data class Outcome(val status: String, val code: RecordOutcomeCode? = null, val serverId: Long? = null, val retryable: Boolean? = null) {
+    private data class Outcome(val status: String, val code: RecordOutcomeCode? = null, val serverId: Long? = null, val retryable: Boolean? = null, val detail: String? = null) {
         companion object {
             fun accepted(id: Long?) = Outcome("accepted", null, id)
             fun duplicate(id: Long?) = Outcome("duplicate", null, id)
@@ -417,22 +417,40 @@ class IngestService(
                 throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "the record is still not stored: ${outcome.status} ${outcome.code?.wire ?: ""}".trim())
             }
             closeItem(h, item.id, if (fixedRecord != null) "accepted_with_fix" else "accepted", fixedRecord, resolverUserId, reason, now)
-            for (child in children) {
+            // C-R4: released in dependency order (header, lines, photos; the sort is stable, so a memo's own order stands), so a photo never meets a line of its
+            // redemption that is still open. A photo that came back held on a sibling line released LATER in this same loop is run again once the loop is done (below).
+            val reheld = ArrayList<HeldItem>()
+            for (child in children.sortedBy { childRank(it) }) {
                 val sp = "release_${child.id}"
                 h.savepoint(sp)
                 val o = runCatching { release(h, ctxOf(child), Rec(0, child.payload)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
-                if (o != null && (o.status == "accepted" || o.status == "duplicate")) {
-                    closeItem(h, child.id, "accepted", null, resolverUserId, "released with parent ${item.clientUuid}", now)
-                    h.release(sp)
-                } else if (o != null && o.status == "quarantined" && child.payload.str("type") == "gift_photo" && regoldPhoto(h, child)) {
-                    // C-R3: a photo held with this line is now held with ANOTHER open line of its redemption: it follows that one (the item's code and detail move), so accepting
-                    // or discarding that line finds it. Nothing is stored; the savepoint is kept because the registry row now names the new hold.
-                    h.release(sp)
-                } else {
-                    // Held for a reason of its own (or a failure): it stays open for its own review.
-                    h.rollbackToSavepoint(sp)
-                    log.info("held child stays quarantined client_uuid=${child.clientUuid} parent=${item.clientUuid} outcome=${o?.status} ${o?.code?.wire}")
+                when (settleChild(h, child, o, item.clientUuid, resolverUserId, now)) {
+                    ChildEnd.HELD_ON_SIBLING -> { h.release(sp); reheld += child }
+                    ChildEnd.SETTLED -> h.release(sp)
+                    ChildEnd.STAYS -> {
+                        // Held for a reason of its own (or a failure): it stays open for its own review.
+                        h.rollbackToSavepoint(sp)
+                        log.info("held child stays quarantined client_uuid=${child.clientUuid} parent=${item.clientUuid} outcome=${o?.status} ${o?.code?.wire}")
+                    }
                 }
+            }
+            // Photos re-held onto a line that this loop then released: run them again until nothing changes (each pass needs a sibling's item to have closed, so it ends within reheld.size + 1).
+            var pass = 0
+            while (reheld.isNotEmpty() && pass++ <= children.size) {
+                var changed = false
+                for (child in reheld.toList()) {
+                    val on = heldOn(h, child.id)
+                    if (on != null && h.createQuery("SELECT EXISTS (SELECT 1 FROM app.sync_quarantine WHERE client_uuid = CAST(:u AS uuid) AND status = 'open')").bind("u", on).mapTo(Boolean::class.java).one()) continue   // its line is still open
+                    val sp = "rerelease_${child.id}_$pass"
+                    h.savepoint(sp)
+                    val o = runCatching { release(h, ctxOf(child), Rec(0, child.payload)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
+                    when (settleChild(h, child, o, item.clientUuid, resolverUserId, now)) {
+                        ChildEnd.HELD_ON_SIBLING -> { h.release(sp); if (heldOn(h, child.id) != on) changed = true }
+                        ChildEnd.SETTLED -> { h.release(sp); reheld.remove(child); changed = true }
+                        ChildEnd.STAYS -> { h.rollbackToSavepoint(sp); reheld.remove(child) }
+                    }
+                }
+                if (!changed) break
             }
             // Day states follow but never decide the outcome (as after a batch).
             DayStates.settleMinutes = runCatching { config.int("cfg.day.submit_settle_timeout_min").toLong() }.getOrDefault(30L)
@@ -477,14 +495,39 @@ class IngestService(
         }
     }
 
-    /** Moves a photo's open quarantine item to the open parent line its item names now (see the accept loop); false when it is not held with a line. */
-    private fun regoldPhoto(h: Handle, child: HeldItem): Boolean {
-        val red = (child.payload["payload"] as? JsonObject)?.str("redemption_client_uuid") ?: return false
-        val family = h.createQuery("SELECT family_uuid::text FROM app.redemption WHERE client_uuid = CAST(:r AS uuid)").bind("r", red).mapTo(String::class.java).findOne().orElse(null) ?: return false
-        val hold = GiftParents.missingLines(h, family)
-        if (hold.state != GiftParents.State.OPEN || hold.uuid == null || hold.code == null) return false
-        h.createUpdate("UPDATE app.sync_quarantine SET code = :c, detail = :d WHERE id = :id AND status = 'open'").bind("c", hold.code).bind("d", "parent ${hold.uuid} is quarantined (${hold.code})").bind("id", child.id).execute()
-        return true
+    private enum class ChildEnd { SETTLED, HELD_ON_SIBLING, STAYS }
+
+    /** Dependency order of a released family: the header and anything else first, then a redemption's lines, then its photos (C-R4). */
+    private fun childRank(c: HeldItem): Int = when (c.payload.str("type")) { "gift_photo" -> 2; "redemption_line" -> 1; else -> 0 }
+
+    /** The uuid of the parent a held item's detail names (`parent <uuid> is quarantined (...)`), or null. */
+    private fun heldOn(h: Handle, itemId: Long): String? =
+        h.createQuery("SELECT detail FROM app.sync_quarantine WHERE id = :id").bind("id", itemId).mapTo(String::class.java).findOne().orElse(null)?.let { HELD_ON.find(it)?.groupValues?.get(1) }
+
+    /**
+     * What became of a held child after its release was run (C-R4). After the parent is accepted no child stays open with a detail naming that parent: it is
+     *  - accepted (stored): item closed `accepted`;
+     *  - judged "parent not yet complete" (parent_missing, retryable): its item is closed as a return to the device and the registry row is `parked` (written by the release itself),
+     *    so the phone's resend is processed normally, the ordinary parent_missing retry path;
+     *  - a gift photo held with ANOTHER open record (a line of its redemption): the item follows that hold ([HELD_ON_SIBLING]); only when the fresh refusal IS that hold (code and detail);
+     *  - a gift photo held for a reason of its own (another uploader's reach, its own checks): its item takes the fresh code and detail, a real separate hold, and the registry already says so;
+     *  - anything else, or a failure: [ChildEnd.STAYS] (the caller rolls back; the item stays open for its own review as before).
+     */
+    private fun settleChild(h: Handle, child: HeldItem, o: Outcome?, parentUuid: String, resolver: Long, now: Instant): ChildEnd {
+        if (o == null) return ChildEnd.STAYS
+        if (o.status == "accepted" || o.status == "duplicate") {
+            closeItem(h, child.id, "accepted", null, resolver, "released with parent $parentUuid", now)
+            return ChildEnd.SETTLED
+        }
+        if (o.code == RecordOutcomeCode.PARENT_MISSING && o.retryable == true) {
+            closeItem(h, child.id, "discarded", null, resolver, "return_to_device: parent $parentUuid was accepted; this record waits for its other parents (parent_missing), send it again", now)
+            return ChildEnd.SETTLED
+        }
+        if (o.status == "quarantined" && child.payload.str("type") == "gift_photo" && o.code != null && o.detail != null) {
+            h.createUpdate("UPDATE app.sync_quarantine SET code = :c, detail = :d WHERE id = :id AND status = 'open'").bind("c", o.code.wire).bind("d", o.detail.take(1000)).bind("id", child.id).execute()
+            return if (HELD_ON.matches(o.detail) && o.detail.endsWith("(${o.code.wire})")) ChildEnd.HELD_ON_SIBLING else ChildEnd.SETTLED
+        }
+        return ChildEnd.STAYS
     }
 
     /**
@@ -1158,8 +1201,13 @@ class IngestService(
                 // tso-manual B3 (D-TSO-MAN-31): a parent refused for the day lock takes its children with it (final), so a
                 // memo or a line of a call captured after the Final Submit is never parked waiting for a parent that
                 // can never be stored.
-                if (reg?.get(2) == "rejected" && reg[3] == RecordOutcomeCode.DAY_FINAL_SUBMITTED.wire) {
+                // C-R4: not for a gift photo: its parent's refusal is read by the one parent function above, and a record of ANOTHER type under that uuid is not its parent.
+                if (r.type != "gift_photo" && reg?.get(2) == "rejected" && reg[3] == RecordOutcomeCode.DAY_FINAL_SUBMITTED.wire) {
                     return finalReject(h, ctx, r, RecordOutcomeCode.DAY_FINAL_SUBMITTED, "$field $parent was refused day_final_submitted")
+                }
+                // C-R4: a gift photo's parent whose item was RETURNED to the device is not synced yet (GiftParents: MISSING): parent_missing, retryable, never held under a closed item.
+                if (r.type == "gift_photo" && field == "redemption_client_uuid" && reg?.get(2) == "quarantined" && GiftParents.state(h, parent, "redemption").state != GiftParents.State.OPEN) {
+                    return park(h, ctx, r, RecordOutcomeCode.PARENT_MISSING, "$field $parent")
                 }
                 if (reg?.get(2) == "quarantined") {
                     // tso-manual B3 (D-TSO-MAN-31): a child captured at or after the lock (a void, an edit, a late line of a
@@ -1716,7 +1764,7 @@ class IngestService(
             .bind("u", ctx.up.userId).bind("d", ctx.up.deviceId).bind("route", r.json.long("route_id")).bind("bd", bd).bind("b", ctx.batchUuid)
             .bind("now", ts(ctx.now)).execute()
         if (register) register(h, ctx, r, bd, "quarantined", code, null, contentFp)
-        return Outcome.of(code)
+        return Outcome.of(code).copy(detail = detail)
     }
 
     /**
@@ -2054,6 +2102,8 @@ class IngestService(
         /** The late-sale policy key (V0006; delivered to the SR and AMO phones since V0142). */
         const val LATE_POLICY_KEY = "cfg.day.late_sync_after_final_policy"
         private val DEVICE_HOLD_CODES = setOf(RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire, RecordOutcomeCode.DEVICE_NOT_ENROLLED.wire)
+        /** A held item whose detail names the parent it waits for: `parent <uuid> is quarantined (<code>)`. */
+        val HELD_ON = Regex("^parent ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}) is quarantined \\(")
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         private val FORCE_SALE_REASONS = setOf("internet_problem", "location_change")
