@@ -146,7 +146,7 @@ class ScreenshotTests {
     private fun Frame(title: String, subtitle: String? = null, content: @Composable () -> Unit) {
         val time = localizedDigits("10:42")
         AronScreen(
-            topBar = { AronTopBar(title = title, subtitle = subtitle, onBack = {}, trailing = { AronStatusChip(SyncChipState.SyncedAt(time), form = ChipForm.Compact, onClick = {}) }) },
+            topBar = { AronTopBar(title = title, subtitle = subtitle, onBack = {}) },
         ) { content() }
     }
 

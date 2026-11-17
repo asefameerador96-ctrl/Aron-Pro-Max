@@ -28,6 +28,7 @@
     <string name="sale_unit_pack">প্যাকেট</string>
     <string name="sale_pack_badge">= %1$s প্যাকেট + %2$s</string>
     <string name="sale_stock_warning">%2$s এর স্টক আছে মাত্র %1$s %3$s।</string>
+    <string name="sale_no_stock">%1$s এর স্টক নেই। আগে স্টক স্ক্রিনে স্টক যোগ করুন।</string>
     <string name="sale_empty">বিক্রি শুরু করতে একটি পরিমাণ দিন।</string>
     <string name="sale_zero_confirm_title">বিক্রয়ের জন্য কোনও SKU নির্বাচন করা হয় নি</string>
     <string name="sale_zero_confirm_message">আপনি কি জিরো (০) বিক্রয় করতে চান?</string>
@@ -111,6 +112,7 @@
     <string name="sale_col_sale">বিক্রয়</string>
     <string name="sale_col_stock">স্টক</string>
     <string name="sale_price_per_unit">৳ %1$s / %2$s</string>
+    <string name="review_problem_over_stock">%1$s: আপনার কাছে আছে %2$s %3$s, কিন্তু মেমোতে %4$s। পরিমাণ কমান, অথবা আগে স্টক যোগ করুন।</string>
     <string name="review_problem_qty_large">%1$s এর পরিমাণ অনেক বেশি।</string>
     <string name="sale_yes_ok">ওকে</string>
     <string name="zero_reason_title">বিক্রয় না হওয়ার কারণ কী?</string>

@@ -109,26 +109,25 @@ object PreviousSales {
 
 typealias LocalMemo = PreviousSales.LocalMemo
 
-object PreviousSalesTags { const val DATE = "amo_ps_date"; const val PREV = "amo_ps_prev"; const val NEXT = "amo_ps_next"; const val EMPTY = "amo_ps_empty"; const val TOTAL = "amo_ps_total"; const val LOADING = "amo_ps_loading"; const val NOTE = "amo_ps_note"; const val UNREADABLE = "amo_ps_unreadable"
+object PreviousSalesTags { const val DATE = "amo_ps_date"; const val ISO = "amo_ps_iso"; const val EMPTY = "amo_ps_empty"; const val TOTAL = "amo_ps_total"; const val LOADING = "amo_ps_loading"; const val NOTE = "amo_ps_note"; const val UNREADABLE = "amo_ps_unreadable"
     fun row(skuId: Long) = "amo_ps_row_$skuId" }
 
 /**
- * Previous sale data (screenshot 26): the chosen date with step arrows (today by default, 90 days back), every SKU sold to the outlet
+ * Previous sale data (screenshot 26): the date field with its calendar (today by default, 90 days back) and the ISO date under it, every SKU sold to the outlet
  * that day with its packshot, quantity in the field unit and value, then the true total. [history] null = loading.
  */
 @Composable
-fun PreviousSalesContent(date: String, today: String, history: SaleHistory?, onShift: (Int) -> Unit, modifier: Modifier = Modifier, outletLabel: String? = null) {
+fun PreviousSalesContent(date: String, today: String, history: SaleHistory?, onPick: (String) -> Unit, modifier: Modifier = Modifier, outletLabel: String? = null) {
     val look = LocalAronLook.current
     val bn = LocalAppLanguage.current == AppLanguage.BN
     val loc = if (bn) UiLocale.BN else UiLocale.EN
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(stringResource(R.string.amo_ps_title), style = amoText(18, bold = true, color = look.purple)) // screenshot 26: "সেল ডাটা"
         if (outletLabel != null) Text(outletLabel, style = amoText(16, bold = true))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            AmoSecondary("‹", { onShift(-1) }, Modifier.testTag(PreviousSalesTags.PREV), enabled = PreviousSales.shift(date, -1, today) != date)
-            Text(Formats.digits(date, loc), style = amoText(20, bold = true, color = look.purple), modifier = Modifier.testTag(PreviousSalesTags.DATE))
-            AmoSecondary("›", { onShift(1) }, Modifier.testTag(PreviousSalesTags.NEXT), enabled = PreviousSales.shift(date, 1, today) != date)
-        }
+        // D-PAR-AMO-05 (screenshot 26): the calendar field ("November 26, 2025") opens a date picker limited to the 90-day window; the ISO date
+        // is repeated under it in purple, as the old screen does
+        AmoDateField(date, today, { picked -> if (PreviousSales.inWindow(picked, today)) onPick(picked) }, Modifier.testTag(PreviousSalesTags.DATE), min = PreviousSales.earliest(today), max = today)
+        Text(Formats.digits(date, loc), style = amoText(16, color = look.purple), modifier = Modifier.testTag(PreviousSalesTags.ISO))
         when {
             history == null -> Text(stringResource(R.string.amo_ps_loading), style = amoText(16, color = look.inkMuted), modifier = Modifier.testTag(PreviousSalesTags.LOADING))
             history.lines.isEmpty() -> AmoEmpty(stringResource(R.string.amo_ps_empty), Modifier.testTag(PreviousSalesTags.EMPTY))

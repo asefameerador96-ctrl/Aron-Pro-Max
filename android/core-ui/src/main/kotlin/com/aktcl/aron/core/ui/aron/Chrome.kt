@@ -118,6 +118,7 @@ fun AronTopBar(
     backLabel: String? = null,
     trailing: (@Composable () -> Unit)? = null,
     hanging: (@Composable () -> Unit)? = null,
+    subtitle: String? = null,
 ) {
     val look = LocalAronLook.current
     Box(modifier.fillMaxWidth()) {
@@ -153,7 +154,10 @@ fun AronTopBar(
                     Image(icon, contentDescription = null, modifier = Modifier.size(AronLook.BarIcon))
                     Spacer(Modifier.width(10.dp))
                 }
-                Text(title, style = lookStyle(22.sp, semibold = true, color = look.onBar, align = TextAlign.Center), modifier = Modifier.semantics { heading() })
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(title, style = lookStyle(22.sp, semibold = true, color = look.onBar, align = TextAlign.Center), modifier = Modifier.semantics { heading() })
+                    if (subtitle != null) Text(subtitle, style = lookStyle(12.sp, color = look.onBar, align = TextAlign.Center))
+                }
             }
             if (trailing != null) Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp)) { trailing() }
         }

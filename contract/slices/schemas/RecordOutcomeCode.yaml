@@ -64,3 +64,4 @@ RecordOutcomeCode:
   - issue_type_unknown
   - gift_locked
   - gift_not_for_tier
+  - cluster_name_exists
