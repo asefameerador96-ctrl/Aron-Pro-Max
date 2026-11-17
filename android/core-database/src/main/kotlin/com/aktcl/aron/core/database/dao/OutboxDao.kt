@@ -63,7 +63,7 @@ abstract class OutboxDao {
      * `rejected` (discarded). Only a row still quarantined moves.
      */
     @Query(
-        """UPDATE outbox SET state = :state, last_code = :code,
+        """UPDATE outbox SET state = :state, last_code = :code, seen_at = NULL,
            acked_at = CASE WHEN :state = 'acked' THEN :at ELSE acked_at END
            WHERE client_uuid = :clientUuid AND state = 'quarantined'""",
     )
@@ -100,6 +100,7 @@ abstract class OutboxDao {
 
     @Query(
         """UPDATE outbox SET state = :state, last_code = :code, last_message_key = :messageKey, server_id = COALESCE(:serverId, server_id),
+           seen_at = CASE WHEN state = :state AND IFNULL(last_code, '') = IFNULL(:code, '') THEN seen_at ELSE NULL END,
            acked_at = CASE WHEN :state = 'acked' THEN :at ELSE acked_at END,
            batch_uuid = CASE WHEN :state = 'pending' THEN NULL ELSE batch_uuid END
            WHERE client_uuid = :clientUuid AND state IN ('in_flight', 'pending')""",
@@ -112,7 +113,7 @@ abstract class OutboxDao {
      * so the server's registry answers them by uuid (released, or duplicate) and nothing is stored twice. `last_code` is
      * kept, so the signer never signs a row that already went out. Returns the rows released.
      */
-    @Query("UPDATE outbox SET state = 'pending', batch_uuid = NULL, attempts = 0 WHERE state = 'quarantined' AND last_code = :code")
+    @Query("UPDATE outbox SET state = 'pending', batch_uuid = NULL, attempts = 0, seen_at = NULL WHERE state = 'quarantined' AND last_code = :code")
     abstract suspend fun releaseQuarantined(code: String): Int
 
     /**
@@ -164,6 +165,10 @@ abstract class OutboxDao {
     @Query("SELECT COUNT(*) FROM outbox WHERE business_date = :businessDate AND state IN ('pending', 'in_flight')")
     abstract suspend fun unsentOn(businessDate: String): Int
 
+    /** D-AGATE-04 round 2: the rows of [businessDate] per state, for the Sales Submit status line (scoped to the date on screen, not the whole outbox). */
+    @Query("SELECT state, COUNT(*) AS count FROM outbox WHERE business_date = :businessDate GROUP BY state")
+    abstract suspend fun stateCountsOn(businessDate: String): List<StateCount>
+
     /** D-AGATE-06: rows of [businessDate] in [state] (rejected, quarantined): the day_submit's real counts. */
     @Query("SELECT COUNT(*) FROM outbox WHERE business_date = :businessDate AND state = :state")
     abstract suspend fun countOnInState(businessDate: String, state: String): Int
@@ -177,12 +182,63 @@ abstract class OutboxDao {
     abstract suspend fun refusedUuids(fromDate: String): List<String>
 
     /**
-     * D-AGATE-04 (device defect D1): EVERY row the server refused or holds, of ANY business date, oldest first. The Sales
-     * Submit banner count and the list it shows are both this one query, so the count can never name records the list
-     * leaves out. The outbox's own keep-days purge bounds it.
+     * D-AGATE-04 (device defect D1) round 2: the refused or held rows the Sales Submit list shows, NEWEST first, only the columns the
+     * list needs (never the payloads: the rows are not purged, so a `SELECT *` over all of them would grow without bound), at most
+     * [limit] of them. The banner counts are COUNT queries ([countRefused], [countSeenRefused]); the list is paged by the caller.
+     * Every business date is included (not only the last 14 days). The outbox purge removes ACKED rows only; refused rows stay until
+     * the support file has taken them or a later build cleans them, so this read must stay cheap whatever their number.
      */
-    @Query("SELECT * FROM outbox WHERE state IN ('rejected', 'quarantined') ORDER BY seq")
-    abstract suspend fun refusedRows(): List<OutboxEntity>
+    @Query(
+        """SELECT seq, client_uuid AS clientUuid, record_type AS recordType, family_uuid AS familyUuid, rank, business_date AS businessDate,
+           state, last_code AS lastCode, last_message_key AS lastMessageKey, seen_at AS seenAt, attempts
+           FROM outbox WHERE state IN ('rejected', 'quarantined') ORDER BY seq DESC LIMIT :limit""",
+    )
+    abstract suspend fun refusedList(limit: Int): List<RefusedRowLite>
+
+    /** Refused or held rows of [state], seen or not: the true figure the day_submit and the gates read (never filtered by "seen"). */
+    @Query("SELECT COUNT(*) FROM outbox WHERE state = :state")
+    abstract suspend fun countRefused(state: String): Int
+
+    /** Refused or held rows of [state] the rep marked as seen: a SCREEN matter only, subtracted from the banner and never from the gates. */
+    @Query("SELECT COUNT(*) FROM outbox WHERE state = :state AND seen_at IS NOT NULL")
+    abstract suspend fun countSeenRefused(state: String): Int
+
+    /**
+     * D-AGATE-04 round 2 (D1-3): "seen" applies to ONE outcome, the (state, last_code) it was marked at. Every path that changes either
+     * clears it, so a new outcome (a later discard, a re-refusal, a release) is shown again.
+     */
+    @Query("UPDATE outbox SET seen_at = NULL WHERE client_uuid = :clientUuid")
+    abstract suspend fun clearSeen(clientUuid: String): Int
+
+    /**
+     * D-AGATE-04: marks a refused record as seen by the rep, and the rest of its FAMILY that is refused (the list shows a family as one
+     * entry). It only ever SETS `seen_at` on rows that are rejected or quarantined: the row, its payload and its signature stay exactly as
+     * they are, and nothing is deleted. A record the PHONE gave up on (`retry_exhausted`) never reached the server and cannot be marked
+     * seen (D1-2): its only action is Send again. Returns the rows marked.
+     */
+    @Query(
+        """UPDATE outbox SET seen_at = :at WHERE state IN ('rejected', 'quarantined') AND seen_at IS NULL AND IFNULL(last_code, '') != 'retry_exhausted'
+           AND family_uuid = (SELECT family_uuid FROM outbox WHERE client_uuid = :clientUuid)""",
+    )
+    abstract suspend fun markRefusedSeen(clientUuid: String, at: String): Int
+
+    /** Undo of [markRefusedSeen] for the record's family: the entry returns to the count and the main list (a mis-tap is not permanent). */
+    @Query("UPDATE outbox SET seen_at = NULL WHERE seen_at IS NOT NULL AND family_uuid = (SELECT family_uuid FROM outbox WHERE client_uuid = :clientUuid)")
+    abstract suspend fun markRefusedUnseen(clientUuid: String): Int
+
+    /**
+     * D-AGATE-04 (ruling 7, round 2 D1-5): "send again" for a record the phone itself gave up on (`rejected(retry_exhausted)`) acts on its
+     * whole FAMILY (the parent and every child that was exhausted), so a memo never goes up without its lines nor lines before their memo.
+     * Each goes back to pending with the SAME client_uuid, payload and sig and `attempts` reset, in the engine's normal family order
+     * (by seq), exactly as [resendAckedSince] does: the server's registry answers each by uuid (stored, or duplicate), so it keeps it once.
+     * Only rows rejected with that code move; a server rejection is never resent from here. Returns the rows re-queued.
+     */
+    @Query(
+        """UPDATE outbox SET state = 'pending', batch_uuid = NULL, attempts = 0, seen_at = NULL
+           WHERE state = 'rejected' AND last_code = 'retry_exhausted'
+           AND family_uuid = (SELECT family_uuid FROM outbox WHERE client_uuid = :clientUuid)""",
+    )
+    abstract suspend fun requeueRetryExhausted(clientUuid: String): Int
 
     /**
      * D-AGATE-04: the outcome code of every refused, held or answered-and-requeued row (state, `last_code`, `message_key`, attempts, date),
@@ -190,29 +246,9 @@ abstract class OutboxDao {
      */
     @Query(
         """SELECT client_uuid AS clientUuid, record_type AS recordType, business_date AS businessDate, state, last_code AS lastCode,
-           last_message_key AS lastMessageKey, attempts FROM outbox WHERE state IN ('rejected', 'quarantined') OR last_code IS NOT NULL ORDER BY seq LIMIT :limit""",
+           last_message_key AS lastMessageKey, attempts FROM outbox WHERE state IN ('rejected', 'quarantined') OR last_code IS NOT NULL ORDER BY seq DESC LIMIT :limit""",
     )
     abstract suspend fun codeSummaries(limit: Int): List<OutboxCodeRow>
-
-    /**
-     * D-AGATE-04: marks a refused record as seen by the rep. It only ever SETS `seen_at` on a row that is rejected or
-     * quarantined: the row, its payload and its signature stay exactly as they are, and nothing is deleted. Returns the
-     * rows marked (0 when it is not refused, or was already seen).
-     */
-    @Query("UPDATE outbox SET seen_at = :at WHERE client_uuid = :clientUuid AND state IN ('rejected', 'quarantined') AND seen_at IS NULL")
-    abstract suspend fun markRefusedSeen(clientUuid: String, at: String): Int
-
-    /**
-     * D-AGATE-04 (ruling 7): "send again" for a row the phone itself gave up on (`rejected(retry_exhausted)`). It goes back
-     * to pending with the SAME client_uuid, payload and sig and `attempts` reset, exactly as [resendAckedSince] does, so the
-     * server's registry answers it by uuid (stored, or duplicate) and no second record can be created. Only a row rejected
-     * with that code moves; a server rejection is never resent from here. Returns the rows re-queued.
-     */
-    @Query(
-        """UPDATE outbox SET state = 'pending', batch_uuid = NULL, attempts = 0, seen_at = NULL
-           WHERE client_uuid = :clientUuid AND state = 'rejected' AND last_code = 'retry_exhausted'""",
-    )
-    abstract suspend fun requeueRetryExhausted(clientUuid: String): Int
 
     /** When the server last answered a row of this type and date (null when none is answered). */
     @Query("SELECT MAX(acked_at) FROM outbox WHERE business_date = :businessDate AND record_type = :recordType AND acked_at IS NOT NULL")
@@ -249,3 +285,12 @@ data class OutboxCodeRow(
     val clientUuid: String, val recordType: String, val businessDate: String, val state: String,
     val lastCode: String?, val lastMessageKey: String?, val attempts: Int,
 )
+
+/** One refused or held row as the Sales Submit list needs it: no payload (D-AGATE-04 round 2). */
+data class RefusedRowLite(
+    val seq: Long, val clientUuid: String, val recordType: String, val familyUuid: String, val rank: Int, val businessDate: String,
+    val state: String, val lastCode: String?, val lastMessageKey: String?, val seenAt: String?, val attempts: Int,
+)
+
+/** Rows per outbox state. */
+data class StateCount(val state: String, val count: Int)

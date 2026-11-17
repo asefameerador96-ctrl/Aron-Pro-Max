@@ -20,6 +20,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.performClick
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
@@ -56,6 +58,16 @@ class SalesSubmitNightTest {
         compose.waitForIdle()
     }
 
+    /** D1-6: a record the server did NOT store can be sent to support with one tap from its own entry. */
+    @Test fun aNotStoredRecordCanBeSentToSupportWithOneTap() {
+        var taps = 0
+        val gate = SalesSubmitRules.gate(clean, owner, DuesAtSubmit(0, 0), false)
+        compose.setContent { Lang(AppLanguage.EN) { SalesSubmitScreen(true, owner, gate, SubmitProgress.Idle, { labels[it] ?: it }, {}, {}, rejected = rejected, onSupport = { taps++ }) } }
+        compose.waitForIdle()
+        compose.onAllNodesWithTag(SalesSubmitTags.SUPPORT)[0].performScrollTo().performClick()
+        assertEquals(1, taps)
+    }
+
     @Test fun theServerAboveThePhoneIsInformationAndSubmitIsOn() {
         show(AppLanguage.EN, owner, rejected)
         compose.onNodeWithText("Not matching").assertDoesNotExist()
@@ -74,7 +86,7 @@ class SalesSubmitNightTest {
         // D-AGATE-04: a code without a bundle text reads in words (every known code has Bangla and English), never "Reason code: x"
         compose.onNodeWithText("A price on the record is not valid.").assertExists()
         compose.onNodeWithText("Reason code: price_invalid").assertDoesNotExist()
-        compose.onNodeWithText("Not stored on the server. Submit is not blocked.").assertExists()
+        compose.onNodeWithText("NOT on the server", substring = true).assertExists()
         compose.onNodeWithText("5 records were rejected by the server.").assertDoesNotExist() // the bare count gave way to the list
     }
 

@@ -549,7 +549,7 @@ fun SrApp(
         }
         SrScreen.EDIT -> SrFrame(stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync, icon = CoreR.drawable.aron_art_memo) { EditHost(day, editMemo, sunlight, onSunlight, onDone = { screen = SrScreen.MEMO }) }
         SrScreen.SUMMARY -> SrFrame(stringResource(com.aktcl.aron.feature.memo.R.string.summary_title), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_summary) { SummaryHost(day, sunlight, onSunlight) }
-        SrScreen.SUBMIT -> SrFrame(stringResource(HomeR.string.hm_tile_sales_submit), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_submit) { SubmitHost(day) }
+        SrScreen.SUBMIT -> SrFrame(stringResource(HomeR.string.hm_tile_sales_submit), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_submit) { SubmitHost(day, onSupport = { screen = SrScreen.SUPPORT }) }
         SrScreen.JOURNEY -> SrFrame(stringResource(HomeR.string.hm_tile_sales_journey), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_journey) { JourneyHost(day, locale) }
         SrScreen.KPI -> SrFrame(stringResource(HomeR.string.hm_tile_kpi), goBack, sync, openSync, icon = CoreR.drawable.aron_art_kpi) { KpiHost(day) }
         SrScreen.TUTORIAL -> TutorialHost(day, onBack = goBack)

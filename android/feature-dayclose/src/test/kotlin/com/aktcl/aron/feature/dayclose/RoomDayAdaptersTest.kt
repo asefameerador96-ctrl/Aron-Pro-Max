@@ -77,18 +77,17 @@ class RoomDayAdaptersTest {
         db.outboxDao().applyAck(line.clientUuid, "rejected", "price_invalid", null, "2026-10-05T05:00:00.000Z")
         db.outboxDao().applyAck(visit.clientUuid, "pending", "resync", null, "2026-10-05T05:00:00.000Z")
         // the phone's own markers on queued rows (resync, digest_resend) are not rejections
-        assertEquals(2, source.rejectedRows("2026-10-05").size)
+        // the memo and its refused line are ONE entry (a family), led by the parent
+        source.rejectedRows("2026-10-05").single().let { assertEquals("memo", it.recordType); assertEquals(2, it.familySize) }
         db.outboxDao().applyAck(visit.clientUuid, "pending", "scope_stale", null, "2026-10-05T05:00:00.000Z")
         val listed = source.rejectedRows("2026-10-05").associateBy { it.recordType }
-        assertEquals(3, listed.size)
+        assertEquals("the family is one entry; the visit's resync-marker row is its own", 2, listed.size)
         listed.getValue("memo").let {
             assertEquals(RejectedOutcome.STORED_FLAGGED, it.outcome); assertEquals("sr334001-261005-001", it.memoNo)
             assertEquals("এই মেমো নম্বর আগেই ব্যবহার হয়েছে", it.reasonBn); assertEquals("This memo number was already used", it.reasonEn)
         }
-        listed.getValue("memo_line").let {
-            assertEquals(RejectedOutcome.DROPPED, it.outcome); assertEquals("price_invalid", it.code); assertEquals(null, it.reasonEn)
-            assertEquals("sr334001-261005-001", it.memoNo) // through its parent memo
-        }
+        // the refused line is inside the memo's family, and is still counted
+        assertEquals(2, listed.getValue("memo").familySize)
         assertEquals(RejectedOutcome.RETRY, listed.getValue("visit").outcome)
     }
 
