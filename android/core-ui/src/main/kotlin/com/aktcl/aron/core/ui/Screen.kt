@@ -73,7 +73,7 @@ fun AronTopBar(
 ) {
     // PARITY-SPEC s2.1, D-PAR-SR1-01: the one top bar of every screen is the gradient bar of the Aron look; this legacy entry delegates to it.
     com.aktcl.aron.core.ui.aron.AronTopBar(
-        title = title, modifier = modifier, onBack = onBack, backLabel = stringResource(R.string.core_ui_back), subtitle = subtitle,
+        title = title, modifier = modifier, onBack = onBack, backLabel = stringResource(R.string.core_ui_back), subtitle = subtitle, maxTitleLines = 2,
         trailing = { Row(verticalAlignment = Alignment.CenterVertically, content = trailing) },
     )
 }
