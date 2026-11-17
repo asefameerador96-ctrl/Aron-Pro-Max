@@ -637,7 +637,7 @@ fun SummaryScreen(
                         weights = if (salesBlock) SummaryColumns.amoShares else SummaryColumns.shares,
                     )
                 }
-                SummaryDock(summary, categoryLabel, if (salesBlock) SummaryColumns.amoShares else SummaryColumns.shares) { categoryUnit(it) }
+                SummaryDock(summary, categoryLabel, salesBlock) { categoryUnit(it) }
             }
             if (salesBlock) SummarySalesBlock(summary)
             printButton()
@@ -683,7 +683,8 @@ private fun SummarySalesBlock(summary: DaySummary) {
 
 /** The docked block of sr/summary.png on its own `#F0F0F0` panel: a purple row per category (quantity with its unit as a small suffix), "discount and others (-)" and the grand total. */
 @Composable
-private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, weights: List<Float>, unitOf: @Composable (CategorySummaryRow) -> String) {
+private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, amoColumns: Boolean, unitOf: @Composable (CategorySummaryRow) -> String) {
+    val weights = if (amoColumns) SummaryColumns.amoShares else SummaryColumns.shares
     val look = LocalAronLook.current
     val figure = TextStyle(fontSize = 13.sp, color = look.purple, textAlign = TextAlign.End)
     Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
