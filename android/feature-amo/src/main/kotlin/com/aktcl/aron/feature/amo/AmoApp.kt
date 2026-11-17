@@ -35,7 +35,9 @@ enum class AmoScreen(val tileId: String?) {
     HOME(null), SETTINGS("settings"), SUPPORT(null), PRINTER(null), EXCEPTIONS(null),
     ATTENDANCE("attendance"), JOINT_CALL("joint_call"), CONTROL_CALL("control_call"),
     TEAM_LOCATION("team_location"), TEAM_PERFORMANCE("team_performance"), TASK_DELEGATION("task_delegation"), LIVE_DASHBOARD("live_dashboard"), SR_STOCK("sr_stock"),
-    OUTLET("outlet"), STOCK("stock"), SALE("sale"), MEMO("memo"), SUMMARY("summary"), SALES_SUBMIT("sales_submit"), REPORT("report"), SALES_JOURNEY("sales_journey");
+    OUTLET("outlet"), STOCK("stock"), SALE("sale"), MEMO("memo"), SUMMARY("summary"), SALES_SUBMIT("sales_submit"), REPORT("report"), SALES_JOURNEY("sales_journey"),
+    /** Deferred programme hooks (docs/27): a tile in the old app's place that opens the "coming later" state. */
+    ASTHA("astha"), CAMPAIGN_ENROLLMENT("campaign_enrollment");
 
     /** The destination this screen is for, when it is a tile. */
     val leaf: AmoLeaf? get() = tileId?.let { id -> AmoLeaf.entries.firstOrNull { AmoMenu.tileId(it) == id } }
@@ -109,6 +111,11 @@ fun AmoApp(
                 // Lane A3 builds the journey; until then the tile opens an honest empty state (D-AMO-MAN-02 (c)).
                 AmoFrame(stringResource(HomeR.string.hm_tile_sales_journey), { screen = AmoScreen.HOME }, icon = com.aktcl.aron.core.ui.R.drawable.aron_art_sales_journey) {
                     com.aktcl.aron.core.ui.AronEmptyState(stringResource(R.string.amo_shell_no_data), Modifier.testTag("amo_journey_empty"))
+                }
+            } else if (AmoMenu.isHook(s.tileId.orEmpty())) {
+                val tile = tiles.first { it.id == s.tileId }
+                AmoFrame(stringResource(tile.label), { screen = AmoScreen.HOME }, icon = amoTileIcon(tile.id)) {
+                    com.aktcl.aron.feature.home.ComingSoonContent(onBack = { screen = AmoScreen.HOME })
                 }
             } else {
                 // A screen without a tile (Support) whose host is not ready after a recreation goes back to Settings instead of crashing.

@@ -19,6 +19,7 @@ object ReasonTexts {
         RecordOutcomeCode.UNKNOWN_SKU to ("পণ্যটি তালিকায় নেই।" to "The product is not in the list."),
         RecordOutcomeCode.UNKNOWN_OUTLET to ("দোকানটি তালিকায় নেই।" to "The outlet is not in the list."),
         RecordOutcomeCode.UNKNOWN_ROUTE to ("রুটটি তালিকায় নেই।" to "The route is not in the list."),
+        RecordOutcomeCode.CLUSTER_NAME_EXISTS to ("এই নামে ক্লাস্টার আগে থেকেই আছে; সেটিই ব্যবহার করুন।" to "A cluster with this name already exists; use it instead."),
         RecordOutcomeCode.ARITHMETIC_MISMATCH to ("মেমোর হিসাব মিলছে না; পর্যালোচনার জন্য রাখা হয়েছে।" to "The memo totals do not add up; held for review."),
         RecordOutcomeCode.MEMO_NO_INVALID to ("মেমো নম্বরটি সঠিক নয়।" to "The memo number is not valid."),
         RecordOutcomeCode.MEMO_NO_DUPLICATE to ("এই মেমো নম্বর আগেই ব্যবহার হয়েছে; পর্যালোচনার জন্য রাখা হয়েছে।" to "This memo number was already used; held for review."),

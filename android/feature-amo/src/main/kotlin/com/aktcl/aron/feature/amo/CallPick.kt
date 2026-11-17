@@ -105,6 +105,8 @@ fun AmoCallPickContent(
     range: CallRange, enabledOutlet: Boolean, locked: Boolean,
     onOpenRoute: () -> Unit, onOpenOutlet: () -> Unit, onChip: (String) -> Unit, onOverride: () -> Unit, onRefresh: () -> Unit,
     modifier: Modifier = Modifier, below: @Composable () -> Unit = {},
+    /** Sales path (screenshots 21 and 22): the Sales tile shows under the fields before any retailer is chosen. */
+    belowWhenIdle: Boolean = false,
 ) {
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         DropField(routeText, stringResource(R.string.amo_cp_route_placeholder), enabled = !locked, dot = false, onClick = onOpenRoute, modifier = Modifier.fillMaxWidth().testTag(CallPickTags.ROUTE))
@@ -114,7 +116,7 @@ fun AmoCallPickContent(
         }
         if (letters.isNotEmpty()) AlphabetBar(letters, chip, onChip, enabled = !locked)
         when (range) {
-            CallRange.Idle -> Unit
+            CallRange.Idle -> if (belowWhenIdle) below()
             CallRange.Checking -> Text(stringResource(R.string.amo_cp_checking), style = amoText(16, color = LocalAronLook.current.inkMuted, align = TextAlign.Center), modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag(CallPickTags.CHECKING))
             is CallRange.Out -> Column(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("⚠", style = amoText(36, color = Color(0xFFD32F2F)))
@@ -227,7 +229,7 @@ fun AmoMenuTiles(tiles: List<MenuTile>, modifier: Modifier = Modifier) {
                     .testTag(t.tag).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = t.onClick).padding(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
             ) {
-                androidx.compose.foundation.Image(painterResource(t.icon), null, Modifier.size(44.dp))
+                androidx.compose.foundation.Image(painterResource(t.icon), null, Modifier.size(52.dp))
                 Text(stringResource(t.label), style = amoText(14, color = look.tileLabel, align = TextAlign.Center), modifier = Modifier.padding(top = 6.dp).widthIn(max = 140.dp))
             }
         }

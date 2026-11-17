@@ -96,7 +96,16 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
         metaSource = CaptureMetaSource { _, rid -> day.metaProvider.meta(rid ?: 0L) }, nowIso = { day.iso(day.currentMs()) },
         findMemo = { dao.memo(it) }, numbering = day.memoNumbering,
     )
-    val flow = SaleFlow(FileDraftStore(File(context.filesDir, "sale-drafts-" + day.userId)), catalog, committer)
+    val flow = SaleFlow(
+        FileDraftStore(File(context.filesDir, "sale-drafts-" + day.userId)), catalog, committer,
+        ownTaken = { memoUuid ->
+            // a memo's lines plus its reward packs: what an edit of it gets back into the stock figure
+            val taken = HashMap<Long, Long>()
+            dao.linesOf(memoUuid).forEach { taken.merge(it.skuId, it.qtyBase, Long::plus) }
+            dao.discountsOf(memoUuid).filter { it.kind == "drp" && it.skuId != null }.forEach { taken.merge(it.skuId!!, it.qtyBase ?: 0L, Long::plus) }
+            taken
+        },
+    )
 
     /** When each call was started (the SR tapped Yes on the start prompt); read when the visit closes. */
     val callStarted = java.util.concurrent.ConcurrentHashMap<String, String>()
@@ -223,7 +232,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
     /** Starts the edit draft: the old memo's lines and payment pre-filled, the outlet read-only, the reason recorded. */
     suspend fun beginEdit(memoUuid: String, reason: EditReason) {
         val old = checkNotNull(dao.memo(memoUuid)) { "memo not on this phone" }
-        flow.start(SaleVisit(old.visitClientUuid, old.outletId, old.meta.routeId, old.meta.businessDate, PriceType.OUTLET.wire))
+        flow.start(SaleVisit(old.visitClientUuid, old.outletId, old.meta.routeId, old.meta.businessDate, PriceType.OUTLET.wire), editing = memoUuid) // the edit gets its own memo's quantity back
         val catalog = flow.state.value.catalog
         dao.linesOf(memoUuid).forEach { l -> catalog[l.skuId]?.let { sku -> EntryUnits.restore(sku.entry, sku.baseUnit, l.qtyBase).let { (q, u) -> flow.setQuantity(l.skuId, q, u) } } }
         if (old.paidMtk > 0) flow.setPaid(old.paidMtk)
