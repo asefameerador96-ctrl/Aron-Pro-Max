@@ -122,7 +122,19 @@ class AmoDayLockGateTest {
     }
 
     @Volatile private var loads = 0
-    private val sku = SaleSku(1, "MAXR20", "cigarette", "MaxR 20S", null, "stick", 20, 7_935, 1, "2026-09-01", entryUnitDefault = "pack")
+    private val sku = SaleSku(1, "MAXR20", "cigarette", "MaxR 20S", null, "stick", 20, 7_935, 1, "2026-09-01", entryUnitDefault = "pack", stockBase = 200)
+
+    /** The stock gate (D-OWNER-PREREQ-01 rule 2, AMO as well as SR): the day's issue of [sku] before any sale. */
+    private fun issueStock(routeId: Long? = route) = runBlocking {
+        repo.recordStock(
+            listOf(
+                com.aktcl.aron.core.database.entity.StockMovementEntity(
+                    clientUuid = ClientIds.newUuid(), meta = meta(routeId), kind = "issue", skuId = sku.skuId, qtyEntered = 10,
+                    unitEntered = "pack", packFactor = 20, qtyBase = 200, slipPrinted = false,
+                ),
+            ),
+        )
+    }
 
     /** The AMO kit's Save and Print on a draft of two packets on [v] (AmoSaleKit.newSaleViewModel's chain). */
     private fun saveAndPrint(v: OpenVisit, refused: MutableStateFlow<Boolean>): SaveAndPrint = runBlocking {
@@ -130,6 +142,7 @@ class AmoDayLockGateTest {
             repo, numbers = { _, _ -> error("numbered through MemoNumbering") }, metaSource = { _, rid -> meta(rid) }, nowIso = { now },
             findMemo = { db.captureDao().memo(it) }, numbering = MemoNumbering("amo334001", 0, 500),
         )
+        runCatching { issueStock() } // after the zone's Final Submit a stock issue is refused too; the sale below is what this test drives
         val flow = SaleFlow(FileDraftStore(File(app.cacheDir, "x4a-amo-drafts-" + ClientIds.newUuid())), { _, _ -> listOf(sku) }, committer)
         flow.start(SaleVisit(v.visitUuid, v.outletId, v.routeId, date, "outlet"))
         flow.setQuantity(sku.skuId, 2, sku.entry.unit)
