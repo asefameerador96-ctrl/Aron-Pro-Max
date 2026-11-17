@@ -454,6 +454,7 @@ Code catalogue (`RecordOutcomeCode`):
 | `day_final_submitted` | rejected | no | a memo, memo edit, void, return or collection captured (by a trusted clock) at or after its zone-day's Final Submit; `day_submit` and `attendance_event` after the lock are still accepted (contract 1.10.0, D-TSO-MAN-31, R-W-01; s4.9 rule 4) |
 | `ticket_state_invalid` | rejected | no | a `support_ticket_event` the ticket's state does not allow (a comment after the ticket left new and in_progress, a close review before it is resolved) or on another user's ticket (contract 1.10.0, D-TSO-MAN-20, 21) |
 | `issue_type_unknown` | rejected | no | a `support_ticket` whose `issue_type_code` is not an active `ticket_issue_type` code on its business date (contract 1.10.0, D-TSO-MAN-19) |
+| `cluster_name_exists` | rejected | no | a `cluster_create` outlet request whose name repeats a cluster of the route's zone or another open cluster request of it, case-insensitive (contract 1.16.0, D-SV2-04); the detail names the cluster or request, the SR uses that cluster instead |
 
 ### 4.6 Resume, retry and ordering guarantees
 
@@ -943,6 +944,7 @@ Legend. **Levels:** G global, ROLE, W wing, D division, T territory, GC geo_clas
 | `cfg.sale.qty_entry_unit` | json (category → unit) | {cigarette: pack, bidi: pack, lighter: pack, match: dozen} (V0104, D-UNITS-02; was stick, stick, piece, dozen) | units of `QtyUnit` | G | O | S, FD | both | C3 |
 | `cfg.sale.allow_loose_base_units` (**new**, D-UNITS-02) | bool | false | — | G | O | B | both | C2 |
 | `cfg.sale.call_photo_required` (**new**, contract 1.14.0, SRM-A-27) | bool | **false** (shipped off; the owner default is mandatory, switched on in the portal with the app build that sends the photo, part A Q8) | — | G R | S | B | both | C1 |
+| `cfg.sale.journey_repeat_sale_enabled` (**new**, contract 1.16.0, journey) | bool | **false** (shipped off; the server Sales Journey names a second sale at the same outlet on the same day `repeat_sale` only when on, switched on with the AMO build that knows the value) | — | G | S | B | both | C1 |
 | `cfg.sale.max_lines_per_memo` | int | 60 | 40..200 | G | O | B | both | C1 |
 | `cfg.sale.stock_check` | enum(off, warn, block) | warn | — | G W Z | F | B | both | C2 |
 | `cfg.sale.force_requires_photo` | bool | true | — | G T | F | B | both | C2 |
@@ -1346,6 +1348,7 @@ Every report is one `POST /v1/reports/{report_key}/query` with a `ReportQuery` (
 | `retailer-list` | Browse Retailer list export (PII columns by role) |
 | `sku-list` | Browse SKU list export with the price types the role may see (three decimals) |
 | `tso-visit-log` | TSO visit plans (contract 1.10.0, lead ruling R-F-12): plan date, TSO, zone, route, outlet, status, completed at, both answers by key, delegate task, the task and its status |
+| `posm-survey` | The answers of the POSM survey and the other surveys (contract 1.16.0, SRM-B-08): date, zone, route, outlet, SR, survey kind, question, answer, photo taken (a flag; the media id is never in the report); read from the reuse view `dw.v_survey_response` |
 
 Every export (xlsx, pdf, print) is listed in the export log `GET /v1/report-exports` with its filters, row count and PII flag. Column sets whose sample workbook is not yet seen carry `columns_known: false` in `GET /v1/reports` and are fixed when the sponsor provides the sample.
 

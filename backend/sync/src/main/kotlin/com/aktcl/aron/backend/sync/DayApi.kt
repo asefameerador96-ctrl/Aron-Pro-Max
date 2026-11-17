@@ -37,6 +37,7 @@ import kotlinx.serialization.json.put
 import org.jdbi.v3.core.Handle
 import java.nio.ByteBuffer
 import java.security.MessageDigest
+import java.time.Duration
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -45,6 +46,8 @@ import java.util.UUID
 data class SalesSubmitRequest(
     val client_uuid: String, val scope: String, val route_id: Long? = null, val business_date: String, val submit_cycle: Int,
     val device_counts: JsonObject, val device_money: JsonObject, val submitted_with_dues: Boolean, val dues_outstanding_mtk: Long,
+    /** 1.16.0, optional: the phone's clock at the moment the rep pressed Sales Submit (same format and clock as the record envelopes); absent from older clients (the server stamps its own time and the route-day says `late_rows_anchor = server`). */
+    val captured_at: String? = null,
 )
 
 @Serializable
@@ -185,6 +188,10 @@ fun Route.dayRoutes(d: DayDeps) {
 
 private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
 
+/** B6: an online Sales Submit's phone clock must lie within these skews of the server's receipt time, else the server's time is the anchor and it is marked `server`. */
+internal val ONLINE_ANCHOR_PAST_SKEW: Duration = Duration.ofHours(6)
+internal val ONLINE_ANCHOR_FUTURE_SKEW: Duration = Duration.ofMinutes(5)
+
 /** The AMO/TSO day state of [userId] on [date] (contract SupervisorDayState); null when the user has no such day. */
 internal fun supervisorDayState(h: Handle, userId: Long, date: LocalDate): SupervisorDayStateDto? =
     h.createQuery("SELECT checked_in_at IS NOT NULL AS ci, sales_submitted_at IS NOT NULL AS ss, submit_cycle FROM app.supervisor_day WHERE user_id = :u AND business_date = :d")
@@ -236,6 +243,7 @@ class DayService(
         }
         if (req.submit_cycle !in 1..50) throw invalid("/submit_cycle")
         if (req.dues_outstanding_mtk < 0) throw invalid("/dues_outstanding_mtk")
+        if (req.captured_at != null && runCatching { java.time.Instant.parse(req.captured_at) }.isFailure) throw invalid("/captured_at")
         // A retry of a submit already stored (the first response was lost) skips the ingest: the synthesized record
         // carries the server's time, so a second copy would not be byte-identical. The state is read back either way.
         if (!storedFor(p.userId, req.client_uuid)) {
@@ -244,7 +252,7 @@ class DayService(
                     .mapTo(String::class.java).findOne().orElse(null)
             }
             val res = try {
-                checkNotNull(ingest) { "Sales Submit needs the ingest service" }.ingest(Uploader(p.userId, p.role, p.scopeVersion, deviceId, deviceUuid, key?.let(DeviceProof::publicKey)), onlineBatch(req, deviceUuid))
+                checkNotNull(ingest) { "Sales Submit needs the ingest service" }.ingest(Uploader(p.userId, p.role, p.scopeVersion, deviceId, deviceUuid, key?.let(DeviceProof::publicKey), serverStamped = true), onlineBatch(req, deviceUuid))
             } catch (e: ApiProblem) {
                 // Two copies racing: the first one's record is stored; the second answers its state.
                 if (e.code != ProblemCode.ERR_SYNC_BATCH_UUID_REUSED || !storedFor(p.userId, req.client_uuid)) throw e
@@ -291,11 +299,24 @@ class DayService(
         }.list()
 
     /** The online submit as the record the outbox would carry; counts the request does not hold are zero (online means the day's outbox is empty). */
+    /**
+     * The phone's clock for the online Sales Submit, or null when it cannot anchor the late-row count (B5, B6): absent, unparseable, or not within the allowed skew of the server's
+     * receipt time: at most [ONLINE_ANCHOR_PAST_SKEW] in the past (a slow clock, a late send) and at most [ONLINE_ANCHOR_FUTURE_SKEW] in the future (a future anchor would hide late rows).
+     * The bound is about the CLOCK only; the business date plays no part (ingest allows `cfg.sync.max_backdate_days`, so a submit today for an earlier date with an accurate clock is fine).
+     * Null means: the record carries the server's time and `anchor_clock = server`.
+     */
+    internal fun plausiblePhoneClock(req: SalesSubmitRequest, now: java.time.Instant): java.time.Instant? {
+        val t = req.captured_at?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() } ?: return null
+        if (t.isBefore(now.minus(ONLINE_ANCHOR_PAST_SKEW)) || t.isAfter(now.plus(ONLINE_ANCHOR_FUTURE_SKEW))) return null
+        return t
+    }
+
     private fun onlineBatch(req: SalesSubmitRequest, deviceUuid: String): SyncBatchRequest {
         val now = clock.now()
+        val phoneClock = plausiblePhoneClock(req, now)
         val record = buildJsonObject {
             put("type", "day_submit"); put("client_uuid", req.client_uuid); put("family_uuid", req.client_uuid); put("rank", 0)
-            put("schema_version", 1); put("business_date", req.business_date); put("captured_at", now.wire())
+            put("schema_version", 1); put("business_date", req.business_date); put("captured_at", (phoneClock ?: now).wire())
             put("captured_elapsed_ms", 0); put("boot_count", 0); put("clock_offset_ms", 0); put("captured_offline", false)
             req.route_id?.let { put("route_id", it) }
             put("config_version", 1)
@@ -304,6 +325,8 @@ class DayService(
                 put("device_money", req.device_money); put("rejected_count", 0); put("quarantined_count", 0); put("pending_count", 0)
                 put("submitted_with_dues", req.submitted_with_dues); put("dues_outstanding_mtk", req.dues_outstanding_mtk)
                 put("retailers_with_dues", 0); put("stock_slip_printed", false)
+                // The anchor's clock travels WITH the record (B5): the same RecordWriter statement stores it, so a retry, a quarantine and its release keep it.
+                if (req.scope == "route_day" && phoneClock == null) put("anchor_clock", "server")
             })
         }
         return SyncBatchRequest(

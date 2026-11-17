@@ -148,7 +148,7 @@ class ReuseSurfaceTest {
         }
         // The BI reader reads the flagged memos but never the printed number; every other view stays a whole-table grant.
         assertEquals("f|t|t|t", c.scalar("SELECT concat_ws('|', has_column_privilege('bi_reader', 'dw.v_memo_flags', 'memo_no', 'SELECT'), has_column_privilege('bi_reader', 'dw.v_memo_flags', 'memo_client_uuid', 'SELECT'), has_table_privilege('bi_reader', 'dw.v_memo', 'SELECT'), has_column_privilege('web_ro', 'dw.v_memo_flags', 'memo_no', 'SELECT'))"))
-        assertEquals("0", c.scalar("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'dw' AND c.relkind = 'v' AND c.relname LIKE 'v\\_%' AND c.relname <> 'v_memo_flags' AND NOT has_table_privilege('bi_reader', c.oid, 'SELECT')"))
+        assertEquals("0", c.scalar("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'dw' AND c.relkind = 'v' AND c.relname LIKE 'v\\_%' AND c.relname NOT IN ('v_memo_flags', 'v_survey_response') AND NOT has_table_privilege('bi_reader', c.oid, 'SELECT')"))   // both are read by column (V0118 memo_no, V0191 answer_text)
     }
 
     @Test
