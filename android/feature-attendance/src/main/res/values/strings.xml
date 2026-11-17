@@ -44,4 +44,11 @@
     <string name="att_amo_out_after">Check Out will be active after %1$s</string>
     <string name="att_amo_already_in">Already Checked-In</string>
     <string name="att_amo_already_out">Already Checked-Out</string>
+    <string name="att_gate_title">Check in first</string>
+    <string name="att_gate_body">Stock, sales, visits and outlet requests open after you check in today. Tap Check in, then come back.</string>
+    <string name="att_gate_go">Go to check-in</string>
+    <string name="att_gate_out_title">You have checked out for today</string>
+    <string name="att_gate_out_body">Stock, sales and visits are closed for today. They open again after tomorrow\'s check-in. You can still read your memos, the summary and the sales submit.</string>
+    <string name="att_gate_close_call">Close the open call</string>
+    <string name="att_gate_notice">Check in first. Stock, sales and visits open after you check in.</string>
 </resources>

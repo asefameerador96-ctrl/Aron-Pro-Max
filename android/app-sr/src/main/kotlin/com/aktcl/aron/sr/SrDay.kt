@@ -125,7 +125,15 @@ class SrDay(
     internal val database: AronDatabase get() = db
     val userDisplayName: String get() = userName
     private val clock = components.trustedClock
-    val capture = CaptureRepository(db) { iso(clock.nowMs()) }
+    /** D-OWNER-PREREQ-01 rule 1: the operational writes of this day object are refused without an open check-in (the write layer decides, from Room). */
+    val capture = CaptureRepository(db, requireCheckIn = true) { iso(clock.nowMs()) }
+
+    /**
+     * The UI mirror of the gate: why operational screens are closed right now, or null. Starts locked (fail closed) and is re-read from Room on
+     * start, after every check-in and check-out, on resume and at the Dhaka boundaries; the write layer never trusts it.
+     */
+    val dayGate = kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.core.database.repo.AttendanceRefusal?>(com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN)
+    suspend fun refreshDayGate() { dayGate.value = runCatching { capture.attendanceRefusal(businessDate()) }.getOrDefault(dayGate.value) }
     val reference = ReferenceRepository(db)
     val visitSession = VisitSession()
     /** Sale, memo, summary and Sales Submit of android-sr-b on this user's database (one per day object). */
@@ -374,6 +382,7 @@ class SrDay(
         fixes = fixSource, metaProvider = metaProvider,
         committer = { e, f ->
             capture.recordAttendance(e, f)
+            refreshDayGate()
             // The record is safe in Room; a failing hook must never undo it or leave the screen half-updated.
             runCatching {
                 val policy = DeviceOwnerPolicy.get(context)

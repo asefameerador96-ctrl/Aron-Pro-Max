@@ -124,6 +124,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.aktcl.aron.feature.home.R as HomeR
 
+/** The screens that write operational records: closed ("check in first") without an open check-in. Reading screens, Sales Submit, Settings, Support and printer diagnostics stay open. */
+internal val SR_CHECKIN_GATED = setOf(SrScreen.STOCK, SrScreen.PICKER, SrScreen.VISIT, SrScreen.FORCE, SrScreen.NO_SALE, SrScreen.SKIP, SrScreen.EDIT, SrScreen.OUTLET_MENU, SrScreen.OWN_REQUESTS, SrScreen.REQUEST_FORM, SrScreen.CLUSTERS)
+
+/** The call screens, where an already open call can still be closed (that close is exempt from the gate). */
+internal val SR_CALL_SCREENS = setOf(SrScreen.VISIT, SrScreen.FORCE, SrScreen.NO_SALE)
+
 enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS }
 
 /** The screen tree of the SR app: Back and the top bar's back button follow the same parent mapping; depth drives the transition direction. */
@@ -266,7 +272,7 @@ fun SrApp(
     LaunchedEffect(Unit) {
         day.recoverPrinting(); day.resumeMedia()
         day.reload(); day.nextSequenceFromStore(); day.restoreOpenVisit(); day.taskBoard.load()
-        day.attendance.restore(day.attendanceToday()); day.attendance.refreshSubmit()
+        day.attendance.restore(day.attendanceToday()); day.attendance.refreshSubmit(); day.refreshDayGate()
         if (screen == SrScreen.HOME && permissions.toAsk.isNotEmpty()) screen = SrScreen.PERMISSIONS
         launch { startBundleDownload(); day.taskBoard.load(); resumeTick++ }
     }
@@ -274,7 +280,8 @@ fun SrApp(
     var boundary by remember { mutableStateOf(0) }
     LaunchedEffect(boundary) {
         delay(day.millisToNextBoundary())
-        day.attendance.tick(); day.reload(); day.taskBoard.load()
+        // across Dhaka midnight yesterday's check-in must not read as today's (D-OWNER-PREREQ-01): restore from Room, never just tick the old copy
+        day.attendance.restore(day.attendanceToday()); day.refreshDayGate(); day.reload(); day.taskBoard.load()
         boundary++; resumeTick++
     }
     // N-038: a task notification opens the task list; a pull a push asked for refreshes it when it lands.
@@ -290,7 +297,7 @@ fun SrApp(
     }
     LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { day.taskBoard.load() } }
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-        scope.launch { day.attendance.refreshSubmit(); day.reload(); day.taskBoard.load(); resumeTick++ }
+        scope.launch { day.attendance.restore(day.attendanceToday()); day.attendance.refreshSubmit(); day.refreshDayGate(); day.reload(); day.taskBoard.load(); resumeTick++ }
     }
     // Several routes planned today: the SR picks one before anything else (F-SR-065).
     val planned = data.routes.map { PlannedRoute(it.routeId, it.name, it.plannedToday, it.sequenceNo) }
@@ -335,7 +342,21 @@ fun SrApp(
 
     // The camera draws only while a capture is open (and sits behind the camera permission gate of core-system).
     com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(stockAttempt, onAnswer = day::answerStockPrint, onClose = day::closeStockAttempt)
+    val dayGate by day.dayGate.collectAsState()
+    val openCallNow by day.visitSession.current.collectAsState()
+    var checkInNotice by remember { mutableStateOf(false) }
     AronScreenTransition(screen, SrNav::forward, Modifier.fillMaxSize()) { s ->
+        // the UI mirror of the check-in gate: an operational screen shows "check in first" (or "checked out") instead of its content
+        val closed = dayGate
+        if (closed != null && s in SR_CHECKIN_GATED) {
+            SrFrame(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_title), goBack, sync, openSync) {
+                com.aktcl.aron.feature.attendance.CheckInFirst(
+                    closed, onCheckIn = { checkInNotice = true; screen = SrScreen.ATTENDANCE },
+                    onCloseCall = if (openCallNow != null && s in SR_CALL_SCREENS) { { scope.launch { day.closeVisitAbandoned(); screen = SrScreen.HOME } } } else null,
+                )
+            }
+            return@AronScreenTransition
+        }
         when (s) {
         SrScreen.PERMISSIONS -> {
             LaunchedEffect(permissions) { if (permissions.toAsk.isEmpty()) screen = SrScreen.HOME }
@@ -370,8 +391,10 @@ fun SrApp(
             val header = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
             val snap = homeSnap
             HomeContent(
-                header, HomeTiles.resolve(enabledTiles, tasks.openCount), data.freshness, user.offline, health ?: deviceHealth,
+                header, HomeTiles.resolve(enabledTiles, tasks.openCount, locked = if (dayGate != null) HomeTiles.OPERATIONAL else emptySet()), data.freshness, user.offline, health ?: deviceHealth,
                 onTile = { t ->
+                    // check-in gate (rule 1): a locked tile leads straight to check-in, with the reason, never a dead end
+                    if (dayGate != null && t in HomeTiles.OPERATIONAL) { checkInNotice = true; screen = SrScreen.ATTENDANCE; return@HomeContent }
                     when (t) {
                         HomeTile.ATTENDANCE -> screen = SrScreen.ATTENDANCE
                         HomeTile.STOCK -> { day.forgetStock(); screen = SrScreen.STOCK }
@@ -407,12 +430,20 @@ fun SrApp(
                 val who = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
                 // D-NIGHT-CHECKOUT-01: the local Sales Submit is read on every visit (also back from the Sales Submit screen)
                 LaunchedEffect(Unit) { day.attendance.refreshSubmit() }
-                SrAttendanceContent(
-                    attendance, day.checkoutAtLabel(), onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
-                    userTitle = who.title, userSubtitle = who.subtitle, // Latin digits, as in the reference
-                    onOpenSalesSubmit = { screen = SrScreen.SUBMIT },
-                    offline = !day.isOnline(), // read on each composition of the screen (one capabilities read, no callback)
-                )
+                androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) {
+                    // arrived from a locked tile: say why (rule 1); gone once the rep has checked in
+                    if (checkInNotice && dayGate == com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN) {
+                        com.aktcl.aron.core.ui.AronBanner(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_notice), kind = com.aktcl.aron.core.ui.BannerKind.Warning)
+                    }
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                        SrAttendanceContent(
+                            attendance, day.checkoutAtLabel(), onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
+                            userTitle = who.title, userSubtitle = who.subtitle, // Latin digits, as in the reference
+                            onOpenSalesSubmit = { screen = SrScreen.SUBMIT },
+                            offline = !day.isOnline(), // read on each composition of the screen (one capabilities read, no callback)
+                        )
+                    }
+                }
             }
         }
         SrScreen.SETTINGS -> {
@@ -543,7 +574,25 @@ fun SrApp(
         }
         SrScreen.TASKS -> SrFrame(stringResource(R.string.sr_tasks_title), goBack, sync, openSync) {
             LaunchedEffect(Unit) { day.taskBoard.load() }
-            TaskContent(tasks, onResolve = { id -> scope.launch { day.taskBoard.resolve(id) } }, onMyRequests = { screen = SrScreen.OWN_REQUESTS }, manual = true)
+            // the list is reading and stays open; RESOLVING a task is an operational write: without an open check-in it asks for one (rule 1), never a crash
+            var taskNeedsCheckIn by remember { mutableStateOf(false) }
+            TaskContent(
+                tasks,
+                onResolve = { id ->
+                    if (dayGate != null) taskNeedsCheckIn = true
+                    else scope.launch {
+                        try { day.taskBoard.resolve(id) } catch (e: com.aktcl.aron.core.database.repo.AttendanceRefusedException) { day.refreshDayGate(); taskNeedsCheckIn = true }
+                    }
+                },
+                onMyRequests = { screen = SrScreen.OWN_REQUESTS }, manual = true,
+            )
+            if (taskNeedsCheckIn) {
+                com.aktcl.aron.core.ui.aron.AronDialog(
+                    stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_title), stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_notice),
+                    stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_go),
+                    onConfirm = { taskNeedsCheckIn = false; checkInNotice = true; screen = SrScreen.ATTENDANCE }, onDismiss = { taskNeedsCheckIn = false },
+                )
+            }
         }
         SrScreen.OWN_REQUESTS -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync, icon = CoreR.drawable.aron_art_outlet) {
             // a failed read is an error with a retry, not an empty list that says "no requests"

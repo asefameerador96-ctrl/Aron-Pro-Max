@@ -22,7 +22,20 @@ What the server would need, in `IngestService` at memo ingest:
   phone's balance includes it (map gap 12). Reward packs are not subtracted server-side at all. Both need fixing first,
   or the flag will fire on correct memos.
 
-## 2. Nothing else
+## 2. Flag operational records on a user-day with no check-in (rule 1)
+
+The phone now refuses every operational write without an open check-in on the record's business date. The ruling says the **server flags
+and never refuses**: sales are offline-first and a batch can reach the server before the check-in that opened its day. The server has no
+signal today (`RiskSignalCode` has no such code; a first `visit` even moves the route-day to `in_field`). Needed, in the pattern of
+`CHECKOUT_WITHOUT_SUBMIT` (post-batch): a risk signal when a `visit`, `memo`, `stock_movement`, `due_collection` or AMO record of a user-day has no
+`attendance_event` check-in for that business date once the batch (and the day's earlier batches) is settled. That needs a contract code
+and the database constraint migration, so it is for the server lanes.
+
+Also unhandled on Android and worth a server-side decision: a rep on a replacement phone checks in again, and the server answers
+`attendance_duplicate` (unique `(user_id, business_date, kind)`). The phone's local check-in is what counts, so this should be an accepted
+duplicate, not an error the rep sees.
+
+## 3. Nothing else
 
 No contract member is needed for slice 1: the phone sends the same records it always did. If the flag should reach the
 phone (it need not), that is a later contract addition, not this round.

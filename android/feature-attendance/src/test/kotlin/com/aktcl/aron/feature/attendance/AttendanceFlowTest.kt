@@ -43,6 +43,22 @@ class AttendanceFlowTest {
         assertEquals(1, committed.size)
     }
 
+    /**
+     * D-OWNER-PREREQ-01 rule 1: across Dhaka midnight the in-memory state must follow the STORED events of the new business date. `tick()` only
+     * re-uses the old copy (it kept yesterday's check-in), so the SR boundary, the resume and the AMO resume now call `restore()` with the new
+     * date's (empty) rows: yesterday's check-in stops reading as today's, and check-in is offered again.
+     */
+    @Test fun restoringWithTheNewDatesEmptyRowsClearsYesterdaysCheckIn() = runTest {
+        val f = flow()
+        f.checkIn()
+        assertTrue(f.state.value.checkedInAt != null)
+        f.tick() // the old behaviour at the boundary: still "checked in"
+        assertTrue(f.state.value.checkedInAt != null)
+        f.restore(emptyList()) // the new business date has no attendance
+        assertNull(f.state.value.checkedInAt); assertTrue(f.state.value.checkInEnabled); assertFalse(f.state.value.checkOutEnabled)
+        assertTrue(f.checkIn() is AttendanceResult.Done) // and a new check-in is possible
+    }
+
     @Test fun onlineAddressReplacesCoordinatesButNeverBlocksTheCommit() = runTest {
         val f = flow { _, _ -> "Gulshan, Dhaka" }
         f.checkIn()

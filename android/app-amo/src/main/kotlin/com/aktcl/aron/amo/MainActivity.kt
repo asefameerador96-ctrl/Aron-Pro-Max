@@ -189,7 +189,7 @@ class MainActivity : ComponentActivity() {
                                     s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, printerManager, s.user.fullName,
                                     runCatching { com.aktcl.aron.core.database.repo.MemoNumbering(s.user.username, s.user.bindOrdinal ?: 0, s.user.memoSeqBlockSize ?: 500) }.getOrNull(), deviceRuntime,
                                 )
-                                runCatching { d.reload(); d.attendance.restore(d.attendanceToday()) }
+                                runCatching { d.reload(); d.attendance.restore(d.attendanceToday()); d.refreshDayGate() }
                                 // F-SYS-030/010: the camera and this user's photo queue (Manual Override, Update Base, outlet requests).
                                 runCatching { d.attachMedia(mediaShell.componentsFor(s.user.userId, d::businessDate)) }
                                 day = d
@@ -198,11 +198,14 @@ class MainActivity : ComponentActivity() {
                             // a bundle is applied and on resume while the numbers are stale or failed; never in the way of the screen. The kept copy (Room, else
                             // the last good values) is held per MONTH inside CachedCallTargets, so a failed read never blanks the cards and never shows another month.
                             var targets by remember(s.user.userId) { mutableStateOf<com.aktcl.aron.feature.amo.CallTargets?>(null) }
+                            val dayScopeForResume = androidx.compose.runtime.rememberCoroutineScope()
                             var targetsStatus by remember(s.user.userId) { mutableStateOf(com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) }
                             var targetsRetryTick by remember(s.user.userId) { mutableStateOf(0) }
                             // coming back to the foreground: a session left open across Dhaka midnight shows the new date; a stale or failed card set tries again (8 s cap, no polling)
                             androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                                 vm.onResume()
+                                // a session left open across Dhaka midnight: yesterday's check-in must not read as today's (rule 1); the AMO had no boundary handling at all
+                                day?.let { d -> dayScopeForResume.launch { runCatching { d.attendance.restore(d.attendanceToday()); d.refreshDayGate() } } }
                                 if (targetsStatus != com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) targetsRetryTick++
                             }
                             LaunchedEffect(day, home.businessDate, bundleTick, targetsRetryTick) {
@@ -267,6 +270,25 @@ class MainActivity : ComponentActivity() {
                                     },
                                 )
                             } ?: emptyMap()
+                            // The UI mirror of the check-in gate (D-OWNER-PREREQ-01 rule 1): the operational screens show "check in first" (or "checked out")
+                            // until the day has an open check-in. The write layer refuses regardless; reading screens and Sales Submit stay open.
+                            val gateNow by (day?.dayGate ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.core.database.repo.AttendanceRefusal?>(null) }).collectAsStateWithLifecycle()
+                            val openCallNow by (day?.visitSession?.current ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.feature.outlet.OpenVisit?>(null) }).collectAsStateWithLifecycle()
+                            val gatedScreens = setOf(AmoScreen.STOCK, AmoScreen.SALE, AmoScreen.OUTLET, AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL, AmoScreen.TASK_DELEGATION, AmoScreen.SR_STOCK, AmoScreen.EXCEPTIONS)
+                            val gatedScreensMap: Map<AmoScreen, @Composable (() -> Unit) -> Unit> = screens.mapValues { (k, content) ->
+                                if (k !in gatedScreens) content else { back: () -> Unit ->
+                                    val why = gateNow
+                                    if (why == null) content(back) else {
+                                        val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
+                                        com.aktcl.aron.feature.amo.AmoFrame(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_title), back) {
+                                            com.aktcl.aron.feature.attendance.CheckInFirst(
+                                                why, onCheckIn = { navigate(AmoScreen.ATTENDANCE) },
+                                                onCloseCall = if (openCallNow != null && k in setOf(AmoScreen.CONTROL_CALL, AmoScreen.JOINT_CALL)) { { dayScope.launch { day?.closeVisit(); back() } } } else null,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                             val updateState by updateShell.state.collectAsStateWithLifecycle()
                             // F-SYS-075: the location notice first.
                             com.aktcl.aron.feature.auth.LocationNoticeGate(
@@ -293,7 +315,7 @@ class MainActivity : ComponentActivity() {
                                 sunlight = sunlight,
                                 onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                 onUpdate = { updateShell.openPage() },
-                                reach = reach, screens = screens, targets = targets, targetsStatus = targetsStatus,
+                                reach = reach, screens = gatedScreensMap, gateLocked = if (gateNow != null) gatedScreens else emptySet(), targets = targets, targetsStatus = targetsStatus,
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
                                 // tso-manual X4a (R-W-11, A3 ask 1): the routes closed by the zone's Final Submit; empty while all are open
                                 banners = amoDayLockBanners(day),

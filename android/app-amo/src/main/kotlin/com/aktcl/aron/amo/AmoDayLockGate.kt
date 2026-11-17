@@ -73,6 +73,8 @@ internal object AmoLockGate {
         try {
             write()
             true
+        } catch (e: com.aktcl.aron.core.database.repo.AttendanceRefusedException) {
+            false // D-OWNER-PREREQ-01 rule 1: no check-in on this date; nothing stored, the UI mirror (CheckInFirst) says why, never a crash
         } catch (e: Exception) {
             onRefused(DayRefusal.of(e) ?: throw e)
             false

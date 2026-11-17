@@ -98,6 +98,8 @@ object HomeScreenTags {
     const val DAY_DONE = "hm_day_done"
     const val KPI = "hm_kpi"
     const val STOCK = "hm_stock"
+    /** The lock drawn on an operational tile while the day has no open check-in. */
+    const val LOCK = "hm_tile_lock"
     const val MONEY = "hm_money"
     const val DISCOUNT = "hm_money_discount"
     const val QC = "hm_money_qc"
@@ -467,11 +469,20 @@ private fun HomeBanner(text: String, kind: BannerKind, modifier: Modifier = Modi
 private fun HomeTileItem(rt: ResolvedTile, freshness: BundleFreshness, dock: HomeDock?, modifier: Modifier, onTile: (HomeTile) -> Unit) {
     val needsSelling = rt.tile in SELLING_TILES
     val open = rt.badge?.let { stringResource(CoreR.string.core_ui_tile_badge, localizedNumber(it.toLong())) }
-    AronTile(
+    @Composable fun tile(m: Modifier) = AronTile(
         label = tileLabel(rt.tile), icon = painterResource(tilePainterRes(rt.tile)), onClick = { onTile(rt.tile) }, badge = rt.badge ?: 0,
         badgeDescription = open,
-        modifier = modifier.testTag(HomeScreenTags.tile(rt.tile)), enabled = !(needsSelling && !freshness.canSell),
+        modifier = m.testTag(HomeScreenTags.tile(rt.tile)), enabled = !(needsSelling && !freshness.canSell),
     )
+    if (!rt.locked) { tile(modifier); return }
+    // check-in gate: the tile still opens (it leads to check-in), the lock says why before the press
+    androidx.compose.foundation.layout.Box(modifier) {
+        tile(Modifier.fillMaxWidth())
+        androidx.compose.material3.Icon(
+            com.aktcl.aron.core.ui.AronIcons.Lock, contentDescription = stringResource(R.string.hm_tile_locked), tint = LocalAronLook.current.purple,
+            modifier = Modifier.align(Alignment.TopStart).padding(6.dp).size(16.dp).testTag(HomeScreenTags.LOCK),
+        )
+    }
 }
 
 /** The redrawn reference icon of each tile (`core-ui` drawables `aron_ic_*`, PARITY-SPEC s2.11). */

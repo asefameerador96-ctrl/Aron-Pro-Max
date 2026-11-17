@@ -217,7 +217,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
         val date = day.businessDate()
         val live = memo != null && dao.memosOn(date).none { it.supersedesClientUuid == memoUuid }
         val qcDone = memo != null && dao.qcLinesOn(date).any { it.visitClientUuid == memo.visitClientUuid }
-        EditGate.check(inGeofenceNow = true, qcCompleted = qcDone, memoIsLive = live, memoExists = memo != null)?.let { return it }
+        EditGate.check(inGeofenceNow = true, qcCompleted = qcDone, memoIsLive = live, memoExists = memo != null, checkedIn = day.capture.attendanceRefusal(date) == null)?.let { return it }
         val o = day.zoneOutlets.firstOrNull { it.outletId == memo!!.outletId }?.let(day::visitOutlet) ?: return EditDenied.OutsideGeofence
         val reading = day.fixSource.readFix("memo_edit")
         val verdict = GeoVerdicts.verdict(

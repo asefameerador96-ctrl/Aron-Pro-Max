@@ -5,7 +5,7 @@ change. Specification: `DECISIONS.md` D-OWNER-PREREQ-01 (owner) and D-LEAD-PRERE
 `docs/reference/prereq-gates-map-2026-11-13.md` (the map, re-checked against the code before building on it),
 `docs/device-lab/live-walk-report-2026-11-13.md` (defects D1, D2, force-sale state).
 
-Slices: **1 stock gate — done (pushed ec7b807a0, CI green)**, **4 defect D1 — done locally (push 2)**, 2 check-in gate, 3 check-out submits the sales. My own decisions
+Slices: **1 stock gate — done (pushed ec7b807a0, CI green)**, **4 defect D1 — done (pushed 40731485b, CI green)**, **2 check-in gate — done locally (push 3)**, 3 check-out submits the sales. My own decisions
 are `D-AGATE-01`..`03` in `DECISIONS.md`. **Nothing in this lane has been walked on a device.**
 
 ## Slice 1, the stock gate (owner rule 2, device defect D2)
@@ -105,6 +105,27 @@ All causes of the ruling were re-read against the code first; every one held. De
 
 Schema: Room 9 to 10 is an auto-migration (two nullable columns); `schemas/…/10.json` is committed and the migration test runs.
 Not done on purpose: no server change (the ack already carries `message_key`); no "seen" for a record another phone sent (this phone cannot act on it).
+
+## Slice 2, the check-in gate (owner rule 1)
+
+Decision D-AGATE-05. The numbers are the claimed gaps of the check-in section of the map; each was re-read first.
+
+| # | Gap | Result |
+|---|---|---|
+| 1 | No gate in the SR app (tiles open, writes commit) | **Closed.** `CaptureRepository(requireCheckIn = true)` in `SrDay`; locked tiles; `CheckInFirst` on the operational screens |
+| 2 | No gate in the AMO app | **Closed.** Same repository flag in `AmoDay`; gated screens in the shell; tile leads to Attendance |
+| 3 | TSO has no attendance | **Kept (the ruling).** Not gated, nothing built |
+| 4 | The write layer has no check-in refusal | **Closed.** `AttendanceGate` inside the transaction of every operational write (list in D-AGATE-05); proven write by write in `AttendanceGateTest`, with "nothing left behind" asserted. A separate `AttendanceRefusedException`, not a third `DayRefusal` value (that would have touched every exhaustive `when` of the lock dialogs) |
+| 5 | `cfg.day.checkin_gate` unread, D-329 | **Closed by decision.** Hard, not config-driven; D-329 superseded in D-AGATE-05; the key stays unread on purpose |
+| 6 | In-memory attendance stale across Dhaka midnight (SR tick, AMO none) | **Closed.** SR boundary and resume, and AMO resume, call `restore()` from Room; `AttendanceFlowTest.restoringWithTheNewDatesEmptyRows…`. The gate itself never used the memory copy |
+| 7 | Nothing closes after check-out | **Closed.** `CHECKED_OUT` refuses the operational writes; the screens say "you have checked out for today". The close of a call already open stays allowed |
+| 8 | A second phone cannot know the user checked in | **Kept.** The local check-in is what counts; the server's `attendance_duplicate` for a second check-in has no Android handler and this lane did not add one (named in the request file) |
+| 9 | The server neither refuses nor flags a no-check-in day | **Not mine.** Request in `docs/requests/android-gates.md` (a risk signal; never a refusal, an offline sale may upload before its check-in) |
+| 10 | The SR boundary timer is hard-coded 17:00 | **Slice 3** (it reads `cfg.day.checkout_earliest_time` there) |
+
+Exemptions, each with a test: check-in and check-out themselves; the close of an already open call (after the check-out too); Sales Submit; breadcrumbs and device status; media meta; print events (own ledger); uploads (the engine never uses the repository).
+
+Honest limits: (a) the AMO Home tile is not drawn with a lock icon (the shell's role tiles are another lane's model); it leads straight to Attendance and the gated screen says why, so there is no dead end. (b) A write that loses a midnight race inside a generic handler shows that handler's own "failed" text, not the check-in text; nothing is stored and nothing crashes (skip and task resolve are handled explicitly). (c) Proven by unit tests and Robolectric only; nothing on a device.
 
 ## What ran, and what did not
 

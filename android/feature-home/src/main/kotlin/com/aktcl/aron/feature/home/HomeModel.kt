@@ -41,17 +41,24 @@ enum class HomeTile(val key: String, val alwaysShown: Boolean) {
     val isProgramme: Boolean get() = this == ASTHA || this == LOYALTY_POINT || this == MATCH_PROGRAM || this == PHOTO_CAPTURE
 }
 
-data class ResolvedTile(val tile: HomeTile, val badge: Int?)
+/**
+ * [locked] (D-OWNER-PREREQ-01 rule 1): an operational tile while the day has no open check-in. It still opens, and leads to check-in; the
+ * lock is drawn on it so the rep sees why before pressing (no dead end).
+ */
+data class ResolvedTile(val tile: HomeTile, val badge: Int?, val locked: Boolean = false)
 
 object HomeTiles {
     /**
      * Tiles in order, resolved per user: tiles that are not always shown appear only when [enabledForUser] holds their
      * key (the bundle's `config`); the Tasks tile carries a badge equal to the open task count (hidden at zero).
      */
-    fun resolve(enabledForUser: Set<String>, openTasks: Int): List<ResolvedTile> =
+    fun resolve(enabledForUser: Set<String>, openTasks: Int, locked: Set<HomeTile> = emptySet()): List<ResolvedTile> =
         HomeTile.entries
             .filter { it.alwaysShown || it.key in enabledForUser }
-            .map { ResolvedTile(it, if (it == HomeTile.TASKS && openTasks > 0) openTasks else null) }
+            .map { ResolvedTile(it, if (it == HomeTile.TASKS && openTasks > 0) openTasks else null, it in locked) }
+
+    /** The tiles whose screens write operational records: locked without an open check-in. Reading screens (Memo, Summary, Journey, KPI, Tutorial, and the Tasks list, whose Resolve is what is gated) and Sales Submit stay open. */
+    val OPERATIONAL: Set<HomeTile> = setOf(HomeTile.STOCK, HomeTile.SALE, HomeTile.OUTLET)
 }
 
 /** Device-health line (F-SR-064): battery, free storage, pending rows, last sync, each with a warning flag. */

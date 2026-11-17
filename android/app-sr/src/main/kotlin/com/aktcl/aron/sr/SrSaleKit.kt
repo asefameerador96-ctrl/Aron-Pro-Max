@@ -282,7 +282,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         val live = memo != null && dao.memosOn(date).none { it.supersedesClientUuid == memoUuid }
         // SRM-B-17: QC "entered for the outlet" on the business date, whichever visit of that outlet recorded it
         val qcDone = memo != null && EditGate.qcEnteredForOutlet(memo.outletId, dao.qcLinesOn(date).map { dao.visit(it.visitClientUuid)?.outletId })
-        EditGate.check(inGeofenceNow = true, qcCompleted = qcDone, memoIsLive = live, memoExists = memo != null)?.let { return it }
+        EditGate.check(inGeofenceNow = true, qcCompleted = qcDone, memoIsLive = live, memoExists = memo != null, checkedIn = day.capture.attendanceRefusal(date) == null)?.let { return it }
         val o = day.dayData.value.outlets.firstOrNull { it.outletId == memo!!.outletId }?.let(day::visitOutlet) ?: return EditDenied.OutsideGeofence
         val reading = day.fixSource.readFix("memo_edit")
         val verdict = GeoVerdicts.verdict(

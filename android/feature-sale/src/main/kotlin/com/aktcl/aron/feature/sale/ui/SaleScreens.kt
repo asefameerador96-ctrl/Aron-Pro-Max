@@ -241,7 +241,7 @@ object SaleTags { const val QC_ONLY = "sale_qc_only" }
  * Sale, step 2: the product list (F-SR-023, sr/stock.webp layout with the sale quantity). One kit [PackCard] per SKU: packshot with the
  * packs badge, the SKU name, the red minus, the underlined sale quantity (tap to type), the purple plus and the stock figure; under it
  * the "price / unit · in stock" caption (the unit and price stay visible on every row), and, once a quantity is entered, the packs
- * equivalent with the line total and the over-stock warning (a warning, never a block). Quantities are in the SKU's own unit.
+ * equivalent with the line total and the stock stop (the quantity cannot go above what is held, D-OWNER-PREREQ-01 rule 2). Quantities are in the SKU's own unit.
  * A filter row (search, All, one pill per category) leads the list. The purple bottom panel carries the running total and the
  * gradient Proceed button. Stateless: the caller owns the quantities ([SaleFlow]) and passes the current review.
  */

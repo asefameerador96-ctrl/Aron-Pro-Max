@@ -22,7 +22,7 @@ fun interface AttendanceCommitter {
 data class AttendanceState(
     val checkedInAt: String? = null,
     val checkedOutAt: String? = null,
-    /** The check-in message is a prompt, never a block (Q-UI-04, `cfg.day.require_checkin_before_sale` off). */
+    /** The check-in message above the buttons. Since D-OWNER-PREREQ-01 rule 1 it is also a GATE (hard, no config): stock, sales and visits stay closed until a check-in exists (D-AGATE-05); this flag is only the screen's text, the gate reads stored attendance. */
     val showCheckInPrompt: Boolean = true,
     val checkInEnabled: Boolean = true,
     val checkOutEnabled: Boolean = false,

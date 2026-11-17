@@ -47,10 +47,26 @@ data class SaleCapture(
  */
 class CaptureRepository(
     private val db: AronDatabase,
+    /**
+     * D-OWNER-PREREQ-01 rule 1: when true (the SR and AMO day objects, the only places that write operational records) every operational
+     * write is refused inside its transaction without a check-in on the record's business date, and after the check-out
+     * ([AttendanceGate]). The repositories built for breadcrumbs, device status, media meta and the day-submit read leave it off: they
+     * write exempt records only. It comes BEFORE [nowIso] so the trailing-lambda form `CaptureRepository(db) { now }` keeps meaning the clock.
+     */
+    private val requireCheckIn: Boolean = false,
     private val nowIso: () -> String = { ISO_MILLIS.format(Instant.now()) },
 ) {
     private val capture = db.captureDao()
     private val outbox = db.outboxDao()
+
+    /** Why an operational write on [businessDate] would be refused by the check-in gate, or null. Pure read from stored attendance. */
+    suspend fun attendanceRefusal(businessDate: String): AttendanceRefusal? = AttendanceGate.refusal(capture, businessDate)
+
+    /** Inside the caller's transaction: refuses the write when [requireCheckIn] and the date has no open check-in. */
+    private suspend fun requireCheckedIn(businessDate: String) {
+        if (!requireCheckIn) return
+        AttendanceGate.refusal(capture, businessDate)?.let { throw AttendanceRefusedException(it, businessDate) }
+    }
 
     suspend fun recordAttendance(event: AttendanceEventEntity, fix: GeoFixEntity) = db.withTransaction {
         if (purged(event.clientUuid)) return@withTransaction emptyList()
@@ -88,6 +104,7 @@ class CaptureRepository(
             // a purged movement replayed is not captured again; one already stored (a retry of the same Save) is stored once
             val fresh = movements.filterNot { purged(it.clientUuid) || capture.stockMovement(it.clientUuid) != null }
             if (fresh.isEmpty()) return@withTransaction emptyList()
+            fresh.map { it.meta.businessDate }.distinct().forEach { requireCheckedIn(it) }
             fresh.map { it.meta }.distinct().forEach { requireNotFinal(it, STOCK_MOVEMENT) }
             capture.insertStock(fresh)
             val at = nowIso()
@@ -99,6 +116,7 @@ class CaptureRepository(
         if (purged(visit.clientUuid)) return@withTransaction emptyList()
         requireUuids(visit.clientUuid, fix.clientUuid)
         requireRoute(visit.meta)
+        requireCheckedIn(visit.meta.businessDate) // rule 1: a call cannot open without today's check-in
         requireOpenRouteDay(visit.meta, "visit") // tso-manual X4a (R-W-11): the call opens a locked type
         requireFixOf(fix, visit.clientUuid, visit.fixClientUuid)
         capture.insertFix(fix)
@@ -134,6 +152,7 @@ class CaptureRepository(
         }
         db.withTransaction {
             if (purged(m.clientUuid)) return@withTransaction emptyList()
+            requireCheckedIn(m.meta.businessDate) // rule 1
             requireOpenRouteDay(m.meta, "memo") // tso-manual X4a (R-W-11): a sale or an edit (a superseding memo)
             if (enforceStock && capture.memo(m.clientUuid) == null) requireStockHeld(sale) // a replay of a saved memo aborts below, not here. D-OWNER-PREREQ-01 rule 2, read INSIDE this transaction
             val visit = checkNotNull(capture.visit(m.visitClientUuid)) { "memo ${m.memoNo} has no visit on this phone" }
@@ -191,6 +210,7 @@ class CaptureRepository(
         capture.memo(sale.memo.clientUuid)?.memoNo?.let { return it }
         // tso-manual X4a (D-X4a-03): a sale the Final Submit lock refuses takes no memo number (checked again in recordSale);
         // follow-up (R-W-23): nor does one a standing Sales Submit refuses (the same route-day check, before the reserve)
+        requireCheckedIn(sale.memo.meta.businessDate) // a sale without a check-in takes no memo number either
         requireOpenRouteDay(sale.memo.meta, "memo")
         // an over-stock sale takes no memo number either (checked again inside the saving transaction)
         if (enforceStock) requireStockHeld(sale)
@@ -204,7 +224,7 @@ class CaptureRepository(
      * route-day check: no Final Submit lock and no standing Sales Submit (route-day or the AMO's supervisor day) closes its
      * route-day; a routeless collection is never checked. The memo screen draws Mark Paid only then. Pure reads, no write.
      */
-    suspend fun acceptsDueCollection(meta: CaptureMeta): Boolean = dayRefusal(meta, DUE_COLLECTION) == null
+    suspend fun acceptsDueCollection(meta: CaptureMeta): Boolean = dayRefusal(meta, DUE_COLLECTION) == null && (!requireCheckIn || AttendanceGate.refusal(capture, meta.businessDate) == null)
 
     /**
      * tso-manual X4a (R-W-23): why a capture of [recordType] with [meta] would be refused by this repository's route-day check,
@@ -234,6 +254,7 @@ class CaptureRepository(
         db.withTransaction {
             if (purged(due.clientUuid)) return@withTransaction emptyList()
             due.visitClientUuid?.let { checkNotNull(capture.visit(it)) { "due collection for a visit not on this phone" } }
+            requireCheckedIn(due.meta.businessDate) // rule 1: collecting a due is operational
             if (due.meta.routeId != null) requireOpenRouteDay(due.meta, DUE_COLLECTION) // tso-manual X4a (R-W-11): Mark Paid
             fix?.let { requireFixOf(it, due.clientUuid, due.fixClientUuid); capture.insertFix(it) }
             capture.insertDueCollection(due)
@@ -265,6 +286,7 @@ class CaptureRepository(
         require(ok) { "${record.recordType}: wrong family or rank (rank ${record.rank}, own family $own)" }
         if (!own && record.rank > 0 && record.recordType != "call_assessment_answer") requireRoute(record.meta)
         if (capture.amoRecordCount(record.clientUuid) > 0) return@withTransaction false
+        requireCheckedIn(record.meta.businessDate) // rule 1: every AMO record is operational
         requireOpenRouteDay(record.meta)
         capture.insertAmoRecord(record)
         outbox.insert(listOf(RecordMapping.amoRecord(record, nowIso())))
@@ -277,6 +299,7 @@ class CaptureRepository(
         requireUuids(skip.clientUuid)
         requireRoute(skip.meta)
         require(REASON_CODE.matches(skip.reasonCode)) { "reason_code must match ${REASON_CODE.pattern}" }
+        requireCheckedIn(skip.meta.businessDate)
         requireOpenRouteDay(skip.meta, "visit_skip") // tso-manual X4a (R-W-11)
         capture.insertVisitSkip(skip)
         outbox.insert(listOf(RecordMapping.visitSkip(skip, nowIso())))
@@ -296,6 +319,7 @@ class CaptureRepository(
         require(view.sequenceNo in 1..20) { "sequence_no is 1..20" }
         require(view.contentVersion >= 1) { "content_version is at least 1" }
         require(view.durationMs == null || view.durationMs in 0..3_600_000L) { "duration_ms is 0..3600000" }
+        requireCheckedIn(view.meta.businessDate)
         requireOpenRouteDay(view.meta)
         requireSrCall(view.visitClientUuid)
         if (capture.contentViewsOf(view.visitClientUuid).any { it.contentId == view.contentId }) return@withTransaction false
@@ -326,6 +350,7 @@ class CaptureRepository(
         answer.answerOptionCode?.let { require(REASON_CODE.matches(it)) { "answer_option_code must match ${REASON_CODE.pattern}" } }
         answer.answerText?.let { require(it.length <= 1000) { "answer_text is at most 1000 characters" } }
         answer.answerNum?.let { require(it.isFinite()) { "answer_num is a finite number" } }
+        requireCheckedIn(answer.meta.businessDate)
         requireOpenRouteDay(answer.meta)
         requireSurveyVisit(answer.visitClientUuid)
         check(capture.surveyResponsesOf(answer.visitClientUuid).none { it.surveyId == answer.surveyId && it.questionId == answer.questionId }) {
@@ -376,6 +401,7 @@ class CaptureRepository(
         if (capture.clusterCreates().any { it.clientUuid == c.clientUuid }) return@withTransaction true
         if (purged(c.clientUuid)) return@withTransaction false
         requireUuids(c.clientUuid, fix.clientUuid)
+        requireCheckedIn(c.businessDate)
         requireFixOf(fix, c.clientUuid, c.fixClientUuid)
         capture.insertFix(fix)
         capture.insertClusterCreate(c) > 0L
@@ -385,6 +411,7 @@ class CaptureRepository(
     suspend fun recordOutletRequest(request: OutletChangeRequestEntity, fix: GeoFixEntity) = db.withTransaction {
         if (purged(request.clientUuid) || capture.outletRequestCount(request.clientUuid) > 0) return@withTransaction emptyList() // a replay of a request already on this phone writes nothing
         requireUuids(request.clientUuid, fix.clientUuid)
+        requireCheckedIn(request.meta.businessDate)
         require(OutletRequestType.entries.any { it.wire == request.requestType }) { "request_type ${request.requestType} is not in the contract" }
         require((request.requestType == OutletRequestType.NEW.wire) == (request.outletId == null)) { "outlet_id is null exactly for a new outlet" }
         val photos = Json.decodeFromString(ListSerializer(String.serializer()), request.photoUuidsJson)
@@ -410,6 +437,7 @@ class CaptureRepository(
         if (purged(event.clientUuid)) return@withTransaction emptyList()
         requireUuids(event.clientUuid, event.taskUuid)
         require(event.event == "resolved") { "resolveTask writes a resolved event" }
+        requireCheckedIn(event.meta.businessDate)
         check(db.referenceDao().completeTask(event.taskUuid, resolvedAt) == 1) { "task ${event.taskUuid} is not on this phone" }
         capture.insertTaskEvent(event)
         outbox.insert(listOf(RecordMapping.taskEvent(event, nowIso())))

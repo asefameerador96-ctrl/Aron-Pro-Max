@@ -43,4 +43,11 @@
     <string name="att_amo_out_after">চেক আউট %1$sটার পরে সক্রিয় হবে</string>
     <string name="att_amo_already_in">ইতিমধ্যে চেক ইন করা হয়েছে</string>
     <string name="att_amo_already_out">ইতিমধ্যে চেক আউট করা হয়েছে</string>
+    <string name="att_gate_title">আগে হাজিরা দিন</string>
+    <string name="att_gate_body">আজ হাজিরা দেওয়ার পরেই স্টক, বিক্রি, ভিজিট ও আউটলেট অনুরোধ খোলে। হাজিরা দিন চাপুন, তারপর ফিরে আসুন।</string>
+    <string name="att_gate_go">হাজিরায় যান</string>
+    <string name="att_gate_out_title">আজকের জন্য আপনি চেক-আউট করেছেন</string>
+    <string name="att_gate_out_body">আজ স্টক, বিক্রি ও ভিজিট বন্ধ। আগামীকালের হাজিরার পর আবার খুলবে। মেমো, সারসংক্ষেপ ও বিক্রয় জমা দেখতে পারবেন।</string>
+    <string name="att_gate_close_call">খোলা কলটি বন্ধ করুন</string>
+    <string name="att_gate_notice">আগে হাজিরা দিন। হাজিরার পর স্টক, বিক্রি ও ভিজিট খুলবে।</string>
 </resources>

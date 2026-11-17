@@ -98,7 +98,12 @@ class AmoDay(
             store = RoomCallTargetsStore(db.referenceDao()),
         )
     }
-    val capture = CaptureRepository(db) { iso(clock.nowMs()) }
+    /** D-OWNER-PREREQ-01 rule 1: the operational writes of this day object are refused without an open check-in (the write layer decides, from Room). */
+    val capture = CaptureRepository(db, requireCheckIn = true) { iso(clock.nowMs()) }
+
+    /** The UI mirror of the gate (see SrDay.dayGate): starts locked, re-read from Room, never trusted by the write layer. */
+    val dayGate = kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.core.database.repo.AttendanceRefusal?>(com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN)
+    suspend fun refreshDayGate() { dayGate.value = runCatching { capture.attendanceRefusal(businessDate()) }.getOrDefault(dayGate.value) }
     val reference = ReferenceRepository(db)
 
     private val isoMillis = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(java.time.ZoneOffset.UTC)
@@ -193,6 +198,7 @@ class AmoDay(
         fixes = fixSource, metaProvider = metaProvider,
         committer = { e, f ->
             capture.recordAttendance(e, f)
+            refreshDayGate()
             runCatching {
                 val policy = DeviceOwnerPolicy.get(context)
                 if (e.kind == "check_in") policy.onCheckInCommitted() else policy.onCheckOutCommitted()
