@@ -303,6 +303,7 @@ export const bn: Record<MessageKey, string> = {
   "req.type.cluster": "ক্লাস্টার পরিবর্তন",
   "req.type.location": "অবস্থান পরিবর্তন",
   "req.type.route_add": "রুটে যোগ",
+  "req.type.cluster_create": "নতুন ক্লাস্টার",
   "entity.outlet_requests": "আউটলেট অনুমোদন",
   "entity.outlet_requests.singular": "অনুরোধ",
   "menu.admin.outlet_requests": "আউটলেট অনুমোদন",
