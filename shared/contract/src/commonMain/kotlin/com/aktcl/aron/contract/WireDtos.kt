@@ -396,6 +396,8 @@ data class AttendanceEventPayload(
     @SerialName("kind") val kind: String,
     @Serializable(with = GeoFixWire::class) @SerialName("fix") val fix: GeoFix,
     @SerialName("address_display") val addressDisplay: String? = null,
+    /** Contract 1.20.0, `check_out` only: `rep` (also what an absent member means) or `phone` (the phone closed a forgotten day at a later start; read as "no check-out"). */
+    @SerialName("closed_by") val closedBy: String? = null,
 )
 
 /** One event per SKU per Save (an increment, never an overwrite). qty_entered is negative only for kind adjustment. */
