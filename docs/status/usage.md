@@ -3334,3 +3334,7 @@
 - Reviews: android-gates round 2 (2eb321bd0) FAIL 4 blocking; android-integrity slice 2 (49e6abc6) PASS; SR-1 2e66b5fbb PASS; sr-server 05d1b3bf8 PASS.
 - Retired: A-INT1 (successor A-INT2 session_014mnioMjQ5qzqfaDuFGE2SM). A-GATE2 writing a handover; successor A-GATE3 to start.
 - P-SR2b push still blocked on the owner's approval (8 commits local only).
+
+### Lane check 2026-11-17 22:47 UTC
+- Train 114a: lane ci 44186232155 success; INT now 9bb7f5cf1 (integrator pushed); deploy pending; health still 4e0645556.
+- Reviews: Loyalty C 1bb516a76 FAIL (1 blocking: released child closed as discarded), fix round with L-A10; AMO ca0071055 PASS; P-AMO2 retired, P-AMO3 session_014mnioQ9FLnKpmmTrqyizwA (b08bc42c lows, slice 3 = AMO Stock screen). SV5 d0618d115 (pre-flight follow-ups) green, unreviewed. Heads: android-gates 9395a341c, android-integrity 8becd888b, masterdata-fit 091f7fddd, TSO f0800021a.
