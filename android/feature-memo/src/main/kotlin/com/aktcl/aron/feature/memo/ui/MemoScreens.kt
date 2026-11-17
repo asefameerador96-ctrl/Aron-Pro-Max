@@ -548,6 +548,8 @@ fun SummaryScreen(
     emptyText: String? = null,
     /** The AMO prints an empty day too (screenshot 45 shows Print enabled; zero rows, zero totals); the SR keeps it off. */
     printWhenEmpty: Boolean = false,
+    /** The AMO's closing block (screenshot 45, manual p46): the green "Total sales" tab over a charcoal-headed Value table with Total, Discount (-) and Grand total, above Print. */
+    salesBlock: Boolean = false,
 ) {
     val look = LocalAronLook.current
     val empty = summary.skus.isEmpty()
@@ -604,6 +606,7 @@ fun SummaryScreen(
                     }
                 }
             }
+            if (salesBlock) SummarySalesBlock(summary)
             printButton()
             if (empty && !printWhenEmpty) Text(stringResource(R.string.summary_print_reason), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         }
@@ -636,7 +639,42 @@ fun SummaryScreen(
                 }
                 SummaryDock(summary, categoryLabel) { categoryUnit(it) }
             }
+            if (salesBlock) SummarySalesBlock(summary)
             printButton()
+        }
+    }
+}
+
+/**
+ * The AMO's "Total sales" block (screenshot 45): a green tab, a charcoal head with the one Value column, then Total, Discount "(-) n" and the grey Grand total row.
+ * Figures sit on solid surfaces: the green tab and the red discount hold 7:1 (SummarySalesBlockContrastTest); the programme discount is zero while docs/27 defers it.
+ */
+@Composable
+private fun SummarySalesBlock(summary: DaySummary) {
+    val look = LocalAronLook.current
+    val green = look.primaryStart ?: look.purple
+    val red = look.stopFill ?: look.red
+    Column(Modifier.fillMaxWidth().testTag("summary_sales_block")) {
+        Box(Modifier.clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)).background(green).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(stringResource(R.string.summary_block_title), style = MaterialTheme.typography.titleSmall, color = Color.White)
+        }
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(topEnd = 10.dp, bottomStart = 10.dp, bottomEnd = 10.dp))) {
+            Text(
+                stringResource(R.string.summary_col_value), style = MaterialTheme.typography.labelLarge, color = Color.White, textAlign = TextAlign.End,
+                modifier = Modifier.fillMaxWidth().background(Color(0xFF2B2B2B)).padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+            Row(Modifier.fillMaxWidth().background(look.card).padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(stringResource(R.string.summary_block_total), color = look.ink, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text(amount(summary.grossMtk), color = look.ink, style = MaterialTheme.typography.bodyMedium)
+            }
+            Row(Modifier.fillMaxWidth().background(look.card).padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(stringResource(R.string.summary_block_discount), color = red, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.summary_block_minus, amount(kotlin.math.abs(summary.discountAndOthersMtk))), color = red, style = MaterialTheme.typography.bodyMedium)
+            }
+            Row(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(stringResource(R.string.summary_block_grand), color = look.ink, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Text(amount(summary.grandTotalMtk), color = look.ink, style = MaterialTheme.typography.titleSmall)
+            }
         }
     }
 }

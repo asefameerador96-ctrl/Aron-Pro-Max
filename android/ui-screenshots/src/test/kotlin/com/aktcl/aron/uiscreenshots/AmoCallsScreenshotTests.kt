@@ -144,7 +144,25 @@ class AmoCallsScreenshotTests {
     // ---- rows 45 and 66 (Summary empty state; Sales Submit due warning and success dialogs) ----
     private val emptySummary = com.aktcl.aron.feature.memo.domain.DaySummary(emptyList(), emptyList(), 0L, 0L, 0L, 0)
     @Test fun amo_summary_empty_bn() = shot("amo_summary_empty_bn", AppLanguage.BN, "বিক্রয় সারসংক্ষেপ") {
-        com.aktcl.aron.feature.memo.ui.SummaryScreen(emptySummary, { "" }, {}, emptyText = "কিছু পাওয়া যায়নি", printWhenEmpty = true)
+        com.aktcl.aron.feature.memo.ui.SummaryScreen(emptySummary, { "" }, {}, emptyText = "কিছু পাওয়া যায়নি", printWhenEmpty = true, salesBlock = true)
+    }
+    // screenshot 45 / manual p46 with sales: the SKU table, the category dock, then the "Total sales" block above Print
+    private val daySummary = com.aktcl.aron.feature.memo.domain.DaySummary(
+        listOf(
+            com.aktcl.aron.feature.memo.domain.SkuSummaryRow(100, "cigarette", 2, 300, 240_000, 0, 240_000, 100, qtyEntered = 15, returnEntered = 5, unitKey = "packet"),
+            com.aktcl.aron.feature.memo.domain.SkuSummaryRow(105, "match", 1, 3, 84_000, 0, 84_000, 37, qtyEntered = 3, returnEntered = 37, unitKey = "dozen"),
+        ),
+        listOf(
+            com.aktcl.aron.feature.memo.domain.CategorySummaryRow("cigarette", 300, 240_000, 0, 240_000, 100, qtyEntered = 15, returnEntered = 5, unitKey = "packet"),
+            com.aktcl.aron.feature.memo.domain.CategorySummaryRow("match", 3, 84_000, 0, 84_000, 37, qtyEntered = 3, returnEntered = 37, unitKey = "dozen"),
+        ),
+        324_000, 0, 324_000, 3,
+    )
+    @Test @Config(qualifiers = "w360dp-h1000dp") fun amo_summary_data_bn() = shot("amo_summary_data_bn", AppLanguage.BN, "বিক্রয় সারসংক্ষেপ") {
+        com.aktcl.aron.feature.memo.ui.SummaryScreen(daySummary, { saleCatalog[it]?.code ?: "SKU" }, {}, categoryLabel = { if (it == "match") "ম্যাচ" else "সিগারেট" }, printWhenEmpty = true, salesBlock = true)
+    }
+    @Test @Config(qualifiers = "w360dp-h1000dp") fun amo_summary_data_bn_sunlight() = shot("amo_summary_data_bn_sunlight", AppLanguage.BN, "বিক্রয় সারসংক্ষেপ", sunlight = true) {
+        com.aktcl.aron.feature.memo.ui.SummaryScreen(daySummary, { saleCatalog[it]?.code ?: "SKU" }, {}, categoryLabel = { if (it == "match") "ম্যাচ" else "সিগারেট" }, printWhenEmpty = true, salesBlock = true)
     }
     // row 66's two modals are separate windows (Dialog): a root capture cannot show them, so they are proven by SalesSubmitScreenTest (vendorDialogs...)
 
