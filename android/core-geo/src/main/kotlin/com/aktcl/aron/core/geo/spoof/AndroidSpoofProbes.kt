@@ -99,7 +99,10 @@ class AndroidSpoofProbes(
     }
 
     /** The last-known NETWORK location (passive: no request, no radio). Null when there is none or it is not usable. */
+    @android.annotation.SuppressLint("MissingPermission") // checked just below; a revoked permission gives null, never a crash
     fun networkFix(nowElapsedNanos: Long): NetworkFix? = runCatching {
+        if (app.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            app.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) return null
         val lm = app.getSystemService(LocationManager::class.java) ?: return null
         val l: Location = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER) ?: return null
         NetworkFix(l.latitude, l.longitude, if (l.hasAccuracy()) l.accuracy.toDouble() else 5_000.0, (nowElapsedNanos - l.elapsedRealtimeNanos) / 1_000_000L)
