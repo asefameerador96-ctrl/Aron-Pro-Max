@@ -432,6 +432,7 @@ class IngestService(
                 when (settleChild(h, child, o, item.clientUuid, resolverUserId, now)) {
                     ChildEnd.HELD_ON_SIBLING -> { h.release(sp); reheld += child }
                     ChildEnd.SETTLED -> h.release(sp)
+                    ChildEnd.WAITS -> { h.rollbackToSavepoint(sp); markWaiting(h, child, o, item.clientUuid) }
                     ChildEnd.STAYS -> {
                         // Held for a reason of its own (or a failure): it stays open for its own review.
                         h.rollbackToSavepoint(sp)
@@ -452,6 +453,7 @@ class IngestService(
                     when (settleChild(h, child, o, item.clientUuid, resolverUserId, now)) {
                         ChildEnd.HELD_ON_SIBLING -> { h.release(sp); if (heldOn(h, child.id) != on) changed = true }
                         ChildEnd.SETTLED -> { h.release(sp); reheld.remove(child); changed = true }
+                        ChildEnd.WAITS -> { h.rollbackToSavepoint(sp); markWaiting(h, child, o, item.clientUuid); reheld.remove(child); changed = true }
                         ChildEnd.STAYS -> { h.rollbackToSavepoint(sp); reheld.remove(child) }
                     }
                 }
@@ -500,7 +502,14 @@ class IngestService(
         }
     }
 
-    private enum class ChildEnd { SETTLED, HELD_ON_SIBLING, STAYS }
+    private enum class ChildEnd { SETTLED, HELD_ON_SIBLING, STAYS, WAITS }
+
+    /** The item of a child that waits for another parent keeps its code (the reviewer's accept waives that check) and says what it waits for; it no longer names the accepted parent. */
+    private fun markWaiting(h: Handle, child: HeldItem, o: Outcome?, acceptedParent: String) {
+        val what = (o?.detail ?: "another parent").take(300)
+        h.createUpdate("UPDATE app.sync_quarantine SET detail = :d WHERE id = :id AND status = 'open'").bind("d", "waits for another parent: $what (parent $acceptedParent was accepted)".take(1000)).bind("id", child.id).execute()
+        log.info("held child waits for another parent client_uuid=${child.clientUuid} accepted_parent=$acceptedParent")
+    }
 
     /** Dependency order of a released family: the header and anything else first, then a redemption's lines, then its photos (C-R4). */
     private fun childRank(c: HeldItem): Int = when (c.payload.str("type")) { "gift_photo" -> 2; "redemption_line" -> 1; else -> 0 }
@@ -524,10 +533,9 @@ class IngestService(
             closeItem(h, child.id, "accepted", null, resolver, "released with parent $parentUuid", now)
             return ChildEnd.SETTLED
         }
-        if (o.code == RecordOutcomeCode.PARENT_MISSING && o.retryable == true) {
-            closeItem(h, child.id, "discarded", null, resolver, "return_to_device: parent $parentUuid was accepted; this record waits for its other parents (parent_missing), send it again", now)
-            return ChildEnd.SETTLED
-        }
+        // C-R5: a child whose OTHER parent has not synced yet stays HELD in review (its item open, the registry row quarantined as before): the phone is never told a final outcome for it
+        // (it only learns accepted, accepted_with_fix or discarded, and treats discarded as final: it never sends the row again). The caller rolls the release back and states what it waits for.
+        if (o.code == RecordOutcomeCode.PARENT_MISSING && o.retryable == true) return ChildEnd.WAITS
         if (o.status == "quarantined" && child.payload.str("type") == "gift_photo" && o.code != null && o.detail != null) {
             h.createUpdate("UPDATE app.sync_quarantine SET code = :c, detail = :d WHERE id = :id AND status = 'open'").bind("c", o.code.wire).bind("d", o.detail.take(1000)).bind("id", child.id).execute()
             return if (HELD_ON.matches(o.detail) && o.detail.endsWith("(${o.code.wire})")) ChildEnd.HELD_ON_SIBLING else ChildEnd.SETTLED
@@ -1768,7 +1776,7 @@ class IngestService(
         val bd = r.json.str("business_date")?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         if (r.type.matches(TYPE_PATTERN)) register(h, ctx, r, bd, "parked", code, null)
         // Parked is retryable whatever the code's default (qty_invalid of a pack size is resent after a bundle refresh).
-        return Outcome.of(code).copy(retryable = true)
+        return Outcome.of(code).copy(retryable = true, detail = detail)
     }
 
     /** What a quarantine item stores: a device's `anchor_clock` is dropped (a reviewer's release trusts the member, so only the server's own online record may keep it). */

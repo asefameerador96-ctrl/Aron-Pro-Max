@@ -920,7 +920,7 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 | `cfg.astha.tiers` | S | content(app.sub_channel) | Platinum, Gold, Diamond, Silver | master data | G | P | B | both | C1 | Sub-channels of channel Astha | D-258 | 5a |
 | `cfg.astha.brands_in_scope` | S | list<brand_id> | Maxim, Black Diamond, Abul Bidi Style, Marise, Avon, Supreme, Special Abul Bidi, Abul Bidi Gold | ids exist | G W | P | B | both | C1 | | docs/06 | 5a |
 | `cfg.astha.gift_catalog` | S | content(app.gift_catalog) | Ceiling Fan (56 inch), 24 pcs Dinner Set, 27 pcs Dinner Set, by tier | n/a | G W | P | B | both | C1 | | G-man-047 | 5a |
-| `cfg.astha.gift_choice_roles` | S | list<role> | [tso] | subset | G | P | S | srv | C1 | The web Astha Gift Choice Panel | D-192 | 5a |
+| `cfg.astha.gift_choice_roles` | S | list<role> | [sr, tso] | subset | G | P | S | srv | C1 | The web Astha Gift Choice Panel | D-192 | 5a |
 | `cfg.astha.gift_choice_lock` | S | enum(none, on_sr_photo) | on_sr_photo (A) | enum | G | P | S | srv | C1 | Choice locks once the SR's photo exists. unknown; confirm: MQ-26 | D-192 | 5a |
 | `cfg.astha.one_photo_per_outlet` | S | bool | true | n/a | G | P | B | both | C1 | | docs/06 | 5a |
 | `cfg.astha.target_entry_roles` | S | list<role> | [admin, tso] | subset | G | P | S | srv | C2 | | docs/10 | 5a |

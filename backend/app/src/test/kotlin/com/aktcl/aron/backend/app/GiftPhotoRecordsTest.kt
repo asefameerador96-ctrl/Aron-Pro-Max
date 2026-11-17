@@ -457,13 +457,17 @@ class GiftPhotoRecordsTest {
         "redemption_line", """{"gift_id":$cGift,"points_each":100,"points_total":100,"qty":1,"redemption_client_uuid":"$h"}""", routeId = route, cu = cu, family = h, secondsAgo = secondsAgo,
     )
     private suspend fun io.ktor.client.HttpClient.accept(item: Long): HttpStatusCode =
-        with(world) { postWeb("admin1001", "/v1/admin/quarantine/$item/resolve", """{"action":"accept","reason":"the reviewer accepts the late redemption"}""").status }
+        with(world) { postWeb("admin1001", "/v1/admin/quarantine/$item/resolve", """{"action":"accept","reason":"the reviewer accepts the late redemption"}""").let { r -> if (r.status != HttpStatusCode.OK) println("ACCEPT-FAILED item=$item ${r.status} ${r.bodyAsText()}"); r.status } }
     private fun itemRow(uuid: String) = world.rows("SELECT id, status, code, detail, resolution_note FROM app.sync_quarantine WHERE client_uuid = CAST('$uuid' AS uuid) ORDER BY id DESC LIMIT 1").single()
     private fun openNaming(parent: String) = world.one("SELECT count(*) FROM app.sync_quarantine WHERE status = 'open' AND detail LIKE 'parent $parent%'")
     private fun storedPhoto(r: JsonObject) = world.one("SELECT count(*) FROM app.gift_photo WHERE client_uuid = CAST('${cu(r)}' AS uuid)")
 
+    /** What the phone is told through the batch answer's `resolutions[]` about [uuid]: the statuses (a phone treats `discarded` as final and never sends the row again). */
+    private fun phoneResolutions(answer: JsonObject, uuid: String): List<String> =
+        answer["resolutions"]?.jsonArray?.map { it.jsonObject }?.filter { it["client_uuid"]!!.jsonPrimitive.content == uuid }?.map { it["resolution"]!!.jsonPrimitive.content } ?: emptyList()
+
     @Test
-    fun acceptingAHeaderWhileALineHasNotSyncedYieldsThePhotoToTheOrdinaryRetryPath() = world.withApi {
+    fun acceptingAHeaderWhileALineHasNotSyncedKeepsThePhotoHeldAndTheReviewerReleasesItLater() = world.withApi {
         with(world) {
             val head = UUID.randomUUID().toString()
             val h = headerRec(head, 2); val l1 = lineRec(head, 120); val p = photo(null, 100, unit = head to 1, flat = lat + 0.00008)
@@ -471,17 +475,18 @@ class GiftPhotoRecordsTest {
             assertEquals("quarantined", ack(sync(sr, listOf(l1)), cu(l1)).status()); assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status())
             assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
             assertEquals(1L, one("SELECT count(*) FROM app.redemption WHERE client_uuid = CAST('$head' AS uuid)")); assertEquals(1L, one("SELECT count(*) FROM app.redemption_line WHERE redemption_client_uuid = CAST('$head' AS uuid)"))
-            assertEquals(0L, openNaming(head), "no child stays open naming the accepted header")
-            assertEquals("discarded", itemRow(cu(p))["status"]); assertEquals(true, (itemRow(cu(p))["resolution_note"] as String).startsWith("return_to_device"), "the phone is told to send it again")
+            assertEquals("open", itemRow(cu(p))["status"], "C-R5: the photo stays held in review, the phone is told nothing final"); assertEquals(0L, openNaming(head), "no item names the accepted header any more")
+            assertEquals(true, (itemRow(cu(p))["detail"] as String).startsWith("waits for another parent"), itemRow(cu(p)).toString())
             assertEquals(0L, storedPhoto(p))
-            val again = ack(sync(sr, listOf(p)), cu(p)); assertEquals("rejected", again.status(), again.toString()); assertEquals("parent_missing", again.code(), "the ordinary retry path")
-            // the second line arrives after the accept; the photo's resend is then processed normally
+            val again = sync(sr, listOf(p))
+            assertEquals("quarantined", ack(again, cu(p)).status(), "the phone's view of the photo is still: held in review")
+            assertEquals(emptyList<String>(), phoneResolutions(again, cu(p)), "the phone-visible resolution feed carries nothing for it (never 'discarded')")
+            // the missing line arrives; the photo is still open, and the reviewer's accept stores it (device count == server count)
             val l2 = lineRec(head, 90); assertEquals("accepted", ack(sync(sr, listOf(l2)), cu(l2)).status())
-            assertEquals("accepted", ack(sync(sr, listOf(p)), cu(p)).status()); assertEquals(1L, storedPhoto(p)); assertEquals(null, flag(p)["check_flag"])
-            // replays: the photo, the accept (idempotent), the line
-            assertEquals("duplicate", ack(sync(sr, listOf(p)), cu(p)).status()); assertEquals("duplicate", ack(sync(sr, listOf(l2)), cu(l2)).status())
-            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
-            assertEquals(1L, storedPhoto(p)); assertEquals(0L, openNaming(head))
+            assertEquals(HttpStatusCode.OK, accept(itemOf(cu(p))))
+            assertEquals(1L, storedPhoto(p)); assertEquals(null, flag(p)["check_flag"]); assertEquals("accepted", itemRow(cu(p))["status"])
+            val feed = sync(sr, listOf(p)); assertEquals("duplicate", ack(feed, cu(p)).status()); assertEquals(listOf("accepted"), phoneResolutions(feed, cu(p)))
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head))); assertEquals(1L, storedPhoto(p))
         }
     }
 
@@ -589,6 +594,54 @@ class GiftPhotoRecordsTest {
             assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status()); assertEquals(1L, openItems(cu(p)))
             assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
             assertEquals(1L, storedPhoto(p)); assertEquals("accepted", itemRow(cu(p))["status"]); assertEquals(0L, openNaming(head))
+        }
+    }
+
+    private val fixOk = """{"purpose":"PURPOSE","fix_status":"ok","lat":$lat,"lng":$lng,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+        "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}"""
+
+    @Test
+    fun aDueCollectionWhoseOtherParentHasNotSyncedStaysHeldAfterItsMemoIsAcceptedAndIsNeverTurnedIntoAFinalDecision() = world.withApi {
+        with(world) {
+            // the memo's visit and the memo are old (held for the backdate window); the collection (today) is held with the memo; its OWN visit (visit_client_uuid) has not synced
+            val visit = UUID.randomUUID().toString(); val memo = UUID.randomUUID().toString(); val otherVisit = UUID.randomUUID().toString(); val dueCu = UUID.randomUUID().toString()
+            val bd = today.minusDays(15)
+            val v = record("visit", """{"visit_kind":"sr_call","outlet_id":$outlet,"opened_at":"${java.time.Instant.now()}","sequence_no":1,"planned":true,"fix":${fixOk.replace("PURPOSE", "visit_open")},
+                "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}""", routeId = route, cu = visit, family = visit, secondsAgo = oldSecs)
+            val m = record("memo", """{"visit_client_uuid":"$visit","outlet_id":$outlet,"memo_no":"sr1001-${bd.toString().substring(2).replace("-", "")}-5901","memo_kind":"sale","committed_at":"${java.time.Instant.now()}",
+                "price_list_date":"$bd","price_type":"outlet","gross_mtk":0,"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,"round_adj_mtk":0,"net_mtk":0,"paid_mtk":0,"due_mtk":0,"is_credit":false,
+                "line_count":0,"discount_line_count":0,"qc_line_count":0,"offer_version_ids":[],"rounding_mode":"half_up_paisa"}""", routeId = route, cu = memo, family = visit, rank = 1, secondsAgo = oldSecs)
+            val d = record("due_collection", """{"outlet_id":$outlet,"against_memo_client_uuid":"$memo","against_memo_no":"x","against_memo_business_date":"$bd","amount_mtk":1000,"is_full_settlement":false,"outstanding_before_mtk":100000,"payment_mode":"cash","visit_client_uuid":"$otherVisit"}""",
+                routeId = route, cu = dueCu, family = dueCu, secondsAgo = 100)
+            assertEquals("quarantined", ack(sync(sr, listOf(v)), visit).status()); assertEquals("quarantined", ack(sync(sr, listOf(m)), memo).status())
+            assertEquals("quarantined", ack(sync(sr, listOf(d)), dueCu).status()); assertEquals("parent $memo is quarantined (business_date_out_of_window)", itemRow(dueCu)["detail"])
+            assertEquals(HttpStatusCode.OK, accept(itemOf(visit))); assertEquals(HttpStatusCode.OK, accept(itemOf(memo)))
+            assertEquals(1L, one("SELECT count(*) FROM app.memo WHERE client_uuid = CAST('$memo' AS uuid)"))
+            assertEquals("open", itemRow(dueCu)["status"], "its own visit has not synced: it stays held, it is NOT closed as a decision the phone would read as final")
+            assertEquals(true, (itemRow(dueCu)["detail"] as String).startsWith("waits for another parent")); assertEquals(0L, openNaming(memo))
+            val feed = sync(sr, listOf(d)); assertEquals("quarantined", ack(feed, dueCu).status()); assertEquals(emptyList<String>(), phoneResolutions(feed, dueCu))
+            assertEquals(0L, one("SELECT count(*) FROM app.due_collection WHERE client_uuid = CAST('$dueCu' AS uuid)"))
+            // its visit arrives; the reviewer's accept then stores the collection
+            val v2 = record("visit", """{"visit_kind":"sr_call","outlet_id":$outlet,"opened_at":"${java.time.Instant.now()}","sequence_no":2,"planned":true,"fix":${fixOk.replace("PURPOSE", "visit_open")},
+                "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}""", routeId = route, cu = otherVisit, family = otherVisit, secondsAgo = 150)
+            assertEquals("accepted", ack(sync(sr, listOf(v2)), otherVisit).status())
+            assertEquals(HttpStatusCode.OK, accept(itemOf(dueCu)))
+            assertEquals(1L, one("SELECT count(*) FROM app.due_collection WHERE client_uuid = CAST('$dueCu' AS uuid)"), "device count == server count")
+            assertEquals("duplicate", ack(sync(sr, listOf(d)), dueCu).status())
+        }
+    }
+
+    @Test
+    fun theReopenOfAReturnedItemIsGenericAndWorksForAVisitToo() = world.withApi {
+        with(world) {
+            val visit = UUID.randomUUID().toString()
+            val v = record("visit", """{"visit_kind":"sr_call","outlet_id":$outlet,"opened_at":"${java.time.Instant.now()}","sequence_no":3,"planned":true,"fix":${fixOk.replace("PURPOSE", "visit_open")},
+                "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}""", routeId = route, cu = visit, family = visit, secondsAgo = oldSecs)
+            assertEquals("quarantined", ack(sync(sr, listOf(v)), visit).status())
+            assertEquals(HttpStatusCode.OK, returnToDevice(itemOf(visit))); assertEquals(0L, openItems(visit))
+            assertEquals("quarantined", ack(sync(sr, listOf(v)), visit).status()); assertEquals(1L, openItems(visit)); assertEquals(1L, allItems(visit))
+            assertEquals("quarantined", ack(sync(sr, listOf(v)), visit).status()); assertEquals(1L, openItems(visit), "a replay changes nothing")
+            assertEquals(HttpStatusCode.OK, accept(itemOf(visit))); assertEquals(1L, one("SELECT count(*) FROM app.visit WHERE client_uuid = CAST('$visit' AS uuid)"))
         }
     }
 }

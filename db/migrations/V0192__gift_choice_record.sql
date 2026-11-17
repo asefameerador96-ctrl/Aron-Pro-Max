@@ -50,15 +50,31 @@ CREATE TRIGGER gift_choice_guard_origin BEFORE UPDATE ON app.gift_choice
   FOR EACH ROW EXECUTE FUNCTION app.guard_data_origin();
 INSERT INTO app.data_origin_capture (table_name) VALUES ('gift_choice');
 
-ALTER TABLE app.sync_rejected DROP CONSTRAINT sync_rejected_code_check;
-ALTER TABLE app.sync_rejected ADD CONSTRAINT sync_rejected_code_check CHECK (code IN (
-  'scope_stale', 'config_version_unknown', 'parent_missing', 'outlet_pending_approval', 'price_list_unknown',
-  'schema_invalid', 'unknown_record_type', 'unknown_sku', 'unknown_outlet', 'unknown_route', 'memo_no_invalid',
-  'edit_not_allowed', 'chain_too_deep', 'voided_by_admin', 'lines_exceed_max', 'qty_invalid', 'price_invalid',
-  'attendance_duplicate', 'server_error', 'retry_exhausted', 'unknown_gift', 'insufficient_points',
-  'gift_photo_exists', 'day_final_submitted', 'ticket_state_invalid', 'issue_type_unknown',
-  'cluster_name_exists',   -- sr-server's V0189 adds this code; the list here is the V0135 list + that + ours, so whichever lands first leaves a CHECK that holds all of them
-  'gift_locked', 'gift_not_for_tier')) NOT VALID;
+-- C-R5: the swap takes ONE lock on app.sync_rejected with NOWAIT, retried for about 60 s, exactly as V0189 does on the same table (a busy ingest writer must not fail the deploy on the 5 s lock_timeout).
+DO $$
+DECLARE n int := 0;
+BEGIN
+  LOOP
+    BEGIN
+      LOCK TABLE app.sync_rejected IN ACCESS EXCLUSIVE MODE NOWAIT;
+      EXIT;
+    EXCEPTION WHEN lock_not_available THEN
+      n := n + 1;
+      IF n >= 120 THEN RAISE EXCEPTION 'V0192: app.sync_rejected stayed locked for 60 s'; END IF;
+      PERFORM pg_sleep(0.5);
+    END;
+  END LOOP;
+
+  ALTER TABLE app.sync_rejected DROP CONSTRAINT sync_rejected_code_check;
+  ALTER TABLE app.sync_rejected ADD CONSTRAINT sync_rejected_code_check CHECK (code IN (
+    'scope_stale', 'config_version_unknown', 'parent_missing', 'outlet_pending_approval', 'price_list_unknown',
+    'schema_invalid', 'unknown_record_type', 'unknown_sku', 'unknown_outlet', 'unknown_route', 'memo_no_invalid',
+    'edit_not_allowed', 'chain_too_deep', 'voided_by_admin', 'lines_exceed_max', 'qty_invalid', 'price_invalid',
+    'attendance_duplicate', 'server_error', 'retry_exhausted', 'unknown_gift', 'insufficient_points',
+    'gift_photo_exists', 'day_final_submitted', 'ticket_state_invalid', 'issue_type_unknown',
+    'cluster_name_exists',   -- sr-server's V0189 adds this code; the list here is the V0135 list + that + ours, so whichever lands first leaves a CHECK that holds all of them
+    'gift_locked', 'gift_not_for_tier')) NOT VALID;
+END $$;
 
 UPDATE app.cfg_key SET default_value = '["SR", "TSO"]'::jsonb, updated_at = now() WHERE key = 'cfg.astha.gift_choice_roles';
 
@@ -66,9 +82,20 @@ UPDATE app.cfg_key SET default_value = '["SR", "TSO"]'::jsonb, updated_at = now(
 -- redemption and overdraw is the derived LoyaltyBalance.overdrawn (balance < 0). Until reject is built, the bounds enum refuses it (contract 1.17.0).
 UPDATE app.cfg_key SET bounds = '{"enum": ["accept_and_flag"]}'::jsonb, updated_at = now() WHERE key = 'cfg.loyalty.negative_balance_policy';
 -- A value already set to `reject` on a database that ran V0009's bounds (dev) must not keep showing a value the bounds now refuse: cfg_value rows are close-only, so an open row holding
--- `reject` is CLOSED (effective_to) and the key's default, accept_and_flag, applies again. Nothing enforced `reject`, so no behaviour changes; no new config version is minted.
-UPDATE app.cfg_value SET effective_to = GREATEST(now(), effective_from + interval '1 second')
- WHERE key = 'cfg.loyalty.negative_balance_policy' AND value = '"reject"'::jsonb AND (effective_to IS NULL OR effective_to > now());
+-- `reject` is CLOSED (effective_to) and the key's default, accept_and_flag, applies again. Nothing enforced `reject`, so no behaviour changes; C-R5: the close mints ONE config version
+-- (as V0087 does), so the bundle's config_version moves and phones and the config cache pick the change up; no version is minted when no such row exists.
+DO $$
+DECLARE v bigint; sys bigint;
+BEGIN
+  IF EXISTS (SELECT 1 FROM app.cfg_value WHERE key = 'cfg.loyalty.negative_balance_policy' AND value = '"reject"'::jsonb AND (effective_to IS NULL OR effective_to > now())) THEN
+    SELECT id INTO sys FROM app.app_user WHERE username = 'aron.system';
+    SELECT coalesce(max(config_version), 0) + 1 INTO v FROM app.cfg_version;
+    INSERT INTO app.cfg_version (config_version, kind, committed_by, summary, max_risk_class)
+    VALUES (v, 'change', sys, 'V0192: an open negative_balance_policy value reject (not built) is closed; accept_and_flag applies', 2);
+    UPDATE app.cfg_value SET effective_to = GREATEST(now(), effective_from + interval '1 second'), superseded_in_version = v
+     WHERE key = 'cfg.loyalty.negative_balance_policy' AND value = '"reject"'::jsonb AND (effective_to IS NULL OR effective_to > now());
+  END IF;
+END $$;
 
 COMMENT ON TABLE app.gift_choice IS 'The Astha gift an outlet chose for a quarter, one immutable row per choice a phone sent; the handler keeps app.gift_assignment in step (later captured_at wins until the hand-over photo locks the outlet).
 owner: backend:sync | capture: OFFLINE | retention: transaction | pii: personal';
