@@ -12,6 +12,9 @@ plugins {
 // Without it the app builds and runs with push disabled (FCM only nudges pulls, docs/24 s4.7, s13.6).
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
+    // The benchmark build types have their own application id (".benchmark", D-AINT-05), which the Firebase config has no client for:
+    // push stays off there, exactly as in a build without the file. Release and debug are untouched.
+    tasks.matching { it.name == "processBenchmarkGoogleServices" || it.name == "processBenchmarkProfileGoogleServices" }.configureEach { enabled = false }
 }
 
 // API origin (docs/24 s3.1): scheme and host only, no path; the contract paths start with /v1. Validated here so a wrong

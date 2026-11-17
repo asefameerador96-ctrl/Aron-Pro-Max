@@ -60,6 +60,8 @@ class IntegrityGateBuildTest {
             assertTrue("$a: benchmark must carry applicationIdSuffix .benchmark so it can never replace a release install", bench.contains("applicationIdSuffix = \".benchmark\""))
             val release = g.substringAfter("release {").substringBefore("create(\"benchmark\")")
             assertTrue("$a: release must not set a suffix", !release.contains("applicationIdSuffix"))
+            // With the Firebase secret present CI would fail on a package it has no client for: the benchmark variants skip the plugin task.
+            assertTrue("$a: benchmark skips processBenchmarkGoogleServices", g.contains("processBenchmarkGoogleServices") && g.contains("processBenchmarkProfileGoogleServices") && g.contains("enabled = false"))
         }
         assertTrue(File(root, "benchmark/build.gradle.kts").readText().contains(".benchmark\""))
     }

@@ -153,7 +153,7 @@ class IntegrityGateUiTest {
         rule.onAllNodesWithTag(IntegrityGateTags.SYNC_NOW).assertCountEquals(0)
     }
 
-    @Test @Config(sdk = [32])
+    @Test @Config(sdk = [30])
     fun theRecentsThumbnailIsHiddenOnlyWhileTheGateIsUp() {
         flags = DevFlags(true, false)
         rule.setContent { IntegrityGate(controller()) { Text("x") } }
