@@ -25,6 +25,13 @@ Lows from the lead's gate: title is two lines then ellipsis, horizontal safe ins
 | Login hero | RECORD: SrLoginContent already is the manual-03 hero; the golden used the generic login, now switched; empty states recorded | 3583523a | login_bn_light, srp1_login_* |
 | OTP, update available/downloading | RECORD | 3583523a | srp1_otp_*, srp1_update_* |
 
+| Home: Astha, Loyalty pictures wrong | FIX (vector redraw, D-PAR-SR1-06) | this push | home_bn_* (10) |
+| Home: English 'Cigarette' in KPI/stock | RECORD: fixture data only, production uses sr_cat_*; fixtures now Bangla | this push | home_bn_tall |
+| Home: issue/stock boxes per category, not one figure; sales head (প্যাকেট) not (স্টিক) | KEEP-WITH-REASON: field units rule (5) | - | - |
+| Home: money cards not recorded | RECORD: home_bn_tall shows both cards, matches the reference structure | this push | home_bn_tall |
+| Home: target card title wraps to 2 lines | KEEP-WITH-REASON: AronTargetCard shared with the AMO home | - | - |
+| Home: extra 'Match Program' tile | KEEP-WITH-REASON: flag-driven (registry default off; fixture sets it on) | - | - |
+
 (Rows for the remaining screens are added slice by slice.)
 
 ## Not run
