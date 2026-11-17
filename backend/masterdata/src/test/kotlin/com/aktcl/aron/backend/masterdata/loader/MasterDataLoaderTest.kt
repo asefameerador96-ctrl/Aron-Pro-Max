@@ -2,6 +2,8 @@ package com.aktcl.aron.backend.masterdata.loader
 
 import com.aktcl.aron.backend.platform.FreshDb
 import com.aktcl.aron.backend.platform.ServerEnv
+import com.aktcl.aron.backend.platform.Settings
+import org.jdbi.v3.core.Handle
 import java.io.StringReader
 import java.time.LocalDate
 import java.util.UUID
@@ -25,20 +27,27 @@ class MasterDataLoaderTest {
 
     private val today = LocalDate.parse("2026-11-13")   // date-pin-ok: the load's business date is an input, not a clock read
 
+    /** The process settings the loader reads its environment from: the test account runs ARON_ENV=dev, the final account prod. */
+    private val devSettings = Settings.load(mapOf("ARON_ROLE" to "migrate", "ARON_ENV" to "dev"))
+    private val prodSettings = Settings.load(mapOf("ARON_ROLE" to "migrate", "ARON_ENV" to "prod", "ARON_DB_URL" to "jdbc:postgresql://localhost/none"))
+
     private fun options(
         runId: UUID = UUID.randomUUID(), dry: Boolean = false, batch: Int = 500, confirm: Boolean = false, allowShort: Boolean = false,
-        businessDate: LocalDate = today, storeNoPlan: Boolean = true, afterBatch: ((Int) -> Unit)? = null,
+        businessDate: LocalDate = today, storeNoPlan: Boolean = true, afterBatch: ((Int) -> Unit)? = null, inside: ((Handle, Int, Int) -> Unit)? = null,
     ) = LoadOptions(
-        env = ServerEnv.DEV, syntheticTestData = true, batchSize = batch, coordinatesConfirmed = confirm, dryRun = dry, runId = runId, businessDate = businessDate,
-        storeOutletsWithoutVisitPlan = storeNoPlan, shortRepIdsAllowedForTests = allowShort, afterBatchForTests = afterBatch,
+        syntheticTestData = true, batchSize = batch, coordinatesConfirmed = confirm, dryRun = dry, runId = runId, businessDate = businessDate,
+        storeOutletsWithoutVisitPlan = storeNoPlan, shortRepIdsAllowedForTests = allowShort, afterBatchForTests = afterBatch, insideBatchForTests = inside,
     )
 
-    private fun load(csv: String, o: LoadOptions = options()): LoadReport = MasterDataLoader(fresh.db, o).load { StringReader(csv) }
+    private fun load(csv: String, o: LoadOptions = options()): LoadReport = MasterDataLoader(fresh.db, devSettings, o).load { StringReader(csv) }
 
     private fun <T> sql(sql: String, type: Class<T>): T = fresh.db.jdbi.withHandle<T, Exception> { h -> h.createQuery(sql).mapTo(type).one() }
     private fun count(sql: String): Int = sql("SELECT count(*)::int FROM $sql", Int::class.javaObjectType)
     private fun one(sql: String): String? = fresh.db.jdbi.withHandle<String?, Exception> { h -> h.createQuery(sql).mapTo(String::class.java).findOne().orElse(null) }
     private fun exec(sql: String) { fresh.db.jdbi.useHandle<Exception> { h -> h.execute(sql) } }
+
+    /** Runs [sql] on ANOTHER connection, committed at once (JDBI reuses the current thread's handle for a nested useHandle, which would run inside the loader's own transaction). */
+    private fun execElsewhere(sql: String) { fresh.dataSource.connection.use { c -> c.createStatement().use { it.execute(sql) } } }
 
     // ---- hand-made rows for the tests that need to control every value --------------------------------------------------------------------------
 
@@ -48,9 +57,9 @@ class MasterDataLoaderTest {
     private fun line(
         code: String, zone: String = "Z1", territory: String = "T1", route: String = "R1", cluster: String = "C1", name: String = "Shop $code", owner: String = "Owner $code",
         rep: String = "ab0001", phone: String = "01711000001", freq: String = "6", day: String = "Daily", lat: String = "23.70000000", lng: String = "90.40000000",
-        channel: String = "GT Channel", sub: String = "GT",
+        channel: String = "GT Channel", sub: String = "GT", routeName: String = "Route $route",
     ) = listOf(
-        "1", "Wing 1", "11", "Division 11", territory, "Territory $territory", "", "", zone, "Zone $zone", route, "Route $route", freq, day, rep, if (rep.isEmpty()) "" else "Rep $rep",
+        "1", "Wing 1", "11", "Division 11", territory, "Territory $territory", "", "", zone, "Zone $zone", route, routeName, freq, day, rep, if (rep.isEmpty()) "" else "Rep $rep",
         "", code, name, owner, phone, "", cluster, "Transit Hub", if (rep.isEmpty()) "" else "Active", lat, lng, "Rural", channel, sub, "2024-03-05 10:15:00", "",
     ).joinToString(",")
 
@@ -58,7 +67,7 @@ class MasterDataLoaderTest {
 
     /** The same text under another run id must not be accepted by accident: text of any error or report that could carry a value of the file. */
     private fun assertNoPersonalData(text: String) {
-        for (forbidden in listOf("Outlet ", "Owner ", "Rep ", "N/A", "Shop ", "Blocked")) assertTrue(!text.contains(forbidden), "carries a value of the file '$forbidden':\n$text")
+        for (forbidden in listOf("Outlet ", "Owner ", "Rep ", "N/A", "Cluster ", "Shop ", "Blocked")) assertTrue(!text.contains(forbidden), "carries a value of the file '$forbidden':\n$text")
         assertTrue(!Regex("(^|[^0-9])(01[3-9][0-9]{8}|8801[3-9][0-9]{8})([^0-9]|$)").containsMatchIn(text), "carries a phone number:\n$text")
     }
 
@@ -95,7 +104,7 @@ class MasterDataLoaderTest {
         assertTrue(count("app.route WHERE visit_kind = 'none' AND visit_days_mask = 0") > 0)
         assertEquals("No visit plan", one("SELECT display_label FROM app.route WHERE visit_kind = 'none' LIMIT 1"))
         assertTrue(count("app.outlet o JOIN app.route r ON r.id = o.route_id WHERE r.visit_kind = 'none'") > 0)
-        assertEquals(facts.outletsWithoutRep, count("app.outlet WHERE status = 'archived'"))
+        assertEquals(facts.outletsWithoutRep + facts.outletsOnHeldRepRoutes, count("app.outlet WHERE status = 'archived'"), "no rep, or only a rep that is held for the installed app")
         assertTrue(count("app.outlet WHERE source_contact_number IS NOT NULL") > 0)
         assertTrue(count("app.outlet WHERE source_sub_channel IS NOT NULL") > 0)
         assertEquals("2024-03-05 04:15:00+00", one("SELECT source_created_at::text FROM app.outlet ORDER BY id LIMIT 1"))
@@ -288,10 +297,11 @@ class MasterDataLoaderTest {
         assertNull(one("SELECT to_regclass('mdload.outlet_row')::text"))
         assertEquals(1, count("app.outlet"))
         // the guard: not the final account and not flagged synthetic -> refused, before anything is read
-        val refused = assertFailsWith<LoaderException> { MasterDataLoader(fresh.db, LoadOptions(env = ServerEnv.DEV, dryRun = true)).load { StringReader(file) } }
+        val refused = assertFailsWith<LoaderException> { MasterDataLoader(fresh.db, devSettings, LoadOptions(dryRun = true)).load { StringReader(file) } }
         assertTrue(refused.message!!.contains("final account") && refused.message!!.contains("synthetic"), refused.message)
-        // the final account profile passes the guard
-        MasterDataLoader(fresh.db, LoadOptions(env = ServerEnv.PROD, dryRun = true, businessDate = today)).load { StringReader(file) }
+        // the final account profile passes the guard; the environment is the process settings' (round 3), and the synthetic flag is not part of the public API
+        MasterDataLoader(fresh.db, prodSettings, LoadOptions(dryRun = true, businessDate = today)).load { StringReader(file) }
+        assertTrue(LoadOptions::class.java.methods.none { it.name == "getSyntheticTestData" || it.name == "getEnv" }, "a caller can neither pass an environment nor claim the data is synthetic")
     }
 
     /** A record with more or fewer cells than the header is an error row, not a half row read as empty values. */
@@ -393,5 +403,234 @@ class MasterDataLoaderTest {
         val stored = load(file)
         assertEquals(1, stored.of("outlet").created, stored.text())
         assertEquals("none", one("SELECT r.visit_kind FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE o.code = 'V2'"))
+    }
+
+    // ---- round 3 (the lead's review of e18090f1..1cd7892d) ----------------------------------------------------------------------------------------
+
+    /** Everything a report says that a resume must reproduce: the counts of every entity, every issue and its example codes (not the timings or the batch bookkeeping). */
+    private fun shape(r: LoadReport) = listOf(r.rowsRead.toString(), r.rowsUnreadable.toString()) + r.entities.map { (k, c) -> "$k $c" } + r.issues.map { (k, n) -> "issue $k $n ${r.samples[k]}" }
+
+    private fun loadOn(db: com.aktcl.aron.backend.platform.Database, csv: String, o: LoadOptions): LoadReport = MasterDataLoader(db, devSettings, o).load { StringReader(csv) }
+
+    /**
+     * R1. A resumed run reports a skipped batch for what it was: the created, updated, unchanged and error counts and the issue codes it stored, so the final
+     * report of an interrupted-and-resumed run EQUALS the report of an uninterrupted one. The skipped batches here hold error rows (a route stored in another
+     * zone), rows that were created, and the hierarchy, a new route and a new rep are written before the interruption.
+     */
+    @Test
+    fun aResumedRunReportsExactlyWhatAnUninterruptedRunReports() = withDb {
+        val base = csv(
+            line("X1", zone = "ZA", territory = "TA", route = "RA", cluster = "CA"), line("X2", zone = "ZB", territory = "TB", route = "RB", cluster = "CB", rep = "ab0002"),
+            line("X3", zone = "ZA", territory = "TA", route = "RA", cluster = "CA"), line("X4", zone = "ZA", territory = "TA", route = "RA", cluster = "CA"),
+        )
+        val second = csv(
+            // batch 1: two rows whose route RA is stored in zone ZA but whose zone says ZB (errors), two new outlets on a NEW route with a NEW rep
+            line("X1", zone = "ZB", territory = "TB", route = "RA", cluster = "CB"), line("X3", zone = "ZB", territory = "TB", route = "RA", cluster = "CB"),
+            line("N1", zone = "ZA", territory = "TA", route = "RN", cluster = "CA", rep = "ab0003"), line("N2", zone = "ZA", territory = "TA", route = "RN", cluster = "CA", rep = "ab0003"),
+            // batch 2: new outlets and one that changes nothing
+            line("N3", zone = "ZA", territory = "TA", route = "RN", cluster = "CA", rep = "ab0003"), line("N4", zone = "ZA", territory = "TA", route = "RN", cluster = "CA", rep = "ab0003"),
+            line("N5", zone = "ZA", territory = "TA", route = "RN", cluster = "CA", rep = "ab0003"), line("X2", zone = "ZB", territory = "TB", route = "RB", cluster = "CB", rep = "ab0002"),
+            // batch 3
+            line("N6", zone = "ZA", territory = "TA", route = "RN", cluster = "CA", rep = "ab0003"), line("N7", zone = "ZA", territory = "TA", route = "RN", cluster = "CA", rep = "ab0003"),
+        )
+        load(base)
+        val twin = FreshDb.create()
+        try {
+            loadOn(twin.db, base, options())
+            val uninterrupted = loadOn(twin.db, second, options(batch = 4))
+            assertEquals(2, uninterrupted.of("outlet").error, uninterrupted.text())
+            assertEquals(2, uninterrupted.issues["route_is_not_in_the_zone_of_the_row"], uninterrupted.text())
+
+            val runId = UUID.randomUUID()
+            assertFailsWith<IllegalStateException> { load(second, options(runId = runId, batch = 4, afterBatch = { if (it == 2) throw IllegalStateException("interrupted") })) }
+            val resumed = load(second, options(runId = runId, batch = 4))
+            assertEquals(2, resumed.batchesSkipped, resumed.text())
+            assertEquals(1, resumed.batchesApplied)
+            assertTrue(resumed.stepsSkipped > 0, "the hierarchy written before the interruption is not written again: ${resumed.text()}")
+            assertEquals(shape(uninterrupted), shape(resumed), "the resumed report is the uninterrupted report")
+            assertEquals(resumed.of("outlet").total.toLong(), resumed.rowsRead)
+            assertEquals(1, resumed.of("route").created, "the route created before the interruption is still reported created: ${resumed.text()}")
+            assertEquals(1, resumed.of("sales_rep").created)
+            assertNoPersonalData(resumed.text())
+            // and the database is the same
+            for (t in listOf("app.outlet", "app.route", "app.route_assignment", "app.app_user")) assertEquals(count(t), twin.db.jdbi.withHandle<Int, Exception> { h -> h.createQuery("SELECT count(*)::int FROM $t").mapTo(Int::class.java).one() }, t)
+        } finally { twin.close() }
+    }
+
+    /**
+     * R2. A run id is bound to its OPTIONS as well as its file: a resume under other options is refused, with a message that names the options and no value,
+     * and nothing is written. The original options resume fine.
+     */
+    @Test
+    fun aResumeUnderOtherOptionsIsRefusedAndNamesNoValue() = withDb {
+        val (csv, _) = SyntheticMaster.csv(600, wings = 1, seed = 5)
+        val runId = UUID.randomUUID()
+        assertFailsWith<IllegalStateException> { load(csv, options(runId = runId, batch = 200, afterBatch = { if (it == 1) throw IllegalStateException("interrupted") })) }
+        val partial = count("app.outlet")
+        for ((changed, name) in listOf(
+            options(runId = runId, batch = 200, confirm = true) to "coordinatesConfirmed",
+            options(runId = runId, batch = 200, businessDate = today.plusDays(1)) to "businessDate",
+            options(runId = runId, batch = 200, storeNoPlan = false) to "storeOutletsWithoutVisitPlan",
+            options(runId = runId, batch = 100) to "batchSize",
+        )) {
+            val refused = assertFailsWith<LoaderException> { load(csv, changed) }
+            assertTrue(refused.message!!.contains("different options") && refused.message!!.contains(name) && refused.message!!.contains("NEW run id"), refused.message)
+            assertTrue(!refused.message!!.contains("true") && !refused.message!!.contains("false") && !refused.message!!.contains(today.toString()), "no option value: ${refused.message}")
+            assertEquals(partial, count("app.outlet"), "a refused resume writes nothing")
+        }
+        val resumed = load(csv, options(runId = runId, batch = 200))
+        assertEquals(1, resumed.batchesSkipped)
+        assertEquals(600, count("app.outlet"))
+    }
+
+    /** Pass 2 reads the copy pass 1 kept, never the caller's file again: a file replaced during the run is never half applied. */
+    @Test
+    fun aFileReplacedDuringTheRunIsNeverHalfApplied() = withDb {
+        var opened = 0
+        val first = csv(line("F1"), line("F2"))
+        val replaced = csv(line("F1"), line("F2"), line("F3"), line("REPLACED"))
+        val run = MasterDataLoader(fresh.db, devSettings, options()).load { StringReader(if (opened++ == 0) first else replaced) }
+        assertEquals(1, opened, "the file is opened once")
+        assertEquals(2, run.of("outlet").created)
+        assertEquals(setOf("F1", "F2"), fresh.db.jdbi.withHandle<Set<String>, Exception> { h -> h.createQuery("SELECT code FROM app.outlet").mapTo(String::class.java).set() })
+    }
+
+    /**
+     * A row pass 2 rejects moves nothing: a rep's home zone does not follow rows that name a route stored in another zone, and that route is not renamed or
+     * re-planned; the pair of the rep and that route is an ERROR, never "unchanged".
+     */
+    @Test
+    fun aRejectedRowMovesNeitherTheRepNorTheRouteOfAnotherZone() = withDb {
+        load(csv(line("Q1", zone = "ZA", territory = "TA", route = "RA", cluster = "CA", day = "Daily", freq = "6"), line("Q2", zone = "ZA", territory = "TA", route = "RA", cluster = "CA", day = "Daily", freq = "6")))
+        val routeBefore = one("SELECT concat_ws('|', name, display_label, visit_kind, visit_days_mask) FROM app.route WHERE code = 'RA'")
+        assertEquals("ZA", one("SELECT z.code FROM app.app_user u JOIN app.zone z ON z.id = u.home_zone_id WHERE u.username = 'ab0001'"))
+        // the whole route is re-zoned, renamed and re-planned in the file; the portal still has it in ZA
+        val run = load(csv(
+            line("Q1", zone = "ZB", territory = "TB", route = "RA", cluster = "CB", routeName = "Renamed", day = "Monday", freq = "1"),
+            line("Q2", zone = "ZB", territory = "TB", route = "RA", cluster = "CB", routeName = "Renamed", day = "Monday", freq = "1"),
+        ))
+        assertEquals(2, run.of("outlet").error, run.text())
+        assertEquals(2, run.issues["route_is_not_in_the_zone_of_the_row"])
+        assertEquals(routeBefore, one("SELECT concat_ws('|', name, display_label, visit_kind, visit_days_mask) FROM app.route WHERE code = 'RA'"), "the route is not renamed or re-planned")
+        assertEquals(1, run.of("route").error, "a route stored in another zone is an error, not 'unchanged': ${run.text()}")
+        assertEquals(0, run.of("route").unchanged + run.of("route").updated)
+        assertEquals("ZA", one("SELECT z.code FROM app.app_user u JOIN app.zone z ON z.id = u.home_zone_id WHERE u.username = 'ab0001'"), "the rep's home zone follows no rejected row")
+        assertEquals(1, run.of("route_assignment").error, run.text())
+        assertEquals(0, run.of("route_assignment").unchanged)
+        assertEquals(1, run.issues["route_assignment_route_is_in_another_zone_than_the_file_says"])
+    }
+
+    /** A different primary rep in the file for a route that has an open primary is HELD with an issue code (never "unchanged"); a pair whose route is gone is an error. */
+    @Test
+    fun aDifferentPrimaryRepIsReportedAndAPairWhoseRouteWasNotCreatedIsAnError() = withDb {
+        load(csv(line("P1", route = "R1", rep = "ab0001"), line("P2", route = "R2", rep = "ab0002")))
+        val run = load(csv(line("P1", route = "R1", rep = "ab0005"), line("P2", route = "R2", rep = "ab0002")))
+        val a = run.of("route_assignment")
+        assertEquals(1, a.held, run.text())
+        assertEquals(1, a.unchanged, "only the pair that is already open is unchanged")
+        assertEquals(0, a.created)
+        assertEquals(1, run.issues["route_assignment_primary_differs_from_the_open_primary"])
+        assertEquals(listOf("R1"), run.samples["route_assignment_primary_differs_from_the_open_primary"]!!.toList())
+        assertEquals(0, count("app.route_assignment a JOIN app.app_user u ON u.id = a.user_id WHERE u.username = 'ab0005'"), "the new rep gets nothing: the portal owns a reassignment")
+        // a route the portal removed between the hierarchy and the assignments (a test hook plays the portal): the pair is an error
+        val file = csv(line("W1", route = "R9", rep = "ab0007"))
+        val lost = load(file, options(afterBatch = { exec("UPDATE app.route SET code = 'R9moved' WHERE code = 'R9'") }))
+        assertEquals(1, lost.of("route_assignment").error, lost.text())
+        assertEquals(0, lost.of("route_assignment").unchanged)
+        assertEquals(1, lost.issues["route_assignment_route_was_not_created"])
+    }
+
+    /**
+     * One consistent snapshot per batch. A concurrent portal edit between the batch's problem count and its writes (here a cluster renamed by another
+     * connection) must never turn a row into an uncounted one: the row is counted created (the snapshot never saw the edit) or, after a retry on a fresh
+     * snapshot, counted an error for what it has become. It is never "unchanged" while missing from the database.
+     */
+    @Test
+    fun aConcurrentPortalEditCannotTurnARowIntoAnUncountedOne() = withDb {
+        load(csv(line("E1", cluster = "C1")))
+        var edited = false
+        val file = csv(line("E1", cluster = "C1"), line("Y1", cluster = "C1", name = "Shop Y1"))
+        var isolation: String? = null
+        val run = load(file, options(inside = { h, _, attempt ->
+            isolation = h.createQuery("SHOW transaction_isolation").mapTo(String::class.java).one()
+            if (attempt == 1 && !edited) { edited = true; execElsewhere("UPDATE app.cluster SET name = 'C1 renamed' WHERE name = 'C1'") }
+        }))
+        assertTrue(edited)
+        assertEquals("repeatable read", isolation, "an outlet batch reads one snapshot")
+        val o = run.of("outlet")
+        assertEquals(2, o.total, run.text())
+        assertEquals(count("app.outlet WHERE code = 'Y1'"), o.created, "created is exactly what exists: ${run.text()}")
+        if (o.created == 0) {
+            // the batch failed on the stale snapshot (SQLSTATE 40001) and ran again: both rows are now counted for what they have become
+            assertEquals(2, o.error, run.text())
+            assertEquals(2, run.issues["cluster_does_not_resolve"])
+        } else assertEquals(1, o.unchanged, run.text())
+    }
+
+    /** The advisory lock is re-checked before every transaction: a lock lost to a dropped connection stops the run (it is resumable) instead of racing a second loader. */
+    @Test
+    fun aLostAdvisoryLockStopsTheRun() = withDb {
+        val (csv, _) = SyntheticMaster.csv(900, wings = 1, seed = 9)
+        val e = assertFailsWith<LoaderException> {
+            load(csv, options(batch = 300, afterBatch = {
+                if (it == 1) exec("SELECT pg_terminate_backend(pid) FROM pg_locks WHERE locktype = 'advisory' AND ((classid::bigint << 32) | objid::bigint) = ${MasterDataLoader.LOCK_KEY}")
+            }))
+        }
+        assertTrue(e.message!!.contains("advisory lock") && e.message!!.contains("was lost"), e.message)
+        assertEquals(300, count("app.outlet"), "nothing was written after the lock was lost")
+    }
+
+    /** A held rep (3 characters, the gate closed) or a rep that is another role's user does not make a route "have a rep"; a route with a loadable cover does. */
+    @Test
+    fun aHeldOrForeignRepDoesNotGiveARouteARep() = withDb {
+        exec("INSERT INTO app.app_user (username, full_name, role, must_change_password) VALUES ('ab0009', 'Existing Tso', 'TSO', false)")
+        load(csv(
+            line("H1", route = "RH", rep = "xy1"), line("H2", route = "RF", rep = "ab0009"), line("H3", route = "RG", rep = "ab0001"),
+            line("H4", route = "RC", rep = "xy1"), line("H5", route = "RC", rep = "ab0001"),
+        ))
+        assertEquals("archived", one("SELECT status FROM app.outlet WHERE code = 'H1'"), "held rep")
+        assertEquals("archived", one("SELECT status FROM app.outlet WHERE code = 'H2'"), "another role's user")
+        assertEquals("active", one("SELECT status FROM app.outlet WHERE code = 'H3'"))
+        assertEquals("active", one("SELECT status FROM app.outlet WHERE code = 'H4'"), "a route with a loadable cover")
+    }
+
+    /** The case-insensitive sub-channel join cannot fan out: a portal that holds 'GT' and 'gt' still loads one outlet per row, and the exact case wins. */
+    @Test
+    fun twoSubChannelsThatDifferOnlyInCaseDoNotDuplicateARow() = withDb {
+        exec("INSERT INTO app.sub_channel (channel, code, name) VALUES ('GT', 'gt', 'gt twin')")
+        val run = load(csv(line("T1", sub = "GT"), line("T2", sub = "gt")))
+        assertEquals(2, run.of("outlet").created, run.text())
+        assertEquals("GT", one("SELECT s.code FROM app.outlet o JOIN app.sub_channel s ON s.id = o.sub_channel_id WHERE o.code = 'T1'"))
+        assertEquals("gt", one("SELECT s.code FROM app.outlet o JOIN app.sub_channel s ON s.id = o.sub_channel_id WHERE o.code = 'T2'"))
+        assertEquals(0, load(csv(line("T1", sub = "GT"), line("T2", sub = "gt"))).of("outlet").updated)
+    }
+
+    /** An outlet that already holds the retired Silver tier keeps it when the file still says Silver (as the portal does); the text is not turned into a drop. */
+    @Test
+    fun anOutletThatHoldsTheRetiredTierKeepsItWhenTheFileStillSaysSo() = withDb {
+        val file = csv(line("S1", channel = "Astha", sub = "Silver"))
+        assertEquals(1, load(file).of("outlet").created)
+        assertNull(one("SELECT sub_channel_id::text FROM app.outlet WHERE code = 'S1'"), "a new outlet never gets the retired tier")
+        exec("UPDATE app.outlet SET sub_channel_id = (SELECT id FROM app.sub_channel WHERE code = 'Silver') WHERE code = 'S1'")
+        val again = load(file)
+        assertEquals(0, again.of("outlet").updated, again.text())
+        assertEquals("Silver", one("SELECT s.code FROM app.outlet o JOIN app.sub_channel s ON s.id = o.sub_channel_id WHERE o.code = 'S1'"))
+    }
+
+    /** Case variants of a code and codeless rows are reported (the rows still load: the table keys codes case-sensitively); the report says unreadable rows are part of the errors. */
+    @Test
+    fun caseVariantsAndGeneratedCodesAreReported() = withDb {
+        val run = load(csv(line("cv1"), line("CV1"), line("OTHER"), line("", name = "Anon")))
+        assertEquals(4, run.of("outlet").created, run.text())
+        assertEquals(2, run.issues["outlet_code_differs_from_another_only_in_case"], run.text())
+        assertEquals(setOf("cv1", "CV1"), run.samples["outlet_code_differs_from_another_only_in_case"]!!.toSet())
+        assertEquals(1, run.issues["outlet_created_under_a_generated_code"])
+        // the same shop with an edited name is a NEW generated code: a second shop, and the report line says so
+        val later = load(csv(line("cv1"), line("CV1"), line("OTHER"), line("", name = "Anon edited")))
+        assertEquals(1, later.of("outlet").created)
+        assertEquals(1, later.issues["outlet_created_under_a_generated_code"], later.text())
+        assertEquals(2, count("app.outlet WHERE code LIKE 'gen.%'"))
+        val short = load(csv(line("U1"), line("U2").substringBeforeLast(",")))
+        assertTrue(short.text().contains("of which unreadable: 1") && short.text().contains("counted among the outlet errors"), short.text())
     }
 }

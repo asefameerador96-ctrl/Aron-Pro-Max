@@ -16,20 +16,27 @@ profile (`SyntheticMaster`), generated in the test from a seed.
 | Input | the workbook saved as CSV, the 32 columns of the profile. Header names are matched by letters and digits only, so the column ORDER and the separators in the names do not matter; a column the file does not carry is reported once and read as empty. |
 | Output | rows in `app.*`, and a report of counts and codes |
 | Rules | phones, channels, tiers, geo classes, coordinates, timestamps, visit plans and generated codes come from `ImportRules`, the shapes of codes and the length limits from `MasterRules`: the SAME objects the portal import and the user editor use. `MasterRulesTest` compares `MasterRules` with the live CHECK constraints of the migrated schema, so the rule set cannot drift from the tables. |
-| Staging | schema `mdload`, created by the tool itself (no migration owns it): `run` and `batch` are small and logged (they make a run resumable, and bind a run id to its file), `outlet_row` is UNLOGGED, holds one batch at a time and is DROPPED at the end of a finished run (and, after a failed run, at the start of the next one) |
-| Guards | **Environment (in code):** the loader refuses to run unless `LoadOptions.env` is `ServerEnv.PROD` (the final account) or `syntheticTestData` is set; there is no default. **One at a time:** a session-level advisory lock; a second loader is refused. **Short rep ids:** `shortRepIdsAllowedForTests` is `internal`: no CLI and no API can reach it; the only way a 3-character id loads is the B2 config gate. |
+| Staging | schema `mdload`, created by the tool itself (no migration owns it): `run`, `batch` and `step` are small and logged (they make a run resumable, bind a run id to its file AND its options, and keep each finished unit's counts and issue codes so a resumed run reports them again), `outlet_row` is UNLOGGED, holds one batch at a time and is DROPPED at the end of a finished run (and, after a failed run, at the start of the next one) |
+| Guards | **Environment (in code, from the process settings):** the loader takes the process's `Settings` and refuses to run unless `settings.env` is `ServerEnv.PROD` (the final account) or the INTERNAL `syntheticTestData` flag is set; a caller passes no environment and cannot claim the data is synthetic. **One at a time:** a session-level advisory lock; a second loader is refused, and the lock is re-checked before every transaction (a lost lock stops the run). **Short rep ids:** `shortRepIdsAllowedForTests` is `internal`: no CLI and no API can reach it; the only way a 3-character id loads is the B2 config gate. |
 
 ## How it runs
 
-1. **Pass 1, the scan.** Reads the whole file and writes nothing. Every row goes through `NormRow.of` (the validation below); the rows that pass fold into the
+1. **Pass 1, the scan.** Reads the whole file once, keeps ONE immutable gzip copy of it (owner-only, in the temp directory, deleted at the end: plan for the
+   file's size divided by about five, in `java.io.tmpdir`) and writes nothing to the database. Every row goes through `NormRow.of` (the validation below); the rows that pass fold into the
    hierarchy and the route, cluster and rep facts. It hashes the whole file, finds every outlet code that appears on more than one row, and decides, in memory:
    a child with more than one parent (the parent on the most rows wins, the case is listed by code), each route's visit plan (the pattern of the most of its
    outlets that carry one; `none` when none does), each route's primary rep (the rep on the most of its rows; a tie goes to the smallest id) and each
    cluster's type.
-2. **Pass 2, the load.** Hierarchy first (wing, division, territory, house, zone, route, cluster) in chunks of 5,000 with one transaction per chunk, then the
+2. **Pass 2, the load**, reading the copy, never the caller's file again. Hierarchy first (wing, division, territory, house, zone, route, cluster) in chunks of 5,000 with one transaction per chunk, then the
    outlets in batches of 5,000 (one transaction each), then the reps and their assignments, again one transaction per chunk. An outlet batch stages its rows,
    counts the rows that cannot be applied BY REASON, creates, updates, writes the pin and placement history, and records itself in `mdload.batch` with a hash
-   of every loaded value of its rows.
+   of every loaded value of its rows, its counts and its issue codes. The batch runs on ONE snapshot (REPEATABLE READ); a concurrent portal edit makes it
+   fail with SQLSTATE 40001 and it runs again (3 attempts), so the edited row is counted for what it has become. Hierarchy, rep and assignment chunks record
+   themselves in `mdload.step` the same way.
+3. **A resume** (same run id) must give the same file AND the same options (`batchSize`, `coordinatesConfirmed`, `storeOutletsWithoutVisitPlan`,
+   `unassignedOutletStatus`, `businessDate`, `by`): another file or other options are refused with a message that names the option NAMES and no value. A
+   finished unit is not written again and its stored counts and issue codes go into the report, so the final report of a resumed run equals the report of an
+   uninterrupted one. A rep's home zone is decided by the rows pass 2 ACCEPTED, never by a rejected row.
 
 ### What is an error row (counted once, by reason, never "unchanged")
 
@@ -39,7 +46,16 @@ profile (`SyntheticMaster`), generated in the test from a seed.
 * **every row of a duplicated outlet code**, the code of the file or the stable generated code of a codeless row: no row of such a code is loaded, so no shop
   can overwrite another (finding L2);
 * a row whose zone or cluster does not resolve, whose route does not exist, whose route belongs to another zone than the row's, or whose outlet was merged
-  (finding L4). A route stored in another zone than the file says is NEVER moved by the loader (its outlets carry the zone); it is reported by code.
+  (finding L4). A route stored in another zone than the file says is NEVER moved, renamed or re-planned by the loader (its outlets carry the zone); it is
+  reported by code and counted a route error.
+
+Not an error, but reported: two outlet codes that differ only in case (both load; the table keys codes case-sensitively), and every outlet created under a
+generated code (a later file with an edited name of that shop creates a second one, so the owner can look for a twin). `unreadable` rows are a PART of the
+outlet errors, not an addition to them.
+
+Route assignments are classified once each: already open (unchanged); created; a primary that differs from the route's open primary (HELD with its code: the
+portal owns a reassignment once the route exists); a route that was not created, a route stored in another zone, or a rep that was not created (errors).
+A route "has a rep" for the outlet status only when a rep that WILL load serves it: a held (short id) rep or another role's user does not count.
 
 A zone move of an existing outlet is applied as a whole: zone, cluster, route (a row without a route clears the old one) and the placement history.
 
@@ -51,6 +67,16 @@ A zone move of an existing outlet is applied as a whole: zone, cluster, route (a
 | Every input row is counted exactly once (created, updated, unchanged, held, error); the report prints the equality | the same tests |
 | Running the same file again changes NOTHING: no row, no version bump, no history row | `loadingTheSameFileAgainChangesNothing` |
 | A run id is bound to the hash of its file: the same file resumes (finished batches skipped, nothing lost); a different file under the same run id is REFUSED with a message, and a corrected file is a new run (L1) | `aRunIdIsBoundToItsFileAndAResumeLosesNothing` |
+| A resumed run's report EQUALS an uninterrupted run's (counts and issue codes of skipped batches and steps are read back), with error rows in a skipped batch (R1) | `aResumedRunReportsExactlyWhatAnUninterruptedRunReports` |
+| A resume under other options is refused and names no value (R2) | `aResumeUnderOtherOptionsIsRefusedAndNamesNoValue` |
+| Pass 2 reads the copy of pass 1, so a file replaced during the run is never half applied | `aFileReplacedDuringTheRunIsNeverHalfApplied` |
+| A rejected row moves neither a rep's home zone nor a route of another zone | `aRejectedRowMovesNeitherTheRepNorTheRouteOfAnotherZone` |
+| A different primary rep is reported (held, with its code); a pair whose route is gone is an error | `aDifferentPrimaryRepIsReportedAndAPairWhoseRouteWasNotCreatedIsAnError` |
+| One snapshot per batch: a concurrent portal edit cannot turn a row into an uncounted one | `aConcurrentPortalEditCannotTurnARowIntoAnUncountedOne` |
+| The advisory lock is re-checked before every transaction | `aLostAdvisoryLockStopsTheRun` |
+| A held or other-role rep does not give a route a rep | `aHeldOrForeignRepDoesNotGiveARouteARep` |
+| The case-insensitive sub-channel join cannot fan out; a held retired tier is kept as the portal keeps it | `twoSubChannelsThatDifferOnlyInCaseDoNotDuplicateARow`, `anOutletThatHoldsTheRetiredTierKeepsItWhenTheFileStillSaysSo` |
+| Case variants of a code and generated codes are reported; the report says unreadable rows are part of the errors | `caseVariantsAndGeneratedCodesAreReported` |
 | Every row of a duplicated outlet code is held; no winner (L2) | `everyRowOfADuplicatedOutletCodeIsHeldAndNoWinnerIsPicked` |
 | A value a table would refuse is a row error that the dry run reports; and when the database refuses a batch anyway, nothing that carries the failure holds a value of the file: no cause, only the class, the SQLSTATE and the constraint name (L3) | `valuesThatATableWouldRefuseAreRowErrorsAndNoFailureCarriesAValueOfTheFile` |
 | Route, cluster and zone agree; a zone move is whole; a route of another zone is an error that moves nothing (L4) | `aZoneMoveIsAppliedWholeAndARouteOfAnotherZoneIsAnErrorThatMovesNothing` |
@@ -67,12 +93,12 @@ A zone move of an existing outlet is applied as a whole: zone, cluster, route (a
 
 | Option | Default | What it does |
 |---|---|---|
-| `env` | none (required) | `ServerEnv.PROD` is the final account. Anything else needs `syntheticTestData`. |
+| (environment) | the process `Settings` | Not an option: `settings.env` (`ARON_ENV`) must be `prod` (the final account). Anything else needs the internal `syntheticTestData` flag, which only the tests set. |
 | `coordinatesConfirmed` | false | On: a pin inside Bangladesh loads `location_confirmed` and replaces a pin the field confirmed. Off: such a master pin is recorded as a `candidate` in the location history and the field's pin stays (D-MD-26). |
 | `storeOutletsWithoutVisitPlan` | true | The owner's ruling (D-MD-03): the route gets `visit_kind` `none` and its outlets load as usual, never planned, never counting a target outlet. Off: those outlets are HELD. |
 | `unassignedOutletStatus` | `archived` | The status of an outlet whose route has no rep (92,961 rows in the profile). It is reactivated when a later file gives the route a rep. |
 | `batchSize` | 5,000 | Rows per transaction. |
-| `runId` | new | The SAME id and the SAME file resume an interrupted run. |
+| `runId` | new | The SAME id, the SAME file and the SAME options resume an interrupted run. |
 
 ## How long the real file would take, and how much memory
 
@@ -104,4 +130,10 @@ loader with `-Xmx512m` or more. (The first version of this document said "tens o
 * The loader has **no CLI entry point** yet (it is called from Kotlin). The final-account runbook needs one, with the switches above as flags and
   `ServerEnv` taken from the process settings, never from a flag.
 * It has never run against the test account, and must not: the workbook is not loaded there (standing rule 1). The environment guard enforces it.
+* **The dry run holds one transaction for the whole file**, so it keeps its row locks until the rollback: on a fleet file in the final account it blocks portal
+  edits of the rows it would change for its whole duration. Run it in a quiet window or on a restored copy. (Its exactness comes from running the real
+  statements; there is no cheaper way to keep it exact.) It reads no snapshot of its own either: it is a plan, not a guarantee against concurrent edits.
+* **PostgreSQL's own server log.** When a constraint does fire, PostgreSQL writes `DETAIL: Failing row contains (...)`, with the row's values, to ITS log. The
+  loader's output never carries it, and the shared rules make a refusal rare, but in the final account set `log_error_verbosity = terse` for the load (a
+  server parameter; the loader cannot change it as an ordinary role) and check the diagnostic settings of the server.
 * A crash in the middle of a COMMIT is not tested (the resume test interrupts between batches); a batch is one transaction, so it commits whole or not at all.

@@ -21,7 +21,7 @@ class LoadReport {
     /** Input rows read from the file (blank lines are not rows). */
     var rowsRead: Long = 0
 
-    /** Rows the loader could not even read as a row (a short record, an unreadable number): counted, never silently dropped. */
+    /** Rows the loader could not even read as a row (a short record, an unreadable number): counted, never silently dropped. They are a PART of the outlet errors, not an addition to them. */
     var rowsUnreadable: Long = 0
 
     val entities: MutableMap<String, Counts> = linkedMapOf(
@@ -48,13 +48,17 @@ class LoadReport {
     /** Batches applied in this run (resumed runs count only the batches this run applied). */
     var batchesApplied: Int = 0
     var batchesSkipped: Int = 0
+
+    /** Hierarchy, rep and assignment chunks a resumed run found already done (their stored counts and issue codes are in the report). */
+    var stepsSkipped: Int = 0
     var dryRun: Boolean = false
     var millis: Long = 0
 
     /** The whole report as text, safe to paste into a status file or a log. */
     fun text(): String = buildString {
         appendLine("Master-data load report${if (dryRun) " (DRY RUN: nothing was written)" else ""}")
-        appendLine("rows read: $rowsRead, unreadable: $rowsUnreadable, batches applied: $batchesApplied, skipped (already done): $batchesSkipped, ${millis} ms")
+        appendLine("rows read: $rowsRead, of which unreadable: $rowsUnreadable (these are counted among the outlet errors below, not in addition to them)")
+        appendLine("outlet batches applied: $batchesApplied, skipped (already done, their stored counts are included): $batchesSkipped, other steps skipped: $stepsSkipped, ${millis} ms")
         appendLine()
         appendLine("| what | created | updated | unchanged | held | error | total |")
         appendLine("|---|---|---|---|---|---|---|")

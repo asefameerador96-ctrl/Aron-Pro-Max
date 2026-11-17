@@ -25,6 +25,9 @@ object SyntheticMaster {
     class Facts {
         var rows: Int = 0
         var outletsWithoutRep: Int = 0
+
+        /** Outlets on a route whose ONLY rep has a 3-character id: held while the B2 gate is closed, so no rep that will load serves the route. */
+        var outletsOnHeldRepRoutes: Int = 0
         var routesWithoutPlan: Int = 0
         var codelessRows: Int = 0
         var shortRepIds: MutableSet<String> = linkedSetOf()
@@ -107,6 +110,7 @@ object SyntheticMaster {
                                     ).joinToString(","),
                                 ).append('\n')
                                 if (noRep) facts.outletsWithoutRep++
+                                if (!noRep && !twoReps && rep in facts.shortRepIds) facts.outletsOnHeldRepRoutes++
                             }
                         }
                     }

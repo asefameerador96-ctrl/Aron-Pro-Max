@@ -64,6 +64,33 @@ internal class MasterScan(private val geoClasses: List<String>, private val now:
     private val seenCodes = HashSet<String>(1 shl 20)
     val duplicateCodes = HashSet<String>()
 
+    /**
+     * 64-bit hashes of the LOWER-CASED form of every distinct outlet code (one long per outlet, about 6 MB for the real file): two distinct codes that differ
+     * only in case have the same hash. `app.outlet.code` is unique case-sensitively, so both load; the report says so ([hasCaseTwin]).
+     */
+    private var lowerHashes = LongArray(1 shl 16)
+    private var lowerCount = 0
+    private val caseTwins: Set<Long> by lazy {
+        val sorted = lowerHashes.copyOf(lowerCount).also { it.sort() }
+        val twins = HashSet<Long>()
+        for (i in 1 until sorted.size) if (sorted[i] == sorted[i - 1]) twins += sorted[i]
+        twins
+    }
+
+    private fun addLower(code: String) {
+        if (lowerCount == lowerHashes.size) lowerHashes = lowerHashes.copyOf(lowerHashes.size * 2)
+        lowerHashes[lowerCount++] = hash64(code)
+    }
+
+    private fun hash64(code: String): Long {
+        var h = -3750763034362895579L   // FNV-1a, 64 bit
+        for (ch in code.lowercase()) { h = h xor ch.code.toLong(); h *= 1099511628211L }
+        return h
+    }
+
+    /** True when another outlet code of the file differs from [code] only in case. Valid after the last [add]. */
+    fun hasCaseTwin(code: String): Boolean = caseTwins.isNotEmpty() && hash64(code) in caseTwins
+
     private val fileHash = MessageDigest.getInstance("SHA-256")
     /** A hash of the whole file (header and every raw record): binds a run id to ITS file (finding L1). Valid after the last [add]. */
     val fileDigest: String get() = fileHash.clone().let { (it as MessageDigest).digest().joinToString("") { b -> "%02x".format(b) } }
@@ -83,7 +110,9 @@ internal class MasterScan(private val geoClasses: List<String>, private val now:
         raw.digestInto(fileHash)
         val res = NormRow.of(raw, geoClasses, now)
         if (!raw.wellFormed) { malformed++; return }
-        res.code?.let { if (!seenCodes.add(it)) duplicateCodes += it }
+        res.code?.let {
+            if (!seenCodes.add(it)) duplicateCodes += it else addLower(it)
+        }
         val r = res.row ?: return
         node(wings, r.wing, r.wingName, null)
         node(divisions, r.division, r.divisionName, r.wing)
