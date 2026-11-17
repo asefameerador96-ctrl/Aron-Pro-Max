@@ -64,6 +64,16 @@ The repository `asefameerador96-ctrl/Aron-Pro-Max` has been **public** since it 
 | Lost data on a phone | none by design: the outbox holds every record until the server confirms it | kill-and-relaunch tests, device checks |
 | Bad config change | `cfg` versions with rollback in the admin portal (F-ADM-043); blast-radius and what-if before applying | config tests |
 
+## 4a. Pre-flight of data-dependent migrations (D-SV2-12, 2026-11-17)
+
+Found on deploy 44170414803 (train 113): Flyway applied V0186..V0190 and then V0191 raised its own data guard (near-duplicate cluster names in dev), leaving the dev schema half way through a train. Rules, from then on:
+
+1. **Every raising data guard of a pending migration has a mirror in the pre-flight.** The mirror is a READ-ONLY check (SQL in `db/preflight/`, packaged at `classpath:db/preflight`, run by `backend:platform` `MigrationPreflight` in the migrate role, in the same job and image, BEFORE Flyway applies anything). It prints zone codes, counts and ids only, never a name or other master data. It skips cleanly when its migration is already applied or the tables it reads do not exist.
+2. **Outcome by environment**, decided from the environment the deploy itself declares (`ARON_ENV`, the Bicep `environmentName` of the job, never a caller-set input): every environment except `dev` (staging, prod, anything unknown) FAILS the deploy before any migration, changes nothing, and says what to do (for V0191: rename or merge the listed clusters in the admin portal). In `dev` only it repairs its test data (V0191: per group the lowest cluster id keeps its name, the others get an ` #<id>` suffix, one transaction, one audit row each by the system actor `migrate-preflight`, ids printed, never names), re-checks and fails if anything is left.
+3. **Guards go in the FIRST migration of a train** (or only in the pre-flight), so that a stop leaves the schema at the old version, not half way.
+4. **Pending migrations are rehearsed on a restored copy of the target database** (final account: a PITR restore of production) before a production window; the rehearsal runs the pre-flight too.
+5. A new check is a `MigrationPreflight.Check` plus its SQL file plus a test that seeds the offending rows, shows the non-dev failure (nothing changed, no data in the output) and the pass-through of a clean and of an already-migrated database.
+
 ## 5. What is not done yet (tracked, owner in brackets)
 
 1. `main`, protection, baseline tag, environments, CODEOWNERS, Dependabot: **done 2026-10-07** (section 3). Open: the first daily gate pull request and the gate tags (lead), the Actions spending limit before the repository is made private (owner).

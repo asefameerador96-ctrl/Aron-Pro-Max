@@ -1,0 +1,134 @@
+package com.aktcl.aron.backend.platform
+
+import java.sql.Connection
+import javax.sql.DataSource
+
+/** A pre-flight check found data that a pending migration would refuse; nothing was changed (or, in dev, the repair did not finish). The message holds zone codes, counts and ids only, never a name. */
+class PreflightFailed(message: String) : RuntimeException(message)
+
+/**
+ * Pre-flight of data-dependent migrations (D-SV2-12, docs/30): the migrate role runs these READ-ONLY checks BEFORE Flyway applies anything, so a
+ * migration whose guard raises on existing data stops the deploy while the schema is still at the old version, not half way through a train.
+ * Every raising data guard of a pending migration has a mirror here (the SQL lives in `db/preflight`, packaged at `classpath:db/preflight`).
+ *
+ * Outcome by environment, decided from the environment the deploy itself declares ([ServerEnv], the job's `ARON_ENV`, set by the Bicep parameter,
+ * never by a caller): everything but dev FAILS with what to do; dev ONLY repairs its test data (see [ClusterNames.repair]), re-checks, and fails if anything is left.
+ * A check that does not apply (its migration already applied, or the schema is too old / empty) is skipped without a trace.
+ * The report lines carry zone codes, counts and ids, never a name.
+ */
+object MigrationPreflight {
+    /** One group of rows a pending migration would refuse: where (a zone code) and the ids involved. */
+    data class Finding(val where: String, val ids: List<Long>)
+
+    interface Check {
+        val id: String
+        /** True when the migration is still pending and the tables it reads exist. */
+        fun applies(c: Connection): Boolean
+        /** Read-only. */
+        fun findings(c: Connection): List<Finding>
+        /** Dev only, inside the caller's transaction: makes the findings go away without deleting anything; returns the ids it changed. */
+        fun repair(c: Connection, findings: List<Finding>): List<Long>
+        /** What the person must do in a non-dev environment. */
+        val advice: String
+    }
+
+    val CHECKS: List<Check> = listOf(ClusterNames)
+
+    fun run(ds: DataSource, env: ServerEnv, report: (String) -> Unit = {}, checks: List<Check> = CHECKS) {
+        for (check in checks) {
+            val found = readOnly(ds) { c -> if (check.applies(c)) check.findings(c) else return@readOnly emptyList() }
+            if (found.isEmpty()) continue
+            val summary = describe(check, found)
+            if (env != ServerEnv.DEV) {
+                report("preflight ${check.id}: $summary")
+                throw PreflightFailed("pre-flight ${check.id} failed, nothing was changed: $summary. ${check.advice}")
+            }
+            report("preflight ${check.id} (dev): $summary; repairing the test data (lowest id kept, the others get an id suffix)")
+            val changed = ds.connection.use { c ->
+                c.autoCommit = false
+                try {
+                    c.createStatement().use { it.execute("SET LOCAL lock_timeout = '10s'") }
+                    val again = check.findings(c)   // read again under the repair's own transaction
+                    val ids = if (again.isEmpty()) emptyList() else check.repair(c, again)
+                    c.commit()
+                    ids
+                } catch (e: Exception) {
+                    c.rollback(); throw e
+                }
+            }
+            report("preflight ${check.id} (dev): renamed cluster ids $changed")
+            val left = readOnly(ds) { c -> check.findings(c) }
+            if (left.isNotEmpty()) throw PreflightFailed("pre-flight ${check.id}: ${describe(check, left)} remain after the dev repair")
+        }
+    }
+
+    private fun describe(check: Check, found: List<Finding>) =
+        "${found.size} group(s): " + found.joinToString("; ") { "zone ${it.where} ids ${it.ids}" }
+
+    private fun <T> readOnly(ds: DataSource, block: (Connection) -> T): T = ds.connection.use { c ->
+        c.autoCommit = false
+        try {
+            c.createStatement().use { it.execute("SET TRANSACTION READ ONLY") }
+            block(c)
+        } finally { c.rollback() }
+    }
+
+    /** V0191: clusters of one zone whose names differ only by case, spacing or composition (the unique index app.cluster (zone_id, app.norm_cluster_name(name))). */
+    object ClusterNames : Check {
+        override val id = "V0191-cluster-names"
+        override val advice = "In the admin portal (Master data, Clusters) rename or merge the listed clusters so that their names differ by more than case, spacing or composition, then deploy again."
+        private const val RESOURCE = "db/preflight/V0191__cluster_names.sql"
+        private const val NAME_MAX = 120   // app.cluster.name CHECK (length(name) BETWEEN 1 AND 120)
+
+        private val sql: String by lazy {
+            val text = ClusterNames::class.java.classLoader.getResourceAsStream(RESOURCE)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                ?: error("$RESOURCE is not on the classpath")
+            text.lineSequence().filterNot { it.trimStart().startsWith("--") }.joinToString("\n")
+        }
+
+        override fun applies(c: Connection): Boolean = c.createStatement().use { st ->
+            // V0191 pending = the clusters table exists and V0191's own function does not (it is the first thing V0191 creates).
+            st.executeQuery("SELECT to_regclass('app.cluster') IS NOT NULL AND to_regclass('app.zone') IS NOT NULL AND to_regprocedure('app.norm_cluster_name(text)') IS NULL").use { it.next() && it.getBoolean(1) }
+        }
+
+        override fun findings(c: Connection): List<Finding> = c.createStatement().use { st ->
+            st.executeQuery(sql).use { rs ->
+                buildList {
+                    while (rs.next()) add(Finding(rs.getString("zone_code"), (rs.getArray("cluster_ids").array as Array<*>).map { (it as Number).toLong() }))
+                }
+            }
+        }
+
+        /**
+         * Dev only. For each group keep the lowest id unchanged and rename the others by appending " #<id>" (the base cut so that the whole name stays within
+         * [NAME_MAX] characters): unique under the normalisation (the id differs) and under the exact unique index. One transaction (the caller's), one audit
+         * row per renamed cluster (system actor `migrate-preflight`, via `job`; the old and the new name are in the audit row, in the database, never in a log).
+         */
+        override fun repair(c: Connection, findings: List<Finding>): List<Long> {
+            c.createStatement().use { it.execute("LOCK TABLE app.cluster IN SHARE ROW EXCLUSIVE MODE") }
+            val renamed = ArrayList<Long>()
+            for (group in findings) for (id in group.ids.drop(1)) {
+                val suffix = " #$id"
+                val old = c.prepareStatement("SELECT name FROM app.cluster WHERE id = ? FOR UPDATE").use { ps ->
+                    ps.setLong(1, id); ps.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
+                } ?: continue
+                val keep = old.codePointCount(0, old.length).coerceAtMost(NAME_MAX - suffix.length)
+                val base = old.substring(0, old.offsetByCodePoints(0, keep)).trimEnd()
+                val renamedTo = base + suffix
+                c.prepareStatement("UPDATE app.cluster SET name = ? WHERE id = ?").use { ps -> ps.setString(1, renamedTo); ps.setLong(2, id); ps.executeUpdate() }
+                c.prepareStatement(
+                    "INSERT INTO app.audit_log (actor_username, via, entity, entity_id, action, before, after, reason) VALUES ('migrate-preflight', 'job', 'cluster', ?, 'preflight_rename', CAST(? AS jsonb), CAST(? AS jsonb), ?)",
+                ).use { ps ->
+                    ps.setString(1, id.toString())
+                    ps.setString(2, jsonName(old)); ps.setString(3, jsonName(renamedTo))
+                    ps.setString(4, "Dev pre-flight of V0191: names of one zone that differed only by case, spacing or composition; the lowest id kept its name, this one got an id suffix")
+                    ps.executeUpdate()
+                }
+                renamed += id
+            }
+            return renamed
+        }
+
+        private fun jsonName(n: String) = "{\"name\":\"" + n.replace("\\", "\\\\").replace("\"", "\\\"").replace(Regex("[\\u0000-\\u001f]")) { "\\u%04x".format(it.value[0].code) } + "\"}"
+    }
+}
