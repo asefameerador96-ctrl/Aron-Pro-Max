@@ -174,11 +174,57 @@ class RoomDaySubmitWriter(
             DaySubmitEntity(
                 clientUuid = newUuid(), meta = m, scope = scope, submitCycle = cycle,
                 deviceCountsJson = countsJson.toString(), deviceMoneyJson = MoneyTotalsJson.build(db, businessDate, categoryOf).toString(),
-                rejectedCount = rejected, quarantinedCount = quarantined, pendingCount = 0,
+                rejectedCount = rejected, quarantinedCount = quarantined, pendingCount = db.outboxDao().unsentOn(businessDate), // D-AGATE-06: the real number
                 submittedWithDues = dues != null, duesOutstandingMtk = dues?.outstandingMtk ?: 0L, retailersWithDues = dues?.retailersWithDues ?: 0,
                 stockSlipPrinted = stockSlipPrinted(),
             ),
         )
+    }
+}
+
+/**
+ * D-AGATE-06 (owner rule 3): the `day_submit`(s) a check-out writes by itself when the rep has not submitted. One per ROUTE-DAY that has
+ * captures on [build]'s business date and no submit standing (the SR works one or more routes a day; the AMO has one supervisor day),
+ * with the true device counts, money, dues and the REAL `pending_count`, built inside the check-out's own transaction. No network,
+ * no "everything acked" gate: the outbox holds the submit until every earlier record of the date is final and sends the check-out after it.
+ * A route-day whose submit already stands (a manual Sales Submit) is left alone, so the check-out then writes only itself.
+ */
+class AutoDaySubmits(
+    private val db: AronDatabase,
+    private val repo: CaptureRepository,
+    /** The capture envelope of "now" for a route (null: the AMO's supervisor day, no route). */
+    private val metaFor: (routeId: Long?) -> CaptureMeta,
+    private val categoryOf: (Long) -> String,
+    private val stockSlipPrinted: suspend () -> Boolean = { false },
+    /** `route_day` for the SR; the AMO submits its supervisor day (`supervisor_day`, no route). */
+    private val scope: String = "route_day",
+    private val newUuid: () -> String = ClientIds::newUuid,
+) {
+    suspend fun build(businessDate: String): List<DaySubmitEntity> {
+        val dao = db.captureDao()
+        val targets: List<Long?> = if (scope == "supervisor_day") (if (dao.captureCountOn(businessDate) > 0) listOf<Long?>(null) else emptyList())
+        else dao.captureRoutesOn(businessDate).distinct().sorted()
+        if (targets.isEmpty()) return emptyList()
+        val dues = RoomDaySource(db).dues(businessDate)
+        val counts = db.outboxDao().committedCounts(businessDate)
+        val countsJson = JsonObject(counts.associate { it.recordType to JsonPrimitive(it.count) })
+        val money = MoneyTotalsJson.build(db, businessDate, categoryOf).toString()
+        val rejected = db.outboxDao().countOnInState(businessDate, OutboxState.REJECTED)
+        val quarantined = db.outboxDao().countOnInState(businessDate, OutboxState.QUARANTINED)
+        val slip = stockSlipPrinted()
+        return targets.mapNotNull { route ->
+            val meta = metaFor(route).copy(businessDate = businessDate, routeId = route)
+            // a submit that stands (the rep's own Sales Submit) is left alone: the check-out then writes only itself
+            if (repo.dayRefusal(meta, "visit") == com.aktcl.aron.core.database.repo.DayRefusal.SALES_SUBMIT) return@mapNotNull null
+            val cycle = (dao.daySubmitsFor(businessDate, route).maxOfOrNull { it.submitCycle } ?: 0) + 1
+            DaySubmitEntity(
+                clientUuid = newUuid(), meta = meta, scope = scope, submitCycle = cycle,
+                deviceCountsJson = countsJson.toString(), deviceMoneyJson = money,
+                rejectedCount = rejected, quarantinedCount = quarantined, pendingCount = 0, // the real pending count is set inside the transaction
+                submittedWithDues = dues.retailersWithDues > 0 || dues.outstandingMtk > 0, duesOutstandingMtk = dues.outstandingMtk, retailersWithDues = dues.retailersWithDues,
+                stockSlipPrinted = slip,
+            )
+        }
     }
 }
 

@@ -35,7 +35,22 @@ Also unhandled on Android and worth a server-side decision: a rep on a replaceme
 `attendance_duplicate` (unique `(user_id, business_date, kind)`). The phone's local check-in is what counts, so this should be an accepted
 duplicate, not an error the rep sees.
 
-## 3. Nothing else
+## 3. Check-out submits the day (rule 3): what the server should expect and may flag
+
+- **Order.** The phone now sends a day's `day_submit` only after every earlier record of that business date is acked, rejected or
+  quarantined, and the `check_out` after the `day_submit` is final. `CHECKOUT_WITHOUT_SUBMIT` (judged after the batch) should therefore
+  stop firing for reps who forgot Sales Submit. It should ALSO accept a check-out of a day with no captures at all: the phone writes no
+  `day_submit` for a day with nothing captured ("every route-day with captures gets its submit").
+- **Automatic close of a forgotten day.** The phone's own check-out for a day the rep never checked out of has `business_date` D, a
+  `captured_at` on a LATER date, and a fix with `fix_status = provider_unavailable` and no coordinates. Please flag it
+  (a risk signal such as "no check-out, closed by the phone"); it is not a rejection.
+- **A `day_submit` can arrive with a non-zero `pending_count`** (the real number of rows still waiting when the check-out was pressed);
+  the existing settle (wait for the counts, deadline, `submit_count_mismatch`) already copes.
+- **A refused or quarantined `day_submit` unlocks the phone**, which then lets the rep submit again with the next `submit_cycle`; the
+  server uses the newest cycle. There is still no server-side void of an accepted submit.
+- **Not built (stated to the owner):** a per-rep server-side midnight close.
+
+## 4. Nothing else
 
 No contract member is needed for slice 1: the phone sends the same records it always did. If the flag should reach the
 phone (it need not), that is a later contract addition, not this round.

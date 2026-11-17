@@ -45,7 +45,15 @@ data class AttendanceState(
     val needsSalesSubmit: Boolean = false,
     /** `cfg.day.checkout_earliest_time` has passed on trusted Dhaka time (whatever else still holds check-out). */
     val checkOutTimeReached: Boolean = false,
+    /**
+     * D-AGATE-06: why the last check-out press was refused (a call or a memo edit is still open), or null. The screen says it in words;
+     * a press with nothing open, a tick or a restore clears it.
+     */
+    val checkOutBlockedBy: OpenWork? = null,
 )
+
+/** What is still open at check-out: the rep must close it first (D-AGATE-06). Checked at the press, from stored state, never from a flag. */
+enum class OpenWork { OPEN_CALL, OPEN_EDIT }
 
 /** Result of a check-in or check-out press. */
 sealed interface AttendanceResult {
@@ -54,6 +62,9 @@ sealed interface AttendanceResult {
 
     /** The save failed (database error): nothing was written and the buttons stay as they were. */
     data object Failed : AttendanceResult
+
+    /** D-AGATE-06: a call or a memo edit is still open: the check-out (which also submits the day) is refused and says so; nothing was written. */
+    data class Refused(val open: OpenWork) : AttendanceResult
 }
 
 /**
@@ -77,7 +88,14 @@ class AttendanceFlow(
     private val addressResolver: suspend (Double, Double) -> String? = { _, _ -> null },
     /** True once the business date's `day_submit` is committed on this phone (and not voided); null: no such gate (TSO). */
     private val salesSubmitted: (suspend () -> Boolean)? = null,
+    /**
+     * D-AGATE-06: what is still open (a call without its close, a memo edit in progress), read at the press. The check-out also writes the
+     * day's Sales Submit, which closes the route-day, so it is refused while either is open. Null: nothing to check (tests, TSO).
+     */
+    private val openWork: (suspend () -> OpenWork?)? = null,
 ) {
+    /** The business date of the open check-in: the day a check-out closes, also when it is pressed after Dhaka midnight (D-AGATE-06). */
+    @Volatile private var openDate: String? = null
     /** The last answer of [salesSubmitted]; null before the first read (check-out off meanwhile). */
     @Volatile private var submitted: Boolean? = null
     private val ui = MutableStateFlow(AttendanceState(needsSalesSubmit = salesSubmitted != null))
@@ -87,6 +105,7 @@ class AttendanceFlow(
     fun restore(today: List<AttendanceEventEntity>) {
         val inEv = today.filter { it.kind == "check_in" }.minByOrNull { it.meta.capturedAt }
         val outEv = today.filter { it.kind == "check_out" }.maxByOrNull { it.meta.capturedAt }
+        openDate = inEv?.meta?.businessDate
         ui.value = recompute(inEv?.meta?.capturedAt, outEv?.meta?.capturedAt, ui.value.addressText, ui.value.lastFixMock)
     }
 
@@ -125,7 +144,13 @@ class AttendanceFlow(
         val s = ui.value
         if (s.checkedInAt == null || s.checkedOutAt != null || s.busy) return AttendanceResult.Ignored
         if (dhakaMinutesNow() < checkoutEarliestMinutes()) return AttendanceResult.Ignored // recomputed, never a stale flag
-        // D-NIGHT-CHECKOUT-01: read again at the press, never a stale flag: no Sales Submit, no check-out.
+        // D-AGATE-06: an open call or memo edit refuses the check-out (it submits the day, which closes the route-day under it)
+        openWork?.let { read ->
+            val open = try { read() } catch (t: kotlinx.coroutines.CancellationException) { throw t } catch (_: Throwable) { null }
+            ui.value = ui.value.copy(checkOutBlockedBy = open)
+            if (open != null) return AttendanceResult.Refused(open)
+        }
+        // D-NIGHT-CHECKOUT-01 (only where a host still passes [salesSubmitted]; the SR and AMO no longer do, D-AGATE-06): read again at the press.
         salesSubmitted?.let { gate ->
             submitted = readSubmitted(gate)
             if (submitted != true) { tick(); return AttendanceResult.Ignored }
@@ -140,6 +165,8 @@ class AttendanceFlow(
             val eventUuid = newUuid()
             val fixEntity = fix.toEntity(newUuid(), eventUuid, purpose, 0)
             val meta: CaptureMeta = metaProvider.meta(routeIdOf() ?: 0L).let { if (routeIdOf() == null) it.copy(routeId = null) else it }
+                // a check-out closes the day of the OPEN CHECK-IN, also after Dhaka midnight (its business date is explicit, not "today")
+                .let { m -> if (kind == "check_out") openDate?.let { d -> m.copy(businessDate = d) } ?: m else m }
             val coords = if (fix.isOk) String.format(java.util.Locale.ROOT, "%.6f, %.6f", fix.lat, fix.lng) else null
             val event = AttendanceEventEntity(eventUuid, meta, kind, fixEntity.clientUuid, coords)
             try {
@@ -149,6 +176,7 @@ class AttendanceFlow(
             } catch (t: Throwable) {
                 return AttendanceResult.Failed
             }
+            if (kind == "check_in") openDate = event.meta.businessDate
             val at = nowIso()
             val cur = ui.value
             ui.value = recompute(

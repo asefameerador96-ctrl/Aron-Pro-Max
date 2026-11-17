@@ -30,10 +30,20 @@ abstract class OutboxDao {
     /**
      * The next rows to send (s4.6): commit order, except that a row already sent [skipAfter] times or more moves behind the
      * others (poison-row skip-ahead), and families in [excludedFamilies] (isolated by a bisect in this run) are left out.
+     *
+     * D-AGATE-06 (owner rule 3, check-out submits the sales): the day's `day_submit` is HELD until every EARLIER record of its business
+     * date is in a final state (acked, rejected or quarantined: nothing earlier is still pending or in flight), and the `attendance_event`
+     * record (the check-out) is HELD until the date's `day_submit` is final. So the server never sees a day's own records as late, nor a
+     * check-out without its submit, whatever order retries, a bisect-isolated family or a slow batch put the rows in. A row that is held
+     * stays pending and is picked again as soon as what it waits for is final.
      */
     @Query(
-        """SELECT * FROM outbox WHERE state = 'pending' AND family_uuid NOT IN (:excludedFamilies)
-           ORDER BY CASE WHEN attempts >= :skipAfter THEN 1 ELSE 0 END, seq LIMIT :limit""",
+        """SELECT * FROM outbox o WHERE o.state = 'pending' AND o.family_uuid NOT IN (:excludedFamilies)
+           AND NOT (o.record_type = 'day_submit' AND EXISTS (
+               SELECT 1 FROM outbox e WHERE e.business_date = o.business_date AND e.seq < o.seq AND e.state IN ('pending', 'in_flight')))
+           AND NOT (o.record_type = 'attendance_event' AND EXISTS (
+               SELECT 1 FROM outbox d WHERE d.record_type = 'day_submit' AND d.business_date = o.business_date AND d.seq < o.seq AND d.state IN ('pending', 'in_flight')))
+           ORDER BY CASE WHEN o.attempts >= :skipAfter THEN 1 ELSE 0 END, o.seq LIMIT :limit""",
     )
     abstract suspend fun nextSendable(limit: Int, skipAfter: Int, excludedFamilies: List<String>): List<OutboxEntity>
 
@@ -149,6 +159,14 @@ abstract class OutboxDao {
     /** Committed rows per record type for a business date: the device side of reconciliation (s4.12). */
     @Query("SELECT record_type AS recordType, COUNT(*) AS count FROM outbox WHERE business_date = :businessDate GROUP BY record_type ORDER BY record_type")
     abstract suspend fun committedCounts(businessDate: String): List<TypeCount>
+
+    /** D-AGATE-06: rows of [businessDate] still waiting to be sent (pending or in flight): the day_submit's real `pending_count`. */
+    @Query("SELECT COUNT(*) FROM outbox WHERE business_date = :businessDate AND state IN ('pending', 'in_flight')")
+    abstract suspend fun unsentOn(businessDate: String): Int
+
+    /** D-AGATE-06: rows of [businessDate] in [state] (rejected, quarantined): the day_submit's real counts. */
+    @Query("SELECT COUNT(*) FROM outbox WHERE business_date = :businessDate AND state = :state")
+    abstract suspend fun countOnInState(businessDate: String, state: String): Int
 
     /** Rows of a business date not yet answered by the server, per record type (the "not sent" reason of reconciliation). */
     @Query("SELECT record_type AS recordType, COUNT(*) AS count FROM outbox WHERE business_date = :businessDate AND state IN ('pending', 'in_flight') GROUP BY record_type ORDER BY record_type")

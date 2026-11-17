@@ -305,6 +305,14 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
      * The `supervisor_day` submit's writer. The supervisor day has no route, whatever call happens to be open (the lock and
      * the cycle key on date + route), so it is queued after the zone's Final Submit too (X4a fix round: tested on its own).
      */
+    /**
+     * D-AGATE-06: the supervisor-day submit the check-out writes by itself when the AMO has captures and no submit stands (no route; the same
+     * scope as [submitWriter]). Loads the SKU categories first so the money totals match the manual Sales Submit.
+     */
+    internal fun autoDaySubmits() = com.aktcl.aron.feature.dayclose.AutoDaySubmits(
+        db, day.capture, { day.metaProvider.meta(0L).copy(routeId = null) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() }, scope = "supervisor_day",
+    )
+
     internal fun submitWriter() =
         RoomDaySubmitWriter(db, day.capture, { day.metaProvider.meta(0L).copy(routeId = null) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() }, scope = "supervisor_day")
 

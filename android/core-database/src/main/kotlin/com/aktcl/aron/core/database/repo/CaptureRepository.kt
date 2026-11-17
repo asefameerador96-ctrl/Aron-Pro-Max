@@ -376,8 +376,11 @@ class CaptureRepository(
      * Sales Submit: the route-day's last record. Nothing of that route-day (visits, sales, closes, skips, dues) is committed
      * after it until the server reopens the day ([reopenRouteDay]); one submit per cycle.
      */
-    suspend fun recordDaySubmit(submit: DaySubmitEntity) = db.withTransaction {
-        if (purged(submit.clientUuid)) return@withTransaction emptyList()
+    suspend fun recordDaySubmit(submit: DaySubmitEntity) = db.withTransaction { writeDaySubmit(submit) }
+
+    /** The body of [recordDaySubmit], inside the caller's transaction (also used by [recordCheckOut]). Returns the outbox seq(s) written. */
+    private suspend fun writeDaySubmit(submit: DaySubmitEntity): List<Long> {
+        if (purged(submit.clientUuid)) return emptyList()
         requireUuids(submit.clientUuid)
         require(submit.scope in setOf("route_day", "supervisor_day")) { "scope is route_day or supervisor_day" }
         if (submit.scope == "route_day") requireRoute(submit.meta)
@@ -389,8 +392,39 @@ class CaptureRepository(
         }
         requireOpenRouteDay(submit.meta)
         capture.insertDaySubmit(submit)
-        outbox.insert(listOf(RecordMapping.daySubmit(submit, nowIso())))
+        return outbox.insert(listOf(RecordMapping.daySubmit(submit, nowIso())))
     }
+
+    /**
+     * D-AGATE-06 (owner rule 3): the check-out writes the day's Sales Submit(s) and itself in ONE local transaction, offline: the submits
+     * [buildSubmits] returns (one per route-day with captures that has none standing; built INSIDE the transaction, so their counts and
+     * `pending_count` are the true ones at that moment) get the lower outbox seq, then the fix, the `check_out` event and its outbox row.
+     * A kill at any point leaves all of it or nothing. [event] must be a `check_out` of a business date that has an open check-in; that
+     * date is the DAY OF THE OPEN CHECK-IN, also when this runs after midnight, and the submits carry it too. Idempotent on [event]'s uuid.
+     * The outbox holds the submit until every earlier record of the date is final and the check-out until the submit is (see
+     * [OutboxDao.nextSendable]), so the server never sees the day's own records as late.
+     */
+    suspend fun recordCheckOut(
+        event: AttendanceEventEntity, fix: GeoFixEntity,
+        buildSubmits: suspend (businessDate: String) -> List<DaySubmitEntity> = { emptyList() },
+    ) = db.withTransaction {
+        if (purged(event.clientUuid)) return@withTransaction emptyList()
+        require(event.kind == "check_out") { "recordCheckOut writes a check_out" }
+        requireUuids(event.clientUuid, fix.clientUuid)
+        requireFixOf(fix, event.clientUuid, event.fixClientUuid)
+        val date = event.meta.businessDate
+        val events = capture.attendanceOn(date)
+        check(events.any { it.kind == "check_in" } && events.none { it.kind == "check_out" }) { "a check-out needs an open check-in on $date" }
+        val submits = buildSubmits(date)
+        require(submits.all { it.meta.businessDate == date }) { "a day's submits carry the day of the open check-in" }
+        submits.forEach { writeDaySubmit(it.copy(pendingCount = outbox.unsentOn(date))) }
+        capture.insertFix(fix)
+        capture.insertAttendance(event)
+        outbox.insert(listOf(RecordMapping.attendance(event, fix, nowIso())))
+    }
+
+    /** The business dates with a check-in and no check-out (see [CaptureDao.openAttendanceDates]), oldest first. */
+    suspend fun openAttendanceDates(): List<String> = capture.openAttendanceDates()
 
     /**
      * A cluster the SR created on the phone, with the GEO fix of the creation, in ONE transaction (SRM-B-44). Idempotent by the client uuid:

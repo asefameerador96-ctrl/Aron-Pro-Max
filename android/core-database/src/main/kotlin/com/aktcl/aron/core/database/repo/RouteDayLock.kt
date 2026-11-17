@@ -60,14 +60,23 @@ internal object RouteDayLock {
         else -> null
     }
 
+    /**
+     * D-AGATE-06 (owner rule 3): a `day_submit` the SERVER refused (its outbox row is rejected, `retry_exhausted` included) or holds for review
+     * (quarantined) does not stand. Otherwise a check-out that submitted the day by itself, answered with a refusal, would lock the rep out
+     * of his own day with no way out. The lock lifts, the Sales Submit screen shows the refused record with its reason, and a new submit
+     * (the next cycle) is possible. An accepted submit, or one still waiting to be sent, stands as before.
+     */
+    private suspend fun standing(db: AronDatabase, rows: List<com.aktcl.aron.core.database.entity.DaySubmitEntity>): List<com.aktcl.aron.core.database.entity.DaySubmitEntity> =
+        rows.filter { r -> db.outboxDao().byClientUuid(r.clientUuid)?.state.let { it != com.aktcl.aron.core.database.entity.OutboxState.REJECTED && it != com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED } }
+
     private suspend fun routeOpen(db: AronDatabase, businessDate: String, routeId: Long?): Boolean {
-        val latest = db.captureDao().daySubmitsFor(businessDate, routeId).maxOfOrNull { it.submitCycle } ?: return true
+        val latest = standing(db, db.captureDao().daySubmitsFor(businessDate, routeId)).maxOfOrNull { it.submitCycle } ?: return true
         val reopened = db.referenceDao().meta(key(businessDate, routeId))?.toIntOrNull() ?: 0
         return latest <= reopened
     }
 
     private suspend fun supervisorOpen(db: AronDatabase, businessDate: String): Boolean {
-        val latest = db.captureDao().daySubmitsFor(businessDate, null).filter { it.scope == "supervisor_day" }.maxOfOrNull { it.submitCycle } ?: return true
+        val latest = standing(db, db.captureDao().daySubmitsFor(businessDate, null).filter { it.scope == "supervisor_day" }).maxOfOrNull { it.submitCycle } ?: return true
         val reopened = db.referenceDao().meta(key(businessDate, null))?.toIntOrNull() ?: 0
         return latest <= reopened
     }
@@ -75,7 +84,7 @@ internal object RouteDayLock {
     /** True while a submit of the date stands: some route-day (or the supervisor day) has a cycle the server has not voided. */
     suspend fun submitStands(db: AronDatabase, businessDate: String): Boolean =
         db.captureDao().daySubmitsOn(businessDate).groupBy { it.meta.routeId }.any { (route, rows) ->
-            rows.maxOf { it.submitCycle } > (db.referenceDao().meta(key(businessDate, route))?.toIntOrNull() ?: 0)
+            (standing(db, rows).maxOfOrNull { it.submitCycle } ?: 0) > (db.referenceDao().meta(key(businessDate, route))?.toIntOrNull() ?: 0)
         }
 
     suspend fun reopen(db: AronDatabase, businessDate: String, routeId: Long?, voidedCycle: Int) =

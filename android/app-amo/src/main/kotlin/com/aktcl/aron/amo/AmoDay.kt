@@ -196,24 +196,53 @@ class AmoDay(
     /** F-AMO-003: the SR's attendance flow, unchanged (check-in/out events, DPC hooks, integrity evidence, address offline as coordinates). */
     val attendance = AttendanceFlow(
         fixes = fixSource, metaProvider = metaProvider,
-        committer = { e, f ->
-            capture.recordAttendance(e, f)
-            refreshDayGate()
-            runCatching {
-                val policy = DeviceOwnerPolicy.get(context)
-                if (e.kind == "check_in") policy.onCheckInCommitted() else policy.onCheckOutCommitted()
-            }
-            // N-035 breadcrumbs (D-MDM-BREADCRUMB-01): starts or ends the day's window; a no-op while breadcrumbs are off.
-            runCatching { deviceRuntime?.onAttendanceCommitted(e.kind, userId) }
-            if (e.kind == "check_in") runCatching { deviceRuntime?.wantEvidenceAtCheckIn() }
-            runCatching { scheduler.requestSync(userId, if (e.kind == "check_in") SyncTrigger.WRITE_DEBOUNCE else SyncTrigger.CHECKOUT) }
-        },
+        committer = { e, f -> commitAttendance(e, f) },
         routeIdOf = { routeId }, nowIso = { iso(clock.nowMs()) }, dhakaMinutesNow = ::dhakaMinutesNow,
         checkoutEarliestMinutes = { deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: DayConfig.DEFAULT_CHECKOUT_MINUTES },
         addressResolver = { lat, lng -> addressResolver.displayText(context, lat, lng) },
-        // D-NIGHT-CHECKOUT-01: the AMO's supervisor-day Sales Submit, committed on this phone, before check-out.
-        salesSubmitted = { daySubmitted() },
+        // D-AGATE-06 (owner rule 3): the check-out submits the supervisor day by itself ("Sales Submit first" is gone); an open call or memo edit refuses it.
+        openWork = { openWorkNow() },
     )
+
+    /** One attendance write for the AMO: a check-out also writes the supervisor day's Sales Submit in the same transaction (see SrDay.commitAttendance). */
+    internal suspend fun commitAttendance(e: com.aktcl.aron.core.database.entity.AttendanceEventEntity, f: com.aktcl.aron.core.database.entity.GeoFixEntity) {
+        if (e.kind == "check_out") {
+            sale.prepare()
+            capture.recordCheckOut(e, f) { date -> sale.autoDaySubmits().build(date) }
+        } else capture.recordAttendance(e, f)
+        refreshDayGate()
+        runCatching {
+            val policy = DeviceOwnerPolicy.get(context)
+            if (e.kind == "check_in") policy.onCheckInCommitted() else policy.onCheckOutCommitted()
+        }
+        // N-035 breadcrumbs (D-MDM-BREADCRUMB-01): starts or ends the day's window; a no-op while breadcrumbs are off.
+        runCatching { deviceRuntime?.onAttendanceCommitted(e.kind, userId) }
+        if (e.kind == "check_in") runCatching { deviceRuntime?.wantEvidenceAtCheckIn() }
+        runCatching { scheduler.requestSync(userId, if (e.kind == "check_in") SyncTrigger.WRITE_DEBOUNCE else SyncTrigger.CHECKOUT) }
+    }
+
+    /** What is still open at check-out: a control or joint call in progress, or a memo edit being made. Read at the press. */
+    suspend fun openWorkNow(): com.aktcl.aron.feature.attendance.OpenWork? = when {
+        visitSession.current.value != null -> com.aktcl.aron.feature.attendance.OpenWork.OPEN_CALL
+        sale.flow.state.value.draft?.edit != null && sale.flow.state.value.committed == null -> com.aktcl.aron.feature.attendance.OpenWork.OPEN_EDIT
+        else -> null
+    }
+
+    /** D-AGATE-06: a day never checked out is closed by the phone at the next start, before a new check-in (see SrDay.closeForgottenDays). */
+    suspend fun closeForgottenDays(): List<String> {
+        val today = businessDate()
+        val stale = runCatching { capture.openAttendanceDates() }.getOrDefault(emptyList()).filter { it < today }
+        for (d in stale) {
+            val eventUuid = com.aktcl.aron.core.common.ClientIds.newUuid()
+            val fix = com.aktcl.aron.feature.outlet.FixReading("provider_unavailable", null, null, null, false).toEntity(com.aktcl.aron.core.common.ClientIds.newUuid(), eventUuid, "attendance_out", 0)
+            val event = com.aktcl.aron.core.database.entity.AttendanceEventEntity(
+                eventUuid, metaProvider.meta(0L).copy(routeId = null, businessDate = d), "check_out", fix.clientUuid, null,
+            )
+            runCatching { commitAttendance(event, fix) }
+        }
+        if (stale.isNotEmpty()) { attendance.restore(attendanceToday()); refreshDayGate() }
+        return stale
+    }
 
     suspend fun attendanceToday() = db.captureDao().attendanceOn(businessDate())
 

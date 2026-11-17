@@ -189,7 +189,7 @@ class MainActivity : ComponentActivity() {
                                     s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, printerManager, s.user.fullName,
                                     runCatching { com.aktcl.aron.core.database.repo.MemoNumbering(s.user.username, s.user.bindOrdinal ?: 0, s.user.memoSeqBlockSize ?: 500) }.getOrNull(), deviceRuntime,
                                 )
-                                runCatching { d.reload(); d.attendance.restore(d.attendanceToday()); d.refreshDayGate() }
+                                runCatching { d.reload(); d.closeForgottenDays(); d.attendance.restore(d.attendanceToday()); d.refreshDayGate() }
                                 // F-SYS-030/010: the camera and this user's photo queue (Manual Override, Update Base, outlet requests).
                                 runCatching { d.attachMedia(mediaShell.componentsFor(s.user.userId, d::businessDate)) }
                                 day = d
@@ -205,7 +205,7 @@ class MainActivity : ComponentActivity() {
                             androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                                 vm.onResume()
                                 // a session left open across Dhaka midnight: yesterday's check-in must not read as today's (rule 1); the AMO had no boundary handling at all
-                                day?.let { d -> dayScopeForResume.launch { runCatching { d.attendance.restore(d.attendanceToday()); d.refreshDayGate() } } }
+                                day?.let { d -> dayScopeForResume.launch { runCatching { d.closeForgottenDays(); d.attendance.restore(d.attendanceToday()); d.refreshDayGate() } } }
                                 if (targetsStatus != com.aktcl.aron.feature.amo.CallTargetsStatus.Fresh) targetsRetryTick++
                             }
                             LaunchedEffect(day, home.businessDate, bundleTick, targetsRetryTick) {
@@ -260,13 +260,24 @@ class MainActivity : ComponentActivity() {
                                         val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
                                         // screenshots 14 to 16: the user card "<name> (<username>)" over "<zone> AMO, <date>"
                                         val attendanceHeader = com.aktcl.aron.feature.amo.AmoHomeHeader.of(HomeUser(s.user.fullName, s.user.username, s.user.role, false, false, false), home.businessDate, reach.zoneName, stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_header_zone), stringResource(com.aktcl.aron.feature.amo.R.string.amo_shell_header_plain))
-                                        com.aktcl.aron.feature.amo.AmoAttendance(
-                                            attendance, d.checkoutAtLabel(), onCheckIn = { dayScope.launch { d.attendance.checkIn() } },
-                                            onCheckOut = { dayScope.launch { d.attendance.checkOut() } }, onBack = back,
-                                            onOpenSalesSubmit = { navigate(AmoScreen.SALES_SUBMIT) },
-                                            offline = !d.online(),
-                                            userTitle = attendanceHeader.title, userSubtitle = attendanceHeader.subtitle,
-                                        )
+                                        androidx.compose.foundation.layout.Column {
+                                            // a call or a memo edit still open refuses the check-out (it submits the day), and says so (D-AGATE-06)
+                                            attendance.checkOutBlockedBy?.let { w ->
+                                                com.aktcl.aron.core.ui.AronBanner(
+                                                    stringResource(if (w == com.aktcl.aron.feature.attendance.OpenWork.OPEN_CALL) com.aktcl.aron.feature.attendance.R.string.att_checkout_open_call else com.aktcl.aron.feature.attendance.R.string.att_checkout_open_edit),
+                                                    kind = com.aktcl.aron.core.ui.BannerKind.Warning,
+                                                )
+                                            }
+                                            androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                                                com.aktcl.aron.feature.amo.AmoAttendance(
+                                                    attendance, d.checkoutAtLabel(), onCheckIn = { dayScope.launch { d.attendance.checkIn() } },
+                                                    onCheckOut = { dayScope.launch { d.attendance.checkOut() } }, onBack = back,
+                                                    onOpenSalesSubmit = { navigate(AmoScreen.SALES_SUBMIT) },
+                                                    offline = !d.online(),
+                                                    userTitle = attendanceHeader.title, userSubtitle = attendanceHeader.subtitle,
+                                                )
+                                            }
+                                        }
                                     },
                                 )
                             } ?: emptyMap()

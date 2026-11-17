@@ -272,6 +272,8 @@ fun SrApp(
     LaunchedEffect(Unit) {
         day.recoverPrinting(); day.resumeMedia()
         day.reload(); day.nextSequenceFromStore(); day.restoreOpenVisit(); day.taskBoard.load()
+        // a day the rep never checked out of is closed by the phone BEFORE anything else (D-AGATE-06): its submits and a flagged check-out
+        day.closeForgottenDays()
         day.attendance.restore(day.attendanceToday()); day.attendance.refreshSubmit(); day.refreshDayGate()
         if (screen == SrScreen.HOME && permissions.toAsk.isNotEmpty()) screen = SrScreen.PERMISSIONS
         launch { startBundleDownload(); day.taskBoard.load(); resumeTick++ }
@@ -281,7 +283,7 @@ fun SrApp(
     LaunchedEffect(boundary) {
         delay(day.millisToNextBoundary())
         // across Dhaka midnight yesterday's check-in must not read as today's (D-OWNER-PREREQ-01): restore from Room, never just tick the old copy
-        day.attendance.restore(day.attendanceToday()); day.refreshDayGate(); day.reload(); day.taskBoard.load()
+        day.closeForgottenDays(); day.attendance.restore(day.attendanceToday()); day.refreshDayGate(); day.reload(); day.taskBoard.load()
         boundary++; resumeTick++
     }
     // N-038: a task notification opens the task list; a pull a push asked for refreshes it when it lands.
@@ -297,7 +299,7 @@ fun SrApp(
     }
     LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { day.taskBoard.load() } }
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-        scope.launch { day.attendance.restore(day.attendanceToday()); day.attendance.refreshSubmit(); day.refreshDayGate(); day.reload(); day.taskBoard.load(); resumeTick++ }
+        scope.launch { day.closeForgottenDays(); day.attendance.restore(day.attendanceToday()); day.attendance.refreshSubmit(); day.refreshDayGate(); day.reload(); day.taskBoard.load(); resumeTick++ }
     }
     // Several routes planned today: the SR picks one before anything else (F-SR-065).
     val planned = data.routes.map { PlannedRoute(it.routeId, it.name, it.plannedToday, it.sequenceNo) }
@@ -434,6 +436,13 @@ fun SrApp(
                     // arrived from a locked tile: say why (rule 1); gone once the rep has checked in
                     if (checkInNotice && dayGate == com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN) {
                         com.aktcl.aron.core.ui.AronBanner(stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_notice), kind = com.aktcl.aron.core.ui.BannerKind.Warning)
+                    }
+                    // a call or a memo edit still open refuses the check-out (it submits the day), and says so (D-AGATE-06)
+                    attendance.checkOutBlockedBy?.let { w ->
+                        com.aktcl.aron.core.ui.AronBanner(
+                            stringResource(if (w == com.aktcl.aron.feature.attendance.OpenWork.OPEN_CALL) com.aktcl.aron.feature.attendance.R.string.att_checkout_open_call else com.aktcl.aron.feature.attendance.R.string.att_checkout_open_edit),
+                            kind = com.aktcl.aron.core.ui.BannerKind.Warning,
+                        )
                     }
                     androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
                         SrAttendanceContent(

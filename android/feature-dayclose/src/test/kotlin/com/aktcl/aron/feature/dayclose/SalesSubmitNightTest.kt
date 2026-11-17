@@ -78,6 +78,19 @@ class SalesSubmitNightTest {
         compose.onNodeWithText("5 records were rejected by the server.").assertDoesNotExist() // the bare count gave way to the list
     }
 
+    /** D-AGATE-06: the day's own submit (sent by the check-out) was refused: the reason, and the way out (the day is open again, submit again). */
+    @Test fun aRefusedDaySubmitSaysThePhoneIsOpenAgainAndHowToSubmitAgain() {
+        val daySubmit = listOf(RejectedRow("u9", "day_submit", "2026-10-24", "schema_invalid", RejectedOutcome.DROPPED))
+        show(AppLanguage.EN, owner, daySubmit)
+        compose.onNodeWithText("The record is not in the shape the server accepts.").assertExists()
+        compose.onNodeWithText("Your day's sales submit was not accepted by the server. The day is open again on this phone: you can sell and collect, then submit again from Sales Submit.").assertExists()
+    }
+
+    @Test fun aRefusedDaySubmitReadsInBanglaToo() {
+        show(AppLanguage.BN, owner, listOf(RejectedRow("u9", "day_submit", "2026-10-24", "schema_invalid", RejectedOutcome.DROPPED)))
+        compose.onNodeWithText("সার্ভার আপনার দিনের বিক্রয় জমা গ্রহণ করেনি।", substring = true).assertExists()
+    }
+
     @Test fun banglaFirstReasonAndTheListShowsBeforeAnyDigest() {
         // 12:04 screenshot: no digest yet; the list still shows, and "Nothing to compare yet" only because no digest has run
         show(AppLanguage.BN, emptyList(), rejected, serverKnown = false)

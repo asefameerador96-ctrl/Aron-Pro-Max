@@ -141,6 +141,35 @@ interface CaptureDao {
     @Query("SELECT * FROM memo_discount WHERE business_date = :businessDate")
     suspend fun discountsOn(businessDate: String): List<MemoDiscountEntity>
 
+    /**
+     * D-AGATE-06: the business dates that have a check-in and no check-out, oldest first: the open day(s) of the phone. The newest is the
+     * day the rep is working; any older one is a forgotten day the phone closes at the next start.
+     */
+    @Query(
+        """SELECT DISTINCT business_date FROM attendance_event WHERE kind = 'check_in'
+           AND business_date NOT IN (SELECT business_date FROM attendance_event WHERE kind = 'check_out') ORDER BY business_date""",
+    )
+    suspend fun openAttendanceDates(): List<String>
+
+    /** D-AGATE-06: the routes the rep captured on [businessDate] (visits, memos, stock, dues, skips, AMO records): one route-day each. */
+    @Query(
+        """SELECT route_id FROM visit WHERE business_date = :businessDate AND route_id IS NOT NULL
+           UNION SELECT route_id FROM memo WHERE business_date = :businessDate AND route_id IS NOT NULL
+           UNION SELECT route_id FROM stock_movement WHERE business_date = :businessDate AND route_id IS NOT NULL
+           UNION SELECT route_id FROM due_collection WHERE business_date = :businessDate AND route_id IS NOT NULL
+           UNION SELECT route_id FROM visit_skip WHERE business_date = :businessDate AND route_id IS NOT NULL
+           UNION SELECT route_id FROM amo_record WHERE business_date = :businessDate AND route_id IS NOT NULL""",
+    )
+    suspend fun captureRoutesOn(businessDate: String): List<Long>
+
+    /** D-AGATE-06: how many operational rows were captured on [businessDate], routed or not: zero means a day with nothing to submit. */
+    @Query(
+        """SELECT (SELECT COUNT(*) FROM visit WHERE business_date = :businessDate) + (SELECT COUNT(*) FROM memo WHERE business_date = :businessDate)
+           + (SELECT COUNT(*) FROM stock_movement WHERE business_date = :businessDate) + (SELECT COUNT(*) FROM due_collection WHERE business_date = :businessDate)
+           + (SELECT COUNT(*) FROM visit_skip WHERE business_date = :businessDate) + (SELECT COUNT(*) FROM amo_record WHERE business_date = :businessDate)""",
+    )
+    suspend fun captureCountOn(businessDate: String): Int
+
     @Query("SELECT * FROM attendance_event WHERE business_date = :businessDate ORDER BY captured_at")
     suspend fun attendanceOn(businessDate: String): List<AttendanceEventEntity>
 

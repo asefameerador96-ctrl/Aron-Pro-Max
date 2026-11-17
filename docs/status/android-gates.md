@@ -5,7 +5,7 @@ change. Specification: `DECISIONS.md` D-OWNER-PREREQ-01 (owner) and D-LEAD-PRERE
 `docs/reference/prereq-gates-map-2026-11-13.md` (the map, re-checked against the code before building on it),
 `docs/device-lab/live-walk-report-2026-11-13.md` (defects D1, D2, force-sale state).
 
-Slices: **1 stock gate — done (pushed ec7b807a0, CI green)**, **4 defect D1 — done (pushed 40731485b, CI green)**, **2 check-in gate — done locally (push 3)**, 3 check-out submits the sales. My own decisions
+Slices: **1 stock gate — done (pushed ec7b807a0, CI green)**, **4 defect D1 — done (pushed 40731485b, CI green)**, **2 check-in gate — done (pushed b7caeb46e)**, **3 check-out submits the sales — done locally (push 4)**. My own decisions
 are `D-AGATE-01`..`03` in `DECISIONS.md`. **Nothing in this lane has been walked on a device.**
 
 ## Slice 1, the stock gate (owner rule 2, device defect D2)
@@ -126,6 +126,33 @@ Decision D-AGATE-05. The numbers are the claimed gaps of the check-in section of
 Exemptions, each with a test: check-in and check-out themselves; the close of an already open call (after the check-out too); Sales Submit; breadcrumbs and device status; media meta; print events (own ledger); uploads (the engine never uses the repository).
 
 Honest limits: (a) the AMO Home tile is not drawn with a lock icon (the shell's role tiles are another lane's model); it leads straight to Attendance and the gated screen says why, so there is no dead end. (b) A write that loses a midnight race inside a generic handler shows that handler's own "failed" text, not the check-in text; nothing is stored and nothing crashes (skip and task resolve are handled explicitly). (c) Proven by unit tests and Robolectric only; nothing on a device.
+
+## Slice 3, check-out submits the sales (owner rule 3)
+
+Decision D-AGATE-06. The numbers are the claimed gaps of the check-out section of the map; each was re-read first.
+
+| # | Gap | Result |
+|---|---|---|
+| 1 | Check-out is hard-blocked until a Sales Submit exists | **Closed.** The SR and AMO no longer pass `salesSubmitted`; the check-out writes the submit(s) itself (`recordCheckOut`, `AutoDaySubmits`) |
+| 2 | Sales Submit cannot be made offline (needs a server answer) | **Closed for the check-out.** The automatic submit has its own rule: no "everything acked" gate; the outbox holds it until the date's earlier records are final. The MANUAL Sales Submit keeps its gate (unchanged on purpose) |
+| 3 | Submit and check-out are two transactions | **Closed.** One transaction, step-by-step failure test shows all or nothing |
+| 4 | `pending_count` hard-coded 0 | **Closed.** The real number, set inside the transaction; the manual writer reads it too |
+| 5 | No check for an open call or memo edit | **Closed.** Check-out refused with a message; closing it opens the way |
+| 6 | Nothing closes a rep who never checks out | **Closed on the phone** (forgotten day closed at next start, flagged). **Not built:** a per-rep server-side midnight close (stated to the owner) |
+| 7 | The phone only looks at today's business date | **Closed.** The check-out carries the open check-in's date; forgotten days are found by `openAttendanceDates()` |
+| 8 | Submit void / reopen not built | **Partly closed.** A submit the server refuses or holds stops locking the phone. There is still no void for an ACCEPTED submit made by mistake (server work, not mine) |
+| 9 | The server does not enforce "day_submit is last" | **Not mine.** Unchanged; the outbox order now at least never sends the submit early |
+| 10 | No server uniqueness on (route, date, scope, cycle) | **Not mine.** Cycles are still per phone |
+| 11 | A rep on two routes has one check-out, two route-days | **Closed.** One submit per route-day with captures (`captureRoutesOn`) |
+| 12 | The manual Sales Submit tile has no time gate | **Kept.** The tile stays and works (owner/lead ruling); it can still lock the day early by hand, as before. The 17:00 time of the CHECK-OUT is unchanged |
+| 13 | TSO has no check-out | **Kept (the ruling).** Nothing built |
+| — | The 17:00 boundary timer is a constant | **Closed.** Reads `cfg.day.checkout_earliest_time`; `SrCheckOutSubmitTest.theBoundaryTimerFollowsTheConfiguredCheckOutTime` |
+
+Order, proved: `CheckOutSubmitTest` (the DAO, on Room) and `CheckOutOrderSyncTest` (the real engine and a fake ingest server). With the hold removed, five of those tests fail (checked by mutation, then restored).
+
+Tests that changed intent: none of the SR/AMO wiring tests pinned "Sales Submit first". `AttendanceFlow` keeps the optional `salesSubmitted` gate and `CheckoutNeedsSubmitTest` / `AmoCheckoutNeedsSubmitTest` still prove that capability; production no longer passes it (a later clean-up can delete both).
+
+Honest limits: (a) the forgotten-day check-out carries default device flags (`device_owner` false in its fix, no location read), because no fix is taken; the server flag request names it. (b) An automatic submit is irreversible once the server ACCEPTS it. (c) A forgotten day with an open call stored on that old date is submitted as is (the call is not closed for the rep). (d) Proven by unit tests, Robolectric and the fake ingest server; nothing on a device.
 
 ## What ran, and what did not
 

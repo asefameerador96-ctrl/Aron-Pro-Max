@@ -133,4 +133,5 @@
     <string name="submit_send_state">Records: %1$s sent, %2$s waiting, %3$s not accepted.</string>
     <string name="submit_rejected_gave_up">The phone stopped sending it. Tap Send again; it is the same record, it cannot be doubled.</string>
     <string name="submit_code_other">The server gave a reason this app does not know yet. The record is kept on the phone and in the support file.</string>
+    <string name="submit_day_submit_refused">Your day\'s sales submit was not accepted by the server. The day is open again on this phone: you can sell and collect, then submit again from Sales Submit.</string>
 </resources>

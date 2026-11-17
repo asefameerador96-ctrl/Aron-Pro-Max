@@ -82,6 +82,14 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         skuCategory = skus.associate { it.skuId to it.categoryCode }
     }
 
+    /**
+     * D-AGATE-06: the day_submit(s) the check-out writes by itself (one per route-day with captures and no submit standing). Loads the SKU
+     * categories first, so the money totals are the same ones the manual Sales Submit writes.
+     */
+    internal fun autoDaySubmits() = com.aktcl.aron.feature.dayclose.AutoDaySubmits(
+        db, day.capture, { r -> day.metaProvider.meta(r ?: 0L) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() },
+    )
+
     fun skuName(id: Long): String = skuNames[id] ?: id.toString()
     fun outletName(id: Long): String = day.dayData.value.outlets.firstOrNull { it.outletId == id }?.let { it.name + " (" + it.code + ")" } ?: id.toString()
     fun skuCategoryCode(id: Long): String? = skuCategory[id]

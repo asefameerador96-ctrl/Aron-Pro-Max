@@ -463,6 +463,10 @@ private fun RejectedList(rows: List<RejectedRow>, typeLabel: (String) -> String,
                 // the bundle's own text in the rep's language, else the phone's text for the code (every known code has Bangla and English); never a raw code
                 val reason = (if (bn) r.reasonBn ?: r.reasonEn else r.reasonEn ?: r.reasonBn) ?: reasonOfCode(r.code)
                 if (reason != null) Text(reason, style = MaterialTheme.typography.bodyMedium, color = look.inkMuted)
+                // D-AGATE-06: the day's own submit (the check-out sends it for the rep) was refused or held: say it, and the way out
+                if (r.recordType == "day_submit" && r.fromThisPhone) {
+                    Text(stringResource(R.string.submit_day_submit_refused), style = MaterialTheme.typography.bodySmall, color = WarnInk)
+                }
                 Text(
                     stringResource(
                         when (r.outcome) {
