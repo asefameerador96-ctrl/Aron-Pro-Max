@@ -61,7 +61,7 @@ class UnitWordsTest {
         val skus = mapOf(11L to "cigarette", 12L to "lighter", 13L to "match", 14L to "cigarette", 15L to "cigarette")
         val h = PreviousSales.withCategories(PreviousSales.parseServer(body, "2026-11-10")!!, skus)
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
-        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { PreviousSalesContent("2026-11-10", "2026-11-10", h, onShift = {}) } } }
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { PreviousSalesContent("2026-11-10", "2026-11-10", h, onPick = {}) } } }
         compose.onNodeWithText("10 packets").assertExists()
         compose.onNodeWithText("3 boxes").assertExists() // a lighter is a box of 25, not packets
         compose.onNodeWithText("4 dozen").assertExists()
