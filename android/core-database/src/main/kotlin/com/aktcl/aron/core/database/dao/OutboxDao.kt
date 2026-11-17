@@ -82,18 +82,19 @@ abstract class OutboxDao {
      * or `pending` for a retryable reject. Any other value (for example the server's `accepted`) is refused, so a row can
      * never be stranded outside the state machine. Rows already acked, rejected or quarantined never move back.
      */
-    suspend fun applyAck(clientUuid: String, state: String, code: String?, serverId: Long?, at: String): Int {
+    suspend fun applyAck(clientUuid: String, state: String, code: String?, serverId: Long?, at: String, messageKey: String? = null): Int {
         require(state in ACK_TARGETS) { "not an outbox state an ack may set: $state" }
-        return applyAckUnchecked(clientUuid, state, code, serverId, at)
+        // D-AGATE-04: the ack's `message_key` is kept with the code; it is the server's own words for this row
+        return applyAckUnchecked(clientUuid, state, code, messageKey, serverId, at)
     }
 
     @Query(
-        """UPDATE outbox SET state = :state, last_code = :code, server_id = COALESCE(:serverId, server_id),
+        """UPDATE outbox SET state = :state, last_code = :code, last_message_key = :messageKey, server_id = COALESCE(:serverId, server_id),
            acked_at = CASE WHEN :state = 'acked' THEN :at ELSE acked_at END,
            batch_uuid = CASE WHEN :state = 'pending' THEN NULL ELSE batch_uuid END
            WHERE client_uuid = :clientUuid AND state IN ('in_flight', 'pending')""",
     )
-    protected abstract suspend fun applyAckUnchecked(clientUuid: String, state: String, code: String?, serverId: Long?, at: String): Int
+    protected abstract suspend fun applyAckUnchecked(clientUuid: String, state: String, code: String?, messageKey: String?, serverId: Long?, at: String): Int
 
     /**
      * F-SYS-072 release (BC-53; bounded rounds in SyncEngine): rows the server quarantined with [code] (`device_integrity_failed`, from the time
@@ -157,6 +158,44 @@ abstract class OutboxDao {
     @Query("SELECT client_uuid FROM outbox WHERE state IN ('rejected', 'quarantined') AND business_date >= :fromDate")
     abstract suspend fun refusedUuids(fromDate: String): List<String>
 
+    /**
+     * D-AGATE-04 (device defect D1): EVERY row the server refused or holds, of ANY business date, oldest first. The Sales
+     * Submit banner count and the list it shows are both this one query, so the count can never name records the list
+     * leaves out. The outbox's own keep-days purge bounds it.
+     */
+    @Query("SELECT * FROM outbox WHERE state IN ('rejected', 'quarantined') ORDER BY seq")
+    abstract suspend fun refusedRows(): List<OutboxEntity>
+
+    /**
+     * D-AGATE-04: the outcome code of every refused, held or answered-and-requeued row (state, `last_code`, `message_key`, attempts, date),
+     * for the support file. No payload and no personal data: ids, a type, a state and a code.
+     */
+    @Query(
+        """SELECT client_uuid AS clientUuid, record_type AS recordType, business_date AS businessDate, state, last_code AS lastCode,
+           last_message_key AS lastMessageKey, attempts FROM outbox WHERE state IN ('rejected', 'quarantined') OR last_code IS NOT NULL ORDER BY seq LIMIT :limit""",
+    )
+    abstract suspend fun codeSummaries(limit: Int): List<OutboxCodeRow>
+
+    /**
+     * D-AGATE-04: marks a refused record as seen by the rep. It only ever SETS `seen_at` on a row that is rejected or
+     * quarantined: the row, its payload and its signature stay exactly as they are, and nothing is deleted. Returns the
+     * rows marked (0 when it is not refused, or was already seen).
+     */
+    @Query("UPDATE outbox SET seen_at = :at WHERE client_uuid = :clientUuid AND state IN ('rejected', 'quarantined') AND seen_at IS NULL")
+    abstract suspend fun markRefusedSeen(clientUuid: String, at: String): Int
+
+    /**
+     * D-AGATE-04 (ruling 7): "send again" for a row the phone itself gave up on (`rejected(retry_exhausted)`). It goes back
+     * to pending with the SAME client_uuid, payload and sig and `attempts` reset, exactly as [resendAckedSince] does, so the
+     * server's registry answers it by uuid (stored, or duplicate) and no second record can be created. Only a row rejected
+     * with that code moves; a server rejection is never resent from here. Returns the rows re-queued.
+     */
+    @Query(
+        """UPDATE outbox SET state = 'pending', batch_uuid = NULL, attempts = 0, seen_at = NULL
+           WHERE client_uuid = :clientUuid AND state = 'rejected' AND last_code = 'retry_exhausted'""",
+    )
+    abstract suspend fun requeueRetryExhausted(clientUuid: String): Int
+
     /** When the server last answered a row of this type and date (null when none is answered). */
     @Query("SELECT MAX(acked_at) FROM outbox WHERE business_date = :businessDate AND record_type = :recordType AND acked_at IS NOT NULL")
     abstract suspend fun lastAckedAt(businessDate: String, recordType: String): String?
@@ -186,3 +225,9 @@ data class TypeCount(val recordType: String, val count: Int)
 
 /** One acked row as the sync digest counts it (F-SYS-080). */
 data class DigestRow(val businessDate: String, val recordType: String, val clientUuid: String)
+
+/** One outbox row's outcome code for the support file (D-AGATE-04). */
+data class OutboxCodeRow(
+    val clientUuid: String, val recordType: String, val businessDate: String, val state: String,
+    val lastCode: String?, val lastMessageKey: String?, val attempts: Int,
+)

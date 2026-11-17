@@ -210,6 +210,7 @@ fun AmoSubmitHost(day: AmoDay) {
     SalesSubmitScreen(
         online = st.online, counts = st.counts, gate = st.gate, progress = st.progress, typeLabel = { recordLabels[it] ?: it },
         onSync = vm::sync, onSubmit = vm::submit, syncing = st.syncing, rowGroups = rowGroups,
+        seen = st.seen, rejectedReadFailed = st.rejectedReadFailed, onRetryRead = vm::refresh, onMarkSeen = vm::markSeen, onSendAgain = vm::sendAgain, outbox = st.outbox, // D-AGATE-04
         rejected = st.rejected, dismissed = st.dismissed, serverKnown = st.serverKnown, today = day.businessDate(), vendorDialogs = true, // D-NIGHT-DAYCLOSE-01; row 66
     )
 }

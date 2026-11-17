@@ -105,4 +105,39 @@ class SalesSubmitViewModelTest {
         v.refresh()
         assertEquals(listOf(mine, server.let { RejectedRow("u9", "memo", "2026-10-05", "memo_no_duplicate", RejectedOutcome.DROPPED, fromThisPhone = false) }), v.state.value.rejected)
     }
+
+    /** D-AGATE-04: a failed read of the refused list is NOT an empty list: it is flagged for the screen (error plus retry), and a retry reads again. */
+    @Test fun aFailedReadIsFlaggedNotSwallowedAndARetryReadsAgain() {
+        val base = Day().apply { states = OutboxStates(0, 0, 10, 2, 0) }
+        var fail = true
+        class Flaky : DaySource by base {
+            override suspend fun rejectedRows(businessDate: String): List<RejectedRow> =
+                if (fail) throw IllegalStateException("disk") else listOf(RejectedRow("u1", "memo", "2026-10-05", "price_invalid", RejectedOutcome.DROPPED))
+        }
+        val v = SalesSubmitViewModel(1, { "2026-10-05" }, Flaky(), { mapOf("memo" to 6) }, { _, _, _ -> }, Sched(), { true })
+        v.refresh()
+        assertTrue("the screen is told the read failed", v.state.value.rejectedReadFailed)
+        assertTrue(v.state.value.rejected.isEmpty())
+        assertEquals("the true count is still in the gate, not a quiet zero", 2, v.state.value.gate.notes.filterIsInstance<SubmitBlock.Rejected>().single().count)
+        fail = false; v.refresh()
+        assertFalse(v.state.value.rejectedReadFailed); assertEquals(1, v.state.value.rejected.size)
+    }
+
+    /** Seen rows are listed apart and send-again asks for a sync; the day source does the real work (RefusedRecordsTest). */
+    @Test fun markSeenAndSendAgainAreForwardedAndSendAgainAsksForASync() {
+        val seenCalls = ArrayList<String>(); val againCalls = ArrayList<String>()
+        val base = Day()
+        val row = RejectedRow("u1", "memo", "2026-10-05", "retry_exhausted", RejectedOutcome.PHONE_GAVE_UP)
+        class Acting : DaySource by base {
+            override suspend fun rejectedRows(businessDate: String) = listOf(row, RejectedRow("u2", "memo", "2026-10-05", "price_invalid", RejectedOutcome.DROPPED, seen = true))
+            override suspend fun markSeen(clientUuid: String) { seenCalls += clientUuid }
+            override suspend fun sendAgain(clientUuid: String): Boolean { againCalls += clientUuid; return true }
+        }
+        val s = Sched()
+        val v = SalesSubmitViewModel(1, { "2026-10-05" }, Acting(), { mapOf("memo" to 6) }, { _, _, _ -> }, s, { true })
+        v.refresh()
+        assertEquals(listOf("u1"), v.state.value.rejected.map { it.clientUuid }); assertEquals(listOf("u2"), v.state.value.seen.map { it.clientUuid })
+        v.markSeen("u1"); v.sendAgain("u1")
+        assertEquals(listOf("u1"), seenCalls); assertEquals(listOf("u1"), againCalls); assertEquals(listOf(SyncTrigger.MANUAL), s.calls)
+    }
 }

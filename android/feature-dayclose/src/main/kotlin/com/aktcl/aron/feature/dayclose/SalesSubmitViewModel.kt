@@ -21,6 +21,10 @@ interface DaySource {
     suspend fun submitSettled(businessDate: String): Boolean
     /** D-NIGHT-DAYCLOSE-01 (b): the rows of the phone's ack registry the server refused, holds or asked to retry. */
     suspend fun rejectedRows(businessDate: String): List<RejectedRow> = emptyList()
+    /** D-AGATE-04: marks one refused record as seen (leaves the count; the row and payload stay). */
+    suspend fun markSeen(clientUuid: String) {}
+    /** D-AGATE-04: re-queues a record the phone gave up on, with the same client uuid. True when it was re-queued. */
+    suspend fun sendAgain(clientUuid: String): Boolean = false
 }
 
 /** Server totals of the last successful sync (null before the first sync); production reads `server_totals` of the sync response. */
@@ -50,8 +54,14 @@ data class SubmitUiState(
     val syncing: Boolean = false,
     /** D-NIGHT-DAYCLOSE-01 (b): listed, shown whether or not a digest has run. */
     val rejected: List<RejectedRow> = emptyList(),
-    /** D-SRFIX-03: refused non-money records older than [RejectedDismissal.KEEP_DAYS] days, opened from a link, never in the main list. */
+    /** D-SRFIX-03: refused non-money records older than [RejectedDismissal.KEEP_DAYS] days ("earlier"), opened from a link, never in the main list. They ARE counted and listed. */
     val dismissed: List<RejectedRow> = emptyList(),
+    /** D-AGATE-04: records the rep marked as seen: out of the count, still listed (closed by default); nothing is deleted. */
+    val seen: List<RejectedRow> = emptyList(),
+    /** D-AGATE-04: reading the refused records failed. The screen says so and offers a retry; the count is then NOT shown as zero. */
+    val rejectedReadFailed: Boolean = false,
+    /** D-AGATE-04: the true send state of the phone's outbox, for the status line (sent, waiting, not accepted). */
+    val outbox: OutboxStates = OutboxStates(0, 0, 0, 0, 0),
     /** A digest (server totals) has answered at least once for the date: before it, "Nothing to compare yet". */
     val serverKnown: Boolean = false,
     /** SRM-B-25: the day's business figures on the device and, once the digest carries them, on the server. Null: the host shows the record counts. */
@@ -92,6 +102,27 @@ class SalesSubmitViewModel(
         }
     }
 
+    /** D-AGATE-04: the rep has read a refused record: it leaves the count. Nothing is deleted. */
+    fun markSeen(clientUuid: String) {
+        viewModelScope.launch { lock.withLock { runCatching { source.markSeen(clientUuid) }.onFailure { logRead("mark_seen", it) }; recompute() } }
+    }
+
+    /** D-AGATE-04: "send again" for a record the phone gave up on: the same client uuid goes back to the queue and a sync is asked for. */
+    fun sendAgain(clientUuid: String) {
+        viewModelScope.launch {
+            lock.withLock {
+                val queued = runCatching { source.sendAgain(clientUuid) }.onFailure { logRead("send_again", it) }.getOrDefault(false)
+                if (queued) scheduler.requestSync(userId, SyncTrigger.MANUAL)
+                recompute()
+            }
+        }
+    }
+
+    /** One log line, no payload and no personal data: what failed and its exception type. */
+    private fun logRead(what: String, t: Throwable) {
+        runCatching { android.util.Log.w("AronSubmit", "$what failed type=${t.javaClass.simpleName}") }
+    }
+
     fun submit() {
         viewModelScope.launch {
             lock.withLock {
@@ -114,10 +145,19 @@ class SalesSubmitViewModel(
         val types = (device.keys + srv.orEmpty().keys).toSortedSet()
         // A type absent from the digest is all zero for this phone (contract 1.9), never a fallback to the login totals.
         val counts = types.map { t -> CountRow(t, device[t] ?: 0, srv?.let { it[t] ?: 0 }, mine?.let { it[t] ?: 0 }) }
-        val local = runCatching { source.rejectedRows(d) }.getOrDefault(emptyList())
+        // D-AGATE-04: a failed read is NOT an empty list. It is said on screen (with a retry) and logged once, never swallowed.
+        var readFailed = false
+        val local = try {
+            source.rejectedRows(d)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            readFailed = true; logRead("rejected_read", e); emptyList()
+        }
+        val (seenRows, openLocal) = local.partition { it.seen }
         // The phone's own rows first; the server adds what this install does not hold (earlier installs, other phones).
         val held = local.map { it.clientUuid }.toSet()
-        val (rejected, dismissed) = RejectedDismissal.split(local + runCatching { server.serverRejected(d) }.getOrDefault(emptyList()).filter { it.clientUuid !in held }, d)
+        val (rejected, dismissed) = RejectedDismissal.split(openLocal + runCatching { server.serverRejected(d) }.getOrDefault(emptyList()).filter { it.clientUuid !in held }, d)
         val submitted = source.alreadySubmitted(d)
         val settled = submitted && source.submitSettled(d)
         val prev = _state.value.progress
@@ -130,7 +170,7 @@ class SalesSubmitViewModel(
         val bizServer = if (biz == null) null else try { serverBusiness.totals(d) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
         _state.value = _state.value.copy(
             business = biz, serverBusiness = bizServer,
-            online = online(), counts = counts, gate = gate, uploadGate = uploadGate, rejected = rejected, dismissed = dismissed, serverKnown = srv != null,
+            online = online(), counts = counts, gate = gate, uploadGate = uploadGate, rejected = rejected, dismissed = dismissed, seen = seenRows, rejectedReadFailed = readFailed, outbox = trueStates, serverKnown = srv != null,
             progress = when { settled -> SubmitProgress.Settled; submitted || prev == SubmitProgress.Queued -> SubmitProgress.Queued; else -> SubmitProgress.Idle },
         )
     }

@@ -34,6 +34,20 @@ data class SupportInput(
     /** The last log lines, already free of personal data (the local ring buffer, docs/24 s5.8). */
     val logLines: List<String>,
     val createdAt: String,
+    /** D-AGATE-04: the outcome code (`last_code`, `message_key`) of every refused, held or requeued row, so support can read WHY. No payload. */
+    val outboxCodes: List<SupportOutboxCode> = emptyList(),
+)
+
+/** One row's outcome for the support file: ids, type, state and the code; never a payload or a personal field. */
+@Serializable
+data class SupportOutboxCode(
+    @SerialName("client_uuid") val clientUuid: String,
+    @SerialName("record_type") val recordType: String,
+    @SerialName("business_date") val businessDate: String,
+    val state: String,
+    @SerialName("last_code") val lastCode: String?,
+    @SerialName("message_key") val messageKey: String?,
+    val attempts: Int,
 )
 
 @Serializable
@@ -50,6 +64,7 @@ internal data class SupportFile(
     @SerialName("recent_acked_dropped") val recentAckedDropped: Int,
     val log: List<String>,
     @SerialName("created_at") val createdAt: String,
+    @SerialName("outbox_codes") val outboxCodes: List<SupportOutboxCode> = emptyList(),
 )
 
 class SupportFileTooLargeException(val bytes: Int, val limit: Int) : IllegalStateException("support file $bytes bytes over $limit even without optional parts")
@@ -88,6 +103,7 @@ object SupportBundle {
         lastSyncAt = input.lastSyncAt, counts = input.counts,
         unsent = input.unsentPayloads.map(::parse), recentAcked = acked.map(::parse),
         recentAckedDropped = input.recentAckedPayloads.size - acked.size, log = log, createdAt = input.createdAt,
+        outboxCodes = input.outboxCodes,
     )
 
     /** A stored payload is JSON; a damaged one is kept as a string rather than lost. */

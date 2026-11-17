@@ -33,6 +33,11 @@ enum class RejectedOutcome {
     RETRY,
     /** Server only: refused for now, from another phone or an earlier install of this login; this phone cannot resend it, so it never blocks. */
     WAITING_ELSEWHERE,
+    /**
+     * D-AGATE-04: the PHONE gave up on the record after repeated failed tries (`rejected(retry_exhausted)`); the server never refused it.
+     * It is not on the server, so the counts disagree and Submit stays blocked until it is sent again ([RejectedRow.canSendAgain]).
+     */
+    PHONE_GAVE_UP,
 }
 
 /**
@@ -52,7 +57,17 @@ data class RejectedRow(
     val reasonEn: String? = null,
     /** False for a row the server reports from another phone or an earlier install of this login (contract 1.9 row 4). */
     val fromThisPhone: Boolean = true,
-)
+    /** D-AGATE-04: the `message_key` of the server's last answer, kept for support; never shown to the rep as it is. */
+    val messageKey: String? = null,
+    /** D-AGATE-04: the rep marked this refused record as seen. It left the count; the row and its payload are still on the phone. */
+    val seen: Boolean = false,
+) {
+    /** A refused or held record of THIS phone can be marked seen (it leaves the count, nothing is deleted); a queued retry cannot. */
+    val canMarkSeen: Boolean get() = fromThisPhone && !seen && (outcome == RejectedOutcome.DROPPED || outcome == RejectedOutcome.STORED_FLAGGED || outcome == RejectedOutcome.PHONE_GAVE_UP)
+
+    /** Only a record the phone itself gave up on is sent again from here, with the SAME client uuid (the server stores a uuid once). */
+    val canSendAgain: Boolean get() = fromThisPhone && outcome == RejectedOutcome.PHONE_GAVE_UP
+}
 
 /**
  * D-SRFIX-03: a refused record the server will never take (outcome [RejectedOutcome.DROPPED]) is listed under "Not accepted as

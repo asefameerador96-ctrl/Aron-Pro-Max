@@ -21,11 +21,24 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
     private val outbox = db.outboxDao()
     private val capture = db.captureDao()
 
+    /**
+     * D-AGATE-04 (device defect D1): the rejected and quarantined counts are taken from [OutboxDao.refusedRows], the SAME read
+     * [rejectedRows] lists, over every business date, and leave out the records the rep marked as seen. So the number on the banner can
+     * never name a record the list does not show. Pending, in-flight and acked are whole-outbox counts as before.
+     */
     override suspend fun outboxStates(businessDate: String): OutboxStates {
         val pending = outbox.countInState("pending")
         val inFlight = outbox.countInState("in_flight")
-        return OutboxStates(pending, inFlight, outbox.countInState("acked"), outbox.countInState("rejected"), outbox.countInState("quarantined"))
+        val refused = outbox.refusedRows().filter { it.seenAt == null }
+        return OutboxStates(
+            pending, inFlight, outbox.countInState("acked"),
+            refused.count { it.state == OutboxState.REJECTED }, refused.count { it.state == OutboxState.QUARANTINED },
+        )
     }
+
+    override suspend fun markSeen(clientUuid: String) { outbox.markRefusedSeen(clientUuid, java.time.Instant.now().toString()) }
+
+    override suspend fun sendAgain(clientUuid: String): Boolean = outbox.requeueRetryExhausted(clientUuid) > 0
 
     override suspend fun deviceCounts(businessDate: String): Map<String, Int> =
         outbox.committedCounts(businessDate).associate { it.recordType to it.count }
@@ -54,8 +67,8 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
      * number or outlet comes from the stored record itself; the reason from the bundle's `reason_texts`.
      */
     override suspend fun rejectedRows(businessDate: String): List<RejectedRow> {
-        val from = LocalDate.parse(businessDate).minusDays(REJECTED_LOOKBACK_DAYS).toString()
-        val refused = outbox.refusedUuids(from).mapNotNull { outbox.byClientUuid(it) }
+        // EVERY refused or held row of the phone, of any date (not only the last 14 days), the same read as the banner count
+        val refused = outbox.refusedRows()
         // Only codes the server answers as retryable (scope_stale, parent_missing, ...): the phone's own markers on queued
         // rows (resync, digest_resend, a released device_integrity_failed) are not rejections (checker).
         val retry = outbox.nextPending(RETRY_SCAN_LIMIT).filter { it.lastCode in RETRYABLE }
@@ -72,18 +85,16 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
                 clientUuid = row.clientUuid, recordType = row.recordType, businessDate = row.businessDate, code = row.lastCode,
                 outcome = when (row.state) {
                     OutboxState.QUARANTINED -> RejectedOutcome.STORED_FLAGGED
-                    OutboxState.REJECTED -> RejectedOutcome.DROPPED
+                    OutboxState.REJECTED -> if (row.lastCode == com.aktcl.aron.core.sync.AckRules.RETRY_EXHAUSTED) RejectedOutcome.PHONE_GAVE_UP else RejectedOutcome.DROPPED
                     else -> RejectedOutcome.RETRY
                 },
                 memoNo = RecordPayloads.string(payload, "memo_no") ?: parent?.memoNo, outletName = outletName,
-                reasonBn = reason?.first, reasonEn = reason?.second,
+                reasonBn = reason?.first, reasonEn = reason?.second, messageKey = row.lastMessageKey, seen = row.seenAt != null,
             )
         }
     }
 
     private companion object {
-        /** The outbox keeps answered rows at most 14 days (`cfg.app.outbox_keep_days` 1..14). */
-        const val REJECTED_LOOKBACK_DAYS = 14L
         /** Retryable rows are few (a stale scope, a parent not yet there); the scan stops at this many queued rows. */
         const val RETRY_SCAN_LIMIT = 500
         val RETRYABLE = com.aktcl.aron.contract.RecordOutcomeCode.entries.filter { it.retryable == true }.map { it.wire }.toSet()

@@ -71,7 +71,9 @@ class SalesSubmitNightTest {
         compose.onNodeWithText("This memo number was already used; held for review.").assertExists()
         compose.onNodeWithText("Stored on the server and flagged for review. Submit is not blocked.").assertExists()
         compose.onNodeWithText("Sale line · Asef Home").assertExists() // a type the host has no label for still reads in words
-        compose.onNodeWithText("Reason code: price_invalid").assertExists()
+        // D-AGATE-04: a code without a bundle text reads in words (every known code has Bangla and English), never "Reason code: x"
+        compose.onNodeWithText("A price on the record is not valid.").assertExists()
+        compose.onNodeWithText("Reason code: price_invalid").assertDoesNotExist()
         compose.onNodeWithText("Not stored on the server. Submit is not blocked.").assertExists()
         compose.onNodeWithText("5 records were rejected by the server.").assertDoesNotExist() // the bare count gave way to the list
     }

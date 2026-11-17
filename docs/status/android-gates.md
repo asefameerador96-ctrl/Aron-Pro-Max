@@ -5,7 +5,7 @@ change. Specification: `DECISIONS.md` D-OWNER-PREREQ-01 (owner) and D-LEAD-PRERE
 `docs/reference/prereq-gates-map-2026-11-13.md` (the map, re-checked against the code before building on it),
 `docs/device-lab/live-walk-report-2026-11-13.md` (defects D1, D2, force-sale state).
 
-Slices: **1 stock gate — done (push 1)**, 2 check-in gate, 3 check-out submits the sales, 4 defect D1. My own decisions
+Slices: **1 stock gate — done (pushed ec7b807a0, CI green)**, **4 defect D1 — done locally (push 2)**, 2 check-in gate, 3 check-out submits the sales. My own decisions
 are `D-AGATE-01`..`03` in `DECISIONS.md`. **Nothing in this lane has been walked on a device.**
 
 ## Slice 1, the stock gate (owner rule 2, device defect D2)
@@ -87,11 +87,31 @@ Seven goldens changed and were re-recorded with `-Proborazzi.record=true`: `sale
 difference is the `+` button of a SKU whose quantity has reached the stock held, which is now correctly disabled (grey).
 No layout, colour or typography was touched.
 
+## Slice 4, defect D1 (Sales Submit "6 records were rejected by the server.")
+
+All causes of the ruling were re-read against the code first; every one held. Decision D-AGATE-04.
+
+| Ruling | Result | Where |
+|---|---|---|
+| Count and list from the SAME query, every counted record listed, older ones under "earlier" | **Closed.** `OutboxDao.refusedRows()` feeds both `RoomDaySource.outboxStates` (counts) and `rejectedRows` (list), over every date; the 14-day lookback is gone. Proven by `RefusedRecordsTest.theCountAndTheListAreTheSameQueryOverEveryDate` (a 6-week-old row is counted AND listed) | `OutboxDao`, `RoomDayAdapters.kt` |
+| What it was, the reason in Bangla and English, what to do | **Closed.** Type, memo number or outlet, date, the reason, and one "what to do" line per outcome (flagged / not stored / will be sent again / waiting on another phone / the phone stopped sending) | `SalesSubmitScreen.kt` |
+| A rejected record can be marked "seen": leaves the count, NEVER deletes row or payload | **Closed.** `markRefusedSeen` sets `seen_at` only on a rejected or quarantined row; the test compares the whole row before and after (only `seen_at` differs) and shows an acked or pending row is untouched. Listed under "records you marked as seen" | `OutboxDao`, Room v10 |
+| A failed read shows an error with retry and logs one line, no payload or personal data | **Closed.** `rejectedReadFailed` + "Try again"; the gate keeps the true count. Log: `AronSubmit rejected_read failed type=<class>` | `SalesSubmitViewModel.kt`; `…aFailedReadIsFlaggedNotSwallowedAndARetryReadsAgain` |
+| `RecordAck.message_key` dropped | **Closed.** Stored in `outbox.last_message_key`, carried on `RejectedRow`, kept for support; never shown raw | `SyncEngine`, `OutboxDao.applyAck` |
+| Every local and unknown code has proper Bangla and English text | **Closed.** 49 codes (the whole `RecordOutcomeCode` catalogue + the phone's own), asserted one by one in both languages; unknown reads as a sentence | `strings.xml` (en, bn), `RefusedRecordsTest.everyOutcomeCodeHasBanglaAndEnglishText` |
+| `last_code` in the support file | **Closed.** `outbox_codes` in all three apps (SR, AMO, TSO) | `SupportBundle.kt`, the three `SystemShell.kt` |
+| True send state per row; hide the server-comparison column until it exists | **Closed for the business table.** No "Waiting" / "-", no server column until the server has figures; one status line states sent / waiting / not accepted. **Kept:** the record-count table's server column (the submit gate reads it) | `SalesSubmitScreen.kt` |
+| `retry_exhausted` gets "send again", same client UUID, proven no second record | **Closed.** `PHONE_GAVE_UP` outcome with a "Send again" button, `requeueRetryExhausted` (only that code, same uuid/payload/sig, attempts reset), then a manual sync; `…sendAgainRequeuesTheSameUuidAndCreatesNoSecondRecord` | `OutboxDao`, `RoomDaySource.sendAgain` |
+
+Schema: Room 9 to 10 is an auto-migration (two nullable columns); `schemas/…/10.json` is committed and the migration test runs.
+Not done on purpose: no server change (the ack already carries `message_key`); no "seen" for a record another phone sent (this phone cannot act on it).
+
 ## What ran, and what did not
 
 Local, foreground Gradle, Android SDK at `/opt/android-sdk`:
 
-- `testDebugUnitTest` over the whole build (every Android module, `shared`, `backend`): **BUILD SUCCESSFUL**.
+- (Slice 4, local, foreground) `testDebugUnitTest` over the whole build, `assembleDebug` for SR/AMO/TSO and `lintDebug`: **BUILD SUCCESSFUL**; the Sales Submit golden `submit_owner_case_bn_light` is unchanged.
+- (Slice 1) `testDebugUnitTest` over the whole build (every Android module, `shared`, `backend`): **BUILD SUCCESSFUL**.
 - `:android:app-sr:assembleDebug :android:app-amo:assembleDebug :android:app-tso:assembleDebug lintDebug`:
   **BUILD SUCCESSFUL**.
 - Known flake, not caused by this lane: `core-map LiteMapScreenTest.offlineShowsTheCachedImageOfThisViewOnly` failed once
