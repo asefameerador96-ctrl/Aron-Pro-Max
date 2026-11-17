@@ -93,7 +93,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
 
     private val committer = SaleCommitter(
         day.capture, numbers = { _, _ -> error("memo numbering is wired through AmoDay.memoNumbering") },
-        metaSource = CaptureMetaSource { _, rid -> day.metaProvider.meta(rid ?: 0L) }, nowIso = { day.iso(day.currentMs()) },
+        metaSource = CaptureMetaSource.dated { rid -> day.metaProvider.meta(rid ?: 0L) }, nowIso = { day.iso(day.currentMs()) },
         findMemo = { dao.memo(it) }, numbering = day.memoNumbering,
     )
     val flow = SaleFlow(
@@ -166,7 +166,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
     fun saleVisit(v: com.aktcl.aron.feature.outlet.OpenVisit) =
         SaleVisit(v.visitUuid, v.outletId, v.routeId, day.businessDate(), PriceType.OUTLET.wire, canSell = v.geoAction != "blocked")
 
-    private val closer = VisitCloser(day.capture, CaptureMetaSource { _, rid -> day.metaProvider.meta(rid ?: 0L) }, { day.iso(day.currentMs()) })
+    private val closer = VisitCloser(day.capture, CaptureMetaSource.dated { rid -> day.metaProvider.meta(rid ?: 0L) }, { day.iso(day.currentMs()) })
 
     /**
      * Writes the visit's one `visit_close` with [outcome] and closes the call; the sync is asked for afterwards (never awaited).
@@ -202,7 +202,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
     suspend fun editRefusal(memoUuid: String): com.aktcl.aron.core.database.repo.DayRefusal? {
         val memo = dao.memo(memoUuid) ?: return null
         // not runCatching: it would turn the cancellation of a superseded LaunchedEffect run into null, which that run then writes over the newer answer (D-AMO-CALLS-35)
-        return com.aktcl.aron.core.common.orNullKeepingCancellation { day.capture.dayRefusal(day.metaProvider.meta(memo.meta.routeId ?: 0L), "memo") }
+        return com.aktcl.aron.core.common.orNullKeepingCancellation { day.capture.dayRefusal(day.metaProvider.meta(memo.meta.routeId ?: 0L).copy(businessDate = memo.meta.businessDate), "memo") // the memo's own date: the edit carries it (ruling 2) }
     }
 
     /** True when [editRefusal] is the Final Submit lock. */
@@ -218,6 +218,8 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
         val live = memo != null && dao.memosOn(date).none { it.supersedesClientUuid == memoUuid }
         val qcDone = memo != null && dao.qcLinesOn(date).any { it.visitClientUuid == memo.visitClientUuid }
         EditGate.check(inGeofenceNow = true, qcCompleted = qcDone, memoIsLive = live, memoExists = memo != null, checkedIn = day.capture.attendanceRefusal(date) == null)?.let { return it }
+        // the route-day of the memo must still be open for the save: an edit is never let in and then refused at the save (D-AGATE-09)
+        if (editRefusal(memoUuid) != null) return EditDenied.DayClosed
         val o = day.zoneOutlets.firstOrNull { it.outletId == memo!!.outletId }?.let(day::visitOutlet) ?: return EditDenied.OutsideGeofence
         val reading = day.fixSource.readFix("memo_edit")
         val verdict = GeoVerdicts.verdict(

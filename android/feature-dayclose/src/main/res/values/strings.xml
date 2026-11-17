@@ -125,7 +125,7 @@
     <string name="submit_code_digest_resend">The record is being sent again to match the server\'s count.</string>
     <string name="submit_code_ack_mismatch">The server\'s answer did not match what was sent.</string>
     <string name="submit_code_unknown_status">The server answered with a status this app does not know.</string>
-    <string name="submit_read_failed">The list of records the server did not accept could not be read. Tap Try again.</string>
+    <string name="submit_read_failed">The list of records the server did not accept could not be read. Tap Try again. If it stays, tell your TSO or AMO now and open Support to send the file of this phone.</string>
     <string name="submit_read_retry">Try again</string>
     <string name="submit_mark_seen">I have seen this</string>
     <string name="submit_send_again">Send again</string>
@@ -141,7 +141,7 @@
     <string name="submit_code_assembly_race">The record changed while it was being prepared to send.</string>
     <string name="submit_code_http_error">The server answered with an error.</string>
     <string name="submit_family_more">%1$s records of this sale</string>
-    <string name="submit_send_to_support">Send to support</string>
+    <string name="submit_send_to_support">Open Support</string>
     <string name="submit_show_again">Show again</string>
     <string name="submit_show_more">%1$s older records not shown. Show more</string>
     <string name="submit_blocked_unreadable">This phone could not read its own records just now, so Submit is off. Tap Try again.</string>

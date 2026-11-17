@@ -124,7 +124,7 @@
     <string name="submit_code_digest_resend">সার্ভারের গণনার সাথে মেলাতে রেকর্ডটি আবার পাঠানো হচ্ছে।</string>
     <string name="submit_code_ack_mismatch">সার্ভারের উত্তর পাঠানো তথ্যের সাথে মেলেনি।</string>
     <string name="submit_code_unknown_status">সার্ভার এমন অবস্থা জানিয়েছে যা এই অ্যাপ চেনে না।</string>
-    <string name="submit_read_failed">সার্ভার যে রেকর্ড নেয়নি তার তালিকা পড়া যায়নি। আবার চেষ্টা করুন চাপুন।</string>
+    <string name="submit_read_failed">সার্ভার যে রেকর্ড নেয়নি তার তালিকা পড়া যায়নি। আবার চেষ্টা করুন চাপুন। তবুও না হলে এখনই আপনার টিএসও বা এএমওকে জানান এবং এই ফোনের ফাইল পাঠাতে সাপোর্ট খুলুন।</string>
     <string name="submit_read_retry">আবার চেষ্টা করুন</string>
     <string name="submit_mark_seen">আমি দেখেছি</string>
     <string name="submit_send_again">আবার পাঠান</string>
@@ -140,7 +140,7 @@
     <string name="submit_code_assembly_race">পাঠানোর জন্য তৈরি করার সময় রেকর্ডটি বদলে গেছে।</string>
     <string name="submit_code_http_error">সার্ভার একটি ত্রুটি জানিয়েছে।</string>
     <string name="submit_family_more">এই বিক্রির %1$s টি রেকর্ড</string>
-    <string name="submit_send_to_support">সাপোর্টে পাঠান</string>
+    <string name="submit_send_to_support">সাপোর্ট খুলুন</string>
     <string name="submit_show_again">আবার দেখান</string>
     <string name="submit_show_more">%1$s টি পুরোনো রেকর্ড দেখানো হয়নি। আরও দেখুন</string>
     <string name="submit_blocked_unreadable">এই ফোন এখন নিজের রেকর্ড পড়তে পারেনি, তাই জমা বন্ধ। আবার চেষ্টা করুন চাপুন।</string>

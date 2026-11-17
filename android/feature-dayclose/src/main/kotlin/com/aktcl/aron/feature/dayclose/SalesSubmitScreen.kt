@@ -239,6 +239,10 @@ fun SalesSubmitScreen(
                         stringResource(R.string.submit_read_failed), action = stringResource(R.string.submit_read_retry), onAction = onRetryRead,
                         modifier = Modifier.testTag(SalesSubmitTags.READ_FAILED),
                     )
+                    // the rep is never left without a way to report it: the Support screen sends the phone's file
+                    if (onSupport != null) androidx.compose.material3.TextButton(onClick = { onSupport.invoke() }, modifier = Modifier.testTag(SalesSubmitTags.SUPPORT)) {
+                        Text(stringResource(R.string.submit_send_to_support), color = look.purple)
+                    }
                 } else if (rejected.isNotEmpty()) RejectedList(rejected, wordLabel, bn, today, onMarkSeen, onSendAgain, onSupport)
                 else gate.notes.forEach { n -> NoticeCard(blockText(n, shownLabel), Notice.Info) }
                 if (dismissed.isNotEmpty()) DismissedList(dismissed, wordLabel, today, R.string.submit_dismissed_title, null, onSendAgain)

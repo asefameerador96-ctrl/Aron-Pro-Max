@@ -27,17 +27,20 @@ object StockSaving {
     suspend fun save(
         load: StockLoad, nowMs: () -> Long, meta: CaptureMeta,
         /** Which of these client UUIDs the repository already holds (an attempt that landed before a process kill); default none. */
-        storedAlready: suspend (List<String>) -> Set<String> = { emptySet() },
+        storedAlready: (suspend (List<String>) -> Set<String>)? = null,
         record: suspend (List<StockMovementEntity>) -> Unit,
     ): StockSaveResult =
         when (val out = load.save(nowMs(), meta)) {
             is SaveOutcome.Refused -> StockSaveResult(if (out.reason == SaveRefusal.NOTHING_ENTERED) StockMessage.NOTHING_ENTERED else StockMessage.REFUSED_SAME_VALUES)
             is SaveOutcome.Saved -> try {
-                val already = storedAlready(out.movements.map { it.clientUuid })
+                val ids = out.movements.map { it.clientUuid }
+                val already = storedAlready?.invoke(ids) ?: emptySet()
                 record(out.movements)
-                load.committed(out, nowMs(), already)
-                // every movement was on the phone before this tap: the earlier Save landed, the figure already includes it, nothing was added
-                StockSaveResult(if (already.size == out.movements.size) StockMessage.ALREADY_SAVED else StockMessage.SAVED)
+                // what the repository REALLY holds now: a UUID it dropped (the purge already forgot an acked copy) adds nothing to the loaded figure
+                val added = if (storedAlready == null) ids.toSet() - already else storedAlready(ids) - already
+                load.committed(out, nowMs(), ids.toSet() - added)
+                // nothing was added: every line was on the phone before this tap (or is one the purge forgot): the earlier Save landed
+                StockSaveResult(if (added.isEmpty()) StockMessage.ALREADY_SAVED else StockMessage.SAVED)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 load.commitFailed()
                 throw e

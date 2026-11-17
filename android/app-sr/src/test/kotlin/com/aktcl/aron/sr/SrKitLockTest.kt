@@ -78,6 +78,16 @@ class SrKitLockTest {
         assertEquals(com.aktcl.aron.feature.sale.domain.EditDenied.QcDone, runBlocking { kit.prepareEdit(memo) })
     }
 
+    // round-2 review: an edit is never let in and then refused at the save: a memo of a day whose sales are submitted is denied up front, before any location reading
+    @Test fun anEditOfAMemoOfASubmittedDayIsDeniedUpFrontNotAtTheSave() {
+        val v = f.openCall()
+        val memo = f.creditMemo(v)
+        val kit = f.day.sale
+        runBlocking { kit.prepare() }
+        f.salesSubmitted()
+        assertEquals(com.aktcl.aron.feature.sale.domain.EditDenied.DayClosed, runBlocking { kit.prepareEdit(memo) })
+    }
+
     private fun collections() = runBlocking { f.db.captureDao().dueCollectionsOn(f.date) }
 
     @Test fun markPaidIsHiddenAfterTheSrsOwnSalesSubmitAndATapItBeatIsWordedNotACrash() {

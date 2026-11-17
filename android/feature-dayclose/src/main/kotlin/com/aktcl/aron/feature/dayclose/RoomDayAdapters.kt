@@ -91,13 +91,24 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
         val entries = ArrayList<RejectedRow>()
         for ((_, members) in refused.groupBy { it.familyUuid }.entries.sortedByDescending { (_, m) -> m.maxOf { it.seq } }) {
             val lead = members.minWith(compareBy({ it.rank }, { it.seq }))
-            val gaveUp = members.any { it.state == OutboxState.REJECTED && it.lastCode == com.aktcl.aron.core.sync.AckRules.RETRY_EXHAUSTED }
-            entries += entry(lead.copy(memoNo = members.firstNotNullOfOrNull { it.memoNo }, outletId = members.firstNotNullOfOrNull { it.outletId }), if (gaveUp) com.aktcl.aron.core.sync.AckRules.RETRY_EXHAUSTED else lead.lastCode,
-                when {
-                    gaveUp -> RejectedOutcome.PHONE_GAVE_UP
-                    lead.state == OutboxState.QUARANTINED -> RejectedOutcome.STORED_FLAGGED
-                    else -> RejectedOutcome.DROPPED
-                }, lead.lastMessageKey, members.all { it.seenAt != null }, members.size, reasons, ref)
+            // A family's outcome is the most serious of its members (round-2 review): a parent the SERVER refused means nothing below it can ever land
+            // (DROPPED, no Send again); else a record the phone gave up on (Send again); else a child the server refused (DROPPED, never hidden behind a
+            // stored-and-flagged lead); else a quarantined lead (STORED_FLAGGED).
+            val exhausted = com.aktcl.aron.core.sync.AckRules.RETRY_EXHAUSTED
+            val serverRefused = members.filter { it.state == OutboxState.REJECTED && it.lastCode != exhausted }
+            val parentRefused = serverRefused.any { it.rank <= lead.rank }
+            val gaveUp = !parentRefused && members.any { it.state == OutboxState.REJECTED && it.lastCode == exhausted }
+            val outcome = when {
+                gaveUp -> RejectedOutcome.PHONE_GAVE_UP
+                serverRefused.isNotEmpty() -> RejectedOutcome.DROPPED
+                lead.state == OutboxState.QUARANTINED -> RejectedOutcome.STORED_FLAGGED
+                else -> RejectedOutcome.DROPPED
+            }
+            val shownCode = if (gaveUp) exhausted else (serverRefused.minByOrNull { it.rank }?.lastCode ?: lead.lastCode)
+            entries += entry(lead.copy(memoNo = members.firstNotNullOfOrNull { it.memoNo }, outletId = members.firstNotNullOfOrNull { it.outletId }), shownCode,
+                outcome, lead.lastMessageKey,
+                // an orphaned child the phone gave up on (its parent was refused) can never be marked seen: "seen" is judged on the members that can be
+                members.filter { !(it.state == OutboxState.REJECTED && it.lastCode == exhausted) }.all { it.seenAt != null }, members.size, reasons, ref)
         }
         for (row in retry) {
             entries += entry(row, row.lastCode, RejectedOutcome.RETRY, row.lastMessageKey, false, 1, reasons, ref)

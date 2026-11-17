@@ -106,7 +106,8 @@ class ReconciliationRepository(private val db: AronDatabase, private val nowIso:
             sold[l.skuId] = (sold[l.skuId] ?: 0L) + l.qtyBase
         }
         val issued = sortedMapOf<Long, Long>()
-        for (s in capture.stockOn(businessDate).filter { it.clientUuid !in refused }) issued[s.skuId] = (issued[s.skuId] ?: 0L) + s.qtyBase
+        // the same definition of "held" as the stock gate and the day_submit's balance (StockHeld.movedBySku), not a kind-blind sum
+        issued.putAll(StockHeld.movedBySku(capture.stockOn(businessDate).filter { it.clientUuid !in refused }))
         fun sum(f: (MemoEntity) -> Long) = active.sumOf(f)
         return buildJsonObject {
             put("active_memo_count", JsonPrimitive(active.count { it.lineCount > 0 }))

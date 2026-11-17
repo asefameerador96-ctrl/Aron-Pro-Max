@@ -100,7 +100,7 @@ abstract class OutboxDao {
 
     @Query(
         """UPDATE outbox SET state = :state, last_code = :code, last_message_key = :messageKey, server_id = COALESCE(:serverId, server_id),
-           seen_at = CASE WHEN state = :state AND IFNULL(last_code, '') = IFNULL(:code, '') THEN seen_at ELSE NULL END,
+           seen_at = NULL,
            acked_at = CASE WHEN :state = 'acked' THEN :at ELSE acked_at END,
            batch_uuid = CASE WHEN :state = 'pending' THEN NULL ELSE batch_uuid END
            WHERE client_uuid = :clientUuid AND state IN ('in_flight', 'pending')""",
@@ -233,12 +233,14 @@ abstract class OutboxDao {
      * whole FAMILY (the parent and every child that was exhausted), so a memo never goes up without its lines nor lines before their memo.
      * Each goes back to pending with the SAME client_uuid, payload and sig and `attempts` reset, in the engine's normal family order
      * (by seq), exactly as [resendAckedSince] does: the server's registry answers each by uuid (stored, or duplicate), so it keeps it once.
-     * Only rows rejected with that code move; a server rejection is never resent from here. Returns the rows re-queued.
+     * Only rows rejected with that code move; a server rejection is never resent from here. A child is NOT re-queued while a PARENT of its family
+     * was refused by the server (it could only answer `parent_missing` and exhaust again: a loop the rep cannot end). Returns the rows re-queued.
      */
     @Query(
         """UPDATE outbox SET state = 'pending', batch_uuid = NULL, attempts = 0, seen_at = NULL
            WHERE state = 'rejected' AND last_code = 'retry_exhausted'
-           AND family_uuid = (SELECT family_uuid FROM outbox WHERE client_uuid = :clientUuid)""",
+           AND family_uuid = (SELECT family_uuid FROM outbox WHERE client_uuid = :clientUuid)
+           AND NOT EXISTS (SELECT 1 FROM outbox p WHERE p.family_uuid = outbox.family_uuid AND p.state = 'rejected' AND IFNULL(p.last_code, '') != 'retry_exhausted' AND p.`rank` < outbox.`rank`)""",
     )
     abstract suspend fun requeueRetryExhausted(clientUuid: String): Int
 

@@ -26,6 +26,8 @@ sealed interface EditDenied {
     data object NoLiveMemo : EditDenied
     /** D-OWNER-PREREQ-01 rule 1: an edit writes a memo, so it needs today's open check-in. */
     data object NotCheckedIn : EditDenied
+    /** The memo's own day is closed for writes (a Sales Submit stands, or the Final Submit locked it): the edit would be refused at the save, so it is not let in. */
+    data object DayClosed : EditDenied
 }
 
 object EditGate {

@@ -111,7 +111,7 @@ class StockLoad(
                 slipPrinted = slipPrinted,
             )
         }
-        attemptStore.save(businessDate, attemptUuids.toMap()) // before the commit: a kill between the commit and the screen's answer still leaves the key
+        attemptStore.save(meta.businessDate, attemptUuids.toMap()) // labelled with the date the MOVEMENTS carry (a Save across midnight and a kill still matches the relaunched day); before the commit: a kill between the commit and the screen's answer still leaves the key
         return SaveOutcome.Saved(movements)
     }
 

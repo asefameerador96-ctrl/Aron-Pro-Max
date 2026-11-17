@@ -21,7 +21,25 @@ fun interface MemoNumbers {
 }
 
 /** The envelope facts of "now" (trusted clock, boot count, bundle/config versions); supplied by the app. */
-fun interface CaptureMetaSource { fun meta(businessDate: String, routeId: Long?): CaptureMeta }
+fun interface CaptureMetaSource {
+    fun meta(businessDate: String, routeId: Long?): CaptureMeta
+
+    companion object {
+        /**
+         * D-LEAD-PREREQ-03 ruling 2 (round-2 review, edit across midnight): a record of a call or of a memo edit carries the business date of the
+         * VISIT or MEMO it belongs to, never the clock's date, so the check-in check, the stock given back, the stock check and the saved record read ONE
+         * date. [clock] gives the envelope of "now" (its date is the clock's). A date that is not a calendar date, or is AFTER the clock's, falls back
+         * to the clock's: a record is never dated in the future. The server accepts a D-dated record captured on D+1 (IngestService step 3 judges
+         * `business_date` only against the backdate floor and "after today", and `captured_at` only against "more than 10 minutes ahead").
+         */
+        fun dated(clock: (Long?) -> CaptureMeta) = CaptureMetaSource { date, routeId ->
+            val now = clock(routeId)
+            if (date == now.businessDate || !DATE.matches(date) || date > now.businessDate) now else now.copy(businessDate = date)
+        }
+
+        private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+    }
+}
 
 /** Thrown when review has problems; nothing is written. */
 class ReviewNotCommittable(val problems: List<ReviewProblem>) : IllegalStateException("review has problems: $problems")

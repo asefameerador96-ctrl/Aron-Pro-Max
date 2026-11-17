@@ -52,9 +52,9 @@ class StockGateLowsTest {
     }
     @After fun tearDown() = db.close()
 
-    /** The memo takes the date of the draft, as the production meta source does. */
+    /** The memo takes the date of the draft (never later than the clock's, Fx.DATE), through the SAME meta source the app kits use (D-AGATE-09). */
     private fun committer(numbering: MemoNumbering? = null) = SaleCommitter(
-        repo, FakeNumbers(), { date, r -> Fx.meta().copy(businessDate = date, routeId = r) }, { "2026-10-05T04:35:00.000Z" },
+        repo, FakeNumbers(), CaptureMetaSource.dated { r -> Fx.meta().copy(routeId = r) }, { "2026-10-05T04:35:00.000Z" },
         findMemo = { db.captureDao().memo(it) }, numbering = numbering,
     )
     private fun draft(qty: Long, unit: QtyUnit = QtyUnit.STICK, s: SaleSku = sku, date: String = Fx.DATE) =

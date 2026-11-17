@@ -43,4 +43,14 @@ class StockDefinitionTest {
         assertEquals(100L + 102L - 105L, sql.getValue(1L))
         assertEquals(7L + 21L - 42L, sql.getValue(2L))
     }
+
+    /** Round-2 review (low 4): the `issued_qty_base_by_sku` the server is told is the same figure, not a kind-blind sum that would add a qc_return. */
+    @Test fun theIssuedFigureTheServerIsToldUsesTheSameDefinition() = runTest {
+        val kinds = listOf("issue", "return", "adjustment", "damaged", "short", "qc_return")
+        db.captureDao().insertStock(kinds.mapIndexed { i, k -> move(k, 1, 100L + i) })
+        val told = com.aktcl.aron.core.database.repo.ReconciliationRepository(db) { "2026-10-05T12:00:00.000Z" }.deviceMoney("2026-10-05")
+        val issued = (told["issued_qty_base_by_sku"] as kotlinx.serialization.json.JsonObject).getValue("1") as kotlinx.serialization.json.JsonPrimitive
+        assertEquals(100L + 102L - 105L, issued.content.toLong())
+        assertEquals(db.captureDao().stockBalanceOn("2026-10-05").single().qtyBase, issued.content.toLong())
+    }
 }

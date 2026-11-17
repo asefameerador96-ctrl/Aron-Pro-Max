@@ -26,7 +26,7 @@ class FileStockAttemptStore(private val file: File) : StockAttemptStore {
     override fun load(businessDate: String): Map<String, String> = try {
         val lines = file.takeIf { it.exists() }?.readLines().orEmpty()
         if (lines.firstOrNull() != businessDate) emptyMap()
-        else lines.drop(1).mapNotNull { l -> l.split('\t').takeIf { it.size == 2 && it[1].matches(UUID) }?.let { it[0] to it[1] } }.toMap()
+        else lines.drop(1).mapNotNull { l -> l.split('\t').takeIf { it.size == 2 && com.aktcl.aron.core.common.ClientIds.isUuidV4(it[1]) }?.let { it[0] to it[1] } }.toMap()
     } catch (_: Exception) { emptyMap() }
 
     override fun save(businessDate: String, uuids: Map<String, String>) {
@@ -40,5 +40,4 @@ class FileStockAttemptStore(private val file: File) : StockAttemptStore {
 
     override fun clear() { runCatching { file.delete() } }
 
-    private companion object { val UUID = Regex("[0-9a-f-]{36}") }
 }

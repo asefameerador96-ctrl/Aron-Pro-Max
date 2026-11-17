@@ -111,9 +111,6 @@ class RefusedRecordsTest {
     @Test fun seenIsClearedWhenTheOutcomeChanges() = runTest {
         val q = row(today, "quarantined", "memo_no_duplicate")
         source.markSeen(q); assertNotNull(db.outboxDao().byClientUuid(q)!!.seenAt)
-        // the same outcome answered again keeps it
-        db.outboxDao().applyAck(q, "quarantined", "memo_no_duplicate", null, "t")  // not in flight/pending: no change at all
-        assertNotNull(db.outboxDao().byClientUuid(q)!!.seenAt)
         // a reviewer discards it: a NEW outcome, shown again
         assertEquals(1, db.outboxDao().applyResolution(q, "rejected", "discarded", "t"))
         assertNull("a new outcome clears seen", db.outboxDao().byClientUuid(q)!!.seenAt)
@@ -132,6 +129,50 @@ class RefusedRecordsTest {
         db.openHelper.writableDatabase.execSQL("UPDATE outbox SET state = 'in_flight' WHERE client_uuid = '$u'")
         db.outboxDao().applyAck(u, "rejected", "unknown_sku", null, "t")
         assertNull(db.outboxDao().byClientUuid(u)!!.seenAt)
+    }
+
+    /** An answer of the server clears "seen" even when state AND code come back the same: any answer is a new outcome (the old CASE was dead code). */
+    @Test fun anyAnswerClearsSeenEvenWithTheSameStateAndCode() = runTest {
+        val u = row(today, "pending", "parent_missing")
+        db.openHelper.writableDatabase.execSQL("UPDATE outbox SET seen_at = 't0' WHERE client_uuid = '$u'") // a stale mark the older build could have left
+        db.outboxDao().applyAck(u, "pending", "parent_missing", null, "t")
+        assertNull(db.outboxDao().byClientUuid(u)!!.seenAt)
+    }
+
+    // ---- round-2 review lows: a family's outcome is its most serious member, and Send again never loops
+
+    /** The parent was refused by the SERVER and a child exhausted: sending the child again could only answer parent_missing for ever. */
+    @Test fun aFamilyWhoseParentTheServerRefusedIsNotOfferedSendAgain() = runTest {
+        val family = ClientIds.newUuid()
+        val memo = row(today, "rejected", "price_invalid", "memo", family = family, rank = 1)
+        val child = row(today, "rejected", "retry_exhausted", "memo_line", family = family, rank = 2)
+        val e = source.rejectedRows(today).single()
+        assertEquals(RejectedOutcome.DROPPED, e.outcome)
+        assertFalse(e.canSendAgain); assertTrue(e.canMarkSeen)
+        assertFalse(source.sendAgain(child)); assertFalse(source.sendAgain(memo))
+        assertEquals("rejected", db.outboxDao().byClientUuid(child)!!.state); assertEquals("retry_exhausted", db.outboxDao().byClientUuid(child)!!.lastCode)
+        source.markSeen(memo)
+        assertTrue("seen is judged on the members that can be marked", source.rejectedRows(today).single().seen)
+    }
+
+    /** A stored-and-flagged lead must not hide a child the server dropped. */
+    @Test fun aRejectedChildIsNotHiddenBehindAFlaggedLead() = runTest {
+        val family = ClientIds.newUuid()
+        row(today, "quarantined", "memo_no_duplicate", "memo", family = family, rank = 1)
+        row(today, "rejected", "unknown_sku", "memo_line", family = family, rank = 2)
+        val e = source.rejectedRows(today).single()
+        assertEquals(RejectedOutcome.DROPPED, e.outcome)
+        assertEquals("unknown_sku", e.code)
+    }
+
+    /** The parent is fine (flagged, stored) and only a child is exhausted: Send again works for the child. */
+    @Test fun anExhaustedChildOfAStoredParentCanStillBeSentAgain() = runTest {
+        val family = ClientIds.newUuid()
+        row(today, "quarantined", "memo_no_duplicate", "memo", family = family, rank = 1)
+        val child = row(today, "rejected", "retry_exhausted", "memo_line", family = family, rank = 2)
+        assertEquals(RejectedOutcome.PHONE_GAVE_UP, source.rejectedRows(today).single().outcome)
+        assertTrue(source.sendAgain(child))
+        assertEquals("pending", db.outboxDao().byClientUuid(child)!!.state)
     }
 
     @Test fun seenCanBeUndone() = runTest {

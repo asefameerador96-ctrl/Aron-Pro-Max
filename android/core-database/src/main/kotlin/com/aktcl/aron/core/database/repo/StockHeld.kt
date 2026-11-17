@@ -32,6 +32,11 @@ object StockHeld {
         discounts.filter { it.memoClientUuid in live && it.kind == "drp" && it.skuId != null }
             .groupBy { it.skuId!! }.mapValues { (_, v) -> v.sumOf { it.qtyBase ?: 0L } }
 
+    /** What the stock movements added to the bag per SKU: `issue` and `adjustment` add, `qc_return` subtracts, every other kind counts zero. The ONE definition (D-AGATE-02): the held figure and the `issued_qty_base_by_sku` the server is told both use it. */
+    fun movedBySku(movements: List<StockMovementEntity>): Map<Long, Long> = movements.groupBy { it.skuId }.mapValues { (_, m) ->
+        m.sumOf { when (it.kind) { "issue", "adjustment" -> it.qtyBase; "qc_return" -> -it.qtyBase; else -> 0L } }
+    }
+
     fun held(
         movements: List<StockMovementEntity>, memos: List<MemoEntity>, lines: List<MemoLineEntity>,
         discounts: List<MemoDiscountEntity> = emptyList(), ignoring: String? = null,
@@ -39,11 +44,7 @@ object StockHeld {
         val live = liveMemos(memos, ignoring)
         val sold = lines.filter { it.memoClientUuid in live }.groupBy { it.skuId }.mapValues { (_, v) -> v.sumOf { it.qtyBase } }
         val free = rewardsBySku(discounts, live)
-        val moved = movements.groupBy { it.skuId }.mapValues { (_, m) ->
-            m.sumOf {
-                when (it.kind) { "issue", "adjustment" -> it.qtyBase; "qc_return" -> -it.qtyBase; else -> 0L }
-            }
-        }
+        val moved = movedBySku(movements)
         return (moved.keys + sold.keys + free.keys).associateWith { (moved[it] ?: 0L) - (sold[it] ?: 0L) - (free[it] ?: 0L) }
     }
 
