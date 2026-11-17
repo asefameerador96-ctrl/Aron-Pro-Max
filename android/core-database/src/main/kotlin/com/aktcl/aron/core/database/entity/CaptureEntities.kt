@@ -47,6 +47,11 @@ data class GeoFixEntity(
     @ColumnInfo(name = "auto_time_enabled") val autoTimeEnabled: Boolean,
     @ColumnInfo(name = "mock_app_present") val mockAppPresent: Boolean,
     @ColumnInfo(name = "integrity_ref") val integrityRef: String? = null,
+    /**
+     * Anti-spoofing signal codes of this fix as a JSON array of strings (D-OWNER-MDM-02), null or `[]` on a clean fix. Local
+     * until the contract carries `GeoFix.signals` (proposed, contract 1.19.0): the record mapping does not send it yet.
+     */
+    @ColumnInfo(name = "signals_json") val signalsJson: String? = null,
 )
 
 /** Check-in or check-out (record `attendance_event`). */

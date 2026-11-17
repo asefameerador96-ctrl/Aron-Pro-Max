@@ -94,6 +94,13 @@ data class TakenFix(
     /** `GnssSummary` JSON collected during the fix window (N-025), or null. */
     val gnssJson: String?,
     val device: FixDeviceState,
+    /**
+     * Anti-spoofing signal codes (D-OWNER-MDM-02; `com.aktcl.aron.core.geo.spoof.SpoofCode.wire`), stable order, empty on a
+     * clean fix. None is proof. [hardSpoof] is true when any HARD code is present (mock flag, selected mock app, test
+     * provider): the geo-validated action is refused. Soft codes only ride the record.
+     */
+    val signals: List<String> = emptyList(),
+    val hardSpoof: Boolean = false,
 ) {
     val isOk: Boolean get() = fixStatus == FixStatus.OK
 }

@@ -1,0 +1,76 @@
+package com.aktcl.aron.core.geo.spoof
+
+import android.app.AppOpsManager
+import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
+import androidx.test.core.app.ApplicationProvider
+import com.aktcl.aron.core.common.WallClock
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+
+/** The real probes on Robolectric's package manager and AppOps. Real phones are walked separately (docs/status/android-integrity.md). */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class AndroidSpoofProbesTest {
+    private val app = ApplicationProvider.getApplicationContext<Context>()
+    private class Clock(var el: Long = 1_000) : WallClock {
+        override fun nowMs() = 1_800_000_000_000L
+        override fun elapsedRealtimeMs() = el
+        override fun bootCount() = 1
+    }
+
+    private fun install(pkg: String, uid: Int): Int {
+        val info = PackageInfo().apply { packageName = pkg; applicationInfo = ApplicationInfo().apply { packageName = pkg; this.uid = uid } }
+        shadowOf(app.packageManager).installPackage(info)
+        return uid
+    }
+
+    @Test fun nothingInstalledMeansNothingToReport() {
+        val f = AndroidSpoofProbes(app, Clock(), listOf("com.lexa.fakegps")).facts()
+        assertFalse(f.fakeGpsAppInstalled); assertFalse(f.mockAppSelected)
+    }
+
+    @Test fun anInstalledListedAppIsSoftUntilItIsTheSelectedMockApp() {
+        val uid = install("com.lexa.fakegps", 10_222)
+        // On a real phone the op of an app that is not the selected mock app is MODE_ERRORED (the platform default); Robolectric's default is ALLOWED.
+        shadowOf(app.getSystemService(AppOpsManager::class.java)).setMode(58 /* OP_MOCK_LOCATION */, uid, "com.lexa.fakegps", AppOpsManager.MODE_ERRORED)
+        val f = AndroidSpoofProbes(app, Clock(), listOf("com.lexa.fakegps")).facts()
+        assertTrue(f.fakeGpsAppInstalled); assertFalse("installed but not selected is soft only", f.mockAppSelected)
+    }
+
+    @Test fun theSelectedMockAppIsFoundThroughAppOps() {
+        val uid = install("com.lexa.fakegps", 10_222)
+        val ops = app.getSystemService(AppOpsManager::class.java)
+        shadowOf(ops).setMode(58 /* OP_MOCK_LOCATION */, uid, "com.lexa.fakegps", AppOpsManager.MODE_ALLOWED)
+        val f = AndroidSpoofProbes(app, Clock(), listOf("com.lexa.fakegps")).facts()
+        assertTrue(f.mockAppSelected)
+    }
+
+    @Test fun factsAreCachedForTenMinutesAndRereadAfterwards() {
+        val clock = Clock()
+        val p = AndroidSpoofProbes(app, clock, listOf("com.lexa.fakegps"), ttlMs = 10 * 60_000L)
+        assertFalse(p.facts().fakeGpsAppInstalled)
+        install("com.lexa.fakegps", 10_222)
+        clock.el += 5 * 60_000; assertFalse("inside the TTL the answer is cached", p.facts().fakeGpsAppInstalled)
+        clock.el += 6 * 60_000; assertTrue("after the TTL it is read again", p.facts().fakeGpsAppInstalled)
+        install("com.lexa.fakegps", 10_222); p.invalidate(); assertTrue(p.facts().fakeGpsAppInstalled)
+    }
+
+    @Test fun theResourceListIsReadFromTheOneResourceFile() {
+        val list = FakeGpsPackages.list(app)
+        assertTrue(list.size >= 10); assertTrue("com.lexa.fakegps" in list); assertEquals(list.size, list.toSet().size)
+    }
+
+    @Test fun anEmptyOrBrokenLocationServiceNeverThrows() {
+        val p = AndroidSpoofProbes(app, Clock(), emptyList())
+        p.networkFix(1_000_000_000L) // no provider: null, no exception
+        p.facts()
+    }
+}

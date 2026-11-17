@@ -1,7 +1,7 @@
 # Status: lane A-INT1 (android-integrity)
 
 Directive: D-OWNER-MDM-02 (2026-11-13). Branch `lane/android-integrity`. Step 0 scout, written 2026-11-13, before any code.
-State: STEP 0 DONE. Slice 1 (parts 1 and 2) built and green on core modules locally; full gate and CI pending. Slice 2 (part 3) and slice 3 (server piece and contract: V0201/V0202, contract 1.19.0, provisional) not started.
+State (2026-11-17): slice 1 checked (791fefae). Slice 2 (part 3) built locally, gate and CI pending; see D-AINT-04. STEP 0 DONE. Slice 1 (parts 1 and 2) built and green on core modules locally; full gate and CI pending. Slice 2 (part 3) and slice 3 (server piece and contract: V0201/V0202, contract 1.19.0, provisional) not started.
 
 Slice 1 review round (D-AINT-03): fixed B1 (observer, focus, write guard), B2 (auto time untouched), items 4 to 10. **Item 11, the first-run failure of `Backend analytics tests (a)` (run 44154801268, job 134292739283):** not a test. Gradle failed in 43 s at configuration time: `Could not resolve org.bouncycastle:bcutil-jdk18on:[1.80,1.81)` (required by `bcpkix-jdk18on:1.80` of `:backend:analytics`), `Repository MavenRepo is disabled due to earlier error`, i.e. a transient dependency-resolution failure of the runner's repository, with a dynamic version range. I changed no backend code; the next run skipped the shard by the changes filter. Worth pinning that range to an exact version (lead's call).
 
@@ -99,3 +99,17 @@ Contract change PROPOSED (not made): `GeoFix.signals: string[]` (codes above), `
 1. Keep a one-release empty `AronDeviceAdminReceiver` for the release step (above).
 2. Remove `QUERY_ALL_PACKAGES`; accept the loss of generic mock-app enumeration.
 3. Keep device registration (key + device id) without QR provisioning; `EnrolmentGate` stays as code entry. If you want the QR scanner and Camera permission removed from the apps too, say so.
+
+
+## Slice 2 (part 3) as built
+Codes, decision rule and tests: D-AINT-04 in DECISIONS.md. What each check costs on the phone: mock flag, test-provider name, fix age and clock, jump and speed, GNSS cross-check: arithmetic on the fix that was already taken (no sensor, no request); the previous fix is one small prefs write per fresh fix. Package, AppOps, root, emulator and hook checks: once per 10 minutes, a few milliseconds (a class lookup and one read of `/proc/self/maps`). "gps" provider properties: one binder call per fix. Network cross-check: one passive read of the platform's newest network location (no request, no radio). Play Integrity: unchanged from before (fetched only online by the existing evidence path, cached, never awaited by a sale); it stays dormant while `PLAY_INTEGRITY_PROJECT_NUMBER` is 0.
+
+**What the owner must provide for Play Integrity:** the Google Cloud project number linked to the Play app (Play Console, App integrity). It goes in as the build property that fills `BuildConfig.PLAY_INTEGRITY_PROJECT_NUMBER`; no key or secret in the repository.
+
+**Server must accept (contract 1.19.0, proposed, not made):** `GeoFix.signals: string[]` with the wire codes of `SpoofCode` (`mock_flag`, `mock_app_selected`, `test_provider`, `test_provider_props`, `fake_gps_app_installed`, `gnss_no_sats`, `gnss_none`, `fix_stale`, `fix_clock_mismatch`, `jump`, `speed`, `provider_disagree`, `root_hint`, `emulator`, `hook_framework`); a column or jsonb on `app.geo_fix`; mapping into `app.risk_signal` (hard codes severity high, soft codes low); the portal shows them next to the visit. The server re-check (`GeoVerdicts`, F-SYS-012) is unchanged.
+
+**What is NOT defeated, and what was not tested on a device (slice 2):**
+- A rooted phone that hides its tools, a hooking framework that hides itself, or a module that fakes `Location.isMock`, AppOps, GnssStatus and the provider properties together defeats every on-phone check. RF-level GNSS simulators and modified hardware give clean fixes with no mock flag.
+- A fake-GPS app that is not on the list is caught only by the mock flag at fix time, not by presence; after removing QUERY_ALL_PACKAGES the generic scan is gone.
+- Not walked on any phone: AppOps `android:mock_location` reading for another package on each OEM (it can be refused by the platform; the probe then reports nothing), the "gps" provider properties on Samsung A06/A07 and Honor X5c Plus (why `test_provider_props` is soft), the root-hint and hook markers under real Magisk/Frida, and the battery effect of the periodic probes. Robolectric covers the logic and the package and AppOps plumbing only.
+- Local Room schema 9 to 10 (`geo_fix.signals_json`) may collide with another lane that also bumps the database version; the lead should land it in order.

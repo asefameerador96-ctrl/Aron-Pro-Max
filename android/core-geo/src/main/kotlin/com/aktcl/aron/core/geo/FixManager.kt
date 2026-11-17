@@ -29,6 +29,8 @@ class FixManager(
     private val ledger: FixLedger = MemoryFixLedger(),
     private val gnss: FixWindowObserver = FixWindowObserver.None,
     private val settings: () -> FixSettings = { FixSettings() },
+    /** Anti-spoofing layers (D-OWNER-MDM-02); [com.aktcl.aron.core.geo.spoof.SpoofChecker.None] when not wired (tests). */
+    private val spoof: com.aktcl.aron.core.geo.spoof.SpoofChecker = com.aktcl.aron.core.geo.spoof.SpoofChecker.None,
 ) {
     private class Candidate(
         val location: RawLocation,
@@ -163,8 +165,10 @@ class FixManager(
                     // A provider that returns garbage coordinates is a provider failure; keep its mock flag as evidence.
                     build(purpose, FixStatus.PROVIDER_UNAVAILABLE, null, s.priority, timeToFix, gnssJson, false, refreshCount, loc.isMock) to null
                 } else {
-                    build(purpose, FixStatus.OK, loc, s.priority, timeToFix, gnssJson, false, refreshCount) to
-                        Candidate(loc, timeToFix, gnssJson, s.priority)
+                    build(purpose, FixStatus.OK, loc, s.priority, timeToFix, gnssJson, false, refreshCount).also {
+                        // Remembered only after the checks above ran against the PREVIOUS fix (build() evaluated it).
+                        runCatching { spoof.onFreshFix(loc) }
+                    } to Candidate(loc, timeToFix, gnssJson, s.priority)
                 }
             }
             SourceResult.TimedOut -> build(purpose, FixStatus.TIMEOUT, null, s.priority, timeToFix, gnssJson, false, refreshCount) to null
@@ -188,6 +192,7 @@ class FixManager(
         mockWithoutLocation: Boolean = false,
     ): TakenFix {
         val captureElapsed = clock.elapsedRealtimeMs()
+        val spoofResult = runCatching { spoof.check(loc, gnssJson, reused) }.getOrDefault(com.aktcl.aron.core.geo.spoof.SpoofResult.NONE)
         val fixElapsedMs = loc?.elapsedRealtimeNanos?.takeIf { it > 0 }?.div(NANOS_PER_MS)
         return TakenFix(
             purpose = purpose,
@@ -210,6 +215,8 @@ class FixManager(
             refreshCount = refreshCount.coerceIn(0, MAX_REFRESH_COUNT),
             gnssJson = gnssJson,
             device = deviceState.read(),
+            signals = spoofResult.wire,
+            hardSpoof = spoofResult.hard,
         )
     }
 

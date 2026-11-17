@@ -65,6 +65,9 @@ class DeviceRuntime(
         FixManager(
             FallbackLocationSource.of(app), AndroidLocationAccess(app), deviceStateReader, components.clock, PrefsFixLedger(app),
             AndroidGnssObserver(app, components.clock), settings = { dayConfig.fixSettings },
+            spoof = com.aktcl.aron.core.geo.spoof.AndroidSpoofChecker(
+                com.aktcl.aron.core.geo.spoof.AndroidSpoofProbes(app, components.clock), com.aktcl.aron.core.geo.spoof.PrefsPreviousFixStore(app), components.clock,
+            ),
         )
     }
 

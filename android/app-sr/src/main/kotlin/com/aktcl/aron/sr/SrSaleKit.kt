@@ -33,6 +33,7 @@ import com.aktcl.aron.feature.memo.ui.VisitDueCollectionWriter
 import com.aktcl.aron.feature.memo.ui.RoomMemoStore
 import com.aktcl.aron.feature.outlet.FixReading
 import com.aktcl.aron.feature.outlet.GeoSettings
+import com.aktcl.aron.feature.outlet.refusingSpoofedFixes
 import com.aktcl.aron.feature.sale.domain.CaptureMetaSource
 import com.aktcl.aron.feature.sale.domain.EditContext
 import com.aktcl.aron.feature.sale.domain.EditDenied
@@ -287,7 +288,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         val reading = day.fixSource.readFix("memo_edit")
         val verdict = GeoVerdicts.verdict(
             FixInput(reading.isOk, reading.lat ?: Double.NaN, reading.lng ?: Double.NaN, reading.accuracyM, reading.isMock),
-            OutletGeo(o.locationUsable, o.lat ?: Double.NaN, o.lng ?: Double.NaN), o.radiusM, o.maxAccuracyM, GeoSettings.DEFAULT.policyBase,
+            OutletGeo(o.locationUsable, o.lat ?: Double.NaN, o.lng ?: Double.NaN), o.radiusM, o.maxAccuracyM, GeoSettings.DEFAULT.policyBase.refusingSpoofedFixes(),
         )
         if (verdict.verdict != GeoVerdict.IN_RANGE) return EditDenied.OutsideGeofence
         editReading = reading; editFixId = null
