@@ -12,6 +12,9 @@ data class StockShortage(val skuId: Long, val requestedBase: Long, val heldBase:
 /** Thrown inside the saving transaction when a sale would take more of a SKU than the phone holds; nothing is written. */
 class OverStockException(val shortages: List<StockShortage>) : IllegalStateException("sale exceeds the stock held: $shortages")
 
+/** Thrown when an edit's target memo was already replaced by another edit: the rep opens the latest version instead. Nothing is written. */
+class EditTargetSupersededException(val targetMemoUuid: String) : IllegalStateException("memo $targetMemoUuid was already replaced by another edit")
+
 /**
  * The stock the rep holds, from stored rows only (D-OWNER-PREREQ-01 rule 2): `issue + adjustment - qc_return - sold - reward packs`
  * per SKU in base units, over live memos (a memo replaced by an edit counts once, through its replacement). A SKU with no row is

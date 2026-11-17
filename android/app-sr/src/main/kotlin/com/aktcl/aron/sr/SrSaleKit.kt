@@ -286,7 +286,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
      */
     suspend fun prepareEdit(memoUuid: String): EditDenied? {
         val memo = dao.memo(memoUuid)
-        val date = day.businessDate()
+        val date = memo?.meta?.businessDate ?: day.businessDate() // the memo's own day: the write checks the same date (a memo of yesterday is judged on yesterday's rows)
         val live = memo != null && dao.memosOn(date).none { it.supersedesClientUuid == memoUuid }
         // SRM-B-17: QC "entered for the outlet" on the business date, whichever visit of that outlet recorded it
         val qcDone = memo != null && EditGate.qcEnteredForOutlet(memo.outletId, dao.qcLinesOn(date).map { dao.visit(it.visitClientUuid)?.outletId })

@@ -179,9 +179,12 @@ interface CaptureDao {
     @Query("SELECT * FROM stock_movement WHERE business_date = :businessDate ORDER BY captured_at")
     suspend fun stockOn(businessDate: String): List<StockMovementEntity>
 
-    /** Issued minus returned and adjusted stock in base units per SKU for a day (issue and adjustment add; others, `qc_return` included, subtract). */
+    /**
+     * The stock movements of a day in base units per SKU, by the ONE definition of "held" (D-AGATE-02, [com.aktcl.aron.core.database.repo.StockHeld.held]):
+     * `issue` and `adjustment` add, `qc_return` subtracts, every other kind counts zero. A test holds this SQL equal to the Kotlin formula for every kind.
+     */
     @Query(
-        """SELECT sku_id AS skuId, SUM(CASE WHEN kind IN ('issue','adjustment') THEN qty_base ELSE -qty_base END) AS qtyBase
+        """SELECT sku_id AS skuId, SUM(CASE WHEN kind IN ('issue','adjustment') THEN qty_base WHEN kind = 'qc_return' THEN -qty_base ELSE 0 END) AS qtyBase
            FROM stock_movement WHERE business_date = :businessDate GROUP BY sku_id ORDER BY sku_id""",
     )
     suspend fun stockBalanceOn(businessDate: String): List<SkuQty>

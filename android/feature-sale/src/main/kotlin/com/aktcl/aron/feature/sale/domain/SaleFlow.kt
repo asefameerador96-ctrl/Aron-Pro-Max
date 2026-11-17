@@ -35,6 +35,8 @@ data class SaleUiState(
     val committed: CommittedSale? = null,
     /** The one per-SKU QC cap (taka) the review, the commit and the QC screen all read; empty while the basis is unknown (MQ-03). */
     val qcCapMtkBySku: Map<Long, Long> = emptyMap(),
+    /** Why the last save was refused INSIDE the transaction (stock moved, the memo to edit was replaced); the screen words it. Cleared by the next change. */
+    val refusal: List<ReviewProblem> = emptyList(),
 )
 
 /**
@@ -65,11 +67,13 @@ class SaleFlow(
     /** [editing] is the memo an edit will supersede (null for a new sale); a resumed edit draft names it itself. */
     suspend fun start(visit: SaleVisit, editing: String? = null) = lock.withLock {
         check(visit.canSell) { "this visit cannot sell" }
-        rawCatalog = catalogSource.skus(visit.businessDate, visit.priceType).associateBy { it.skuId }
         val loaded = store.load(visit.visitUuid) ?: SaleDraft(
             visitUuid = visit.visitUuid, outletId = visit.outletId, routeId = visit.routeId, businessDate = visit.businessDate,
             priceType = visit.priceType, memoUuid = ClientIds.newUuid(),
         ).also(store::save)
+        // the stock and prices are read for the DRAFT's own date (the memo's date, which the saving transaction reads too): a draft opened before
+        // midnight and resumed after it still shows the figures the save will check
+        rawCatalog = catalogSource.skus(loaded.businessDate, loaded.priceType).associateBy { it.skuId }
         val draft = SaleDraftOps.sanitizeQc(loaded).also { if (it != loaded) store.save(it) }
         val catalog = withGiveBack(editing ?: draft.edit?.supersedesMemoUuid)
         val landed = committer.existing(draft.memoUuid)
@@ -134,22 +138,27 @@ class SaleFlow(
         val draft = checkNotNull(s.draft) { "no sale in progress" }
         val result = try {
             committer.commit(draft, s.catalog, editFix, qcCapMtkBySku())
+        } catch (e: com.aktcl.aron.core.database.repo.EditTargetSupersededException) {
+            // another edit already replaced the memo this one would replace: nothing was written, the rep is told what to do
+            val problems = listOf<ReviewProblem>(ReviewProblem.EditTargetSuperseded)
+            ui.value = s.copy(refusal = problems)
+            throw ReviewNotCommittable(problems)
         } catch (e: OverStockException) {
             // the stock moved since this sale opened (another memo, an edit): nothing was written. Re-read it, republish the
             // screen with the true figures, and report the shortage the TRANSACTION saw, never a guess from the stale catalog.
             rawCatalog = catalogSource.skus(draft.businessDate, draft.priceType).associateBy { it.skuId }
             val catalog = withGiveBack(givenBackFor)
             publish(checkNotNull(s.visit), draft, catalog, null)
-            throw ReviewNotCommittable(
-                e.shortages.map { sh ->
+            val problems = e.shortages.map { sh ->
                     val sku = catalog[sh.skuId]
                     ReviewProblem.OverStock(
                         sh.skuId, sku?.name ?: sh.skuId.toString(), sh.requestedBase, sh.heldBase,
                         sku?.entry?.fromBase(sh.requestedBase) ?: sh.requestedBase, sku?.entry?.fromBase(sh.heldBase) ?: sh.heldBase,
-                        sku?.entryLabelKey.orEmpty(),
+                        sku?.entryLabelKey.orEmpty(), sku?.nameBn,
                     )
-                },
-            )
+                }
+            ui.value = ui.value.copy(refusal = problems)
+            throw ReviewNotCommittable(problems)
         }
         store.clear(draft.visitUuid)
         ui.value = s.copy(committed = result)

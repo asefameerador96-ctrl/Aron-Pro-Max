@@ -58,7 +58,11 @@ sealed interface ReviewProblem {
     data class OverStock(
         val skuId: Long, val skuName: String, val requestedBase: Long, val heldBase: Long,
         val requestedEntry: Long, val heldEntry: Long, val unitKey: String,
+        /** The Bangla name where the master has one: a Bangla screen words the SKU in Bangla. */
+        val skuNameBn: String? = null,
     ) : ReviewProblem
+    /** The memo this edit would replace was already replaced by another edit: the rep opens the latest version. Raised by the save, never by the review. */
+    data object EditTargetSuperseded : ReviewProblem
 }
 
 data class SaleReview(
@@ -116,7 +120,7 @@ object SaleReviewCalculator {
         val over = requestedBySku.filter { (id, q) -> q > 0 && q > (catalog[id]?.stockBase ?: 0L) }
         over.forEach { (id, q) ->
             val sku = catalog.getValue(id)
-            problems += ReviewProblem.OverStock(id, sku.name, q, sku.stockBase, sku.entry.fromBase(q), sku.entry.fromBase(sku.stockBase), sku.entryLabelKey)
+            problems += ReviewProblem.OverStock(id, sku.name, q, sku.stockBase, sku.entry.fromBase(q), sku.entry.fromBase(sku.stockBase), sku.entryLabelKey, sku.nameBn)
         }
         val lines = rawLines.map { if (it.sku.skuId in over) it.copy(exceedsStock = true) else it }
 

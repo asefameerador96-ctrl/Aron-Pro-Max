@@ -154,6 +154,7 @@ class CaptureRepository(
             if (purged(m.clientUuid)) return@withTransaction emptyList()
             requireCheckedIn(m.meta.businessDate) // rule 1
             requireOpenRouteDay(m.meta, "memo") // tso-manual X4a (R-W-11): a sale or an edit (a superseding memo)
+            if (capture.memo(m.clientUuid) == null) requireEditTargetLive(m)
             if (enforceStock && capture.memo(m.clientUuid) == null) requireStockHeld(sale) // a replay of a saved memo aborts below, not here. D-OWNER-PREREQ-01 rule 2, read INSIDE this transaction
             val visit = checkNotNull(capture.visit(m.visitClientUuid)) { "memo ${m.memoNo} has no visit on this phone" }
             require(visit.outletId == m.outletId) { "memo ${m.memoNo} is for another outlet than its visit" }
@@ -174,6 +175,12 @@ class CaptureRepository(
                     sale.qcLines.map { RecordMapping.qcLine(it, at) },
             )
         }
+    }
+
+    /** An edit replaces ONE memo: a target another edit already superseded is refused (the rep opens the latest version), never stacked on. */
+    private suspend fun requireEditTargetLive(m: MemoEntity) {
+        val target = m.supersedesClientUuid ?: return
+        if (capture.memosOn(m.meta.businessDate).any { it.supersedesClientUuid == target && it.clientUuid != m.clientUuid }) throw EditTargetSupersededException(target)
     }
 
     /**
@@ -212,6 +219,7 @@ class CaptureRepository(
         // follow-up (R-W-23): nor does one a standing Sales Submit refuses (the same route-day check, before the reserve)
         requireCheckedIn(sale.memo.meta.businessDate) // a sale without a check-in takes no memo number either
         requireOpenRouteDay(sale.memo.meta, "memo")
+        requireEditTargetLive(sale.memo) // an edit of an already replaced memo takes no number either
         // an over-stock sale takes no memo number either (checked again inside the saving transaction)
         if (enforceStock) requireStockHeld(sale)
         val memoNo = MemoNumbers(db).reserve(sale.memo.meta.businessDate, numbering)

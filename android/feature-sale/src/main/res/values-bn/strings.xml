@@ -28,7 +28,9 @@
     <string name="sale_unit_pack">প্যাকেট</string>
     <string name="sale_pack_badge">= %1$s প্যাকেট + %2$s</string>
     <string name="sale_stock_warning">%2$s এর স্টক আছে মাত্র %1$s %3$s।</string>
-    <string name="sale_no_stock">%1$s এর স্টক নেই। আগে স্টক স্ক্রিনে স্টক যোগ করুন।</string>
+    <string name="sale_stock_first">আজকের স্টক এন্ট্রি করা নেই। আগে আজকের স্টক যোগ করুন, তারপর বিক্রি করুন।</string>
+    <string name="sale_stock_first_action">স্টক খুলুন</string>
+    <string name="review_problem_edit_superseded">এই মেমো আগেই সম্পাদনা করা হয়েছে। মেমো স্ক্রিন থেকে মেমোর সর্বশেষ সংস্করণটি খুলে সেটি সম্পাদনা করুন। কিছু সেভ হয়নি।</string>
     <string name="sale_empty">বিক্রি শুরু করতে একটি পরিমাণ দিন।</string>
     <string name="sale_zero_confirm_title">বিক্রয়ের জন্য কোনও SKU নির্বাচন করা হয় নি</string>
     <string name="sale_zero_confirm_message">আপনি কি জিরো (০) বিক্রয় করতে চান?</string>

@@ -214,7 +214,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
      */
     suspend fun prepareEdit(memoUuid: String): EditDenied? {
         val memo = dao.memo(memoUuid)
-        val date = day.businessDate()
+        val date = memo?.meta?.businessDate ?: day.businessDate() // the memo's own day: the write checks the same date (a memo of yesterday is judged on yesterday's rows)
         val live = memo != null && dao.memosOn(date).none { it.supersedesClientUuid == memoUuid }
         val qcDone = memo != null && dao.qcLinesOn(date).any { it.visitClientUuid == memo.visitClientUuid }
         EditGate.check(inGeofenceNow = true, qcCompleted = qcDone, memoIsLive = live, memoExists = memo != null, checkedIn = day.capture.attendanceRefusal(date) == null)?.let { return it }

@@ -22,8 +22,71 @@ Lows in the same push: refusedRows() must not SELECT * with payloads and no limi
 
 ## Round 2 progress
 
-(Updated as each item lands; nothing below is done yet unless it is ticked.)
+Order followed: slice 4 first (D1-1 to D1-7 and the lows), then the ten slice-1 lows, then the memo username rule. Slices 2 and 3 are untouched
+(slice 3 `74f588332` CI: every lane job green). Nothing below was walked on a device.
 
+### B. Slice 4 (D1) findings
+
+| Finding | Result | Proof (each fails without its fix; mutation checked where marked *) |
+|---|---|---|
+| D1-1 "seen" is a screen matter only | **Closed.** `outboxStates` returns the TRUE counts; the view model subtracts the seen rows (`seenRefused`) for the screen's `gate` only. `uploadGate` and the `day_submit` payload use the true counts. | `RefusedRecordsTest.markingRecordsSeenNeverChangesWhatTheServerIsTold` (3 marked seen, submit, payload still says 2 rejected + 1 quarantined) |
+| D1-2 a record the phone gave up on cannot be marked seen | **Closed.** `markRefusedSeen` excludes `retry_exhausted`; `canMarkSeen` is false for `PHONE_GAVE_UP`; its only action is Send again and it stays in the main list. A seen row from an older build that is `retry_exhausted` is listed with Send again too | `…aRecordThePhoneGaveUpOnCannotBeMarkedSeen` |
+| D1-3 seen belongs to one (state, code) outcome | **Closed.** `applyAckUnchecked` keeps `seen_at` only when state and `last_code` are unchanged; `applyResolution` and `releaseQuarantined` clear it | `…seenIsClearedWhenTheOutcomeChanges`, `…aRefusalOfADifferentCodeClearsSeenToo` |
+| D1-4 one guarded read, gates fail closed | **Closed.** `recompute()` wraps the whole screen read (counts, list, `outboxStates`, paging); on failure it logs one line, sets `rejectedReadFailed` and closes both gates with `SubmitBlock.Unreadable` (Submit not offered). The Unreadable block has Bangla and English text | `…aDamagedReadIsFlaggedAndSubmitIsNotOffered`, `SalesSubmitViewModelTest.aFailedReadIsFlaggedNotSwallowedAndARetryReadsAgain` |
+| D1-5 Send again acts on the family | **Closed.** `requeueRetryExhausted` re-queues every `retry_exhausted` row of the family (same uuids, attempts reset), parent first in the engine's normal order; the list groups a family as ONE entry ("… N lines") with one button | `…sendAgainRequeuesTheWholeFamilyWithTheSameUuids`, `…markingAFamilySeenMarksItsRefusedRowsTogether` |
+| D1-6 not-stored outcomes say so, and can be sent to support | **Closed.** The dropped text says plainly the record is NOT on the server and what to do (tell the TSO or AMO; redo a sale from the Memo screen); each such entry has a one-tap "Send to support" that exports the support file; `business_date_out_of_window` names a phone clock ahead; `memo_no_invalid` reads per docs/24 s4.5 (number does not match user, date and block); "it cannot be doubled" is replaced by "it goes with the same id, so the server keeps it once" | `…theDroppedTextSaysTheRecordIsNotOnTheServerAndWhatToDo`, `SalesSubmitNightTest.aNotStoredRecordCanBeSentToSupportWithOneTap` |
+| D1-7 Room 9 to 10 migration test | **Closed, and the earlier claim was wrong:** the first version of this file said a migration test ran, but none did. `Migration910Test` now creates a version-9 database with five outbox rows (every state), runs `runMigrationsAndValidate` to 10 and checks every row, payload and code survive and the two new columns start empty | `Migration910Test` |
+| Low: `refusedRows()` was `SELECT *` with payloads and no limit | **Closed.** Gone. `refusedList(limit)` selects only the list columns, `countRefused` is a COUNT, the list reads 100 rows and "Show more" pages older ones; the KDoc no longer claims the purge bounds it (it purges ACKED rows only) | `…theListReadsOnlyAPageOfRowsAndTheCountStaysTrue` |
+| Low: seen needs an undo | **Closed.** "Show again" on a seen entry (`markRefusedUnseen`) | `…seenCanBeUndone` |
+| Low: `outbox_codes` newest first and in the size-cap order | **Closed.** `codeSummaries` is `ORDER BY seq DESC`; over the cap the order is acked payloads, then the OLDEST codes (`outbox_codes_dropped` says how many), then log lines; unsent rows are never dropped | `SupportTest.theOutcomeCodesAreKeptNewestFirstAndTheOldestAreDroppedOverTheCap` |
+| Low: `reasonOfCode` | **Closed.** A static code-to-`R.string` table (`OutcomeCodeTexts`), no `getIdentifier`; transport codes (offline, timeout, edge response, malformed) have texts; unknown reads as a sentence | `…everyOutcomeCodeHasBanglaAndEnglishTextFromTheStaticTable` |
+| Low: send-state line scoped to the date, per family | **Closed.** `outboxStatesOn(date)` feeds the status line; the list shows a family once | `RoomDayAdaptersTest.rejectedRowsAreListedFromTheAckRegistry` |
+
+Tests that pinned the old rule and were rewritten (none skipped, disabled or loosened): `SalesSubmitViewModelTest` (the fakes now override `rejectedPage`
+as well, because `DaySource by base` forwards the new default to the base fake; the failed-read test now expects the gates CLOSED, not the true count in
+an open gate), `RoomDayAdaptersTest.rejectedRowsAreListedFromTheAckRegistry` (a memo and its refused line are one family entry), `SalesSubmitNightTest`
+(the dropped text), `RefusedRecordsTest` (rewritten for the new semantics). Golden `submit_owner_case_bn_light` re-recorded (the Sales Submit text changed).
+
+### A. Slice 1 lows
+
+| # | Result | Proof |
+|---|---|---|
+| 1 | **Closed.** `SaleFlow.start` reads the catalog (stock and prices) for the DRAFT's own date, loaded before the catalog (a resumed draft kept its old date while the screen asked for today's); the transaction reads the memo's date. `prepareEdit` (SR and AMO) judges the memo on its own date. The refusal text and the row then agree: both use the same date | `StockGateLowsTest.aDraftResumedAfterMidnight…` (fails with the old order) |
+| 2 | **Closed.** `EditTargetSupersededException` in the write layer, before the memo number is reserved and again inside the transaction; the flow words it ("This memo was already edited. Open the latest version from the Memo screen. Nothing was saved.", Bangla too) | `…anEditOfAMemoThatAnotherEditAlreadyReplaced…` (fails without the check), `…theFlowWordsAReplacedEditTargetAndKeepsTheDraft` |
+| 3 | **Closed.** The row's stop and its "Only N in stock" text use held less the SKU's reward packs (`review.drp`), as `SaleFlow.setQuantity` does | `StockGateUiTest.theRowStopAndItsWordsSubtractTheRewardPacks` |
+| 4 | **Closed.** One definition: `stockBalanceOn`'s SQL now counts exactly `StockHeld.held` (issue and adjustment add, `qc_return` subtracts, return, damaged and short count nothing). Before, it subtracted every other kind. The two readers of the SQL (the day-close digest's `issued_qty_base_by_sku` and the Home loaded figure) change only for kinds the phone does not write today | `StockDefinitionTest` (every kind, two SKUs, two days) |
+| 5 | **Closed.** On a transaction refusal the flow republishes the screen and puts the problems in `SaleUiState.refusal`; `SaleRoute` passes their words (the same texts the review uses: SKU, held figure, unit) to the save dialog in place of "The sale could not be saved. Please try again." (which would be wrong advice). The catch is now truly reached: the committer's review passes on a stale catalog and only the transaction refuses | `StockGateLowsTest.aSaveRefusedByTheTransaction…`, `StockGateUiTest.theRefusalDialogSaysWhyAndNotJustTryAgain` |
+| 6 | **Closed.** The over-stock problem carries `skuNameBn`; Bangla screens show it in the row text and the refusal | `StockGateUiTest.aBanglaScreenWordsTheSkuInBangla…`, `…theRefusalTextOfABanglaScreen…` |
+| 7 | **Closed for the SR; kept as text for the AMO.** One banner "No stock is entered for today. Add today's stock first, then sell." when every SKU holds zero, with an "Open Stock" button (SR: opens the Stock screen; the open call and its draft stay). Rows with nothing held are quiet. **Left:** the AMO sale screens show the banner without the button (the AMO's Stock lives in another hub from the control-call flow; wiring it is a navigation change in `ControlCallHost`, not done) | `StockGateUiTest.noStockAtAllShowsOneBanner…` |
+| 8 | **Corrected below** (goldens, stock-Save attempt UUIDs) | text |
+| 9 | **Closed.** `AmoDayLockGateTest` seeds the day's stock once, before any lock, and a failed seed fails the test | the test itself |
+| 10 | **Closed.** An edit that switches SKU, an edit that changes unit, a stock row of another business date, and an AMO control call and a joint call both meeting the gate | `StockGateLowsTest`, `AmoStockGateTest` |
+
+**Goldens, corrected.** Slice 1 said that only the `+` button changed in all seven. That was wrong. Pixel-comparing the old and new images: five
+(`sale_en_light`, `sale_bn_light`, `sale_bn_light_font13`, `sale_bn_sunlight`, `sale_bn_font20`) differ only in the `+` button; **`amo_sale_entry_bn` and
+`sale_bn_long_name` also gained a stock caption line under the row** (the "Only N in stock" / "No stock of" text, rows 524 to 559 and 601 to 727 of
+amo_sale_entry_bn and rows 412 to 447 and 489 to 502 of sale_bn_long_name), which pushes the layout below it. In round 2 the "Only N in stock" caption at the stop is kept (it only shows while something is held); only the zero-stock "No stock of X" line was replaced
+by the one banner, which no golden fixture shows. The full `ui-screenshots` verify passes except the Sales Submit golden above.
+
+**Stock Save attempt UUIDs after a process kill (real behaviour).** The attempt keys (`StockLoad.attemptUuids`) are in memory only. A retry inside the
+same screen (a failed commit, a double tap) posts the same UUIDs and `recordStock` stores a UUID once. After a process kill, the typed quantities are also
+gone (the screen state is not persisted), so a re-entry after relaunch is a NEW, deliberate issue with new UUIDs: it cannot be matched to the first one.
+If the kill landed after the commit and before the screen said so, reopening Stock shows the issue as already loaded (the "loaded" figure reads Room), and
+issuing the same quantity again would add a second issue on purpose. Persisting the attempt key would not help (nothing re-submits automatically) and would
+block a legitimate second issue of the same figure, so it is not done; the visible loaded figure is the guard. The 5-minute refusal stays removed.
+
+### Memo username rule (lead, 2026-11-13)
+
+`MemoNumbering` now takes `^[a-z][a-z0-9]{2,31}$` (3 to 32 characters). Every other place on the phone was checked: login validation (`LoginViewModel` only
+caps the field at 40 characters, no minimum), memo number formatting and parsing (`MemoNumbers.compose`, `shortMemoNo` takes the part after the last hyphen,
+`PrintMapping` and the print models carry the string whole), the printed memo width (a 3-character number is 14 characters against 18 for `sr334001`, never
+wider). **One place that is not a length rule:** `ErrorReporter` redacts usernames with `\b[a-z]{2,5}\d{3,}\b`; a 3-letter login with no digits is not covered
+by it (an existing, separate gap; logged in the request file). Tests: `MemoNumberingShortUsernameTest` (counter, per-date numbering, shape, edges: 2 and 33
+characters refused) and `StockGateLowsTest.aThreeCharacterUsernameNumbersASavedMemoAndItsOutboxRecord` (end to end through the saved memo and its outbox record).
+**Blocking note for the server lanes:** the DATABASE still refuses it: `app_user_memo_username` (V0002) and the three `memo_no` CHECKs (V0007) all say
+`{3,31}`, and docs/24 s7.5 says 4 to 32. A 3-character login would get `memo_no_invalid` from the server until a forward migration relaxes them
+(`docs/requests/android-gates.md` s5). Which versionCode carries it: the CI build number of the run for this push (`ARON_VERSION_CODE` is
+`github.run_number`); it is stated in the "checked" message.
 
 ## HANDOVER (2026-11-17, written at the end of slice 3)
 
@@ -113,9 +176,9 @@ Fixtures that had to seed stock (the gate is real, so a test that sells must hol
 ### Screenshot goldens re-recorded (another lane's files — P-SR1 / P-SR2 please note)
 
 Seven goldens changed and were re-recorded with `-Proborazzi.record=true`: `sale_en_light`, `sale_bn_light`,
-`sale_bn_light_font13`, `sale_bn_sunlight`, `sale_bn_long_name`, `sale_bn_font20`, `amo_sale_entry_bn`. The only pixel
-difference is the `+` button of a SKU whose quantity has reached the stock held, which is now correctly disabled (grey).
-No layout, colour or typography was touched.
+`sale_bn_light_font13`, `sale_bn_sunlight`, `sale_bn_long_name`, `sale_bn_font20`, `amo_sale_entry_bn`. **Corrected in round 2:**
+five differ only in the `+` button (now correctly disabled at the stock); `amo_sale_entry_bn` and `sale_bn_long_name` also gained a stock caption line under
+the row (removed again in round 2, see Round 2 progress).
 
 ## Slice 4, defect D1 (Sales Submit "6 records were rejected by the server.")
 
@@ -133,7 +196,7 @@ All causes of the ruling were re-read against the code first; every one held. De
 | True send state per row; hide the server-comparison column until it exists | **Closed for the business table.** No "Waiting" / "-", no server column until the server has figures; one status line states sent / waiting / not accepted. **Kept:** the record-count table's server column (the submit gate reads it) | `SalesSubmitScreen.kt` |
 | `retry_exhausted` gets "send again", same client UUID, proven no second record | **Closed.** `PHONE_GAVE_UP` outcome with a "Send again" button, `requeueRetryExhausted` (only that code, same uuid/payload/sig, attempts reset), then a manual sync; `…sendAgainRequeuesTheSameUuidAndCreatesNoSecondRecord` | `OutboxDao`, `RoomDaySource.sendAgain` |
 
-Schema: Room 9 to 10 is an auto-migration (two nullable columns); `schemas/…/10.json` is committed and the migration test runs.
+Schema: Room 9 to 10 is an auto-migration (two nullable columns); `schemas/…/10.json` is committed. (Round 2 correction: no migration test ran when this was first written; `Migration910Test` now does.)
 Not done on purpose: no server change (the ack already carries `message_key`); no "seen" for a record another phone sent (this phone cannot act on it).
 
 ## Slice 2, the check-in gate (owner rule 1)

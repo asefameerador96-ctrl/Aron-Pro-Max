@@ -50,6 +50,16 @@ duplicate, not an error the rep sees.
   server uses the newest cycle. There is still no server-side void of an accepted submit.
 - **Not built (stated to the owner):** a per-rep server-side midnight close.
 
+## 5. Memo usernames of three characters (lead, 2026-11-13): the server checks still say four
+
+The phone now accepts a memo username of 3 to 32 characters (`^[a-z][a-z0-9]{2,31}$`). The database does not: `app_user_memo_username`
+(`V0002__geography_routes_people.sql:195`, `^[a-z][a-z0-9]{3,31}$`) and the three `memo_no` CHECKs (`V0007__field_transactions.sql:696, 957, 1937`,
+`^[a-z][a-z0-9]{3,31}-[0-9]{6}-[0-9]{3,4}$`), the matching text of `docs/24-build-spec.md` s7.5 (4 to 32), and the ingest validation that answers
+`memo_no_invalid`. Until a **forward** migration relaxes all of them to `{2,31}` (never edit a shipped migration), a login with a 3-character username
+will have every memo refused by the server with `memo_no_invalid`. So: do not create a 3-character SR or AMO login before that migration ships.
+Also noticed: the phone's `ErrorReporter` redacts usernames with `\b[a-z]{2,5}\d{3,}\b`; a short login with no digits is not matched. That is a log-scrubbing
+gap of another lane, listed here so it is not lost.
+
 ## 4. Nothing else
 
 No contract member is needed for slice 1: the phone sends the same records it always did. If the flag should reach the
