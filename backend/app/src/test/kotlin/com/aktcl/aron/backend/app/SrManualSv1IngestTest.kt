@@ -782,6 +782,8 @@ class SrManualSv1IngestTest {
         assertEquals(0L, count("SELECT count(*) FROM app.sync_quarantine WHERE id = $qid AND jsonb_exists(payload -> 'payload', 'anchor_clock')"), "the held copy has no anchor_clock")
         ingest.acceptQuarantined(qid, null, ensureUser("admin1001"), "released in the anchor-clock test")
         assertEquals("phone", eventClock(uuidOf(held)))
+        // B7: the registry keeps the hash of the record AS SENT, so the phone's resend of it answers duplicate (not payload_conflict)
+        assertEquals("duplicate", send(sr4, listOf(held)).ack(held), "the resend of the as-sent record after the release")
         cleanSubmits(sr4)
     }
 

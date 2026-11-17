@@ -18,6 +18,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -56,6 +59,7 @@ import androidx.compose.ui.text.font.FontWeight
 import com.aktcl.aron.core.common.AppLanguage
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -119,6 +123,8 @@ fun AronTopBar(
     trailing: (@Composable () -> Unit)? = null,
     hanging: (@Composable () -> Unit)? = null,
     subtitle: String? = null,
+    /** The legacy kit bar passes 2 (title, then an ellipsis); the screens built on this bar directly keep showing the whole title. */
+    maxTitleLines: Int = Int.MAX_VALUE,
 ) {
     val look = LocalAronLook.current
     Box(modifier.fillMaxWidth()) {
@@ -127,7 +133,7 @@ fun AronTopBar(
                 .fillMaxWidth()
                 .background(look.barBrush())
                 .sunlightRule(look)
-                .windowInsetsPadding(WindowInsets.statusBars)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 .heightIn(min = AronLook.BarHeight),
             contentAlignment = Alignment.Center,
         ) {
@@ -155,7 +161,7 @@ fun AronTopBar(
                     Spacer(Modifier.width(10.dp))
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(title, style = lookStyle(22.sp, semibold = true, color = look.onBar, align = TextAlign.Center), modifier = Modifier.semantics { heading() })
+                    Text(title, style = lookStyle(22.sp, semibold = true, color = look.onBar, align = TextAlign.Center), maxLines = maxTitleLines, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
                     if (subtitle != null) Text(subtitle, style = lookStyle(12.sp, color = look.onBar, align = TextAlign.Center))
                 }
             }
