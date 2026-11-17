@@ -1,6 +1,7 @@
 package com.aktcl.aron.feature.sale.ui
 
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -90,6 +91,36 @@ class QcManualScreenTest {
         assertEquals(6, writes.size)
         assertEquals(2L, writes.first { it.second == "damaged_crushed" }.third)
         compose.onAllNodesWithTag(QcTags.TILE).assertCountEquals(1)
+    }
+
+    // lead gate finding 5: after a rotation or a process restart the page still knows what it opened with, so বাতিল puts it back
+    @Test fun cancelAfterARecreateStillPutsBackWhatTheEntryPageOpenedWith() {
+        val writes = mutableListOf<Triple<Long, String, Long>>()
+        val review = SaleReviewCalculator.review(draftWith(QcEntry(100, "damaged_crushed", "MFC", 2)), Fx.catalog)
+        val restore = StateRestorationTester(compose)
+        restore.setContent {
+            AronTheme(AppLanguage.EN) {
+                QcManualScreen(
+                    listOf(Fx.maxr), review, { id, c -> review.qc.firstOrNull { it.entry.skuId == id && it.entry.faultTypeCode == c }?.entry?.defectQty ?: 0L },
+                    { id, c, q -> writes += Triple(id, c, q) }, false, {}, capMtkOf = { 594_500L },
+                )
+            }
+        }
+        compose.onNodeWithTag(QcTags.TILE).performClick()
+        compose.waitForIdle()
+        restore.emulateSavedInstanceStateRestore() // the activity is recreated with the entry page open
+        compose.waitForIdle()
+        compose.onNodeWithTag(QcTags.CANCEL).performScrollTo().performClick()
+        compose.waitForIdle()
+        assertEquals("every fault row is written back to its opening value", 6, writes.size)
+        assertEquals(2L, writes.first { it.second == "damaged_crushed" }.third)
+    }
+
+    @Test fun theOpeningCountsSurviveBeingPackedAndRead() {
+        val m = mapOf("damaged_crushed" to 2L, "expired_stock" to 0L, "taste" to 15L)
+        assertEquals(m, QcOpened.unpack(QcOpened.pack(m)))
+        assertEquals(emptyMap<String, Long>(), QcOpened.unpack(""))
+        assertEquals(emptyMap<String, Long>(), QcOpened.unpack("garbage"))
     }
 
     @Test fun deleteClearsTheSkuAndSaveKeepsAndReturns() {
