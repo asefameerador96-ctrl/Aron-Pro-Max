@@ -230,7 +230,7 @@ class DeviceEnrolmentTest : ReportFixture() {
         assertTrue(status(owner = true, locked = false, boot = 0, level = 1, root = true).bodyAsText().contains("ERR_ENROLMENT_ATTESTATION_FAILED"))     // unlocked bootloader
         assertTrue(status(owner = true, locked = true, boot = 2, level = 1, root = true).bodyAsText().contains("ERR_ENROLMENT_ATTESTATION_FAILED"))      // self-signed boot state
         assertTrue(status(owner = true, locked = true, boot = 0, level = 0, root = true).bodyAsText().contains("ERR_ENROLMENT_ATTESTATION_FAILED"))      // software-only key
-        assertEquals(1, count("SELECT count(*) FROM app.device"))
+        assertEquals(2, count("SELECT count(*) FROM app.device")) // the device owner phone and the phone that is not; every attestation failure stored nothing
     }
 
     @Test
