@@ -13,5 +13,6 @@
     <string name="amo_upd_tip">Tip: do not close the app</string>
     <string name="amo_upd_back">Back</string>
     <string name="amo_sale_hdr_route">Route:</string>
+    <string name="amo_memo_hdr_section">Section:</string>
     <string name="amo_sale_hdr_retailer">Retailer:</string>
 </resources>

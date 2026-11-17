@@ -38,18 +38,18 @@ object AmoSaleHeaderTags { const val CARD = "amo_sale_header" }
  * Colours and sizes come from the look and the tokens; the card is one reading unit for a screen reader.
  */
 @Composable
-fun AmoSaleHeaderCard(route: String?, retailer: String, modifier: Modifier = Modifier) {
+fun AmoSaleHeaderCard(route: String?, retailer: String, modifier: Modifier = Modifier, routeLabel: String = stringResource(R.string.amo_sale_hdr_route), padded: Boolean = true) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(AronLook.CardRadius)
     Row(
-        modifier.padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.S).fillMaxWidth().clip(shape).background(look.card)
+        modifier.then(if (padded) Modifier.padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.S) else Modifier).fillMaxWidth().clip(shape).background(look.card)
             .border(BorderStroke(AronTokens.Stroke.Hairline, look.infoBorder), shape).padding(AronTokens.Space.M).testTag(AmoSaleHeaderTags.CARD)
             .semantics(mergeDescendants = true) {},
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
         Image(painterResource(CoreR.drawable.aron_ic_outlet), contentDescription = null, modifier = Modifier.size(AronTokens.Size.IconLarge + AronTokens.Space.S))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-            if (!route.isNullOrBlank()) LabelLine(stringResource(R.string.amo_sale_hdr_route), route)
+            if (!route.isNullOrBlank()) LabelLine(routeLabel, route)
             LabelLine(stringResource(R.string.amo_sale_hdr_retailer), retailer)
         }
     }

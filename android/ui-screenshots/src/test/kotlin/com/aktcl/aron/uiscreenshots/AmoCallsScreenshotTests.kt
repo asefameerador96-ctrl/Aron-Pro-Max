@@ -155,6 +155,20 @@ class AmoCallsScreenshotTests {
         com.aktcl.aron.feature.memo.ui.MemoDetailView(
             com.aktcl.aron.feature.memo.domain.MemoMenu.detail(dueMemo), true, 50_000, { "Aster" }, {}, {}, {},
             outletName = "Siyam (1618410-1832714554-Madrasa Road)", routeName = "Savar BazarDaily", dashedDueBox = true,
+            detailBanner = androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.memo.R.string.memo_banner_manual), buttonsInRow = true, gradientHeader = true,
+            headerCard = { com.aktcl.aron.feature.amo.AmoSaleHeaderCard("Savar BazarDaily", "Siyam (1618410-1832714554-Madrasa Road)", routeLabel = androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.amo.R.string.amo_memo_hdr_section), padded = false) },
+        )
+    }
+    // screenshot 42 right: a paid memo (no due box), four lines, the table and totals
+    private val paidMemo = com.aktcl.aron.feature.memo.domain.StoredMemo("m2", "amo-261110-002", 1, "2026-11-10", "2026-11-10T05:00:00.000Z", null,
+        listOf(com.aktcl.aron.feature.memo.domain.MemoItem(100, 20, 8_000, 160_000), com.aktcl.aron.feature.memo.domain.MemoItem(101, 20, 7_000, 140_000), com.aktcl.aron.feature.memo.domain.MemoItem(103, 1, 12_500, 12_500)),
+        emptyList(), emptyList(), 312_500, 0, 0, 0, 312_500, 312_500, 0)
+    @Test @Config(qualifiers = "w360dp-h1000dp") fun amo_memo_detail_paid_bn() = shot("amo_memo_detail_paid_bn", AppLanguage.BN, "মেমো") {
+        com.aktcl.aron.feature.memo.ui.MemoDetailView(
+            com.aktcl.aron.feature.memo.domain.MemoMenu.detail(paidMemo), false, 0, { saleCatalog[it]?.code ?: "SKU" },
+            {}, {}, {}, outletName = "Ebraj St (Diamond)", routeName = "AgrabadDaily", dashedDueBox = true, detailBanner = androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.memo.R.string.memo_banner_manual),
+            buttonsInRow = true, gradientHeader = true,
+            headerCard = { com.aktcl.aron.feature.amo.AmoSaleHeaderCard("AgrabadDaily", "Ebraj St (Diamond)", routeLabel = androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.amo.R.string.amo_memo_hdr_section), padded = false) },
         )
     }
 

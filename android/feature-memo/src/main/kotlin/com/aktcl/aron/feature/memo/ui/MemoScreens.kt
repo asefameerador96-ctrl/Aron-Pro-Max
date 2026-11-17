@@ -246,6 +246,10 @@ fun MemoDetailView(
     /** SRM-B-20: the vendor's "marked as paid" modal (green tick, text, ওকে) stays until [onPaidDialogOk]. */
     paidDialog: Boolean = false,
     onPaidDialogOk: () -> Unit = {},
+    /** AMO (screenshot 42): the shop-icon card with the section and retailer replaces the title lines; null keeps the SR and TSO header. */
+    headerCard: (@Composable () -> Unit)? = null,
+    /** AMO (screenshot 42): the lines table's head is the blue-to-indigo ramp of the look (white words hold 7:1 on both ends); false keeps the flat head. */
+    gradientHeader: Boolean = false,
 ) {
     val look = LocalAronLook.current
     var confirm by remember { mutableStateOf(false) }
@@ -256,9 +260,11 @@ fun MemoDetailView(
         if (detailBanner != null) AronInfoCard(detailBanner, trailing = printerBadge)
         if (switcher != null) MemoSwitcherBar(switcher)
         // header: the outlet (or the memo number), the memo number and time, the reprint and supersede markers
+        headerCard?.invoke()
         WhiteCard {
             Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-                if (routeName != null) {
+                if (headerCard != null) Unit
+                else if (routeName != null) {
                     Text(stringResource(R.string.memo_route_label) + " " + routeName, style = MaterialTheme.typography.titleSmall, color = look.ink, maxLines = 2)
                     Text(stringResource(R.string.memo_retailer_label) + " " + (outletName ?: memo.memoNo), style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2)
                 } else Text(outletName ?: memo.memoNo, style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2)
@@ -273,7 +279,7 @@ fun MemoDetailView(
                 val names = detail.items.associate { it.skuId to skuName(it.skuId) }
                 if (letterFilter) LetterBar(names.values.mapNotNull { it.firstOrNull()?.uppercaseChar() }.filter { it.isLetter() }.distinct().sorted(), letter) { letter = it }
                 val shown = detail.items.filter { i -> letter == null || names[i.skuId]?.firstOrNull()?.uppercaseChar() == letter }
-                TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
+                TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price), gradient = gradientHeader)
                 shown.forEach { i -> TableRow(skuName(i.skuId), lineQtyText(i.qtyEntered, i.unitEntered, skuCategory(i.skuId), i.qtyBase, skuUnit(i.skuId)), amount(i.grossMtk)) }
                 // M3: a money subtotal per category, in first-seen order (quantities of different units are never added). It is always the
                 // whole category of the memo, never only the lines a letter filter leaves on screen, so a "Total" is never partial.
@@ -430,11 +436,12 @@ internal fun CardDivider() {
  * from it the heads sit at the end of one line and every row stacks its numbers under the name ([tablesStacked]).
  */
 @Composable
-internal fun TableHeader(name: String, qty: String, value: String) {
+internal fun TableHeader(name: String, qty: String, value: String, gradient: Boolean = false) {
     val look = LocalAronLook.current
     val stacked = tablesStacked()
+    val ramp = if (gradient && look.panelTop != null) androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(look.panelTop!!, look.panelBottom ?: look.panelTop!!)) else null
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(look.tableHeader).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.M),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).then(if (ramp != null) Modifier.background(ramp) else Modifier.background(look.tableHeader)).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.M),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
     ) {
         Text(name, style = MaterialTheme.typography.labelMedium, color = Color.White, modifier = Modifier.weight(1f))
