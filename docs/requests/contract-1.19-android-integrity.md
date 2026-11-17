@@ -1,0 +1,10 @@
+# Contract 1.19.0: phone anti-spoofing signals and gate events (lane android-integrity, D-OWNER-MDM-02)
+
+Provisional number: other lanes hold 1.17 and 1.18; the lead confirms the final number and the migration number (V0201) at landing.
+
+Additive only. Phones built against an older contract keep working unchanged, and a queued record's payload and signature never change after capture.
+
+1. `GeoFix.signals` (optional, array of at most 16 unique codes): `mock_flag`, `mock_app_selected`, `test_provider` (HARD: the phone refused the geo-validated action), and the soft codes `test_provider_props`, `fake_gps_app_installed`, `gnss_no_sats`, `gnss_none`, `fix_stale`, `fix_clock_mismatch`, `jump`, `speed`, `provider_disagree`, `root_hint`, `emulator`, `hook_framework`. Present on every fix shape (attendance, visit, memo edit, due, breadcrumb, media meta and the others that embed a `GeoFix`). The phone sends the member only when it has codes; absent means unknown, not clean. `GeoFix.is_mock` is the platform flag OR an inferred hard code (D-AINT-06).
+2. `DeviceStatusReport.integrity_events` (optional, at most 50): Developer-options gate onsets `{at, flags[dev_options|adb|adb_wifi], exempt[none|debug_build|benchmark_build|lab], app_version?}`. A phone may send an event twice after a kill between the enqueue and the acknowledgement; the identity of an event is (device, at, flags).
+3. Server: `app.geo_fix.signals text[]` (V0201); `PhoneSignalRules` maps the codes onto the existing risk codes (`GEO_MOCK`, `GEO_GNSS_INCONSISTENT`, `GEO_STALE_FIX`, `GEO_GNSS_TIME_SKEW`, `GEO_TELEPORT`, `DEVICE_MOCK_APP_PRESENT`, `DEVICE_INTEGRITY_FAIL`) with subject type `device` (so they never overwrite the user-level hits of the server rules), and `integrity_events` with exempt `none` into `DEVICE_DEBUG_ENABLED`. No new risk code, no new CHECK, existing `cfg.geo.integrity_weight` weights apply.
+4. Not changed: the online `POST /v1/devices/me/status` DTO (the Android phone sends the status as a `device_status` record); the portal screens (a risk code it does not know is shown by its code).

@@ -161,6 +161,7 @@ class DeviceRuntime(
             clock = components.trustedClock,
             appVersion = components.appVersion,
             evidenceConfigured = playIntegrityProjectNumber > 0,
+            eventLog = runCatching { com.aktcl.aron.core.system.integrity.IntegrityGates.eventLog(app) }.getOrNull(),
         )
     }
 

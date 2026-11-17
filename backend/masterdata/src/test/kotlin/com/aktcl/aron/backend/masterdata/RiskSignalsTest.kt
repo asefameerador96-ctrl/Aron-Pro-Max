@@ -85,4 +85,55 @@ class RiskSignalsTest {
         // A fix voided by a data void no longer counts on the next evaluation (the existing rows stay for review).
         assertTrue(env.scalar("SELECT evidence::text FROM app.risk_signal WHERE code = 'GEO_MOCK' AND user_id = $uid")!!.contains("mock_fixes"))
     }
+
+    private fun sf(phone: String, vararg codes: String, uuid: String = UUID.randomUUID().toString()) = PhoneSignalFix(phone, 7, 1, uuid, codes.toList())
+
+    @Test
+    fun phoneSignalsMapOntoTheExistingRiskCodesPerPhoneAndNeverOntoAUserSubject() {
+        val hits = PhoneSignalRules.fromFixes(listOf(
+            sf("9", "mock_app_selected", "jump"), sf("9", "speed", "hook_framework"), sf("9", "mock_app_selected"), sf("5", "fix_stale"), sf("5", "brand_new_code"),
+        ))
+        assertTrue(hits.all { it.subjectType == "device" })
+        val p9 = hits.filter { it.subjectId == "9" }.associateBy { it.code }
+        assertEquals(setOf("GEO_MOCK", "GEO_TELEPORT", "DEVICE_INTEGRITY_FAIL"), p9.keys)
+        assertEquals(4, p9.getValue("GEO_MOCK").severity)
+        assertEquals("""{"mock_app_selected":2}""", p9.getValue("GEO_MOCK").evidence["codes"].toString())
+        assertEquals("""{"jump":1,"speed":1}""", p9.getValue("GEO_TELEPORT").evidence["codes"].toString())
+        assertEquals(listOf("GEO_STALE_FIX"), hits.filter { it.subjectId == "5" }.map { it.code }, "an unknown code makes no hit")
+        assertTrue(PhoneSignalRules.fromFixes(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun anIntegrityEventCountsOnceAndOnlyWhenTheGateBlocked() {
+        val a = IntegrityEventRow("9", 7, "2027-01-03T04:00:00Z", listOf("dev_options"), "none")
+        val hits = PhoneSignalRules.fromIntegrityEvents(listOf(
+            a, a, IntegrityEventRow("9", 7, "2027-01-03T05:00:00Z", listOf("adb", "adb_wifi"), "none"),
+            IntegrityEventRow("9", 7, "2027-01-03T06:00:00Z", listOf("dev_options"), "lab"), IntegrityEventRow("5", 8, "2027-01-03T06:00:00Z", listOf("dev_options"), "debug_build"),
+        ))
+        assertEquals(1, hits.size, "the exempt-only phone makes no hit")
+        val h = hits.single(); assertEquals("DEVICE_DEBUG_ENABLED", h.code); assertEquals("9", h.subjectId)
+        assertEquals("2", h.evidence["blocked_events"].toString()); assertEquals("1", h.evidence["exempt_events"].toString())
+    }
+
+    @Test
+    fun storedFixSignalsReachTheRiskTableIdempotentlyAndAnOlderPhoneMakesNone() {
+        val db = env.fresh.db
+        val cfg = DbServerConfig(db, RegistryDefaults())
+        val uid = env.ids.getValue("sr1001")
+        val day = LocalDate.parse("2027-02-04")
+        fun fix(signals: String?, lat: Double, at: String) = db.jdbi.useHandle<Exception> { h ->
+            h.createUpdate(
+                "INSERT INTO app.geo_fix (business_date, source_type, source_client_uuid, user_id, captured_at, purpose, fix_status, lat, lng, accuracy_m, provider, is_mock, reused, device_owner, dev_options_enabled, adb_enabled, auto_time_enabled, mock_app_present, signals) " +
+                    "VALUES (:d, 'visit', :u, :uid, CAST(:at AS timestamptz), 'visit_open', 'ok', :lat, 90.36, 12, 'fused', false, false, false, false, false, true, false, CAST(:sig AS text[]))",
+            ).bind("d", day).bind("u", UUID.randomUUID()).bind("uid", uid).bind("at", at).bind("lat", lat).bind("sig", signals).execute()
+        }
+        fix(null, 23.80, "2027-02-04T03:00:00Z") // an older phone: NULL, unknown, no hit
+        fix("{}", 23.8001, "2027-02-04T05:00:00Z") // checked and clean
+        val ev = RiskSignalEvaluator(db, cfg)
+        assertEquals(0, ev.evaluateDay(day))
+        fix("{jump,provider_disagree,hook_framework}", 23.8002, "2027-02-04T07:00:00Z")
+        assertEquals(3, ev.evaluateDay(day)); assertEquals(3, ev.evaluateDay(day), "re-evaluation upserts")
+        assertEquals(3, env.scalar("SELECT count(*) FROM app.risk_signal WHERE user_id = $uid AND business_date = '$day' AND subject_type = 'device'")!!.toInt())
+        assertEquals("40.00", env.scalar("SELECT score FROM app.risk_signal WHERE code = 'GEO_TELEPORT' AND business_date = '$day' AND subject_type = 'device'"))
+    }
 }

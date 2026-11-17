@@ -4,6 +4,7 @@ import com.aktcl.aron.backend.platform.exitIfFatal
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.ServerConfig
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -110,6 +111,54 @@ object RiskRules {
     }
 }
 
+/** One fix's phone signals (contract 1.19.0 `GeoFix.signals`, only fixes that carry at least one code). [phone] names the phone: its device id, else `user-<id>`. */
+data class PhoneSignalFix(val phone: String, val userId: Long, val routeId: Long?, val sourceUuid: String, val signals: List<String>)
+
+/** One developer-options gate onset from a status report (contract 1.19.0 `DeviceStatusReport.integrity_events`). */
+data class IntegrityEventRow(val phone: String, val userId: Long, val atUtc: String, val flags: List<String>, val exempt: String)
+
+/**
+ * The phone's own anti-spoofing codes (D-OWNER-MDM-02, contract 1.19.0) mapped onto the existing risk codes, one hit per code and PHONE
+ * (subject type `device`, so they never overwrite the user-level hits of the server rules above). Codes the server does not know are kept
+ * on the fix but make no hit. Evidence is the count per phone code, never a position.
+ */
+object PhoneSignalRules {
+    /** phone code -> (risk code, severity). */
+    private val MAP: Map<String, Pair<String, Int>> = mapOf(
+        "mock_flag" to ("GEO_MOCK" to 4), "mock_app_selected" to ("GEO_MOCK" to 4), "test_provider" to ("GEO_MOCK" to 4),
+        "test_provider_props" to ("GEO_GNSS_INCONSISTENT" to 3), "gnss_no_sats" to ("GEO_GNSS_INCONSISTENT" to 3),
+        "gnss_none" to ("GEO_GNSS_INCONSISTENT" to 3), "provider_disagree" to ("GEO_GNSS_INCONSISTENT" to 3),
+        "fix_stale" to ("GEO_STALE_FIX" to 2), "fix_clock_mismatch" to ("GEO_GNSS_TIME_SKEW" to 2),
+        "jump" to ("GEO_TELEPORT" to 3), "speed" to ("GEO_TELEPORT" to 3),
+        "fake_gps_app_installed" to ("DEVICE_MOCK_APP_PRESENT" to 3),
+        "root_hint" to ("DEVICE_INTEGRITY_FAIL" to 3), "emulator" to ("DEVICE_INTEGRITY_FAIL" to 3), "hook_framework" to ("DEVICE_INTEGRITY_FAIL" to 3),
+    )
+
+    fun fromFixes(fixes: List<PhoneSignalFix>): List<RiskHit> = fixes.groupBy { it.phone }.flatMap { (phone, list) ->
+        val perRisk = linkedMapOf<String, MutableList<Pair<String, PhoneSignalFix>>>()
+        list.forEach { f -> f.signals.distinct().forEach { code -> MAP[code]?.let { (risk, _) -> perRisk.getOrPut(risk) { mutableListOf() } += code to f } } }
+        perRisk.map { (risk, hits) ->
+            val first = hits.first().second
+            RiskHit(risk, hits.maxOf { MAP.getValue(it.first).second }, "device", phone, first.userId, first.routeId, buildJsonObject {
+                put("source", "phone_signals")
+                put("fixes", hits.map { it.second.sourceUuid }.distinct().size)
+                put("codes", buildJsonObject { hits.groupingBy { it.first }.eachCount().toSortedMap().forEach { (c, n) -> put(c, n) } })
+                put("first_source", first.sourceUuid)
+            })
+        }
+    }
+
+    /** DEVICE_DEBUG_ENABLED when the gate blocked the app (exempt `none`) at least once; a repeated event counts once (identity: at + flags). Exempt events are only counted in the evidence. */
+    fun fromIntegrityEvents(events: List<IntegrityEventRow>): List<RiskHit> = events.distinctBy { Triple(it.phone, it.atUtc, it.flags) }.groupBy { it.phone }.mapNotNull { (phone, list) ->
+        val blocked = list.filter { it.exempt == "none" }
+        if (blocked.isEmpty()) return@mapNotNull null
+        RiskHit("DEVICE_DEBUG_ENABLED", 3, "device", phone, blocked.first().userId, null, buildJsonObject {
+            put("source", "integrity_events"); put("blocked_events", blocked.size); put("exempt_events", list.size - blocked.size)
+            put("flags", buildJsonObject { blocked.flatMap { it.flags }.groupingBy { it }.eachCount().toSortedMap().forEach { (c, n) -> put(c, n) } })
+        })
+    }
+}
+
 /**
  * F-SYS-013: computes the server-side anti-spoofing signals of one business date from stored fixes and visits and upserts them
  * into `app.risk_signal` (one row per code, subject and date, so re-evaluation is idempotent). The SR never sees these; the
@@ -139,9 +188,29 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
         }
         fixes.filter { it.purpose == "visit_open" && it.routeId != null }.groupBy { it.routeId }.values.forEach { r -> RiskRules.routeSinglePoint(r, t)?.let(hits::add) }
         hits += mismatches(h, date, t)
+        hits += PhoneSignalRules.fromFixes(phoneSignalFixes(h, date)) + PhoneSignalRules.fromIntegrityEvents(integrityEvents(h, date))
         for (hit in hits) store(h, hit, date, weights[hit.code] ?: 0.0, version)
         return hits.size
     }
+
+    private fun phoneSignalFixes(h: Handle, date: LocalDate): List<PhoneSignalFix> = h.createQuery(
+        "SELECT COALESCE(device_id::text, 'user-' || user_id) AS phone, user_id, route_id, source_client_uuid, signals FROM app.geo_fix " +
+            "WHERE business_date = :d AND voided_at IS NULL AND signals IS NOT NULL AND cardinality(signals) > 0 ORDER BY id",
+    ).bind("d", date).map { rs, _ ->
+        PhoneSignalFix(rs.getString("phone"), rs.getLong("user_id"), rs.getObject("route_id") as Long?, rs.getString("source_client_uuid"), (rs.getArray("signals").array as Array<*>).map { it.toString() })
+    }.list()
+
+    private fun integrityEvents(h: Handle, date: LocalDate): List<IntegrityEventRow> = h.createQuery(
+        "SELECT COALESCE(device_id::text, 'user-' || user_id) AS phone, user_id, report -> 'integrity_events' AS ev FROM app.device_status_report " +
+            "WHERE business_date = :d AND user_id IS NOT NULL AND jsonb_typeof(report -> 'integrity_events') = 'array' ORDER BY id",
+    ).bind("d", date).map { rs, _ ->
+        val phone = rs.getString("phone"); val uid = rs.getLong("user_id")
+        (Json.parseToJsonElement(rs.getString("ev")) as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            val at = (o["at"] as? JsonPrimitive)?.content ?: return@mapNotNull null
+            IntegrityEventRow(phone, uid, at, (o["flags"] as? kotlinx.serialization.json.JsonArray).orEmpty().map { (it as JsonPrimitive).content }, (o["exempt"] as? JsonPrimitive)?.content ?: "none")
+        }
+    }.list().flatten()
 
     private fun mismatches(h: Handle, date: LocalDate, t: GeoThresholds): List<RiskHit> = h.createQuery(
         "SELECT client_uuid, user_id, route_id, verdict, server_verdict, distance_m, server_distance_m FROM app.visit WHERE business_date = :d AND voided_at IS NULL AND server_verdict IS NOT NULL " +

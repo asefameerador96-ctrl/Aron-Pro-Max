@@ -74,7 +74,7 @@ object IntegrityGates {
     /** The store the bundle/config layer writes a server grant into (`grant(untilUtcMs)`); null until [get] ran. */
     fun exemptionStore(context: Context): LabExemptionStore { get(context); return exemptionStore!! }
 
-    /** The pending events for the next device status (slice 3 wires them to the contract): the same instance the gate writes to. */
+    /** The pending events the device status reporter sends as `integrity_events` (contract 1.19.0): the same instance the gate writes to. */
     fun eventLog(context: Context): IntegrityEventLog { get(context); return sharedLog!! }
 
     private fun dir(context: Context) = File(context.applicationContext.noBackupFilesDir, "aron/integrity-gate")

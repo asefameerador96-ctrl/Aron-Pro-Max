@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 182 | 2993 |
+| `app` | 182 | 2994 |
 | `dw` | 76 | 1233 |
 
 ## Index
@@ -1974,7 +1974,7 @@ One location fix carried by a record, with accuracy, provider and sensor evidenc
 | `fix_age_ms` | bigint | null |  | Age of the fix in milliseconds when the phone used it. |
 | `time_to_fix_ms` | integer | null |  | Milliseconds the phone took to obtain the fix. |
 | `request_priority` | text | null |  | Location request priority the phone used: high_accuracy or balanced. |
-| `is_mock` | boolean | not null |  | True when the location came from a mock location provider (never geo-valid). |
+| `is_mock` | boolean | not null |  | True when the phone treated the fix as mocked: the platform mock flag OR an inferred hard code (a selected mock-location app, a test provider; D-AINT-06). The codes in signals tell the two apart; a fix from a phone older than contract 1.19.0 carries only this flag. A mocked fix is never geo-valid. |
 | `reused` | boolean | not null |  | True when the phone reused a recent fix instead of requesting a new one. |
 | `refresh_count` | smallint | null |  | Number of times the fix was refreshed before it was used. |
 | `gnss` | jsonb | null |  | JSON GNSS summary as received from the phone. |
@@ -1994,6 +1994,7 @@ One location fix carried by a record, with accuracy, provider and sensor evidenc
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `signals` | text[] | null |  | Anti-spoofing codes the phone found for this fix (contract 1.19.0 GeoFix.signals): hard mock_flag, mock_app_selected, test_provider; soft test_provider_props, fake_gps_app_installed, gnss_no_sats, gnss_none, fix_stale, fix_clock_mismatch, jump, speed, provider_disagree, root_hint, emulator, hook_framework. NULL = an older phone sent none (unknown, not clean); an empty array = the phone checked and found nothing. |
 
 Keys: `UNIQUE (source_client_uuid, slot, business_date)`; `PRIMARY KEY (id, business_date)`
 

@@ -149,6 +149,7 @@ class BatchAcceptanceTest {
         dueMtk: Long = 0,
         provider: String = "fused",
         gnss: String? = null,
+        signals: String? = null,
     ): List<JsonObject> {
         val visit = uuid(); val memo = uuid()
         val (s1, p1x) = skus[0]; val (s2, p2x) = skus[1]
@@ -157,7 +158,7 @@ class BatchAcceptanceTest {
         val visitPayload = Json.parseToJsonElement(
             """
             {"visit_kind":"sr_call","outlet_id":$outlet,"opened_at":"2027-01-03T03:41:00.120Z","sequence_no":1,"planned":true,
-             "fix":{"purpose":"visit_open","fix_status":"ok","lat":$lat,"lng":90.36,"accuracy_m":12.0,"provider":"$provider","is_mock":false,"reused":false,${gnss?.let { "\"gnss\":$it," } ?: ""}
+             "fix":{"purpose":"visit_open","fix_status":"ok","lat":$lat,"lng":90.36,"accuracy_m":12.0,"provider":"$provider","is_mock":false,"reused":false,${signals?.let { "\"signals\":$it," } ?: ""}${gnss?.let { "\"gnss\":$it," } ?: ""}
                     "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}},
              "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}
             """.trimIndent(),
@@ -196,6 +197,21 @@ class BatchAcceptanceTest {
     private fun statuses(r: JsonObject) = r["acks"]!!.jsonArray.map { it.jsonObject["status"]!!.jsonPrimitive.content }
 
     private fun ApplicationTestBuilder.app() = application { aronApi(wiring) }
+
+    @Test
+    fun theFixSignalsOfContract119AreStoredWithTheFixAndAnOlderPhoneWithoutThemIsStillAccepted() = testApplication {
+        app()
+        val token = client.token()
+        val withSignals = saleFamily(signals = "[\"mock_app_selected\",\"jump\"]")
+        val old = saleFamily()
+        // One batch (the endpoint is rate limited per user): a phone on contract 1.19.0 and an older phone without the member.
+        val r = client.send(token, batch(withSignals + old, uuid()))
+        assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+        assertEquals(List(10) { "accepted" }, statuses(json(r.bodyAsText())), r.bodyAsText())
+        val a = withSignals[0]["client_uuid"]!!.jsonPrimitive.content; val b = old[0]["client_uuid"]!!.jsonPrimitive.content
+        assertEquals(1, count("SELECT count(*) FROM app.geo_fix WHERE source_client_uuid = '$a' AND signals = ARRAY['mock_app_selected','jump']"))
+        assertEquals(1, count("SELECT count(*) FROM app.geo_fix WHERE source_client_uuid = '$b' AND signals IS NULL"))
+    }
 
     @Test
     fun aSaleFamilyIsStoredOnceAndARepeatedBatchReplaysTheStoredResponse() = testApplication {

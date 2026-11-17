@@ -339,6 +339,8 @@ data class GeoFix(
     @SerialName("gnss") val gnss: GnssSummary? = null,
     @SerialName("radio") val radio: JsonObject? = null,
     @SerialName("device") val device: FixDeviceState,
+    /** Contract 1.19.0: anti-spoofing codes found for this fix (hard: mock_flag, mock_app_selected, test_provider). Absent from an older phone: unknown, not clean. */
+    @SerialName("signals") val signals: List<String>? = null,
 )
 
 /** Encode GeoFix with this serializer at the top level (a member of type GeoFix or List<GeoFix> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
@@ -538,6 +540,14 @@ data class DeviceStatusReportPolicyApplyErrors(
 )
 
 @Serializable
+data class DeviceStatusReportIntegrityEvents(
+    @SerialName("at") val at: String,
+    @SerialName("flags") val flags: List<String>,
+    @SerialName("exempt") val exempt: String,
+    @SerialName("app_version") val appVersion: String? = null,
+)
+
+@Serializable
 data class DeviceStatusReportPrinter(
     @SerialName("bonded_name") val bondedName: String? = null,
     @SerialName("mac_sha256") val macSha256: String? = null,
@@ -573,6 +583,8 @@ data class DeviceStatusReport(
     @SerialName("play_integrity") val playIntegrity: JsonElement? = null,
     @SerialName("play_integrity_unavailable") val playIntegrityUnavailable: PlayIntegrityUnavailable? = null,
     @SerialName("root_hints") val rootHints: List<String>? = null,
+    /** Contract 1.19.0: Developer-options gate onsets since the last acknowledged report, oldest first. */
+    @SerialName("integrity_events") val integrityEvents: List<DeviceStatusReportIntegrityEvents>? = null,
     @SerialName("pending_rows") val pendingRows: Int,
     @SerialName("pending_media") val pendingMedia: Int? = null,
     @SerialName("last_sync_at") val lastSyncAt: String? = null,

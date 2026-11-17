@@ -48,8 +48,8 @@ data class GeoFixEntity(
     @ColumnInfo(name = "mock_app_present") val mockAppPresent: Boolean,
     @ColumnInfo(name = "integrity_ref") val integrityRef: String? = null,
     /**
-     * Anti-spoofing signal codes of this fix as a JSON array of strings (D-OWNER-MDM-02), null or `[]` on a clean fix. Local
-     * until the contract carries `GeoFix.signals` (proposed, contract 1.19.0): the record mapping does not send it yet.
+     * Anti-spoofing signal codes of this fix as a JSON array of strings (D-OWNER-MDM-02), null or `[]` on a clean fix. Sent as
+     * `GeoFix.signals` (contract 1.19.0) in the record payload built at enqueue; the stored column never changes a queued payload.
      */
     @ColumnInfo(name = "signals_json") val signalsJson: String? = null,
 )

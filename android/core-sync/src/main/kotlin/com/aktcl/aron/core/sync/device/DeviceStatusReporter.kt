@@ -2,6 +2,7 @@ package com.aktcl.aron.core.sync.device
 
 import com.aktcl.aron.contract.DeviceInfo
 import com.aktcl.aron.contract.DeviceStatusReport
+import com.aktcl.aron.contract.DeviceStatusReportIntegrityEvents
 import com.aktcl.aron.contract.DeviceStatusReportPolicyApplyErrors
 import com.aktcl.aron.contract.PlayIntegrityUnavailable
 import com.aktcl.aron.core.common.ClientIds
@@ -98,6 +99,12 @@ class DeviceStatusReporter(
     private val retryAfterFailureMs: Long = 60 * 60_000L,
     /** Hard deadline of one evidence attempt (nonce + Play Integrity); a slow link never holds the upload longer. */
     private val evidenceDeadlineMs: Long = 25_000L,
+    /**
+     * Developer-options gate onsets waiting to ride a report (contract 1.19.0 `integrity_events`, D-OWNER-MDM-02). Pending events make a
+     * report due; they are acknowledged only after the report is in the outbox, so a kill in between sends them again (the server counts
+     * an event once by its time and flags). Null in builds and tests without the gate: the member is then left out.
+     */
+    private val eventLog: com.aktcl.aron.core.system.integrity.IntegrityEventLog? = null,
 ) {
     private val lock = Mutex()
 
@@ -134,7 +141,8 @@ class DeviceStatusReporter(
         val cooled = lastAttempt == null || now < lastAttempt || now - lastAttempt >= retryAfterFailureMs
         val asked = state.evidenceWanted
         val wantEvidence = allowEvidence && (asked != null || (IntegrityEvidenceService.due(state.lastTokenAtMs, now, refreshH) && cooled))
-        if (!changed && !wantEvidence) return null
+        val events = eventLog?.pending()?.take(MAX_EVENTS).orEmpty()
+        if (!changed && !wantEvidence && events.isEmpty()) return null
 
         val result = if (wantEvidence) {
             state.lastAttemptAtMs = now
@@ -184,6 +192,7 @@ class DeviceStatusReporter(
             playIntegrityUnavailable = (result as? IntegrityResult.Unavailable)?.let { PlayIntegrityUnavailable(it.reason.wire, it.wireDetail) },
             // A clean phone sends an empty list (R13); the member is never left out once signals were read (R18).
             rootHints = s.rootHints.distinct().take(16),
+            integrityEvents = eventLog?.let { events.map(::wireEvent) },
             pendingRows = pending,
             batteryPct = f.batteryPct.coerceIn(0, 100),
             charging = f.charging,
@@ -193,6 +202,7 @@ class DeviceStatusReporter(
         val uuid = ClientIds.newUuid()
         CaptureRepository(db) { SyncEngine.iso(clock.nowMs()) }.recordDeviceStatus(uuid, meta(reference, now), report)
         // Only once the report is safely in the outbox: a kill before this point reports again.
+        if (events.isNotEmpty()) eventLog?.ack(events.size)
         if (changed) tracker.recordSent(current)
         if (wantEvidence) state.evidenceWanted = null
         if (result is IntegrityResult.Evidence) {
@@ -200,6 +210,20 @@ class DeviceStatusReporter(
             state.integrityRef = uuid
         }
         return uuid
+    }
+
+    private fun wireEvent(e: com.aktcl.aron.core.system.integrity.IntegrityEvent) = DeviceStatusReportIntegrityEvents(
+        at = SyncEngine.iso(e.atUtcMs),
+        flags = e.flags.filter { it in EVENT_FLAGS }.distinct().take(3),
+        exempt = e.exempt.takeIf { it in EVENT_EXEMPT } ?: "none",
+        appVersion = e.appVersion.takeIf { APP_VERSION.matches(it) },
+    )
+
+    private companion object {
+        const val MAX_EVENTS = 50
+        val EVENT_FLAGS = setOf("dev_options", "adb", "adb_wifi")
+        val EVENT_EXEMPT = setOf("none", "debug_build", "benchmark_build", "lab")
+        val APP_VERSION = Regex("^[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[+][0-9]{1,10}$")
     }
 
     private suspend fun meta(reference: ReferenceRepository, now: Long) = CaptureMeta(

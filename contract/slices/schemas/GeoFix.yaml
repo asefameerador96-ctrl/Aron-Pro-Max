@@ -114,3 +114,35 @@ GeoFix:
       - type: 'null'
     device:
       $ref: '#/components/schemas/FixDeviceState'
+    signals:
+      type: array
+      maxItems: 16
+      uniqueItems: true
+      description: 'Anti-spoofing codes the phone found for this fix (contract 1.19.0, D-OWNER-MDM-02), evidence
+        for the server''s risk rules. Optional: a phone built against an older contract sends none, and absent means
+        unknown, not clean.
+
+        `mock_flag`, `mock_app_selected` and `test_provider` are HARD (the phone refused the geo-validated action;
+        `is_mock` is true for all three, so `is_mock` is the platform flag OR an inferred hard code, and these codes
+        tell them apart). The rest are SOFT and never block alone. Extensible: the server stores a code it does
+        not know.
+
+        '
+      items:
+        type: string
+        enum:
+        - mock_flag
+        - mock_app_selected
+        - test_provider
+        - test_provider_props
+        - fake_gps_app_installed
+        - gnss_no_sats
+        - gnss_none
+        - fix_stale
+        - fix_clock_mismatch
+        - jump
+        - speed
+        - provider_disagree
+        - root_hint
+        - emulator
+        - hook_framework

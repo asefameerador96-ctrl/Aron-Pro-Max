@@ -23,8 +23,8 @@ class AmoManualContractTest {
     }
 
     @Test
-    fun versionIs1160() {
-        assertEquals("1.16.0", map(OpenApi.doc["info"])["version"].toString(), "the exact shipped contract version (1.16.0: SR manual train 2, additive; 1.15.0: the field side of loyalty and Astha; 1.14.0: SR manual train 1, additive; 1.13.1: description-only patch of the loyalty portal; 1.13.0: the loyalty portal, schema and contract; 1.12.2: optional If-Match on setOfferStatus; 1.12.1 the discount portal routes and discounts module; 1.12.0 the schema and contract)")
+    fun versionIs1190() {
+        assertEquals("1.19.0", map(OpenApi.doc["info"])["version"].toString(), "the exact shipped contract version (1.19.0: android-integrity, GeoFix.signals and DeviceStatusReport.integrity_events, additive, provisional until the lead confirms the landing order; 1.16.0: SR manual train 2, additive; 1.15.0: the field side of loyalty and Astha; 1.14.0: SR manual train 1, additive; 1.13.1: description-only patch of the loyalty portal; 1.13.0: the loyalty portal, schema and contract; 1.12.2: optional If-Match on setOfferStatus; 1.12.1 the discount portal routes and discounts module; 1.12.0 the schema and contract)")
     }
 
     @Test
