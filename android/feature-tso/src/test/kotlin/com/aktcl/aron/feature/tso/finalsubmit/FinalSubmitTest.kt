@@ -282,7 +282,7 @@ class FinalSubmitScreenTest {
         show(AppLanguage.BN, s)
         // filter options unreadable: the five dropdowns stay (the four upper ones disabled), the zone is the flat list (D-PAR-TSO-02)
         (0..3).forEach { compose.onNodeWithTag(FsTags.level(it)).assertExists() }
-        compose.onNodeWithTag(FsTags.FLAT_ZONE).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(FsTags.FLAT_ZONE).performScrollTo().performClick(); compose.waitForIdle()
         compose.onNodeWithText("জোন ১০").performClick(); compose.waitForIdle()
         compose.onNodeWithTag(FsTags.GET).performScrollTo().performClick(); compose.waitForIdle()
         compose.onNodeWithText("আপনি ইতিমধ্যেই আজকের জন্য 'FINAL SUBMIT' জমা দিয়েছেন!").assertExists()

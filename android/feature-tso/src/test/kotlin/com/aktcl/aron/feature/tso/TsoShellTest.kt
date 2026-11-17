@@ -199,7 +199,7 @@ class TsoShellTest {
         assertEquals(
             setOf(
                 TsoScreen.DASHBOARD, TsoScreen.LOGIN_SUBMIT_STATUS, TsoScreen.MY_TEAM, TsoScreen.RETAILER, TsoScreen.SET_PLAN,
-                TsoScreen.MY_VISIT_PLAN, TsoScreen.FEEDBACK_NEW, TsoScreen.FEEDBACK_LIST, TsoScreen.SETTINGS,
+                TsoScreen.MY_VISIT_PLAN, TsoScreen.FEEDBACK_NEW, TsoScreen.FEEDBACK_LIST,
             ),
             TsoFab.screens,
         )

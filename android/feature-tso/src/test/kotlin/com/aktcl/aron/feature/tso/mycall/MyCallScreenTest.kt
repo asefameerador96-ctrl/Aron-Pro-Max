@@ -214,8 +214,9 @@ class MyCallScreenTest {
     @Test fun visitQueryShowsTheSeededQuestionsWithAnswerFieldsAndDelegateDefaultsToNo() {
         val st = VisitQueryState(seeded, "p", 1, 1) { true }
         show(AppLanguage.EN) { VisitQueryScreen(st, "Shop One", onDone = {}, onBack = {}) }
-        compose.onNodeWithText("Does the SR visit your shop regularly?").assertIsDisplayed()
-        compose.onNodeWithText("Does the SR give you a printed memo regularly?").assertIsDisplayed()
+        // D-PAR-TSO-05: the questions read in Bangla in English mode too
+        compose.onNodeWithText("SR আপনার দোকান নিয়মিত ভিজিট করে?").assertIsDisplayed()
+        compose.onNodeWithText("SR নিয়মিত মেমো প্রিন্ট করে দেয়?").assertIsDisplayed()
         assertEquals(2, compose.onAllNodesWithText("Enter your answer", useUnmergedTree = true).fetchSemanticsNodes().size)
         compose.onNodeWithText("Do you want to delegate the task?").performScrollTo().assertIsDisplayed()
         assertEquals(false, st.ui.value.delegate)
