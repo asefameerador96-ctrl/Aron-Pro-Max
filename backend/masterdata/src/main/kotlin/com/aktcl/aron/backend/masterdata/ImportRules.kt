@@ -125,7 +125,9 @@ internal object ImportRules {
             ?: runCatching { Instant.parse(t) }.getOrNull()
             ?: LOCAL_FORMATS.firstNotNullOfOrNull { f -> try { LocalDateTime.parse(t, f).atZone(DHAKA).toInstant() } catch (_: DateTimeParseException) { null } }
             ?: DATE_FORMATS.firstNotNullOfOrNull { f -> try { LocalDate.parse(t, f).atStartOfDay(DHAKA).toInstant() } catch (_: DateTimeParseException) { null } }
-        return parsed?.takeIf { it <= now.plusSeconds(86_400) }
+        // Microsecond precision: PostgreSQL timestamptz stores no more, so a sheet value with more digits must compare equal to what was stored
+        // (else every re-import of the same sheet would look like a change).
+        return parsed?.takeIf { it <= now.plusSeconds(86_400) }?.truncatedTo(java.time.temporal.ChronoUnit.MICROS)
     }
 
     // ---- visit plan (M02, M03, M19) -----------------------------------------------------------------------------------------------------------

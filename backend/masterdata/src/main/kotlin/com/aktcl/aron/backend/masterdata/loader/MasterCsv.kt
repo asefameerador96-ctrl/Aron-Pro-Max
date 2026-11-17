@@ -24,7 +24,16 @@ class MasterCsv(reader: Reader) : AutoCloseable {
     }
 
     /** One input row: [no] is its 1-based position in the data rows (the header is not a data row). */
-    class Row(val no: Long, private val cells: List<String>, private val index: Map<String, Int>) {
+    class Row(val no: Long, private val cells: List<String>, private val index: Map<String, Int>, private val expectedCells: Int) {
+        /** False for a record with more or fewer cells than the header: a short line would otherwise read as empty values and load a half row. */
+        val wellFormed: Boolean get() = cells.size == expectedCells
+
+        /** Feeds the whole raw record to [md]: the file hash that binds a run id to its file (finding L1). */
+        fun digestInto(md: java.security.MessageDigest) {
+            cells.forEach { md.update(it.toByteArray()); md.update(31) }
+            md.update(10)
+        }
+
         /** The named column, trimmed; "" when the column is absent or empty. The field writes "--" for "none": the callers (ImportRules) know that. */
         operator fun get(column: Column): String = index[column.key]?.let { cells.getOrNull(it) }?.trim().orEmpty()
         /** True when every cell is empty (a trailing line of the export): such a row is not counted as an input row. */
@@ -46,6 +55,9 @@ class MasterCsv(reader: Reader) : AutoCloseable {
         val key: String = key(header)
     }
 
+    /** A hash of the header: part of the file hash. */
+    fun headerDigestInto(md: java.security.MessageDigest) { header.forEach { md.update(it.toByteArray()); md.update(31) }; md.update(10) }
+
     /** Header names of [Column] that the file does not carry (reported once; every value of such a column reads as empty). */
     fun missingColumns(): List<Column> = Column.entries.filter { it.key !in index }
 
@@ -55,7 +67,7 @@ class MasterCsv(reader: Reader) : AutoCloseable {
     fun next(): Row? {
         while (true) {
             val cells = readRecord() ?: return null
-            val row = Row(rowNo + 1, cells, index)
+            val row = Row(rowNo + 1, cells, index, header.size)
             if (row.isBlank()) continue
             rowNo++
             return row

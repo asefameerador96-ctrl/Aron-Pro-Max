@@ -25,7 +25,7 @@ import java.time.LocalDate
 
 private val PHONE_RE = Regex("^01[3-9][0-9]{8}$")
 private val USERNAME_RE = Regex("^[A-Za-z][A-Za-z0-9._-]{2,39}$")
-private val MEMO_USERNAME_RE = Regex("^[a-z][a-z0-9]{2,31}$")
+private val MEMO_USERNAME_RE = MasterRules.MEMO_USERNAME
 private val ROLE_VALUES = Role.entries.map { it.wire }.toSet()
 private val SENIOR = setOf(Role.ADMIN, Role.SUPERADMIN)
 /**

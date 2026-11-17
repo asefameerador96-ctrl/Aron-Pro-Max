@@ -54,7 +54,7 @@ interface RefLoad {
  * column and a filter is fetched once); `scope: "list"` loads only what the list shows (column fields and filters),
  * "form" loads the fields of the form.
  */
-async function loadAllRefs(meta: AnyEntity, token: string, scope: "list" | "create" | "update" | { fields: readonly AnyField[] }): Promise<RefLoad> {
+async function loadAllRefs(meta: AnyEntity, token: string, scope: "list" | "create" | "update" | { fields: readonly AnyField[] }, current?: Record<string, unknown>): Promise<RefLoad> {
   const wanted: { slot: string; ref: NonNullable<AnyField["ref"]> }[] = [];
   const fields: readonly AnyField[] =
     typeof scope === "object" ? scope.fields
@@ -63,12 +63,16 @@ async function loadAllRefs(meta: AnyEntity, token: string, scope: "list" | "crea
   for (const f of fields) if (f.kind === "ref" && f.ref) wanted.push({ slot: f.name, ref: f.ref });
   if (scope === "list") for (const f of meta.filters) if (f.kind === "ref" && f.ref) wanted.push({ slot: `filter:${f.param}`, ref: f.ref });
   const byTable = new Map<string, Promise<{ options: RefOption[]; failed: boolean }>>();
-  const tableKey = (r: NonNullable<AnyField["ref"]>) => JSON.stringify([r.path, r.params, r.value, r.label, r.codeList]);
-  for (const w of wanted) if (!byTable.has(tableKey(w.ref))) byTable.set(tableKey(w.ref), loadRefOptionsChecked(w.ref, token));
+  // A picker (create or edit form) hides retired code-list items (Silver) but keeps the one the record holds now; a list keeps them all, so the label of
+  // an outlet that still has a retired tier stays readable.
+  const picker = scope === "create" || scope === "update";
+  const keepOf = (slot: string) => (current && current[slot] !== null && current[slot] !== undefined ? [String(current[slot])] : []);
+  const tableKey = (r: NonNullable<AnyField["ref"]>, slot: string) => JSON.stringify([r.path, r.params, r.value, r.label, r.codeList, picker ? keepOf(slot) : null]);
+  for (const w of wanted) if (!byTable.has(tableKey(w.ref, w.slot))) byTable.set(tableKey(w.ref, w.slot), loadRefOptionsChecked(w.ref, token, picker ? { hideRetired: true, keep: keepOf(w.slot) } : undefined));
   const refs: RefOptions = {};
   let failed = false;
   for (const w of wanted) {
-    const r = await byTable.get(tableKey(w.ref))!;
+    const r = await byTable.get(tableKey(w.ref, w.slot))!;
     refs[w.slot] = r.options;
     failed ||= r.failed;
   }
@@ -259,7 +263,7 @@ export async function EntityEditPage({ meta, id, searchParams }: { meta: AnyEnti
   const row = await getRow(meta, session.at, id, one(searchParams.c, CURSOR_MAX));
   if (!row.ok) return onApiFailure(row.status, row.problem, locale);
   if (!row.data) notFound();
-  const [hist, { refs, failed }] = await Promise.all([history(meta, session.at, id), loadAllRefs(meta, session.at, "update")]);
+  const [hist, { refs, failed }] = await Promise.all([history(meta, session.at, id), loadAllRefs(meta, session.at, "update", row.data as Record<string, unknown>)]);
 
   const fields = meta.fields.filter((f) => isWritable(f, "update")).map((f) => toFormField(locale, f, refs, meta, session.user.role, row.data as Record<string, unknown>));
   const initial = Object.fromEntries(fields.map((f) => [f.name, row.data?.[f.name] === null || row.data?.[f.name] === undefined ? "" : String(row.data[f.name])]));

@@ -346,4 +346,23 @@ class OutletImportTest {
         // our own updated_at is the time the SERVER wrote the row, never the sheet's
         assertEquals("true", env.sql("SELECT (updated_at > now() - interval '1 hour')::text FROM app.outlet WHERE code = '$c'"))
     }
+
+    /** (b) push 2 review: a sheet timestamp with more than microsecond precision must not make every re-import an "update" (PostgreSQL stores microseconds). */
+    @Test
+    fun aSheetTimestampWithMorePrecisionThanMicrosecondsIsStableAcrossReImports() = env.app {
+        val c = "MIC${System.nanoTime() % 100000}"
+        val r = row("Micro Shop", ""","code":"$c","created_at":"2024-03-05T10:15:00.123456789+06:00","updated_at":"2024-03-06T10:15:00.987654321+06:00"""")
+        assertEquals(1L, commit(listOf(r)).lng("creates"))
+        assertEquals("2024-03-05 04:15:00.123456+00", env.sql("SELECT source_created_at::text FROM app.outlet WHERE code = '$c'"))
+        val again = commit(listOf(r))
+        assertEquals(1L, again.lng("unchanged"), "the same sheet again is unchanged, not an update")
+        assertEquals(0L, again.lng("updates"))
+    }
+
+    /** A route code the table refuses (a dot, a slash) is the row error `invalid`, as for the loader: one rule set. */
+    @Test
+    fun aRouteCodeThatTheTableRefusesIsInvalidInThePortalToo() = env.app {
+        val res = sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(listOf(row("Bad Route Code", ""","route_code":"R-1.2"""")), true)).objA1()
+        assertEquals(listOf("1:route_code:invalid"), errors(res))
+    }
 }

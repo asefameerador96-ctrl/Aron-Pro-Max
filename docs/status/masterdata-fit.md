@@ -1,21 +1,26 @@
-# HANDOVER (read first; written at push 2)
+# HANDOVER (read first; written in MD2's review round, 2026-11-17)
 
-State: push 1b and push 2 are complete and pushed. What a fresh context needs:
+State: the lead's Opus pass found push 1b GOOD (B1, B2, B3 verified) and the bulk loader FAILING on four findings (L1..L4) plus lows and three items from the
+push-1b pass. All of them are fixed in this round except item (c), which the lead ruled on (below). One push, every lane ci job.
 
-* **Environment.** Gradle works without --offline. PostgreSQL 16: `pg_ctlcluster 16 main start`; this container needed a `host all aron_test 127.0.0.1/32 trust`
-  line at the TOP of `/etc/postgresql/16/main/pg_hba.conf`, then `CREATE ROLE aron_test SUPERUSER LOGIN` and `CREATE DATABASE aron_test OWNER aron_test` as the
-  `postgres` user and `SELECT pg_reload_conf()`. Export `ARON_TEST_PG_URL='jdbc:postgresql://localhost:5432/aron_test?user=aron_test'` in EVERY shell call.
-  `cd web && npm ci --ignore-scripts`, `npm run gen:contract`, `npx vitest run`. Gate binaries: `tools/ci/install-tool.sh squawk|oasdiff <dir>`.
-  The Gradle daemon keeps the environment it started with, so a new env var for a test needs `./gradlew --stop` first (or hard-code it).
-* **Migrations V0195..V0200 are FROZEN now.** Push 1b edited them under the lead's ruling, which needed four lines in `db/migrations/REPLACED-UNAPPLIED.txt`
-  (the CI gate compares against the last green run on the branch, where they already existed). Any further schema change in this lane is a NEW migration, and
-  the number must be agreed with the lead (V0201/V0202 belong to another lane).
-* **The loader** is `backend/masterdata/.../loader/`, documented in `docs/reference/master-data-loader.md` (what it promises, which test proves each promise,
-  the owner's switches, the measured throughput and the honest estimate for 737,159 rows). Its staging schema `mdload` is created by the tool, not by a
-  migration (D-MD-28). It has never run against the test account and must not.
-* **Not done**, in the order the lane would pick them up: the supervisor roster (M14: AMO/TSO/DMO/WM users and their `user_scope` rows) needs an input file from
-  the owner; a CLI entry point for the loader; matching cluster names with `app.norm_cluster_name` once V0191 lands on the integration branch; and the Android
-  change of finding B2 (`docs/requests/contract-1.18-masterdata-fit.md` s3 item 4), which the lead assigns to an Android lane.
+* **Environment.** Gradle works without --offline. PostgreSQL 16: `pg_ctlcluster 16 main start` (it was DOWN after the container restart). The `aron_test` role needs a
+  `host all aron_test 127.0.0.1/32 trust` line at the TOP of `/etc/postgresql/16/main/pg_hba.conf`; the role and database were created as the `postgres` user. Export
+  `ARON_TEST_PG_URL='jdbc:postgresql://localhost:5432/aron_test?user=aron_test'` in EVERY shell call. `cd web && npm ci --ignore-scripts`, `npm run gen:contract`,
+  `npx vitest run`, e2e with `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium npx playwright test <spec> --trace off`. Gate binaries: `tools/ci/install-tool.sh squawk|oasdiff <dir>`.
+  The Gradle daemon keeps the environment it started with, and the Gradle test JVM does not forward `ARON_LOADER_BENCH_ROWS` (edit the row count in the bench file).
+* **Item (c), V0199's lock order: ruled by the lead, 2026-11-17.** V0199 stays byte-identical to e18090f1 and V0195..V0200 are frozen. Accepted-risk sentence (D-MD-34): *V0199 holds
+  ACCESS EXCLUSIVE on outlet, code_list and outlet_location_history while taking row locks elsewhere under lock_timeout; accepted: dev data is small and the final account migrates an
+  empty database; if it is ever applied to a database with production rows, run it in a quiet window.* The reordered file exists (scratchpad `V0199.reordered.sql`: row-lock work first, then ONE
+  NOWAIT lock and only the ALTERs, then the inserts that need the widened CHECK, then the COMMENTs) and applies cleanly. The lead's CONDITION for using it: in the FINAL push after the
+  integration merge, put it in ONLY IF the migration gate passes with NO allow-list line and NO change to `tools/ci/migrations-check.sh` or its tests (after the merge V0195..V0200 are new
+  files relative to the base, so it may); if it needs either, drop (c) for good. No gate change under any option.
+* **The loader** is `backend/masterdata/.../loader/`, documented in `docs/reference/master-data-loader.md` (promises with their tests, the switches, the measurements, what is not
+  done). Every row is validated once, by `NormRow.of`, in both passes; the shape rules are `MasterRules` (shared with the portal import and the user editor, checked against the live
+  CHECKs by `MasterRulesTest`). Its staging schema `mdload` is created by the tool (D-MD-28). It has never run against the real workbook and must not run in the test account: the
+  environment guard refuses unless `ServerEnv.PROD` or `syntheticTestData`.
+* **Not done**, in the order the lane would pick them up: the supervisor roster (M14) needs an input file from the owner; a CLI entry point for the loader (ServerEnv from the process
+  settings, never a flag); matching cluster names with `app.norm_cluster_name` once V0191 lands; the Android change of finding B2 (`docs/requests/contract-1.18-masterdata-fit.md`
+  s3 item 4), which the lead assigns to an Android lane; the merge of the integration branch before the final push (the lead's landing order: sr-server, Loyalty C, then this lane).
 
 # Lane masterdata-fit (MD1): status
 
@@ -99,3 +104,25 @@ Built as MD1's design planned, with the push-1b rules. Full description: `docs/r
   itself (it commits whole or not at all) but no test kills a JVM mid-COMMIT.
 * The loader against a database that already holds production rows of another origin: it was proved on a freshly migrated database and on its own re-runs.
 * No CLI: the loader is called from Kotlin, so the final-account runbook step is not yet exercised end to end.
+
+
+## Review round after e18090f1 (lead's Opus pass: push 1b passes; the loader failed on L1..L4)
+
+| Finding | Fix | Test (each fails when its fix is removed: I neutered each fix in turn and re-ran) |
+|---|---|---|
+| **L1** resume under the same run id skipped CHANGED rows (the fingerprint covered row number and code) | the run id is bound to the SHA-256 of the whole file; a different file under it is refused with a message; the batch fingerprint hashes every loaded value | `aRunIdIsBoundToItsFileAndAResumeLosesNothing` |
+| **L2** duplicate outlet codes aborted the load or let shop B overwrite shop A | pass 1 finds every duplicated code (generated codes too); every row of such a code is a row error, none wins | `everyRowOfADuplicatedOutletCodeIsHeldAndNoWinnerIsPicked` |
+| **L3** file values not checked against the table CHECKs; a database error echoed the row | one shared rule set `MasterRules` (+ `MasterRulesTest` against the live CHECKs) validates every row in pass 1, so the dry run reports them; database errors are replaced at the batch boundary by class, SQLSTATE and constraint, with no cause | `valuesThatATableWouldRefuseAreRowErrorsAndNoFailureCarriesAValueOfTheFile`, `MasterRulesTest` |
+| **L4** an update never moved the zone and the route was matched by code only | route, cluster and zone must agree; a zone move is whole; a route of another zone is an error that moves nothing; the loader never moves a route's zone | `aZoneMoveIsAppliedWholeAndARouteOfAnotherZoneIsAnErrorThatMovesNothing` |
+
+Lows: unresolved zone/cluster/route rows are errors counted by reason (never "unchanged"); the dry run is exact (one rolled-back transaction); one advisory lock; hierarchy and reps in
+chunks, one transaction each; the memory figure is measured (14 MB at 100,000 rows, 42 MB at 400,000, estimate about 120 MB for the real file) and the throughput re-measured (97 s for
+200,000 rows, so about 6 minutes estimated for 737,159, allow 8 to 15); staging dropped at the end and at the next start; short or long CSV records are counted as unreadable; a rep never
+overwrites a user of another role; held cover reps are counted; an archived-for-no-rep outlet is reactivated; a placement starting after the business date is corrected in place; the
+environment guard is in code; `allowShortRepIds` is internal (only the B2 config gate opens short ids).
+Items from the push-1b pass: (a) pickers hide `attrs.retired` items except the held value, lists keep all (web test); (b) sheet timestamps are truncated to microseconds (`OutletImportTest`);
+(c) waits for the ruling above.
+
+### What was NOT tested in this round
+* The real workbook (never loaded); anything above 200,000 rows; a JVM kill in the middle of a COMMIT; a database holding production rows of another origin.
+* Item (c): V0199 is unchanged in the push (the lead's ruling), so its lock order is exactly as the lead reviewed it; the accepted-risk sentence is D-MD-34.

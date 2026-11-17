@@ -25,9 +25,10 @@ private const val MAX_IMPORT_ERRORS = 1000
 private const val SOURCE_PHONE_MAX = 60
 /** Longest tier text kept in app.outlet.source_sub_channel (its CHECK, V0199). */
 private const val SOURCE_SUB_MAX = 120
-private val ZONE_CODE_RE = Regex("^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$")
-private val ROUTE_CODE_RE = Regex("^[A-Za-z0-9][A-Za-z0-9._/-]{0,39}$")
-private val IMPORT_CODE_RE = Regex("^[0-9A-Za-z][0-9A-Za-z._/-]{0,31}$")
+// The shape rules are the tables' own, shared with the user editor and the bulk loader (MasterRules, checked against the live CHECKs by MasterRulesTest).
+private val ZONE_CODE_RE = MasterRules.HIERARCHY_CODE
+private val ROUTE_CODE_RE = MasterRules.HIERARCHY_CODE
+private val IMPORT_CODE_RE = MasterRules.OUTLET_CODE
 private val IMPORT_MEMBERS = setOf("code", "name", "owner_name", "zone_code", "cluster", "channel", "outlet_kind", "route_code", "lat", "lng", "contact_number", "address", "sub_channel", "geo_class", "created_at", "updated_at")
 
 private class ImportRow(
