@@ -146,7 +146,7 @@ class ScreenshotTests {
     private fun Frame(title: String, subtitle: String? = null, content: @Composable () -> Unit) {
         val time = localizedDigits("10:42")
         AronScreen(
-            topBar = { AronTopBar(title = title, subtitle = subtitle, onBack = {}, trailing = { AronStatusChip(SyncChipState.SyncedAt(time), form = ChipForm.Compact, onClick = {}) }) },
+            topBar = { AronTopBar(title = title, subtitle = subtitle, onBack = {}) },
         ) { content() }
     }
 
@@ -160,9 +160,11 @@ class ScreenshotTests {
         val piece = stringResource(SaleR.string.sale_unit_piece)
         val dozen = stringResource(SaleR.string.sale_unit_dozen)
         val stick = stringResource(SaleR.string.sale_unit_stick)
-        val lighter = "Lighter" // sample data: category names are bundle data, not resources
-        val match = "Match"
-        val cigarette = "Cigarette"
+        // category names as the production Home shows them: the localized sr_cat_* words (D-PAR-SR1-06: the fixture no longer shows English words on a Bangla page)
+        val bn = language == AppLanguage.BN
+        val lighter = if (bn) "লাইটার" else "Lighter"
+        val match = if (bn) "ম্যাচ" else "Match"
+        val cigarette = if (bn) "সিগারেট" else "Cigarette"
         HomeContent(
             header, HomeTiles.resolve(flags, 2), BundleFreshness.Fresh, false, DeviceHealthModel.of(62, 1_200, 3, 12), onTile = {},
             onSettings = {}, hero = HomeHero(Formats.money(4_391_000, locale), 6, 60, "08:52", HomeDayState.IN_FIELD),
@@ -255,7 +257,7 @@ class ScreenshotTests {
 
     // ---- screens ----
     @Composable private fun Stock() = ParityFrame(stringResource(HomeR.string.hm_tile_stock), com.aktcl.aron.core.ui.R.drawable.aron_art_stock, printerConnected = false) {
-        StockContent(stockRows, stockTotals, StockMessage.SAVED, slipNotPrinted = true, onIssue = { _, _ -> }, onSave = {}, onPrint = {})
+        StockContent(stockRows, stockTotals, StockMessage.SAVED, slipNotPrinted = true, onIssue = { _, _ -> }, onSave = {}, onPrint = {}, srParity = true)
     }
 
     /** The six Maxim SKUs of the dev seed (db/seed/02_products.sql): every one has dev art (android/dev-packshots). */
@@ -268,7 +270,7 @@ class ScreenshotTests {
             val id = 200L + i
             StockRow(SkuEntity(id, code, id, "cigarette", code, code, null, "stick", per, "pack", null, "1.000", i, "active", 1), 0, 0)
         }
-        StockContent(rows, emptyList(), null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {})
+        StockContent(rows, emptyList(), null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {}, srParity = true)
     } }
 
     /** PARITY-SPEC s2.6 evidence: the Sale list with every seeded Maxim SKU (pictures) and a lighter and a match without art (silhouettes). */
@@ -347,11 +349,13 @@ class ScreenshotTests {
     @Composable private fun Tasks() = Frame(stringResource(HomeR.string.hm_tile_tasks)) { TaskContent(tasks, {}) }
 
     @Composable private fun Login(sunlight: Boolean) =
-        LoginContent(LoginUiState(username = "sr334001", password = "secret", message = LoginMessage.InvalidCredentials), "ARON SR", "1.0.25 (12)", {}, {}, {}, {}, {}, sunlight = sunlight, onSunlight = {})
+        com.aktcl.aron.feature.auth.SrLoginContent(LoginUiState(username = "sr334001", password = "xxxxxx", message = LoginMessage.InvalidCredentials), "1.0.25 (12)", {}, {}, {}, {}, {}, null, sunlight, {})
 
 
     // ---- Home ----
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun home_bn_light() = shot("home_bn_light", AppLanguage.BN) { Home(AppLanguage.BN) }
+    // D-PAR-SR1-06: the whole Home page in one tall frame (tiles, KPI boxes, issue and stock card, money cards), which the 800 dp frame cut off
+    @Test @Config(qualifiers = "bn-w360dp-h1900dp") fun home_bn_tall() = shot("home_bn_tall", AppLanguage.BN) { Home(AppLanguage.BN) }
     @Test fun home_en_light() = shot("home_en_light", AppLanguage.EN) { Home(AppLanguage.EN) }
     // the registry defaults (cfg.flag.astha_ui and loyalty_ui on, superstar_ui off): what an SR sees before any flag is set, 14 tiles
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun home_bn_default_flags() = shot("home_bn_default_flags", AppLanguage.BN) { Home(AppLanguage.BN, setOf("astha", "loyalty_point")) }

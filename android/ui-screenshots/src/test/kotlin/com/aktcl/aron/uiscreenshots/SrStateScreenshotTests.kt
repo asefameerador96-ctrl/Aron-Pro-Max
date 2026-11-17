@@ -140,7 +140,7 @@ class SrStateScreenshotTests {
     private fun Frame(title: String, subtitle: String? = null, content: @Composable () -> Unit) {
         val time = localizedDigits("10:42")
         AronScreen(
-            topBar = { AronTopBar(title = title, subtitle = subtitle, onBack = {}, trailing = { AronStatusChip(SyncChipState.SyncedAt(time), form = ChipForm.Compact, onClick = {}) }) },
+            topBar = { AronTopBar(title = title, subtitle = subtitle, onBack = {}) },
         ) { content() }
     }
 
@@ -156,9 +156,9 @@ class SrStateScreenshotTests {
         HomeContent(
             header, HomeTiles.resolve(setOf("astha", "loyalty_point", "match_program"), 2), freshness, false, DeviceHealthModel.of(62, 1_200, 3, 12), onTile = {},
             onSettings = {}, hero = HomeHero(Formats.money(4_391_000, locale), 6, 60, "08:52", dayState),
-            kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("Cigarette", 12_000, 9_800, stick), HomeStockLine("Lighter", 400, 25, piece), HomeStockLine("Match", 400, 394, dozen))),
+            kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("সিগারেট", 12_000, 9_800, stick), HomeStockLine("লাইটার", 400, 25, piece), HomeStockLine("ম্যাচ", 400, 394, dozen))),
             money = HomeMoneyLines(
-                listOf(HomeMoneyLine("Match", Formats.money(141_000, locale)), HomeMoneyLine("Lighter", Formats.money(4_687_500, locale))),
+                listOf(HomeMoneyLine("ম্যাচ", Formats.money(141_000, locale)), HomeMoneyLine("লাইটার", Formats.money(4_687_500, locale))),
                 Formats.money(4_828_500, locale), "−" + Formats.money(437_500, locale), null, Formats.money(4_391_000, locale),
                 packetsSold = 0, grossBare = bare(4_828_500, locale), offerDiscountBare = bare(437_500, locale), qcBare = bare(0, locale), netBare = bare(4_391_000, locale),
                 totalDiscountBare = bare(437_500, locale), drpDiscountBare = bare(0, locale), totalQcBare = bare(0, locale),
@@ -312,7 +312,7 @@ class SrStateScreenshotTests {
     // ---- Screens that read local data before their first frame (session 5, slice 1) ----
     @Composable private fun LoadingScreen() = Frame(stringResource(HomeR.string.hm_tile_stock)) { com.aktcl.aron.core.ui.aron.AronLoadingScreen() }
     @Composable private fun StockEmpty() = Frame(stringResource(HomeR.string.hm_tile_stock)) {
-        StockContent(emptyList(), emptyList(), null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {}, syncedAt = localizedDigits("10:42"))
+        StockContent(emptyList(), emptyList(), null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {}, syncedAt = localizedDigits("10:42"), srParity = true)
     }
     @Composable private fun PickerEmpty() = Frame(stringResource(HomeR.string.hm_tile_sale)) { OutletPickerContent(emptyList(), OutletPicker.chips(emptyList()), OutletPicker.ALL_CHIP, {}, {}) }
     @Composable private fun OwnEmpty() = Frame(stringResource(HomeR.string.hm_tile_outlet)) { com.aktcl.aron.feature.outlet.OwnRequestsContent(emptyList(), syncedAt = localizedDigits("10:42")) }

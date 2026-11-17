@@ -4,6 +4,7 @@ import com.aktcl.aron.backend.analytics.AggregationWorker
 import com.aktcl.aron.backend.analytics.installAdmissionControl
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.Database
+import com.aktcl.aron.backend.platform.MigrationPreflight
 import com.aktcl.aron.backend.platform.Migrator
 import com.aktcl.aron.backend.platform.PlatformContext
 import com.aktcl.aron.backend.platform.ServerRole
@@ -45,7 +46,11 @@ fun main() {
     when (settings.role) {
         ServerRole.MIGRATE -> {
             val code = Database.pool(settings.dbUrl, settings.dbUser, settings.dbPassword, 2, "aron-migrate", connectionTimeoutMs = Migrator.MIGRATE_CONNECTION_TIMEOUT_MS).use { ds ->
-                runCatching { Migrator.migrate(ds) }
+                runCatching {
+                    // Pre-flight BEFORE Flyway applies anything (D-SV2-12): a migration whose guard would raise on existing data stops the deploy here, with the schema untouched.
+                    MigrationPreflight.run(ds, settings.env, report = { line -> log.info("{}", line) })
+                    Migrator.migrate(ds)
+                }
                     .onSuccess { log.info("migrate: {} migration(s) applied", it) }
                     .onFailure { log.error("migrate failed", it) }
                     .fold({ 0 }, { 1 })

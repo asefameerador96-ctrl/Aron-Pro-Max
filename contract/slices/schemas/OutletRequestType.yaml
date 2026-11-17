@@ -7,3 +7,4 @@ OutletRequestType:
   - cluster
   - location
   - route_add
+  - cluster_create

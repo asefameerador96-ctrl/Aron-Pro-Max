@@ -136,7 +136,19 @@ class SrDayLockSaleTest {
 
     @Volatile private var loads = 0
     private val names = PrintNames({ "S$it" }, { "O$it" }, "sr", "r")
-    private val sku = SaleSku(1, "MAXR20", "cigarette", "MaxR 20S", null, "stick", 20, 7_935, 1, "2026-09-01", entryUnitDefault = "pack")
+    private val sku = SaleSku(1, "MAXR20", "cigarette", "MaxR 20S", null, "stick", 20, 7_935, 1, "2026-09-01", entryUnitDefault = "pack", stockBase = 200)
+
+    /** The stock gate (D-OWNER-PREREQ-01 rule 2): the day's issue of [sku], so the sale below is of goods the rep holds. */
+    private fun issueStock() = runBlocking {
+        repo.recordStock(
+            listOf(
+                com.aktcl.aron.core.database.entity.StockMovementEntity(
+                    clientUuid = ClientIds.newUuid(), meta = meta(), kind = "issue", skuId = sku.skuId, qtyEntered = 10,
+                    unitEntered = "pack", packFactor = 20, qtyBase = 200, slipPrinted = false,
+                ),
+            ),
+        )
+    }
 
     /** The SR kit's sale chain on this database: a draft of two packets on [v], and its Save and Print as SrSaleKit wires it. */
     private fun sale(v: OpenVisit, refused: MutableStateFlow<Boolean>): Pair<SaleViewModel, SaleFlow> = runBlocking {
@@ -144,6 +156,7 @@ class SrDayLockSaleTest {
             repo, numbers = { _, _ -> error("numbered through MemoNumbering") }, metaSource = { _, rid -> meta(rid) }, nowIso = { now },
             findMemo = { db.captureDao().memo(it) }, numbering = MemoNumbering("sr334001", 0, 500),
         )
+        issueStock()
         val flow = SaleFlow(FileDraftStore(File(context.cacheDir, "x4a-drafts-" + ClientIds.newUuid())), { _, _ -> listOf(sku) }, committer)
         flow.start(SaleVisit(v.visitUuid, v.outletId, v.routeId, date, "outlet"))
         flow.setQuantity(sku.skuId, 2, sku.entry.unit)
@@ -195,8 +208,8 @@ class SrDayLockSaleTest {
         runBlocking {
             assertTrue("no memo stored", db.captureDao().memosOn(date).isEmpty())
             assertNull("no memo number taken", db.referenceDao().memoCounter(date))
-            // only the call's own record is queued: no memo, no lines, no print_event
-            assertEquals(mapOf("visit" to 1), db.outboxDao().committedCounts(date).associate { it.recordType to it.count })
+            // only the call's own record and the day's stock issue are queued: no memo, no lines, no print_event
+            assertEquals(mapOf("visit" to 1, "stock_movement" to 1), db.outboxDao().committedCounts(date).associate { it.recordType to it.count })
         }
         assertEquals(listOf<Throwable>(), crashes.toList())
 

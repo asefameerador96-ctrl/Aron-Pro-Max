@@ -392,14 +392,19 @@ fun VisitCheckContent(
                     stringResource(when (state.failure) { CommitFailure.LOCKED -> R.string.out_commit_locked; CommitFailure.DAY_SUBMITTED -> R.string.out_commit_day_submitted; CommitFailure.STORAGE -> R.string.out_commit_failed }),
                     emptyList(), Modifier.testTag(OutletTags.MESSAGE))
                 is VisitUiState.Open -> GeoCard(
-                    // after a Force Sale the visit is open but the fix said otherwise: the card follows the verdict, never "in range" over "outside"
-                    if (geo == null || geo.inRange) GeoKind.InRange else GeoKind.Warning,
+                    // After a Force Sale the visit is open but the fix said otherwise: the card follows the verdict, never
+                    // "in range" over "outside". With no fix in memory (a call restored after a relaunch) it follows the
+                    // VISIT'S OWN stored row, so a force sale can never be shown as a clean geo sale (device walk, force state).
+                    if (state.visit.cleanGeoSale && (geo == null || geo.inRange)) GeoKind.InRange else GeoKind.Warning,
                     stringResource(
-                        when (geo?.verdict) {
-                            GeoVerdict.OUT_OF_RANGE -> R.string.out_out_of_range
-                            GeoVerdict.ACCURACY_TOO_LOW -> R.string.out_accuracy_low
-                            GeoVerdict.MOCKED -> R.string.out_mocked
-                            else -> R.string.out_in_range
+                        when {
+                            !state.visit.cleanGeoSale && state.visit.forceReasonCode != null -> R.string.out_force_sale_open
+                            geo?.verdict == GeoVerdict.OUT_OF_RANGE || (geo == null && state.visit.verdict == GeoVerdict.OUT_OF_RANGE) -> R.string.out_out_of_range
+                            geo?.verdict == GeoVerdict.ACCURACY_TOO_LOW || (geo == null && state.visit.verdict == GeoVerdict.ACCURACY_TOO_LOW) -> R.string.out_accuracy_low
+                            geo?.verdict == GeoVerdict.MOCKED || (geo == null && state.visit.verdict == GeoVerdict.MOCKED) -> R.string.out_mocked
+                            geo == null && state.visit.verdict == GeoVerdict.NO_OUTLET_LOCATION -> R.string.out_no_outlet_location
+                            state.visit.cleanGeoSale -> R.string.out_in_range
+                            else -> R.string.out_geo_unknown
                         },
                     ),
                     emptyList(), Modifier.testTag(OutletTags.MESSAGE),

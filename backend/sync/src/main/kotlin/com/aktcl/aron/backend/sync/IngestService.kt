@@ -53,6 +53,11 @@ data class Uploader(
     val deviceUuid: String?,
     /** The device's key for record `sig` checks; null for a phone without a usable key (dev database only). */
     val deviceKey: ECPublicKey?,
+    /**
+     * True ONLY for the server's own online Sales Submit ([DayService]): the one path that may set `day_submit.anchor_clock` (the server decides whose clock stamped the anchor).
+     * A device record carrying the member is still accepted, but the member is dropped before anything is stored or held (B6).
+     */
+    val serverStamped: Boolean = false,
 )
 
 /** The uploading device's standing for the N-027 gate, with the two switches, read once per batch. */
@@ -97,7 +102,12 @@ class IngestService(
     }
 
     /** One record as received, with what the batch fingerprint and the registry need. */
-    private class Rec(val index: Int, val json: JsonObject) {
+    /**
+     * [hashOverride]: the registry hash of a record released from quarantine unchanged: the hash of the record AS SENT (a stored copy may have lost a device's `anchor_clock`, or had NUL characters replaced, B7).
+     * ONLY [hash] honours it: [fullHash], [hashHex] and [canonError] are computed from [json], the stored copy, and describe THAT copy. They are batch-level fingerprints of a received envelope and no release
+     * path reads them; a new use of them on a released Rec must not assume they match what the phone sent.
+     */
+    private class Rec(val index: Int, val json: JsonObject, val hashOverride: ByteArray? = null) {
         val clientUuid: String = uuidKey(json)
         val type: String = (json["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
         val family: String = (json["family_uuid"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: clientUuid
@@ -111,7 +121,7 @@ class IngestService(
          * a Keystore miss) and later signed is the same record, never payload_conflict. Rows registered before this
          * change carry [fullHash], which still matches.
          */
-        val hash: ByteArray = if ("sig" !in json || canonError != null) fullHash else Jcs.sha256(JsonObject(json.filterKeys { it != "sig" }))
+        val hash: ByteArray = hashOverride ?: if ("sig" !in json || canonError != null) fullHash else Jcs.sha256(JsonObject(json.filterKeys { it != "sig" }))
     }
 
     /** Per-batch caches. */
@@ -393,7 +403,8 @@ class IngestService(
                     throw ApiProblem(ProblemCode.ERR_VALIDATION, "fixed_record keeps the record's outlet_id", errors = listOf(FieldError("/fixed_record/payload/outlet_id", "invalid_value")))
                 }
             }
-            val rec = Rec(0, fixedRecord ?: item.payload)
+            // B7: released unchanged, the registry keeps the hash of the record AS SENT (the stored copy may have lost a device's anchor_clock), so the phone's resend answers duplicate, not payload_conflict.
+            val rec = Rec(0, fixedRecord ?: item.payload, if (fixedRecord == null) item.payloadSha else null)
             // The children held with it, parents before children, so a memo's equations see its lines (s7.4).
             val children = heldChildren(h, item.clientUuid, item.code)
             val family = listOf(rec.json) + children.map { it.payload }
@@ -420,7 +431,7 @@ class IngestService(
             for (child in children) {
                 val sp = "release_${child.id}"
                 h.savepoint(sp)
-                val o = runCatching { release(h, ctxOf(child), Rec(0, child.payload)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
+                val o = runCatching { release(h, ctxOf(child), Rec(0, child.payload, child.payloadSha)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
                 if (o != null && (o.status == "accepted" || o.status == "duplicate")) {
                     closeItem(h, child.id, "accepted", null, resolverUserId, "released with parent ${item.clientUuid}", now)
                     h.release(sp)
@@ -552,7 +563,7 @@ class IngestService(
                 }
                 val sp = "match_${child.id}"
                 h.savepoint(sp)
-                val o = runCatching { release(h, ctx, Rec(0, child.payload)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
+                val o = runCatching { release(h, ctx, Rec(0, child.payload, child.payloadSha)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
                 if (o != null && (o.status == "accepted" || o.status == "duplicate")) {
                     closeItem(h, child.id, "accepted", null, resolverUserId, "same_as_backfill: posted to paper memo $paperUuid", now)
                     h.release(sp); released += child.clientUuid
@@ -594,13 +605,13 @@ class IngestService(
     ).bind("c", r.clientUuid).bind("h", r.hash).bind("f", r.fullHash).mapTo(Boolean::class.java).one()
 
     /** One quarantine item as stored. */
-    private class HeldItem(val id: Long, val clientUuid: String, val code: String, val status: String, val payload: JsonObject, val userId: Long, val deviceId: Long?, val batchUuid: String?)
+    private class HeldItem(val id: Long, val clientUuid: String, val code: String, val status: String, val payload: JsonObject, val userId: Long, val deviceId: Long?, val batchUuid: String?, val payloadSha: ByteArray? = null)
 
     private fun heldItem(h: Handle, where: String, id: Long): HeldItem? = h.createQuery(
-        "SELECT id, client_uuid::text, code, status, payload::text, user_id, device_id, batch_uuid::text FROM app.sync_quarantine WHERE $where FOR UPDATE",
+        "SELECT id, client_uuid::text, code, status, payload::text, user_id, device_id, batch_uuid::text, payload_sha256 FROM app.sync_quarantine WHERE $where FOR UPDATE",
     ).bind("id", id).map { rs, _ ->
         HeldItem(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), ResponseJson.parseToJsonElement(rs.getString(5)) as JsonObject,
-            rs.getLong(6), rs.getObject(7) as Long?, rs.getString(8))
+            rs.getLong(6), rs.getObject(7) as Long?, rs.getString(8), rs.getBytes(9))
     }.findOne().orElse(null)
 
     /**
@@ -1176,7 +1187,11 @@ class IngestService(
         // writer gets it in bytea's hex input form.
         val rewritten = hs.firstNotNullOfOrNull { it.rewrite(h, ingestRec!!) } ?: payload
         val written = if (r.type == "media_meta") rewritten.str("sha256")?.let { JsonObject(rewritten + ("sha256" to JsonPrimitive("\\x$it"))) } ?: rewritten else rewritten
-        val stored = RecordWriter.write(h, r.type, rule, env, written, ctx.up, ctx.batchUuid, ctx.now, enteredBy = ctx.manual?.actorUserId)
+        // B6: only the server's own online Sales Submit (or a reviewer releasing what the server held) may carry `anchor_clock`; a device's copy is dropped here, the record is still accepted.
+        // The registry hash and the content fingerprint were taken from the record as sent, so a replay still answers duplicate.
+        val trustedAnchor = ctx.up.serverStamped || ctx.reviewed
+        val finalPayload = if (trustedAnchor || !written.containsKey("anchor_clock")) written else JsonObject(written - "anchor_clock")
+        val stored = RecordWriter.write(h, r.type, rule, env, finalPayload, ctx.up, ctx.batchUuid, ctx.now, enteredBy = ctx.manual?.actorUserId)
         return when (stored) {
             is RecordWriter.Result.Stored -> {
                 val flags = listOfNotNull("resync_late".takeIf { resyncLate }, "checkout_too_early".takeIf { tooEarly }, "config_stamp_regress".takeIf { stampRegress },
@@ -1643,6 +1658,12 @@ class IngestService(
         return Outcome.of(code).copy(retryable = true)
     }
 
+    /** What a quarantine item stores: a device's `anchor_clock` is dropped (a reviewer's release trusts the member, so only the server's own online record may keep it). */
+    private fun heldJson(ctx: Ctx, r: Rec): JsonObject {
+        val p = r.json["payload"] as? JsonObject
+        return if (ctx.up.serverStamped || p == null || !p.containsKey("anchor_clock")) r.json else JsonObject(r.json + ("payload" to JsonObject(p - "anchor_clock")))
+    }
+
     private fun quarantine(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, code: RecordOutcomeCode, detail: String?, register: Boolean = true, contentFp: ByteArray? = null): Outcome {
         h.createUpdate(
             """
@@ -1652,7 +1673,7 @@ class IngestService(
               WHERE app.sync_quarantine.status = 'open' AND app.sync_quarantine.code IN ('device_integrity_failed', 'device_not_enrolled')
 
             """.trimIndent(),
-        ).bind("c", r.clientUuid).bind("t", r.type).bind("code", code.wire).bind("h", r.hash).bind("p", storable(r.json)).bind("detail", detail?.take(1000))
+        ).bind("c", r.clientUuid).bind("t", r.type).bind("code", code.wire).bind("h", r.hash).bind("p", storable(heldJson(ctx, r))).bind("detail", detail?.take(1000))
             .bind("u", ctx.up.userId).bind("d", ctx.up.deviceId).bind("route", r.json.long("route_id")).bind("bd", bd).bind("b", ctx.batchUuid)
             .bind("now", ts(ctx.now)).execute()
         if (register) register(h, ctx, r, bd, "quarantined", code, null, contentFp)

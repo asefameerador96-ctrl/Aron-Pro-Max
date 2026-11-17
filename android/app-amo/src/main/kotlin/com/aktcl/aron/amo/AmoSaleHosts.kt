@@ -302,7 +302,7 @@ fun PreviousSalesHost(day: AmoDay, outletId: Long) {
     var label by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(outletId) { label = com.aktcl.aron.core.common.orNullKeepingCancellation { day.callHeader().first } }
     LaunchedEffect(outletId, date) { history = null; history = day.saleHistory(outletId, date) }
-    com.aktcl.aron.feature.amo.PreviousSalesContent(date, today, history, onShift = { date = com.aktcl.aron.feature.amo.PreviousSales.shift(date, it, today) }, outletLabel = label)
+    com.aktcl.aron.feature.amo.PreviousSalesContent(date, today, history, onPick = { date = it }, outletLabel = label)
 }
 
 /**

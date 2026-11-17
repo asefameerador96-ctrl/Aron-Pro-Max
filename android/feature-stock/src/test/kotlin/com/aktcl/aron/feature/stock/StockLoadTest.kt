@@ -3,6 +3,7 @@ package com.aktcl.aron.feature.stock
 import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.entity.SkuEntity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,7 +18,7 @@ class StockLoadTest {
     private val skus = listOf(sku(1, "lighter"), sku(2, "lighter"), sku(3, "match", "dozen"), sku(4, "match", "dozen"))
     private var n = 0
     private fun load(loaded: Map<Long, Long> = mapOf(1L to 250L, 2L to 150L, 3L to 100L, 4L to 300L)) =
-        StockLoad(skus, loaded, 120_000, { "00000000-0000-4000-8000-%012d".format(++n) })
+        StockLoad(skus, loaded, newUuid = { "00000000-0000-4000-8000-%012d".format(++n) })
 
     @Test fun categoryTotalsShowFourHundredAndFourHundredForTheSeededLoad() {
         val t = load().totals.associate { it.categoryCode to it.issuedBase }
@@ -41,15 +42,30 @@ class StockLoadTest {
         assertEquals(SaveOutcome.Refused(SaveRefusal.NOTHING_ENTERED), load().save(0, meta))
     }
 
-    @Test fun sameValuesResaveWithinGuardIsRefusedThenAllowedAfterIt() {
-        val l = load()
+    // D-AGATE-01: the old rule "the same quantities within 5 minutes are refused" blocked a real second issue; it is gone
+    @Test fun aSecondRealIssueOfTheSameQuantityIsSavedWithNewUuids() {
+        var n = 0
+        val l = StockLoad(skus, emptyMap(), newUuid = { "00000000-0000-4000-8000-%012d".format(++n) })
         l.setEntered(1, 5)
-        l.committed(l.save(1_000, meta) as SaveOutcome.Saved, 1_000)
+        val first = l.save(1_000, meta) as SaveOutcome.Saved
+        l.committed(first, 1_000)
+        l.setEntered(1, 5) // one second later, same quantity: a legitimate top-up
+        val second = l.save(2_000, meta) as SaveOutcome.Saved
+        assertNotEquals(first.movements.single().clientUuid, second.movements.single().clientUuid)
+        l.committed(second, 2_000)
+        assertEquals(2 * first.movements.single().qtyBase, l.rows.first { it.sku.skuId == 1L }.loadedBase)
+    }
+
+    @Test fun aRetryOfTheSameSaveAfterAFailedCommitPostsTheSameUuids() {
+        var n = 0
+        val l = StockLoad(skus, emptyMap(), newUuid = { "00000000-0000-4000-8000-%012d".format(++n) })
         l.setEntered(1, 5)
-        assertEquals(SaveOutcome.Refused(SaveRefusal.SAME_VALUES_WITHIN_GUARD), l.save(60_000, meta))
-        assertTrue(l.save(400_000, meta) is SaveOutcome.Saved)
-        l.setEntered(1, 6) // different values are fine inside the window
-        assertTrue(l.save(61_000, meta) is SaveOutcome.Saved)
+        val a = l.save(0, meta) as SaveOutcome.Saved
+        l.commitFailed()
+        val b = l.save(1, meta) as SaveOutcome.Saved
+        assertEquals(a.movements.map { it.clientUuid }, b.movements.map { it.clientUuid }) // the repository stores a UUID once
+        l.commitFailed(); l.setEntered(1, 6) // a changed quantity is a different movement
+        assertNotEquals(a.movements.single().clientUuid, (l.save(2, meta) as SaveOutcome.Saved).movements.single().clientUuid)
     }
 
     @Test fun packEntryMultipliesByPackFactor() {
@@ -102,33 +118,5 @@ class StockLoadTest {
         assertTrue(l.save(0, meta) is SaveOutcome.Saved)
         assertEquals(SaveOutcome.Refused(SaveRefusal.SAME_VALUES_WITHIN_GUARD), l.save(10, meta))
         l.commitFailed(); assertTrue(l.save(20, meta) is SaveOutcome.Saved)
-    }
-
-    @Test fun guardSurvivesRelaunchThroughTheStore() {
-        val store = StockLoad.GuardStore.InMemory()
-        val a = StockLoad(skus, emptyMap(), guardStore = store, newUuid = { "00000000-0000-4000-8000-000000000001" })
-        a.setEntered(1, 5); a.committed(a.save(1_000, meta) as SaveOutcome.Saved, 1_000)
-        val b = StockLoad(skus, emptyMap(), guardStore = store)
-        b.setEntered(1, 5)
-        assertEquals(SaveOutcome.Refused(SaveRefusal.SAME_VALUES_WITHIN_GUARD), b.save(100_000, meta))
-        assertTrue(b.save(1_000 + StockLoad.DEFAULT_GUARD_MS, meta) is SaveOutcome.Saved)
-    }
-
-    @Test fun aKillBetweenTheCommitAndCommittedStillRefusesTheSameValuesAfterRelaunch() {
-        val store = StockLoad.GuardStore.InMemory()
-        val a = StockLoad(skus, emptyMap(), guardStore = store)
-        a.setEntered(1, 5); assertTrue(a.save(1_000, meta) is SaveOutcome.Saved) // the process dies here: committed() is never called
-        val b = StockLoad(skus, emptyMap(), guardStore = store)
-        b.setEntered(1, 5)
-        assertEquals(SaveOutcome.Refused(SaveRefusal.SAME_VALUES_WITHIN_GUARD), b.save(2_000, meta))
-    }
-
-    @Test fun aFailedCommitGivesTheGuardBack() {
-        val store = StockLoad.GuardStore.InMemory()
-        val a = StockLoad(skus, emptyMap(), guardStore = store)
-        a.setEntered(1, 5); assertTrue(a.save(1_000, meta) is SaveOutcome.Saved); a.commitFailed()
-        val b = StockLoad(skus, emptyMap(), guardStore = store)
-        b.setEntered(1, 5)
-        assertTrue(b.save(2_000, meta) is SaveOutcome.Saved)
     }
 }

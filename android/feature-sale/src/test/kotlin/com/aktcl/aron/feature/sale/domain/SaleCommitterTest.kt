@@ -39,6 +39,7 @@ class SaleCommitterTest {
         visitUuid = com.aktcl.aron.core.common.ClientIds.newUuid()
         val (v, f) = Fx.visit(visitUuid)
         repo.recordVisitOpen(v, f)
+        Fx.seedStock(repo)
     }
     @After fun tearDown() = db.close()
 
@@ -59,7 +60,7 @@ class SaleCommitterTest {
         assertEquals(160_000 + 37_500, memo.grossMtk); assertEquals(80_000, memo.drpDiscountMtk); assertEquals(12_500, memo.qcDeductionMtk)
         assertEquals(memo.grossMtk - memo.drpDiscountMtk - memo.qcDeductionMtk, memo.netMtk)
         assertEquals(memo.netMtk, memo.paidMtk + memo.dueMtk)
-        val types = db.outboxDao().nextPending(100).map { it.recordType }
+        val types = db.outboxDao().nextPending(100).map { it.recordType }.filterNot { it == "stock_movement" } // the seeded stock of the day
         assertEquals(listOf("visit", "memo", "memo_line", "memo_line", "memo_discount", "qc_line"), types)
     }
 
@@ -108,7 +109,7 @@ class SaleCommitterTest {
         val bad = SaleCommitter(repo, numbers, { _, r -> Fx.meta().copy(routeId = r) }, { "2026-10-05T04:35:00.000Z" }, { calls++; if (calls <= 3) clash else com.aktcl.aron.core.common.ClientIds.newUuid() }, findMemo = { db.captureDao().memo(it) })
         assertThrows(SQLiteConstraintException::class.java) { kotlinx.coroutines.runBlocking { bad.commit(d, Fx.catalog) } }
         assertEquals(0, count("memo")); assertEquals(0, count("memo_line")); assertEquals(0, count("memo_discount")); assertEquals(0, count("qc_line"))
-        assertEquals(1, count("outbox")) // only the visit
+        assertEquals(1 + Fx.catalog.values.count { it.stockBase > 0 }, count("outbox")) // only the visit and the seeded stock
         committer.commit(d, Fx.catalog)
         assertEquals(1, count("memo")); assertEquals(2, count("memo_line"))
     }
@@ -164,7 +165,7 @@ class NumberedSaleTest {
 
     @Test fun theRepositoryNumbersTheMemoAndTheNumbersFollowTheSpecFormat() = runTest {
         val repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
-        val visit = com.aktcl.aron.core.common.ClientIds.newUuid(); val (v, f) = Fx.visit(visit); repo.recordVisitOpen(v, f)
+        val visit = com.aktcl.aron.core.common.ClientIds.newUuid(); val (v, f) = Fx.visit(visit); repo.recordVisitOpen(v, f); Fx.seedStock(repo)
         val c = SaleCommitter(
             repo, { _, _ -> error("not used with numbering") }, { _, r -> Fx.meta().copy(routeId = r) }, { "2026-10-05T04:35:00.000Z" },
             findMemo = { db.captureDao().memo(it) }, numbering = com.aktcl.aron.core.database.repo.MemoNumbering("sr334001", 0),

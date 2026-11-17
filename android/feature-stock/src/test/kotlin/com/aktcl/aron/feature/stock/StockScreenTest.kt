@@ -47,6 +47,27 @@ class StockScreenTest {
         compose.waitForIdle()
     }
 
+    private fun showParity(srParity: Boolean, rows: List<StockRow>) {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.BN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.BN) { StockContent(rows, totals, null, true, { _, _ -> }, {}, onPrint = null, srParity = srParity) } } }
+        compose.waitForIdle()
+    }
+
+    // D-PAR-SR1-05: with srParity the purple badge is the packs ISSUED on the row (the entered quantity here), never a stock-derived figure;
+    // without it (a host that did not opt in) the row keeps no such badge for a packet-entered SKU
+    @Test fun srBadgeIsThePacksIssuedNotTheStockFigure() {
+        val issued = listOf(StockRow(sku(1, "lighter", "piece"), 400, 3, stockBase = 350))
+        showParity(true, issued)
+        compose.onAllNodesWithText("৩").assertCountEquals(2) // the Issue field and the badge; the stock figure is 17
+        compose.onAllNodesWithText("১৭").assertCountEquals(2) // list row and panel stock, not the badge
+        compose.onAllNodesWithText("৩").assertCountEquals(2)
+    }
+
+    @Test fun withoutSrParityThereIsNoSecondFigureOnAPacketRow() {
+        showParity(false, listOf(StockRow(sku(1, "lighter", "piece"), 400, 3, stockBase = 350)))
+        compose.onAllNodesWithText("৩").assertCountEquals(1)
+    }
+
     @Test fun categoryTotalsShowFourHundredAndFourHundredInBanglaDigits() {
         show(AppLanguage.BN)
         // the reference panel: head "ক্যাটাগরি / মোট ইস্যু / মোট লোড", all four categories with their unit, zeros included
@@ -103,9 +124,10 @@ class StockScreenTest {
         assertTrue(compose.onAllNodesWithText("৬+১০").fetchSemanticsNodes().isNotEmpty())
     }
 
+    // D-AGATE-01: the refusal is now only "this Save is still running" (a double tap); a real second issue is no longer refused
     @Test fun refusedMessageShowsInBangla() {
         show(AppLanguage.BN, StockMessage.REFUSED_SAME_VALUES)
-        compose.onNodeWithText("এই মানগুলো এইমাত্র সংরক্ষণ করা হয়েছে। মান বদলান বা কয়েক মিনিট অপেক্ষা করুন।").assertExists()
+        compose.onNodeWithText("এই সংরক্ষণ এখনো চলছে। একটু অপেক্ষা করুন।").assertExists()
     }
 
     @Test fun printButtonOnlyAfterASaveAndNeverBlocksSave() {
