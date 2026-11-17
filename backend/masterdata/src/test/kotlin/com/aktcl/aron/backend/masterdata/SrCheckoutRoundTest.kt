@@ -52,7 +52,7 @@ class SrCheckoutRoundTest {
     fun anEffectiveSalesSubmitWithdrawsTheOpenSignalAndNothingElseMoves() {
         val c = "CHECKOUT_WITHOUT_SUBMIT"
         val withdrawn = "2026-12-30"; val noSubmit = "2026-12-29"; val voidedSubmit = "2026-12-28"; val reviewed = "2026-12-27"; val tooOld = "2026-10-01"; val other = "2026-12-31"
-        signal(c, withdrawn); signal(c, noSubmit); signal(c, voidedSubmit); signal(c, reviewed, "confirmed"); signal(c, tooOld); signal("GEO_MOCK", withdrawn)
+        signal(c, withdrawn); signal(c, noSubmit); signal(c, voidedSubmit); signal(c, reviewed, "confirmed"); signal(c, "2026-12-26", "dismissed"); signal(c, "2026-12-25", "reviewed"); submit("2026-12-26"); submit("2026-12-25"); signal(c, tooOld); signal("GEO_MOCK", withdrawn)
         signal(c, other)
         val s1 = submit(withdrawn); submit(voidedSubmit, voided = true); submit(reviewed); submit(tooOld)
         // A supervisor-day submit of an AMO-style scope also counts, as it does at the ingest.
@@ -72,11 +72,13 @@ class SrCheckoutRoundTest {
 
         assertEquals("dismissed", status(c, withdrawn))
         val e = evidence(c, withdrawn)
-        assertTrue(e.contains("\"withdrawn_by\": \"day_submit\"") && e.contains(s1) && e.contains("\"day_submit_found\": true"), e)
+        assertTrue(e.contains("\"withdrawn_by\": \"day_submit\"") && e.contains(s1) && e.contains("\"withdrawn_at\": \"20") && e.contains("\"day_submit_found\": true"), e)
         assertEquals("dismissed", status(c, other), "a supervisor-day submit counts too")
         assertEquals("open", status(c, noSubmit), "no submit: still open")
         assertEquals("open", status(c, voidedSubmit), "a data-voided submit does not count")
         assertEquals("confirmed", status(c, reviewed), "a reviewer's decision always stands")
+        assertEquals("1", env.sql("SELECT count(*) FROM app.risk_signal WHERE code = '$c' AND business_date = DATE '2026-12-26' AND status = 'dismissed' AND NOT jsonb_exists(evidence, 'withdrawn_by')"), "a reviewer's dismissal is not rewritten")
+        assertEquals("reviewed", status(c, "2026-12-25"))
         assertEquals("open", status(c, tooOld), "older than the registry retention horizon: not looked at")
         assertEquals("open", status("GEO_MOCK", withdrawn), "no other code moves")
 
@@ -87,6 +89,13 @@ class SrCheckoutRoundTest {
         submit(noSubmit)
         assertEquals(1, ev.withdrawCheckoutWithoutSubmit(today))
         assertEquals("dismissed", status(c, noSubmit))
+
+        // The submit is voided AFTER the withdrawal: nothing re-raises or re-opens the signal (the ingest raises only when a check-out is stored).
+        env.exec("ALTER TABLE app.route_day_event DISABLE TRIGGER route_day_event_immutable")
+        env.exec("UPDATE app.route_day_event SET voided_at = now() WHERE client_uuid = '$s1'")
+        env.exec("ALTER TABLE app.route_day_event ENABLE TRIGGER route_day_event_immutable")
+        assertEquals(0, ev.withdrawCheckoutWithoutSubmit(today))
+        assertEquals("dismissed", status(c, withdrawn))
     }
 
     @Test

@@ -48,6 +48,32 @@ class CheckoutClosedByV0203Test {
         }
     }
 
+    /** The widened CHECKs are NOT VALID after V0204 (also on the PARTITIONED memo parent) and validated by V0205; the lock scope of each migration is its own tables only. */
+    @Test
+    fun theWideningIsNotValidAfterV0204OnThePartitionedMemoTableAndValidAfterV0205() {
+        val db = TestPostgres.createDatabase()
+        try {
+            Flyway.configure().configuration(db.flyway().configuration).target("204").load().migrate()
+            db.connect().use { c ->
+                val states = "SELECT string_agg(conrelid::regclass::text || ':' || convalidated::text, ',' ORDER BY conrelid::regclass::text) FROM pg_constraint WHERE conname IN " +
+                    "('attendance_event_closed_by_check', 'app_user_memo_username', 'memo_memo_no_check', 'memo_void_memo_no_check', 'sale_abort_memo_no_check') AND conrelid IN " +
+                    "('app.attendance_event'::regclass, 'app.app_user'::regclass, 'app.memo'::regclass, 'app.memo_void'::regclass, 'app.sale_abort'::regclass)"
+                assertEquals("app.app_user:false,app.attendance_event:false,app.memo:false,app.memo_void:false,app.sale_abort:false", c.scalar(states))
+                assertEquals("true", c.scalar("SELECT (count(*) > 0)::text FROM pg_inherits WHERE inhparent = 'app.memo'::regclass"), "memo is partitioned")
+                assertEquals("true", c.scalar("SELECT (pg_get_constraintdef(oid) LIKE '%{2,31}%')::text FROM pg_constraint WHERE conrelid = 'app.memo'::regclass AND conname = 'memo_memo_no_check'"))
+                // A NOT VALID check already judges new rows.
+                assertFailsWith<SQLException> { c.exec("INSERT INTO app.app_user (username, full_name, role) VALUES ('ab', 'QA', 'SR')") }
+                c.exec("INSERT INTO app.app_user (username, full_name, role) VALUES ('abc', 'QA', 'SR')")
+            }
+            db.flyway().migrate()
+            db.connect().use { c ->
+                assertEquals("5", c.scalar("SELECT count(*) FROM pg_constraint WHERE convalidated AND conname IN ('attendance_event_closed_by_check', 'app_user_memo_username', 'memo_memo_no_check', 'memo_void_memo_no_check', 'sale_abort_memo_no_check') AND conrelid IN ('app.attendance_event'::regclass, 'app.app_user'::regclass, 'app.memo'::regclass, 'app.memo_void'::regclass, 'app.sale_abort'::regclass)"))
+            }
+        } finally {
+            db.close()
+        }
+    }
+
     @Test
     fun theColumnAndTheWidenedChecksAcceptAndRefuseWhatTheyShould() {
         val db = TestPostgres.createDatabase().migrated()

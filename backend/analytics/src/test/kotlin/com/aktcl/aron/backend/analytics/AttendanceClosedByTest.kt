@@ -43,5 +43,7 @@ INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_
         assertNull(sr1.str("check_out_at")); assertNull(sr1.str("hours")); assertNull(sr1.str("check_out_fix"))
         assertEquals(true, sr1.str("check_in_at") != null, "the check-in still shows")
         assertEquals(8.0, sr2.num("hours"))
+        assertEquals("no check-out (closed by the phone)", sr1.str("check_out_note"), "a TSO sees why there is no check-out")
+        assertNull(sr2.str("check_out_note"))
     }
 }

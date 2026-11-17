@@ -127,7 +127,7 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
      * raises the signal but its database role may not update `risk_signal`; the worker may (`worker_rw`: INSERT, UPDATE), so the
      * withdrawal is this rule and no grant changed. Only a still `open` signal moves: a reviewer's `reviewed`, `dismissed` or `confirmed`
      * always stands. A withdrawn signal is `dismissed` with `evidence.withdrawn_by = "day_submit"` (the status set has no `withdrawn`,
-     * and the dashboards count only `open` and `confirmed`). Idempotent (a second run finds nothing open); returns how many moved.
+     * and the dashboards count only `open` and `confirmed`). A submit voided or superseded AFTER the withdrawal does not re-raise the signal: the ingest raises it only when a check-out is stored (once per user-day, ON CONFLICT DO NOTHING keeps the dismissed row), so the day stays withdrawn; the voided submit is visible in the data-void trail. Idempotent (a second run finds nothing open); returns how many moved.
      * Looks back [lookbackDays] business dates (the ingest registry's retention, which exceeds the sync backdate window).
      */
     fun withdrawCheckoutWithoutSubmit(today: LocalDate): Int =
@@ -150,7 +150,7 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
                  AND s.business_date >= :since)
             UPDATE app.risk_signal s
                SET status = 'dismissed', updated_at = now(),
-                   evidence = s.evidence || jsonb_build_object('withdrawn_by', 'day_submit', 'day_submit_found', true, 'day_submit_client_uuid', found.submit_uuid::text)
+                   evidence = s.evidence || jsonb_build_object('withdrawn_by', 'day_submit', 'withdrawn_at', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), 'day_submit_found', true, 'day_submit_client_uuid', found.submit_uuid::text)
               FROM found
              WHERE s.id = found.id AND found.submit_uuid IS NOT NULL AND s.status = 'open'
             """.trimIndent(),

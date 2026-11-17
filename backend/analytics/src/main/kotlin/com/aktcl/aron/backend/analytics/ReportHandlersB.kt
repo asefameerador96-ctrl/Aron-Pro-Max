@@ -98,7 +98,7 @@ object GigoReport : ReportHandler {
         listOf(
             col("business_date", "Date", "date"), col("username", "SR", "string"), col("route_code", "Route", "string"), col("check_in_at", "Check in", "timestamp"),
             col("check_out_at", "Check out", "timestamp"), col("hours", "Hours", "decimal", unit = "h"), col("check_in_fix", "Check-in fix", "string"), col("check_out_fix", "Check-out fix", "string"),
-            col("any_mock", "Mock fix", "bool"), col("address", "Address", "string", pii = true),
+            col("check_out_note", "Check-out note", "string"), col("any_mock", "Mock fix", "bool"), col("address", "Address", "string", pii = true),
         ),
         listOf("period", "geo"),
     )
@@ -116,6 +116,8 @@ object GigoReport : ReportHandler {
                round(extract(epoch FROM max(ev.captured_at) FILTER (WHERE ev.kind = 'check_out' AND ev.closed_by = 'rep') - min(ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))::numeric / 3600, 2) AS hours,
                (array_agg(ev.fix_status ORDER BY ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))[1] AS check_in_fix,
                (array_agg(ev.fix_status ORDER BY ev.captured_at DESC) FILTER (WHERE ev.kind = 'check_out' AND ev.closed_by = 'rep'))[1] AS check_out_fix,
+               CASE WHEN bool_or(ev.kind = 'check_out' AND ev.closed_by = 'phone') AND NOT bool_or(ev.kind = 'check_out' AND ev.closed_by = 'rep')
+                    THEN 'no check-out (closed by the phone)' END AS check_out_note,
                bool_or(coalesce(ev.fix_is_mock, false)) AS any_mock, (array_agg(ev.address_display ORDER BY ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))[1] AS address
           FROM ev JOIN app.app_user u ON u.id = ev.user_id LEFT JOIN dw.dim_geo g ON g.route_id = ev.route_id
          WHERE ev.day BETWEEN :from AND :to

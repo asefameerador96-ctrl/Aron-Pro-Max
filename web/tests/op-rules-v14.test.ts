@@ -48,6 +48,10 @@ describe("paper-backfill.create", () => {
     expect(run({ business_date: day(-2) })).toEqual(["/business_date:window"]);
     expect(run({ memo_no: "SR1-1" })).toEqual(["/memo_no:invalid"]);
   });
+  it("accepts the memo number of a 3-character username (contract 1.20.0) and still refuses a 2-character one", () => {
+    expect(run({ memo_no: "srx-261005-017" })).toEqual([]);
+    expect(run({ memo_no: "sx-261005-017" })).toEqual(["/memo_no:invalid"]);
+  });
   it("lines and money are checked; a discount is refused while programmes are deferred", () => {
     expect(run({ lines: [] })).toEqual(["/lines:invalid"]);
     expect(run({ lines: [{ sku_id: 1, qty_base: 0, line_kind: "sale" }] })).toEqual(["/lines/0:invalid"]);

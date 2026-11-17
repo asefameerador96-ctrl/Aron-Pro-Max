@@ -29,9 +29,10 @@ Approval REQUESTED from the lead (not approved until the lead says so). Everythi
   Attendance, `day_open`, `day_submit` and telemetry are not captures.
 * Withdrawn by a worker rule (`RiskSignalEvaluator.withdrawCheckoutWithoutSubmit`, run by the risk-signal job every 15 minutes, as `worker_rw`; the API role may not update `risk_signal`, no grant changed):
   an `open` signal whose user-date now has an effective `day_submit` (not data-voided, its route-day or supervisor-day not submit-voided) becomes `dismissed` with
-  `evidence.withdrawn_by = "day_submit"`. The status set has no `withdrawn` (adding one would widen the CHECK and every reader), and the dashboards count only `open` and `confirmed`.
+  `evidence.withdrawn_by = "day_submit"` (also `withdrawn_at`, `day_submit_client_uuid`). The status set has no `withdrawn` (adding one would widen the CHECK and every reader), and the dashboards count only `open` and `confirmed`.
   A signal a reviewer has already decided (`reviewed`, `dismissed`, `confirmed`) is never touched. Looks back `cfg.retention.ingest_registry_days` (45) business dates.
-* Delay: up to about 15 minutes after the submit is stored.
+* Delay: up to about 15 minutes after the submit is stored. A submit voided or superseded AFTER the withdrawal does not re-raise the signal (the ingest raises only when a check-out is stored; the dismissed row keeps the unique key), the day stays withdrawn.
+* The attendance report `gigo` gains the string column `check_out_note`: `no check-out (closed by the phone)` for a user-day whose only check-out is a phone close (lead ruling 2).
 
 ## Behaviour (C): three-character memo usernames
 
@@ -43,7 +44,6 @@ parser (`MemoNumbers`), the Sales Submit digest, `MemoApi`, the paper backfill a
 `CheckoutClosedByTest`, `DayStateTest.anAmoPhoneClose...`, `MemoUsernameThreeCharsTest` (backend:app); `SrCheckoutRoundTest` (backend:masterdata); `AttendanceClosedByTest` (backend:analytics);
 `CheckoutClosedByV0203Test` (db). `CheckoutWithoutSubmitTest` now seeds a capture for the days it judges.
 
-## Outside this lane (listed so they are not lost)
+## Web and android
 
-`web/src/lib/admin/op-rules.ts:54`, `web/src/components/admin/config/paper-backfill-form.tsx:13` (client copies of the 4-character rule) and the android `ErrorReporter` username redaction
-(`\b[a-z]{2,5}\d{3,}\b` does not match a short login without digits).
+Done in this round (lead ruling 6): `web/src/lib/admin/op-rules.ts`, `web/src/components/admin/config/paper-backfill-form.tsx`, regenerated `web/src/contract/openapi.d.ts`; web tests `op-rules-v14`, `contract-drift`, `entry-pages`, `checker-v14-forms`, `backfill-match-access` and `tsc --noEmit` pass. The android `ErrorReporter` gap is filed in `docs/requests/android-error-reporter-short-usernames.md`.
