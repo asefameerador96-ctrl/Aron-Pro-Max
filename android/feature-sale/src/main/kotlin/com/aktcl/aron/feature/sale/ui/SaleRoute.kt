@@ -42,6 +42,8 @@ fun SaleRoute(
     quantityPopup: Boolean = false, skuStats: Map<Long, com.aktcl.aron.feature.sale.domain.SkuStats> = emptyMap(),
     /** D-SR-MAN-S3-02: ask the nearby-devices permission on entering and toast "printer connected" (the SR manual, screenshot 17); AMO keeps false. */
     printerAssist: Boolean = false,
+    /** The AMO host's options (D-PAR-AMO-07): an entry header card and the print-later info card. SR passes the defaults and is unchanged. */
+    entryHeaderCard: (@Composable () -> Unit)? = null, printLaterCard: Boolean = false, amoSkuCard: Boolean = false,
 ) {
     val ui by vm.state.collectAsState()
     var stage by remember { mutableStateOf(SaleStage.Entry) }
@@ -69,7 +71,7 @@ fun SaleRoute(
                         quantityPopup = quantityPopup, skuStats = skuStats,
                         onZeroSaleReason = if (zeroSaleReasonPicker) ({ r -> vm.confirmZeroSale(r.code); stage = SaleStage.Review }) else null,
                         retailerLabel = retailerLabel,
-                        onPreviousSales = onPreviousSales, historyLabel = historyLabel,
+                        onPreviousSales = onPreviousSales, historyLabel = historyLabel, headerCard = entryHeaderCard, amoSkuCard = amoSkuCard,
                     )
                     SaleStage.Slide -> if (review != null) SlideScreen(skus, review, { id -> draft?.slide?.firstOrNull { it.skuId == id }?.emptyPackets ?: 0L }, { id, n -> vm.setSlide(id, n) })
                     SaleStage.Qc -> if (review != null) QcScreen(
@@ -95,6 +97,7 @@ fun SaleRoute(
                             onQc = if (draft?.edit == null) ({ qcBefore = draft?.qc.orEmpty(); stage = SaleStage.Qc }) else null,
                             // the Slide step exists only while a SKU carries an active offer (docs/27: offers deferred)
                             onSlide = if (skus.any { it.drp != null }) ({ stage = SaleStage.Slide }) else null,
+                            printLaterCard = printLaterCard,
                         )
                     }
                 }

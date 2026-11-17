@@ -148,4 +148,6 @@
     <string name="edit_reason_cancel">Cancel</string>
     <string name="edit_reason_submit">Submit</string>
     <string name="edit_reason_glyph_dropdown">▾</string>
+    <string name="sale_amo_rate">Rate</string>
+    <string name="sale_amo_discount">Discount</string>
 </resources>

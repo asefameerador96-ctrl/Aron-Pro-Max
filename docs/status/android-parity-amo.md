@@ -25,10 +25,11 @@ Nothing in this lane is walked on a device. Proof is unit tests, Roborazzi image
 | Update screens 05 and 07 (look) | FIX: vector back with label, token colours and sizes, Sunlight goldens (D-PAR-AMO-04) | this push | amo_update_* |
 | Sales pick: Sales tile missing on the empty state (21, 22) | FIX: tile under the fields before a retailer is chosen (D-PAR-AMO-05) | slice 2 | amo_sales_pick_empty_bn |
 | Sales pick: drop-downs, alphabet bar | RECORD: already the old picker (slice 1 code) | - | amo_control_call_pick_* |
-| Sale entry: header card, rate/discount/stock column, blue badge, green ± | REQUEST: shared feature-sale/core-ui (R-PAR-AMO-01, 02) | - | amo_sale_entry_bn |
+| Sale entry: header card, rate/discount/stock column, blue badge | FIX in feature-sale behind AMO options (D-PAR-AMO-07); green ± NOT done (legibility: red minus/purple plus stay, lead to decide) | next push | amo_sale_entry_bn |
 | Review: crossed-out printer icon | FIX: printer state on the bar during the sale (D-PAR-AMO-05) | slice 2 | n/a (host) |
-| Review: print-later note; totals with quantity | REQUEST: R-PAR-AMO-03, 05 | - | amo_review_bn |
-| Paid-amount dialog not recorded | RECORD: amo_paid_amount_bn; dialog presentation requested (R-PAR-AMO-04) | slice 2 | amo_paid_amount_bn |
+| Review: print-later note | FIX: info card (D-PAR-AMO-07) | next push | amo_review_bn |
+| Review: totals with quantity per unit kind | OPEN (R-PAR-AMO-05, lead's condition: per unit kind, never one mixed number) | - | amo_review_bn |
+| Paid-amount dialog not recorded | RECORD: amo_paid_amount_bn; dialog presentation OPEN (R-PAR-AMO-04: same validation, one write) | slice 2 | amo_paid_amount_bn |
 | Previous sale data: calendar date field | FIX: date field + picker (90-day window) + ISO line (D-PAR-AMO-05) | slice 2 | amo_previous_sales_* |
 | Control call: extra "মূল্য সম্মতি" tile | KEEP-WITH-REASON: only when the server price-compliance flag is on (default off) | - | - |
 

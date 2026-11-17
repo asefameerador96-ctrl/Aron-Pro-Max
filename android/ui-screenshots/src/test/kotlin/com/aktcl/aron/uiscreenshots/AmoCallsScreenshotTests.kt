@@ -176,12 +176,13 @@ class AmoCallsScreenshotTests {
         com.aktcl.aron.feature.sale.ui.SaleEntryScreen(
             saleSkus, enteredReview, { id -> enteredDraft.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {},
             recentSkuIds = setOf(100L), onPreviousSales = {}, retailerLabel = outletPill,
+            amoSkuCard = true, headerCard = { com.aktcl.aron.feature.amo.AmoSaleHeaderCard("Savar Bazar(Sat, Mon, Wed)", outletPill) }, // D-PAR-AMO-07 (screenshots 23, 24)
         )
     }
 
     @Test fun amo_review_bn() = shot("amo_review_bn", AppLanguage.BN, "নিরীক্ষণ") {
         com.aktcl.aron.feature.sale.ui.ReviewScreen(
-            enteredReview, {}, outletLine = "$outletPill\nরুট: Savar Bazar(Sat, Mon, Wed)\nক্লাস্টার: Savar Metro", onCreditToggle = {}, onQc = {},
+            enteredReview, {}, outletLine = "$outletPill\nরুট: Savar Bazar(Sat, Mon, Wed)\nক্লাস্টার: Savar Metro", onCreditToggle = {}, onQc = {}, printLaterCard = true,
         )
     }
 

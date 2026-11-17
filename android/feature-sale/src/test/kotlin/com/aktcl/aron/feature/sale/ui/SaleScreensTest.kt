@@ -97,6 +97,56 @@ class SaleScreensTest {
         compose.onNodeWithText("Print").assertIsEnabled()
     }
 
+    /** D-PAR-AMO-07: the AMO host asks for the info card; SR keeps the plain grey line. Same words either way. */
+    @Test fun printLaterIsAnInfoCardOnlyWhenTheHostAsksForIt() {
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK)
+        compose.setContent { AronTheme(AppLanguage.EN) { ReviewScreen(SaleReviewCalculator.review(d, Fx.catalog), {}, printLaterCard = true) } }
+        compose.onNodeWithTag(SaleTags.PRINT_LATER).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("You can print later from the Memo section.", useUnmergedTree = true).assertExists()
+    }
+
+    @Test fun srReviewKeepsThePlainPrintLaterLine() {
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK)
+        compose.setContent { AronTheme(AppLanguage.EN) { ReviewScreen(SaleReviewCalculator.review(d, Fx.catalog), {}) } }
+        compose.onNodeWithTag(SaleTags.PRINT_LATER).assertDoesNotExist()
+        compose.onNodeWithText("You can print later from the Memo section.").assertExists()
+    }
+
+    /**
+     * D-PAR-AMO-07 (R-PAR-AMO-02): the AMO card shows the rate, a zero discount (programme discounts are deferred: nothing invented) and the
+     * same stock figure the SR card and the stock gate use; the hard stop still holds (plus disabled at the stock). SR keeps its PackCard.
+     */
+    @Test fun amoSkuCardShowsRateZeroDiscountAndTheGateStockFigure() {
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 103, 25, QtyUnit.PIECE) // all 25 lighters held
+        val review = SaleReviewCalculator.review(d, Fx.catalog)
+        compose.setContent { AronTheme(AppLanguage.EN) {
+            SaleEntryScreen(skus, review, { id -> d.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, amoSkuCard = true)
+        } }
+        compose.onNodeWithTag(AmoSkuCardTags.card(103)).assertIsDisplayed()
+        compose.onNodeWithTag(AmoSkuCardTags.discount(103), useUnmergedTree = true).assertExists()
+        compose.onAllNodesWithText("0%", useUnmergedTree = true).assertCountEquals(2) // one per card; never an invented programme figure
+        compose.onNodeWithTag(AmoSkuCardTags.stock(103)).assertExists()
+        compose.onNodeWithContentDescription("Stock 25").assertExists() // the figure of Fx.aster.stockBase = 25 pieces
+        compose.onNodeWithTag(AmoSkuCardTags.rate(103)).assertExists()
+        compose.onNodeWithContentDescription("More, Aster").assertIsNotEnabled() // at the stock: the gate stops the plus
+    }
+
+    @Test fun srEntryKeepsThePackCardWithNoRateColumn() {
+        val review = SaleReviewCalculator.review(Fx.draft(), Fx.catalog)
+        compose.setContent { AronTheme(AppLanguage.EN) { SaleEntryScreen(skus, review, { 0L }, { _, _ -> }, {}, {}) } }
+        compose.onAllNodes(androidx.compose.ui.test.hasTestTag(AmoSkuCardTags.card(103))).assertCountEquals(0)
+    }
+
+    /** D-PAR-AMO-07: a header card from the host replaces the retailer pill on the entry screen; without it the pill stays. */
+    @Test fun entryHeaderCardReplacesThePillWhenGiven() {
+        val review = SaleReviewCalculator.review(Fx.draft(), Fx.catalog)
+        compose.setContent { AronTheme(AppLanguage.EN) {
+            SaleEntryScreen(skus, review, { 0L }, { _, _ -> }, {}, {}, retailerLabel = "Pill Store (1-2-3)", headerCard = { androidx.compose.material3.Text("HEADER CARD") })
+        } }
+        compose.onNodeWithText("HEADER CARD").assertIsDisplayed()
+        compose.onAllNodesWithText("Pill Store (1-2-3)").assertCountEquals(0)
+    }
+
     @Test fun reviewDisablesSaveWhenPaidIsNotBelowTheTotal() {
         val d = SaleDraftOps.setPaid(SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK), 160_000)
         compose.setContent { AronTheme(AppLanguage.EN) { ReviewScreen(SaleReviewCalculator.review(d, Fx.catalog), {}) } }
