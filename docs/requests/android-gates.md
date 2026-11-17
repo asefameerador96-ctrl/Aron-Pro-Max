@@ -64,3 +64,34 @@ gap of another lane, listed here so it is not lost.
 
 No contract member is needed for slice 1: the phone sends the same records it always did. If the flag should reach the
 phone (it need not), that is a later contract addition, not this round.
+
+## 4. Check-out: who closed it, and the two signal rules (ruling 6 of D-LEAD-PREREQ-03; review blocking 4) — PROPOSAL, the phone does NOT send the field until the lead confirms the name
+
+**Why.** A day the rep never checked out is closed by the phone at the next start with a check-out that has no location. Today the server stores it as a
+real check-out at the (late) capture time, which makes attendance and hours wrong, and AMO `supervisor_day.checked_out_at` takes that time. Separately the
+phone no longer needs a Sales Submit before check-out, so a checked-in day with no route captures sends a check-out with no `day_submit` and the server raises
+`CHECKOUT_WITHOUT_SUBMIT` (weight 20) against a rep who did nothing wrong.
+
+**1. Contract field (attendance_event payload, kind `check_out` only).** `closed_by`, enum `rep` | `phone`. `rep` (or absent: old builds) = the rep pressed
+check-out. `phone` = the phone closed a forgotten day at a later start (no location was read). Absent is treated as `rep`. Name proposed by this lane; the
+lead decides it. Additive, optional, same contract minor.
+
+**2. Server behaviour.**
+- `closed_by = phone`: store the row and acknowledge it as accepted, but record it as "no check-out" for that user and date: `attendance` reports show no
+  check-out time (not the capture time); AMO `supervisor_day.checked_out_at` is NOT set; `checked_out_at` for a route-day is not set from it. It still
+  counts as the phone's closing of the day for the "no open attendance" views. It never raises `checkout_too_early` and is not judged by
+  `cfg.day.checkout_earliest_time`.
+- `closed_by = rep` / absent: unchanged.
+
+**3. `CHECKOUT_WITHOUT_SUBMIT`.**
+- Not raised for a user-day that has no route captures (no `visit`, `memo`, `due_collection`, `stock_movement`, AMO record) in the registry for that date.
+- Withdrawn (the risk signal row cleared or closed) when an ACCEPTED `day_submit` for that user and date arrives after it (a later cycle, a re-sent or
+  integrity-released submit, or the rep's own Sales Submit after the check-out).
+- Not raised for a `closed_by = phone` check-out whose day has an accepted submit.
+
+**4. Phone behaviour tied to this (this lane, after confirmation).** The check-out of a day that has a submit is sent only after a submit of that date is
+ACCEPTED by the server (ruling 5), so the signal is rare; the field above lets the server tell a phone-made close from the rep's.
+
+**5. Acceptance test (server lane).** (a) `closed_by=phone` check-out three days late: attendance shows no check-out time, AMO supervisor_day.checked_out_at
+stays null, no `checkout_too_early`. (b) check-out on a day with no captures: no signal. (c) check-out then an accepted `day_submit` for the same
+user-date: signal present after the first, withdrawn after the second.
