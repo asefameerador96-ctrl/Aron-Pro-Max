@@ -93,6 +93,15 @@ class QcManualScreenTest {
         compose.onAllNodesWithTag(QcTags.TILE).assertCountEquals(1)
     }
 
+    // lows of the lead's gate: the settlement shows its minus, the quantity cell its unit and the packet equivalent (25 sticks = 2 packets + 5 sticks)
+    @Test fun settlementShowsItsMinusAndTheQuantityCellItsUnitAndPacketEquivalent() {
+        show(draftWith(QcEntry(100, "damaged_crushed", "MFC", 25)))
+        compose.onNodeWithText("− ", substring = true).assertExists()
+        compose.onNodeWithText("25 sticks", substring = true).assertExists()
+        compose.onNodeWithTag(QcTags.PACK_EQUIV).assertExists()
+        compose.onNodeWithText("= 2 packets + 5 sticks", substring = true).assertExists()
+    }
+
     // lead gate finding 5: after a rotation or a process restart the page still knows what it opened with, so বাতিল puts it back
     @Test fun cancelAfterARecreateStillPutsBackWhatTheEntryPageOpenedWith() {
         val writes = mutableListOf<Triple<Long, String, Long>>()

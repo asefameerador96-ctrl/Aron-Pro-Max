@@ -166,4 +166,9 @@
     <string name="slide_submit">জমা দিন</string>
     <string name="slide_save">সংরক্ষণ</string>
     <string name="slide_close_x">বন্ধ</string>
+    <string name="sale_glyph_minus">−</string>
+    <string name="sale_glyph_plus">+</string>
+    <string name="slide_glyph_close">✕</string>
+    <string name="slide_quick_down">−%1$s</string>
+    <string name="qc_minus_amount">− %1$s</string>
 </resources>

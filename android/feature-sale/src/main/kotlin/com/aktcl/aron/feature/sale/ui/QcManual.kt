@@ -151,12 +151,17 @@ private fun QcTiles(skus: List<SaleSku>, review: SaleReview, locked: Boolean, on
                         ) {
                             Text(s?.let { skuDisplayName(it) } ?: r.skuId.toString(), Modifier.weight(1.3f), color = look.purple, maxLines = 2)
                             Text(kinds, Modifier.weight(1.2f), color = look.ink, fontSize = 13.sp, textAlign = TextAlign.Center)
-                            Text(localizedNumber(r.totalQty), Modifier.widthIn(min = 40.dp), color = look.ink, fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
+                            // the count stays in sticks (D-SR-MAN-S4-06) and says so; the packet equivalent sits under it, as on the earlier screen
+                            Column(Modifier.widthIn(min = 72.dp), horizontalAlignment = Alignment.End) {
+                                Text(localizedNumber(r.totalQty) + (s?.let { " " + unitLabel(it.baseUnit) } ?: ""), color = look.ink, fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
+                                s?.let { qcPackEquivalent(it, r.totalQty) }?.let { Text(it, color = look.inkMuted, fontSize = 12.sp, textAlign = TextAlign.End, modifier = Modifier.testTag(QcTags.PACK_EQUIV)) }
+                            }
                         }
                     }
                     Column(Modifier.fillMaxWidth().background(look.tableHeader).padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
                         QcTotalLine(stringResource(R.string.qc_total_settled), localizedNumber(review.qc.sumOf { it.entry.defectQty }))
-                        QcTotalLine(stringResource(R.string.qc_settlement), money(review.totals.qcDeductionMtk))
+                        // a deduction shows its minus sign, as the earlier QC screen did
+                        QcTotalLine(stringResource(R.string.qc_settlement), stringResource(R.string.qc_minus_amount, money(review.totals.qcDeductionMtk)))
                     }
                 }
             }
@@ -210,6 +215,10 @@ private fun QcEntryPage(
                     ) {
                         Text(if (ti == 0) stringResource(label) else "", Modifier.weight(0.9f), color = look.purple, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         Text(qcTypeLabel(type.code), Modifier.weight(1.5f), color = look.ink, fontSize = 14.sp)
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(unitLabel(sku.baseUnit), color = look.inkMuted, fontSize = 12.sp)
+                            qcPackEquivalent(sku, qtyOf(sku.skuId, type.code))?.let { Text(it, color = look.inkMuted, fontSize = 12.sp, modifier = Modifier.testTag(QcTags.PACK_EQUIV)) }
+                        }
                         AronQtyField(
                             qtyOf(sku.skuId, type.code).toInt(), { if (!locked) onQty(sku.skuId, type.code, it.toLong()) },
                             name = qcTypeLabel(type.code) + " " + skuDisplayName(sku), max = max, enabled = !locked,

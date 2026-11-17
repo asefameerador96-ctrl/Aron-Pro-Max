@@ -44,9 +44,12 @@ fun SaleRoute(
     printerAssist: Boolean = false,
     /** P-SR2 (manuals 25, 26): the vendor's QC pages (tiles, entry table with সংরক্ষণ / বাতিল / ডিলিট); off for the AMO. [onQcEntryPage] tells the host when the entry page is open. */
     vendorQc: Boolean = false, onQcEntryPage: (Boolean) -> Unit = {},
+    /** The SR host's bar title follows the stage ("QC", "QC এন্ট্রি", "স্লাইড", manuals 25, 26, 33): the stage is reported when it changes. */
+    onStage: (SaleStage) -> Unit = {},
 ) {
     val ui by vm.state.collectAsState()
     var stage by remember { mutableStateOf(SaleStage.Entry) }
+    androidx.compose.runtime.LaunchedEffect(stage) { onStage(stage) }
     var qcOnlyStarted by remember { mutableStateOf(false) }
     var qcBefore by remember { mutableStateOf(emptyList<QcEntry>()) }
     val draft = ui.draft

@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,8 +72,11 @@ fun SlideManualScreen(
 ) {
     val look = LocalAronLook.current
     val offered = skus.filter { it.drp != null }
-    var offerOf by remember { mutableStateOf<SaleSku?>(null) }
-    var quickOf by remember { mutableStateOf<SaleSku?>(null) }
+    // saved as SKU ids (a SaleSku is not saveable) so a pop-up or the quick-add dialog survives a rotation or a process restart
+    var offerId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var quickId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val offerOf = skus.firstOrNull { it.skuId == offerId }
+    val quickOf = skus.firstOrNull { it.skuId == quickId }
     Column(modifier.fillMaxSize().background(look.page)) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             outletLines.firstOrNull()?.let { Text(it, color = look.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
@@ -95,11 +99,11 @@ fun SlideManualScreen(
                             Text(name, Modifier.weight(1f), color = look.purple, fontSize = 17.sp, maxLines = 2)
                             // the grey stepper box: a red minus, the count (a tap opens the quick-add dialog), a purple plus
                             Row(Modifier.clip(RoundedCornerShape(12.dp)).background(look.rowAlt), verticalAlignment = Alignment.CenterVertically) {
-                                Text("−", color = look.red, fontSize = 26.sp, textAlign = TextAlign.Center, modifier = Modifier.heightIn(min = AronLook.Touch).widthIn(min = AronLook.Touch)
+                                Text(stringResource(R.string.sale_glyph_minus), color = look.red, fontSize = 26.sp, textAlign = TextAlign.Center, modifier = Modifier.heightIn(min = AronLook.Touch).widthIn(min = AronLook.Touch)
                                     .clickable(enabled = n > 0, role = Role.Button, onClickLabel = stringResource(R.string.sale_less)) { onEmpty(sku.skuId, (n - 1).coerceAtLeast(0)) }.padding(top = 6.dp))
                                 Text(localizedNumber(n), color = look.ink, fontSize = 20.sp, textAlign = TextAlign.Center,
-                                    modifier = Modifier.widthIn(min = 40.dp).heightIn(min = AronLook.Touch).clickable(role = Role.Button) { quickOf = sku }.padding(top = 10.dp).testTag(SlideTags.COUNT))
-                                Text("+", color = look.purple, fontSize = 26.sp, textAlign = TextAlign.Center, modifier = Modifier.heightIn(min = AronLook.Touch).widthIn(min = AronLook.Touch)
+                                    modifier = Modifier.widthIn(min = 40.dp).heightIn(min = AronLook.Touch).clickable(role = Role.Button) { quickId = sku.skuId }.padding(top = 10.dp).testTag(SlideTags.COUNT))
+                                Text(stringResource(R.string.sale_glyph_plus), color = look.purple, fontSize = 26.sp, textAlign = TextAlign.Center, modifier = Modifier.heightIn(min = AronLook.Touch).widthIn(min = AronLook.Touch)
                                     .clickable(enabled = n < 999_999, role = Role.Button, onClickLabel = stringResource(R.string.sale_more)) { onEmpty(sku.skuId, (n + 1).coerceAtMost(999_999)) }.padding(top = 6.dp))
                             }
                         }
@@ -107,7 +111,7 @@ fun SlideManualScreen(
                         Text(
                             stringResource(R.string.slide_offer_ribbon), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
                             modifier = Modifier.align(Alignment.TopEnd).rotate(0f).clip(RoundedCornerShape(bottomStart = 10.dp)).background(RibbonRed)
-                                .clickable(role = Role.Button) { offerOf = sku }.padding(horizontal = 8.dp, vertical = 2.dp).testTag(SlideTags.RIBBON),
+                                .clickable(role = Role.Button) { offerId = sku.skuId }.padding(horizontal = 8.dp, vertical = 2.dp).testTag(SlideTags.RIBBON),
                         )
                     }
                     review.drp.firstOrNull { it.skuId == sku.skuId }?.let {
@@ -126,8 +130,8 @@ fun SlideManualScreen(
             ) { Text(stringResource(R.string.slide_submit), color = look.onBar, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(AronTokens.Space.M)) }
         }
     }
-    offerOf?.let { sku -> OfferPopup(sku) { offerOf = null } }
-    quickOf?.let { sku -> QuickAddDialog(sku, emptyOf(sku.skuId), onSave = { v -> onEmpty(sku.skuId, v); quickOf = null }, onDismiss = { quickOf = null }) }
+    offerOf?.let { sku -> OfferPopup(sku) { offerId = null } }
+    quickOf?.let { sku -> QuickAddDialog(sku, emptyOf(sku.skuId), onSave = { v -> onEmpty(sku.skuId, v); quickId = null }, onDismiss = { quickId = null }) }
 }
 
 private val RibbonRed = Color(0xFFC62828)
@@ -140,7 +144,7 @@ private fun OfferPopup(sku: SaleSku, onClose: () -> Unit) {
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Lilac).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.slide_discount_title), Modifier.weight(1f), color = Color(0xFF1F4FA8), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("✕", color = Color(0xFF212121), fontSize = 20.sp, modifier = Modifier.heightIn(min = AronLook.Touch).widthIn(min = AronLook.Touch).clickable(role = Role.Button, onClickLabel = stringResource(R.string.slide_close_x), onClick = onClose).padding(top = 10.dp), textAlign = TextAlign.Center)
+                Text(stringResource(R.string.slide_glyph_close), color = Color(0xFF212121), fontSize = 20.sp, modifier = Modifier.heightIn(min = AronLook.Touch).widthIn(min = AronLook.Touch).clickable(role = Role.Button, onClickLabel = stringResource(R.string.slide_close_x), onClick = onClose).padding(top = 10.dp), textAlign = TextAlign.Center)
             }
             Box(Modifier.fillMaxWidth().heightIn(min = 1.dp, max = 1.dp).background(Color(0xFF9E9E9E)))
             Text(skuDisplayName(sku) + ": " + stringResource(R.string.slide_offer_text, localizedNumber((sku.drp?.emptyPerReward ?: 0).toLong())), color = Color(0xFF424242), fontSize = 16.sp)
@@ -156,21 +160,21 @@ private fun OfferPopup(sku: SaleSku, onClose: () -> Unit) {
 @Composable
 private fun QuickAddDialog(sku: SaleSku, start: Long, onSave: (Long) -> Unit, onDismiss: () -> Unit) {
     val look = LocalAronLook.current
-    var n by remember { mutableStateOf(start) }
+    var n by rememberSaveable { mutableStateOf(start) }
     Dialog(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Lilac).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                 PackshotImage(sku.skuId.toString(), Modifier.size(AronLook.PackshotWidth, AronLook.PackshotHeight), category = packCategoryOf(sku.categoryCode))
                 Text(skuDisplayName(sku), Modifier.weight(1f), color = Color(0xFF1F4FA8), fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                Text("−", color = Color(0xFF1B5E20), fontSize = 28.sp, modifier = Modifier.heightIn(min = AronLook.Touch).widthIn(min = AronLook.Touch).clickable(enabled = n > 0, role = Role.Button) { n = (n - 1).coerceAtLeast(0) }.padding(top = 4.dp), textAlign = TextAlign.Center)
+                Text(stringResource(R.string.sale_glyph_minus), color = Color(0xFF1B5E20), fontSize = 28.sp, modifier = Modifier.heightIn(min = AronLook.Touch).widthIn(min = AronLook.Touch).clickable(enabled = n > 0, role = Role.Button) { n = (n - 1).coerceAtLeast(0) }.padding(top = 4.dp), textAlign = TextAlign.Center)
                 Text(localizedNumber(n), color = look.ink, fontSize = 22.sp)
-                Text("+", color = Color(0xFF1B5E20), fontSize = 28.sp, modifier = Modifier.heightIn(min = AronLook.Touch).widthIn(min = AronLook.Touch).clickable(enabled = n < 999_999, role = Role.Button) { n = (n + 1).coerceAtMost(999_999) }.padding(top = 4.dp), textAlign = TextAlign.Center)
+                Text(stringResource(R.string.sale_glyph_plus), color = Color(0xFF1B5E20), fontSize = 28.sp, modifier = Modifier.heightIn(min = AronLook.Touch).widthIn(min = AronLook.Touch).clickable(enabled = n < 999_999, role = Role.Button) { n = (n + 1).coerceAtMost(999_999) }.padding(top = 4.dp), textAlign = TextAlign.Center)
             }
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xFFD9CFE6)).padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                 listOf(1L, 5L, 10L, 20L, 50L).forEach { step ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                         QuickButton(localizedNumber(step), Modifier.weight(1f)) { n = (n + step).coerceAtMost(999_999) }
-                        QuickButton("−" + localizedNumber(step), Modifier.weight(1f)) { n = (n - step).coerceAtLeast(0) }
+                        QuickButton(stringResource(R.string.slide_quick_down, localizedNumber(step)), Modifier.weight(1f)) { n = (n - step).coerceAtLeast(0) }
                     }
                 }
             }

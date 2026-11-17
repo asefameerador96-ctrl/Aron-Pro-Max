@@ -48,6 +48,18 @@ class ManualTaskScreenTest {
         compose.onNodeWithText("আউটলেট: Ruku Store").assertDoesNotExist() // no "Outlet:" prefix
     }
 
+    // lows of the lead's gate: a rep without TalkBack can discover the swipe, and it is not shown when there is nothing to resolve
+    @Test fun aVisibleHintTellsARepToSwipeAndOnlyWhileATaskIsOngoing() {
+        show(AppLanguage.EN, TaskListState(listOf(t("a")), 1))
+        compose.onNodeWithTag(TaskTags.SWIPE_HINT).assertExists()
+        compose.onNodeWithText("Swipe a task to the right to resolve it.").assertExists()
+    }
+
+    @Test fun noHintWhenEveryTaskIsCompleted() {
+        show(AppLanguage.EN, TaskListState(listOf(t("b", "completed")), 0))
+        compose.onNodeWithTag(TaskTags.SWIPE_HINT).assertDoesNotExist()
+    }
+
     @Test fun aSwipeOnlyAsksAndTheResolveHappensAfterTheConfirmation() {
         var resolved = 0
         show(AppLanguage.EN, TaskListState(listOf(t("a")), 1), onResolve = { resolved++ })

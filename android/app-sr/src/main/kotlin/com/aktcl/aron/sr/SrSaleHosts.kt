@@ -51,7 +51,7 @@ import kotlinx.coroutines.launch
  * (the sun switch lives on Home and in the sync sheet, screens-sr s0).
  */
 @Composable
-fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoSale: () -> Unit, onDone: () -> Unit, onSaleData: (Boolean) -> Unit = {}) {
+fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoSale: () -> Unit, onDone: () -> Unit, onSaleData: (Boolean) -> Unit = {}, onSaleBarTitle: (SaleBarTitle) -> Unit = {}) {
     val open by day.visitSession.current.collectAsState()
     val v = open ?: return
     val kit = day.sale
@@ -154,12 +154,18 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
     LaunchedEffect(v.visitUuid) { skuStats = kit.skuStats(v.outletId) }
     val outlet = day.dayData.collectAsState().value.outlets.firstOrNull { it.outletId == v.outletId }
     val route = day.dayData.collectAsState().value.route
+    // the bar title follows the sale's stage (manuals 25, 26, 33); the frame is the host's, so the stage is reported up
+    var qcStage by remember(v.visitUuid) { mutableStateOf(com.aktcl.aron.feature.sale.ui.SaleStage.Entry) }
+    var qcEntryOpen by remember(v.visitUuid) { mutableStateOf(false) }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { onSaleBarTitle(SaleBarTitle.SALE) } }
     Column(Modifier.fillMaxSize()) {
         // the outlet stays on screen from quantity entry to the commit-and-print tap (parity audit E1/R1): as the retailer pill on the list
         // and as the three header lines of the review (outlet and code, route, cluster)
         SaleRoute(
             vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f),
             zeroSaleReasonPicker = true, quantityPopup = true, skuStats = skuStats, vendorQc = true,
+            onStage = { stage -> qcStage = stage; onSaleBarTitle(saleBarTitle(stage, qcEntryOpen)) },
+            onQcEntryPage = { open -> qcEntryOpen = open; onSaleBarTitle(saleBarTitle(qcStage, open)) },
             retailerLabel = outlet?.let { com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) },
             outletLines = listOfNotNull(
                 outlet?.let { "${it.name} (${com.aktcl.aron.core.ui.localizedDigits(it.code)})" },
@@ -341,6 +347,15 @@ fun JourneyHost(day: SrDay, locale: com.aktcl.aron.rules.UiLocale) {
     com.aktcl.aron.core.ui.aron.AronLoaded(load, stringResource(R.string.sr_journey_load_failed), stringResource(com.aktcl.aron.feature.home.R.string.fb_retry)) { calls ->
         com.aktcl.aron.feature.memo.ui.SalesJourneyScreen(calls, locale)
     }
+}
+
+/** What the SR frame's bar says while the sale flow is up: "বিক্রয়" by default, then "QC", "QC এন্ট্রি" or "স্লাইড" (R1). */
+enum class SaleBarTitle { SALE, QC, QC_ENTRY, SLIDE }
+
+internal fun saleBarTitle(stage: com.aktcl.aron.feature.sale.ui.SaleStage, qcEntryOpen: Boolean): SaleBarTitle = when {
+    stage == com.aktcl.aron.feature.sale.ui.SaleStage.Slide -> SaleBarTitle.SLIDE
+    stage == com.aktcl.aron.feature.sale.ui.SaleStage.Qc -> if (qcEntryOpen) SaleBarTitle.QC_ENTRY else SaleBarTitle.QC
+    else -> SaleBarTitle.SALE
 }
 
 /**

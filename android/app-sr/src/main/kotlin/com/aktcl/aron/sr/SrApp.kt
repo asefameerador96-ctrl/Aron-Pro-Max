@@ -249,6 +249,7 @@ fun SrApp(
     var skipOutlet by remember { mutableStateOf<OutletEntity?>(null) }
     // "সেল ডাটা" is up inside the sale or memo host: the frame says so (SaleHost and MemoHost report it)
     var saleData by remember { mutableStateOf(false) }
+    var saleBarTitle by remember { mutableStateOf(SaleBarTitle.SALE) }
     val data by day.dayData.collectAsState()
     val tasks by day.taskBoard.state.collectAsState()
     val stockAttempt by day.stockAttempt.collectAsState()
@@ -478,12 +479,20 @@ fun SrApp(
                 }
             }
         }
-        SrScreen.VISIT -> SrFrame(if (saleData) stringResource(com.aktcl.aron.feature.memo.R.string.sale_data_title) else stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, printer = day.printerManager, printerAssist = printerAssistFor(SrScreen.VISIT), icon = CoreR.drawable.aron_art_sale) {
+        SrScreen.VISIT -> SrFrame(
+            when {
+                saleData -> stringResource(com.aktcl.aron.feature.memo.R.string.sale_data_title)
+                // R1: the bar says "QC", "QC এন্ট্রি" or "স্লাইড" while those pages are up
+                saleBarTitle == SaleBarTitle.QC -> stringResource(R.string.sr_bar_qc)
+                saleBarTitle == SaleBarTitle.QC_ENTRY -> stringResource(R.string.sr_bar_qc_entry)
+                saleBarTitle == SaleBarTitle.SLIDE -> stringResource(R.string.sr_bar_slide)
+                else -> stringResource(HomeR.string.hm_tile_sale)
+            }, goBack, sync, openSync, printer = day.printerManager, printerAssist = printerAssistFor(SrScreen.VISIT), icon = CoreR.drawable.aron_art_sale) {
             PermissionGate(GatedFeature.SALE, onBack = goBack) {
                 val st by day.visitFlow.state.collectAsState()
                 val open by day.visitSession.current.collectAsState()
                 if (open != null) {
-                    SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME }, onSaleData = { saleData = it })
+                    SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME }, onSaleData = { saleData = it }, onSaleBarTitle = { saleBarTitle = it })
                 } else {
                     // tso-manual X4a (R-W-11): the lock landed while the fix was read, so the committer refused the call (nothing
                     // stored): the lock text instead of the generic failed commit and its retry; follow-up (R-W-23): the submit

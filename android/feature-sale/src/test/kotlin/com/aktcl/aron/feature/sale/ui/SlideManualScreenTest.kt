@@ -1,6 +1,7 @@
 package com.aktcl.aron.feature.sale.ui
 
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -68,5 +69,37 @@ class SlideManualScreenTest {
         show(mutableListOf(), { done++ })
         compose.onNodeWithTag(SlideTags.SUBMIT).performClick()
         assertEquals(1, done)
+    }
+
+    // lows of the lead's gate: the pop-up and the quick-add dialog (with the count typed into it) survive a recreate
+    private fun showRestorable(writes: MutableList<Pair<Long, Long>>): StateRestorationTester {
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK)
+        val review = SaleReviewCalculator.review(d, Fx.catalog)
+        val restore = StateRestorationTester(compose)
+        restore.setContent {
+            AronTheme(AppLanguage.EN) {
+                SlideManualScreen(listOf(Fx.maxr, Fx.aster), review, { 10L }, { id, n -> writes += id to n }, {}, listOf("Savar Metro (1618409)", "Route: R1"))
+            }
+        }
+        compose.waitForIdle()
+        return restore
+    }
+
+    @Test fun theOfferPopupSurvivesARecreate() {
+        val restore = showRestorable(mutableListOf())
+        compose.onNodeWithTag(SlideTags.RIBBON).performClick()
+        compose.onNodeWithText("Discount").assertExists()
+        restore.emulateSavedInstanceStateRestore(); compose.waitForIdle()
+        compose.onNodeWithText("Discount").assertExists()
+    }
+
+    @Test fun theQuickAddDialogKeepsItsTypedCountAcrossARecreate() {
+        val writes = mutableListOf<Pair<Long, Long>>()
+        val restore = showRestorable(writes)
+        compose.onNodeWithTag(SlideTags.COUNT).performClick()
+        compose.onNodeWithText("5").performClick()
+        restore.emulateSavedInstanceStateRestore(); compose.waitForIdle()
+        compose.onNodeWithTag(SlideTags.SAVE).performClick(); compose.waitForIdle()
+        assertEquals(listOf(100L to 15L), writes) // 10 + 5: the 5 typed before the recreate is still there
     }
 }

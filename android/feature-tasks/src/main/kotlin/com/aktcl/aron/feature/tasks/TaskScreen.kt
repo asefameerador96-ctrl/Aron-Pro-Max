@@ -68,6 +68,7 @@ object TaskTags {
     const val LIST = "tsk_list"
     const val TABS = "tsk_tabs"
     const val MY_REQUESTS = "tsk_my_requests"
+    const val SWIPE_HINT = "tsk_swipe_hint"
     fun item(uuid: String) = "tsk_item_$uuid"
     fun resolve(uuid: String) = "tsk_resolve_$uuid"
     fun type(uuid: String) = "tsk_type_$uuid"
@@ -309,6 +310,10 @@ private fun ManualTaskList(items: List<TaskItem>, onResolve: (String) -> Unit, t
         contentPadding = PaddingValues(start = AronTokens.Space.Screen, end = AronTokens.Space.Screen, top = AronTokens.Space.M, bottom = AronTokens.Space.L),
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
+        // a rep must be able to discover the swipe without TalkBack: one line above the cards, only while there is something to resolve
+        if (items.any { it.status == ONGOING }) item(key = "swipe-hint") {
+            Text(stringResource(R.string.tsk_swipe_hint), Modifier.fillMaxWidth().testTag(TaskTags.SWIPE_HINT), style = MaterialTheme.typography.bodyMedium, color = LocalAronLook.current.inkMuted)
+        }
         itemsIndexed(items, key = { _, t -> t.taskUuid }) { _, t ->
             if (t.status == ONGOING) ManualSwipe({ asking = t.taskUuid }, Modifier.testTag(TaskTags.item(t.taskUuid))) { ManualTaskCard(t, typeLabels, onResolveTap = { asking = t.taskUuid }) }
             else ManualTaskCard(t, typeLabels, null, Modifier.testTag(TaskTags.item(t.taskUuid)))
@@ -366,7 +371,8 @@ private fun ManualTaskCard(t: TaskItem, typeLabels: Map<String, TaskTypeLabel>, 
     Column(
         modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card).padding(AronTokens.Space.L)
             // TalkBack cannot swipe: the same confirmed resolve is one custom action away
-            // P-SR2 (manual 47): the vendor card shows no button, the swipe is the gesture; this action is for TalkBack and keyboard users
+            // P-SR2 (manual 47): the vendor card shows no button, the swipe is the gesture. This custom action is for TalkBack (and other
+            // accessibility services that list actions); a plain hardware keyboard cannot reach it, and has no other way to resolve here.
             .then(if (onResolveTap != null) Modifier.testTag(TaskTags.resolve(t.taskUuid)).semantics { customActions = listOf(CustomAccessibilityAction(resolveLabel) { onResolveTap(); true }) } else Modifier),
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
     ) {

@@ -120,7 +120,8 @@ class Sr2Shot {
     @Config(qualifiers = "bn-w360dp-h1000dp")
     @Test fun summary_bn() = shot("sr2_summary_bn") {
         ParityFrame(stringResource(com.aktcl.aron.feature.memo.R.string.summary_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, printerConnected = true) {
-            com.aktcl.aron.feature.memo.ui.SummaryScreen(summary, { sumNames[it] ?: "" }, {}, categoryLabel = { catNames[it] ?: it }, unitLabel = { unitNames[it] ?: "" })
+            // the SR host lists the categories in the vendor's order on its screen only (lead gate finding 3)
+            com.aktcl.aron.feature.memo.ui.SummaryScreen(com.aktcl.aron.feature.memo.domain.DaySummaryCalculator.inCategoryOrder(summary), { sumNames[it] ?: "" }, {}, categoryLabel = { catNames[it] ?: it }, unitLabel = { unitNames[it] ?: "" })
         }
     }
 
@@ -138,7 +139,7 @@ class Sr2Shot {
         ParityFrame(stringResource(com.aktcl.aron.feature.dayclose.R.string.submit_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
             com.aktcl.aron.feature.dayclose.SalesSubmitScreen(
                 true, counts, gate, com.aktcl.aron.feature.dayclose.SubmitProgress.Idle, { recLabels[it] ?: it }, {}, {},
-                business = dev, serverBusiness = serverFigures, categoryLabel = { catNames[it] ?: it }, vendorDialogs = true, checkoutHint = true,
+                business = dev, serverBusiness = serverFigures, categoryLabel = { catNames[it] ?: it }, vendorDialogs = true, srDuesInDialog = true, checkoutHint = true,
             )
         }
     }

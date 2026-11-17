@@ -65,4 +65,7 @@
     <string name="sr_content_close_x">× বন্ধ করুন</string>
     <string name="sr_glyph_dropdown">▾</string>
     <string name="sr_journey_load_failed">বিক্রয় যাত্রা লোড করা যায়নি</string>
+    <string name="sr_bar_qc">QC</string>
+    <string name="sr_bar_qc_entry">QC এন্ট্রি</string>
+    <string name="sr_bar_slide">স্লাইড</string>
 </resources>
