@@ -347,7 +347,7 @@ class ScreenshotTests {
     @Composable private fun Tasks() = Frame(stringResource(HomeR.string.hm_tile_tasks)) { TaskContent(tasks, {}) }
 
     @Composable private fun Login(sunlight: Boolean) =
-        LoginContent(LoginUiState(username = "sr334001", password = "secret", message = LoginMessage.InvalidCredentials), "ARON SR", "1.0.25 (12)", {}, {}, {}, {}, {}, sunlight = sunlight, onSunlight = {})
+        com.aktcl.aron.feature.auth.SrLoginContent(LoginUiState(username = "sr334001", password = "secret", message = LoginMessage.InvalidCredentials), "1.0.25 (12)", {}, {}, {}, {}, {}, null, sunlight, {})
 
 
     // ---- Home ----

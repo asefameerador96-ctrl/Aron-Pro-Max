@@ -98,6 +98,11 @@ fun StockContent(
     printBlock: StockPrintBlock? = null,
     /** "synced at" caption of the empty state, when the host knows it. */
     syncedAt: String? = null,
+    /**
+     * The SR look of the old app (D-PAR-SR1-02): the column heads read "স্টক" and every packshot carries its count badge. The AMO hosts
+     * pass false and keep their own recorded wording and badge rule.
+     */
+    srParity: Boolean = true,
 ) {
     val look = LocalAronLook.current
     val hasChange = rows.any { it.entered > 0 }
@@ -132,13 +137,13 @@ fun StockContent(
             } else {
                 PackListHeader(
                     sku = stringResource(R.string.stk_col_sku), quantity = stringResource(R.string.stk_col_issue),
-                    stock = stringResource(if (hasStock) R.string.stk_col_stock else R.string.stk_col_loaded_short),
+                    stock = stringResource(if (hasStock || srParity) R.string.stk_col_stock else R.string.stk_col_loaded_short),
                 )
                 LazyColumn(
                     Modifier.weight(1f).testTag(StockTags.LIST),
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(ordered, key = { it.sku.skuId }, contentType = { "sku" }) { r -> StockSkuRow(r, softCeiling, onIssue) }
+                    items(ordered, key = { it.sku.skuId }, contentType = { "sku" }) { r -> StockSkuRow(r, softCeiling, onIssue, srParity) }
                 }
             }
         }
@@ -153,7 +158,7 @@ fun StockContent(
             },
         ).takeIf { it.isNotEmpty() }?.joinToString(stringResource(R.string.stk_reason_join))
         Column(Modifier.fillMaxWidth().panelBackground(look).windowInsetsPadding(WindowInsets.navigationBars)) {
-            StockTotals(rows, totals, hasStock)
+            StockTotals(rows, totals, hasStock || srParity)
             if (reason != null) Text(reason, color = look.onPanelMuted, fontSize = 12.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp))
             Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 AronPrimaryButton(
@@ -185,7 +190,7 @@ internal fun parseQty(text: String): Int =
  * packed (Q-UI-11). Each control carries its own TalkBack label with the SKU name (minus, the Issue field, plus).
  */
 @Composable
-private fun StockSkuRow(r: StockRow, softCeiling: Long, onIssue: (Long, Int) -> Unit) {
+private fun StockSkuRow(r: StockRow, softCeiling: Long, onIssue: (Long, Int) -> Unit, srParity: Boolean) {
     val look = LocalAronLook.current
     val unit = entryUnitLabel(r.labelKey)
     val figure = r.figureEntry
@@ -202,7 +207,7 @@ private fun StockSkuRow(r: StockRow, softCeiling: Long, onIssue: (Long, Int) -> 
             stock = localizedNumber(figure) + com.aktcl.aron.core.ui.remSuffix(r.figureRemainderBase),
             minusLabel = stringResource(R.string.stk_less) + ", " + name, plusLabel = stringResource(R.string.stk_more) + ", " + name,
             quantityLabel = name + ", " + stringResource(R.string.stk_col_issue) + ", " + unit,
-            packBadge = packs?.let { localizedNumber(it) },
+            packBadge = (packs ?: r.entered.takeIf { srParity })?.let { localizedNumber(it) }, // sr/stock.webp: the purple count badge on every packshot (D-PAR-SR1-02); entered in packets, it is the packet count
             caption = unit,
             category = packCategoryOf(r.sku.categoryCode),
             minusEnabled = entered > 0, plusEnabled = entered < max,

@@ -81,10 +81,9 @@ class StockScreenTest {
 
     @Test fun keyFigureIsTheTotalLoadUntilTheHostSuppliesTheStockInTheBag() {
         show(AppLanguage.BN, rows = rowsWithEntry)
-        // without an on-hand figure the numeral is loaded today plus the increment, and the column head says so (never "stock")
-        compose.onNodeWithText("লোড").assertExists(); compose.onNodeWithText("মোট লোড").assertExists() // list head and panel head
+        // without an on-hand figure the numeral is loaded today plus the increment; the head reads "স্টক" as on the old app (D-PAR-SR1-02)
+        compose.onAllNodesWithText("স্টক").assertCountEquals(2); compose.onNodeWithText("মোট লোড").assertDoesNotExist() // list head and panel head
         compose.onAllNodesWithText("১৭").assertCountEquals(2) // 400 sticks = 16 boxes of 25, plus the 1 box being entered
-        compose.onNodeWithText("স্টক").assertDoesNotExist()
     }
 
     @Test fun keyFigureIsTheStockInTheBagWhenSupplied() {
