@@ -24,6 +24,7 @@
     <string name="memo_mark_paid">Mark paid</string>
     <string name="memo_mark_paid_title">Are you sure?</string>
     <string name="memo_mark_paid_confirm">Settle the whole due of this memo?</string>
+    <string name="memo_mark_paid_confirm_amount">Settle the whole remaining due of %1$s on this memo?</string>
     <string name="memo_paid_done">This memo is marked as paid.</string>
     <string name="memo_yes">Yes</string>
     <string name="memo_no">No</string>

@@ -346,7 +346,7 @@ fun MemoDetailView(
                 }
             }
         }
-        if (dueMtk > 0) { if (vendorLayout) VendorDueBox(canMarkPaid) { confirm = true } else CreditBox(money(dueMtk), canMarkPaid, dashedDueBox, dueSideBySide) { confirm = true } }
+        if (dueMtk > 0) { if (vendorLayout) VendorDueBox(money(dueMtk), canMarkPaid) { confirm = true } else CreditBox(money(dueMtk), canMarkPaid, dashedDueBox, dueSideBySide) { confirm = true } }
         // a disabled action always says why, above the buttons
         listOfNotNull(printDisabledReason, editDisabledReason).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = look.inkMuted) }
         if (buttonsInRow) {
@@ -379,7 +379,9 @@ fun MemoDetailView(
     }
     if (confirm) {
         AronConfirmDialog(
-            stringResource(R.string.memo_mark_paid_title), stringResource(R.string.memo_mark_paid_confirm), stringResource(R.string.memo_yes), stringResource(R.string.memo_no),
+            stringResource(R.string.memo_mark_paid_title),
+            if (vendorLayout) stringResource(R.string.memo_mark_paid_confirm_amount, money(dueMtk)) else stringResource(R.string.memo_mark_paid_confirm),
+            stringResource(R.string.memo_yes), stringResource(R.string.memo_no),
             onConfirm = { confirm = false; onMarkPaid() }, onDismiss = { confirm = false },
         )
     }
@@ -788,7 +790,8 @@ private fun MemoSwitcherBar(sw: MemoSwitcher) {
                 // manual 38: the outlet in ink, ": ২৯১.৫০ ৳" in purple, then the red word বাকি when a due is open
                 Text(cur?.label.orEmpty(), style = MaterialTheme.typography.bodyLarge, color = look.ink, maxLines = 2, modifier = Modifier.weight(1f))
                 if ((cur?.totalMtk ?: 0) > 0) Text(stringResource(R.string.memo_selector_total, money(cur!!.totalMtk)), style = MaterialTheme.typography.labelLarge, color = look.purple)
-                if ((cur?.dueMtk ?: 0) > 0) Text(stringResource(R.string.memo_due_word), style = MaterialTheme.typography.labelLarge, color = look.red)
+                // the amount the rep will settle, never a bare word: Mark paid records the REMAINING due, which can be less than the total
+                if ((cur?.dueMtk ?: 0) > 0) Text(stringResource(R.string.memo_due_chip_amount, money(cur!!.dueMtk)), style = MaterialTheme.typography.labelLarge, color = look.red)
                 Text(stringResource(R.string.memo_glyph_dropdown), color = look.inkMuted)
             }
         }

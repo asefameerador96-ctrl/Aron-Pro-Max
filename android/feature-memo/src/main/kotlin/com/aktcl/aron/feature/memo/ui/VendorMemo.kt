@@ -142,7 +142,7 @@ private fun VendorTotalLine(label: String, value: String) {
 
 /** The credit box (manual 38): dashed red edge, the card icon over the red sentence, a thin red divider, the green "পরিশোধিত করুন". */
 @Composable
-internal fun VendorDueBox(canMarkPaid: Boolean, onMarkPaid: () -> Unit) {
+internal fun VendorDueBox(dueText: String, canMarkPaid: Boolean, onMarkPaid: () -> Unit) {
     val look = LocalAronLook.current
     val red = look.red
     Row(
@@ -154,6 +154,8 @@ internal fun VendorDueBox(canMarkPaid: Boolean, onMarkPaid: () -> Unit) {
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
             Icon(AronIcons.Wallet, contentDescription = null, tint = Color(0xFFFFB300), modifier = Modifier.size(AronTokens.Size.Icon))
             Text(stringResource(R.string.memo_credit_title), style = MaterialTheme.typography.titleSmall, color = red, textAlign = TextAlign.Center)
+            // the REMAINING due, the amount Mark paid will record (it can be less than the memo total): a figure the rep acts on is never hidden
+            MoneyText(stringResource(R.string.memo_due_chip_amount, dueText), style = MaterialTheme.typography.titleMedium, color = red, textAlign = TextAlign.Center)
         }
         Box(Modifier.width(1.dp).fillMaxHeight().background(red))
         if (canMarkPaid) AronSolidButton(stringResource(R.string.memo_mark_paid), onMarkPaid, Modifier.weight(1f), tone = SolidTone.Green)

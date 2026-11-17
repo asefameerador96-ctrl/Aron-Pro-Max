@@ -23,6 +23,7 @@
     <string name="memo_mark_paid">পরিশোধিত করুন</string>
     <string name="memo_mark_paid_title">আপনি কি নিশ্চিত?</string>
     <string name="memo_mark_paid_confirm">এই মেমোর পুরো বাকি পরিশোধ করবেন?</string>
+    <string name="memo_mark_paid_confirm_amount">এই মেমোর পুরো বাকি %1$s পরিশোধ করবেন?</string>
     <string name="memo_paid_done">এই মেমোটি সফলভাবে পরিশোধিত হিসেবে চিহ্নিত হয়েছে।</string>
     <string name="memo_yes">হ্যাঁ</string>
     <string name="memo_no">না</string>
