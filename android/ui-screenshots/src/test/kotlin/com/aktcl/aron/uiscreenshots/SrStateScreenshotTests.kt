@@ -156,9 +156,9 @@ class SrStateScreenshotTests {
         HomeContent(
             header, HomeTiles.resolve(setOf("astha", "loyalty_point", "match_program"), 2), freshness, false, DeviceHealthModel.of(62, 1_200, 3, 12), onTile = {},
             onSettings = {}, hero = HomeHero(Formats.money(4_391_000, locale), 6, 60, "08:52", dayState),
-            kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("Cigarette", 12_000, 9_800, stick), HomeStockLine("Lighter", 400, 25, piece), HomeStockLine("Match", 400, 394, dozen))),
+            kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("সিগারেট", 12_000, 9_800, stick), HomeStockLine("লাইটার", 400, 25, piece), HomeStockLine("ম্যাচ", 400, 394, dozen))),
             money = HomeMoneyLines(
-                listOf(HomeMoneyLine("Match", Formats.money(141_000, locale)), HomeMoneyLine("Lighter", Formats.money(4_687_500, locale))),
+                listOf(HomeMoneyLine("ম্যাচ", Formats.money(141_000, locale)), HomeMoneyLine("লাইটার", Formats.money(4_687_500, locale))),
                 Formats.money(4_828_500, locale), "−" + Formats.money(437_500, locale), null, Formats.money(4_391_000, locale),
                 packetsSold = 0, grossBare = bare(4_828_500, locale), offerDiscountBare = bare(437_500, locale), qcBare = bare(0, locale), netBare = bare(4_391_000, locale),
                 totalDiscountBare = bare(437_500, locale), drpDiscountBare = bare(0, locale), totalQcBare = bare(0, locale),

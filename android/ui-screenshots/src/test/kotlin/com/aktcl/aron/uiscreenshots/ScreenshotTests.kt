@@ -160,9 +160,11 @@ class ScreenshotTests {
         val piece = stringResource(SaleR.string.sale_unit_piece)
         val dozen = stringResource(SaleR.string.sale_unit_dozen)
         val stick = stringResource(SaleR.string.sale_unit_stick)
-        val lighter = "Lighter" // sample data: category names are bundle data, not resources
-        val match = "Match"
-        val cigarette = "Cigarette"
+        // category names as the production Home shows them: the localized sr_cat_* words (D-PAR-SR1-06: the fixture no longer shows English words on a Bangla page)
+        val bn = language == AppLanguage.BN
+        val lighter = if (bn) "লাইটার" else "Lighter"
+        val match = if (bn) "ম্যাচ" else "Match"
+        val cigarette = if (bn) "সিগারেট" else "Cigarette"
         HomeContent(
             header, HomeTiles.resolve(flags, 2), BundleFreshness.Fresh, false, DeviceHealthModel.of(62, 1_200, 3, 12), onTile = {},
             onSettings = {}, hero = HomeHero(Formats.money(4_391_000, locale), 6, 60, "08:52", HomeDayState.IN_FIELD),
@@ -352,6 +354,8 @@ class ScreenshotTests {
 
     // ---- Home ----
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun home_bn_light() = shot("home_bn_light", AppLanguage.BN) { Home(AppLanguage.BN) }
+    // D-PAR-SR1-06: the whole Home page in one tall frame (tiles, KPI boxes, issue and stock card, money cards), which the 800 dp frame cut off
+    @Test @Config(qualifiers = "bn-w360dp-h1900dp") fun home_bn_tall() = shot("home_bn_tall", AppLanguage.BN) { Home(AppLanguage.BN) }
     @Test fun home_en_light() = shot("home_en_light", AppLanguage.EN) { Home(AppLanguage.EN) }
     // the registry defaults (cfg.flag.astha_ui and loyalty_ui on, superstar_ui off): what an SR sees before any flag is set, 14 tiles
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun home_bn_default_flags() = shot("home_bn_default_flags", AppLanguage.BN) { Home(AppLanguage.BN, setOf("astha", "loyalty_point")) }
