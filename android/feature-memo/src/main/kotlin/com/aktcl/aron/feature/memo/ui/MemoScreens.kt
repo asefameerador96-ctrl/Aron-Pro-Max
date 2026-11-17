@@ -623,7 +623,7 @@ fun SummaryScreen(
                     SummaryTable(
                         headers = listOf(
                             stringResource(R.string.summary_col_memos), stringResource(R.string.summary_col_qty), stringResource(R.string.summary_col_value),
-                            stringResource(R.string.summary_col_discount), stringResource(R.string.summary_col_after), stringResource(R.string.summary_col_return),
+                            stringResource(R.string.summary_col_discount), stringResource(R.string.summary_col_after).let { if (salesBlock) it.replace(' ', '\n') else it }, stringResource(R.string.summary_col_return), // the AMO's two-word head takes two lines so it cannot run into its neighbour at 360 dp
                         ),
                         rows = summary.skus.map { r ->
                             SummaryRow(
@@ -634,10 +634,10 @@ fun SummaryScreen(
                                 ),
                             )
                         },
-                        weights = SummaryColumns.shares,
+                        weights = if (salesBlock) SummaryColumns.amoShares else SummaryColumns.shares,
                     )
                 }
-                SummaryDock(summary, categoryLabel) { categoryUnit(it) }
+                SummaryDock(summary, categoryLabel, if (salesBlock) SummaryColumns.amoShares else SummaryColumns.shares) { categoryUnit(it) }
             }
             if (salesBlock) SummarySalesBlock(summary)
             printButton()
@@ -654,24 +654,26 @@ private fun SummarySalesBlock(summary: DaySummary) {
     val look = LocalAronLook.current
     val green = look.primaryStart ?: look.purple
     val red = look.stopFill ?: look.red
+    val pad = PaddingValues(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M)
     Column(Modifier.fillMaxWidth().testTag("summary_sales_block")) {
-        Box(Modifier.clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)).background(green).padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Box(Modifier.clip(RoundedCornerShape(topStart = AronLook.CardRadius, topEnd = AronLook.CardRadius)).background(green).padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.S)) {
             Text(stringResource(R.string.summary_block_title), style = MaterialTheme.typography.titleSmall, color = Color.White)
         }
-        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(topEnd = 10.dp, bottomStart = 10.dp, bottomEnd = 10.dp))) {
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(topEnd = AronLook.CardRadius, bottomStart = AronLook.CardRadius, bottomEnd = AronLook.CardRadius))) {
             Text(
                 stringResource(R.string.summary_col_value), style = MaterialTheme.typography.labelLarge, color = Color.White, textAlign = TextAlign.End,
-                modifier = Modifier.fillMaxWidth().background(Color(0xFF2B2B2B)).padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().background(look.tableHeader).padding(pad),
             )
-            Row(Modifier.fillMaxWidth().background(look.card).padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Row(Modifier.fillMaxWidth().background(look.card).padding(pad)) {
                 Text(stringResource(R.string.summary_block_total), color = look.ink, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 Text(amount(summary.grossMtk), color = look.ink, style = MaterialTheme.typography.bodyMedium)
             }
-            Row(Modifier.fillMaxWidth().background(look.card).padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Text(stringResource(R.string.summary_block_discount), color = red, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            // D-PAR-AMO-16: the row holds offer + DRP + QC deductions (`discountAndOthersMtk`), so it carries the SR dock's own words "discount and others (-)"; gross minus this row is the grand total exactly
+            Row(Modifier.fillMaxWidth().background(look.card).padding(pad)) {
+                Text(stringResource(R.string.summary_discount_and_others), color = red, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 Text(stringResource(R.string.summary_block_minus, amount(kotlin.math.abs(summary.discountAndOthersMtk))), color = red, style = MaterialTheme.typography.bodyMedium)
             }
-            Row(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Row(Modifier.fillMaxWidth().background(look.rowAlt).padding(pad)) {
                 Text(stringResource(R.string.summary_block_grand), color = look.ink, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 Text(amount(summary.grandTotalMtk), color = look.ink, style = MaterialTheme.typography.titleSmall)
             }
@@ -681,8 +683,7 @@ private fun SummarySalesBlock(summary: DaySummary) {
 
 /** The docked block of sr/summary.png on its own `#F0F0F0` panel: a purple row per category (quantity with its unit as a small suffix), "discount and others (-)" and the grand total. */
 @Composable
-private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, unitOf: @Composable (CategorySummaryRow) -> String) {
-    val weights = SummaryColumns.shares
+private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, weights: List<Float>, unitOf: @Composable (CategorySummaryRow) -> String) {
     val look = LocalAronLook.current
     val figure = TextStyle(fontSize = 13.sp, color = look.purple, textAlign = TextAlign.End)
     Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {

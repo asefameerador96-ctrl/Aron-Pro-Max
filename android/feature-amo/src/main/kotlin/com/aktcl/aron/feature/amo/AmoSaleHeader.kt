@@ -61,7 +61,7 @@ private fun LabelLine(label: String, value: String) {
     Text(
         buildAnnotatedString {
             withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = look.ink)) { append(label) }
-            append(" ")
+            append("\u2002") // an en space: the visarga of "সেকশনঃ" and the bold label no longer hug the value
             withStyle(SpanStyle(color = look.inkMuted)) { append(value) }
         },
         style = MaterialTheme.typography.bodyLarge,

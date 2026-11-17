@@ -161,6 +161,11 @@ class AmoCallsScreenshotTests {
     @Test @Config(qualifiers = "w360dp-h1000dp") fun amo_summary_data_bn() = shot("amo_summary_data_bn", AppLanguage.BN, "বিক্রয় সারসংক্ষেপ") {
         com.aktcl.aron.feature.memo.ui.SummaryScreen(daySummary, { saleCatalog[it]?.code ?: "SKU" }, {}, categoryLabel = { if (it == "match") "ম্যাচ" else "সিগারেট" }, printWhenEmpty = true, salesBlock = true)
     }
+    // a QC deduction (a return of 125.00 taka) in the day: the row is "discount and others (-)" and gross minus it is the grand total (D-PAR-AMO-16)
+    private val qcSummary = daySummary.copy(discountAndOthersMtk = 125_000, grandTotalMtk = 324_000 - 125_000)
+    @Test @Config(qualifiers = "w360dp-h1000dp") fun amo_summary_qc_bn() = shot("amo_summary_qc_bn", AppLanguage.BN, "বিক্রয় সারসংক্ষেপ") {
+        com.aktcl.aron.feature.memo.ui.SummaryScreen(qcSummary, { saleCatalog[it]?.code ?: "SKU" }, {}, categoryLabel = { if (it == "match") "ম্যাচ" else "সিগারেট" }, printWhenEmpty = true, salesBlock = true)
+    }
     @Test @Config(qualifiers = "w360dp-h1000dp") fun amo_summary_data_bn_sunlight() = shot("amo_summary_data_bn_sunlight", AppLanguage.BN, "বিক্রয় সারসংক্ষেপ", sunlight = true) {
         com.aktcl.aron.feature.memo.ui.SummaryScreen(daySummary, { saleCatalog[it]?.code ?: "SKU" }, {}, categoryLabel = { if (it == "match") "ম্যাচ" else "সিগারেট" }, printWhenEmpty = true, salesBlock = true)
     }

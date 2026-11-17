@@ -138,6 +138,8 @@ class AmoOutletScreenshotTests {
 
     // ---- 54, 55 New shop
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_new_shop_route_cluster_bn() = shot("amo_new_shop_route_cluster_bn", AppLanguage.BN, "নতুন দোকান", content = newShop(true, false))
+    // the whole form in one frame (lead's low): the last fields, the capture block and Save are in view
+    @Test @Config(qualifiers = "bn-w360dp-h1400dp") fun amo_new_shop_form_tall_bn() = shot("amo_new_shop_form_tall_bn", AppLanguage.BN, "নতুন দোকান", content = newShop(true, true))
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_new_shop_form_bn() = shot("amo_new_shop_form_bn", AppLanguage.BN, "নতুন দোকান", content = newShop(true, true))
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_new_shop_form_en() = shot("amo_new_shop_form_en", AppLanguage.EN, "New shop", content = newShop(false, true))
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_new_shop_form_bn_fs2() = shot("amo_new_shop_form_bn_fs2", AppLanguage.BN, "নতুন দোকান", fontScale = 2f, content = newShop(true, true, setOf(AmoFormError.NAME, AmoFormError.MOBILE)))

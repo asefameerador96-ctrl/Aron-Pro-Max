@@ -160,7 +160,7 @@ fun AmoOutletFormBody(
         }
         if (bottom != null) bottom() else Row(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             if (onCancel != null) AmoNo(stringResource(R.string.amo_verify_cancel), onCancel, Modifier.weight(1f).testTag(OutletFormTags.CANCEL), enabled = !busy, icon = com.aktcl.aron.core.ui.AronIcons.Close) // screenshots 50, 55: the cross and the floppy
-            AmoPrimary(stringResource(R.string.amo_verify_save), onSave, Modifier.weight(1f).testTag(OutletFormTags.SAVE), enabled = saveEnabled && !busy, busy = busy, glyph = com.aktcl.aron.core.ui.aron.ButtonGlyph.Save)
+            AmoPrimary(stringResource(R.string.amo_verify_save), onSave, Modifier.weight(1f).testTag(OutletFormTags.SAVE), enabled = saveEnabled && !busy, busy = busy, glyph = com.aktcl.aron.core.ui.aron.ButtonGlyph.Submit) // the 18 dp floppy: the Save glyph is dot-sized (13 dp) beside the label
         }
     }
 }

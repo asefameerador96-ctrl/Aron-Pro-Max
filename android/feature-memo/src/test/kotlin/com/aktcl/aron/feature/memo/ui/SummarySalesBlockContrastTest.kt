@@ -17,10 +17,22 @@ class SummarySalesBlockContrastTest {
         val green = look.primaryStart ?: look.purple
         val red = look.stopFill ?: look.red
         assertTrue("$name: white on the green tab", contrast(Color.White, green) >= 7.0)
-        assertTrue("$name: white on the charcoal head", contrast(Color.White, Color(0xFF2B2B2B)) >= 7.0)
+        assertTrue("$name: white on the charcoal head", contrast(Color.White, look.tableHeader) >= 7.0)
         assertTrue("$name: discount red on the card", contrast(red, look.card) >= 7.0)
         assertTrue("$name: ink on the grey total row", contrast(look.ink, look.rowAlt) >= 7.0)
         assertTrue("$name: ink on the card", contrast(look.ink, look.card) >= 7.0)
+    }
+
+    // the memo detail's lines head (white words on the look's ramp, `gradientHeader`): both ends of the AMO ramp, and the Sunlight head (no ramp: the flat table head)
+    @Test fun memoHeadRampBothEnds() {
+        val look = AronLook.AmoPurple
+        assertTrue("ramp start", contrast(Color.White, look.panelTop!!) >= 7.0)
+        assertTrue("ramp end", contrast(Color.White, look.panelBottom!!) >= 7.0)
+    }
+    @Test fun memoHeadSunlight() {
+        val look = AronLook.AmoSunlight
+        assertTrue("Sunlight head is flat (no ramp)", look.panelTop == null)
+        assertTrue("white on the Sunlight head", contrast(Color.White, look.tableHeader) >= 7.0)
     }
 
     @Test fun amoLook() = check("AmoPurple", AronLook.AmoPurple)
