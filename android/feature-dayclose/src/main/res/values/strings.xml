@@ -36,6 +36,7 @@
     <string name="submit_dues_title">Are you sure?</string>
     <string name="submit_dues_ask">%1$s retailers still owe you. Do you want to submit your sales?</string>
     <string name="submit_dues_ask_v">You still have due with %1$s retailer(s). Do you want to submit your sales?</string>
+    <string name="submit_dues_ask_amount_v">You still have %2$s due with %1$s retailer(s). Do you want to submit your sales?</string>
     <string name="submit_success_v">Sales submitted successfully</string>
     <string name="submit_ok">OK</string>
     <string name="submit_type_media_meta">Photo details</string>

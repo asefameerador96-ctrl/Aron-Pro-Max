@@ -324,7 +324,7 @@ fun SubmitHost(day: SrDay) {
         onSync = vm::sync, onSubmit = vm::submit, syncing = st.syncing,
         rejected = st.rejected, dismissed = st.dismissed, serverKnown = st.serverKnown, today = day.businessDate(), // D-NIGHT-DAYCLOSE-01
         business = st.business, serverBusiness = st.serverBusiness, categoryLabel = { com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, it).ifBlank { it } },
-        vendorDialogs = true, checkoutHint = true, // SRM-B-27/29: the manual's dues modal and the success modal over the table (shots 40, 41)
+        vendorDialogs = true, srDuesInDialog = true, checkoutHint = true, // SRM-B-27/29: the manual's dues modal and the success modal over the table (shots 40, 41)
     )
 }
 

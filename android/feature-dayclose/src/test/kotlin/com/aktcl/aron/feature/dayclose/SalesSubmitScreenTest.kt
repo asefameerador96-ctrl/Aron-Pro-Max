@@ -75,6 +75,24 @@ class SalesSubmitScreenTest {
         compose.onNodeWithTag(SalesSubmitTags.HOLD).assertExists()
     }
 
+    // lead gate finding 4: the AMO also sets vendorDialogs; it keeps its inline dues box, which is where it shows the AMOUNT owed
+    @Test fun theAmoKeepsItsInlineDuesBoxWithTheAmountEvenWithVendorDialogs() {
+        val counts = listOf(CountRow("memo", 6, 6))
+        val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(1, 125_000), false)
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { it }, {}, {}, vendorDialogs = true) } }
+        compose.onNodeWithText("1 retailers still owe 125.00", substring = true).assertExists()
+    }
+
+    // the SR has no inline box, so its Submit dialog must state BOTH the count and the amount owed
+    @Test fun theSrDuesDialogStatesTheCountAndTheAmountOwed() {
+        val counts = listOf(CountRow("memo", 6, 6))
+        val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(1, 125_000), false)
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { it }, {}, {}, vendorDialogs = true, srDuesInDialog = true) } }
+        compose.onNodeWithText("1 retailers still owe", substring = true).assertDoesNotExist() // no inline box in the SR
+        compose.onNodeWithText("Submit sales").performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithText("You still have 125.00 ৳ due with 1 retailer(s). Do you want to submit your sales?").assertExists()
+    }
+
     @Test fun vendorSuccessIsADialogOverTheTableWithOneOkAndOnlyForASubmitMadeHere() {
         val counts = listOf(CountRow("memo", 6, 6))
         val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), true)
