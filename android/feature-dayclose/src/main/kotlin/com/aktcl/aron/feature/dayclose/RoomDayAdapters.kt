@@ -118,6 +118,7 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
             clientUuid = row.clientUuid, recordType = row.recordType, businessDate = row.businessDate, code = code, outcome = outcome,
             memoNo = row.memoNo, outletName = outletName,
             reasonBn = reason?.first, reasonEn = reason?.second, messageKey = messageKey, seen = seen, familySize = familySize,
+            afterCheckOut = row.recordType == "day_submit" && runCatching { capture.attendanceOn(row.businessDate).any { it.kind == "check_out" } }.getOrDefault(false),
         )
     }
 
@@ -242,7 +243,8 @@ class AutoDaySubmits(
         return targets.mapNotNull { route ->
             val meta = metaFor(route).copy(businessDate = businessDate, routeId = route)
             // a submit that stands (the rep's own Sales Submit) is left alone: the check-out then writes only itself
-            if (repo.dayRefusal(meta, "visit") == com.aktcl.aron.core.database.repo.DayRefusal.SALES_SUBMIT) return@mapNotNull null
+            // D-LEAD-PREREQ-03 ruling 4: asked WITHOUT a record type, so the Final Submit lock is not consulted: a standing submit is skipped whatever the zone's Final Submit state
+            if (repo.submitStandsFor(meta)) return@mapNotNull null
             val cycle = (dao.daySubmitsFor(businessDate, route).maxOfOrNull { it.submitCycle } ?: 0) + 1
             DaySubmitEntity(
                 clientUuid = newUuid(), meta = meta, scope = scope, submitCycle = cycle,

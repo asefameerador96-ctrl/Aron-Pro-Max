@@ -53,6 +53,34 @@ class AutoDaySubmitsTest {
         assertEquals(2, again.submitCycle)
     }
 
+    /**
+     * Review round 3, B3: the rep's own submit stands AND the zone's Final Submit has locked the route-day (policy reject). The old filter asked
+     * the Final Submit lock first, so it built a second submit that the writer refuses and every check-out failed. A standing submit is skipped
+     * whatever the Final Submit state, and the check-out then goes through (writing only itself).
+     */
+    @Test fun aStandingSubmitIsSkippedWhateverTheFinalSubmitStateAndTheCheckOutStillWorks() = runTest {
+        repo.recordStock(listOf(stock(10231)))
+        repo.recordDaySubmit(sr().build(date).single()) // the rep's own Sales Submit
+        db.referenceDao().insertConfig(listOf(com.aktcl.aron.core.database.entity.ConfigValueEntity(
+            key = com.aktcl.aron.core.database.repo.FinalSubmitLock.KEY_LATE_POLICY, valueJson = "\"reject\"", scopeType = "global", scopeId = null,
+            effectiveFrom = null, effectiveTo = null, configVersion = 1, requiresAck = false, scheduled = false,
+        )))
+        db.referenceDao().insertSections(listOf(com.aktcl.aron.core.database.entity.BundleSectionEntity("route.10231",
+            """{"route_id":10231,"targets":[],"day_state":{"route_id":10231,"business_date":"$date","state":"final_submitted","submit_cycle":0,"submit_voided":false,"final_submitted_at":"2026-10-05T10:00:00.000Z"}}""")))
+        assertEquals("a standing submit is never built again", emptyList<Any>(), sr().build(date))
+        val ciUuid = ClientIds.newUuid()
+        val inFix = com.aktcl.aron.core.database.entity.GeoFixEntity(
+            ClientIds.newUuid(), ciUuid, "attendance_in", "ok", 23.79, 90.4, 8.0, provider = "fused", isMock = false, reused = false,
+            deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false,
+        )
+        val outUuid = ClientIds.newUuid()
+        val fx = inFix.copy(clientUuid = ClientIds.newUuid(), ownerClientUuid = outUuid, purpose = "attendance_out")
+        repo.recordAttendance(com.aktcl.aron.core.database.entity.AttendanceEventEntity(ciUuid, meta(null), "check_in", inFix.clientUuid, null), inFix)
+        repo.recordCheckOut(com.aktcl.aron.core.database.entity.AttendanceEventEntity(outUuid, meta(null), "check_out", fx.clientUuid, null), fx) { d -> sr().build(d) }
+        assertEquals("the check-out wrote only itself: still the one submit", 1, db.captureDao().daySubmitsOn(date).size)
+        assertTrue(db.outboxDao().nextPending(100).any { it.recordType == "attendance_event" })
+    }
+
     @Test fun theAmoGetsOneSupervisorDaySubmitWithNoRoute() = runTest {
         repo.recordVisitSkip(VisitSkipEntity(ClientIds.newUuid(), meta(10231), 50001, "closed"))
         val built = amo().build(date)

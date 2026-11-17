@@ -145,4 +145,5 @@
     <string name="submit_show_again">Show again</string>
     <string name="submit_show_more">%1$s older records not shown. Show more</string>
     <string name="submit_blocked_unreadable">This phone could not read its own records just now, so Submit is off. Tap Try again.</string>
+    <string name="submit_day_submit_refused_after_checkout">Your day\'s sales submit was not accepted by the server. You have already checked out, so you cannot sell or collect on this day any more. Open Sales Submit and tap Submit again. If it is refused again, contact your supervisor.</string>
 </resources>

@@ -72,4 +72,19 @@ class RefusedReaderNoPayloadTest {
         assertTrue("a family is one entry: visit, memo, two lines", e.familySize >= 4)
     }
 
+    /** B4: the source marks a refused day_submit of a date that already carries a check-out, so the screen uses the after-check-out text. */
+    @Test fun aRefusedDaySubmitIsMarkedAfterCheckOutOnlyWhenTheDateHasACheckOut() = runTest {
+        val date = "2026-10-05"
+        val meta = CaptureMeta(date, "2026-10-05T04:31:07.120Z", 1, 1, 0, true, null, null, "b", false, 1)
+        val repo = CaptureRepository(db) { "2026-10-05T11:30:00.000Z" }
+        val submit = ClientIds.newUuid()
+        db.outboxDao().insert(listOf(OutboxEntity(clientUuid = submit, recordType = "day_submit", familyUuid = submit, rank = 0, businessDate = date, payloadJson = "{}", payloadSha256 = "x", state = "rejected", lastCode = "schema_invalid", createdAt = date + "T05:00:00.000Z")))
+        assertTrue("not checked out yet: the old text applies", !source.rejectedRows(date).single().afterCheckOut)
+        val inUuid = ClientIds.newUuid(); val outUuid = ClientIds.newUuid()
+        val inFix = GeoFixEntity(ClientIds.newUuid(), inUuid, "attendance_in", "ok", 23.79, 90.4, 8.0, provider = "fused", isMock = false, reused = false, deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false)
+        repo.recordAttendance(com.aktcl.aron.core.database.entity.AttendanceEventEntity(inUuid, meta, "check_in", inFix.clientUuid, null), inFix)
+        val outFix = inFix.copy(clientUuid = ClientIds.newUuid(), ownerClientUuid = outUuid, purpose = "attendance_out")
+        repo.recordCheckOut(com.aktcl.aron.core.database.entity.AttendanceEventEntity(outUuid, meta, "check_out", outFix.clientUuid, null), outFix) { emptyList() }
+        assertTrue("checked out: the after-check-out text applies", source.rejectedRows(date).single().afterCheckOut)
+    }
 }

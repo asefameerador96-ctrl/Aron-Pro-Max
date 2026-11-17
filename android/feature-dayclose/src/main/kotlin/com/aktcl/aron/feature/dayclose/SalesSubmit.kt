@@ -63,6 +63,8 @@ data class RejectedRow(
     val seen: Boolean = false,
     /** D-AGATE-04 round 2: how many records the entry stands for (a memo with its lines and QC is one entry led by its parent). */
     val familySize: Int = 1,
+    /** The row is the day's own `day_submit` and that date already carries a check-out: the rep cannot sell or collect any more, so its text says what to do instead (B4). */
+    val afterCheckOut: Boolean = false,
 ) {
     /**
      * A refused or held record of THIS phone can be marked seen (it leaves the banner, nothing is deleted); a queued retry cannot, and neither

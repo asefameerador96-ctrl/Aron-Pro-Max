@@ -483,7 +483,7 @@ private fun RejectedList(rows: List<RejectedRow>, typeLabel: (String) -> String,
                 if (reason != null) Text(reason, style = MaterialTheme.typography.bodyMedium, color = look.inkMuted)
                 // D-AGATE-06: the day's own submit (the check-out sends it for the rep) was refused or held: say it, and the way out
                 if (r.recordType == "day_submit" && r.fromThisPhone) {
-                    Text(stringResource(R.string.submit_day_submit_refused), style = MaterialTheme.typography.bodySmall, color = WarnInk)
+                    Text(stringResource(if (r.afterCheckOut) R.string.submit_day_submit_refused_after_checkout else R.string.submit_day_submit_refused), style = MaterialTheme.typography.bodySmall, color = WarnInk)
                 }
                 Text(
                     stringResource(

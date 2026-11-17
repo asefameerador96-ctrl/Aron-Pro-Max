@@ -98,6 +98,22 @@ class SalesSubmitNightTest {
         compose.onNodeWithText("Your day's sales submit was not accepted by the server. The day is open again on this phone: you can sell and collect, then submit again from Sales Submit.").assertExists()
     }
 
+    /** Review round 3, B4: after the check-out the rep cannot sell or collect, so the text must never say so; it says what happened, Submit again, and who to contact. */
+    @Test fun aRefusedDaySubmitAfterCheckOutNeverTellsTheRepToSellAndSaysWhatToDo() {
+        val afterOut = listOf(RejectedRow("u9", "day_submit", "2026-10-24", "schema_invalid", RejectedOutcome.DROPPED, afterCheckOut = true))
+        show(AppLanguage.EN, owner, afterOut)
+        compose.onNodeWithText("You have already checked out", substring = true).assertExists()
+        compose.onNodeWithText("Submit again", substring = true).assertExists()
+        compose.onNodeWithText("contact your supervisor", substring = true).assertExists()
+        compose.onNodeWithText("you can sell and collect", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun theAfterCheckOutTextReadsInBanglaToo() {
+        show(AppLanguage.BN, owner, listOf(RejectedRow("u9", "day_submit", "2026-10-24", "schema_invalid", RejectedOutcome.DROPPED, afterCheckOut = true)))
+        compose.onNodeWithText("আপনি আগেই চেক-আউট করেছেন", substring = true).assertExists()
+        compose.onNodeWithText("এই ফোনে দিনটি আবার খোলা", substring = true).assertDoesNotExist()
+    }
+
     @Test fun aRefusedDaySubmitReadsInBanglaToo() {
         show(AppLanguage.BN, owner, listOf(RejectedRow("u9", "day_submit", "2026-10-24", "schema_invalid", RejectedOutcome.DROPPED)))
         compose.onNodeWithText("সার্ভার আপনার দিনের বিক্রয় জমা গ্রহণ করেনি।", substring = true).assertExists()

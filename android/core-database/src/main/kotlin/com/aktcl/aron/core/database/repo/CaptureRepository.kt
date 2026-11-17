@@ -244,6 +244,12 @@ class CaptureRepository(
      * in force at this repository's trusted now locks ([FinalSubmitLock.lockApplies]: quarantine or reject); under
      * accept_and_flag (the default) a final route-day answers as an open one, and SALES_SUBMIT is unchanged.
      */
+    /**
+     * True when a Sales Submit of [meta]'s route-day STANDS (D-LEAD-PREREQ-03 ruling 4): asked without a record type, so the zone's Final Submit
+     * lock is not consulted and cannot hide a standing submit. The check-out's automatic submit skips such a route-day.
+     */
+    suspend fun submitStandsFor(meta: CaptureMeta): Boolean = RouteDayLock.refusal(db, meta, null, nowIso()) == DayRefusal.SALES_SUBMIT
+
     suspend fun dayRefusal(meta: CaptureMeta, recordType: String): DayRefusal? = when {
         recordType == STOCK_MOVEMENT -> DayRefusal.FINAL_SUBMIT.takeIf { FinalSubmitLock.refuses(db, meta, STOCK_MOVEMENT, nowIso()) }
         recordType == DUE_COLLECTION && meta.routeId == null -> null
