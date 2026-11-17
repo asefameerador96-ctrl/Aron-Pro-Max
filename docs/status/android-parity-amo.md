@@ -1,3 +1,13 @@
+# HANDOVER ADDENDUM (2026-11-17, lead's ruling on ca007105, which PASSED the lead's check and is eligible for a train)
+Rulings: keep red minus / purple plus (legibility wins); the badge meaning stays an owner question. The text below "State" in the handover that follows says the last commits were unpushed: that is out of date; everything through ca007105 is pushed and CI run 44181240773 is green (merge of INT a6a1cbf2 is c9a874dc).
+LOWS FOR THE SUCCESSOR (do these in the next push, before slices 3 to 5):
+1. The literal "%" in AmoSkuCard (`localizedNumber(0L) + "%"` in feature-sale SaleScreens.kt) moves to the string resources (bn and en).
+2. The paid-amount dialog (`CreditDialog` in feature-sale SaleExtraScreens.kt) must not drop the typed amount or turn credit off on a tap outside: `DialogProperties(dismissOnClickOutside = false)` or keep the value; the "No" button stays the only way to cancel.
+3. `AmoSkuCard`'s unused `onOpen` parameter: use it (the SR quantity popup) or remove it.
+4. The `amo_review_bn` golden cuts off the print-later card and the QC button: record a taller frame (for example qualifiers h1500dp) so the info card and the quantity line are both in view.
+5. The review "quantity" line with many unit kinds on a 360 dp phone: record a golden with four unit kinds (packets, boxes, dozens, one more) and fix any overflow.
+Slices 3 to 5: the lead will resend the list; the audit's untouched AMO high findings are in docs/ui-reference/PARITY-AUDIT-2026-11-13.md (AMO section).
+
 # HANDOVER (2026-11-17, lane P-AMO2, context at the limit)
 State: branch lane/android-parity-amo. Pushed and CI-green: 6d46b2f9 (lows 1-5), 282d7bba (slice 2 lane parts), b78dbe80 (gated), e4003f51 (lows on b78dbe80), c9a874dc (merge of INT a6a1cbf2 = train 113, CI run 44178048087 was still running at handover). Committed, NOT pushed (push after the merge run finishes, never mid-run: a push cancels it): 1fcec8c3 (R-PAR-AMO-01/02/03) and 315c9e74 (R-PAR-AMO-04/05), local gate green (feature-sale, app-amo, feature-amo, all ui-screenshots compares, lint on the three modules). Decisions D-PAR-AMO-04 to 09. Report to the lead with the merge sha c9a874dc in the next "checked".
 Done in feature-sale behind AMO-host options (SR defaults, SR goldens, core-ui untouched): entry header card, AmoSkuCard (rate / 0% discount / gate stock / badge), print-later info card, paid-amount dialog, per-unit-kind quantity line.
