@@ -276,7 +276,7 @@ fun AmoStockHost(day: AmoDay) {
     com.aktcl.aron.core.ui.aron.AronLoaded(read, stringResource(com.aktcl.aron.feature.stock.R.string.stk_load_failed), stringResource(com.aktcl.aron.feature.home.R.string.fb_retry)) { l ->
         version.let {} // the content recomposes on every edit: StockLoad is a plain object, this counter is its signal
     StockContent(
-        srParity = false, rows = l.rows, totals = l.totals, message = message, slipNotPrinted = unprinted,
+        rows = l.rows, totals = l.totals, message = message, slipNotPrinted = unprinted,
         onIssue = { id, q -> l.setEntered(id, q.toLong()); version++ },
         onSave = {
             scope.launch {

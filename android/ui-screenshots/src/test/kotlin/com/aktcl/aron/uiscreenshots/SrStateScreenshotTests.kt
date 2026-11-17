@@ -312,7 +312,7 @@ class SrStateScreenshotTests {
     // ---- Screens that read local data before their first frame (session 5, slice 1) ----
     @Composable private fun LoadingScreen() = Frame(stringResource(HomeR.string.hm_tile_stock)) { com.aktcl.aron.core.ui.aron.AronLoadingScreen() }
     @Composable private fun StockEmpty() = Frame(stringResource(HomeR.string.hm_tile_stock)) {
-        StockContent(emptyList(), emptyList(), null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {}, syncedAt = localizedDigits("10:42"))
+        StockContent(emptyList(), emptyList(), null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {}, syncedAt = localizedDigits("10:42"), srParity = true)
     }
     @Composable private fun PickerEmpty() = Frame(stringResource(HomeR.string.hm_tile_sale)) { OutletPickerContent(emptyList(), OutletPicker.chips(emptyList()), OutletPicker.ALL_CHIP, {}, {}) }
     @Composable private fun OwnEmpty() = Frame(stringResource(HomeR.string.hm_tile_outlet)) { com.aktcl.aron.feature.outlet.OwnRequestsContent(emptyList(), syncedAt = localizedDigits("10:42")) }

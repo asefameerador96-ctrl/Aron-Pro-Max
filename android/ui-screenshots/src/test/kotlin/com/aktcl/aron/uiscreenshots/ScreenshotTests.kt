@@ -255,7 +255,7 @@ class ScreenshotTests {
 
     // ---- screens ----
     @Composable private fun Stock() = ParityFrame(stringResource(HomeR.string.hm_tile_stock), com.aktcl.aron.core.ui.R.drawable.aron_art_stock, printerConnected = false) {
-        StockContent(stockRows, stockTotals, StockMessage.SAVED, slipNotPrinted = true, onIssue = { _, _ -> }, onSave = {}, onPrint = {})
+        StockContent(stockRows, stockTotals, StockMessage.SAVED, slipNotPrinted = true, onIssue = { _, _ -> }, onSave = {}, onPrint = {}, srParity = true)
     }
 
     /** The six Maxim SKUs of the dev seed (db/seed/02_products.sql): every one has dev art (android/dev-packshots). */
@@ -268,7 +268,7 @@ class ScreenshotTests {
             val id = 200L + i
             StockRow(SkuEntity(id, code, id, "cigarette", code, code, null, "stick", per, "pack", null, "1.000", i, "active", 1), 0, 0)
         }
-        StockContent(rows, emptyList(), null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {})
+        StockContent(rows, emptyList(), null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {}, srParity = true)
     } }
 
     /** PARITY-SPEC s2.6 evidence: the Sale list with every seeded Maxim SKU (pictures) and a lighter and a match without art (silhouettes). */
@@ -347,7 +347,7 @@ class ScreenshotTests {
     @Composable private fun Tasks() = Frame(stringResource(HomeR.string.hm_tile_tasks)) { TaskContent(tasks, {}) }
 
     @Composable private fun Login(sunlight: Boolean) =
-        com.aktcl.aron.feature.auth.SrLoginContent(LoginUiState(username = "sr334001", password = "secret", message = LoginMessage.InvalidCredentials), "1.0.25 (12)", {}, {}, {}, {}, {}, null, sunlight, {})
+        com.aktcl.aron.feature.auth.SrLoginContent(LoginUiState(username = "sr334001", password = "xxxxxx", message = LoginMessage.InvalidCredentials), "1.0.25 (12)", {}, {}, {}, {}, {}, null, sunlight, {})
 
 
     // ---- Home ----
