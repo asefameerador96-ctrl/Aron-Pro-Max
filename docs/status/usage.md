@@ -3310,3 +3310,11 @@
 - P-AMO slice 1 83678c2c: static gate clean, checker pass (2 Sonnet lenses) no blocking, 9 lows sent; GATED, waits for a train after the server lanes.
 - P-SR2 near its context limit: handover ordered; successor takes slice 4.
 - Open owner questions (defaults applied): stock carried over or returned daily; who confirms the morning issue; TSO check-in.
+
+### 2026-11-17 18:55 UTC — STALL: nothing moved from 2026-11-13 ~10:20 to 2026-11-17 18:47 UTC (about 4 days 8 hours)
+- What happened: the lead session's worker restarted in a loop while a gate result was waiting; 59 notifications queued (5 lane messages, the rest the 2-hourly lane check and the evening report, none run). Every lane went idle within the same hour on 2026-11-13 and stayed idle. Rate limit now reads "allowed" (seven_day). Cause of the restarts not established from inside the session.
+- State found on return: INT 4e0645556 = health build (unchanged, train 112). No landing since. Evening reports of 13 to 16 Nov were NOT written. The SR sale smoke for the first deploy of a selling day did not run (no deploy).
+- Waiting candidates: sr-server B6 b9d2a6fe2 (lane ci green but the accepted Migrations step); masterdata e18090f10 (push 1b + bulk loader, all lane ci jobs green); AMO parity b78dbe80a (lows 1 to 9 + slice 2 parts). Confirming passes started: workflow wf_33159ffc-1bb; static gates running.
+- SR-2 slices 1 to 3 (d41f6c09): checker pass FAILED, 5 blocking upheld (remaining due hidden on the vendor memo while markPaid records it; the weakened test; AMO and printed summary order changed; AMO lost its dues warning; QC cancel loses the opening values after a recreate). Fix round sent to P-SR2b, with a parking branch for its unpushed slice 4 (lane/android-parity-sr-2-park, risk: its container may be gone).
+- Nudged: A-GATE1, A-INT1, P-SR1, P-TSO (all idle since 13 Nov with work in flight).
+- Timeline: the estimate given to the owner (code-complete about 17 Nov, walked and fixed 20 to 21 Nov) is missed by the length of the stall plus the new scope of 13 Nov (no MDM and developer-options gate, anti-spoofing layers, check-in and stock gates, check-out submits).
