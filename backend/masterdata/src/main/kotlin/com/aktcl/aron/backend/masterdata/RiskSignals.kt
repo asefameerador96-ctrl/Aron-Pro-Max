@@ -120,6 +120,43 @@ object RiskRules {
 class RiskSignalEvaluator(private val db: Database, private val config: ServerConfig) {
     fun evaluateDay(date: LocalDate): Int = db.jdbi.inTransaction<Int, Exception> { h -> evaluate(h, date) }
 
+    /**
+     * Contract 1.20.0 (D-SV2-15): the worker rule that withdraws a `CHECKOUT_WITHOUT_SUBMIT` signal once an effective Sales Submit
+     * (`day_submit`, not data-voided, its route-day or supervisor-day not submit-voided) of the same user and business date is stored,
+     * however it arrived (the rep's own Sales Submit after the check-out, a later cycle, an integrity-released or re-sent one). The ingest
+     * raises the signal but its database role may not update `risk_signal`; the worker may (`worker_rw`: INSERT, UPDATE), so the
+     * withdrawal is this rule and no grant changed. Only a still `open` signal moves: a reviewer's `reviewed`, `dismissed` or `confirmed`
+     * always stands. A withdrawn signal is `dismissed` with `evidence.withdrawn_by = "day_submit"` (the status set has no `withdrawn`,
+     * and the dashboards count only `open` and `confirmed`). Idempotent (a second run finds nothing open); returns how many moved.
+     * Looks back [lookbackDays] business dates (the ingest registry's retention, which exceeds the sync backdate window).
+     */
+    fun withdrawCheckoutWithoutSubmit(today: LocalDate): Int =
+        db.jdbi.inTransaction<Int, Exception> { h -> withdrawCheckoutWithoutSubmit(h, today) }
+
+    internal fun withdrawCheckoutWithoutSubmit(h: Handle, today: LocalDate): Int {
+        val lookbackDays = runCatching { config.int("cfg.retention.ingest_registry_days") }.getOrDefault(45).coerceIn(30, 400)
+        return h.createUpdate(
+            """
+            WITH found AS (
+              SELECT s.id, (SELECT e.client_uuid
+                              FROM app.route_day_event e
+                              LEFT JOIN app.route_day rd ON e.scope = 'route_day' AND rd.route_id = e.route_id AND rd.business_date = e.business_date
+                              LEFT JOIN app.supervisor_day sd ON e.scope = 'supervisor_day' AND sd.user_id = e.user_id AND sd.business_date = e.business_date
+                             WHERE e.kind = 'day_submit' AND e.user_id = s.user_id AND e.business_date = s.business_date AND e.voided_at IS NULL
+                               AND NOT coalesce(rd.submit_voided, false) AND NOT coalesce(sd.submit_voided, false)
+                             ORDER BY e.captured_at DESC, e.id DESC LIMIT 1) AS submit_uuid
+                FROM app.risk_signal s
+               WHERE s.code = 'CHECKOUT_WITHOUT_SUBMIT' AND s.status = 'open' AND s.subject_type = 'user' AND s.user_id IS NOT NULL
+                 AND s.business_date >= :since)
+            UPDATE app.risk_signal s
+               SET status = 'dismissed', updated_at = now(),
+                   evidence = s.evidence || jsonb_build_object('withdrawn_by', 'day_submit', 'day_submit_found', true, 'day_submit_client_uuid', found.submit_uuid::text)
+              FROM found
+             WHERE s.id = found.id AND found.submit_uuid IS NOT NULL AND s.status = 'open'
+            """.trimIndent(),
+        ).bind("since", today.minusDays(lookbackDays.toLong())).execute()
+    }
+
     internal fun evaluate(h: Handle, date: LocalDate): Int {
         val t = GeoThresholds.from(config)
         val weights = (config.value("cfg.geo.integrity_weight") as JsonObject).mapValues { (it.value as JsonPrimitive).doubleOrNull ?: 0.0 }
@@ -172,6 +209,7 @@ class RiskSignalJob(private val evaluator: RiskSignalEvaluator, private val cloc
             runCatching {
                 val today = AdminSupport.today(clock)
                 evaluator.evaluateDay(today); evaluator.evaluateDay(today.minusDays(1))
+                evaluator.withdrawCheckoutWithoutSubmit(today).let { if (it > 0) log.info("checkout-without-submit signals withdrawn: {}", it) }
             }.onFailure { it.exitIfFatal(log, "risk signals"); log.error("risk signal evaluation failed", it) }
         }, 1, everyMin, TimeUnit.MINUTES)
     }

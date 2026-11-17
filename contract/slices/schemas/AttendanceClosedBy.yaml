@@ -1,0 +1,8 @@
+AttendanceClosedBy:
+  type: string
+  enum:
+  - rep
+  - phone
+  description: 'Contract 1.20.0, on a `check_out` only: `rep` (the rep pressed check-out; also what an absent member
+    means) or `phone` (the phone closed a forgotten day at a later start, no location read). A phone close is stored
+    and acknowledged but read everywhere as "no check-out".'

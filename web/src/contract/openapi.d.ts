@@ -4562,7 +4562,7 @@ export interface components {
          */
         AppVersionString: string;
         /**
-         * @description Case-insensitive login name. Memo-producing roles (SR, AMO) match `^[a-z][a-z0-9]{3,31}$` (no hyphen, docs/24 s7.5).
+         * @description Case-insensitive login name. Memo-producing roles (SR, AMO) match `^[a-z][a-z0-9]{2,31}$` (3 to 32 characters, no hyphen, docs/24 s7.5).
          * @example sr334001
          */
         Username: string;
@@ -4726,6 +4726,11 @@ export interface components {
         StockMovementKind: "issue" | "return" | "adjustment" | "damaged" | "short" | "qc_return";
         /** @enum {string} */
         AttendanceKind: "check_in" | "check_out";
+        /**
+         * @description Contract 1.20.0, on a `check_out` only: `rep` (the rep pressed check-out; also what an absent member means) or `phone` (the phone closed a forgotten day at a later start, no location read). A phone close is stored and acknowledged but read everywhere as "no check-out".
+         * @enum {string}
+         */
+        AttendanceClosedBy: "rep" | "phone";
         /** @enum {string} */
         MediaPurpose: "force_sale" | "outlet_capture" | "outlet_verification" | "survey" | "feedback" | "support" | "gift_photo" | "outlet_call";
         /** @enum {string} */
@@ -5840,6 +5845,8 @@ export interface components {
             fix: components["schemas"]["GeoFix"];
             /** @description Reverse-geocoded text shown on screen; display only, never used for a decision. */
             address_display?: string | null;
+            /** @description Contract 1.20.0, optional, `check_out` only (on a `check_in` the record is refused `schema_invalid`). Absent = `rep`. `phone`: the phone closed a forgotten day; stored and acknowledged, never a check-out time. */
+            closed_by?: components["schemas"]["AttendanceClosedBy"];
         };
         DayOpenPayload: {
             route_ids: components["schemas"]["Id"][];

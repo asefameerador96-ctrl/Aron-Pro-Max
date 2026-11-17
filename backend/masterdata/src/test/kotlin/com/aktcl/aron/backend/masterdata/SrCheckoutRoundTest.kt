@@ -1,0 +1,105 @@
+package com.aktcl.aron.backend.masterdata
+
+import com.aktcl.aron.backend.platform.DbServerConfig
+import com.aktcl.aron.backend.platform.RegistryDefaults
+import com.aktcl.aron.contract.Role
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.TestInstance
+import java.time.LocalDate
+import java.util.UUID
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
+
+/**
+ * Round 1.20.0 (D-SV2-15, D-SV2-16), the two pieces that live in the master-data module: the worker rule that withdraws a
+ * CHECKOUT_WITHOUT_SUBMIT signal when an effective Sales Submit of the user-date is stored (run as `worker_rw`: the API role may not
+ * update `risk_signal`), and the admin's username rule for memo-producing roles (3 to 32 characters).
+ */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class SrCheckoutRoundTest {
+    private lateinit var env: AdminEnv
+    @BeforeAll fun up() { env = AdminEnv() }
+    @AfterAll fun down() = env.close()
+
+    private val today = LocalDate.parse("2027-01-03")
+    private val uid get() = env.db.ids.getValue("sr1001")
+
+    private fun signal(code: String, date: String, status: String = "open") = env.exec(
+        "INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, score, evidence, config_version, status) " +
+            "VALUES ('$code', 2, DATE '$date', 'user', '$uid', $uid, 20, '{\"day_submit_found\": false}'::jsonb, 1, '$status')",
+    )
+
+    private fun submit(date: String, voided: Boolean = false, scope: String = "route_day"): String {
+        val u = UUID.randomUUID().toString()
+        env.exec(
+            "INSERT INTO app.route_day_event (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, kind, scope, submit_cycle, device_counts, device_money, voided_at) " +
+                "VALUES ('$u', '$u', DATE '$date', $uid, TIMESTAMPTZ '$date 10:00+00', 1, 'day_submit', '$scope', 1, '{}'::jsonb, '{}'::jsonb, ${if (voided) "now()" else "NULL"})",
+        )
+        return u
+    }
+
+    private fun status(code: String, date: String) = env.sql("SELECT status FROM app.risk_signal WHERE code = '$code' AND user_id = $uid AND business_date = DATE '$date'")
+
+    private fun evidence(code: String, date: String) = env.sql("SELECT evidence::text FROM app.risk_signal WHERE code = '$code' AND user_id = $uid AND business_date = DATE '$date'")!!
+
+    @Test
+    fun anEffectiveSalesSubmitWithdrawsTheOpenSignalAndNothingElseMoves() {
+        val c = "CHECKOUT_WITHOUT_SUBMIT"
+        val withdrawn = "2026-12-30"; val noSubmit = "2026-12-29"; val voidedSubmit = "2026-12-28"; val reviewed = "2026-12-27"; val tooOld = "2026-10-01"; val other = "2026-12-31"
+        signal(c, withdrawn); signal(c, noSubmit); signal(c, voidedSubmit); signal(c, reviewed, "confirmed"); signal(c, tooOld); signal("GEO_MOCK", withdrawn)
+        signal(c, other)
+        val s1 = submit(withdrawn); submit(voidedSubmit, voided = true); submit(reviewed); submit(tooOld)
+        // A supervisor-day submit of an AMO-style scope also counts, as it does at the ingest.
+        submit(other, scope = "supervisor_day")
+        val ev = RiskSignalEvaluator(env.db.fresh.db, DbServerConfig(env.db.fresh.db, RegistryDefaults()))
+
+        // As the worker role: the ingest's role may not update risk_signal at all (the premise of doing this in a worker rule).
+        env.db.fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("SET ROLE api_rw")
+            try { assertFailsWith<Exception> { h.execute("UPDATE app.risk_signal SET status = 'dismissed' WHERE code = 'GEO_MOCK'") } } finally { h.execute("RESET ROLE") }
+        }
+        val moved = env.db.fresh.db.jdbi.inTransaction<Int, Exception> { h ->
+            h.execute("SET LOCAL ROLE worker_rw")
+            ev.withdrawCheckoutWithoutSubmit(h, today)
+        }
+        assertEquals(2, moved, "the two open signals whose user-date has an effective submit")
+
+        assertEquals("dismissed", status(c, withdrawn))
+        val e = evidence(c, withdrawn)
+        assertTrue(e.contains("\"withdrawn_by\": \"day_submit\"") && e.contains(s1) && e.contains("\"day_submit_found\": true"), e)
+        assertEquals("dismissed", status(c, other), "a supervisor-day submit counts too")
+        assertEquals("open", status(c, noSubmit), "no submit: still open")
+        assertEquals("open", status(c, voidedSubmit), "a data-voided submit does not count")
+        assertEquals("confirmed", status(c, reviewed), "a reviewer's decision always stands")
+        assertEquals("open", status(c, tooOld), "older than the registry retention horizon: not looked at")
+        assertEquals("open", status("GEO_MOCK", withdrawn), "no other code moves")
+
+        // Idempotent: a second run finds nothing open to move.
+        assertEquals(0, env.db.fresh.db.jdbi.inTransaction<Int, Exception> { h -> h.execute("SET LOCAL ROLE worker_rw"); ev.withdrawCheckoutWithoutSubmit(h, today) })
+
+        // A submit that arrives later for a day whose signal is still open withdraws it on the next run.
+        submit(noSubmit)
+        assertEquals(1, ev.withdrawCheckoutWithoutSubmit(today))
+        assertEquals("dismissed", status(c, noSubmit))
+    }
+
+    @Test
+    fun theAdminAcceptsAThreeCharacterMemoUsernameAndRefusesTwoOrAnInvalidOne() = env.app {
+        val admin = env.token("admin1001", Role.ADMIN)
+        val z = env.sql("SELECT id FROM app.zone WHERE code = 'Z-MIR'")!!.toLong()
+        suspend fun mk(u: String, role: String) = sendA1(HttpMethod.Post, "/admin/users", admin, """{"username":"$u","full_name":"Short $u","role":"$role","locale":"en","home_zone_id":$z}""")
+        val ok = mk("abc", "SR")
+        assertEquals(HttpStatusCode.Created, ok.status, ok.bodyAsText())
+        assertEquals(HttpStatusCode.Created, mk("amo", "AMO").status)
+        for (bad in listOf("ab", "1ab", "a-b", "a".repeat(33))) {
+            val r = mk(bad, "SR")
+            assertEquals(HttpStatusCode.BadRequest, r.status, "$bad -> ${r.bodyAsText()}")
+        }
+    }
+}

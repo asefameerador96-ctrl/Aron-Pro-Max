@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.16.0
+  version: 1.20.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -125,6 +125,14 @@ info:
       phone's rule in `shared/rules` JourneyTimeline). Cluster creation (push B2): `OutletRequestType` value `cluster_create` (an `outlet_change_request` record with the SR's
       route on the envelope and `proposed.name`; AMO verification and the portal approval are the outlet request pipeline's; an approved request is a live cluster of the route's zone),
       `OutletProposal.cluster_request_uuid`, `OutletRequest.resulting_cluster_id` and the rejected record outcome code `cluster_name_exists`. Review round (push B3): `BundleDelta.clusters`, `clusters_truncated`, `outlet_sku_stats`, `outlet_sku_stats_truncated` (a delta carries each section whole when it changed), `Bundle.clusters_truncated` and `Bundle.outlet_sku_stats_truncated` (the caps 600 and 400), `OutletRequestApproveRequest.cluster_id`, `SalesSubmitRequest.captured_at` (the phone's clock) and `RouteDayState.late_rows_anchor`; the late-row count is derived from the day_submit record's own `captured_at`; ADS is per elapsed calendar day. Review round B5: `DaySubmitPayload.anchor_clock` (optional, server-set on the online Sales Submit). No existing member changes.
+    - 1.20.0 (SR check-out round, lane sr-server SV6, D-SV2-15 and D-SV2-16; ruling 6 of D-LEAD-PREREQ-03 and section 5 of `docs/requests/android-gates.md`; request file
+      `docs/requests/contract-1.20-sr-server-checkout.md`; additive only, version number provisional until the lead confirms the landing order): the `attendance_event` payload
+      gains the optional `closed_by` (`AttendanceClosedBy`: `rep` | `phone`; only on a `check_out`, absent means `rep`). `phone` is the phone closing a forgotten day at a later
+      start: it is stored and acknowledged `accepted`, but read everywhere as "no check-out" (no check-out time, no hours, AMO `supervisor_day.checked_out_at` not set, never
+      `checkout_too_early`). `CHECKOUT_WITHOUT_SUBMIT` is no longer raised for a user-day with no route captures and is withdrawn (status `dismissed`, evidence `withdrawn_by`) when an
+      accepted Sales Submit for that user-date arrives later (a worker rule, within about 15 minutes). The patterns of `MemoNo` and the memo-producing `Username` rule now allow a
+      3-character username (`{2,31}` after the first letter instead of `{3,31}`): a looser rule, no value that was valid becomes invalid. Servers before this version refuse the new
+      member (`schema_invalid`), so no phone sends it before this server runs.
     - 1.14.0 (SR manual build, lane sr-server train 1, D-SV1-01 to 13; approval requested as D-LEAD-CONTRACT-114-01, gate file
       `docs/requests/contract-1.14-sr-manual.md`; on top of 1.13.1 (the Loyalty portal)), additive only:
       `VisitClosePayload.zero_sale_reason_code` (code list `zero_sale_reason`, only with `is_zero_sale`), `VisitClosePayload.call_photo_uuid`
@@ -7343,7 +7351,7 @@ components:
       examples: ['1.0.3+103']
     Username:
       type: string
-      description: Case-insensitive login name. Memo-producing roles (SR, AMO) match `^[a-z][a-z0-9]{3,31}$` (no hyphen, docs/24 s7.5).
+      description: Case-insensitive login name. Memo-producing roles (SR, AMO) match `^[a-z][a-z0-9]{2,31}$` (3 to 32 characters, no hyphen, docs/24 s7.5).
       pattern: '^[A-Za-z][A-Za-z0-9._-]{2,39}$'
       examples: [sr334001]
     PhoneBd:
@@ -7356,7 +7364,7 @@ components:
       description: SHA-256 as 64 lower-case hex characters.
     MemoNo:
       type: string
-      pattern: '^[a-z][a-z0-9]{3,31}-\d{6}-\d{3,4}$'
+      pattern: '^[a-z][a-z0-9]{2,31}-\d{6}-\d{3,4}$'
       description: '`<username>-<yyMMdd>-<seq>` composed on the phone (docs/24 s7.5).'
       examples: [sr334001-261005-017]
     TimeOfDay:
@@ -7560,6 +7568,10 @@ components:
     AttendanceKind:
       type: string
       enum: [check_in, check_out]
+    AttendanceClosedBy:
+      type: string
+      enum: [rep, phone]
+      description: 'Contract 1.20.0, on a `check_out` only: `rep` (the rep pressed check-out; also what an absent member means) or `phone` (the phone closed a forgotten day at a later start, no location read). A phone close is stored and acknowledged but read everywhere as "no check-out".'
     MediaPurpose:
       type: string
       enum: [force_sale, outlet_capture, outlet_verification, survey, feedback, support, gift_photo, outlet_call]
@@ -8909,6 +8921,7 @@ components:
         kind: { $ref: '#/components/schemas/AttendanceKind' }
         fix: { $ref: '#/components/schemas/GeoFix' }
         address_display: { type: [string, 'null'], maxLength: 300, description: 'Reverse-geocoded text shown on screen; display only, never used for a decision.' }
+        closed_by: { $ref: '#/components/schemas/AttendanceClosedBy', description: 'Contract 1.20.0, optional, `check_out` only (on a `check_in` the record is refused `schema_invalid`). Absent = `rep`. `phone`: the phone closed a forgotten day; stored and acknowledged, never a check-out time.' }
     DayOpenPayload:
       type: object
       required: [route_ids, online, bundle_valid_for, offline_start]
