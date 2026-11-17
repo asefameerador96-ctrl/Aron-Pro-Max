@@ -63,7 +63,7 @@ internal fun AmoSkuCard(
     skuId: Long, code: String, caption: String?, quantity: String, onQuantityChange: (String) -> Unit, onMinus: () -> Unit, onPlus: () -> Unit,
     rate: String?, discount: String, stock: String, badge: String, minusLabel: String, plusLabel: String, quantityLabel: String,
     category: PackCategory, minusEnabled: Boolean, plusEnabled: Boolean, rateLabel: String, discountLabel: String, stockLabel: String,
-    modifier: Modifier = Modifier, onOpen: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(AronLook.CardRadius)

@@ -339,7 +339,8 @@ internal fun qcTypeLabel(code: String): String = when (code) {
 private fun CreditDialog(
     review: SaleReview, text: String, onText: (String) -> Unit, parsed: Long?, valid: Boolean, showError: Boolean, onPaid: (Long?) -> Unit, onCancel: (() -> Unit)?,
 ) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = { onCancel?.invoke() }) { CreditDialogCard(review, text, onText, parsed, valid, showError, onPaid, onCancel) }
+    // a tap outside never drops the typed amount or turns credit off: "No" (or the back key) is the only way out
+    androidx.compose.ui.window.Dialog(onDismissRequest = { onCancel?.invoke() }, properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false)) { CreditDialogCard(review, text, onText, parsed, valid, showError, onPaid, onCancel) }
 }
 
 /** The card inside the paid-amount dialog (public so its golden can render it without a dialog window). */

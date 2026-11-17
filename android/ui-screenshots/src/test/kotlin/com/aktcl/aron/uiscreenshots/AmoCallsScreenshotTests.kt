@@ -181,7 +181,8 @@ class AmoCallsScreenshotTests {
         )
     }
 
-    @Test fun amo_review_bn() = shot("amo_review_bn", AppLanguage.BN, "নিরীক্ষণ") {
+    // lows 4 and 5 of the lead's check: a tall frame so the print-later card, the quantity line and the QC button are all in view
+    @Test @Config(qualifiers = "w360dp-h1500dp") fun amo_review_bn() = shot("amo_review_bn", AppLanguage.BN, "নিরীক্ষণ") {
         com.aktcl.aron.feature.sale.ui.ReviewScreen(
             enteredReview, {}, outletLine = "$outletPill\nরুট: Savar Bazar(Sat, Mon, Wed)\nক্লাস্টার: Savar Metro", onCreditToggle = {}, onQc = {}, printLaterCard = true, totalsQuantity = true,
         )
@@ -193,6 +194,17 @@ class AmoCallsScreenshotTests {
         androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0x99000000)).padding(16.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
             com.aktcl.aron.feature.sale.ui.CreditDialogCard(enteredReview, "100", {}, 100_000L, true, false, {}, {})
         }
+    }
+
+    // four unit kinds on a 360 dp phone (packets, box, dozen, sticks): the per-unit-kind quantity line must wrap, not overflow
+    private val looseSku = com.aktcl.aron.feature.sale.domain.SaleSku(106, "LOOSE", "cigarette", "Loose", null, "stick", 10, 800, 1, "2026-09-01", stockBase = 500, entryUnitDefault = "stick", allowLoose = true)
+    @Test @Config(qualifiers = "w360dp-h1500dp") fun amo_review_units_bn() = shot("amo_review_units_bn", AppLanguage.BN, "নিরীক্ষণ") {
+        val catalog = saleCatalog + (106L to looseSku)
+        var d = enteredDraft
+        d = com.aktcl.aron.feature.sale.domain.SaleDraftOps.setQuantity(d, 105, 2, com.aktcl.aron.rules.QtyUnit.DOZEN)
+        d = com.aktcl.aron.feature.sale.domain.SaleDraftOps.setQuantity(d, 106, 30, com.aktcl.aron.rules.QtyUnit.STICK)
+        val review = com.aktcl.aron.feature.sale.domain.SaleReviewCalculator.review(d, catalog)
+        com.aktcl.aron.feature.sale.ui.ReviewScreen(review, {}, outletLine = "$outletPill\nরুট: Savar Bazar(Sat, Mon, Wed)", onCreditToggle = {}, onQc = {}, printLaterCard = true, totalsQuantity = true)
     }
 
     @Test fun amo_memo_menu_bn() = shot("amo_memo_menu_bn", AppLanguage.BN, "মেমো") {

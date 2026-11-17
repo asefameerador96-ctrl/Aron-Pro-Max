@@ -383,7 +383,7 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (
             quantity = localizedNumber(qty), onQuantityChange = { onQuantity(sku.skuId, parseQty(it).coerceIn(0L, max)) },
             onMinus = { onQuantity(sku.skuId, (qty - 1).coerceAtLeast(0)) }, onPlus = { onQuantity(sku.skuId, (qty + 1).coerceAtMost(max)) },
             rate = sku.entryPriceMtk?.let { moneyBare(it, if (it % 10L == 0L) 2 else 3) },
-            discount = localizedNumber(0L) + "%", // programme discounts are deferred (docs/27): zero, never an invented figure
+            discount = stringResource(R.string.sale_amo_percent, localizedNumber(0L)), // programme discounts are deferred (docs/27): zero, never an invented figure
             stock = entryStockText(entry, sku.stockBase), // the figure the stock gate uses
             badge = localizedNumber(line?.packBadge?.first?.toLong() ?: 0L),
             minusLabel = stringResource(R.string.sale_less) + ", " + name, plusLabel = stringResource(R.string.sale_more) + ", " + name,
@@ -570,11 +570,11 @@ private fun problemText(p: ReviewProblem): String = when (p) {
     else -> stringResource(R.string.review_problem_other)
 }
 
-/** "10 packets, 1 box, 2 dozens": the memo's entered quantity summed per unit kind (each unit its own figure; units are never added together). Null when there is no line. */
+/** "10 packets / 1 box / 2 dozens" (one per line): the memo's entered quantity summed per unit kind (each unit its own figure; units are never added together). Null when there is no line. */
 @Composable
 private fun perUnitKindQuantity(review: SaleReview): String? {
     val byUnit = linkedMapOf<String, Long>()
     review.categories.forEach { c -> if (c.unitKey.isNotEmpty()) byUnit[c.unitKey] = (byUnit[c.unitKey] ?: 0L) + c.qtyEntered }
     if (byUnit.isEmpty()) return null
-    return byUnit.entries.map { (unitKey, qty) -> localizedNumber(qty) + " " + entryUnitLabel(unitKey) }.joinToString(", ")
+    return byUnit.entries.map { (unitKey, qty) -> localizedNumber(qty) + " " + entryUnitLabel(unitKey) }.joinToString("\n") // one unit kind per line: four kinds on a 360 dp phone must not squeeze the label
 }
