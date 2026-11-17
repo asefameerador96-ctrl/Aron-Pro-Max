@@ -60,8 +60,16 @@ data class DaySummary(
 )
 
 object DaySummaryCalculator {
-    /** The order the field and the vendor list categories in (manual 38, 39): cigarette, bidi, lighter, match, then any other. */
-    private val CATEGORY_ORDER = listOf("cigarette", "bidi", "lighter", "match")
+    /**
+     * The order the SR's Summary SCREEN lists categories in (manual 39): cigarette, bidi, lighter, match, then any other. It is applied only by
+     * the SR host through [inCategoryOrder]; [compute] keeps its original (alphabetical) order, so the AMO's summary and the PRINTED summary,
+     * which read [compute]'s result, are unchanged (lead gate finding 3).
+     */
+    val VENDOR_CATEGORY_ORDER = listOf("cigarette", "bidi", "lighter", "match")
+
+    /** [summary] with its category rows listed in [order] (others after, by code, then unit). Every figure is untouched; only the listing moves. */
+    fun inCategoryOrder(summary: DaySummary, order: List<String> = VENDOR_CATEGORY_ORDER): DaySummary =
+        summary.copy(categories = summary.categories.sortedWith(compareBy({ order.indexOf(it.categoryCode).let { i -> if (i < 0) order.size else i } }, { it.categoryCode }, { it.unitKey })))
 
     /**
      * Aggregates the day's live memos. A memo that another memo supersedes (an edit) is dropped, so an edited sale is counted once.
@@ -95,7 +103,7 @@ object DaySummaryCalculator {
                 qtyRemBase = spec?.remainderBase(qty) ?: 0L, returnRemBase = spec?.remainderBase(ret) ?: 0L,
             )
         }
-        val skuCats = rows.groupBy { it.categoryCode to it.unitKey }.toSortedMap(compareBy({ CATEGORY_ORDER.indexOf(it.first).let { i -> if (i < 0) CATEGORY_ORDER.size else i } }, { it.first }, { it.second })).map { (key, rs) ->
+        val skuCats = rows.groupBy { it.categoryCode to it.unitKey }.toSortedMap(compareBy({ it.first }, { it.second })).map { (key, rs) ->
             val c = key.first
             CategorySummaryRow(
                 c, rs.sumOf { it.qtyBase }, rs.sumOf { it.valueMtk }, rs.sumOf { it.discountMtk }, rs.sumOf { it.discountedValueMtk }, rs.sumOf { it.returnQtyBase },

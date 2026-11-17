@@ -299,7 +299,8 @@ fun SummaryHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit) {
     val b = bundle
     if (b == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen() else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         // SRM-B-22: the category rows in the app language, never the raw codes
-        SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) }, categoryLabel = { com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, it).ifBlank { it } })
+        // the vendor's category order is a display choice of the SR screen only; the bundle (and so the print) keeps the original order
+        SummaryScreen(com.aktcl.aron.feature.memo.domain.DaySummaryCalculator.inCategoryOrder(b.summary), kit::skuName, onPrint = { day.printSummary(b) }, categoryLabel = { com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, it).ifBlank { it } })
     }
     com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(
         attempt, onAnswer = day::answerSummaryPrint, onClose = day::closeSummaryAttempt,
