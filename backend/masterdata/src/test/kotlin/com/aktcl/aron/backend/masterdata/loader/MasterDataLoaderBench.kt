@@ -21,7 +21,7 @@ class MasterDataLoaderBench {
         val (csv, facts) = SyntheticMaster.csv(rows, wings = 10, seed = 5)
         FreshDb.create().use { fresh ->
             val day = LocalDate.parse("2026-11-13") // date-pin-ok: an input, not a clock read
-            fun opts() = LoadOptions(syntheticTestData = true, batchSize = 5000, businessDate = day, shortRepIdsAllowedForTests = true)
+            fun opts() = LoadOptions(batchSize = 5000, businessDate = day).forTests(allowShortRepIds = true)
             val first = MasterDataLoader(fresh.db, Settings.load(mapOf("ARON_ROLE" to "migrate", "ARON_ENV" to "dev")), opts()).load { StringReader(csv) }
             val again = MasterDataLoader(fresh.db, Settings.load(mapOf("ARON_ROLE" to "migrate", "ARON_ENV" to "dev")), opts()).load { StringReader(csv) }
             println("BENCH rows=${facts.rows} first_ms=${first.millis} second_ms=${again.millis} rows_per_s=${facts.rows * 1000L / maxOf(1, first.millis)}")

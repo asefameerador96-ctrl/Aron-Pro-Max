@@ -156,7 +156,7 @@ object MigrationPreflight {
     object TitaniumTier : Check {
         override val id = "V0199-titanium-tier"
         override val devRepair = false
-        override val whereLabel = "channel"
+        override val whereLabel = "finding"
         override val advice = "In the admin portal (Master data, Code lists, sub_channel) set the channel of the Titanium item to Astha, or retire it; if the sub-channel row itself " +
             "holds Titanium under another channel, ask the database owner for a one-off correction (which channel is right is a business decision, so nothing is repaired automatically), then deploy again."
         private const val RESOURCE = "db/preflight/V0199__astha_tiers_cluster_types.sql"

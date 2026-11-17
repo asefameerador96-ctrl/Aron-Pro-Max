@@ -17,7 +17,7 @@ profile (`SyntheticMaster`), generated in the test from a seed.
 | Output | rows in `app.*`, and a report of counts and codes |
 | Rules | phones, channels, tiers, geo classes, coordinates, timestamps, visit plans and generated codes come from `ImportRules`, the shapes of codes and the length limits from `MasterRules`: the SAME objects the portal import and the user editor use. `MasterRulesTest` compares `MasterRules` with the live CHECK constraints of the migrated schema, so the rule set cannot drift from the tables. |
 | Staging | schema `mdload`, created by the tool itself (no migration owns it): `run`, `batch` and `step` are small and logged (they make a run resumable, bind a run id to its file AND its options, and keep each finished unit's counts and issue codes so a resumed run reports them again), `outlet_row` is UNLOGGED, holds one batch at a time and is DROPPED at the end of a finished run (and, after a failed run, at the start of the next one) |
-| Guards | **Environment (in code, from the process settings):** the loader takes the process's `Settings` and refuses to run unless `settings.env` is `ServerEnv.PROD` (the final account) or the INTERNAL `syntheticTestData` flag is set; a caller passes no environment and cannot claim the data is synthetic. **One at a time:** a session-level advisory lock; a second loader is refused, and the lock is re-checked before every transaction (a lost lock stops the run). **Short rep ids:** `shortRepIdsAllowedForTests` is `internal`: no CLI and no API can reach it; the only way a 3-character id loads is the B2 config gate. |
+| Guards | **Environment (in code, from the process settings):** the loader takes the process's `Settings` and refuses to run unless `settings.env` is `ServerEnv.PROD` (the final account) or the INTERNAL `syntheticTestData` flag is set. That flag, the short-rep-id override and the test hooks are NOT constructor parameters of `LoadOptions` (a constructor property marked `internal` still lets any module pass it: the round-3 review proved it): they are internal properties set only by the internal `forTests(...)`, so only this module's own tests can reach them (D-MD-38; `theGuardHoldsAndTheEnvironmentComesFromTheSettings...` checks the PUBLIC constructor's parameter names). A future CLI builds `Settings.load()` from the process and `LoadOptions(...)` from its flags, nothing else. **One at a time:** a session-level advisory lock; a second loader is refused, and the lock is re-checked before every transaction (a lost lock stops the run). **Short rep ids:** `shortRepIdsAllowedForTests` is `internal`: no CLI and no API can reach it; the only way a 3-character id loads is the B2 config gate. |
 
 ## How it runs
 
@@ -93,7 +93,7 @@ A zone move of an existing outlet is applied as a whole: zone, cluster, route (a
 
 | Option | Default | What it does |
 |---|---|---|
-| (environment) | the process `Settings` | Not an option: `settings.env` (`ARON_ENV`) must be `prod` (the final account). Anything else needs the internal `syntheticTestData` flag, which only the tests set. |
+| (environment) | the process `Settings` | Not an option: `settings.env` (`ARON_ENV`) must be `prod` (the final account). Anything else needs the internal `syntheticTestData` flag, which only this module's tests can set. |
 | `coordinatesConfirmed` | false | On: a pin inside Bangladesh loads `location_confirmed` and replaces a pin the field confirmed. Off: such a master pin is recorded as a `candidate` in the location history and the field's pin stays (D-MD-26). |
 | `storeOutletsWithoutVisitPlan` | true | The owner's ruling (D-MD-03): the route gets `visit_kind` `none` and its outlets load as usual, never planned, never counting a target outlet. Off: those outlets are HELD. |
 | `unassignedOutletStatus` | `archived` | The status of an outlet whose route has no rep (92,961 rows in the profile). It is reactivated when a later file gives the route a rep. |
@@ -136,4 +136,23 @@ loader with `-Xmx512m` or more. (The first version of this document said "tens o
 * **PostgreSQL's own server log.** When a constraint does fire, PostgreSQL writes `DETAIL: Failing row contains (...)`, with the row's values, to ITS log. The
   loader's output never carries it, and the shared rules make a refusal rare, but in the final account set `log_error_verbosity = terse` for the load (a
   server parameter; the loader cannot change it as an ordinary role) and check the diagnostic settings of the server.
+## Runbook: what the operator must know before a fleet load (final account)
+
+1. **Temp directory.** Pass 1 keeps a gzip copy of the file (personal data) in `java.io.tmpdir`, owner-only, deleted at the end. A `kill -9` or an out-of-memory stop
+   leaves it. Start the loader with a DEDICATED, encrypted temp directory (`-Djava.io.tmpdir=...`) and clear it after a crash; the next run also deletes every
+   `aron-masterdata-*.csv.gz` of that directory before it makes its own copy. Plan for about a fifth of the file's size.
+2. **Resume.** The same run id, the SAME file and the SAME options. Always pass the business date explicitly (its default is today in Dhaka, so a resume on the next
+   day without it is refused, correctly). A run started by an older build cannot be resumed (its options record is refused): start a new run id; the load is
+   idempotent, so that is always safe.
+3. **While a run is open** do not change `cfg.release.short_rep_id_version_code` or the SR users. The data stays correct either way, but the staged statuses
+   change, those batches are applied again and the resumed report then differs from an uninterrupted one (rows reported unchanged instead of created).
+4. **The dry run** keeps its row locks until the rollback and reads no snapshot of its own: run the fleet dry run on a point-in-time-restored copy, or outside
+   selling hours with `lock_timeout` set, so portal writes are not left waiting.
+5. **PostgreSQL's own log.** Before the load set the server parameter `log_error_verbosity = terse` (Azure Flexible Server; the loader role cannot, it needs
+   superuser) and check that the diagnostic settings do not ship the PostgreSQL logs beyond the operator's workspace.
+6. **Rows that need a person.** Every error line in the report carries example codes (or `row N` for a record the loader could not read: fix those rows in the
+   workbook and run again). Three behaviours were accepted by the lead with their reasons (D-MD-36, D-MD-37): the dry run's single transaction, a malformed record's
+   code not being a duplicate key (it loads nothing), and the server-log DETAIL line.
+7. The lock is re-checked before each transaction and again inside it before its commit; what is left is the commit itself.
+
 * A crash in the middle of a COMMIT is not tested (the resume test interrupts between batches); a batch is one transaction, so it commits whole or not at all.

@@ -35,9 +35,8 @@ class MasterDataLoaderTest {
         runId: UUID = UUID.randomUUID(), dry: Boolean = false, batch: Int = 500, confirm: Boolean = false, allowShort: Boolean = false,
         businessDate: LocalDate = today, storeNoPlan: Boolean = true, afterBatch: ((Int) -> Unit)? = null, inside: ((Handle, Int, Int) -> Unit)? = null,
     ) = LoadOptions(
-        syntheticTestData = true, batchSize = batch, coordinatesConfirmed = confirm, dryRun = dry, runId = runId, businessDate = businessDate,
-        storeOutletsWithoutVisitPlan = storeNoPlan, shortRepIdsAllowedForTests = allowShort, afterBatchForTests = afterBatch, insideBatchForTests = inside,
-    )
+        batchSize = batch, coordinatesConfirmed = confirm, dryRun = dry, runId = runId, businessDate = businessDate, storeOutletsWithoutVisitPlan = storeNoPlan,
+    ).forTests(allowShortRepIds = allowShort, afterBatch = afterBatch, insideBatch = inside)
 
     private fun load(csv: String, o: LoadOptions = options()): LoadReport = MasterDataLoader(fresh.db, devSettings, o).load { StringReader(csv) }
 
@@ -301,7 +300,14 @@ class MasterDataLoaderTest {
         assertTrue(refused.message!!.contains("final account") && refused.message!!.contains("synthetic"), refused.message)
         // the final account profile passes the guard; the environment is the process settings' (round 3), and the synthetic flag is not part of the public API
         MasterDataLoader(fresh.db, prodSettings, LoadOptions(dryRun = true, businessDate = today)).load { StringReader(file) }
-        assertTrue(LoadOptions::class.java.methods.none { it.name == "getSyntheticTestData" || it.name == "getEnv" }, "a caller can neither pass an environment nor claim the data is synthetic")
+        // The guard is real only if NO public constructor of another module can take the test switches or an environment: a constructor property marked internal
+        // still lets any module pass it, so the public constructor must not have those parameters at all (round 3 review).
+        val publicParams = LoadOptions::class.constructors.filter { it.visibility == kotlin.reflect.KVisibility.PUBLIC }.flatMap { c -> c.parameters.map { it.name } }
+        assertTrue(publicParams.isNotEmpty() && publicParams.containsAll(listOf("batchSize", "runId", "dryRun")), "the public constructor is the operator's: $publicParams")
+        for (forbidden in listOf("syntheticTestData", "shortRepIdsAllowedForTests", "afterBatchForTests", "insideBatchForTests", "env")) {
+            assertTrue(forbidden !in publicParams, "a public constructor parameter '$forbidden' would let any module bypass the guard: $publicParams")
+        }
+        assertTrue(LoadOptions::class.members.filter { it.visibility == kotlin.reflect.KVisibility.PUBLIC }.none { it.name in setOf("syntheticTestData", "shortRepIdsAllowedForTests", "forTests") })
     }
 
     /** A record with more or fewer cells than the header is an error row, not a half row read as empty values. */
@@ -314,6 +320,7 @@ class MasterDataLoaderTest {
         assertEquals(4, run.of("outlet").total)
         assertEquals(2, run.of("outlet").error)
         assertEquals(2, run.rowsUnreadable)
+        assertEquals(listOf("row 2", "row 3"), run.samples["csv_record_has_the_wrong_number_of_cells"]!!.toList(), "the owner can find a malformed row by its number")
         assertEquals(setOf("S1", "S2"), fresh.db.jdbi.withHandle<Set<String>, Exception> { h -> h.createQuery("SELECT code FROM app.outlet").mapTo(String::class.java).set() })
     }
 
@@ -632,5 +639,32 @@ class MasterDataLoaderTest {
         assertEquals(2, count("app.outlet WHERE code LIKE 'gen.%'"))
         val short = load(csv(line("U1"), line("U2").substringBeforeLast(",")))
         assertTrue(short.text().contains("of which unreadable: 1") && short.text().contains("counted among the outlet errors"), short.text())
+    }
+
+    /** A kill -9 leaves the gzip copy of the file (personal data) in the temp directory: the next run deletes every stale copy before it makes its own. */
+    @Test
+    fun aStaleCopyOfAFileLeftByAKilledRunIsSweptAtStart() = withDb {
+        val stale = java.nio.file.Files.createTempFile("aron-masterdata-", ".csv.gz")
+        try {
+            assertTrue(java.nio.file.Files.exists(stale))
+            load(csv(line("W1")))
+            assertTrue(!java.nio.file.Files.exists(stale), "the stale copy of an earlier run was deleted")
+        } finally { java.nio.file.Files.deleteIfExists(stale) }
+    }
+
+    /**
+     * The lock is asked again inside the batch's transaction, before its commit: a holder connection that is dropped DURING a batch stops that batch from
+     * committing, so a second loader that may have started in the gap never meets a half-run of this one.
+     */
+    @Test
+    fun aLockLostDuringABatchStopsThatBatchFromCommitting() = withDb {
+        val (csv, _) = SyntheticMaster.csv(600, wings = 1, seed = 13)
+        val e = assertFailsWith<LoaderException> {
+            load(csv, options(batch = 300, inside = { _, batchNo, _ ->
+                if (batchNo == 1) execElsewhere("SELECT pg_terminate_backend(pid) FROM pg_locks WHERE locktype = 'advisory' AND ((classid::bigint << 32) | objid::bigint) = ${MasterDataLoader.LOCK_KEY}")
+            }))
+        }
+        assertTrue(e.message!!.contains("was lost"), e.message)
+        assertEquals(0, count("app.outlet"), "the batch that was running when the lock was lost did not commit")
     }
 }

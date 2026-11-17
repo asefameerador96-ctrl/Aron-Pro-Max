@@ -75,7 +75,7 @@ class MigrationPreflightTitaniumTest {
             val failed = assertFailsWith<PreflightFailed>("$env") { throw err ?: error("no failure in $env") }
             val text = out.joinToString("\n") + "\n" + failed.message
             assertTrue(!text.contains(marker, ignoreCase = true), "a name leaked into the output: $text")
-            assertTrue(text.contains("channel sub_channel under channel GT") && text.contains("[$subId]") && text.contains("1 group(s)"), text)
+            assertTrue(text.contains("finding sub_channel under channel GT") && text.contains("[$subId]") && text.contains("1 group(s)"), text)
             assertTrue(text.contains("no automatic repair") && text.contains("admin portal"), "it says what to do: $text")
             assertEquals(before, snapshot(), "nothing changed in $env")
         }

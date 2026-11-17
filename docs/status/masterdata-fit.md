@@ -1,3 +1,10 @@
+# TRAIN 116 LOCAL WORK (MD3, 2026-11-17, after the lead's pass of 1cd7892d..d1c16cf; NOT pushed until the lead says "115 landed")
+
+Done locally: the real guard (D-MD-38: `forTests`, public constructor without the test parameters, test over the public constructor's parameter names), the stale temp-copy sweep, the lock re-check
+inside the transaction before commit, `row N` samples on error lines, the runbook in `docs/reference/master-data-loader.md`, D-MD-38/39, docs/30 note, pre-flight `whereLabel`.
+After "115 landed": merge the integration branch (V0192..V0194, contract 1.17.0, newer MigrationPreflight), add `override fun lock(c: Connection) {}` to `TitaniumTier`, both pre-flight tests green, full gate, ONE push, all ci jobs, "checked <sha>".
+The red Migrations step on a lane push that merges INT over an already-pushed tip is the accepted artifact (lead); quote the local `tools/ci/migrations-check.sh <INT head>` line in each report.
+
 # HANDOVER (read first; written by MD3, round 3, 2026-11-17)
 
 Round 3 (lead review of e18090f..1cd7892) is built: R1 (resume reports stored counts and issue codes; the report of a resumed run equals an uninterrupted one, hierarchy/rep/assignment
@@ -7,7 +14,7 @@ transaction; sub-channel join cannot fan out; held/other-role reps do not give a
 report text says unreadable rows are part of the errors; 'Cluster ' token restored; Silver kept as the portal keeps it). D-MD-35..37. Each fix fails its test when removed (two neuter groups plus single re-runs).
 NOT changed, with reasons (D-MD-36/37): dry run keeps one transaction (locks until rollback); malformed record's code is not a duplicate key; PostgreSQL server-log DETAIL is outside the loader.
 Environment gotchas: after a container reset recreate role `aron_test` (SUPERUSER CREATEDB) and database, add the pg_hba trust line; in tests JDBI reuses the thread's handle for a nested useHandle, so a "concurrent"
-edit must use `fresh.dataSource.connection`. Not done: CLI entry point, supervisor roster (M14), V0199 reorder (final push only, lead's condition), the integration merge (lead says when).
+edit must use `fresh.dataSource.connection`. Not done: CLI entry point, supervisor roster (M14), V0199 reorder (final push only, lead's condition), the second integration merge after train 115 (the first, 9bb7f5cf1, is in d1c16cf).
 
 # HANDOVER (read first; written in MD2's review round, 2026-11-17)
 

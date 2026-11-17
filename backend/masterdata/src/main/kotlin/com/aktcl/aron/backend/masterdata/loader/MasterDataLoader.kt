@@ -55,21 +55,41 @@ class LoadOptions(
     val runId: UUID = UUID.randomUUID(),
     /** app_user.id recorded as created_by / updated_by; null for an unattended load. */
     val by: Long? = null,
-    /**
-     * The explicit "this file is synthetic test data" flag: the only way to run the loader outside the final account. INTERNAL on purpose: no CLI and no API
-     * can set it, and the loader's own tests are its only users (round 3; the environment itself comes from [Settings]).
-     */
-    internal val syntheticTestData: Boolean = false,
-    /**
-     * Allows SR users with a 3-character id WITHOUT the B2 config gate. Internal on purpose: no CLI and no API can reach it; the only way a short rep id
-     * loads is `cfg.release.short_rep_id_version_code` (D-MD-24). The loader's own tests use it to prove the gate's open side.
-     */
-    internal val shortRepIdsAllowedForTests: Boolean = false,
-    /** Test hook: called after each outlet batch has committed (a test throws from it to interrupt a run). */
-    internal val afterBatchForTests: ((Int) -> Unit)? = null,
-    /** Test hook: called INSIDE an outlet batch's transaction, after its problems were counted and before it writes: (handle, batch number, attempt). */
-    internal val insideBatchForTests: ((Handle, Int, Int) -> Unit)? = null,
 ) {
+    /**
+     * The explicit "this file is synthetic test data" flag: the only way to run the loader outside the final account. It is NOT a constructor parameter (a
+     * constructor property marked internal still lets any module pass it): it is an internal property that only [forTests] sets, so no CLI and no API in another
+     * module can reach it (round 3 review). The environment itself comes from [Settings].
+     */
+    internal var syntheticTestData: Boolean = false
+        private set
+
+    /**
+     * Allows SR users with a 3-character id WITHOUT the B2 config gate. Internal and not a constructor parameter, for the same reason: the only way a short rep
+     * id loads is `cfg.release.short_rep_id_version_code` (D-MD-24). The loader's own tests use it to prove the gate's open side.
+     */
+    internal var shortRepIdsAllowedForTests: Boolean = false
+        private set
+
+    /** Test hook: called after each outlet batch has committed (a test throws from it to interrupt a run). */
+    internal var afterBatchForTests: ((Int) -> Unit)? = null
+        private set
+
+    /** Test hook: called INSIDE an outlet batch's transaction, after its problems were counted and before it writes: (handle, batch number, attempt). */
+    internal var insideBatchForTests: ((Handle, Int, Int) -> Unit)? = null
+        private set
+
+    /** The one way to set the test-only switches: internal to this module, so the loader's own tests are its only callers. */
+    internal fun forTests(
+        synthetic: Boolean = true, allowShortRepIds: Boolean = false, afterBatch: ((Int) -> Unit)? = null, insideBatch: ((Handle, Int, Int) -> Unit)? = null,
+    ): LoadOptions {
+        syntheticTestData = synthetic
+        shortRepIdsAllowedForTests = allowShortRepIds
+        afterBatchForTests = afterBatch
+        insideBatchForTests = insideBatch
+        return this
+    }
+
     /** Every option that changes WHAT a run writes, by name: bound to the run id, so a resume under other options is refused (round 3, R2). */
     internal fun bound(): Map<String, String> = sortedMapOf(
         "batchSize" to batchSize.toString(), "coordinatesConfirmed" to coordinatesConfirmed.toString(),
@@ -220,6 +240,7 @@ class MasterDataLoader(private val db: Database, private val settings: Settings,
         val scan = MasterScan(geoClasses, now)
         // ONE immutable copy of the file: pass 1 reads the caller's file once and keeps what it read (compressed, owner-only, in the temp directory, deleted at
         // the end); pass 2 reads the copy. A file that is replaced during a long run is therefore never half applied (round 3).
+        sweepStaleCopies()
         val copy = Files.createTempFile("aron-masterdata-", ".csv.gz")
         try {
             GZIPOutputStream(Files.newOutputStream(copy)).bufferedWriter(Charsets.UTF_8).use { sink ->
@@ -256,6 +277,18 @@ class MasterDataLoader(private val db: Database, private val settings: Settings,
         }
     }
 
+    /**
+     * A kill -9 or an out-of-memory stop leaves the gzip copy of the file (personal data) in the temp directory, where the `finally` never ran. The advisory lock is
+     * held here, so no other loader of this database is reading a copy: every earlier `aron-masterdata-*.csv.gz` of this temp directory is deleted before this
+     * run makes its own. (Run the loader with a dedicated temp directory, `-Djava.io.tmpdir=...`, so that no other process's file can match.)
+     */
+    private fun sweepStaleCopies() {
+        val dir = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"))
+        runCatching {
+            Files.newDirectoryStream(dir, "aron-masterdata-*.csv.gz").use { stream -> stream.forEach { runCatching { Files.deleteIfExists(it) } } }
+        }
+    }
+
     private fun pass2(scan: MasterScan, fileHash: String, open: () -> Reader, geoClasses: List<String>, now: Instant, report: LoadReport) {
         tx("prepare the staging tables") { h -> ensureStaging(h); openRun(h, fileHash) }
         val steps = if (options.dryRun) emptyMap() else readSteps()
@@ -273,10 +306,12 @@ class MasterDataLoader(private val db: Database, private val settings: Settings,
         assertLockHeld()
         return try {
             val shared = dry
+            // The lock is asked again INSIDE the transaction, after its work and before its commit: a holder connection that dropped during the work stops the
+            // batch from committing (the window left is the commit itself).
             when {
-                shared != null -> block(shared)
-                snapshot -> db.jdbi.inTransaction<R, Exception>(TransactionIsolationLevel.REPEATABLE_READ) { h -> block(h) }
-                else -> db.jdbi.inTransaction<R, Exception> { h -> block(h) }
+                shared != null -> block(shared).also { assertLockHeld() }
+                snapshot -> db.jdbi.inTransaction<R, Exception>(TransactionIsolationLevel.REPEATABLE_READ) { h -> block(h).also { assertLockHeld() } }
+                else -> db.jdbi.inTransaction<R, Exception> { h -> block(h).also { assertLockHeld() } }
             }
         } catch (e: LoaderException) {
             throw e
@@ -635,7 +670,7 @@ class MasterDataLoader(private val db: Database, private val settings: Settings,
         val r = res.row
         if (r == null) {
             c.error++
-            res.errors.forEach { report.issue(it) }
+            res.errors.forEach { report.issue(it, "row ${raw.no}") }   // a row number, so the owner can find the row in the workbook (never a value)
             return null
         }
         if (r.code in scan.duplicateCodes) {
