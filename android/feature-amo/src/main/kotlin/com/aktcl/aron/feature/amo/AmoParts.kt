@@ -232,8 +232,8 @@ fun AmoEmptyState(title: String, modifier: Modifier = Modifier, hint: String? = 
 
 /** The gradient action button; [busy] disables it while a save runs. */
 @Composable
-fun AmoPrimary(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, busy: Boolean = false) =
-    com.aktcl.aron.core.ui.aron.AronPrimaryButton(text, onClick, modifier, enabled = enabled && !busy)
+fun AmoPrimary(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, busy: Boolean = false, glyph: com.aktcl.aron.core.ui.aron.ButtonGlyph? = null) =
+    com.aktcl.aron.core.ui.aron.AronPrimaryButton(text, onClick, modifier, enabled = enabled && !busy, glyph = glyph)
 
 /** The outlined action button of the kit; [busy] disables it while a save runs. */
 @Composable
@@ -242,19 +242,24 @@ fun AmoSecondary(text: String, onClick: () -> Unit, modifier: Modifier = Modifie
 
 /** Yes (purple, like the plus square) and No / confirm-negative (red, like the minus square); a dimmed fill once chosen or disabled. */
 @Composable
-private fun AmoChoice(text: String, onClick: () -> Unit, modifier: Modifier, enabled: Boolean, fill: Color) {
+private fun AmoChoice(text: String, onClick: () -> Unit, modifier: Modifier, enabled: Boolean, fill: Color, icon: androidx.compose.ui.graphics.vector.ImageVector? = null) {
     val look = LocalAronLook.current
     Box(
         modifier.heightIn(min = 52.dp).clip(RoundedCornerShape(8.dp)).background(if (enabled) fill else look.disabledFill).clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { Text(text, style = amoText(18, bold = true, color = if (enabled) Color.White else look.disabledText, align = TextAlign.Center), modifier = Modifier.padding(8.dp)) }
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(8.dp)) {
+            if (icon != null) androidx.compose.material3.Icon(icon, contentDescription = null, tint = if (enabled) Color.White else look.disabledText, modifier = Modifier.size(20.dp))
+            Text(text, style = amoText(18, bold = true, color = if (enabled) Color.White else look.disabledText, align = TextAlign.Center))
+        }
+    }
 }
 
 @Composable
 fun AmoYes(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) = AmoChoice(text, onClick, modifier, enabled, LocalAronLook.current.purple)
 
 @Composable
-fun AmoNo(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) = AmoChoice(text, onClick, modifier, enabled, LocalAronLook.current.minus)
+fun AmoNo(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, icon: androidx.compose.ui.graphics.vector.ImageVector? = null) = AmoChoice(text, onClick, modifier, enabled, LocalAronLook.current.minus, icon)
 
 /** A row of the kit's choice chips (one per option, equal widths). */
 @Composable

@@ -159,8 +159,8 @@ fun AmoOutletFormBody(
             items.forEach { AmoFormItemView(it) }
         }
         if (bottom != null) bottom() else Row(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            if (onCancel != null) AmoNo(stringResource(R.string.amo_verify_cancel), onCancel, Modifier.weight(1f).testTag(OutletFormTags.CANCEL), enabled = !busy)
-            AmoPrimary(stringResource(R.string.amo_verify_save), onSave, Modifier.weight(1f).testTag(OutletFormTags.SAVE), enabled = saveEnabled && !busy, busy = busy)
+            if (onCancel != null) AmoNo(stringResource(R.string.amo_verify_cancel), onCancel, Modifier.weight(1f).testTag(OutletFormTags.CANCEL), enabled = !busy, icon = com.aktcl.aron.core.ui.AronIcons.Close) // screenshots 50, 55: the cross and the floppy
+            AmoPrimary(stringResource(R.string.amo_verify_save), onSave, Modifier.weight(1f).testTag(OutletFormTags.SAVE), enabled = saveEnabled && !busy, busy = busy, glyph = com.aktcl.aron.core.ui.aron.ButtonGlyph.Save)
         }
     }
 }
