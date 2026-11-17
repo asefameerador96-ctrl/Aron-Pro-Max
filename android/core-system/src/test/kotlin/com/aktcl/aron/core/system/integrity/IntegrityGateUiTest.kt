@@ -1,0 +1,79 @@
+package com.aktcl.aron.core.system.integrity
+
+import androidx.activity.ComponentActivity
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.Text
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithTag
+import java.nio.file.Files
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.robolectric.annotation.Config
+
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [34])
+class IntegrityGateUiTest {
+    @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+
+    private var flags = DevFlags(false, false)
+    private val dir = Files.createTempDirectory("gateui").toFile()
+    private val clock = LabExemptionStoreTest.Clock()
+    private val log = IntegrityEventLog(dir)
+    private fun controller() = IntegrityGateController({ flags }, LabExemptionStore(dir, clock), log, dir, false, "1", clock::wallMs)
+
+    @Test fun gatedShowsOnlyTheBlockingScreenInBanglaAndEnglishAndCheckAgainReopens() {
+        flags = DevFlags(devOptions = true, adb = false)
+        val c = controller()
+        var composed = 0
+        rule.setContent { IntegrityGate(c) { composed++; Text("APP-CONTENT", modifier = androidx.compose.ui.Modifier.testTag("app")) } }
+        rule.onNodeWithTag(IntegrityGateTags.SCREEN).assertIsDisplayed()
+        rule.onNodeWithText("ডেভেলপার অপশন চালু আছে").assertIsDisplayed()
+        rule.onAllNodesWithTag("app").assertCountEquals(0)
+        assertEquals("the app UI is not composed behind the gate", 0, composed)
+        // Still on: check again keeps the gate.
+        rule.onNodeWithTag(IntegrityGateTags.CHECK_AGAIN).performClick()
+        rule.onNodeWithTag(IntegrityGateTags.SCREEN).assertIsDisplayed()
+        flags = DevFlags(false, false)
+        rule.onNodeWithTag(IntegrityGateTags.CHECK_AGAIN).performClick()
+        rule.waitForIdle()
+        rule.onAllNodesWithTag(IntegrityGateTags.SCREEN).assertCountEquals(0)
+        rule.onNodeWithTag("app").assertIsDisplayed()
+        assertTrue(log.pending().isNotEmpty())
+    }
+
+    @Test fun theScreenTheRepWasOnIsKeptWhenTheGateLifts() {
+        flags = DevFlags(false, false)
+        val c = controller()
+        rule.setContent { IntegrityGate(c) { var t by rememberSaveable { mutableStateOf("") }; BasicTextField(t, { t = it }, modifier = androidx.compose.ui.Modifier.testTag("field")) } }
+        rule.onNodeWithTag("field").performTextInput("half-typed")
+        flags = DevFlags(true, false)
+        rule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED) // to the background ...
+        rule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED) // ... and back: the settings are re-read
+        rule.onNodeWithTag(IntegrityGateTags.SCREEN).assertIsDisplayed()
+        flags = DevFlags(false, false)
+        rule.onNodeWithTag(IntegrityGateTags.CHECK_AGAIN).performClick()
+        rule.onNodeWithText("half-typed").fetchSemanticsNode() // the screen state came back
+    }
+
+    @Test fun anOpenGateComposesTheContentAtOnce() {
+        val c = controller()
+        rule.setContent { IntegrityGate(c) { Text("APP-CONTENT") } }
+        rule.onNodeWithText("APP-CONTENT").assertIsDisplayed()
+    }
+}
+

@@ -49,7 +49,6 @@
     <!-- ডিভাইস নিবন্ধন (docs/24 s10.4) -->
     <string name="enrol_title">এই ফোনটি নিবন্ধন করুন</string>
     <string name="enrol_explain">প্রথম লগইনের আগে ফোনটি ARON-এ নিবন্ধন করতে হবে। অ্যাডমিন পোর্টালে দেখানো নিবন্ধন QR স্ক্যান করুন, অথবা নিবন্ধন টোকেন পেস্ট করুন।</string>
-    <string name="enrol_scan">QR স্ক্যান করুন</string>
     <string name="enrol_token_label">নিবন্ধন টোকেন</string>
     <string name="enrol_submit">নিবন্ধন করুন</string>
     <string name="enrol_busy">নিবন্ধন হচ্ছে…</string>
@@ -64,5 +63,4 @@
     <string name="enrol_error_invalid">সার্ভার এই টোকেন চেনে না, অথবা এটি বাতিল হয়েছে। অ্যাডমিন পোর্টালে নতুন টোকেন তৈরি করুন।</string>
     <string name="enrol_error_attestation">সার্ভার এই ফোন বা অ্যাপ যাচাই করতে পারেনি। ম্যানেজড ফোনের টোকেনের জন্য রিসেট করা ফোনে QR সেটআপ লাগে। সাপোর্টে যোগাযোগ করুন।</string>
     <string name="enrol_error_refused">নিবন্ধন প্রত্যাখ্যাত হয়েছে (%1$s)। সাপোর্টে যোগাযোগ করুন।</string>
-    <string name="enrol_scan_unavailable">এই ফোনে QR স্ক্যানার নেই। এর বদলে টোকেন পেস্ট করুন।</string>
 </resources>

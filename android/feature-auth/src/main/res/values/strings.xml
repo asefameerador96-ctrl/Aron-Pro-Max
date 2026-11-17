@@ -50,7 +50,6 @@
     <!-- Device enrolment before the first login (docs/24 s10.4) -->
     <string name="enrol_title">Enrol this phone</string>
     <string name="enrol_explain">Before the first login this phone must be enrolled with ARON. Scan the enrolment QR shown in the admin portal, or paste the enrolment token.</string>
-    <string name="enrol_scan">Scan QR</string>
     <string name="enrol_token_label">Enrolment token</string>
     <string name="enrol_submit">Enrol</string>
     <string name="enrol_busy">Enrolling…</string>
@@ -65,5 +64,4 @@
     <string name="enrol_error_invalid">The server does not know this token, or it was revoked. Create a new one in the admin portal.</string>
     <string name="enrol_error_attestation">The server could not verify this phone or app. A managed-phone token needs the QR set-up of a reset phone. Contact support.</string>
     <string name="enrol_error_refused">Enrolment was refused (%1$s). Contact support.</string>
-    <string name="enrol_scan_unavailable">The QR scanner is not available on this phone. Paste the token instead.</string>
 </resources>

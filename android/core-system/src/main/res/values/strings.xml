@@ -88,4 +88,13 @@
     <string name="support_done_title">Success</string>
     <string name="support_done_message">The data file has been sent.</string>
     <string name="support_done_ok">OK</string>
+    <!-- D-OWNER-MDM-02: the Developer options gate (shown in Bangla and English together) -->
+    <string name="integrity_gate_title">Developer options are on</string>
+    <string name="integrity_gate_why">For security, ARON does not run while Developer options or USB debugging is on. Switch it off to continue.</string>
+    <string name="integrity_gate_flag_dev">Developer options: ON</string>
+    <string name="integrity_gate_flag_adb">USB debugging: ON</string>
+    <string name="integrity_gate_steps">1. Open Settings, then System (on some phones: Additional settings), then Developer options.\n2. Turn the switch at the top OFF. Also turn USB debugging OFF.\n3. Come back to ARON and tap Check again.</string>
+    <string name="integrity_gate_data_safe">Your data is safe on this phone. Records already saved keep uploading in the background.</string>
+    <string name="integrity_gate_check_again">Check again</string>
+    <string name="integrity_gate_open_settings">Open Settings</string>
 </resources>

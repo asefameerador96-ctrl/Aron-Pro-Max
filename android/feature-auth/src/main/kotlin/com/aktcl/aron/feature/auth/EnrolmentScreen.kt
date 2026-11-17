@@ -1,6 +1,5 @@
 package com.aktcl.aron.feature.auth
 
-import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,7 +16,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -26,7 +24,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.core.common.AppLanguage
-import com.aktcl.aron.core.ui.aron.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronColors
@@ -35,7 +32,6 @@ import com.aktcl.aron.core.ui.LocalAronLook
 /** Test tags of the enrolment screen. */
 object EnrolTags {
     const val INPUT = "enrol_input"
-    const val SCAN = "enrol_scan"
     const val SUBMIT = "enrol_submit"
     const val RETRY = "enrol_retry"
     const val SKIP = "enrol_skip"
@@ -45,8 +41,8 @@ object EnrolTags {
 /**
  * Enrol this phone (docs/24 s10.4), shown instead of login while the phone is not enrolled. [onEnrolled] leads to login;
  * [onSkip] goes to login without enrolling (offline unlock of a known user, or a dev server without the gate): the server
- * still refuses an online login from an unknown phone, so skipping never weakens the gate. [scan] opens the QR scanner
- * (null hides the button). [sunlight] and [onSunlight] wire the sun switch of the top row.
+ * still refuses an online login from an unknown phone, so skipping never weakens the gate. The QR scanner is gone (D-OWNER-MDM-02):
+ * the token is typed or pasted. [sunlight] and [onSunlight] wire the sun switch of the top row.
  */
 @Composable
 fun EnrolmentScreen(
@@ -55,30 +51,17 @@ fun EnrolmentScreen(
     onEnrolled: () -> Unit,
     onSkip: () -> Unit,
     onLanguageSelect: (AppLanguage) -> Unit,
-    scan: ((Context, (EnrolmentQrScanner.Result) -> Unit) -> Unit)? = EnrolmentQrScanner::scan,
     sunlight: Boolean = false,
     onSunlight: ((Boolean) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.enrolled) { if (state.enrolled) onEnrolled() }
-    val context = LocalContext.current
     EnrolmentContent(
         state = state,
         appTitle = appTitle,
         onInput = viewModel::onInput,
         onSubmit = viewModel::onSubmit,
         onRetry = viewModel::onRetry,
-        onScan = scan?.let { s ->
-            {
-                s(context) { r ->
-                    when (r) {
-                        is EnrolmentQrScanner.Result.Text -> viewModel.onScanned(r.value)
-                        EnrolmentQrScanner.Result.Cancelled -> Unit
-                        EnrolmentQrScanner.Result.Unavailable -> viewModel.onScanUnavailable()
-                    }
-                }
-            }
-        },
         onSkip = onSkip,
         onLanguageSelect = onLanguageSelect,
         sunlight = sunlight,
@@ -88,8 +71,7 @@ fun EnrolmentScreen(
 
 /**
  * The enrolment frame (screens-sr s1 frame): the top row, the brand block, the card with the explanation, the banner
- * slot and the token field; the bar primary is "Scan QR" (or "Try again" while a token waits for the server) with
- * "Enrol" as the secondary; "Log in without enrolling" is a text button that is never disabled, so a slow network
+ * slot and the token field; the bar primary is "Enrol" (or "Try again" while a token waits for the server); "Log in without enrolling" is a text button that is never disabled, so a slow network
  * never holds up the offline unlock at the start of a day.
  */
 @Composable
@@ -99,7 +81,6 @@ fun EnrolmentContent(
     onInput: (String) -> Unit,
     onSubmit: () -> Unit,
     onRetry: () -> Unit,
-    onScan: (() -> Unit)?,
     onSkip: () -> Unit,
     onLanguageSelect: (AppLanguage) -> Unit,
     sunlight: Boolean = false,
@@ -113,10 +94,6 @@ fun EnrolmentContent(
                 state.pending -> AuthBar(
                     primaryText = stringResource(if (state.busy) R.string.enrol_busy else R.string.enrol_retry), onPrimary = onRetry, primaryTag = EnrolTags.RETRY,
                     enabled = !state.busy, busy = state.busy,
-                    secondaryText = enrolText, onSecondary = onSubmit, secondaryTag = EnrolTags.SUBMIT, secondaryEnabled = !state.busy,
-                )
-                onScan != null -> AuthBar(
-                    primaryText = stringResource(R.string.enrol_scan), onPrimary = onScan, primaryTag = EnrolTags.SCAN, enabled = !state.busy,
                     secondaryText = enrolText, onSecondary = onSubmit, secondaryTag = EnrolTags.SUBMIT, secondaryEnabled = !state.busy,
                 )
                 else -> AuthBar(primaryText = enrolText, onPrimary = onSubmit, primaryTag = EnrolTags.SUBMIT, enabled = !state.busy, busy = state.busy)
@@ -144,9 +121,6 @@ fun EnrolmentContent(
                         modifier = Modifier.testTag(EnrolTags.INPUT), enabled = !state.busy, singleLine = false, minLines = 2,
                         keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done,
                     )
-                    if (state.pending && onScan != null) {
-                        AronSecondaryButton(stringResource(R.string.enrol_scan), onScan, Modifier.fillMaxWidth().testTag(EnrolTags.SCAN), enabled = !state.busy)
-                    }
                 }
             }
             // Never disabled: a slow network must not hold up the offline unlock at the start of a day.
@@ -159,7 +133,6 @@ fun EnrolmentContent(
 private fun messageText(m: EnrolMessage): String = when (m) {
     EnrolMessage.Empty -> stringResource(R.string.enrol_error_empty)
     EnrolMessage.Unreadable -> stringResource(R.string.enrol_error_unreadable)
-    EnrolMessage.ScanUnavailable -> stringResource(R.string.enrol_scan_unavailable)
     is EnrolMessage.Waiting -> stringResource(if (m.offline) R.string.enrol_waiting_offline else R.string.enrol_waiting_server)
     is EnrolMessage.Refused -> when (m.code) {
         ProblemCode.ERR_ENROLMENT_TOKEN_EXPIRED.wire -> stringResource(R.string.enrol_error_expired)

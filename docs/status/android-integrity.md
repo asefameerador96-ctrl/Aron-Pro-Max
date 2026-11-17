@@ -1,7 +1,9 @@
 # Status: lane A-INT1 (android-integrity)
 
 Directive: D-OWNER-MDM-02 (2026-11-13). Branch `lane/android-integrity`. Step 0 scout, written 2026-11-13, before any code.
-State: STEP 0 DONE. Slice 1 (part 1 + part 2) and slice 2 (part 3) not started.
+State: STEP 0 DONE. Slice 1 (parts 1 and 2) built and green on core modules locally; full gate and CI pending. Slice 2 (part 3) and slice 3 (server piece and contract: V0201/V0202, contract 1.19.0, provisional) not started.
+
+Slice 1 facts: see D-AINT-01 and D-AINT-02 in DECISIONS.md. Tests added: `DeviceOwnerReleaseTest` (order, idempotence, kill before clear, stuck packages, corrupt state), `LabExemptionStoreTest` (expiry, cap, clock back, reboot, monotonic bound, corrupt), `IntegrityGateControllerTest` (flags, debug and lab exemption, one event per onset, clock cannot lift the gate), `IntegrityGateUiTest` (Bangla and English screen, content not composed behind it, state kept), `EveryActivityIsGatedTest`. Changed tests: DeviceEnrolmentTest (policy-apply and QR provisioning tests removed or renamed), EnrolmentTest (provisioning-activity tests removed), EnrolmentViewModelTest (scan calls replaced by typed input), NoPollingLintTest (alarm allow-list emptied). No existing test pinned "mock lets the sale through" yet; that is slice 2.
 
 ## (a) Where device owner / DevicePolicyManager / app blocking / provisioning is used
 

@@ -22,7 +22,6 @@ import com.aktcl.aron.core.session.SessionComponents
 import com.aktcl.aron.core.sync.BundleOutcome
 import com.aktcl.aron.core.sync.BundleDownloaders
 import com.aktcl.aron.core.sync.SyncScheduler
-import com.aktcl.aron.dpc.DeviceOwnerPolicy
 import com.aktcl.aron.feature.attendance.AttendanceFlow
 import com.aktcl.aron.feature.home.BundleFreshness
 import com.aktcl.aron.feature.outlet.CapturedPhoto
@@ -374,11 +373,6 @@ class SrDay(
         fixes = fixSource, metaProvider = metaProvider,
         committer = { e, f ->
             capture.recordAttendance(e, f)
-            // The record is safe in Room; a failing hook must never undo it or leave the screen half-updated.
-            runCatching {
-                val policy = DeviceOwnerPolicy.get(context)
-                if (e.kind == "check_in") policy.onCheckInCommitted() else policy.onCheckOutCommitted()
-            }
             // N-035 breadcrumbs (D-MDM-BREADCRUMB-01): starts or ends the day's window; a no-op while breadcrumbs are off.
             runCatching { deviceRuntime?.onAttendanceCommitted(e.kind, userId) }
             // Play Integrity evidence at check-in (docs/24 s8.7): collected by the next sync run, never awaited here.

@@ -28,7 +28,6 @@ import com.aktcl.aron.core.session.SessionComponents
 import com.aktcl.aron.core.sync.SyncScheduler
 import com.aktcl.aron.core.sync.device.DayConfig
 import com.aktcl.aron.core.sync.device.DeviceRuntime
-import com.aktcl.aron.dpc.DeviceOwnerPolicy
 import com.aktcl.aron.feature.attendance.AttendanceFlow
 import com.aktcl.aron.feature.outlet.CapturedPhoto
 import com.aktcl.aron.feature.outlet.CaptureMetaProvider
@@ -193,10 +192,6 @@ class AmoDay(
         fixes = fixSource, metaProvider = metaProvider,
         committer = { e, f ->
             capture.recordAttendance(e, f)
-            runCatching {
-                val policy = DeviceOwnerPolicy.get(context)
-                if (e.kind == "check_in") policy.onCheckInCommitted() else policy.onCheckOutCommitted()
-            }
             // N-035 breadcrumbs (D-MDM-BREADCRUMB-01): starts or ends the day's window; a no-op while breadcrumbs are off.
             runCatching { deviceRuntime?.onAttendanceCommitted(e.kind, userId) }
             if (e.kind == "check_in") runCatching { deviceRuntime?.wantEvidenceAtCheckIn() }
