@@ -143,7 +143,7 @@ class SellShot {
 
     // ---- screens ----
     @Composable private fun Stock() = Frame(stringResource(com.aktcl.aron.feature.stock.R.string.stk_title)) {
-        StockContent(stockRows, stockTotals, StockMessage.SAVED, slipNotPrinted = true, onIssue = { _, _ -> }, onSave = {}, onPrint = {})
+        StockContent(stockRows, stockTotals, StockMessage.SAVED, slipNotPrinted = true, onIssue = { _, _ -> }, onSave = {}, onPrint = {}, srParity = true)
     }
 
     @Composable private fun Picker() = Frame(stringResource(com.aktcl.aron.feature.outlet.R.string.out_picker_title)) {

@@ -1,3 +1,7 @@
+# HANDOVER (SV5, round B7, 2026-11-17) — read this first
+
+Round B7 (code and tests only, no migration edit): (1) a quarantine item released unchanged keeps the as-sent registry hash (`Rec.hashOverride`, `HeldItem.payloadSha`), so a phone's resend answers duplicate; (2) db test `LateRowFactV0191Test` for the approved_cluster_id backfill and the write-once trigger, API test that a retry on a backfilled approval still answers 409; (3) D-SV2-10 records the limits (outlet's CURRENT cluster in the backfill; fleet-size note for the late_row_fact backfill). Merge INT once the lead says train 113 landed. V0186..V0191 stay frozen.
+
 # HANDOVER (SV5, round B6, 2026-11-13) — read this first
 
 Round B6 (lead's last review round on a3c3d2b6d): (1) `anchor_clock` is dropped for device records (`Uploader.serverStamped`, `IngestService` write path and `heldJson`), only `DayService.salesSubmit` sets it; (2) V0191 comment is honest about the backfill, the cluster lock and the single `apply_db_role_grants()` come after the backfills, `approved_cluster_id` is backfilled from the outlet's cluster; (3) the online bound is about the clock only, asymmetric (6 h past, 5 min future); (4) tests: `SrManualSv1IngestTest` (device anchor dropped incl. held copy, bound cases, back-dated date, quarantine via salesSubmit). V0186..V0191 FROZEN after this push.
