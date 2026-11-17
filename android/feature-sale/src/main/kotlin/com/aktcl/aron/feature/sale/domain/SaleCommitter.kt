@@ -100,7 +100,7 @@ class SaleCommitter(
             editFixClientUuid = editFix?.clientUuid,
         )
         val capture = SaleCapture(memo, lines, discounts, qcLines, editFix)
-        val finalNo = if (numbering != null) repo.recordNumberedSale(capture, numbering) else { repo.recordSale(capture); memoNo }
+        val finalNo = if (numbering != null) repo.recordNumberedSale(capture, numbering, enforceStock = true) else { repo.recordSale(capture, enforceStock = true); memoNo }
         return CommittedSale(draft.memoUuid, finalNo, t.netMtk, s.dueMtk)
     }
 
