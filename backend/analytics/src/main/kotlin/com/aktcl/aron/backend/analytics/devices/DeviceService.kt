@@ -166,7 +166,9 @@ class DeviceService(
 
             if (req.app_package != "com.aktcl.aron.${tok.flavour}") fail("package does not match the token's flavour")
             val prod = tok.lockdown == "prod"
-            if (prod && !req.device_owner) fail("the app is not device owner")
+            // D-OWNER-MDM-02: the apps are no longer device owner (device-owner enrolment needs a factory reset). A phone registers with its
+            // device key and the typed token; `req.device_owner` is recorded as reported, never demanded. The key attestation below
+            // (trusted root, intact boot, hardware-backed key) still applies to production tokens.
             // Attestation: challenge = SHA-256(token), package and signer digest as claimed, key = the enrolment key, boot state verified in production, a trusted root in production.
             val facts = try {
                 KeyAttestation.verify(req.key_attestation_chain, pub.toECPublicKey() as ECPublicKey, settings.trust, requireTrustedRoot = prod, nowMs = now.toEpochMilli())
