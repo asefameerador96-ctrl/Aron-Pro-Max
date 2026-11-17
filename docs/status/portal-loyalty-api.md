@@ -1,5 +1,12 @@
 # Status: lane portal-loyalty-api (Lane L-A), started 2026-11-12
 
+## FOLLOW-UPS for a later push, after train 115 lands (from the lead's pass of aa78bd1bc, recorded 2026-11-17; nothing of this is in the merge push)
+1. A worker sweep that re-releases a WAITING child (item detail `waits for another parent: ...`) when its missing parent is stored, plus a count of waiting items for the review queue.
+2. A waiting item shows a reviewer-readable reason and its own state, not the first parent's code; a hint when the other parent was refused.
+3. matchBackfill children that wait get the same "waits for" detail.
+4. V0192's cfg close: only rows with superseded_in_version IS NULL: DONE in the merge push (the lead let me choose; verified on a hand-made database: a superseded `reject` row is untouched and mints no version, a live one is closed and mints one).
+5. Restore a replay assertion for the line's resend in the rewritten header test (`acceptingAHeaderWhileALineHasNotSyncedKeepsThePhotoHeld...`).
+
 ## C-R5 DONE (L-A10, 2026-11-17; D-LOY-API-27): the lead's review of 1bb516a76 (docs/reviews/loyalty-c-and-amo-2026-11-17.md on lane/lead-docs-1022)
 Blocking fixed: a released child that is still missing another parent now STAYS held and open (`settleChild` -> `WAITS`, `markWaiting`), never closed as `discarded` (the phone treats that as final). Tests `acceptingAHeaderWhileALineHasNotSyncedKeepsThePhotoHeld...` and `aDueCollectionWhoseOtherParentHasNotSyncedStaysHeld...` assert the open item and an empty phone `resolutions[]` for the child; both FAIL on the C-R4 code (checked). Lows: V0192 NOWAIT retry loop, cfg_value reject close mints a cfg_version (checked on a hand-made reject row: 3 -> 4), docs/19 default, gift_choice stays out of APP_VOID_TABLES (decided), the re-open is generic (visit test added). Known cost: no automatic pickup when the missing parent arrives, the reviewer's accept does it. Next: when the lead says "114a landed", merge INT again (INT is already past a6a1cbf25), gate, push, lane ci, "checked <sha>".
 

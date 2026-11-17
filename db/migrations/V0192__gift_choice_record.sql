@@ -87,13 +87,13 @@ UPDATE app.cfg_key SET bounds = '{"enum": ["accept_and_flag"]}'::jsonb, updated_
 DO $$
 DECLARE v bigint; sys bigint;
 BEGIN
-  IF EXISTS (SELECT 1 FROM app.cfg_value WHERE key = 'cfg.loyalty.negative_balance_policy' AND value = '"reject"'::jsonb AND (effective_to IS NULL OR effective_to > now())) THEN
+  IF EXISTS (SELECT 1 FROM app.cfg_value WHERE key = 'cfg.loyalty.negative_balance_policy' AND value = '"reject"'::jsonb AND superseded_in_version IS NULL AND (effective_to IS NULL OR effective_to > now())) THEN
     SELECT id INTO sys FROM app.app_user WHERE username = 'aron.system';
     SELECT coalesce(max(config_version), 0) + 1 INTO v FROM app.cfg_version;
     INSERT INTO app.cfg_version (config_version, kind, committed_by, summary, max_risk_class)
     VALUES (v, 'change', sys, 'V0192: an open negative_balance_policy value reject (not built) is closed; accept_and_flag applies', 2);
     UPDATE app.cfg_value SET effective_to = GREATEST(now(), effective_from + interval '1 second'), superseded_in_version = v
-     WHERE key = 'cfg.loyalty.negative_balance_policy' AND value = '"reject"'::jsonb AND (effective_to IS NULL OR effective_to > now());
+     WHERE key = 'cfg.loyalty.negative_balance_policy' AND value = '"reject"'::jsonb AND superseded_in_version IS NULL AND (effective_to IS NULL OR effective_to > now());
   END IF;
 END $$;
 
