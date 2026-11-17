@@ -113,7 +113,7 @@ class MigrationPreflightTest {
             }
             assertEquals(ids.size, rows.values.map { it.second.lowercase().trim() }.toSet().size, "$kind: distinct names")
         }
-        assertEquals(renamedExpected.size.toString(), scalar("SELECT count(*) FROM app.audit_log WHERE entity = 'cluster' AND action = 'preflight_rename' AND actor_username = 'migrate-preflight' AND via = 'job'"))
+        assertEquals(renamedExpected.size.toString(), scalar("SELECT count(*) FROM app.audit_log WHERE entity = 'cluster' AND action = 'preflight_rename' AND actor_user_id IS NULL AND via = 'job'"))
         assertEquals(null, scalar("SELECT app.audit_verify()"), "the audit chain stays intact")
         assertEquals("inactive", scalar("SELECT status FROM app.cluster WHERE id = ${groups.getValue("inactive")[1]}"), "status untouched")
         val repaired = snapshot()

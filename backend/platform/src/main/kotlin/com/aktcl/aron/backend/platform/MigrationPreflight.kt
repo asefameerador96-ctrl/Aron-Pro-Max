@@ -102,7 +102,7 @@ object MigrationPreflight {
         /**
          * Dev only. For each group keep the lowest id unchanged and rename the others by appending " #<id>" (the base cut so that the whole name stays within
          * [NAME_MAX] characters): unique under the normalisation (the id differs) and under the exact unique index. One transaction (the caller's), one audit
-         * row per renamed cluster (system actor `migrate-preflight`, via `job`; the old and the new name are in the audit row, in the database, never in a log).
+         * row per renamed cluster (through AuditLog.write, no actor, via `job`; the old and the new name are in the audit row, in the database, never in a log).
          */
         override fun repair(c: Connection, findings: List<Finding>): List<Long> {
             c.createStatement().use { it.execute("LOCK TABLE app.cluster IN SHARE ROW EXCLUSIVE MODE") }
@@ -116,19 +116,20 @@ object MigrationPreflight {
                 val base = old.substring(0, old.offsetByCodePoints(0, keep)).trimEnd()
                 val renamedTo = base + suffix
                 c.prepareStatement("UPDATE app.cluster SET name = ? WHERE id = ?").use { ps -> ps.setString(1, renamedTo); ps.setLong(2, id); ps.executeUpdate() }
-                c.prepareStatement(
-                    "INSERT INTO app.audit_log (actor_username, via, entity, entity_id, action, before, after, reason) VALUES ('migrate-preflight', 'job', 'cluster', ?, 'preflight_rename', CAST(? AS jsonb), CAST(? AS jsonb), ?)",
-                ).use { ps ->
-                    ps.setString(1, id.toString())
-                    ps.setString(2, jsonName(old)); ps.setString(3, jsonName(renamedTo))
-                    ps.setString(4, "Dev pre-flight of V0191: names of one zone that differed only by case, spacing or composition; the lowest id kept its name, this one got an id suffix")
-                    ps.executeUpdate()
+                // Through the platform's one audit writer (it redacts, and the hash chain is the trigger's): the caller's own connection and transaction, no actor (via `job`).
+                org.jdbi.v3.core.Jdbi.create(c).open().use { h ->
+                    AuditLog.write(
+                        h, null, "cluster", id.toString(), "preflight_rename",
+                        kotlinx.serialization.json.buildJsonObject { put("name", kotlinx.serialization.json.JsonPrimitive(old)) },
+                        kotlinx.serialization.json.buildJsonObject { put("name", kotlinx.serialization.json.JsonPrimitive(renamedTo)) },
+                        "Dev pre-flight of V0191: names of one zone that differed only by case, spacing or composition; the lowest id kept its name, this one got an id suffix",
+                        null, via = "job",
+                    )
                 }
                 renamed += id
             }
             return renamed
         }
 
-        private fun jsonName(n: String) = "{\"name\":\"" + n.replace("\\", "\\\\").replace("\"", "\\\"").replace(Regex("[\\u0000-\\u001f]")) { "\\u%04x".format(it.value[0].code) } + "\"}"
     }
 }
