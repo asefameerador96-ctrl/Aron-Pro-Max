@@ -52,4 +52,15 @@ class IntegrityGateBuildTest {
             assertEquals("$a benchmark", "true", value("benchmark"))
         }
     }
+
+    @Test fun benchmarkBuildTypesHaveTheirOwnApplicationIdAndReleaseDoesNot() {
+        for (a in listOf("app-sr", "app-amo", "app-tso")) {
+            val g = File(root, "$a/build.gradle.kts").readText()
+            val bench = g.substringAfter("create(\"benchmark\") {").substringBefore("create(\"benchmarkProfile\")")
+            assertTrue("$a: benchmark must carry applicationIdSuffix .benchmark so it can never replace a release install", bench.contains("applicationIdSuffix = \".benchmark\""))
+            val release = g.substringAfter("release {").substringBefore("create(\"benchmark\")")
+            assertTrue("$a: release must not set a suffix", !release.contains("applicationIdSuffix"))
+        }
+        assertTrue(File(root, "benchmark/build.gradle.kts").readText().contains(".benchmark\""))
+    }
 }

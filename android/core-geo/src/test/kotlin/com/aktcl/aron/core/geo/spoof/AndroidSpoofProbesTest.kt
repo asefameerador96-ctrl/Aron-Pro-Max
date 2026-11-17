@@ -73,4 +73,22 @@ class AndroidSpoofProbesTest {
         p.networkFix(1_000_000_000L) // no provider: null, no exception
         p.facts()
     }
+
+    @Test fun aSelectedMockAppThatIsNotOnTheListIsFoundWhenThePlatformShowsIt() {
+        // The package requests ACCESS_MOCK_LOCATION and is visible to this app (what an ordinary app can see without QUERY_ALL_PACKAGES:
+        // the manifest <queries> packages and the few the platform always shows). Not on the fake-GPS list, still found.
+        val info = PackageInfo().apply {
+            packageName = "com.unlisted.mockprovider"; requestedPermissions = arrayOf("android.permission.ACCESS_MOCK_LOCATION")
+            applicationInfo = ApplicationInfo().apply { packageName = "com.unlisted.mockprovider"; uid = 10_555 }
+        }
+        shadowOf(app.packageManager).installPackage(info)
+        shadowOf(app.getSystemService(AppOpsManager::class.java)).setMode(58, 10_555, "com.unlisted.mockprovider", AppOpsManager.MODE_ALLOWED)
+        assertTrue(AndroidSpoofProbes(app, Clock(), listOf("com.lexa.fakegps")).facts().mockAppSelected)
+    }
+
+    @Test fun anInvisibleMockAppIsNotSeenAndNothingIsClaimed() {
+        // Not installed from this app's point of view (the platform hides it): no claim either way.
+        val f = AndroidSpoofProbes(app, Clock(), listOf("com.lexa.fakegps")).facts()
+        assertFalse(f.mockAppSelected); assertFalse(f.fakeGpsAppInstalled)
+    }
 }

@@ -36,6 +36,12 @@ class AronSRApplication : Application(), Configuration.Provider {
             bootCount = { android.provider.Settings.Global.getInt(contentResolver, android.provider.Settings.Global.BOOT_COUNT, 0) },
         )
         super.onCreate()
+        // Developer options gate (D-OWNER-MDM-02): built here, before ANY activity, so ActionGate guards writes from the first moment;
+        // "Sync now" on the gate screen asks for an upload at once so queued records leave the phone while the gate is up.
+        com.aktcl.aron.core.system.integrity.IntegrityGates.install(this) {
+            val id = (sessionComponents.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId
+            if (id != null) syncScheduler.requestSync(id, com.aktcl.aron.contract.SyncTrigger.MANUAL)
+        }
         errorReporter.start(this, CoroutineScope(SupervisorJob() + Dispatchers.Default)) // F-SYS-032, first: crashes from here on are kept
         com.aktcl.aron.core.printing.diag.CrashLog.install(this, BuildConfig.VERSION_NAME + "+" + BuildConfig.VERSION_CODE) // owner P0 2026-10-24: last crash in Settings → Printer → Export
         ConnectivityFlush.register(this, connectivityFlush) // T3: flush on reconnect while the process lives

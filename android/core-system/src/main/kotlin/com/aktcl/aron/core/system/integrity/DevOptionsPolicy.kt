@@ -1,11 +1,15 @@
 package com.aktcl.aron.core.system.integrity
 
-/** Which of the two developer settings are on. */
-data class DevFlags(val devOptions: Boolean, val adb: Boolean) {
-    val any: Boolean get() = devOptions || adb
+/**
+ * Which of the developer settings are on: Developer options, USB debugging, and wireless debugging (`adb_wifi_enabled`,
+ * Android 11+). A rep with an on-phone adb client could switch the first two off with `settings put` while wireless
+ * debugging stays active, so all three are gate flags.
+ */
+data class DevFlags(val devOptions: Boolean, val adb: Boolean, val adbWifi: Boolean = false) {
+    val any: Boolean get() = devOptions || adb || adbWifi
 
     /** Stable wire/log codes of the flags that are on. */
-    val codes: List<String> get() = listOfNotNull("dev_options".takeIf { devOptions }, "adb".takeIf { adb })
+    val codes: List<String> get() = listOfNotNull("dev_options".takeIf { devOptions }, "adb".takeIf { adb }, "adb_wifi".takeIf { adbWifi })
 }
 
 /** What the gate decides on one check. [flags] are the settings that are on; [exempt] says why a gated phone still runs. */

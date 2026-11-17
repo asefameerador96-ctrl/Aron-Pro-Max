@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import com.aktcl.aron.core.common.ActionGate
+import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
 import java.io.File
@@ -16,12 +17,22 @@ class AndroidGateClock(context: Context) : GateClock {
     override fun bootCount(): Int = runCatching { Settings.Global.getInt(cr, Settings.Global.BOOT_COUNT, -1) }.getOrDefault(-1)
 }
 
-/** Reads `DEVELOPMENT_SETTINGS_ENABLED` and `ADB_ENABLED`. An unreadable setting counts as off (a phone must not be locked out by a read error). */
+/** Reads `DEVELOPMENT_SETTINGS_ENABLED`, `ADB_ENABLED` and `adb_wifi_enabled` (API 30+). An unreadable setting counts as off (a phone must not be locked out by a read error). */
 class AndroidDevFlagsReader(context: Context) {
     private val cr = context.applicationContext.contentResolver
     fun read(): DevFlags {
         fun on(name: String) = runCatching { Settings.Global.getInt(cr, name, 0) == 1 }.getOrDefault(false)
-        return DevFlags(devOptions = on(Settings.Global.DEVELOPMENT_SETTINGS_ENABLED), adb = on(Settings.Global.ADB_ENABLED))
+        return DevFlags(
+            devOptions = on(Settings.Global.DEVELOPMENT_SETTINGS_ENABLED), adb = on(Settings.Global.ADB_ENABLED),
+            adbWifi = Build.VERSION.SDK_INT >= 30 && on(ADB_WIFI_ENABLED),
+        )
+    }
+
+    companion object {
+        /** `Settings.Global.ADB_WIFI_ENABLED` (API 30), spelled out so older compile targets and tests see the same name. */
+        const val ADB_WIFI_ENABLED = "adb_wifi_enabled"
+        /** Every setting the gate reads and observes. */
+        val SETTINGS = listOf(Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, Settings.Global.ADB_ENABLED, ADB_WIFI_ENABLED)
     }
 }
 
@@ -33,6 +44,21 @@ object IntegrityGates {
     @Volatile private var instance: IntegrityGateController? = null
     @Volatile private var exemptionStore: LabExemptionStore? = null
     @Volatile private var sharedLog: IntegrityEventLog? = null
+
+    /**
+     * "Sync now" from the gate screen (set once in `Application.onCreate`): lets queued records upload at once while the
+     * gate is up. Null until set; the gate screen shows the button only when it is set.
+     */
+    @Volatile var syncNow: (() -> Unit)? = null
+
+    /** Installed by the visible gate: asked to re-check at once when a writer found the gate closed (the race window). */
+    @Volatile var refreshNow: () -> Unit = {}
+
+    /** `Application.onCreate` of the three apps: builds the gate and ActionGate before ANY activity exists, and wires "Sync now". */
+    fun install(context: Context, syncNow: (() -> Unit)? = null) {
+        get(context)
+        this.syncNow = syncNow
+    }
 
     /** Pure: which build exemption a build carries. Debuggable wins; the meta-data must be exactly "true"; release has neither. */
     fun buildExemption(debuggable: Boolean, metaExempt: String?): Exemption? = when {
@@ -66,6 +92,7 @@ object IntegrityGates {
         val controller = IntegrityGateController(reader::read, store, log, dir, buildExemption(debug, meta), version, clock::wallMs)
         // Writers of new records ask at the moment they act (core-common ActionGate), so the gate cannot be raced.
         ActionGate.check = { !controller.check().blocked }
+        ActionGate.onClosed = { refreshNow() }
         return controller
     }
 }

@@ -26,7 +26,11 @@ class AndroidOwnerGatewayTest {
         "no_factory_reset", "no_safe_boot", "no_add_user", "no_config_date_time", "no_usb_file_transfer", "no_config_location",
     )
 
+    private val requested = arrayOf("android.permission.CAMERA", "android.permission.ACCESS_FINE_LOCATION", "android.permission.BLUETOOTH_CONNECT")
+
     private fun fresh(): Pair<DevicePolicyManager, AndroidOwnerGateway> {
+        // The app's own manifest permissions, so the permission-pin reset really has something to reset (not a vacuous pass).
+        org.robolectric.Shadows.shadowOf(app.packageManager).getInternalMutablePackageInfo(app.packageName).requestedPermissions = requested
         val dpm = mockk<DevicePolicyManager>(relaxed = true)
         every { dpm.isDeviceOwnerApp(app.packageName) } returns true
         return dpm to AndroidOwnerGateway(app, dpm)
@@ -50,12 +54,12 @@ class AndroidOwnerGatewayTest {
         @Suppress("DEPRECATION") verify(exactly = 0) { dpm.setAutoTimeRequired(any(), any()) }
         verify(exactly = 0) { dpm.setGlobalSetting(any(), any(), any()) }
         verify(exactly = 0) { dpm.setLocationEnabled(any(), any()) }
-        // Permission pins go back to the user's control, never forced either way.
-        verify(atLeast = 0) { dpm.setPermissionGrantState(admin, app.packageName, any(), DevicePolicyManager.PERMISSION_GRANT_STATE_DEFAULT) }
-        verify(exactly = 0) { dpm.setPermissionGrantState(admin, any(), any(), DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED) }
-        verify(exactly = 0) { dpm.setPermissionGrantState(admin, any(), any(), DevicePolicyManager.PERMISSION_GRANT_STATE_DENIED) }
+        // Permission pins go back to the user's control (DEFAULT), exactly once per requested permission, never forced either way.
+        for (p in requested) verify(exactly = 1) { dpm.setPermissionGrantState(admin, app.packageName, p, DevicePolicyManager.PERMISSION_GRANT_STATE_DEFAULT) }
+        verify(exactly = 0) { dpm.setPermissionGrantState(any(), any(), any(), DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED) }
+        verify(exactly = 0) { dpm.setPermissionGrantState(any(), any(), any(), DevicePolicyManager.PERMISSION_GRANT_STATE_DENIED) }
         // Nothing else was called on the device-policy manager (reads aside): the list above is the complete list.
-        io.mockk.excludeRecords { dpm.isDeviceOwnerApp(any()); dpm.isPackageSuspended(any(), any()); dpm.setPermissionGrantState(any(), any(), any(), any()) }
+        io.mockk.excludeRecords { dpm.isDeviceOwnerApp(any()); dpm.isPackageSuspended(any(), any()) }
         confirmVerified(dpm)
     }
 
@@ -70,5 +74,12 @@ class AndroidOwnerGatewayTest {
         val (dpm, gw) = fresh()
         assertEquals(emptyList<String>(), gw.unsuspend(emptyList()))
         verify(exactly = 0) { dpm.setPackagesSuspended(any(), any(), any()) }
+    }
+
+    @Test fun theTestManifestReallyRequestsPermissions() {
+        val (_, _) = fresh()
+        @Suppress("DEPRECATION")
+        val got = app.packageManager.getPackageInfo(app.packageName, android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions
+        assertEquals(requested.toList(), got?.toList()) // the reset test above is not vacuous
     }
 }

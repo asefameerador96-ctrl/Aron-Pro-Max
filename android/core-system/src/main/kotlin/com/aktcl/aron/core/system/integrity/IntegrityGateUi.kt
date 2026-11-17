@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +50,7 @@ object IntegrityGateTags {
     const val SCREEN = "integrity_gate"
     const val CHECK_AGAIN = "integrity_gate_check_again"
     const val OPEN_SETTINGS = "integrity_gate_open_settings"
+    const val SYNC_NOW = "integrity_gate_sync_now"
 }
 
 /**
@@ -71,12 +73,22 @@ fun IntegrityGate(controller: IntegrityGateController, modifier: Modifier = Modi
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) { state = controller.check() }
         }
-        val uris = listOf(Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, Settings.Global.ADB_ENABLED).map(Settings.Global::getUriFor)
+        val uris = AndroidDevFlagsReader.SETTINGS.map(Settings.Global::getUriFor)
         runCatching { uris.forEach { resolver.registerContentObserver(it, false, observer) } }
         state = controller.check() // a change while the observer was not registered
         onStopOrDispose { runCatching { resolver.unregisterContentObserver(observer) } }
     }
     LaunchedEffect(state) { withContext(Dispatchers.IO) { controller.noteOnset(state) } }
+    // A writer that found the gate closed in the race window (ActionGate) makes the screen show the gate NOW.
+    DisposableEffect(controller) {
+        val main = Handler(Looper.getMainLooper())
+        IntegrityGates.refreshNow = { main.post { state = controller.check() } }
+        onDispose { IntegrityGates.refreshNow = {} }
+    }
+    // Recents (D-AINT-05): while the gate is up the task thumbnail is hidden (API 33+: no recents screenshot; below: FLAG_SECURE),
+    // and both are cleared when it lifts, so the owner's screenshots and walks of the normal screens are not affected.
+    val activity = remember(context) { context.findComponentActivity() }
+    LaunchedEffect(state.blocked) { activity?.hideFromRecents(state.blocked) }
     val holder = rememberSaveableStateHolder()
     if (state.blocked) {
         IntegrityGateScreen(state.flags, onCheckAgain = { state = controller.check() }, modifier = modifier)
@@ -115,6 +127,7 @@ fun IntegrityGateScreen(flags: DevFlags, onCheckAgain: () -> Unit, modifier: Mod
                     AronBanner(c.getString(R.string.integrity_gate_why), kind = BannerKind.Warning)
                     if (flags.devOptions) Text(c.getString(R.string.integrity_gate_flag_dev), style = MaterialTheme.typography.bodyLarge)
                     if (flags.adb) Text(c.getString(R.string.integrity_gate_flag_adb), style = MaterialTheme.typography.bodyLarge)
+                    if (flags.adbWifi) Text(c.getString(R.string.integrity_gate_flag_adb_wifi), style = MaterialTheme.typography.bodyLarge)
                     Text(c.getString(R.string.integrity_gate_steps), style = MaterialTheme.typography.bodyLarge)
                     Text(c.getString(R.string.integrity_gate_data_safe), style = MaterialTheme.typography.bodyMedium)
                 }
@@ -122,6 +135,13 @@ fun IntegrityGateScreen(flags: DevFlags, onCheckAgain: () -> Unit, modifier: Mod
                     bn.getString(R.string.integrity_gate_open_settings) + " / " + en.getString(R.string.integrity_gate_open_settings),
                     { context.openDeveloperSettings() }, Modifier.testTag(IntegrityGateTags.OPEN_SETTINGS),
                 )
+                // Queued records can leave the phone at once while the gate is up (the gate never holds back captured data).
+                IntegrityGates.syncNow?.let { sync ->
+                    AronSecondaryButton(
+                        bn.getString(R.string.integrity_gate_sync_now) + " / " + en.getString(R.string.integrity_gate_sync_now),
+                        { runCatching(sync) }, Modifier.testTag(IntegrityGateTags.SYNC_NOW),
+                    )
+                }
             }
         }
     }
@@ -147,4 +167,18 @@ private fun Context.openDeveloperSettings() {
 fun ComponentActivity.setGatedContent(content: @Composable () -> Unit) {
     val controller = IntegrityGates.get(this)
     setContent { IntegrityGate(controller, content = content) }
+}
+
+private tailrec fun Context.findComponentActivity(): ComponentActivity? = when (this) {
+    is ComponentActivity -> this
+    is android.content.ContextWrapper -> baseContext.findComponentActivity()
+    else -> null
+}
+
+/** [hide] true: no recents thumbnail (API 33+) or FLAG_SECURE (below) while the gate is up; false clears it again. */
+internal fun ComponentActivity.hideFromRecents(hide: Boolean) {
+    runCatching {
+        if (android.os.Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(!hide)
+        else if (hide) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+    }
 }

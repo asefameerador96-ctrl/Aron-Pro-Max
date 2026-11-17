@@ -19,10 +19,7 @@ class IntegrityEventLog(private val dir: File) {
     fun record(e: IntegrityEvent): Unit = synchronized(lock) {
         runCatching {
             val lines = (pendingLines() + encode(e)).takeLast(CAP)
-            dir.mkdirs()
-            val tmp = File(dir, "integrity-events.tmp")
-            tmp.writeText(lines.joinToString("\n"))
-            if (!tmp.renameTo(file)) { file.delete(); tmp.renameTo(file) }
+            com.aktcl.aron.core.common.AtomicText.write(file, lines.joinToString("\n"))
         }
         Unit
     }
@@ -33,15 +30,14 @@ class IntegrityEventLog(private val dir: File) {
     fun ack(count: Int) = synchronized(lock) {
         runCatching {
             val rest = pendingLines().drop(count)
-            if (rest.isEmpty()) { file.delete(); return@runCatching }
-            val tmp = File(dir, "integrity-events.tmp") // tmp + rename: a kill mid-write never leaves a half file
-            tmp.writeText(rest.joinToString("\n"))
-            if (!tmp.renameTo(file)) { file.delete(); tmp.renameTo(file) }
+            if (rest.isEmpty()) com.aktcl.aron.core.common.AtomicText.delete(file)
+            else com.aktcl.aron.core.common.AtomicText.write(file, rest.joinToString("\n")) // atomic replace: a kill never loses pending events
         }
         Unit
     }
 
-    private fun pendingLines(): List<String> = runCatching { file.takeIf { it.isFile }?.readLines()?.filter { it.isNotBlank() } }.getOrNull().orEmpty()
+    // AtomicText.read also recovers a fully written tmp file left by a kill between write and move.
+    private fun pendingLines(): List<String> = com.aktcl.aron.core.common.AtomicText.read(file)?.lines()?.filter { it.isNotBlank() }.orEmpty()
 
     private fun encode(e: IntegrityEvent) = listOf(e.atUtcMs, e.flags.joinToString(","), e.exempt, e.appVersion.replace('|', '_').replace('\n', ' ')).joinToString("|")
 

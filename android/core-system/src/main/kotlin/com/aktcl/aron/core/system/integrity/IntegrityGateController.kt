@@ -39,11 +39,11 @@ class IntegrityGateController(
     /** Records the onset of [state] once (call off the main thread). Returns true when an event was written. */
     @Synchronized
     fun noteOnset(state: GateState): Boolean {
-        if (!state.flags.any) { runCatching { stateFile.delete() }; return false }
+        if (!state.flags.any) { com.aktcl.aron.core.common.AtomicText.delete(stateFile); return false }
         val key = state.flags.codes.joinToString(",") + "/" + state.exempt.name
-        if (runCatching { stateFile.takeIf { it.isFile }?.readText() }.getOrNull() == key) return false
+        if (com.aktcl.aron.core.common.AtomicText.read(stateFile) == key) return false
         log.record(IntegrityEvent(nowUtcMs(), state.flags.codes, state.exempt.name.lowercase(), appVersion))
-        runCatching { dir.mkdirs(); stateFile.writeText(key) }
+        runCatching { com.aktcl.aron.core.common.AtomicText.write(stateFile, key) }
         return true
     }
 }

@@ -10,6 +10,7 @@ import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.entity.GeoFixEntity
 import com.aktcl.aron.core.database.entity.OutletChangeRequestEntity
 import com.aktcl.aron.core.database.repo.CaptureRepository
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -27,7 +28,7 @@ class ActionGateWriteTest {
     private val meta = CaptureMeta("2026-11-12", "2026-11-12T04:00:00.000Z", 1, 1, 0, true, 1, null, "b", false, 1)
     private val id = "00000000-0000-4000-8000-00000000000a"; private val fixId = "00000000-0000-4000-8000-0000000000fa"
 
-    @After fun tearDown() { ActionGate.check = { true }; db.close() }
+    @After fun tearDown() { ActionGate.check = { true }; ActionGate.onClosed = {}; db.close() }
 
     private fun fix() = GeoFixEntity(fixId, id, "outlet_capture", "ok", 23.78, 90.40, 10.0, provider = "fused", isMock = false, reused = false, deviceOwner = false, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false)
     private fun request() = OutletChangeRequestEntity(clientUuid = id, meta = meta, requestType = "info", outletId = 10, proposedJson = "{}", fixClientUuid = fixId, photoUuidsJson = "[]", originVisitClientUuid = null, note = "n")
@@ -42,6 +43,39 @@ class ActionGateWriteTest {
     @Test fun anOpenGateWritesAsBefore() = runTest {
         repo.recordOutletRequest(request(), fix())
         assertEquals(1, db.captureDao().outletRequestCount(id))
+    }
+
+    @Test fun resolvingATaskIsANewRecordAndIsRefusedWhileGated() = runTest {
+        ActionGate.check = { false }
+        val r = runCatching { repo.resolveTask(com.aktcl.aron.core.database.entity.TaskEventEntity(clientUuid = id, meta = meta, taskUuid = fixId, event = "resolved", note = null), "2026-11-12T04:00:00.000Z") }
+        assertTrue(r.exceptionOrNull() is GateClosedException)
+    }
+
+    @Test fun aPhotoAlreadyTakenIsStillRecordedWhileGated() = runTest {
+        // media_meta describes a photo that exists; the background worker writes it; the gate never holds back captured data.
+        val (visit, fix) = TestRows.visit()
+        repo.recordVisitOpen(visit, fix)
+        ActionGate.check = { false }
+        val media = com.aktcl.aron.core.common.ClientIds.newUuid()
+        val capture = com.aktcl.aron.core.database.repo.MediaMetaCapture(
+            mediaUuid = media, meta = TestRows.meta(), purpose = "outlet_capture", refType = "outlet_change_request", refClientUuid = visit.clientUuid,
+            sha256 = "a".repeat(64), phash = "0123456789abcdef", bytes = 148_000, width = 1024, height = 768,
+            blobPath = "photos/2026-10-05/6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f/$media.jpg", takenAt = "2026-10-05T04:40:00.000Z", fixClientUuid = fix.clientUuid,
+        )
+        assertTrue(repo.recordMediaMeta(capture))
+    }
+
+    @Test fun aGateClosedWriteIsACancellationNotACrash() = runTest {
+        ActionGate.check = { false }
+        var closedCalls = 0
+        ActionGate.onClosed = { closedCalls++ }
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob()) // no exception handler, like a ViewModel scope
+        val job = scope.launch { repo.recordOutletRequest(request(), fix()) }
+        job.join()
+        assertTrue("the coroutine is cancelled quietly", job.isCancelled)
+        assertEquals("and the UI is told at once", 1, closedCalls)
+        assertEquals(0, db.captureDao().outletRequestCount(id))
+        assertTrue(GateClosedException() is java.util.concurrent.CancellationException)
     }
 
     @Test fun theDeviceStatusIsStillRecordedWhileGatedSoTheSignalReachesTheServer() = runTest {

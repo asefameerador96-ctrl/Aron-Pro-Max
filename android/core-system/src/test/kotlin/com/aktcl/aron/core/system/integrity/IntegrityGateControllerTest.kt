@@ -128,4 +128,32 @@ class IntegrityGateControllerTest {
         assertEquals(listOf(2L, 3L, 4L), e.log.pending().map { it.atUtcMs })
         assertFalse(File(e.dir, "integrity-events.tmp").exists())
     }
+
+    @Test fun wirelessDebuggingAloneBlocksAndHasItsOwnCode() {
+        // `settings put global development_settings_enabled 0` and `adb_enabled 0` from an on-phone adb client leave wireless debugging on.
+        val e = Env(DevFlags(devOptions = false, adb = false, adbWifi = true)); val c = e.controller()
+        assertTrue(c.check().blocked); assertEquals(listOf("adb_wifi"), c.check().flags.codes)
+        c.noteOnset(c.check()); assertEquals(listOf("adb_wifi"), e.log.pending().single().flags)
+        e.flags = DevFlags(true, true, true); assertEquals(listOf("dev_options", "adb", "adb_wifi"), c.check().flags.codes)
+    }
+
+    @Test fun aTmpFileLeftByAKillNeverLosesPendingEvents() {
+        val e = Env(); e.log.record(IntegrityEvent(1, listOf("adb"), "none", "v"))
+        // The kill came after the new content was fully written to the tmp file but before it replaced the real one.
+        File(e.dir, "integrity-events.txt").delete()
+        File(e.dir, "integrity-events.txt.tmp").writeText("1|adb|none|v\n2|dev_options|none|v")
+        assertEquals(listOf(1L, 2L), IntegrityEventLog(e.dir).pending().map { it.atUtcMs })
+        File(e.dir, "integrity-events.txt.tmp").writeText("") // a torn (empty) tmp is dropped, the real file stays
+        assertEquals(listOf(1L, 2L), IntegrityEventLog(e.dir).pending().map { it.atUtcMs })
+    }
+
+    @Test fun theOldFileSurvivesAFailedReplaceOfTheNewOne() {
+        val e = Env(); e.log.record(IntegrityEvent(1, listOf("adb"), "none", "v"))
+        // A directory where the tmp file must go makes the write fail: the old events must be untouched.
+        File(e.dir, "integrity-events.txt.tmp").delete()
+        val blocker = File(e.dir, "integrity-events.txt.tmp"); blocker.mkdirs()
+        e.log.record(IntegrityEvent(2, listOf("adb"), "none", "v")) // fails inside, swallowed
+        blocker.delete()
+        assertEquals(listOf(1L), e.log.pending().map { it.atUtcMs })
+    }
 }

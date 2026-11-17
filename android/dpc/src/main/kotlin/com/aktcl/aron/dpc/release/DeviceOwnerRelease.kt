@@ -45,7 +45,7 @@ class DeviceOwnerRelease(
     private val doneFile get() = File(dir, "owner-release-done.txt")
     private val attemptsFile get() = File(dir, "owner-release-attempts.txt")
 
-    fun isDone(): Boolean = doneFile.isFile
+    fun isDone(): Boolean = com.aktcl.aron.core.common.AtomicText.read(doneFile) != null
 
     @Synchronized
     fun run(): Outcome {
@@ -99,10 +99,8 @@ class DeviceOwnerRelease(
     }
 
     private fun markDone(note: String) {
-        dir.mkdirs()
-        val tmp = File(dir, "owner-release-done.tmp")
-        tmp.writeText(note)
-        if (!tmp.renameTo(doneFile)) { doneFile.delete(); check(tmp.renameTo(doneFile)) { "cannot store the release flag" } }
+        // Atomic replace, never delete-then-rename; a tmp file left by a kill is recovered by [isDone] on the next start.
+        com.aktcl.aron.core.common.AtomicText.write(doneFile, note)
     }
 
     companion object {

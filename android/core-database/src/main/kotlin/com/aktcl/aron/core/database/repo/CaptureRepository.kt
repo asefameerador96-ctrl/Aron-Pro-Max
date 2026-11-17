@@ -422,6 +422,7 @@ class CaptureRepository(
 
     /** Resolves a task: the local task turns `completed` and its `task_event` is queued, in one transaction. */
     suspend fun resolveTask(event: TaskEventEntity, resolvedAt: String) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate (D-OWNER-MDM-02): a task result is a new record
         if (purged(event.clientUuid)) return@withTransaction emptyList()
         requireUuids(event.clientUuid, event.taskUuid)
         require(event.event == "resolved") { "resolveTask writes a resolved event" }
@@ -436,7 +437,6 @@ class CaptureRepository(
      * [MediaMetaCapture.fixClientUuid] names a stored geo_fix row; its payload is built from that row.
      */
     suspend fun recordMediaMeta(m: MediaMetaCapture): Boolean {
-        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         requireUuids(m.mediaUuid, m.refClientUuid)
         m.fixClientUuid?.let { requireUuids(it) }
         require(MediaPurpose.entries.any { it.wire == m.purpose }) { "unknown media purpose ${m.purpose}" }

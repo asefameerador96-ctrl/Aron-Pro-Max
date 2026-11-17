@@ -32,7 +32,7 @@ class LabExemptionStore(private val dir: File, private val clock: GateClock) {
     }
 
     @Synchronized
-    fun clear() { runCatching { file.delete() } }
+    fun clear() { com.aktcl.aron.core.common.AtomicText.delete(file) }
 
     @Synchronized
     fun isActive(): Boolean {
@@ -52,17 +52,14 @@ class LabExemptionStore(private val dir: File, private val clock: GateClock) {
     private data class Record(val until: Long, val issued: Long, val elapsedAtStore: Long, val boot: Int, val highWater: Long)
 
     private fun read(): Record? = runCatching {
-        val m = file.takeIf { it.isFile }?.readText()?.split('\n')
+        val m = com.aktcl.aron.core.common.AtomicText.read(file)?.split('\n')
             ?.mapNotNull { l -> l.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }?.toMap() ?: return null
         Record(m.getValue("until").toLong(), m.getValue("issued").toLong(), m.getValue("elapsed").toLong(), m.getValue("boot").toInt(), m.getValue("hw").toLong())
     }.getOrNull()
 
     private fun write(r: Record) {
         runCatching {
-            dir.mkdirs()
-            val tmp = File(dir, "lab-exemption.tmp")
-            tmp.writeText(listOf("until" to r.until, "issued" to r.issued, "elapsed" to r.elapsedAtStore, "boot" to r.boot, "hw" to r.highWater).joinToString("\n") { (k, v) -> k + "=" + v })
-            if (!tmp.renameTo(file)) { file.delete(); tmp.renameTo(file) }
+            com.aktcl.aron.core.common.AtomicText.write(file, listOf("until" to r.until, "issued" to r.issued, "elapsed" to r.elapsedAtStore, "boot" to r.boot, "hw" to r.highWater).joinToString("\n") { (k, v) -> k + "=" + v })
         }
     }
 

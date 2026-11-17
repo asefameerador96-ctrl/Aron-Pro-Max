@@ -7,6 +7,7 @@ import android.location.Location
 import android.location.LocationManager
 import android.os.Build
 import com.aktcl.aron.core.common.WallClock
+import com.aktcl.aron.core.geo.MockAppScanner
 import com.aktcl.aron.core.geo.R
 import com.aktcl.aron.core.geo.integrity.AndroidRootProbe
 import com.aktcl.aron.core.geo.integrity.RootHints
@@ -48,7 +49,11 @@ class AndroidSpoofProbes(
     @Synchronized fun invalidate() { cached = null }
 
     private fun read(): SpoofFacts {
-        val installed = candidates.filter { isInstalled(it) }
+        // The listed fake-GPS apps that are installed, plus every package the platform lets this app see that requests
+        // ACCESS_MOCK_LOCATION (what an ordinary app can see without QUERY_ALL_PACKAGES: only packages declared in the manifest
+        // <queries> and the few the platform always shows; any other installed mock-location app is invisible here and is
+        // caught only by the mock flag on the fix itself).
+        val installed = (candidates.filter { isInstalled(it) } + runCatching { MockAppScanner(app).scan() }.getOrDefault(emptyList())).distinct()
         return SpoofFacts(
             mockAppSelected = installed.any { isSelectedMockApp(it) },
             fakeGpsAppInstalled = installed.isNotEmpty(),

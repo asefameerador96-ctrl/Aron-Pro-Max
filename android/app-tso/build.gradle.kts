@@ -79,6 +79,9 @@ android {
         // AUD-PERF-04: release code (R8, shrunk) signed with the debug key and profileable, for :android:benchmark only.
         create("benchmark") {
             initWith(getByName("release"))
+            // Exempt from the Developer options gate (root build.gradle.kts), so it must never be able to replace a release install:
+            // its own application id (D-AINT-05). benchmarkProfile inherits it through initWith.
+            applicationIdSuffix = ".benchmark"
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
             isDebuggable = false

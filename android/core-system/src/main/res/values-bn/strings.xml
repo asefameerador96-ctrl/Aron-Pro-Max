@@ -81,8 +81,10 @@
     <string name="integrity_gate_why">নিরাপত্তার জন্য ডেভেলপার অপশন বা ইউএসবি ডিবাগিং চালু থাকলে আরন চলে না। চালিয়ে যেতে এটি বন্ধ করুন।</string>
     <string name="integrity_gate_flag_dev">ডেভেলপার অপশন: চালু</string>
     <string name="integrity_gate_flag_adb">ইউএসবি ডিবাগিং: চালু</string>
-    <string name="integrity_gate_steps">১. সেটিংস খুলুন, তারপর সিস্টেম (কিছু ফোনে: অ্যাডিশনাল সেটিংস), তারপর ডেভেলপার অপশন।\n২. উপরের সুইচটি বন্ধ করুন। ইউএসবি ডিবাগিংও বন্ধ করুন।\n৩. আরনে ফিরে এসে আবার পরীক্ষা করুন চাপুন।</string>
+    <string name="integrity_gate_flag_adb_wifi">ওয়্যারলেস ডিবাগিং: চালু</string>
+    <string name="integrity_gate_steps">১. সেটিংস খুলুন, তারপর সিস্টেম (কিছু ফোনে: অ্যাডিশনাল সেটিংস), তারপর ডেভেলপার অপশন। স্যামসাং: সেটিংস, একদম নিচে গিয়ে ডেভেলপার অপশন।\n২. ডেভেলপার অপশন মেনু না থাকলে সেটি লুকানো আছে: সেটিংস, ফোন সম্পর্কে (স্যামসাং: সফটওয়্যার তথ্য) খুলে বিল্ড নম্বরে সাতবার চাপ দিন, তারপর ফিরে যান।\n৩. উপরের সুইচটি বন্ধ করুন। ইউএসবি ডিবাগিং এবং ওয়্যারলেস ডিবাগিংও বন্ধ করুন।\n৪. আরনে ফিরে এসে আবার পরীক্ষা করুন চাপুন।</string>
     <string name="integrity_gate_data_safe">আপনার ডেটা এই ফোনে নিরাপদ আছে। সংরক্ষিত রেকর্ড পেছনে আপলোড হতে থাকবে।</string>
     <string name="integrity_gate_check_again">আবার পরীক্ষা করুন</string>
     <string name="integrity_gate_open_settings">সেটিংস খুলুন</string>
+    <string name="integrity_gate_sync_now">এখনই সিঙ্ক করুন</string>
 </resources>

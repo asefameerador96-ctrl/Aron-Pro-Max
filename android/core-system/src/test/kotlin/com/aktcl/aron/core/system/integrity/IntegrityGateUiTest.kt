@@ -12,6 +12,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import com.aktcl.aron.core.common.ActionGate
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertCountEquals
@@ -103,5 +105,64 @@ class IntegrityGateUiTest {
         flags = DevFlags(true, false)
         rule.setContent { IntegrityGate(controller()) { Text("x") } }
         rule.onNodeWithText("ডেভেলপার অপশন চালু আছে / Developer options are on").assertIsDisplayed()
+    }
+
+    @Test fun wirelessDebuggingSwitchedOnWhileResumedClosesTheGateAndShowsItsOwnLine() {
+        val c = controller()
+        rule.setContent { IntegrityGate(c) { Text("APP-CONTENT") } }
+        flags = DevFlags(devOptions = false, adb = false, adbWifi = true)
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>()
+        app.contentResolver.notifyChange(android.provider.Settings.Global.getUriFor(AndroidDevFlagsReader.ADB_WIFI_ENABLED), null)
+        rule.waitForIdle()
+        rule.onNodeWithTag(IntegrityGateTags.SCREEN).assertIsDisplayed()
+        rule.onNodeWithText("ওয়্যারলেস ডিবাগিং: চালু").assertIsDisplayed()
+        rule.onNodeWithText("Wireless debugging: ON").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun aWriterThatFindsTheGateClosedMakesTheScreenShowItAtOnceWithoutAnyObserverEvent() {
+        val c = controller()
+        IntegrityGates.refreshNow = {}
+        ActionGate.check = { !c.check().blocked }
+        ActionGate.onClosed = { IntegrityGates.refreshNow() }
+        try {
+            rule.setContent { IntegrityGate(c) { Text("APP-CONTENT") } }
+            rule.onNodeWithText("APP-CONTENT").assertIsDisplayed()
+            flags = DevFlags(true, false) // changed, and no settings event reaches the observer (the race window)
+            val thrown = runCatching { ActionGate.requireOpen() }.exceptionOrNull()
+            assertTrue(thrown is com.aktcl.aron.core.common.GateClosedException)
+            rule.waitForIdle()
+            rule.onNodeWithTag(IntegrityGateTags.SCREEN).assertIsDisplayed()
+        } finally { ActionGate.check = { true }; ActionGate.onClosed = {} }
+    }
+
+    @Test fun syncNowIsOnTheGateScreenWhenSetAndRunsTheSync() {
+        flags = DevFlags(true, false)
+        var synced = 0
+        IntegrityGates.syncNow = { synced++ }
+        try {
+            rule.setContent { IntegrityGate(controller()) { Text("x") } }
+            rule.onNodeWithTag(IntegrityGateTags.SYNC_NOW).performScrollTo().performClick()
+            assertEquals(1, synced)
+        } finally { IntegrityGates.syncNow = null }
+    }
+
+    @Test fun noSyncButtonWhenNoSyncIsWired() {
+        flags = DevFlags(true, false)
+        IntegrityGates.syncNow = null
+        rule.setContent { IntegrityGate(controller()) { Text("x") } }
+        rule.onAllNodesWithTag(IntegrityGateTags.SYNC_NOW).assertCountEquals(0)
+    }
+
+    @Test @Config(sdk = [32])
+    fun theRecentsThumbnailIsHiddenOnlyWhileTheGateIsUp() {
+        flags = DevFlags(true, false)
+        rule.setContent { IntegrityGate(controller()) { Text("x") } }
+        rule.waitForIdle()
+        val secure = android.view.WindowManager.LayoutParams.FLAG_SECURE
+        assertTrue("gate up: FLAG_SECURE below API 33", rule.activity.window.attributes.flags and secure != 0)
+        flags = DevFlags(false, false)
+        rule.onNodeWithTag(IntegrityGateTags.CHECK_AGAIN).performClick()
+        rule.waitForIdle()
+        assertEquals("gate lifted: cleared again", 0, rule.activity.window.attributes.flags and secure)
     }
 }
