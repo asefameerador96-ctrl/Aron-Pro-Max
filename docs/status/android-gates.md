@@ -239,12 +239,20 @@ an open gate), `RoomDayAdaptersTest.rejectedRowsAreListedFromTheAckRegistry` (a 
 amo_sale_entry_bn and rows 412 to 447 and 489 to 502 of sale_bn_long_name), which pushes the layout below it. In round 2 the "Only N in stock" caption at the stop is kept (it only shows while something is held); only the zero-stock "No stock of X" line was replaced
 by the one banner, which no golden fixture shows. The full `ui-screenshots` verify passes except the Sales Submit golden above.
 
-**Stock Save attempt UUIDs after a process kill (real behaviour).** The attempt keys (`StockLoad.attemptUuids`) are in memory only. A retry inside the
-same screen (a failed commit, a double tap) posts the same UUIDs and `recordStock` stores a UUID once. After a process kill, the typed quantities are also
-gone (the screen state is not persisted), so a re-entry after relaunch is a NEW, deliberate issue with new UUIDs: it cannot be matched to the first one.
-If the kill landed after the commit and before the screen said so, reopening Stock shows the issue as already loaded (the "loaded" figure reads Room), and
-issuing the same quantity again would add a second issue on purpose. Persisting the attempt key would not help (nothing re-submits automatically) and would
-block a legitimate second issue of the same figure, so it is not done; the visible loaded figure is the guard. The 5-minute refusal stays removed.
+**Stock Save attempt UUIDs after a process kill (real behaviour, corrected 2026-11-17 by A-GATE3; the older text here said "memory only" and was false).** The attempt keys
+(`StockLoad.attemptUuids`: one client UUID per "SKU=quantity in the entry unit") are written to a small file (`StockAttemptStore`, `FileStockAttemptStore`: the date,
+then `sku=qty<TAB>uuid` lines, per numeric user id) BEFORE the commit and removed when the commit is confirmed. What happens after a kill:
+- killed BEFORE the commit: nothing landed; the file holds the keys; the typed quantities are gone (screen state is not persisted); a re-entry of the same figure posts
+  the SAME UUID, which `recordStock` stores once: the issue is stored exactly once.
+- killed AFTER the commit and before the screen noticed: the movements are in Room, the file still holds their keys; reopening Stock shows them in the loaded figure;
+  entering the SAME figure again posts the same UUID, `recordStock` finds it stored, and the screen says "already saved" and adds nothing: an issue cannot be doubled
+  by re-entry. **Acknowledged cost:** a rep who really wants a second issue of exactly the same figure in that window (after a kill, before any other Save) gets
+  "already saved" and must enter a different figure (or the difference); the file is cleared by the next confirmed Save of anything.
+- a figure that differs from the attempt gets a new UUID (the key includes the quantity), so a real new issue is never swallowed.
+- the file is scoped to the date the movements carry (round 3 of A-GATE3: it is now labelled with the MOVEMENT's date, so a Save across Dhaka midnight and a kill still
+  matches the relaunched day's load), is validated line by line as a UUID v4 (a damaged line is ignored), and the screen's loaded figure grows only by movements the
+  repository really stored (a UUID the purge already forgot adds nothing and says "already saved").
+It is not part of the support file and is harmless to keep after logout (UUIDs, SKU ids and figures only).
 
 ### Memo username rule (lead, 2026-11-13)
 

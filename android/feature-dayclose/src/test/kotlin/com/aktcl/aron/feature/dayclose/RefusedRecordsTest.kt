@@ -141,6 +141,54 @@ class RefusedRecordsTest {
         assertEquals(0, source.seenRefused().rejected); assertFalse(source.rejectedRows(today).single().seen)
     }
 
+    // ---- restored (round-2 review of the lead): the invariants of the first version of these tests, which the rewrite had dropped
+
+    /** Marking seen sets `seen_at` and NOTHING else: the row, its payload, state, code and attempts are exactly as they were, and it is not deleted. */
+    @Test fun markingARecordSeenLeavesTheRowItsPayloadAndItsAttemptsUntouched() = runTest {
+        val u = row(today, "rejected", "price_invalid")
+        db.openHelper.writableDatabase.execSQL("UPDATE outbox SET attempts = 3, last_message_key = 'sync.reject.price_invalid' WHERE client_uuid = '$u'")
+        val before = db.outboxDao().byClientUuid(u)!!
+        source.markSeen(u)
+        val after = db.outboxDao().byClientUuid(u)!!
+        assertNotNull(after.seenAt)
+        assertEquals("nothing but seen_at changed", before.copy(seenAt = after.seenAt), after)
+        assertEquals(before.payloadJson, after.payloadJson); assertEquals("rejected", after.state); assertEquals(3, after.attempts)
+        assertEquals("still listed, as seen", 1, source.rejectedRows(today).count { it.seen })
+        assertEquals("not deleted", 1, db.query("SELECT COUNT(*) FROM outbox WHERE client_uuid = '$u'", null).use { it.moveToFirst(); it.getInt(0) })
+    }
+
+    /** Only a refused row can be marked: an acked, a pending and an in-flight row (and its family siblings in those states) never get `seen_at`. */
+    @Test fun anAckedPendingOrInFlightRowCannotBeMarkedSeen() = runTest {
+        val acked = row(today, "acked", null); val pending = row(today, "pending", null); val flying = row(today, "in_flight", null)
+        listOf(acked, pending, flying).forEach { source.markSeen(it) }
+        listOf(acked, pending, flying).forEach { assertNull(db.outboxDao().byClientUuid(it)!!.seenAt) }
+        // a family with a refused lead and a pending child: only the refused row is marked, the pending sibling is not
+        val family = ClientIds.newUuid()
+        val lead = row(today, "rejected", "price_invalid", "memo", family = family, rank = 1)
+        val child = row(today, "pending", null, "memo_line", family = family, rank = 2)
+        val ackedChild = row(today, "acked", null, "memo_line", family = family, rank = 2)
+        source.markSeen(lead)
+        assertNotNull(db.outboxDao().byClientUuid(lead)!!.seenAt)
+        assertNull(db.outboxDao().byClientUuid(child)!!.seenAt); assertNull(db.outboxDao().byClientUuid(ackedChild)!!.seenAt)
+    }
+
+    /** A record the SERVER refused is never sent again from here, and Send again never makes a second row. */
+    @Test fun aServerRefusalCannotBeSentAgainAndNoRowIsAdded() = runTest {
+        val serverRefused = row(today, "rejected", "price_invalid"); val quarantined = row(today, "quarantined", "memo_no_duplicate")
+        val gaveUp = row(today, "rejected", "retry_exhausted")
+        val total = db.query("SELECT COUNT(*) FROM outbox", null).use { it.moveToFirst(); it.getInt(0) }
+        val refusedBefore = db.outboxDao().byClientUuid(serverRefused)!!
+        assertFalse(source.sendAgain(serverRefused)); assertFalse(source.sendAgain(quarantined))
+        assertEquals("untouched", refusedBefore, db.outboxDao().byClientUuid(serverRefused)!!)
+        assertEquals("rejected", db.outboxDao().byClientUuid(serverRefused)!!.state); assertEquals("quarantined", db.outboxDao().byClientUuid(quarantined)!!.state)
+        assertTrue(source.sendAgain(gaveUp))
+        assertEquals("pending", db.outboxDao().byClientUuid(gaveUp)!!.state)
+        assertEquals("the count of rows never changes", total, db.query("SELECT COUNT(*) FROM outbox", null).use { it.moveToFirst(); it.getInt(0) })
+        for (u in listOf(serverRefused, quarantined, gaveUp)) {
+            assertEquals("exactly one row per uuid", 1, db.query("SELECT COUNT(*) FROM outbox WHERE client_uuid = '$u'", null).use { it.moveToFirst(); it.getInt(0) })
+        }
+    }
+
     // ---- D1-4: one guarded read; the gates fail closed
 
     @Test fun aDamagedReadIsFlaggedAndSubmitIsNotOffered() = runTest {

@@ -292,21 +292,38 @@ data class OutboxCodeRow(
 data class RefusedRowLite(
     val seq: Long, val clientUuid: String, val recordType: String, val familyUuid: String, val rank: Int, val businessDate: String,
     val state: String, val lastCode: String?, val lastMessageKey: String?, val seenAt: String?, val attempts: Int,
-    /** From the domain tables by uuid (a memo, a memo line, a memo discount, a visit), never from `payload_json`. */
+    /** From the domain tables by uuid (see [REFUSED_SELECT]) for every record type, never from `payload_json`. */
     val memoNo: String? = null, val outletId: Long? = null,
 )
 
+/**
+ * The list's names come from the DOMAIN tables by uuid, never from a payload, for EVERY record type the phone queues (round-2 review):
+ * memo, memo_line, memo_discount (their memo), visit (its outlet), due_collection (outlet and the memo it is collected against), visit_skip
+ * (outlet), visit_close (its visit's outlet), qc_line (its memo, else its visit's outlet) and every other member of a visit family (an AMO
+ * control or joint call's records: the family uuid IS the visit's uuid). Every join is on a primary or unique key, so a row never duplicates;
+ * a missing domain row gives null names, not a lost row. Stock, attendance, day_submit and the AMO records that stand alone (task, risk_review,
+ * outlet_request_verification: their outlet exists only inside their own payload) have no outlet or memo column: they are named by type.
+ */
 private const val REFUSED_SELECT =
     """SELECT o.seq AS seq, o.client_uuid AS clientUuid, o.record_type AS recordType, o.family_uuid AS familyUuid, o.`rank` AS `rank`, o.business_date AS businessDate,
        o.state AS state, o.last_code AS lastCode, o.last_message_key AS lastMessageKey, o.seen_at AS seenAt, o.attempts AS attempts,
-       COALESCE(m.memo_no, lm.memo_no, dm.memo_no) AS memoNo, COALESCE(m.outlet_id, lm.outlet_id, dm.outlet_id, v.outlet_id) AS outletId
+       COALESCE(m.memo_no, lm.memo_no, dm.memo_no, dc.against_memo_no, qm.memo_no) AS memoNo,
+       COALESCE(m.outlet_id, lm.outlet_id, dm.outlet_id, v.outlet_id, dc.outlet_id, vs.outlet_id, cv.outlet_id, qm.outlet_id, qv.outlet_id, fv.outlet_id) AS outletId
        FROM outbox o
        LEFT JOIN memo m ON o.record_type = 'memo' AND m.client_uuid = o.client_uuid
        LEFT JOIN memo_line l ON o.record_type = 'memo_line' AND l.client_uuid = o.client_uuid
        LEFT JOIN memo lm ON lm.client_uuid = l.memo_client_uuid
        LEFT JOIN memo_discount d ON o.record_type = 'memo_discount' AND d.client_uuid = o.client_uuid
        LEFT JOIN memo dm ON dm.client_uuid = d.memo_client_uuid
-       LEFT JOIN visit v ON o.record_type = 'visit' AND v.client_uuid = o.client_uuid"""
+       LEFT JOIN visit v ON o.record_type = 'visit' AND v.client_uuid = o.client_uuid
+       LEFT JOIN due_collection dc ON o.record_type = 'due_collection' AND dc.client_uuid = o.client_uuid
+       LEFT JOIN visit_skip vs ON o.record_type = 'visit_skip' AND vs.client_uuid = o.client_uuid
+       LEFT JOIN visit_close vc ON o.record_type = 'visit_close' AND vc.client_uuid = o.client_uuid
+       LEFT JOIN visit cv ON cv.client_uuid = vc.visit_client_uuid
+       LEFT JOIN qc_line q ON o.record_type = 'qc_line' AND q.client_uuid = o.client_uuid
+       LEFT JOIN memo qm ON qm.client_uuid = q.memo_client_uuid
+       LEFT JOIN visit qv ON qv.client_uuid = q.visit_client_uuid
+       LEFT JOIN visit fv ON fv.client_uuid = o.family_uuid"""
 
 /** Rows per outbox state. */
 data class StateCount(val state: String, val count: Int)
