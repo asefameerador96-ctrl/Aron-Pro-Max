@@ -37,3 +37,9 @@ Ask: an AMO presentation of the same `CreditPrompt` logic (`asDialog: Boolean = 
 ## R-PAR-AMO-05: review totals with quantities (feature-sale, ReviewScreen)
 Old (24, 25): category rows "মোট সিগারেট / বিড়ি / লাইটার / ম্যাচ" and "সর্বমোট" carry the quantity column too; ours has value only and a
 doubled "মোট". Ask: quantities on the category and grand-total rows when the host asks (`totalsWithQty: Boolean = false`).
+
+## R-PAR-AMO-06: AMO totals-panel column words to 7:1 (core-ui look token, for P-SR1)
+`AronLook.AmoPurple.onPanelMuted` (0xE6DDF7) on the blue end of the AMO totals-panel ramp (`panelTop` 0x0B4EA2) measures 6.1:1; the figures (white) measure 8.0:1 and the indigo end 8.8:1. The words are small column heads, not key figures, so `AmoStockContrastTest` pins AA (4.5) today. Ask: lighten `onPanelMuted` in the AMO look (for example 0xF1EBFB, about 7.2:1) and tighten the test to 7. Not changed in this lane (core-ui belongs to P-SR1).
+
+## R-PAR-AMO-07: TotalsPanel hides the AMO blue-to-indigo ramp (core-ui Tables.kt, for P-SR1)
+`TotalsPanel` draws `.background(look.panel)` (solid 0x4A1A96) over the host Column's `panelBackground(look)` ramp, so on the AMO Stock screen only the button row shows the screenshot-41 ramp (0B4EA2 to 3A1E99); the totals block above it is flat purple (pixels in `amo_stock_connected_saved_bn.png`: top of panel 74,26,150). Ask: `TotalsPanel` uses `panelBackground(look)` (the same function the Column uses) so a look with `panelTop` set shows the ramp and every other look keeps the solid panel (SR, TSO, Sunlight unchanged). `AmoStockContrastTest` already pins both ends of the ramp at 8.0:1 and 11.5:1 for the figures.

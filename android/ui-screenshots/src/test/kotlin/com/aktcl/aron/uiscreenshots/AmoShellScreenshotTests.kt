@@ -137,7 +137,7 @@ class AmoShellScreenshotTests {
     ) {
         com.aktcl.aron.feature.stock.StockContent(
             stockRows, stockTotals, if (saved) com.aktcl.aron.feature.stock.StockMessage.SAVED else null, slipNotPrinted = saved,
-            onIssue = { _, _ -> }, onSave = {}, onPrint = if (saved && connected) ({}) else null,
+            onIssue = { _, _ -> }, onSave = {}, onPrint = if (saved && connected) ({}) else null, srParity = true,
         )
     }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_stock_notconnected_bn() = shot("amo_stock_notconnected_bn", AppLanguage.BN) { Stock(false, false) }

@@ -290,6 +290,7 @@ fun AmoStockHost(day: AmoDay) {
         },
         // Print never blocks Save: it is offered after a Save and may be retried later (Q-UI-03); never after the lock (R-W-22).
         onPrint = if (unprinted && printable && PermissionPolicy.allowed(GatedFeature.PRINT, AndroidPermissions.snapshotOf(LocalContext.current))) ({ day.printUnprintedStock() }) else null,
+        srParity = true, // the purple count badge on every packshot: the packs issued on the row (screenshot 41, D-PAR-SR1-05; D-PAR-AMO-11)
     )
     }
     refused?.let { AmoRefusalDialog(day, it, onOk = { refused = null }) }
