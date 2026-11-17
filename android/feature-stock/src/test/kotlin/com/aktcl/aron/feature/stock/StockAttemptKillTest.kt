@@ -85,4 +85,37 @@ class StockAttemptKillTest {
         val u = (first.save(0, meta) as SaveOutcome.Saved).movements.single().clientUuid
         assertNotEquals("00000000-0000-4000-8000-0000000000aa", u)
     }
+
+    // ---- round-2 review lows: the attempt file across Dhaka midnight, after a purge, and with a damaged line
+
+    /** A StockLoad built before midnight saves after it: the movements carry the NEW date, so the file is labelled with it and the relaunched load finds it. */
+    @Test fun aSaveAcrossMidnightLeavesAFileTheRelaunchedDayFinds() = runBlocking {
+        val next = "2026-10-08"
+        val metaNext = meta.copy(businessDate = next)
+        val f = File(tmp.root, "attempt")
+        val before = load(emptyMap(), FileStockAttemptStore(f)).also { it.setEntered(1, 5) } // built on 10-07 (businessDate = date)
+        val out = before.save(0, metaNext) as SaveOutcome.Saved                              // saved after midnight: the movement says 10-08
+        val db = Db(); db.record(out.movements)                                              // committed, then killed
+        val after = StockLoad(listOf(sku), mapOf(1L to db.loaded()), newUuid = { "00000000-0000-4000-8000-%012d".format(++n) }, attemptStore = FileStockAttemptStore(f), businessDate = next)
+            .also { it.setEntered(1, 5) }
+        val res = StockSaving.save(after, { 1L }, metaNext, storedAlready = { ids -> ids.filter { it in db.rows }.toSet() }) { db.record(it) }
+        assertEquals("the earlier Save is recognised on the new day", StockMessage.ALREADY_SAVED, res.message)
+        assertEquals(1, db.rows.size)
+    }
+
+    /** The repository dropped the UUID (the purge forgot an acked copy): nothing was stored, so the loaded figure must not grow and the message is not "saved". */
+    @Test fun aMovementTheRepositoryDidNotKeepAddsNothingToTheLoadedFigure() = runBlocking {
+        val db = Db()
+        val l = load(emptyMap(), NoStockAttemptStore).also { it.setEntered(1, 5) }
+        val res = StockSaving.save(l, { 1L }, meta, storedAlready = { ids -> ids.filter { it in db.rows }.toSet() }) { /* purged: stores nothing */ }
+        assertEquals(StockMessage.ALREADY_SAVED, res.message)
+        assertEquals(0L, l.rows.single().loadedBase)
+    }
+
+    /** A damaged line that looks like 36 hex-and-dash characters but is not a UUID v4 is ignored, so Save never posts it. */
+    @Test fun aLineThatIsNotAUuidV4IsIgnored() {
+        val f = File(tmp.root, "attempt")
+        f.writeText("2026-10-07\n1=5\t" + "a".repeat(36))
+        assertEquals(emptyMap<String, String>(), FileStockAttemptStore(f).load(date))
+    }
 }
