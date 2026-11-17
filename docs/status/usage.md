@@ -3324,3 +3324,7 @@
 - Train 113 = `lane/lead-train113b` 838ecde78 (INT 4e0645556 + docs + b9d2a6fe2 + 102753ebb + ec7b807a0 + b78dbe80a); DECISIONS 491, missing 0 against every source; V0186..V0191; contract 1.16.0. GO sent to integrator 24, conditional on the train's own CI being fully green first.
 - Rounds out: MD2 (loader L1..L4 + lows), SV5 (B7), A-GATE1 (10 lows; next slice 4 D1), P-SR1 (4 lows), P-AMO2 (5 lows + rulings R-PAR-AMO-01..05), P-SR2b (5 blocking). P-SR2b cannot push (its permission check refuses; owner asked to approve): slice 4 and the fixes are local only.
 - A-INT1 has no code yet (design only before the stall).
+
+### Lane check 2026-11-17 20:46 UTC
+- Train 113 on INT a6a1cbf25: ci 44165939686 success; deploy 44170414803 in progress; health still 4e0645556. Integrator 24 watching.
+- Reviews today: sr-server B7 c65fbb84b PASS; android-gates slices 2 and 3 FAIL (6 blocking, D-LEAD-PREREQ-03, round 3 to A-GATE2); android-integrity 791fefae: B1, B2 fixed, new W1 (wireless debugging not read) + 12 lows; masterdata 1cd7892d FAIL on resume (2 blocking), successor MD3 session_014mnioNCrZkAoVLKBo4xoEM; A-GATE1 and MD2 retired; A-GATE2 session_014mnioP8tEWhoSZiEUJjjUx merges A-GATE1's late round-2 pushes (a57c0ed95, e17164070).
