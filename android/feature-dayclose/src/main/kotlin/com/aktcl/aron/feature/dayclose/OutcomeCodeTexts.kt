@@ -30,6 +30,7 @@ internal object OutcomeCodeTexts {
         code == "qty_invalid" -> R.string.submit_code_qty_invalid
         code == "price_invalid" -> R.string.submit_code_price_invalid
         code == "attendance_duplicate" -> R.string.submit_code_attendance_duplicate
+        code == "cluster_name_exists" -> R.string.submit_code_cluster_name_exists
         code == "checkout_too_early" -> R.string.submit_code_checkout_too_early
         code == "server_error" -> R.string.submit_code_server_error
         code == "payload_conflict" -> R.string.submit_code_payload_conflict
