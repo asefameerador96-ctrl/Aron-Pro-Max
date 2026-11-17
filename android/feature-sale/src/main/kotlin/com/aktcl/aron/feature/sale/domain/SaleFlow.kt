@@ -73,7 +73,7 @@ class SaleFlow(
         ).also(store::save)
         // the stock and prices are read for the DRAFT's own date (the memo's date, which the saving transaction reads too): a draft opened before
         // midnight and resumed after it still shows the figures the save will check
-        rawCatalog = catalogSource.skus(loaded.businessDate, loaded.priceType).associateBy { it.skuId }
+        rawCatalog = catalogSource.skus(committer.stockDate(loaded.businessDate, loaded.routeId), loaded.priceType).associateBy { it.skuId }
         val draft = SaleDraftOps.sanitizeQc(loaded).also { if (it != loaded) store.save(it) }
         val catalog = withGiveBack(editing ?: draft.edit?.supersedesMemoUuid)
         val landed = committer.existing(draft.memoUuid)
@@ -146,7 +146,7 @@ class SaleFlow(
         } catch (e: OverStockException) {
             // the stock moved since this sale opened (another memo, an edit): nothing was written. Re-read it, republish the
             // screen with the true figures, and report the shortage the TRANSACTION saw, never a guess from the stale catalog.
-            rawCatalog = catalogSource.skus(draft.businessDate, draft.priceType).associateBy { it.skuId }
+            rawCatalog = catalogSource.skus(e.businessDate ?: committer.stockDate(draft.businessDate, draft.routeId), draft.priceType).associateBy { it.skuId }
             val catalog = withGiveBack(givenBackFor)
             publish(checkNotNull(s.visit), draft, catalog, null)
             val problems = e.shortages.map { sh ->

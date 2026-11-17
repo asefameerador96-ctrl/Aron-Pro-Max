@@ -189,11 +189,13 @@ abstract class OutboxDao {
      * the support file has taken them or a later build cleans them, so this read must stay cheap whatever their number.
      */
     @Query(
-        """SELECT seq, client_uuid AS clientUuid, record_type AS recordType, family_uuid AS familyUuid, rank, business_date AS businessDate,
-           state, last_code AS lastCode, last_message_key AS lastMessageKey, seen_at AS seenAt, attempts
-           FROM outbox WHERE state IN ('rejected', 'quarantined') ORDER BY seq DESC LIMIT :limit""",
+        """$REFUSED_SELECT WHERE o.state IN ('rejected', 'quarantined') ORDER BY o.seq DESC LIMIT :limit""",
     )
     abstract suspend fun refusedList(limit: Int): List<RefusedRowLite>
+
+    /** Queued rows the server answered with a retryable code, light (no payload), oldest first, bounded: the "will be sent again" rows. */
+    @Query("$REFUSED_SELECT WHERE o.state = 'pending' AND o.last_code IN (:codes) ORDER BY o.seq LIMIT :limit")
+    abstract suspend fun queuedWithCodes(codes: List<String>, limit: Int): List<RefusedRowLite>
 
     /** Refused or held rows of [state], seen or not: the true figure the day_submit and the gates read (never filtered by "seen"). */
     @Query("SELECT COUNT(*) FROM outbox WHERE state = :state")
@@ -290,7 +292,21 @@ data class OutboxCodeRow(
 data class RefusedRowLite(
     val seq: Long, val clientUuid: String, val recordType: String, val familyUuid: String, val rank: Int, val businessDate: String,
     val state: String, val lastCode: String?, val lastMessageKey: String?, val seenAt: String?, val attempts: Int,
+    /** From the domain tables by uuid (a memo, a memo line, a memo discount, a visit), never from `payload_json`. */
+    val memoNo: String? = null, val outletId: Long? = null,
 )
+
+private const val REFUSED_SELECT =
+    """SELECT o.seq AS seq, o.client_uuid AS clientUuid, o.record_type AS recordType, o.family_uuid AS familyUuid, o.`rank` AS `rank`, o.business_date AS businessDate,
+       o.state AS state, o.last_code AS lastCode, o.last_message_key AS lastMessageKey, o.seen_at AS seenAt, o.attempts AS attempts,
+       COALESCE(m.memo_no, lm.memo_no, dm.memo_no) AS memoNo, COALESCE(m.outlet_id, lm.outlet_id, dm.outlet_id, v.outlet_id) AS outletId
+       FROM outbox o
+       LEFT JOIN memo m ON o.record_type = 'memo' AND m.client_uuid = o.client_uuid
+       LEFT JOIN memo_line l ON o.record_type = 'memo_line' AND l.client_uuid = o.client_uuid
+       LEFT JOIN memo lm ON lm.client_uuid = l.memo_client_uuid
+       LEFT JOIN memo_discount d ON o.record_type = 'memo_discount' AND d.client_uuid = o.client_uuid
+       LEFT JOIN memo dm ON dm.client_uuid = d.memo_client_uuid
+       LEFT JOIN visit v ON o.record_type = 'visit' AND v.client_uuid = o.client_uuid"""
 
 /** Rows per outbox state. */
 data class StateCount(val state: String, val count: Int)

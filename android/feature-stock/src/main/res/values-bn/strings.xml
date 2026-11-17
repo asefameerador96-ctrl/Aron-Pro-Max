@@ -41,4 +41,5 @@
     <string name="stk_col_loaded_short">লোড</string>
     <string name="stk_saved_short">সংরক্ষিত</string>
     <string name="stk_load_failed">স্টক আনা যায়নি</string>
+    <string name="stk_already_saved">অ্যাপ বন্ধ হওয়ার আগেই এটি সংরক্ষিত হয়েছিল। স্টকের হিসাবে এটি ধরা আছে; নতুন কিছু যোগ হয়নি। আরেকটি ইস্যুর জন্যই কেবল আবার সংরক্ষণ চাপুন।</string>
 </resources>

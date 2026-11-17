@@ -267,7 +267,7 @@ class SrDay(
      * refuses stores and queues nothing and says why (the screen shows the lock text; no slip is offered for it).
      */
     suspend fun saveStock(load: StockLoad): com.aktcl.aron.feature.stock.StockSaveResult =
-        com.aktcl.aron.feature.stock.StockSaving.save(load, ::currentMs, metaProvider.meta(0L)) { capture.recordStock(it) }
+        com.aktcl.aron.feature.stock.StockSaving.save(load, ::currentMs, metaProvider.meta(0L), storedAlready = { ids -> ids.filter { db.captureDao().stockMovement(it) != null }.toSet() }) { capture.recordStock(it) }
 
     private val bundleRunning = java.util.concurrent.atomic.AtomicBoolean(false)
     private val _loaded = MutableStateFlow(false)
@@ -682,7 +682,7 @@ class SrDay(
         val loaded = db.captureDao().stockBalanceOn(businessDate()).associate { it.skuId to it.qtyBase }
         // the on-hand figure (display only) from the same tracker the sale warning, the KPI strip and the Summary use
         val onHand = com.aktcl.aron.feature.stock.StockTracker.of(db, businessDate()).mapValues { it.value.current }
-        StockLoad(reference.skus(), loaded, currentBaseBySku = onHand).also { stock = it }
+        StockLoad(reference.skus(), loaded, currentBaseBySku = onHand, attemptStore = com.aktcl.aron.feature.stock.FileStockAttemptStore(java.io.File(context.filesDir, "stock-attempt-$userId")), businessDate = businessDate()).also { stock = it }
     }
     fun forgetStock() { stock = null }
 

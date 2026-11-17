@@ -50,6 +50,13 @@ class SaleCommitter(
      */
     private val numbering: MemoNumbering? = null,
 ) {
+    /**
+     * The business date the memo of a sale of [draftDate] will carry, which is the date the saving transaction reads the stock for. The screen reads
+     * the stock for THIS date (never a date the record will not carry), so the row, the review and the refusal always speak about the same day.
+     * It follows whatever date the meta source gives the record (today's clock in the app kits; the visit's date once the record's own date rules).
+     */
+    fun stockDate(draftDate: String, routeId: Long?): String = metaSource.meta(draftDate, routeId).businessDate
+
     /** The result of an already committed memo of this draft, or null. */
     suspend fun existing(memoUuid: String): CommittedSale? =
         findMemo(memoUuid)?.let { CommittedSale(it.clientUuid, it.memoNo, it.netMtk, it.dueMtk) }

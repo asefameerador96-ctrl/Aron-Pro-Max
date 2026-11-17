@@ -20,6 +20,23 @@ Lows in the same push: refusedRows() must not SELECT * with payloads and no limi
 
 **C. Order and rule:** "Then your earlier 10 lows of slice 1, then push slice 2 (check-in gate) as its own push. One push per slice, every lane ci job, "checked <sha>"." (Slices 2 and 3 were already pushed before this round arrived; the fixes of A and B go in their own push(es), and any review finding on 2 and 3 after that.)
 
+## Round 2 reconciliation (A-GATE2, which version stands)
+
+Two sessions built round 2. Base = A-GATE1's `e17164070` (kept for every finding below unless named). A-GATE2 ported three differences (D-AGATE-08):
+memo-date stock read, Stock Save attempt file, payload-free reader. For each finding both versions carried a test; both sets of tests are kept (A-GATE1's in
+`RefusedRecordsTest`, `StockGateLowsTest`, `StockGateUiTest`, `Migration910Test`, `AmoStockGateTest`; A-GATE2's differences in `RefusedReaderNoPayloadTest`,
+`StockMemoDateTest`, `StockAttemptKillTest`).
+
+| Finding | Standing version |
+|---|---|
+| D1-1, D1-2, D1-3, D1-4, D1-5, D1-6, D1-7 | A-GATE1's (screen-only seen, family Send again, fail-closed read, texts, `Migration910Test`) |
+| lows: payload-free reader | A-GATE2's (domain-table names, no payload read; A-GATE1's paging kept) |
+| lows: undo, `outbox_codes` order, static code map, per-family send state | A-GATE1's |
+| slice-1 low 1 (date) | A-GATE2's (memo's date via `stockDate`) |
+| lows 2, 3, 4, 5, 6, 7, 9, 10 | A-GATE1's |
+| low 8 (Stock Save after a kill) | A-GATE2's (attempt file) |
+| memo username 3 characters | A-GATE1's (same rule `^[a-z][a-z0-9]{2,31}$`) |
+
 ## Round 2 progress
 
 Order followed: slice 4 first (D1-1 to D1-7 and the lows), then the ten slice-1 lows, then the memo username rule. Slices 2 and 3 are untouched

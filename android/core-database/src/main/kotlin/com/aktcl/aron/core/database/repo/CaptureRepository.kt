@@ -193,7 +193,7 @@ class CaptureRepository(
         if (requested.isEmpty()) return
         val held = StockHeld.read(capture, m.meta.businessDate, ignoring = m.supersedesClientUuid)
         val short = StockHeld.shortages(requested, held)
-        if (short.isNotEmpty()) throw OverStockException(short)
+        if (short.isNotEmpty()) throw OverStockException(short, m.meta.businessDate)
     }
 
     suspend fun recordVisitClose(close: VisitCloseEntity) = db.withTransaction {

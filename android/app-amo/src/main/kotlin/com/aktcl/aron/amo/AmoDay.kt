@@ -592,7 +592,7 @@ class AmoDay(
      * is offered for it). Outside a call the movement has no route and never meets the lock, as on the server.
      */
     suspend fun saveStock(load: StockLoad): com.aktcl.aron.feature.stock.StockSaveResult =
-        com.aktcl.aron.feature.stock.StockSaving.save(load, ::currentMs, stockMeta()) { capture.recordStock(it) }
+        com.aktcl.aron.feature.stock.StockSaving.save(load, ::currentMs, stockMeta(), storedAlready = { ids -> ids.filter { db.captureDao().stockMovement(it) != null }.toSet() }) { capture.recordStock(it) }
 
     /**
      * tso-manual X4a fix round (checker low): the meta of the AMO's stock movement: the open call's route, none outside a
@@ -603,7 +603,7 @@ class AmoDay(
 
     suspend fun stockLoad(): StockLoad = stock ?: run {
         val loaded = db.captureDao().stockBalanceOn(businessDate()).associate { it.skuId to it.qtyBase }
-        StockLoad(reference.skus(), loaded).also { stock = it }
+        StockLoad(reference.skus(), loaded, attemptStore = com.aktcl.aron.feature.stock.FileStockAttemptStore(java.io.File(context.filesDir, "stock-attempt-$userId")), businessDate = businessDate()).also { stock = it }
     }
     fun forgetStock() { stock = null }
 

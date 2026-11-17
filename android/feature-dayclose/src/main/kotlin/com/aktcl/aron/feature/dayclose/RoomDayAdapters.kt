@@ -76,24 +76,23 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
     override suspend fun rejectedRows(businessDate: String): List<RejectedRow> = rejectedPage(businessDate, Int.MAX_VALUE)
 
     /**
-     * The refused or held records of the phone, NEWEST first, every date, at most [limit] ROWS (no payloads are read for the list; one row's
-     * payload is read only to name its memo or outlet). A FAMILY (a memo with its lines, discounts and QC) is ONE entry, led by its parent,
+     * The refused or held records of the phone, NEWEST first, every date, at most [limit] ROWS (no payload is ever read: the memo number and outlet
+     * come from the domain tables by uuid). A FAMILY (a memo with its lines, discounts and QC) is ONE entry, led by its parent,
      * counting its records; a family any of whose rows the phone gave up on is a "phone gave up" entry whose Send again acts on the family.
      */
     override suspend fun rejectedPage(businessDate: String, limit: Int): List<RejectedRow> {
         val refused = outbox.refusedList(limit)
         // Only codes the server answers as retryable (scope_stale, parent_missing, ...): the phone's own markers on queued
         // rows (resync, digest_resend, a released device_integrity_failed) are not rejections (checker).
-        val retry = outbox.nextPending(RETRY_SCAN_LIMIT).filter { it.lastCode in RETRYABLE }
+        val retry = outbox.queuedWithCodes(RETRYABLE.toList(), RETRY_SCAN_LIMIT) // light rows: the reader never loads a payload
         if (refused.isEmpty() && retry.isEmpty()) return emptyList()
         val reasons = ReasonTextsJson.parse(ReferenceRepository(db).section("reason_texts"))
         val ref = db.referenceDao()
         val entries = ArrayList<RejectedRow>()
         for ((_, members) in refused.groupBy { it.familyUuid }.entries.sortedByDescending { (_, m) -> m.maxOf { it.seq } }) {
             val lead = members.minWith(compareBy({ it.rank }, { it.seq }))
-            val row = outbox.byClientUuid(lead.clientUuid) ?: continue
             val gaveUp = members.any { it.state == OutboxState.REJECTED && it.lastCode == com.aktcl.aron.core.sync.AckRules.RETRY_EXHAUSTED }
-            entries += entry(row.recordType, row.clientUuid, row.businessDate, row.payloadJson, if (gaveUp) com.aktcl.aron.core.sync.AckRules.RETRY_EXHAUSTED else lead.lastCode,
+            entries += entry(lead.copy(memoNo = members.firstNotNullOfOrNull { it.memoNo }, outletId = members.firstNotNullOfOrNull { it.outletId }), if (gaveUp) com.aktcl.aron.core.sync.AckRules.RETRY_EXHAUSTED else lead.lastCode,
                 when {
                     gaveUp -> RejectedOutcome.PHONE_GAVE_UP
                     lead.state == OutboxState.QUARANTINED -> RejectedOutcome.STORED_FLAGGED
@@ -101,7 +100,7 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
                 }, lead.lastMessageKey, members.all { it.seenAt != null }, members.size, reasons, ref)
         }
         for (row in retry) {
-            entries += entry(row.recordType, row.clientUuid, row.businessDate, row.payloadJson, row.lastCode, RejectedOutcome.RETRY, row.lastMessageKey, false, 1, reasons, ref)
+            entries += entry(row, row.lastCode, RejectedOutcome.RETRY, row.lastMessageKey, false, 1, reasons, ref)
         }
         return entries
     }
@@ -109,17 +108,15 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
     override suspend fun refusedTotal(): Int = outbox.countRefused(OutboxState.REJECTED) + outbox.countRefused(OutboxState.QUARANTINED)
 
     private suspend fun entry(
-        type: String, uuid: String, date: String, payloadJson: String, code: String?, outcome: RejectedOutcome, messageKey: String?, seen: Boolean,
+        row: com.aktcl.aron.core.database.dao.RefusedRowLite, code: String?, outcome: RejectedOutcome, messageKey: String?, seen: Boolean,
         familySize: Int, reasons: Map<String, Pair<String?, String?>>, ref: com.aktcl.aron.core.database.dao.ReferenceDao,
     ): RejectedRow {
-        val payload = RecordPayloads.payloadOf(payloadJson)
-        // A memo line names its memo (memo_client_uuid): the memo number and outlet come from that memo.
-        val parent = RecordPayloads.string(payload, "memo_client_uuid")?.let { runCatching { capture.memo(it) }.getOrNull() }
-        val outletName = (RecordPayloads.long(payload, "outlet_id") ?: parent?.outletId)?.let { id -> runCatching { ref.outlet(id)?.name }.getOrNull() }
+        // the memo number and the outlet come from the domain tables by uuid (see OutboxDao.REFUSED_SELECT), never from the payload
+        val outletName = row.outletId?.let { id -> runCatching { ref.outlet(id)?.name }.getOrNull() }
         val reason = code?.let { reasons[it] }
         return RejectedRow(
-            clientUuid = uuid, recordType = type, businessDate = date, code = code, outcome = outcome,
-            memoNo = RecordPayloads.string(payload, "memo_no") ?: parent?.memoNo, outletName = outletName,
+            clientUuid = row.clientUuid, recordType = row.recordType, businessDate = row.businessDate, code = code, outcome = outcome,
+            memoNo = row.memoNo, outletName = outletName,
             reasonBn = reason?.first, reasonEn = reason?.second, messageKey = messageKey, seen = seen, familySize = familySize,
         )
     }

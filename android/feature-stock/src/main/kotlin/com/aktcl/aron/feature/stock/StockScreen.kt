@@ -56,7 +56,7 @@ object StockTags {
 }
 
 /** What the last Save (or print) said, shown as a banner above the list. */
-enum class StockMessage { SAVED, REFUSED_SAME_VALUES, NOTHING_ENTERED, SAVE_FAILED, PRINT_FAILED }
+enum class StockMessage { SAVED, REFUSED_SAME_VALUES, NOTHING_ENTERED, SAVE_FAILED, PRINT_FAILED, ALREADY_SAVED }
 
 /** Why the Print secondary is disabled (screens-sr s4): the reason is shown as a caption in the bar. */
 enum class StockPrintBlock { SAVE_FIRST, PRINTER_OFF }
@@ -113,6 +113,7 @@ fun StockContent(
                 when (message) {
                     // the saved state is the Save button ("Saved") and the Print button turning active: no banner pushes the list down
                     StockMessage.SAVED -> Unit
+                    StockMessage.ALREADY_SAVED -> AronBanner(stringResource(R.string.stk_already_saved), Modifier.testTag(StockTags.MESSAGE), BannerKind.Info)
                     StockMessage.REFUSED_SAME_VALUES -> AronBanner(stringResource(R.string.stk_refused), Modifier.testTag(StockTags.MESSAGE), BannerKind.Warning)
                     StockMessage.NOTHING_ENTERED -> AronBanner(stringResource(R.string.stk_nothing), Modifier.testTag(StockTags.MESSAGE), BannerKind.Warning)
                     StockMessage.SAVE_FAILED -> AronBanner(stringResource(R.string.stk_save_failed), Modifier.testTag(StockTags.MESSAGE), BannerKind.Error)
