@@ -39,7 +39,7 @@ data class AmoReach(val subordinateSrs: Int, val pendingVerifications: Int, val 
 /** The AMO's destinations in the manual's order (D-AMO-MAN-02): one Home tile each, Settings included; Astha stays hidden while deferred. */
 enum class AmoLeaf {
     ATTENDANCE, JOINT_CALL, CONTROL_CALL, TEAM_LOCATION, TEAM_PERFORMANCE, TASK_DELEGATION, LIVE_DASHBOARD, SR_STOCK,
-    OUTLET, STOCK, SALE, MEMO, SUMMARY, SALES_SUBMIT, ASTHA, REPORT, SALES_JOURNEY, SETTINGS,
+    OUTLET, STOCK, SALE, MEMO, SUMMARY, SALES_SUBMIT, ASTHA, REPORT, SALES_JOURNEY, CAMPAIGN_ENROLLMENT, SETTINGS,
 }
 
 object AmoMenu {
@@ -55,10 +55,19 @@ object AmoMenu {
      * Location, Team Performance, Task Delegation, Live Dashboard, SR Stock, Outlet, Stock, Sales, Memo, Summary, Sales Submit, Report,
      * Sales Journey, Settings (Astha and Campaign Enrollment stay hidden: docs/27). [badges] by tile id (Outlet: pending SR verifications).
      */
-    fun tiles(reach: AmoReach, badges: Map<String, Int> = emptyMap()): List<com.aktcl.aron.feature.home.RoleTile> = leaves(reach).filter { it != AmoLeaf.ASTHA }.map { l -> // Astha stays hidden whatever the bundle says (D-AMO-MAN-05)
+    fun tiles(reach: AmoReach, badges: Map<String, Int> = emptyMap()): List<com.aktcl.aron.feature.home.RoleTile> = tileLeaves(reach).map { l -> // Astha and Campaign Enrollment are hook tiles in the old position (D-PAR-AMO-01)
         val (label, icon) = tileFace(l)
         com.aktcl.aron.feature.home.RoleTile(tileId(l), label, icon, badges[tileId(l)] ?: 0)
     }
+
+    /** The leaves shown as Home tiles: the live leaves plus the two deferred hooks (Astha, Campaign Enrollment) in the old app's place, in the old order. */
+    internal fun tileLeaves(reach: AmoReach): List<AmoLeaf> {
+        val live = leaves(reach).toSet()
+        return AmoLeaf.entries.filter { it in live || it == AmoLeaf.ASTHA || it == AmoLeaf.CAMPAIGN_ENROLLMENT }
+    }
+
+    /** True for the tiles that open the "coming later" state (docs/27, deferred programmes). */
+    fun isHook(tileId: String): Boolean = tileId == tileId(AmoLeaf.ASTHA) || tileId == tileId(AmoLeaf.CAMPAIGN_ENROLLMENT)
 
     private fun tileFace(l: AmoLeaf): Pair<Int, androidx.compose.ui.graphics.vector.ImageVector> {
         val i = com.aktcl.aron.core.ui.AronIcons
@@ -77,7 +86,8 @@ object AmoMenu {
             AmoLeaf.MEMO -> com.aktcl.aron.feature.home.R.string.hm_tile_memo to i.Info
             AmoLeaf.SUMMARY -> com.aktcl.aron.feature.home.R.string.hm_tile_summary to i.Info
             AmoLeaf.SALES_SUBMIT -> com.aktcl.aron.feature.home.R.string.hm_tile_sales_submit to i.Submit
-            AmoLeaf.ASTHA -> com.aktcl.aron.feature.home.R.string.rh_amo_report to i.Info
+            AmoLeaf.ASTHA -> com.aktcl.aron.feature.home.R.string.hm_tile_astha to i.Info
+            AmoLeaf.CAMPAIGN_ENROLLMENT -> R.string.amo_leaf_campaign_enrollment to i.Info
             AmoLeaf.REPORT -> com.aktcl.aron.feature.home.R.string.rh_amo_report to i.Trend
             AmoLeaf.SALES_JOURNEY -> com.aktcl.aron.feature.home.R.string.hm_tile_sales_journey to i.Place
             AmoLeaf.SETTINGS -> com.aktcl.aron.feature.home.R.string.set_title to i.Info
@@ -88,6 +98,7 @@ object AmoMenu {
         when (leaf) {
             AmoLeaf.TEAM_LOCATION, AmoLeaf.TEAM_PERFORMANCE, AmoLeaf.SR_STOCK -> reach.subordinateSrs > 0
             AmoLeaf.ASTHA -> reach.asthaOutlets
+            AmoLeaf.CAMPAIGN_ENROLLMENT -> false
             else -> true
         }
     }

@@ -257,4 +257,63 @@ class BundleDeltaTest {
         assertEquals(0, d["routes_added"]!!.jsonArray.size)
         assertEquals(0, d["routes_removed"]!!.jsonArray.size)
     }
+
+    private fun memoOn(date: String, outlet: Long, qty: Int, no: Int) = fresh.db.jdbi.useHandle<Exception> { h ->
+        val id = java.util.UUID.randomUUID()
+        h.execute("SET session_replication_role = replica")
+        try {
+            h.execute(
+                """INSERT INTO app.memo (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, visit_client_uuid, outlet_id, memo_no,
+                     memo_kind, committed_at, price_list_date, price_type, gross_mtk, offer_discount_mtk, drp_discount_mtk, qc_deduction_mtk, round_adj_mtk,
+                     net_mtk, paid_mtk, due_mtk, is_credit, line_count, discount_line_count, qc_line_count, status, received_at)
+                   SELECT '$id', '$id', DATE '$date', u.id, o.route_id, TIMESTAMPTZ '$date 05:00Z', 1, gen_random_uuid(), o.id, 'sr1001-${date.substring(2).replace("-", "")}-${800 + no}', 'sale',
+                          TIMESTAMPTZ '$date 05:00Z', DATE '$date', 'outlet', ${qty * 800}, 0, 0, 0, 0, ${qty * 800}, ${qty * 800}, 0, false, 1, 0, 0, 'active', TIMESTAMPTZ '$date 06:00Z'
+                     FROM app.app_user u, app.outlet o WHERE u.username = 'sr1001' AND o.id = $outlet""",
+            )
+            h.execute(
+                """INSERT INTO app.memo_line (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, memo_client_uuid, line_no, sku_id,
+                     line_kind, qty_entered, unit_entered, pack_factor, qty_base, price_type, price_valid_from, base_price_mtk, price_per_qty, gross_mtk)
+                   SELECT gen_random_uuid(), '$id', DATE '$date', m.user_id, m.route_id, m.captured_at, 1, '$id', 1, (SELECT min(id) FROM app.sku WHERE status = 'active'), 'sale', $qty, 'stick', 1, $qty, 'outlet',
+                          DATE '$date', 800, 1, ${qty * 800} FROM app.memo m WHERE m.client_uuid = '$id' AND m.business_date = DATE '$date'""",
+            )
+        } finally { h.execute("SET session_replication_role = origin") }
+    }
+
+    private fun statsOf(d: JsonObject, outlet: Long) = (d["outlet_sku_stats"] as? kotlinx.serialization.json.JsonArray)?.map { it.jsonObject }?.singleOrNull { it["outlet_id"]!!.jsonPrimitive.long == outlet }
+
+    /** R2: a D+1-style prefetch freezes the history sections; a delta now carries a CHANGED section whole and leaves an unchanged one out. */
+    @Test
+    @Order(8)
+    fun aLateSyncedMemoOfAnEarlierDayReachesThePhoneInTheNextDeltaAsTheWholeStatsSectionAndNothingElseDoes() = testApplication {
+        application { aronApi(wiring) }
+        val token = client.token()
+        val bundle = client.freshBundle(token)
+        val outlet = firstOutlet()
+        assertEquals(null, statsOf(bundle, outlet), "no history yet for the outlet")
+        // nothing changed: 304, the digest is stable
+        assertEquals(HttpStatusCode.NotModified, client.call(token, "/v1/sync/delta?since=$cursor").status)
+        // an unrelated change (a rename): the delta carries neither history section
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.outlet SET name = 'Another Name' WHERE id = ?", outlet) }
+        val renamed = json(client.call(token, "/v1/sync/delta?since=$cursor").bodyAsText())
+        assertEquals(true, renamed["outlet_sku_stats"] == null || renamed["outlet_sku_stats"] is kotlinx.serialization.json.JsonNull, "unchanged section: not carried")
+        assertEquals(true, renamed["clusters"] == null || renamed["clusters"] is kotlinx.serialization.json.JsonNull, "unchanged section: not carried")
+        cursor = renamed["meta"]!!.jsonObject["cursor"]!!.jsonPrimitive.content
+        // day D-1's memo arrives late (synced after the phone prefetched): the next delta carries the stats section WHOLE with the new figures
+        memoOn("2027-01-02", outlet, 6, 1)
+        val d = json(client.call(token, "/v1/sync/delta?since=$cursor").bodyAsText())
+        val entry = statsOf(d, outlet) ?: error("the changed stats section is carried: $d")
+        assertEquals("2027-01-02", entry["previous_day"]!!.jsonPrimitive.content)
+        assertEquals(6L, entry["items"]!!.jsonArray.single().jsonArray[1].jsonPrimitive.long, "previous day quantity in base units")
+        assertEquals(true, d["clusters"] == null || d["clusters"] is kotlinx.serialization.json.JsonNull, "the clusters did not change")
+        cursor = d["meta"]!!.jsonObject["cursor"]!!.jsonPrimitive.content
+        assertEquals(HttpStatusCode.NotModified, client.call(token, "/v1/sync/delta?since=$cursor").status, "the new cursor names the new snapshot")
+        // a new cluster on one of the SR's outlets: the clusters section is carried whole, the stats are not
+        val zone = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT zone_id FROM app.outlet WHERE id = ?").bind(0, outlet).mapTo(Long::class.java).one() }
+        val cluster = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("INSERT INTO app.cluster (zone_id, name) VALUES (?, 'Delta Test Cluster') RETURNING id").bind(0, zone).mapTo(Long::class.java).one() }
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.outlet SET cluster_id = ? WHERE id = ?", cluster, outlet) }
+        val c = json(client.call(token, "/v1/sync/delta?since=$cursor").bodyAsText())
+        val rows = c["clusters"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(true, rows.any { it["cluster_id"]!!.jsonPrimitive.long == cluster && it["name"]!!.jsonPrimitive.content == "Delta Test Cluster" }, "the changed clusters section is carried whole: $rows")
+        assertEquals(true, c["outlet_sku_stats"] == null || c["outlet_sku_stats"] is kotlinx.serialization.json.JsonNull, "the stats did not change")
+    }
 }

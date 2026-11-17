@@ -53,6 +53,11 @@ data class Uploader(
     val deviceUuid: String?,
     /** The device's key for record `sig` checks; null for a phone without a usable key (dev database only). */
     val deviceKey: ECPublicKey?,
+    /**
+     * True ONLY for the server's own online Sales Submit ([DayService]): the one path that may set `day_submit.anchor_clock` (the server decides whose clock stamped the anchor).
+     * A device record carrying the member is still accepted, but the member is dropped before anything is stored or held (B6).
+     */
+    val serverStamped: Boolean = false,
 )
 
 /** The uploading device's standing for the N-027 gate, with the two switches, read once per batch. */
@@ -1176,7 +1181,11 @@ class IngestService(
         // writer gets it in bytea's hex input form.
         val rewritten = hs.firstNotNullOfOrNull { it.rewrite(h, ingestRec!!) } ?: payload
         val written = if (r.type == "media_meta") rewritten.str("sha256")?.let { JsonObject(rewritten + ("sha256" to JsonPrimitive("\\x$it"))) } ?: rewritten else rewritten
-        val stored = RecordWriter.write(h, r.type, rule, env, written, ctx.up, ctx.batchUuid, ctx.now, enteredBy = ctx.manual?.actorUserId)
+        // B6: only the server's own online Sales Submit (or a reviewer releasing what the server held) may carry `anchor_clock`; a device's copy is dropped here, the record is still accepted.
+        // The registry hash and the content fingerprint were taken from the record as sent, so a replay still answers duplicate.
+        val trustedAnchor = ctx.up.serverStamped || ctx.reviewed
+        val finalPayload = if (trustedAnchor || !written.containsKey("anchor_clock")) written else JsonObject(written - "anchor_clock")
+        val stored = RecordWriter.write(h, r.type, rule, env, finalPayload, ctx.up, ctx.batchUuid, ctx.now, enteredBy = ctx.manual?.actorUserId)
         return when (stored) {
             is RecordWriter.Result.Stored -> {
                 val flags = listOfNotNull("resync_late".takeIf { resyncLate }, "checkout_too_early".takeIf { tooEarly }, "config_stamp_regress".takeIf { stampRegress },
@@ -1643,6 +1652,12 @@ class IngestService(
         return Outcome.of(code).copy(retryable = true)
     }
 
+    /** What a quarantine item stores: a device's `anchor_clock` is dropped (a reviewer's release trusts the member, so only the server's own online record may keep it). */
+    private fun heldJson(ctx: Ctx, r: Rec): JsonObject {
+        val p = r.json["payload"] as? JsonObject
+        return if (ctx.up.serverStamped || p == null || !p.containsKey("anchor_clock")) r.json else JsonObject(r.json + ("payload" to JsonObject(p - "anchor_clock")))
+    }
+
     private fun quarantine(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, code: RecordOutcomeCode, detail: String?, register: Boolean = true, contentFp: ByteArray? = null): Outcome {
         h.createUpdate(
             """
@@ -1652,7 +1667,7 @@ class IngestService(
               WHERE app.sync_quarantine.status = 'open' AND app.sync_quarantine.code IN ('device_integrity_failed', 'device_not_enrolled')
 
             """.trimIndent(),
-        ).bind("c", r.clientUuid).bind("t", r.type).bind("code", code.wire).bind("h", r.hash).bind("p", storable(r.json)).bind("detail", detail?.take(1000))
+        ).bind("c", r.clientUuid).bind("t", r.type).bind("code", code.wire).bind("h", r.hash).bind("p", storable(heldJson(ctx, r))).bind("detail", detail?.take(1000))
             .bind("u", ctx.up.userId).bind("d", ctx.up.deviceId).bind("route", r.json.long("route_id")).bind("bd", bd).bind("b", ctx.batchUuid)
             .bind("now", ts(ctx.now)).execute()
         if (register) register(h, ctx, r, bd, "quarantined", code, null, contentFp)
