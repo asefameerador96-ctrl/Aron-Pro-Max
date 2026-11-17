@@ -65,7 +65,7 @@ class RoomDayAdaptersTest {
     /** D-NIGHT-DAYCLOSE-01 (b): the refused rows are listed from the phone's own outbox, with memo number, outlet, reason and outcome. */
     @Test fun rejectedRowsAreListedFromTheAckRegistry() = runTest {
         db.referenceDao().insertSections(listOf(com.aktcl.aron.core.database.entity.BundleSectionEntity("reason_texts",
-            "{\"memo_no_duplicate\": {\"bn\": \"এই মেমো নম্বর আগেই ব্যবহার হয়েছে\", \"en\": \"This memo number was already used\"}}")))
+            "{\"memo_no_duplicate\": {\"bn\": \"এই মেমো নম্বর আগেই ব্যবহার হয়েছে\", \"en\": \"This memo number was already used\"}, \"price_invalid\": {\"bn\": \"দাম মেলেনি\", \"en\": \"The price did not match\"}}")))
         sell(due = 0)
         val source = RoomDaySource(db)
         assertTrue(source.rejectedRows("2026-10-05").isEmpty())
@@ -83,8 +83,11 @@ class RoomDayAdaptersTest {
         val listed = source.rejectedRows("2026-10-05").associateBy { it.recordType }
         assertEquals("the family is one entry; the visit's resync-marker row is its own", 2, listed.size)
         listed.getValue("memo").let {
-            assertEquals(RejectedOutcome.STORED_FLAGGED, it.outcome); assertEquals("sr334001-261005-001", it.memoNo)
-            assertEquals("এই মেমো নম্বর আগেই ব্যবহার হয়েছে", it.reasonBn); assertEquals("This memo number was already used", it.reasonEn)
+            // round-2 review (family outcome hides a rejected child): the memo is stored and flagged but its LINE was dropped, so the entry says the
+            // not-stored thing (tell the TSO) and names the line's reason, never "stored and flagged" alone
+            assertEquals(RejectedOutcome.DROPPED, it.outcome); assertEquals("sr334001-261005-001", it.memoNo)
+            assertEquals("price_invalid", it.code)
+            assertEquals("দাম মেলেনি", it.reasonBn); assertEquals("The price did not match", it.reasonEn)
         }
         // the refused line is inside the memo's family, and is still counted
         assertEquals(2, listed.getValue("memo").familySize)
