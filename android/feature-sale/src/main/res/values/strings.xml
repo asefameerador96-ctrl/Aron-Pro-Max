@@ -29,6 +29,7 @@
     <string name="sale_unit_pack">packs</string>
     <string name="sale_pack_badge">= %1$s packs + %2$s</string>
     <string name="sale_stock_warning">Only %1$s %3$s in stock for %2$s.</string>
+    <string name="sale_no_stock">No stock of %1$s. Add it on the Stock screen first.</string>
     <string name="sale_empty">Add a quantity to start the sale.</string>
     <string name="sale_zero_confirm_title">No SKU selected for sale</string>
     <string name="sale_zero_confirm_message">Do you want to make a zero (0) sale?</string>
@@ -112,6 +113,7 @@
     <string name="sale_col_sale">Sale</string>
     <string name="sale_col_stock">Stock</string>
     <string name="sale_price_per_unit">৳ %1$s / %2$s</string>
+    <string name="review_problem_over_stock">%1$s: you hold %2$s %3$s but the memo has %4$s. Lower the quantity, or add the stock first.</string>
     <string name="review_problem_qty_large">Quantity too large for SKU %1$s.</string>
     <string name="sale_yes_ok">OK</string>
     <string name="zero_reason_title">Why is there no sale?</string>

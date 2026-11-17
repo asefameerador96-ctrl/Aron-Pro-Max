@@ -73,7 +73,7 @@ export const outlets = defineEntity<Outlet, OutletWrite, OutletPatch>({
 });
 
 const OUTLET_REQ_STATUS = { options: ["pending", "verified", "approved", "rejected", "lapsed", "discarded"], optionKeys: { pending: "req.status.pending", verified: "req.status.verified", approved: "req.status.approved", rejected: "req.status.rejected", lapsed: "req.status.lapsed", discarded: "req.status.discarded" } } as const;
-const OUTLET_REQ_TYPE = { options: ["new", "close", "info", "cluster", "location", "route_add"], optionKeys: { new: "req.type.new", close: "req.type.close", info: "req.type.info", cluster: "req.type.cluster", location: "req.type.location", route_add: "req.type.route_add" } } as const;
+const OUTLET_REQ_TYPE = { options: ["new", "close", "info", "cluster", "location", "route_add", "cluster_create"], optionKeys: { new: "req.type.new", close: "req.type.close", info: "req.type.info", cluster: "req.type.cluster", location: "req.type.location", route_add: "req.type.route_add", cluster_create: "req.type.cluster_create" } } as const;
 
 export const outletRequests = defineEntity<OutletRequestSummary, Record<never, never>, Record<never, never>>({
   slug: "outlet-requests",

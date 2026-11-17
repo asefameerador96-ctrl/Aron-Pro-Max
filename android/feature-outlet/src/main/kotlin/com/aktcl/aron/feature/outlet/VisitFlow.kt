@@ -76,7 +76,17 @@ data class OpenVisit(
     val photoValidated: Boolean,
     val forceReasonCode: String?,
     val openedAtIso: String,
-)
+) {
+    /**
+     * True only for a call the phone's own geofence passed (D-OWNER/device walk D-force): a force sale, a manual override or a
+     * restored call of one is NEVER a clean geo sale, whatever a later screen has in memory. Every visit decides this again
+     * from its own row, so an earlier force sale at the outlet cannot make this one look clean (docs/05).
+     */
+    val cleanGeoSale: Boolean get() = geoValidated && forceReasonCode == null && geoAction == GeoAction.SALE_ALLOWED.wire
+
+    /** The stored verdict of this visit, for a screen with no fix in memory (a call restored after a relaunch). */
+    val verdict: GeoVerdict? get() = GeoVerdict.entries.firstOrNull { it.wire == geoVerdict }
+}
 
 /** The one place that holds the visit in progress; sale, review, QC and dues screens read it and never open a visit. */
 class VisitSession {

@@ -137,6 +137,10 @@ interface CaptureDao {
     @Query("SELECT * FROM memo_line WHERE memo_client_uuid = :memoClientUuid ORDER BY line_no")
     suspend fun linesOf(memoClientUuid: String): List<MemoLineEntity>
 
+    /** Every discount line of a business date (reward packs leave the bag, so the stock figure reads them). */
+    @Query("SELECT * FROM memo_discount WHERE business_date = :businessDate")
+    suspend fun discountsOn(businessDate: String): List<MemoDiscountEntity>
+
     @Query("SELECT * FROM attendance_event WHERE business_date = :businessDate ORDER BY captured_at")
     suspend fun attendanceOn(businessDate: String): List<AttendanceEventEntity>
 

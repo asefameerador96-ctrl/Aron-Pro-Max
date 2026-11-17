@@ -132,6 +132,7 @@
     <string name="amo_leaf_team_location">Team Location</string>
     <string name="amo_leaf_team_performance">Team Performance</string>
     <string name="amo_leaf_task_delegation">Task Delegation</string>
+    <string name="amo_leaf_campaign_enrollment">Campaign Enrollment</string>
     <string name="amo_leaf_live_dashboard">Live Dashboard</string>
     <string name="amo_leaf_sr_stock">SR Stock</string>
     <string name="amo_verify_sep">" · "</string>
@@ -264,6 +265,8 @@
     <string name="amo_verify_change">Outlet info-change verification</string>
     <string name="amo_ops_section">Shop operations</string>
     <string name="amo_mo_note">Take the outlet photo. Its location goes for approval as a request to correct the outlet\'s position.</string>
+    <string name="amo_mo_waiting">Please wait…</string>
+    <string name="amo_mo_camera_denied">Camera permission is off, so the outlet photo cannot be taken. Allow Camera for this app in the phone\'s settings, then tap Take shop photo.</string>
     <string name="amo_mo_continue">Continue</string>
     <string name="amo_success_title">Success</string>
     <string name="amo_summary_title">Sales summary</string>
