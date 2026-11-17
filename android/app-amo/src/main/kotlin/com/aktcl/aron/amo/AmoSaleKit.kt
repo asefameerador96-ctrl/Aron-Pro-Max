@@ -225,6 +225,8 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
             FixInput(reading.isOk, reading.lat ?: Double.NaN, reading.lng ?: Double.NaN, reading.accuracyM, reading.isMock),
             OutletGeo(o.locationUsable, o.lat ?: Double.NaN, o.lng ?: Double.NaN), o.radiusM, o.maxAccuracyM, GeoSettings.DEFAULT.policyBase.refusingSpoofedFixes(),
         )
+        // A fake location is its own reason (the hard refusal), not "outside the geofence".
+        if (reading.isMock) return EditDenied.MockLocation
         if (verdict.verdict != GeoVerdict.IN_RANGE) return EditDenied.OutsideGeofence
         editReading = reading; editFixId = null
         return null

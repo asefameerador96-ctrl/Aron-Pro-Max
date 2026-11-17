@@ -100,6 +100,7 @@
     <string name="edit_reason_wrong_sku">Wrong SKU</string>
     <string name="edit_reason_wrong_quantity">Wrong quantity</string>
     <string name="edit_reason_wrong_price_type">Wrong price type</string>
+    <string name="edit_denied_mock">This sale cannot be edited: a fake location was detected. Turn off and uninstall any fake-GPS app, then go back and try again.</string>
     <string name="edit_denied_outside">You can edit a sale only at the shop, inside the geofence.</string>
     <string name="edit_denied_qc">QC is done at this outlet; the sale cannot be edited.</string>
     <string name="edit_denied_superseded">This memo was already replaced by a newer one.</string>

@@ -6,11 +6,14 @@ import android.content.Context
 interface PreviousFixStore {
     fun load(): PreviousFix?
     fun save(fix: PreviousFix)
+    /** Forget the stored fix (logout: the next rep on a shared phone starts with no earlier position, and the old one is not kept). */
+    fun clear()
 
     class Memory : PreviousFixStore {
         @Volatile private var f: PreviousFix? = null
         override fun load() = f
         override fun save(fix: PreviousFix) { f = fix }
+        override fun clear() { f = null }
     }
 }
 
@@ -23,6 +26,8 @@ class PrefsPreviousFixStore(context: Context) : PreviousFixStore {
     override fun save(fix: PreviousFix) {
         prefs.edit().putLong("lat", java.lang.Double.doubleToRawLongBits(fix.lat)).putLong("lng", java.lang.Double.doubleToRawLongBits(fix.lng)).putLong("el", fix.elapsedMs).apply()
     }
+    /** `commit()`, not `apply()`: logout must not return before the position is gone from the file. */
+    override fun clear() { prefs.edit().clear().commit() }
 }
 
 /** What the fix manager asks at the moment of a fix; [None] keeps every existing caller and test unchanged. */
@@ -30,6 +35,8 @@ interface SpoofChecker {
     fun check(loc: RawLocationView?, gnssJson: String?, reused: Boolean): SpoofResult
     /** A fresh good fix was taken: remember it as the previous one. */
     fun onFreshFix(loc: com.aktcl.aron.core.geo.RawLocation)
+    /** Called (suspending) before a fix is built: lets an implementation do its slow work off the caller's thread. Default: nothing. */
+    suspend fun prepare() {}
 
     object None : SpoofChecker {
         override fun check(loc: RawLocationView?, gnssJson: String?, reused: Boolean) = SpoofResult.NONE
@@ -54,6 +61,9 @@ class AndroidSpoofChecker(
             SpoofInput(loc, nowElapsed, clock.nowMs(), reused, gnssFacts(gnssJson), previous.load(), network, probes.facts()), thresholds,
         )
     }
+
+    /** The package, AppOps, root-hint and `/proc/self/maps` reads are cached for 10 minutes; take them off the caller's (often the main) thread. */
+    override suspend fun prepare() { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { probes.facts() } } }
 
     override fun onFreshFix(loc: com.aktcl.aron.core.geo.RawLocation) {
         if (loc.elapsedRealtimeNanos > 0 && !loc.isMock) runCatching { previous.save(PreviousFix(loc.lat, loc.lng, loc.elapsedRealtimeNanos / 1_000_000L)) }

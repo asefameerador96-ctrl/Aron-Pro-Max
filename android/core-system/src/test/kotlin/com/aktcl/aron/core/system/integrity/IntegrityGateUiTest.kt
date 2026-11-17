@@ -165,4 +165,17 @@ class IntegrityGateUiTest {
         rule.waitForIdle()
         assertEquals("gate lifted: cleared again", 0, rule.activity.window.attributes.flags and secure)
     }
+
+    @Test @Config(sdk = [30])
+    fun liftingTheGateNeverClearsTheSecureFlagOfAScreenThatShowsDeviceCodes() {
+        flags = DevFlags(true, false)
+        val secure = android.view.WindowManager.LayoutParams.FLAG_SECURE
+        rule.setContent { IntegrityGate(controller()) { Text("x") }; com.aktcl.aron.core.ui.SecureScreen() }
+        rule.waitForIdle()
+        assertTrue("gate up: secure", rule.activity.window.attributes.flags and secure != 0)
+        flags = DevFlags(false, false)
+        rule.onNodeWithTag(IntegrityGateTags.CHECK_AGAIN).performClick()
+        rule.waitForIdle()
+        assertTrue("gate lifted: the SecureScreen still holds the flag", rule.activity.window.attributes.flags and secure != 0)
+    }
 }

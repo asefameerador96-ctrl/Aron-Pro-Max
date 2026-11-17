@@ -91,4 +91,12 @@ class AndroidSpoofProbesTest {
         val f = AndroidSpoofProbes(app, Clock(), listOf("com.lexa.fakegps")).facts()
         assertFalse(f.mockAppSelected); assertFalse(f.fakeGpsAppInstalled)
     }
+
+    @Test fun thePreviousFixInPrefsIsGoneAfterClearAndThePrefsFileHoldsNothing() {
+        val store = PrefsPreviousFixStore(app)
+        store.save(PreviousFix(23.7925, 90.4078, 123_456)); assertEquals(PreviousFix(23.7925, 90.4078, 123_456), store.load())
+        store.clear()
+        assertEquals(null, store.load()); assertEquals(null, PrefsPreviousFixStore(app).load())
+        assertTrue(app.getSharedPreferences("aron-geo-previous-fix", Context.MODE_PRIVATE).all.isEmpty())
+    }
 }

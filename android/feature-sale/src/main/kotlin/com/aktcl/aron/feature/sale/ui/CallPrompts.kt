@@ -55,6 +55,7 @@ fun EditReasonScreen(denied: EditDenied?, onReason: (EditReason) -> Unit, modifi
                 stringResource(
                     when (denied) {
                         EditDenied.OutsideGeofence -> R.string.edit_denied_outside
+                        EditDenied.MockLocation -> R.string.edit_denied_mock
                         EditDenied.QcDone -> R.string.edit_denied_qc
                         EditDenied.AlreadySuperseded, EditDenied.NoLiveMemo -> R.string.edit_denied_superseded
                     },

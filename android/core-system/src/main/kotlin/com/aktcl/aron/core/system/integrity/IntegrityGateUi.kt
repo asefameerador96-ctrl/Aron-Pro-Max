@@ -179,6 +179,11 @@ private tailrec fun Context.findComponentActivity(): ComponentActivity? = when (
 internal fun ComponentActivity.hideFromRecents(hide: Boolean) {
     runCatching {
         if (android.os.Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(!hide)
-        else if (hide) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        else if (hide) { if (gateHolds.put(window, true) != true) com.aktcl.aron.core.ui.SecureHolders.acquire(window) }
+        // Only what the gate itself acquired is released, through the same reference count a SecureScreen (the TSO device-code list,
+        // the SR OTP entry) uses, so lifting the gate never clears a flag another screen still needs.
+        else if (gateHolds.remove(window) == true) com.aktcl.aron.core.ui.SecureHolders.release(window)
     }
 }
+
+private val gateHolds = java.util.WeakHashMap<android.view.Window, Boolean>()

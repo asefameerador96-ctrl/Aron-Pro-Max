@@ -62,6 +62,8 @@ class FixManager(
             LocationAccessState.LOCATION_OFF -> { cycle?.let { drop(it) }; return@withLock failed(purpose, FixStatus.LOCATION_OFF, s, refreshCount) }
             LocationAccessState.OK -> Unit
         }
+        // The slow spoof facts are read here, off the caller's thread, so the checks inside build() only hit the cache.
+        try { spoof.prepare() } catch (e: CancellationException) { throw e } catch (_: Exception) { /* a failed probe never blocks a fix */ }
         if (cycle != null && refreshCount == 0) reusable(cycle, s)?.let {
             if (it.fromWarmUp && !it.used) { warmUpBook(); warmUpsUsed++ }
             it.used = true

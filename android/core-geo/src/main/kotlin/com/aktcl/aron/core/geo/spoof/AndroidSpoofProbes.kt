@@ -23,9 +23,9 @@ object FakeGpsPackages {
  * - once per 10 minutes (cached by elapsed realtime): which listed fake-GPS packages are installed (declared in the
  *   manifest `<queries>`, no QUERY_ALL_PACKAGES), whether one of them is the SELECTED mock-location app (one AppOps read per
  *   installed candidate), the root hints, emulator markers and hook-framework markers (a class lookup and one read of
- *   `/proc/self/maps`, a few milliseconds);
- * - per fix: the "gps" provider's properties (one binder call) and the last-known NETWORK location, read passively
- *   (no request, so no radio and no battery).
+ *   `/proc/self/maps`, a few milliseconds) and the "gps" provider's properties (one binder call); all of these are in the
+ *   cached facts, and [AndroidSpoofChecker.prepare] reads them off the main thread before a fix is built;
+ * - per fix: only the last-known NETWORK location, read passively (no request, so no radio and no battery).
  * Nothing here proves anything: a rooted phone that hides these tools defeats all of it.
  */
 class AndroidSpoofProbes(

@@ -102,7 +102,10 @@ object SpoofEvaluator {
         val out = linkedSetOf<SpoofCode>()
         val loc = i.loc
         val f = i.facts
-        // Device-level facts count with or without a location (a rep who selected a mock app is refused even on a timeout).
+        // Device-level facts count with or without a location, so the codes are always reported. Refusal is decided later by the
+        // verdict (shared/rules Geo.kt): a timeout or no-fix gives NO_FIX first (Refresh, or a photo-backed Force Sale that is never
+        // a clean geo sale), and the hard refusal applies once a fix exists. A selected mock app is not a bypass: every fix it
+        // produces carries the mock flag too.
         if (f.mockAppSelected) out += SpoofCode.MOCK_APP_SELECTED
         if (f.fakeGpsAppInstalled) out += SpoofCode.FAKE_GPS_APP_INSTALLED
         if (f.gpsProviderLooksLikeTestProvider) out += SpoofCode.TEST_PROVIDER_PROPS

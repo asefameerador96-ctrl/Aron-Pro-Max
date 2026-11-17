@@ -21,4 +21,9 @@ class SpoofCheckerTest {
         assertNull(s.load())
         s.save(PreviousFix(23.7925, 90.4078, 123_456)); assertEquals(PreviousFix(23.7925, 90.4078, 123_456), s.load())
     }
+
+    @Test fun clearingForgetsThePreviousFix() {
+        val s = PreviousFixStore.Memory()
+        s.save(PreviousFix(23.7925, 90.4078, 123_456)); s.clear(); assertNull(s.load())
+    }
 }
