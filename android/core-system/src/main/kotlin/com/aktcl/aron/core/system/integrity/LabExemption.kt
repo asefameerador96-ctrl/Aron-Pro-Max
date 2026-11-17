@@ -61,7 +61,7 @@ class LabExemptionStore(private val dir: File, private val clock: GateClock) {
         runCatching {
             dir.mkdirs()
             val tmp = File(dir, "lab-exemption.tmp")
-            tmp.writeText("until=${r.until}\nissued=${r.issued}\nelapsed=${r.elapsedAtStore}\nboot=${r.boot}\nhw=${r.highWater}")
+            tmp.writeText(listOf("until" to r.until, "issued" to r.issued, "elapsed" to r.elapsedAtStore, "boot" to r.boot, "hw" to r.highWater).joinToString("\n") { (k, v) -> k + "=" + v })
             if (!tmp.renameTo(file)) { file.delete(); tmp.renameTo(file) }
         }
     }

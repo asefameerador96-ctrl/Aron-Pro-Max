@@ -177,11 +177,11 @@ class NoPollingLintTest {
             "feature-x/src/main/E.kt" to "scope.launch { while (isActive) { sync(); delay(30_000) } }",
             "feature-x/src/main/AndroidManifest.xml" to "<uses-permission android:name=\"android.permission.SCHEDULE_EXACT_ALARM\" />",
             "feature-x/src/main/F.kt" to "val am: AlarmManager = x",
+            "dpc/src/main/kotlin/com/aktcl/aron/dpc/blocking/H.kt" to "val am: AlarmManager = x", // no alarm exception is left (D-OWNER-MDM-02)
         )
         assertEquals(bad.size, violations(bad).size)
         val fine = listOf(
             "core-printing/src/main/P.kt" to "while (true) { if (ok) break; delay(5) }",
-            "dpc/src/main/kotlin/com/aktcl/aron/dpc/blocking/H.kt" to "val am: AlarmManager = x",
             "core-sync/src/main/S.kt" to "PeriodicWorkRequestBuilder<W>(15, TimeUnit.MINUTES); while (true) { i++ ; if (i > 3) break }",
             "feature-y/src/main/U.kt" to "LaunchedEffect(Unit) { while (true) { delay(60_000L); tick() } }",
             "feature-y/src/main/T.kt" to "/* never use AlarmManager or Timer() */ val s = \"startForeground( in a string\" // postDelayed in a comment",
