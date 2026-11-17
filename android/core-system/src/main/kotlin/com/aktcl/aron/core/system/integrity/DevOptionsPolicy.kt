@@ -14,19 +14,20 @@ data class GateState(val flags: DevFlags, val exempt: Exemption) {
     val blocked: Boolean get() = flags.any && exempt == Exemption.NONE
 }
 
-enum class Exemption { NONE, DEBUG_BUILD, LAB }
+enum class Exemption { NONE, DEBUG_BUILD, BENCHMARK_BUILD, LAB }
 
 /**
  * The one rule (D-OWNER-MDM-02): while Developer options or USB debugging is on, the app does not run. Nothing here
  * persists an "ok": the state is derived from the settings on every check, so a restart, a deep link or a clock change
- * cannot open the app. Exemptions: a debug build (lab devices, CI) and a live server-granted lab exemption.
+ * cannot open the app. Exemptions: a debug build (lab devices, CI), a benchmark build (speed and battery gates), and a live lab exemption once its server side exists.
  */
 object DevOptionsPolicy {
-    fun decide(flags: DevFlags, debugBuild: Boolean, labExemptionActive: Boolean): GateState = GateState(
+    /** [buildExemption]: [Exemption.DEBUG_BUILD] or [Exemption.BENCHMARK_BUILD] for those variants, null for release. */
+    fun decide(flags: DevFlags, buildExemption: Exemption?, labExemptionActive: Boolean): GateState = GateState(
         flags,
         when {
             !flags.any -> Exemption.NONE
-            debugBuild -> Exemption.DEBUG_BUILD
+            buildExemption != null -> buildExemption
             labExemptionActive -> Exemption.LAB
             else -> Exemption.NONE
         },

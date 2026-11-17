@@ -26,6 +26,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.LifecycleStartEffect
+import androidx.compose.ui.platform.LocalWindowInfo
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
 import com.aktcl.aron.core.system.R
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronBanner
@@ -55,7 +60,22 @@ object IntegrityGateTags {
 @Composable
 fun IntegrityGate(controller: IntegrityGateController, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     var state by remember { mutableStateOf(controller.check()) }
+    val context = LocalContext.current
+    // Every way the setting can change under a resumed app (split screen, a pop-up window, the settings shade):
+    // a return to the foreground, the window regaining focus, and the settings themselves (event-driven, not polling).
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { state = controller.check() }
+    val focused = LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(focused) { if (focused) state = controller.check() }
+    LifecycleStartEffect(controller) {
+        val resolver = context.applicationContext.contentResolver
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) { state = controller.check() }
+        }
+        val uris = listOf(Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, Settings.Global.ADB_ENABLED).map(Settings.Global::getUriFor)
+        runCatching { uris.forEach { resolver.registerContentObserver(it, false, observer) } }
+        state = controller.check() // a change while the observer was not registered
+        onStopOrDispose { runCatching { resolver.unregisterContentObserver(observer) } }
+    }
     LaunchedEffect(state) { withContext(Dispatchers.IO) { controller.noteOnset(state) } }
     val holder = rememberSaveableStateHolder()
     if (state.blocked) {
@@ -77,7 +97,7 @@ fun IntegrityGateScreen(flags: DevFlags, onCheckAgain: () -> Unit, modifier: Mod
     val en = remember(context) { context.inLocale("en") }
     AronTheme(AppLocale.current(context)) {
         AronScaffold(
-            topBar = { AronTopBar(title = bn.getString(R.string.integrity_gate_title)) },
+            topBar = { AronTopBar(title = bn.getString(R.string.integrity_gate_title) + " / " + en.getString(R.string.integrity_gate_title)) },
             modifier = modifier.testTag(IntegrityGateTags.SCREEN),
             // The one action stays on screen however long the steps are on a small phone.
             bottomButtons = {

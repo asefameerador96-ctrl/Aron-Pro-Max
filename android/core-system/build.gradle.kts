@@ -16,6 +16,8 @@ android {
             it.systemProperty("aron.androidRoot", rootProject.layout.projectDirectory.dir("android").asFile.absolutePath)
             // The audit reads the three apps' merged manifests, so every library's permissions are included.
             it.dependsOn(":android:app-sr:processDebugMainManifest", ":android:app-amo:processDebugMainManifest", ":android:app-tso:processDebugMainManifest")
+            // IntegrityGateBuildTest reads the merged release and benchmark manifests: release must never be exempt from the gate.
+            for (app in listOf("sr", "amo", "tso")) for (v in listOf("Release", "Benchmark")) it.dependsOn(":android:app-$app:process${v}MainManifest")
         }
     }
 }

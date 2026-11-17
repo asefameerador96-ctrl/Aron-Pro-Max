@@ -48,7 +48,7 @@
     <string name="otp_bound">এই ফোন এখন আপনার অ্যাকাউন্টের সাথে যুক্ত।</string>
     <!-- ডিভাইস নিবন্ধন (docs/24 s10.4) -->
     <string name="enrol_title">এই ফোনটি নিবন্ধন করুন</string>
-    <string name="enrol_explain">প্রথম লগইনের আগে ফোনটি ARON-এ নিবন্ধন করতে হবে। অ্যাডমিন পোর্টালে দেখানো নিবন্ধন QR স্ক্যান করুন, অথবা নিবন্ধন টোকেন পেস্ট করুন।</string>
+    <string name="enrol_explain">প্রথম লগইনের আগে ফোনটি ARON-এ নিবন্ধন করতে হবে। অ্যাডমিন পোর্টাল থেকে পাওয়া নিবন্ধন টোকেন লিখুন অথবা পেস্ট করুন।</string>
     <string name="enrol_token_label">নিবন্ধন টোকেন</string>
     <string name="enrol_submit">নিবন্ধন করুন</string>
     <string name="enrol_busy">নিবন্ধন হচ্ছে…</string>
@@ -56,11 +56,11 @@
     <string name="enrol_skip">নিবন্ধন ছাড়া লগইন করুন</string>
     <string name="enrol_waiting_offline">সংযোগ নেই। টোকেন সংরক্ষিত আছে: ইন্টারনেটে যুক্ত হয়ে আবার চেষ্টা করুন।</string>
     <string name="enrol_waiting_server">সার্ভার এখন ফোনটি নিবন্ধন করতে পারেনি। টোকেন সংরক্ষিত আছে: কয়েক মিনিট পরে আবার চেষ্টা করুন।</string>
-    <string name="enrol_error_empty">QR স্ক্যান করুন অথবা টোকেন লিখুন।</string>
+    <string name="enrol_error_empty">নিবন্ধন টোকেন লিখুন।</string>
     <string name="enrol_error_unreadable">এটি এই অ্যাপের নিবন্ধন টোকেন নয়। যাচাই করে আবার চেষ্টা করুন।</string>
     <string name="enrol_error_expired">টোকেনটির মেয়াদ শেষ। অ্যাডমিন পোর্টালে নতুন টোকেন তৈরি করুন।</string>
     <string name="enrol_error_used">টোকেনটি আগেই ব্যবহার হয়েছে। অ্যাডমিন পোর্টালে নতুন টোকেন তৈরি করুন।</string>
     <string name="enrol_error_invalid">সার্ভার এই টোকেন চেনে না, অথবা এটি বাতিল হয়েছে। অ্যাডমিন পোর্টালে নতুন টোকেন তৈরি করুন।</string>
-    <string name="enrol_error_attestation">সার্ভার এই ফোন বা অ্যাপ যাচাই করতে পারেনি। ম্যানেজড ফোনের টোকেনের জন্য রিসেট করা ফোনে QR সেটআপ লাগে। সাপোর্টে যোগাযোগ করুন।</string>
+    <string name="enrol_error_attestation">সার্ভার এই ফোন বা অ্যাপ যাচাই করতে পারেনি। নিশ্চিত করুন এটি অফিসিয়াল ARON অ্যাপ, তারপর সাপোর্টে যোগাযোগ করুন।</string>
     <string name="enrol_error_refused">নিবন্ধন প্রত্যাখ্যাত হয়েছে (%1$s)। সাপোর্টে যোগাযোগ করুন।</string>
 </resources>

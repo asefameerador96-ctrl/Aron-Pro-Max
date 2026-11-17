@@ -53,6 +53,7 @@ class CaptureRepository(
     private val outbox = db.outboxDao()
 
     suspend fun recordAttendance(event: AttendanceEventEntity, fix: GeoFixEntity) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(event.clientUuid)) return@withTransaction emptyList()
         requireUuids(event.clientUuid, fix.clientUuid)
         requireFixOf(fix, event.clientUuid, event.fixClientUuid)
@@ -82,6 +83,7 @@ class CaptureRepository(
      * the lock, as on the server. A Sales Submit does not refuse stock (D-X4a-13: the server accepts it and the phone always did).
      */
     suspend fun recordStock(movements: List<StockMovementEntity>) {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         require(movements.isNotEmpty()) { "nothing to save" }
         requireUuids(*movements.map { it.clientUuid }.toTypedArray())
         db.withTransaction {
@@ -95,6 +97,7 @@ class CaptureRepository(
     }
 
     suspend fun recordVisitOpen(visit: VisitEntity, fix: GeoFixEntity) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(visit.clientUuid)) return@withTransaction emptyList()
         requireUuids(visit.clientUuid, fix.clientUuid)
         requireRoute(visit.meta)
@@ -110,6 +113,7 @@ class CaptureRepository(
      * (memo, then lines and discounts, then QC lines), so the batch carries parents before children (s4.2).
      */
     suspend fun recordSale(sale: SaleCapture) {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         val m = sale.memo
         require(sale.lines.all { it.memoClientUuid == m.clientUuid }) { "every line must belong to the memo" }
         require(sale.discounts.all { it.memoClientUuid == m.clientUuid }) { "every discount line must belong to the memo" }
@@ -156,6 +160,7 @@ class CaptureRepository(
     }
 
     suspend fun recordVisitClose(close: VisitCloseEntity) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(close.clientUuid)) return@withTransaction emptyList()
         requireUuids(close.clientUuid, close.visitClientUuid)
         requireRoute(close.meta)
@@ -170,6 +175,7 @@ class CaptureRepository(
      * with it in one transaction. Returns the memo number. If the save fails the number is burned, never reused.
      */
     suspend fun recordNumberedSale(sale: SaleCapture, numbering: MemoNumbering): String {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         // A replay of a sale that was already sent and purged must not burn a memo number or look saved: it fails loudly, as a missing visit would.
         check(!purged(sale.memo.clientUuid)) { "memo ${sale.memo.clientUuid} was already saved and sent from this phone" }
         // A replay of a sale that is still stored (a retry after a kill and relaunch) gets its own number back and burns none.
@@ -207,6 +213,7 @@ class CaptureRepository(
 
     /** A due collected against an earlier memo: its own family (a signed header record, docs/24 s4.2). */
     suspend fun recordDueCollection(due: DueCollectionEntity, fix: GeoFixEntity? = null) {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         requireUuids(due.clientUuid, due.againstMemoClientUuid)
         due.visitClientUuid?.let { requireUuids(it); requireRoute(due.meta) }
         require(due.amountMtk >= 10) { "amount_mtk is at least 10" }
@@ -229,6 +236,7 @@ class CaptureRepository(
      * changes nothing and returns false, so a retried tap or replay never doubles it. Only the AMO record types are accepted.
      */
     suspend fun recordAmo(record: com.aktcl.aron.core.database.entity.AmoRecordEntity): Boolean = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(record.clientUuid) || (record.familyUuid != record.clientUuid && purged(record.familyUuid))) return@withTransaction false // a child of a purged family is stale too
         requireUuids(record.clientUuid, record.familyUuid)
         require(record.recordType in AMO_RECORD_TYPES) { "not an AMO record type: ${record.recordType}" }
@@ -256,6 +264,7 @@ class CaptureRepository(
 
     /** An outlet skipped without a visit: no fix (F-SR-057). */
     suspend fun recordVisitSkip(skip: VisitSkipEntity) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(skip.clientUuid)) return@withTransaction emptyList()
         requireUuids(skip.clientUuid)
         requireRoute(skip.meta)
@@ -271,6 +280,7 @@ class CaptureRepository(
      * SR calls only: AMO and TSO visits never carry content (and no points are earned from it here; loyalty is deferred).
      */
     suspend fun recordContentView(view: com.aktcl.aron.core.database.entity.ContentViewEntity): Boolean = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(view.clientUuid)) return@withTransaction false
         requireUuids(view.clientUuid, view.visitClientUuid)
         requireRoute(view.meta)
@@ -293,6 +303,7 @@ class CaptureRepository(
      * answer carries the photo's media uuid, any other may carry one. SR calls and AMO control calls; no points ledger (docs/27).
      */
     suspend fun recordSurveyResponse(answer: com.aktcl.aron.core.database.entity.SurveyResponseEntity) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(answer.clientUuid)) return@withTransaction emptyList()
         requireUuids(answer.clientUuid, answer.visitClientUuid)
         answer.photoUuid?.let { requireUuids(it) }
@@ -335,6 +346,7 @@ class CaptureRepository(
      * after it until the server reopens the day ([reopenRouteDay]); one submit per cycle.
      */
     suspend fun recordDaySubmit(submit: DaySubmitEntity) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(submit.clientUuid)) return@withTransaction emptyList()
         requireUuids(submit.clientUuid)
         require(submit.scope in setOf("route_day", "supervisor_day")) { "scope is route_day or supervisor_day" }
@@ -356,6 +368,7 @@ class CaptureRepository(
      * LOCAL ONLY: no outbox row until the contract has the cluster-creation record. Returns true when the cluster is on the phone.
      */
     suspend fun recordClusterCreate(c: com.aktcl.aron.core.database.entity.ClusterCreateEntity, fix: GeoFixEntity): Boolean = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (capture.clusterCreates().any { it.clientUuid == c.clientUuid }) return@withTransaction true
         if (purged(c.clientUuid)) return@withTransaction false
         requireUuids(c.clientUuid, fix.clientUuid)
@@ -366,6 +379,7 @@ class CaptureRepository(
 
     /** A new-outlet, edit, relocation or closure request with the fix taken for it. */
     suspend fun recordOutletRequest(request: OutletChangeRequestEntity, fix: GeoFixEntity) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         if (purged(request.clientUuid) || capture.outletRequestCount(request.clientUuid) > 0) return@withTransaction emptyList() // a replay of a request already on this phone writes nothing
         requireUuids(request.clientUuid, fix.clientUuid)
         require(OutletRequestType.entries.any { it.wire == request.requestType }) { "request_type ${request.requestType} is not in the contract" }
@@ -385,6 +399,7 @@ class CaptureRepository(
      * change information and its cluster change). Each one is idempotent on replay, as [recordOutletRequest].
      */
     suspend fun recordOutletRequests(requests: List<Pair<OutletChangeRequestEntity, GeoFixEntity>>) = db.withTransaction {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         requests.forEach { (r, f) -> recordOutletRequest(r, f) }
     }
 
@@ -404,6 +419,7 @@ class CaptureRepository(
      * [MediaMetaCapture.fixClientUuid] names a stored geo_fix row; its payload is built from that row.
      */
     suspend fun recordMediaMeta(m: MediaMetaCapture): Boolean {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate: no NEW record while it is closed (D-OWNER-MDM-02)
         requireUuids(m.mediaUuid, m.refClientUuid)
         m.fixClientUuid?.let { requireUuids(it) }
         require(MediaPurpose.entries.any { it.wire == m.purpose }) { "unknown media purpose ${m.purpose}" }

@@ -10,12 +10,12 @@ import org.junit.Test
 class IntegrityGateControllerTest {
     private val day = 24 * 3600_000L
 
-    private class Env(var flags: DevFlags = DevFlags(false, false), val debug: Boolean = false) {
+    private class Env(var flags: DevFlags = DevFlags(false, false), val build: Exemption? = null, val honoured: Boolean = true) {
         val dir: File = Files.createTempDirectory("gate").toFile()
         val clock = LabExemptionStoreTest.Clock()
         val store = LabExemptionStore(dir, clock)
         val log = IntegrityEventLog(dir)
-        fun controller() = IntegrityGateController({ flags }, store, log, dir, debug, "1.2.3", clock::wallMs)
+        fun controller() = IntegrityGateController({ flags }, store, log, dir, build, "1.2.3", clock::wallMs, labExemptionHonoured = honoured)
     }
 
     @Test fun nothingOnMeansOpen() {
@@ -32,7 +32,7 @@ class IntegrityGateControllerTest {
     }
 
     @Test fun aDebugBuildIsExemptButStillRecorded() {
-        val e = Env(DevFlags(true, true), debug = true); val c = e.controller()
+        val e = Env(DevFlags(true, true), build = Exemption.DEBUG_BUILD); val c = e.controller()
         val s = c.check(); assertFalse(s.blocked); assertEquals(Exemption.DEBUG_BUILD, s.exempt)
         assertTrue(c.noteOnset(s)); assertEquals("debug_build", e.log.pending().single().exempt)
     }
@@ -67,7 +67,7 @@ class IntegrityGateControllerTest {
     }
 
     @Test fun anUnreadableSettingNeverLocksThePhoneOut() {
-        val e = Env(); val c = IntegrityGateController({ error("settings unreadable") }, e.store, e.log, e.dir, false, "v", e.clock::wallMs)
+        val e = Env(); val c = IntegrityGateController({ error("settings unreadable") }, e.store, e.log, e.dir, null, "v", e.clock::wallMs)
         assertFalse(c.check().blocked)
     }
 
@@ -91,5 +91,41 @@ class IntegrityGateControllerTest {
         val p = log.pending()
         assertEquals(IntegrityEventLog.CAP, p.size); assertEquals(30L, p.first().atUtcMs)
         assertEquals("v_1 2", p.first().appVersion)
+    }
+
+    @Test fun aReleaseBuildIgnoresAStoredLabFileUntilTheServerPieceLands() {
+        // Today the file is unauthenticated: honouring it would let anyone with a file editor skip the gate.
+        val e = Env(DevFlags(true, false), honoured = false); val c = e.controller()
+        e.store.grant(e.clock.wall + day)
+        assertTrue(c.check().blocked)
+        assertEquals(Exemption.NONE, c.check().exempt)
+    }
+
+    @Test fun theDefaultConstructorDoesNotHonourTheLabFile() {
+        val e = Env(DevFlags(true, false))
+        e.store.grant(e.clock.wall + day)
+        val c = IntegrityGateController({ e.flags }, e.store, e.log, e.dir, null, "v", e.clock::wallMs)
+        assertTrue(c.check().blocked)
+    }
+
+    @Test fun aBenchmarkBuildIsExemptAndRecordedAsSuch() {
+        val e = Env(DevFlags(true, false), build = Exemption.BENCHMARK_BUILD); val c = e.controller()
+        assertFalse(c.check().blocked)
+        c.noteOnset(c.check()); assertEquals("benchmark_build", e.log.pending().single().exempt)
+    }
+
+    @Test fun twoLogInstancesOverOneFolderShareOneLock() {
+        val e = Env(); val l1 = IntegrityEventLog(e.dir); val l2 = IntegrityEventLog(e.dir)
+        val t = (1..8).map { i -> Thread { repeat(25) { n -> (if (i % 2 == 0) l1 else l2).record(IntegrityEvent((i * 100 + n).toLong(), listOf("adb"), "none", "v")) } } }
+        t.forEach { it.start() }; t.forEach { it.join() }
+        assertEquals(IntegrityEventLog.CAP, IntegrityEventLog(e.dir).pending().size.coerceAtMost(IntegrityEventLog.CAP)) // 200 written, capped at 200, none torn
+        assertTrue(l1.pending().all { it.flags == listOf("adb") })
+    }
+
+    @Test fun ackKeepsTheRestWithoutATornFile() {
+        val e = Env(); repeat(5) { e.log.record(IntegrityEvent(it.toLong(), listOf("adb"), "none", "v")) }
+        e.log.ack(2)
+        assertEquals(listOf(2L, 3L, 4L), e.log.pending().map { it.atUtcMs })
+        assertFalse(File(e.dir, "integrity-events.tmp").exists())
     }
 }

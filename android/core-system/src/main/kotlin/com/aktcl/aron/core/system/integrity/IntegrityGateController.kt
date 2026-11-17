@@ -16,17 +16,24 @@ class IntegrityGateController(
     private val exemption: LabExemptionStore,
     private val log: IntegrityEventLog,
     private val dir: File,
-    private val debugBuild: Boolean,
+    /** [Exemption.DEBUG_BUILD] or [Exemption.BENCHMARK_BUILD] for those variants; null for release. */
+    private val buildExemption: Exemption?,
     private val appVersion: String,
     private val nowUtcMs: () -> Long,
+    /**
+     * Whether a stored lab exemption is honoured in this build. FALSE until the server piece lands: today the file is not
+     * authenticated, so a release build ignores it (D-OWNER-MDM-02 iii). With slice 3 the grant is bound to the device by a
+     * server signature over device id and expiry, and this becomes true.
+     */
+    private val labExemptionHonoured: Boolean = false,
 ) {
     private val stateFile get() = File(dir, "gate-state.txt")
 
     /** A fresh decision from the settings now. Cheap: two settings reads and a small file read when gated. */
     fun check(): GateState {
         val flags = runCatching(flagsReader).getOrDefault(DevFlags(devOptions = false, adb = false))
-        val lab = flags.any && !debugBuild && runCatching { exemption.isActive() }.getOrDefault(false)
-        return DevOptionsPolicy.decide(flags, debugBuild, lab)
+        val lab = flags.any && buildExemption == null && labExemptionHonoured && runCatching { exemption.isActive() }.getOrDefault(false)
+        return DevOptionsPolicy.decide(flags, buildExemption, lab)
     }
 
     /** Records the onset of [state] once (call off the main thread). Returns true when an event was written. */

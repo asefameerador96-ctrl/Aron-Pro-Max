@@ -39,7 +39,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * The geo, integrity and device-owner call sites the app shells owe android-geo-dpc (docs/requests/android-geo-dpc-wiring.md),
+ * The geo, integrity and device-owner-release call sites the app shells owe android-geo-dpc (docs/requests/android-geo-dpc-wiring.md),
  * built once per process in the app's DI and shared by SR, AMO and TSO:
  * - [fixManager]: the one on-demand fix manager, with `cfg.geo.*` from the active user's bundle and `integrity_ref`;
  * - [onAppCreate]: releases device-owner mode left by an older build (D-OWNER-MDM-02), loads the calendar (offline, no network);

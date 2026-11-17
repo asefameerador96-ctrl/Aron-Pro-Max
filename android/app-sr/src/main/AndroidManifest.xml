@@ -23,6 +23,8 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <!-- Developer options gate (D-OWNER-MDM-02): "true" only in the benchmark build types (root build.gradle.kts); release is never exempt. -->
+        <meta-data android:name="com.aktcl.aron.integrity_gate_exempt" android:value="${integrityGateExempt}" />
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${mapsApiKey}" />

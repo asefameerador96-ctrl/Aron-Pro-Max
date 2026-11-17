@@ -16,7 +16,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.time.LocalDate
 
 /**
- * Settings that synchronous device code reads without I/O (the fix manager, the DPC's blocking calendar), taken from the
+ * Settings that synchronous device code reads without I/O (the fix manager, the attendance flow), taken from the
  * active user's bundle. [refresh] reads Room; call it after login, a bundle apply and a config delta. Until the first
  * refresh the contract defaults apply (FixSettings(), calendar unknown).
  */
@@ -87,7 +87,7 @@ class DayConfig {
      * Contract `CalendarSection` plus the delta's `calendar_changes`, decided as the server's `DayPlan.isSellingDay`
      * (backend/platform): among the dated entries the most specific scope decides (zone over territory over division over
      * wing over global), and at equal scope an off-day wins over a make-up day; with no dated entry the weekend days are off.
-     * The bundle carries only the entries of the user's own zones. Null when the phone has no calendar yet (the DPC then
+     * The bundle carries only the entries of the user's own zones. Null when the phone has no calendar yet (callers then
      * treats the day as working: the rep checked in).
      */
     fun isWorkingDay(businessDate: String): Boolean? = calendar?.isWorkingDay(businessDate)

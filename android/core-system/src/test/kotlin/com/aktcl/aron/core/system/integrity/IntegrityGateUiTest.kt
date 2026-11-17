@@ -34,7 +34,7 @@ class IntegrityGateUiTest {
     private val dir = Files.createTempDirectory("gateui").toFile()
     private val clock = LabExemptionStoreTest.Clock()
     private val log = IntegrityEventLog(dir)
-    private fun controller() = IntegrityGateController({ flags }, LabExemptionStore(dir, clock), log, dir, false, "1", clock::wallMs)
+    private fun controller() = IntegrityGateController({ flags }, LabExemptionStore(dir, clock), log, dir, null, "1", clock::wallMs)
 
     @Test fun gatedShowsOnlyTheBlockingScreenInBanglaAndEnglishAndCheckAgainReopens() {
         flags = DevFlags(devOptions = true, adb = false)
@@ -42,7 +42,7 @@ class IntegrityGateUiTest {
         var composed = 0
         rule.setContent { IntegrityGate(c) { composed++; Text("APP-CONTENT", modifier = androidx.compose.ui.Modifier.testTag("app")) } }
         rule.onNodeWithTag(IntegrityGateTags.SCREEN).assertIsDisplayed()
-        rule.onNodeWithText("ডেভেলপার অপশন চালু আছে").assertIsDisplayed()
+        rule.onNodeWithText("ডেভেলপার অপশন চালু আছে", substring = true).assertIsDisplayed()
         rule.onAllNodesWithTag("app").assertCountEquals(0)
         assertEquals("the app UI is not composed behind the gate", 0, composed)
         // Still on: check again keeps the gate.
@@ -75,5 +75,33 @@ class IntegrityGateUiTest {
         rule.setContent { IntegrityGate(c) { Text("APP-CONTENT") } }
         rule.onNodeWithText("APP-CONTENT").assertIsDisplayed()
     }
-}
 
+    @Test fun aSettingSwitchedOnWhileTheAppStaysResumedClosesTheGateAtOnce() {
+        // Split screen: the app never leaves RESUMED while the rep opens Developer options in the other pane.
+        val c = controller()
+        rule.setContent { IntegrityGate(c) { Text("APP-CONTENT") } }
+        rule.onNodeWithText("APP-CONTENT").assertIsDisplayed()
+        flags = DevFlags(devOptions = true, adb = false)
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>()
+        app.contentResolver.notifyChange(android.provider.Settings.Global.getUriFor(android.provider.Settings.Global.DEVELOPMENT_SETTINGS_ENABLED), null)
+        rule.waitForIdle()
+        rule.onNodeWithTag(IntegrityGateTags.SCREEN).assertIsDisplayed()
+        rule.onAllNodesWithTag("never").assertCountEquals(0)
+    }
+
+    @Test fun usbDebuggingSwitchedOnWhileResumedClosesTheGateToo() {
+        val c = controller()
+        rule.setContent { IntegrityGate(c) { Text("APP-CONTENT") } }
+        flags = DevFlags(devOptions = false, adb = true)
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>()
+        app.contentResolver.notifyChange(android.provider.Settings.Global.getUriFor(android.provider.Settings.Global.ADB_ENABLED), null)
+        rule.waitForIdle()
+        rule.onNodeWithTag(IntegrityGateTags.SCREEN).assertIsDisplayed()
+    }
+
+    @Test fun theGateTitleIsInBothLanguages() {
+        flags = DevFlags(true, false)
+        rule.setContent { IntegrityGate(controller()) { Text("x") } }
+        rule.onNodeWithText("ডেভেলপার অপশন চালু আছে / Developer options are on").assertIsDisplayed()
+    }
+}
