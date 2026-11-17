@@ -1,3 +1,7 @@
+# STARTING BRIEF FOR SV6 (lead rulings 2026-11-17, accepted points (a) to (e); the contract round 1.20.0, migrations from V0203 provisional, goes to a fresh session)
+
+(a) The withdrawal of `CHECKOUT_WITHOUT_SUBMIT` is done by a worker rule, no grant change on `risk_signal`. (b) `closed_by` is a column on `attendance_event` honoured by every attendance reader (reports, dw views and aggregates, `supervisorDay`, route-day check-out), not only by the ingest. (c) The server ships before any phone sends `closed_by` (PayloadShapes is strict). (d) The 3-character memo username widening is NOT VALID then VALIDATE, in two migrations; a pre-flight mirror (docs/30 4a) only where a guard can raise. (e) `closed_by` is the confirmed member name. After SV5 is retired the lead says "114a landed": merge the integration branch into `lane/sr-server` first.
+
 # HANDOVER (SV5, 2026-11-17, context high: a fresh session should take the next round) — read this first
 
 **State:** `lane/sr-server` = INT a6a1cbf25 + B7 + the pre-flight (05d1b3bf8, in train 114a) + ONE LOCAL commit (follow-up D-SV2-13, tested locally, NOT pushed): push only after 114a has landed and the integration branch is merged; then full gate, ONE push, full lane ci, "checked <sha>".
