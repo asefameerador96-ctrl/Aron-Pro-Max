@@ -13,6 +13,11 @@ application {
 }
 
 dependencies {
+    // D-SV2-14: bcpkix 1.80 pulls bcutil and bcprov by the range [1.80,1.81); pin both to the exact 1.80 (no version change).
+    constraints {
+        testImplementation(libs.bouncycastle.bcutil) { version { strictly(libs.versions.bouncycastle.get()) }; because("bcpkix declares a dynamic range; resolved version is unchanged (1.80)") }
+        testImplementation(libs.bouncycastle.bcprov) { version { strictly(libs.versions.bouncycastle.get()) }; because("bcpkix declares a dynamic range; resolved version is unchanged (1.80)") }
+    }
     implementation(project(":backend:platform"))
     implementation(project(":backend:auth"))
     implementation(project(":backend:sync"))
