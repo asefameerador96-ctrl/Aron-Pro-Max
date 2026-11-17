@@ -123,6 +123,8 @@ fun AronTopBar(
     trailing: (@Composable () -> Unit)? = null,
     hanging: (@Composable () -> Unit)? = null,
     subtitle: String? = null,
+    /** The legacy kit bar passes 2 (title, then an ellipsis); the screens built on this bar directly keep showing the whole title. */
+    maxTitleLines: Int = Int.MAX_VALUE,
 ) {
     val look = LocalAronLook.current
     Box(modifier.fillMaxWidth()) {
@@ -159,7 +161,7 @@ fun AronTopBar(
                     Spacer(Modifier.width(10.dp))
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(title, style = lookStyle(22.sp, semibold = true, color = look.onBar, align = TextAlign.Center), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
+                    Text(title, style = lookStyle(22.sp, semibold = true, color = look.onBar, align = TextAlign.Center), maxLines = maxTitleLines, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
                     if (subtitle != null) Text(subtitle, style = lookStyle(12.sp, color = look.onBar, align = TextAlign.Center))
                 }
             }
