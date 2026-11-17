@@ -44,6 +44,16 @@ object IntegrityGates {
     @Volatile private var instance: IntegrityGateController? = null
     @Volatile private var exemptionStore: LabExemptionStore? = null
     @Volatile private var sharedLog: IntegrityEventLog? = null
+    @Volatile private var verifiedLab: VerifiedLabExemption? = null
+
+    /** This phone's device uuid, set once by the device runtime; null until then (a grant then verifies for nobody). */
+    @Volatile var deviceUuid: () -> String? = { null }
+
+    /** A signed lab grant from the server; true when it verified for this device and was stored. Never throws. */
+    fun acceptLabGrant(context: Context, token: String): Boolean { get(context); return verifiedLab?.accept(token) == true }
+
+    /** The server withdrew the grant. */
+    fun revokeLabGrant(context: Context) { get(context); verifiedLab?.revoke() }
 
     /**
      * "Sync now" from the gate screen (set once in `Application.onCreate`): lets queued records upload at once while the
@@ -89,7 +99,9 @@ object IntegrityGates {
         val debug = (app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
         val meta = runCatching { app.packageManager.getApplicationInfo(app.packageName, PackageManager.GET_META_DATA).metaData?.get(META_EXEMPT)?.toString() }.getOrNull()
         val version = runCatching { app.packageManager.getPackageInfo(app.packageName, 0).versionName }.getOrNull().orEmpty()
-        val controller = IntegrityGateController(reader::read, store, log, dir, buildExemption(debug, meta), version, clock::wallMs)
+        val publicKey = runCatching { app.getString(com.aktcl.aron.core.system.R.string.aron_lab_grant_public_key) }.getOrNull()
+        val verified = VerifiedLabExemption(dir, store, LabGrantVerifier(publicKey), { deviceUuid() }, clock).also { verifiedLab = it }
+        val controller = IntegrityGateController(reader::read, store, log, dir, buildExemption(debug, meta), version, clock::wallMs, verifiedLab = verified::isActive)
         // Writers of new records ask at the moment they act (core-common ActionGate), so the gate cannot be raced.
         ActionGate.check = { !controller.check().blocked }
         ActionGate.onClosed = { refreshNow() }

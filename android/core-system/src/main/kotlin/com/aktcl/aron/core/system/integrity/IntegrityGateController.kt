@@ -26,13 +26,16 @@ class IntegrityGateController(
      * server signature over device id and expiry, and this becomes true.
      */
     private val labExemptionHonoured: Boolean = false,
+    /** The authenticated lab exemption ([VerifiedLabExemption.isActive]): the only way a release build is ever exempt. Null: none. */
+    private val verifiedLab: (() -> Boolean)? = null,
 ) {
     private val stateFile get() = File(dir, "gate-state.txt")
 
     /** A fresh decision from the settings now. Cheap: two settings reads and a small file read when gated. */
     fun check(): GateState {
         val flags = runCatching(flagsReader).getOrDefault(DevFlags(devOptions = false, adb = false))
-        val lab = flags.any && buildExemption == null && labExemptionHonoured && runCatching { exemption.isActive() }.getOrDefault(false)
+        val lab = flags.any && buildExemption == null &&
+            ((labExemptionHonoured && runCatching { exemption.isActive() }.getOrDefault(false)) || runCatching { verifiedLab?.invoke() == true }.getOrDefault(false))
         return DevOptionsPolicy.decide(flags, buildExemption, lab)
     }
 

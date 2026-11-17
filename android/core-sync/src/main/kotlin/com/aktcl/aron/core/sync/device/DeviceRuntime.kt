@@ -148,6 +148,8 @@ class DeviceRuntime(
         val (pct, charging) = battery(); breadcrumbs.reconcile(pct, charging)
     }
 
+    init { com.aktcl.aron.core.system.integrity.IntegrityGates.deviceUuid = { runCatching { components.deviceIdentity.deviceUuid }.getOrNull() } }
+
     val reporter: DeviceStatusReporter by lazy {
         val evidence = IntegrityEvidenceService(
             DeviceNonceApi(components.apiClient), PlayIntegritySource(app, playIntegrityProjectNumber), { components.deviceIdentity.deviceUuid },

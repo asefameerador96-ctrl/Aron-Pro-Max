@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 182 | 2994 |
+| `app` | 183 | 2999 |
 | `dw` | 76 | 1233 |
 
 ## Index
@@ -62,6 +62,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.device_binding`](#appdevice_binding) | table | backend:auth | ONLINE | audit | none | Link of a user to a phone, with the binding ordinal that fixes the memo-number block. |
 | [`app.device_command`](#appdevice_command) | table | backend:mdm | ONLINE | audit | personal | MDM command to one device (lock, unlock, message, locate, reboot, factory reset, apply policy): idempotent by command_id, pushed by FCM and pulled by the DPC; a factory reset needs a second person (D-MDM-01). |
 | [`app.device_directive`](#appdevice_directive) | table | backend:config | ONLINE | ops | none | A signed remote directive sent to a phone, with delivery and acknowledgement times. |
+| [`app.device_lab_exemption`](#appdevice_lab_exemption) | table | backend:analytics | ONLINE | audit | none | The lab exemption of one enrolled phone (D-OWNER-MDM-02): while unexpired the server hands the phone a signed grant that lets it run with Developer options on; one row per device, at most 14 days. |
 | [`app.device_nonce`](#appdevice_nonce) | table | backend:auth | SERVER | session | none | Single-use server nonce for a Play Integrity request or key attestation. |
 | [`app.device_otp`](#appdevice_otp) | table | backend:auth | ONLINE | session | secret | One-time code a TSO issues to bind a phone to a user, stored as hash and encrypted for display. |
 | [`app.device_policy`](#appdevice_policy) | table | backend:config | SERVER | ops | none | The device policy rendered for a phone at a given policy version, with its hash. |
@@ -1328,6 +1329,24 @@ A signed remote directive sent to a phone, with delivery and acknowledgement tim
 Keys: `PRIMARY KEY (directive_id)`
 
 References: `FOREIGN KEY (created_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`
+
+## app.device_lab_exemption
+
+The lab exemption of one enrolled phone (D-OWNER-MDM-02): while unexpired the server hands the phone a signed grant that lets it run with Developer options on; one row per device, at most 14 days.
+
+`owner: backend:analytics | capture: ONLINE | retention: audit | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `device_id` | bigint | not null |  | The enrolled phone the exemption is for; one row per device (a new grant replaces the row). |
+| `granted_by` | bigint | not null |  | The portal user (Super Admin or an Admin with the mdm module write grant) who granted it. |
+| `granted_at` | timestamp with time zone | not null |  | UTC time the exemption was granted. |
+| `expires_at` | timestamp with time zone | not null |  | UTC time the exemption ends; at most 14 days after granted_at. The signed grant carries the same time, and the phone also caps it. |
+| `note` | text | null |  | Why the phone needs it (for example the walk it is for); free text, at most 300 characters. |
+
+Keys: `PRIMARY KEY (device_id)`
+
+References: `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (granted_by) REFERENCES app.app_user(id)`
 
 ## app.device_nonce
 
