@@ -102,7 +102,12 @@ class IngestService(
     }
 
     /** One record as received, with what the batch fingerprint and the registry need. */
-    private class Rec(val index: Int, val json: JsonObject) {
+    /**
+     * [hashOverride]: the registry hash of a record released from quarantine unchanged: the hash of the record AS SENT (a stored copy may have lost a device's `anchor_clock`, or had NUL characters replaced, B7).
+     * ONLY [hash] honours it: [fullHash], [hashHex] and [canonError] are computed from [json], the stored copy, and describe THAT copy. They are batch-level fingerprints of a received envelope and no release
+     * path reads them; a new use of them on a released Rec must not assume they match what the phone sent.
+     */
+    private class Rec(val index: Int, val json: JsonObject, val hashOverride: ByteArray? = null) {
         val clientUuid: String = uuidKey(json)
         val type: String = (json["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
         val family: String = (json["family_uuid"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: clientUuid
@@ -116,7 +121,7 @@ class IngestService(
          * a Keystore miss) and later signed is the same record, never payload_conflict. Rows registered before this
          * change carry [fullHash], which still matches.
          */
-        val hash: ByteArray = if ("sig" !in json || canonError != null) fullHash else Jcs.sha256(JsonObject(json.filterKeys { it != "sig" }))
+        val hash: ByteArray = hashOverride ?: if ("sig" !in json || canonError != null) fullHash else Jcs.sha256(JsonObject(json.filterKeys { it != "sig" }))
     }
 
     /** Per-batch caches. */
@@ -398,7 +403,8 @@ class IngestService(
                     throw ApiProblem(ProblemCode.ERR_VALIDATION, "fixed_record keeps the record's outlet_id", errors = listOf(FieldError("/fixed_record/payload/outlet_id", "invalid_value")))
                 }
             }
-            val rec = Rec(0, fixedRecord ?: item.payload)
+            // B7: released unchanged, the registry keeps the hash of the record AS SENT (the stored copy may have lost a device's anchor_clock), so the phone's resend answers duplicate, not payload_conflict.
+            val rec = Rec(0, fixedRecord ?: item.payload, if (fixedRecord == null) item.payloadSha else null)
             // The children held with it, parents before children, so a memo's equations see its lines (s7.4).
             val children = heldChildren(h, item.clientUuid, item.code)
             val family = listOf(rec.json) + children.map { it.payload }
@@ -428,7 +434,7 @@ class IngestService(
             for (child in children.sortedBy { childRank(it) }) {
                 val sp = "release_${child.id}"
                 h.savepoint(sp)
-                val o = runCatching { release(h, ctxOf(child), Rec(0, child.payload)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
+                val o = runCatching { release(h, ctxOf(child), Rec(0, child.payload, child.payloadSha)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
                 when (settleChild(h, child, o, item.clientUuid, resolverUserId, now)) {
                     ChildEnd.HELD_ON_SIBLING -> { h.release(sp); reheld += child }
                     ChildEnd.SETTLED -> h.release(sp)
@@ -449,7 +455,7 @@ class IngestService(
                     if (on != null && h.createQuery("SELECT EXISTS (SELECT 1 FROM app.sync_quarantine WHERE client_uuid = CAST(:u AS uuid) AND status = 'open')").bind("u", on).mapTo(Boolean::class.java).one()) continue   // its line is still open
                     val sp = "rerelease_${child.id}_$pass"
                     h.savepoint(sp)
-                    val o = runCatching { release(h, ctxOf(child), Rec(0, child.payload)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
+                    val o = runCatching { release(h, ctxOf(child), Rec(0, child.payload, child.payloadSha)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
                     when (settleChild(h, child, o, item.clientUuid, resolverUserId, now)) {
                         ChildEnd.HELD_ON_SIBLING -> { h.release(sp); if (heldOn(h, child.id) != on) changed = true }
                         ChildEnd.SETTLED -> { h.release(sp); reheld.remove(child); changed = true }
@@ -489,7 +495,7 @@ class IngestService(
                 val sp = "follow_${child.id}"
                 h.savepoint(sp)
                 val batch = child.batchUuid ?: UUID.nameUUIDFromBytes("quarantine:${child.id}".toByteArray()).toString()
-                val o = runCatching { release(h, Ctx(uploaderOf(h, child.userId, child.deviceId), batch, now, release = null, reviewed = true), Rec(0, child.payload)) }
+                val o = runCatching { release(h, Ctx(uploaderOf(h, child.userId, child.deviceId), batch, now, release = null, reviewed = true), Rec(0, child.payload, child.payloadSha)) }
                     .getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
                 if (o != null && (o.status == "accepted" || o.status == "duplicate")) {
                     closeItem(h, child.id, "accepted", null, resolverUserId, "followed the discarded parent ${item.clientUuid}", now)
@@ -649,7 +655,7 @@ class IngestService(
                 }
                 val sp = "match_${child.id}"
                 h.savepoint(sp)
-                val o = runCatching { release(h, ctx, Rec(0, child.payload)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
+                val o = runCatching { release(h, ctx, Rec(0, child.payload, child.payloadSha)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
                 if (o != null && (o.status == "accepted" || o.status == "duplicate")) {
                     closeItem(h, child.id, "accepted", null, resolverUserId, "same_as_backfill: posted to paper memo $paperUuid", now)
                     h.release(sp); released += child.clientUuid
@@ -691,13 +697,13 @@ class IngestService(
     ).bind("c", r.clientUuid).bind("h", r.hash).bind("f", r.fullHash).mapTo(Boolean::class.java).one()
 
     /** One quarantine item as stored. */
-    private class HeldItem(val id: Long, val clientUuid: String, val code: String, val status: String, val payload: JsonObject, val userId: Long, val deviceId: Long?, val batchUuid: String?)
+    private class HeldItem(val id: Long, val clientUuid: String, val code: String, val status: String, val payload: JsonObject, val userId: Long, val deviceId: Long?, val batchUuid: String?, val payloadSha: ByteArray? = null)
 
     private fun heldItem(h: Handle, where: String, id: Long): HeldItem? = h.createQuery(
-        "SELECT id, client_uuid::text, code, status, payload::text, user_id, device_id, batch_uuid::text FROM app.sync_quarantine WHERE $where FOR UPDATE",
+        "SELECT id, client_uuid::text, code, status, payload::text, user_id, device_id, batch_uuid::text, payload_sha256 FROM app.sync_quarantine WHERE $where FOR UPDATE",
     ).bind("id", id).map { rs, _ ->
         HeldItem(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), ResponseJson.parseToJsonElement(rs.getString(5)) as JsonObject,
-            rs.getLong(6), rs.getObject(7) as Long?, rs.getString(8))
+            rs.getLong(6), rs.getObject(7) as Long?, rs.getString(8), rs.getBytes(9))
     }.findOne().orElse(null)
 
     /**

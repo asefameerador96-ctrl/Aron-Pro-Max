@@ -1,5 +1,6 @@
 // db: forward-only SQL migrations (Flyway) and seed data. Lane: db. docs/24-build-spec.md s12, s13.
 // db/migrations/V<NNNN>__<snake_name>.sql is packaged at classpath:db/migration for backend:app and the tests.
+// db/preflight/*.sql is packaged at classpath:db/preflight (read-only checks run before Flyway).
 // db/seed/*.sql is development and test data, never packaged into the production image.
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -7,6 +8,8 @@ plugins {
 
 tasks.processResources {
     from(layout.projectDirectory.dir("migrations")) { into("db/migration") }
+    // Read-only pre-flight checks of data-dependent migrations, run by the migrate role before Flyway (backend:platform MigrationPreflight).
+    from(layout.projectDirectory.dir("preflight")) { into("db/preflight") }
 }
 
 dependencies {

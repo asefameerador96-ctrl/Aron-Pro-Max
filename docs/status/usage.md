@@ -3318,3 +3318,13 @@
 - SR-2 slices 1 to 3 (d41f6c09): checker pass FAILED, 5 blocking upheld (remaining due hidden on the vendor memo while markPaid records it; the weakened test; AMO and printed summary order changed; AMO lost its dues warning; QC cancel loses the opening values after a recreate). Fix round sent to P-SR2b, with a parking branch for its unpushed slice 4 (lane/android-parity-sr-2-park, risk: its container may be gone).
 - Nudged: A-GATE1, A-INT1, P-SR1, P-TSO (all idle since 13 Nov with work in flight).
 - Timeline: the estimate given to the owner (code-complete about 17 Nov, walked and fixed 20 to 21 Nov) is missed by the length of the stall plus the new scope of 13 Nov (no MDM and developer-options gate, anti-spoofing layers, check-in and stock gates, check-out submits).
+
+### 2026-11-17 19:25 UTC — gates after the stall, train 113 built
+- Passes: sr-server B6 delta PASS (Opus); masterdata push 1b PASS, bulk loader FAIL (4 blocking, all 3 of 3); AMO b78dbe80a PASS; stock gate ec7b807a0 PASS (Opus, 2 lenses); SR shell 102753ebb PASS. Workflows wf_33159ffc-1bb (16 agents, 2.1 M tokens) and wf_277b8883-3e6 (3 agents, 0.5 M). Static gates clean on all five.
+- Train 113 = `lane/lead-train113b` 838ecde78 (INT 4e0645556 + docs + b9d2a6fe2 + 102753ebb + ec7b807a0 + b78dbe80a); DECISIONS 491, missing 0 against every source; V0186..V0191; contract 1.16.0. GO sent to integrator 24, conditional on the train's own CI being fully green first.
+- Rounds out: MD2 (loader L1..L4 + lows), SV5 (B7), A-GATE1 (10 lows; next slice 4 D1), P-SR1 (4 lows), P-AMO2 (5 lows + rulings R-PAR-AMO-01..05), P-SR2b (5 blocking). P-SR2b cannot push (its permission check refuses; owner asked to approve): slice 4 and the fixes are local only.
+- A-INT1 has no code yet (design only before the stall).
+
+### Lane check 2026-11-17 20:46 UTC
+- Train 113 on INT a6a1cbf25: ci 44165939686 success; deploy 44170414803 in progress; health still 4e0645556. Integrator 24 watching.
+- Reviews today: sr-server B7 c65fbb84b PASS; android-gates slices 2 and 3 FAIL (6 blocking, D-LEAD-PREREQ-03, round 3 to A-GATE2); android-integrity 791fefae: B1, B2 fixed, new W1 (wireless debugging not read) + 12 lows; masterdata 1cd7892d FAIL on resume (2 blocking), successor MD3 session_014mnioNCrZkAoVLKBo4xoEM; A-GATE1 and MD2 retired; A-GATE2 session_014mnioP8tEWhoSZiEUJjjUx merges A-GATE1's late round-2 pushes (a57c0ed95, e17164070).
