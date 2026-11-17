@@ -102,7 +102,11 @@ class IngestService(
     }
 
     /** One record as received, with what the batch fingerprint and the registry need. */
-    /** [hashOverride]: the registry hash of a record released from quarantine unchanged: the hash of the record AS SENT (a stored copy may have lost a device's `anchor_clock`, B7). */
+    /**
+     * [hashOverride]: the registry hash of a record released from quarantine unchanged: the hash of the record AS SENT (a stored copy may have lost a device's `anchor_clock`, or had NUL characters replaced, B7).
+     * ONLY [hash] honours it: [fullHash], [hashHex] and [canonError] are computed from [json], the stored copy, and describe THAT copy. They are batch-level fingerprints of a received envelope and no release
+     * path reads them; a new use of them on a released Rec must not assume they match what the phone sent.
+     */
     private class Rec(val index: Int, val json: JsonObject, val hashOverride: ByteArray? = null) {
         val clientUuid: String = uuidKey(json)
         val type: String = (json["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
