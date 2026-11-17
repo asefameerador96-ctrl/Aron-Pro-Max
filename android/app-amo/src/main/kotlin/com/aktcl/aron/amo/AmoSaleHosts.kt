@@ -96,7 +96,7 @@ fun AmoSaleHost(
                     retailerLabel = header?.pill?.let { com.aktcl.aron.core.ui.localizedDigits(it) },
                     outletLines = listOfNotNull(header?.pill?.let { com.aktcl.aron.core.ui.localizedDigits(it) }, routeLine, clusterLine), // heading = "name (code-phone-cluster)" as screenshot 25
                     // D-PAR-AMO-07: the old header card (route, retailer) and the print-later info card; the SR screens keep their defaults
-                    entryHeaderCard = header?.let { h -> { com.aktcl.aron.feature.amo.AmoSaleHeaderCard(h.route, com.aktcl.aron.core.ui.localizedDigits(h.pill)) } }, printLaterCard = true, amoSkuCard = true,
+                    entryHeaderCard = header?.let { h -> { com.aktcl.aron.feature.amo.AmoSaleHeaderCard(h.route, com.aktcl.aron.core.ui.localizedDigits(h.pill)) } }, printLaterCard = true, amoSkuCard = true, creditAsDialog = true, totalsQuantity = true,
                     onPreviousSales = { history = true }, // the button keeps the shared "পূর্বের সেল ডাটা দেখুন" (screenshots 24, 26)
                 )
             }

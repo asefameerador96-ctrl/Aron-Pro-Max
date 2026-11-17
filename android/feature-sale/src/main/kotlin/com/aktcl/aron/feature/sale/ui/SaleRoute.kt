@@ -43,7 +43,7 @@ fun SaleRoute(
     /** D-SR-MAN-S3-02: ask the nearby-devices permission on entering and toast "printer connected" (the SR manual, screenshot 17); AMO keeps false. */
     printerAssist: Boolean = false,
     /** The AMO host's options (D-PAR-AMO-07): an entry header card and the print-later info card. SR passes the defaults and is unchanged. */
-    entryHeaderCard: (@Composable () -> Unit)? = null, printLaterCard: Boolean = false, amoSkuCard: Boolean = false,
+    entryHeaderCard: (@Composable () -> Unit)? = null, printLaterCard: Boolean = false, amoSkuCard: Boolean = false, creditAsDialog: Boolean = false, totalsQuantity: Boolean = false,
 ) {
     val ui by vm.state.collectAsState()
     var stage by remember { mutableStateOf(SaleStage.Entry) }
@@ -88,7 +88,7 @@ fun SaleRoute(
                     SaleStage.Credit -> if (review != null) CreditPrompt(
                         review, { vm.setPaid(it); stage = SaleStage.Review },
                         // closing the credit prompt without confirming turns credit off (screens-sr s8)
-                        onCancel = { vm.setPaid(null); stage = SaleStage.Review },
+                        onCancel = { vm.setPaid(null); stage = SaleStage.Review }, asDialog = creditAsDialog,
                     )
                     SaleStage.Review -> if (review != null) {
                         ReviewScreen(
@@ -97,7 +97,7 @@ fun SaleRoute(
                             onQc = if (draft?.edit == null) ({ qcBefore = draft?.qc.orEmpty(); stage = SaleStage.Qc }) else null,
                             // the Slide step exists only while a SKU carries an active offer (docs/27: offers deferred)
                             onSlide = if (skus.any { it.drp != null }) ({ stage = SaleStage.Slide }) else null,
-                            printLaterCard = printLaterCard,
+                            printLaterCard = printLaterCard, totalsQuantity = totalsQuantity,
                         )
                     }
                 }

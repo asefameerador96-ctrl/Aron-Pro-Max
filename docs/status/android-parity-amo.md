@@ -28,8 +28,8 @@ Nothing in this lane is walked on a device. Proof is unit tests, Roborazzi image
 | Sale entry: header card, rate/discount/stock column, blue badge | FIX in feature-sale behind AMO options (D-PAR-AMO-07); green ± NOT done (legibility: red minus/purple plus stay, lead to decide) | next push | amo_sale_entry_bn |
 | Review: crossed-out printer icon | FIX: printer state on the bar during the sale (D-PAR-AMO-05) | slice 2 | n/a (host) |
 | Review: print-later note | FIX: info card (D-PAR-AMO-07) | next push | amo_review_bn |
-| Review: totals with quantity per unit kind | OPEN (R-PAR-AMO-05, lead's condition: per unit kind, never one mixed number) | - | amo_review_bn |
-| Paid-amount dialog not recorded | RECORD: amo_paid_amount_bn; dialog presentation OPEN (R-PAR-AMO-04: same validation, one write) | slice 2 | amo_paid_amount_bn |
+| Review: totals with quantity per unit kind | FIX: a per-unit-kind line (D-PAR-AMO-09); the old mixed grand-total cell is not reproduced | next push | amo_review_bn |
+| Paid-amount dialog not recorded | RECORD: amo_paid_amount_bn; dialog presentation FIX (D-PAR-AMO-08: same validation, one write) | slice 2 | amo_paid_amount_bn |
 | Previous sale data: calendar date field | FIX: date field + picker (90-day window) + ISO line (D-PAR-AMO-05) | slice 2 | amo_previous_sales_* |
 | Control call: extra "মূল্য সম্মতি" tile | KEEP-WITH-REASON: only when the server price-compliance flag is on (default off) | - | - |
 

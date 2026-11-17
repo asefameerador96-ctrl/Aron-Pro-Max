@@ -466,6 +466,8 @@ fun ReviewScreen(
     onSlide: (() -> Unit)? = null,
     /** The AMO host (screenshot 24): the print-later note is the white info card with the dark "i" instead of a plain grey line. SR keeps the line. */
     printLaterCard: Boolean = false,
+    /** The AMO host (screenshots 24, 25; D-PAR-AMO-09): a Quantity line above the grand total, counted PER UNIT KIND (packets, dozens, boxes), never one mixed number. */
+    totalsQuantity: Boolean = false,
 ) {
     val look = LocalAronLook.current
     val t = review.totals
@@ -481,6 +483,7 @@ fun ReviewScreen(
             val byCategory = review.lines.groupBy { it.sku.categoryCode to it.sku.entryLabelKey }.toList().sortedWith(compareBy({ categoryRank(it.first.first) }, { it.first.second }))
             // the net is printed once, at the bottom of the table card (the Summary reference); the Print button sits on the grey page
             val totals = buildList {
+                if (totalsQuantity) perUnitKindQuantity(review)?.let { add(SummaryTotal(stringResource(R.string.review_total_qty), it)) }
                 add(SummaryTotal(stringResource(R.string.review_gross), moneyGlued(t.grossMtk)))
                 if (t.offerDiscountMtk != 0L) add(SummaryTotal(stringResource(R.string.review_offer_discount), negMoney(moneyGlued(t.offerDiscountMtk))))
                 if (t.drpDiscountMtk != 0L) add(SummaryTotal(stringResource(R.string.review_drp_discount), negMoney(moneyGlued(t.drpDiscountMtk))))
@@ -565,4 +568,13 @@ private fun problemText(p: ReviewProblem): String = when (p) {
     is ReviewProblem.QcAboveCap -> stringResource(R.string.review_problem_qc_cap)
     is ReviewProblem.TooManyQcRows -> localizedDigits(stringResource(R.string.review_problem_qc_rows, p.max.toString()))
     else -> stringResource(R.string.review_problem_other)
+}
+
+/** "10 packets, 1 box, 2 dozens": the memo's entered quantity summed per unit kind (each unit its own figure; units are never added together). Null when there is no line. */
+@Composable
+private fun perUnitKindQuantity(review: SaleReview): String? {
+    val byUnit = linkedMapOf<String, Long>()
+    review.categories.forEach { c -> if (c.unitKey.isNotEmpty()) byUnit[c.unitKey] = (byUnit[c.unitKey] ?: 0L) + c.qtyEntered }
+    if (byUnit.isEmpty()) return null
+    return byUnit.entries.map { (unitKey, qty) -> localizedNumber(qty) + " " + entryUnitLabel(unitKey) }.joinToString(", ")
 }

@@ -26,6 +26,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
@@ -182,13 +183,16 @@ class AmoCallsScreenshotTests {
 
     @Test fun amo_review_bn() = shot("amo_review_bn", AppLanguage.BN, "নিরীক্ষণ") {
         com.aktcl.aron.feature.sale.ui.ReviewScreen(
-            enteredReview, {}, outletLine = "$outletPill\nরুট: Savar Bazar(Sat, Mon, Wed)\nক্লাস্টার: Savar Metro", onCreditToggle = {}, onQc = {}, printLaterCard = true,
+            enteredReview, {}, outletLine = "$outletPill\nরুট: Savar Bazar(Sat, Mon, Wed)\nক্লাস্টার: Savar Metro", onCreditToggle = {}, onQc = {}, printLaterCard = true, totalsQuantity = true,
         )
     }
 
     // Audit (AMO high, "Paid-amount dialog: not recorded"): the shared paid-amount prompt (screenshot 25) as the AMO shows it, recorded for review
     @Test fun amo_paid_amount_bn() = shot("amo_paid_amount_bn", AppLanguage.BN, "নিরীক্ষণ") {
-        com.aktcl.aron.feature.sale.ui.CreditPrompt(enteredReview, onPaid = {}, onCancel = {})
+        // the dialog's card on the dimmed review (a dialog window is not in the frame): amount typed, live due inside the field (D-PAR-AMO-08)
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0x99000000)).padding(16.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            com.aktcl.aron.feature.sale.ui.CreditDialogCard(enteredReview, "100", {}, 100_000L, true, false, {}, {})
+        }
     }
 
     @Test fun amo_memo_menu_bn() = shot("amo_memo_menu_bn", AppLanguage.BN, "মেমো") {

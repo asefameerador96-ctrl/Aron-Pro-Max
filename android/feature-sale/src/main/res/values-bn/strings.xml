@@ -149,4 +149,5 @@
     <string name="edit_reason_glyph_dropdown">▾</string>
     <string name="sale_amo_rate">রেট</string>
     <string name="sale_amo_discount">ডিসকাউন্ট</string>
+    <string name="review_total_qty">পরিমাণ</string>
 </resources>
