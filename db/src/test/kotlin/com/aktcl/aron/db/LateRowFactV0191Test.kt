@@ -73,4 +73,40 @@ class LateRowFactV0191Test {
             db.close()
         }
     }
+
+    @Test
+    fun requestsApprovedBeforeTheMigrationGetTheirClusterFromTheOutletAndTheColumnIsWriteOnce() {
+        val old = TestPostgres.createDatabase()
+        try {
+            Flyway.configure().configuration(old.flyway().configuration).target("190").load().migrate()
+            val newReq = "0e000000-0000-4000-8000-000000000001"; val clusterReq = "0e000000-0000-4000-8000-000000000002"; val pending = "0e000000-0000-4000-8000-000000000003"
+            old.connect().use { c ->
+                SeedLoader.load(c)
+                val users = c.column("SELECT id FROM app.app_user ORDER BY id LIMIT 3").filterNotNull()
+                val (requester, verifier, decider) = Triple(users[0], users[1], users[2])
+                val outlets = c.column("SELECT id FROM app.outlet WHERE cluster_id IS NOT NULL ORDER BY id LIMIT 2").filterNotNull()
+                fun req(uuid: String, type: String, outlet: String?, created: String?, status: String) = c.exec(
+                    "INSERT INTO app.outlet_change_request (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, request_type, outlet_id, proposed, status, " +
+                        "verified_by, verified_at, decided_by, decided_at, created_outlet_id) VALUES ('$uuid', '$uuid', $day, $requester, ${at("08:00")}, 0, '$type', ${outlet ?: "NULL"}, '{}'::jsonb, '$status', " +
+                        (if (status == "approved") "$verifier, ${at("09:00")}, $decider, ${at("10:00")}, ${created ?: "NULL"})" else "NULL, NULL, NULL, NULL, NULL)"))
+                req(newReq, "new", null, outlets[0], "approved")       // a new shop: the created outlet's cluster
+                req(clusterReq, "cluster", outlets[1], null, "approved")   // a cluster change: the outlet's own cluster
+                req(pending, "new", null, null, "pending")
+            }
+            old.flyway().migrate()
+            old.connect().use { c ->
+                fun cluster(uuid: String) = c.scalar("SELECT approved_cluster_id FROM app.outlet_change_request WHERE client_uuid = '$uuid'")
+                assertEquals(c.scalar("SELECT cluster_id FROM app.outlet WHERE id = (SELECT created_outlet_id FROM app.outlet_change_request WHERE client_uuid = '$newReq')"), cluster(newReq), "NULL to value was accepted by the write-once trigger")
+                assertEquals(c.scalar("SELECT cluster_id FROM app.outlet WHERE id = (SELECT outlet_id FROM app.outlet_change_request WHERE client_uuid = '$clusterReq')"), cluster(clusterReq))
+                assertEquals(null, cluster(pending), "an unapproved request has no recorded cluster")
+                // write-once: a recorded value never changes; an unset one can be set once
+                val other = c.scalar("SELECT id FROM app.cluster WHERE id <> ${cluster(newReq)} ORDER BY id LIMIT 1")
+                assertFailsWith<SQLException> { c.exec("UPDATE app.outlet_change_request SET approved_cluster_id = $other WHERE client_uuid = '$newReq'") }
+                c.exec("UPDATE app.outlet_change_request SET approved_cluster_id = $other WHERE client_uuid = '$pending'")
+                assertEquals(other, cluster(pending))
+            }
+        } finally {
+            old.close()
+        }
+    }
 }

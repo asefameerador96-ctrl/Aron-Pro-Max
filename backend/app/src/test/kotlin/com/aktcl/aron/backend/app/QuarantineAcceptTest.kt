@@ -239,6 +239,11 @@ class QuarantineAcceptTest {
             h.execute("UPDATE app.sync_quarantine SET user_id = ?, device_id = NULL WHERE client_uuid = CAST(? AS uuid)", tso, l1)
             h.execute("UPDATE app.ingest_registry SET user_id = ?, device_id = NULL WHERE client_uuid = CAST(? AS uuid)", tso, l1)
         }
+        // B7 (lows): the stored copies of the memo and of its held children differ from what the phone sent (as when a NUL character is replaced on storage, or a device member is dropped);
+        // the registry keeps the hash of the record AS SENT on release, so the as-sent resend below answers duplicate, not payload_conflict.
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            for (c in listOf(memo, l2)) h.execute("UPDATE app.sync_quarantine SET payload = jsonb_set(payload, '{captured_elapsed_ms}', '1'::jsonb) WHERE client_uuid = CAST(? AS uuid)", c)
+        }
         val m = client.resolve(item(memo).first, "accept")
         assertEquals(HttpStatusCode.OK, m.status, m.bodyAsText())
         for (c in listOf(visit, memo, l2, close)) assertEquals("accepted/$registered", registry(c), "same uuid, user and device: $c")
