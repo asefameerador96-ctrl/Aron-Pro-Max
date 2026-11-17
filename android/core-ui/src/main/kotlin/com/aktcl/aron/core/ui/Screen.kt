@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.background
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -50,7 +51,7 @@ fun AronScreen(
     bottomBar: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
-    Column(modifier.fillMaxSize().aronPageBackground()) {
+    Column(modifier.fillMaxSize().background(LocalAronLook.current.page)) {
         topBar()
         Box(Modifier.weight(1f).fillMaxWidth()) { content() }
         bottomBar()
@@ -58,7 +59,7 @@ fun AronScreen(
 }
 
 /**
- * Top bar (android-glass s6.7): the `TopBar` recipe (`surface.glass.strong` 96 percent on tier B, solid on C and in
+ * Top bar: delegates to the gradient bar of the Aron look (D-PAR-SR1-01; formerly the android-glass s6.7 `TopBar` recipe: `surface.glass.strong` 96 percent on tier B, solid on C and in
  * sunlight, a 1 dp bottom edge), 64 dp plus the status inset, a 48 dp back button, the title in `type.title` up to two
  * lines, an optional caption subtitle, and a trailing slot for the status chip, the sun switch and the gear.
  */
@@ -70,28 +71,11 @@ fun AronTopBar(
     onBack: (() -> Unit)? = null,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
-    val c = LocalAronColors.current
-    GlassSurface(modifier = modifier.fillMaxWidth(), kind = GlassKind.TopBar) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                .heightIn(min = AronTokens.Size.TopBar)
-                .padding(end = AronTokens.Space.S),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (onBack != null) {
-                AronIconButton(AronIcons.ArrowBack, stringResource(R.string.core_ui_back), onBack)
-            } else {
-                Spacer(Modifier.width(AronTokens.Space.L))
-            }
-            Column(Modifier.weight(1f).padding(vertical = AronTokens.Space.S)) {
-                Text(title, style = MaterialTheme.typography.titleLarge, color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            trailing()
-        }
-    }
+    // PARITY-SPEC s2.1, D-PAR-SR1-01: the one top bar of every screen is the gradient bar of the Aron look; this legacy entry delegates to it.
+    com.aktcl.aron.core.ui.aron.AronTopBar(
+        title = title, modifier = modifier, onBack = onBack, backLabel = stringResource(R.string.core_ui_back), subtitle = subtitle,
+        trailing = { Row(verticalAlignment = Alignment.CenterVertically, content = trailing) },
+    )
 }
 
 /** A 48 dp icon-only button; [contentDescription] is its only text, so it is required. */

@@ -15,7 +15,8 @@ OutletChangeRequestPayload:
       - 'null'
       format: int64
       minimum: 1
-      description: Null only for request_type new.
+      description: 'Null only for request_type `new` and `cluster_create` (1.16.0: a cluster request names no outlet
+        and is refused `schema_invalid` when it does).'
     proposed:
       $ref: '#/components/schemas/OutletProposal'
     fix:

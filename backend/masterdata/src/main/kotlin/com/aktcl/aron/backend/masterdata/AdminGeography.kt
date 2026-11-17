@@ -103,7 +103,7 @@ private fun parentLevel(level: String) = when (level) { "division" -> "wing"; "t
 
 private val GEO_ENTITIES = GEO_DEFS.mapValues { geoEntity(it.value) }
 
-private val CLUSTER = MasterEntity(
+internal val CLUSTER = MasterEntity(
     audit = "cluster", table = "app.cluster", createReason = false,
     cols = listOf(
         Col("zone_id", Kind.LONG, required = true, min = 1),

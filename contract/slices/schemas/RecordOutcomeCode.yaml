@@ -62,3 +62,4 @@ RecordOutcomeCode:
   - day_final_submitted
   - ticket_state_invalid
   - issue_type_unknown
+  - cluster_name_exists

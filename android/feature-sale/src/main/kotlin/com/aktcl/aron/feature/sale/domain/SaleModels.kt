@@ -20,8 +20,11 @@ data class SaleSku(
     val pricePerQty: Int = 1,
     /** `valid_from` of the price row used (stored on the line, F-SYS-045). */
     val priceValidFrom: String,
-    /** Current stock in base units from the local tracker; null when unknown (no warning then). */
-    val stockBase: Long? = null,
+    /**
+     * Stock the rep holds, in base units, from the local tracker (D-OWNER-PREREQ-01 rule 2). A SKU with no stock entry today is ZERO,
+     * never unknown: the sale of a SKU the rep does not hold is refused at entry, in the review and in the saving transaction.
+     */
+    val stockBase: Long = 0L,
     /** Active offer for the Slide screen: empty packets that earn one reward pack; null when no active offer (docs/27: offers deferred). */
     val drp: DrpRule? = null,
     /** `entry_unit_default` of the bundle row: `pack` for cigarettes, bidi and lighters, `dozen` for matches (docs/34 s4.2). */
