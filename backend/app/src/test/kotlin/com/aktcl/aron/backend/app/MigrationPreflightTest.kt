@@ -4,7 +4,6 @@ import com.aktcl.aron.backend.platform.FreshDb
 import com.aktcl.aron.backend.platform.MigrationPreflight
 import com.aktcl.aron.backend.platform.Migrator
 import com.aktcl.aron.backend.platform.PreflightFailed
-import com.aktcl.aron.backend.platform.ServerEnv
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.TestInstance
@@ -48,7 +47,7 @@ class MigrationPreflightTest {
         private fun clusters(zone: Long) = fresh.dataSource.connection.use { c -> c.createStatement().use { st -> st.executeQuery("SELECT id, name, status FROM app.cluster WHERE zone_id = $zone AND (name ILIKE '%Zqx%' OR name ILIKE '%Wvk%' OR name ILIKE '%Ytp%') ORDER BY id").use { rs -> buildList { while (rs.next()) add(Triple(rs.getLong(1), rs.getString(2), rs.getString(3))) } } } }
     private fun snapshot() = scalar("SELECT coalesce(string_agg(id || ':' || zone_id || ':' || name || ':' || status, '|' ORDER BY id), '') FROM app.cluster")!!
     private fun cleanup() = exec("DELETE FROM app.cluster WHERE name ILIKE '%Zqx%' OR name ILIKE '%Wvk%' OR name ILIKE '%Ytp%'")
-    private fun lines(env: ServerEnv): Pair<List<String>, Throwable?> {
+    private fun lines(env: String?): Pair<List<String>, Throwable?> {
         val out = ArrayList<String>()
         val err = runCatching { MigrationPreflight.run(fresh.dataSource, env, { out += it }) }.exceptionOrNull()
         return out to err
@@ -77,14 +76,14 @@ class MigrationPreflightTest {
     @Test
     fun theScenariosInOrder() {
         // 0. the seed has no near-duplicates: a clean database passes silently, in every environment, and writes nothing
-        for (env in ServerEnv.entries) { val (out, err) = lines(env); assertEquals(emptyList(), out, "silent"); assertEquals(null, err) }
+        for (env in listOf("dev", "prod", "staging", null)) { val (out, err) = lines(env); assertEquals(emptyList(), out, "silent"); assertEquals(null, err) }
 
         // 1. non-dev: fails before any change; ids, zone codes and counts only
         val groups = seedDuplicates()
         val zone0 = scalar("SELECT code FROM app.zone ORDER BY id LIMIT 1")!!; val zone1 = scalar("SELECT code FROM app.zone ORDER BY id OFFSET 1 LIMIT 1")!!
         val before = snapshot()
-        val (out, err) = lines(ServerEnv.PROD)
-        val failed = assertFailsWith<PreflightFailed> { MigrationPreflight.run(fresh.dataSource, ServerEnv.PROD) }
+        val (out, err) = lines("prod")
+        val failed = assertFailsWith<PreflightFailed> { MigrationPreflight.run(fresh.dataSource, "prod") }
         assertTrue(err is PreflightFailed)
         val text = out.joinToString("\n") + "\n" + failed.message
         assertNoNames(text)
@@ -93,10 +92,17 @@ class MigrationPreflightTest {
         for (g in groups.values) for (id in g) assertTrue(text.contains(id.toString()), "id $id is listed")
         assertTrue(text.contains("admin portal"), "it says what to do")
         assertEquals(before, snapshot(), "nothing changed")
+        // only the raw value "dev" repairs: staging, an unset value and a typo fail like prod and change nothing
+        for (env in listOf("staging", null, "Dev", "development", "")) {
+            assertTrue(lines(env).second is PreflightFailed, "env=$env must not repair")
+            assertEquals(before, snapshot(), "env=$env changed nothing")
+        }
+        // a name that is already taken (the first candidate " #<id>" exists exactly): another suffix is picked
+        val blocker = scalar("INSERT INTO app.cluster (zone_id, name) VALUES ((SELECT id FROM app.zone ORDER BY id LIMIT 1), 'ZQX MARKET #${groups.getValue("case")[1]}') RETURNING id")!!.toLong()
         assertEquals("false", scalar("SELECT (to_regprocedure('app.norm_cluster_name(text)') IS NOT NULL)::text"), "V0191 not applied")
 
         // 2. dev: repairs the test data (lowest id kept, the others renamed with an id suffix), prints ids only, audits each rename, and V0191 then applies
-        val (devOut, devErr) = lines(ServerEnv.DEV)
+        val (devOut, devErr) = lines("dev")
         assertEquals(null, devErr, devErr?.message)
         assertNoNames(devOut.joinToString("\n"))
         val zone0Id = scalar("SELECT id FROM app.zone ORDER BY id LIMIT 1")!!.toLong(); val zone1Id = scalar("SELECT id FROM app.zone ORDER BY id OFFSET 1 LIMIT 1")!!.toLong()
@@ -108,7 +114,8 @@ class MigrationPreflightTest {
             assertTrue(!keep.second.contains(" #"), "$kind: the lowest id keeps its name")
             for (id in ids.drop(1)) {
                 val row = rows.getValue(id)
-                assertTrue(row.second.endsWith(" #$id"), "$kind: id $id carries its id suffix")
+                val tail = if (kind == "case" && id == ids[1]) " #$id-2" else " #$id"
+                assertTrue(row.second.endsWith(tail), "$kind: id $id carries its id suffix ($tail), the first candidate being taken for the case group")
                 assertTrue(row.second.length <= 120, "$kind: within the length CHECK (${row.second.length})")
             }
             assertEquals(ids.size, rows.values.map { it.second.lowercase().trim() }.toSet().size, "$kind: distinct names")
@@ -118,13 +125,21 @@ class MigrationPreflightTest {
         assertEquals("inactive", scalar("SELECT status FROM app.cluster WHERE id = ${groups.getValue("inactive")[1]}"), "status untouched")
         val repaired = snapshot()
         // a second run finds nothing; and the real migration now applies
-        assertEquals(emptyList(), lines(ServerEnv.DEV).first)
+        assertEquals(emptyList(), lines("dev").first)
         Migrator.configure(fresh.dataSource).load().migrate()
         assertEquals("true", scalar("SELECT (to_regprocedure('app.norm_cluster_name(text)') IS NOT NULL)::text"), "V0191 applied after the repair")
         assertEquals(repaired, snapshot())
 
         // 3. a database already at V0191 or later skips: no check, no output, in every environment (V0191 makes a duplicate impossible, so nothing is seeded)
-        for (env in ServerEnv.entries) assertEquals(emptyList(), lines(env).first)
+        for (env in listOf("dev", "prod", null)) assertEquals(emptyList(), lines(env).first)
+        // applicability is keyed on Flyway's history (a successful V0191 row), not on the function: with the row's success flag off V0191 is pending again, and back on it is not
+        fresh.dataSource.connection.use { c ->
+            assertEquals(false, MigrationPreflight.ClusterNames.applies(c))
+            c.createStatement().use { it.execute("UPDATE flyway_schema_history SET success = false WHERE version ~ '^0*191$'") }
+            assertEquals(true, MigrationPreflight.ClusterNames.applies(c))
+            c.createStatement().use { it.execute("UPDATE flyway_schema_history SET success = true WHERE version ~ '^0*191$'") }
+            assertEquals(false, MigrationPreflight.ClusterNames.applies(c))
+        }
         cleanup()
     }
 
@@ -134,5 +149,24 @@ class MigrationPreflightTest {
         val preflight = File(System.getProperty("aron.repoRoot"), "db/preflight/V0191__cluster_names.sql").readText()
         val cls = Regex("normalize\\((?:t|c\\.name), NFC\\), ('\\[\\\\s[^']*\\]\\+'), ' ', 'g'\\)")
         assertEquals(cls.find(migration)!!.groupValues[1], cls.find(preflight)!!.groupValues[1], "the character class must stay identical to V0191's")
+    }
+
+    @Test
+    fun aFailedRepairReportsTheSqlStateOnlyNeverTheDetailOrTheCause() {
+        val leak = "duplicate key value violates unique constraint, Key (zone_id, name)=(1, Zqx Secret Market) already exists"
+        val check = object : MigrationPreflight.Check {
+            override val id = "test"
+            override val advice = "n/a"
+            override fun applies(c: java.sql.Connection) = true
+            override fun lock(c: java.sql.Connection) {}
+            override fun findings(c: java.sql.Connection) = listOf(MigrationPreflight.Finding("Z-TEST", listOf(1L, 2L)))
+            override fun repair(c: java.sql.Connection, findings: List<MigrationPreflight.Finding>): List<Long> = throw java.sql.SQLException(leak, "23505")
+        }
+        val out = ArrayList<String>()
+        val failed = assertFailsWith<PreflightFailed> { MigrationPreflight.run(fresh.dataSource, "dev", { out += it }, listOf(check)) }
+        val text = out.joinToString("\n") + "\n" + failed.message + "\n" + (failed.cause?.toString() ?: "")
+        assertTrue(text.contains("23505"), text)
+        assertNoNames(text)
+        assertEquals(null, failed.cause, "no cause chain that could print the detail")
     }
 }
