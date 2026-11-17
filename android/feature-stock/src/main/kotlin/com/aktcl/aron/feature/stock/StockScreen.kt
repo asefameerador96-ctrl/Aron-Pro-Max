@@ -98,6 +98,12 @@ fun StockContent(
     printBlock: StockPrintBlock? = null,
     /** "synced at" caption of the empty state, when the host knows it. */
     syncedAt: String? = null,
+    /**
+     * The SR look of the old app (D-PAR-SR1-02, corrected by D-PAR-SR1-05): every packshot carries one badge, the packs ISSUED on that row
+     * (sr/stock.webp: Avon 1,000 sticks issued shows 50 while the stock column shows 720). The column heads follow the figure: "স্টক" only
+     * when the figure is the on-hand stock. Fail-closed: a host that does not pass true (AMO) keeps its recorded badge rule.
+     */
+    srParity: Boolean = false,
 ) {
     val look = LocalAronLook.current
     val hasChange = rows.any { it.entered > 0 }
@@ -139,7 +145,7 @@ fun StockContent(
                     Modifier.weight(1f).testTag(StockTags.LIST),
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(ordered, key = { it.sku.skuId }, contentType = { "sku" }) { r -> StockSkuRow(r, softCeiling, onIssue) }
+                    items(ordered, key = { it.sku.skuId }, contentType = { "sku" }) { r -> StockSkuRow(r, softCeiling, onIssue, srParity) }
                 }
             }
         }
@@ -181,12 +187,15 @@ internal fun packCategoryOf(code: String): PackCategory = when (code) {
 internal fun parseQty(text: String): Int =
     text.filter(Char::isDigit).fold(0L) { acc, ch -> (acc * 10 + Character.digit(ch, 10)).coerceAtMost(StockLoad.MAX_ENTRY) }.toInt()
 
+/** The one meaning of the SR badge: whole packs issued on the row (entered in packets or boxes: the quantity; entered loose: quantity / pack size). */
+private fun issuedPacks(r: StockRow): Long = if (r.entry.unit == QtyUnit.PACK || r.sku.basePerPack <= 1) r.entered else r.entered / r.sku.basePerPack
+
 /**
  * One SKU row (sr/stock.webp): the kit [PackCard]. The packs badge is the packs equivalent of the key figure when the SKU is
  * packed (Q-UI-11). Each control carries its own TalkBack label with the SKU name (minus, the Issue field, plus).
  */
 @Composable
-private fun StockSkuRow(r: StockRow, softCeiling: Long, onIssue: (Long, Int) -> Unit) {
+private fun StockSkuRow(r: StockRow, softCeiling: Long, onIssue: (Long, Int) -> Unit, srParity: Boolean) {
     val look = LocalAronLook.current
     val unit = entryUnitLabel(r.labelKey)
     val figure = r.figureEntry
@@ -203,7 +212,7 @@ private fun StockSkuRow(r: StockRow, softCeiling: Long, onIssue: (Long, Int) -> 
             stock = localizedNumber(figure) + com.aktcl.aron.core.ui.remSuffix(r.figureRemainderBase),
             minusLabel = stringResource(R.string.stk_less) + ", " + name, plusLabel = stringResource(R.string.stk_more) + ", " + name,
             quantityLabel = name + ", " + stringResource(R.string.stk_col_issue) + ", " + unit,
-            packBadge = packs?.let { localizedNumber(it) },
+            packBadge = (if (srParity) issuedPacks(r) else packs)?.let { localizedNumber(it) }, // sr/stock.webp: the purple count badge on every packshot (D-PAR-SR1-02); entered in packets, it is the packet count
             caption = unit,
             category = packCategoryOf(r.sku.categoryCode),
             minusEnabled = entered > 0, plusEnabled = entered < max,

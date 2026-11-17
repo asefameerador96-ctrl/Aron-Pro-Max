@@ -61,7 +61,7 @@ class PackshotWiringTest {
 
     @Test fun everyStockRowAsksTheProviderByTheServerSkuId() {
         val rows = listOf(StockRow(sku(1, "cigarette", "MaxR 10S", "stick", 10), 400, 0), StockRow(sku(3, "lighter", "Aster", "piece", 1), 25, 0))
-        show { StockContent(rows, emptyList(), null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {}) }
+        show { StockContent(rows, emptyList(), null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {}, srParity = true) }
         assertEquals(setOf("1"), served)
         assertTrue("the row without a picture asked too and keeps the silhouette: $asked", "3" in asked)
     }
