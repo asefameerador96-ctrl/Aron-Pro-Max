@@ -55,15 +55,40 @@ class SaleReviewTest {
         assertTrue(review(d).problems.single() is ReviewProblem.NoDrpOffer)
     }
 
-    @Test fun packBadgeAndStockWarningAreReadOnlyAndNeverBlock() {
+    // D-AGATE-01 (was "the stock warning never blocks"; D-OWNER-PREREQ-01 rule 2): over-stock is a problem and Save is off
+    @Test fun packBadgeIsReadOnlyAndOverStockBlocksTheSave() {
         val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 4, QtyUnit.PACK) // 40 sticks, stock 400
         val over = SaleDraftOps.setQuantity(Fx.draft(), 103, 26, QtyUnit.PIECE) // stock 25
         assertEquals(40, review(d).lines.single().qtyBase)
         assertEquals(4L to 0L, review(d).lines.single().packBadge)
         assertFalse(review(d).lines.single().exceedsStock)
+        assertTrue(review(d).canCommit)
         val r = review(over)
         assertTrue(r.lines.single().exceedsStock)
-        assertTrue(r.canCommit)
+        assertFalse(r.canCommit)
+        val p = r.problems.filterIsInstance<ReviewProblem.OverStock>().single()
+        assertEquals(103L, p.skuId); assertEquals(26L, p.requestedBase); assertEquals(25L, p.heldBase)
+    }
+
+    /** Rule 2: a SKU with no stock entry today holds zero, so it cannot be sold at all (it used to warn about nothing). */
+    @Test fun aSkuWithNoStockEntryTodayHoldsZeroAndCannotBeSold() {
+        val noStock = Fx.maxr.copy(skuId = 900, stockBase = 0)
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 900, 1, QtyUnit.STICK)
+        val r = SaleReviewCalculator.review(d, mapOf(900L to noStock))
+        assertFalse(r.canCommit)
+        assertEquals(0L, r.problems.filterIsInstance<ReviewProblem.OverStock>().single().heldBase)
+    }
+
+    /** Rule 2: reward packs of the same SKU in the memo count against the stock with the sale line. */
+    @Test fun rewardPacksOfTheSameSkuCountAgainstTheStockWithTheLine() {
+        val sku = Fx.maxr.copy(stockBase = 100) // 10 empty packets earn one reward pack of 10 sticks
+        val cat = mapOf(sku.skuId to sku)
+        var d = SaleDraftOps.setQuantity(Fx.draft(), 100, 95, QtyUnit.STICK)
+        assertTrue(SaleReviewCalculator.review(d, cat).canCommit) // 95 of 100
+        d = SaleDraftOps.setSlide(d, 100, 10) // plus one free pack of 10: 105 of 100
+        val r = SaleReviewCalculator.review(d, cat)
+        assertFalse(r.canCommit)
+        assertEquals(105L, r.problems.filterIsInstance<ReviewProblem.OverStock>().single().requestedBase)
     }
 
     @Test fun creditNeedsPaidFromZeroUpToBelowTheNetInWholePaisa() {

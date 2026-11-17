@@ -19,7 +19,7 @@ data class ReviewLine(
     val qtyBase: Long,
     val memoLine: MemoLine,
     val packBadge: Pair<Long, Long>,
-    /** True when [qtyBase] exceeds the known current stock; a warning, never a block (F-SR-023). */
+    /** True when this SKU's total in the memo (line plus reward packs) exceeds the stock held: a [ReviewProblem.OverStock], Save is off. */
     val exceedsStock: Boolean,
 )
 
@@ -51,6 +51,14 @@ sealed interface ReviewProblem {
     data class UnitNotAllowed(val skuId: Long, val unit: String) : ReviewProblem
     /** `memo_line.qty_base` is at most 10,000,000: the server would refuse the memo for good after it was saved offline. */
     data class QtyTooLarge(val skuId: Long, val qtyBase: Long) : ReviewProblem
+    /**
+     * D-OWNER-PREREQ-01 rule 2: the memo takes more of a SKU than the rep holds. [requestedBase] is the line plus its reward packs,
+     * [heldBase] the stock held (an edit's own memo given back); the entry-unit figures and [unitKey] are for the words on screen.
+     */
+    data class OverStock(
+        val skuId: Long, val skuName: String, val requestedBase: Long, val heldBase: Long,
+        val requestedEntry: Long, val heldEntry: Long, val unitKey: String,
+    ) : ReviewProblem
 }
 
 data class SaleReview(
@@ -75,11 +83,19 @@ object SaleReviewCalculator {
     const val DEFAULT_MAX_LINES: Int = 60
     const val MAX_QTY_BASE: Long = 10_000_000L
 
+    /** The reward packs (base units) the slide entries earn per SKU; the same rule as the DRP deduction below. */
+    fun rewardBaseBySku(draft: SaleDraft, catalog: Map<Long, SaleSku>): Map<Long, Long> =
+        draft.slide.mapNotNull { s ->
+            val sku = catalog[s.skuId]; val rule = sku?.drp ?: return@mapNotNull null
+            val packs = s.emptyPackets / rule.emptyPerReward
+            if (packs == 0L) null else s.skuId to packs * sku.packFactor
+        }.groupBy({ it.first }, { it.second }).mapValues { it.value.sum() }
+
     fun review(draft: SaleDraft, catalog: Map<Long, SaleSku>, qcCapMtkBySku: Map<Long, Long> = emptyMap(), maxLines: Int = DEFAULT_MAX_LINES): SaleReview {
         val problems = ArrayList<ReviewProblem>()
         val priceType = PriceType.entries.firstOrNull { it.wire == draft.priceType } ?: PriceType.OUTLET
 
-        val lines = draft.lines.mapNotNull { e ->
+        val rawLines = draft.lines.mapNotNull { e ->
             val sku = catalog[e.skuId] ?: run { problems += ReviewProblem.UnknownSku(e.skuId); return@mapNotNull null }
             val unit = QtyUnit.entries.firstOrNull { it.wire == e.unit }
             // the unit must be the SKU's entry unit; loose base units only when cfg.sale.allow_loose_base_units is on (docs/34 s4.2)
@@ -89,8 +105,20 @@ object SaleReviewCalculator {
             val base = Quantity.toBase(e.qtyEntered, unit, sku.packFactor.toLong())
             if (base > MAX_QTY_BASE) problems += ReviewProblem.QtyTooLarge(sku.skuId, base)
             val line = MemoLine.priced(sku.skuId, base, sku.unitPriceMtk, sku.pricePerQty.toLong(), priceType)
-            ReviewLine(sku, e, base, line, Quantity.packBadge(base, sku.packFactor.toLong()), sku.stockBase?.let { base > it } ?: false)
+            ReviewLine(sku, e, base, line, Quantity.packBadge(base, sku.packFactor.toLong()), false)
         }
+
+        // the stock gate: a SKU's line plus its DRP reward packs may not exceed what is held (a SKU with no stock entry holds zero)
+        val rewardBySku = rewardBaseBySku(draft, catalog)
+        val requestedBySku = LinkedHashMap<Long, Long>()
+        rawLines.forEach { requestedBySku.merge(it.sku.skuId, it.qtyBase, Long::plus) }
+        rewardBySku.forEach { (id, q) -> requestedBySku.merge(id, q, Long::plus) }
+        val over = requestedBySku.filter { (id, q) -> q > 0 && q > (catalog[id]?.stockBase ?: 0L) }
+        over.forEach { (id, q) ->
+            val sku = catalog.getValue(id)
+            problems += ReviewProblem.OverStock(id, sku.name, q, sku.stockBase, sku.entry.fromBase(q), sku.entry.fromBase(sku.stockBase), sku.entryLabelKey)
+        }
+        val lines = rawLines.map { if (it.sku.skuId in over) it.copy(exceedsStock = true) else it }
 
         // one subtotal per category and unit: quantities are never added across units
         val categories = lines.groupBy { it.sku.categoryCode to it.sku.entryLabelKey }.map { (key, ls) ->

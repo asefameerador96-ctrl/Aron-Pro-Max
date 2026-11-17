@@ -162,6 +162,7 @@ enum class ReportKey(val wire: String) {
     @SerialName("sku-list") SKU_LIST("sku-list"),
     // contract 1.10.0, lead ruling R-F-12 (TSO manual build)
     @SerialName("tso-visit-log") TSO_VISIT_LOG("tso-visit-log"),
+    @SerialName("posm-survey") POSM_SURVEY("posm-survey"),
 }
 
 /** Kind of visit; AMO calls never count in the SR strike rate (docs/24 s12.4). */
@@ -207,6 +208,7 @@ enum class OutletRequestType(val wire: String) {
     @SerialName("cluster") CLUSTER("cluster"),
     @SerialName("location") LOCATION("location"),
     @SerialName("route_add") ROUTE_ADD("route_add"),
+    @SerialName("cluster_create") CLUSTER_CREATE("cluster_create"),
 }
 
 /** Business code lists (docs/24 s12.1). */
@@ -347,6 +349,8 @@ enum class RecordOutcomeCode(val wire: String, val status: AckStatus, val retrya
     @SerialName("ticket_state_invalid") TICKET_STATE_INVALID("ticket_state_invalid", AckStatus.REJECTED, false),
     /** Contract 1.10.0 (D-TSO-MAN-19): a ticket whose issue type is not an active ticket_issue_type code on its business date. */
     @SerialName("issue_type_unknown") ISSUE_TYPE_UNKNOWN("issue_type_unknown", AckStatus.REJECTED, false),
+    /** Contract 1.16.0: a `cluster_create` request whose name repeats a cluster of the zone or another open request of it; the detail names which, the SR uses that cluster instead. */
+    @SerialName("cluster_name_exists") CLUSTER_NAME_EXISTS("cluster_name_exists", AckStatus.REJECTED, false),
 }
 
 /** Stable RFC 9457 problem code with its HTTP status (docs/24 s3.4). */

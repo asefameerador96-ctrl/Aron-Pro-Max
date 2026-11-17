@@ -31,7 +31,7 @@ import java.time.OffsetDateTime
 @Serializable data class JourneyRoute(val route_id: Long, val name: String)
 @Serializable data class JourneyOutlet(val id: Long, val name: String, val code: String, val phone_masked: String?, val cluster: String?)
 
-/** One call of the SR's day. `status`: new_sale | edited_sale (the visit's memo was superseded by an edit) | no_sale (no memo). */
+/** One call of the SR's day. `status`: new_sale | edited_sale (the visit's memo was superseded by an edit) | repeat_sale (a sold call at an outlet already sold earlier that day; emitted only while cfg.sale.journey_repeat_sale_enabled) | no_sale (no memo). */
 @Serializable
 data class JourneyCall(
     val visit_uuid: String, val outlet: JourneyOutlet, val status: String, val opened_at: String, val closed_at: String?, val duration_s: Long?,
@@ -55,7 +55,7 @@ data class TeamMemberRow(
 @Serializable data class SalesByDate(val outlet_id: Long, val business_date: String, val lines: List<SalesByDateLine>, val total_qty_base: Long, val total_value_mtk: Long)
 
 /** The AMO manual build's team reads (F2): Sales Journey, the SR list with vacant routes and the previous sale data of an outlet. */
-class AmoTeamReads(private val db: Database, private val clock: AronClock = AronClock.SYSTEM) {
+class AmoTeamReads(private val db: Database, private val clock: AronClock = AronClock.SYSTEM, private val repeatSaleEnabled: () -> Boolean = { false }) {
 
     private fun mask(p: String?) = p?.let { "${it.take(3)}*****${it.takeLast(3)}" }
 
@@ -78,15 +78,14 @@ class AmoTeamReads(private val db: Database, private val clock: AronClock = Aron
             """,
         ).bind("r", routeId).bind("u", userId).mapTo(Boolean::class.java).one()
         if (!onRoute && !(u.homeZone != null && reach.coversZone(u.homeZone) && !reach.ownRecordsOnly)) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such SR on this route")
-        class V(val uuid: String, val outlet: JourneyOutlet, val lat: Double?, val lng: Double?, val opened: java.time.Instant, val closed: java.time.Instant?, val status: String)
+        class V(val uuid: String, val outlet: JourneyOutlet, val lat: Double?, val lng: Double?, val opened: java.time.Instant, val closed: java.time.Instant?, val edited: Boolean, val sold: Boolean)
         val visits = h.createQuery(
             """
             SELECT v.client_uuid::text AS uuid, o.id AS oid, o.name, o.code, o.contact_number, c.name AS cluster, o.lat, o.lng, v.opened_at, v.ended_at,
-                   CASE WHEN EXISTS (SELECT 1 FROM app.memo m WHERE m.visit_client_uuid = v.client_uuid AND m.voided_at IS NULL
+                   EXISTS (SELECT 1 FROM app.memo m WHERE m.visit_client_uuid = v.client_uuid AND m.voided_at IS NULL
                                       AND ((m.status = 'active' AND m.supersedes_client_uuid IS NOT NULL)
-                                        OR (m.status = 'superseded' AND EXISTS (SELECT 1 FROM app.memo e WHERE e.client_uuid = m.superseded_by_client_uuid AND e.status = 'active' AND e.voided_at IS NULL)))) THEN 'edited_sale'
-                        WHEN EXISTS (SELECT 1 FROM app.memo m WHERE m.visit_client_uuid = v.client_uuid AND m.voided_at IS NULL AND m.status = 'active' AND m.memo_kind = 'sale') THEN 'new_sale'
-                        ELSE 'no_sale' END AS status
+                                        OR (m.status = 'superseded' AND EXISTS (SELECT 1 FROM app.memo e WHERE e.client_uuid = m.superseded_by_client_uuid AND e.status = 'active' AND e.voided_at IS NULL)))) AS edited,
+                   EXISTS (SELECT 1 FROM app.memo m WHERE m.visit_client_uuid = v.client_uuid AND m.voided_at IS NULL AND m.status = 'active' AND m.memo_kind = 'sale') AS sold
               FROM app.visit v JOIN app.outlet o ON o.id = v.outlet_id LEFT JOIN app.cluster c ON c.id = o.cluster_id
              WHERE v.user_id = :u AND v.route_id = :r AND v.business_date = :d AND v.visit_kind = 'sr_call' AND v.voided_at IS NULL
              ORDER BY v.opened_at, v.client_uuid
@@ -94,17 +93,28 @@ class AmoTeamReads(private val db: Database, private val clock: AronClock = Aron
         ).bind("u", userId).bind("r", routeId).bind("d", date).map { rs, _ ->
             V(rs.getString("uuid"), JourneyOutlet(rs.getLong("oid"), rs.getString("name"), rs.getString("code"), mask(rs.getString("contact_number")), rs.getString("cluster")),
                 rs.getObject("lat") as Double?, rs.getObject("lng") as Double?, rs.getObject("opened_at", OffsetDateTime::class.java).toInstant(),
-                rs.getObject("ended_at", OffsetDateTime::class.java)?.toInstant(), rs.getString("status"))
+                rs.getObject("ended_at", OffsetDateTime::class.java)?.toInstant(), rs.getBoolean("edited"), rs.getBoolean("sold"))
         }.list()
         var total = 0.0
+        // The status rule is the phone's (shared rules JourneyTimeline.build): edited first; a sold call at an outlet already sold earlier that day is repeat_sale
+        // (only while cfg.sale.journey_repeat_sale_enabled is on: the AMO build that knows the value must be the minimum version first); sold = new_sale; else no_sale.
+        val repeatOn = repeatSaleEnabled()
+        val soldBefore = HashSet<Long>()
         val calls = visits.mapIndexed { i, v ->
+            val status = when {
+                v.edited -> "edited_sale"
+                v.sold && repeatOn && v.outlet.id in soldBefore -> "repeat_sale"
+                v.sold -> "new_sale"
+                else -> "no_sale"
+            }
+            if (v.sold) soldBefore += v.outlet.id
             val prev = visits.getOrNull(i - 1)
             // Distance from the previous call's outlet base point (haversine); null for the first call or when either outlet has no base point.
             val d = if (prev?.lat != null && prev.lng != null && v.lat != null && v.lng != null) Geo.haversineM(prev.lat, prev.lng, v.lat, v.lng) else null
             if (d != null) total = r2(total + r2(d))
             val next = visits.getOrNull(i + 1)
             JourneyCall(
-                v.uuid, v.outlet, v.status, v.opened.wire(), v.closed?.wire(), v.closed?.let { Duration.between(v.opened, it).seconds.coerceAtLeast(0) },
+                v.uuid, v.outlet, status, v.opened.wire(), v.closed?.wire(), v.closed?.let { Duration.between(v.opened, it).seconds.coerceAtLeast(0) },
                 d?.let { r2(it) }, total, if (v.closed != null && next != null) Duration.between(v.closed, next.opened).seconds.coerceAtLeast(0) else null,
             )
         }
