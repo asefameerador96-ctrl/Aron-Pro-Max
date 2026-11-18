@@ -32,6 +32,10 @@ Lows from the lead's gate: title is two lines then ellipsis, horizontal safe ins
 | Home: target card title wraps to 2 lines | KEEP-WITH-REASON: AronTargetCard shared with the AMO home | - | - |
 | Home: extra 'Match Program' tile | KEEP-WITH-REASON: flag-driven (registry default off; fixture sets it on) | - | - |
 
+| Attendance: card shows coordinates, not an address | KEEP-WITH-REASON (UI-SR-11, offline-first): coordinates + accuracy always; a resolved address only when online and display-only. The reverse-geocode needs the network: logged as a request | - | srp1_att_before |
+| Attendance: visit-day list missing | NO CHANGE: the manual 11 shows it inside the route name ("Savar Bazar(Sat, Mon, Wed)"), which is bundle data already shown in the second line | - | srp1_att_before_font20 |
+| Attendance: check-in sheet and the other states not recorded | RECORD (D-PAR-SR1-09): before, check-in sheet, checked in waiting (amber), checked in with check-out active, check-out sheet, done, failed fix, font 2.0; compared with manual 11 to 13: text, boxes, colours, half-dome hold button all match. Differences kept: a "বাতিল" link under the dome (needed to cancel), the dome gradient is darker (7:1 rule) | this push | srp1_att_* (8) |
+
 (Rows for the remaining screens are added slice by slice.)
 
 ## Not run
