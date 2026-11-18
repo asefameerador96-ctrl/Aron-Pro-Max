@@ -405,3 +405,73 @@ LOWS:
 - S-1: photos_captured is now the size of the distinct-unit set in 1..qty rather than a count of all photos. This is correct given V0193, which flags a unit-less or out-of-range photo as a duplicate. A legacy campaign photo with a null unit_no that is not flagged as a duplicate, if one exists in data loaded before V0193, would now not count, and the gift would show as pending again. That is unlikely at pilot size.
 - No docs/requests/contract-1.22-*.md or contract-1.23-*.md exists. The CI gate needs one only for an oasdiff level-3 change, and I found none by reading, but I could not run oasdiff. If the lead wants a request file for every provisional version bump, add one before the train.
 - docs/24-build-spec.md is the only file outside the lane's own area (three endpoint rows). There are no changes under android/, infra/, .github/ or tools/ci/.
+
+
+## Final delta check aae4a9648..d18ff776d, 2026-11-18: PASS (cleared for the loyalty server train)
+
+Read from code only; nothing built or run.
+
+### locking-and-audit verdict=pass
+SUMMARY: Read-only review of d18ff776d (delta aae4a9648..d18ff776d, landing diff ffbe8d6fd...d18ff776d). No blocking findings. The earlier blocking item is fixed. In putAdjustments (AdminLoyalty.kt ~L1214-1224), every bulk debit outlet that can be posted (debit and enrolled, with or without allow_overdraw) is now locked in one sorted statement, using the same key string as LoyaltyLedger.lockPair ('loyalty:<outlet>:<programme>'). The lock is taken after adjLockUuid and adjProgramme(FOR SHARE) and before adjBalances. bal, the would_overdraw guard, the flagged set and the audit balance_before are all derived from the locked read. Debit rows that are not enrolled are not locked, but they always end as a not_enrolled error and are never posted. The single post locks every debit before its read (unchanged). Credits are not locked. The dry run takes no lock, which is fine because it writes nothing. The cap counts every raw debit row in putAdjustments before jdbi is touched, on the dry run and on apply. It parses points the same way JsonObject.int does (non-string primitive, toLongOrNull), so a row the parser would post as a debit cannot slip past the count. Exponent or decimal forms are not counted, but the parser rejects them anyway. The BFF and the mock now also count all debits.
+
+Deadlocks: none found. The ledger job takes one pair per transaction (reconcilePair). Admin paths take the uuid locks (batch then req, the same in both handlers), then the programme FOR SHARE, then the pair locks in ascending order in one statement (ORDER BY + OFFSET 0 fence). Nothing waits on another pair lock after that. Two bulks wait in sorted order, a single holds at most one pair, and the job holds one. So two bulks, bulk vs single, and bulk vs the job cannot wait in a cycle. Lock exhaustion is bounded at 2,000 + 2 locks per file. A 53200 maps to 503 through adjDb.
+
+Shared auditObj (AdminProducts.kt:463, internal, so only the masterdata module can call it): there are 13 call sites in AdminLoyalty (4), AdminOffers (1), AdminPrices (7) and AsthaTargetUpload (1). I checked the type of every argument: String, Long, Int, Boolean, LocalDate, BigDecimal.toPlainString(), UUID.toString(), Long?, String?. None is a JsonElement. The only JsonElement passed is the new 'overdrawn' JsonArray in the bulk audit. Before this change it would have been stored as its JSON text inside a string (JsonPrimitive toString keeps the quotes, JsonNull would become "null"); now it is stored as JSON. No existing caller's payload changes shape, so no reader, export or dw view of old payloads is affected.
+
+Replay and cross-namespace lookups: a stored batch is all-or-nothing, because it is posted only when errs is empty, which needs every row parsed. Its source_ids are therefore exactly <b>:0..n-1 from WITH ORDINALITY, and row 0 exists whether it is a credit or a debit. Gaps and filtered rows cannot happen. The single-post probe '<uuid>:0' finds any batch with that uuid. The batch path probes source_id = '<uuid>' for a single. The uuid locks serialise a single and a batch racing on the same uuid. A replay reads <b>:0..parsed.size: a stored batch of size m>n returns n+1 rows and gives 409, m<n returns m rows and gives 409, m=n is compared row by row. UNIQUE(source_type, source_id) exists (V0007), so the lookups use equality on the unique index. UUID.toString contains no ':', so there is no collision.
+
+53200 test: adjustHook defaults to null and Wiring.kt:412 builds AdminLoyaltyDeps without it, so the hook that raises 53200 is test-only and cannot run in production. The test now covers both single and bulk.
+
+Latch tests:
+- Allowed bulk vs guarded single: without the lock both read 100, the single posts (201), the bulk is not flagged and the balance ends at -30. The single==201 branch then fails on flaggedRows==1.
+- Two allowed bulks: without the lock both read 10 and neither is flagged, so the assertion that exactly one row is flagged fails.
+- Pair-lock count test: expects 2+1 held locks for the allowed debit; it was 2 before.
+- Ledger-job test: the pass now waits on readDone, so without the lock the debit's read comes before the commit.
+- twoDebits test (unchanged).
+These are five tests that can fail with the lock removed, so the claim is plausible.
+
+No migration anywhere in ffbe8d6fd...d18ff776d. The contract changes are description-only edits inside the provisional 1.23.0 (and the ProgrammesSection text). The resolution wording now matches the Resolution enum (accepted / accepted_with_fix / discarded). Landing: against 77873a8ea, and against the current integration tip 0aa547b625 (which has moved on with trains 124 and android-sr-programmes), the only conflict is the append-only DECISIONS.md, and no other files overlap.
+
+Not verified: I did not build or run any test, including the Kotlin concurrency tests and the web vitest. I did not run real Postgres advisory-lock acquisition order or the size of the shared lock table on the Azure test server. I did not read the rest of the ledger-job test body past the changed lines, the web BFF chunked-body handling (the lane says it is unchanged), or the full contract diff text beyond the changed lines.
+
+LOWS:
+- Pre-existing, not in this delta: in the bulk insert in putAdjustments, flags = posted.indices.map { parsed.indexOf(posted[i]) } is O(n^2) identity scans. That is about 2e8 comparisons for a 20,000-row credit file, all inside the transaction while the uuid locks and the programme FOR SHARE are held. Using withIndex would remove the scan.
+- The Overlap barrier waits only 2 s. Without the lock, if one request reaches after_balance_read more than 2 s after the other (cold start, a slow CI runner), the barrier breaks, the two run in sequence, and the two new allowed-overdraw tests can pass by chance. They can still fail, but not every run would catch a removed lock. A longer bound for the no-lock case, or a latch that requires both reads before either posts, would make them deterministic.
+- The simulated 53200 test now proves only the adjDb mapping. Nothing shows that a real pg_advisory_xact_lock exhaustion surfaces as UnableToExecuteStatementException with SQLState 53200 on this query path. This was accepted in the previous review; the decision log should say so.
+- Shared lock table: at 2,000 debit locks per file, three concurrent maximum-size debit files would come close to the default 64 x max_connections slots. A 53200 at that moment can also hit unrelated transactions on the server, not only the loyalty request (it is a shared table). This is fine at pilot size; record it in the docs/28 final-account sizing notes.
+- The bulk audit lists at most 200 overdrawn rows (MAX_ADJ_ERRORS); overdrawn_rows carries the full count. This is documented in the contract, but beyond 200 the balance_before of the remaining rows is recoverable only from the ledger history, not from the audit row.
+- DECISIONS.md conflicts textually when merged with the integration branch (both 77873a8ea and the current tip 0aa547b625). It is an append-only log; keep both sides.
+
+### text-contract-landing verdict=pass
+SUMMARY: Contract and landing review of lane/portal-loyalty-api-c at d18ff776d. I looked at the delta aae4a9648..d18ff776d and at what would land, ffbe8d6fd...d18ff776d. Nothing blocks this lane from landing as a server train.
+
+1. **Contract.** All four openapi.yaml hunks are description text: info changelog, the PUT and POST adjustment endpoints, and ProgrammesSection. info.version is 1.23.0. No schema, enum, required list or path changed, so the contract is still additive against 1.21.0.
+2. **ACHIEVEMENT RULE.** Each required statement now appears once:
+   - the resolution is `discarded`, and a `return_to_device` also arrives as `discarded`. Both values exist in the ResolveRequest enum.
+   - a held (quarantined) void or edit is never applied by the phone.
+   - clause (5) covers a held redemption.
+   - one sentence says the phone arithmetic will be replaced by the server's per-uuid answer (the identity probe).
+3. **Adjustment endpoint text.** It now says every debit, single or bulk, guarded or `allow_overdraw`, is serialised under the pair lock. The overdraw flag and `balance_before` are decided under the lock, and the cap of 2,000 covers every debit row.
+4. **Generated files.** The contract slices are regenerated: the byte sizes in INDEX.md match the files (7342, 4018 and 2773 B). openapi.d.ts carries the same three description changes.
+5. **Request docs.** docs/requests/contract-1.22-loyalty-push-b.md and contract-1.23-loyalty-adjustment.md exist and match the changes (1.23 lists `too_many_debit_rows`, the 2,000 cap and the 503).
+6. **No migration.** `git diff --stat ffbe8d6fd d18ff776d -- db/migrations` is empty.
+7. **Error code.** `too_many_debit_rows` is used the same way in the API, BFF, mock, form and i18n. All of them now count every debit (the API and mock count numeric `points` < 0 on the raw rows). The Bangla and English banner texts both dropped the 'tick the overdraw box' advice.
+8. **Code fix.** The blocking item from the last review is fixed. putAdjustments locks `debitOutlets` whenever it applies a file that has debits, `allow_overdraw` or not. The balance read, the guard, the flag and the audit `overdrawn[]` (with `balance_before`) all come after that lock. The single POST already locked every debit. The LIKE lookups are replaced by equality probes: `<uuid>:0` for the single post, `ANY(<batch>:0..n)` for a bulk replay. A stored batch of a different size still produces 409.
+9. **Shared helper.** The new `is JsonElement` branch in `auditObj` does not change what other modules write. auditObj is `internal` to masterdata. I checked all 14 call sites in AdminLoyalty, AdminOffers, AdminPrices and AsthaTargetUpload. The other modules pass only String, Number, Boolean, Long? and LocalDate, never a JsonElement, so their output is the same.
+10. **Tests.** None is weakened.
+    - The two new barrier tests can fail. Without the lock, the single+bulk test ends with balance -30 and no flag, which fails both of its branches. The two-bulks test gets zero flagged rows and fails.
+    - The existing latch test gained a `readDone` latch, which makes its ordering certain rather than likely.
+    - The cap tests now say the opposite on purpose (`allow_overdraw` no longer lifts the cap) and add a 2,001-credit case.
+    - The 53200 test now simulates the error code instead of filling the lock table, as the last review asked. It also covers the bulk path now.
+11. **Merge onto 77873a8ea.** The two sides share one file: DECISIONS.md. `git merge-tree` reports a content conflict there because both sides append at the end. Keeping both blocks resolves it; nothing else overlaps.
+12. **DECISIONS.md.** It is append-only: +13/-0 against the base. D-LOY-API-40 corrects -38 in a new entry and leaves -38 unchanged.
+
+**What I did not verify:** I built and ran nothing, per the brief, so the Kotlin and vitest suites are unrun and the barrier tests' timing on CI is unobserved. I did not regenerate the slices or the TS types; I compared byte sizes and diffs only. I did not check the database server's lock-table size against concurrent 2,000-debit applies.
+
+LOWS:
+- The merge onto 77873a8ea is not conflict-free. DECISIONS.md conflicts because both sides append at the end; the train merge has to keep both blocks (there is no merge=union rule in .gitattributes). Nothing else overlaps.
+- The ProgrammesSection description still opens with '(... the phone subtracts its own redemptions not acknowledged when it sent the request)' (also in openapi.d.ts). The ACHIEVEMENT RULE now says this as 'a redemption being treated like a memo'. The two agree, but the redemption rule is stated twice, and the intro does not mention the held-redemption clause. Consider pointing the intro at the rule only.
+- The 53200 test now raises SQLSTATE 53200 with RAISE EXCEPTION just before the pair lock. It proves the adjDb mapping to 503 and that nothing is posted, for both single and bulk. It no longer proves that a real full lock table produces that code. This is acceptable because the mapping is by SQLSTATE, and the last review asked for it.
+- Lock-table load is unverified (same design as D-LOY-API-38, now with allowed debits under the same cap). One apply can take up to 2,000 advisory xact locks from the server-wide shared lock table. Two concurrent maximum-size applies, plus the ledger job, could exhaust it on a small server. The adjustment itself gets a clean 503, but an unrelated transaction, such as a sync upload, could get 'out of shared memory' at that moment. max_locks_per_transaction and max_connections are not set anywhere in infra, so the headroom on the test-account server is unknown.
+- In a bulk file, `debitOutlets` includes enrolled outlets that are out of scope. Their rows fail anyway, so they only add locks; this is harmless.
+- The new two-bulks test reads the audit row through scalar(), keyed by programme_id and overdrawn_rows=1. That works only if each test's activeProg() creates a fresh programme; I did not run it to confirm.

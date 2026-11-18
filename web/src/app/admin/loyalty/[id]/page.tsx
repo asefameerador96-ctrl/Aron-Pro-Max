@@ -5,14 +5,17 @@ import { buttonClass } from "@/components/kit/button";
 import { StatusChip, type ChipTone } from "@/components/kit/chip";
 import { AuditHistory } from "@/components/admin/audit-history";
 import { DataTable, type Column } from "@/components/admin/kit/data-table";
+import { LoyaltyAdjustForm } from "@/components/admin/loyalty-adjust-form";
 import { LoyaltyEnrolForm } from "@/components/admin/loyalty-enrol-form";
 import { LoyaltyStatusPanel } from "@/components/admin/loyalty-status-panel";
 import { Card, NextLink, PageHeading, one, qs, type SearchParams } from "@/components/admin/kit/page";
 import { apiClient, outcome } from "@/lib/api/client";
 import { loadGrants } from "@/lib/admin/modules";
 import { activationBlocked, canReadLoyalty, cursorParam, ID_RE, canWriteLoyalty, nextProgrammeStatuses, type Enrolment, type ProgrammeVersion } from "@/lib/admin/loyalty";
-import { loadEnrolments, loadGifts, loadProgramme, loadVersions } from "@/lib/admin/loyalty-load";
+import { loadEnrolments, loadGifts, loadLedger, loadProgramme, loadVersions, type LedgerEntry } from "@/lib/admin/loyalty-load";
+import { signed } from "@/lib/admin/loyalty-adjust";
 import { kindLabel, nameOf, pointsText, qualifyingLabel, scopeLabel, statusLabel, stdText, thresholdText, tierName } from "@/lib/admin/loyalty-view";
+import type { MessageKey } from "@/lib/i18n";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { businessDate, formatBusinessDate, formatDateTime, formatNumber, t } from "@/lib/i18n";
@@ -38,11 +41,13 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
   }
   const p = r.data;
   const api = apiClient(session.at);
-  const [versions, enrolments, gifts, hist] = await Promise.all([
+  const showLedger = session.user.role !== "BRAND"; // ledger rows are outlet data, like the enrolments: a BRAND user is refused
+  const [versions, enrolments, gifts, hist, ledger] = await Promise.all([
     loadVersions(session.at, p.programme_id, cursorParam(one(sp.vc, 20))),
     loadEnrolments(session.at, p.programme_id, cursorParam(one(sp.ec, 20))),
     loadGifts(session.at, p.programme_id),
     outcome(api.GET("/v1/admin/audit", { params: { query: { entity: "programme", entity_id: String(p.programme_id), limit: 20 } } })),
+    showLedger ? loadLedger(session.at, p.programme_id, cursorParam(one(sp.lc, 20))) : Promise.resolve(null),
   ]);
   const role = session.user.role;
   const canWrite = canWriteLoyalty(role, grants);
@@ -65,6 +70,14 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
     { key: "target", header: t(locale, "loy.enrol.col.target"), align: "right", render: (e) => stdText(locale, e.base_target) },
     { key: "from", header: t(locale, "loy.enrol.col.from"), render: (e) => formatBusinessDate(locale, e.valid_from) },
     { key: "to", header: t(locale, "loy.enrol.col.to"), render: (e) => (e.valid_to ? formatBusinessDate(locale, e.valid_to) : "—") },
+  ];
+  const ledgerCols: Column<LedgerEntry>[] = [
+    { key: "date", header: t(locale, "loy.ledger.col.date"), render: (e) => formatBusinessDate(locale, e.business_date) },
+    { key: "outlet", header: t(locale, "loy.ledger.col.outlet"), render: (e) => `#${e.outlet_id}` },
+    { key: "type", header: t(locale, "loy.ledger.col.type"), render: (e) => (["adjustment", "redemption", "redemption_void", "expiry"].includes(e.source_type) ? t(locale, `loy.ledger.type.${e.source_type}` as MessageKey) : t(locale, "loy.ledger.type.other")) },
+    { key: "points", header: t(locale, "loy.ledger.col.points"), align: "right", render: (e) => signed(e.points) },
+    { key: "expires", header: t(locale, "loy.ledger.col.expires"), render: (e) => (e.expires_on ? formatBusinessDate(locale, e.expires_on) : "—") },
+    { key: "reason", header: t(locale, "loy.ledger.col.reason"), render: (e) => e.reason ?? "—" }, // plain text, never rendered as markup
   ];
   return (
     <div className="space-y-4" data-testid="loyalty-detail-page">
@@ -108,6 +121,13 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
         {enrolments.ok ? <NextLink href={enrolments.data.next ? `/admin/loyalty/${p.programme_id}${qs({ vc: cursorParam(one(sp.vc, 20)), ec: enrolments.data.next })}` : null} label={t(locale, "loy.more")} /> : null}
         {canWrite ? (p.status === "inactive" ? <p className="text-body text-secondary" data-testid="enrol-ended">{t(locale, "loy.enrol.ended")}</p> : <LoyaltyEnrolForm programmeId={p.programme_id} tiers={tiers} />) : null}
       </Card>
+      {canWrite ? <Card title={t(locale, "loy.adj.heading")} testId="programme-adjust"><LoyaltyAdjustForm programmeId={p.programme_id} active={p.status === "active"} /></Card> : null}
+      {ledger ? (
+        <Card title={t(locale, "loy.ledger.heading")} testId="programme-ledger">
+          {!ledger.ok ? <p role="alert" className="text-body text-secondary" data-testid="ledger-failed">{t(locale, "loy.ledger.failed")}</p> : <DataTable columns={ledgerCols} rows={ledger.data.items} rowKey={(e) => String(e.ledger_id)} empty={t(locale, "loy.ledger.none")} caption={t(locale, "loy.ledger.heading")} />}
+          {ledger.ok ? <NextLink href={ledger.data.next ? `/admin/loyalty/${p.programme_id}${qs({ lc: ledger.data.next })}` : null} label={t(locale, "loy.more")} /> : null}
+        </Card>
+      ) : null}
       <Card title={t(locale, "loy.gifts.title")} testId="programme-gifts">
         {!gifts.ok ? <p role="alert" className="text-body text-secondary">{t(locale, "loy.gifts.failed")}</p> : gifts.data.length === 0 ? <p className="text-body text-secondary">{t(locale, "loy.gifts.empty")}</p> : (
           <ul className="space-y-1">

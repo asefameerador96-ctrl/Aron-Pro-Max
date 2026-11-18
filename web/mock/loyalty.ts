@@ -25,7 +25,8 @@ interface Gift { gift_id: number; programme_id: number; code: string; name_en: s
 type Stored = { kind: "version" | "status"; fp: string; programmeId: number; versionNo?: number; status: number; body: unknown };
 type StoredGift = { kind: "create" | "update"; fp: string; giftId: number; status: number; body: unknown };
 type StoredBatch = { fp: string; programmeId: number; body: unknown };
-export interface LoyaltyStore { rows: Row[]; enrolments: Enrol[]; gifts: Gift[]; nextId: number; nextVersionId: number; nextGiftId: number; nextEnrolId: number; uuids: Map<string, Stored>; giftUuids: Map<string, StoredGift>; batches: Map<string, StoredBatch> }
+export interface LedgerRow { ledger_id: number; source_type: string; source_id: string; outlet_id: number; programme_id: number; points: number; business_date: string; expires_on: string | null; flags: string[]; reason: string | null; created_at: string }
+export interface LoyaltyStore { ledger: LedgerRow[]; rows: Row[]; enrolments: Enrol[]; gifts: Gift[]; nextId: number; nextVersionId: number; nextGiftId: number; nextEnrolId: number; uuids: Map<string, Stored>; giftUuids: Map<string, StoredGift>; batches: Map<string, StoredBatch> }
 
 const dhakaToday = (): string => new Date(Date.now() + 6 * 3_600_000).toISOString().slice(0, 10);
 const fp = (o: unknown): string => createHash("sha256").update(JSON.stringify(o)).digest("hex");
@@ -36,7 +37,7 @@ function version(id: number, pid: number, no: number, w: Partial<Version> & Pick
 }
 
 export function freshLoyaltyStore(): LoyaltyStore {
-  const s: LoyaltyStore = { rows: [], enrolments: [], gifts: [], nextId: 1, nextVersionId: 1, nextGiftId: 1, nextEnrolId: 1, uuids: new Map(), giftUuids: new Map(), batches: new Map() };
+  const s: LoyaltyStore = { ledger: [], rows: [], enrolments: [], gifts: [], nextId: 1, nextVersionId: 1, nextGiftId: 1, nextEnrolId: 1, uuids: new Map(), giftUuids: new Map(), batches: new Map() };
   const seed = (kind: string, code: string, status: Row["status"], w: Parameters<typeof version>[3], at: string) => {
     const id = s.nextId++;
     s.rows.push({ id, kind, code, status, version: 2, created_at: at, updated_at: at, versions: [version(s.nextVersionId++, id, 1, w, "Seed programme for the portal mock", at)] });
@@ -294,7 +295,7 @@ function readEnrolRows(o: Body, programmeId: number): EnrolRow[] {
 
 export async function handleLoyalty(s: LoyaltyStore, ctx: Ctx, me: LoyaltyCaller, method: string, url: URL, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const path = url.pathname;
-  const m = /^\/v1\/admin\/(?:programmes(?:\/([^/]+))?(?:\/(enrolments|versions|status))?|gifts(?:\/([^/]+))?)$/.exec(path);
+  const m = /^\/v1\/admin\/(?:programmes(?:\/([^/]+))?(?:\/(enrolments|versions|status|adjustments|ledger))?|gifts(?:\/([^/]+))?)$/.exec(path);
   if (!m) return false;
   const { send, problem } = ctx;
   const done = (status: number, body: unknown, headers?: Record<string, string>): true => { send(res, status, body, headers); return true; };
@@ -306,7 +307,7 @@ export async function handleLoyalty(s: LoyaltyStore, ctx: Ctx, me: LoyaltyCaller
   const needSuper = isGift && !isRead;
   const needWrite = !isRead;
   if (access === "none" || (needWrite && access !== "w") || (needSuper && me.role !== "SUPERADMIN")) return done(403, problem(403, "ERR_FORBIDDEN"));
-  if (sub === "enrolments" && isRead && me.role === "BRAND") return done(403, problem(403, "ERR_FORBIDDEN")); // outlet data: a BRAND user reads programmes and gifts, not outlets
+  if ((sub === "enrolments" || sub === "ledger") && isRead && me.role === "BRAND") return done(403, problem(403, "ERR_FORBIDDEN")); // outlet data: a BRAND user reads programmes and gifts, not outlets
   const state = (what: string) => done(409, problem(409, "ERR_REQUEST_STATE", { detail: what } as never));
   const reused = (pointer: string) => done(409, problem(409, "ERR_CONFLICT", { errors: [{ pointer, code: "reused" }] } as never));
   const dup = () => done(409, problem(409, "ERR_MASTER_DUPLICATE_CODE", { errors: [{ pointer: "body.code", code: "duplicate" }] } as never));
@@ -487,6 +488,121 @@ export async function handleLoyalty(s: LoyaltyStore, ctx: Ctx, me: LoyaltyCaller
       const out = { batch_uuid: batch, inserted, updated, unchanged };
       s.batches.set(batch, { fp: print, programmeId: id, body: out });
       return done(200, out);
+    }
+
+    // ------------------------------- points adjustments (contract 1.23.0): the same rules as the server, in the mock's own terms
+    if (sub === "ledger" && isRead) {
+      const limit = pageLimit(q);
+      const cursor = pageCursor(q);
+      const outlet = queryId(q, "outlet_id");
+      if (!row || !visible(me, row.versions[0]!)) return notFound();
+      const geo = !NATIONAL.includes(me.role);
+      const all = [...s.ledger].reverse().filter((l) => l.programme_id === id && (cursor === null || l.ledger_id < cursor) && (outlet === null || l.outlet_id === outlet) && (!geo || reachOf(me).includes(outletZone(l.outlet_id))));
+      const page = all.slice(0, limit);
+      return done(200, { programme_id: id, programme_status: row.status, items: page, next_cursor: all.length > limit ? String(page[page.length - 1]!.ledger_id) : null });
+    }
+    if (sub === "adjustments" && (method === "POST" || method === "PUT")) {
+      const o = await bodyOf();
+      const single = method === "POST";
+      only(o, single ? ["request_uuid", "outlet_id", "points", "reason", "expires_on", "allow_overdraw"] : ["batch_uuid", "dry_run", "change_reason", "rows", "allow_overdraw"]);
+      const allow = o.allow_overdraw === undefined ? false : typeof o.allow_overdraw === "boolean" ? o.allow_overdraw : bad("body.allow_overdraw", "not_a_boolean");
+      const today = dhakaToday();
+      const balanceOf = (outlet: number): number => s.ledger.filter((l) => l.programme_id === id && l.outlet_id === outlet).reduce((a, l) => a + l.points, 0);
+      const one = (r: Body, p: string) => {
+        only(r, ["outlet_id", "points", "expires_on", ...(single ? ["request_uuid", "reason", "allow_overdraw"] : [])]);
+        const outlet = idOf(r, "outlet_id", true, `${p}outlet_id`)!;
+        const points = lint(r, "points", -1_000_000, 1_000_000, `${p}points`);
+        if (points === null) bad(`${p}points`, "required");
+        if (points === 0) bad(`${p}points`, "zero");
+        const expires = ldate(r, "expires_on", `${p}expires_on`);
+        if (expires !== null && (points as number) < 0) bad(`${p}expires_on`, "debit_has_no_expiry");
+        return { outlet, points: points as number, expires };
+      };
+      const scopeOk = (outlet: number): "ok" | "not_found" | "out_of_scope" => {
+        if (outlet > 1000) return "not_found";
+        const zones = row!.versions[0]!.scope.filter((n) => n.node_type === "zone").map((n) => n.node_id);
+        return zones.length === 0 || zones.includes(outletZone(outlet)) ? "ok" : "out_of_scope";
+      };
+      if (!row || !visible(me, row.versions[0]!)) return notFound();
+      // The API answers with the balance under `context` (scalars only). The mock has no phone redemptions, so its balance is the ledger sum (the API's also subtracts the stored, unposted ones).
+      const overdraw = (balance: number, points: number, pointer: string) => done(409, problem(409, "ERR_CONFLICT", { errors: [{ pointer, code: "would_overdraw" }], context: { balance_points: balance, points } } as never));
+      const enrolledToday = (outlet: number): boolean => s.enrolments.some((e) => e.programme_id === id && e.outlet_id === outlet && e.valid_from <= today && (e.valid_to === null || e.valid_to > today));
+      if (single) {
+        const uuid = uuidOf(o, "request_uuid");
+        reasonOf(o, "reason");
+        const r = one(o, "body.");
+        // A genuine resend gets its stored row FIRST; one uuid is a request or a batch, never both.
+        const prior = s.ledger.find((l) => l.source_id === uuid);
+        if (prior) return prior.programme_id === id && prior.outlet_id === r.outlet && prior.points === r.points && prior.expires_on === r.expires ? done(200, prior) : reused("body.request_uuid");
+        if (s.ledger.some((l) => l.source_id.startsWith(`${uuid}:`))) return reused("body.request_uuid");
+        const sc = scopeOk(r.outlet);
+        if (sc === "not_found") bad("body.outlet_id", "not_found");
+        if (sc === "out_of_scope") return done(403, problem(403, "ERR_FORBIDDEN", { errors: [{ pointer: "body.outlet_id", code: "out_of_scope" }] } as never));
+        if (row.status !== "active") return state("points are adjusted on an active programme only");
+        if (!enrolledToday(r.outlet)) bad("body.outlet_id", "not_enrolled");
+        if (r.expires !== null && r.expires < today) bad("body.expires_on", "in_the_past");
+        if (r.points < 0 && !allow && balanceOf(r.outlet) + r.points < 0) return overdraw(balanceOf(r.outlet), r.points, "body.points");
+        const entry: LedgerRow = { ledger_id: s.ledger.length + 1, source_type: "adjustment", source_id: uuid, outlet_id: r.outlet, programme_id: id, points: r.points, business_date: today, expires_on: r.expires, flags: r.points < 0 && balanceOf(r.outlet) + r.points < 0 ? ["portal", "overdraw"] : ["portal"], reason: String(o.reason).trim(), created_at: new Date().toISOString() };
+        s.ledger.push(entry);
+        ctx.audit("programme_adjustment", uuid, "post", {}, { outlet_id: r.outlet, points: r.points }, entry.reason ?? "");
+        return done(201, entry);
+      }
+      const batch = uuidOf(o, "batch_uuid");
+      if (typeof o.dry_run !== "boolean") bad("body.dry_run", "required");
+      const reason = reasonOf(o);
+      const arr = o.rows;
+      if (!Array.isArray(arr) || arr.length < 1 || arr.length > 20_000) bad("body.rows", "required");
+      // The API caps ALL debit rows (allow_overdraw or not) per file at 2,000, already at the dry run, before any other check.
+      if ((arr as unknown[]).filter((x) => typeof (x as { points?: unknown } | null)?.points === "number" && (x as { points: number }).points < 0).length > 2_000) bad("body.rows", "too_many_debit_rows");
+      const errors: { row: number; column: string; code: string; balance_points?: number }[] = [];
+      const parsed: ({ outlet: number; points: number; expires: string | null } | null)[] = [];
+      const seen = new Set<number>();
+      (arr as unknown[]).forEach((x, i) => {
+        try {
+          if (x === null || typeof x !== "object" || Array.isArray(x)) bad(`body.rows[${i}]`, "not_an_object");
+          const r = one(x as Body, `body.rows[${i}].`);
+          if (seen.has(r.outlet)) bad(`body.rows[${i}].outlet_id`, "duplicate");
+          seen.add(r.outlet);
+          parsed.push(r);
+        } catch (e) {
+          if (!(e instanceof Bad)) throw e;
+          parsed.push(null);
+          errors.push({ row: i, column: e.pointer.endsWith("]") ? "row" : e.pointer.split(".").pop()!, code: e.code });
+        }
+      });
+      const priorRows = s.ledger.filter((l) => l.source_id.startsWith(`${batch}:`));
+      const replayed = priorRows.length > 0;
+      if (!replayed && s.ledger.some((l) => l.source_id === batch)) return reused("body.batch_uuid");
+      let scopeOnly = true;
+      parsed.forEach((r, i) => {
+        if (!r) return;
+        if (replayed) return;
+        const sc = scopeOk(r.outlet);
+        if (sc !== "ok") errors.push({ row: i, column: "outlet_id", code: sc });
+        else if (!enrolledToday(r.outlet)) errors.push({ row: i, column: "outlet_id", code: "not_enrolled" });
+        else if (r.expires !== null && r.expires < today) errors.push({ row: i, column: "expires_on", code: "in_the_past" });
+        else if (!replayed && !allow && r.points < 0 && balanceOf(r.outlet) + r.points < 0) errors.push({ row: i, column: "points", code: "would_overdraw", balance_points: balanceOf(r.outlet) });
+      });
+      errors.sort((a, b) => a.row - b.row);
+      if (replayed && !errors.some((e) => e.code === "not_found" || e.code === "out_of_scope")) {
+        const same = priorRows.length === parsed.length && parsed.every((r, i) => { const p = priorRows.find((l) => l.source_id === `${batch}:${i}`); return !!r && !!p && p.outlet_id === r.outlet && p.points === r.points && p.expires_on === r.expires; });
+        if (!same) return reused("body.batch_uuid");
+      }
+      const good = errors.length === 0;
+      const valid = parsed.filter((r): r is NonNullable<typeof r> => r !== null);
+      const total = valid.reduce((a, r) => a + r.points, 0);
+      scopeOnly = errors.every((e) => e.code === "out_of_scope");
+      if (o.dry_run) return done(200, { batch_uuid: batch, dry_run: true, rows: parsed.length, valid: good && (replayed || row.status === "active"), replayed, outlets: new Set(valid.map((r) => r.outlet)).size, credit_points: valid.filter((r) => r.points > 0).reduce((a, r) => a + r.points, 0), debit_points: valid.filter((r) => r.points < 0).reduce((a, r) => a + r.points, 0), total_points: total, programme_status: row.status, errors: errors.slice(0, 200), error_count: errors.length, errors_truncated: errors.length > 200 });
+      if (!good) {
+        if (scopeOnly) return done(403, problem(403, "ERR_FORBIDDEN", { errors: [{ pointer: `body.rows[${errors[0]!.row}].outlet_id`, code: "out_of_scope" }] } as never));
+        if (errors.every((e) => e.code === "would_overdraw")) return overdraw(errors[0]!.balance_points!, parsed[errors[0]!.row]!.points, `body.rows[${errors[0]!.row}].points`);
+        return done(400, problem(400, "ERR_VALIDATION", { errors: errors.slice(0, 200).map((e) => ({ pointer: e.column === "row" ? `body.rows[${e.row}]` : `body.rows[${e.row}].${e.column}`, code: e.code })) } as never));
+      }
+      if (replayed) return done(200, { batch_uuid: batch, dry_run: false, rows: parsed.length, posted: 0, replayed: true, total_points: total });
+      if (row.status !== "active") return state("points are adjusted on an active programme only");
+      valid.forEach((r, i) => s.ledger.push({ ledger_id: s.ledger.length + 1, source_type: "adjustment", source_id: `${batch}:${i}`, outlet_id: r.outlet, programme_id: id, points: r.points, business_date: today, expires_on: r.expires, flags: r.points < 0 && balanceOf(r.outlet) + r.points < 0 ? ["portal", "overdraw"] : ["portal"], reason, created_at: new Date().toISOString() }));
+      ctx.audit("programme_adjustment", batch, "post_batch", {}, { rows: valid.length, total_points: total }, reason);
+      return done(200, { batch_uuid: batch, dry_run: false, rows: valid.length, posted: valid.length, replayed: false, total_points: total });
     }
 
     if (sub === null && method === "PATCH") {

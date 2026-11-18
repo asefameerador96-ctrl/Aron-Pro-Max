@@ -1,0 +1,41 @@
+path: /v1/admin/programmes/{id}/ledger
+method: get
+operation:
+  tags:
+  - admin-content
+  operationId: listProgrammeLedger
+  summary: The points ledger of a programme (newest first), with the reason of each portal adjustment.
+  description: 'From 1.23.0. Ledger rows are outlet data, cut to the caller''s server-side reach exactly as `listProgrammeEnrolments`:
+    SUPERADMIN, ADMIN with the `r` grant and NATIONAL read all; WM, DMO and TSO see the rows of the outlets of their
+    zones and routes; a BRAND user is refused `403`. A programme outside the caller''s reach is `404`. Optional
+    filters `outlet_id` and `source_type`. `reason` is set on `adjustment` rows only (from their audit row).'
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  - name: outlet_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - name: source_type
+    in: query
+    required: false
+    schema:
+      type: string
+      pattern: ^[a-z][a-z_]{1,40}$
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of ledger rows.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LedgerPage'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

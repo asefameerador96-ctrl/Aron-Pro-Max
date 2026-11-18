@@ -23,8 +23,8 @@ class AmoManualContractTest {
     }
 
     @Test
-    fun versionIs1210() {
-        assertEquals("1.21.0", map(OpenApi.doc["info"])["version"].toString(), "the exact shipped contract version (1.21.0: android-integrity, GeoFix.signals, DeviceStatusReport.integrity_events and the lab exemption (operations, Device members, the device-scoped config value), additive; 1.19.0: SR check-out round, closed_by and the check-out signal rules, additive; 1.18.1: the master-data-fit review round, new warning and error codes in the import report; 1.16.0 (integration, merged in): SR manual train 2, additive; 1.17.0 (integration, loyalty push C, gift choice): additive; 1.18.0: master-data fit, additive; 1.15.0: the field side of loyalty and Astha; 1.14.0: SR manual train 1, additive; 1.13.1: description-only patch of the loyalty portal; 1.13.0: the loyalty portal, schema and contract; 1.12.2: optional If-Match on setOfferStatus; 1.12.1 the discount portal routes and discounts module; 1.12.0 the schema and contract)")
+    fun versionIs1230() {
+        assertEquals("1.23.0", map(OpenApi.doc["info"])["version"].toString(), "the exact shipped contract version (1.23.0, provisional: the portal points adjustment; before it 1.22.0: Astha quarter rows with named truncated months, loyalty tier_code, inactive-brand names, the user's geography names, additive; 1.20.0: waiting-item state and count in the quarantine queue, additive; 1.19.0: SR check-out round, closed_by and the check-out signal rules, additive; 1.18.1: the master-data-fit review round, new warning and error codes in the import report; 1.16.0 (integration, merged in): SR manual train 2, additive; 1.17.0 (integration, loyalty push C, gift choice): additive; 1.18.0: master-data fit, additive; 1.15.0: the field side of loyalty and Astha; 1.14.0: SR manual train 1, additive; 1.13.1: description-only patch of the loyalty portal; 1.13.0: the loyalty portal, schema and contract; 1.12.2: optional If-Match on setOfferStatus; 1.12.1 the discount portal routes and discounts module; 1.12.0 the schema and contract)")
     }
 
     @Test
