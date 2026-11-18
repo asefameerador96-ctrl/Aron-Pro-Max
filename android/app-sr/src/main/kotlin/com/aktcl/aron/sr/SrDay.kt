@@ -1,5 +1,6 @@
 package com.aktcl.aron.sr
 
+import kotlinx.coroutines.sync.withLock
 import androidx.room.withTransaction
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.testTag
@@ -181,7 +182,9 @@ class SrDay(
         val now = (clock.nowMs() + BusinessDate.DHAKA_OFFSET_MS).mod(dayMs)
         // the check-out time is `cfg.day.checkout_earliest_time` from the bundle (17:00 until it is read), not a constant (D-AGATE-06)
         val seventeen = configuredCheckoutMinutes() * 60_000L
-        val next = if (now < seventeen) seventeen else dayMs
+        // D-AGATE-15: also 04:00, the limit of an earlier day's open call (a call kept on screen past it must not keep selling dated yesterday)
+        val limit = com.aktcl.aron.feature.attendance.DayRollover.ABANDON_AT_HOUR * 3_600_000L
+        val next = listOf(limit, seventeen, dayMs).filter { it > now }.min()
         return (next - now + 1_000L).coerceAtLeast(1_000L)
     }
     fun dhakaMinutesNow(): Int = ((clock.nowMs() + BusinessDate.DHAKA_OFFSET_MS) / 60_000L).mod(24 * 60L).toInt()
@@ -496,23 +499,47 @@ class SrDay(
         val v = visitSession.current.value ?: return false
         val vd = visitDate(v)
         if (vd >= businessDate() || !com.aktcl.aron.feature.attendance.DayRollover.abandonLimitReached(vd, clock.nowMs())) return false
-        val dropped = runCatching { sale.flow.dropUnsavedDraft(v.visitUuid) }.getOrDefault(false)
-        closeVisitAbandoned()
+        // D-AGATE-15 (T2): the phone's end classifies the call exactly as the rep's own close does (sold / zero sale / audited / abandoned from what it holds), through the
+        // same writer; a failing write (D-AGATE-15 low) is caught and the call and its draft stay until a close is stored
+        runCatching { sale.closeVisitByPhone() }
         if (visitSession.current.value != null) return false // the close could not be written: the next start or resume tries again, nothing is lost
+        // the draft goes only after the close is stored (a close that throws never drops it)
+        val dropped = runCatching { sale.flow.dropUnsavedDraft(v.visitUuid) }.getOrDefault(false)
         rolloverNotice.value = rolloverNotice.value.copy(abandonedOutletId = v.outletId, abandonedDate = vd, draftDropped = dropped)
         return true
     }
 
     /**
+     * D-AGATE-15 (T1, lead ruling): an UNSAVED memo edit never holds a day open. At the first timer, start or resume after Dhaka midnight an open edit of an earlier date is dropped
+     * with a plain notice (the saved memo is untouched: only the draft file and the screen state go), so the day can close. Only an open CALL holds a day (until 04:00).
+     */
+    suspend fun dropStaleEdit(): Boolean {
+        val s = sale.flow.state.value
+        val d = s.draft ?: return false
+        if (d.edit == null || s.committed != null || d.businessDate >= businessDate()) return false
+        runCatching { sale.flow.dropUnsavedDraft(d.visitUuid) }
+        rolloverNotice.value = rolloverNotice.value.copy(editDropped = true)
+        return true
+    }
+
+    private val resumeLock = kotlinx.coroutines.sync.Mutex()
+
+    /**
      * The ONE sequence of a start, a resume, the Dhaka-midnight timer and the end of an open call (D-LEAD-PREREQ-04 rulings 1 to 3): restore the open call from the day of
      * the open check-in, end an earlier call that passed its 04:00 limit, close the forgotten day(s), then re-read the screens' state. Every caller goes through it,
-     * so a test of it is a test of the production start path.
+     * so a test of it is a test of the production start path. D-AGATE-15: one at a time (a second caller waits and then finds the work done: no two closes, no two
+     * location attempts), and the gate is re-read even when a step throws.
      */
-    suspend fun resumeDay() {
-        restoreOpenVisit()
-        abandonStaleCall()
-        closeForgottenDays()
-        attendance.restore(attendanceForScreen()); refreshDayGate()
+    suspend fun resumeDay() = resumeLock.withLock {
+        try {
+            restoreOpenVisit()
+            dropStaleEdit()
+            abandonStaleCall()
+            closeForgottenDays()
+        } finally {
+            runCatching { attendance.restore(attendanceForScreen()) }
+            refreshDayGate()
+        }
     }
 
     @Volatile private var nextSequence = 1

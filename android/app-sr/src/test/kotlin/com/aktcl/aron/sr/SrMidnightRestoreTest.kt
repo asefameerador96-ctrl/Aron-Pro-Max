@@ -8,6 +8,8 @@ import com.aktcl.aron.core.database.repo.closedByPhone
 import com.aktcl.aron.rules.QtyUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -63,7 +65,8 @@ class SrMidnightRestoreTest {
         f.day.resumeDay()
         assertNull("the call was ended by the phone", f.day.visitSession.current.value)
         val close = f.db.captureDao().visitClosesOn(d0).single { it.visitClientUuid == v.visitUuid }
-        assertEquals("abandoned", close.outcomeCode); assertEquals("dated with the VISIT's date", d0, close.meta.businessDate)
+        assertEquals("D-AGATE-15 T2: a call holding a saved sale is closed as sold, never abandoned", "sold", close.outcomeCode); assertFalse(close.isZeroSale)
+        assertEquals("dated with the VISIT's date", d0, close.meta.businessDate)
         assertTrue("flagged: the end is stamped by the phone on a later date than the visit's", close.endedAt!!.startsWith(next()))
         assertNotNull("the saved memo is untouched", f.db.captureDao().memo(memo))
         assertEquals("the day closed after it", 1, checkOuts(d0).size)
@@ -129,6 +132,62 @@ class SrMidnightRestoreTest {
         val refused = f.day.saveSurveyResult(v.visitUuid, survey, listOf(com.aktcl.aron.feature.outlet.SurveyResponseRow(com.aktcl.aron.core.common.ClientIds.newUuid(), v.visitUuid, 1, 1, q2, com.aktcl.aron.feature.outlet.SurveyAnswer(bool = true))))
         assertNotNull("a refusal comes back, never silence", refused.attendance)
         assertEquals("nothing more was stored", 1, f.db.captureDao().surveyResponsesOf(v.visitUuid).size)
+    }
+
+
+    /** D-AGATE-15 T2: the phone's 04:00 end classifies as the rep's close does: a zero-sale (QC only) memo or a survey answer is a real call without a sale, nothing is abandoned. */
+    @Test fun theLimitClassifiesACallByWhatItHolds() = runBlocking {
+        val qcCall = f.openCall(seq = 1); f.qcLineOn(qcCall)
+        val surveyCall = f.openCall(outletId = 50002, seq = 2)
+        val emptyCall = f.openCall(outletId = 50003, seq = 3)
+        val survey = com.aktcl.aron.core.database.entity.SurveyEntity(1, 1, "S", null)
+        val q = com.aktcl.aron.feature.outlet.SurveyQuestion(1, com.aktcl.aron.feature.outlet.AnswerType.BOOL, "q1", true, false)
+        f.day.saveSurveyResult(surveyCall.visitUuid, survey, listOf(com.aktcl.aron.feature.outlet.SurveyResponseRow(com.aktcl.aron.core.common.ClientIds.newUuid(), surveyCall.visitUuid, 1, 1, q, com.aktcl.aron.feature.outlet.SurveyAnswer(bool = true))))
+        // one call at a time is open in a session; each is restored from Room and ended at the limit, in turn
+        f.trustAt(at(next(), 8, 0))
+        val got = mutableMapOf<String, String>()
+        repeat(3) {
+            f.day.restoreOpenVisit(); f.day.abandonStaleCall()
+        }
+        f.db.captureDao().visitClosesOn(d0).forEach { got[it.visitClientUuid] = it.outcomeCode }
+        assertEquals("zero_sale_stock_ok", got[qcCall.visitUuid]); assertEquals("zero_sale_stock_ok", got[surveyCall.visitUuid]); assertEquals("abandoned", got[emptyCall.visitUuid])
+    }
+
+    /** D-AGATE-15 T1: an UNSAVED memo edit open across midnight never holds the day: dropped with a notice, the saved memo untouched, the day closes, the gate follows today. */
+    @Test fun anUnsavedMemoEditAcrossMidnightIsDroppedAndTheDayCloses() = runBlocking {
+        val v = f.openCall(); val memo = f.creditMemo(v); f.stockedCatalog()
+        f.day.visitSession.restore(v); f.day.closeVisitAbandoned()  // the call is over; only the memo EDIT is open (opened from the Memo list)
+        f.day.sale.prepare(); f.day.sale.beginEdit(memo, com.aktcl.aron.feature.sale.domain.EditReason.WRONG_SKU)
+        SrLockFixture.await("edit open") { day().sale.flow.state.value.draft?.edit != null }
+        f.day.resumeDay() // the same day: nothing is dropped
+        assertNotNull("the same day: the edit stays", f.day.sale.flow.state.value.draft?.edit)
+        f.trustAt(at(next(), 0, 30)); f.day.resumeDay()
+        assertNull("the unsaved edit was dropped", f.day.sale.flow.state.value.draft?.edit)
+        assertTrue("with a notice", f.day.rolloverNotice.value.editDropped)
+        assertNotNull("the saved memo is untouched", f.db.captureDao().memo(memo))
+        assertEquals("the day closed, so check-in for the new day is possible", 1, checkOuts(d0).size)
+        assertEquals(AttendanceRefusal.NOT_CHECKED_IN, f.day.dayGate.value)
+    }
+
+    /** D-AGATE-15 mutex: start and ON_RESUME run resumeDay at once; one close of the call and ONE location attempt for the closed day. */
+    @Test fun twoCallersOfResumeDayWriteOneCloseAndTakeOneLocationAttempt() = runBlocking {
+        val v = f.openCall()
+        val reads = f.fixReads
+        f.trustAt(at(next(), 8, 0))
+        kotlinx.coroutines.withContext(Dispatchers.Default) {
+            listOf(async { f.day.resumeDay() }, async { f.day.resumeDay() }, async { f.day.resumeDay() }).awaitAll()
+        }
+        assertEquals("one close for the visit", 1, f.db.captureDao().visitClosesOn(d0).count { it.visitClientUuid == v.visitUuid })
+        assertEquals("one location attempt", reads + 1, f.fixReads)
+        assertEquals(1, checkOuts(d0).size)
+    }
+
+    /** D-AGATE-15: the timer also fires at 04:00, the limit of an earlier call kept on screen. */
+    @Test fun aTimerFiresAt0400WhileACallIsOnScreen() {
+        // the next boundary after 03:00 Dhaka is 04:00, not 17:00 or midnight
+        f.trustAt(at(next(), 3, 0))
+        val ms = f.day.millisToNextBoundary()
+        assertTrue("about an hour", ms in (3_600_000L - 5_000)..(3_600_000L + 5_000))
     }
 
     private fun day() = f.day

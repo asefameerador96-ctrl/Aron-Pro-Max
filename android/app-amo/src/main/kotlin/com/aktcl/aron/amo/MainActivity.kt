@@ -190,7 +190,9 @@ class MainActivity : ComponentActivity() {
                                     s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, printerManager, s.user.fullName,
                                     runCatching { com.aktcl.aron.core.database.repo.MemoNumbering(s.user.username, s.user.bindOrdinal ?: 0, s.user.memoSeqBlockSize ?: 500) }.getOrNull(), deviceRuntime,
                                 )
-                                runCatching { d.reload(); d.resumeDay() }
+                                runCatching { d.reload() }
+                                // D-AGATE-15: the day's resume (a forgotten day's close makes one location attempt) never delays the shell: the gate starts closed and follows
+                                launch { runCatching { d.resumeDay() } }
                                 // F-SYS-030/010: the camera and this user's photo queue (Manual Override, Update Base, outlet requests).
                                 runCatching { d.attachMedia(mediaShell.componentsFor(s.user.userId, d::businessDate)) }
                                 day = d

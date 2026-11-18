@@ -277,7 +277,8 @@ fun SrApp(
         day.reload(); day.nextSequenceFromStore()
         // the open call is restored from the day of the open check-in, an earlier call past its 04:00 limit is ended, and a day the rep never checked out of is closed by
         // the phone BEFORE anything else (D-AGATE-06, D-LEAD-PREREQ-04): one function, the same for start, resume, the midnight timer and the end of a call
-        day.resumeDay(); day.taskBoard.load()
+        // D-AGATE-15: not awaited (the close of a forgotten day makes one location attempt of up to ~30 s; the shell, the permission redirect and the bundle never wait for it)
+        launch { day.resumeDay(); day.taskBoard.load() }
         day.attendance.refreshSubmit()
         if (screen == SrScreen.HOME && permissions.toAsk.isNotEmpty()) screen = SrScreen.PERMISSIONS
         launch { startBundleDownload(); day.taskBoard.load(); resumeTick++ }
@@ -362,6 +363,8 @@ fun SrApp(
     val dayGate by day.dayGate.collectAsState()
     val rollover by day.rolloverNotice.collectAsState()
     val openCallNow by day.visitSession.current.collectAsState()
+    // D-AGATE-15 (T1): an unsaved memo edit dropped at midnight leaves the edit screen for Home, where the notice says so (never a dead screen)
+    LaunchedEffect(rollover.editDropped, screen) { if (rollover.editDropped && screen == SrScreen.EDIT) screen = SrScreen.HOME }
     var checkInNotice by remember { mutableStateOf(false) }
     AronScreenTransition(screen, SrNav::forward, Modifier.fillMaxSize()) { s ->
         // the UI mirror of the check-in gate: an operational screen shows "check in first" (or "checked out") instead of its content

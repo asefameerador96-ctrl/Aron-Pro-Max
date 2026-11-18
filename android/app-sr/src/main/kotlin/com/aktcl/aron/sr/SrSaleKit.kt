@@ -223,6 +223,24 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     }
 
     /**
+     * D-AGATE-15 (T2): the phone's end of a call at the 04:00 limit. It classifies by what the call holds, as the rep's own close does and as the AMO does
+     * (`AmoCallOutcome`): a saved memo with lines is `sold`; a zero-sale memo or a survey answer is `zero_sale_stock_ok`; nothing is `abandoned`. The close is written
+     * through [closeVisit] (or `closeVisitAbandoned`), dated with the visit's date. That the phone ended it is carried locally (the notice), not on the wire.
+     */
+    suspend fun closeVisitByPhone(): DayRefusal? {
+        val open = day.visitSession.current.value ?: return null
+        val memos = dao.memosOn(day.visitDate(open)).filter { it.visitClientUuid == open.visitUuid }
+        val superseded = memos.mapNotNull { it.supersedesClientUuid }.toSet()
+        val live = memos.filter { it.clientUuid !in superseded }.maxByOrNull { it.committedAt }
+        val audited = dao.surveyResponsesOf(open.visitUuid).isNotEmpty()
+        return when {
+            live != null && live.lineCount > 0 -> closeVisit(VisitOutcomeCode.SOLD)
+            live != null || audited -> closeVisit(VisitOutcomeCode.ZERO_SALE)
+            else -> day.closeVisitAbandoned()
+        }
+    }
+
+    /**
      * tso-manual X4a follow-up (R-W-23): why the open call can no longer take its records (no sale, no close), or null. The
      * call screens show the lock text or the submit text, and OK ends the call on the phone ([closeVisit] or
      * `SrDay.closeVisitAbandoned`, which write nothing then). Pure reads.

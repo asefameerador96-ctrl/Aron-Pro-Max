@@ -74,6 +74,7 @@ fun rolloverNoticeText(n: RolloverNotice): String? {
     if (!n.any) return null
     val parts = ArrayList<String>()
     n.abandonedDate?.let { parts += stringResource(R.string.att_rollover_abandoned, com.aktcl.aron.core.ui.localizedDigits(it)) }
+    if (n.editDropped) parts += stringResource(R.string.att_rollover_edit)
     if (n.draftDropped) parts += stringResource(R.string.att_rollover_draft)
     if (n.closedDates.isNotEmpty()) parts += stringResource(R.string.att_rollover_closed, n.closedDates.map { com.aktcl.aron.core.ui.localizedDigits(it) }.joinToString(", "))
     return parts.joinToString("\n")

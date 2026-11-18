@@ -131,7 +131,10 @@ class AmoDay(
     fun millisToNextMidnight(): Long {
         val dayMs = 24L * 3_600_000L
         val now = (clock.nowMs() + BusinessDate.DHAKA_OFFSET_MS).mod(dayMs)
-        return (dayMs - now + 1_000L).coerceAtLeast(1_000L)
+        // D-AGATE-15: also 04:00, the limit of an earlier day's open call (a call kept on screen past it must not keep selling dated yesterday)
+        val limit = com.aktcl.aron.feature.attendance.DayRollover.ABANDON_AT_HOUR * 3_600_000L
+        val next = if (now < limit) limit else dayMs
+        return (next - now + 1_000L).coerceAtLeast(1_000L)
     }
     fun dhakaMinutesNow(): Int = ((clock.nowMs() + BusinessDate.DHAKA_OFFSET_MS) / 60_000L).mod(24 * 60L).toInt()
     fun requestSync() = scheduler.requestSync(userId, SyncTrigger.WRITE_DEBOUNCE)
@@ -289,19 +292,38 @@ class AmoDay(
         val v = visitSession.current.value ?: return false
         val vd = visitDate(v)
         if (vd >= businessDate() || !com.aktcl.aron.feature.attendance.DayRollover.abandonLimitReached(vd, clock.nowMs())) return false
-        val dropped = runCatching { sale.flow.dropUnsavedDraft(v.visitUuid) }.getOrDefault(false)
-        closeAbandoned(v)
+        // D-AGATE-15 (T2): the phone's end goes through the SAME close as the rep's (closeVisit: sold / audit only / abandoned from what the call holds, under closeLock);
+        // "ended by the phone" is the notice, not a wire field. A failing write keeps the call and its draft until a close is stored.
+        runCatching { closeVisit() }
         if (visitSession.current.value != null) return false // the close could not be written: the next start or resume tries again, nothing is lost
+        val dropped = runCatching { sale.flow.dropUnsavedDraft(v.visitUuid) }.getOrDefault(false)
         rolloverNotice.value = rolloverNotice.value.copy(abandonedOutletId = v.outletId, abandonedDate = vd, draftDropped = dropped)
         return true
     }
 
-    /** The ONE sequence of a start, a resume, the midnight timer and the end of an open call (see SrDay.resumeDay): restore, limit, close, re-read. */
-    suspend fun resumeDay() {
-        restoreOpenVisit()
-        abandonStaleCall()
-        closeForgottenDays()
-        attendance.restore(attendanceForScreen()); refreshDayGate()
+    /** D-AGATE-15 (T1): an unsaved memo edit of an earlier date never holds a day open: dropped with a notice at the first timer, start or resume after midnight (see SrDay.dropStaleEdit). */
+    suspend fun dropStaleEdit(): Boolean {
+        val s = sale.flow.state.value
+        val d = s.draft ?: return false
+        if (d.edit == null || s.committed != null || d.businessDate >= businessDate()) return false
+        runCatching { sale.flow.dropUnsavedDraft(d.visitUuid) }
+        rolloverNotice.value = rolloverNotice.value.copy(editDropped = true)
+        return true
+    }
+
+    private val resumeLock = kotlinx.coroutines.sync.Mutex()
+
+    /** The ONE sequence of a start, a resume, the midnight timer and the end of an open call (see SrDay.resumeDay): restore, limit, close, re-read; one at a time. */
+    suspend fun resumeDay() = resumeLock.withLock {
+        try {
+            restoreOpenVisit()
+            dropStaleEdit()
+            abandonStaleCall()
+            closeForgottenDays()
+        } finally {
+            runCatching { attendance.restore(attendanceForScreen()) }
+            refreshDayGate()
+        }
     }
 
     suspend fun attendanceToday() = db.captureDao().attendanceOn(businessDate())

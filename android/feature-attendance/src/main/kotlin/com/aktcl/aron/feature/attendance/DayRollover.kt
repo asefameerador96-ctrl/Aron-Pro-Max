@@ -28,6 +28,8 @@ data class RolloverNotice(
     val abandonedOutletId: Long? = null,
     val abandonedDate: String? = null,
     val draftDropped: Boolean = false,
+    /** D-AGATE-15: an unsaved memo EDIT left open past Dhaka midnight was dropped (the saved memo is untouched). */
+    val editDropped: Boolean = false,
 ) {
-    val any: Boolean get() = closedDates.isNotEmpty() || abandonedDate != null
+    val any: Boolean get() = closedDates.isNotEmpty() || abandonedDate != null || editDropped
 }

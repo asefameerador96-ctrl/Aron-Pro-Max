@@ -179,10 +179,10 @@ class SaleFlow(
      * is in Room; this only clears the draft file and the screen state). Returns true when a draft with something entered was dropped.
      */
     suspend fun dropUnsavedDraft(visitUuid: String): Boolean = lock.withLock {
-        val d = store.load(visitUuid) ?: return@withLock false
-        val saved = committer.existing(d.memoUuid) != null
-        val had = !saved && (d.lines.isNotEmpty() || d.slide.isNotEmpty() || d.qc.isNotEmpty() || d.paidMtk != null || d.zeroSale)
-        store.clear(visitUuid)
+        val d = store.load(visitUuid)
+        val saved = d != null && committer.existing(d.memoUuid) != null
+        val had = d != null && !saved && (d.lines.isNotEmpty() || d.slide.isNotEmpty() || d.qc.isNotEmpty() || d.paidMtk != null || d.zeroSale)
+        if (d != null) store.clear(visitUuid)
         val s = ui.value
         if (s.visit?.visitUuid == visitUuid && s.committed == null) ui.value = SaleUiState()
         had
