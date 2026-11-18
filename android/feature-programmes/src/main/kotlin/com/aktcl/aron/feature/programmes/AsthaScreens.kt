@@ -81,14 +81,6 @@ fun AsthaMenuScreen(onTarget: () -> Unit, onGift: (() -> Unit)?, modifier: Modif
     }
 }
 
-private val MonthShort = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-private val QuarterSuffix = listOf("Jan-Mar", "Apr-Jun", "Jul-Sep", "Oct-Dec")
-
-internal fun monthChip(month: String): String = MonthShort[month.substring(5, 7).toInt() - 1]
-
-/** "Q-1 (Jan-Mar)" as in manual 49. */
-internal fun quarterLabel(q: Int): String = "Q-$q (${QuarterSuffix[q - 1]})"
-
 /** A starting selection of the target page (restores a screen, seeds a golden); every member optional. */
 data class AsthaSelection(val year: Int? = null, val quarter: Int? = null, val month: String? = null, val memoTab: Boolean = false)
 
@@ -130,6 +122,9 @@ fun AsthaTargetScreen(
 @Composable
 private fun ColumnScope.TargetBody(data: AsthaData?, locale: UiLocale, currentYear: Int, outletId: Long?, initial: AsthaSelection) {
     val look = LocalAronLook.current
+    // Latin in both languages, as the manual shows them (screens 49 and 50); kept in resources like every visible text
+    val monthNames = androidx.compose.ui.res.stringArrayResource(R.array.pg_months_short)
+    val quarterNames = androidx.compose.ui.res.stringArrayResource(R.array.pg_quarters)
     var year by rememberSaveable(outletId) { mutableStateOf(initial.year) }
     var quarter by rememberSaveable(outletId) { mutableStateOf(initial.quarter) }
     var month by rememberSaveable(outletId) { mutableStateOf(initial.month) }
@@ -146,7 +141,7 @@ private fun ColumnScope.TargetBody(data: AsthaData?, locale: UiLocale, currentYe
         val quarterPicker: @Composable (Modifier) -> Unit = { m ->
             Column(m, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(R.string.pg_pick_quarter), style = label(look.ink))
-                AronDropdown((1..4).toList(), quarter, { quarter = it; month = null }, { quarterLabel(it) }, Modifier.testTag(AsthaTags.QUARTER), placeholder = stringResource(R.string.pg_quarter), enabled = year != null)
+                AronDropdown((1..4).toList(), quarter, { quarter = it; month = null }, { quarterNames[it - 1] }, Modifier.testTag(AsthaTags.QUARTER), placeholder = stringResource(R.string.pg_quarter), enabled = year != null)
             }
         }
         // each picker has its own weighted column: AronDropdown fills the width it is given, so a bare pair would let the first take the row
@@ -157,7 +152,7 @@ private fun ColumnScope.TargetBody(data: AsthaData?, locale: UiLocale, currentYe
         val months = AsthaModel.monthsOfQuarter(y, q)
         Text(stringResource(R.string.pg_pick_month), style = label(look.ink))
         androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            months.forEach { m -> AronChoiceChip(monthChip(m), month == m, { month = m }, Modifier.testTag(AsthaTags.month(m))) }
+            months.forEach { m -> AronChoiceChip(monthNames[m.substring(5, 7).toInt() - 1], month == m, { month = m }, Modifier.testTag(AsthaTags.month(m))) }
         }
         val m = month
         if (m == null) return
