@@ -26,7 +26,12 @@
     <string name="pg_as_of">Data as of %1$s</string>
     <string name="pg_truncated">Only the first rows are on this phone. Sync on Wi-Fi to see the rest.</string>
     <string name="pg_load_failed">The Astha data could not be read from this phone.</string>
-    <string name="pg_pack_line">%1$s per pack of %2$s: %3$s packets</string>
+    <string name="pg_pack_packets">%1$s, %2$s per pack: %3$s packets</string>
+    <string name="pg_pack_packets_loose">%1$s, %2$s per pack: %3$s packets + %4$s sticks</string>
+    <string name="pg_pack_dozens">%1$s, %2$s per dozen: %3$s dozens</string>
+    <string name="pg_pack_dozens_loose">%1$s, %2$s per dozen: %3$s dozens + %4$s pieces</string>
+    <string name="pg_pack_boxes">%1$s, %2$s per box: %3$s boxes</string>
+    <string name="pg_pack_boxes_loose">%1$s, %2$s per box: %3$s boxes + %4$s pieces</string>
     <string name="pg_back">Back</string>
     <string name="pg_all_shops">All shops</string>
     <string name="pg_search_hint">Search by name, code, or phone</string>

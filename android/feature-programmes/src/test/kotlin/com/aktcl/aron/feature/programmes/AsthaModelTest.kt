@@ -84,4 +84,20 @@ class AsthaModelTest {
         assertNull(AsthaModel.decimal3(kotlinx.serialization.json.JsonPrimitive("abc")))
         assertEquals(1_500L, AsthaModel.decimal3(kotlinx.serialization.json.JsonPrimitive("1.5")))
     }
+
+    private val tree = """{"nodes":[
+      {"id":1,"level":"category","name":"Cigarette","code":"cigarette","sort":1},{"id":2,"level":"segment","name":"Low","parent_id":1,"sort":1},{"id":11,"level":"brand","name":"Marise","parent_id":2,"sort":1},
+      {"id":5,"level":"category","name":"Match","code":"match","sort":2},{"id":15,"level":"brand","name":"Box Match","parent_id":5,"sort":1},
+      {"id":6,"level":"category","name":"Lighter","code":"lighter","sort":3},{"id":16,"level":"brand","name":"Gas Lighter","parent_id":6,"sort":1}],"skus":[]}"""
+
+    @Test fun packLinesAreWholePacksPlusLooseUnitsInTheCategorysUnitNeverAFraction() {
+        val d = AsthaModel.parse(programmes, tree)!!
+        assertEquals(mapOf(11L to "cigarette", 15L to "match", 16L to "lighter"), d.brandCategory)
+        val cig = d.packLine(11, AsthaPack(20, 300_500)) // 300.5 sticks in packs of 20
+        assertEquals(15L, cig.packs); assertEquals(500L, cig.looseMilli); assertEquals(PackKind.PACKET, cig.kind)
+        assertEquals(PackKind.DOZEN, d.packLine(15, AsthaPack(12, 36_000)).kind); assertEquals(3L, d.packLine(15, AsthaPack(12, 36_000)).packs)
+        assertEquals(PackKind.BOX, d.packLine(16, AsthaPack(25, 60_000)).kind); assertEquals(2L, d.packLine(16, AsthaPack(25, 60_000)).packs); assertEquals(10_000L, d.packLine(16, AsthaPack(25, 60_000)).looseMilli)
+        assertEquals(PackKind.PACKET, d.packLine(99, AsthaPack(10, 5_000)).kind) // category unknown: packets, never a guess of dozens or boxes
+        assertEquals(0L, d.packLine(11, AsthaPack(20, 40_000)).looseMilli) // exact packs: nothing loose
+    }
 }

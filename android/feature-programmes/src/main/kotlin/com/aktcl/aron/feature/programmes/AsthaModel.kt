@@ -12,6 +12,11 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 
+enum class PackKind { PACKET, DOZEN, BOX }
+
+/** [packs] whole packs and [looseMilli] loose base units (thousandths) of one pack size. */
+data class PackLine(val packFactor: Int, val packs: Long, val looseMilli: Long, val kind: PackKind)
+
 /** Achievement of one pack size of a brand in base units (thousandths as sent), SRM-B-63: one line per pack size, never summed across sizes. */
 data class AsthaPack(val packFactor: Int, val stdAchievedMilli: Long)
 
@@ -32,7 +37,10 @@ data class BrandName(val en: String, val bn: String?) {
 }
 
 /** What the Astha screens read: all rows, the display-only "as of", the cut flag and the brand names. */
-data class AsthaData(val rows: List<AsthaRow>, val asOf: String?, val truncated: Boolean, val brands: Map<Long, BrandName>) {
+data class AsthaData(val rows: List<AsthaRow>, val asOf: String?, val truncated: Boolean, val brands: Map<Long, BrandName>, val brandCategory: Map<Long, String> = emptyMap()) {
+    /** The pack line of a brand's achievement in the units the field counts (rule 5): packets of sticks, dozens or boxes by the brand's category. */
+    fun packLine(brandId: Long?, p: AsthaPack): PackLine = AsthaModel.packLine(brandId?.let { brandCategory[it] }, p)
+
     /** The route rows (no outlet), the screen of the "route info" tab. */
     val routeRows: List<AsthaRow> get() = rows.filter { it.outletId == null }
 
@@ -64,7 +72,29 @@ object AsthaModel {
         val rows = (prog["astha_targets"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let(::row) }
         val truncated = (prog["astha_truncated"] as? JsonPrimitive)?.booleanOrNull ?: false
         val asOf = (prog["astha_as_of"] as? JsonPrimitive)?.contentOrNull
-        return AsthaData(rows, asOf, truncated, brands(productsJson))
+        return AsthaData(rows, asOf, truncated, brands(productsJson), brandCategories(productsJson))
+    }
+
+    /** brand node id -> the code of its category ancestor in the product tree (category, segment, brand, variant), lower case; brands without one are left out. */
+    private fun brandCategories(productsJson: String?): Map<Long, String> {
+        val p = productsJson?.let { runCatching { lenient.parseToJsonElement(it) }.getOrNull() } as? JsonObject ?: return emptyMap()
+        class N(val level: String, val parent: Long?, val code: String?)
+        val nodes = (p["nodes"] as? JsonArray).orEmpty().mapNotNull { n ->
+            val o = n as? JsonObject ?: return@mapNotNull null
+            (o.long("id") ?: return@mapNotNull null) to N(o.str("level")?.lowercase() ?: return@mapNotNull null, o.long("parent_id"), o.str("code")?.lowercase())
+        }.toMap()
+        fun categoryOf(id: Long): String? { var cur = nodes[id]; var guard = 0; while (cur != null && guard++ < 8) { if (cur.level == "category") return cur.code; cur = cur.parent?.let { nodes[it] } }; return null }
+        return nodes.filter { it.value.level == "brand" }.mapNotNull { (id, _) -> categoryOf(id)?.let { id to it } }.toMap()
+    }
+
+    /**
+     * One pack size of a brand as whole packs plus loose units, never a fraction of a pack (the Sale screens' rule): [category] match counts in dozens
+     * (loose pieces), lighter in boxes (loose pieces), everything else in packets (loose sticks). `pack_factor` is the base units in one pack.
+     */
+    fun packLine(category: String?, p: AsthaPack): PackLine {
+        val unit = p.packFactor * 1000L
+        val kind = when (category) { "match" -> PackKind.DOZEN; "lighter" -> PackKind.BOX; else -> PackKind.PACKET }
+        return PackLine(p.packFactor, p.stdAchievedMilli / unit, p.stdAchievedMilli % unit, kind)
     }
 
     private fun brands(productsJson: String?): Map<Long, BrandName> {

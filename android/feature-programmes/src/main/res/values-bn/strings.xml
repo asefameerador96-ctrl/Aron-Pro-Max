@@ -26,7 +26,12 @@
     <string name="pg_as_of">ডেটা: %1$s</string>
     <string name="pg_truncated">এই ফোনে শুধু প্রথম সারিগুলো আছে। বাকিটা দেখতে ওয়াই-ফাইয়ে সিঙ্ক করুন।</string>
     <string name="pg_load_failed">এই ফোন থেকে আস্থার তথ্য পড়া যায়নি।</string>
-    <string name="pg_pack_line">%1$s, প্যাকেট %2$s: %3$s প্যাকেট</string>
+    <string name="pg_pack_packets">%1$s, প্রতি প্যাকে %2$s: %3$s প্যাকেট</string>
+    <string name="pg_pack_packets_loose">%1$s, প্রতি প্যাকে %2$s: %3$s প্যাকেট + %4$s স্টিক</string>
+    <string name="pg_pack_dozens">%1$s, প্রতি ডজনে %2$s: %3$s ডজন</string>
+    <string name="pg_pack_dozens_loose">%1$s, প্রতি ডজনে %2$s: %3$s ডজন + %4$s পিস</string>
+    <string name="pg_pack_boxes">%1$s, প্রতি বক্সে %2$s: %3$s বক্স</string>
+    <string name="pg_pack_boxes_loose">%1$s, প্রতি বক্সে %2$s: %3$s বক্স + %4$s পিস</string>
     <string name="pg_back">পিছনে</string>
     <string name="pg_all_shops">সব দোকান</string>
     <string name="pg_search_hint">নাম, কোড বা ফোন দিয়ে খুঁজুন</string>

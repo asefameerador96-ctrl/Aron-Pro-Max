@@ -215,11 +215,7 @@ private fun StdTable(data: AsthaData, rows: List<AsthaRow>, locale: UiLocale) {
                 Cell(AsthaModel.pctText(r.stdAchievedMilli, r.stdTargetMilli, locale), AsthaModel.pctText(r.valueAchievedMtk, r.valueTargetMtk, locale), Modifier.weight(Weights[4]))
             }
             r.byPack.forEach { p ->
-                val packets = AsthaModel.stdText(p.stdAchievedMilli / p.packFactor, locale)
-                Text(
-                    stringResource(R.string.pg_pack_line, data.brandName(r.brandId, locale), com.aktcl.aron.rules.Formats.digits(p.packFactor.toString(), locale), packets),
-                    Modifier.padding(horizontal = 10.dp, vertical = 2.dp), style = small(look.inkMuted),
-                )
+                Text(packText(data, r.brandId, p, locale), Modifier.padding(horizontal = 10.dp, vertical = 2.dp), style = small(look.inkMuted))
             }
         }
     }
@@ -283,10 +279,7 @@ private fun StackedCards(data: AsthaData, rows: List<AsthaRow>, allBrand: AsthaR
                 CardLine(R.string.pg_col_remaining, AsthaModel.stdText(AsthaModel.remaining(r.stdTargetMilli, r.stdAchievedMilli), locale) + " · " + AsthaModel.valueText(AsthaModel.remaining(r.valueTargetMtk, r.valueAchievedMtk), locale))
                 CardLine(R.string.pg_col_pct, AsthaModel.pctText(r.stdAchievedMilli, r.stdTargetMilli, locale) + " · " + AsthaModel.pctText(r.valueAchievedMtk, r.valueTargetMtk, locale))
                 r.byPack.forEach { p ->
-                    Text(
-                        stringResource(R.string.pg_pack_line, data.brandName(r.brandId, locale), com.aktcl.aron.rules.Formats.digits(p.packFactor.toString(), locale), AsthaModel.stdText(p.stdAchievedMilli / p.packFactor, locale)),
-                        style = small(look.inkMuted),
-                    )
+                    Text(packText(data, r.brandId, p, locale), style = small(look.inkMuted))
                 }
             }
         } else if (allBrand == null) EmptyNote(stringResource(R.string.pg_no_data)) else {
@@ -342,4 +335,21 @@ private fun ShopLine(labelRes: Int, value: String, valueColor: androidx.compose.
         Text(stringResource(labelRes), style = TextStyle(fontSize = 13.sp, color = look.inkMuted))
         Text(value, style = TextStyle(fontSize = 16.sp, color = valueColor, fontWeight = FontWeight.Medium))
     }
+}
+
+/** "Marise, 20 per pack: 180 packets + 5 sticks" (matches: dozens, lighters: boxes), whole packs and loose units, digits per language. */
+@Composable
+private fun packText(data: AsthaData, brandId: Long?, p: AsthaPack, locale: UiLocale): String {
+    val l = data.packLine(brandId, p)
+    val name = data.brandName(brandId, locale)
+    val f = com.aktcl.aron.rules.Formats.digits(l.packFactor.toString(), locale)
+    val whole = com.aktcl.aron.rules.Formats.integer(l.packs, locale)
+    val loose = AsthaModel.stdText(l.looseMilli, locale)
+    val hasLoose = l.looseMilli > 0
+    val res = when (l.kind) {
+        PackKind.PACKET -> if (hasLoose) R.string.pg_pack_packets_loose else R.string.pg_pack_packets
+        PackKind.DOZEN -> if (hasLoose) R.string.pg_pack_dozens_loose else R.string.pg_pack_dozens
+        PackKind.BOX -> if (hasLoose) R.string.pg_pack_boxes_loose else R.string.pg_pack_boxes
+    }
+    return if (hasLoose) stringResource(res, name, f, whole, loose) else stringResource(res, name, f, whole)
 }
