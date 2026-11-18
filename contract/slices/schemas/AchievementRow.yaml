@@ -1,6 +1,7 @@
 AchievementRow:
   type: object
-  description: Month-to-date achievement known to the server; the phone adds its own unsynced sales on top.
+  description: Month-to-date achievement read from the accepted memos through `through_date`; the phone merges its
+    own memos on top by rule B of `RouteSnapshot` (`as_of` is informational).
   required:
   - scope_type
   - scope_id

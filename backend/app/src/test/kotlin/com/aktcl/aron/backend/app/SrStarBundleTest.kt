@@ -147,4 +147,19 @@ class SrStarBundleTest {
             x("DELETE FROM app.route_programme_target WHERE programme_id = $p"); x("DELETE FROM app.programme WHERE id = $p")
         }
     }
+
+    @Test
+    fun starTruncatedIsPerRouteAndProgrammeOnlyWhenAnExtraActiveProgrammeWasDropped() {
+        // route_programme_target is keyed (programme, route, month): the star query returns ONE row per (route, programme), so a route has more than one row exactly when it has
+        // more than one active Star programme; the lowest programme id is shown and the route says it dropped the rest. One programme: no flag.
+        assertEquals(null, bundle().full.routes.single { it.route_id == route }.star_truncated, "one active programme: not truncated")
+        val p2 = q("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status, rules) VALUES ('superstar', 'MBLS2', 'Second star', DATE '2026-12-01', DATE '2027-01-31', 'active', '{}') RETURNING id")
+        x("INSERT INTO app.route_programme_target (programme_id, route_id, month, target_qty, batch_uuid) VALUES ($p2, $route, DATE '2027-01-01', 9.000, '00000000-0000-4000-8000-00000000b003')")
+        try {
+            val r = bundle().full.routes.single { it.route_id == route }
+            assertEquals(true, r.star_truncated, "a second active programme of the route was dropped: the route says so")
+            assertEquals("MBLS", r.star!!.s("programme_code"), "the lowest programme id is the one shown")
+        } finally { x("DELETE FROM app.route_programme_target WHERE programme_id = $p2"); x("DELETE FROM app.programme WHERE id = $p2") }
+        assertEquals(null, bundle().full.routes.single { it.route_id == route }.star_truncated)
+    }
 }

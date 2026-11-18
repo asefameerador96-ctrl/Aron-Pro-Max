@@ -129,4 +129,17 @@ class SrKpiBundleTest {
         assertEquals(5000, cpr.long("target_bp")); assertEquals(600000, cpr.long("alloc_mtk")); assertEquals(null, cpr.bpOrNull("achieved_bp"))
         assertEquals(false, k["brands_truncated"]!!.jsonPrimitive.content.toBoolean())
     }
+
+    @Test
+    fun aSkuWithNoBrandIsNeverABrandRowAndNeverAnError() {
+        // A SKU whose variant points at a node with no parent (a category-level node) has no brand. The old aggregate read gave brand_id null as 0; the direct read leaves it out of
+        // the brand rows (it has no brand target either) and still counts it in the SKU achievement and the BLM category it belongs to.
+        val orphanVariant = q("SELECT id FROM app.product_node WHERE level = 'category' ORDER BY id LIMIT 1")
+        val sku = q("INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type, entry_unit_default) SELECT 'NOBRAND-1', $orphanVariant, 'match', 'No brand', 'No brand', base_unit, base_per_pack, pack_type, entry_unit_default FROM app.sku WHERE category_code = 'match' ORDER BY id LIMIT 1 RETURNING id")
+        val o = q("SELECT id FROM app.outlet WHERE route_id = $route ORDER BY id LIMIT 1")
+        SrMemoFixture({ x(it) }, sr).memo("00000000-0000-4000-8000-0000000b0001", route, o, "2027-01-02", listOf(SrMemoFixture.L(sku, 12)), "TIMESTAMPTZ '2027-01-02T08:00:00Z'")
+        val k = kpi()
+        assertTrue(k["brands"]!!.jsonArray.none { it.jsonObject.long("brand_id") == 0L }, "no brand row with id 0")
+        assertEquals(12, k["categories"]!!.jsonArray.map { it.jsonObject }.single { it["category_code"]!!.jsonPrimitive.content == "match" }.long("volume_achieved"), "the SKU is in its BLM category")
+    }
 }

@@ -2,8 +2,8 @@ RouteCampaign:
   type: object
   description: Campaign target and achievement of one outlet for the Dhaka month (screen 21, outlet target pop-up
     and page). STD and SKU quantities are base units; memo achievement counts distinct active memos of the outlet
-    with a campaign SKU line. Server figures through `through_date` (never today; the phone adds its own memos by
-    UUID). Contract 1.22.0.
+    with a campaign SKU line. Server figures through `through_date` (never today; the phone merges its own memos
+    by rule B of `RouteSnapshot`). Contract 1.22.0.
   required:
   - outlet_id
   - programme_id

@@ -1,22 +1,31 @@
 RouteSnapshot:
   type: object
   description: 'Per-route section of the bundle; replaced as a whole when the route is added to the user. PHONE
-    RULE for the SR programme sections `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns` (contract
-    1.22.0; the ONE place this rule is stated). It DIFFERS from the Astha achievement rule of `ProgrammesSection`
-    (there the server figure is a live snapshot and the phone adds only the memos not yet acknowledged when it sent
-    the request). Here every server figure is cut at `through_date` (the bundle date minus one day) and comes from
-    the asynchronous projector, so the phone adds (a) EVERY local memo with a business date after `through_date`,
-    acknowledged or not, because the server figure never holds them, and (b) every local memo dated from the 1st
-    of the bundle `month` up to `through_date` that the server figure may not hold yet: not acknowledged, or acknowledged
-    but accepted after the `as_of` of the newest bundle the phone has. It always de-duplicates by memo UUID and
-    only counts business dates inside the bundle `month` (a phone still holding last month''s bundle adds nothing
-    dated in the new month). `as_of` moves only when the server rewrote the route''s figures, never with the worker''s
-    clock. Day counts when today''s local memos are in the achieved figure: ADS, PADS and TADS divide by `calendar.elapsed_working_days_before_today`
+    RULE B for the SR programme sections `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns`
+    (contract number provisional, the lead sets it at landing; the ONE place this rule is stated). It DIFFERS from
+    the Astha achievement rule of `ProgrammesSection` (that section is a live snapshot of the same kind). Every
+    server figure the phone merges (achievement, KPI volumes, memo counts and `by_pack`, Star STD, campaign STD
+    and memo) is computed from the accepted memos of the route (campaigns: of the outlet) with a business date from
+    the 1st of the bundle `month` up to and including `through_date` (the bundle date minus one day), active, lines
+    not voided, sale lines only, read in ONE repeatable-read snapshot straight from the memo tables. It holds every
+    memo whose upload the server had COMMITTED when the bundle was read, and the server commits a batch before it
+    returns the acknowledgement. Today''s memos are never in a server figure. The phone merges its own memos by
+    ORDER, with no clock: let R be the moment the phone sent the request for this bundle (its own sync-cycle counter).
+    The phone ADDS a local memo iff it was not acknowledged (`accepted` or `duplicate`) before R, and ADDS every
+    local memo dated after `through_date` whether acknowledged or not (the server figure is cut there); it SUBTRACTS
+    a memo that was acknowledged before R and dated up to `through_date` when it has since voided or superseded
+    it locally and that void or edit record was not acknowledged before R (an edit is therefore: add the new memo,
+    subtract the old one); it counts only business dates inside the bundle `month` (a phone still holding last month''s
+    bundle adds nothing dated in the new month); it sends NO bundle request while an upload batch is in flight (single
+    flight: upload, then bundle). `as_of` is INFORMATIONAL only, the newest `received_at` among the memos read (the
+    epoch when none): it is never used in arithmetic and a phone must not compare it with any clock. Day counts
+    when today''s local memos are in the achieved figure: ADS, PADS and TADS divide by `calendar.elapsed_working_days_before_today`
     plus 1 when `calendar.today_is_working` (numerator and denominator then cover the same days; this is the SkuProgress
     through-today convention, a default until the owner answers question Q-A), RADS divides by `calendar.remaining_working_days_after_today`;
     a zero divisor gives no figure, never zero. `star` carries through-`through_date` figures only (the phone cannot
-    add to it). Volumes are base units (sticks, pieces, dozens): packets, dozens and boxes are shown from `targets`,
-    `achievement_mtd` and the `by_pack` lists, never converted from a stick sum of mixed pack sizes.'
+    add to it). Brand sums use ONE hierarchy, the current product tree, for target and figure alike (the dashboards
+    use the as-was brand). Volumes are base units (sticks, pieces, dozens): packets, dozens and boxes are shown
+    from `targets`, `achievement_mtd` and the `by_pack` lists, never converted from a stick sum of mixed pack sizes.'
   required:
   - route_id
   - route_snapshot_version
