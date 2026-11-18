@@ -218,6 +218,9 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
         val date = memo?.meta?.businessDate ?: day.businessDate() // the memo's own day: the write checks the same date (a memo of yesterday is judged on yesterday's rows)
         val live = memo != null && dao.memosOn(date).none { it.supersedesClientUuid == memoUuid }
         val qcDone = memo != null && dao.qcLinesOn(date).any { it.visitClientUuid == memo.visitClientUuid }
+        // an edit of an EARLIER day's memo whose day is closed (checked out or submitted) says so ("that day is closed"), never "check in first": the rep may be checked in today
+        if (memo != null && date != day.businessDate() && day.capture.attendanceRefusal(date) != null) return EditDenied.DayClosed
+        if (memo != null && editRefusal(memoUuid) != null) return EditDenied.DayClosed
         EditGate.check(inGeofenceNow = true, qcCompleted = qcDone, memoIsLive = live, memoExists = memo != null, checkedIn = day.capture.attendanceRefusal(date) == null)?.let { return it }
         // the route-day of the memo must still be open for the save: an edit is never let in and then refused at the save (D-AGATE-09)
         if (editRefusal(memoUuid) != null) return EditDenied.DayClosed

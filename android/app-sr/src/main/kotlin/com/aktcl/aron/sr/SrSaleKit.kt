@@ -291,6 +291,9 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         val live = memo != null && dao.memosOn(date).none { it.supersedesClientUuid == memoUuid }
         // SRM-B-17: QC "entered for the outlet" on the business date, whichever visit of that outlet recorded it
         val qcDone = memo != null && EditGate.qcEnteredForOutlet(memo.outletId, dao.qcLinesOn(date).map { dao.visit(it.visitClientUuid)?.outletId })
+        // an edit of an EARLIER day's memo whose day is closed (checked out or submitted) says so ("that day is closed"), never "check in first": the rep may be checked in today
+        if (memo != null && date != day.businessDate() && day.capture.attendanceRefusal(date) != null) return EditDenied.DayClosed
+        if (memo != null && editRefusal(memoUuid) != null) return EditDenied.DayClosed
         EditGate.check(inGeofenceNow = true, qcCompleted = qcDone, memoIsLive = live, memoExists = memo != null, checkedIn = day.capture.attendanceRefusal(date) == null)?.let { return it }
         // the route-day of the memo must still be open for the save: an edit is never let in and then refused at the save (D-AGATE-09)
         if (editRefusal(memoUuid) != null) return EditDenied.DayClosed

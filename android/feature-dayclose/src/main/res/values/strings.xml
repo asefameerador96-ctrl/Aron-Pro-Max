@@ -60,7 +60,7 @@
     <string name="submit_server_more">Server has %1$s more %2$s from other phones or earlier installs of this login today.</string>
     <string name="submit_rejected_title">Not accepted as sent (%1$s)</string>
     <string name="submit_rejected_flagged">Stored on the server and flagged for review. Submit is not blocked.</string>
-    <string name="submit_rejected_dropped">NOT on the server. This sale or collection is not in the company\'s records. Tell your TSO or AMO now, and if it was a sale, do it again from the Memo screen. Submit is not blocked.</string>
+    <string name="submit_rejected_dropped">NOT on the server. This refused record is not in the company\'s records (if the rest of the sale is held for review, only the refused part is missing). Tell your TSO or AMO now, and if it was a sale, do it again from the Memo screen. Submit is not blocked.</string>
     <string name="submit_rejected_retry">Will be sent again. Sync before Submit.</string>
     <string name="submit_no_records">No records on this phone today</string>
     <string name="submit_type_memo_line">Sale line</string>

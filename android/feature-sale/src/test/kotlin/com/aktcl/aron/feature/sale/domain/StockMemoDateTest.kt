@@ -134,4 +134,13 @@ class StockMemoDateTest {
         assertTrue(flow.state.value.refusal.isEmpty())
     }
 
+
+    /** Review low: a clock set BACK after the edit draft opened must not save the edit under an earlier day superseding a memo of another date: it is refused and nothing is written. */
+    @Test fun anEditWhoseDateTheClockCannotCarryIsRefusedNotSavedUnderAnotherDay() = runTest {
+        val first = committer.commit(SaleDraftOps.setQuantity(Fx.draft(visitUuid), sku.skuId, 60, QtyUnit.STICK), catalog)
+        clockDate = "2026-10-04" // the trusted clock regressed a day: the memo's d1 is now in the future
+        val edit = SaleDraftOps.setQuantity(Fx.draft(visitUuid), sku.skuId, 10, QtyUnit.STICK).copy(edit = EditContext(first.memoUuid, "wrong_quantity"))
+        assertThrows(IllegalStateException::class.java) { runBlocking { committer.commit(edit, catalog, fix(edit.memoUuid)) } }
+        assertEquals("nothing was written", 1, memoCount())
+    }
 }

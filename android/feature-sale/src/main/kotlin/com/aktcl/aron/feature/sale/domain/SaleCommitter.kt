@@ -29,7 +29,8 @@ fun interface CaptureMetaSource {
          * D-LEAD-PREREQ-03 ruling 2 (round-2 review, edit across midnight): a record of a call or of a memo edit carries the business date of the
          * VISIT or MEMO it belongs to, never the clock's date, so the check-in check, the stock given back, the stock check and the saved record read ONE
          * date. [clock] gives the envelope of "now" (its date is the clock's). A date that is not a calendar date, or is AFTER the clock's, falls back
-         * to the clock's: a record is never dated in the future. The server accepts a D-dated record captured on D+1 (IngestService step 3 judges
+         * to the clock's: a record is never dated in the future (the committer then refuses an EDIT whose date the clock cannot carry, so a clock set back never saves an edit under another day).
+         * SERVER, for a D-dated record captured on D+1: accepted and counted in D under accept_and_flag (the default); counted late (`late_rows_after_sales_submit` / `late_rows_after_final`) after a stored D submit or Final Submit; under quarantine HELD `after_final_submit` (captured before the lock, no clock offset, or the midnight job closed after the visit opened) or else refused `day_final_submitted` (final); under reject refused (final). An offline phone cannot know of the 00:00 job close, so under reject a straddling sale may print and then read "NOT on the server". The server accepts a D-dated record captured on D+1 (IngestService step 3 judges
          * `business_date` only against the backdate floor and "after today", and `captured_at` only against "more than 10 minutes ahead").
          */
         fun dated(clock: (Long?) -> CaptureMeta) = CaptureMetaSource { date, routeId ->
@@ -90,6 +91,8 @@ class SaleCommitter(
         // Everything that can fail is checked BEFORE a memo number is taken.
         draft.edit?.let { checkEdit(draft, it, editFix) } ?: require(editFix == null) { "a fix is only for an edit" }
         val meta = metaSource.meta(draft.businessDate, draft.routeId)
+        // an edit carries its memo's date or it is not saved: a clock set BACK after the draft opened would date it a day earlier and supersede a memo of another date
+        if (draft.edit != null) check(meta.businessDate == draft.businessDate) { "the edit's date ${draft.businessDate} is not the record's date ${meta.businessDate}: the phone clock moved back" }
         val memoNo = if (numbering == null) numbers.next(draft.businessDate, draft.memoUuid) else ""
         val t = review.totals
         val s = review.settlement

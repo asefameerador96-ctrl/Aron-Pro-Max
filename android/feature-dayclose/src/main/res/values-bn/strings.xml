@@ -59,7 +59,7 @@
     <string name="submit_server_more">সার্ভারে আজ এই লগইনের অন্য ফোন বা আগের ইনস্টল থেকে আরও %1$s টি %2$s আছে।</string>
     <string name="submit_rejected_title">যেভাবে পাঠানো হয়েছে সেভাবে গ্রহণ হয়নি (%1$s)</string>
     <string name="submit_rejected_flagged">সার্ভারে সংরক্ষিত, পর্যালোচনার জন্য চিহ্নিত। সাবমিট আটকাবে না।</string>
-    <string name="submit_rejected_dropped">সার্ভারে নেই। এই বিক্রি বা আদায় কোম্পানির রেকর্ডে নেই। এখনই আপনার টিএসও বা এএমও-কে জানান, আর এটি বিক্রি হলে মেমো স্ক্রিন থেকে আবার করুন। জমা দিতে বাধা নেই।</string>
+    <string name="submit_rejected_dropped">সার্ভারে নেই। এই প্রত্যাখ্যাত রেকর্ড কোম্পানির রেকর্ডে নেই (বিক্রির বাকি অংশ পর্যালোচনার জন্য ধরা থাকলে শুধু প্রত্যাখ্যাত অংশটুকু নেই)। এখনই আপনার টিএসও বা এএমও-কে জানান, আর এটি বিক্রি হলে মেমো স্ক্রিন থেকে আবার করুন। জমা দিতে বাধা নেই।</string>
     <string name="submit_rejected_retry">আবার পাঠানো হবে। সাবমিটের আগে সিঙ্ক করুন।</string>
     <string name="submit_no_records">আজ এই ফোনে কোনো রেকর্ড নেই</string>
     <string name="submit_type_memo_line">বিক্রির লাইন</string>
