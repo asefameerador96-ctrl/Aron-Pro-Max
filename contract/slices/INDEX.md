@@ -67,7 +67,7 @@ Source: contract/openapi.yaml, version 1.22.0.
 - `schemas/PrintOutcome.yaml` (76 B)
 - `schemas/StockMovementKind.yaml` (114 B)
 - `schemas/AttendanceKind.yaml` (66 B)
-- `schemas/AttendanceClosedBy.yaml` (452 B)
+- `schemas/AttendanceClosedBy.yaml` (521 B)
 - `schemas/MediaPurpose.yaml` (162 B)
 - `schemas/SyncTrigger.yaml` (211 B)
 - `schemas/RiskSignalCode.yaml` (864 B)

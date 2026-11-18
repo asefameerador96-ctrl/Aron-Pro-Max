@@ -15,7 +15,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Round 1.20.0 (D-SV2-15; ruling 6 of D-LEAD-PREREQ-03; `docs/requests/android-gates.md` section 4): the attendance check-out carries who closed it.
+ * Train 117 (contract 1.19.0) (D-SV2-15; ruling 6 of D-LEAD-PREREQ-03; `docs/requests/android-gates.md` section 4): the attendance check-out carries who closed it.
  * (a) a phone close three days late is stored and acknowledged but is "no check-out" (no too-early flag, no signal); (b) a check-out of a day with no
  * route captures raises no CHECKOUT_WITHOUT_SUBMIT; (c) a check-out with captures and no submit raises it, a later accepted day_submit is stored, and the worker rule
  * (RiskSignalEvaluator.withdrawCheckoutWithoutSubmit, tested in the masterdata module under worker_rw) withdraws it; old phones (member absent) behave as before.
@@ -114,6 +114,12 @@ class CheckoutClosedByTest : NightSyncHarness() {
         val none = "2026-11-20"
         for (type in listOf("attendance_event", "day_open", "day_submit", "geo_breadcrumb", "device_status", "activity_log", "feedback")) seedCapture(none, type)
         assertEquals(false, has(none), "state records and telemetry are not captures")
+        // A web paper backfill (registry flag manual_entry) is no route capture: the paper backfill stays exempt.
+        val paper = "2026-11-22"
+        seedCapture(paper, "memo", manual = true)
+        assertEquals(false, has(paper), "a paper backfill is not a route capture")
+        seedCapture(paper, "visit")
+        assertEquals(true, has(paper), "a real capture of the same day still is")
         // A rejected or parked capture still shows the rep captured that day.
         val held = "2026-11-21"
         seedCapture(held)
@@ -141,14 +147,52 @@ class CheckoutClosedByTest : NightSyncHarness() {
 
     @Test
     @Order(5)
-    fun aBadClosedByValueOrOneOnACheckInIsRefusedFinal() = testApplication {
+    fun aBadClosedByValueOrOneOnACheckInIsRefusedFinalWithANamedReason() = testApplication {
         application { aronApi(wiring) }
         val t = client.token("sr1001", phone)
         val d = "2026-12-28"
+        fun reason(r: JsonObject) = fresh.db.jdbi.withHandle<String?, Exception> { h -> h.createQuery("SELECT detail FROM app.sync_rejected WHERE client_uuid = CAST('${cu(r)}' AS uuid)").mapTo(String::class.java).findOne().orElse(null) }
+        fun with(r: JsonObject, v: kotlinx.serialization.json.JsonElement) = JsonObject(r + ("payload" to JsonObject(r["payload"]!!.jsonObject + ("closed_by" to v))))
         val badValue = checkOut(d, "2026-12-28T12:00:00Z", "server")
         assertEquals(listOf("rejected:schema_invalid"), client.send(t, phone, listOf(badValue)))
-        val checkIn = attendance("check_in", d).let { r -> JsonObject(r + ("payload" to JsonObject(r["payload"]!!.jsonObject + ("closed_by" to JsonPrimitive("phone"))))) }
+        assertTrue(reason(badValue)!!.contains("closed_by must be rep or phone, got 'server'"), reason(badValue))
+        val checkIn = with(attendance("check_in", d), JsonPrimitive("phone"))
         assertEquals(listOf("rejected:schema_invalid"), client.send(t, phone, listOf(checkIn)), "only a check-out can be closed by the phone")
-        assertEquals(0, count("SELECT count(*) FROM app.attendance_event WHERE client_uuid IN (CAST('${cu(badValue)}' AS uuid), CAST('${cu(checkIn)}' AS uuid))"))
+        assertTrue(reason(checkIn)!!.contains("closed_by phone is only for a check_out"), reason(checkIn))
+        val asNull = with(attendance("check_out", "2026-12-27"), JsonNull)
+        assertEquals(listOf("rejected:schema_invalid"), client.send(t, phone, listOf(asNull)))
+        assertTrue(reason(asNull)!!.contains("closed_by must be the text rep or phone"), reason(asNull))
+        val asNumber = with(attendance("check_out", "2026-12-27"), JsonPrimitive(1))
+        assertEquals(listOf("rejected:schema_invalid"), client.send(t, phone, listOf(asNumber)))
+        assertTrue(reason(asNumber)!!.contains("closed_by must be the text rep or phone"), reason(asNumber))
+        assertEquals(0, count("SELECT count(*) FROM app.attendance_event WHERE client_uuid IN (CAST('${cu(badValue)}' AS uuid), CAST('${cu(checkIn)}' AS uuid), CAST('${cu(asNull)}' AS uuid), CAST('${cu(asNumber)}' AS uuid))"))
+    }
+
+    @Test
+    @Order(7)
+    fun theClosedByCheckComesAfterTheRegistryAndTheWindowSoTheirOutcomesStay() = testApplication {
+        application { aronApi(wiring) }
+        val t = client.token("sr1001", phone)
+        fun reason(r: JsonObject) = fresh.db.jdbi.withHandle<String?, Exception> { h -> h.createQuery("SELECT detail FROM app.sync_rejected WHERE client_uuid = CAST('${cu(r)}' AS uuid)").mapTo(String::class.java).findOne().orElse(null) }
+        fun with(r: JsonObject, v: kotlinx.serialization.json.JsonElement) = JsonObject(r + ("payload" to JsonObject(r["payload"]!!.jsonObject + ("closed_by" to v))))
+        // (a) The same client_uuid with another payload stays `payload_conflict` (quarantined, nothing stored for the second copy), even when the second copy also has a bad closed_by.
+        val d = "2026-12-27"
+        val first = checkOut(d, "2026-12-27T12:00:00Z", "rep")
+        assertEquals(listOf("accepted:-"), client.send(t, phone, listOf(first)))
+        val conflicting = with(first, JsonPrimitive("server"))
+        assertEquals(listOf("quarantined:payload_conflict"), client.send(t, phone, listOf(conflicting)), "known uuid, different payload: the registry rule wins over the closed_by check")
+        assertEquals(null, reason(conflicting), "not a final reject: the first copy stands and no schema_invalid row exists")
+        assertEquals("rep", closedBy(first))
+        // (b) A record outside the business-date window stays `business_date_out_of_window` (quarantined, reviewable), never a schema error, even with a bad closed_by.
+        val old = with(checkOut("2026-10-01", "2026-10-01T12:00:00Z", "rep"), JsonPrimitive("server"))
+        assertEquals(listOf("quarantined:business_date_out_of_window"), client.send(t, phone, listOf(old)), "out of window: the window rule wins over the closed_by check")
+        assertEquals(null, reason(old))
+        val future = with(checkOut("2027-02-01", "2027-02-01T12:00:00Z", "rep"), JsonPrimitive("server"))
+        assertEquals(listOf("quarantined:business_date_out_of_window"), client.send(t, phone, listOf(future)))
+        // (c) A fresh in-window record with a bad closed_by is still a final reject with its named reason (test 5), and a resend of it is the same final outcome.
+        val bad = checkOut("2026-12-29", "2026-12-29T13:07:00Z", "server")
+        assertEquals(listOf("rejected:schema_invalid"), client.send(t, phone, listOf(bad)))
+        assertEquals(listOf("rejected:schema_invalid"), client.send(t, phone, listOf(bad)), "the resend repeats the stored final outcome")
+        assertTrue(reason(bad)!!.contains("closed_by must be rep or phone, got 'server'"), reason(bad))
     }
 }
