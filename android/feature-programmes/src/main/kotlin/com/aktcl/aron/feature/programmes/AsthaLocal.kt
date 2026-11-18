@@ -11,6 +11,8 @@ data class LocalMemo(
     val voidOf: String? = null,
     /** Acknowledged through a RESOLUTION of a held memo (`last_code` resolved_*), not through an upload ack: the server may have committed it any time before the phone heard. */
     val viaResolution: Boolean = false,
+    /** The printed memo number (sent in the figures probe so the server can match a paper twin). */
+    val memoNo: String? = null,
 )
 
 /**

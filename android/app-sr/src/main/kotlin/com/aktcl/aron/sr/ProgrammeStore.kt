@@ -171,7 +171,7 @@ class ProgrammeStore(
             LocalMemo(
                 m.clientUuid, m.outletId, m.meta.businessDate, m.supersedesClientUuid, state, ob?.ackedAt,
                 db.captureDao().linesOf(m.clientUuid).map { LocalMemoLine(it.skuId, it.lineKind, it.qtyBase, it.packFactor, it.grossMtk) },
-                m.meta.routeId, m.memoKind, null, ob?.state == "acked" && ob.lastCode?.startsWith("resolved_") == true,
+                m.meta.routeId, m.memoKind, null, ob?.state == "acked" && ob.lastCode?.startsWith("resolved_") == true, m.memoNo,
             )
         }
     }

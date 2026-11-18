@@ -114,7 +114,7 @@ class FigureRuleBTest {
         val noMonth = FigureRuleB.show(server, local, emptySet(), null, "2026-11-04")!!
         assertEquals(100L, noMonth.qtyBase); assertEquals(4L, noMonth.memoCount); assertFalse(noMonth.localApplied); assertEquals("2026-11-04T10:00:00Z", noMonth.asOf)
         val noOrder = FigureRuleB.show(server, local, null, month, "2026-11-04")!!
-        assertEquals(110L, noOrder.qtyBase); assertEquals(5L, noOrder.memoCount) // the never-sent memo is certainly not in the figure; the acknowledged one may be, so it is not added
+        assertEquals(117L, noOrder.qtyBase); assertEquals(6L, noOrder.memoCount) // old-phone fallback: the never-sent memo AND the memo dated after through_date (the figure is cut there) are added
         assertNull(FigureRuleB.show(null, local, emptySet(), month, null))
     }
 

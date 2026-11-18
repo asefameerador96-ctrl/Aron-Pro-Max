@@ -58,7 +58,8 @@ object FigureRuleB {
         live.forEach { k -> k.supersedes?.let { killer.putIfAbsent(it, k.uuid) }; k.voidOf?.let { killer.putIfAbsent(it, k.uuid) } }
         val dead = killer.keys
         if (ackedBeforeRequest == null) {
-            return Delta(live.filter { it.voidOf == null && it.supersedes == null && inMonth(it) && it.uuid !in dead && it.state in NEVER_SENT }, emptyList())
+            // the old-phone fallback of the identity rule: never-sent pending memos, and memos dated after through_date (the figure is cut there)
+            return Delta(live.filter { it.voidOf == null && it.supersedes == null && inMonth(it) && it.uuid !in dead && (it.state in NEVER_SENT || cutAfter(it)) }, emptyList())
         }
         // a memo acknowledged through a RESOLUTION that reached the phone after the request is awaiting until the next bundle: the server may already have held it (never added)
         val add = live.filter { it.voidOf == null && inMonth(it) && it.uuid !in dead && !(it.viaResolution && it.state == "acked" && it.uuid !in ackedBeforeRequest) && (it.uuid !in ackedBeforeRequest || cutAfter(it)) }

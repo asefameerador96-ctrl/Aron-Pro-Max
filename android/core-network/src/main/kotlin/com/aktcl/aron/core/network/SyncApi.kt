@@ -4,6 +4,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromStream
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /** `GET /v1/sync/bundle` and its pages, and `HEAD /v1/health` (docs/24 s4.7 T3, s4.10). */
 @OptIn(ExperimentalSerializationApi::class)
@@ -81,6 +82,21 @@ class SyncApi(private val client: AronApiClient) {
                 url(b.build())
                 get()
             },
+            decode = { body, _ -> body },
+        )
+    }
+
+    /**
+     * `POST /v1/sync/figures` (contract postSyncFigures, D-TKPI-14): the SR programme figures and the server's identity answer for the phone's memo probe, read in one snapshot. [bodyJson] is the
+     * request (`probe`, optional `for` and `include_astha`, built by the programmes feature); the raw answer is returned. Read-only and idempotent: a retry is safe. A server that does not have the
+     * endpoint answers 404 or 405 (a failure here, which the caller reads as "no figures answer": the bundle's figures stay in use).
+     */
+    suspend fun figures(bodyJson: String): ApiResult<String> {
+        val path = "/v1/sync/figures"
+        return client.call(
+            path = path,
+            auth = CallAuth.Grant(Grant.FULL),
+            build = { url(client.origin.path(path)); post(bodyJson.toRequestBody(JSON_MEDIA)) },
             decode = { body, _ -> body },
         )
     }
