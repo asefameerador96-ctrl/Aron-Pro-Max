@@ -23,6 +23,7 @@ import com.aktcl.aron.feature.programmes.AsthaTargetScreen
 import com.aktcl.aron.feature.programmes.LoyaltyMenuScreen
 import com.aktcl.aron.feature.programmes.LoyaltyModel
 import com.aktcl.aron.feature.programmes.OutletPointsScreen
+import com.aktcl.aron.feature.programmes.RedemptionScreen
 import com.aktcl.aron.feature.programmes.ShopInfo
 import com.aktcl.aron.feature.programmes.ShopOutlet
 import com.aktcl.aron.feature.home.R as HomeR
@@ -106,4 +107,23 @@ class SrProgrammesScreenshotTests {
     @Test fun outlet_points_en_sunlight() = shot("outlet_points_en_sunlight", AppLanguage.EN, sunlight = true) { Frame(ProgR.string.pg_loyalty_points) { OutletPointsScreen(pointOutlets, loyalty, UiLocale.EN, initialOutlet = 10) } }
     @Test fun outlet_points_bn_font20() = shot("outlet_points_bn_font20", fontScale = 2.0f) { Frame(ProgR.string.pg_loyalty_points) { OutletPointsScreen(pointOutlets, loyalty, UiLocale.BN, onRedeem = {}, initialOutlet = 10) } }
     @Test fun outlet_points_bn_empty() = shot("outlet_points_bn_empty") { Frame(ProgR.string.pg_loyalty_points) { OutletPointsScreen(pointOutlets, null, UiLocale.BN) } }
+
+    // Gift redemption (manual 53 right): balance 220, gifts with a cost; an overdrawn basket is flagged, not blocked
+    private val redeemJson = """{"programmes":[{"programme_id":3,"kind":"diamond_league","name_en":"Diamond League","period_label":"2026-04"}],
+      "loyalty":[{"outlet_id":10,"programme_id":3,"league_label":"Diamond League (April)","balance_points":220,"overdrawn":false,"expiring_points":0,"expiry_date":null,"as_of_date":"2026-04-17"}],
+      "gifts":[{"gift_id":1,"programme_id":3,"name_en":"2 Step Kitchen Rack","name_bn":"২ স্টেপ কিচেন র‍্যাক।","points_cost":200,"status":"active"},
+               {"gift_id":2,"programme_id":3,"name_en":"Chair","name_bn":"চেয়ার।","points_cost":200,"status":"active"},
+               {"gift_id":3,"programme_id":3,"name_en":"Tornado Fan","name_bn":"টর্নেডো ফ্যান।","points_cost":400,"status":"active"}]}"""
+    private val redeemOutlets = listOf(ShopOutlet(10, "Bipu Store (6909084-01779223366-Apsis Cluster)", "6909084", "A", null, null, chip = "B", routeId = 7))
+    private val redeem get() = LoyaltyModel.parse(redeemJson)
+
+    @Composable private fun Redeem(qty: Map<Long, Int> = emptyMap(), locale: UiLocale = UiLocale.BN, data: com.aktcl.aron.feature.programmes.LoyaltyData? = redeem) =
+        Frame(ProgR.string.pg_loyalty_redeem) { RedemptionScreen(redeemOutlets, data, locale, { _, _, b -> b }, { _, _ -> true }, initialOutlet = 10, initialQty = qty) }
+
+    @Test fun redemption_bn() = shot("redemption_bn") { Redeem() }
+    @Test fun redemption_bn_basket() = shot("redemption_bn_basket") { Redeem(mapOf(1L to 1)) }
+    @Test fun redemption_bn_overdrawn() = shot("redemption_bn_overdrawn") { Redeem(mapOf(3L to 1)) }
+    @Test fun redemption_en_sunlight() = shot("redemption_en_sunlight", AppLanguage.EN, sunlight = true) { Redeem(mapOf(1L to 1), UiLocale.EN) }
+    @Test fun redemption_bn_font20() = shot("redemption_bn_font20", fontScale = 2.0f) { Redeem(mapOf(1L to 1)) }
+    @Test fun redemption_bn_empty() = shot("redemption_bn_empty") { Redeem(data = null) }
 }

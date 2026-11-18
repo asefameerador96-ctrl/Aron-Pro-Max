@@ -46,6 +46,17 @@
     <string name="pg_loyalty_expiring">মেয়াদ শেষ হচ্ছে এমন পয়েন্ট:</string>
     <string name="pg_loyalty_expiry">মেয়াদ শেষের তারিখ:</string>
     <string name="pg_pts">পয়েন্ট</string>
+    <string name="pg_all">সব</string>
+    <string name="pg_remaining">%1$s বাকি</string>
+    <string name="pg_no_gifts">এই কর্মসূচিতে রিডিম করার মতো কোনো গিফট নেই।</string>
+    <string name="pg_confirm_redemption">রিডিম্পশন নিশ্চিত করুন</string>
+    <string name="pg_confirm_title">রিডিম্পশন নিশ্চিত করুন</string>
+    <string name="pg_confirm_text">এই আইটেমগুলোর রিডিম্পশন নিশ্চিত করবেন? পয়েন্ট কাটা হবে।</string>
+    <string name="pg_confirm_yes">নিশ্চিত করুন</string>
+    <string name="pg_confirm_no">বাতিল</string>
+    <string name="pg_redeem_saved">রিডিম্পশন এই ফোনে সংরক্ষিত হয়েছে। পরের সিঙ্কে যাবে।</string>
+    <string name="pg_redeem_failed">রিডিম্পশন সংরক্ষণ করা যায়নি। কিছু কাটা হয়নি। আবার চেষ্টা করুন।</string>
+    <string name="pg_ok">ওকে</string>
     <string-array name="pg_months_short">
         <item>Jan</item>
         <item>Feb</item>

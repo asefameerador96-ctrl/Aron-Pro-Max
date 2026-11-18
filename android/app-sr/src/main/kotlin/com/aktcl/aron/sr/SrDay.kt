@@ -355,6 +355,9 @@ class SrDay(
         )
     }
 
+    /** The SR programme records (Astha, Loyalty): reads of what the phone holds and the one write path (lane android-sr-programmes). */
+    val programmes by lazy { ProgrammeStore(db, capture, metaProvider) { requestSync() } }
+
     /** Fix reuse (D-74) is limited to the visit cycle of the day; attendance and requests always take their own fix. */
     val fixSource = FixManagerSource(fixManager) { purpose -> if (purpose == "visit_open") "outlets-" + businessDate() else null }
 
