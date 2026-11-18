@@ -48,6 +48,13 @@ import org.junit.Assert.assertTrue
 import java.io.File
 
 /**
+ * D-AGATE-30: the pinned start of every lock fixture: 05:00 Dhaka (2026-10-05T23:00:00Z) of 2026-10-06. EARLY in the day on purpose: the trusted clock adopts a far jump only when it is
+ * closer to the phone's wall clock (which is after this date) than its estimate, so tests that move the clock FORWARD (10:00, 17:00, the next day) work and a start later than the times a
+ * test anchors would make the clock refuse to go back. Never the real clock.
+ */
+internal const val FIXTURE_NOON_MS = 1791241200000L
+
+/**
  * tso-manual X4a (fix round, checker medium "wiring"): a real [SrDay], and so the real [SrSaleKit] with the wiring the
  * screens use, on an in-memory database. Nothing reaches the network: the session's API origin is never called, the
  * location source answers at the outlet (counted, and [duringFix] runs while the fix is read, so a test can land the lock
@@ -64,6 +71,8 @@ internal class SrLockFixture(
     printerTransports: com.aktcl.aron.core.printing.bt.PrinterTransportFactory? = null,
     /** The production start has run (resumeDay's first result is in, so Attendance is usable); false keeps the day in its first-moment state (D-AGATE-18). */
     private val settled: Boolean = true,
+    /** D-AGATE-30: the fixture's clock (trusted time) at construction; default a PINNED instant, 05:00 Dhaka of 2026-10-06, never the real clock, so no test takes its business date from the wall clock. */
+    clockMs: Long = FIXTURE_NOON_MS,
 ) : AutoCloseable {
     val work = TestWork()
     val db: AronDatabase = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries()
@@ -97,7 +106,7 @@ internal class SrLockFixture(
                 fixReads++
                 duringFix()
                 return SourceResult.Located(
-                    RawLocation(LAT, LNG, 8.0, provider = "fused", timeMs = System.currentTimeMillis(), elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(), isMock = false),
+                    RawLocation(LAT, LNG, 8.0, provider = "fused", timeMs = components.trustedClock.nowMs(), elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(), isMock = false),
                 )
             }
         },
@@ -153,7 +162,7 @@ internal class SrLockFixture(
         day.refreshDayGate()
     }
 
-    init { setLatePolicy(latePolicy); checkIn() }
+    init { trustAt(clockMs); setLatePolicy(latePolicy); checkIn() }
 
     fun meta(routeId: Long = route): CaptureMeta = day.metaProvider.meta(routeId)
 

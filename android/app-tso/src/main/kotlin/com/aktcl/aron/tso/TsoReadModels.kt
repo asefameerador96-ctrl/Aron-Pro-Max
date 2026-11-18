@@ -203,6 +203,7 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
     /** F-TSO-018: outbox row (record type feedback, family self, rank 0) plus the mirror row, one transaction. */
     fun feedbackQueue(userId: Long, media: (suspend () -> com.aktcl.aron.core.media.MediaComponents?)? = null): com.aktcl.aron.feature.tso.feedback.FeedbackQueue = com.aktcl.aron.feature.tso.feedback.FeedbackQueue { uuid, createdAt, p ->
         val box = checkNotNull(outbox) { "no outbox" }
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate FIRST (D-AGATE-31): before the photo claim (the outbox entry gates again)
         // F-SYS-030: the photo is claimed for its record BEFORE the record is committed, so the media worker uploads it; a failure here fails the save (retry-safe: same uuid)
         p.photoUuid?.let { photo -> checkNotNull(media?.invoke()) { "no media queue" }.attach(photo, com.aktcl.aron.core.media.MediaRef("feedback", "feedback", uuid), null) }
         val item = com.aktcl.aron.feature.tso.feedback.FeedbackItem(uuid, p.categoryCode, p.title, p.description, createdAt, com.aktcl.aron.feature.tso.feedback.FeedbackStatus.NEW, sent = false, hasPhoto = p.photoUuid != null)
