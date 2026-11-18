@@ -202,6 +202,16 @@ class BundleDownloaderTest {
         assertEquals(setOf(before), ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE)))
     }
 
+    @Test fun redemptionsVoidsAndProgrammeRecordsAcknowledgedBeforeTheRequestAreInTheOrderToo() = runBlocking {
+        val ids = (1..4).map { com.aktcl.aron.core.common.ClientIds.newUuid() }
+        val types = listOf("redemption", "memo_void", "amo_record", "visit")
+        db.outboxDao().insert(ids.zip(types).map { (u, t) -> com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = u, recordType = t, familyUuid = u, rank = 0, businessDate = "2026-10-03", payloadJson = "{}", payloadSha256 = "x", state = "pending", createdAt = "t") })
+        ids.forEach { db.outboxDao().applyAck(it, "acked", null, 7L, SyncEngine.iso(Clock.now)) }
+        downloader().download()
+        val set = ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE))!!
+        assertEquals(ids.take(3).toSet(), set) // a visit is not read by any figure rule
+    }
+
     @Test fun nothingAcknowledgedYetIsAnEmptySetNotAnUnknownOrder() = runBlocking {
         downloader().download()
         assertEquals(emptySet<String>(), ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE)))

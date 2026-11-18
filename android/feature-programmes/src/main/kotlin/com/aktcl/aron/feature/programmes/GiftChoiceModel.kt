@@ -17,6 +17,7 @@ data class LocalGiftChoice(
     val outletId: Long, val quarter: String, val giftId: Long, val state: String, val ackedAt: String? = null,
     /** The server's reason text of a refusal (the bundle's `reason_texts` of the ack's message key or code), Bangla and English; null when it has none. */
     val reasonBn: String? = null, val reasonEn: String? = null,
+    val uuid: String = "",
 )
 
 /** Where an outlet's Astha gift stands for the quarter, as the screen shows it. */
@@ -45,10 +46,10 @@ data class GiftChoiceData(val gifts: List<LoyaltyGift>, val assignments: List<Gi
 
     /**
      * The latest local choice wins until the server answers: still on the phone is "not sent yet", a refusal is shown with the server's reason, an
-     * acknowledged one is "sent" while the held bundle ([bundleRequestedAt]) was requested before the ack, and once the bundle was requested after the ack the
+     * acknowledged one is "sent" until the held bundle was requested AFTER its acknowledgement ([ackedBeforeRequest] holds its uuid: the phone's own order, no clock), and then the
      * bundle's value wins (a TSO's later change shows). A locked assignment always wins.
      */
-    fun stateOf(outletId: Long, quarter: String, local: List<LocalGiftChoice>, bundleRequestedAt: String? = null): GiftState {
+    fun stateOf(outletId: Long, quarter: String, local: List<LocalGiftChoice>, ackedBeforeRequest: Set<String>? = null): GiftState {
         val a = assignment(outletId, quarter)
         if (a != null && a.locked) return GiftState.Locked(a.giftId)
         val mine = local.lastOrNull { it.outletId == outletId && it.quarter == quarter }
@@ -56,8 +57,8 @@ data class GiftChoiceData(val gifts: List<LoyaltyGift>, val assignments: List<Gi
             when (mine.state) {
                 "rejected" -> return GiftState.OnThisPhone(mine.giftId, refused = true, mine.reasonBn, mine.reasonEn)
                 "acked" -> {
-                    val ack = DhakaTime.ms(mine.ackedAt); val req = DhakaTime.ms(bundleRequestedAt)
-                    val bundleHasIt = a != null && ack != null && req != null && ack <= req
+                    // by the phone's own order: the choice was acknowledged before the request for the held bundle left, so the bundle holds it
+                    val bundleHasIt = a != null && ackedBeforeRequest != null && mine.uuid in ackedBeforeRequest
                     if (!bundleHasIt) return GiftState.Sent(mine.giftId)
                 }
                 else -> return GiftState.OnThisPhone(mine.giftId, refused = false)

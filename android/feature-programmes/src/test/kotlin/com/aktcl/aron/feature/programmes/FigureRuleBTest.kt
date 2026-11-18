@@ -108,12 +108,13 @@ class FigureRuleBTest {
 
     // ---- absence and guards ----
 
-    @Test fun withoutARecordedOrderOrAMonthTheServerFigureIsShownAsItIsWithItsAsOf() {
+    @Test fun withoutAMonthTheServerFigureIsShownAsItIsWithItsAsOfAndWithoutAnOrderOnlyNeverSentMemosAreAdded() {
         val server = FigureRuleB.ServerFigure(100, 4, 9000, mapOf(20 to 100L), "2026-11-04T10:00:00Z")
-        val local = listOf(memoOf(Rec("m1", "2026-11-05", 10), "pending"))
-        for (shown in listOf(FigureRuleB.show(server, local, null, month, "2026-11-04")!!, FigureRuleB.show(server, local, emptySet(), null, "2026-11-04")!!)) {
-            assertEquals(100L, shown.qtyBase); assertEquals(4L, shown.memoCount); assertFalse(shown.localApplied); assertEquals("2026-11-04T10:00:00Z", shown.asOf)
-        }
+        val local = listOf(memoOf(Rec("m1", "2026-11-05", 10), "pending"), memoOf(Rec("m2", "2026-11-05", 7), "acked"))
+        val noMonth = FigureRuleB.show(server, local, emptySet(), null, "2026-11-04")!!
+        assertEquals(100L, noMonth.qtyBase); assertEquals(4L, noMonth.memoCount); assertFalse(noMonth.localApplied); assertEquals("2026-11-04T10:00:00Z", noMonth.asOf)
+        val noOrder = FigureRuleB.show(server, local, null, month, "2026-11-04")!!
+        assertEquals(110L, noOrder.qtyBase); assertEquals(5L, noOrder.memoCount) // the never-sent memo is certainly not in the figure; the acknowledged one may be, so it is not added
         assertNull(FigureRuleB.show(null, local, emptySet(), month, null))
     }
 

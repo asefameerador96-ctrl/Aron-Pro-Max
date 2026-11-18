@@ -45,7 +45,7 @@ class ProgrammeStore(
             val ob = db.outboxDao().byClientUuid(r.clientUuid)
             val state = readState(r.clientUuid in unsure, ob?.state, ob?.ackedAt, restoredIsAcked = false)
             LocalRedemption(n("outlet_id") ?: return@mapNotNull null, n("programme_id") ?: return@mapNotNull null, n("points_total") ?: return@mapNotNull null,
-                (o["confirmed_at"] as? JsonPrimitive)?.content ?: return@mapNotNull null, state, ob?.ackedAt)
+                (o["confirmed_at"] as? JsonPrimitive)?.content ?: return@mapNotNull null, state, ob?.ackedAt, r.clientUuid)
         }
     }
 
@@ -60,7 +60,7 @@ class ProgrammeStore(
             LocalGiftChoice(
                 (o["outlet_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return@mapNotNull null, (o["quarter"] as? JsonPrimitive)?.content ?: return@mapNotNull null,
                 (o["gift_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return@mapNotNull null, ob?.state ?: "pending", ob?.ackedAt,
-                if (ob?.state == "rejected") text(code, "bn") else null, if (ob?.state == "rejected") text(code, "en") else null,
+                if (ob?.state == "rejected") text(code, "bn") else null, if (ob?.state == "rejected") text(code, "en") else null, r.clientUuid,
             )
         }
     }
@@ -72,7 +72,7 @@ class ProgrammeStore(
             fun t(k: String) = (o[k] as? JsonPrimitive)?.content
             LocalGiftPhoto(
                 t("programme_kind") ?: return@mapNotNull null, t("outlet_id")?.toLongOrNull() ?: return@mapNotNull null, t("gift_assignment_id")?.toLongOrNull(),
-                t("redemption_client_uuid"), t("unit_no")?.toIntOrNull(), db.outboxDao().byClientUuid(r.clientUuid)?.state ?: "pending", t("gift_id")?.toLongOrNull() ?: 0L,
+                t("redemption_client_uuid"), t("unit_no")?.toIntOrNull(), photoState(db.outboxDao().byClientUuid(r.clientUuid)), t("gift_id")?.toLongOrNull() ?: 0L,
             )
         }
     }
@@ -150,7 +150,7 @@ class ProgrammeStore(
         while (true) {
             val uuid = uuidOf(n)
             if (db.captureDao().amoRecordsOfFamily(uuid).isEmpty()) return@withContext PhotoAttempt(uuid, n, false)
-            if (db.outboxDao().byClientUuid(uuid)?.state != "rejected") return@withContext PhotoAttempt(uuid, n, true)
+            if (!isDefiniteRefusal(db.outboxDao().byClientUuid(uuid))) return@withContext PhotoAttempt(uuid, n, true) // waiting, sent, acknowledged, or rejected only by this phone's own retry limit: THE photo, replayed under the same key
             if (++n >= MAX_PHOTO_ATTEMPTS) return@withContext PhotoAttempt(uuid, n - 1, true) // a subject refused this often is left alone: the screen says it is refused
         }
         @Suppress("UNREACHABLE_CODE") error("unreachable")
@@ -158,7 +158,9 @@ class ProgrammeStore(
 
     /** The memos of a Dhaka month (`YYYY-MM`) on this phone with their lines and outbox state, for the Astha achievement (the phone's own memos on top of the server figure). */
     suspend fun memosOfMonth(month: String): List<LocalMemo> = withContext(Dispatchers.IO) {
-        val unsure = uncertain()
+        val orderKnown = ackedBeforeRequest() != null
+        // with the recorded order, "sent and unanswered when the request left" is the list taken then; without it a row that was sent at any time and has no answer yet may be in the figure
+        val unsure = if (orderKnown) uncertain() else db.outboxDao().sentUnanswered().toSet()
         db.captureDao().memosBetween("$month-01", "$month-31").map { m ->
             val ob = db.outboxDao().byClientUuid(m.clientUuid)
             // A row put back to pending by a restore or digest resync keeps its first acknowledgement time: the server already held it once, so it counts as acknowledged
@@ -238,6 +240,20 @@ class ProgrammeStore(
          * back to `pending` by a restore or digest resync that keeps its first acknowledgement time ([restoredIsAcked], memos) reads as acknowledged then; else the outbox state, `pending` for no row.
          */
         const val MAX_PHOTO_ATTEMPTS = 8
+
+        /**
+         * A gift photo record is REFUSED only by a definite server answer: outbox state `rejected` with the server's own code. A row the phone itself gave up on (`retry_exhausted` after repeated failures,
+         * transport errors, a mismatched answer) may well be committed on the server, so it is NOT a refusal: it stays the photo of its subject and a retake is a replay of the same key, never a new attempt.
+         */
+        internal fun isDefiniteRefusal(row: com.aktcl.aron.core.database.entity.OutboxEntity?): Boolean =
+            row?.state == "rejected" && row.lastCode.let { it != null && it != "retry_exhausted" && it != "ack_mismatch" && !it.startsWith("transport_") }
+
+        /** The state of a gift photo record for the screens: `rejected` only for a definite refusal (the subject is open again); a locally exhausted row reads `uncertain` (still the subject's photo, awaiting). */
+        internal fun photoState(row: com.aktcl.aron.core.database.entity.OutboxEntity?): String = when {
+            row == null -> "pending"
+            row.state == "rejected" && !isDefiniteRefusal(row) -> "uncertain"
+            else -> row.state
+        }
 
         internal fun readState(sentUnanswered: Boolean, outboxState: String?, ackedAt: String?, restoredIsAcked: Boolean): String = when {
             sentUnanswered && outboxState != "rejected" -> "uncertain"

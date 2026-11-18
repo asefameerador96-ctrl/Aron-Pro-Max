@@ -60,7 +60,26 @@ internal suspend fun readAstha(day: SrDay): AsthaData? = withContext(Dispatchers
 internal data class AsthaLoad(
     val data: AsthaData?, val year: Int, val shops: List<ShopInfo>, val month: String?, val awaiting: Int = 0, val geography: com.aktcl.aron.feature.programmes.Geography? = null,
     val base: AsthaData? = null, val outlets: List<ShopOutlet> = emptyList(), val tiers: Map<Long, String> = emptyMap(), val routeIds: List<Long> = emptyList(),
+    /** `cfg.astha.quarter_start_month` of the bundle config; null when absent (never assumed). */
+    val startMonth: Int? = null,
+    /** Unacknowledged own memos by month, for the months that came from an online read. */
+    val monthAwaiting: Map<String, Int> = emptyMap(),
+    /** With no recorded order: acknowledged memos left out of the figures. */
+    val unknownOrder: Int = 0,
 )
+
+/** This phone's own memos of the months that came from an online read (not the bundle's month) that the read cannot hold: not acknowledged yet, by month. */
+internal suspend fun monthAwaitingOf(day: SrDay, data: AsthaData?): Map<String, Int> = withContext(Dispatchers.IO) {
+    data?.fetchedMonths?.keys?.take(24)?.associateWith { m ->
+        val ms = day.programmes.memosOfMonth(m)
+        ms.count { it.voidOf == null && it.memoKind == "sale" && it.state != "acked" && it.state != "rejected" } // pending, sent, held or unanswered: the read cannot hold them
+    }?.filterValues { it > 0 }.orEmpty()
+}
+
+/** The quarter start month of the bundle's config, or null when the config has none: never assumed to be January. */
+internal suspend fun astahStartMonth(day: SrDay): Int? = withContext(Dispatchers.IO) {
+    day.reference.config("cfg.astha.quarter_start_month", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toIntOrNull()?.takeIf { it in 1..12 }
+}
 
 internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = withContext(Dispatchers.IO) {
     val date = day.reference.businessDate()
@@ -68,6 +87,7 @@ internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = wi
     // (a different instant) makes the whole read run again, so new figures are never paired with the old cut-off.
     var data: AsthaData? = null
     var awaiting = 0
+    var unknownOrder = 0
     var attempts = 0
     while (true) {
         val before = day.programmes.bundleRequestedAt()
@@ -75,8 +95,9 @@ internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = wi
         // the server's Astha figures plus this phone's own memos that the server cannot hold yet (by memo UUID; recomputed on every read)
         val memos = date?.take(7)?.let { day.programmes.memosOfMonth(it) }.orEmpty()
         awaiting = AsthaLocal.awaiting(memos)
-        // by the phone's own order (the memos acknowledged before the request left), never by comparing times; without the recorded order the figure is the server's alone
+        // by the phone's own order (the memos acknowledged before the request left), never by comparing times; without the recorded order only memos that never left the phone are added
         val acked = day.programmes.ackedBeforeRequest()
+        unknownOrder = AsthaLocal.unknownOrder(memos, acked != null)
         data = server?.let { d -> if (date == null) d else AsthaLocal.apply(d, memos, acked, date.take(7)) }
         if (day.programmes.bundleRequestedAt() == before || ++attempts >= 3) break
     }
@@ -85,7 +106,7 @@ internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = wi
     // the months read online earlier, from the phone's own files: they are there with no network and after a kill and relaunch
     val merged = data?.let { AsthaFetched.merge(it, day.asthaMonths.readAll(routeIds)) }
     val tiers = ShopModel.tiers(day.reference.section("programmes"))
-    AsthaLoad(merged, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, merged, tiers), date?.take(7), awaiting, com.aktcl.aron.feature.programmes.Geography.parse(day.reference.section("user")), data, outlets, tiers, routeIds)
+    AsthaLoad(merged, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, merged, tiers), date?.take(7), awaiting, com.aktcl.aron.feature.programmes.Geography.parse(day.reference.section("user")), data, outlets, tiers, routeIds, astahStartMonth(day), monthAwaitingOf(day, merged), unknownOrder)
 }
 
 /** The Astha target page of the SR (manual 48 right to 51): the downloaded data and the months kept from earlier online reads; a quarter with months the phone lacks is read online once, when a connection exists. */
@@ -98,18 +119,18 @@ fun AsthaHost(day: SrDay, locale: UiLocale) {
         var states by androidx.compose.runtime.remember(page) { androidx.compose.runtime.mutableStateOf(emptyMap<String, QuarterFetch>()) }
         val onQuarter: (String) -> Unit = { key ->
             val y = key.take(4).toIntOrNull(); val q = key.takeLast(1).toIntOrNull()
-            if (y != null && q != null && states[key] != QuarterFetch.LOADING && page.routeIds.isNotEmpty()) {
+            if (y != null && q != null && page.startMonth != null && states[key] != QuarterFetch.LOADING && page.routeIds.isNotEmpty()) {
                 states = states + (key to QuarterFetch.LOADING)
                 scope.launch {
-                    val outcome = runCatching { day.readAsthaQuarter(key, page.routeIds, AsthaModel.monthsOfQuarter(y, q)) }.getOrElse { QuarterFetch.FAILED }
+                    val outcome = runCatching { day.readAsthaQuarter(key, page.routeIds, AsthaModel.monthsOfQuarter(y, q, page.startMonth)) }.getOrElse { QuarterFetch.FAILED }
                     // whatever was kept (even by a partly failed read) is shown; the state says what is still missing
                     val merged = page.base?.let { AsthaFetched.merge(it, withContext(Dispatchers.IO) { day.asthaMonths.readAll(page.routeIds) }) }
-                    kept = page.copy(data = merged, shops = ShopModel.build(page.outlets, merged, page.tiers))
+                    kept = page.copy(data = merged, shops = ShopModel.build(page.outlets, merged, page.tiers), monthAwaiting = monthAwaitingOf(day, merged))
                     states = if (outcome == null) states - key else states + (key to outcome)
                 }
             }
         }
-        AsthaTargetScreen(kept.data, locale, kept.year, shops = kept.shops, currentMonth = kept.month, awaiting = kept.awaiting, geography = kept.geography, quarterState = states, onQuarter = onQuarter)
+        AsthaTargetScreen(kept.data, locale, kept.year, shops = kept.shops, currentMonth = kept.month, awaiting = kept.awaiting, geography = kept.geography, quarterState = states, onQuarter = onQuarter, startMonth = kept.startMonth, monthAwaiting = kept.monthAwaiting, unknownOrder = kept.unknownOrder)
     }
 }
 
@@ -125,10 +146,10 @@ internal suspend fun readShopOutlets(day: SrDay): List<ShopOutlet> = withContext
 fun OutletPointsHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null, onRedeem: ((Long) -> Unit)? = null) {
     val load = rememberAsyncLoad {
         val store = day.programmes
-        RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.bundleRequestedAt())
+        RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.ackedBeforeRequest())
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
-        OutletPointsScreen(page.outlets, page.data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet, balanceOf = PointsBalance.function(page.redemptions, page.builtAt), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(page.redemptions))
+        OutletPointsScreen(page.outlets, page.data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet, balanceOf = PointsBalance.function(page.redemptions, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(page.redemptions))
     }
 }
 
@@ -141,14 +162,14 @@ fun OutletPointsHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null, 
 fun RedemptionHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
     val load = rememberAsyncLoad {
         val store = day.programmes
-        RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.bundleRequestedAt(), cashRateOf(day))
+        RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.ackedBeforeRequest(), cashRateOf(day))
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
         var redeemed by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(page.redemptions) }
         var uuid by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(day.programmes.newUuid()) }
         RedemptionScreen(
             page.outlets, page.data, locale,
-            balanceOf = PointsBalance.function(redeemed, page.builtAt), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(redeemed), cashRateMtk = page.cashRateMtk,
+            balanceOf = PointsBalance.function(redeemed, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(redeemed), cashRateMtk = page.cashRateMtk,
             onConfirm = { basket, gifts ->
                 val outlet = page.outlets.firstOrNull { it.outletId == basket.outletId }
                 val rate = page.cashRateMtk ?: 0L
@@ -167,9 +188,9 @@ fun RedemptionHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
     }
 }
 
-internal data class RedemptionLoad(val data: LoyaltyData?, val outlets: List<ShopOutlet>, val redemptions: List<LocalRedemption>, val builtAt: String?, val cashRateMtk: Long? = null)
+internal data class RedemptionLoad(val data: LoyaltyData?, val outlets: List<ShopOutlet>, val redemptions: List<LocalRedemption>, val ackedBefore: Set<String>?, val cashRateMtk: Long? = null)
 
-internal data class GiftLoad(val data: GiftChoiceData?, val shops: List<ShopInfo>, val local: List<LocalGiftChoice>, val quarter: String, val requestedAt: String? = null)
+internal data class GiftLoad(val data: GiftChoiceData?, val shops: List<ShopInfo>, val local: List<LocalGiftChoice>, val quarter: String, val ackedBefore: Set<String>? = null)
 
 /**
  * Astha gift selection (manual 52). The record uuid is fixed when the page opens and renewed only after a save, so a double tap or a replay is one
@@ -185,13 +206,13 @@ fun GiftSelectionHost(day: SrDay, locale: UiLocale) {
             val ids = (AsthaModel.parse(prog, null)?.outletIds.orEmpty() + data?.assignments?.map { it.outletId }.orEmpty()).toSet()
             val startMonth = day.reference.config("cfg.astha.quarter_start_month", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toIntOrNull()?.takeIf { it in 1..12 } ?: 1
             val today = day.programmes.metaFor(0L).businessDate // the trusted clock's Dhaka date, the one the record carries (never the bundle's date)
-            GiftLoad(data, ShopModel.buildFor(outlets, ids, ShopModel.tiers(prog), day.currentRouteId()), day.programmes.giftChoices(), GiftChoiceModel.quarterOf(today, startMonth), day.programmes.bundleRequestedAt())
+            GiftLoad(data, ShopModel.buildFor(outlets, ids, ShopModel.tiers(prog), day.currentRouteId()), day.programmes.giftChoices(), GiftChoiceModel.quarterOf(today, startMonth), day.programmes.ackedBeforeRequest())
         }
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
         var local by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(page.local) }
         var uuid by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(day.programmes.newUuid()) }
-        GiftSelectionScreen(page.shops, page.data, page.quarter, local, locale, bundleRequestedAt = page.requestedAt, onSubmit = { outletId, giftId ->
+        GiftSelectionScreen(page.shops, page.data, page.quarter, local, locale, ackedBeforeRequest = page.ackedBefore, onSubmit = { outletId, giftId ->
             val shop = page.shops.firstOrNull { it.outletId == outletId }
             val out = day.programmes.saveProgramme(day.programmes.metaFor(shop?.routeId ?: 0L), listOf(GiftChoiceModel.plan(outletId, giftId, page.quarter, uuid)))
             when (out) {

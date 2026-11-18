@@ -13,7 +13,7 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
 /** One month of one route as the server answered it online: its raw rows (kept as sent, parsed on read) and the server's `as_of` of that answer. An empty [items] is a month the server holds nothing for. */
-class CachedMonth(val routeId: Long, val month: String, val asOf: String?, val items: JsonArray)
+class CachedMonth(val routeId: Long, val month: String, val asOf: String?, val items: JsonArray, val readDate: String? = null)
 
 /**
  * The Astha months read online, kept on the phone (task: quarter chips with fetched months). An app-private file per route and month
@@ -26,10 +26,10 @@ class AsthaMonthCache(private val dir: File) {
 
     private fun file(routeId: Long, month: String) = File(dir, "r${routeId}_$month.json")
 
-    fun put(routeId: Long, month: String, asOf: String?, items: JsonArray) {
+    fun put(routeId: Long, month: String, asOf: String?, items: JsonArray, readDate: String? = DhakaTime.dateOf(asOf)) {
         if (!MONTH.matches(month)) return
         dir.mkdirs()
-        val body = JsonObject(mapOf("v" to JsonPrimitive(1), "route_id" to JsonPrimitive(routeId), "month" to JsonPrimitive(month), "as_of" to (asOf?.let { JsonPrimitive(it) } ?: JsonNull), "items" to items)).toString()
+        val body = JsonObject(mapOf("v" to JsonPrimitive(1), "route_id" to JsonPrimitive(routeId), "month" to JsonPrimitive(month), "as_of" to (asOf?.let { JsonPrimitive(it) } ?: JsonNull), "read_date" to (readDate?.let { JsonPrimitive(it) } ?: JsonNull), "items" to items)).toString()
         val tmp = File(dir, "r${routeId}_$month.json.tmp")
         tmp.writeText(body)
         Files.move(tmp.toPath(), file(routeId, month).toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
@@ -39,7 +39,7 @@ class AsthaMonthCache(private val dir: File) {
     fun read(routeId: Long, month: String): CachedMonth? = runCatching {
         val o = json.parseToJsonElement(file(routeId, month).readText()) as? JsonObject ?: return null
         if ((o["route_id"] as? JsonPrimitive)?.longOrNull != routeId || (o["month"] as? JsonPrimitive)?.contentOrNull != month) return null
-        CachedMonth(routeId, month, (o["as_of"] as? JsonPrimitive)?.contentOrNull, o["items"] as? JsonArray ?: return null)
+        CachedMonth(routeId, month, (o["as_of"] as? JsonPrimitive)?.contentOrNull, o["items"] as? JsonArray ?: return null, (o["read_date"] as? JsonPrimitive)?.contentOrNull)
     }.getOrNull()
 
     /** Every month kept for the given routes, oldest first. */
@@ -82,8 +82,12 @@ class AsthaQuarterFetcher(private val cache: AsthaMonthCache, private val fetchP
         var worst: QuarterFetch? = null
         for (route in routeIds.distinct()) {
             when (val r = readRoute(quarter, route)) {
-                is RouteRead.Ok -> months.forEach { m ->
-                    cache.put(route, m, r.asOf, JsonArray(r.items.filter { ((it as? JsonObject)?.get("month") as? JsonPrimitive)?.contentOrNull == m }))
+                is RouteRead.Ok -> {
+                    // the months the quarter holds (as the caller computed them from the configured start month) and any other month the server sent rows for: the server's own month list is authoritative
+                    val sent = r.items.mapNotNull { ((it as? JsonObject)?.get("month") as? JsonPrimitive)?.contentOrNull }
+                    (months + sent).distinct().forEach { m ->
+                        cache.put(route, m, r.asOf, JsonArray(r.items.filter { ((it as? JsonObject)?.get("month") as? JsonPrimitive)?.contentOrNull == m }))
+                    }
                 }
                 RouteRead.Offline -> if (worst != QuarterFetch.FAILED) worst = QuarterFetch.OFFLINE
                 RouteRead.Failed -> worst = QuarterFetch.FAILED
@@ -128,28 +132,21 @@ class AsthaQuarterFetcher(private val cache: AsthaMonthCache, private val fetchP
 /** Puts the months kept on the phone beside the bundle's own figures. */
 object AsthaFetched {
     /**
-     * [data] (the bundle's rows, already with this phone's memos) plus the cached months. The bundle wins for a month it holds in full; a month it holds only in part
-     * (listed in `astha_truncated_months`) is replaced by the cached read of the same route when that read is at least as new as the bundle's figures. Cached figures carry no
-     * local arithmetic: they are the server's as of their own read, shown with that time.
+     * [data] (the bundle's rows, already with this phone's memos) plus the cached months, by SOURCE PER MONTH with no timestamp deciding anything: a month the bundle holds comes from the bundle
+     * (with the phone's own memos, rule B), whole or cut short (a cut month keeps its rows and a "list cut short" note and is never replaced by a read, which carries no local memos); a month the
+     * bundle does not hold comes from the kept online read, as the server's figure at that read with its own date.
      */
     fun merge(data: AsthaData, cached: List<CachedMonth>): AsthaData {
         if (cached.isEmpty()) return data
         val bundleMonths = data.rows.map { it.month }.toSet()
-        val bundleMs = DhakaTime.ms(data.asOf)
         var rows = data.rows
-        val fetched = LinkedHashMap<String, String?>()
+        val fetched = LinkedHashMap<String, FetchedMonth>()
         for (c in cached) {
-            val cut = data.cutByBundle(c.month)
-            if (c.month in bundleMonths && !cut) continue
-            if (cut) {
-                val newer = DhakaTime.ms(c.asOf)?.let { t -> bundleMs == null || t >= bundleMs } == true
-                if (!newer) continue
-                rows = rows.filterNot { it.routeId == c.routeId && it.month == c.month }
-            }
+            if (c.month in bundleMonths) continue
             rows = rows + c.items.mapNotNull { (it as? JsonObject)?.let(AsthaModel::row) }.filter { it.routeId == c.routeId && it.month == c.month }
-            // routes of one month may differ in as_of: the oldest is the honest one to show
+            // routes of one month may be read at different times: the earliest read date is the honest one (it decides whether the month was open)
             val prev = fetched[c.month]
-            fetched[c.month] = if (c.month !in fetched) c.asOf else if ((DhakaTime.ms(c.asOf) ?: Long.MIN_VALUE) < (DhakaTime.ms(prev) ?: Long.MIN_VALUE)) c.asOf else prev
+            fetched[c.month] = if (prev == null || (c.readDate ?: "") < (prev.readDate ?: "")) FetchedMonth(c.asOf, c.readDate) else prev
         }
         return data.copy(rows = rows, fetchedMonths = fetched)
     }

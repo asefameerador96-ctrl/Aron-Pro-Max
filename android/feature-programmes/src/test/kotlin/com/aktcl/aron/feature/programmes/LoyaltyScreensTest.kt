@@ -36,7 +36,7 @@ class LoyaltyScreensTest {
     private fun show(language: AppLanguage, data: LoyaltyData?, outlet: Long? = null, onRedeem: ((Long) -> Unit)? = null, local: List<LocalRedemption> = emptyList()) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         val loc = if (language == AppLanguage.BN) UiLocale.BN else UiLocale.EN
-        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { OutletPointsScreen(outlets, data, loc, onRedeem = onRedeem, initialOutlet = outlet, balanceOf = PointsBalance.function(local, "2026-04-17T01:00:00.000Z")) } } }
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { OutletPointsScreen(outlets, data, loc, onRedeem = onRedeem, initialOutlet = outlet, balanceOf = PointsBalance.function(local, emptySet())) } } }
         compose.waitForIdle()
     }
 

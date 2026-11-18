@@ -42,9 +42,30 @@ class AsthaLocalTest {
         assertEquals(140_000L, brandRoute(apply(listOf(memo("m1", "pending")))).stdAchievedMilli)
     }
 
-    @Test fun withoutTheRecordedOrderTheFigureIsTheServersAlone() {
-        assertEquals(d.rows, apply(listOf(memo("p", "pending"), memo("a", "acked")), null).rows)
-        assertEquals(d.rows, AsthaLocal.apply(d, listOf(memo("p", "pending")), emptySet(), null).rows)
+    @Test fun withoutTheRecordedOrderAMemoThatNeverLeftThePhoneIsStillAddedAndAnAcknowledgedOneIsNot() {
+        // a promoted prefetch or a bundle stored before the order was recorded: a never-sent memo is certainly not in the server figure
+        val x = apply(listOf(memo("p", "pending"), memo("a", "acked")), null)
+        assertEquals(140_000L, brandRoute(x).stdAchievedMilli) // only the pending one, as before the order existed
+        assertEquals(1, AsthaLocal.unknownOrder(listOf(memo("p", "pending"), memo("a", "acked")), orderKnown = false)) // and the acknowledged one is named, not silently dropped
+        assertEquals(0, AsthaLocal.unknownOrder(listOf(memo("a", "acked")), orderKnown = true))
+        assertEquals(d.rows, AsthaLocal.apply(d, listOf(memo("p", "pending")), emptySet(), null).rows) // no month: nothing
+    }
+
+    @Test fun withoutTheRecordedOrderAnEditIsNotAddedAndNothingIsSubtracted() {
+        val x = apply(listOf(memo("m", "acked", qty = 10), memo("e", "pending", supersedes = "m", qty = 12)), null)
+        assertEquals(d.rows, x.rows) // the original may or may not be in the figure: the edit is left out too (never a double count)
+        assertEquals(2, AsthaLocal.unknownOrder(listOf(memo("m", "acked"), memo("e", "pending", supersedes = "m")), orderKnown = false))
+    }
+
+    @Test fun anEditChainWithAnUncertainPredecessorIsWholeUncertainAndNeverTheNewestOnTop() {
+        val m = memo("m", "acked", qty = 10); val e1 = memo("e1", "uncertain", supersedes = "m", qty = 12); val e2 = memo("e2", "pending", supersedes = "e1", qty = 8)
+        val x = apply(listOf(m, e1, e2), setOf("m"))
+        assertEquals(d.rows, x.rows) // the figure stays as the server gave it
+        assertEquals(2, AsthaLocal.awaiting(listOf(m, e1, e2))) // E1 and the E2 that depends on it
+        // an edit of an uncertain ORIGINAL
+        val e = memo("e", "pending", supersedes = "u", qty = 5)
+        assertEquals(d.rows, apply(listOf(memo("u", "uncertain"), e)).rows)
+        assertEquals(2, AsthaLocal.awaiting(listOf(memo("u", "uncertain"), e)))
     }
 
     @Test fun aSupersededLocalMemoIsNotCountedAndAnEditOfAServerHeldMemoTakesTheOldOneOut() {

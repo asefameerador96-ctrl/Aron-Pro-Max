@@ -60,11 +60,11 @@ abstract class OutboxDao {
     abstract suspend fun sentUnanswered(): List<String>
 
     /**
-     * The memos this phone has had `accepted` or `duplicate` for, dated [fromDate] or later (the first of the bundle's month): the order the phone's own figure rule B reads
+     * The records (memos and their voids, redemptions, programme records) this phone has had `accepted` or `duplicate` for, dated [fromDate] or later (the first of the bundle's month): the order the phone's own figure rules read
      * (no clock): recorded under the sync lock at the moment a bundle request is sent.
      */
-    @Query("SELECT client_uuid FROM outbox WHERE record_type = 'memo' AND state = 'acked' AND business_date >= :fromDate")
-    abstract suspend fun ackedMemoUuids(fromDate: String): List<String>
+    @Query("SELECT client_uuid FROM outbox WHERE record_type IN (" + ORDER_RECORD_TYPES_SQL + ") AND state = 'acked' AND business_date >= :fromDate")
+    abstract suspend fun ackedOrderUuids(fromDate: String): List<String>
 
     /** How many of [uuids] still wait for an answer (pending or in flight). */
     @Query("SELECT COUNT(*) FROM outbox WHERE client_uuid IN (:uuids) AND state IN ('pending', 'in_flight')")
@@ -383,3 +383,13 @@ private const val CHECKOUT_HELD =
 
 /** Rows per outbox state. */
 data class StateCount(val state: String, val count: Int)
+
+/**
+ * The record types whose acknowledgement ORDER (before or after a bundle request) the phone's figure rules read: memos and their voids (rule B of the programme figures), redemptions (points
+ * balance) and the programme records stored as `amo_record` (gift choice). A new record type that feeds such a rule (a void above all: an acknowledged void takes its memo out of the server figure)
+ * must be listed here; `OrderRecordTypesTest` fails when a contract record type with `void` in its name is not.
+ */
+val ORDER_RECORD_TYPES: List<String> = listOf("memo", "memo_void", "redemption", "amo_record")
+
+/** [ORDER_RECORD_TYPES] as an SQL list (a constant, so the Room query can use it). */
+const val ORDER_RECORD_TYPES_SQL: String = "'memo', 'memo_void', 'redemption', 'amo_record'"

@@ -15,12 +15,15 @@ data class LocalMemo(
  * The phone's own memos on top of the server's Astha figures, by the phone's own ORDER and no clock ([FigureRuleB] with no `through_date`: the Astha figure is cut at its snapshot, today included).
  * [ackedBeforeRequest] is the set of memo uuids the phone had an acknowledgement for when it SENT the request for the held bundle (recorded under the sync lock: no upload in flight). A local
  * memo is added when it is not in that set; a memo in the set that this phone has since superseded or voided (the edit not in the set) is taken back out; an `uncertain` memo (sent, answer lost)
- * is neither added nor subtracted. Without the recorded set (a promoted prefetch, a bundle stored before it was recorded) the figures are the server's alone. A memo is added only to rows of its own
+ * is neither added nor subtracted. Without the recorded set (a promoted prefetch, a bundle stored before it was recorded) only the memos that never left the phone are added (they are certainly not in the server figure); acknowledged ones are not (they may be) and the page says so. A memo is added only to rows of its own
  * route and only for outlets that are enrolled (have Astha rows); a zero-sale memo adds no memo count. Recomputed from scratch on every read, never accumulated.
  */
 object AsthaLocal {
     /** Memos SENT but unanswered when the held snapshot was requested (state `uncertain`): the server figure may already hold them, so they are never added; the page says so. */
     fun awaiting(memos: List<LocalMemo>): Int = FigureRuleB.awaiting(memos)
+
+    /** With no recorded order: the memos left out of the figures because they may already be in them (see [FigureRuleB.unknownOrder]). */
+    fun unknownOrder(memos: List<LocalMemo>, orderKnown: Boolean): Int = FigureRuleB.unknownOrder(memos, orderKnown)
 
     /** The memos to add and to take back out for the held bundle's [month] (`YYYY-MM`), or null when the order is unknown. */
     fun delta(memos: List<LocalMemo>, ackedBeforeRequest: Set<String>?, month: String?): Pair<List<LocalMemo>, List<LocalMemo>>? =

@@ -50,7 +50,7 @@ class ProgrammeStoreTest {
         assertEquals(1, r.size); assertEquals(400L, r[0].points); assertEquals("pending", r[0].state)
         assertEquals(2, db.outboxDao().countInState("pending")) // the redemption and its one line
         // the bundle was built before the redemption: the phone holds it back from the balance (500 - 400)
-        assertEquals(400L, LocalRedeemed.points(r, 10, 3, "2026-11-18T01:00:00.000Z"))
+        assertEquals(400L, LocalRedeemed.points(r, 10, 3, emptySet()))
         assertTrue(syncs >= 1)
     }
 
@@ -275,5 +275,29 @@ class ProgrammeStoreTest {
         val s = photoStore(); val uuid = ClientIds.newUuid(); val photo = ClientIds.newUuid()
         assertEquals(SaveOutcome.SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, photo), photo, fixEntity))
         assertEquals(emptyList<Pair<String, String>>(), releases)
+    }
+
+    @Test fun aRecordThePhoneGaveUpOnIsStillTheSubjectsPhotoAndARetakeReplaysTheSameKey() = runTest {
+        val s = photoStore()
+        val a0 = s.giftPhotoAttempt { gp.asthaUuid(71, "2026-Q4", it) }
+        assertEquals(SaveOutcome.SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(a0.uuid, ClientIds.newUuid()), ClientIds.newUuid(), fixEntity))
+        // the server committed X0 but its answers were lost; after the retry limit the phone marks it rejected(retry_exhausted)
+        db.outboxDao().applyAck(a0.uuid, "rejected", "retry_exhausted", null, "2026-11-18T06:00:00.000Z")
+        val again = s.giftPhotoAttempt { gp.asthaUuid(71, "2026-Q4", it) }
+        assertEquals(a0.uuid, again.uuid); assertTrue(again.alreadySaved) // the SAME key: no second server record can arise
+        assertEquals(SaveOutcome.ALREADY_SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(again.uuid, ClientIds.newUuid()), ClientIds.newUuid(), fixEntity))
+        assertEquals("uncertain", s.giftPhotos().single().state) // and the screen does not show the subject as open
+        for (code in listOf("transport_timeout", "transport_malformed", "ack_mismatch")) {
+            val x = ClientIds.newUuid(); db.outboxDao().insert(listOf(com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = x, recordType = "amo_record", familyUuid = x, rank = 0, businessDate = "2026-11-18", payloadJson = "{}", payloadSha256 = "x", state = "rejected", createdAt = "t", lastCode = code)))
+            assertTrue(code, !ProgrammeStore.isDefiniteRefusal(db.outboxDao().byClientUuid(x)))
+        }
+    }
+
+    @Test fun aDefiniteServerRefusalIsTheOnlyThingThatOpensANewAttempt() = runTest {
+        for (code in listOf("schema_invalid", "scope_out_of_reach", "gift_locked", "gift_not_for_tier")) {
+            val x = ClientIds.newUuid(); db.outboxDao().insert(listOf(com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = x, recordType = "amo_record", familyUuid = x, rank = 0, businessDate = "2026-11-18", payloadJson = "{}", payloadSha256 = "x", state = "rejected", createdAt = "t", lastCode = code)))
+            assertTrue(code, ProgrammeStore.isDefiniteRefusal(db.outboxDao().byClientUuid(x)))
+        }
+        assertTrue(!ProgrammeStore.isDefiniteRefusal(null))
     }
 }

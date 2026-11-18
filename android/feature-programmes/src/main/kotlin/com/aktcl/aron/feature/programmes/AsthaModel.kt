@@ -23,6 +23,12 @@ data class PackLine(val packFactor: Int, val packs: Long, val looseMilli: Long, 
 /** Achievement of one pack size of a brand in base units (thousandths as sent), SRM-B-63: one line per pack size, never summed across sizes. */
 data class AsthaPack(val packFactor: Int, val stdAchievedMilli: Long)
 
+/** A month kept from an online read: the server's `as_of` of the read (shown) and the Dhaka DATE of that read, which decides by calendar whether the month had ended: `YYYY-MM-DD` of the same server field. */
+data class FetchedMonth(val asOf: String?, val readDate: String?) {
+    /** True when the read was taken on or before the month's last day (or its date is unknown): the month was still open, so the figure can have grown. */
+    fun openAtRead(month: String): Boolean = readDate == null || readDate <= java.time.YearMonth.parse(month).atEndOfMonth().toString()
+}
+
 /**
  * One Astha target line of the stored bundle section `programmes.astha_targets` (contract 1.15.0). `outletId` null is the route row;
  * `brandId` null is the All Brand memo row. STD is kept in thousandths (Decimal3 parsed exactly, no floating point); money is integer
@@ -50,19 +56,25 @@ data class AsthaData(val rows: List<AsthaRow>, val asOf: String?, val truncated:
     /** The months the bundle says did not fit its bound (`astha_truncated_months`); empty when the server sends none. */
     val truncatedMonths: Set<String> = emptySet(),
     /** Months whose rows were read online and kept on the phone (month to the server's `as_of` of that read): their figures are the server's as of that read, with no local arithmetic. */
-    val fetchedMonths: Map<String, String?> = emptyMap(),
+    val fetchedMonths: Map<String, FetchedMonth> = emptyMap(),
 ) {
     /** The "data as of" of a month: the read's own time for a fetched month, else the bundle's. */
-    fun asOfOf(month: String): String? = if (month in fetchedMonths) fetchedMonths[month] else asOf
+    fun asOfOf(month: String): String? = if (month in fetchedMonths) fetchedMonths[month]?.asOf else asOf
 
-    /** True when the bundle cut this month's rows short and no complete read of it is on the phone. */
+    /** True when the bundle cut this month's rows short: its rows are shown with a "list cut short" note and never replaced by a read (the bundle month always comes from the bundle). */
     fun cutShort(month: String): Boolean = month !in fetchedMonths && cutByBundle(month)
+
+    /** True when a month came from an online read taken while the month was still open (a figure that can have grown since). */
+    fun readWhileOpen(month: String): Boolean = fetchedMonths[month]?.openAtRead(month) == true
 
     /** The bundle says it cut this month: it lists the month, or (an older server that lists none) sets the plain `astha_truncated` flag and holds rows of the month. */
     fun cutByBundle(month: String): Boolean = if (truncatedMonths.isEmpty()) truncated && rows.any { it.month == month } else month in truncatedMonths
 
-    /** Months of the quarter the phone knows nothing of (no row, and no earlier online read that found none): the ones worth reading online. */
+    /** Months of the quarter the phone knows nothing of (no row, and no earlier online read that found none). */
     fun missingMonths(months: List<String>): List<String> = months.filter { m -> m !in fetchedMonths && rows.none { it.month == m } }
+
+    /** True when the quarter is worth reading online: a month the phone knows nothing of, or one that was read before its last day (a month is final only when read after it ended, by calendar dates). */
+    fun wantsRead(months: List<String>): Boolean = missingMonths(months).isNotEmpty() || months.any { readWhileOpen(it) }
 
     /** The pack line of a brand's achievement in the units the field counts (rule 5): packets of sticks, dozens or boxes by the brand's category. */
     fun packLine(brandId: Long?, p: AsthaPack): PackLine {
@@ -262,6 +274,9 @@ object AsthaModel {
      * narrow column); any fraction is shown in full (two decimals), so nothing is rounded away.
      */
     fun valueText(mtk: Long, locale: UiLocale): String = Formats.money(mtk, locale, decimals = if (mtk % 1000L == 0L) 0 else 2)
+
+    /** The year of the quarter a month belongs to (the year the quarter series starts in: with start month 7, 2027-02 belongs to 2026). */
+    fun quarterYearOf(month: String, startMonth: Int = 1): Int = month.take(4).toInt() - if (month.substring(5, 7).toInt() < startMonth) 1 else 0
 
     /** The quarter a month belongs to, as the screen's `Q-n` (quarter start month January by default, cfg.astha.quarter_start_month is 1 unless set). */
     fun quarterOf(month: String, startMonth: Int = 1): Int {

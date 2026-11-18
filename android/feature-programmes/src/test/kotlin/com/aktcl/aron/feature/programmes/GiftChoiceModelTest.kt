@@ -49,9 +49,9 @@ class GiftChoiceModelTest {
     @Test fun missingSectionIsNull() { assertNull(GiftChoiceModel.parse(null)); assertNull(GiftChoiceModel.parse("[]")) }
 
     @Test fun anAcknowledgedChoiceReadsSentUntilABundleRequestedAfterTheAckHoldsItAndARefusalCarriesTheServersReason() {
-        val acked = LocalGiftChoice(10, "2026-Q4", 2, "acked", ackedAt = "2026-11-18T10:00:00Z")
-        assertEquals(GiftState.Sent(2), d.stateOf(10, "2026-Q4", listOf(acked), "2026-11-18T09:00:00Z")) // bundle older than the ack: shows the old gift, the phone says sent
-        assertEquals(GiftState.Chosen(1), d.stateOf(10, "2026-Q4", listOf(acked), "2026-11-18T11:00:00Z")) // a newer bundle wins over the old local choice
+        val acked = LocalGiftChoice(10, "2026-Q4", 2, "acked", uuid = "c1")
+        assertEquals(GiftState.Sent(2), d.stateOf(10, "2026-Q4", listOf(acked), emptySet())) // the bundle request left before the ack: shows the old gift, the phone says sent
+        assertEquals(GiftState.Chosen(1), d.stateOf(10, "2026-Q4", listOf(acked), setOf("c1"))) // a bundle requested after the ack wins over the old local choice
         val refused = LocalGiftChoice(10, "2026-Q4", 2, "rejected", reasonBn = "বদ্ধ", reasonEn = "Locked")
         assertEquals(GiftState.OnThisPhone(2, true, "বদ্ধ", "Locked"), d.stateOf(10, "2026-Q4", listOf(refused)))
     }

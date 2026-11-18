@@ -66,7 +66,7 @@ object GiftTags {
 @Composable
 fun GiftSelectionScreen(
     shops: List<ShopInfo>, data: GiftChoiceData?, quarter: String, local: List<LocalGiftChoice>, locale: UiLocale,
-    onSubmit: suspend (outletId: Long, giftId: Long) -> SaveOutcome, modifier: Modifier = Modifier, initialOutlet: Long? = null, initialGift: Long? = null, bundleRequestedAt: String? = null,
+    onSubmit: suspend (outletId: Long, giftId: Long) -> SaveOutcome, modifier: Modifier = Modifier, initialOutlet: Long? = null, initialGift: Long? = null, ackedBeforeRequest: Set<String>? = null,
 ) {
     val look = LocalAronLook.current
     var outletId by rememberSaveable { mutableStateOf(initialOutlet) }
@@ -97,7 +97,7 @@ fun GiftSelectionScreen(
             Detail(R.string.pg_shop_sub, chosen.subChannel ?: "—")
             if (chosen.clusterName.isNotBlank()) Detail(R.string.pg_gift_cluster, chosen.clusterName)
         }
-        val state = data.stateOf(chosen.outletId, quarter, local, bundleRequestedAt)
+        val state = data.stateOf(chosen.outletId, quarter, local, ackedBeforeRequest)
         val offered = data.offeredTo(chosen.tierCode)
         fun nameOf(id: Long) = data.gifts.firstOrNull { it.id == id }?.name(locale) ?: "#$id"
         when (state) {

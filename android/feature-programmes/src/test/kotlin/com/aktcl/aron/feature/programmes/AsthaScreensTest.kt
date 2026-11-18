@@ -34,10 +34,10 @@ class AsthaScreensTest {
       {"route_id":7,"outlet_id":null,"brand_id":null,"month":"2026-11","std_target":"0","std_achieved":"0","memo_target":884,"memo_achieved":787,"value_target_mtk":"0","value_achieved_mtk":"0","by_pack":[]}]}"""
     private val products = """{"nodes":[{"id":11,"level":"brand","name":"Marise","name_bn":"মারিস","sort":1}],"skus":[]}"""
 
-    private fun show(language: AppLanguage, data: AsthaData?, shops: List<ShopInfo>? = null, initialShop: Long? = null, currentMonth: String? = null, awaiting: Int = 0, geography: Geography? = null, quarterState: Map<String, QuarterFetch> = emptyMap(), onQuarter: ((String) -> Unit)? = null) {
+    private fun show(language: AppLanguage, data: AsthaData?, shops: List<ShopInfo>? = null, initialShop: Long? = null, currentMonth: String? = null, awaiting: Int = 0, geography: Geography? = null, quarterState: Map<String, QuarterFetch> = emptyMap(), onQuarter: ((String) -> Unit)? = null, startMonth: Int? = 1, monthAwaiting: Map<String, Int> = emptyMap(), unknownOrder: Int = 0) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         val loc = if (language == AppLanguage.BN) UiLocale.BN else UiLocale.EN
-        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { AsthaTargetScreen(data, loc, 2026, shops = shops, initialShop = initialShop, currentMonth = currentMonth, awaiting = awaiting, geography = geography, quarterState = quarterState, onQuarter = onQuarter) } } }
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { AsthaTargetScreen(data, loc, 2026, shops = shops, initialShop = initialShop, currentMonth = currentMonth, awaiting = awaiting, geography = geography, quarterState = quarterState, onQuarter = onQuarter, startMonth = startMonth, monthAwaiting = monthAwaiting, unknownOrder = unknownOrder) } } }
         compose.waitForIdle()
     }
 
@@ -182,8 +182,8 @@ class AsthaScreensTest {
 
     // ---- quarter chips with months read online ----
 
-    private fun fetched(month: String, asOf: String = "2026-11-18T06:00:00Z", vararg rowsJson: String): AsthaData =
-        AsthaFetched.merge(AsthaModel.parse(programmes, products)!!, listOf(CachedMonth(7, month, asOf, kotlinx.serialization.json.Json.parseToJsonElement("[" + rowsJson.joinToString(",") + "]") as kotlinx.serialization.json.JsonArray)))
+    private fun fetched(month: String, asOf: String = "2026-11-18T06:00:00Z", vararg rowsJson: String, readDate: String? = DhakaTime.dateOf(asOf)): AsthaData =
+        AsthaFetched.merge(AsthaModel.parse(programmes, products)!!, listOf(CachedMonth(7, month, asOf, kotlinx.serialization.json.Json.parseToJsonElement("[" + rowsJson.joinToString(",") + "]") as kotlinx.serialization.json.JsonArray, readDate)))
 
     private val octRow = """{"route_id":7,"outlet_id":null,"brand_id":11,"month":"2026-10","std_target":"1000","std_achieved":"250","memo_target":0,"memo_achieved":0,"value_target_mtk":"4000000","value_achieved_mtk":"1000000","by_pack":[]}"""
 
@@ -197,15 +197,64 @@ class AsthaScreensTest {
         assertEquals(0, compose.onAllNodesWithText("0").fetchSemanticsNodes().size)
     }
 
-    @Test fun aQuarterWhoseMonthsAreAllHeldIsNotRead() {
+    @Test fun aQuarterWhoseMonthsWereAllReadAfterTheyEndedIsNotReadAgain() {
         val asked = mutableListOf<String>()
         val all = AsthaFetched.merge(AsthaModel.parse(programmes, products)!!, listOf(
-            CachedMonth(7, "2026-10", "2026-11-18T06:00:00Z", kotlinx.serialization.json.Json.parseToJsonElement("[$octRow]") as kotlinx.serialization.json.JsonArray),
-            CachedMonth(7, "2026-12", "2026-11-18T06:00:00Z", kotlinx.serialization.json.JsonArray(emptyList())),
+            CachedMonth(7, "2026-07", "2026-11-18T06:00:00Z", kotlinx.serialization.json.Json.parseToJsonElement("[$octRow]".replace("2026-10", "2026-07")) as kotlinx.serialization.json.JsonArray, "2026-11-18"),
+            CachedMonth(7, "2026-08", "2026-11-18T06:00:00Z", kotlinx.serialization.json.JsonArray(emptyList()), "2026-11-18"),
+            CachedMonth(7, "2026-09", "2026-11-18T06:00:00Z", kotlinx.serialization.json.JsonArray(emptyList()), "2026-11-18"),
         ))
         show(AppLanguage.EN, all.copy(truncated = false), onQuarter = { asked += it })
-        choose("Year", "2026"); choose("Quarter", "Q-4 (Oct-Dec)")
+        choose("Year", "2026"); choose("Quarter", "Q-3 (Jul-Sep)")
         assertEquals(emptyList<String>(), asked)
+    }
+
+    @Test fun aMonthReadWhileItWasStillOpenIsReadAgainWhenTheQuarterIsOpenedAndOfflineItSaysSo() {
+        val asked = mutableListOf<String>()
+        // October read on 20 October, while it was running
+        show(AppLanguage.EN, fetched("2026-10", "2026-10-20T06:00:00Z", octRow, readDate = "2026-10-20"), onQuarter = { asked += it })
+        choose("Year", "2026"); choose("Quarter", "Q-4 (Oct-Dec)")
+        assertEquals(listOf("2026-Q4"), asked) // online it is read again
+        compose.onNodeWithTag(AsthaTags.month("2026-10")).performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Data as of 2026-10-20; the month was still open then").assertExists() // offline: the cached figure, labelled
+    }
+
+    @Test fun aKeptMonthShowsThisPhonesOwnUnacknowledgedMemosAsAwaiting() {
+        show(AppLanguage.EN, fetched("2026-10", "2026-11-18T06:00:00Z", octRow), monthAwaiting = mapOf("2026-10" to 2))
+        choose("Year", "2026"); choose("Quarter", "Q-4 (Oct-Dec)")
+        compose.onNodeWithTag(AsthaTags.month("2026-10")).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(AsthaTags.MONTH_AWAITING).assertExists()
+    }
+
+    @Test fun withStartMonthSevenQuarterFourIsAprilToJuneOfTheNextYearAndTheKeyIsTheServers() {
+        val asked = mutableListOf<String>()
+        show(AppLanguage.EN, AsthaModel.parse(programmes, products), startMonth = 7, onQuarter = { asked += it })
+        choose("Year", "2026"); choose("Quarter", "Q-4 (Oct-Dec)")
+        compose.onNodeWithTag(AsthaTags.month("2027-04")).assertExists(); compose.onNodeWithTag(AsthaTags.month("2027-06")).assertExists()
+        assertEquals(0, compose.onAllNodesWithTag(AsthaTags.month("2026-11")).fetchSemanticsNodes().size)
+        assertEquals(listOf("2026-Q4"), asked)
+    }
+
+    @Test fun withStartMonthSevenTheCurrentMonthOpensOnItsOwnQuarter() {
+        show(AppLanguage.EN, AsthaModel.parse(programmes, products), currentMonth = "2026-11", startMonth = 7)
+        compose.onNodeWithTag(AsthaTags.month("2026-11")).assertExists() // Q2 of 2026 (Oct to Dec)
+        compose.onNodeWithTag(AsthaTags.row(11)).assertIsDisplayed()
+    }
+
+    @Test fun withNoStartMonthNoQuarterIsComputedAndTheHeldMonthsAreListed() {
+        val asked = mutableListOf<String>()
+        show(AppLanguage.EN, fetched("2026-10", "2026-11-18T06:00:00Z", octRow), startMonth = null, onQuarter = { asked += it })
+        compose.onNodeWithTag(AsthaTags.QUARTER_UNKNOWN).assertIsDisplayed()
+        assertEquals(0, compose.onAllNodesWithTag(AsthaTags.QUARTER).fetchSemanticsNodes().size)
+        compose.onNodeWithTag(AsthaTags.month("2026-10")).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(AsthaTags.row(11)).assertIsDisplayed()
+        assertEquals(emptyList<String>(), asked)
+    }
+
+    @Test fun theOrderUnknownLineNamesTheAcknowledgedMemosLeftOut() {
+        show(AppLanguage.EN, AsthaModel.parse(programmes, products), unknownOrder = 3)
+        compose.onNodeWithTag(AsthaTags.ORDER_UNKNOWN).assertIsDisplayed()
+        compose.onNodeWithText("3 acknowledged memos of this phone are not in these figures until the next full download.").assertExists()
     }
 
     @Test fun aMonthReadOnlineShowsItsFiguresWithTheTimeOfTheRead() {

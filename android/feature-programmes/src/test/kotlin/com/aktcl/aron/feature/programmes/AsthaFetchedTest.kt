@@ -160,30 +160,9 @@ class AsthaFetchedTest {
         assertTrue(merged.rows.none { it.month == "2026-12" })
     }
 
-    @Test fun aMonthTheBundleCutShortIsReplacedByANewerReadAndKeptWhenTheReadIsOlder() {
-        val cut = bundle().copy(truncatedMonths = setOf("2026-11"))
-        assertTrue(cut.cutShort("2026-11"))
-        val newer = AsthaFetched.merge(cut, listOf(CachedMonth(7, "2026-11", "2026-11-18T06:00:00Z", arr(item(7, "2026-11", brand = 11, target = "9"), item(7, "2026-11", brand = 12, target = "8")))))
-        assertEquals(2, newer.brandRows("2026-11").size)
-        assertFalse(newer.cutShort("2026-11"))
-        val older = AsthaFetched.merge(cut, listOf(CachedMonth(7, "2026-11", "2026-11-10T06:00:00Z", arr(item(7, "2026-11", brand = 12, target = "8")))))
-        assertEquals(1, older.brandRows("2026-11").size)
-        assertEquals(2_240_000L, older.brandRows("2026-11").single().stdTargetMilli)
-        assertTrue(older.cutShort("2026-11"))
-    }
-
     @Test fun theTruncatedMonthsListOfTheBundleIsRead() {
         val d = AsthaModel.parse("""{"astha_targets":[],"astha_truncated_months":["2026-12","bad"]}""", null)!!
         assertEquals(setOf("2026-12"), d.truncatedMonths)
-    }
-
-    @Test fun twoRoutesOfOneMonthShowTheOlderTimeAndBothRoutesRows() {
-        val merged = AsthaFetched.merge(bundle(), listOf(
-            CachedMonth(7, "2026-10", "2026-11-18T06:00:00Z", arr(item(7, "2026-10"))),
-            CachedMonth(8, "2026-10", "2026-11-17T06:00:00Z", arr(item(8, "2026-10"))),
-        ))
-        assertEquals(2, merged.rows.count { it.month == "2026-10" })
-        assertEquals("2026-11-17T06:00:00Z", merged.asOfOf("2026-10"))
     }
 
     @Test fun theLocalMemosAreNotAddedToAFetchedMonth() {
@@ -194,11 +173,72 @@ class AsthaFetchedTest {
         assertEquals(0L, merged.allBrandRow("2026-10")!!.memoAchieved)
     }
 
+
+    // ---- source per month, no timestamp decides anything (final pass round 2) ----
+
+    @Test fun aMonthTheBundleCutShortKeepsItsRowsWithTheCutNoteAndIsNeverReplacedByARead() {
+        val cut = bundle().copy(truncatedMonths = setOf("2026-11"))
+        assertTrue(cut.cutShort("2026-11"))
+        for (asOf in listOf("2026-11-18T06:00:00Z", "2026-11-10T06:00:00Z", "2027-01-01T00:00:00Z")) { // newer, older or far later: no time decides
+            val merged = AsthaFetched.merge(cut, listOf(CachedMonth(7, "2026-11", asOf, arr(item(7, "2026-11", brand = 12, target = "8")), "2026-11-18")))
+            assertEquals(1, merged.brandRows("2026-11").size)
+            assertEquals(2_240_000L, merged.brandRows("2026-11").single().stdTargetMilli)
+            assertTrue(merged.cutShort("2026-11")); assertFalse("2026-11" in merged.fetchedMonths)
+        }
+    }
+
     @Test fun anOlderServerThatOnlySetsTheTruncatedFlagIsHandledLikeAListedMonth() {
         val legacy = bundle().copy(truncated = true)
         assertTrue(legacy.cutShort("2026-11")); assertFalse(legacy.cutShort("2026-12")) // no rows of December: nothing was cut there
-        val merged = AsthaFetched.merge(legacy, listOf(CachedMonth(7, "2026-11", "2026-11-18T06:00:00Z", arr(item(7, "2026-11", brand = 12, target = "8")))))
-        assertEquals(8_000L, merged.brandRows("2026-11").single().stdTargetMilli)
-        assertFalse(merged.cutShort("2026-11"))
+        val merged = AsthaFetched.merge(legacy, listOf(CachedMonth(7, "2026-11", "2026-11-18T06:00:00Z", arr(item(7, "2026-11", brand = 12, target = "8")), "2026-11-18")))
+        assertEquals(2_240_000L, merged.brandRows("2026-11").single().stdTargetMilli) // the bundle's rows stay
+        assertTrue(merged.cutShort("2026-11"))
+    }
+
+    @Test fun twoRoutesOfOneMonthShowTheEarliestReadDateAndBothRoutesRows() {
+        val merged = AsthaFetched.merge(bundle(), listOf(
+            CachedMonth(7, "2026-10", "2026-11-18T06:00:00Z", arr(item(7, "2026-10")), "2026-11-18"),
+            CachedMonth(8, "2026-10", "2026-11-17T06:00:00Z", arr(item(8, "2026-10")), "2026-11-17"),
+        ))
+        assertEquals(2, merged.rows.count { it.month == "2026-10" })
+        assertEquals("2026-11-17T06:00:00Z", merged.asOfOf("2026-10"))
+        assertEquals("2026-11-17", merged.fetchedMonths.getValue("2026-10").readDate)
+    }
+
+    @Test fun aMonthIsFinalOnlyWhenReadAfterItsLastDay() {
+        // read on 20 November: October had ended (final), November had not
+        val oct = FetchedMonth("2026-11-20T01:00:00Z", "2026-11-20")
+        assertFalse(oct.openAtRead("2026-10")); assertTrue(oct.openAtRead("2026-11")); assertTrue(oct.openAtRead("2026-12"))
+        assertTrue(FetchedMonth("2026-11-30T01:00:00Z", "2026-11-30").openAtRead("2026-11")) // read ON the last day: the day was still running
+        assertFalse(FetchedMonth("2026-12-01T01:00:00Z", "2026-12-01").openAtRead("2026-11"))
+        assertTrue(FetchedMonth(null, null).openAtRead("2020-01")) // unknown read date: re-read when online
+        assertTrue(FetchedMonth("2024-03-01T00:00:00Z", "2024-03-01").openAtRead("2024-02").not()) // a leap year's February ends on the 29th
+    }
+
+    @Test fun aQuarterWithAMonthReadWhileOpenIsWorthReadingAgainOnlineAndAFinalOneIsNot() {
+        val held = AsthaFetched.merge(bundle(), listOf(
+            CachedMonth(7, "2026-10", "2026-11-20T06:00:00Z", arr(item(7, "2026-10")), "2026-11-20"),
+            CachedMonth(7, "2026-12", "2026-11-20T06:00:00Z", arr(), "2026-11-20"),
+        ))
+        assertTrue(held.wantsRead(q4)) // December was read before it began: open
+        val finalOnly = AsthaFetched.merge(bundle(), listOf(CachedMonth(7, "2026-09", "2026-11-20T06:00:00Z", arr(item(7, "2026-09")), "2026-11-20")))
+        assertFalse(finalOnly.wantsRead(listOf("2026-09")))
+    }
+
+    @Test fun theCacheKeepsTheReadDateAndOldFilesWithoutOneAreOpen() {
+        val c = cache()
+        c.put(7, "2026-10", "2026-11-20T23:30:00Z", arr()) // 21 November 05:30 in Dhaka
+        assertEquals("2026-11-21", c.read(7, "2026-10")!!.readDate)
+        File(tmp.root, "c/r7_2026-09.json").writeText("""{"v":1,"route_id":7,"month":"2026-09","as_of":"2026-11-01T00:00:00Z","items":[]}""")
+        assertNull(c.read(7, "2026-09")!!.readDate)
+    }
+
+    @Test fun theServersOwnMonthListIsKeptEvenWhenItDiffersFromTheMonthsAsked() = runBlocking {
+        val c = cache()
+        // the phone asked for 2026-Q4 with months Oct to Dec; the server's quarter (start month 7) answers with April to June 2027
+        val f = fetcher(c, mapOf((7L to null) to PageOutcome.Page(page("2026-11-18T06:00:00Z", listOf(item(7, "2027-04"), item(7, "2027-06"))))))
+        assertNull(f.fetch("2026-Q4", listOf(7), q4))
+        val kept = c.readAll(listOf(7)).map { it.month }.toSet()
+        assertTrue("2027-04" in kept && "2027-06" in kept)
     }
 }

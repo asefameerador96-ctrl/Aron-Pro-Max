@@ -4,7 +4,7 @@ import com.aktcl.aron.core.database.record.ProgrammePayloads
 import kotlinx.serialization.json.JsonObject
 
 /** A redemption this phone already holds (from the stored `redemption` record and its outbox state). */
-data class LocalRedemption(val outletId: Long, val programmeId: Long, val points: Long, val confirmedAt: String, val state: String, val ackedAt: String? = null)
+data class LocalRedemption(val outletId: Long, val programmeId: Long, val points: Long, val confirmedAt: String, val state: String, val ackedAt: String? = null, val uuid: String = "")
 
 /** One gift of the basket with its quantity. */
 data class BasketLine(val gift: LoyaltyGift, val qty: Int)
@@ -65,22 +65,16 @@ object LocalRedeemed {
     /** Redemptions sent but unanswered when the held snapshot was requested. */
     fun awaiting(records: List<LocalRedemption>): Int = records.count { it.state == "uncertain" }
 
-    private val STILL_LOCAL = setOf("pending", "in_flight", "quarantined")
-
     /**
-     * Points this phone redeemed for the outlet and programme that the bundle's balance cannot hold. A redemption the server refused counts for
-     * nothing. One still on the phone (pending, in flight, held) counts. An acknowledged one counts only until a bundle built after its
-     * acknowledgement has arrived: its [LocalRedemption.ackedAt] (trusted clock) is later than [bundleBuiltAt] (the instant the bundle was REQUESTED on the trusted clock, `bundle.requested_at`), compared as instants,
-     * not as text. With either time unknown it counts (the safe side: the balance is never overstated). Limit: an ack that lands just after a
-     * bundle that already held the redemption is subtracted once more until the next bundle (the balance is then understated, never overstated).
+     * Points this phone redeemed for the outlet and programme that the bundle's balance cannot hold, by the phone's own ORDER and no clock: [ackedBeforeRequest] is the set of record uuids the
+     * phone had an acknowledgement for when it SENT the request for the held bundle. A redemption the server refused counts for nothing; one in that set is inside the bundle's balance and does
+     * not count; every other one (still on the phone, or acknowledged after the request) counts. With no recorded order every non-refused one counts (the balance is never overstated).
      */
-    fun points(records: List<LocalRedemption>, outletId: Long, programmeId: Long, bundleBuiltAt: String?): Long {
-        val built = DhakaTime.ms(bundleBuiltAt)
+    fun points(records: List<LocalRedemption>, outletId: Long, programmeId: Long, ackedBeforeRequest: Set<String>?): Long =
         // `uncertain` (sent, answer lost, so the bundle may already hold it) is neither subtracted nor ignored silently: the points page says it is awaiting confirmation
-        return records.filter { it.outletId == outletId && it.programmeId == programmeId && it.state != "rejected" && it.state != "uncertain" }
-            .filter { it.state in STILL_LOCAL || built == null || DhakaTime.ms(it.ackedAt)?.let { ack -> ack > built } != false }
+        records.filter { it.outletId == outletId && it.programmeId == programmeId && it.state != "rejected" && it.state != "uncertain" }
+            .filter { ackedBeforeRequest == null || it.uuid !in ackedBeforeRequest }
             .sumOf { it.points }
-    }
 }
 
 /**
@@ -88,11 +82,11 @@ object LocalRedeemed {
  * phone redeemed that the bundle cannot hold ([LocalRedeemed]). The overdrawn flag is derived from it, never taken from the bundle's own flag.
  */
 object PointsBalance {
-    fun of(bundleBalance: Long, local: List<LocalRedemption>, outletId: Long, programmeId: Long, bundleBuiltAt: String?): Long =
-        bundleBalance - LocalRedeemed.points(local, outletId, programmeId, bundleBuiltAt)
+    fun of(bundleBalance: Long, local: List<LocalRedemption>, outletId: Long, programmeId: Long, ackedBeforeRequest: Set<String>?): Long =
+        bundleBalance - LocalRedeemed.points(local, outletId, programmeId, ackedBeforeRequest)
 
     fun overdrawn(balance: Long): Boolean = balance < 0
 
     /** The function the screens take: (outlet, programme, bundle balance) -> balance. */
-    fun function(local: List<LocalRedemption>, bundleBuiltAt: String?): (Long, Long, Long) -> Long = { o, p, b -> of(b, local, o, p, bundleBuiltAt) }
+    fun function(local: List<LocalRedemption>, ackedBeforeRequest: Set<String>?): (Long, Long, Long) -> Long = { o, p, b -> of(b, local, o, p, ackedBeforeRequest) }
 }

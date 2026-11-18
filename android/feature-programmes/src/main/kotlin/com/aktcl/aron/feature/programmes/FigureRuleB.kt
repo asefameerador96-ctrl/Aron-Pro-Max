@@ -23,30 +23,62 @@ object FigureRuleB {
     /** One server figure (a row of `achievement_mtd`, a brand, a campaign): base-unit quantity, memo count, optional value in milli-taka, and `by_pack` as pack factor to base units. */
     data class ServerFigure(val qtyBase: Long, val memoCount: Long, val grossMtk: Long = 0L, val byPack: Map<Int, Long> = emptyMap(), val asOf: String? = null)
 
-    /** The memos to add and to subtract, or null when the order is unknown (no month or no recorded set): then nothing local may be applied. */
+    /**
+     * The uuids of live memos that depend on a memo SENT but unanswered (`uncertain`): an edit or void of it, and an edit of such an edit. The server may hold the predecessor, the edit, both or
+     * neither, so nothing of the chain is added or subtracted and the page says it awaits confirmation (never the newest memo on top of a figure that may already hold an older version).
+     */
+    fun tainted(memos: List<LocalMemo>): Set<String> {
+        val byUuid = memos.associateBy { it.uuid }
+        fun target(m: LocalMemo) = m.supersedes ?: m.voidOf
+        fun hasUncertainAncestor(m: LocalMemo): Boolean {
+            var cur = target(m); var guard = 0
+            while (cur != null && guard++ < 64) { val p = byUuid[cur] ?: return false; if (p.state == "uncertain") return true; cur = target(p) }
+            return false
+        }
+        return memos.filter { it.state != "rejected" && it.state != "uncertain" && hasUncertainAncestor(it) }.map { it.uuid }.toSet()
+    }
+
+    /** Memo states that can only mean "never left this phone" (the outbox row is pending with no attempt): certainly NOT inside any server figure, whatever the order is. */
+    private val NEVER_SENT = setOf("pending", "quarantined")
+
+    /**
+     * The memos to add and to subtract, or null when there is no month. With the recorded order ([ackedBeforeRequest]) the full rule applies. WITHOUT it (a promoted prefetch, a bundle stored before
+     * the order was recorded) only what is certain is done: a memo that never left the phone (and is not an edit or a void of anything) is certainly not in the server figure and is ADDED;
+     * an acknowledged memo may or may not be in it and is NOT added, and nothing is subtracted; [unknownOrder] counts them for the page's note.
+     */
     fun delta(memos: List<LocalMemo>, ackedBeforeRequest: Set<String>?, month: String?, throughDate: String?): Delta? {
-        if (month == null || ackedBeforeRequest == null) return null
+        if (month == null) return null
         fun inMonth(m: LocalMemo) = m.businessDate.take(7) == month
         fun cutAfter(m: LocalMemo) = throughDate != null && m.businessDate > throughDate
-        val live = memos.filter { it.state != "rejected" && it.state != "uncertain" }
+        val taint = tainted(memos)
+        val live = memos.filter { it.state != "rejected" && it.state != "uncertain" && it.uuid !in taint }
         // who put each memo out: a live local memo that supersedes it, or a live local void record
         val killer = HashMap<String, String>()
         live.forEach { k -> k.supersedes?.let { killer.putIfAbsent(it, k.uuid) }; k.voidOf?.let { killer.putIfAbsent(it, k.uuid) } }
         val dead = killer.keys
-        val unsure = memos.filter { it.state == "uncertain" }.map { it.uuid }.toSet()
+        if (ackedBeforeRequest == null) {
+            return Delta(live.filter { it.voidOf == null && it.supersedes == null && inMonth(it) && it.uuid !in dead && it.state in NEVER_SENT }, emptyList())
+        }
         val add = live.filter { it.voidOf == null && inMonth(it) && it.uuid !in dead && (it.uuid !in ackedBeforeRequest || cutAfter(it)) }
         val byUuid = memos.associateBy { it.uuid }
         val subtract = dead.mapNotNull { id ->
             val m = byUuid[id] ?: return@mapNotNull null
             val k = killer.getValue(id)
             // held by the server figure (acknowledged before the request, inside the month, up to through_date), and the record that voids or replaces it is not
-            if (m.voidOf == null && inMonth(m) && !cutAfter(m) && id in ackedBeforeRequest && k !in ackedBeforeRequest && k !in unsure && m.state != "rejected" && m.state != "uncertain") m else null
+            if (m.voidOf == null && inMonth(m) && !cutAfter(m) && id in ackedBeforeRequest && k !in ackedBeforeRequest && m.state != "rejected" && m.state != "uncertain") m else null
         }
         return Delta(add, subtract)
     }
 
-    /** True when some memo is sent but unanswered (the figure may already hold it): the page says it awaits confirmation. */
-    fun awaiting(memos: List<LocalMemo>): Int = memos.count { it.state == "uncertain" && it.voidOf == null && it.memoKind == "sale" }
+    /** Sale memos the page must say await confirmation: sent and unanswered, and the edits and voids that depend on one. */
+    fun awaiting(memos: List<LocalMemo>): Int {
+        val taint = tainted(memos)
+        return memos.count { it.voidOf == null && it.memoKind == "sale" && (it.state == "uncertain" || it.uuid in taint) }
+    }
+
+    /** With NO recorded order: the sale memos left out of the figures because they may already be in them (acknowledged ones, and edits of anything), for the page's own note. 0 when the order is known. */
+    fun unknownOrder(memos: List<LocalMemo>, orderKnown: Boolean): Int =
+        if (orderKnown) 0 else memos.count { it.voidOf == null && it.memoKind == "sale" && it.state != "rejected" && it.state != "uncertain" && (it.state !in NEVER_SENT || it.supersedes != null) }
 
     /**
      * The figure to show. [memoIn] picks the memos that belong to the figure (its route; for a campaign its outlet and programme), [lineIn] the sale lines that belong to it (its brand,
