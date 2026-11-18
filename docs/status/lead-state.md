@@ -336,3 +336,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Reviews running: final pass android-sr-programmes bb52f926d (wf_858699d5-bb8); loyalty adjustment c4113eed (wf_15d70f25-e57); ops-diagnose-api c1fe8c02 round 7 (wf_30b67639-f1e).
 - Ready for the next server train (scanner step aside): sr-server c62664944 (V0209, tests-only delta on the reviewed 9b69fba3).
 - L-A12 started S-1/S-2/S-3 (additive) on top of c4113eed.
+
+## 2026-11-18 13:40
+- OWNER answers (recorded D-OWNER-GITLEAKS-01, -AZURE-MOVE-01, -APSIS-FTP-01, -PORTALS-INTEL-01): scanner exception YES; pushes of P-SR1b/P-SR2b approved (relayed; lanes retry once, no workaround); move EVERYTHING in the current Azure subscription to the new one (current will be discontinued); FTP details to be shared for the dump (lead ruling: password never in chat, typed where the copy runs); programme/target portals brief comes in a few days (earning rule, zero-balance redemption, cash-back, Q-A..Q-K wait for it); app-behaviour decisions: owner answers tomorrow from the lead's list; device walks explained.
+- TRAIN 122 built: lane/lead-train122 5b379eb52 = INT ce6792f67 + docs ad5dc1be4 (allow-list line) + sr-server c62664944 (V0209). GO sent to the integrator. Expect 661 D-lines, migrate 0208 -> 0209, real deploy.
+- After train 122 lands: tell every lane to merge INT (scanner step turns green): A-GATE8, A-PROG3, T-KPI3, L-A12, SV6 (ops-diagnose-api), M-APSIS1, F-INFRA1, P-TSO, P-SR1b, P-SR2b.
+- This cloud session has NO Azure login and the laptop folders are not offered to cloud sessions: Azure inventory and the move run through a Claude Code session on the owner's laptop with a prompt from the lead (given in chat 13:40). Inventory of other products stays OUT of the public repository.
+- loyalty adjustment c4113eed: FAIL (overdraw race), fix round sent.
