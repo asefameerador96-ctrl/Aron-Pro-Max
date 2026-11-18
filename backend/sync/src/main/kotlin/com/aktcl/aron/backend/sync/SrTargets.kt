@@ -20,8 +20,8 @@ import java.time.YearMonth
  *   (`std_target` = qty_base as Decimal3, `memo_target` 0: the memo target is the brand table of N-5).
  * - `achievement_mtd`: the sold quantity (sale lines only, like Target Status) and memo count per SKU of the route's accepted memos, read straight from
  *   `app.memo` / `app.memo_line` by [SrMemoFigures] (never from the lagging `dw.agg_*`), business dates from the 1st up to and including `through_date` = the
- *   bundle date minus one day. TODAY IS NEVER IN A SERVER FIGURE. The phone merges its local memos by the ordering rule B (`docs/requests/sr-programmes-phone-rule-b.md`),
- *   no clock. `as_of` is informational: the newest `received_at` among the memos read (the epoch when none), never used in arithmetic.
+ *   the last CLOSED day at build time ([SrMemoFigures.through]: the bundle date minus one day, or yesterday for a bundle built ahead). TODAY IS NEVER IN A SERVER FIGURE. The phone shows these figures as the
+ *   server's (the figures rule of `RouteSnapshot`, `docs/requests/sr-programmes-phone-rule-b.md`) and never adds into or subtracts from them; there is no clock. `as_of` is informational: the newest `received_at` among the memos read (the epoch when none), never used in arithmetic.
  * - `calendar`: the working days at the route's zone path (division and wing weekend and holidays honoured).
  */
 object SrTargets {
@@ -34,12 +34,14 @@ object SrTargets {
 
     fun load(
         h: Handle, routes: Map<Long, Long>, date: LocalDate, now: Instant, config: ServerConfig?,
-        figures: Map<Long, SrMemoFigures.Figures> = SrMemoFigures.forRoutes(h, routes.keys, YearMonth.from(date).atDay(1), date.minusDays(1)),
+        /** The last CLOSED day ([SrMemoFigures.through]); the working-day counts are anchored on the day after it (the day still open), so counts and figures describe the same cut. */
+        through: LocalDate = SrMemoFigures.through(date, now),
+        figures: Map<Long, SrMemoFigures.Figures> = SrMemoFigures.forRoutes(h, routes.keys, YearMonth.from(date).atDay(1), through),
     ): Map<Long, Snapshot> {
         if (routes.isEmpty()) return emptyMap()
         val month = YearMonth.from(date)
         val first = month.atDay(1)
-        val through = date.minusDays(1)
+        val anchor = through.plusDays(1) // the day after the last closed day: 'today' of the day counts
         val routeIds = routes.keys.toList()
 
         val targets = h.createQuery(
@@ -71,14 +73,14 @@ object SrTargets {
             var before = 0; var after = 0
             var d = first
             while (!d.isAfter(month.atEndOfMonth())) {
-                if (cal.isWorking(d.toKotlinLocalDate())) { if (d.isBefore(date)) before++ else if (d.isAfter(date)) after++ }
+                if (cal.isWorking(d.toKotlinLocalDate())) { if (d.isBefore(anchor)) before++ else if (d.isAfter(anchor)) after++ }
                 d = d.plusDays(1)
             }
             Snapshot(
                 targets[routeId].orEmpty().take(MAX_ROWS), achieved[routeId].orEmpty().take(MAX_ROWS),
                 RouteCalendarDto(
                     month = month.toString(), working_days = cals.workingDays(path), elapsed_working_days_before_today = before,
-                    remaining_working_days_after_today = after, today_is_working = cal.isWorking(date.toKotlinLocalDate()),
+                    remaining_working_days_after_today = after, today_is_working = cal.isWorking(anchor.toKotlinLocalDate()),
                     last_month_working_days = prevCals.workingDays(path), through_date = through.toString(), as_of = (figures[routeId]?.asOf ?: Instant.EPOCH).wire(),
                 ),
                 truncated = targets[routeId].orEmpty().size > MAX_ROWS || achieved[routeId].orEmpty().size > MAX_ROWS,

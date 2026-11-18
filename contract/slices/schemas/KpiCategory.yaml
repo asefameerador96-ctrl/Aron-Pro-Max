@@ -1,6 +1,6 @@
 KpiCategory:
   type: object
-  description: Volume of a category row (BLM, match and lighter).
+  description: Volume of a category row (match and lighter).
   required:
   - category_code
   - volume_target

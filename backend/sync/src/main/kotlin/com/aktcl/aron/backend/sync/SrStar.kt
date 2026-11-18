@@ -31,12 +31,12 @@ object SrStar {
     class RouteInfo(val routeName: String, val srName: String?, val srUserId: Long?, val calendar: RouteCalendarDto)
 
     fun load(
-        h: Handle, routes: Map<Long, RouteInfo>, date: LocalDate,
-        figures: Map<Long, SrMemoFigures.Figures> = SrMemoFigures.forRoutes(h, routes.keys, YearMonth.from(date).atDay(1), date.minusDays(1)),
+        h: Handle, routes: Map<Long, RouteInfo>, date: LocalDate, through: LocalDate,
+        figures: Map<Long, SrMemoFigures.Figures> = SrMemoFigures.forRoutes(h, routes.keys, YearMonth.from(date).atDay(1), through),
         dim: SrMemoFigures.Dim = SrMemoFigures.dim(h), dropped: MutableSet<Long>? = null,
     ): Map<Long, JsonObject> {
         if (routes.isEmpty()) return emptyMap()
-        val month = YearMonth.from(date); val first = month.atDay(1); val through = date.minusDays(1)
+        val month = YearMonth.from(date); val first = month.atDay(1)
         val last = month.minusMonths(1)
         val progs = h.createQuery(
             """
@@ -52,6 +52,8 @@ object SrStar {
             if (ids.isEmpty()) emptyMap() else h.createQuery("SELECT id, username FROM app.app_user WHERE id = ANY(:i)").bindArray("i", Long::class.javaObjectType, ids)
                 .map { rs, _ -> rs.getLong(1) to rs.getString(2) }.list().toMap()
         }
+        // last month's sold quantity of every Star route in ONE read (was one query per route)
+        val lastMonth = SrMemoFigures.forRoutes(h, progs.keys, last.atDay(1), last.atEndOfMonth())
         return progs.mapValues { (routeId, p) ->
             val info = routes.getValue(routeId)
             val rules = parseRules(p.rules)
@@ -61,7 +63,7 @@ object SrStar {
             val accept: (Long) -> Boolean = if (ids.isNotEmpty()) { sku -> sku in ids } else { sku -> dim.skus[sku]?.category == category }
             // STD: this month's accepted memos through the last closed day ([SrMemoFigures], same snapshot as every other figure); LMS: last month, same filters.
             val std = figures[routeId]?.sold(accept) ?: 0L
-            val lms = SrMemoFigures.forRoutes(h, listOf(routeId), last.atDay(1), last.atEndOfMonth())[routeId]?.sold(accept) ?: 0L
+            val lms = lastMonth[routeId]?.sold(accept) ?: 0L
             val c = info.calendar
             val days = SkuProgress.dayCounts(SkuProgress.Calendar(c.elapsed_working_days_before_today, c.remaining_working_days_after_today, c.today_is_working))
             val res = StarProgress.compute(

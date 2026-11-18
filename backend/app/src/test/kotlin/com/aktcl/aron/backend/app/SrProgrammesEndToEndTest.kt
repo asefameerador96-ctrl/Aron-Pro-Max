@@ -29,9 +29,12 @@ import kotlin.test.assertTrue
 class SrProgrammesEndToEndTest : DataFlowTraceSupport() {
     override val traceName get() = "sr-programmes-trace"
 
+    /** A fresh login after the clock moved a day (the first token has expired by then). */
+    @Volatile private var tokenOverride: String? = null
+
     private fun bundleFor(date: String): com.fasterxml.jackson.databind.JsonNode = runBlocking {
         val r = app.client.get("/v1/sync/bundle?for=$date") {
-            bearerAuth(sr.token); header("X-Device-Id", sr.deviceUuid); header("X-App-Version", ApiWorld.APP_VERSION); header("Accept-Encoding", "gzip")
+            bearerAuth(tokenOverride ?: sr.token); header("X-Device-Id", sr.deviceUuid); header("X-App-Version", ApiWorld.APP_VERSION); header("Accept-Encoding", "gzip")
         }
         assertEquals(HttpStatusCode.OK, r.status, "bundle for $date")
         val raw = r.bodyAsBytes()
@@ -70,6 +73,11 @@ class SrProgrammesEndToEndTest : DataFlowTraceSupport() {
         val today = bundleFor(day).path("routes").single { it.path("route_id").asLong() == gulRouteId }
         hop("the bundle of the memos' own date holds none of them (today is never in a server figure)", "achievement rows" to today.path("achievement_mtd").size(), "expected" to 0)
 
+        // B1 (T1 review): a bundle for the next working day taken while the memos' day is still open is built AHEAD: it cuts at the last CLOSED day, so the memos are in no figure yet
+        val ahead = bundleFor(next.toString()).path("routes").single { it.path("route_id").asLong() == gulRouteId }
+        hop("a bundle built ahead on the memos' own day holds none of them (the day is still open)", "achievement rows" to ahead.path("achievement_mtd").size(), "expected" to 0)
+        clockShift = java.time.Duration.ofDays(1)   // the memos' day has closed: the same bundle date is now built on its own day, complete through the memos' date
+        tokenOverride = login(sr.username, "app_sr", sr.deviceUuid)
         val tomorrow = bundleFor(next.toString()).path("routes").single { it.path("route_id").asLong() == gulRouteId }
         val ach = tomorrow.path("achievement_mtd").associate { it.path("product_id").asLong() to (it.path("achieved_qty_base").asLong() to it.path("memo_count").asInt()) }
         for ((sku, qty) in qtyBySku) hop("achievement_mtd of SKU $sku: base quantity and memo count", "bundle" to ach[sku], "device" to (qty to memosBySku.getValue(sku)))

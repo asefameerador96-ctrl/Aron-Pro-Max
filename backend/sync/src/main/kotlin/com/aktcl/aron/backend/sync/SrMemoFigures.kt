@@ -1,5 +1,7 @@
 package com.aktcl.aron.backend.sync
 
+import com.aktcl.aron.rules.BusinessDate
+import kotlinx.datetime.toJavaLocalDate
 import org.jdbi.v3.core.Handle
 import java.time.Instant
 import java.time.LocalDate
@@ -53,6 +55,14 @@ object SrMemoFigures {
         val cig = skus.values.filter { it.category == "cigarette" }.mapNotNull { it.brandId }.toSet()
         return Dim(skus, cig)
     }
+
+    /**
+     * THE LAST CLOSED DAY at build time: a figure is complete through `through_date`, so it must be a day that has ENDED when the bundle is built. A bundle for the bundle date D normally
+     * cuts at D - 1; a bundle built AHEAD (the next working day's pre-fetch, taken while today is still open) must not claim D - 1 when D - 1 is today or later, so it cuts at
+     * [today (Dhaka) - 1] (B1 of the T1 review): `min(date - 1, today - 1)`. A bundle is never for a day before today, so this is today - 1 whenever the bundle date is not earlier.
+     */
+    fun through(date: LocalDate, now: Instant): LocalDate =
+        minOf(date.minusDays(1), BusinessDate.of(now.toEpochMilli()).toJavaLocalDate().minusDays(1))
 
     const val ACTIVE_MEMO = "m.status = 'active' AND m.line_count > 0 AND m.voided_at IS NULL"
 

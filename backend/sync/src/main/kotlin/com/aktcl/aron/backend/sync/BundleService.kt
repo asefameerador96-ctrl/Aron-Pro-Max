@@ -140,8 +140,13 @@ class BundleService(
         }
 
         val configVersion = config.configVersion() // one read: config.version and device_policy_version agree
-        val bundle = db.jdbi.withHandle<Bundle, Exception> { h ->
+        // B2 of the T1 review: ONE read-only REPEATABLE READ transaction around EVERY memo-derived read of the bundle (route figures, outlet stats, the programmes section, the open memos...), so a memo
+        // that commits while the bundle is built is in all of them or in none. The inner transactions of routeSnapshots and of the programmes section join this one (same isolation level). The Astha
+        // section keeps its landed rule (a live snapshot through today), now taken inside this same snapshot.
+        val bundle = db.jdbi.withHandle<Bundle, Exception> { h0 -> h0.inTransaction<Bundle, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { h ->
+            h.execute("SET TRANSACTION READ ONLY")
             val own = routeSnapshots(h, user.id, plans, date, dayStates, cfg, roleOrdinal)
+            betweenReads?.invoke(h)
             // F-AMO-044: the AMO (and the TSO) also carries every route of the zone (outlets for a Control Call anywhere in airplane mode).
             val supReach = if (reach != null && SupervisorBundle.isSupervisor(p.role)) reach.reach(user.id, p.role, p.scopeVersion, date) else null
             val zonePlans = if (supReach != null) SupervisorBundle.zoneRoutePlans(h, supReach, plans.map { it.routeId }.toSet()) else emptyList()
@@ -199,7 +204,7 @@ class BundleService(
                 outlet_sku_stats = statsCapped.rows,
                 outlet_sku_stats_truncated = statsCapped.truncated,
             )
-        }
+        } }
         val seq = snapshotSeq(user.id, date, bundle)
         val version = "$date:$seq"
         fingerprints.putIfAbsent(user.id, date, seq) { BundleFingerprint.of(bundle) }
@@ -523,13 +528,14 @@ class BundleService(
 
     private fun loadFigureSet(h: Handle, plans: List<RouteDayPlan>, date: LocalDate, outletIdsByRoute: Map<Long, List<Long>>, routeNames: Map<Long, String>, srs: Map<Long, Pair<Long, String>>): FigureSet {
         val srRoutes = plans.map { it.routeId }
-        val figures = if (srRoutes.isEmpty()) emptyMap() else SrMemoFigures.forRoutes(h, srRoutes, YearMonth.from(date).atDay(1), date.minusDays(1))
+        val through = SrMemoFigures.through(date, clock.now())
+        val figures = if (srRoutes.isEmpty()) emptyMap() else SrMemoFigures.forRoutes(h, srRoutes, YearMonth.from(date).atDay(1), through)
         val dim = if (srRoutes.isEmpty()) null else SrMemoFigures.dim(h)
-        val sr = SrTargets.load(h, plans.associate { it.routeId to it.zoneId }, date, clock.now(), config, figures)
-        val kpi = SrKpi.load(h, srRoutes, date, figures, dim!!)
-        val campaigns = SrCampaigns.load(h, outletIdsByRoute, date)
+        val sr = SrTargets.load(h, plans.associate { it.routeId to it.zoneId }, date, clock.now(), config, through, figures)
+        val kpi = SrKpi.load(h, srRoutes, date, through, figures, dim!!)
+        val campaigns = SrCampaigns.load(h, outletIdsByRoute, date, through)
         val starDropped = HashSet<Long>()
-        val star = SrStar.load(h, plans.mapNotNull { r -> sr[r.routeId]?.let { snap -> r.routeId to SrStar.RouteInfo(routeNames.getValue(r.routeId), srs[r.routeId]?.second, srs[r.routeId]?.first, snap.calendar) } }.toMap(), date, figures, dim, starDropped)
+        val star = SrStar.load(h, plans.mapNotNull { r -> sr[r.routeId]?.let { snap -> r.routeId to SrStar.RouteInfo(routeNames.getValue(r.routeId), srs[r.routeId]?.second, srs[r.routeId]?.first, snap.calendar) } }.toMap(), date, through, figures, dim, starDropped)
         return FigureSet(sr, kpi, campaigns, star, starDropped)
     }
 
@@ -843,6 +849,9 @@ class BundleService(
     }.list()
 
     companion object {
+        /** Test hook (like [BundleProgrammes.probe]): runs inside the bundle's single snapshot right after the route figures were read, so a test can commit a memo from ANOTHER connection between two reads. Null in production. */
+        @Volatile var betweenReads: ((Handle) -> Unit)? = null
+
         /** The device-scoped config value that carries the phone's lab grant (contract 1.21.0); see [labGrant]. */
         const val LAB_GRANT_KEY = "cfg.integrity.lab_exemption"
 

@@ -34,19 +34,18 @@ object SrKpi {
     private const val MAX_BRANDS = 200
 
     fun load(
-        h: Handle, routeIds: Collection<Long>, date: LocalDate,
-        figures: Map<Long, SrMemoFigures.Figures> = SrMemoFigures.forRoutes(h, routeIds, YearMonth.from(date).atDay(1), date.minusDays(1)),
+        h: Handle, routeIds: Collection<Long>, date: LocalDate, through: LocalDate,
+        figures: Map<Long, SrMemoFigures.Figures> = SrMemoFigures.forRoutes(h, routeIds, YearMonth.from(date).atDay(1), through),
         dim: SrMemoFigures.Dim = SrMemoFigures.dim(h),
     ): Map<Long, JsonObject> {
         if (routeIds.isEmpty()) return emptyMap()
         val month = YearMonth.from(date)
         val first = month.atDay(1)
-        val through = date.minusDays(1)
         val ids = routeIds.toList()
 
         class Brand(val id: Long) {
             var volTarget = 0L; var volAchieved = 0L; var memoTarget = 0L; var memoAchieved = 0L; var alloc = 0L
-            var cigarette = false
+            var cigarette = false; var cigTarget = 0L; var cigAchieved = 0L   // the volume TOTAL counts cigarette SKUs only, by the SKU's own category (a brand that mixed categories adds only its cigarette SKUs)
             fun any() = volTarget > 0 || volAchieved > 0 || memoTarget > 0 || memoAchieved > 0 || alloc > 0
         }
         val brands = HashMap<Long, MutableMap<Long, Brand>>()
@@ -59,7 +58,7 @@ object SrKpi {
              WHERE t.route_id = ANY(:r) AND t.month = :m GROUP BY t.route_id, b.id, s.category_code
             """,
         ).bindArray("r", Long::class.javaObjectType, ids).bind("m", first).map { rs, _ -> listOf(rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getLong(4)) }.list().forEach {
-            val b = brand(it[0] as Long, it[1] as Long); b.volTarget += it[3] as Long; if (it[2] == "cigarette") b.cigarette = true
+            val b = brand(it[0] as Long, it[1] as Long); b.volTarget += it[3] as Long; if (it[2] == "cigarette") { b.cigarette = true; b.cigTarget += it[3] as Long }
         }
         h.createQuery("SELECT route_id, brand_id, memo_target, kpi_alloc_mtk FROM app.route_brand_kpi_target WHERE route_id = ANY(:r) AND month = :m")
             .bindArray("r", Long::class.javaObjectType, ids).bind("m", first).map { rs, _ -> listOf(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)) }.list().forEach {
@@ -74,6 +73,7 @@ object SrKpi {
                 val brandId = sku.brandId ?: continue
                 val b = brand(route, brandId); b.volAchieved += l.saleQty
                 if (brandId in dim.cigaretteBrands) b.cigarette = true
+                if (sku.category == "cigarette") b.cigAchieved += l.saleQty
                 memosOf.getOrPut(brandId) { HashSet() }.add(l.memo)
             }
             memosOf.forEach { (brandId, set) -> brand(route, brandId).memoAchieved = set.size.toLong() }
@@ -86,6 +86,7 @@ object SrKpi {
         ).bindArray("r", Long::class.javaObjectType, ids).bind("m", first).map { rs, _ -> Triple(rs.getLong(1), rs.getString(2), rs.getLong(3)) }.list().forEach { cat(it.first, it.second)[0] = it.third }
         for ((route, f) in figures) for (l in f.lines) {
             val c = dim.skus[l.skuId]?.category ?: continue
+            if (l.saleQty == 0L) continue   // a free-only line is not a sale: it must not create a category row (and so a `kpi` member) of its own
             if (c == "match" || c == "lighter") cat(route, c)[1] += l.saleQty
         }
 
@@ -127,8 +128,7 @@ object SrKpi {
         return ids.filter { r -> brands[r].orEmpty().values.any { it.any() } || monthRows[r] != null || categories[r].orEmpty().isNotEmpty() }.associateWith { route ->
             val rows = brands[route].orEmpty().values.filter { it.any() }.sortedBy { it.id }
             val shown = rows.take(MAX_BRANDS)
-            val cig = rows.filter { it.cigarette }
-            val volT = cig.sumOf { it.volTarget }; val volA = cig.sumOf { it.volAchieved }
+            val volT = rows.sumOf { it.cigTarget }; val volA = rows.sumOf { it.cigAchieved }
             val memT = rows.sumOf { it.memoTarget }; val memA = rows.sumOf { it.memoAchieved }
             val m = monthRows[route]
             buildJsonObject {

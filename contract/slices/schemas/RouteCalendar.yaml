@@ -1,7 +1,8 @@
 RouteCalendar:
   type: object
-  description: Working-day numbers of the bundle month for the route (national calendar, Friday off, holidays as
-    data). From these the phone derives ADS, TADS, PADS and RADS. Contract 1.22.0.
+  description: 'Working-day numbers of the bundle month for the route (read at the route''s zone path: the division
+    and wing weekend and the holidays of its levels, as data). From these the phone derives ADS, TADS, PADS and
+    RADS. Contract 1.24.0.'
   required:
   - month
   - working_days

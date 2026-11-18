@@ -2,13 +2,17 @@ RouteSnapshot:
   type: object
   description: 'Per-route section of the bundle; replaced as a whole when the route is added to the user. THE FIGURES
     RULE for the SR programme sections `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns` (contract
-    number provisional, the lead sets it at landing; the ONE place this rule is stated; D-LEAD-FIGURES-SIMPLE-01).
-    WHAT THE SERVER FIGURE IS. Every figure the phone merges (achievement, KPI volumes, memo counts and `by_pack`,
-    Star STD, campaign STD and memo) is computed from the accepted memos with a business date from the 1st of the
-    bundle `month` up to and including `through_date` (the bundle date minus one day), status active, memo lines
-    not voided, read in ONE repeatable-read snapshot straight from the memo tables. The bundle date''s own memos
-    are never in a figure (a bundle built ahead for tomorrow has `through_date` = the day it was built on). DEFINITIONS:
-    quantities (`achieved_qty_base`, brand and category `volume_*`, `by_pack`, Star STD, campaign STD and SKU `sold_qty_base`)
+    1.24.0; the ONE place this rule is stated; D-LEAD-FIGURES-SIMPLE-01). WHAT THE SERVER FIGURE IS. Every figure
+    of these sections (achievement, KPI volumes, memo counts and `by_pack`, Star STD, campaign STD and memo) is
+    computed from the accepted memos with a business date from the 1st of the bundle `month` up to and including
+    `through_date` (the last CLOSED Dhaka day when the bundle was built: the bundle date minus one day, or yesterday
+    for a bundle built ahead while today is still open), status active, memo lines not voided, read in ONE repeatable-read
+    snapshot straight from the memo tables. Today''s memos are never in a figure, and neither is any day that has
+    not ended when the bundle is built (a bundle built ahead on Thursday for Saturday has `through_date` = Wednesday,
+    not Friday). On the 1st of a month `through_date` is in the previous month while `month` is the new one: the
+    window is empty and every figure is zero; the phone labels it as from the 1st, never as complete through the
+    last day of last month. Working-day counts are anchored on the day after `through_date`. DEFINITIONS: quantities
+    (`achieved_qty_base`, brand and category `volume_*`, `by_pack`, Star STD, campaign STD and SKU `sold_qty_base`)
     are SALE lines only; `achievement_mtd.memo_count` counts a memo once per SKU when it has ANY non-voided line
     of that SKU (free lines included); a KPI brand `memo_achieved` and a campaign `memo` count a memo once when
     it has a SALE line of the brand (campaign: of a shown campaign SKU). Brand sums use ONE hierarchy, the current
@@ -94,12 +98,12 @@ RouteSnapshot:
       - $ref: '#/components/schemas/RouteCalendar'
       - type: 'null'
       description: Working-day numbers for the SR programme screens (N-2). Null or absent for TSO/AMO zone bundles.
-        Contract 1.22.0, optional.
+        Contract 1.24.0, optional.
     kpi:
       oneOf:
       - $ref: '#/components/schemas/RouteKpi'
       - type: 'null'
-      description: Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.22.0,
+      description: Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.24.0,
         optional.
     campaigns:
       type:
@@ -110,32 +114,32 @@ RouteSnapshot:
         $ref: '#/components/schemas/RouteCampaign'
       description: Outlets of the route enrolled in an active campaign for the month (N-3), with the outlet target
         pop-up figures and the SKU table. Empty or absent otherwise. At most 150 outlets and 20 SKUs each (lowest
-        outlet id first); `campaigns_truncated` says when more existed. Contract 1.22.0, optional.
+        outlet id first); `campaigns_truncated` says when more existed. Contract 1.24.0, optional.
     campaigns_truncated:
       type:
       - boolean
       - 'null'
       description: True when the route had more campaign outlets (over 150), an outlet more campaign SKUs (over
         20) or more than one active campaign (only the lowest programme id is sent) than were sent; never silent.
-        Contract 1.22.0, optional.
+        Contract 1.24.0, optional.
     targets_truncated:
       type:
       - boolean
       - 'null'
       description: True when `targets` or `achievement_mtd` had more than 500 rows and were cut; never silent. Contract
-        1.22.0, optional.
+        1.24.0, optional.
     star_truncated:
       type:
       - boolean
       - 'null'
       description: True when the route had more than one active superstar programme with a target; only the lowest
-        programme id is in `star`. Contract 1.22.0, optional.
+        programme id is in `star`. Contract 1.24.0, optional.
     star:
       oneOf:
       - $ref: '#/components/schemas/RouteStar'
       - type: 'null'
       description: Match Box Lifting Star snapshot (N-8); absent or null when the route has no target for an active
-        superstar programme. Contract 1.22.0, optional.
+        superstar programme. Contract 1.24.0, optional.
     sr_user_id:
       type:
       - integer

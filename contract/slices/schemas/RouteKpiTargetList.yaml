@@ -59,7 +59,7 @@ RouteKpiTargetList:
       type: array
       maxItems: 500
       description: Outlets of the route with an outlet campaign target for the month (at most 500, by outlet code),
-        so an operator can verify a campaign upload. Contract 1.22.0, optional.
+        so an operator can verify a campaign upload. Contract 1.24.0, optional.
       items:
         type: object
         required:
@@ -87,7 +87,7 @@ RouteKpiTargetList:
     campaign_sku_rows:
       type: array
       maxItems: 500
-      description: SKU targets (base units) of those outlets for the month (at most 500). Contract 1.22.0, optional.
+      description: SKU targets (base units) of those outlets for the month (at most 500). Contract 1.24.0, optional.
       items:
         type: object
         required:

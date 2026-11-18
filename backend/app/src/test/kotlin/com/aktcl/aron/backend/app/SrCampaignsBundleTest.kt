@@ -143,12 +143,12 @@ class SrCampaignsBundleTest {
     @Test
     fun capsAreStatedNeverSilentAndTheCutHappensBeforeTheFiguresAreRead() {
         val got = fresh.db.jdbi.withHandle<Map<Long, com.aktcl.aron.backend.sync.SrCampaigns.Result>, Exception> { h ->
-            com.aktcl.aron.backend.sync.SrCampaigns.load(h, mapOf(route to listOf(o1)), day, maxOutlets = 1, maxSkus = 1)
+            com.aktcl.aron.backend.sync.SrCampaigns.load(h, mapOf(route to listOf(o1)), day, day.minusDays(1), maxOutlets = 1, maxSkus = 1)
         }
         val r = got.getValue(route)
         assertTrue(r.truncated, "outlet o1 has two SKU targets and the cap is 1: truncated says so")
         assertEquals(1, r.rows.single()["skus"]!!.jsonArray.size)
-        val whole = fresh.db.jdbi.withHandle<Map<Long, com.aktcl.aron.backend.sync.SrCampaigns.Result>, Exception> { h -> com.aktcl.aron.backend.sync.SrCampaigns.load(h, mapOf(route to listOf(o1)), day) }
+        val whole = fresh.db.jdbi.withHandle<Map<Long, com.aktcl.aron.backend.sync.SrCampaigns.Result>, Exception> { h -> com.aktcl.aron.backend.sync.SrCampaigns.load(h, mapOf(route to listOf(o1)), day, day.minusDays(1)) }
         assertEquals(false, whole.getValue(route).truncated)
         assertEquals(150, com.aktcl.aron.backend.sync.SrCampaigns.MAX_OUTLETS); assertEquals(20, com.aktcl.aron.backend.sync.SrCampaigns.MAX_SKUS)
     }

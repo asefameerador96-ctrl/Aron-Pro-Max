@@ -29,10 +29,10 @@ object SrCampaigns {
 
     /** The campaign outlets of one route in outlet-id order; [truncated] when more than the outlet cap or an outlet with more than the SKU cap existed (never silent). */
     class Result(val rows: List<JsonObject>, val truncated: Boolean)
-    fun load(h: Handle, outletsByRoute: Map<Long, List<Long>>, date: LocalDate, maxOutlets: Int = MAX_OUTLETS, maxSkus: Int = MAX_SKUS): Map<Long, Result> {
+    fun load(h: Handle, outletsByRoute: Map<Long, List<Long>>, date: LocalDate, through: LocalDate, maxOutlets: Int = MAX_OUTLETS, maxSkus: Int = MAX_SKUS): Map<Long, Result> {
         val all = outletsByRoute.values.flatten().distinct()
         if (all.isEmpty()) return emptyMap()
-        val month = YearMonth.from(date); val first = month.atDay(1); val through = date.minusDays(1)
+        val month = YearMonth.from(date); val first = month.atDay(1)
         class Camp(val programmeId: Long, val en: String, val bn: String?, val std: java.math.BigDecimal, val memo: Int)
         val camps0 = h.createQuery(
             """

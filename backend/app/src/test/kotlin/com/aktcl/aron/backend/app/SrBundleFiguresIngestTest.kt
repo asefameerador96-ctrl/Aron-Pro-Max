@@ -51,8 +51,8 @@ import kotlinx.coroutines.runBlocking
  * THE BUNDLE FIGURE THROUGH THE REAL ENDPOINTS (D-LEAD-FIGURES-SIMPLE-01): batches go through `POST /v1/sync/batch`, quarantine is released or discarded by the reviewer's
  * `POST /v1/admin/quarantine/{id}/resolve`, the office voids a route-day through `POST /v1/admin/data-void` and keys a paper memo through `POST /v1/admin/data-entry`, and after EACH
  * step the figures of `GET /v1/sync/bundle?for=D` (achievement, KPI brand volume and memos, Star STD, campaign STD and memos) are compared with the TRUTH computed independently
- * from `app.memo` / `app.memo_line` through D - 1 (the cut: today is never in a server figure). Clock: Sunday 2027-01-03 10:00 Dhaka; memos are dated 2027-01-03, so the bundle for
- * 2027-01-04 holds them and the bundle for 2027-01-03 does not. (The phone-side merge, `POST /v1/sync/figures` and its identity rule are PARKED, docs/requests/sr-programmes-phone-rule-b.md.)
+ * from `app.memo` / `app.memo_line` through D - 1 (the cut: today is never in a server figure). Clock: Monday 2027-01-04 10:00 Dhaka; memos are dated Sunday 2027-01-03, a closed day, so the bundle for
+ * 2027-01-04 and the one built ahead for 2027-01-05 both hold them. (The phone-side merge, `POST /v1/sync/figures` and its identity rule are PARKED, docs/requests/sr-programmes-phone-rule-b.md.)
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @org.junit.jupiter.api.TestMethodOrder(org.junit.jupiter.api.MethodOrderer.OrderAnnotation::class)
@@ -62,7 +62,7 @@ class SrBundleFiguresIngestTest {
     private lateinit var keyFile: File
     private val password = "throwaway-" + System.nanoTime()
     private val devPhone = "00000000-0000-4000-8000-000000000001"
-    private val clock = AronClock { Instant.parse("2027-01-03T04:00:00Z") }
+    private val clock = AronClock { Instant.parse("2027-01-04T04:00:00Z") }   // Monday 2027-01-04 10:00 Dhaka: Sunday 2027-01-03, the day of every memo here, has closed
     private val day = "2027-01-03"
     private var routeId = 0L
     private var outletId = 0L
@@ -138,7 +138,7 @@ class SrBundleFiguresIngestTest {
 
     private fun batch(records: List<JsonObject>, batchUuid: String = uuid()): String = buildJsonObject {
         put("batch_uuid", batchUuid); put("device_uuid", devPhone); put("schema_version", 1); put("app_version", "1.0.9+9")
-        put("trigger", "manual"); put("sent_at_device", "2027-01-03T04:00:00.000Z"); put("pending_rows", 0)
+        put("trigger", "manual"); put("sent_at_device", "2027-01-04T04:00:00.000Z"); put("pending_rows", 0)
         put("time_anchors", kotlinx.serialization.json.JsonArray(emptyList()))
         put("device_counts", buildJsonObject { put(day, buildJsonObject { put("visit", 1) }) })
         put("records", kotlinx.serialization.json.JsonArray(records))
@@ -238,7 +238,7 @@ class SrBundleFiguresIngestTest {
 
     // ---------------------------------------------------------------- the bundle figure and the database truth
 
-    /** The eight merged figures of the route: achievement qty and memos of the first SKU; brand qty and memos; Star STD in milli; the campaign's STD and memo count at the SR's outlet. */
+    /** The seven merged figures of the route: achievement qty and memos of the first SKU; brand qty and memos; Star STD in milli; the campaign's STD and memo count at the SR's outlet. */
     private data class Fig(val achQty: Long = 0, val achMemos: Long = 0, val brandQty: Long = 0, val brandMemos: Long = 0, val starMilli: Long = 0, val campStd: Long = 0, val campMemos: Long = 0)
 
     private suspend fun HttpClient.bundleJson(forDate: String): JsonObject =
@@ -279,10 +279,13 @@ class SrBundleFiguresIngestTest {
         )
     }
 
-    /** The bundle for each of today and tomorrow equals the truth through the day before it: today's memos are cut from today's bundle, in tomorrow's. */
+    /**
+     * The bundle for today (Monday 2027-01-04) and the one built AHEAD for the next working day (Tuesday 2027-01-05, taken while Monday is still open) both equal the truth through Sunday
+     * 2027-01-03, the last CLOSED day (B1: a bundle built ahead never claims a day that is still open).
+     */
     private suspend fun HttpClient.assertBundle(what: String) {
-        assertEquals(dbFig("2027-01-02"), bundleFig("2027-01-03"), "bundle for 2027-01-03 = truth through 2027-01-02 (today's memos cut): $what")
         assertEquals(dbFig("2027-01-03"), bundleFig("2027-01-04"), "bundle for 2027-01-04 = truth through 2027-01-03: $what")
+        assertEquals(dbFig("2027-01-03"), bundleFig("2027-01-05"), "bundle built ahead for 2027-01-05 = truth through 2027-01-03 (the last closed day): $what")
     }
 
     private suspend fun HttpClient.sendOk(fam: List<JsonObject>, expect: String = "accepted"): List<String> =
@@ -292,7 +295,7 @@ class SrBundleFiguresIngestTest {
 
     // ---- the device gate holds gated records (memo, memo_void, ...) of a phone that is not enrolled: a reviewer releases them later --------------------------------------------------
 
-    private val gateNow = java.util.concurrent.atomic.AtomicReference(Instant.parse("2027-01-03T04:00:00Z"))
+    private val gateNow = java.util.concurrent.atomic.AtomicReference(Instant.parse("2027-01-04T04:00:00Z"))
     private val gateSwitches = java.util.concurrent.atomic.AtomicInteger(0)
 
     /** A second wiring on the same database with a clock the test moves, so a config switch is seen (DbServerConfig caches 30 s by the injected clock). */

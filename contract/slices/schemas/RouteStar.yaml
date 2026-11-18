@@ -3,7 +3,7 @@ RouteStar:
   description: Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3
     in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth
     signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown,
-    never applied to a memo. Contract 1.22.0.
+    never applied to a memo. Contract 1.24.0.
   required:
   - programme_id
   - programme_code

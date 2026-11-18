@@ -10435,10 +10435,10 @@ components:
         as_of: { $ref: '#/components/schemas/Timestamp' }
         through_date:
           $ref: '#/components/schemas/BusinessDate'
-          description: 'Last Dhaka business date the figure covers (the bundle date minus one day). The bundle date''s own memos are never in a server figure. What the phone shows is stated once, as the figures rule in the description of `RouteSnapshot`. Contract 1.22.0, optional.'
+          description: 'Last Dhaka business date the figure covers: the last CLOSED day when the bundle was built (the bundle date minus one day, or yesterday for a bundle built ahead while today is still open). The bundle date''s own memos are never in a server figure. What the phone shows is stated once, as the figures rule in the description of `RouteSnapshot`. Contract 1.24.0, optional.'
     RouteCalendar:
       type: object
-      description: 'Working-day numbers of the bundle month for the route (national calendar, Friday off, holidays as data). From these the phone derives ADS, TADS, PADS and RADS. Contract 1.22.0.'
+      description: 'Working-day numbers of the bundle month for the route (read at the route''s zone path: the division and wing weekend and the holidays of its levels, as data). From these the phone derives ADS, TADS, PADS and RADS. Contract 1.24.0.'
       required: [month, working_days, elapsed_working_days_before_today, remaining_working_days_after_today, today_is_working, last_month_working_days, through_date, as_of]
       additionalProperties: false
       properties:
@@ -10596,7 +10596,7 @@ components:
         campaign_rows:
           type: array
           maxItems: 500
-          description: 'Outlets of the route with an outlet campaign target for the month (at most 500, by outlet code), so an operator can verify a campaign upload. Contract 1.22.0, optional.'
+          description: 'Outlets of the route with an outlet campaign target for the month (at most 500, by outlet code), so an operator can verify a campaign upload. Contract 1.24.0, optional.'
           items:
             type: object
             required: [outlet_code, programme_code, programme_name, std_target, memo_target]
@@ -10610,7 +10610,7 @@ components:
         campaign_sku_rows:
           type: array
           maxItems: 500
-          description: 'SKU targets (base units) of those outlets for the month (at most 500). Contract 1.22.0, optional.'
+          description: 'SKU targets (base units) of those outlets for the month (at most 500). Contract 1.24.0, optional.'
           items:
             type: object
             required: [outlet_code, programme_code, sku_code, qty_base]
@@ -10632,7 +10632,7 @@ components:
                 cpr_alloc_mtk: { type: [integer, 'null'], format: int64, minimum: 0 }
     RouteKpi:
       type: object
-      description: 'Brand-wise KPI of the SR (screens 60 and 61) for the Dhaka month of the bundle date, server figures through `through_date` (never today; the rule for the phone is the figures rule of `RouteSnapshot`). Volume in base units, money in integer milli-taka, percentages in basis points (null when the target is 0). `achieved_mtk`, `achievement_bp` and every `kpi_today_mtk` are null until the owner defines them. Contract 1.22.0.'
+      description: 'Brand-wise KPI of the SR (screens 60 and 61) for the Dhaka month of the bundle date, server figures through `through_date` (never today; the rule for the phone is the figures rule of `RouteSnapshot`). Volume in base units, money in integer milli-taka, percentages in basis points (null when the target is 0). `achieved_mtk`, `achievement_bp` and every `kpi_today_mtk` are null until the owner defines them. Contract 1.24.0.'
       required: [month, through_date, as_of, allocated_mtk, achieved_mtk, achievement_bp, volume, memo, brands, brands_truncated, categories, cpr]
       additionalProperties: false
       properties:
@@ -10688,7 +10688,7 @@ components:
           items: { $ref: '#/components/schemas/KpiPackFigure' }
     KpiCategory:
       type: object
-      description: 'Volume of a category row (BLM, match and lighter).'
+      description: 'Volume of a category row (match and lighter).'
       required: [category_code, volume_target, volume_achieved, volume_bp, by_pack]
       additionalProperties: false
       properties:
@@ -10720,7 +10720,7 @@ components:
         achieved_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
     RouteCampaign:
       type: object
-      description: 'Campaign target and achievement of one outlet for the Dhaka month (screen 21, outlet target pop-up and page). STD and SKU quantities are base units; memo achievement counts distinct active memos of the outlet with a campaign SKU line. Server figures through `through_date` (never today; the rule for the phone is the figures rule of `RouteSnapshot`). Contract 1.22.0.'
+      description: 'Campaign target and achievement of one outlet for the Dhaka month (screen 21, outlet target pop-up and page). STD and SKU quantities are base units; memo achievement counts distinct active memos of the outlet with a campaign SKU line. Server figures through `through_date` (never today; the rule for the phone is the figures rule of `RouteSnapshot`). Contract 1.24.0.'
       required: [outlet_id, programme_id, label_en, label_bn, month, through_date, as_of, std, memo, skus]
       additionalProperties: false
       properties:
@@ -10755,7 +10755,7 @@ components:
         sold_qty_base: { type: integer, format: int64, minimum: 0 }
     RouteStar:
       type: object
-      description: 'Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3 in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown, never applied to a memo. Contract 1.22.0.'
+      description: 'Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3 in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown, never applied to a memo. Contract 1.24.0.'
       required: [programme_id, programme_code, name_en, name_bn, month, through_date, as_of, sr_name, sr_code, route_name, lmwd, wd, ewd, target, std, projection, achievement_bp, lms, lmads, pads, growth_bp, status_en, status_bn, achieved_slab, slab_amount_mtk, projected_slab, projected_amount_mtk]
       additionalProperties: false
       properties:
@@ -10790,10 +10790,10 @@ components:
       type: object
       description: >-
         Per-route section of the bundle; replaced as a whole when the route is added to the user.
-        THE FIGURES RULE for the SR programme sections `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns` (contract number provisional, the lead sets it at landing; the ONE place this rule is stated;
-        D-LEAD-FIGURES-SIMPLE-01). WHAT THE SERVER FIGURE IS. Every figure the phone merges (achievement, KPI volumes, memo counts and `by_pack`, Star STD, campaign STD and memo) is computed from the accepted memos with a business
-        date from the 1st of the bundle `month` up to and including `through_date` (the bundle date minus one day), status active, memo lines not voided, read in ONE repeatable-read snapshot straight from the memo
-        tables. The bundle date's own memos are never in a figure (a bundle built ahead for tomorrow has `through_date` = the day it was built on). DEFINITIONS: quantities
+        THE FIGURES RULE for the SR programme sections `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns` (contract 1.24.0; the ONE place this rule is stated;
+        D-LEAD-FIGURES-SIMPLE-01). WHAT THE SERVER FIGURE IS. Every figure of these sections (achievement, KPI volumes, memo counts and `by_pack`, Star STD, campaign STD and memo) is computed from the accepted memos with a business
+        date from the 1st of the bundle `month` up to and including `through_date` (the last CLOSED Dhaka day when the bundle was built: the bundle date minus one day, or yesterday for a bundle built ahead while today is still open), status active, memo lines not voided, read in ONE repeatable-read snapshot straight from the memo
+        tables. Today's memos are never in a figure, and neither is any day that has not ended when the bundle is built (a bundle built ahead on Thursday for Saturday has `through_date` = Wednesday, not Friday). On the 1st of a month `through_date` is in the previous month while `month` is the new one: the window is empty and every figure is zero; the phone labels it as from the 1st, never as complete through the last day of last month. Working-day counts are anchored on the day after `through_date`. DEFINITIONS: quantities
         (`achieved_qty_base`, brand and category `volume_*`, `by_pack`, Star STD, campaign STD and SKU `sold_qty_base`) are SALE lines only; `achievement_mtd.memo_count` counts a memo once per SKU when it has ANY non-voided
         line of that SKU (free lines included); a KPI brand `memo_achieved` and a campaign `memo` count a memo once when it has a SALE line of the brand (campaign: of a shown campaign SKU). Brand sums use ONE hierarchy, the
         current product tree, for target and figure alike. Campaign figures are the outlet's: every route's memos at the outlet through `through_date`. Another SR's sales at a shared outlet are in the figure; that SR's unsynced and today's memos are not.
@@ -10837,25 +10837,25 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/RouteCalendar' }
             - { type: 'null' }
-          description: 'Working-day numbers for the SR programme screens (N-2). Null or absent for TSO/AMO zone bundles. Contract 1.22.0, optional.'
+          description: 'Working-day numbers for the SR programme screens (N-2). Null or absent for TSO/AMO zone bundles. Contract 1.24.0, optional.'
         kpi:
           oneOf:
             - { $ref: '#/components/schemas/RouteKpi' }
             - { type: 'null' }
-          description: 'Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.22.0, optional.'
+          description: 'Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.24.0, optional.'
         campaigns:
           type: [array, 'null']
           maxItems: 150
           items: { $ref: '#/components/schemas/RouteCampaign' }
-          description: 'Outlets of the route enrolled in an active campaign for the month (N-3), with the outlet target pop-up figures and the SKU table. Empty or absent otherwise. At most 150 outlets and 20 SKUs each (lowest outlet id first); `campaigns_truncated` says when more existed. Contract 1.22.0, optional.'
-        campaigns_truncated: { type: [boolean, 'null'], description: 'True when the route had more campaign outlets (over 150), an outlet more campaign SKUs (over 20) or more than one active campaign (only the lowest programme id is sent) than were sent; never silent. Contract 1.22.0, optional.' }
-        targets_truncated: { type: [boolean, 'null'], description: 'True when `targets` or `achievement_mtd` had more than 500 rows and were cut; never silent. Contract 1.22.0, optional.' }
-        star_truncated: { type: [boolean, 'null'], description: 'True when the route had more than one active superstar programme with a target; only the lowest programme id is in `star`. Contract 1.22.0, optional.' }
+          description: 'Outlets of the route enrolled in an active campaign for the month (N-3), with the outlet target pop-up figures and the SKU table. Empty or absent otherwise. At most 150 outlets and 20 SKUs each (lowest outlet id first); `campaigns_truncated` says when more existed. Contract 1.24.0, optional.'
+        campaigns_truncated: { type: [boolean, 'null'], description: 'True when the route had more campaign outlets (over 150), an outlet more campaign SKUs (over 20) or more than one active campaign (only the lowest programme id is sent) than were sent; never silent. Contract 1.24.0, optional.' }
+        targets_truncated: { type: [boolean, 'null'], description: 'True when `targets` or `achievement_mtd` had more than 500 rows and were cut; never silent. Contract 1.24.0, optional.' }
+        star_truncated: { type: [boolean, 'null'], description: 'True when the route had more than one active superstar programme with a target; only the lowest programme id is in `star`. Contract 1.24.0, optional.' }
         star:
           oneOf:
             - { $ref: '#/components/schemas/RouteStar' }
             - { type: 'null' }
-          description: 'Match Box Lifting Star snapshot (N-8); absent or null when the route has no target for an active superstar programme. Contract 1.22.0, optional.'
+          description: 'Match Box Lifting Star snapshot (N-8); absent or null when the route has no target for an active superstar programme. Contract 1.24.0, optional.'
         sr_user_id:
           type: [integer, 'null']
           format: int64
@@ -17278,7 +17278,7 @@ components:
         units_captured: { type: array, maxItems: 50, uniqueItems: true, items: { type: integer, minimum: 1, maximum: 50 }, description: 'From 1.23.0, additive and optional (an older server omits it). The unit numbers (1..qty, ascending, at most `qty` entries) that already hold a non-duplicate, non-voided photo of this redemption and gift, from any phone or the TSO; `photos_captured` is kept for old phones and is the size of this array on a server that sends both (units above `qty`, units of a voided or flagged photo and photos without a unit are in neither). When the member is ABSENT (an older server) the phone falls back to the `photos_captured` count: it offers the next `qty - photos_captured` units in order and cannot tell which units are open. The phone offers exactly the open units. Same bound and snapshot as the rest of the section.' }
     ProgrammesSection:
       type: object
-      description: 'Programme data for the user''s routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user''s reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points: everything the server held when the bundle was built (`as_of_date` is display only; see `LoyaltyBalance`; the phone subtracts its own redemptions not acknowledged when it sent the request); `astha_targets` carry server achievement (units in `AsthaTargetRow`; `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries the whole CURRENT QUARTER of the bundle''s business date (its three months, so the quarter and month views work offline; from 1.22.0, before that only the current month), only outlets enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user IN ALL: the current month is filled first, then the other months in order, and past the bound the server sends what fits, logs a warning, sets `astha_truncated` true and names every month that is incomplete in `astha_truncated_months` (`YYYY-MM`), which the phone shows and reads online with `listAsthaTargets` (never a silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. ACHIEVEMENT RULE (the one rule; every other description refers here). Server guarantee: every figure of this section is read in ONE read-only REPEATABLE READ snapshot on the primary database, and it includes every memo of this user whose sync acknowledgement was sent before this bundle request was received. Phone rule, recomputed from scratch after each bundle and keyed by memo_uuid: (1) no timestamp is compared anywhere in this rule (`astha_as_of` and a row''s `as_of` are display only, "data as of"); (2) the phone adds only its own memos that had NOT been acknowledged when it SENT the bundle request; (3) the phone subtracts a memo that WAS acknowledged before it sent the request but which it has since voided or superseded locally, and a void or edit that is HELD (quarantined) is never applied by the phone; (4) the phone sends no bundle request while an upload batch is in flight and uploads no records while a bundle request is in flight (single-flight sync, both directions), and if an acknowledgement arrives during the request it discards the section''s achievement and refetches; (5) a memo whose last server answer is `quarantined` (held for review, or waiting for a parent) is never added: it is shown as awaiting, and it counts as acknowledged, and is in the server figure, only once a resolution `accepted` or `accepted_with_fix`, or an `accepted` or `duplicate` acknowledgement, has reached the phone before a bundle request (a reviewer''s accept and the waiting sweep commit the memo with no upload acknowledgement, so adding every unacknowledged memo would count it twice); a resolution `discarded` (a `return_to_device` also arrives as `discarded`) removes it. The same rules cover the loyalty balances, a redemption being treated like a memo and keyed by redemption uuid: every `loyalty` figure includes every redemption of this user acknowledged before the request was received (and everything the ledger holds, with no business-date cut), and clause (5) covers a held redemption too: it stays subtracted once, shown as held, until a resolution or an acknowledgement has reached the phone. This phone arithmetic will be REPLACED by the server''s per-uuid answer (the identity probe, lane sr-targets-server); until then it is the rule. Caps are never silent: `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200), gift_assignments (2,000) or pending_gift_verifications (500) that was cut, and `astha_truncated` (with `astha_truncated_months`) the 1,000-row Astha bound.'
+      description: 'Programme data for the user''s routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user''s reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points: everything the server held when the bundle was built (`as_of_date` is display only; see `LoyaltyBalance`; the phone subtracts its own redemptions not acknowledged when it sent the request); `astha_targets` carry server achievement (units in `AsthaTargetRow`; `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries the whole CURRENT QUARTER of the bundle''s business date (its three months, so the quarter and month views work offline; from 1.22.0, before that only the current month), only outlets enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user IN ALL: the current month is filled first, then the other months in order, and past the bound the server sends what fits, logs a warning, sets `astha_truncated` true and names every month that is incomplete in `astha_truncated_months` (`YYYY-MM`), which the phone shows and reads online with `listAsthaTargets` (never a silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. ACHIEVEMENT RULE (the one rule; every other description refers here). Server guarantee: every figure of this section is read in ONE read-only REPEATABLE READ snapshot on the primary database, and it includes every memo of this user whose sync acknowledgement was sent before this bundle request was received. Phone rule, recomputed from scratch after each bundle and keyed by memo_uuid: (1) no timestamp is compared anywhere in this rule (`astha_as_of` and a row''s `as_of` are display only, "data as of"); (2) the phone adds only its own memos that had NOT been acknowledged when it SENT the bundle request; (3) the phone subtracts a memo that WAS acknowledged before it sent the request but which it has since voided or superseded locally, and a void or edit that is HELD (quarantined) is never applied by the phone; (4) the phone sends no bundle request while an upload batch is in flight and uploads no records while a bundle request is in flight (single-flight sync, both directions), and if an acknowledgement arrives during the request it discards the section''s achievement and refetches; (5) a memo whose last server answer is `quarantined` (held for review, or waiting for a parent) is never added: it is shown as awaiting, and it counts as acknowledged, and is in the server figure, only once a resolution `accepted` or `accepted_with_fix`, or an `accepted` or `duplicate` acknowledgement, has reached the phone before a bundle request (a reviewer''s accept and the waiting sweep commit the memo with no upload acknowledgement, so adding every unacknowledged memo would count it twice); a resolution `discarded` (a `return_to_device` also arrives as `discarded`) removes it. The same rules cover the loyalty balances, a redemption being treated like a memo and keyed by redemption uuid: every `loyalty` figure includes every redemption of this user acknowledged before the request was received (and everything the ledger holds, with no business-date cut), and clause (5) covers a held redemption too: it stays subtracted once, shown as held, until a resolution or an acknowledgement has reached the phone. This phone arithmetic stays the rule for this section (the earlier plan to replace it with a per-uuid server answer, an identity probe, is PARKED, D-LEAD-FIGURES-SIMPLE-01). Caps are never silent: `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200), gift_assignments (2,000) or pending_gift_verifications (500) that was cut, and `astha_truncated` (with `astha_truncated_months`) the 1,000-row Astha bound.'
       required: [programmes, loyalty, gifts, astha_targets, astha_as_of, astha_truncated, truncated_sections, gift_assignments, pending_gift_verifications]
       additionalProperties: false
       properties:

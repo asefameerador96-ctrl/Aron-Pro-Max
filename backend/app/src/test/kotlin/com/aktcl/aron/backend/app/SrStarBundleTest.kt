@@ -87,7 +87,7 @@ class SrStarBundleTest {
         assertEquals("20.000", s.s("target")); assertEquals("2.833", s.s("std")); assertEquals("12.250", s.s("lms"))
         assertEquals("2027-01", s.s("month")); assertEquals("2027-01-02", s.s("through_date")); assertEquals("MBLS", s.s("programme_code"))
         assertEquals(Instant.parse("2027-01-03T01:00:00Z"), Instant.parse(s.s("as_of")!!))
-        assertEquals("Other route".takeIf { false } ?: s.s("route_name"), s.s("route_name"))
+        assertEquals(fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT name FROM app.route WHERE id = $route").mapTo(String::class.java).one() }, s.s("route_name"), "the Star row carries the route's own name")
     }
 
     @Test
@@ -134,7 +134,7 @@ class SrStarBundleTest {
             val zone = q("SELECT zone_id FROM app.route WHERE id = $route")
             val (snap, star) = fresh.db.jdbi.withHandle<Pair<com.aktcl.aron.backend.sync.SrTargets.Snapshot, JsonObject?>, Exception> { h ->
                 val s = com.aktcl.aron.backend.sync.SrTargets.load(h, mapOf(route to zone), date, clock.now(), null).getValue(route)
-                s to com.aktcl.aron.backend.sync.SrStar.load(h, mapOf(route to com.aktcl.aron.backend.sync.SrStar.RouteInfo("Route", null, null, s.calendar)), date)[route]
+                s to com.aktcl.aron.backend.sync.SrStar.load(h, mapOf(route to com.aktcl.aron.backend.sync.SrStar.RouteInfo("Route", null, null, s.calendar)), date, date.minusDays(1))[route]
             }
             val c = snap.calendar
             assertEquals(26, c.working_days, "WD of the screenshot"); assertEquals(true, c.today_is_working)
