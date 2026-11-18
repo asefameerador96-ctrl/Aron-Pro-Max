@@ -144,6 +144,7 @@ const pairs = {
   "kt.problem.invalid": ["Not a valid value", "সঠিক মান নয়"],
   "kt.problem.invalid_type": ["Not a valid row", "সঠিক সারি নয়"],
   "kt.problem.campaign_row_missing": ["This SKU target has no campaign row (outlet, programme, month) in the sheet or stored", "এই এসকেইউ টার্গেটের ক্যাম্পেইন সারি (আউটলেট, প্রোগ্রাম, মাস) শিটে বা জমায় নেই"],
+  "kt.warning.campaign_without_skus": ["Campaign row without SKU rows: the app will show 0 achieved until SKU targets are uploaded", "ক্যাম্পেইন সারির এসকেইউ সারি নেই: এসকেইউ টার্গেট না দেওয়া পর্যন্ত অ্যাপে অর্জন ০ দেখাবে"],
   "kt.problem.unknown_member": ["Unknown column", "অজানা কলাম"],
   "kt.problem.past_month": ["Month already over: past months are not rewritten", "মাস শেষ: আগের মাস বদলানো যায় না"],
   "kt.problem.duplicate": ["Same key appears twice in the sheet", "একই কী শিটে দুইবার আছে"],

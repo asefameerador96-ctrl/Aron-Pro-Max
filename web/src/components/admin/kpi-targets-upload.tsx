@@ -24,6 +24,7 @@ export function KpiTargetsUpload({ kind, currentMonth }: { kind: KpiKind; curren
     // the preview counts rows per section; the shared flow reads `rows` only for the one-array uploads
     summaryText: (p, number) => t(`kt.summary.${kind}` as MessageKey, { n: number(p[member]) }),
     committedKey: "kt.committed",
+    warningKey: (c) => `kt.warning.${c}`,
   };
   return <SheetImport cfg={cfg} />;
 }

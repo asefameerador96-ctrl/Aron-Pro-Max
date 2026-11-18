@@ -303,6 +303,10 @@ data class RouteSnapshot(
     val campaigns: List<JsonObject>? = null,
     /** True only when campaign outlets (over 150) or an outlet's campaign SKUs (over 20) were cut; absent otherwise (never silent). */
     val campaigns_truncated: Boolean? = null,
+    /** True only when `targets` or `achievement_mtd` had more than 500 rows and were cut (never silent); absent otherwise. */
+    val targets_truncated: Boolean? = null,
+    /** True only when the route had more than one active superstar programme with a target and only the lowest id is in `star`; absent otherwise. */
+    val star_truncated: Boolean? = null,
     /**
      * Lane X2 (lead ruling R-W-06 (4), contract 1.10.0, D-X1-05): the route's SR on the bundle date, the one `GET /v1/routes`
      * names first among its SR assignees (a cover valid that date before the primary); null when the route is vacant. Sent

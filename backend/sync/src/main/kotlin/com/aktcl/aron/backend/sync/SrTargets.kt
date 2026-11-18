@@ -25,12 +25,12 @@ import java.time.YearMonth
  * - `calendar`: the working days at the route's zone path (division and wing weekend and holidays honoured).
  */
 object SrTargets {
-    class Snapshot(val targets: List<JsonObject>, val achievement: List<JsonObject>, val calendar: RouteCalendarDto, val kpi: JsonObject? = null) {
+    class Snapshot(val targets: List<JsonObject>, val achievement: List<JsonObject>, val calendar: RouteCalendarDto, val kpi: JsonObject? = null, val truncated: Boolean = false) {
         /** True when the route has target or achievement rows; a route with none (and no KPI, star or campaign) carries no `calendar` either (B1: nothing to show, nothing to resend). */
         val hasFigures: Boolean get() = targets.isNotEmpty() || achievement.isNotEmpty()
     }
 
-    private const val MAX_ROWS = 500
+    const val MAX_ROWS = 500
 
     fun load(
         h: Handle, routes: Map<Long, Long>, date: LocalDate, now: Instant, config: ServerConfig?,
@@ -87,24 +87,36 @@ object SrTargets {
                     remaining_working_days_after_today = after, today_is_working = cal.isWorking(date.toKotlinLocalDate()),
                     last_month_working_days = prevCals.workingDays(path), through_date = through.toString(), as_of = (asOf[routeId] ?: Instant.EPOCH).wire(),
                 ),
+                truncated = targets[routeId].orEmpty().size > MAX_ROWS || achieved[routeId].orEmpty().size > MAX_ROWS,
             )
         }
     }
 
     /**
-     * The `as_of` of a route's figures (B1 of the lead review, D-TKPI-10): the newest `updated_at` among the route's own aggregate rows that the figures
-     * are built from (business dates of the previous month up to `through_date`), the epoch when there are none. It moves ONLY when the projector rewrote
-     * one of those rows, i.e. when the figures can have changed; it is never the projector's wall clock (`dw.summary_freshness` is rewritten about every
-     * 5 seconds by an idle worker, which made every bundle a new version). It never claims more than the figure holds: a memo accepted but not yet
-     * aggregated has no row rewrite yet, so `as_of` stays below its acceptance time.
+     * The `as_of` of a route's figures (B1 of the lead review, D-TKPI-10). Two parts:
+     *  1. the newest `updated_at` among the route's own aggregate rows the figures are built from (previous month to `through_date`), the epoch when there are none;
+     *     the aggregation writes that stamp with clock_timestamp() and keeps it when a rebuild changes no figure, so it moves only when a figure moved, never with
+     *     the worker's clock (`dw.summary_freshness` is rewritten about every 5 seconds by an idle worker);
+     *  2. clamped to just before (one second) the oldest `first_dirtied_at` of the route's `route_day_agg` dirty keys in that window, pending, claimed, backed-off and
+     *     dead ones included: a route-day is rebuilt in its own transaction, in any order, so the rewrite of one day says nothing about another day of the same route
+     *     that still waits (this is what `touchFreshness` does for the global stamp). Without pending keys there is no clamp, so an idle server changes nothing.
+     * The phone's rule (b) (RouteSnapshot, openapi) needs exactly this guarantee: a memo the figures do not hold yet was accepted AFTER `as_of`. Campaign figures read
+     * `dw.fact_memo_line` by outlet; a memo's lines are written in the same route-day rebuild as that route's aggregates, and the phone holds only its own SR's
+     * memos, so the same clamp is the right one for them (another route's memos at the outlet can change the figure without moving this `as_of`; they are not on this
+     * phone, so nothing is added twice).
      */
     fun asOfByRoute(h: Handle, routeIds: Collection<Long>, date: LocalDate): Map<Long, Instant> {
         if (routeIds.isEmpty()) return emptyMap()
         val through = date.minusDays(1)
         val from = YearMonth.from(date).minusMonths(1).atDay(1)
-        return h.createQuery("SELECT route_id, max(updated_at) FROM dw.agg_daily_route_sku WHERE route_id = ANY(:r) AND business_date BETWEEN :f AND :t GROUP BY route_id")
-            .bindArray("r", Long::class.javaObjectType, routeIds.toList()).bind("f", from).bind("t", through)
+        val ids = routeIds.toList()
+        val newest = h.createQuery("SELECT route_id, max(updated_at) FROM dw.agg_daily_route_sku WHERE route_id = ANY(:r) AND business_date BETWEEN :f AND :t GROUP BY route_id")
+            .bindArray("r", Long::class.javaObjectType, ids).bind("f", from).bind("t", through)
             .map { rs, _ -> rs.getLong(1) to rs.getTimestamp(2).toInstant() }.list().toMap()
+        val pending = h.createQuery("SELECT subject_id, min(first_dirtied_at) FROM app.dirty_key WHERE kind = 'route_day_agg' AND subject_id = ANY(:r) AND business_date BETWEEN :f AND :t GROUP BY subject_id")
+            .bindArray("r", Long::class.javaObjectType, ids).bind("f", from).bind("t", through)
+            .map { rs, _ -> rs.getLong(1) to rs.getTimestamp(2).toInstant() }.list().toMap()
+        return newest.mapValues { (route, at) -> pending[route]?.minusSeconds(1)?.let { cap -> if (cap.isBefore(at)) cap else at } ?: at }
     }
 
     /** A base quantity as the contract's exact Decimal3 string: "500.000". */

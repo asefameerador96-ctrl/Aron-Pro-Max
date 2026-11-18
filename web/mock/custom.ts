@@ -216,7 +216,12 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
         if (!has && !errors.some((e) => e.section === "campaign_sku_rows" && e.row === i + 1)) err("campaign_sku_rows", i, "outlet_code", "campaign_row_missing");
       });
       const counts = { brand_rows: rowsOf("brand_rows").length, month_rows: rowsOf("month_rows").length, programme_rows: rowsOf("programme_rows").length, campaign_rows: rowsOf("campaign_rows").length, campaign_sku_rows: rowsOf("campaign_sku_rows").length };
-      if (b.dry_run) return ctx.send(res, 200, { batch_uuid: b.batch_uuid, ...counts, errors, errors_truncated: false }), true;
+      // a campaign row with no SKU row (in the batch or stored) is accepted with a warning
+      const warnings = rowsOf("campaign_rows").flatMap((r, i) => {
+        const has = rowsOf("campaign_sku_rows").some((k) => k.outlet_code === r.outlet_code && k.programme_code === r.programme_code && k.month === r.month) || st.kpi.campaignSku.some((k) => k.outlet_code === r.outlet_code && k.programme_code === r.programme_code && k.month === r.month);
+        return has ? [] : [{ section: "campaign_rows", row: i + 1, column: "outlet_code", code: "campaign_without_skus" }];
+      });
+      if (b.dry_run) return ctx.send(res, 200, { batch_uuid: b.batch_uuid, ...counts, errors, errors_truncated: false, warnings, warnings_truncated: false }), true;
       if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `body.${e.section}/${e.row - 1}/${e.column}`, code: e.code })) })), true;
       const total = Object.values(counts).reduce((a, n) => a + n, 0);
       const hash = JSON.stringify(sections.map((k) => b[k] ?? null));

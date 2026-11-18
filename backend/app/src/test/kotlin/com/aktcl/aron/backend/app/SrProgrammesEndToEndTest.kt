@@ -87,5 +87,13 @@ class SrProgrammesEndToEndTest : DataFlowTraceSupport() {
             assertEquals(b.path("volume_achieved").asLong(), b.path("by_pack").sumOf { it.path("achieved").asLong() }, "brand $id: the pack sizes add up to the brand volume")
         }
         hop("kpi brands carry the sold brands", "brands" to kpi.path("brands").map { it.path("brand_id").asLong() }.toSet().containsAll(brandOf.values.toSet()), "expected" to true)
+
+        // A rebuild of the same day that changes no figure (a late geo fix or a check-in dirties it the same way) keeps the rows' updated_at: no churn of as_of
+        // and of the bundle version (review, D-TKPI-10).
+        fun stamps() = rows("SELECT sku_id, updated_at::text AS u FROM dw.agg_daily_route_sku WHERE route_id = $gulRouteId AND business_date = DATE '$day' ORDER BY sku_id")
+        val before = stamps(); val versionBefore = bundleFor(next.toString()).path("meta").path("bundle_version").asText()
+        runWorker()
+        hop("a figure-neutral rebuild keeps updated_at and the bundle version", "stamps equal" to (before == stamps()), "version equal" to (versionBefore == bundleFor(next.toString()).path("meta").path("bundle_version").asText()), "expected" to "true true")
+        assertEquals(before, stamps()); assertEquals(versionBefore, bundleFor(next.toString()).path("meta").path("bundle_version").asText())
     }
 }

@@ -34,14 +34,17 @@ object SrCampaigns {
         if (all.isEmpty()) return emptyMap()
         val month = YearMonth.from(date); val first = month.atDay(1); val through = date.minusDays(1)
         class Camp(val programmeId: Long, val en: String, val bn: String?, val std: java.math.BigDecimal, val memo: Int)
-        val camps = h.createQuery(
+        val camps0 = h.createQuery(
             """
             SELECT t.outlet_id, g.id, g.name_en, g.name_bn, t.std_target, t.memo_target FROM app.outlet_campaign_target t JOIN app.programme g ON g.id = t.programme_id
              WHERE t.outlet_id = ANY(:o) AND t.month = :m AND g.kind = 'campaign' AND g.status = 'active' AND g.active_from <= :d AND g.active_to >= :d ORDER BY t.outlet_id, g.id
             """,
         ).bindArray("o", Long::class.javaObjectType, all).bind("m", first).bind("d", date)
             .map { rs, _ -> rs.getLong(1) to Camp(rs.getLong(2), rs.getString(3), rs.getString(4), rs.getBigDecimal(5), rs.getInt(6)) }.list()
-            .groupBy({ it.first }, { it.second }).mapValues { it.value.first() } // one campaign per outlet: the lowest programme id
+            .groupBy({ it.first }, { it.second })
+        // One campaign per outlet is shown (the lowest programme id); an outlet with more active campaigns makes the route's `campaigns_truncated` true (never a silent drop).
+        val moreThanOne = camps0.filterValues { it.size > 1 }.keys
+        val camps = camps0.mapValues { it.value.first() }
         if (camps.isEmpty()) return emptyMap()
         // At most MAX_OUTLETS campaign outlets per route (lowest id first): the cut happens BEFORE any figure is read.
         val chosen = outletsByRoute.mapValues { (_, ids) -> ids.filter { it in camps }.sorted() }
@@ -50,7 +53,7 @@ object SrCampaigns {
             .bindArray("o", Long::class.javaObjectType, outletIds).bind("m", first)
             .map { rs, _ -> listOf(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)) }.list()
             .filter { camps[it[0]]?.programmeId == it[1] }.groupBy { it[0] }
-        // The SKUs shown per outlet (the campaign's own, cut at 100) are the ONLY SKUs read, so the memo figure can never count memos of a SKU the table does not
+        // The SKUs shown per outlet (the campaign's own, cut at the SKU cap) are the ONLY SKUs read, so the memo figure can never count memos of a SKU the table does not
         // show (another campaign of the outlet, or a SKU past the cut): the (outlet, SKU) pairs go into the query, matched by a join (review, D-TKPI-10).
         val shown = skuTargets.mapValues { it.value.take(maxSkus) }
         val pairs = shown.flatMap { (o, rows) -> rows.map { o to it[2] } }
@@ -89,7 +92,7 @@ object SrCampaigns {
                     put("skus", buildJsonArray { skus.forEach { k -> add(buildJsonObject { put("sku_id", k[2]); put("target_qty_base", k[3]); put("sold_qty_base", sold[oid to k[2]] ?: 0L) }) } })
                 }
             }
-            Result(rows, ids.size > maxOutlets || ids.take(maxOutlets).any { (skuTargets[it]?.size ?: 0) > maxSkus })
+            Result(rows, ids.size > maxOutlets || ids.take(maxOutlets).any { (skuTargets[it]?.size ?: 0) > maxSkus || it in moreThanOne })
         }
     }
 }

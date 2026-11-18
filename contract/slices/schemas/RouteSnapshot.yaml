@@ -109,8 +109,21 @@ RouteSnapshot:
       type:
       - boolean
       - 'null'
-      description: True when the route had more campaign outlets (over 150) or an outlet more campaign SKUs (over
-        20) than were sent; never silent. Contract 1.22.0, optional.
+      description: True when the route had more campaign outlets (over 150), an outlet more campaign SKUs (over
+        20) or more than one active campaign (only the lowest programme id is sent) than were sent; never silent.
+        Contract 1.22.0, optional.
+    targets_truncated:
+      type:
+      - boolean
+      - 'null'
+      description: True when `targets` or `achievement_mtd` had more than 500 rows and were cut; never silent. Contract
+        1.22.0, optional.
+    star_truncated:
+      type:
+      - boolean
+      - 'null'
+      description: True when the route had more than one active superstar programme with a target; only the lowest
+        programme id is in `star`. Contract 1.22.0, optional.
     star:
       oneOf:
       - $ref: '#/components/schemas/RouteStar'

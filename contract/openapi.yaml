@@ -10437,6 +10437,20 @@ components:
               column: { type: string, maxLength: 40 }
               code: { type: string, maxLength: 40 }
         errors_truncated: { type: boolean }
+        warnings:
+          type: array
+          maxItems: 1000
+          description: 'Rows that are accepted but probably not what was meant: `campaign_without_skus` (a campaign row with no SKU row in the batch or stored: the app would show STD and memo achieved 0). Optional.'
+          items:
+            type: object
+            required: [section, row, column, code]
+            additionalProperties: false
+            properties:
+              section: { type: string, enum: [brand_rows, month_rows, programme_rows, campaign_rows, campaign_sku_rows] }
+              row: { type: integer, minimum: 1 }
+              column: { type: string, maxLength: 40 }
+              code: { type: string, maxLength: 40 }
+        warnings_truncated: { type: boolean }
     RouteKpiTargetList:
       type: object
       required: [route_code, month, brand_rows, month_row, programme_rows]
@@ -10720,7 +10734,9 @@ components:
           maxItems: 150
           items: { $ref: '#/components/schemas/RouteCampaign' }
           description: 'Outlets of the route enrolled in an active campaign for the month (N-3), with the outlet target pop-up figures and the SKU table. Empty or absent otherwise. At most 150 outlets and 20 SKUs each (lowest outlet id first); `campaigns_truncated` says when more existed. Contract 1.22.0, optional.'
-        campaigns_truncated: { type: [boolean, 'null'], description: 'True when the route had more campaign outlets (over 150) or an outlet more campaign SKUs (over 20) than were sent; never silent. Contract 1.22.0, optional.' }
+        campaigns_truncated: { type: [boolean, 'null'], description: 'True when the route had more campaign outlets (over 150), an outlet more campaign SKUs (over 20) or more than one active campaign (only the lowest programme id is sent) than were sent; never silent. Contract 1.22.0, optional.' }
+        targets_truncated: { type: [boolean, 'null'], description: 'True when `targets` or `achievement_mtd` had more than 500 rows and were cut; never silent. Contract 1.22.0, optional.' }
+        star_truncated: { type: [boolean, 'null'], description: 'True when the route had more than one active superstar programme with a target; only the lowest programme id is in `star`. Contract 1.22.0, optional.' }
         star:
           oneOf:
             - { $ref: '#/components/schemas/RouteStar' }

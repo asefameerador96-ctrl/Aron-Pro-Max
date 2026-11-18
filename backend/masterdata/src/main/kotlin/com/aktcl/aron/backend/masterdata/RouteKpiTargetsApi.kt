@@ -99,7 +99,7 @@ private fun parseCampSku(arr: JsonArray) = arr.mapIndexed { i, el ->
     CampSkuRow(i, kText(o, "outlet_code"), kText(o, "programme_code"), kMonth(o), kText(o, "sku_code"), kInt(o, "qty_base", 1_000_000_000))
 }
 
-private class KChecked(val errors: List<KErr>, val routeIds: Map<String, Long>, val brandIds: Map<String, Long>, val programmeIds: Map<String, Long> = emptyMap(), val campaignIds: Map<String, Long> = emptyMap(), val outletIds: Map<String, Long> = emptyMap(), val skuIds: Map<String, Long> = emptyMap())
+private class KChecked(val errors: List<KErr>, val warnings: List<KErr>, val routeIds: Map<String, Long>, val brandIds: Map<String, Long>, val programmeIds: Map<String, Long> = emptyMap(), val campaignIds: Map<String, Long> = emptyMap(), val outletIds: Map<String, Long> = emptyMap(), val skuIds: Map<String, Long> = emptyMap())
 
 private fun kCheck(h: Handle, brand: List<BrandRow>, month: List<MonthRow>, prog: List<ProgRow>, camp: List<CampRow>, campSku: List<CampSkuRow>, current: LocalDate): KChecked {
     val routeCodes = (brand.mapNotNull { it.route } + month.mapNotNull { it.route } + prog.mapNotNull { it.route }).distinct()
@@ -194,12 +194,21 @@ private fun kCheck(h: Handle, brand: List<BrandRow>, month: List<MonthRow>, prog
         if (errors.size == n0 && Triple(r.outlet!!, r.programme!!, r.month!!) !in inBatch && Triple(r.outlet, r.programme, r.month) !in stored) errors += KErr("campaign_sku_rows", r.i, "outlet_code", "campaign_row_missing")
         if (errors.size == n0 && !seenCS.add(listOf(r.outlet!!, r.programme!!, r.month!!, r.sku!!))) errors += KErr("campaign_sku_rows", r.i, "outlet_code", "duplicate_row")
     }
-    return KChecked(errors, routes.mapValues { it.value.first }, brands, programmes, campaigns, outlets, skus)
+    // A campaign row without any SKU row (in this batch or stored) shows STD and memo achieved 0 in the app for ever: warn, do not refuse.
+    val skuKeys = campSku.filter { it.outlet != null && it.programme != null && it.month != null }.map { Triple(it.outlet!!, it.programme!!, it.month!!) }.toHashSet()
+    val storedSku = HashSet<Triple<String, String, LocalDate>>()
+    val campKeys = camp.filter { it.outlet != null && it.programme != null && it.month != null && Triple(it.outlet, it.programme, it.month) !in skuKeys }
+    if (campKeys.isNotEmpty()) h.createQuery(
+        "SELECT DISTINCT o.code, g.code, t.month FROM app.outlet_campaign_sku_target t JOIN app.outlet o ON o.id = t.outlet_id JOIN app.programme g ON g.id = t.programme_id WHERE o.code = ANY(:o) AND g.code = ANY(:g) AND t.month = ANY(CAST(:m AS date[]))",
+    ).bindArray("o", String::class.java, campKeys.map { it.outlet!! }.distinct()).bindArray("g", String::class.java, campKeys.map { it.programme!! }.distinct()).bindArray("m", String::class.java, campKeys.map { it.month!!.toString() }.distinct())
+        .map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getDate(3).toLocalDate()) }.list().forEach { storedSku += it }
+    val warnings = camp.filter { it.outlet != null && it.programme != null && it.month != null }.filter { Triple(it.outlet!!, it.programme!!, it.month!!).let { k -> k !in skuKeys && k !in storedSku } }.map { KErr("campaign_rows", it.i, "outlet_code", "campaign_without_skus") }
+    return KChecked(errors, warnings, routes.mapValues { it.value.first }, brands, programmes, campaigns, outlets, skus)
 }
 
 private fun kDigest(brand: List<BrandRow>, month: List<MonthRow>, prog: List<ProgRow>, camp: List<CampRow>, campSku: List<CampSkuRow>): ByteArray {
     val md = MessageDigest.getInstance("SHA-256")
-    (brand.map { "B|${it.route}|${it.brand}|${it.month}|${it.memo}|${it.alloc}" } + month.map { "M|${it.route}|${it.month}|${it.alloc}|${it.cprBp}|${it.cprAlloc}" } + prog.map { "P|${it.route}|${it.programme}|${it.month}|${it.qty?.toPlainString()}" } + camp.map { "C|${it.outlet}|${it.programme}|${it.month}|${it.std?.toPlainString()}|${it.memo}" } + campSku.map { "S|${it.outlet}|${it.programme}|${it.month}|${it.sku}|${it.qty}" }).sorted().forEach { md.update(it.toByteArray()); md.update(10) }
+    (brand.map { "B|${it.route}|${it.brand}|${it.month}|${it.memo}|${it.alloc}|${it.allocSet}" } + month.map { "M|${it.route}|${it.month}|${it.alloc}|${it.cprBp}|${it.cprAlloc}|${it.cprBpPresent}|${it.cprAllocPresent}" } + prog.map { "P|${it.route}|${it.programme}|${it.month}|${it.qty?.toPlainString()}" } + camp.map { "C|${it.outlet}|${it.programme}|${it.month}|${it.std?.toPlainString()}|${it.memo}" } + campSku.map { "S|${it.outlet}|${it.programme}|${it.month}|${it.sku}|${it.qty}" }).sorted().forEach { md.update(it.toByteArray()); md.update(10) }
     return md.digest()
 }
 
@@ -226,6 +235,8 @@ private suspend fun kpiPut(call: ApplicationCall, d: RouteTargetDeps): JsonEleme
             put("batch_uuid", uuid.toString()); put("brand_rows", brand.size); put("month_rows", month.size); put("programme_rows", prog.size); put("campaign_rows", camp.size); put("campaign_sku_rows", campSku.size)
             put("errors", buildJsonArray { c.errors.take(KPI_MAX_ERRORS).forEach { e -> add(buildJsonObject { put("section", e.section); put("row", e.index + 1); put("column", e.member); put("code", e.code) }) } })
             put("errors_truncated", c.errors.size > KPI_MAX_ERRORS)
+            put("warnings", buildJsonArray { c.warnings.take(KPI_MAX_ERRORS).forEach { e -> add(buildJsonObject { put("section", e.section); put("row", e.index + 1); put("column", e.member); put("code", e.code) }) } })
+            put("warnings_truncated", c.warnings.size > KPI_MAX_ERRORS)
         }
     }
     val reason = AdminSupport.reason((body["change_reason"] as? JsonPrimitive)?.takeIf { it.isString }?.content)

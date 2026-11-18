@@ -48,10 +48,8 @@ class SrBundleStabilityTest {
     private val principal get() = AronPrincipal(sr, "sr1001", Role.SR, 0, "api", null, null, "sr", emptyList(), false, emptyList(), "j", clock.now().plusSeconds(600))
     private fun build() = service.bundle(principal, day, "1.0.0+1")
 
-    /** What an idle aggregation worker pass does: it rewrites the freshness row to now() for every table. */
-    private fun idleWorkerPass() = x(
-        "INSERT INTO dw.summary_freshness (table_name, last_updated_at, last_event_id) VALUES ('agg_daily_route_sku', now(), 1) ON CONFLICT (table_name) DO UPDATE SET last_updated_at = now()",
-    )
+    /** What an idle aggregation worker pass does: the REAL `DashboardSummaries.touchFreshness` (the worker's own code) rewrites the freshness rows to now() for every table. */
+    private fun idleWorkerPass() = fresh.db.jdbi.useHandle<Exception> { h -> com.aktcl.aron.backend.analytics.DashboardSummaries.touchFreshness(h, Instant.now()) }
 
     @BeforeAll
     fun setUp() {
@@ -103,5 +101,53 @@ class SrBundleStabilityTest {
         val c = build()
         assertNotEquals(a.version, c.version, "a rewritten aggregate row (a new memo) is a new bundle version")
         assertNotNull(service.delta(principal, a.bundle.meta.cursor, day))
+    }
+
+    @Test @Order(3)
+    fun idlePassesChangeNothingForAKpiStarAndCampaignRouteEither() {
+        val batch = "00000000-0000-4000-8000-00000000c002"
+        x("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES ('$batch', decode(repeat('ce', 32), 'hex'), 1, $sr) ON CONFLICT DO NOTHING")
+        x("INSERT INTO app.route_kpi_month (route_id, month, kpi_alloc_mtk, cpr_target_bp, cpr_alloc_mtk, batch_uuid) VALUES ($route, DATE '2027-01-01', 5700000, 5000, 600000, '$batch') ON CONFLICT DO NOTHING")
+        val star = q("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('superstar', 'MBLS-S', 'Star', DATE '2026-12-01', DATE '2027-01-31', 'active') RETURNING id")
+        x("INSERT INTO app.route_programme_target (programme_id, route_id, month, target_qty, batch_uuid) VALUES ($star, $route, DATE '2027-01-01', 20.000, '$batch')")
+        val camp = q("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('campaign', 'SSL-S', 'Campaign', DATE '2026-12-01', DATE '2027-01-31', 'active') RETURNING id")
+        val outlet = build().full.routes.single { it.route_id == route }.outlets.first().outlet_id
+        x("INSERT INTO app.outlet_campaign_target (programme_id, month, outlet_id, std_target, memo_target, batch_uuid) VALUES ($camp, DATE '2027-01-01', $outlet, 100, 5, '$batch')")
+        x("INSERT INTO app.outlet_campaign_sku_target (programme_id, month, outlet_id, sku_id, qty_base, batch_uuid) VALUES ($camp, DATE '2027-01-01', $outlet, $sku, 100, '$batch')")
+        idleWorkerPass()
+        val a = build(); val r = a.full.routes.single { it.route_id == route }
+        assertNotNull(r.kpi); assertNotNull(r.star); assertTrue(r.campaigns.orEmpty().isNotEmpty(), "kpi, star and campaign are all on the wire")
+        repeat(3) { Thread.sleep(30); idleWorkerPass() }
+        assertEquals(a.version, build().version, "idle passes with the real touchFreshness: same version")
+        assertNull(service.delta(principal, a.bundle.meta.cursor, day))
+    }
+
+    private fun asOf(): Instant? = fresh.db.jdbi.withHandle<Instant?, Exception> { h -> com.aktcl.aron.backend.sync.SrTargets.asOfByRoute(h, listOf(route), day)[route] }
+    private fun row(d: String, at: String) = x("INSERT INTO dw.agg_daily_route_sku (business_date, route_id, sku_id, sold_qty_base, memo_count, updated_at) VALUES (DATE '$d', $route, $sku, 1, 1, TIMESTAMPTZ '$at') ON CONFLICT (business_date, route_id, sku_id) DO UPDATE SET updated_at = EXCLUDED.updated_at")
+
+    @Test @Order(4)
+    fun asOfNeverPassesAMemoOfAnotherDayThatIsStillWaitingToBeAggregated() {
+        // The reviewer's scenario: an SR offline for two days syncs both at 09:00:00; day D-2 is rebuilt at 09:00:04, day D-1 is not rebuilt yet (pending), or its
+        // rebuild fails (backed off), or it is dead. A bundle pulled in between must say as_of < 09:00:00, so the phone keeps counting the D-1 memos.
+        x("DELETE FROM dw.agg_daily_route_sku WHERE route_id = $route"); x("DELETE FROM app.dirty_key WHERE kind = 'route_day_agg' AND subject_id = $route")
+        row("2027-01-01", "2027-01-03T09:00:04Z")                         // D-2 rebuilt at 09:00:04
+        assertEquals(Instant.parse("2027-01-03T09:00:04Z"), asOf(), "nothing pending: no clamp, as_of is the newest rewrite")
+        // D-1 pending, first dirtied at 09:00:00 (the memos were accepted at 09:00:00)
+        x("INSERT INTO app.dirty_key (kind, subject_id, business_date, first_dirtied_at, last_dirtied_at, reason) VALUES ('route_day_agg', $route, DATE '2027-01-02', TIMESTAMPTZ '2027-01-03T09:00:00Z', TIMESTAMPTZ '2027-01-03T09:00:01Z', 'memo')")
+        val pending = asOf()!!
+        assertTrue(pending.isBefore(Instant.parse("2027-01-03T09:00:00Z")), "pending key: as_of $pending is before the memos' acceptance 09:00:00")
+        // the same key backed off after a failing rebuild, then dead: still clamps (a dead key never lets as_of run past it)
+        x("UPDATE app.dirty_key SET not_before = TIMESTAMPTZ '2027-01-03T09:15:00Z' WHERE kind = 'route_day_agg' AND subject_id = $route")
+        assertEquals(pending, asOf(), "backed-off key clamps the same")
+        x("UPDATE app.dirty_key SET dead_at = TIMESTAMPTZ '2027-01-03T09:30:00Z' WHERE kind = 'route_day_agg' AND subject_id = $route")
+        assertEquals(pending, asOf(), "dead key clamps the same")
+        // a LATER rewrite of another day must not move it past the waiting memo
+        row("2027-01-01", "2027-01-03T10:00:00Z")
+        assertEquals(pending, asOf(), "a later rebuild of D-2 does not move as_of past D-1's waiting memos")
+        // keys outside the window (today, or another route) never clamp
+        x("DELETE FROM app.dirty_key WHERE kind = 'route_day_agg' AND subject_id = $route")
+        x("INSERT INTO app.dirty_key (kind, subject_id, business_date, first_dirtied_at, last_dirtied_at, reason) VALUES ('route_day_agg', $route, DATE '2027-01-03', TIMESTAMPTZ '2027-01-03T01:00:00Z', TIMESTAMPTZ '2027-01-03T01:00:00Z', 'memo')")
+        assertEquals(Instant.parse("2027-01-03T10:00:00Z"), asOf(), "today's key is outside the window (today is never in a server figure)")
+        x("DELETE FROM app.dirty_key WHERE kind = 'route_day_agg' AND subject_id = $route")
     }
 }

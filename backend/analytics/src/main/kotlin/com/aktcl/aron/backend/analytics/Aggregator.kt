@@ -210,7 +210,15 @@ object Aggregator {
         ).bind("r", routeId).bind("z", zoneId).bind("d", date).bind("wm", wm).bind("thr", threshold).execute()
     }
 
+    /**
+     * `updated_at` of these two route aggregates is what the SR bundle's per-route `as_of` is built from (D-TKPI-10, `SrTargets.asOfByRoute`), so it is written with
+     * clock_timestamp() (the statement's own start: a memo that this statement reads was committed before it, so its acceptance is not later than the stamp; now()
+     * is the transaction start and a memo committed while the rebuild ran could be counted with an older stamp) and it is KEPT when a rebuild changes no figure of
+     * the row (a late geo fix or a check-in dirties the route-day without changing a sale; the stamp then does not move and the bundle version stays).
+     */
     private fun rebuildAggRouteSku(h: Handle, routeId: Long, date: LocalDate, wm: Long) {
+        val old = h.createQuery("SELECT sku_id, sold_qty_base, free_qty_base, issued_qty_base, returned_qty_base, gross_mtk, memo_count, updated_at FROM dw.agg_daily_route_sku WHERE route_id = :r AND business_date = :d")
+            .bind("r", routeId).bind("d", date).map { rs, _ -> rs.getLong(1) to Pair(listOf(rs.getLong(2), rs.getLong(3), rs.getLong(4), rs.getLong(5), rs.getLong(6), rs.getLong(7)), rs.getTimestamp(8)) }.list().toMap()
         h.createUpdate("DELETE FROM dw.agg_daily_route_sku WHERE route_id = :r AND business_date = :d").bind("r", routeId).bind("d", date).execute()
         h.createUpdate(
             """
@@ -228,19 +236,26 @@ object Aggregator {
             INSERT INTO dw.agg_daily_route_sku (business_date, route_id, sku_id, sold_qty_base, free_qty_base, issued_qty_base, returned_qty_base,
                                                 gross_mtk, memo_count, last_event_id, updated_at)
             SELECT :d, :r, coalesce(s.sku_id, k.sku_id), coalesce(s.sold, 0), coalesce(s.free, 0), coalesce(k.issued, 0), coalesce(k.ret, 0),
-                   coalesce(s.gross, 0), coalesce(s.memos, 0), :wm, now()
+                   coalesce(s.gross, 0), coalesce(s.memos, 0), :wm, clock_timestamp()
               FROM sales s FULL JOIN stock k ON k.sku_id = s.sku_id
             """,
         ).bind("r", routeId).bind("d", date).bind("wm", wm).execute()
+        if (old.isNotEmpty()) h.createQuery("SELECT sku_id, sold_qty_base, free_qty_base, issued_qty_base, returned_qty_base, gross_mtk, memo_count FROM dw.agg_daily_route_sku WHERE route_id = :r AND business_date = :d")
+            .bind("r", routeId).bind("d", date).map { rs, _ -> rs.getLong(1) to listOf(rs.getLong(2), rs.getLong(3), rs.getLong(4), rs.getLong(5), rs.getLong(6), rs.getLong(7)) }.list()
+            .filter { (k, v) -> old[k]?.first == v }.forEach { (k, _) ->
+                h.createUpdate("UPDATE dw.agg_daily_route_sku SET updated_at = :u WHERE route_id = :r AND business_date = :d AND sku_id = :k").bind("u", old.getValue(k).second).bind("r", routeId).bind("d", date).bind("k", k).execute()
+            }
     }
 
     private fun rebuildAggRouteBrand(h: Handle, routeId: Long, date: LocalDate, wm: Long) {
+        val old = h.createQuery("SELECT brand_id, memo_count, sold_qty_base, gross_mtk, updated_at FROM dw.agg_daily_route_brand WHERE route_id = :r AND business_date = :d")
+            .bind("r", routeId).bind("d", date).map { rs, _ -> (rs.getObject(1) as Long?) to Pair(listOf(rs.getLong(2), rs.getLong(3), rs.getLong(4)), rs.getTimestamp(5)) }.list().toMap()
         h.createUpdate("DELETE FROM dw.agg_daily_route_brand WHERE route_id = :r AND business_date = :d").bind("r", routeId).bind("d", date).execute()
         h.createUpdate(
             """
             INSERT INTO dw.agg_daily_route_brand (business_date, route_id, brand_id, memo_count, sold_qty_base, gross_mtk, last_event_id, updated_at)
             SELECT :d, :r, coalesce(ph.brand_id, b.id), count(DISTINCT m.client_uuid), coalesce(sum(ml.qty_base) FILTER (WHERE ml.line_kind = 'sale'), 0),
-                   coalesce(sum(ml.gross_mtk) FILTER (WHERE ml.line_kind = 'sale'), 0), :wm, now()
+                   coalesce(sum(ml.gross_mtk) FILTER (WHERE ml.line_kind = 'sale'), 0), :wm, clock_timestamp()
               FROM app.memo_line ml JOIN app.memo m ON m.client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
               JOIN app.sku s ON s.id = ml.sku_id LEFT JOIN app.product_node v ON v.id = s.variant_id LEFT JOIN app.product_node b ON b.id = v.parent_id
               $PRODUCT_ON
@@ -248,6 +263,11 @@ object Aggregator {
              GROUP BY coalesce(ph.brand_id, b.id)
             """,
         ).bind("r", routeId).bind("d", date).bind("wm", wm).execute()
+        if (old.isNotEmpty()) h.createQuery("SELECT brand_id, memo_count, sold_qty_base, gross_mtk FROM dw.agg_daily_route_brand WHERE route_id = :r AND business_date = :d")
+            .bind("r", routeId).bind("d", date).map { rs, _ -> (rs.getObject(1) as Long?) to listOf(rs.getLong(2), rs.getLong(3), rs.getLong(4)) }.list()
+            .filter { (k, v) -> old[k]?.first == v }.forEach { (k, _) ->
+                h.createUpdate("UPDATE dw.agg_daily_route_brand SET updated_at = :u WHERE route_id = :r AND business_date = :d AND brand_id = :k").bind("u", old.getValue(k).second).bind("r", routeId).bind("d", date).bind("k", k).execute()
+            }
     }
 
     /** Contract `by_segment` (TSO By Segment Value Contribution): like the brand rollup, each memo counted once per segment (segment = the brand's parent node). */

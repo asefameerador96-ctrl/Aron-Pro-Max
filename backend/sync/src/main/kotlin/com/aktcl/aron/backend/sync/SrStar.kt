@@ -30,7 +30,7 @@ import java.time.YearMonth
 object SrStar {
     class RouteInfo(val routeName: String, val srName: String?, val srUserId: Long?, val calendar: RouteCalendarDto)
 
-    fun load(h: Handle, routes: Map<Long, RouteInfo>, date: LocalDate, asOf: Map<Long, Instant> = SrTargets.asOfByRoute(h, routes.keys, date)): Map<Long, JsonObject> {
+    fun load(h: Handle, routes: Map<Long, RouteInfo>, date: LocalDate, asOf: Map<Long, Instant> = SrTargets.asOfByRoute(h, routes.keys, date), dropped: MutableSet<Long>? = null): Map<Long, JsonObject> {
         if (routes.isEmpty()) return emptyMap()
         val month = YearMonth.from(date); val first = month.atDay(1); val through = date.minusDays(1)
         val last = month.minusMonths(1)
@@ -41,7 +41,8 @@ object SrStar {
             """,
         ).bindArray("r", Long::class.javaObjectType, routes.keys.toList()).bind("m", first).bind("d", date)
             .map { rs, _ -> Row(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5), rs.getLong(6), rs.getBigDecimal(7)) }.list()
-            .groupBy { it.routeId }.mapValues { it.value.first() } // one programme per route: the lowest id
+            .groupBy { it.routeId }.also { g -> g.forEach { (r, l) -> if (l.size > 1) dropped?.add(r) } } // routes with more than one active superstar programme: the extra ones are dropped, never silently
+            .mapValues { it.value.first() } // one programme per route: the lowest id
         if (progs.isEmpty()) return emptyMap()
         val users = routes.values.mapNotNull { it.srUserId }.distinct().let { ids ->
             if (ids.isEmpty()) emptyMap() else h.createQuery("SELECT id, username FROM app.app_user WHERE id = ANY(:i)").bindArray("i", Long::class.javaObjectType, ids)

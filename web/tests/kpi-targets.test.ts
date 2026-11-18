@@ -212,6 +212,10 @@ describe("preview and commit through the proxy", () => {
     const camp = { outlet_code: "DHK-334-001", programme_code: "CAMP-NOV", month: NEXT, std_target: "140.000", memo_target: 8 };
     const orphan = await (await op(c, { op: "kpi-targets.validate", body: { batch_uuid: B1, campaign_sku_rows: [sku], dry_run: true } })).json();
     expect(orphan.data.errors).toEqual([{ section: "campaign_sku_rows", row: 1, column: "outlet_code", code: "campaign_row_missing" }]);
+    // a campaign row alone is accepted with a warning (the app would show 0 achieved)
+    const warn = await (await op(c, { op: "kpi-targets.validate", body: { batch_uuid: B1, campaign_rows: [camp], dry_run: true } })).json();
+    expect(warn.data.errors).toEqual([]);
+    expect(warn.data.warnings).toEqual([{ section: "campaign_rows", row: 1, column: "outlet_code", code: "campaign_without_skus" }]);
     // the proxy takes one section per request: store the campaign row, then the SKU row is no orphan
     expect((await op(c, { op: "kpi-targets.commit", body: { batch_uuid: crypto.randomUUID(), campaign_rows: [camp], dry_run: false }, reason: REASON })).status).toBe(200);
     const stored = await (await op(c, { op: "kpi-targets.validate", body: { batch_uuid: B1, campaign_sku_rows: [sku], dry_run: true } })).json();

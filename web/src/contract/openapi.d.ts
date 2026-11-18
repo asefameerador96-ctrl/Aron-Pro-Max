@@ -6902,6 +6902,15 @@ export interface components {
                 code: string;
             }[];
             errors_truncated: boolean;
+            /** @description Rows that are accepted but probably not what was meant: `campaign_without_skus` (a campaign row with no SKU row in the batch or stored: the app would show STD and memo achieved 0). Optional. */
+            warnings?: {
+                /** @enum {string} */
+                section: "brand_rows" | "month_rows" | "programme_rows" | "campaign_rows" | "campaign_sku_rows";
+                row: number;
+                column: string;
+                code: string;
+            }[];
+            warnings_truncated?: boolean;
         };
         RouteKpiTargetList: {
             route_code: string;
@@ -7128,8 +7137,12 @@ export interface components {
             kpi?: components["schemas"]["RouteKpi"] | null;
             /** @description Outlets of the route enrolled in an active campaign for the month (N-3), with the outlet target pop-up figures and the SKU table. Empty or absent otherwise. At most 150 outlets and 20 SKUs each (lowest outlet id first); `campaigns_truncated` says when more existed. Contract 1.22.0, optional. */
             campaigns?: components["schemas"]["RouteCampaign"][] | null;
-            /** @description True when the route had more campaign outlets (over 150) or an outlet more campaign SKUs (over 20) than were sent; never silent. Contract 1.22.0, optional. */
+            /** @description True when the route had more campaign outlets (over 150), an outlet more campaign SKUs (over 20) or more than one active campaign (only the lowest programme id is sent) than were sent; never silent. Contract 1.22.0, optional. */
             campaigns_truncated?: boolean | null;
+            /** @description True when `targets` or `achievement_mtd` had more than 500 rows and were cut; never silent. Contract 1.22.0, optional. */
+            targets_truncated?: boolean | null;
+            /** @description True when the route had more than one active superstar programme with a target; only the lowest programme id is in `star`. Contract 1.22.0, optional. */
+            star_truncated?: boolean | null;
             /** @description Match Box Lifting Star snapshot (N-8); absent or null when the route has no target for an active superstar programme. Contract 1.22.0, optional. */
             star?: components["schemas"]["RouteStar"] | null;
             /**
