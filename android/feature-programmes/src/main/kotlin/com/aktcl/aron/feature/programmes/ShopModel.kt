@@ -9,10 +9,16 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 
 /** What the shop-wise list needs of a stored outlet (the host maps its rows to this, so this module holds no database types). */
-data class ShopOutlet(val outletId: Long, val nameLine: String, val code: String, val owner: String, val contact: String?, val subChannelId: Long?, val chip: String = "", val routeId: Long = 0L)
+data class ShopOutlet(val outletId: Long, val nameLine: String, val code: String, val owner: String, val contact: String?, val subChannelId: Long?, val chip: String = "", val routeId: Long = 0L, val routeName: String = "", val clusterName: String = "")
 
 /** One card of the shop-wise list. [subChannel] is the label of the outlet's sub-channel (the Astha tier), null when unknown. */
-data class ShopInfo(val outletId: Long, val nameLine: String, val code: String, val owner: String, val contact: String?, val subChannel: String?)
+data class ShopInfo(
+    val outletId: Long, val nameLine: String, val code: String, val owner: String, val contact: String?, val subChannel: String?,
+    val chip: String = "", val routeId: Long = 0L, val routeName: String = "", val clusterName: String = "",
+) {
+    /** The Astha tier code the gift lists use: the sub-channel label in lower case (gold, diamond, platinum, titanium); null when the outlet has none. */
+    val tierCode: String? get() = subChannel?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+}
 
 object ShopModel {
     /** The `sub_channel` code list of the stored `code_lists` section, id to label (Gold, Diamond, Platinum, Titanium; Silver is retired). */
@@ -30,8 +36,13 @@ object ShopModel {
     /** The outlets that carry an Astha outlet row, by name; the tier label from [subs]. Empty when there is no programme data. */
     fun build(outlets: List<ShopOutlet>, data: AsthaData?, subs: Map<Long, BrandName>, locale: UiLocale): List<ShopInfo> {
         val ids = data?.outletIds?.toSet() ?: return emptyList()
+        return buildFor(outlets, ids, subs, locale)
+    }
+
+    /** The cards of exactly the outlets in [ids] (the gift page adds the outlets that already have a gift assignment), by name. */
+    fun buildFor(outlets: List<ShopOutlet>, ids: Set<Long>, subs: Map<Long, BrandName>, locale: UiLocale): List<ShopInfo> {
         return outlets.filter { it.outletId in ids }.sortedBy { it.nameLine.lowercase() }
-            .map { ShopInfo(it.outletId, it.nameLine, it.code, it.owner, it.contact, it.subChannelId?.let { id -> subs[id]?.text(locale) }) }
+            .map { ShopInfo(it.outletId, it.nameLine, it.code, it.owner, it.contact, it.subChannelId?.let { id -> subs[id]?.text(locale) }, it.chip, it.routeId, it.routeName, it.clusterName) }
     }
 
     /** Search by name, code or phone (case-insensitive, any part, digits compared as typed in Latin or Bangla); blank shows everyone. */

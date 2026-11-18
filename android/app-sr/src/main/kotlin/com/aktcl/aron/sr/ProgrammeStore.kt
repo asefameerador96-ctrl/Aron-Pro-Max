@@ -6,6 +6,7 @@ import com.aktcl.aron.core.database.entity.AmoRecordEntity
 import com.aktcl.aron.core.database.repo.CaptureRepository
 import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.feature.outlet.CaptureMetaProvider
+import com.aktcl.aron.feature.programmes.LocalGiftChoice
 import com.aktcl.aron.feature.programmes.LocalRedemption
 import com.aktcl.aron.feature.programmes.PlannedRecord
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +33,15 @@ class ProgrammeStore(
             fun n(k: String) = (o[k] as? JsonPrimitive)?.content?.toLongOrNull()
             LocalRedemption(n("outlet_id") ?: return@mapNotNull null, n("programme_id") ?: return@mapNotNull null, n("points_total") ?: return@mapNotNull null,
                 (o["confirmed_at"] as? JsonPrimitive)?.content ?: return@mapNotNull null, db.outboxDao().byClientUuid(r.clientUuid)?.state ?: "pending")
+        }
+    }
+
+    /** The gift choices on this phone with their outbox state, oldest first (the last one of an outlet and quarter is its current one). */
+    suspend fun giftChoices(): List<LocalGiftChoice> = withContext(Dispatchers.IO) {
+        db.captureDao().amoRecordsOfType("gift_choice").mapNotNull { r ->
+            val o = runCatching { Json.parseToJsonElement(r.payloadJson) as? JsonObject }.getOrNull() ?: return@mapNotNull null
+            LocalGiftChoice((o["outlet_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return@mapNotNull null, (o["quarter"] as? JsonPrimitive)?.content ?: return@mapNotNull null,
+                (o["gift_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return@mapNotNull null, db.outboxDao().byClientUuid(r.clientUuid)?.state ?: "pending")
         }
     }
 

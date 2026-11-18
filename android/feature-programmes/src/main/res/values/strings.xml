@@ -57,6 +57,18 @@
     <string name="pg_redeem_saved">Redemption saved on this phone. It goes out with the next sync.</string>
     <string name="pg_redeem_failed">The redemption could not be saved. Nothing was deducted. Try again.</string>
     <string name="pg_ok">OK</string>
+    <string name="pg_shop_code">Retailer code</string>
+    <string name="pg_gift_route">Route</string>
+    <string name="pg_gift_cluster">Cluster</string>
+    <string name="pg_gift_pick">Choose one gift.</string>
+    <string name="pg_gift_submit">Submit</string>
+    <string name="pg_gift_locked">The gift is locked after the hand-over photo: %1$s</string>
+    <string name="pg_gift_on_phone">Chosen on this phone, not sent yet: %1$s</string>
+    <string name="pg_gift_refused">The server did not accept this choice: %1$s. Choose again.</string>
+    <string name="pg_gift_chosen">Chosen gift: %1$s</string>
+    <string name="pg_gift_none_for_tier">No gift is offered to this outlet\'s category.</string>
+    <string name="pg_gift_saved">Gift choice saved on this phone. It goes out with the next sync.</string>
+    <string name="pg_gift_failed">The gift choice could not be saved. Try again.</string>
     <string-array name="pg_months_short">
         <item>Jan</item>
         <item>Feb</item>

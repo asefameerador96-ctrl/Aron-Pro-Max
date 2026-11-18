@@ -9,6 +9,10 @@ import com.aktcl.aron.core.ui.aron.rememberAsyncLoad
 import com.aktcl.aron.feature.programmes.AsthaData
 import com.aktcl.aron.feature.programmes.AsthaModel
 import com.aktcl.aron.feature.programmes.AsthaTargetScreen
+import com.aktcl.aron.feature.programmes.GiftChoiceData
+import com.aktcl.aron.feature.programmes.GiftChoiceModel
+import com.aktcl.aron.feature.programmes.GiftSelectionScreen
+import com.aktcl.aron.feature.programmes.LocalGiftChoice
 import com.aktcl.aron.feature.programmes.LocalRedeemed
 import com.aktcl.aron.feature.programmes.LoyaltyData
 import com.aktcl.aron.feature.programmes.LocalRedemption
@@ -56,8 +60,8 @@ fun AsthaHost(day: SrDay, locale: UiLocale) {
 
 /** The outlets of every route of the bundle, as the programme screens need them (picker label, owner, phone, sub-channel). */
 internal suspend fun readShopOutlets(day: SrDay): List<ShopOutlet> = withContext(Dispatchers.IO) {
-    day.reference.routesOfDay(day.reference.businessDate() ?: "").flatMap { it.outlets }.distinctBy { it.outletId }
-        .map { ShopOutlet(it.outletId, com.aktcl.aron.feature.outlet.OutletPicker.label(it), it.code, it.ownerName, it.contactNumber, it.subChannelId, com.aktcl.aron.feature.outlet.OutletPicker.chipOf(it.name), it.routeId) }
+    day.reference.routesOfDay(day.reference.businessDate() ?: "").flatMap { r -> r.outlets.map { it to r.route.name } }.distinctBy { it.first.outletId }
+        .map { (it, routeName) -> ShopOutlet(it.outletId, com.aktcl.aron.feature.outlet.OutletPicker.label(it), it.code, it.ownerName, it.contactNumber, it.subChannelId, com.aktcl.aron.feature.outlet.OutletPicker.chipOf(it.name), it.routeId, routeName, it.clusterName) }
 }
 
 /** The outlet points page (manual 55): the bundle's real balances, nothing invented; offline. */
@@ -101,3 +105,35 @@ fun RedemptionHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
 }
 
 internal data class RedemptionLoad(val data: LoyaltyData?, val outlets: List<ShopOutlet>, val redemptions: List<LocalRedemption>, val builtAt: String?)
+
+internal data class GiftLoad(val data: GiftChoiceData?, val shops: List<ShopInfo>, val local: List<LocalGiftChoice>, val quarter: String)
+
+/**
+ * Astha gift selection (manual 52). The record uuid is fixed when the page opens and renewed only after a save, so a double tap or a replay is one
+ * record; a later choice for the same outlet and quarter is a new record (the server keeps the later one until the hand-over photo locks it).
+ */
+@Composable
+fun GiftSelectionHost(day: SrDay, locale: UiLocale) {
+    val load = rememberAsyncLoad(locale) {
+        withContext(Dispatchers.IO) {
+            val prog = day.reference.section("programmes")
+            val data = GiftChoiceModel.parse(prog)
+            val outlets = readShopOutlets(day)
+            val subs = ShopModel.subChannels(day.reference.section("code_lists"))
+            val ids = (AsthaModel.parse(prog, null)?.outletIds.orEmpty() + data?.assignments?.map { it.outletId }.orEmpty()).toSet()
+            val startMonth = day.reference.config("cfg.astha.quarter_start_month", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toIntOrNull()?.takeIf { it in 1..12 } ?: 1
+            val today = day.reference.businessDate() ?: com.aktcl.aron.rules.BusinessDate.of(System.currentTimeMillis()).toString()
+            GiftLoad(data, ShopModel.buildFor(outlets, ids, subs, locale), day.programmes.giftChoices(), GiftChoiceModel.quarterOf(today, startMonth))
+        }
+    }
+    AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
+        var local by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(page.local) }
+        var uuid by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(day.programmes.newUuid()) }
+        GiftSelectionScreen(page.shops, page.data, page.quarter, local, locale, { outletId, giftId ->
+            val shop = page.shops.firstOrNull { it.outletId == outletId }
+            val ok = day.programmes.saveProgramme(shop?.routeId ?: 0L, listOf(GiftChoiceModel.plan(outletId, giftId, page.quarter, uuid)))
+            if (ok) { local = day.programmes.giftChoices(); uuid = day.programmes.newUuid() }
+            ok
+        })
+    }
+}

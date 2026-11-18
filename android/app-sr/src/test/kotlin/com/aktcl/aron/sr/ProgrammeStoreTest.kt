@@ -58,4 +58,14 @@ class ProgrammeStoreTest {
         assertEquals(0, store.redemptions().size)
         assertEquals(0, db.outboxDao().countInState("pending"))
     }
+
+    @Test fun aGiftChoiceIsSavedOnceAndReadBackWithItsState() = runTest {
+        val uuid = ClientIds.newUuid()
+        val rec = com.aktcl.aron.feature.programmes.GiftChoiceModel.plan(10, 4, "2026-Q4", uuid)
+        assertTrue(store.saveProgramme(7, listOf(rec)))
+        assertTrue(store.saveProgramme(7, listOf(rec))) // a double tap: the same record
+        val c = store.giftChoices()
+        assertEquals(1, c.size); assertEquals(4L, c[0].giftId); assertEquals("2026-Q4", c[0].quarter); assertEquals("pending", c[0].state)
+        assertEquals(1, db.outboxDao().countInState("pending"))
+    }
 }

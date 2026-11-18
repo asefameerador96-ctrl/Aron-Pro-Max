@@ -23,6 +23,9 @@ import com.aktcl.aron.feature.programmes.AsthaTargetScreen
 import com.aktcl.aron.feature.programmes.LoyaltyMenuScreen
 import com.aktcl.aron.feature.programmes.LoyaltyModel
 import com.aktcl.aron.feature.programmes.OutletPointsScreen
+import com.aktcl.aron.feature.programmes.GiftChoiceModel
+import com.aktcl.aron.feature.programmes.GiftSelectionScreen
+import com.aktcl.aron.feature.programmes.LocalGiftChoice
 import com.aktcl.aron.feature.programmes.RedemptionScreen
 import com.aktcl.aron.feature.programmes.ShopInfo
 import com.aktcl.aron.feature.programmes.ShopOutlet
@@ -126,4 +129,23 @@ class SrProgrammesScreenshotTests {
     @Test fun redemption_en_sunlight() = shot("redemption_en_sunlight", AppLanguage.EN, sunlight = true) { Redeem(mapOf(1L to 1), UiLocale.EN) }
     @Test fun redemption_bn_font20() = shot("redemption_bn_font20", fontScale = 2.0f) { Redeem(mapOf(1L to 1)) }
     @Test fun redemption_bn_empty() = shot("redemption_bn_empty") { Redeem(data = null) }
+
+    // Astha gift selection (manual 52)
+    private val giftJson = """{"programmes":[{"programme_id":5,"kind":"astha","name_en":"Astha"}],"loyalty":[],"gifts":[
+        {"gift_id":1,"programme_id":5,"name_en":"Hotpot- 3 bati","name_bn":"হটপট- ৩ বাটি","points_cost":null,"tier_codes":["gold"],"status":"active"},
+        {"gift_id":2,"programme_id":5,"name_en":"Feature Phone","name_bn":"ফিচার ফোন","points_cost":null,"tier_codes":[],"status":"active"}],
+      "gift_assignments":[{"gift_assignment_id":2,"quarter":"2026-Q4","outlet_id":11,"route_id":7,"gift_id":2,"photo_captured":true,"locked":true}]}"""
+    private val giftShops = listOf(
+        ShopInfo(10, "Milon Store (2663519)", "2663519", "Milon", null, "Gold", chip = "M", routeId = 7, routeName = "Agora GoliDaily", clusterName = "Agora Goli, Gulshan-2"),
+        ShopInfo(11, "Locked Store (1234567)", "1234567", "B", null, "Gold", chip = "L", routeId = 7),
+    )
+    @Composable private fun Gift(outlet: Long, picked: Long? = null, local: List<LocalGiftChoice> = emptyList(), data: com.aktcl.aron.feature.programmes.GiftChoiceData? = GiftChoiceModel.parse(giftJson)) =
+        Frame(ProgR.string.pg_astha_tile_gift) { GiftSelectionScreen(giftShops, data, "2026-Q4", local, UiLocale.BN, { _, _ -> true }, initialOutlet = outlet, initialGift = picked) }
+
+    @Test fun gift_selection_bn() = shot("gift_selection_bn") { Gift(10) }
+    @Test fun gift_selection_bn_picked() = shot("gift_selection_bn_picked") { Gift(10, picked = 1) }
+    @Test fun gift_selection_bn_on_phone() = shot("gift_selection_bn_on_phone") { Gift(10, local = listOf(LocalGiftChoice(10, "2026-Q4", 1, "pending"))) }
+    @Test fun gift_selection_bn_locked() = shot("gift_selection_bn_locked") { Gift(11) }
+    @Test fun gift_selection_bn_font20() = shot("gift_selection_bn_font20", fontScale = 2.0f) { Gift(10, picked = 1) }
+    @Test fun gift_selection_bn_empty() = shot("gift_selection_bn_empty") { Gift(10, data = null) }
 }

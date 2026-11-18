@@ -57,6 +57,18 @@
     <string name="pg_redeem_saved">রিডিম্পশন এই ফোনে সংরক্ষিত হয়েছে। পরের সিঙ্কে যাবে।</string>
     <string name="pg_redeem_failed">রিডিম্পশন সংরক্ষণ করা যায়নি। কিছু কাটা হয়নি। আবার চেষ্টা করুন।</string>
     <string name="pg_ok">ওকে</string>
+    <string name="pg_shop_code">খুচরা বিক্রেতার কোড</string>
+    <string name="pg_gift_route">রুট</string>
+    <string name="pg_gift_cluster">ক্লাস্টার</string>
+    <string name="pg_gift_pick">একটি গিফট নির্বাচন করুন।</string>
+    <string name="pg_gift_submit">সাবমিট</string>
+    <string name="pg_gift_locked">হস্তান্তরের ছবির পর গিফট বদ্ধ: %1$s</string>
+    <string name="pg_gift_on_phone">এই ফোনে নির্বাচিত, এখনো পাঠানো হয়নি: %1$s</string>
+    <string name="pg_gift_refused">সার্ভার এই নির্বাচন নেয়নি: %1$s। আবার নির্বাচন করুন।</string>
+    <string name="pg_gift_chosen">নির্বাচিত গিফট: %1$s</string>
+    <string name="pg_gift_none_for_tier">এই দোকানের ক্যাটাগরির জন্য কোনো গিফট নেই।</string>
+    <string name="pg_gift_saved">গিফট নির্বাচন এই ফোনে সংরক্ষিত হয়েছে। পরের সিঙ্কে যাবে।</string>
+    <string name="pg_gift_failed">গিফট নির্বাচন সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।</string>
     <string-array name="pg_months_short">
         <item>Jan</item>
         <item>Feb</item>
