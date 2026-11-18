@@ -136,4 +136,94 @@ class RiskSignalsTest {
         assertEquals(3, env.scalar("SELECT count(*) FROM app.risk_signal WHERE user_id = $uid AND business_date = '$day' AND subject_type = 'device'")!!.toInt())
         assertEquals("40.00", env.scalar("SELECT score FROM app.risk_signal WHERE code = 'GEO_TELEPORT' AND business_date = '$day' AND subject_type = 'device'"))
     }
+
+    // ---- B1 (lead review of 49e6abc6..0f69f3b9): stored phone evidence is never trusted as structure and one bad row never stops the evaluation ----
+
+    @Test
+    fun theStoredEventsAreReadDefensivelyAndOnlyKnownCodesCount() {
+        fun read(j: String?) = IntegrityEventReader.read("9", 7, j)
+        val bad = read("""[{"at":"2027-01-03T04:00:00Z","flags":[{"x":1}],"exempt":"none"},{"at":"2027-01-03T04:00:00Z","flags":"dev_options","exempt":"none"},"x",7,null,[],{"flags":["adb"],"exempt":"none"},{"at":"not a time","flags":["adb"],"exempt":"none"}]""")
+        assertEquals(1, bad.events.size, "the first element has a readable time and a list of flags: its object flag is dropped, the event stays"); assertEquals(emptyList(), bad.events.single().flags)
+        assertEquals(7, bad.skipped)
+        val good = read("""[{"at":"2027-01-03T04:00:00Z","flags":["adb","dev_options","adb","rooted","\u0000"],"exempt":"none"},{"at":"2027-01-03T05:00:00Z","flags":["adb"],"exempt":"made_up"},{"at":"2027-01-03T06:00:00Z","flags":["adb"]}]""")
+        assertEquals(listOf("adb", "dev_options"), good.events[0].flags, "known codes only, distinct, ordered")
+        assertEquals("unknown", good.events[1].exempt); assertEquals("unknown", good.events[2].exempt)
+        assertEquals(0, read("not json").events.size); assertEquals(0, read("{}").events.size); assertEquals(0, read(null).events.size)
+        // An unknown or missing `exempt` is never counted as a blocked onset.
+        assertTrue(PhoneSignalRules.fromIntegrityEvents(good.events.drop(1)).isEmpty())
+    }
+
+    private fun insertDevice(): Long = env.fresh.db.jdbi.withHandle<Long, Exception> { h ->
+        h.createQuery(
+            "INSERT INTO app.device (device_uuid, flavour, app_package, device_owner, lockdown_level, public_key_jwk, public_key_thumbprint, app_signing_cert_sha256) " +
+                "VALUES (CAST(:u AS uuid), 'sr', 'com.aktcl.aron.sr', false, 'prod', CAST('{}' AS jsonb), :t, decode(repeat('ab', 32), 'hex')) RETURNING id",
+        ).bind("u", UUID.randomUUID().toString()).bind("t", "thumb-" + UUID.randomUUID()).mapTo(Long::class.java).one()
+    }
+
+    private fun statusReport(device: Long, uid: Long, day: LocalDate, report: String) = env.fresh.db.jdbi.useHandle<Exception> { h ->
+        h.createUpdate(
+            "INSERT INTO app.device_status_report (source, device_id, user_id, business_date, reported_at, app_version, device_owner, lockdown_level_applied, blocking_active, location_enabled, dev_options_enabled, adb_enabled, auto_time_enabled, pending_rows, battery_pct, report) " +
+                "VALUES ('online', :d, :u, :bd, now(), '1.0.0+1', false, 'prod', false, true, false, false, true, 0, 80, CAST(:r AS jsonb))",
+        ).bind("d", device).bind("u", uid).bind("bd", day).bind("r", report).execute()
+    }
+
+    /** One malformed stored report (a tampered or newer phone) used to throw out of the whole evaluation: no user got a hit for that date. */
+    @Test
+    fun oneMalformedStoredStatusReportDoesNotStopTheEvaluationOfTheOthers() {
+        val db = env.fresh.db
+        val cfg = DbServerConfig(db, RegistryDefaults())
+        val day = LocalDate.parse("2027-04-05")
+        val a = env.ids.getValue("sr1001")
+        val b = env.ids.values.first { it != a }
+        db.jdbi.useHandle<Exception> { h ->
+            // user A: a teleporting phone with a mocked fix (two hits)
+            listOf(Triple(0L, 23.80, false), Triple(60L, 23.81, true)).forEach { (secs, lat, mock) ->
+                h.createUpdate(
+                    "INSERT INTO app.geo_fix (business_date, source_type, source_client_uuid, user_id, captured_at, purpose, fix_status, lat, lng, accuracy_m, provider, is_mock, reused, device_owner, dev_options_enabled, adb_enabled, auto_time_enabled, mock_app_present) " +
+                        "VALUES (:d, 'visit', :u, :uid, CAST(:at AS timestamptz), 'visit_open', 'ok', :lat, 90.36, 12, 'fused', :m, false, true, false, false, true, false)",
+                ).bind("d", day).bind("u", UUID.randomUUID()).bind("uid", a).bind("at", Instant.parse("2027-04-05T03:00:00Z").plusSeconds(secs).toString()).bind("lat", lat).bind("m", mock).execute()
+            }
+        }
+        // user B: a report whose events are malformed in every way a tampered phone could make them, and one good blocked onset after them
+        val dev = insertDevice()
+        statusReport(dev, b, day, """{"integrity_events":[{"at":"2027-04-05T04:00:00Z","flags":[{"x":1}],"exempt":"none"},{"at":["x"],"flags":[[]],"exempt":{"a":1}},"x",{"at":"2027-04-05T05:00:00Z","flags":["dev_options"],"exempt":"none"}]}""")
+        statusReport(dev, b, day, """{"integrity_events":"not an array"}""")
+        statusReport(dev, b, day, """{"integrity_events":[{"at":"2027-04-05T06:00:00Z","flags":[1,2],"exempt":null}]}""")
+        val ev = RiskSignalEvaluator(db, cfg)
+        val n = ev.evaluateDay(day)
+        assertEquals(3, n, "A's two fix hits and B's one readable onset: nothing was thrown away")
+        assertEquals(2, env.scalar("SELECT count(*) FROM app.risk_signal WHERE user_id = $a AND business_date = '$day'")!!.toInt())
+        assertEquals(1, env.scalar("SELECT count(*) FROM app.risk_signal WHERE code = 'DEVICE_DEBUG_ENABLED' AND user_id = $b AND business_date = '$day'")!!.toInt())
+        assertEquals(3, ev.evaluateDay(day), "and it stays idempotent")
+    }
+
+    @Test
+    fun aFailingDateNeverStopsTheOther() {
+        val job = RiskSignalJob(RiskSignalEvaluator(env.fresh.db, DbServerConfig(env.fresh.db, RegistryDefaults())))
+        val seen = mutableListOf<LocalDate>(); val today = LocalDate.parse("2027-04-05")
+        job.runDates(today) { d -> seen += d; if (d == today) error("this date is broken") }
+        assertEquals(listOf(today, today.minusDays(1)), seen)
+        seen.clear(); job.runDates(today) { d -> seen += d; if (d == today.minusDays(1)) error("yesterday is broken") }
+        assertEquals(listOf(today, today.minusDays(1)), seen)
+    }
+
+    @Test
+    fun aSourceThatFailsInTheDatabaseIsSkippedWithoutAbortingTheTransactionOfTheOthers() {
+        val db = env.fresh.db
+        val day = LocalDate.parse("2027-04-06")
+        val uid = env.ids.getValue("sr1001")
+        db.jdbi.useHandle<Exception> { h ->
+            h.createUpdate(
+                "INSERT INTO app.geo_fix (business_date, source_type, source_client_uuid, user_id, captured_at, purpose, fix_status, lat, lng, accuracy_m, provider, is_mock, reused, device_owner, dev_options_enabled, adb_enabled, auto_time_enabled, mock_app_present) " +
+                    "VALUES (:d, 'visit', :u, :uid, CAST('2027-04-06T03:00:00Z' AS timestamptz), 'visit_open', 'ok', 23.8, 90.36, 12, 'fused', true, false, true, false, false, true, false)",
+            ).bind("d", day).bind("u", UUID.randomUUID()).bind("uid", uid).execute()
+        }
+        // A config that makes one source throw (the weights are read once; the integrity source reads a view that is dropped for this test's transaction only).
+        val n = db.jdbi.inTransaction<Int, Exception> { h ->
+            h.execute("ALTER TABLE app.device_status_report RENAME TO device_status_report_x")
+            try { RiskSignalEvaluator(db, DbServerConfig(db, RegistryDefaults())).evaluate(h, day) } finally { h.execute("ALTER TABLE app.device_status_report_x RENAME TO device_status_report") }
+        }
+        assertEquals(1, n, "the missing table broke the integrity-events source only; the mock hit was still stored")
+        assertEquals(1, env.scalar("SELECT count(*) FROM app.risk_signal WHERE user_id = $uid AND business_date = '$day'")!!.toInt())
+    }
 }

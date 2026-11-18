@@ -118,6 +118,35 @@ data class PhoneSignalFix(val phone: String, val userId: Long, val routeId: Long
 data class IntegrityEventRow(val phone: String, val userId: Long, val atUtc: String, val flags: List<String>, val exempt: String)
 
 /**
+ * Reads the stored `integrity_events` of one status report. The report is stored as the phone sent it (the ingest checks its shape, but rows stored before that
+ * check, or by a newer phone, can hold anything), so this NEVER throws: an element that is not an object, has no readable timestamp or holds a non-string is skipped
+ * and counted in [skipped]; only the known flag codes are kept (an unknown one is dropped, never trusted), and an unknown `exempt` code reads as `unknown`, which is
+ * never counted as a blocked onset.
+ */
+object IntegrityEventReader {
+    val FLAGS = setOf("dev_options", "adb", "adb_wifi")
+    val EXEMPT = setOf("none", "debug_build", "benchmark_build", "lab")
+
+    class Read(val events: List<IntegrityEventRow>, val skipped: Int)
+
+    fun read(phone: String, userId: Long, json: String?): Read {
+        val arr = runCatching { json?.let { Json.parseToJsonElement(it) } }.getOrNull() as? kotlinx.serialization.json.JsonArray ?: return Read(emptyList(), if (json == null) 0 else 1)
+        var skipped = 0
+        val out = ArrayList<IntegrityEventRow>()
+        for (e in arr) {
+            val o = e as? JsonObject
+            val at = (o?.get("at") as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { runCatching { Instant.parse(it) }.isSuccess }
+            val rawFlags = o?.get("flags") as? kotlinx.serialization.json.JsonArray
+            if (o == null || at == null || rawFlags == null) { skipped++; continue }
+            val flags = rawFlags.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }.filter { it in FLAGS }.distinct().sorted()
+            val exempt = (o["exempt"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it in EXEMPT } ?: "unknown"
+            out += IntegrityEventRow(phone, userId, at, flags, exempt)
+        }
+        return Read(out, skipped)
+    }
+}
+
+/**
  * The phone's own anti-spoofing codes (D-OWNER-MDM-02, contract 1.19.0) mapped onto the existing risk codes, one hit per code and PHONE
  * (subject type `device`, so they never overwrite the user-level hits of the server rules above). Codes the server does not know are kept
  * on the fix but make no hit. Evidence is the count per phone code, never a position.
@@ -167,7 +196,26 @@ object PhoneSignalRules {
  * `GEO_DEVICE_SERVER_MISMATCH` reads the visit's `server_verdict`, which the server geo re-check (F-SYS-012) fills.
  */
 class RiskSignalEvaluator(private val db: Database, private val config: ServerConfig) {
+    private val log = LoggerFactory.getLogger("aron.risk")
+
     fun evaluateDay(date: LocalDate): Int = db.jdbi.inTransaction<Int, Exception> { h -> evaluate(h, date) }
+
+    /**
+     * One source of hits (a rule family, a query) or one stored row must never stop the rest: stored data comes from phones, and a tampered or newer phone can
+     * store something no rule expected. A failing source is logged (its kind only, never the data) and skipped; it runs inside a savepoint so a database error of
+     * one source does not abort the transaction of the others. Only a fatal error (out of memory) is rethrown.
+     */
+    private fun <T> isolated(h: Handle, what: String, date: LocalDate, fallback: T, block: () -> T): T {
+        val sp = "risk_" + what.replace(Regex("[^a-z0-9_]"), "_")
+        h.savepoint(sp)
+        return try {
+            block().also { h.release(sp) }
+        } catch (e: Exception) {
+            runCatching { h.rollbackToSavepoint(sp); h.release(sp) }
+            log.error("risk source $what skipped for $date: ${e.javaClass.simpleName}")
+            fallback
+        }
+    }
 
     internal fun evaluate(h: Handle, date: LocalDate): Int {
         val t = GeoThresholds.from(config)
@@ -183,34 +231,42 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
             )
         }.list()
         val hits = mutableListOf<RiskHit>()
-        fixes.groupBy { it.userId }.values.forEach { u ->
-            RiskRules.mock(u)?.let(hits::add); RiskRules.teleport(u, t)?.let(hits::add); RiskRules.zeroJitter(u, t)?.let(hits::add)
+        // One user's rules never stop another's; one route's never stop another's.
+        fixes.groupBy { it.userId }.forEach { (uid, u) ->
+            try { RiskRules.mock(u)?.let(hits::add); RiskRules.teleport(u, t)?.let(hits::add); RiskRules.zeroJitter(u, t)?.let(hits::add) }
+            catch (e: Exception) { log.error("risk rules skipped for one user on $date: ${e.javaClass.simpleName}") }
         }
-        fixes.filter { it.purpose == "visit_open" && it.routeId != null }.groupBy { it.routeId }.values.forEach { r -> RiskRules.routeSinglePoint(r, t)?.let(hits::add) }
-        hits += mismatches(h, date, t)
-        hits += PhoneSignalRules.fromFixes(phoneSignalFixes(h, date)) + PhoneSignalRules.fromIntegrityEvents(integrityEvents(h, date))
-        for (hit in hits) store(h, hit, date, weights[hit.code] ?: 0.0, version)
-        return hits.size
+        fixes.filter { it.purpose == "visit_open" && it.routeId != null }.groupBy { it.routeId }.values.forEach { r ->
+            try { RiskRules.routeSinglePoint(r, t)?.let(hits::add) } catch (e: Exception) { log.error("route rule skipped on $date: ${e.javaClass.simpleName}") }
+        }
+        hits += isolated(h, "mismatch", date, emptyList()) { mismatches(h, date, t) }
+        hits += isolated(h, "phone_signals", date, emptyList()) { PhoneSignalRules.fromFixes(phoneSignalFixes(h, date)) }
+        hits += isolated(h, "integrity_events", date, emptyList()) { PhoneSignalRules.fromIntegrityEvents(integrityEvents(h, date)) }
+        var stored = 0
+        for (hit in hits) stored += isolated(h, "store", date, 0) { store(h, hit, date, weights[hit.code] ?: 0.0, version); 1 }
+        return stored
     }
 
+    /** Fixes that carry at least one code. Never throws on a stored value: a null or odd array element is skipped, a row that cannot be read is skipped. */
     private fun phoneSignalFixes(h: Handle, date: LocalDate): List<PhoneSignalFix> = h.createQuery(
         "SELECT COALESCE(device_id::text, 'user-' || user_id) AS phone, user_id, route_id, source_client_uuid, signals FROM app.geo_fix " +
             "WHERE business_date = :d AND voided_at IS NULL AND signals IS NOT NULL AND cardinality(signals) > 0 ORDER BY id",
     ).bind("d", date).map { rs, _ ->
-        PhoneSignalFix(rs.getString("phone"), rs.getLong("user_id"), rs.getObject("route_id") as Long?, rs.getString("source_client_uuid"), (rs.getArray("signals").array as Array<*>).map { it.toString() })
-    }.list()
+        runCatching {
+            PhoneSignalFix(rs.getString("phone"), rs.getLong("user_id"), rs.getObject("route_id") as Long?, rs.getString("source_client_uuid"), (rs.getArray("signals").array as Array<*>).mapNotNull { it?.toString() })
+        }.getOrNull()
+    }.list().filterNotNull()
 
-    private fun integrityEvents(h: Handle, date: LocalDate): List<IntegrityEventRow> = h.createQuery(
-        "SELECT COALESCE(device_id::text, 'user-' || user_id) AS phone, user_id, report -> 'integrity_events' AS ev FROM app.device_status_report " +
-            "WHERE business_date = :d AND user_id IS NOT NULL AND jsonb_typeof(report -> 'integrity_events') = 'array' ORDER BY id",
-    ).bind("d", date).map { rs, _ ->
-        val phone = rs.getString("phone"); val uid = rs.getLong("user_id")
-        (Json.parseToJsonElement(rs.getString("ev")) as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { e ->
-            val o = e as? JsonObject ?: return@mapNotNull null
-            val at = (o["at"] as? JsonPrimitive)?.content ?: return@mapNotNull null
-            IntegrityEventRow(phone, uid, at, (o["flags"] as? kotlinx.serialization.json.JsonArray).orEmpty().map { (it as JsonPrimitive).content }, (o["exempt"] as? JsonPrimitive)?.content ?: "none")
-        }
-    }.list().flatten()
+    private fun integrityEvents(h: Handle, date: LocalDate): List<IntegrityEventRow> {
+        var skipped = 0
+        val rows = h.createQuery(
+            "SELECT COALESCE(device_id::text, 'user-' || user_id) AS phone, user_id, (report -> 'integrity_events')::text AS ev FROM app.device_status_report " +
+                "WHERE business_date = :d AND user_id IS NOT NULL AND jsonb_typeof(report -> 'integrity_events') = 'array' ORDER BY id",
+        ).bind("d", date).map { rs, _ -> Triple(rs.getString("phone"), rs.getLong("user_id"), rs.getString("ev")) }.list()
+            .flatMap { (phone, uid, ev) -> IntegrityEventReader.read(phone, uid, ev).also { skipped += it.skipped }.events }
+        if (skipped > 0) log.warn("risk integrity events: $skipped malformed element(s) skipped on $date")
+        return rows
+    }
 
     private fun mismatches(h: Handle, date: LocalDate, t: GeoThresholds): List<RiskHit> = h.createQuery(
         "SELECT client_uuid, user_id, route_id, verdict, server_verdict, distance_m, server_distance_m FROM app.visit WHERE business_date = :d AND voided_at IS NULL AND server_verdict IS NOT NULL " +
@@ -236,12 +292,17 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
 class RiskSignalJob(private val evaluator: RiskSignalEvaluator, private val clock: AronClock = AronClock.SYSTEM, private val everyMin: Long = 15) {
     private val log = LoggerFactory.getLogger("aron.risk")
 
+    /** Today and yesterday, each on its own: a date that fails (logged) never stops the other. */
+    internal fun runDates(today: LocalDate, evaluate: (LocalDate) -> Unit) {
+        for (d in listOf(today, today.minusDays(1))) {
+            runCatching { evaluate(d) }.onFailure { it.exitIfFatal(log, "risk signals"); log.error("risk signal evaluation failed for $d", it) }
+        }
+    }
+
     fun start() {
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "risk-signals").apply { isDaemon = true } }.scheduleWithFixedDelay({
-            runCatching {
-                val today = AdminSupport.today(clock)
-                evaluator.evaluateDay(today); evaluator.evaluateDay(today.minusDays(1))
-            }.onFailure { it.exitIfFatal(log, "risk signals"); log.error("risk signal evaluation failed", it) }
+            val today = runCatching { AdminSupport.today(clock) }.getOrNull() ?: return@scheduleWithFixedDelay
+            runDates(today) { evaluator.evaluateDay(it) }
         }, 1, everyMin, TimeUnit.MINUTES)
     }
 }
