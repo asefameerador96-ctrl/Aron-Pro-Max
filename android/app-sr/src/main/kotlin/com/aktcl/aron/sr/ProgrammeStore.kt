@@ -8,6 +8,8 @@ import com.aktcl.aron.core.database.repo.CaptureRepository
 import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.feature.outlet.CaptureMetaProvider
 import com.aktcl.aron.feature.programmes.LocalGiftChoice
+import com.aktcl.aron.feature.programmes.LocalMemo
+import com.aktcl.aron.feature.programmes.LocalMemoLine
 import com.aktcl.aron.feature.programmes.LocalRedemption
 import com.aktcl.aron.feature.programmes.PlannedRecord
 import com.aktcl.aron.feature.programmes.SaveOutcome
@@ -45,6 +47,17 @@ class ProgrammeStore(
             val o = runCatching { Json.parseToJsonElement(r.payloadJson) as? JsonObject }.getOrNull() ?: return@mapNotNull null
             LocalGiftChoice((o["outlet_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return@mapNotNull null, (o["quarter"] as? JsonPrimitive)?.content ?: return@mapNotNull null,
                 (o["gift_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return@mapNotNull null, db.outboxDao().byClientUuid(r.clientUuid)?.state ?: "pending")
+        }
+    }
+
+    /** The memos of a Dhaka month (`YYYY-MM`) on this phone with their lines and outbox state, for the Astha achievement (the phone's own memos on top of the server figure). */
+    suspend fun memosOfMonth(month: String): List<LocalMemo> = withContext(Dispatchers.IO) {
+        db.captureDao().memosBetween("$month-01", "$month-31").map { m ->
+            val ob = db.outboxDao().byClientUuid(m.clientUuid)
+            LocalMemo(
+                m.clientUuid, m.outletId, m.meta.businessDate, m.supersedesClientUuid, ob?.state ?: "pending", ob?.ackedAt,
+                db.captureDao().linesOf(m.clientUuid).map { LocalMemoLine(it.skuId, it.lineKind, it.qtyBase, it.packFactor, it.grossMtk) },
+            )
         }
     }
 

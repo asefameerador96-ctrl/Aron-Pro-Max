@@ -37,7 +37,7 @@ data class BrandName(val en: String, val bn: String?) {
 }
 
 /** What the Astha screens read: all rows, the display-only "as of", the cut flag and the brand names. */
-data class AsthaData(val rows: List<AsthaRow>, val asOf: String?, val truncated: Boolean, val brands: Map<Long, BrandName>, val brandCategory: Map<Long, String> = emptyMap()) {
+data class AsthaData(val rows: List<AsthaRow>, val asOf: String?, val truncated: Boolean, val brands: Map<Long, BrandName>, val brandCategory: Map<Long, String> = emptyMap(), val skuBrand: Map<Long, Long> = emptyMap()) {
     /** The pack line of a brand's achievement in the units the field counts (rule 5): packets of sticks, dozens or boxes by the brand's category. */
     fun packLine(brandId: Long?, p: AsthaPack): PackLine = AsthaModel.packLine(brandId?.let { brandCategory[it] }, p)
 
@@ -72,7 +72,23 @@ object AsthaModel {
         val rows = (prog["astha_targets"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let(::row) }
         val truncated = (prog["astha_truncated"] as? JsonPrimitive)?.booleanOrNull ?: false
         val asOf = (prog["astha_as_of"] as? JsonPrimitive)?.contentOrNull
-        return AsthaData(rows, asOf, truncated, brands(productsJson), brandCategories(productsJson))
+        return AsthaData(rows, asOf, truncated, brands(productsJson), brandCategories(productsJson), skuBrands(productsJson))
+    }
+
+    /** sku id -> its brand node id: the SKU's variant node, walked up the product tree to the brand level; SKUs whose chain has no brand are left out. */
+    private fun skuBrands(productsJson: String?): Map<Long, Long> {
+        val p = productsJson?.let { runCatching { lenient.parseToJsonElement(it) }.getOrNull() } as? JsonObject ?: return emptyMap()
+        val parents = (p["nodes"] as? JsonArray).orEmpty().mapNotNull { n ->
+            val o = n as? JsonObject ?: return@mapNotNull null
+            (o.long("id") ?: return@mapNotNull null) to Pair(o.str("level")?.lowercase().orEmpty(), o.long("parent_id"))
+        }.toMap()
+        fun brandOf(id: Long): Long? { var cur: Long? = id; var guard = 0; while (cur != null && guard++ < 8) { val n = parents[cur] ?: return null; if (n.first == "brand") return cur; cur = n.second }; return null }
+        return (p["skus"] as? JsonArray).orEmpty().mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            val sku = o.long("sku_id") ?: o.long("id") ?: return@mapNotNull null
+            val variant = o.long("variant_id") ?: return@mapNotNull null
+            brandOf(variant)?.let { sku to it }
+        }.toMap()
     }
 
     /** brand node id -> the code of its category ancestor in the product tree (category, segment, brand, variant), lower case; brands without one are left out. */

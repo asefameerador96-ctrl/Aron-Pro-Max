@@ -7,6 +7,7 @@ import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.aron.AronLoaded
 import com.aktcl.aron.core.ui.aron.rememberAsyncLoad
 import com.aktcl.aron.feature.programmes.AsthaData
+import com.aktcl.aron.feature.programmes.AsthaLocal
 import com.aktcl.aron.feature.programmes.AsthaModel
 import com.aktcl.aron.feature.programmes.AsthaTargetScreen
 import com.aktcl.aron.feature.programmes.GiftChoiceData
@@ -44,8 +45,9 @@ internal suspend fun readAstha(day: SrDay): AsthaData? = withContext(Dispatchers
 internal data class AsthaLoad(val data: AsthaData?, val year: Int, val shops: List<ShopInfo>, val month: String?)
 
 internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = withContext(Dispatchers.IO) {
-    val data = readAstha(day)
     val date = day.reference.businessDate()
+    // the server's Astha figures plus this phone's own memos that the server cannot hold yet (by memo UUID; recomputed on every read)
+    val data = readAstha(day)?.let { d -> date?.take(7)?.let { month -> AsthaLocal.apply(d, day.programmes.memosOfMonth(month)) } ?: d }
     val outlets = readShopOutlets(day)
     val subs = ShopModel.subChannels(day.reference.section("code_lists"))
     AsthaLoad(data, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, data, subs, locale), date?.take(7))
