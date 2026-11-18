@@ -16,6 +16,8 @@ interface LogoutPorts {
     suspend fun unsentPhotos(): Int
     /** Ends the session (`SessionRepository.logout()`): the upload grant survives it. */
     suspend fun endSession()
+    /** Called right after the session ends (every role, wipe or not): device-level traces of this rep, such as the previous fix kept for the spoof checks. Default: nothing. */
+    suspend fun clearDeviceTraces() {}
     /** Schedules an upload now (`SyncTrigger.MANUAL` and the media job). Never waits for it. */
     fun requestSync()
     /** Closes the user's database so its files can be deleted. */
@@ -67,12 +69,14 @@ class LogoutFlow(private val role: AppRole, private val ports: LogoutPorts) {
             is LogoutCheck.Proceed -> {
                 if (!c.wipe) {
                     ports.endSession()
+                    ports.clearDeviceTraces()
                     ports.requestSync() // whatever is still queued keeps going out after logout
                     return LogoutResult.LoggedOut(wiped = false)
                 }
             }
         }
         ports.endSession()
+        ports.clearDeviceTraces()
         // Count again: a worker or a screen may have saved a row while the session was ending. Anything unsent keeps
         // the data (it uploads with the upload grant like an SR's); a failed count throws, never reads as zero.
         val unsentNow = ports.unsentRecords() + ports.unsentPhotos()

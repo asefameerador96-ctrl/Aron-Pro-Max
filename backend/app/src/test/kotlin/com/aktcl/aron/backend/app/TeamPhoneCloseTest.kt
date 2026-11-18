@@ -18,11 +18,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Round 1.20.0 (lead reviews of ee82e904 and c3ec4317): My Team (`GET /v1/team/locations`) ignores a phone-made check-out (`closed_by = 'phone'`): neither its fix (the user's newest
+ * Train 117 (lead reviews of ee82e904, c3ec4317 and 1c8c3cb0): My Team (`GET /v1/team/locations`) ignores a phone-made check-out (`closed_by = 'phone'`): neither its fix (the user's newest
  * location) nor its mock flag (`mock_fixes_today`) counts, while the rep's own attendance fixes still do. Own world, because the rows are written straight into attendance_event.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class TeamPhoneCloseTest {
+abstract class TeamPhoneCloseBase(private val phoneCloseIsMock: Boolean) {
     private val repoRoot = File(System.getProperty("aron.repoRoot") ?: "../..")
     private lateinit var world: TsoWorld
     private lateinit var sr: TsoPhone
@@ -46,9 +46,9 @@ class TeamPhoneCloseTest {
         route, cu = java.util.UUID.randomUUID().toString(), secondsAgo = secondsAgo,
     )
 
-    private fun attendance(closedBy: String, lat: Double, mock: Boolean, secondsAgo: Long) = world.exec(
+    private fun attendance(closedBy: String, lat: Double, mock: Boolean, secondsAgo: Long, kind: String = "check_out") = world.exec(
         "INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, kind, fix_status, fix_lat, fix_lng, fix_accuracy_m, fix_is_mock, closed_by) " +
-            "VALUES (gen_random_uuid(), gen_random_uuid(), DATE '${world.today()}', ${sr.userId}, TIMESTAMPTZ '${world.now.get().minusSeconds(secondsAgo)}', 1, 'check_out', 'ok', $lat, 90.36, 10, $mock, '$closedBy')",
+            "VALUES (gen_random_uuid(), gen_random_uuid(), DATE '${world.today()}', ${sr.userId}, TIMESTAMPTZ '${world.now.get().minusSeconds(secondsAgo)}', 1, '$kind', 'ok', $lat, 90.36, 10, $mock, '$closedBy')",
     )
 
     @Test
@@ -65,8 +65,9 @@ class TeamPhoneCloseTest {
                 assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
                 return json(r.bodyAsText())["items"]!!.jsonArray.map { it.jsonObject }.single { it["user_id"]!!.jsonPrimitive.long == sr.userId }
             }
-            // A phone close with a NEWER usable fix that is flagged mock: ignored by the last location and by the mock count.
-            attendance("phone", 23.999, mock = true, secondsAgo = 300)
+            // A phone close with a NEWER usable fix (flagged mock or not, by the subclass): ignored by the last location and by the mock count. With a NON-mock fix the last-location assertion
+            // is proven by the closed_by filter alone (a mock fix would also be dropped by the mock rule).
+            attendance("phone", 23.999, mock = phoneCloseIsMock, secondsAgo = 300)
             val a = me()
             assertEquals(0, a["mock_fixes_today"]!!.jsonPrimitive.int, a.toString())
             assertEquals(23.801, a["last_fix"]!!.jsonObject["lat"]!!.jsonPrimitive.double, "the phone close's newer fix is not the last location")
@@ -75,6 +76,18 @@ class TeamPhoneCloseTest {
             val b = me()
             assertEquals(1, b["mock_fixes_today"]!!.jsonPrimitive.int, b.toString())
             assertEquals(23.801, b["last_fix"]!!.jsonObject["lat"]!!.jsonPrimitive.double)
+            // POSITIVE CONTROL (lead follow-up): a newer NON-mock fix of the REP's own attendance row (a check-in: the once-per-day rule of V0202 allows one rep check-out per day, and this world has one already) DOES become the last location. Without it the two assertions above could also pass because attendance
+            // fixes were never read at all; with it, "the phone close's fix is not the last location" is proven by the closed_by filter alone.
+            attendance("rep", 23.997, mock = false, secondsAgo = 180, kind = "check_in")
+            val c = me()
+            assertEquals(23.997, c["last_fix"]!!.jsonObject["lat"]!!.jsonPrimitive.double, "a newer non-mock rep attendance fix is the last location: attendance fixes are read")
+            assertEquals(1, c["mock_fixes_today"]!!.jsonPrimitive.int, c.toString())
         }
     }
 }
+
+/** The phone close's newer fix is flagged mock: proves the mock COUNT ignores phone rows. */
+class TeamPhoneCloseTest : TeamPhoneCloseBase(phoneCloseIsMock = true)
+
+/** The phone close's newer fix is NOT mock: proves the LAST LOCATION ignores phone rows by the closed_by filter alone (lead review of 1c8c3cb0). */
+class TeamPhoneCloseNonMockTest : TeamPhoneCloseBase(phoneCloseIsMock = false)

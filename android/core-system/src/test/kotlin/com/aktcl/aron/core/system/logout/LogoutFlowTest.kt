@@ -27,6 +27,7 @@ class LogoutFlowTest {
         override fun requestSync() { log += "sync" }
         override suspend fun closeUserDatabase() { log += "close" }
         override suspend fun forgetCredentials() { log += "forget" }
+        override suspend fun clearDeviceTraces() { log += "traces" }
         override fun userFiles() = LogoutFlow.databaseFiles(dbDir, 7) + LogoutFlow.mediaDir(filesDir, 7)
         fun userDataExists() = LogoutFlow.databaseFiles(dbDir, 7).first().exists() && LogoutFlow.mediaDir(filesDir, 7).exists()
     }
@@ -35,7 +36,7 @@ class LogoutFlowTest {
         val p = Phone(records = 12, photos = 3)
         assertEquals(LogoutResult.LoggedOut(wiped = false), LogoutFlow(AppRole.SR, p).logout())
         assertTrue(p.userDataExists())
-        assertEquals(listOf("end", "sync"), p.log) // no count needed, no close, never a wipe
+        assertEquals(listOf("end", "traces", "sync"), p.log) // device traces (the spoof checks' previous fix) go with the session; no count needed, no close, never a wipe
     }
 
     @Test fun amoBehavesLikeSr() = runTest {
@@ -65,7 +66,7 @@ class LogoutFlowTest {
         assertFalse(LogoutFlow.databaseFiles(p.dbDir, 7).any { it.exists() })
         assertFalse(LogoutFlow.mediaDir(p.filesDir, 7).exists())
         assertTrue(LogoutFlow.databaseFiles(p.dbDir, 8).first().exists()) // another user on the phone is untouched
-        assertEquals(listOf("count", "end", "count", "close", "forget"), p.log) // counted again after the session ended
+        assertEquals(listOf("count", "end", "traces", "count", "close", "forget"), p.log) // counted again after the session ended
     }
 
     @Test fun anItemCapturedAfterTheDialogStopsTheWipe() = runTest {

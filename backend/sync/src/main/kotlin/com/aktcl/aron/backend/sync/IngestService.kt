@@ -1019,7 +1019,7 @@ class IngestService(
         runCatching { db.jdbi.useTransaction<Exception> { h -> DayStates.afterBatch(h, up.userId, ctx.touched, now) } }
             .onFailure { log.error("day states failed batch_uuid=${ctx.batchUuid}", it) }
         // D-NIGHT-CHECKOUT-01: judged after the whole batch, so a Sales Submit sent with the check-out (either order) counts.
-        // A check-out the phone made for a forgotten day (closed_by = phone, contract 1.20.0) is "no check-out": nothing to judge.
+        // A check-out the phone made for a forgotten day (closed_by = phone, contract 1.19.0) is "no check-out": nothing to judge.
         val checkouts = recs.filter { r -> r.type == "attendance_event" && outcomes[r.index]?.status == "accepted" && (r.json["payload"] as? JsonObject)?.str("kind") == "check_out" && !isPhoneClose(r.type, r.json["payload"] as? JsonObject) }
         if (checkouts.isNotEmpty()) checkoutWithoutSubmit(ctx, checkouts)
         return outcomes
@@ -1031,7 +1031,7 @@ class IngestService(
      * route-day or supervisor-day not submit-voided; any scope, any route of the user) raises CHECKOUT_WITHOUT_SUBMIT on
      * the user for that date (one per user-day, ON CONFLICT DO NOTHING). The check-out stays stored unchanged (the phone
      * gate is the rule); each insert runs in its own transaction, so a failed signal never touches the batch.
-     * Contract 1.20.0 (D-SV2-15): a user-day with no route capture at all (no registry row of a [DAY_LOCKED_TYPES] record of the
+     * Contract 1.19.0 (D-SV2-15): a user-day with no route capture at all (no registry row of a [DAY_LOCKED_TYPES] record of the
      * user and date, whatever its status) has nothing to submit and raises nothing; a later accepted Sales Submit withdraws a
      * signal that was raised (the worker rule `RiskSignalEvaluator.withdrawCheckoutWithoutSubmit`; this API role may not update
      * `risk_signal`).
@@ -1219,6 +1219,11 @@ class IngestService(
             // Stored in app.ingest_registry.flags on the accepted row (V0056, db-resync-late-flag-answer.md); the log line stays.
             log.warn("resync_late client_uuid=${r.clientUuid} type=${r.type} business_date=$bd user=${ctx.up.userId} batch_uuid=${ctx.batchUuid}")
         }
+
+        // 3a. `closed_by` (contract 1.19.0) is judged with a NAMED reason, not left to the database CHECK alone. It is judged HERE, after the registry (so a resend of a known
+        // client_uuid is a duplicate, and the same uuid with another payload stays `payload_conflict`) and after the business-date window (so an out-of-window record stays
+        // `business_date_out_of_window`, quarantined and reviewable, never dropped as a schema error): a record that is not a fresh in-window record is judged by those rules first.
+        closedByProblem(r.type, payload)?.let { return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, it) }
 
         // 3b. A check-out before cfg.day.checkout_earliest_time on its business date (Dhaka, by the user's role and home
         // geography) is s4.5 `checkout_too_early`. The spec quarantines it, but no review path can release a quarantined
@@ -2094,6 +2099,8 @@ class IngestService(
                 if ((payload["is_zero_sale"] as? JsonPrimitive)?.booleanOrNull != true) return "zero_sale_reason_code is allowed only when is_zero_sale is true"
             }
         }
+        // Contract 1.19.0: the phone's own anti-spoofing evidence is stored as sent, so its contents are checked here (never trusted as structure later).
+        PhoneEvidenceShape.error(r.type, shape, payload)?.let { return it }
         return null
     }
 
@@ -2292,18 +2299,31 @@ class IngestService(
 
         /**
          * Whether the user has any route capture on the business date: a registry row (any status: the rep did capture, even if the server held or
-         * refused the record) of a [DAY_LOCKED_TYPES] record. Attendance, `day_open`, `day_submit` and telemetry are not captures.
+         * refused the record) of a [DAY_LOCKED_TYPES] record. Attendance, `day_open`, `day_submit`, telemetry and a web paper backfill (registry flag `manual_entry`: the paper backfill stays exempt, D-LEAD-PREREQ-02) are not captures.
          */
         fun routeCapturesExist(h: Handle, userId: Long, date: LocalDate): Boolean = h.createQuery(
-            "SELECT EXISTS (SELECT 1 FROM app.ingest_registry WHERE user_id = :u AND business_date = :d AND record_type = ANY(:types))",
+            "SELECT EXISTS (SELECT 1 FROM app.ingest_registry WHERE user_id = :u AND business_date = :d AND record_type = ANY(:types) AND NOT ('manual_entry' = ANY(coalesce(flags, '{}'))))",
         ).bind("u", userId).bind("d", date).bindArray("types", String::class.java, DAY_LOCKED_TYPES.toList()).mapTo(Boolean::class.java).one()
 
         /**
-         * Contract 1.20.0 (D-SV2-15): an `attendance_event` check-out the phone itself made for a forgotten day (`closed_by` = `phone`; absent
+         * Contract 1.19.0 (D-SV2-15): an `attendance_event` check-out the phone itself made for a forgotten day (`closed_by` = `phone`; absent
          * means `rep`, as every older phone sends it). It is stored and acknowledged like any record, but every reader treats it as "no
          * check-out": no time, no hours, no supervisor-day check-out, never `checkout_too_early`, never judged for a missing Sales Submit,
          * and its fix is never a geo_fix (not the user's newest location, no geo risk rule). A real check-out of the same day outranks it.
          */
+        /**
+         * Why an `attendance_event` payload's `closed_by` is refused (a final `schema_invalid` with this text as the stored detail), or null when it is fine or absent: the member must be the
+         * text `rep` or `phone` (never null, a number or another value), and `phone` only belongs to a `check_out` (a check-in is always the rep's; `rep` on a check-in is accepted).
+         */
+        fun closedByProblem(type: String, payload: JsonObject): String? {
+            if (type != "attendance_event" || "closed_by" !in payload) return null
+            val v = payload["closed_by"] as? JsonPrimitive
+            val text = v?.takeIf { it.isString }?.content ?: return "closed_by must be the text rep or phone"
+            if (text != "rep" && text != "phone") return "closed_by must be rep or phone, got '${text.take(20)}'"
+            if (text == "phone" && payload.str("kind") != "check_out") return "closed_by phone is only for a check_out"
+            return null
+        }
+
         fun isPhoneClose(type: String, payload: JsonObject?): Boolean =
             type == "attendance_event" && payload?.str("kind") == "check_out" && payload.str("closed_by") == "phone"
 

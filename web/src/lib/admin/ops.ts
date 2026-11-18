@@ -41,6 +41,9 @@ export const OPS = {
   "config.rollback": { method: "POST", path: "/v1/admin/config/versions/{version}/rollback", roles: ADMINS, reason: "reason" },
   // F-ADM-009 / F-ADM-048 devices: suspend, revoke, reactivate (revoke blocks sync, never local capture)
   "device.state": { method: "POST", path: "/v1/admin/devices/{device_id}/state", roles: SUPPORT_UP, reason: "reason" },
+  // D-OWNER-MDM-02 iii lab exemption: lets ONE phone run with Developer options on for 1 to 14 days (the ADB device walks); Super Admin and an Admin with the mdm write grant; audited
+  "device.lab-exemption.grant": { method: "PUT", path: "/v1/admin/devices/{device_id}/lab-exemption", roles: ADMINS, reason: null },
+  "device.lab-exemption.revoke": { method: "DELETE", path: "/v1/admin/devices/{device_id}/lab-exemption", roles: ADMINS, reason: null, noBody: true },
   // remote directives carry no reason member in the contract; they never change data (docs/24 s10)
   "device.directive": { method: "POST", path: "/v1/admin/devices/{device_id}/directives", roles: SUPPORT_UP, reason: null },
   // F-ADM-078 replace-device wizard
