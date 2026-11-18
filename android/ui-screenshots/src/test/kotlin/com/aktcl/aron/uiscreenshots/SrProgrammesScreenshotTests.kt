@@ -77,7 +77,7 @@ class SrProgrammesScreenshotTests {
       {"route_id":7,"outlet_id":null,"brand_id":11,"month":"2026-11","std_target":"21600","std_achieved":"4680","memo_target":0,"memo_achieved":0,"value_target_mtk":"86400000","value_achieved_mtk":"18720000","by_pack":[{"pack_factor":20,"std_achieved":"3600"},{"pack_factor":10,"std_achieved":"1080"}]},
       {"route_id":7,"outlet_id":null,"brand_id":12,"month":"2026-11","std_target":"10800","std_achieved":"0","memo_target":0,"memo_achieved":0,"value_target_mtk":"43200000","value_achieved_mtk":"0","by_pack":[]},
       {"route_id":7,"outlet_id":null,"brand_id":null,"month":"2026-11","std_target":"0","std_achieved":"0","memo_target":884,"memo_achieved":787,"value_target_mtk":"0","value_achieved_mtk":"0","by_pack":[]}]}"""
-    private val products = """{"nodes":[{"id":11,"level":"brand","name":"Marise","name_bn":"মারিস","sort":1},{"id":12,"level":"brand","name":"Avon","name_bn":"অ্যাভন","sort":2}],"skus":[]}"""
+    private val products = """{"nodes":[{"id":11,"level":"brand","name":"Marise","name_bn":"মারিস","sort":1},{"id":12,"level":"brand","name":"Avon","name_bn":"অ্যাভন","sort":2},{"id":21,"level":"variant","name":"M","parent_id":11,"sort":1},{"id":22,"level":"variant","name":"A","parent_id":12,"sort":1}],"skus":[{"sku_id":901,"variant_id":21,"category_code":"cigarette","base_per_pack":20},{"sku_id":902,"variant_id":22,"category_code":"cigarette","base_per_pack":20}]}"""
     private val data get() = AsthaModel.parse(programmes, products)
     private val picked = AsthaSelection(2026, 4, "2026-11")
 
