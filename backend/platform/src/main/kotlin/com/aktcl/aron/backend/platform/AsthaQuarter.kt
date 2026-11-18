@@ -15,6 +15,6 @@ data class AsthaQuarter(val label: String, val months: List<LocalDate>) {
         /** The quarter named by [label] (`YYYY-Qn`, the year of the quarter's first month). Null for a malformed label. */
         fun parse(label: String, startMonth: Int): AsthaQuarter? = AsthaQuarters.parse(label, startMonth)?.let(::from)
 
-        private fun from(q: AsthaQuarters.Quarter) = AsthaQuarter(q.key, q.months.map { LocalDate.parse("$it-01") })
+        private fun from(q: AsthaQuarters.Quarter) = AsthaQuarter(q.key, q.months.map { LocalDate.of(it.substringBeforeLast('-').toInt(), it.substringAfterLast('-').toInt(), 1) })   // built from the parts, so any year keeps working (no ISO text parse)
     }
 }

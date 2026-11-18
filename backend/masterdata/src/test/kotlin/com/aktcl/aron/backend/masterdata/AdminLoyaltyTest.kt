@@ -1088,18 +1088,56 @@ class AdminLoyaltyTest {
     }
 
     /**
-     * Holds each transaction after its balance read until EITHER all [parties] have read (no pair lock: the transactions really overlap) OR another transaction is seen WAITING for an advisory lock
-     * (the pair lock works: it makes the others wait). No fixed delay: the condition decides, and a 10 s safety bound only keeps a broken test from hanging.
+     * Holds each transaction after its balance read until EITHER all [parties] have read (no pair lock: the transactions really overlap) OR another transaction of THIS test is seen WAITING for
+     * the pair lock (the lock works: it makes the others wait). No fixed delay: the condition decides, and a 10 s safety bound only keeps a broken test from hanging.
+     * The waiting probe is exact: only an ungranted advisory lock in THIS database whose key is one of the pair keys of the test (`loyalty:<outlet>:<programme>`, the classid/objid halves of
+     * hashtextextended) opens the latch. Other test JVMs share the server (gradle runs modules in parallel; every FreshDb takes a server-wide advisory DDL lock), so [arm] also parks a FOREIGN
+     * waiter on an unrelated advisory key in this database for the whole race: a probe that looked at any waiter would open early, and with the pair lock removed the tests would then pass.
+     * Pool bound: each held transaction keeps one Hikari connection (parties at most 3 of 8) and the probe borrows one more, so parties + probe + foreign waiter + holder stay under the pool.
      */
     private inner class Overlap(private val parties: Int) {
         private val arrived = java.util.concurrent.atomic.AtomicInteger()
         @Volatile var armed = false
-        private fun someoneWaitsForTheLock() = env.fresh.db.jdbi.withHandle<Boolean, Exception> { h -> h.createQuery("SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted)").mapTo(Boolean::class.java).one() }
+        @Volatile private var keys: List<String> = emptyList()
+        private var holder: org.jdbi.v3.core.Handle? = null
+        private var waiter: Thread? = null
+        private var waiterHandle: org.jdbi.v3.core.Handle? = null
+        private val foreignKey = 7_424_242L
+
+        fun arm(vararg pairKeys: String) {
+            keys = pairKeys.toList()
+            // a foreign advisory waiter in this very database: held by `holder`, waited on by a second connection
+            holder = env.fresh.db.jdbi.open().also { h -> h.begin(); h.createQuery("SELECT pg_advisory_xact_lock(:k)").bind("k", foreignKey).mapTo(String::class.java).findOne() }
+            waiterHandle = env.fresh.db.jdbi.open()
+            waiter = Thread { try { waiterHandle!!.begin(); waiterHandle!!.createQuery("SELECT pg_advisory_xact_lock(:k)").bind("k", foreignKey).mapTo(String::class.java).findOne() } catch (_: Exception) { /* closed at disarm */ } }.also { it.isDaemon = true; it.start() }
+            val until = System.nanoTime() + 10_000_000_000L
+            while (!foreignWaiting() && System.nanoTime() < until) java.util.concurrent.locks.LockSupport.parkNanos(5_000_000L)
+            assertTrue(foreignWaiting(), "the foreign waiter is parked")
+            arrived.set(0); armed = true
+        }
+
+        fun disarm() {
+            armed = false
+            holder?.let { it.rollback(); it.close() }; waiter?.join(5_000); waiterHandle?.let { runCatching { it.rollback() }; it.close() }
+            holder = null; waiter = null; waiterHandle = null
+        }
+
+        private fun foreignWaiting() = env.fresh.db.jdbi.withHandle<Boolean, Exception> { h ->
+            h.createQuery("SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND database = (SELECT oid FROM pg_database WHERE datname = current_database()) AND objsubid = 1 AND classid::bigint = 0 AND objid::bigint = :k)").bind("k", foreignKey).mapTo(Boolean::class.java).one()
+        }
+
+        private fun someoneWaitsForThePairLock(): Boolean = env.fresh.db.jdbi.withHandle<Boolean, Exception> { h ->
+            h.createQuery("SELECT EXISTS (SELECT 1 FROM pg_locks l CROSS JOIN unnest(CAST(:k AS text[])) AS key(t) WHERE l.locktype = 'advisory' AND NOT l.granted AND l.objsubid = 1 " +
+                "AND l.database = (SELECT oid FROM pg_database WHERE datname = current_database()) " +
+                "AND l.classid::bigint = ((hashtextextended(key.t, 0) >> 32) & 4294967295) AND l.objid::bigint = (hashtextextended(key.t, 0) & 4294967295))")
+                .bindArray("k", String::class.java, keys).mapTo(Boolean::class.java).one()
+        }
+
         fun hook(stage: String) {
             if (!armed || stage != "after_balance_read") return
             arrived.incrementAndGet()
             val until = System.nanoTime() + 10_000_000_000L
-            while (arrived.get() < parties && !someoneWaitsForTheLock() && System.nanoTime() < until) java.util.concurrent.locks.LockSupport.parkNanos(5_000_000L)
+            while (arrived.get() < parties && !someoneWaitsForThePairLock() && System.nanoTime() < until) java.util.concurrent.locks.LockSupport.parkNanos(5_000_000L)
         }
     }
 
@@ -1109,9 +1147,9 @@ class AdminLoyaltyTest {
         app(hook = { stage, _ -> overlap.hook(stage) }) {
             val prog = activeProg(); val o1 = fx["L-O1"]!!
             adj(prog, adminW, adjBody(o1, 100)).expect(HttpStatusCode.Created)
-            // Three -80 debits (two admins, a single beside a bulk). The barrier holds each transaction after its balance read until all three have read, so WITHOUT the pair lock all three would read 100
-            // and all pass; WITH it only one can be past the lock at a time (the barrier then times out for the first, which goes on): exactly one is posted, the others are 409; the ledger ends at 20, never -140.
-            overlap.armed = true
+            // Three -80 debits (two admins, a single beside a bulk). The latch holds each transaction after its balance read until all three have read, so WITHOUT the pair lock all three would read 100
+            // and all pass; WITH it only one can be past the lock at a time (the latch opens for the first once another is seen waiting for the pair lock): exactly one is posted, the others are 409; the ledger ends at 20, never -140.
+            overlap.arm("loyalty:$o1:$prog")
             val codes = kotlinx.coroutines.coroutineScope {
                 listOf(
                     async(kotlinx.coroutines.Dispatchers.IO) { adj(prog, adminW, adjBody(o1, -80)).status.value },
@@ -1119,7 +1157,7 @@ class AdminLoyaltyTest {
                     async(kotlinx.coroutines.Dispatchers.IO) { bulk(prog, adminW, bulkBody(uuid(), false, brow(o1, -80))).status.value },
                 ).awaitAll()
             }
-            overlap.armed = false
+            overlap.disarm()
             assertEquals(1, codes.count { it == 201 || it == 200 }, "exactly one debit passes: $codes"); assertEquals(2, codes.count { it == 409 }, "$codes")
             assertEquals(20, balance(prog, o1))
             assertEquals(1, count("SELECT count(*) FROM app.loyalty_ledger WHERE programme_id = $prog AND outlet_id = $o1 AND points = -80 AND 'portal' = ANY(flags) AND NOT ('overdraw' = ANY(flags))"))
@@ -1243,13 +1281,13 @@ class AdminLoyaltyTest {
             val prog = activeProg(); val o1 = fx["L-O1"]!!
             adj(prog, adminW, adjBody(o1, 100)).expect(HttpStatusCode.Created)
             val batch = uuid()
-            overlap.armed = true
+            overlap.arm("loyalty:$o1:$prog")
             val (single, bulkCode) = kotlinx.coroutines.coroutineScope {
                 val a = async(kotlinx.coroutines.Dispatchers.IO) { adj(prog, adminW, adjBody(o1, -80)).status.value }
                 val b = async(kotlinx.coroutines.Dispatchers.IO) { bulk(prog, super1, bulkBody(batch, false, brow(o1, -50), allow = true)).status.value }
                 a.await() to b.await()
             }
-            overlap.armed = false
+            overlap.disarm()
             assertEquals(200, bulkCode)
             // Either the single ran first (201, balance 20, the allowed bulk row then goes below zero and IS flagged with balance_before 20) or the bulk ran first (balance 50, the single is a 409).
             // WITHOUT the lock both read 100 and both post: balance -30 with no flag on any row.
@@ -1266,12 +1304,12 @@ class AdminLoyaltyTest {
         app(hook = { stage, _ -> overlap.hook(stage) }) {
             val prog = activeProg(); val o1 = fx["L-O1"]!!
             adj(prog, adminW, adjBody(o1, 10)).expect(HttpStatusCode.Created)
-            overlap.armed = true
+            overlap.arm("loyalty:$o1:$prog")
             val codes = kotlinx.coroutines.coroutineScope {
                 listOf(async(kotlinx.coroutines.Dispatchers.IO) { bulk(prog, adminW, bulkBody(uuid(), false, brow(o1, -8), allow = true)).status.value },
                     async(kotlinx.coroutines.Dispatchers.IO) { bulk(prog, super1, bulkBody(uuid(), false, brow(o1, -8), allow = true)).status.value }).awaitAll()
             }
-            overlap.armed = false
+            overlap.disarm()
             assertEquals(listOf(200, 200), codes)
             assertEquals(-6, balance(prog, o1))
             assertEquals(1, count("SELECT count(*) FROM app.loyalty_ledger WHERE programme_id = $prog AND outlet_id = $o1 AND points = -8 AND 'overdraw' = ANY(flags)"), "exactly the second is flagged (WITHOUT the lock both read 10 and none is)")
