@@ -6589,6 +6589,18 @@ export interface components {
                 rows: number;
             }[];
         };
+        BundleGeoName: {
+            id: components["schemas"]["Id"];
+            code: string;
+            name: string;
+            name_bn: string | null;
+        };
+        BundleGeography: {
+            wing: components["schemas"]["BundleGeoName"];
+            division: components["schemas"]["BundleGeoName"];
+            territory: components["schemas"]["BundleGeoName"];
+            zone: components["schemas"]["BundleGeoName"];
+        };
         BundleUser: {
             user_id: components["schemas"]["Id"];
             username: components["schemas"]["Username"];
@@ -6603,6 +6615,8 @@ export interface components {
             zone_id?: number | null;
             /** Format: int64 */
             territory_id?: number | null;
+            /** @description From 1.21.0, additive. The names (English and Bangla) of the user's OWN zone, territory, division and wing, once per bundle (not per outlet row), derived server-side from the user's home zone (or the zone of the first route when there is none); null when the user has no zone. The Astha shop-wise card shows them. */
+            geography?: components["schemas"]["BundleGeography"] | null;
             /** @description Policy versions the user accepted (F-SYS-075), earliest acceptance per version. The phone seeds its consent flag from it and does not show the notice again. */
             consents?: {
                 /** @enum {string} */
@@ -10191,7 +10205,7 @@ export interface components {
             outlet_id: components["schemas"]["Id"];
             programme_id: components["schemas"]["Id"];
             visit_client_uuid?: components["schemas"]["Uuid"] | null;
-            /** @description Balance the phone showed (bundle balance minus local unsynced redemptions). */
+            /** @description Balance the phone showed (bundle balance minus local unsynced redemptions). INFORMATIONAL: it is stored as sent (a display fact; the database refuses a negative value) and is never compared with the ledger, which is the server's balance; an overdraw is accepted whatever it says. A phone whose balance is already negative sends 0 (clamped). */
             balance_before_points: number;
             points_total: number;
             /** @description Cash-back points (at most cfg.loyalty.cash_max_points). */
@@ -10551,10 +10565,10 @@ export interface components {
             outlet_id?: number | null;
             /** Format: int64 */
             brand_id?: number | null;
-            /** @description From 1.21.0, additive. The display name of the brand (`brand_id` is the product-tree node id of the brand level), whatever the node's status, so the phone never shows an id for an inactive brand. Null for the route row and the All Brand memo row. */
-            brand_name?: string | null;
-            /** @description From 1.21.0, additive. The Bangla display name of the brand; null when none or when `brand_name` is null. */
-            brand_name_bn?: string | null;
+            /** @description From 1.21.0, additive and OPTIONAL (absent when not sent). The display name of the brand (`brand_id` is the product-tree node id of the brand level), sent ONLY when that node is not active, i.e. not among the bundle's `products.nodes` (an active brand is named there; a row costs no extra bytes), so the phone never shows an id for an inactive brand. */
+            brand_name?: string;
+            /** @description From 1.21.0, additive and OPTIONAL. The Bangla display name of the brand, sent with `brand_name` when the node has one. */
+            brand_name_bn?: string;
             month: components["schemas"]["Month"];
             std_target: components["schemas"]["Decimal3"];
             std_achieved: components["schemas"]["Decimal3"];

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.20.0
+  version: 1.21.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -9958,6 +9958,24 @@ components:
               section: { $ref: '#/components/schemas/BundleSectionName' }
               pages: { type: integer, minimum: 1, maximum: 1000 }
               rows: { type: integer, minimum: 0 }
+    BundleGeoName:
+      type: object
+      required: [id, code, name, name_bn]
+      additionalProperties: false
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        code: { type: string, maxLength: 40 }
+        name: { type: string, maxLength: 120 }
+        name_bn: { type: [string, 'null'], maxLength: 120 }
+    BundleGeography:
+      type: object
+      required: [wing, division, territory, zone]
+      additionalProperties: false
+      properties:
+        wing: { $ref: '#/components/schemas/BundleGeoName' }
+        division: { $ref: '#/components/schemas/BundleGeoName' }
+        territory: { $ref: '#/components/schemas/BundleGeoName' }
+        zone: { $ref: '#/components/schemas/BundleGeoName' }
     BundleUser:
       type: object
       required: [user_id, username, full_name, role, locale, bind_ordinal, memo_seq_block_size]
@@ -9973,6 +9991,11 @@ components:
         memo_seq_block_size: { type: integer, minimum: 100, maximum: 999 }
         zone_id: { type: [integer, 'null'], format: int64, minimum: 1 }
         territory_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        geography:
+          oneOf:
+            - { $ref: '#/components/schemas/BundleGeography' }
+            - type: 'null'
+          description: From 1.21.0, additive. The names (English and Bangla) of the user's OWN zone, territory, division and wing, once per bundle (not per outlet row), derived server-side from the user's home zone (or the zone of the first route when there is none); null when the user has no zone. The Astha shop-wise card shows them.
         consents:
           type: array
           maxItems: 50
@@ -15948,7 +15971,7 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/Uuid' }
             - type: 'null'
-        balance_before_points: { type: integer, minimum: 0, description: Balance the phone showed (bundle balance minus local unsynced redemptions). }
+        balance_before_points: { type: integer, minimum: 0, description: "Balance the phone showed (bundle balance minus local unsynced redemptions). INFORMATIONAL: it is stored as sent (a display fact; the database refuses a negative value) and is never compared with the ledger, which is the server's balance; an overdraw is accepted whatever it says. A phone whose balance is already negative sends 0 (clamped)." }
         points_total: { type: integer, minimum: 1, maximum: 100000 }
         cash_points: { type: integer, minimum: 0, maximum: 100000, description: 'Cash-back points (at most cfg.loyalty.cash_max_points).' }
         cash_mtk: { $ref: '#/components/schemas/MtkNonNegative' }

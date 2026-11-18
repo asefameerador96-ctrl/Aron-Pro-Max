@@ -86,6 +86,13 @@ class ProgrammesBundleSizeTest {
             // The lead's budget (docs/04): the whole programmes section at most 300 KB raw and 32 KB gzip for a 120-outlet SR.
             assertTrue(realistic.sectionRaw <= 300 * 1024, "section raw ${realistic.sectionRaw} B over 300 KB")
             assertTrue(realistic.sectionGz <= 32 * 1024, "section gzip ${realistic.sectionGz} B over 32 KB")
+            // N-9: the user's OWN geography names, once per bundle (not per outlet): wing, division, territory, zone, Bangla and English, and the zone is the user's zone
+            run {
+                val doc = json(bundleText()); val user = doc["user"]!!.jsonObject; val geo = user["geography"]!!.jsonObject
+                assertEquals(setOf("wing", "division", "territory", "zone"), geo.keys)
+                for ((k, v) in geo) { val n = v.jsonObject; assertEquals(setOf("id", "code", "name", "name_bn"), n.keys, k); assertTrue(n["name"]!!.jsonPrimitive.content.isNotBlank(), k) }
+                assertEquals(user["zone_id"]!!.jsonPrimitive.content, geo["zone"]!!.jsonObject["id"]!!.jsonPrimitive.content, "the zone is the user's own zone"); assertEquals(user["territory_id"]!!.jsonPrimitive.content, geo["territory"]!!.jsonObject["id"]!!.jsonPrimitive.content)
+            }
             // N-1: the current month (840 rows) fits; ANOTHER month of the quarter then overflows the ONE bound: only that month is named, the current month stays complete.
             val otherMonth = com.aktcl.aron.backend.platform.AsthaQuarter.of(month, 1).months.first { it != month }
             exec("INSERT INTO app.astha_target (programme_id, month, route_id, outlet_id, brand_id, std_target, memo_target, value_target_mtk) SELECT $astha, DATE '$otherMonth', $route, o.id, b.id, 50, 0, 1000 FROM app.outlet o, (SELECT id FROM app.product_node WHERE code LIKE 'SZB-%' ORDER BY id LIMIT 3) b WHERE o.route_id = $route AND o.status = 'active'")

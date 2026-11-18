@@ -1,0 +1,22 @@
+BundleGeoName:
+  type: object
+  required:
+  - id
+  - code
+  - name
+  - name_bn
+  additionalProperties: false
+  properties:
+    id:
+      $ref: '#/components/schemas/Id'
+    code:
+      type: string
+      maxLength: 40
+    name:
+      type: string
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
