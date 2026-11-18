@@ -187,6 +187,9 @@ class BackfillMatchTest {
 
     private fun count(sql: String): Long = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery(sql).mapTo(Long::class.java).one() }
 
+    private fun str(sql: String): String = fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery(sql).mapTo(String::class.java).one() }
+    private fun status(qid: Long): String = str("SELECT status FROM app.sync_quarantine WHERE id = $qid")
+
     private fun statuses(r: JsonObject) = r["acks"]!!.jsonArray.map { it.jsonObject["status"]!!.jsonPrimitive.content }
 
     private fun ApplicationTestBuilder.app() = application { aronApi(wiring) }
@@ -245,6 +248,46 @@ class BackfillMatchTest {
         assertEquals(HttpStatusCode.Conflict, again.status, again.bodyAsText())
         assertEquals("ERR_REQUEST_STATE", json(again.bodyAsText())["code"]!!.jsonPrimitive.content)
         assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'memo' AND entity_id = '$paper' AND action = 'backfill_matched'"))
+    }
+
+    @Test
+    fun aCollectionHeldWithTheMatchedMemoWhoseVisitHasNotSyncedWaitsAndTheWorkerSweepReleasesItWhenTheVisitIsStored() = testApplication {
+        application { aronApi(wiring) }
+        val sr = client.token(); val admin = client.webToken("admin1001")
+        val no = "sr1001-270103-${memoSeq.incrementAndGet()}"
+        assertEquals(HttpStatusCode.OK, client.key(admin, no).status)
+        val family = saleFamily(memoNo = no)
+        val phoneMemo = family[1]["client_uuid"]!!.jsonPrimitive.content
+        val otherVisit = uuid(); val dueCu = uuid()
+        val due = envelope("due_collection", dueCu, dueCu, 2, Json.parseToJsonElement(
+            """{"outlet_id":$outletId,"against_memo_client_uuid":"$phoneMemo","against_memo_no":"$no","against_memo_business_date":"$day","amount_mtk":1000,"is_full_settlement":false,"outstanding_before_mtk":5000,"payment_mode":"cash","visit_client_uuid":"$otherVisit"}""",
+        ).jsonObject)
+        client.send(sr, batch(family + due))
+        val qid = count("SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST('$phoneMemo' AS uuid) AND code = 'memo_no_duplicate'")
+        val dueItem = count("SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST('$dueCu' AS uuid)")
+        assertEquals(true, str("SELECT detail FROM app.sync_quarantine WHERE id = $dueItem").startsWith("parent $phoneMemo is quarantined"), "held with the memo first")
+        val r = client.match(admin, qid); assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+        assertEquals(listOf(dueCu), json(r.bodyAsText())["kept_open"]!!.jsonArray.map { it.jsonPrimitive.content }, "the collection stays open: its own visit is not stored")
+        val detail = str("SELECT detail FROM app.sync_quarantine WHERE id = $dueItem")
+        assertEquals("open", status(dueItem)); assertEquals(true, detail.startsWith("waits for another parent: visit_client_uuid $otherVisit"), detail); assertEquals(false, detail.contains("is quarantined"), "no longer names the matched memo as its hold")
+        assertEquals(0, count("SELECT count(*) FROM app.due_collection WHERE client_uuid = CAST('$dueCu' AS uuid)"))
+        // the sweep before the visit is stored changes nothing (idempotent, nothing finalised)
+        val job = waitingSweepJob(wiring, clock)
+        job.tick().also { assertEquals(0, it.released); assertEquals(1, it.stillWaiting) }
+        assertEquals("open", status(dueItem))
+        // the visit syncs; the next pass releases the collection through the real accept path
+        val visitPayload = Json.parseToJsonElement(
+            """{"visit_kind":"sr_call","outlet_id":$outletId,"opened_at":"2027-01-03T03:50:00.120Z","sequence_no":2,"planned":true,
+               "fix":{"purpose":"visit_open","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                      "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}},
+               "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}""",
+        ).jsonObject
+        assertEquals(listOf("accepted"), statuses(json(client.send(sr, batch(listOf(envelope("visit", otherVisit, otherVisit, 0, visitPayload)))).bodyAsText())))
+        job.tick().also { assertEquals(1, it.released, it.toString()) }
+        assertEquals("accepted", status(dueItem)); assertEquals(1, count("SELECT count(*) FROM app.due_collection WHERE client_uuid = CAST('$dueCu' AS uuid)"), "device count == server count")
+        job.tick().also { assertEquals(0, it.released); assertEquals(0, it.waiting) }
+        assertEquals("duplicate", statuses(json(client.send(sr, batch(listOf(due))).bodyAsText()))[0])
+        assertEquals(1, count("SELECT count(*) FROM app.due_collection WHERE client_uuid = CAST('$dueCu' AS uuid)"), "stored once")
     }
 
     @Test

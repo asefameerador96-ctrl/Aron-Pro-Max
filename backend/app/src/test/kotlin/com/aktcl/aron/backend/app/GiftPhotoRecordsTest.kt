@@ -478,6 +478,9 @@ class GiftPhotoRecordsTest {
             assertEquals("open", itemRow(cu(p))["status"], "C-R5: the photo stays held in review, the phone is told nothing final"); assertEquals(0L, openNaming(head), "no item names the accepted header any more")
             assertEquals(true, (itemRow(cu(p))["detail"] as String).startsWith("waits for another parent"), itemRow(cu(p)).toString())
             assertEquals(0L, storedPhoto(p))
+            val lineAgain = sync(sr, listOf(l1))   // the line was released with the header: its resend is a replay (stores nothing) and the phone's feed says accepted
+            assertEquals("duplicate", ack(lineAgain, cu(l1)).status()); assertEquals(listOf("accepted"), phoneResolutions(lineAgain, cu(l1)))
+            assertEquals(1L, one("SELECT count(*) FROM app.redemption_line WHERE client_uuid = CAST('${cu(l1)}' AS uuid)"), "the line's resend stored nothing more")
             val again = sync(sr, listOf(p))
             assertEquals("quarantined", ack(again, cu(p)).status(), "the phone's view of the photo is still: held in review")
             assertEquals(emptyList<String>(), phoneResolutions(again, cu(p)), "the phone-visible resolution feed carries nothing for it (never 'discarded')")
@@ -642,6 +645,116 @@ class GiftPhotoRecordsTest {
             assertEquals("quarantined", ack(sync(sr, listOf(v)), visit).status()); assertEquals(1L, openItems(visit)); assertEquals(1L, allItems(visit))
             assertEquals("quarantined", ack(sync(sr, listOf(v)), visit).status()); assertEquals(1L, openItems(visit), "a replay changes nothing")
             assertEquals(HttpStatusCode.OK, accept(itemOf(visit))); assertEquals(1L, one("SELECT count(*) FROM app.visit WHERE client_uuid = CAST('$visit' AS uuid)"))
+        }
+    }
+
+    // ---- D-LOY-API-28: the worker sweep of WAITING items, the review queue's state and count, and the as-sent hash through every child path ----
+    private fun sweep() = waitingSweepJob(world.wiring, world.clock).tick()
+    private suspend fun io.ktor.client.HttpClient.queue(): kotlinx.serialization.json.JsonObject =
+        with(world) { kotlinx.serialization.json.Json.parseToJsonElement(getWeb("admin1001", "/v1/admin/quarantine?status=open&limit=200").bodyAsText()).jsonObject }
+    private fun queueItem(q: kotlinx.serialization.json.JsonObject, uuid: String) = q["items"]!!.jsonArray.map { it.jsonObject }.single { it["client_uuid"]!!.jsonPrimitive.content == uuid }
+    /** The stored copy of a held record differs from what the phone sent (as when a device member is dropped on storage): the registry must keep the as-sent hash on every release path. */
+    private fun storedCopyDiffers(vararg uuids: String) = uuids.forEach { world.exec("UPDATE app.sync_quarantine SET payload = jsonb_set(payload, '{captured_elapsed_ms}', '1'::jsonb) WHERE client_uuid = CAST('$it' AS uuid) AND status = 'open'") }
+
+    @Test
+    fun aWaitingPhotoIsReleasedByTheWorkerSweepWhenItsLastLineIsStoredAndTheQueueShowsItsStateAndCount() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString()
+            val h = headerRec(head, 2); val l1 = lineRec(head, 120); val p = photo(null, 100, unit = head to 1, flat = lat + 0.00021)
+            assertEquals("quarantined", ack(sync(sr, listOf(h)), head).status()); assertEquals("quarantined", ack(sync(sr, listOf(l1)), cu(l1)).status()); assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status())
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
+            // waiting: the queue says so (state, awaited parent, count), and the item's code is NOT presented as its own state
+            val q = queue()
+            val it1 = queueItem(q, cu(p))
+            assertEquals(true, it1["waiting"]!!.jsonPrimitive.content.toBoolean()); assertEquals(head, it1["waits_for_uuid"]!!.jsonPrimitive.content); assertEquals(false, it1["waits_for_refused"]!!.jsonPrimitive.content.toBoolean())
+            assertEquals(false, (it1["detail"]!!.jsonPrimitive.content).contains("is quarantined"), "it does not show the first parent's hold as its own")
+            assertEquals(true, q["waiting_count"]!!.jsonPrimitive.content.toInt() >= 1)
+            val before = q["waiting_count"]!!.jsonPrimitive.content.toInt()
+            // the other line has not synced: a pass changes nothing and finalises nothing
+            sweep().also { assertEquals(0, it.released, it.toString()) }; assertEquals("open", itemRow(cu(p))["status"]); assertEquals(0L, storedPhoto(p))
+            // the line arrives; the sweep releases the photo through the accept path, as the reviewer's accept would
+            val l2 = lineRec(head, 90); assertEquals("accepted", ack(sync(sr, listOf(l2)), cu(l2)).status())
+            sweep().also { assertEquals(1, it.released, it.toString()) }
+            assertEquals("accepted", itemRow(cu(p))["status"]); assertEquals(true, (itemRow(cu(p))["resolution_note"] as String).startsWith("released by the sweep")); assertEquals(1L, storedPhoto(p)); assertEquals(null, flag(p)["check_flag"])
+            assertEquals(before - 1, queue()["waiting_count"]!!.jsonPrimitive.content.toInt())
+            val feed = sync(sr, listOf(p)); assertEquals("duplicate", ack(feed, cu(p)).status()); assertEquals(listOf("accepted"), phoneResolutions(feed, cu(p)))
+            sweep().also { assertEquals(0, it.released) }; assertEquals(1L, storedPhoto(p), "a second pass stores nothing more")
+        }
+    }
+
+    @Test
+    fun theSweepLeavesAnItemLockedByAReviewerAloneAndANonOpenOneIsNeverTouched() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString()
+            val h = headerRec(head, 2); val l1 = lineRec(head, 120); val p = photo(null, 100, unit = head to 1, flat = lat + 0.00022)
+            for (r in listOf(h, l1, p)) assertEquals("quarantined", ack(sync(sr, listOf(r)), cu(r)).status())
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
+            val l2 = lineRec(head, 90); assertEquals("accepted", ack(sync(sr, listOf(l2)), cu(l2)).status())
+            // a reviewer is in the middle of resolving the photo's item (its row lock): the sweep skips it, nothing is lost, nothing is stored twice
+            fresh.dataSource.connection.use { c ->
+                c.autoCommit = false
+                c.createStatement().use { it.execute("SELECT 1 FROM app.sync_quarantine WHERE client_uuid = CAST('${cu(p)}' AS uuid) AND status = 'open' FOR UPDATE") }
+                sweep().also { assertEquals(0, it.released, it.toString()); assertEquals(0, it.failed) }
+                c.rollback()
+            }
+            assertEquals("open", itemRow(cu(p))["status"]); assertEquals(0L, storedPhoto(p))
+            // the reviewer's accept wins; the sweep afterwards finds nothing open and stores nothing again
+            assertEquals(HttpStatusCode.OK, accept(itemOf(cu(p)))); assertEquals(1L, storedPhoto(p))
+            sweep().also { assertEquals(0, it.released) }; assertEquals(1L, storedPhoto(p)); assertEquals("accepted", itemRow(cu(p))["status"])
+            assertEquals(false, (itemRow(cu(p))["resolution_note"] as String).startsWith("released by the sweep"), "the reviewer's own accept stands")
+        }
+    }
+
+    @Test
+    fun aWaitingPhotoWhoseOtherParentWasRefusedIsNeverFinalisedByTheSweepAndTheDiscardIsTheWayOut() = world.withApi {
+        with(world) {
+            val head = UUID.randomUUID().toString()
+            val h = headerRec(head, 2); val l1 = lineRec(head, 120); val p = photo(null, 100, unit = head to 1, flat = lat + 0.00023)
+            for (r in listOf(h, l1, p)) assertEquals("quarantined", ack(sync(sr, listOf(r)), cu(r)).status())
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head)))
+            assertEquals("open", itemRow(cu(p))["status"]); assertEquals(false, (itemRow(cu(p))["detail"] as String).contains("refused"))
+            // the second line is then refused for good
+            registry(UUID.randomUUID().toString(), "redemption_line", "rejected", "schema_invalid", familyOf(head))
+            sweep().also { assertEquals(0, it.released, it.toString()); assertEquals(1, it.hinted, it.toString()) }
+            assertEquals("open", itemRow(cu(p))["status"], "not finalised: the photo is not stored and not closed"); assertEquals(0L, storedPhoto(p))
+            val item = queueItem(queue(), cu(p))
+            assertEquals(true, item["waits_for_refused"]!!.jsonPrimitive.content.toBoolean()); assertEquals(true, (item["detail"]!!.jsonPrimitive.content).contains("the other parent was refused or discarded"))
+            sweep().also { assertEquals(0, it.hinted, "the hint is written once"); assertEquals(0, it.released) }
+            val feed = sync(sr, listOf(p)); assertEquals(emptyList<String>(), phoneResolutions(feed, cu(p)), "the phone is told nothing final")
+            assertEquals(HttpStatusCode.OK, discard(itemOf(cu(p)))); assertEquals("discarded", itemRow(cu(p))["status"]); assertEquals(0L, storedPhoto(p))
+            assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status(), "the phone's resend after the discard is answered as before; nothing is stored"); assertEquals(0L, storedPhoto(p))
+            sweep().also { assertEquals(0, it.released) }; assertEquals(0L, storedPhoto(p))
+        }
+    }
+
+    @Test
+    fun theAsSentHashSurvivesTheReleaseLoopTheFollowedDiscardAndAWaitingChildReleasedByTheSweep() = world.withApi {
+        with(world) {
+            // (a) the re-release loop: the photo is held before its line (ids order it first), the stored copies differ from what the phone sent
+            val head = UUID.randomUUID().toString()
+            val h = headerRec(head, 1); val p = photo(null, 100, unit = head to 1, flat = lat + 0.00024); val l1 = lineRec(head, 90)
+            assertEquals("quarantined", ack(sync(sr, listOf(h)), head).status()); assertEquals("quarantined", ack(sync(sr, listOf(p)), cu(p)).status()); assertEquals("quarantined", ack(sync(sr, listOf(l1)), cu(l1)).status())
+            storedCopyDiffers(cu(p), cu(l1))
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head))); assertEquals(1L, storedPhoto(p))
+            for (r in listOf(p, l1)) { val a = ack(sync(sr, listOf(r)), cu(r)); assertEquals("duplicate", a.status(), "loop: the as-sent resend of ${r["type"]}: $a") }
+            // (b) followDiscardedParent: the header is discarded, the photo follows (stored, flagged); the as-sent resend is a duplicate
+            val head2 = UUID.randomUUID().toString()
+            val h2 = headerRec(head2, 1); val l2 = lineRec(head2, 90); val p2 = photo(null, 100, unit = head2 to 1, flat = lat + 0.00025)
+            for (r in listOf(h2, l2, p2)) assertEquals("quarantined", ack(sync(sr, listOf(r)), cu(r)).status())
+            storedCopyDiffers(cu(p2))
+            assertEquals(HttpStatusCode.OK, discard(itemOf(head2))); assertEquals(1L, storedPhoto(p2)); assertEquals("parent_refused", flag(p2)["check_flag"])
+            assertEquals("duplicate", ack(sync(sr, listOf(p2)), cu(p2)).status(), "followed discard: the as-sent resend")
+            // (c) a waiting child released by the sweep: the line that completes the redemption arrives later
+            val head3 = UUID.randomUUID().toString()
+            val h3 = headerRec(head3, 2); val l3 = lineRec(head3, 120); val p3 = photo(null, 100, unit = head3 to 1, flat = lat + 0.00026)
+            for (r in listOf(h3, l3, p3)) assertEquals("quarantined", ack(sync(sr, listOf(r)), cu(r)).status())
+            storedCopyDiffers(cu(l3), cu(p3))
+            assertEquals(HttpStatusCode.OK, accept(itemOf(head3))); assertEquals("open", itemRow(cu(p3))["status"], "waits")
+            assertEquals("duplicate", ack(sync(sr, listOf(l3)), cu(l3)).status(), "loop: the line, as sent")
+            val l4 = lineRec(head3, 90); assertEquals("accepted", ack(sync(sr, listOf(l4)), cu(l4)).status())
+            sweep().also { assertEquals(1, it.released, it.toString()) }
+            assertEquals(1L, storedPhoto(p3)); assertEquals("duplicate", ack(sync(sr, listOf(p3)), cu(p3)).status(), "sweep: the as-sent resend of the waiting photo")
+            assertEquals(1L, one("SELECT count(*) FROM app.gift_photo WHERE client_uuid = CAST('${cu(p3)}' AS uuid)"))
         }
     }
 }

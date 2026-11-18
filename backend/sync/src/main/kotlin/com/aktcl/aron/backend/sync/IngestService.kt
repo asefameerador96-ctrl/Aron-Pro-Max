@@ -6,6 +6,7 @@ import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.IngestRecord
 import com.aktcl.aron.backend.platform.AronPrincipal
 import com.aktcl.aron.backend.platform.FieldError
+import com.aktcl.aron.backend.platform.QuarantineWaiting
 import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.RecordHandlers
@@ -510,11 +511,128 @@ class IngestService(
 
     private enum class ChildEnd { SETTLED, HELD_ON_SIBLING, STAYS, WAITS }
 
-    /** The item of a child that waits for another parent keeps its code (the reviewer's accept waives that check) and says what it waits for; it no longer names the accepted parent. */
+    /**
+     * The item of a child that waits for another parent keeps its code (the reviewer's accept waives that check) and says what it waits for ([QuarantineWaiting]); it no longer names the accepted parent.
+     * D-LOY-API-28: the awaited parent's uuid is in the detail (the worker sweep and the review queue read it), and a hint when that parent was already refused or discarded.
+     */
     private fun markWaiting(h: Handle, child: HeldItem, o: Outcome?, acceptedParent: String) {
-        val what = (o?.detail ?: "another parent").take(300)
-        h.createUpdate("UPDATE app.sync_quarantine SET detail = :d WHERE id = :id AND status = 'open'").bind("d", "waits for another parent: $what (parent $acceptedParent was accepted)".take(1000)).bind("id", child.id).execute()
-        log.info("held child waits for another parent client_uuid=${child.clientUuid} accepted_parent=$acceptedParent")
+        val type = child.payload.str("type") ?: ""
+        val awaited = awaitedOf(child.payload, type, o?.detail)
+        val what = when {
+            awaited == null -> (o?.detail ?: "another parent").take(300)
+            type == "gift_photo" -> "${awaited.first} ${awaited.second} (the redemption or its lines are not stored yet)"
+            else -> "${awaited.first} ${awaited.second}"
+        }
+        val refused = awaited != null && awaitedState(h, type, awaited.first, awaited.second) == Awaited.REFUSED
+        val detail = "${QuarantineWaiting.PREFIX} $what (parent $acceptedParent was accepted)" + if (refused) QuarantineWaiting.REFUSED_HINT else ""
+        h.createUpdate("UPDATE app.sync_quarantine SET detail = :d WHERE id = :id AND status = 'open'").bind("d", detail.take(1000)).bind("id", child.id).execute()
+        log.info("held child waits for another parent client_uuid=${child.clientUuid} accepted_parent=$acceptedParent refused=$refused")
+    }
+
+    private enum class Awaited { STORED, REFUSED, HELD, MISSING }
+
+    /** (field, uuid) of the parent a refused release was waiting for: a gift photo awaits its redemption (and its lines); any other child the `<field> <uuid>` of the park detail. */
+    private fun awaitedOf(payload: JsonObject, type: String, parkDetail: String?): Pair<String, String>? {
+        if (type == "gift_photo") return (payload["payload"] as? JsonObject)?.str("redemption_client_uuid")?.takeIf { UUID_V4.matches(it) }?.let { "redemption_client_uuid" to it }
+        return parkDetail?.let { PARK_DETAIL.matchEntire(it) }?.let { it.groupValues[1] to it.groupValues[2] }
+    }
+
+    /** What became of the awaited parent: stored (the child can be released), refused or discarded (never released here), held in review, or not synced yet. */
+    private fun awaitedState(h: Handle, type: String, field: String, uuid: String): Awaited {
+        if (type == "gift_photo" && field == "redemption_client_uuid") {
+            val v = GiftParents.state(h, uuid, "redemption")
+            if (v.state.isRefused) return Awaited.REFUSED
+            if (v.state == GiftParents.State.OPEN) return Awaited.HELD
+            if (v.state == GiftParents.State.MISSING) return Awaited.MISSING
+            val row = h.createQuery("SELECT family_uuid::text, line_count > (SELECT count(*) FROM app.redemption_line l WHERE l.redemption_client_uuid = r.client_uuid) FROM app.redemption r WHERE r.client_uuid = CAST(:u AS uuid)").bind("u", uuid)
+                .map { rs, _ -> rs.getString(1) to rs.getBoolean(2) }.findOne().orElse(null) ?: return Awaited.MISSING
+            if (!row.second) return Awaited.STORED
+            val lines = GiftParents.missingLines(h, row.first).state
+            return if (lines.isRefused) Awaited.REFUSED else if (lines == GiftParents.State.OPEN) Awaited.HELD else Awaited.MISSING
+        }
+        val reg = h.createQuery("SELECT status FROM app.ingest_registry WHERE client_uuid = CAST(:p AS uuid)").bind("p", uuid).mapTo(String::class.java).findOne().orElse(null)
+        if (reg == "accepted" || reg == "voided") return Awaited.STORED
+        if (PARENT_TABLES[field]?.let { t -> h.createQuery("SELECT EXISTS (SELECT 1 FROM app.$t WHERE client_uuid = CAST(:p AS uuid))").bind("p", uuid).mapTo(Boolean::class.java).one() } == true) return Awaited.STORED
+        return when (reg) {
+            "rejected" -> Awaited.REFUSED
+            "quarantined" -> {
+                val q = h.createQuery("SELECT status, COALESCE(resolution_note, '') FROM app.sync_quarantine WHERE client_uuid = CAST(:u AS uuid) ORDER BY id DESC LIMIT 1").bind("u", uuid)
+                    .map { rs, _ -> rs.getString(1) to rs.getString(2) }.findOne().orElse(null)
+                when {
+                    q == null -> Awaited.MISSING
+                    q.first == "open" -> Awaited.HELD
+                    q.first == "discarded" && !q.second.startsWith("return_to_device") -> Awaited.REFUSED
+                    q.first.startsWith("accepted") -> Awaited.STORED
+                    else -> Awaited.MISSING
+                }
+            }
+            else -> Awaited.MISSING
+        }
+    }
+
+    /** What one pass of [sweepWaiting] did (counts only: no uuid, no personal data). */
+    data class WaitingSweep(val waiting: Int, val released: Int, val hinted: Int, val stillWaiting: Int, val failed: Int)
+
+    /**
+     * D-LOY-API-28: the worker's sweep of WAITING items (a child released with an accepted parent whose other parent was not stored: [markWaiting]). For each open item whose detail
+     * starts `waits for another parent:` (oldest first, at most [limit] per pass; no per-item "last checked" column exists, so a backlog beyond [limit] is worked off over several passes
+     * and is logged):
+     *  - the awaited parent is STORED: the item is released by [acceptQuarantined] itself (the reviewer's accept path: same override, same dependency order, the child's own held children
+     *    follow, the registry keeps the as-sent hash), inside one savepoint; a release that is still not stored rolls back whole and the item stays waiting;
+     *  - the awaited parent was REFUSED or DISCARDED: nothing is released or finalised; the detail gets the hint (once) and the reviewer's discard is the way out;
+     *  - held in review or not synced yet: nothing.
+     * Safe against a reviewer accepting at the same moment: the item row is taken `FOR UPDATE SKIP LOCKED` (the lock OpsApi's resolve holds), so a locked item is left to its holder, and one
+     * resolved meanwhile is no longer open. Idempotent: a released item is no longer open; a resend of the child answers duplicate.
+     */
+    fun sweepWaiting(limit: Int = 200): WaitingSweep {
+        val (total, rows) = db.jdbi.withHandle<Pair<Int, List<Long>>, Exception> { h ->
+            val n = h.createQuery("SELECT count(*) FROM app.sync_quarantine WHERE status = 'open' AND detail LIKE :p").bind("p", QuarantineWaiting.PREFIX + "%").mapTo(Int::class.java).one()
+            n to h.createQuery("SELECT id FROM app.sync_quarantine WHERE status = 'open' AND detail LIKE :p ORDER BY id LIMIT :n").bind("p", QuarantineWaiting.PREFIX + "%").bind("n", limit).mapTo(Long::class.java).list()
+        }
+        var released = 0; var hinted = 0; var still = 0; var failed = 0
+        for (id in rows) {
+            try {
+                when (db.jdbi.inTransaction<Int, Exception> { h -> sweepOne(h, id) }) { 1 -> released++; 2 -> hinted++; else -> still++ }
+            } catch (e: Exception) {
+                failed++
+                log.warn("waiting-item sweep failed for one item quarantine_id=$id: ${e.javaClass.simpleName}")
+            }
+        }
+        if (total > rows.size) log.info("waiting-item sweep: $total waiting, $limit examined this pass")
+        return WaitingSweep(total, released, hinted, still, failed)
+    }
+
+    /** 1 = released, 2 = refused hint written, 0 = nothing to do. */
+    private fun sweepOne(h: Handle, id: Long): Int {
+        val locked = h.createQuery("SELECT detail, record_type, payload::text FROM app.sync_quarantine WHERE id = :id AND status = 'open' FOR UPDATE SKIP LOCKED").bind("id", id)
+            .map { rs, _ -> Triple(rs.getString(1), rs.getString(2), ResponseJson.parseToJsonElement(rs.getString(3)) as JsonObject) }.findOne().orElse(null) ?: return 0
+        val (detail, type, payload) = locked
+        if (!QuarantineWaiting.isWaiting(detail)) return 0
+        val awaited = QuarantineWaiting.awaited(detail) ?: awaitedOf(payload, type, null) ?: return 0
+        when (awaitedState(h, type, awaited.first, awaited.second)) {
+            Awaited.REFUSED -> {
+                if (QuarantineWaiting.refusedHint(detail)) return 0
+                h.createUpdate("UPDATE app.sync_quarantine SET detail = :d WHERE id = :id AND status = 'open'").bind("d", (detail + QuarantineWaiting.REFUSED_HINT).take(1000)).bind("id", id).execute()
+                return 2
+            }
+            Awaited.STORED -> {
+                // The resolver is the reviewer who accepted the first parent (closeItem needs a user); the note says it was the sweep.
+                val accepted = QuarantineWaiting.acceptedParent(detail)
+                val resolver = accepted?.let { a -> h.createQuery("SELECT resolved_by_user_id FROM app.sync_quarantine WHERE client_uuid = CAST(:u AS uuid) AND status LIKE 'accepted%' AND resolved_by_user_id IS NOT NULL ORDER BY id DESC LIMIT 1").bind("u", a).mapTo(Long::class.java).findOne().orElse(null) }
+                    ?: h.createQuery("SELECT user_id FROM app.sync_quarantine WHERE id = :id").bind("id", id).mapTo(Long::class.java).one()
+                h.savepoint("sweep_waiting")
+                try {
+                    acceptQuarantined(id, null, resolver, "released by the sweep: the awaited parent ${awaited.second} is stored")
+                    h.release("sweep_waiting")
+                    return 1
+                } catch (e: ApiProblem) {
+                    if (e.code != ProblemCode.ERR_REQUEST_STATE) throw e
+                    h.rollbackToSavepoint("sweep_waiting")   // still not stored (or resolved meanwhile): nothing changed, the item stays waiting
+                    return 0
+                }
+            }
+            else -> return 0
+        }
     }
 
     /** Dependency order of a released family: the header and anything else first, then a redemption's lines, then its photos (C-R4). */
@@ -661,6 +779,8 @@ class IngestService(
                     h.release(sp); released += child.clientUuid
                 } else {
                     h.rollbackToSavepoint(sp); kept += child.clientUuid
+                    // D-LOY-API-28: a collection whose OTHER parent (its visit) is not stored yet waits, with the same detail as after an accept; the sweep releases it when that parent is stored.
+                    if (o?.code == RecordOutcomeCode.PARENT_MISSING && o.retryable == true) markWaiting(h, child, o, item.clientUuid)
                     log.info("held record stays quarantined client_uuid=${child.clientUuid} memo=${item.clientUuid} outcome=${o?.status} ${o?.code?.wire}")
                 }
             }
@@ -2147,6 +2267,7 @@ class IngestService(
         const val LATE_POLICY_KEY = "cfg.day.late_sync_after_final_policy"
         private val DEVICE_HOLD_CODES = setOf(RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire, RecordOutcomeCode.DEVICE_NOT_ENROLLED.wire)
         /** A held item whose detail names the parent it waits for: `parent <uuid> is quarantined (<code>)`. */
+        private val PARK_DETAIL = Regex("^(\\w+) ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$")
         val HELD_ON = Regex("^parent ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}) is quarantined \\(")
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")

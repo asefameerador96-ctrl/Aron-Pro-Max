@@ -5,6 +5,11 @@ QuarantinePage:
   - next_cursor
   additionalProperties: false
   properties:
+    waiting_count:
+      type: integer
+      minimum: 0
+      description: From 1.21.0. The open items that wait for another parent (`items[].waiting`) inside the caller's
+        reach, whatever the page, status, code, zone and date filters.
     items:
       type: array
       items:

@@ -193,6 +193,15 @@ class Wiring(
             com.aktcl.aron.backend.sync.VisitPlanRecords(), // tso-manual B3: Set Plan records (SP-03)
         )
 
+        /** THE ingest service with every production record handler: the API builds it, and the worker builds the same one for the waiting-item sweep (D-LOY-API-28), so a released child runs the very handlers of its first delivery. */
+        fun ingestService(
+            db: Database, config: com.aktcl.aron.backend.platform.ServerConfig, reach: com.aktcl.aron.backend.platform.ReachResolver, clock: AronClock, generation: () -> String,
+            push: com.aktcl.aron.backend.notify.PushNotifier, extraRecordHandlers: List<RecordHandler> = emptyList(),
+        ): IngestService = IngestService(
+            db, config, reach, clock, generation,
+            RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.GiftChoiceRecords(reach, config) + com.aktcl.aron.backend.sync.GiftPhotoRecords(reach, config) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + com.aktcl.aron.backend.masterdata.OutletChangeRequestHandler() + extraRecordHandlers),
+        )
+
         /** [extraRecordHandlers], [pushSender] and [blobPorts] are for tests only; production handlers are listed in [recordHandlers]. */
         fun production(
             s: Settings, clock: AronClock = AronClock.SYSTEM, extraRecordHandlers: List<RecordHandler> = emptyList(),
@@ -323,7 +332,7 @@ class Wiring(
             // locked under quarantine unlocks with the change, and a quarantine set after the close locks it.
             val latePolicyPush = com.aktcl.aron.backend.sync.LatePolicyPush(db, com.aktcl.aron.backend.notify.ConfigPullPush(db, config, push), clock)
             configService.committed = com.aktcl.aron.backend.config.ConfigCommitListener { _, keys -> latePolicyPush.onConfigCommitted(keys) }
-            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock, reach = reach), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.GiftChoiceRecords(reach, config) + com.aktcl.aron.backend.sync.GiftPhotoRecords(reach, config) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + com.aktcl.aron.backend.masterdata.OutletChangeRequestHandler() + extraRecordHandlers)), db, config, clock)
+            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock, reach = reach), guard, ingestService(db, config, reach, clock, generation::current, push, extraRecordHandlers), db, config, clock)
             ingestForReview = sync.ingest
             val hikari = db.write as? com.zaxxer.hikari.HikariDataSource
             val admission = com.aktcl.aron.backend.analytics.AdmissionControl(

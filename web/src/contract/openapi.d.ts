@@ -8848,8 +8848,16 @@ export interface components {
             resolved_by_user_id?: number | null;
             resolved_at?: components["schemas"]["Timestamp"] | null;
             resolution_note?: string | null;
+            /** @description From 1.21.0. True for an OPEN item that waits for another parent: its first parent was accepted and the record's other parent is not stored yet. `code` stays the first parent's code (the accept waives that check) and is not the item's own state; `detail` says what it waits for (`waits for another parent: <field> <uuid> ...`, field names and uuids only). The worker releases it when that parent is stored; a reviewer can accept it meanwhile. The phone is told nothing final for it. */
+            waiting?: boolean;
+            /** @description From 1.21.0. The parent a waiting item awaits; null when not waiting. */
+            waits_for_uuid?: components["schemas"]["Uuid"] | null;
+            /** @description From 1.21.0. True when the awaited parent was refused or discarded: the item is never released by the worker, and discarding it (resolve `discard`) is the way out. */
+            waits_for_refused?: boolean;
         };
         QuarantinePage: {
+            /** @description From 1.21.0. The open items that wait for another parent (`items[].waiting`) inside the caller's reach, whatever the page, status, code, zone and date filters. */
+            waiting_count?: number;
             items: components["schemas"]["QuarantineItem"][];
             next_cursor: components["schemas"]["PageCursor"] | null;
         };

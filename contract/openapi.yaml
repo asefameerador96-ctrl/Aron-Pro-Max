@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.17.0
+  version: 1.21.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -14059,11 +14059,31 @@ components:
             - { $ref: '#/components/schemas/Timestamp' }
             - type: 'null'
         resolution_note: { type: [string, 'null'], maxLength: 500 }
+        waiting:
+          type: boolean
+          description: >-
+            From 1.21.0. True for an OPEN item that waits for another parent: its first parent was accepted and the record's other parent is not stored yet. `code` stays the
+            first parent's code (the accept waives that check) and is not the item's own state; `detail` says what it waits for (`waits for another parent: <field> <uuid> ...`,
+            field names and uuids only). The worker releases it when that parent is stored; a reviewer can accept it meanwhile. The phone is told nothing final for it.
+        waits_for_uuid:
+          oneOf:
+            - { $ref: '#/components/schemas/Uuid' }
+            - type: 'null'
+          description: From 1.21.0. The parent a waiting item awaits; null when not waiting.
+        waits_for_refused:
+          type: boolean
+          description: >-
+            From 1.21.0. True when the awaited parent was refused or discarded: the item is never released by the worker, and discarding it (resolve `discard`) is the way out.
     QuarantinePage:
       type: object
       required: [items, next_cursor]
       additionalProperties: false
       properties:
+        waiting_count:
+          type: integer
+          minimum: 0
+          description: >-
+            From 1.21.0. The open items that wait for another parent (`items[].waiting`) inside the caller's reach, whatever the page, status, code, zone and date filters.
         items:
           type: array
           items: { $ref: '#/components/schemas/QuarantineItem' }
