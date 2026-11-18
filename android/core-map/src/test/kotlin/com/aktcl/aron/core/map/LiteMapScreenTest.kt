@@ -2,12 +2,12 @@ package com.aktcl.aron.core.map
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronTheme
+import kotlinx.coroutines.Dispatchers
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -34,7 +34,7 @@ class LiteMapScreenTest {
 
     private fun show(online: Boolean, keyPresent: Boolean = true, cache: MapTileCache? = null, language: AppLanguage = AppLanguage.EN) =
         rule.setContent {
-            AronTheme(language) { LiteMapScreen(points, MapSettings(), online, keyPresent, now, cache, "team-zone-3") }
+            AronTheme(language) { LiteMapScreen(points, MapSettings(), online, keyPresent, now, cache, "team-zone-3", imageDispatcher = Dispatchers.Unconfined) }
         }
 
     @Test
@@ -56,8 +56,9 @@ class LiteMapScreenTest {
         val bytes = java.io.ByteArrayOutputStream().also { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
         cache.put("team-zone-3", bytes)
         show(online = false, cache = cache)
-        // the image is read and decoded on Dispatchers.IO, which compose's idling does not track: wait for it, never race it
-        rule.waitUntil(timeoutMillis = 10_000) { rule.onAllNodesWithTag(LiteMapTags.SNAPSHOT).fetchSemanticsNodes().isNotEmpty() }
+        // The read and decode run on Dispatchers.Unconfined here (the screen's imageDispatcher), so they finish on the test thread and compose's idling covers them.
+        // On Dispatchers.IO the worker thread resumed the composition and applied its changes off the main looper (CalledFromWrongThreadException, ci run 44226960956 attempt 1).
+        rule.waitForIdle()
         rule.onNodeWithTag(LiteMapTags.SNAPSHOT).assertIsDisplayed()
         rule.onNodeWithTag(LiteMapTags.MAP).assertDoesNotExist()
     }
