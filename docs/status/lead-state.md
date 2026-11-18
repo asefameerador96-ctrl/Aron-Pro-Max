@@ -389,3 +389,11 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - sr-targets-server 18fd2ab9b (REFUSED state, removal uuid, V0210..V0213): re-review running (wf_2116e44b-816). Contract 1.24.0 after loyalty lands. Must not land before the diagnose console works (migrations) OR the deploy-log console is accepted as proof (it showed the Flyway lines for train 124).
 - apsis profile eabd24fbb: fifth and final review of the hand reader running (wf_f4b5aa34-a0f); MySQL-restore alternative documented, not built. Owner asked for the FTP file listing (names and sizes only).
 - Device walk owed: gates (A-GATE8 writing steps), integrity, SR programmes.
+
+## 2026-11-18 18:05 UTC
+
+- **Train 125 LANDED**: INT 2c7ff3c1bd (loyalty d18ff776d, contract 1.23.0, no migration; ops-diagnose-api 9ed5ce5d). ci 44354925535 green first attempt, deploy 44357959948 (#365) green, SR smoke passed, health build matches. APK aron-release-signed-dev-2488 42,139,813 B (+3,436 B vs train 124).
+- **ops-diagnose fix ACCEPTED LIVE**: run 44362585631 on INT, window 17:15..17:50Z, green, no failed section, no query error; migrate/worker/API console queries returned rows. Migrate console: pre-flight nothing to do, flyway validated 187, current version 0209, up to date, 0 applied. This is the schema proof for train 125 (the deploy log had no migrate console this time). Open small points: activity-log section prints a blank body instead of an explicit "no rows"; unexplained "(plain) error line" rows (1 migrate, 1 API, 3 worker; text withheld by design) - to look at from a private terminal with the final account, not from the public log.
+- Small rounds checked (workflow wf_e618edcc-7f1, 2 Opus lenses each, blocking verified 3/3): gates-2 337e2e79 = production correct, ONE BLOCKING (deleted visit-commit order assertions in EveryWriterIsGatedTest) + 7 lows, sent to A-GATE8, does not land yet. SR programmes eb3b470e7 = PASS, 5 lows sent; lane answered with d762c3aa1 (INT merged + 5 lows; the edit-after-through_date fallback is new logic and needs a short check before it rides a train).
+- T-KPI3 told to merge INT 2c7ff3c1bd, contract 1.24.0, V0210..V0213, then report 'checked'; my T1 review follows. L-A13 told to merge INT and do post-landing lows.
+- Not walked on a device: everything from trains 121..125.
