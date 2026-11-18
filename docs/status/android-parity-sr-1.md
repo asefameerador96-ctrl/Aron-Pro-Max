@@ -27,7 +27,7 @@ Status words: COMPARED = recorded through the production host flags and compared
 | 27, 28, 29 | Partial payment, confirm and print, saved | COMPARED | srp1b_credit_dialog*, srp1b_dialog_* |
 | 30, 31, 32 | Out of range, force reason, zero sale | COMPARED, KEPT (force gate) | srp1b_out_of_range*, srp1b_force_reason*, srp1b_zero_* |
 | 33, 34 | DRP slide collection, enter slides | DEFERRED (docs/27 offers; the Slide step only exists while a SKU carries an offer; layout differs from the manual and is left until the owner lifts the deferral) | slide_bn_offer (old frame) |
-| 35 | KV and POSM survey | NOT YET (CallContentHost reads content items, files and survey rows from Room; needs seeded fixtures to record) | CallContentHost, PosmSurvey |
+| 35 | KV and POSM survey | COMPARED, KEPT (D-PAR-SR1-27): the KV step and the survey are recorded as stateless views (`ContentStepView`, `SurveyStepView`, `SurveyConfirmDialog` in feature-outlet) with a stand-in picture; the AV step shares the KV layout (platform video view, nothing to record). KEPT: the "Continue without the survey" link (the sale is never blocked), the photo box is a tap target saying "photo saved" (no thumbnail, no delete: no such logic exists) | srp1b_content_kv(_sunlight,_font20), srp1b_content_survey(_answered,_photo_asked,_sunlight,_font20,_confirm) |
 | 36, 37, 38 | Find memo, edit sale, collect due | excluded (P-SR2b) | |
 | 39, 40, 41 | Sales summary, sync and submit, submitted | excluded (P-SR2b) | |
 | 42, 43, 44, 45 | New shop, permanent close, change information, clusters (and the outlet menu) | COMPARED, KEPT (GEO info line); the opened cluster search dialog NOT recorded (test clock hangs on a field in a dialog) | srp1b_outlet_menu*, srp1b_req_*, srp1b_clusters* (D-PAR-SR1-17) |
