@@ -403,7 +403,7 @@ fun AmoSettingsContent(
     val language = LocalAppLanguage.current
     var confirm by rememberSaveable { mutableStateOf(false) }
     AronScaffold(
-        topBar = { AronTopBar(stringResource(HomeR.string.set_title), icon = painterResource(CoreR.drawable.aron_ic_gear), onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back)) },
+        topBar = { AronTopBar(stringResource(HomeR.string.set_title), icon = null, onBack = onBack, /* screenshot 75: the bar is the arrow and the centred title only (D-PAR-AMO-30) */ backLabel = stringResource(CoreR.string.core_ui_back)) },
         modifier = modifier,
     ) {
         Column(
