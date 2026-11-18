@@ -90,7 +90,7 @@ internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = wi
         // by the phone's own order (the memos acknowledged before the request left), never by comparing times; without the recorded order only memos that never left the phone are added
         val acked = day.programmes.ackedBeforeRequest()
         awaiting = AsthaLocal.awaiting(memos, acked)
-        unknownOrder = AsthaLocal.unknownOrder(memos, acked != null)
+        unknownOrder = AsthaLocal.unknownOrder(memos, acked != null, date?.take(7))
         held = AsthaLocal.heldForReview(memos)
         data = server?.let { d -> if (date == null) d else AsthaLocal.apply(d, memos, acked, date.take(7)) }
         if (day.programmes.bundleRequestedAt() == before || ++attempts >= 3) break

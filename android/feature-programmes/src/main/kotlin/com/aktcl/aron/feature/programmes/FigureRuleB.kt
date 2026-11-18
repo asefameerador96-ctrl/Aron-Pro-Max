@@ -11,7 +11,8 @@ package com.aktcl.aron.feature.programmes
  * - an edit is therefore: add the new memo, subtract the old one; a memo whose void or edit IS in the set is already out of the server figure and is left alone;
  * - a memo outside the bundle month is never touched; a refused memo counts for nothing; a memo SENT but unanswered when the request left (state `uncertain`) is neither added nor
  *   subtracted (the server figure may or may not hold it; the page says it awaits).
- * Recomputed from scratch on every read, never accumulated. With no month, no recorded order, or no server figure there is no local arithmetic (the figure is the server's, with its as-of label).
+ * Recomputed from scratch on every read, never accumulated. With no month or no server figure there is no local arithmetic (the figure is the server's, with its as-of label). With NO recorded order the
+ * old-phone fallback applies (see [delta]): only memos that are certainly not in the server figure are added, nothing is subtracted, and the rest is counted by [unknownOrder] for the page's note.
  */
 object FigureRuleB {
     /** What to add (positive) and what to take back out of the server figure. */
@@ -43,8 +44,10 @@ object FigureRuleB {
 
     /**
      * The memos to add and to subtract, or null when there is no month. With the recorded order ([ackedBeforeRequest]) the full rule applies. WITHOUT it (a promoted prefetch, a bundle stored before
-     * the order was recorded) only what is certain is done: a memo that never left the phone (and is not an edit or a void of anything) is certainly not in the server figure and is ADDED;
-     * an acknowledged memo may or may not be in it and is NOT added, and nothing is subtracted; [unknownOrder] counts them for the page's note.
+     * the order was recorded) only what is certain is done, and nothing is ever subtracted. ADDED are the live memos of the month that are certainly not in the server figure: a memo that never left the
+     * phone (not an edit, not a void), and a memo dated AFTER [throughDate] (the figure is cut there, so it never holds it), including an edit of such a memo when the edit's own date and the edited memo's
+     * date are both after [throughDate] (the figure holds neither version, so the edit counts in full and the edited memo is dead). NOT added: an acknowledged memo dated up to [throughDate] (it may be in the
+     * figure), an edit of anything dated up to [throughDate] (the original may be in the figure, so nothing can be netted); [unknownOrder] counts what was left out for the page's note.
      */
     fun delta(memos: List<LocalMemo>, ackedBeforeRequest: Set<String>?, month: String?, throughDate: String?): Delta? {
         if (month == null) return null
@@ -59,7 +62,9 @@ object FigureRuleB {
         val dead = killer.keys
         if (ackedBeforeRequest == null) {
             // the old-phone fallback of the identity rule: never-sent pending memos, and memos dated after through_date (the figure is cut there)
-            return Delta(live.filter { it.voidOf == null && it.supersedes == null && inMonth(it) && it.uuid !in dead && (it.state in NEVER_SENT || cutAfter(it)) }, emptyList())
+            val byId = memos.associateBy { it.uuid }
+            fun editOfLaterDay(m: LocalMemo) = m.supersedes != null && cutAfter(m) && byId[m.supersedes]?.let { cutAfter(it) } == true
+            return Delta(live.filter { it.voidOf == null && inMonth(it) && it.uuid !in dead && ((it.supersedes == null && (it.state in NEVER_SENT || cutAfter(it))) || editOfLaterDay(it)) }, emptyList())
         }
         // a memo acknowledged through a RESOLUTION that reached the phone after the request is awaiting until the next bundle: the server may already have held it (never added)
         val add = live.filter { it.voidOf == null && inMonth(it) && it.uuid !in dead && !(it.viaResolution && it.state == "acked" && it.uuid !in ackedBeforeRequest) && (it.uuid !in ackedBeforeRequest || cutAfter(it)) }
@@ -88,9 +93,16 @@ object FigureRuleB {
      */
     fun heldForReview(memos: List<LocalMemo>): Int = memos.count { it.voidOf == null && it.memoKind == "sale" && it.state == "quarantined" }
 
-    /** With NO recorded order: the sale memos left out of the figures because they may already be in them (acknowledged ones, and edits of anything), for the page's own note. 0 when the order is known. */
-    fun unknownOrder(memos: List<LocalMemo>, orderKnown: Boolean): Int =
-        if (orderKnown) 0 else memos.count { it.voidOf == null && it.memoKind == "sale" && it.state != "rejected" && it.state != "uncertain" && it.state != "quarantined" && (it.state !in NEVER_SENT || it.supersedes != null) }
+    /**
+     * With NO recorded order: the sale memos the fallback of [delta] really LEFT OUT because they may already be in the figure (acknowledged ones dated up to [throughDate], and edits of anything the figure may
+     * hold), for the page's own note. A memo the fallback adds (never sent, or dated after [throughDate]) is not counted. 0 when the order is known. [month] null: nothing is added, so all candidates count.
+     */
+    fun unknownOrder(memos: List<LocalMemo>, orderKnown: Boolean, month: String? = null, throughDate: String? = null): Int {
+        if (orderKnown) return 0
+        val added = delta(memos, null, month, throughDate)?.add?.map { it.uuid }?.toSet().orEmpty()
+        val replaced = memos.filter { it.uuid in added }.mapNotNull { it.supersedes }.toSet() // an edited memo that an ADDED edit replaces is accounted for
+        return memos.count { it.voidOf == null && it.memoKind == "sale" && it.state != "rejected" && it.state != "uncertain" && it.state != "quarantined" && it.uuid !in added && it.uuid !in replaced && (it.state !in NEVER_SENT || it.supersedes != null) }
+    }
 
     /**
      * The figure to show. [memoIn] picks the memos that belong to the figure (its route; for a campaign its outlet and programme), [lineIn] the sale lines that belong to it (its brand,

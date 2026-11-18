@@ -28,7 +28,7 @@ object AsthaLocal {
     fun heldForReview(memos: List<LocalMemo>): Int = FigureRuleB.heldForReview(memos)
 
     /** With no recorded order: the memos left out of the figures because they may already be in them (see [FigureRuleB.unknownOrder]). */
-    fun unknownOrder(memos: List<LocalMemo>, orderKnown: Boolean): Int = FigureRuleB.unknownOrder(memos, orderKnown)
+    fun unknownOrder(memos: List<LocalMemo>, orderKnown: Boolean, month: String? = null): Int = FigureRuleB.unknownOrder(memos, orderKnown, month, null)
 
     /** The memos to add and to take back out for the held bundle's [month] (`YYYY-MM`), or null when the order is unknown. */
     fun delta(memos: List<LocalMemo>, ackedBeforeRequest: Set<String>?, month: String?): Pair<List<LocalMemo>, List<LocalMemo>>? =

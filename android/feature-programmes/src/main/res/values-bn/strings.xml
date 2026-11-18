@@ -94,6 +94,7 @@
     <string name="pg_gift_on_phone">এই ফোনে নির্বাচিত, এখনো পাঠানো হয়নি: %1$s</string>
     <string name="pg_gift_refused">সার্ভার এই নির্বাচন নেয়নি: %1$s। আবার নির্বাচন করুন।</string>
     <string name="pg_gift_sent">সার্ভারে পাঠানো হয়েছে: %1$s</string>
+    <string name="pg_gift_unconfirmed_other">পাঠানো হয়েছে, এখনো নিশ্চিত হয়নি: %1$s। সার্ভারে এখনো আছে: %2$s। এভাবে থাকলে বিক্রয় জমা-তে গিয়ে প্রত্যাখ্যাত তালিকায় খুঁজে "আবার পাঠান" চাপুন।</string>
     <string name="pg_gift_unconfirmed">পাঠানো হয়েছে, এখনো নিশ্চিত হয়নি: %1$s। এভাবে থাকলে বিক্রয় জমা-তে গিয়ে প্রত্যাখ্যাত তালিকায় খুঁজে "আবার পাঠান" চাপুন।</string>
     <string name="pg_gift_tier_unknown">সার্ভার এখনও এই দোকানের ক্যাটাগরি পাঠায়নি, তাই উপহার দেখানো যাচ্ছে না।</string>
     <string name="pg_gift_chosen">নির্বাচিত গিফট: %1$s</string>

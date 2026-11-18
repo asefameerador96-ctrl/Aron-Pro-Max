@@ -94,6 +94,7 @@
     <string name="pg_gift_on_phone">Chosen on this phone, not sent yet: %1$s</string>
     <string name="pg_gift_refused">The server did not accept this choice: %1$s. Choose again.</string>
     <string name="pg_gift_sent">Sent to the server: %1$s</string>
+    <string name="pg_gift_unconfirmed_other">Sent, not confirmed yet: %1$s. The server still has: %2$s. If it stays so, open Sales submit, find it under refused items and tap Send again.</string>
     <string name="pg_gift_unconfirmed">Sent, not confirmed yet: %1$s. If it stays so, open Sales submit, find it under refused items and tap Send again.</string>
     <string name="pg_gift_tier_unknown">The server has not sent this outlet\'s category yet, so its gifts cannot be shown.</string>
     <string name="pg_gift_chosen">Chosen gift: %1$s</string>
