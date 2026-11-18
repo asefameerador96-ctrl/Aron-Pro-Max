@@ -57,6 +57,8 @@ Lows from the lead's gate: title is two lines then ellipsis, horizontal safe ins
 | Force reason (manual 31): radio form + photo at once | FIX: two gradient reason buttons first, photo and bar after the tap | this push | srp1b_force_reason, _missing_photo |
 | Zero sale (manual 32): dialog look, reason list, Review | FIX dialog (triangle, blue, green/red side by side); reasons and Review RECORD (Review table is slice 3) | this push | srp1b_zero_question, _reasons, _review |
 
+| Quantity pop-up (manual 22): blue-tinted full-width box, plain X, no field underline, pale stats panel | FIX (D-PAR-SR1-12): lavender inset box, circled red X, underlined field, amber stats panel with dark ink (7:1), wider সংরক্ষণ. KEEP: ADS reads N/A (no `outlet_sku_stats` source on INT) | this push | srp1b_qty_* (5) |
+
 (Rows for the remaining screens are added slice by slice.)
 
 ## Not run

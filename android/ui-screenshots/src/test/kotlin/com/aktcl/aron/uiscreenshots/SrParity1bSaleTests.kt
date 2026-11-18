@@ -14,6 +14,8 @@ import com.aktcl.aron.feature.sale.domain.DrpRule
 import com.aktcl.aron.feature.sale.domain.SaleDraft
 import com.aktcl.aron.feature.sale.domain.SaleReviewCalculator
 import com.aktcl.aron.feature.sale.domain.SaleSku
+import com.aktcl.aron.feature.sale.domain.SkuStats
+import com.aktcl.aron.feature.sale.ui.QuantityPopup
 import com.aktcl.aron.feature.sale.ui.ReviewScreen
 import com.aktcl.aron.feature.sale.ui.SaleEntryScreen
 import androidx.compose.ui.unit.Density
@@ -145,4 +147,19 @@ class SrParity1bSaleTests {
     @Test fun zeroSaleReview() = shot("srp1b_zero_review", title = com.aktcl.aron.feature.sale.R.string.review_title) {
         ReviewScreen(zeroReview, {}, outletLine = "Ruku Store (2681268)\nরুট: Apsis RouteDaily\nক্লাস্টার: Apsis Cluster", onCreditToggle = {}, onQc = {})
     }
+
+    // ---- the quantity pop-up (manual 22): the SKU, the stepper, the quick buttons, আগের দিন / ADS / SDLW, সংরক্ষণ ----
+    private val statsFull = SkuStats("pack", previousDay = 20, adsHundredths = 333, sdlw = 20)
+    private val statsNoAds = SkuStats("pack", previousDay = 20, adsHundredths = null, sdlw = 20)
+
+    @Composable private fun Popup(sku: SaleSku, qty: Long, stats: SkuStats?) {
+        EmptyEntry()
+        QuantityPopup(sku, qty, stats, onSave = {}, onClose = {})
+    }
+
+    @Test fun qtyPopupCigarette() = shot("srp1b_qty_cigarette", title = saleTitle) { Popup(maxr, 20, statsFull) }
+    @Test fun qtyPopupCigaretteAsProduced() = shot("srp1b_qty_cigarette_ads_na", title = saleTitle) { Popup(maxr, 20, statsNoAds) }
+    @Test fun qtyPopupLighterNoStats() = shot("srp1b_qty_lighter_na", title = saleTitle) { Popup(aster, 25, null) }
+    @Test fun qtyPopupSunlight() = shot("srp1b_qty_cigarette_sunlight", sunlight = true, title = saleTitle) { Popup(maxr, 20, statsFull) }
+    @Test fun qtyPopupFont20() = shot("srp1b_qty_cigarette_font20", fontScale = 2.0f, title = saleTitle) { Popup(maxr, 20, statsFull) }
 }
