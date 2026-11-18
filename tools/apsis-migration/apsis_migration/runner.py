@@ -567,6 +567,7 @@ def cleanup(db, signoff):
     # re-transform or a rollback invalidates it
     ok = db.scalar("SELECT COALESCE((value ->> 'ok')::boolean, false) AND run_id = (SELECT max(id) FROM apsis_ctl.run) "
                    "AND created_at >= COALESCE((SELECT max(GREATEST(started_at, finished_at)) FROM apsis_ctl.chunk), '-infinity'::timestamptz) "
+                   "AND NOT EXISTS (SELECT 1 FROM apsis_ctl.chunk WHERE state <> 'verified' AND chunk_key <> '_stage' AND vendor_table NOT LIKE '\\_%') "
                    "FROM apsis_ctl.report WHERE name = 'reconciliation' ORDER BY run_id DESC LIMIT 1")
     if ok != "t":
         raise DbError("cleanup refused: no passing reconciliation report for the current run state (a later run, reset or rollback invalidates an earlier report)")
@@ -580,7 +581,7 @@ def reset_transform(db, mapping):
     """Settings changed or a re-transform is wanted: chunks go back to 'staged' where staging still exists, else the table is re-staged."""
     for t in sorted(mapping["allowed_tables"]):
         if _stage_count(db, t) is not None:
-            db.run("UPDATE apsis_ctl.chunk SET state = 'staged', rows_out = 0, rows_skipped = 0, checksum = NULL WHERE vendor_table = :'t' AND chunk_key <> '_stage'", {"t": t})
+            db.run("UPDATE apsis_ctl.chunk SET state = 'staged', rows_out = 0, rows_skipped = 0, checksum = NULL, started_at = now(), finished_at = NULL WHERE vendor_table = :'t' AND chunk_key <> '_stage'", {"t": t})
         else:
             db.run("DELETE FROM apsis_ctl.chunk WHERE vendor_table = :'t'", {"t": t})
     db.run("DELETE FROM apsis_ctl.chunk WHERE vendor_table = '_masters'")
