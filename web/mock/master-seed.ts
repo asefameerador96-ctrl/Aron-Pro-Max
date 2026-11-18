@@ -104,7 +104,7 @@ export function seedTables(): Record<string, Row[]> {
       { request_uuid: "44444444-4444-4444-8444-444444444444", request_type: "info", status: "pending", outlet_id: 1, outlet_name: "Banani Store", route_id: 1, cluster_id: 1, requested_by_user_id: 1002, requested_at: "2026-10-05T06:00:00.000Z", rejection_reason: null, proposed: { owner_name: "Md. Rahim Uddin" }, photos: [], events: [], version: 1 },
     ] as unknown as Row[],
     clusters: [
-      row(1, { zone_id: 14, name: "Banani Market", cluster_type: "market" }),
+      row(1, { zone_id: 14, name: "Banani Market", cluster_type: "Bazar Hub" }),
       row(2, { zone_id: 14, name: "Gulshan-1 Circle", cluster_type: "urban" }),
       row(3, { zone_id: 15, name: "Mirpur-10", cluster_type: "urban" }),
       row(4, { zone_id: 15, name: "Uttara Sector 7", cluster_type: null }),

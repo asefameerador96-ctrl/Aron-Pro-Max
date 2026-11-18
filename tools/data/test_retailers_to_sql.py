@@ -62,7 +62,8 @@ class GeoClassAndChannel(unittest.TestCase):
         self.assertEqual(m.clean_sub_channel("GT"), ("GT", "GT", True))
         self.assertEqual(m.clean_sub_channel("Gold"), ("Astha", "Gold", True))
         self.assertEqual(m.clean_sub_channel("HoReCa"), ("HoReCa", "HoReCa", True))
-        self.assertEqual(m.clean_sub_channel("Titanium"), ("Astha", None, False))
+        self.assertEqual(m.clean_sub_channel("Titanium"), ("Astha", "Titanium", True))
+        self.assertEqual(m.clean_sub_channel("Silver"), ("Astha", None, False))
         self.assertEqual(m.clean_sub_channel(""), ("GT", None, False))
 
 
