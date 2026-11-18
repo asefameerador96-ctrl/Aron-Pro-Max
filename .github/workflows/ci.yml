@@ -641,12 +641,17 @@ jobs:
           retention-days: 30
 
   web:
-    # docs/24 s13.2 web gate; steps from web/scripts/ci.sh (docs/requests/web-infra-ci-job.md).
-    name: Web (lint, types, tests, build, e2e)
+    # docs/24 s13.2 web gate; steps from web/scripts/ci.sh (docs/requests/web-infra-ci-job.md). The e2e no longer runs here:
+    # it took 23 to 27 minutes against a 30-minute limit, so it runs as five parallel shards (web-e2e) on the build this
+    # job uploads, and the required check "Web (lint, types, tests, build, e2e)" is the web-check job below.
+    # D-CI-E2E-01.
+    name: Web (lint, types, tests, build)
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    outputs:
+      e2e_total: ${{ steps.count.outputs.total }}
     defaults:
       run:
         working-directory: web
@@ -667,6 +672,53 @@ jobs:
       - run: bash scripts/ci.sh test
       - name: next build
         run: bash scripts/ci.sh build
+      - name: Count the e2e tests (the shards must add up to exactly this; no browser, no server needed)
+        id: count
+        run: echo "total=$(bash scripts/ci.sh count-e2e)" >> "${GITHUB_OUTPUT}"
+      - name: Upload the build for the e2e shards (standalone server and static assets; no build cache)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-build-${{ github.run_id }}
+          path: |
+            web/.next/standalone
+            web/.next/static
+          include-hidden-files: true
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+  web-e2e:
+    # Playwright against the contract mock, split by file with Playwright's own --shard (fullyParallel is off, so a shard
+    # is whole files, each in its original order). Every shard is its own runner with its own mock (4010) and web server
+    # (3100), so no port, state or seeded user is shared. fail-fast is off so one red shard never hides another.
+    # Retries stay at 1 and no test is skipped: web-check proves the shards add up to the full list. D-CI-E2E-01.
+    name: Web e2e (shard ${{ matrix.shard }} of 5)
+    needs: [changes, web]
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read  # gh run download of the web job's build
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: bash scripts/ci.sh install
+      - name: The build from the web job (no second next build; gh, preinstalled, so no unpinned action)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "${{ github.run_id }}" --repo "${{ github.repository }}" --name "web-build-${{ github.run_id }}" --dir .next
       - name: Playwright version (browser cache key)
         id: pw
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "${GITHUB_OUTPUT}"
@@ -679,27 +731,103 @@ jobs:
         # --with-deps hung in apt-get update until the job timeout (run 37691144739): tools/ci/playwright-chromium.sh
         timeout-minutes: 14
         run: bash ../tools/ci/playwright-chromium.sh
-      - run: bash scripts/ci.sh e2e
+      - name: Run bash scripts/ci.sh e2e (shard ${{ matrix.shard }} of 5)
+        env:
+          PW_SHARD: ${{ matrix.shard }}/5
+        run: bash scripts/ci.sh e2e
       - name: Flaky e2e tests (passed only on retry) are reported, never silent (AUD-TP-6)
         if: always()
+        env:
+          PW_SHARD: ${{ matrix.shard }}/5
         run: |
           [ -f test-results/results.json ] || { echo "no Playwright JSON report"; exit 0; }
-          python3 - test-results/results.json <<'PY'
+          python3 - test-results/results.json "${PW_SHARD}" <<'PY'
           import json, sys
           stats = json.load(open(sys.argv[1])).get("stats", {})
           flaky = stats.get("flaky", 0)
-          print(f"e2e: {stats.get('expected', 0)} passed, {flaky} flaky, {stats.get('unexpected', 0)} failed")
+          print(f"e2e shard {sys.argv[2]}: {stats.get('expected', 0)} passed, {flaky} flaky, {stats.get('unexpected', 0)} failed")
           if flaky:
               print(f"::warning::{flaky} e2e test(s) passed only on retry: quarantine or fix within one working day (docs/20 P5)")
           PY
+      - name: Upload this shard's JSON report (small; web-check merges them)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-e2e-report-${{ matrix.shard }}
+          path: web/test-results/results.json
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 7
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: web-playwright-results
+          name: web-playwright-results-${{ matrix.shard }}
           path: web/test-results/
           if-no-files-found: ignore
+          overwrite: true
           retention-days: 7
+
+  web-check:
+    # The one required check for the web gate ("Web (lint, types, tests, build, e2e)" in tools/github-governance.ps1,
+    # unchanged). Same reason as jvm-analytics-check: a matrix job the changes filter skips posts one skipped check under
+    # its unexpanded name, so the shards cannot be the required checks. This job always runs; it passes exactly when the
+    # build job and all five shards passed (or the web area did not change), with 0 failed and 0 flaky, and the shards'
+    # tests add up to the full list counted by the build job: a lost or skipped test fails it. D-CI-E2E-01.
+    name: Web (lint, types, tests, build, e2e)
+    needs: [changes, web, web-e2e]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read  # gh run download of the shard reports
+    steps:
+      - name: Build job and every shard passed, or the web area did not change
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          WEB_RESULT: ${{ needs.web.result }}
+          SHARDS_RESULT: ${{ needs.web-e2e.result }}
+          WEB_CHANGED: ${{ needs.changes.outputs.web }}
+        run: |
+          echo "changes: ${CHANGES_RESULT}; web changed: ${WEB_CHANGED}; build job: ${WEB_RESULT}; e2e shards: ${SHARDS_RESULT}"
+          if [ "${CHANGES_RESULT}" != "success" ]; then echo "::error::the changes job did not succeed (${CHANGES_RESULT}), so the web jobs never ran"; exit 1; fi
+          if [ "${WEB_CHANGED}" != "true" ]; then
+            [ "${WEB_RESULT}" = "skipped" ] && [ "${SHARDS_RESULT}" = "skipped" ] && { echo "no web change: rightly skipped"; exit 0; }
+            echo "::error::web unchanged but jobs ran: build ${WEB_RESULT}, shards ${SHARDS_RESULT}"; exit 1
+          fi
+          [ "${WEB_RESULT}" = "success" ] || { echo "::error::web build job: ${WEB_RESULT}"; exit 1; }
+          [ "${SHARDS_RESULT}" = "success" ] || { echo "::error::e2e shards: ${SHARDS_RESULT}"; exit 1; }
+      - name: Download the shard reports
+        if: needs.changes.outputs.web == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "${{ github.run_id }}" --repo "${{ github.repository }}" --pattern "web-e2e-report-*" --dir reports
+      - name: Combined e2e summary (0 failed, 0 flaky, 0 skipped, shards add up to the full list)
+        if: needs.changes.outputs.web == 'true'
+        env:
+          E2E_TOTAL: ${{ needs.web.outputs.e2e_total }}
+        run: |
+          python3 - reports "${E2E_TOTAL}" 5 <<'PY'
+          import glob, json, sys
+          root, total, shards = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+          files = sorted(glob.glob(f"{root}/web-e2e-report-*/results.json"))
+          if len(files) != shards:
+              sys.exit(f"::error::expected {shards} shard reports, found {len(files)}")
+          sums = dict(expected=0, flaky=0, unexpected=0, skipped=0)
+          for f in files:
+              st = json.load(open(f)).get("stats", {})
+              line = {k: st.get(k, 0) for k in sums}
+              for k in sums: sums[k] += line[k]
+              print(f"{f.split('/')[-2]}: {line['expected']} passed, {line['flaky']} flaky, {line['unexpected']} failed, {line['skipped']} skipped, {sum(line.values())} run, {st.get('duration', 0) / 60000:.1f} min")
+          ran = sum(sums.values())
+          print(f"e2e combined: {sums['expected']} passed, {sums['flaky']} flaky, {sums['unexpected']} failed, {sums['skipped']} skipped; {ran} of {total} tests")
+          bad = []
+          if sums["unexpected"] or sums["skipped"]: bad.append("failed or skipped tests")
+          if ran != total: bad.append(f"shards ran {ran} tests, the list has {total}")
+          if sums["flaky"]: print(f"::warning::{sums['flaky']} e2e test(s) passed only on retry: quarantine or fix within one working day (docs/20 P5)")
+          if bad: sys.exit("::error::" + "; ".join(bad))
+          PY
 
   images:
     # The deploy images, built and booted without Azure: migrate twice against PostgreSQL 16, api health and
