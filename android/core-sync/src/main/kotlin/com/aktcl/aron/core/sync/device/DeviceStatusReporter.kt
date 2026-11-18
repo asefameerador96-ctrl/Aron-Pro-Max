@@ -202,7 +202,7 @@ class DeviceStatusReporter(
         val uuid = ClientIds.newUuid()
         CaptureRepository(db) { SyncEngine.iso(clock.nowMs()) }.recordDeviceStatus(uuid, meta(reference, now), report)
         // Only once the report is safely in the outbox: a kill before this point reports again.
-        if (events.isNotEmpty()) eventLog?.ack(events.size)
+        if (events.isNotEmpty()) eventLog?.ack(events)
         if (changed) tracker.recordSent(current)
         if (wantEvidence) state.evidenceWanted = null
         if (result is IntegrityResult.Evidence) {

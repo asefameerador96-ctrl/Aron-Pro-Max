@@ -43,7 +43,7 @@ object BreadcrumbWiring {
         gnssJson = fix.gnssJson, deviceOwner = fix.device.deviceOwner, devOptionsEnabled = fix.device.devOptionsEnabled,
         adbEnabled = fix.device.adbEnabled, autoTimeEnabled = fix.device.autoTimeEnabled, mockAppPresent = fix.device.mockAppPresent,
         integrityRef = fix.device.integrityRef,
-        signalsJson = fix.signals.takeIf { it.isNotEmpty() }?.joinToString(",", "[", "]") { "\"$it\"" },
+        signalsJson = fix.signals?.joinToString(",", "[", "]") { "\"$it\"" },
     )
 
     /**

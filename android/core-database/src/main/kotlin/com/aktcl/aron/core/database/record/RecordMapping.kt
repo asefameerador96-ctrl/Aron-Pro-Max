@@ -108,7 +108,8 @@ object RecordMapping {
         }?.filter { it in SPOOF_CODES }?.distinct()?.take(16),
     )
 
-    private val SPOOF_CODES = setOf(
+    /** The anti-spoofing codes of contract 1.19.0 (`GeoFix.signals`); a test ties this list to `SpoofCode` so a new code is never silently dropped from uploads. */
+    val SPOOF_CODES = setOf(
         "mock_flag", "mock_app_selected", "test_provider", "test_provider_props", "fake_gps_app_installed", "gnss_no_sats", "gnss_none",
         "fix_stale", "fix_clock_mismatch", "jump", "speed", "provider_disagree", "root_hint", "emulator", "hook_framework",
     )

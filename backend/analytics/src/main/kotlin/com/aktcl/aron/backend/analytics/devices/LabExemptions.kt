@@ -10,22 +10,35 @@ import java.time.Instant
 import java.util.Base64
 
 /**
- * Signs lab grants (D-OWNER-MDM-02 iii). Token: `base64url(payload).base64url(signature)`, payload `{"v":1,"d":"<device uuid>","iat":<ms>,"exp":<ms>}`,
- * ECDSA P-256 / SHA-256 (DER), verified offline by the phone with the matching PUBLIC key (an Android resource). The private key (PKCS#8, base64) is
- * read from the environment by the caller and never logged or stored; with no key the signer is not [configured] and signs nothing.
+ * Signs lab grants (D-OWNER-MDM-02 iii). Token: `base64url(payload).base64url(signature)`, payload `{"v":1,"d":"<device uuid>","a":"<api host>","iat":<ms>,"exp":<ms>}`,
+ * ECDSA P-256 / SHA-256 (DER), verified offline by the phone with the matching PUBLIC key (an Android resource). `a` is the audience: the host of the API the phone
+ * talks to, so a grant signed by the test account's server never verifies on a phone built for the final account even if one key pair were shared by mistake (the runbook
+ * still says one key pair per environment). The private key (PKCS#8, base64) is read from the environment by the caller and never logged or stored; with no key, or a
+ * key that is not an EC P-256 private key, the signer is not [configured] and signs nothing.
  */
 class LabGrantSigner(privateKeyPkcs8Base64: String?) {
     private val key = privateKeyPkcs8Base64?.trim()?.takeIf { it.isNotEmpty() }?.let {
         runCatching { KeyFactory.getInstance("EC").generatePrivate(PKCS8EncodedKeySpec(Base64.getDecoder().decode(it))) }.getOrNull()
-    }
+    }?.takeIf { isP256(it) }
     val configured: Boolean get() = key != null
 
-    fun sign(deviceUuid: String, iat: Instant, exp: Instant): String {
+    fun sign(deviceUuid: String, audience: String, iat: Instant, exp: Instant): String {
         val k = key ?: error("lab grant signing key is not configured")
-        val payload = """{"v":1,"d":"$deviceUuid","iat":${iat.toEpochMilli()},"exp":${exp.toEpochMilli()}}""".toByteArray(Charsets.UTF_8)
+        require(audience.isNotBlank() && audience.none { it == '"' || it == '\\' || it.code < 0x20 }) { "audience must be a plain host name" }
+        val payload = """{"v":1,"d":"$deviceUuid","a":"$audience","iat":${iat.toEpochMilli()},"exp":${exp.toEpochMilli()}}""".toByteArray(Charsets.UTF_8)
         val sig = Signature.getInstance("SHA256withECDSA").apply { initSign(k); update(payload) }.sign()
         val e = Base64.getUrlEncoder().withoutPadding()
         return e.encodeToString(payload) + "." + e.encodeToString(sig)
+    }
+
+    private companion object {
+        /** True for an EC key on the NIST P-256 curve (secp256r1): the curve the phone's verifier demands. */
+        fun isP256(k: java.security.Key): Boolean {
+            val params = (k as? java.security.interfaces.ECKey)?.params ?: return false
+            val p256 = java.security.AlgorithmParameters.getInstance("EC").apply { init(java.security.spec.ECGenParameterSpec("secp256r1")) }
+                .getParameterSpec(java.security.spec.ECParameterSpec::class.java)
+            return params.curve == p256.curve && params.generator == p256.generator && params.order == p256.order && params.cofactor == p256.cofactor
+        }
     }
 }
 
@@ -39,16 +52,16 @@ data class LabExemptionRow(val deviceId: Long, val grantedBy: Long, val grantedA
  * (`BundleService.labGrant`); a grant is withdrawn by [revoke] (deleting the row), not by removing the key, because the token already issued
  * stays valid on the phone until its expiry or the next bundle without it.
  */
-class LabExemptionService(private val db: Database, private val signer: LabGrantSigner, private val clock: AronClock = AronClock.SYSTEM) {
+class LabExemptionService(private val db: Database, private val signer: LabGrantSigner, private val audience: String, private val clock: AronClock = AronClock.SYSTEM) {
     /** True when the server can sign (the environment secret is set): the portal shows the action only then. */
-    val canGrant: Boolean get() = signer.configured
+    val canGrant: Boolean get() = signer.configured && audience.isNotBlank()
 
     /** Records the exemption and returns its expiry. Needs a configured signer: a grant nobody can sign would only mislead the portal. */
     fun grant(deviceId: Long, grantedBy: Long, days: Int, note: String?): Instant = grantRow(deviceId, grantedBy, days, note).expiresAt
 
     /** [alsoInTx] runs in the same transaction (the audit row), so a grant is never recorded without it. */
     fun grantRow(deviceId: Long, grantedBy: Long, days: Int, note: String?, alsoInTx: (org.jdbi.v3.core.Handle, LabExemptionRow) -> Unit = { _, _ -> }): LabExemptionRow {
-        require(signer.configured) { "lab grant signing key is not configured" }
+        require(canGrant) { "lab grant signing key or audience is not configured" }
         require(days in 1..MAX_DAYS) { "days must be 1..$MAX_DAYS" }
         require(note == null || note.length <= 300) { "note too long" }
         // Whole milliseconds, so the stored column and the signed payload name the same instants.
@@ -57,7 +70,7 @@ class LabExemptionService(private val db: Database, private val signer: LabGrant
         db.jdbi.useTransaction<Exception> { h ->
             val uuid = h.createQuery("SELECT device_uuid::text FROM app.device WHERE id = :d AND status NOT IN ('revoked','replaced')").bind("d", deviceId).mapTo(String::class.java).findOne().orElse(null)
                 ?: throw IllegalArgumentException("no usable device")
-            val token = signer.sign(uuid, now, exp)
+            val token = signer.sign(uuid, audience, now, exp)
             h.createUpdate(
                 "INSERT INTO app.device_lab_exemption (device_id, granted_by, granted_at, expires_at, note, grant_token) VALUES (:d, :u, :g, :e, :n, :t) " +
                     "ON CONFLICT (device_id) DO UPDATE SET granted_by = EXCLUDED.granted_by, granted_at = EXCLUDED.granted_at, expires_at = EXCLUDED.expires_at, note = EXCLUDED.note, grant_token = EXCLUDED.grant_token",

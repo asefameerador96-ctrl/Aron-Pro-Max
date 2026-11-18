@@ -44,7 +44,8 @@ data class FixReading(
     val mockAppPresent: Boolean = false,
     val integrityRef: String? = null,
     /** Anti-spoofing signal codes (D-OWNER-MDM-02); [isMock] is already true when a HARD one is present. */
-    val signals: List<String> = emptyList(),
+    /** NULL = the check did not run (unknown, no `signals` member is sent); an empty list = checked, nothing found (sent as `[]`). */
+    val signals: List<String>? = null,
 ) {
     val isOk: Boolean get() = status == "ok" && lat != null && lng != null
 
@@ -55,7 +56,7 @@ data class FixReading(
         requestPriority = requestPriority, isMock = isMock, reused = reused, refreshCount = refreshCount,
         gnssJson = gnssJson, radioJson = radioJson, deviceOwner = deviceOwner, devOptionsEnabled = devOptionsEnabled,
         adbEnabled = adbEnabled, autoTimeEnabled = autoTimeEnabled, mockAppPresent = mockAppPresent, integrityRef = integrityRef,
-        signalsJson = signals.takeIf { it.isNotEmpty() }?.joinToString(",", "[", "]") { "\"$it\"" },
+        signalsJson = signals?.joinToString(",", "[", "]") { "\"$it\"" },
     )
 }
 

@@ -46,11 +46,14 @@ object IntegrityGates {
     @Volatile private var sharedLog: IntegrityEventLog? = null
     @Volatile private var verifiedLab: VerifiedLabExemption? = null
 
-    /** This phone's device uuid, set once by the device runtime; null until then (a grant then verifies for nobody). */
+    /** This phone's device uuid, set once at the start of `Application.onCreate` (and again by the device runtime); null until then (a grant then verifies for nobody). */
     @Volatile var deviceUuid: () -> String? = { null }
 
-    /** A signed lab grant from the server; true when it verified for this device and was stored. Never throws. */
-    fun acceptLabGrant(context: Context, token: String): Boolean { get(context); return verifiedLab?.accept(token) == true }
+    /** The host of the API this build talks to (the audience of a lab grant), set with [deviceUuid]; null until then (a grant then verifies for nobody). */
+    @Volatile var apiHost: () -> String? = { null }
+
+    /** A signed lab grant from a fresh server response ([serverTimeMs] = its `meta.server_time`); true when it verified for this device and was stored. Never throws. */
+    fun acceptLabGrant(context: Context, token: String, serverTimeMs: Long?): Boolean { get(context); return runCatching { verifiedLab?.accept(token, serverTimeMs) == true }.getOrDefault(false) }
 
     /** The server withdrew the grant. */
     fun revokeLabGrant(context: Context) { get(context); verifiedLab?.revoke() }
@@ -66,9 +69,9 @@ object IntegrityGates {
      * verify changes nothing (it never widens, and a transient mismatch must not trap a lab phone). An ABSENT value is the server withdrawing the grant:
      * it is revoked. Call it only after a bundle was applied (a failed or offline load must not revoke). Never throws, needs no network.
      */
-    fun applyServerGrant(token: String?) {
+    fun applyServerGrant(token: String?, serverTimeMs: Long?) {
         val c = appContext ?: return
-        runCatching { get(c); verifiedLab?.applyServer(token) }
+        runCatching { get(c); verifiedLab?.applyServer(token, serverTimeMs) }
     }
 
     /**
@@ -117,7 +120,7 @@ object IntegrityGates {
         val meta = runCatching { app.packageManager.getApplicationInfo(app.packageName, PackageManager.GET_META_DATA).metaData?.get(META_EXEMPT)?.toString() }.getOrNull()
         val version = runCatching { app.packageManager.getPackageInfo(app.packageName, 0).versionName }.getOrNull().orEmpty()
         val publicKey = runCatching { app.getString(com.aktcl.aron.core.system.R.string.aron_lab_grant_public_key) }.getOrNull()
-        val verified = VerifiedLabExemption(dir, store, LabGrantVerifier(publicKey), { deviceUuid() }, clock).also { verifiedLab = it }
+        val verified = VerifiedLabExemption(dir, store, LabGrantVerifier(publicKey), { deviceUuid() }, { apiHost() }, clock).also { verifiedLab = it }
         val controller = IntegrityGateController(reader::read, store, log, dir, buildExemption(debug, meta), version, clock::wallMs, verifiedLab = verified::isActive)
         // Writers of new records ask at the moment they act (core-common ActionGate), so the gate cannot be raced.
         ActionGate.check = { !controller.check().blocked }

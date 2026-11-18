@@ -90,7 +90,7 @@ class BundleDownloader(
     private val stagingDir: File,
     private val clock: WallClock,
     /** What a full day bundle says about this phone's lab exemption (D-OWNER-MDM-02 iii): the signed grant, or null when the bundle has none (withdrawn). */
-    private val labGrant: (String?) -> Unit = com.aktcl.aron.core.system.integrity.IntegrityGates::applyServerGrant,
+    private val labGrant: (String?, Long?) -> Unit = com.aktcl.aron.core.system.integrity.IntegrityGates::applyServerGrant,
 ) {
     private val repo = ReferenceRepository(db)
     private val meta = db.referenceDao()
@@ -300,7 +300,7 @@ class BundleDownloader(
                 withContext(Dispatchers.IO) { stage.deleteRecursively() }
                 if (isDay) markLoggedIn(forDate)
                 // Only a day bundle that was APPLIED speaks for the server: an older, prefetch, failed or offline load never grants or revokes.
-                if (isDay && applied == ApplyResult.APPLIED) runCatching { labGrant(labGrantOf(bundle)) }
+                if (isDay && applied == ApplyResult.APPLIED) runCatching { labGrant(labGrantOf(bundle), serverTimeMs(bundle)) }
                 when (applied) {
                     ApplyResult.APPLIED -> { progress.safely(totalSteps, totalSteps); BundleReport(BundleOutcome.APPLIED, repo.bundleVersion(), repo.businessDate()) }
                     ApplyResult.OLDER_IGNORED -> BundleReport(BundleOutcome.OLDER_IGNORED, repo.bundleVersion(), repo.businessDate())
@@ -309,6 +309,9 @@ class BundleDownloader(
             }
         }
     }
+
+    /** `meta.server_time` of the response in UTC ms, null when absent or unreadable (a grant is then not accepted). */
+    internal fun serverTimeMs(bundle: BundleReference): Long? = bundle.meta.serverTime?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
 
     /** The string value of the device-scoped `cfg.integrity.lab_exemption`, or null when the bundle has none. */
     internal fun labGrantOf(bundle: BundleReference): String? = bundle.config?.values
@@ -394,7 +397,7 @@ class BundleDownloaders(
     private val databases: com.aktcl.aron.core.database.UserDatabases,
     private val api: SyncApi,
     private val clock: WallClock,
-    private val labGrant: (String?) -> Unit = com.aktcl.aron.core.system.integrity.IntegrityGates::applyServerGrant,
+    private val labGrant: (String?, Long?) -> Unit = com.aktcl.aron.core.system.integrity.IntegrityGates::applyServerGrant,
 ) {
     private val byUser = java.util.concurrent.ConcurrentHashMap<Long, BundleDownloader>()
 

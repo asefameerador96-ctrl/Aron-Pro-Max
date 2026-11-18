@@ -81,7 +81,7 @@ class IntegrityGateControllerTest {
         val e = Env(DevFlags(true, false)); val c = e.controller()
         c.noteOnset(c.check())
         assertEquals(1, IntegrityEventLog(e.dir).pending().size)
-        IntegrityEventLog(e.dir).ack(1)
+        IntegrityEventLog(e.dir).ack(IntegrityEventLog(e.dir).pending())
         assertTrue(IntegrityEventLog(e.dir).pending().isEmpty())
     }
 
@@ -124,9 +124,20 @@ class IntegrityGateControllerTest {
 
     @Test fun ackKeepsTheRestWithoutATornFile() {
         val e = Env(); repeat(5) { e.log.record(IntegrityEvent(it.toLong(), listOf("adb"), "none", "v")) }
-        e.log.ack(2)
+        e.log.ack(e.log.pending().take(2))
         assertEquals(listOf(2L, 3L, 4L), e.log.pending().map { it.atUtcMs })
         assertFalse(File(e.dir, "integrity-events.tmp").exists())
+    }
+
+    /** Review low: with a full log, an event recorded between pending() and ack drops the OLDEST line by the cap; "ack the first n" then removed an event nobody sent. */
+    @Test fun ackRemovesWhatWasSentByIdentityEvenWhenTheCapDroppedTheOldestInBetween() {
+        val e = Env(); repeat(IntegrityEventLog.CAP) { e.log.record(IntegrityEvent(it.toLong(), listOf("adb"), "none", "v")) }
+        val sent = e.log.pending().take(50) // events 0..49 go out
+        e.log.record(IntegrityEvent(1000L, listOf("adb"), "none", "v")) // the cap drops event 0 (already in `sent`)
+        e.log.ack(sent)
+        val left = e.log.pending().map { it.atUtcMs }
+        assertEquals("events 1..49 left with the ack; 50.. and the new one were never sent and stay", (50L until IntegrityEventLog.CAP.toLong()).toList() + 1000L, left)
+        e.log.ack(sent); assertEquals("acknowledging twice changes nothing", left, e.log.pending().map { it.atUtcMs })
     }
 
     @Test fun wirelessDebuggingAloneBlocksAndHasItsOwnCode() {

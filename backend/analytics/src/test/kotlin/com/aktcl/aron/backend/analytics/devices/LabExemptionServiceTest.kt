@@ -47,11 +47,12 @@ class LabExemptionServiceTest : ReportFixture() {
     private val clock = AronClock { now }
     private lateinit var service: DeviceService
     private var withKey = true
+    private val AUD = "api.test.example"
 
     override val successfulLogin = false
 
     override fun mount(r: Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {
-        val lab = LabExemptionService(fresh.db, if (withKey) signer else LabGrantSigner(null), this.clock)
+        val lab = LabExemptionService(fresh.db, if (withKey) signer else LabGrantSigner(null), AUD, this.clock)
         service = DeviceService(fresh.db, RegistryDefaults(), TestTokens.keys, EnrolmentSettings("https://api.example.test", "dev", AttestationTrust(emptySet())), this.clock, lab = lab)
         r.deviceRoutes(DeviceDeps(service, reach, guard, this.clock))
     }
@@ -79,7 +80,7 @@ class LabExemptionServiceTest : ReportFixture() {
     // ---- the service ----
 
     @Test fun aGrantIsSignedOnceForTheDeviceUuidAndStoredWithTheRow() {
-        val svc = LabExemptionService(fresh.db, signer, clock); val (id, uuid) = device()
+        val svc = LabExemptionService(fresh.db, signer, AUD, clock); val (id, uuid) = device()
         assertNull(svc.current(id), "no row, no exemption"); assertNull(storedToken(id))
         val exp = svc.grant(id, 13, 3, "ADB walk")
         assertEquals(now.plusSeconds(3 * 86_400L), exp)
@@ -92,7 +93,7 @@ class LabExemptionServiceTest : ReportFixture() {
     }
 
     @Test fun theCapAndTheNoteAreEnforcedAndRevokeWithdrawsTheRow() {
-        val svc = LabExemptionService(fresh.db, signer, clock); val (id, _) = device()
+        val svc = LabExemptionService(fresh.db, signer, AUD, clock); val (id, _) = device()
         assertFailsWith<IllegalArgumentException> { svc.grant(id, 13, 15, null) }
         assertFailsWith<IllegalArgumentException> { svc.grant(id, 13, 0, null) }
         assertFailsWith<IllegalArgumentException> { svc.grant(id, 13, 1, "x".repeat(301)) }
@@ -101,13 +102,33 @@ class LabExemptionServiceTest : ReportFixture() {
     }
 
     @Test fun aRevokedOrUnknownPhoneGetsNoGrant() {
-        val svc = LabExemptionService(fresh.db, signer, clock)
+        val svc = LabExemptionService(fresh.db, signer, AUD, clock)
         assertFailsWith<IllegalArgumentException> { svc.grant(device(status = "revoked").first, 13, 1, null) }
         assertFailsWith<IllegalArgumentException> { svc.grant(999_999L, 13, 1, null) }
     }
 
+    @Test fun theGrantNamesTheApiHostItWasSignedForAndNeedsOne() {
+        val svc = LabExemptionService(fresh.db, signer, AUD, clock); val (id, _) = device()
+        svc.grant(id, 13, 1, null)
+        assertTrue(String(Base64.getUrlDecoder().decode(storedToken(id)!!.substringBefore('.'))).contains("\"a\":\"$AUD\""))
+        val noAud = LabExemptionService(fresh.db, signer, "", clock)
+        assertFalse(noAud.canGrant); assertFailsWith<IllegalArgumentException> { noAud.grant(id, 13, 1, null) }
+        assertFailsWith<IllegalArgumentException> { signer.sign("u", "evil\",\"x", now, now.plusSeconds(60)) }
+        assertFailsWith<IllegalArgumentException> { signer.sign("u", "", now, now.plusSeconds(60)) }
+    }
+
+    @Test fun onlyAnEcP256PrivateKeyCanSign() {
+        fun b64(k: java.security.PrivateKey) = Base64.getEncoder().encodeToString(k.encoded)
+        val p384 = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp384r1")) }.generateKeyPair().private
+        val rsa = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair().private
+        assertFalse(LabGrantSigner(b64(p384)).configured, "a P-384 key is refused")
+        assertFalse(LabGrantSigner(b64(rsa)).configured, "an RSA key is refused")
+        assertTrue(LabGrantSigner(b64(kp.private)).configured)
+        assertFailsWith<IllegalStateException> { LabGrantSigner(b64(p384)).sign("u", AUD, now, now.plusSeconds(60)) }
+    }
+
     @Test fun withoutASigningKeyNothingIsGranted() {
-        val off = LabExemptionService(fresh.db, LabGrantSigner(null), clock); val (id, _) = device()
+        val off = LabExemptionService(fresh.db, LabGrantSigner(null), AUD, clock); val (id, _) = device()
         assertFalse(off.canGrant)
         assertFailsWith<IllegalArgumentException> { off.grant(id, 13, 1, null) }
         assertEquals(0, count("SELECT count(*) FROM app.device_lab_exemption WHERE device_id = $id"))
@@ -189,7 +210,7 @@ class LabExemptionServiceTest : ReportFixture() {
     }
 
     @Test fun aGrantForAnotherPhoneDoesNotVerifyForThisOne() {
-        val svc = LabExemptionService(fresh.db, signer, clock); val (a, ua) = device(); val (b, ub) = device()
+        val svc = LabExemptionService(fresh.db, signer, AUD, clock); val (a, ua) = device(); val (b, ub) = device()
         svc.grant(a, 13, 1, null)
         assertTrue(verifies(storedToken(a)!!, ua)); assertFalse(verifies(storedToken(a)!!, ub)); assertNotEquals(ua, ub); assertEquals(0, count("SELECT count(*) FROM app.device_lab_exemption WHERE device_id = $b"))
     }

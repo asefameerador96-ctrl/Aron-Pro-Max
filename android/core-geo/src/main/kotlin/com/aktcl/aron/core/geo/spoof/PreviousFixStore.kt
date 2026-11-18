@@ -57,9 +57,13 @@ class AndroidSpoofChecker(
     override fun check(loc: RawLocationView?, gnssJson: String?, reused: Boolean): SpoofResult {
         val nowElapsed = clock.elapsedRealtimeMs()
         val network = if (loc != null) probes.networkFix(nowElapsed * 1_000_000L) else null
-        return SpoofEvaluator.evaluate(
+        val result = SpoofEvaluator.evaluate(
             SpoofInput(loc, nowElapsed, clock.nowMs(), reused, gnssFacts(gnssJson), previous.load(), network, probes.facts()), thresholds,
         )
+        // A refusal that rests on the cached facts (a selected mock app, a test provider) is the rep's cue to fix something and open the outlet again: the next
+        // fix must see the change, not the 10-minute cache (the refusal text says "turn it off, open the outlet again").
+        if (result.codes.any { it == SpoofCode.MOCK_APP_SELECTED || it == SpoofCode.TEST_PROVIDER }) probes.invalidate()
+        return result
     }
 
     /** The package, AppOps, root-hint and `/proc/self/maps` reads are cached for 10 minutes; take them off the caller's (often the main) thread. */

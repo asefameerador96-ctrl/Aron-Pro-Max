@@ -163,12 +163,17 @@ object PhoneSignalRules {
         "root_hint" to ("DEVICE_INTEGRITY_FAIL" to 3), "emulator" to ("DEVICE_INTEGRITY_FAIL" to 3), "hook_framework" to ("DEVICE_INTEGRITY_FAIL" to 3),
     )
 
-    fun fromFixes(fixes: List<PhoneSignalFix>): List<RiskHit> = fixes.groupBy { it.phone }.flatMap { (phone, list) ->
+    /**
+     * One hit per risk code, phone AND user: on a shared phone each rep's codes make their own row (their own `user_id`, so portal scope and the reviewer's view are right),
+     * never one row attributed to the first rep. [disambiguate] gives rows of the same phone and code distinct subject ids.
+     */
+    fun fromFixes(fixes: List<PhoneSignalFix>): List<RiskHit> = fixes.groupBy { it.phone to it.userId }.flatMap { (key, list) ->
+        val (phone, userId) = key
         val perRisk = linkedMapOf<String, MutableList<Pair<String, PhoneSignalFix>>>()
         list.forEach { f -> f.signals.distinct().forEach { code -> MAP[code]?.let { (risk, _) -> perRisk.getOrPut(risk) { mutableListOf() } += code to f } } }
         perRisk.map { (risk, hits) ->
             val first = hits.first().second
-            RiskHit(risk, hits.maxOf { MAP.getValue(it.first).second }, "device", phone, first.userId, first.routeId, buildJsonObject {
+            RiskHit(risk, hits.maxOf { MAP.getValue(it.first).second }, "device", phone, userId, first.routeId, buildJsonObject {
                 put("source", "phone_signals")
                 put("fixes", hits.map { it.second.sourceUuid }.distinct().size)
                 put("codes", buildJsonObject { hits.groupingBy { it.first }.eachCount().toSortedMap().forEach { (c, n) -> put(c, n) } })
@@ -177,11 +182,21 @@ object PhoneSignalRules {
         }
     }
 
+    /**
+     * Rows of one risk code on one phone but of DIFFERENT users (a shared phone) must not collide on the unique key (code, subject type, subject id, date): they get the subject id
+     * `<phone>#<user id>`. A phone with one user keeps the plain phone id, which is the device UUID for an enrolled phone (the same id the existing DEVICE_INTEGRITY_FAIL rows use).
+     */
+    fun disambiguate(hits: List<RiskHit>): List<RiskHit> {
+        val shared = hits.filter { it.subjectType == "device" }.groupBy { it.code to it.subjectId }.filterValues { rows -> rows.map { it.userId }.distinct().size > 1 }.keys
+        return hits.map { h -> if (h.subjectType == "device" && (h.code to h.subjectId) in shared) h.copy(subjectId = "${h.subjectId}#${h.userId}") else h }
+    }
+
     /** DEVICE_DEBUG_ENABLED when the gate blocked the app (exempt `none`) at least once; a repeated event counts once (identity: at + flags). Exempt events are only counted in the evidence. */
-    fun fromIntegrityEvents(events: List<IntegrityEventRow>): List<RiskHit> = events.distinctBy { Triple(it.phone, it.atUtc, it.flags) }.groupBy { it.phone }.mapNotNull { (phone, list) ->
+    fun fromIntegrityEvents(events: List<IntegrityEventRow>): List<RiskHit> = events.distinctBy { Triple(it.phone, it.atUtc, it.flags) }.groupBy { it.phone to it.userId }.mapNotNull { (key, list) ->
+        val (phone, userId) = key
         val blocked = list.filter { it.exempt == "none" }
         if (blocked.isEmpty()) return@mapNotNull null
-        RiskHit("DEVICE_DEBUG_ENABLED", 3, "device", phone, blocked.first().userId, null, buildJsonObject {
+        RiskHit("DEVICE_DEBUG_ENABLED", 3, "device", phone, userId, null, buildJsonObject {
             put("source", "integrity_events"); put("blocked_events", blocked.size); put("exempt_events", list.size - blocked.size)
             put("flags", buildJsonObject { blocked.flatMap { it.flags }.groupingBy { it }.eachCount().toSortedMap().forEach { (c, n) -> put(c, n) } })
         })
@@ -197,6 +212,11 @@ object PhoneSignalRules {
  */
 class RiskSignalEvaluator(private val db: Database, private val config: ServerConfig) {
     private val log = LoggerFactory.getLogger("aron.risk")
+
+    private companion object {
+        const val LATE_REPORT_DAYS = 7
+        val DHAKA: java.time.ZoneId = java.time.ZoneId.of("Asia/Dhaka")
+    }
 
     fun evaluateDay(date: LocalDate): Int = db.jdbi.inTransaction<Int, Exception> { h -> evaluate(h, date) }
 
@@ -240,30 +260,36 @@ class RiskSignalEvaluator(private val db: Database, private val config: ServerCo
             try { RiskRules.routeSinglePoint(r, t)?.let(hits::add) } catch (e: Exception) { log.error("route rule skipped on $date: ${e.javaClass.simpleName}") }
         }
         hits += isolated(h, "mismatch", date, emptyList()) { mismatches(h, date, t) }
-        hits += isolated(h, "phone_signals", date, emptyList()) { PhoneSignalRules.fromFixes(phoneSignalFixes(h, date)) }
-        hits += isolated(h, "integrity_events", date, emptyList()) { PhoneSignalRules.fromIntegrityEvents(integrityEvents(h, date)) }
+        val phoneHits = isolated(h, "phone_signals", date, emptyList()) { PhoneSignalRules.fromFixes(phoneSignalFixes(h, date)) } +
+            isolated(h, "integrity_events", date, emptyList()) { PhoneSignalRules.fromIntegrityEvents(integrityEvents(h, date)) }
+        hits += PhoneSignalRules.disambiguate(phoneHits)
         var stored = 0
         for (hit in hits) stored += isolated(h, "store", date, 0) { store(h, hit, date, weights[hit.code] ?: 0.0, version); 1 }
         return stored
     }
 
-    /** Fixes that carry at least one code. Never throws on a stored value: a null or odd array element is skipped, a row that cannot be read is skipped. */
+    /** Fixes that carry at least one code. Never throws on a stored value: a null or odd array element is skipped, a row that cannot be read is skipped. The phone is its device UUID (the id the other device rows use), else `user-<id>`. */
     private fun phoneSignalFixes(h: Handle, date: LocalDate): List<PhoneSignalFix> = h.createQuery(
-        "SELECT COALESCE(device_id::text, 'user-' || user_id) AS phone, user_id, route_id, source_client_uuid, signals FROM app.geo_fix " +
-            "WHERE business_date = :d AND voided_at IS NULL AND signals IS NOT NULL AND cardinality(signals) > 0 ORDER BY id",
+        "SELECT COALESCE(d.device_uuid::text, 'user-' || g.user_id) AS phone, g.user_id, g.route_id, g.source_client_uuid, g.signals FROM app.geo_fix g LEFT JOIN app.device d ON d.id = g.device_id " +
+            "WHERE g.business_date = :d AND g.voided_at IS NULL AND g.signals IS NOT NULL AND cardinality(g.signals) > 0 ORDER BY g.id",
     ).bind("d", date).map { rs, _ ->
         runCatching {
             PhoneSignalFix(rs.getString("phone"), rs.getLong("user_id"), rs.getObject("route_id") as Long?, rs.getString("source_client_uuid"), (rs.getArray("signals").array as Array<*>).mapNotNull { it?.toString() })
         }.getOrNull()
     }.list().filterNotNull()
 
+    /**
+     * The gate onsets whose OWN time falls on [date] (Dhaka business date), whichever report carried them: a report sent days later, or the same event re-sent across Dhaka
+     * midnight after a kill, counts on the date the event happened and once (the identity is phone, user, time and flags). Reports of [date] up to [LATE_REPORT_DAYS] days later are read.
+     */
     private fun integrityEvents(h: Handle, date: LocalDate): List<IntegrityEventRow> {
         var skipped = 0
         val rows = h.createQuery(
-            "SELECT COALESCE(device_id::text, 'user-' || user_id) AS phone, user_id, (report -> 'integrity_events')::text AS ev FROM app.device_status_report " +
-                "WHERE business_date = :d AND user_id IS NOT NULL AND jsonb_typeof(report -> 'integrity_events') = 'array' ORDER BY id",
-        ).bind("d", date).map { rs, _ -> Triple(rs.getString("phone"), rs.getLong("user_id"), rs.getString("ev")) }.list()
+            "SELECT COALESCE(d.device_uuid::text, 'user-' || r.user_id) AS phone, r.user_id, (r.report -> 'integrity_events')::text AS ev FROM app.device_status_report r LEFT JOIN app.device d ON d.id = r.device_id " +
+                "WHERE r.business_date BETWEEN :d AND :d + :late AND r.user_id IS NOT NULL AND CASE WHEN jsonb_typeof(r.report -> 'integrity_events') = 'array' THEN jsonb_array_length(r.report -> 'integrity_events') ELSE 0 END > 0 ORDER BY r.id",
+        ).bind("d", date).bind("late", LATE_REPORT_DAYS).map { rs, _ -> Triple(rs.getString("phone"), rs.getLong("user_id"), rs.getString("ev")) }.list()
             .flatMap { (phone, uid, ev) -> IntegrityEventReader.read(phone, uid, ev).also { skipped += it.skipped }.events }
+            .filter { runCatching { java.time.Instant.parse(it.atUtc).atZone(DHAKA).toLocalDate() == date }.getOrDefault(false) }
         if (skipped > 0) log.warn("risk integrity events: $skipped malformed element(s) skipped on $date")
         return rows
     }

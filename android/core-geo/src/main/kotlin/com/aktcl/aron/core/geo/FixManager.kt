@@ -194,7 +194,8 @@ class FixManager(
         mockWithoutLocation: Boolean = false,
     ): TakenFix {
         val captureElapsed = clock.elapsedRealtimeMs()
-        val spoofResult = runCatching { spoof.check(loc, gnssJson, reused) }.getOrDefault(com.aktcl.aron.core.geo.spoof.SpoofResult.NONE)
+        // A check that throws leaves the codes UNKNOWN (null), never "clean": the platform mock flag still applies through loc.isMock.
+        val spoofResult = runCatching { spoof.check(loc, gnssJson, reused) }.getOrNull()
         val fixElapsedMs = loc?.elapsedRealtimeNanos?.takeIf { it > 0 }?.div(NANOS_PER_MS)
         return TakenFix(
             purpose = purpose,
@@ -217,8 +218,8 @@ class FixManager(
             refreshCount = refreshCount.coerceIn(0, MAX_REFRESH_COUNT),
             gnssJson = gnssJson,
             device = deviceState.read(),
-            signals = spoofResult.wire,
-            hardSpoof = spoofResult.hard,
+            signals = spoofResult?.wire,
+            hardSpoof = spoofResult?.hard == true,
         )
     }
 

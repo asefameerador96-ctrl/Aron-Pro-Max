@@ -63,6 +63,30 @@ class AndroidSpoofProbesTest {
         install("com.lexa.fakegps", 10_222); p.invalidate(); assertTrue(p.facts().fakeGpsAppInstalled)
     }
 
+    private fun fixAt(clock: Clock) = com.aktcl.aron.core.geo.RawLocation(23.80, 90.36, 8.0, provider = "fused", timeMs = clock.nowMs(), elapsedRealtimeNanos = clock.el * 1_000_000L, isMock = false)
+
+    /** Review low: a rep who follows the refusal text (turn off and uninstall the fake-GPS app, open the outlet again) was refused again until the 10-minute cache ran out. */
+    @Test fun aRefusalThatRestsOnTheCachedFactsIsNotRepeatedAfterTheRepFixedItWithinTheTtl() {
+        val clock = Clock(); val p = AndroidSpoofProbes(app, clock, listOf("com.lexa.fakegps"), ttlMs = 10 * 60_000L)
+        val uid = install("com.lexa.fakegps", 10_222)
+        shadowOf(app.getSystemService(AppOpsManager::class.java)).setMode(58, uid, "com.lexa.fakegps", AppOpsManager.MODE_ALLOWED)
+        val checker = AndroidSpoofChecker(p, PreviousFixStore.Memory(), clock)
+        assertTrue("selected mock app: refused", checker.check(fixAt(clock), null, false).codes.contains(SpoofCode.MOCK_APP_SELECTED))
+        shadowOf(app.packageManager).removePackage("com.lexa.fakegps")
+        clock.el += 60_000 // one minute later, far inside the TTL: the rep went to Settings and uninstalled it
+        assertFalse("the next fix sees the change", checker.check(fixAt(clock), null, false).codes.contains(SpoofCode.MOCK_APP_SELECTED))
+    }
+
+    @Test fun aSoftSignalAloneDoesNotDropTheCache() {
+        val clock = Clock(); val p = AndroidSpoofProbes(app, clock, listOf("com.lexa.fakegps"), ttlMs = 10 * 60_000L)
+        val uid = install("com.lexa.fakegps", 10_222) // installed, NOT selected: soft only (a real phone's default op is MODE_ERRORED; Robolectric's is ALLOWED)
+        shadowOf(app.getSystemService(AppOpsManager::class.java)).setMode(58, uid, "com.lexa.fakegps", AppOpsManager.MODE_ERRORED)
+        val checker = AndroidSpoofChecker(p, PreviousFixStore.Memory(), clock)
+        assertTrue(checker.check(fixAt(clock), null, false).codes.contains(SpoofCode.FAKE_GPS_APP_INSTALLED))
+        shadowOf(app.packageManager).removePackage("com.lexa.fakegps"); clock.el += 60_000
+        assertTrue("no hard code: the cache (and its cost) stays", checker.check(fixAt(clock), null, false).codes.contains(SpoofCode.FAKE_GPS_APP_INSTALLED))
+    }
+
     @Test fun theResourceListIsReadFromTheOneResourceFile() {
         val list = FakeGpsPackages.list(app)
         assertTrue(list.size >= 10); assertTrue("com.lexa.fakegps" in list); assertEquals(list.size, list.toSet().size)

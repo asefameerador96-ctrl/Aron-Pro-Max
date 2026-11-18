@@ -26,10 +26,14 @@ class IntegrityEventLog(private val dir: File) {
 
     fun pending(): List<IntegrityEvent> = synchronized(lock) { pendingLines().mapNotNull(::decode) }
 
-    /** Removes the first [count] events (those sent and acknowledged). */
-    fun ack(count: Int) = synchronized(lock) {
+    /**
+     * Removes the events that were sent and acknowledged, BY IDENTITY (one stored line per sent event). Not "the first n": when the log is full and the gate records an
+     * event between [pending] and this call, the oldest line is dropped by the cap, and removing "the first n" would then remove an event that was never sent.
+     */
+    fun ack(sent: List<IntegrityEvent>) = synchronized(lock) {
         runCatching {
-            val rest = pendingLines().drop(count)
+            val toRemove = sent.map(::encode).toMutableList()
+            val rest = pendingLines().filter { line -> !toRemove.remove(line) }
             if (rest.isEmpty()) com.aktcl.aron.core.common.AtomicText.delete(file)
             else com.aktcl.aron.core.common.AtomicText.write(file, rest.joinToString("\n")) // atomic replace: a kill never loses pending events
         }

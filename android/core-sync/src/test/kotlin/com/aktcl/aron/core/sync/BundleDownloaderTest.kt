@@ -122,7 +122,7 @@ class BundleDownloaderTest {
         runCatching { server.close() }
     }
 
-    private fun downloader(origin: String = server.url("/").toString().trimEnd('/'), labGrant: (String?) -> Unit = {}): BundleDownloader {
+    private fun downloader(origin: String = server.url("/").toString().trimEnd('/'), labGrant: (String?, Long?) -> Unit = { _, _ -> }): BundleDownloader {
         val ok = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
         val client = AronApiClient(ApiOrigin.parse(origin, allowCleartextLoopback = true), ok, ClientIdentity("1.0.3+10003") { "6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f" })
         return BundleDownloader(db, SyncApi(client), staging, Clock, labGrant)
@@ -281,37 +281,38 @@ class BundleDownloaderTest {
     }
 
     @Test fun aDayBundleThatCarriesTheGrantHandsItToTheGateAndOneWithoutItWithdraws() = runBlocking {
-        val seen = ArrayList<String?>()
+        val seen = ArrayList<String?>(); val times = ArrayList<Long?>()
         bundleBody = { withLabGrant("tok.sig") }
-        assertEquals(BundleOutcome.APPLIED, downloader(labGrant = { seen += it }).download().outcome)
+        assertEquals(BundleOutcome.APPLIED, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
         assertEquals(listOf<String?>("tok.sig"), seen)
+        assertEquals("the response's own server time travels with the grant (it is what the phone judges freshness and expiry against)", listOf<Long?>(java.time.Instant.parse("2026-10-05T02:12:44.120Z").toEpochMilli()), times)
         bundleBody = { withLabGrant(null).replace("2026-10-05:3", "2026-10-05:4") }
         db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG)
-        assertEquals(BundleOutcome.APPLIED, downloader(labGrant = { seen += it }).download().outcome)
+        assertEquals(BundleOutcome.APPLIED, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
         assertEquals("a full bundle without the value is the server withdrawing it", listOf<String?>("tok.sig", null), seen)
     }
 
     @Test fun onlyTheDeviceScopedValueCountsAndOnlyAnAppliedDayBundleSpeaks() = runBlocking {
-        val seen = ArrayList<String?>()
+        val seen = ArrayList<String?>(); val times = ArrayList<Long?>()
         bundleBody = { withLabGrant("tok.sig", scope = "global") }
-        downloader(labGrant = { seen += it }).download()
+        downloader(labGrant = { t, st -> seen += t; times += st }).download()
         assertEquals("a value of another scope is not a grant", listOf<String?>(null), seen)
         seen.clear()
         // offline, an older snapshot, a failed or unreadable bundle and a prefetch never grant and never revoke
         bundleBody = { withLabGrant("tok.sig").replace("2026-10-05:3", "2026-10-05:2") }
         db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG)
-        assertEquals(BundleOutcome.OLDER_IGNORED, downloader(labGrant = { seen += it }).download().outcome)
+        assertEquals(BundleOutcome.OLDER_IGNORED, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
         bundleBody = { """{"meta": {"bundle_version": "2026-10-05:9"}}""" }
         db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG)
-        assertEquals(BundleOutcome.FAILED, downloader(labGrant = { seen += it }).download().outcome)
+        assertEquals(BundleOutcome.FAILED, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
         bundleBody = {
             val b = Json.parseToJsonElement(withLabGrant("tok.sig")).jsonObject
             val meta = JsonObject(b["meta"]!!.jsonObject + mapOf("bundle_version" to JsonPrimitive("2026-10-06:1"), "valid_for_business_date" to JsonPrimitive("2026-10-06"), "is_prefetch" to JsonPrimitive(true)))
             JsonObject(b + ("meta" to meta) + ("routes" to JsonArray(b["routes"]!!.jsonArray.take(1)))).toString()
         }
-        assertEquals(BundleOutcome.PREFETCH_STORED, downloader(labGrant = { seen += it }).download("2026-10-06").outcome)
+        assertEquals(BundleOutcome.PREFETCH_STORED, downloader(labGrant = { t, st -> seen += t; times += st }).download("2026-10-06").outcome)
         server.close()
-        assertEquals(BundleOutcome.OFFLINE, downloader(labGrant = { seen += it }).download().outcome)
+        assertEquals(BundleOutcome.OFFLINE, downloader(labGrant = { t, st -> seen += t; times += st }).download().outcome)
         assertEquals(emptyList<String?>(), seen)
     }
 

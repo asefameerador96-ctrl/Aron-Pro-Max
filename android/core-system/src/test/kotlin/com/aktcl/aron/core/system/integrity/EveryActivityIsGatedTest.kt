@@ -43,6 +43,17 @@ class EveryActivityIsGatedTest {
         assertEquals("these activities do not call setGatedContent inside onCreate: $bad", emptyList<String>(), bad)
     }
 
+    /** Review: the lab grant is judged for this phone and this environment, so the uuid and the API host must be known before the first gate check after a cold start. */
+    @Test fun eachApplicationSetsTheDeviceUuidAndTheApiHostBeforeItInstallsTheGate() {
+        for (a in listOf("sr" to "AronSRApplication", "amo" to "AronAMOApplication", "tso" to "AronTSOApplication")) {
+            val src = code(File(root, "app-${a.first}/src/main/kotlin/com/aktcl/aron/${a.first}/${a.second}.kt"))
+            val body = functionBody(src, "override fun onCreate") ?: error("${a.second} has no onCreate")
+            val install = body.indexOf("IntegrityGates.install")
+            assertTrue("${a.second} sets IntegrityGates.deviceUuid before install", body.indexOf("IntegrityGates.deviceUuid") in 0 until install)
+            assertTrue("${a.second} sets IntegrityGates.apiHost before install", body.indexOf("IntegrityGates.apiHost") in 0 until install)
+        }
+    }
+
     @Test fun eachApplicationInstallsTheGateInOnCreate() {
         for (a in listOf("sr" to "AronSRApplication", "amo" to "AronAMOApplication", "tso" to "AronTSOApplication")) {
             val src = code(File(root, "app-${a.first}/src/main/kotlin/com/aktcl/aron/${a.first}/${a.second}.kt"))

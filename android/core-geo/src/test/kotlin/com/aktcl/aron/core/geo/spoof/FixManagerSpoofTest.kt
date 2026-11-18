@@ -43,6 +43,20 @@ class FixManagerSpoofTest {
         assertFalse(soft.hardSpoof); assertEquals(listOf("jump"), soft.signals)
     }
 
+    /** Review lows: a checked clean fix is an EMPTY list (the contract's "checked, nothing found"); a check that throws is UNKNOWN (null), never clean. */
+    @Test fun aCleanCheckedFixCarriesAnEmptyListAndAFailedCheckCarriesNone() = runTest {
+        val clock = FakeClock()
+        val clean = manager(Recording(SpoofResult.NONE), clock, FakeSource(clock)).take(FixPurpose.VISIT_OPEN)
+        assertEquals(emptyList<String>(), clean.signals); assertFalse(clean.hardSpoof)
+        val boom = object : SpoofChecker {
+            override fun check(loc: RawLocationView?, gnssJson: String?, reused: Boolean): SpoofResult = error("probe failed")
+            override fun onFreshFix(loc: RawLocation) = Unit
+        }
+        val failed = manager(boom, clock, FakeSource(clock)).take(FixPurpose.VISIT_OPEN)
+        assertEquals(null, failed.signals); assertFalse(failed.hardSpoof)
+        assertEquals("ok", failed.fixStatus.wire)
+    }
+
     @Test fun theSlowFactsAreReadFirstInTheSuspendingPrepareStepThenTheFixIsChecked() = runTest {
         val clock = FakeClock(); val rec = Recording(SpoofResult.NONE)
         manager(rec, clock, FakeSource(clock)).take(FixPurpose.VISIT_OPEN)

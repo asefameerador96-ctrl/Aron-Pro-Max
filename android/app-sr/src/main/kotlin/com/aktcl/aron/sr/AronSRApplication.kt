@@ -38,6 +38,9 @@ class AronSRApplication : Application(), Configuration.Provider {
         super.onCreate()
         // Developer options gate (D-OWNER-MDM-02): built here, before ANY activity, so ActionGate guards writes from the first moment;
         // "Sync now" on the gate screen asks for an upload at once so queued records leave the phone while the gate is up.
+        // The gate's lab grant is judged for THIS phone and THIS environment: the uuid and the API host are known before the first gate check after a cold start.
+        com.aktcl.aron.core.system.integrity.IntegrityGates.deviceUuid = { runCatching { sessionComponents.deviceIdentity.deviceUuid }.getOrNull() }
+        com.aktcl.aron.core.system.integrity.IntegrityGates.apiHost = { runCatching { sessionComponents.apiClient.origin.url.host }.getOrNull() }
         com.aktcl.aron.core.system.integrity.IntegrityGates.install(this) {
             val id = (sessionComponents.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId
             if (id != null) syncScheduler.requestSync(id, com.aktcl.aron.contract.SyncTrigger.MANUAL)

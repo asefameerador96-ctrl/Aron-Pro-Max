@@ -97,9 +97,10 @@ data class TakenFix(
     /**
      * Anti-spoofing signal codes (D-OWNER-MDM-02; `com.aktcl.aron.core.geo.spoof.SpoofCode.wire`), stable order, empty on a
      * clean fix. None is proof. [hardSpoof] is true when any HARD code is present (mock flag, selected mock app, test
-     * provider): the geo-validated action is refused. Soft codes only ride the record.
+     * provider): the geo-validated action is refused. Soft codes only ride the record. NULL means the check did not run
+     * or failed: unknown, never clean (the contract sends no `signals` member then); an EMPTY list is "checked, nothing found".
      */
-    val signals: List<String> = emptyList(),
+    val signals: List<String>? = null,
     val hardSpoof: Boolean = false,
 ) {
     val isOk: Boolean get() = fixStatus == FixStatus.OK

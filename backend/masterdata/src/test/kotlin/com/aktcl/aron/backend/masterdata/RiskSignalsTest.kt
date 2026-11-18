@@ -226,4 +226,54 @@ class RiskSignalsTest {
         assertEquals(1, n, "the missing table broke the integrity-events source only; the mock hit was still stored")
         assertEquals(1, env.scalar("SELECT count(*) FROM app.risk_signal WHERE user_id = $uid AND business_date = '$day'")!!.toInt())
     }
+
+    // ---- review lows: events dated by their own time, shared phones, the device UUID as the subject ----
+
+    private fun deviceUuid(id: Long) = env.scalar("SELECT device_uuid::text FROM app.device WHERE id = $id")!!
+
+    @Test
+    fun aGateOnsetCountsOnTheDateItHappenedNotOnTheDateOfTheReportThatCarriedIt() {
+        val db = env.fresh.db; val cfg = DbServerConfig(db, RegistryDefaults())
+        val uid = env.ids.getValue("sr1001"); val dev = insertDevice()
+        val d1 = LocalDate.parse("2027-05-10"); val d2 = d1.plusDays(1)
+        // reported the next day (a kill, a late sync, a re-send across Dhaka midnight): one onset of d1 (22:00 UTC = 04:00 Dhaka d2!), see below, and two of d2
+        statusReport(dev, uid, d2, """{"integrity_events":[{"at":"2027-05-10T09:00:00Z","flags":["adb"],"exempt":"none"},{"at":"2027-05-10T20:00:00Z","flags":["dev_options"],"exempt":"none"},{"at":"2027-05-11T07:00:00Z","flags":["adb"],"exempt":"none"}]}""")
+        // the same first event sent again in a later report (identity: phone, user, time, flags): it must not count twice
+        statusReport(dev, uid, d2, """{"integrity_events":[{"at":"2027-05-10T09:00:00Z","flags":["adb"],"exempt":"none"}]}""")
+        val ev = RiskSignalEvaluator(db, cfg)
+        ev.evaluateDay(d1); ev.evaluateDay(d2)
+        fun blocked(d: LocalDate) = env.scalar("SELECT evidence ->> 'blocked_events' FROM app.risk_signal WHERE code = 'DEVICE_DEBUG_ENABLED' AND business_date = '$d' AND user_id = $uid")
+        assertEquals("1", blocked(d1), "09:00Z = 15:00 Dhaka on the 10th; the re-sent copy counts once")
+        assertEquals("2", blocked(d2), "20:00Z on the 10th is 02:00 Dhaka on the 11th, plus 07:00Z on the 11th")
+        assertEquals(deviceUuid(dev), env.scalar("SELECT subject_id FROM app.risk_signal WHERE code = 'DEVICE_DEBUG_ENABLED' AND business_date = '$d1' AND user_id = $uid"), "the subject is the device UUID, like the other device rows")
+    }
+
+    @Test
+    fun aSharedPhoneGivesEachRepHisOwnRowAndASinglePhoneKeepsThePlainDeviceUuid() {
+        val db = env.fresh.db; val cfg = DbServerConfig(db, RegistryDefaults())
+        val a = env.ids.getValue("sr1001"); val b = env.ids.values.first { it != a }
+        val shared = insertDevice(); val solo = insertDevice(); val day = LocalDate.parse("2027-05-12")
+        fun fix(dev: Long, uid: Long, signals: String) = db.jdbi.useHandle<Exception> { h ->
+            h.createUpdate(
+                "INSERT INTO app.geo_fix (business_date, source_type, source_client_uuid, user_id, device_id, captured_at, purpose, fix_status, lat, lng, accuracy_m, provider, is_mock, reused, device_owner, dev_options_enabled, adb_enabled, auto_time_enabled, mock_app_present, signals) " +
+                    "VALUES (:d, 'visit', :u, :uid, :dev, CAST('2027-05-12T04:00:00Z' AS timestamptz), 'visit_open', 'ok', 23.8, 90.36, 12, 'fused', false, false, false, false, false, true, false, CAST(:sig AS text[]))",
+            ).bind("d", day).bind("u", UUID.randomUUID()).bind("uid", uid).bind("dev", dev).bind("sig", signals).execute()
+        }
+        fix(shared, a, "{hook_framework}"); fix(shared, b, "{emulator}") // two reps, one phone, the same risk code
+        fix(solo, a, "{root_hint}")                                       // one rep, one phone
+        RiskSignalEvaluator(db, cfg).evaluateDay(day)
+        val rows = db.jdbi.withHandle<List<Triple<String, String, Long>>, Exception> { h ->
+            h.createQuery("SELECT code, subject_id, user_id FROM app.risk_signal WHERE business_date = :d AND code = 'DEVICE_INTEGRITY_FAIL' ORDER BY subject_id").bind("d", day).map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getLong(3)) }.list()
+        }
+        assertEquals(3, rows.size, "one row per rep on the shared phone, one for the solo phone: $rows")
+        assertEquals(setOf("${deviceUuid(shared)}#$a" to a, "${deviceUuid(shared)}#$b" to b, deviceUuid(solo) to a), rows.map { it.second to it.third }.toSet())
+        assertTrue(rows.all { it.second.length <= 64 })
+    }
+
+    @Test
+    fun disambiguateOnlyTouchesCodesThatTwoUsersShareOnOnePhone() {
+        fun hit(code: String, phone: String, uid: Long) = RiskHit(code, 3, "device", phone, uid, null, kotlinx.serialization.json.JsonObject(emptyMap()))
+        val out = PhoneSignalRules.disambiguate(listOf(hit("A", "p", 1), hit("A", "p", 2), hit("B", "p", 1), hit("A", "q", 1), RiskHit("A", 3, "user", "p", 5, null, kotlinx.serialization.json.JsonObject(emptyMap()))))
+        assertEquals(listOf("p#1", "p#2", "p", "q", "p"), out.map { it.subjectId })
+    }
 }

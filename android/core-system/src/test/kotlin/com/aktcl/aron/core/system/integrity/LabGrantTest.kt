@@ -20,39 +20,46 @@ class LabGrantTest {
     private val clock = LabExemptionStoreTest.Clock()
     private val day = 24 * 3600_000L
     private val dev = "11111111-2222-3333-4444-555555555555"
+    private val aud = "api.aktcl.example"
 
-    private fun token(device: String = dev, exp: Long = clock.wall + 2 * day, signer: java.security.PrivateKey = kp.private, v: Int = 1, tamper: Boolean = false): String {
-        val payload = """{"v":$v,"d":"$device","iat":${clock.wall},"exp":$exp}""".toByteArray()
-        val sig = Signature.getInstance("SHA256withECDSA").apply { initSign(signer); update(payload) }.sign()
+    private fun token(
+        device: String = dev, exp: Long = clock.wall + 2 * day, signer: java.security.PrivateKey = kp.private, v: Int = 1, tamper: Boolean = false,
+        audience: String = aud, iat: Long = clock.wall, signature: ((ByteArray) -> ByteArray)? = null,
+    ): String {
+        val payload = """{"v":$v,"d":"$device","a":"$audience","iat":$iat,"exp":$exp}""".toByteArray()
+        val sig = Signature.getInstance("SHA256withECDSA").apply { initSign(signer); update(payload) }.sign().let { signature?.invoke(it) ?: it }
         val e = Base64.getUrlEncoder().withoutPadding()
         return e.encodeToString(if (tamper) payload.map { if (it == '2'.code.toByte()) '9'.code.toByte() else it }.toByteArray() else payload) + "." + e.encodeToString(sig)
     }
 
-    private fun lab(d: File = Files.createTempDirectory("lg").toFile(), key: String? = pub, device: String? = dev): Pair<VerifiedLabExemption, File> =
-        VerifiedLabExemption(d, LabExemptionStore(d, clock), LabGrantVerifier(key), { device }, clock) to d
+    private fun lab(d: File = Files.createTempDirectory("lg").toFile(), key: String? = pub, device: String? = dev, audience: String? = aud): Pair<VerifiedLabExemption, File> =
+        VerifiedLabExemption(d, LabExemptionStore(d, clock), LabGrantVerifier(key), { device }, { audience }, clock) to d
+
+    /** A grant that arrived in a fresh response: the server's time is the phone's time. */
+    private fun VerifiedLabExemption.take(t: String) = accept(t, clock.wall)
 
     @Test fun aGrantSignedForThisDeviceVerifiesAndIsHonoured() {
         val (l, _) = lab(); assertFalse(l.isActive())
-        assertTrue(l.accept(token())); assertTrue(l.isActive())
+        assertTrue(l.take(token())); assertTrue(l.isActive())
     }
 
     @Test fun noKeyInTheBuildMeansNothingIsEverAccepted() {
-        for (k in listOf(null, "", "not a key")) { val (l, _) = lab(key = k); assertFalse(l.accept(token())); assertFalse(l.isActive()) }
+        for (k in listOf(null, "", "not a key")) { val (l, _) = lab(key = k); assertFalse(l.take(token())); assertFalse(l.isActive()) }
     }
 
     @Test fun aWrongKeyAWrongDeviceATamperedPayloadAndAnExpiredGrantAreRefused() {
         val (l, _) = lab()
-        assertFalse(l.accept(token(signer = other.private)))
-        assertFalse(l.accept(token(device = "99999999-2222-3333-4444-555555555555")))
-        assertFalse(l.accept(token(tamper = true)))
-        assertFalse(l.accept(token(exp = clock.wall - 1)))
-        assertFalse(l.accept(token(v = 2)))
-        assertFalse(l.accept("garbage")); assertFalse(l.accept("a.b")); assertFalse(l.accept(""))
+        assertFalse(l.take(token(signer = other.private)))
+        assertFalse(l.take(token(device = "99999999-2222-3333-4444-555555555555")))
+        assertFalse(l.take(token(tamper = true)))
+        assertFalse(l.take(token(exp = clock.wall - 1)))
+        assertFalse(l.take(token(v = 2)))
+        assertFalse(l.take("garbage")); assertFalse(l.take("a.b")); assertFalse(l.take(""))
         assertFalse(l.isActive())
     }
 
     @Test fun aGrantForAnotherDeviceIsNotHonouredEvenIfTheFilesAreCopiedOver() {
-        val (l, d) = lab(); assertTrue(l.accept(token()))
+        val (l, d) = lab(); assertTrue(l.take(token()))
         val (moved, _) = lab(d = d, device = "99999999-2222-3333-4444-555555555555")
         assertFalse(moved.isActive())
     }
@@ -66,13 +73,13 @@ class LabGrantTest {
     }
 
     @Test fun itEndsAtExpiryAndTheClockGuardsStillApply() {
-        val (l, _) = lab(); assertTrue(l.accept(token(exp = clock.wall + 3 * day)))
+        val (l, _) = lab(); assertTrue(l.take(token(exp = clock.wall + 3 * day)))
         clock.advance(2 * day); assertTrue(l.isActive())
         clock.advance(2 * day); assertFalse(l.isActive())
     }
 
     @Test fun revokeRemovesIt() {
-        val (l, _) = lab(); l.accept(token()); l.revoke(); assertFalse(l.isActive())
+        val (l, _) = lab(); l.take(token()); l.revoke(); assertFalse(l.isActive())
     }
 
     @Test fun theGateIsLiftedOnlyByTheVerifiedGrantInAReleaseBuild() {
@@ -80,38 +87,107 @@ class LabGrantTest {
         val (l, _) = lab(d = d)
         val c = IntegrityGateController({ DevFlags(devOptions = true, adb = false) }, LabExemptionStore(d, clock), IntegrityEventLog(d), d, null, "1", clock::wallMs, verifiedLab = l::isActive)
         assertTrue(c.check().blocked)
-        l.accept(token()); assertFalse(c.check().blocked); assertEquals(Exemption.LAB, c.check().exempt)
+        l.take(token()); assertFalse(c.check().blocked); assertEquals(Exemption.LAB, c.check().exempt)
         l.revoke(); assertTrue(c.check().blocked)
         // The old unauthenticated path stays closed in a release build: honoured=false by default.
         LabExemptionStore(d, clock).grant(clock.wall + day)
         assertTrue(c.check().blocked)
     }
 
-    @Test fun anInvalidTokenIsNull() { assertNull(LabGrantVerifier(pub).verify("x.y", dev, clock.wall)) }
+    @Test fun anInvalidTokenIsNull() { assertNull(LabGrantVerifier(pub).verify("x.y", dev, aud, clock.wall)) }
 
     // ---- what a full day bundle says (contract 1.19.0: the device-scoped value cfg.integrity.lab_exemption) ----
 
     @Test fun aBundleWithAValidGrantGrantsAndAnAbsentValueWithdraws() {
         val (l, _) = lab(); assertFalse(l.isActive())
-        l.applyServer(token()); assertTrue(l.isActive())
-        l.applyServer(null); assertFalse("a bundle without the value is the server withdrawing it", l.isActive())
-        l.applyServer(token()); assertTrue(l.isActive())
-        l.applyServer(""); assertFalse(l.isActive())
+        l.applyServer(token(), clock.wall); assertTrue(l.isActive())
+        l.applyServer(null, clock.wall); assertFalse("a bundle without the value is the server withdrawing it", l.isActive())
+        l.applyServer(token(), clock.wall); assertTrue(l.isActive())
+        l.applyServer("", clock.wall); assertFalse(l.isActive())
     }
 
     @Test fun aGrantThatDoesNotVerifyChangesNothing() {
-        val (l, _) = lab(); l.applyServer(token()); assertTrue(l.isActive())
-        l.applyServer(token(device = "99999999-2222-3333-4444-555555555555")); assertTrue("a bad token never narrows a standing grant", l.isActive())
-        val (fresh, _) = lab(); fresh.applyServer(token(signer = other.private)); fresh.applyServer(token(tamper = true)); fresh.applyServer("garbage")
+        val (l, _) = lab(); l.applyServer(token(), clock.wall); assertTrue(l.isActive())
+        l.applyServer(token(device = "99999999-2222-3333-4444-555555555555"), clock.wall); assertTrue("a bad token never narrows a standing grant", l.isActive())
+        val (fresh, _) = lab(); fresh.applyServer(token(signer = other.private), clock.wall); fresh.applyServer(token(tamper = true), clock.wall); fresh.applyServer("garbage", clock.wall)
         assertFalse("and never creates one", fresh.isActive())
     }
 
     @Test fun aGrantNeverOutlivesItsExpiryEvenIfNoBundleWithdrawsIt() {
-        val (l, _) = lab(); l.applyServer(token(exp = clock.wall + 2 * day)); assertTrue(l.isActive())
+        val (l, _) = lab(); l.applyServer(token(exp = clock.wall + 2 * day), clock.wall); assertTrue(l.isActive())
         clock.advance(3 * day); assertFalse(l.isActive())
     }
 
     @Test fun withoutThePublicKeyABundleGrantIsNeverHonoured() {
-        for (k in listOf(null, "", "not a key")) { val (l, _) = lab(key = k); l.applyServer(token()); assertFalse(l.isActive()) }
+        for (k in listOf(null, "", "not a key")) { val (l, _) = lab(key = k); l.applyServer(token(), clock.wall); assertFalse(l.isActive()) }
+    }
+
+    // ---- review of 49e6abc6..0f69f3b9: freshness, iat mark, audience, P-256, DER only ----
+
+    @Test fun aGrantIsTakenOnlyFromAFreshResponse() {
+        val (l, _) = lab()
+        assertFalse("no server time: not a fresh response", l.accept(token(), null))
+        assertFalse("a replayed response whose server time is hours old", l.accept(token(), clock.wall - 3 * 3600_000L))
+        assertFalse("a response from the future", l.accept(token(), clock.wall + 3 * 3600_000L))
+        assertFalse(l.isActive())
+        assertTrue(l.accept(token(), clock.wall - 10 * 60_000L)); assertTrue(l.isActive())
+    }
+
+    @Test fun anOlderGrantThanOneAlreadyAcceptedIsRefusedEvenAfterTheStoreClearedItself() {
+        val (l, d) = lab()
+        val first = token(iat = clock.wall)
+        clock.advance(60_000L); val second = token(iat = clock.wall)
+        assertTrue(l.take(second))
+        l.revoke(); assertFalse(l.isActive())
+        assertFalse("the older token cannot come back after a withdrawal", l.take(first))
+        assertTrue("the same grant delivered again is not older than itself", l.take(second))
+        // The store clears its own record when the clock goes back; the mark outlives that.
+        clock.wall -= 3 * day; assertFalse(l.isActive()); assertFalse(File(d, "lab-exemption.txt").exists())
+        assertFalse("a rolled-back phone clock cannot take the old grant again", l.take(first))
+        assertFalse("and not even the newest, while the clock is behind what it has already seen", l.take(second))
+        assertFalse(l.isActive())
+    }
+
+    @Test fun aRolledBackClockCannotReviveAnExpiredGrantEvenWithAReplayedBundle() {
+        val (l, _) = lab(); val t = token(exp = clock.wall + day)
+        assertTrue(l.take(t)); clock.advance(2 * day); assertFalse(l.isActive())
+        l.applyServer(null, clock.wall) // a later full bundle without the value
+        val replay = clock.wall - 2 * day
+        clock.wall = replay // the rep sets the clock back to inside the grant's life and replays the old response (server time and all)
+        assertFalse(l.accept(t, replay)); assertFalse(l.isActive())
+    }
+
+    @Test fun aGrantForAnotherEnvironmentIsRefused() {
+        val (l, _) = lab()
+        assertFalse(l.take(token(audience = "api.other-account.example")))
+        assertFalse(lab(audience = null).first.take(token()))
+        assertFalse(lab(audience = "").first.take(token()))
+        assertTrue("host names are case-insensitive", lab(audience = aud.uppercase()).first.take(token()))
+        assertTrue(l.take(token())); assertTrue(l.isActive())
+        assertFalse("the same files read as another environment's build are no exemption", lab(d = File(Files.createTempDirectory("x").toFile().also { src -> File(src, "lab-grant-token.txt").writeText(token()) }.path), audience = "api.other-account.example").first.isActive())
+    }
+
+    @Test fun onlyAnEcP256PublicKeyIsAccepted() {
+        fun b64(k: java.security.PublicKey) = Base64.getEncoder().encodeToString(k.encoded)
+        val p384 = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp384r1")) }.generateKeyPair()
+        val rsa = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        assertFalse(LabGrantVerifier(b64(p384.public)).configured); assertFalse(LabGrantVerifier(b64(rsa.public)).configured)
+        assertTrue(LabGrantVerifier(pub).configured)
+        // a P-384 key that signs a well-formed token is still never honoured: the verifier is not configured with that key
+        val t = token(signer = p384.private); assertFalse(lab(key = b64(p384.public)).first.take(t))
+    }
+
+    @Test fun onlyADerSignatureIsAccepted() {
+        val (l, _) = lab()
+        fun rawRs(der: ByteArray): ByteArray { // DER -> r||s (64 bytes)
+            var i = 2; if (der[1].toInt() and 0x80 != 0) i += der[1].toInt() and 0x7f
+            fun int(): ByteArray { val len = der[i + 1].toInt(); val v = der.copyOfRange(i + 2, i + 2 + len); i += 2 + len; return v.dropWhile { it == 0.toByte() }.toByteArray().let { ByteArray(32 - it.size) + it } }
+            return int() + int()
+        }
+        assertFalse("a raw r||s signature", l.take(token(signature = ::rawRs)))
+        assertFalse("a DER signature with trailing bytes", l.take(token(signature = { it + byteArrayOf(0, 0, 0) })))
+        assertFalse("a truncated DER signature", l.take(token(signature = { it.copyOf(it.size - 3) })))
+        assertFalse(l.isActive())
+        assertTrue("and the plain DER signature is fine", l.take(token()))
     }
 }

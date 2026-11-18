@@ -169,6 +169,14 @@ class VisitFlowTest {
         assertEquals("[\"jump\",\"gnss_no_sats\",\"root_hint\"]", rec.visits.single().second.signalsJson)
     }
 
+    /** Review low: "checked, nothing found" is `[]` (sent as an empty list); a fix whose check did not run stays NULL (unknown, no member). */
+    @Test fun aCleanCheckedFixStoresAnEmptyListAndAnUncheckedOneStoresNone() = runTest {
+        val e = fun(r: FixReading) = r.toEntity("00000000-0000-4000-8000-0000000000f1", "00000000-0000-4000-8000-0000000000f2", "visit_open", 0)
+        assertEquals("[]", e(fix().copy(signals = emptyList())).signalsJson)
+        assertEquals(null, e(fix().copy(signals = null)).signalsJson)
+        assertEquals("a reading that never carried the member is unknown", null, e(fix()).signalsJson)
+    }
+
     @Test fun mockBlockPolicyRecordsTheVisitAndBlocks() = runTest {
         val s = GeoSettings.DEFAULT.copy(policyBase = GeoSettings.DEFAULT.policyBase.copy(mockPolicy = MockPolicy.BLOCK_SALE))
         val session = VisitSession()
