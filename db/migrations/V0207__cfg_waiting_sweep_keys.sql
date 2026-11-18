@@ -48,4 +48,5 @@ UPDATE app.sync_quarantine
    AND detail ~ '\(parent [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} was accepted\)';
 
 -- the sweep's order (least recently examined first) and the queue's count read only waiting open items; the table holds quarantine items only, so a plain build is cheap
+-- squawk-ignore require-concurrent-index-creation
 CREATE INDEX IF NOT EXISTS sync_quarantine_waiting ON app.sync_quarantine (waiting_checked_at NULLS FIRST, id) WHERE waiting_since IS NOT NULL AND status = 'open';
