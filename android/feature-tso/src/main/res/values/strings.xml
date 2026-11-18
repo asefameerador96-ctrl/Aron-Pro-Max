@@ -95,7 +95,6 @@
     <string name="tso_mc_date">Date</string>
     <string name="tso_mc_show_outlets">Show Outlet</string>
     <string name="tso_mc_show_plan">Show plan</string>
-    <string name="tso_mc_select_all">Select all</string>
     <string name="tso_mc_outlets_selected">%1$d outlets selected</string>
     <string name="tso_mc_no_outlets">This route has no outlets</string>
     <string name="tso_mc_unavailable">Not downloaded yet and no connection. Connect once and try again.</string>

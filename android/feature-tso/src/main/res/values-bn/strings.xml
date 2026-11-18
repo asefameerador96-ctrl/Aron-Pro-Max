@@ -95,7 +95,6 @@
     <string name="tso_mc_date">তারিখ</string>
     <string name="tso_mc_show_outlets">দোকান দেখান</string>
     <string name="tso_mc_show_plan">প্ল্যান দেখান</string>
-    <string name="tso_mc_select_all">সব বাছাই করুন</string>
     <string name="tso_mc_outlets_selected">%1$d টি দোকান বাছাই করা হয়েছে</string>
     <string name="tso_mc_no_outlets">এই রুটে কোনো দোকান নেই</string>
     <string name="tso_mc_unavailable">এখনো নামেনি এবং ইন্টারনেট নেই। একবার যুক্ত হয়ে আবার চেষ্টা করুন।</string>

@@ -52,7 +52,6 @@
     <string name="tso_mc_select_zone">Select Zone</string>
     <string name="tso_mc_select_route">Select Route</string>
     <string name="tso_mc_select_outlets">Select Outlets</string>
-    <string name="tso_mc_selected_count">%1$s of %2$s selected</string>
     <string name="tso_mc_visit_plan_outlets">Visit Plan Outlets</string>
     <string name="tso_mc_tab_pending">Pending</string>
     <string name="tso_mc_tab_completed">Completed</string>

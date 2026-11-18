@@ -262,12 +262,7 @@ fun SelectOutletsScreen(state: SetPlanState, onBack: () -> Unit, onSaved: () -> 
                         Text(stringResource(R.string.tso_mc_no_outlets_found), Modifier.testTag(MyCallTags.EMPTY), style = MaterialTheme.typography.bodyLarge, color = LocalAronLook.current.ink)
                     }
                 } else {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(localizedDigits(stringResource(R.string.tso_mc_selected_count, localizedNumber(ui.selected.size.toLong()), localizedNumber(ui.outlets.size.toLong()))), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = LocalAronLook.current.inkMuted)
-                        TextButton({ state.selectAll() }, Modifier.heightIn(min = 48.dp).testTag(MyCallTags.SELECT_ALL), colors = ButtonDefaults.textButtonColors(contentColor = LocalAronLook.current.purple)) {
-                            Text(stringResource(R.string.tso_mc_select_all))
-                        }
-                    }
+                    // D-PAR-TSO-08: no "n of m selected" count and no "Select all" link on Select Outlets (screenshot 33)
                     LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                         items(ui.outlets, key = { it.id }) { o -> OutletPickCard(o, bn, o.id in ui.selected, { state.toggle(o.id) }, Modifier.testTag(MyCallTags.outlet(o.id))) }
                     }

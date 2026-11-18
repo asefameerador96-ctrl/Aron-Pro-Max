@@ -50,7 +50,6 @@
     <string name="tso_mc_select_zone">জোন বাছুন</string>
     <string name="tso_mc_select_route">রুট বাছুন</string>
     <string name="tso_mc_select_outlets">আউটলেট বাছুন</string>
-    <string name="tso_mc_selected_count">%2$sটির মধ্যে %1$sটি বাছা হয়েছে</string>
     <string name="tso_mc_visit_plan_outlets">ভিজিট প্ল্যানের আউটলেট</string>
     <string name="tso_mc_tab_pending">বাকি</string>
     <string name="tso_mc_tab_completed">সম্পন্ন</string>

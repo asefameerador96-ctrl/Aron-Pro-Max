@@ -102,7 +102,9 @@ class MyCallScreenTest {
         compose.onNodeWithText("Salam").assertIsDisplayed() // no phone without the pii claim: no empty "| "
         compose.onNodeWithTag(MyCallTags.outlet(1)).performClick(); compose.waitForIdle()
         assertTrue(1L in st.ui.value.selected)
-        compose.onNodeWithTag(MyCallTags.SELECT_ALL).performClick(); compose.waitForIdle()
+        // D-PAR-TSO-08: no "Select all" link on the screen (screenshot 33); the second outlet is picked by its card
+        compose.onNodeWithTag(MyCallTags.SELECT_ALL).assertDoesNotExist()
+        compose.onNodeWithTag(MyCallTags.outlet(2)).performClick(); compose.waitForIdle()
         assertEquals(setOf(1L, 2L), st.ui.value.selected)
         compose.onNodeWithTag(MyCallTags.SAVE).performClick(); compose.waitForIdle()
         assertEquals(SetPlanResult.Saved(2), st.ui.value.result); assertEquals(1, saved)
