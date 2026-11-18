@@ -492,6 +492,8 @@ private fun RejectedList(rows: List<RejectedRow>, typeLabel: (String) -> String,
                         !r.afterCheckOut -> R.string.submit_day_submit_refused
                         r.outcome == RejectedOutcome.PHONE_GAVE_UP -> R.string.submit_day_submit_gave_up_after_checkout
                         r.outcome == RejectedOutcome.STORED_FLAGGED -> R.string.submit_day_submit_held_after_checkout
+                        // D-AGATE-15 (T3): still being retried (waiting for the network or the server): the check-out is HELD, nothing is refused and there is nothing to press
+                        r.outcome == RejectedOutcome.RETRY -> R.string.submit_day_submit_retry_after_checkout
                         else -> R.string.submit_day_submit_refused_after_checkout
                     }
                     Text(stringResource(daySubmitText), style = MaterialTheme.typography.bodySmall, color = WarnInk)
