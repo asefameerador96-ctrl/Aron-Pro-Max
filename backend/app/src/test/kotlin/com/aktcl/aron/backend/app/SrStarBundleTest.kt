@@ -68,14 +68,15 @@ class SrStarBundleTest {
         )
         val b = "'00000000-0000-4000-8000-00000000b003'"
         x("INSERT INTO app.route_programme_target (programme_id, route_id, month, target_qty, batch_uuid) VALUES ($programme, $route, DATE '2027-01-01', 20.000, $b), ($programme, $otherRoute, DATE '2027-01-01', 5.000, $b)")
-        fun agg(d: String, r: Long, qty: Int) = x("INSERT INTO dw.agg_daily_route_sku (business_date, route_id, sku_id, sold_qty_base, memo_count) VALUES (DATE '$d', $r, $matchSku, $qty, 1)")
-        agg("2027-01-01", route, 2000); agg("2027-01-02", route, 833)   // STD 2833 base = 2.833
-        agg("2027-01-03", route, 99999)                                  // the bundle date: out
-        agg("2027-01-02", otherRoute, 77777)                             // another route: out
-        agg("2026-12-10", route, 12000); agg("2026-12-31", route, 250)  // LMS 12250 base = 12.250
-        agg("2026-11-30", route, 55555)                                  // two months ago: out
-        x("INSERT INTO dw.summary_freshness (table_name, last_updated_at, last_event_id) VALUES ('agg_daily_route_sku', TIMESTAMPTZ '2027-01-03T01:00:00Z', 1) ON CONFLICT (table_name) DO UPDATE SET last_updated_at = EXCLUDED.last_updated_at")
-        x("UPDATE dw.agg_daily_route_sku SET updated_at = TIMESTAMPTZ '2027-01-03T01:00:00Z'") // as_of is the newest rewrite of the route's aggregate rows (D-TKPI-10)
+        // Real accepted memos (D-TKPI-12); the Star figures are read from app.memo / app.memo_line (match SKU).
+        val o = q("SELECT id FROM app.outlet WHERE route_id = $route ORDER BY id LIMIT 1")
+        val fx = SrMemoFixture({ x(it) }, sr)
+        fun m(n: Int, r: Long, d: String, qty: Int, at: String = "2027-01-03T01:00:00Z") = fx.memo("00000000-0000-4000-8000-0000000e%04d".format(n), r, o, d, listOf(SrMemoFixture.L(matchSku, qty)), "TIMESTAMPTZ '$at'")
+        m(1, route, "2027-01-01", 2000); m(2, route, "2027-01-02", 833)   // STD 2833 base = 2.833, newest received_at 01:00
+        m(3, route, "2027-01-03", 99999, "2027-01-03T01:30:00Z")           // the bundle date: out (and not in as_of)
+        m(4, otherRoute, "2027-01-02", 77777)                              // another route: out
+        m(5, route, "2026-12-10", 12000); m(6, route, "2026-12-31", 250)   // LMS 12250 base = 12.250
+        m(7, route, "2026-11-30", 55555)                                   // two months ago: out
     }
 
     @AfterAll fun tearDown() = fresh.close()

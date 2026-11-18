@@ -18,10 +18,10 @@ import java.time.YearMonth
  *
  * - `targets`: the `app.route_monthly_target` rows of the route for the Dhaka month of the bundle date, one `TargetRow` per SKU
  *   (`std_target` = qty_base as Decimal3, `memo_target` 0: the memo target is the brand table of N-5).
- * - `achievement_mtd`: `dw.agg_daily_route_sku.sold_qty_base` (sale lines only, like Target Status) of the business dates from the
- *   1st up to and including `through_date` = the bundle date minus one day. TODAY IS NEVER IN A SERVER FIGURE: the phone adds its
- *   own memos dated after `through_date`, and older unacknowledged ones, de-duplicated by memo UUID, so nothing is counted twice.
- *   `as_of` is the newest rewrite time of the route's own aggregate rows ([asOfByRoute]), never the request time or the worker's clock; no row means the epoch.
+ * - `achievement_mtd`: the sold quantity (sale lines only, like Target Status) and memo count per SKU of the route's accepted memos, read straight from
+ *   `app.memo` / `app.memo_line` by [SrMemoFigures] (never from the lagging `dw.agg_*`), business dates from the 1st up to and including `through_date` = the
+ *   bundle date minus one day. TODAY IS NEVER IN A SERVER FIGURE. The phone merges its local memos by the ordering rule B (`docs/requests/sr-programmes-phone-rule-b.md`),
+ *   no clock. `as_of` is informational: the newest `received_at` among the memos read (the epoch when none), never used in arithmetic.
  * - `calendar`: the working days at the route's zone path (division and wing weekend and holidays honoured).
  */
 object SrTargets {
@@ -34,7 +34,7 @@ object SrTargets {
 
     fun load(
         h: Handle, routes: Map<Long, Long>, date: LocalDate, now: Instant, config: ServerConfig?,
-        asOf: Map<Long, Instant> = asOfByRoute(h, routes.keys, date),
+        figures: Map<Long, SrMemoFigures.Figures> = SrMemoFigures.forRoutes(h, routes.keys, YearMonth.from(date).atDay(1), date.minusDays(1)),
     ): Map<Long, Snapshot> {
         if (routes.isEmpty()) return emptyMap()
         val month = YearMonth.from(date)
@@ -54,19 +54,13 @@ object SrTargets {
                 put("product_id", it.second); put("std_target", decimal3(it.third.first)); put("std_unit", it.third.second); put("memo_target", 0)
             } })
 
-        val achieved = if (through < first) emptyMap() else h.createQuery(
-            """
-            SELECT route_id, sku_id, sum(sold_qty_base), sum(memo_count) FROM dw.agg_daily_route_sku
-             WHERE route_id = ANY(:r) AND business_date BETWEEN :f AND :t GROUP BY route_id, sku_id HAVING sum(sold_qty_base) > 0 OR sum(memo_count) > 0
-             ORDER BY route_id, sku_id
-            """,
-        ).bindArray("r", Long::class.javaObjectType, routeIds).bind("f", first).bind("t", through)
-            .map { rs, _ -> Triple(rs.getLong(1), rs.getLong(2), rs.getLong(3) to rs.getInt(4)) }.list()
-            .groupBy({ it.first }, { buildJsonObject {
-                put("scope_type", "route"); put("scope_id", it.first); put("month", month.toString()); put("product_level", "sku")
-                put("product_id", it.second); put("achieved_qty_base", it.third.first); put("memo_count", it.third.second)
-                put("as_of", (asOf[it.first] ?: Instant.EPOCH).wire()); put("through_date", through.toString())
-            } })
+        val achieved = routes.keys.associateWith { r ->
+            figures[r]?.bySku().orEmpty().filter { (_, v) -> v.first > 0 || v.second > 0 }.map { (sku, v) -> buildJsonObject {
+                put("scope_type", "route"); put("scope_id", r); put("month", month.toString()); put("product_level", "sku")
+                put("product_id", sku); put("achieved_qty_base", v.first); put("memo_count", v.second)
+                put("as_of", (figures[r]?.asOf ?: Instant.EPOCH).wire()); put("through_date", through.toString())
+            } }
+        }
 
         val cals = WorkingCalendarRepo.load(h, month, now, config)
         val prevCals = WorkingCalendarRepo.load(h, month.minusMonths(1), now, config)
@@ -85,38 +79,11 @@ object SrTargets {
                 RouteCalendarDto(
                     month = month.toString(), working_days = cals.workingDays(path), elapsed_working_days_before_today = before,
                     remaining_working_days_after_today = after, today_is_working = cal.isWorking(date.toKotlinLocalDate()),
-                    last_month_working_days = prevCals.workingDays(path), through_date = through.toString(), as_of = (asOf[routeId] ?: Instant.EPOCH).wire(),
+                    last_month_working_days = prevCals.workingDays(path), through_date = through.toString(), as_of = (figures[routeId]?.asOf ?: Instant.EPOCH).wire(),
                 ),
                 truncated = targets[routeId].orEmpty().size > MAX_ROWS || achieved[routeId].orEmpty().size > MAX_ROWS,
             )
         }
-    }
-
-    /**
-     * The `as_of` of a route's figures (B1 of the lead review, D-TKPI-10). Two parts:
-     *  1. the newest `updated_at` among the route's own aggregate rows the figures are built from (previous month to `through_date`), the epoch when there are none;
-     *     the aggregation writes that stamp with clock_timestamp() and keeps it when a rebuild changes no figure, so it moves only when a figure moved, never with
-     *     the worker's clock (`dw.summary_freshness` is rewritten about every 5 seconds by an idle worker);
-     *  2. clamped to just before (one second) the oldest `first_dirtied_at` of the route's `route_day_agg` dirty keys in that window, pending, claimed, backed-off and
-     *     dead ones included: a route-day is rebuilt in its own transaction, in any order, so the rewrite of one day says nothing about another day of the same route
-     *     that still waits (this is what `touchFreshness` does for the global stamp). Without pending keys there is no clamp, so an idle server changes nothing.
-     * The phone's rule (b) (RouteSnapshot, openapi) needs exactly this guarantee: a memo the figures do not hold yet was accepted AFTER `as_of`. Campaign figures read
-     * `dw.fact_memo_line` by outlet; a memo's lines are written in the same route-day rebuild as that route's aggregates, and the phone holds only its own SR's
-     * memos, so the same clamp is the right one for them (another route's memos at the outlet can change the figure without moving this `as_of`; they are not on this
-     * phone, so nothing is added twice).
-     */
-    fun asOfByRoute(h: Handle, routeIds: Collection<Long>, date: LocalDate): Map<Long, Instant> {
-        if (routeIds.isEmpty()) return emptyMap()
-        val through = date.minusDays(1)
-        val from = YearMonth.from(date).minusMonths(1).atDay(1)
-        val ids = routeIds.toList()
-        val newest = h.createQuery("SELECT route_id, max(updated_at) FROM dw.agg_daily_route_sku WHERE route_id = ANY(:r) AND business_date BETWEEN :f AND :t GROUP BY route_id")
-            .bindArray("r", Long::class.javaObjectType, ids).bind("f", from).bind("t", through)
-            .map { rs, _ -> rs.getLong(1) to rs.getTimestamp(2).toInstant() }.list().toMap()
-        val pending = h.createQuery("SELECT subject_id, min(first_dirtied_at) FROM app.dirty_key WHERE kind = 'route_day_agg' AND subject_id = ANY(:r) AND business_date BETWEEN :f AND :t GROUP BY subject_id")
-            .bindArray("r", Long::class.javaObjectType, ids).bind("f", from).bind("t", through)
-            .map { rs, _ -> rs.getLong(1) to rs.getTimestamp(2).toInstant() }.list().toMap()
-        return newest.mapValues { (route, at) -> pending[route]?.minusSeconds(1)?.let { cap -> if (cap.isBefore(at)) cap else at } ?: at }
     }
 
     /** A base quantity as the contract's exact Decimal3 string: "500.000". */

@@ -33,6 +33,7 @@ import java.security.MessageDigest
 import java.sql.ResultSet
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.Base64
@@ -495,12 +496,26 @@ class BundleService(
             .bind("d", d).bind("u", p.userId).mapTo(Int::class.java).findOne().orElse(0)
     }?.coerceIn(0, 3) ?: 0
 
+    /**
+     * ONE read-only REPEATABLE READ snapshot on the primary around the whole route-snapshot read (rule A of the no-clock design, D-TKPI-12): every SR figure (achievement,
+     * KPI, Star, campaigns) and the rest of the route sections see the same committed state, so an upload or a rebuild that commits meanwhile is in all of them or none.
+     * The phone's ordering rule B (docs/requests/sr-programmes-phone-rule-b.md) needs exactly that and nothing else.
+     */
     private fun routeSnapshots(
         h: Handle, userId: Long, plans: List<RouteDayPlan>, date: LocalDate, states: Map<Long, DayRow>, cfg: ScopedConfig, roleOrdinal: Long?,
         /** F-AMO-044: non-null builds the AMO's and TSO's zone-wide routes: only outlets of these zones, no open memos, no target, no rep state. */
         zoneIds: List<Long>? = null,
     ): List<RouteSnapshot> {
         if (plans.isEmpty()) return emptyList()
+        return h.inTransaction<List<RouteSnapshot>, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { th ->
+            th.execute("SET TRANSACTION READ ONLY")
+            routeSnapshotsIn(th, userId, plans, date, states, cfg, roleOrdinal, zoneIds)
+        }
+    }
+
+    private fun routeSnapshotsIn(
+        h: Handle, userId: Long, plans: List<RouteDayPlan>, date: LocalDate, states: Map<Long, DayRow>, cfg: ScopedConfig, roleOrdinal: Long?, zoneIds: List<Long>?,
+    ): List<RouteSnapshot> {
         val ids = plans.map { it.routeId }
         val routes = h.createQuery("SELECT * FROM app.route WHERE id = ANY(:r)").bindArray("r", Long::class.javaObjectType, ids).map { rs, _ ->
             RouteDto(
@@ -520,13 +535,15 @@ class BundleService(
         val plan = h.createQuery("SELECT zone_id, sku_id FROM app.sales_plan WHERE zone_id = ANY(:z) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d) ORDER BY sku_id")
             .bindArray("z", Long::class.javaObjectType, plans.map { it.zoneId }.distinct()).bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
             .groupBy({ it.first }, { it.second })
-        // One as_of per route (B1, D-TKPI-10): the newest rewrite of the route's own aggregate rows, so an idle worker pass never changes a bundle's version.
-        val asOfs = if (zoneIds == null) SrTargets.asOfByRoute(h, plans.map { it.routeId }, date) else emptyMap()
-        val sr = if (zoneIds == null) SrTargets.load(h, plans.associate { it.routeId to it.zoneId }, date, clock.now(), config, asOfs) else emptyMap()
-        val kpi = if (zoneIds == null) SrKpi.load(h, plans.map { it.routeId }, date, asOfs) else emptyMap()
-        val campaigns = if (zoneIds == null) SrCampaigns.load(h, outlets.mapValues { e -> e.value.map { it.outlet_id } }, date, asOfs) else emptyMap()
+        // Own-route figures straight from the accepted memo tables (rule A): one memo query for every route of the bundle, grouped in Kotlin by ONE hierarchy (SrMemoFigures).
+        val srRoutes = if (zoneIds == null) plans.map { it.routeId } else emptyList()
+        val figures = if (srRoutes.isEmpty()) emptyMap() else SrMemoFigures.forRoutes(h, srRoutes, YearMonth.from(date).atDay(1), date.minusDays(1))
+        val dim = if (srRoutes.isEmpty()) null else SrMemoFigures.dim(h)
+        val sr = if (zoneIds == null) SrTargets.load(h, plans.associate { it.routeId to it.zoneId }, date, clock.now(), config, figures) else emptyMap()
+        val kpi = if (zoneIds == null) SrKpi.load(h, srRoutes, date, figures, dim!!) else emptyMap()
+        val campaigns = if (zoneIds == null) SrCampaigns.load(h, outlets.mapValues { e -> e.value.map { it.outlet_id } }, date) else emptyMap()
         val starDropped = HashSet<Long>()
-        val star = if (zoneIds == null) SrStar.load(h, plans.mapNotNull { r -> sr[r.routeId]?.let { snap -> r.routeId to SrStar.RouteInfo(routes.getValue(r.routeId).name, srs[r.routeId]?.second, srs[r.routeId]?.first, snap.calendar) } }.toMap(), date, asOfs, starDropped) else emptyMap()
+        val star = if (zoneIds == null) SrStar.load(h, plans.mapNotNull { r -> sr[r.routeId]?.let { snap -> r.routeId to SrStar.RouteInfo(routes.getValue(r.routeId).name, srs[r.routeId]?.second, srs[r.routeId]?.first, snap.calendar) } }.toMap(), date, figures, dim!!, starDropped) else emptyMap()
         return plans.sortedBy { it.routeId }.map { r ->
             val day = if (zoneIds == null) states[r.routeId] else null
             val target = if (zoneIds != null) 0 else day?.target ?: r.targetOutlets

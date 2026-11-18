@@ -68,14 +68,20 @@ class SrTargetsBundleTest {
         for ((r, s, q) in listOf(Triple(route, skuA, 500), Triple(route, skuB, 900), Triple(otherRoute, skuA, 77)))
             x("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($r, $s, DATE '2027-01-01', $q, '00000000-0000-4000-8000-00000000b001')")
         x("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($route, $skuA, DATE '2026-12-01', 1, '00000000-0000-4000-8000-00000000b001')") // another month: out
-        fun agg(d: String, r: Long, s: Long, qty: Int, memos: Int) =
-            x("INSERT INTO dw.agg_daily_route_sku (business_date, route_id, sku_id, sold_qty_base, memo_count) VALUES (DATE '$d', $r, $s, $qty, $memos)")
-        agg("2027-01-01", route, skuA, 100, 2); agg("2027-01-02", route, skuA, 50, 1)
-        agg("2027-01-03", route, skuA, 999, 9)      // the bundle date: never in a server figure
-        agg("2026-12-31", route, skuA, 7, 1)        // last month: out
-        agg("2027-01-02", otherRoute, skuA, 5000, 4) // another route: out
-        x("INSERT INTO dw.summary_freshness (table_name, last_updated_at, last_event_id) VALUES ('agg_daily_route_sku', TIMESTAMPTZ '$asOf', 1) ON CONFLICT (table_name) DO UPDATE SET last_updated_at = EXCLUDED.last_updated_at")
-        x("UPDATE dw.agg_daily_route_sku SET updated_at = TIMESTAMPTZ '2027-01-03T01:00:00Z'") // as_of is the newest rewrite of the route's aggregate rows (D-TKPI-10)
+        // Real accepted memos (D-TKPI-12): the figures are read from app.memo / app.memo_line, not from dw.agg_*.
+        val o = q("SELECT id FROM app.outlet WHERE route_id = $route ORDER BY id LIMIT 1")
+        val fx = SrMemoFixture({ x(it) }, sr)
+        fun uid(n: Int) = "00000000-0000-4000-8000-0000000d%04d".format(n)
+        fx.memo(uid(1), route, o, "2027-01-01", listOf(SrMemoFixture.L(skuA, 60)), "TIMESTAMPTZ '2027-01-01T05:00:00Z'")
+        fx.memo(uid(2), route, o, "2027-01-01", listOf(SrMemoFixture.L(skuA, 40)), "TIMESTAMPTZ '2027-01-01T06:00:00Z'")
+        fx.memo(uid(3), route, o, "2027-01-02", listOf(SrMemoFixture.L(skuA, 50)), "TIMESTAMPTZ '$asOf'")
+        fx.memo(uid(4), route, o, "2027-01-03", listOf(SrMemoFixture.L(skuA, 999)), "TIMESTAMPTZ '2027-01-03T01:30:00Z'")   // the bundle date: never in a server figure
+        fx.memo(uid(5), route, o, "2026-12-31", listOf(SrMemoFixture.L(skuA, 7)), "TIMESTAMPTZ '2026-12-31T05:00:00Z'")      // last month: out
+        fx.memo(uid(6), otherRoute, o, "2027-01-02", listOf(SrMemoFixture.L(skuA, 5000)), "TIMESTAMPTZ '2027-01-02T05:00:00Z'") // another route: out
+        fx.memo(uid(7), route, o, "2027-01-02", listOf(SrMemoFixture.L(skuA, 11)), "TIMESTAMPTZ '2027-01-02T07:00:00Z'")
+        fx.void(uid(7), "2027-01-02")                                                                                          // voided: out
+        fx.memo(uid(8), route, o, "2027-01-02", listOf(SrMemoFixture.L(skuA, 13)), "TIMESTAMPTZ '2027-01-02T08:00:00Z'")
+        fx.memo(uid(9), route, o, "2027-01-02", listOf(SrMemoFixture.L(skuA, 17)), "TIMESTAMPTZ '2027-01-02T09:00:00Z'", supersedes = uid(8)) // 8 superseded by 9: 9 in, 8 out
     }
 
     @AfterAll fun tearDown() = fresh.close()
@@ -98,10 +104,10 @@ class SrTargetsBundleTest {
         val r = build().full.routes.single { it.route_id == route }
         val a = r.achievement_mtd.map { it.jsonObject }.single()
         assertEquals(skuA, a["product_id"]!!.jsonPrimitive.content.toLong())
-        assertEquals("150", a["achieved_qty_base"]!!.jsonPrimitive.content, "100 + 50; today's 999, last month's 7 and the other route's 5000 are out")
-        assertEquals("3", a["memo_count"]!!.jsonPrimitive.content)
+        assertEquals("167", a["achieved_qty_base"]!!.jsonPrimitive.content, "60 + 40 + 50 + 17 (the edit); today's 999, last month's 7, the other route's 5000, the voided 11 and the superseded 13 are out")
+        assertEquals("4", a["memo_count"]!!.jsonPrimitive.content)
         assertEquals("2027-01-02", a["through_date"]!!.jsonPrimitive.content)
-        assertEquals(Instant.parse(asOf), Instant.parse(a["as_of"]!!.jsonPrimitive.content), "as_of is the projector time, not the request time")
+        assertEquals(Instant.parse(asOf), Instant.parse(a["as_of"]!!.jsonPrimitive.content), "as_of is informational: the newest received_at among the memos read (memo 3); today's memo (01:30) and the other route's are not read")
     }
 
     @Test

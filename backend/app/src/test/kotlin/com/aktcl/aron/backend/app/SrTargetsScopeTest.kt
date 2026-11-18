@@ -66,7 +66,10 @@ class SrTargetsScopeTest {
         x("INSERT INTO app.route_programme_target (programme_id, route_id, month, target_qty, batch_uuid) SELECT $star, id, DATE '2027-01-01', 20, $b FROM app.route")
         x("INSERT INTO app.outlet_campaign_target (programme_id, month, outlet_id, std_target, memo_target, batch_uuid) SELECT $camp, DATE '2027-01-01', id, 100, 5, $b FROM app.outlet")
         x("INSERT INTO app.outlet_campaign_sku_target (programme_id, month, outlet_id, sku_id, qty_base, batch_uuid) SELECT $camp, DATE '2027-01-01', id, $sku, 50, $b FROM app.outlet")
-        x("INSERT INTO dw.agg_daily_route_sku (business_date, route_id, sku_id, sold_qty_base, memo_count) SELECT DATE '2027-01-02', id, $sku, 10, 1 FROM app.route")
+        // A real accepted memo of 10 sticks at EVERY outlet of every route (D-TKPI-12: figures are read from the memo tables).
+        val fx = SrMemoFixture({ x(it) }, q("SELECT id FROM app.app_user WHERE username = 'sr1001'"))
+        val pairs = fresh.db.jdbi.withHandle<List<Pair<Long, Long>>, Exception> { h -> h.createQuery("SELECT id, route_id FROM app.outlet WHERE route_id IS NOT NULL ORDER BY id").map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list() }
+        pairs.forEachIndexed { i, (o, r) -> fx.memo("00000000-0000-4000-8000-0000000f%04d".format(i), r, o, "2027-01-02", listOf(SrMemoFixture.L(sku, 10))) }
     }
 
     @AfterAll fun tearDown() = fresh.close()

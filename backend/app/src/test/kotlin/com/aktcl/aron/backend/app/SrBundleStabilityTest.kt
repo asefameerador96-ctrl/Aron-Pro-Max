@@ -27,10 +27,11 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * B1 of the lead review (D-TKPI-10): the SR programme sections must not make a bundle a new version when nothing they show changed. The aggregation
- * worker rewrites `dw.summary_freshness` about every 5 seconds even when idle; `as_of` of these sections therefore comes from the route's own aggregate
- * rows and moves only when the projector rewrote one of them. Two builds with idle worker passes between give the SAME version and a 304 (null delta); a
- * rewritten aggregate row (a new memo) gives another version; a route with no programme data carries no `calendar` and no `kpi`.
+ * B1 of the lead review, redone for the no-clock design (D-TKPI-12): the SR programme sections must not make a bundle a new version when nothing they show changed.
+ * The figures are read straight from the accepted memos and `as_of` is the newest `received_at` among the memos read (informational), so the aggregation worker (which
+ * rewrites `dw.summary_freshness` about every 5 seconds even when idle, and rebuilds aggregates) can never move a version. Two builds with idle worker passes and even
+ * a real rebuild of the day between give the SAME version and a 304 (null delta); a new accepted memo gives another version; a route with no programme data carries no
+ * `calendar` and no `kpi`.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
@@ -86,20 +87,26 @@ class SrBundleStabilityTest {
         val batch = "00000000-0000-4000-8000-00000000c001"
         x("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES ('$batch', decode(repeat('cd', 32), 'hex'), 1, $sr)")
         x("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($route, $sku, DATE '2027-01-01', 500, '$batch')")
-        x("INSERT INTO dw.agg_daily_route_sku (business_date, route_id, sku_id, sold_qty_base, memo_count, updated_at) VALUES (DATE '2027-01-02', $route, $sku, 100, 2, TIMESTAMPTZ '2027-01-03T01:00:00Z')")
+        val outlet = q("SELECT id FROM app.outlet WHERE route_id = $route ORDER BY id LIMIT 1")
+        val fx = SrMemoFixture({ x(it) }, sr)
+        fx.memo("00000000-0000-4000-8000-0000000a0001", route, outlet, "2027-01-02", listOf(SrMemoFixture.L(sku, 100)), "TIMESTAMPTZ '2027-01-03T01:00:00Z'", emit = true)
         idleWorkerPass()
         val a = build()
         val r = a.full.routes.single { it.route_id == route }
         assertNotNull(r.calendar, "a route with targets carries the calendar")
-        assertEquals("2027-01-03T01:00:00Z", Instant.parse(r.calendar!!.as_of).toString(), "as_of is the newest rewrite of the route's own aggregate rows")
+        assertEquals("2027-01-03T01:00:00Z", Instant.parse(r.calendar!!.as_of).toString(), "as_of is the newest received_at among the memos read")
         repeat(3) { Thread.sleep(30); idleWorkerPass() }
         val b = build()
-        assertEquals(a.version, b.version, "figures unchanged: same version although the worker kept rewriting its freshness row")
+        assertEquals(a.version, b.version, "figures unchanged: same version although the worker kept rewriting its freshness row and projected the memo")
         assertNull(service.delta(principal, a.bundle.meta.cursor, day))
-        // a new memo of the day before: the projector rewrites the route-day row, so the figure and its as_of move and the version changes
-        x("UPDATE dw.agg_daily_route_sku SET sold_qty_base = 130, memo_count = 3, updated_at = TIMESTAMPTZ '2027-01-03T01:30:00Z' WHERE route_id = $route AND business_date = DATE '2027-01-02'")
+        // a real rebuild of the memo's day (what a late geo fix or a check-in does): the aggregate is rewritten, the figure is not read from it, the version stays
+        com.aktcl.aron.backend.analytics.AggregationWorker(fresh.db, AronClock { Instant.now() }).also { w -> w.requestRebuild(LocalDate.parse("2027-01-02")); w.runUntilIdle() }
+        assertEquals(a.version, build().version, "a rebuild of the aggregate changes nothing the bundle shows")
+        assertNull(service.delta(principal, a.bundle.meta.cursor, day))
+        // a new accepted memo of the day before: the figure and as_of move and the version changes
+        fx.memo("00000000-0000-4000-8000-0000000a0002", route, outlet, "2027-01-02", listOf(SrMemoFixture.L(sku, 30)), "TIMESTAMPTZ '2027-01-03T01:30:00Z'", emit = true)
         val c = build()
-        assertNotEquals(a.version, c.version, "a rewritten aggregate row (a new memo) is a new bundle version")
+        assertNotEquals(a.version, c.version, "a new accepted memo is a new bundle version")
         assertNotNull(service.delta(principal, a.bundle.meta.cursor, day))
     }
 
@@ -120,34 +127,5 @@ class SrBundleStabilityTest {
         repeat(3) { Thread.sleep(30); idleWorkerPass() }
         assertEquals(a.version, build().version, "idle passes with the real touchFreshness: same version")
         assertNull(service.delta(principal, a.bundle.meta.cursor, day))
-    }
-
-    private fun asOf(): Instant? = fresh.db.jdbi.withHandle<Instant?, Exception> { h -> com.aktcl.aron.backend.sync.SrTargets.asOfByRoute(h, listOf(route), day)[route] }
-    private fun row(d: String, at: String) = x("INSERT INTO dw.agg_daily_route_sku (business_date, route_id, sku_id, sold_qty_base, memo_count, updated_at) VALUES (DATE '$d', $route, $sku, 1, 1, TIMESTAMPTZ '$at') ON CONFLICT (business_date, route_id, sku_id) DO UPDATE SET updated_at = EXCLUDED.updated_at")
-
-    @Test @Order(4)
-    fun asOfNeverPassesAMemoOfAnotherDayThatIsStillWaitingToBeAggregated() {
-        // The reviewer's scenario: an SR offline for two days syncs both at 09:00:00; day D-2 is rebuilt at 09:00:04, day D-1 is not rebuilt yet (pending), or its
-        // rebuild fails (backed off), or it is dead. A bundle pulled in between must say as_of < 09:00:00, so the phone keeps counting the D-1 memos.
-        x("DELETE FROM dw.agg_daily_route_sku WHERE route_id = $route"); x("DELETE FROM app.dirty_key WHERE kind = 'route_day_agg' AND subject_id = $route")
-        row("2027-01-01", "2027-01-03T09:00:04Z")                         // D-2 rebuilt at 09:00:04
-        assertEquals(Instant.parse("2027-01-03T09:00:04Z"), asOf(), "nothing pending: no clamp, as_of is the newest rewrite")
-        // D-1 pending, first dirtied at 09:00:00 (the memos were accepted at 09:00:00)
-        x("INSERT INTO app.dirty_key (kind, subject_id, business_date, first_dirtied_at, last_dirtied_at, reason) VALUES ('route_day_agg', $route, DATE '2027-01-02', TIMESTAMPTZ '2027-01-03T09:00:00Z', TIMESTAMPTZ '2027-01-03T09:00:01Z', 'memo')")
-        val pending = asOf()!!
-        assertTrue(pending.isBefore(Instant.parse("2027-01-03T09:00:00Z")), "pending key: as_of $pending is before the memos' acceptance 09:00:00")
-        // the same key backed off after a failing rebuild, then dead: still clamps (a dead key never lets as_of run past it)
-        x("UPDATE app.dirty_key SET not_before = TIMESTAMPTZ '2027-01-03T09:15:00Z' WHERE kind = 'route_day_agg' AND subject_id = $route")
-        assertEquals(pending, asOf(), "backed-off key clamps the same")
-        x("UPDATE app.dirty_key SET dead_at = TIMESTAMPTZ '2027-01-03T09:30:00Z' WHERE kind = 'route_day_agg' AND subject_id = $route")
-        assertEquals(pending, asOf(), "dead key clamps the same")
-        // a LATER rewrite of another day must not move it past the waiting memo
-        row("2027-01-01", "2027-01-03T10:00:00Z")
-        assertEquals(pending, asOf(), "a later rebuild of D-2 does not move as_of past D-1's waiting memos")
-        // keys outside the window (today, or another route) never clamp
-        x("DELETE FROM app.dirty_key WHERE kind = 'route_day_agg' AND subject_id = $route")
-        x("INSERT INTO app.dirty_key (kind, subject_id, business_date, first_dirtied_at, last_dirtied_at, reason) VALUES ('route_day_agg', $route, DATE '2027-01-03', TIMESTAMPTZ '2027-01-03T01:00:00Z', TIMESTAMPTZ '2027-01-03T01:00:00Z', 'memo')")
-        assertEquals(Instant.parse("2027-01-03T10:00:00Z"), asOf(), "today's key is outside the window (today is never in a server figure)")
-        x("DELETE FROM app.dirty_key WHERE kind = 'route_day_agg' AND subject_id = $route")
     }
 }

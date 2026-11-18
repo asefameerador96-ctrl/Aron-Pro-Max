@@ -17,7 +17,7 @@ import java.time.YearMonth
 /**
  * Outlet campaign target and achievement of the SR bundle (lane T-KPI1, N-3; screen 21; design docs/status/sr-targets-server.md s5, D-TKPI-08). For the
  * outlets of the bundle's routes (never a client id) that have an `app.outlet_campaign_target` row for an ACTIVE campaign programme covering the bundle date:
- * STD and memo targets, the SKU targets, and the achievement from `dw.fact_memo_line` (sale lines, not voided, active memos) through the last closed day;
+ * STD and memo targets, the SKU targets, and the achievement from the accepted memos at the outlet ([SrMemoFigures.forOutletPairs]: `app.memo` / `app.memo_line`, sale lines, not voided, active memos; every route's memos at the outlet) through the last closed day;
  * today is never in a server figure (same rule as [SrTargets]). STD achieved = base quantity sold of the outlet's campaign SKUs (owner question Q-H);
  * memo achieved = distinct memos with a campaign-SKU line, never a sum of SKU memo counts; remaining = max(target - achieved, 0). The STD target is rounded
  * half up to a whole base unit on the wire. Only outlets with a target appear; at most 150 outlets and 20 SKUs each.
@@ -29,7 +29,7 @@ object SrCampaigns {
 
     /** The campaign outlets of one route in outlet-id order; [truncated] when more than the outlet cap or an outlet with more than the SKU cap existed (never silent). */
     class Result(val rows: List<JsonObject>, val truncated: Boolean)
-    fun load(h: Handle, outletsByRoute: Map<Long, List<Long>>, date: LocalDate, asOf: Map<Long, Instant> = SrTargets.asOfByRoute(h, outletsByRoute.keys, date), maxOutlets: Int = MAX_OUTLETS, maxSkus: Int = MAX_SKUS): Map<Long, Result> {
+    fun load(h: Handle, outletsByRoute: Map<Long, List<Long>>, date: LocalDate, maxOutlets: Int = MAX_OUTLETS, maxSkus: Int = MAX_SKUS): Map<Long, Result> {
         val all = outletsByRoute.values.flatten().distinct()
         if (all.isEmpty()) return emptyMap()
         val month = YearMonth.from(date); val first = month.atDay(1); val through = date.minusDays(1)
@@ -57,36 +57,21 @@ object SrCampaigns {
         // show (another campaign of the outlet, or a SKU past the cut): the (outlet, SKU) pairs go into the query, matched by a join (review, D-TKPI-10).
         val shown = skuTargets.mapValues { it.value.take(maxSkus) }
         val pairs = shown.flatMap { (o, rows) -> rows.map { o to it[2] } }
-        val sold = HashMap<Pair<Long, Long>, Long>(); val memos = HashMap<Long, Long>()
-        if (!through.isBefore(first) && pairs.isNotEmpty()) {
-            val po = pairs.map { it.first }; val pk = pairs.map { it.second }
-            h.createQuery(
-                """
-                SELECT l.outlet_id, l.sku_id, sum(l.qty_base) FROM dw.fact_memo_line l JOIN unnest(CAST(:po AS bigint[]), CAST(:pk AS bigint[])) AS t(outlet_id, sku_id) ON t.outlet_id = l.outlet_id AND t.sku_id = l.sku_id
-                 WHERE l.business_date BETWEEN :f AND :t AND l.line_kind = 'sale' AND NOT l.voided AND l.memo_status = 'active'
-                 GROUP BY l.outlet_id, l.sku_id
-                """,
-            ).bindArray("po", Long::class.javaObjectType, po).bindArray("pk", Long::class.javaObjectType, pk).bind("f", first).bind("t", through)
-                .map { rs, _ -> Triple(rs.getLong(1), rs.getLong(2), rs.getLong(3)) }.list().forEach { sold[it.first to it.second] = it.third }
-            h.createQuery(
-                """
-                SELECT l.outlet_id, count(DISTINCT l.memo_client_uuid) FROM dw.fact_memo_line l JOIN unnest(CAST(:po AS bigint[]), CAST(:pk AS bigint[])) AS t(outlet_id, sku_id) ON t.outlet_id = l.outlet_id AND t.sku_id = l.sku_id
-                 WHERE l.business_date BETWEEN :f AND :t AND l.line_kind = 'sale' AND NOT l.voided AND l.memo_status = 'active'
-                 GROUP BY l.outlet_id
-                """,
-            ).bindArray("po", Long::class.javaObjectType, po).bindArray("pk", Long::class.javaObjectType, pk).bind("f", first).bind("t", through)
-                .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().forEach { memos[it.first] = it.second }
-        }
+        val sold = HashMap<Pair<Long, Long>, Long>(); val memoSets = HashMap<Long, MutableSet<java.util.UUID>>()
+        val (lines, outletAt) = SrMemoFigures.forOutletPairs(h, pairs, first, through)
+        for (l in lines) { sold.merge(l.outlet to l.skuId, l.qty, Long::plus); memoSets.getOrPut(l.outlet) { HashSet() }.add(l.memo) }
+        val memos = memoSets.mapValues { it.value.size.toLong() }
         fun figure(target: Long, achieved: Long) = buildJsonObject { put("target", target); put("achieved", achieved); put("remaining", Targets.remaining(target, achieved)) }
         return outletsByRoute.mapValues { (routeId, _) ->
             val ids = chosen[routeId].orEmpty()
+            val asOfRoute = ids.take(maxOutlets).mapNotNull { outletAt[it] }.maxOrNull() ?: Instant.EPOCH   // informational: the newest received_at among the memos read for this route's campaign outlets
             val rows = ids.take(maxOutlets).map { oid ->
                 val c = camps.getValue(oid)
                 val skus = shown[oid].orEmpty()
                 val achievedStd = skus.sumOf { sold[oid to it[2]] ?: 0L }
                 buildJsonObject {
                     put("outlet_id", oid); put("programme_id", c.programmeId); put("label_en", c.en); put("label_bn", c.bn?.let { JsonPrimitive(it) } ?: JsonNull)
-                    put("month", month.toString()); put("through_date", through.toString()); put("as_of", (asOf[routeId] ?: Instant.EPOCH).wire())
+                    put("month", month.toString()); put("through_date", through.toString()); put("as_of", asOfRoute.wire())
                     put("std", figure(c.std.setScale(0, java.math.RoundingMode.HALF_UP).toLong(), achievedStd))
                     put("memo", figure(c.memo.toLong(), memos[oid] ?: 0L))
                     put("skus", buildJsonArray { skus.forEach { k -> add(buildJsonObject { put("sku_id", k[2]); put("target_qty_base", k[3]); put("sold_qty_base", sold[oid to k[2]] ?: 0L) }) } })

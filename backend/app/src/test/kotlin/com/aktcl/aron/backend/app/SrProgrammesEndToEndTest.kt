@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
 /**
  * Review of the lane at 6af9be045 (D-TKPI-10): the programme sections are proved from a MEMO through the projector into the bundle, not from rows inserted into
  * `dw.agg_*`. One selling day of sr1001 on the dev geography: three memos (cigarette 20s, cigarette 10s, match) are uploaded through the production sync path, the
- * aggregation worker runs, and the bundle of the NEXT business date carries the achievement (`achievement_mtd`, `kpi` with `by_pack`) built from those memos; the bundle
+ * aggregation worker runs, and the bundle of the NEXT business date carries the achievement (`achievement_mtd`, `kpi` with `by_pack`) read straight from those memos (the worker has run but the figure does not depend on it); the bundle
  * of the memos' own date carries none of them (today is never in a server figure).
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -88,12 +88,11 @@ class SrProgrammesEndToEndTest : DataFlowTraceSupport() {
         }
         hop("kpi brands carry the sold brands", "brands" to kpi.path("brands").map { it.path("brand_id").asLong() }.toSet().containsAll(brandOf.values.toSet()), "expected" to true)
 
-        // A rebuild of the same day that changes no figure (a late geo fix or a check-in dirties it the same way) keeps the rows' updated_at: no churn of as_of
-        // and of the bundle version (review, D-TKPI-10).
-        fun stamps() = rows("SELECT sku_id, updated_at::text AS u FROM dw.agg_daily_route_sku WHERE route_id = $gulRouteId AND business_date = DATE '$day' ORDER BY sku_id")
-        val before = stamps(); val versionBefore = bundleFor(next.toString()).path("meta").path("bundle_version").asText()
+        // The server figures are read from the memo tables, not from the aggregate: a rebuild of the same day (a late geo fix or a check-in dirties it the same way)
+        // changes nothing the bundle shows, so the bundle version stays (D-TKPI-12; plain updated_at semantics are restored).
+        val versionBefore = bundleFor(next.toString()).path("meta").path("bundle_version").asText()
         runWorker()
-        note("a figure-neutral rebuild keeps updated_at and the bundle version", "stamps equal ${before == stamps()}")
-        assertEquals(before, stamps()); assertEquals(versionBefore, bundleFor(next.toString()).path("meta").path("bundle_version").asText())
+        note("a rebuild of the day keeps the bundle version", "version equal ${versionBefore == bundleFor(next.toString()).path("meta").path("bundle_version").asText()}")
+        assertEquals(versionBefore, bundleFor(next.toString()).path("meta").path("bundle_version").asText())
     }
 }

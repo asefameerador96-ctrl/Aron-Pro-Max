@@ -20,7 +20,7 @@ import java.time.YearMonth
 /**
  * Match Box Lifting Star snapshot of the SR (lane T-KPI1, N-8; screen 62; design docs/status/sr-targets-server.md s4, D-TKPI-07). One object per route whose
  * route has a target row for an ACTIVE superstar programme in the bundle month; null otherwise. Figures come from [StarProgress] (exact rationals, rounded
- * once); STD and LMS are sold quantities of the programme's SKUs (`rules.sku_category`, default match, or `rules.sku_ids`) from `dw.agg_daily_route_sku`
+ * once); STD and LMS are sold quantities of the programme's SKUs (`rules.sku_category`, default match, or `rules.sku_ids`) from the route's accepted memos ([SrMemoFigures], `app.memo` / `app.memo_line`)
  * through the last closed day (never today; same rule as [SrTargets]) and over last month, divided by `rules.unit_divisor` (default 1). The day counts come
  * from [SkuProgress.dayCounts] (one function for the convention) and the route's calendar. Slabs and status texts are programme data in flat scalar keys
  * (the programme contract allows scalar rule values only): `slab1_label`, `slab1_min_bp`, `slab1_amount_mtk` .. `slab6_*`; `status1_min_bp`, `status1_en`,
@@ -30,7 +30,11 @@ import java.time.YearMonth
 object SrStar {
     class RouteInfo(val routeName: String, val srName: String?, val srUserId: Long?, val calendar: RouteCalendarDto)
 
-    fun load(h: Handle, routes: Map<Long, RouteInfo>, date: LocalDate, asOf: Map<Long, Instant> = SrTargets.asOfByRoute(h, routes.keys, date), dropped: MutableSet<Long>? = null): Map<Long, JsonObject> {
+    fun load(
+        h: Handle, routes: Map<Long, RouteInfo>, date: LocalDate,
+        figures: Map<Long, SrMemoFigures.Figures> = SrMemoFigures.forRoutes(h, routes.keys, YearMonth.from(date).atDay(1), date.minusDays(1)),
+        dim: SrMemoFigures.Dim = SrMemoFigures.dim(h), dropped: MutableSet<Long>? = null,
+    ): Map<Long, JsonObject> {
         if (routes.isEmpty()) return emptyMap()
         val month = YearMonth.from(date); val first = month.atDay(1); val through = date.minusDays(1)
         val last = month.minusMonths(1)
@@ -54,18 +58,15 @@ object SrStar {
             val divisor = rules.num("unit_divisor")?.takeIf { it >= 1 } ?: 1L
             val category = rules.str("sku_category") ?: "match"
             val ids = rules.str("sku_ids")?.split(',')?.mapNotNull { it.trim().toLongOrNull() }.orEmpty()
-            fun sold(from: LocalDate, to: LocalDate): Long = if (to.isBefore(from)) 0L else h.createQuery(
-                """
-                SELECT coalesce(sum(a.sold_qty_base), 0) FROM dw.agg_daily_route_sku a JOIN app.sku s ON s.id = a.sku_id
-                 WHERE a.route_id = :r AND a.business_date BETWEEN :f AND :t AND ${if (ids.isNotEmpty()) "s.id = ANY(:ids)" else "s.category_code = :cat"}
-                """,
-            ).bind("r", routeId).bind("f", from).bind("t", to).let { q -> if (ids.isNotEmpty()) q.bindArray("ids", Long::class.javaObjectType, ids) else q.bind("cat", category) }
-                .mapTo(Long::class.java).one()
+            val accept: (Long) -> Boolean = if (ids.isNotEmpty()) { sku -> sku in ids } else { sku -> dim.skus[sku]?.category == category }
+            // STD: this month's accepted memos through the last closed day ([SrMemoFigures], same snapshot as every other figure); LMS: last month, same filters.
+            val std = figures[routeId]?.sold(accept) ?: 0L
+            val lms = SrMemoFigures.forRoutes(h, listOf(routeId), last.atDay(1), last.atEndOfMonth())[routeId]?.sold(accept) ?: 0L
             val c = info.calendar
             val days = SkuProgress.dayCounts(SkuProgress.Calendar(c.elapsed_working_days_before_today, c.remaining_working_days_after_today, c.today_is_working))
             val res = StarProgress.compute(
                 StarProgress.Input(
-                    targetMilli = p.target.setScale(3).unscaledValue().toLong(), stdBase = sold(first, through), lmsBase = sold(last.atDay(1), last.atEndOfMonth()),
+                    targetMilli = p.target.setScale(3).unscaledValue().toLong(), stdBase = std, lmsBase = lms,
                     unitDivisor = divisor, ewd = days.elapsed, wd = c.working_days, lmwd = c.last_month_working_days,
                 ),
             )
@@ -77,7 +78,7 @@ object SrStar {
             fun l(v: Long?) = v?.let { JsonPrimitive(it) } ?: JsonNull
             buildJsonObject {
                 put("programme_id", p.id); put("programme_code", p.code); put("name_en", p.nameEn); put("name_bn", p.nameBn?.let { JsonPrimitive(it) } ?: JsonNull)
-                put("month", month.toString()); put("through_date", through.toString()); put("as_of", (asOf[routeId] ?: Instant.EPOCH).wire())
+                put("month", month.toString()); put("through_date", through.toString()); put("as_of", (figures[routeId]?.asOf ?: Instant.EPOCH).wire())
                 put("sr_name", info.srName?.let { JsonPrimitive(it) } ?: JsonNull); put("sr_code", info.srUserId?.let { users[it] }?.let { JsonPrimitive(it) } ?: JsonNull)
                 put("route_name", info.routeName)
                 put("lmwd", c.last_month_working_days); put("wd", c.working_days); put("ewd", days.elapsed)

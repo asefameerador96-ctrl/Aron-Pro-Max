@@ -58,10 +58,12 @@ class SrCampaignsBundleTest {
     private fun campaigns(): List<JsonObject> = bundle().full.routes.single { it.route_id == route }.campaigns.orEmpty().map { it.jsonObject }
     private fun JsonObject.l(k: String) = this[k]!!.jsonPrimitive.content.toLong()
 
-    private fun line(date: String, memo: String, outlet: Long, sku: Long, qty: Int, kind: String = "sale", voided: Boolean = false, status: String = "active") = x(
-        """INSERT INTO dw.fact_memo_line (business_date, line_client_uuid, memo_client_uuid, line_no, outlet_id, sku_id, line_kind, qty_entered, unit_entered, pack_factor, qty_base, gross_mtk, voided, memo_status)
-           VALUES (DATE '$date', '${UUID.randomUUID()}', '$memo', 1, $outlet, $sku, '$kind', $qty, 'stick', 1, $qty, 0, $voided, '$status')""",
-    )
+    // Real accepted one-line memos (D-TKPI-12): the figures are read from app.memo / app.memo_line.
+    private val fx by lazy { SrMemoFixture({ x(it) }, sr) }
+    private fun line(date: String, memo: String, outlet: Long, sku: Long, qty: Int, kind: String = "sale", voided: Boolean = false, at: String = "TIMESTAMPTZ '2027-01-02T06:00:00Z'") {
+        fx.memo(memo, route, outlet, date, listOf(SrMemoFixture.L(sku, qty, kind)), at)
+        if (voided) x("UPDATE app.memo_line SET voided_at = now() WHERE memo_client_uuid = CAST('$memo' AS uuid)")
+    }
     private fun memo() = UUID.randomUUID().toString()
 
     @BeforeAll
@@ -81,17 +83,15 @@ class SrCampaignsBundleTest {
         x("INSERT INTO app.outlet_campaign_target (programme_id, month, outlet_id, std_target, memo_target, batch_uuid) VALUES ($programme, DATE '2027-01-01', $o1, 2240.000, 18, $b), ($programme, DATE '2027-01-01', $outside, 9, 9, $b)")
         x("INSERT INTO app.outlet_campaign_sku_target (programme_id, month, outlet_id, sku_id, qty_base, batch_uuid) VALUES ($programme, DATE '2027-01-01', $o1, $skuA, 1500, $b), ($programme, DATE '2027-01-01', $o1, $skuB, 740, $b), ($programme, DATE '2027-01-01', $outside, $skuA, 5, $b)")
         for (i in 1..6) line("2027-01-0${if (i <= 2) 1 else 2}", memo(), o1, skuA, 50)   // six memos, 300 of SKU A
-        line("2027-01-02", memo(), o1, skuB, 90)                                           // the seventh memo: 90 of SKU B -> 390 and 7
+        line("2027-01-02", memo(), o1, skuB, 90, at = "TIMESTAMPTZ '2027-01-03T01:00:00Z'") // the seventh memo: 90 of SKU B -> 390 and 7; the newest memo read
         line("2027-01-02", memo(), o1, skuA, 1000, voided = true)                          // voided line: out
-        line("2027-01-02", memo(), o1, skuA, 1000, status = "superseded")                  // superseded memo: out
+        val sup = memo(); line("2027-01-02", sup, o1, skuA, 1000)                          // superseded memo: out (the edit holds a SKU without a campaign target)
+        fx.memo(memo(), route, o1, "2027-01-02", listOf(SrMemoFixture.L(skuC, 1)), "now()", supersedes = sup)
         line("2027-01-02", memo(), o1, skuA, 1000, kind = "promo_free")                    // free goods: out
         line("2027-01-02", memo(), o1, skuC, 1000)                                         // a SKU without a campaign target: out
         line("2027-01-03", memo(), o1, skuA, 5000)                                         // the bundle date: out
         line("2026-12-31", memo(), o1, skuA, 5000)                                         // last month: out
         line("2027-01-02", memo(), o2, skuA, 5000)                                         // another outlet (no campaign row): out
-        x("INSERT INTO dw.summary_freshness (table_name, last_updated_at, last_event_id) VALUES ('agg_daily_route_sku', TIMESTAMPTZ '2027-01-03T01:00:00Z', 1) ON CONFLICT (table_name) DO UPDATE SET last_updated_at = EXCLUDED.last_updated_at")
-        x("INSERT INTO dw.agg_daily_route_sku (business_date, route_id, sku_id, sold_qty_base, memo_count) SELECT DATE '2027-01-02', $route, (SELECT min(id) FROM app.sku), 0, 0 WHERE NOT EXISTS (SELECT 1 FROM dw.agg_daily_route_sku WHERE route_id = $route)") // a projector row of the route gives its as_of (no figure)
-        x("UPDATE dw.agg_daily_route_sku SET updated_at = TIMESTAMPTZ '2027-01-03T01:00:00Z'") // as_of is the newest rewrite of the route's aggregate rows (D-TKPI-10)
     }
 
     @AfterAll fun tearDown() = fresh.close()
@@ -140,14 +140,13 @@ class SrCampaignsBundleTest {
 
     @Test
     fun capsAreStatedNeverSilentAndTheCutHappensBeforeTheFiguresAreRead() {
-        val asOf = mapOf(route to Instant.parse("2027-01-03T01:00:00Z"))
         val got = fresh.db.jdbi.withHandle<Map<Long, com.aktcl.aron.backend.sync.SrCampaigns.Result>, Exception> { h ->
-            com.aktcl.aron.backend.sync.SrCampaigns.load(h, mapOf(route to listOf(o1)), day, asOf, maxOutlets = 1, maxSkus = 1)
+            com.aktcl.aron.backend.sync.SrCampaigns.load(h, mapOf(route to listOf(o1)), day, maxOutlets = 1, maxSkus = 1)
         }
         val r = got.getValue(route)
         assertTrue(r.truncated, "outlet o1 has two SKU targets and the cap is 1: truncated says so")
         assertEquals(1, r.rows.single()["skus"]!!.jsonArray.size)
-        val whole = fresh.db.jdbi.withHandle<Map<Long, com.aktcl.aron.backend.sync.SrCampaigns.Result>, Exception> { h -> com.aktcl.aron.backend.sync.SrCampaigns.load(h, mapOf(route to listOf(o1)), day, asOf) }
+        val whole = fresh.db.jdbi.withHandle<Map<Long, com.aktcl.aron.backend.sync.SrCampaigns.Result>, Exception> { h -> com.aktcl.aron.backend.sync.SrCampaigns.load(h, mapOf(route to listOf(o1)), day) }
         assertEquals(false, whole.getValue(route).truncated)
         assertEquals(150, com.aktcl.aron.backend.sync.SrCampaigns.MAX_OUTLETS); assertEquals(20, com.aktcl.aron.backend.sync.SrCampaigns.MAX_SKUS)
     }
