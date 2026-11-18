@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTextInput
 import com.aktcl.aron.core.printing.flow.SaveAndPrint
@@ -85,7 +86,7 @@ class SrParity1bSaleTests {
         }
         if (frozenClock) rule.mainClock.advanceTimeBy(300) else rule.waitForIdle()
         typeInto?.let { (tag, text) -> rule.onNodeWithTag(tag).performTextInput(text); if (frozenClock) rule.mainClock.advanceTimeBy(300) else rule.waitForIdle() }
-        clicks.forEach { if (it.startsWith("#")) rule.onNodeWithTag(it.drop(1)).performClick() else rule.onNodeWithText(it).performClick(); rule.waitForIdle() }
+        clicks.forEach { if (it.startsWith("#") && it.contains("@")) rule.onAllNodesWithTag(it.drop(1).substringBefore("@"))[it.substringAfter("@").toInt()].performClick() else if (it.startsWith("#")) rule.onNodeWithTag(it.drop(1)).performClick() else rule.onNodeWithText(it).performClick(); rule.waitForIdle() }
         if (System.getProperty("roborazzi.test.record") != "true") assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
         rule.onRoot().captureRoboImage("$goldens/$name.png", roborazziOptions = options)
     }
@@ -270,4 +271,29 @@ class SrParity1bSaleTests {
             onRefresh = {}, onForceSale = {}, onRetry = {}, onMap = {}, geoPanel = true, texts = com.aktcl.aron.feature.outlet.VisitCheckTexts(forceLabel = "Manual Override"),
         )
     }
+
+    // ---- QC in two steps (manual 25, 26), recorded with the flags SaleRoute passes for the SR (twoStep = true) ----
+    private val qcSkus = listOf(maxr, aster)
+    private fun qcDraft(vararg e: com.aktcl.aron.feature.sale.domain.QcEntry): SaleDraft {
+        var d = com.aktcl.aron.feature.sale.domain.SaleDraftOps.setQuantity(com.aktcl.aron.feature.sale.domain.SaleDraftOps.setQuantity(emptyDraft, 100, 20, com.aktcl.aron.rules.QtyUnit.STICK), 103, 10, com.aktcl.aron.rules.QtyUnit.PIECE)
+        e.forEach { d = com.aktcl.aron.feature.sale.domain.SaleDraftOps.setQc(d, it) }
+        return d
+    }
+    private val qcWith = qcDraft(
+        com.aktcl.aron.feature.sale.domain.QcEntry(100, "damaged_crushed", "MFC", 5), com.aktcl.aron.feature.sale.domain.QcEntry(100, "expired_stock", "MKT", 5),
+    )
+    @Composable private fun QcStep(d: SaleDraft = qcWith, skus: List<SaleSku> = qcSkus, locked: Boolean = false, cap: Long? = 594_500) = com.aktcl.aron.feature.sale.ui.QcScreen(
+        skus, SaleReviewCalculator.review(d, (skus + qcSkus).associateBy { it.skuId }),
+        { id, code -> d.qc.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L }, { _, _, _ -> }, locked, {}, onCancel = {}, capMtkOf = { cap }, twoStep = true,
+    )
+    private val qcTitle = "QC"
+    @Test fun qcStepOne() = shot("srp1b_qc_step1", titleText = qcTitle) { QcStep() }
+    @Test fun qcStepOneEmptyList() = shot("srp1b_qc_step1_empty", titleText = qcTitle) { QcStep(qcDraft(), emptyList()) }
+    @Test fun qcStepOneNoEntries() = shot("srp1b_qc_step1_no_entries", titleText = qcTitle) { QcStep(qcDraft()) }
+    @Test fun qcStepOneSunlight() = shot("srp1b_qc_step1_sunlight", sunlight = true, titleText = qcTitle) { QcStep() }
+    @Test fun qcStepOneFont20() = shot("srp1b_qc_step1_font20", fontScale = 2.0f, titleText = qcTitle) { QcStep() }
+    @Test fun qcStepTwo() = shot("srp1b_qc_step2", titleText = qcTitle, clicks = listOf("#" + com.aktcl.aron.feature.sale.ui.QcTags.CARD + "@0")) { QcStep() }
+    @Test fun qcStepTwoSunlight() = shot("srp1b_qc_step2_sunlight", sunlight = true, titleText = qcTitle, clicks = listOf("#" + com.aktcl.aron.feature.sale.ui.QcTags.CARD + "@0")) { QcStep() }
+    @Test fun qcStepTwoFont20() = shot("srp1b_qc_step2_font20", fontScale = 2.0f, titleText = qcTitle, clicks = listOf("#" + com.aktcl.aron.feature.sale.ui.QcTags.CARD + "@0")) { QcStep() }
+    @Test fun qcStepTwoLocked() = shot("srp1b_qc_step2_locked", titleText = qcTitle, clicks = listOf("#" + com.aktcl.aron.feature.sale.ui.QcTags.CARD + "@0")) { QcStep(locked = true) }
 }

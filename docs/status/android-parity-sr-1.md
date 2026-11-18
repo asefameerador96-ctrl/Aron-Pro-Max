@@ -23,7 +23,7 @@ Status words: COMPARED = recorded through the production host flags and compared
 | 22 | Enter quantity | COMPARED, KEPT (ADS N/A) | srp1b_qty_* |
 | 23 | Sale history (সেল ডাটা) | COMPARED, KEPT (offline card, Latin vs Bangla ISO digits, no packshots in rows) | srp1b_sale_data*, D-PAR-SR1-20 (history_bn_* are the Memo menu) |
 | 24 | Review | COMPARED, KEPT (no discount table, field units) | srp1b_review_* |
-| 25, 26 | Product QC and QC entry | GOLDEN-ONLY | qc_bn_* (old frame) |
+| 25, 26 | Product QC (summary step) and QC entry (per-SKU step) | COMPARED, rebuilt as the two steps for the SR (D-PAR-SR1-23); AMO keeps one scroll | srp1b_qc_step1*, srp1b_qc_step2* (qc_bn_* are the AMO/one-scroll frame) |
 | 27, 28, 29 | Partial payment, confirm and print, saved | COMPARED | srp1b_credit_dialog*, srp1b_dialog_* |
 | 30, 31, 32 | Out of range, force reason, zero sale | COMPARED, KEPT (force gate) | srp1b_out_of_range*, srp1b_force_reason*, srp1b_zero_* |
 | 33, 34 | DRP slide collection, enter slides | DEFERRED (docs/27 offers; the Slide step only exists while a SKU carries an offer; layout differs from the manual and is left until the owner lifts the deferral) | slide_bn_offer (old frame) |

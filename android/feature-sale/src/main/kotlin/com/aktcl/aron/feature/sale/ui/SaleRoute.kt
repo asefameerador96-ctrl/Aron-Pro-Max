@@ -83,7 +83,7 @@ fun SaleRoute(
                         onClearSku = { id -> QcEntryModel.APP_TYPES.forEach { t -> vm.setQc(QcEntry(id, t.code, t.group, 0)) } },
                         locked = draft?.qcCompleted == true, onDone = { qcOnlyStarted = false; vm.completeQc(); stage = SaleStage.Review },
                         onCancel = { if (qcOnlyStarted) { qcOnlyStarted = false; vm.cancelQcOnly(); stage = SaleStage.Entry } else { vm.restoreQc(qcBefore); stage = SaleStage.Review } }, // Cancel discards what was typed since the screen opened
-                        collapsible = draft?.lines.isNullOrEmpty(),
+                        collapsible = draft?.lines.isNullOrEmpty(), twoStep = quantityPopup, // the SR's two steps (manual 25, 26); the AMO keeps the one-scroll screen
                     )
                     SaleStage.Credit -> if (review != null) CreditPrompt(
                         review, { vm.setPaid(it); stage = SaleStage.Review },

@@ -8,6 +8,9 @@ import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronCard
+import com.aktcl.aron.core.ui.aron.AronInfoCard
+import com.aktcl.aron.core.ui.aron.AronSolidButton
+import com.aktcl.aron.core.ui.aron.SolidTone
 import com.aktcl.aron.core.ui.aron.AronField
 import com.aktcl.aron.core.ui.aron.AronMinus
 import com.aktcl.aron.core.ui.aron.AronPlus
@@ -39,6 +42,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -288,7 +292,13 @@ fun QcScreen(
     onClearSku: (skuId: Long) -> Unit = {},
     /** True for the QC-only path (every SKU of the catalog is offered): a card opens on a tap so the list stays light. */
     collapsible: Boolean = false,
+    /** The old SR's two steps (manual 25, 26): the SKU carousel with the QC summary, then one SKU's entry page; false keeps the one-scroll screen (AMO). */
+    twoStep: Boolean = false,
 ) {
+    if (twoStep) {
+        QcTwoStepScreen(skus, review, qtyOf, onQty, locked, onDone, modifier, onCancel, capMtkOf, onClearSku)
+        return
+    }
     val c = LocalAronColors.current
     val look = LocalAronLook.current
     var askSubmit by remember { mutableStateOf(false) }
@@ -386,6 +396,159 @@ fun QcScreen(
             stringResource(R.string.qc_confirm_title), stringResource(R.string.qc_confirm_message),
             stringResource(R.string.sale_yes), stringResource(R.string.sale_no),
             onConfirm = { askSubmit = false; onDone() }, onDismiss = { askSubmit = false },
+        )
+    }
+}
+
+/** The step-2 entry of one SKU: the most that can still be entered for [code] (the same formula as the one-scroll screen). */
+private fun qcMax(sku: SaleSku, review: SaleReview, entries: List<com.aktcl.aron.feature.sale.domain.QcEntry>, code: String, cap: Long?, locked: Boolean): Int {
+    if (locked) return 0
+    val otherQc = review.qc.filterNot { it.entry.skuId == sku.skuId && it.entry.faultTypeCode == code }.sumOf { it.settlementMtk }
+    val memoRoom = QcEntryModel.memoRoomMtk(review.totals.grossMtk, review.totals.offerDiscountMtk + review.totals.drpDiscountMtk, otherQc)
+    return QcEntryModel.maxQty(sku, entries, code, cap, memoRoom).coerceAtMost(QcEntryModel.MAX_QTY).toInt()
+}
+
+/**
+ * The old SR's QC in two steps (SR manual 25 and 26, owner rule 14a): step 1 is the info card, a horizontal row of the SKUs' packshots, the QC summary
+ * (SKU, QC type, quantity, the total and the settlement amount) and the "QC জমা দিন" bar; a tap on a SKU opens step 2, that SKU's entry page: the
+ * maximum / done / remaining amounts, the fault-type table (group, type, quantity box) and সংরক্ষণ, বাতিল, ডিলিট. The quantities are applied live through
+ * [onQty] exactly as the one-scroll screen does (nothing is held back in the screen); বাতিল puts back the values the page opened with, ডিলিট clears the SKU
+ * ([onClearSku]). The open SKU and the values to restore survive a kill and relaunch (rememberSaveable); what is saved, the caps and the credit logic are not changed.
+ */
+@Composable
+private fun QcTwoStepScreen(
+    skus: List<SaleSku>, review: SaleReview, qtyOf: (Long, String) -> Long, onQty: (Long, String, Long) -> Unit, locked: Boolean, onDone: () -> Unit,
+    modifier: Modifier, onCancel: (() -> Unit)?, capMtkOf: (Long) -> Long?, onClearSku: (Long) -> Unit,
+) {
+    val c = LocalAronColors.current
+    val look = LocalAronLook.current
+    var askSubmit by remember { mutableStateOf(false) }
+    var selected by rememberSaveable { mutableStateOf<Long?>(null) }
+    // "code=qty;code=qty" of the page as it opened, to put back on বাতিল
+    var opened by rememberSaveable { mutableStateOf("") }
+    val entries = review.qc.map { it.entry }
+    val sku = selected?.let { id -> skus.firstOrNull { it.skuId == id } }
+    if (selected != null && sku == null) selected = null
+    androidx.activity.compose.BackHandler(enabled = sku != null) { selected = null }
+    Column(modifier.fillMaxSize().background(look.page)) {
+        if (sku == null) {
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                AronInfoCard(stringResource(if (locked) R.string.qc_locked else R.string.qc_pick))
+                if (skus.isEmpty()) AronEmptyState(stringResource(R.string.qc_empty), icon = AronIcons.Sale)
+                else androidx.compose.foundation.lazy.LazyRow(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(PopupTint.copy(alpha = 0.6f)).padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(skus, key = { it.skuId }) { s ->
+                        Column(
+                            Modifier.width(112.dp).clip(RoundedCornerShape(10.dp)).background(look.card).clickable(role = Role.Button) {
+                                selected = s.skuId
+                                opened = QcEntryModel.typesOf(QcEntryModel.PRODUCTION).plus(QcEntryModel.typesOf(QcEntryModel.TRANSPORT)).joinToString(";") { t -> t.code + "=" + qtyOf(s.skuId, t.code) }
+                            }.padding(8.dp).testTag(QcTags.CARD),
+                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            PackshotImage(s.skuId.toString(), Modifier.size(80.dp, 112.dp), category = packCategoryOf(s.categoryCode))
+                            Text(skuDisplayName(s), color = look.purple, fontSize = 14.sp, textAlign = TextAlign.Center, maxLines = 2)
+                        }
+                    }
+                }
+                Text(stringResource(R.string.qc_summary), color = look.ink, fontSize = 20.sp, modifier = Modifier.padding(top = AronTokens.Space.S))
+                // the summary table of manual 25 (right): SKU, QC type, quantity; the footer names the total and the settlement amount
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card)) {
+                    Row(Modifier.fillMaxWidth().background(look.tableHeader).padding(horizontal = 12.dp, vertical = 12.dp)) {
+                        Text(stringResource(R.string.review_col_sku), Modifier.weight(1.2f), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.qc_col_qctype), Modifier.weight(1.4f), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.qc_col_qty), Modifier.weight(0.8f), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Medium, textAlign = TextAlign.End)
+                    }
+                    QcEntryModel.summary(entries).forEach { r ->
+                        val rowSku = skus.firstOrNull { it.skuId == r.skuId }
+                        val types = listOfNotNull(if (r.mfcQty > 0) stringResource(R.string.qc_col_mfc) else null, if (r.mktQty > 0) stringResource(R.string.qc_col_mkt) else null).joinToString(",")
+                        Row(Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).padding(horizontal = 12.dp, vertical = 6.dp).testTag(QcTags.SUMMARY_ROW), verticalAlignment = Alignment.CenterVertically) {
+                            Text(rowSku?.let { skuDisplayName(it) } ?: r.skuId.toString(), Modifier.weight(1.2f), color = look.purple, maxLines = 3)
+                            Text(types, Modifier.weight(1.4f), color = look.purple, maxLines = 3)
+                            Text(localizedNumber(r.totalQty), Modifier.weight(0.8f), color = look.ink, textAlign = TextAlign.End, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Column(Modifier.fillMaxWidth().background(look.page.copy(alpha = 0.6f)).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        Text(stringResource(R.string.qc_total_qty, localizedNumber(review.qc.sumOf { it.entry.defectQty })), color = look.ink, fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.qc_deduction, "\u2212 " + money(review.totals.qcDeductionMtk)), color = look.ink, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+            Column(Modifier.fillMaxWidth().background(look.panel).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))) {
+                Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (onCancel != null) AronSecondaryButton(stringResource(R.string.qc_cancel), onCancel, Modifier.weight(1f))
+                    AronPrimaryButton(stringResource(R.string.qc_done), { askSubmit = true }, Modifier.weight(1f), enabled = !locked, glyph = ButtonGlyph.Arrow)
+                }
+            }
+        } else {
+            val cap = capMtkOf(sku.skuId)
+            val done = QcEntryModel.doneMtk(sku, entries)
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(PopupTint).padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PackshotImage(sku.skuId.toString(), Modifier.size(72.dp, 100.dp), category = packCategoryOf(sku.categoryCode))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                        Text(skuDisplayName(sku), color = look.purple, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        if (cap != null) QcAmountLine(stringResource(R.string.qc_max), money(cap))
+                        QcAmountLine(stringResource(R.string.qc_done_amount), money(done))
+                        QcEntryModel.remainingMtk(cap, done)?.let { QcAmountLine(stringResource(R.string.qc_remaining), money(it)) }
+                    }
+                }
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card)) {
+                    Row(Modifier.fillMaxWidth().background(look.tableHeader).padding(horizontal = 12.dp, vertical = 12.dp)) {
+                        Text(stringResource(R.string.qc_col_fault), Modifier.weight(0.8f), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.qc_col_type), Modifier.weight(1.3f), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.qc_col_qty), Modifier.weight(0.9f), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Medium, textAlign = TextAlign.End)
+                    }
+                    listOf(QcEntryModel.PRODUCTION to R.string.qc_production, QcEntryModel.TRANSPORT to R.string.qc_transport).forEach { (group, label) ->
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                            Text(stringResource(label), Modifier.weight(0.8f).padding(end = 6.dp), color = look.purple, fontWeight = FontWeight.Bold)
+                            Column(Modifier.weight(2.2f), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                                QcEntryModel.typesOf(group).forEach { type ->
+                                    val cur = qtyOf(sku.skuId, type.code).toInt()
+                                    val max = qcMax(sku, review, entries, type.code, cap, locked)
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Column(Modifier.weight(1.3f)) {
+                                            Text(qcTypeLabel(type.code), color = look.purple, fontSize = 15.sp)
+                                            // the QC count stays in sticks (a defect count, not a trade unit, D-SR-MAN-S4-06); the packet equivalent is a caption
+                                            qcPackEquivalent(sku, cur.toLong())?.let { Text(it, Modifier.testTag(QcTags.PACK_EQUIV), style = MaterialTheme.typography.bodySmall, color = c.textSecondary) }
+                                        }
+                                        Box(Modifier.weight(0.9f), contentAlignment = Alignment.CenterEnd) {
+                                            AronQtyField(
+                                                cur, { if (!locked) onQty(sku.skuId, type.code, it.toLong()) },
+                                                name = qcTypeLabel(type.code) + " " + skuDisplayName(sku), max = max, enabled = !locked,
+                                                clampedText = { stringResource(R.string.qc_typed_max, localizedNumber(it.toLong())) },
+                                                modifier = Modifier.testTag(QcTags.QTY_FIELD),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                AronPrimaryButton(stringResource(R.string.qty_popup_save), { selected = null }, Modifier.fillMaxWidth(), glyph = ButtonGlyph.Save)
+                AronSecondaryButton(
+                    stringResource(R.string.qc_cancel),
+                    {
+                        // put back what the page opened with, then leave it
+                        opened.split(';').filter { it.contains('=') }.forEach { kv -> onQty(sku.skuId, kv.substringBefore('='), kv.substringAfter('=').toLongOrNull() ?: 0L) }
+                        selected = null
+                    },
+                    Modifier.fillMaxWidth(),
+                )
+                if (!locked && done > 0) AronSolidButton(stringResource(R.string.qc_clear), { onClearSku(sku.skuId); selected = null }, Modifier.fillMaxWidth(), tone = SolidTone.Amber)
+            }
+        }
+    }
+    if (askSubmit) {
+        AronConfirmDialog(
+            stringResource(R.string.qc_confirm_title), stringResource(R.string.qc_confirm_message),
+            stringResource(R.string.sale_yes), stringResource(R.string.sale_no),
+            onConfirm = { askSubmit = false; onDone() }, onDismiss = { askSubmit = false }, manual = true,
         )
     }
 }

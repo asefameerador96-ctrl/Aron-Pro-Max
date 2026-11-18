@@ -152,4 +152,8 @@
     <string name="sale_amo_discount">Discount</string>
     <string name="sale_amo_percent">%1$s%%</string>
     <string name="review_total_qty">Quantity</string>
+    <string name="qc_col_fault">Fault type</string>
+    <string name="qc_col_type">Type</string>
+    <string name="qc_col_qty">Quantity</string>
+    <string name="qc_col_qctype">QC type</string>
 </resources>
