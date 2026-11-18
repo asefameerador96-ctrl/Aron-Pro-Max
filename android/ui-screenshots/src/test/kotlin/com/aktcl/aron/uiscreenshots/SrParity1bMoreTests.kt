@@ -8,6 +8,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import com.aktcl.aron.feature.memo.domain.HistoryDay
+import com.aktcl.aron.feature.memo.domain.HistorySkuRow
+import com.aktcl.aron.feature.memo.domain.SaleHistory
+import com.aktcl.aron.feature.memo.ui.SaleDataScreen
 import com.aktcl.aron.feature.memo.ui.SalesJourneyCall
 import com.aktcl.aron.feature.memo.ui.SalesJourneyScreen
 import com.aktcl.aron.rules.JourneyCallInput
@@ -128,4 +132,22 @@ class SrParity1bMoreTests {
     @Test fun journey() = shot("srp1b_journey", titleText = "বিক্রয় যাত্রা", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_sales_journey) { SalesJourneyScreen(journey, UiLocale.BN) }
     @Test fun journeyFont20() = shot("srp1b_journey_font20", fontScale = 2.0f, titleText = "বিক্রয় যাত্রা", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_sales_journey) { SalesJourneyScreen(journey, UiLocale.BN) }
     @Test fun journeyEmpty() = shot("srp1b_journey_empty", titleText = "বিক্রয় যাত্রা", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_sales_journey) { SalesJourneyScreen(emptyList(), UiLocale.BN) }
+
+    // ---- Sale History / সেল ডাটা (manual 23) as SrApp draws it: offlineBanner = true, the outlet line, the local window ----
+    private val skuNames = mapOf(1L to "ARIS-A-20s", 2L to "BDDF-10s", 3L to "BDDF-20s")
+    private val history = SaleHistory(
+        listOf(
+            HistoryDay("2026-11-10", emptyList(), 32_500, listOf(HistorySkuRow(1, 400, 13_000, 20, "pack"), HistorySkuRow(2, 100, 6_500, 10, "pack"), HistorySkuRow(3, 400, 13_000, 20, "pack"))),
+            HistoryDay("2026-11-04", emptyList(), 8_000, listOf(HistorySkuRow(1, 100, 8_000, 5, "pack"))),
+        ),
+        40_500, fromServer = false,
+    )
+    @Composable private fun SaleData(h: SaleHistory = history) = SaleDataScreen(
+        h, today = "2026-11-18", outletLabel = "Ruku Store (2681268-01778553683-Agora Goli, Gulshan-2)", offlineBanner = true, skuName = { skuNames[it] ?: it.toString() },
+        skuUnit = { "প্যাকেট" }, skuCategory = { "cigarette" }, oldest = "2026-11-01",
+    )
+    @Test fun saleData() = shot("srp1b_sale_data", titleText = "সেল ডাটা") { SaleData() }
+    @Test fun saleDataSunlight() = shot("srp1b_sale_data_sunlight", sunlight = true, titleText = "সেল ডাটা") { SaleData() }
+    @Test fun saleDataFont20() = shot("srp1b_sale_data_font20", fontScale = 2.0f, titleText = "সেল ডাটা") { SaleData() }
+    @Test fun saleDataNone() = shot("srp1b_sale_data_none", titleText = "সেল ডাটা") { SaleData(SaleHistory(emptyList(), 0, false)) }
 }

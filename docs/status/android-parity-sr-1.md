@@ -21,7 +21,7 @@ Status words: COMPARED = recorded through the production host flags and compared
 | 20 | Outlet photo | NOT YET | CallPhotoStep, camera |
 | 21 | Outlet target (today's target) | NOT YET | OutletTargetPopup |
 | 22 | Enter quantity | COMPARED, KEPT (ADS N/A) | srp1b_qty_* |
-| 23 | Sale history | GOLDEN-ONLY | history_bn_* (old frame) |
+| 23 | Sale history (সেল ডাটা) | COMPARED, KEPT (offline card, Latin vs Bangla ISO digits, no packshots in rows) | srp1b_sale_data*, D-PAR-SR1-20 (history_bn_* are the Memo menu) |
 | 24 | Review | COMPARED, KEPT (no discount table, field units) | srp1b_review_* |
 | 25, 26 | Product QC and QC entry | GOLDEN-ONLY | qc_bn_* (old frame) |
 | 27, 28, 29 | Partial payment, confirm and print, saved | COMPARED | srp1b_credit_dialog*, srp1b_dialog_* |
@@ -31,7 +31,7 @@ Status words: COMPARED = recorded through the production host flags and compared
 | 36, 37, 38 | Find memo, edit sale, collect due | excluded (P-SR2b) | |
 | 39, 40, 41 | Sales summary, sync and submit, submitted | excluded (P-SR2b) | |
 | 42, 43, 44, 45 | New shop, permanent close, change information, clusters (and the outlet menu) | COMPARED, KEPT (GEO info line); the opened cluster search dialog NOT recorded (test clock hangs on a field in a dialog) | srp1b_outlet_menu*, srp1b_req_*, srp1b_clusters* (D-PAR-SR1-17) |
-| 46 | Tutorial | GOLDEN-ONLY | sr_tutorial_* |
+| 46 | Tutorial | COMPARED (empty sentence matches) | sr_tutorial_* (D-PAR-SR1-20) |
 | 47 | Tasks from the AMO | COMPARED, KEPT (Resolve link, my-requests link) | srp1b_tasks, _sunlight, _font20, _empty, _resolve_ask (tasks_bn_* are the stale frame) |
 | 48, 49 | Astha menu, year and quarter | NOT BUILT (Home tile goes to ComingSoon) | programme |
 | 50 | Route STD and memo target | NOT BUILT | programme |
