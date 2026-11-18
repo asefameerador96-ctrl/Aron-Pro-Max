@@ -53,7 +53,11 @@ class BundleProgrammesLowsTest {
             val zone = b["user"]!!.jsonObject["zone_id"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.content?.toLong()
             val geo = geoOf(b)
             if (zone != null) assertEquals(chain(zone), geo, "$u: the names are the chain of the user's own zone")
-            else assertTrue(geo == null || geo.isNotEmpty(), "$u: no home zone, so the first route's zone (checked in the fallback test)")
+            else {
+                // no home zone: the zone of the user's first assigned route (ordered by route id), or null when there is none
+                val firstRouteZone = world.longs("SELECT r.zone_id FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id WHERE a.user_id = (SELECT id FROM app.app_user WHERE username = '$u') AND a.valid_from <= CURRENT_DATE AND (a.valid_to IS NULL OR a.valid_to >= CURRENT_DATE) ORDER BY r.id LIMIT 1").firstOrNull()
+                assertEquals(firstRouteZone?.let { chain(it) }, geo, "$u: no home zone, so the first route's zone, else null")
+            }
         }
         // Another user's chain is never sent: move the SR to another zone and the TSO's answer does not change.
         val other = world.one("INSERT INTO app.zone (code, name, name_bn, territory_id) SELECT 'Z-LOWS', 'Lows zone', 'লোজ জোন', territory_id FROM app.zone WHERE id = (SELECT zone_id FROM app.route WHERE code = 'MIR-SR-D') RETURNING id")

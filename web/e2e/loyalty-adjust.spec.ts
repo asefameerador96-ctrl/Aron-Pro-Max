@@ -22,16 +22,16 @@ test("single adjustment: errors sit beside their fields, a valid post shows in t
   await expect(page.getByTestId("error-adj-outlet")).toBeVisible();
   await expect(page.getByTestId("error-adj-points")).toBeVisible();
   await expect(page.getByTestId("error-adj-reason")).toBeVisible();
-  await page.locator("#adj-outlet").fill("301");
+  await page.locator("#adj-outlet").fill("101");
   await page.locator("#adj-points").fill("50");
   await page.locator("#adj-reason").fill("Opening balance loaded by the office");
   await page.getByTestId("adj-submit").click();
   await expect(page.getByTestId("adjust-banner")).toContainText("posted");
-  await expect(page.getByTestId("programme-ledger")).toContainText("#301");
+  await expect(page.getByTestId("programme-ledger")).toContainText("#101");
   await expect(page.getByTestId("programme-ledger")).toContainText("+50");
   await expect(page.getByTestId("programme-ledger")).toContainText("Opening balance loaded by the office");
   // A debit past zero is refused until the box is ticked.
-  await page.locator("#adj-outlet").fill("301");
+  await page.locator("#adj-outlet").fill("101");
   await page.locator("#adj-points").fill("-80");
   await page.locator("#adj-reason").fill("Correction of a wrong load");
   await page.getByTestId("adj-submit").click();
@@ -56,10 +56,10 @@ test("bulk upload: a bad file is shown by line, a clean file is previewed (nothi
   await expect(page.getByTestId("adj-apply")).toBeDisabled();       // no apply before a clean preview
   await page.getByTestId("adj-preview").click();
   await expect(page.getByTestId("adj-preview-ok")).toContainText("2 rows");
-  await expect(page.getByTestId("programme-ledger")).not.toContainText("#401"); // the preview saved nothing
+  await expect(page.getByTestId("programme-ledger")).not.toContainText("#101"); // the preview saved nothing
   await page.getByTestId("adj-apply").click();
   await expect(page.getByTestId("adjust-banner")).toContainText("2 rows posted");
-  await expect(page.getByTestId("programme-ledger")).toContainText("#401");
+  await expect(page.getByTestId("programme-ledger")).toContainText("#101");
   await expect(page.getByTestId("programme-ledger")).toContainText("+100");
   await expect(page.getByTestId("programme-ledger")).toContainText("Bulk load of the October credit");
 });
@@ -70,7 +70,7 @@ test("a debit file past zero shows would-overdraw rows in the preview and cannot
   await hydrated(page.getByTestId("adjust-tab-bulk"));
   await page.getByTestId("adjust-tab-bulk").click();
   await hydrated(page.getByTestId("adj-file"));
-  await page.getByTestId("adj-file").setInputFiles(csv("501,-5\n"));
+  await page.getByTestId("adj-file").setInputFiles(csv("103,-5\n"));
   await page.locator("#adj-bulk-reason").fill("Correction of a wrong load");
   await page.getByTestId("adj-preview").click();
   await expect(page.getByTestId("adj-preview-bad")).toBeVisible();

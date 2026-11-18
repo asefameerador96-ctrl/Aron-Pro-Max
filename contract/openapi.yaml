@@ -6473,7 +6473,7 @@ paths:
         IDEMPOTENT by `request_uuid` (the ledger's `source_id`): a repeat of the same request is `200` with the stored row and adds nothing; the same `request_uuid` with another outlet, amount
         or expiry is `409`. A repeat is answered even after the programme has ended (the scope is judged first, the state after). Scope, server side: the programme must be in the caller's
         reach (else `404`) and the outlet must exist (`400`) and lie in the programme's scope (the current version's wing, division, territory, zone or route nodes; a programme with none covers
-        every outlet) and the caller's reach, else `403` with pointer `body.outlet_id`. Only an `active` programme takes points (`409` `ERR_REQUEST_STATE`; a draft or an ended one does not). A DEBIT that would take the outlet's balance below zero is `409` `ERR_CONFLICT` (error code `would_overdraw`, the current `balance_points` in the problem body) unless the request carries `allow_overdraw: true`. The reason is plain text, stored in the audit row only.
+        every outlet) and the caller's reach, else `403` with pointer `body.outlet_id`. Only an `active` programme takes points (`409` `ERR_REQUEST_STATE`; a draft or an ended one does not). A DEBIT that would take the outlet's balance below zero is `409` `ERR_CONFLICT` (error code `would_overdraw`, the current `balance_points` in the problem body) unless the request carries `allow_overdraw: true`. The reason is plain text, stored in the audit row only. An outlet with no CURRENT enrolment in the programme (a campaign programme needs none) is `400` `not_enrolled` (the phone shows a balance only for an enrolled outlet); a debit carries no `expires_on` (`400` `debit_has_no_expiry`). A genuine resend of a `request_uuid` is answered before the scope is judged; the same uuid used as a `batch_uuid` is `409`. The balance is read under the ledger job's per-outlet lock in one statement, so two concurrent debits cannot both pass the guard; a debit that goes below zero with `allow_overdraw` is flagged `overdraw` on the ledger row and recorded (`allow_overdraw`, `balance_before`) in the audit row. A token of an ADMIN without the `modules` claim is refused (`403`) here.
       parameters:
         - $ref: '#/components/parameters/IdPath'
       requestBody:
@@ -16565,7 +16565,7 @@ components:
       properties:
         row: { type: integer, minimum: 0, description: Zero-based index in `rows`. }
         column: { type: string, description: 'The member at fault (`outlet_id`, `points`, `expires_on`) or `row`.' }
-        code: { type: string, description: 'Stable code: required, not_an_integer, out_of_range, zero, duplicate, not_found, out_of_scope, in_the_past, would_overdraw, invalid_value ...' }
+        code: { type: string, description: 'Stable code: required, not_an_integer, out_of_range, zero, duplicate, not_found, out_of_scope, not_enrolled, in_the_past, debit_has_no_expiry, would_overdraw, invalid_value ...' }
         balance_points: { type: integer, format: int64, description: 'With `would_overdraw`: the balance before the file.' }
     ProgrammeAdjustmentBatchResult:
       type: object
@@ -16601,7 +16601,7 @@ components:
         points: { type: integer }
         business_date: { $ref: '#/components/schemas/BusinessDate' }
         expires_on: { type: [string, 'null'], format: date }
-        flags: { type: array, items: { type: string }, description: 'Portal adjustments carry `portal`.' }
+        flags: { type: array, items: { type: string }, description: 'Portal adjustments carry `portal`, and `overdraw` when the debit took the balance below zero (allowed with `allow_overdraw`).' }
         reason: { type: [string, 'null'], description: 'The audit reason of an adjustment; null on other rows.' }
         created_at: { $ref: '#/components/schemas/Timestamp' }
     LedgerPage:

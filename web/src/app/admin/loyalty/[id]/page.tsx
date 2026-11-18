@@ -74,7 +74,7 @@ export default async function LoyaltyDetailPage({ params, searchParams }: { para
   const ledgerCols: Column<LedgerEntry>[] = [
     { key: "date", header: t(locale, "loy.ledger.col.date"), render: (e) => formatBusinessDate(locale, e.business_date) },
     { key: "outlet", header: t(locale, "loy.ledger.col.outlet"), render: (e) => `#${e.outlet_id}` },
-    { key: "type", header: t(locale, "loy.ledger.col.type"), render: (e) => (["adjustment", "redemption", "redemption_void", "expiry"].includes(e.source_type) ? t(locale, `loy.ledger.type.${e.source_type}` as MessageKey) : e.source_type) },
+    { key: "type", header: t(locale, "loy.ledger.col.type"), render: (e) => (["adjustment", "redemption", "redemption_void", "expiry"].includes(e.source_type) ? t(locale, `loy.ledger.type.${e.source_type}` as MessageKey) : t(locale, "loy.ledger.type.other")) },
     { key: "points", header: t(locale, "loy.ledger.col.points"), align: "right", render: (e) => signed(e.points) },
     { key: "expires", header: t(locale, "loy.ledger.col.expires"), render: (e) => (e.expires_on ? formatBusinessDate(locale, e.expires_on) : "—") },
     { key: "reason", header: t(locale, "loy.ledger.col.reason"), render: (e) => e.reason ?? "—" }, // plain text, never rendered as markup

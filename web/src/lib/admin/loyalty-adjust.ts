@@ -3,6 +3,8 @@
 // The API stays the authority on scope, programme state, overdraw and replay; this only spares a round trip and places the errors.
 export const ADJ_POINTS_MAX = 1_000_000;
 export const ADJ_MAX_ROWS = 20_000;
+/** A file of 20,000 short rows is under 1 MB; beyond 2 MiB it is not an adjustment file (the BFF refuses a body over the same limit). */
+export const ADJ_MAX_FILE_BYTES = 2 * 1024 * 1024;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const realDay = (s: string): boolean => DAY.test(s) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s);
 const INT = /^[+-]?\d{1,7}$/;
@@ -11,7 +13,7 @@ const ID = /^[1-9]\d{0,14}$/;
 export type AdjustForm = { outlet_id: string; points: string; expires_on: string; reason: string; allow_overdraw: boolean };
 export const emptyAdjustForm = (): AdjustForm => ({ outlet_id: "", points: "", expires_on: "", reason: "", allow_overdraw: false });
 export type AdjustRow = { outlet_id: number; points: number; expires_on?: string };
-export type AdjustCode = "required" | "not_an_integer" | "out_of_range" | "zero" | "not_a_date" | "in_the_past" | "reason_short" | "reason_long" | "duplicate";
+export type AdjustCode = "debit_has_no_expiry" | "required" | "not_an_integer" | "out_of_range" | "zero" | "not_a_date" | "in_the_past" | "reason_short" | "reason_long" | "duplicate";
 export type AdjustError = { field: string; code: AdjustCode };
 
 /** The signed amount typed by the admin: whole points, a leading + or - allowed; null when it is not one. */
@@ -36,6 +38,7 @@ function rowErrors(outlet: string, points: string, expires: string, today: strin
   const e = expires.trim();
   if (e && !realDay(e)) errors.push({ field: `${prefix}expires_on`, code: "not_a_date" });
   else if (e && e < today) errors.push({ field: `${prefix}expires_on`, code: "in_the_past" });
+  else if (e && n !== null && n < 0) errors.push({ field: `${prefix}expires_on`, code: "debit_has_no_expiry" });
   if (errors.length > 0 || n === null) return { row: null, errors };
   return { row: { outlet_id: Number(o), points: n, ...(e ? { expires_on: e } : {}) }, errors };
 }

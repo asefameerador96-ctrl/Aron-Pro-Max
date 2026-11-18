@@ -514,7 +514,9 @@ export async function handleLoyalty(s: LoyaltyStore, ctx: Ctx, me: LoyaltyCaller
         const points = lint(r, "points", -1_000_000, 1_000_000, `${p}points`);
         if (points === null) bad(`${p}points`, "required");
         if (points === 0) bad(`${p}points`, "zero");
-        return { outlet, points: points as number, expires: ldate(r, "expires_on", `${p}expires_on`) };
+        const expires = ldate(r, "expires_on", `${p}expires_on`);
+        if (expires !== null && (points as number) < 0) bad(`${p}expires_on`, "debit_has_no_expiry");
+        return { outlet, points: points as number, expires };
       };
       const scopeOk = (outlet: number): "ok" | "not_found" | "out_of_scope" => {
         if (outlet > 1000) return "not_found";
@@ -522,20 +524,25 @@ export async function handleLoyalty(s: LoyaltyStore, ctx: Ctx, me: LoyaltyCaller
         return zones.length === 0 || zones.includes(outletZone(outlet)) ? "ok" : "out_of_scope";
       };
       if (!row || !visible(me, row.versions[0]!)) return notFound();
-      const overdraw = (balance: number, points: number, pointer: string) => done(409, problem(409, "ERR_CONFLICT", { errors: [{ pointer, code: "would_overdraw" }], balance_points: balance, points } as never));
+      // The API answers with the balance under `context` (scalars only). The mock has no phone redemptions, so its balance is the ledger sum (the API's also subtracts the stored, unposted ones).
+      const overdraw = (balance: number, points: number, pointer: string) => done(409, problem(409, "ERR_CONFLICT", { errors: [{ pointer, code: "would_overdraw" }], context: { balance_points: balance, points } } as never));
+      const enrolledToday = (outlet: number): boolean => row!.kind === "campaign" || s.enrolments.some((e) => e.programme_id === id && e.outlet_id === outlet && e.valid_from <= today && (e.valid_to === null || e.valid_to > today));
       if (single) {
         const uuid = uuidOf(o, "request_uuid");
         reasonOf(o, "reason");
         const r = one(o, "body.");
+        // A genuine resend gets its stored row FIRST; one uuid is a request or a batch, never both.
+        const prior = s.ledger.find((l) => l.source_id === uuid);
+        if (prior) return prior.programme_id === id && prior.outlet_id === r.outlet && prior.points === r.points && prior.expires_on === r.expires ? done(200, prior) : reused("body.request_uuid");
+        if (s.ledger.some((l) => l.source_id.startsWith(`${uuid}:`))) return reused("body.request_uuid");
         const sc = scopeOk(r.outlet);
         if (sc === "not_found") bad("body.outlet_id", "not_found");
         if (sc === "out_of_scope") return done(403, problem(403, "ERR_FORBIDDEN", { errors: [{ pointer: "body.outlet_id", code: "out_of_scope" }] } as never));
-        const prior = s.ledger.find((l) => l.source_id === uuid);
-        if (prior) return prior.programme_id === id && prior.outlet_id === r.outlet && prior.points === r.points && prior.expires_on === r.expires ? done(200, prior) : reused("body.request_uuid");
         if (row.status !== "active") return state("points are adjusted on an active programme only");
+        if (!enrolledToday(r.outlet)) bad("body.outlet_id", "not_enrolled");
         if (r.expires !== null && r.expires < today) bad("body.expires_on", "in_the_past");
         if (r.points < 0 && !allow && balanceOf(r.outlet) + r.points < 0) return overdraw(balanceOf(r.outlet), r.points, "body.points");
-        const entry: LedgerRow = { ledger_id: s.ledger.length + 1, source_type: "adjustment", source_id: uuid, outlet_id: r.outlet, programme_id: id, points: r.points, business_date: today, expires_on: r.expires, flags: ["portal"], reason: String(o.reason).trim(), created_at: new Date().toISOString() };
+        const entry: LedgerRow = { ledger_id: s.ledger.length + 1, source_type: "adjustment", source_id: uuid, outlet_id: r.outlet, programme_id: id, points: r.points, business_date: today, expires_on: r.expires, flags: r.points < 0 && balanceOf(r.outlet) + r.points < 0 ? ["portal", "overdraw"] : ["portal"], reason: String(o.reason).trim(), created_at: new Date().toISOString() };
         s.ledger.push(entry);
         ctx.audit("programme_adjustment", uuid, "post", {}, { outlet_id: r.outlet, points: r.points }, entry.reason ?? "");
         return done(201, entry);
@@ -563,12 +570,15 @@ export async function handleLoyalty(s: LoyaltyStore, ctx: Ctx, me: LoyaltyCaller
       });
       const priorRows = s.ledger.filter((l) => l.source_id.startsWith(`${batch}:`));
       const replayed = priorRows.length > 0;
+      if (!replayed && s.ledger.some((l) => l.source_id === batch)) return reused("body.batch_uuid");
       let scopeOnly = true;
       parsed.forEach((r, i) => {
         if (!r) return;
+        if (replayed) return;
         const sc = scopeOk(r.outlet);
         if (sc !== "ok") errors.push({ row: i, column: "outlet_id", code: sc });
-        else if (!replayed && r.expires !== null && r.expires < today) errors.push({ row: i, column: "expires_on", code: "in_the_past" });
+        else if (!enrolledToday(r.outlet)) errors.push({ row: i, column: "outlet_id", code: "not_enrolled" });
+        else if (r.expires !== null && r.expires < today) errors.push({ row: i, column: "expires_on", code: "in_the_past" });
         else if (!replayed && !allow && r.points < 0 && balanceOf(r.outlet) + r.points < 0) errors.push({ row: i, column: "points", code: "would_overdraw", balance_points: balanceOf(r.outlet) });
       });
       errors.sort((a, b) => a.row - b.row);
@@ -588,7 +598,7 @@ export async function handleLoyalty(s: LoyaltyStore, ctx: Ctx, me: LoyaltyCaller
       }
       if (replayed) return done(200, { batch_uuid: batch, dry_run: false, rows: parsed.length, posted: 0, replayed: true, total_points: total });
       if (row.status !== "active") return state("points are adjusted on an active programme only");
-      valid.forEach((r, i) => s.ledger.push({ ledger_id: s.ledger.length + 1, source_type: "adjustment", source_id: `${batch}:${i}`, outlet_id: r.outlet, programme_id: id, points: r.points, business_date: today, expires_on: r.expires, flags: ["portal"], reason, created_at: new Date().toISOString() }));
+      valid.forEach((r, i) => s.ledger.push({ ledger_id: s.ledger.length + 1, source_type: "adjustment", source_id: `${batch}:${i}`, outlet_id: r.outlet, programme_id: id, points: r.points, business_date: today, expires_on: r.expires, flags: r.points < 0 && balanceOf(r.outlet) + r.points < 0 ? ["portal", "overdraw"] : ["portal"], reason, created_at: new Date().toISOString() }));
       ctx.audit("programme_adjustment", batch, "post_batch", {}, { rows: valid.length, total_points: total }, reason);
       return done(200, { batch_uuid: batch, dry_run: false, rows: valid.length, posted: valid.length, replayed: false, total_points: total });
     }

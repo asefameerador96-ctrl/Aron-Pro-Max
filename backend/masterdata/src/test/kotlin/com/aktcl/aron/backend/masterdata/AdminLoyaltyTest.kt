@@ -159,13 +159,13 @@ class AdminLoyaltyTest {
 
     private fun standIn(blobPath: String) = "https://blob.test/r/$blobPath?sv=2024-11-04&se=2099-01-01T00%3A00%3A00Z&sig=SECRETSIG%2Babc"
 
-    private fun app(block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
+    private fun app(grantsLive: Boolean = true, block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
         application {
             installAronPlatform(PlatformContext(AronClock.SYSTEM, base, { "00000000-0000-0000-0000-000000000000" }))
             val guard = AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), object : ScopeVersionLookup {
                 override fun current(userId: Long): Long = 1
                 override fun rolePermissions(role: String): Set<String> = emptySet()
-                override fun portalGrantsLive(): Boolean = true
+                override fun portalGrantsLive(): Boolean = grantsLive
             }, base)
             val resolver = ReachResolver { userId, role, _, date -> reaches[userId] ?: Reach(userId, role, date, true, emptySet(), emptySet(), false, emptyList()) }
             routing { route("/v1") { adminLoyaltyRoutes(AdminLoyaltyDeps(env.fresh.db, resolver, guard, blob)) } }
@@ -879,7 +879,11 @@ class AdminLoyaltyTest {
 
     // ------------------------------------------------------------------------------------------------ points adjustments (D-LOY-API-35)
 
-    private suspend fun ApplicationTestBuilder.activeProg(scope: String = "[${s("zone", fx["zoneA"]!!)}]"): Long = createId(createBody(scope = scope)).also { activate(it).expect(HttpStatusCode.OK) }
+    private suspend fun ApplicationTestBuilder.activeProg(scope: String = "[${s("zone", fx["zoneA"]!!)}]", enrol: Boolean = true): Long = createId(createBody(scope = scope)).also {
+        activate(it).expect(HttpStatusCode.OK)
+        // an adjustment needs a CURRENT enrolment (the bundle shows a balance only for an enrolled outlet): enrol the three outlets from last month
+        if (enrol) for (o in listOf("L-O1", "L-O2", "L-O3")) sql("INSERT INTO app.programme_enrolment (programme_id, outlet_id, valid_from) VALUES ($it, ${fx[o]}, (now() AT TIME ZONE 'Asia/Dhaka')::date - 30)")
+    }
     private fun adjBody(outlet: Long, points: Int, request: String = uuid(), extra: String = "", reason: String = why) = """{"request_uuid":"$request","outlet_id":$outlet,"points":$points,"reason":"$reason"$extra}"""
     private suspend fun ApplicationTestBuilder.adj(prog: Long, token: String, body: String) = call(HttpMethod.Post, "/v1/admin/programmes/$prog/adjustments", token, body)
     private fun bulkBody(batch: String, dry: Boolean, vararg rows: String, reason: String = why, allow: Boolean? = null) = """{"batch_uuid":"$batch","dry_run":$dry,"change_reason":"$reason",${if (allow != null) """"allow_overdraw":$allow,""" else ""}"rows":[${rows.joinToString(",")}]}"""
@@ -1045,5 +1049,101 @@ class AdminLoyaltyTest {
         bulk(p2, adminW, bulkBody(b, false, *rows, allow = true)).expect(HttpStatusCode.OK); assertEquals(3, ledgerCount(p2)); assertEquals(5, balance(p2, o1)); assertEquals(-3, balance(p2, o2))
         // A replay after the balance moved is still a replay (not an overdraw error).
         bulk(p2, adminW, bulkBody(b, false, *rows)).also { it.expect(HttpStatusCode.OK); assertEquals("true", it.obj().getValue("replayed").jsonPrimitive.content) }
+    }
+
+    @Test
+    fun anOutletWithoutACurrentEnrolmentIsRefusedUnlessTheProgrammeIsACampaignAndADebitCarriesNoExpiry() = app {
+        val prog = activeProg(enrol = false); val o1 = fx["L-O1"]!!
+        adj(prog, adminW, adjBody(o1, 10)).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.outlet_id")        // not_enrolled
+        bulk(prog, adminW, bulkBody(uuid(), true, brow(o1, 5))).obj().getValue("errors").jsonArray.single().jsonObject.also { assertEquals("not_enrolled", it.getValue("code").jsonPrimitive.content) }
+        assertEquals(0, ledgerCount(prog))
+        sql("INSERT INTO app.programme_enrolment (programme_id, outlet_id, valid_from, valid_to) VALUES ($prog, $o1, (now() AT TIME ZONE 'Asia/Dhaka')::date - 30, (now() AT TIME ZONE 'Asia/Dhaka')::date - 1)")
+        adj(prog, adminW, adjBody(o1, 10)).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.outlet_id")        // an ended enrolment is not current
+        sql("INSERT INTO app.programme_enrolment (programme_id, outlet_id, valid_from) VALUES ($prog, $o1, (now() AT TIME ZONE 'Asia/Dhaka')::date)")
+        adj(prog, adminW, adjBody(o1, 10)).expect(HttpStatusCode.Created)
+        adj(prog, adminW, adjBody(o1, -5, extra = ""","expires_on":"$to"""")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.expires_on")   // a debit has no expiry
+        // A campaign programme needs no enrolment (its balance reaches every outlet in scope).
+        val camp = createId(createBody(kind = "campaign", scope = "[]")); activate(camp).expect(HttpStatusCode.OK)
+        adj(camp, adminW, adjBody(fx["L-O2"]!!, 10)).expect(HttpStatusCode.Created)
+    }
+
+    @Test
+    fun theSameUuidIsEitherARequestOrABatchAndAResendIsAnsweredBeforeTheScopeIsJudged() = app {
+        val prog = activeProg(); val o1 = fx["L-O1"]!!; val o2 = fx["L-O2"]!!
+        val u = uuid()
+        adj(prog, adminW, adjBody(o1, 10, u)).expect(HttpStatusCode.Created)
+        bulk(prog, adminW, bulkBody(u, false, brow(o2, 5))).expect(HttpStatusCode.Conflict, "ERR_CONFLICT", "body.batch_uuid")
+        val b = uuid()
+        bulk(prog, adminW, bulkBody(b, false, brow(o2, 5))).expect(HttpStatusCode.OK)
+        adj(prog, adminW, adjBody(o1, 7, b)).expect(HttpStatusCode.Conflict, "ERR_CONFLICT")
+        assertEquals(2, ledgerCount(prog))
+        // The programme's scope narrows after the post (a new version is not allowed on an active programme, so move the outlet out of the zone): the resend still gets its stored row.
+        val zoneO = fx["zoneO"]!!
+        sql("UPDATE app.outlet SET zone_id = $zoneO WHERE id = $o1")
+        try { adj(prog, adminW, adjBody(o1, 10, u)).expect(HttpStatusCode.OK) } finally { sql("UPDATE app.outlet SET zone_id = ${fx["zoneA"]} WHERE id = $o1") }
+    }
+
+    @Test
+    fun twoDebitsWithDifferentIdsOnOneBalanceNeverBothPassAndALedgerJobPassCannotSlipBetweenTheReads() = app {
+        val prog = activeProg(); val o1 = fx["L-O1"]!!
+        adj(prog, adminW, adjBody(o1, 100)).expect(HttpStatusCode.Created)
+        // Two -80 debits at once (two admins, two tabs, a single beside a bulk): exactly one is posted, the other is a 409 with the balance; the ledger ends at 20, never -60.
+        val codes = kotlinx.coroutines.coroutineScope {
+            listOf(
+                async(kotlinx.coroutines.Dispatchers.IO) { adj(prog, adminW, adjBody(o1, -80)).status.value },
+                async(kotlinx.coroutines.Dispatchers.IO) { adj(prog, super1, adjBody(o1, -80)).status.value },
+                async(kotlinx.coroutines.Dispatchers.IO) { bulk(prog, adminW, bulkBody(uuid(), false, brow(o1, -80))).status.value },
+            ).awaitAll()
+        }
+        assertEquals(1, codes.count { it == 201 || it == 200 }, "exactly one debit passes: $codes"); assertEquals(2, codes.count { it == 409 }, "$codes")
+        assertEquals(20, balance(prog, o1))
+        assertEquals(1, count("SELECT count(*) FROM app.loyalty_ledger WHERE programme_id = $prog AND outlet_id = $o1 AND points = -80 AND 'portal' = ANY(flags) AND NOT ('overdraw' = ANY(flags))"))
+        // The ledger job's pair lock: while another transaction holds it (a pass in progress) a debit WAITS, and when that pass has stored a redemption the balance it reads is the lower one.
+        val lockKey = "loyalty:$o1:$prog"
+        val holder = env.fresh.db.jdbi.open()
+        holder.begin()
+        holder.createQuery("SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))) x").bind("k", lockKey).mapTo(Int::class.java).one()
+        val u = uuid()
+        val status = kotlinx.coroutines.coroutineScope {
+            val pending = async(kotlinx.coroutines.Dispatchers.IO) { adj(prog, adminW, adjBody(o1, -15)).status.value }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                Thread.sleep(400)
+                holder.execute("INSERT INTO app.redemption (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, outlet_id, programme_id, balance_before_points, points_total, cash_points, cash_mtk, cash_rate_mtk_per_point, line_count, confirmed_at) " +
+                    "VALUES ('$u', '$u', (now() AT TIME ZONE 'Asia/Dhaka')::date, ${ids.getValue("lamo1")}, now(), 0, $o1, $prog, 0, 10, 0, 0, 2000, 1, now())")
+                holder.commit(); holder.close()
+            }
+            pending.await()
+        }
+        assertEquals(409, status, "20 - 10 (stored, not yet posted) - 15 is below zero: the debit saw the redemption because it waited for the lock")
+    }
+
+    @Test
+    fun anOverdrawAllowedByTheAdminIsFlaggedOnTheRowAndRecordedInTheAudit() = app {
+        val prog = activeProg(); val o1 = fx["L-O1"]!!
+        adj(prog, adminW, adjBody(o1, 30)).expect(HttpStatusCode.Created)
+        val rq = uuid()
+        adj(prog, adminW, adjBody(o1, -50, rq, ""","allow_overdraw":true""")).expect(HttpStatusCode.Created)
+        assertEquals("true", scalar("SELECT ('overdraw' = ANY(flags))::text FROM app.loyalty_ledger WHERE source_id = '$rq'"))
+        assertEquals("true|30", scalar("SELECT (after->>'overdrawn') || '|' || (after->>'balance_before') FROM app.audit_log WHERE entity = 'programme_adjustment' AND entity_id = '$rq'"))
+        val ok = uuid(); adj(prog, adminW, adjBody(o1, 40, ok)).expect(HttpStatusCode.Created)
+        assertEquals("false", scalar("SELECT ('overdraw' = ANY(flags))::text FROM app.loyalty_ledger WHERE source_id = '$ok'"))
+    }
+
+    @Test
+    fun anAdminTokenWithoutTheModulesClaimIsStoppedByTheGuardAndFailsClosedOnTheAdjustmentEvenWhenGrantsAreNotLive() {
+        val noClaim = { tok("ladm1", Role.ADMIN, null) }      // no `modules` claim
+        app(grantsLive = true) {
+            val prog = activeProg()
+            adj(prog, noClaim(), adjBody(fx["L-O1"]!!, 5)).expect(HttpStatusCode.Unauthorized)      // the guard: access changed, refresh
+            assertEquals(0, ledgerCount(prog))
+        }
+        // Grants NOT live (the guard lets a claim-less ADMIN through): the adjustment still refuses, while the older writers (here the enrolment upload) let it through.
+        app(grantsLive = false) {
+            val prog = activeProg(enrol = false)
+            adj(prog, noClaim(), adjBody(fx["L-O1"]!!, 5)).expect(HttpStatusCode.Forbidden)
+            bulk(prog, noClaim(), bulkBody(uuid(), true, brow(fx["L-O1"]!!, 5))).expect(HttpStatusCode.Forbidden)
+            call(HttpMethod.Put, "/v1/admin/programmes/$prog/enrolments", noClaim(), enrolBody(prog, rows = enrolRow(prog, fx["L-O1"]!!))).expect(HttpStatusCode.OK)
+            assertEquals(0, ledgerCount(prog))
+        }
     }
 }

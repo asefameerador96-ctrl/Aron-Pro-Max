@@ -10,7 +10,7 @@ import { Button } from "@/components/kit/button";
 import type { Problem } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
 import { businessDate } from "@/lib/i18n";
-import { adjustFailureKey, emptyAdjustForm, parseAdjustFile, signed, validateAdjust, type AdjustForm, type AdjustRow } from "@/lib/admin/loyalty-adjust";
+import { ADJ_MAX_FILE_BYTES, adjustFailureKey, emptyAdjustForm, parseAdjustFile, signed, validateAdjust, type AdjustForm, type AdjustRow } from "@/lib/admin/loyalty-adjust";
 import { nextAttempt } from "@/lib/admin/loyalty";
 import { Field, inputClass } from "./kit/field";
 import { ReasonField } from "./kit/reason-field";
@@ -40,19 +40,20 @@ export function LoyaltyAdjustForm({ programmeId, active }: { programmeId: number
   const [reasonError, setReasonError] = useState<string | undefined>();
   const [preview, setPreview] = useState<{ key: string; data: Preview } | null>(null);
   const batch = useRef<{ key: string; uuid: string } | null>(null);
-  const bulkKey = JSON.stringify([rows, bulkReason.trim(), bulkOverdraw]);
+  const bulkKey = JSON.stringify([rows, bulkReason.trim(), bulkOverdraw]);   // the PREVIEW is valid for exactly this
+  const batchKey = JSON.stringify(rows);                                        // the batch uuid follows the ROWS only: an edited reason or box never makes a second batch of the same file
 
   async function call(method: "POST" | "PUT", body: unknown): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
     const res = await fetch(`/api/bff/admin/loyalty/${programmeId}/adjustments`, { method, headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) });
     return { ok: res.ok, status: res.status, data: (await res.json().catch(() => ({}))) as Record<string, unknown> };
   }
   function refused(status: number, data: Record<string, unknown>) {
-    const p = data as Partial<Problem> & { balance_points?: number };
+    const p = data as Partial<Problem> & { context?: { balance_points?: number } };
     const errs = p.errors as { pointer: string; code: string }[] | undefined;
     const placed: Record<string, string> = {};
     for (const e of errs ?? []) {
       const field = /^body\.(outlet_id|points|expires_on|reason)$/.exec(e.pointer)?.[1];
-      if (field) placed[field] = errText(e.code, { balance: p.balance_points });
+      if (field) placed[field] = errText(e.code, { balance: p.context?.balance_points });
     }
     setErrors(placed);
     const key = adjustFailureKey(status, p.code, errs);
@@ -65,7 +66,7 @@ export function LoyaltyAdjustForm({ programmeId, active }: { programmeId: number
     const checked = validateAdjust(f, businessDate());
     setErrors(Object.fromEntries(checked.errors.map((x) => [x.field, errText(x.code)])));
     if (!checked.body) return;
-    attempt.current = nextAttempt(attempt.current, JSON.stringify(checked.body));
+    attempt.current = nextAttempt(attempt.current, JSON.stringify([checked.body.outlet_id, checked.body.points, checked.body.expires_on ?? null]));   // not the reason or the box: a lost answer plus an edited reason cannot post twice
     setBusy(true);
     try {
       const r = await call("POST", { request_uuid: attempt.current.uuid, ...checked.body });
@@ -87,6 +88,7 @@ export function LoyaltyAdjustForm({ programmeId, active }: { programmeId: number
     if (!file) { setFileName(""); return; }
     setFileName(file.name);
     let text: string;
+    if (file.size > ADJ_MAX_FILE_BYTES) { setBanner({ tone: "danger", text: t("loy.adj.too_big") }); return; }
     try { text = await file.text(); } catch { setBanner({ tone: "danger", text: t("loy.adj.unreadable") }); return; }
     const parsed = parseAdjustFile(text, businessDate());
     if (parsed.tooMany) { setBanner({ tone: "danger", text: t("loy.adj.too_many") }); return; }
@@ -101,7 +103,7 @@ export function LoyaltyAdjustForm({ programmeId, active }: { programmeId: number
     if (len < 10 || len > 500) { setReasonError(errText(len < 10 ? "reason_short" : "reason_long")); return; }
     setReasonError(undefined);
     if (rows.length === 0 || fileErrors.length > 0) return;
-    batch.current = nextAttempt(batch.current, bulkKey);
+    batch.current = nextAttempt(batch.current, batchKey);
     setBusy(true);
     try {
       const r = await call("PUT", { batch_uuid: batch.current.uuid, dry_run: dry, change_reason: bulkReason.trim(), ...(bulkOverdraw ? { allow_overdraw: true } : {}), rows });
@@ -184,7 +186,7 @@ function ProblemTable({ items, total, testId }: { items: { line: number; column:
     <div className="space-y-1" data-testid={testId}>
       <table className="w-full text-body">
         <thead><tr className="text-label text-secondary text-start"><th className="text-start">{t("loy.adj.col.line")}</th><th className="text-start">{t("loy.adj.col.column")}</th><th className="text-start">{t("loy.adj.col.problem")}</th></tr></thead>
-        <tbody>{items.map((e, i) => <tr key={`${e.line}-${e.column}-${i}`}><td>{number(e.line)}</td><td>{e.column}</td><td className="[overflow-wrap:anywhere]">{e.text}</td></tr>)}</tbody>
+        <tbody>{items.map((e, i) => <tr key={`${e.line}-${e.column}-${i}`}><td>{number(e.line)}</td><td>{t(`loy.adj.field.${e.column}` as MessageKey)}</td><td className="[overflow-wrap:anywhere]">{e.text}</td></tr>)}</tbody>
       </table>
       {total > items.length ? <p className="text-caption text-secondary">{t("loy.adj.preview_more", { shown: number(items.length), count: number(total) })}</p> : null}
     </div>

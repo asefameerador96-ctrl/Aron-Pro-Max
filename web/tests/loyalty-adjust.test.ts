@@ -20,13 +20,16 @@ describe("form helpers", () => {
     for (const bad of ["", "1.5", "1e3", "abc", "12345678", "- 5"]) expect(parsePoints(bad)).toBeNull();
   });
   it("validates the single form and places each error", () => {
-    const ok = validateAdjust({ ...emptyAdjustForm(), outlet_id: "301", points: "-20", reason: "Correction of a wrong load" }, TODAY);
-    expect(ok.body).toEqual({ outlet_id: 301, points: -20, reason: "Correction of a wrong load" });
+    const ok = validateAdjust({ ...emptyAdjustForm(), outlet_id: "101", points: "-20", reason: "Correction of a wrong load" }, TODAY);
+    expect(ok.body).toEqual({ outlet_id: 101, points: -20, reason: "Correction of a wrong load" });
     const bad = validateAdjust({ outlet_id: "0", points: "0", expires_on: "2026-11-01", reason: "short", allow_overdraw: false }, TODAY);
     expect(bad.body).toBeNull();
     expect(Object.fromEntries(bad.errors.map((e) => [e.field, e.code]))).toEqual({ outlet_id: "not_an_integer", points: "zero", expires_on: "in_the_past", reason: "reason_short" });
     expect(validateAdjust({ outlet_id: "1", points: "1000001", expires_on: "2026-02-30", reason: "x".repeat(501), allow_overdraw: true }, TODAY).errors.map((e) => e.code)).toEqual(["out_of_range", "not_a_date", "reason_long"]);
     expect(validateAdjust({ outlet_id: "1", points: "5", expires_on: "2026-12-31", reason: "Ten chars!!", allow_overdraw: true }, TODAY).body).toEqual({ outlet_id: 1, points: 5, expires_on: "2026-12-31", reason: "Ten chars!!", allow_overdraw: true });
+  });
+  it("refuses an expiry date on a debit", () => {
+    expect(validateAdjust({ ...emptyAdjustForm(), outlet_id: "101", points: "-5", expires_on: "2026-12-31", reason: "Correction of a wrong load" }, TODAY).errors).toEqual([{ field: "expires_on", code: "debit_has_no_expiry" }]);
   });
   it("parses a CSV file: header, separators, bad lines with their line numbers, a duplicate outlet", () => {
     const p = parseAdjustFile("outlet_id,points,expires_on\n101,50,2026-12-31\n\n102;-5\n103\t7\n101,3\nabc,5\n104,0\n105,5,2020-01-01\n", TODAY);
@@ -85,35 +88,47 @@ async function tokenOf(c: Record<string, string>): Promise<string> {
 describe("single adjustment (POST)", () => {
   it("posts, replays with the same id, refuses another body under it, and guards overdraw", async () => {
     const c = await superadmin();
-    const body = { request_uuid: U(1), outlet_id: 301, points: 50, reason: WHY, expires_on: "2099-12-31" };
+    const body = { request_uuid: U(1), outlet_id: 101, points: 50, reason: WHY, expires_on: "2099-12-31" };
     const first = await post(c, 1, body);
     expect(first.status).toBe(201);
     expect(((await first.json()) as { points: number; reason: string }).reason).toBe(WHY);
     expect((await post(c, 1, body)).status).toBe(200);          // a replay adds nothing
     expect((await post(c, 1, { ...body, points: 51 })).status).toBe(409);
-    const debit = { request_uuid: U(2), outlet_id: 301, points: -80, reason: WHY };
+    const debit = { request_uuid: U(2), outlet_id: 101, points: -80, reason: WHY };
     const refused = await post(c, 1, debit);
     expect(refused.status).toBe(409);
     expect(JSON.stringify(await refused.json())).toContain("would_overdraw");
     expect((await post(c, 1, { ...debit, allow_overdraw: true })).status).toBe(201);
   });
   it("is refused by the BFF for a reader and an ungranted ADMIN, and validates the body", async () => {
-    expect((await post(await reader(), 1, { request_uuid: U(3), outlet_id: 301, points: 5, reason: WHY })).status).toBe(403);
-    expect((await post(await ungranted(), 1, { request_uuid: U(3), outlet_id: 301, points: 5, reason: WHY })).status).toBe(403);
+    expect((await post(await reader(), 1, { request_uuid: U(3), outlet_id: 101, points: 5, reason: WHY })).status).toBe(403);
+    expect((await post(await ungranted(), 1, { request_uuid: U(3), outlet_id: 101, points: 5, reason: WHY })).status).toBe(403);
     const c = await superadmin();
-    expect((await post(c, 1, { request_uuid: U(4), outlet_id: 301, points: 0, reason: WHY })).status).toBe(400);
-    expect((await post(c, 1, { request_uuid: U(4), outlet_id: 301, points: 5, reason: "short" })).status).toBe(400);
-    expect((await post(c, 1, { request_uuid: U(4), outlet_id: 301, points: 5, reason: WHY, bogus: 1 })).status).toBe(400);
-    expect((await post(c, 3, { request_uuid: U(5), outlet_id: 301, points: 5, reason: WHY })).status).toBe(409);   // the draft takes no points
+    expect((await post(c, 1, { request_uuid: U(4), outlet_id: 101, points: 0, reason: WHY })).status).toBe(400);
+    expect((await post(c, 1, { request_uuid: U(4), outlet_id: 101, points: 5, reason: "short" })).status).toBe(400);
+    expect((await post(c, 1, { request_uuid: U(4), outlet_id: 101, points: 5, reason: WHY, bogus: 1 })).status).toBe(400);
+    expect((await post(c, 3, { request_uuid: U(5), outlet_id: 101, points: 5, reason: WHY })).status).toBe(409);   // the draft takes no points
     expect((await post(c, 1, { request_uuid: U(6), outlet_id: 5000, points: 5, reason: WHY })).status).toBe(400);  // unknown outlet
+    expect((await post(c, 1, { request_uuid: U(7), outlet_id: 301, points: 5, reason: WHY })).status).toBe(400);   // not enrolled today
+    expect((await post(c, 1, { request_uuid: U(8), outlet_id: 101, points: -5, expires_on: "2099-12-31", reason: WHY })).status).toBe(400);   // a debit has no expiry
+    const big = await post(c, 1, { request_uuid: U(9), outlet_id: 101, points: 5, reason: "x".repeat(3_000_000) });
+    expect(big.status).toBe(400);                                                  // a body over the limit is refused before it reaches the API
+  });
+  it("answers the overdraw with the balance under context, and one uuid is a request or a batch, never both", async () => {
+    const c = await superadmin();
+    await post(c, 1, { request_uuid: U(20), outlet_id: 101, points: 30, reason: WHY });
+    const refused = await post(c, 1, { request_uuid: U(21), outlet_id: 101, points: -50, reason: WHY });
+    expect(refused.status).toBe(409);
+    expect(((await refused.json()) as { context?: { balance_points?: number } }).context?.balance_points).toBe(30);
+    expect((await put(c, 1, { batch_uuid: U(20), dry_run: false, change_reason: WHY, rows: [{ outlet_id: 102, points: 5 }] })).status).toBe(409);
   });
 });
 
 describe("bulk adjustment (PUT)", () => {
-  const rows = [{ outlet_id: 301, points: 100 }, { outlet_id: 302, points: 40, expires_on: "2099-12-31" }];
+  const rows = [{ outlet_id: 101, points: 100 }, { outlet_id: 102, points: 40, expires_on: "2099-12-31" }];
   it("previews without writing, applies all or nothing, and replays", async () => {
     const c = await superadmin();
-    const dry = await put(c, 1, { batch_uuid: U(10), dry_run: true, change_reason: WHY, rows: [...rows, { outlet_id: 303, points: -5 }] });
+    const dry = await put(c, 1, { batch_uuid: U(10), dry_run: true, change_reason: WHY, rows: [...rows, { outlet_id: 103, points: -5 }] });
     expect(dry.status).toBe(200);
     const d = (await dry.json()) as { valid: boolean; error_count: number; errors: { row: number; code: string; balance_points?: number }[] };
     expect(d.valid).toBe(false);
@@ -121,7 +136,7 @@ describe("bulk adjustment (PUT)", () => {
     expect((await ledger(c, 1)).items).toHaveLength(0);                          // nothing written by a dry run
     const ok = (await (await put(c, 1, { batch_uuid: U(10), dry_run: true, change_reason: WHY, rows })).json()) as { valid: boolean; total_points: number; credit_points: number };
     expect(ok).toMatchObject({ valid: true, total_points: 140, credit_points: 140 });
-    const bad = await put(c, 1, { batch_uuid: U(10), dry_run: false, change_reason: WHY, rows: [...rows, { outlet_id: 303, points: -5 }] });
+    const bad = await put(c, 1, { batch_uuid: U(10), dry_run: false, change_reason: WHY, rows: [...rows, { outlet_id: 103, points: -5 }] });
     expect(bad.status).toBe(409);                                                // the overdraw refuses the whole file
     expect((await ledger(c, 1)).items).toHaveLength(0);
     const applied = await put(c, 1, { batch_uuid: U(10), dry_run: false, change_reason: WHY, rows });
@@ -129,12 +144,12 @@ describe("bulk adjustment (PUT)", () => {
     const again = await put(c, 1, { batch_uuid: U(10), dry_run: false, change_reason: WHY, rows });
     expect(await again.json()).toMatchObject({ posted: 0, replayed: true });
     expect((await ledger(c, 1)).items).toHaveLength(2);
-    expect((await put(c, 1, { batch_uuid: U(10), dry_run: false, change_reason: WHY, rows: [{ outlet_id: 301, points: 101 }, rows[1]!] })).status).toBe(409); // same id, other file
+    expect((await put(c, 1, { batch_uuid: U(10), dry_run: false, change_reason: WHY, rows: [{ outlet_id: 101, points: 101 }, rows[1]!] })).status).toBe(409); // same id, other file
     expect((await ledger(c, 1)).items.map((i) => i.reason)).toEqual([WHY, WHY]);
   });
   it("reports a duplicate outlet and an outlet outside the programme's scope", async () => {
     const c = await superadmin();
-    const dry = (await (await put(c, 1, { batch_uuid: U(11), dry_run: true, change_reason: WHY, rows: [{ outlet_id: 301, points: 1 }, { outlet_id: 301, points: 2 }, { outlet_id: 5000, points: 3 }] })).json()) as { errors: { row: number; code: string }[]; error_count: number };
+    const dry = (await (await put(c, 1, { batch_uuid: U(11), dry_run: true, change_reason: WHY, rows: [{ outlet_id: 101, points: 1 }, { outlet_id: 101, points: 2 }, { outlet_id: 5000, points: 3 }] })).json()) as { errors: { row: number; code: string }[]; error_count: number };
     expect(dry.errors.map((e) => `${e.row}:${e.code}`)).toEqual(["1:duplicate", "2:not_found"]);
     expect(dry.error_count).toBe(2);
     expect((await put(await reader(), 1, { batch_uuid: U(12), dry_run: true, change_reason: WHY, rows })).status).toBe(403);

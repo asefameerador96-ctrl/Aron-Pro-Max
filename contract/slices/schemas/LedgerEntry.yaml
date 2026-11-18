@@ -42,7 +42,8 @@ LedgerEntry:
       type: array
       items:
         type: string
-      description: Portal adjustments carry `portal`.
+      description: Portal adjustments carry `portal`, and `overdraw` when the debit took the balance below zero
+        (allowed with `allow_overdraw`).
     reason:
       type:
       - string

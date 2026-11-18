@@ -9,6 +9,7 @@ import type { Problem } from "@/contract/types";
 import { apiClient, outcome } from "@/lib/api/client";
 import { authenticate, problemResponse } from "@/lib/api/guard";
 import { toFieldErrors } from "@/components/admin/crud/validation";
+import { ADJ_MAX_FILE_BYTES } from "./loyalty-adjust";
 import { loadGrants } from "./modules";
 import { canActivateProgramme, canWriteGifts, canWriteLoyalty, GIFT_CODE, ID_RE, PROGRAMME_CODE, PROGRAMME_KINDS, parseDecimal3, TIER_CODE } from "./loyalty";
 
@@ -157,12 +158,24 @@ export async function handleEnrolments(req: NextRequest, id: string): Promise<Ne
   return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).PUT("/v1/admin/programmes/{id}/enrolments", { params: { path: { id: Number(id) } }, body: parsed.data }))));
 }
 
+const TOO_BIG = Symbol("too_big");
+/** The JSON body of an adjustment, refused past ADJ_MAX_FILE_BYTES (a declared length first, then the text actually read). */
+async function boundedJson(req: NextRequest): Promise<unknown> {
+  const declared = Number(req.headers.get("content-length") ?? 0);
+  if (declared > ADJ_MAX_FILE_BYTES) return TOO_BIG;
+  const raw = await req.text().catch(() => "");
+  if (raw.length > ADJ_MAX_FILE_BYTES) return TOO_BIG;
+  try { return JSON.parse(raw) as unknown; } catch { return null; }
+}
+
 /** POST /api/bff/admin/loyalty/{id}/adjustments: postProgrammeAdjustment (one signed ledger row; idempotent by request_uuid). Writers only. */
 export async function handleAdjustPost(req: NextRequest, id: string): Promise<NextResponse> {
   if (!ID.test(id)) return problemResponse(404, "ERR_NOT_FOUND");
   const g = await gate(req, "programme");
   if (g.res) return g.res;
-  const parsed = AdjBody.safeParse(await req.json().catch(() => null));
+  const body = await boundedJson(req);
+  if (body === TOO_BIG) return g.auth!.finish(problemResponse(400, "ERR_VALIDATION", { errors: [{ pointer: "/", code: "too_large" }] }));
+  const parsed = AdjBody.safeParse(body);
   if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
   return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).POST("/v1/admin/programmes/{id}/adjustments", { params: { path: { id: Number(id) } }, body: { allow_overdraw: false, ...parsed.data } }))));
 }
@@ -172,7 +185,9 @@ export async function handleAdjustPut(req: NextRequest, id: string): Promise<Nex
   if (!ID.test(id)) return problemResponse(404, "ERR_NOT_FOUND");
   const g = await gate(req, "programme");
   if (g.res) return g.res;
-  const parsed = AdjBatch.safeParse(await req.json().catch(() => null));
+  const body = await boundedJson(req);
+  if (body === TOO_BIG) return g.auth!.finish(problemResponse(400, "ERR_VALIDATION", { errors: [{ pointer: "/", code: "too_large" }] }));
+  const parsed = AdjBatch.safeParse(body);
   if (!parsed.success) return g.auth!.finish(invalid(parsed.error));
   return g.auth!.finish(pass(await outcome(apiClient(g.auth!.session.at).PUT("/v1/admin/programmes/{id}/adjustments", { params: { path: { id: Number(id) } }, body: { allow_overdraw: false, ...parsed.data } }))));
 }
