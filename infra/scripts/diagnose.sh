@@ -195,7 +195,7 @@ WORKER_APP="${4:-ca-aron-dev-worker}"
 API_APP="${5:-ca-aron-dev-api}"
 # DEFAULT-DENY FOR FREE TEXT (D-OPS-DIAGNOSE-API-06). The job log of this public repository must not carry free text: the redactor below is a net, not the control.
 # The control is the queries: unless the private-terminal flag --include-messages is given, every query projects only NAMED STRUCTURED COLUMNS (time, level, logger, exception and cause class,
-# SQLSTATE, duration in ms, a fixed "kind" label for the known start-up, sweep, pre-flight, Flyway and job-run lines, the platform reason) and never the message or
+# SQLSTATE, duration in ms, a fixed label for the known start-up, sweep, pre-flight, Flyway and job-run lines, the platform reason) and never the message or
 # exception text. With --include-messages (never in GitHub Actions) the message is added, passes the redactor in STRICT mode (a line that still holds a key-like word followed by a value of
 # 6+ characters with letters and digits is replaced whole by [redacted-line]) and the secret-word exclusion; messages are OFF by default in a public log.
 # Every input is checked against a fixed pattern BEFORE it enters a query or an az argument (nothing here is ever evaluated, but a quote in a value would
@@ -212,8 +212,13 @@ showm() { if [ "$INCLUDE_MESSAGES" = true ]; then REDACT_STRICT=1 show "$1"; els
 # Everything below, including text this script prints itself, passes the net once more on the way out (the per-query redact-then-cut above is what
 # protects against a cut inside a value; this protects every section, the older ones too).
 exec > >(redact)
-section() { printf '\n== %s\n' "$*"; }
-try() { "$@" 2>&1 || echo "(command failed: $*)"; }
+# A FAILED SECTION MUST NOT LOOK LIKE SUCCESS (live run 44341474466: four sections failed and the job was green). Every failed az call or query appends a line to FAILFILE (a file, so a failure inside a
+# pipeline or a subshell is counted too); the script prints "diagnose: N section(s) FAILED" before its final line and exits non-zero. Only the section title, an error CODE and a parser position are
+# printed for a failure: never the query text, never the platform's message.
+SECTION="start"; FAILFILE="$(mktemp)"
+section() { SECTION="$*"; printf '\n== %s\n' "$*"; }
+note_failure() { echo x >> "$FAILFILE"; }
+try() { "$@" 2>/dev/null; local rc=$?; if [ "$rc" -ne 0 ]; then note_failure; echo "(command failed: ${SECTION}, exit code $rc)"; fi; return 0; }
 
 echo "diagnose: include_messages=$INCLUDE_MESSAGES (message and exception text is withheld; message mode exists only as the private-terminal flag --include-messages)"
 section "az version"
@@ -228,7 +233,7 @@ if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
   try az postgres flexible-server show -g "$RG" -n "$server" --query '{state:state, version:version, sku:sku.name, tier:sku.tier, storageGb:storage.storageSizeGb, ha:highAvailability.mode, haState:highAvailability.state, maintenance:maintenanceWindow.customWindow}' -o json
   sid="$(az postgres flexible-server show -g "$RG" -n "$server" --query id -o tsv 2>/dev/null || true)"
   section "PostgreSQL diagnostic settings (which log categories stream to Log Analytics)"
-  if [ -n "$sid" ]; then try az monitor diagnostic-settings list --resource "$sid" --query "(value || @)[].logs[].[category, enabled]" -o tsv | head -60; fi
+  if [ -n "$sid" ]; then try az monitor diagnostic-settings list --resource "$sid" --query "(value || @)[].logs[].[category || categoryGroup, enabled]" -o tsv | head -60; fi
   section "PostgreSQL parameters that bound a migration"
   for p in work_mem shared_buffers maintenance_work_mem temp_buffers statement_timeout idle_in_transaction_session_timeout lock_timeout log_min_duration_statement logfiles.download_enable logfiles.retention_days max_connections; do
     v="$(az postgres flexible-server parameter show -g "$RG" -s "$server" -n "$p" --query value -o tsv 2>/dev/null || echo '?')"
@@ -247,7 +252,7 @@ if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
   fi
   section "PostgreSQL server log files (last 24 h) and excerpts in the window"
   files="$(az postgres flexible-server server-logs list -g "$RG" -s "$server" --file-last-written 24 --query "[].name" -o tsv 2>/dev/null)"; rc=$?
-  if [ "$rc" -ne 0 ]; then echo "(server-logs list failed, exit code $rc; logfiles.download_enable may be off)"; files=""; fi
+  if [ "$rc" -ne 0 ]; then note_failure; echo "(server-logs list failed, exit code $rc; logfiles.download_enable may be off)"; files=""; fi
   if [ -z "$files" ]; then
     echo "(no downloadable server log files in the last 24 h)"
   else
@@ -256,7 +261,7 @@ if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
         # a file name comes from the platform: only a plain name is used
         [[ "$f" =~ ^[A-Za-z0-9._-]{1,200}$ ]] || { echo "(a log file with an unexpected name was skipped)"; continue; }
         az postgres flexible-server server-logs download -g "$RG" -s "$server" -n "$f" -o none >/dev/null 2>&1; rc=$?
-        [ "$rc" -eq 0 ] || echo "(download of a log file failed, exit code $rc)"
+        [ "$rc" -eq 0 ] || { echo x >> "$FAILFILE"; echo "(download of a log file failed, exit code $rc)"; }
       done )
     # Severity lines and slow statements only; DETAIL/parameter lines are dropped so no row values are printed. Postgres
     # log lines start "YYYY-MM-DD HH:MM:SS.mmm UTC"; the window bounds are ISO "YYYY-MM-DDTHH:MM", so the key is rebuilt as such.
@@ -272,13 +277,31 @@ fi
 
 section "Log Analytics: workspace"
 ws="$(az monitor log-analytics workspace list -g "$RG" --query "[0].customerId" -o tsv 2>/dev/null || true)"
-if [ -z "$ws" ]; then echo "(no Log Analytics workspace in $RG)"; fi
-# la <kql> <jmespath columns> <width>: run one query; its output goes through the redactor (and the strict line check in message mode) BEFORE the cut to the width.
-la() { try az monitor log-analytics query -w "$ws" --analytics-query "$1" --query "$2" -o tsv | showm "$3"; }
+if [ -z "$ws" ]; then echo "workspace: none (no Log Analytics workspace in $RG)"; else echo "workspace: found"; fi
+# laq <kql> <jmespath columns>: run one query, result in LA_OUT. On failure: count it and print ONLY "(query failed: <section>, <error code>, parser position [line,column], exit code N)" (the code and the
+# position are taken from the error text and shape-checked; the query text and the platform's message are never printed) and return 1.
+laq() {
+  local errf rc code pos; errf="$(mktemp)"
+  LA_OUT="$(az monitor log-analytics query -w "$ws" --analytics-query "$1" --query "$2" -o tsv 2>"$errf")"; rc=$?
+  if [ "$rc" -ne 0 ]; then
+    note_failure
+    code="$(grep -oE '[A-Za-z]{3,40}Error' "$errf" | head -1)"; pos="$(grep -oE 'line \[[0-9]{1,5},[0-9]{1,5}\]' "$errf" | head -1 | sed 's/^line //')"
+    echo "(query failed: ${SECTION}, ${code:-no error code}${pos:+, parser position $pos}, exit code $rc)"
+    rm -f "$errf"; LA_OUT=""; return 1
+  fi
+  rm -f "$errf"; return 0
+}
+# la <kql> <jmespath columns> <width>: laq, then the output goes through the redactor (and the strict line check in message mode) BEFORE the cut to the width.
+la() { laq "$1" "$2" && printf '%s\n' "$LA_OUT" | showm "$3"; return 0; }
 
+# The list of KQL reserved and special words checked against (live run 44341474466: `kind` is reserved and made four console queries fail to parse; a column that must keep such a name would need
+# ['name'] quoting, none does): kind, type, hint, with, by, on, in, of, to, from, table, database, cluster, range, order, top, take, limit, count, sum, title, access, alias, set, let, pattern,
+# as, and, or, not, where, extend, project, summarize, union, join, distinct, sort, print, datatable, parse, evaluate, invoke, contains, has, startswith, endswith, matches, between, asc, desc,
+# first, last, bin, ago, now, view, function, scan, partition, serialize, facet, find, search, lookup, render, sample, make, reduce, regex, default. The KQL cannot be EXECUTED in CI: a static
+# test (check_infra.py test_diagnose_kql_uses_no_reserved_word_as_a_column) scans every query the script sends and fails on such a word as an extend/project/summarize target or a bare column.
 # One row = one log line, newlines and tabs folded in the query. A line that is a JSON object (logback) gives level, logger, message and stack trace; any other line is "plain".
 # The structured columns below are the ONLY thing printed by default: the exception and cause CLASS (first token of the stack trace, "Caused by:"), SQLSTATE, a duration in ms,
-# and a fixed kind label for the known operational lines. A JSON line with no message is "(no message)", never the raw JSON with its stack.
+# and a fixed label for the known operational lines. A JSON line with no message is "(no message)", never the raw JSON with its stack.
 KQL_CONSOLE="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleLogs
      | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
      | extend app = coalesce(column_ifexists('ContainerAppName_s', ''), column_ifexists('ContainerAppName', '')),
@@ -295,7 +318,7 @@ KQL_CONSOLE="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleL
               cause = coalesce(nullif(tostring(j.throwable.cause.className), ''), nullif(tostring(j.exception.cause.className), ''), extract(@'Caused by: ([A-Za-z_][A-Za-z0-9_.]{2,160})', 1, st))
      | extend sqlstate = coalesce(extract(@'(?:SQLState|SQL State|sqlstate)[ =:]+([0-9A-Z]{5})', 1, mst), ''), ms = coalesce(extract(@'\b([0-9]{1,9}) ?ms\b', 1, msg), '')
      | extend script = coalesce(extract(@'Migration (V[0-9]+__[A-Za-z0-9_]+)', 1, mst), '')
-     | extend kind = case(
+     | extend what = case(
          msg startswith 'pre-flight: nothing to do', strcat('pre-flight nothing to do ', tostring(extract_all(@'(V[0-9]{4}-[A-Za-z0-9-]+=(?:clean|not pending|repaired))', msg))),
          msg startswith 'pre-flight', 'pre-flight line',
          msg startswith 'waiting-item sweep enabled', strcat('sweep enabled, interval ', coalesce(extract(@'interval ([0-9]+) s', 1, msg), '?'), ' s, batch ', coalesce(extract(@'batch ([0-9]+)', 1, msg), '?')),
@@ -311,7 +334,7 @@ KQL_CONSOLE="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleL
          msg matches regex @'(?i)(bundle|lapsed|aggregat|geo re-check|retention|risk signal|route-day)', 'job-run line',
          msg matches regex @'(?i)(error|failed|exception)', 'error line',
          '-')
-     | extend kind = iff(mst matches regex @'Migration V[0-9]+__[A-Za-z0-9_.]+ failed', strcat('flyway FAILED at ', coalesce(extract(@'Migration V([0-9]+)__', 1, mst), '?')), kind)
+     | extend what = iff(mst matches regex @'Migration V[0-9]+__[A-Za-z0-9_.]+ failed', strcat('flyway FAILED at ', coalesce(extract(@'Migration V([0-9]+)__', 1, mst), '?')), what)
      | extend lg = iff(lg == '' or lg matches regex @'^[A-Za-z_][A-Za-z0-9_.\x24-]{0,160}$', lg, '[text]'),
               lvl = iff(lvl matches regex @'^([A-Z]{3,8}|\(plain\))$', lvl, '[text]'),
               exc = iff(isempty(exc) or exc matches regex @'^[A-Za-z_][A-Za-z0-9_.\x24-]{0,160}$', exc, '[text]'),
@@ -327,19 +350,19 @@ console_section() {
   base="$KQL_CONSOLE
      | where app == '$app'
      | where not(lg startswith 'aron.request')
-     | where lvl in ('WARN', 'ERROR', 'FATAL') or kind != '-' or (not(isobj) and line matches regex @'(?i)\b(WARN|ERROR|FATAL)\b')"
+     | where lvl in ('WARN', 'ERROR', 'FATAL') or what != '-' or (not(isobj) and line matches regex @'(?i)\b(WARN|ERROR|FATAL)\b')"
   if [ "$INCLUDE_MESSAGES" = true ]; then
-    q="$base $KQL_HELD | where not(held) | top 150 by TimeGenerated desc | project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, kind, msg"
-    la "$q" "[].[TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, kind, msg]" 300
+    q="$base $KQL_HELD | where not(held) | top 150 by TimeGenerated desc | project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, what, msg"
+    la "$q" "[].[TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, what, msg]" 300
     qc="$base $KQL_HELD | summarize held = countif(held), shown = countif(not(held))"
-    az monitor log-analytics query -w "$ws" --analytics-query "$qc" --query "[0].[held, shown]" -o tsv 2>/dev/null | held_note
+    if laq "$qc" "[0].[held, shown]"; then printf '%s\n' "$LA_OUT" | held_note; fi
   else
-    echo "(columns: time, level, logger, exception class, cause class, SQLSTATE, ms, kind; message and exception text are not printed)"
-    q="$base | top 150 by TimeGenerated desc | project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, kind"
-    la "$q" "[].[TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, kind]" 300
+    echo "(columns: time, level, logger, exception class, cause class, SQLSTATE, ms, what; message and exception text are not printed)"
+    q="$base | top 150 by TimeGenerated desc | project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, what"
+    la "$q" "[].[TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, what]" 300
     qc="$base | summarize plain = countif(not(isobj)), total = count()"
     echo "(for orientation, plain-text lines and matching lines in the window:)"
-    az monitor log-analytics query -w "$ws" --analytics-query "$qc" --query "[0].[plain, total]" -o tsv 2>/dev/null | tr '\t\n' '  ' | show 80; echo
+    if laq "$qc" "[0].[plain, total]"; then printf '%s\n' "$LA_OUT" | tr '\t\n' '  ' | show 80; echo; fi
   fi
 }
 
@@ -347,12 +370,12 @@ if [ -n "${ws:-}" ]; then
   section "Log Analytics: console log of job executions starting with $JOB_PREFIX in the window"
   base="$KQL_CONSOLE
      | where exec startswith '$JOB_PREFIX'
-     | where kind != '-' or lvl in ('WARN', 'ERROR', 'FATAL') or line matches regex @'(?i)(error|failed|exception)'"
+     | where what != '-' or lvl in ('WARN', 'ERROR', 'FATAL') or line matches regex @'(?i)(error|failed|exception)'"
   if [ "$INCLUDE_MESSAGES" = true ]; then
-    la "$base | order by TimeGenerated asc | project TimeGenerated, exec, lvl, kind, sqlstate, script, msg | take 400" "[].[TimeGenerated, exec, lvl, kind, sqlstate, script, msg]" 400
+    la "$base | order by TimeGenerated asc | project TimeGenerated, exec, lvl, what, sqlstate, script, msg | take 400" "[].[TimeGenerated, exec, lvl, what, sqlstate, script, msg]" 400
   else
-    echo "(columns: time, execution, level, kind, SQLSTATE, migration script name; message text is not printed)"
-    la "$base | order by TimeGenerated asc | project TimeGenerated, exec, lvl, kind, sqlstate, script | take 400" "[].[TimeGenerated, exec, lvl, kind, sqlstate, script]" 300
+    echo "(columns: time, execution, level, what, SQLSTATE, migration script name; message text is not printed)"
+    la "$base | order by TimeGenerated asc | project TimeGenerated, exec, lvl, what, sqlstate, script | take 400" "[].[TimeGenerated, exec, lvl, what, sqlstate, script]" 300
   fi
 
   section "Log Analytics: system log (platform reasons) for $JOB_PREFIX and $WORKER_APP in the window"
@@ -389,8 +412,7 @@ if [ -n "${ws:-}" ]; then
     echo "(columns: time, severity, an allow-listed PostgreSQL message head, else [text])"
     la "$pgq | where isnotempty(sev) | order by TimeGenerated asc | project TimeGenerated, sev, head | take 300" "[].[TimeGenerated, sev, head]" 200
     # Records whose log_line_prefix shape is not the expected one are not printed; their number is.
-    n="$(az monitor log-analytics query -w "$ws" --analytics-query "$pgq | summarize dropped = countif(isempty(sev))" --query "[0].dropped" -o tsv 2>/dev/null | tr -dc '0-9')"
-    echo "(${n:-?} record(s) dropped: unknown log line prefix shape)"
+    if laq "$pgq | summarize dropped = countif(isempty(sev))" "[0].dropped"; then n="$(printf '%s' "$LA_OUT" | tr -dc '0-9')"; echo "(${n:-?} record(s) dropped: unknown log line prefix shape)"; fi
   fi
 
   console_section "$WORKER_APP" "$WORKER_APP"
@@ -405,14 +427,15 @@ if [ -n "${ws:-}" ]; then
   fi
 
   section "Log Analytics: migrate job pre-flight lines ($JOB_PREFIX*) in the window"
-  # MigrationPreflight reports one line per action and, when it has nothing to do, "pre-flight: nothing to do (checks: ...)". By default the fixed kind label with the check
+  # MigrationPreflight reports one line per action and, when it has nothing to do, "pre-flight: nothing to do (checks: ...)". By default the fixed what label with the check
   # states is printed (the states are extracted tokens like V0191-cluster-names=clean); the message itself only with include_messages. Absent means the pre-flight did not run
   # (an older image) or the job did not start in the window.
-  base="$KQL_CONSOLE | where exec startswith '$JOB_PREFIX' | where kind startswith 'pre-flight'"
+  base="$KQL_CONSOLE | where exec startswith '$JOB_PREFIX' | where what startswith 'pre-flight'"
+  out=""
   if [ "$INCLUDE_MESSAGES" = true ]; then
-    out="$(az monitor log-analytics query -w "$ws" --analytics-query "$base | top 100 by TimeGenerated desc | order by TimeGenerated asc | project TimeGenerated, exec, kind, msg" --query "[].[TimeGenerated, exec, kind, msg]" -o tsv 2>&1 | showm 400)"
+    if laq "$base | top 100 by TimeGenerated desc | order by TimeGenerated asc | project TimeGenerated, exec, what, msg" "[].[TimeGenerated, exec, what, msg]"; then out="$(printf '%s\n' "$LA_OUT" | showm 400)"; else out="(see the failed query above)"; fi
   else
-    out="$(az monitor log-analytics query -w "$ws" --analytics-query "$base | top 100 by TimeGenerated desc | order by TimeGenerated asc | project TimeGenerated, exec, kind" --query "[].[TimeGenerated, exec, kind]" -o tsv 2>&1 | show 300)"
+    if laq "$base | top 100 by TimeGenerated desc | order by TimeGenerated asc | project TimeGenerated, exec, what" "[].[TimeGenerated, exec, what]"; then out="$(printf '%s\n' "$LA_OUT" | show 300)"; else out="(see the failed query above)"; fi
   fi
   if [ -z "$out" ]; then echo "(no pre-flight line from a $JOB_PREFIX execution in the window)"; else printf '%s\n' "$out"; fi
 fi
@@ -421,4 +444,7 @@ section "worker app $WORKER_APP"
 try az containerapp show -g "$RG" -n "$WORKER_APP" --query '{running:properties.runningStatus, provisioning:properties.provisioningState, latest:properties.latestRevisionName, latestReady:properties.latestReadyRevisionName, mode:properties.configuration.activeRevisionsMode}' -o json
 try az containerapp revision list -g "$RG" -n "$WORKER_APP" --query "[?properties.active].{name:name, replicas:properties.replicas, running:properties.runningState, created:properties.createdTime}" -o table
 echo
+nfail="$(wc -l < "$FAILFILE" | tr -d ' ')"; rm -f "$FAILFILE"
+if [ "${nfail:-0}" -gt 0 ]; then echo "diagnose: $nfail section(s) FAILED"; fi
 echo "diagnose: done (read-only)"
+[ "${nfail:-0}" -eq 0 ] || exit 1
