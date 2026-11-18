@@ -311,3 +311,5 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - ops-diagnose-api 9496e81d: scope PASS, leak lens FAIL (OTP joined to key name; Authorization non-Bearer). Round 5 sent: messages off by default in queries.
 - A-PROG2 head b880dfee (deterministic gift photo uuid); full final pass owed after its INT merge.
 - lane/lead-ci-gitleaks is an old branch of mine (2026-10-22), not new.
+- 11:55 migrate console read (ops-diagnose 44297116585): schema was 0204, applied 0205..0208, "Successfully applied 4 migrations ... now at version v0208", 186 validated, no ERROR in the migrate console. Worker section at 11:26:42Z shows two ERROR lines (risk signal evaluation failed; aggregation pass failed, SQLTransientConnectionException) and Hikari starvation WARN around the worker pause: asked SV6 to check whether the pause lets a pass start while connections are cut and whether the pass retries.
+- P-TSO 09e2ed1c pushed (slice 3 + INT merge), lane ci running; lane at ~300k context, hands over after "checked".
