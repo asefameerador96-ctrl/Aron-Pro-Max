@@ -1734,7 +1734,7 @@ class SliceSmoke(unittest.TestCase):
                                 "route_id", "bundle_version", "config_version", "payload"}
                     for r in b["records"]:
                         if not envelope <= r.keys() or (r["type"] == "memo" and not re.fullmatch(
-                                r"[a-z][a-z0-9]{3,31}-\d{6}-\d{3,4}", r["payload"]["memo_no"])):
+                                r"[a-z][a-z0-9]{2,31}-\d{6}-\d{3,4}", r["payload"]["memo_no"])):
                             return self.reply(400, {"code": "ERR_VALIDATION"})
                     if b["batch_uuid"] in state["batches"]:
                         return self.reply(200, {**state["batches"][b["batch_uuid"]], "replayed": True})

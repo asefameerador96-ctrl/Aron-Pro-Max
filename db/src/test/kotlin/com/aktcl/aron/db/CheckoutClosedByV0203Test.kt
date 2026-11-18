@@ -85,6 +85,13 @@ class CheckoutClosedByV0203Test {
                 assertEquals("rep", c.scalar("SELECT closed_by FROM app.attendance_event WHERE kind = 'check_in'"), "the default")
                 c.exec(attendance("check_out", "sr1001", "phone"))
                 assertEquals("phone", c.scalar("SELECT closed_by FROM app.attendance_event WHERE kind = 'check_out'"))
+                // Uniqueness (V0205): one rep row per user, day and kind; one phone close per user and day; a phone close and a rep check-out of the same day coexist.
+                c.exec(attendance("check_out", "sr1001", "rep"))
+                assertEquals("phone,rep", c.scalar("SELECT string_agg(closed_by, ',' ORDER BY closed_by) FROM app.attendance_event WHERE kind = 'check_out'"))
+                assertFailsWith<SQLException>("a second rep check-out") { c.exec(attendance("check_out", "sr1001", "rep")) }
+                assertFailsWith<SQLException>("a second phone close") { c.exec(attendance("check_out", "sr1001", "phone")) }
+                assertFailsWith<SQLException>("a second check-in") { c.exec(attendance("check_in", "sr1001")) }
+                assertEquals("attendance_event_once_phone,attendance_event_once_rep", c.scalar("SELECT string_agg(indexname, ',' ORDER BY indexname) FROM pg_indexes WHERE tablename = 'attendance_event' AND indexname LIKE 'attendance_event_once%'"), "the old index is gone")
                 assertFailsWith<SQLException>("a check-in is always the rep's") { c.exec(attendance("check_in", "sr1001", "phone")) }
                 assertFailsWith<SQLException>("only rep or phone") { c.exec(attendance("check_out", "sr1001", "server")) }
                 // memo usernames: 3 to 32 characters for SR and AMO.

@@ -4727,7 +4727,7 @@ export interface components {
         /** @enum {string} */
         AttendanceKind: "check_in" | "check_out";
         /**
-         * @description Contract 1.20.0, on a `check_out` only: `rep` (the rep pressed check-out; also what an absent member means) or `phone` (the phone closed a forgotten day at a later start, no location read). A phone close is stored and acknowledged but read everywhere as "no check-out".
+         * @description Contract 1.20.0: `rep` (the rep pressed check-out; also what an absent member means) or `phone` (the phone closed a forgotten day at a later start, no location read; only a `check_out` can be closed by the phone). A phone close is stored and acknowledged but read everywhere as "no check-out"; a real check-out of the same day, whenever it arrives, outranks it.
          * @enum {string}
          */
         AttendanceClosedBy: "rep" | "phone";
@@ -5845,7 +5845,7 @@ export interface components {
             fix: components["schemas"]["GeoFix"];
             /** @description Reverse-geocoded text shown on screen; display only, never used for a decision. */
             address_display?: string | null;
-            /** @description Contract 1.20.0, optional, `check_out` only (on a `check_in` the record is refused `schema_invalid`). Absent = `rep`. `phone`: the phone closed a forgotten day; stored and acknowledged, never a check-out time. */
+            /** @description Contract 1.20.0, optional, meant for a `check_out` (on a `check_in` only `rep` is accepted; `phone` is refused `schema_invalid`). Absent = `rep`. `phone`: the phone closed a forgotten day; stored and acknowledged, never a check-out time. */
             closed_by?: components["schemas"]["AttendanceClosedBy"];
         };
         DayOpenPayload: {

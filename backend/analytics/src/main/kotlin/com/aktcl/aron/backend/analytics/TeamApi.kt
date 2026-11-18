@@ -149,7 +149,7 @@ class TeamService(private val db: Database, private val dashboards: DashboardSer
                                    WHERE rd.business_date = :d AND ${clause(z, "g.zone_id")} GROUP BY u.id, u.full_name),
                     fixes AS (
                       SELECT user_id, fix_lat AS lat, fix_lng AS lng, fix_accuracy_m AS acc, captured_at, kind AS source FROM app.attendance_event
-                        WHERE business_date = :d AND voided_at IS NULL AND fix_lat IS NOT NULL AND coalesce(fix_is_mock, false) = false
+                        WHERE business_date = :d AND voided_at IS NULL AND closed_by = 'rep' AND fix_lat IS NOT NULL AND coalesce(fix_is_mock, false) = false
                       UNION ALL SELECT user_id, fix_lat, fix_lng, fix_accuracy_m, opened_at, 'visit' FROM app.visit
                         WHERE business_date = :d AND voided_at IS NULL AND fix_lat IS NOT NULL AND coalesce(fix_is_mock, false) = false
                       UNION ALL SELECT user_id, fix_lat, fix_lng, fix_accuracy_m, captured_at, 'breadcrumb' FROM app.geo_breadcrumb

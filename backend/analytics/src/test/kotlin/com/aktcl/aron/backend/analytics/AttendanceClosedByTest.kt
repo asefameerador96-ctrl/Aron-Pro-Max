@@ -22,6 +22,10 @@ INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_
 INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, kind, fix_status, fix_lat, fix_lng, fix_accuracy_m, fix_is_mock, address_display)
   SELECT gen_random_uuid(), gen_random_uuid(), DATE '2026-10-04', u.id, r.id, e.at, 1, e.kind, 'ok', 23.78, 90.41, 8, false, 'Gulshan'
     FROM app.app_user u, app.route r, (VALUES ('check_in', TIMESTAMPTZ '2026-10-04 03:00Z'), ('check_out', TIMESTAMPTZ '2026-10-04 11:00Z')) e(kind, at) WHERE u.username = 'sr002' AND r.code = 'R2';
+-- sr002's phone ALSO closed the same day later (a shared phone): the rep's own check-out outranks it in every reader.
+INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, kind, fix_status, closed_by)
+  SELECT gen_random_uuid(), gen_random_uuid(), DATE '2026-10-04', u.id, r.id, TIMESTAMPTZ '2026-10-07 04:00Z', 1, 'check_out', 'provider_unavailable', 'phone'
+    FROM app.app_user u, app.route r WHERE u.username = 'sr002' AND r.code = 'R2';
     """.trimIndent()
 
     private fun q(sql: String): String? = fresh.db.jdbi.withHandle<String?, Exception> { it.createQuery(sql).mapTo(String::class.java).findOne().orElse(null) }
@@ -33,7 +37,7 @@ INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_
         assertEquals("2026-10-04 03:00:00+00", fact("sr001", "check_in_at"))
         assertNull(fact("sr001", "check_out_at"), "the phone's close is not a check-out time")
         assertNull(fact("sr001", "check_out_lat")); assertNull(fact("sr001", "check_out_is_mock"))
-        assertEquals("2026-10-04 11:00:00+00", fact("sr002", "check_out_at"), "the rep's own check-out is unchanged")
+        assertEquals("2026-10-04 11:00:00+00", fact("sr002", "check_out_at"), "the rep's own check-out outranks a later phone close")
         // The stable view: hours only when both ends are the rep's.
         fun hours(user: String) = q("SELECT v.hours_in_field::text FROM dw.v_attendance v JOIN app.app_user u ON u.id = v.user_id WHERE u.username = '$user'")
         assertNull(hours("sr001")); assertEquals("8.00", hours("sr002"))

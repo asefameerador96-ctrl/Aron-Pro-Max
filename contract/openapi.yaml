@@ -127,7 +127,7 @@ info:
       `OutletProposal.cluster_request_uuid`, `OutletRequest.resulting_cluster_id` and the rejected record outcome code `cluster_name_exists`. Review round (push B3): `BundleDelta.clusters`, `clusters_truncated`, `outlet_sku_stats`, `outlet_sku_stats_truncated` (a delta carries each section whole when it changed), `Bundle.clusters_truncated` and `Bundle.outlet_sku_stats_truncated` (the caps 600 and 400), `OutletRequestApproveRequest.cluster_id`, `SalesSubmitRequest.captured_at` (the phone's clock) and `RouteDayState.late_rows_anchor`; the late-row count is derived from the day_submit record's own `captured_at`; ADS is per elapsed calendar day. Review round B5: `DaySubmitPayload.anchor_clock` (optional, server-set on the online Sales Submit). No existing member changes.
     - 1.20.0 (SR check-out round, lane sr-server SV6, D-SV2-15 and D-SV2-16; ruling 6 of D-LEAD-PREREQ-03 and section 5 of `docs/requests/android-gates.md`; request file
       `docs/requests/contract-1.20-sr-server-checkout.md`; additive only, version number provisional until the lead confirms the landing order): the `attendance_event` payload
-      gains the optional `closed_by` (`AttendanceClosedBy`: `rep` | `phone`; only on a `check_out`, absent means `rep`). `phone` is the phone closing a forgotten day at a later
+      gains the optional `closed_by` (`AttendanceClosedBy`: `rep` | `phone`; `phone` only on a `check_out`, absent means `rep`; a real check-out of the same day outranks a phone close whatever the arrival order). `phone` is the phone closing a forgotten day at a later
       start: it is stored and acknowledged `accepted`, but read everywhere as "no check-out" (no check-out time, no hours, AMO `supervisor_day.checked_out_at` not set, never
       `checkout_too_early`). `CHECKOUT_WITHOUT_SUBMIT` is no longer raised for a user-day with no route captures and is withdrawn (status `dismissed`, evidence `withdrawn_by`) when an
       accepted Sales Submit for that user-date arrives later (a worker rule, within about 15 minutes). The patterns of `MemoNo` and the memo-producing `Username` rule now allow a
@@ -7571,7 +7571,7 @@ components:
     AttendanceClosedBy:
       type: string
       enum: [rep, phone]
-      description: 'Contract 1.20.0, on a `check_out` only: `rep` (the rep pressed check-out; also what an absent member means) or `phone` (the phone closed a forgotten day at a later start, no location read). A phone close is stored and acknowledged but read everywhere as "no check-out".'
+      description: 'Contract 1.20.0: `rep` (the rep pressed check-out; also what an absent member means) or `phone` (the phone closed a forgotten day at a later start, no location read; only a `check_out` can be closed by the phone). A phone close is stored and acknowledged but read everywhere as "no check-out"; a real check-out of the same day, whenever it arrives, outranks it.'
     MediaPurpose:
       type: string
       enum: [force_sale, outlet_capture, outlet_verification, survey, feedback, support, gift_photo, outlet_call]
@@ -8921,7 +8921,7 @@ components:
         kind: { $ref: '#/components/schemas/AttendanceKind' }
         fix: { $ref: '#/components/schemas/GeoFix' }
         address_display: { type: [string, 'null'], maxLength: 300, description: 'Reverse-geocoded text shown on screen; display only, never used for a decision.' }
-        closed_by: { $ref: '#/components/schemas/AttendanceClosedBy', description: 'Contract 1.20.0, optional, `check_out` only (on a `check_in` the record is refused `schema_invalid`). Absent = `rep`. `phone`: the phone closed a forgotten day; stored and acknowledged, never a check-out time.' }
+        closed_by: { $ref: '#/components/schemas/AttendanceClosedBy', description: 'Contract 1.20.0, optional, meant for a `check_out` (on a `check_in` only `rep` is accepted; `phone` is refused `schema_invalid`). Absent = `rep`. `phone`: the phone closed a forgotten day; stored and acknowledged, never a check-out time.' }
     DayOpenPayload:
       type: object
       required: [route_ids, online, bundle_valid_for, offline_start]

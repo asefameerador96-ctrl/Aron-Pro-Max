@@ -19,7 +19,7 @@ Approval REQUESTED from the lead (not approved until the lead says so). Everythi
 * `phone` = the phone closed a forgotten day at a later start (no location read). The record is stored and acknowledged `accepted` (idempotent by `client_uuid` like any record), but it is read
   everywhere as "no check-out": no check-out time and no hours (`dw.fact_attendance.check_out_*` stay empty, so `dw.v_attendance.check_out_at`/`hours_in_field` and the attendance report `gigo` show none),
   AMO `supervisor_day.checked_out_at` is not set, it is never judged by `cfg.day.checkout_earliest_time` (no `checkout_too_early`), and `CHECKOUT_WITHOUT_SUBMIT` is not judged for it.
-* The unique rule is unchanged: one check-out per user and business date; a phone close occupies it.
+* Uniqueness (V0205): at most one REP row per user, day and kind and at most one phone close per user and day, so a real check-out of the same day outranks a phone close whatever the arrival order (both are stored; every reader looks at the rep rows). `closed_by = rep` on a check-in is accepted; `phone` on a check-in is refused `schema_invalid`. A phone close's fix is never a geo_fix (not the newest location, no geo risk rule).
 * **Order of deployment:** `PayloadShapes` is strict, so an older server refuses the member `schema_invalid`. The server ships (migration V0203 first, then the API) before any phone sends it.
 
 ## Behaviour (B): `CHECKOUT_WITHOUT_SUBMIT`
@@ -31,8 +31,9 @@ Approval REQUESTED from the lead (not approved until the lead says so). Everythi
   an `open` signal whose user-date now has an effective `day_submit` (not data-voided, its route-day or supervisor-day not submit-voided) becomes `dismissed` with
   `evidence.withdrawn_by = "day_submit"` (also `withdrawn_at`, `day_submit_client_uuid`). The status set has no `withdrawn` (adding one would widen the CHECK and every reader), and the dashboards count only `open` and `confirmed`.
   A signal a reviewer has already decided (`reviewed`, `dismissed`, `confirmed`) is never touched. Looks back `cfg.retention.ingest_registry_days` (45) business dates.
+* The mirror: a worker rule also raises the signal for a real check-out whose day got route captures AFTER it was stored and has no submit (`evidence.raised_by = worker`). Withdrawal and late raise mark the user's route-day aggregates dirty.
 * Delay: up to about 15 minutes after the submit is stored. A submit voided or superseded AFTER the withdrawal does not re-raise the signal (the ingest raises only when a check-out is stored; the dismissed row keeps the unique key), the day stays withdrawn.
-* The attendance report `gigo` gains the string column `check_out_note`: `no check-out (closed by the phone)` for a user-day whose only check-out is a phone close (lead ruling 2).
+* The attendance report `gigo` gains the string column `check_out_note` (the LAST column): `no check-out (closed by the phone)` for a user-day whose only check-out is a phone close (lead ruling 2).
 
 ## Behaviour (C): three-character memo usernames
 
@@ -47,3 +48,7 @@ parser (`MemoNumbers`), the Sales Submit digest, `MemoApi`, the paper backfill a
 ## Web and android
 
 Done in this round (lead ruling 6): `web/src/lib/admin/op-rules.ts`, `web/src/components/admin/config/paper-backfill-form.tsx`, regenerated `web/src/contract/openapi.d.ts`; web tests `op-rules-v14`, `contract-drift`, `entry-pages`, `checker-v14-forms`, `backfill-match-access` and `tsc --noEmit` pass. The android `ErrorReporter` gap is filed in `docs/requests/android-error-reporter-short-usernames.md`.
+
+## Rollout
+
+Create no 3-character SR or AMO login until the fleet runs the android-gates build (older APKs hold the 4-character memo username rule and throw on the first memo number), or gate it on a minimum app version.
