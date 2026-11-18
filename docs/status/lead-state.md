@@ -404,3 +404,9 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - T-KPI3 at 0260c195f (contract 1.24.0, V0210..V0213): T1 review workflow wf_04fdc277-939 running.
 - L-A13 8e807fd1b (post-landing round, run 44363350651 green by its report): needs a short check, rides next server train.
 - A-PROG3 d762c3aa1: ci red only on Sr/AmoLatePolicyTest wall-clock window (00:00..00:10 Dhaka); failed job re-run once; clock pin assigned to A-GATE8 with its blocking fix.
+
+## 2026-11-18 19:35 UTC
+
+- Train 126 built (Android only): gates-2 45178efa + programmes d762c3aa1 + parity-sr-1 b08c3782; D-LEAD-TRAIN-126-01; GO to the integrator. Follow-ups after landing: A-GATE8 fixes the SR outlet-request photo claim before the gate (pre-existing) + Gradle input gaps; A-PROG3 fixes the 3-chain fallback double count; P-SR1b lows round; P-SR2b (7924c154c, 31 goldens changed, 16 conflicts resolved) merges INT again, then my review.
+- T-KPI3: confirming check of bfd2efd1d = 4 blocking (month-end anchor, RouteCalendar text, caches inside the snapshot, two stale doc lines); waiting for its next head.
+- CI note: web summary job failed twice on run 44372290509 with GitHub artifact storage 503 (egress limit); other runs passed; watch on the train run.
