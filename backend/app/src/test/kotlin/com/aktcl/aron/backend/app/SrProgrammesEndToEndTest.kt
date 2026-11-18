@@ -93,7 +93,7 @@ class SrProgrammesEndToEndTest : DataFlowTraceSupport() {
         fun stamps() = rows("SELECT sku_id, updated_at::text AS u FROM dw.agg_daily_route_sku WHERE route_id = $gulRouteId AND business_date = DATE '$day' ORDER BY sku_id")
         val before = stamps(); val versionBefore = bundleFor(next.toString()).path("meta").path("bundle_version").asText()
         runWorker()
-        hop("a figure-neutral rebuild keeps updated_at and the bundle version", "stamps equal" to (before == stamps()), "version equal" to (versionBefore == bundleFor(next.toString()).path("meta").path("bundle_version").asText()), "expected" to "true true")
+        note("a figure-neutral rebuild keeps updated_at and the bundle version", "stamps equal ${before == stamps()}")
         assertEquals(before, stamps()); assertEquals(versionBefore, bundleFor(next.toString()).path("meta").path("bundle_version").asText())
     }
 }
