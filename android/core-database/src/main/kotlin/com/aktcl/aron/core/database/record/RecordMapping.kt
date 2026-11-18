@@ -102,13 +102,13 @@ object RecordMapping {
         gnss = e.gnssJson?.let { runCatching { lenient.decodeFromString(GnssSummary.serializer(), it) }.getOrNull() },
         radio = e.radioJson?.let { json.parseToJsonElement(it).jsonObject },
         device = FixDeviceState(e.deviceOwner, e.devOptionsEnabled, e.adbEnabled, e.autoTimeEnabled, e.mockAppPresent, e.integrityRef),
-        // Contract 1.19.0: the codes stored with the fix at capture. NULL (captured before slice 2) is left out: unknown, not clean.
+        // Contract 1.20.0: the codes stored with the fix at capture. NULL (captured before slice 2) is left out: unknown, not clean.
         signals = e.signalsJson?.let { raw ->
             runCatching { (lenient.parseToJsonElement(raw) as kotlinx.serialization.json.JsonArray).map { (it as kotlinx.serialization.json.JsonPrimitive).content } }.getOrNull()
         }?.filter { it in SPOOF_CODES }?.distinct()?.take(16),
     )
 
-    /** The anti-spoofing codes of contract 1.19.0 (`GeoFix.signals`); a test ties this list to `SpoofCode` so a new code is never silently dropped from uploads. */
+    /** The anti-spoofing codes of contract 1.20.0 (`GeoFix.signals`); a test ties this list to `SpoofCode` so a new code is never silently dropped from uploads. */
     val SPOOF_CODES = setOf(
         "mock_flag", "mock_app_selected", "test_provider", "test_provider_props", "fake_gps_app_installed", "gnss_no_sats", "gnss_none",
         "fix_stale", "fix_clock_mismatch", "jump", "speed", "provider_disagree", "root_hint", "emulator", "hook_framework",

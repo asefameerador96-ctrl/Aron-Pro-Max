@@ -30,6 +30,7 @@ nimbus-jose-jwt = "10.10"              # ES256 JWT + JWKS
 argon2-jvm = "2.12"                    # Argon2id (bundled native libargon2, linux-x86-64 glibc)
 azure-sdk-bom = "1.3.8"                # azure-storage-blob (user-delegation SAS), azure-identity (managed identity)
 firebase-admin = "9.11.0"              # FCM HTTP v1 sender
+bouncycastle = "1.80"                  # tests only: bcpkix and the two modules it pulls (pinned exactly, D-SV2-14)
 fastexcel = "0.20.2"                   # streaming xlsx writer for report exports
 appinsights-agent = "3.7.10"           # attached by the container image (infra), listed here so the pin is in one place
 
@@ -103,7 +104,10 @@ azure-identity = { module = "com.azure:azure-identity" }
 azure-core-http-jdk-httpclient = { module = "com.azure:azure-core-http-jdk-httpclient" }
 firebase-admin = { module = "com.google.firebase:firebase-admin", version.ref = "firebase-admin" }
 fastexcel = { module = "org.dhatim:fastexcel", version.ref = "fastexcel" }
-bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version = "1.80" }   # tests only: builds key-attestation chains
+bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }   # tests only: builds key-attestation chains
+# bcpkix 1.80 declares these two by the dynamic range [1.80,1.81); a range makes Gradle read the repository metadata at resolution time (CI failed twice on it). Same 1.80, now exact.
+bouncycastle-bcutil = { module = "org.bouncycastle:bcutil-jdk18on", version.ref = "bouncycastle" }
+bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 
 # Android
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }

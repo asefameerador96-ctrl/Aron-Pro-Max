@@ -166,6 +166,8 @@ object DayStates {
     @Volatile var settleMinutes: Long = 30
 
     private fun supervisorDay(h: Handle, type: String, p: JsonObject, userId: Long, date: LocalDate, captured: Instant, now: Instant) {
+        // Contract 1.20.0 (D-SV2-15): a check-out the phone made for a forgotten day is "no check-out": checked_out_at is never set from it.
+        if (IngestService.isPhoneClose(type, p)) return
         h.createUpdate("INSERT INTO app.supervisor_day (user_id, business_date) VALUES (:u, :d) ON CONFLICT (user_id, business_date) DO NOTHING")
             .bind("u", userId).bind("d", date).execute()
         val set = when {

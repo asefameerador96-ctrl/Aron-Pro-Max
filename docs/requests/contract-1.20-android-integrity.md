@@ -1,6 +1,6 @@
-# Contract 1.19.0: phone anti-spoofing signals and gate events (lane android-integrity, D-OWNER-MDM-02)
+# Contract 1.20.0: phone anti-spoofing signals and gate events (lane android-integrity, D-OWNER-MDM-02)
 
-Provisional number: other lanes hold 1.17 and 1.18; the lead confirms the final number and the migration number (V0201) at landing.
+Number settled by the lead 2026-11-18: 1.20.0 on top of train 117's 1.19.0; migrations V0204..V0207.
 
 Additive only. Phones built against an older contract keep working unchanged, and a queued record's payload and signature never change after capture.
 

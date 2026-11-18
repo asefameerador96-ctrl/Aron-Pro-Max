@@ -339,7 +339,7 @@ data class GeoFix(
     @SerialName("gnss") val gnss: GnssSummary? = null,
     @SerialName("radio") val radio: JsonObject? = null,
     @SerialName("device") val device: FixDeviceState,
-    /** Contract 1.19.0: anti-spoofing codes found for this fix (hard: mock_flag, mock_app_selected, test_provider). Absent from an older phone: unknown, not clean. */
+    /** Contract 1.20.0: anti-spoofing codes found for this fix (hard: mock_flag, mock_app_selected, test_provider). Absent from an older phone: unknown, not clean. */
     @SerialName("signals") val signals: List<String>? = null,
 )
 
@@ -398,6 +398,8 @@ data class AttendanceEventPayload(
     @SerialName("kind") val kind: String,
     @Serializable(with = GeoFixWire::class) @SerialName("fix") val fix: GeoFix,
     @SerialName("address_display") val addressDisplay: String? = null,
+    /** Contract 1.20.0, `check_out` only: `rep` (also what an absent member means) or `phone` (the phone closed a forgotten day at a later start; read as "no check-out"). */
+    @SerialName("closed_by") val closedBy: String? = null,
 )
 
 /** One event per SKU per Save (an increment, never an overwrite). qty_entered is negative only for kind adjustment. */
@@ -583,7 +585,7 @@ data class DeviceStatusReport(
     @SerialName("play_integrity") val playIntegrity: JsonElement? = null,
     @SerialName("play_integrity_unavailable") val playIntegrityUnavailable: PlayIntegrityUnavailable? = null,
     @SerialName("root_hints") val rootHints: List<String>? = null,
-    /** Contract 1.19.0: Developer-options gate onsets since the last acknowledged report, oldest first. */
+    /** Contract 1.20.0: Developer-options gate onsets since the last acknowledged report, oldest first. */
     @SerialName("integrity_events") val integrityEvents: List<DeviceStatusReportIntegrityEvents>? = null,
     @SerialName("pending_rows") val pendingRows: Int,
     @SerialName("pending_media") val pendingMedia: Int? = null,

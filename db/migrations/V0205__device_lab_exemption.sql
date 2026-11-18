@@ -1,4 +1,4 @@
--- V0202 android-integrity slice 3B (D-OWNER-MDM-02 iii; number provisional until the lead confirms the landing order).
+-- V0205 android-integrity slice 3B (D-OWNER-MDM-02 iii; number provisional until the lead confirms the landing order).
 -- A lab exemption lets one enrolled phone run with Developer options on for a short time (the ADB device walks). The row is only the
 -- server's record; the phone honours it solely through a grant the server SIGNS over the device uuid and the expiry (the private key is a
 -- server environment secret, never in this repository), so nothing stored on a phone can create or extend one. At most 14 days.

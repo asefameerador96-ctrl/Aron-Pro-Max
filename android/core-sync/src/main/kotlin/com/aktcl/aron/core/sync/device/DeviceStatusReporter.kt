@@ -100,7 +100,7 @@ class DeviceStatusReporter(
     /** Hard deadline of one evidence attempt (nonce + Play Integrity); a slow link never holds the upload longer. */
     private val evidenceDeadlineMs: Long = 25_000L,
     /**
-     * Developer-options gate onsets waiting to ride a report (contract 1.19.0 `integrity_events`, D-OWNER-MDM-02). Pending events make a
+     * Developer-options gate onsets waiting to ride a report (contract 1.20.0 `integrity_events`, D-OWNER-MDM-02). Pending events make a
      * report due; they are acknowledged only after the report is in the outbox, so a kill in between sends them again (the server counts
      * an event once by its time and flags). Null in builds and tests without the gate: the member is then left out.
      */

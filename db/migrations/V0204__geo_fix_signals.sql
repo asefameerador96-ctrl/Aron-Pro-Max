@@ -1,4 +1,4 @@
--- V0201 android-integrity slice 3C (contract 1.19.0, D-OWNER-MDM-02; migration number provisional until the lead confirms the landing order).
+-- V0204 android-integrity slice 3C (contract 1.19.0, D-OWNER-MDM-02; migration number provisional until the lead confirms the landing order).
 -- The phone's anti-spoofing codes ride on every GeoFix as `signals`; the server keeps them next to the fix so the risk rules can read them.
 -- One nullable column (no default, so no rewrite): NULL = the phone is older than 1.19.0 and sent none (unknown, not clean).
 SET lock_timeout = '5s';

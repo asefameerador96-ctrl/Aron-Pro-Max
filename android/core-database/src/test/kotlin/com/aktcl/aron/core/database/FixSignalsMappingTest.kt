@@ -13,7 +13,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Contract 1.19.0: the codes stored with a fix at capture go out as `GeoFix.signals`; an older row (NULL) leaves the member out, so its payload bytes are unchanged. */
+/** Contract 1.20.0: the codes stored with a fix at capture go out as `GeoFix.signals`; an older row (NULL) leaves the member out, so its payload bytes are unchanged. */
 class FixSignalsMappingTest {
     private fun entity(signals: String?) = GeoFixEntity(
         "f1", "o1", "visit_open", "ok", 23.79, 90.40, 8.0, provider = "fused", isMock = false, reused = false,

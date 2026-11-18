@@ -96,7 +96,7 @@ class LabGrantTest {
 
     @Test fun anInvalidTokenIsNull() { assertNull(LabGrantVerifier(pub).verify("x.y", dev, aud, clock.wall)) }
 
-    // ---- what a full day bundle says (contract 1.19.0: the device-scoped value cfg.integrity.lab_exemption) ----
+    // ---- what a full day bundle says (contract 1.20.0: the device-scoped value cfg.integrity.lab_exemption) ----
 
     @Test fun aBundleWithAValidGrantGrantsAndAnAbsentValueWithdraws() {
         val (l, _) = lab(); assertFalse(l.isActive())

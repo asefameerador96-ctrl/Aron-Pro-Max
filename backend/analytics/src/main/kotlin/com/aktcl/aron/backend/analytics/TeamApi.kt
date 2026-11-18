@@ -149,7 +149,7 @@ class TeamService(private val db: Database, private val dashboards: DashboardSer
                                    WHERE rd.business_date = :d AND ${clause(z, "g.zone_id")} GROUP BY u.id, u.full_name),
                     fixes AS (
                       SELECT user_id, fix_lat AS lat, fix_lng AS lng, fix_accuracy_m AS acc, captured_at, kind AS source FROM app.attendance_event
-                        WHERE business_date = :d AND voided_at IS NULL AND fix_lat IS NOT NULL AND coalesce(fix_is_mock, false) = false
+                        WHERE business_date = :d AND voided_at IS NULL AND closed_by = 'rep' AND fix_lat IS NOT NULL AND coalesce(fix_is_mock, false) = false
                       UNION ALL SELECT user_id, fix_lat, fix_lng, fix_accuracy_m, opened_at, 'visit' FROM app.visit
                         WHERE business_date = :d AND voided_at IS NULL AND fix_lat IS NOT NULL AND coalesce(fix_is_mock, false) = false
                       UNION ALL SELECT user_id, fix_lat, fix_lng, fix_accuracy_m, captured_at, 'breadcrumb' FROM app.geo_breadcrumb
@@ -157,7 +157,7 @@ class TeamService(private val db: Database, private val dashboards: DashboardSer
                     last AS (SELECT DISTINCT ON (user_id) * FROM fixes WHERE user_id IN (SELECT uid FROM team) ORDER BY user_id, captured_at DESC),
                     -- tso-manual B3 (PER-17): the same three sources, the fixes flagged as mock locations (never a last_fix).
                     mock AS (SELECT user_id, count(*) AS n FROM (
-                      SELECT user_id FROM app.attendance_event WHERE business_date = :d AND voided_at IS NULL AND fix_is_mock
+                      SELECT user_id FROM app.attendance_event WHERE business_date = :d AND voided_at IS NULL AND closed_by = 'rep' AND fix_is_mock
                       UNION ALL SELECT user_id FROM app.visit WHERE business_date = :d AND voided_at IS NULL AND fix_is_mock
                       UNION ALL SELECT user_id FROM app.geo_breadcrumb WHERE business_date = :d AND voided_at IS NULL AND fix_is_mock) m
                       WHERE user_id IN (SELECT uid FROM team) GROUP BY user_id)

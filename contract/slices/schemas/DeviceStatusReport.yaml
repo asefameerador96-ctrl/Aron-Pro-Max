@@ -169,7 +169,7 @@ DeviceStatusReport:
     integrity_events:
       type: array
       maxItems: 50
-      description: 'Developer-options gate onsets since the last acknowledged report (contract 1.19.0, D-OWNER-MDM-02):
+      description: 'Developer-options gate onsets since the last acknowledged report (contract 1.20.0, D-OWNER-MDM-02):
         the app did not run while one of these was on. Oldest first. A phone can send the same event again after
         a kill between the enqueue and the acknowledgement, so the server treats (at, flags) as the identity of
         an event. Optional; absent from an older app.
