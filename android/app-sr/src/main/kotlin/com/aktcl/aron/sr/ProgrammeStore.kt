@@ -8,6 +8,7 @@ import com.aktcl.aron.core.database.repo.CaptureRepository
 import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.feature.outlet.CaptureMetaProvider
 import com.aktcl.aron.feature.programmes.LocalGiftChoice
+import com.aktcl.aron.feature.programmes.LocalGiftPhoto
 import com.aktcl.aron.feature.programmes.LocalMemo
 import com.aktcl.aron.feature.programmes.LocalMemoLine
 import com.aktcl.aron.feature.programmes.LocalRedemption
@@ -28,6 +29,8 @@ class ProgrammeStore(
     private val db: AronDatabase,
     private val capture: CaptureRepository,
     private val meta: CaptureMetaProvider,
+    /** Claims the compressed photo for its record before the record commits (F-SYS-030), with the shutter fix; a no-op where there is no camera queue (tests). */
+    private val claimPhoto: suspend (photoUuid: String, recordUuid: String, fix: com.aktcl.aron.core.database.entity.GeoFixEntity?) -> Unit = { _, _, _ -> },
     private val requestSync: () -> Unit,
 ) {
     /** The redemptions on this phone with their outbox state (a row with no outbox state yet counts as pending). */
@@ -55,6 +58,32 @@ class ProgrammeStore(
                 if (ob?.state == "rejected") text(code, "bn") else null, if (ob?.state == "rejected") text(code, "en") else null,
             )
         }
+    }
+
+    /** The gift photos on this phone with their outbox state (the Astha "already captured" read and, for a campaign, the unit slots already photographed). */
+    suspend fun giftPhotos(): List<LocalGiftPhoto> = withContext(Dispatchers.IO) {
+        db.captureDao().amoRecordsOfType("gift_photo").mapNotNull { r ->
+            val o = runCatching { Json.parseToJsonElement(r.payloadJson) as? JsonObject }.getOrNull() ?: return@mapNotNull null
+            fun t(k: String) = (o[k] as? JsonPrimitive)?.content
+            LocalGiftPhoto(
+                t("programme_kind") ?: return@mapNotNull null, t("outlet_id")?.toLongOrNull() ?: return@mapNotNull null, t("gift_assignment_id")?.toLongOrNull(),
+                t("redemption_client_uuid"), t("unit_no")?.toIntOrNull(), db.outboxDao().byClientUuid(r.clientUuid)?.state ?: "pending",
+            )
+        }
+    }
+
+    /** The contract GeoFix object of a stored fix row, as the gift photo record carries it. */
+    fun fixJson(fix: com.aktcl.aron.core.database.entity.GeoFixEntity): JsonObject = com.aktcl.aron.core.database.record.RecordMapping.json.encodeToJsonElement(
+        com.aktcl.aron.contract.GeoFix.serializer(), com.aktcl.aron.core.database.record.RecordMapping.fix(fix),
+    ) as JsonObject
+
+    /**
+     * Saves one gift photo record: the photo is claimed for the record FIRST (so the media worker uploads it after the record's ack), then the record is saved
+     * through the one programme write path (check-in gate, open route-day, idempotent by uuid). A claim that fails leaves the record unsaved and the result REFUSED.
+     */
+    suspend fun saveGiftPhoto(meta: CaptureMeta, plan: PlannedRecord, photoUuid: String, fix: com.aktcl.aron.core.database.entity.GeoFixEntity): SaveOutcome {
+        try { claimPhoto(photoUuid, plan.clientUuid, fix) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { return SaveOutcome.REFUSED }
+        return saveProgramme(meta, listOf(plan))
     }
 
     /** The memos of a Dhaka month (`YYYY-MM`) on this phone with their lines and outbox state, for the Astha achievement (the phone's own memos on top of the server figure). */

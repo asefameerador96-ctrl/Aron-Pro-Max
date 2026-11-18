@@ -149,4 +149,29 @@ class SrProgrammesScreenshotTests {
     @Test fun gift_selection_bn_locked() = shot("gift_selection_bn_locked") { Gift(11) }
     @Test fun gift_selection_bn_font20() = shot("gift_selection_bn_font20", fontScale = 2.0f) { Gift(10, picked = 1) }
     @Test fun gift_selection_bn_empty() = shot("gift_selection_bn_empty") { Gift(10, data = null) }
+
+    // Photo capture menu and Astha gift photo (manual 56, 57)
+    private val photoJson = """{"programmes":[{"programme_id":5,"kind":"astha","name_en":"Astha"}],"loyalty":[],"gifts":[
+        {"gift_id":1,"programme_id":5,"name_en":"Hotpot- 3 bati","name_bn":"হটপট- ৩ বাটি","points_cost":null,"tier_codes":[],"status":"active"}],
+      "gift_assignments":[{"gift_assignment_id":71,"quarter":"2026-Q4","outlet_id":10,"route_id":7,"gift_id":1,"photo_captured":false,"locked":false},
+                          {"gift_assignment_id":72,"quarter":"2026-Q4","outlet_id":11,"route_id":7,"gift_id":1,"photo_captured":true,"locked":true}]}"""
+    @Composable private fun PhotoPage(outlet: Long, state: com.aktcl.aron.feature.outlet.GeoPhotoState = com.aktcl.aron.feature.outlet.GeoPhotoState(), locale: UiLocale = UiLocale.BN, data: com.aktcl.aron.feature.programmes.GiftChoiceData? = GiftChoiceModel.parse(photoJson)) =
+        Frame(ProgR.string.pg_photo_astha) {
+            com.aktcl.aron.feature.programmes.GiftPhotoScreen(
+                giftShops, data, "2026-Q4", emptyList(), locale, outlet, {}, photoBlock = { com.aktcl.aron.feature.outlet.GeoPhotoBlock(state, {}) },
+                canSubmit = state.complete, checking = state.busy, onSubmit = { _, _, _ -> SaveOutcome.SAVED },
+            )
+        }
+    private val shot1 = com.aktcl.aron.feature.outlet.GeoPhotoState(
+        photo = com.aktcl.aron.feature.outlet.CapturedPhoto("p1", "/none.jpg", 48_000), fix = com.aktcl.aron.feature.outlet.FixReading("ok", 23.79, 90.40, 11.6, false), accuracyMeters = 12,
+    )
+
+    @Test fun photo_menu_bn() = shot("photo_menu_bn") { Frame(ProgR.string.pg_photo_astha) { com.aktcl.aron.feature.programmes.PhotoMenuScreen({}, {}) } }
+    @Test fun photo_astha_bn() = shot("photo_astha_bn") { PhotoPage(10) }
+    @Test fun photo_astha_bn_taken() = shot("photo_astha_bn_taken") { PhotoPage(10, shot1) }
+    @Test fun photo_astha_bn_checking() = shot("photo_astha_bn_checking") { PhotoPage(10, com.aktcl.aron.feature.outlet.GeoPhotoState(busy = true)) }
+    @Test fun photo_astha_bn_captured() = shot("photo_astha_bn_captured") { PhotoPage(11) }
+    @Test fun photo_astha_en_sunlight() = shot("photo_astha_en_sunlight", AppLanguage.EN, sunlight = true) { PhotoPage(10, shot1, UiLocale.EN) }
+    @Test fun photo_astha_bn_font20() = shot("photo_astha_bn_font20", fontScale = 2.0f) { PhotoPage(10, shot1) }
+    @Test fun photo_astha_bn_empty() = shot("photo_astha_bn_empty") { PhotoPage(10, data = null) }
 }

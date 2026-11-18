@@ -98,6 +98,19 @@ class ProgrammeRecordsTest {
         assertThrows(IllegalArgumentException::class.java) { runBlocking { repo.recordProgramme(listOf(AmoRecordEntity(u2, TestRows.meta(), "gift_choice", u2, 0, ProgrammePayloads.giftChoice(10, 4, "2026-Q5").toString()))) } }
     }
 
+    @Test fun aGiftPhotoIsIdempotentAndNeedsItsParentFields() = runTest {
+        val fix = kotlinx.serialization.json.buildJsonObject { put("lat", kotlinx.serialization.json.JsonPrimitive(23.79)) }
+        val u = ClientIds.newUuid(); val photo = ClientIds.newUuid()
+        val pay = ProgrammePayloads.giftPhoto("astha", 10, 4, photo, fix, assignmentId = 71)
+        assertNull(ProgrammePayloads.problem("gift_photo", pay))
+        val rec = AmoRecordEntity(u, TestRows.meta(), "gift_photo", u, 0, pay.toString())
+        assertTrue(repo.recordProgramme(listOf(rec))); assertFalse(repo.recordProgramme(listOf(rec)))
+        assertEquals(1, outboxCount())
+        assertEquals("an Astha photo names its gift_assignment_id", ProgrammePayloads.problem("gift_photo", ProgrammePayloads.giftPhoto("astha", 10, 4, photo, fix)))
+        assertEquals("a campaign photo names its redemption and a unit_no 1 to 50", ProgrammePayloads.problem("gift_photo", ProgrammePayloads.giftPhoto("campaign", 10, 4, photo, fix, redemptionUuid = u, unitNo = 51)))
+        assertNull(ProgrammePayloads.problem("gift_photo", ProgrammePayloads.giftPhoto("campaign", 10, 4, photo, fix, redemptionUuid = u, unitNo = 3)))
+    }
+
     @Test fun aMemberTheContractLacksIsRefused() = runTest {
         val u = ClientIds.newUuid()
         val extra = ProgrammePayloads.giftChoice(10, 4, "2026-Q4").toString().replace("}", ""","tier":"gold"}""")

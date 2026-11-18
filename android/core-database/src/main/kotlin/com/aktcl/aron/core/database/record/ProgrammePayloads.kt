@@ -23,6 +23,10 @@ object ProgrammePayloads {
             setOf("redemption_client_uuid", "gift_id", "qty", "points_each", "points_total"),
         ),
         "gift_choice" to Shape(setOf("outlet_id", "gift_id", "quarter"), setOf("outlet_id", "gift_id", "quarter", "fix")),
+        "gift_photo" to Shape(
+            setOf("programme_kind", "outlet_id", "gift_id", "photo_uuid", "fix"),
+            setOf("programme_kind", "outlet_id", "gift_id", "gift_assignment_id", "redemption_client_uuid", "unit_no", "photo_uuid", "fix"),
+        ),
     )
 
     /** Null when [payload] fits [type] (every required member, no member the contract lacks, the contract's ranges), else what is wrong. */
@@ -50,6 +54,13 @@ object ProgrammePayloads {
                 n("points_total") != (n("qty") ?: 0) * (n("points_each") ?: 0) -> "points_total must equal qty x points_each"
                 else -> null
             }
+            "gift_photo" -> when {
+                (payload["programme_kind"] as? JsonPrimitive)?.content !in setOf("astha", "campaign") -> "programme_kind is astha or campaign"
+                (payload["programme_kind"] as? JsonPrimitive)?.content == "astha" && (n("gift_assignment_id") ?: 0) < 1 -> "an Astha photo names its gift_assignment_id"
+                (payload["programme_kind"] as? JsonPrimitive)?.content == "campaign" && ((payload["redemption_client_uuid"] as? JsonPrimitive)?.content.isNullOrBlank() || (n("unit_no") ?: 0) !in 1..50) -> "a campaign photo names its redemption and a unit_no 1 to 50"
+                (payload["photo_uuid"] as? JsonPrimitive)?.content.isNullOrBlank() -> "photo_uuid is required"
+                else -> null
+            }
             "gift_choice" -> if (Regex("^[0-9]{4}-Q[1-4]$").matches((payload["quarter"] as? JsonPrimitive)?.content.orEmpty())) null else "quarter is YYYY-Qn"
             else -> null
         }
@@ -75,5 +86,14 @@ object ProgrammePayloads {
 
     fun giftChoice(outletId: Long, giftId: Long, quarter: String, fix: JsonObject? = null) = buildJsonObject {
         put("outlet_id", outletId); put("gift_id", giftId); put("quarter", quarter); fix?.let { put("fix", it) }
+    }
+
+    /** The hand-over photo of an Astha gift ([assignmentId]) or of one unit of a redeemed campaign gift ([redemptionUuid] and [unitNo]); [fix] is the contract GeoFix taken at the shutter. */
+    fun giftPhoto(
+        programmeKind: String, outletId: Long, giftId: Long, photoUuid: String, fix: JsonObject, assignmentId: Long? = null, redemptionUuid: String? = null, unitNo: Int? = null,
+    ) = buildJsonObject {
+        put("programme_kind", programmeKind); put("outlet_id", outletId); put("gift_id", giftId)
+        assignmentId?.let { put("gift_assignment_id", it) }; redemptionUuid?.let { put("redemption_client_uuid", it) }; unitNo?.let { put("unit_no", it) }
+        put("photo_uuid", photoUuid); put("fix", fix)
     }
 }

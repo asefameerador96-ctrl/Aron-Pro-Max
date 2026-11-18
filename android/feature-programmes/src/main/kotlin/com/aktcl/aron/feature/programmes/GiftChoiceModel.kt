@@ -10,7 +10,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 
 /** The Astha gift an outlet has for a quarter (`programmes.gift_assignments[]`): chosen, photographed (locked) or not. */
-data class GiftAssignment(val outletId: Long, val quarter: String, val giftId: Long, val tierCode: String?, val photoCaptured: Boolean, val locked: Boolean)
+data class GiftAssignment(val outletId: Long, val quarter: String, val giftId: Long, val tierCode: String?, val photoCaptured: Boolean, val locked: Boolean, val id: Long = 0)
 
 /** A gift choice this phone holds (from the stored `gift_choice` record and its outbox state). */
 data class LocalGiftChoice(
@@ -83,6 +83,7 @@ object GiftChoiceModel {
                 (a["outlet_id"] as? JsonPrimitive)?.longOrNull ?: return@mapNotNull null, s("quarter") ?: return@mapNotNull null,
                 (a["gift_id"] as? JsonPrimitive)?.longOrNull ?: return@mapNotNull null, s("tier_code"),
                 (a["photo_captured"] as? JsonPrimitive)?.booleanOrNull ?: false, (a["locked"] as? JsonPrimitive)?.booleanOrNull ?: false,
+                (a["gift_assignment_id"] as? JsonPrimitive)?.longOrNull ?: 0L,
             )
         }
         return GiftChoiceData(data.gifts.filter { it.programmeId in asthaIds }, assignments)

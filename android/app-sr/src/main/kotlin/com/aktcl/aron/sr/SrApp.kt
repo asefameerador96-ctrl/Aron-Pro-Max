@@ -130,12 +130,12 @@ import com.aktcl.aron.feature.home.R as HomeR
 // D-LEAD-PREREQ-04 (step 3 S7): the reading screens (the outlet menu and the rep's own request list) stay open before check-in; what they write is refused by the write layer with its own words
 internal val SR_CHECKIN_GATED = setOf(SrScreen.STOCK, SrScreen.PICKER, SrScreen.VISIT, SrScreen.FORCE, SrScreen.NO_SALE, SrScreen.SKIP, SrScreen.EDIT, SrScreen.REQUEST_FORM, SrScreen.CLUSTERS,
     // lane android-sr-programmes: every write of the programme screens is gated; viewing targets, points and the Loyalty and Astha menus stays open before check-in
-    SrScreen.LOYALTY_REDEEM, SrScreen.ASTHA_GIFT)
+    SrScreen.LOYALTY_REDEEM, SrScreen.ASTHA_GIFT, SrScreen.PHOTO_ASTHA)
 
 /** The call screens, where an already open call can still be closed (that close is exempt from the gate). */
 internal val SR_CALL_SCREENS = setOf(SrScreen.VISIT, SrScreen.FORCE, SrScreen.NO_SALE)
 
-enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS, ASTHA_MENU, ASTHA_TARGET, LOYALTY_MENU, LOYALTY_POINTS, LOYALTY_REDEEM, ASTHA_GIFT }
+enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL, COMING_SOON, CLUSTERS, ASTHA_MENU, ASTHA_TARGET, LOYALTY_MENU, LOYALTY_POINTS, LOYALTY_REDEEM, ASTHA_GIFT, PHOTO_MENU, PHOTO_ASTHA }
 
 /** The screen tree of the SR app: Back and the top bar's back button follow the same parent mapping; depth drives the transition direction. */
 object SrNav {
@@ -145,6 +145,7 @@ object SrNav {
         SrScreen.OWN_REQUESTS, SrScreen.REQUEST_FORM, SrScreen.CLUSTERS -> SrScreen.OUTLET_MENU
         SrScreen.SKIP -> SrScreen.PICKER
         SrScreen.ASTHA_TARGET, SrScreen.ASTHA_GIFT -> SrScreen.ASTHA_MENU
+        SrScreen.PHOTO_ASTHA -> SrScreen.PHOTO_MENU
         SrScreen.LOYALTY_POINTS, SrScreen.LOYALTY_REDEEM -> SrScreen.LOYALTY_MENU
         SrScreen.EDIT -> SrScreen.MEMO
         else -> SrScreen.HOME
@@ -443,7 +444,8 @@ fun SrApp(
                         // update" screen until the lane that owns the screen has built it (SRM-A-13); never a dead tile
                         HomeTile.ASTHA -> screen = SrScreen.ASTHA_MENU // lane android-sr-programmes, manual 48
                         HomeTile.LOYALTY_POINT -> screen = SrScreen.LOYALTY_MENU // lane android-sr-programmes, manual 53/55
-                        HomeTile.PHOTO_CAPTURE, HomeTile.MATCH_PROGRAM -> { soonTile = t; screen = SrScreen.COMING_SOON }
+                        HomeTile.PHOTO_CAPTURE -> screen = SrScreen.PHOTO_MENU // lane android-sr-programmes, manual 56
+                        HomeTile.MATCH_PROGRAM -> { soonTile = t; screen = SrScreen.COMING_SOON }
                         else -> onOtherTile(t)
                     }
                 },
@@ -605,6 +607,10 @@ fun SrApp(
         SrScreen.LOYALTY_REDEEM -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_loyalty_redeem), goBack, sync, openSync, icon = CoreR.drawable.aron_art_loyalty_point) { RedemptionHost(day, locale, pointsOutlet) }
         SrScreen.ASTHA_GIFT -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_astha_tile_gift), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) { GiftSelectionHost(day, locale) }
         SrScreen.ASTHA_TARGET -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_astha_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) { AsthaHost(day, locale) }
+        SrScreen.PHOTO_MENU -> SrFrame(stringResource(HomeR.string.hm_tile_photo_capture), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) {
+            com.aktcl.aron.feature.programmes.PhotoMenuScreen(onAstha = { screen = SrScreen.PHOTO_ASTHA }, onCampaign = null)
+        }
+        SrScreen.PHOTO_ASTHA -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_photo_astha), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) { GiftPhotoHost(day, locale) }
         SrScreen.COMING_SOON -> SrFrame(stringResource(soonTitle(soonTile)), goBack, sync, openSync) { ComingSoonContent(onBack = goBack) }
         SrScreen.FORCE -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sale) {
             val st by day.visitFlow.state.collectAsState()

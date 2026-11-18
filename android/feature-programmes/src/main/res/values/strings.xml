@@ -101,4 +101,13 @@
         <item>Q-3 (Jul-Sep)</item>
         <item>Q-4 (Oct-Dec)</item>
     </string-array>
+    <string name="pg_photo_astha">Astha</string>
+    <string name="pg_photo_campaign">Campaign</string>
+    <string name="pg_photo_need_gift">No gift is held for this outlet yet. Choose a gift in Gift selection and sync once, then take the photo.</string>
+    <string name="pg_photo_already">The hand-over photo is already captured: %1$s</string>
+    <string name="pg_photo_on_phone">The photo is saved on this phone and goes out with the next sync: %1$s</string>
+    <string name="pg_photo_submit">Submit</string>
+    <string name="pg_photo_checking">Checking geofencing…</string>
+    <string name="pg_photo_saved">Photo saved on this phone. It uploads compressed, on Wi-Fi first.</string>
+    <string name="pg_photo_failed">The photo could not be saved. Try again.</string>
 </resources>

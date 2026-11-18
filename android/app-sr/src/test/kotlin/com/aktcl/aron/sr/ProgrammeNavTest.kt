@@ -26,4 +26,10 @@ class ProgrammeNavTest {
         assertTrue(SrScreen.LOYALTY_REDEEM in SR_CHECKIN_GATED && SrScreen.ASTHA_GIFT in SR_CHECKIN_GATED)
         listOf(SrScreen.LOYALTY_MENU, SrScreen.LOYALTY_POINTS, SrScreen.ASTHA_MENU, SrScreen.ASTHA_TARGET).forEach { assertTrue("$it stays open", it !in SR_CHECKIN_GATED) }
     }
+
+    @Test fun thePhotoMenuLeadsToTheGatedAsthaPhotoScreen() {
+        assertEquals(SrScreen.PHOTO_MENU, SrNav.parent(SrScreen.PHOTO_ASTHA))
+        assertEquals(SrScreen.HOME, SrNav.parent(SrScreen.PHOTO_MENU))
+        assertTrue(SrScreen.PHOTO_ASTHA in SR_CHECKIN_GATED && SrScreen.PHOTO_MENU !in SR_CHECKIN_GATED)
+    }
 }

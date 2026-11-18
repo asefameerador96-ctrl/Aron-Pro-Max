@@ -101,4 +101,13 @@
         <item>Q-3 (Jul-Sep)</item>
         <item>Q-4 (Oct-Dec)</item>
     </string-array>
+    <string name="pg_photo_astha">আস্থা</string>
+    <string name="pg_photo_campaign">ক্যাম্পেইন</string>
+    <string name="pg_photo_need_gift">এই দোকানের জন্য এখনও কোনো উপহার নেই। উপহার নির্বাচনে উপহার বেছে একবার সিঙ্ক করুন, তারপর ছবি তুলুন।</string>
+    <string name="pg_photo_already">হস্তান্তরের ছবি আগেই তোলা হয়েছে: %1$s</string>
+    <string name="pg_photo_on_phone">ছবি এই ফোনে সংরক্ষিত, পরের সিঙ্কে যাবে: %1$s</string>
+    <string name="pg_photo_submit">জমা দিন</string>
+    <string name="pg_photo_checking">জিওফেন্সিং পরীক্ষা করা হচ্ছে</string>
+    <string name="pg_photo_saved">ছবি এই ফোনে সংরক্ষিত হয়েছে। সংকুচিত হয়ে, আগে ওয়াই-ফাইয়ে আপলোড হবে।</string>
+    <string name="pg_photo_failed">ছবি সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।</string>
 </resources>

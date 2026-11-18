@@ -1,0 +1,31 @@
+package com.aktcl.aron.feature.programmes
+
+import com.aktcl.aron.core.database.record.ProgrammePayloads
+import kotlinx.serialization.json.JsonObject
+
+/** A gift photo record this phone holds (from the stored `gift_photo` record and its outbox state). */
+data class LocalGiftPhoto(val programmeKind: String, val outletId: Long, val assignmentId: Long?, val redemptionUuid: String?, val unitNo: Int?, val state: String)
+
+/** Where the hand-over photo of an outlet's Astha gift stands. */
+sealed interface PhotoStatus {
+    /** The server holds no gift for the outlet and quarter yet: choose one and sync first. */
+    data object NoGift : PhotoStatus
+    /** A gift is held and no photo exists: the photo can be taken. */
+    data class Ready(val giftId: Long, val assignmentId: Long) : PhotoStatus
+    /** A photo exists: the server's flag, a locked choice, or a photo this phone saved ([onThisPhone]: not necessarily sent yet). The first photo wins on the server. */
+    data class Captured(val giftId: Long, val onThisPhone: Boolean) : PhotoStatus
+}
+
+object GiftPhotoModel {
+    /** The status of an outlet's Astha gift photo for [quarter]; a photo the server refused does not count, so it can be taken again. */
+    fun statusOf(data: GiftChoiceData, outletId: Long, quarter: String, local: List<LocalGiftPhoto>): PhotoStatus {
+        val a = data.assignment(outletId, quarter)?.takeIf { it.id > 0 } ?: return PhotoStatus.NoGift
+        if (a.photoCaptured || a.locked) return PhotoStatus.Captured(a.giftId, onThisPhone = false)
+        val mine = local.any { it.programmeKind == "astha" && it.assignmentId == a.id && it.state != "rejected" }
+        return if (mine) PhotoStatus.Captured(a.giftId, onThisPhone = true) else PhotoStatus.Ready(a.giftId, a.id)
+    }
+
+    /** The Astha hand-over record the Submit button writes: own family, rank 0, [uuid] fixed when the page opens so a double tap is one record. [fix] is the contract GeoFix of the shutter. */
+    fun planAstha(outletId: Long, giftId: Long, assignmentId: Long, photoUuid: String, fix: JsonObject, uuid: String): PlannedRecord =
+        PlannedRecord("gift_photo", uuid, uuid, 0, ProgrammePayloads.giftPhoto("astha", outletId, giftId, photoUuid, fix, assignmentId = assignmentId))
+}

@@ -328,7 +328,7 @@ class CaptureRepository(
         val parent = records.first()
         if (purged(parent.clientUuid)) return@withTransaction false
         requireUuids(*records.flatMap { listOf(it.clientUuid, it.familyUuid) }.toTypedArray())
-        require(parent.recordType in PROGRAMME_PARENT_TYPES && parent.familyUuid == parent.clientUuid && parent.rank == 0) { "the first programme record is a parent (redemption or gift_choice), own family, rank 0" }
+        require(parent.recordType in PROGRAMME_PARENT_TYPES && parent.familyUuid == parent.clientUuid && parent.rank == 0) { "the first programme record is a parent (redemption, gift_choice or gift_photo), own family, rank 0" }
         val lines = records.drop(1)
         require(lines.all { it.recordType == "redemption_line" && it.rank == 1 && it.familyUuid == parent.clientUuid }) { "children are redemption_line rank 1 of the redemption" }
         require(parent.recordType == "redemption" || lines.isEmpty()) { "a gift_choice has no children" }
@@ -634,7 +634,7 @@ class CaptureRepository(
             "distribution_check", "distribution_check_line", "call_assessment", "call_assessment_answer", "price_compliance_check",
             "risk_review", "outlet_request_verification", "task",
         )
-        val PROGRAMME_PARENT_TYPES = setOf("redemption", "gift_choice")
+        val PROGRAMME_PARENT_TYPES = setOf("redemption", "gift_choice", "gift_photo")
         val REASON_CODE = Regex("^[a-z][a-z0-9_]{1,40}$")
         val CONTENT_OUTCOMES = setOf("viewed", "skipped_missing", "skipped_user")
 
