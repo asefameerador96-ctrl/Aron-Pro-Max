@@ -153,7 +153,11 @@ class SaleFlow(
         committer.existing(draft.memoUuid)?.let { landed ->
             store.clear(draft.visitUuid)
             // the stored memo is what was saved; when the draft the rep sees now carries other totals, his later changes are NOT in it, and the screen says so
-            val differs = s.review?.let { it.totals.netMtk != landed.netMtk || it.settlement.dueMtk != landed.dueMtk } == true
+            val differs = s.review?.let { r ->
+                // D-AGATE-26: the lines are compared too, not only the two totals (a changed quantity or SKU can leave the totals as they were)
+                val shown = r.lines.map { it.memoLine.skuId to it.qtyBase }.sortedWith(compareBy({ it.first }, { it.second }))
+                r.totals.netMtk != landed.netMtk || r.settlement.dueMtk != landed.dueMtk || shown != committer.storedSaleLines(draft.memoUuid)
+            } == true
             ui.value = s.copy(committed = landed, laterChangesNotSaved = differs)
             return landed
         }

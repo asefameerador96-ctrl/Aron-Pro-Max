@@ -185,4 +185,17 @@ class AttendanceFlowTest {
         gap = false // the call was closed: the same press goes through
         assertTrue(f.checkOut() is AttendanceResult.Done)
     }
+
+    /** D-AGATE-26: the in-flight flag is set at the TOP of the check-out press, before the open-work read, so the phone's own close never starts in the gap. */
+    @Test fun theBusyFlagIsSetBeforeTheOpenWorkReadAndClearedAfterARefusal() = runTest {
+        minutes = 9 * 60
+        lateinit var f: AttendanceFlow
+        var busyDuringRead: Boolean? = null
+        f = AttendanceFlow(fixes, meta, { e, fx -> committed += e to fx }, { null }, { "t" }, { minutes }, newUuid = { "00000000-0000-4000-8000-%012d".format(++n) },
+            openWork = { busyDuringRead = f.state.value.busy; OpenWork.OPEN_CALL })
+        f.checkIn(); minutes = 17 * 60 + 5
+        assertTrue(f.checkOut() is AttendanceResult.Refused)
+        assertEquals("the flag was already up while the open work was read", true, busyDuringRead)
+        assertFalse("and it is down again after the refusal", f.state.value.busy)
+    }
 }

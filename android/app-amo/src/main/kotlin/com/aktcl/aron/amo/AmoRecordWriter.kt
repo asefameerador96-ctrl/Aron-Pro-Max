@@ -83,6 +83,7 @@ class AmoRecordWriter(
         /** The route and cluster chosen on the form (device ids from the downloaded masterdata); null = not sent (a rejection carries none). */
         routeId: Long? = null, clusterId: Long? = null,
     ): Boolean {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate FIRST (D-AGATE-26), before the fix read and the photo claim, as in the visit commits
         if (requestUuid in decidedRequests()) return true // already decided on this phone: nothing to queue twice
         val reading = capturedFix ?: readFix("outlet_verification")
         if (!reading.isOk || reading.isMock) return false
@@ -222,6 +223,7 @@ class AmoRecordWriter(
      * kill and relaunch with a new fix uuid) finds the request and writes nothing.
      */
     suspend fun commitOutletRequest(draft: com.aktcl.aron.feature.outlet.OutletRequestDraft) {
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate FIRST (D-AGATE-26): before the photo claims
         val fix = draft.fix ?: readFix("outlet_capture")
         // After a relaunch the photo may already carry the fix uuid of the first attempt; reuse it so the media meta keeps its geo link.
         val fixUuid = requestFixUuids.getOrPut(draft.requestUuid) {

@@ -49,28 +49,94 @@ class EveryWriterIsGatedTest {
 
     private fun file(rel: String): String = listOf(File(rel), File("android/$rel"), File("../$rel")).first { it.isFile }.readText()
 
+    // ---- D-AGATE-26: DISCOVERY scan. Every non-test source file under android/*/src/main that opens a Room write transaction or inserts into the outbox must be on ONE of two named lists, so a
+    // writer added later cannot slip past the Developer options gate unnoticed.
+
+    private val writeMarker = Regex("""[oO]utbox(Dao\(\))?\.insert|withTransaction""")
+
+    /** Files whose writers are OPERATIONAL: each must call `ActionGate.requireOpen()` (CaptureRepository is scanned per function above). */
+    private val gatedFiles = setOf(
+        "core-database/src/main/kotlin/com/aktcl/aron/core/database/repo/CaptureRepository.kt",
+        "app-sr/src/main/kotlin/com/aktcl/aron/sr/SrDay.kt", "app-sr/src/main/kotlin/com/aktcl/aron/sr/ProgrammeStore.kt",
+        "app-amo/src/main/kotlin/com/aktcl/aron/amo/AmoDay.kt", "app-amo/src/main/kotlin/com/aktcl/aron/amo/AmoRecordWriter.kt",
+        "app-tso/src/main/kotlin/com/aktcl/aron/tso/TsoOutbox.kt", "app-tso/src/main/kotlin/com/aktcl/aron/tso/TsoReadModels.kt",
+    )
+
+    /** SYSTEM writers, named with the reason they are NOT gated: they record the phone itself, a consent, a counter or a ledger, never a field act. */
+    private val systemWriters = mapOf(
+        "core-database/src/main/kotlin/com/aktcl/aron/core/database/repo/ConsentRepository.kt" to "consent record",
+        "core-database/src/main/kotlin/com/aktcl/aron/core/database/repo/ReferenceRepository.kt" to "bundle download and the config acknowledgement",
+        "core-database/src/main/kotlin/com/aktcl/aron/core/database/repo/RoomPrintLedger.kt" to "print ledger (what was printed, reprints included)",
+        "core-database/src/main/kotlin/com/aktcl/aron/core/database/repo/MemoNumbers.kt" to "memo number reservation counter",
+        "core-sync/src/main/kotlin/com/aktcl/aron/core/sync/ActivityLog.kt" to "activity log",
+        "core-sync/src/main/kotlin/com/aktcl/aron/core/sync/ErrorReporter.kt" to "error reporter",
+        "core-sync/src/main/kotlin/com/aktcl/aron/core/sync/SyncEngine.kt" to "sync bookkeeping (acks, digest, counters)",
+    )
+
+    private fun root(): File = listOf(File("."), File("android"), File("..")).first { File(it, "core-database/src/main").isDirectory || File(it, "android/core-database/src/main").isDirectory }
+        .let { if (File(it, "core-database/src/main").isDirectory) it else File(it, "android") }
+
+    private fun discovered(): Set<String> {
+        val r = root()
+        return r.walkTopDown().filter { it.isFile && it.extension == "kt" && "/src/main/" in it.invariantSeparatorsPath && "/build/" !in it.invariantSeparatorsPath }
+            .filter { writeMarker.containsMatchIn(it.readText()) }.map { it.relativeTo(r).invariantSeparatorsPath }.toSet()
+    }
+
+    @Test fun everyWriteSourceIsOnANamedList() {
+        val found = discovered()
+        assertTrue("the discovery found only ${found.size} files: it is broken", found.size >= 8)
+        val unknown = found - gatedFiles - systemWriters.keys
+        assertEquals("these files write (outbox insert or a Room write transaction) but are on neither list: gate them (ActionGate.requireOpen() first) and add them to gatedFiles, or add them to systemWriters WITH a reason: $unknown", emptySet<String>(), unknown)
+        val stale = (systemWriters.keys - found)
+        assertEquals("a stale system allow-list hides a renamed writer: $stale", emptySet<String>(), stale)
+    }
+
+    @Test fun everyGatedFileCallsTheGate() {
+        for (rel in gatedFiles) assertTrue("$rel must call ActionGate.requireOpen()", "ActionGate.requireOpen()" in file(rel))
+    }
+
     /**
-     * D-AGATE-25 (lead, after the integrity train): the gate also guards the writers that live OUTSIDE CaptureRepository: the TSO outbox entry, the TSO Final Submit and the SR and AMO visit
-     * commit (the claim of a photo must not outlive a refused visit). Each must call `ActionGate.requireOpen()`, and where the writer is a single function the call comes before its first write.
+     * Inside the gated APP files (not the repository, scanned per function above) every function that opens a write transaction or inserts into the outbox must call the gate itself
+     * BEFORE the write, or be named here with the reason it is already behind the gate.
      */
-    @Test fun theWritersOutsideTheRepositoryAreGatedToo() {
-        for (rel in listOf("app-tso/src/main/kotlin/com/aktcl/aron/tso/TsoOutbox.kt", "app-tso/src/main/kotlin/com/aktcl/aron/tso/TsoReadModels.kt", "app-sr/src/main/kotlin/com/aktcl/aron/sr/SrDay.kt", "app-amo/src/main/kotlin/com/aktcl/aron/amo/AmoDay.kt")) {
-            assertTrue("$rel must call ActionGate.requireOpen()", "ActionGate.requireOpen()" in file(rel))
+    private val gatedByCaller = mapOf(
+        // the four audit saves write through CaptureRepository.recordAmo / recordSurveyResponse, which gate first inside their own transaction (scanned above)
+        "AmoRecordWriter.kt" to setOf("saveJointCallLocked", "saveSurveyLocked", "savePriceComplianceLocked", "saveAssessmentLocked"),
+        // the survey answers go through CaptureRepository (gated first inside the transaction); this transaction only groups them
+        "SrDay.kt" to setOf("saveSurvey"),
+        // retires a plan MIRROR row once the server plan holds the outlet: a read-model refresh, not an operational record
+        "TsoReadModels.kt" to setOf("plans"),
+    )
+
+    @Test fun everyWriteInTheGatedAppFilesIsAfterTheGateOrBehindACallerThatIs() {
+        val funHead = Regex("""\n\s*(?:(?:private|internal|public|override|protected|inline|suspend)\s+)*fun\s+(?:<[^>]+>\s*)?(?:[\w.]+\.)?(\w+)\(""")
+        val bad = ArrayList<String>()
+        for (rel in gatedFiles.filter { it.startsWith("app-") }) {
+            val src = file(rel); val name = rel.substringAfterLast('/')
+            val heads = funHead.findAll(src).toList()
+            heads.forEachIndexed { i, m ->
+                val body = src.substring(m.range.first, heads.getOrNull(i + 1)?.range?.first ?: src.length)
+                val w = writeMarker.find(body) ?: return@forEachIndexed
+                val gate = body.indexOf("ActionGate.requireOpen()")
+                val fn = m.groupValues[1]
+                if ((gate < 0 || gate > w.range.first) && fn !in (gatedByCaller[name] ?: emptySet())) bad += "$name.$fn"
+            }
         }
-        val tsoFile = file("app-tso/src/main/kotlin/com/aktcl/aron/tso/TsoOutbox.kt")
-        val tso = tsoFile.substring(tsoFile.indexOf("suspend fun enqueueAll("))
-        val gate = tso.indexOf("ActionGate.requireOpen()")
-        val firstWrite = tso.indexOf("withTransaction")
-        assertTrue("the TSO outbox entry (enqueueAll) gates before its transaction", gate in 0 until firstWrite)
-        val visitGate = file("app-sr/src/main/kotlin/com/aktcl/aron/sr/SrDay.kt")
-        assertTrue("the SR visit commit gates before the photo claim and the visit write", visitGate.indexOf("ActionGate.requireOpen()") < visitGate.indexOf("capture.recordVisitOpen(v, f)"))
-        val amo = file("app-amo/src/main/kotlin/com/aktcl/aron/amo/AmoDay.kt")
-        assertTrue("the AMO visit commit gates before its visit write", amo.indexOf("ActionGate.requireOpen()") < amo.indexOf("capture.recordVisitOpen("))
+        assertEquals("these functions write without the gate first and are not named as gated by their caller (with a reason): $bad", emptyList<String>(), bad)
     }
 
     /** D-AGATE-25: the check-out's open-work guard (item 6) runs AFTER the Developer options gate, never before it. */
     @Test fun theCheckOutGuardRunsAfterTheGate() {
         val body = writers().first { it.name == "recordCheckOut" }.body
         assertTrue(body.indexOf("ActionGate.requireOpen()") in 0 until body.indexOf("guard?.invoke()"))
+    }
+
+    /** D-AGATE-26: outlet verification and the outlet request gate BEFORE their photo claim (as the visit commits do). */
+    @Test fun theAmoPhotoClaimsComeAfterTheGate() {
+        val src = file("app-amo/src/main/kotlin/com/aktcl/aron/amo/AmoRecordWriter.kt")
+        for (fn in listOf("suspend fun decideRequest(", "suspend fun commitOutletRequest(")) {
+            val body = src.substring(src.indexOf(fn)); val gate = body.indexOf("ActionGate.requireOpen()"); val claim = body.indexOf("claimPhoto(")
+            assertTrue("$fn gates before it claims a photo", gate in 0 until claim)
+        }
     }
 }

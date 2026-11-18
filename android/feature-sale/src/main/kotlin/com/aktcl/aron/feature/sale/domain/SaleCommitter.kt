@@ -80,6 +80,10 @@ class SaleCommitter(
      */
     fun stockDate(draftDate: String, routeId: Long?): String = metaSource.meta(draftDate, routeId).businessDate
 
+    /** D-AGATE-26: (sku, base quantity) of the stored SALE lines of a memo, sorted: what a replayed Save really stored. */
+    suspend fun storedSaleLines(memoUuid: String): List<Pair<Long, Long>> =
+        repo.memoLines(memoUuid).filter { it.lineKind == "sale" }.map { it.skuId to it.qtyBase }.sortedWith(compareBy({ it.first }, { it.second }))
+
     /** The result of an already committed memo of this draft, or null. */
     suspend fun existing(memoUuid: String): CommittedSale? =
         findMemo(memoUuid)?.let { CommittedSale(it.clientUuid, it.memoNo, it.netMtk, it.dueMtk) }
