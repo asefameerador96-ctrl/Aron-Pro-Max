@@ -32,6 +32,9 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
 import com.aktcl.aron.core.ui.GlassTier
+import com.aktcl.aron.core.system.permission.GateAction as A
+import com.aktcl.aron.core.system.permission.GatedFeature as G
+import com.aktcl.aron.core.system.permission.RuntimePermission as P
 import com.aktcl.aron.feature.outlet.CallQuestion
 import com.aktcl.aron.feature.outlet.OpenVisit
 import com.aktcl.aron.feature.outlet.VisitCheckContent
@@ -200,4 +203,19 @@ class SrParity1bSaleTests {
     @Test fun saved() = shot("srp1b_dialog_saved", title = reviewTitle) { Step(SaveAndPrint.Step.Done(true)) }
     @Test fun askReadable() = shot("srp1b_dialog_ask_readable", title = reviewTitle) { Step(SaveAndPrint.Step.AskReadable) }
     @Test fun limit() = shot("srp1b_dialog_limit", title = reviewTitle) { Step(SaveAndPrint.Step.LimitReached) }
+
+    // ---- the permission screens (manual 03, 05: the system asks; the app's own screen follows a denial) ----
+    private fun gate(f: com.aktcl.aron.core.system.permission.GatedFeature, p: com.aktcl.aron.core.system.permission.RuntimePermission, a: com.aktcl.aron.core.system.permission.GateAction) =
+        com.aktcl.aron.core.system.permission.GateDecision.Blocked(f, p, a)
+    @Composable private fun Gate(d: com.aktcl.aron.core.system.permission.GateDecision.Blocked, coarse: Boolean = false) =
+        CompositionLocalProvider(com.aktcl.aron.core.system.permission.LocalManualPermissionLook provides true) {
+            com.aktcl.aron.core.system.permission.PermissionBlockedContent(d, {}, {}, coarseOnly = coarse)
+        }
+
+    @Test fun permLocationAsk() = shot("srp1b_perm_location_ask") { Gate(gate(G.SALE, P.LOCATION, A.ASK_AGAIN)) }
+    @Test fun permLocationSettings() = shot("srp1b_perm_location_settings") { Gate(gate(G.ATTENDANCE, P.LOCATION, A.OPEN_APP_SETTINGS)) }
+    @Test fun permLocationOff() = shot("srp1b_perm_location_off") { Gate(gate(G.SALE, P.LOCATION, A.OPEN_LOCATION_SETTINGS)) }
+    @Test fun permCameraSettings() = shot("srp1b_perm_camera_settings") { Gate(gate(G.PHOTO, P.CAMERA, A.OPEN_APP_SETTINGS)) }
+    @Test fun permBluetoothAsk() = shot("srp1b_perm_bluetooth_ask") { Gate(gate(G.PRINT, P.BLUETOOTH, A.ASK_AGAIN)) }
+    @Test fun permLocationSettingsFont20() = shot("srp1b_perm_location_settings_font20", fontScale = 2.0f) { Gate(gate(G.ATTENDANCE, P.LOCATION, A.OPEN_APP_SETTINGS)) }
 }

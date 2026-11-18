@@ -1,5 +1,8 @@
 # Lane P-SR1 (android-parity-sr-1): SR parity, first half of the journey
 
+## HANDOVER P-SR1b (2026-11-18, supersedes the order below)
+Lane P-SR1b did, in order, with D-PAR-SR1-11 to 15: Sale page (call question, out of range, force reason, zero sale), quantity pop-up, Review + partial-payment box + confirm/print/success boxes, permissions blocked screen. All goldens are `srp1b_*` in `android/ui-screenshots/src/test/screenshots/` via `SrParity1bSaleTests`; every existing image unchanged. Method as before (`export ANDROID_HOME=/opt/android-sdk`, record with `-Proborazzi.record=true --tests '*SrParity1bSaleTests*'`, read git status for amo_/tso_). Open for the next owner: (1) R-PAR-SR1-02 ADS consumer (data lane); (2) Force Sale shows only when `forceSaleAvailable` allows it, the old page shows both at once (flow gate, lead decides); (3) the Review keeps field-unit rows and no discount table (deferred); (4) box widths in goldens are Robolectric full width for AlertDialog, device margin not walked; (5) gotchas: a text field inside Material `AlertDialog` hangs the compose test clock (use plain `Dialog`, `focusable=false` in goldens); new core-ui options are default-off so AMO/TSO stay 0 changed; the existing `ManualCallScreensTest` scrolls to সংরক্ষণ, keep the pop-up's scroll container. Nothing was walked on a device; no printer.
+
 ## HANDOVER (written 2026-11-18, branch tip pushed; read this first)
 
 State: branch `lane/android-parity-sr-1`, INT merged up to f5bfee39 (train 115). Gated by the lead: shell + bar, Stock, Login/OTP/update goldens, Home (+7 lows), AMO R-PAR-AMO-06/07. Pushed after the last gate (not yet gated): Attendance goldens (8, D-PAR-SR1-09), opened picker goldens (D-PAR-SR1-10). Local method that works: `export ANDROID_HOME=$HOME/android-sdk` (SDK: `bash tools/android-sdk.sh`, `echo sdk.dir=$HOME/android-sdk > local.properties`), record with `./gradlew :android:ui-screenshots:testDebugUnitTest -Proborazzi.record=true [--tests ...] -q`, verify without the flag; ALWAYS read the git status afterwards: any `amo_`/`tso_` file that changed must be explained.
@@ -62,6 +65,9 @@ Lows from the lead's gate: title is two lines then ellipsis, horizontal safe ins
 | Review (manual 24): table, Baki card, buttons | RECORD (D-PAR-SR1-14): srp1b_review_lines, _baki, _font20 match the structure. KEEP: no discount table (deferred), SKU name over unit and field-unit quantity (rule 5) | this push | srp1b_review_* |
 | Partial payment (manual 27): full screen vs box over Review with live বাকিঃ | FIX: `CreditDialog` for the SR (rules and setPaid unchanged) | this push | srp1b_credit_dialog(_due, _error, _sunlight) |
 | Confirm / print / success boxes (manual 28, 29) | FIX: AronManualDialog via SaveAndPrintDialogs(manual) | this push | srp1b_dialog_* (5) |
+
+| Permissions (manual 05): OS dialogs; our blocked screen after a denial | FIX look in the SR only (D-PAR-SR1-15): purple title, gradient primary, charcoal back; AMO/TSO unchanged | this push | srp1b_perm_* (6) |
+| Printer connect (manual 15-17): OS dialog, green toast | NO CHANGE: toast and flow exist (D-SR-MAN-S3-02); OS dialog not ours; no new golden | - | - |
 
 (Rows for the remaining screens are added slice by slice.)
 
