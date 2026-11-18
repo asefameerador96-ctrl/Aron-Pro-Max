@@ -335,6 +335,7 @@ class TicketDevice(
 
     private suspend fun save(type: RecordType, uuid: String, payload: JsonObject, photos: List<String>, owner: PhotoOwner, key: String, mirror: String): Boolean {
         require(photos.size <= TicketLimits.PHOTOS_MAX) { "at most ${TicketLimits.PHOTOS_MAX} photos per ticket or comment" }
+        com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate FIRST (D-AGATE-31): before the photo claims (the outbox entry gates again)
         if (holds(uuid)) return false
         for (p in photos.distinct()) claim(p, MediaRef(MEDIA_PURPOSE, owner.refType, owner.refUuid))
         return outbox.enqueueAll(userId, listOf(TsoOutbox.Rec(type, uuid, payload)), mirrors = listOf(key to mirror)) > 0

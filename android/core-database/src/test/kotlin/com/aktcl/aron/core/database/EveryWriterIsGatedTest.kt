@@ -2,6 +2,7 @@ package com.aktcl.aron.core.database
 
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -52,6 +53,13 @@ class EveryWriterIsGatedTest {
     // ---- D-AGATE-26: DISCOVERY scan (a HEURISTIC, honestly): every non-test source file under android/*/src/main that uses a Room transaction (`withTransaction`) or inserts into the outbox through
     // a variable or DAO named `outbox...` must be on ONE of two named lists, so a writer of that kind added later cannot slip past the Developer options gate unnoticed. NOT discovered: a direct DAO
     // insert without a transaction and without the outbox (it is not caught by this scan; review it by hand).
+
+    /**
+     * Function heads for the per-function scans. LIMITS (honest): a line-start `fun` with the usual modifiers (private, internal, public, override, protected, open, operator, tailrec, infix,
+     * inline, suspend, abstract, external); a lambda held in a PROPERTY (`val x = Foo(committer = { ... })`) has no `fun` head, so its body is attributed to the PRECEDING function (the visit
+     * commit lambdas are therefore checked by their own test, which cuts the lambda by its text, not by this regex).
+     */
+    private val funHeadRegex = Regex("""\n\s*(?:(?:private|internal|public|override|protected|open|operator|tailrec|infix|inline|suspend|abstract|external)\s+)*fun\s+(?:<[^>]+>\s*)?(?:[\w.]+\.)?(\w+)\(""")
 
     private val writeMarker = Regex("""[oO]utbox(Dao\(\))?\.insert|withTransaction""")
 
@@ -119,6 +127,7 @@ class EveryWriterIsGatedTest {
             val claim = segment.indexOf("claimPhoto(")
             assertTrue("$label: the visit commit must call ActionGate.requireOpen()", gate >= 0)
             assertTrue("$label: the gate comes before the photo claim", claim < 0 || gate < claim)
+            assertFalse("$label: nothing that takes the force-photo uuid may run before the gate (any call with it is a claim)", segment.substring(0, gate).contains("geoForcePhotoUuid"))
             assertTrue("$label: the gate comes before the visit write", gate < segment.indexOf("capture.recordVisitOpen(v, f)"))
         }
         val tsoFile = file("app-tso/src/main/kotlin/com/aktcl/aron/tso/TsoOutbox.kt")
@@ -149,7 +158,7 @@ class EveryWriterIsGatedTest {
     }
 
     @Test fun everyWriteInTheGatedAppFilesIsAfterTheGateOrBehindACallerThatIs() {
-        val funHead = Regex("""\n\s*(?:(?:private|internal|public|override|protected|inline|suspend)\s+)*fun\s+(?:<[^>]+>\s*)?(?:[\w.]+\.)?(\w+)\(""")
+        val funHead = funHeadRegex
         val bad = ArrayList<String>()
         for (rel in gatedFiles.filter { it.startsWith("app-") }) {
             val src = file(rel); val name = rel.substringAfterLast('/')
@@ -178,5 +187,50 @@ class EveryWriterIsGatedTest {
             val body = src.substring(src.indexOf(fn)); val gate = body.indexOf("ActionGate.requireOpen()"); val claim = body.indexOf("claimPhoto(")
             assertTrue("$fn gates before it claims a photo", gate in 0 until claim)
         }
+    }
+
+    /**
+     * D-AGATE-31 (lead, SR twin of the AMO fix): a photo CLAIM (`claimPhoto(`, `.attach(` or `claim(` on the media queue) that runs before a refused write leaves a claimed photo waiting for an ack
+     * that never comes. Every call site in app-sr, app-amo and app-tso main sources must have `ActionGate.requireOpen()` earlier in its own function, or be named here with where the gate is.
+     */
+    private val claimsGatedElsewhere = mapOf(
+        // the implementations of the claim itself (they are what the callers above call)
+        "SrDay.kt.claimPhotoIo" to "the claim implementation (SR)", "AmoDay.kt.claimPhoto" to "the claim implementation (AMO)",
+        // wiring lambdas (attributed to the PRECEDING function: see funHeadRegex): the one that hands claimPhoto to the AMO record writer (the writer gates before it calls it: decideRequest,
+        // commitOutletRequest, theAmoPhotoClaimsComeAfterTheGate) and the one that hands the media attach to TicketDevice (TicketDevice.save gates before its claims)
+        "AmoDay.kt.memoHeader" to "wiring lambda; AmoRecordWriter gates before every call", "TicketsHost.kt.refreshConfig" to "wiring lambda; TicketDevice.save gates before its claims",
+        // the survey claims run AFTER the gated repository transaction (recordSurveyResponse gates first) except the replay branch below
+        "SrDay.kt.saveSurvey" to "after the gated transaction (recordSurveyResponse gates first)",
+        "AmoRecordWriter.kt.saveSurveyLocked" to "after the gated transaction; the REPLAY branch claims photos of answers already stored without the gate (known, pre-existing, status file)",
+    )
+
+    @Test fun everyPhotoClaimComesAfterTheGateOrIsNamed() {
+        val claimCall = Regex("""(?<!fun )(?<!val )(?<!\.)\b(claimPhoto|claim)\(|\.attach\(""")
+        val found = ArrayList<String>(); val bad = ArrayList<String>()
+        for (rel in listOf("app-sr", "app-amo", "app-tso").flatMap { m -> root().resolve("$m/src/main").walkTopDown().filter { it.isFile && it.extension == "kt" }.map { it.relativeTo(root()).invariantSeparatorsPath }.toList() }) {
+            val src = file(rel); val name = rel.substringAfterLast('/')
+            val heads = funHeadRegex.findAll(src).toList()
+            for (m in claimCall.findAll(src)) {
+                // skip declarations and parameter lists: only a call inside a function body counts
+                val h = heads.lastOrNull { it.range.first < m.range.first } ?: continue
+                val fn = h.groupValues[1]
+                val body = src.substring(h.range.first, m.range.first)
+                found += "$name.$fn"
+                val gated = "ActionGate.requireOpen()" in body
+                if (!gated && "$name.$fn" !in claimsGatedElsewhere) bad += "$name.$fn@" + src.substring(0, m.range.first).count { it == '\n' }
+            }
+        }
+        assertTrue("the claim sweep found only ${found.size} call sites: it is broken", found.size >= 8)
+        assertEquals("these photo claims have no gate before them in their function and are not named (with where the gate is): $bad", emptyList<String>(), bad)
+        val stale = claimsGatedElsewhere.keys - found.toSet()
+        assertEquals("a stale claim allow-list hides a moved claim: $stale", emptySet<String>(), stale)
+    }
+
+    /** D-AGATE-31: the SR outlet-request committer gates before its fix read and its photo claims (the SR twin of the AMO `commitOutletRequest`). */
+    @Test fun theSrOutletRequestCommitterGatesBeforeItsClaims() {
+        val src = file("app-sr/src/main/kotlin/com/aktcl/aron/sr/SrDay.kt")
+        val body = src.substring(src.indexOf("override suspend fun commitAll("))
+        val gate = body.indexOf("ActionGate.requireOpen()"); val claim = body.indexOf("claimPhoto(")
+        assertTrue("commitAll must call the gate before it reads a fix or claims a photo", gate in 0 until minOf(claim, body.indexOf("readFix(")))
     }
 }

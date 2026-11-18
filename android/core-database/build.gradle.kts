@@ -59,7 +59,16 @@ dependencies {
 tasks.withType<Test>().configureEach {
     inputs.files(
         rootProject.fileTree("android") {
-            include("core-database/src/main/**", "core-sync/src/main/**", "app-sr/src/main/**", "app-amo/src/main/**", "app-tso/src/main/**")
+            include("*/src/main/**") // EveryWriterIsGatedTest.discovered() walks EVERY android module's main sources
         },
     ).withPropertyName("scannedSources").withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
+// D-AGATE-31: tests that read files OUTSIDE the android tree: the backend's IngestService.kt (CaptureRepositoryDayLockTest, LatePolicyLockTest) and the contract (ContractYaml, via the aron.openapi property).
+tasks.withType<Test>().configureEach {
+    inputs.files(
+        rootProject.fileTree(rootProject.layout.projectDirectory) {
+            include("backend/sync/src/main/kotlin/com/aktcl/aron/backend/sync/IngestService.kt", "contract/openapi.yaml")
+        },
+    ).withPropertyName("externalSources").withPathSensitivity(PathSensitivity.RELATIVE)
 }
