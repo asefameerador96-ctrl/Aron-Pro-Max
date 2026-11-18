@@ -20,7 +20,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | Schema | Relations | Columns |
 |---|---|---|
 | `app` | 188 | 3083 |
-| `dw` | 76 | 1233 |
+| `dw` | 81 | 1287 |
 
 ## Index
 
@@ -276,13 +276,18 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_memo_line`](#dwv_memo_line) | view | worker | SERVER | event_fact | none | Stable view: one row per memo line (dw.fact_memo_line) in entered and base units with its price at capture. is_effective = memo active and line not voided. |
 | [`dw.v_offer`](#dwv_offer) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per discount programme (app.offer) with the rule of its current version. The portal exists; the field does not use it yet (memo offer line zero, bundle offers empty). is_effective = status active. |
 | [`dw.v_offer_version`](#dwv_offer_version) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per immutable offer version with its rule, validity, reward and the product and scope rows as JSON arrays (empty scope = everywhere). is_effective = the current version of an active offer. |
+| [`dw.v_outlet_campaign_sku_target`](#dwv_outlet_campaign_sku_target) | view | worker | SERVER | master | none | Stable view: campaign SKU target per outlet and month in base units (N-3). |
+| [`dw.v_outlet_campaign_target`](#dwv_outlet_campaign_target) | view | worker | SERVER | master | none | Stable view: campaign STD and memo target per outlet and month; the row is the outlet's membership of the campaign (N-3). |
 | [`dw.v_outlet_masked`](#dwv_outlet_masked) | view | backend:masterdata | ONLINE | master | none | Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107). |
 | [`dw.v_outlet_sku_daily`](#dwv_outlet_sku_daily) | view | worker | SERVER | event_fact | none | Stable view: quantity sold and memo count per outlet, SKU and business date (dw.agg_daily_outlet_sku). is_effective = true. |
 | [`dw.v_programme`](#dwv_programme) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per loyalty programme (app.programme: Diamond League, Astha, campaign, Superstar) with its definition and its tiers as a JSON array. The name, period and window are the columns of app.programme, which the portal copies from the current version in the same transaction while the programme is a draft (never edited afterwards); the tiers are those of the current version. The portal exists; the field does not use it (no points earned or redeemed, bundle programmes null, docs/27). is_effective = status active. |
 | [`dw.v_programme_version`](#dwv_programme_version) | view | backend:masterdata | ONLINE | master | none | Stable view: one row per immutable programme version with its window, rules, tiers, products and scope as JSON arrays (empty products or scope = everything). is_effective = the current version of an active programme. |
+| [`dw.v_route_brand_kpi_target`](#dwv_route_brand_kpi_target) | view | worker | SERVER | master | none | Stable view: memo target and allocated KPI per route, brand and month with the brand code and name (N-5). |
 | [`dw.v_route_day`](#dwv_route_day) | view | worker | SERVER | event_fact | none | Stable view: one row per route and business date (dw.agg_daily_route) with the zone-day flags derived per route (target route, successful login, sales submitted) and the Final Submit of the zone the route-day was stamped with; summing over a caller's routes gives the route-scoped dashboard totals. is_effective = true. |
 | [`dw.v_route_day_channel`](#dwv_route_day_channel) | view | worker | SERVER | event_fact | none | Stable view: active memos, outlets sold to, gross and net per route, business date and the outlet channel frozen on the memo at capture (dw.fact_memo, app.memo.outlet_channel); follows the route that sold, never a later outlet move. is_effective = true. |
+| [`dw.v_route_kpi_month`](#dwv_route_kpi_month) | view | worker | SERVER | master | none | Stable view: month card of the SR KPI dashboard per route (allocated KPI, CPR target) (N-5). |
 | [`dw.v_route_monthly_target`](#dwv_route_monthly_target) | view | worker | SERVER | master | none | Stable view: route x SKU monthly targets in base units with the month's working days and the derived daily target (D-TARGET-MIN-01). |
+| [`dw.v_route_programme_target`](#dwv_route_programme_target) | view | worker | SERVER | master | none | Stable view: monthly target of a route for a programme (Match Box Lifting Star) in the programme unit (N-8). |
 | [`dw.v_stock_movement`](#dwv_stock_movement) | view | backend:sync | OFFLINE | transaction | none | Stable view: every stock movement (issue, return and the other kinds of app.stock_movement) in entered and base units. is_effective = not voided. |
 | [`dw.v_support_ticket`](#dwv_support_ticket) | view | backend:masterdata | OFFLINE | transaction | none | Stable view: one row per support ticket with its current status, priority and lifecycle times (app.support_ticket and app.support_ticket_state); no title, description or notes. is_effective = not data-voided. |
 | [`dw.v_survey_response`](#dwv_survey_response) | view | backend:sync | OFFLINE | transaction | personal | Stable view: one row per answered question of a survey taken on a visit (the POSM survey of the SR, the AMO survey, the TSO visit query), every survey kind: outlet, date, question, answer, photo flag. A text answer is free text and can hold personal data (a phone number): the view is personal and bi_reader reads it without answer_text. The photo itself (a media id) is never in a reuse view. is_effective = not voided. |
@@ -7379,6 +7384,49 @@ Stable view: one row per immutable offer version with its rule, validity, reward
 | `data_origin` | app.data_origin | null |  | Always production: offers carry no origin of their own. |
 | `is_effective` | boolean | null |  | True for the current version of an active offer. |
 
+## dw.v_outlet_campaign_sku_target
+
+Stable view: campaign SKU target per outlet and month in base units (N-3).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `outlet_id` | bigint | null |  | Outlet (app.outlet). |
+| `outlet_code` | text | null |  | Outlet code. |
+| `route_id` | bigint | null |  | The outlet's current route. |
+| `programme_id` | bigint | null |  | Campaign programme (app.programme). |
+| `programme_code` | text | null |  | Programme code. |
+| `sku_id` | bigint | null |  | SKU (app.sku). |
+| `sku_code` | text | null |  | SKU code. |
+| `qty_base` | bigint | null |  | Target quantity in the SKU base unit. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
+
+## dw.v_outlet_campaign_target
+
+Stable view: campaign STD and memo target per outlet and month; the row is the outlet's membership of the campaign (N-3).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `outlet_id` | bigint | null |  | Outlet (app.outlet). |
+| `outlet_code` | text | null |  | Outlet code. |
+| `route_id` | bigint | null |  | The outlet's current route. |
+| `programme_id` | bigint | null |  | Campaign programme (app.programme). |
+| `programme_code` | text | null |  | Programme code. |
+| `std_target` | numeric(16,3) | null |  | STD target of the month, three decimals. |
+| `memo_target` | integer | null |  | Memo target of the month. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
+
 ## dw.v_outlet_masked
 
 Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107).
@@ -7478,6 +7526,26 @@ Stable view: one row per immutable programme version with its window, rules, tie
 | `data_origin` | app.data_origin | null |  | Always production: programmes carry no origin of their own. |
 | `is_effective` | boolean | null |  | True for the current version of an active programme. |
 
+## dw.v_route_brand_kpi_target
+
+Stable view: memo target and allocated KPI per route, brand and month with the brand code and name (N-5).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `route_id` | bigint | null |  | Route (app.route). |
+| `brand_id` | bigint | null |  | Brand (app.product_node). |
+| `brand_code` | text | null |  | Brand code; null when the brand has none. |
+| `brand_name` | text | null |  | Brand English name. |
+| `memo_target` | integer | null |  | Memo target of the month. |
+| `kpi_alloc_mtk` | bigint | null |  | Allocated KPI in milli-taka. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
+
 ## dw.v_route_day
 
 Stable view: one row per route and business date (dw.agg_daily_route) with the zone-day flags derived per route (target route, successful login, sales submitted) and the Final Submit of the zone the route-day was stamped with; summing over a caller's routes gives the route-scoped dashboard totals. is_effective = true.
@@ -7549,6 +7617,24 @@ Stable view: active memos, outlets sold to, gross and net per route, business da
 | `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of the memos behind the row. |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
+## dw.v_route_kpi_month
+
+Stable view: month card of the SR KPI dashboard per route (allocated KPI, CPR target) (N-5).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `route_id` | bigint | null |  | Route (app.route). |
+| `kpi_alloc_mtk` | bigint | null |  | Allocated KPI in milli-taka. |
+| `cpr_target_bp` | integer | null |  | CPR target in basis points. |
+| `cpr_alloc_mtk` | bigint | null |  | KPI money allocated to CPR in milli-taka. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
+
 ## dw.v_route_monthly_target
 
 Stable view: route x SKU monthly targets in base units with the month's working days and the derived daily target (D-TARGET-MIN-01).
@@ -7569,6 +7655,24 @@ Stable view: route x SKU monthly targets in base units with the month's working 
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last upload that wrote the target. |
 | `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
 | `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
+
+## dw.v_route_programme_target
+
+Stable view: monthly target of a route for a programme (Match Box Lifting Star) in the programme unit (N-8).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day). |
+| `route_id` | bigint | null |  | Route (app.route). |
+| `programme_id` | bigint | null |  | Programme (app.programme). |
+| `programme_code` | text | null |  | Programme code. |
+| `target_qty` | numeric(16,3) | null |  | Target in the programme unit, three decimals. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the row. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last write. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | True: every row counts in an ordinary total. |
 
 ## dw.v_stock_movement
 
