@@ -550,6 +550,12 @@ internal fun problemText(p: ReviewProblem): String = when (p) {
     is ReviewProblem.UnitNotAllowed -> stringResource(R.string.review_problem_unit, p.skuId.toString())
     is ReviewProblem.QtyTooLarge -> stringResource(R.string.review_problem_qty_large, p.skuId.toString())
     ReviewProblem.EditTargetSuperseded -> stringResource(R.string.review_problem_edit_superseded)
+    is ReviewProblem.AttendanceRefused -> stringResource(when (p.why) {
+        com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN -> R.string.review_problem_not_checked_in
+        com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT -> R.string.review_problem_checked_out
+        com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN -> R.string.review_problem_not_checked_in
+    })
+    ReviewProblem.ClockMovedBack -> stringResource(R.string.review_problem_clock_back)
     is ReviewProblem.OverStock -> localizedDigits(stringResource(R.string.review_problem_over_stock, if (LocalAppLanguage.current == AppLanguage.BN) (p.skuNameBn ?: p.skuName) else p.skuName, p.heldEntry.toString(), entryUnitLabel(p.unitKey), p.requestedEntry.toString()))
     is ReviewProblem.PaidOutOfRange, is ReviewProblem.PaidNotPaisa, ReviewProblem.PaidNegative -> stringResource(R.string.review_problem_paid)
     ReviewProblem.NothingToSell -> stringResource(R.string.review_problem_nothing)

@@ -43,6 +43,10 @@ fun interface CaptureMetaSource {
 }
 
 /** Thrown when review has problems; nothing is written. */
+/** An edit whose own date the phone's clock can no longer carry (the clock moved back after the draft opened): nothing is written; the flow words it (D-LEAD-PREREQ-04 ruling 4). */
+class ClockMovedBackException(val draftDate: String, val clockDate: String) :
+    IllegalStateException("the edit's date $draftDate is not the record's date $clockDate: the phone clock moved back")
+
 class ReviewNotCommittable(val problems: List<ReviewProblem>) : IllegalStateException("review has problems: $problems")
 
 /** Result of a commit. */
@@ -92,7 +96,7 @@ class SaleCommitter(
         draft.edit?.let { checkEdit(draft, it, editFix) } ?: require(editFix == null) { "a fix is only for an edit" }
         val meta = metaSource.meta(draft.businessDate, draft.routeId)
         // an edit carries its memo's date or it is not saved: a clock set BACK after the draft opened would date it a day earlier and supersede a memo of another date
-        if (draft.edit != null) check(meta.businessDate == draft.businessDate) { "the edit's date ${draft.businessDate} is not the record's date ${meta.businessDate}: the phone clock moved back" }
+        if (draft.edit != null && meta.businessDate != draft.businessDate) throw ClockMovedBackException(draft.businessDate, meta.businessDate)
         val memoNo = if (numbering == null) numbers.next(draft.businessDate, draft.memoUuid) else ""
         val t = review.totals
         val s = review.settlement

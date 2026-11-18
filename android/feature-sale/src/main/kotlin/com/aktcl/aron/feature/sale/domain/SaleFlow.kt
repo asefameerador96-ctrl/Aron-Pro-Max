@@ -143,6 +143,15 @@ class SaleFlow(
             val problems = listOf<ReviewProblem>(ReviewProblem.EditTargetSuperseded)
             ui.value = s.copy(refusal = problems)
             throw ReviewNotCommittable(problems)
+        } catch (e: com.aktcl.aron.core.database.repo.AttendanceRefusedException) {
+            // the check-in gate refused the save inside the transaction: nothing was written; the rep is told what happened and what to do (not "save failed")
+            val problems = listOf<ReviewProblem>(ReviewProblem.AttendanceRefused(e.why))
+            ui.value = s.copy(refusal = problems)
+            throw ReviewNotCommittable(problems)
+        } catch (e: ClockMovedBackException) {
+            val problems = listOf<ReviewProblem>(ReviewProblem.ClockMovedBack)
+            ui.value = s.copy(refusal = problems)
+            throw ReviewNotCommittable(problems)
         } catch (e: OverStockException) {
             // the stock moved since this sale opened (another memo, an edit): nothing was written. Re-read it, republish the
             // screen with the true figures, and report the shortage the TRANSACTION saw, never a guess from the stale catalog.

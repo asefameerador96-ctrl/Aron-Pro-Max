@@ -47,7 +47,17 @@ object StockSaving {
             } catch (e: Exception) {
                 load.commitFailed()
                 val why = DayRefusal.of(e)
-                StockSaveResult(if (why == null) StockMessage.SAVE_FAILED else null, why)
+                // D-LEAD-PREREQ-04 ruling 4: the check-in gate refused: the rep is told so, never the generic "could not save"
+                val gate = (e as? com.aktcl.aron.core.database.repo.AttendanceRefusedException)?.why
+                StockSaveResult(
+                    when {
+                        why != null -> null
+                        gate == com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT -> StockMessage.CHECKED_OUT
+                        gate != null -> StockMessage.NOT_CHECKED_IN
+                        else -> StockMessage.SAVE_FAILED
+                    },
+                    why,
+                )
             }
         }
 }

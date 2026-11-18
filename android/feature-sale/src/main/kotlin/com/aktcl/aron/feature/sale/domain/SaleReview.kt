@@ -63,6 +63,15 @@ sealed interface ReviewProblem {
     ) : ReviewProblem
     /** The memo this edit would replace was already replaced by another edit: the rep opens the latest version. Raised by the save, never by the review. */
     data object EditTargetSuperseded : ReviewProblem
+
+    /**
+     * D-LEAD-PREREQ-04 ruling 4 (step 3 S4): the check-in gate refused the save (no check-in on the memo's date, or the date is checked out); the rep is told what happened
+     * and what to do, never the generic "save failed". Raised by the save, never by the review.
+     */
+    data class AttendanceRefused(val why: com.aktcl.aron.core.database.repo.AttendanceRefusal) : ReviewProblem
+
+    /** The phone's clock was set back after the memo was opened, so an edit cannot carry its own date: nothing was saved (never the generic text). */
+    data object ClockMovedBack : ReviewProblem
 }
 
 data class SaleReview(

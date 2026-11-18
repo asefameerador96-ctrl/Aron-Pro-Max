@@ -118,4 +118,18 @@ class StockAttemptKillTest {
         f.writeText("2026-10-07\n1=5\t" + "a".repeat(36))
         assertEquals(emptyMap<String, String>(), FileStockAttemptStore(f).load(date))
     }
+
+    /** D-LEAD-PREREQ-04 ruling 4: a Save the check-in gate refuses says so (not checked in / checked out), never the generic "could not save", and the same values can be saved again. */
+    @Test fun aSaveTheCheckInGateRefusesNamesTheReasonNotTheGenericFailure() = runBlocking {
+        for ((why, expected) in listOf(
+            com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN to StockMessage.NOT_CHECKED_IN,
+            com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT to StockMessage.CHECKED_OUT,
+        )) {
+            val l = load(emptyMap(), FileStockAttemptStore(File(tmp.root, "a-$why"))).also { it.setEntered(1, 5) }
+            val res = StockSaving.save(l, { 1L }, meta) { throw com.aktcl.aron.core.database.repo.AttendanceRefusedException(why, date) }
+            assertEquals(expected, res.message)
+        }
+        val l = load(emptyMap(), FileStockAttemptStore(File(tmp.root, "a-other"))).also { it.setEntered(1, 5) }
+        assertEquals("any other failure keeps the plain text", StockMessage.SAVE_FAILED, StockSaving.save(l, { 1L }, meta) { error("disk") }.message)
+    }
 }

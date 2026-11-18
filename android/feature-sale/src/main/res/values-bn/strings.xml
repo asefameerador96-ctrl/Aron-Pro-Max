@@ -31,6 +31,9 @@
     <string name="sale_stock_first">আজকের স্টক এন্ট্রি করা নেই। আগে আজকের স্টক যোগ করুন, তারপর বিক্রি করুন।</string>
     <string name="sale_stock_first_action">স্টক খুলুন</string>
     <string name="review_problem_edit_superseded">এই মেমো আগেই সম্পাদনা করা হয়েছে। মেমো স্ক্রিন থেকে মেমোর সর্বশেষ সংস্করণটি খুলে সেটি সম্পাদনা করুন। কিছু সেভ হয়নি।</string>
+    <string name="review_problem_not_checked_in">এই দিনের জন্য আপনি হাজিরা দেননি, তাই কিছু সংরক্ষণ হয়নি। হাজিরা খুলে হাজিরা দিন, তারপর আবার সংরক্ষণ করুন।</string>
+    <string name="review_problem_checked_out">এই দিনের জন্য আপনি আগেই চেক-আউট করেছেন, তাই কিছু সংরক্ষণ হয়নি। চেক-আউটের সাথে বিক্রি বন্ধ হয়ে যায়।</string>
+    <string name="review_problem_clock_back">মেমো খোলার পরে ফোনের ঘড়ি পিছনে দেওয়া হয়েছে, তাই এটি নিজের তারিখে সংরক্ষণ করা যাবে না। কিছু সংরক্ষণ হয়নি। তারিখ ও সময় স্বয়ংক্রিয় করে মেমোটি আবার খুলুন।</string>
     <string name="sale_empty">বিক্রি শুরু করতে একটি পরিমাণ দিন।</string>
     <string name="sale_zero_confirm_title">বিক্রয়ের জন্য কোনও SKU নির্বাচন করা হয় নি</string>
     <string name="sale_zero_confirm_message">আপনি কি জিরো (০) বিক্রয় করতে চান?</string>

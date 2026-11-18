@@ -124,6 +124,35 @@ class StockGateLowsTest {
         assertEquals(2, memoCount())
     }
 
+    // ---- step 3 S4 (D-LEAD-PREREQ-04 ruling 4): a save the check-in gate refuses, or a clock moved back, is worded, never the generic "save failed"
+
+    @Test fun aSaveTheCheckInGateRefusesIsWordedAndWritesNothing() = runTest {
+        Fx.seedStock(repo, catalog)
+        val gated = CaptureRepository(db, requireCheckIn = true) { "2026-10-05T04:36:00.000Z" } // no check-in stored on that date
+        val c = SaleCommitter(gated, FakeNumbers(), CaptureMetaSource.dated { r -> Fx.meta().copy(routeId = r) }, { "2026-10-05T04:35:00.000Z" }, findMemo = { db.captureDao().memo(it) })
+        val st = store(); st.save(draft(10))
+        val flow = SaleFlow(st, { _, _ -> listOf(sku) }, c)
+        flow.start(SaleVisit(visitUuid, 50001, 10231, Fx.DATE, "outlet"))
+        val thrown = assertThrows(ReviewNotCommittable::class.java) { kotlinx.coroutines.runBlocking { flow.commit() } }
+        assertEquals(listOf<ReviewProblem>(ReviewProblem.AttendanceRefused(com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN)), thrown.problems)
+        assertEquals("the screen is told too (the dialog reads it)", thrown.problems, flow.state.value.refusal)
+        assertEquals(0, memoCount()); assertTrue("the draft is kept", st.m.containsKey(visitUuid))
+    }
+
+    @Test fun anEditWhoseDateTheClockCannotCarryIsWordedAndWritesNothing() = runTest {
+        Fx.seedStock(repo, catalog)
+        val c = committer()
+        val first = c.commit(draft(10), catalog)
+        val behind = SaleCommitter(repo, FakeNumbers(), CaptureMetaSource.dated { r -> Fx.meta().copy(routeId = r, businessDate = yesterday) }, { "2026-10-05T04:35:00.000Z" }, findMemo = { db.captureDao().memo(it) })
+        val st = store(); st.save(draft(10))
+        val flow = SaleFlow(st, { _, _ -> listOf(sku.copy(stockBase = StockHeld.read(db.captureDao(), Fx.DATE)[sku.skuId] ?: 0L)) }, behind)
+        flow.start(SaleVisit(visitUuid, 50001, 10231, Fx.DATE, "outlet"))
+        flow.withEdit(EditContext(first.memoUuid, "wrong_quantity"))
+        val thrown = assertThrows(ReviewNotCommittable::class.java) { kotlinx.coroutines.runBlocking { flow.commit(editFix(flow.state.value.draft!!.memoUuid)) } }
+        assertEquals(listOf<ReviewProblem>(ReviewProblem.ClockMovedBack), thrown.problems)
+        assertEquals(1, memoCount())
+    }
+
     // ---- A5: the transaction's own refusal reaches the flow's catch (a STALE catalog), and the rep gets the specific figures
 
     @Test fun aSaveRefusedByTheTransactionGivesTheSpecificOverStockMessageFromTheStoredFigures() = runTest {
