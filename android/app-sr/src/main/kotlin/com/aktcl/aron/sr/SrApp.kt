@@ -241,6 +241,9 @@ fun SrApp(
     val activity = context as? Activity
     var screen by rememberSaveable { mutableStateOf(SrScreen.HOME) }
     var soonTile by rememberSaveable { mutableStateOf(HomeTile.ASTHA) }
+    // The outlet points page is a navigation target that takes an outlet id (null = pick one): the Loyalty menu opens it with none; the Sales
+    // screen entry of manual 55 is wired by lane android-parity-sr-1 by setting this and screen = LOYALTY_POINTS (docs/status/android-sr-programmes.md).
+    var pointsOutlet by rememberSaveable { mutableStateOf<Long?>(null) }
     // the request form's kind lives here (saveable): the frame title AND the form read the same value after a recreate or process death
     var requestKind by rememberSaveable { mutableStateOf(day.requestKind) }
     var skipFirstBundle by rememberSaveable { mutableStateOf(false) }
@@ -522,9 +525,9 @@ fun SrApp(
         }
         SrScreen.LOYALTY_MENU -> SrFrame(stringResource(HomeR.string.hm_tile_loyalty_point), goBack, sync, openSync, icon = CoreR.drawable.aron_art_loyalty_point) {
             // Redemption joins this menu with slice 4; Points is the interim entry of the outlet points page (the manual opens it from the Sales screen)
-            com.aktcl.aron.feature.programmes.LoyaltyMenuScreen(onPoints = { screen = SrScreen.LOYALTY_POINTS }, onRedeem = null)
+            com.aktcl.aron.feature.programmes.LoyaltyMenuScreen(onPoints = { pointsOutlet = null; screen = SrScreen.LOYALTY_POINTS }, onRedeem = null)
         }
-        SrScreen.LOYALTY_POINTS -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_loyalty_points), goBack, sync, openSync, icon = CoreR.drawable.aron_art_loyalty_point) { OutletPointsHost(day, locale) }
+        SrScreen.LOYALTY_POINTS -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_loyalty_points), goBack, sync, openSync, icon = CoreR.drawable.aron_art_loyalty_point) { OutletPointsHost(day, locale, pointsOutlet) }
         SrScreen.ASTHA_TARGET -> SrFrame(stringResource(com.aktcl.aron.feature.programmes.R.string.pg_astha_title), goBack, sync, openSync, icon = CoreR.drawable.aron_art_astha) { AsthaHost(day, locale) }
         SrScreen.COMING_SOON -> SrFrame(stringResource(soonTitle(soonTile)), goBack, sync, openSync) { ComingSoonContent(onBack = goBack) }
         SrScreen.FORCE -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sale) {

@@ -56,9 +56,9 @@ internal suspend fun readShopOutlets(day: SrDay): List<ShopOutlet> = withContext
 
 /** The outlet points page (manual 55): the bundle's real balances, nothing invented; offline. */
 @Composable
-fun OutletPointsHost(day: SrDay, locale: UiLocale) {
+fun OutletPointsHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
     val load = rememberAsyncLoad { withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) } to readShopOutlets(day) }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { (data, outlets) ->
-        OutletPointsScreen(outlets, data, locale)
+        OutletPointsScreen(outlets, data, locale, initialOutlet = initialOutlet)
     }
 }
