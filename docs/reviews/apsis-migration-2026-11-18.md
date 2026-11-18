@@ -545,3 +545,68 @@ LOWS (titles only; full text in the lead's task output):
 - The KEY index column parse `\(([^)]*)\)` mangles prefix indexes: `a`(10),`b` becomes a"(10". Cosmetic.
 - Enum heuristic, from outside this lens: a lowercase login column named e.g. `username` matches neither PERSONAL nor CRED, so fewer than 30 lowercase logins woul
 - No tests cover row-width mismatch, unknown tokens, multiple CREATE TABLEs per file, truncation at a line boundary, the uncaught exception types, or the all-tabl
+
+
+## Phase 1 profile re-review at 5c3816143, 2026-11-18
+
+Reviewers ran the tool on synthetic dumps they wrote. Leaked sample kinds are described, not quoted.
+
+### leak-hunt-2 verdict=fail
+
+#### BLOCKING upheld=3/3: Full profile prints exact personal values via min/max in small tables (salary, date of birth, PIN, coordinates, year/epoch of birth)
+WHERE: tools/apsis-migration/apsis_migration/profiler.py Col.range_allowed (near-unique check only when self.n >= 100) and _NAME_NO_RANGE (word-boundary rule misses birthdate, dateOfBirth, yob, gross, basic, amount, area, market, type, ref, epoch_*)
+WHY: The binding rule forbids min/max for near-unique columns and forbids any dump value, including through min/max, from reaching an automatic output (the full file included). With 1 row, min==max IS the value. With 5 to 40 rows, min and max are two named people's values. Integer-scaled coordinates (8 digits) and coordinates with 4 decimals pass the longdigits and coordlike tests. Epoch dates of birth before 2001 have 9 digits and pass. birthdate, dateOfBirth and yob pass the name rule.
+
+#### BLOCKING upheld=3/3: profile-values gate is a flag read from a caller-supplied JSON file; a forged or edited profile dumps any column of 30 or fewer distinct values, free text included
+WHERE: profiler.py profile_values: trusts cols[column]['enum_candidate'] from --profile-json and re-checks only len(counts) > 30, not ENUM_MIN_ROWS, ENUM_MIN_PER_VALUE or all_short
+WHY: Rule: profile-values must not be usable on a non-enum column. The dump re-scan does not re-derive enum_candidate. In any table of 30 rows or fewer, every column, whether passwords, PINs, names or remarks, passes the only re-check.
+
+#### BLOCKING upheld=3/3: Statements silently skipped or misattributed with exit 0
+WHERE: mysqldump.events: a second CREATE TABLE resets the schema; lines that are not CREATE/INSERT/REPLACE/'(' are ignored; profiler.profile_dump keeps the rows counter across the schema reset
+WHY: Rule: the parser must refuse anything it does not fully consume. Wrong counts with exit 0 are blocking.
+
+#### BLOCKING upheld=3/3: Quadratic time in the INSERT tokenizer on an unterminated quoted string
+WHERE: mysqldump._TOKEN used with finditer in iter_values
+WHY: Each quote inside an unterminated string starts a fresh linear scan to the end of the line, so time grows with the square of the line length. Lines may be up to 256 MB (MAX_LINE). The binding rule forbids super-linear time. Only malformed or garbled lines trigger it (the line must still end with ';').
+
+LOWS (shortened):
+- IDENT lets a phone number or a first name embedded in an identifier through verbatim. A column `rahim_01712345678` and an index `idx_01733333333` were printed in all four files. This is allowed by the
+- hour_of_day_stored is emitted even for columns whose range is withheld by name (for example date_of_birth), and it stays in the SANITISED file. In a 1-row table it reveals the hour component of the va
+- Index and FK lines with non-identifier names (spaces) fail the regexes and are dropped silently from the report rather than shown as [name-N]. Unknown lines inside CREATE TABLE are ignored without a c
+- Partition definitions are refused, which is good, but with the misleading message 'a row continues from an earlier line (row-spanning INSERT)'.
+- iter_values does not enforce commas: `(2 'z')(3,,'w'),,(4,5);` parses into three 2-tuples, though MySQL would reject it. The width check catches most misalignment, not a missing comma plus a missing v
+- Adjacent string literals ('x' 'y'), which MySQL concatenates, are read as two values. This is caught by the width check only when the width differs.
+- The CREATE TABLE name is never compared with the file stem. Only INSERT targets are checked.
+- check_out_dir protects only the copy's own REPO_ROOT. Writing into a different clone or worktree of the public repository is not detected.
+- profile-values reads both t.sql and t.sql.gz into one dict, and the last one wins silently.
+- README and runbook claim that min/max is never shown for salary-, birth-like or near-unique columns. That is false for small tables and for innocuous names (see blocking 1).
+- Memory is bounded but large: 50,000 hash entries per column, about 5 MB each, so a 200-column table is about 1 GB. The ref sets are up to 1.5 M entries each. The defaults deserve a stated total.
+- (refuted 3/3) enum_candidate flags personal columns (first names, PINs) and nothing at the prompt warns; the documented output directory is the same one the sanitised files come from: A first-name col
+
+### parser-scale-2 verdict=fail
+
+#### BLOCKING upheld=3/3: Any line that does not start with INSERT/CREATE/REPLACE/( is ignored, so real INSERT statements can be silently dropped (exit 0)
+WHERE: tools/apsis-migration/apsis_migration/mysqldump.py events(): only lines whose lstrip() starts with INSERT/REPLACE/( or that match _CREATE are examined; everything else falls through without a check
+WHY: Breaks the rule that the parser refuses anything it does not fully consume. Silent skip with wrong counts and exit 0.
+
+#### BLOCKING upheld=3/3: Statements inside DELIMITER blocks (trigger/routine bodies) are counted as rows of the table
+WHERE: mysqldump.py events(): DELIMITER ;; ... ;; state is not tracked; a column-0 'INSERT INTO `t` VALUES (literals);' inside a trigger or procedure body is parsed as data
+WHY: Misattributed rows: wrong counts with exit 0.
+
+#### BLOCKING upheld=3/3: A second CREATE TABLE in a file, or a CREATE whose name differs from the file stem, silently replaces the schema
+WHERE: profiler.py profile_dump(): on each ('schema', ...) event the cols are reset, and schema.name is never compared with the file's table; mysqldump.py yields every CREATE
+WHY: The table is profiled under the wrong columns or the wrong name with exit 0.
+
+LOWS (shortened):
+- Row grammar is not enforced: commas are ignored. '(1 'a' NULL 1 NULL)(2,,'b',,NULL,,1,NULL)' is accepted as 2 rows, exit 0. Adjacent string literals ('a' 'b', which MySQL concatenates) are read as two
+- No end-of-dump check: a file cut exactly at a line boundary after a complete INSERT gives fewer rows with exit 0. Checking for the '-- Dump completed' footer would catch this.
+- Memory per line is bounded only by MAX_LINE=256 MB. A 57 MB Bengali line peaked at 436 MB RSS; a 256 MB Bengali line would be roughly 1.5-2 GB. That is fine for default mysqldump lines (about 1 MB, at
+- Memory per column: CAP_DISTINCT 50,000 hashes is about 5 MB per column, all held at once for a wide table (200 columns is about 1 GB) before capping. Bounded but large.
+- Tests: test_profiler.py has a no-op line, `self.assertIn('withheld', self.col('created_at')['value_range']) if False else None`. The earlier created_at range assertion was dropped without a replacemen
+- Tests create tools/apsis-migration/PHASE2_ENABLED inside the working tree for their duration. A killed test run leaves the gate file behind, and it is not in .gitignore, so it could also be committed 
+- The runbook (docs/runbooks/apsis-history-migration.md, Phase 1 intro) still says every command except profile refuses 'unless the lead sets APSIS_PHASE=2'. It does not mention the PHASE2_ENABLED file,
+- profile-values does not check that each INSERT targets the named table. It trusts a hand-editable profile JSON for the enum_candidate flag (owner-run, so acceptable). It writes the 'OWNER-ONLY' file w
+- Refusal messages for partitioned tables say 'row-spanning INSERT / mydumper layout', which sends the operator to the wrong cause and the wrong fix.
+- BOM directly followed by CREATE TABLE (no header comment) skips the CREATE and then refuses with a misleading 'INSERT before any CREATE TABLE'. It is loud, but the wrong cause is reported.
+- (refuted 2/3) Missing tables do not affect the exit code or 'ok', so the default whole-database mysqldump yields an empty profile with exit 0: The sign-off can be mistaken for complete. The most commo
+- (refuted 3/3) Standard mysqldump 8 output for partitioned tables, triggers with INSERT bodies and (very likely) binary/BIT and generated columns is refused: The task treats a standard mysqldump shape 
