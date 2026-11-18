@@ -239,3 +239,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Told: A-INT3 ('gates round landed': merge, Room 10 -> 11), A-PROG1 (merge, gate recordProgramme), P-SR1b, P-AMO3, P-TSO (merge). A-GATE8 started (session_014mnioMzRiTUob1mFun7H6j, branch lane/android-gates-2, ten follow-ups).
 - Next GO: train 119 Loyalty after L-A11's tiny push.
 - DEVICE WALK now possible for the owner on build 2336: check-in gate, stock limit, check-out submit, midnight/04:00 close (lists in docs/status/android-gates.md).
+
+
+### 2026-11-18 07:55 update
+- A-PROG1 recycled itself: successor A-PROG2 session_014mnioM4Dt5Bhhn5BUNwk7s on lane/android-sr-programmes (head 7df296bd: B2 fixed; B1 double count, B3 category source, B4 match model and lows still open; review docs/reviews/android-sr-programmes-round2-2026-11-18.md). Route replies to A-PROG2.
+- P-SR1b fix round 2 (bd03a20e) PASS; next: merge 29e8d86f3, golden re-verify, SppConnectorTest race fix, KV-POSM, DRP, QC two-step.
+- P-AMO3 0e45f76f (merged 29e8d86f3, green) ready for the next UI train (e5de5162 delta small, unchecked). P-TSO fd8625c8 slice 2 awaiting ci.
+- T-KPI2 session_014mnioPDzJpf5trPvkVf9y2 on the admin web tab. A-GATE8 session_014mnioMzRiTUob1mFun7H6j on the ten follow-ups.
