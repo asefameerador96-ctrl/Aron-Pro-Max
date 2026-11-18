@@ -1,0 +1,19 @@
+LabExemption:
+  type: object
+  required:
+  - granted_at
+  - expires_at
+  - granted_by
+  additionalProperties: false
+  properties:
+    granted_at:
+      $ref: '#/components/schemas/Timestamp'
+    expires_at:
+      $ref: '#/components/schemas/Timestamp'
+    granted_by:
+      $ref: '#/components/schemas/Id'
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 300

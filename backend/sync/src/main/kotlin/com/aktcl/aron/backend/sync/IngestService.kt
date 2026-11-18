@@ -2094,6 +2094,8 @@ class IngestService(
                 if ((payload["is_zero_sale"] as? JsonPrimitive)?.booleanOrNull != true) return "zero_sale_reason_code is allowed only when is_zero_sale is true"
             }
         }
+        // Contract 1.19.0: the phone's own anti-spoofing evidence is stored as sent, so its contents are checked here (never trusted as structure later).
+        PhoneEvidenceShape.error(r.type, shape, payload)?.let { return it }
         return null
     }
 

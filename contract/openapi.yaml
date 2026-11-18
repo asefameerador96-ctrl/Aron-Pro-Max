@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.20.0
+  version: 1.21.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -125,6 +125,7 @@ info:
       phone's rule in `shared/rules` JourneyTimeline). Cluster creation (push B2): `OutletRequestType` value `cluster_create` (an `outlet_change_request` record with the SR's
       route on the envelope and `proposed.name`; AMO verification and the portal approval are the outlet request pipeline's; an approved request is a live cluster of the route's zone),
       `OutletProposal.cluster_request_uuid`, `OutletRequest.resulting_cluster_id` and the rejected record outcome code `cluster_name_exists`. Review round (push B3): `BundleDelta.clusters`, `clusters_truncated`, `outlet_sku_stats`, `outlet_sku_stats_truncated` (a delta carries each section whole when it changed), `Bundle.clusters_truncated` and `Bundle.outlet_sku_stats_truncated` (the caps 600 and 400), `OutletRequestApproveRequest.cluster_id`, `SalesSubmitRequest.captured_at` (the phone's clock) and `RouteDayState.late_rows_anchor`; the late-row count is derived from the day_submit record's own `captured_at`; ADS is per elapsed calendar day. Review round B5: `DaySubmitPayload.anchor_clock` (optional, server-set on the online Sales Submit). No existing member changes.
+    - 1.21.0 (android-integrity, lane android-integrity, D-OWNER-MDM-02, `docs/requests/contract-1.21-android-integrity.md`; additive only): `GeoFix.signals` (anti-spoofing codes of a fix; an empty array means checked and clean, absent means unknown) and `DeviceStatusReport.integrity_events` (developer-options gate onsets); the lab exemption: operations `grantDeviceLabExemption` and `revokeDeviceLabExemption` (`PUT` and `DELETE /v1/admin/devices/{device_id}/lab-exemption`), `Device.lab_exemption` and `Device.lab_exemption_available`, schemas `LabExemption` and `LabExemptionRequest`, and the device-scoped config value `integrity.lab_exemption` (key prefix cfg.) of a full day bundle. The server checks the contents of `signals` and `integrity_events` at ingest (a malformed value is `schema_invalid`).
     - 1.20.0 (waiting quarantine items, lane portal-loyalty-api, train 118 landing; migration V0204; request file `docs/requests/contract-1.20-loyalty-waiting.md`; additive only, response members only): `QuarantinePage.waiting_count` (the open items that wait for another parent inside the caller's reach, whatever the page and filters) and, on `QuarantineItem`, `waiting`, `waits_for_uuid` and `waits_for_refused`. A child held with a parent that a reviewer accepted, whose other parent is not stored yet, stays open (the phone is told nothing final); the server's own sweep in the API process releases it when that parent is stored, with exactly the override the reviewer's accept carried for it, and a hash-chained audit row by the system actor; if a check of its own then holds it, it becomes an ordinary held item (`waiting` false). No request or phone-visible record change.
     - 1.19.0 (SR check-out round, lane sr-server SV6, train 117, D-SV2-15; ruling 6 of D-LEAD-PREREQ-03 and `docs/requests/android-gates.md`; request file
       `docs/requests/contract-1.19-sr-server-checkout.md`; additive only): the `attendance_event` payload gains the optional `closed_by` (`AttendanceClosedBy`: `rep` | `phone`;
@@ -4466,6 +4467,53 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/devices/{device_id}/lab-exemption:
+    put:
+      tags: [admin-devices]
+      operationId: grantDeviceLabExemption
+      summary: Let ONE phone run with Developer options on for 1 to 14 days (the owner's ADB device walks).
+      description: |
+        D-OWNER-MDM-02. The field apps refuse to run while Developer options, USB debugging or wireless debugging is on. This signs a grant
+        (ECDSA P-256 over the device uuid, the grant time and the expiry, with a server secret that is never stored in the repository) and
+        records it; the phone receives it in its next full day bundle as the device-scoped config value `integrity.lab_exemption` (key prefix cfg., see ResolvedConfigValue),
+        verifies it offline against a public key built into the app, and never widens it beyond "the gate lets this device run with
+        developer options on" (the mock-location refusals still apply). Super Admin and an Admin with the `mdm` write grant only. A new
+        grant replaces the old one. 409 when the server has no signing secret (nothing is recorded). Audited; the audit row never carries the token.
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LabExemptionRequest' }
+      responses:
+        '200':
+          description: The device with its lab exemption.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Device' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [admin-devices]
+      operationId: revokeDeviceLabExemption
+      summary: Withdraw a phone's lab exemption (idempotent).
+      description: The phone drops the grant with its next full day bundle (a bundle without the value); until then it keeps it up to its expiry. Audited.
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+      responses:
+        '200':
+          description: The device without a lab exemption.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Device' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /v1/admin/devices/{device_id}/directives:
     get:
       tags: [admin-devices]
@@ -8200,6 +8248,20 @@ components:
           items:
             type: string
             enum: [su_binary, test_keys, ro_debuggable, ro_secure_off, root_app, hook_framework, root_mount, clone_app_installed, secondary_user, foreign_data_dir]
+        integrity_events:
+          type: array
+          maxItems: 50
+          description: |
+            Developer-options gate onsets since the last acknowledged report (contract 1.21.0, D-OWNER-MDM-02): the app did not run while one of these was on. Oldest first. A phone can send the same event again after a kill between the enqueue and the acknowledgement, so the server treats (at, flags) as the identity of an event. Optional; absent from an older app.
+          items:
+            type: object
+            required: [at, flags, exempt]
+            additionalProperties: false
+            properties:
+              at: { $ref: '#/components/schemas/Timestamp' }
+              flags: { type: array, maxItems: 3, items: { type: string, enum: [dev_options, adb, adb_wifi] } }
+              exempt: { type: string, enum: [none, debug_build, benchmark_build, lab], description: Why the gate did not block (none = it blocked). }
+              app_version: { $ref: '#/components/schemas/AppVersionString' }
         pending_rows: { type: integer, minimum: 0 }
         pending_media: { type: integer, minimum: 0 }
         last_sync_at:
@@ -8320,6 +8382,16 @@ components:
             - { $ref: '#/components/schemas/RadioEnvironment' }
             - type: 'null'
         device: { $ref: '#/components/schemas/FixDeviceState' }
+        signals:
+          type: array
+          maxItems: 16
+          uniqueItems: true
+          description: |
+            Anti-spoofing codes the phone found for this fix (contract 1.21.0, D-OWNER-MDM-02), evidence for the server's risk rules. Optional: a phone built against an older contract sends none, and absent means unknown, not clean.
+            `mock_flag`, `mock_app_selected` and `test_provider` are HARD (the phone refused the geo-validated action; `is_mock` is true for all three, so `is_mock` is the platform flag OR an inferred hard code, and these codes tell them apart). The rest are SOFT and never block alone. Extensible: the server stores a code it does not know.
+          items:
+            type: string
+            enum: [mock_flag, mock_app_selected, test_provider, test_provider_props, fake_gps_app_installed, gnss_no_sats, gnss_none, fix_stale, fix_clock_mismatch, jump, speed, provider_disagree, root_hint, emulator, hook_framework]
     GnssSummary:
       type: object
       description: GnssStatus (and optional GnssMeasurement) statistics collected only while the fix request was open.
@@ -9986,6 +10058,10 @@ components:
               policy_version: { type: integer, minimum: 1 }
               accepted_at: { $ref: '#/components/schemas/Timestamp' }
     ResolvedConfigValue:
+      description: |
+        A resolved config value. Besides the registry keys, the value `integrity.lab_exemption` (key prefix cfg.; scope `device`, a string) is the phone's server-signed lab grant
+        (D-OWNER-MDM-02 iii, 1.21.0): present only while an exemption is unexpired and only in a full day bundle, never in a config delta; a full bundle
+        without it withdraws the grant.
       type: object
       required: [key, value, scope_type, effective_from, requires_ack]
       additionalProperties: false
@@ -15622,6 +15698,30 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/DeviceStatusReport' }
             - type: 'null'
+        lab_exemption:
+          description: The unexpired lab exemption of this phone; absent when there is none. Never carries the signed token.
+          oneOf:
+            - { $ref: '#/components/schemas/LabExemption' }
+            - type: 'null'
+        lab_exemption_available:
+          type: boolean
+          description: True when the server can sign a grant (the signing secret is set); the portal offers the action only then.
+    LabExemption:
+      type: object
+      required: [granted_at, expires_at, granted_by]
+      additionalProperties: false
+      properties:
+        granted_at: { $ref: '#/components/schemas/Timestamp' }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        granted_by: { $ref: '#/components/schemas/Id' }
+        note: { type: [string, 'null'], maxLength: 300 }
+    LabExemptionRequest:
+      type: object
+      required: [days]
+      additionalProperties: false
+      properties:
+        days: { type: integer, minimum: 1, maximum: 14 }
+        note: { type: [string, 'null'], maxLength: 300, description: Why the phone needs it (for example the walk it is for). }
     DevicePage:
       type: object
       required: [items, next_cursor]

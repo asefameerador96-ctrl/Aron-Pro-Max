@@ -104,6 +104,7 @@
     <string name="edit_reason_wrong_sku">ভুল SKU নির্বাচিত।</string>
     <string name="edit_reason_wrong_quantity">ভুল পরিমাণ</string>
     <string name="edit_reason_wrong_price_type">ভুল মূল্যের ধরন</string>
+    <string name="edit_denied_mock">নকল লোকেশন ধরা পড়েছে, তাই এই বিক্রয় এডিট করা যাবে না। নকল-জিপিএস অ্যাপ বন্ধ করে আনইনস্টল করুন, তারপর ফিরে গিয়ে আবার চেষ্টা করুন।</string>
     <string name="edit_denied_outside">বিক্রয় এডিট করা যায় শুধু দোকানে, জিওফেন্সের ভিতরে।</string>
     <string name="edit_denied_qc">এই আউটলেটে QC সম্পন্ন; বিক্রয় এডিট করা যাবে না।</string>
     <string name="edit_denied_superseded">এই মেমোর জায়গায় নতুন মেমো এসেছে।</string>
