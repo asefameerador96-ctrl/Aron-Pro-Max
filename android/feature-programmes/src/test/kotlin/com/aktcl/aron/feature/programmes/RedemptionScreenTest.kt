@@ -143,4 +143,20 @@ class RedemptionScreenTest {
         compose.onNodeWithTag(RedemptionTags.DIALOG_OK).performClick(); compose.waitForIdle()
         compose.onNodeWithText("This route-day has already been submitted. It cannot be changed.").performScrollTo().assertIsDisplayed()
     }
+
+    @Test fun theHeldUnconfirmedAndAwaitingLinesAreSeparateAndEachRedemptionIsInOne() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent {
+            CompositionLocalProvider(LocalContext provides ctx) {
+                AronTheme(AppLanguage.EN) {
+                    RedemptionScreen(outlets, LoyaltyModel.parse(json), UiLocale.EN, { _, _, b -> b }, { _, _ -> SaveOutcome.SAVED }, initialOutlet = 10, awaiting = 1,
+                        heldPointsOf = { _, _ -> 70L }, unconfirmedPointsOf = { _, _ -> 30L })
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag(RedemptionTags.HELD).assertIsDisplayed(); compose.onNodeWithText("Held for review: 70 Pts").assertExists()
+        compose.onNodeWithTag(RedemptionTags.UNCONFIRMED).assertIsDisplayed(); compose.onNodeWithText("Not yet confirmed: 30 Pts").assertExists()
+        compose.onNodeWithText("1 redemption is awaiting confirmation; the points update after the next sync.").assertExists()
+    }
 }

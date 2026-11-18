@@ -405,7 +405,7 @@ class SrDay(
     suspend fun readAsthaQuarter(quarter: String, routeIds: Collection<Long>, months: List<String>): com.aktcl.aron.feature.programmes.QuarterFetch? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { // parsing and file writes stay off the main thread
         // what this phone holds of each month is recorded under the sync lock at the moment the read is requested, exactly like the bundle's acknowledged set (no upload batch in flight then)
         val sides = HashMap<Pair<Long, String>, com.aktcl.aron.feature.programmes.ReadSide>()
-        com.aktcl.aron.core.sync.SyncEngine.underUserLock(userId) { routeIds.distinct().forEach { r -> programmes.readSideOf(months, r).forEach { (m, side) -> sides[r to m] = side } } }
+        com.aktcl.aron.core.sync.SyncEngine.underUserLock(userId) { routeIds.distinct().forEachIndexed { i, r -> programmes.readSideOf(months, r, countRoutelessMemos = i == 0).forEach { (m, side) -> sides[r to m] = side } } }
         com.aktcl.aron.feature.programmes.AsthaQuarterFetcher(asthaMonths) { q, route, cursor ->
             when (val r = components.syncApi.listAsthaTargets(q, route, cursor)) {
                 is com.aktcl.aron.core.network.ApiResult.Success -> com.aktcl.aron.feature.programmes.PageOutcome.Page(r.value)

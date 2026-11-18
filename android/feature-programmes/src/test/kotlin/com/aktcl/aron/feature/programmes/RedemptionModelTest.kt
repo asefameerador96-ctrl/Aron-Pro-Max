@@ -83,9 +83,10 @@ class RedemptionModelTest {
         // conservative: the SR must never spend points that may already be spent; the shown balance can be lower than the true one, never higher
         val lost = LocalRedemption(10, 3, 200, "t", "uncertain", uuid = "lost"); val held = LocalRedemption(10, 3, 70, "t", "quarantined", uuid = "held")
         assertEquals(270L, LocalRedeemed.points(listOf(lost, held), 10, 3, emptySet()))
-        assertEquals(270L, LocalRedeemed.heldPoints(listOf(lost, held), 10, 3, emptySet()))
+        assertEquals(70L, LocalRedeemed.heldPoints(listOf(lost, held), 10, 3, emptySet())) // only the really held one
+        assertEquals(200L, LocalRedeemed.unconfirmedPoints(listOf(lost, held), 10, 3, emptySet())) // the unanswered one in its own line, never in both
         assertEquals(0L, LocalRedeemed.points(listOf(lost, held), 10, 3, setOf("lost", "held"))) // once the order places them inside the bundle they are not subtracted again
-        assertEquals(0L, LocalRedeemed.heldPoints(listOf(lost, held), 10, 3, setOf("lost", "held")))
+        assertEquals(0L, LocalRedeemed.heldPoints(listOf(lost, held), 10, 3, setOf("lost", "held"))); assertEquals(0L, LocalRedeemed.unconfirmedPoints(listOf(lost, held), 10, 3, setOf("lost", "held")))
         assertEquals(0L, LocalRedeemed.points(listOf(LocalRedemption(10, 3, 5, "t", "rejected", uuid = "x")), 10, 3, emptySet())) // refused: points come back
         assertEquals(1, LocalRedeemed.awaiting(listOf(lost, LocalRedemption(10, 3, 5, "t", "pending"))))
     }

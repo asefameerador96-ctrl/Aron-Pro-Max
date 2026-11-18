@@ -42,6 +42,7 @@ import kotlinx.coroutines.launch
 import com.aktcl.aron.core.ui.R as CoreR
 
 object PhotoTags {
+    const val QUARTER_UNKNOWN = "photo_quarter_unknown"
     const val MENU_ASTHA = "photo_menu_astha"
     const val MENU_CAMPAIGN = "photo_menu_campaign"
     const val PICKER = "photo_picker"
@@ -92,6 +93,8 @@ fun GiftPhotoScreen(
             }
             return@Column
         }
+        // no known quarter start month (config absent): no quarter is guessed, saves are refused by the host; say so
+        if (quarter.isEmpty()) Text(stringResource(R.string.pg_gift_quarter_unknown), Modifier.testTag(PhotoTags.QUARTER_UNKNOWN), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
         val all = stringResource(R.string.pg_all)
         val letters = listOf(all) + shops.map { it.chip }.filter { it.isNotBlank() }.distinct().sorted()
         val shownLetter = letter.ifEmpty { all }

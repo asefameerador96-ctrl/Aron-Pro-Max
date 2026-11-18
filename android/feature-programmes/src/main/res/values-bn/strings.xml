@@ -37,6 +37,9 @@
     </plurals>
     <string name="pg_as_of_unsettled">ডেটা: %1$s; তখন এই মাসের কিছু মেমো নিশ্চিত হয়নি</string>
     <string name="pg_held_points">পর্যালোচনার জন্য আটকে আছে: %1$s</string>
+    <string name="pg_unconfirmed_points">এখনো নিশ্চিত হয়নি: %1$s</string>
+    <string name="pg_gift_held">সার্ভারে পর্যালোচনার জন্য আটকে আছে: %1$s</string>
+    <string name="pg_gift_quarter_unknown">কোয়ার্টার শুরুর মাস এই ফোনে জানা নেই, তাই এখনো উপহার বাছাই বা ছবি তোলা যাবে না। একবার ইন্টারনেটে যুক্ত হয়ে নামিয়ে নিন।</string>
     <string name="pg_no_programme">আপনার রুটে কোনো আস্থা কর্মসূচি চালু নেই।</string>
     <string name="pg_as_of">ডেটা: %1$s</string>
     <string name="pg_truncated">এই ফোনে শুধু প্রথম সারিগুলো আছে। বাকিটা দেখতে ওয়াই-ফাইয়ে সিঙ্ক করুন।</string>

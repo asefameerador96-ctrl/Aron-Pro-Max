@@ -360,7 +360,11 @@ class BundleDownloader(
         }
     }
 
-    private suspend fun <T> underSyncLock(block: suspend () -> T): T = if (userId == null) block() else SyncEngine.userLock(userId).withLock { block() }
+    /**
+     * Single flight (rule B of the programme figures): the SR app, which tracks the order of acknowledgements, sends no bundle request while an upload batch is in flight. The AMO and TSO apps
+     * ([trackUncertain] false) never read that order and keep their own timing: their bundle head request does NOT wait on the user's sync lock (a long upload run must not delay their day start).
+     */
+    private suspend fun <T> underSyncLock(block: suspend () -> T): T = if (userId == null || !trackUncertain) block() else SyncEngine.userLock(userId).withLock { block() }
 
     /** `meta.server_time` of the response in UTC ms, null when absent or unreadable (a grant is then not accepted). */
     internal fun serverTimeMs(bundle: BundleReference): Long? = bundle.meta.serverTime?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }

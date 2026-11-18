@@ -77,9 +77,14 @@ object LocalRedeemed {
             .filter { ackedBeforeRequest == null || it.uuid !in ackedBeforeRequest }
             .sumOf { it.points }
 
-    /** The points of redemptions the server holds for review or never answered (state `quarantined` or `uncertain`) and that the recorded order does not place inside the bundle: subtracted above, named on the screens. */
+    /** The points of redemptions the server really HOLDS for review (state `quarantined`) that the recorded order does not place inside the bundle: subtracted above, named on the screens. */
     fun heldPoints(records: List<LocalRedemption>, outletId: Long, programmeId: Long, ackedBeforeRequest: Set<String>?): Long =
-        records.filter { it.outletId == outletId && it.programmeId == programmeId && (it.state == "quarantined" || it.state == "uncertain") }
+        records.filter { it.outletId == outletId && it.programmeId == programmeId && it.state == "quarantined" }
+            .filter { ackedBeforeRequest == null || it.uuid !in ackedBeforeRequest }.sumOf { it.points }
+
+    /** The points of redemptions sent and not confirmed (state `uncertain`: no answer, an answer lost, or given up on by this phone), also subtracted above; a redemption is in exactly one of the two lines. */
+    fun unconfirmedPoints(records: List<LocalRedemption>, outletId: Long, programmeId: Long, ackedBeforeRequest: Set<String>?): Long =
+        records.filter { it.outletId == outletId && it.programmeId == programmeId && it.state == "uncertain" }
             .filter { ackedBeforeRequest == null || it.uuid !in ackedBeforeRequest }.sumOf { it.points }
 }
 

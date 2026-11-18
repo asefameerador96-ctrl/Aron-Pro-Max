@@ -42,6 +42,7 @@ import kotlinx.coroutines.launch
 object RedemptionTags {
     const val AWAITING = "redeem_awaiting"
     const val HELD = "redeem_held"
+    const val UNCONFIRMED = "redeem_unconfirmed"
     const val PICKER = "redeem_picker"
     const val BANNER = "redeem_banner"
     const val OVERDRAWN = "redeem_overdrawn"
@@ -74,6 +75,8 @@ fun RedemptionScreen(
     awaiting: Int = 0,
     /** The points of this phone's redemptions held for review or unanswered: already subtracted from the balance (see the points page). */
     heldPointsOf: (outletId: Long, programmeId: Long) -> Long = { _, _ -> 0L },
+    /** The points of redemptions sent and not confirmed (already subtracted): its own line, never counted in the held line. */
+    unconfirmedPointsOf: (outletId: Long, programmeId: Long) -> Long = { _, _ -> 0L },
     /** The cash-back rate in milli-taka per point from the config bundle (`cfg.loyalty.cash_rate_mtk_per_point`), or null when the bundle has none: only for the card's text. */
     cashRateMtk: Long? = null,
 ) {
@@ -113,6 +116,7 @@ fun RedemptionScreen(
             Text(stringResource(R.string.pg_remaining, LoyaltyModel.pointsText(remaining, locale, unit)), style = TextStyle(fontSize = 15.sp, color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold))
         }
         heldPointsOf(chosen.outletId, card.programmeId).takeIf { it > 0 }?.let { held -> Text(stringResource(R.string.pg_held_points, LoyaltyModel.pointsText(held, locale, unit)), Modifier.testTag(RedemptionTags.HELD), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium)) }
+        unconfirmedPointsOf(chosen.outletId, card.programmeId).takeIf { it > 0 }?.let { n -> Text(stringResource(R.string.pg_unconfirmed_points, LoyaltyModel.pointsText(n, locale, unit)), Modifier.testTag(RedemptionTags.UNCONFIRMED), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium)) }
         if (remaining < 0) Text(stringResource(R.string.pg_loyalty_overdrawn), Modifier.testTag(RedemptionTags.OVERDRAWN), style = TextStyle(fontSize = 14.sp, color = look.red, fontWeight = FontWeight.Medium))
         // Cash-back stays visible but cannot be confirmed until the owner gives the rule (cash_points is 0; never a cash amount on a memo).
         Row(Modifier.fillMaxWidth().testTag(RedemptionTags.CASHBACK).clip(RoundedCornerShape(12.dp)).background(look.card).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

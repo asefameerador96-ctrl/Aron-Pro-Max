@@ -45,6 +45,8 @@ import com.aktcl.aron.rules.UiLocale
 import kotlinx.coroutines.launch
 
 object GiftTags {
+    const val HELD = "gift_held"
+    const val QUARTER_UNKNOWN = "gift_quarter_unknown"
     const val PICKER = "gift_picker"
     const val DETAIL = "gift_detail"
     const val SUBMIT = "gift_submit"
@@ -83,6 +85,8 @@ fun GiftSelectionScreen(
             }
             return@Column
         }
+        // no known quarter start month (config absent): no quarter is guessed, saves are refused by the host; say so
+        if (quarter.isEmpty()) Text(stringResource(R.string.pg_gift_quarter_unknown), Modifier.testTag(GiftTags.QUARTER_UNKNOWN), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
         val all = stringResource(R.string.pg_all)
         val letters = listOf(all) + shops.map { it.chip }.filter { it.isNotBlank() }.distinct().sorted()
         val shownLetter = letter.ifEmpty { all }
@@ -102,6 +106,7 @@ fun GiftSelectionScreen(
         fun nameOf(id: Long) = data.gifts.firstOrNull { it.id == id }?.name(locale) ?: "#$id"
         when (state) {
             is GiftState.Locked -> Text(stringResource(R.string.pg_gift_locked, nameOf(state.giftId)), Modifier.testTag(GiftTags.LOCKED), style = TextStyle(fontSize = 16.sp, color = look.ink, fontWeight = FontWeight.Medium))
+            is GiftState.Held -> Text(stringResource(R.string.pg_gift_held, nameOf(state.giftId)), Modifier.testTag(GiftTags.HELD), style = TextStyle(fontSize = 15.sp, color = look.purple, fontWeight = FontWeight.Medium))
             is GiftState.Sent -> Text(stringResource(R.string.pg_gift_sent, nameOf(state.giftId)), Modifier.testTag(GiftTags.ON_PHONE), style = TextStyle(fontSize = 15.sp, color = look.purple, fontWeight = FontWeight.Medium))
             is GiftState.OnThisPhone -> if (state.refused) {
                 val why = (if (locale == UiLocale.BN) state.reasonBn ?: state.reasonEn else state.reasonEn ?: state.reasonBn)?.takeIf { it.isNotBlank() }

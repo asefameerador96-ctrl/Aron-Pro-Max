@@ -457,6 +457,7 @@ class ProgrammeStoreTest {
     private suspend fun redemptionOf(points: Int): String { val u = ClientIds.newUuid(); assertEquals(SaveOutcome.SAVED, store.saveProgramme(meta.meta(7), plan(u, points / 200))); return u }
     private suspend fun balance(bundle: Long) = com.aktcl.aron.feature.programmes.PointsBalance.of(bundle, store.redemptions(), 10, 3, store.ackedBeforeRequest())
     private suspend fun held() = com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(store.redemptions(), 10, 3, store.ackedBeforeRequest())
+    private suspend fun unconfirmed() = com.aktcl.aron.feature.programmes.LocalRedeemed.unconfirmedPoints(store.redemptions(), 10, 3, store.ackedBeforeRequest())
 
     @Test fun aHeldRedemptionIsSubtractedOnceAndNamed() = runTest {
         val r = redemptionOf(400)
@@ -471,8 +472,8 @@ class ProgrammeStoreTest {
         db.outboxDao().applyAck(r, "quarantined", "late_sync", null, "2026-11-18T05:10:00.000Z")
         sendBundleRequest()
         db.outboxDao().applyResolution(r, "acked", "resolved_accepted", "2026-11-18T05:20:00.000Z") // heard after the request
-        assertEquals(100L, balance(500)) // 500 (it may already carry the deduction) minus the held 400, conservative, not 500 - 400 - 400
-        assertEquals(400L, held())
+        assertEquals(100L, balance(500)) // 500 (it may already carry the deduction) minus 400, conservative, not 500 - 400 - 400
+        assertEquals(0L, held()); assertEquals(400L, unconfirmed()) // no longer held on the server, but unconfirmed until the next bundle: in one line only
         // the bundle that follows carries it and the set holds it: nothing subtracted any more
         sendBundleRequest()
         assertEquals(500L, balance(500)); assertEquals(0L, held())
@@ -490,6 +491,52 @@ class ProgrammeStoreTest {
         db.outboxDao().applyAck(r, "pending", "transport_timeout", null, "2026-11-18T05:10:00.000Z") // a failed attempt: sent, no answer
         sendBundleRequest()
         assertEquals("uncertain", store.redemptions().single().state)
-        assertEquals(300L, balance(500)); assertEquals(200L, held())
+        assertEquals(300L, balance(500)); assertEquals(0L, held()); assertEquals(200L, unconfirmed())
+    }
+
+    // ---- a redemption the PHONE gave up on is not a server refusal (landing review) ----
+    @Test fun aRedemptionThePhoneGaveUpOnIsUncertainAndSubtractedOnceNotRefunded() = runTest {
+        val rows = listOf("retry_exhausted", "transport_timeout", "ack_mismatch").map { code -> redemptionOf(400).also { db.outboxDao().applyAck(it, "rejected", code, null, "2026-11-18T05:10:00.000Z") } }
+        val all = store.redemptions()
+        assertEquals(listOf("uncertain", "uncertain", "uncertain"), rows.map { u -> all.single { it.uuid == u }.state })
+        assertEquals(1200L, com.aktcl.aron.feature.programmes.LocalRedeemed.unconfirmedPoints(all, 10, 3, null)) // its own line
+        assertEquals(0L, com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(all, 10, 3, null)) // never counted in two lines
+        assertEquals(-700L, com.aktcl.aron.feature.programmes.PointsBalance.of(500, all, 10, 3, null)) // 500 - 1200, never refunded
+    }
+
+    @Test fun aDefiniteServerRefusalOfARedemptionGivesItsPointsBack() = runTest {
+        val r = redemptionOf(400)
+        db.outboxDao().applyAck(r, "rejected", "insufficient_points", null, "2026-11-18T05:10:00.000Z")
+        assertEquals("rejected", store.redemptions().single().state)
+        assertEquals(500L, com.aktcl.aron.feature.programmes.PointsBalance.of(500, store.redemptions(), 10, 3, null))
+    }
+
+    @Test fun aHeldRedemptionIsInTheHeldLineAndAnUnansweredOneInTheUnconfirmedLineNeverBoth() = runTest {
+        val held = redemptionOf(400); val lost = redemptionOf(200)
+        db.outboxDao().applyAck(held, "quarantined", "late_sync", null, "2026-11-18T05:10:00.000Z")
+        db.outboxDao().applyAck(lost, "pending", "transport_timeout", null, "2026-11-18T05:10:00.000Z")
+        sendBundleRequest()
+        val all = store.redemptions(); val set = store.ackedBeforeRequest()
+        assertEquals(400L, com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(all, 10, 3, set))
+        assertEquals(200L, com.aktcl.aron.feature.programmes.LocalRedeemed.unconfirmedPoints(all, 10, 3, set))
+        assertEquals(-100L, com.aktcl.aron.feature.programmes.PointsBalance.of(500, all, 10, 3, set)) // both subtracted once
+    }
+
+    @Test fun aHeldGiftChoiceReadsAsHeldAndAChoiceThePhoneGaveUpOnReadsAsUncertain() = runTest {
+        val c1 = ClientIds.newUuid(); val c2 = ClientIds.newUuid()
+        assertEquals(SaveOutcome.SAVED, store.saveProgramme(meta.meta(7), listOf(com.aktcl.aron.feature.programmes.GiftChoiceModel.plan(10, 4, "2026-Q4", c1))))
+        assertEquals(SaveOutcome.SAVED, store.saveProgramme(meta.meta(7), listOf(com.aktcl.aron.feature.programmes.GiftChoiceModel.plan(11, 4, "2026-Q4", c2))))
+        db.outboxDao().applyAck(c1, "quarantined", "late_sync", null, "2026-11-18T05:10:00.000Z")
+        db.outboxDao().applyAck(c2, "rejected", "retry_exhausted", null, "2026-11-18T05:10:00.000Z")
+        val d = com.aktcl.aron.feature.programmes.GiftChoiceData(emptyList(), emptyList()); val local = store.giftChoices()
+        assertEquals(com.aktcl.aron.feature.programmes.GiftState.Held(4), d.stateOf(10, "2026-Q4", local, emptySet()))
+        assertEquals(com.aktcl.aron.feature.programmes.GiftState.OnThisPhone(4, false), d.stateOf(11, "2026-Q4", local, emptySet())) // not refused: the server may hold it
+    }
+
+    @Test fun theQuarantineQueryIsDerivedFromTheOrderTypeLists() = runTest {
+        val q = captureMemo(); val red = redemptionOf(200); val choice = ClientIds.newUuid()
+        store.saveProgramme(meta.meta(7), listOf(com.aktcl.aron.feature.programmes.GiftChoiceModel.plan(10, 4, "2026-Q4", choice)))
+        listOf(q, red, choice).forEach { db.outboxDao().applyAck(it, "quarantined", "late_sync", null, "2026-11-18T05:10:00.000Z") }
+        assertEquals(setOf(q, red, choice), db.outboxDao().quarantinedUuids().toSet())
     }
 }

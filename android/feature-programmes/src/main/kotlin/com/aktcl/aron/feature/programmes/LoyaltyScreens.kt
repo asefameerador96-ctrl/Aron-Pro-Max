@@ -38,6 +38,7 @@ import com.aktcl.aron.core.ui.R as CoreR
 object LoyaltyTags {
     const val AWAITING = "loyalty_awaiting"
     const val HELD = "loyalty_held"
+    const val UNCONFIRMED = "loyalty_unconfirmed"
     const val MENU_REDEEM = "loyalty_menu_redeem"
     const val MENU_POINTS = "loyalty_menu_points"
     const val OUTLET = "loyalty_outlet"
@@ -75,6 +76,8 @@ fun OutletPointsScreen(
     awaiting: Int = 0,
     /** The points of this phone's redemptions held for review or unanswered, by outlet and programme: already subtracted from the balance, named so the SR knows the balance may be lower than the true one. */
     heldPointsOf: (outletId: Long, programmeId: Long) -> Long = { _, _ -> 0L },
+    /** The points of redemptions sent and not confirmed (already subtracted): its own line, never counted in the held line. */
+    unconfirmedPointsOf: (outletId: Long, programmeId: Long) -> Long = { _, _ -> 0L },
 ) {
     val look = LocalAronLook.current
     var outletId by rememberSaveable { mutableStateOf(initialOutlet) }
@@ -105,6 +108,7 @@ fun OutletPointsScreen(
                     Text(LoyaltyModel.pointsText(balance, locale, unit), style = TextStyle(fontSize = 18.sp, color = look.ink, fontWeight = FontWeight.Bold))
                 }
                 heldPointsOf(chosen.outletId, c.programmeId).takeIf { it > 0 }?.let { held -> Text(stringResource(R.string.pg_held_points, LoyaltyModel.pointsText(held, locale, unit)), Modifier.testTag(LoyaltyTags.HELD), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium)) }
+            unconfirmedPointsOf(chosen.outletId, c.programmeId).takeIf { it > 0 }?.let { n -> Text(stringResource(R.string.pg_unconfirmed_points, LoyaltyModel.pointsText(n, locale, unit)), Modifier.testTag(LoyaltyTags.UNCONFIRMED), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium)) }
                 if (PointsBalance.overdrawn(balance)) Text(stringResource(R.string.pg_loyalty_overdrawn), Modifier.testTag(LoyaltyTags.overdrawn(c.programmeId)), style = TextStyle(fontSize = 14.sp, color = look.red, fontWeight = FontWeight.Medium))
                 Line(R.string.pg_loyalty_expiring, LoyaltyModel.pointsText(c.expiringPoints, locale, unit))
                 Line(R.string.pg_loyalty_expiry, LoyaltyModel.dateText(c.expiryDate, locale))

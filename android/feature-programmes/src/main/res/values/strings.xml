@@ -37,6 +37,9 @@
     </plurals>
     <string name="pg_as_of_unsettled">Data as of %1$s; some memos of this month were not confirmed then</string>
     <string name="pg_held_points">Held for review: %1$s</string>
+    <string name="pg_unconfirmed_points">Not yet confirmed: %1$s</string>
+    <string name="pg_gift_held">Held for review by the server: %1$s</string>
+    <string name="pg_gift_quarter_unknown">The quarter start month is not known on this phone, so no gift can be chosen or photographed yet. Connect once to download it.</string>
     <string name="pg_no_programme">No Astha programme is active for your routes.</string>
     <string name="pg_as_of">Data as of %1$s</string>
     <string name="pg_truncated">Only the first rows are on this phone. Sync on Wi-Fi to see the rest.</string>

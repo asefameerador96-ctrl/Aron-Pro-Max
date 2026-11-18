@@ -77,7 +77,7 @@ abstract class OutboxDao {
      * Memos and redemptions the server QUARANTINED (held for review, or waiting for a parent) at this moment. The server can commit one later with no upload ack (a reviewer accepts, a sweep),
      * so a bundle requested while it is held may or may not hold it, whenever the phone hears the resolution: it is recorded with the unanswered ones and never added or subtracted.
      */
-    @Query("SELECT client_uuid FROM outbox WHERE record_type IN ('memo', 'redemption') AND state = 'quarantined'")
+    @Query("SELECT client_uuid FROM outbox WHERE record_type IN (" + ORDER_MEMO_RECORD_TYPES_SQL + ", " + ORDER_PROGRAMME_RECORD_TYPES_SQL + ") AND state = 'quarantined'")
     abstract suspend fun quarantinedUuids(): List<String>
 
     /** How many of [uuids] still wait for an answer (pending or in flight). */

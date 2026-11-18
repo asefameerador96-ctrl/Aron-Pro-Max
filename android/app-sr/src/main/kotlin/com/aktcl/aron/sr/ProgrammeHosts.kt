@@ -143,7 +143,7 @@ fun OutletPointsHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null, 
         RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.ackedBeforeRequest())
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
-        OutletPointsScreen(page.outlets, page.data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet, balanceOf = PointsBalance.function(page.redemptions, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(page.redemptions), heldPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(page.redemptions, o, pr, page.ackedBefore) })
+        OutletPointsScreen(page.outlets, page.data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet, balanceOf = PointsBalance.function(page.redemptions, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(page.redemptions), heldPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(page.redemptions, o, pr, page.ackedBefore) }, unconfirmedPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.unconfirmedPoints(page.redemptions, o, pr, page.ackedBefore) })
     }
 }
 
@@ -163,7 +163,7 @@ fun RedemptionHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
         var uuid by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(day.programmes.newUuid()) }
         RedemptionScreen(
             page.outlets, page.data, locale,
-            balanceOf = PointsBalance.function(redeemed, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(redeemed), heldPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(redeemed, o, pr, page.ackedBefore) }, cashRateMtk = page.cashRateMtk,
+            balanceOf = PointsBalance.function(redeemed, page.ackedBefore), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(redeemed), heldPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.heldPoints(redeemed, o, pr, page.ackedBefore) }, unconfirmedPointsOf = { o, pr -> com.aktcl.aron.feature.programmes.LocalRedeemed.unconfirmedPoints(redeemed, o, pr, page.ackedBefore) }, cashRateMtk = page.cashRateMtk,
             onConfirm = { basket, gifts ->
                 val outlet = page.outlets.firstOrNull { it.outletId == basket.outletId }
                 val rate = page.cashRateMtk ?: 0L
@@ -198,9 +198,9 @@ fun GiftSelectionHost(day: SrDay, locale: UiLocale) {
             val data = GiftChoiceModel.parse(prog)
             val outlets = readShopOutlets(day)
             val ids = (AsthaModel.parse(prog, null)?.outletIds.orEmpty() + data?.assignments?.map { it.outletId }.orEmpty()).toSet()
-            val startMonth = day.reference.config("cfg.astha.quarter_start_month", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toIntOrNull()?.takeIf { it in 1..12 } ?: 1
+            val startMonth = astahStartMonth(day) // null when the bundle config has none: never assumed to be January (no quarter, saves refused)
             val today = day.programmes.metaFor(0L).businessDate // the trusted clock's Dhaka date, the one the record carries (never the bundle's date)
-            GiftLoad(data, ShopModel.buildFor(outlets, ids, ShopModel.tiers(prog), day.currentRouteId()), day.programmes.giftChoices(), GiftChoiceModel.quarterOf(today, startMonth).orEmpty(), day.programmes.ackedBeforeRequest()) // an unreadable date gives no quarter: saves are refused, never guessed
+            GiftLoad(data, ShopModel.buildFor(outlets, ids, ShopModel.tiers(prog), day.currentRouteId()), day.programmes.giftChoices(), startMonth?.let { GiftChoiceModel.quarterOf(today, it) }.orEmpty(), day.programmes.ackedBeforeRequest()) // an unreadable date gives no quarter: saves are refused, never guessed
         }
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
@@ -239,8 +239,8 @@ fun GiftPhotoHost(day: SrDay, locale: UiLocale) {
             val data = GiftChoiceModel.parse(prog)
             val outlets = readShopOutlets(day)
             val ids = (AsthaModel.parse(prog, null)?.outletIds.orEmpty() + data?.assignments?.map { it.outletId }.orEmpty()).toSet()
-            val startMonth = day.reference.config("cfg.astha.quarter_start_month", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toIntOrNull()?.takeIf { it in 1..12 } ?: 1
-            GiftPhotoLoad(data, ShopModel.buildFor(outlets, ids, ShopModel.tiers(prog), day.currentRouteId()), day.programmes.giftPhotos(), GiftChoiceModel.quarterOf(day.programmes.metaFor(0L).businessDate, startMonth).orEmpty())
+            val startMonth = astahStartMonth(day) // null when the bundle config has none: never assumed to be January (no quarter, saves refused)
+            GiftPhotoLoad(data, ShopModel.buildFor(outlets, ids, ShopModel.tiers(prog), day.currentRouteId()), day.programmes.giftPhotos(), startMonth?.let { GiftChoiceModel.quarterOf(day.programmes.metaFor(0L).businessDate, it) }.orEmpty())
         }
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->

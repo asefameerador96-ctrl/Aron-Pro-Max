@@ -44,7 +44,8 @@ class ProgrammeStore(
             val o = runCatching { Json.parseToJsonElement(r.payloadJson) as? JsonObject }.getOrNull() ?: return@mapNotNull null
             fun n(k: String) = (o[k] as? JsonPrimitive)?.content?.toLongOrNull()
             val ob = db.outboxDao().byClientUuid(r.clientUuid)
-            val state = readState(r.clientUuid in unsure, ob?.state, ob?.ackedAt, restoredIsAcked = false)
+            // rejected only by a DEFINITE server refusal means refused (points come back); a row the phone itself gave up on (retry_exhausted, transport_*, ack_mismatch) may be stored on the server: uncertain
+            val state = if (ob?.state == "rejected" && !isDefiniteRefusal(ob)) "uncertain" else readState(r.clientUuid in unsure, ob?.state, ob?.ackedAt, restoredIsAcked = false)
             LocalRedemption(n("outlet_id") ?: return@mapNotNull null, n("programme_id") ?: return@mapNotNull null, n("points_total") ?: return@mapNotNull null,
                 (o["confirmed_at"] as? JsonPrimitive)?.content ?: return@mapNotNull null, state, ob?.ackedAt, r.clientUuid)
         }
@@ -60,7 +61,7 @@ class ProgrammeStore(
             val code = listOf(ob?.lastMessageKey, ob?.lastCode).firstOrNull { it != null && (text(it, "en") != null || text(it, "bn") != null) }
             LocalGiftChoice(
                 (o["outlet_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return@mapNotNull null, (o["quarter"] as? JsonPrimitive)?.content ?: return@mapNotNull null,
-                (o["gift_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return@mapNotNull null, ob?.state ?: "pending", ob?.ackedAt,
+                (o["gift_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return@mapNotNull null, if (ob?.state == "rejected" && !isDefiniteRefusal(ob)) "uncertain" else ob?.state ?: "pending", ob?.ackedAt,
                 if (ob?.state == "rejected") text(code, "bn") else null, if (ob?.state == "rejected") text(code, "en") else null, r.clientUuid,
             )
         }
@@ -185,17 +186,18 @@ class ProgrammeStore(
 
     /**
      * What this phone holds of each of [months] for [routeId] at the moment an online read of the quarter is SENT (call it under the user's sync lock, like the bundle's set): [ReadSide.clean] is
-     * false when it holds a memo of the month that is still pending, sent and unanswered, or quarantined, or a pending, unanswered or held EDIT (or void) of a memo of the month, whatever date the edit
-     * carries; a memo ACKNOWLEDGED before the read was sent is committed on the server and so inside the read, it is not outstanding (never overstated). [ReadSide.awaiting] counts those sale memos,
+     * false when it holds a memo of the month that is still pending, sent and unanswered, or quarantined, or a pending, unanswered or held EDIT of a memo of the month, whatever date the edit
+     * carries (a void record is read the same way once the phone has a void writer; it has none yet, and the order-types guard test already lists the void type); a memo ACKNOWLEDGED before the read was sent is committed on the server and so inside the read, it is not outstanding (never overstated). [ReadSide.awaiting] counts those sale memos,
      * which are NOT in the read's figure.
      */
-    suspend fun readSideOf(months: List<String>, routeId: Long): Map<String, ReadSide> = withContext(Dispatchers.IO) {
+    suspend fun readSideOf(months: List<String>, routeId: Long, countRoutelessMemos: Boolean = true): Map<String, ReadSide> = withContext(Dispatchers.IO) {
         val outstandingStates = setOf("pending", "in_flight", "quarantined", "uncertain")
         months.associateWith { m ->
-            val inMonth = memosOfMonth(m).filter { it.voidOf == null && (it.routeId == null || it.routeId == routeId) }
+            val ownRoute = { r: Long? -> r == routeId || (r == null && countRoutelessMemos) } // a memo with no route belongs to no route in particular: counted once, by the caller's first route
+            val inMonth = memosOfMonth(m).filter { it.voidOf == null && ownRoute(it.routeId) }
             val uuids = inMonth.map { it.uuid }.toSet()
             // an edit of a memo of this month may be dated in a LATER month (a cross-month edit): look at every memo from this month on that supersedes one of them
-            val edits = memosFrom(m).filter { it.supersedes in uuids && (it.routeId == null || it.routeId == routeId) && it.uuid !in uuids }
+            val edits = memosFrom(m).filter { it.supersedes in uuids && ownRoute(it.routeId) && it.uuid !in uuids }
             val outstanding = (inMonth + edits).filter { it.state in outstandingStates }.distinctBy { it.uuid }
             ReadSide(clean = outstanding.isEmpty(), awaiting = outstanding.count { it.memoKind == "sale" })
         }

@@ -102,4 +102,16 @@ class GiftSelectionScreenTest {
         compose.onNodeWithText("একটি গিফট নির্বাচন করুন।").assertExists()
         compose.onNodeWithText("সাবমিট").assertExists()
     }
+
+    @Test fun aHeldChoiceIsShownAsHeldForReview() {
+        show(10, local = listOf(LocalGiftChoice(10, "2026-Q4", 1, "quarantined")))
+        compose.onNodeWithTag(GiftTags.HELD).assertExists()
+    }
+
+    @Test fun withNoKnownQuarterTheScreenSaysSo() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { GiftSelectionScreen(shops, GiftChoiceModel.parse(json), "", emptyList(), UiLocale.EN, { _, _ -> SaveOutcome.REFUSED }, initialOutlet = 10) } } }
+        compose.waitForIdle()
+        compose.onNodeWithTag(GiftTags.QUARTER_UNKNOWN).assertIsDisplayed()
+    }
 }

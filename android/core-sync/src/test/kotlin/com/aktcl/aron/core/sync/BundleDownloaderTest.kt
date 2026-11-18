@@ -625,4 +625,17 @@ class BundleDownloaderTest {
         assertTrue(r.outcome != BundleOutcome.APPLIED)
         assertTrue("never complete without an apply: $seen", seen.none { it.first == it.second })
     }
+
+    /** The AMO and TSO apps keep their own timing: a long upload run (the user's sync lock held) must not delay their bundle head request; the SR app (tracking) does wait (single flight). */
+    @Test fun aLongSyncRunNeverBlocksTheBundleRequestOfAnAppThatDoesNotTrackTheOrder() = runBlocking {
+        tracking = false
+        val lock = SyncEngine.userLock(USER)
+        lock.lock() // a long upload run holds the user's lock
+        try {
+            val r = kotlinx.coroutines.withTimeoutOrNull(5_000) { downloader().download() }
+            assertNotNull("the AMO/TSO bundle fetch finished while the lock was held", r)
+            assertEquals(BundleOutcome.APPLIED, r!!.outcome)
+            assertTrue(lock.isLocked)
+        } finally { lock.unlock() }
+    }
 }
