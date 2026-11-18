@@ -133,7 +133,13 @@ internal class DrainableExecutor : Executor {
     override fun execute(command: Runnable) {
         pending.incrementAndGet()
         try {
-            pool.execute { try { command.run() } finally { pending.decrementAndGet() } }
+            pool.execute {
+                try {
+                    // D-AGATE-22 (item 9): a test can hold every Room command at its start ([hold]) to steer which of two racing coroutines reaches the database first
+                    held?.let { latch -> blocked.incrementAndGet(); try { latch.await() } finally { blocked.decrementAndGet() } }
+                    command.run()
+                } finally { pending.decrementAndGet() }
+            }
         } catch (e: RejectedExecutionException) {
             pending.decrementAndGet()
             throw e
@@ -142,6 +148,18 @@ internal class DrainableExecutor : Executor {
 
     /** Nothing queued or running. */
     fun isIdle(): Boolean = pending.get() == 0
+
+    @Volatile private var held: java.util.concurrent.CountDownLatch? = null
+    private val blocked = AtomicInteger()
+
+    /** From now every Room command waits at its start until [release]. */
+    fun hold() { held = java.util.concurrent.CountDownLatch(1) }
+
+    /** How many Room commands are waiting at the hold right now. */
+    fun waiting(): Int = blocked.get()
+
+    /** Lets the held commands (and every later one) run. */
+    fun release() { held?.countDown(); held = null }
 
     /** After the database closed: the threads end once idle. */
     fun shutdown() = pool.shutdown()

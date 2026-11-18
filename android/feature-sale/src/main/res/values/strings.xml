@@ -33,6 +33,7 @@
     <string name="sale_stock_first_action">Open Stock</string>
     <string name="review_problem_edit_superseded">This memo was already edited. Open the latest version of the memo from the Memo screen and edit that one. Nothing was saved.</string>
     <string name="review_problem_not_checked_in">You are not checked in for this day, so nothing was saved. Open Attendance and check in, then save again.</string>
+    <string name="review_problem_earlier_call_open">An earlier day\'s call is still open, so nothing was saved. Finish that call first (or close it), then come back.</string>
     <string name="review_problem_checked_out">You have already checked out for this day, so nothing was saved. Sales close with the check-out.</string>
     <string name="review_problem_clock_back">The phone\'s clock was set back after this memo was opened, so it cannot be saved with its own date. Nothing was saved. Set the date and time to automatic and open the memo again.</string>
     <string name="sale_empty">Add a quantity to start the sale.</string>

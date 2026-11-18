@@ -579,7 +579,7 @@ internal fun problemText(p: ReviewProblem): String = when (p) {
     is ReviewProblem.AttendanceRefused -> stringResource(when (p.why) {
         com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN -> R.string.review_problem_not_checked_in
         com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT -> R.string.review_problem_checked_out
-        com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN -> R.string.review_problem_not_checked_in
+        com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN -> R.string.review_problem_earlier_call_open
     })
     ReviewProblem.ClockMovedBack -> stringResource(R.string.review_problem_clock_back)
     is ReviewProblem.OverStock -> localizedDigits(stringResource(R.string.review_problem_over_stock, if (LocalAppLanguage.current == AppLanguage.BN) (p.skuNameBn ?: p.skuName) else p.skuName, p.heldEntry.toString(), entryUnitLabel(p.unitKey), p.requestedEntry.toString()))
