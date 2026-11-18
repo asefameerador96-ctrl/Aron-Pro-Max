@@ -810,8 +810,9 @@ class Workflows(unittest.TestCase):
         self.assertIn("replace_regex(", c, "one row is one line")
         self.assertIn("waiting-item sweep enabled", c, "the sweep start-up line has a fixed label")
         self.assertIn("pre-flight: nothing to do", c)
-        self.assertIn("exc = coalesce(nullif(tostring(j.throwable.className)", c, "the exception class comes from the structured throwable first")
-        self.assertIn("cause = coalesce(nullif(tostring(j.throwable.cause.className)", c); self.assertIn("sqlstate = ", c)
+        self.assertIn("exc = coalesce(tostring(j.throwable.className)", c, "the exception class comes from the structured throwable first")
+        self.assertIn("cause = coalesce(tostring(j.throwable.cause.className)", c); self.assertIn("sqlstate = ", c)
+        self.assertNotIn("nullif", c, "nullif is not a KQL function")
         # The other sections: system log, job console, PG log, pre-flight: structured by default, text only with include_messages.
         for needle in ("project TimeGenerated, who, typ, reason, exitcode | take 200", "project TimeGenerated, exec, lvl, what, sqlstate, script | take 400",
                        "project TimeGenerated, sev, head | take 300", "project TimeGenerated, exec, what\"", "project TimeGenerated, typ, reason, exitcode\""):
@@ -1198,7 +1199,7 @@ exit 0
         self.assertIn("[redacted]", run("pass" "word\thunter22\n"))
         self.assertNotIn("hunter22", run("pass" "word\thunter22\n"))
         # structured exception class first, the exit code as a digit column, the PostgreSQL head, the diagnostic settings without resource ids
-        self.assertIn("nullif(tostring(j.throwable.className), '')", sh)
+        self.assertIn("coalesce(tostring(j.throwable.className), tostring(j.exception.className)", sh)
         self.assertIn("exitcode = coalesce(extract(@'(?i)exit ?code:? ?(-?[0-9]{1,3})', 1, txt), '')", sh)
         self.assertIn("'[text]'", sh); self.assertIn("head = iff(isempty(sev), ''", sh)
         self.assertIn('--query "(value || @)[].logs[].[category || categoryGroup, enabled]" -o tsv', sh)
@@ -1385,20 +1386,11 @@ exit 0
             self.assertRegex(lines[-2], r"^diagnose: [0-9]+ section\(s\) FAILED$")
             self.assertGreaterEqual(int(lines[-2].split()[1]), 3, "the API console, the job console and the pre-flight query failed")
 
-    def test_diagnose_kql_uses_no_reserved_word_as_a_column(self):
-        # Live run 44341474466: `kind` is a reserved word in KQL and cannot be an extend target ("Query could not be parsed at 'kind'"). The KQL cannot be executed in CI; this STATIC check is the least that
-        # can be done: every query the script sends (captured through a stub az, both modes) is scanned and no assignment target, project item or bare column reference may be a reserved or special word.
-        import subprocess, tempfile, os, stat, re as _re
+    def _diagnose_queries(self):
+        """Every KQL query the script sends (captured through a stub az; default and --include-messages mode)."""
+        import subprocess, tempfile, os, stat
         script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
-        # The list checked against (KQL keywords and special identifiers that are not safe as bare column names). Operators we DO use as operators are listed separately and only barred as targets.
-        reserved = {"kind", "type", "hint", "with", "by", "on", "in", "of", "to", "from", "table", "database", "cluster", "range", "order", "top", "take", "limit", "count", "sum", "title", "access",
-                    "alias", "set", "let", "pattern", "as", "and", "or", "not", "where", "extend", "project", "summarize", "union", "join", "distinct", "sort", "print", "datatable", "materialize",
-                    "parse", "evaluate", "invoke", "mv", "contains", "has", "startswith", "endswith", "matches", "between", "true", "false", "null", "asc", "desc", "first", "last", "nulls", "bin",
-                    "ago", "now", "ingestion_time", "restrict", "declare", "query_parameters", "toscalar", "tabular", "view", "function", "external_data", "scan", "partition", "serialize", "facet",
-                    "find", "search", "lookup", "render", "sample", "make", "mv-expand", "mv-apply", "getschema", "consume", "fork", "macro-expand", "parse-where", "project-away", "project-keep",
-                    "project-rename", "project-reorder", "reduce", "regex", "relaxed", "simple", "wildcard", "isfuzzy", "hint.", "default"}
-        used_as_operators = {"in", "by", "order", "top", "take", "where", "extend", "project", "summarize", "union", "contains", "has", "startswith", "matches", "regex", "between", "and", "or", "not",
-                             "true", "false", "asc", "desc", "isfuzzy", "count", "default"}
+        out = []
         with tempfile.TemporaryDirectory() as d:
             az = os.path.join(d, "az"); log = os.path.join(d, "q.log")
             open(az, "w").write(r"""#!/usr/bin/env bash
@@ -1413,20 +1405,102 @@ exit 0
             for flag in ([], ["--include-messages"]):
                 open(log, "w").close()
                 subprocess.run(["bash", script, *flag, "2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"], capture_output=True, text=True, env={"PATH": d + ":/usr/bin:/bin", "STUB_LOG": log, "AZURE_RESOURCE_GROUP": "rg-x"}, check=True)
-                queries = [q for q in open(log).read().split("\n\x1e\n") if q.strip()]
-                self.assertGreaterEqual(len(queries), 9)
-                for q in queries:
-                    bare = _re.sub(r"@'[^']*'|'[^']*'", "''", q)            # strings and verbatim strings removed
-                    targets = _re.findall(r"(?:extend|summarize|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?![=~])", bare)
-                    targets += [t.strip() for clause in _re.findall(r"project\s+([^|\n]*)", bare) for t in clause.split(",") if t.strip()]
-                    targets = [_re.split(r"\s*=", t)[0].strip() for t in targets]
-                    for t in targets:
-                        self.assertNotIn(t.lower(), reserved, f"reserved word used as a column name: {t!r} in\n{q[:400]}")
-                    for tok in _re.findall(r"(?<![\w.'])([A-Za-z_][A-Za-z0-9_]*)(?![\w(])", bare):
-                        if tok.lower() in reserved and tok.lower() not in used_as_operators:
-                            self.fail(f"reserved or special word {tok!r} used as an identifier in\n{q[:400]}")
+                out += [q for q in open(log).read().split("\n\x1e\n") if q.strip()]
+        self.assertGreaterEqual(len(out), 18)
+        return out
+
+    @staticmethod
+    def _kql_lists():
+        import re as _re
         sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
-        self.assertIn("# The list of KQL reserved and special words checked against", sh, "the script names the list")
+        reserved = {w.strip().lower() for line in _re.findall(r"^# KQL_RESERVED: (.*)$", sh, _re.M) for w in line.split(",") if w.strip()}
+        funcs = dict(_re.findall(r"^# KQL_FUNCTION (\S+)\s+(https://\S+)", sh, _re.M))
+        return reserved, funcs
+
+    @staticmethod
+    def _kql_strip(q):
+        import re as _re
+        return _re.sub(r"@'[^']*'|'[^']*'", "''", q)
+
+    def test_diagnose_list_failures_are_failures_and_disabled_download_is_not(self):
+        # Review of a17b9f7f: a failed workspace list or server list is a FAILED section (not "none"); server-logs list failing only because log download is disabled (logfiles.download_enable = off) is not red.
+        import subprocess, tempfile, os, stat
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        with tempfile.TemporaryDirectory() as d:
+            az = os.path.join(d, "az")
+            open(az, "w").write(r"""#!/usr/bin/env bash
+case "$1 $2 $3" in
+  "monitor log-analytics workspace") if [ "${STUB_FAIL:-}" = ws ]; then echo "platform text" >&2; exit 5; fi; echo ws-id; exit 0;;
+  "postgres flexible-server list") if [ "${STUB_FAIL:-}" = server ]; then echo "platform text" >&2; exit 6; fi; echo psql-aron-test; exit 0;;
+  "postgres flexible-server server-logs") if [ "$4" = list ]; then echo "platform text" >&2; exit 7; fi; exit 0;;
+  "postgres flexible-server parameter") if [ "${STUB_DL:-}" = off ]; then echo Off; else echo on; fi; exit 0;;
+esac
+exit 0
+""")
+            os.chmod(az, os.stat(az).st_mode | stat.S_IEXEC)
+            base = {"PATH": d + ":/usr/bin:/bin", "AZURE_RESOURCE_GROUP": "rg-x"}
+            win = ["2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"]
+            def run(**kw): return subprocess.run(["bash", script, *win], capture_output=True, text=True, env={**base, **kw})
+            r = run(STUB_FAIL="ws", STUB_DL="off")
+            self.assertEqual(1, r.returncode); self.assertIn("workspace: LIST FAILED (exit code 5)", r.stdout); self.assertNotIn("platform text", r.stdout + r.stderr); self.assertIn("1 section(s) FAILED", r.stdout)
+            r = run(STUB_FAIL="server", STUB_DL="off")
+            self.assertEqual(1, r.returncode); self.assertIn("PostgreSQL server list FAILED, exit code 6", r.stdout); self.assertNotIn("no psql-aron", r.stdout)
+            r = run(STUB_DL="off")   # log download disabled: the list fails with the documented reason, the run stays green
+            self.assertEqual(0, r.returncode, r.stdout[-400:]); self.assertIn("logfiles.download_enable = off; not a failure", r.stdout); self.assertNotIn("FAILED", r.stdout)
+            r = run(STUB_DL="on")    # the same failure with download enabled is a real failure
+            self.assertEqual(1, r.returncode); self.assertIn("server-logs list failed, exit code 7", r.stdout)
+
+    def test_diagnose_kql_uses_no_reserved_word_as_a_column(self):
+        # Live run 44341474466: `kind` is a reserved word in KQL and cannot be an extend target ("Query could not be parsed at 'kind'"). The KQL cannot be executed in CI; this is a STATIC scan of every query the
+        # script sends, not a parse proof. ONE list (the KQL_RESERVED comment lines in the script): no assignment target, project item or bare identifier may be on it, and an operator word (count, by, in, order,
+        # top, take, ...) is only allowed in its operator position: after the contexts of the real operators are removed no such word may remain.
+        import re as _re
+        reserved, funcs = self._kql_lists()
+        self.assertTrue({"kind", "type", "step", "policy", "externaldata", "count", "by", "in", "order", "top", "take"} <= reserved)
+        self.assertFalse([w for w in reserved if "-" in w], "hyphenated operators can never match the token regex: they are not in the list")
+        allowed_ctx = [r"(?<=\s)(?:asc|desc)(?=\s*(?:\||$|\)))", r"\|\s*order\s+by\b", r"\|\s*top\s+[0-9]+\s+by\b", r"\|\s*take\s+[0-9]+\b", r"\|\s*(?:where|extend|project|summarize)\b", r"^\s*union\s+isfuzzy\s*=\s*true\b",
+                       r"\bin\s*\(", r"\bbetween\s*\(", r"\bnot\s*\(", r"(?<=\s)(?:and|or)(?=\s)", r"\bmatches\s+regex\b", r"(?<=[\s!])(?:startswith|contains|has)(?=\s)",
+                       r"\bcount\s*\(", r"\bcountif\s*\("]
+        for q in self._diagnose_queries():
+            bare = self._kql_strip(q)
+            targets = _re.findall(r"(?:extend|summarize|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?![=~])", bare)
+            targets += [t.strip() for clause in _re.findall(r"project\s+([^|\n]*)", bare) for t in clause.split(",") if t.strip()]
+            for t in [_re.split(r"\s*=", t)[0].strip() for t in targets]:
+                self.assertNotIn(t.lower(), reserved, f"reserved word used as a column name: {t!r} in\n{q[:400]}")
+            rest = bare
+            for ctx in allowed_ctx:
+                rest = _re.sub(ctx, " ", rest, flags=_re.M)
+            for tok in _re.findall(r"(?<![\w.'])([A-Za-z_][A-Za-z0-9_]*)(?![\w(])", rest):
+                if tok.lower() in reserved and tok.lower() not in ("isfuzzy",):
+                    self.fail(f"reserved or operator word {tok!r} outside its operator position in\n{q[:400]}")
+
+    def test_diagnose_kql_calls_only_listed_functions(self):
+        # Review of a17b9f7f: `nullif()` is not a KQL function and every console query would have failed with a semantic error. ALLOW-LIST: any identifier followed by "(" in any query must be a function listed
+        # in the script (KQL_FUNCTION lines, each with its Microsoft Learn page) or an operator written with parentheses (in, between, not-as-operator, and, or).
+        import re as _re
+        reserved, funcs = self._kql_lists()
+        self.assertGreaterEqual(len(funcs), 15)
+        for name, url in funcs.items():
+            self.assertRegex(url, r"^https://learn\.microsoft\.com/kusto/query/[a-z0-9\-]+$", name)
+        operators = {"in", "between", "and", "or", "not"}
+        seen = set()
+        for q in self._diagnose_queries():
+            for fn in _re.findall(r"(?<![\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(", self._kql_strip(q)):
+                seen.add(fn)
+                self.assertTrue(fn in funcs or fn in operators, f"{fn}() is not a listed KQL function (allow-list in diagnose.sh) in\n{q[:300]}")
+        self.assertTrue({"extract", "coalesce", "iff", "strcat", "tostring", "replace_regex"} <= seen)
+        self.assertNotIn("nullif", seen)
+        # Mutation check (the review's): a nullif in a query is caught by the same predicate.
+        mutant = "x | extend fm = coalesce(nullif(tostring(j.message), ''), '(no message)')"
+        bad = [fn for fn in _re.findall(r"(?<![\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(", self._kql_strip(mutant)) if fn not in funcs and fn not in operators]
+        self.assertEqual(["nullif"], bad)
+        # Mutation check of the reserved-word scan: `kind` as a column, a bare `count`, a stray `in` as a column.
+        for mut, word in (("| extend kind = case(", "kind"), ("| project TimeGenerated, type", "type"), ("| where count != 0", "count"), ("| where order == 1", "order")):
+            bare = self._kql_strip("x " + mut)
+            rest = bare
+            for ctx in (r"\|\s*(?:where|extend|project|summarize)\b", r"\bcount\s*\("):
+                rest = _re.sub(ctx, " ", rest)
+            self.assertIn(word, [t.lower() for t in _re.findall(r"(?<![\w.'])([A-Za-z_][A-Za-z0-9_]*)(?![\w(])", rest) if t.lower() in reserved], mut)
 
     def test_deploy_holds_one_lock_for_the_whole_deploy(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")

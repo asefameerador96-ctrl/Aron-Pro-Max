@@ -7,7 +7,7 @@
 # azure-dev with the deploy identity (OIDC). The output goes to the job log of a public repository: the script prints
 # metadata, metrics and log excerpts only, never a secret, connection string or Key Vault value, and drops DETAIL and
 # parameter lines from server logs. DEFAULT-DENY FOR FREE TEXT, ALWAYS: every log query projects only named structured columns
-# (time, level, logger, exception class, SQLSTATE, duration, a fixed kind label such as the Flyway progress labels, platform reason,
+# (time, level, logger, exception class, SQLSTATE, duration, a fixed label such as the Flyway progress labels, platform reason,
 # exit code) and never message or exception text. There is NO input that adds message text: the job log of this repository is
 # public and names, OTPs and free text cannot be reliably pattern-matched out of a message. diagnose.sh has a message mode only
 # for a private terminal (--include-messages) and refuses it when GITHUB_ACTIONS is set. Actions are pinned by commit SHA

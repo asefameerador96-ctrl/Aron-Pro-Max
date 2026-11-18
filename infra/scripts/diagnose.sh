@@ -227,8 +227,9 @@ section "containerapp start/stop commands available in this az"
 az containerapp -h 2>&1 | grep -E '^\s+(start|stop)\b' || echo "(no start/stop subcommands listed)"
 
 section "PostgreSQL server"
-server="$(az postgres flexible-server list -g "$RG" --query "[?starts_with(name,'psql-aron-')].name | [0]" -o tsv 2>/dev/null || true)"
-if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
+server="$(az postgres flexible-server list -g "$RG" --query "[?starts_with(name,'psql-aron-')].name | [0]" -o tsv 2>/dev/null)"; src=$?
+if [ "$src" -ne 0 ]; then note_failure; server=""; echo "(PostgreSQL server list FAILED, exit code $src: a failure, not an absent server)"; fi
+if [ -z "$server" ]; then [ "$src" -ne 0 ] || echo "(no psql-aron-* server in $RG)"; else
   echo "server: $server"
   try az postgres flexible-server show -g "$RG" -n "$server" --query '{state:state, version:version, sku:sku.name, tier:sku.tier, storageGb:storage.storageSizeGb, ha:highAvailability.mode, haState:highAvailability.state, maintenance:maintenanceWindow.customWindow}' -o json
   sid="$(az postgres flexible-server show -g "$RG" -n "$server" --query id -o tsv 2>/dev/null || true)"
@@ -252,7 +253,13 @@ if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
   fi
   section "PostgreSQL server log files (last 24 h) and excerpts in the window"
   files="$(az postgres flexible-server server-logs list -g "$RG" -s "$server" --file-last-written 24 --query "[].name" -o tsv 2>/dev/null)"; rc=$?
-  if [ "$rc" -ne 0 ]; then note_failure; echo "(server-logs list failed, exit code $rc; logfiles.download_enable may be off)"; files=""; fi
+  if [ "$rc" -ne 0 ]; then
+    # The documented "disabled" answer (parameter logfiles.download_enable = off) is expected, not a failure; any other reason is one.
+    dl="$(az postgres flexible-server parameter show -g "$RG" -s "$server" -n logfiles.download_enable --query value -o tsv 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d ' \r')"
+    if [ "$dl" = off ]; then echo "(server log download is disabled: logfiles.download_enable = off; not a failure)"
+    else note_failure; echo "(server-logs list failed, exit code $rc; logfiles.download_enable is '${dl:-unknown}')"; fi
+    files=""
+  fi
   if [ -z "$files" ]; then
     echo "(no downloadable server log files in the last 24 h)"
   else
@@ -276,8 +283,9 @@ if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
 fi
 
 section "Log Analytics: workspace"
-ws="$(az monitor log-analytics workspace list -g "$RG" --query "[0].customerId" -o tsv 2>/dev/null || true)"
-if [ -z "$ws" ]; then echo "workspace: none (no Log Analytics workspace in $RG)"; else echo "workspace: found"; fi
+ws="$(az monitor log-analytics workspace list -g "$RG" --query "[0].customerId" -o tsv 2>/dev/null)"; wrc=$?
+if [ "$wrc" -ne 0 ]; then note_failure; ws=""; echo "workspace: LIST FAILED (exit code $wrc): no Log Analytics section can run (this is a failure, not an absent workspace)"
+elif [ -z "$ws" ]; then echo "workspace: none (no Log Analytics workspace in $RG)"; else echo "workspace: found"; fi
 # laq <kql> <jmespath columns>: run one query, result in LA_OUT. On failure: count it and print ONLY "(query failed: <section>, <error code>, parser position [line,column], exit code N)" (the code and the
 # position are taken from the error text and shape-checked; the query text and the platform's message are never printed) and return 1.
 laq() {
@@ -294,11 +302,31 @@ laq() {
 # la <kql> <jmespath columns> <width>: laq, then the output goes through the redactor (and the strict line check in message mode) BEFORE the cut to the width.
 la() { laq "$1" "$2" && printf '%s\n' "$LA_OUT" | showm "$3"; return 0; }
 
-# The list of KQL reserved and special words checked against (live run 44341474466: `kind` is reserved and made four console queries fail to parse; a column that must keep such a name would need
-# ['name'] quoting, none does): kind, type, hint, with, by, on, in, of, to, from, table, database, cluster, range, order, top, take, limit, count, sum, title, access, alias, set, let, pattern,
-# as, and, or, not, where, extend, project, summarize, union, join, distinct, sort, print, datatable, parse, evaluate, invoke, contains, has, startswith, endswith, matches, between, asc, desc,
-# first, last, bin, ago, now, view, function, scan, partition, serialize, facet, find, search, lookup, render, sample, make, reduce, regex, default. The KQL cannot be EXECUTED in CI: a static
-# test (check_infra.py test_diagnose_kql_uses_no_reserved_word_as_a_column) scans every query the script sends and fails on such a word as an extend/project/summarize target or a bare column.
+# THE lists the static test reads (ONE list, here; check_infra.py test_diagnose_kql_uses_no_reserved_word_as_a_column and ..._calls_only_listed_functions parse these lines). Live run 44341474466: `kind` is
+# a reserved word and made four console queries fail to parse; the review of a17b9f7f: `nullif()` is not a KQL function. The KQL cannot be EXECUTED in CI: the test is a STATIC scan of every query the
+# script sends, not a parse proof. A column that must keep a reserved name would need ['name'] quoting; none does.
+# KQL_RESERVED: kind, type, hint, with, by, on, in, of, to, from, table, database, cluster, range, order, top, take, limit, count, sum, title, access, alias, set, let, pattern, step, policy, externaldata,
+# KQL_RESERVED: as, and, or, not, where, extend, project, summarize, union, join, distinct, sort, print, datatable, parse, evaluate, invoke, contains, has, startswith, endswith, matches, between, asc, desc,
+# KQL_RESERVED: first, last, bin, ago, now, view, function, scan, partition, serialize, facet, find, search, lookup, render, sample, make, reduce, regex, default, declare, restrict, materialize, toscalar
+# KQL_FUNCTIONS (the only functions the script may call; each is a documented KQL scalar or aggregation function, Microsoft Learn "Kusto query language / scalar functions" and "aggregation functions"):
+# KQL_FUNCTION extract            https://learn.microsoft.com/kusto/query/extract-function
+# KQL_FUNCTION extract_all        https://learn.microsoft.com/kusto/query/extract-all-function
+# KQL_FUNCTION case               https://learn.microsoft.com/kusto/query/case-function
+# KQL_FUNCTION iff                https://learn.microsoft.com/kusto/query/iff-function
+# KQL_FUNCTION coalesce           https://learn.microsoft.com/kusto/query/coalesce-function   (on strings it skips empty values, so no nullif is needed)
+# KQL_FUNCTION strcat             https://learn.microsoft.com/kusto/query/strcat-function
+# KQL_FUNCTION replace_regex      https://learn.microsoft.com/kusto/query/replace-regex-function
+# KQL_FUNCTION parse_json         https://learn.microsoft.com/kusto/query/parse-json-function
+# KQL_FUNCTION tostring           https://learn.microsoft.com/kusto/query/tostring-function
+# KQL_FUNCTION countif            https://learn.microsoft.com/kusto/query/countif-aggregation-function
+# KQL_FUNCTION count              https://learn.microsoft.com/kusto/query/count-aggregation-function
+# KQL_FUNCTION isempty            https://learn.microsoft.com/kusto/query/isempty-function
+# KQL_FUNCTION isnotempty         https://learn.microsoft.com/kusto/query/isnotempty-function
+# KQL_FUNCTION gettype            https://learn.microsoft.com/kusto/query/gettype-function
+# KQL_FUNCTION column_ifexists    https://learn.microsoft.com/kusto/query/column-ifexists-function
+# KQL_FUNCTION datetime           https://learn.microsoft.com/kusto/query/datetime-data-type
+# KQL_FUNCTION not                https://learn.microsoft.com/kusto/query/not-function
+# (The doc pages were checked by the review lenses; they could not be fetched from the build container.)
 # One row = one log line, newlines and tabs folded in the query. A line that is a JSON object (logback) gives level, logger, message and stack trace; any other line is "plain".
 # The structured columns below are the ONLY thing printed by default: the exception and cause CLASS (first token of the stack trace, "Caused by:"), SQLSTATE, a duration in ms,
 # and a fixed label for the known operational lines. A JSON line with no message is "(no message)", never the raw JSON with its stack.
@@ -310,12 +338,12 @@ KQL_CONSOLE="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleL
      | extend j = parse_json(line)
      | extend isobj = gettype(j) == 'dictionary'
      | extend lg = iff(isobj, tostring(coalesce(j.loggerName, j.logger_name, j.logger)), ''), lvl = iff(isobj, tostring(j.level), '(plain)')
-     | extend fm = coalesce(nullif(tostring(j.formattedMessage), ''), nullif(tostring(j.message), ''), nullif(tostring(j.msg), ''), '(no message)')
+     | extend fm = coalesce(tostring(j.formattedMessage), tostring(j.message), tostring(j.msg), '(no message)')
      | extend st = tostring(coalesce(j.stack_trace, j.exception, j.throwable))
      | extend msg = replace_regex(iff(isobj, fm, line), @'[\r\n\t]+', ' ')
      | extend mst = replace_regex(strcat(msg, ' ', st), @'[\r\n\t]+', ' ')
-     | extend exc = coalesce(nullif(tostring(j.throwable.className), ''), nullif(tostring(j.exception.className), ''), extract(@'^\s*([A-Za-z_][A-Za-z0-9_.]{2,160})', 1, st)),
-              cause = coalesce(nullif(tostring(j.throwable.cause.className), ''), nullif(tostring(j.exception.cause.className), ''), extract(@'Caused by: ([A-Za-z_][A-Za-z0-9_.]{2,160})', 1, st))
+     | extend exc = coalesce(tostring(j.throwable.className), tostring(j.exception.className), extract(@'^\s*([A-Za-z_][A-Za-z0-9_.]{2,160})', 1, st)),
+              cause = coalesce(tostring(j.throwable.cause.className), tostring(j.exception.cause.className), extract(@'Caused by: ([A-Za-z_][A-Za-z0-9_.]{2,160})', 1, st))
      | extend sqlstate = coalesce(extract(@'(?:SQLState|SQL State|sqlstate)[ =:]+([0-9A-Z]{5})', 1, mst), ''), ms = coalesce(extract(@'\b([0-9]{1,9}) ?ms\b', 1, msg), '')
      | extend script = coalesce(extract(@'Migration (V[0-9]+__[A-Za-z0-9_]+)', 1, mst), '')
      | extend what = case(
