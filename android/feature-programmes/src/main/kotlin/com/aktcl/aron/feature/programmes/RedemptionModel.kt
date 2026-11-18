@@ -67,7 +67,7 @@ object LocalRedeemed {
     /**
      * Points this phone redeemed for the outlet and programme that the bundle's balance cannot hold. A redemption the server refused counts for
      * nothing. One still on the phone (pending, in flight, held) counts. An acknowledged one counts only until a bundle built after its
-     * acknowledgement has arrived: its [LocalRedemption.ackedAt] (trusted clock) is later than [bundleBuiltAt] (the server's build time), compared as instants,
+     * acknowledgement has arrived: its [LocalRedemption.ackedAt] (trusted clock) is later than [bundleBuiltAt] (the instant the bundle was REQUESTED on the trusted clock, `bundle.requested_at`), compared as instants,
      * not as text. With either time unknown it counts (the safe side: the balance is never overstated). Limit: an ack that lands just after a
      * bundle that already held the redemption is subtracted once more until the next bundle (the balance is then understated, never overstated).
      */

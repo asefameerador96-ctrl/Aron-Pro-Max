@@ -51,11 +51,19 @@ internal data class AsthaLoad(val data: AsthaData?, val year: Int, val shops: Li
 
 internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = withContext(Dispatchers.IO) {
     val date = day.reference.businessDate()
-    // the server's Astha figures plus this phone's own memos that the server cannot hold yet (by memo UUID; recomputed on every read)
-    val data = readAstha(day)?.let { d -> date?.take(7)?.let { month -> AsthaLocal.apply(d, day.programmes.memosOfMonth(month), day.programmes.bundleRequestedAt()) } ?: d }
+    // The figures, this phone's memos and the cut-off must come from ONE snapshot of the bundle: the request instant is read before and after, and a bundle applied in between
+    // (a different instant) makes the whole read run again, so new figures are never paired with the old cut-off.
+    var data: AsthaData? = null
+    var attempts = 0
+    while (true) {
+        val before = day.programmes.bundleRequestedAt()
+        val server = readAstha(day)
+        // the server's Astha figures plus this phone's own memos that the server cannot hold yet (by memo UUID; recomputed on every read)
+        data = server?.let { d -> date?.take(7)?.let { month -> AsthaLocal.apply(d, day.programmes.memosOfMonth(month), before) } ?: d }
+        if (day.programmes.bundleRequestedAt() == before || ++attempts >= 3) break
+    }
     val outlets = readShopOutlets(day)
-    val subs = ShopModel.subChannels(day.reference.section("code_lists"))
-    AsthaLoad(data, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, data, subs, locale), date?.take(7))
+    AsthaLoad(data, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, data, ShopModel.tiers(day.reference.section("programmes"))), date?.take(7))
 }
 
 /** The Astha target page of the SR (manual 48 right to 51): downloaded data only, no network in the path. */
@@ -79,7 +87,7 @@ internal suspend fun readShopOutlets(day: SrDay): List<ShopOutlet> = withContext
 fun OutletPointsHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null, onRedeem: ((Long) -> Unit)? = null) {
     val load = rememberAsyncLoad {
         val store = day.programmes
-        RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.bundleBuiltAt())
+        RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.bundleRequestedAt())
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
         OutletPointsScreen(page.outlets, page.data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet, balanceOf = PointsBalance.function(page.redemptions, page.builtAt))
@@ -95,7 +103,7 @@ fun OutletPointsHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null, 
 fun RedemptionHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
     val load = rememberAsyncLoad {
         val store = day.programmes
-        RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.bundleBuiltAt())
+        RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.bundleRequestedAt())
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
         var redeemed by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(page.redemptions) }
@@ -136,11 +144,10 @@ fun GiftSelectionHost(day: SrDay, locale: UiLocale) {
             val prog = day.reference.section("programmes")
             val data = GiftChoiceModel.parse(prog)
             val outlets = readShopOutlets(day)
-            val subs = ShopModel.subChannels(day.reference.section("code_lists"))
             val ids = (AsthaModel.parse(prog, null)?.outletIds.orEmpty() + data?.assignments?.map { it.outletId }.orEmpty()).toSet()
             val startMonth = day.reference.config("cfg.astha.quarter_start_month", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toIntOrNull()?.takeIf { it in 1..12 } ?: 1
             val today = day.programmes.metaFor(0L).businessDate // the trusted clock's Dhaka date, the one the record carries (never the bundle's date)
-            GiftLoad(data, ShopModel.buildFor(outlets, ids, subs, locale, day.currentRouteId()), day.programmes.giftChoices(), GiftChoiceModel.quarterOf(today, startMonth), day.programmes.bundleRequestedAt())
+            GiftLoad(data, ShopModel.buildFor(outlets, ids, ShopModel.tiers(prog), day.currentRouteId()), day.programmes.giftChoices(), GiftChoiceModel.quarterOf(today, startMonth), day.programmes.bundleRequestedAt())
         }
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
@@ -177,10 +184,9 @@ fun GiftPhotoHost(day: SrDay, locale: UiLocale) {
             val prog = day.reference.section("programmes")
             val data = GiftChoiceModel.parse(prog)
             val outlets = readShopOutlets(day)
-            val subs = ShopModel.subChannels(day.reference.section("code_lists"))
             val ids = (AsthaModel.parse(prog, null)?.outletIds.orEmpty() + data?.assignments?.map { it.outletId }.orEmpty()).toSet()
             val startMonth = day.reference.config("cfg.astha.quarter_start_month", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toIntOrNull()?.takeIf { it in 1..12 } ?: 1
-            GiftPhotoLoad(data, ShopModel.buildFor(outlets, ids, subs, locale, day.currentRouteId()), day.programmes.giftPhotos(), GiftChoiceModel.quarterOf(day.programmes.metaFor(0L).businessDate, startMonth))
+            GiftPhotoLoad(data, ShopModel.buildFor(outlets, ids, ShopModel.tiers(prog), day.currentRouteId()), day.programmes.giftPhotos(), GiftChoiceModel.quarterOf(day.programmes.metaFor(0L).businessDate, startMonth))
         }
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->

@@ -30,9 +30,18 @@ object AsthaLocal {
         val live = memos.filter { it.state != "rejected" }
         val supersededUuids = live.mapNotNull { it.supersedes }.toSet()
         val add = live.filter { it.uuid !in supersededUuids && (it.state in STILL_LOCAL || (it.state == "acked" && requestedMs != null && DhakaTime.ms(it.ackedAt)?.let { t -> t > requestedMs } == true)) }
-        val addedSupersedes = add.mapNotNull { it.supersedes }.toSet()
-        val out = live.filter { it.uuid in addedSupersedes && insideServerFigure(it, requestedMs) }
-        return add to out
+        // an edit may sit on a CHAIN (M <- E1 <- E2): walk each added memo's supersedes chain down to the first memo the server figure holds and take that one out
+        val byUuid = memos.associateBy { it.uuid }
+        val out = LinkedHashSet<LocalMemo>()
+        for (m in add) {
+            var cur = m.supersedes; var guard = 0
+            while (cur != null && guard++ < 64) {
+                val older = byUuid[cur] ?: break
+                if (insideServerFigure(older, requestedMs)) { out += older; break }
+                cur = older.supersedes
+            }
+        }
+        return add to out.toList()
     }
 
     /** [data] with the memos' sale lines added to the matching brand rows (route row and the outlet's row), the memo counts to the All Brand rows, and by_pack kept per pack size. */

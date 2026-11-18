@@ -90,8 +90,11 @@ class ProgrammeStore(
     suspend fun memosOfMonth(month: String): List<LocalMemo> = withContext(Dispatchers.IO) {
         db.captureDao().memosBetween("$month-01", "$month-31").map { m ->
             val ob = db.outboxDao().byClientUuid(m.clientUuid)
+            // A row put back to pending by a restore or digest resync keeps its first acknowledgement time: the server already held it once, so it counts as acknowledged
+            // then (inside the figure when that was before the request), never as a memo the phone alone holds.
+            val state = if (ob?.state == "pending" && ob.ackedAt != null) "acked" else ob?.state ?: "pending"
             LocalMemo(
-                m.clientUuid, m.outletId, m.meta.businessDate, m.supersedesClientUuid, ob?.state ?: "pending", ob?.ackedAt,
+                m.clientUuid, m.outletId, m.meta.businessDate, m.supersedesClientUuid, state, ob?.ackedAt,
                 db.captureDao().linesOf(m.clientUuid).map { LocalMemoLine(it.skuId, it.lineKind, it.qtyBase, it.packFactor, it.grossMtk) },
                 m.meta.routeId, m.memoKind,
             )
@@ -106,8 +109,6 @@ class ProgrammeStore(
         db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_REQUESTED_AT) ?: db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_SERVER_TIME)
     }
 
-    /** When the bundle that holds the balances was built (the server's clock), or null. */
-    suspend fun bundleBuiltAt(): String? = withContext(Dispatchers.IO) { db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_SERVER_TIME) }
 
     /**
      * Saves planned records (a redemption and its lines, or one gift choice) for one outlet's route, all with the ONE [meta] of the basket (one instant,

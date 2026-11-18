@@ -89,6 +89,12 @@ class BundleDownloader(
     private val api: SyncApi,
     private val stagingDir: File,
     private val clock: WallClock,
+    /**
+     * The user this downloader works for. With it the day-snapshot request takes that user's sync lock, so no upload runs while a bundle request is in
+     * flight (contract ProgrammesSection ACHIEVEMENT RULE, single flight): a batch acknowledged on the phone is then either acknowledged BEFORE the request
+     * (inside the server's figure) or uploaded AFTER the request (not inside it), never both. Null (tests that do not cover it): no ordering.
+     */
+    private val userId: Long? = null,
 ) {
     private val repo = ReferenceRepository(db)
     private val meta = db.referenceDao()
@@ -215,8 +221,12 @@ class BundleDownloader(
     }
 
     private suspend fun fetch(forDate: String, isDay: Boolean, onPrefetch: Boolean, ifNoneMatch: String?, configVersion: Long?, progress: BundleProgress? = null): BundleReport {
-        val requestedAt = iso(clock.nowMs()) // taken BEFORE the request leaves: the memos acknowledged by then are inside the programme figures
-        return when (val r = api.bundle(forDate, ifNoneMatch, configVersion)) {
+        // The request instant is taken BEFORE the request leaves and under the user's sync lock: the memos acknowledged by then are inside the programme
+        // figures, and no upload (so no acknowledgement) can start until the head answer is in. Lock order: this downloader's own lock, then the sync lock; the sync
+        // run never waits for a downloader, so the two cannot deadlock. A sale is never blocked: both are background work.
+        var requestedAt = ""
+        val answer = underSyncLock { requestedAt = iso(clock.nowMs()); api.bundle(forDate, ifNoneMatch, configVersion) }
+        return when (val r = answer) {
             is ApiResult.NotModified -> {
                 if (onPrefetch) {
                     if (repo.promotePrefetch(forDate) == ApplyResult.APPLIED) {
@@ -307,6 +317,8 @@ class BundleDownloader(
         }
     }
 
+    private suspend fun <T> underSyncLock(block: suspend () -> T): T = if (userId == null) block() else SyncEngine.userLock(userId).withLock { block() }
+
     /** True once a bundle request of [businessDate] was answered (the day counts as logged in on the server). */
     suspend fun loggedIn(businessDate: String): Boolean = meta.meta(KEY_LOGGED_IN + businessDate) != null
 
@@ -395,7 +407,7 @@ class BundleDownloaders(
      */
     suspend fun of(userId: Long): BundleDownloader {
         val db = databases.of(userId)
-        return byUser.compute(userId) { id, cur -> cur?.takeIf { it.uses(db) } ?: BundleDownloader(db, api, File(stagingRoot, "u$id"), clock) }!!
+        return byUser.compute(userId) { id, cur -> cur?.takeIf { it.uses(db) } ?: BundleDownloader(db, api, File(stagingRoot, "u$id"), clock, id) }!!
     }
 
     /** The AMO and TSO day start runs in this scope, so a rotation or language switch (which cancels the screen's own scope) never aborts it. */

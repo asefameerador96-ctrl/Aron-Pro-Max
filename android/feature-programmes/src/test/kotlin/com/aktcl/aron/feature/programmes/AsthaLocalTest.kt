@@ -84,4 +84,41 @@ class AsthaLocalTest {
         val x = AsthaLocal.apply(d, listOf(loose), req)
         assertEquals(listOf(AsthaPack(20, 105_000)), brandRoute(x).byPack) // no extra "1s" pack line
     }
+
+    private val inside = "2026-11-17T09:00:00Z" // acknowledged before the request: inside the server figure
+    private val after = "2026-11-17T11:00:00Z" // acknowledged after the request
+
+    @Test fun aChainOfTwoEditsTakesOutTheServerHeldOriginalNotTheMiddleOne() {
+        val m = memo("m", "acked", ackedAt = inside, qty = 10)                                   // server holds 10 more packets-worth
+        val e1 = memo("e1", "pending", supersedes = "m", qty = 12)
+        val e2 = memo("e2", "pending", supersedes = "e1", qty = 8)
+        val x = AsthaLocal.apply(d, listOf(m, e1, e2), req)
+        assertEquals(100_000L - 10_000L + 8_000L, brandRoute(x).stdAchievedMilli) // server 100 - M 10 + E2 8 (the old rule gave 108)
+        assertEquals(10L, allRoute(x).memoAchieved) // one memo replaced by one memo, not two
+    }
+
+    @Test fun theMiddleEditAckedAfterTheRequestChangesNothing() {
+        val m = memo("m", "acked", ackedAt = inside, qty = 10)
+        val e1 = memo("e1", "acked", ackedAt = after, supersedes = "m", qty = 12)
+        val e2 = memo("e2", "pending", supersedes = "e1", qty = 8)
+        val x = AsthaLocal.apply(d, listOf(m, e1, e2), req)
+        assertEquals(100_000L - 10_000L + 8_000L, brandRoute(x).stdAchievedMilli)
+        assertEquals(10L, allRoute(x).memoAchieved)
+    }
+
+    @Test fun aChainOfThreeEditsAndOneWhoseMiddleIsInsideTheFigure() {
+        val m = memo("m", "acked", ackedAt = "2026-11-17T08:00:00Z", qty = 10)
+        val e1 = memo("e1", "acked", ackedAt = inside, supersedes = "m", qty = 12) // the server now holds E1 (M is superseded there)
+        val e2 = memo("e2", "pending", supersedes = "e1", qty = 9)
+        val e3 = memo("e3", "pending", supersedes = "e2", qty = 7)
+        val x = AsthaLocal.apply(d, listOf(m, e1, e2, e3), req)
+        assertEquals(100_000L - 12_000L + 7_000L, brandRoute(x).stdAchievedMilli) // take out E1 (the first memo inside the figure), add E3 only
+        assertEquals(10L, allRoute(x).memoAchieved)
+    }
+
+    @Test fun aChainWhoseOriginalIsOnlyOnThePhoneAddsJustTheLastEdit() {
+        val x = AsthaLocal.apply(d, listOf(memo("m", "pending", qty = 10), memo("e1", "pending", supersedes = "m", qty = 12), memo("e2", "pending", supersedes = "e1", qty = 8)), req)
+        assertEquals(100_000L + 8_000L, brandRoute(x).stdAchievedMilli)
+        assertEquals(11L, allRoute(x).memoAchieved)
+    }
 }

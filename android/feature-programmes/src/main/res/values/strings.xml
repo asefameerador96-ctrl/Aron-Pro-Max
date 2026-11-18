@@ -76,7 +76,7 @@
     <string name="pg_gift_on_phone">Chosen on this phone, not sent yet: %1$s</string>
     <string name="pg_gift_refused">The server did not accept this choice: %1$s. Choose again.</string>
     <string name="pg_gift_sent">Sent to the server: %1$s</string>
-    <string name="pg_gift_tier_unknown">This outlet\'s category is not downloaded yet, so its gifts cannot be shown. Connect once and refresh.</string>
+    <string name="pg_gift_tier_unknown">The server has not sent this outlet\'s category yet, so its gifts cannot be shown.</string>
     <string name="pg_gift_chosen">Chosen gift: %1$s</string>
     <string name="pg_gift_none_for_tier">No gift is offered to this outlet\'s category.</string>
     <string name="pg_gift_saved">Gift choice saved on this phone. It goes out with the next sync.</string>

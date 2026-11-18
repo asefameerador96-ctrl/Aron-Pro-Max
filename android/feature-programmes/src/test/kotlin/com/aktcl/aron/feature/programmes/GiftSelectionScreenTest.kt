@@ -33,9 +33,9 @@ class GiftSelectionScreenTest {
         {"gift_id":2,"programme_id":5,"name_en":"Feature Phone","points_cost":null,"tier_codes":[],"status":"active"}],
       "gift_assignments":[{"gift_assignment_id":2,"quarter":"2026-Q4","outlet_id":11,"route_id":7,"gift_id":2,"photo_captured":true,"locked":true}]}"""
     private val shops = listOf(
-        ShopInfo(10, "Milon Store (2663519)", "2663519", "A", null, "Gold", chip = "M", routeId = 7, routeName = "Agora GoliDaily", clusterName = "Agora Goli"),
-        ShopInfo(11, "Locked Store (1)", "1", "B", null, "Gold", chip = "L"),
-        ShopInfo(12, "Other Tier Store (2)", "2", "C", null, "Titanium", chip = "O"),
+        ShopInfo(10, "Milon Store (2663519)", "2663519", "A", null, "Gold", chip = "M", tier = "gold", routeId = 7, routeName = "Agora GoliDaily", clusterName = "Agora Goli"),
+        ShopInfo(11, "Locked Store (1)", "1", "B", null, "Gold", chip = "L", tier = "gold"),
+        ShopInfo(12, "Other Tier Store (2)", "2", "C", null, "Titanium", chip = "O", tier = "titanium"),
     )
     private val saves = mutableListOf<Pair<Long, Long>>()
 

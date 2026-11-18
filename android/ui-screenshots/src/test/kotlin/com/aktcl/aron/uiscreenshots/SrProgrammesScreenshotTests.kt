@@ -137,8 +137,8 @@ class SrProgrammesScreenshotTests {
         {"gift_id":2,"programme_id":5,"name_en":"Feature Phone","name_bn":"ফিচার ফোন","points_cost":null,"tier_codes":[],"status":"active"}],
       "gift_assignments":[{"gift_assignment_id":2,"quarter":"2026-Q4","outlet_id":11,"route_id":7,"gift_id":2,"photo_captured":true,"locked":true}]}"""
     private val giftShops = listOf(
-        ShopInfo(10, "Milon Store (2663519)", "2663519", "Milon", null, "Gold", chip = "M", routeId = 7, routeName = "Agora GoliDaily", clusterName = "Agora Goli, Gulshan-2"),
-        ShopInfo(11, "Locked Store (1234567)", "1234567", "B", null, "Gold", chip = "L", routeId = 7),
+        ShopInfo(10, "Milon Store (2663519)", "2663519", "Milon", null, "Gold", chip = "M", tier = "gold", routeId = 7, routeName = "Agora GoliDaily", clusterName = "Agora Goli, Gulshan-2"),
+        ShopInfo(11, "Locked Store (1234567)", "1234567", "B", null, "Gold", chip = "L", routeId = 7, tier = "gold"),
     )
     @Composable private fun Gift(outlet: Long, picked: Long? = null, local: List<LocalGiftChoice> = emptyList(), data: com.aktcl.aron.feature.programmes.GiftChoiceData? = GiftChoiceModel.parse(giftJson)) =
         Frame(ProgR.string.pg_astha_tile_gift) { GiftSelectionScreen(giftShops, data, "2026-Q4", local, UiLocale.BN, { _, _ -> SaveOutcome.SAVED }, initialOutlet = outlet, initialGift = picked) }

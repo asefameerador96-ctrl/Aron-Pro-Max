@@ -11,40 +11,41 @@ import kotlinx.serialization.json.longOrNull
 /** What the shop-wise list needs of a stored outlet (the host maps its rows to this, so this module holds no database types). */
 data class ShopOutlet(val outletId: Long, val nameLine: String, val code: String, val owner: String, val contact: String?, val subChannelId: Long?, val chip: String = "", val routeId: Long = 0L, val routeName: String = "", val clusterName: String = "")
 
-/** One card of the shop-wise list. [subChannel] is the label of the outlet's sub-channel (the Astha tier), null when unknown. */
+/**
+ * One card of the shop-wise list. [tier] is the Astha tier CODE the server sent for the outlet (`loyalty[].tier_code`, else `gift_assignments[].tier_code`), null while
+ * the server has not sent it. [subChannel] is only its display text (first letter capital) and a dash is shown when it is null. It is never taken from a label.
+ */
 data class ShopInfo(
     val outletId: Long, val nameLine: String, val code: String, val owner: String, val contact: String?, val subChannel: String?,
     val chip: String = "", val routeId: Long = 0L, val routeName: String = "", val clusterName: String = "",
-    /** The tier as a language-independent code: the ENGLISH sub-channel label, lower case (never the label in the UI language). */
     val tier: String? = null,
 ) {
-    /** The Astha tier code the gift lists use (gold, diamond, platinum, titanium); null when the outlet has none. Never taken from the UI-language label. */
-    val tierCode: String? get() = (tier ?: subChannel)?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+    /** The tier code the gift lists use (gold, diamond, platinum, titanium); null while the server has not sent it. */
+    val tierCode: String? get() = tier?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
 }
 
 object ShopModel {
-    /** The `sub_channel` code list of the stored `code_lists` section, id to label (Gold, Diamond, Platinum, Titanium; Silver is retired). */
-    fun subChannels(codeListsJson: String?): Map<Long, BrandName> {
-        val a = runCatching { Json.parseToJsonElement(codeListsJson ?: return emptyMap()) as? JsonArray }.getOrNull() ?: return emptyMap()
-        val list = a.firstOrNull { ((it as? JsonObject)?.get("list_key") as? JsonPrimitive)?.contentOrNull == "sub_channel" } as? JsonObject ?: return emptyMap()
-        return (list["items"] as? JsonArray).orEmpty().mapNotNull { e ->
-            val i = e as? JsonObject ?: return@mapNotNull null
-            val id = (i["id"] as? JsonPrimitive)?.longOrNull ?: return@mapNotNull null
-            val en = (i["label_en"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
-            id to BrandName(en, (i["label_bn"] as? JsonPrimitive)?.contentOrNull)
-        }.toMap()
+    /**
+     * outlet id -> tier code from the stored `programmes` section: the outlet's own gift assignment first, else a loyalty card that carries a `tier_code`.
+     * Empty until the server sends either (the bundle's sub-channel code list has no id, so no tier is derived from it).
+     */
+    fun tiers(programmesJson: String?): Map<Long, String> {
+        val out = HashMap<Long, String>()
+        LoyaltyModel.parse(programmesJson)?.cards?.forEach { c -> c.tierCode?.trim()?.takeIf { it.isNotEmpty() }?.let { out.putIfAbsent(c.outletId, it.lowercase()) } }
+        GiftChoiceModel.parse(programmesJson)?.assignments?.forEach { a -> a.tierCode?.trim()?.takeIf { it.isNotEmpty() }?.let { out[a.outletId] = it.lowercase() } }
+        return out
     }
 
-    /** The outlets that carry an Astha outlet row, by name; the tier label from [subs]. Empty when there is no programme data. */
-    fun build(outlets: List<ShopOutlet>, data: AsthaData?, subs: Map<Long, BrandName>, locale: UiLocale): List<ShopInfo> {
+    /** The outlets that carry an Astha outlet row, by name; the tier from [tiers]. Empty when there is no programme data. */
+    fun build(outlets: List<ShopOutlet>, data: AsthaData?, tiers: Map<Long, String>): List<ShopInfo> {
         val ids = data?.outletIds?.toSet() ?: return emptyList()
-        return buildFor(outlets, ids, subs, locale)
+        return buildFor(outlets, ids, tiers)
     }
 
     /** The cards of exactly the outlets in [ids] (the gift page adds the outlets that already have a gift assignment): the route being worked first, then by name. */
-    fun buildFor(outlets: List<ShopOutlet>, ids: Set<Long>, subs: Map<Long, BrandName>, locale: UiLocale, preferredRouteId: Long? = null): List<ShopInfo> {
+    fun buildFor(outlets: List<ShopOutlet>, ids: Set<Long>, tiers: Map<Long, String>, preferredRouteId: Long? = null): List<ShopInfo> {
         return outlets.filter { it.outletId in ids }.sortedWith(compareBy<ShopOutlet> { if (preferredRouteId != null && it.routeId == preferredRouteId) 0 else 1 }.thenBy { it.nameLine.lowercase() })
-            .map { ShopInfo(it.outletId, it.nameLine, it.code, it.owner, it.contact, it.subChannelId?.let { id -> subs[id]?.text(locale) }, it.chip, it.routeId, it.routeName, it.clusterName, it.subChannelId?.let { id -> subs[id]?.en }) }
+            .map { o -> val t = tiers[o.outletId]; ShopInfo(o.outletId, o.nameLine, o.code, o.owner, o.contact, t?.replaceFirstChar { c -> c.uppercase() }, o.chip, o.routeId, o.routeName, o.clusterName, t) }
     }
 
     /** Search by name, code or phone (case-insensitive, any part, digits compared as typed in Latin or Bangla); blank shows everyone. */

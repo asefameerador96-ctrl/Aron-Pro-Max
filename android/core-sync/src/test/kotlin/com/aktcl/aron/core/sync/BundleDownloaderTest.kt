@@ -10,6 +10,7 @@ import com.aktcl.aron.core.network.ApiOrigin
 import com.aktcl.aron.core.network.AronApiClient
 import com.aktcl.aron.core.network.ClientIdentity
 import com.aktcl.aron.core.network.SyncApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -56,7 +57,8 @@ class BundleDownloaderTest {
     private var deltaAnswer: (RecordedRequest) -> MockResponse = { MockResponse.Builder().code(304).addHeader("X-Aron-Api", "1").build() }
 
     private object Clock : WallClock {
-        override fun nowMs(): Long = 1_791_165_600_000L // 2026-10-05T02:00:00Z = 08:00 in Dhaka
+        @Volatile var now = 1_791_165_600_000L
+        override fun nowMs(): Long = now // 2026-10-05T02:00:00Z = 08:00 in Dhaka
         override fun elapsedRealtimeMs(): Long = 1_000L
     }
 
@@ -125,7 +127,37 @@ class BundleDownloaderTest {
     private fun downloader(origin: String = server.url("/").toString().trimEnd('/')): BundleDownloader {
         val ok = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
         val client = AronApiClient(ApiOrigin.parse(origin, allowCleartextLoopback = true), ok, ClientIdentity("1.0.3+10003") { "6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f" })
-        return BundleDownloader(db, SyncApi(client), staging, Clock)
+        return BundleDownloader(db, SyncApi(client), staging, Clock, USER)
+    }
+
+    /** Contract ACHIEVEMENT RULE, single flight: a sync run in flight when the day request is wanted finishes first, and the request instant is taken after it. */
+    @Test fun aSyncRunInFlightFinishesBeforeTheBundleRequestAndTheRequestInstantFollowsIt() = runBlocking {
+        Clock.now = 1_791_165_600_000L
+        val lock = SyncEngine.userLock(USER)
+        lock.lock() // the sync worker is uploading a batch
+        val job = kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) { downloader().download() }
+        Thread.sleep(400)
+        assertTrue("no bundle request leaves while the upload runs", requests.isEmpty())
+        Clock.now += 5_000L // the batch is acknowledged at this instant, then the run ends
+        val ackedAt = SyncEngine.iso(Clock.now)
+        Clock.now += 1L
+        lock.unlock()
+        job.join()
+        assertEquals(1, requests.count { it.url.encodedPath == "/v1/sync/bundle" })
+        val requestedAt = db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_REQUESTED_AT)!!
+        assertTrue("the request instant ($requestedAt) is after the ack ($ackedAt)", requestedAt > ackedAt)
+    }
+
+    /** The other order: while the bundle head request is in flight no sync run can start, so no acknowledgement lands inside the request. */
+    @Test fun noSyncRunCanStartWhileTheBundleRequestIsInFlight() = runBlocking {
+        val inRequest = java.util.concurrent.CountDownLatch(1); val release = java.util.concurrent.CountDownLatch(1)
+        bundleBody = { inRequest.countDown(); release.await(10, TimeUnit.SECONDS); fullBundle() }
+        val job = kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) { downloader().download() }
+        assertTrue(inRequest.await(10, TimeUnit.SECONDS))
+        assertTrue("the user's sync lock is held while the head request is out", SyncEngine.userLock(USER).isLocked)
+        release.countDown()
+        job.join()
+        assertFalse("and released once the head answer is in", SyncEngine.userLock(USER).isLocked)
     }
 
     private suspend fun assertDayIsInRoom() {
