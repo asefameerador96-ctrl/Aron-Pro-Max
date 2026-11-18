@@ -51,6 +51,13 @@ def dump(tmp):
     return d
 
 
+def assertProfiledWithTablesMissing(case, p):
+    """The partial synthetic dumps here lack most of the 26 allow-listed tables: nothing refused, the missing tables listed, exit non-zero."""
+    case.assertEqual(p.returncode, 3, p.stderr.decode()[:300])
+    case.assertIn("MISSING", p.stderr.decode())
+    case.assertNotIn("REFUSED", p.stderr.decode())
+
+
 def all_text(out):
     return "\n".join(f.read_text(encoding="utf-8") for f in sorted(Path(out).iterdir()))
 
@@ -72,7 +79,7 @@ class Profile(unittest.TestCase):
         self.assertEqual([i["kind"] for i in t["indexes"]], ["key", "foreign"])
         self.assertEqual(t["indexes"][1]["references"], "master_routes")
         self.assertEqual([c["name"] for c in t["columns"]][:3], ["outlet_id", "outlet_code", "owner_name"])
-        self.assertTrue(self.full["ok"])
+        self.assertFalse(self.full["refused"])
 
     def test_column_statistics_shapes_and_ranges(self):
         self.assertEqual(self.col("owner_name")["null_share"], round(1 / 3, 6))
@@ -105,7 +112,8 @@ class Profile(unittest.TestCase):
         self.assertEqual(c["delta"]["number_descriptor"], {"integer_digits": [1, 1], "sign": "mixed", "kind": "decimal", "decimal_places": [3, 3]})
         self.assertEqual(c["day"]["year_month_range"], ["2026-03", "2026-03"])
         self.assertEqual(c["at"]["year_month_range"], ["2026-01", "2026-03"])
-        self.assertEqual(sum(c["at"]["hour_of_day_stored"]), 1200)
+        self.assertEqual(sum(c["at"]["hour_of_day_stored"]), 1200)          # the full file only ...
+        self.assertNotIn("hour_of_day_stored", san)                         # ... never the sanitised one
         for exact in ('"min"', '"max"', "2026-03-01", "2026-03-20"):
             self.assertNotIn(exact, text)                                   # no exact minimum, maximum or date anywhere
         self.assertNotIn("number_descriptor", san); self.assertNotIn("year_month_range", san)       # the sanitised file has no descriptors at all
@@ -115,15 +123,16 @@ class Profile(unittest.TestCase):
             with tempfile.TemporaryDirectory() as t:
                 d = Path(t) / "d"
                 d.mkdir()
-                rows = [(f"P{i}", 19700000 + 31 * i, "1987-0%d-1%d" % (i % 9 + 1, i % 9), "gross_%d" % (7000000 + i * 13), 1700000000 + i * 977, i * 100003) for i in range(n)]
-                write_table(d, "master_sku", ["`sku_code` varchar(9)", "`dob_int` int", "`birthdate` date", "`gross` varchar(20)", "`epoch` int", "`scaled_lat` int"], rows)
+                rows = [(f"P{i}", 19700000 + 31 * i, "1987-0%d-1%d" % (i % 9 + 1, i % 9), "gross_%d" % (7000000 + i * 13), 1700000000 + i * 977, i * 100003, 4821 + 17 * i) for i in range(n)]
+                write_table(d, "master_sku", ["`sku_code` varchar(9)", "`dob_int` int", "`birthdate` date", "`gross` varchar(20)", "`epoch` int", "`scaled_lat` int", "`pin` int"], rows)
                 full = profiler.profile_dump(d, MAPPING, [], order=runner.ORDER)
                 out = Path(t) / "out"
                 profiler.write_outputs(out, full)
                 text = all_text(out)
             for r in rows:
                 for v in r[1:]:
-                    self.assertNotIn(str(v), text.replace(str(n), ""), (n, v)) if len(str(v)) >= 6 else None
+                    if len(str(v)) >= 4:                       # the text is searched AS IS (the row count is not stripped: that made n=1 vacuous); 4-digit values (PINs) too
+                        self.assertNotIn(str(v), text, (n, v))
             self.assertNotIn("1987-", text)
             self.assertNotIn("number_descriptor", text)
 
@@ -190,7 +199,7 @@ class NoValueLeaks(unittest.TestCase):
             leak = self.build(d)
             out = Path(t) / "out"
             p = subprocess.run(CLI + ["profile", "--dump-dir", str(d), "--out-dir", str(out)], capture_output=True)
-            self.assertEqual(p.returncode, 0, p.stderr.decode()[:300])
+            assertProfiledWithTablesMissing(self, p)
             text = all_text(out) + p.stdout.decode() + p.stderr.decode()
             leaked = [v for v in leak if v in text]
             self.assertEqual(leaked, [], "values found in the outputs: %d" % len(leaked))
@@ -226,6 +235,13 @@ class NoValueLeaks(unittest.TestCase):
             f = out / "apsis-values-trans_by_outlet_promotion_data-class.OWNER-ONLY.json"
             self.assertEqual(sorted(json.loads(f.read_text())["value_counts"]), ["qty0", "qty1", "qty2"])
             self.assertEqual([p.name for p in out.iterdir()], [f.name])                                        # nothing else, never the sanitised files
+            self.assertEqual(f.stat().st_mode & 0o777, 0o600)                                                  # owner-only
+            self.assertIn("names, places, PINs and gender", ok.stderr.decode()); self.assertIn("PERSON must look", ok.stderr.decode())
+            full = profiler.profile_dump(d, MAPPING, [], order=runner.ORDER)
+            profiler.write_outputs(out, full)                                                                  # the sanitised pair is now in that directory ...
+            again = subprocess.run(base + ["--column", "class", "--confirm-column", "class"], capture_output=True)
+            self.assertNotEqual(again.returncode, 0)                                                           # ... so the values file is refused there
+            self.assertIn("DIFFERENT", again.stderr.decode())
 
     def test_a_small_table_never_yields_a_value_list_even_when_every_value_looks_like_a_code(self):
         with tempfile.TemporaryDirectory() as t:
@@ -263,13 +279,16 @@ class Refusals(unittest.TestCase):
 
     def test_replace_into_and_column_list_and_row_spanning(self):
         self.assertRefused("master_sku.sql", self.CREATE + "REPLACE INTO `master_sku` VALUES ('secret-row-value',1);\n", must="REPLACE")
-        self.assertRefused("master_sku.sql", self.CREATE + "INSERT INTO `master_sku` (`sku_code`,`n`) VALUES ('secret-row-value',1);\n", must="column list")
+        self.assertRefused("master_sku.sql", self.CREATE + "INSERT INTO `master_sku` (`sku_code`,`zz`) VALUES ('secret-row-value',1);\n", must="column list")
+        self.assertRefused("master_sku.sql", self.CREATE + "INSERT INTO `master_sku` (`sku_code`,`n`) VALUES ('secret-row-value',1,3);\n", must="column list names")
         self.assertRefused("master_sku.sql", self.ins("('secret-row-value',1),\n('b',2);"))
         self.assertRefused("master_sku.sql", self.CREATE + "INSERT INTO `master_sku` VALUES\n('secret-row-value',1),\n('b',2);\n")
 
     def test_every_literal_the_reader_does_not_model(self):
-        for lit in ('"secret-row-value"', "TRUE", "X'41'", "0xAB", "_binary 'secret-row-value'", "b'101'", "zz"):
+        for lit in ('"secret-row-value"', "TRUE", "X'41'", "zz"):
             self.assertRefused("master_sku.sql", self.ins(f"('a',{lit});"), must="unmodelled")
+        for lit in ("0xAB", "_binary 'secret-row-value'", "b'101'"):               # binary literals are opaque, and only for columns declared binary
+            self.assertRefused("master_sku.sql", self.ins(f"('a',{lit});"), must="not declared binary")
         self.assertRefused("master_sku.sql", self.ins("('a',1); trailing secret-row-value"))
         self.assertRefused("master_sku.sql", self.ins("('a',1) secret-row-value;"), must="unmodelled")
 
@@ -299,7 +318,7 @@ class Refusals(unittest.TestCase):
             out = Path(t) / "out"
             profiler.write_outputs(out, full)
             self.assertNotIn("secret-row-value", all_text(out))
-        self.assertTrue(full["ok"])
+        self.assertFalse(full["refused"])
         self.assertEqual(full["tables"]["master_sku"]["rows"], 2)           # the two real rows only: the trigger's INSERT is not a row
         self.assertRefused("master_sku.sql", self.CREATE + "DELIMITER ;;\nCREATE TRIGGER x ...\n", must="DELIMITER")      # an unclosed block refuses
 
@@ -313,7 +332,7 @@ class Refusals(unittest.TestCase):
             d.mkdir()
             (d / "master_sku.sql").write_text(body)
             full = profiler.profile_dump(d, MAPPING, [], order=runner.ORDER)
-        self.assertTrue(full["ok"], full["refused"])
+        self.assertFalse(full["refused"], full["refused"])
         self.assertEqual(full["tables"]["master_sku"]["rows"], 2)
 
     def test_a_garbled_2_mb_line_of_escaped_quotes_is_refused_in_seconds(self):
@@ -360,7 +379,7 @@ class Refusals(unittest.TestCase):
         full2, p2 = self.run_case("a;DROP TABLE x;--.sql.zst", b"x")
         self.assertEqual(p2.returncode, 3)
         self.assertNotIn("DROP TABLE", p2.stderr.decode() + p2.stdout.decode())
-        self.assertEqual(full2["refused"][0]["table"], "<name not a plain identifier>")
+        self.assertEqual(full2["refused"][0]["table"], "<file not on the allow-list>")
 
     def test_column_index_and_key_names_that_are_not_identifiers_print_as_placeholders(self):
         with tempfile.TemporaryDirectory() as t:
@@ -399,7 +418,227 @@ class Refusals(unittest.TestCase):
             self.assertIn("OUTSIDE any git work tree", p.stderr.decode())
             self.assertFalse(inside.exists())
             ok = subprocess.run(CLI + ["profile", "--dump-dir", str(d), "--out-dir", str(Path(t) / "out")], capture_output=True)
-            self.assertEqual(ok.returncode, 0, ok.stderr.decode())
+            self.assertEqual(ok.returncode, 3, ok.stderr.decode())          # one table of 26: the missing ones are listed and the exit is non-zero
+            self.assertIn("MISSING", ok.stderr.decode())
+
+
+PRE_57 = """-- MySQL dump 10.13  Distrib 5.7.44, for Linux (x86_64)
+--
+-- Host: localhost    Database: aron
+-- ------------------------------------------------------
+-- Server version	5.7.44-log
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+
+SET @MYSQLDUMP_TEMP_LOG_BIN = @@SESSION.SQL_LOG_BIN;
+SET @@SESSION.SQL_LOG_BIN= 0;
+
+--
+-- GTID state at the beginning of the backup 
+--
+
+SET @@GLOBAL.GTID_PURGED='aaaaaaaa-0000-0000-0000-000000000000:1-99';
+
+"""
+POST_57 = """
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+SET @@SESSION.SQL_LOG_BIN = @MYSQLDUMP_TEMP_LOG_BIN;
+
+-- Dump completed on 2026-11-18  3:00:00
+"""
+TRIGGER_SECTION = """/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8 */ ;
+/*!50003 SET character_set_results = utf8 */ ;
+/*!50003 SET collation_connection  = utf8_general_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`localhost`*/ /*!50003 TRIGGER `secret_trigger` BEFORE INSERT ON `master_sku` FOR EACH ROW BEGIN SET NEW.n = 'secret-row-value'; END */;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+"""
+SKU_57 = """--
+-- Table structure for table `master_sku`
+--
+
+DROP TABLE IF EXISTS `master_sku`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `master_sku` (
+  `sku_code` varchar(20) DEFAULT NULL,
+  `n` int(11) DEFAULT NULL,
+  `raw` blob,
+  `bits` bit(1) DEFAULT NULL,
+  `gen` int(11) GENERATED ALWAYS AS (`n` + 1) VIRTUAL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `master_sku`
+--
+
+LOCK TABLES `master_sku` WRITE;
+/*!40000 ALTER TABLE `master_sku` DISABLE KEYS */;
+INSERT INTO `master_sku` (`sku_code`, `n`, `raw`, `bits`) VALUES ('a',1,_binary '\\0\\n\\'secret-row-value',b'1'),('b',2,0x41424344,NULL);
+/*!40000 ALTER TABLE `master_sku` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Triggers for table `master_sku`
+--
+
+"""
+SKU_80 = SKU_57.replace("/*!40101 SET character_set_client = utf8 */;", "/*!50503 SET character_set_client = utf8mb4 */;").replace("int(11)", "int").replace("DEFAULT CHARSET=utf8;", "DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;").replace(
+    "VALUES ('a',1,_binary", "VALUES ('a',1,_binary").replace("utf8_general_ci", "utf8mb4_0900_ai_ci").replace("/*!50003 SET character_set_client  = utf8 */ ;", "/*!50003 SET character_set_client  = utf8mb4 */ ;")
+PRE_80 = PRE_57.replace("5.7.44, for Linux (x86_64)", "8.0.36, for Linux (x86_64)").replace("5.7.44-log", "8.0.36").replace("SET NAMES utf8 */", "SET NAMES utf8mb4 */").replace(
+    "/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;", "/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;") + "/*!50503 SET @OLD_CHARACTER_SET_CLIENT_X=@@character_set_client */;\n"
+
+
+class RealFormats(unittest.TestCase):
+    """Fixtures copied from the exact mysqldump 5.7 and 8.0 per-table and whole-database layouts (preamble, GTID, trigger section, postamble)."""
+
+    def run_files(self, files, extra=()):
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "d"
+            d.mkdir()
+            for name, body in files.items():
+                (d / name).write_bytes(body if isinstance(body, bytes) else body.encode("utf-8"))
+            full = profiler.profile_dump(d, MAPPING, [], order=runner.ORDER, whole_database=bool(extra))
+            p = subprocess.run(CLI + ["profile", "--dump-dir", str(d), "--out-dir", str(Path(t) / "out")] + list(extra), capture_output=True)
+            text = all_text(Path(t) / "out") if (Path(t) / "out").exists() else ""
+            return full, p, text
+
+    def check_sku(self, full, p, text):
+        self.assertFalse(full["refused"], full["refused"])
+        c = {c["name"]: c for c in full["tables"]["master_sku"]["columns"]}
+        self.assertEqual(full["tables"]["master_sku"]["rows"], 2)
+        self.assertEqual(c["raw"]["shapes"], {"binary": 2}); self.assertEqual((c["raw"]["min_length"], c["raw"]["max_length"]), (4, 19))          # lengths in BYTES (never the bytes)
+        self.assertEqual(c["bits"]["shapes"], {"binary": 1}); self.assertEqual(c["bits"]["null_share"], 0.5)
+        self.assertEqual(c["gen"]["rows"], 0)                        # a generated column the INSERT does not name: nothing counted
+        self.assertNotIn("secret-row-value", p.stderr.decode() + p.stdout.decode() + text)
+        self.assertNotIn("secret_trigger", p.stderr.decode() + p.stdout.decode() + text)
+
+    def test_mysqldump_5_7_per_table_file_with_trigger_section_gtid_binary_and_column_list(self):
+        full, p, text = self.run_files({"master_sku.sql": PRE_57 + SKU_57 + TRIGGER_SECTION + POST_57})
+        self.check_sku(full, p, text)
+
+    def test_mysqldump_8_0_per_table_file(self):
+        full, p, text = self.run_files({"master_sku.sql": PRE_80 + SKU_80 + TRIGGER_SECTION + POST_57})
+        self.check_sku(full, p, text)
+
+    def test_a_directive_that_is_not_a_set_is_still_refused(self):
+        body = PRE_57 + SKU_57 + "/*!50003 DROP TABLE `master_sku` */ ;\n"
+        full, p, _ = self.run_files({"master_sku.sql": body})
+        self.assertTrue(full["refused"]); self.assertEqual(p.returncode, 3)
+
+    def test_raw_non_utf8_bytes_are_opaque_in_a_blob_column_and_a_charset_refusal_in_a_text_column(self):
+        c = "CREATE TABLE `master_sku` (\n  `sku_code` varchar(20),\n  `raw` blob\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n"
+        ok = (c + "INSERT INTO `master_sku` VALUES ('a','\xff\xfe\x80');\n").encode("latin-1")
+        full, p, text = self.run_files({"master_sku.sql": ok})
+        self.assertFalse(full["refused"], full["refused"])
+        col = full["tables"]["master_sku"]["columns"][1]
+        self.assertEqual((col["shapes"], col["min_length"], col["max_length"]), ({"binary": 1}, 3, 3))
+        bad = (c + "INSERT INTO `master_sku` VALUES ('\xe9\xff','z');\n").encode("latin-1")
+        full, p, _ = self.run_files({"master_sku.sql": bad})
+        self.assertEqual(full["refused"][0].get("kind"), "charset")
+        self.assertIn("not valid text in the stated character set", p.stderr.decode())
+
+    def test_binary_literal_in_a_text_column_is_refused(self):
+        c = "CREATE TABLE `master_sku` (\n  `sku_code` varchar(20)\n) ENGINE=InnoDB;\n"
+        for lit in ("0x4142", "_binary 'zz'", "b'1'"):
+            full, p, _ = self.run_files({"master_sku.sql": c + f"INSERT INTO `master_sku` VALUES ({lit});\n"})
+            self.assertTrue(full["refused"], lit)
+
+    def test_partitioned_table_records_yes_and_the_count_never_the_bounds(self):
+        multi = ("CREATE TABLE `master_sku` (\n  `sku_code` varchar(20),\n  `n` int\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4\n"
+                 "/*!50100 PARTITION BY RANGE (`n`)\n(PARTITION p_secret_bound VALUES LESS THAN (1234567) ENGINE = InnoDB,\n PARTITION p1 VALUES LESS THAN (7654321) ENGINE = InnoDB,\n"
+                 " PARTITION pmax VALUES LESS THAN MAXVALUE ENGINE = InnoDB) */;\nINSERT INTO `master_sku` VALUES ('a',1);\n")
+        full, p, text = self.run_files({"master_sku.sql": multi})
+        self.assertFalse(full["refused"], full["refused"])
+        t = full["tables"]["master_sku"]
+        self.assertEqual((t["partitioned"], t["partitions"]), (True, 3))
+        for secret in ("1234567", "7654321", "p_secret_bound"):
+            self.assertNotIn(secret, text + p.stderr.decode())
+        one = "CREATE TABLE `master_sku` (\n  `n` int\n) ENGINE=InnoDB /*!50100 PARTITION BY HASH (`n`) PARTITIONS 8 */;\nINSERT INTO `master_sku` VALUES (1);\n"
+        full, _, _ = self.run_files({"master_sku.sql": one})
+        self.assertEqual(full["tables"]["master_sku"]["partitions"], 8)
+
+    def test_column_list_insert_maps_names_and_refuses_unknown_names_and_wrong_widths(self):
+        c = "CREATE TABLE `master_sku` (\n  `sku_code` varchar(20),\n  `n` int\n) ENGINE=InnoDB;\n"
+        full, _, _ = self.run_files({"master_sku.sql": c + "INSERT INTO `master_sku` (`n`) VALUES (5),(6);\n"})
+        cols = {x["name"]: x for x in full["tables"]["master_sku"]["columns"]}
+        self.assertEqual((cols["n"]["rows"], cols["sku_code"]["rows"]), (2, 0))
+        for bad in ("(`nope`) VALUES (1)", "(`n`,`n`) VALUES (1,2)", "(`n`) VALUES (1,2)", "(`sku_code`,`n`) VALUES ('x')"):
+            full, p, _ = self.run_files({"master_sku.sql": c + f"INSERT INTO `master_sku` {bad};\n"})
+            self.assertTrue(full["refused"], bad)
+            self.assertNotIn("nope", p.stderr.decode() + p.stdout.decode())
+
+    WHOLE = ("CREATE TABLE `master_routes` (\n  `route_code` varchar(20)\n) ENGINE=InnoDB;\nINSERT INTO `master_routes` VALUES ('SR-1'),('SR-2');\n"
+             "CREATE TABLE `secret_not_allowed` (\n  `a` varchar(9)\n) ENGINE=InnoDB;\nINSERT INTO `secret_not_allowed` VALUES ('secret-row-value');\n"
+             "CREATE TABLE `master_sku` (\n  `sku_code` varchar(20)\n) ENGINE=InnoDB;\nINSERT INTO `master_sku` VALUES ('x');\n")
+
+    def test_a_whole_database_file_is_read_one_table_per_create_section_when_asked(self):
+        full, p, text = self.run_files({"everything.sql": PRE_57 + self.WHOLE + POST_57}, extra=["--whole-database"])
+        self.assertFalse(full["refused"], full["refused"])
+        self.assertEqual(sorted(full["tables"]), ["master_routes", "master_sku"])
+        self.assertEqual(full["tables"]["master_routes"]["rows"], 2)
+        self.assertEqual(full["tables_not_on_allow_list_in_whole_file"], 1)
+        self.assertNotIn("secret", text + p.stderr.decode() + p.stdout.decode())
+        full, p, _ = self.run_files({"everything.sql": PRE_57 + self.WHOLE + POST_57})          # without the switch the file is only counted, never read
+        self.assertEqual(full["tables"], {})
+
+    def test_whole_database_insert_must_target_the_current_table(self):
+        body = self.WHOLE.replace("INSERT INTO `master_sku` VALUES ('x')", "INSERT INTO `master_routes` VALUES ('secret-row-value')")
+        full, p, _ = self.run_files({"everything.sql": body}, extra=["--whole-database"])
+        self.assertTrue(full["refused"]); self.assertNotIn("secret-row-value", p.stderr.decode() + p.stdout.decode())
+
+    def test_missing_tables_are_listed_and_the_exit_is_non_zero(self):
+        full, p, _ = self.run_files({"master_sku.sql": PRE_57 + SKU_57 + POST_57})
+        self.assertIn("master_routes", full["tables_missing"]); self.assertEqual(p.returncode, 3)
+        self.assertIn("MISSING", p.stderr.decode()); self.assertIn("master_routes", p.stderr.decode())
+
+    def test_a_refused_file_name_is_printed_only_when_on_the_allow_list(self):
+        full, p, text = self.run_files({"master_sku.sql.zst": b"x", "secret_customer_list.sql.zst": b"x", "another-secret.part1.sql": b"x"})
+        out = p.stderr.decode() + text
+        self.assertIn("master_sku", out); self.assertNotIn("secret_customer_list", out); self.assertNotIn("another-secret", out)
+        self.assertEqual(full["refused_files_not_on_allow_list"], 2)
+
+    def test_hours_and_descriptors_need_100_non_null_values_and_never_reach_the_sanitised_files(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "d"
+            d.mkdir()
+            rows = [("S%d" % (i % 5), "2026-03-05 0%d:00:00" % (i % 9) if i < 99 else None, 777 if i == 0 else None, 1 if i < 100 else None, "2026-03-05 0%d:00:00" % (i % 9) if i < 100 else None) for i in range(1200)]
+            write_table(d, "master_sku", ["`sku_code` varchar(5)", "`at99` datetime", "`one` int", "`n100` int", "`at100` datetime"], rows)
+            full = profiler.profile_dump(d, MAPPING, [], order=runner.ORDER)
+            profiler.write_outputs(Path(t) / "out", full)
+            san = (Path(t) / "out" / "apsis-profile.sanitised.json").read_text()
+        c = {c["name"]: c for c in full["tables"]["master_sku"]["columns"]}
+        self.assertNotIn("hour_of_day_stored", c["at99"]); self.assertNotIn("year_month_range", c["at99"])        # 99 non-null: nothing
+        self.assertNotIn("number_descriptor", c["one"])                                                         # a single non-null value: no descriptor
+        self.assertIn("hour_of_day_stored", c["at100"])                                                          # 100 non-null: full file only
+        self.assertNotIn("hour_of_day_stored", san)
 
 
 class OutDir(unittest.TestCase):
@@ -444,7 +683,7 @@ class Bounds(unittest.TestCase):
                     fh.write("INSERT INTO `trans_by_outlet_promotion_data` VALUES (%d,'%s','%s');\n" % (i, blob[i:] + str(i), blob[:-i - 1] + str(i)))
             self.assertGreater((d / "trans_by_outlet_promotion_data.sql").stat().st_size, 190_000_000)
             p = subprocess.run(CLI + ["profile", "--dump-dir", str(d), "--out-dir", str(Path(t) / "out"), "--cap", "1000"], capture_output=True)
-            self.assertEqual(p.returncode, 0, p.stderr.decode()[:300])
+            assertProfiledWithTablesMissing(self, p)
             rss_mb = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024
             self.assertLess(rss_mb, 300, f"peak RSS {rss_mb:.0f} MB")        # stated bound: under 300 MB for 100 KB values
 

@@ -118,9 +118,11 @@ class Unit(unittest.TestCase):
         self.assertEqual(rows[0], ("1", "a'b\n\\", None, "-2.50", "z"))
         self.assertEqual(rows[1], ("2", "x,(y);", None, "1e3", ""))
         self.assertEqual(rows[2], ("3", "it''s", "p''q"))      # an escaped quote pair and a doubled pair each decode once
-        from apsis_migration.mysqldump import UnsupportedShape
+        from apsis_migration.mysqldump import UnsupportedShape, Binary
+        b = parse_values("(1,0xAB,_binary 'xy',b'101');")[0]
+        self.assertEqual((b[0], b[1].nbytes, b[2].nbytes, b[3].nbytes), ("1", 1, 2, 1))   # opaque binary values: a length in bytes, never decoded
         with self.assertRaises(UnsupportedShape):
-            parse_values("(1,0xAB);")                          # a hex literal is not modelled: refused, never skipped
+            parse_values("(1,X'AB');")                         # a literal that is not modelled: refused, never skipped
 
     def test_uuid_v5_is_the_standard_one_and_pinned(self):
         ns = uuid.uuid5(uuid.NAMESPACE_URL, "urn:aktcl:aron:apsis-migration:v1")
@@ -210,7 +212,8 @@ class DryRun(unittest.TestCase):
             out = Path(t) / "out"
             env = dict(os.environ, PGHOST="/nonexistent", PGPORT="1")
             p = subprocess.run([sys.executable, "-I", str(ROOT / "apsis-migration.py"), "profile", "--dump-dir", str(Path(t) / "d"), "--out-dir", str(out)], capture_output=True, env=env)
-            self.assertEqual(p.returncode, 0, p.stderr.decode()[:300])
+            self.assertEqual(p.returncode, 3, p.stderr.decode()[:300])          # the synthetic dump lacks most of the 26 tables: listed as MISSING, exit non-zero
+            self.assertIn("MISSING", p.stderr.decode()); self.assertNotIn("REFUSED", p.stderr.decode())
             self.assertEqual(len(list(out.iterdir())), 4)
             self.assertIn("trans_sales_by_outlet", (out / "apsis-profile.json").read_text())
 

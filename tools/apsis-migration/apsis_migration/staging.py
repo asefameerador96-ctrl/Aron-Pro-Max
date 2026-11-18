@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 from . import keys, safety
-from .mysqldump import events, tsv_events
+from .mysqldump import events, tsv_events, Binary, ABSENT
 
 CRED = re.compile(r"(pass|pwd|hash|salt|token|otp|secret|key|imei|fcm|session|device)", re.I)
 PERSONAL = re.compile(r"(owner|phone|mobile|contact|(^|_)nid($|_)|(^|_)tin($|_)|trade_lic|e_?mail|address|(^|_)name($|_)|_name$|msisdn|cell|bkash|father|dob|birth|remarks|note|comment)", re.I)
@@ -152,6 +152,10 @@ class TableStager:
                 raise safety.Refused("refused: an INSERT in a dump file targets another table than the file's")
             out = []
             for r in rows:
+                if any(isinstance(v, Binary) for v in r):
+                    raise safety.Refused("refused: a binary value reached the phase-2 loader; binary columns are not loaded (decide per column in the review)")
+                if any(v is ABSENT for v in r):
+                    r = tuple(None if v is ABSENT else v for v in r)       # a generated column the dump's column list does not name: NULL
                 if len(r) != len(ts.columns):
                     raise ValueError(f"{table}: statement {ordinal}: a row has {len(r)} values but the table has {len(ts.columns)} columns")
                 k = keys.row_uuid(table, [r[i] for i in key_idx]) if key_idx else keys.row_uuid(table, [keys.full_row_key(r)])

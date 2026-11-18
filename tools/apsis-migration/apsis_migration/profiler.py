@@ -5,6 +5,7 @@ by `profile`; a column that looks like a code (status/type) only gets an `enum_c
 re-derives that test from the dump itself and lists the values of ONE column into an owner-only file. Memory is bounded in bytes: distinct values are tracked as
 fixed-size hashes up to a cap; shape classification looks at a 256-character prefix with linear-time rules."""
 import json
+import os
 import re
 import sys
 import time
@@ -12,7 +13,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from . import safety, staging
-from .mysqldump import UnsupportedShape, CharsetError, events
+from .mysqldump import UnsupportedShape, CharsetError, Binary, ABSENT, events
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CAP_DISTINCT = 50_000              # entries per column (a hash and a count: about 5 MB per column at the cap)
@@ -21,9 +22,10 @@ PREFIX = 256                       # shape classification sees at most this many
 ENUM_MAX = 30
 ENUM_MIN_ROWS = 1000
 ENUM_MIN_PER_VALUE = 20
+DESCRIBE_MIN_NONNULL = 100        # fewer non-null values in a column: no descriptor, no histogram
 DESCRIBE_MIN_ROWS = 1000          # below this a table gets only type, null share, lengths and shape classes
 SHAPES = ["empty", "datetime-like", "date-like", "time-like", "uuid-like", "hash-like", "email-like", "url-like", "phone-like", "digits-only", "decimal",
-          "bengali", "bengali-latin-mixed", "latin-text", "alnum-code", "other"]
+          "bengali", "bengali-latin-mixed", "latin-text", "alnum-code", "binary", "other"]
 SAFE_WORD = re.compile(r"^[A-Za-z0-9_]{1,32}$")
 
 _R_DT = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?$")
@@ -123,13 +125,24 @@ class Col:
         self.ym_min = self.ym_max = None
         self.zero_dates = 0
         self.hours = [0] * 24
+        self.binary = False
         self.numeric = base in ("tinyint", "smallint", "mediumint", "int", "integer", "bigint", "decimal", "numeric", "float", "double", "real", "bit", "year")
         self.temporal = base in ("date", "datetime", "timestamp")
 
     def add(self, v):
+        if v is ABSENT:                              # a column the INSERT's column list does not name (generated column): nothing was written, nothing is counted
+            return
         self.n += 1
         if v is None:
             self.nulls += 1
+            return
+        if isinstance(v, Binary):                    # opaque: class 'binary' and a length in bytes; never decoded, hashed, printed
+            L = v.nbytes
+            self.minlen = L if self.minlen is None else min(self.minlen, L)
+            self.maxlen = L if self.maxlen is None else max(self.maxlen, L)
+            self.shapes["binary"] += 1
+            self.all_short = False
+            self.binary = True
             return
         L = len(v)
         self.minlen = L if self.minlen is None else min(self.minlen, L)
@@ -182,7 +195,9 @@ class Col:
         if table_rows < DESCRIBE_MIN_ROWS:
             return False
         nn = self.n - self.nulls
-        return not (not self.capped and nn >= 100 and len(self.distinct) >= 0.9 * nn)
+        if nn < DESCRIBE_MIN_NONNULL:                # a few non-null values (a single one is a value) get no descriptor and no histogram
+            return False
+        return not (not self.capped and len(self.distinct) >= 0.9 * nn)
 
     def report(self, table_rows):
         big = table_rows >= DESCRIBE_MIN_ROWS
@@ -223,9 +238,9 @@ def load_refs(path):
     return json.loads(Path(path).read_text(encoding="utf-8")).get("refs", []) if path and Path(path).exists() else []
 
 
-def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, order=(), ref_cap=REF_CAP, log=lambda m: None):
+def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, order=(), ref_cap=REF_CAP, log=lambda m: None, whole_database=False):
     allowed = set(mapping["allowed_tables"])
-    files, refused_names = {}, 0
+    files, refused_names, refused_other, other_files = {}, 0, 0, []
     problems = []
     unsupported_ext = re.compile(r"\.(zst|bz2|xz|zip|lz4|7z|tar|tgz|part[0-9]*|[0-9]{5})(\.|$)|-schema(-create)?\.sql|\.[0-9]{5}\.sql", re.I)
 
@@ -243,7 +258,11 @@ def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, 
         m = re.match(r"^(.*)\.(sql|tsv)(\.gz)?$", p.name)
         if unsupported_ext.search(p.name):
             stem = re.split(r"[.\-]", p.name)[0]
-            problems.append({"table": stem if safety.IDENT.match(stem) and not re.search(r"[0-9]{8,}", stem) else "<name not a plain identifier>", "refused": "unsupported file shape: " + reason(p.name)})
+            if stem in allowed:                                            # a file name is printed verbatim ONLY if it is on the allow-list; the others are counted
+                problems.append({"table": stem, "refused": "unsupported file shape: " + reason(p.name)})
+            else:
+                problems.append({"table": "<file not on the allow-list>", "refused": "unsupported file shape: " + reason(p.name)})
+                refused_other += 1
             continue
         if not m:
             continue
@@ -251,7 +270,10 @@ def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, 
             files[safety.table(m.group(1), allowed)] = p
         except safety.Refused:
             refused_names += 1
-    out = {"tables": {}, "files_not_on_allow_list": refused_names, "tables_missing": sorted(allowed - set(files)), "refused": problems, "charset": charset,
+            if whole_database:
+                other_files.append(p)
+    out = {"tables": {}, "files_not_on_allow_list": refused_names, "tables_missing": sorted(allowed - set(files)), "refused": problems, "refused_files_not_on_allow_list": refused_other,
+           "tables_not_on_allow_list_in_whole_file": 0, "whole_database_mode": bool(whole_database), "charset": charset,
            "limits": {"distinct_cap_per_column": cap, "reference_key_cap": ref_cap, "shape_prefix_chars": PREFIX}}
     ref_by_master, ref_by_fact = {}, {}
     for r in refs:
@@ -259,39 +281,79 @@ def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, 
         ref_by_master.setdefault(r["master_table"], []).append(rc)
         ref_by_fact.setdefault(r["fact_table"], []).append(rc)
     ordered = sorted(files, key=lambda t: list(order).index(t) if t in order else 50)
-    for table in ordered:
-        t0 = time.time()
-        cols, schema, rows, names = None, None, 0, Names()
+    done = set()
+
+    def finish(table, schema, cols, rows, names, t0):
+        idx = []
+        for i in schema.indexes:
+            ent = {"kind": i["kind"] if i["kind"] in ("key", "unique", "fulltext", "spatial", "foreign") else "other", "name": names.show(i["name"]), "columns": [names.show(c) for c in i["columns"]]}
+            if i["kind"] == "foreign":
+                ent["references"] = i.get("references") if i.get("references") in allowed else "[table-not-on-allow-list]"
+                ent["ref_columns"] = [names.show(c) for c in i.get("ref_columns", [])]
+            idx.append(ent)
+        out["tables"][table] = {
+            "engine": safe_word(schema.engine), "declared_charset": safe_word(schema.charset), "rows": rows,
+            "partitioned": bool(schema.partitioned), "partitions": schema.partitions if schema.partitioned else 0,   # the count only, never the bounds
+            "primary_key": [names.show(c) for c in schema.pk], "indexes": idx,
+            "columns": [c.report(rows) for c in cols], "seconds": round(time.time() - t0, 1)}
+        done.add(table)
+        log(f"{table}: {rows} rows, {len(cols)} columns")
+
+    def read_file(path, table, multi_file):
+        """One file: one table (named by the file) or, for a whole-database file, one table per CREATE TABLE section (name validated, allow-list applied)."""
+        cur, cols, schema, rows, names, t0, skip = None, None, None, 0, Names(), time.time(), False
         try:
-            for ev in events(files[table], batch_rows=20000, charset=charset, strict=True, expect_table=table):
+            for ev in events(path, batch_rows=20000, charset=charset, strict=True, expect_table=table, multi=multi_file):
                 if ev[0] == "schema":
+                    if cur is not None:
+                        finish(cur, schema, cols, rows, names, t0)
+                        cur = None
                     schema = ev[1]
-                    rows = 0                      # the row counter and the column statistics are created together, here
+                    if multi_file:
+                        try:
+                            cur = safety.table(schema.name, allowed)
+                        except safety.Refused:
+                            out["tables_not_on_allow_list_in_whole_file"] += 1
+                            cur, skip = None, True                      # read (every line is still checked) but never profiled
+                        else:
+                            skip = False
+                        if cur in out["tables"] or cur in files:
+                            raise UnsupportedShape("a table in the whole-database file also has its own file")
+                    else:
+                        cur, skip = table, False
+                    rows, t0, names = 0, time.time(), Names()
+                    if skip:
+                        cols = None
+                        continue
                     cols = [Col(names.show(c.name), c.base + c.args + (" unsigned" if c.unsigned else ""), c.base, cap) for c in schema.columns]
                     raw_names = schema.column_names()
-                    for rc in ref_by_master.get(table, []):
+                    for rc in ref_by_master.get(cur, []):
                         rc.master_col = staging.pick(rc.spec["master_columns"], [n for n in raw_names if safety.IDENT.match(n)])
                         rc.m_idx = raw_names.index(rc.master_col) if rc.master_col else None
-                    for rc in ref_by_fact.get(table, []):
+                    for rc in ref_by_fact.get(cur, []):
                         rc.fact_col = staging.pick(rc.spec["fact_columns"], [n for n in raw_names if safety.IDENT.match(n)])
                         rc.f_idx = raw_names.index(rc.fact_col) if rc.fact_col else None
+                        rc.master_not_yet_read = rc.spec["master_table"] not in done
                     continue
-                _, tname, batch, ordinal, done = ev
-                if tname != table:
-                    raise UnsupportedShape("an INSERT targets another table than the file's")
+                _, tname, batch, ordinal, done_stmt = ev
+                if skip:
+                    continue
+                if tname != cur:
+                    raise UnsupportedShape("an INSERT targets another table than the CREATE TABLE that precedes it")
                 for r in batch:
                     rows += 1
                     for i, v in enumerate(r):
                         cols[i].add(v)
-                    for rc in ref_by_master.get(table, []):
-                        if rc.m_idx is not None and r[rc.m_idx] is not None:
+                    for rc in ref_by_master.get(cur, []):
+                        v = r[rc.m_idx] if rc.m_idx is not None else None
+                        if v is not None and v is not ABSENT and not isinstance(v, Binary):
                             if len(rc.master_exact) < ref_cap:
-                                rc.master_exact.add(hash(r[rc.m_idx])); rc.master_norm.add(hash(norm_code(r[rc.m_idx])))
+                                rc.master_exact.add(hash(v)); rc.master_norm.add(hash(norm_code(v)))
                             else:
                                 rc.master_capped = True
-                    for rc in ref_by_fact.get(table, []):
-                        if rc.f_idx is not None and r[rc.f_idx] is not None:
-                            v = r[rc.f_idx]
+                    for rc in ref_by_fact.get(cur, []):
+                        v = r[rc.f_idx] if rc.f_idx is not None else None
+                        if v is not None and v is not ABSENT and not isinstance(v, Binary):
                             rc.rows += 1
                             ex = hash(v) in rc.master_exact
                             nm = ex or hash(norm_code(v)) in rc.master_norm
@@ -307,30 +369,23 @@ def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, 
                                         rc.fact_missing_distinct += (not nm)
             if schema is None:
                 raise UnsupportedShape("the file holds no CREATE TABLE statement (mydumper data file or empty file)")
+            if cur is not None:
+                finish(cur, schema, cols, rows, names, t0)
         except UnsupportedShape as e:
-            problems.append({"table": table, "refused": str(e)[:240]})
-            log(f"{table}: REFUSED ({e})")
-            continue
+            problems.append({"table": cur or table or "<whole-database file>", "refused": str(e)[:240]})
+            log(f"{cur or table or '<whole-database file>'}: REFUSED ({e})")
         except CharsetError as e:
-            problems.append({"table": table, "refused": str(e)[:240], "kind": "charset"})
-            log(f"{table}: REFUSED (character set)")
-            continue
+            problems.append({"table": cur or table or "<whole-database file>", "refused": str(e)[:240], "kind": "charset"})
+            log(f"{cur or table or '<whole-database file>'}: REFUSED (character set)")
         except Exception as e:      # a garbled file must refuse its table, never abort the whole run or print what it holds
-            problems.append({"table": table, "refused": f"unreadable file (internal error class {type(e).__name__})"})
-            log(f"{table}: REFUSED (unreadable)")
-            continue
-        idx = []
-        for i in schema.indexes:
-            ent = {"kind": i["kind"] if i["kind"] in ("key", "unique", "fulltext", "spatial", "foreign") else "other", "name": names.show(i["name"]), "columns": [names.show(c) for c in i["columns"]]}
-            if i["kind"] == "foreign":
-                ent["references"] = i.get("references") if i.get("references") in allowed else "[table-not-on-allow-list]"
-                ent["ref_columns"] = [names.show(c) for c in i.get("ref_columns", [])]
-            idx.append(ent)
-        out["tables"][table] = {
-            "engine": safe_word(schema.engine), "declared_charset": safe_word(schema.charset), "rows": rows,
-            "primary_key": [names.show(c) for c in schema.pk], "indexes": idx,
-            "columns": [c.report(rows) for c in cols], "seconds": round(time.time() - t0, 1)}
-        log(f"{table}: {rows} rows, {len(cols)} columns")
+            problems.append({"table": cur or table or "<whole-database file>", "refused": f"unreadable file (internal error class {type(e).__name__})"})
+            log(f"{cur or table or '<whole-database file>'}: REFUSED (unreadable)")
+
+    for table in ordered:
+        read_file(files[table], table, False)
+    for p in other_files:                                                  # whole-database files (only with --whole-database), one table per CREATE TABLE section
+        read_file(p, None, True)
+    out["tables_missing"] = sorted(allowed - set(out["tables"]) - {pr["table"] for pr in problems})
     out["reference_checks"] = []
     for r in refs:
         for rc in ref_by_fact.get(r["fact_table"], []):
@@ -339,12 +394,12 @@ def profile_dump(dump_dir, mapping, refs=(), charset="utf-8", cap=CAP_DISTINCT, 
             res = {"name": r.get("name", ""), "fact": f"{r['fact_table']}.{rc.fact_col if rc.fact_col else '(no column)'}",
                    "master": f"{r['master_table']}.{rc.master_col if rc.master_col else '(no column)'}",
                    "resolved": bool(rc.fact_col and rc.master_col), "fact_rows_with_key": rc.rows, "master_keys": len(rc.master_exact), "master_keys_capped": rc.master_capped}
-            if rc.rows and not rc.master_capped:
+            if rc.rows and not rc.master_capped and not getattr(rc, "master_not_yet_read", False):
                 res.update({"share_rows_found_exact": round(rc.found_exact / rc.rows, 6), "share_rows_found_after_normalisation": round(rc.found_norm / rc.rows, 6),
                             "distinct_fact_keys_sampled": len(rc.fact_distinct), "distinct_sample_capped": rc.fact_capped,
                             "distinct_sampled_not_found_after_normalisation": rc.fact_missing_distinct})
             out["reference_checks"].append(res)
-    out["ok"] = not problems
+    out["ok"] = not problems and not out["tables_missing"]          # a missing allow-listed table is a failure too (listed in the output)
     return out
 
 
@@ -353,7 +408,7 @@ def sanitise(full):
     s = json.loads(json.dumps(full))
     for t in s["tables"].values():
         for c in t["columns"]:
-            for k in ("number_descriptor", "year_month_range"):
+            for k in ("number_descriptor", "year_month_range", "hour_of_day_stored"):
                 c.pop(k, None)
     s["_note"] = "sanitised rendering: names, types, counts, shapes and flags only; no descriptors, no ranges, no values"
     return s
@@ -417,8 +472,11 @@ def profile_values(dump_dir, table, column, confirm_column, out_dir, mapping, ch
     safety.ident(column, "column name")
     if confirm_column != column:
         raise safety.Refused("refused: type the column name again with --confirm-column to confirm that a person decides this column holds codes, not people")
-    warn(f"WARNING: listing the values of column {column} of table {table}. A person has decided that this column holds codes, not people. "
-         "The output is an OWNER-ONLY file: never commit it, never share it.")
+    if any((p / n).exists() for n in ("apsis-profile.sanitised.json", "apsis-profile.sanitised.md", "apsis-profile.json", "apsis-profile.md")):
+        raise safety.Refused("refused: write the values file into a directory DIFFERENT from the profile files (the sanitised pair is the only thing that may leave the machine)")
+    warn(f"WARNING: listing the values of column {column} of table {table}. The test can only check the SHAPE of the values: names, places, PINs and gender codes can pass it. "
+         "A PERSON must look at the column and judge that it holds codes, not people, before this file is used or shown to anyone. "
+         "The output is an OWNER-ONLY file (mode 0600): never commit it, never share it.")
     files = {m.group(1): f for f in Path(dump_dir).iterdir() if (m := re.match(r"^(.*)\.(sql|tsv)(\.gz)?$", f.name))}
     if table not in files:
         raise safety.Refused("refused: the table's file is not in the dump folder")
@@ -433,14 +491,21 @@ def profile_values(dump_dir, table, column, confirm_column, out_dir, mapping, ch
         for r in ev[2]:
             rows += 1
             v = r[idx]
+            if v is None:
+                continue                                          # NULL is excluded from the test exactly as `profile` excludes it from the distinct count
+            if not isinstance(v, str):
+                raise safety.Refused("refused: the column holds binary or absent values, not codes")
             counts[v] = counts.get(v, 0) + 1
             if len(counts) >= ENUM_MAX:
                 raise safety.Refused("refused: the column fails the enum-candidate test (30 or more distinct values)")
-    ok = (rows >= ENUM_MIN_ROWS and counts and all(v is not None and len(v) <= 24 and _ENUM_VALUE.match(v) for v in counts)
+    ok = (rows >= ENUM_MIN_ROWS and counts and all(len(v) <= 24 and _ENUM_VALUE.match(v) for v in counts)
           and min(counts.values()) >= ENUM_MIN_PER_VALUE)
     if not ok:
         raise safety.Refused("refused: the column fails the enum-candidate test re-derived from the dump (table of 1000+ rows, fewer than 30 distinct values, each in 20+ rows, all short codes)")
     p.mkdir(parents=True, exist_ok=True)
     f = p / f"apsis-values-{table}-{column}.OWNER-ONLY.json"
-    f.write_text(json.dumps({"table": table, "column": column, "value_counts": dict(sorted(counts.items(), key=lambda kv: -kv[1]))}, indent=1, ensure_ascii=False), encoding="utf-8")
+    fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps({"table": table, "column": column, "value_counts": dict(sorted(counts.items(), key=lambda kv: -kv[1]))}, indent=1, ensure_ascii=False))
+    os.chmod(f, 0o600)
     return f, len(counts)

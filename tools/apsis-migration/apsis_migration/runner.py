@@ -612,6 +612,7 @@ def main(argv=None):
         s.add_argument("--out-dir", help="with profile: directory OUTSIDE the repository for the four profile files")
         s.add_argument("--refs", default=str(HERE / "mapping" / "profile_refs.json"))
         s.add_argument("--cap", type=int, default=50000, help="with profile: distinct-value cap per column (entries; a hash and a count each)")
+        s.add_argument("--whole-database", action="store_true", help="with profile: files in the folder that are not named after a table are read as whole-database dumps (one CREATE TABLE section per table)")
         s.add_argument("--table", help="with profile-values")
         s.add_argument("--column", help="with profile-values")
         s.add_argument("--confirm-column", help="with profile-values: type the column name again to confirm")
@@ -627,11 +628,14 @@ def main(argv=None):
             profiler.check_out_dir(a.out_dir)
         except safety.Refused as e:
             sys.exit(str(e))
-        full = profiler.profile_dump(a.dump_dir, mapping, profiler.load_refs(a.refs), charset=a.charset, cap=a.cap, order=ORDER, log=lambda m: print(m, file=sys.stderr, flush=True))
+        full = profiler.profile_dump(a.dump_dir, mapping, profiler.load_refs(a.refs), charset=a.charset, cap=a.cap, order=ORDER, log=lambda m: print(m, file=sys.stderr, flush=True),
+                                     whole_database=a.whole_database)
         profiler.write_outputs(a.out_dir, full)
         print(f"profile: {len(full['tables'])} table(s), {len(full['refused'])} refused, {len(full['tables_missing'])} missing; written to the output directory")
         for r in full["refused"]:
             print(f"REFUSED {r['table']}: {r['refused']}", file=sys.stderr)
+        if full["tables_missing"]:
+            print("MISSING allow-listed table(s) (the run exits non-zero): " + ", ".join(full["tables_missing"]), file=sys.stderr)
         return 0 if full["ok"] else 3
     if a.cmd == "profile-values":
         from . import profiler

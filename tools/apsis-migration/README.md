@@ -19,9 +19,9 @@ apsis-migration.py reset-transform --dsn ... --db-role apsis_migrator           
 ```
 The tool refuses to run without `--db-role apsis_migrator`, with a password in `--dsn`, or without an explicit `--source-tz`.
 
-* `apsis_migration/profiler.py` (phase 1): structure, counts, lengths, shapes, enum-candidate flags, reference shares, coarse descriptors in the full file (never an exact min/max); no row and no value list is ever written. `mapping/profile_refs.json`: the reference checks.
-* `apsis_migration/mysqldump.py` streams mysqldump SQL (`.sql`, `.sql.gz`; one `INSERT ... VALUES (...),(...);` per line; mydumper's split layout is
-  **not** supported) or TSV, strictly as UTF-8 (a decode failure stops the run; `--charset` only on the owner's decision). `staging.py` creates logged
+* `apsis_migration/profiler.py` (phase 1): structure, counts, lengths, shapes, enum-candidate flags, reference shares, coarse descriptors in the full file (never an exact min/max; hour-of-day histograms in the full file only); no row and no value list is ever written. `mapping/profile_refs.json`: the reference checks.
+* `apsis_migration/mysqldump.py` streams mysqldump SQL (`.sql`, `.sql.gz`; one `INSERT ... VALUES (...),(...);` per line, with or without a column list; trigger sections, partition clauses, binary/hex/bit values in binary columns and
+  whole-database files (`profile --whole-database`) are recognised constructs; mydumper's split layout is **not** supported) or TSV, strictly as UTF-8 (a decode failure stops the run; `--charset` only on the owner's decision). `staging.py` creates logged
   `apsis_stage.<table>` tables (types mapped, no transformation of values), only the columns the **reviewed list** keeps, plus `_row_uuid` (UUID v5),
   `_chunk`, `_stmt`. `runner.py` orchestrates; `gates.py` decides pass/fail; `safety.py` validates every name from the dump; `keys.py` holds the key rule.
 * `mapping/columns.json`: canonical target column -> candidate vendor column names (first present wins; `{direct, ref}` when a fact carries an id);

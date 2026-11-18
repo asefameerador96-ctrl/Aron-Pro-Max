@@ -1,11 +1,14 @@
 """Strict streaming reader for mysqldump SQL files (optionally .gz) and TSV with a header. EVERY line of a file is accounted for: it is consumed by a known
 construct or the file is REFUSED (UnsupportedShape): nothing is skipped silently. Values stay Python str / None (numbers stay as text: no float touches money).
 
-Known constructs: blank lines; `--` comments and single-line `/* ... */` comments; the mysqldump directives `/*!NNNNN SET ... */;` and
-`/*!NNNNN ALTER TABLE `t` DISABLE|ENABLE KEYS */;`; plain `SET ...;`; `DROP TABLE IF EXISTS`; `LOCK TABLES`/`UNLOCK TABLES`; exactly one `CREATE TABLE` whose name is
-the file's table; one `INSERT INTO t VALUES (...),(...);` per line; and `DELIMITER ;;` ... `DELIMITER ;` blocks (trigger/routine bodies), which are skipped WITHOUT
-reading their statements (never counted as rows). Anything else (UPDATE, DELETE, ALTER, a prefixed or conditional-comment INSERT, a second CREATE TABLE, a CREATE of
-another name, REPLACE INTO, a column list, a row-spanning INSERT, ...) refuses the file."""
+Known constructs: blank lines; `--` comments and single-line `/* ... */` comments; the mysqldump directives `/*!NNNNN SET ... */;` (also with a space before the
+semicolon, as written around trigger sections) and `/*!NNNNN ALTER TABLE `t` DISABLE|ENABLE KEYS */;`; plain `SET ...;`; `DROP TABLE IF EXISTS`; `LOCK TABLES`/`UNLOCK
+TABLES`; `CREATE TABLE` (one per file when the file's table is known; any number in a whole-database file: each is its own table, name validated by the caller) incl.
+the `/*!50100 PARTITION BY ... */` clause (recorded as partitioned + partition count, never the bounds); one `INSERT INTO t [(columns)] VALUES (...),(...);` per line
+(a column list is mapped by name and must name existing columns); and `DELIMITER ;;` ... `DELIMITER ;` blocks (trigger/routine bodies), which are skipped WITHOUT reading
+their statements (never counted as rows). Binary values (`_binary '..'`, `0x..`, `b'..'`, raw bytes in a quoted string) are accepted ONLY for columns declared binary/
+varbinary/blob/bit/geometry and are opaque (a byte length, never decoded). Anything else (UPDATE, DELETE, ALTER, a prefixed or conditional-comment INSERT, REPLACE INTO, a
+row-spanning INSERT, ...) refuses the file."""
 import gzip
 import io
 import re
@@ -33,7 +36,26 @@ _CONSTRAINT_OTHER = re.compile(r"^\s*(CONSTRAINT\s+`[^`]*`\s+CHECK\s*\(|CHECK\s*
 _TAIL = re.compile(r"ENGINE\s*=\s*([A-Za-z0-9_]+)", re.I)
 _TAILCS = re.compile(r"CHARSET\s*=\s*([A-Za-z0-9_]+)", re.I)
 _INSERT = re.compile(r"^INSERT (?:IGNORE )?INTO `([^`]*)`\s*(\(([^)]*)\))?\s*VALUES\s*", re.I)
-_DIRECTIVE_SET = re.compile(r"^/\*!\d{5} SET [^;*]*\*/;$")
+_PART = re.compile(r"/\*!\d{5} PARTITION BY")
+_PARTITION_WORD = re.compile(r"(?<![A-Za-z])PARTITION\s+(?!BY\b)[`A-Za-z0-9_]+", re.I)
+_PARTITIONS_N = re.compile(r"PARTITIONS\s+([0-9]+)", re.I)
+_BIT = re.compile(r"[bB]'[01]*'|0b[01]+")
+_HEX = re.compile(r"0x[0-9A-Fa-f]+")
+BINARY_TYPES = {"binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob", "bit", "geometry", "point", "linestring", "polygon", "multipoint",
+                "multilinestring", "multipolygon", "geometrycollection"}
+_SURR = re.compile(r"[\udc80-\udcff]")
+
+
+class Binary:
+    """An opaque binary value: only its length in bytes is known. Never decoded, never printed."""
+    __slots__ = ("nbytes",)
+
+    def __init__(self, nbytes):
+        self.nbytes = nbytes
+
+
+ABSENT = object()           # a column that a column-list INSERT does not name (generated columns are normally absent)
+_DIRECTIVE_SET = re.compile(r"^/\*!\d{5} SET [^;*]*\*/ ?;$")
 _DIRECTIVE_KEYS = re.compile(r"^/\*!\d{5} ALTER TABLE `[^`]*` (DISABLE|ENABLE) KEYS \*/;$")
 _COMMENT = re.compile(r"^/\*[^!].*\*/$|^/\*\*/$")
 _SET = re.compile(r"^SET [A-Za-z@_][^;]*;$", re.I)
@@ -62,6 +84,8 @@ class TableSchema:
     indexes: list = field(default_factory=list)      # [{"kind": "key|unique|fulltext|spatial|foreign", "name": .., "columns": [..]}]
     engine: str = ""
     charset: str = ""
+    partitioned: bool = False
+    partitions: int = 0
 
     def column_names(self):
         return [c.name for c in self.columns]
@@ -71,7 +95,7 @@ def _unescape(body: str) -> str:
     """One pass, left to right: a backslash escape or a doubled quote is decoded once. NUL is removed."""
     if "\\" not in body and "''" not in body:
         return body
-    return _UNESC.sub(lambda m: "'" if m.group(1) is None else _ESC.get(m.group(1), m.group(1)), body).replace("\0", "")
+    return _UNESC.sub(lambda m: "'" if m.group(1) is None else _ESC.get(m.group(1), m.group(1)), body)
 
 
 _TSV = re.compile(r"\\(.)", re.S)
@@ -143,6 +167,22 @@ def iter_values(text: str):
                 j = _scan_string(text, i)
                 cur.append(_unescape(text[i + 1:j - 1]))
                 i = j
+            elif text.startswith("_binary", i) and i + 7 < n and text[i + 7] in " '":
+                k = _WS.match(text, i + 7).end()
+                if k >= n or text[k] != "'":
+                    raise UnsupportedShape(_BAD)
+                j = _scan_string(text, k)
+                cur.append(Binary(len(_unescape(text[k + 1:j - 1]).encode("utf-8", "surrogateescape"))))
+                i = j
+            elif _HEX.match(text, i):
+                m = _HEX.match(text, i)
+                cur.append(Binary((len(m.group(0)) - 2 + 1) // 2))
+                i = m.end()
+            elif _BIT.match(text, i):
+                m = _BIT.match(text, i)
+                bits = len(m.group(0)) - (3 if m.group(0)[0] in "bB" else 2)
+                cur.append(Binary(max(1, (bits + 7) // 8)))
+                i = m.end()
             elif text.startswith("NULL", i) and not (i + 4 < n and (text[i + 4].isalnum() or text[i + 4] == "_")):
                 cur.append(None)
                 i += 4
@@ -166,7 +206,7 @@ def parse_values(text: str):
 
 
 def _open(path, charset="utf-8", strict=True):
-    errors = "strict" if strict else "replace"
+    errors = "surrogateescape" if strict else "replace"      # strict: non-UTF-8 bytes survive as lone surrogates and are judged per column (binary: opaque; text: charset refusal)
     if str(path).endswith(".gz"):
         return io.TextIOWrapper(gzip.open(path, "rb"), encoding=charset, errors=errors, newline="\n")
     return open(path, "r", encoding=charset, errors=errors, newline="\n")
@@ -193,16 +233,71 @@ def _split_type(rest: str):
     return re.match(r"^\s*`[^`]*`\s+([a-zA-Z]+)(\((?:[^()']|'[^']*')*\))?(\s+unsigned)?", rest, re.I)
 
 
-def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=True, expect_table=None):
-    """Yield ('schema', TableSchema) and ('rows', table, rows, statement_ordinal, statement_done). expect_table: the file's table (stem); a CREATE of another
-    name is refused. skip_statements: INSERT statements with ordinal <= this are skipped (resume); the CREATE TABLE still yields."""
-    schema, in_create, in_block = None, False, False
-    creates, ordinal = 0, 0
+def _check_row(row, schema, order, lineno, ordinal):
+    """Width by position (or by the INSERT's column list), binary values only in binary-typed columns, non-UTF-8 bytes only in binary-typed columns.
+    Returns the row in table order (ABSENT for a column the INSERT does not name)."""
+    cols = schema.columns
+    width = len(order) if order is not None else len(cols)
+    if len(row) != width:
+        raise UnsupportedShape(f"a row has {len(row)} values but the {'column list names' if order is not None else 'table has'} {width} columns (statement {ordinal}): a shifted or garbled row")
+    out = row if order is None else [ABSENT] * len(cols)
+    for k, v in enumerate(row):
+        i = k if order is None else order[k]
+        binary = cols[i].base in BINARY_TYPES
+        if not binary and isinstance(v, str) and "\0" in v:
+            v = v.replace("\0", "")                              # a NUL in a text value cannot be stored in text columns; binary columns keep exact byte lengths
+        if isinstance(v, Binary):
+            if not binary:
+                raise UnsupportedShape(f"a binary literal in a column that is not declared binary (statement {ordinal})")
+        elif v is not None and binary and isinstance(v, str) and not v.isascii():
+            row_v = Binary(len(v.encode("utf-8", "surrogateescape")))
+            v = row_v
+        elif isinstance(v, str) and not v.isascii() and _SURR.search(v):
+            raise CharsetError(f"the file is not valid text in the stated character set near line {lineno}: do not guess; the owner decides the character set (Q2), then pass --charset")
+        elif binary and isinstance(v, str):
+            v = Binary(len(v.encode("utf-8", "surrogateescape")))
+        if order is None:
+            if out is row:
+                out = list(row)
+            out[i] = v
+        else:
+            out[i] = v
+    return tuple(out)
+
+
+def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=True, expect_table=None, multi=False):
+    """Yield ('schema', TableSchema) and ('rows', table, rows, statement_ordinal, statement_done). expect_table: the file's table (stem) when it is known; a CREATE of
+    another name is refused and a second CREATE is refused. multi=True: a whole-database file: every CREATE TABLE section is its own table (the caller validates the
+    name against its allow-list), an INSERT must target the table whose CREATE is current. skip_statements: INSERT statements with ordinal <= this are skipped (resume)."""
+    schema, in_create, in_block, in_part, in_tail = None, False, False, False, False
+    creates, ordinal, part_count = 0, 0, 0
+    seen = set()
     with _open(path, charset, strict) as fh:
         for lineno, line in _lines(fh):
             if in_block:                                         # a DELIMITER block (trigger/routine body): skipped WITHOUT reading its statements
                 if line.strip() == "DELIMITER ;":
                     in_block = False
+                continue
+            if in_tail:                                          # `) ENGINE=...` without `;`: only a PARTITION clause may follow
+                in_tail = False
+                if not _PART.search(line.strip()):
+                    raise UnsupportedShape(f"the closing line of a CREATE TABLE does not end the statement (file line {lineno})")
+                s = line.strip()
+                schema.partitioned = True
+                mn = _PARTITIONS_N.search(s)
+                part_count = int(mn.group(1)) if mn else len(_PARTITION_WORD.findall(s))
+                if s.endswith("*/;"):
+                    schema.partitions = part_count
+                    yield ("schema", schema)
+                else:
+                    in_part = True
+                continue
+            if in_part:                                          # the rest of a multi-line /*!50100 PARTITION BY ... */ clause: counted, never read (the bounds are values)
+                part_count += len(_PARTITION_WORD.findall(line))
+                if line.rstrip().endswith("*/;"):
+                    in_part = False
+                    schema.partitions = part_count
+                    yield ("schema", schema)
                 continue
             if in_create:
                 s = line.strip()
@@ -210,6 +305,19 @@ def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=Tr
                     in_create = False
                     me, mc2 = _TAIL.search(s), _TAILCS.search(s)
                     schema.engine, schema.charset = (me.group(1) if me else ""), (mc2.group(1) if mc2 else "")
+                    if _PART.search(s):
+                        schema.partitioned = True
+                        mn = _PARTITIONS_N.search(s)
+                        part_count = int(mn.group(1)) if mn else len(_PARTITION_WORD.findall(s))
+                        if s.endswith("*/;"):
+                            schema.partitions = part_count
+                            yield ("schema", schema)
+                        else:
+                            in_part = True
+                        continue
+                    if not s.endswith(";"):
+                        in_tail = True
+                        continue
                     yield ("schema", schema)
                     continue
                 mp = _PK.match(s)
@@ -251,34 +359,41 @@ def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=Tr
             mc = _CREATE.match(s)
             if mc:
                 creates += 1
-                if creates > 1:
+                if not multi and creates > 1:
                     raise UnsupportedShape(f"a second CREATE TABLE in the file (line {lineno}): one table per file")
-                if expect_table is not None and mc.group(1) != expect_table:
+                if not multi and expect_table is not None and mc.group(1) != expect_table:
                     raise UnsupportedShape("the table named inside the dump file is not the file's name")
+                if multi:
+                    if mc.group(1) in seen:
+                        raise UnsupportedShape(f"the same table is created twice in one file (line {lineno})")
+                    seen.add(mc.group(1))
+                    ordinal = 0
                 schema = TableSchema(mc.group(1))
                 in_create = True
                 continue
             mi = _INSERT.match(line)
             if mi:
-                if mi.group(2):
-                    raise UnsupportedShape(f"INSERT with a column list at line {lineno}: re-dump without --complete-insert (columns are read by position)")
                 if schema is None:
                     raise UnsupportedShape(f"INSERT before any CREATE TABLE at line {lineno} (a data-only file: mydumper layout is not supported)")
-                if expect_table is not None and mi.group(1) != expect_table:
-                    raise UnsupportedShape("an INSERT targets another table than the file's")
+                if mi.group(1) != schema.name:
+                    raise UnsupportedShape("an INSERT targets another table than the CREATE TABLE that precedes it")
+                order = None
+                if mi.group(2):
+                    names = re.findall(r"`([^`]*)`", mi.group(3))
+                    cn = schema.column_names()
+                    if not names or len(names) != len(set(names)) or any(n not in cn for n in names):
+                        raise UnsupportedShape(f"INSERT with a column list that names a column the table does not have (line {lineno})")
+                    order = [cn.index(n) for n in names]
                 if not line.rstrip().endswith(";"):
                     raise UnsupportedShape(f"an INSERT statement does not end on its line (line {lineno}): row-spanning statements are not read; re-dump with one statement per line")
                 ordinal += 1
                 if ordinal <= skip_statements:
                     continue
-                width = len(schema.columns)
                 it = iter_values(line[mi.end():])
                 try:
                     cur = list(islice(it, batch_rows))
                     while cur:
-                        for r in cur:
-                            if len(r) != width:
-                                raise UnsupportedShape(f"a row has {len(r)} values but the table has {width} columns (statement {ordinal}): a shifted or garbled row")
+                        cur = [_check_row(r, schema, order, lineno, ordinal) for r in cur]
                         nxt = list(islice(it, batch_rows))
                         yield ("rows", mi.group(1), cur, ordinal, not nxt)
                         cur = nxt
@@ -289,6 +404,10 @@ def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=Tr
             raise UnsupportedShape(f"a line the reader does not recognise (file line {lineno}): UPDATE, DELETE, ALTER, a conditional-comment statement or other text is refused, never skipped")
         if in_block:
             raise UnsupportedShape("a DELIMITER block is not closed before the end of the file")
+        if in_tail:
+            raise UnsupportedShape("a CREATE TABLE statement is not closed before the end of the file")
+        if in_part:
+            raise UnsupportedShape("a PARTITION clause is not closed before the end of the file")
         if in_create:
             raise UnsupportedShape("a CREATE TABLE statement is not closed before the end of the file")
 
