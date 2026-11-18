@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -86,6 +87,9 @@ fun PermissionGate(
     }
 }
 
+/** True inside the SR app: the blocked screen then wears the old SR's buttons (gradient primary, charcoal back); AMO and TSO keep the kit's. */
+val LocalManualPermissionLook = androidx.compose.runtime.staticCompositionLocalOf { false }
+
 /** The blocked screen of F-SYS-023: what is blocked, why the app needs the permission, and the one way forward. */
 @Composable
 fun PermissionBlockedContent(decision: GateDecision.Blocked, onAction: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier, coarseOnly: Boolean = false) {
@@ -93,11 +97,22 @@ fun PermissionBlockedContent(decision: GateDecision.Blocked, onAction: () -> Uni
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.L).testTag(PermissionGateTags.BLOCKED),
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
-        Text(stringResource(titleOf(decision.feature)), style = MaterialTheme.typography.headlineSmall)
+        val manual = LocalManualPermissionLook.current
+        Text(
+            stringResource(titleOf(decision.feature)), style = MaterialTheme.typography.headlineSmall,
+            // the printer chip hangs under the bar in the SR frame: the title starts below it
+            modifier = if (manual) Modifier.padding(top = androidx.compose.ui.unit.Dp(14f)) else Modifier,
+            color = if (manual) com.aktcl.aron.core.ui.LocalAronLook.current.purple else androidx.compose.ui.graphics.Color.Unspecified,
+        )
         AronBanner(stringResource(rationaleOf(decision, coarseOnly)), kind = BannerKind.Warning)
         if (decision.action == GateAction.OPEN_APP_SETTINGS) Text(stringResource(settingsStepsOf(decision.permission)), style = MaterialTheme.typography.bodyLarge)
-        AronPrimaryButton(stringResource(actionOf(decision.action)), onAction, Modifier.testTag(PermissionGateTags.ACTION))
-        AronSecondaryButton(stringResource(R.string.perm_gate_back), onBack, Modifier.testTag(PermissionGateTags.BACK))
+        if (manual) {
+            com.aktcl.aron.core.ui.aron.AronPrimaryButton(stringResource(actionOf(decision.action)), onAction, Modifier.fillMaxWidth().testTag(PermissionGateTags.ACTION))
+            com.aktcl.aron.core.ui.aron.AronDarkButton(stringResource(R.string.perm_gate_back), onBack, Modifier.fillMaxWidth().testTag(PermissionGateTags.BACK))
+        } else {
+            AronPrimaryButton(stringResource(actionOf(decision.action)), onAction, Modifier.testTag(PermissionGateTags.ACTION))
+            AronSecondaryButton(stringResource(R.string.perm_gate_back), onBack, Modifier.testTag(PermissionGateTags.BACK))
+        }
     }
 }
 
