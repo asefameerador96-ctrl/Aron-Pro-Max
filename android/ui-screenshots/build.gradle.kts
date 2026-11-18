@@ -8,7 +8,7 @@ plugins {
 }
 
 // BOOTSTRAP SWITCH: true records the goldens into build/test-results/screenshots-recorded. Must be false when committed for good.
-val bootstrapRecord = true
+val bootstrapRecord = false
 
 android {
     namespace = "com.aktcl.aron.uiscreenshots"
