@@ -528,7 +528,7 @@ fun SrApp(
                 ForceSaleContent(
                     selected = reason, capture = cap, missing = missing,
                     noOutletLocation = decision.result.verdict == com.aktcl.aron.rules.GeoVerdict.NO_OUTLET_LOCATION,
-                    onReason = { reason = it }, onShutter = { scope.launch { capture.shutter() } },
+                    onReason = { reason = it }, onShutter = { scope.launch { capture.shutter() } }, manual = true,
                     onConfirm = {
                         scope.launch {
                             when (val r = controller.confirm(reason, decision.outlet)) {

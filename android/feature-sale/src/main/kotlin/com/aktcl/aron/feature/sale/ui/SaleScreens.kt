@@ -285,7 +285,7 @@ fun SaleEntryScreen(
     val hasLines = review?.lines?.isNotEmpty() == true
     Column(modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).fillMaxWidth()) {
-            if (retailerLabel != null) RetailerPickerField(value = retailerLabel, placeholder = "", onClick = {}, modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = AronTokens.Space.S))
+            if (retailerLabel != null) RetailerPickerField(value = retailerLabel, placeholder = "", onClick = {}, modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = AronTokens.Space.S), softCorners = quantityPopup)
             if (onPreviousSales != null) GreenButton(historyLabel ?: stringResource(R.string.sale_history), onPreviousSales, Modifier.padding(horizontal = 12.dp, vertical = AronTokens.Space.S))
             if (onQcOnly != null && !hasLines && skus.isNotEmpty()) LinkText(stringResource(R.string.sale_qc_only), onQcOnly, Modifier.testTag(SaleTags.QC_ONLY))
             when {
@@ -321,6 +321,7 @@ fun SaleEntryScreen(
             stringResource(R.string.sale_zero_confirm_title), stringResource(R.string.sale_zero_confirm_message),
             stringResource(R.string.sale_yes), stringResource(R.string.sale_no),
             onConfirm = { askZero = false; if (onZeroSaleReason != null) askReason = true else onZeroSaleConfirmed() }, onDismiss = { askZero = false },
+            manual = onZeroSaleReason != null, // the SR's box of the manual (32); the AMO keeps the plain kit dialog
         )
     }
     popupSkuId?.let { id ->

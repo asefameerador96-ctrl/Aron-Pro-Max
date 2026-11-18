@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -56,8 +57,27 @@ fun AronConfirmDialog(
     dismissLabel: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    /** The old SR's question box (manual 29, 32): a warning triangle over a centred blue sentence, the question in black, and the green yes then the red no side by side. */
+    manual: Boolean = false,
 ) {
     val c = LocalAronColors.current
+    if (manual) {
+        val look = LocalAronLook.current
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            containerColor = c.surfaceSolid, titleContentColor = c.accentOnContainer, textContentColor = c.textPrimary,
+            icon = { Icon(AronIcons.Warning, contentDescription = null, tint = look.amber, modifier = Modifier.size(40.dp)) },
+            title = { Text(title, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) },
+            text = { Text(message, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) },
+            confirmButton = {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)) {
+                    AronYesButton(confirmLabel, onConfirm)
+                    AronNoButton(dismissLabel, onDismiss)
+                }
+            },
+        )
+        return
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = c.surfaceSolid, titleContentColor = c.textPrimary, textContentColor = c.textPrimary,
