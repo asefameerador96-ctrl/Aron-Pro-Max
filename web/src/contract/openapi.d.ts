@@ -6975,7 +6975,7 @@ export interface components {
             achieved: number;
             /**
              * Format: int64
-             * @description max(target - achieved
+             * @description max(target - achieved, 0).
              */
             remaining: number;
         };

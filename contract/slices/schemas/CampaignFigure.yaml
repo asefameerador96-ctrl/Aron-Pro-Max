@@ -19,5 +19,4 @@ CampaignFigure:
       type: integer
       format: int64
       minimum: 0
-      description: max(target - achieved
-      0).: null
+      description: max(target - achieved, 0).
