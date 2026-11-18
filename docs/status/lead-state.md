@@ -205,3 +205,9 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - No ERROR lines in the window; no SQLTransientConnectionException, no 'aggregation pass failed', no CHECKOUT_WITHOUT_SUBMIT text. Worker revision --0000226 running, first aggregation pass 20098 ms.
 - Not seen: any pre-flight line (the log has none of the words preflight, V0191, V0199, repair). To check: whether the pre-flight logs at all when it has nothing to do (backlog, low).
 - Loyalty fix round 2 (d88b751b) and TSO slice 1 (bfea7197) under review.
+
+
+### 2026-11-18 06:35 update: order changed, Loyalty lands next
+- Loyalty sweep fix round 2 (d88b751b) PASS; TSO slice 1 (bfea7197) PASS (lows sent).
+- NEW ORDER AND NUMBERS: train 118 = Loyalty sweep (V0204, contract 1.20.0; L-A11 merging 39db6c734 and renumbering; then a delta check and GO). Then gates (Android, Room 10, closed_by on the wire, no migration). Then integrity V0205..V0208 + contract 1.21.0 + Room 11 (A-INT3 told). SV6 follow-ups provisional V0240+; T-KPI1 V0230+ / 1.22.0.
+- Loyalty facts (from code): no earning rule, no earning job, balances 0; postAdjustment has no caller or portal route -> L-A11 to build an audited portal points adjustment with N-1 (quarter rows) and tier_code on loyalty[]. Owner asked for the earning rule 06:30.
