@@ -1,4 +1,4 @@
--- V0206 (PROVISIONAL number, lead 2026-11-18): the three keys of the waiting-item sweep (D-LOY-API-29), registered so the admin settings
+-- V0207 (PROVISIONAL number, lead 2026-11-18): the three keys of the waiting-item sweep (D-LOY-API-29), registered so the admin settings
 -- can hold them and the sweep can be stopped or slowed without a deploy. Plain INSERT ... ON CONFLICT DO NOTHING: no data guard, nothing that can raise.
 --   cfg.sync.waiting_sweep_enabled    bool, default true  (off = the API process runs no pass)
 --   cfg.sync.waiting_sweep_interval_s int, default 60, 10..3600 (seconds between the end of one pass and the start of the next)
