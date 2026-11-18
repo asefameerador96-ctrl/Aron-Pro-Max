@@ -163,3 +163,48 @@ LOWS:
 - Check 1 detail: the workflow passes every query through the filter twice (show, then the script-wide redact), so a 400 KB line costs about 2 x 9 s. That is far inside the 20-minute limit.
 - Check 7: I did not run infra/tests/check_infra.py (only the redaction mode was allowed). I read the new test and reproduced its cases by hand with the same results. No test covers the bound regressions above (a 65-character suffix, 4 spaces before '='). The test's 20 s per-blob limit is loose against a measured 2 s, which is fine for slow runners.
 - Process: f16963bd is an ancestor of 0fa1c4d4, with two new commits on top (ea3a4b6784, a status note on the force-push, and 0fa1c4d457). No history rewrite in this round.
+
+
+## Re-check 4 (round 4, 9496e81d), 2026-11-18
+
+### leaks verdict=fail
+I ran about 150 made-up secret-shaped lines and 25 adversarial 100 KB blobs through `diagnose.sh --redact` at 9496e81d, and the same lines through 0fa1c4d4 for comparison. Scratch copies are in /tmp/claude-0/-home-user-Aron-Pro-Max/a5c3c45a-b89c-5768-9d5f-6bc05c04fc63/scratchpad/r4-fuzz/.
+
+Most forms are caught: JSON, escaped JSON, single quotes, camelCase, snake_case, kebab-case, long key names, wide tab and space gaps, URL query strings (access_token, sig, Azure SAS), Ocp-Apim-Subscription-Key, x-functions-key, connection strings (postgres, redis, amqp, mongodb+srv, jdbc, AccountKey), JWTs, Bearer and Basic, cookies, e-mails, every Bangladeshi phone form I tried (including Bangla digits) and bare 40/64-hex and 40+ character tokens. A hex value after a secret-like key is still redacted, even under git_, commit_, build_, image_ or digest_ prefixes.
+
+This diff introduces no new leak, no test or gate is loosened (the test file only gains a new test), and nothing shows super-linear time. The regex timing scales with the input (25 KB, 50 KB and 100 KB take 9 s, 17 s and 34 s).
+
+It is still a FAIL because several realistic lines pass with the secret visible. Every one of them leaks the same way at 0fa1c4d4, so they are older gaps, not caused by this diff. The two I count as blocking are an OTP next to its keyword when the keyword is part of a key name, and the `Authorization: Token <value>` header form.
+
+BLOCKING:
+- OTP next to its keyword is printed when the keyword is joined to the key name: `sms_code=481516`, `verificationCode=481516`, `verifyCode=481516`, `SmsCode: 481516` and `{"verification_code":"481516"}` all print 481516 unchanged. Cause: the prose OTP rules need a word boundary right after sms or verification, and `_`, `C` and `_code` stop that boundary. KEYSHORT and KEYCAMEL list otp and pin but not sms, verification, verify or code. (`otp_code`, `otp-code`, `smsOtp` and `X-OTP` are caught.) Same output at 0fa1c4d4.
+- An `Authorization` header with a scheme other than Bearer or Basic leaks its credential: `Authorization: Token Zq9VvK2mLpqAbCdEfGh12` becomes `Authorization: [redacted] Zq9VvK2mLpqAbCdEfGh12`. The KEYLONG rule's value is only the first bare word, the scheme name, and the Bearer/Basic rule does not cover Token, ApiKey, SharedAccessSignature or Digest. The token is only caught by the 40+ character catch-all, so any shorter token survives. Same output at 0fa1c4d4.
+
+LOWS:
+- Further password forms that survive (also at 0fa1c4d4): `--password Hunter2xyz` (CLI flag with a space), `PASSWORD<TAB>Hunter2xyz`, `password -> Hunter2xyz`, `the password was: Hunter2xyz`, `password for adm is Hunter2xyz`, `<password>Hunter2xyz</password>` (XML), and `-p Hunter2xyz`.
+- URL-encoded separators are not seen: `api-key%3DZq9VvK2mLpq` and `token%22%3A%22Zq9VvK2mLpq` pass unchanged.
+- These key names are not secret stems: `hmac=`, `signature=`, `nonce=`, `salt=`, `hash=` and a bare `code=481516`. Their values survive when shorter than 40 characters.
+- A YAML block value (`token: >` followed by the value on the next line) keeps the value, because each line is redacted on its own.
+- A run of more than 40 spaces between a key and `=` (for example token + 50 spaces + `=X`) is not caught. Unrealistic, but the bound is a hard edge.
+- A dotted host followed by `/path:` and a 40/64-hex is still kept, for example `https://hooks.example.com/x:<64hex>` and `registry.attacker.io/x:<40hex> token`. Any https URL with a dotted host matches the 'registry-looking' rule. Narrower than before, but not limited to image registries.
+- `sha pw: <40hex>` keeps the hex (a short non-hex gap after build/commit/sha/git/image/digest is allowed). New in this diff: `digest: <64hex>` is now kept, where 0fa1c4d4 printed [long-token]. Intended for image digests, but a 64-hex signature after the word digest now prints.
+- Performance is linear but much slower than D-OPS-DIAGNOSE-API-05 states (about 3.4 s per 100 KB run). A 100 KB run of a repeated stem takes 34 s (`token`), 54 s (`secret`) and 26 s (`Xcookie`). 0fa1c4d4 took about 5 s and 7 s for 50 KB of `token` and `secret`, against 17 s and 28 s now, roughly 3.5x slower. Each line passes the filter twice (per-query `show`, then the `exec` net), so a few such lines could hit the 20-minute job timeout. That fails closed (the step goes red), so nothing leaks. The linear-time test does not include a repeated-stem blob. (Pathological input, so a low.)
+- Over-redaction: `Authorization: Digest ... response="<32hex>"` becomes a [uuid:] tag, which is harmless.
+
+### regex-safety-and-scope verdict=pass
+Backtracking lens on 0fa1c4d4..9496e81d. Only three files change: infra/scripts/diagnose.sh (the regex patterns only), infra/tests/check_infra.py (one new test, test_diagnose_redaction_wide_gaps_and_bounds, added; nothing existing is removed or changed) and DECISIONS.md (D-OPS-DIAGNOSE-API-05). .github/workflows/ops-diagnose.yml is untouched: timeout-minutes is still 20, and the pipefail check and the 'diagnose: done (read-only)' final-line gate are both still there.
+
+I timed 42 adversarial 100 KB single-line inputs through scratch copies of the old and new diagnose.sh --redact. Every run finished and printed the trailing line. Scaling is linear, not super-linear: 'password' repeated took 22 s at 50 KB and 84 s at 200 KB; 'token' repeated took 8.5 s at 25 KB, 16.6 s at 50 KB and 35 s at 100 KB. No nested quantifier is ambiguous. KEYSHORT segments must end on a separator, SEP and digits are disjoint in the phone rule, and \s{0,40} is anchored by [=:].
+
+The cost per character did grow, though. On runs that repeat a stem, the KEYLONG and password rules now cost about 4x the old version, because the prefix and suffix bounds went from 64 to 128 and the cost is roughly the product of the two. Tabs, spaces, quotes, e-mail, phone and OTP inputs all stay under 0.3 s, and the remaining shapes take about 4 s per 100 KB. A timeout only turns the step red and never prints a raw line, so this is a slowdown risk, not a leak.
+
+A few made-up realistic lines were all redacted: key=value with spaced '=', Bearer, Server=/Password=, OTP prose, e-mail, phone, a bare 40-hex and a bare 64-hex.
+
+BLOCKING:
+
+
+LOWS:
+- Large constant on stem-repeat runs. A 100 KB line of 'password' repeated takes about 41 s, 'token' about 31-35 s and 'token_' about 27 s, against 9.6 s for the old version on the same 'token' input. Scaling is still linear, but D-OPS-DIAGNOSE-API-05 says 'About 3.4 s per 100 KB unbroken run', which is wrong for these inputs. Each line passes the filter twice (show, then exec > >(redact)), so one such line costs over a minute. A few of them could reach the 20-minute job timeout, which fails red but does not leak. The new test's linear check (assertLess 25 s) covers only letters, segments, dots, email, tabs and 'otp far'; a 'password'/'token' repeat blob would fail its own 25 s bound. Suggestion: add that case to the test, and either bring the KEYLONG and password prefix/suffix bounds back to about 64, or anchor the prefix with a lookbehind (?<![A-Za-z0-9_.\-]) so that only one start position per run is tried.
+- The first hold rule (word starting build/commit/sha/rev/git/image/digest, then up to 20 non-hex characters) now keeps 64-hex values as well as 40-hex. Lines that the old version redacted now pass in full, for example 'X-Hub-Signature-256: sha256=<64hex>' (an HMAC signature), 'digest=<64hex>' and prose such as 'revokeToken <64hex>' or 'sharedtoken <64hex>'. The sha/rev/git prefixes take any word (\w{0,20}), so shareToken, revokeToken and gitToken qualify. Key=value forms with a token/secret stem are still redacted, because the key rules run after the hold and redact the placeholder. This is the intended digest-keeping design and the test asserts it, but for the coverage lens: consider requiring a whole word (sha256|sha1|digest|commit|build|image|rev|revision|git) followed by [\s:=@] rather than any word that starts with one of these.
+- Kept as before (pre-existing for 40-hex, now the registry-host form): a URL on a dotted host with a ':' or '@' path suffix keeps a 40- or 64-hex value, for example 'https://api.example.com/reset/t:<64hex>'. This is unusual in practice; mentioned for completeness.
+- Style: the 'up to 3 following words' negative lookahead in the password rule still uses \s{0,3} while the key rules now accept \s{0,40}. A following word written as 'next      = x' (many spaces) is therefore taken as part of the password value. That is over-redaction only.
