@@ -410,7 +410,7 @@ class SyncEngine(
             db.withTransaction {
                 rows.forEachIndexed { i, row ->
                     val ack = r.acks[i]
-                    val t = AckRules.target(ack, row.attempts, policy.rowMaxRetries)
+                    val t = AckRules.target(ack, row.attempts, policy.rowMaxRetries, AckRules.isPhoneClose(row.recordType, row.payloadJson))
                     if (AckRules.isFailure(t)) outbox.countFailure(row.clientUuid)
                     outbox.applyAck(row.clientUuid, t.state, t.code, ack.serverId, now, ack.messageKey)
                     when (t.state) {

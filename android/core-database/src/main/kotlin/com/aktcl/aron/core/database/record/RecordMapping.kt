@@ -1,6 +1,7 @@
 package com.aktcl.aron.core.database.record
 
 import com.aktcl.aron.contract.AttendanceEventPayload
+import com.aktcl.aron.core.database.repo.closedByPhone
 import com.aktcl.aron.contract.ContractInfo
 import com.aktcl.aron.contract.DeviceGeoVerdict
 import com.aktcl.aron.contract.DeviceStatusReport
@@ -107,7 +108,11 @@ object RecordMapping {
 
     fun attendance(e: AttendanceEventEntity, fix: GeoFixEntity, createdAt: String) = outbox(
         RecordType.ATTENDANCE_EVENT, e.clientUuid, e.clientUuid, 0, e.meta, createdAt,
-        AttendanceEventPayload.serializer(), AttendanceEventPayload(e.kind, fix(fix), e.addressDisplay),
+        AttendanceEventPayload.serializer(), AttendanceEventPayload(
+            e.kind, fix(fix), e.addressDisplay,
+            // contract 1.19.0 (train 117): the phone's own close of a forgotten day says so, derived from the stored event (never a flag); the rep's own check-out sends nothing (the server reads that as `rep`)
+            closedBy = if (e.closedByPhone()) "phone" else null,
+        ),
     )
 
     /** A breadcrumb (N-035): standalone, rank 0, one embedded fix; the record's client_uuid is its own and the fix is keyed to it. */
