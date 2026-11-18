@@ -138,8 +138,9 @@ class SrDay(
         // (its records carry the visit's date); the write layer judges each record by its own date. When the work ends the day is closed and the gate follows today.
         dayGate.value = runCatching {
             val today = capture.attendanceRefusal(businessDate())
+            // D-LEAD-PREREQ-04 ruling 4: the call's own screens work; every other operational screen names the reason (EARLIER_CALL_OPEN), never a generic failure
             if (today == com.aktcl.aron.core.database.repo.AttendanceRefusal.NOT_CHECKED_IN && openWorkNow() != null &&
-                capture.openAttendanceDates().any { it < businessDate() }) null else today
+                capture.openAttendanceDates().any { it < businessDate() }) com.aktcl.aron.core.database.repo.AttendanceRefusal.EARLIER_CALL_OPEN else today
         }.getOrDefault(dayGate.value)
     }
     val reference = ReferenceRepository(db)
@@ -339,7 +340,8 @@ class SrDay(
     suspend fun restoreOpenVisit() {
         if (visitSession.current.value != null) return
         // tso-manual A3: a call on a route-day closed by Final Submit is not restored (it cannot go on; D-A3-22)
-        val last = FinalSubmitLock.callToRestore(db, businessDate(), iso(clock.nowMs())) { it.geoAction != "blocked" } ?: return
+        // D-LEAD-PREREQ-04 ruling 1: from the day of the OPEN CHECK-IN too, so a call opened on D is found after a kill and a relaunch on D+1
+        val last = FinalSubmitLock.callToRestoreAcross(db, businessDate(), iso(clock.nowMs())) { it.geoAction != "blocked" } ?: return
         // tso-manual X4a follow-up (R-W-23): nor a call whose route-day the SR's own Sales Submit closed (its sale and close
         // would be refused); a server void of the submit brings it back
         if (SrCallLock.refusal(capture, last.meta) != null) return
@@ -455,17 +457,57 @@ class SrDay(
         if (openWorkNow() != null) return emptyList()
         val today = businessDate()
         val stale = runCatching { capture.openAttendanceDates() }.getOrDefault(emptyList()).filter { it < today }
+        if (stale.isEmpty()) return emptyList()
+        // D-LEAD-PREREQ-04 ruling 2: ONE on-demand location attempt with the normal limit; the reading is stored when obtained, otherwise the fix says why not
+        val reading = runCatching { fixSource.readFix("attendance_out") }.getOrElse { com.aktcl.aron.feature.outlet.FixReading("provider_unavailable", null, null, null, false) }
+        val closed = ArrayList<String>()
         for (d in stale) {
             val eventUuid = com.aktcl.aron.core.common.ClientIds.newUuid()
-            val fix = com.aktcl.aron.feature.outlet.FixReading("provider_unavailable", null, null, null, false)
-                .toEntity(com.aktcl.aron.core.common.ClientIds.newUuid(), eventUuid, "attendance_out", 0)
+            val fix = reading.toEntity(com.aktcl.aron.core.common.ClientIds.newUuid(), eventUuid, "attendance_out", 0)
+            val coords = if (reading.isOk) String.format(java.util.Locale.ROOT, "%.6f, %.6f", reading.lat, reading.lng) else null
             val event = com.aktcl.aron.core.database.entity.AttendanceEventEntity(
-                eventUuid, metaProvider.meta(0L).copy(routeId = null, businessDate = d), "check_out", fix.clientUuid, null,
+                eventUuid, metaProvider.meta(0L).copy(routeId = null, businessDate = d), "check_out", fix.clientUuid, coords,
             )
-            runCatching { commitAttendance(event, fix) }
+            if (runCatching { commitAttendance(event, fix) }.isSuccess) closed += d
         }
-        if (stale.isNotEmpty()) { attendance.restore(attendanceForScreen()); refreshDayGate() }
-        return stale
+        if (closed.isNotEmpty()) {
+            // the rep is told the day was closed for him (a notice with its own text)
+            rolloverNotice.value = rolloverNotice.value.copy(closedDates = (rolloverNotice.value.closedDates + closed).distinct())
+            attendance.restore(attendanceForScreen()); refreshDayGate()
+        }
+        return closed
+    }
+
+    /** What the phone did for the rep after Dhaka midnight (day closed, an earlier call ended, an unsaved draft dropped), told once until dismissed. */
+    val rolloverNotice = kotlinx.coroutines.flow.MutableStateFlow(com.aktcl.aron.feature.attendance.RolloverNotice())
+    fun dismissRolloverNotice() { rolloverNotice.value = com.aktcl.aron.feature.attendance.RolloverNotice() }
+
+    /**
+     * D-LEAD-PREREQ-04 ruling 3 (step 3 S3): an open call of an EARLIER day has a limit. At the first start or resume at or after 04:00 Dhaka of the next day the phone
+     * ends it as abandoned (the close is dated with the VISIT's date and carries a phone-time end on a later date, which is the flag), an unsaved sale draft is dropped
+     * (the notice says so), a saved sale is never touched, and then the day can close. Returns true when a call was ended.
+     */
+    suspend fun abandonStaleCall(): Boolean {
+        val v = visitSession.current.value ?: return false
+        val vd = visitDate(v)
+        if (vd >= businessDate() || !com.aktcl.aron.feature.attendance.DayRollover.abandonLimitReached(vd, clock.nowMs())) return false
+        val dropped = runCatching { sale.flow.dropUnsavedDraft(v.visitUuid) }.getOrDefault(false)
+        closeVisitAbandoned()
+        if (visitSession.current.value != null) return false // the close could not be written: the next start or resume tries again, nothing is lost
+        rolloverNotice.value = rolloverNotice.value.copy(abandonedOutletId = v.outletId, abandonedDate = vd, draftDropped = dropped)
+        return true
+    }
+
+    /**
+     * The ONE sequence of a start, a resume, the Dhaka-midnight timer and the end of an open call (D-LEAD-PREREQ-04 rulings 1 to 3): restore the open call from the day of
+     * the open check-in, end an earlier call that passed its 04:00 limit, close the forgotten day(s), then re-read the screens' state. Every caller goes through it,
+     * so a test of it is a test of the production start path.
+     */
+    suspend fun resumeDay() {
+        restoreOpenVisit()
+        abandonStaleCall()
+        closeForgottenDays()
+        attendance.restore(attendanceForScreen()); refreshDayGate()
     }
 
     @Volatile private var nextSequence = 1

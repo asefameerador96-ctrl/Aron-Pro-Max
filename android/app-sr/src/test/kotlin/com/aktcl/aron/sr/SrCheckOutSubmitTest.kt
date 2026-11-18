@@ -125,7 +125,7 @@ class SrCheckOutSubmitTest {
         assertEquals("yesterday has its submit and its check-out", 1, f.db.captureDao().daySubmitsOn(yesterday).size)
         val out = f.db.captureDao().attendanceOn(yesterday).single { it.kind == "check_out" }
         assertEquals(yesterday, out.meta.businessDate)
-        assertEquals("the phone's own check-out: no location was asked", "provider_unavailable", f.db.query("SELECT fix_status FROM geo_fix WHERE client_uuid = '${out.fixClientUuid}'", null).use { it.moveToFirst(); it.getString(0) })
+        assertEquals("the phone's own check-out: one location reading was asked and stored (D-LEAD-PREREQ-04 ruling 2)", "ok", f.db.query("SELECT fix_status FROM geo_fix WHERE client_uuid = '${out.fixClientUuid}'", null).use { it.moveToFirst(); it.getString(0) })
         assertEquals(emptyList<String>(), plain.openAttendanceDates())
         // idempotent: a second start finds nothing to close, and today is still "not checked in" (the rep checks in as usual)
         assertEquals(emptyList<String>(), f.day.closeForgottenDays())
@@ -148,7 +148,8 @@ class SrCheckOutSubmitTest {
         assertEquals(0, f.db.captureDao().daySubmitsOn(d0).size)
         assertEquals(0, f.db.captureDao().attendanceOn(d0).count { it.kind == "check_out" })
         f.day.refreshDayGate()
-        assertNull("the open call's screens stay open: no midnight check-in is asked for", f.day.dayGate.value)
+        assertEquals("only the open call's screens stay open (D-LEAD-PREREQ-04 ruling 4): no midnight check-in is asked for, every other screen names the reason",
+            AttendanceRefusal.EARLIER_CALL_OPEN, f.day.dayGate.value)
         assertTrue("the Attendance screen restores yesterday's open check-in", f.day.attendanceForScreen().any { it.kind == "check_in" && it.meta.businessDate == d0 })
         f.day.visitSession.close()
         assertEquals("when the call ends the close runs", listOf(d0), f.day.closeForgottenDays())

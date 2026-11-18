@@ -205,6 +205,18 @@ object FinalSubmitLock {
         return last.takeUnless { refuses(db, it.meta, "visit_close", nowIso ?: it.meta.capturedAt) }
     }
 
+    /**
+     * D-LEAD-PREREQ-04 ruling 1 (step 3 S1): the call to restore after a kill reads the day of the OPEN CHECK-IN, not only today: today's first, then every date that
+     * still has a check-in and no check-out (newest first). A call opened on D at 23:55 is found on D+1, so the automatic close never runs under it.
+     */
+    suspend fun callToRestoreAcross(
+        db: AronDatabase, today: String, nowIso: String? = null, eligible: (com.aktcl.aron.core.database.entity.VisitEntity) -> Boolean,
+    ): com.aktcl.aron.core.database.entity.VisitEntity? {
+        val open = runCatching { db.captureDao().openAttendanceDates() }.getOrDefault(emptyList())
+        for (d in (listOf(today) + open.filter { it != today }.sortedDescending()).distinct()) callToRestore(db, d, nowIso, eligible)?.let { return it }
+        return null
+    }
+
     private val json = Json { ignoreUnknownKeys = true }
 
     /**

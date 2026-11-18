@@ -103,7 +103,7 @@ class AttendanceFlow(
 
     /**
      * Restores the screen from the stored events of the date that is open for the rep: today's, or (after Dhaka midnight, with the earlier day never
-     * checked out) the OPEN check-in's own date, so the rep's own check-out stays reachable (D-LEAD-PREREQ-03 ruling 3). Any stored check-out on
+     * checked out) the OPEN check-in's own date, which the phone is about to close (D-LEAD-PREREQ-04 ruling 2). Any stored check-out on
      * that date means checked out (ruling 7), whatever the clock order of the rows.
      */
     fun restore(today: List<AttendanceEventEntity>) {
@@ -113,7 +113,10 @@ class AttendanceFlow(
         ui.value = recompute(inEv?.meta?.capturedAt, outEv?.meta?.capturedAt, ui.value.addressText, ui.value.lastFixMock)
     }
 
-    /** True when the open check-in belongs to an EARLIER Dhaka date than today's: the earliest-time rule applies only on the check-in's own day (ruling 3). */
+    /**
+     * True when the open check-in belongs to an EARLIER Dhaka date than today's. D-LEAD-PREREQ-04 ruling 2 (withdraws ruling 3 of D-LEAD-PREREQ-03): after Dhaka
+     * midnight there is NO rep check-out for that day; the phone closes it (day object, `closeForgottenDays`), so the check-out button is off and a press is ignored.
+     */
     private fun pastDay(): Boolean = openDate?.let { it < metaProvider.meta(0L).businessDate } == true
 
     /** Called when the minute changes so the check-out button enables at 17:00 without a press. */
@@ -150,7 +153,7 @@ class AttendanceFlow(
     private suspend fun checkOutLocked(): AttendanceResult {
         val s = ui.value
         if (s.checkedInAt == null || s.checkedOutAt != null || s.busy) return AttendanceResult.Ignored
-        if (!pastDay() && dhakaMinutesNow() < checkoutEarliestMinutes()) return AttendanceResult.Ignored // recomputed, never a stale flag; the earliest time is the check-in's own day's rule
+        if (pastDay() || dhakaMinutesNow() < checkoutEarliestMinutes()) return AttendanceResult.Ignored // recomputed, never a stale flag; a day left open past midnight is closed by the phone, never by a press
         // D-AGATE-06: an open call or memo edit refuses the check-out (it submits the day, which closes the route-day under it)
         openWork?.let { read ->
             val open = try { read() } catch (t: kotlinx.coroutines.CancellationException) { throw t } catch (_: Throwable) { null }
@@ -232,11 +235,11 @@ class AttendanceFlow(
         return AttendanceState(
             checkedInAt = inAt, checkedOutAt = outAt, showCheckInPrompt = inAt == null,
             checkInEnabled = inAt == null,
-            checkOutEnabled = inAt != null && outAt == null && !needsSubmit && (pastDay() || dhakaMinutesNow() >= checkoutEarliestMinutes()),
+            checkOutEnabled = inAt != null && outAt == null && !needsSubmit && !pastDay() && dhakaMinutesNow() >= checkoutEarliestMinutes(),
             addressText = address, lastFixMock = mock, busy = ui.value.busy,
             coordinatesText = ui.value.coordinatesText, fixAccuracyM = ui.value.fixAccuracyM, fixFailed = ui.value.fixFailed, readingFix = ui.value.readingFix,
             needsSalesSubmit = needsSubmit,
-            checkOutTimeReached = pastDay() || dhakaMinutesNow() >= checkoutEarliestMinutes(),
+            checkOutTimeReached = !pastDay() && dhakaMinutesNow() >= checkoutEarliestMinutes(),
         )
     }
 }

@@ -165,6 +165,20 @@ class SaleFlow(
         result
     }
 
+    /**
+     * D-LEAD-PREREQ-04 ruling 3: the phone ends an abandoned call of an earlier day, so that call's UNSAVED draft is dropped. A memo already saved is never touched (it
+     * is in Room; this only clears the draft file and the screen state). Returns true when a draft with something entered was dropped.
+     */
+    suspend fun dropUnsavedDraft(visitUuid: String): Boolean = lock.withLock {
+        val d = store.load(visitUuid) ?: return@withLock false
+        val saved = committer.existing(d.memoUuid) != null
+        val had = !saved && (d.lines.isNotEmpty() || d.slide.isNotEmpty() || d.qc.isNotEmpty() || d.paidMtk != null || d.zeroSale)
+        store.clear(visitUuid)
+        val s = ui.value
+        if (s.visit?.visitUuid == visitUuid && s.committed == null) ui.value = SaleUiState()
+        had
+    }
+
     private suspend fun edit(change: (SaleDraft) -> SaleDraft) = lock.withLock { editLocked(change) }
 
     private suspend fun editLocked(change: (SaleDraft) -> SaleDraft) {

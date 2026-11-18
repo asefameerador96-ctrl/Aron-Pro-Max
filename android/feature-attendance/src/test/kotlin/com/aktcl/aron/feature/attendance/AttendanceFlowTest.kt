@@ -125,25 +125,25 @@ class AttendanceFlowTest {
     }
 
     /**
-     * D-LEAD-PREREQ-03 ruling 3 (round-3 B2): the rep's own check-out after Dhaka midnight, with yesterday's check-in still open, is reachable at ANY hour
-     * (the earliest-time rule is the check-in's own day's), takes a location reading and closes YESTERDAY. Proven through the flow, not the repository.
+     * D-LEAD-PREREQ-04 ruling 2 (step 3 S2) withdraws ruling 3 of D-LEAD-PREREQ-03: after Dhaka midnight there is no rep check-out for the earlier day; the phone closes it.
+     * The old path was unreachable in the app (the phone's own close always came first) and is removed: yesterday's open check-in shows no check-out button at any
+     * hour and a press writes nothing.
      */
-    @Test fun aCheckOutAfterMidnightIsReachableAtAnyHourAndClosesTheOpenCheckInsDay() = runTest {
+    @Test fun anOpenCheckInOfAnEarlierDayOffersNoRepCheckOutAtAnyHour() = runTest {
         var today = "2026-10-07"
         val m = CaptureMetaProvider { r -> CaptureMeta(today, today + "T04:00:00.000Z", 1, 1, 0, true, r, null, "b", false, 5) }
         val f = AttendanceFlow(fixes, m, { e, fx -> committed += e to fx }, { null }, { "2026-10-07T0${++n}:00:00.000Z" }, { minutes }, newUuid = { "00000000-0000-4000-8000-%012d".format(++n) })
         minutes = 10 * 60
         assertTrue(f.checkIn() is AttendanceResult.Done)
         val checkIn = committed.single().first
-        // midnight passes; at 00:10 the screen is restored from the stored events of the OPEN date
-        today = "2026-10-08"; minutes = 10
-        f.restore(listOf(checkIn))
-        assertTrue("checked in (yesterday's), check-out reachable at 00:10", f.state.value.checkedInAt != null && f.state.value.checkOutEnabled)
-        assertTrue(f.checkOut() is AttendanceResult.Done)
-        val (event, fix) = committed.last()
-        assertEquals("check_out", event.kind)
-        assertEquals("it closes YESTERDAY's day", "2026-10-07", event.meta.businessDate)
-        assertEquals("with a location reading, not the phone's own", "attendance_out", fix.purpose)
+        for (m2 in listOf(10, 9 * 60, 17 * 60, 23 * 60)) {
+            today = "2026-10-08"; minutes = m2
+            f.restore(listOf(checkIn))
+            assertTrue("yesterday's check-in is shown", f.state.value.checkedInAt != null)
+            assertTrue("no check-out button at minute $m2 of the next day", !f.state.value.checkOutEnabled && !f.state.value.checkOutTimeReached)
+            assertTrue("a press is ignored", f.checkOut() is AttendanceResult.Ignored)
+        }
+        assertEquals("nothing but the check-in was written", 1, committed.size)
         // the same day still keeps its earliest-time rule: a fresh check-in at 09:00 cannot check out at 10:00
         today = "2026-10-08"; minutes = 9 * 60
         val g = AttendanceFlow(fixes, m, { e, fx -> committed += e to fx }, { null }, { "t" }, { minutes }, newUuid = { "00000000-0000-4000-8000-%012d".format(++n) })
