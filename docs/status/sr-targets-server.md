@@ -2,8 +2,8 @@
 
 ## HANDOVER (read first; updated each push)
 
-- **State 2026-11-18:** STEP 1 only (this design). No code, no migration, no contract change pushed yet.
-- **Next:** slice N-2 (calendar block, `targets`, `achievement_mtd`, shared formula functions), then N-5, N-8, N-3 (order given by the lead).
+- **State 2026-11-18:** slice N-2 pushed (no migration). `SrTargets` (backend/sync) fills `targets`, `achievement_mtd`, `calendar`; `SkuProgress` in shared/rules; contract 1.22.0 provisional (`docs/requests/contract-sr-targets.md`); D-TKPI-01..04. Local: shared:rules, shared:contract, backend:sync, `SrTargetsBundleTest` green (PG16 via ARON_TEST_PG_URL). Not run locally: full backend:app (CI), oasdiff, redocly.
+- **Next:** N-5, then N-8, then N-3 (migrations from V0230 provisional).
 - **Provisional numbers:** contract 1.22.0 (lead gives the final), migrations from V0230 (lead renumbers; they must not run outside lane CI).
 - **Source branch read for the needs:** `docs/requests/sr-programmes-server-needs.md` on `lane/android-sr-programmes` (items N-2, N-3, N-5, N-8; N-1, N-4, N-6, N-7 are the Loyalty lane's).
 

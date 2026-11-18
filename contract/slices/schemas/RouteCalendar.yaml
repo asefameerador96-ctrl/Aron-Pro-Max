@@ -1,0 +1,43 @@
+RouteCalendar:
+  type: object
+  description: Working-day numbers of the bundle month for the route (national calendar, Friday off, holidays as
+    data). From these the phone derives ADS, TADS, PADS and RADS. Contract 1.22.0.
+  required:
+  - month
+  - working_days
+  - elapsed_working_days_before_today
+  - remaining_working_days_after_today
+  - today_is_working
+  - last_month_working_days
+  - through_date
+  - as_of
+  additionalProperties: false
+  properties:
+    month:
+      $ref: '#/components/schemas/Month'
+    working_days:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: Working days of the month.
+    elapsed_working_days_before_today:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: Working days from the 1st up to the day before the bundle date.
+    remaining_working_days_after_today:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: Working days after the bundle date to the end of the month.
+    today_is_working:
+      type: boolean
+      description: Whether the bundle date itself is a working day.
+    last_month_working_days:
+      type: integer
+      minimum: 0
+      maximum: 31
+    through_date:
+      $ref: '#/components/schemas/BusinessDate'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'

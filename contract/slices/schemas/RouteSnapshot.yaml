@@ -67,6 +67,12 @@ RouteSnapshot:
         $ref: '#/components/schemas/AchievementRow'
     day_state:
       $ref: '#/components/schemas/RouteDayState'
+    calendar:
+      oneOf:
+      - $ref: '#/components/schemas/RouteCalendar'
+      - type: 'null'
+      description: Working-day numbers for the SR programme screens (N-2). Null or absent for TSO/AMO zone bundles.
+        Contract 1.22.0, optional.
     sr_user_id:
       type:
       - integer

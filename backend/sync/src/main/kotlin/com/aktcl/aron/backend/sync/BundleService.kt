@@ -46,7 +46,7 @@ import java.util.Base64
  * content always has the same version on every replica and any change of content changes it (ETag, 304). The
  * pre-generated Blob snapshots of s4.10 are the worker's (F-SYS-067); this builds on request.
  *
- * Deferred programmes (docs/27): `offers`, `targets`, `achievement_mtd` and `programme_flags` stay empty, `programmes`
+ * Deferred programmes (docs/27): `offers` and `programme_flags` stay empty (`targets`, `achievement_mtd` and `calendar` are filled per route by [SrTargets], N-2), `programmes`
  * is null.
  */
 class BundleService(
@@ -508,6 +508,7 @@ class BundleService(
         val plan = h.createQuery("SELECT zone_id, sku_id FROM app.sales_plan WHERE zone_id = ANY(:z) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d) ORDER BY sku_id")
             .bindArray("z", Long::class.javaObjectType, plans.map { it.zoneId }.distinct()).bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
             .groupBy({ it.first }, { it.second })
+        val sr = if (zoneIds == null) SrTargets.load(h, plans.associate { it.routeId to it.zoneId }, date, clock.now(), config) else emptyMap()
         return plans.sortedBy { it.routeId }.map { r ->
             val day = if (zoneIds == null) states[r.routeId] else null
             val target = if (zoneIds != null) 0 else day?.target ?: r.targetOutlets
@@ -518,7 +519,7 @@ class BundleService(
                 assignment_kind = r.assignmentKind, acting_for_user_id = if (zoneIds == null && r.assignmentKind == "cover") primaries[r.routeId]?.takeIf { it != userId } else null,
                 planned_today = r.plannedToday, target_outlets = target, outlets = routeOutlets,
                 open_memos = openMemoRows.filter { it.outlet_id in outletIds }, sales_plan_sku_ids = plan[r.zoneId].orEmpty(),
-                targets = emptyList(), achievement_mtd = emptyList(),
+                targets = sr[r.routeId]?.targets.orEmpty(), achievement_mtd = sr[r.routeId]?.achievement.orEmpty(), calendar = sr[r.routeId]?.calendar,
                 day_state = day?.state ?: RouteDayStateDto(r.routeId, date.toString(), "not_started", r.plannedToday, 1, false, null, null, null, null),
                 sr_user_id = srs[r.routeId]?.first, sr_name = srs[r.routeId]?.second,
             )

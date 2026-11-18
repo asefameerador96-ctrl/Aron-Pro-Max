@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.19.0
+  version: 1.22.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -10194,6 +10194,23 @@ components:
         achieved_qty_base: { type: integer, format: int64, minimum: 0 }
         memo_count: { type: integer, minimum: 0 }
         as_of: { $ref: '#/components/schemas/Timestamp' }
+        through_date:
+          $ref: '#/components/schemas/BusinessDate'
+          description: 'Last Dhaka business date the figure covers (the bundle date minus one day). Today''s memos are never in a server figure: the phone adds every local memo dated after this date, and every older local memo the server has not acknowledged, de-duplicated by memo UUID. Contract 1.22.0, optional.'
+    RouteCalendar:
+      type: object
+      description: 'Working-day numbers of the bundle month for the route (national calendar, Friday off, holidays as data). From these the phone derives ADS, TADS, PADS and RADS. Contract 1.22.0.'
+      required: [month, working_days, elapsed_working_days_before_today, remaining_working_days_after_today, today_is_working, last_month_working_days, through_date, as_of]
+      additionalProperties: false
+      properties:
+        month: { $ref: '#/components/schemas/Month' }
+        working_days: { type: integer, minimum: 0, maximum: 31, description: Working days of the month. }
+        elapsed_working_days_before_today: { type: integer, minimum: 0, maximum: 31, description: Working days from the 1st up to the day before the bundle date. }
+        remaining_working_days_after_today: { type: integer, minimum: 0, maximum: 31, description: Working days after the bundle date to the end of the month. }
+        today_is_working: { type: boolean, description: Whether the bundle date itself is a working day. }
+        last_month_working_days: { type: integer, minimum: 0, maximum: 31 }
+        through_date: { $ref: '#/components/schemas/BusinessDate' }
+        as_of: { $ref: '#/components/schemas/Timestamp' }
     RouteSnapshot:
       type: object
       description: Per-route section of the bundle; replaced as a whole when the route is added to the user.
@@ -10228,6 +10245,11 @@ components:
           maxItems: 500
           items: { $ref: '#/components/schemas/AchievementRow' }
         day_state: { $ref: '#/components/schemas/RouteDayState' }
+        calendar:
+          oneOf:
+            - { $ref: '#/components/schemas/RouteCalendar' }
+            - { type: 'null' }
+          description: 'Working-day numbers for the SR programme screens (N-2). Null or absent for TSO/AMO zone bundles. Contract 1.22.0, optional.'
         sr_user_id:
           type: [integer, 'null']
           format: int64

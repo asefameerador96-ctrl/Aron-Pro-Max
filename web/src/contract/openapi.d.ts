@@ -6747,6 +6747,23 @@ export interface components {
             achieved_qty_base: number;
             memo_count: number;
             as_of: components["schemas"]["Timestamp"];
+            /** @description Last Dhaka business date the figure covers (the bundle date minus one day). Today's memos are never in a server figure: the phone adds every local memo dated after this date, and every older local memo the server has not acknowledged, de-duplicated by memo UUID. Contract 1.22.0, optional. */
+            through_date?: components["schemas"]["BusinessDate"];
+        };
+        /** @description Working-day numbers of the bundle month for the route (national calendar, Friday off, holidays as data). From these the phone derives ADS, TADS, PADS and RADS. Contract 1.22.0. */
+        RouteCalendar: {
+            month: components["schemas"]["Month"];
+            /** @description Working days of the month. */
+            working_days: number;
+            /** @description Working days from the 1st up to the day before the bundle date. */
+            elapsed_working_days_before_today: number;
+            /** @description Working days after the bundle date to the end of the month. */
+            remaining_working_days_after_today: number;
+            /** @description Whether the bundle date itself is a working day. */
+            today_is_working: boolean;
+            last_month_working_days: number;
+            through_date: components["schemas"]["BusinessDate"];
+            as_of: components["schemas"]["Timestamp"];
         };
         /** @description Per-route section of the bundle; replaced as a whole when the route is added to the user. */
         RouteSnapshot: {
@@ -6766,6 +6783,8 @@ export interface components {
             targets: components["schemas"]["TargetRow"][];
             achievement_mtd: components["schemas"]["AchievementRow"][];
             day_state: components["schemas"]["RouteDayState"];
+            /** @description Working-day numbers for the SR programme screens (N-2). Null or absent for TSO/AMO zone bundles. Contract 1.22.0, optional. */
+            calendar?: components["schemas"]["RouteCalendar"] | null;
             /**
              * Format: int64
              * @description The route's assigned SR on the bundle date (`meta.valid_for_business_date`): the same SR that `GET /v1/routes` names for the route on that date (its first `assignees` entry with role SR, a cover assignment before the primary one); null when the route is vacant (no SR assigned; the TSO app shows "SR Not Set"). Sent in the TSO bundle so Assign Task works offline (lead rulings R-W-06, R-W-12); other bundles may omit it. Contract 1.10.0, optional.

@@ -265,6 +265,18 @@ data class RouteDayStateDto(
 )
 
 @Serializable
+data class RouteCalendarDto(
+    val month: String,
+    val working_days: Int,
+    val elapsed_working_days_before_today: Int,
+    val remaining_working_days_after_today: Int,
+    val today_is_working: Boolean,
+    val last_month_working_days: Int,
+    val through_date: String,
+    val as_of: String,
+)
+
+@Serializable
 data class RouteSnapshot(
     val route_id: Long,
     val route_snapshot_version: Int,
@@ -276,11 +288,13 @@ data class RouteSnapshot(
     val outlets: List<BundleOutlet>,
     val open_memos: List<OpenMemo>,
     val sales_plan_sku_ids: List<Long>,
-    /** Deferred (docs/27): empty. */
+    /** N-2 (contract 1.22.0): the route's per-SKU monthly targets; empty in zone-wide (AMO, TSO) bundles. */
     val targets: List<JsonObject>,
-    /** Achievement against deferred targets (docs/27): empty. */
+    /** N-2: server month-to-date achievement through `through_date` (never today); empty in zone-wide bundles. */
     val achievement_mtd: List<JsonObject>,
     val day_state: RouteDayStateDto,
+    /** N-2 (contract 1.22.0, optional): working-day numbers; absent in zone-wide bundles. */
+    val calendar: RouteCalendarDto? = null,
     /**
      * Lane X2 (lead ruling R-W-06 (4), contract 1.10.0, D-X1-05): the route's SR on the bundle date, the one `GET /v1/routes`
      * names first among its SR assignees (a cover valid that date before the primary); null when the route is vacant. Sent
