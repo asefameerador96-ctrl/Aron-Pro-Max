@@ -125,7 +125,7 @@ info:
       phone's rule in `shared/rules` JourneyTimeline). Cluster creation (push B2): `OutletRequestType` value `cluster_create` (an `outlet_change_request` record with the SR's
       route on the envelope and `proposed.name`; AMO verification and the portal approval are the outlet request pipeline's; an approved request is a live cluster of the route's zone),
       `OutletProposal.cluster_request_uuid`, `OutletRequest.resulting_cluster_id` and the rejected record outcome code `cluster_name_exists`. Review round (push B3): `BundleDelta.clusters`, `clusters_truncated`, `outlet_sku_stats`, `outlet_sku_stats_truncated` (a delta carries each section whole when it changed), `Bundle.clusters_truncated` and `Bundle.outlet_sku_stats_truncated` (the caps 600 and 400), `OutletRequestApproveRequest.cluster_id`, `SalesSubmitRequest.captured_at` (the phone's clock) and `RouteDayState.late_rows_anchor`; the late-row count is derived from the day_submit record's own `captured_at`; ADS is per elapsed calendar day. Review round B5: `DaySubmitPayload.anchor_clock` (optional, server-set on the online Sales Submit). No existing member changes.
-    - 1.23.0 (PROVISIONAL, lane portal-loyalty-api, the portal points adjustment, D-LOY-API-35; no migration; additive only): three operations under `/v1/admin/programmes/{id}`, all in permission module `loyalty` (no module-map change): `postProgrammeAdjustment` (`POST .../adjustments`: one signed `adjustment` ledger row for an outlet, reason required, optional `expires_on`, idempotent by `request_uuid`), `putProgrammeAdjustments` (`PUT .../adjustments`: a bulk file with `dry_run` true = validate and report, nothing written, then the apply, all-or-nothing, idempotent by `batch_uuid`) and `listProgrammeLedger` (`GET .../ledger`: the ledger rows of the programme with the adjustment reason). New schemas `ProgrammeAdjustmentWrite`, `ProgrammeAdjustmentBatch`, `ProgrammeAdjustmentBatchResult`, `LedgerEntry` and `LedgerPage`. The phone path is unchanged: the bundle's `loyalty[].balance_points` is still the plain sum of the ledger rows, so a posted adjustment is in it from the next bundle.
+    - 1.23.0 (PROVISIONAL, lane portal-loyalty-api, the portal points adjustment, D-LOY-API-35; no migration; additive only): three operations under `/v1/admin/programmes/{id}`, all in permission module `loyalty` (no module-map change): `postProgrammeAdjustment` (`POST .../adjustments`: one signed `adjustment` ledger row for an outlet, reason required, optional `expires_on`, idempotent by `request_uuid`), `putProgrammeAdjustments` (`PUT .../adjustments`: a bulk file with `dry_run` true = validate and report, nothing written, then the apply, all-or-nothing, idempotent by `batch_uuid`) and `listProgrammeLedger` (`GET .../ledger`: the ledger rows of the programme with the adjustment reason); a debit below zero needs `allow_overdraw: true` (`409` `would_overdraw` otherwise). New schemas `ProgrammeAdjustmentWrite`, `ProgrammeAdjustmentBatch`, `ProgrammeAdjustmentBatchResult`, `LedgerEntry` and `LedgerPage`. The phone path is unchanged: the bundle's `loyalty[].balance_points` is still the plain sum of the ledger rows, so a posted adjustment is in it from the next bundle.
     - 1.22.0 (PROVISIONAL, lane portal-loyalty-api, SR programme screens N-1, N-6, N-7, N-9; no migration; additive only): `ProgrammesSection.astha_targets` carries the whole current quarter under the one 1,000-row bound (the current month first) with the new `astha_truncated_months`; `LoyaltyBalance.tier_code`; `AsthaTargetRow.brand_name` and `brand_name_bn` (only for a brand that is not an active product node); `BundleUser.geography` (`BundleGeography`, `BundleGeoName`: the user's own wing, division, territory and zone names, once per bundle); `RedemptionPayload.balance_before_points` is described as informational (the minimum 0 is unchanged).
     - 1.20.0 (waiting quarantine items, lane portal-loyalty-api, train 118 landing; migration V0204; request file `docs/requests/contract-1.20-loyalty-waiting.md`; additive only, response members only): `QuarantinePage.waiting_count` (the open items that wait for another parent inside the caller's reach, whatever the page and filters) and, on `QuarantineItem`, `waiting`, `waits_for_uuid` and `waits_for_refused`. A child held with a parent that a reviewer accepted, whose other parent is not stored yet, stays open (the phone is told nothing final); the server's own sweep in the API process releases it when that parent is stored, with exactly the override the reviewer's accept carried for it, and a hash-chained audit row by the system actor; if a check of its own then holds it, it becomes an ordinary held item (`waiting` false). No request or phone-visible record change.
     - 1.19.0 (SR check-out round, lane sr-server SV6, train 117, D-SV2-15; ruling 6 of D-LEAD-PREREQ-03 and `docs/requests/android-gates.md`; request file
@@ -6425,7 +6425,7 @@ paths:
         IDEMPOTENT by `request_uuid` (the ledger's `source_id`): a repeat of the same request is `200` with the stored row and adds nothing; the same `request_uuid` with another outlet, amount
         or expiry is `409`. A repeat is answered even after the programme has ended (the scope is judged first, the state after). Scope, server side: the programme must be in the caller's
         reach (else `404`) and the outlet must exist (`400`) and lie in the programme's scope (the current version's wing, division, territory, zone or route nodes; a programme with none covers
-        every outlet) and the caller's reach, else `403` with pointer `body.outlet_id`. Only an `active` programme takes points (`409` `ERR_REQUEST_STATE`; a draft or an ended one does not).
+        every outlet) and the caller's reach, else `403` with pointer `body.outlet_id`. Only an `active` programme takes points (`409` `ERR_REQUEST_STATE`; a draft or an ended one does not). A DEBIT that would take the outlet's balance below zero is `409` `ERR_CONFLICT` (error code `would_overdraw`, the current `balance_points` in the problem body) unless the request carries `allow_overdraw: true`. The reason is plain text, stored in the audit row only.
       parameters:
         - $ref: '#/components/parameters/IdPath'
       requestBody:
@@ -6455,10 +6455,10 @@ paths:
       summary: Bulk points adjustment by file, with a dry-run preview, then the apply (idempotent by batch_uuid, all-or-nothing).
       description: >-
         From 1.23.0. Same permission, scope and rules as `postProgrammeAdjustment`, for up to 20,000 rows `{outlet_id, points, expires_on?}` (an outlet at most once per file). With
-        `dry_run: true` the file is validated and the answer reports `valid`, the totals and EVERY row error (`errors[]`: row index, column, code; at most 100, `errors_truncated`
+        `dry_run: true` the file is validated and the answer reports `valid`, the totals and the row errors (`errors[]`: row index, column, code; the first 200, with `error_count` and `errors_truncated`
         beyond) and nothing is written (no ledger row, no audit row). With `dry_run: false` the same checks run and any error refuses the whole file (`400`, or `403` when only the scope is
         wrong, with the pointer of the first bad row); otherwise every row is posted in one transaction under `source_id` `<batch_uuid>:<row index>` with ONE audit row for the batch. A repeat of a
-        posted `batch_uuid` with the same rows is `200` with `replayed` true and `posted` 0; the same `batch_uuid` with other rows is `409`. An ended or draft programme takes no new batch (`409`).
+        posted `batch_uuid` with the same rows is `200` with `replayed` true and `posted` 0; the same `batch_uuid` with other rows is `409`. An ended or draft programme takes no new batch (`409`). Debit rows are checked against the balance as on the single post (`allow_overdraw` at batch level; the dry run reports `would_overdraw` with the balance; an apply refuses the whole file with `409`). A replay is judged on the stored rows only.
       parameters:
         - $ref: '#/components/parameters/IdPath'
       requestBody:
@@ -16433,6 +16433,7 @@ components:
         points: { type: integer, minimum: -1000000, maximum: 1000000, description: 'Signed, never 0: a credit is positive, a debit negative.' }
         reason: { $ref: '#/components/schemas/ChangeReason' }
         expires_on: { type: [string, 'null'], format: date, description: 'Last day the credited points count (not before today, Dhaka); null or absent = no expiry.' }
+        allow_overdraw: { type: boolean, default: false, description: 'A debit that would take the balance (the figure of `loyalty[].balance_points`, unposted phone redemptions included) below zero is `409` unless this is true (the overdraw policy is the owner`s to decide).' }
     ProgrammeAdjustmentRow:
       type: object
       required: [outlet_id, points]
@@ -16451,6 +16452,7 @@ components:
         batch_uuid: { $ref: '#/components/schemas/Uuid' }
         dry_run: { type: boolean, description: 'true = validate and report, write nothing.' }
         change_reason: { $ref: '#/components/schemas/ChangeReason' }
+        allow_overdraw: { type: boolean, default: false, description: 'As on the single post, for every debit row of the file.' }
         rows:
           type: array
           minItems: 1
@@ -16463,7 +16465,8 @@ components:
       properties:
         row: { type: integer, minimum: 0, description: Zero-based index in `rows`. }
         column: { type: string, description: 'The member at fault (`outlet_id`, `points`, `expires_on`) or `row`.' }
-        code: { type: string, description: 'Stable code: required, not_an_integer, out_of_range, zero, duplicate, not_found, out_of_scope, in_the_past, invalid_value ...' }
+        code: { type: string, description: 'Stable code: required, not_an_integer, out_of_range, zero, duplicate, not_found, out_of_scope, in_the_past, would_overdraw, invalid_value ...' }
+        balance_points: { type: integer, format: int64, description: 'With `would_overdraw`: the balance before the file.' }
     ProgrammeAdjustmentBatchResult:
       type: object
       required: [batch_uuid, dry_run, rows, total_points, replayed]
@@ -16481,7 +16484,8 @@ components:
         credit_points: { type: integer, format: int64, minimum: 0, description: 'Dry run only.' }
         debit_points: { type: integer, format: int64, maximum: 0, description: 'Dry run only (negative or 0).' }
         programme_status: { type: string, enum: [draft, active, inactive], description: 'Dry run only.' }
-        errors: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/ProgrammeAdjustmentRowError' }, description: 'Dry run only.' }
+        errors: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/ProgrammeAdjustmentRowError' }, description: 'Dry run only: the first 200 row errors.' }
+        error_count: { type: integer, minimum: 0, description: 'Dry run only: the total number of row errors (more than `errors` carries when `errors_truncated`).' }
         errors_truncated: { type: boolean, description: 'Dry run only.' }
     LedgerEntry:
       type: object

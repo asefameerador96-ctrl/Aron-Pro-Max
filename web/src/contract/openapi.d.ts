@@ -4178,12 +4178,12 @@ export interface paths {
         get?: never;
         /**
          * Bulk points adjustment by file, with a dry-run preview, then the apply (idempotent by batch_uuid, all-or-nothing).
-         * @description From 1.23.0. Same permission, scope and rules as `postProgrammeAdjustment`, for up to 20,000 rows `{outlet_id, points, expires_on?}` (an outlet at most once per file). With `dry_run: true` the file is validated and the answer reports `valid`, the totals and EVERY row error (`errors[]`: row index, column, code; at most 100, `errors_truncated` beyond) and nothing is written (no ledger row, no audit row). With `dry_run: false` the same checks run and any error refuses the whole file (`400`, or `403` when only the scope is wrong, with the pointer of the first bad row); otherwise every row is posted in one transaction under `source_id` `<batch_uuid>:<row index>` with ONE audit row for the batch. A repeat of a posted `batch_uuid` with the same rows is `200` with `replayed` true and `posted` 0; the same `batch_uuid` with other rows is `409`. An ended or draft programme takes no new batch (`409`).
+         * @description From 1.23.0. Same permission, scope and rules as `postProgrammeAdjustment`, for up to 20,000 rows `{outlet_id, points, expires_on?}` (an outlet at most once per file). With `dry_run: true` the file is validated and the answer reports `valid`, the totals and the row errors (`errors[]`: row index, column, code; the first 200, with `error_count` and `errors_truncated` beyond) and nothing is written (no ledger row, no audit row). With `dry_run: false` the same checks run and any error refuses the whole file (`400`, or `403` when only the scope is wrong, with the pointer of the first bad row); otherwise every row is posted in one transaction under `source_id` `<batch_uuid>:<row index>` with ONE audit row for the batch. A repeat of a posted `batch_uuid` with the same rows is `200` with `replayed` true and `posted` 0; the same `batch_uuid` with other rows is `409`. An ended or draft programme takes no new batch (`409`). Debit rows are checked against the balance as on the single post (`allow_overdraw` at batch level; the dry run reports `would_overdraw` with the balance; an apply refuses the whole file with `409`). A replay is judged on the stored rows only.
          */
         put: operations["putProgrammeAdjustments"];
         /**
          * Load or correct the points of one outlet in a programme (one signed ledger row, reason required).
-         * @description From 1.23.0. Permission module `loyalty`, `w` grant (SUPERADMIN, or ADMIN with `w`); every other role is `403`. Writes ONE `adjustment` row of the append-only points ledger: a signed non-zero `points` (a credit, or a debit with a negative sign), the optional `expires_on` (not before today's Dhaka business date; an expiring credit is lapsed by the ledger job) and a required `reason`, together with a hash-chained audit row in the same transaction. The business date is today (Dhaka). No earning rule is applied: the amount is what the admin enters. IDEMPOTENT by `request_uuid` (the ledger's `source_id`): a repeat of the same request is `200` with the stored row and adds nothing; the same `request_uuid` with another outlet, amount or expiry is `409`. A repeat is answered even after the programme has ended (the scope is judged first, the state after). Scope, server side: the programme must be in the caller's reach (else `404`) and the outlet must exist (`400`) and lie in the programme's scope (the current version's wing, division, territory, zone or route nodes; a programme with none covers every outlet) and the caller's reach, else `403` with pointer `body.outlet_id`. Only an `active` programme takes points (`409` `ERR_REQUEST_STATE`; a draft or an ended one does not).
+         * @description From 1.23.0. Permission module `loyalty`, `w` grant (SUPERADMIN, or ADMIN with `w`); every other role is `403`. Writes ONE `adjustment` row of the append-only points ledger: a signed non-zero `points` (a credit, or a debit with a negative sign), the optional `expires_on` (not before today's Dhaka business date; an expiring credit is lapsed by the ledger job) and a required `reason`, together with a hash-chained audit row in the same transaction. The business date is today (Dhaka). No earning rule is applied: the amount is what the admin enters. IDEMPOTENT by `request_uuid` (the ledger's `source_id`): a repeat of the same request is `200` with the stored row and adds nothing; the same `request_uuid` with another outlet, amount or expiry is `409`. A repeat is answered even after the programme has ended (the scope is judged first, the state after). Scope, server side: the programme must be in the caller's reach (else `404`) and the outlet must exist (`400`) and lie in the programme's scope (the current version's wing, division, territory, zone or route nodes; a programme with none covers every outlet) and the caller's reach, else `403` with pointer `body.outlet_id`. Only an `active` programme takes points (`409` `ERR_REQUEST_STATE`; a draft or an ended one does not). A DEBIT that would take the outlet's balance below zero is `409` `ERR_CONFLICT` (error code `would_overdraw`, the current `balance_points` in the problem body) unless the request carries `allow_overdraw: true`. The reason is plain text, stored in the audit row only.
          */
         post: operations["postProgrammeAdjustment"];
         delete?: never;
@@ -10546,6 +10546,11 @@ export interface components {
              * @description Last day the credited points count (not before today, Dhaka); null or absent = no expiry.
              */
             expires_on?: string | null;
+            /**
+             * @description A debit that would take the balance (the figure of `loyalty[].balance_points`, unposted phone redemptions included) below zero is `409` unless this is true (the overdraw policy is the owner`s to decide).
+             * @default false
+             */
+            allow_overdraw: boolean;
         };
         /** @description From 1.23.0. */
         ProgrammeAdjustmentRow: {
@@ -10560,6 +10565,11 @@ export interface components {
             /** @description true = validate and report, write nothing. */
             dry_run: boolean;
             change_reason: components["schemas"]["ChangeReason"];
+            /**
+             * @description As on the single post, for every debit row of the file.
+             * @default false
+             */
+            allow_overdraw: boolean;
             rows: components["schemas"]["ProgrammeAdjustmentRow"][];
         };
         ProgrammeAdjustmentRowError: {
@@ -10567,8 +10577,13 @@ export interface components {
             row: number;
             /** @description The member at fault (`outlet_id`, `points`, `expires_on`) or `row`. */
             column: string;
-            /** @description Stable code: required, not_an_integer, out_of_range, zero, duplicate, not_found, out_of_scope, in_the_past, invalid_value ... */
+            /** @description Stable code: required, not_an_integer, out_of_range, zero, duplicate, not_found, out_of_scope, in_the_past, would_overdraw, invalid_value ... */
             code: string;
+            /**
+             * Format: int64
+             * @description With `would_overdraw`: the balance before the file.
+             */
+            balance_points?: number;
         };
         /** @description From 1.23.0. The dry-run report carries `valid`, the totals and `errors`; the apply result carries `posted`. */
         ProgrammeAdjustmentBatchResult: {
@@ -10603,8 +10618,10 @@ export interface components {
              * @enum {string}
              */
             programme_status?: "draft" | "active" | "inactive";
-            /** @description Dry run only. */
+            /** @description Dry run only: the first 200 row errors. */
             errors?: components["schemas"]["ProgrammeAdjustmentRowError"][];
+            /** @description Dry run only: the total number of row errors (more than `errors` carries when `errors_truncated`). */
+            error_count?: number;
             /** @description Dry run only. */
             errors_truncated?: boolean;
         };

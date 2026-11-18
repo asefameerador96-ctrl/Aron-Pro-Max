@@ -990,10 +990,10 @@ private suspend fun updateGift(call: ApplicationCall, d: AdminLoyaltyDeps): Gift
 
 private const val ADJ_SOURCE = "adjustment"
 private const val MAX_ADJ_POINTS = 1_000_000L
-private const val MAX_ADJ_ERRORS = 100
+private const val MAX_ADJ_ERRORS = 200
 
 private class AdjRow(val outlet: Long, val points: Int, val expires: LocalDate?)
-private class AdjErr(val row: Int, val column: String, val code: String)
+private class AdjErr(val row: Int, val column: String, val code: String, val balance: Long? = null)
 
 private fun adjRows(o: JsonObject, bulk: Boolean): Pair<List<AdjRow?>, List<AdjErr>> {
     val a = o["rows"] as? JsonArray ?: adminBad("body.rows", "required")
@@ -1016,6 +1016,8 @@ private fun adjRows(o: JsonObject, bulk: Boolean): Pair<List<AdjRow?>, List<AdjE
     }
     return rows to errs
 }
+
+private fun adjAllow(o: JsonObject): Boolean = o["allow_overdraw"]?.let { (it as? JsonPrimitive)?.takeIf { p -> !p.isString }?.content.let { c -> when (c) { "true" -> true; "false" -> false; else -> adminBad("body.allow_overdraw", "not_a_boolean") } } } ?: false
 
 private fun adjRow(r: JsonObject): AdjRow {
     val outlet = r.id("outlet_id", required = true)!!
@@ -1046,6 +1048,27 @@ private fun adjOutlets(h: Handle, p: AronPrincipal, d: AdminLoyaltyDeps, prog: A
     return known to q.mapTo(Long::class.java).list().toSet()
 }
 
+/**
+ * The balance the phone shows for the pair: every ledger row MINUS the points of stored, non-voided redemptions the ledger job has not posted yet (the rule of `loyalty[].balance_points`).
+ * An adjustment that would take it below zero needs `allow_overdraw` (the owner has not decided the overdraw policy).
+ */
+private fun adjBalances(h: Handle, programme: Long, outlets: List<Long>): Map<Long, Long> {
+    if (outlets.isEmpty()) return emptyMap()
+    val out = outlets.associateWith { 0L }.toMutableMap()
+    h.createQuery("SELECT outlet_id, sum(points) FROM app.loyalty_ledger WHERE programme_id = :p AND outlet_id IN (<o>) GROUP BY outlet_id").bind("p", programme).bindList("o", outlets)
+        .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().forEach { (o, v) -> out[o] = v }
+    h.createQuery(
+        "SELECT r.outlet_id, sum(r.points_total) FROM app.redemption r WHERE r.programme_id = :p AND r.outlet_id IN (<o>) AND r.voided_at IS NULL " +
+            "AND NOT EXISTS (SELECT 1 FROM app.loyalty_ledger l WHERE l.source_type = 'redemption' AND l.source_id = r.client_uuid::text) GROUP BY r.outlet_id",
+    ).bind("p", programme).bindList("o", outlets).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().forEach { (o, v) -> out[o] = (out[o] ?: 0L) - v }
+    return out
+}
+
+private fun overdraw(balance: Long, points: Int, pointer: String) = ApiProblem(
+    ProblemCode.ERR_CONFLICT, "this debit would take the balance below zero; send allow_overdraw: true to allow it", errors = listOf(FieldError(pointer, "would_overdraw")),
+    context = mapOf("balance_points" to JsonPrimitive(balance), "points" to JsonPrimitive(points)),
+)
+
 private fun adjLedgerJson(rs: java.sql.ResultSet): JsonObject = buildJsonObject {
     put("ledger_id", rs.getLong("id")); put("source_type", rs.getString("source_type")); put("source_id", rs.getString("source_id"))
     put("outlet_id", rs.getLong("outlet_id")); put("programme_id", rs.getLong("programme_id")); put("points", rs.getInt("points"))
@@ -1058,16 +1081,19 @@ private const val ADJ_SELECT = "SELECT l.id, l.source_type, l.source_id, l.outle
     "(SELECT a.reason FROM app.audit_log a WHERE a.entity = 'programme_adjustment' AND a.entity_id = split_part(l.source_id, ':', 1) AND l.source_type = 'adjustment' ORDER BY a.id LIMIT 1) AS reason " +
     "FROM app.loyalty_ledger l"
 
+private fun posted0(rows: List<AdjRow?>, i: Int): Int = rows[i]!!.points
+
 private fun adjErrorProblem(errs: List<AdjErr>) = ApiProblem(ProblemCode.ERR_VALIDATION, "invalid body", errors = errs.take(MAX_ADJ_ERRORS).map { FieldError(if (it.column == "row") "body.rows[${it.row}]" else "body.rows[${it.row}].${it.column}", it.code) })
 
 private suspend fun postAdjustment(call: ApplicationCall, d: AdminLoyaltyDeps): Pair<JsonObject, HttpStatusCode> {
     val p = call.loyaltyPrincipal(Need.WRITE)
     val id = call.pathId()
     val o = call.bodyObject()
-    o.only(setOf("request_uuid", "outlet_id", "points", "reason", "expires_on"))
+    o.only(setOf("request_uuid", "outlet_id", "points", "reason", "expires_on", "allow_overdraw"))
     val request = loyRequestUuid(o)
     val reason = loyReason(o, "reason")
     val row = adjRow(o)
+    val allow = adjAllow(o)
     val today = today(d)
     return mapDb {
         d.db.jdbi.inTransaction<Pair<JsonObject, HttpStatusCode>, Exception> { h ->
@@ -1086,6 +1112,7 @@ private suspend fun postAdjustment(call: ApplicationCall, d: AdminLoyaltyDeps): 
             }
             if (prog.status != "active") throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "points are adjusted on an active programme only")
             if (row.expires != null && row.expires.isBefore(today)) adminBad("body.expires_on", "in_the_past")
+            if (row.points < 0 && !allow) adjBalances(h, id, listOf(row.outlet)).getValue(row.outlet).let { if (it + row.points < 0) throw overdraw(it, row.points, "body.points") }
             h.createUpdate("INSERT INTO app.loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on, flags) VALUES (:o, :p, 'adjustment', :sid, :pts, :bd, :exp, '{portal}')")
                 .bind("o", row.outlet).bind("p", id).bind("sid", request.toString()).bind("pts", row.points).bind("bd", today).bind("exp", row.expires as Any?).execute()
             AuditWriter.write(h, p, "programme_adjustment", request.toString(), "post", null,
@@ -1099,10 +1126,11 @@ private suspend fun putAdjustments(call: ApplicationCall, d: AdminLoyaltyDeps): 
     val p = call.loyaltyPrincipal(Need.WRITE)
     val id = call.pathId()
     val o = call.bodyObject()
-    o.only(setOf("batch_uuid", "dry_run", "change_reason", "rows"))
+    o.only(setOf("batch_uuid", "dry_run", "change_reason", "rows", "allow_overdraw"))
     val batch = loyRequestUuid(o, "batch_uuid")
     val dry = (o["dry_run"] as? JsonPrimitive)?.takeIf { !it.isString }?.content.let { when (it) { "true" -> true; "false" -> false; else -> adminBad("body.dry_run", "required") } }
     val reason = loyReason(o)
+    val allow = adjAllow(o)
     val (parsed, shapeErrs) = adjRows(o, bulk = true)
     val today = today(d)
     return mapDb {
@@ -1112,17 +1140,21 @@ private suspend fun putAdjustments(call: ApplicationCall, d: AdminLoyaltyDeps): 
             val errs = ArrayList(shapeErrs)
             val ok = parsed.withIndex().filter { it.value != null }.map { it.index to it.value!! }
             val (known, inScope) = adjOutlets(h, p, d, prog, ok.map { it.second.outlet }.distinct())
+            // Replay first: the rows of this batch uuid already exist (all-or-nothing, so all or none); a replay is judged on the stored rows, not on today's dates or balances.
+            val prior = h.createQuery("SELECT source_id, outlet_id, programme_id, points, expires_on FROM app.loyalty_ledger WHERE source_type = 'adjustment' AND source_id LIKE :pre")
+                .bind("pre", "$batch:%").map { rs, _ -> rs.getString(1) to listOf(rs.getLong(2), rs.getLong(3), rs.getInt(4).toLong(), rs.getObject(5, LocalDate::class.java)?.toString()) }.list().toMap()
+            val replayed = prior.isNotEmpty()
             var firstScope: AdjErr? = null
             for ((i, r) in ok) {
                 if (r.outlet !in known) errs += AdjErr(i, "outlet_id", "not_found")
                 else if (r.outlet !in inScope) { errs += AdjErr(i, "outlet_id", "out_of_scope").also { if (firstScope == null) firstScope = it } }
-                else if (r.expires != null && r.expires.isBefore(today)) errs += AdjErr(i, "expires_on", "in_the_past")
+                else if (!replayed && r.expires != null && r.expires.isBefore(today)) errs += AdjErr(i, "expires_on", "in_the_past")
+            }
+            if (!replayed && !allow) {
+                val bal = adjBalances(h, id, ok.filter { it.second.points < 0 && it.second.outlet in inScope }.map { it.second.outlet }.distinct())
+                for ((i, r) in ok) if (r.points < 0 && r.outlet in inScope) bal[r.outlet]?.let { b -> if (b + r.points < 0) errs += AdjErr(i, "points", "would_overdraw", b) }
             }
             errs.sortBy { it.row }
-            // Replay: the rows of this batch uuid already exist (all-or-nothing, so all or none); equal = replayed, anything else = 409. Judged after scope, before the state.
-            val prior = h.createQuery("SELECT source_id, outlet_id, programme_id, points, expires_on FROM app.loyalty_ledger WHERE source_type = 'adjustment' AND source_id LIKE :pre")
-                .bind("pre", "$batch:%").map { rs, _ -> rs.getString(1) to listOf(rs.getLong(2), rs.getLong(3), rs.getInt(4).toLong(), rs.getObject(5, LocalDate::class.java)?.toString()) }.list().toMap()
-            val replayed = prior.isNotEmpty()
             if (replayed && errs.none { it.code == "not_found" || it.code == "out_of_scope" }) {
                 val same = prior.size == parsed.size && parsed.withIndex().all { (i, r) -> r != null && prior["$batch:$i"] == listOf(r.outlet, id, r.points.toLong(), r.expires?.toString()) }
                 if (!same) throw loyConflict("batch_uuid already used for a different batch", "body.batch_uuid")
@@ -1135,11 +1167,12 @@ private suspend fun putAdjustments(call: ApplicationCall, d: AdminLoyaltyDeps): 
                 put("replayed", replayed); put("outlets", posted.map { it.outlet }.distinct().size)
                 put("credit_points", posted.filter { it.points > 0 }.sumOf { it.points.toLong() }); put("debit_points", posted.filter { it.points < 0 }.sumOf { it.points.toLong() }); put("total_points", total)
                 put("programme_status", prog.status)
-                put("errors", buildJsonArray { errs.take(MAX_ADJ_ERRORS).forEach { e -> add(buildJsonObject { put("row", e.row); put("column", e.column); put("code", e.code) }) } })
-                put("errors_truncated", errs.size > MAX_ADJ_ERRORS)
+                put("errors", buildJsonArray { errs.take(MAX_ADJ_ERRORS).forEach { e -> add(buildJsonObject { put("row", e.row); put("column", e.column); put("code", e.code); e.balance?.let { b -> put("balance_points", b) } }) } })
+                put("error_count", errs.size); put("errors_truncated", errs.size > MAX_ADJ_ERRORS)
             }
             if (!good) {
                 if (firstScope != null && errs.all { it.code == "out_of_scope" }) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "an outlet is outside the programme's scope or your reach", errors = listOf(FieldError("body.rows[${firstScope!!.row}].outlet_id", "out_of_scope")))
+                errs.firstOrNull { it.code == "would_overdraw" }?.takeIf { errs.all { e -> e.code == "would_overdraw" } }?.let { e -> throw overdraw(e.balance!!, posted0(parsed, e.row), "body.rows[${e.row}].points") }
                 throw adjErrorProblem(errs)
             }
             if (replayed) return@inTransaction buildJsonObject { put("batch_uuid", batch.toString()); put("dry_run", false); put("rows", parsed.size); put("posted", 0); put("replayed", true); put("total_points", total) }

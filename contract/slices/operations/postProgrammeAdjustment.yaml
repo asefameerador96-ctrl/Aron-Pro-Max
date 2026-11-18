@@ -16,7 +16,9 @@ operation:
     must be in the caller''s reach (else `404`) and the outlet must exist (`400`) and lie in the programme''s scope
     (the current version''s wing, division, territory, zone or route nodes; a programme with none covers every outlet)
     and the caller''s reach, else `403` with pointer `body.outlet_id`. Only an `active` programme takes points (`409`
-    `ERR_REQUEST_STATE`; a draft or an ended one does not).'
+    `ERR_REQUEST_STATE`; a draft or an ended one does not). A DEBIT that would take the outlet''s balance below
+    zero is `409` `ERR_CONFLICT` (error code `would_overdraw`, the current `balance_points` in the problem body)
+    unless the request carries `allow_overdraw: true`. The reason is plain text, stored in the audit row only.'
   parameters:
   - $ref: '#/components/parameters/IdPath'
   requestBody:

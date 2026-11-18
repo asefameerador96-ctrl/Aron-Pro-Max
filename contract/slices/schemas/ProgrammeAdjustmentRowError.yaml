@@ -16,4 +16,8 @@ ProgrammeAdjustmentRowError:
     code:
       type: string
       description: 'Stable code: required, not_an_integer, out_of_range, zero, duplicate, not_found, out_of_scope,
-        in_the_past, invalid_value ...'
+        in_the_past, would_overdraw, invalid_value ...'
+    balance_points:
+      type: integer
+      format: int64
+      description: 'With `would_overdraw`: the balance before the file.'

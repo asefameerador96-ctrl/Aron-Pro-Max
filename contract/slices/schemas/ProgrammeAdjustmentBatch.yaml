@@ -15,6 +15,10 @@ ProgrammeAdjustmentBatch:
       description: true = validate and report, write nothing.
     change_reason:
       $ref: '#/components/schemas/ChangeReason'
+    allow_overdraw:
+      type: boolean
+      default: false
+      description: As on the single post, for every debit row of the file.
     rows:
       type: array
       minItems: 1

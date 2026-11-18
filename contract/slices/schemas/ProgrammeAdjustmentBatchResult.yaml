@@ -54,10 +54,14 @@ ProgrammeAdjustmentBatchResult:
       description: Dry run only.
     errors:
       type: array
-      maxItems: 100
+      maxItems: 200
       items:
         $ref: '#/components/schemas/ProgrammeAdjustmentRowError'
-      description: Dry run only.
+      description: 'Dry run only: the first 200 row errors.'
+    error_count:
+      type: integer
+      minimum: 0
+      description: 'Dry run only: the total number of row errors (more than `errors` carries when `errors_truncated`).'
     errors_truncated:
       type: boolean
       description: Dry run only.

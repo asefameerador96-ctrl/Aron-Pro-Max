@@ -25,3 +25,8 @@ ProgrammeAdjustmentWrite:
       - 'null'
       format: date
       description: Last day the credited points count (not before today, Dhaka); null or absent = no expiry.
+    allow_overdraw:
+      type: boolean
+      default: false
+      description: A debit that would take the balance (the figure of `loyalty[].balance_points`, unposted phone
+        redemptions included) below zero is `409` unless this is true (the overdraw policy is the owner`s to decide).

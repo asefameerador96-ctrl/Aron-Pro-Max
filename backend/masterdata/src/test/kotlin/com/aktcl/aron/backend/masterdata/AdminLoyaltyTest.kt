@@ -882,7 +882,7 @@ class AdminLoyaltyTest {
     private suspend fun ApplicationTestBuilder.activeProg(scope: String = "[${s("zone", fx["zoneA"]!!)}]"): Long = createId(createBody(scope = scope)).also { activate(it).expect(HttpStatusCode.OK) }
     private fun adjBody(outlet: Long, points: Int, request: String = uuid(), extra: String = "", reason: String = why) = """{"request_uuid":"$request","outlet_id":$outlet,"points":$points,"reason":"$reason"$extra}"""
     private suspend fun ApplicationTestBuilder.adj(prog: Long, token: String, body: String) = call(HttpMethod.Post, "/v1/admin/programmes/$prog/adjustments", token, body)
-    private fun bulkBody(batch: String, dry: Boolean, vararg rows: String, reason: String = why) = """{"batch_uuid":"$batch","dry_run":$dry,"change_reason":"$reason","rows":[${rows.joinToString(",")}]}"""
+    private fun bulkBody(batch: String, dry: Boolean, vararg rows: String, reason: String = why, allow: Boolean? = null) = """{"batch_uuid":"$batch","dry_run":$dry,"change_reason":"$reason",${if (allow != null) """"allow_overdraw":$allow,""" else ""}"rows":[${rows.joinToString(",")}]}"""
     private fun brow(outlet: Long, points: Int, exp: String? = null) = """{"outlet_id":$outlet,"points":$points${if (exp != null) ""","expires_on":"$exp"""" else ""}}"""
     private suspend fun ApplicationTestBuilder.bulk(prog: Long, token: String, body: String) = call(HttpMethod.Put, "/v1/admin/programmes/$prog/adjustments", token, body)
     private fun ledgerCount(prog: Long) = count("SELECT count(*) FROM app.loyalty_ledger WHERE programme_id = $prog AND source_type = 'adjustment'")
@@ -951,6 +951,7 @@ class AdminLoyaltyTest {
     @Test
     fun theBulkUploadHasADryRunThatWritesNothingThenAnAllOrNothingIdempotentApply() = app {
         val prog = activeProg(); val o1 = fx["L-O1"]!!; val o2 = fx["L-O2"]!!; val oB = fx["L-O3"]!!
+        adj(prog, adminW, adjBody(o2, 100)).expect(HttpStatusCode.Created)      // so that the -30 below is not an overdraw
         val batch = uuid()
         // Dry run: counts and per-row errors, nothing written, no audit.
         val dry = bulk(prog, adminW, bulkBody(batch, true, brow(o1, 100, to), brow(o2, -30), brow(oB, 5), brow(o1, 1), brow(99999999, 1), brow(o2, 0), brow(o1, 3, past)))
@@ -959,36 +960,36 @@ class AdminLoyaltyTest {
         assertEquals("false", d.getValue("valid").jsonPrimitive.content)
         val errs = d.getValue("errors").jsonArray.map { it.jsonObject.let { e -> "${e.getValue("row").jsonPrimitive.content}:${e.getValue("column").jsonPrimitive.content}:${e.getValue("code").jsonPrimitive.content}" } }
         assertEquals(listOf("2:outlet_id:out_of_scope", "3:outlet_id:duplicate", "4:outlet_id:not_found", "5:points:zero", "6:outlet_id:duplicate"), errs)
-        assertEquals(0, ledgerCount(prog)); assertEquals(0, count("SELECT count(*) FROM app.audit_log WHERE entity = 'programme_adjustment' AND entity_id = '$batch'"))
+        assertEquals(1, ledgerCount(prog)); assertEquals(0, count("SELECT count(*) FROM app.audit_log WHERE entity = 'programme_adjustment' AND entity_id = '$batch'"))
         bulk(prog, adminW, bulkBody(uuid(), true, brow(o2, 3, past))).obj().getValue("errors").jsonArray.single().jsonObject.also { assertEquals("expires_on:in_the_past", it.getValue("column").jsonPrimitive.content + ":" + it.getValue("code").jsonPrimitive.content) }
         // Apply of an invalid file is refused whole (nothing written).
         bulk(prog, adminW, bulkBody(batch, false, brow(o1, 100), brow(oB, 5))).expect(HttpStatusCode.Forbidden, "ERR_FORBIDDEN", "body.rows[1].outlet_id")
         bulk(prog, adminW, bulkBody(batch, false, brow(o1, 100), brow(o2, 0))).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.rows[1].points")
-        assertEquals(0, ledgerCount(prog))
+        assertEquals(1, ledgerCount(prog))
         // A clean dry run, then the apply.
         val rows = arrayOf(brow(o1, 100, to), brow(o2, -30))
         bulk(prog, adminW, bulkBody(batch, true, *rows)).also { it.expect(HttpStatusCode.OK); it.obj().let { o -> assertEquals("true", o.getValue("valid").jsonPrimitive.content); assertEquals(70, o.getValue("total_points").jsonPrimitive.content.toInt()); assertEquals(100, o.getValue("credit_points").jsonPrimitive.content.toInt()) } }
-        assertEquals(0, ledgerCount(prog))
+        assertEquals(1, ledgerCount(prog))
         bulk(prog, adminR, bulkBody(batch, false, *rows)).expect(HttpStatusCode.Forbidden)
         bulk(prog, nat, bulkBody(batch, true, *rows)).expect(HttpStatusCode.Forbidden)
         bulk(prog, adminW, bulkBody(batch, false, *rows)).also { it.expect(HttpStatusCode.OK); assertEquals(2, it.obj().getValue("posted").jsonPrimitive.content.toInt()); assertEquals("false", it.obj().getValue("replayed").jsonPrimitive.content) }
-        assertEquals(2, ledgerCount(prog)); assertEquals(100, balance(prog, o1)); assertEquals(-30, balance(prog, o2))
+        assertEquals(3, ledgerCount(prog)); assertEquals(100, balance(prog, o1)); assertEquals(70, balance(prog, o2))
         assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'programme_adjustment' AND entity_id = '$batch' AND action = 'post_batch' AND reason = '$why'"))
         // Replay: nothing added, nothing doubled; another file under the same id is 409; a dry run of the posted batch says replayed.
         repeat(2) { bulk(prog, adminW, bulkBody(batch, false, *rows)).also { it.expect(HttpStatusCode.OK); assertEquals("true", it.obj().getValue("replayed").jsonPrimitive.content); assertEquals(0, it.obj().getValue("posted").jsonPrimitive.content.toInt()) } }
         bulk(prog, adminW, bulkBody(batch, false, brow(o1, 101, to), brow(o2, -30))).expect(HttpStatusCode.Conflict, "ERR_CONFLICT", "body.batch_uuid")
         bulk(prog, adminW, bulkBody(batch, true, *rows)).obj().also { assertEquals("true", it.getValue("replayed").jsonPrimitive.content) }
-        assertEquals(2, ledgerCount(prog)); assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'programme_adjustment' AND entity_id = '$batch'"))
+        assertEquals(3, ledgerCount(prog)); assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'programme_adjustment' AND entity_id = '$batch'"))
         // Racing applies of one batch post once.
         val prog2 = activeProg(); val b2 = uuid()
-        val codes = kotlinx.coroutines.coroutineScope { (1..5).map { async(kotlinx.coroutines.Dispatchers.IO) { bulk(prog2, adminW, bulkBody(b2, false, *rows)).status.value } }.awaitAll() }
+        val codes = kotlinx.coroutines.coroutineScope { (1..5).map { async(kotlinx.coroutines.Dispatchers.IO) { bulk(prog2, adminW, bulkBody(b2, false, *rows, allow = true)).status.value } }.awaitAll() }
         assertTrue(codes.all { it == 200 }); assertEquals(2, ledgerCount(prog2))
         // Shape errors of the whole request.
         bulk(prog, adminW, """{"batch_uuid":"${uuid()}","change_reason":"$why","rows":[${brow(o1, 1)}]}""").expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.dry_run")
         bulk(prog, adminW, bulkBody(uuid(), false)).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.rows")
         // An ended programme takes no new batch.
         call(HttpMethod.Post, "/v1/admin/programmes/$prog2/status", super1, """{"request_uuid":"${uuid()}","to_status":"inactive","reason":"$why"}""").expect(HttpStatusCode.OK)
-        bulk(prog2, adminW, bulkBody(uuid(), false, *rows)).expect(HttpStatusCode.Conflict, "ERR_REQUEST_STATE")
+        bulk(prog2, adminW, bulkBody(uuid(), false, *rows, allow = true)).expect(HttpStatusCode.Conflict, "ERR_REQUEST_STATE")
     }
 
     @Test
@@ -1013,5 +1014,36 @@ class AdminLoyaltyTest {
         call(HttpMethod.Get, "/v1/admin/programmes/$prog/ledger", adminNone).expect(HttpStatusCode.Forbidden)
         call(HttpMethod.Get, "/v1/admin/programmes/999999/ledger", super1).expect(HttpStatusCode.NotFound)
         call(HttpMethod.Get, "/v1/admin/programmes/$prog/ledger?source_type=Bad!", super1).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "query.source_type")
+    }
+
+    @Test
+    fun aDebitBelowZeroIsRefusedUnlessAllowOverdrawIsSentOnTheSingleAndTheBulkPath() = app {
+        val prog = activeProg(); val o1 = fx["L-O1"]!!; val o2 = fx["L-O2"]!!
+        adj(prog, adminW, adjBody(o1, 30)).expect(HttpStatusCode.Created)
+        // Single: -40 on 30 is a 409 with the balance in the problem body and nothing written; -30 (to exactly 0) is fine; allow_overdraw lets -40 through.
+        val r = adj(prog, adminW, adjBody(o1, -40)); r.expect(HttpStatusCode.Conflict, "ERR_CONFLICT", "body.points")
+        r.obj().also { assertEquals("would_overdraw", it.getValue("errors").jsonArray[0].jsonObject.getValue("code").jsonPrimitive.content); assertTrue(r.bodyAsText().contains("\"balance_points\":30"), it.toString()) }
+        assertEquals(30, balance(prog, o1)); assertEquals(1, ledgerCount(prog))
+        adj(prog, adminW, adjBody(o1, -30)).expect(HttpStatusCode.Created); assertEquals(0, balance(prog, o1))
+        val rq = uuid()
+        adj(prog, adminW, adjBody(o1, -40, rq, ""","allow_overdraw":true""")).expect(HttpStatusCode.Created); assertEquals(-40, balance(prog, o1))
+        adj(prog, adminW, adjBody(o1, -40, rq)).expect(HttpStatusCode.OK)       // a replay is answered without the flag (the stored row decides)
+        adj(prog, adminW, adjBody(o1, -1, extra = ""","allow_overdraw":"yes"""")).expect(HttpStatusCode.BadRequest, "ERR_VALIDATION", "body.allow_overdraw")
+        // A phone redemption the ledger job has not posted yet counts against the balance, as in the bundle.
+        adj(prog, adminW, adjBody(o2, 10)).expect(HttpStatusCode.Created)
+        val u = uuid()
+        sql("INSERT INTO app.redemption (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, outlet_id, programme_id, balance_before_points, points_total, cash_points, cash_mtk, cash_rate_mtk_per_point, line_count, confirmed_at) " +
+            "VALUES ('$u', '$u', (now() AT TIME ZONE 'Asia/Dhaka')::date, ${ids.getValue("lamo1")}, now(), 0, $o2, $prog, 0, 8, 0, 0, 2000, 1, now())")
+        adj(prog, adminW, adjBody(o2, -5)).expect(HttpStatusCode.Conflict, "ERR_CONFLICT", "body.points")      // 10 - 8 unposted = 2 < 5
+        // Bulk: the dry run names every would-be overdraw with the balance; the apply is refused whole (409); the flag at batch level allows it.
+        val b = uuid(); val p2 = activeProg(); adj(p2, adminW, adjBody(o1, 10)).expect(HttpStatusCode.Created)
+        val rows = arrayOf(brow(o1, -5), brow(o2, -3))
+        val dry = bulk(p2, adminW, bulkBody(b, true, *rows)).obj()
+        assertEquals("false", dry.getValue("valid").jsonPrimitive.content); assertEquals(1, dry.getValue("error_count").jsonPrimitive.content.toInt())
+        dry.getValue("errors").jsonArray.single().jsonObject.also { assertEquals("1:points:would_overdraw:0", listOf("row", "column", "code", "balance_points").joinToString(":") { k -> it.getValue(k).jsonPrimitive.content }) }
+        bulk(p2, adminW, bulkBody(b, false, *rows)).expect(HttpStatusCode.Conflict, "ERR_CONFLICT", "body.rows[1].points"); assertEquals(1, ledgerCount(p2))
+        bulk(p2, adminW, bulkBody(b, false, *rows, allow = true)).expect(HttpStatusCode.OK); assertEquals(3, ledgerCount(p2)); assertEquals(5, balance(p2, o1)); assertEquals(-3, balance(p2, o2))
+        // A replay after the balance moved is still a replay (not an overdraw error).
+        bulk(p2, adminW, bulkBody(b, false, *rows)).also { it.expect(HttpStatusCode.OK); assertEquals("true", it.obj().getValue("replayed").jsonPrimitive.content) }
     }
 }
