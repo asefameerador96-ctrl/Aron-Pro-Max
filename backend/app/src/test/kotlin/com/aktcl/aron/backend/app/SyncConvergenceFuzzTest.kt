@@ -394,4 +394,84 @@ class SyncConvergenceFuzzTest {
             assertTrue(duplicateSeen > 0, "no schedule sent a duplicate")
         }
     }
+
+    // ---- attendance: rep and phone closes (train 117, lead review of 1c8c3cb0 low 6) ---------------------------------
+
+    private val attDay = "2027-01-02"
+    private var attSeq = 0 // makes every attendance payload differ: identical content under another UUID is quarantined content_duplicate (s4.5) before the once-rule is reached
+
+    private class Att(val cu: String, val kind: String, val closedBy: String?, val record: JsonObject) {
+        val clazz get() = if (kind == "check_in") "in" else if (closedBy == "phone") "phone" else "out"
+    }
+
+    private fun attendanceRecord(kind: String, closedBy: String?, at: String): Att {
+        val cu = uuid()
+        val fix = if (closedBy == "phone") {
+            """{"purpose":"attendance_out","fix_status":"provider_unavailable","lat":null,"lng":null,"accuracy_m":null,"provider":"unknown","is_mock":false,"reused":false,
+               "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}"""
+        } else fixJson.replace("PURPOSE", if (kind == "check_in") "attendance_in" else "attendance_out")
+        val member = closedBy?.let { ""","closed_by":"$it"""" } ?: ""
+        // Another business date than the day of the other fuzz test, so its cumulative server_totals are never touched.
+        val rec = envelope("attendance_event", cu, cu, 0, json("""{"kind":"$kind","fix":$fix$member,"address_display":"r${attSeq++}"}"""), at, route = null)
+        return Att(cu, kind, closedBy, JsonObject(rec + ("business_date" to kotlinx.serialization.json.JsonPrimitive(attDay))))
+    }
+
+    /**
+     * Attendance under hostile schedules: a random set of rep check-ins, rep check-outs and phone closes of the day (each class sent under SEVERAL client UUIDs, as a shared phone or a
+     * reinstall would), delivered shuffled, split, duplicated and replayed, then resent until final. The once-rules (V0202) are the oracle: exactly one stored row per class that was sent
+     * (rep check-in, rep check-out, phone close), whichever order the batches arrived in; the stored one is one of that class's UUIDs and answers accepted/duplicate for ever, every other UUID
+     * of the class is a final `attendance_duplicate`; a rep check-out and a phone close of the same day coexist. The day is cleared between runs by voiding its rows (a tombstone frees the slot).
+     */
+    @Test
+    fun attendanceOfEveryClassKeepsItsOnceRuleUnderEverySchedule() = testApplication {
+        app()
+        val token = client.token()
+        val userId = count("SELECT id FROM app.app_user WHERE username = 'sr1001'")
+        for (run in 0 until runs) {
+            val seed = baseSeed + 7_000 + run
+            val rnd = kotlin.random.Random(seed)
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.attendance_event SET voided_at = now() WHERE user_id = $userId AND business_date = DATE '$attDay' AND voided_at IS NULL") }
+            val sent = mutableListOf<Att>()
+            // Each record has its own capture minute: identical content in one minute would be quarantined `content_duplicate` (s4.5) before the once-rule is reached.
+            fun add(kind: String, closedBy: String?, n: Int, at: String) = repeat(n) { sent += attendanceRecord(kind, closedBy, Instant.parse(at).plusSeconds(60L * sent.size).toString()) }
+            if (rnd.nextInt(4) != 0) add("check_in", if (rnd.nextBoolean()) "rep" else null, rnd.nextInt(1, 3), "2027-01-02T02:00:00Z")
+            if (rnd.nextInt(4) != 0) add("check_out", if (rnd.nextBoolean()) "rep" else null, rnd.nextInt(1, 3), "2027-01-02T03:00:00Z")
+            if (rnd.nextInt(3) != 0) add("check_out", "phone", rnd.nextInt(1, 3), "2027-01-02T03:30:00Z")
+            if (sent.isEmpty()) add("check_in", null, 1, "2027-01-02T02:00:00Z")
+            val final = HashMap<String, String>() // client_uuid -> last non-retryable "status:code"
+            fun note(resp: JsonObject) = resp["acks"]?.jsonArray?.forEach { a ->
+                val o = a.jsonObject
+                if (o["retryable"]?.jsonPrimitive?.content != "true") final[o["client_uuid"]!!.jsonPrimitive.content] = o["status"]!!.jsonPrimitive.content + ":" + (o["code"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.content ?: "-")
+            }
+            // chaos: shuffled, split into batches, with a duplicated record and a replayed batch
+            val shuffled = sent.shuffled(rnd).map { it.record }
+            var i = 0
+            while (i < shuffled.size) {
+                val n = rnd.nextInt(1, 4)
+                val chunk = shuffled.subList(i, minOf(shuffled.size, i + n)); i += n
+                val body = batch((chunk + (if (rnd.nextInt(3) == 0) listOf(shuffled[rnd.nextInt(shuffled.size)]) else emptyList())).distinctBy { it["client_uuid"]!!.jsonPrimitive.content })
+                note(client.sendBody(token, body))
+                if (rnd.nextInt(3) == 0) note(client.sendBody(token, body))
+            }
+            // the outbox: resend everything, twice, under new batch_uuids, in a random order each time
+            repeat(2) { sent.shuffled(rnd).chunked(4).forEach { c -> note(client.send(token, c.map { it.record })) } }
+            // oracle
+            for (clazz in listOf("in", "out", "phone")) {
+                val members = sent.filter { it.clazz == clazz }
+                val closedBy = if (clazz == "phone") "phone" else "rep"; val kind = if (clazz == "in") "check_in" else "check_out"
+                val stored = fresh.db.jdbi.withHandle<List<String>, Exception> { h ->
+                    h.createQuery("SELECT client_uuid::text FROM app.attendance_event WHERE user_id = $userId AND business_date = DATE '$attDay' AND voided_at IS NULL AND kind = '$kind' AND closed_by = '$closedBy'").mapTo(String::class.java).list()
+                }
+                assertEquals(if (members.isEmpty()) 0 else 1, stored.size, "seed=$seed: exactly one stored $clazz row when any was sent")
+                if (members.isEmpty()) continue
+                assertTrue(stored.single() in members.map { it.cu }, "seed=$seed: the stored $clazz row is one of the sent ones")
+                for (m in members) {
+                    val a = final[m.cu]
+                    if (m.cu == stored.single()) assertTrue(a == "accepted:-" || a == "duplicate:-", "seed=$seed: the stored $clazz record ends accepted or duplicate, not $a")
+                    else assertEquals("rejected:attendance_duplicate", a, "seed=$seed: every other $clazz record is a final attendance_duplicate")
+                }
+            }
+            assertEquals(sent.map { it.clazz }.toSet().size.toLong(), count("SELECT count(*) FROM app.attendance_event WHERE user_id = $userId AND business_date = DATE '$attDay' AND voided_at IS NULL"), "seed=$seed: one row per class sent, no more")
+        }
+    }
 }
