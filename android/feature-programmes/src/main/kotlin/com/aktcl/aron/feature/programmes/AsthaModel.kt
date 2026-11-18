@@ -46,7 +46,24 @@ data class BrandName(val en: String, val bn: String?) {
 }
 
 /** What the Astha screens read: all rows, the display-only "as of", the cut flag and the brand names. */
-data class AsthaData(val rows: List<AsthaRow>, val asOf: String?, val truncated: Boolean, val brands: Map<Long, BrandName>, val brandCategory: Map<Long, String> = emptyMap(), val skuBrand: Map<Long, Long> = emptyMap(), val skuPack: Map<Long, Int> = emptyMap(), val skuUnits: Map<Long, SkuUnit> = emptyMap()) {
+data class AsthaData(val rows: List<AsthaRow>, val asOf: String?, val truncated: Boolean, val brands: Map<Long, BrandName>, val brandCategory: Map<Long, String> = emptyMap(), val skuBrand: Map<Long, Long> = emptyMap(), val skuPack: Map<Long, Int> = emptyMap(), val skuUnits: Map<Long, SkuUnit> = emptyMap(),
+    /** The months the bundle says did not fit its bound (`astha_truncated_months`); empty when the server sends none. */
+    val truncatedMonths: Set<String> = emptySet(),
+    /** Months whose rows were read online and kept on the phone (month to the server's `as_of` of that read): their figures are the server's as of that read, with no local arithmetic. */
+    val fetchedMonths: Map<String, String?> = emptyMap(),
+) {
+    /** The "data as of" of a month: the read's own time for a fetched month, else the bundle's. */
+    fun asOfOf(month: String): String? = if (month in fetchedMonths) fetchedMonths[month] else asOf
+
+    /** True when the bundle cut this month's rows short and no complete read of it is on the phone. */
+    fun cutShort(month: String): Boolean = month !in fetchedMonths && cutByBundle(month)
+
+    /** The bundle says it cut this month: it lists the month, or (an older server that lists none) sets the plain `astha_truncated` flag and holds rows of the month. */
+    fun cutByBundle(month: String): Boolean = if (truncatedMonths.isEmpty()) truncated && rows.any { it.month == month } else month in truncatedMonths
+
+    /** Months of the quarter the phone knows nothing of (no row, and no earlier online read that found none): the ones worth reading online. */
+    fun missingMonths(months: List<String>): List<String> = months.filter { m -> m !in fetchedMonths && rows.none { it.month == m } }
+
     /** The pack line of a brand's achievement in the units the field counts (rule 5): packets of sticks, dozens or boxes by the brand's category. */
     fun packLine(brandId: Long?, p: AsthaPack): PackLine {
         if (brandId == null) return AsthaModel.packLineOf(null, p)
@@ -91,7 +108,8 @@ object AsthaModel {
         val rows = (prog["astha_targets"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let(::row) }
         val truncated = (prog["astha_truncated"] as? JsonPrimitive)?.booleanOrNull ?: false
         val asOf = (prog["astha_as_of"] as? JsonPrimitive)?.contentOrNull
-        return AsthaData(rows, asOf, truncated, brands(productsJson), brandCategories(productsJson), skuBrands(productsJson), skuPackFactors(productsJson), skuUnits(productsJson))
+        val cutMonths = (prog["astha_truncated_months"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.takeIf { m -> Regex("^\\d{4}-(0[1-9]|1[0-2])$").matches(m) } }.toSet()
+        return AsthaData(rows, asOf, truncated, brands(productsJson), brandCategories(productsJson), skuBrands(productsJson), skuPackFactors(productsJson), skuUnits(productsJson), cutMonths)
     }
 
     /** sku id -> its brand node id: the SKU's variant node, walked up the product tree to the brand level; SKUs whose chain has no brand are left out. */
@@ -192,7 +210,7 @@ object AsthaModel {
         }.toMap()
     }
 
-    private fun row(o: JsonObject): AsthaRow? {
+    internal fun row(o: JsonObject): AsthaRow? {
         val route = o.long("route_id") ?: return null
         val month = o.str("month")?.takeIf { Regex("^\\d{4}-(0[1-9]|1[0-2])$").matches(it) } ?: return null
         val packs = (o["by_pack"] as? JsonArray).orEmpty().mapNotNull { e ->

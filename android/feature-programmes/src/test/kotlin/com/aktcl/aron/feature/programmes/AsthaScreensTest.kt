@@ -34,10 +34,10 @@ class AsthaScreensTest {
       {"route_id":7,"outlet_id":null,"brand_id":null,"month":"2026-11","std_target":"0","std_achieved":"0","memo_target":884,"memo_achieved":787,"value_target_mtk":"0","value_achieved_mtk":"0","by_pack":[]}]}"""
     private val products = """{"nodes":[{"id":11,"level":"brand","name":"Marise","name_bn":"মারিস","sort":1}],"skus":[]}"""
 
-    private fun show(language: AppLanguage, data: AsthaData?, shops: List<ShopInfo>? = null, initialShop: Long? = null, currentMonth: String? = null, awaiting: Int = 0, geography: Geography? = null) {
+    private fun show(language: AppLanguage, data: AsthaData?, shops: List<ShopInfo>? = null, initialShop: Long? = null, currentMonth: String? = null, awaiting: Int = 0, geography: Geography? = null, quarterState: Map<String, QuarterFetch> = emptyMap(), onQuarter: ((String) -> Unit)? = null) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         val loc = if (language == AppLanguage.BN) UiLocale.BN else UiLocale.EN
-        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { AsthaTargetScreen(data, loc, 2026, shops = shops, initialShop = initialShop, currentMonth = currentMonth, awaiting = awaiting, geography = geography) } } }
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { AsthaTargetScreen(data, loc, 2026, shops = shops, initialShop = initialShop, currentMonth = currentMonth, awaiting = awaiting, geography = geography, quarterState = quarterState, onQuarter = onQuarter) } } }
         compose.waitForIdle()
     }
 
@@ -105,7 +105,7 @@ class AsthaScreensTest {
         choose("Year", "2026"); choose("Quarter", "Q-1 (Jan-Mar)")
         compose.onNodeWithTag(AsthaTags.month("2026-01")).performClick(); compose.waitForIdle()
         compose.onNodeWithTag(AsthaTags.EMPTY).assertIsDisplayed()
-        assertEquals(1, compose.onAllNodesWithText("This month is not downloaded to this phone yet. Sync to see it.").fetchSemanticsNodes().size)
+        assertEquals(1, compose.onAllNodesWithText("This month is not on this phone yet. Connect to the internet once to download it.").fetchSemanticsNodes().size)
     }
 
     @Test fun truncationAndAsOfAreShownOnATable() {
@@ -178,5 +178,73 @@ class AsthaScreensTest {
         show(AppLanguage.EN, AsthaModel.parse(programmes, products), currentMonth = "2026-11")
         compose.onNodeWithTag(AsthaTags.row(11)).assertExists() // no picking needed: year, quarter and month are already chosen
         compose.onNodeWithText("Marise").assertExists()
+    }
+
+    // ---- quarter chips with months read online ----
+
+    private fun fetched(month: String, asOf: String = "2026-11-18T06:00:00Z", vararg rowsJson: String): AsthaData =
+        AsthaFetched.merge(AsthaModel.parse(programmes, products)!!, listOf(CachedMonth(7, month, asOf, kotlinx.serialization.json.Json.parseToJsonElement("[" + rowsJson.joinToString(",") + "]") as kotlinx.serialization.json.JsonArray)))
+
+    private val octRow = """{"route_id":7,"outlet_id":null,"brand_id":11,"month":"2026-10","std_target":"1000","std_achieved":"250","memo_target":0,"memo_achieved":0,"value_target_mtk":"4000000","value_achieved_mtk":"1000000","by_pack":[]}"""
+
+    @Test fun pickingAQuarterWithMissingMonthsAsksTheHostToReadItOnceAndAnEarlierMonthIsNotZero() {
+        val asked = mutableListOf<String>()
+        show(AppLanguage.EN, AsthaModel.parse(programmes, products), onQuarter = { asked += it })
+        choose("Year", "2026"); choose("Quarter", "Q-1 (Jan-Mar)")
+        assertEquals(listOf("2026-Q1"), asked)
+        compose.onNodeWithTag(AsthaTags.month("2026-01")).performClick(); compose.waitForIdle()
+        compose.onNodeWithText("This month is not on this phone yet. Connect to the internet once to download it.").assertIsDisplayed()
+        assertEquals(0, compose.onAllNodesWithText("0").fetchSemanticsNodes().size)
+    }
+
+    @Test fun aQuarterWhoseMonthsAreAllHeldIsNotRead() {
+        val asked = mutableListOf<String>()
+        val all = AsthaFetched.merge(AsthaModel.parse(programmes, products)!!, listOf(
+            CachedMonth(7, "2026-10", "2026-11-18T06:00:00Z", kotlinx.serialization.json.Json.parseToJsonElement("[$octRow]") as kotlinx.serialization.json.JsonArray),
+            CachedMonth(7, "2026-12", "2026-11-18T06:00:00Z", kotlinx.serialization.json.JsonArray(emptyList())),
+        ))
+        show(AppLanguage.EN, all.copy(truncated = false), onQuarter = { asked += it })
+        choose("Year", "2026"); choose("Quarter", "Q-4 (Oct-Dec)")
+        assertEquals(emptyList<String>(), asked)
+    }
+
+    @Test fun aMonthReadOnlineShowsItsFiguresWithTheTimeOfTheRead() {
+        show(AppLanguage.EN, fetched("2026-10", "2026-11-18T06:00:00Z", octRow), onQuarter = {})
+        choose("Year", "2026"); choose("Quarter", "Q-4 (Oct-Dec)")
+        compose.onNodeWithTag(AsthaTags.month("2026-10")).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(AsthaTags.row(11)).assertIsDisplayed()
+        compose.onNodeWithText("Data as of 2026-11-18").assertExists()
+    }
+
+    @Test fun aMonthReadOnlineAndEmptySaysNoDataNotNotDownloaded() {
+        show(AppLanguage.EN, fetched("2026-12"), onQuarter = {})
+        choose("Year", "2026"); choose("Quarter", "Q-4 (Oct-Dec)")
+        compose.onNodeWithTag(AsthaTags.month("2026-12")).performClick(); compose.waitForIdle()
+        compose.onNodeWithText("No data found").assertIsDisplayed()
+    }
+
+    @Test fun whileTheReadRunsTheMonthSaysLoading() {
+        show(AppLanguage.EN, AsthaModel.parse(programmes, products), quarterState = mapOf("2026-Q1" to QuarterFetch.LOADING), onQuarter = {})
+        choose("Year", "2026"); choose("Quarter", "Q-1 (Jan-Mar)")
+        compose.onNodeWithTag(AsthaTags.month("2026-02")).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(AsthaTags.MONTH_LOADING).assertIsDisplayed()
+    }
+
+    @Test fun aFailedReadOffersTryAgainWhichAsksAgain() {
+        val asked = mutableListOf<String>()
+        show(AppLanguage.EN, AsthaModel.parse(programmes, products), quarterState = mapOf("2026-Q1" to QuarterFetch.FAILED), onQuarter = { asked += it })
+        choose("Year", "2026"); choose("Quarter", "Q-1 (Jan-Mar)")
+        compose.onNodeWithTag(AsthaTags.month("2026-02")).performClick(); compose.waitForIdle()
+        compose.onNodeWithText("This month could not be loaded. Try again when the connection is better.").assertIsDisplayed()
+        asked.clear()
+        compose.onNodeWithTag(AsthaTags.MONTH_RETRY).performClick(); compose.waitForIdle()
+        assertEquals(listOf("2026-Q1"), asked)
+    }
+
+    @Test fun anOfflineReadShowsConnectOnceInBangla() {
+        show(AppLanguage.BN, AsthaModel.parse(programmes, products), quarterState = mapOf("2026-Q1" to QuarterFetch.OFFLINE), onQuarter = {})
+        choose("বছর", "2026"); choose("কোয়ার্টার", "Q-1 (Jan-Mar)")
+        compose.onNodeWithTag(AsthaTags.month("2026-01")).performClick(); compose.waitForIdle()
+        compose.onNodeWithText("এই মাসের তথ্য এখনো এই ফোনে নেই। একবার ইন্টারনেটে যুক্ত হলে নামবে।").assertIsDisplayed()
     }
 }

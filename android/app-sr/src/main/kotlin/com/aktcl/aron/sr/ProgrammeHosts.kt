@@ -13,7 +13,9 @@ import com.aktcl.aron.feature.programmes.CampaignPhotoModel
 import com.aktcl.aron.feature.programmes.CampaignPhotoScreen
 import com.aktcl.aron.feature.programmes.LocalCampaignGift
 import com.aktcl.aron.feature.programmes.ServerPendingGift
+import com.aktcl.aron.feature.programmes.AsthaFetched
 import com.aktcl.aron.feature.programmes.AsthaLocal
+import com.aktcl.aron.feature.programmes.QuarterFetch
 import com.aktcl.aron.feature.programmes.AsthaModel
 import com.aktcl.aron.feature.programmes.AsthaTargetScreen
 import com.aktcl.aron.feature.programmes.GiftChoiceData
@@ -51,8 +53,14 @@ internal suspend fun readAstha(day: SrDay): AsthaData? = withContext(Dispatchers
     AsthaModel.parse(day.reference.section("programmes"), day.reference.section("products"))
 }
 
-/** What the Astha page reads in one pass: the programme rows, the year, and the shop-wise cards (outlets of every route of the bundle). */
-internal data class AsthaLoad(val data: AsthaData?, val year: Int, val shops: List<ShopInfo>, val month: String?, val awaiting: Int = 0, val geography: com.aktcl.aron.feature.programmes.Geography? = null)
+/**
+ * What the Astha page reads in one pass: the programme rows (with this phone's memos, [base]), the same rows with the months kept from online reads ([data]), the year, and the
+ * shop-wise cards (outlets of every route of the bundle). [routeIds] are the routes whose months are read online.
+ */
+internal data class AsthaLoad(
+    val data: AsthaData?, val year: Int, val shops: List<ShopInfo>, val month: String?, val awaiting: Int = 0, val geography: com.aktcl.aron.feature.programmes.Geography? = null,
+    val base: AsthaData? = null, val outlets: List<ShopOutlet> = emptyList(), val tiers: Map<Long, String> = emptyMap(), val routeIds: List<Long> = emptyList(),
+)
 
 internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = withContext(Dispatchers.IO) {
     val date = day.reference.businessDate()
@@ -71,15 +79,35 @@ internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = wi
         if (day.programmes.bundleRequestedAt() == before || ++attempts >= 3) break
     }
     val outlets = readShopOutlets(day)
-    AsthaLoad(data, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, data, ShopModel.tiers(day.reference.section("programmes"))), date?.take(7), awaiting, com.aktcl.aron.feature.programmes.Geography.parse(day.reference.section("user")))
+    val routeIds = (outlets.map { it.routeId } + listOfNotNull(day.currentRouteId())).distinct()
+    // the months read online earlier, from the phone's own files: they are there with no network and after a kill and relaunch
+    val merged = data?.let { AsthaFetched.merge(it, day.asthaMonths.readAll(routeIds)) }
+    val tiers = ShopModel.tiers(day.reference.section("programmes"))
+    AsthaLoad(merged, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, merged, tiers), date?.take(7), awaiting, com.aktcl.aron.feature.programmes.Geography.parse(day.reference.section("user")), data, outlets, tiers, routeIds)
 }
 
-/** The Astha target page of the SR (manual 48 right to 51): downloaded data only, no network in the path. */
+/** The Astha target page of the SR (manual 48 right to 51): the downloaded data and the months kept from earlier online reads; a quarter with months the phone lacks is read online once, when a connection exists. */
 @Composable
 fun AsthaHost(day: SrDay, locale: UiLocale) {
     val load = rememberAsyncLoad(locale) { readAsthaPage(day, locale) }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
-        AsthaTargetScreen(page.data, locale, page.year, shops = page.shops, currentMonth = page.month, awaiting = page.awaiting, geography = page.geography)
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        var kept by androidx.compose.runtime.remember(page) { androidx.compose.runtime.mutableStateOf(page) }
+        var states by androidx.compose.runtime.remember(page) { androidx.compose.runtime.mutableStateOf(emptyMap<String, QuarterFetch>()) }
+        val onQuarter: (String) -> Unit = { key ->
+            val y = key.take(4).toIntOrNull(); val q = key.takeLast(1).toIntOrNull()
+            if (y != null && q != null && states[key] != QuarterFetch.LOADING && page.routeIds.isNotEmpty()) {
+                states = states + (key to QuarterFetch.LOADING)
+                scope.launch {
+                    val outcome = runCatching { day.readAsthaQuarter(key, page.routeIds, AsthaModel.monthsOfQuarter(y, q)) }.getOrElse { QuarterFetch.FAILED }
+                    // whatever was kept (even by a partly failed read) is shown; the state says what is still missing
+                    val merged = page.base?.let { AsthaFetched.merge(it, withContext(Dispatchers.IO) { day.asthaMonths.readAll(page.routeIds) }) }
+                    kept = page.copy(data = merged, shops = ShopModel.build(page.outlets, merged, page.tiers))
+                    states = if (outcome == null) states - key else states + (key to outcome)
+                }
+            }
+        }
+        AsthaTargetScreen(kept.data, locale, kept.year, shops = kept.shops, currentMonth = kept.month, awaiting = kept.awaiting, geography = kept.geography, quarterState = states, onQuarter = onQuarter)
     }
 }
 

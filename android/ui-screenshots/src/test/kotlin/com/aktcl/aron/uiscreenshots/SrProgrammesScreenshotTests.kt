@@ -16,7 +16,10 @@ import com.aktcl.aron.core.ui.AronScreen
 import com.aktcl.aron.core.ui.AronTheme
 import com.aktcl.aron.core.ui.AronTopBar
 import com.aktcl.aron.core.ui.GlassTier
+import com.aktcl.aron.feature.programmes.AsthaFetched
 import com.aktcl.aron.feature.programmes.AsthaMenuScreen
+import com.aktcl.aron.feature.programmes.CachedMonth
+import com.aktcl.aron.feature.programmes.QuarterFetch
 import com.aktcl.aron.feature.programmes.AsthaModel
 import com.aktcl.aron.feature.programmes.AsthaSelection
 import com.aktcl.aron.feature.programmes.AsthaTargetScreen
@@ -89,6 +92,18 @@ class SrProgrammesScreenshotTests {
     @Test fun astha_target_bn_font20() = shot("astha_target_bn_font20", fontScale = 2.0f) { Frame { AsthaTargetScreen(data, UiLocale.BN, 2026, initial = picked) } }
     @Test fun astha_target_bn_empty_no_programme() = shot("astha_target_bn_empty_no_programme") { Frame { AsthaTargetScreen(null, UiLocale.BN, 2026) } }
     @Test fun astha_target_bn_empty_month() = shot("astha_target_bn_empty_month") { Frame { AsthaTargetScreen(data, UiLocale.BN, 2026, initial = AsthaSelection(2026, 1, "2026-01")) } }
+
+    // quarter chips with months read online: loading, failed, a month kept from an online read (light, Sunlight, font 2.0), and a read month with nothing
+    private val octRow = """{"route_id":7,"outlet_id":null,"brand_id":11,"month":"2026-10","std_target":"21600","std_achieved":"3200","memo_target":0,"memo_achieved":0,"value_target_mtk":"86400000","value_achieved_mtk":"12800000","by_pack":[{"pack_factor":20,"std_achieved":"3200"}]}"""
+    private fun withKept(month: String, rows: String) = AsthaFetched.merge(data!!, listOf(CachedMonth(7, month, "2026-11-18T06:00:00Z", kotlinx.serialization.json.Json.parseToJsonElement("[$rows]") as kotlinx.serialization.json.JsonArray)))
+    private val octPicked = AsthaSelection(2026, 4, "2026-10")
+    @Test fun astha_target_bn_month_loading() = shot("astha_target_bn_month_loading") { Frame { AsthaTargetScreen(data, UiLocale.BN, 2026, initial = AsthaSelection(2026, 1, "2026-01"), quarterState = mapOf("2026-Q1" to QuarterFetch.LOADING)) } }
+    @Test fun astha_target_en_month_failed() = shot("astha_target_en_month_failed", AppLanguage.EN) { Frame { AsthaTargetScreen(data, UiLocale.EN, 2026, initial = AsthaSelection(2026, 1, "2026-01"), quarterState = mapOf("2026-Q1" to QuarterFetch.FAILED)) } }
+    @Test fun astha_target_bn_fetched_month() = shot("astha_target_bn_fetched_month") { Frame { AsthaTargetScreen(withKept("2026-10", octRow), UiLocale.BN, 2026, initial = octPicked) } }
+    @Test fun astha_target_en_fetched_month_sunlight() = shot("astha_target_en_fetched_month_sunlight", AppLanguage.EN, sunlight = true) { Frame { AsthaTargetScreen(withKept("2026-10", octRow), UiLocale.EN, 2026, initial = octPicked) } }
+    @Test fun astha_target_bn_fetched_month_font20() = shot("astha_target_bn_fetched_month_font20", fontScale = 2.0f) { Frame { AsthaTargetScreen(withKept("2026-10", octRow), UiLocale.BN, 2026, initial = octPicked) } }
+    @Test fun astha_target_bn_fetched_empty() = shot("astha_target_bn_fetched_empty") { Frame { AsthaTargetScreen(withKept("2026-12", ""), UiLocale.BN, 2026, initial = AsthaSelection(2026, 4, "2026-12")) } }
+    @Test fun astha_target_bn_month_failed_font20() = shot("astha_target_bn_month_failed_font20", fontScale = 2.0f) { Frame { AsthaTargetScreen(data, UiLocale.BN, 2026, initial = AsthaSelection(2026, 1, "2026-01"), quarterState = mapOf("2026-Q1" to QuarterFetch.FAILED)) } }
 
     private val shops = listOf(
         ShopInfo(501, "Ajij Tea Store (3700634-01716184335-Pink City Road)", "3700634", "Md.Ajij", "01716184335", "Gold"),

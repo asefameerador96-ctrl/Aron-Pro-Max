@@ -61,6 +61,8 @@ object AsthaTags {
     const val SEARCH = "astha_search"
     fun shop(id: Long) = "astha_shop_$id"
     const val TRUNCATED = "astha_truncated"
+    const val MONTH_LOADING = "astha_month_loading"
+    const val MONTH_RETRY = "astha_month_retry"
     const val SUB_STD = "astha_sub_std"
     const val SUB_MEMO = "astha_sub_memo"
     fun month(m: String) = "astha_month_$m"
@@ -102,6 +104,10 @@ fun AsthaTargetScreen(
     awaiting: Int = 0,
     /** The user's own Wing, Division, Territory and Zone for the shop card (bundle `user.geography`); null shows a dash until the server sends it. */
     geography: Geography? = null,
+    /** The read of each quarter (`2026-Q4`) in progress or failed; a quarter not listed has no read in progress. */
+    quarterState: Map<String, QuarterFetch> = emptyMap(),
+    /** Asks the host to read a quarter online (`2026-Q4`) when the page shows one with months the phone does not hold; null (previews, offline-only callers) never asks. */
+    onQuarter: ((String) -> Unit)? = null,
 ) {
     val look = LocalAronLook.current
     var tab by rememberSaveable { mutableStateOf(if (initialShop != null || startOnShops) 1 else 0) }
@@ -121,9 +127,9 @@ fun AsthaTargetScreen(
             else {
                 AronTextButton(stringResource(R.string.pg_all_shops), { shop = null }, Modifier.testTag(AsthaTags.SHOP_BACK))
                 Text(chosen.nameLine, style = label(look.purple), modifier = Modifier.testTag(AsthaTags.SHOP_TITLE))
-                TargetBody(data, locale, currentYear, chosen.outletId, startAt(initial, currentMonth))
+                TargetBody(data, locale, currentYear, chosen.outletId, startAt(initial, currentMonth), quarterState, onQuarter)
             }
-        } else TargetBody(data, locale, currentYear, null, startAt(initial, currentMonth))
+        } else TargetBody(data, locale, currentYear, null, startAt(initial, currentMonth), quarterState, onQuarter)
     }
 }
 
@@ -133,7 +139,7 @@ private fun startAt(initial: AsthaSelection, currentMonth: String?): AsthaSelect
 
 /** The pickers, the month chips, the sub-tabs and the table of the route (outletId null) or of one outlet; its own state is kept per outlet. */
 @Composable
-private fun ColumnScope.TargetBody(data: AsthaData?, locale: UiLocale, currentYear: Int, outletId: Long?, initial: AsthaSelection) {
+private fun ColumnScope.TargetBody(data: AsthaData?, locale: UiLocale, currentYear: Int, outletId: Long?, initial: AsthaSelection, quarterState: Map<String, QuarterFetch>, onQuarter: ((String) -> Unit)?) {
     val look = LocalAronLook.current
     // Latin in both languages, as the manual shows them (screens 49 and 50); kept in resources like every visible text
     val monthNames = androidx.compose.ui.res.stringArrayResource(R.array.pg_months_short)
@@ -164,6 +170,10 @@ private fun ColumnScope.TargetBody(data: AsthaData?, locale: UiLocale, currentYe
         val y = year; val q = quarter
         if (y == null || q == null) { EmptyNote(stringResource(R.string.pg_no_data)); return }
         val months = AsthaModel.monthsOfQuarter(y, q)
+        val quarterKey = "%04d-Q%d".format(y, q)
+        // a quarter with a month the phone holds nothing of is read online when there is a connection (and kept); offline the page stays as the phone has it
+        val lacking = data.missingMonths(months).isNotEmpty() || months.any { data.cutShort(it) }
+        androidx.compose.runtime.LaunchedEffect(quarterKey, lacking) { if (lacking) onQuarter?.invoke(quarterKey) }
         Text(stringResource(R.string.pg_pick_month), style = label(look.ink))
         androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             months.forEach { m -> AronChoiceChip(monthNames[m.substring(5, 7).toInt() - 1], month == m, { month = m }, Modifier.testTag(AsthaTags.month(m))) }
@@ -177,20 +187,29 @@ private fun ColumnScope.TargetBody(data: AsthaData?, locale: UiLocale, currentYe
         val brandRows = data.brandRows(m, outletId, locale)
         val allBrand = data.allBrandRow(m, outletId)
         if (brandRows.isEmpty() && allBrand == null) {
-            // a month the phone never downloaded is not zero: say so (request N-1 brings the whole quarter)
-            EmptyNote(stringResource(if (data.rows.none { it.month == m }) R.string.pg_not_downloaded else R.string.pg_no_data))
+            // a month the phone never downloaded is not zero: say so. A month the server was asked about and holds nothing for is "no data"; a read in progress or failed says so.
+            val st = quarterState[quarterKey]
+            when {
+                m in data.fetchedMonths || data.rows.any { it.month == m } -> EmptyNote(stringResource(R.string.pg_no_data))
+                st == QuarterFetch.LOADING -> EmptyNote(stringResource(R.string.pg_month_loading), AsthaTags.MONTH_LOADING)
+                st == QuarterFetch.FAILED -> {
+                    EmptyNote(stringResource(R.string.pg_month_failed))
+                    AronTextButton(stringResource(R.string.pg_retry), { onQuarter?.invoke(quarterKey) }, Modifier.testTag(AsthaTags.MONTH_RETRY))
+                }
+                else -> EmptyNote(stringResource(R.string.pg_not_downloaded))
+            }
             return
         }
         if (big) StackedCards(data, brandRows, allBrand, memoTab, locale)
         else if (!memoTab) StdTable(data, brandRows, locale) else MemoTable(allBrand, locale)
-        data.asOf?.let { Text(stringResource(R.string.pg_as_of, com.aktcl.aron.rules.Formats.digits(DhakaTime.dateOf(it) ?: "—", locale)), Modifier.testTag(AsthaTags.AS_OF), style = small(look.inkMuted)) }
-        if (data.truncated) Text(stringResource(R.string.pg_truncated), Modifier.testTag(AsthaTags.TRUNCATED), style = small(look.inkMuted))
+        data.asOfOf(m)?.let { Text(stringResource(R.string.pg_as_of, com.aktcl.aron.rules.Formats.digits(DhakaTime.dateOf(it) ?: "—", locale)), Modifier.testTag(AsthaTags.AS_OF), style = small(look.inkMuted)) }
+        if (data.cutShort(m)) Text(stringResource(R.string.pg_truncated), Modifier.testTag(AsthaTags.TRUNCATED), style = small(look.inkMuted))
 
 }
 
-@Composable private fun EmptyNote(text: String) {
+@Composable private fun EmptyNote(text: String, tag: String = AsthaTags.EMPTY) {
     val look = LocalAronLook.current
-    Box(Modifier.fillMaxWidth().heightIn(min = 160.dp).testTag(AsthaTags.EMPTY), contentAlignment = Alignment.Center) { Text(text, style = TextStyle(fontSize = 18.sp, color = look.ink, textAlign = TextAlign.Center)) }
+    Box(Modifier.fillMaxWidth().heightIn(min = 160.dp).testTag(tag), contentAlignment = Alignment.Center) { Text(text, style = TextStyle(fontSize = 18.sp, color = look.ink, textAlign = TextAlign.Center)) }
 }
 
 @Composable private fun SegTab(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier) {

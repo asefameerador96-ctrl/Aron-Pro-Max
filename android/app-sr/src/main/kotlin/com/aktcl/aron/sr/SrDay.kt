@@ -398,6 +398,19 @@ class SrDay(
     /** The SR programme records (Astha, Loyalty): reads of what the phone holds and the one write path (lane android-sr-programmes). */
     val programmes by lazy { ProgrammeStore(db, capture, metaProvider, claimPhoto = { photoUuid, recordUuid, fix -> claimGiftPhoto(photoUuid, recordUuid, fix) }, releasePhoto = { photoUuid, recordUuid -> media?.release(photoUuid, com.aktcl.aron.core.media.MediaRef("gift_photo", "gift_photo", recordUuid)) }) { requestSync() } }
 
+    /** The Astha months read online and kept on the phone: app-private files per user and route, no database (the screen works offline from them and after a kill and relaunch). */
+    val asthaMonths by lazy { com.aktcl.aron.feature.programmes.AsthaMonthCache(java.io.File(context.filesDir, "astha-months-$userId")) }
+
+    /** Reads a quarter of Astha rows online for the given routes and keeps its months; null when all came, else why not (offline is "connect once", never an error). */
+    suspend fun readAsthaQuarter(quarter: String, routeIds: Collection<Long>, months: List<String>): com.aktcl.aron.feature.programmes.QuarterFetch? =
+        com.aktcl.aron.feature.programmes.AsthaQuarterFetcher(asthaMonths) { q, route, cursor ->
+            when (val r = components.syncApi.listAsthaTargets(q, route, cursor)) {
+                is com.aktcl.aron.core.network.ApiResult.Success -> com.aktcl.aron.feature.programmes.PageOutcome.Page(r.value)
+                is com.aktcl.aron.core.network.ApiResult.Transport -> if (r.failure == com.aktcl.aron.core.network.TransportFailure.MALFORMED) com.aktcl.aron.feature.programmes.PageOutcome.Failed else com.aktcl.aron.feature.programmes.PageOutcome.Offline
+                else -> com.aktcl.aron.feature.programmes.PageOutcome.Failed
+            }
+        }.fetch(quarter, routeIds, months)
+
     /** Fix reuse (D-74) is limited to the visit cycle of the day; attendance and requests always take their own fix. */
     val fixSource = FixManagerSource(fixManager) { purpose -> if (purpose == "visit_open") "outlets-" + businessDate() else null }
 
