@@ -14,7 +14,9 @@ FigureInMemo:
       description: The number of non-voided lines the server holds for the memo; fewer than the phone sent means
         a line was refused for good.
     stored_lines:
-      type: array
+      type:
+      - array
+      - 'null'
       maxItems: 60
       items:
         $ref: '#/components/schemas/FigureStoredLine'

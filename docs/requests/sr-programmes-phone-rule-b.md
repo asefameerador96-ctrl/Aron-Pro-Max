@@ -25,7 +25,7 @@ EXACTLY three states per probed uuid:
 ## The phone rule
 For each own memo m of the bundle month, live or removed on the phone:
 1. dated after `through_date`: the figure never holds it; ADD it if it is live on the phone and not VOIDED (a VOIDED answer, e.g. an admin data void of today, drops it);
-2. dated up to `through_date`, live on the phone: IN -> add nothing, remember "confirmed IN" and do not probe it again until the phone itself voids or edits it; VOIDED -> drop it, add nothing; NOT IN -> ADD it;
+2. dated up to `through_date`, live on the phone: IN -> add nothing, remember "confirmed IN" and do not probe it again until the phone itself voids or edits it (a confirmation holds only for figures that cover the memo's date; a memo dated after the current `through_date`, e.g. today's, is rule 1 and is probed on every request so an office void of today is seen); VOIDED -> drop it, add nothing; NOT IN -> ADD it;
 3. dated up to `through_date`, voided or superseded on the phone: IN -> SUBTRACT the `stored_lines` of the answer; otherwise nothing. An edit is therefore: the new memo is added (NOT IN) or already IN, the old memo is subtracted while it is still IN and dropped when it is VOIDED;
 4. a memo confirmed IN and later voided by the office leaves the figure by itself; the phone adds nothing for it (it never probed it again and the office's truth is the figure);
 5. a memo the server stored with fewer lines than the phone sent (`lines` smaller: a line refused for good, e.g. a zero price) is IN: the figure holds what the server stored and the phone adds nothing more (server-authoritative; the phone may show the difference);

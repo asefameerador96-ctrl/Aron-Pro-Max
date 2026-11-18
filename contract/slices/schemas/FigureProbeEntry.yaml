@@ -19,6 +19,8 @@ FigureProbeEntry:
     business_date:
       $ref: '#/components/schemas/BusinessDate'
     removed_locally:
-      type: boolean
+      type:
+      - boolean
+      - 'null'
       description: True when the phone has voided or superseded the memo; the answer then lists the stored lines
         to subtract.

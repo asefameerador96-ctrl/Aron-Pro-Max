@@ -557,7 +557,7 @@ class BundleService(
     /**
      * ONE read-only REPEATABLE READ snapshot on the primary around the whole route-snapshot read (rule A of the no-clock design, D-TKPI-12): every SR figure (achievement,
      * KPI, Star, campaigns) and the rest of the route sections see the same committed state, so an upload or a rebuild that commits meanwhile is in all of them or none.
-     * The phone's ordering rule B (docs/requests/sr-programmes-phone-rule-b.md) needs exactly that and nothing else.
+     * The phone's identity rule (docs/requests/sr-programmes-phone-rule-b.md) needs exactly that: the figures and the answer to its probe (SrFigureProbe) come from one snapshot.
      */
     private fun routeSnapshots(
         h: Handle, userId: Long, plans: List<RouteDayPlan>, date: LocalDate, states: Map<Long, DayRow>, cfg: ScopedConfig, roleOrdinal: Long?,

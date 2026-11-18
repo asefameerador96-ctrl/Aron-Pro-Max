@@ -32,15 +32,14 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
- * D of the lead's no-clock design (D-TKPI-12): what the PHONE WOULD SHOW, not what the server sends. The server figure (achievement, KPI volume and memo counts, Star STD,
- * campaign STD and memo) is read from the accepted memos through `through_date`; a small model of the phone adds and subtracts its local memos by the ORDERING rule B
- * of `docs/requests/sr-programmes-phone-rule-b.md` (no timestamp is read anywhere): it ADDS a local memo iff it was not acknowledged before the request R of this bundle (or
- * is dated after `through_date`), SUBTRACTS a memo acknowledged before R that it has since voided or superseded when that void or edit was not acknowledged before R, and
- * sends no bundle request while an upload batch is in flight. At every interleaving the sum must be exactly the true total of the live local memos, never less, never more.
- *
- * Interleavings covered: two offline days synced then the bundle pulled before the commit of batch 2, after the commit before the projection, after the projection before the
- * rebuild, after the rebuild, with a dead aggregation key; an edit with identical lines; a void followed by a re-sale; an aggregation rebuild in flight (uncommitted, and
- * running in another thread) during the bundle read; and a memo committed WHILE the bundle is read (one repeatable-read snapshot).
+ * What the PHONE WOULD SHOW, by identity (D-TKPI-14, `docs/requests/sr-programmes-phone-rule-b.md`): the server figure (achievement, KPI volumes and memo counts, Star STD, campaign STD
+ * and memo) is read from the accepted memos through `through_date`, and the phone's own memos are classified by the server in the SAME snapshot (`SrFigureProbe`: IN, VOIDED, NOT IN). The
+ * phone model adds what is NOT IN (and everything dated after `through_date` that is not VOIDED), subtracts the stored lines of a memo it removed that is IN, and nothing else: no
+ * acknowledgements, resolutions, quarantine states, clocks or single flight. At every interleaving the total must equal the true total of the phone's live memos.
+ * Interleavings covered here (SQL-committed memos; the real ingest and endpoint are in `SrFiguresEndToEndTest`): two offline days at every point of the projection and rebuild with a dead
+ * aggregation key, an edit with identical lines, a void then a re-sale, an aggregation rebuild in flight (uncommitted and in another thread), a memo committed WHILE the bundle is read,
+ * a held void and a held edit released, a line refused for good, a held memo of today released, an admin data void, a paper twin, a foreign uuid, a bundle on the 1st, a prefetched
+ * bundle, a two-route SR, a cross-date edit and another route's memo at a campaign outlet.
  */
 @TestInstance(TestInstance.Lifecycle.PER_METHOD)
 class SrPhoneWouldShowTest {
@@ -135,14 +134,14 @@ class SrPhoneWouldShowTest {
         fun request(date: LocalDate = day, routeId: Long = route, outletId: Long = outlet): Fig {
             val through = date.minusDays(1).toString(); val month = date.toString().substring(0, 7)
             val inMonth = memos.filter { it.date.startsWith(month) && !it.droppedByServer }
-            val probes = inMonth.filter { (!it.confirmedIn || it.removed) && !(it.removed && it.date > through) }
+            val probes = inMonth.filter { (!it.confirmedIn || it.removed || it.date > through) && !(it.removed && it.date > through) }   // a memo dated after through_date is probed every time: the figure never holds it, an office void of today must be seen
                 .map { SrFigureProbe.Probe(java.util.UUID.fromString(it.id), it.memoNo, LocalDate.parse(it.date), it.removed) }
             val res = service.bundle(principal, date, "1.0.0+1", probe = probes)
             val ans = res.probe!!
             var shown = figuresOf(res, date, routeId, outletId).first
             for (m in inMonth) {
                 val u = java.util.UUID.fromString(m.id)
-                if (m.confirmedIn && !m.removed) { continue }          // confirmed IN earlier and untouched: stays IN, not probed, nothing to do
+                if (m.confirmedIn && !m.removed && m.date <= through) { continue }   // confirmed IN earlier, untouched and covered by this figure (dated up to through_date): stays IN, nothing to do
                 val voided = u in ans.voided; val inFig = u in ans.inFigure
                 val mine = m.routeId == routeId
                 if (!m.removed) {

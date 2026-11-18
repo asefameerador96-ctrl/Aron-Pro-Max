@@ -23,7 +23,9 @@ FigureProbeAnswer:
         type: string
         format: uuid
     twin_ambiguous:
-      type: array
+      type:
+      - array
+      - 'null'
       maxItems: 300
       items:
         type: string

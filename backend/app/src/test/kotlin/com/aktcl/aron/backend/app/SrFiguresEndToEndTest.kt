@@ -43,6 +43,7 @@ import java.util.zip.GZIPOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 
 /**
  * THE IDENTITY RULE THROUGH THE REAL ENDPOINTS (D-TKPI-14): batches go through `POST /v1/sync/batch`, quarantine is released by the reviewer's `POST /v1/admin/quarantine/{id}/resolve`,
@@ -52,6 +53,7 @@ import kotlin.test.assertTrue
  * 10:00 Dhaka; the memos are dated that day; `for` 2027-01-04 has through_date = the memos' day, `for` 2027-01-03 has the memos after through_date.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@org.junit.jupiter.api.TestMethodOrder(org.junit.jupiter.api.MethodOrderer.OrderAnnotation::class)
 class SrFiguresEndToEndTest {
     private lateinit var fresh: FreshDb
     private lateinit var wiring: Wiring
@@ -238,7 +240,7 @@ class SrFiguresEndToEndTest {
         return FigureReply(
             row?.get("achieved_qty_base")?.jsonPrimitive?.long ?: 0L, row?.get("memo_count")?.jsonPrimitive?.long ?: 0L,
             inMemos.associate { it["memo_client_uuid"]!!.jsonPrimitive.content to it["lines"]!!.jsonPrimitive.int },
-            inMemos.filter { it["stored_lines"] != null }.associate { m -> m["memo_client_uuid"]!!.jsonPrimitive.content to m["stored_lines"]!!.jsonArray.map { l -> Triple(l.jsonObject["sku_id"]!!.jsonPrimitive.long, l.jsonObject["qty_base"]!!.jsonPrimitive.long, l.jsonObject["line_kind"]!!.jsonPrimitive.content) } },
+            inMemos.filter { it["stored_lines"] is kotlinx.serialization.json.JsonArray }.associate { m -> m["memo_client_uuid"]!!.jsonPrimitive.content to m["stored_lines"]!!.jsonArray.map { l -> Triple(l.jsonObject["sku_id"]!!.jsonPrimitive.long, l.jsonObject["qty_base"]!!.jsonPrimitive.long, l.jsonObject["line_kind"]!!.jsonPrimitive.content) } },
             fp["voided"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet(), j,
         )
     }
@@ -246,11 +248,11 @@ class SrFiguresEndToEndTest {
     /** What the phone shows for the first SKU (quantity, memo count) as a delta over [base], by the identity rule, and what is true. */
     private suspend fun HttpClient.shows(base: FigureReply, forDate: String, phone: List<PM>): Pair<Long, Long> {
         val through = java.time.LocalDate.parse(forDate).minusDays(1).toString()
-        val probes = phone.filter { !it.dropped && (!it.confirmed || it.removed) && !(it.removed && it.date > through) }
+        val probes = phone.filter { !it.dropped && (!it.confirmed || it.removed || it.date > through) && !(it.removed && it.date > through) }
         val a = figures(forDate, probes)
         var qty = a.qty - base.qty; var memos = a.memos - base.memos
         for (m in phone) {
-            if (m.dropped || (m.confirmed && !m.removed)) continue
+            if (m.dropped || (m.confirmed && !m.removed && m.date <= through)) continue
             val voided = m.uuid in a.voided; val inFig = m.uuid in a.inFig
             if (!m.removed) {
                 if (voided) m.dropped = true
@@ -293,7 +295,7 @@ class SrFiguresEndToEndTest {
         assertEquals(HttpStatusCode.OK, client.resolve(item(memo).first, "accept").status)
         assertEquals(1L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
         client.assertShows(base, "2027-01-04", phone, "released before the phone hears: IN, nothing added")
-        client.assertShows(base, "2027-01-03", listOf(PM(memo, day, memoNo = phone[0].memoNo)), "the same memo seen from today's bundle (after through_date): added, not in the figure")
+        client.assertShows(client.baseline("2027-01-03"), "2027-01-03", listOf(PM(memo, day, memoNo = phone[0].memoNo)), "the same memo seen from today's bundle (after through_date): added, not in the figure")
     }
 
     @Test
@@ -339,7 +341,73 @@ class SrFiguresEndToEndTest {
         } finally { fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.sku_price SET amount_mtk = ? WHERE sku_id = ? AND price_type = 'outlet'", skus[1].second, skus[1].first) } }
     }
 
+    private suspend fun HttpClient.rawFigures(body: String, who: String? = null): HttpResponse = post("/v1/sync/figures") {
+        bearerAuth(token(who ?: "sr1001")); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9"); contentType(ContentType.Application.Json); setBody(body)
+    }
+    private fun probeJson(n: Int, memoNo: String = "x-270103-001") = """{"for":"2027-01-04","probe":[${(1..n).joinToString(",") { """{"memo_client_uuid":"${uuid()}","memo_no":"$memoNo","business_date":"2027-01-03"}""" }}]}"""
+
     @Test
+    fun theEndpointRefusesMoreThan300ProbesABodyOverTheCapAndEveryCallerButAnSrPhone() = testApplication {
+        app()
+        val ok = client.rawFigures(probeJson(300)); assertEquals(HttpStatusCode.OK, ok.status, ok.bodyAsText())
+        val over = client.rawFigures(probeJson(301))
+        assertEquals(HttpStatusCode.BadRequest, over.status, over.bodyAsText())
+        val err = json(over.bodyAsText())["errors"]!!.jsonArray.map { it.jsonObject }
+        assertTrue(err.any { it["pointer"]?.jsonPrimitive?.content?.endsWith("probe") == true || it["field"]?.jsonPrimitive?.content?.endsWith("probe") == true || it.toString().contains("too_many") }, "the refusal names the probe and the code too_many: $err")
+        assertEquals(HttpStatusCode.PayloadTooLarge, client.rawFigures(probeJson(300, "n".repeat(400))).status, "a body over 64 KiB is refused")
+        assertEquals(HttpStatusCode.Forbidden, client.rawFigures(probeJson(1), who = "admin1001").status, "a web token is not an SR phone")
+        assertEquals(HttpStatusCode.BadRequest, client.rawFigures("""{"probe":[{"memo_client_uuid":"not-a-uuid","business_date":"2027-01-03"}]}""").status)
+    }
+
+    @Test
+    fun aForeignMemoAnswersNotInAndRevealsNothingAndTheCallIsReadOnlyAndLeavesTheBundleVersionAlone() = testApplication {
+        app()
+        val other = count("SELECT id FROM app.app_user WHERE username = 'tso1001'")
+        val foreign = uuid()
+        SrMemoFixture({ sql -> fresh.db.jdbi.useHandle<Exception> { it.execute(sql) } }, other, 800).memo(foreign, routeId, outletId, "2027-01-03", listOf(SrMemoFixture.L(skus[0].first, 20)))
+        val tables = listOf("app.memo", "app.memo_line", "app.bundle_snapshot", "app.route_day", "app.audit_log", "app.ingest_registry", "app.bundle_download")
+        fun counts() = tables.map { t -> runCatching { count("SELECT count(*) FROM $t") }.getOrDefault(-1L) }
+        fun version() = runBlocking { json(client.get("/v1/sync/bundle?for=2027-01-04") { bearerAuth(client.token()); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9") }.bodyAsText())["meta"]!!.jsonObject["bundle_version"]!!.jsonPrimitive.content }
+        val v1 = version(); val before = counts()
+        val r = client.rawFigures("""{"for":"2027-01-04","probe":[{"memo_client_uuid":"$foreign","memo_no":"x","business_date":"2027-01-03"}]}""")
+        assertEquals(HttpStatusCode.OK, r.status)
+        val fp = json(r.bodyAsText())["figure_probe"]!!.jsonObject
+        assertEquals(0, fp["in_figure"]!!.jsonArray.size); assertEquals(0, fp["voided"]!!.jsonArray.size)
+        assertEquals(before, counts(), "read-only: no row was written by the call")
+        repeat(2) { client.rawFigures(probeJson(5)) }
+        assertEquals(v1, version(), "the bundle's version is not affected by /figures")
+    }
+
+    @Test
+    fun theFigureSectionsOfTheEndpointAreTheBundlesOwnAndAsthaIsBuiltInTheSameCallWhenAsked() = testApplication {
+        app()
+        val fam = saleFamily(); client.sendOk(fam)
+        val bundle = json(client.get("/v1/sync/bundle?for=2027-01-04") { bearerAuth(client.token()); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9") }.bodyAsText())
+        val fromBundle = bundle["routes"]!!.jsonArray.map { it.jsonObject }.single { it["route_id"]!!.jsonPrimitive.long == routeId }
+        val r = client.rawFigures("""{"for":"2027-01-04","probe":[],"include_astha":true}""")
+        assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+        val j = json(r.bodyAsText())
+        val fromFigures = j["routes"]!!.jsonArray.map { it.jsonObject }.single { it["route_id"]!!.jsonPrimitive.long == routeId }
+        for (k in listOf("targets", "achievement_mtd", "calendar", "kpi", "star", "campaigns")) assertEquals(fromBundle[k], fromFigures[k], "the figure section $k is the bundle's (same loaders)")
+        assertTrue(j.containsKey("astha"), "the Astha section is part of the same response when asked for (null when the SR has no programme)")
+        assertEquals(bundle["programmes"], j["astha"], "and it is the bundle's own programmes section")
+    }
+
+    @Test
+    fun aQuantityFixOfAHeldMemoLineIsRefusedByTheMoneyRuleSoAReviewNeverChangesAMemosQuantities() = testApplication {
+        // The review claimed accept_with_fix of a line quantity as a way a memo could change on release. It cannot: a memo or line fix moves money (docs/24 s8.6), refused 409 (maker-checker).
+        app()
+        val fam = saleFamily(outlet = otherOutletId); val (visit) = fam.map { cu(it) }; val line = fam[2]; val lp = line["payload"]!!.jsonObject
+        assertEquals(List(5) { "quarantined" }, statuses(json(client.send(client.token(), batch(fam)).bodyAsText())))
+        assertEquals(HttpStatusCode.OK, client.resolve(item(visit).first, "accept").status)
+        val fix = JsonObject(line + ("payload" to JsonObject(lp + mapOf("qty_entered" to JsonPrimitive(18), "qty_base" to JsonPrimitive(18), "gross_mtk" to JsonPrimitive(lp["base_price_mtk"]!!.jsonPrimitive.long * 18)))))
+        val r = client.resolve(item(cu(line)).first, "accept_with_fix", fix)
+        assertEquals(HttpStatusCode.Conflict, r.status, r.bodyAsText())
+        assertEquals("open", item(cu(line)).second, "the item stays open")
+        assertEquals(0L, count("SELECT count(*) FROM app.memo_line WHERE client_uuid = '${cu(line)}'"), "nothing was stored by the refused fix")
+    }
+
+    @Test @org.junit.jupiter.api.Order(Int.MAX_VALUE)   // last (unannotated tests default to MAX_VALUE/2): a data void tombstones the route-day and refuses every later upload of it
     fun anAdminDataVoidOfTodaysRouteDayDropsTheMemosOnThePhone() = testApplication {
         app()
         val base = client.baseline("2027-01-03")

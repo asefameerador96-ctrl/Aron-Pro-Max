@@ -21,26 +21,27 @@ RouteSnapshot:
     VOIDED (gone for good), or NOT IN (everything else, listed nowhere). For each own memo of the month: dated after
     `through_date`: ADD it if it is live on the phone and not VOIDED (a VOIDED answer, e.g. an admin data void of
     today, drops it). Dated up to `through_date` and live on the phone: IN means add nothing (remember it as confirmed
-    and do not probe it again until the phone itself voids or edits it), VOIDED means drop it, NOT IN means ADD
-    it. Dated up to `through_date` and voided or superseded on the phone: IN means SUBTRACT the stored lines the
-    answer lists, otherwise nothing. A memo confirmed IN earlier and untouched that the office later voids leaves
-    the figure by itself and the phone adds nothing for it. A memo whose line the server refused for good is IN
-    with fewer `lines` than the phone sent: the figure holds what the server stored and the phone adds nothing more
-    (server-authoritative). The memo the office keyed from paper is answered through the printed `memo_no` and date
-    (unique per date), so the phone''s own copy is IN when the paper memo is. There are no acknowledgements, resolutions,
-    quarantine states, clocks or single-flight requirements in this rule. When more than 300 memos are unconfirmed
-    the phone cannot get an exact total in one call and shows that it is still syncing until uploads and confirmations
-    bring it under the cap. `as_of` is INFORMATIONAL only (the newest `received_at` among the memos read, the epoch
-    when none) and is never used in arithmetic. OLD-PHONE FALLBACK (the only other case): a phone that has no `/figures`
-    answer uses the bundle''s figures, shows them with their as-of label, adds only memos dated after `through_date`
-    and its never-sent pending memos. The phone uses the newest `/figures` answer it has, else the bundle''s figures.
-    Day counts when today''s local memos are in the achieved figure: ADS, PADS and TADS divide by `calendar.elapsed_working_days_before_today`
-    plus 1 when `calendar.today_is_working` (the SkuProgress through-today convention, a default until the owner
-    answers question Q-A), RADS divides by `calendar.remaining_working_days_after_today`; a zero divisor gives no
-    figure, never zero. STAR: the phone merges the Star STD by this same rule and recomputes projection, achievement,
-    slab and status with the shared StarProgress code (last month''s sold quantity `lms` is not merged). Volumes
-    are base units (sticks, pieces, dozens): packets, dozens and boxes are shown from `targets`, `achievement_mtd`
-    and the `by_pack` lists, never converted from a stick sum of mixed pack sizes.'
+    and do not probe it again until the phone itself voids or edits it; a memo dated after the current `through_date`
+    is probed on every request), VOIDED means drop it, NOT IN means ADD it. Dated up to `through_date` and voided
+    or superseded on the phone: IN means SUBTRACT the stored lines the answer lists, otherwise nothing. A memo confirmed
+    IN earlier and untouched that the office later voids leaves the figure by itself and the phone adds nothing
+    for it. A memo whose line the server refused for good is IN with fewer `lines` than the phone sent: the figure
+    holds what the server stored and the phone adds nothing more (server-authoritative). The memo the office keyed
+    from paper is answered through the printed `memo_no` and date (unique per date), so the phone''s own copy is
+    IN when the paper memo is. There are no acknowledgements, resolutions, quarantine states, clocks or single-flight
+    requirements in this rule. When more than 300 memos are unconfirmed the phone cannot get an exact total in one
+    call and shows that it is still syncing until uploads and confirmations bring it under the cap. `as_of` is INFORMATIONAL
+    only (the newest `received_at` among the memos read, the epoch when none) and is never used in arithmetic. OLD-PHONE
+    FALLBACK (the only other case): a phone that has no `/figures` answer uses the bundle''s figures, shows them
+    with their as-of label, adds only memos dated after `through_date` and its never-sent pending memos. The phone
+    uses the newest `/figures` answer it has, else the bundle''s figures. Day counts when today''s local memos are
+    in the achieved figure: ADS, PADS and TADS divide by `calendar.elapsed_working_days_before_today` plus 1 when
+    `calendar.today_is_working` (the SkuProgress through-today convention, a default until the owner answers question
+    Q-A), RADS divides by `calendar.remaining_working_days_after_today`; a zero divisor gives no figure, never zero.
+    STAR: the phone merges the Star STD by this same rule and recomputes projection, achievement, slab and status
+    with the shared StarProgress code (last month''s sold quantity `lms` is not merged). Volumes are base units
+    (sticks, pieces, dozens): packets, dozens and boxes are shown from `targets`, `achievement_mtd` and the `by_pack`
+    lists, never converted from a stick sum of mixed pack sizes.'
   required:
   - route_id
   - route_snapshot_version

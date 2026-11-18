@@ -19,7 +19,9 @@ FiguresResponse:
     figure_probe:
       $ref: '#/components/schemas/FigureProbeAnswer'
     astha:
-      type: object
+      type:
+      - object
+      - 'null'
       additionalProperties: true
       description: 'Only with `include_astha`: the bundle''s Astha section (`ProgrammesSection`), built in the same
         transaction.'

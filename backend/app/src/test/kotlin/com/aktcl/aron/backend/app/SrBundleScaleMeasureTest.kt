@@ -138,6 +138,20 @@ class SrBundleScaleMeasureTest {
             // END TO END build (everything the route snapshot reads, in the one repeatable-read snapshot), warm
             val build = (1..15).map { ms { service.bundle(principal, day, "1.0.0+1") } }
             out("END-TO-END bundle build WARM (SR with one route: 70 outlets x 20 campaign SKUs, targets for the whole catalogue, KPI, Star): ${stats(build)}")
+            // END TO END POST /v1/sync/figures: the figure sections and the identity answer for 300 probes in one snapshot, no bundle; and its response size
+            val figProbe = probes.take(300)
+            repeat(2) { service.figures(principal, day, figProbe) }
+            val figTimes = (1..15).map { ms { service.figures(principal, day, figProbe) } }
+            out("END-TO-END /figures (70 outlets x 20 campaign SKUs, 300 probes) WARM: ${stats(figTimes)}")
+            val fr = service.figures(principal, day, figProbe)
+            val figJson = com.aktcl.aron.backend.platform.ResponseJson.encodeToString(
+                com.aktcl.aron.backend.sync.FiguresResponse.serializer(),
+                com.aktcl.aron.backend.sync.FiguresResponse(
+                    fr.date.toString(), fr.through.toString(), fr.routes,
+                    com.aktcl.aron.backend.sync.FigureProbeAnswer(fr.probe.inFigure.map { (u, n) -> com.aktcl.aron.backend.sync.FigureInMemo(u.toString(), n, null) }, fr.probe.voided.map { it.toString() }, null),
+                ),
+            ).toByteArray()
+            size("/figures response (${fr.routes.size} route, ${fr.probe.inFigure.size} IN)", figJson)
             val res = service.bundle(principal, day, "1.0.0+1")
             val r = res.full.routes.single { it.route_id == route }
             val json = kotlinx.serialization.json.Json { encodeDefaults = false }
