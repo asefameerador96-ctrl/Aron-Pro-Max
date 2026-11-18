@@ -46,6 +46,9 @@ class MigrationPreflightTitaniumTest {
             "(SELECT coalesce(string_agg(id || list_key || code || attrs::text, '|' ORDER BY id), '') FROM app.code_list_item)",
     )!!
 
+    /** The one line a run with nothing to do reports (lead, D-OPS-DIAGNOSE-API-01): the check ids with `clean` (applies, found nothing) or `not pending` (its migration is applied). Written out in full on purpose. */
+    private fun quiet(cluster: String, titanium: String) = listOf("pre-flight: nothing to do (checks: V0191-cluster-names=$cluster, V0199-titanium-tier=$titanium)")
+
     private fun run(env: String?): Pair<List<String>, Throwable?> {
         val out = ArrayList<String>()
         val err = runCatching { MigrationPreflight.run(fresh.dataSource, env, { out += it }) }.exceptionOrNull()
@@ -56,14 +59,14 @@ class MigrationPreflightTitaniumTest {
     fun theScenariosInOrder() {
         // the code-list guard trigger refuses a DELETE (items are retired, never deleted): the scenarios add and remove offending rows, so it is off for them and back on before V0199 runs
         exec("ALTER TABLE app.code_list_item DISABLE TRIGGER USER")
-        // 0. at V0198 the database has no Titanium: a clean database passes silently in every environment
+        // 0. at V0198 the database has no Titanium: a clean database passes in every environment with the one nothing-to-do line (V0191 is applied, V0199 pending)
         assertEquals("0", scalar("SELECT count(*) FROM app.sub_channel WHERE code = 'Titanium'"))
-        for (env in ENVS) { val (out, err) = run(env); assertEquals(emptyList(), out, "silent"); assertEquals(null, err) }
+        for (env in ENVS) { val (out, err) = run(env); assertEquals(quiet("not pending", "clean"), out, "one line, nothing else"); assertEquals(null, err) }
 
         // 0b. rows that V0199 accepts are not findings: Titanium under Astha, and the item with channel Astha
         exec("INSERT INTO app.sub_channel (channel, code, name) VALUES ('Astha', 'Titanium', 'Titanium')")
         exec("INSERT INTO app.code_list_item (list_key, code, label_en, attrs) VALUES ('sub_channel', 'titanium', 'Titanium', '{\"channel\": \"Astha\"}')")
-        for (env in ENVS) assertEquals(emptyList(), run(env).first)
+        for (env in ENVS) assertEquals(quiet("not pending", "clean"), run(env).first)
         exec("DELETE FROM app.code_list_item WHERE code = 'titanium'")
         exec("DELETE FROM app.sub_channel WHERE code = 'Titanium'")
 
@@ -103,13 +106,13 @@ class MigrationPreflightTitaniumTest {
         assertTrue(run("prod").second?.message!!.contains("2 group(s)"))
         exec("DELETE FROM app.sub_channel WHERE code = 'Titanium'")
         exec("DELETE FROM app.code_list_item WHERE code = 'titanium'")
-        for (env in ENVS) assertEquals(emptyList(), run(env).first)
+        for (env in ENVS) assertEquals(quiet("not pending", "clean"), run(env).first)
         exec("ALTER TABLE app.code_list_item ENABLE TRIGGER USER")
         Migrator.configure(fresh.dataSource).load().migrate()
         assertEquals("1", scalar("SELECT count(*) FROM app.sub_channel WHERE code = 'Titanium' AND channel = 'Astha'"), "V0199 applied")
 
-        // 4. at V0199 or later the check skips: no output in any environment, even with a row it would otherwise report (V0199 is the record of what ran)
+        // 4. at V0199 or later the check skips: only the nothing-to-do line in any environment, even with a row it would otherwise report (V0199 is the record of what ran)
         exec("UPDATE app.sub_channel SET channel = 'GT' WHERE code = 'Titanium'")
-        for (env in ENVS) { val (out, err) = run(env); assertEquals(emptyList(), out); assertEquals(null, err) }
+        for (env in ENVS) { val (out, err) = run(env); assertEquals(quiet("not pending", "not pending"), out); assertEquals(null, err) }
     }
 }

@@ -47,6 +47,9 @@ class MigrationPreflightTest {
         private fun clusters(zone: Long) = fresh.dataSource.connection.use { c -> c.createStatement().use { st -> st.executeQuery("SELECT id, name, status FROM app.cluster WHERE zone_id = $zone AND (name ILIKE '%Zqx%' OR name ILIKE '%Wvk%' OR name ILIKE '%Ytp%') ORDER BY id").use { rs -> buildList { while (rs.next()) add(Triple(rs.getLong(1), rs.getString(2), rs.getString(3))) } } } }
     private fun snapshot() = scalar("SELECT coalesce(string_agg(id || ':' || zone_id || ':' || name || ':' || status, '|' ORDER BY id), '') FROM app.cluster")!!
     private fun cleanup() = exec("DELETE FROM app.cluster WHERE name ILIKE '%Zqx%' OR name ILIKE '%Wvk%' OR name ILIKE '%Ytp%'")
+    /** The one line a run with nothing to do reports (lead, D-OPS-DIAGNOSE-API-01): the check ids with `clean` (applies, found nothing) or `not pending` (its migration is applied). Written out in full on purpose. */
+    private fun quiet(cluster: String, titanium: String) = listOf("pre-flight: nothing to do (checks: V0191-cluster-names=$cluster, V0199-titanium-tier=$titanium)")
+
     private fun lines(env: String?): Pair<List<String>, Throwable?> {
         val out = ArrayList<String>()
         val err = runCatching { MigrationPreflight.run(fresh.dataSource, env, { out += it }) }.exceptionOrNull()
@@ -75,8 +78,8 @@ class MigrationPreflightTest {
 
     @Test
     fun theScenariosInOrder() {
-        // 0. the seed has no near-duplicates: a clean database passes silently, in every environment, and writes nothing
-        for (env in listOf("dev", "prod", "staging", null)) { val (out, err) = lines(env); assertEquals(emptyList(), out, "silent"); assertEquals(null, err) }
+        // 0. the seed has no near-duplicates: a clean database passes in every environment, changes nothing and reports the one nothing-to-do line
+        for (env in listOf("dev", "prod", "staging", null)) { val (out, err) = lines(env); assertEquals(quiet("clean", "clean"), out, "one line, nothing else"); assertEquals(null, err) }
 
         // 1. non-dev: fails before any change; ids, zone codes and counts only
         val groups = seedDuplicates()
@@ -125,13 +128,13 @@ class MigrationPreflightTest {
         assertEquals("inactive", scalar("SELECT status FROM app.cluster WHERE id = ${groups.getValue("inactive")[1]}"), "status untouched")
         val repaired = snapshot()
         // a second run finds nothing; and the real migration now applies
-        assertEquals(emptyList(), lines("dev").first)
+        assertEquals(quiet("clean", "clean"), lines("dev").first)
         Migrator.configure(fresh.dataSource).load().migrate()
         assertEquals("true", scalar("SELECT (to_regprocedure('app.norm_cluster_name(text)') IS NOT NULL)::text"), "V0191 applied after the repair")
         assertEquals(repaired, snapshot())
 
-        // 3. a database already at V0191 or later skips: no check, no output, in every environment (V0191 makes a duplicate impossible, so nothing is seeded)
-        for (env in listOf("dev", "prod", null)) assertEquals(emptyList(), lines(env).first)
+        // 3. a database already at V0191 or later skips both checks: only the nothing-to-do line, in every environment (V0191 makes a duplicate impossible, so nothing is seeded)
+        for (env in listOf("dev", "prod", null)) assertEquals(quiet("not pending", "not pending"), lines(env).first)
         // applicability is keyed on Flyway's history (a successful V0191 row), not on the function: with the row's success flag off V0191 is pending again, and back on it is not
         fresh.dataSource.connection.use { c ->
             assertEquals(false, MigrationPreflight.ClusterNames.applies(c))

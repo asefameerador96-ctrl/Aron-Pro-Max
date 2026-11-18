@@ -35,6 +35,9 @@ class WaitingChildSweepJob(
     private var exec: ScheduledExecutorService? = null
 
     private fun enabled(): Boolean = !"off".equals(env("ARON_WAITING_SWEEP"), ignoreCase = true) && runCatching { config?.bool("cfg.sync.waiting_sweep_enabled") }.getOrNull() != false
+    /** What switches the sweep off, for the start-up line: the emergency stop of the environment, else the config key. */
+    private fun disabledBy(): String = if ("off".equals(env("ARON_WAITING_SWEEP"), ignoreCase = true)) "ARON_WAITING_SWEEP=off" else "cfg.sync.waiting_sweep_enabled"
+
     fun intervalS(): Long = (runCatching { config?.int("cfg.sync.waiting_sweep_interval_s") }.getOrNull() ?: 60).coerceIn(10, 3600).toLong()
     private fun batch(): Int = fixedBatch ?: (runCatching { config?.int("cfg.sync.waiting_sweep_batch") }.getOrNull() ?: 200).coerceIn(1, 1000)
 
@@ -54,7 +57,10 @@ class WaitingChildSweepJob(
             runCatching { ex.schedule({ pass(::schedule) }, delayS, TimeUnit.SECONDS) }
         }
         schedule(firstDelayS)
-        log.info("waiting-item sweep started (interval {} s, batch {}, enabled {})", intervalS(), batch(), enabled())
+        // One INFO line at start-up that an operator can find in the API console (D-OPS-DIAGNOSE-API-01): enabled with its interval and batch, or disabled and by what. No payload. The thread
+        // runs either way and re-reads the switch at every pass, so a config change needs no deploy.
+        if (enabled()) log.info("waiting-item sweep enabled (interval {} s, batch {})", intervalS(), batch())
+        else log.info("waiting-item sweep disabled by {}; it re-reads the switch at every pass", disabledBy())
     }
 
     private fun pass(next: (Long) -> Unit) {
