@@ -232,3 +232,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - A-PROG1 d0636a12: both blocking points fixed, slice 5 (gift selection) pushed; batch check after it merges train 118 and gates its writes.
 - T-KPI1 out of context at 09fa05c8 (N-2, N-5, N-8, N-3 server data built; V0230..V0233, contract 1.22.0, dw view contract 1.10, all provisional). Successor T-KPI2 session_014mnioPDzJpf5trPvkVf9y2: read ci of newest head, build the admin web tab /admin/kpi-targets, then report. Opus pass on the whole branch owed before landing.
 - A-GATE8 to start after train 118 is live (ten follow-ups).
+
+
+### 2026-11-18 07:35 update: train 118 LANDED (Android and docs only)
+- Integration 29e8d86f3 = lane/lead-train118 2572c9de3 + train row; lane ci 44254688243 green (18 jobs); integration ci 44257139376 (#2336) green (backend/web/infra jobs skipped by the changed-areas gate); deploy #358 skipped by design ('nothing deployable changed'): dev stays on build 39db6c734, database v0203. APKs of record: aron-release-signed-dev-2336 (aron-sr/amo/tso-0.3.336-dev.apk). APK size numbers not read.
+- Told: A-INT3 ('gates round landed': merge, Room 10 -> 11), A-PROG1 (merge, gate recordProgramme), P-SR1b, P-AMO3, P-TSO (merge). A-GATE8 started (session_014mnioMzRiTUob1mFun7H6j, branch lane/android-gates-2, ten follow-ups).
+- Next GO: train 119 Loyalty after L-A11's tiny push.
+- DEVICE WALK now possible for the owner on build 2336: check-in gate, stock limit, check-out submit, midnight/04:00 close (lists in docs/status/android-gates.md).
