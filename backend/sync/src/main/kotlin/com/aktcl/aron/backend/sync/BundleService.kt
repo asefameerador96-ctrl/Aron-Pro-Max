@@ -33,6 +33,7 @@ import java.security.MessageDigest
 import java.sql.ResultSet
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.Base64
@@ -46,7 +47,7 @@ import java.util.Base64
  * content always has the same version on every replica and any change of content changes it (ETag, 304). The
  * pre-generated Blob snapshots of s4.10 are the worker's (F-SYS-067); this builds on request.
  *
- * Deferred programmes (docs/27): `offers`, `targets`, `achievement_mtd` and `programme_flags` stay empty, `programmes`
+ * Deferred programmes (docs/27): `offers` and `programme_flags` stay empty (`targets`, `achievement_mtd` and `calendar` are filled per route by [SrTargets], N-2), `programmes`
  * is null.
  */
 class BundleService(
@@ -139,26 +140,36 @@ class BundleService(
         }
 
         val configVersion = config.configVersion() // one read: config.version and device_policy_version agree
-        val bundle = db.jdbi.withHandle<Bundle, Exception> { h ->
-            val own = routeSnapshots(h, user.id, plans, date, dayStates, cfg, roleOrdinal)
+        // B2 of the T1 review: ONE read-only REPEATABLE READ transaction around EVERY memo-derived read of the bundle (route figures, outlet stats, the programmes section, the open memos...), so a memo
+        // that commits while the bundle is built is in all of them or in none. The inner transactions of routeSnapshots and of the programmes section join this one (same isolation level). The Astha
+        // section keeps its landed rule (a live snapshot through today), now taken inside this same snapshot.
+        // C3 of the confirming check: everything that goes through a PROCESS-WIDE CACHE (the reach resolver, the server config) is resolved BEFORE the snapshot opens, on its own handle, and passed in
+        // as values: a loader that ran inside the snapshot could publish data as old as the snapshot to a shared cache after a newer admin change was committed and loaded (stale scope or config for others).
+        val supReach = if (reach != null && SupervisorBundle.isSupervisor(p.role)) reach.reach(user.id, p.role, p.scopeVersion, date) else null
+        val progReach = supReach ?: reach?.reach(user.id, p.role, p.scopeVersion, date)   // the caller's reach for the programme scope (an SR's is ownRecordsOnly: no zone reach)
+        val memoSeqBlock = config.int("cfg.memo.seq_block_size").coerceIn(100, 999)
+        val bundle = db.jdbi.withHandle<Bundle, Exception> { h0 -> h0.inTransaction<Bundle, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { h ->
+            inSnapshot.set(true)
+            try {
+            h.execute("SET TRANSACTION READ ONLY")
+            val own = routeSnapshots(h, user.id, plans, date, dayStates, cfg, roleOrdinal, now = now)
+            betweenReads?.invoke(h)
             // F-AMO-044: the AMO (and the TSO) also carries every route of the zone (outlets for a Control Call anywhere in airplane mode).
-            val supReach = if (reach != null && SupervisorBundle.isSupervisor(p.role)) reach.reach(user.id, p.role, p.scopeVersion, date) else null
             val zonePlans = if (supReach != null) SupervisorBundle.zoneRoutePlans(h, supReach, plans.map { it.routeId }.toSet()) else emptyList()
             // The AMO and the TSO carry the outlets of every route of their zones (the TSO's login snapshot, F-TSO-027, lead
             // ruling 2026-10-18): same builder, scope from the token, paged above cfg.bundle.page_threshold_rows like any section.
-            val zoneRoutes = if (supReach != null && (p.role == Role.AMO || p.role == Role.TSO)) routeSnapshots(h, user.id, zonePlans, date, emptyMap(), cfg, roleOrdinal, zoneIds = supReach.zoneIds.toList()) else emptyList()
+            val zoneRoutes = if (supReach != null && (p.role == Role.AMO || p.role == Role.TSO)) routeSnapshots(h, user.id, zonePlans, date, emptyMap(), cfg, roleOrdinal, zoneIds = supReach.zoneIds.toList(), now = now) else emptyList()
             val routes = own + zoneRoutes
             // Contract 1.16.0 caps (600 clusters, 400 outlets of stats): beyond them the rows are cut in a fixed order and the section says so (`*_truncated`), never an over-long section.
             val clustersCapped = if (p.role == Role.SR) clusters(h, own).capped(MAX_CLUSTERS) else Capped(emptyList(), false)
-            val statsCapped = if (p.role == Role.SR) outletSkuStats(h, own.flatMap { r -> r.outlets.map { it.outlet_id } }, date).capped(MAX_STATS_OUTLETS) else Capped(emptyList(), false)
-            val progReach = supReach ?: reach?.reach(user.id, p.role, p.scopeVersion, date)   // the caller's reach for the programme scope (an SR's is ownRecordsOnly: no zone reach)
+            val statsCapped = if (p.role == Role.SR) outletSkuStats(h, own.flatMap { r -> r.outlets.map { it.outlet_id } }, date, SrMemoFigures.through(date, now)).capped(MAX_STATS_OUTLETS) else Capped(emptyList(), false)
             val zones = (plans.map { it.zoneId } + listOfNotNull(user.homeZoneId)).distinct()
             Bundle(
                 meta = PLACEHOLDER_META,
                 user = BundleUser(
                     user_id = user.id, username = user.username, full_name = user.fullName, role = user.role, designation = user.designation,
                     locale = if (user.locale == "en") "en" else "bn", bind_ordinal = bindOrdinal(h, p),
-                    memo_seq_block_size = config.int("cfg.memo.seq_block_size").coerceIn(100, 999),
+                    memo_seq_block_size = memoSeqBlock,
                     zone_id = user.homeZoneId, territory_id = home?.territoryId,
                     geography = (user.homeZoneId ?: plans.firstOrNull()?.zoneId)?.let { geographyOf(h, it) },
                     consents = ConsentRecords.accepted(h, user.id),
@@ -198,7 +209,8 @@ class BundleService(
                 outlet_sku_stats = statsCapped.rows,
                 outlet_sku_stats_truncated = statsCapped.truncated,
             )
-        }
+            } finally { inSnapshot.set(false) }
+        } }
         val seq = snapshotSeq(user.id, date, bundle)
         val version = "$date:$seq"
         fingerprints.putIfAbsent(user.id, date, seq) { BundleFingerprint.of(bundle) }
@@ -496,12 +508,48 @@ class BundleService(
             .bind("d", d).bind("u", p.userId).mapTo(Int::class.java).findOne().orElse(0)
     }?.coerceIn(0, 3) ?: 0
 
+    /**
+     * ONE read-only REPEATABLE READ snapshot on the primary around the whole route-snapshot read (rule A of the no-clock design, D-TKPI-12): every SR figure (achievement,
+     * KPI, Star, campaigns) and the rest of the route sections see the same committed state, so an upload or a rebuild that commits meanwhile is in all of them or none.
+     * (The identity probe built on this snapshot is PARKED, D-LEAD-FIGURES-SIMPLE-01: docs/requests/sr-programmes-phone-rule-b.md.)
+     */
     private fun routeSnapshots(
         h: Handle, userId: Long, plans: List<RouteDayPlan>, date: LocalDate, states: Map<Long, DayRow>, cfg: ScopedConfig, roleOrdinal: Long?,
         /** F-AMO-044: non-null builds the AMO's and TSO's zone-wide routes: only outlets of these zones, no open memos, no target, no rep state. */
         zoneIds: List<Long>? = null,
+        /** The request's `now`, read BEFORE the snapshot opened: `through_date` and the calendar are computed from it, never from a second clock read inside the transaction (midnight race). */
+        now: Instant,
     ): List<RouteSnapshot> {
         if (plans.isEmpty()) return emptyList()
+        return h.inTransaction<List<RouteSnapshot>, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { th ->
+            th.execute("SET TRANSACTION READ ONLY")
+            val snaps = routeSnapshotsIn(th, userId, plans, date, states, cfg, roleOrdinal, zoneIds, now)
+            snaps
+        }
+    }
+
+    /** The SR programme figures of the routes of one build, from the memo tables in the caller's snapshot (rule A). */
+    class FigureSet(
+        val sr: Map<Long, SrTargets.Snapshot>, val kpi: Map<Long, kotlinx.serialization.json.JsonObject>, val campaigns: Map<Long, SrCampaigns.Result>,
+        val star: Map<Long, kotlinx.serialization.json.JsonObject>, val starDropped: HashSet<Long>,
+    )
+
+    private fun loadFigureSet(h: Handle, plans: List<RouteDayPlan>, date: LocalDate, outletIdsByRoute: Map<Long, List<Long>>, routeNames: Map<Long, String>, srs: Map<Long, Pair<Long, String>>, now: Instant): FigureSet {
+        val srRoutes = plans.map { it.routeId }
+        val through = SrMemoFigures.through(date, now)
+        val figures = if (srRoutes.isEmpty()) emptyMap() else SrMemoFigures.forRoutes(h, srRoutes, YearMonth.from(date).atDay(1), through)
+        val dim = if (srRoutes.isEmpty()) null else SrMemoFigures.dim(h)
+        val sr = SrTargets.load(h, plans.associate { it.routeId to it.zoneId }, date, now, null, through, figures)   // config = null: the global weekend is read from the database INSIDE the snapshot, never through the process-wide config cache (C3)
+        val kpi = SrKpi.load(h, srRoutes, date, through, figures, dim!!)
+        val campaigns = SrCampaigns.load(h, outletIdsByRoute, date, through)
+        val starDropped = HashSet<Long>()
+        val star = SrStar.load(h, plans.mapNotNull { r -> sr[r.routeId]?.let { snap -> r.routeId to SrStar.RouteInfo(routeNames.getValue(r.routeId), srs[r.routeId]?.second, srs[r.routeId]?.first, snap.calendar) } }.toMap(), date, through, figures, dim, starDropped)
+        return FigureSet(sr, kpi, campaigns, star, starDropped)
+    }
+
+    private fun routeSnapshotsIn(
+        h: Handle, userId: Long, plans: List<RouteDayPlan>, date: LocalDate, states: Map<Long, DayRow>, cfg: ScopedConfig, roleOrdinal: Long?, zoneIds: List<Long>?, now: Instant,
+    ): List<RouteSnapshot> {
         val ids = plans.map { it.routeId }
         val routes = h.createQuery("SELECT * FROM app.route WHERE id = ANY(:r)").bindArray("r", Long::class.javaObjectType, ids).map { rs, _ ->
             RouteDto(
@@ -521,6 +569,9 @@ class BundleService(
         val plan = h.createQuery("SELECT zone_id, sku_id FROM app.sales_plan WHERE zone_id = ANY(:z) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d) ORDER BY sku_id")
             .bindArray("z", Long::class.javaObjectType, plans.map { it.zoneId }.distinct()).bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
             .groupBy({ it.first }, { it.second })
+        // Own-route figures straight from the accepted memo tables: the loader of the bundle's figure sections (loadFigureSet).
+        val figs = if (zoneIds == null) loadFigureSet(h, plans, date, outlets.mapValues { e -> e.value.map { it.outlet_id } }, routes.mapValues { it.value.name }, srs, now) else null
+        val sr = figs?.sr ?: emptyMap(); val kpi = figs?.kpi ?: emptyMap(); val campaigns = figs?.campaigns ?: emptyMap(); val star = figs?.star ?: emptyMap(); val starDropped = figs?.starDropped ?: HashSet()
         return plans.sortedBy { it.routeId }.map { r ->
             val day = if (zoneIds == null) states[r.routeId] else null
             val target = if (zoneIds != null) 0 else day?.target ?: r.targetOutlets
@@ -531,7 +582,7 @@ class BundleService(
                 assignment_kind = r.assignmentKind, acting_for_user_id = if (zoneIds == null && r.assignmentKind == "cover") primaries[r.routeId]?.takeIf { it != userId } else null,
                 planned_today = r.plannedToday, target_outlets = target, outlets = routeOutlets,
                 open_memos = openMemoRows.filter { it.outlet_id in outletIds }, sales_plan_sku_ids = plan[r.zoneId].orEmpty(),
-                targets = emptyList(), achievement_mtd = emptyList(),
+                targets = sr[r.routeId]?.targets.orEmpty(), achievement_mtd = sr[r.routeId]?.achievement.orEmpty(), calendar = sr[r.routeId]?.calendar?.takeIf { sr[r.routeId]!!.hasFigures || kpi[r.routeId] != null || star[r.routeId] != null || campaigns[r.routeId]?.rows.orEmpty().isNotEmpty() }, kpi = kpi[r.routeId], star = star[r.routeId], campaigns = campaigns[r.routeId]?.rows?.takeIf { it.isNotEmpty() }, campaigns_truncated = campaigns[r.routeId]?.truncated?.takeIf { it }, targets_truncated = sr[r.routeId]?.truncated?.takeIf { it }, star_truncated = (r.routeId in starDropped).takeIf { it },
                 day_state = day?.state ?: RouteDayStateDto(r.routeId, date.toString(), "not_started", r.plannedToday, 1, false, null, null, null, null),
                 sr_user_id = srs[r.routeId]?.first, sr_name = srs[r.routeId]?.second,
             )
@@ -656,17 +707,17 @@ class BundleService(
      * Previous sale day, ADS and SDLW per outlet x SKU (contract 1.16.0, part A Q4 defaults), from the live memos of the 30 business days before [date]:
      * sale lines only, memos active, with lines, not voided (the rule of the Sales Submit digest). Base units; ADS in integer hundredths, rounded half up, = quantity sold in the 30 calendar days before [date] divided by the ELAPSED calendar days of that window (30, or the days since the outlet's first selling memo when younger).
      */
-    private fun outletSkuStats(h: Handle, outletIds: List<Long>, date: LocalDate): List<OutletSkuStat> = if (outletIds.isEmpty()) emptyList() else h.createQuery(
+    private fun outletSkuStats(h: Handle, outletIds: List<Long>, date: LocalDate, through: LocalDate): List<OutletSkuStat> = if (outletIds.isEmpty()) emptyList() else h.createQuery(
         """
         WITH ls AS (
           SELECT m.outlet_id, ml.sku_id, m.business_date, sum(ml.qty_base)::bigint AS q
             FROM app.memo_line ml JOIN app.memo m ON m.client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
-           WHERE m.outlet_id = ANY(:o) AND m.business_date >= :from AND m.business_date < :d
+           WHERE m.outlet_id = ANY(:o) AND m.business_date >= :from AND m.business_date <= :t   -- cut at the last CLOSED day, like the figures (a bundle built ahead never reads the open day)
              AND m.status = 'active' AND m.line_count > 0 AND m.voided_at IS NULL AND ml.voided_at IS NULL AND ml.line_kind = 'sale'
            GROUP BY m.outlet_id, ml.sku_id, m.business_date),
         od AS (SELECT outlet_id, max(business_date) AS prev,
                        -- ELAPSED calendar days of the window (D-SV2-05): 30, or the days since the outlet's first selling memo when it is younger
-                       LEAST(30, :d - (SELECT min(m2.business_date) FROM app.memo m2 WHERE m2.outlet_id = ls.outlet_id AND m2.business_date < :d AND m2.business_date >= :d - 366
+                       LEAST(30, :d - (SELECT min(m2.business_date) FROM app.memo m2 WHERE m2.outlet_id = ls.outlet_id AND m2.business_date <= :t AND m2.business_date >= :d - 366
                                          AND m2.status = 'active' AND m2.line_count > 0 AND m2.voided_at IS NULL)) AS days
                   FROM ls GROUP BY outlet_id)
         SELECT s.outlet_id, s.sku_id, od.prev,
@@ -676,7 +727,7 @@ class BundleService(
           FROM ls s JOIN od ON od.outlet_id = s.outlet_id
          GROUP BY s.outlet_id, s.sku_id, od.prev, od.days ORDER BY s.outlet_id, s.sku_id
         """.trimIndent(),
-    ).bindArray("o", Long::class.javaObjectType, outletIds).bind("from", date.minusDays(30)).bind("d", date).bind("sdlw", date.minusDays(7)).map { rs, _ ->
+    ).bindArray("o", Long::class.javaObjectType, outletIds).bind("from", date.minusDays(30)).bind("d", date).bind("t", through).bind("sdlw", date.minusDays(7)).map { rs, _ ->
         Triple(rs.getLong("outlet_id"), rs.getObject("prev", LocalDate::class.java).toString(), listOf(rs.getLong("sku_id"), rs.getLong("prev_q"), rs.getLong("ads"), rs.getLong("sdlw")))
     }.list().filter { it.third[1] != 0L || it.third[2] != 0L || it.third[3] != 0L }   // a pair with all three figures zero carries nothing
         .groupBy({ it.first to it.second }, { it.third }).map { (k, v) ->
@@ -806,6 +857,12 @@ class BundleService(
     }.list()
 
     companion object {
+        /** Test hook (like [BundleProgrammes.probe]): runs inside the bundle's single snapshot right after the route figures were read, so a test can commit a memo from ANOTHER connection between two reads. Null in production. */
+        @Volatile var betweenReads: ((Handle) -> Unit)? = null
+
+        /** True on the thread that is inside a bundle's snapshot; a test guard (a cache loader must never run while it is set, C3). */
+        val inSnapshot: ThreadLocal<Boolean> = ThreadLocal.withInitial { false }
+
         /** The device-scoped config value that carries the phone's lab grant (contract 1.21.0); see [labGrant]. */
         const val LAB_GRANT_KEY = "cfg.integrity.lab_exemption"
 

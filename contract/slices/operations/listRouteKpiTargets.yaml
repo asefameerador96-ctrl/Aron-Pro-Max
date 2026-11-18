@@ -1,0 +1,36 @@
+path: /v1/admin/route-kpi-targets
+method: get
+operation:
+  tags:
+  - admin-targets
+  operationId: listRouteKpiTargets
+  summary: One route's KPI targets of a month (memo target and allocated KPI per brand, and the month row).
+  parameters:
+  - name: route_code
+    in: query
+    required: true
+    schema:
+      type: string
+      minLength: 1
+      maxLength: 40
+  - name: month
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/RouteTargetMonth'
+    description: Month as YYYY-MM; default the current Dhaka month.
+  responses:
+    '200':
+      description: The route's rows.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RouteKpiTargetList'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

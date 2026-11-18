@@ -3754,6 +3754,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/route-kpi-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One route's KPI targets of a month (memo target and allocated KPI per brand, and the month row). */
+        get: operations["listRouteKpiTargets"];
+        /**
+         * Validate (dry_run) or commit KPI targets (brand memo targets and allocated KPI, month allocation and CPR), upsert by route, brand and month.
+         * @description Same guarantees as `putRouteTargets`: `dry_run: true` validates and writes nothing; `dry_run: false` needs `change_reason`, commits all rows or none, is idempotent by `batch_uuid` (same content replays, other content or user is 409; the idempotency record is shared with the route target upload) and never rewrites a past Dhaka month. A member left OUT of a row keeps the stored value (`kpi_alloc_mtk` of a brand row, `cpr_target_bp` and `cpr_alloc_mtk` of a month row; a new row gets 0 or null); an explicit null clears a CPR value. A `campaign_sku_rows` row needs its campaign row (outlet, programme and month) in the same batch or already stored, else `campaign_row_missing`. Errors point at `body.brand_rows/<i>/<member>` or `body.month_rows/<i>/<member>`. Money is integer milli-taka; CPR target is basis points. The volume target stays in `putRouteTargets`. Audited as entity `route_kpi_target`.
+         */
+        put: operations["putRouteKpiTargets"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/devices/{device_id}/replace": {
         parameters: {
             query?: never;
@@ -6844,7 +6865,7 @@ export interface components {
             std_unit: "stick" | "piece" | "dozen";
             memo_target: number;
         };
-        /** @description Month-to-date achievement known to the server; the phone adds its own unsynced sales on top. */
+        /** @description Month-to-date achievement read from the accepted memos through `through_date`; the figures rule is stated once in `RouteSnapshot` (`as_of` is informational). */
         AchievementRow: {
             scope_type: components["schemas"]["TargetScopeType"];
             scope_id: components["schemas"]["Id"];
@@ -6853,10 +6874,306 @@ export interface components {
             product_id: components["schemas"]["Id"];
             /** Format: int64 */
             achieved_qty_base: number;
+            /** @description Memos with ANY non-voided line of the SKU (free lines included); `achieved_qty_base` counts sale lines only. See the figures rule in `RouteSnapshot`. */
             memo_count: number;
             as_of: components["schemas"]["Timestamp"];
+            /** @description Last Dhaka business date the figure covers: the last CLOSED day when the bundle was built (the bundle date minus one day, or yesterday for a bundle built ahead while today is still open). The bundle date's own memos are never in a server figure. What the phone shows is stated once, as the figures rule in the description of `RouteSnapshot`. Contract 1.24.0, optional. */
+            through_date?: components["schemas"]["BusinessDate"];
         };
-        /** @description Per-route section of the bundle; replaced as a whole when the route is added to the user. */
+        /** @description Working-day numbers of the bundle month for the route (read at the route's zone path: the division and wing weekend and the holidays of its levels, as data). From these the phone derives ADS, TADS, PADS and RADS. Contract 1.24.0. */
+        RouteCalendar: {
+            month: components["schemas"]["Month"];
+            /** @description Working days of the month. */
+            working_days: number;
+            /** @description Working days of the bundle month from the 1st up to the day before the ANCHOR day: the day after `through_date`, but never before the 1st of the bundle month (on an ordinary day that is the bundle date; for a bundle built ahead it is the day still open, e.g. a bundle for Saturday built on Thursday has `through_date` Wednesday and the anchor is Thursday; a bundle for Monday 1 February built on Sunday 31 January has `through_date` 30 January and the anchor is 1 February). */
+            elapsed_working_days_before_today: number;
+            /** @description Working days of the bundle month after the ANCHOR day: the day after `through_date`, but never before the 1st of the bundle month (on an ordinary day that is the bundle date; for a bundle built ahead it is the day still open, e.g. a bundle for Saturday built on Thursday has `through_date` Wednesday and the anchor is Thursday; a bundle for Monday 1 February built on Sunday 31 January has `through_date` 30 January and the anchor is 1 February), to the end of the month. Elapsed + today (1 when working) + remaining = `working_days`. */
+            remaining_working_days_after_today: number;
+            /** @description Whether the ANCHOR day: the day after `through_date`, but never before the 1st of the bundle month (on an ordinary day that is the bundle date; for a bundle built ahead it is the day still open, e.g. a bundle for Saturday built on Thursday has `through_date` Wednesday and the anchor is Thursday; a bundle for Monday 1 February built on Sunday 31 January has `through_date` 30 January and the anchor is 1 February) is a working day (read from the bundle month's own calendar). */
+            today_is_working: boolean;
+            /** @description Working days of last month that have CLOSED at the cut: all of them once `through_date` is past the end of last month, else those up to `through_date` (a bundle built ahead on the last day of the month). */
+            last_month_working_days: number;
+            through_date: components["schemas"]["BusinessDate"];
+            as_of: components["schemas"]["Timestamp"];
+        };
+        KpiBrandTargetWriteRow: {
+            route_code: string;
+            brand_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            memo_target: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            kpi_alloc_mtk: number;
+        };
+        KpiMonthTargetWriteRow: {
+            route_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            /** Format: int64 */
+            kpi_alloc_mtk: number;
+            cpr_target_bp?: number | null;
+            /** Format: int64 */
+            cpr_alloc_mtk?: number | null;
+        };
+        KpiProgrammeTargetWriteRow: {
+            route_code: string;
+            programme_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            target_qty: components["schemas"]["Decimal3"];
+        };
+        KpiCampaignTargetWriteRow: {
+            outlet_code: string;
+            programme_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            std_target: components["schemas"]["Decimal3"];
+            memo_target: number;
+        };
+        KpiCampaignSkuTargetWriteRow: {
+            outlet_code: string;
+            programme_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            sku_code: string;
+            /** Format: int64 */
+            qty_base: number;
+        };
+        RouteKpiTargetWrite: {
+            batch_uuid: components["schemas"]["Uuid"];
+            dry_run: boolean;
+            change_reason?: string;
+            brand_rows?: components["schemas"]["KpiBrandTargetWriteRow"][];
+            month_rows?: components["schemas"]["KpiMonthTargetWriteRow"][];
+            programme_rows?: components["schemas"]["KpiProgrammeTargetWriteRow"][];
+            campaign_rows?: components["schemas"]["KpiCampaignTargetWriteRow"][];
+            campaign_sku_rows?: components["schemas"]["KpiCampaignSkuTargetWriteRow"][];
+        };
+        RouteKpiTargetPreview: {
+            batch_uuid: components["schemas"]["Uuid"];
+            brand_rows: number;
+            month_rows: number;
+            programme_rows: number;
+            campaign_rows: number;
+            campaign_sku_rows: number;
+            errors: {
+                /** @enum {string} */
+                section: "brand_rows" | "month_rows" | "programme_rows" | "campaign_rows" | "campaign_sku_rows";
+                row: number;
+                column: string;
+                code: string;
+            }[];
+            errors_truncated: boolean;
+            /** @description Rows that are accepted but probably not what was meant: `campaign_without_skus` (a campaign row with no SKU row in the batch or stored: the app would show STD and memo achieved 0). Optional. */
+            warnings?: {
+                /** @enum {string} */
+                section: "brand_rows" | "month_rows" | "programme_rows" | "campaign_rows" | "campaign_sku_rows";
+                row: number;
+                column: string;
+                code: string;
+            }[];
+            warnings_truncated?: boolean;
+        };
+        RouteKpiTargetList: {
+            route_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            brand_rows: {
+                brand_code: string;
+                brand_name: string;
+                memo_target: number;
+                /** Format: int64 */
+                kpi_alloc_mtk: number;
+            }[];
+            programme_rows: {
+                programme_code: string;
+                programme_name: string;
+                target_qty: components["schemas"]["Decimal3"];
+            }[];
+            /** @description Outlets of the route with an outlet campaign target for the month (at most 500, by outlet code), so an operator can verify a campaign upload. Contract 1.24.0, optional. */
+            campaign_rows?: {
+                outlet_code: string;
+                programme_code: string;
+                programme_name: string;
+                std_target: components["schemas"]["Decimal3"];
+                memo_target: number;
+            }[];
+            /** @description SKU targets (base units) of those outlets for the month (at most 500). Contract 1.24.0, optional. */
+            campaign_sku_rows?: {
+                outlet_code: string;
+                programme_code: string;
+                sku_code: string;
+                /** Format: int64 */
+                qty_base: number;
+            }[];
+            month_row: null | {
+                /** Format: int64 */
+                kpi_alloc_mtk: number;
+                cpr_target_bp: number | null;
+                /** Format: int64 */
+                cpr_alloc_mtk: number | null;
+            };
+        };
+        /** @description Brand-wise KPI of the SR (screens 60 and 61) for the Dhaka month of the bundle date, server figures through `through_date` (never today; the rule for the phone is the figures rule of `RouteSnapshot`). Volume in base units, money in integer milli-taka, percentages in basis points (null when the target is 0). `achieved_mtk`, `achievement_bp` and every `kpi_today_mtk` are null until the owner defines them. Contract 1.24.0. */
+        RouteKpi: {
+            month: components["schemas"]["Month"];
+            through_date: components["schemas"]["BusinessDate"];
+            as_of: components["schemas"]["Timestamp"];
+            /** Format: int64 */
+            allocated_mtk: number | null;
+            /** Format: int64 */
+            achieved_mtk: number | null;
+            /** Format: int64 */
+            achievement_bp: number | null;
+            volume: components["schemas"]["KpiTotal"];
+            memo: components["schemas"]["KpiTotal"];
+            brands: components["schemas"]["KpiBrand"][];
+            brands_truncated: boolean;
+            categories: components["schemas"]["KpiCategory"][];
+            cpr: components["schemas"]["KpiCpr"] | null;
+        };
+        /** @description Target, achievement and percentage of a KPI total (sums of the brand rows). */
+        KpiTotal: {
+            /** Format: int64 */
+            target: number;
+            /** Format: int64 */
+            achieved: number;
+            /** Format: int64 */
+            bp: number | null;
+        };
+        /** @description One brand row of the KPI screens. */
+        KpiBrand: {
+            brand_id: components["schemas"]["Id"];
+            /**
+             * Format: int64
+             * @description Sum of the route targets of the brand SKUs in base units.
+             */
+            volume_target: number;
+            /** Format: int64 */
+            volume_achieved: number;
+            /** Format: int64 */
+            volume_bp: number | null;
+            /** Format: int64 */
+            memo_target: number;
+            /**
+             * Format: int64
+             * @description Memos containing the brand, once per memo.
+             */
+            memo_achieved: number;
+            /** Format: int64 */
+            memo_bp: number | null;
+            /** Format: int64 */
+            kpi_alloc_mtk: number;
+            /**
+             * Format: int64
+             * @description Null until the owner defines it.
+             */
+            kpi_today_mtk: number | null;
+            /** @description Target and achieved per pack size (`base_per_pack` of the SKUs), base units, ordered by pack_factor, only sizes with a target or a sale; the phone shows one line per pack size (20s and 10s apart, owner rule 5). The entries add up to volume_target and volume_achieved. */
+            by_pack: components["schemas"]["KpiPackFigure"][];
+        };
+        /** @description Volume of a category row (match and lighter). */
+        KpiCategory: {
+            /** @enum {string} */
+            category_code: "match" | "lighter";
+            /** Format: int64 */
+            volume_target: number;
+            /** Format: int64 */
+            volume_achieved: number;
+            /** Format: int64 */
+            volume_bp: number | null;
+            /** @description Target and achieved per pack size (`base_per_pack` of the SKUs), base units, ordered by pack_factor, only sizes with a target or a sale; the phone shows one line per pack size (20s and 10s apart, owner rule 5). The entries add up to volume_target and volume_achieved. */
+            by_pack: components["schemas"]["KpiPackFigure"][];
+        };
+        KpiPackFigure: {
+            /** @description Base units (sticks or pieces) in one pack of the SKUs counted in this entry (the SKU `base_per_pack`). */
+            pack_factor: number;
+            /** Format: int64 */
+            target: number;
+            /** Format: int64 */
+            achieved: number;
+        };
+        /** @description CPR (call productivity) block; achieved is null until the owner defines the source. */
+        KpiCpr: {
+            /** Format: int64 */
+            target_bp: number | null;
+            /** Format: int64 */
+            alloc_mtk: number | null;
+            /** Format: int64 */
+            achieved_bp: number | null;
+        };
+        /** @description Campaign target and achievement of one outlet for the Dhaka month (screen 21, outlet target pop-up and page). STD and SKU quantities are base units; memo achievement counts distinct active memos of the outlet with a campaign SKU line. Server figures through `through_date` (never today; the rule for the phone is the figures rule of `RouteSnapshot`). Contract 1.24.0. */
+        RouteCampaign: {
+            outlet_id: components["schemas"]["Id"];
+            programme_id: components["schemas"]["Id"];
+            label_en: string;
+            label_bn: string | null;
+            month: components["schemas"]["Month"];
+            through_date: components["schemas"]["BusinessDate"];
+            as_of: components["schemas"]["Timestamp"];
+            std: components["schemas"]["CampaignFigure"];
+            memo: components["schemas"]["CampaignFigure"];
+            skus: components["schemas"]["CampaignSku"][];
+        };
+        CampaignFigure: {
+            /**
+             * Format: int64
+             * @description STD in base units (the STD target is rounded half up to a whole base unit) or the memo count.
+             */
+            target: number;
+            /** Format: int64 */
+            achieved: number;
+            /**
+             * Format: int64
+             * @description max(target - achieved, 0).
+             */
+            remaining: number;
+        };
+        CampaignSku: {
+            sku_id: components["schemas"]["Id"];
+            /** Format: int64 */
+            target_qty_base: number;
+            /** Format: int64 */
+            sold_qty_base: number;
+        };
+        /** @description Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3 in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown, never applied to a memo. Contract 1.24.0. */
+        RouteStar: {
+            programme_id: components["schemas"]["Id"];
+            programme_code: string;
+            name_en: string;
+            name_bn: string | null;
+            month: components["schemas"]["Month"];
+            through_date: components["schemas"]["BusinessDate"];
+            as_of: components["schemas"]["Timestamp"];
+            sr_name: string | null;
+            sr_code: string | null;
+            route_name: string;
+            /** @description Working days of last month that have CLOSED at the cut (all of them once `through_date` is past the end of last month; up to `through_date` for a bundle built ahead on the last day of the month); the divisor of `lmads`, over the same days as `lms`. */
+            lmwd: number;
+            /** @description Working days of the month. */
+            wd: number;
+            /** @description Elapsed working days under the single day-count convention (SkuProgress.dayCounts) of the calendar anchor, `max(through_date + 1, the 1st of the bundle month)`; 0 when the window is empty (the 1st of the month), and the figures that divide by it are then null, never zero. */
+            ewd: number;
+            target: components["schemas"]["Decimal3"];
+            std: components["schemas"]["Decimal3"];
+            projection: components["schemas"]["Decimal3"] | null;
+            /**
+             * Format: int64
+             * @description Projection over target.
+             */
+            achievement_bp: number | null;
+            lms: components["schemas"]["Decimal3"];
+            lmads: components["schemas"]["Decimal3"] | null;
+            pads: components["schemas"]["Decimal3"] | null;
+            /** Format: int64 */
+            growth_bp: number | null;
+            status_en: string;
+            status_bn: string;
+            achieved_slab: string | null;
+            /** Format: int64 */
+            slab_amount_mtk: number | null;
+            projected_slab: string | null;
+            /** Format: int64 */
+            projected_amount_mtk: number | null;
+        };
+        /** @description Per-route section of the bundle; replaced as a whole when the route is added to the user. THE FIGURES RULE for the SR programme sections `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns` (contract 1.24.0; the ONE place this rule is stated; D-LEAD-FIGURES-SIMPLE-01). WHAT THE SERVER FIGURE IS. Every figure of these sections (achievement, KPI volumes, memo counts and `by_pack`, Star STD, campaign STD and memo) is computed from the accepted memos with a business date from the 1st of the bundle `month` up to and including `through_date` (the last CLOSED Dhaka day when the bundle was built: the bundle date minus one day, or yesterday for a bundle built ahead while today is still open), status active, memo lines not voided, read in ONE repeatable-read snapshot straight from the memo tables. Today's memos are never in a figure, and neither is any day that has not ended when the bundle is built (a bundle built ahead on Thursday for Saturday has `through_date` = Wednesday, not Friday). On the 1st of a month `through_date` is in the previous month while `month` is the new one: the window is empty and every figure is zero; the phone labels it as from the 1st, never as complete through the last day of last month. Working-day counts are anchored on `max(through_date + 1, the 1st of the bundle month)` (for a bundle for Monday 1 February built on Sunday 31 January: `through_date` 30 January, anchor 1 February, so the counts are 0 / true / 23 with a Friday weekend and no holiday). Star's last month (`lms`, `lmwd`, `lmads`) covers the CLOSED days of last month: all of it once `through_date` is past its end; for a bundle built ahead on its last day, `lms` and `lmwd` count only the days up to `through_date`, so `lmads` divides the same days. A working-day declaration (holiday, make-up day, weekend) made between a prefetch and the build on the day changes the counts: the later build wins. DEFINITIONS: quantities (`achieved_qty_base`, brand and category `volume_*`, `by_pack`, Star STD, campaign STD and SKU `sold_qty_base`) are SALE lines only; `achievement_mtd.memo_count` counts a memo once per SKU when it has ANY non-voided line of that SKU (free lines included); a KPI brand `memo_achieved` and a campaign `memo` count a memo once when it has a SALE line of the brand (campaign: of a shown campaign SKU). Brand sums use ONE hierarchy, the current product tree, for target and figure alike. Campaign figures are the outlet's: every route's memos at the outlet through `through_date`. Another SR's sales at a shared outlet are in the figure; that SR's unsynced and today's memos are not. THE PHONE: the figures are the server's, COMPLETE through `through_date`; the phone shows them with that date. Separately it may show 'today on this phone' = its own live memos dated after `through_date`, computed only from local data and labelled as such, and a count of its memos of earlier days that the server has not confirmed. It never adds unconfirmed earlier-day memos into a figure and never subtracts from a server figure. `as_of` is INFORMATIONAL only (the newest `received_at` among the memos read, the epoch when none) and is never used in arithmetic. Day counts: `calendar.elapsed_working_days_before_today`, `calendar.remaining_working_days_after_today` and `calendar.today_is_working` describe the working days; a zero divisor gives no figure, never zero. Volumes are base units (sticks, pieces, dozens): packets, dozens and boxes are shown from `targets`, `achievement_mtd` and the `by_pack` lists, never converted from a stick sum of mixed pack sizes. */
         RouteSnapshot: {
             route_id: components["schemas"]["Id"];
             route_snapshot_version: number;
@@ -6874,6 +7191,20 @@ export interface components {
             targets: components["schemas"]["TargetRow"][];
             achievement_mtd: components["schemas"]["AchievementRow"][];
             day_state: components["schemas"]["RouteDayState"];
+            /** @description Working-day numbers for the SR programme screens (N-2). Null or absent for TSO/AMO zone bundles. Contract 1.24.0, optional. */
+            calendar?: components["schemas"]["RouteCalendar"] | null;
+            /** @description Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.24.0, optional. */
+            kpi?: components["schemas"]["RouteKpi"] | null;
+            /** @description Outlets of the route enrolled in an active campaign for the month (N-3), with the outlet target pop-up figures and the SKU table. Empty or absent otherwise. At most 150 outlets and 20 SKUs each (lowest outlet id first); `campaigns_truncated` says when more existed. Contract 1.24.0, optional. */
+            campaigns?: components["schemas"]["RouteCampaign"][] | null;
+            /** @description True when the route had more campaign outlets (over 150), an outlet more campaign SKUs (over 20) or more than one active campaign (only the lowest programme id is sent) than were sent; never silent. Contract 1.24.0, optional. */
+            campaigns_truncated?: boolean | null;
+            /** @description True when `targets` or `achievement_mtd` had more than 500 rows and were cut; never silent. Contract 1.24.0, optional. */
+            targets_truncated?: boolean | null;
+            /** @description True when the route had more than one active superstar programme with a target; only the lowest programme id is in `star`. Contract 1.24.0, optional. */
+            star_truncated?: boolean | null;
+            /** @description Match Box Lifting Star snapshot (N-8); absent or null when the route has no target for an active superstar programme. Contract 1.24.0, optional. */
+            star?: components["schemas"]["RouteStar"] | null;
             /**
              * Format: int64
              * @description The route's assigned SR on the bundle date (`meta.valid_for_business_date`): the same SR that `GET /v1/routes` names for the route on that date (its first `assignees` entry with role SR, a cover assignment before the primary one); null when the route is vacant (no SR assigned; the TSO app shows "SR Not Set"). Sent in the TSO bundle so Assign Task works offline (lead rulings R-W-06, R-W-12); other bundles may omit it. Contract 1.10.0, optional.
@@ -10885,7 +11216,7 @@ export interface components {
             /** @description From 1.23.0, additive and optional (an older server omits it). The unit numbers (1..qty, ascending, at most `qty` entries) that already hold a non-duplicate, non-voided photo of this redemption and gift, from any phone or the TSO; `photos_captured` is kept for old phones and is the size of this array on a server that sends both (units above `qty`, units of a voided or flagged photo and photos without a unit are in neither). When the member is ABSENT (an older server) the phone falls back to the `photos_captured` count: it offers the next `qty - photos_captured` units in order and cannot tell which units are open. The phone offers exactly the open units. Same bound and snapshot as the rest of the section. */
             units_captured?: number[];
         };
-        /** @description Programme data for the user's routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user's reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points: everything the server held when the bundle was built (`as_of_date` is display only; see `LoyaltyBalance`; the phone subtracts its own redemptions not acknowledged when it sent the request); `astha_targets` carry server achievement (units in `AsthaTargetRow`; `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries the whole CURRENT QUARTER of the bundle's business date (its three months, so the quarter and month views work offline; from 1.22.0, before that only the current month), only outlets enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user IN ALL: the current month is filled first, then the other months in order, and past the bound the server sends what fits, logs a warning, sets `astha_truncated` true and names every month that is incomplete in `astha_truncated_months` (`YYYY-MM`), which the phone shows and reads online with `listAsthaTargets` (never a silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. ACHIEVEMENT RULE (the one rule; every other description refers here). Server guarantee: every figure of this section is read in ONE read-only REPEATABLE READ snapshot on the primary database, and it includes every memo of this user whose sync acknowledgement was sent before this bundle request was received. Phone rule, recomputed from scratch after each bundle and keyed by memo_uuid: (1) no timestamp is compared anywhere in this rule (`astha_as_of` and a row's `as_of` are display only, "data as of"); (2) the phone adds only its own memos that had NOT been acknowledged when it SENT the bundle request; (3) the phone subtracts a memo that WAS acknowledged before it sent the request but which it has since voided or superseded locally, and a void or edit that is HELD (quarantined) is never applied by the phone; (4) the phone sends no bundle request while an upload batch is in flight and uploads no records while a bundle request is in flight (single-flight sync, both directions), and if an acknowledgement arrives during the request it discards the section's achievement and refetches; (5) a memo whose last server answer is `quarantined` (held for review, or waiting for a parent) is never added: it is shown as awaiting, and it counts as acknowledged, and is in the server figure, only once a resolution `accepted` or `accepted_with_fix`, or an `accepted` or `duplicate` acknowledgement, has reached the phone before a bundle request (a reviewer's accept and the waiting sweep commit the memo with no upload acknowledgement, so adding every unacknowledged memo would count it twice); a resolution `discarded` (a `return_to_device` also arrives as `discarded`) removes it. The same rules cover the loyalty balances, a redemption being treated like a memo and keyed by redemption uuid: every `loyalty` figure includes every redemption of this user acknowledged before the request was received (and everything the ledger holds, with no business-date cut), and clause (5) covers a held redemption too: it stays subtracted once, shown as held, until a resolution or an acknowledgement has reached the phone. This phone arithmetic will be REPLACED by the server's per-uuid answer (the identity probe, lane sr-targets-server); until then it is the rule. Caps are never silent: `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200), gift_assignments (2,000) or pending_gift_verifications (500) that was cut, and `astha_truncated` (with `astha_truncated_months`) the 1,000-row Astha bound. */
+        /** @description Programme data for the user's routes (docs/24 s4.10, s4.14), 1.15.0: an object when a programme is active in the user's reach, else the bundle member is null. Cut to the outlets and routes of the bundle (token scope). `loyalty.balance_points` and `expiring_points` are integer points: everything the server held when the bundle was built (`as_of_date` is display only; see `LoyaltyBalance`; the phone subtracts its own redemptions not acknowledged when it sent the request); `astha_targets` carry server achievement (units in `AsthaTargetRow`; `astha_as_of` is the display time); a hidden tile (flags cfg.flag.astha_ui, loyalty_ui, superstar_ui) sends no rows. `astha_targets` carries the whole CURRENT QUARTER of the bundle's business date (its three months, so the quarter and month views work offline; from 1.22.0, before that only the current month), only outlets enrolled in an active Astha programme, and no row whose targets and achievements are all zero; it is bounded at 1,000 rows per user IN ALL: the current month is filled first, then the other months in order, and past the bound the server sends what fits, logs a warning, sets `astha_truncated` true and names every month that is incomplete in `astha_truncated_months` (`YYYY-MM`), which the phone shows and reads online with `listAsthaTargets` (never a silent cut). Budget for a 120-outlet SR: the whole section at most 300 KB raw and 32 KB gzip (docs/04). `gifts[].image_url` is always null in the bundle: the phone resolves a gift picture from `gifts[].image_asset_id` with `GET /v1/sku-images/{asset_id}`. ACHIEVEMENT RULE (the one rule; every other description refers here). Server guarantee: every figure of this section is read in ONE read-only REPEATABLE READ snapshot on the primary database, and it includes every memo of this user whose sync acknowledgement was sent before this bundle request was received. Phone rule, recomputed from scratch after each bundle and keyed by memo_uuid: (1) no timestamp is compared anywhere in this rule (`astha_as_of` and a row's `as_of` are display only, "data as of"); (2) the phone adds only its own memos that had NOT been acknowledged when it SENT the bundle request; (3) the phone subtracts a memo that WAS acknowledged before it sent the request but which it has since voided or superseded locally, and a void or edit that is HELD (quarantined) is never applied by the phone; (4) the phone sends no bundle request while an upload batch is in flight and uploads no records while a bundle request is in flight (single-flight sync, both directions), and if an acknowledgement arrives during the request it discards the section's achievement and refetches; (5) a memo whose last server answer is `quarantined` (held for review, or waiting for a parent) is never added: it is shown as awaiting, and it counts as acknowledged, and is in the server figure, only once a resolution `accepted` or `accepted_with_fix`, or an `accepted` or `duplicate` acknowledgement, has reached the phone before a bundle request (a reviewer's accept and the waiting sweep commit the memo with no upload acknowledgement, so adding every unacknowledged memo would count it twice); a resolution `discarded` (a `return_to_device` also arrives as `discarded`) removes it. The same rules cover the loyalty balances, a redemption being treated like a memo and keyed by redemption uuid: every `loyalty` figure includes every redemption of this user acknowledged before the request was received (and everything the ledger holds, with no business-date cut), and clause (5) covers a held redemption too: it stays subtracted once, shown as held, until a resolution or an acknowledgement has reached the phone. This phone arithmetic stays the rule for this section (the earlier plan to replace it with a per-uuid server answer, an identity probe, is PARKED, D-LEAD-FIGURES-SIMPLE-01). Caps are never silent: `truncated_sections` names any of programmes (50), loyalty (11,000 balances), gifts (200), gift_assignments (2,000) or pending_gift_verifications (500) that was cut, and `astha_truncated` (with `astha_truncated_months`) the 1,000-row Astha bound. */
         ProgrammesSection: {
             programmes: components["schemas"]["Programme"][];
             loyalty: components["schemas"]["LoyaltyBalance"][];
@@ -19182,6 +19513,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RouteTargetPreview"] | components["schemas"]["RouteTargetCommitResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listRouteKpiTargets: {
+        parameters: {
+            query: {
+                route_code: string;
+                /** @description Month as YYYY-MM; default the current Dhaka month. */
+                month?: components["schemas"]["RouteTargetMonth"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The route's rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteKpiTargetList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    putRouteKpiTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteKpiTargetWrite"];
+            };
+        };
+        responses: {
+            /** @description Preview (dry_run) or commit result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteKpiTargetPreview"] | components["schemas"]["RouteTargetCommitResult"];
                 };
             };
             400: components["responses"]["BadRequest"];

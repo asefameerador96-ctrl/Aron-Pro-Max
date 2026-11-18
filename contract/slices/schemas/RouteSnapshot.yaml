@@ -1,6 +1,38 @@
 RouteSnapshot:
   type: object
-  description: Per-route section of the bundle; replaced as a whole when the route is added to the user.
+  description: 'Per-route section of the bundle; replaced as a whole when the route is added to the user. THE FIGURES
+    RULE for the SR programme sections `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns` (contract
+    1.24.0; the ONE place this rule is stated; D-LEAD-FIGURES-SIMPLE-01). WHAT THE SERVER FIGURE IS. Every figure
+    of these sections (achievement, KPI volumes, memo counts and `by_pack`, Star STD, campaign STD and memo) is
+    computed from the accepted memos with a business date from the 1st of the bundle `month` up to and including
+    `through_date` (the last CLOSED Dhaka day when the bundle was built: the bundle date minus one day, or yesterday
+    for a bundle built ahead while today is still open), status active, memo lines not voided, read in ONE repeatable-read
+    snapshot straight from the memo tables. Today''s memos are never in a figure, and neither is any day that has
+    not ended when the bundle is built (a bundle built ahead on Thursday for Saturday has `through_date` = Wednesday,
+    not Friday). On the 1st of a month `through_date` is in the previous month while `month` is the new one: the
+    window is empty and every figure is zero; the phone labels it as from the 1st, never as complete through the
+    last day of last month. Working-day counts are anchored on `max(through_date + 1, the 1st of the bundle month)`
+    (for a bundle for Monday 1 February built on Sunday 31 January: `through_date` 30 January, anchor 1 February,
+    so the counts are 0 / true / 23 with a Friday weekend and no holiday). Star''s last month (`lms`, `lmwd`, `lmads`)
+    covers the CLOSED days of last month: all of it once `through_date` is past its end; for a bundle built ahead
+    on its last day, `lms` and `lmwd` count only the days up to `through_date`, so `lmads` divides the same days.
+    A working-day declaration (holiday, make-up day, weekend) made between a prefetch and the build on the day changes
+    the counts: the later build wins. DEFINITIONS: quantities (`achieved_qty_base`, brand and category `volume_*`,
+    `by_pack`, Star STD, campaign STD and SKU `sold_qty_base`) are SALE lines only; `achievement_mtd.memo_count`
+    counts a memo once per SKU when it has ANY non-voided line of that SKU (free lines included); a KPI brand `memo_achieved`
+    and a campaign `memo` count a memo once when it has a SALE line of the brand (campaign: of a shown campaign
+    SKU). Brand sums use ONE hierarchy, the current product tree, for target and figure alike. Campaign figures
+    are the outlet''s: every route''s memos at the outlet through `through_date`. Another SR''s sales at a shared
+    outlet are in the figure; that SR''s unsynced and today''s memos are not. THE PHONE: the figures are the server''s,
+    COMPLETE through `through_date`; the phone shows them with that date. Separately it may show ''today on this
+    phone'' = its own live memos dated after `through_date`, computed only from local data and labelled as such,
+    and a count of its memos of earlier days that the server has not confirmed. It never adds unconfirmed earlier-day
+    memos into a figure and never subtracts from a server figure. `as_of` is INFORMATIONAL only (the newest `received_at`
+    among the memos read, the epoch when none) and is never used in arithmetic. Day counts: `calendar.elapsed_working_days_before_today`,
+    `calendar.remaining_working_days_after_today` and `calendar.today_is_working` describe the working days; a zero
+    divisor gives no figure, never zero. Volumes are base units (sticks, pieces, dozens): packets, dozens and boxes
+    are shown from `targets`, `achievement_mtd` and the `by_pack` lists, never converted from a stick sum of mixed
+    pack sizes.'
   required:
   - route_id
   - route_snapshot_version
@@ -67,6 +99,53 @@ RouteSnapshot:
         $ref: '#/components/schemas/AchievementRow'
     day_state:
       $ref: '#/components/schemas/RouteDayState'
+    calendar:
+      oneOf:
+      - $ref: '#/components/schemas/RouteCalendar'
+      - type: 'null'
+      description: Working-day numbers for the SR programme screens (N-2). Null or absent for TSO/AMO zone bundles.
+        Contract 1.24.0, optional.
+    kpi:
+      oneOf:
+      - $ref: '#/components/schemas/RouteKpi'
+      - type: 'null'
+      description: Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.24.0,
+        optional.
+    campaigns:
+      type:
+      - array
+      - 'null'
+      maxItems: 150
+      items:
+        $ref: '#/components/schemas/RouteCampaign'
+      description: Outlets of the route enrolled in an active campaign for the month (N-3), with the outlet target
+        pop-up figures and the SKU table. Empty or absent otherwise. At most 150 outlets and 20 SKUs each (lowest
+        outlet id first); `campaigns_truncated` says when more existed. Contract 1.24.0, optional.
+    campaigns_truncated:
+      type:
+      - boolean
+      - 'null'
+      description: True when the route had more campaign outlets (over 150), an outlet more campaign SKUs (over
+        20) or more than one active campaign (only the lowest programme id is sent) than were sent; never silent.
+        Contract 1.24.0, optional.
+    targets_truncated:
+      type:
+      - boolean
+      - 'null'
+      description: True when `targets` or `achievement_mtd` had more than 500 rows and were cut; never silent. Contract
+        1.24.0, optional.
+    star_truncated:
+      type:
+      - boolean
+      - 'null'
+      description: True when the route had more than one active superstar programme with a target; only the lowest
+        programme id is in `star`. Contract 1.24.0, optional.
+    star:
+      oneOf:
+      - $ref: '#/components/schemas/RouteStar'
+      - type: 'null'
+      description: Match Box Lifting Star snapshot (N-8); absent or null when the route has no target for an active
+        superstar programme. Contract 1.24.0, optional.
     sr_user_id:
       type:
       - integer
