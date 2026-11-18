@@ -3372,3 +3372,5 @@
 - Owner message 10:40: final Azure ready, Apsis dump on the organisation's FTP (D-OWNER-FINAL-AZURE-01). Lanes F-INFRA1 and M-APSIS1 started; owner asked for size/budget, release flow, bootstrap login, region, Google project, dump format.
 - P-SR1b push of 41ee52a1 denied by its classifier twice; owner approval asked. P-SR2b still blocked the same way.
 - Reviews passed and waiting to land after 121: gates-2 (A-GATE8), look train 2 (SR d60e2e2f, TSO), Loyalty push B (hygiene fix with L-A12), SV6 follow-ups (V0209). In work: A-PROG2 (5xx release rule, slice 7), T-KPI2 (admin tab), L-A12 (points adjustment), SV6 ops-diagnose-api (second re-check running).
+
+- 2026-11-18T12:46Z lane check: health build ce6792f67 ok; INT ce6792f67 (train 121). All lanes active within the last 90 min except loyalty (L-A12) and P-TSO (ci running). Blocker for every lane ci: one gitleaks false positive (bfd0087c8), owner asked.
