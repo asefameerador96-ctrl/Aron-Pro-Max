@@ -618,3 +618,221 @@ LOWS:
 - GiftChoiceModel.quarterOf now falls back silently to '<yyyy>-Q1' for a malformed date, where it used to throw on toInt. A gift-choice record could then carry a wrong machine key. The input is a CaptureMeta business date, so this is unlikely.
 - Not verified: any build, unit, Robolectric, screenshot or lint run; the K2 compile of java.lang.Math in commonMain; the real SR full-bundle size, which decides how bad the refetch loop is; whether the server's gift-choice validation actually calls AsthaQuarter.of.
 - (refuted 3/3) A quarantined memo in the uncertain list makes the SR fetch a full day bundle after every sync run, at most every 10 minutes, for as long as the memo is held: refreshIfUncertainResolved treats an uncertain uuid as answered when stillOpen() is 0. A quarantined row is neither pending nor in_flight, so the check passes straight away, the ETag is deleted, and a full day bundle is downloaded (fullOfTheDay). That new full bundle records the same quarantined uuid as uncertain again, so the cycle repeats every UNCERTAIN_REFETCH_GAP_MS (10 minutes) after the next sync run, until a reviewer resolves the memo. That can take days. Before this delta a quarantined memo never entered the list, so this is a new core-sync behaviour. It breaks non-negotiable constraint 3 (2 GB/day data pack, no chatty transfers) and turns the contract's 'discard and refetch once' into a loop. Only the SR is affected, because trackUncertain is true only there. The new test aMemoQuarantinedWhenTheRequestLeavesIsRecordedAsUnsure... checks that the uuid is recorded but never calls refreshIfUncertainResolved.
+
+
+## Re-review b2f7b94ca..18e7fb6ca and landing gate, 2026-11-18
+
+Read from code only; nothing built, run or walked on a device.
+
+### held-redemption-and-smalls verdict=fail
+SUMMARY: I reviewed 18e7fb6ca read-only, looking at the held-redemption fix and the small items. Delta: b2f7b94ca..18e7fb6ca under android/, shared/ and docs. The WireDtos and gen_wire_dtos.py changes came in with the base merge (they also appear in ce6792f67..ffbe8d6fd), so I left them out.
+
+Redemption state matrix. points() subtracts every row that is not 'rejected' and not in the recorded acked set. heldPoints() names the 'quarantined' and 'uncertain' rows that are not in the set.
+- Never sent: subtracted, not in the held line. Correct.
+- In flight: subtracted. Correct.
+- Sent and unanswered when the request left: readState gives 'uncertain'. Subtracted once and named. It stays 'uncertain' after a later ack, so it stays subtracted once until the next request puts it in the set.
+- Quarantined, with or without a recorded order: subtracted once and named.
+- Quarantined at the request and accepted afterwards: 'uncertain', so still subtracted once and named. The new test covers this.
+- Acked and in the set: not subtracted. Correct.
+- Acked after the request, not in the set: subtracted, so never higher than the true balance. With no recorded order, every non-rejected row is subtracted, so the balance can be lower than the true one.
+- Rejected by the server, or discarded by a resolution: the points come back. Correct.
+
+I found no case where one redemption is subtracted twice relative to the bundle. The only double effect is the conservative one the ruling allows: the bundle may already hold a held redemption that is still subtracted.
+
+Screens:
+- The held line is on both OutletPointsScreen and RedemptionScreen, through pg_held_points ('Held for review: N Pts') in en and bn. It is a plain string; the number and unit come from pointsText, so it needs no plural.
+- The redemption screen never blocked on the balance, by earlier design: it shows the remaining points and an overdraw warning, and the server accepts and flags an overdraw. So the conservative balance only changes what is shown and the balance_before_points recorded with the redemption. The server is still the final check.
+
+One blocking finding: a redemption the phone gave up on itself (rejected, last_code retry_exhausted) is treated as a server refusal, so its points come back with no note. The same defect was found and fixed for gift photos with isDefiniteRefusal, but not for redemptions.
+
+Small items:
+- readSideOf now decides 'before the read' from the outbox state while it holds the sync lock, just before the read is sent. A memo acked then is committed and inside the read. A row that changes after the lock is released is counted as outstanding, which can only overstate the note. Pending, unanswered and held edits are now counted, including a cross-month edit (tested). Voids are not looked at, despite the KDoc; the phone has no void write yet.
+- quarterOf now returns null. The gift selection and gift photo hosts refuse the save, and the generic localized pg_gift_failed or photo-failed message is shown.
+- java.lang.Math is gone from shared/rules commonMain. Int.mod and Int.floorDiv are common stdlib, and they match floorMod/floorDiv for a positive divisor.
+- Plurals: pg_awaiting_memos, pg_awaiting_redemptions, pg_held_review and pg_order_unknown are plurals in en and bn, with one and other. countText uses getQuantityString with the localized number.
+- FigureRuleB.show(countOnAnyLine) and its test are removed. That option had no production caller (FigureRuleB.show has none at all). The brand-path half of the removed test, that a free-only memo is not counted, is still covered by onlyMemosOfThisRouteAndLinesOfThisFigureCount.
+
+Changed tests:
+- The RedemptionModelTest reversal follows the ruling and adds assertions for both the in-set case and the rejected case.
+- The ProgrammeStoreTest change from 2 to 1 follows the readSideOf ruling.
+- The golden astha_target_en_awaiting_sunlight was re-recorded because awaiting=1 now reads '1 memo is'. That matches the change; the bn golden is unchanged because the bn text is the same.
+
+AMO, TSO and backend: the new changes outside app-sr and feature-programmes are the re-recorded golden and the common-Kotlin arithmetic in shared/rules. I see no risk to the AMO or TSO apps or the backend.
+
+Not verified: nothing was compiled, run or rendered (unit, Robolectric, screenshot, lint, parity), and nothing was walked on a device. I did not confirm whether the server's Astha read sees acked memos at once, or whether a second edit of an already-edited memo is possible in the SR app.
+
+#### BLOCKING upheld=3/3: A redemption the phone gave up on (rejected/retry_exhausted) gets its points back with no note, though the server may have committed it, so the balance can be shown higher than the true one
+WHERE: android/feature-programmes/.../RedemptionModel.kt LocalRedeemed.points (`it.state != "rejected"`) and heldPoints/awaiting (only quarantined/uncertain); android/app-sr/.../ProgrammeStore.kt readState (`sentUnanswered && outboxState != "rejected"` falls through to 'rejected'); core-sync SyncEngine.isolate / AckRules.retry write rejected(retry_exhausted) after rowMaxRetries failures, including transport MALFORMED, where the code itself says 'The server may have stored the batch', and ack_mismatch. Compare ProgrammeStore.isDefiniteRefusal/photoState, which already treat these rows as uncertain for gift photos.
+WHY: The ruling says a held or unanswered redemption stays subtracted, and the balance may be lower than the true one but never higher. A row the phone gave up on is an unanswered row, not a definite server refusal. But points() treats every outbox 'rejected' as a refusal and gives the points back. Neither the awaiting line nor the held line names it. This is the same class of defect that was ruled blocking for gift photos and fixed there with isDefiniteRefusal; the redemption path was not given the same rule. It was already like this before this commit, but it is lane code in the landing diff and it is within this ruling.
+SCENARIO: 1. Outlet 10, programme 3. The held bundle (requested 08:00) gives 1,200 points.
+2. 10:00: the SR redeems 500. The upload commits on the server, but each answer reaches the phone mangled (MALFORMED, for example a captive proxy) or as ack_mismatch. Each attempt is isolated and counted as one failure.
+3. After rowMaxRetries failures the row becomes rejected(retry_exhausted).
+4. points() now ignores it. Outlet points and the redemption page show 1,200, while the true balance is 700, with no held or awaiting line.
+5. The SR can confirm another 1,000-point basket and the phone shows no overdraw; the server then accepts and flags it as an overdraw.
+
+Fix: count a redemption as refused only when isDefiniteRefusal(row) holds, which means carrying ob.lastCode into LocalRedemption or mapping the state in readState/redemptions(). Treat rejected(retry_exhausted / transport_* / ack_mismatch) as 'uncertain': subtracted and named in the held line. Add a ProgrammeStoreTest case with a retry_exhausted redemption.
+
+LOWS:
+- heldPoints also counts 'uncertain' redemptions (sent, answer lost), but the line says 'Held for review: N Pts'. Such a redemption was never held for review. It is also counted again in pg_awaiting_redemptions, so one redemption gets two notes with different meanings. Suggest wording like 'Not yet confirmed: N Pts', or name only quarantined rows in the held line.
+- With no recorded order (ackedBeforeRequest null, for example after a promoted prefetch), acknowledged redemptions are subtracted although the bundle most likely holds them. The balance is then lower than the true one with no line naming the difference, because heldPoints names only quarantined/uncertain rows. This is the conservative direction and was the same before this commit.
+- No test checks the held line on RedemptionScreen (RedemptionTags.HELD) or its Bangla text. LoyaltyScreensTest covers only the English outlet points page. No golden shows the new held line in either theme or at font scale 2.0.
+- readSideOf counts a memo as outstanding when it is 'uncertain' because of the bundle-time set, for example one sent and unanswered or quarantined at the last full request, even after it has been acked or accepted before the read. Such a memo is inside the read, so the month note overstates and the month stays unclean, and it is re-read on every online open until the next full bundle. The figure itself is not wrong.
+- readSideOf finds edits only one level deep: an edit qualifies when its supersedes is a memo dated in the month. Take an October memo O, an acked November edit E1 of O, and a pending edit E2 of E1: E2 is missed, so October reads clean and shows the server's E1 figure without an awaiting note. I did not verify whether the SR app allows editing an already-edited memo.
+- The readSideOf KDoc says '(or void)', but voids are not looked at. The voidOf filter is a no-op because memosOfMonth always sets voidOf to null, and no memo_void row is read. Harmless today, since the phone has no void write (AsthaLocal), but the comment claims coverage that does not exist.
+- readSideOf now calls memosFrom(m) for each of the 3 months and each route. Each call reads every memo from that month to the end of time, with one outbox read per row, all while holding the user's sync lock. That is an N+1 query that grows with the months held, and it delays an upload while the page opens.
+- No unit test covers GiftChoiceModel.quarterOf(malformed) == null, or the host refusing to save with an empty quarter. A refused save shows the generic pg_gift_failed, which is localized but does not say why. In practice it cannot be reached, because metaFor always gives a valid BusinessDate. AsthaModel.quarterOf still falls back silently to 1 (`?: 1`) for screen selection, and GiftSelectionHost and GiftPhotoHost still assume start month 1 when the config key is missing (carried over).
+- bn plurals repeat the same text for one and other, which is correct for Bangla. pg_held_points is a plain string, which is fine because pointsText carries the unit.
+- Carried over, not addressed: the quarter picker labels assume January; the purge edge (an acked redemption purged before a newer bundle is stored); the backend AsthaQuarter does not yet call the shared function; SyncEngine.underUserLock is public and non-reentrant.
+- Not verified: compilation, any test, screenshot or lint run; the parity test against the changed Int.mod/floorDiv code (identical by reading); device behaviour; whether the server's Astha read sees acked memos at once.
+
+### landing-gate verdict=pass
+SUMMARY: This was a read-only landing-gate review of ffbe8d6fd...18e7fb6ca. The fetch said the remote ref was already at 18e7fb6ca. I read everything with git show and git diff. Nothing was built, run, linted or rendered, no golden PNG was viewed, and nothing was walked on a device.
+
+(1) The merge 60601c7fd is clean.
+- Its parents are b2f7b94ca and ffbe8d6fd. The merge base of the lane and the integration head is ffbe8d6fd itself, so the landing diff has no stale base.
+- The only file both sides changed since ce6792f67 is DECISIONS.md. Its merged form keeps all base entries and only adds D-SRPROG-01..08.
+- All 48 files the base changed (ce6792f67..ffbe8d6fd) have the same blob at 18e7fb6ca as at ffbe8d6fd, DECISIONS.md excepted. No base work was reverted.
+
+(2) Files outside app-sr and feature-programmes:
+- core-common Ids: additive derivedUuid.
+- core-media PhotoCapturer and MediaComponents: additive attachExclusive and release. PhotoCompressor's sha256Hex now formats with Locale.ROOT; the hex output is unchanged.
+- core-network SyncApi: additive listAsthaTargets.
+- core-database:
+  - OutboxDao: new queries sentUnanswered, ackedMemoOrderUuids, ackedProgrammeOrderUuids, quarantinedUuids and stillOpen, plus the order-type constants.
+  - ProgrammePayloads: a new file.
+  - RecordMapping.amoParent: a gift_photo case.
+  - CaptureRepository: recordProgramme and requireProgrammeWriteOpen, both calling ActionGate.requireOpen() first.
+  - ReferenceRepository.apply: optional requestedAt, uncertain and ackedBeforeRequest, stored as meta keys.
+- core-sync:
+  - BundleDownloader: userId and trackUncertain, the head request taken under the user's sync lock, and refreshIfUncertainResolved.
+  - SyncEngine: userLock and underUserLock.
+  - ImageCache and DeviceEnrolment: Locale.ROOT hex formatting; same output, so cache keys are unchanged.
+  - ShellLogout: also deletes astha-months-<user>, wrapped in runCatching.
+- shared/rules: AsthaQuarters now uses common Int.mod and Int.floorDiv only, plus a parity test.
+- Build files: settings.gradle.kts adds the new module; app-sr and ui-screenshots add it as a dependency.
+- No changes to app-amo, app-tso, core-ui, shared/contract, contract/openapi.yaml or backend.
+
+AMO and TSO: trackUncertain is true only in the SR SessionModule, so they record nothing new and never refetch. There is one shared behaviour change, listed in the lows: their bundle head request now also waits on the sync lock.
+
+SyncEngine.underUserLock:
+- Its only caller is SrDay.readAsthaQuarter. The block only reads Room (readSideOf, memosOfMonth, memosFrom) and is released before AsthaQuarterFetcher makes any network call.
+- SyncEngine.run never calls the downloader, so there is no reentry and no lock-order inversion. The order is always the downloader lock, then the sync lock.
+
+(3) Room: no entity, schema JSON, database version or migration is in the diff. Programme records use the existing amo_record table and the outbox.
+
+(4) Contract 1.21.0 at ffbe8d6fd, what the phone now needs from the server:
+- listAsthaTargets is present (quarter, route_id, limit, cursor). The server accepts limit 1..500 and the phone sends 500.
+- The record types redemption, redemption_line, gift_photo and gift_choice are all in the RecordType enum. The payload member sets match the contract: GiftPhotoPayload has additionalProperties false, and the phone's allowed sets equal it. gift_photo is a MediaPurpose.
+- cfg.astha.quarter_start_month and cfg.loyalty.cash_rate_mtk_per_point exist as cfg keys (V0009).
+- astha_truncated_months and user.geography are not in the contract. The phone tolerates their absence: no truncated months, and no geography card rows.
+
+(5) Gates, scans and size:
+- recordProgramme and requireProgrammeWriteOpen both match EveryWriterIsGatedTest's regex and gate first. The allow-list and the scan file are unchanged.
+- The hardcoded-string scan already covers feature-*/src/** and is unchanged. No new i18n-ignore or @Ignore. en and bn each have 111 string or plural entries with the same names.
+- No new library: feature-programmes uses existing catalog entries, and the PNGs live only in ui-screenshots.
+
+(6) Not-built screens: Match Program (Lifting Star) still opens COMING_SOON. SKU target, outlet target and brand-wise KPI have no entry point in this lane. The Astha, Loyalty and Photo menus only show tiles whose screens exist. Nothing is half-wired.
+
+Round-4 fixes, checked against the ruling:
+- A held or unanswered redemption is subtracted once.
+  - LocalRedeemed.points drops only rejected records and those in the acknowledged set.
+  - heldPoints names quarantined and uncertain amounts on both the points and the redemption screens.
+  - Once the recorded set holds the uuid, the redemption is not subtracted again.
+  - A discarded (rejected) one gives its points back.
+  - ProgrammeStoreTest drives these cases through real outbox rows.
+  - The shown balance can only be lower than the true one, never higher.
+- readSideOf counts pending, unanswered and held edits of any date as outstanding, and no longer counts memos acknowledged before the read. The expectation change from 2 to 1 follows that rule and does not weaken the test.
+- quarterOf returns null and the gift-choice and gift-photo saves refuse it.
+- No java.lang.Math is left in commonMain.
+- Plurals are in place for en and bn.
+- countOnAnyLine is removed together with its only test; the option was unused.
+
+I found nothing that should stop this lane landing on the integration branch.
+
+LOWS:
+- BundleDownloader.fetch now takes the user's sync lock around api.bundle for every app. BundleDownloaders.of always passes userId; only trackUncertain is SR-only. AMO and TSO therefore now serialise the bundle head download (a streamed decode of every unpaged section) with upload runs. A periodic upload waits behind a slow head, and a day-start or 'Processing' download waits behind a whole upload run. No deadlock: SyncEngine.run never calls the downloader, and the lock order is always the downloader lock, then the sync lock. Suggest applying underSyncLock only when trackUncertain is true, or stating the AMO/TSO behaviour change in DECISIONS.
+- An unanswered (uncertain) redemption is named twice: in the 'N redemptions awaiting confirmation' line and in 'Held for review: N Pts' (heldPoints sums quarantined and uncertain). The held wording is inaccurate for a redemption that was only unanswered. The balance itself is correct, being lower than the true one, never higher.
+- readSideOf's KDoc says a pending or unanswered void is outstanding. The code looks only at memos (voidOf is always null from memosOfMonth) and never reads memo_void rows. I found no void writer on the SR phone, so there is no effect today; the comment over-claims.
+- GiftSelectionHost and GiftPhotoHost (ProgrammeHosts l.201 and l.242) still fall back to quarter start month 1 when cfg.astha.quarter_start_month is missing, while the target page shows 'quarter unknown'. This matches the server's default of 1 (GiftChoiceRecords, BundleService), so it does no harm, but the screens are inconsistent.
+- readSideOf still counts a memo with routeId null in every route, and merging adds the route counts, so the awaiting note can show 2 for 1. It runs memosOfMonth plus memosFrom (N+1 outbox reads, and memosFrom scans up to 9999-12-31) per month and route while holding the user's sync lock, which briefly delays an upload.
+- quarantinedUuids is a literal ('memo', 'redemption'), not derived from the order lists. A quarantined gift_choice has no held state on the gift screens.
+- SrDay.claimGiftPhoto returns quietly when media is null ('no camera queue'), so a gift_photo record could commit without its photo claimed. This is a test or preview path only if media is never null in production; not verified.
+- Parity drift: the backend still runs its own AsthaQuarter. AsthaQuartersParityTest compares against a copy, and the request docs/requests/astha-quarter-shared-function.md is not done.
+- Carried over: an acknowledged redemption purged before any newer bundle arrived would leave the balance overstated (unlikely). A past month that can never become clean is re-read on every online open, which costs data but does not loop.
+- Not verified: any Gradle build, unit, Robolectric, screenshot or lint run. Also not verified: that the server's GET /v1/programmes/astha/targets route accepts the SR device token (Grant.FULL) and SR route scope end to end; whether full bundles carry quarantine resolutions; the real SR bundle size; any device walk.
+
+
+## Final delta check 18e7fb6ca..1f9e2fa7d, 2026-11-18: PASS (cleared for the Android train)
+
+Read from code only; nothing built, run or walked on a device.
+
+### redemption-states verdict=pass
+SUMMARY: Read-only review of the delta 18e7fb6ca..1f9e2fa7d (one commit, 20 files), looking at how redemption and gift-choice states are mapped. Verdict: pass. Nothing was built or run. Every finding comes from reading code at 1f9e2fa7d: ProgrammeStore, SyncRules/AckRules, SyncEngine isolate/transport/applyResponse, OutboxDao, GiftChoiceModel, RedemptionModel/Screens, BundleDownloader, RoomDayAdapters.
+
+Which outbox writes can leave a row in state rejected, and with which code (from AckRules and SyncEngine):
+(a) The server answered rejected with a non-retryable code (ack.code is stored as is).
+(b) AckRules.retry or SyncEngine.isolate hit the retry limit. These only ever write REJECTED with retry_exhausted. Codes like transport_*, ack_mismatch and unknown_status:* stay on PENDING rows until then, so a rejected(transport_*) or rejected(ack_mismatch) row cannot arise today, but isDefiniteRefusal treats them as not refused anyway.
+(c) A quarantine was resolved as discarded, giving rejected(discarded).
+isDefiniteRefusal = rejected and last_code not null and not retry_exhausted, not ack_mismatch, not transport_*. So retry_exhausted (the only local code that can occur while the server DID store the record) is never a refusal. discarded is a refusal, which is correct: the reviewer discarded the record, so the server never counts it. A bundle taken while it was held can only be lower than the true balance, never higher.
+
+Redemption table (state as read by ProgrammeStore.redemptions -> subtracted? -> which line):
+- No row, or pending: subtracted. No line, unless it is in the unanswered set, which gives uncertain.
+- in_flight or sent-unanswered when the request left (the unsure set): uncertain, subtracted once, shown in 'Not yet confirmed' and counted in awaiting.
+- quarantined: subtracted once, shown in 'Held for review' only.
+- Resolved accepted after the request: uncertain, so 'Not yet confirmed' only. The test pins held 0 and unconfirmed 400.
+- acked and in ackedBeforeRequest: not subtracted, no line.
+- acked but not in the set: subtracted, no line. This is not a held or unanswered state.
+- rejected(retry_exhausted / transport_* / ack_mismatch / null code): uncertain, subtracted once, 'Not yet confirmed'.
+- rejected(server code or discarded): refused, points come back.
+heldPoints filters on quarantined and unconfirmedPoints on uncertain. The states are mutually exclusive, so nothing is counted in both lines. points() subtracts every non-rejected row not in the set, so the shown balance is never higher than the true one.
+
+Negative balance: pointsText is Formats.integer plus the unit, so -700 shows as a number. The OVERDRAWN warning appears on both screens (PointsBalance.overdrawn / remaining < 0). Confirm is still enabled (only blocked for an empty basket) and the server decides (insufficient_points, a definite refusal). I found no crash path.
+
+Gift choice: rejected(not definite) maps to uncertain, which reads as OnThisPhone(refused=false). quarantined reads as Held. rejected(definite) reads as OnThisPhone refused, with its reason. An acked choice not in the set reads Sent. A locked assignment always wins.
+
+Way out for a given-up row: the phone never resends retry_exhausted rows on its own (nextPending is pending only). The exit is Sales Submit 'Send again' (RoomDayAdapters.sendAgain -> OutboxDao.requeueRetryExhausted, same uuid, payload and signature). After that the server answers duplicate/accepted (acked, then dropped from the subtraction once the next bundle's set holds it) or a definite refusal (points back). Without Send again the understatement is permanent, but it is lower than true and named in its own line, which the ruling allows. So I judge it low, not blocking. I did not verify that a redemption or gift_choice amo_record row actually appears in the SR Sales Submit refused list with Send again, nor what happens after the rep marks it seen.
+
+Lock change: base ffbe8d6fd had no underSyncLock at all. Now only the SR app (SessionModule passes trackUncertain = true) takes the lock, so AMO/TSO behave as on base and a new test covers the non-tracking path. SR single flight is kept. quarantinedUuids is now derived from the ORDER_* SQL lists, with a test. Gift hosts no longer fall back to start month 1, and the screens show a localized 'quarter unknown' line. readSideOf counts a route-less memo only for the first route. All new strings exist in bn and en. The changed test assertions split the old held total into held plus unconfirmed with the same sums, so no test was weakened.
+
+Not verified: compile or test runs; the Formats.integer rendering of a minus sign in Bangla digits; whether reason_texts carries 'discarded' for the refused gift-choice text; how the rest of the screens render.
+
+LOWS:
+- A redemption the phone gave up on (rejected(retry_exhausted)) stays subtracted until the rep finds it in Sales Submit and taps 'Send again'. The phone never resends it on its own and no resolution or bundle clears it, because it is not acked. Scenario: the answers to a 400-point redemption are lost 10 times, so the row becomes rejected(retry_exhausted). The balance shows 400 lower, named in 'Not yet confirmed', for as long as nobody taps Send again. This is allowed by the ruling (lower, named), but nothing on the points or redemption screen points to the way out.
+- The awaiting text ('1 redemption is awaiting confirmation; the points update after the next sync.') now also counts retry_exhausted rows, because LocalRedeemed.awaiting counts every uncertain row. For those rows the sentence is wrong: the next sync will not resend them. Suggest a separate count or sentence for rows the phone gave up on ('the phone stopped sending it; use Send again on Sales Submit').
+- A gift choice in rejected(retry_exhausted) reads OnThisPhone(refused=false), the same as never sent, even though it was sent and may be stored. While no new choice is made and Send again is not tapped, this stale local choice keeps hiding the bundle's assignment, including a later TSO change (stateOf returns before falling back to Chosen(a)). A locked assignment still wins. Suggest a distinct 'sent, not confirmed' state, like Sent or Held.
+- A server rejection whose ack has no code (last_code null) is read as not a definite refusal: the redemption stays uncertain and subtracted, and Send again does not apply (requeueRetryExhausted only moves retry_exhausted rows). It is conservative (lower), but it can never be cleared. I did not check whether the contract makes RecordAck.code required for rejected.
+- A redemption the server definitely refused, or that was discarded, returns its points. The refused gift-choice reason for 'discarded' depends on the bundle's reason_texts having that local code; I did not verify the fallback text in GiftSelectionScreen when it is absent.
+- Not verified: Formats.integer for negative numbers in Bangla digits (whether a -700 balance renders the minus correctly), and whether the SR Sales Submit refused list includes amo_record redemption and gift_choice rows with Send again, including after the rep marks them seen.
+
+### lock-and-smalls verdict=pass
+SUMMARY: Read-only review of 18e7fb6ca..1f9e2fa7d (one commit, 20 files; landing ffbe8d6fd...1f9e2fa7d). I built and ran nothing, so every conclusion comes from reading the code at 1f9e2fa7d.
+
+Last round's blocking item is fixed for real. ProgrammeStore.redemptions() and giftChoices() now map a row the phone itself gave up on to "uncertain". That covers state rejected with no code, retry_exhausted, ack_mismatch or transport_* (isDefiniteRefusal). LocalRedeemed.points() keeps subtracting such a row once, and only a definite server refusal ("rejected" with a server code) gives the points back. New tests cover it: ProgrammeStoreTest aRedemptionThePhoneGaveUpOnIsUncertainAndSubtractedOnceNotRefunded and aDefiniteServerRefusalOfARedemptionGivesItsPointsBack.
+
+Small items:
+- Held and not-confirmed lines: heldPoints now counts only quarantined rows and the new unconfirmedPoints only uncertain rows. Both apply the same filter on the acknowledged set, the states cannot overlap, and points() is their single subtraction, so nothing is counted twice. Strings pg_unconfirmed_points, pg_gift_held and pg_gift_quarter_unknown are in both values and values-bn. Nothing is hardcoded, and none of them takes a count, so they need no plurals.
+- quarantinedUuids: the query is built from the compile-time constants ORDER_MEMO_RECORD_TYPES_SQL ('memo', 'memo_void') and ORDER_PROGRAMME_RECORD_TYPES_SQL ('redemption', 'gift_choice'). The quoting is correct, there is no runtime input, so no injection. OrderRecordTypesTest still ties these constants to the record-type lists. The only caller is the BundleDownloader uncertain list, which runs only when trackUncertain is on (SR).
+- Held gift choice: a quarantined choice now gives GiftState.Held with its own string and tag.
+- Gift hosts with no start month: astahStartMonth returns null, the quarter becomes "", the note is shown, and both save paths return REFUSED. In GiftSelectionHost the check runs before GiftChoiceModel.plan. In GiftPhotoHost it runs before giftPhotoAttempt/asthaUuid. So "" never goes into a payload, a record uuid or key, or the server. The screens only use "" to look up local and bundle state, where it matches nothing.
+- readSideOf: SrDay counts memos with no route only for the first route in routeIds.distinct(). AsthaFetched sums the per-route waiting counts and ANDs the clean flags, so such a memo is counted once and still marks the month as unsettled.
+- Lock change: SR still takes SyncEngine.userLock(userId), the same mutex SyncEngine.run uses (lockOf(userId)). Under it SR records requestedAt, the unsure list (sentUnanswered + quarantinedUuids) and the acknowledged set, and sends api.bundle, so single flight is intact. SessionModule passes trackUncertain=true, and the existing BundleDownloaderTest single-flight tests still run with tracking=true by default.
+- AMO/TSO: they keep trackUncertain=false and no longer take any lock, which matches the base, where userId was never passed. Their only remaining difference from ffbe8d6fd comes from the landing, not this delta: repo.apply now also writes or clears bundle.requested_at and the uncertain and acked-before meta keys, which only SR code reads. In behaviour, not byte for byte, their fetch path is the same as the base.
+- The new non-blocking test is sound. It sets tracking=false, holds the user's lock with lock.lock() in the test coroutine, and expects download() to return APPLIED within 5 s while the lock is still held. kotlinx Mutex is not reentrant, so a lock attempt would hang until the timeout and fail the test.
+
+Tests changed in the delta: ProgrammeStoreTest and RedemptionModelTest replace a held total (400, or 270) with held plus not confirmed (0 + 400, 70 + 200). The balance assertions are unchanged, so nothing is weaker. New screen tests: RedemptionScreenTest covers the held, not-confirmed and waiting lines with exact English text; GiftSelectionScreenTest covers HELD and QUARTER_UNKNOWN. The delta touches no goldens (no golden or png files changed).
+
+Outside app-sr, feature-programmes, core-sync and core-database: DECISIONS.md (adds D-SRPROG-09) and docs/status/android-sr-programmes.md (status line). Both are docs only.
+
+I found no blocking issue.
+
+Not verified: compiling (Room's compile-time check of the concatenated @Query), running any unit or Robolectric test, whether the sync engine really writes "rejected" with transport_* or a null last_code, AMO/TSO end-to-end behaviour on a device, and how the Bangla strings render.
+
+LOWS:
+- A redemption the phone gave up on (rejected with retry_exhausted, transport_* or ack_mismatch) stays 'uncertain' with no way to be resolved. Its state is not 'acked', so it never joins the acknowledged set. It is not pending or in flight, so it never joins the bundle's uncertain list either. If the server did commit it, the balance stays lower than the true one for good: allowed by the rule, and named. But the screen keeps saying '1 redemption is awaiting confirmation; the points update after the next sync' (LocalRedeemed.awaiting counts uncertain) even though no sync will change it. The wording or a resolution path should be fixed later.
+- A gift choice the phone gave up on reads as GiftState.OnThisPhone(refused=false), the 'on this phone, not sent' text, although it was sent and may be held on the server. It is not a figure, but the wording is wrong. giftChoices() also fills reasonBn/En from the local code for that row; they are not shown because refused is false.
+- OutletPointsScreen (LoyaltyScreens.kt) gained the 'Not yet confirmed' line (LoyaltyTags.UNCONFIRMED), but no screen test asserts it; only RedemptionScreen's line is tested. GiftPhotoScreen's QUARTER_UNKNOWN note (PhotoTags.QUARTER_UNKNOWN) also has no screen test; only GiftSelectionScreen's does.
+- The route-less readSideOf flag (countRoutelessMemos, used through SrDay.readAsthaQuarter with forEachIndexed) has no unit test showing that a route-less memo is counted once across two routes.
+- OutboxDao.sentUnanswered still uses a hardcoded ('memo', 'redemption'), while quarantinedUuids now uses the order-type constants. Sent-but-unanswered memo_void and gift_choice rows are therefore not on the uncertain list. There is no void writer yet and gift choices are not a figure, but the two queries are inconsistent.
+- Now that quarantinedUuids includes gift_choice and memo_void, a quarantined row of those types also triggers refreshIfUncertainResolved. stillOpen counts only pending and in_flight rows, so a row that stays quarantined allows one full SR day-bundle refetch every 10 minutes (UNCERTAIN_REFETCH_GAP_MS). The behaviour already existed for memos and redemptions; this change widens it. Data-budget impact not measured.
+- pg_gift_quarter_unknown says the start month is unknown, but it also shows when the trusted business date cannot be read (quarterOf returns null). The wording does not fit that case.
+- Outside the lens modules: DECISIONS.md (D-SRPROG-09) and docs/status/android-sr-programmes.md, both docs only.
