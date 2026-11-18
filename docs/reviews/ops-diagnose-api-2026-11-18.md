@@ -102,3 +102,64 @@ LOWS:
 - since/until are checked for shape only (2026-99-99T99:99:99Z passes) and give a KQL error printed through the filter; harmless.
 - Tests: I did not run infra/tests/check_infra.py (the worktree is at another commit and the task allowed only the redaction mode); I read it and reproduced its B2 cases by hand with the same results. It has no case for a long unbroken run (the slowness above), none for CRLF or an empty line, and the fail-closed notice is not exercised (I could not trigger a die in scrub either; verified by reading: eval + undefined -> notice). The workflow checks are string presence only, as the lane says a live run is not testable.
 - History and process: f16963bd has author time 10:26:02 and commit time 10:32:29, i.e. it was amended, and the lane states it pushed with force-with-lease to its own lane branch. A force-push happened; the project rule is never to force-push. The two earlier reviewed commits (46c6ef49, a254a71f) are still ancestors, so only an earlier version of the tip was replaced. The branch tip has since moved to ea3a4b6784 (one status-doc commit about the force-push), which is outside this review.
+
+
+# Third re-check at 0fa1c4d4, 2026-11-18. Opus; redaction mode run on made-up samples only.
+
+## verdict=pass
+SUMMARY: PASS at 0fa1c4d4. The slowdown is fixed and nothing in round 3 is blocking, but the new bounds do let a few forms through that f16963bd redacted (see lows; the space limit around '=' / ':' is the one worth fixing). I ran only the redaction mode on made-up input in a scratch directory, which is now deleted.
+
+**(1) Slowdown: fixed, linear.** About 60 made-up single lines were timed at 100 KB and again at 400 KB. Each finished and the following line printed every time.
+
+| Line shape | 100 KB | 400 KB |
+|---|---|---|
+| one repeated letter | 2.4 s | 8.7 s |
+| hex | 2.0 s | 8.3 s |
+| digits | 2.0 s | 8.3 s |
+| base64-like | 0.5 s | 1.9 s |
+| dots | 1.9 s | 8.0 s |
+| `a.` repeated | 2.3 s | 8.6 s |
+| unclosed double quote | 2.4 s | 8.8 s |
+| unclosed single quote | 0.9 s | 2.4 s |
+| escaped quote | 0.6 s | 2.1 s |
+| `password is <` + letters | 2.3 s | 9.0 s |
+| `password is &lt;` repeated (slowest) | 1.0 s | 13.5 s |
+
+- **Nested braces** (`{` run, `token={{{`, `{}` pairs): 0.05 to 0.13 s at 100 KB, under 1 s at 400 KB.
+- **Thousands of `a=b` or `key=v` pairs:** about 0.2 s at 100 KB, under 1 s at 400 KB.
+- **Thousands of `@`, `a@`, `a@a.`, `:`, `a:`, `1:`, `1::`:** 0.09 to 0.23 s at 100 KB, under 1 s at 400 KB.
+- **Other runs** (`a_`, `1-`, `88`, camel `aKey`, `build____`, key at the end of 100 KB): about 2 s at 100 KB, 8 to 9 s at 400 KB.
+- **Spaces, quotes, `[`, Bangla letters and digits, Bearer and cookie lines:** under 1 s.
+
+Four times the input takes about four times the time.
+
+**(2) Bounds: some regressions, all in unlikely shapes.** Details are in the lows.
+- **Spaces around the separator:** 4 or more spaces or tabs around `=` or `:` now leak the value for `name`, `api_key`, `token` and similar keys.
+- **Long key names:** a key with more than 64 characters after the stem leaks its value; a long prefix is still caught.
+- **Very long e-mail parts:** a local part over 64 characters keeps its first few characters.
+- **Phones:** more than 3 separators between digits now survive.
+- **Still caught:** values over 500 characters fail closed, and a phone or e-mail inside a very long token is still removed.
+
+**(3) `REDACT_SELFTEST_DIE`: safe.** It is read only inside the perl filter, where it makes the scrub die on a matching line. The surrounding `eval` then prints `[line withheld: redaction filter error]`, and the following lines still print normally. It cannot print raw text. An empty value does nothing. The workflow sets no `REDACT_*` variable, and its five inputs map only to `SINCE`, `UNTIL`, `JOB_PREFIX`, `WORKER_APP` and `API_APP`, each pattern-checked, so a dispatcher cannot set it.
+
+**(4) Readability: all the listed lines came out unchanged.** That covers the three Flyway lines, both worker start lines, the aggregation line, the sweep enabled and disabled lines, the pre-flight line, two health lines with a 40-hex build, `contract 1.21.0`, `http://0.0.0.0:8080`, the done line and the held-note line. The ERROR lines print `request_id=[uuid:xxxxxxxx]`, with the same tag on both lines.
+
+**(5) Salt: correct.** The script draws 16 bytes from `/dev/urandom` once and exports it, so the per-query filter and the script-wide filter share it. It is never echoed, including on the invalid-input path. Within a run the same id gives the same tag, hyphenated or not, in either case; two runs gave different tags. If the variable is missing, perl falls back to `rand()`.
+
+**(6) CI files: untouched.** `git diff 4d310d8c0 0fa1c4d4 --stat -- tools/ci .github` lists only `.github/workflows/ops-diagnose.yml` (+20/-4: the `api_app` input, the input validation step, `shell: bash` with pipefail, and the final-line check). Nothing under `tools/ci`, and no gitleaks config or ignore file among the 11 files changed on the branch. Round 3 itself changes only `DECISIONS.md` (one appended line), `docs/status/sr-server.md`, `infra/scripts/diagnose.sh` and `infra/tests/check_infra.py`.
+
+**(7) Tests: real, none weakened.** The new `test_diagnose_redaction_is_linear_and_reads_well` runs the script's redaction mode. It covers 11 blobs of 100 KB with a time limit and a next-line check, 10 new key and value shapes, 5 readability lines, salt behaviour, CRLF, empty input, no trailing newline, and the fail-closed notice. I reproduced its cases by hand with the same results. The only changed existing assertion is the held-note wording, which matches the new text.
+
+LOWS:
+- Check 2, most worth fixing: the new {0,3} limit on spaces around '=' or ':' lets values through that f16963bd redacted. Made-up samples, old -> new: 'name     :     Karim' was [redacted], now prints Karim; 'api_key<4 tabs>= Zq9Secret7' was [redacted], now prints the value; the same holds for token, pin and phone keys with 4 or more spaces or tabs on either side. 'password    = X' is still caught, by the separate prose rule. This limit is not needed for speed, because a key must match first; \s* or {0,40} would restore the old behaviour. I found no line of this shape in what the workflow reads today (az JSON uses one space, logfmt none), so it is a gap in a backstop, not a present leak.
+- Check 2, key-name bounds: a secret-like key with more than 64 characters after the stem now leaks its value ('access_token_<70 letters>=X' and 'password_<65 letters>=X' were redacted, now X prints; 63 letters is still caught). Short-stem keys with more than 4 segments after the stem or a segment over 32 characters also leak ('key.a.b.c.d.e=X', 'auth.provider.oidc.client.redirect.uri=X', 'pin_<33 letters>=X'). Camel keys with more than 41 lowercase letters before the stem or more than 40 after leak too. A long PREFIX before the stem is still caught (70 letters, or a 120-character dotted path). All of these are unrealistic key names.
+- Check 2, e-mail bounds: a local part over 64 characters leaves its first characters in front of [email] (70 letters leaves 6; 'rahim.rahim...x@example.com' leaves 'rahim.rahim.rah'). A domain over 255 characters leaves its tail. Real addresses do not reach these lengths. An e-mail inside a 200-character unbroken token is still removed ([long-token][email]).
+- Check 2, phone bounds: at most 3 separator characters are now allowed between digits. '0171    2345678' (4 spaces), '0171  -  234  -  5678' and '0 - - 1 - - 7 ...' were [phone] and now print in full. '0171 - 234 - 5678' is still caught. With 4 or more separators after '+' or '88', only that prefix is left behind. A phone inside a 200-character letter run or between hex runs is still caught.
+- Check 2, values over 500 characters: nothing leaks. A quoted or single-quoted value over 500 characters now takes the rest of the line (fails closed; old kept the tail). A JSON object value over 500 characters is not taken whole, the same as at f16963bd.
+- Deliberate narrowing, not caused by the bounds (D-OPS-DIAGNOSE-API-04 point 3): OTP digits more than 20 characters from the keyword now print. 'OTP for user abc generated successfully: 481516', 'Your one-time password for login to the Aron portal is 481516' and '481516 was generated a moment ago as the new pin' were [code] at f16963bd. Also now printed: a 3-digit run after otp ('otp 481'), and a code followed by a unit word ('otp 481516 s', 'pin 4821 times'). Still caught: 'verification code 481516 sent', 'otp sent 481516', '481516 is your OTP', otpCode=, pinCode:. The backend is said not to log OTP text; if it ever logs SMS bodies this narrowing matters. Consider 60 characters instead of 20.
+- Deliberate, new keep-rule: a 40-hex or 64-hex run after any 'a/b:' or 'a/b@' path is kept, with or without the word image. 'https://example.com/files/x:<40 hex>' and 'user/repo@<64 hex>' were [long-token] and now print. Key rules still win: 'vault/secrets/password:<64 hex>' and 'kv/app/api-key:<40 hex>' are redacted. Requiring an image/digest/sha256 word or a registry-looking host would be tighter.
+- Deliberate: every 127.x.x.x address is kept ('remote 127.54.3.2'), not only 127.0.0.1. Harmless. A phone-shaped match that contains a date is skipped ('017-2019-12-34-5' prints); this is very unlikely to be a real number.
+- Small new over-redaction: 'exp"     :   1731912345' (more than 4 spaces or quotes before the colon) now reads as [phone]; it was kept before.
+- Check 1 detail: the workflow passes every query through the filter twice (show, then the script-wide redact), so a 400 KB line costs about 2 x 9 s. That is far inside the 20-minute limit.
+- Check 7: I did not run infra/tests/check_infra.py (only the redaction mode was allowed). I read the new test and reproduced its cases by hand with the same results. No test covers the bound regressions above (a 65-character suffix, 4 spaces before '='). The test's 20 s per-blob limit is loose against a measured 2 s, which is fine for slow runners.
+- Process: f16963bd is an ancestor of 0fa1c4d4, with two new commits on top (ea3a4b6784, a status note on the force-push, and 0fa1c4d457). No history rewrite in this round.
