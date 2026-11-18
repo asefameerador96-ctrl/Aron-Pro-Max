@@ -116,4 +116,9 @@
     <string name="pg_campaign_none">ছবির অপেক্ষায় কোনো রিডিম করা ক্যাম্পেইন উপহার নেই।</string>
     <string name="pg_campaign_progress">%2$sটির মধ্যে %1$sটি ছবি তোলা হয়েছে</string>
     <string name="pg_campaign_unit">ইউনিট %1$s</string>
+    <string name="pg_cashback_waiting_rate">ক্যাশ-ব্যাক (প্রতি পয়েন্টে %1$s): মালিকের নিয়মের অপেক্ষায়। এখনও রিডিম করা যাবে না।</string>
+    <string name="pg_shop_wing">উইং</string>
+    <string name="pg_shop_division">ডিভিশন</string>
+    <string name="pg_shop_territory">টেরিটরি</string>
+    <string name="pg_shop_zone">জোন</string>
 </resources>

@@ -99,6 +99,8 @@ fun AsthaTargetScreen(
     currentMonth: String? = null,
     /** Memos sent but not yet answered when the figures were fetched: the figures may already hold them, so the page says they await confirmation. */
     awaiting: Int = 0,
+    /** The user's own Wing, Division, Territory and Zone for the shop card (bundle `user.geography`); null shows a dash until the server sends it. */
+    geography: Geography? = null,
 ) {
     val look = LocalAronLook.current
     var tab by rememberSaveable { mutableStateOf(if (initialShop != null || startOnShops) 1 else 0) }
@@ -114,7 +116,7 @@ fun AsthaTargetScreen(
         }
         if (tab == 1 && shops != null) {
             val chosen = shop?.let { id -> shops.firstOrNull { it.outletId == id } }
-            if (chosen == null) ShopList(shops, query, { query = it }, { shop = it }, locale)
+            if (chosen == null) ShopList(shops, query, { query = it }, { shop = it }, locale, geography)
             else {
                 AronTextButton(stringResource(R.string.pg_all_shops), { shop = null }, Modifier.testTag(AsthaTags.SHOP_BACK))
                 Text(chosen.nameLine, style = label(look.purple), modifier = Modifier.testTag(AsthaTags.SHOP_TITLE))
@@ -309,7 +311,7 @@ private fun CardLine(labelRes: Int, figures: String) {
 
 /** The shop-wise list (manual 51 left): a search box (name, code or phone, typed offline) and one card per outlet. */
 @Composable
-private fun ShopList(shops: List<ShopInfo>, query: String, onQuery: (String) -> Unit, onOpen: (Long) -> Unit, locale: UiLocale) {
+private fun ShopList(shops: List<ShopInfo>, query: String, onQuery: (String) -> Unit, onOpen: (Long) -> Unit, locale: UiLocale, geography: Geography? = null) {
     val look = LocalAronLook.current
     androidx.compose.material3.OutlinedTextField(
         query, onQuery, Modifier.fillMaxWidth().testTag(AsthaTags.SEARCH), singleLine = true,
@@ -328,6 +330,10 @@ private fun ShopList(shops: List<ShopInfo>, query: String, onQuery: (String) -> 
             ShopLine(R.string.pg_shop_owner, sh.owner, look.ink)
             ShopLine(R.string.pg_shop_contact, sh.contact?.let { com.aktcl.aron.rules.Formats.digits(it, locale) }.orEmpty(), look.ink)
             ShopLine(R.string.pg_shop_sub, sh.subChannel ?: "—", look.red) // a dash until the server sends the tier (request N-7)
+            ShopLine(R.string.pg_shop_wing, geography?.wing?.text(locale) ?: "—", look.ink) // the user's own zone chain (request N-9); a dash until the bundle carries it
+            ShopLine(R.string.pg_shop_division, geography?.division?.text(locale) ?: "—", look.ink)
+            ShopLine(R.string.pg_shop_territory, geography?.territory?.text(locale) ?: "—", look.ink)
+            ShopLine(R.string.pg_shop_zone, geography?.zone?.text(locale) ?: "—", look.ink)
         }
     }
 }

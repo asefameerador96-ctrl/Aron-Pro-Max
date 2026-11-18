@@ -71,6 +71,8 @@ fun RedemptionScreen(
     modifier: Modifier = Modifier, initialOutlet: Long? = null, initialQty: Map<Long, Int> = emptyMap(),
     /** Redemptions sent but not yet answered when the balances were fetched: the balance may already hold them (the same line as the points page). */
     awaiting: Int = 0,
+    /** The cash-back rate in milli-taka per point from the config bundle (`cfg.loyalty.cash_rate_mtk_per_point`), or null when the bundle has none: only for the card's text. */
+    cashRateMtk: Long? = null,
 ) {
     val look = LocalAronLook.current
     var outletId by rememberSaveable { mutableStateOf(initialOutlet) }
@@ -110,7 +112,7 @@ fun RedemptionScreen(
         if (remaining < 0) Text(stringResource(R.string.pg_loyalty_overdrawn), Modifier.testTag(RedemptionTags.OVERDRAWN), style = TextStyle(fontSize = 14.sp, color = look.red, fontWeight = FontWeight.Medium))
         // Cash-back stays visible but cannot be confirmed until the owner gives the rule (cash_points is 0; never a cash amount on a memo).
         Row(Modifier.fillMaxWidth().testTag(RedemptionTags.CASHBACK).clip(RoundedCornerShape(12.dp)).background(look.card).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.pg_cashback_waiting), style = TextStyle(fontSize = 14.sp, color = look.inkMuted))
+            Text(if (cashRateMtk != null && cashRateMtk > 0) stringResource(R.string.pg_cashback_waiting_rate, AsthaModel.valueText(cashRateMtk, locale)) else stringResource(R.string.pg_cashback_waiting), style = TextStyle(fontSize = 14.sp, color = look.inkMuted))
         }
         if (gifts.isEmpty()) {
             Text(stringResource(R.string.pg_no_gifts), Modifier.testTag(RedemptionTags.EMPTY), style = TextStyle(fontSize = 16.sp, color = look.ink))

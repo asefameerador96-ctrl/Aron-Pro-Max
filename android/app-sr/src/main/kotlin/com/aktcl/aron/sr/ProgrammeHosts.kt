@@ -52,7 +52,7 @@ internal suspend fun readAstha(day: SrDay): AsthaData? = withContext(Dispatchers
 }
 
 /** What the Astha page reads in one pass: the programme rows, the year, and the shop-wise cards (outlets of every route of the bundle). */
-internal data class AsthaLoad(val data: AsthaData?, val year: Int, val shops: List<ShopInfo>, val month: String?, val awaiting: Int = 0)
+internal data class AsthaLoad(val data: AsthaData?, val year: Int, val shops: List<ShopInfo>, val month: String?, val awaiting: Int = 0, val geography: com.aktcl.aron.feature.programmes.Geography? = null)
 
 internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = withContext(Dispatchers.IO) {
     val date = day.reference.businessDate()
@@ -71,7 +71,7 @@ internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = wi
         if (day.programmes.bundleRequestedAt() == before || ++attempts >= 3) break
     }
     val outlets = readShopOutlets(day)
-    AsthaLoad(data, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, data, ShopModel.tiers(day.reference.section("programmes"))), date?.take(7), awaiting)
+    AsthaLoad(data, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, data, ShopModel.tiers(day.reference.section("programmes"))), date?.take(7), awaiting, com.aktcl.aron.feature.programmes.Geography.parse(day.reference.section("user")))
 }
 
 /** The Astha target page of the SR (manual 48 right to 51): downloaded data only, no network in the path. */
@@ -79,7 +79,7 @@ internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = wi
 fun AsthaHost(day: SrDay, locale: UiLocale) {
     val load = rememberAsyncLoad(locale) { readAsthaPage(day, locale) }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
-        AsthaTargetScreen(page.data, locale, page.year, shops = page.shops, currentMonth = page.month, awaiting = page.awaiting)
+        AsthaTargetScreen(page.data, locale, page.year, shops = page.shops, currentMonth = page.month, awaiting = page.awaiting, geography = page.geography)
     }
 }
 
@@ -111,17 +111,17 @@ fun OutletPointsHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null, 
 fun RedemptionHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
     val load = rememberAsyncLoad {
         val store = day.programmes
-        RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.bundleRequestedAt())
+        RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.bundleRequestedAt(), cashRateOf(day))
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
         var redeemed by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(page.redemptions) }
         var uuid by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(day.programmes.newUuid()) }
         RedemptionScreen(
             page.outlets, page.data, locale,
-            balanceOf = PointsBalance.function(redeemed, page.builtAt), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(redeemed),
+            balanceOf = PointsBalance.function(redeemed, page.builtAt), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(redeemed), cashRateMtk = page.cashRateMtk,
             onConfirm = { basket, gifts ->
                 val outlet = page.outlets.firstOrNull { it.outletId == basket.outletId }
-                val rate = runCatching { day.reference.config("cfg.loyalty.cash_rate_mtk_per_point", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toLongOrNull() }.getOrNull() ?: 0L
+                val rate = page.cashRateMtk ?: 0L
                 val meta = day.programmes.metaFor(outlet?.routeId ?: 0L) // ONE meta per basket: the redemption, its lines and confirmed_at share one instant and one business date
                 val planned = basket.plan(gifts, uuid, day.programmes::newUuid, meta.capturedAt, rate)
                 val out = day.programmes.saveProgramme(meta, planned)
@@ -137,7 +137,7 @@ fun RedemptionHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null) {
     }
 }
 
-internal data class RedemptionLoad(val data: LoyaltyData?, val outlets: List<ShopOutlet>, val redemptions: List<LocalRedemption>, val builtAt: String?)
+internal data class RedemptionLoad(val data: LoyaltyData?, val outlets: List<ShopOutlet>, val redemptions: List<LocalRedemption>, val builtAt: String?, val cashRateMtk: Long? = null)
 
 internal data class GiftLoad(val data: GiftChoiceData?, val shops: List<ShopInfo>, val local: List<LocalGiftChoice>, val quarter: String, val requestedAt: String? = null)
 
@@ -284,4 +284,9 @@ fun CampaignPhotoHost(day: SrDay, locale: UiLocale) {
             },
         )
     }
+}
+
+/** The cash-back rate (milli-taka per point) of the config bundle (`cfg.loyalty.cash_rate_mtk_per_point`, default 2000 = 2 Tk per point on the server), or null when the phone holds none. */
+internal suspend fun cashRateOf(day: SrDay): Long? = withContext(Dispatchers.IO) {
+    runCatching { day.reference.config("cfg.loyalty.cash_rate_mtk_per_point", com.aktcl.aron.core.sync.SyncEngine.iso(System.currentTimeMillis()))?.trim('"')?.toLongOrNull() }.getOrNull()
 }

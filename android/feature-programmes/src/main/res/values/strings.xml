@@ -116,4 +116,9 @@
     <string name="pg_campaign_none">No redeemed campaign gift is waiting for a photo.</string>
     <string name="pg_campaign_progress">%1$s of %2$s photos taken</string>
     <string name="pg_campaign_unit">Unit %1$s</string>
+    <string name="pg_cashback_waiting_rate">Cash-back (%1$s per point): awaiting the owner\'s rule. It cannot be redeemed yet.</string>
+    <string name="pg_shop_wing">Wing</string>
+    <string name="pg_shop_division">Division</string>
+    <string name="pg_shop_territory">Territory</string>
+    <string name="pg_shop_zone">Zone</string>
 </resources>

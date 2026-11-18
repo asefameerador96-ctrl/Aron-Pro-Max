@@ -34,10 +34,10 @@ class AsthaScreensTest {
       {"route_id":7,"outlet_id":null,"brand_id":null,"month":"2026-11","std_target":"0","std_achieved":"0","memo_target":884,"memo_achieved":787,"value_target_mtk":"0","value_achieved_mtk":"0","by_pack":[]}]}"""
     private val products = """{"nodes":[{"id":11,"level":"brand","name":"Marise","name_bn":"মারিস","sort":1}],"skus":[]}"""
 
-    private fun show(language: AppLanguage, data: AsthaData?, shops: List<ShopInfo>? = null, initialShop: Long? = null, currentMonth: String? = null, awaiting: Int = 0) {
+    private fun show(language: AppLanguage, data: AsthaData?, shops: List<ShopInfo>? = null, initialShop: Long? = null, currentMonth: String? = null, awaiting: Int = 0, geography: Geography? = null) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         val loc = if (language == AppLanguage.BN) UiLocale.BN else UiLocale.EN
-        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { AsthaTargetScreen(data, loc, 2026, shops = shops, initialShop = initialShop, currentMonth = currentMonth, awaiting = awaiting) } } }
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { AsthaTargetScreen(data, loc, 2026, shops = shops, initialShop = initialShop, currentMonth = currentMonth, awaiting = awaiting, geography = geography) } } }
         compose.waitForIdle()
     }
 
@@ -50,6 +50,15 @@ class AsthaScreensTest {
     @Test fun noAwaitingLineWhenNothingWaits() {
         show(AppLanguage.EN, AsthaModel.parse(outletRows, products))
         assertEquals(0, compose.onAllNodesWithTag(AsthaTags.AWAITING).fetchSemanticsNodes().size)
+    }
+
+    @Test fun theShopCardShowsTheUsersWingDivisionTerritoryAndZoneOrADash() {
+        val g = Geography(GeoNode(1, "W", "Dhaka Wing", null), null, null, GeoNode(4, "Z", "Zone 4", null))
+        show(AppLanguage.EN, AsthaModel.parse(outletRows, products), shops, geography = g)
+        compose.onNodeWithTag(AsthaTags.TAB_SHOP).performClick(); compose.waitForIdle()
+        assertEquals(2, compose.onAllNodesWithText("Dhaka Wing").fetchSemanticsNodes().size) // one per shop card
+        assertEquals(2, compose.onAllNodesWithText("Zone 4").fetchSemanticsNodes().size)
+        assertEquals(2, compose.onAllNodesWithText("Territory").fetchSemanticsNodes().size) // the label stays, its value is a dash
     }
 
     private fun choose(placeholder: String, option: String) {
