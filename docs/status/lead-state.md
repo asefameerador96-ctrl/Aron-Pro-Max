@@ -185,3 +185,8 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - New server lane T-KPI1 (session_014mnioNUHWh5TpUbp7V4JwN, branch lane/sr-targets-server) for N-2, N-3, N-5, N-8; provisional contract 1.22.0, migrations from V0230, renumbered at landing; design file docs/status/sr-targets-server.md first, with owner questions (formulas for PADS, LMS, LMWD, EWD, LMADS, growth, slab projection).
 - N-1, N-4, N-6, N-7 routed to L-A11 after its fix round; answers to be passed to A-PROG1.
 - Room order: gates 10, integrity 11, programmes 12 (if needed), SR ADS consumer after that.
+
+
+### 2026-11-18 05:55 update: T-KPI1 design in (lane/sr-targets-server 2f6bb8ac)
+- N-2 needs no new table (route_monthly_target is per SKU; working-day calendar with admin GUI exists). N-5, N-8, N-3 need new tables and admin tabs.
+- Owner questions Q-A..Q-K (defaults built meanwhile) are in docs/status/sr-targets-server.md on that branch; passed to the owner 05:55. Server month-to-date is through yesterday; today's memos are added on the phone.
