@@ -15,4 +15,5 @@
     <string name="amo_sale_hdr_route">Route:</string>
     <string name="amo_memo_hdr_section">Section:</string>
     <string name="amo_sale_hdr_retailer">Retailer:</string>
+    <string name="amo_upd_ribbon">NEW UPDATE</string>
 </resources>

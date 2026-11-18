@@ -138,7 +138,7 @@ fun GiftSelectionScreen(
             }
         }, Modifier.fillMaxWidth().testTag(GiftTags.SUBMIT), enabled = picked != null)
         failed?.let { f ->
-            Text(stringResource(when (f) { "CONFLICT" -> R.string.pg_gift_conflict; "DAY_SUBMITTED" -> R.string.pg_day_submitted; else -> R.string.pg_gift_failed }), Modifier.testTag(GiftTags.FAILED), style = TextStyle(fontSize = 14.sp, color = look.red))
+            Text(stringResource(when (f) { "CONFLICT" -> R.string.pg_gift_conflict; "DAY_SUBMITTED" -> R.string.pg_day_submitted; "CHECK_IN_FIRST" -> R.string.pg_check_in_first; else -> R.string.pg_gift_failed }), Modifier.testTag(GiftTags.FAILED), style = TextStyle(fontSize = 14.sp, color = look.red))
         }
         if (saved) {
             AlertDialog(

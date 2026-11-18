@@ -98,7 +98,8 @@ fun AmoOutletMenuContent(counts: Map<VerifyGroup, Int>, onVerify: (VerifyGroup) 
                 }),
                 icon = painterResource(when (o) {
                     AmoOutletOp.NEW -> UiR.drawable.aron_art_outlet_new; AmoOutletOp.CLOSE -> UiR.drawable.aron_art_outlet_close; AmoOutletOp.INFO -> UiR.drawable.aron_art_outlet_edit
-                    AmoOutletOp.UPDATE_BASE -> UiR.drawable.aron_ic_update_base; AmoOutletOp.CLUSTER -> UiR.drawable.aron_art_cluster
+                    // screenshot 46: Update base is the shop with the striped awning and the red pin (traced from it)
+                    AmoOutletOp.UPDATE_BASE -> R.drawable.amo_art_update_base; AmoOutletOp.CLUSTER -> UiR.drawable.aron_art_cluster
                 }),
                 onClick = { onOp(o) }, modifier = mod.testTag(OutletMenuTags.op(o)), menu = true, labelColor = look.tileLabelOutlet,
             )

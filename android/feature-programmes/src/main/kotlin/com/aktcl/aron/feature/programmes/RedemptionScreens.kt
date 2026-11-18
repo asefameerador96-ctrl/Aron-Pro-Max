@@ -122,7 +122,7 @@ fun RedemptionScreen(
         AronSolidButton(stringResource(R.string.pg_confirm_redemption), { asking = true }, Modifier.fillMaxWidth().testTag(RedemptionTags.CONFIRM), enabled = !basket.isEmpty())
         failed?.let { f ->
             Text(
-                stringResource(when (f) { "CONFLICT" -> R.string.pg_redeem_conflict; "DAY_SUBMITTED" -> R.string.pg_day_submitted; else -> R.string.pg_redeem_failed }),
+                stringResource(when (f) { "CONFLICT" -> R.string.pg_redeem_conflict; "DAY_SUBMITTED" -> R.string.pg_day_submitted; "CHECK_IN_FIRST" -> R.string.pg_check_in_first; else -> R.string.pg_redeem_failed }),
                 Modifier.testTag(RedemptionTags.FAILED), style = TextStyle(fontSize = 14.sp, color = look.red),
             )
         }

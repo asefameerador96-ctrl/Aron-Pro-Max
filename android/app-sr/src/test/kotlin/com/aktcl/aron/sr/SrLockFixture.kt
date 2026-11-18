@@ -62,6 +62,8 @@ internal class SrLockFixture(
     context: Context, latePolicy: String?, checkoutMinutes: Int? = null,
     /** A transport factory for a SAVED printer (the printer assist tests); null: no printer is saved, as before. */
     printerTransports: com.aktcl.aron.core.printing.bt.PrinterTransportFactory? = null,
+    /** The production start has run (resumeDay's first result is in, so Attendance is usable); false keeps the day in its first-moment state (D-AGATE-18). */
+    private val settled: Boolean = true,
 ) : AutoCloseable {
     val work = TestWork()
     val db: AronDatabase = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries()
@@ -111,6 +113,7 @@ internal class SrLockFixture(
 
     val day = SrDay(7L, context, db, components, SyncScheduler.None, fixManager, printerManager, "sr", memoNumbering = MemoNumbering("sr334001", 0, 500), parentJob = work.dayJob, checkoutMinutes = checkoutMinutes?.let { m -> { m } })
         .also { it.routeId = route } // reload() would read it from the bundle
+    init { if (settled) day.attendance.settle() }
 
     val date: String get() = day.businessDate()
 
@@ -135,7 +138,22 @@ internal class SrLockFixture(
         )))
     }
 
-    init { setLatePolicy(latePolicy) }
+    /**
+     * D-OWNER-PREREQ-01 rule 1: the day's check-in, stored through the production writer. Every fixture day starts checked in, as a rep working
+     * a day has; a test of the check-in gate itself builds its own repository or calls [checkOut] / uses [startCheckedIn] = false.
+     */
+    fun checkIn() = runBlocking {
+        val u = ClientIds.newUuid()
+        val f = GeoFixEntity(
+            ClientIds.newUuid(), u, "attendance_in", "ok", LAT, LNG, 8.0, provider = "fused", fixTime = day.iso(day.currentMs()), fixElapsedRealtimeMs = 900, fixAgeMs = 10,
+            timeToFixMs = 1000, requestPriority = "balanced", isMock = false, reused = false, refreshCount = 0, deviceOwner = true, devOptionsEnabled = false,
+            adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false,
+        )
+        day.capture.recordAttendance(com.aktcl.aron.core.database.entity.AttendanceEventEntity(u, day.metaProvider.meta(0L).copy(routeId = null), "check_in", f.clientUuid, null), f)
+        day.refreshDayGate()
+    }
+
+    init { setLatePolicy(latePolicy); checkIn() }
 
     fun meta(routeId: Long = route): CaptureMeta = day.metaProvider.meta(routeId)
 

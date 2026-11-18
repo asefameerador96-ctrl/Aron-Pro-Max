@@ -65,6 +65,7 @@
     <string name="pg_redeem_conflict">আগের সংরক্ষণের পর এই ঝুড়ি বদলেছে। কিছু কাটা হয়নি। আইটেম দেখে আবার নিশ্চিত করুন।</string>
     <string name="pg_gift_conflict">আগের সংরক্ষণের পর এই নির্বাচন বদলেছে। আবার নির্বাচন করুন।</string>
     <string name="pg_day_submitted">এই রুট-দিন ইতিমধ্যে জমা হয়েছে। এটি আর বদলানো যাবে না।</string>
+    <string name="pg_check_in_first">আগে চেক-ইন করুন। কিছু সংরক্ষণ করা হয়নি।</string>
     <string name="pg_ok">ওকে</string>
     <string name="pg_shop_code">খুচরা বিক্রেতার কোড</string>
     <string name="pg_gift_route">রুট</string>

@@ -21,4 +21,9 @@ class ProgrammeNavTest {
         assertEquals(SrScreen.LOYALTY_MENU, SrNav.parent(SrScreen.LOYALTY_POINTS))
         assertEquals(SrScreen.HOME, SrNav.parent(SrScreen.LOYALTY_MENU))
     }
+
+    @Test fun theProgrammeWriteScreensAreGatedAndTheViewingScreensStayOpenBeforeCheckIn() {
+        assertTrue(SrScreen.LOYALTY_REDEEM in SR_CHECKIN_GATED && SrScreen.ASTHA_GIFT in SR_CHECKIN_GATED)
+        listOf(SrScreen.LOYALTY_MENU, SrScreen.LOYALTY_POINTS, SrScreen.ASTHA_MENU, SrScreen.ASTHA_TARGET).forEach { assertTrue("$it stays open", it !in SR_CHECKIN_GATED) }
+    }
 }

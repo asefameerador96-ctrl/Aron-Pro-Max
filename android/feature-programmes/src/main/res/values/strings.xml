@@ -65,6 +65,7 @@
     <string name="pg_redeem_conflict">This basket changed after an earlier save. Nothing was deducted. Check the items and confirm again.</string>
     <string name="pg_gift_conflict">This choice changed after an earlier save. Choose again.</string>
     <string name="pg_day_submitted">This route-day has already been submitted. It cannot be changed.</string>
+    <string name="pg_check_in_first">Check in first. Nothing was saved.</string>
     <string name="pg_ok">OK</string>
     <string name="pg_shop_code">Retailer code</string>
     <string name="pg_gift_route">Route</string>

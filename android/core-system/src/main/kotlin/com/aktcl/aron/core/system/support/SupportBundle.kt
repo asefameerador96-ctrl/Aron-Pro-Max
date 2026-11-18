@@ -34,6 +34,21 @@ data class SupportInput(
     /** The last log lines, already free of personal data (the local ring buffer, docs/24 s5.8). */
     val logLines: List<String>,
     val createdAt: String,
+    /** D-AGATE-04: the outcome code (`last_code`, `message_key`) of every refused, held or requeued row, so support can read WHY. No payload. */
+    /** Newest first; over the size cap the OLDEST are dropped (after the acked payloads, before the log). */
+    val outboxCodes: List<SupportOutboxCode> = emptyList(),
+)
+
+/** One row's outcome for the support file: ids, type, state and the code; never a payload or a personal field. */
+@Serializable
+data class SupportOutboxCode(
+    @SerialName("client_uuid") val clientUuid: String,
+    @SerialName("record_type") val recordType: String,
+    @SerialName("business_date") val businessDate: String,
+    val state: String,
+    @SerialName("last_code") val lastCode: String?,
+    @SerialName("message_key") val messageKey: String?,
+    val attempts: Int,
 )
 
 @Serializable
@@ -50,6 +65,9 @@ internal data class SupportFile(
     @SerialName("recent_acked_dropped") val recentAckedDropped: Int,
     val log: List<String>,
     @SerialName("created_at") val createdAt: String,
+    @SerialName("outbox_codes") val outboxCodes: List<SupportOutboxCode> = emptyList(),
+    /** How many (oldest) code rows were dropped to fit the size cap. */
+    @SerialName("outbox_codes_dropped") val outboxCodesDropped: Int = 0,
 )
 
 class SupportFileTooLargeException(val bytes: Int, val limit: Int) : IllegalStateException("support file $bytes bytes over $limit even without optional parts")
@@ -57,7 +75,7 @@ class SupportFileTooLargeException(val bytes: Int, val limit: Int) : IllegalStat
 /**
  * Builds the encrypted support file (F-SYS-021). JSON, gzip, then hybrid encryption to the AKTCL support public key:
  * a fresh AES-256-GCM key per file, wrapped with RSA-OAEP (SHA-256). Only support's private key opens it. Over the size
- * cap the optional parts go first (acked payloads, then old log lines); unsent payloads are never dropped.
+ * cap the optional parts go first (acked payloads, then the oldest outcome codes, then old log lines); unsent payloads are never dropped.
  *
  * Layout: "ARONSUP1" | u16 wrapped-key length | wrapped key | 12-byte IV | AES-GCM ciphertext with its 16-byte tag.
  */
@@ -71,23 +89,26 @@ object SupportBundle {
     fun build(input: SupportInput, supportPublicKeySpkiBase64: String, maxBytes: Int, random: SecureRandom = SecureRandom()): ByteArray {
         var acked = input.recentAckedPayloads
         var log = input.logLines.takeLast(MAX_LOG_LINES)
+        var codes = input.outboxCodes
         while (true) {
-            val plain = gzip(json.encodeToString(SupportFile.serializer(), file(input, acked, log)).toByteArray())
+            val plain = gzip(json.encodeToString(SupportFile.serializer(), file(input, acked, log, codes)).toByteArray())
             val sealed = encrypt(plain, supportPublicKeySpkiBase64, random)
             if (sealed.size <= maxBytes) return sealed
             when {
                 acked.isNotEmpty() -> acked = acked.drop(maxOf(1, acked.size / 2)) // oldest first
+                codes.size > 20 -> codes = codes.take(codes.size / 2) // the list is newest first: the oldest go
                 log.size > 20 -> log = log.takeLast(log.size / 2)
                 else -> throw SupportFileTooLargeException(sealed.size, maxBytes)
             }
         }
     }
 
-    private fun file(input: SupportInput, acked: List<String>, log: List<String>) = SupportFile(
+    private fun file(input: SupportInput, acked: List<String>, log: List<String>, codes: List<SupportOutboxCode>) = SupportFile(
         appVersion = input.appVersion, schemaVersion = input.schemaVersion, userId = input.userId, deviceUuid = input.deviceUuid,
         lastSyncAt = input.lastSyncAt, counts = input.counts,
         unsent = input.unsentPayloads.map(::parse), recentAcked = acked.map(::parse),
         recentAckedDropped = input.recentAckedPayloads.size - acked.size, log = log, createdAt = input.createdAt,
+        outboxCodes = codes, outboxCodesDropped = input.outboxCodes.size - codes.size,
     )
 
     /** A stored payload is JSON; a damaged one is kept as a string rather than lost. */

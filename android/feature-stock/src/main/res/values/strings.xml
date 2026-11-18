@@ -33,6 +33,8 @@
     <string name="stk_high">That is a very large quantity. Check it before you save.</string>
     <string name="stk_slip_not_printed">The stock slip is not printed yet. Print it before Sales Submit.</string>
     <string name="stk_save_failed">Could not save. Nothing was changed. Try again.</string>
+    <string name="stk_not_checked_in">Nothing was saved: you are not checked in for this day. Open Attendance and check in, then save again.</string>
+    <string name="stk_checked_out">Nothing was saved: you have already checked out for this day.</string>
     <string name="stk_print_failed">Not printed. Check that the printer is on and connected.</string>
     <string name="stk_print">Print stock slip</string>
     <string name="stk_packs">%1$s packs</string>
@@ -41,4 +43,5 @@
     <string name="stk_col_loaded_short">Load</string>
     <string name="stk_saved_short">Saved</string>
     <string name="stk_load_failed">Could not load the stock</string>
+    <string name="stk_already_saved">This was already saved before the app closed. The stock figure includes it; nothing was added. Tap Save again only for another issue.</string>
 </resources>

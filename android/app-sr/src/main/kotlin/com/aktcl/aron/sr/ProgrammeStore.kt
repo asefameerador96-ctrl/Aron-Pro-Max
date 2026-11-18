@@ -65,6 +65,7 @@ class ProgrammeStore(
             else if (sameContent(records)) SaveOutcome.ALREADY_SAVED else SaveOutcome.CONFLICT
         } catch (e: com.aktcl.aron.core.database.repo.RouteDayFinalSubmittedException) { SaveOutcome.DAY_SUBMITTED }
         catch (e: com.aktcl.aron.core.database.repo.RouteDaySubmittedException) { SaveOutcome.DAY_SUBMITTED }
+        catch (e: com.aktcl.aron.core.database.repo.AttendanceRefusedException) { SaveOutcome.CHECK_IN_FIRST }
         catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: Exception) { SaveOutcome.REFUSED }
     }

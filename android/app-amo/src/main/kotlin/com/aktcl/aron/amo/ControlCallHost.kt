@@ -99,7 +99,15 @@ fun ControlCallHost(
     // tso-manual X4a follow-up (R-W-23): a call whose close the route-day refused (the zone's Final Submit, or the supervisor
     // day's Sales Submit) ended on the phone with no close written; the picker shows why, never a crash
     var callEnded by remember { mutableStateOf<DayRefusal?>(null) }
-    val leaveCall: () -> Unit = { scope.launch { callEnded = day.closeVisit(); step = CcStep.PICK; outletId = null; chip = OutletPicker.ALL_CHIP } }
+    // D-AGATE-19: a close that cannot be written keeps the call on screen (no crash; the rep taps again), the call is never dropped without its close
+    var leaveFailed by remember { mutableStateOf(false) }
+    val leaveCall: () -> Unit = { scope.launch { try { callEnded = day.closeVisit(); step = CcStep.PICK; outletId = null; chip = OutletPicker.ALL_CHIP } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { leaveFailed = true } } }
+    if (leaveFailed) {
+        com.aktcl.aron.core.ui.aron.AronDialog(
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_title), stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_body),
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_ok), onConfirm = { leaveFailed = false }, onDismiss = { leaveFailed = false },
+        )
+    }
     callEnded?.let { AmoRefusalDialog(day, it, onOk = { callEnded = null }) }
     // X4a fix round (R-W-23, checker low): the entry guard, as the SR sale host's. A call in progress whose route-day no longer takes
     // its records ends on the phone at once, before any step is drafted
