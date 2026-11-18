@@ -48,7 +48,7 @@ fun main() {
             val code = Database.pool(settings.dbUrl, settings.dbUser, settings.dbPassword, 2, "aron-migrate", connectionTimeoutMs = Migrator.MIGRATE_CONNECTION_TIMEOUT_MS).use { ds ->
                 runCatching {
                     // Pre-flight BEFORE Flyway applies anything (D-SV2-12): a migration whose guard would raise on existing data stops the deploy here, with the schema untouched.
-                    MigrationPreflight.run(ds, settings.env, report = { line -> log.info("{}", line) })
+                    MigrationPreflight.run(ds, System.getenv("ARON_ENV"), report = { line -> log.info("{}", line) })
                     Migrator.migrate(ds)
                 }
                     .onSuccess { log.info("migrate: {} migration(s) applied", it) }
