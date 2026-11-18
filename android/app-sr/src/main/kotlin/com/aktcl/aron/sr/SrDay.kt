@@ -401,21 +401,6 @@ class SrDay(
     /** The Astha months read online and kept on the phone: app-private files per user and route, no database (the screen works offline from them and after a kill and relaunch). */
     val asthaMonths by lazy { com.aktcl.aron.feature.programmes.AsthaMonthCache(java.io.File(context.filesDir, "astha-months-$userId")) }
 
-    /** The newest `/v1/sync/figures` answer and what the phone has confirmed IN (app-private files per user). */
-    val figuresStore by lazy { com.aktcl.aron.feature.programmes.FiguresStore(java.io.File(context.filesDir, "figures-$userId")) }
-
-    /** Asks the server what its figures hold (identity rule), behind a capability check: a server without the endpoint (404 or 405) keeps today's behaviour. Nothing calls it on a timer. */
-    val figures by lazy {
-        com.aktcl.aron.feature.programmes.FiguresRefresher(figuresStore) { body ->
-            when (val r = components.syncApi.figures(body)) {
-                is com.aktcl.aron.core.network.ApiResult.Success -> com.aktcl.aron.feature.programmes.FiguresCall.Ok(r.value)
-                is com.aktcl.aron.core.network.ApiResult.Failure -> if (r.httpStatus == 404 || r.httpStatus == 405) com.aktcl.aron.feature.programmes.FiguresCall.NoEndpoint else com.aktcl.aron.feature.programmes.FiguresCall.Failed
-                is com.aktcl.aron.core.network.ApiResult.Transport -> if (r.failure == com.aktcl.aron.core.network.TransportFailure.MALFORMED) com.aktcl.aron.feature.programmes.FiguresCall.Failed else com.aktcl.aron.feature.programmes.FiguresCall.Offline
-                else -> com.aktcl.aron.feature.programmes.FiguresCall.Failed
-            }
-        }
-    }
-
     /** Reads a quarter of Astha rows online for the given routes and keeps its months; null when all came, else why not (offline is "connect once", never an error). */
     suspend fun readAsthaQuarter(quarter: String, routeIds: Collection<Long>, months: List<String>): com.aktcl.aron.feature.programmes.QuarterFetch? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { // parsing and file writes stay off the main thread
         // what this phone holds of each month is recorded under the sync lock at the moment the read is requested, exactly like the bundle's acknowledged set (no upload batch in flight then)

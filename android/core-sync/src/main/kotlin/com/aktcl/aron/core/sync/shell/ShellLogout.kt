@@ -44,7 +44,6 @@ class ShellLogout(
                 com.aktcl.aron.core.geo.spoof.PrefsPreviousFixStore(app).clear()
                 // the Astha months read online are the route's target figures kept in app-private files (SR programme screens): they go with the session
                 runCatching { java.io.File(app.filesDir, "astha-months-$userId").deleteRecursively() }
-                runCatching { java.io.File(app.filesDir, "figures-$userId").deleteRecursively() } // the newest figures answer and the confirmed set go with the session
             },
         ),
     ))
