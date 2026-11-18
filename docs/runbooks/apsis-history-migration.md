@@ -1,5 +1,18 @@
 # Runbook: Apsis history migration into the final Azure account
 
+## PHASE 1 (current): preserve and profile. Nothing is transformed, reconciled, cleaned up or deleted.
+Owner decision D-OWNER-APSIS-FTP-01: the dump is copied as-is into the final account's private storage; its **structure** (table and column names, types, counts, shapes; never rows) may be used. Everything after this section ("Phase 2") is **parked**: every command except `profile` refuses unless the lead sets `APSIS_PHASE=2`.
+1. **Preserve.** The owner (or the operator, after the owner's approval) copies the dump files **as they are** from the organisation's FTP server into the private container `apsis-dump` of the final account, using lane infra-final's landing wrapper (`docs/requests/apsis-dump-landing.md`). The dump never goes to a laptop, the repository, the test account, CI or a chat. Write the blob names and sizes in the hand-over note. Do not delete anything anywhere.
+2. **Profile.** The operator runs the Container Apps job (or a shell next to the data) with the dump folder mounted read-only:
+   `apsis-migration.py profile --dump-dir /data --out-dir /reports/apsis-profile` (add `--charset <name>` only if the owner has decided one; add `--cap N` to change the distinct-value memory cap). The output directory must be **outside the repository** (the tool refuses otherwise) and is a private location in the final account.
+   It writes four files: `apsis-profile.json` and `.md` (full: also numeric/date value ranges and hour-of-day histograms) and `apsis-profile.sanitised.json` and `.md`. **No row is in any of them.**
+3. **Exit code.** 0 = every file was read. 3 = one or more files were **refused**: the stderr lines name the table (its file stem) and the reason (REPLACE INTO, INSERT with a column list, a row-spanning INSERT, a data-only/mydumper file, a compressed or split part, text that is not UTF-8). A refusal is a result, not a failure to hide: send the lines to the lead; the dump may have to be exported again in a readable shape. Nothing is skipped silently.
+4. **Hand over.** The two full files go to the **owner** only. The **sanitised pair** goes to the lead for review; it may be committed to the repository only after the lead has reviewed it. Never paste the full files into a public place (the repository is public).
+5. **Stop.** Phase 1 ends with the profile. The lead and the owner read it, answer what it leaves open (design section 12: the last column says which questions the profile answers by itself), and the lead then enables phase 2.
+What the profile contains, per table: engine, declared charset, row count, column names and declared types, primary key, indexes and foreign keys; per column: null share, distinct count (capped), min/max length, numeric/date min/max (full file only; withheld for phone-, NID- or counter-like long digit strings), a shape histogram (digits-only, decimal, date-like, phone-like, e-mail-like, hash-like, bengali, latin, mixed, empty ...), hour-of-day histogram for datetime columns, and a **value list only for columns with fewer than 30 distinct short code values** (never free text, never anything phone-, e-mail- or name-shaped); and reference checks (share of fact keys found in a master key column, exact and after normalisation).
+
+---
+# Phase 2 (PARKED: not to be run until the lead enables it)
 Who runs it: the lead's operator session (or the infra-final lane) executes every command. **The owner's steps are approvals only** (marked OWNER). Nothing runs in the test account, CI or a laptop: the dump never leaves the final account.
 Design and mapping: `docs/status/apsis-migration.md`. Landing and identity: `docs/requests/apsis-dump-landing.md`. Tool: `tools/apsis-migration/README.md`.
 

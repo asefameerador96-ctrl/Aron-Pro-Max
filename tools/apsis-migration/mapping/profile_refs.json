@@ -1,0 +1,168 @@
+{
+ "_comment": "Reference checks of the profile: share of a fact column's values found in a master key column (exact and after the normalisation rule). Candidate column names, first present wins. No data.",
+ "refs": [
+  {
+   "name": "sales outlet code -> master outlets",
+   "fact_table": "trans_sales_by_outlet",
+   "fact_columns": [
+    "outlet_code"
+   ],
+   "master_table": "master_outlets",
+   "master_columns": [
+    "outlet_code",
+    "code"
+   ]
+  },
+  {
+   "name": "sales outlet id -> master outlets",
+   "fact_table": "trans_sales_by_outlet",
+   "fact_columns": [
+    "outlet_id"
+   ],
+   "master_table": "master_outlets",
+   "master_columns": [
+    "outlet_id",
+    "id"
+   ]
+  },
+  {
+   "name": "sales sku code -> master sku",
+   "fact_table": "trans_sales_by_outlet",
+   "fact_columns": [
+    "sku_code"
+   ],
+   "master_table": "master_sku",
+   "master_columns": [
+    "sku_code",
+    "code"
+   ]
+  },
+  {
+   "name": "sales sku id -> master sku",
+   "fact_table": "trans_sales_by_outlet",
+   "fact_columns": [
+    "sku_id"
+   ],
+   "master_table": "master_sku",
+   "master_columns": [
+    "sku_id",
+    "id"
+   ]
+  },
+  {
+   "name": "sales route code -> master routes",
+   "fact_table": "trans_sales_by_outlet",
+   "fact_columns": [
+    "route_code",
+    "section_code"
+   ],
+   "master_table": "master_routes",
+   "master_columns": [
+    "route_code",
+    "code"
+   ]
+  },
+  {
+   "name": "geo outlet code -> master outlets",
+   "fact_table": "live_geo_data_by_outlets",
+   "fact_columns": [
+    "outlet_code"
+   ],
+   "master_table": "master_outlets",
+   "master_columns": [
+    "outlet_code",
+    "code"
+   ]
+  },
+  {
+   "name": "geo outlet id -> master outlets",
+   "fact_table": "live_geo_data_by_outlets",
+   "fact_columns": [
+    "outlet_id"
+   ],
+   "master_table": "master_outlets",
+   "master_columns": [
+    "outlet_id",
+    "id"
+   ]
+  },
+  {
+   "name": "outlet-route mapping outlet code -> master outlets",
+   "fact_table": "master_outlet_section_mapping",
+   "fact_columns": [
+    "outlet_code"
+   ],
+   "master_table": "master_outlets",
+   "master_columns": [
+    "outlet_code",
+    "code"
+   ]
+  },
+  {
+   "name": "outlet-route mapping route code -> master routes",
+   "fact_table": "master_outlet_section_mapping",
+   "fact_columns": [
+    "route_code",
+    "section_code"
+   ],
+   "master_table": "master_routes",
+   "master_columns": [
+    "route_code",
+    "code"
+   ]
+  },
+  {
+   "name": "geo config outlet code -> master outlets",
+   "fact_table": "master_geo_config",
+   "fact_columns": [
+    "outlet_code"
+   ],
+   "master_table": "master_outlets",
+   "master_columns": [
+    "outlet_code",
+    "code"
+   ]
+  },
+  {
+   "name": "attendance field force code -> master field forces",
+   "fact_table": "master_ff_attendance_records",
+   "fact_columns": [
+    "ff_code",
+    "user_code"
+   ],
+   "master_table": "master_field_forces",
+   "master_columns": [
+    "ff_code",
+    "employee_code",
+    "code"
+   ]
+  },
+  {
+   "name": "route mapping field force -> master field forces",
+   "fact_table": "master_ff_route_mapping",
+   "fact_columns": [
+    "ff_code",
+    "user_code"
+   ],
+   "master_table": "master_field_forces",
+   "master_columns": [
+    "ff_code",
+    "employee_code",
+    "code"
+   ]
+  },
+  {
+   "name": "section summary route code -> master routes",
+   "fact_table": "trans_section_summary",
+   "fact_columns": [
+    "route_code",
+    "section_code"
+   ],
+   "master_table": "master_routes",
+   "master_columns": [
+    "route_code",
+    "code"
+   ]
+  }
+ ]
+}

@@ -23,3 +23,6 @@ The dump stays in `apsis-dump` until the owner signs the reconciliation, then it
 
 ## Needs from infra-final
 Storage account and two containers, the job and its identity, the Entra principal as a PostgreSQL role (member of `apsis_migrator`, which the migrations create), a PITR-capable PostgreSQL SKU with storage autogrow and 250 GB free before the run, `max_wal_size` and `checkpoint_timeout` server parameters settable by the runbook for the load window, and the allow-list for the extensions the repository already needs (`btree_gist`); no new extension is required by this tool.
+
+## Phase 1 addendum (lead ruling 2026-11-18, D-OWNER-APSIS-FTP-01)
+The dump is copied **as-is** into `apsis-dump`; the job runs only `apsis-migration.py profile --dump-dir /data --out-dir <a private folder of the reports container or its mount>` (read-only access to the dump is enough: `Storage Blob Data Reader`; no database login is needed in phase 1). The four output files (`apsis-profile.json`/`.md` full, `apsis-profile.sanitised.json`/`.md`) are written to the private reports container, never to the repository or the job's log; the container image must not enable request/response body capture. The full pair goes to the owner only; the sanitised pair to the lead. No transform, reconciliation, cleanup or deletion runs in phase 1 (the tool refuses them).

@@ -9,9 +9,15 @@ import re
 from itertools import islice
 from dataclasses import dataclass, field
 
+from . import safety
+
 _CREATE = re.compile(r"^CREATE TABLE (?:IF NOT EXISTS )?`?([^`\s(]+)`?\s*\($", re.I)
 _COL = re.compile(r"^\s*`([^`]+)`\s+([a-zA-Z]+)(\([^)]*\))?(.*?),?\s*$")
 _PK = re.compile(r"^\s*PRIMARY KEY\s*\(([^)]*)\)", re.I)
+_IDX = re.compile(r"^\s*(UNIQUE KEY|FULLTEXT KEY|SPATIAL KEY|KEY)\s+`?([^`\s(]+)`?\s*\(([^)]*)\)", re.I)
+_FK = re.compile(r"^\s*CONSTRAINT\s+`?([^`\s]+)`?\s+FOREIGN KEY\s*\(([^)]*)\)\s*REFERENCES\s+`?([^`\s(]+)`?\s*\(([^)]*)\)", re.I)
+_TAIL = re.compile(r"ENGINE\s*=\s*([A-Za-z0-9_]+)", re.I)
+_TAILCS = re.compile(r"CHARSET\s*=\s*([A-Za-z0-9_]+)", re.I)
 _INSERT = re.compile(r"^INSERT (?:IGNORE )?INTO `?([^`\s(]+)`?\s*(\(([^)]*)\))?\s*VALUES\s*", re.I)
 _TOKEN = re.compile(
     r"""'(?:[^'\\]|\\.|'')*'      # quoted string
@@ -34,11 +40,18 @@ class Column:
     unsigned: bool = False
 
 
+class UnsupportedShape(safety.Refused):
+    """A statement shape the reader cannot read faithfully. The tool refuses (non-zero exit, table named by its validated file stem) instead of skipping."""
+
+
 @dataclass
 class TableSchema:
     name: str
     columns: list = field(default_factory=list)
     pk: list = field(default_factory=list)
+    indexes: list = field(default_factory=list)      # [{"kind": "key|unique|fulltext|foreign", "name": .., "columns": [..]}]
+    engine: str = ""
+    charset: str = ""
 
     def column_names(self):
         return [c.name for c in self.columns]
@@ -153,11 +166,23 @@ def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=Tr
                 s = line.strip()
                 if s.startswith(")"):
                     in_create = False
+                    me, mc2 = _TAIL.search(s), _TAILCS.search(s)
+                    schema.engine, schema.charset = (me.group(1) if me else ""), (mc2.group(1) if mc2 else "")
                     yield ("schema", schema)
                     continue
                 mp = _PK.match(s)
                 if mp:
                     schema.pk = [c.strip().strip("`") for c in mp.group(1).split(",")]
+                    continue
+                mx = _IDX.match(s)
+                if mx:
+                    schema.indexes.append({"kind": mx.group(1).split()[0].lower(), "name": mx.group(2),
+                                           "columns": [re.sub(r"\(\d+\)$", "", c.strip().strip("`")) for c in mx.group(3).split(",")]})
+                    continue
+                mf = _FK.match(s)
+                if mf:
+                    schema.indexes.append({"kind": "foreign", "name": mf.group(1), "columns": [c.strip().strip("`") for c in mf.group(2).split(",")],
+                                           "references": mf.group(3), "ref_columns": [c.strip().strip("`") for c in mf.group(4).split(",")]})
                     continue
                 if s.startswith("`"):
                     mt = _split_type(s)
@@ -171,8 +196,21 @@ def events(path, batch_rows=50000, skip_statements=0, charset="utf-8", strict=Tr
                 schema = TableSchema(mc.group(1))
                 in_create = True
                 continue
+            head = line[:12].upper()
+            if head.startswith("REPLACE"):
+                raise UnsupportedShape(f"REPLACE INTO at line {lineno} (mysqldump --replace) is not read: re-dump without --replace")
+            if head.startswith("INSERT") and not _INSERT.match(line):
+                raise UnsupportedShape(f"an INSERT shape the reader does not know at line {lineno}")
+            if line.startswith(("(", ",(")):
+                raise UnsupportedShape(f"a row continues from an earlier line at line {lineno} (row-spanning INSERT / mydumper layout): re-dump with mysqldump --extended-insert one statement per line")
             mi = _INSERT.match(line)
             if mi:
+                if mi.group(2):
+                    raise UnsupportedShape(f"INSERT with a column list at line {lineno}: re-dump without --complete-insert (columns are read by position)")
+                if schema is None:
+                    raise UnsupportedShape(f"INSERT before any CREATE TABLE at line {lineno} (a data-only file: mydumper layout is not supported)")
+                if not line.rstrip().endswith(";"):
+                    raise UnsupportedShape(f"an INSERT statement does not end on its line (line {lineno}): row-spanning statements are not read; re-dump with one statement per line")
                 ordinal += 1
                 if ordinal <= skip_statements:
                     continue

@@ -1,5 +1,6 @@
 """Orchestration: profile (dry run), stage, transform, verify, reconcile, finalize, cleanup. Counts and checksums only; never a data row."""
 import json
+import os
 import re
 import sys
 import tempfile
@@ -26,6 +27,7 @@ ORDER = ["master_locations", "master_dep", "master_routes", "master_sku", "maste
          "master_promotion", "trans_by_outlet_promotion_data", "live_geo_data_by_outlets", "trans_sales_by_outlet"]
 STATE_RANK = {"pending": 0, "staged": 1, "transformed": 2, "verified": 3, "failed": -1}
 STAGE = "apsis_stage"
+ALLOWED_TZ = {"UTC", "Asia/Dhaka"}
 
 
 def raw_tables(mapping):
@@ -323,7 +325,9 @@ def ctl_get(db, table, chunk):
 
 
 def start_run(db, source_tz, confirm, qty_unit="base", dry=False, note=""):
-    """Refuses when verified chunks exist from a run with other settings: the archive would hold a mix."""
+    """Refuses a zone outside the allow-list, and refuses when verified chunks exist from a run with other settings: the archive would hold a mix."""
+    if source_tz not in ALLOWED_TZ:
+        raise ValueError("source time zone must be one of " + ", ".join(sorted(ALLOWED_TZ)) + " (free text such as BST or UTC+6 is refused)")
     prev = db.run("SELECT DISTINCT r.source_tz || '|' || r.qty_unit FROM apsis_ctl.chunk c JOIN apsis_ctl.run r ON r.id = c.run_id "
                   "WHERE c.state = 'verified' AND c.chunk_key <> '_stage' AND c.vendor_table NOT LIKE '\\_%'").split()
     if prev and prev != [f"{source_tz}|{qty_unit}"]:
@@ -539,7 +543,7 @@ def reconcile(db, run_id, mapping, expected, out_path=None):
     payload = json.dumps(out, indent=1, sort_keys=True)
     if out_path:
         Path(out_path).write_text(payload + "\n", encoding="utf-8")
-    db.run("INSERT INTO apsis_ctl.report (run_id, name, value) VALUES (:'r'::bigint, 'reconciliation', :'v'::jsonb) ON CONFLICT (run_id, name) DO UPDATE SET value = EXCLUDED.value",
+    db.run("INSERT INTO apsis_ctl.report (run_id, name, value) VALUES (:'r'::bigint, 'reconciliation', :'v'::jsonb) ON CONFLICT (run_id, name) DO UPDATE SET value = EXCLUDED.value, created_at = now()",
            {"r": str(run_id), "v": payload})
     return out
 
@@ -559,9 +563,13 @@ def cleanup(db, signoff):
     bad = [q for q in REQUIRED_SIGNOFF if so.get(q) not in ("answered", "waived")]
     if bad or not str(so.get("signed_by", "")).strip():
         raise DbError("cleanup refused: the owner's sign-off file must list " + ", ".join(REQUIRED_SIGNOFF) + " as answered or waived and name who signed")
-    ok = db.scalar("SELECT COALESCE((value ->> 'ok')::boolean, false) FROM apsis_ctl.report WHERE name = 'reconciliation' ORDER BY run_id DESC LIMIT 1")
+    # the passing report must describe the CURRENT state: it belongs to the latest run and is newer than every checkpoint change; a later run, a
+    # re-transform or a rollback invalidates it
+    ok = db.scalar("SELECT COALESCE((value ->> 'ok')::boolean, false) AND run_id = (SELECT max(id) FROM apsis_ctl.run) "
+                   "AND created_at >= COALESCE((SELECT max(GREATEST(started_at, finished_at)) FROM apsis_ctl.chunk), '-infinity'::timestamptz) "
+                   "FROM apsis_ctl.report WHERE name = 'reconciliation' ORDER BY run_id DESC LIMIT 1")
     if ok != "t":
-        raise DbError("cleanup refused: no passing reconciliation report")
+        raise DbError("cleanup refused: no passing reconciliation report for the current run state (a later run, reset or rollback invalidates an earlier report)")
     for kind, q in (("VIEW", "SELECT quote_ident(table_name) FROM information_schema.views WHERE table_schema = 'apsis_stage'"),
                     ("TABLE", "SELECT quote_ident(table_name) FROM information_schema.tables WHERE table_schema = 'apsis_stage' AND table_type = 'BASE TABLE'")):
         for name in db.run(q).split():
@@ -599,18 +607,31 @@ def main(argv=None):
         s.add_argument("--dry-run", action="store_true")
         s.add_argument("--out")
         s.add_argument("--run-id", type=int)
-        s.add_argument("--suggest-review", help="with profile: write a suggested column review here")
+        s.add_argument("--out-dir", help="with profile: directory OUTSIDE the repository for the four profile files")
+        s.add_argument("--refs", default=str(HERE / "mapping" / "profile_refs.json"))
+        s.add_argument("--cap", type=int, default=100000, help="with profile: distinct-value cap per column (memory bound)")
         s.add_argument("--signoff", help="with cleanup: the owner's sign-off file (Q21-Q33 answered or waived)")
     a = ap.parse_args(argv)
     mapping = staging.load_mapping(a.mapping)
     expected = json.loads(Path(a.expected_counts).read_text())["rows"] if Path(a.expected_counts).exists() else {}
-    if a.cmd == "profile" or (a.cmd == "run" and a.dry_run):
-        rep = profile(a.dump_dir, mapping, expected=expected, charset=a.charset)
-        text = json.dumps(rep, indent=1, sort_keys=True)
-        Path(a.out).write_text(text + "\n") if a.out else print(text)
-        if a.suggest_review:
-            Path(a.suggest_review).write_text(json.dumps(suggest_review(rep), indent=1) + "\n")
-        return 0
+    if a.cmd == "profile":
+        from . import profiler
+        if not a.out_dir:
+            sys.exit("refused: --out-dir is required (outside the repository)")
+        try:
+            profiler.check_out_dir(a.out_dir)
+        except safety.Refused as e:
+            sys.exit(str(e))
+        full = profiler.profile_dump(a.dump_dir, mapping, profiler.load_refs(a.refs), charset=a.charset, cap=a.cap, order=ORDER, log=lambda m: print(m, file=sys.stderr, flush=True))
+        profiler.write_outputs(a.out_dir, full)
+        print(f"profile: {len(full['tables'])} table(s), {len(full['refused'])} refused, {len(full['tables_missing'])} missing; written to the output directory")
+        for r in full["refused"]:
+            print(f"REFUSED {r['table']}: {r['refused']}", file=sys.stderr)
+        return 0 if full["ok"] else 3
+    if os.environ.get("APSIS_PHASE") != "2":
+        sys.exit("refused: phase 1 is PRESERVE + PROFILE only; the transform, reconciliation, cleanup and finalize are parked until the lead enables phase 2")
+    if a.cmd in ("run", "reconcile") and a.source_tz and a.source_tz not in ALLOWED_TZ:
+        sys.exit("refused: --source-tz must be one of " + ", ".join(sorted(ALLOWED_TZ)))
     if a.dsn and re.search(r"password\s*=", a.dsn, re.I):
         sys.exit("refused: the connection string must not contain a password (use PGPASSWORD or an Entra token in the environment)")
     if a.db_role != "apsis_migrator":

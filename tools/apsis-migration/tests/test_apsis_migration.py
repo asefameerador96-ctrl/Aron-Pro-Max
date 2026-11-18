@@ -201,16 +201,21 @@ class DryRun(unittest.TestCase):
         self.assertEqual(runner._hour_shares(utc_like)["likely"], "utc")
         self.assertEqual(runner._hour_shares(local_like)["likely"], "dhaka_local")
 
-    def test_cli_dry_run_needs_no_database_and_writes_a_review_suggestion(self):
+    def test_cli_profile_needs_no_database_and_writes_four_files_outside_the_repository(self):
         with tempfile.TemporaryDirectory() as t:
             synth.build(Path(t) / "d")
-            out, rev = Path(t) / "profile.json", Path(t) / "review.json"
+            out = Path(t) / "out"
             env = dict(os.environ, PGHOST="/nonexistent", PGPORT="1")
-            p = subprocess.run([sys.executable, "-I", str(ROOT / "apsis-migration.py"), "run", "--dry-run", "--dump-dir", str(Path(t) / "d"),
-                                "--out", str(out), "--suggest-review", str(rev)], capture_output=True, env=env)
+            p = subprocess.run([sys.executable, "-I", str(ROOT / "apsis-migration.py"), "profile", "--dump-dir", str(Path(t) / "d"), "--out-dir", str(out)], capture_output=True, env=env)
             self.assertEqual(p.returncode, 0, p.stderr.decode()[:300])
-            self.assertIn("trans_sales_by_outlet", out.read_text())
-            self.assertIn("password_hash", json.loads(rev.read_text())["tables"]["master_field_forces"]["drop"])
+            self.assertEqual(len(list(out.iterdir())), 4)
+            self.assertIn("trans_sales_by_outlet", (out / "apsis-profile.json").read_text())
+
+    def test_a_review_suggestion_comes_from_the_legacy_profile_function(self):
+        with tempfile.TemporaryDirectory() as t:
+            synth.build(Path(t) / "d")
+            rev = runner.suggest_review(runner.profile(Path(t) / "d", staging.load_mapping(ROOT / "mapping" / "columns.json")))
+            self.assertIn("password_hash", rev["tables"]["master_field_forces"]["drop"])
 
 
 class ColumnReview(Base):
@@ -405,6 +410,8 @@ class FullRun(Base):
         self.assertEqual((tz["chosen_zone"], tz["vendor_route_days"], tz["route_days_equal"]), ("UTC", 2, 2))
         self.assertTrue(tz["geo_has_route_column"])
         # the tool never decides or switches the zone: it refuses to run without an explicit one
+        os.environ["APSIS_PHASE"] = "2"
+        self.addCleanup(lambda: os.environ.pop("APSIS_PHASE", None))
         for argv in (["run", "--dump-dir", str(self.dump), "--db-role", "apsis_migrator"],
                      ["run", "--dump-dir", str(self.dump), "--db-role", "apsis_migrator", "--source-tz", "UTC", "--dsn", "dbname=x password=secret"]):
             with self.assertRaises(SystemExit) as cm:
@@ -465,6 +472,29 @@ class FullRun(Base):
         self.assertEqual(self.owner.scalar("SELECT count(*) FROM information_schema.tables WHERE table_schema='apsis_stage'"), "0")
         rid2 = runner.start_run(self.db, "UTC", False)          # a later run still works: control rows say verified, nothing to re-stage
         runner.stage_all(self.db, self.dump, self.mapping, self.review, rid2, log=lambda m: None)
+
+    def test_t_only_two_time_zones_are_accepted(self):
+        for tz in ("BST", "UTC+6", "Asia/Kolkata", "utc", ""):
+            with self.assertRaises(ValueError):
+                runner.start_run(self.db, tz, False)
+        runner.start_run(self.db, "Asia/Dhaka", False)
+
+    def test_u_a_passing_report_is_invalidated_by_a_later_run_a_reset_or_a_rollback(self):
+        rid = self.full_run()
+        so = Path(self.tmp.name) / "signoff2.json"
+        so.write_text(json.dumps(dict({f"q{n}": "waived" for n in range(21, 34)}, signed_by="owner")))
+        self.assertTrue(self.recon(rid)["ok"])
+        runner.start_run(self.db, "UTC", False)                      # a later run exists: the earlier report no longer describes the current state
+        with self.assertRaises(DbError):
+            runner.cleanup(self.db, so)
+        rid2 = int(self.db.scalar("SELECT max(id) FROM apsis_ctl.run"))
+        self.assertTrue(self.recon(rid2)["ok"])                      # a fresh reconciliation of the current state is accepted
+        runner.reset_transform(self.db, self.mapping)                # a reset changes the checkpoints: the report is stale again
+        with self.assertRaises(DbError):
+            runner.cleanup(self.db, so)
+        self.owner.run("SELECT apsis_hist.reset_history()")          # a rollback removes the report altogether
+        with self.assertRaises(DbError):
+            runner.cleanup(self.db, so)
 
     def test_p_a_run_that_covered_only_some_tables_cannot_be_signed(self):
         rid = runner.start_run(self.db, "UTC", False, note="only=master_sku")

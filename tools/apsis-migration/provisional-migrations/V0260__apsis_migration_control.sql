@@ -97,6 +97,7 @@ CREATE TABLE apsis_ctl.report (
   run_id  bigint NOT NULL REFERENCES apsis_ctl.run(id),
   name    text NOT NULL,
   value   jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (run_id, name)
 );
 

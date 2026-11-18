@@ -1,6 +1,7 @@
 # Apsis history migration: design and status (lane M-APSIS1)
 
 ## Handover (read first)
+- **PHASE 1 IS CURRENT (section 0): preserve + profile only.** Everything else in this file is the parked phase-2 design. After the lead's third review (610d46d45) the plan changed: the profiler, the loud refusals, the time-zone allow-list and the report-currency check for cleanup were built; the rest of the third review's blocking points are parked as the phase-2 acceptance list (section 0).
 - Lane: M-APSIS1, branch `lane/apsis-migration` (from the integration branch `claude/wonderful-thompson-k6ejnf`). Started 2026-11-18.
 - **The dump has never been seen** by this lane and never will be: it is not in this container, the repository, the test account, CI or any log. Everything here is built blind from `docs/reference/apsis-db-inventory-2026-11.md` and is made to adapt to the real column names when it runs inside the final account (the alias file in `tools/apsis-migration/mapping/`).
 - Push 1 (this file): the design. Push 2: `tools/apsis-migration/` (loader, transformation SQL, control table, reconciliation, dry run, synthetic tests, provisional migrations). Push 3: `docs/runbooks/apsis-history-migration.md` and `docs/requests/apsis-dump-landing.md`.
@@ -9,7 +10,19 @@
 - **Fix round 1 (lead review of 8a637747, 2026-11-18):** ten items, see section 10 (one line each). Sections 4-8 and 10 and the new section 11 (opening balances) were rewritten; sections 1-3 were patched.
 - **Fix round 2 (lead re-review of df219237):** eight items, section 10b. New: scoped reader role `hist_ro` (`docs/requests/apsis-history-reader.md`), expected-list coverage, mapping coverage and zero-money gates, time-zone evidence instead of a gate, raw archive of every non-typed table with `extra` on sales, owner sign-off before the staging copy or the dump is deleted, vendor-side code collisions, a rejects table, rollback that resets checkpoints.
 
-## 1. Principles
+## 0. Phase plan (lead ruling 2026-11-18, D-OWNER-APSIS-FTP-01): PRESERVE + PROFILE first
+Three review rounds of designing the transform against a dump nobody has seen kept producing holes of one kind: **guesses about vendor columns**. The owner decided that the dump is copied as-is into the final account's private storage and that its **structure** (table and column names, types, counts; never rows) may be used, also to find parts of the product that are missing. So:
+
+**Phase 1 (now): preserve and profile only.**
+- `apsis-migration.py profile` reads the dump files and writes four files **outside the repository** (it refuses an output directory inside it): `apsis-profile.json` + `.md` (full) and `apsis-profile.sanitised.json` + `.md`. Per table: name, engine, declared charset, row count, column names and declared types, primary key and indexes (incl. foreign keys). Per column: null share, distinct count (capped, memory-bound), min/max length, min/max **value** for numeric and date columns (full file only; withheld for phone/NID/counter-like long digit strings), a **shape histogram** (empty, datetime-like, date-like, time-like, uuid-like, hash-like, e-mail-like, url-like, phone-like, digits-only, decimal, bengali, bengali-latin-mixed, latin-text, alnum-code, other), hour-of-day histograms for datetime columns, and a **value list only** for a column with fewer than 30 distinct values that are all short codes (letters, digits, underscore) whose column name is not personal- or credential-looking (Capitalised words only when the column name says status/type/tier/...). Reference checks from a small mapping (`mapping/profile_refs.json`): the share of fact keys found in a master key column, exact and after the normalisation rule. **No row is ever printed or written.** The sanitised rendering has no value ranges and is the one that may be committed after the lead reviews it.
+- The reader **refuses loudly** (non-zero exit, table named by its validated file stem, no row content) on every shape it cannot read faithfully: `REPLACE INTO`, `INSERT` with a column list, an `INSERT` statement that does not end on its line (row-spanning), a data-only file with no `CREATE TABLE` (mydumper layout), split/compressed parts (`.zst .bz2 .xz .zip`, `-schema.sql`, `.00000.sql`), non-UTF-8 text (strict; `--charset` only by the owner's decision, mojibake hints reported). Memory: statements are parsed lazily; distinct sets are capped; a line over 256 MB is refused.
+- **No transform, no reconciliation, no cleanup, no deletion** in phase 1: every command except `profile` refuses unless `APSIS_PHASE=2` is set, which only the lead enables.
+- Runbook for phase 1: copy the dump as-is to private storage (lane infra-final's landing wrapper), run `profile` in the final account, hand the two full files to the owner and the sanitised pair to the lead (`docs/runbooks/apsis-history-migration.md`, "Phase 1").
+- Tests: `tests/test_profiler.py` (16, no database): structure, statistics, shapes, hours, caps, reference shares, "no value ever leaves except enum-like codes" (a scan of all four output files for synthetic names, phones, e-mails, Bangla text, hashes, free text), every refused shape, hostile names, output directory inside the repository, phase gate.
+
+**Phase 2 (parked, after the real profile exists and the owner has answered what it leaves): the transform.** Everything in sections 1-11 below is the **parked phase-2 design and code**; it contains guesses about vendor columns and must be re-derived from the real profile. Its acceptance list is the lead's seven blocking points of the third review plus: (1) `--source-tz` is validated against an allow-list (done: UTC, Asia/Dhaka, in code and tested) and recorded; (2) cleanup is tied to a reconciliation of the CURRENT run state (done and tested: invalidated by any later run, reset or rollback); (3) a SKU that resolves to a column but comes out NULL must not turn every line into a zero sale, and the match-share gates must not divide by zero (open); (4) status, void and return columns are mapped explicitly or the run stops; `deleted` is not silently `absent_ok` (open); (5) every skipped or rejected row is kept in a rejects archive (open: today only rejected rows are counted, skipped rows are not stored); (6) every reviewed non-personal column is kept, including those of the geo, attendance and summary tables (open: only sales has `extra`); (7) Brand User scope (own brands only) in the history reader contract (open; the seven portal levels of docs/34 must all be covered: Super Admin, Admins, National User, Brand User, Wing Manager, DMO, TSO).
+
+## 1. Principles (parked phase-2 design)
 1. The migration runs only inside the final Azure account, as a Container Apps job next to the private PostgreSQL, and reports only counts and checksums.
 2. Re-runnable by construction: every target row has a deterministic key (UUID v5 of namespace + vendor table + vendor key); every fact chunk is deleted by chunk key and re-inserted in one transaction (masters are matched, never created); running twice changes nothing.
 3. Restartable: per-table, per-chunk checkpoints in a control table; a killed run resumes at the first unverified chunk.
@@ -180,38 +193,40 @@ The live system starts on cutover day with its own tables empty of history; hist
 **Rule until answered:** nothing is loaded into `app.due_ledger`, `app.loyalty_ledger`, `app.stock_movement` or any target table by this tool. The reviewed columns of every table are kept in the raw archive (and of every sales line in `sales_line.extra`), so the sources of these balances survive the deletion of the dump **unless the column review dropped them**; the staging copy and the dump are deleted only after the owner's sign-off file lists Q21-Q33 as answered or waived.
 
 ## 12. All owner questions in one place (assumption holds until answered)
-| Q | One line | What blocks on it |
-|---|---|---|
-| Q1 | Dump format, compression, one file or many | nothing blocks the build; the first real run |
-| Q2 | Character set of the dump (latin1 holding UTF-8 Bangla?) | `--charset`; a wrong guess corrupts Bangla names in the raw archive |
-| Q3 | MySQL version (5.7 or 8.0) | only dump syntax details |
-| Q4 | Time zone of the stored timestamps (the dry run's evidence; the owner signs) | `--source-tz`; every business date and month |
-| Q5 | Soft-delete columns | the `vendor_deleted` flag on sales |
-| Q6 / Q20 | Which tables or columns are credentials, tokens, OTPs, device data, personal data (the reviewed column list) | the first real run (a table with an unclassified column is refused) |
-| Q7 | Primary keys of the 26 tables | a table without one is keyed by the whole row |
-| Q8 | How a zero sale is represented | the `is_zero_sale` flag |
-| Q9 | Vendor quantity unit (base or pack); float money columns | `--qty-unit`; exact money |
-| Q10 | Are inactive rows the superset (980k outlets vs 737k)? | the match-share thresholds |
-| Q11 | Do sales rows carry memo numbers? | the memo-number gate and continuity (Q26) |
-| Q12 | Photos or blobs in the 26 tables | assumed none |
-| Q13 | Is `live_geo_data_by_outlets` one row per outlet per day or a point stream | sizing |
-| Q14 | Real duplicate rows (same outlet/SKU/day) | collapsed duplicates are reported |
-| Q15 | Archive inactive outlets/routes/field force (assumed yes, by code only) | the stub table |
-| Q16 | History/live boundary date (global `history_until`; per wave?) | `dw.v_sales_with_history` |
-| Q17 | Primary key of the sales table; are identical real rows possible | the sign-off (the report fails until accepted) |
-| Q18 | Exact `count(*)` row counts (not estimates) and any vendor-side monthly totals | the vendor-count gate; a money gate against the vendor |
-| Q19 | Do fact tables reference masters by code or by id | already supported either way |
-| Q21 | Where are dues kept; as of which date; who signs | opening dues (section 11) |
-| Q22 | Are points balances stored or derived; programmes; expiry | opening points |
-| Q23 | Cutover mid-month or month start; month-to-date sales | target achievement |
-| Q24 | Stock issue per rep per day; opening book | opening stock |
-| Q25 | Which date's route mapping is current | assignments |
-| Q26 | Continue vendor memo numbers or restart with a prefix | memo numbering |
-| Q27 | Past-month targets live or reports only | targets |
-| Q28 | Gift selections/redemptions pending at cutover | gift screens |
-| Q29 | Cash collected, not yet deposited | collections |
-| Q30 | Open indents/orders (AMO) | AMO screens |
-| Q31 | Outlet credit limits | credit checks |
-| Q32 | Returns and damages in transit | stock |
-| Q33 | KPI / Sales Journey look-back before cutover | SR KPI screens |
+| Q | One line | What blocks on it | Answered by the profile? |
+|---|---|---|---|
+| Q1 | Dump format, compression, one file or many | nothing blocks the build; the first real run | profile answers (it refuses what it cannot read) |
+| Q2 | Character set of the dump (latin1 holding UTF-8 Bangla?) | `--charset`; a wrong guess corrupts Bangla names in the raw archive | profile reports declared charset, undecodable rows, mojibake hints; the owner confirms |
+| Q3 | MySQL version (5.7 or 8.0) | only dump syntax details | owner / laptop (dump header) |
+| Q4 | Time zone of the stored timestamps (the dry run's evidence; the owner signs) | `--source-tz`; every business date and month | profile gives hour-of-day histograms and date ranges; the owner signs |
+| Q5 | Soft-delete columns | the `vendor_deleted` flag on sales | profile answers (soft-delete columns, their types and enum values) |
+| Q6 / Q20 | Which tables or columns are credentials, tokens, OTPs, device data, personal data (the reviewed column list) | the first real run (a table with an unclassified column is refused) | profile answers (names, hash/e-mail/phone shapes); a person reviews |
+| Q7 | Primary keys of the 26 tables | a table without one is keyed by the whole row | profile answers |
+| Q8 | How a zero sale is represented | the `is_zero_sale` flag | profile answers largely (ranges and enum lists) |
+| Q9 | Vendor quantity unit (base or pack); float money columns | `--qty-unit`; exact money | profile shows column types and ranges; the owner decides the unit |
+| Q10 | Are inactive rows the superset (980k outlets vs 737k)? | the match-share thresholds | profile answers (counts, status enums) |
+| Q11 | Do sales rows carry memo numbers? | the memo-number gate and continuity (Q26) | profile answers (column names and shapes) |
+| Q12 | Photos or blobs in the 26 tables | assumed none | profile answers (blob types) |
+| Q13 | Is `live_geo_data_by_outlets` one row per outlet per day or a point stream | sizing | profile answers partly (counts, distincts) |
+| Q14 | Real duplicate rows (same outlet/SKU/day) | collapsed duplicates are reported | profile answers partly (distinct against rows, keys) |
+| Q15 | Archive inactive outlets/routes/field force (assumed yes, by code only) | the stub table | owner |
+| Q16 | History/live boundary date (global `history_until`; per wave?) | `dw.v_sales_with_history` | owner |
+| Q17 | Primary key of the sales table; are identical real rows possible | the sign-off (the report fails until accepted) | profile answers (primary key); the owner decides about identical rows |
+| Q18 | Exact `count(*)` row counts (not estimates) and any vendor-side monthly totals | the vendor-count gate; a money gate against the vendor | profile gives exact counts from the dump; the owner confirms the vendor's own figures |
+| Q19 | Do fact tables reference masters by code or by id | already supported either way | profile answers (reference checks) |
+| Q21 | Where are dues kept; as of which date; who signs | opening dues (section 11) | profile shows which tables/columns could carry it; the owner decides |
+| Q22 | Are points balances stored or derived; programmes; expiry | opening points | same |
+| Q23 | Cutover mid-month or month start; month-to-date sales | target achievement | owner |
+| Q24 | Stock issue per rep per day; opening book | opening stock | profile shows whether stock tables/columns exist; the owner decides |
+| Q25 | Which date's route mapping is current | assignments | owner |
+| Q26 | Continue vendor memo numbers or restart with a prefix | memo numbering | profile shows memo-number columns; the owner decides |
+| Q27 | Past-month targets live or reports only | targets | owner |
+| Q28 | Gift selections/redemptions pending at cutover | gift screens | profile shows candidates; the owner decides |
+| Q29 | Cash collected, not yet deposited | collections | same |
+| Q30 | Open indents/orders (AMO) | AMO screens | same |
+| Q31 | Outlet credit limits | credit checks | same |
+| Q32 | Returns and damages in transit | stock | same |
+| Q33 | KPI / Sales Journey look-back before cutover | SR KPI screens | same |
 Also needed from the owner: the schema-only `CREATE TABLE` export (lets the mapping and the column review be written now) and whether the vendor's column names may be committed to the public repository.
+
+The profile also lists tables and columns the product does not yet have a home for (the lead reads it for missing parts of the product).

@@ -160,7 +160,7 @@ DECLARE r record;
 BEGIN
   TRUNCATE apsis_hist.sales_line, apsis_hist.visit_geo, apsis_hist.attendance, apsis_hist.raw_archive, apsis_hist.route_day_vendor,
            apsis_hist.outlet_stub, apsis_hist.outlet_route, apsis_hist.reject;
-  TRUNCATE apsis_ctl.chunk, apsis_map.id_map, apsis_map.outlet_geo, apsis_map.route_geo, apsis_map.sku_map, apsis_map.user_map, apsis_map.code_ambiguous;
+  TRUNCATE apsis_ctl.chunk, apsis_ctl.report, apsis_map.id_map, apsis_map.outlet_geo, apsis_map.route_geo, apsis_map.sku_map, apsis_map.user_map, apsis_map.code_ambiguous;
   FOR r IN SELECT quote_ident(table_name) AS n FROM information_schema.views WHERE table_schema = 'apsis_stage' LOOP EXECUTE 'DROP VIEW IF EXISTS apsis_stage.' || r.n || ' CASCADE'; END LOOP;
   FOR r IN SELECT quote_ident(table_name) AS n FROM information_schema.tables WHERE table_schema = 'apsis_stage' AND table_type = 'BASE TABLE' LOOP EXECUTE 'DROP TABLE IF EXISTS apsis_stage.' || r.n || ' CASCADE'; END LOOP;
 END $$;
