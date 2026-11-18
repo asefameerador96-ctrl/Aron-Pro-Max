@@ -6,7 +6,9 @@
 # or log excerpts; never a secret, connection string or Key Vault value.
 # This script changes nothing in Azure: it only lists, shows, queries and downloads logs.
 #
-# Usage: AZURE_RESOURCE_GROUP=rg-aron-dev infra/scripts/diagnose.sh <since-utc> <until-utc> [job-prefix] [worker-app] [api-app]
+# Usage: AZURE_RESOURCE_GROUP=rg-aron-dev infra/scripts/diagnose.sh [--include-messages] <since-utc> <until-utc> [job-prefix] [worker-app] [api-app]
+# --include-messages (PRIVATE TERMINAL ONLY): also print log message text behind the redactor and a strict line check. The script REFUSES it when GITHUB_ACTIONS is set:
+# the workflow has no such input, because names, OTPs and free text cannot be reliably pattern-matched out of a message, and the job log of this repository is public.
 set -uo pipefail
 
 # --- redaction (D-OPS-DIAGNOSE-API-01/-02/-03). The repository is public and so are its job logs: EVERY line this script prints goes through redact(), and
@@ -26,7 +28,7 @@ set -uo pipefail
 # sms/verification word go (durations and counts with a unit stay). Every pattern has a BOUNDED prefix, so an unbroken 100 KB run is linear (tested). The UUID tag
 # uses a per-run random salt (REDACT_SALT): the same id matches across lines of one run but cannot be followed across runs in public logs.
 read -r -d '' REDACT_PL <<'PERL' || true
-use strict; use warnings; no warnings 'utf8';
+use strict; use warnings; no warnings 'utf8'; use utf8;   # the source holds Bangla words: character semantics
 use Encode qw(decode encode FB_DEFAULT);
 use Digest::SHA qw(sha256_hex);
 $| = 1; binmode(STDIN); binmode(STDOUT);
@@ -44,7 +46,8 @@ my $QE = qr/(?:\\?["'])?/;   # the closing quote of a key, escaped or not
 my $KEYLONG = qr/(?:token|secret|password|passwd|passcode|credential|authorization|apikey|api_key|accesskey|access_key|accountkey|account_key|privatekey|private_key|instrumentationkey|sessionid|session_id|cookie|connection_?string|hmac|signature|nonce|salt|(?:sms|verif(?:y|ication)|otp|auth|login|reset|confirm(?:ation)?|security)_?code)[A-Za-z0-9_.\-]{0,128}/i;
 my $KEYSHORT = qr/(?<![A-Za-z0-9])(?:pass|pwd|pin|otp|key|sig|sas|session|auth)(?:[_.\-][A-Za-z0-9]{1,128}){0,8}/i;
 my $KEYCAMEL = qr/(?<=[a-z0-9])(?:Key|Pin|Otp|Pass|Sig|Sas|Session)[A-Za-z0-9]{0,128}|(?<![A-Za-z0-9])(?:key|pin|otp|pass|sig|sas|session|auth)[A-Z][A-Za-z0-9]{0,128}/;
-my $SEPK = qr/\s{0,40}(?:[=:]|\t)\s{0,40}/;   # between a key and its value: = or : or a tab, with up to 40 spaces or tabs around
+my $SEPK_T = qr/\s{0,40}(?:[=:]|\t)\s{0,40}/;   # between a key and its value: = or : or a tab (a config-style line "password<TAB>value"), with up to 40 spaces or tabs around
+my $SEPK_N = qr/[ \t]{0,40}[=:][ \t]{0,40}/;     # on a TSV row (two or more tabs) a tab alone is a COLUMN separator, never a key separator; tabs AROUND an explicit = or : still count
 my $KEYTEXT = qr/(?:(?:token|secret|password|passwd|passcode|credential|apikey|api_key|accesskey|access_key|accountkey|account_key|privatekey|private_key|instrumentationkey|sessionid|session_id|connection_?string|hmac|signature|nonce|salt)|(?<![A-Za-z0-9])(?:pass|pwd|pin|otp|key|sig|sas|session|auth)(?![A-Za-z0-9]))/i;
 my $KEYNAME = qr/(?:user_?name|phone|mobile|msisdn|e?mail|full_?name|display_?name|name|outlet_?name|address|device_?id|imei|ip|remote_?addr|client_?ip)/i;
 my $UNIT = qr/(?!\s*(?:ms|s|sec|secs|seconds|bytes|kb|mb|gb|%|rows|items|attempts|times|retries)\b)/i;
@@ -67,6 +70,7 @@ sub scrub {
   my ($l) = @_;
   $l =~ tr/\x{09E6}-\x{09EF}/0-9/; $l =~ tr/\x{0660}-\x{0669}/0-9/; $l =~ tr/\x{06F0}-\x{06F9}/0-9/;
   @keep = ();
+  my $SEPK = (($l =~ tr/\t//) < 2) ? $SEPK_T : $SEPK_N;
   # what the operator needs to follow a request or a release stays readable
   die "selftest" if defined $DIE_ON && length $DIE_ON && index($l, $DIE_ON) >= 0;
   $l =~ s/(?<![A-Za-z0-9_])((?:image|digest|commit|build)(?![A-Za-z0-9_])[^0-9a-fA-F\n]{0,20}(?:sha256[:=])?)([0-9a-f]{40}|[0-9a-f]{64})(?![0-9a-f])/$1 . hold($2)/gie;
@@ -80,6 +84,7 @@ sub scrub {
   # Authorization with ANY scheme (Bearer, Basic, Token, ApiKey, Digest, SharedAccessSignature...): everything after it to the end of the value (an unquoted value: to the end of the line)
   $l =~ s/(\bauthorization["']?\s{0,40}[:=]\s{0,40})(?!["'\\{\[])[^\n]*$/${1}[redacted]/gi;
   $l =~ s/\b(Bearer|Basic)[ =:]+[A-Za-z0-9._~+\/=-]+/$1 [redacted]/gi;
+  $l =~ s/(\b[A-Za-z][A-Za-z0-9+.\-]{1,20}:\/\/)[^\s\/:@"'<>]{0,128}:[^\s\/@"'<>]{1,200}@/${1}[redacted]@/g;
   $l =~ s/(jdbc:|postgres(?:ql)?:\/\/|AccountKey=|SharedAccessSignature=|Endpoint=sb:|Server=|Host=|User ?Id=|Uid=)[^\s",;]+/${1}[redacted]/gi;
   # command-line forms: --password X, --token X, -p X
   $l =~ s/(--?(?:password|passwd|pwd|pass|secret|token|api-?key|access-?key|key)\s{1,40})[^\s]+/${1}[redacted]/gi;
@@ -96,7 +101,8 @@ sub scrub {
   $l =~ s/\b($KEYNAME${QE}$SEPK)$VAL/${1}[redacted]/g;
   $l =~ s/\b(code${QE}\s{0,40}[=:]\s{0,40}(?:\\?["'])?)[0-9]{4,8}\b$UNIT/${1}[redacted]/gi;
   $l =~ s/\b(password|passwd|passcode|pin|otp|secret|token|key)\s+(?:is|was|=|:)\s+(?:"[^"]*"|'[^']*'|<[^>]*>|&lt;.*?&gt;|\S+)/$1 [redacted]/gi;
-  $l =~ s/\b(otp|one[- ]time (?:code|password)|verification code|passcode)\b[^0-9\n]{0,60}[0-9]{4,8}\b$UNIT/$1 [redacted]/gi;
+  $l =~ s/(?<![\w])(otp|one[- ]time (?:code|password)|verification code|passcode|ওটিপি|কোড|পিন|ভেরিফিকেশন|যাচাই)(?![\w])[^0-9\n]{0,60}[0-9]{4,8}\b$UNIT/$1 [redacted]/gi;
+  $l =~ s/\b(code\b[^0-9\n]{0,10})(?<![0-9:.\/\-])[0-9]{4,8}(?![0-9:.\/\-])$UNIT/${1}[code]/gi;
   # personal data and identifiers
   $l =~ s/(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,128}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}/[email]/g;
   $l =~ s/\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/"[uuid:" . substr(sha256_hex($SALT . lc($1 =~ tr|-||dr)), 0, 8) . "]"/gie;
@@ -104,8 +110,8 @@ sub scrub {
   $l =~ s/(?<![0-9a-f:])(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}(?![0-9a-f:])/[ip]/gi;
   $l =~ s/(?<![0-9a-f:])(?:[0-9a-f]{1,4}:){1,7}:(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?(?![0-9a-f:])/[ip]/gi;
   $l =~ s/(?<![0-9.])([0-9]{1,3}(?:\.[0-9]{1,3}){3})(?![0-9.])/do { my $m = $1; ($m eq "0.0.0.0" || $m =~ m|^127\.|) ? $m : "[ip]" }/ge;
-  $l =~ s/\b((?:otp|pin|passcode|one[- ]time|verification|sms)(?: code| password)?\b[^0-9\n]{0,60})(?<![0-9:.\/\-])[0-9]{4,8}(?![0-9:.\/\-])$UNIT/$1\[code]/gi;
-  $l =~ s/(?<![0-9:.\/\-])[0-9]{4,8}(?![0-9:.\/\-])$UNIT([^0-9\n]{0,60}\b(?:otp|pin|passcode|one[- ]time|verification|sms)\b)/[code]$1/gi;
+  $l =~ s/(?<![\w])((?:otp|pin|passcode|one[- ]time|verification|sms|ওটিপি|কোড|পিন|ভেরিফিকেশন|যাচাই)(?: code| password)?(?![\w])[^0-9\n]{0,60})(?<![0-9:.\/\-])[0-9]{4,8}(?![0-9:.\/\-])$UNIT/$1\[code]/gi;
+  $l =~ s/(?<![0-9:.\/\-])[0-9]{4,8}(?![0-9:.\/\-])$UNIT([^0-9\n]{0,60}(?<![\w])(?:otp|pin|passcode|one[- ]time|verification|sms|ওটিপি|কোড|পিন|ভেরিফিকেশন|যাচাই)(?![\w]))/[code]$1/gi;
   $l =~ s/((?<![0-9])(?:\+\s{0,6})?(?:[(\[]?88[)\]]?${SEP}{0,6})?(?:[(\[]?0[)\]]?${SEP}{0,6})?1${SEP}{0,6}[3-9](?:${SEP}{0,6}[0-9]){8}(?![0-9]))/do { my $m = $1; ($m =~ m{(?:19|20)[0-9]{2}[\-\/.][0-9]{2}[\-\/.][0-9]{2}}) ? $m : "[phone]" }/ge;
   $l =~ s/[A-Za-z0-9+\/_-]{40,}={0,2}/[long-token]/g;
   $l =~ s/\x{E000}(\d+)\x{E001}/$keep[$1]/g;
@@ -140,6 +146,14 @@ held_note() {
   if [[ "$a" =~ ^[0-9]+$ && "$b" =~ ^[0-9]+$ ]]; then echo "($a line(s) held back by the secret-word exclusion, $b not held; the list above is capped at the newest 150)"; else echo "(held-back count unavailable)"; fi
 }
 
+# Message mode is an explicit flag, for a private terminal only; it is refused under GitHub Actions (a public job log).
+INCLUDE_MESSAGES=false; _args=()
+for _x in "$@"; do if [ "$_x" = "--include-messages" ]; then INCLUDE_MESSAGES=true; else _args+=("$_x"); fi; done
+set -- "${_args[@]+"${_args[@]}"}"
+if [ "$INCLUDE_MESSAGES" = true ] && [ -n "${GITHUB_ACTIONS:-}" ]; then
+  echo "diagnose: --include-messages is refused under GitHub Actions (the job log of a public repository must not carry message text); run it from a private terminal" >&2; exit 2
+fi
+
 # Test seams (infra/tests/check_infra.py): diagnose.sh --redact [width] and --held-note filter stdin, no Azure, no arguments.
 if [ "${1:-}" = "--redact" ]; then if [ -n "${2:-}" ]; then show "$2"; else redact; fi; exit 0; fi
 if [ "${1:-}" = "--held-note" ]; then held_note; exit 0; fi
@@ -151,11 +165,10 @@ JOB_PREFIX="${3:-caj-aron-dev-migrate}"
 WORKER_APP="${4:-ca-aron-dev-worker}"
 API_APP="${5:-ca-aron-dev-api}"
 # DEFAULT-DENY FOR FREE TEXT (D-OPS-DIAGNOSE-API-06). The job log of this public repository must not carry free text: the redactor below is a net, not the control.
-# The control is the queries: unless include_messages is "true", every query projects only NAMED STRUCTURED COLUMNS (time, level, logger, exception and cause class,
+# The control is the queries: unless the private-terminal flag --include-messages is given, every query projects only NAMED STRUCTURED COLUMNS (time, level, logger, exception and cause class,
 # SQLSTATE, duration in ms, a fixed "kind" label for the known start-up, sweep, pre-flight, Flyway and job-run lines, the platform reason) and never the message or
-# exception text. With include_messages=true the message is added, passes the redactor in STRICT mode (a line that still holds a key-like word followed by a value of
+# exception text. With --include-messages (never in GitHub Actions) the message is added, passes the redactor in STRICT mode (a line that still holds a key-like word followed by a value of
 # 6+ characters with letters and digits is replaced whole by [redacted-line]) and the secret-word exclusion; messages are OFF by default in a public log.
-INCLUDE_MESSAGES="${6:-false}"
 # Every input is checked against a fixed pattern BEFORE it enters a query or an az argument (nothing here is ever evaluated, but a quote in a value would
 # change a KQL query). The value itself is not echoed back.
 valid() { [[ "$2" =~ $3 ]] || { echo "diagnose: invalid $1 (does not match its fixed pattern)" >&2; exit 2; }; }
@@ -165,7 +178,6 @@ valid until "$UNTIL" '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
 valid job-prefix "$JOB_PREFIX" '^[a-z0-9][a-z0-9-]{0,62}$'
 valid worker-app "$WORKER_APP" '^[a-z0-9][a-z0-9-]{0,62}$'
 valid api-app "$API_APP" '^[a-z0-9][a-z0-9-]{0,62}$'
-valid include-messages "$INCLUDE_MESSAGES" '^(true|false)$'
 # showm: the pipe for anything that carries message text; strict only in message mode.
 showm() { if [ "$INCLUDE_MESSAGES" = true ]; then REDACT_STRICT=1 show "$1"; else show "$1"; fi; }
 # Everything below, including text this script prints itself, passes the net once more on the way out (the per-query redact-then-cut above is what
@@ -174,7 +186,7 @@ exec > >(redact)
 section() { printf '\n== %s\n' "$*"; }
 try() { "$@" 2>&1 || echo "(command failed: $*)"; }
 
-echo "diagnose: include_messages=$INCLUDE_MESSAGES (message and exception text is withheld unless this is true)"
+echo "diagnose: include_messages=$INCLUDE_MESSAGES (message and exception text is withheld; message mode exists only as the private-terminal flag --include-messages)"
 section "az version"
 az version -o tsv 2>/dev/null | head -1 || true
 section "containerapp start/stop commands available in this az"
@@ -187,7 +199,7 @@ if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
   try az postgres flexible-server show -g "$RG" -n "$server" --query '{state:state, version:version, sku:sku.name, tier:sku.tier, storageGb:storage.storageSizeGb, ha:highAvailability.mode, haState:highAvailability.state, maintenance:maintenanceWindow.customWindow}' -o json
   sid="$(az postgres flexible-server show -g "$RG" -n "$server" --query id -o tsv 2>/dev/null || true)"
   section "PostgreSQL diagnostic settings (which log categories stream to Log Analytics)"
-  if [ -n "$sid" ]; then try az monitor diagnostic-settings list --resource "$sid" -o json | head -60; fi
+  if [ -n "$sid" ]; then try az monitor diagnostic-settings list --resource "$sid" --query "(value || @)[].logs[].[category, enabled]" -o tsv | head -60; fi
   section "PostgreSQL parameters that bound a migration"
   for p in work_mem shared_buffers maintenance_work_mem temp_buffers statement_timeout idle_in_transaction_session_timeout lock_timeout log_min_duration_statement logfiles.download_enable logfiles.retention_days max_connections; do
     v="$(az postgres flexible-server parameter show -g "$RG" -s "$server" -n "$p" --query value -o tsv 2>/dev/null || echo '?')"
@@ -245,7 +257,8 @@ KQL_CONSOLE="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleL
      | extend fm = coalesce(nullif(tostring(j.formattedMessage), ''), nullif(tostring(j.message), ''), nullif(tostring(j.msg), ''), '(no message)')
      | extend st = tostring(coalesce(j.stack_trace, j.exception, j.throwable))
      | extend msg = replace_regex(iff(isobj, fm, line), @'[\r\n\t]+', ' ')
-     | extend exc = extract(@'^\s*([A-Za-z_][A-Za-z0-9_.]{2,160})', 1, st), cause = extract(@'Caused by: ([A-Za-z_][A-Za-z0-9_.]{2,160})', 1, st)
+     | extend exc = coalesce(nullif(tostring(j.throwable.className), ''), nullif(tostring(j.exception.className), ''), extract(@'^\s*([A-Za-z_][A-Za-z0-9_.]{2,160})', 1, st)),
+              cause = coalesce(nullif(tostring(j.throwable.cause.className), ''), nullif(tostring(j.exception.cause.className), ''), extract(@'Caused by: ([A-Za-z_][A-Za-z0-9_.]{2,160})', 1, st))
      | extend sqlstate = coalesce(extract(@'(?i)sql ?state[ =:]+([0-9A-Z]{5})', 1, strcat(msg, ' ', st)), ''), ms = coalesce(extract(@'([0-9]{1,9}) ?ms', 1, msg), '')
      | extend script = coalesce(extract(@'Migration (V[0-9]+__[A-Za-z0-9_]+)', 1, msg), '')
      | extend kind = case(
@@ -253,7 +266,13 @@ KQL_CONSOLE="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleL
          msg startswith 'pre-flight', 'pre-flight line',
          msg startswith 'waiting-item sweep enabled', strcat('sweep enabled, interval ', coalesce(extract(@'interval ([0-9]+) s', 1, msg), '?'), ' s, batch ', coalesce(extract(@'batch ([0-9]+)', 1, msg), '?')),
          msg startswith 'waiting-item sweep disabled by', strcat('sweep disabled by ', coalesce(extract(@'disabled by (ARON_WAITING_SWEEP=off|cfg[.]sync[.]waiting_sweep_enabled)', 1, msg), '?')),
-         msg matches regex @'^(Migrating schema|Successfully applied|Current version of schema|Schema .* is up to date|Creating Schema History)', strcat('flyway: ', coalesce(extract(@'^([A-Za-z ]+)', 1, msg), ''), coalesce(extract(@'version .?([0-9.]+)', 1, msg), extract(@'applied ([0-9]+) migration', 1, msg), '')),
+         msg matches regex @'^Current version of schema', strcat('flyway current version ', coalesce(extract(@'^Current version of schema [^:]*: v?([0-9][0-9.]*)', 1, msg), '?')),
+         msg matches regex @'^Migrating schema', strcat('flyway migrating to ', coalesce(extract(@'^Migrating schema .* to version [\x22]?v?([0-9][0-9.]*)', 1, msg), '?')),
+         msg matches regex @'^Successfully applied', strcat('flyway applied ', coalesce(extract(@'^Successfully applied ([0-9]+) migration', 1, msg), '?'), ' now at ', coalesce(extract(@'now at version v?([0-9][0-9.]*)', 1, msg), '?')),
+         msg matches regex @'^Schema .* is up to date', 'flyway up to date',
+         msg matches regex @'^Successfully validated', strcat('flyway validated ', coalesce(extract(@'^Successfully validated ([0-9]+) migration', 1, msg), '?')),
+         msg matches regex @'^Creating Schema History', 'flyway created schema history',
+         msg matches regex @'^migrate: [0-9]+ migration', strcat('migrate: ', coalesce(extract(@'^migrate: ([0-9]+) migration', 1, msg), '?'), ' applied'),
          msg matches regex @'(?i)(started|listening|responding at)', 'startup line',
          msg matches regex @'(?i)(bundle|lapsed|aggregat|geo re-check|retention|risk signal|route-day)', 'job-run line',
          msg matches regex @'(?i)(error|failed|exception)', 'error line',
@@ -303,12 +322,13 @@ if [ -n "${ws:-}" ]; then
      | extend who = coalesce(column_ifexists('ContainerAppName_s', ''), column_ifexists('ContainerAppName', ''), column_ifexists('JobName_s', ''), column_ifexists('JobName', '')),
               typ = coalesce(column_ifexists('Type_s', ''), column_ifexists('Type', '')),
               reason = coalesce(column_ifexists('Reason_s', ''), column_ifexists('Reason', '')),
-              txt = replace_regex(tostring(coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', ''))), @'[\r\n\t]+', ' ')"
+              txt = replace_regex(tostring(coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', ''))), @'[\r\n\t]+', ' ')
+     | extend exitcode = coalesce(extract(@'(?i)exit ?code:? ?(-?[0-9]{1,3})', 1, txt), '')"
   if [ "$INCLUDE_MESSAGES" = true ]; then
     la "$sysq | where * has '$JOB_PREFIX' or * has '$WORKER_APP' | order by TimeGenerated asc | project TimeGenerated, who, typ, reason, txt | take 200" "[].[TimeGenerated, who, typ, reason, txt]" 300
   else
-    echo "(columns: time, resource, type, reason; the platform message text is not printed)"
-    la "$sysq | where * has '$JOB_PREFIX' or * has '$WORKER_APP' | order by TimeGenerated asc | project TimeGenerated, who, typ, reason | take 200" "[].[TimeGenerated, who, typ, reason]" 200
+    echo "(columns: time, resource, type, reason, exit code; the platform message text is not printed)"
+    la "$sysq | where * has '$JOB_PREFIX' or * has '$WORKER_APP' | order by TimeGenerated asc | project TimeGenerated, who, typ, reason, exitcode | take 200" "[].[TimeGenerated, who, typ, reason, exitcode]" 200
   fi
 
   section "Log Analytics: PostgreSQL server log (AzureDiagnostics, PostgreSQLLogs) in the window, severity lines only"
@@ -322,11 +342,11 @@ if [ -n "${ws:-}" ]; then
      | where msg matches regex '-(ERROR|FATAL|PANIC):' or (msg matches regex '-LOG:' and msg matches regex '(?i)terminat|out of memory|database system|server process|checkpoint|could not|disconnection|reset by peer')
      | where not(msg matches regex @'-LOG:\s+(execute|statement|parse|bind)')
      | where msg !contains 'duration:' and msg !contains 'statement:' and msg !contains 'CONTEXT:' and msg !contains 'QUERY:' and msg !contains 'DETAIL:' and msg !contains 'parameters:'
-     | extend sev = extract(@'-(ERROR|FATAL|PANIC|LOG):', 1, msg), head = extract(@'-(?:ERROR|FATAL|PANIC|LOG):[ ]*([^\x22\x27:(]{0,80})', 1, msg)"
+     | extend sev = extract(@'-(ERROR|FATAL|PANIC|LOG):', 1, msg), head = iff(sev in ('LOG', 'ERROR', 'FATAL', 'PANIC'), coalesce(extract(@'(database system is ready to accept connections|database system was shut down|terminating connection due to [a-z ]{3,40}|out of memory)', 1, msg), extract(@'-(?:ERROR|FATAL|PANIC|LOG):[ ]*([A-Za-z][A-Za-z ]{2,60}):', 1, msg), '[text]'), '[text]')"
   if [ "$INCLUDE_MESSAGES" = true ]; then
     la "$pgq | order by TimeGenerated asc | project TimeGenerated, sev, msg = replace_regex(msg, @'[\r\n\t]+', ' ') | take 300" "[].[TimeGenerated, sev, msg]" 300
   else
-    echo "(columns: time, severity, the first words of the message)"
+    echo "(columns: time, severity, a fixed phrase or the words before the first colon, else [text])"
     la "$pgq | order by TimeGenerated asc | project TimeGenerated, sev, head | take 300" "[].[TimeGenerated, sev, head]" 200
   fi
 
@@ -337,8 +357,8 @@ if [ -n "${ws:-}" ]; then
   if [ "$INCLUDE_MESSAGES" = true ]; then
     la "$sysq | where who == '$API_APP' | top 150 by TimeGenerated desc | project TimeGenerated, typ, reason, txt" "[].[TimeGenerated, typ, reason, txt]" 300
   else
-    echo "(columns: time, type, reason; the platform message text is not printed)"
-    la "$sysq | where who == '$API_APP' | top 150 by TimeGenerated desc | project TimeGenerated, typ, reason" "[].[TimeGenerated, typ, reason]" 200
+    echo "(columns: time, type, reason, exit code; the platform message text is not printed)"
+    la "$sysq | where who == '$API_APP' | top 150 by TimeGenerated desc | project TimeGenerated, typ, reason, exitcode" "[].[TimeGenerated, typ, reason, exitcode]" 200
   fi
 
   section "Log Analytics: migrate job pre-flight lines ($JOB_PREFIX*) in the window"

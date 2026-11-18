@@ -782,12 +782,15 @@ class Workflows(unittest.TestCase):
         sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
         w = (WORKFLOWS / "ops-diagnose.yml").read_text(encoding="utf-8")
         self.assertIn('API_APP="${5:-ca-aron-dev-api}"', sh)
-        self.assertIn('INCLUDE_MESSAGES="${6:-false}"', sh)
-        self.assertIn('"$JOB_PREFIX" "$WORKER_APP" "$API_APP" "$INCLUDE_MESSAGES"', w)
+        self.assertIn('INCLUDE_MESSAGES=false; _args=()', sh)
+        self.assertIn('"$JOB_PREFIX" "$WORKER_APP" "$API_APP" | tee', w)
         self.assertIn("API_APP: ${{ inputs.api_app }}", w)
-        self.assertIn("include_messages:", w); self.assertIn("default: false", w[w.index("include_messages:"):])
-        self.assertIn("INCLUDE_MESSAGES: ${{ inputs.include_messages }}", w)
-        self.assertIn('valid include-messages "$INCLUDE_MESSAGES" \'^(true|false)$\'', sh)
+        # Round 6 (lead ruling A): the workflow has NO message input at all; message mode is a flag of the script for a private terminal, refused under GITHUB_ACTIONS.
+        for needle in ("include_messages", "include-messages", "INCLUDE_MESSAGES", "inputs.include"):
+            self.assertNotIn(needle, w.split("name: ops-diagnose")[1], f"the workflow must not carry {needle}")
+        self.assertIn('[ "$_x" = "--include-messages" ]', sh)
+        self.assertIn('[ -n "${GITHUB_ACTIONS:-}" ]', sh)
+        self.assertNotIn('INCLUDE_MESSAGES="${', sh, "message mode is not an argument or an environment value")
         self.assertIn('console_section "$API_APP" "$API_APP"', sh)
         cs = sh[sh.index("console_section() {"):sh.index('if [ -n "${ws:-}" ]; then\n  section "Log Analytics: console log of job executions')]
         self.assertIn("where not(lg startswith 'aron.request')", cs, "request lines cannot push start-up lines and errors out of the cap")
@@ -807,10 +810,11 @@ class Workflows(unittest.TestCase):
         self.assertIn("replace_regex(", c, "one row is one line")
         self.assertIn("waiting-item sweep enabled", c, "the sweep start-up line has a fixed kind label")
         self.assertIn("pre-flight: nothing to do", c)
-        self.assertIn("exc = extract(", c); self.assertIn("cause = extract(", c); self.assertIn("sqlstate = ", c)
+        self.assertIn("exc = coalesce(nullif(tostring(j.throwable.className)", c, "the exception class comes from the structured throwable first")
+        self.assertIn("cause = coalesce(nullif(tostring(j.throwable.cause.className)", c); self.assertIn("sqlstate = ", c)
         # The other sections: system log, job console, PG log, pre-flight: structured by default, text only with include_messages.
-        for needle in ("project TimeGenerated, who, typ, reason | take 200", "project TimeGenerated, exec, lvl, kind, sqlstate, script | take 400",
-                       "project TimeGenerated, sev, head | take 300", "project TimeGenerated, exec, kind\"", "project TimeGenerated, typ, reason\""):
+        for needle in ("project TimeGenerated, who, typ, reason, exitcode | take 200", "project TimeGenerated, exec, lvl, kind, sqlstate, script | take 400",
+                       "project TimeGenerated, sev, head | take 300", "project TimeGenerated, exec, kind\"", "project TimeGenerated, typ, reason, exitcode\""):
             self.assertIn(needle, sh, needle)
         pre = sh[sh.index('section "Log Analytics: migrate job pre-flight lines'):sh.index('section "worker app $WORKER_APP"')]
         self.assertIn("kind startswith 'pre-flight'", pre)
@@ -827,7 +831,7 @@ class Workflows(unittest.TestCase):
         self.assertNotIn("cut -c", code, "cut works on bytes: cut by characters inside the filter (show N)")
         self.assertNotIn("substr($0", code, "no byte-based awk cut")
         self.assertIn("exec > >(redact)", sh, "everything printed, the older sections too, passes the net")
-        for name in ("resource-group", "since", "until", "job-prefix", "worker-app", "api-app", "include-messages"):
+        for name in ("resource-group", "since", "until", "job-prefix", "worker-app", "api-app"):
             self.assertIn('valid ' + name + ' ', sh, name)
         self.assertLess(w.index("Validate the inputs"), w.index("azure/login@"), "inputs are validated before the Azure login")
         self.assertIn("set -o pipefail", w)
@@ -854,14 +858,14 @@ exit 0
             for mode in ("false", "true"):
                 open(log, "w").close()
                 env = {"PATH": d + ":/usr/bin:/bin", "STUB_LOG": log, "AZURE_RESOURCE_GROUP": "rg-x"}
-                r = subprocess.run(["bash", script, "2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z", "caj-aron-dev-migrate", "ca-aron-dev-worker", "ca-aron-dev-api", mode], capture_output=True, text=True, env=env)
+                flag = ["--include-messages"] if mode == "true" else []
+                r = subprocess.run(["bash", script, *flag, "2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z", "caj-aron-dev-migrate", "ca-aron-dev-worker", "ca-aron-dev-api"], capture_output=True, text=True, env=env)
                 self.assertEqual(0, r.returncode, r.stderr)
                 self.assertTrue(r.stdout.rstrip().endswith("diagnose: done (read-only)"), r.stdout[-200:])
                 self.assertIn(f"include_messages={mode}", r.stdout)
                 self.assertNotIn("01712345678", r.stdout)
                 queries = open(log).read()
                 if mode == "false":
-                    self.assertNotIn(", msg\n", queries); self.assertNotIn("txt", queries.split("replace_regex(tostring")[-1].split("| where")[-1] if False else "")
                     self.assertNotRegex(queries, r"project [^\n|]*\bmsg\b")
                     self.assertNotRegex(queries, r"project [^\n|]*\btxt\b")
                     self.assertNotRegex(queries, r"project [^\n|]*\bline\b")
@@ -869,6 +873,17 @@ exit 0
                     self.assertRegex(queries, r"project TimeGenerated, lvl, lg, exc, cause, sqlstate, ms, kind, msg")
                     self.assertIn("[redacted-line]", r.stdout, "strict mode replaced the line that still holds a key-like word and a mixed value")
                     self.assertIn("unhandled error", r.stdout)
+            # Message mode is refused under GitHub Actions (a public job log), before any query: with GITHUB_ACTIONS set the flag exits 2 and nothing is sent to Azure.
+            open(log, "w").close()
+            env = {"PATH": d + ":/usr/bin:/bin", "STUB_LOG": log, "AZURE_RESOURCE_GROUP": "rg-x", "GITHUB_ACTIONS": "true"}
+            r = subprocess.run(["bash", script, "--include-messages", "2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"], capture_output=True, text=True, env=env)
+            self.assertEqual(2, r.returncode, r.stdout + r.stderr)
+            self.assertIn("refused under GitHub Actions", r.stderr)
+            self.assertEqual("", open(log).read(), "no query was sent")
+            self.assertEqual("", r.stdout.strip(), "nothing was printed")
+            # Without the flag the same environment runs (the default mode is what the workflow uses).
+            r = subprocess.run(["bash", script, "2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"], capture_output=True, text=True, env=env)
+            self.assertEqual(0, r.returncode, r.stderr)
 
     def test_diagnose_redaction_behaviour(self):
         # D-OPS-DIAGNOSE-API-01: pipe sample lines through the real net (diagnose.sh --redact) and assert nothing sensitive survives.
@@ -1088,6 +1103,85 @@ exit 0
             t0 = time.time(); out = run(blob + "\nlast\n", strict=(name == "strict mix")); dt = time.time() - t0
             self.assertLess(dt, 25, f"{name}: {dt:.1f}s")
             self.assertTrue(out.endswith("last\n"), name)
+
+    def test_diagnose_flyway_labels_are_lossless_fixed_words_and_digits(self):
+        # Round 6 (lead ruling B): the migration proof must survive the default mode. The KQL `kind` case is evaluated here in Python on the VERBATIM Flyway and app lines
+        # (quoted in docs/status/usage.md and the train 121 console); each label is fixed words plus extracted digits only, never the description or the schema name.
+        import json, re as _re
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        block = sh[sh.index("| extend kind = case("):sh.index("         '-')\"")]
+        branches = []
+        for line in block.splitlines()[1:]:
+            line = line.strip()
+            m = _re.match(r"^msg (?:startswith '([^']*)'|matches regex @'([^']*)'), (.*),$", line)
+            self.assertTrue(m, f"unparsed branch: {line[:100]}")
+            branches.append((m.group(1), m.group(2), m.group(3)))
+        def label(msg):
+            for starts, rx, val in branches:
+                if (starts is not None and msg.startswith(starts)) or (rx is not None and _re.search(rx, msg)):
+                    if val.startswith("'") and "strcat" not in val:
+                        return val.strip("'")
+                    out = ""
+                    for t in _re.finditer(r"coalesce\(extract\(@'([^']*)', 1, msg\), '([^']*)'\)|tostring\(extract_all\(@'([^']*)', msg\)\)|'([^']*)'", val[len("strcat("):-1]):
+                        if t.group(1) is not None:
+                            mm = _re.search(t.group(1), msg); out += mm.group(1) if mm else t.group(2)
+                        elif t.group(3) is not None:
+                            out += json.dumps(_re.findall(t.group(3), msg), separators=(",", ":"))
+                        else:
+                            out += t.group(4)
+                    return out
+            return "-"
+        cases = {
+            'Current version of schema "public": 0204': "flyway current version 0204",
+            'Migrating schema "public" to version "0205 - geo fix signals"': "flyway migrating to 0205",
+            'Migrating schema "public" to version "0208 - device lab exemption api delete"': "flyway migrating to 0208",
+            'Successfully applied 4 migrations to schema "public", now at version v0208 (execution time 00:01.234s)': "flyway applied 4 now at 0208",
+            'Schema "public" is up to date. No migration necessary.': "flyway up to date",
+            'Successfully validated 186 migrations (execution time 00:00.321s)': "flyway validated 186",
+            'Creating Schema History table "public"."flyway_schema_history" ...': "flyway created schema history",
+            'migrate: 4 migration(s) applied': "migrate: 4 applied",
+            'pre-flight: nothing to do (checks: V0191-cluster-names=clean, V0199-titanium-tier=not pending)': 'pre-flight nothing to do ["V0191-cluster-names=clean","V0199-titanium-tier=not pending"]',
+            'waiting-item sweep enabled (interval 60 s, batch 200)': "sweep enabled, interval 60 s, batch 200",
+            'waiting-item sweep disabled by ARON_WAITING_SWEEP=off; it re-reads the switch at every pass': "sweep disabled by ARON_WAITING_SWEEP=off",
+            "user rahim logged in from 01712345678": "-",
+        }
+        for msg, want in cases.items():
+            self.assertEqual(want, label(msg), msg)
+        for leaked in ("geo fix", "public", "device lab", "rahim", "execution time"):
+            self.assertFalse(any(leaked in label(m) for m in cases), leaked)
+        # An INFO line with a label is never dropped by the row filter (kind != '-' is one of the three conditions).
+        self.assertIn("kind != '-'", sh[sh.index("console_section() {"):sh.index("if [ -n \"${ws:-}\" ]; then\n  section \"Log Analytics: console log of job executions")])
+        self.assertIn("where kind != '-' or lvl in", sh)
+
+    def test_diagnose_round6_message_mode_and_lows(self):
+        import subprocess
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        def run(text):
+            return subprocess.run(["bash", script, "--redact"], input=text.encode(), capture_output=True, env={"PATH": "/usr/bin:/bin"}, check=True).stdout.decode("utf-8")
+        # the two cheap rules: URL user-info for any scheme, bare `code` + 4..8 digits, and the Bangla words for OTP / code / PIN
+        for text, secret in {"redis://:" "s3cretpw@cache.example.net:6379/0": "s3cretpw", "https://bob:" "hunter22@host/x": "hunter22", "amqp://u:p%40ss@h": "p%40ss", "mongodb+srv://u:" "pw1x@c.example.net/d": "pw1x",
+                             "your code is 481516 ok": "481516", "code 481516": "481516", "code: 481516": "481516",
+                             "\u0986\u09aa\u09a8\u09be\u09b0 \u0993\u099f\u09bf\u09aa\u09bf \u0995\u09cb\u09a1 \u09ea\u09ee\u09e7\u09eb\u09e7\u09ec": "481516",
+                             "\u0995\u09cb\u09a1: 481516": "481516", "\u09aa\u09bf\u09a8 4821 \u09ac\u09cd\u09af\u09ac\u09b9\u09be\u09b0": "4821"}.items():
+            out = run(text + "\n")
+            self.assertNotIn(secret, out, f"{text!r} -> {out!r}")
+        for keep in ("error code 17 and exit code: 1 elapsed 1500 ms", "status code 500"):
+            self.assertEqual(keep + "\n", run(keep + "\n"), keep)
+        # a TAB is a column separator on a TSV row: a logger column ending in a key stem must not eat the next column; a config-style line with one tab still redacts
+        self.assertEqual("T0\tapi_logger_key\t481516\tnext\tcol\n", run("T0\tapi_logger_key\t481516\tnext\tcol\n"))
+        self.assertEqual("api" "_key\t\t\t\t= [redacted]\n", run("api" "_key\t\t\t\t= valueone\n"))
+        self.assertIn("[redacted]", run("pass" "word\thunter22\n"))
+        self.assertNotIn("hunter22", run("pass" "word\thunter22\n"))
+        # structured exception class first, the exit code as a digit column, the PostgreSQL head, the diagnostic settings without resource ids
+        self.assertIn("nullif(tostring(j.throwable.className), '')", sh)
+        self.assertIn("exitcode = coalesce(extract(@'(?i)exit ?code:? ?(-?[0-9]{1,3})', 1, txt), '')", sh)
+        self.assertIn("'[text]'", sh); self.assertIn("head = iff(sev in ('LOG', 'ERROR', 'FATAL', 'PANIC')", sh)
+        self.assertIn('--query "(value || @)[].logs[].[category, enabled]" -o tsv', sh)
+        self.assertNotIn("diagnostic-settings list --resource \"$sid\" -o json", sh)
+        # the no-op assertion of the stub test is gone
+        t = (ROOT / "infra" / "tests" / "check_infra.py").read_text(encoding="utf-8")
+        self.assertNotIn("queries.split(" + chr(34) + "replace_regex(tostring", t, "the no-op assertion is gone")
 
     def test_deploy_holds_one_lock_for_the_whole_deploy(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
