@@ -2,17 +2,32 @@
 # Read-only diagnostics of the dev rehearsal environment (D-OPS-DIAGNOSE-01), run by .github/workflows/ops-diagnose.yml
 # with the deploy identity: the PostgreSQL server (state, metrics, parameters, server-log excerpts when downloadable,
 # activity log, diagnostic settings), the PostgreSQL server log lines streamed to Log Analytics, the migrate job's and the
-# worker's console and system logs from Log Analytics, and the worker app's state. Everything printed is metadata, metrics
+# worker's and the API's console and system logs from Log Analytics, the migrate job's pre-flight lines, and the worker app's state. Everything printed is metadata, metrics
 # or log excerpts; never a secret, connection string or Key Vault value.
 # This script changes nothing in Azure: it only lists, shows, queries and downloads logs.
 #
-# Usage: AZURE_RESOURCE_GROUP=rg-aron-dev infra/scripts/diagnose.sh <since-utc> <until-utc> [job-prefix] [worker-app]
+# Usage: AZURE_RESOURCE_GROUP=rg-aron-dev infra/scripts/diagnose.sh <since-utc> <until-utc> [job-prefix] [worker-app] [api-app]
 set -uo pipefail
 RG="${AZURE_RESOURCE_GROUP:?set AZURE_RESOURCE_GROUP}"
 SINCE="${1:?since (UTC, e.g. 2026-11-05T09:40:00Z)}"
 UNTIL="${2:?until (UTC)}"
 JOB_PREFIX="${3:-caj-aron-dev-migrate}"
 WORKER_APP="${4:-ca-aron-dev-worker}"
+API_APP="${5:-ca-aron-dev-api}"
+# Extra redaction for the API and pre-flight output (D-OPS-DIAGNOSE-API-01), applied after the query's own filter: Bangladesh mobile numbers
+# (01XXXXXXXXX, +880...), e-mail addresses, name/phone/username/password-like key=value or "key":"value" pairs, connection-string and
+# key markers, JWTs, bearer values and any long token-looking run. A line is never printed unredacted; this is a net under the KQL filter, not a licence to log such values.
+redact() {
+  sed -E \
+    -e 's/(\+?880|\b0)1[3-9][0-9]{8}\b/[phone]/g' \
+    -e 's/("(user_?name|phone|mobile|msisdn|e?mail|full_?name|display_?name|name|outlet_?name|address)"[ ]*:[ ]*")[^"]*/\1[redacted]/Ig' \
+    -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[email]/g' \
+    -e 's/eyJ[A-Za-z0-9_-]{5,}(\.[A-Za-z0-9_-]+)*/[jwt]/g' \
+    -e 's/(Bearer|Basic)[ =:]+[A-Za-z0-9._~+\/=-]+/\1 [redacted]/Ig' \
+    -e 's/((user_?name|phone|mobile|msisdn|e?mail|full_?name|display_?name|name|password|passwd|pwd|secret|token|api_?key|key|sig|sas|connection_?string|authorization)"?[ ]*[=:][ ]*"?)[^",;} ]+/\1[redacted]/Ig' \
+    -e 's/(jdbc:|postgres(ql)?:\/\/|AccountKey=|SharedAccessSignature=|Endpoint=sb:|Server=)[^ ",;]*/\1[redacted]/Ig' \
+    -e 's/[A-Za-z0-9+\/_-]{40,}={0,2}/[long-token]/g'
+}
 section() { printf '\n== %s\n' "$*"; }
 try() { "$@" 2>&1 || echo "(command failed: $*)"; }
 
@@ -120,6 +135,51 @@ if [ -n "${ws:-}" ]; then
   try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | cut -c1-260
 else
   echo "(no Log Analytics workspace, so no worker console log)"
+fi
+
+section "Log Analytics: console log of $API_APP in the window (ERROR/WARN and start-up lines, newest first, 200 chars each)"
+# Same query shape as the worker. ERROR/WARN lines and the start-up lines (the app started, the Ktor server is up, the migration and
+# pre-flight lines, the worker/sweep switches, which configuration was loaded) are kept; request lines are not (a request log line can
+# carry a path with an id). Newest first, capped at 150 lines so a crash loop cannot flood the job log. Lines naming SQL, parameters,
+# keys or secrets are dropped in the query and the rest goes through redact() above (names, phone numbers, e-mails, tokens, connection strings).
+if [ -n "${ws:-}" ]; then
+  q="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleLogs
+     | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
+     | extend app = coalesce(column_ifexists('ContainerAppName_s', ''), column_ifexists('ContainerAppName', '')),
+              line = tostring(coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
+     | where app == '$API_APP'
+     | where line matches regex @'(?i)\b(WARN|ERROR|FATAL)\b|\"level\":\"(WARN|ERROR)' or line matches regex @'(?i)started|starting|listening|responding|application|migrat|pre-?flight|waiting-item sweep|sweep (enabled|disabled)|config|schema|ARON_|worker'
+     | where not(line matches regex @'(?i)statement|parameters|bind|password|secret|token|authorization|bearer|key=|sig=|jdbc:|connection ?string')
+     | extend j = parse_json(line)
+     | extend text = iff(isnotempty(tostring(j.formattedMessage)), strcat(tostring(j.level), ' ', tostring(j.loggerName), ' ', tostring(j.formattedMessage)), line)
+     | top 150 by TimeGenerated desc
+     | project TimeGenerated, line = substring(text, 0, 200)"
+  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | cut -c1-260 | redact
+  section "Log Analytics: system log of $API_APP in the window (platform reasons: probes, restarts, scaling), newest first"
+  q="union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppSystemLogs
+     | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
+     | extend app = coalesce(column_ifexists('ContainerAppName_s', ''), column_ifexists('ContainerAppName', ''))
+     | where app == '$API_APP'
+     | extend line = strcat(coalesce(column_ifexists('Reason_s', ''), column_ifexists('Reason', '')), ': ',
+                            coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
+     | top 150 by TimeGenerated desc
+     | project TimeGenerated, line = substring(line, 0, 240)"
+  try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | cut -c1-300 | redact
+  section "Log Analytics: migrate job pre-flight lines ($JOB_PREFIX*) in the window"
+  # MigrationPreflight reports one line per action and, when it has nothing to do, "pre-flight: nothing to do (checks: ...)".
+  # Absent here means the pre-flight did not run (an older image) or the job did not start in the window.
+  q="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleLogs
+     | where TimeGenerated between (datetime('$SINCE') .. datetime('$UNTIL'))
+     | extend exec = coalesce(column_ifexists('ContainerGroupName_s', ''), column_ifexists('ContainerGroupName', '')),
+              line = tostring(coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
+     | where exec startswith '$JOB_PREFIX' and line matches regex @'(?i)pre-?flight'
+     | where not(line matches regex @'(?i)password|secret|token|authorization|bearer|key=|sig=|jdbc:')
+     | top 100 by TimeGenerated desc | order by TimeGenerated asc
+     | project TimeGenerated, exec, line = substring(line, 0, 300)"
+  out="$(az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, exec, line]" -o tsv 2>&1 | cut -c1-400 | redact)"
+  if [ -z "$out" ]; then echo "(no pre-flight line from a $JOB_PREFIX execution in the window)"; else printf '%s\n' "$out"; fi
+else
+  echo "(no Log Analytics workspace, so no API console log)"
 fi
 
 section "worker app $WORKER_APP"

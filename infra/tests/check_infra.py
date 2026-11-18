@@ -775,6 +775,31 @@ class Workflows(unittest.TestCase):
         self.assertIn("where not(msg matches regex @'-LOG:\\s+(execute|statement|parse|bind)')", pg,
                       "anchored: a statement record is dropped even when log_statement is turned on")
 
+    def test_diagnose_reads_the_api_console_and_preflight_with_redaction(self):
+        # D-OPS-DIAGNOSE-API-01: the API app's console and system log (newest first, capped), the migrate job's pre-flight lines, and the
+        # extra redaction net; the workflow passes the API app as the fifth argument and stays manual and read-only.
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        w = (WORKFLOWS / "ops-diagnose.yml").read_text(encoding="utf-8")
+        self.assertIn('API_APP="${5:-ca-aron-dev-api}"', sh)
+        self.assertIn('"$JOB_PREFIX" "$WORKER_APP" "$API_APP"', w)
+        self.assertIn("API_APP: ${{ inputs.api_app }}", w)
+        i = sh.index("console log of $API_APP in the window")
+        a = sh[i:sh.index('section "worker app $WORKER_APP"')]
+        self.assertIn("where app == '$API_APP'", a)
+        self.assertGreaterEqual(a.count("top 150 by TimeGenerated desc"), 2, "console and system log are capped, newest first")
+        self.assertIn("substring(text, 0, 200)", a)
+        self.assertIn("waiting-item sweep", a, "the sweep start-up line is kept")
+        self.assertIn("pre-?flight", a)
+        self.assertIn("not(line matches regex @'(?i)statement|parameters|bind|password|secret|token", a)
+        self.assertNotIn("ContainerAppSystemLogs_CL", a.split("system log of")[0], "console section reads the console table")
+        # Every query result of the new sections goes through redact().
+        for line in a.splitlines():
+            if "az monitor log-analytics query" in line:
+                self.assertIn("| redact", line, line)
+        r = sh[sh.index("redact() {"):sh.index("section() {")]
+        for needle in ("[phone]", "[email]", "[jwt]", "connection_?string", "jdbc:", "full_?name", "[long-token]"):
+            self.assertIn(needle, r, needle)
+
     def test_deploy_holds_one_lock_for_the_whole_deploy(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         body = d[d.index("# ---"):]
