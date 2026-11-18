@@ -211,3 +211,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Loyalty sweep fix round 2 (d88b751b) PASS; TSO slice 1 (bfea7197) PASS (lows sent).
 - NEW ORDER AND NUMBERS: train 118 = Loyalty sweep (V0204, contract 1.20.0; L-A11 merging 39db6c734 and renumbering; then a delta check and GO). Then gates (Android, Room 10, closed_by on the wire, no migration). Then integrity V0205..V0208 + contract 1.21.0 + Room 11 (A-INT3 told). SV6 follow-ups provisional V0240+; T-KPI1 V0230+ / 1.22.0.
 - Loyalty facts (from code): no earning rule, no earning job, balances 0; postAdjustment has no caller or portal route -> L-A11 to build an audited portal points adjustment with N-1 (quarter rows) and tier_code on loyalty[]. Owner asked for the earning rule 06:30.
+
+
+### 2026-11-18 07:05 update: gates final pass PASS; train 118 with the integrator
+- android-gates bc38c0ad9: final Opus pass on four lenses, 0 blocking (docs/reviews/android-gates-final-pass-2026-11-18.md).
+- Train 118 = lane/lead-train118 2572c9de3 = 39db6c734 + docs + gates bc38c0ad9 + AMO e7a2f572 (Android and docs only; 614 D-lines). GO given 07:03. After landing: tell A-INT3 'gates round landed' (Room 10 -> 11), A-GATE7 (follow-up round of 10 items), A-PROG1 (Room 12 free only after integrity), P-AMO3, P-SR1b, P-TSO (merge).
+- Train 119 = Loyalty sweep (V0204, 1.20.0) when L-A11's landing push arrives (head still d88b751b at 06:47). Then integrity V0205..V0208 / 1.21.0 / Room 11.
+- For the owner: TSO app not gated by rule 1; reprint/close-open-call/Sales Submit exempt by design; earning rule; redemption at zero balance accepted; Q-A..Q-K (targets); 'All' vs 'সব'; AMO header Latin digits; lab key pair; P-SR2b push approval. Device walk lists: gates (docs/status/android-gates.md), integrity, programmes.
