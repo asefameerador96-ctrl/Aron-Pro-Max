@@ -55,7 +55,7 @@ fun SaleRoute(
         // the printer state hangs on the host's top bar (the kit badge); nothing printer-shaped is drawn in here any more
         Box(Modifier.weight(1f).fillMaxWidth()) {
             // forward: Entry to Review, and Review into a sub-screen (Credit, QC, Slide); back: a sub-screen returning to Review
-            AronScreenTransition(stage, forward = { from, to -> from == SaleStage.Entry || to != SaleStage.Review }) { s ->
+            AronScreenTransition(if (quantityPopup && stage == SaleStage.Credit) SaleStage.Review else stage, forward = { from, to -> from == SaleStage.Entry || to != SaleStage.Review }) { s ->
                 when (s) {
                     SaleStage.Entry -> SaleEntryScreen(
                         skus = skus, review = review,
@@ -101,5 +101,9 @@ fun SaleRoute(
             }
         }
     }
-    SaveAndPrintDialogs(vm.saveAndPrint, vm.viewModelScopeForDialogs(), onFinished)
+    // the SR's partial payment is a box over the Review (manual 27), not a screen of its own: the same amount rules and the same setPaid
+    if (quantityPopup && stage == SaleStage.Credit && review != null) {
+        CreditDialog(review, { vm.setPaid(it); stage = SaleStage.Review }, onCancel = { vm.setPaid(null); stage = SaleStage.Review })
+    }
+    SaveAndPrintDialogs(vm.saveAndPrint, vm.viewModelScopeForDialogs(), onFinished, manual = quantityPopup)
 }

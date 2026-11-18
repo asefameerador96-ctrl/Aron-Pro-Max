@@ -10,6 +10,14 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performTextInput
+import com.aktcl.aron.core.printing.flow.SaveAndPrint
+import com.aktcl.aron.core.printing.ui.SaveAndPrintStepDialog
+import com.aktcl.aron.feature.sale.domain.SaleDraftOps
+import com.aktcl.aron.feature.sale.ui.CreditDialog
+import com.aktcl.aron.feature.sale.ui.CreditTags
+import com.aktcl.aron.rules.QtyUnit
 import com.aktcl.aron.feature.sale.domain.DrpRule
 import com.aktcl.aron.feature.sale.domain.SaleDraft
 import com.aktcl.aron.feature.sale.domain.SaleReviewCalculator
@@ -60,8 +68,10 @@ class SrParity1bSaleTests {
     private val open = VisitUiState.Open(OpenVisit("v1", 1, 1, "in_range", "sale_allowed", true, false, null, "2026-10-05T04:31:07Z"))
     private val q = CallQuestion(label, {}, {}, {})
 
-    private fun shot(name: String, fontScale: Float = 1.0f, sunlight: Boolean = false, clicks: List<String> = emptyList(), icon: Int? = com.aktcl.aron.core.ui.R.drawable.aron_art_sale, title: Int = com.aktcl.aron.feature.home.R.string.hm_tile_sale, content: @Composable () -> Unit) {
+    private fun shot(name: String, fontScale: Float = 1.0f, sunlight: Boolean = false, clicks: List<String> = emptyList(), typeInto: Pair<String, String>? = null, frozenClock: Boolean = false, icon: Int? = com.aktcl.aron.core.ui.R.drawable.aron_art_sale, title: Int = com.aktcl.aron.feature.home.R.string.hm_tile_sale, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.BN)
+        // a dialog focuses its text field, whose cursor blinks for ever: the clock is stepped by hand for those frames
+        if (frozenClock) rule.mainClock.autoAdvance = false
         rule.setContent {
             CompositionLocalProvider(LocalContext provides ctx, LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
                 AronTheme(AppLanguage.BN, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) {
@@ -69,7 +79,8 @@ class SrParity1bSaleTests {
                 }
             }
         }
-        rule.waitForIdle()
+        if (frozenClock) rule.mainClock.advanceTimeBy(300) else rule.waitForIdle()
+        typeInto?.let { (tag, text) -> rule.onNodeWithTag(tag).performTextInput(text); if (frozenClock) rule.mainClock.advanceTimeBy(300) else rule.waitForIdle() }
         clicks.forEach { rule.onNodeWithText(it).performClick(); rule.waitForIdle() }
         if (System.getProperty("roborazzi.test.record") != "true") assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
         rule.onRoot().captureRoboImage("$goldens/$name.png", roborazziOptions = options)
@@ -162,4 +173,31 @@ class SrParity1bSaleTests {
     @Test fun qtyPopupLighterNoStats() = shot("srp1b_qty_lighter_na", title = saleTitle) { Popup(aster, 25, null) }
     @Test fun qtyPopupSunlight() = shot("srp1b_qty_cigarette_sunlight", sunlight = true, title = saleTitle) { Popup(maxr, 20, statsFull) }
     @Test fun qtyPopupFont20() = shot("srp1b_qty_cigarette_font20", fontScale = 2.0f, title = saleTitle) { Popup(maxr, 20, statsFull) }
+
+    // ---- Review, the partial payment box and the confirm / print / success boxes (manual 24, 27, 28, 29) ----
+    private val soldDraft = SaleDraftOps.setQuantity(SaleDraftOps.setQuantity(emptyDraft, 103, 1, QtyUnit.PACK), 100, 4, QtyUnit.PACK)
+    private val soldReview = SaleReviewCalculator.review(soldDraft, skus.associateBy { it.skuId })
+    private val bakiReview = SaleReviewCalculator.review(SaleDraftOps.setPaid(soldDraft, 10_000), skus.associateBy { it.skuId })
+    private val reviewTitle = com.aktcl.aron.feature.sale.R.string.review_title
+    private val header = "Ruku Store (2681268)\nরুট: Apsis RouteDaily\nক্লাস্টার: Apsis Cluster"
+
+    @Composable private fun SoldReview(r: com.aktcl.aron.feature.sale.domain.SaleReview = soldReview) =
+        ReviewScreen(r, {}, outletLine = header, onCreditToggle = {}, onQc = {})
+
+    @Test fun reviewWithLines() = shot("srp1b_review_lines", title = reviewTitle) { SoldReview() }
+    @Test fun reviewBakiTicked() = shot("srp1b_review_baki", title = reviewTitle) { SoldReview(bakiReview) }
+    @Test fun reviewFont20() = shot("srp1b_review_lines_font20", fontScale = 2.0f, title = reviewTitle) { SoldReview() }
+
+    @Composable private fun WithCredit(typed: String = "") { SoldReview(); CreditDialog(soldReview, {}, {}, initialText = typed, focusable = false) }
+    @Test fun creditDialogEmpty() = shot("srp1b_credit_dialog", title = reviewTitle) { WithCredit() }
+    @Test fun creditDialogDue() = shot("srp1b_credit_dialog_due", title = reviewTitle) { WithCredit("100") }
+    @Test fun creditDialogTooMuch() = shot("srp1b_credit_dialog_error", title = reviewTitle) { WithCredit("9999") }
+    @Test fun creditDialogSunlight() = shot("srp1b_credit_dialog_sunlight", sunlight = true, title = reviewTitle) { WithCredit("100") }
+
+    @Composable private fun Step(st: SaveAndPrint.Step) { SoldReview(); SaveAndPrintStepDialog(st, true, {}, {}, {}, {}, {}, {}, {}) }
+    @Test fun askSave() = shot("srp1b_dialog_ask_save", title = reviewTitle) { Step(SaveAndPrint.Step.AskSave) }
+    @Test fun askPrint() = shot("srp1b_dialog_ask_print", title = reviewTitle) { Step(SaveAndPrint.Step.AskPrint) }
+    @Test fun saved() = shot("srp1b_dialog_saved", title = reviewTitle) { Step(SaveAndPrint.Step.Done(true)) }
+    @Test fun askReadable() = shot("srp1b_dialog_ask_readable", title = reviewTitle) { Step(SaveAndPrint.Step.AskReadable) }
+    @Test fun limit() = shot("srp1b_dialog_limit", title = reviewTitle) { Step(SaveAndPrint.Step.LimitReached) }
 }

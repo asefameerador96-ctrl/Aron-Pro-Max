@@ -59,6 +59,10 @@ Lows from the lead's gate: title is two lines then ellipsis, horizontal safe ins
 
 | Quantity pop-up (manual 22): blue-tinted full-width box, plain X, no field underline, pale stats panel | FIX (D-PAR-SR1-12): lavender inset box, circled red X, underlined field, amber stats panel with dark ink (7:1), wider সংরক্ষণ. KEEP: ADS reads N/A (no `outlet_sku_stats` source on INT) | this push | srp1b_qty_* (5) |
 
+| Review (manual 24): table, Baki card, buttons | RECORD (D-PAR-SR1-14): srp1b_review_lines, _baki, _font20 match the structure. KEEP: no discount table (deferred), SKU name over unit and field-unit quantity (rule 5) | this push | srp1b_review_* |
+| Partial payment (manual 27): full screen vs box over Review with live বাকিঃ | FIX: `CreditDialog` for the SR (rules and setPaid unchanged) | this push | srp1b_credit_dialog(_due, _error, _sunlight) |
+| Confirm / print / success boxes (manual 28, 29) | FIX: AronManualDialog via SaveAndPrintDialogs(manual) | this push | srp1b_dialog_* (5) |
+
 (Rows for the remaining screens are added slice by slice.)
 
 ## Not run
