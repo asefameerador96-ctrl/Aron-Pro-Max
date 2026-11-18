@@ -48,6 +48,7 @@ import com.aktcl.aron.feature.sale.domain.SaleSku
 import com.aktcl.aron.feature.sale.domain.SaleVisit
 import com.aktcl.aron.feature.sale.domain.VisitCloser
 import com.aktcl.aron.feature.sale.domain.VisitOutcomeCode
+import kotlinx.coroutines.sync.withLock
 import com.aktcl.aron.feature.sale.domain.VisitToClose
 import com.aktcl.aron.feature.sale.ui.SaleViewModel
 import com.aktcl.aron.rules.FixInput
@@ -82,6 +83,14 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         skuCategory = skus.associate { it.skuId to it.categoryCode }
     }
 
+    /**
+     * D-AGATE-06: the day_submit(s) the check-out writes by itself (one per route-day with captures and no submit standing). Loads the SKU
+     * categories first, so the money totals are the same ones the manual Sales Submit writes.
+     */
+    internal fun autoDaySubmits() = com.aktcl.aron.feature.dayclose.AutoDaySubmits(
+        db, day.capture, { r -> day.metaProvider.meta(r ?: 0L) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() },
+    )
+
     fun skuName(id: Long): String = skuNames[id] ?: id.toString()
     fun outletName(id: Long): String = day.dayData.value.outlets.firstOrNull { it.outletId == id }?.let { it.name + " (" + it.code + ")" } ?: id.toString()
     fun skuCategoryCode(id: Long): String? = skuCategory[id]
@@ -96,7 +105,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
 
     private val committer = SaleCommitter(
         day.capture, numbers = { _, _ -> error("memo numbering is wired through SrDay.memoNumbering") },
-        metaSource = CaptureMetaSource { _, rid -> day.metaProvider.meta(rid ?: 0L) }, nowIso = { day.iso(day.currentMs()) },
+        metaSource = CaptureMetaSource.dated { rid -> day.metaProvider.meta(rid ?: 0L) }, nowIso = { day.iso(day.currentMs()) },
         findMemo = { dao.memo(it) }, numbering = day.memoNumbering,
     )
     val flow = SaleFlow(
@@ -108,6 +117,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
             dao.discountsOf(memoUuid).filter { it.kind == "drp" && it.skuId != null }.forEach { taken.merge(it.skuId!!, it.qtyBase ?: 0L, Long::plus) }
             taken
         },
+        isCallClosed = { d -> dao.visitClosesOn(d.businessDate).any { it.visitClientUuid == d.visitUuid } }, // D-AGATE-19
     )
 
     /** When each call was started (the SR tapped Yes on the start prompt); read when the visit closes. */
@@ -162,7 +172,18 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     /** The host has shown the text of a refused save. */
     fun clearLockRefusal() { _lockRefused.value = null; _submitRefused.value = null }
 
-    fun newSaleViewModel() = SaleViewModel(flow, SrLockGate.saveAndPrint(commitStep::invoke, day.printing) { why ->
+    /**
+     * D-AGATE-19 (step-5 low 1): the sale's commit runs under the SAME [SrDay.closeLock] as every close of a call, so a Save and the phone's 04:00 end cannot interleave: either the memo is
+     * committed first (the close then reads it: `sold`) or the close came first and the Save is refused here, inside the lock, before anything is written (a memo is never stored on a call the
+     * phone just closed as abandoned). A memo EDIT is a new memo on an old call and is not refused for a closed call. The print step that follows runs outside the lock.
+     */
+    private suspend fun commitUnderCloseLock(): com.aktcl.aron.core.printing.flow.CommittedMemo = day.closeLock.withLock {
+        commitStep() // the closed-call refusal is the flow's own (isCallClosed), after its "already committed" answer
+    }
+
+    /** The Save as the sale screen runs it (also the entry the retry test uses). */
+    internal suspend fun commitSale() = commitUnderCloseLock()
+    fun newSaleViewModel() = SaleViewModel(flow, SrLockGate.saveAndPrint(::commitUnderCloseLock, day.printing) { why ->
         val key = flow.state.value.draft?.let(::refusalKey)
         when (why) {
             DayRefusal.FINAL_SUBMIT -> _lockRefused.value = key
@@ -191,9 +212,9 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         return day.endCallIfClosed()?.also { callStarted.remove(v.visitUuid) }
     }
     fun saleVisit(v: com.aktcl.aron.feature.outlet.OpenVisit) =
-        SaleVisit(v.visitUuid, v.outletId, v.routeId, day.businessDate(), PriceType.OUTLET.wire, canSell = v.geoAction != "blocked")
+        SaleVisit(v.visitUuid, v.outletId, v.routeId, day.visitDate(v), PriceType.OUTLET.wire, canSell = v.geoAction != "blocked")
 
-    private val closer = VisitCloser(day.capture, CaptureMetaSource { _, rid -> day.metaProvider.meta(rid ?: 0L) }, { day.iso(day.currentMs()) })
+    private val closer = VisitCloser(day.capture, CaptureMetaSource.dated { rid -> day.metaProvider.meta(rid ?: 0L) }, { day.iso(day.currentMs()) })
 
     /**
      * Writes the visit's one `visit_close` with [outcome] and closes the call; the sync is asked for afterwards (never awaited).
@@ -203,21 +224,47 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
      * on the phone without a close, or null (a close was queued, or no call was open). The hosts ask [openCallRefusal] first
      * and show the text before calling it.
      */
-    suspend fun closeVisit(outcome: VisitOutcomeCode, declined: Boolean = false): DayRefusal? {
+    suspend fun closeVisit(outcome: VisitOutcomeCode, declined: Boolean = false): DayRefusal? = day.closeLock.withLock { closeVisitLocked(outcome, declined) }
+
+    /** [closeVisit] with [day]'s close lock already held (one lock for the rep's close and the phone's close: two closes of one call cannot both be written). */
+    private suspend fun closeVisitLocked(
+        outcome: VisitOutcomeCode, declined: Boolean = false, marks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = emptyList(),
+    ): DayRefusal? {
         val open = day.visitSession.current.value ?: return null
         day.endCallIfClosed()?.let { callStarted.remove(open.visitUuid); return it }
         var why: DayRefusal? = null
         val queued = SrLockGate.closeCall(day.visitSession, { why = it }) { v ->
-            closer.close(VisitToClose(v.visitUuid, v.routeId, callStartedAtIso = callStarted.remove(v.visitUuid)), outcome, day.businessDate(), declined)
+            closer.close(VisitToClose(v.visitUuid, v.routeId, callStartedAtIso = callStarted.remove(v.visitUuid)), outcome, day.visitDate(v), declined, marks)
         }
         if (queued) runCatching { day.requestSync() }
         return why
     }
 
     /**
+     * D-AGATE-18 (B1): THE ONE classification of how a call ends on the SR, used by every way it ends that does not carry a reason the rep chose: the sale screen's finish, the gate's
+     * "Close the open call", the back press of a restored call and the phone's own end at 04:00. It reads what the call really HOLDS: a saved memo with lines = `sold`; a saved
+     * zero-sale or QC-only memo = `zero_sale_stock_ok`; nothing saved (a survey answer alone included, as the back press always did) = `abandoned`. The memo read and the close are under
+     * ONE lock, and the sale's own commit takes the same lock ([commitUnderCloseLock]), so a sale committed between them cannot be missed and a Save after the close is refused; [phoneEnd] also stores the local "ended by the phone" marker with the close, in the same transaction.
+     */
+    suspend fun closeCall(phoneEnd: Boolean = false): DayRefusal? = day.closeLock.withLock {
+        val open = day.visitSession.current.value ?: return@withLock null
+        val vd = day.visitDate(open)
+        val live = dao.memosOn(vd).filter { it.visitClientUuid == open.visitUuid }.let { memos ->
+            val superseded = memos.mapNotNull { it.supersedesClientUuid }.toSet()
+            memos.filter { it.clientUuid !in superseded }.maxByOrNull { it.committedAt }
+        }
+        val marks = if (phoneEnd) listOf(com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.CALL_ENDED, businessDate = vd, outletId = open.outletId, createdAt = day.iso(day.currentMs()))) else emptyList()
+        when {
+            live != null && live.lineCount > 0 -> closeVisitLocked(VisitOutcomeCode.SOLD, false, marks)
+            live != null -> closeVisitLocked(VisitOutcomeCode.ZERO_SALE, false, marks)
+            else -> day.abandonLocked(marks)
+        }
+    }
+
+    /**
      * tso-manual X4a follow-up (R-W-23): why the open call can no longer take its records (no sale, no close), or null. The
      * call screens show the lock text or the submit text, and OK ends the call on the phone ([closeVisit] or
-     * `SrDay.closeVisitAbandoned`, which write nothing then). Pure reads.
+     * `SrDay.abandonLocked`, which write nothing then). Pure reads.
      */
     suspend fun openCallRefusal(): DayRefusal? = day.openCallRefusal()
 
@@ -266,7 +313,8 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     suspend fun editRefusal(memoUuid: String): DayRefusal? {
         val memo = dao.memo(memoUuid) ?: return null
         // not runCatching: it would turn the cancellation of a superseded LaunchedEffect run into null, which that run then writes over the newer answer (D-AMO-CALLS-35)
-        return com.aktcl.aron.core.common.orNullKeepingCancellation { day.capture.dayRefusal(day.metaProvider.meta(memo.meta.routeId ?: 0L), "memo") }
+        // the memo's own date: the edit carries it (ruling 2)
+        return com.aktcl.aron.core.common.orNullKeepingCancellation { day.capture.dayRefusal(day.metaProvider.meta(memo.meta.routeId ?: 0L).copy(businessDate = memo.meta.businessDate), "memo") }
     }
 
     /** True when [editRefusal] is the Final Submit lock. */
@@ -278,11 +326,16 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
      */
     suspend fun prepareEdit(memoUuid: String): EditDenied? {
         val memo = dao.memo(memoUuid)
-        val date = day.businessDate()
+        val date = memo?.meta?.businessDate ?: day.businessDate() // the memo's own day: the write checks the same date (a memo of yesterday is judged on yesterday's rows)
         val live = memo != null && dao.memosOn(date).none { it.supersedesClientUuid == memoUuid }
         // SRM-B-17: QC "entered for the outlet" on the business date, whichever visit of that outlet recorded it
         val qcDone = memo != null && EditGate.qcEnteredForOutlet(memo.outletId, dao.qcLinesOn(date).map { dao.visit(it.visitClientUuid)?.outletId })
-        EditGate.check(inGeofenceNow = true, qcCompleted = qcDone, memoIsLive = live, memoExists = memo != null)?.let { return it }
+        // an edit of an EARLIER day's memo whose day is closed (checked out or submitted) says so ("that day is closed"), never "check in first": the rep may be checked in today
+        if (memo != null && date != day.businessDate() && day.capture.attendanceRefusal(date) != null) return EditDenied.DayClosed
+        if (memo != null && editRefusal(memoUuid) != null) return EditDenied.DayClosed
+        EditGate.check(inGeofenceNow = true, qcCompleted = qcDone, memoIsLive = live, memoExists = memo != null, checkedIn = day.capture.attendanceRefusal(date) == null)?.let { return it }
+        // the route-day of the memo must still be open for the save: an edit is never let in and then refused at the save (D-AGATE-09)
+        if (editRefusal(memoUuid) != null) return EditDenied.DayClosed
         val o = day.dayData.value.outlets.firstOrNull { it.outletId == memo!!.outletId }?.let(day::visitOutlet) ?: return EditDenied.OutsideGeofence
         val reading = day.fixSource.readFix("memo_edit")
         val verdict = GeoVerdicts.verdict(
@@ -311,7 +364,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
      * which; nothing throws.
      */
     suspend fun skipOutlet(outlet: com.aktcl.aron.core.database.entity.OutletEntity, reason: VisitOutcomeCode, onRefused: (DayRefusal) -> Unit = {}): Boolean {
-        val queued = SrLockGate.skip(onRefused) {
+        val queued = SrLockGate.skip(onRefused, onAttendanceRefused = { day.refreshDayGate() }) {
             day.capture.recordVisitSkip(
                 com.aktcl.aron.core.database.entity.VisitSkipEntity(ClientIds.newUuid(), day.metaProvider.meta(outlet.routeId), outlet.outletId, reason.wire),
             )
@@ -327,7 +380,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
      */
     fun newMemoViewModel() = MemoViewModel(
         store,
-        VisitDueCollectionWriter(db, day.capture, { rid -> day.metaProvider.meta(rid ?: 0L) }, day::businessDate),
+        VisitDueCollectionWriter(db, day.capture, { rid -> day.metaProvider.meta(rid ?: 0L) }, day::businessDate, openCall = { day.visitSession.current.value?.visitUuid }),
         MemoPrintingReprinter(day.printing), ::names, day::businessDate,
     )
 

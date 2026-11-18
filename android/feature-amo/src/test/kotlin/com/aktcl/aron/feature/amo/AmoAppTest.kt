@@ -109,7 +109,8 @@ class AmoAppTest {
         compose.onNodeWithTag(HomeTags.HEADER).assertIsDisplayed()
         // screenshots 8, 9: "<name> (<username>)" over "<zone> AMO, <date>" (no zone name in the bundle yet: "AMO, <date>"); TalkBack reads the full sentence
         compose.onNodeWithText("Testing Banani (amo5001)").assertIsDisplayed()
-        compose.onNodeWithText("২০২৬-১০-০৫", substring = true).assertIsDisplayed()
+        // D-PAR-AMO-25: the visible header date keeps Latin digits as the old header (screenshot 09); the spoken description below keeps the user's digits
+        compose.onNodeWithText("2026-10-05", substring = true).assertIsDisplayed()
         compose.onNodeWithTag(HomeTags.HEADER).assertContentDescriptionEquals("Testing Banani (amo5001), ব্যবসায়িক তারিখ: ২০২৬-১০-০৫")
         compose.onNodeWithTag(HomeTags.MODE).assertIsDisplayed()
         // offline unlock with an offline bundle check: the chip and the banner already say it, the bundle line is not repeated

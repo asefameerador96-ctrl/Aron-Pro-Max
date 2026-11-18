@@ -41,6 +41,26 @@
     <string name="att_sr_out_done">চেক আউট সম্পন্ন হয়েছে</string>
     <string name="att_amo_in_done">চেক ইন সম্পন্ন হয়েছে</string>
     <string name="att_amo_out_after">চেক আউট %1$sটার পরে সক্রিয় হবে</string>
+    <string name="att_gate_title">আগে হাজিরা দিন</string>
+    <string name="att_gate_body">আজ হাজিরা দেওয়ার পরেই স্টক, বিক্রি, ভিজিট ও আউটলেট অনুরোধ খোলে। হাজিরা দিন চাপুন, তারপর ফিরে আসুন।</string>
+    <string name="att_gate_go">হাজিরায় যান</string>
+    <string name="att_gate_out_title">আজকের জন্য আপনি চেক-আউট করেছেন</string>
+    <string name="att_gate_out_body">আজ স্টক, বিক্রি ও ভিজিট বন্ধ। আগামীকালের হাজিরার পর আবার খুলবে। মেমো, সারসংক্ষেপ ও বিক্রয় জমা দেখতে পারবেন।</string>
+    <string name="att_gate_ok">ঠিক আছে</string>
+    <string name="att_gate_close_call">খোলা কলটি বন্ধ করুন</string>
+    <string name="att_gate_notice">আগে হাজিরা দিন। হাজিরার পর স্টক, বিক্রি ও ভিজিট খুলবে।</string>
+    <string name="att_gate_earlier_title">আগে গতকালের কলটি শেষ করুন</string>
+    <string name="att_gate_earlier_body">আগের দিনের একটি কল এখনও খোলা আছে। সেটি শেষ করুন, অথবা খোলা কলটি বন্ধ করুন চাপুন। ততক্ষণ শুধু ওই কলটিই চলবে; স্টক, অন্য আউটলেট, কাজ ও অনুরোধ অপেক্ষায় থাকবে।</string>
+    <string name="att_gate_earlier_body_at">আগের দিনের একটি কল এখনও %1$s-এ খোলা আছে। সেটি শেষ করুন, অথবা খোলা কলটি বন্ধ করুন চাপুন। ততক্ষণ শুধু ওই কলটিই চলবে; স্টক, অন্য আউটলেট, কাজ ও অনুরোধ অপেক্ষায় থাকবে।</string>
+    <string name="att_rollover_closed">আপনার %1$s তারিখের দিনটি খোলা ছিল, তাই এই ফোন আপনার হয়ে সেটি বন্ধ করেছে এবং সেদিনের বিক্রয় জমা দিয়েছে। আজকের জন্য হাজিরা দিন।</string>
+    <string name="att_rollover_abandoned">%1$s তারিখের একটি কল পরের দিন ০৪:০০ টায়ও খোলা ছিল, তাই এই ফোন সেটি শেষ করেছে। আপনার সংরক্ষিত বিক্রি রাখা হয়েছে।</string>
+    <string name="att_rollover_edit">মেমোর যে পরিবর্তন সংরক্ষণ করেননি সেটি মধ্যরাতে বাদ গেছে। সংরক্ষিত মেমো আগের মতোই আছে; দরকার হলে আবার খুলে পরিবর্তন করুন।</string>
+    <string name="att_rollover_draft">যে বিক্রি সংরক্ষণ করেননি সেটি এর সাথে বাদ গেছে।</string>
+    <string name="att_checkout_open_call">একটি কল এখনো খোলা আছে। চেক-আউটের আগে সেটি বন্ধ করুন (বিক্রি শেষ করুন বা কল শেষ করুন): চেক-আউট আপনার দিনের বিক্রয়ও জমা দেয়।</string>
+    <string name="att_checkout_open_edit">একটি মেমো এডিট এখনো খোলা আছে। চেক-আউটের আগে সেটি সংরক্ষণ বা বাতিল করুন: চেক-আউট আপনার দিনের বিক্রয়ও জমা দেয়।</string>
     <string name="att_amo_already_in">Already Checked-In</string>
     <string name="att_amo_already_out">Already Checked-Out</string>
+    <string name="att_settling">এক মুহূর্ত: ফোন আপনার দিনের অবস্থা দেখছে। কয়েক সেকেন্ডের মধ্যে চেক ইন ও চেক আউট খুলবে।</string>
+    <string name="att_close_failed_title">কলটি বন্ধ করা গেল না</string>
+    <string name="att_close_failed_body">ফোন এই কলের সমাপ্তি লিখতে পারেনি। কলটি এখনও খোলা আছে, কিছু হারায়নি। আবার চেষ্টা করুন; বারবার ব্যর্থ হলে অ্যাপ বন্ধ করে আবার খুলুন।</string>
 </resources>

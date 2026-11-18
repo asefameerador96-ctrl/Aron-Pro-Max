@@ -31,7 +31,10 @@ class VisitCloser(
     private val nowIso: () -> String,
     private val newUuid: () -> String = ClientIds::newUuid,
 ) {
-    suspend fun close(visit: VisitToClose, outcome: VisitOutcomeCode, businessDate: String, callDeclined: Boolean = false) {
+    suspend fun close(
+        visit: VisitToClose, outcome: VisitOutcomeCode, businessDate: String, callDeclined: Boolean = false,
+        phoneMarks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = emptyList(),
+    ) {
         val meta: CaptureMeta = metaSource.meta(businessDate, visit.routeId)
         repo.recordVisitClose(
             VisitCloseEntity(
@@ -39,6 +42,7 @@ class VisitCloser(
                 callStartedAt = visit.callStartedAtIso, callDeclined = callDeclined, endedAt = nowIso(),
                 isZeroSale = outcome == VisitOutcomeCode.ZERO_SALE,
             ),
+            phoneMarks,
         )
     }
 }

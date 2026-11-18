@@ -87,6 +87,13 @@ class AmoShellScreenshotTests {
     @Composable private fun Login() = com.aktcl.aron.feature.auth.AmoLoginContent(
         com.aktcl.aron.feature.auth.LoginUiState(username = "amo5864", password = "secret"), "ARON AMO", "1.0.25 (12)", {}, {}, {}, {}, {}, footerText = "ARON AMO v1.0.25",
     )
+    // the first start (screenshot 03): empty fields show their words centred (D-PAR-AMO-23)
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_login_empty_bn() = shot("amo_login_empty_bn", AppLanguage.BN, amoLook = false) {
+        com.aktcl.aron.feature.auth.AmoLoginContent(com.aktcl.aron.feature.auth.LoginUiState(), "ARON AMO", "1.0.25 (12)", {}, {}, {}, {}, {}, footerText = "ARON AMO v1.0.25")
+    }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_login_empty_bn_fs2() = shot("amo_login_empty_bn_fs2", AppLanguage.BN, fontScale = 2f, amoLook = false) {
+        com.aktcl.aron.feature.auth.AmoLoginContent(com.aktcl.aron.feature.auth.LoginUiState(), "ARON AMO", "1.0.25 (12)", {}, {}, {}, {}, {}, footerText = "ARON AMO v1.0.25")
+    }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_login_bn() = shot("amo_login_bn", AppLanguage.BN, amoLook = false) { Login() }
     @Test fun amo_login_en() = shot("amo_login_en", AppLanguage.EN, amoLook = false) { Login() }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_login_bn_fs2() = shot("amo_login_bn_fs2", AppLanguage.BN, fontScale = 2f, amoLook = false) { Login() }
