@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 183 | 3034 |
+| `app` | 183 | 3040 |
 | `dw` | 76 | 1233 |
 
 ## Index
@@ -4887,6 +4887,12 @@ Records held for a human decision with their payload and resolution.
 | `resolution_note` | text | null | personal | Free-text note entered with the resolution. |
 | `reopened_at` | timestamp with time zone | null |  | When a returned-to-device item was last re-opened because the phone sent the same record again and it was held again (V0193); null when never. |
 | `reopen_count` | integer | not null |  | How many times the item was re-opened after a return to the device (V0193). |
+| `waiting_since` | timestamp with time zone | null |  | Non-null = an open item that waits for another parent (D-LOY-API-30); null = an ordinary held item. |
+| `awaited_uuid` | uuid | null |  | The parent a waiting item waits for (D-LOY-API-30). |
+| `accepted_parent_uuid` | uuid | null |  | The parent whose accept released this child into waiting (D-LOY-API-30). |
+| `waiting_release_code` | text | null |  | The override the reviewer's accept carried for this child at that time: the code of a same-uploader, same-device child; null otherwise (D-LOY-API-30). The automatic release carries exactly this. |
+| `awaited_refused` | boolean | not null |  | The awaited parent is refused or discarded; refreshed at every sweep pass (D-LOY-API-30). |
+| `waiting_checked_at` | timestamp with time zone | null |  | When the sweep last examined this waiting item; the least recently examined go first (D-LOY-API-30). |
 
 Keys: `UNIQUE (client_uuid, payload_sha256)`; `UNIQUE (resolution_uuid)`; `PRIMARY KEY (id)`
 
