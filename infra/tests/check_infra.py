@@ -1109,7 +1109,7 @@ exit 0
         # (quoted in docs/status/usage.md and the train 121 console); each label is fixed words plus extracted digits only, never the description or the schema name.
         import json, re as _re
         sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
-        block = sh[sh.index("| extend kind = case("):sh.index("         '-')\"")]
+        block = sh[sh.index("| extend kind = case("):sh.index("         '-')\n")]
         branches = []
         for line in block.splitlines()[1:]:
             line = line.strip()
@@ -1149,6 +1149,29 @@ exit 0
             self.assertEqual(want, label(msg), msg)
         for leaked in ("geo fix", "public", "device lab", "rahim", "execution time"):
             self.assertFalse(any(leaked in label(m) for m in cases), leaked)
+        # Round 7: the failure label, the script and SQLSTATE read from the message PLUS the throwable text, \b around ms, case-sensitive SQLSTATE, identifier shape checks.
+        ms_rx = _re.search(r"ms = coalesce\(extract\(@'([^']*)', 1, msg\)", sh).group(1)
+        sql_rx = _re.search(r"sqlstate = coalesce\(extract\(@'([^']*)', 1, mst\)", sh).group(1)
+        script_rx = _re.search(r"script = coalesce\(extract\(@'([^']*)', 1, mst\)", sh).group(1)
+        fail = _re.search(r"iff\(mst matches regex @'([^']*)', strcat\('flyway FAILED at ', coalesce\(extract\(@'([^']*)', 1, mst\)", sh)
+        shape = _re.search(r"lg matches regex @'([^']*)'", sh).group(1)
+        lvl_shape = _re.search(r"lvl matches regex @'([^']*)'", sh).group(1)
+        def ex(rx, t):
+            m = _re.search(rx.replace("\\x24", "$") if False else rx, t); return m.group(1) if m else ""
+        self.assertEqual("", ex(ms_rx, "482913 msg")); self.assertEqual("18400", ex(ms_rx, "took 18400 ms")); self.assertEqual("5", ex(ms_rx, "waited 5ms."))
+        self.assertEqual("23505", ex(sql_rx, "sqlstate=23505")); self.assertEqual("42P01", ex(sql_rx, "----- SQL State  : 42P01")); self.assertEqual("57014", ex(sql_rx, "SQLState 57014"))
+        self.assertEqual("", ex(sql_rx, "sql state: 23505 and sqlstate=ab123"), "case-sensitive: lower-case words and a lower-case value do not match")
+        msg1 = "migrate failed"; st1 = "org.flywaydb.core.api.FlywayException: Migration V0209__attendance_closed_by_comment.sql failed ----- SQL State  : 42P01"
+        mst1 = msg1 + " " + st1
+        self.assertTrue(_re.search(fail.group(1), mst1)); self.assertEqual("0209", _re.search(fail.group(2), mst1).group(1))
+        self.assertEqual("V0209__attendance_closed_by_comment", ex(script_rx, mst1)); self.assertEqual("42P01", ex(sql_rx, mst1))
+        self.assertTrue(_re.search(fail.group(1), "Migration V0205__geo_fix_signals.sql failed"))
+        self.assertFalse(_re.search(fail.group(1), "Migration V0205__geo_fix_signals.sql applied"))
+        for ok in ("aron.sync", "com.aktcl.aron.backend.sync.IngestService", "com.x.Y$Inner", "org.postgresql.util.PSQLException"):
+            self.assertTrue(_re.match(shape, ok), ok)
+        for bad in ("Rahim Uddin", "user 01712345678", "x" * 170, "a b", "name=abu"):
+            self.assertFalse(_re.match(shape, bad), bad)
+        self.assertTrue(_re.match(lvl_shape, "ERROR")); self.assertTrue(_re.match(lvl_shape, "(plain)")); self.assertFalse(_re.match(lvl_shape, "Rahim"))
         # An INFO line with a label is never dropped by the row filter (kind != '-' is one of the three conditions).
         self.assertIn("kind != '-'", sh[sh.index("console_section() {"):sh.index("if [ -n \"${ws:-}\" ]; then\n  section \"Log Analytics: console log of job executions")])
         self.assertIn("where kind != '-' or lvl in", sh)
@@ -1182,6 +1205,53 @@ exit 0
         # the no-op assertion of the stub test is gone
         t = (ROOT / "infra" / "tests" / "check_infra.py").read_text(encoding="utf-8")
         self.assertNotIn("queries.split(" + chr(34) + "replace_regex(tostring", t, "the no-op assertion is gone")
+
+    def test_diagnose_downloaded_postgres_log_prints_no_free_text(self):
+        # Round 7: the DOWNLOADED server-log path (live because logfiles.download_enable is on) gets the same head logic as the KQL head: only LOG/ERROR/FATAL/PANIC records, a fixed phrase,
+        # the letters before the first colon, else [text], and only the duration figure of a slow statement. A made-up file goes through a stub az (the path had no test at all).
+        import subprocess, tempfile, os, stat
+        script = str(ROOT / "infra" / "scripts" / "diagnose.sh")
+        pglog = "\n".join([
+            "2026-11-18 09:30:01.123 UTC-690b-ERROR:  could not deliver to outlet Abu Zafar Store at House 12 Road 5 Gulshan",
+            "2026-11-18 09:30:02.000 UTC-690b-DETAIL:  Key (name)=(Abu Zafar) already exists.",
+            "2026-11-18 09:31:00.000 UTC-690b-LOG:  checkpoint complete: wrote 10 buffers (0.1%); name Rahim",
+            "2026-11-18 09:32:00.000 UTC-690b-FATAL:  terminating connection due to administrator command",
+            "2026-11-18 09:33:00.000 UTC-690b-LOG:  duration: 123456.789 ms  statement: SELECT * FROM outlet WHERE name = 'Abu Zafar'",
+            "2026-11-18 09:34:00.000 UTC-690b-WARNING:  could not open file for Rahim",
+            "2026-11-18 09:35:00.000 UTC-690b-PANIC:  could not write to file: No space left",
+            "2026-11-18 08:00:00.000 UTC-690b-ERROR:  could not deliver to outlet Before The Window",
+            "2026-11-18 09:36:00.000 UTC-690b-LOG:  database system is ready to accept connections",
+            ""])
+        with tempfile.TemporaryDirectory() as d:
+            az = os.path.join(d, "az"); src = os.path.join(d, "src.log")
+            open(src, "w").write(pglog)
+            open(az, "w").write(r"""#!/usr/bin/env bash
+case "$1 $2 $3 $4" in
+  "postgres flexible-server list "*) echo psql-aron-test; exit 0;;
+  "postgres flexible-server show "*) echo /subscriptions/s/resourceGroups/r/providers/x; exit 0;;
+  "postgres flexible-server server-logs list") echo pg.log; exit 0;;
+  "postgres flexible-server server-logs download") cp "$STUB_PGLOG" ./pg.log; exit 0;;
+esac
+exit 0
+""")
+            os.chmod(az, os.stat(az).st_mode | stat.S_IEXEC)
+            env = {"PATH": d + ":/usr/bin:/bin", "STUB_PGLOG": src, "AZURE_RESOURCE_GROUP": "rg-x"}
+            win = ["2026-11-18T09:00:00Z", "2026-11-18T10:00:00Z"]
+            r = subprocess.run(["bash", script, *win], capture_output=True, text=True, env=env)
+            self.assertEqual(0, r.returncode, r.stderr)
+            sect = r.stdout[r.stdout.index("== PostgreSQL server log files"):]
+            sect = sect[:sect.index("\n== Log Analytics")]
+            self.assertEqual(["2026-11-18 09:30:01.123 UTC ERROR [text]", "2026-11-18 09:31:00.000 UTC LOG checkpoint complete", "2026-11-18 09:32:00.000 UTC FATAL terminating connection due to administrator command",
+                              "2026-11-18 09:33:00.000 UTC LOG duration 123456.789 ms", "2026-11-18 09:35:00.000 UTC PANIC could not write to file", "2026-11-18 09:36:00.000 UTC LOG database system is ready to accept connections"],
+                             [l for l in sect.splitlines() if l.startswith("2026-")], sect)
+            for leaked in ("Abu", "Zafar", "Gulshan", "Rahim", "SELECT", "outlet", "House", "Before The Window", "WARNING", "DETAIL"):
+                self.assertNotIn(leaked, sect, leaked)
+            # Private message mode: the text is printed behind the redactor, but SQL text after `statement:` or `execute <name>:` is dropped.
+            open(src, "a").write("2026-11-18 09:37:00.000 UTC-690b-LOG:  execute S_1: SELECT secret_col FROM t WHERE note = 'could not pay Zed'\n")
+            r = subprocess.run(["bash", script, "--include-messages", *win], capture_output=True, text=True, env=env)
+            self.assertEqual(0, r.returncode, r.stderr)
+            self.assertNotIn("SELECT", r.stdout); self.assertNotIn("secret_col", r.stdout); self.assertNotIn("Zed", r.stdout)
+            self.assertIn("statement: [sql]", r.stdout); self.assertIn("execute S_1: [sql]", r.stdout)
 
     def test_deploy_holds_one_lock_for_the_whole_deploy(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")

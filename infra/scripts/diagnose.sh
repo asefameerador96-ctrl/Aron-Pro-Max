@@ -140,6 +140,18 @@ REDACT_SALT="${REDACT_SALT:-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n
 redact() { perl -e "$REDACT_PL"; }
 # show <width>: redact the whole text first, then cut to the width in characters (inside the same perl program).
 show() { REDACT_WIDTH="$1" perl -e "$REDACT_PL"; }
+# pglog_head: a downloaded PostgreSQL server-log record -> "<time> <severity> <head>", ONLY for LOG, ERROR, FATAL and PANIC records. The head is the same logic as the KQL head: a fixed phrase,
+# else the letters before the first colon, else [text]; a slow-statement record keeps only its duration figure ("duration 123456.789 ms"), never the statement or any value after it.
+pglog_head() {
+  perl -CSDA -ne '
+    next unless /^([0-9-]+ [0-9:.]+) ?UTC\S*?-(LOG|ERROR|FATAL|PANIC):\s*(.*?)\s*$/;
+    my ($t, $sev, $msg) = ($1, $2, $3);
+    if ($msg =~ /^duration: ([0-9]+(?:\.[0-9]+)?) ms/) { print "$t UTC $sev duration $1 ms\n"; next }
+    my $head = "[text]";
+    if ($msg =~ /(database system is ready to accept connections|database system was shut down|terminating connection due to [a-z ]{3,40}|out of memory)/) { $head = $1 }
+    elsif ($msg =~ /^([A-Za-z][A-Za-z ]{2,60}):/) { $head = $1 }
+    print "$t UTC $sev $head\n";'
+}
 # held_note: stdin = the two numbers (held, shown) of the count query; prints the line that says how many lines the secret-word exclusion held back.
 held_note() {
   local nums a b; nums="$(tr -s '[:space:],' ' ' | sed 's/^ //')"; a="${nums%% *}"; b="${nums#* }"; b="${b%% *}"
@@ -231,7 +243,7 @@ if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
       echo "-- $(basename "$lf")"
       grep -E 'FATAL|PANIC|terminat|out of memory|Killed|database system|server process|checkpoint|could not|duration: [0-9]{5,}' "$lf" \
         | grep -v -E 'DETAIL|parameters:' | awk -v s="${SINCE:0:16}" -v u="${UNTIL:0:16}" '{ t=$1 "T" substr($2,1,5); if (t >= s && t <= u) print $0 }' | head -80 \
-        | if [ "$INCLUDE_MESSAGES" = true ]; then showm 200; else sed -nE 's/^([0-9-]+ [0-9:.]+ ?UTC)[^ ]*-(LOG|ERROR|FATAL|PANIC):[[:space:]]*([^"'"'"':(]{0,80}).*/\1 \2 \3/p' | show 160; fi
+        | if [ "$INCLUDE_MESSAGES" = true ]; then sed -E 's/(statement:|execute [^:]*:).*/\1 [sql]/' | showm 200; else pglog_head | show 160; fi
     done
     rm -rf "$tmp"
   fi
@@ -257,17 +269,18 @@ KQL_CONSOLE="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleL
      | extend fm = coalesce(nullif(tostring(j.formattedMessage), ''), nullif(tostring(j.message), ''), nullif(tostring(j.msg), ''), '(no message)')
      | extend st = tostring(coalesce(j.stack_trace, j.exception, j.throwable))
      | extend msg = replace_regex(iff(isobj, fm, line), @'[\r\n\t]+', ' ')
+     | extend mst = replace_regex(strcat(msg, ' ', st), @'[\r\n\t]+', ' ')
      | extend exc = coalesce(nullif(tostring(j.throwable.className), ''), nullif(tostring(j.exception.className), ''), extract(@'^\s*([A-Za-z_][A-Za-z0-9_.]{2,160})', 1, st)),
               cause = coalesce(nullif(tostring(j.throwable.cause.className), ''), nullif(tostring(j.exception.cause.className), ''), extract(@'Caused by: ([A-Za-z_][A-Za-z0-9_.]{2,160})', 1, st))
-     | extend sqlstate = coalesce(extract(@'(?i)sql ?state[ =:]+([0-9A-Z]{5})', 1, strcat(msg, ' ', st)), ''), ms = coalesce(extract(@'([0-9]{1,9}) ?ms', 1, msg), '')
-     | extend script = coalesce(extract(@'Migration (V[0-9]+__[A-Za-z0-9_]+)', 1, msg), '')
+     | extend sqlstate = coalesce(extract(@'(?:SQLState|SQL State|sqlstate)[ =:]+([0-9A-Z]{5})', 1, mst), ''), ms = coalesce(extract(@'\b([0-9]{1,9}) ?ms\b', 1, msg), '')
+     | extend script = coalesce(extract(@'Migration (V[0-9]+__[A-Za-z0-9_]+)', 1, mst), '')
      | extend kind = case(
          msg startswith 'pre-flight: nothing to do', strcat('pre-flight nothing to do ', tostring(extract_all(@'(V[0-9]{4}-[A-Za-z0-9-]+=(?:clean|not pending|repaired))', msg))),
          msg startswith 'pre-flight', 'pre-flight line',
          msg startswith 'waiting-item sweep enabled', strcat('sweep enabled, interval ', coalesce(extract(@'interval ([0-9]+) s', 1, msg), '?'), ' s, batch ', coalesce(extract(@'batch ([0-9]+)', 1, msg), '?')),
          msg startswith 'waiting-item sweep disabled by', strcat('sweep disabled by ', coalesce(extract(@'disabled by (ARON_WAITING_SWEEP=off|cfg[.]sync[.]waiting_sweep_enabled)', 1, msg), '?')),
          msg matches regex @'^Current version of schema', strcat('flyway current version ', coalesce(extract(@'^Current version of schema [^:]*: v?([0-9][0-9.]*)', 1, msg), '?')),
-         msg matches regex @'^Migrating schema', strcat('flyway migrating to ', coalesce(extract(@'^Migrating schema .* to version [\x22]?v?([0-9][0-9.]*)', 1, msg), '?')),
+         msg matches regex @'^Migrating schema', strcat('flyway migrating to ', coalesce(extract(@'^Migrating schema [^ ]+ to version [\x22]?v?([0-9][0-9.]*)', 1, msg), '?')),
          msg matches regex @'^Successfully applied', strcat('flyway applied ', coalesce(extract(@'^Successfully applied ([0-9]+) migration', 1, msg), '?'), ' now at ', coalesce(extract(@'now at version v?([0-9][0-9.]*)', 1, msg), '?')),
          msg matches regex @'^Schema .* is up to date', 'flyway up to date',
          msg matches regex @'^Successfully validated', strcat('flyway validated ', coalesce(extract(@'^Successfully validated ([0-9]+) migration', 1, msg), '?')),
@@ -276,7 +289,12 @@ KQL_CONSOLE="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleL
          msg matches regex @'(?i)(started|listening|responding at)', 'startup line',
          msg matches regex @'(?i)(bundle|lapsed|aggregat|geo re-check|retention|risk signal|route-day)', 'job-run line',
          msg matches regex @'(?i)(error|failed|exception)', 'error line',
-         '-')"
+         '-')
+     | extend kind = iff(mst matches regex @'Migration V[0-9]+__[A-Za-z0-9_.]+ failed', strcat('flyway FAILED at ', coalesce(extract(@'Migration V([0-9]+)__', 1, mst), '?')), kind)
+     | extend lg = iff(lg == '' or lg matches regex @'^[A-Za-z_][A-Za-z0-9_.\x24-]{0,160}$', lg, '[text]'),
+              lvl = iff(lvl matches regex @'^([A-Z]{3,8}|\(plain\))$', lvl, '[text]'),
+              exc = iff(isempty(exc) or exc matches regex @'^[A-Za-z_][A-Za-z0-9_.\x24-]{0,160}$', exc, '[text]'),
+              cause = iff(isempty(cause) or cause matches regex @'^[A-Za-z_][A-Za-z0-9_.\x24-]{0,160}$', cause, '[text]')"
 # The secret-word exclusion (message mode only): applied to the PRINTED message text, never to a raw JSON line or a stack trace.
 KQL_HELD="| extend held = msg matches regex @'(?i)password|secret|authorization|bearer|\bkey=|sig=|token[=:]|jdbc:|connection ?string|statement:|parameters:|DETAIL:'"
 
