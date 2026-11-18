@@ -388,10 +388,10 @@ class AsthaBundleSectionTest {
     fun aPortalPointsAdjustmentIsInTheBundleBalanceAndOverdrawnShowsBelowZero() {
         fun row(): JsonObject = assertNotNull(section(setOf(outletB)))["loyalty"]!!.jsonArray.map { it.jsonObject }.single()
         val before = row().str("balance_points")!!.toLong()
-        fun post(points: Int, request: String = java.util.UUID.randomUUID().toString()) = with(world) {
+        fun post(points: Int, request: String = java.util.UUID.randomUUID().toString(), allow: Boolean = false) = with(world) {
             var out: Pair<Int, String>? = null
             withApi {
-                val r = postWeb("superadmin1001", "/v1/admin/programmes/$programme/adjustments", """{"request_uuid":"$request","outlet_id":$outletB,"points":$points,"reason":"Opening balance loaded by the office"}""")
+                val r = postWeb("superadmin1001", "/v1/admin/programmes/$programme/adjustments", """{"request_uuid":"$request","outlet_id":$outletB,"points":$points,"allow_overdraw":$allow,"reason":"Opening balance loaded by the office"}""")
                 out = r.status.value to r.bodyAsText()
             }
             out!!
@@ -401,7 +401,8 @@ class AsthaBundleSectionTest {
         assertEquals(before + 25, row().str("balance_points")!!.toLong())
         assertEquals(200, post(25, rq).first, "a resend is a replay")
         assertEquals(before + 25, row().str("balance_points")!!.toLong(), "a resend never doubles the points")
-        assertEquals(201, post(-(before.toInt() + 40)).first)
+        assertEquals(409, post(-(before.toInt() + 40)).first, "a debit below zero needs allow_overdraw")
+        assertEquals(201, post(-(before.toInt() + 40), allow = true).first)
         row().also { assertEquals("-15", it.str("balance_points")); assertEquals("true", it.str("overdrawn")) }
         assertEquals(201, post(15).first)
         row().also { assertEquals("0", it.str("balance_points")); assertEquals("false", it.str("overdrawn")) }
