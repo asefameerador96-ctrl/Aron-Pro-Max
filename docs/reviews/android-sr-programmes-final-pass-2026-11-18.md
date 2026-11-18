@@ -336,3 +336,163 @@ LOWS:
 - Golden claim: the status file says the old goldens had a selected chip that showed as unselected (the Locale bug). In fact 8 PNGs were re-recorded (astha_target_bn_awaiting_font20, bn_empty_month, bn_font20, bn_memo, bn_std, bn_sunlight, en_awaiting_sunlight, en_std) and 7 are new; 15 changed in total. bn_empty_month also changed because pg_not_downloaded has new text. The en_* changes fit the bug only if the JVM default locale was Bangla in the screenshot harness; plausible, not verified (PNGs not viewed).
 - When a read of one route of a quarter is OFFLINE and another FAILED, FAILED wins; for a mixed quarter the per-month note does not say which route is missing.
 - A pg_awaiting_redemptions Bangla spelling change rides along in this diff (harmless).
+
+
+## Re-review 6d527e200..85b992cfd (round 2), 2026-11-18
+
+Read from code only; nothing built, run or walked on a device.
+
+### fixes-and-quarantine verdict=fail
+SUMMARY: Read-only review of 6d527e200..85b992cfd (31 files), read from code only. Nothing was built, run or tried on a device.
+
+The fixes that hold by reading:
+- **(1) Merge.** AsthaFetched.merge no longer compares any timestamp. A month the bundle holds is always shown from the bundle, with rule B; a cut month keeps its rows and its note. A read is used only for months whose rows the bundle lacks (see the low about a bundle month with no rows).
+- **(4) No recorded order.** Memos that never left the phone are added, acknowledged ones and edits are left out and named in the pg_order_unknown note, and the test asserts that again. An edit chain with an uncertain predecessor is now wholly uncertain (`tainted`), which closes the earlier low.
+- **(5) Photo attempts.** isDefiniteRefusal excludes retry_exhausted, ack_mismatch and transport_*. In AckRules, a REJECTED row carries only: a non-retryable server code, retry_exhausted (where transport and ack_mismatch failures end), or 'discarded' (quarantine resolution). So no locally produced rejection opens a new attempt, and photoState shows the exhausted row as uncertain.
+- **(2) Partly.** The calendar rule itself is sound. `read_date` is DhakaTime.dateOf(as_of), the server instant converted with BusinessDate.of, so it is the Dhaka date. A read ON the last day counts as open (correct). YearMonth.atEndOfMonth handles leap years. A missing date counts as open. Cache files from before this build have no read_date and are recomputed from as_of. Logout now deletes the cache, and the fetch runs on IO.
+
+Still broken:
+- **Quarantine (the lens question).** FigureRuleB adds quarantined memos. readState returns the outbox state 'quarantined'. `live` keeps it (only rejected and uncertain are dropped). It is never in ackedOrderUuids (state='acked' only), so `add` takes it. NEVER_SENT even lists 'quarantined' as 'never left this phone', so the no-order path adds it too. `awaiting` does not count it.
+- **(6) Order set.** Not complete. gift_choice is not in ORDER_RECORD_TYPES: 'amo_record' is a table name, not an outbox record_type. Redemptions from an earlier month fall outside the business_date filter.
+- **(3) Quarter naming.** Quarter start is read from cfg, and a missing key is now not assumed to be January. But the year in the phone's quarter key differs from the server's AsthaQuarter for quarters that start in the next calendar year.
+- **(2) Gap.** A month read on or after its last day is treated as final. The own-memo awaiting note disappears as soon as a memo is acknowledged, even when the read did not hold it.
+
+Not verified:
+- The server's figure semantics for quarantined and released memos beyond the contract text ('held out of the day's figures, counted only when ADMIN accepts').
+- That BusinessDate.of uses Asia/Dhaka (assumed from its name).
+- That kotlinx Instant.parse accepts every as_of form the server sends.
+- The Bangla text of the 3 new strings, the 3 new goldens, the HardcodedStringScan result.
+- Whether the bn-BD JDK digits sentinel passes in CI.
+
+#### BLOCKING upheld=3/3: A quarantined memo is added to the Astha figure, and a memo released after the request is added on top of a figure that may already hold it
+WHERE: android/feature-programmes/src/main/kotlin/com/aktcl/aron/feature/programmes/FigureRuleB.kt delta(): `live` filters only rejected/uncertain; `add` = live memos not in ackedBeforeRequest; `NEVER_SENT = setOf("pending", "quarantined")`; awaiting() counts only uncertain/tainted. android/app-sr/src/main/kotlin/com/aktcl/aron/sr/ProgrammeStore.kt readState() returns the raw outbox state 'quarantined'; OutboxDao.ackedOrderUuids selects state='acked' only. AckRules.resolution maps accepted/accepted_with_fix to ACKED with last_code resolved_*, which FigureRuleB does not distinguish from a normal ack.
+WHY: Binding rule: a memo whose last server answer is quarantined is never added. It is shown as awaiting and held for review until an accepted/duplicate ack or an accepted resolution reached the phone BEFORE a bundle request. Today it is not in the acked set, so rule B adds it. In the no-order path it is added as 'certainly not in the server figure', which is false: the server stores it and counts it as soon as an admin accepts it. When the release happens server-side before the next snapshot but the resolution reaches the phone after that request, the row reads as 'acked after the request' and is added again on top of a figure that already holds it. The page shows no awaiting line in any of these cases. Quarantine is a live path: device_integrity_failed quarantines unsigned headers, scope_out_of_reach and after_final_submit exist, and the late-sync quarantine policy is GUI-settable.
+SCENARIO: 1. SR sells a 40-packet memo M on Nov 10; the server quarantines it (after_final_submit or scope_out_of_reach). The phone marks it 'quarantined'.
+2. The next bundle request records the acked set without M, and the server figure excludes M.
+3. Astha adds M's 40 packets with no awaiting note. The SR sees achievement +40 that the server does not count, and may never count if a reviewer discards it.
+4. At 11:00 an admin accepts M. At 11:05 the phone requests a bundle (the snapshot holds M). The resolution reaches the phone at 11:10 via sync, so M is 'acked' but not in the set recorded at 11:05. Rule B adds M again: 80 packets shown for a 40-packet sale until the next full bundle, which may be the next day.
+Fix: treat quarantined (and acked with last_code resolved_* not in the set) as awaiting. Never add or subtract it; count it in awaiting. Remove 'quarantined' from NEVER_SENT. Add tests for both cases.
+
+#### BLOCKING upheld=3/3: Gift choice fix is not real: gift_choice is not in ORDER_RECORD_TYPES ('amo_record' is no outbox record_type), so an acknowledged choice never yields to the bundle
+WHERE: android/core-database/src/main/kotlin/com/aktcl/aron/core/database/dao/OutboxDao.kt ORDER_RECORD_TYPES = memo, memo_void, redemption, amo_record; CaptureRepository.recordProgramme -> RecordMapping.amoRecord writes outbox record_type = RecordType wire ('gift_choice', 'redemption', 'gift_photo'); shared/contract ContractEnums RecordType has no 'amo_record'; GiftChoiceModel.stateOf `bundleHasIt = a != null && ackedBeforeRequest != null && mine.uuid in ackedBeforeRequest`; OrderRecordTypesTest asserts 'amo_record' is listed (the guard checks a wrong value); GiftChoiceModelTest passes setOf("c1") directly, so the DAO path is not covered.
+WHY: The outbox row of a gift choice has record_type 'gift_choice', so ackedOrderUuids never returns it. stateOf then always returns Sent(localGift) for an acknowledged choice and never lets the bundle win, including after a TSO changes the assignment. Before this change, a bundle requested after the ack won; now it never does. The fix claimed in the status file does not do what it says.
+SCENARIO: 1. SR chooses gift 2 for outlet 10 in 2026-Q4; it is acknowledged at 10:00.
+2. At 12:00 a TSO changes the outlet's gift to 1 (unlocked).
+3. Next morning's bundle carries assignment gift 1. The recorded set lacks the choice's uuid (record_type gift_choice is filtered out).
+4. The gift page shows 'Sent: gift 2' for the rest of the quarter while the record stays on the phone. The SR tells the shop the wrong gift.
+Fix: list 'gift_choice' (and check 'redemption' and every other type stateOf/points read), and test ackedOrderUuids against real outbox rows written by recordProgramme.
+
+#### BLOCKING upheld=3/3: A redemption acknowledged in an earlier month is subtracted again from the bundle balance (silent understatement), a regression from the previous build
+WHERE: OutboxDao.ackedOrderUuids(`business_date >= :fromDate`) called from BundleDownloader with forDate.take(7)+"-01"; RedemptionModel.LocalRedeemed.points `ackedBeforeRequest == null || it.uuid !in ackedBeforeRequest`; ProgrammeStore.redemptions() lists every redemption amo_record still on the phone, of any date (kept until LocalPurge, 7 business days + 3 days after the ack).
+WHY: The acknowledged-uuid set is cut at the first of the bundle's month: the memo rule needed that, but points balances are not monthly. A redemption dated last month and acknowledged long before the request is not in the set, so points() counts it as 'not inside the balance' and subtracts it from a bundle balance that already deducted it. The previous ack-time comparison got this case right. No awaiting or as-of note is shown, and the understated balance can block a valid redemption (overdrawn or insufficient points on the phone).
+SCENARIO: 1. Oct 31: SR redeems 500 points for outlet 10; it is acknowledged the same afternoon.
+2. Nov 1 07:00: a bundle is requested; ackedOrderUuids("2026-11-01") excludes the Oct 31 redemption. The bundle balance (1,200) already reflects the deduction.
+3. Points page: 1,200 - 500 = 700, shown as the balance with no note, for about 10 days until the record is purged. A 900-point gift is refused on the phone though the server would allow it.
+Fix: do not cut redemptions and gift choices by month (a separate set, or no date filter for those types). Add a DAO-level test with a previous-month redemption.
+
+#### BLOCKING upheld=3/3: Quarter key year differs from the server's for quarters that start in the next calendar year (start month != 1): the wrong quarter is fetched and months are cached as empty; gift choices are refused
+WHERE: AsthaModel.quarterYearOf / quarterOf / monthsOfQuarter (year = year the series starts in), AsthaScreens startAt and quarterKey "%04d-Q%d"; GiftChoiceModel.quarterOf (`year = if (m < startMonth) y - 1 else y`); server backend/platform AsthaQuarter.of/parse ('Label is YYYY-Qn of the year the quarter starts in'; parse: first month = startMonth + 3(n-1) mod 12 OF THE LABEL YEAR); ProgrammesReads.targets; GiftChoiceRecords.judge (`quarter != open` -> SCHEMA_INVALID, final).
+WHY: With start month 7, Feb 2027 is the server's quarter '2027-Q3' (Jan-Mar 2027). The phone names it '2026-Q3'. Asked for '2026-Q3', the server returns Jan-Mar 2026 rows. AsthaQuarterFetcher writes those (the server's month list is authoritative) and also writes EMPTY files for 2027-01 and 2027-03. A past empty month (Jan 2027, read in Feb) counts as fetched and final, so it shows 'No data found' and is never re-read. The gift choice record carries '2026-Q3', and the server refuses it as a final schema_invalid ('not the open quarter 2027-Q3'). Any start month other than 1 makes this live, for every quarter whose first month is before the start month in the calendar year (for start 7: Q3 and Q4).
+SCENARIO: 1. An admin sets cfg.astha.quarter_start_month = 7.
+2. On 2027-02-10 the SR opens Astha: the page selects year 2026 Q-3 and fetches '2026-Q3'.
+3. The server answers Jan-Mar 2026 rows. Jan 2027 is cached empty and shows 'No data found' although targets and sales exist. Mar 2027 is cached empty too.
+4. The same SR picks a gift: the record is saved with quarter '2026-Q3' and rejected by the server as final, and the outlet's choice is lost.
+Fix: name a quarter by the year of its first month, as AsthaQuarter does. Share one implementation, or test the phone against the server's of/parse for every start month 1..12 and every month of a year.
+
+#### BLOCKING upheld=3/3: A month read on or after its last day is treated as final, but this phone's memos of that month acknowledged after the read are not in it and their awaiting note disappears: a silent undercount
+WHERE: AsthaModel.FetchedMonth.openAtRead / AsthaData.readWhileOpen / wantsRead; ProgrammeHosts.monthAwaitingOf counts only `state != "acked" && state != "rejected"`; AsthaScreens.MonthTables shows pg_as_of (not pg_as_of_open) for such a month.
+WHY: The calendar rule (final if read after the month ended) assumes the read already holds every memo of the month. This phone's own late memos break that. A Nov 30 memo still pending or uncertain when the Dec 1 read is taken is not in the read. While it is unacknowledged, monthAwaiting shows it as awaiting (correct). Once the sync acknowledges it, monthAwaiting drops it. But the read is dated Dec 1, so it is final and never re-read. The month then shows the read's figure without the memo, under a plain 'Data as of 01/12/2026' with no awaiting or open note. The read records no acked set, so the phone cannot tell 'acked before the read' from 'acked after'.
+SCENARIO: 1. Nov 30 offline: the SR sells 3 memos (60 packets) on route 7.
+2. Dec 1 08:00 online: the SR opens Astha on the Q4 chip. Nov was cached while open, so wantsRead re-reads it; the read is dated 2026-12-01 and lacks the 3 memos (still pending). The page correctly says 3 awaiting.
+3. 08:02: sync uploads and acknowledges them.
+4. Any later visit: Nov shows the 08:00 read, 60 packets short, 'Data as of 01/12/2026', no awaiting line. It is never re-read: the read date is after Nov 30.
+Fix: record the acked set (or the memo uuids of the month still unacknowledged) with each read. Treat a month as final only when none of this phone's memos of the month were unacknowledged at the read, otherwise re-read or keep counting them as awaiting.
+
+LOWS:
+- **Bundle month with no rows.** The current month is taken from a read when the bundle holds no rows for it. bundleMonths in merge is derived from the bundle's rows, not from the bundle's date. If targets are uploaded after the morning bundle, the current month has no bundle rows, so a quarter read supplies it with no local memos and no rule B. This breaks the binding 'current bundle month always from the bundle'. The pg_as_of_open note and monthAwaiting (unacknowledged memos) cover part of it. Fix: treat the bundle's date month as a bundle month even when it has no rows.
+- **Repeated quarter reads.** Future months of the current quarter (e.g. Dec, read in Nov) are always readWhileOpen, so wantsRead stays true. Every online opening of Astha on the current quarter re-reads the whole quarter for every route: up to 40 pages each, against the 2 GB/day data budget. Consider reading only past months that were open at their read, or rate-limiting reads per day.
+- **payload_conflict as a definite refusal.** It is a server code, so isDefiniteRefusal treats it as a refusal, yet the server does hold a record under that uuid. Because photo uuids are deterministic per subject, a second phone of the same SR gets payload_conflict on X0, opens X1, and the server stores a second record, flagged as a duplicate. The server's election keeps the first photo, so this is narrow. Not exercised by any test.
+- **Restored rows and the redemption set.** ackedOrderUuids takes state='acked' only. A redemption put back to pending by a restore or digest resync (still holding acked_at) is not in the set, so it is subtracted again: the balance is understated, never overstated. RedemptionModelTest's 'restored row back to pending that the server held: inside' passes the uuid in by hand, so it does not test the DAO path.
+- **Inconsistent default start month.** GiftSelectionHost still defaults a missing cfg.astha.quarter_start_month to 1, while the Astha target page treats a missing key as unknown and computes no quarter.
+- **Tests bypass the DAO.** FigureRuleBTest, AsthaLocalTest, GiftChoiceModelTest and RedemptionModelTest all pass hand-built acknowledged sets. No test builds the set through BundleDownloader and ackedOrderUuids from real outbox rows, which is why the gift_choice and cross-month gaps pass. No test covers a quarantined memo or a resolved_accepted memo in FigureRuleB. I saw no weakened assertion. The rewritten no-order test is now stricter.
+- **Quarantined memos in month awaiting.** monthAwaitingOf counts quarantined memos as 'awaiting' for fetched months, which is right. But a memo the server discarded after quarantine (rejected 'discarded') is dropped silently: correct for the figure, but nowhere does the page tell the SR it was refused.
+- **Not verified.** No build, test, screenshot or device run. The Bangla text of pg_order_unknown, pg_quarter_unknown and pg_as_of_open was not read. I did not render the new goldens (astha_target_bn_fetched_open_month, astha_target_bn_quarter_unknown, astha_target_en_order_unknown).
+
+### regressions-tests-ui verdict=fail
+SUMMARY: Read-only review of 6d527e200..85b992cfd (31 files, one commit). I read the diff and the files at the head; nothing was built, run, rendered or tried on a device, and I did not view the three new PNGs.
+
+What holds, by reading:
+- **Cut months.** A cut bundle month now keeps its rows and the cut note and is never replaced by a read. The merge no longer compares as_of times. Fetched months carry a read date, and a month read on or before its last day is re-read when online; offline it shows pg_as_of_open.
+- **Quarter start month.** The target page now uses cfg.astha.quarter_start_month. monthsOfQuarter, quarterOf and quarterYearOf agree: start 7, Nov 2026 gives Q2 = Oct-Dec 2026.
+- **No-order rule.** Memos that never left the phone are added again, so the test loosened at 6d527e200 is effectively restored. The left-out memos are named in a new note.
+- **Fetch and cache.** The fetch runs on Dispatchers.IO. The cache folder is astha-months-<userId>. ShellLogout.clearDeviceTraces is wired: LogoutFlow.logout calls it right after endSession for SR and AMO, and before the wipe for TSO, and it deletes the same folder name SrDay uses. A second SR on a shared phone reads only their own folder.
+- **Gift photos.** The attempt is renewed only on a definite refusal, and retry_exhausted, transport_* and ack_mismatch read as uncertain.
+- **Strings.** pg_order_unknown, pg_quarter_unknown and pg_as_of_open exist in both values/ and values-bn/.
+- **Allow-lists.** The HardcodedStringScan and EveryWriterIsGated files are not in the diff.
+- **core-* changes:**
+  - OutboxDao: ackedMemoUuids renamed to ackedOrderUuids, now covering memo, memo_void, redemption and amo_record. Its only caller is BundleDownloader, which was updated.
+  - ShellLogout: deletes the cache folder.
+  - New tests: OrderRecordTypesTest and a BundleDownloaderTest case.
+  - Nothing else outside the lane changed.
+
+**Tests compared, old vs new:**
+- **AsthaFetchedTest:**
+  - 'cut month replaced by a newer read' was removed and replaced by its inverse ('never replaced'). That matches the new rule.
+  - The legacy-flag test was inverted for the same reason.
+  - The two-routes test keeps its asOf assertion and adds readDate.
+  - Five new tests: openAtRead, wantsRead, the cache read_date, old files without a read date, and the server's month list.
+- **AsthaLocalTest:**
+  - The server-only test was replaced by one that asserts the total (140,000) with a pending memo added and the acknowledged one counted by unknownOrder.
+  - New tests cover an edit with no order and an edit chain with an uncertain link.
+- **FigureRuleBTest:** the no-order case now asserts 110/5 instead of 100/4. That is stronger, because the total is asserted.
+- **AsthaScreensTest:**
+  - The all-held Q4 case moved to Q3, because Q4 with December read in November is now re-read by design.
+  - New tests cover the open label, month awaiting, start month 7, no start month, and the order-unknown line.
+- **GiftChoiceModelTest, RedemptionModelTest, LoyaltyScreensTest:** times were swapped for uuid sets, with the same cases. The instant-format case was dropped because it no longer applies, and a restored-pending case was added.
+
+No assertion is weaker in a way that hides a defect. But no test drives the host paths the SR actually sees: readAsthaPage, monthAwaitingOf, or the logout deletion. And no test covers a quarantined memo, an acknowledgement from the previous month, or a month whose own memo is acknowledged after a final read.
+
+Three blocking findings are below.
+
+#### BLOCKING upheld=3/3: The acknowledged-uuid set is cut at the 1st of the bundle month, so a redemption acknowledged last month is subtracted from the points balance a second time
+WHERE: android/core-database/.../dao/OutboxDao.kt ackedOrderUuids (`business_date >= :fromDate`) called from BundleDownloader.fetch with forDate.take(7)+"-01"; consumed by RedemptionModel.kt LocalRedeemed.points / PointsBalance via ProgrammeHosts OutletPointsHost/RedemptionHost (store.ackedBeforeRequest()); also GiftChoiceModel.stateOf via GiftSelectionHost
+WHY: The date filter was built for memos, which rule B only reads for the bundle month. Redemptions and gift choices are not month-scoped. The bundle's points balance is cumulative, and a gift choice covers a whole quarter. ProgrammeStore.redemptions() returns every redemption still on the phone, and LocalPurge keeps acknowledged amo_record rows for about 7 or more business days after the ack. So a redemption acknowledged before the request but dated in the previous month is missing from the set. LocalRedeemed.points then counts it as 'not in the balance' and subtracts it again. The time-based rule at 6d527e200 handled this case; this change regresses it. The result is a silent undercount with no awaiting or as-of note, and it can show the outlet as overdrawn and block a valid redemption. The tests (RedemptionModelTest, GiftChoiceModelTest, BundleDownloaderTest) only use records dated in the bundle month.
+SCENARIO: 1. On 2026-10-30 the SR redeems 400 points at outlet 10 (programme 3). The redemption is acknowledged that day.
+2. On 2026-11-01 a full bundle is requested. The set is acked uuids with business_date >= 2026-11-01, so the redemption is not in it. The bundle balance of 500 already has the 400 deducted, so it reads 100.
+3. Outlet points shows 100 - 400 = -300 and marks the outlet overdrawn. The redemption screen refuses a redemption the server would accept.
+4. This lasts until LocalPurge removes the October record, around 7 to 10 days later, with no note.
+The same cut makes an October gift choice for 2026-Q4 read 'Sent' in November instead of the bundle's assignment, so a TSO's later change is hidden.
+Fix direction: record the set without the date floor for redemption and amo_record (or for every type outside rule B), and add tests with a record from the previous month.
+
+#### BLOCKING upheld=3/3: A memo whose last server answer is 'quarantined' is added to the Astha figure, labelled as 'never left the phone'
+WHERE: android/feature-programmes/.../FigureRuleB.kt: `NEVER_SENT = setOf("pending", "quarantined")` used by the new no-order branch of delta(); the order-known branch also adds it (`live` excludes only rejected/uncertain, and a quarantined uuid is never in the acked set); FigureRuleB.awaiting counts only uncertain/tainted
+WHY: Outbox state 'quarantined' is a server answer: SyncRules maps ack 'quarantined' to OutboxState.QUARANTINED. It does not mean 'never sent'. The binding rule says a quarantined memo is never added, is shown as awaiting, and is held until an accepted or duplicate answer reaches the phone before a bundle request. The new no-order code names quarantined as certainly outside the server figure and adds it. With the order known it is also added, and in both cases the awaiting line leaves it out. If the server releases it as accepted_with_fix, or the server figure already holds it, the page double counts with no note. readState does not turn it into uncertain, because sentUnanswered does not include quarantined rows. No test has a quarantined memo.
+SCENARIO: 1. late_sync is 'quarantine'. The SR's 40-packet memo M of 2026-11-17 is answered 'quarantined' (held for review).
+2. An admin accepts it on the server. The resolution has not reached the phone yet.
+3. The next morning the day starts from a promoted prefetch, so no recorded order exists. The server figure holds M.
+4. FigureRuleB.delta treats M as NEVER_SENT and adds 40 packets again. Astha shows +40, the awaiting line says 0, and the order-unknown line does not count M.
+With a normal full bundle, M (not in the acked set) is also added on top of a figure that may hold it.
+Fix direction: exclude 'quarantined' from add, count it in awaiting, and add a test for each path.
+
+#### BLOCKING upheld=3/3: A past month counted as final by date drops this phone's own memo once it is acknowledged after the read: the awaiting count falls to 0 and the month is never read again
+WHERE: android/feature-programmes/.../AsthaModel.kt FetchedMonth.openAtRead / AsthaData.wantsRead; android/app-sr/.../ProgrammeHosts.kt monthAwaitingOf (`state != "acked" && state != "rejected"` at display time)
+WHY: The previous final pass asked to keep this phone's own memos of non-bundle months visible until a read holds them. monthAwaitingOf counts a memo as awaiting only while it is unacknowledged now. It has no record of which memos the read could hold (no set recorded at the read request, unlike the bundle). Finality is decided only by the calendar: read date after the month's last day. A memo dated in the month that is sent after that read is in neither the read nor the awaiting count once it is acknowledged. The label is the plain 'Data as of <date>', without the 'still open' wording. wantsRead is false, so nothing re-reads the month. This only half-fixes step 4 of the earlier blocking scenario.
+SCENARIO: 1. On 2026-11-30 the SR sells 3 memos (25 packets) offline.
+2. On 2026-12-01 the phone is online. The SR opens Astha before the upload finishes. November is not in the December bundle, so Q4 is read and November is cached with read_date 2026-12-01, which counts as final. November shows the read plus 'awaiting 3'.
+3. At 10:00 the 3 memos are acknowledged. Reopening the page shows November without the 25 packets, awaiting 0, and 'Data as of 01/12/2026'. wantsRead(Q4) is false for November, so it is never re-read.
+4. November stays 25 packets short for good.
+Fix direction: record the acknowledged uuids, or the unacknowledged own memos of the month, when the read request leaves. Keep adding or flagging those memos until a later read is requested after their ack. Or treat a month as open while any own memo of it was unacknowledged at the read.
+
+LOWS:
+- Re-reads are bounded per entry, not per day (data budget). In the first two months of a quarter, a later month (for example December read in November) is always openAtRead, so wantsRead stays true. Every opening of the Astha page online re-reads the whole quarter for every route (up to 40 pages each), and so does every entry into a shop: TargetBody runs from a different call site, so its LaunchedEffect starts again. It is not a loop, because LaunchedEffect(quarterKey, lacking) does not restart after the fetch while lacking stays true, and the LOADING guard holds. Still, the same empty future month is fetched again and again. Suggest a once-per-day or once-per-session throttle per quarter, or skip months that have not started.
+- The quarter picker labels still assume January. The pg_quarters array is fixed ('Q-4 (Oct-Dec)'), while the chips follow startMonth. With start month 7, the SR picks 'Q-4 (Oct-Dec)' and sees April to June chips. The new test withStartMonthSevenQuarterFourIsAprilToJuneOfTheNextYear hard-codes that mislabel by choosing 'Q-4 (Oct-Dec)'.
+- GiftSelectionHost and the gift photo host (ProgrammeHosts l.207 and l.247) still fall back to `?: 1` when the config is missing. The target page now shows 'quarter unknown' in the same situation. So the two pages can disagree, and a gift choice record can carry a quarter derived from January.
+- If a bundle lacks cfg.astha.quarter_start_month (a key at its default, an old stored bundle), the target page loses the year and quarter pickers and stops all online reads. It shows only the held months, as raw 'YYYY-MM' chip text (no month names, no Formats.digits, so Latin digits in Bangla). Not verified: whether the bundle always carries this key with its default (V0009 has delivery 'both').
+- pg_order_unknown wording. With no recorded order, unknownOrder counts every acknowledged sale memo of the month still on the phone, plus never-sent edits. Many of those (acknowledged before the prefetch was built) ARE in the figure, yet the note says they 'are not in these figures'. The English text also reads '1 acknowledged memos' (no plural form), and the count includes edits that were never acknowledged.
+- There is a month-level awaiting count (pg_awaiting_memos) for fetched months, but the top awaiting line still counts only bundle-month memos. A fetched month whose read is the source for the current month (a bundle with no rows for the current month) gets no local arithmetic, only the open note.
+- AsthaFetched.merge decides bundleMonths from rows across all routes. A route with no bundle rows in the current month falls back to nothing, and a bundle with zero rows for the current month makes the current month come from a read (with the open note and awaiting, but without rule B).
+- The cache folder name 'astha-months-<userId>' is a literal in two modules (SrDay in app-sr and ShellLogout in core-sync), with no shared constant and no test that logout removes the folder. A fetch still running at logout can recreate the folder: cache.put calls mkdirs, and its blocking writes are not cancellable. The files are plain JSON, not encrypted like the database.
+- New notes have no font-2.0 or Sunlight goldens: open-month, order-unknown and quarter-unknown were each shot once at font 1.0. Long Bangla wrapping of pg_quarter_unknown and pg_order_unknown at large font was not checked.
+- monthAwaitingOf calls memosOfMonth for up to 24 months, and each call re-reads the acked set, the uncertain set and the outbox per memo. That is an N+1 read on the IO thread at every page load and after every fetch.
+- When two routes of one month have the same read date, merge keeps the first one's as_of and ignores ties. This is cosmetic.
+- Not verified: any build, unit, screenshot or lint run; the three new PNGs; whether the server counts quarantined memos in programme figures; the server's quarter interpretation matching the phone's; and device behaviour (StrictMode, cancellation at logout).
