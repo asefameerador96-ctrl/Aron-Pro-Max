@@ -343,3 +343,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - After train 122 lands: tell every lane to merge INT (scanner step turns green): A-GATE8, A-PROG3, T-KPI3, L-A12, SV6 (ops-diagnose-api), M-APSIS1, F-INFRA1, P-TSO, P-SR1b, P-SR2b.
 - This cloud session has NO Azure login and the laptop folders are not offered to cloud sessions: Azure inventory and the move run through a Claude Code session on the owner's laptop with a prompt from the lead (given in chat 13:40). Inventory of other products stays OUT of the public repository.
 - loyalty adjustment c4113eed: FAIL (overdraw race), fix round sent.
+
+## 2026-11-18 14:10
+- ops-diagnose-api 4d072962: PASS (both lenses, whole-lane gate). Lows sent as a last small round (strict time shape, decimal duration, KQL head test). Lands in the NEXT server train (123) after it merges INT post-122.
+- android-sr-programmes final pass bb52f926d: FAIL, 4 distinct blocking (timestamp arithmetic on the Astha page; gift photo doubled after kill/cancel; locale digits in machine keys; refused gift photo cannot be retaken). Sent to A-PROG3. Astha figures on the server already meet the no-clock rule (today included, one snapshot): A-PROG3 may switch Astha to the counter rule.
+- apsis-migration 610d46d45: third review running (wf_eb8f3954-959).
+- P-SR1b / P-SR2b: both refused the relayed approval (correct); owner must type the push line inside each session; told the owner.
+- Train 122: waiting for the integrator's report.
