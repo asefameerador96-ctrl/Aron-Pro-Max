@@ -1,14 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- android:dpc. Each field app (SR, AMO, TSO) embeds this library and is its own device owner (docs/24 s10.1).
-     The component name in the enrolment QR is <applicationId>/com.aktcl.aron.dpc.AronDeviceAdminReceiver. -->
+<!-- android:dpc, reduced by D-OWNER-MDM-02: no device-owner enrolment, no policy, no app blocking. Only the empty admin
+     receiver stays, for one release, so an upgraded phone that is still device owner can release it (D-AINT-01). It has
+     no provisioning intent filter and is not an enrolment path. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- Managed self-update (N-034): a package-installer session for our own package; silent as device owner, and
-         API 31+ self-updates without user action. No unknown-sources path is used. -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
-    <!-- The system prompt that exempts Aron from battery optimisation (docs/24 s10.2 self_protection). -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <application>
         <receiver
             android:name="com.aktcl.aron.dpc.AronDeviceAdminReceiver"
@@ -21,30 +15,7 @@
                 android:resource="@xml/aron_device_admin" />
             <intent-filter>
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
-                <action android:name="android.app.action.PROFILE_PROVISIONING_COMPLETE" />
             </intent-filter>
         </receiver>
-        <!-- Re-applies the stored policy offline after boot or an update (docs/24 s10.5). System broadcasts reach a
-             non-exported receiver, so it stays off the export allowlist. -->
-        <receiver
-            android:name="com.aktcl.aron.dpc.DpcBootReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
-        <!-- Result of our own managed update (N-034); only the installer's use of our PendingIntent reaches it. -->
-        <receiver
-            android:name="com.aktcl.aron.dpc.update.UpdateResultReceiver"
-            android:exported="false" />
-        <!-- Releases blocked apps at the hard end time (N-032); only the app's own PendingIntent reaches it. -->
-        <receiver
-            android:name="com.aktcl.aron.dpc.blocking.HardEndReceiver"
-            android:exported="false" />
-        <!-- Re-evaluates MDM block windows at the next boundary (lane mdm); only the app's own PendingIntent reaches it. -->
-        <receiver
-            android:name="com.aktcl.aron.dpc.mdm.MdmWindowReceiver"
-            android:exported="false" />
     </application>
 </manifest>

@@ -1,7 +1,7 @@
 package com.aktcl.aron.dpc.enrolment
 
 
-// Enrolment wire types are shared:contract DTOs (v1.2); EnrolmentExtras is phone-only (the QR admin extras).
+// Enrolment wire types are shared:contract DTOs (v1.2); EnrolmentExtras is phone-only (the validated token and server address a registration needs).
 
 typealias JwkEcPublic = com.aktcl.aron.contract.JwkEcPublicDevice
 typealias DeviceInfoDto = com.aktcl.aron.contract.DeviceInfo
@@ -10,7 +10,7 @@ typealias EnrolDeviceResponse = com.aktcl.aron.contract.EnrolDeviceResponse
 /** An EC P-256 public key (contract `JwkEcPublicDevice`). */
 fun ecJwk(x: String, y: String): JwkEcPublic = JwkEcPublic(kty = "EC", crv = "P-256", x = x, y = y)
 
-/** The `aron.*` admin extras of the provisioning QR (docs/24 s10.4 step 2), validated. */
+/** The `aron.*` values a registration needs (the token and the server address), validated. Device-owner QR provisioning is gone (D-OWNER-MDM-02); a typed or pasted token is parsed into these. */
 data class EnrolmentExtras(
     val enrolmentToken: String,
     val apiBaseUrl: String,
@@ -36,7 +36,7 @@ data class EnrolmentExtras(
 
         /**
          * Validates the extras for this app ([ownPackage] = `com.aktcl.aron.<flavour>`); returns null with the reason in
-         * [onInvalid] when anything is missing or wrong, so a QR for another flavour or with an http URL is refused.
+         * [onInvalid] when anything is missing or wrong, so a token for another flavour or with an http URL is refused.
          */
         fun parse(get: (String) -> String?, ownPackage: String, onInvalid: (String) -> Unit = {}): EnrolmentExtras? {
             fun bad(why: String): EnrolmentExtras? { onInvalid(why); return null }

@@ -43,6 +43,9 @@ data class FixReading(
     val autoTimeEnabled: Boolean = true,
     val mockAppPresent: Boolean = false,
     val integrityRef: String? = null,
+    /** Anti-spoofing signal codes (D-OWNER-MDM-02); [isMock] is already true when a HARD one is present. */
+    /** NULL = the check did not run (unknown, no `signals` member is sent); an empty list = checked, nothing found (sent as `[]`). */
+    val signals: List<String>? = null,
 ) {
     val isOk: Boolean get() = status == "ok" && lat != null && lng != null
 
@@ -53,8 +56,17 @@ data class FixReading(
         requestPriority = requestPriority, isMock = isMock, reused = reused, refreshCount = refreshCount,
         gnssJson = gnssJson, radioJson = radioJson, deviceOwner = deviceOwner, devOptionsEnabled = devOptionsEnabled,
         adbEnabled = adbEnabled, autoTimeEnabled = autoTimeEnabled, mockAppPresent = mockAppPresent, integrityRef = integrityRef,
+        signalsJson = signals?.joinToString(",", "[", "]") { "\"$it\"" },
     )
 }
+
+/**
+ * D-OWNER-MDM-02: a fake location (a HARD anti-spoofing signal: the mock flag, a selected mock app, a test provider) REFUSES
+ * the geo-validated action, whatever `cfg.geo.mock_policy` says. The bundle can no longer soften it; `warn_rep` and
+ * `silent_flag` stay in the shared rule (the server re-check is unchanged) but are never chosen on the phone. Soft signals
+ * never reach this rule: they ride the record.
+ */
+fun GeoPolicy.refusingSpoofedFixes(): GeoPolicy = copy(mockPolicy = MockPolicy.BLOCK_SALE)
 
 /** The outlet as downloaded, with its resolved radius and accuracy. */
 data class VisitOutlet(

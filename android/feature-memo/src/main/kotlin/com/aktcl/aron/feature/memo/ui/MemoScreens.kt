@@ -127,8 +127,8 @@ internal fun dhakaTime(iso: String): String {
 }
 
 /** The least widths of the dense table columns on a 328 dp content width (screens-sr s9: SKU, quantity, price); a wider number grows its column and the name gives way. */
-private val QtyColumn = 84.dp
-private val PriceColumn = 96.dp
+internal val QtyColumn = 84.dp
+internal val PriceColumn = 96.dp
 
 /** From `fontScale.vertical` the dense tables reflow: the name on its own line, the numbers on the next (screens-sr s0: numbers never wrap or clip). */
 @Composable

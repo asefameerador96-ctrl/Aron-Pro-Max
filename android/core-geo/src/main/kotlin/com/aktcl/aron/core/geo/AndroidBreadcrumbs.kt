@@ -26,7 +26,7 @@ class AndroidBreadcrumbClient(context: Context) : BreadcrumbClient {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
     )
 
-    @SuppressLint("MissingPermission") // the DPC grants background location only while breadcrumbs are enabled
+    @SuppressLint("MissingPermission") // the rep grants background location in the system settings; the app asks only while breadcrumbs are enabled (no device owner, D-OWNER-MDM-02)
     override fun start(intervalMs: Long, minDisplacementM: Double) {
         val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, intervalMs)
             .setMinUpdateIntervalMillis(intervalMs)

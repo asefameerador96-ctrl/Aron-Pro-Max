@@ -211,3 +211,65 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Loyalty sweep fix round 2 (d88b751b) PASS; TSO slice 1 (bfea7197) PASS (lows sent).
 - NEW ORDER AND NUMBERS: train 118 = Loyalty sweep (V0204, contract 1.20.0; L-A11 merging 39db6c734 and renumbering; then a delta check and GO). Then gates (Android, Room 10, closed_by on the wire, no migration). Then integrity V0205..V0208 + contract 1.21.0 + Room 11 (A-INT3 told). SV6 follow-ups provisional V0240+; T-KPI1 V0230+ / 1.22.0.
 - Loyalty facts (from code): no earning rule, no earning job, balances 0; postAdjustment has no caller or portal route -> L-A11 to build an audited portal points adjustment with N-1 (quarter rows) and tier_code on loyalty[]. Owner asked for the earning rule 06:30.
+
+
+### 2026-11-18 07:05 update: gates final pass PASS; train 118 with the integrator
+- android-gates bc38c0ad9: final Opus pass on four lenses, 0 blocking (docs/reviews/android-gates-final-pass-2026-11-18.md).
+- Train 118 = lane/lead-train118 2572c9de3 = 39db6c734 + docs + gates bc38c0ad9 + AMO e7a2f572 (Android and docs only; 614 D-lines). GO given 07:03. After landing: tell A-INT3 'gates round landed' (Room 10 -> 11), A-GATE7 (follow-up round of 10 items), A-PROG1 (Room 12 free only after integrity), P-AMO3, P-SR1b, P-TSO (merge).
+- Train 119 = Loyalty sweep (V0204, 1.20.0) when L-A11's landing push arrives (head still d88b751b at 06:47). Then integrity V0205..V0208 / 1.21.0 / Room 11.
+- For the owner: TSO app not gated by rule 1; reprint/close-open-call/Sales Submit exempt by design; earning rule; redemption at zero balance accepted; Q-A..Q-K (targets); 'All' vs 'সব'; AMO header Latin digits; lab key pair; P-SR2b push approval. Device walk lists: gates (docs/status/android-gates.md), integrity, programmes.
+
+
+### 2026-11-18 07:10 update
+- A-GATE7 retired (context). After train 118 lands: start A-GATE8 on a NEW branch lane/android-gates-2 from the integration branch with the ten follow-up items of the final pass; A-GATE7's notes: item 5 design approved (failed-close counter in SyncMeta, plain screen after 3 failures with error code and Try again); item 1 pressedAt at the button and closedBy passed by the caller, RecordMapping reads the stored value not closedByPhone(); item 3 committer.existing(memoUuid) before s.committed; item 4 wrap SrApp resumeDay sites 281/291/302/318; item 9 mutation proofs list. TSO rule 1 would need about one lane day (TsoDay, attendance screen, gate inside TsoOutbox, owner decides which TSO writes are operational, server accepts TSO attendance).
+- P-SR1b: QC two-step rebuild approved as its own slice; printer bar fix demanded first (interrupt sent 07:08).
+
+
+### 2026-11-18 07:30 update
+- Train 118 pushed: integration 29e8d86f3; ci on the pushed head still running at 07:25; dev still on 39db6c734. Integrator's report awaited.
+- Train 119 = Loyalty: ccd4f156 landing check PASS; one tiny push asked (V0204 header comment, history entry, KDoc, stamp log line, merge 29e8d86f3) then pin and build.
+- SV6 follow-ups 9e6765d0 PASS; lands after integrity as V0209 (SV6 idle until told).
+- A-PROG1 d0636a12: both blocking points fixed, slice 5 (gift selection) pushed; batch check after it merges train 118 and gates its writes.
+- T-KPI1 out of context at 09fa05c8 (N-2, N-5, N-8, N-3 server data built; V0230..V0233, contract 1.22.0, dw view contract 1.10, all provisional). Successor T-KPI2 session_014mnioPDzJpf5trPvkVf9y2: read ci of newest head, build the admin web tab /admin/kpi-targets, then report. Opus pass on the whole branch owed before landing.
+- A-GATE8 to start after train 118 is live (ten follow-ups).
+
+
+### 2026-11-18 07:35 update: train 118 LANDED (Android and docs only)
+- Integration 29e8d86f3 = lane/lead-train118 2572c9de3 + train row; lane ci 44254688243 green (18 jobs); integration ci 44257139376 (#2336) green (backend/web/infra jobs skipped by the changed-areas gate); deploy #358 skipped by design ('nothing deployable changed'): dev stays on build 39db6c734, database v0203. APKs of record: aron-release-signed-dev-2336 (aron-sr/amo/tso-0.3.336-dev.apk). APK size numbers not read.
+- Told: A-INT3 ('gates round landed': merge, Room 10 -> 11), A-PROG1 (merge, gate recordProgramme), P-SR1b, P-AMO3, P-TSO (merge). A-GATE8 started (session_014mnioMzRiTUob1mFun7H6j, branch lane/android-gates-2, ten follow-ups).
+- Next GO: train 119 Loyalty after L-A11's tiny push.
+- DEVICE WALK now possible for the owner on build 2336: check-in gate, stock limit, check-out submit, midnight/04:00 close (lists in docs/status/android-gates.md).
+
+
+### 2026-11-18 07:55 update
+- A-PROG1 recycled itself: successor A-PROG2 session_014mnioM4Dt5Bhhn5BUNwk7s on lane/android-sr-programmes (head 7df296bd: B2 fixed; B1 double count, B3 category source, B4 match model and lows still open; review docs/reviews/android-sr-programmes-round2-2026-11-18.md). Route replies to A-PROG2.
+- P-SR1b fix round 2 (bd03a20e) PASS; next: merge 29e8d86f3, golden re-verify, SppConnectorTest race fix, KV-POSM, DRP, QC two-step.
+- P-AMO3 0e45f76f (merged 29e8d86f3, green) ready for the next UI train (e5de5162 delta small, unchecked). P-TSO fd8625c8 slice 2 awaiting ci.
+- T-KPI2 session_014mnioPDzJpf5trPvkVf9y2 on the admin web tab. A-GATE8 session_014mnioMzRiTUob1mFun7H6j on the ten follow-ups.
+
+
+### 2026-11-18 08:30 update: train 119 with the integrator
+- Train 119 = lane/lead-train119 c780bdbc0 = 29e8d86f3 + docs + Loyalty 038e3121d (V0204, contract 1.20.0; 620 D-lines). GO given 08:28. After landing: read the migrate console (0203 -> 0204), tell A-INT3 'Loyalty landed' (merge, regenerate), L-A11 (push B: N-1, tier_code, N-9, portal points adjustment; contract number to be given, likely 1.22.0 or later), SV6 waits for integrity.
+- android-integrity bfa5ead5 (train 118 merged, Room 11, V0205..V0208, contract 1.21.0, dispatch ci green): FINAL Opus pass running (four lenses).
+- P-SR1b: QC two-step fa03bcab FAIL (crash on locked Cancel; stale saveable state writes old quantities) -> fix round, then merge 118 and the earlier list.
+- A-PROG2 on B1/B3/B4. T-KPI2 on the admin tab. A-GATE8 pushed 94528a88 (no report yet). P-TSO fd8625c8 awaiting ci. P-AMO3 ff9fb511 (docs) on 0e45f76f.
+- Usage: L-A11's get_session shows seven_day 'allowed_warning' (not rejected) at 08:07; L-A11 context 697k of 1M: recycle it after train 119 lands.
+
+
+### 2026-11-18 09:30 update: train 119 LANDED; train 120 with the integrator
+- Train 119: integration 4d310d8c0; lane ci 44266430529 green (19 jobs; '1 new migration(s), highest shipped version 203'; contract 0 breaking 1.19.0 -> 1.20.0; e2e 372 of 372); integration ci 44269125017 (#2357) green; deploy #359 (44271482749) success; PITR 2026-11-18T09:02:53Z; migrate job caj-aron-dev-migrate-9wx8mjo 'migrations succeeded' (console not in the deploy log; ops-diagnose 44275051321 dispatched to read 0203 -> 0204 and the API sweep lines); health build 4d310d8c0; SR smoke passed. APK of record aron-release-signed-dev-2357.
+- Train 120 (UI): lane/lead-train120 4f6f688ed = 4d310d8c0 + docs + SR look e017b2d7 + AMO ff9fb511 (Android and docs only; 637 D-lines). GO given 09:27.
+- Train 121 = android-integrity: A-INT3 told to merge the train-120 branch tip 4f6f688ed, regenerate, report; then a delta check and GO (V0205..V0208, contract 1.21.0, Room 11).
+- Then: SV6 follow-ups (V0209), Loyalty push B (contract 1.22.0), gates-2 follow-ups (A-GATE8 6a86c275, under review), programmes (A-PROG2 1c88247e, round 4 under review), targets server (T-KPI2), TSO slice 2.
+
+
+### 2026-11-18 09:40 update: train 119 migrate console read (ops-diagnose 44275051321)
+- Flyway on dev, verbatim: 'Current version of schema "public": 0203'; 'Migrating schema "public" to version "0204 - cfg waiting sweep keys"'; 'Successfully applied 1 migration to schema "public", now at version v0204'; exit code 0. No ERROR lines; worker revision --0000229 started, first aggregation pass 19198 ms; 'bundle coverage 100.0% of 4 active field users'.
+- GAP: ops-diagnose prints NO API container lines, so the waiting-item sweep (runs in the API process) is not confirmed from logs; no pre-flight line in any of today's deploys. Task given to SV6 on branch lane/ops-diagnose-api (API console in ops-diagnose; pre-flight 'nothing to do' line; sweep start-up line).
+- Loyalty push B (4cdece42, contract 1.22.0 provisional, no migration) under review. L-A11 handed over to L-A12 session_014mnioPiSLCgFdQst8dAsY8 (portal points adjustment: scope first).
+
+
+### 2026-11-18 09:55 update: train 120 LANDED (Android and docs only)
+- Integration a4691a061 = lane/lead-train120 4f6f688ed + train row; lane ci 44275099826 green (18 jobs); integration ci 44277348531 (#2368) green; deploy #360 skipped by design; dev stays on build 4d310d8c0, database v0204. APKs of record: aron-release-signed-dev-2368.
+- Reviews since 09:30: gates-2 follow-ups 6a86c275 PASS (lands after integrity; 8 lows in work); programmes round 4 1c88247e: one blocking (lost-ack double count; ruling: sent-but-unanswered memos are 'uncertain', not added, line shown, refetch after answer); Loyalty push B 4cdece42: code PASS, one hygiene blocking (DECISIONS entry rewritten) -> L-A12; QC-locked sale crash fix c48337db PASS (next look train); ops-diagnose-api 46c6ef49 under review (redaction).
+- Next GO: train 121 = android-integrity after A-INT3's merge of 4f6f688ed and my delta check (+ ops-diagnose-api if it passes). Then SV6 follow-ups (V0209), Loyalty B (1.22.0), gates-2, look train 2 (SR c48337db+, TSO), programmes, targets.

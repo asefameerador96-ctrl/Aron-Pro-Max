@@ -535,6 +535,7 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
         }
 
         override suspend fun submit(clientUuid: String, zoneId: Long, date: String): com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome {
+            com.aktcl.aron.core.common.ActionGate.requireOpen() // Developer options gate (D-OWNER-MDM-02): the Final Submit is a new operational write that bypasses the outbox
             val json = org.json.JSONObject().put("client_uuid", clientUuid).put("zone_id", zoneId).put("business_date", date).toString()
             val r = client.call(path = "/v1/day/final-submit", auth = CallAuth.Grant(Grant.FULL), build = {
                 post(json.toRequestBody("application/json".toMediaType()))

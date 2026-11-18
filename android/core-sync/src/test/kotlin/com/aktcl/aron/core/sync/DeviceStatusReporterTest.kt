@@ -337,4 +337,33 @@ class DeviceStatusReporterTest {
         assertEquals("mobile", com.aktcl.aron.core.sync.device.AndroidDeviceFacts.networkTypeOf(true, false, true))
         assertNull(com.aktcl.aron.core.sync.device.AndroidDeviceFacts.networkTypeOf(true, false, false))
     }
+
+    private fun reporterWithEvents(log: com.aktcl.aron.core.system.integrity.IntegrityEventLog) = DeviceStatusReporter(
+        facts = { facts }, signals = { signals }, tracker = tracker,
+        evidence = { evidenceCalls++; evidence }, state = state, clock = clock, appVersion = "1.0.3+10003", eventLog = log,
+    )
+
+    @Test
+    fun gateEventsRideTheNextReportAreFilteredToTheContractAndAcknowledgedOnlyOnceQueued() = runBlocking {
+        val log = com.aktcl.aron.core.system.integrity.IntegrityEventLog(tmp.newFolder("events"))
+        val r = reporterWithEvents(log)
+        assertNotNull(r.beforeBatch(db)); assertNull(r.beforeBatch(db)) // first report with evidence, then quiet
+        assertEquals("an empty log still sends the member", 0, payload()["integrity_events"]!!.jsonArray.size)
+        log.record(com.aktcl.aron.core.system.integrity.IntegrityEvent(wall, listOf("dev_options", "adb", "made_up"), "none", "1.0.3+10003"))
+        log.record(com.aktcl.aron.core.system.integrity.IntegrityEvent(wall + 5_000, listOf("adb_wifi"), "lab", "weird"))
+        assertNotNull("pending events alone make a report due", r.beforeBatch(db))
+        val ev = payload()["integrity_events"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(2, ev.size)
+        assertEquals(listOf("dev_options", "adb"), ev[0]["flags"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals("none", ev[0]["exempt"]!!.jsonPrimitive.content); assertEquals("1.0.3+10003", ev[0]["app_version"]!!.jsonPrimitive.content)
+        assertEquals("lab", ev[1]["exempt"]!!.jsonPrimitive.content); assertFalse("an app version outside the contract pattern is left out", "app_version" in ev[1])
+        assertTrue("acknowledged after the report is in the outbox", log.pending().isEmpty())
+        assertNull("nothing new: no second report", r.beforeBatch(db))
+    }
+
+    @Test
+    fun aPhoneWithoutTheGateLogSendsNoIntegrityEventsMember() = runBlocking {
+        reporter.beforeBatch(db)
+        assertFalse("integrity_events" in payload())
+    }
 }

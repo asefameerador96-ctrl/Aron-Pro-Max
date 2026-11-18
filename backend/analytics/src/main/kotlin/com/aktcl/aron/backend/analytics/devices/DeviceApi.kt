@@ -26,8 +26,10 @@ import io.ktor.server.request.receiveChannel
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.ktor.server.routing.put
 import io.ktor.utils.io.readRemaining
 import kotlinx.datetime.toJavaLocalDate
 import kotlinx.io.readByteArray
@@ -36,6 +38,8 @@ import java.util.zip.GZIPInputStream
 class DeviceDeps(val service: DeviceService, val reach: ReachResolver, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
 
 private val DEVICE_WRITERS = setOf(Role.ADMIN, Role.SUPERADMIN, Role.SUPPORT)
+/** A lab exemption switches a security control off for one phone: Super Admin and a granted Admin only (the `mdm` module write grant applies on top, by path), never the support desk. */
+private val LAB_WRITERS = setOf(Role.ADMIN, Role.SUPERADMIN)
 private val DEVICE_READERS = DEVICE_WRITERS + setOf(Role.TSO, Role.DMO, Role.WM)   // docs/24 s8.5: TOP and ANALYST have no access to devices
 /** Read-only token list (no TSO: its s8.5 cell is the OTP panel only). */
 private val TOKEN_READERS = setOf(Role.DMO, Role.WM)
@@ -107,6 +111,14 @@ fun Route.deviceRoutes(d: DeviceDeps) {
         get("/admin/devices/{device_id}") { call.read(); call.respond(d.service.getDevice(call.reach(), call.id("device_id"))) }
         get("/admin/devices/{device_id}/status-history") { call.read(); call.respond(d.service.statusHistory(call.reach(), call.id("device_id"), call.limit(), call.cursor())) }
         post("/admin/devices/{device_id}/state") { call.write(); call.respond(d.service.changeState(call.principal, call.reach(), call.id("device_id"), call.receiveStrict(DeviceStateChangeRequest.serializer()), call.requestId)) }
+        put("/admin/devices/{device_id}/lab-exemption") {
+            if (call.principal.role !in LAB_WRITERS) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "lab exemptions are for ADMIN and SUPERADMIN")
+            call.respond(d.service.grantLabExemption(call.principal, call.reach(), call.id("device_id"), call.receiveStrict(LabExemptionRequest.serializer()), call.requestId))
+        }
+        delete("/admin/devices/{device_id}/lab-exemption") {
+            if (call.principal.role !in LAB_WRITERS) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "lab exemptions are for ADMIN and SUPERADMIN")
+            call.respond(d.service.revokeLabExemption(call.principal, call.reach(), call.id("device_id"), call.requestId))
+        }
         get("/admin/devices/{device_id}/directives") { call.read(); call.respond(d.service.listDirectives(call.reach(), call.id("device_id"))) }
         post("/admin/devices/{device_id}/directives") { call.write(); call.respond(HttpStatusCode.Created, d.service.createDirective(call.principal, call.reach(), call.id("device_id"), call.receiveStrict(DirectiveCreateRequest.serializer()), call.requestId)) }
     }

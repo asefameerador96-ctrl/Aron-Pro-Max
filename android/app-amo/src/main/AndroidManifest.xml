@@ -5,8 +5,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Optional low-power breadcrumbs (N-035, D-GEO-BG-01): declared in the SR and AMO apps only. Never requested at
-         runtime unless cfg.geo.breadcrumbs_enabled; the DPC grants it only while that key is true and pins it denied
-         otherwise. Breadcrumbs are off by default. -->
+         runtime unless cfg.geo.breadcrumbs_enabled; the rep grants it in the system settings (no device owner pins it any more, D-OWNER-MDM-02).
+         Breadcrumbs are off by default. -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
         <!-- Outlet photo for Manual Override, Update Base and outlet requests. The microphone is never declared or requested. -->
@@ -25,6 +25,8 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <!-- Developer options gate (D-OWNER-MDM-02): "true" only in the benchmark build types (root build.gradle.kts); release is never exempt. -->
+        <meta-data android:name="com.aktcl.aron.integrity_gate_exempt" android:value="${integrityGateExempt}" />
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${mapsApiKey}" />

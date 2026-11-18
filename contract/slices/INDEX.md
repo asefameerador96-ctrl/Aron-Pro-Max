@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.23.0.
 
 
-## Schemas (661)
+## Schemas (663)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -111,14 +111,14 @@ Source: contract/openapi.yaml, version 1.23.0.
 - `schemas/AppControlPolicy.yaml` (929 B)
 - `schemas/PackageName.yaml` (106 B)
 - `schemas/BlockingSchedule.yaml` (686 B)
-- `schemas/DeviceStatusReport.yaml` (5297 B)
+- `schemas/DeviceStatusReport.yaml` (6497 B)
 - `schemas/PlayIntegrityEvidence.yaml` (348 B)
 - `schemas/PlayIntegrityUnavailable.yaml` (455 B)
 - `schemas/DeviceStatusAck.yaml` (523 B)
 - `schemas/DeviceTrust.yaml` (526 B)
 - `schemas/PushTokenRegistration.yaml` (318 B)
 - `schemas/Directive.yaml` (990 B)
-- `schemas/GeoFix.yaml` (2549 B)
+- `schemas/GeoFix.yaml` (3653 B)
 - `schemas/GnssSummary.yaml` (1431 B)
 - `schemas/RadioEnvironment.yaml` (1127 B)
 - `schemas/FixDeviceState.yaml` (659 B)
@@ -232,7 +232,7 @@ Source: contract/openapi.yaml, version 1.23.0.
 - `schemas/BundleGeoName.yaml` (344 B)
 - `schemas/BundleGeography.yaml` (378 B)
 - `schemas/BundleUser.yaml` (1993 B)
-- `schemas/ResolvedConfigValue.yaml` (1112 B)
+- `schemas/ResolvedConfigValue.yaml` (1502 B)
 - `schemas/ResolvedConfig.yaml` (590 B)
 - `schemas/CodeItem.yaml` (1421 B)
 - `schemas/CodeList.yaml` (273 B)
@@ -465,7 +465,9 @@ Source: contract/openapi.yaml, version 1.23.0.
 - `schemas/ConfigVersionPage.yaml` (308 B)
 - `schemas/ConfigRollbackRequest.yaml` (276 B)
 - `schemas/ConfigReach.yaml` (1268 B)
-- `schemas/Device.yaml` (2456 B)
+- `schemas/Device.yaml` (2871 B)
+- `schemas/LabExemption.yaml` (379 B)
+- `schemas/LabExemptionRequest.yaml` (315 B)
 - `schemas/DevicePage.yaml` (294 B)
 - `schemas/DeviceStatusPage.yaml` (312 B)
 - `schemas/DeviceStateChangeRequest.yaml` (294 B)
@@ -667,7 +669,7 @@ Source: contract/openapi.yaml, version 1.23.0.
 - `schemas/DeviceCommandAck.yaml` (351 B)
 - `schemas/DeviceCommandAckResult.yaml` (238 B)
 
-## Operations (284)
+## Operations (286)
 
 - `operations/getHealth.yaml`  GET /v1/health (770 B)
 - `operations/headHealth.yaml`  HEAD /v1/health (483 B)
@@ -839,6 +841,8 @@ Source: contract/openapi.yaml, version 1.23.0.
 - `operations/changeDeviceState.yaml`  POST /v1/admin/devices/{device_id}/state (918 B)
 - `operations/previewDevicePolicy.yaml`  GET /v1/admin/devices/{device_id}/policy (637 B)
 - `operations/listDeviceStatusHistory.yaml`  GET /v1/admin/devices/{device_id}/status-history (707 B)
+- `operations/grantDeviceLabExemption.yaml`  PUT /v1/admin/devices/{device_id}/lab-exemption (1822 B)
+- `operations/revokeDeviceLabExemption.yaml`  DELETE /v1/admin/devices/{device_id}/lab-exemption (837 B)
 - `operations/listDeviceDirectives.yaml`  GET /v1/admin/devices/{device_id}/directives (613 B)
 - `operations/createDeviceDirective.yaml`  POST /v1/admin/devices/{device_id}/directives (1012 B)
 - `operations/listEnrolmentTokens.yaml`  GET /v1/admin/enrolment-tokens (690 B)
