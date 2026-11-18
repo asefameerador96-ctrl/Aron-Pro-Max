@@ -68,3 +68,389 @@ LOWS:
 - Check 6: test_diagnose_redaction_behaviour is a real behaviour test (it runs the script's --redact mode and the input refusal with a bare PATH). It does not cover the awk hold-back step, a non-ASCII cut, or the surviving forms above. The worker test changed only 200 to 600. In the API shape test the old assertion that the console section does not read the system-log table was dropped (small weakening).
 - Check 7: no backend file changed between 46c6ef49 and a254a71f (the six backend files are identical to the first round). DECISIONS.md is append-only (two lines added at the end, none removed). Merging a254a71f into current integration a4691a061 conflicts in DECISIONS.md only (both sides appended at the end); the lead resolves by keeping both.
 - The first Log Analytics section still prints the raw migrate console line (JSON with the stack field). It now passes the net and the cut, but exception text with row values (for example "Key (name)=(...)") is not caught by the name= pattern because of the bracket. Older design, outside this round, worth a follow-up.
+
+
+# Second re-check at f16963bd, 2026-11-18. Opus lens; the reviewer ran only the redaction mode on made-up samples.
+
+## verdict=pass
+SUMMARY: PASS at f16963bd (reviewed with git diff 4d310d8c0 f16963bd; script copied to a scratch directory, only --redact run on made-up input, scratch directory deleted).
+
+(1) B1 fixed. Held rows are excluded in KQL (`where not(held)`) and counted in KQL (`summarize held = countif(held), shown = countif(not(held))`); the shell compares no boolean and splits no columns; rows are folded to one line with replace_regex in every Log Analytics query. When the count query fails or returns non-numbers the line reads "(held-back count unavailable)" (read from held_note; not run).
+
+(2) B2 fixed. One perl program, lenient decode, eval around the scrub with a withheld-line notice, cut by characters after redaction. Ran: 240-character Bangla line at widths 1, 2, 3, 7, 37, 100 followed by more lines and an empty line (all lines present, lengths exact in characters, exit 0); truncated multi-byte sequences, 0xFF/0xFE, overlong and surrogate bytes, NUL bytes, a last line without newline (all later lines present, exit 0, bad bytes become U+FFFD); CRLF (CR dropped, lines kept); empty lines kept; 100 KB lines of ordinary text and a 100 KB stack trace (under 1 s, later line present). No `cut -c`, no byte substr, no KQL substring left. One weakness, filed as a low: an unbroken run of thousands of letters/digits is quadratic (16 KB hex = 32 s, 100 KB = about the 20-minute job timeout); it fails red, it does not leak.
+Workflow step: shell bash with pipefail; a dead filter gives SIGPIPE to the script and a non-zero pipeline, and the explicit grep for "diagnose: done (read-only)" (that line passes the filter unchanged) turns an early stop red. The step summary is written only from diagnose.txt, which is the already-filtered output, through iconv -c.
+
+(3) Net: all listed phone forms, compound snake/suffix-camel keys, quoted values with spaces, "the password is X", OTP/PIN prose, e-mail, JWT, Bearer/Basic, jdbc/postgres/Azure connection strings, IPv4/IPv6, UUIDs with and without hyphens and in upper case (same input gives the same tag) are caught. What still survives is listed in the lows (prefix-camel keys such as otpCode/pinCode, escaped-quote JSON in raw lines, unclosed quotes, multi-word unquoted values, a few phone separators, free text). The backend's main code logs ids only and has no such field names, so these are gaps in a backstop, not a present leak.
+
+(4) Readability: the three Flyway lines, the worker start line, "first aggregation pass completed in 18400 ms", the ERROR line with request_id (becomes request_id=[uuid:xxxxxxxx], same tag on every line), the health line with a 40-hex sha, "contract 1.21.0", ISO and Postgres timestamps, pre-flight and sweep lines, SQLState and row counts all came out unchanged. Damage cases are in the lows.
+
+(5) No data path outside the filter; stderr carries only tool error text. (6) Inputs are pattern-checked in the workflow before the Azure login and again in the script before any az call; values are not echoed on failure. (7) Tests cover the B1 count parser and query shape and the B2 Bangla-cut and invalid-byte cases; the only removed assertions are the two substring checks that the design change replaces. (8) History 4d310d8c0..f16963bd holds only made-up samples (example UUIDs, a dummy 40-hex sha, a dummy JWT-shaped test string, a dummy AccountKey); no real-looking secret. A force-push did happen (amended tip, force-with-lease on the lane branch). (9) Backend files are byte-identical since the first round (46c6ef49); DECISIONS.md has three added lines at the very end and no removed or changed line.
+
+Files: /tmp/claude-0/-home-user-Aron-Pro-Max/a5c3c45a-b89c-5768-9d5f-6bc05c04fc63/scratchpad/wt-verify/infra/scripts/diagnose.sh, .github/workflows/ops-diagnose.yml, infra/tests/check_infra.py, DECISIONS.md (all read at f16963bd via git show).
+
+LOWS:
+- SLOW ON ONE KIND OF LINE (most worth fixing): the key-name patterns ($KEYLONG / $KEYCAMEL, diagnose.sh lines 33-35, unbounded prefix [A-Za-z0-9_.-]*) are quadratic on an unbroken run of letters/digits/dot/dash/underscore. Measured: 8,000 such characters = 8 s, a 16 KB hex blob = 32 s, 100 KB of one letter = did not finish in 20 s (extrapolates to about 20 minutes, which is the job timeout). Ordinary 100 KB lines are fine (text with spaces 0.1 s, a 100 KB Java stack trace 0.6 s, a 50 KB quoted value 0.1 s). Nothing leaks and the step would end red (timeout), so not blocking; a base64url or hex blob of several KB in one log line is the only trigger. Fix: bound the prefix, e.g. {0,64}.
+- Still survives the net, key forms (made-up samples): camelCase keys where the short word comes FIRST (otpCode=, pinCode=, "pinCode":"...", OtpCode, OTPCode=, authCode=, keyValue=) are not redacted and the OTP-digit rule does not fire either because 'otpCode' has no word boundary; the script header says compound names are caught. Grep of backend main code at f16963bd shows no such field or log line today (logs carry client_uuid/user/batch ids only), so hypothetical.
+- Still survives, quoting forms: a value inside ESCAPED quotes as in a raw JSON console line (password=\"x\" leaves x; \"password\":\"x\" and \"name\":\"...\" untouched); an unclosed double quote (password="abc def with no closing quote: nothing redacted); a nested object ({"password":{"value":"x"}}); the tail of an unquoted value after ; or , or a space (password=ab;cd leaves ;cd; name=First Second Third leaves Second Third; address=12 Road 5 leaves the rest). The raw-line case matters only for the section that prints raw lines (migrate job console, first Log Analytics section); the API and worker sections print the unescaped formattedMessage, where the quoted form IS caught.
+- Still survives, other: prose without 'is/was/=/:' (password X rejected, pwd X, token X used), passphrase=, pw=, user=<login> and login=<x> (only user_name/username keys are caught), 'code 481516 verified' and 'verification code is 48-15-16', e-mail written as (at) or without a dot domain, mongodb:// and redis:// URLs with credentials, Bearer followed by a tab, dashed IPs, a UUID glued to a word character or underscore (sale_<uuid>, x<uuid>y) or written with underscores, bare 15-digit IMEI, NID and card numbers, lat/lng, short cloud key ids (20 chars) and short sk-style tokens, a PEM header with a short body, free-text names (documented limit).
+- Phone forms not caught: 0088 prefix glued (008801712345678), separators comma, colon, asterisk, en dash, full-width digits, and an 11-digit number followed by more digits. All the forms the task listed (brackets, dots, underscores, slashes, digit-by-digit spaces, +880, Bangla, Arabic-Indic and Persian digits) ARE caught; a leading '[' or '(' is left behind, harmless.
+- Readability damage found (over-redaction, none on the lines the lead needs): a number 13..19 followed by a space and a date is eaten together with the date ('took 17 2026-11-18T09:54:57Z' -> 'took [phone]T09:54:57Z'; '09:54:17 2026-11-18' -> '09:54:[phone]'); a bare 10-digit number starting 13..19 such as an epoch second or byte count without a key reads as [phone]; any line with the words pin/otp/sms/verification/passcode loses every 4-8 digit number ('geo re-check verification took 18400 ms' -> '[code] ms'); 'name:'/'name=' values are redacted (diagnostic-setting names in the az JSON); 'key: value', 'auth: ok', 'session: 3' lose their value; an image reference 'registry/api:<40 hex>' becomes [long-token] because the registry name between 'image' and the sha contains hex letters; 0.0.0.0 in 'Responding at http://0.0.0.0:8080' becomes [ip]; a Flyway 'Database: jdbc:...' line loses the whole URL (intended).
+- UUID tag: unsalted sha256 cut to 8 hex. Not reversible for random v4 UUIDs (122 random bits, nothing to enumerate). It is linkable: the same id gives the same tag in every run for ever, so a reader of the public logs can follow one unknown user/device/request across runs, and anyone who already holds a UUID (a rep with their own device or sale id) can recognise their own lines. For request ids and device UUIDs that is acceptable; if cross-run linking is unwanted, add a per-run random salt (within-run following still works). device_id=<uuid> is fully redacted by the key rule, not tagged.
+- The count line says 'N shown' but the number is all not-held matching rows in the window, not the rows printed (the list is capped at 150). With 900 matches it would say '900 shown' above 150 lines. Wording only: say 'not held' or cap the count.
+- Unfiltered paths that remain: stderr is not passed through the filter (exec redirects stdout only). Every az call either merges stderr into the filtered stream (2>&1) or discards it, so what can reach stderr is only bash/grep/find's own error text and the validation messages, which do not echo the value. The workflow's 'window ...' echo runs before the script but prints only pattern-checked inputs and generated dates. No data path found outside the filter.
+- A line of logs containing three backticks would close the code fence in the step summary early (display only; the text is already redacted).
+- since/until are checked for shape only (2026-99-99T99:99:99Z passes) and give a KQL error printed through the filter; harmless.
+- Tests: I did not run infra/tests/check_infra.py (the worktree is at another commit and the task allowed only the redaction mode); I read it and reproduced its B2 cases by hand with the same results. It has no case for a long unbroken run (the slowness above), none for CRLF or an empty line, and the fail-closed notice is not exercised (I could not trigger a die in scrub either; verified by reading: eval + undefined -> notice). The workflow checks are string presence only, as the lane says a live run is not testable.
+- History and process: f16963bd has author time 10:26:02 and commit time 10:32:29, i.e. it was amended, and the lane states it pushed with force-with-lease to its own lane branch. A force-push happened; the project rule is never to force-push. The two earlier reviewed commits (46c6ef49, a254a71f) are still ancestors, so only an earlier version of the tip was replaced. The branch tip has since moved to ea3a4b6784 (one status-doc commit about the force-push), which is outside this review.
+
+
+# Third re-check at 0fa1c4d4, 2026-11-18. Opus; redaction mode run on made-up samples only.
+
+## verdict=pass
+SUMMARY: PASS at 0fa1c4d4. The slowdown is fixed and nothing in round 3 is blocking, but the new bounds do let a few forms through that f16963bd redacted (see lows; the space limit around '=' / ':' is the one worth fixing). I ran only the redaction mode on made-up input in a scratch directory, which is now deleted.
+
+**(1) Slowdown: fixed, linear.** About 60 made-up single lines were timed at 100 KB and again at 400 KB. Each finished and the following line printed every time.
+
+| Line shape | 100 KB | 400 KB |
+|---|---|---|
+| one repeated letter | 2.4 s | 8.7 s |
+| hex | 2.0 s | 8.3 s |
+| digits | 2.0 s | 8.3 s |
+| base64-like | 0.5 s | 1.9 s |
+| dots | 1.9 s | 8.0 s |
+| `a.` repeated | 2.3 s | 8.6 s |
+| unclosed double quote | 2.4 s | 8.8 s |
+| unclosed single quote | 0.9 s | 2.4 s |
+| escaped quote | 0.6 s | 2.1 s |
+| `password is <` + letters | 2.3 s | 9.0 s |
+| `password is &lt;` repeated (slowest) | 1.0 s | 13.5 s |
+
+- **Nested braces** (`{` run, `token={{{`, `{}` pairs): 0.05 to 0.13 s at 100 KB, under 1 s at 400 KB.
+- **Thousands of `a=b` or `key=v` pairs:** about 0.2 s at 100 KB, under 1 s at 400 KB.
+- **Thousands of `@`, `a@`, `a@a.`, `:`, `a:`, `1:`, `1::`:** 0.09 to 0.23 s at 100 KB, under 1 s at 400 KB.
+- **Other runs** (`a_`, `1-`, `88`, camel `aKey`, `build____`, key at the end of 100 KB): about 2 s at 100 KB, 8 to 9 s at 400 KB.
+- **Spaces, quotes, `[`, Bangla letters and digits, Bearer and cookie lines:** under 1 s.
+
+Four times the input takes about four times the time.
+
+**(2) Bounds: some regressions, all in unlikely shapes.** Details are in the lows.
+- **Spaces around the separator:** 4 or more spaces or tabs around `=` or `:` now leak the value for `name`, `api_key`, `token` and similar keys.
+- **Long key names:** a key with more than 64 characters after the stem leaks its value; a long prefix is still caught.
+- **Very long e-mail parts:** a local part over 64 characters keeps its first few characters.
+- **Phones:** more than 3 separators between digits now survive.
+- **Still caught:** values over 500 characters fail closed, and a phone or e-mail inside a very long token is still removed.
+
+**(3) `REDACT_SELFTEST_DIE`: safe.** It is read only inside the perl filter, where it makes the scrub die on a matching line. The surrounding `eval` then prints `[line withheld: redaction filter error]`, and the following lines still print normally. It cannot print raw text. An empty value does nothing. The workflow sets no `REDACT_*` variable, and its five inputs map only to `SINCE`, `UNTIL`, `JOB_PREFIX`, `WORKER_APP` and `API_APP`, each pattern-checked, so a dispatcher cannot set it.
+
+**(4) Readability: all the listed lines came out unchanged.** That covers the three Flyway lines, both worker start lines, the aggregation line, the sweep enabled and disabled lines, the pre-flight line, two health lines with a 40-hex build, `contract 1.21.0`, `http://0.0.0.0:8080`, the done line and the held-note line. The ERROR lines print `request_id=[uuid:xxxxxxxx]`, with the same tag on both lines.
+
+**(5) Salt: correct.** The script draws 16 bytes from `/dev/urandom` once and exports it, so the per-query filter and the script-wide filter share it. It is never echoed, including on the invalid-input path. Within a run the same id gives the same tag, hyphenated or not, in either case; two runs gave different tags. If the variable is missing, perl falls back to `rand()`.
+
+**(6) CI files: untouched.** `git diff 4d310d8c0 0fa1c4d4 --stat -- tools/ci .github` lists only `.github/workflows/ops-diagnose.yml` (+20/-4: the `api_app` input, the input validation step, `shell: bash` with pipefail, and the final-line check). Nothing under `tools/ci`, and no gitleaks config or ignore file among the 11 files changed on the branch. Round 3 itself changes only `DECISIONS.md` (one appended line), `docs/status/sr-server.md`, `infra/scripts/diagnose.sh` and `infra/tests/check_infra.py`.
+
+**(7) Tests: real, none weakened.** The new `test_diagnose_redaction_is_linear_and_reads_well` runs the script's redaction mode. It covers 11 blobs of 100 KB with a time limit and a next-line check, 10 new key and value shapes, 5 readability lines, salt behaviour, CRLF, empty input, no trailing newline, and the fail-closed notice. I reproduced its cases by hand with the same results. The only changed existing assertion is the held-note wording, which matches the new text.
+
+LOWS:
+- Check 2, most worth fixing: the new {0,3} limit on spaces around '=' or ':' lets values through that f16963bd redacted. Made-up samples, old -> new: 'name     :     Karim' was [redacted], now prints Karim; 'api_key<4 tabs>= Zq9Secret7' was [redacted], now prints the value; the same holds for token, pin and phone keys with 4 or more spaces or tabs on either side. 'password    = X' is still caught, by the separate prose rule. This limit is not needed for speed, because a key must match first; \s* or {0,40} would restore the old behaviour. I found no line of this shape in what the workflow reads today (az JSON uses one space, logfmt none), so it is a gap in a backstop, not a present leak.
+- Check 2, key-name bounds: a secret-like key with more than 64 characters after the stem now leaks its value ('access_token_<70 letters>=X' and 'password_<65 letters>=X' were redacted, now X prints; 63 letters is still caught). Short-stem keys with more than 4 segments after the stem or a segment over 32 characters also leak ('key.a.b.c.d.e=X', 'auth.provider.oidc.client.redirect.uri=X', 'pin_<33 letters>=X'). Camel keys with more than 41 lowercase letters before the stem or more than 40 after leak too. A long PREFIX before the stem is still caught (70 letters, or a 120-character dotted path). All of these are unrealistic key names.
+- Check 2, e-mail bounds: a local part over 64 characters leaves its first characters in front of [email] (70 letters leaves 6; 'rahim.rahim...x@example.com' leaves 'rahim.rahim.rah'). A domain over 255 characters leaves its tail. Real addresses do not reach these lengths. An e-mail inside a 200-character unbroken token is still removed ([long-token][email]).
+- Check 2, phone bounds: at most 3 separator characters are now allowed between digits. '0171    2345678' (4 spaces), '0171  -  234  -  5678' and '0 - - 1 - - 7 ...' were [phone] and now print in full. '0171 - 234 - 5678' is still caught. With 4 or more separators after '+' or '88', only that prefix is left behind. A phone inside a 200-character letter run or between hex runs is still caught.
+- Check 2, values over 500 characters: nothing leaks. A quoted or single-quoted value over 500 characters now takes the rest of the line (fails closed; old kept the tail). A JSON object value over 500 characters is not taken whole, the same as at f16963bd.
+- Deliberate narrowing, not caused by the bounds (D-OPS-DIAGNOSE-API-04 point 3): OTP digits more than 20 characters from the keyword now print. 'OTP for user abc generated successfully: 481516', 'Your one-time password for login to the Aron portal is 481516' and '481516 was generated a moment ago as the new pin' were [code] at f16963bd. Also now printed: a 3-digit run after otp ('otp 481'), and a code followed by a unit word ('otp 481516 s', 'pin 4821 times'). Still caught: 'verification code 481516 sent', 'otp sent 481516', '481516 is your OTP', otpCode=, pinCode:. The backend is said not to log OTP text; if it ever logs SMS bodies this narrowing matters. Consider 60 characters instead of 20.
+- Deliberate, new keep-rule: a 40-hex or 64-hex run after any 'a/b:' or 'a/b@' path is kept, with or without the word image. 'https://example.com/files/x:<40 hex>' and 'user/repo@<64 hex>' were [long-token] and now print. Key rules still win: 'vault/secrets/password:<64 hex>' and 'kv/app/api-key:<40 hex>' are redacted. Requiring an image/digest/sha256 word or a registry-looking host would be tighter.
+- Deliberate: every 127.x.x.x address is kept ('remote 127.54.3.2'), not only 127.0.0.1. Harmless. A phone-shaped match that contains a date is skipped ('017-2019-12-34-5' prints); this is very unlikely to be a real number.
+- Small new over-redaction: 'exp"     :   1731912345' (more than 4 spaces or quotes before the colon) now reads as [phone]; it was kept before.
+- Check 1 detail: the workflow passes every query through the filter twice (show, then the script-wide redact), so a 400 KB line costs about 2 x 9 s. That is far inside the 20-minute limit.
+- Check 7: I did not run infra/tests/check_infra.py (only the redaction mode was allowed). I read the new test and reproduced its cases by hand with the same results. No test covers the bound regressions above (a 65-character suffix, 4 spaces before '='). The test's 20 s per-blob limit is loose against a measured 2 s, which is fine for slow runners.
+- Process: f16963bd is an ancestor of 0fa1c4d4, with two new commits on top (ea3a4b6784, a status note on the force-push, and 0fa1c4d457). No history rewrite in this round.
+
+
+## Re-check 4 (round 4, 9496e81d), 2026-11-18
+
+### leaks verdict=fail
+I ran about 150 made-up secret-shaped lines and 25 adversarial 100 KB blobs through `diagnose.sh --redact` at 9496e81d, and the same lines through 0fa1c4d4 for comparison. Scratch copies are in /tmp/claude-0/-home-user-Aron-Pro-Max/a5c3c45a-b89c-5768-9d5f-6bc05c04fc63/scratchpad/r4-fuzz/.
+
+Most forms are caught: JSON, escaped JSON, single quotes, camelCase, snake_case, kebab-case, long key names, wide tab and space gaps, URL query strings (access_token, sig, Azure SAS), Ocp-Apim-Subscription-Key, x-functions-key, connection strings (postgres, redis, amqp, mongodb+srv, jdbc, AccountKey), JWTs, Bearer and Basic, cookies, e-mails, every Bangladeshi phone form I tried (including Bangla digits) and bare 40/64-hex and 40+ character tokens. A hex value after a secret-like key is still redacted, even under git_, commit_, build_, image_ or digest_ prefixes.
+
+This diff introduces no new leak, no test or gate is loosened (the test file only gains a new test), and nothing shows super-linear time. The regex timing scales with the input (25 KB, 50 KB and 100 KB take 9 s, 17 s and 34 s).
+
+It is still a FAIL because several realistic lines pass with the secret visible. Every one of them leaks the same way at 0fa1c4d4, so they are older gaps, not caused by this diff. The two I count as blocking are an OTP next to its keyword when the keyword is part of a key name, and the `Authorization: Token <value>` header form.
+
+BLOCKING:
+- OTP next to its keyword is printed when the keyword is joined to the key name: `sms_code=481516`, `verificationCode=481516`, `verifyCode=481516`, `SmsCode: 481516` and `{"verification_code":"481516"}` all print 481516 unchanged. Cause: the prose OTP rules need a word boundary right after sms or verification, and `_`, `C` and `_code` stop that boundary. KEYSHORT and KEYCAMEL list otp and pin but not sms, verification, verify or code. (`otp_code`, `otp-code`, `smsOtp` and `X-OTP` are caught.) Same output at 0fa1c4d4.
+- An `Authorization` header with a scheme other than Bearer or Basic leaks its credential: `Authorization: Token Zq9VvK2mLpqAbCdEfGh12` becomes `Authorization: [redacted] Zq9VvK2mLpqAbCdEfGh12`. The KEYLONG rule's value is only the first bare word, the scheme name, and the Bearer/Basic rule does not cover Token, ApiKey, SharedAccessSignature or Digest. The token is only caught by the 40+ character catch-all, so any shorter token survives. Same output at 0fa1c4d4.
+
+LOWS:
+- Further password forms that survive (also at 0fa1c4d4): `--password Hunter2xyz` (CLI flag with a space), `PASSWORD<TAB>Hunter2xyz`, `password -> Hunter2xyz`, `the password was: Hunter2xyz`, `password for adm is Hunter2xyz`, `<password>Hunter2xyz</password>` (XML), and `-p Hunter2xyz`.
+- URL-encoded separators are not seen: `api-key%3DZq9VvK2mLpq` and `token%22%3A%22Zq9VvK2mLpq` pass unchanged.
+- These key names are not secret stems: `hmac=`, `signature=`, `nonce=`, `salt=`, `hash=` and a bare `code=481516`. Their values survive when shorter than 40 characters.
+- A YAML block value (`token: >` followed by the value on the next line) keeps the value, because each line is redacted on its own.
+- A run of more than 40 spaces between a key and `=` (for example token + 50 spaces + `=X`) is not caught. Unrealistic, but the bound is a hard edge.
+- A dotted host followed by `/path:` and a 40/64-hex is still kept, for example `https://hooks.example.com/x:<64hex>` and `registry.attacker.io/x:<40hex> token`. Any https URL with a dotted host matches the 'registry-looking' rule. Narrower than before, but not limited to image registries.
+- `sha pw: <40hex>` keeps the hex (a short non-hex gap after build/commit/sha/git/image/digest is allowed). New in this diff: `digest: <64hex>` is now kept, where 0fa1c4d4 printed [long-token]. Intended for image digests, but a 64-hex signature after the word digest now prints.
+- Performance is linear but much slower than D-OPS-DIAGNOSE-API-05 states (about 3.4 s per 100 KB run). A 100 KB run of a repeated stem takes 34 s (`token`), 54 s (`secret`) and 26 s (`Xcookie`). 0fa1c4d4 took about 5 s and 7 s for 50 KB of `token` and `secret`, against 17 s and 28 s now, roughly 3.5x slower. Each line passes the filter twice (per-query `show`, then the `exec` net), so a few such lines could hit the 20-minute job timeout. That fails closed (the step goes red), so nothing leaks. The linear-time test does not include a repeated-stem blob. (Pathological input, so a low.)
+- Over-redaction: `Authorization: Digest ... response="<32hex>"` becomes a [uuid:] tag, which is harmless.
+
+### regex-safety-and-scope verdict=pass
+Backtracking lens on 0fa1c4d4..9496e81d. Only three files change: infra/scripts/diagnose.sh (the regex patterns only), infra/tests/check_infra.py (one new test, test_diagnose_redaction_wide_gaps_and_bounds, added; nothing existing is removed or changed) and DECISIONS.md (D-OPS-DIAGNOSE-API-05). .github/workflows/ops-diagnose.yml is untouched: timeout-minutes is still 20, and the pipefail check and the 'diagnose: done (read-only)' final-line gate are both still there.
+
+I timed 42 adversarial 100 KB single-line inputs through scratch copies of the old and new diagnose.sh --redact. Every run finished and printed the trailing line. Scaling is linear, not super-linear: 'password' repeated took 22 s at 50 KB and 84 s at 200 KB; 'token' repeated took 8.5 s at 25 KB, 16.6 s at 50 KB and 35 s at 100 KB. No nested quantifier is ambiguous. KEYSHORT segments must end on a separator, SEP and digits are disjoint in the phone rule, and \s{0,40} is anchored by [=:].
+
+The cost per character did grow, though. On runs that repeat a stem, the KEYLONG and password rules now cost about 4x the old version, because the prefix and suffix bounds went from 64 to 128 and the cost is roughly the product of the two. Tabs, spaces, quotes, e-mail, phone and OTP inputs all stay under 0.3 s, and the remaining shapes take about 4 s per 100 KB. A timeout only turns the step red and never prints a raw line, so this is a slowdown risk, not a leak.
+
+A few made-up realistic lines were all redacted: key=value with spaced '=', Bearer, Server=/Password=, OTP prose, e-mail, phone, a bare 40-hex and a bare 64-hex.
+
+BLOCKING:
+
+
+LOWS:
+- Large constant on stem-repeat runs. A 100 KB line of 'password' repeated takes about 41 s, 'token' about 31-35 s and 'token_' about 27 s, against 9.6 s for the old version on the same 'token' input. Scaling is still linear, but D-OPS-DIAGNOSE-API-05 says 'About 3.4 s per 100 KB unbroken run', which is wrong for these inputs. Each line passes the filter twice (show, then exec > >(redact)), so one such line costs over a minute. A few of them could reach the 20-minute job timeout, which fails red but does not leak. The new test's linear check (assertLess 25 s) covers only letters, segments, dots, email, tabs and 'otp far'; a 'password'/'token' repeat blob would fail its own 25 s bound. Suggestion: add that case to the test, and either bring the KEYLONG and password prefix/suffix bounds back to about 64, or anchor the prefix with a lookbehind (?<![A-Za-z0-9_.\-]) so that only one start position per run is tried.
+- The first hold rule (word starting build/commit/sha/rev/git/image/digest, then up to 20 non-hex characters) now keeps 64-hex values as well as 40-hex. Lines that the old version redacted now pass in full, for example 'X-Hub-Signature-256: sha256=<64hex>' (an HMAC signature), 'digest=<64hex>' and prose such as 'revokeToken <64hex>' or 'sharedtoken <64hex>'. The sha/rev/git prefixes take any word (\w{0,20}), so shareToken, revokeToken and gitToken qualify. Key=value forms with a token/secret stem are still redacted, because the key rules run after the hold and redact the placeholder. This is the intended digest-keeping design and the test asserts it, but for the coverage lens: consider requiring a whole word (sha256|sha1|digest|commit|build|image|rev|revision|git) followed by [\s:=@] rather than any word that starts with one of these.
+- Kept as before (pre-existing for 40-hex, now the registry-host form): a URL on a dotted host with a ':' or '@' path suffix keeps a 40- or 64-hex value, for example 'https://api.example.com/reset/t:<64hex>'. This is unusual in practice; mentioned for completeness.
+- Style: the 'up to 3 following words' negative lookahead in the password rule still uses \s{0,3} while the key rules now accept \s{0,40}. A following word written as 'next      = x' (many spaces) is therefore taken as part of the password value. That is over-redaction only.
+
+
+## Re-check 5 (round 5, c0ec3a56), 2026-11-18
+
+### default-deny verdict=fail
+Default mode at c0ec3a56. With default inputs, nothing leaks. include_messages is a typed boolean that defaults to false. The workflow checks it against ^(true|false)$ before the Azure login, and diagnose.sh checks it again with valid. An empty value becomes false through ${6:-false}, and any other value stops the script with exit 2. Every default query projects only structured columns:
+- worker and API console: time, lvl, logger, exc, cause, sqlstate, ms, kind
+- migrate job console: time, exec, lvl, kind, sqlstate, script
+- system logs: time, who, type, reason
+- PostgreSQL in Log Analytics: time, sev, head (at most 80 characters, cut at the first quote, colon or parenthesis); the downloaded server logs use the same cut via sed and drop any line that does not match
+- pre-flight: time, exec, kind
+- worker app: az show and revision list only
+No default query projects url, path, user id, phone, message, exception text or a properties bag. exc, cause, sqlstate, script and ms are extracted only as identifier, digit or fixed-shape tokens. Everything passes the redactor, which looked roughly linear on 100 KB adversarial lines in my samples. One finding blocks: the migrate job console still prints by default, but only as lossy kind labels, so the lead loses part of the migration proof.
+
+BLOCKING:
+- (upheld 3/3) The migrate job console no longer gives the lead's migration proof by default. The Flyway lines now print only as the kind label built in KQL_CONSOLE (diagnose.sh line 256): 'flyway: ' + extract('^([A-Za-z ]+)') + coalesce(version, applied-count). I replayed that KQL logic in Python on the verbatim lines quoted in docs/status/usage.md. (1) 'Current version of schema "public": 0175' becomes 'flyway: Current version of schema ', so the starting version is lost. (2) 'Successfully applied 2 migrations to schema "public", now at version v0176 (...)' becomes 'flyway: Successfully applied 0176'. The count N is lost: the version comes first in the coalesce, so the applied-count fallback never runs, and the label reads as if 176 migrations were applied. (3) 'Schema "public" is up to date. No migration necessary.' becomes 'flyway: Schema '. (4) 'Successfully validated N migrations' and the app's own aron.main line 'migrate: N migration(s) applied' get kind '-' at INFO level, so the job filter drops them entirely. Only 'Migrating schema ... to version "0176 - ..."' still carries its number ('flyway: Migrating schema 0176'). This is exactly the 'Current version X -> Migrating ... -> Successfully applied N ... now at version vY' evidence the lead records after every deploy. Fix: build each label from fixed words plus extracted digits only, for example: 'flyway current version ' + extract(@'"public"?: ?v?([0-9.]+)'); 'flyway migrating to ' + extract(@'to version .?([0-9.]+)'); 'flyway applied ' + extract(@'applied ([0-9]+) migration') + ' now at ' + extract(@'now at version v?([0-9.]+)'); 'flyway up to date'; 'flyway validated ' + N; and 'migrate: N applied' for the aron.main line. Then add a test that feeds these verbatim Flyway messages through the label logic (nothing tests the label content today).
+
+LOWS:
+- The exc and cause columns are probably always empty for this backend. If logback's JsonEncoder (backend/app/src/main/resources/logback.xml) writes 'throwable' as a JSON object, as I recall (not checked here), tostring() of it starts with '{', so the extract on line 248 that wants an identifier at the start never matches, and there is no 'Caused by:' text in that form. By default the lead then sees 'error line' with no exception class. Use tostring(j.throwable.className) and tostring(j.throwable.cause.className). Neither leaks anything.
+- The default system log now prints only the reason ('ContainerTerminated') and drops the exit code that the lead quotes as proof ('exit code 0'). Add the exit code as an extracted digit column, for example extract(@"exit code '?([0-9]+)", 1, txt).
+- Redactor over-redaction on TSV rows: SEPK accepts a tab, with up to 40 whitespace characters around it. So a logger column ending in a key stem (for example aron.session, or com.x.auth.OtpService) makes $VAL eat the next non-empty column (exc or ms becomes [redacted]). Reproduced with made-up rows. It loses information only; nothing leaks.
+- The default PostgreSQL 'head' column (and the sed cut on downloaded server logs) still prints up to 80 characters of free text before the first quote, colon or parenthesis. A custom RAISE message with an unquoted person name would pass. Phone numbers and e-mail addresses are caught by the redactor; names are not, as the script's own comment admits.
+- infra/tests/check_infra.py test_diagnose_runs_with_a_stub_az_in_both_modes has a no-op assertion: assertNotIn("txt", ... if False else "") always passes. The assertNotRegex lines after it do the real check, so coverage is not weakened, but the line should be removed.
+- Not new: the diagnostic-settings JSON (head -60) prints full resource IDs, including the subscription id, into the public log. That is not a secret, but it could be cut down to category names only.
+
+### message-mode-leaks verdict=fail
+Lens: include_messages=true, at lane head c0ec3a56. I extracted infra/scripts/diagnose.sh into /tmp/claude-0/-home-user-Aron-Pro-Max/a5c3c45a-b89c-5768-9d5f-6bc05c04fc63/scratchpad/r5-msgs/ and ran about 230 made-up lines through `diagnose.sh --redact` with REDACT_STRICT=1. The samples are in samples.txt and s2.txt to s6.txt in that folder. They covered key=value, JSON and escaped JSON, tab, CLI (--password, -pX), XML, URL-encoded (%3D, %22%3A%22), YAML next-line and block values, Authorization with Bearer/Basic/Token/Digest/ApiKey/SAS and Proxy-Authorization, hmac/signature/nonce/salt, client secrets and refresh tokens, env vars (PGPASSWORD, *_PASSWORD), Azure connection strings (Server=, AccountKey, Service Bus, InstrumentationKey, Redis host:6380,password=), jdbc/postgres URLs, JWTs, cookies, SAS sig= in URLs, Bangladeshi phones in every spacing incl. Bangla digits and +880, e-mails and OTP forms.
+
+Almost everything is caught. The survivors are listed under blocking and lows.
+
+Whole-line rule: every ordinary Flyway line sampled ("Migrating schema \"public\" to version ...", "Successfully applied N migrations ...", "Current version ...", "up to date"), plus pre-flight, sweep, Hikari, startup and PSQLException lines, survives intact in strict mode. Strict mode does over-redact some ordinary lines (see lows).
+
+Regex cost: 54 adversarial 100 KB single lines (repeated stems such as password=, token, otp, pass_, keyA, authorization:, <password>, %3D, digits, phone separators, hex, image, eyJ, @, IPv6, quotes, braces, key<TAB>, name:, Bearer, code=, YAML key, a 100 KB unbroken run followed by =, and 40-char key/= repeats), each run strict and non-strict. Worst was 0.43 s (bdv_m2 strict), most were 0.2 to 0.35 s. A 50 KB vs 200 KB password=abc repeat took 97 ms vs 282 ms, so cost grows linearly with no super-linear case.
+
+Default mode was not re-tested in this lens. Its Flyway and pre-flight rows are projected as structured kind labels, which reads correct.
+
+I did not judge the round-5 test restructure in infra/tests/check_infra.py. It removes and rewrites many older assertions, which another lens should verify.
+
+BLOCKING:
+- (upheld 3/3) include_messages=true: a URL password with an empty user name passes the scrubber, strict mode and the secret-word exclusion untouched. Examples: `redis://:R3disPw99@cache:6379` and `sftp://:Sp4ssw0rd@files`. With a user name, a letters-only password also passes: `amqp://guest:guestpass@rabbit:5672`. Strict mode misses them because the value lookahead after `redis:` sees only `//` and stops at the colon. The `user:pw@host.tld` form is caught only by accident, through the e-mail rule. Fix: one rule that replaces the user-info part of any `scheme://[user]:pw@` URL.
+- (upheld 3/3) include_messages=true: an OTP whose line carries no otp/pin/sms/verification word passes. `code 482913 expires in 5 minutes` and `482913 is your Aron code` come out unchanged. The Bangla forms `ওটিপি ৪৮২৯১৩ পাঠানো হয়েছে` and `আপনার কোড ৪৮২৯১৩` pass too, only with the digits turned into ASCII 482913. None of these trips the secret-word exclusion or strict mode, which needs letters and digits mixed. Fix: count bare `code` followed by 4 to 8 digits (outside SQLSTATE/HTTP context) and the Bangla words ওটিপি and কোড as OTP context.
+
+LOWS:
+- Compound personal-name keys pass in message mode. In `customer_name=Rahim`, `sr_name=Rahim`, `{"customerName":"Rahim Uddin"}`, `firstName`/`lastName`/`ownerName`/`shopName`, `retailer_name`, `owner=`, `contact_person=` and JSON `"owner"` the value is untouched. The cause is `\b` in front of `$KEYNAME`, which does not match after `_` or a lowercase letter. This contradicts the header claim that personal keys (name, ...) are caught. NID numbers (13 and 17 digits) and dob= also pass.
+- An unquoted name or address value loses only its first word: `name=Rahim Uddin` gives `name=[redacted] Uddin`, `outletName=Karim Store` gives `[redacted] Store`, and `address=House 12, Road 5, Gulshan 1` gives `address=[redacted] 12, Road 5, Gulshan 1`. The 3-word tail rule exists only for password-like keys.
+- Free-text names (`created outlet for Abdul Karim at Gulshan`, `customer Rahim Uddin phone ...`) pass in message mode. This is a known gap that the header documents.
+- Strict whole-line replacement over-redacts ordinary rows, and since it runs on the whole TSV row, those rows lose their time, level and kind columns too in message mode. Affected: any HTTP line whose path has a digit (`GET /api/v1/routes/today 200 OK in 45ms`, `POST /sync/upload 409 ...`, `Unhandled: POST /v1/sync/upload`); `job bundle2 ran in 120ms`; `revision ca-aron-dev-api--r7x9k2 ready`; an `image ghcr.io/...:sha-abc1234` line; trace_id/span_id lines; and the real Flyway line `Migrating schema "public" to version "0186 - sr server train2 flags"` (`train2` after `server`). Other real descriptions such as `scd2` and `v0192` survive. Default mode is not affected.
+- Survivors that are only secret-shaped, not proven secrets: `sk-ant-api03-abcdefgh1234` (a short key below the 40-character long-token threshold) and the AWS key id `AKIAIOSFODNN7EXAMPLE`.
+- Minor leftovers: a double-encoded `sig%3DAbc123%252B` keeps the `%252B` tail, and `jwt eyJhbGc.eyJzdWIi.sig1234` keeps the first segment `eyJhbGc.` (only a header fragment).
+
+
+## Re-check 6 (round 6, 5f0df7f0) and V0209 merge 9b69fba3, 2026-11-18
+
+### ops-public-output verdict=fail
+Print-path lens on lane/ops-diagnose-api 5f0df7f0. I fetched the branches and copied diagnose.sh, the workflow and check_infra.py from 5f0df7f0 into /tmp/claude-0/-home-user-Aron-Pro-Max/a5c3c45a-b89c-5768-9d5f-6bc05c04fc63/scratchpad/r6-print/. I ran a fake az (bin/az, made-up rows only) and replayed the KQL kind/sqlstate/ms/script logic in Python (replay.py).
+
+Message mode cannot be reached from the workflow. The workflow has no include_messages input. Its five positional args are checked against ^[0-9]{4}-..Z$ or ^[a-z0-9][a-z0-9-]{0,62}$, so no argument can be '--include-messages' or '--redact'. The script sets INCLUDE_MESSAGES=false itself, so an env value has no effect. With GITHUB_ACTIONS=true the flag in any position exits 2 (tested with the flag first and last); with INCLUDE_MESSAGES=true in the env the run still prints include_messages=false. The script checks every input again before it goes into KQL or az. No KQL or shell injection was found through since, until, job_prefix, worker_app, api_app or the resource group. The other env variables the filter reads (REDACT_STRICT, REDACT_WIDTH, REDACT_SELFTEST_DIE) are not set by the workflow.
+
+Print paths checked:
+- az version / -h, server show, parameter values, metrics, activity log and revision list: fixed fields only.
+- Diagnostic settings: now category and enabled only.
+- Log Analytics console (worker, API): time, lvl, lg, exc, cause, sqlstate, ms, kind. Job console: time, exec, lvl, kind, sqlstate, script. System logs: who, typ, reason, exitcode (digits). Log Analytics PostgreSQL: sev plus a fixed phrase, letters before a colon, or [text]. Pre-flight: kind.
+- try/az stderr shows our own query text only. The step summary is a copy of the redacted output.
+- Downloaded server-log files: free text, see blocking.
+
+Flyway labels on the verbatim Flyway 10 lines from the task:
+- Current version 0204 gives 'flyway current version 0204'.
+- Migrating ... "0205 - geo fix signals" gives 'flyway migrating to 0205'.
+- Applied 4 ... v0208 gives 'flyway applied 4 now at 0208'.
+- Validated 186 gives 'flyway validated 186'.
+- 'up to date' gives 'flyway up to date'.
+- 'migrate: 4 migration(s) applied' gives 'migrate: 4 applied'.
+All labels are correct and lossless. No description or schema name and no "execution time" text is carried, and labelled INFO rows are kept by kind != '-'.
+
+Migration failure: it is visible by default, partly. The 'Migration of schema "public" to version "0209 - x" failed!' line becomes only 'error line' with no version, so the version is known only from the preceding 'flyway migrating to 0209' row. The aron.main 'migrate failed' row shows exc=FlywayMigrateException and sqlstate=42P01 taken from the throwable JSON. Its script column is empty because script is read from msg only. Statement text is never printed.
+
+Test changes: the round-6 edits remove assertNotIn(", msg\n", queries), the include-messages validator assertion and 'exc = extract('. Each one is replaced by an equal or stronger check: the project-msg/txt/line assertNotRegex, the new no-input and refusal tests, and the coalesce(j.throwable.className) assertions. The gates in the workflow are all still there: timeout 20, pipefail, the final-line grep, and validation before the Azure login. The new URL user-info and code rules ran linearly: 100 KB adversarial lines took 0.15 to 0.34 s.
+
+Not verified:
+- KQL was not run against a real Log Analytics workspace. I assumed RE2 behaves like Python re for these patterns.
+- The logback JsonEncoder throwable shape (className, message, cause) is from memory.
+- The Flyway 10 failure wording was taken from the task text.
+- check_infra.py was not run.
+- I did not check whether backend log calls ever put an OTP or phone next to text starting with 'ms'.
+- No Azure access.
+
+BLOCKING:
+- (upheld 3/3) Default mode still prints raw PostgreSQL message text through the downloaded server-log path (diagnose.sh line 234). logfiles.download_enable is set to 'on' in infra/modules/postgres.bicep, so this path is live in the workflow. The sed keeps up to 80 characters of free text after LOG/ERROR/FATAL/PANIC, up to the first quote, colon or parenthesis: `([^"':(]{0,80})`. Round 6 changed only the Log Analytics path to a fixed phrase, letters before a colon, or [text]. Reproduced with the fake az: the made-up file line `2026-11-18 09:30:01.123 UTC-abc-ERROR:  could not deliver to outlet Rahim Uddin at House 12 Road 5 Gulshan` prints in the public output as `... UTC ERROR could not deliver to outlet Rahim Uddin at House 12 Road 5 Gulshan` (a name and an address). This goes against the workflow header ('never message or exception text') and the default-deny ruling. Fix: give the sed path the same head logic as the KQL `head`, a fixed phrase list or `[A-Za-z][A-Za-z ]{2,60}` followed by a colon, else [text]. Then add a test that feeds a made-up server-log file through the stub.
+
+LOWS:
+- The Flyway failure line 'Migration of schema "public" to version "0209 - x" failed! ...' gets kind 'error line' with no version. The `script` column is read from msg only, so the aron.main 'migrate failed' ERROR row shows no V0209__x even though the throwable JSON holds 'Migration V0209__x.sql failed'. SQLSTATE 42P01 does show on that row (it is read from msg + st). Suggest a label 'flyway FAILED at ' + extract(@'^Migration of schema .*? to version [\x22]?v?([0-9][0-9.]*)') and reading script from strcat(msg,' ',st). If the error comes out as plain non-JSON lines, the 'SQL State  : 42P01' line on its own is dropped by the row filter, because it matches neither a kind nor error|failed|exception.
+- The `ms` column `extract(@'([0-9]{1,9}) ?ms', 1, msg)` has no word boundary. Digits just before any word starting with 'ms' (msg, msisdn, mssql) print as a bare digit column, which the redactor cannot judge. Made-up example: 'otp 482913 msg queued for 01712345678 msisdn' gives ms=482913. A phone followed by ' msisdn' gives its last 9 digits. Fix: @'\b([0-9]{1,9}) ?ms\b'.
+- The 'flyway migrating to' extract uses a greedy `.*`, so it picks the LAST 'to version' in the line. A description such as '0205.1 - x to version 9' prints 'migrating to 9'. Use `^Migrating schema [^ ]+ to version` or `.*?`.
+- lg, lvl and exc/cause (when taken from j.throwable.className or j.exception.className) are printed exactly as they appear in any JSON-object line, with no identifier-shape check. A JSON line from another process with free text in those fields would print it. It is unlikely, given that the backend uses logback JsonEncoder only.
+- sqlstate uses (?i) over `[0-9A-Z]{5}`, so lowercase letters also match (for example 'sql state: hunte'). Five characters at most, so cosmetic.
+- The step summary wraps the output in a ``` fence. A ``` inside the redacted output would end the fence early. Cosmetic.
+- The new test_diagnose_flyway_labels test replays the KQL with Python re instead of RE2. That is fine for these patterns, but the test does not cover the failure line or the `ms`/`script` columns.
+
+### ops-tests-removed verdict=pass
+Lens: test assertions, the PostgreSQL server-log path and redaction on every section, at lane/ops-diagnose-api 5f0df7f0 (fetched; head confirmed 5f0df7f05fc7). I compared infra/tests/check_infra.py at ce6792f67 and 5f0df7f0. On the integration branch, two tests touch diagnose: test_ops_diagnose_is_read_only_and_integration_branch_only and test_diagnose_reads_the_worker_console_log_and_keeps_statements_out. The first is unchanged: the read-only verb list, grep -v -E 'DETAIL|parameters:', set -uo pipefail, the branch guard and the pinned actions are all still asserted. The second is the only one rewritten, which matches DECISIONS D-OPS-DIAGNOSE-API-07. Here is each changed or removed assertion and my judgment of its replacement:
+(1) ContainerAppConsoleLogs_CL, parse_json(line) and bundle|lapsed: still asserted, now on the shared KQL_CONSOLE block that the worker uses through console_section. Equal.
+(2) where app == '$WORKER_APP': now asserted as console_section "$WORKER_APP" "$WORKER_APP" plus where app == '$app' inside console_section. Equal.
+(3) substring(text, 0, 200): now assertNotIn('substring(') over the KQL block and over all non-comment code, plus the existing assertions that every log-analytics query pipes through show/showm (redact first, then cut by characters) and that there is no cut -c or awk substr. The cut moved to after redaction. Equal or stronger; the exact width is no longer asserted (low).
+(4) The raw-line exclusion not(line matches regex statement|parameters|bind|password|secret|token...): replaced by default-deny. The default console query projects only time, lvl, lg, exc, cause, sqlstate, ms, kind (no msg, line or st; asserted statically and in the stub-az run with assertNotRegex 'project ... msg|txt|line'). Message mode keeps the held filter on the printed message with its count. Stronger for the public path, because the integration branch printed 200 characters of message text.
+(5) The anchored PostgreSQL statement exclusion: unchanged; only its slice end moved.
+Round-6 only removed assertNotIn(', msg\n', queries) together with the no-op line. The regex assertions that remain are stronger. The include-messages valid() assertions went away together with the input.
+I ran the 10 diagnose tests from a scratch tree with python3 -m unittest: all pass in 12 s (the module guard needs compiled templates, so I ran the tests through unittest directly).
+I also ran the whole script against a fake az with GITHUB_ACTIONS=true and made-up data (scratchpad r6-tests/). Every section passes exec > >(redact), and so do error paths. Failed az commands echo their arguments and error text through try 2>&1 or captured 2>&1. Subscription and object ids in resource ids became [uuid:x] tags. token=, password=, Server=, SharedAccessSignature, AccountKey, Bearer JWTs, e-mail addresses and phone numbers in the error text were all redacted. stderr stayed empty.
+The downloaded server-log path in default mode drops DETAIL/parameters lines (grep -v). The sed step keeps only timestamped LOG/ERROR/FATAL/PANIC records, so STATEMENT and CONTEXT records and continuation lines are gone. A 'duration: ... statement: SELECT ...' line or a 'LOG: statement: ...' line prints only the word 'duration' or 'statement'. The Log Analytics PostgreSQL query keeps every exclusion and projects only sev and head (a fixed phrase, the letters before a colon, or [text]).
+Message mode is refused under GITHUB_ACTIONS (exit 2, no query sent), even when the flag is smuggled in as a positional argument. The workflow has no message input.
+The Flyway labels survive the redactor in default mode. I tested current version, migrating to, 'applied N now at V', 'validated N', 'up to date' and 'migrate: N applied'. A Python replay of the KQL regexes also handles 0176.1, [non-transactional] and an empty schema (gives '?').
+The new redactor rules (URL user-info, code plus digits, Bangla words) timed linear on 100 KB and 200 KB adversarial lines (0.12 to 0.54 s). The workflow gates are unchanged: timeout-minutes 20, set -o pipefail, and the final-line grep.
+Not verified: real az, Log Analytics or PostgreSQL output formats; KQL RE2 semantics (only replayed in Python, and Python startswith is case-sensitive where KQL's is not); the real logback JSON throwable shape; a real GitHub Actions run; and the rest of check_infra.py (needs compiled Bicep).
+
+BLOCKING:
+
+
+LOWS:
+- Downloaded server-log path (diagnose.sh line 234, default mode): the sed step still prints up to 80 characters of free text before the first quote, colon or parenthesis. The Log Analytics 'head' column got the fixed-phrase form, but this path did not. With a made-up line '...-LOG:  could not receive data from client Rahim Uddin customer', 'Rahim Uddin' printed. A custom RAISE message with an unquoted name would pass the same way. Standard PostgreSQL templates quote their values, so this is low. Suggest using the same fixed-phrase/[text] rule on this path. D-OPS-DIAGNOSE-API-07's wording ('the PostgreSQL head column is a fixed phrase') covers only the Log Analytics query.
+- Downloaded server-log path: the slow-statement lines selected by 'duration: [0-9]{5,}' now print only the word 'duration', so the duration figure that justified selecting them is lost. Suggest extracting the digits as a column.
+- Downloaded server-log path in message mode (private terminal only): grep -v drops only DETAIL|parameters:, so 'LOG: duration: N ms statement: <SQL>' and 'execute <unnamed>: <SQL>' lines print their SQL text behind the redactor. Not reachable from the workflow.
+- No test exercises the downloaded server-log path end to end (the stub az returns no server). Nothing asserts that the default sed keeps only LOG/ERROR/FATAL/PANIC records and cuts at the first quote, colon or parenthesis, or that STATEMENT and continuation lines are dropped. Only grep -v 'DETAIL|parameters:' is asserted.
+- The old 200-character cap assertion became assertNotIn('substring('). The new width (show 300) is not asserted for the worker/API console sections. With structured columns only, this hardly matters.
+- The structured columns lg, lvl and exc/cause (when taken from j.throwable.className) are printed as tostring() of JSON fields with no shape check. Only the stack-trace fallback is identifier-shaped. A JSON line that put free text in logger, level or className would print it. Unlikely with logback; suggest the same identifier extract on these fields.
+- The Python replay in test_diagnose_flyway_labels_are_lossless_fixed_words_and_digits uses case-sensitive str.startswith, but KQL startswith is case-insensitive. It is equivalent for the tested lines, but it is not a faithful model of KQL.
+
+### v0209 verdict=pass
+Checked lane/sr-server head 9b69fba3, a merge with parents 9e6765d0 and ce6792f67, from git only. Nothing blocking found.
+
+Migration: ce6792f67..9b69fba3 adds exactly one file under db/migrations, V0209__attendance_closed_by_comment.sql. The tree now runs V0200..V0209 with no V0240. No file from V0001 to V0208 changed. Compared with V0240 in 9e6765d0, the content differs on line 1 only: the header comment says V0209 instead of V0240. The SET lock_timeout and COMMENT ON COLUMN statements are byte-identical.
+
+Contract: openapi.yaml is still version 1.21.0. The only change is the description of AttendanceClosedBy; enum and type are unchanged. The slice, INDEX.md (452 to 521 B, which matches the real file size), openapi.d.ts and the data dictionary carry the same description text. On scratch copies, tools/slice-contract.py --check says up to date. gen_wire_dtos.py --check is clean on the merge. It fails on INT ce6792f67, which confirms the lane's note that INT's WireDtos.kt was stale. WireDtos.kt keeps INT's GeoFix.signals and DeviceStatusReport.integrity_events docs.
+
+DECISIONS.md: compared line by line against both parents, no line was lost or changed. The only additions are D-SV2-21, carried from the lane, and the new D-SV2-22.
+
+Base work: ce6792f67..9b69fba3 touches 33 files. Nine of them also changed on the base (a4691a061..ce6792f67). In each of those nine the hunks are lane-only edits: comment and wording, the manual_entry exclusion, the closedByProblem move and the description updates. RiskSignals.kt keeps INT's `isolated` helper (5 occurrences on both sides). IngestService.kt keeps INT's PhoneEvidenceShape check. No base file outside those 33 differs, so the device lab exemption and geo fix signal code (V0205..V0208, the web and backend code) are exactly as on INT.
+
+The remaining V0240 mentions are in history docs only (docs/reviews, docs/status, earlier DECISIONS entries).
+
+Not verified: no build, no tests, no Flyway run on a database. openapi.d.ts and the data dictionary were not regenerated, only compared by text. I did not judge the new merge-time code changes beyond seeing what they are (see lows).
+
+BLOCKING:
+
+
+LOWS:
+- The merge commit is more than a renumbering, and the lead has not reviewed the new parts (D-SV2-22). (a) IngestService.kt: the closedByProblem check moved from just after memoAlias, before the registry, to a new step 3a after the registry and the business-date window. This changes outcome precedence: payload_conflict and business_date_out_of_window now win over schema_invalid. (b) New tests: CheckoutClosedByTest.theClosedByCheckComesAfterTheRegistryAndTheWindowSoTheirOutcomesStay and a positive control in TeamPhoneCloseTest/TeamPhoneCloseBase. (c) MEMBER_DOCS in gen_wire_dtos.py gained GeoFix.signals, DeviceStatusReport.integrity_events and others, and WireDtos.kt gained a ResolvedConfigValue class KDoc. These need a short lead or Opus check, since rule 10 puts sync work at Opus/Sonnet level. I checked placement only, not correctness: for example, how finalReject at 3a interacts with the registry row the record just took, and how a resend behaves.
+- Inside V0209 the line-1 header comment changed from V0240 to V0209. This is comment-only; the SQL statements are identical to the reviewed V0240.
+- In IngestService.kt the isPhoneClose KDoc (D-SV2-15) now sits above the closedByProblem KDoc, so two KDoc blocks are stacked and the first no longer documents the function under it. This was already so in 9e6765d0 and is cosmetic.
+- Not run: Gradle build and tests (db test CheckoutClosedByV0203Test with the V0209 assert, backend tests), Flyway migrate or validate on a database, openapi-typescript regeneration of openapi.d.ts, and data-dictionary regeneration. These were compared by text only.
+
+
+## Re-check 7 (round 7, c1fe8c02), 2026-11-18
+
+Note: the "letters before the first colon" rule that fails here was the lead's own suggestion in round 6.
+
+### pg-download-path verdict=fail
+Lens: the downloaded PostgreSQL server-log path (pglog_head, diagnose.sh lines 145-154 and 231-249 at c1fe8c02). I copied the script to /tmp/claude-0/-home-user-Aron-Pro-Max/a5c3c45a-b89c-5768-9d5f-6bc05c04fc63/scratchpad/r7-pglog/ and ran it with GITHUB_ACTIONS=true and a fake az that lists the made-up files and copies them on download. Two problems block it.
+
+(1) The "letters before the first colon" rule prints free text. These made-up records reached the output:
+- `ERROR:  Rahim Uddin of Gulshan: could not find outlet` printed `ERROR Rahim Uddin of Gulshan`.
+- `PANIC:  Karim Ahmed Mobile Number: could not write` printed `PANIC Karim Ahmed Mobile Number`.
+- `FATAL:  OTP code for Rahim: could not` printed `FATAL OTP code for Rahim`.
+- `ERROR:  Mofiz Mia Gulshan: could not crlf` with CRLF printed `ERROR Mofiz Mia Gulshan`.
+- `ERROR:  Password is hunter two: could not` printed `ERROR Password [redacted] two`, so the second word of a password with a space leaked.
+- A prefix holding user@db (`UTC-rahim@aron-ERROR:  Karim Rahman: ...`) printed `ERROR Karim Rahman`. The prefix itself is never printed.
+
+A record only reaches pglog_head if its line passes the grep prefilter (FATAL, PANIC, terminat, could not, checkpoint and the other listed words). The head rule takes up to 61 ASCII letters and spaces, so Bangla text and anything with a quote, parenthesis, dot, underscore or digit gives [text]. The current migrations hold no RAISE whose message starts with a data value, except `sku %: ...` (an SKU code). So today it can only happen through a future RAISE, app text or a non-built-in message. But nothing in the rule stops it, and the round-7 test does not cover this shape. The same rule is in the KQL head on line 363, where ERROR records have no keyword prefilter; I did not run that path.
+
+(2) pglog_head is quadratic. The regex `(.*?)\s*$` on line 147 is quadratic when a long run of whitespace inside the message is followed by a non-space character:
+- Isolated pglog_head timings on one line: 10 KB took 0.18 s, 20 KB 0.71 s and 40 KB 2.74 s.
+- In the full script, 5 lines of about 100 KB each took 86.8 s, roughly 17 s per line.
+- Up to 80 lines per file pass `head -80`, which can exceed the job's 20-minute timeout.
+- Trailing whitespace only (no character after it) stays linear.
+- The other 100 KB shapes were all linear, at 0.13 to 0.7 s: no spaces, dashes, digits in the time, letters, letter-space runs, and a duration with 100 K digits (printed as `duration [long-token] ms`).
+
+What stays out (verified on the output):
+- Continuation lines (tab-indented SQL) and STATEMENT, DETAIL, HINT and CONTEXT records are dropped, and so are WARNING and NOTICE records.
+- `password authentication failed for user "rahim"`, `role "karim_uddin" does not exist`, `database "rahim" does not exist`, server process (PID ...) and `execute S_1:` / `execute <unnamed>:` all print [text].
+- `connection authorized: user=... host=...`, `connection received: host=...`, `disconnection: ... user=... host=...` and `statement: SELECT 'Rahim Uddin'` print only the fixed words before the colon.
+- Slow statements print only `duration N ms`.
+- Fixed phrases (ready to accept connections, terminating connection due to ..., checkpoint starting/complete, could not receive data from client) print as expected.
+- Other log_line_prefix shapes (`UTC [pid]: user=..,db=..` and `+06-`) are dropped whole: safe, but lost.
+- CRLF works (the \r is trimmed).
+- `--include-messages` under GITHUB_ACTIONS exits 2 and prints nothing. The workflow passes no such flag.
+
+Not verified:
+- A real `az postgres flexible-server server-logs download`: its file naming or subdirectories, its stdout, and real Azure log_line_prefix values.
+- The KQL head path (line 363) run on real or simulated Log Analytics.
+- The other sections of the script and the other lenses (Flyway labels, migrate job console labels, worker section, test-weakening diff).
+- Invalid UTF-8 input to the `perl -CSDA` decode.
+- The behaviour of `for f in $files` with globbing or odd file names.
+
+BLOCKING:
+- (upheld 3/3) infra/scripts/diagnose.sh:152 pglog_head prints free text (names and prose) from the downloaded PostgreSQL server log to the public job log: head rule ^([A-Za-z][A-Za-z ]{2,60}): printed `ERROR Rahim Uddin of Gulshan`, `PANIC Karim Ahmed Mobile Number`, `FATAL OTP code for Rahim`, `ERROR Mofiz Mia Gulshan` (CRLF line) and `ERROR Karim Rahman` (prefix with user@db). Only lines that pass the grep keyword prefilter (could not, FATAL, PANIC, terminat, checkpoint, ...) reach it. Fix: replace the open letters rule with an allowlist of known built-in PostgreSQL phrases, else [text]. The same rule is in the KQL head at line 363, where ERROR records have no prefilter. The round-7 test does not cover this shape.
+- (upheld 3/3) infra/scripts/diagnose.sh:147 pglog_head regex `(.*?)\s*$` is quadratic on a long whitespace run followed by a non-space: 10 KB 0.18 s, 20 KB 0.71 s, 40 KB 2.74 s; 5 lines of 100 KB took 86.8 s (about 17 s per line). Up to 80 such lines per file get through head -80, which can exceed the 20-minute job timeout. Fix: capture `(.*)` and trim trailing whitespace in a separate bounded step (or use `\s*+` / an atomic group).
+
+LOWS:
+- diagnose.sh:232 and :238: az stderr from the server-logs list and download failures is printed with only the outer redactor (no head or default-deny). A made-up error printed `(server-logs list failed: ERROR: (Forbidden) Client [ip] user [email] Rahim Uddin denied; ...)`. That text comes from the Azure platform, so the risk is low, but it is free text on an error path.
+- Partial leak through the redactor: `ERROR:  Password is hunter two: could not` printed `ERROR Password [redacted] two`. The prose rule `password is \S+` takes only one word. Fixing blocking item 1 with an allowlist removes this as well.
+- pglog_head drops records whose log_line_prefix does not fit `<date> <time> ?UTC\S*?-SEV:` (for example `%t [%p]: user=..,db=.. ERROR:` or an offset such as `+06-`). This is safe, but such records silently produce no output; consider printing a count of dropped records.
+- The grep prefilter keeps only records with the listed keywords, so a plain ERROR such as a duplicate key or a serialization failure without `could not` never shows. That matches the earlier behaviour; noted only so the lead knows what is not shown.
+- The round-7 test test_diagnose_downloaded_postgres_log_prints_no_free_text covers neither a head of letters and spaces before a colon nor a long whitespace line, so neither blocking item would have been caught.
+
+### whole-and-regression verdict=fail
+I checked the whole lane at c1fe8c02 against the integration branch (ce6792f67), plus the round-7 diff 5f0df7f0..c1fe8c02. Everything was read with git show. Copies are in /tmp/claude-0/-home-user-Aron-Pro-Max/a5c3c45a-b89c-5768-9d5f-6bc05c04fc63/scratchpad/r7-sanity/ with a fake az and made-up samples. There is one blocking finding: the new pglog_head takes quadratic time on a 100 KB line. Everything else in this lens passes.
+
+What I ran:
+- The 11 diagnose tests of infra/tests/check_infra.py from the scratch copy: all OK.
+- A full default run with the fake az and the workflow's default inputs. Every section printed, in this order: include_messages=false notice; az version; containerapp start/stop; PostgreSQL server; diagnostic settings; parameters; metrics; activity log; downloaded server-log excerpts (pg.log rows: `ERROR [text]` and `LOG checkpoint complete`, with no name or address); Log Analytics workspace; migrate job console; system log for the job and worker; AzureDiagnostics PostgreSQLLogs; worker console; API console; API system log; migrate pre-flight; worker app; and the final `diagnose: done (read-only)`.
+- The migrate job console labels and the worker section still print by default, so no lead-needed dev behaviour is lost.
+- The Flyway kind regexes, checked in Python on verbatim Flyway 10 lines (the lane's test plus my own failure line), give:
+  - `flyway current version 0204`
+  - `flyway migrating to 0205` (now anchored on `[^ ]+`)
+  - `flyway applied 4 now at 0208`
+  - `flyway validated 186`
+  - `flyway FAILED at 0209`, with SQLSTATE 42P01 from `SQL State  : 42P01` in the throwable text, and script `V0209__attendance_closed_by_comment` (stops before `.sql`)
+- The ms boundary works: `482913 msg` gives nothing, `18400 ms` and `5ms.` give their numbers, and a 10-digit number gives nothing. SQLSTATE matching is case-sensitive.
+- The lg/lvl/exc/cause shape checks reject spaces, `=` and anything over 160 characters, and come after `kind`. The `lvl in (...)` and `not(lg startswith 'aron.request')` filters still work on the checked values.
+
+Public output:
+- No message mode is reachable from the workflow. There is no input for it. Every input is validated before use, so `--include-messages` cannot be injected through an input. With GITHUB_ACTIONS=true and the flag, the script exits 2 and sends no az call (the query log stayed empty).
+- The redactor covers all stdout: `exec > >(redact)`, then the per-query show/showm. The step summary is cut from diagnose.txt, which is already redacted (head -c 60000 plus iconv -c).
+- Invalid UTF-8 in pglog_head gave no stderr and did not stop it.
+- The redactor stayed linear on 10 adversarial 100 KB lines (0.05 to 0.27 s each).
+
+Tests:
+- 5f0df7f0..c1fe8c02 removes or loosens nothing. The only changed line is the label-block slice end, which had to move because the `case(...)` now ends with `'-')\n` instead of `'-')"`. Two test blocks were added: failure, ms, sqlstate and shape assertions, and a test feeding a made-up downloaded-log file through the stub az.
+- Against ce6792f67, the only removed assertions are in the worker test that D-OPS-DIAGNOSE-API-07 documents. The workflow diff only adds the api_app input, input validation, pipefail, iconv and the final-line gate.
+
+Not verified:
+- The KQL in real Azure: RE2 handling of `\b`, `\x24` in a class, `[\x22]`, and reassigning columns inside one extend.
+- The real JSON form of the throwable from this app's logback encoder, and whether a Flyway 10 failure always carries `Migration V...sql failed` rather than only `Script V...sql failed`.
+- The real Azure PostgreSQL log_line_prefix and the line format of downloaded files.
+- An actual Actions run and its job log.
+- The stderr of az, grep and the like under every failure mode. diagnose.sh stderr goes to the public log without the redactor, but every az call I traced sends it to /dev/null or into the redacted stdout.
+
+BLOCKING:
+- (upheld 3/3) infra/scripts/diagnose.sh pglog_head (line 147 at c1fe8c02): the pattern `-(LOG|ERROR|FATAL|PANIC):\s*(.*?)\s*$` is quadratic on a long whitespace run in the middle of a record. Measured with the extracted perl program on a record `ERROR:  invalid input syntax for type uuid: "<N spaces>x" could not`: N=25 000 took 1.1 s, 50 000 took 4.45 s, and 100 KB took 17.6 s. The record passes the grep keyword filter (`could not`) and the window awk. Up to 80 lines per file then reach pglog_head, about 80 x 17.6 s = 23 min, over the 20-minute job timeout, per downloaded file. The path is live because logfiles.download_enable is on. A client-supplied value echoed in an ERROR message is enough to trigger it. Fix: do not lazily trim the tail. Capture `(.*)` greedily, or skip the trailing-space trim entirely: the duration, fixed-phrase and before-colon regexes are all anchored and bounded. Also do not replace it with `s/\s+$//`, which has the same problem. Add a 100 KB timing case for pglog_head (the downloaded-log path) next to the redactor's linear-time test, which does not cover this function.
+
+LOWS:
+- KQL PostgreSQL head (line 363): `extract(@'-(?:ERROR|FATAL|PANIC|LOG):[ ]*([A-Za-z][A-Za-z ]{2,60}):', 1, msg)` is not anchored to the record's own severity marker. When the record's own head has no colon, the next match inside an echoed value wins. In a Python check, a made-up message `-ERROR:  duplicate key value violates unique constraint "u" (note -LOG: Abu Zafar Store: could not)` gives `Abu Zafar Store`. This needs crafted text inside a record that passes the filters. pglog_head anchors on `^` and is not affected. Suggest anchoring the KQL head on the first severity marker, as pglog_head does.
+- Downloaded-log path: continuation lines of a multi-line record, for example a newline inside a slow statement or a bind value, are not tied to their record. A continuation line that a user forged to look like `YYYY-MM-DD HH:MM:SS UTC-x-ERROR:  Words:` would print `Words`. Crafted input only; a real continuation line fails the prefix match or the awk window.
+- The letters-before-colon head can print developer-defined RAISE text with a value in it. For example, V0003 `RAISE EXCEPTION 'sku %: ...'` prints `sku <CODE>` when the code is letters only. This is not personal data, and the KQL head behaves the same way.
+- The lg, lvl and exc shape checks let a single word through (lvl `[A-Z]{3,8}` accepts `RAHIM`; lg and exc accept `Rahim`). The values come from code-controlled fields, so this is a net, not the control.
+- check_infra.py: the helper `ex` contains a dead expression, `rx.replace("\\x24", "$") if False else rx`. Cosmetic.
+- The lane's stub test's fake az does not match `containerapp revision list -g ...` (its case key has four words). My copy of the stub had the same gap, so I did not exercise the revision table output. It is not a gate.
