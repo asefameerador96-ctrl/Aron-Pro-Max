@@ -674,7 +674,11 @@ jobs:
         run: bash scripts/ci.sh build
       - name: Count the e2e tests (the shards must add up to exactly this; no browser, no server needed)
         id: count
-        run: echo "total=$(bash scripts/ci.sh count-e2e)" >> "${GITHUB_OUTPUT}"
+        run: |
+          total="$(bash scripts/ci.sh count-e2e)" || { echo "::error::count-e2e failed"; exit 1; }
+          case "${total}" in ''|*[!0-9]*|0) echo "::error::count-e2e printed '${total}', not a positive number"; exit 1 ;; esac
+          echo "e2e tests in the full list: ${total}"
+          echo "total=${total}" >> "${GITHUB_OUTPUT}"
       - name: Upload the build for the e2e shards (standalone server and static assets; no build cache)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -685,7 +689,7 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           overwrite: true
-          retention-days: 1
+          retention-days: 3  # a re-run of failed jobs the next day still finds the build (retention, not a timeout)
 
   web-e2e:
     # Playwright against the contract mock, split by file with Playwright's own --shard (fullyParallel is off, so a shard
@@ -772,7 +776,7 @@ jobs:
     # The one required check for the web gate ("Web (lint, types, tests, build, e2e)" in tools/github-governance.ps1,
     # unchanged). Same reason as jvm-analytics-check: a matrix job the changes filter skips posts one skipped check under
     # its unexpanded name, so the shards cannot be the required checks. This job always runs; it passes exactly when the
-    # build job and all five shards passed (or the web area did not change), with 0 failed and 0 flaky, and the shards'
+    # build job and all five shards passed (or the web area did not change), with 0 failed and 0 skipped tests (a flaky test passes on retry and only warns, as before), and the shards'
     # tests add up to the full list counted by the build job: a lost or skipped test fails it. D-CI-E2E-01.
     name: Web (lint, types, tests, build, e2e)
     needs: [changes, web, web-e2e]
@@ -803,7 +807,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh run download "${{ github.run_id }}" --repo "${{ github.repository }}" --pattern "web-e2e-report-*" --dir reports
-      - name: Combined e2e summary (0 failed, 0 flaky, 0 skipped, shards add up to the full list)
+      - name: Combined e2e summary (0 failed, 0 skipped, shards add up to the full list; flaky only warns)
         if: needs.changes.outputs.web == 'true'
         env:
           E2E_TOTAL: ${{ needs.web.outputs.e2e_total }}

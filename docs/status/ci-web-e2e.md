@@ -33,3 +33,18 @@ Cause read from the attempt-1 log of run 44226960956: the Compose test recompose
 ## Not verified
 
 The full suite was not run sharded twice locally (CI runs 1 and 2 are the two proofs); the flake was never reproduced before the fix; whether one shard count (5) stays enough as the suite grows is only known from these two runs (shard 2, with the screenshot specs, is the long one at about 10 minutes).
+
+## Other places that hop to Dispatchers.IO and feed Compose state (list for later, nothing changed)
+
+The LiteMapScreen race (D-CI-E2E-02) needs a composable that does `withContext(Dispatchers.IO)` and then writes state, under a Compose test rule. Same shape elsewhere in main code:
+
+- `android/feature-amo/.../OutletFormKit.kt:120` (decodes a photo in a `produceState`-style block)
+- `android/feature-auth/.../EnrolmentScreen.kt:197` (status read in a composable effect)
+- `android/app-tso/.../TicketsHost.kt:508` (`Thumbnail`, `produceState` decoding a file)
+- `android/app-sr/.../SrApp.kt:313` and `:422` (`LaunchedEffect` reads, device health and the Wi-Fi-only setting)
+
+Only a test that composes these under `createComposeRule` is exposed; `feature-amo`, `feature-auth` and `feature-tso` have such tests today, `app-sr` and `app-tso` have none. Fix shape if one flakes: inject the dispatcher as a defaulted parameter and pass `Dispatchers.Unconfined` in the test, as LiteMapScreen now does.
+
+## Follow-ups of the lead's review (D-CI-E2E-03)
+
+Count step fails by itself, comment corrected, artifact retention 3 days, `national-shots` skip cannot fire today (goldens are committed). Waiting for "116 landed" to merge the integration branch and check ci.
