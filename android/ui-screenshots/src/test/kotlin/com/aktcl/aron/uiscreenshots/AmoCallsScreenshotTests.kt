@@ -89,6 +89,15 @@ class AmoCallsScreenshotTests {
     @Test fun amo_control_call_pick_out_of_range_sunlight() = shot("amo_control_call_pick_sunlight_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", sunlight = true) { pick(CallRange.Out(true, true)) }
     @Test fun amo_control_call_menu_bn() = shot("amo_cc_tiles_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি") { pick(CallRange.In) }
     @Test fun amo_control_call_menu_sunlight() = shot("amo_cc_tiles_sunlight_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", sunlight = true) { pick(CallRange.In) }
+    // ---- Joint Call pick states (screens 29, 30): the title and the SR call assessment tile; D-PAR-AMO-17
+    private val jointTiles = listOf(MenuTile(com.aktcl.aron.core.ui.R.drawable.aron_ic_joint_call, com.aktcl.aron.feature.amo.R.string.amo_cp_joint_tile, "jt", {}))
+    @Composable private fun jointPick(range: CallRange, route: String? = "Gulshan-1Daily", outlet: String? = "Masba Store (2689479-01865967033-Jobbar Tower Lake Par)") =
+        AmoCallPickContent(route, outlet, outlet != null, if (outlet != null) letters else emptyList(), "", live = outlet != null, range = range, enabledOutlet = route != null, locked = false, {}, {}, {}, {}, {},
+            below = { AmoMenuTiles(jointTiles) }, idleHint = androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.amo.R.string.amo_cp_route_placeholder))
+    @Test fun amo_joint_pick_empty_bn() = shot("amo_joint_pick_empty_bn", AppLanguage.BN, "জয়েন্ট কল অ্যাক্টিভিটি") { jointPick(CallRange.Idle, route = null, outlet = null) }
+    @Test fun amo_joint_pick_in_range_bn() = shot("amo_joint_pick_in_range_bn", AppLanguage.BN, "জয়েন্ট কল অ্যাক্টিভিটি") { jointPick(CallRange.In) }
+    @Test fun amo_joint_pick_out_of_range_bn() = shot("amo_joint_pick_out_of_range_bn", AppLanguage.BN, "জয়েন্ট কল অ্যাক্টিভিটি") { jointPick(CallRange.Out(true, true)) }
+    @Test fun amo_joint_pick_empty_sunlight_bn() = shot("amo_joint_pick_empty_sunlight_bn", AppLanguage.BN, "জয়েন্ট কল অ্যাক্টিভিটি", sunlight = true) { jointPick(CallRange.Idle, route = null, outlet = null) }
     @Test fun amo_sales_pick_empty_bn() = shot("amo_sales_pick_empty_bn", AppLanguage.BN, "বিক্রয়") {
         // D-PAR-AMO-05 (screenshot 21): the Sales tile is on the empty state
         AmoCallPickContent(null, null, false, emptyList(), "", false, CallRange.Idle, false, false, {}, {}, {}, {}, {}, belowWhenIdle = true,

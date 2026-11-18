@@ -238,6 +238,7 @@ private fun PickStep(
         onOpenRoute = { onPanel(Panel.ROUTE) }, onOpenOutlet = { onPanel(Panel.OUTLET) }, onChip = onChip,
         onOverride = { if (salesPath) asking = true else onOverride() }, onRefresh = { scope.launch { runCatching { day.visitFlow.refresh() } } },
         below = { com.aktcl.aron.feature.amo.AmoMenuTiles(tiles) }, belowWhenIdle = salesPath,
+        idleHint = if (joint) stringResource(AmoR.string.amo_cp_route_placeholder) else null, // screenshot 29 right
     )
 }
 
