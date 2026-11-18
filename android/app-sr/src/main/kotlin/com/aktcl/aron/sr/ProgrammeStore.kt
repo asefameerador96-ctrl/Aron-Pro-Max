@@ -151,6 +151,12 @@ class ProgrammeStore(
         db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_REQUESTED_AT) ?: db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_FULL_TIME)
     }
 
+    /**
+     * The memo uuids this phone had an acknowledgement for when it SENT the request of the held full snapshot (rule B of the programme figures, no clock), or null when the order
+     * is unknown (a promoted prefetch, a bundle stored before this was recorded): then the figures are the server's, with no local arithmetic.
+     */
+    suspend fun ackedBeforeRequest(): Set<String>? = withContext(Dispatchers.IO) { ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE)) }
+
     /** The memos and redemptions that were sent but unanswered when the held snapshot was requested: the figure may already hold them (a lost answer). */
     private suspend fun uncertain(): Set<String> =
         db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN)?.split(',')?.filter { it.isNotBlank() }?.toSet().orEmpty()

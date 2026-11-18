@@ -104,7 +104,7 @@ class ReferenceRepository(private val db: AronDatabase) {
      */
     suspend fun apply(
         bundle: BundleReference, raw: JsonObject? = null, etag: String? = null, asDay: Boolean = !bundle.meta.isPrefetch,
-        outletPages: OutletPages? = null, requestedAt: String? = null, uncertain: List<String>? = null,
+        outletPages: OutletPages? = null, requestedAt: String? = null, uncertain: List<String>? = null, ackedBeforeRequest: List<String>? = null,
     ): ApplyResult {
         val date = bundle.meta.validForBusinessDate
         if (!asDay) return storePrefetch(bundle, requireNotNull(raw) { "a prefetch is stored as raw JSON" }, etag, outletPages)
@@ -164,6 +164,8 @@ class ReferenceRepository(private val db: AronDatabase) {
             putOrDelete(KEY_BUNDLE_REQUESTED_AT, requestedAt)
             // the memos and redemptions SENT but unanswered when the request left (a lost answer): the server figure may already hold them, so the phone neither adds nor subtracts them
             putOrDelete(KEY_BUNDLE_UNCERTAIN, uncertain?.takeIf { it.isNotEmpty() }?.joinToString(","))
+            // the memos the phone had an acknowledgement for when it SENT this request, by uuid (rule B of the programme figures, no clock); absent after a promoted prefetch: then no local arithmetic
+            putOrDelete(KEY_BUNDLE_ACKED_BEFORE, ackedBeforeRequest?.let { encodeAcked(it) })
             putOrDelete(KEY_BUNDLE_FULL_TIME, bundle.meta.serverTime) // the FULL snapshot's server time: a later delta moves KEY_BUNDLE_SERVER_TIME without new programme figures
             if (!keepConfig) bundleConfig?.let { dao.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION, it.toString())) }
             ApplyResult.APPLIED
@@ -567,6 +569,13 @@ class ReferenceRepository(private val db: AronDatabase) {
         const val KEY_BUNDLE_REQUESTED_AT = "bundle.requested_at"
         /** Comma list of the client uuids sent but unanswered when the held full snapshot was requested. */
         const val KEY_BUNDLE_UNCERTAIN = "bundle.uncertain"
+        const val KEY_BUNDLE_ACKED_BEFORE = "bundle.acked_before_request"
+
+        /** `v1:` then the uuids joined by commas; the prefix keeps an EMPTY set (nothing acknowledged yet) apart from an absent one (order unknown). */
+        fun encodeAcked(uuids: Collection<String>): String = "v1:" + uuids.joinToString(",")
+
+        /** The uuid set of [encodeAcked], or null for an absent or unreadable value. */
+        fun decodeAcked(value: String?): Set<String>? = value?.takeIf { it.startsWith("v1:") }?.removePrefix("v1:")?.split(',')?.filter { it.isNotBlank() }?.toSet()
         /** The held full snapshot's own server time (deltas never move it). */
         const val KEY_BUNDLE_FULL_TIME = "bundle.full_time"
 

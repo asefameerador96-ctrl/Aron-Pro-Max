@@ -186,6 +186,34 @@ class BundleDownloaderTest {
         assertNull("and nothing waits any more", d.refreshIfUncertainResolved()); assertEquals(2, bundles())
     }
 
+    /** Rule B of the programme figures (no clock): the memos acknowledged BEFORE the request are recorded by uuid at the request; one acknowledged after it is not in the set. */
+    @Test fun theMemosAcknowledgedBeforeTheRequestAreRecordedByUuidAndALaterAckIsNot() = runBlocking {
+        val before = com.aktcl.aron.core.common.ClientIds.newUuid(); val after = com.aktcl.aron.core.common.ClientIds.newUuid(); val lastMonth = com.aktcl.aron.core.common.ClientIds.newUuid()
+        fun row(u: String, date: String, state: String) = com.aktcl.aron.core.database.entity.OutboxEntity(
+            clientUuid = u, recordType = "memo", familyUuid = u, rank = 0, businessDate = date, payloadJson = "{}", payloadSha256 = "x", state = state, createdAt = "t",
+        )
+        db.outboxDao().insert(listOf(row(before, "2026-10-03", "pending"), row(after, "2026-10-04", "pending"), row(lastMonth, "2026-09-30", "pending")))
+        db.outboxDao().applyAck(before, "acked", null, 7L, SyncEngine.iso(Clock.now))
+        db.outboxDao().applyAck(lastMonth, "acked", null, 8L, SyncEngine.iso(Clock.now))
+        assertEquals(BundleOutcome.APPLIED, downloader().download().outcome)
+        val set = ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE))
+        assertEquals("only memos of the bundle's month, acknowledged before the request", setOf(before), set)
+        db.outboxDao().applyAck(after, "acked", null, 9L, SyncEngine.iso(Clock.now + 1_000L)) // acknowledged after R
+        assertEquals(setOf(before), ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE)))
+    }
+
+    @Test fun nothingAcknowledgedYetIsAnEmptySetNotAnUnknownOrder() = runBlocking {
+        downloader().download()
+        assertEquals(emptySet<String>(), ReferenceRepository.decodeAcked(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE)))
+        assertNull(ReferenceRepository.decodeAcked(null)); assertNull(ReferenceRepository.decodeAcked("garbage"))
+    }
+
+    @Test fun anAppThatDoesNotTrackRecordsNoOrder() = runBlocking {
+        tracking = false
+        downloader().download()
+        assertNull(db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_ACKED_BEFORE))
+    }
+
     /** The AMO and TSO apps never pay a second full download of their large bundle for this: nothing is recorded and nothing is refetched. */
     @Test fun anAppThatDoesNotTrackRecordsNothingAndNeverRefetches() = runBlocking {
         tracking = false

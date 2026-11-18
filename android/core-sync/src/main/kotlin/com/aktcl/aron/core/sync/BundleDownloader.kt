@@ -254,10 +254,13 @@ class BundleDownloader(
         // run never waits for a downloader, so the two cannot deadlock. A sale is never blocked: both are background work.
         var requestedAt = ""
         var uncertain: List<String> = emptyList()
+        var ackedBefore: List<String>? = null
         val answer = underSyncLock {
             requestedAt = iso(clock.nowMs())
             // memos and redemptions SENT but not answered when the request leaves (a lost answer, a killed upload): the server may already hold them; no run is in flight here
             if (trackUncertain) uncertain = db.outboxDao().sentUnanswered()
+            // the memos acknowledged BEFORE this request leaves: the phone's own order for the programme figures (rule B, no clock); no upload can be in flight, the lock is held
+            if (trackUncertain) ackedBefore = db.outboxDao().ackedMemoUuids(forDate.take(7) + "-01")
             api.bundle(forDate, ifNoneMatch, configVersion)
         }
         return when (val r = answer) {
@@ -336,7 +339,7 @@ class BundleDownloader(
                     return BundleReport(BundleOutcome.FAILED, version, code = "malformed")
                 }
                 val applied = try {
-                    repo.apply(bundle, merged, download.etag ?: "\"$version\"", asDay = isDay, outletPages = outletFiles.takeIf { it.isNotEmpty() }?.let(::FileOutletPages), requestedAt = requestedAt.takeIf { isDay }, uncertain = uncertain.takeIf { isDay })
+                    repo.apply(bundle, merged, download.etag ?: "\"$version\"", asDay = isDay, outletPages = outletFiles.takeIf { it.isNotEmpty() }?.let(::FileOutletPages), requestedAt = requestedAt.takeIf { isDay }, uncertain = uncertain.takeIf { isDay }, ackedBeforeRequest = ackedBefore.takeIf { isDay })
                 } catch (e: IllegalArgumentException) { // a row that does not read as an outlet: nothing was written; the stage is kept (no new download of the same pages)
                     return BundleReport(BundleOutcome.FAILED, version, code = "malformed_page")
                 }

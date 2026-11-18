@@ -59,6 +59,13 @@ abstract class OutboxDao {
     @Query("SELECT client_uuid FROM outbox WHERE record_type IN ('memo', 'redemption') AND (state = 'in_flight' OR (state = 'pending' AND (attempts > 0 OR last_code IS NOT NULL)))")
     abstract suspend fun sentUnanswered(): List<String>
 
+    /**
+     * The memos this phone has had `accepted` or `duplicate` for, dated [fromDate] or later (the first of the bundle's month): the order the phone's own figure rule B reads
+     * (no clock): recorded under the sync lock at the moment a bundle request is sent.
+     */
+    @Query("SELECT client_uuid FROM outbox WHERE record_type = 'memo' AND state = 'acked' AND business_date >= :fromDate")
+    abstract suspend fun ackedMemoUuids(fromDate: String): List<String>
+
     /** How many of [uuids] still wait for an answer (pending or in flight). */
     @Query("SELECT COUNT(*) FROM outbox WHERE client_uuid IN (:uuids) AND state IN ('pending', 'in_flight')")
     abstract suspend fun stillOpen(uuids: List<String>): Int

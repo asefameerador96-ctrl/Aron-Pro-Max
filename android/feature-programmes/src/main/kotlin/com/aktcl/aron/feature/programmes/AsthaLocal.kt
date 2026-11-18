@@ -7,6 +7,8 @@ data class LocalMemoLine(val skuId: Long, val lineKind: String, val qtyBase: Lon
 data class LocalMemo(
     val uuid: String, val outletId: Long, val businessDate: String, val supersedes: String?, val state: String, val ackedAt: String?, val lines: List<LocalMemoLine>,
     val routeId: Long? = null, val memoKind: String = "sale",
+    /** Set on a local VOID record: the uuid of the memo it voids (the record itself has no lines and counts for nothing). This phone has no void write yet; the rule is built for it. */
+    val voidOf: String? = null,
 )
 
 /**
