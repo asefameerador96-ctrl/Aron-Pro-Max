@@ -397,3 +397,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Small rounds checked (workflow wf_e618edcc-7f1, 2 Opus lenses each, blocking verified 3/3): gates-2 337e2e79 = production correct, ONE BLOCKING (deleted visit-commit order assertions in EveryWriterIsGatedTest) + 7 lows, sent to A-GATE8, does not land yet. SR programmes eb3b470e7 = PASS, 5 lows sent; lane answered with d762c3aa1 (INT merged + 5 lows; the edit-after-through_date fallback is new logic and needs a short check before it rides a train).
 - T-KPI3 told to merge INT 2c7ff3c1bd, contract 1.24.0, V0210..V0213, then report 'checked'; my T1 review follows. L-A13 told to merge INT and do post-landing lows.
 - Not walked on a device: everything from trains 121..125.
+
+## 2026-11-18 18:35 UTC
+
+- Owner answers: both SR parity pushes approved inside the sessions (P-SR2b at 5395d93a3, ci 44367801816 running; P-SR1b working). Old Azure ends maybe 25 Nov; DIFFERENT tenant; FTP office-only; dump listing "attached" but nothing arrived; migrate as-is first, size the final account later (D-OWNER-AZURE-MOVE-02, D-OWNER-APSIS-FTP-02). Owner will run the laptop inventory, walk the 18 steps tomorrow, answer the 17 decisions later (reminder set), portal brief in a few more days.
+- T-KPI3 at 0260c195f (contract 1.24.0, V0210..V0213): T1 review workflow wf_04fdc277-939 running.
+- L-A13 8e807fd1b (post-landing round, run 44363350651 green by its report): needs a short check, rides next server train.
+- A-PROG3 d762c3aa1: ci red only on Sr/AmoLatePolicyTest wall-clock window (00:00..00:10 Dhaka); failed job re-run once; clock pin assigned to A-GATE8 with its blocking fix.
