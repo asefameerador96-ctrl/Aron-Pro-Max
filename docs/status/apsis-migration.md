@@ -148,7 +148,7 @@ D-APSIS-MIG-01 (blind, schema-adaptive, Python stdlib + psql); -02 (archive sche
 Also fixed from the lows: error text reduced to SQLSTATE; chunk-key index; escaped-quote parsing bug; undecodable bytes counted (`undecodable_rows`) not fatal; settings-change refusal; partition window; `synchronous_commit` set in code; `vendor_deleted` flag; `user_id` on history rows; fill-locations no longer replaces a field-captured point and its undo spares later corrections; runbook rollback note on re-creating the schema; sizing/duration/parallelism statements corrected (section 4).
 
 ### Tests
-~35 synthetic-data tests (`tools/apsis-migration/tests`), run as `apsis_migrator`. Local PostgreSQL 16.15 with V0001..V0204 + V0260..V0263; result in the report below the table. Not run in CI (request in `docs/requests/apsis-ci-step.md`).
+37 synthetic-data tests (`tools/apsis-migration/tests`), run as `apsis_migrator`. Local PostgreSQL 16.15 with V0001..V0204 + V0260..V0263: **37 tests, all pass** (about 6.5 minutes), on the code of commit 05d0b340. Not run in CI (request in `docs/requests/apsis-ci-step.md`).
 
 ### NOT done
 - Column mapping of the other 13 master tables (staged and counted only; masters are owned by the master-data load).
