@@ -1,5 +1,8 @@
 # Lane android-gates — status
 
+## A-GATE7 (2026-11-18): TRAIN 117 MERGED AND `closed_by` ON THE WIRE, see D-AGATE-21
+Merged 39db6c734 (2e97d5da1), Room stays 10. Phone close sends `closed_by = "phone"`; the rep's close and check-ins send nothing; the server's `attendance_duplicate` for a phone close is done. Tests: AttendanceClosedByPayloadTest, AckRulesClosedByTest, RecordPayloadContractTest. Device walk still needed: a real forgotten-day close against the dev server, and a second phone close answering attendance_duplicate.
+
 ## A-GATE7 FOLLOW-UP (2026-11-18, after the lead's review of d9997b8a): see D-AGATE-20
 Done: lead items 1 to 7 (retry before the closed-call refusal, own sale-screen text, AMO gate Close and ControlCallHost texts with tests, AmoStockCorrectHost check-in navigation, edit-memo parent kept withheld with a test, stale draft not loaded into an edit, "day of this call" wording). Not done: no concurrent Save/close race test; mutation proofs of this push not re-run. Device walk still needed for: the new texts in Bangla on a phone, the 04:00 race. After train 117 lands: merge the integration branch, keep Room 10, put `closed_by` on the wire (contract 1.19.0) as planned.
 
