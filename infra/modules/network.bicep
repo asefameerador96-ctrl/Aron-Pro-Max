@@ -10,6 +10,8 @@ param addressPrefix string
 param acaSubnetPrefix string
 @description('PostgreSQL delegated subnet (/28 is the minimum; primary, standby and replica take one address each).')
 param postgresSubnetPrefix string
+@description('Private endpoint subnet (D-FINAL-INFRA-08): private endpoints of the final account, first the Apsis dump landing account (infra/apsis-landing.bicep), so the loader job inside the VNet reaches it without public exposure.')
+param privateEndpointSubnetPrefix string = ''
 
 resource nsgAca 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: '${vnetName}-snet-aca-nsg'
@@ -70,6 +72,8 @@ resource nsgPg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   }
 }
 
+var peEnabled = !empty(privateEndpointSubnetPrefix)
+
 resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   name: vnetName
   location: location
@@ -78,7 +82,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
     addressSpace: {
       addressPrefixes: [addressPrefix]
     }
-    subnets: [
+    subnets: concat([
       {
         name: 'snet-aca'
         properties: {
@@ -105,10 +109,38 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           ]
         }
       }
-    ]
+    ], peEnabled ? [
+      {
+        // Appended last so the existing subnet output indexes do not move. Network policies for private endpoints stay at
+        // their default (NSG rules are not applied to private endpoints; the account's own firewall and Entra roles are the gate).
+        name: 'snet-pe'
+        properties: { addressPrefix: privateEndpointSubnetPrefix }
+      }
+    ] : [])
+  }
+}
+
+// Private DNS for blob private endpoints (Learn: "Azure Private Endpoint private DNS zone values"): the loader resolves
+// <account>.blob.core.windows.net to the endpoint's private address inside this VNet only.
+resource blobDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = if (peEnabled) {
+  name: 'privatelink.blob.${environment().suffixes.storage}'
+  location: 'global'
+  tags: tags
+}
+
+resource blobDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = if (peEnabled) {
+  parent: blobDnsZone
+  name: '${vnetName}-link'
+  location: 'global'
+  tags: tags
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: { id: vnet.id }
   }
 }
 
 output vnetId string = vnet.id
 output acaSubnetId string = vnet.properties.subnets[0].id
 output postgresSubnetId string = vnet.properties.subnets[1].id
+output privateEndpointSubnetId string = peEnabled ? vnet.properties.subnets[2].id : ''
+output blobPrivateDnsZoneId string = peEnabled ? blobDnsZone!.id : ''

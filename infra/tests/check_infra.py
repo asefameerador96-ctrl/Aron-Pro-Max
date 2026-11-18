@@ -2690,6 +2690,17 @@ class ApsisLanding(unittest.TestCase):
         self.assertEqual(uploaders[0]["properties"]["principalType"], "User")
         self.assertIn("variables('dumpContainer')", json.dumps(uploaders[0]), "the owner has no role on the reports container")
 
+    def test_loader_reaches_the_account_through_a_blob_private_endpoint(self):
+        t = self.tpl()
+        (pe,) = resources_of(t, "Microsoft.Network/privateEndpoints")
+        conn = pe["properties"]["privateLinkServiceConnections"][0]["properties"]
+        self.assertEqual(conn["groupIds"], ["blob"])
+        self.assertEqual(pe["condition"], "[not(empty(parameters('privateEndpointSubnetId')))]")
+        self.assertTrue(resources_of(t, "Microsoft.Network/privateEndpoints/privateDnsZoneGroups"))
+        (st,) = resources_of(t, "Microsoft.Storage/storageAccounts")
+        self.assertNotIn("virtualNetworkRules", st["properties"]["networkAcls"], "no service endpoint path")
+        self.assertNotIn("loaderSubnetIds", t["parameters"])
+
     def test_every_blob_request_is_logged_to_log_analytics(self):
         t = self.tpl()
         (d,) = resources_of(t, "Microsoft.Insights/diagnosticSettings")
@@ -2710,6 +2721,30 @@ class ApsisLanding(unittest.TestCase):
             text = doc.read_text(encoding="utf-8")
             self.assertNotRegex(text, r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "placeholders only")
             self.assertNotRegex(text, r"sig=[A-Za-z0-9%]{20,}", "no SAS token")
+
+
+
+
+class PrivateEndpointSubnet(unittest.TestCase):
+    """D-FINAL-INFRA-08: snet-pe and the blob private DNS zone exist only where the profile gives a prefix (stage, prod)."""
+
+    def test_only_the_final_profiles_get_the_subnet_and_zone(self):
+        for f, want in (("dev", ""), ("dev-lite", ""), ("stage", "10.41.2.32/27"), ("prod", "10.40.2.32/27")):
+            self.assertEqual(params(f"{f}.parameters.json").get("privateEndpointSubnetPrefix", ""), want, f)
+        t, _ = module("main.json", "network")
+        for r in resources_of(t, "Microsoft.Network/privateDnsZones") + resources_of(t, "Microsoft.Network/privateDnsZones/virtualNetworkLinks"):
+            self.assertEqual(r["condition"], "[variables('peEnabled')]")
+        src = (ROOT / "infra" / "modules" / "network.bicep").read_text(encoding="utf-8")
+        self.assertIn("var peEnabled = !empty(privateEndpointSubnetPrefix)", src)
+        self.assertIn("name: 'snet-pe'", src)
+        self.assertLess(src.index("name: 'snet-pg'"), src.index("name: 'snet-pe'"), "appended: the existing subnet indexes do not move")
+        import ipaddress
+        for f, vnet in (("stage", "stage"), ("prod", "prod")):
+            p = params(f"{f}.parameters.json")
+            pe = ipaddress.ip_network(p["privateEndpointSubnetPrefix"])
+            self.assertTrue(pe.subnet_of(ipaddress.ip_network(p["vnetAddressPrefix"])), f)
+            for other in ("acaSubnetPrefix", "postgresSubnetPrefix"):
+                self.assertFalse(pe.overlaps(ipaddress.ip_network(p[other])), f"{f}: snet-pe overlaps {other}")
 
 
 if __name__ == "__main__":

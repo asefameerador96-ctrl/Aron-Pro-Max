@@ -126,14 +126,14 @@ the account was changed: investigate.
 1. **Identity.** The loader runs as a Container Apps job in `cae-aron-prod` (the database is private; docs/status/infra-final.md s2c).
    Give it a user-assigned managed identity; its **principal id** goes into `loaderPrincipalIds` on a re-run of the deployment of
    s3 (Reader on `apsis-dump`, Contributor on `apsis-reports`). Nothing else gets a role.
-2. **Network path, OPEN (needs a decision before the loader is built).** The account denies the internet. A VNet-injected
-   Container Apps environment (`snet-aca`, `10.40.0.0/23`) can reach it in either of two ways: (a) a **private endpoint** for the
-   blob service in a new `snet-pe` subnet plus the `privatelink.blob.core.windows.net` zone linked to the VNet (cleanest; the account
-   then also drops its public IP rules for the loader; it adds a private endpoint of about USD 8 a month and a DNS zone), or (b) the
-   template's `loaderSubnetIds` rule, which needs a `Microsoft.Storage` **service endpoint** on `snet-aca`; Microsoft Learn does not
-   state that service endpoints are supported on a subnet delegated to `Microsoft.App/environments`, so (b) is unverified and
-   infra recommends **(a)**. Either is a small change to `infra/modules/network.bicep`; infra will do it when the lead says (a) or (b).
-   Until then the landing works for the owner's upload only.
+2. **Network path (lead ruling 2026-11-18: blob private endpoint).** `main.bicep` (stage and prod, `privateNetworking`) now adds
+   the subnet `snet-pe` (`10.40.2.32/27` prod, `10.41.2.32/27` stage) and the private DNS zone `privatelink.blob.core.windows.net`
+   linked to the VNet (outputs `privateEndpointSubnetId`, `blobPrivateDnsZoneId` of the network module). `infra/apsis-landing.bicep`
+   creates the endpoint there when given those two ids, so the loader job in `cae-aron-<env>` resolves the account to a private
+   address; there is no service endpoint. The deploy of s3 then takes two more parameters:
+   `privateEndpointSubnetId=<id>` and `blobPrivateDnsZoneId=<id>` (read them from `az deployment group show -g rg-aron-prod -n aron-infra --query "properties.outputs"` or `az network vnet subnet show` / `az network private-dns zone show`).
+   **The owner's IP rule is for the upload only: after the upload is verified, re-run the deployment with `uploaderIpAddresses='[]'`
+   so nothing but the private endpoint (and the AzureServices bypass) can reach the account.**
 3. **Reads.** Stream with the Entra token of the job's managed identity (`DefaultAzureCredential` / `az storage blob download` with
    `--auth-mode login` / AzCopy `--auto-login-type=MSI`); no key, no SAS, no URL with a signature in a log. Range reads are fine
    (block blobs).
@@ -149,4 +149,4 @@ the account was changed: investigate.
 
 The template compiles, lints and passes `infra/tests/check_infra.py` (`ApsisLanding`). Not proven: the deployment itself, the
 role assignment on a user principal, the `Deny` rule with the owner's address, AzCopy against the account, throughput of the 31 GB
-file over the owner's connection, and the private-endpoint or service-endpoint path for the loader (s5.2).
+file over the owner's connection, and the private-endpoint path for the loader (s5.2: DNS resolution from the job, the automatic connection approval).

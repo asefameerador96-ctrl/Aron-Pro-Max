@@ -37,6 +37,8 @@ param enableLogAlerts bool = true
 param vnetAddressPrefix string
 param acaSubnetPrefix string
 param postgresSubnetPrefix string
+@description('Private endpoint subnet (final account: stage and prod). Empty = none (the TEST profiles); then no private DNS zone for blob private endpoints exists either.')
+param privateEndpointSubnetPrefix string = ''
 
 // Monitoring and cost
 param logRetentionDays int = 30
@@ -119,6 +121,7 @@ module network 'modules/network.bicep' = if (privateNetworking) {
     addressPrefix: vnetAddressPrefix
     acaSubnetPrefix: acaSubnetPrefix
     postgresSubnetPrefix: postgresSubnetPrefix
+    privateEndpointSubnetPrefix: privateEndpointSubnetPrefix
   }
 }
 

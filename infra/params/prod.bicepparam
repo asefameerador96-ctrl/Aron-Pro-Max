@@ -27,6 +27,8 @@ param nameSuffix = envSuffix
 param vnetAddressPrefix = '10.40.0.0/16'
 param acaSubnetPrefix = '10.40.0.0/23'
 param postgresSubnetPrefix = '10.40.2.0/28'
+// Private endpoints (D-FINAL-INFRA-08): the Apsis dump landing account first; /27 leaves room for the later ones.
+param privateEndpointSubnetPrefix = '10.40.2.32/27'
 
 param logRetentionDays = 90
 param logDailyQuotaGb = '8'

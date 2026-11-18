@@ -30,6 +30,8 @@ param nameSuffix = envSuffix
 param vnetAddressPrefix = '10.41.0.0/16'
 param acaSubnetPrefix = '10.41.0.0/23'
 param postgresSubnetPrefix = '10.41.2.0/28'
+// Private endpoints (D-FINAL-INFRA-08): the Apsis dump landing account first; /27 leaves room for the later ones.
+param privateEndpointSubnetPrefix = '10.41.2.32/27'
 
 // stage: rehearsal logs are kept 30 days; the load test needs the same ingestion headroom as prod.
 param logRetentionDays = 30

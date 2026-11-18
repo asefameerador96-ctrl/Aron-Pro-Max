@@ -9,8 +9,8 @@
 //
 // What it creates: one StorageV2 account (Standard_LRS: the dump is a transient copy of a file the owner keeps, so no zone or
 // geo redundancy is paid for), shared-key access OFF (Microsoft Entra only; no account key and no account SAS exist),
-// anonymous access off, TLS 1.2, HTTPS only, network default DENY with the owner's IP address(es) and the loader subnet(s)
-// allowed, soft delete 7 days, a lifecycle rule that deletes dump blobs N days after their last write, diagnostic logs of
+// anonymous access off, TLS 1.2, HTTPS only, network default DENY with the owner's IP address(es) (upload only) allowed and a blob
+// private endpoint for the loader, soft delete 7 days, a lifecycle rule that deletes dump blobs N days after their last write, diagnostic logs of
 // every blob read, write and delete into Log Analytics, and two private containers:
 //   apsis-dump     the vendor's .sql files, written by the owner, read by the loader (docs/requests/apsis-dump-landing.md)
 //   apsis-reports  numbers-only reconciliation output, written by the loader, read by the owner
@@ -34,8 +34,10 @@ param uploaderPrincipalIds array
 param uploaderIpAddresses array = []
 @description('Managed identities of the Apsis loader job (apsis-migration lane): Reader on apsis-dump, Contributor on apsis-reports. Empty until the loader exists.')
 param loaderPrincipalIds array = []
-@description('Subnets (full resource ids) the loader runs in; each needs the Microsoft.Storage service endpoint. Empty until the loader exists.')
-param loaderSubnetIds array = []
+@description('Resource id of snet-pe in the platform VNet (output privateEndpointSubnetId of the main.bicep network module; D-FINAL-INFRA-08). The loader job, inside that VNet, reaches the account through a blob private endpoint placed there. Empty = no endpoint yet.')
+param privateEndpointSubnetId string = ''
+@description('Resource id of the private DNS zone privatelink.blob.<storage suffix> in the platform resource group (output blobPrivateDnsZoneId). Needed with the endpoint, so the account name resolves to the private address inside the VNet.')
+param blobPrivateDnsZoneId string = ''
 @description('Delete dump blobs this many days after their last write (safety net; the planned removal is deleting the resource group after sign-off).')
 @minValue(7)
 @maxValue(365)
@@ -81,13 +83,13 @@ resource st 'Microsoft.Storage/storageAccounts@2024-01-01' = {
     allowedCopyScope: 'AAD'
     isSftpEnabled: false
     isLocalUserEnabled: false
-    // Reachable only from the listed owner addresses and the loader's subnets; every request still needs an Entra token.
+    // Reachable from the listed owner addresses (for the upload only: remove them afterwards) and, for the loader, through the
+    // private endpoint below; every request still needs an Entra token.
     publicNetworkAccess: 'Enabled'
     networkAcls: {
       defaultAction: 'Deny'
       bypass: 'AzureServices'
       ipRules: [for ip in uploaderIpAddresses: { value: ip, action: 'Allow' }]
-      virtualNetworkRules: [for s in loaderSubnetIds: { id: s, action: 'Allow' }]
     }
     encryption: {
       keySource: 'Microsoft.Storage'
@@ -171,6 +173,34 @@ resource loaderWritesReports 'Microsoft.Authorization/roleAssignments@2022-04-01
     principalType: 'ServicePrincipal'
   }
 }]
+
+// The loader's way in: a blob private endpoint in the platform VNet (snet-pe) with the private DNS zone group, so the job in
+// cae-aron-<env> resolves the account to a private address. Created here, by the owner, because the owner holds rights on BOTH
+// resource groups (the connection is approved automatically); the pipeline's identity has none on this one.
+resource pe 'Microsoft.Network/privateEndpoints@2024-05-01' = if (!empty(privateEndpointSubnetId)) {
+  name: 'pe-${storageName}-blob'
+  location: location
+  tags: allTags
+  properties: {
+    subnet: { id: privateEndpointSubnetId }
+    privateLinkServiceConnections: [
+      {
+        name: 'blob'
+        properties: { privateLinkServiceId: st.id, groupIds: ['blob'] }
+      }
+    ]
+  }
+}
+
+resource peDns 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = if (!empty(privateEndpointSubnetId) && !empty(blobPrivateDnsZoneId)) {
+  parent: pe
+  name: 'default'
+  properties: {
+    privateDnsZoneConfigs: [
+      { name: 'blob', properties: { privateDnsZoneId: blobPrivateDnsZoneId } }
+    ]
+  }
+}
 
 // Every blob read, write and delete, with the caller's identity and address, so "the dump was only touched by the owner and the
 // loader" can be shown from the logs.
