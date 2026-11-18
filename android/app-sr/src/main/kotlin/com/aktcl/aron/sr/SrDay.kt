@@ -262,10 +262,14 @@ class SrDay(
      * X4a follow-up (R-W-23): so does a call whose route-day the SR's own Sales Submit closed. Returns why the call ended on
      * the phone without a close, or null (a close was queued, or no call was open).
      */
-    suspend fun closeVisitAbandoned(): DayRefusal? {
+    /** D-AGATE-18: ONE lock for every close of a call on the SR (the rep's finish, Close and back press, and the phone's end): two closes of one call cannot both be written. */
+    internal val closeLock = kotlinx.coroutines.sync.Mutex()
+
+    /** The `abandoned` close of the open call, with [closeLock] held by the caller ([SrSaleKit.closeCall] decides from what the call holds that nothing is saved). */
+    internal suspend fun abandonLocked(marks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = emptyList()): DayRefusal? {
         val v = visitSession.current.value ?: return null
         var why: DayRefusal? = null
-        if (SrCallLock.abandon(capture, visitSession, callMeta(v), iso(clock.nowMs())) { why = it }) runCatching { requestSync() }
+        if (SrCallLock.abandon(capture, visitSession, callMeta(v), iso(clock.nowMs()), marks) { why = it }) runCatching { requestSync() }
         return why
     }
 
@@ -418,7 +422,7 @@ class SrDay(
         addressResolver = { lat, lng -> addressResolver.displayText(context, lat, lng) },
         // D-AGATE-06 (owner rule 3): the check-out submits the day by itself, so "Sales Submit first" (D-NIGHT-CHECKOUT-01) is gone; what is
         // still open (a call, a memo edit) refuses the check-out instead.
-        openWork = { openWorkNow() },
+        openWork = { openWorkNow() }, settleFirst = true, // D-AGATE-18: not usable until the first resumeDay result is in
         // tso-manual A3: the zone's Final Submit closed the route-day for the rep, so it opens the check-out as a Sales Submit
         // would (D-TSO-MAN-31: the server accepts attendance and a late Sales Submit after the lock, state only)
     )
@@ -428,10 +432,13 @@ class SrDay(
      * offline; a check-in is the plain attendance write. The DPC, breadcrumb and sync hooks run after the commit, each in runCatching: the
      * record is safe in Room and a failing hook must never undo it or leave the screen half-updated.
      */
-    internal suspend fun commitAttendance(e: com.aktcl.aron.core.database.entity.AttendanceEventEntity, f: com.aktcl.aron.core.database.entity.GeoFixEntity) {
+    internal suspend fun commitAttendance(
+        e: com.aktcl.aron.core.database.entity.AttendanceEventEntity, f: com.aktcl.aron.core.database.entity.GeoFixEntity,
+        phoneMarks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = emptyList(),
+    ) {
         if (e.kind == "check_out") {
             sale.prepare()
-            capture.recordCheckOut(e, f) { date -> sale.autoDaySubmits().build(date) }
+            capture.recordCheckOut(e, f, phoneMarks) { date -> sale.autoDaySubmits().build(date) }
         } else capture.recordAttendance(e, f)
         refreshDayGate()
         runCatching {
@@ -458,110 +465,128 @@ class SrDay(
      * D-AGATE-06: a day the rep checked in and never checked out (the phone was left, the app killed, midnight passed) is closed by the
      * phone at the next start, BEFORE a new check-in: its Sales Submit(s) and a check-out in one transaction, for the date of that
      * check-in. The check-out is the phone's own, flagged by its fix (`provider_unavailable`: no location was asked) and by a capture
-     * time on a later date than its business date. Idempotent: a closed day has its check-out and is never found again. Returns the dates closed.
+     * time on a later date than its business date; the local "closed by the phone" marker is stored in the SAME transaction (D-AGATE-18).
+     * Idempotent: a closed day has its check-out and is never found again. Returns the dates closed. [reading] is the location attempt when the caller already made it
+     * (outside the resume lock); null makes it here.
      */
-    suspend fun closeForgottenDays(): List<String> {
-        // D-LEAD-PREREQ-03 ruling 1: never while a call or a memo edit is open (it would submit the day under it); it runs again when that work ends
-        if (openWorkNow() != null) return emptyList()
-        val today = businessDate()
-        val stale = runCatching { capture.openAttendanceDates() }.getOrDefault(emptyList()).filter { it < today }
+    suspend fun closeForgottenDays(reading: com.aktcl.aron.feature.outlet.FixReading? = null): List<String> {
+        val stale = forgottenDays()
         if (stale.isEmpty()) return emptyList()
-        // D-LEAD-PREREQ-04 ruling 2: ONE on-demand location attempt with the normal limit; the reading is stored when obtained, otherwise the fix says why not
-        val reading = runCatching { fixSource.readFix("attendance_out") }.getOrElse { com.aktcl.aron.feature.outlet.FixReading("provider_unavailable", null, null, null, false) }
+        val r = reading ?: readCloseFix()
         val closed = ArrayList<String>()
         for (d in stale) {
             val eventUuid = com.aktcl.aron.core.common.ClientIds.newUuid()
-            val fix = reading.toEntity(com.aktcl.aron.core.common.ClientIds.newUuid(), eventUuid, "attendance_out", 0)
-            val coords = if (reading.isOk) String.format(java.util.Locale.ROOT, "%.6f, %.6f", reading.lat, reading.lng) else null
+            val fix = r.toEntity(com.aktcl.aron.core.common.ClientIds.newUuid(), eventUuid, "attendance_out", 0)
+            val coords = if (r.isOk) String.format(java.util.Locale.ROOT, "%.6f, %.6f", r.lat, r.lng) else null
             val event = com.aktcl.aron.core.database.entity.AttendanceEventEntity(
                 eventUuid, metaProvider.meta(0L).copy(routeId = null, businessDate = d), "check_out", fix.clientUuid, coords,
             )
-            if (runCatching { commitAttendance(event, fix) }.isSuccess) closed += d
+            val mark = com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.DAY_CLOSED, businessDate = d, createdAt = iso(clock.nowMs()))
+            if (com.aktcl.aron.feature.attendance.catching { commitAttendance(event, fix, listOf(mark)) }.isSuccess) closed += d
         }
         if (closed.isNotEmpty()) {
-            // the rep is told the day was closed for him (a notice with its own text)
-            rolloverNotice.value = rolloverNotice.value.copy(closedDates = (rolloverNotice.value.closedDates + closed).distinct())
             attendance.restore(attendanceForScreen()); refreshDayGate()
+            restoreRolloverNotice() // the rep is told the day was closed for him, from the stored marker
         }
         return closed
     }
 
-    /** What the phone did for the rep after Dhaka midnight (day closed, an earlier call ended, an unsaved draft dropped), told once until dismissed. */
+    /** The earlier dates whose check-in has no check-out and that the phone may close now: none while a call or a memo edit is open (D-LEAD-PREREQ-03 ruling 1). */
+    suspend fun forgottenDays(): List<String> {
+        if (openWorkNow() != null) return emptyList()
+        val today = businessDate()
+        return com.aktcl.aron.feature.attendance.catching { capture.openAttendanceDates() }.getOrDefault(emptyList()).filter { it < today }
+    }
+
+    /** D-LEAD-PREREQ-04 ruling 2: ONE on-demand location attempt with the normal limit; the reading is stored when obtained, otherwise the fix says why not. A cancellation is not swallowed. */
+    suspend fun readCloseFix(): com.aktcl.aron.feature.outlet.FixReading =
+        com.aktcl.aron.feature.attendance.catching { fixSource.readFix("attendance_out") }.getOrElse { com.aktcl.aron.feature.outlet.FixReading("provider_unavailable", null, null, null, false) }
+
+    /** What the phone did for the rep after Dhaka midnight (day closed, an earlier call ended, an unsaved draft dropped), told once until dismissed. Built from the local markers (D-AGATE-18). */
     val rolloverNotice = kotlinx.coroutines.flow.MutableStateFlow(com.aktcl.aron.feature.attendance.RolloverNotice())
-    private val rolloverPrefs = context.getSharedPreferences("aron-rollover-$userId", Context.MODE_PRIVATE)
-    /** The rep has seen the notice: it is gone, and what the phone did up to now is not told again after a kill (D-AGATE-15). */
+    /** The newest marker the notice on screen covers: dismissing deletes up to it, so a marker written meanwhile is shown next time. */
+    @Volatile private var shownMarkId = 0L
+    /** Markers up to this id were dismissed by the rep (set at once; the delete in Room follows), so a restore never shows them again. */
+    @Volatile private var dismissedUpTo = 0L
+    /** The rep has seen the notice: its markers are deleted from the phone. */
     fun dismissRolloverNotice() {
         rolloverNotice.value = com.aktcl.aron.feature.attendance.RolloverNotice()
-        runCatching { rolloverPrefs.edit().putString("seen_up_to", iso(clock.nowMs())).apply() }
+        val upTo = shownMarkId
+        dismissedUpTo = upTo
+        background.launch { runCatching { capture.clearPhoneMarks(upTo) } }
     }
 
     /**
-     * D-AGATE-15: a notice that did not survive a kill (the phone closed the day while the app was in the background, or the process died before the screen) is rebuilt from the stored
-     * check-outs of the phone and call ends of the phone, for today and yesterday, and shown once. Idempotent: it only adds what is missing.
+     * D-AGATE-18: the notice is read from the stored "ended by the phone" markers (written in the transaction of the close they describe), so it survives a process kill, is never
+     * claimed for a call or day the rep closed himself, and a dropped draft or edit is told only when something was really dropped. Shown once: dismissing deletes the markers.
      */
     suspend fun restoreRolloverNotice() {
-        runCatching {
-            val today = java.time.LocalDate.parse(businessDate())
-            val found = com.aktcl.aron.core.database.repo.RolloverRestore.unseen(db, listOf(today.toString(), today.minusDays(1).toString()), rolloverPrefs.getString("seen_up_to", "") ?: "")
-            if (found.any) rolloverNotice.value = rolloverNotice.value.let { n ->
-                n.copy(
-                    closedDates = (n.closedDates + found.closedDates).distinct().sorted(),
-                    abandonedDate = n.abandonedDate ?: found.abandonedDate, abandonedOutletId = n.abandonedOutletId ?: found.abandonedOutletId,
-                )
-            }
+        com.aktcl.aron.feature.attendance.catching {
+            val marks = capture.phoneMarks().filter { it.id > dismissedUpTo }
+            shownMarkId = marks.maxOfOrNull { it.id } ?: shownMarkId
+            if (marks.isNotEmpty()) rolloverNotice.value = com.aktcl.aron.feature.attendance.rolloverNoticeOf(marks)
         }
     }
 
     /**
      * D-LEAD-PREREQ-04 ruling 3 (step 3 S3): an open call of an EARLIER day has a limit. At the first start or resume at or after 04:00 Dhaka of the next day the phone
-     * ends it as abandoned (the close is dated with the VISIT's date and carries a phone-time end on a later date, which is the flag), an unsaved sale draft is dropped
-     * (the notice says so), a saved sale is never touched, and then the day can close. Returns true when a call was ended.
+     * ends it (the close is dated with the VISIT's date, classified by what the call holds, and carries the local "ended by the phone" marker in the same transaction),
+     * an unsaved sale draft is dropped (the notice says so only if one was), a saved sale is never touched, and then the day can close. Returns true when a call was ended.
      */
     suspend fun abandonStaleCall(): Boolean {
         val v = visitSession.current.value ?: return false
         val vd = visitDate(v)
         if (vd >= businessDate() || !com.aktcl.aron.feature.attendance.DayRollover.abandonLimitReached(vd, clock.nowMs())) return false
-        // D-AGATE-15 (T2): the phone's end classifies the call exactly as the rep's own close does (sold / zero sale / audited / abandoned from what it holds), through the
-        // same writer; a failing write (D-AGATE-15 low) is caught and the call and its draft stay until a close is stored
-        runCatching { sale.closeVisitByPhone() }
+        // a failing write is caught and the call and its draft stay until a close is stored; a cancellation is not swallowed
+        com.aktcl.aron.feature.attendance.catching { sale.closeCall(phoneEnd = true) }
         if (visitSession.current.value != null) return false // the close could not be written: the next start or resume tries again, nothing is lost
         // the draft goes only after the close is stored (a close that throws never drops it)
-        val dropped = runCatching { sale.flow.dropUnsavedDraft(v.visitUuid) }.getOrDefault(false)
-        rolloverNotice.value = rolloverNotice.value.copy(abandonedOutletId = v.outletId, abandonedDate = vd, draftDropped = dropped)
+        val dropped = com.aktcl.aron.feature.attendance.catching { sale.flow.dropUnsavedDraft(v.visitUuid) }.getOrDefault(false)
+        if (dropped) com.aktcl.aron.feature.attendance.catching { capture.addPhoneMark(com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.DRAFT_DROPPED, businessDate = vd, createdAt = iso(clock.nowMs()))) }
         return true
     }
 
     /**
      * D-AGATE-15 (T1, lead ruling): an UNSAVED memo edit never holds a day open. At the first timer, start or resume after Dhaka midnight an open edit of an earlier date is dropped
      * with a plain notice (the saved memo is untouched: only the draft file and the screen state go), so the day can close. Only an open CALL holds a day (until 04:00).
+     * D-AGATE-18: the notice is stored only when `dropUnsavedDraft` really dropped something (a Save that won the flow lock keeps the edit and tells nothing).
      */
     suspend fun dropStaleEdit(): Boolean {
         val s = sale.flow.state.value
         val d = s.draft ?: return false
         if (d.edit == null || s.committed != null || d.businessDate >= businessDate()) return false
-        runCatching { sale.flow.dropUnsavedDraft(d.visitUuid) }
-        rolloverNotice.value = rolloverNotice.value.copy(editDropped = true)
-        return true
+        val dropped = com.aktcl.aron.feature.attendance.catching { sale.flow.dropUnsavedDraft(d.visitUuid) }.getOrDefault(false)
+        if (dropped) com.aktcl.aron.feature.attendance.catching { capture.addPhoneMark(com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.EDIT_DROPPED, businessDate = d.businessDate, createdAt = iso(clock.nowMs()))) }
+        return dropped
     }
 
     private val resumeLock = kotlinx.coroutines.sync.Mutex()
+    /** One location attempt at a time for the phone's close of a forgotten day; a caller that finds one running does not wait for it (it is closing the day). */
+    private val fixLock = kotlinx.coroutines.sync.Mutex()
 
     /**
      * The ONE sequence of a start, a resume, the Dhaka-midnight timer and the end of an open call (D-LEAD-PREREQ-04 rulings 1 to 3): restore the open call from the day of
      * the open check-in, end an earlier call that passed its 04:00 limit, close the forgotten day(s), then re-read the screens' state. Every caller goes through it,
-     * so a test of it is a test of the production start path. D-AGATE-15: one at a time (a second caller waits and then finds the work done: no two closes, no two
-     * location attempts), and the gate is re-read even when a step throws.
+     * so a test of it is a test of the production start path. The database steps run one at a time under [resumeLock] (no two closes), but the LOCATION ATTEMPT of the phone's
+     * close does not: it runs between two locked parts, so a resume, the timer or the end of a call are not held up behind up to 30 seconds of GPS (D-AGATE-18). The gate,
+     * the Attendance screen and the notice are re-read even when a step throws, and the Attendance screen opens only now (`settle`). A cancellation propagates.
      */
-    suspend fun resumeDay() = resumeLock.withLock {
+    suspend fun resumeDay() {
         try {
-            restoreOpenVisit()
-            dropStaleEdit()
-            abandonStaleCall()
-            closeForgottenDays()
+            val stale = resumeLock.withLock { restoreOpenVisit(); dropStaleEdit(); abandonStaleCall(); forgottenDays() }
+            if (stale.isNotEmpty() && fixLock.tryLock()) {
+                try {
+                    val reading = readCloseFix() // no lock held while the phone waits for a fix
+                    resumeLock.withLock { closeForgottenDays(reading) }
+                } finally { fixLock.unlock() }
+            }
         } finally {
-            runCatching { attendance.restore(attendanceForScreen()) }
-            refreshDayGate()
-            restoreRolloverNotice()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                com.aktcl.aron.feature.attendance.catching { attendance.restore(attendanceForScreen()) }
+                attendance.settle()
+                refreshDayGate()
+                restoreRolloverNotice()
+            }
         }
     }
 
@@ -998,6 +1023,7 @@ internal object SrCallLock {
      */
     suspend fun abandon(
         capture: CaptureRepository, session: VisitSession, meta: CaptureMeta, nowIso: String,
+        marks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = emptyList(),
         onRefused: (DayRefusal) -> Unit = {},
     ): Boolean {
         if (session.current.value == null) return false
@@ -1010,6 +1036,7 @@ internal object SrCallLock {
                     clientUuid = com.aktcl.aron.core.common.ClientIds.newUuid(), meta = meta, visitClientUuid = v.visitUuid, outcomeCode = "abandoned",
                     callStartedAt = null, callDeclined = false, endedAt = nowIso, isZeroSale = true,
                 ),
+                marks,
             )
         }
     }

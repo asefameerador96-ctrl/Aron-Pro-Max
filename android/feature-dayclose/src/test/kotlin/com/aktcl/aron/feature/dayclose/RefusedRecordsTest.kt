@@ -51,11 +51,11 @@ class RefusedRecordsTest {
         while (!cond()) { check(System.currentTimeMillis() < end) { "timed out waiting for $what" }; Thread.sleep(10) }
     }
 
-    private suspend fun row(date: String, state: String, code: String?, type: String = "memo_line", key: String? = null, family: String = ClientIds.newUuid(), rank: Int = 1): String {
+    private suspend fun row(date: String, state: String, code: String?, type: String = "memo_line", key: String? = null, family: String = ClientIds.newUuid(), rank: Int = 1, parent: String? = null): String {
         val uuid = ClientIds.newUuid()
         db.outboxDao().insert(listOf(OutboxEntity(
             clientUuid = uuid, recordType = type, familyUuid = family, rank = rank, businessDate = date, payloadJson = "{\"payload\":{\"qty\":1}}", payloadSha256 = "x",
-            state = state, lastCode = code, createdAt = "$date" + "T05:00:00.000Z", lastMessageKey = key,
+            state = state, lastCode = code, createdAt = "$date" + "T05:00:00.000Z", lastMessageKey = key, parentUuid = parent,
         )))
         return uuid
     }
@@ -145,7 +145,7 @@ class RefusedRecordsTest {
     @Test fun aFamilyWhoseParentTheServerRefusedIsNotOfferedSendAgain() = runTest {
         val family = ClientIds.newUuid()
         val memo = row(today, "rejected", "price_invalid", "memo", family = family, rank = 1)
-        val child = row(today, "rejected", "retry_exhausted", "memo_line", family = family, rank = 2)
+        val child = row(today, "rejected", "retry_exhausted", "memo_line", family = family, rank = 2, parent = memo) // D-AGATE-18: the real parent link (a memo line names its memo), never a rank guess
         val e = source.rejectedRows(today).single()
         assertEquals(RejectedOutcome.DROPPED, e.outcome)
         assertFalse(e.canSendAgain); assertTrue(e.canMarkSeen)

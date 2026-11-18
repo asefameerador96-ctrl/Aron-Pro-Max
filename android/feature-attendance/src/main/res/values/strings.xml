@@ -61,4 +61,7 @@
     <string name="att_rollover_draft">A sale you had not saved was dropped with it.</string>
     <string name="att_checkout_open_call">A call is still open. Close it (finish the sale or end the call) before you check out: check-out also submits your sales for the day.</string>
     <string name="att_checkout_open_edit">A memo edit is still open. Save or cancel it before you check out: check-out also submits your sales for the day.</string>
+    <string name="att_settling">One moment: the phone is checking the state of your day. Check in and check out open in a few seconds.</string>
+    <string name="att_close_failed_title">The call could not be closed</string>
+    <string name="att_close_failed_body">The phone could not write the end of this call. The call is still open and nothing was lost. Try again; if it keeps failing, restart the app.</string>
 </resources>

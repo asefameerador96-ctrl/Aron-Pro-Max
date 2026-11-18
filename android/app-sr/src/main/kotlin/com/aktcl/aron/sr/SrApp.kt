@@ -374,10 +374,9 @@ fun SrApp(
         if (closed != null && s in SR_CHECKIN_GATED && !(earlierCall && s in SR_CALL_SCREENS)) {
             val earlierOutlet by produceState<String?>(null, openCallNow?.outletId) { value = openCallNow?.outletId?.let { id -> runCatching { day.database.referenceDao().outlet(id)?.name }.getOrNull() } }
             SrFrame(stringResource(if (earlierCall) com.aktcl.aron.feature.attendance.R.string.att_gate_earlier_title else com.aktcl.aron.feature.attendance.R.string.att_gate_title), goBack, sync, openSync) {
-                com.aktcl.aron.feature.attendance.CheckInFirst(
-                    closed, onCheckIn = { checkInNotice = true; screen = SrScreen.ATTENDANCE },
-                    onCloseCall = if (openCallNow != null && (earlierCall || s in SR_CALL_SCREENS)) { { scope.launch { day.closeVisitAbandoned(); screen = SrScreen.HOME } } } else null,
-                    earlierCallOutlet = earlierOutlet,
+                SrCheckInGate(
+                    day, closed, canCloseCall = openCallNow != null && (earlierCall || s in SR_CALL_SCREENS), earlierOutlet = earlierOutlet,
+                    onCheckIn = { checkInNotice = true; screen = SrScreen.ATTENDANCE }, onCallClosed = { screen = SrScreen.HOME },
                 )
             }
             return@AronScreenTransition
@@ -616,23 +615,18 @@ fun SrApp(
         }
         SrScreen.TASKS -> SrFrame(stringResource(R.string.sr_tasks_title), goBack, sync, openSync) {
             LaunchedEffect(Unit) { day.taskBoard.load() }
-            // the list is reading and stays open; RESOLVING a task is an operational write: without an open check-in it asks for one (rule 1), never a crash
-            var taskNeedsCheckIn by remember { mutableStateOf(false) }
-            TaskContent(
-                tasks,
-                onResolve = { id ->
-                    if (dayGate != null) taskNeedsCheckIn = true
-                    else scope.launch {
-                        try { day.taskBoard.resolve(id) } catch (e: com.aktcl.aron.core.database.repo.AttendanceRefusedException) { day.refreshDayGate(); taskNeedsCheckIn = true }
-                    }
-                },
-                onMyRequests = { screen = SrScreen.OWN_REQUESTS }, manual = true,
-            )
-            if (taskNeedsCheckIn) {
-                com.aktcl.aron.core.ui.aron.AronDialog(
-                    stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_title), stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_notice),
-                    stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_go),
-                    onConfirm = { taskNeedsCheckIn = false; checkInNotice = true; screen = SrScreen.ATTENDANCE }, onDismiss = { taskNeedsCheckIn = false },
+            // the list is reading and stays open; RESOLVING a task is an operational write: refused AT THE BUTTON with the NAMED reason (check in first / checked out / finish yesterday's call), never a crash
+            val earlierTaskOutlet by produceState<String?>(null, openCallNow?.outletId) { value = openCallNow?.outletId?.let { id -> runCatching { day.database.referenceDao().outlet(id)?.name }.getOrNull() } }
+            com.aktcl.aron.feature.attendance.ProvideWriteGuard(dayGate, earlierTaskOutlet, onCheckIn = { checkInNotice = true; screen = SrScreen.ATTENDANCE }) {
+                val guard = com.aktcl.aron.feature.attendance.rememberWriteGuardOrOpen()
+                TaskContent(
+                    tasks,
+                    onResolve = { id ->
+                        if (!guard.refused()) scope.launch {
+                            try { day.taskBoard.resolve(id) } catch (e: com.aktcl.aron.core.database.repo.AttendanceRefusedException) { day.refreshDayGate() }
+                        }
+                    },
+                    onMyRequests = { screen = SrScreen.OWN_REQUESTS }, manual = true,
                 )
             }
         }
@@ -920,3 +914,35 @@ internal fun SrAttendanceContent(
     attendance, checkoutAtLabel, onCheckIn = onCheckIn, onCheckOut = onCheckOut, userTitle = userTitle, userSubtitle = userSubtitle,
     onOpenSalesSubmit = onOpenSalesSubmit, offline = offline, statusBoxes = true,
 )
+
+
+/**
+ * The check-in gate of an operational SR screen with its guided way out (D-AGATE-18): "Close the open call" closes the call through the ONE classification
+ * ([SrSaleKit.closeCall]: a saved sale is `sold`, a saved zero-sale or QC memo is a zero sale, nothing saved is `abandoned`), and a close that cannot be written keeps the call
+ * and tells the rep (no crash, no silent Home).
+ */
+@Composable
+internal fun SrCheckInGate(
+    day: SrDay, why: com.aktcl.aron.core.database.repo.AttendanceRefusal, canCloseCall: Boolean, earlierOutlet: String?, onCheckIn: () -> Unit, onCallClosed: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var failed by remember { mutableStateOf(false) }
+    com.aktcl.aron.feature.attendance.CheckInFirst(
+        why, onCheckIn = onCheckIn,
+        onCloseCall = if (canCloseCall) {
+            {
+                scope.launch {
+                    val ok = try { day.sale.closeCall(); true } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { false }
+                    if (ok) onCallClosed() else failed = true
+                }
+            }
+        } else null,
+        earlierCallOutlet = earlierOutlet,
+    )
+    if (failed) {
+        com.aktcl.aron.core.ui.aron.AronDialog(
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_title), stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_body),
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_ok), onConfirm = { failed = false }, onDismiss = { failed = false },
+        )
+    }
+}

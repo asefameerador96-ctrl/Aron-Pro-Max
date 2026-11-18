@@ -126,7 +126,7 @@ class SrMidnightRestoreTest {
         f.day.logContentView(v.visitUuid, item, com.aktcl.aron.feature.outlet.ContentOutcome.VIEWED, null, 1000L, 1)
         assertEquals("the content view carries the visit's date", d0, f.db.captureDao().contentViewsOf(v.visitUuid).single().meta.businessDate)
         // the call ends and the phone closes D; a survey saved after that is refused by the gate and is NOT reported as saved
-        f.day.closeVisitAbandoned(); f.day.resumeDay()
+        f.day.sale.closeCall(); f.day.resumeDay()
         assertEquals("D was closed by the phone", 1, checkOuts(d0).size)
         val q2 = com.aktcl.aron.feature.outlet.SurveyQuestion(2, com.aktcl.aron.feature.outlet.AnswerType.BOOL, "q2", true, false) // a NEW question: an answered one is an idempotent replay
         val refused = f.day.saveSurveyResult(v.visitUuid, survey, listOf(com.aktcl.aron.feature.outlet.SurveyResponseRow(com.aktcl.aron.core.common.ClientIds.newUuid(), v.visitUuid, 1, 1, q2, com.aktcl.aron.feature.outlet.SurveyAnswer(bool = true))))
@@ -156,7 +156,7 @@ class SrMidnightRestoreTest {
     /** D-AGATE-15 T1: an UNSAVED memo edit open across midnight never holds the day: dropped with a notice, the saved memo untouched, the day closes, the gate follows today. */
     @Test fun anUnsavedMemoEditAcrossMidnightIsDroppedAndTheDayCloses() = runBlocking {
         val v = f.openCall(); val memo = f.creditMemo(v); f.stockedCatalog()
-        f.day.visitSession.restore(v); f.day.closeVisitAbandoned()  // the call is over; only the memo EDIT is open (opened from the Memo list)
+        f.day.visitSession.restore(v); f.day.sale.closeCall()  // the call is over; only the memo EDIT is open (opened from the Memo list)
         f.day.sale.prepare(); f.day.sale.beginEdit(memo, com.aktcl.aron.feature.sale.domain.EditReason.WRONG_SKU)
         SrLockFixture.await("edit open") { day().sale.flow.state.value.draft?.edit != null }
         f.day.resumeDay() // the same day: nothing is dropped
@@ -226,7 +226,7 @@ class SrMidnightRestoreTest {
         // the rep's own way out of each call: the sale screen's close (sold / zero sale) or the back press (abandoned)
         rep.forEach { (k, v) ->
             f.day.visitSession.restore(v)
-            when (k) { "sold" -> f.day.sale.closeVisit(com.aktcl.aron.feature.sale.domain.VisitOutcomeCode.SOLD); "zero" -> f.day.sale.closeVisit(com.aktcl.aron.feature.sale.domain.VisitOutcomeCode.ZERO_SALE); else -> f.day.closeVisitAbandoned() }
+            f.day.sale.closeCall() // D-AGATE-18: the ONE classification, whatever the way out (the explicit kinds are asserted in SrCallCloseClassificationTest)
         }
         f.trustAt(at(next(), 8, 0))
         repeat(kinds.size) { f.day.restoreOpenVisit(); f.day.abandonStaleCall() }

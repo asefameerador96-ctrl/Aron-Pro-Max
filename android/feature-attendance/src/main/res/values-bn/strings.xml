@@ -60,4 +60,7 @@
     <string name="att_checkout_open_edit">একটি মেমো এডিট এখনো খোলা আছে। চেক-আউটের আগে সেটি সংরক্ষণ বা বাতিল করুন: চেক-আউট আপনার দিনের বিক্রয়ও জমা দেয়।</string>
     <string name="att_amo_already_in">Already Checked-In</string>
     <string name="att_amo_already_out">Already Checked-Out</string>
+    <string name="att_settling">এক মুহূর্ত: ফোন আপনার দিনের অবস্থা দেখছে। কয়েক সেকেন্ডের মধ্যে চেক ইন ও চেক আউট খুলবে।</string>
+    <string name="att_close_failed_title">কলটি বন্ধ করা গেল না</string>
+    <string name="att_close_failed_body">ফোন এই কলের সমাপ্তি লিখতে পারেনি। কলটি এখনও খোলা আছে, কিছু হারায়নি। আবার চেষ্টা করুন; বারবার ব্যর্থ হলে অ্যাপ বন্ধ করে আবার খুলুন।</string>
 </resources>

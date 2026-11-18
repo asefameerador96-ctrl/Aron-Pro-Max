@@ -47,6 +47,12 @@ data class OutboxEntity(
      * ITS PAYLOAD STAY, and it is still listed under the records already seen. Null while it has not been seen.
      */
     @ColumnInfo(name = "seen_at") val seenAt: String? = null,
+    /**
+     * D-AGATE-18 (B2): the uuid of the record this one depends on where that is NOT the family's visit and not a domain column the reader can join (the AMO's
+     * `distribution_check_line` names its check, `call_assessment_answer` its assessment). Stored at capture, so Send again and the reader judge by the real parent and never by rank.
+     * Null for every other row (and for rows of an older version: no parent known means no ancestor can hold them back).
+     */
+    @ColumnInfo(name = "parent_uuid") val parentUuid: String? = null,
 )
 
 /** Outbox row states (docs/24 s4.5, s4.6). */

@@ -33,3 +33,23 @@ data class RolloverNotice(
 ) {
     val any: Boolean get() = closedDates.isNotEmpty() || abandonedDate != null || editDropped
 }
+
+/** D-AGATE-18: like `runCatching`, but a cancellation is never swallowed (a cancelled caller stops instead of running its later steps). */
+inline fun <T> catching(block: () -> T): Result<T> = try {
+    Result.success(block())
+} catch (c: kotlinx.coroutines.CancellationException) {
+    throw c
+} catch (t: Throwable) {
+    Result.failure(t)
+}
+
+/** D-AGATE-18: the notice, built from the LOCAL "ended by the phone" markers only (never inferred from dates, so the rep's own late close never shows it). */
+fun rolloverNoticeOf(marks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity>): RolloverNotice {
+    val ended = marks.firstOrNull { it.kind == com.aktcl.aron.core.database.entity.PhoneMarkEntity.CALL_ENDED }
+    return RolloverNotice(
+        closedDates = marks.filter { it.kind == com.aktcl.aron.core.database.entity.PhoneMarkEntity.DAY_CLOSED }.map { it.businessDate }.distinct().sorted(),
+        abandonedOutletId = ended?.outletId, abandonedDate = ended?.businessDate,
+        draftDropped = marks.any { it.kind == com.aktcl.aron.core.database.entity.PhoneMarkEntity.DRAFT_DROPPED },
+        editDropped = marks.any { it.kind == com.aktcl.aron.core.database.entity.PhoneMarkEntity.EDIT_DROPPED },
+    )
+}

@@ -11,7 +11,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
-/** Version 9 to 10 adds `outbox.last_message_key` and `outbox.seen_at` (D-AGATE-04) and keeps every outbox row exactly as it was. */
+/**
+ * Version 9 to 10 adds `outbox.last_message_key` and `outbox.seen_at` (D-AGATE-04), `outbox.parent_uuid` and the local `phone_mark` table (D-AGATE-18), and keeps every outbox row exactly
+ * as it was. Version 10 has not shipped: these are part of it, not a version 11.
+ */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [36])
 class Migration910Test {
@@ -40,6 +43,13 @@ class Migration910Test {
                 }
             }
             // the new columns accept a value and a row with them still reads back
+            // D-AGATE-18: the parent link starts empty (no parent known holds nothing back) and accepts a value; the local marker table exists, is empty and takes a row
+            db.query("SELECT COUNT(*) FROM outbox WHERE parent_uuid IS NOT NULL").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }
+            db.execSQL("UPDATE outbox SET parent_uuid = 'p' WHERE seq = 2")
+            db.query("SELECT parent_uuid FROM outbox WHERE seq = 2").use { c -> assertTrue(c.moveToFirst()); assertEquals("p", c.getString(0)) }
+            db.query("SELECT COUNT(*) FROM phone_mark").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }
+            db.execSQL("INSERT INTO phone_mark (kind, business_date, outlet_id, created_at) VALUES ('call_ended', '2026-11-12', 7, 't')")
+            db.query("SELECT kind, outlet_id FROM phone_mark").use { c -> assertTrue(c.moveToFirst()); assertEquals("call_ended", c.getString(0)); assertEquals(7, c.getInt(1)) }
             db.execSQL("UPDATE outbox SET last_message_key = 'k', seen_at = 't' WHERE seq = 4")
             db.query("SELECT last_message_key, seen_at FROM outbox WHERE seq = 4").use { c -> assertTrue(c.moveToFirst()); assertEquals("k", c.getString(0)); assertEquals("t", c.getString(1)) }
         }

@@ -102,8 +102,7 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
             // D-AGATE-15 (T5): REAL parentage, as the SQL guard: a memo line's memo, a rank-1 record's visit (the family's root); a refused survey, close or content view is a sibling
             val parentRefused = exhaustedRows.isNotEmpty() && exhaustedRows.all { x ->
                 serverRefused.any { s ->
-                    (x.rank >= 1 && s.clientUuid == x.familyUuid) || s.clientUuid == x.parentUuid ||
-                        (x.parentUuid == null && x.rank >= 2 && s.rank < x.rank) // no domain row to name the parent (purged, or another type): the conservative rank rule
+                    (x.rank >= 1 && s.clientUuid == x.familyUuid) || s.clientUuid == x.parentUuid // D-AGATE-18: the real parents only, no rank fallback
                 }
             }
             val gaveUp = exhaustedRows.isNotEmpty() && !parentRefused

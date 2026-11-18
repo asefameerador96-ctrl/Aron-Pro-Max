@@ -48,6 +48,7 @@ import com.aktcl.aron.feature.sale.domain.SaleSku
 import com.aktcl.aron.feature.sale.domain.SaleVisit
 import com.aktcl.aron.feature.sale.domain.VisitCloser
 import com.aktcl.aron.feature.sale.domain.VisitOutcomeCode
+import kotlinx.coroutines.sync.withLock
 import com.aktcl.aron.feature.sale.domain.VisitToClose
 import com.aktcl.aron.feature.sale.ui.SaleViewModel
 import com.aktcl.aron.rules.FixInput
@@ -211,40 +212,47 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
      * on the phone without a close, or null (a close was queued, or no call was open). The hosts ask [openCallRefusal] first
      * and show the text before calling it.
      */
-    suspend fun closeVisit(outcome: VisitOutcomeCode, declined: Boolean = false): DayRefusal? {
+    suspend fun closeVisit(outcome: VisitOutcomeCode, declined: Boolean = false): DayRefusal? = day.closeLock.withLock { closeVisitLocked(outcome, declined) }
+
+    /** [closeVisit] with [day]'s close lock already held (one lock for the rep's close and the phone's close: two closes of one call cannot both be written). */
+    private suspend fun closeVisitLocked(
+        outcome: VisitOutcomeCode, declined: Boolean = false, marks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = emptyList(),
+    ): DayRefusal? {
         val open = day.visitSession.current.value ?: return null
         day.endCallIfClosed()?.let { callStarted.remove(open.visitUuid); return it }
         var why: DayRefusal? = null
         val queued = SrLockGate.closeCall(day.visitSession, { why = it }) { v ->
-            closer.close(VisitToClose(v.visitUuid, v.routeId, callStartedAtIso = callStarted.remove(v.visitUuid)), outcome, day.visitDate(v), declined)
+            closer.close(VisitToClose(v.visitUuid, v.routeId, callStartedAtIso = callStarted.remove(v.visitUuid)), outcome, day.visitDate(v), declined, marks)
         }
         if (queued) runCatching { day.requestSync() }
         return why
     }
 
     /**
-     * D-AGATE-15 (T2): the phone's end of a call at the 04:00 limit. It classifies by what the call holds, as the rep's own close does and as the AMO does
-     * as the rep's own close: a saved memo with lines is `sold`; a saved zero-sale memo is `zero_sale_stock_ok`; anything else is `abandoned`. The close is written
-     * through [closeVisit] (or `closeVisitAbandoned`), dated with the visit's date. That the phone ended it is carried locally (the notice), not on the wire.
+     * D-AGATE-18 (B1): THE ONE classification of how a call ends on the SR, used by every way it ends that does not carry a reason the rep chose: the sale screen's finish, the gate's
+     * "Close the open call", the back press of a restored call and the phone's own end at 04:00. It reads what the call really HOLDS: a saved memo with lines = `sold`; a saved
+     * zero-sale or QC-only memo = `zero_sale_stock_ok`; nothing saved (a survey answer alone included, as the back press always did) = `abandoned`. The memo read and the close are under
+     * ONE lock, so a sale committed between them cannot be missed; [phoneEnd] also stores the local "ended by the phone" marker with the close, in the same transaction.
      */
-    suspend fun closeVisitByPhone(): DayRefusal? {
-        val open = day.visitSession.current.value ?: return null
-        val memos = dao.memosOn(day.visitDate(open)).filter { it.visitClientUuid == open.visitUuid }
-        val superseded = memos.mapNotNull { it.supersedesClientUuid }.toSet()
-        val live = memos.filter { it.clientUuid !in superseded }.maxByOrNull { it.committedAt }
-        // exactly what the rep's own way out writes: a saved memo with lines = sold, a saved zero-sale memo = zero sale, anything else (a survey answer and no memo included) = the
-        // back press's `abandoned` (lead ruling 2026-11-18; whether a survey-only call should count as a call is a question in docs/requests/android-gates.md)
-        return when {
-            live != null && live.lineCount > 0 -> closeVisit(VisitOutcomeCode.SOLD)
-            live != null -> closeVisit(VisitOutcomeCode.ZERO_SALE)
-            else -> day.closeVisitAbandoned()
+    suspend fun closeCall(phoneEnd: Boolean = false): DayRefusal? = day.closeLock.withLock {
+        val open = day.visitSession.current.value ?: return@withLock null
+        val vd = day.visitDate(open)
+        val live = dao.memosOn(vd).filter { it.visitClientUuid == open.visitUuid }.let { memos ->
+            val superseded = memos.mapNotNull { it.supersedesClientUuid }.toSet()
+            memos.filter { it.clientUuid !in superseded }.maxByOrNull { it.committedAt }
+        }
+        val marks = if (phoneEnd) listOf(com.aktcl.aron.core.database.entity.PhoneMarkEntity(kind = com.aktcl.aron.core.database.entity.PhoneMarkEntity.CALL_ENDED, businessDate = vd, outletId = open.outletId, createdAt = day.iso(day.currentMs()))) else emptyList()
+        when {
+            live != null && live.lineCount > 0 -> closeVisitLocked(VisitOutcomeCode.SOLD, false, marks)
+            live != null -> closeVisitLocked(VisitOutcomeCode.ZERO_SALE, false, marks)
+            else -> day.abandonLocked(marks)
         }
     }
 
     /**
      * tso-manual X4a follow-up (R-W-23): why the open call can no longer take its records (no sale, no close), or null. The
      * call screens show the lock text or the submit text, and OK ends the call on the phone ([closeVisit] or
-     * `SrDay.closeVisitAbandoned`, which write nothing then). Pure reads.
+     * `SrDay.abandonLocked`, which write nothing then). Pure reads.
      */
     suspend fun openCallRefusal(): DayRefusal? = day.openCallRefusal()
 

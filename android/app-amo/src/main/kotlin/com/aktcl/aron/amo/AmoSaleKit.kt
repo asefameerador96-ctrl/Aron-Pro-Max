@@ -173,10 +173,12 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
      * tso-manual X4a (R-W-11): [AmoDay.closeVisit] has already ended a call on a closed route on the phone; a lock that lands
      * during the write ends the call the same way (no close queued, nothing thrown).
      */
-    suspend fun closeVisit(outcome: VisitOutcomeCode, declined: Boolean = false): com.aktcl.aron.core.database.repo.DayRefusal? {
+    suspend fun closeVisit(
+        outcome: VisitOutcomeCode, declined: Boolean = false, marks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = emptyList(),
+    ): com.aktcl.aron.core.database.repo.DayRefusal? {
         var why: com.aktcl.aron.core.database.repo.DayRefusal? = null
         val queued = AmoLockGate.closeCall(day.visitSession, { why = it }) { v ->
-            closer.close(VisitToClose(v.visitUuid, v.routeId, callStartedAtIso = callStarted.remove(v.visitUuid)), outcome, day.visitDate(v), declined)
+            closer.close(VisitToClose(v.visitUuid, v.routeId, callStartedAtIso = callStarted.remove(v.visitUuid)), outcome, day.visitDate(v), declined, marks)
         }
         if (queued) runCatching { day.requestSync() }
         return why

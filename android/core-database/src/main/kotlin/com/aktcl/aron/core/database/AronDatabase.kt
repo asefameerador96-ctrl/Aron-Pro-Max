@@ -69,6 +69,7 @@ import com.aktcl.aron.core.database.entity.VisitEntity
         com.aktcl.aron.core.database.entity.SurveyEntity::class, com.aktcl.aron.core.database.entity.SurveyQuestionEntity::class,
         com.aktcl.aron.core.database.entity.ContentViewEntity::class, com.aktcl.aron.core.database.entity.SurveyResponseEntity::class,
         com.aktcl.aron.core.database.entity.AmoRecordEntity::class, com.aktcl.aron.core.database.entity.PurgedUuidEntity::class, com.aktcl.aron.core.database.entity.ClusterCreateEntity::class,
+        com.aktcl.aron.core.database.entity.PhoneMarkEntity::class, // v10 (D-AGATE-18): the local "ended by the phone" markers, never uploaded
     ],
 )
 abstract class AronDatabase : RoomDatabase() {

@@ -244,7 +244,7 @@ abstract class OutboxDao {
      * (by seq), exactly as [resendAckedSince] does: the server's registry answers each by uuid (stored, or duplicate), so it keeps it once.
      * Only rows rejected with that code move; a server rejection is never resent from here. A child is NOT re-queued while a PARENT of its family
      * was refused by the server (it could only answer `parent_missing` and exhaust again: a loop the rep cannot end). D-AGATE-15 (T5): "a PARENT" is a real ancestor
-     * of THAT record, never a sibling that merely has a lower rank: a memo line's parent is its memo (then the visit), a rank-1 record's (memo, visit close, content view,
+     * of THAT record (D-AGATE-18: a memo print's memo, an AMO line's check or answer's assessment, from the stored `parent_uuid`), never a sibling that merely has a lower rank and never a rank fallback: a memo line's parent is its memo (then the visit), a rank-1 record's (memo, visit close, content view,
      * survey) is the visit; a refused survey does not stop an unsent memo line of an accepted memo. Returns the rows re-queued.
      */
     @Query(
@@ -255,8 +255,9 @@ abstract class OutboxDao {
                (outbox.`rank` >= 1 AND p.client_uuid = outbox.family_uuid)
                OR p.client_uuid IN (SELECT memo_client_uuid FROM memo_line WHERE client_uuid = outbox.client_uuid
                                     UNION SELECT memo_client_uuid FROM memo_discount WHERE client_uuid = outbox.client_uuid
-                                    UNION SELECT memo_client_uuid FROM qc_line WHERE client_uuid = outbox.client_uuid)
-               OR (outbox.`rank` >= 2 AND p.`rank` < outbox.`rank` AND outbox.client_uuid NOT IN (SELECT client_uuid FROM memo_line UNION SELECT client_uuid FROM memo_discount UNION SELECT client_uuid FROM qc_line))))""",
+                                    UNION SELECT memo_client_uuid FROM qc_line WHERE client_uuid = outbox.client_uuid
+                                    UNION SELECT memo_client_uuid FROM print_event WHERE client_uuid = outbox.client_uuid)
+               OR p.client_uuid = outbox.parent_uuid))""",
     )
     abstract suspend fun requeueRetryExhausted(clientUuid: String): Int
 
@@ -328,7 +329,7 @@ private const val REFUSED_SELECT =
     """SELECT o.seq AS seq, o.client_uuid AS clientUuid, o.record_type AS recordType, o.family_uuid AS familyUuid, o.`rank` AS `rank`, o.business_date AS businessDate,
        o.state AS state, o.last_code AS lastCode, o.last_message_key AS lastMessageKey, o.seen_at AS seenAt, o.attempts AS attempts,
        COALESCE(m.memo_no, lm.memo_no, dm.memo_no, dc.against_memo_no, qm.memo_no) AS memoNo,
-       COALESCE(l.memo_client_uuid, d.memo_client_uuid, q.memo_client_uuid) AS parentUuid,
+       COALESCE(l.memo_client_uuid, d.memo_client_uuid, q.memo_client_uuid, pe.memo_client_uuid, o.parent_uuid) AS parentUuid,
        COALESCE(m.outlet_id, lm.outlet_id, dm.outlet_id, v.outlet_id, dc.outlet_id, vs.outlet_id, cv.outlet_id, qm.outlet_id, qv.outlet_id, fv.outlet_id) AS outletId
        FROM outbox o
        LEFT JOIN memo m ON o.record_type = 'memo' AND m.client_uuid = o.client_uuid
@@ -344,6 +345,7 @@ private const val REFUSED_SELECT =
        LEFT JOIN qc_line q ON o.record_type = 'qc_line' AND q.client_uuid = o.client_uuid
        LEFT JOIN memo qm ON qm.client_uuid = q.memo_client_uuid
        LEFT JOIN visit qv ON qv.client_uuid = q.visit_client_uuid
+       LEFT JOIN print_event pe ON o.record_type = 'print_event' AND pe.client_uuid = o.client_uuid
        LEFT JOIN visit fv ON fv.client_uuid = o.family_uuid"""
 
 /**

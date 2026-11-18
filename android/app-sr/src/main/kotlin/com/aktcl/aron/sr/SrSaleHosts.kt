@@ -72,7 +72,22 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
     // (No, back, the close after Review); OK ends it on the phone with no close written and goes Home. Nothing throws.
     var closed by remember(v.visitUuid) { mutableStateOf<DayRefusal?>(null) }
     LaunchedEffect(v.visitUuid) { closed = kit.openCallRefusal() }
-    val leave: (suspend () -> Unit) -> Unit = { close -> scope.launch { kit.openCallRefusal()?.let { closed = it } ?: run { close(); onDone() } } }
+    // D-AGATE-18: a close that fails to be written keeps the call open and tells the rep (never a crash, never a silent Home)
+    var closeFailed by remember(v.visitUuid) { mutableStateOf(false) }
+    val leave: (suspend () -> Unit) -> Unit = { close ->
+        scope.launch {
+            kit.openCallRefusal()?.let { closed = it } ?: run {
+                val ok = try { close(); true } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Exception) { false }
+                if (ok) onDone() else closeFailed = true
+            }
+        }
+    }
+    if (closeFailed) {
+        com.aktcl.aron.core.ui.aron.AronDialog(
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_title), stringResource(com.aktcl.aron.feature.attendance.R.string.att_close_failed_body),
+            stringResource(com.aktcl.aron.feature.attendance.R.string.att_gate_ok), onConfirm = { closeFailed = false }, onDismiss = { closeFailed = false },
+        )
+    }
     closed?.let { why ->
         SrRefusalDialog(why, onOk = { scope.launch { kit.endRefusedCall(); onDone() } })
         return
@@ -110,7 +125,7 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
             // restored after a relaunch: no fix on the phone to show, so no distance panel; the same question
             VisitCheckContent(
                 VisitUiState.Open(v), onRefresh = {}, onForceSale = {}, onRetry = {}, onMap = null, onStartCall = start, onNoSale = onNoSale,
-                onBack = { leave { day.closeVisitAbandoned() } }, callQuestion = q,
+                onBack = { leave { kit.closeCall() } }, callQuestion = q,
             )
         } else {
             // the confirm step (D-MAP-02): distance, radius, verdict and the lite map from the fix the visit already took
@@ -121,7 +136,7 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
                 onMap =
                     { context.startActivity(OutletMapActivity.intent(context, g.outletName, g.outletLat, g.outletLng, g.radiusM, g.phoneLat, g.phoneLng)) },
                 onStartCall = start, onNoSale = onNoSale, geo = g, mapSlot = mapSlot, geoPanel = true,
-                onBack = { leave { day.closeVisitAbandoned() } }, callQuestion = q,
+                onBack = { leave { kit.closeCall() } }, callQuestion = q,
             )
         }
         if (startFirst) com.aktcl.aron.feature.outlet.StartCallFirstDialog(onOk = { startFirst = false })
@@ -167,8 +182,8 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
                 outlet?.clusterName?.let { stringResource(R.string.sr_review_cluster, it) },
             ),
             onFinished = {
-                val zero = vm.state.value.draft?.zeroSale == true
-                leave { kit.closeVisit(if (zero) VisitOutcomeCode.ZERO_SALE else VisitOutcomeCode.SOLD) }
+                // D-AGATE-18 (B1): the same classification as every other way a call ends, from what the call holds
+                leave { kit.closeCall() }
             },
         )
         AronSecondaryButton(stringResource(R.string.sr_no_sale), onNoSale, Modifier.fillMaxWidth().padding(AronTokens.Space.L))

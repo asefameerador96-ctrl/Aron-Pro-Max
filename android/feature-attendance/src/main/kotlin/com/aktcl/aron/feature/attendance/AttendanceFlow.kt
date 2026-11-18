@@ -50,6 +50,8 @@ data class AttendanceState(
      * a press with nothing open, a tick or a restore clears it.
      */
     val checkOutBlockedBy: OpenWork? = null,
+    /** D-AGATE-18: the phone is still working out the state of the day (the first resume has not answered): no press yet, the screen says "one moment". */
+    val settling: Boolean = false,
 )
 
 /** What is still open at check-out: the rep must close it first (D-AGATE-06). Checked at the press, from stored state, never from a flag. */
@@ -93,12 +95,15 @@ class AttendanceFlow(
      * day's Sales Submit, which closes the route-day, so it is refused while either is open. Null: nothing to check (tests, TSO).
      */
     private val openWork: (suspend () -> OpenWork?)? = null,
+    /** D-AGATE-18: the day object's first resume result (a forgotten day closed or not) is not in yet, so check-in and check-out stay off with a "one moment" state until [settle]. Tests and TSO: false. */
+    settleFirst: Boolean = false,
 ) {
+    @Volatile private var settling = settleFirst
     /** The business date of the open check-in: the day a check-out closes, also when it is pressed after Dhaka midnight (D-AGATE-06). */
     @Volatile private var openDate: String? = null
     /** The last answer of [salesSubmitted]; null before the first read (check-out off meanwhile). */
     @Volatile private var submitted: Boolean? = null
-    private val ui = MutableStateFlow(AttendanceState(needsSalesSubmit = salesSubmitted != null))
+    private val ui = MutableStateFlow(AttendanceState(needsSalesSubmit = salesSubmitted != null, settling = settleFirst, checkInEnabled = !settleFirst))
     val state: StateFlow<AttendanceState> = ui.asStateFlow()
 
     /**
@@ -119,6 +124,9 @@ class AttendanceFlow(
      */
     private fun pastDay(): Boolean = openDate?.let { it < metaProvider.meta(0L).businessDate } == true
 
+    /** The first resume of the day object has its result in (restore ran): the screen may be used. Idempotent. */
+    fun settle() { settling = false; tick() }
+
     /** Called when the minute changes so the check-out button enables at 17:00 without a press. */
     fun tick() { ui.value = recompute(ui.value.checkedInAt, ui.value.checkedOutAt, ui.value.addressText, ui.value.lastFixMock) }
 
@@ -138,7 +146,7 @@ class AttendanceFlow(
 
     suspend fun checkIn(): AttendanceResult {
         val s = ui.value
-        if (s.checkedInAt != null || s.busy) return AttendanceResult.Ignored
+        if (s.checkedInAt != null || s.busy || settling) return AttendanceResult.Ignored
         return capture("check_in", "attendance_in")
     }
 
@@ -152,7 +160,7 @@ class AttendanceFlow(
 
     private suspend fun checkOutLocked(): AttendanceResult {
         val s = ui.value
-        if (s.checkedInAt == null || s.checkedOutAt != null || s.busy) return AttendanceResult.Ignored
+        if (s.checkedInAt == null || s.checkedOutAt != null || s.busy || settling) return AttendanceResult.Ignored
         if (pastDay() || dhakaMinutesNow() < checkoutEarliestMinutes()) return AttendanceResult.Ignored // recomputed, never a stale flag; a day left open past midnight is closed by the phone, never by a press
         // D-AGATE-06: an open call or memo edit refuses the check-out (it submits the day, which closes the route-day under it)
         openWork?.let { read ->
@@ -234,8 +242,9 @@ class AttendanceFlow(
         val needsSubmit = salesSubmitted != null && submitted != true
         return AttendanceState(
             checkedInAt = inAt, checkedOutAt = outAt, showCheckInPrompt = inAt == null,
-            checkInEnabled = inAt == null,
-            checkOutEnabled = inAt != null && outAt == null && !needsSubmit && !pastDay() && dhakaMinutesNow() >= checkoutEarliestMinutes(),
+            checkInEnabled = inAt == null && !settling,
+            settling = settling,
+            checkOutEnabled = !settling && inAt != null && outAt == null && !needsSubmit && !pastDay() && dhakaMinutesNow() >= checkoutEarliestMinutes(),
             addressText = address, lastFixMock = mock, busy = ui.value.busy,
             coordinatesText = ui.value.coordinatesText, fixAccuracyM = ui.value.fixAccuracyM, fixFailed = ui.value.fixFailed, readingFix = ui.value.readingFix,
             needsSalesSubmit = needsSubmit,

@@ -39,6 +39,9 @@ interface CaptureDao {
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertQcLines(rows: List<QcLineEntity>)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertDueCollection(row: DueCollectionEntity)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertVisitSkip(row: VisitSkipEntity)
+    @Insert suspend fun insertPhoneMark(row: com.aktcl.aron.core.database.entity.PhoneMarkEntity)
+    @Query("SELECT * FROM phone_mark ORDER BY id") suspend fun phoneMarks(): List<com.aktcl.aron.core.database.entity.PhoneMarkEntity>
+    @Query("DELETE FROM phone_mark WHERE id <= :upToId") suspend fun clearPhoneMarks(upToId: Long)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertAmoRecord(row: com.aktcl.aron.core.database.entity.AmoRecordEntity)
     @Query("SELECT * FROM amo_record WHERE record_type = :type ORDER BY captured_at, rowid") suspend fun amoRecordsOfType(type: String): List<com.aktcl.aron.core.database.entity.AmoRecordEntity>
     @Query("SELECT COUNT(*) FROM amo_record WHERE client_uuid = :clientUuid") suspend fun amoRecordCount(clientUuid: String): Int

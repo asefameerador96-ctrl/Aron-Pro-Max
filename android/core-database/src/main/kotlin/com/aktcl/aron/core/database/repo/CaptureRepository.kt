@@ -201,14 +201,17 @@ class CaptureRepository(
         if (short.isNotEmpty()) throw OverStockException(short, m.meta.businessDate)
     }
 
-    suspend fun recordVisitClose(close: VisitCloseEntity) = db.withTransaction {
+    suspend fun recordVisitClose(close: VisitCloseEntity, phoneMarks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = emptyList()) = db.withTransaction {
         if (purged(close.clientUuid)) return@withTransaction emptyList()
         requireUuids(close.clientUuid, close.visitClientUuid)
         requireRoute(close.meta)
         requireOpenRouteDay(close.meta, "visit_close") // tso-manual X4a (R-W-11)
         checkNotNull(capture.visit(close.visitClientUuid)) { "visit_close without its visit" }
         capture.insertVisitClose(close)
-        outbox.insert(listOf(RecordMapping.visitClose(close, nowIso())))
+        val rows = outbox.insert(listOf(RecordMapping.visitClose(close, nowIso())))
+        // D-AGATE-18: "the phone ended it" is stored with the close it describes, in the same transaction (local only)
+        phoneMarks.forEach { capture.insertPhoneMark(it) }
+        rows
     }
 
     /**
@@ -425,6 +428,7 @@ class CaptureRepository(
      */
     suspend fun recordCheckOut(
         event: AttendanceEventEntity, fix: GeoFixEntity,
+        phoneMarks: List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = emptyList(),
         buildSubmits: suspend (businessDate: String) -> List<DaySubmitEntity> = { emptyList() },
     ) = db.withTransaction {
         if (purged(event.clientUuid)) return@withTransaction emptyList()
@@ -441,8 +445,17 @@ class CaptureRepository(
         submits.forEach { writeDaySubmit(it.copy(pendingCount = pendingBefore)) }
         capture.insertFix(fix)
         capture.insertAttendance(event)
-        outbox.insert(listOf(RecordMapping.attendance(event, fix, nowIso())))
+        val rows = outbox.insert(listOf(RecordMapping.attendance(event, fix, nowIso())))
+        phoneMarks.forEach { capture.insertPhoneMark(it) } // D-AGATE-18: the phone closed this day: marker and check-out commit together
+        rows
     }
+
+    /** The local "ended by the phone" markers not yet shown to the rep (D-AGATE-18), oldest first. */
+    suspend fun phoneMarks(): List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = capture.phoneMarks()
+    /** Stores one marker on its own (an unsaved draft or edit that was really dropped: the draft is a file, so there is no Room write to share a transaction with). */
+    suspend fun addPhoneMark(mark: com.aktcl.aron.core.database.entity.PhoneMarkEntity) = capture.insertPhoneMark(mark)
+    /** The rep has been shown the notice: the markers he was shown (ids up to [upToId]) go; a marker written meanwhile stays for the next notice. */
+    suspend fun clearPhoneMarks(upToId: Long) = capture.clearPhoneMarks(upToId)
 
     /** The business dates with a check-in and no check-out (see [CaptureDao.openAttendanceDates]), oldest first. */
     suspend fun openAttendanceDates(): List<String> = capture.openAttendanceDates()

@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 10,
-    "identityHash": "1da71bfaa24a739786cb0b802d36aedd",
+    "identityHash": "d01744bfda89ef1ad967e8108043c4ba",
     "entities": [
       {
         "tableName": "route",
@@ -1964,7 +1964,7 @@
       },
       {
         "tableName": "outbox",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`seq` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `client_uuid` TEXT NOT NULL, `record_type` TEXT NOT NULL, `family_uuid` TEXT NOT NULL, `rank` INTEGER NOT NULL, `business_date` TEXT NOT NULL, `payload_json` TEXT NOT NULL, `payload_sha256` TEXT NOT NULL, `state` TEXT NOT NULL, `batch_uuid` TEXT, `attempts` INTEGER NOT NULL, `last_code` TEXT, `created_at` TEXT NOT NULL, `acked_at` TEXT, `server_id` INTEGER, `sig` TEXT, `last_message_key` TEXT, `seen_at` TEXT)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`seq` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `client_uuid` TEXT NOT NULL, `record_type` TEXT NOT NULL, `family_uuid` TEXT NOT NULL, `rank` INTEGER NOT NULL, `business_date` TEXT NOT NULL, `payload_json` TEXT NOT NULL, `payload_sha256` TEXT NOT NULL, `state` TEXT NOT NULL, `batch_uuid` TEXT, `attempts` INTEGER NOT NULL, `last_code` TEXT, `created_at` TEXT NOT NULL, `acked_at` TEXT, `server_id` INTEGER, `sig` TEXT, `last_message_key` TEXT, `seen_at` TEXT, `parent_uuid` TEXT)",
         "fields": [
           {
             "fieldPath": "seq",
@@ -2065,6 +2065,11 @@
           {
             "fieldPath": "seenAt",
             "columnName": "seen_at",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "parentUuid",
+            "columnName": "parent_uuid",
             "affinity": "TEXT"
           }
         ],
@@ -4057,11 +4062,52 @@
             "createSql": "CREATE INDEX IF NOT EXISTS `index_cluster_create_route_id` ON `${TABLE_NAME}` (`route_id`)"
           }
         ]
+      },
+      {
+        "tableName": "phone_mark",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `kind` TEXT NOT NULL, `business_date` TEXT NOT NULL, `outlet_id` INTEGER, `created_at` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outletId",
+            "columnName": "outlet_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1da71bfaa24a739786cb0b802d36aedd')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd01744bfda89ef1ad967e8108043c4ba')"
     ]
   }
 }
