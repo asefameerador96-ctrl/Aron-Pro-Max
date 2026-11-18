@@ -460,11 +460,12 @@ private fun QcTwoStepScreen(
                         Text(stringResource(R.string.qc_col_qctype), Modifier.weight(1.4f), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Medium)
                         Text(stringResource(R.string.qc_col_qty), Modifier.weight(0.8f), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Medium, textAlign = TextAlign.End)
                     }
+                    val faultMfc = stringResource(R.string.qc_fault_mfc); val faultMkt = stringResource(R.string.qc_fault_mkt)
                     if (review.qc.isEmpty()) Text(stringResource(R.string.qc_summary_none), Modifier.fillMaxWidth().padding(12.dp), color = look.inkMuted, textAlign = TextAlign.Center)
                     QcEntryModel.summary(entries).forEach { r ->
                         val rowSku = skus.firstOrNull { it.skuId == r.skuId }
                         // the fault names are the old app's English words on every language (manual 25)
-                        val types = listOfNotNull(if (r.mfcQty > 0) "MFC Fault" /* i18n-ignore: fault code names as the manual prints them */ else null, if (r.mktQty > 0) "MKT Fault" /* i18n-ignore */ else null).joinToString(",")
+                        val types = listOfNotNull(if (r.mfcQty > 0) faultMfc else null, if (r.mktQty > 0) faultMkt else null).joinToString(",")
                         Row(Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).padding(horizontal = 12.dp, vertical = 6.dp).testTag(QcTags.SUMMARY_ROW), verticalAlignment = Alignment.CenterVertically) {
                             Text(rowSku?.let { skuDisplayName(it) } ?: r.skuId.toString(), Modifier.weight(1.2f), color = look.purple, maxLines = 3)
                             Text(types, Modifier.weight(1.4f), color = look.purple, maxLines = 3)
