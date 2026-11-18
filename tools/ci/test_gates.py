@@ -767,5 +767,136 @@ class AmoReleaseCopyName(unittest.TestCase):
         self.assertLess(amo, wf.index("sha256sum ./*.apk > SHA256SUMS"))
 
 
+class MigrationsBase(unittest.TestCase):
+    """D-CI-MIGRATIONS-BASE-01: tools/ci/migrations-base.sh picks the comparison base; migrations-check.sh judges against it.
+    A lane that merged the integration branch compares with what is SHIPPED NOW, never with a stale last-green commit."""
+    INT = "claude/wonderful-thompson-k6ejnf"
+
+    def setUp(self):
+        self.repo = temp_repo(self, "migbase")
+        os.makedirs(os.path.join(self.repo, "db/migrations"))
+        shutil.copytree(HERE, os.path.join(self.repo, "tools/ci"))
+        for v in (1, 2, 3):  # the OLD integration state: V3 was shipped there (the stale last-green base)
+            self.write(f"V000{v}__t{v}.sql", f"SET lock_timeout = '5s';\nCREATE TABLE t{v} (id bigint PRIMARY KEY);\n")
+        self.commit("old integration state")
+        self.stale = self.sha()
+
+    def git(self, *a, check=True):
+        return subprocess.run(["git", *a], cwd=self.repo, check=check, capture_output=True, text=True).stdout.strip()
+
+    def sha(self):
+        return self.git("rev-parse", "HEAD")
+
+    def write(self, name, text):
+        Path(self.repo, "db/migrations", name).write_text(text)
+
+    def commit(self, msg):
+        self.git("add", "-A")
+        self.git("commit", "-qm", msg, "--allow-empty")
+
+    def integration_renumbers(self):
+        """The integration branch later renumbers V3 to V4 (the lane/sr-targets-server situation) and the tip becomes origin/INT."""
+        self.git("checkout", "-q", "-b", "int")
+        os.remove(os.path.join(self.repo, "db/migrations/V0003__t3.sql"))
+        self.write("V0004__t3.sql", "SET lock_timeout = '5s';\nCREATE TABLE t3 (id bigint PRIMARY KEY);\n")
+        self.commit("integration: V3 renumbered to V4")
+        self.git("update-ref", f"refs/remotes/origin/{self.INT}", self.sha())
+        return self.sha()
+
+    def lane_from(self, rev):
+        self.git("checkout", "-q", "-b", "lane", rev)
+
+    def base(self, ref="refs/heads/lane", event="push", gate=None, sha=None):
+        env = {**os.environ, "GITHUB_EVENT_NAME": event, "GITHUB_REF": ref, "GITHUB_SHA": sha or self.sha(), "INTEGRATION_BRANCH": self.INT}
+        r = subprocess.run(["bash", "tools/ci/migrations-base.sh", gate or self.stale], cwd=self.repo, env=env, capture_output=True, text=True)
+        return r.returncode, r.stdout.strip(), r.stderr
+
+    def judge(self, base):
+        r = subprocess.run(["bash", "tools/ci/migrations-check.sh", base, tool("squawk") or "false"], cwd=self.repo, capture_output=True, text=True)
+        return r.returncode, r.stdout + r.stderr
+
+    def test_a_lane_that_merged_the_moved_integration_branch_is_green_and_uses_the_merge_base(self):
+        int_tip = self.integration_renumbers()
+        self.lane_from(self.stale)
+        self.git("merge", "-q", "--no-edit", int_tip)  # the lane merged INT after shipping moved
+        rc, out, err = self.base()
+        self.assertEqual(rc, 0, err)
+        base, reason = out.split(" ", 1)
+        self.assertEqual(base, int_tip, "stale last-green base ignored: the merge-base with origin/INT is what is shipped")
+        self.assertIn("lane branch lane: merge-base with origin/" + self.INT, reason)
+        rc, text = self.judge(base)
+        self.assertEqual(rc, 0, text)
+        # the old rule fails on exactly this lane: V0003 "was shipped at <stale> and is gone at HEAD"
+        rc_old, text_old = self.judge(self.stale)
+        self.assertEqual(rc_old, 1)
+        self.assertIn("V0003__t3.sql was shipped", text_old)
+
+    def test_a_lane_that_edits_a_shipped_migration_is_red(self):
+        int_tip = self.integration_renumbers()
+        self.lane_from(int_tip)
+        self.write("V0001__t1.sql", "SET lock_timeout = '5s';\nCREATE TABLE t1 (id bigint PRIMARY KEY, x int);\n")
+        self.commit("lane edits V1")
+        rc, out, err = self.base()
+        self.assertEqual(rc, 0, err)
+        rc, text = self.judge(out.split(" ", 1)[0])
+        self.assertEqual(rc, 1, text)
+        self.assertIn("V0001__t1.sql was shipped", text)
+
+    def test_a_lane_that_adds_a_version_below_the_highest_shipped_is_red(self):
+        int_tip = self.integration_renumbers()  # highest shipped is now V0004
+        self.lane_from(int_tip)
+        self.write("V0003__lane.sql", "SET lock_timeout = '5s';\nCREATE TABLE lane_t (id bigint PRIMARY KEY);\n")
+        self.commit("lane adds V3 below V4")
+        rc, out, err = self.base()
+        self.assertEqual(rc, 0, err)
+        rc, text = self.judge(out.split(" ", 1)[0])
+        self.assertEqual(rc, 1, text)
+        self.assertIn("above", text)
+
+    def test_a_lane_with_a_stale_last_green_run_uses_the_merge_base_not_the_gate_base(self):
+        int_tip = self.integration_renumbers()
+        self.lane_from(int_tip)
+        self.commit("lane work")
+        for event in ("push", "workflow_dispatch"):
+            rc, out, err = self.base(event=event)
+            self.assertEqual(rc, 0, err)
+            self.assertEqual(out.split(" ", 1)[0], int_tip, event)
+            self.assertNotEqual(out.split(" ", 1)[0], self.stale)
+
+    def test_the_integration_branch_main_and_pull_requests_keep_the_gate_base(self):
+        int_tip = self.integration_renumbers()
+        for ref, event in ((f"refs/heads/{self.INT}", "push"), ("refs/heads/main", "push"), ("refs/pull/7/merge", "pull_request"),
+                           (f"refs/heads/{self.INT}", "workflow_dispatch")):
+            rc, out, err = self.base(ref=ref, event=event, gate=self.stale)
+            self.assertEqual(rc, 0, err)
+            self.assertEqual(out.split(" ", 1)[0], self.stale, f"{event} {ref}")
+            self.assertIn("gate base", out)
+        self.assertTrue(int_tip)
+
+    def test_a_lane_run_without_the_integration_ref_or_the_history_fails_loudly(self):
+        rc, out, err = self.base()  # no origin/INT in this clone
+        self.assertNotEqual(rc, 0)
+        self.assertIn("refusing to guess", err)
+        self.assertEqual(out, "", "no silent fallback to HEAD or the gate base")
+        self.integration_renumbers()
+        self.git("checkout", "-q", "--orphan", "unrelated")
+        self.commit("unrelated history")
+        rc, out, err = self.base()
+        self.assertNotEqual(rc, 0)
+        self.assertIn("no merge-base", err)
+
+    def test_the_workflow_wires_the_base_and_keeps_the_contract_steps_running(self):
+        ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn('mig_line="$(tools/ci/migrations-base.sh "${check}")"', ci)
+        self.assertIn('tools/ci/migrations-check.sh "${MIGRATIONS_BASE}" squawk', ci)
+        self.assertIn('echo "migrations base: ${mig} (${mig_line#* })"', ci, "the chosen base and why are printed")
+        gates = ci[ci.index("\n  gates:"):ci.index("\n  jvm:")]
+        for name in ("Contract breaking-change check (oasdiff)", "contract/slices is current", "Lint contract/openapi.yaml (Redocly"):
+            block = gates[gates.index(name):]
+            block = block[:block.index("\n      - ", 10)] if "\n      - " in block[10:] else block
+            self.assertIn("!cancelled() && needs.changes.outputs.contract == 'true'", block, f"{name} runs even when Migrations failed")
+        self.assertIn("if: needs.changes.outputs.db == 'true'", gates[gates.index("- name: Migrations"):], "the Migrations step itself is unchanged")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
