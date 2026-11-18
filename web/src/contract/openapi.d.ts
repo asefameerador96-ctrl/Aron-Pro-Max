@@ -6806,20 +6806,28 @@ export interface components {
             /** Format: int64 */
             cpr_alloc_mtk?: number | null;
         };
+        KpiProgrammeTargetWriteRow: {
+            route_code: string;
+            programme_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            target_qty: components["schemas"]["Decimal3"];
+        };
         RouteKpiTargetWrite: {
             batch_uuid: components["schemas"]["Uuid"];
             dry_run: boolean;
             change_reason?: string;
             brand_rows?: components["schemas"]["KpiBrandTargetWriteRow"][];
             month_rows?: components["schemas"]["KpiMonthTargetWriteRow"][];
+            programme_rows?: components["schemas"]["KpiProgrammeTargetWriteRow"][];
         };
         RouteKpiTargetPreview: {
             batch_uuid: components["schemas"]["Uuid"];
             brand_rows: number;
             month_rows: number;
+            programme_rows: number;
             errors: {
                 /** @enum {string} */
-                section: "brand_rows" | "month_rows";
+                section: "brand_rows" | "month_rows" | "programme_rows";
                 row: number;
                 column: string;
                 code: string;
@@ -6835,6 +6843,11 @@ export interface components {
                 memo_target: number;
                 /** Format: int64 */
                 kpi_alloc_mtk: number;
+            }[];
+            programme_rows: {
+                programme_code: string;
+                programme_name: string;
+                target_qty: components["schemas"]["Decimal3"];
             }[];
             month_row: null | {
                 /** Format: int64 */
@@ -6920,6 +6933,46 @@ export interface components {
             /** Format: int64 */
             achieved_bp: number | null;
         };
+        /** @description Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3 in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown, never applied to a memo. Contract 1.22.0. */
+        RouteStar: {
+            programme_id: components["schemas"]["Id"];
+            programme_code: string;
+            name_en: string;
+            name_bn: string | null;
+            month: components["schemas"]["Month"];
+            through_date: components["schemas"]["BusinessDate"];
+            as_of: components["schemas"]["Timestamp"];
+            sr_name: string | null;
+            sr_code: string | null;
+            route_name: string;
+            /** @description Working days of last month. */
+            lmwd: number;
+            /** @description Working days of the month. */
+            wd: number;
+            /** @description Elapsed working days under the single day-count convention (SkuProgress.dayCounts). */
+            ewd: number;
+            target: components["schemas"]["Decimal3"];
+            std: components["schemas"]["Decimal3"];
+            projection: components["schemas"]["Decimal3"] | null;
+            /**
+             * Format: int64
+             * @description Projection over target.
+             */
+            achievement_bp: number | null;
+            lms: components["schemas"]["Decimal3"];
+            lmads: components["schemas"]["Decimal3"] | null;
+            pads: components["schemas"]["Decimal3"] | null;
+            /** Format: int64 */
+            growth_bp: number | null;
+            status_en: string;
+            status_bn: string;
+            achieved_slab: string | null;
+            /** Format: int64 */
+            slab_amount_mtk: number | null;
+            projected_slab: string | null;
+            /** Format: int64 */
+            projected_amount_mtk: number | null;
+        };
         /** @description Per-route section of the bundle; replaced as a whole when the route is added to the user. */
         RouteSnapshot: {
             route_id: components["schemas"]["Id"];
@@ -6942,6 +6995,8 @@ export interface components {
             calendar?: components["schemas"]["RouteCalendar"] | null;
             /** @description Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.22.0, optional. */
             kpi?: components["schemas"]["RouteKpi"] | null;
+            /** @description Match Box Lifting Star snapshot (N-8); absent or null when the route has no target for an active superstar programme. Contract 1.22.0, optional. */
+            star?: components["schemas"]["RouteStar"] | null;
             /**
              * Format: int64
              * @description The route's assigned SR on the bundle date (`meta.valid_for_business_date`): the same SR that `GET /v1/routes` names for the route on that date (its first `assignees` entry with role SR, a cover assignment before the primary one); null when the route is vacant (no SR assigned; the TSO app shows "SR Not Set"). Sent in the TSO bundle so Assign Task works offline (lead rulings R-W-06, R-W-12); other bundles may omit it. Contract 1.10.0, optional.

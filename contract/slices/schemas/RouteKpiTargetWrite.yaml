@@ -23,3 +23,8 @@ RouteKpiTargetWrite:
       maxItems: 20000
       items:
         $ref: '#/components/schemas/KpiMonthTargetWriteRow'
+    programme_rows:
+      type: array
+      maxItems: 20000
+      items:
+        $ref: '#/components/schemas/KpiProgrammeTargetWriteRow'

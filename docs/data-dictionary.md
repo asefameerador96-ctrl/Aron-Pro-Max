@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 185 | 3057 |
+| `app` | 186 | 3065 |
 | `dw` | 76 | 1233 |
 
 ## Index
@@ -162,6 +162,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.route_kpi_month`](#approute_kpi_month) | table | backend:admin | ONLINE | master | none | Month card of the SR KPI dashboard per route: allocated KPI and the CPR (call productivity) target; optional row. |
 | [`app.route_monthly_target`](#approute_monthly_target) | table | backend:admin | ONLINE | master | none | Monthly sales target of a route for a SKU in base units (D-TARGET-MIN-01); one row per route, SKU and month, rewritten by a later upload. |
 | [`app.route_planned`](#approute_planned) | table | backend:masterdata | ONLINE | master | none | Planned visit days of a route, effective-dated. |
+| [`app.route_programme_target`](#approute_programme_target) | table | backend:admin | ONLINE | master | none | Monthly target of a route for a programme (Match Box Lifting Star, kind superstar) in the programme unit as an exact decimal. |
 | [`app.route_target_batch`](#approute_target_batch) | table | backend:admin | ONLINE | master | none | One committed route-target upload: the idempotency record (same uuid and content replays, other content conflicts). |
 | [`app.route_zone_history`](#approute_zone_history) | table | db | SERVER | master | none | One row is a period in which a route belonged to a zone; written by triggers on app.route. |
 | [`app.rubric`](#apprubric) | table | backend:masterdata | ONLINE | master | none | One row is a scoring rubric (joint call or retailer questionnaire); its current version is in rubric_version. |
@@ -4270,6 +4271,27 @@ Planned visit days of a route, effective-dated.
 Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (route_id) REFERENCES app.route(id)`
+
+## app.route_programme_target
+
+Monthly target of a route for a programme (Match Box Lifting Star, kind superstar) in the programme unit as an exact decimal.
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `programme_id` | bigint | not null |  | Programme (app.programme). |
+| `route_id` | bigint | not null |  | Route (app.route). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `target_qty` | numeric(16,3) | not null |  | Target in the programme unit (base units divided by programme.rules.unit_divisor), up to three decimals. |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (programme_id, route_id, month)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
 
 ## app.route_target_batch
 

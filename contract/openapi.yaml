@@ -10279,6 +10279,15 @@ components:
         kpi_alloc_mtk: { type: integer, format: int64, minimum: 0, maximum: 100000000000 }
         cpr_target_bp: { type: [integer, 'null'], minimum: 0, maximum: 10000 }
         cpr_alloc_mtk: { type: [integer, 'null'], format: int64, minimum: 0, maximum: 100000000000 }
+    KpiProgrammeTargetWriteRow:
+      type: object
+      required: [route_code, programme_code, month, target_qty]
+      additionalProperties: false
+      properties:
+        route_code: { type: string, minLength: 1, maxLength: 40 }
+        programme_code: { type: string, minLength: 1, maxLength: 40 }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        target_qty: { $ref: '#/components/schemas/Decimal3' }
     RouteKpiTargetWrite:
       type: object
       required: [batch_uuid, dry_run]
@@ -10295,14 +10304,19 @@ components:
           type: array
           maxItems: 20000
           items: { $ref: '#/components/schemas/KpiMonthTargetWriteRow' }
+        programme_rows:
+          type: array
+          maxItems: 20000
+          items: { $ref: '#/components/schemas/KpiProgrammeTargetWriteRow' }
     RouteKpiTargetPreview:
       type: object
-      required: [batch_uuid, brand_rows, month_rows, errors, errors_truncated]
+      required: [batch_uuid, brand_rows, month_rows, programme_rows, errors, errors_truncated]
       additionalProperties: false
       properties:
         batch_uuid: { $ref: '#/components/schemas/Uuid' }
         brand_rows: { type: integer, minimum: 0 }
         month_rows: { type: integer, minimum: 0 }
+        programme_rows: { type: integer, minimum: 0 }
         errors:
           type: array
           maxItems: 1000
@@ -10311,14 +10325,14 @@ components:
             required: [section, row, column, code]
             additionalProperties: false
             properties:
-              section: { type: string, enum: [brand_rows, month_rows] }
+              section: { type: string, enum: [brand_rows, month_rows, programme_rows] }
               row: { type: integer, minimum: 1 }
               column: { type: string, maxLength: 40 }
               code: { type: string, maxLength: 40 }
         errors_truncated: { type: boolean }
     RouteKpiTargetList:
       type: object
-      required: [route_code, month, brand_rows, month_row]
+      required: [route_code, month, brand_rows, month_row, programme_rows]
       additionalProperties: false
       properties:
         route_code: { type: string, maxLength: 40 }
@@ -10334,6 +10348,16 @@ components:
               brand_name: { type: string, maxLength: 120 }
               memo_target: { type: integer, minimum: 0 }
               kpi_alloc_mtk: { type: integer, format: int64, minimum: 0 }
+        programme_rows:
+          type: array
+          items:
+            type: object
+            required: [programme_code, programme_name, target_qty]
+            additionalProperties: false
+            properties:
+              programme_code: { type: string, maxLength: 40 }
+              programme_name: { type: string, maxLength: 120 }
+              target_qty: { $ref: '#/components/schemas/Decimal3' }
         month_row:
           oneOf:
             - type: 'null'
@@ -10414,6 +10438,39 @@ components:
         target_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
         alloc_mtk: { type: [integer, 'null'], format: int64, minimum: 0 }
         achieved_bp: { type: [integer, 'null'], format: int64, minimum: 0 }
+    RouteStar:
+      type: object
+      description: 'Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3 in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown, never applied to a memo. Contract 1.22.0.'
+      required: [programme_id, programme_code, name_en, name_bn, month, through_date, as_of, sr_name, sr_code, route_name, lmwd, wd, ewd, target, std, projection, achievement_bp, lms, lmads, pads, growth_bp, status_en, status_bn, achieved_slab, slab_amount_mtk, projected_slab, projected_amount_mtk]
+      additionalProperties: false
+      properties:
+        programme_id: { $ref: '#/components/schemas/Id' }
+        programme_code: { type: string, maxLength: 40 }
+        name_en: { type: string, maxLength: 120 }
+        name_bn: { type: [string, 'null'], maxLength: 120 }
+        month: { $ref: '#/components/schemas/Month' }
+        through_date: { $ref: '#/components/schemas/BusinessDate' }
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        sr_name: { type: [string, 'null'], maxLength: 120 }
+        sr_code: { type: [string, 'null'], maxLength: 60 }
+        route_name: { type: string, maxLength: 120 }
+        lmwd: { type: integer, minimum: 0, maximum: 31, description: Working days of last month. }
+        wd: { type: integer, minimum: 0, maximum: 31, description: Working days of the month. }
+        ewd: { type: integer, minimum: 0, maximum: 31, description: Elapsed working days under the single day-count convention (SkuProgress.dayCounts). }
+        target: { $ref: '#/components/schemas/Decimal3' }
+        std: { $ref: '#/components/schemas/Decimal3' }
+        projection: { oneOf: [{ $ref: '#/components/schemas/Decimal3' }, { type: 'null' }] }
+        achievement_bp: { type: [integer, 'null'], format: int64, minimum: 0, description: Projection over target. }
+        lms: { $ref: '#/components/schemas/Decimal3' }
+        lmads: { oneOf: [{ $ref: '#/components/schemas/Decimal3' }, { type: 'null' }] }
+        pads: { oneOf: [{ $ref: '#/components/schemas/Decimal3' }, { type: 'null' }] }
+        growth_bp: { type: [integer, 'null'], format: int64 }
+        status_en: { type: string, maxLength: 120 }
+        status_bn: { type: string, maxLength: 120 }
+        achieved_slab: { type: [string, 'null'], maxLength: 60 }
+        slab_amount_mtk: { type: [integer, 'null'], format: int64, minimum: 0 }
+        projected_slab: { type: [string, 'null'], maxLength: 60 }
+        projected_amount_mtk: { type: [integer, 'null'], format: int64, minimum: 0 }
     RouteSnapshot:
       type: object
       description: Per-route section of the bundle; replaced as a whole when the route is added to the user.
@@ -10458,6 +10515,11 @@ components:
             - { $ref: '#/components/schemas/RouteKpi' }
             - { type: 'null' }
           description: 'Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.22.0, optional.'
+        star:
+          oneOf:
+            - { $ref: '#/components/schemas/RouteStar' }
+            - { type: 'null' }
+          description: 'Match Box Lifting Star snapshot (N-8); absent or null when the route has no target for an active superstar programme. Contract 1.22.0, optional.'
         sr_user_id:
           type: [integer, 'null']
           format: int64

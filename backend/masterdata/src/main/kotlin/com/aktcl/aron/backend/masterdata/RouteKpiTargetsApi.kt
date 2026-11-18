@@ -54,6 +54,7 @@ fun Route.routeKpiTargetRoutes(d: RouteTargetDeps) {
 
 private class BrandRow(val i: Int, val route: String?, val brand: String?, val month: LocalDate?, val memo: Long?, val alloc: Long?)
 private class MonthRow(val i: Int, val route: String?, val month: LocalDate?, val alloc: Long?, val cprBp: Long?, val cprAlloc: Long?, val cprBpSet: Boolean, val cprAllocSet: Boolean)
+private class ProgRow(val i: Int, val route: String?, val programme: String?, val month: LocalDate?, val qty: java.math.BigDecimal?)
 private class KErr(val section: String, val index: Int, val member: String, val code: String)
 
 private fun kText(o: JsonObject, k: String): String? = (o[k] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() && it.length <= 40 && '\u0000' !in it }
@@ -74,10 +75,18 @@ private fun parseMonth(arr: JsonArray) = arr.mapIndexed { i, el ->
         o["cpr_target_bp"].let { it != null && it !is JsonNull }, o["cpr_alloc_mtk"].let { it != null && it !is JsonNull })
 }
 
-private class KChecked(val errors: List<KErr>, val routeIds: Map<String, Long>, val brandIds: Map<String, Long>)
+private fun parseProg(arr: JsonArray) = arr.mapIndexed { i, el ->
+    val o = el as? JsonObject ?: bad("body.programme_rows/$i", "invalid_type")
+    o.keys.firstOrNull { it !in setOf("route_code", "programme_code", "month", "target_qty") }?.let { bad("body.programme_rows/$i/$it", "unknown_member") }
+    // An exact decimal string with up to three fraction digits ("20.000"), never a JSON number (no float on the wire).
+    val q = (o["target_qty"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.matches(Regex("^(0|[1-9][0-9]{0,11})(\\.[0-9]{1,3})?$")) }?.let { java.math.BigDecimal(it) }
+    ProgRow(i, kText(o, "route_code"), kText(o, "programme_code"), kMonth(o), q)
+}
 
-private fun kCheck(h: Handle, brand: List<BrandRow>, month: List<MonthRow>, current: LocalDate): KChecked {
-    val routeCodes = (brand.mapNotNull { it.route } + month.mapNotNull { it.route }).distinct()
+private class KChecked(val errors: List<KErr>, val routeIds: Map<String, Long>, val brandIds: Map<String, Long>, val programmeIds: Map<String, Long> = emptyMap())
+
+private fun kCheck(h: Handle, brand: List<BrandRow>, month: List<MonthRow>, prog: List<ProgRow>, current: LocalDate): KChecked {
+    val routeCodes = (brand.mapNotNull { it.route } + month.mapNotNull { it.route } + prog.mapNotNull { it.route }).distinct()
     val routes = HashMap<String, Pair<Long, String>>()
     h.createQuery("SELECT id, code, kind FROM app.route WHERE code = ANY(:c) AND status = 'active'").bindArray("c", String::class.java, routeCodes)
         .map { rs, _ -> rs.getString("code") to (rs.getLong("id") to rs.getString("kind")) }.list().forEach { routes[it.first] = it.second }
@@ -120,33 +129,45 @@ private fun kCheck(h: Handle, brand: List<BrandRow>, month: List<MonthRow>, curr
         if (r.cprAllocSet && r.cprAlloc == null) errors += KErr("month_rows", r.i, "cpr_alloc_mtk", "invalid_amount")
         if (errors.size == n0 && !seenM.add(r.route!! to r.month!!)) errors += KErr("month_rows", r.i, "route_code", "duplicate_row")
     }
-    return KChecked(errors, routes.mapValues { it.value.first }, brands)
+    val programmes = HashMap<String, Long>()
+    h.createQuery("SELECT id, code FROM app.programme WHERE kind = 'superstar' AND status = 'active' AND code = ANY(:c)").bindArray("c", String::class.java, prog.mapNotNull { it.programme }.distinct())
+        .map { rs, _ -> rs.getString(2) to rs.getLong(1) }.list().forEach { programmes[it.first] = it.second }
+    val seenP = HashSet<Triple<String, String, LocalDate>>()
+    for (r in prog) {
+        val n0 = errors.size
+        route("programme_rows", r.i, r.route); monthOk("programme_rows", r.i, r.month)
+        if (r.programme == null || programmes[r.programme] == null) errors += KErr("programme_rows", r.i, "programme_code", "unknown_programme")
+        if (r.qty == null) errors += KErr("programme_rows", r.i, "target_qty", "invalid_quantity")
+        if (errors.size == n0 && !seenP.add(Triple(r.route!!, r.programme!!, r.month!!))) errors += KErr("programme_rows", r.i, "route_code", "duplicate_row")
+    }
+    return KChecked(errors, routes.mapValues { it.value.first }, brands, programmes)
 }
 
-private fun kDigest(brand: List<BrandRow>, month: List<MonthRow>): ByteArray {
+private fun kDigest(brand: List<BrandRow>, month: List<MonthRow>, prog: List<ProgRow>): ByteArray {
     val md = MessageDigest.getInstance("SHA-256")
-    (brand.map { "B|${it.route}|${it.brand}|${it.month}|${it.memo}|${it.alloc}" } + month.map { "M|${it.route}|${it.month}|${it.alloc}|${it.cprBp}|${it.cprAlloc}" }).sorted().forEach { md.update(it.toByteArray()); md.update(10) }
+    (brand.map { "B|${it.route}|${it.brand}|${it.month}|${it.memo}|${it.alloc}" } + month.map { "M|${it.route}|${it.month}|${it.alloc}|${it.cprBp}|${it.cprAlloc}" } + prog.map { "P|${it.route}|${it.programme}|${it.month}|${it.qty?.toPlainString()}" }).sorted().forEach { md.update(it.toByteArray()); md.update(10) }
     return md.digest()
 }
 
-private fun kReady(h: Handle) = h.createQuery("SELECT to_regclass('app.route_brand_kpi_target') IS NOT NULL AND to_regclass('app.route_kpi_month') IS NOT NULL AND to_regclass('app.route_target_batch') IS NOT NULL").mapTo(Boolean::class.java).one()
+private fun kReady(h: Handle) = h.createQuery("SELECT to_regclass('app.route_brand_kpi_target') IS NOT NULL AND to_regclass('app.route_kpi_month') IS NOT NULL AND to_regclass('app.route_programme_target') IS NOT NULL AND to_regclass('app.route_target_batch') IS NOT NULL").mapTo(Boolean::class.java).one()
 
 private suspend fun kpiPut(call: ApplicationCall, d: RouteTargetDeps): JsonElement {
     val p = call.principal
     if (p.role !in KPI_WRITERS) throw AdminSupport.forbidden("KPI targets are written by ADMIN and SUPERADMIN")
     val body = call.receiveStrict(JsonObject.serializer(), KPI_MAX_BODY)
-    body.keys.firstOrNull { it !in setOf("batch_uuid", "brand_rows", "month_rows", "dry_run", "change_reason") }?.let { bad("body.$it", "unknown_member") }
+    body.keys.firstOrNull { it !in setOf("batch_uuid", "brand_rows", "month_rows", "programme_rows", "dry_run", "change_reason") }?.let { bad("body.$it", "unknown_member") }
     val uuid = AdminSupport.uuid((body["batch_uuid"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: bad("body.batch_uuid", "required"), "body.batch_uuid")
     val dry = (body["dry_run"] as? JsonPrimitive)?.takeIf { !it.isString }?.content.let { when (it) { "true" -> true; "false" -> false; else -> bad("body.dry_run", "required") } }
     val brand = parseBrand(body["brand_rows"] as? JsonArray ?: JsonArray(emptyList()))
     val month = parseMonth(body["month_rows"] as? JsonArray ?: JsonArray(emptyList()))
-    if (brand.size + month.size !in 1..KPI_MAX_ROWS) bad("body.brand_rows", "length")
+    val prog = parseProg(body["programme_rows"] as? JsonArray ?: JsonArray(emptyList()))
+    if (brand.size + month.size + prog.size !in 1..KPI_MAX_ROWS) bad("body.brand_rows", "length")
     val current = AdminSupport.today(d.clock).withDayOfMonth(1)
     if (dry) return d.db.jdbi.withHandle<JsonElement, Exception> { h ->
         if (!kReady(h)) throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "KPI targets are not deployed in this environment")
-        val c = kCheck(h, brand, month, current)
+        val c = kCheck(h, brand, month, prog, current)
         buildJsonObject {
-            put("batch_uuid", uuid.toString()); put("brand_rows", brand.size); put("month_rows", month.size)
+            put("batch_uuid", uuid.toString()); put("brand_rows", brand.size); put("month_rows", month.size); put("programme_rows", prog.size)
             put("errors", buildJsonArray { c.errors.take(KPI_MAX_ERRORS).forEach { e -> add(buildJsonObject { put("section", e.section); put("row", e.index + 1); put("column", e.member); put("code", e.code) }) } })
             put("errors_truncated", c.errors.size > KPI_MAX_ERRORS)
         }
@@ -157,16 +178,16 @@ private suspend fun kpiPut(call: ApplicationCall, d: RouteTargetDeps): JsonEleme
         d.db.jdbi.inTransaction<JsonElement, Exception> { h ->
             if (!kReady(h)) throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "KPI targets are not deployed in this environment")
             h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended('route-target-upload', 0))").mapTo(String::class.java).findOne()
-            val sha = kDigest(brand, month)
+            val sha = kDigest(brand, month, prog)
             h.createQuery("SELECT content_sha256, row_count, committed_by FROM app.route_target_batch WHERE batch_uuid = :u").bind("u", uuid)
                 .map { rs, _ -> Triple(rs.getBytes(1), rs.getInt(2), rs.getLong(3)) }.findOne().orElse(null)?.let { (stored, n, by) ->
                     if (!stored.contentEquals(sha) || by != p.userId) throw ApiProblem(ProblemCode.ERR_CONFLICT, "batch_uuid was already used for a different batch")
                     return@inTransaction buildJsonObject { put("batch_uuid", uuid.toString()); put("rows", n); put("replayed", true) }
                 }
-            val c = kCheck(h, brand, month, current)
+            val c = kCheck(h, brand, month, prog, current)
             if (c.errors.isNotEmpty()) throw ApiProblem(ProblemCode.ERR_VALIDATION, "${c.errors.size} row errors", errors = c.errors.take(KPI_MAX_ERRORS).map { e -> FieldError("body.${e.section}/${e.index}/${e.member}", e.code) })
             h.createUpdate("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES (:u, :h, :n, :by)")
-                .bind("u", uuid).bind("h", sha).bind("n", brand.size + month.size).bind("by", p.userId).execute()
+                .bind("u", uuid).bind("h", sha).bind("n", brand.size + month.size + prog.size).bind("by", p.userId).execute()
             val bb = h.prepareBatch("INSERT INTO app.route_brand_kpi_target (route_id, brand_id, month, memo_target, kpi_alloc_mtk, batch_uuid, updated_by) VALUES (:r, :b, :m, :t, :a, :u, :by) " +
                 "ON CONFLICT (route_id, brand_id, month) DO UPDATE SET memo_target = EXCLUDED.memo_target, kpi_alloc_mtk = EXCLUDED.kpi_alloc_mtk, batch_uuid = EXCLUDED.batch_uuid, updated_by = EXCLUDED.updated_by, updated_at = now()")
             brand.forEach { r -> bb.bind("r", c.routeIds.getValue(r.route!!)).bind("b", c.brandIds.getValue(r.brand!!)).bind("m", r.month).bind("t", r.memo!!.toInt()).bind("a", r.alloc!!).bind("u", uuid).bind("by", p.userId).add() }
@@ -175,10 +196,14 @@ private suspend fun kpiPut(call: ApplicationCall, d: RouteTargetDeps): JsonEleme
                 "ON CONFLICT (route_id, month) DO UPDATE SET kpi_alloc_mtk = EXCLUDED.kpi_alloc_mtk, cpr_target_bp = EXCLUDED.cpr_target_bp, cpr_alloc_mtk = EXCLUDED.cpr_alloc_mtk, batch_uuid = EXCLUDED.batch_uuid, updated_by = EXCLUDED.updated_by, updated_at = now()")
             month.forEach { r -> mb.bind("r", c.routeIds.getValue(r.route!!)).bind("m", r.month).bind("a", r.alloc!!).bind("c", r.cprBp?.toInt()).bind("ca", r.cprAlloc).bind("u", uuid).bind("by", p.userId).add() }
             if (month.isNotEmpty()) mb.execute()
+            val pb = h.prepareBatch("INSERT INTO app.route_programme_target (programme_id, route_id, month, target_qty, batch_uuid, updated_by) VALUES (:p, :r, :m, :q, :u, :by) " +
+                "ON CONFLICT (programme_id, route_id, month) DO UPDATE SET target_qty = EXCLUDED.target_qty, batch_uuid = EXCLUDED.batch_uuid, updated_by = EXCLUDED.updated_by, updated_at = now()")
+            prog.forEach { r -> pb.bind("p", c.programmeIds.getValue(r.programme!!)).bind("r", c.routeIds.getValue(r.route!!)).bind("m", r.month).bind("q", r.qty!!).bind("u", uuid).bind("by", p.userId).add() }
+            if (prog.isNotEmpty()) pb.execute()
             AuditWriter.write(h, p, "route_kpi_target", uuid.toString(), "upload", null, buildJsonObject {
-                put("brand_rows", brand.size); put("month_rows", month.size); put("total_kpi_alloc_mtk", brand.sumOf { it.alloc!! } + month.sumOf { it.alloc!! })
+                put("brand_rows", brand.size); put("month_rows", month.size); put("programme_rows", prog.size); put("total_kpi_alloc_mtk", brand.sumOf { it.alloc!! } + month.sumOf { it.alloc!! })
             }, reason, call.requestId)
-            buildJsonObject { put("batch_uuid", uuid.toString()); put("rows", brand.size + month.size); put("replayed", false) }
+            buildJsonObject { put("batch_uuid", uuid.toString()); put("rows", brand.size + month.size + prog.size); put("replayed", false) }
         }
     }
 }
@@ -195,8 +220,11 @@ private fun kpiList(call: ApplicationCall, d: RouteTargetDeps): JsonElement {
             .bind("c", routeCode).bind("m", month).map { rs, _ -> listOf(rs.getString(1), rs.getString(2), rs.getLong(3), rs.getLong(4)) }.list()
         val m = h.createQuery("SELECT t.kpi_alloc_mtk, t.cpr_target_bp, t.cpr_alloc_mtk FROM app.route_kpi_month t JOIN app.route r ON r.id = t.route_id WHERE r.code = :c AND t.month = :m")
             .bind("c", routeCode).bind("m", month).map { rs, _ -> Triple(rs.getLong(1), rs.getObject(2) as Int?, rs.getObject(3) as Long?) }.findOne().orElse(null)
+        val progs = h.createQuery("SELECT g.code, g.name_en, t.target_qty FROM app.route_programme_target t JOIN app.route r ON r.id = t.route_id JOIN app.programme g ON g.id = t.programme_id WHERE r.code = :c AND t.month = :m ORDER BY g.code")
+            .bind("c", routeCode).bind("m", month).map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getBigDecimal(3).setScale(3).toPlainString()) }.list()
         buildJsonObject {
             put("route_code", routeCode); put("month", YearMonth.from(month).toString())
+            put("programme_rows", buildJsonArray { progs.forEach { g -> add(buildJsonObject { put("programme_code", g.first); put("programme_name", g.second); put("target_qty", g.third) }) } })
             put("brand_rows", buildJsonArray { brands.forEach { b -> add(buildJsonObject { put("brand_code", b[0] as String); put("brand_name", b[1] as String); put("memo_target", b[2] as Long); put("kpi_alloc_mtk", b[3] as Long) }) } })
             if (m == null) put("month_row", JsonNull) else put("month_row", buildJsonObject {
                 put("kpi_alloc_mtk", m.first); put("cpr_target_bp", m.second?.let { JsonPrimitive(it) } ?: JsonNull); put("cpr_alloc_mtk", m.third?.let { JsonPrimitive(it) } ?: JsonNull)

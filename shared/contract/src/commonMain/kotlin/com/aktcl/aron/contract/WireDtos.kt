@@ -218,6 +218,7 @@ data class RouteSnapshot(
     @SerialName("day_state") val dayState: RouteDayState,
     @SerialName("calendar") val calendar: RouteCalendar? = null,
     @SerialName("kpi") val kpi: JsonElement? = null,
+    @SerialName("star") val star: JsonElement? = null,
     @SerialName("sr_user_id") val srUserId: Long? = null,
     @SerialName("sr_name") val srName: String? = null,
 )

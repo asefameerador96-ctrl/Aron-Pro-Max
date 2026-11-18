@@ -79,6 +79,12 @@ RouteSnapshot:
       - type: 'null'
       description: Brand-wise KPI for screens 60 and 61 (N-5). Null or absent for zone bundles. Contract 1.22.0,
         optional.
+    star:
+      oneOf:
+      - $ref: '#/components/schemas/RouteStar'
+      - type: 'null'
+      description: Match Box Lifting Star snapshot (N-8); absent or null when the route has no target for an active
+        superstar programme. Contract 1.22.0, optional.
     sr_user_id:
       type:
       - integer

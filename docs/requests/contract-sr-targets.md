@@ -32,5 +32,14 @@ A server figure never contains the bundle date. The phone adds, de-duplicated by
 
 Same no-double-count rule as N-2: figures are through `through_date` (the bundle date minus one day); the phone adds today's memos by UUID.
 
-## Later slices (not built yet)
-N-8 `RouteSnapshot.star`, N-3 `RouteSnapshot.campaigns`; each additive and optional, written here when built.
+## Slice N-8 (built): Match Box Lifting Star (screen 62)
+
+| Where | Change | Notes |
+|---|---|---|
+| `RouteSnapshot.star` (`RouteStar`, optional, absent or null when the route has no target for an active superstar programme) | New | `programme_id`, `programme_code`, `name_en`, `name_bn`, `month`, `through_date`, `as_of`, `sr_name`, `sr_code` (username), `route_name`, `lmwd`, `wd`, `ewd`, `target`, `std`, `projection`, `achievement_bp`, `lms`, `lmads`, `pads` (Decimal3 strings, programme unit), `growth_bp` (signed bp), `status_en`, `status_bn`, `achieved_slab`, `slab_amount_mtk`, `projected_slab`, `projected_amount_mtk`. Nullable where a divisor is 0 or no slab is reached. Money is integer milli-taka and is shown, never applied to a memo. |
+| `PUT /v1/admin/route-kpi-targets` | New optional `programme_rows` (route_code, programme_code, month, target_qty Decimal3 string) | Active `superstar` programmes only; the response and the read list carry `programme_rows`. Slabs, status texts, `sku_category`, `sku_ids`, `unit_divisor` live in `app.programme.rules` as flat scalar keys (see D-TKPI-07), edited in the existing programme admin. |
+
+Phone recomputation: the same ratios are `shared/rules` `StarProgress` (PADS = STD/EWD, Projection = PADS x WD, Achievement = Projection/Target, LMADS = LMS/LMWD, Growth = PADS/LMADS - 1); the phone may recompute with its local memos on top of `std` only when it keeps the same exact rules; the server snapshot is the oracle. `std` and `lms` are in the programme unit (base units divided by the programme's unit divisor); the phone must add its local sold base quantity divided by the same divisor, which the snapshot does not send (it is in `programme.rules.unit_divisor`; the phone lane can ask for it as a member if it recomputes).
+
+## Later slice (not built yet)
+N-3 `RouteSnapshot.campaigns`, additive and optional, written here when built.

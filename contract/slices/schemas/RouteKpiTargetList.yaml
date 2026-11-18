@@ -5,6 +5,7 @@ RouteKpiTargetList:
   - month
   - brand_rows
   - month_row
+  - programme_rows
   additionalProperties: false
   properties:
     route_code:
@@ -36,6 +37,24 @@ RouteKpiTargetList:
             type: integer
             format: int64
             minimum: 0
+    programme_rows:
+      type: array
+      items:
+        type: object
+        required:
+        - programme_code
+        - programme_name
+        - target_qty
+        additionalProperties: false
+        properties:
+          programme_code:
+            type: string
+            maxLength: 40
+          programme_name:
+            type: string
+            maxLength: 120
+          target_qty:
+            $ref: '#/components/schemas/Decimal3'
     month_row:
       oneOf:
       - type: 'null'

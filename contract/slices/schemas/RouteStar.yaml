@@ -1,0 +1,141 @@
+RouteStar:
+  type: object
+  description: Match Box Lifting Star snapshot of the SR for the Dhaka month (screen 62). Quantities are Decimal3
+    in the programme unit (base units divided by the programme unit divisor); percentages are basis points (growth
+    signed); money is integer milli-taka. Server figures through `through_date` (never today). The amounts are shown,
+    never applied to a memo. Contract 1.22.0.
+  required:
+  - programme_id
+  - programme_code
+  - name_en
+  - name_bn
+  - month
+  - through_date
+  - as_of
+  - sr_name
+  - sr_code
+  - route_name
+  - lmwd
+  - wd
+  - ewd
+  - target
+  - std
+  - projection
+  - achievement_bp
+  - lms
+  - lmads
+  - pads
+  - growth_bp
+  - status_en
+  - status_bn
+  - achieved_slab
+  - slab_amount_mtk
+  - projected_slab
+  - projected_amount_mtk
+  additionalProperties: false
+  properties:
+    programme_id:
+      $ref: '#/components/schemas/Id'
+    programme_code:
+      type: string
+      maxLength: 40
+    name_en:
+      type: string
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    month:
+      $ref: '#/components/schemas/Month'
+    through_date:
+      $ref: '#/components/schemas/BusinessDate'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    sr_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    sr_code:
+      type:
+      - string
+      - 'null'
+      maxLength: 60
+    route_name:
+      type: string
+      maxLength: 120
+    lmwd:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: Working days of last month.
+    wd:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: Working days of the month.
+    ewd:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: Elapsed working days under the single day-count convention (SkuProgress.dayCounts).
+    target:
+      $ref: '#/components/schemas/Decimal3'
+    std:
+      $ref: '#/components/schemas/Decimal3'
+    projection:
+      oneOf:
+      - $ref: '#/components/schemas/Decimal3'
+      - type: 'null'
+    achievement_bp:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+      description: Projection over target.
+    lms:
+      $ref: '#/components/schemas/Decimal3'
+    lmads:
+      oneOf:
+      - $ref: '#/components/schemas/Decimal3'
+      - type: 'null'
+    pads:
+      oneOf:
+      - $ref: '#/components/schemas/Decimal3'
+      - type: 'null'
+    growth_bp:
+      type:
+      - integer
+      - 'null'
+      format: int64
+    status_en:
+      type: string
+      maxLength: 120
+    status_bn:
+      type: string
+      maxLength: 120
+    achieved_slab:
+      type:
+      - string
+      - 'null'
+      maxLength: 60
+    slab_amount_mtk:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    projected_slab:
+      type:
+      - string
+      - 'null'
+      maxLength: 60
+    projected_amount_mtk:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0

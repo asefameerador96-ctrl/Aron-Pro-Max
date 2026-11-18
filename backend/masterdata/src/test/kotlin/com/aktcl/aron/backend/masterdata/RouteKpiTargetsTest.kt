@@ -88,6 +88,24 @@ class RouteKpiTargetsTest {
     }
 
     @Test
+    fun programmeTargetsAreExactDecimalsForAnActiveSuperstarProgramme() = env.app {
+        val admin = env.tok("admin1001"); val mo = next.plusMonths(3); val u = UUID.randomUUID()
+        env.exec("INSERT INTO app.programme (kind, code, name_en, active_from, active_to, status) VALUES ('superstar', 'MBLS-T', 'Match Box Lifting Star', date '$mo-01', date '$mo-28', 'active'), ('astha', 'AST-T', 'Astha', date '$mo-01', date '$mo-28', 'active')")
+        fun p(route: String, code: String, month: Any, qty: String) = """{"route_code":"$route","programme_code":"$code","month":"$month","target_qty":$qty}"""
+        fun pbody(rows: List<String>, dry: Boolean, id: UUID = UUID.randomUUID()) = """{"batch_uuid":"$id","programme_rows":[${rows.joinToString(",")}],"dry_run":$dry${if (!dry) ""","change_reason":"$reason"""" else ""}}"""
+        val pv = sendA3(HttpMethod.Put, "/v1/admin/route-kpi-targets", admin, pbody(listOf(p("MIR-SR-D", "MBLS-T", mo, "\"20.000\""), p("MIR-SR-D", "NOPE", mo, "\"1\""), p("MIR-SR-D", "AST-T", mo, "\"1\""), p("MIR-SR-3F", "MBLS-T", mo, "20.5"), p("MIR-SR-3F", "MBLS-T", mo, "\"1.2345\"")), true))
+        assertEquals(HttpStatusCode.OK, pv.status, pv.bodyAsText())
+        val errs = pv.objA3().getValue("errors").jsonArray.map { it.jsonObject }.map { it.strA3("row") + it.strA3("column") + it.strA3("code") }
+        assertEquals(listOf("2programme_codeunknown_programme", "3programme_codeunknown_programme", "4target_qtyinvalid_quantity", "5target_qtyinvalid_quantity"), errs, "a JSON number and a fourth decimal are not quantities; only an active superstar programme is a target")
+        val c = sendA3(HttpMethod.Put, "/v1/admin/route-kpi-targets", admin, pbody(listOf(p("MIR-SR-D", "MBLS-T", mo, "\"20.000\""), p("MIR-SR-3F", "MBLS-T", mo, "\"7.5\"")), false, u))
+        assertEquals(HttpStatusCode.OK, c.status, c.bodyAsText()); assertEquals("2", c.objA3().strA3("rows"))
+        assertEquals(1, env.count("SELECT count(*) FROM app.route_programme_target t JOIN app.route r ON r.id = t.route_id WHERE r.code = 'MIR-SR-3F' AND t.target_qty = 7.500 AND t.batch_uuid = '$u'"))
+        assertEquals("true", sendA3(HttpMethod.Put, "/v1/admin/route-kpi-targets", admin, pbody(listOf(p("MIR-SR-3F", "MBLS-T", mo, "\"7.5\""), p("MIR-SR-D", "MBLS-T", mo, "\"20.000\"")), false, u)).objA3().strA3("replayed"))
+        val l = sendA3(HttpMethod.Get, "/v1/admin/route-kpi-targets?route_code=MIR-SR-D&month=$mo", admin).objA3().getValue("programme_rows").jsonArray.single().jsonObject
+        assertEquals("20.000", l.strA3("target_qty")); assertEquals("MBLS-T", l.strA3("programme_code"))
+    }
+
+    @Test
     fun aBadRowRefusesTheWholeBatchAndTheRoleMatrixHolds() = env.app {
         val admin = env.tok("admin1001"); val u = UUID.randomUUID()
         val before = env.count("SELECT count(*) FROM app.route_brand_kpi_target")

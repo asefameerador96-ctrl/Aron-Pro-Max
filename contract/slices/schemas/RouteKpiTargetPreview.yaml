@@ -4,6 +4,7 @@ RouteKpiTargetPreview:
   - batch_uuid
   - brand_rows
   - month_rows
+  - programme_rows
   - errors
   - errors_truncated
   additionalProperties: false
@@ -14,6 +15,9 @@ RouteKpiTargetPreview:
       type: integer
       minimum: 0
     month_rows:
+      type: integer
+      minimum: 0
+    programme_rows:
       type: integer
       minimum: 0
     errors:
@@ -33,6 +37,7 @@ RouteKpiTargetPreview:
             enum:
             - brand_rows
             - month_rows
+            - programme_rows
           row:
             type: integer
             minimum: 1
