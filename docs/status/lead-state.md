@@ -159,3 +159,9 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Update 09:31 UTC: midday check-in clean; waiting on Lane A's amended train 1 for train 92 (real deploy with V0152/V0153 and the scanner fix); Lane B (web) is created after train 92 lands.
 - Update 10:38 UTC: train 92 pushed to INT 34bef94a1 (Discount portal schema V0152/V0153, contract 1.12.0, scanner fix); INT ci 43004917350 and the REAL deploy are being watched. Lane B portal-discount-web session_014mnioNssb2Bfo65r8Z4CD6 started 10:37 on lane/portal-discount-web; Lane A on train 2 (Ktor admin API). Active set: Lane A, Lane B, integrator 23.
 - Update 2026-11-12 06:34 UTC: morning report posted; wave 8 build lanes opened (portal-loyalty-api L-A session_014mnioKucgAJ2pqfNM2ubNg, portal-loyalty-web L-B session_014mnioNcrD3k4NXuajNWoff); D-LEAD-CONTRACT-113-01 appended on the docs branch; integrator 23 at 414 k context is recycled to integrator 24 at the next GO; dev f46f8047f, APK 2002; owner items unchanged.
+
+
+### 2026-11-18 04:52 update
+- android-gates step 5 (abfa1ef4) PASS on both lenses, 0 blocking; review in docs/reviews/android-gates-step5-2026-11-18.md.
+- Successor lane A-GATE7 started (session_014mnioM2HobwPFoqAjUSGyu) for the closing round: 10 lows and the missing tests. Branch still lands as one unit after train 117 is live, then a final Opus pass on the full diff.
+- Train 116a lane ci 44238626124: 16 of 17 jobs green at 04:51, one still running; integrator pushes on green.
