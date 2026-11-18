@@ -88,7 +88,7 @@ data class ZoneFinalDto(val zone_id: Long, val final_submitted: Boolean)
 data class QuarantineItemDto(
     val quarantine_id: Long, val client_uuid: String, val type: String, val code: String, val status: String, val user_id: Long, val device_id: Long?, val route_id: Long?,
     val business_date: String, val received_at: String, val payload: JsonElement, val detail: String?, val resolved_by_user_id: Long?, val resolved_at: String?, val resolution_note: String?,
-    /** Contract 1.20.0: an OPEN item that waits for another parent (its first parent was accepted); `code` stays the first parent's code, this says it is not the item's own state. Read from the typed columns of V0207. */
+    /** Contract 1.20.0: an OPEN item that waits for another parent (its first parent was accepted); `code` stays the first parent's code, this says it is not the item's own state. Read from the typed columns of V0204. */
     val waiting: Boolean = false, val waits_for_uuid: String? = null, val waits_for_refused: Boolean = false,
 )
 

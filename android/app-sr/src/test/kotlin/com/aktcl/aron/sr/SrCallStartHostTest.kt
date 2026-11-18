@@ -104,7 +104,8 @@ class SrCallStartHostTest {
             for ((back, qty) in listOf(7L to 3L, 3L to 5L)) {
                 val m = f.meta(v.routeId).let { it.copy(businessDate = today.minusDays(back).toString()) }
                 val memo = ClientIds.newUuid()
-                f.day.capture.recordSale(SaleCapture(
+                // history of EARLIER days is seeded through an ungated repository (those days had their own check-ins; the gate is for today's writes)
+                com.aktcl.aron.core.database.repo.CaptureRepository(f.db) { m.capturedAt }.recordSale(SaleCapture(
                     MemoEntity(memo, m, v.visitUuid, v.outletId, "sr334001-s4-" + memo.take(4), "sale", m.capturedAt, m.businessDate, "outlet", 28_000L * qty, 0, 0, 0, 0, 28_000L * qty, 28_000L * qty, 0, false, null, 1, 0, 0),
                     listOf(MemoLineEntity(ClientIds.newUuid(), m, memo, 1, 105, "sale", qty, "dozen", 1, qty, "outlet", "2026-09-01", 28_000, 1, 28_000L * qty)),
                 ))

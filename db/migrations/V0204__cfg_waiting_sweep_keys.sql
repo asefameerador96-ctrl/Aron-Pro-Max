@@ -1,4 +1,4 @@
--- V0204 (PROVISIONAL number, lead 2026-11-18): the waiting-item sweep (D-LOY-API-29, -30).
+-- V0204 (final number, lead 2026-11-18): the waiting-item sweep (D-LOY-API-29, -30).
 -- (1) the three cfg keys that stop or slow the sweep without a deploy:
 --   cfg.sync.waiting_sweep_enabled    bool, default true  (off = the API process runs no pass)
 --   cfg.sync.waiting_sweep_interval_s int, default 60, 10..3600 (seconds between the end of one pass and the start of the next)

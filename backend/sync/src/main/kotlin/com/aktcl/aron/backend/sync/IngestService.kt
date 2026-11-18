@@ -633,7 +633,8 @@ class IngestService(
                 failed++
                 log.warn("waiting-item sweep failed for one item quarantine_id=$id: ${e.javaClass.simpleName}")
                 // a poison item must not keep the head of the order: stamp it in its own small transaction (the failed one rolled back)
-                runCatching { db.jdbi.inTransaction<Int, Exception> { h -> h.execute("SET LOCAL lock_timeout = '2s'"); h.createUpdate("UPDATE app.sync_quarantine SET waiting_checked_at = now() WHERE id = :id AND status = 'open' AND waiting_since IS NOT NULL").bind("id", id).execute() } }   // a short lock timeout: a reviewer holding the row must not stall the sweep thread
+                runCatching { db.jdbi.inTransaction<Int, Exception> { h -> h.execute("SET LOCAL lock_timeout = '2s'"); h.createUpdate("UPDATE app.sync_quarantine SET waiting_checked_at = now() WHERE id = :id AND status = 'open' AND waiting_since IS NOT NULL").bind("id", id).execute() } }
+                    .onFailure { log.warn("waiting-item sweep: could not stamp quarantine_id=$id: ${it.javaClass.simpleName}") }   // a short lock timeout: a reviewer holding the row must not stall the sweep thread (one log line, item id and exception class only)
             }
         }
         val skipped = (total - rows.size).coerceAtLeast(0)

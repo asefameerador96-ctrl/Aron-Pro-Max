@@ -246,4 +246,14 @@ class SrDayLockSaleTest {
         assertTrue(runBlocking { db.captureDao().visitSkipsOn(date) }.isEmpty())
         assertEquals(0, runBlocking { db.outboxDao().unsentCount() })
     }
+
+    /** Round-3 low: a skip the check-in gate refuses is no longer swallowed in silence: the caller is told why, so it can refresh the gate the rep sees. */
+    @Test fun aSkipTheCheckInGateRefusesTellsTheCallerWhy() {
+        var told: com.aktcl.aron.core.database.repo.AttendanceRefusal? = null
+        val queued = runBlocking {
+            SrLockGate.skip(onAttendanceRefused = { told = it }) { throw com.aktcl.aron.core.database.repo.AttendanceRefusedException(com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT, "2026-10-05") }
+        }
+        assertFalse(queued)
+        assertEquals(com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT, told)
+    }
 }

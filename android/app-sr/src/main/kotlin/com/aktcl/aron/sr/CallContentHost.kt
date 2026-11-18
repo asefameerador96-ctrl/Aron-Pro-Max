@@ -186,6 +186,7 @@ private fun SurveyStep(
     var answers by androidx.compose.runtime.saveable.rememberSaveable(visitUuid, stateSaver = AnswersSaver) { mutableStateOf<Map<String, SurveyAnswer>>(emptyMap()) }
     var confirm by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
+    var attendanceWhy by remember { mutableStateOf<com.aktcl.aron.core.database.repo.AttendanceRefusal?>(null) }
     val visible = PosmSurvey.visible(defs, answers).map { it.key }.toSet()
     fun takePhoto(key: String) {
         val uuid = com.aktcl.aron.core.common.ClientIds.newUuid()
@@ -256,6 +257,13 @@ private fun SurveyStep(
         }
         AronPrimaryButton(stringResource(R.string.sr_survey_submit), { confirm = true }, Modifier.fillMaxWidth().padding(AronTokens.Space.L), enabled = !saving && PosmSurvey.canSubmit(defs, answers))
     }
+    attendanceWhy?.let { why ->
+        com.aktcl.aron.core.ui.aron.AronDialog(
+            stringResource(R.string.sr_survey_title),
+            stringResource(if (why == com.aktcl.aron.core.database.repo.AttendanceRefusal.CHECKED_OUT) com.aktcl.aron.feature.sale.R.string.review_problem_checked_out else com.aktcl.aron.feature.sale.R.string.review_problem_not_checked_in),
+            stringResource(R.string.sr_ok), onConfirm = { attendanceWhy = null }, onDismiss = { attendanceWhy = null },
+        )
+    }
     if (confirm) {
         AronConfirmDialog(
             stringResource(R.string.sr_survey_title), stringResource(R.string.sr_survey_confirm), stringResource(R.string.sr_yes), stringResource(R.string.sr_no),
@@ -264,8 +272,10 @@ private fun SurveyStep(
                 scope.launch {
                     // X4a fix round (R-W-23): a Save the route-day refused is worded by the call's host (nothing stored); any other
                     // failure goes on to the sale as before
-                    val why = day.saveSurveyRefusal(visitUuid, survey, PosmSurvey.rows(visitUuid, survey.surveyId, survey.version, defs, answers))
-                    if (why != null) onRefused(why) else onDone()
+                    val result = day.saveSurveyResult(visitUuid, survey, PosmSurvey.rows(visitUuid, survey.surveyId, survey.version, defs, answers))
+                    // D-LEAD-PREREQ-04 ruling 5: answers the check-in gate refused are NOT stored and never reported as saved: the rep is told and stays on the survey
+                    if (result.attendance != null) { attendanceWhy = result.attendance; saving = false }
+                    else if (result.dayRefusal != null) onRefused(result.dayRefusal) else onDone()
                 }
             },
             onDismiss = { confirm = false },

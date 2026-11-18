@@ -79,6 +79,7 @@ private fun rowOf(r: PendingRequest, route: String?, cluster: String?, shop: Str
 @Composable
 internal fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val writeGuard = com.aktcl.aron.feature.attendance.rememberWriteGuardOrOpen() // D-AGATE-15 (T4)
     val bangla = LocalConfiguration.current.locales[0].language == "bn"
     var request by remember(uuid) { mutableStateOf<PendingRequest?>(null) }
     var detail by remember(uuid) { mutableStateOf<VerifyDetailState>(VerifyDetailState.Loading) }
@@ -158,7 +159,7 @@ internal fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGon
     fun decide(verify: Boolean) {
         val e = OutletVerify.validate(req.type, verify, subId, geo, captured = cap.photo != null && cap.fix?.isOk == true, clusterMissing = routeSel != null && clusterSel == null)
         errors = e
-        if (e.isNotEmpty() || busy) return
+        if (e.isNotEmpty() || busy || writeGuard.refused()) return
         busy = true; noFix = false
         scope.launch {
             val ask = req.type == "new"
