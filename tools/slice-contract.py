@@ -71,4 +71,14 @@ for rel, body in files.items():
     p = os.path.join(out, rel)
     os.makedirs(os.path.dirname(p), exist_ok=True)
     open(p, 'w', encoding='utf-8').write(body)
+# prune slices of schemas and operations the contract no longer has (the check reports them, so the generator must remove them)
+removed = []
+if os.path.isdir(out):
+    for dp, _, fs in os.walk(out):
+        for f in fs:
+            rel = os.path.relpath(os.path.join(dp, f), out).replace(os.sep, '/')
+            if rel not in files:
+                os.remove(os.path.join(dp, f)); removed.append(rel)
+if removed:
+    print('pruned', len(removed), 'stale slice file(s):', removed[:10])
 print(f'wrote {len(files)} files, {sum(len(b) for b in files.values())} bytes')

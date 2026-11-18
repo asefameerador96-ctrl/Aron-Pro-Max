@@ -1,0 +1,29 @@
+KpiCampaignSkuTargetWriteRow:
+  type: object
+  required:
+  - outlet_code
+  - programme_code
+  - month
+  - sku_code
+  - qty_base
+  additionalProperties: false
+  properties:
+    outlet_code:
+      type: string
+      minLength: 1
+      maxLength: 40
+    programme_code:
+      type: string
+      minLength: 1
+      maxLength: 40
+    month:
+      $ref: '#/components/schemas/RouteTargetMonth'
+    sku_code:
+      type: string
+      minLength: 1
+      maxLength: 40
+    qty_base:
+      type: integer
+      format: int64
+      minimum: 0
+      maximum: 1000000000

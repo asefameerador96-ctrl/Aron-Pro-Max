@@ -525,6 +525,9 @@ class CaptureRepository(
         rows
     }
 
+    /** D-AGATE-26: the stored lines of a memo (a read, for the sale replay notice). */
+    suspend fun memoLines(memoUuid: String): List<com.aktcl.aron.core.database.entity.MemoLineEntity> = capture.linesOf(memoUuid)
+
     /** The local "ended by the phone" markers not yet shown to the rep (D-AGATE-18), oldest first. */
     suspend fun phoneMarks(): List<com.aktcl.aron.core.database.entity.PhoneMarkEntity> = capture.phoneMarks()
     /** Stores one marker on its own (an unsaved draft or edit that was really dropped: the draft is a file, so there is no Room write to share a transaction with). */

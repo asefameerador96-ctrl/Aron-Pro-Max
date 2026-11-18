@@ -1,0 +1,27 @@
+KpiCpr:
+  type: object
+  description: CPR (call productivity) block; achieved is null until the owner defines the source.
+  required:
+  - target_bp
+  - alloc_mtk
+  - achieved_bp
+  additionalProperties: false
+  properties:
+    target_bp:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    alloc_mtk:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    achieved_bp:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0

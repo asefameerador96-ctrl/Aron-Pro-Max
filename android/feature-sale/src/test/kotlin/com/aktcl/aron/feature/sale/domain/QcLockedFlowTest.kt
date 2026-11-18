@@ -76,4 +76,96 @@ class QcLockedFlowTest {
         f.restoreQc(emptyList())
         assertEquals(emptyList<QcEntry>(), f.state.value.draft!!.qc)
     }
+
+    // ---- the lead's locked-sale crash: a screen that is back on the entry list (rotation, relaunch) still sends quantity and slide changes ----
+    @Test fun aQuantityChangeOnALockedSaleIsRefusedWithANoticeAndNothingThrows() = runTest {
+        val f = lockedFlow(); val before = f.state.value.draft
+        val set = f.setQuantity(100, 5, QtyUnit.STICK)
+        assertEquals(before, f.state.value.draft)
+        assertEquals(SaleNotice.Locked, f.state.value.notice)
+        assertEquals("the figure the screen shows is the draft's, not the refused one", 20L, f.state.value.draft!!.lines.single().qtyEntered)
+        assertEquals("a refused change reports the quantity that stands", 20L, set)
+    }
+
+    @Test fun aSlideChangeOnALockedSaleIsRefusedWithANotice() = runTest {
+        val f = lockedFlow(); val before = f.state.value.draft
+        f.setSlide(100, 3)
+        assertEquals(before, f.state.value.draft)
+        assertEquals(SaleNotice.Locked, f.state.value.notice)
+    }
+
+    @Test fun anAcceptedChangeClearsTheNotice() = runTest {
+        val f = flow(LockMemStore()); f.start(visit())
+        f.setQuantity(100, 20, QtyUnit.STICK); f.noteRefusal()
+        assertEquals(SaleNotice.Refused, f.state.value.notice)
+        f.setQuantity(100, 21, QtyUnit.STICK)
+        assertEquals(null, f.state.value.notice)
+    }
+
+    @Test fun theViewModelNetSaysRefusedAndTheLockNamesItselfAtItsSource() = runTest {
+        val f = lockedFlow(); f.noteRefusal()
+        assertEquals(SaleNotice.Refused, f.state.value.notice)
+        f.setSlide(100, 1)
+        assertEquals(SaleNotice.Locked, f.state.value.notice)
+    }
+
+    @Test fun anotherRefusalOfTheDraftIsADraftRefusedExceptionAndNothingIsWritten() = runTest {
+        val f = flow(LockMemStore()); f.start(visit()); f.setQuantity(100, 20, QtyUnit.STICK)
+        val before = f.state.value.draft
+        val e = runCatching { f.setPaid(-5) }.exceptionOrNull()
+        assertEquals(true, e is DraftRefusedException)
+        assertEquals(before, f.state.value.draft)
+    }
+
+    @Test fun anEditMarkerOnALockedSaleIsRefusedAndTheGiveBackIsNotLeftInTheState() = runTest {
+        val f = lockedFlow(); val before = f.state.value
+        val accepted = f.withEdit(EditContext("00000000-0000-4000-8000-0000000000aa", "wrong_sku"))
+        assertEquals(false, accepted)
+        assertEquals(before.draft, f.state.value.draft)
+        assertEquals(before.catalog, f.state.value.catalog)
+        assertEquals(null, f.state.value.draft!!.edit)
+        assertEquals(SaleNotice.Locked, f.state.value.notice)
+    }
+
+    @Test fun anEditMarkerOnAnOpenSaleIsAccepted() = runTest {
+        val f = flow(LockMemStore()); f.start(visit()); f.setQuantity(100, 20, QtyUnit.STICK)
+        assertEquals(true, f.withEdit(EditContext("00000000-0000-4000-8000-0000000000aa", "wrong_sku")))
+        assertEquals("00000000-0000-4000-8000-0000000000aa", f.state.value.draft!!.edit!!.supersedesMemoUuid)
+    }
+
+    @Test fun typedQcThatWasNeverSubmittedIsDroppedAtStartWithANotice() = runTest {
+        val store = LockMemStore(); val v = visit(); val a = flow(store); a.start(v)
+        a.setQuantity(100, 20, QtyUnit.STICK); a.setQc(qc)
+        val b = flow(store); b.start(v)
+        assertEquals(emptyList<QcEntry>(), b.state.value.draft!!.qc)
+        assertEquals(SaleNotice.QcDropped, b.state.value.notice)
+        b.start(v) // a second start (a rotation) keeps the same notice until the next change
+        assertEquals(SaleNotice.QcDropped, b.state.value.notice)
+    }
+
+    @Test fun noNoticeWhenNothingWasDropped() = runTest {
+        val store = LockMemStore(); val v = visit(); val a = flow(store); a.start(v)
+        a.setQuantity(100, 20, QtyUnit.STICK); a.setQc(qc); a.completeQc()
+        val b = flow(store); b.start(v)
+        assertEquals(null, b.state.value.notice)
+    }
+
+    @Test fun aLeftoverDraftOfALandedMemoDoesNotBreakAnEditStart() = runTest {
+        val store = LockMemStore(); val v = visit(); val a = flow(store); a.start(v)
+        a.setQuantity(100, 5, QtyUnit.STICK); val saved = store.load(v.visitUuid)!!
+        a.commit(); store.save(saved) // the kill came between the commit and the drop: the file of a LANDED memo is still there
+        val b = flow(store); b.start(v, editing = "00000000-0000-4000-8000-0000000000aa")
+        assertEquals("not the committed sale", null, b.state.value.committed)
+        b.setQuantity(100, 6, QtyUnit.STICK) // used to throw "sale already committed"
+        assertEquals(1, b.state.value.draft!!.lines.size)
+        assertEquals(true, b.state.value.draft!!.memoUuid != saved.memoUuid)
+    }
+
+    @Test fun startingOnAQcLockedDraftGivesNothingBack() = runTest {
+        val store = LockMemStore(); val v = visit(); val a = flow(store); a.start(v)
+        a.setQuantity(100, 20, QtyUnit.STICK); a.setQc(qc); a.completeQc()
+        val before = a.state.value.catalog
+        val b = flow(store); b.start(v, editing = "00000000-0000-4000-8000-0000000000aa")
+        assertEquals(before, b.state.value.catalog)
+    }
 }

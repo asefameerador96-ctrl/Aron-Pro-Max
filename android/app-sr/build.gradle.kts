@@ -137,3 +137,13 @@ dependencies {
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
 }
+
+// D-AGATE-29: NoAlwaysOnMapTest, ProgrammeStoreTest and SrPrinterAssistTest scan this app's main sources, its manifest and feature-sale. They read .kt/.xml SOURCE files at run time, which Gradle cannot see, so those files are declared as inputs of every unit test task of this module:
+// the up-to-date check and the build cache can never answer for a changed source file (a structural test that can pass from cache is not a gate).
+tasks.withType<Test>().configureEach {
+    inputs.files(
+        rootProject.fileTree("android") {
+            include("app-sr/src/main/**", "feature-sale/src/main/**", "feature-attendance/src/main/**")
+        },
+    ).withPropertyName("scannedSources").withPathSensitivity(PathSensitivity.RELATIVE)
+}

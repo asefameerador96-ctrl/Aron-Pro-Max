@@ -168,18 +168,24 @@ class AttendanceFlow(
         val s = ui.value
         if (s.checkedInAt == null || s.checkedOutAt != null || s.busy || settling) return AttendanceResult.Ignored
         if (pastDay() || dhakaMinutesNow() < checkoutEarliestMinutes()) return AttendanceResult.Ignored // recomputed, never a stale flag; a day left open past midnight is closed by the phone, never by a press
-        // D-AGATE-06: an open call or memo edit refuses the check-out (it submits the day, which closes the route-day under it)
-        openWork?.let { read ->
-            val open = try { read() } catch (t: kotlinx.coroutines.CancellationException) { throw t } catch (_: Throwable) { null }
-            ui.value = ui.value.copy(checkOutBlockedBy = open)
-            if (open != null) return AttendanceResult.Refused(open)
+        // D-AGATE-26: the in-flight flag is set at the TOP, before the open-work read and the fix read, so the phone's own close (which skips a day whose check-out is busy) never starts in the gap
+        ui.value = ui.value.copy(busy = true)
+        try {
+            // D-AGATE-06: an open call or memo edit refuses the check-out (it submits the day, which closes the route-day under it)
+            openWork?.let { read ->
+                val open = try { read() } catch (t: kotlinx.coroutines.CancellationException) { throw t } catch (_: Throwable) { null }
+                ui.value = ui.value.copy(checkOutBlockedBy = open)
+                if (open != null) return AttendanceResult.Refused(open)
+            }
+            // D-NIGHT-CHECKOUT-01 (only where a host still passes [salesSubmitted]; the SR and AMO no longer do, D-AGATE-06): read again at the press.
+            salesSubmitted?.let { gate ->
+                submitted = readSubmitted(gate)
+                if (submitted != true) { tick(); return AttendanceResult.Ignored }
+            }
+            return capture("check_out", "attendance_out")
+        } finally {
+            ui.value = ui.value.copy(busy = false)
         }
-        // D-NIGHT-CHECKOUT-01 (only where a host still passes [salesSubmitted]; the SR and AMO no longer do, D-AGATE-06): read again at the press.
-        salesSubmitted?.let { gate ->
-            submitted = readSubmitted(gate)
-            if (submitted != true) { tick(); return AttendanceResult.Ignored }
-        }
-        return capture("check_out", "attendance_out")
     }
 
     private suspend fun capture(kind: String, purpose: String): AttendanceResult {

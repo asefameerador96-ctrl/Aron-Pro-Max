@@ -12,13 +12,18 @@ export interface CustomState {
   routeTargets: { route_code: string; sku_code: string; month: string; qty_base: number }[];
   routeTargetBatches: Map<string, { hash: string; rows: number }>;
   outletImportBatches: Map<string, { hash: string; rows: number }>;
+  /** KPI targets (contract 1.22.0): stored rows by section, and the batches seen (idempotent by batch_uuid). */
+  kpi: { brand: Record<string, unknown>[]; month: Record<string, unknown>[]; programme: Record<string, unknown>[]; campaign: Record<string, unknown>[]; campaignSku: Record<string, unknown>[] };
+  kpiBatches: Map<string, { hash: string; rows: number }>;
   priceBatches: Map<string, { hash: string; status: "applied" | "pending_approval"; valid_from: string }>;
   prices: { id: number; sku_id: number; price_type: string; amount_mtk: number; per_base_qty: number; valid_from: string; valid_to: string | null }[];
 }
 
-export function seedCustom(): Pick<CustomState, "scopes" | "salesPlans" | "priceBatches" | "prices" | "access" | "routeTargets" | "routeTargetBatches" | "outletImportBatches"> {
+export function seedCustom(): Pick<CustomState, "scopes" | "salesPlans" | "priceBatches" | "prices" | "access" | "routeTargets" | "routeTargetBatches" | "outletImportBatches" | "kpi" | "kpiBatches"> {
   return {
     outletImportBatches: new Map(),
+    kpi: { brand: [], month: [], programme: [], campaign: [], campaignSku: [] },
+    kpiBatches: new Map(),
     routeTargets: [{ route_code: "R-334-01", sku_code: "MaxR-20S", month: thisMonth(), qty_base: 2400 }],
     routeTargetBatches: new Map(),
     access: { 3001: { version: 2, modules: { outlets: "w", reports: "r" }, brand_ids: [] }, 5002: { version: 1, modules: {}, brand_ids: [5] } },
@@ -123,6 +128,118 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
       }
       ctx.audit("route_target", b.batch_uuid, "route_target.commit", { replaced: replaces }, { rows: b.rows.length, total_qty_base: summary.total_qty_base }, b.change_reason!);
       return ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: b.rows.length, replayed: false }), true;
+    }
+  }
+
+  // KPI targets (contract 1.22.0 putRouteKpiTargets / listRouteKpiTargets): one array per request section, errors name the section and the row.
+  if (path === "/v1/admin/route-kpi-targets") {
+    const programmes: Record<string, { name: string; kind: "superstar" | "campaign" }> = { MBLS: { name: "Match Box Lifting Star", kind: "superstar" }, "CAMP-NOV": { name: "Super Star Low", kind: "campaign" } };
+    if (method === "GET") {
+      const route = url.searchParams.get("route_code") ?? "";
+      const month = url.searchParams.get("month") ?? thisMonth();
+      if (!route || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION")), true;
+      const brands = st.tables.product!.filter((n) => n.level === "brand");
+      const brandName = (code: string) => String(brands.find((b) => b.code === code)?.name ?? code);
+      const routeRow = st.tables.routes!.find((x) => x.code === route);
+      const ofRoute = new Set((st.tables.outlets ?? []).filter((o) => routeRow && o.route_id === routeRow.id).map((o) => String(o.code))); // outlets of the route
+      const mine = (rows: Record<string, unknown>[]) => rows.filter((r) => r.route_code === route && r.month === month);
+      const mrow = mine(st.kpi.month)[0];
+      return ctx.send(res, 200, {
+        route_code: route,
+        month,
+        brand_rows: mine(st.kpi.brand).map((r) => ({ brand_code: r.brand_code, brand_name: brandName(String(r.brand_code)), memo_target: r.memo_target, kpi_alloc_mtk: r.kpi_alloc_mtk ?? 0 })),
+        programme_rows: mine(st.kpi.programme).map((r) => ({ programme_code: r.programme_code, programme_name: programmes[String(r.programme_code)]?.name ?? String(r.programme_code), target_qty: r.target_qty })),
+        campaign_rows: st.kpi.campaign.filter((r) => ofRoute.has(String(r.outlet_code)) && r.month === month).map((r) => ({ outlet_code: r.outlet_code, programme_code: r.programme_code, programme_name: programmes[String(r.programme_code)]?.name ?? String(r.programme_code), std_target: r.std_target, memo_target: r.memo_target })),
+        campaign_sku_rows: st.kpi.campaignSku.filter((r) => ofRoute.has(String(r.outlet_code)) && r.month === month).map((r) => ({ outlet_code: r.outlet_code, programme_code: r.programme_code, sku_code: r.sku_code, qty_base: r.qty_base })),
+        month_row: mrow ? { kpi_alloc_mtk: mrow.kpi_alloc_mtk, cpr_target_bp: mrow.cpr_target_bp ?? null, cpr_alloc_mtk: mrow.cpr_alloc_mtk ?? null } : null,
+      }), true;
+    }
+    if (method === "PUT") {
+      if (!canWrite) return ctx.send(res, 403, ctx.problem(403, "ERR_FORBIDDEN")), true;
+      const b = (await ctx.readJson(req)) as Record<string, unknown> | undefined;
+      const sections = ["brand_rows", "month_rows", "programme_rows", "campaign_rows", "campaign_sku_rows"] as const;
+      if (!b || typeof b.batch_uuid !== "string" || typeof b.dry_run !== "boolean" || !sections.some((k) => Array.isArray(b[k]))) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION")), true;
+      if (!b.dry_run && !reasonOk(b.change_reason)) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: [{ pointer: "/change_reason", code: "too_short" }] })), true;
+      const routes = st.tables.routes!;
+      const brands = st.tables.product!.filter((n) => n.level === "brand");
+      const skus = st.tables.skus!;
+      const outlets = st.tables.outlets ?? [];
+      const errors: { section: string; row: number; column: string; code: string }[] = [];
+      const rowsOf = (k: (typeof sections)[number]) => (Array.isArray(b[k]) ? (b[k] as Record<string, unknown>[]) : []);
+      const err = (section: string, i: number, column: string, code: string) => errors.push({ section, row: i + 1, column, code });
+      const checkMonth = (section: string, i: number, r: Record<string, unknown>) => {
+        if (typeof r.month !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(r.month)) err(section, i, "month", "invalid_month");
+        else if (r.month < thisMonth()) err(section, i, "month", "past_month");
+      };
+      const checkRoute = (section: string, i: number, r: Record<string, unknown>) => {
+        const route = routes.find((x) => x.code === r.route_code);
+        if (!route) err(section, i, "route_code", "unknown_route");
+        else if (route.kind !== "sr") err(section, i, "route_code", "not_selling_route");
+      };
+      const seen = new Set<string>();
+      const dup = (section: string, i: number, key: string, column: string) => {
+        if (seen.has(`${section}|${key}`)) err(section, i, column, "duplicate_row");
+        seen.add(`${section}|${key}`);
+      };
+      rowsOf("brand_rows").forEach((r, i) => {
+        checkRoute("brand_rows", i, r);
+        if (!brands.some((x) => x.code === r.brand_code)) err("brand_rows", i, "brand_code", "unknown_brand");
+        checkMonth("brand_rows", i, r);
+        dup("brand_rows", i, `${r.route_code}|${r.brand_code}|${r.month}`, "route_code");
+      });
+      rowsOf("month_rows").forEach((r, i) => {
+        checkRoute("month_rows", i, r);
+        checkMonth("month_rows", i, r);
+        dup("month_rows", i, `${r.route_code}|${r.month}`, "route_code");
+      });
+      rowsOf("programme_rows").forEach((r, i) => {
+        checkRoute("programme_rows", i, r);
+        if (programmes[String(r.programme_code)]?.kind !== "superstar") err("programme_rows", i, "programme_code", "unknown_programme");
+        checkMonth("programme_rows", i, r);
+        dup("programme_rows", i, `${r.route_code}|${r.programme_code}|${r.month}`, "route_code");
+      });
+      rowsOf("campaign_rows").forEach((r, i) => {
+        if (!outlets.some((x) => x.code === r.outlet_code)) err("campaign_rows", i, "outlet_code", "unknown_outlet");
+        if (programmes[String(r.programme_code)]?.kind !== "campaign") err("campaign_rows", i, "programme_code", "unknown_programme");
+        checkMonth("campaign_rows", i, r);
+        dup("campaign_rows", i, `${r.outlet_code}|${r.programme_code}|${r.month}`, "outlet_code");
+      });
+      rowsOf("campaign_sku_rows").forEach((r, i) => {
+        if (!outlets.some((x) => x.code === r.outlet_code)) err("campaign_sku_rows", i, "outlet_code", "unknown_outlet");
+        if (programmes[String(r.programme_code)]?.kind !== "campaign") err("campaign_sku_rows", i, "programme_code", "unknown_programme");
+        if (!skus.some((x) => x.code === r.sku_code && x.status !== "inactive")) err("campaign_sku_rows", i, "sku_code", "unknown_sku");
+        checkMonth("campaign_sku_rows", i, r);
+        dup("campaign_sku_rows", i, `${r.outlet_code}|${r.programme_code}|${r.month}|${r.sku_code}`, "outlet_code");
+      });
+      rowsOf("campaign_sku_rows").forEach((r, i) => {
+        const has = rowsOf("campaign_rows").some((c) => c.outlet_code === r.outlet_code && c.programme_code === r.programme_code && c.month === r.month) || st.kpi.campaign.some((c) => c.outlet_code === r.outlet_code && c.programme_code === r.programme_code && c.month === r.month);
+        if (!has && !errors.some((e) => e.section === "campaign_sku_rows" && e.row === i + 1)) err("campaign_sku_rows", i, "outlet_code", "campaign_row_missing");
+      });
+      const counts = { brand_rows: rowsOf("brand_rows").length, month_rows: rowsOf("month_rows").length, programme_rows: rowsOf("programme_rows").length, campaign_rows: rowsOf("campaign_rows").length, campaign_sku_rows: rowsOf("campaign_sku_rows").length };
+      // a campaign row with no SKU row (in the batch or stored) is accepted with a warning
+      const warnings = rowsOf("campaign_rows").flatMap((r, i) => {
+        const has = rowsOf("campaign_sku_rows").some((k) => k.outlet_code === r.outlet_code && k.programme_code === r.programme_code && k.month === r.month) || st.kpi.campaignSku.some((k) => k.outlet_code === r.outlet_code && k.programme_code === r.programme_code && k.month === r.month);
+        return has ? [] : [{ section: "campaign_rows", row: i + 1, column: "outlet_code", code: "campaign_without_skus" }];
+      });
+      if (b.dry_run) return ctx.send(res, 200, { batch_uuid: b.batch_uuid, ...counts, errors, errors_truncated: false, warnings, warnings_truncated: false }), true;
+      if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `body.${e.section}/${e.row - 1}/${e.column}`, code: e.code })) })), true;
+      const total = Object.values(counts).reduce((a, n) => a + n, 0);
+      const hash = JSON.stringify(sections.map((k) => b[k] ?? null));
+      const prior = st.kpiBatches.get(b.batch_uuid);
+      if (prior) return prior.hash === hash ? (ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: prior.rows, replayed: true }), true) : (ctx.send(res, 409, ctx.problem(409, "ERR_CONFLICT")), true);
+      st.kpiBatches.set(b.batch_uuid, { hash, rows: total });
+      const upsert = (store: Record<string, unknown>[], keys: string[], r: Record<string, unknown>) => {
+        const cur = store.find((x) => keys.every((k) => x[k] === r[k]));
+        if (cur) Object.assign(cur, r);
+        else store.push({ ...r });
+      };
+      rowsOf("brand_rows").forEach((r) => upsert(st.kpi.brand, ["route_code", "brand_code", "month"], { ...(st.kpi.brand.some((x) => x.route_code === r.route_code && x.brand_code === r.brand_code && x.month === r.month) ? {} : { kpi_alloc_mtk: 0 }), ...r })); // a member left out keeps the stored value
+      rowsOf("month_rows").forEach((r) => upsert(st.kpi.month, ["route_code", "month"], r));
+      rowsOf("programme_rows").forEach((r) => upsert(st.kpi.programme, ["route_code", "programme_code", "month"], r));
+      rowsOf("campaign_rows").forEach((r) => upsert(st.kpi.campaign, ["outlet_code", "programme_code", "month"], r));
+      rowsOf("campaign_sku_rows").forEach((r) => upsert(st.kpi.campaignSku, ["outlet_code", "programme_code", "month", "sku_code"], r));
+      ctx.audit("route_kpi_target", b.batch_uuid, "route_kpi_target.commit", {}, { rows: total, ...counts }, String(b.change_reason));
+      return ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: total, replayed: false }), true;
     }
   }
 

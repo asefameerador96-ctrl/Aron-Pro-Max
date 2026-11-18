@@ -1,0 +1,40 @@
+RouteKpiTargetWrite:
+  type: object
+  required:
+  - batch_uuid
+  - dry_run
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    dry_run:
+      type: boolean
+    change_reason:
+      type: string
+      minLength: 1
+      maxLength: 500
+    brand_rows:
+      type: array
+      maxItems: 20000
+      items:
+        $ref: '#/components/schemas/KpiBrandTargetWriteRow'
+    month_rows:
+      type: array
+      maxItems: 20000
+      items:
+        $ref: '#/components/schemas/KpiMonthTargetWriteRow'
+    programme_rows:
+      type: array
+      maxItems: 20000
+      items:
+        $ref: '#/components/schemas/KpiProgrammeTargetWriteRow'
+    campaign_rows:
+      type: array
+      maxItems: 20000
+      items:
+        $ref: '#/components/schemas/KpiCampaignTargetWriteRow'
+    campaign_sku_rows:
+      type: array
+      maxItems: 20000
+      items:
+        $ref: '#/components/schemas/KpiCampaignSkuTargetWriteRow'

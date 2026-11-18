@@ -52,6 +52,7 @@ object GiftTags {
     const val SUBMIT = "gift_submit"
     const val LOCKED = "gift_locked"
     const val ON_PHONE = "gift_on_phone"
+    const val UNCONFIRMED = "gift_unconfirmed"
     const val REFUSED = "gift_refused"
     const val EMPTY = "gift_empty"
     const val NO_GIFTS = "gift_no_gifts"
@@ -108,6 +109,7 @@ fun GiftSelectionScreen(
             is GiftState.Locked -> Text(stringResource(R.string.pg_gift_locked, nameOf(state.giftId)), Modifier.testTag(GiftTags.LOCKED), style = TextStyle(fontSize = 16.sp, color = look.ink, fontWeight = FontWeight.Medium))
             is GiftState.Held -> Text(stringResource(R.string.pg_gift_held, nameOf(state.giftId)), Modifier.testTag(GiftTags.HELD), style = TextStyle(fontSize = 15.sp, color = look.purple, fontWeight = FontWeight.Medium))
             is GiftState.Sent -> Text(stringResource(R.string.pg_gift_sent, nameOf(state.giftId)), Modifier.testTag(GiftTags.ON_PHONE), style = TextStyle(fontSize = 15.sp, color = look.purple, fontWeight = FontWeight.Medium))
+            is GiftState.Unconfirmed -> Text(if (state.bundleGiftId == null) stringResource(R.string.pg_gift_unconfirmed, nameOf(state.giftId)) else stringResource(R.string.pg_gift_unconfirmed_other, nameOf(state.giftId), nameOf(state.bundleGiftId)), Modifier.testTag(GiftTags.UNCONFIRMED), style = TextStyle(fontSize = 15.sp, color = look.purple, fontWeight = FontWeight.Medium))
             is GiftState.OnThisPhone -> if (state.refused) {
                 val why = (if (locale == UiLocale.BN) state.reasonBn ?: state.reasonEn else state.reasonEn ?: state.reasonBn)?.takeIf { it.isNotBlank() }
                 Text(stringResource(R.string.pg_gift_refused, nameOf(state.giftId)) + (why?.let { "\n$it" } ?: ""), Modifier.testTag(GiftTags.REFUSED), style = TextStyle(fontSize = 15.sp, color = look.red, fontWeight = FontWeight.Medium))

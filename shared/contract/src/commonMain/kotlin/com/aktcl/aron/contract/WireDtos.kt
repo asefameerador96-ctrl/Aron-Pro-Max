@@ -188,6 +188,19 @@ data class Route(
     override fun toString(): String = "Route(createdAt=${createdAt}, updatedAt=${updatedAt}, version=${version}, id=${id}, code=***, name=${name}, displayLabel=${displayLabel}, zoneId=${zoneId}, kind=${kind}, visitKind=${visitKind}, visitDaysMask=${visitDaysMask}, sequenceNo=${sequenceNo}, status=${status}, assignees=${assignees})"
 }
 
+/** Working-day numbers of the bundle month for the SR programme screens (contract 1.22.0). */
+@Serializable
+data class RouteCalendar(
+    @SerialName("month") val month: String,
+    @SerialName("working_days") val workingDays: Int,
+    @SerialName("elapsed_working_days_before_today") val elapsedWorkingDaysBeforeToday: Int,
+    @SerialName("remaining_working_days_after_today") val remainingWorkingDaysAfterToday: Int,
+    @SerialName("today_is_working") val todayIsWorking: Boolean,
+    @SerialName("last_month_working_days") val lastMonthWorkingDays: Int,
+    @SerialName("through_date") val throughDate: String,
+    @SerialName("as_of") val asOf: String,
+)
+
 /** Per-route section of the bundle; replaced as a whole when the route is added to the user. */
 @Serializable
 data class RouteSnapshot(
@@ -204,6 +217,13 @@ data class RouteSnapshot(
     @SerialName("targets") val targets: List<JsonElement>,
     @SerialName("achievement_mtd") val achievementMtd: List<JsonElement>,
     @SerialName("day_state") val dayState: RouteDayState,
+    @SerialName("calendar") val calendar: RouteCalendar? = null,
+    @SerialName("kpi") val kpi: JsonElement? = null,
+    @SerialName("star") val star: JsonElement? = null,
+    @SerialName("campaigns") val campaigns: List<JsonElement>? = null,
+    @SerialName("campaigns_truncated") val campaignsTruncated: Boolean? = null,
+    @SerialName("targets_truncated") val targetsTruncated: Boolean? = null,
+    @SerialName("star_truncated") val starTruncated: Boolean? = null,
     @SerialName("sr_user_id") val srUserId: Long? = null,
     @SerialName("sr_name") val srName: String? = null,
 )

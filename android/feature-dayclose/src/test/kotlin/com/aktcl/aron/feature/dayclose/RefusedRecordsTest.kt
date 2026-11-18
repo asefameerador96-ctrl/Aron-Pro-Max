@@ -106,6 +106,21 @@ class RefusedRecordsTest {
         assertFalse(entry.canMarkSeen); assertTrue(entry.canSendAgain)
     }
 
+    /** Programme records (redemption, gift choice, gift photo) the phone gave up on or the server refused are listed in Sales Submit like any other, and a given-up one keeps Send again, also after "mark seen". */
+    @Test fun programmeRecordsAppearInTheRefusedListWithSendAgain() = runTest {
+        val gave = listOf("redemption", "gift_choice", "gift_photo").map { row(today, "rejected", "retry_exhausted", type = it, rank = 0) }
+        val refused = row(today, "rejected", "gift_locked", type = "gift_choice", rank = 0)
+        val rows = source.rejectedRows(today)
+        assertEquals(setOf("redemption", "gift_choice", "gift_photo"), rows.map { it.recordType }.toSet())
+        assertEquals(4, rows.size)
+        gave.forEach { u -> db.outboxDao().markRefusedSeen(u, "t") }
+        db.outboxDao().markRefusedSeen(refused, "t")
+        val after = source.rejectedRows(today)
+        assertEquals(3, after.count { it.outcome == RejectedOutcome.PHONE_GAVE_UP && it.canSendAgain })
+        gave.forEach { u -> assertTrue(source.sendAgain(u)) }
+        assertEquals(listOf("gift_choice"), source.rejectedRows(today).map { it.recordType })
+    }
+
     // ---- D1-3: seen belongs to ONE outcome; a new outcome shows again
 
     @Test fun seenIsClearedWhenTheOutcomeChanges() = runTest {

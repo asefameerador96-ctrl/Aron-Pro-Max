@@ -233,6 +233,8 @@ fun AmoEditHost(day: AmoDay, memoUuid: String, onDone: () -> Unit) {
     var checked by remember(memoUuid) { mutableStateOf(false) }
     var reason by remember(memoUuid) { mutableStateOf<EditReason?>(null) }
     var ready by remember(memoUuid) { mutableStateOf(false) }
+    // the visit's sale is QC-locked: the edit does not open and the rep is told why (never a silent return)
+    var editLocked by remember(memoUuid) { mutableStateOf(false) }
     // tso-manual X4a (R-W-11): an edit on a route closed by Final Submit is not started (no fix is taken) and says why;
     // one the lock refuses at the save shows the same text, nothing stored or printed. Follow-up (R-W-23): the same with
     // the submit text after the supervisor day's Sales Submit.
@@ -251,7 +253,11 @@ fun AmoEditHost(day: AmoDay, memoUuid: String, onDone: () -> Unit) {
         !checked -> AmoEmptyState(stringResource(AmoR.string.amo_edit_checking))
         denied != null || r == null -> EditReasonScreen(denied, onReason = { reason = it })
         else -> {
-            LaunchedEffect(r) { kit.beginEdit(memoUuid, r); ready = true }
+            LaunchedEffect(r) { if (kit.beginEdit(memoUuid, r)) ready = true else editLocked = true }
+            if (editLocked) com.aktcl.aron.core.ui.aron.AronDialog(
+                stringResource(com.aktcl.aron.feature.sale.R.string.qc_title), stringResource(com.aktcl.aron.feature.sale.R.string.qc_locked),
+                stringResource(android.R.string.ok), onConfirm = { onDone() }, onDismiss = { onDone() },
+            )
             if (ready) {
                 val vm = viewModel(key = "edit-" + memoUuid) { kit.newSaleViewModel() }
                 Column(Modifier.fillMaxSize()) {

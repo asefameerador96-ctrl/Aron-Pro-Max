@@ -3,12 +3,14 @@ package com.aktcl.aron.feature.sale.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aktcl.aron.core.printing.flow.SaveAndPrint
+import com.aktcl.aron.feature.sale.domain.DraftRefusedException
 import com.aktcl.aron.feature.sale.domain.EditContext
 import com.aktcl.aron.feature.sale.domain.QcEntry
 import com.aktcl.aron.feature.sale.domain.SaleFlow
 import com.aktcl.aron.feature.sale.domain.SaleUiState
 import com.aktcl.aron.feature.sale.domain.SaleVisit
 import com.aktcl.aron.rules.QtyUnit
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -23,20 +25,26 @@ class SaleViewModel(
 ) : ViewModel() {
     val state: StateFlow<SaleUiState> get() = flow.state
 
+    /** A change the draft refused ([DraftRefusedException]) is shown as a notice; it never takes the app down. Any other failure, `start` included, is still a crash: it is a bug. */
+    private val guard = refusalGuard(flow)
+
     fun start(visit: SaleVisit) { viewModelScope.launch { flow.start(visit) } }
-    fun setQuantity(skuId: Long, qty: Long, unit: QtyUnit) { viewModelScope.launch { flow.setQuantity(skuId, qty, unit) } }
-    fun setSlide(skuId: Long, empties: Long) { viewModelScope.launch { flow.setSlide(skuId, empties) } }
-    fun setQc(entry: QcEntry) { viewModelScope.launch { flow.setQc(entry) } }
-    fun setPaid(paidMtk: Long?) { viewModelScope.launch { flow.setPaid(paidMtk) } }
-    fun confirmZeroSale(reasonCode: String? = null) { viewModelScope.launch { flow.confirmZeroSale(reasonCode) } }
-    fun startQcOnly() { viewModelScope.launch { flow.startQcOnly() } }
-    fun cancelQcOnly() { viewModelScope.launch { flow.cancelQcOnly() } }
-    fun restoreQc(entries: List<QcEntry>) { viewModelScope.launch { flow.restoreQc(entries) } }
-    fun completeQc() { viewModelScope.launch { flow.completeQc() } }
-    fun beginEdit(edit: EditContext) { viewModelScope.launch { flow.withEdit(edit) } }
+    fun setQuantity(skuId: Long, qty: Long, unit: QtyUnit) { viewModelScope.launch(guard) { flow.setQuantity(skuId, qty, unit) } }
+    fun setSlide(skuId: Long, empties: Long) { viewModelScope.launch(guard) { flow.setSlide(skuId, empties) } }
+    fun setQc(entry: QcEntry) { viewModelScope.launch(guard) { flow.setQc(entry) } }
+    fun setPaid(paidMtk: Long?) { viewModelScope.launch(guard) { flow.setPaid(paidMtk) } }
+    fun confirmZeroSale(reasonCode: String? = null) { viewModelScope.launch(guard) { flow.confirmZeroSale(reasonCode) } }
+    fun startQcOnly() { viewModelScope.launch(guard) { flow.startQcOnly() } }
+    fun cancelQcOnly() { viewModelScope.launch(guard) { flow.cancelQcOnly() } }
+    fun restoreQc(entries: List<QcEntry>) { viewModelScope.launch(guard) { flow.restoreQc(entries) } }
+    fun completeQc() { viewModelScope.launch(guard) { flow.completeQc() } }
+    fun beginEdit(edit: EditContext) { viewModelScope.launch(guard) { flow.withEdit(edit) } }
     /** The scope the print dialogs run in: it outlives the screen's composition, so a rotation never cancels a save or a print. */
     fun viewModelScopeForDialogs() = viewModelScope
 
     /** Review's Print button: asks "save?" first; the commit happens on Yes (SaveAndPrint step 1). */
     fun onPrintTapped() = saveAndPrint.onPrintTapped()
 }
+
+/** The view model's net as a handler of its own (see [SaleViewModel]); internal so a test can drive it without a failure going to the process-wide handler. */
+internal fun refusalGuard(flow: SaleFlow) = CoroutineExceptionHandler { _, e -> if (e is DraftRefusedException) flow.noteRefusal() else throw e }

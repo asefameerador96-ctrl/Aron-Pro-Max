@@ -1,0 +1,21 @@
+KpiPackFigure:
+  type: object
+  required:
+  - pack_factor
+  - target
+  - achieved
+  additionalProperties: false
+  properties:
+    pack_factor:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      description: Base units (sticks or pieces) in one pack of the SKUs counted in this entry (the SKU `base_per_pack`).
+    target:
+      type: integer
+      format: int64
+      minimum: 0
+    achieved:
+      type: integer
+      format: int64
+      minimum: 0
