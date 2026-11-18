@@ -313,3 +313,12 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - lane/lead-ci-gitleaks is an old branch of mine (2026-10-22), not new.
 - 11:55 migrate console read (ops-diagnose 44297116585): schema was 0204, applied 0205..0208, "Successfully applied 4 migrations ... now at version v0208", 186 validated, no ERROR in the migrate console. Worker section at 11:26:42Z shows two ERROR lines (risk signal evaluation failed; aggregation pass failed, SQLTransientConnectionException) and Hikari starvation WARN around the worker pause: asked SV6 to check whether the pause lets a pass start while connections are cut and whether the pass retries.
 - P-TSO 09e2ed1c pushed (slice 3 + INT merge), lane ci running; lane at ~300k context, hands over after "checked".
+
+## 2026-11-18 12:35
+- infra-final: reviewed through round 5, head 6f6a470b1 PASS (no blocking; lows in the review file). Lane finished; waits on owner (D1..D9, release flow, bootstrap). Not landed: cannot land before the release-flow approval; lows (diagnose error path prints the server id; whatif.yml replica line untested) go to the lane as a last one-liner round when it is next touched.
+- Secret scanner: ONE false positive at bfd0087c8 infra/validate.sh:80 (lane/infra-final history) fails the all-refs gitleaks step for EVERY lane push. Owner asked for yes/no on one fingerprint; no answer yet. No train can be built on green lane runs until then.
+- sr-targets-server 09f43d288: delta re-review running (as_of clamp).
+- apsis-migration df219237: re-review running.
+- ops-diagnose-api c0ec3a56: FAIL -> ruling: remove include_messages from the workflow; restore Flyway proof labels.
+- gates-2 662a4e74 ready (scanner aside). A-PROG2 173b369f: ActionGate first, no Room 12 needed; final pass owed after its last display items.
+- P-SR1b local 442fdccf not pushed (owner approval in that session).
