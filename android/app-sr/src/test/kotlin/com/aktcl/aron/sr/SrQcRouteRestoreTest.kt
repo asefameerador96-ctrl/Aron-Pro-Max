@@ -42,6 +42,8 @@ import org.robolectric.shadows.ShadowToast
  * P-SR1b (lead's QC check, B2): the route-level proof. The REAL `SaleHost` and `SaleRoute` in the real `SrFrame`; the rep opens QC, taps a SKU (step 2) and the activity is recreated (the saved
  * instance state is restored). The sale is back on its entry list (the stage is not saved) and the next time QC opens it shows STEP 1: no open page is restored, so
  * বাতিল can never write quantities the rep did not enter in this session.
+ * D-PAR-SR2-08: the SR host shows the vendor QC pages (manuals 25, 26), whose tiles carry [QcTags.TILE]; the test followed the tile tag (it waited for the earlier
+ * page's CARD) and keeps every restoration assertion unchanged.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -59,7 +61,7 @@ class SrQcRouteRestoreTest {
         compose.onNodeWithText("Proceed").performClick()
         compose.waitUntil(10_000) { runCatching { compose.onNodeWithText("Product QC").assertExists() }.isSuccess }
         compose.onNodeWithText("Product QC").performClick()
-        compose.waitUntil(10_000) { runCatching { compose.onAllNodesWithTag(com.aktcl.aron.feature.sale.ui.QcTags.CARD)[0].assertExists() }.isSuccess }
+        compose.waitUntil(10_000) { runCatching { compose.onAllNodesWithTag(com.aktcl.aron.feature.sale.ui.QcTags.TILE)[0].assertExists() }.isSuccess }
     }
 
     private fun show(fx: SrLockFixture, scenario: ActivityScenario<ComponentActivity>) {
@@ -89,7 +91,7 @@ class SrQcRouteRestoreTest {
         compose.onAllNodesWithContentDescription("More", substring = true)[0].performClick()
         compose.waitForIdle()
         openQc()
-        compose.onAllNodesWithTag(com.aktcl.aron.feature.sale.ui.QcTags.CARD)[0].performClick()
+        compose.onAllNodesWithTag(com.aktcl.aron.feature.sale.ui.QcTags.TILE)[0].performClick()
         compose.waitUntil(10_000) { runCatching { compose.onAllNodesWithTag(com.aktcl.aron.feature.sale.ui.QcTags.QTY_FIELD)[0].assertExists() }.isSuccess }
         compose.onAllNodesWithTag(com.aktcl.aron.feature.sale.ui.QcTags.QTY_FIELD).assertCountEquals(6) // step 2 is open
         // the restoration

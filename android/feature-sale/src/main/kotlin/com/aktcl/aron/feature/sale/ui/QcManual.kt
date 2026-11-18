@@ -79,18 +79,18 @@ fun QcManualScreen(
     /** Opens on the entry page of this SKU (restores a page after a process restart; the goldens). */
     startOnEntrySku: Long? = null,
 ) {
-    var picked by rememberSaveable { mutableStateOf(startOnEntrySku) }
-    // lead gate finding 5: what the page opened with must survive a rotation or a process restart, or বাতিল / Back would put nothing back and a
-    // mistyped count (it changes the memo's QC deduction) would stay. A map is not saveable as it is, so it is kept as one string and read back.
-    var openedPacked by rememberSaveable { mutableStateOf("") }
-    val opened = remember(openedPacked) { QcOpened.unpack(openedPacked) }
+    // NOT saved: after a rotation or a process restart no open QC page is restored and QC reopens on the tiles (step 1). The landed route test
+    // SrQcRouteRestoreTest (P-SR1b, B2) requires it, so বাতিল can never write quantities the rep did not enter in this session. This replaces
+    // the saveable page of lead gate finding 5, which the landed behaviour overrules (D-PAR-SR2-08).
+    var picked by remember { mutableStateOf(startOnEntrySku) }
+    var opened by remember { mutableStateOf(emptyMap<String, Long>()) }
     val sku = skus.firstOrNull { it.skuId == picked }
     androidx.compose.runtime.LaunchedEffect(sku != null) { onEntryPage(sku != null) }
     // back on the entry page is the vendor's বাতিল (what the page opened with comes back); on the tiles the host's back applies
     androidx.activity.compose.BackHandler(enabled = sku != null) { if (sku != null) { opened.forEach { (code, q) -> onQty(sku.skuId, code, q) }; picked = null } }
     if (sku == null) {
         QcTiles(skus, review, locked, onPick = { s ->
-            openedPacked = QcOpened.pack(QcEntryModel.APP_TYPES.associate { it.code to qtyOf(s.skuId, it.code) })
+            opened = QcEntryModel.APP_TYPES.associate { it.code to qtyOf(s.skuId, it.code) }
             picked = s.skuId
         }, onDone = onDone, modifier = modifier)
     } else {
@@ -101,13 +101,6 @@ fun QcManualScreen(
             onDelete = { onClearSku(sku.skuId); picked = null },
         )
     }
-}
-
-/** The counts a QC entry page opened with, as one string a saved-instance bundle can hold (`code=qty;code=qty`). */
-internal object QcOpened {
-    fun pack(m: Map<String, Long>): String = m.entries.joinToString(";") { it.key + "=" + it.value }
-    fun unpack(s: String): Map<String, Long> =
-        if (s.isEmpty()) emptyMap() else s.split(";").mapNotNull { part -> part.split("=", limit = 2).takeIf { it.size == 2 }?.let { (c, q) -> q.toLongOrNull()?.let { c to it } } }.toMap()
 }
 
 @Composable
