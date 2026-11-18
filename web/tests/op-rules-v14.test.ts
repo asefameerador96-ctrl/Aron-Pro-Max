@@ -48,7 +48,7 @@ describe("paper-backfill.create", () => {
     expect(run({ business_date: day(-2) })).toEqual(["/business_date:window"]);
     expect(run({ memo_no: "SR1-1" })).toEqual(["/memo_no:invalid"]);
   });
-  it("accepts the memo number of a 3-character username (contract 1.20.0) and still refuses a 2-character one", () => {
+  it("accepts the memo number of a 3-character username (master-data train, contract 1.18.x) and still refuses a 2-character one", () => {
     expect(run({ memo_no: "srx-261005-017" })).toEqual([]);
     expect(run({ memo_no: "sx-261005-017" })).toEqual(["/memo_no:invalid"]);
   });

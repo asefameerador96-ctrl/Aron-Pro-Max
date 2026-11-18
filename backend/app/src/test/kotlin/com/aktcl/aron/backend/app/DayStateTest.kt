@@ -214,7 +214,7 @@ class DayStateTest {
     }
 
     /**
-     * Contract 1.20.0 (D-SV2-15): an AMO check-out the phone made for a forgotten day (`closed_by = phone`) never sets `supervisor_day.checked_out_at`
+     * Contract 1.19.0 (D-SV2-15): an AMO check-out the phone made for a forgotten day (`closed_by = phone`) never sets `supervisor_day.checked_out_at`
      * (nor creates a supervisor-day on its own); the rep's own check-out does, and an older phone's (member absent) is the rep's.
      */
     @Test

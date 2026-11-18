@@ -81,6 +81,7 @@ class CheckoutClosedByV0203Test {
                 val swap = java.io.File(System.getProperty("aron.migrations"), "V0202__attendance_once_rep_and_phone.sql").readText()
                 c.exec(swap); c.exec(swap)
                 assertEquals("attendance_event_once_phone,attendance_event_once_rep", c.scalar("SELECT string_agg(indexname, ',' ORDER BY indexname) FROM pg_indexes WHERE tablename = 'attendance_event' AND indexname LIKE 'attendance_event_once%'"))
+                assertEquals("true", c.scalar("SELECT (col_description('app.attendance_event'::regclass, (SELECT attnum FROM pg_attribute WHERE attrelid = 'app.attendance_event'::regclass AND attname = 'closed_by')) LIKE '%one location attempt%')::text"), "V0209 corrects the column comment")
                 assertEquals("5", c.scalar("SELECT count(*) FROM pg_constraint WHERE convalidated AND conname IN ('attendance_event_closed_by_check', 'app_user_memo_username', 'memo_memo_no_check', 'memo_void_memo_no_check', 'sale_abort_memo_no_check') AND conrelid IN ('app.attendance_event'::regclass, 'app.app_user'::regclass, 'app.memo'::regclass, 'app.memo_void'::regclass, 'app.sale_abort'::regclass)"))
             }
         } finally {
