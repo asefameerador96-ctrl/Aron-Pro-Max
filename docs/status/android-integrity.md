@@ -1,4 +1,4 @@
-**PENDING RENUMBER (lead, 2026-11-18): my V0201 -> V0204, V0202 -> V0205, contract 1.19.0 -> 1.20.0. Do it ONCE, in the push after the lead says "sr-server check-out round landed" (merge the gates round then too, Room 10 -> 11). Until then keep the current numbers.**
+**PENDING RENUMBER (lead, 2026-11-18, final): my V0201 -> V0205, V0202 -> V0206, contract 1.19.0 -> 1.20.0 (the sr-server check-out round takes V0201..V0204 and 1.19.0). Do it ONCE, in the push after the lead says "sr-server check-out round landed" (merge the gates round then too, Room 10 -> 11). Until then keep the current numbers.**
 
 # HANDOVER (A-INT2, 2026-11-17, written near 400 k tokens: continue in a fresh session)
 
