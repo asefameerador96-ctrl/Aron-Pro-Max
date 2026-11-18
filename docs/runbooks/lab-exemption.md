@@ -43,4 +43,4 @@ Unsetting the server key does not withdraw grants already issued (the phone hold
 
 ## Status
 
-Built and tested (A-INT2, A-INT3): table `app.device_lab_exemption` with the stored signed token (V0202, renumbered V0206 at landing), `LabGrantSigner` and `LabExemptionService`, the admin operations, the bundle value, the delta rule, the Android verifier, `VerifiedLabExemption`, the gate hook and the bundle hook, and the portal card. Not done on a device: see the device-walk list in `docs/status/android-integrity.md`.
+Built and tested (A-INT2, A-INT3): table `app.device_lab_exemption` (V0202, renumbered V0206 at landing) and its stored signed token column (V0203, renumbered V0207), `LabGrantSigner` and `LabExemptionService`, the admin operations, the bundle value, the delta rule, the Android verifier, `VerifiedLabExemption`, the gate hook and the bundle hook, and the portal card. Not done on a device: see the device-walk list in `docs/status/android-integrity.md`.

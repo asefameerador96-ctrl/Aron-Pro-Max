@@ -221,7 +221,7 @@ class BundleService(
      */
     private fun labGrant(h: org.jdbi.v3.core.Handle, deviceId: Long?, now: Instant): List<ResolvedConfigValue> {
         if (deviceId == null) return emptyList()
-        val token = h.createQuery("SELECT grant_token FROM app.device_lab_exemption WHERE device_id = :d AND expires_at > :n").bind("d", deviceId).bind("n", java.sql.Timestamp.from(now)).mapTo(String::class.java).findOne().orElse(null) ?: return emptyList()
+        val token = h.createQuery("SELECT grant_token FROM app.device_lab_exemption WHERE device_id = :d AND expires_at > :n AND grant_token IS NOT NULL").bind("d", deviceId).bind("n", java.sql.Timestamp.from(now)).mapTo(String::class.java).findOne().orElse(null) ?: return emptyList()
         return listOf(ResolvedConfigValue(LAB_GRANT_KEY, kotlinx.serialization.json.JsonPrimitive(token), "device", deviceId, null, null, null, false, null))
     }
 

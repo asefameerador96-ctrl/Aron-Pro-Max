@@ -1343,7 +1343,7 @@ The lab exemption of one enrolled phone (D-OWNER-MDM-02): while unexpired the se
 | `granted_at` | timestamp with time zone | not null |  | UTC time the exemption was granted. |
 | `expires_at` | timestamp with time zone | not null |  | UTC time the exemption ends; at most 14 days after granted_at. The signed grant carries the same time, and the phone also caps it. |
 | `note` | text | null |  | Why the phone needs it (for example the walk it is for); free text, at most 300 characters. |
-| `grant_token` | text | not null |  | The server-signed grant (ECDSA P-256 over the device uuid, granted_at and expires_at), signed ONCE when the exemption is granted and stored so the bundle that carries it is the same bytes on every fetch (a fresh signature each time would change the bundle every time). Not a secret: it only works on the one phone it names and the phone verifies it with a public key. |
+| `grant_token` | text | null |  | The server-signed grant (ECDSA P-256 over the device uuid, the API host, granted_at and expires_at), signed ONCE when the exemption is granted and stored so the bundle that carries it is the same bytes on every fetch. NULL delivers nothing. Not a secret: it only works on the one phone and environment it names and the phone verifies it with a public key. |
 
 Keys: `PRIMARY KEY (device_id)`
 
