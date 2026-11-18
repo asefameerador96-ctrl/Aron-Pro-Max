@@ -72,3 +72,53 @@ LOWS:
 - Stale test section comment at GiftPhotoRecordsTest.kt line 857 still lists `a non-national count` although that test was dropped.
 - Dropped non-national waiting_count test: judged not a leak. The count uses exactly the list's reach predicate (`q.route_id IN (SELECT route_id FROM dw.dim_geo WHERE zone_id = ANY(:rz))`, empty zone list bound as -1; OpsApi.kt lines 310 and 324-326), so it can never count an item the same caller could not list by dropping filters. Items with a null route are excluded for non-national callers. Still unexercised by any test.
 - Outside this round but seen: for an open waiting item whose code is device_integrity_failed or device_not_enrolled, a phone resend that is held again with the SAME code overwrites the detail through quarantine()'s upsert while the marker and waiver stay (the trigger fires only on a code change). It is the same open wait, so the waiver is still the one the reviewer's accept carried, but the queue then shows waiting = true with a detail that no longer says so. Read from code, not traced end to end.
+
+
+## Landing check d88b751b..ccd4f156 (V0204, contract 1.20.0, merge of 39db6c734) verdict=pass
+SUMMARY: Pass, no blocking finding. Everything was read from git; nothing was built or run.
+
+1. **Whole change vs 39db6c734:** 21 files, all Loyalty/sync/ops backend, contract, shared contract test, db (V0204 and the SchemaV1aTest key list), web contract types, docs and DECISIONS.
+   - V0201..V0203, RecordWriter, PayloadShapes and WireDtos are byte-identical to integration.
+   - IngestService.kt merged without conflict: train 117's 29 changed lines plus the lane's 4 give the 33 seen, and no closed_by or attendance line is removed.
+   - The five conflicts (DECISIONS, openapi.yaml, slices INDEX, data dictionary, AmoManualContractTest) each keep the integration side and add the lane's. The data dictionary count is 3039 + 7 = 3046.
+
+2. **V0204:** the only new migration, with no V0207 file left. Against the reviewed V0207 it differs only in three comment lines (header number, the waiting_since column comment, the comment above VALIDATE).
+   - On a database at v0203 with train-115 rows, the backfill touches only open rows and casts only text that already matched the uuid pattern.
+   - Rows that do not match get a plain detail and no marker.
+   - The trigger is created after the backfill.
+   - The CHECK cannot fail, because the backfill sets the marker only on open rows.
+   - Train 115 wrote "waits for another parent: <outcome detail> (parent <uuid> was accepted)", which fits both branches.
+
+3. **Contract:** info.version is 1.20.0. The only changes vs 1.19.0 are four optional response members, all additive:
+   - QuarantineItem.waiting, waits_for_uuid and waits_for_refused;
+   - QuarantinePage.waiting_count.
+   No path, parameter, required list or enum changed. The web uses TypeScript types only, so the closed schemas break no reader. Slices, INDEX (byte sizes match the blobs) and openapi.d.ts agree with the yaml. The history entry in the openapi description is missing (low).
+
+4. **Code deltas since d88b751b:**
+   - The poison stamp runs in its own db.jdbi.inTransaction with SET LOCAL lock_timeout = '2s'. The setting ends with that transaction, so it cannot leak to the pool, and the only statement it can abort is the one stamp UPDATE.
+   - touch() now also requires waiting_since IS NOT NULL.
+   - Two new tests (poison stamp through a raising trigger; awaited-parent follow) read as real. No test is weakened: one rename, one stale comment removed, and the migration is found by name suffix.
+
+5. **Grants:** api_rw has table-level SELECT/INSERT/UPDATE on app.sync_quarantine, so the new columns are covered. There is no column guard trigger on that table. The audit_log insert was already granted. The trigger function needs no EXECUTE grant to fire.
+
+6. **DECISIONS:** append-only vs 39db6c734 (5 lines added, 0 removed).
+
+**Not verified:**
+- whether the tests pass, in particular whether the follow test's edited awaited memo reads as stored after a backfill match;
+- squawk on V0204;
+- regenerating the slices, openapi.d.ts and data dictionary with their tools;
+- oasdiff;
+- the migration on the real dev data;
+- the PostgreSQL trigger-privilege behaviour, which is from knowledge, not a run.
+
+LOWS:
+- db/migrations/V0204__cfg_waiting_sweep_keys.sql line 1 still says 'V0204 (PROVISIONAL number, lead 2026-11-18)'. The number is final, and the file cannot be edited once it ships, so fix the comment before the train or accept it for good.
+- backend/analytics/src/main/kotlin/com/aktcl/aron/backend/analytics/OpsApi.kt:91 KDoc still says 'Read from the typed columns of V0207'. This is the only V0207 left in code; the rest are in DECISIONS history and copied review texts, which is fine.
+- contract/openapi.yaml has no 1.20.0 entry in the history list of info.description (1.19.0 has one at line 128), and there is no docs/requests/contract-1.20-*.md. The gate does not need either for an additive change, and the list already skips 1.15, 1.17 and 1.18. The only history is the message in AmoManualContractTest, which still says 'provisional' and sits in a test still named versionIs1190.
+- Train 117's code comments on the integration branch already call the attendance closed_by round 'Contract 1.20.0' (IngestService.kt:1021/1033/2301, RecordWriter.kt:104, DayStates.kt:169, WireDtos.kt:399, several tests), although it shipped as 1.19.0. With this train 1.20.0 means something else. Not this lane's change; worth a comment clean-up later.
+- DECISIONS.md: D-LOY-API-32 is missing (28, 29, 30, 31, 33); the status file says it lives on the local slice branch. D-LOY-API-28 to -31 still speak of V0207 and 1.21.0; D-LOY-API-33 gives the mapping, which is right for an append-only file.
+- The integration tip 29e8d86f (train 118) added 30 lines at the end of DECISIONS.md after 39db6c734, so the train merge will conflict at the end of that file; keep both sides. Train 118 touches no contract, backend, migration, shared-contract or data-dictionary file, and its highest migration is still V0203, so V0204 and 1.20.0 stay free.
+- V0204 does not call app.apply_db_role_grants() for the new trigger function, unlike V0192/V0193. By reading this is not needed: PostgreSQL checks EXECUTE on a trigger function when the trigger is created, not when it fires, and the function only assigns NEW. The V0014 default privileges keep PUBLIC execute off, so the DbRolesTest rule holds. Not run here.
+- The poison stamp (IngestService.kt:636) swallows its own failure in runCatching with no log line. If the 2s lock timeout hits, the item is not stamped and stays at the head until the next pass. Harmless, but silent.
+- ccd4f156 is one merge commit that also carries the landing work, so there is no separate non-merge commit to read. I separated the lane's part with 'git show --remerge-diff'.
+- Old-form (train 115) waiting rows whose text does not name '<field> <lowercase uuid>' get the plain detail and are never swept; a reviewer must accept them. This is the known, stated limit and is the safe side.

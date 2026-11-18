@@ -44,7 +44,8 @@ fun OutletTargetPopup(outletLabel: String, target: OutletTarget?, onOkay: () -> 
     val c = LocalAronColors.current
     AlertDialog(
         onDismissRequest = onOkay, modifier = Modifier.testTag(TargetTags.POPUP),
-        containerColor = c.surfaceSolid, titleContentColor = c.textPrimary, textContentColor = c.textPrimary,
+        // the old SR's lavender box (manual 21): the outlet in bold, the campaign line in purple, the figures between hairlines and a full-width purple Okay
+        containerColor = if (c.sunlight) c.surfaceSolid else PopupTint, titleContentColor = c.textPrimary, textContentColor = c.textPrimary,
         title = { Text(outletLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
         text = {
             if (target == null) Text(stringResource(R.string.target_none), Modifier.testTag(TargetTags.EMPTY))
@@ -59,7 +60,9 @@ fun OutletTargetPopup(outletLabel: String, target: OutletTarget?, onOkay: () -> 
                 TargetFigure(stringResource(R.string.target_rem_memo), target.remainingMemo)
             }
         },
-        confirmButton = { TextButton(onClick = onOkay, modifier = Modifier.heightIn(min = AronTokens.Touch.Min).testTag(TargetTags.OKAY)) { Text(stringResource(R.string.target_okay)) } },
+        confirmButton = {
+            com.aktcl.aron.core.ui.aron.AronSolidButton(stringResource(R.string.target_okay), onOkay, Modifier.fillMaxWidth().testTag(TargetTags.OKAY))
+        },
     )
 }
 
