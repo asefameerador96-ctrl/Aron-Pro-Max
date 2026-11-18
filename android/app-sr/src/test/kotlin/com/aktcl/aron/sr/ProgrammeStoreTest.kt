@@ -88,4 +88,45 @@ class ProgrammeStoreTest {
         assertEquals(1, store.redemptions().size)
         assertEquals(2, db.outboxDao().countInState("pending")) // one redemption and its line, never a second redemption
     }
+
+    // ---- gift photo: gates before the claim, the claim before the commit, a gone photo saves nothing ----
+    private val claims = ArrayList<Pair<String, Long>>() // photo uuid to the number of records the phone held for the record uuid WHEN claimed
+    private var claimFails = false
+    private fun photoStore(r: CaptureRepository = repo) = ProgrammeStore(db, r, meta, claimPhoto = { photo, rec, _ ->
+        if (claimFails) throw IllegalStateException("gone")
+        claims += photo to db.captureDao().amoRecordsOfFamily(rec).size.toLong()
+    }) { syncs++ }
+    private val fixEntity = com.aktcl.aron.core.database.entity.GeoFixEntity(
+        clientUuid = ClientIds.newUuid(), ownerClientUuid = "x", purpose = "gift_photo", fixStatus = "ok", lat = 23.79, lng = 90.40, accuracyM = 10.0, provider = "fused", fixTime = "2026-11-18T05:00:00.000Z",
+        fixElapsedRealtimeMs = 1L, fixAgeMs = 0L, timeToFixMs = 100L, requestPriority = "balanced", isMock = false, reused = false, refreshCount = 0,
+    )
+    private fun photoPlan(uuid: String, photo: String, assignment: Long = 71) =
+        com.aktcl.aron.feature.programmes.GiftPhotoModel.planAstha(10, 4, assignment, photo, kotlinx.serialization.json.buildJsonObject { put("lat", kotlinx.serialization.json.JsonPrimitive(23.79)) }, uuid)
+
+    @Test fun theGiftPhotoIsClaimedBeforeTheRecordCommitsAndAReplayDoesNotClaimAgain() = runTest {
+        val s = photoStore(); val uuid = ClientIds.newUuid(); val photo = ClientIds.newUuid()
+        assertEquals(SaveOutcome.SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, photo), photo, fixEntity))
+        assertEquals(listOf(photo to 0L), claims) // claimed while the phone held no record yet: before the commit
+        assertEquals(SaveOutcome.ALREADY_SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, photo), photo, fixEntity))
+        assertEquals(1, claims.size); assertEquals(1, db.outboxDao().countInState("pending"))
+    }
+
+    @Test fun aPhotoThatIsGoneSavesNothingAndAnotherBasketUnderTheUuidIsAConflictWithoutTouchingThePhoto() = runTest {
+        val s = photoStore(); val uuid = ClientIds.newUuid(); val photo = ClientIds.newUuid()
+        claimFails = true
+        assertEquals(SaveOutcome.REFUSED, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, photo), photo, fixEntity))
+        assertEquals(0, db.outboxDao().countInState("pending")) // never a record without its photo
+        claimFails = false
+        assertEquals(SaveOutcome.SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, photo), photo, fixEntity))
+        val before = claims.size
+        assertEquals(SaveOutcome.CONFLICT, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, ClientIds.newUuid(), assignment = 72), photo, fixEntity))
+        assertEquals(before, claims.size) // the conflict claims nothing; the host's new uuid claims afresh
+    }
+
+    @Test fun withoutACheckInNothingIsClaimedAndNothingIsSaved() = runTest {
+        val gated = CaptureRepository(db, requireCheckIn = true) { "2026-11-18T05:00:00.000Z" }
+        val s = photoStore(gated); val uuid = ClientIds.newUuid(); val photo = ClientIds.newUuid()
+        assertEquals(SaveOutcome.CHECK_IN_FIRST, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, photo), photo, fixEntity))
+        assertTrue(claims.isEmpty()); assertEquals(0, db.outboxDao().countInState("pending"))
+    }
 }

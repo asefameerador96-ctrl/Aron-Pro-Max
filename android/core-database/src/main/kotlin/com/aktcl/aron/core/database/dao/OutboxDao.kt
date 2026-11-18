@@ -53,6 +53,17 @@ abstract class OutboxDao {
      * Counts one definitive failure of a row (a retryable reject, or its family isolated as the cause of a batch failure).
      * `attempts` drives skip-ahead and `row_max_retries` (s4.6); re-batching after a split or a release never counts.
      */
+    /**
+     * Memos and redemptions that were SENT at least once and have no answer yet: in a batch (`in_flight`), or back to `pending` after a failed attempt (`attempts` counts
+     * failures). The server may have committed them (a lost answer), so a bundle requested now may already hold them (lane android-sr-programmes, ProgrammesSection ACHIEVEMENT RULE).
+     */
+    @Query("SELECT client_uuid FROM outbox WHERE record_type IN ('memo', 'redemption') AND (state = 'in_flight' OR (state = 'pending' AND attempts > 0))")
+    suspend fun sentUnanswered(): List<String>
+
+    /** How many of [uuids] still wait for an answer (pending or in flight). */
+    @Query("SELECT COUNT(*) FROM outbox WHERE client_uuid IN (:uuids) AND state IN ('pending', 'in_flight')")
+    suspend fun stillOpen(uuids: List<String>): Int
+
     @Query("UPDATE outbox SET attempts = attempts + 1 WHERE client_uuid = :clientUuid")
     abstract suspend fun countFailure(clientUuid: String): Int
 

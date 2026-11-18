@@ -160,6 +160,38 @@ class BundleDownloaderTest {
         assertFalse("and released once the head answer is in", SyncEngine.userLock(USER).isLocked)
     }
 
+    /**
+     * Lost answer (ProgrammesSection ACHIEVEMENT RULE, ruling B1c): a memo sent in an upload whose answer never arrived is recorded as UNCERTAIN when the bundle is
+     * requested (the server may hold it); when it gets its answer ONE full day bundle is asked for, at most once per gap, and the list is renewed by it.
+     */
+    @Test fun aMemoSentButUnansweredIsRecordedAtTheRequestAndEarnsOneRefetchWhenAnswered() = runBlocking {
+        val sent = com.aktcl.aron.core.common.ClientIds.newUuid(); val fresh = com.aktcl.aron.core.common.ClientIds.newUuid()
+        fun row(u: String, state: String) = com.aktcl.aron.core.database.entity.OutboxEntity(
+            clientUuid = u, recordType = "memo", familyUuid = u, rank = 0, businessDate = "2026-10-05", payloadJson = "{}", payloadSha256 = "x", state = state, createdAt = "t",
+        )
+        db.outboxDao().insert(listOf(row(sent, "in_flight"), row(fresh, "pending"))) // one upload left in flight (answer lost), one never sent
+        val d = downloader()
+        assertEquals(BundleOutcome.APPLIED, d.download().outcome)
+        assertEquals(sent, db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN)) // only the one that was SENT
+        val bundles = { requests.count { it.url.encodedPath == "/v1/sync/bundle" } }
+        assertNull("still unanswered: no refetch", d.refreshIfUncertainResolved()); assertEquals(1, bundles())
+        db.outboxDao().applyAck(sent, "acked", null, 7L, SyncEngine.iso(Clock.now + 1_000L)) // the replay is answered later
+        db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG)
+        assertNotNull("answered: one full refetch", d.refreshIfUncertainResolved()); assertEquals(2, bundles())
+        assertNull("the refetch renewed the list", db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN))
+        assertNull("and nothing waits any more", d.refreshIfUncertainResolved()); assertEquals(2, bundles())
+    }
+
+    @Test fun theRefetchAfterAnAnswerIsRateLimitedSoAFlappingLinkCannotLoop() = runBlocking {
+        val sent = com.aktcl.aron.core.common.ClientIds.newUuid()
+        db.outboxDao().insert(listOf(com.aktcl.aron.core.database.entity.OutboxEntity(clientUuid = sent, recordType = "memo", familyUuid = sent, rank = 0, businessDate = "2026-10-05", payloadJson = "{}", payloadSha256 = "x", state = "in_flight", createdAt = "t")))
+        val d = downloader(); d.download()
+        db.outboxDao().applyAck(sent, "acked", null, 7L, SyncEngine.iso(Clock.now))
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(ReferenceRepository.KEY_BUNDLE_UNCERTAIN, sent)) // the list is still held
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(BundleDownloader.KEY_UNCERTAIN_REFETCH_AT, Clock.now.toString())) // a refetch just ran
+        assertNull(d.refreshIfUncertainResolved())
+    }
+
     private suspend fun assertDayIsInRoom() {
         val repo = ReferenceRepository(db)
         assertEquals("2026-10-05", repo.businessDate())

@@ -36,6 +36,7 @@ import com.aktcl.aron.rules.UiLocale
 import com.aktcl.aron.core.ui.R as CoreR
 
 object LoyaltyTags {
+    const val AWAITING = "loyalty_awaiting"
     const val MENU_REDEEM = "loyalty_menu_redeem"
     const val MENU_POINTS = "loyalty_menu_points"
     const val OUTLET = "loyalty_outlet"
@@ -69,6 +70,8 @@ fun OutletPointsScreen(
     onRedeem: ((Long) -> Unit)? = null, initialOutlet: Long? = null,
     /** The same balance function as the redemption screen: the bundle's balance minus this phone's own redemptions. */
     balanceOf: (outletId: Long, programmeId: Long, bundleBalance: Long) -> Long = { _, _, b -> b },
+    /** Redemptions sent but not yet answered when the balances were fetched: the balance may already hold them. */
+    awaiting: Int = 0,
 ) {
     val look = LocalAronLook.current
     var outletId by rememberSaveable { mutableStateOf(initialOutlet) }
@@ -80,6 +83,7 @@ fun OutletPointsScreen(
             }
             return@Column
         }
+        if (awaiting > 0) Text(stringResource(R.string.pg_awaiting_redemptions, com.aktcl.aron.rules.Formats.integer(awaiting.toLong(), locale)), Modifier.testTag(LoyaltyTags.AWAITING), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
         val chosen = withPoints.firstOrNull { it.outletId == outletId }
         AronDropdown(withPoints, chosen, { outletId = it.outletId }, { it.nameLine }, Modifier.testTag(LoyaltyTags.OUTLET), placeholder = stringResource(R.string.pg_loyalty_pick_outlet))
         if (chosen == null) return@Column

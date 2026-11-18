@@ -16,10 +16,13 @@ data class LocalMemo(
  * does not count; and a counted memo that supersedes a memo the server ALREADY holds (acknowledged at or before the request) takes that memo's figures back
  * out. Without a request instant only the memos still on the phone count (never a double count). Recomputed from scratch on every read, never accumulated.
  * A memo is added only to rows of its own route and only for outlets that are enrolled (have Astha rows); a zero-sale memo adds no memo count (the server
- * counts sales only). A void is not read here: this phone has no memo-void write, a server void arrives with the next bundle.
+ * counts sales only). An `uncertain` memo (sent, answer lost or not yet in) is neither added nor does it take its original out: the figure stays as the server gave it until the next full bundle. A void is not read here: this phone has no memo-void write, a server void arrives with the next bundle.
  */
 object AsthaLocal {
     private val STILL_LOCAL = setOf("pending", "in_flight", "quarantined")
+
+    /** Memos SENT but unanswered when the held snapshot was requested (state `uncertain`): the server figure may already hold them, so they are never added; the page says so. */
+    fun awaiting(memos: List<LocalMemo>): Int = memos.count { it.state == "uncertain" && it.memoKind == "sale" }
 
     private fun insideServerFigure(m: LocalMemo, requestedMs: Long?): Boolean =
         m.state == "acked" && requestedMs != null && DhakaTime.ms(m.ackedAt)?.let { it <= requestedMs } == true

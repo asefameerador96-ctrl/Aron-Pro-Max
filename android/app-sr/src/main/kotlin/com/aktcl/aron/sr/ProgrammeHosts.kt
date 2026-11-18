@@ -47,23 +47,26 @@ internal suspend fun readAstha(day: SrDay): AsthaData? = withContext(Dispatchers
 }
 
 /** What the Astha page reads in one pass: the programme rows, the year, and the shop-wise cards (outlets of every route of the bundle). */
-internal data class AsthaLoad(val data: AsthaData?, val year: Int, val shops: List<ShopInfo>, val month: String?)
+internal data class AsthaLoad(val data: AsthaData?, val year: Int, val shops: List<ShopInfo>, val month: String?, val awaiting: Int = 0)
 
 internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = withContext(Dispatchers.IO) {
     val date = day.reference.businessDate()
     // The figures, this phone's memos and the cut-off must come from ONE snapshot of the bundle: the request instant is read before and after, and a bundle applied in between
     // (a different instant) makes the whole read run again, so new figures are never paired with the old cut-off.
     var data: AsthaData? = null
+    var awaiting = 0
     var attempts = 0
     while (true) {
         val before = day.programmes.bundleRequestedAt()
         val server = readAstha(day)
         // the server's Astha figures plus this phone's own memos that the server cannot hold yet (by memo UUID; recomputed on every read)
-        data = server?.let { d -> date?.take(7)?.let { month -> AsthaLocal.apply(d, day.programmes.memosOfMonth(month), before) } ?: d }
+        val memos = date?.take(7)?.let { day.programmes.memosOfMonth(it) }.orEmpty()
+        awaiting = AsthaLocal.awaiting(memos)
+        data = server?.let { d -> if (date == null) d else AsthaLocal.apply(d, memos, before) }
         if (day.programmes.bundleRequestedAt() == before || ++attempts >= 3) break
     }
     val outlets = readShopOutlets(day)
-    AsthaLoad(data, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, data, ShopModel.tiers(day.reference.section("programmes"))), date?.take(7))
+    AsthaLoad(data, programmeYear(date, System.currentTimeMillis()), ShopModel.build(outlets, data, ShopModel.tiers(day.reference.section("programmes"))), date?.take(7), awaiting)
 }
 
 /** The Astha target page of the SR (manual 48 right to 51): downloaded data only, no network in the path. */
@@ -71,7 +74,7 @@ internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = wi
 fun AsthaHost(day: SrDay, locale: UiLocale) {
     val load = rememberAsyncLoad(locale) { readAsthaPage(day, locale) }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
-        AsthaTargetScreen(page.data, locale, page.year, shops = page.shops, currentMonth = page.month)
+        AsthaTargetScreen(page.data, locale, page.year, shops = page.shops, currentMonth = page.month, awaiting = page.awaiting)
     }
 }
 
@@ -90,7 +93,7 @@ fun OutletPointsHost(day: SrDay, locale: UiLocale, initialOutlet: Long? = null, 
         RedemptionLoad(withContext(Dispatchers.IO) { LoyaltyModel.parse(day.reference.section("programmes")) }, readShopOutlets(day), store.redemptions(), store.bundleRequestedAt())
     }
     AronLoaded(load, stringResource(ProgR.string.pg_load_failed), stringResource(HomeR.string.fb_retry)) { page ->
-        OutletPointsScreen(page.outlets, page.data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet, balanceOf = PointsBalance.function(page.redemptions, page.builtAt))
+        OutletPointsScreen(page.outlets, page.data, locale, onRedeem = onRedeem, initialOutlet = initialOutlet, balanceOf = PointsBalance.function(page.redemptions, page.builtAt), awaiting = com.aktcl.aron.feature.programmes.LocalRedeemed.awaiting(page.redemptions))
     }
 }
 

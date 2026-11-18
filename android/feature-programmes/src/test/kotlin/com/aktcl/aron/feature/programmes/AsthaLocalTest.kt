@@ -121,4 +121,14 @@ class AsthaLocalTest {
         assertEquals(100_000L + 8_000L, brandRoute(x).stdAchievedMilli)
         assertEquals(11L, allRoute(x).memoAchieved)
     }
+
+    @Test fun aMemoSentButUnansweredWhenTheRequestLeftIsNeitherAddedNorCountedAndAWaitingLineIsDue() {
+        val lost = memo("lost", "uncertain")
+        val x = AsthaLocal.apply(d, listOf(lost, memo("p", "pending", qty = 10)), req)
+        assertEquals(100_000L + 10_000L, brandRoute(x).stdAchievedMilli) // only the memo that was never sent is added: the figure may already hold the lost one
+        assertEquals(1, AsthaLocal.awaiting(listOf(lost, memo("p", "pending"))))
+        assertEquals(0, AsthaLocal.awaiting(listOf(memo("z", "uncertain", memoKind = "zero_sale"))))
+        // the late ack of the lost memo changes nothing until the refetch replaces the figure
+        assertEquals(d.rows, AsthaLocal.apply(d, listOf(memo("lost", "uncertain", ackedAt = "2026-11-17T12:00:00Z")), req).rows)
+    }
 }

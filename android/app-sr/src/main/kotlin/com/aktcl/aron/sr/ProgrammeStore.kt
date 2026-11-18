@@ -35,12 +35,14 @@ class ProgrammeStore(
 ) {
     /** The redemptions on this phone with their outbox state (a row with no outbox state yet counts as pending). */
     suspend fun redemptions(): List<LocalRedemption> = withContext(Dispatchers.IO) {
+        val unsure = uncertain()
         db.captureDao().amoRecordsOfType("redemption").mapNotNull { r ->
             val o = runCatching { Json.parseToJsonElement(r.payloadJson) as? JsonObject }.getOrNull() ?: return@mapNotNull null
             fun n(k: String) = (o[k] as? JsonPrimitive)?.content?.toLongOrNull()
             val ob = db.outboxDao().byClientUuid(r.clientUuid)
+            val state = if (r.clientUuid in unsure && ob?.state != "rejected") "uncertain" else ob?.state ?: "pending"
             LocalRedemption(n("outlet_id") ?: return@mapNotNull null, n("programme_id") ?: return@mapNotNull null, n("points_total") ?: return@mapNotNull null,
-                (o["confirmed_at"] as? JsonPrimitive)?.content ?: return@mapNotNull null, ob?.state ?: "pending", ob?.ackedAt)
+                (o["confirmed_at"] as? JsonPrimitive)?.content ?: return@mapNotNull null, state, ob?.ackedAt)
         }
     }
 
@@ -78,21 +80,32 @@ class ProgrammeStore(
     ) as JsonObject
 
     /**
-     * Saves one gift photo record: the photo is claimed for the record FIRST (so the media worker uploads it after the record's ack), then the record is saved
-     * through the one programme write path (check-in gate, open route-day, idempotent by uuid). A claim that fails leaves the record unsaved and the result REFUSED.
+     * Saves one gift photo record in this order: (1) the write gates (check-in, open route-day) are checked with nothing written; (2) the photo must still be in the media
+     * queue; (3) a record uuid this phone already holds is a replay (ALREADY_SAVED) or a different basket (CONFLICT) and the photo is not touched; (4) only then is the photo
+     * claimed for the record, with the shutter fix, BEFORE the record commits (so the media worker uploads it after the record's ack); (5) the record is saved through the one
+     * programme write path. A photo that is gone, a refused gate or a failed claim leaves nothing saved; the result says why.
      */
-    suspend fun saveGiftPhoto(meta: CaptureMeta, plan: PlannedRecord, photoUuid: String, fix: com.aktcl.aron.core.database.entity.GeoFixEntity): SaveOutcome {
-        try { claimPhoto(photoUuid, plan.clientUuid, fix) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { return SaveOutcome.REFUSED }
-        return saveProgramme(meta, listOf(plan))
+    suspend fun saveGiftPhoto(meta: CaptureMeta, plan: PlannedRecord, photoUuid: String, fix: com.aktcl.aron.core.database.entity.GeoFixEntity): SaveOutcome = withContext(Dispatchers.IO) {
+        try {
+            capture.requireProgrammeWriteOpen(meta, plan.type)
+        } catch (e: com.aktcl.aron.core.database.repo.RouteDayFinalSubmittedException) { return@withContext SaveOutcome.DAY_SUBMITTED }
+        catch (e: com.aktcl.aron.core.database.repo.RouteDaySubmittedException) { return@withContext SaveOutcome.DAY_SUBMITTED }
+        catch (e: com.aktcl.aron.core.database.repo.AttendanceRefusedException) { return@withContext SaveOutcome.CHECK_IN_FIRST }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) { return@withContext SaveOutcome.REFUSED }
+        if (db.captureDao().amoRecordsOfFamily(plan.clientUuid).isNotEmpty()) return@withContext saveProgramme(meta, listOf(plan)) // a replay or another basket: the photo stays as it is
+        try { claimPhoto(photoUuid, plan.clientUuid, fix) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { return@withContext SaveOutcome.REFUSED }
+        saveProgramme(meta, listOf(plan))
     }
 
     /** The memos of a Dhaka month (`YYYY-MM`) on this phone with their lines and outbox state, for the Astha achievement (the phone's own memos on top of the server figure). */
     suspend fun memosOfMonth(month: String): List<LocalMemo> = withContext(Dispatchers.IO) {
+        val unsure = uncertain()
         db.captureDao().memosBetween("$month-01", "$month-31").map { m ->
             val ob = db.outboxDao().byClientUuid(m.clientUuid)
             // A row put back to pending by a restore or digest resync keeps its first acknowledgement time: the server already held it once, so it counts as acknowledged
             // then (inside the figure when that was before the request), never as a memo the phone alone holds.
-            val state = if (ob?.state == "pending" && ob.ackedAt != null) "acked" else ob?.state ?: "pending"
+            val state = if (m.clientUuid in unsure && ob?.state != "rejected") "uncertain" else if (ob?.state == "pending" && ob.ackedAt != null) "acked" else ob?.state ?: "pending"
             LocalMemo(
                 m.clientUuid, m.outletId, m.meta.businessDate, m.supersedesClientUuid, state, ob?.ackedAt,
                 db.captureDao().linesOf(m.clientUuid).map { LocalMemoLine(it.skuId, it.lineKind, it.qtyBase, it.packFactor, it.grossMtk) },
@@ -106,8 +119,12 @@ class ProgrammeStore(
      * server figure). After a promoted prefetch it is the snapshot's server time (the same source as the balances); null when neither is held.
      */
     suspend fun bundleRequestedAt(): String? = withContext(Dispatchers.IO) {
-        db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_REQUESTED_AT) ?: db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_SERVER_TIME)
+        db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_REQUESTED_AT) ?: db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_FULL_TIME)
     }
+
+    /** The memos and redemptions that were sent but unanswered when the held snapshot was requested: the figure may already hold them (a lost answer). */
+    private suspend fun uncertain(): Set<String> =
+        db.referenceDao().meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN)?.split(',')?.filter { it.isNotBlank() }?.toSet().orEmpty()
 
 
     /**

@@ -12,6 +12,8 @@ sealed interface PhotoStatus {
     data object NoGift : PhotoStatus
     /** A gift is held and no photo exists: the photo can be taken. */
     data class Ready(val giftId: Long, val assignmentId: Long) : PhotoStatus
+    /** The server locked the choice with no photo of its own (for example by the TSO): no photo is needed from this phone. */
+    data class Locked(val giftId: Long) : PhotoStatus
     /** A photo exists: the server's flag, a locked choice, or a photo this phone saved ([onThisPhone]: not necessarily sent yet). The first photo wins on the server. */
     data class Captured(val giftId: Long, val onThisPhone: Boolean) : PhotoStatus
 }
@@ -20,7 +22,8 @@ object GiftPhotoModel {
     /** The status of an outlet's Astha gift photo for [quarter]; a photo the server refused does not count, so it can be taken again. */
     fun statusOf(data: GiftChoiceData, outletId: Long, quarter: String, local: List<LocalGiftPhoto>): PhotoStatus {
         val a = data.assignment(outletId, quarter)?.takeIf { it.id > 0 } ?: return PhotoStatus.NoGift
-        if (a.photoCaptured || a.locked) return PhotoStatus.Captured(a.giftId, onThisPhone = false)
+        if (a.photoCaptured) return PhotoStatus.Captured(a.giftId, onThisPhone = false)
+        if (a.locked) return PhotoStatus.Locked(a.giftId)
         val mine = local.any { it.programmeKind == "astha" && it.assignmentId == a.id && it.state != "rejected" }
         return if (mine) PhotoStatus.Captured(a.giftId, onThisPhone = true) else PhotoStatus.Ready(a.giftId, a.id)
     }

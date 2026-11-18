@@ -62,6 +62,9 @@ data class Basket(val outletId: Long, val programmeId: Long, val balance: Long, 
 }
 
 object LocalRedeemed {
+    /** Redemptions sent but unanswered when the held snapshot was requested. */
+    fun awaiting(records: List<LocalRedemption>): Int = records.count { it.state == "uncertain" }
+
     private val STILL_LOCAL = setOf("pending", "in_flight", "quarantined")
 
     /**
@@ -73,7 +76,8 @@ object LocalRedeemed {
      */
     fun points(records: List<LocalRedemption>, outletId: Long, programmeId: Long, bundleBuiltAt: String?): Long {
         val built = DhakaTime.ms(bundleBuiltAt)
-        return records.filter { it.outletId == outletId && it.programmeId == programmeId && it.state != "rejected" }
+        // `uncertain` (sent, answer lost, so the bundle may already hold it) is neither subtracted nor ignored silently: the points page says it is awaiting confirmation
+        return records.filter { it.outletId == outletId && it.programmeId == programmeId && it.state != "rejected" && it.state != "uncertain" }
             .filter { it.state in STILL_LOCAL || built == null || DhakaTime.ms(it.ackedAt)?.let { ack -> ack > built } != false }
             .sumOf { it.points }
     }

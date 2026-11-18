@@ -185,6 +185,7 @@ class BundleDownloader(
 
     /** After a sync run: a delta only when the server said its current bundle is newer than the held one (s4.10). */
     suspend fun refreshIfServerNewer(): BundleReport? {
+        refreshIfUncertainResolved()?.let { return it }
         val current = meta.meta(SyncEngine.KEY_BUNDLE_CURRENT) ?: return null
         val held = repo.bundleVersion() ?: return null
         if (ReferenceRepository.compare(current, held) <= 0) return null
@@ -194,6 +195,22 @@ class BundleDownloader(
         // while a refusal or an unreadable answer spends it (a full bundle after every sync would break the data budget).
         if (meta.meta(KEY_DELTA_TRIED_FOR) == current) return null
         return refreshDelta().also { if (spendsVersion(it)) meta.putMeta(SyncMetaEntity(KEY_DELTA_TRIED_FOR, current)) }
+    }
+
+    /**
+     * The memos and redemptions that were sent but unanswered when the held snapshot was requested have all got their answer: the server figure may or may not have held
+     * them, so ONE full day bundle is asked for (the contract's "discard and refetch"), at most once per [UNCERTAIN_REFETCH_GAP_MS] so a flapping link cannot loop. Null when
+     * nothing waits, something is still open, or the last such refetch is too recent.
+     */
+    suspend fun refreshIfUncertainResolved(): BundleReport? {
+        val uuids = meta.meta(ReferenceRepository.KEY_BUNDLE_UNCERTAIN)?.split(',')?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() } ?: return null
+        val held = repo.businessDate() ?: return null
+        if (uuids.chunked(500).any { db.outboxDao().stillOpen(it) > 0 }) return null
+        val now = clock.nowMs()
+        val last = meta.meta(KEY_UNCERTAIN_REFETCH_AT)?.toLongOrNull()
+        if (last != null && now >= last && now - last < UNCERTAIN_REFETCH_GAP_MS) return null
+        meta.putMeta(SyncMetaEntity(KEY_UNCERTAIN_REFETCH_AT, now.toString()))
+        return lock.withLock { fullOfTheDay(held) }
     }
 
     /**
@@ -225,7 +242,13 @@ class BundleDownloader(
         // figures, and no upload (so no acknowledgement) can start until the head answer is in. Lock order: this downloader's own lock, then the sync lock; the sync
         // run never waits for a downloader, so the two cannot deadlock. A sale is never blocked: both are background work.
         var requestedAt = ""
-        val answer = underSyncLock { requestedAt = iso(clock.nowMs()); api.bundle(forDate, ifNoneMatch, configVersion) }
+        var uncertain: List<String> = emptyList()
+        val answer = underSyncLock {
+            requestedAt = iso(clock.nowMs())
+            // memos and redemptions SENT but not answered when the request leaves (a lost answer, a killed upload): the server may already hold them; no run is in flight here
+            uncertain = db.outboxDao().sentUnanswered()
+            api.bundle(forDate, ifNoneMatch, configVersion)
+        }
         return when (val r = answer) {
             is ApiResult.NotModified -> {
                 if (onPrefetch) {
@@ -302,7 +325,7 @@ class BundleDownloader(
                     return BundleReport(BundleOutcome.FAILED, version, code = "malformed")
                 }
                 val applied = try {
-                    repo.apply(bundle, merged, download.etag ?: "\"$version\"", asDay = isDay, outletPages = outletFiles.takeIf { it.isNotEmpty() }?.let(::FileOutletPages), requestedAt = requestedAt.takeIf { isDay })
+                    repo.apply(bundle, merged, download.etag ?: "\"$version\"", asDay = isDay, outletPages = outletFiles.takeIf { it.isNotEmpty() }?.let(::FileOutletPages), requestedAt = requestedAt.takeIf { isDay }, uncertain = uncertain.takeIf { isDay })
                 } catch (e: IllegalArgumentException) { // a row that does not read as an outlet: nothing was written; the stage is kept (no new download of the same pages)
                     return BundleReport(BundleOutcome.FAILED, version, code = "malformed_page")
                 }
@@ -340,6 +363,9 @@ class BundleDownloader(
     companion object {
         const val KEY_LOGGED_IN = "bundle.logged_in."
         const val KEY_DELTA_FOREGROUND_AT = "bundle.delta_foreground_at"
+        /** When the last refetch after the sent-but-unanswered memos got their answer ran (epoch ms on the trusted clock). */
+        const val KEY_UNCERTAIN_REFETCH_AT = "bundle.uncertain_refetch_at"
+        const val UNCERTAIN_REFETCH_GAP_MS = 10L * 60_000L
         const val KEY_DELTA_TRIED_FOR = "bundle.delta_tried_for"
         /** True when the server answered [r] for good: it spends [KEY_DELTA_TRIED_FOR] for the version. */
         internal fun spendsVersion(r: BundleReport): Boolean = when (r.outcome) {

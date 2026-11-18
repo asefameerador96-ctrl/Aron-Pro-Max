@@ -110,4 +110,7 @@
     <string name="pg_photo_checking">Checking geofencing…</string>
     <string name="pg_photo_saved">Photo saved on this phone. It uploads compressed, on Wi-Fi first.</string>
     <string name="pg_photo_failed">The photo could not be saved. Try again.</string>
+    <string name="pg_awaiting_memos">%1$s memos are awaiting confirmation; the figures update after the next sync.</string>
+    <string name="pg_awaiting_redemptions">%1$s redemptions are awaiting confirmation; the points update after the next sync.</string>
+    <string name="pg_photo_locked">The server has locked this gift, no photo is needed: %1$s</string>
 </resources>

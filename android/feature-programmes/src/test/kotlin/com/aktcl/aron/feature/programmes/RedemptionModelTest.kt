@@ -79,4 +79,10 @@ class RedemptionModelTest {
         assertEquals(-180L, f(10, 3, 40)) // the points page and the redemption screen call this same function
         assertTrue(PointsBalance.overdrawn(f(10, 3, 40))); assertFalse(PointsBalance.overdrawn(f(10, 3, 220)))
     }
+
+    @Test fun aRedemptionSentButUnansweredWhenTheRequestLeftIsNotSubtractedTwiceAndIsCounted() {
+        val lost = LocalRedemption(10, 3, 200, "2026-11-18T05:00:00Z", "uncertain")
+        assertEquals(0L, LocalRedeemed.points(listOf(lost), 10, 3, "2026-11-18T06:00:00Z"))
+        assertEquals(1, LocalRedeemed.awaiting(listOf(lost, LocalRedemption(10, 3, 5, "2026-11-18T05:00:00Z", "pending"))))
+    }
 }

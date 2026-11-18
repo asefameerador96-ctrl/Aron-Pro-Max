@@ -107,6 +107,7 @@ fun GiftPhotoScreen(
         fun giftName(id: Long) = data.gifts.firstOrNull { it.id == id }?.name(locale) ?: "#$id"
         when (val st = GiftPhotoModel.statusOf(data, chosen.outletId, quarter, local)) {
             PhotoStatus.NoGift -> Text(stringResource(R.string.pg_photo_need_gift), Modifier.testTag(PhotoTags.NEED_GIFT), style = TextStyle(fontSize = 16.sp, color = look.ink))
+            is PhotoStatus.Locked -> Text(stringResource(R.string.pg_photo_locked, giftName(st.giftId)), Modifier.testTag(PhotoTags.CAPTURED), style = TextStyle(fontSize = 16.sp, color = look.purple, fontWeight = FontWeight.Medium))
             is PhotoStatus.Captured -> Text(stringResource(if (st.onThisPhone) R.string.pg_photo_on_phone else R.string.pg_photo_already, giftName(st.giftId)), Modifier.testTag(PhotoTags.CAPTURED), style = TextStyle(fontSize = 16.sp, color = look.purple, fontWeight = FontWeight.Medium))
             is PhotoStatus.Ready -> {
                 Text(stringResource(R.string.pg_gift_chosen, giftName(st.giftId)), style = TextStyle(fontSize = 15.sp, color = look.purple, fontWeight = FontWeight.Medium))

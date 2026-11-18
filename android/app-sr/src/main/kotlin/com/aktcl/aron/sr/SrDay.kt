@@ -397,7 +397,7 @@ class SrDay(
     }
 
     /** The SR programme records (Astha, Loyalty): reads of what the phone holds and the one write path (lane android-sr-programmes). */
-    val programmes by lazy { ProgrammeStore(db, capture, metaProvider, claimPhoto = { photoUuid, recordUuid, fix -> claimPhoto(photoUuid, "gift_photo", "gift_photo", recordUuid, fix) }) { requestSync() } }
+    val programmes by lazy { ProgrammeStore(db, capture, metaProvider, claimPhoto = { photoUuid, recordUuid, fix -> claimGiftPhoto(photoUuid, recordUuid, fix) }) { requestSync() } }
 
     /** Fix reuse (D-74) is limited to the visit cycle of the day; attendance and requests always take their own fix. */
     val fixSource = FixManagerSource(fixManager) { purpose -> if (purpose == "visit_open") "outlets-" + businessDate() else null }
@@ -952,6 +952,17 @@ class SrDay(
     private suspend fun claimPhoto(photoUuid: String, purpose: String, refType: String, refUuid: String, fix: com.aktcl.aron.core.database.entity.GeoFixEntity?) {
         val m = media ?: return
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { claimPhotoIo(m, photoUuid, purpose, refType, refUuid, fix) }
+    }
+
+    /** Claims a gift photo for its record; unlike the other captures a photo that is gone from the media queue, or already belongs to ANOTHER record, is an error (the record must never be saved without its photo). */
+    private suspend fun claimGiftPhoto(photoUuid: String, recordUuid: String, fix: com.aktcl.aron.core.database.entity.GeoFixEntity?) {
+        val m = media ?: return // no camera queue (previews, tests): nothing to claim
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val item = m.store.get(photoUuid) ?: throw IllegalStateException("the photo is no longer in the media queue")
+            val owner = item.ref
+            check(owner == null || owner.refClientUuid == recordUuid) { "the photo already belongs to another record" }
+            claimPhotoIo(m, photoUuid, "gift_photo", "gift_photo", recordUuid, fix)
+        }
     }
 
     private suspend fun claimPhotoIo(

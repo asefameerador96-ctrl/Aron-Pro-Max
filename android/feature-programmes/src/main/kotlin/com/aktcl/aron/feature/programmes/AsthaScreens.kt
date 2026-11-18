@@ -45,6 +45,7 @@ import com.aktcl.aron.rules.UiLocale
 import com.aktcl.aron.core.ui.R as CoreR
 
 object AsthaTags {
+    const val AWAITING = "astha_awaiting"
     const val MENU_TARGET = "astha_menu_target"
     const val MENU_GIFT = "astha_menu_gift"
     const val TAB_ROUTE = "astha_tab_route"
@@ -96,12 +97,15 @@ fun AsthaTargetScreen(
     shops: List<ShopInfo>? = null, initial: AsthaSelection = AsthaSelection(), initialShop: Long? = null, startOnShops: Boolean = false,
     /** The Dhaka month of today (`YYYY-MM`): the page opens on it (year, quarter and month already chosen) so it shows data at once; null keeps the empty start. */
     currentMonth: String? = null,
+    /** Memos sent but not yet answered when the figures were fetched: the figures may already hold them, so the page says they await confirmation. */
+    awaiting: Int = 0,
 ) {
     val look = LocalAronLook.current
     var tab by rememberSaveable { mutableStateOf(if (initialShop != null || startOnShops) 1 else 0) }
     var shop by rememberSaveable { mutableStateOf(initialShop) }
     var query by rememberSaveable { mutableStateOf("") }
     Column(modifier.fillMaxSize().background(look.page).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (awaiting > 0) Text(stringResource(R.string.pg_awaiting_memos, com.aktcl.aron.rules.Formats.integer(awaiting.toLong(), locale)), Modifier.testTag(AsthaTags.AWAITING), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
         if (shops != null) {
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(look.rowAlt).padding(3.dp)) {
                 SegTab(stringResource(R.string.pg_tab_route), tab == 0, { tab = 0 }, Modifier.weight(1f).testTag(AsthaTags.TAB_ROUTE))
