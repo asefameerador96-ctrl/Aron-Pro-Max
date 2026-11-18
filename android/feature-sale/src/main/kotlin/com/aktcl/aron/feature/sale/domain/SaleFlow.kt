@@ -183,9 +183,13 @@ class SaleFlow(
         // D-AGATE-22 (item 3): a Save that landed in Room but whose coroutine was cancelled before the screen state was set is still a saved memo: look it up by the draft's own memo UUID
         // (as `start` does) BEFORE the closed-call refusal, so a retry after the call was closed in between answers with the stored memo, never "nothing was saved"
         committer.existing(draft.memoUuid)?.let { landed ->
+            // D-AGATE-26: whether the screen's draft differs from the stored memo is worked out BEFORE the draft is cleared; a failed read of the stored lines counts as "differs" (never a silent "same")
+            val differs = s.review?.let { r ->
+                val shown = r.lines.map { it.memoLine.skuId to it.qtyBase }.sortedWith(compareBy({ it.first }, { it.second }))
+                val stored = try { committer.storedSaleLines(draft.memoUuid) } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (_: Throwable) { null }
+                r.totals.netMtk != landed.netMtk || r.settlement.dueMtk != landed.dueMtk || stored == null || shown != stored
+            } == true
             store.clear(draft.visitUuid)
-            // the stored memo is what was saved; when the draft the rep sees now carries other totals, his later changes are NOT in it, and the screen says so
-            val differs = s.review?.let { it.totals.netMtk != landed.netMtk || it.settlement.dueMtk != landed.dueMtk } == true
             ui.value = s.copy(committed = landed, laterChangesNotSaved = differs)
             return landed
         }

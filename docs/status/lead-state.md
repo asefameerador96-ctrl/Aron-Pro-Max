@@ -389,3 +389,24 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - sr-targets-server 18fd2ab9b (REFUSED state, removal uuid, V0210..V0213): re-review running (wf_2116e44b-816). Contract 1.24.0 after loyalty lands. Must not land before the diagnose console works (migrations) OR the deploy-log console is accepted as proof (it showed the Flyway lines for train 124).
 - apsis profile eabd24fbb: fifth and final review of the hand reader running (wf_f4b5aa34-a0f); MySQL-restore alternative documented, not built. Owner asked for the FTP file listing (names and sizes only).
 - Device walk owed: gates (A-GATE8 writing steps), integrity, SR programmes.
+
+## 2026-11-18 18:05 UTC
+
+- **Train 125 LANDED**: INT 2c7ff3c1bd (loyalty d18ff776d, contract 1.23.0, no migration; ops-diagnose-api 9ed5ce5d). ci 44354925535 green first attempt, deploy 44357959948 (#365) green, SR smoke passed, health build matches. APK aron-release-signed-dev-2488 42,139,813 B (+3,436 B vs train 124).
+- **ops-diagnose fix ACCEPTED LIVE**: run 44362585631 on INT, window 17:15..17:50Z, green, no failed section, no query error; migrate/worker/API console queries returned rows. Migrate console: pre-flight nothing to do, flyway validated 187, current version 0209, up to date, 0 applied. This is the schema proof for train 125 (the deploy log had no migrate console this time). Open small points: activity-log section prints a blank body instead of an explicit "no rows"; unexplained "(plain) error line" rows (1 migrate, 1 API, 3 worker; text withheld by design) - to look at from a private terminal with the final account, not from the public log.
+- Small rounds checked (workflow wf_e618edcc-7f1, 2 Opus lenses each, blocking verified 3/3): gates-2 337e2e79 = production correct, ONE BLOCKING (deleted visit-commit order assertions in EveryWriterIsGatedTest) + 7 lows, sent to A-GATE8, does not land yet. SR programmes eb3b470e7 = PASS, 5 lows sent; lane answered with d762c3aa1 (INT merged + 5 lows; the edit-after-through_date fallback is new logic and needs a short check before it rides a train).
+- T-KPI3 told to merge INT 2c7ff3c1bd, contract 1.24.0, V0210..V0213, then report 'checked'; my T1 review follows. L-A13 told to merge INT and do post-landing lows.
+- Not walked on a device: everything from trains 121..125.
+
+## 2026-11-18 18:35 UTC
+
+- Owner answers: both SR parity pushes approved inside the sessions (P-SR2b at 5395d93a3, ci 44367801816 running; P-SR1b working). Old Azure ends maybe 25 Nov; DIFFERENT tenant; FTP office-only; dump listing "attached" but nothing arrived; migrate as-is first, size the final account later (D-OWNER-AZURE-MOVE-02, D-OWNER-APSIS-FTP-02). Owner will run the laptop inventory, walk the 18 steps tomorrow, answer the 17 decisions later (reminder set), portal brief in a few more days.
+- T-KPI3 at 0260c195f (contract 1.24.0, V0210..V0213): T1 review workflow wf_04fdc277-939 running.
+- L-A13 8e807fd1b (post-landing round, run 44363350651 green by its report): needs a short check, rides next server train.
+- A-PROG3 d762c3aa1: ci red only on Sr/AmoLatePolicyTest wall-clock window (00:00..00:10 Dhaka); failed job re-run once; clock pin assigned to A-GATE8 with its blocking fix.
+
+## 2026-11-18 19:35 UTC
+
+- Train 126 built (Android only): gates-2 45178efa + programmes d762c3aa1 + parity-sr-1 b08c3782; D-LEAD-TRAIN-126-01; GO to the integrator. Follow-ups after landing: A-GATE8 fixes the SR outlet-request photo claim before the gate (pre-existing) + Gradle input gaps; A-PROG3 fixes the 3-chain fallback double count; P-SR1b lows round; P-SR2b (7924c154c, 31 goldens changed, 16 conflicts resolved) merges INT again, then my review.
+- T-KPI3: confirming check of bfd2efd1d = 4 blocking (month-end anchor, RouteCalendar text, caches inside the snapshot, two stale doc lines); waiting for its next head.
+- CI note: web summary job failed twice on run 44372290509 with GitHub artifact storage 503 (egress limit); other runs passed; watch on the train run.

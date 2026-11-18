@@ -50,13 +50,9 @@ abstract class OutboxDao {
     abstract suspend fun nextSendable(limit: Int, skipAfter: Int, excludedFamilies: List<String>): List<OutboxEntity>
 
     /**
-     * Counts one definitive failure of a row (a retryable reject, or its family isolated as the cause of a batch failure).
-     * `attempts` drives skip-ahead and `row_max_retries` (s4.6); re-batching after a split or a release never counts.
+     * Memos, their voids, redemptions and gift choices (the order record types) that were SENT at least once and have no answer yet: in a batch (`in_flight`), or back to `pending` after an attempt (a failed attempt counts in `attempts`; a batch the server answered with a 5xx or a gateway error is RELEASED to `pending` with `attempts` 0 and only `last_code` set, and the server may hold some of its rows). Over-including is the safe side. The server may have committed them (a lost answer), so a bundle requested now may already hold them (lane android-sr-programmes, ProgrammesSection ACHIEVEMENT RULE).
      */
-    /**
-     * Memos and redemptions that were SENT at least once and have no answer yet: in a batch (`in_flight`), or back to `pending` after an attempt (a failed attempt counts in `attempts`; a batch the server answered with a 5xx or a gateway error is RELEASED to `pending` with `attempts` 0 and only `last_code` set, and the server may hold some of its rows). Over-including is the safe side. The server may have committed them (a lost answer), so a bundle requested now may already hold them (lane android-sr-programmes, ProgrammesSection ACHIEVEMENT RULE).
-     */
-    @Query("SELECT client_uuid FROM outbox WHERE record_type IN ('memo', 'redemption') AND (state = 'in_flight' OR (state = 'pending' AND (attempts > 0 OR last_code IS NOT NULL)))")
+    @Query("SELECT client_uuid FROM outbox WHERE record_type IN (" + ORDER_MEMO_RECORD_TYPES_SQL + ", " + ORDER_PROGRAMME_RECORD_TYPES_SQL + ") AND (state = 'in_flight' OR (state = 'pending' AND (attempts > 0 OR last_code IS NOT NULL)))")
     abstract suspend fun sentUnanswered(): List<String>
 
     /**
@@ -84,6 +80,10 @@ abstract class OutboxDao {
     @Query("SELECT COUNT(*) FROM outbox WHERE client_uuid IN (:uuids) AND state IN ('pending', 'in_flight')")
     abstract suspend fun stillOpen(uuids: List<String>): Int
 
+    /**
+     * Counts one definitive failure of a row (a retryable reject, or its family isolated as the cause of a batch failure).
+     * `attempts` drives skip-ahead and `row_max_retries` (s4.6); re-batching after a split or a release never counts.
+     */
     @Query("UPDATE outbox SET attempts = attempts + 1 WHERE client_uuid = :clientUuid")
     abstract suspend fun countFailure(clientUuid: String): Int
 

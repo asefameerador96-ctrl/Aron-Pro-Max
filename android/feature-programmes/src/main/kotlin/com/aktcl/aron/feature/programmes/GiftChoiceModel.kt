@@ -31,6 +31,8 @@ sealed interface GiftState {
     data class OnThisPhone(val giftId: Long, val refused: Boolean, val reasonBn: String? = null, val reasonEn: String? = null) : GiftState
     /** The server acknowledged this phone's choice and the held bundle was requested before that: the choice is sent, the bundle does not show it yet. */
     data class Sent(val giftId: Long) : GiftState
+    /** Sent and not confirmed (no answer, or the phone gave up sending it): the bundle holds no assignment to show instead. */
+    data class Unconfirmed(val giftId: Long, val bundleGiftId: Long? = null) : GiftState
     /** The server holds this phone's choice for review (quarantined): shown as held, the SR cannot tell yet whether it counts. */
     data class Held(val giftId: Long) : GiftState
     /** The hand-over photo locked the choice: shown, not changeable (the server refuses a later choice with `gift_locked`). */
@@ -60,6 +62,8 @@ data class GiftChoiceData(val gifts: List<LoyaltyGift>, val assignments: List<Gi
             when (mine.state) {
                 "rejected" -> return GiftState.OnThisPhone(mine.giftId, refused = true, mine.reasonBn, mine.reasonEn)
                 "quarantined" -> return GiftState.Held(mine.giftId)
+                // sent and not confirmed (no answer, or given up by this phone): the same gift in the bundle is confirmed; a different or missing one shows "sent, not confirmed" and, when there is one, names the bundle's gift (never "on this phone", never hiding the bundle's)
+                "uncertain" -> return if (a != null && a.giftId == mine.giftId) GiftState.Chosen(a.giftId) else GiftState.Unconfirmed(mine.giftId, a?.giftId)
                 "acked" -> {
                     // by the phone's own order: the choice was acknowledged before the request for the held bundle left, so the bundle holds it
                     val bundleHasIt = a != null && ackedBeforeRequest != null && mine.uuid in ackedBeforeRequest
