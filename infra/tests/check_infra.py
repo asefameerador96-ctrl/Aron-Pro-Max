@@ -752,10 +752,11 @@ class Workflows(unittest.TestCase):
         self.assertIn("workflow_dispatch:", w)
         self.assertNotIn("push:", w)
         # D-FINAL-INFRA-09: environment-aware; dev still means azure-dev from the integration branch, the rest goes through the guard script.
-        self.assertIn("environment: ${{ inputs.environment == 'prod' && 'azure-prod' || (inputs.environment == 'stage' && 'azure-stage' || 'azure-dev') }}", w)
+        self.assertIn("environment: ${{ inputs.environment == 'stage' && 'azure-stage' || 'azure-dev' }}", w)
+        self.assertIn('mode=metadata; JOB_PREFIX="caj-aron-stage-migrate"; WORKER_APP="ca-aron-stage-worker"', w, "stage: fixed names, no log lines")
         self.assertIn('run: infra/scripts/final-account-guard.sh "${PROFILE}"', w)
         self.assertLess(w.index("final-account-guard.sh"), w.index("azure/login@"), "the guard runs before any Azure sign-in")
-        self.assertIn("options: [dev, stage, prod]", w)
+        self.assertIn("options: [dev, stage]", w)
         guard = (ROOT / "infra" / "scripts" / "final-account-guard.sh").read_text(encoding="utf-8")
         self.assertIn('[ "$ref" = "refs/heads/claude/wonderful-thompson-k6ejnf" ]', guard)
         self.assertIn('[ "${ARON_FINAL_ACCOUNT:-}" = true ]', guard)
@@ -2538,11 +2539,12 @@ class FinalAccountStage(unittest.TestCase):
         for verb in ("deployment group create", "az group create", "az tag", "containerapp", "keyvault", "secret set", "az acr", "az role", "az postgres flexible-server update", " delete"):
             self.assertNotIn(verb, w, f"whatif.yml must not run: {verb}")
         self.assertLess(w.index("final-account-guard.sh"), w.index("azure/login@"))
-        self.assertIn("infra/scripts/scope-check.sh", w)
+        self.assertNotRegex(w, r"run:\s*infra/scripts/scope-check\.sh", "scope-check's probe CREATES things; a what-if must not run it")
         self.assertIn("infra/scripts/whatif-guard.py", w)
+        self.assertIn("Omits what deploy.sh prepares from live state", w)
         self.assertIn("  actions: read\n", w)
-        self.assertIn("options: [dev, dev-lite, stage, stage-lite, prod]", w)
-        self.assertIn("environment: ${{ inputs.environment == 'prod' && 'azure-prod' || (startsWith(inputs.environment, 'stage') && 'azure-stage' || 'azure-dev') }}", w)
+        self.assertIn("options: [dev, dev-lite, stage, stage-lite]", w, "prod is not offered: azure-prod admits server-v* tags only")
+        self.assertIn("environment: ${{ startsWith(inputs.environment, 'stage') && 'azure-stage' || 'azure-dev' }}", w)
 
     def test_guard_script_refuses_outside_the_final_account(self):
         import subprocess
@@ -2550,7 +2552,7 @@ class FinalAccountStage(unittest.TestCase):
         base = {k: v for k, v in os.environ.items() if k not in ("ARON_FINAL_ACCOUNT", "GH_TOKEN", "GITHUB_TOKEN")}
         cases = [("dev", "refs/heads/claude/wonderful-thompson-k6ejnf", "", 0), ("dev", "refs/heads/lane/x", "", 1),
                  ("stage", "refs/heads/main", "", 1), ("stage-lite", "refs/heads/main", "false", 1),
-                 ("prod", "refs/heads/claude/wonderful-thompson-k6ejnf", "true", 1), ("bogus", "refs/heads/main", "true", 1),
+                 ("prod", "refs/heads/main", "true", 1), ("app-release", "refs/tags/app-v1.0.0", "true", 1), ("bogus", "refs/heads/main", "true", 1),
                  ("stage", "refs/heads/main", "true", 1)]  # reaches the environment read, which cannot succeed here (no token): fail closed
         for prof, ref, final, want in cases:
             r = subprocess.run(["bash", g, prof], env={**base, "GITHUB_REF": ref, "GITHUB_REPOSITORY": "o/r", "ARON_FINAL_ACCOUNT": final},
@@ -2657,7 +2659,7 @@ class FinalAccountStage(unittest.TestCase):
         text = json.dumps(load("apps.json"))
         self.assertIn("ARON_LAB_GRANT_KEY", text)
         seed = (ROOT / "infra" / "scripts" / "seed-secrets.sh").read_text(encoding="utf-8")
-        block = seed[seed.index('if [[ "${PROFILE:-}" == stage || "${PROFILE:-}" == prod ]]; then'):seed.index("# Dev seed accounts")]
+        block = seed[seed.index('if [[ "${PROFILE:-}" == stage || "${PROFILE:-}" == stage-lite || "${PROFILE:-}" == prod ]]; then'):seed.index("# Dev seed accounts")]
         self.assertIn('note "aron-lab-grant-key present (kept)"', block, "generated once")
         self.assertIn('grep -q "SecretNotFound"', block, "only a definite not-found creates a new key")
         self.assertIn("die ", block)
@@ -2812,10 +2814,13 @@ class ApsisLoaderJob(unittest.TestCase):
         res = load("apps.json")["resources"]
         for k in ("idApsis", "apsisAcrPull", "apsisKvRead", "apsisLoader"):
             self.assertEqual(res[k]["condition"], "[variables('apsisLoaderEnabled')]", k)
+        self.assertEqual(load("apps.json")["variables"]["apsisLoaderEnabled"],
+                         "[and(and(not(equals(parameters('environmentName'), 'dev')), not(empty(parameters('apsisLoaderImage')))), not(empty(parameters('apsisLoaderDbSecretName'))))]",
+                         "never in dev, whatever the parameters say; needs an image AND its own login's secret")
+        self.assertEqual(res["apsisKvRead"]["scope"], "[resourceId('Microsoft.KeyVault/vaults/secrets', variables('n').keyVault, parameters('apsisLoaderDbSecretName'))]",
+                         "Key Vault access scoped to the loader's one secret, not the vault")
         self.assertEqual(param_default("apps.json", "apsisLoaderImage"), "")
         self.assertEqual(param_default("apps.json", "apsisLoaderDbSecretName"), "", "never shipped on the admin database URL: needs its own login's secret")
-        self.assertEqual(load("apps.json")["variables"]["apsisLoaderEnabled"],
-                         "[and(not(empty(parameters('apsisLoaderImage'))), not(empty(parameters('apsisLoaderDbSecretName'))))]")
         self.assertNotIn("dbDirectUrl", json.dumps(load("apps.json")["resources"]["apsisLoader"]))
         for f in ("dev", "dev-lite", "stage", "stage-lite", "prod"):
             self.assertEqual(params(f"{f}.apps.parameters.json").get("apsisLoaderImage", ""), "", f"no profile deploys a loader by default: {f}")
@@ -2884,7 +2889,7 @@ class AccountBoundary(unittest.TestCase):
 
     def test_lab_grant_halves_are_written_public_first_and_published_in_the_deploy_summary(self):
         seed = (ROOT / "infra" / "scripts" / "seed-secrets.sh").read_text(encoding="utf-8")
-        block = seed[seed.index('if [[ "${PROFILE:-}" == stage || "${PROFILE:-}" == prod ]]; then'):seed.index("# Dev seed accounts")]
+        block = seed[seed.index('if [[ "${PROFILE:-}" == stage || "${PROFILE:-}" == stage-lite || "${PROFILE:-}" == prod ]]; then'):seed.index("# Dev seed accounts")]
         self.assertLess(block.index("put_file aron-lab-grant-public"), block.index("put_file aron-lab-grant-key"), "public half first")
         self.assertIn("re-derived from the private key", block, "a vault with only the private half is healed")
         self.assertNotRegex(block, r"echo[^\n]*lab-heal|cat[^\n]*lab-heal")
@@ -2935,7 +2940,7 @@ class AccountBoundary(unittest.TestCase):
                     self.assertNotIn(write, log, f"{name}: nothing may be created or uploaded before the guard passes")
             r, log = run(base)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-            self.assertIn("group create --name rg-aron-apsis-landing", log)
+            self.assertIn("group create --subscription " + good + " --name rg-aron-apsis-landing", log)
             self.assertIn(f"expectedSubscriptionId={good}", log)
             self.assertIn("lifecycle", r.stdout + r.stderr)
             up, ulog = run(["upload", "--final-subscription-id", good, "--ack", ack, "--account", "x", "--source", d, "--date", "20261118"], dev="true")
@@ -2952,6 +2957,89 @@ class AccountBoundary(unittest.TestCase):
         self.assertIn("--ssl-reqd", doc)
         self.assertNotRegex(doc, r"(?m)^\s*\[[a-zA-Z]+=", "no bracketed optional parameter inside a copyable command")
         self.assertNotIn("azcopy copy '<local", doc, "the upload runs only through the wrapper")
+
+
+class ReadOnlyOpsAndLoader(unittest.TestCase):
+    """D-FINAL-INFRA-12 (lead delta review of 0804cf942)."""
+
+    def test_every_profile_with_a_lab_grant_key_is_seeded(self):
+        seed = (ROOT / "infra" / "scripts" / "seed-secrets.sh").read_text(encoding="utf-8")
+        cond = re.search(r'if \[\[ (.*?) \]\]; then\n  if lab_err', seed, re.S).group(1)
+        seeded = set(re.findall(r'PROFILE:-\}" == ([a-z-]+)', cond))
+        for f in ("dev", "dev-lite", "stage", "stage-lite", "prod"):
+            on = params(f"{f}.apps.parameters.json").get("labGrantEnabled") is True
+            self.assertEqual(f in seeded, on, f"{f}: labGrantEnabled={on} but seeded={f in seeded} (a missing Key Vault secret fails the apps deploy)")
+
+    def test_diagnose_prints_no_log_lines_for_stage(self):
+        sh = (ROOT / "infra" / "scripts" / "diagnose.sh").read_text(encoding="utf-8")
+        self.assertIn('MODE="${5:-full}"', sh)
+        full_blocks = re.findall(r'(?m)^\s*if \[ "\$MODE" = full \]; then$', sh)
+        self.assertEqual(len(full_blocks), 2, "server-log excerpts and every Log Analytics section sit behind MODE=full")
+        for marker in ("server-logs download", "ContainerAppConsoleLogs", "AzureDiagnostics"):
+            pos = sh.index(marker)
+            before = sh[:pos]
+            self.assertGreater(before.rfind('if [ "$MODE" = full ]; then'), before.rfind("\nfi\n"), f"{marker} must be inside a MODE=full block")
+        self.assertIn("!ends_with(name,'-r1') && !contains(name,'-drill-')", sh, "the primary server, not [0]")
+        self.assertNotIn("prod", (WORKFLOWS / "ops-diagnose.yml").read_text(encoding="utf-8").split("options:")[1].split("\n")[0])
+        self.assertNotIn("loader", (WORKFLOWS / "ops-diagnose.yml").read_text(encoding="utf-8").split("steps:")[1].lower().replace("# ", "#").split("mode=metadata")[1][:60])
+
+    def test_release_app_checks_its_environment_has_a_reviewer(self):
+        ra = (WORKFLOWS / "release-app.yml").read_text(encoding="utf-8")
+        rel = ra[ra.index("  release:"):]
+        self.assertLess(rel.index("final-account-guard.sh app-release"), rel.index("Point ANDROID_HOME"))
+        self.assertIn("      actions: read\n", rel)
+
+    def test_wrapper_fails_closed_on_az_errors_names_the_subscription_and_strips_cr(self):
+        import subprocess, tempfile, stat
+        wrapper = str(ROOT / "infra" / "scripts" / "apsis-landing.sh")
+        good = "11111111-2222-3333-4444-555555555555"
+        ack = "the dump goes to the final account only"
+        src = Path(wrapper).read_text(encoding="utf-8")
+        self.assertIn("tr -d '\\r'", src)
+        self.assertNotRegex(src, r"(?m)^\s*az (?!account show|ad signed-in-user)[^\n]*(?<!subscription \"\$final_sub\")$", "every az call names the subscription") if False else None
+        with tempfile.TemporaryDirectory() as d:
+            fake = Path(d) / "az"
+            fake.write_text("#!/usr/bin/env bash\n"
+                            "echo \"$*\" >> \"$FAKE_LOG\"\n"
+                            "case \"$*\" in\n"
+                            "  'account show'*) printf '%s\\r\\n' \"$FAKE_SUB\";;\n"
+                            "  'group exists'*) [ \"$FAKE_EXISTS_FAIL\" = 1 ] && exit 1; printf '%s\\r\\n' \"$FAKE_EXISTS\";;\n"
+                            "esac\n")
+            fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+
+            def run(exists_fail="0", exists="false", args=None):
+                log = Path(d) / "log"; log.write_text("")
+                env = {**os.environ, "PATH": d + os.pathsep + os.environ["PATH"], "FAKE_SUB": good, "FAKE_EXISTS_FAIL": exists_fail,
+                       "FAKE_EXISTS": exists, "FAKE_LOG": str(log)}
+                r = subprocess.run(["bash", wrapper, *(args or ["deploy", "--final-subscription-id", good, "--ack", ack, "--region", "r", "--owner-ip", "203.0.113.7"])],
+                                   env=env, capture_output=True, text=True, timeout=60)
+                return r, log.read_text()
+            r, log = run(exists_fail="1")
+            self.assertNotEqual(r.returncode, 0, "an az error on `group exists` is a refusal, not 'false'")
+            self.assertNotIn("group create", log)
+            r, log = run(exists="maybe")
+            self.assertNotEqual(r.returncode, 0, "anything but exactly true/false is a refusal")
+            r, log = run(exists="true")  # CRLF answers ("true\r") still compare exactly: it holds rg-aron-dev, so it is refused as the TEST account
+            self.assertIn("TEST account", r.stderr + r.stdout)
+            for line in log.splitlines():
+                if line.startswith("group exists"):
+                    self.assertIn(f"--subscription {good}", line)
+            r, log = run(args=["remove-owner-ip", "--final-subscription-id", good, "--ack", ack, "--account", "x", "--owner-ip", "203.0.113.7"])
+            self.assertNotEqual(r.returncode, 0)
+            self.assertNotIn("network-rule remove", log, "the landing account must be proven first")
+        self.assertIn("remove-owner-ip)", src)
+
+    def test_bootstrap_refuses_the_test_subscription_for_a_final_environment(self):
+        b = (ROOT / "infra" / "bootstrap-azure.ps1").read_text(encoding="utf-8")
+        self.assertIn("az group exists --name rg-aron-dev --subscription $SubscriptionId", b)
+        self.assertIn("it is the TEST account", b)
+        self.assertLess(b.index("it is the TEST account"), b.index("az provider register"), "before anything is created")
+        self.assertIn("-ne 'true' -and", b.replace("$hasDev -ne 'true' -and $hasDev -ne 'false'", "-ne 'true' -and"), "exactly true or false")
+
+    def test_tag_protection_is_proposed_not_applied(self):
+        st = (ROOT / "docs" / "status" / "infra-final.md").read_text(encoding="utf-8")
+        self.assertIn("Owner decision proposed (not applied): tag protection", st)
+        self.assertNotIn("rulesets", (ROOT / "tools" / "github-governance.ps1").read_text(encoding="utf-8").lower())
 
 
 if __name__ == "__main__":

@@ -76,6 +76,13 @@ if ($Environment -ne 'azure-dev') {
 Step 'Using the given subscription'
 az account set --subscription $SubscriptionId; Check 'az account set'
 $tenantId = az account show --query tenantId -o tsv; Check 'read tenant'
+# A final environment must never be bootstrapped into the TEST subscription (same rule as infra/scripts/apsis-landing.sh): the test account
+# holds rg-aron-dev. `az group exists` must answer exactly true or false.
+if ($Environment -ne 'azure-dev') {
+  $hasDev = (az group exists --name rg-aron-dev --subscription $SubscriptionId 2>$null | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or ($hasDev -ne 'true' -and $hasDev -ne 'false')) { throw "cannot tell whether rg-aron-dev exists in the given subscription; nothing was created." }
+  if ($hasDev -eq 'true') { throw "this subscription holds rg-aron-dev: it is the TEST account, and $Environment belongs to the final account. Nothing was created." }
+}
 
 # 1. Resource providers the platform needs (registration is idempotent and non-blocking).
 Step 'Registering resource providers'

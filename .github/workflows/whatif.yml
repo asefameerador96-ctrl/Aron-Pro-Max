@@ -1,13 +1,18 @@
 # What-if only (D-FINAL-INFRA-09): the owner can run this after the bootstrap of an environment, and it CHANGES NOTHING.
-# It signs in as that environment's deploy identity (OIDC), proves the identity's scope, and asks Azure what `main.bicep`
+# It signs in as that environment's deploy identity (OIDC) and asks Azure what `main.bicep`
 # with the profile's parameter file would do to the resource group: `az deployment group what-if` is a read; no deployment,
 # no secret, no image, no migration, no tag, no lock. The what-if guard then prints any change a real deploy would refuse
 # (a PostgreSQL server replaced or reconfigured, a second server). The output goes to the job log of a public repository:
 # resource types, names and changed property paths only.
 #
-# Manual only. dev and dev-lite from the integration branch; stage, stage-lite and prod only in the final account
+# Manual only. dev and dev-lite from the integration branch; stage and stage-lite only in the final account
 # (ARON_FINAL_ACCOUNT=true), from main, and only when the GitHub environment exists with a required reviewer
-# (infra/scripts/final-account-guard.sh). Actions are pinned by commit SHA (release tag in the comment).
+# (infra/scripts/final-account-guard.sh). prod is NOT offered: azure-prod admits server-v* tags only and its identity is the deployer;
+# the prod what-if runs from the laptop (`AZURE_RESOURCE_GROUP=rg-aron-prod ARON_ENV=prod infra/validate.sh` with the owner's az sign-in).
+# The preview omits what deploy.sh prepares from live state: the PostgreSQL live zones (a failed-over server shows as a zone change the
+# real deploy would not make), the read-replica gate (the replica shows as a create even before the first backup) and the budget start
+# date. It never calls scope-check.sh: that probe CREATES things (a test deployment, a resource group attempt), a what-if must not.
+# Actions are pinned by commit SHA (release tag in the comment).
 
 name: whatif
 
@@ -17,7 +22,7 @@ on:
       environment:
         description: Profile (infra/params/<profile>.bicepparam)
         type: choice
-        options: [dev, dev-lite, stage, stage-lite, prod]
+        options: [dev, dev-lite, stage, stage-lite]
         default: stage
 
 permissions:
@@ -33,7 +38,7 @@ jobs:
     concurrency:
       group: whatif-${{ inputs.environment }}
       cancel-in-progress: false
-    environment: ${{ inputs.environment == 'prod' && 'azure-prod' || (startsWith(inputs.environment, 'stage') && 'azure-stage' || 'azure-dev') }}
+    environment: ${{ startsWith(inputs.environment, 'stage') && 'azure-stage' || 'azure-dev' }}
     env:
       PROFILE: ${{ inputs.environment }}
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
@@ -75,8 +80,6 @@ jobs:
         run: |
           az config set extension.use_dynamic_install=yes_without_prompt core.only_show_errors=true
           az bicep install
-      - name: Scope check (rights on the resource group only)
-        run: infra/scripts/scope-check.sh "${AZURE_RESOURCE_GROUP}"
       - name: What-if of main.bicep (read only)
         run: |
           set -euo pipefail
@@ -88,7 +91,7 @@ jobs:
           rc=0
           EXISTING_POSTGRES_IDS="${existing}" infra/scripts/whatif-guard.py whatif.json | tee whatif.txt || rc=$?
           {
-            echo "## what-if ${PROFILE} (nothing was changed)"; echo
+            echo "## what-if ${PROFILE} (nothing was changed)"; echo "Omits what deploy.sh prepares from live state: PostgreSQL live zones, the read-replica gate, the budget start date."; echo
             echo '```'; head -c 60000 whatif.txt; echo; echo '```'
             [ "${rc}" -eq 0 ] && echo "The what-if guard accepts these changes." || echo "**The what-if guard REFUSES a change above; a real deploy would stop.**"
           } >> "${GITHUB_STEP_SUMMARY}"

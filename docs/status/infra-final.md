@@ -205,7 +205,7 @@ the buffer the recommended 9,000 needs the owner's yes (step 16).
 - Not built (needs a decision or another lane): a restore/loader Container Apps job (D6 default avoids the need; the
   Apsis lane needs one); DR tier; private endpoints for Key Vault, ACR and Storage; per-secret Key Vault RBAC;
   scheduled ACR purge and cost report for the final account; the `ops-diagnose`/`drill`/`reset` workflows for stage
-  and prod (deliberately dev-only until the owner asks).
+  and prod (deliberately dev-only until the owner asks); `ops-diagnose` and `whatif` run for dev and stage only (D-FINAL-INFRA-12).
 - The lab grant public key reaching `lab_grant.xml` at release build time depends on train 121 (the file does not
   exist on INT yet).
 - Re-read the live required-checks list of `main` (e2e and analytics shards) before the first gate pull request.
@@ -218,3 +218,9 @@ the buffer the recommended 9,000 needs the owner's yes (step 16).
 | 2. `stage` wired end to end | pushed (D-FINAL-INFRA-02 to -05); `infra/validate.sh` green locally (bicep build and lint, `check_infra.py` incl. the new `FinalAccountStage` tests, actionlint, shellcheck) |
 | 3. Runbook and quota document | pushed (docs-only: ci's path filter starts no run) |
 | 4. Apsis dump landing place | pushed (head 2f95a5687): `infra/apsis-landing.bicep`, `ApsisLanding` tests, `docs/requests/apsis-dump-landing.md` (layout proposal for the apsis-migration lane, owner's azcopy commands); D-FINAL-INFRA-06. Open: the loader's network path (private endpoint recommended). |
+
+## 6. Owner decision proposed (not applied): tag protection for `server-v*` and `app-v*`
+
+The final deploy identity trusts the OIDC subject `environment:azure-prod`; an environment's tag policy limits which refs may use it, but anyone who can push a
+`server-v*` tag can start a job that names it (the reviewer still has to approve). Proposal: a repository **tag ruleset** (Settings > Rules > Rulesets > tags
+`server-v*` and `app-v*`: restrict creation to the owner, block deletion and update). Not applied here; the owner decides (D9, default yes).

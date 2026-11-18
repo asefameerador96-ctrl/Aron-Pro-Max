@@ -96,7 +96,7 @@ fi
 
 # Lab grant key pair, final-account environments only (dev keeps the key made by tools/make-lab-grant-key.sh). Only a
 # definite "not found" creates it; any other read error stops the deploy instead of replacing a key phones may trust.
-if [[ "${PROFILE:-}" == stage || "${PROFILE:-}" == prod ]]; then
+if [[ "${PROFILE:-}" == stage || "${PROFILE:-}" == stage-lite || "${PROFILE:-}" == prod ]]; then
   if lab_err="$(az keyvault secret show --vault-name "$kv" --name aron-lab-grant-key --query id -o tsv 2>&1 >/dev/null)"; then
     note "aron-lab-grant-key present (kept)"
   elif ! grep -q "SecretNotFound" <<<"$lab_err"; then

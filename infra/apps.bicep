@@ -111,7 +111,8 @@ resource idWorker 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' 
 resource idMigrate 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = { name: n.idMigrate }
 resource idWeb 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = { name: n.idWeb }
 
-var apsisLoaderEnabled = !empty(apsisLoaderImage) && !empty(apsisLoaderDbSecretName)
+// Never in dev (the dump may enter only the final account): environmentName must not be dev, whatever the parameters say.
+var apsisLoaderEnabled = environmentName != 'dev' && !empty(apsisLoaderImage) && !empty(apsisLoaderDbSecretName)
 var kvSecretUrl = '${kv.properties.vaultUri}secrets/'
 // Which Key Vault secret each app's database URLs come from (docs/requests/db-runtime-roles.md).
 var perApp = dbPerAppLogins && !empty(psqlImage)
@@ -296,9 +297,15 @@ resource apsisAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = if 
   }
 }
 
+// Key Vault access scoped to the loader's ONE secret, not the whole vault.
+resource apsisSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01' existing = if (apsisLoaderEnabled) {
+  parent: kv
+  name: apsisLoaderDbSecretName
+}
+
 resource apsisKvRead 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (apsisLoaderEnabled) {
-  name: guid(kv.id, n.idApsisLoader, roles.keyVaultSecretsUser)
-  scope: kv
+  name: guid(kv.id, n.idApsisLoader, apsisLoaderDbSecretName, roles.keyVaultSecretsUser)
+  scope: apsisSecret
   properties: {
     principalId: idApsis!.properties.principalId
     principalType: 'ServicePrincipal'

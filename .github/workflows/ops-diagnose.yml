@@ -1,9 +1,8 @@
-# Read-only diagnostics of one environment (dev by default; D-OPS-DIAGNOSE-01, made environment-aware by D-FINAL-INFRA-09): infra/scripts/diagnose.sh prints the
+# Read-only diagnostics of one environment (dev by default; D-OPS-DIAGNOSE-01, environment-aware by D-FINAL-INFRA-09): infra/scripts/diagnose.sh prints the
 # PostgreSQL server state, metrics, parameters and server-log excerpts, the migrate job's and worker's console and
 # system logs from Log Analytics, and the worker app's state for a UTC window. It changes nothing in Azure.
 #
-# Manual only. dev from the integration branch (the GitHub environment azure-dev deploys from that branch only); stage and
-# prod only in the final account, from main, with the protected GitHub environment of that profile
+# Manual only. dev from the integration branch (the GitHub environment azure-dev deploys from that branch only); stage only in the final account, from main, with the protected GitHub environment of that profile
 # (infra/scripts/final-account-guard.sh). Signs in with that environment's deploy identity (OIDC). The output goes to the job log of a public repository: the script prints
 # metadata, metrics and log excerpts only, never a secret, connection string or Key Vault value, and drops DETAIL and
 # parameter lines from server logs. Actions are pinned by commit SHA (release tag in the comment).
@@ -16,7 +15,7 @@ on:
       environment:
         description: Profile to diagnose
         type: choice
-        options: [dev, stage, prod]
+        options: [dev, stage]
         default: dev
       since:
         description: Window start, UTC (e.g. 2026-11-05T09:40:00Z); empty = 3 hours ago
@@ -49,7 +48,7 @@ jobs:
     name: Diagnose ${{ inputs.environment }} (read-only)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    environment: ${{ inputs.environment == 'prod' && 'azure-prod' || (inputs.environment == 'stage' && 'azure-stage' || 'azure-dev') }}
+    environment: ${{ inputs.environment == 'stage' && 'azure-stage' || 'azure-dev' }}
     env:
       PROFILE: ${{ inputs.environment }}
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
@@ -79,5 +78,11 @@ jobs:
           JOB_PREFIX="${JOB_PREFIX:-caj-aron-${PROFILE}-migrate}"
           WORKER_APP="${WORKER_APP:-ca-aron-${PROFILE}-worker}"
           echo "window ${since} .. ${until}; job prefix ${JOB_PREFIX}; worker ${WORKER_APP}"
-          infra/scripts/diagnose.sh "$since" "$until" "$JOB_PREFIX" "$WORKER_APP" | tee diagnose.txt
+          if [ "${PROFILE}" = dev ]; then mode=full; else
+            # stage: the log goes to a PUBLIC job log and a log line can carry a customer's phone number or id (the Apsis loader's
+            # included), so: metadata and metrics only, fixed names (the free-text prefix and worker inputs are ignored), no log
+            # lines, until a redactor is applied to every section. The loader's own logs are read in Azure by the owner only.
+            mode=metadata; JOB_PREFIX="caj-aron-stage-migrate"; WORKER_APP="ca-aron-stage-worker"
+          fi
+          infra/scripts/diagnose.sh "$since" "$until" "$JOB_PREFIX" "$WORKER_APP" "$mode" | tee diagnose.txt
           { echo '## ops-diagnose'; echo; echo "window ${since} .. ${until}"; echo; echo '```'; head -c 60000 diagnose.txt; echo; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -60,7 +60,7 @@ az login --tenant <tenant-id>                 # as an Owner of the FINAL subscri
 gh auth login
 az account set --subscription <final-subscription-id>
 
-pwsh tools/github-governance.ps1              # azure-stage (main, owner is reviewer) and azure-prod (server-v* and app-v* tags, owner is reviewer)
+pwsh tools/github-governance.ps1              # azure-stage (main, owner is reviewer) and azure-prod (server-v* tags only, owner is reviewer)
 
 .\infra\bootstrap-azure.ps1 -SubscriptionId <final-subscription-id> -Location <region> -ResourceGroup rg-aron-stage `
   -Environment azure-stage -AppName sp-aron-github-stage -AlertEmails "<monitored-address>"
@@ -95,6 +95,10 @@ gh variable set AZURE_RESOURCE_GROUP --env azure-dev --body rg-aron-dev    # sam
 Until the owner has set the final Google/Firebase values in the final environments, a stage or prod deploy falls back to the
 repository-wide TEST values of the same name (it would copy the test FCM account into the final Key Vault): set them **before the
 first stage deploy** (s4).
+
+**If an earlier version of `tools/github-governance.ps1` (before 2026-11-18, this lane) was ever run live**, `azure-prod` may carry an
+`app-v*` tag policy. Remove it by hand (owner): GitHub > Settings > Environments > azure-prod > Deployment branches and tags > delete `app-v*`
+(or `gh api -X DELETE repos/<owner>/<repo>/environments/azure-prod/deployment-branch-policies/<id>` with the id from the GET of the same path). The script never deletes policies.
 
 ## 2. Final-account switches, staging, then prod (after step 0: needs the code on `main`)
 
@@ -185,6 +189,5 @@ gone and `docs/setup/device-owner-test-phone.md` is obsolete. What a phone needs
    flip `dbPerAppLogins` to `true` in `params/prod.apps.bicepparam` once they pass on the per-app logins in stage.
 2. Keep the TEST account for the pilot during the parallel run (D4 default), then order the reset to `dev-lite` (GitHub > Actions >
    reset, profile `dev-lite`, confirm `owner approved reset`) rather than deleting it; delete the Apsis landing group at sign-off.
-   `drill`, `reset`, `acr-purge`, `cost-report` and `ops-diagnose` are hard-wired to `azure-dev` on purpose and never touch the final
-   account; the final registry has no scheduled purge yet.
+   `drill`, `reset`, `acr-purge` and `cost-report` are hard-wired to `azure-dev` on purpose and never touch the final account; `ops-diagnose` and `whatif` are read-only and run for dev and stage only (stage: metadata and metrics, no log lines); prod read-only checks run from the laptop; the final registry has no scheduled purge yet.
 3. Update `docs/status/infra.md` with the final host names, the date of the move and the drill timings.

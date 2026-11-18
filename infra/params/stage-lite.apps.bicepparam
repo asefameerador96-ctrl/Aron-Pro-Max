@@ -1,6 +1,6 @@
 // stage-lite apps (see stage-lite.bicepparam): small replica counts, everything else as stage.
-// stage = STAGING apps (docs/30 s1), parameter file only: prod-shaped so the load test and the soak measure the real
-// scale rules; nothing deploys it until the final account exists.
+// stage-lite is NOT prod-shaped: it cannot measure the real scale rules (api 1 to 3 replicas); use stage for the load windows. Deployable only in
+// the final account (deploy.sh refuses it without ARON_FINAL_ACCOUNT=true).
 using '../apps.bicep'
 
 // Values from the deploy environment (infra/deploy.sh); unset or empty takes the default.
@@ -18,7 +18,7 @@ var envWorkerMin = readEnvironmentVariable('ARON_WORKER_MIN_REPLICAS', '')
 param environmentName = 'stage'
 
 param frontDoorEnabled = true
-// D8ds_v5 behind PgBouncer: the app pools stay at their defaults (10 per replica).
+// D2ds_v5 (stage-lite) behind PgBouncer: the app pools stay at their defaults (10 per replica).
 param location = empty(envLocation) ? 'southeastasia' : envLocation
 param nameSuffix = envSuffix
 // The quickstart image only lets the file compile offline; deploy.sh always sets the real image.

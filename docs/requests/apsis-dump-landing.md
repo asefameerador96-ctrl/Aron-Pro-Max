@@ -64,7 +64,7 @@ infra/scripts/apsis-landing.sh deploy --final-subscription-id <final-subscriptio
 The outputs give `storageAccountName` and `dumpContainerUrl`. A new role assignment can take a few minutes to apply. The wrapper
 prints two warnings the owner must read: **(1) the lifecycle rule deletes dump blobs 60 days after their last write**: if the
 migration will run longer (a long parallel run), re-upload or raise `dumpDeleteAfterDays` before then; **(2) remove the owner's
-address after the upload** (run `deploy` again without it is not offered: use `az storage account network-rule remove -g rg-aron-apsis-landing --account-name <account> --ip-address <ip>`),
+address after the upload** with the one supported command `infra/scripts/apsis-landing.sh remove-owner-ip --final-subscription-id <final-subscription-id> --ack "the dump goes to the final account only" --account <account> --owner-ip <ip>`,
 so the private endpoint is the only way in. With `--log-workspace-id` the blob access logs (caller address, blob names) live in that
 shared workspace and **outlive the group's deletion for the workspace's retention**; without it a small workspace is created in the
 landing group and is deleted with it. If the owner's address changes: `az storage account network-rule add ... --ip-address <new-ip>`.
@@ -160,3 +160,11 @@ the account was changed: investigate.
 The template compiles, lints and passes `infra/tests/check_infra.py` (`ApsisLanding`). Not proven: the deployment itself, the
 role assignment on a user principal, the `Deny` rule with the owner's address, AzCopy against the account, throughput of the 31 GB
 file over the owner's connection, and the private-endpoint path for the loader (s5.2: DNS resolution from the job, the automatic connection approval).
+
+## 7. Who reads the loader's logs
+
+The loader prints counts and checksums by contract, but an error line can still carry a customer's phone number or id. Its logs are readable **only inside Azure, by the owner** (Log Analytics in the portal). `ops-diagnose` never prints job or app console logs for stage (metadata and metrics only, fixed names, the loader never included) and does not run for prod at all (read-only prod checks run from the laptop).
+
+## 8. Note on the commands above
+
+The landing commands need ids (`<snet-pe id>`, `<blob private DNS zone id>`, the loader principal id) that exist only after the stage/prod infra deploy, which waits for step 0 of `docs/setup/move-to-final-account.md`. Before that: deploy without `--pe-subnet-id`/`--dns-zone-id`, upload, and add the endpoint by re-running `deploy` with those ids later.

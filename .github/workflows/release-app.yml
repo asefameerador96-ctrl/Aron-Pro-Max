@@ -68,10 +68,15 @@ jobs:
     environment: app-release
     permissions:
       contents: write
+      actions: read
     env:
       API: ${{ vars.ARON_PROD_API_BASE_URL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The app-release environment must have a required reviewer (GitHub creates a missing one unprotected)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: infra/scripts/final-account-guard.sh app-release
       - name: Point ANDROID_HOME at a cacheable SDK in the runner temp folder
         run: |
           echo "ANDROID_HOME=${RUNNER_TEMP}/android-sdk" >> "${GITHUB_ENV}"

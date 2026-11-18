@@ -6,13 +6,18 @@
 # or log excerpts; never a secret, connection string or Key Vault value.
 # This script changes nothing in Azure: it only lists, shows, queries and downloads logs.
 #
-# Usage: AZURE_RESOURCE_GROUP=rg-aron-dev infra/scripts/diagnose.sh <since-utc> <until-utc> [job-prefix] [worker-app]
+# Usage: AZURE_RESOURCE_GROUP=rg-aron-dev infra/scripts/diagnose.sh <since-utc> <until-utc> [job-prefix] [worker-app] [full|metadata]
 set -uo pipefail
 RG="${AZURE_RESOURCE_GROUP:?set AZURE_RESOURCE_GROUP}"
 SINCE="${1:?since (UTC, e.g. 2026-11-05T09:40:00Z)}"
 UNTIL="${2:?until (UTC)}"
 JOB_PREFIX="${3:-caj-aron-dev-migrate}"
 WORKER_APP="${4:-ca-aron-dev-worker}"
+# MODE full (dev): log excerpts too. MODE metadata (stage, prod: the output goes to a PUBLIC job log and a log line can carry a customer's
+# phone number or id, the Apsis loader's included): state, parameters, metrics, activity log and app state only, NO log lines at all, until a
+# redactor is applied to every section.
+MODE="${5:-full}"
+case "$MODE" in full|metadata) ;; *) echo "mode must be full or metadata" >&2; exit 2 ;; esac
 section() { printf '\n== %s\n' "$*"; }
 try() { "$@" 2>&1 || echo "(command failed: $*)"; }
 
@@ -22,7 +27,7 @@ section "containerapp start/stop commands available in this az"
 az containerapp -h 2>&1 | grep -E '^\s+(start|stop)\b' || echo "(no start/stop subcommands listed)"
 
 section "PostgreSQL server"
-server="$(az postgres flexible-server list -g "$RG" --query "[?starts_with(name,'psql-aron-')].name | [0]" -o tsv 2>/dev/null || true)"
+server="$(az postgres flexible-server list -g "$RG" --query "[?starts_with(name,'psql-aron-') && !ends_with(name,'-r1') && !contains(name,'-drill-')].name | [0]" -o tsv 2>/dev/null || true)"
 if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
   echo "server: $server"
   try az postgres flexible-server show -g "$RG" -n "$server" --query '{state:state, version:version, sku:sku.name, tier:sku.tier, storageGb:storage.storageSizeGb, ha:highAvailability.mode, haState:highAvailability.state, maintenance:maintenanceWindow.customWindow}' -o json
@@ -45,26 +50,29 @@ if [ -z "$server" ]; then echo "(no psql-aron-* server in $RG)"; else
     try az monitor activity-log list --resource-id "$sid" --start-time "$SINCE" --end-time "$UNTIL" \
       --query "[].{time:eventTimestamp, op:operationName.localizedValue, status:status.localizedValue, sub:subStatus.localizedValue}" -o table
   fi
-  section "PostgreSQL server log files (last 24 h) and excerpts in the window"
-  files="$(az postgres flexible-server server-logs list -g "$RG" -s "$server" --file-last-written 24 --query "[].name" -o tsv 2>&1)" || { echo "(server-logs list failed: ${files:-no text}; logfiles.download_enable is off unless the error says otherwise)"; files=""; }
-  if [ -z "$files" ]; then
-    echo "(no downloadable server log files in the last 24 h)"
-  else
-    tmp="$(mktemp -d)"
-    ( cd "$tmp" && for f in $files; do
-        az postgres flexible-server server-logs download -g "$RG" -s "$server" -n "$f" -o none 2>&1 || echo "(download of $f failed)"
-      done )
-    # Severity lines and slow statements only; DETAIL/parameter lines are dropped so no row values are printed. Postgres
-    # log lines start "YYYY-MM-DD HH:MM:SS.mmm UTC"; the window bounds are ISO "YYYY-MM-DDTHH:MM", so the key is rebuilt as such.
-    find "$tmp" -type f | while read -r lf; do
-      echo "-- $(basename "$lf")"
-      grep -E 'FATAL|PANIC|terminat|out of memory|Killed|database system|server process|checkpoint|could not|duration: [0-9]{5,}' "$lf" \
-        | grep -v -E 'DETAIL|parameters:' | awk -v s="${SINCE:0:16}" -v u="${UNTIL:0:16}" '{ t=$1 "T" substr($2,1,5); if (t >= s && t <= u) print substr($0,1,200) }' | head -80
-    done
-    rm -rf "$tmp"
+  if [ "$MODE" = full ]; then
+    section "PostgreSQL server log files (last 24 h) and excerpts in the window"
+    files="$(az postgres flexible-server server-logs list -g "$RG" -s "$server" --file-last-written 24 --query "[].name" -o tsv 2>&1)" || { echo "(server-logs list failed: ${files:-no text}; logfiles.download_enable is off unless the error says otherwise)"; files=""; }
+    if [ -z "$files" ]; then
+      echo "(no downloadable server log files in the last 24 h)"
+    else
+      tmp="$(mktemp -d)"
+      ( cd "$tmp" && for f in $files; do
+          az postgres flexible-server server-logs download -g "$RG" -s "$server" -n "$f" -o none 2>&1 || echo "(download of $f failed)"
+        done )
+      # Severity lines and slow statements only; DETAIL/parameter lines are dropped so no row values are printed. Postgres
+      # log lines start "YYYY-MM-DD HH:MM:SS.mmm UTC"; the window bounds are ISO "YYYY-MM-DDTHH:MM", so the key is rebuilt as such.
+      find "$tmp" -type f | while read -r lf; do
+        echo "-- $(basename "$lf")"
+        grep -E 'FATAL|PANIC|terminat|out of memory|Killed|database system|server process|checkpoint|could not|duration: [0-9]{5,}' "$lf" \
+          | grep -v -E 'DETAIL|parameters:' | awk -v s="${SINCE:0:16}" -v u="${UNTIL:0:16}" '{ t=$1 "T" substr($2,1,5); if (t >= s && t <= u) print substr($0,1,200) }' | head -80
+      done
+      rm -rf "$tmp"
+    fi
   fi
 fi
 
+if [ "$MODE" = full ]; then
 section "Log Analytics: console log of job executions starting with $JOB_PREFIX in the window"
 ws="$(az monitor log-analytics workspace list -g "$RG" --query "[0].customerId" -o tsv 2>/dev/null || true)"
 if [ -z "$ws" ]; then echo "(no Log Analytics workspace in $RG)"; else
@@ -120,6 +128,8 @@ if [ -n "${ws:-}" ]; then
   try az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv | cut -c1-260
 else
   echo "(no Log Analytics workspace, so no worker console log)"
+fi
+
 fi
 
 section "worker app $WORKER_APP"
