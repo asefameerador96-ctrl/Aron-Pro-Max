@@ -217,6 +217,61 @@ class BundleService(
         return result
     }
 
+    /** The answer of [figures]: the figure sections and the identity answer, read in one snapshot. */
+    class FiguresResult(val date: LocalDate, val through: LocalDate, val routes: List<FigureRoute>, val probe: SrFigureProbe.Answer, val astha: kotlinx.serialization.json.JsonObject?)
+
+    /**
+     * POST /v1/sync/figures (D-TKPI-14): the SR programme figures of the caller's routes for [forDate] and the answer to the phone's identity [probe], from the SAME loaders as
+     * the bundle's route snapshots and read in ONE read-only repeatable-read transaction on the primary, so the answer and the figures can never disagree. Read-only and idempotent:
+     * nothing is written (no login side effect, no download record, no snapshot row). With [includeAsthaProgrammes] the Astha section of the bundle is built in the SAME
+     * transaction by the programmes loader (its identity predicate is the loyalty lane's, `docs/requests/figures-astha-identity.md`).
+     */
+    fun figures(p: AronPrincipal, forDate: LocalDate?, probe: List<SrFigureProbe.Probe>, includeAsthaProgrammes: Boolean = false): FiguresResult {
+        val now = clock.now()
+        val today = BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()
+        val user = db.jdbi.withHandle<UserRow, Exception> { h -> loadUser(h, p.userId) }
+        val home = user.homeZoneId?.let { z -> db.jdbi.withHandle<Map<Long, GeoChain>, Exception> { h -> chains(h, listOf(z)) }[z] }
+        val horizonDays = config.int("cfg.sys.schedule_horizon_days").coerceIn(0, 31)
+        val until = now.plusSeconds(horizonDays * 86_400L)
+        val cfg = db.jdbi.withHandle<ScopedConfig, Exception> { h -> ScopedConfig.load(h, now, until) }
+        val roleOrdinal = db.jdbi.withHandle<Long?, Exception> { h -> h.createQuery("SELECT ordinal FROM app.role_def WHERE role = :r").bind("r", user.role).mapTo(Long::class.java).findOne().orElse(null) }
+        val userChain = ScopedConfig.Chain.of(
+            ConfigScopeType.ROLE to roleOrdinal, ConfigScopeType.WING to home?.wingId, ConfigScopeType.DIVISION to home?.divisionId,
+            ConfigScopeType.TERRITORY to home?.territoryId, ConfigScopeType.ZONE to home?.zoneId, ConfigScopeType.USER to user.id, ConfigScopeType.DEVICE to p.deviceId,
+        )
+        val weekend = cfg.value("cfg.calendar.weekend_days", userChain)?.let { v -> runCatching { v.jsonArray.mapNotNull { it.jsonPrimitive.intOrNull }.filter { it in 1..7 } }.getOrNull() }?.toSet() ?: DayPlan.DEFAULT_WEEKEND
+        val date = forDate ?: today
+        if (date.isBefore(today)) throw badFor("for must not be before today ($today)")
+        if (date.isAfter(today)) { val next = nextWorkingDay(today, home, weekend); if (date.isAfter(next)) throw badFor("for must be at most the next working day ($next)") }
+        val plans = db.jdbi.withHandle<List<RouteDayPlan>, Exception> { h -> withScopedWeekend(h, planner.routesFor(user.id, date), date, cfg, roleOrdinal, user.id) }
+        val first = YearMonth.from(date).atDay(1); val through = date.minusDays(1)
+        if (plans.isEmpty()) return FiguresResult(date, through, emptyList(), db.jdbi.withHandle<SrFigureProbe.Answer, Exception> { h -> h.inTransaction<SrFigureProbe.Answer, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { SrFigureProbe.answer(it, user.id, probe, first, through) } }, null)
+        return db.jdbi.withHandle<FiguresResult, Exception> { h ->
+            h.inTransaction<FiguresResult, Exception>(org.jdbi.v3.core.transaction.TransactionIsolationLevel.REPEATABLE_READ) { th ->
+                th.execute("SET TRANSACTION READ ONLY")
+                val ids = plans.map { it.routeId }
+                val names = th.createQuery("SELECT id, name FROM app.route WHERE id = ANY(:r)").bindArray("r", Long::class.javaObjectType, ids).map { rs, _ -> rs.getLong(1) to rs.getString(2) }.list().toMap()
+                val srs = routeSrs(th, ids, date)
+                val outlets = outlets(th, ids, cfg, roleOrdinal, null)
+                val figs = loadFigureSet(th, plans, date, outlets.mapValues { e -> e.value.map { it.outlet_id } }, names, srs)
+                val answer = SrFigureProbe.answer(th, user.id, probe, first, through)
+                val astha = if (!includeAsthaProgrammes || reach == null) null else {
+                    val progReach = reach.reach(user.id, p.role, p.scopeVersion, date)
+                    BundleProgrammes.section(
+                        th, progReach, ids, outlets.values.flatten().map { it.outlet_id }.toSet(), date,
+                        BundleProgrammes.Flags(
+                            loyalty = cfg.value("cfg.flag.loyalty_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
+                            astha = cfg.value("cfg.flag.astha_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
+                            superstar = cfg.value("cfg.flag.superstar_ui", userChain)?.jsonPrimitive?.booleanOrNull ?: true,
+                        ),
+                        cfg.value("cfg.astha.quarter_start_month", userChain)?.jsonPrimitive?.intOrNull ?: 1,
+                    )
+                }
+                FiguresResult(date, through, plans.sortedBy { it.routeId }.map { figs.section(it.routeId) }, answer, astha)
+            }
+        }
+    }
+
     /**
      * The lab exemption of THIS phone (D-OWNER-MDM-02 iii): the server-signed grant stored with the unexpired row, as the device-scoped value
      * [LAB_GRANT_KEY]. Absent when there is none, which is how the phone learns the grant was withdrawn. The token is stored (signed once when
@@ -520,6 +575,31 @@ class BundleService(
         }
     }
 
+    /** The SR programme figures of the routes of one build, from the memo tables in the caller's snapshot (rule A). */
+    class FigureSet(
+        val sr: Map<Long, SrTargets.Snapshot>, val kpi: Map<Long, kotlinx.serialization.json.JsonObject>, val campaigns: Map<Long, SrCampaigns.Result>,
+        val star: Map<Long, kotlinx.serialization.json.JsonObject>, val starDropped: HashSet<Long>,
+    ) {
+        fun section(routeId: Long) = FigureRoute(
+            route_id = routeId, targets = sr[routeId]?.targets.orEmpty(), achievement_mtd = sr[routeId]?.achievement.orEmpty(),
+            calendar = sr[routeId]?.calendar?.takeIf { sr[routeId]!!.hasFigures || kpi[routeId] != null || star[routeId] != null || campaigns[routeId]?.rows.orEmpty().isNotEmpty() },
+            kpi = kpi[routeId], star = star[routeId], campaigns = campaigns[routeId]?.rows?.takeIf { it.isNotEmpty() },
+            campaigns_truncated = campaigns[routeId]?.truncated?.takeIf { it }, targets_truncated = sr[routeId]?.truncated?.takeIf { it }, star_truncated = (routeId in starDropped).takeIf { it },
+        )
+    }
+
+    private fun loadFigureSet(h: Handle, plans: List<RouteDayPlan>, date: LocalDate, outletIdsByRoute: Map<Long, List<Long>>, routeNames: Map<Long, String>, srs: Map<Long, Pair<Long, String>>): FigureSet {
+        val srRoutes = plans.map { it.routeId }
+        val figures = if (srRoutes.isEmpty()) emptyMap() else SrMemoFigures.forRoutes(h, srRoutes, YearMonth.from(date).atDay(1), date.minusDays(1))
+        val dim = if (srRoutes.isEmpty()) null else SrMemoFigures.dim(h)
+        val sr = SrTargets.load(h, plans.associate { it.routeId to it.zoneId }, date, clock.now(), config, figures)
+        val kpi = SrKpi.load(h, srRoutes, date, figures, dim!!)
+        val campaigns = SrCampaigns.load(h, outletIdsByRoute, date)
+        val starDropped = HashSet<Long>()
+        val star = SrStar.load(h, plans.mapNotNull { r -> sr[r.routeId]?.let { snap -> r.routeId to SrStar.RouteInfo(routeNames.getValue(r.routeId), srs[r.routeId]?.second, srs[r.routeId]?.first, snap.calendar) } }.toMap(), date, figures, dim, starDropped)
+        return FigureSet(sr, kpi, campaigns, star, starDropped)
+    }
+
     private fun routeSnapshotsIn(
         h: Handle, userId: Long, plans: List<RouteDayPlan>, date: LocalDate, states: Map<Long, DayRow>, cfg: ScopedConfig, roleOrdinal: Long?, zoneIds: List<Long>?,
     ): List<RouteSnapshot> {
@@ -542,15 +622,9 @@ class BundleService(
         val plan = h.createQuery("SELECT zone_id, sku_id FROM app.sales_plan WHERE zone_id = ANY(:z) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d) ORDER BY sku_id")
             .bindArray("z", Long::class.javaObjectType, plans.map { it.zoneId }.distinct()).bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
             .groupBy({ it.first }, { it.second })
-        // Own-route figures straight from the accepted memo tables (rule A): one memo query for every route of the bundle, grouped in Kotlin by ONE hierarchy (SrMemoFigures).
-        val srRoutes = if (zoneIds == null) plans.map { it.routeId } else emptyList()
-        val figures = if (srRoutes.isEmpty()) emptyMap() else SrMemoFigures.forRoutes(h, srRoutes, YearMonth.from(date).atDay(1), date.minusDays(1))
-        val dim = if (srRoutes.isEmpty()) null else SrMemoFigures.dim(h)
-        val sr = if (zoneIds == null) SrTargets.load(h, plans.associate { it.routeId to it.zoneId }, date, clock.now(), config, figures) else emptyMap()
-        val kpi = if (zoneIds == null) SrKpi.load(h, srRoutes, date, figures, dim!!) else emptyMap()
-        val campaigns = if (zoneIds == null) SrCampaigns.load(h, outlets.mapValues { e -> e.value.map { it.outlet_id } }, date) else emptyMap()
-        val starDropped = HashSet<Long>()
-        val star = if (zoneIds == null) SrStar.load(h, plans.mapNotNull { r -> sr[r.routeId]?.let { snap -> r.routeId to SrStar.RouteInfo(routes.getValue(r.routeId).name, srs[r.routeId]?.second, srs[r.routeId]?.first, snap.calendar) } }.toMap(), date, figures, dim!!, starDropped) else emptyMap()
+        // Own-route figures straight from the accepted memo tables: the SAME loader as POST /v1/sync/figures (loadFigureSet).
+        val figs = if (zoneIds == null) loadFigureSet(h, plans, date, outlets.mapValues { e -> e.value.map { it.outlet_id } }, routes.mapValues { it.value.name }, srs) else null
+        val sr = figs?.sr ?: emptyMap(); val kpi = figs?.kpi ?: emptyMap(); val campaigns = figs?.campaigns ?: emptyMap(); val star = figs?.star ?: emptyMap(); val starDropped = figs?.starDropped ?: HashSet()
         return plans.sortedBy { it.routeId }.map { r ->
             val day = if (zoneIds == null) states[r.routeId] else null
             val target = if (zoneIds != null) 0 else day?.target ?: r.targetOutlets

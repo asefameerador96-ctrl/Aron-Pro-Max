@@ -58,6 +58,7 @@ fun Route.syncRoutes(d: SyncDeps) {
             call.respond(withContext(Dispatchers.IO) { d.bundles.page(p, q["bundle_version"], q["section"], q["page"]) })
         }
         get("/sync/delta") { getDelta(call, d) }
+        post("/sync/figures") { postFigures(call, d) }
         if (d.db != null) get("/sync/generation") { getGeneration(call, d.db) }
         if (d.db != null) {
             val digest = SyncDigestService(
@@ -289,6 +290,38 @@ private suspend fun getDelta(call: ApplicationCall, d: SyncDeps) {
     }
     call.response.header("X-Bundle-Version-Current", delta.meta.bundle_version)
     call.respond(delta)
+}
+
+/**
+ * POST /v1/sync/figures (contract postSyncFigures, D-TKPI-14): the SR programme figures plus the identity answer for the phone's probe, in one repeatable-read snapshot (BundleService.figures).
+ * SR phone token only; own records only (a foreign or unknown uuid answers NOT IN and nothing else); at most [SrFigureProbe.MAX] probe entries (400 `too_many` above), body at most 64 KiB (413);
+ * read-only and idempotent. The phone calls it after a sync cycle and when a figures screen opens while online, never on a timer.
+ */
+private suspend fun postFigures(call: ApplicationCall, d: SyncDeps) {
+    val p = call.principal
+    if (!p.isPhone || p.role != com.aktcl.aron.contract.Role.SR) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "the figures are for the SR app")
+    val req = call.receiveStrict(FiguresRequest.serializer(), maxBytes = 64L * 1024)
+    val forDate = req.forDate?.let { runCatching { LocalDate.parse(it) }.getOrNull()?.takeIf { _ -> DATE.matches(it) } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "for must be YYYY-MM-DD", errors = listOf(FieldError("body.for", "invalid_value"))) }
+    if (req.probe.size > SrFigureProbe.MAX) throw ApiProblem(ProblemCode.ERR_VALIDATION, "probe holds ${req.probe.size} entries, at most ${SrFigureProbe.MAX}", errors = listOf(FieldError("body.probe", "too_many")))
+    val probe = req.probe.mapIndexed { i, e ->
+        SrFigureProbe.Probe(
+            runCatching { java.util.UUID.fromString(e.memo_client_uuid) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "memo_client_uuid is not a uuid", errors = listOf(FieldError("body.probe.$i.memo_client_uuid", "invalid_value"))),
+            e.memo_no?.take(64),
+            runCatching { LocalDate.parse(e.business_date) }.getOrNull()?.takeIf { _ -> DATE.matches(e.business_date) } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "business_date must be YYYY-MM-DD", errors = listOf(FieldError("body.probe.$i.business_date", "invalid_value"))),
+            e.removed_locally == true,
+        )
+    }
+    val r = withContext(Dispatchers.IO) { d.bundles.figures(p, forDate, probe, req.include_astha == true) }
+    call.respond(
+        FiguresResponse(
+            business_date = r.date.toString(), through_date = r.through.toString(), routes = r.routes,
+            figure_probe = FigureProbeAnswer(
+                in_figure = r.probe.inFigure.map { (u, n) -> FigureInMemo(u.toString(), n, r.probe.removedLines[u]?.map { FigureStoredLine(it.skuId, it.qtyBase, it.kind) }) },
+                voided = r.probe.voided.map { it.toString() }, twin_ambiguous = r.probe.twinAmbiguous.map { it.toString() }.takeIf { it.isNotEmpty() },
+            ),
+            astha = r.astha,
+        ),
+    )
 }
 
 private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")

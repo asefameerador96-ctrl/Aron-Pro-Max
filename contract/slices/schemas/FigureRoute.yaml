@@ -1,0 +1,38 @@
+FigureRoute:
+  type: object
+  description: The figure members of the bundle's `RouteSnapshot` for one route, from the same loaders.
+  required:
+  - route_id
+  - targets
+  - achievement_mtd
+  additionalProperties: false
+  properties:
+    route_id:
+      $ref: '#/components/schemas/Id'
+    targets:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/TargetRow'
+    achievement_mtd:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/AchievementRow'
+    calendar:
+      $ref: '#/components/schemas/RouteCalendar'
+    kpi:
+      $ref: '#/components/schemas/RouteKpi'
+    star:
+      $ref: '#/components/schemas/RouteStar'
+    campaigns:
+      type: array
+      maxItems: 150
+      items:
+        $ref: '#/components/schemas/RouteCampaign'
+    campaigns_truncated:
+      type: boolean
+    targets_truncated:
+      type: boolean
+    star_truncated:
+      type: boolean

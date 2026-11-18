@@ -1,0 +1,17 @@
+FiguresRequest:
+  type: object
+  required:
+  - probe
+  additionalProperties: false
+  properties:
+    for:
+      $ref: '#/components/schemas/BusinessDate'
+    probe:
+      type: array
+      maxItems: 300
+      items:
+        $ref: '#/components/schemas/FigureProbeEntry'
+    include_astha:
+      type: boolean
+      description: Also returns the bundle's Astha section built in the same transaction (the loyalty lane owns
+        its identity predicate).

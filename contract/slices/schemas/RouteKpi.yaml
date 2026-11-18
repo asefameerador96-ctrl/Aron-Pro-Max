@@ -1,9 +1,9 @@
 RouteKpi:
   type: object
   description: Brand-wise KPI of the SR (screens 60 and 61) for the Dhaka month of the bundle date, server figures
-    through `through_date` (never today; the phone merges its own memos by rule B of `RouteSnapshot`). Volume in
-    base units, money in integer milli-taka, percentages in basis points (null when the target is 0). `achieved_mtk`,
-    `achievement_bp` and every `kpi_today_mtk` are null until the owner defines them. Contract 1.22.0.
+    through `through_date` (never today; the phone merges its own memos by the identity rule of `RouteSnapshot`).
+    Volume in base units, money in integer milli-taka, percentages in basis points (null when the target is 0).
+    `achieved_mtk`, `achievement_bp` and every `kpi_today_mtk` are null until the owner defines them. Contract 1.22.0.
   required:
   - month
   - through_date

@@ -16,7 +16,8 @@ import java.util.UUID
  *   `through_date`: the phone adds it if it is still a live sale locally.
  * A memo that is not the caller's own answers NOT IN (nothing is revealed). PAPER TWIN: a probe may carry `memoNo`; when its uuid is unknown to the server and an
  * own `manual` (paper backfill) memo with the same memo number and business date exists (the number is unique per date), the answer is that twin's, so the phone's
- * copy of a keyed paper memo is IN when the paper memo is, and the phone does not add it on top. For a memo the phone has voided or superseded locally
+ * copy of a keyed paper memo is IN when the paper memo is, and the phone does not add it on top (LIMIT: the memo number must identify the memo; it is unique per business date over all memos,
+ * so a mistyped number is simply another memo until the reviewer matches them; two candidates would answer NOT IN with a flag). For a memo the phone has voided or superseded locally
  * (`removedLocally`) that is IN, the answer also lists the stored lines (sku, base quantity, kind) so the phone subtracts exactly what the server holds.
  */
 object SrFigureProbe {
@@ -24,7 +25,7 @@ object SrFigureProbe {
 
     class Probe(val uuid: UUID, val memoNo: String?, val date: LocalDate, val removedLocally: Boolean = false)
     class Line(val skuId: Long, val qtyBase: Long, val kind: String)
-    class Answer(val through: LocalDate, val inFigure: Map<UUID, Int>, val voided: Set<UUID>, val removedLines: Map<UUID, List<Line>>) {
+    class Answer(val through: LocalDate, val inFigure: Map<UUID, Int>, val voided: Set<UUID>, val removedLines: Map<UUID, List<Line>>, val twinAmbiguous: Set<UUID> = emptySet()) {
         companion object { fun empty(through: LocalDate) = Answer(through, emptyMap(), emptySet(), emptyMap()) }
     }
 
@@ -45,9 +46,11 @@ object SrFigureProbe {
         val unknown = list.filter { it.uuid !in byUuid && it.memoNo != null }
         val twins = if (unknown.isEmpty()) emptyMap() else rows("SELECT $cols FROM app.memo WHERE memo_no = ANY(:n) AND business_date = ANY(:d) AND entry_source = 'manual' $own") { q ->
             q.bindArray("n", String::class.java, unknown.map { it.memoNo!! }.distinct()).bindArray("d", LocalDate::class.java, unknown.map { it.date }.distinct()).bind("u", userId)
-        }.associateBy { it.memoNo to it.date }
-        val matched = list.mapNotNull { p -> (byUuid[p.uuid] ?: twins[p.memoNo to p.date])?.let { p to it } }
-        if (matched.isEmpty()) return Answer.empty(through)
+        }.groupBy { it.memoNo to it.date }
+        // (memo_no, business_date) is unique over ALL memos (index memo_no_unique), so at most one candidate exists; if two ever did, the answer is NOT IN and a flag, never a guess
+        val ambiguous = list.filter { it.uuid !in byUuid && (twins[it.memoNo to it.date]?.size ?: 0) > 1 }.map { it.uuid }.toSet()
+        val matched = list.mapNotNull { p -> (byUuid[p.uuid] ?: twins[p.memoNo to p.date]?.singleOrNull())?.let { p to it } }
+        if (matched.isEmpty()) return Answer(through, emptyMap(), emptySet(), emptyMap(), ambiguous)
         // stored, non-voided lines per memo
         val lineRows = h.createQuery(
             "SELECT memo_client_uuid, sku_id, qty_base, line_kind FROM app.memo_line WHERE memo_client_uuid = ANY(:c) AND business_date = ANY(:d) AND voided_at IS NULL",
@@ -64,6 +67,6 @@ object SrFigureProbe {
                 }
             }
         }
-        return Answer(through, inFigure, voided, removed)
+        return Answer(through, inFigure, voided, removed, ambiguous)
     }
 }

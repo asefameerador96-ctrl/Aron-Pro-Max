@@ -474,6 +474,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sync/figures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The SR programme figures of the caller's routes and the identity answer for the phone's memo probe, read in one snapshot (D-TKPI-14).
+         * @description Additive (contract number provisional, the lead sets it at landing). SR phone token only; own records only. Read-only and idempotent: nothing is written, so a retry is always safe. The phone calls it after a sync cycle and when a figures screen opens while online, NEVER on a timer. At most 300 probe entries (`400 ERR_VALIDATION`, field `body.probe`, code `too_many`, above), a body of at most 64 KiB (`413`). The figure sections are the SAME as the `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns` members of the bundle's `RouteSnapshot` (the same loaders); the bundle keeps carrying them unchanged for old phones and for the first offline day, its version and ETag are not affected by this call. Which of the two the phone uses and how it merges its own memos is stated once in `RouteSnapshot` (the identity rule).
+         */
+        post: operations["postSyncFigures"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sync/totals": {
         parameters: {
             query?: never;
@@ -6536,6 +6556,66 @@ export interface components {
                 }[];
             }[];
         };
+        /** @description One of the phone's own memos whose status in the figures it does not know (never confirmed IN, pending, sent and unanswered, held, refused, or voided or superseded on the phone). */
+        FigureProbeEntry: {
+            /** Format: uuid */
+            memo_client_uuid: string;
+            /** @description The printed memo number. When the uuid is unknown to the server and the office keyed the same printed memo from paper, the answer is the paper memo's (memo numbers are unique per business date over all memos, so one number is one memo; a mistyped number is another memo until a reviewer matches them). */
+            memo_no?: string;
+            business_date: components["schemas"]["BusinessDate"];
+            /** @description True when the phone has voided or superseded the memo; the answer then lists the stored lines to subtract. */
+            removed_locally?: boolean;
+        };
+        FiguresRequest: {
+            for?: components["schemas"]["BusinessDate"];
+            probe: components["schemas"]["FigureProbeEntry"][];
+            /** @description Also returns the bundle's Astha section built in the same transaction (the loyalty lane owns its identity predicate). */
+            include_astha?: boolean;
+        };
+        FigureStoredLine: {
+            sku_id: components["schemas"]["Id"];
+            /** Format: int64 */
+            qty_base: number;
+            line_kind: string;
+        };
+        FigureInMemo: {
+            /** Format: uuid */
+            memo_client_uuid: string;
+            /** @description The number of non-voided lines the server holds for the memo; fewer than the phone sent means a line was refused for good. */
+            lines: number;
+            /** @description Only for a probe with `removed_locally`; what the figures counted for the memo, to subtract. */
+            stored_lines?: components["schemas"]["FigureStoredLine"][];
+        };
+        /** @description EXACTLY three states per probed uuid. IN (`in_figure`): the memo is stored, active, not voided, has at least one non-voided line and is dated from the 1st of the month up to `through_date`. VOIDED (`voided`): the server holds it and it is gone for good (voided, superseded, admin data void, every line voided). NOT IN: every other uuid, listed nowhere (never uploaded, in flight and not committed in the snapshot, held for review, refused, or stored but dated after `through_date`); a uuid that is not the caller's own is NOT IN and nothing more. */
+        FigureProbeAnswer: {
+            in_figure: components["schemas"]["FigureInMemo"][];
+            voided: string[];
+            /** @description Annotation on NOT IN, not a fourth state; present only when a memo number matched more than one own paper memo (never a guess). Absent otherwise. */
+            twin_ambiguous?: string[];
+        };
+        /** @description The figure members of the bundle's `RouteSnapshot` for one route, from the same loaders. */
+        FigureRoute: {
+            route_id: components["schemas"]["Id"];
+            targets: components["schemas"]["TargetRow"][];
+            achievement_mtd: components["schemas"]["AchievementRow"][];
+            calendar?: components["schemas"]["RouteCalendar"];
+            kpi?: components["schemas"]["RouteKpi"];
+            star?: components["schemas"]["RouteStar"];
+            campaigns?: components["schemas"]["RouteCampaign"][];
+            campaigns_truncated?: boolean;
+            targets_truncated?: boolean;
+            star_truncated?: boolean;
+        };
+        FiguresResponse: {
+            business_date: components["schemas"]["BusinessDate"];
+            through_date: components["schemas"]["BusinessDate"];
+            routes: components["schemas"]["FigureRoute"][];
+            figure_probe: components["schemas"]["FigureProbeAnswer"];
+            /** @description Only with `include_astha`: the bundle's Astha section (`ProgrammesSection`), built in the same transaction. */
+            astha?: {
+                [key: string]: unknown;
+            };
+        };
         SyncDigestResponse: {
             resend: {
                 business_date: components["schemas"]["BusinessDate"];
@@ -6807,7 +6887,7 @@ export interface components {
             std_unit: "stick" | "piece" | "dozen";
             memo_target: number;
         };
-        /** @description Month-to-date achievement read from the accepted memos through `through_date`; the phone merges its own memos on top by rule B of `RouteSnapshot` (`as_of` is informational). */
+        /** @description Month-to-date achievement read from the accepted memos through `through_date`; the phone merges its own memos on top by the identity rule of `RouteSnapshot` (`as_of` is informational). */
         AchievementRow: {
             scope_type: components["schemas"]["TargetScopeType"];
             scope_id: components["schemas"]["Id"];
@@ -6816,10 +6896,10 @@ export interface components {
             product_id: components["schemas"]["Id"];
             /** Format: int64 */
             achieved_qty_base: number;
-            /** @description Memos with ANY non-voided line of the SKU (free lines included); `achieved_qty_base` counts sale lines only. See rule B in `RouteSnapshot`. */
+            /** @description Memos with ANY non-voided line of the SKU (free lines included); `achieved_qty_base` counts sale lines only. See the identity rule in `RouteSnapshot`. */
             memo_count: number;
             as_of: components["schemas"]["Timestamp"];
-            /** @description Last Dhaka business date the figure covers (the bundle date minus one day). The bundle date's own memos are never in a server figure. How the phone merges its own memos is stated once, as rule B in the description of `RouteSnapshot`. Contract 1.22.0, optional. */
+            /** @description Last Dhaka business date the figure covers (the bundle date minus one day). The bundle date's own memos are never in a server figure. How the phone merges its own memos is stated once, as the identity rule in the description of `RouteSnapshot`. Contract 1.22.0, optional. */
             through_date?: components["schemas"]["BusinessDate"];
         };
         /** @description Working-day numbers of the bundle month for the route (national calendar, Friday off, holidays as data). From these the phone derives ADS, TADS, PADS and RADS. Contract 1.22.0. */
@@ -6952,7 +7032,7 @@ export interface components {
                 cpr_alloc_mtk: number | null;
             };
         };
-        /** @description Brand-wise KPI of the SR (screens 60 and 61) for the Dhaka month of the bundle date, server figures through `through_date` (never today; the phone merges its own memos by rule B of `RouteSnapshot`). Volume in base units, money in integer milli-taka, percentages in basis points (null when the target is 0). `achieved_mtk`, `achievement_bp` and every `kpi_today_mtk` are null until the owner defines them. Contract 1.22.0. */
+        /** @description Brand-wise KPI of the SR (screens 60 and 61) for the Dhaka month of the bundle date, server figures through `through_date` (never today; the phone merges its own memos by the identity rule of `RouteSnapshot`). Volume in base units, money in integer milli-taka, percentages in basis points (null when the target is 0). `achieved_mtk`, `achievement_bp` and every `kpi_today_mtk` are null until the owner defines them. Contract 1.22.0. */
         RouteKpi: {
             month: components["schemas"]["Month"];
             through_date: components["schemas"]["BusinessDate"];
@@ -7040,7 +7120,7 @@ export interface components {
             /** Format: int64 */
             achieved_bp: number | null;
         };
-        /** @description Campaign target and achievement of one outlet for the Dhaka month (screen 21, outlet target pop-up and page). STD and SKU quantities are base units; memo achievement counts distinct active memos of the outlet with a campaign SKU line. Server figures through `through_date` (never today; the phone merges its own memos by rule B of `RouteSnapshot`). Contract 1.22.0. */
+        /** @description Campaign target and achievement of one outlet for the Dhaka month (screen 21, outlet target pop-up and page). STD and SKU quantities are base units; memo achievement counts distinct active memos of the outlet with a campaign SKU line. Server figures through `through_date` (never today; the phone merges its own memos by the identity rule of `RouteSnapshot`). Contract 1.22.0. */
         RouteCampaign: {
             outlet_id: components["schemas"]["Id"];
             programme_id: components["schemas"]["Id"];
@@ -7114,7 +7194,7 @@ export interface components {
             /** Format: int64 */
             projected_amount_mtk: number | null;
         };
-        /** @description Per-route section of the bundle; replaced as a whole when the route is added to the user. PHONE RULE B for the SR programme sections `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns` (contract number provisional, the lead sets it at landing; the ONE place this rule is stated). WHAT THE SERVER FIGURE IS. Every figure the phone merges (achievement, KPI volumes, memo counts and `by_pack`, Star STD, campaign STD and memo) is computed from the accepted memos with a business date from the 1st of the bundle `month` up to and including `through_date`, status active, memo lines not voided, read in ONE repeatable-read snapshot straight from the memo tables, so it holds every memo the server had COMMITTED when the bundle was read, whether the phone has heard of it or not. It is cut at `through_date` = the bundle date minus one day: the bundle date's own memos are never in a figure. (A bundle built ahead for tomorrow has `through_date` = the day it was built on, so that day's committed memos ARE in its figures and its version moves with them; rule B still gives the true total.) DEFINITIONS, the same on the phone for its local additions: quantities (`achieved_qty_base`, brand and category `volume_*`, `by_pack`, Star STD, campaign STD and SKU `sold_qty_base`) are SALE lines only; `achievement_mtd.memo_count` counts a memo once per SKU when it has ANY non-voided line of that SKU (free lines included, as the dashboards' SKU aggregate does); a KPI brand `memo_achieved` and a campaign `memo` count a memo once when it has a SALE line of the brand (campaign: of a campaign SKU shown). Brand sums use ONE hierarchy, the current product tree, for target and figure alike (the dashboards use the as-was brand). Campaign figures are the outlet's: every route's memos at the outlet committed before the read, through `through_date`, plus this phone's own local memos (another SR's sales at a shared outlet are in the figure, and that SR's unsynced or today's memos are not). HOW THE PHONE MERGES (ordering only, no clock). Let R be the moment the phone sent the request for this bundle (its own sync-cycle counter). A memo is ACKNOWLEDGED when the phone holds `accepted` or `duplicate` for the memo AND for all its lines, or a resolution `accepted` or `accepted_with_fix` for it (from a batch response or a delta), received before R; the server commits a family before it returns its acknowledgement. A memo whose last answer is `quarantined` (held for review, or waiting for a parent record) is NEVER added by the phone: it is shown as held for review, it is not a counted sale yet, and the server figure lacks it; it becomes acknowledged, and is then in the server figure and not added, only when an acknowledgement or resolution above reaches the phone before a bundle request; the server may commit it before the phone hears (a reviewer's accept, accept_with_fix, or the sweep of waiting children), and then the figure holds it while the phone still does not add it, which is exact. A resolution `rejected` or any final refusal removes it and it is never added. The phone ADDS a local memo (live, dated inside the bundle `month`) iff it is not acknowledged before R and not held or refused; it ADDS every such local memo dated after `through_date` whether acknowledged or not (the figure is cut there). It SUBTRACTS a memo that was acknowledged before R and is dated up to `through_date` when it has since voided or superseded it locally and that void or edit record was not acknowledged before R (an edit is therefore: add the new memo, subtract the old one). It counts only business dates inside the bundle `month` (a phone still holding last month's bundle adds nothing dated in the new month). SINGLE FLIGHT: the phone sends NO bundle request while an upload batch is in flight, and a batch whose response never arrived (lost response, timeout, a 5xx after the server committed) is still in flight: it replays it until it is answered. A memo taken out of the figure by an admin data void with no phone event leaves the phone's total below its local memos until the phone learns of the void. `as_of` is INFORMATIONAL only, the newest `received_at` among the memos read (the epoch when none): it is never used in arithmetic and a phone must not compare it with any clock. Day counts when today's local memos are in the achieved figure: ADS, PADS and TADS divide by `calendar.elapsed_working_days_before_today` plus 1 when `calendar.today_is_working` (the SkuProgress through-today convention, a default until the owner answers question Q-A), RADS divides by `calendar.remaining_working_days_after_today`; a zero divisor gives no figure, never zero. STAR: the phone merges the Star STD by this same rule and recomputes projection, achievement, slab and status with the shared StarProgress code (last month's sold quantity `lms` is not merged: a memo of last month's last day not yet acknowledged is missing from it). Volumes are base units (sticks, pieces, dozens): packets, dozens and boxes are shown from `targets`, `achievement_mtd` and the `by_pack` lists, never converted from a stick sum of mixed pack sizes. */
+        /** @description Per-route section of the bundle; replaced as a whole when the route is added to the user. THE IDENTITY RULE for the SR programme sections `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns` (contract number provisional, the lead sets it at landing; the ONE place this rule is stated; D-TKPI-14). WHAT THE SERVER FIGURE IS. Every figure the phone merges (achievement, KPI volumes, memo counts and `by_pack`, Star STD, campaign STD and memo) is computed from the accepted memos with a business date from the 1st of the bundle `month` up to and including `through_date` (the bundle date minus one day), status active, memo lines not voided, read in ONE repeatable-read snapshot straight from the memo tables. The bundle date's own memos are never in a figure (a bundle built ahead for tomorrow has `through_date` = the day it was built on). DEFINITIONS, the same on the phone for its local additions: quantities (`achieved_qty_base`, brand and category `volume_*`, `by_pack`, Star STD, campaign STD and SKU `sold_qty_base`) are SALE lines only; `achievement_mtd.memo_count` counts a memo once per SKU when it has ANY non-voided line of that SKU (free lines included); a KPI brand `memo_achieved` and a campaign `memo` count a memo once when it has a SALE line of the brand (campaign: of a shown campaign SKU). Brand sums use ONE hierarchy, the current product tree, for target and figure alike. Campaign figures are the outlet's: every route's memos at the outlet through `through_date`, plus this phone's own local memos (another SR's sales at a shared outlet are in the figure; that SR's unsynced and today's memos are not). HOW THE PHONE MERGES: BY IDENTITY, not by inference. With `POST /v1/sync/figures` the phone sends the uuids of its own memos whose status in the figure it does not know and the server answers, in the SAME snapshot as the figures, EXACTLY one of three states for each: IN the figure (with the stored line count, and the stored lines when `removed_locally`), VOIDED (gone for good), or NOT IN (everything else, listed nowhere). For each own memo of the month: dated after `through_date`: ADD it if it is live on the phone and not VOIDED (a VOIDED answer, e.g. an admin data void of today, drops it). Dated up to `through_date` and live on the phone: IN means add nothing (remember it as confirmed and do not probe it again until the phone itself voids or edits it), VOIDED means drop it, NOT IN means ADD it. Dated up to `through_date` and voided or superseded on the phone: IN means SUBTRACT the stored lines the answer lists, otherwise nothing. A memo confirmed IN earlier and untouched that the office later voids leaves the figure by itself and the phone adds nothing for it. A memo whose line the server refused for good is IN with fewer `lines` than the phone sent: the figure holds what the server stored and the phone adds nothing more (server-authoritative). The memo the office keyed from paper is answered through the printed `memo_no` and date (unique per date), so the phone's own copy is IN when the paper memo is. There are no acknowledgements, resolutions, quarantine states, clocks or single-flight requirements in this rule. When more than 300 memos are unconfirmed the phone cannot get an exact total in one call and shows that it is still syncing until uploads and confirmations bring it under the cap. `as_of` is INFORMATIONAL only (the newest `received_at` among the memos read, the epoch when none) and is never used in arithmetic. OLD-PHONE FALLBACK (the only other case): a phone that has no `/figures` answer uses the bundle's figures, shows them with their as-of label, adds only memos dated after `through_date` and its never-sent pending memos. The phone uses the newest `/figures` answer it has, else the bundle's figures. Day counts when today's local memos are in the achieved figure: ADS, PADS and TADS divide by `calendar.elapsed_working_days_before_today` plus 1 when `calendar.today_is_working` (the SkuProgress through-today convention, a default until the owner answers question Q-A), RADS divides by `calendar.remaining_working_days_after_today`; a zero divisor gives no figure, never zero. STAR: the phone merges the Star STD by this same rule and recomputes projection, achievement, slab and status with the shared StarProgress code (last month's sold quantity `lms` is not merged). Volumes are base units (sticks, pieces, dozens): packets, dozens and boxes are shown from `targets`, `achievement_mtd` and the `by_pack` lists, never converted from a stick sum of mixed pack sizes. */
         RouteSnapshot: {
             route_id: components["schemas"]["Id"];
             route_snapshot_version: number;
@@ -13246,6 +13326,38 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    postSyncFigures: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The phone's device UUID (set at enrolment). */
+                "X-Device-Id": components["parameters"]["XDeviceIdRequired"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FiguresRequest"];
+            };
+        };
+        responses: {
+            /** @description The figures and the identity answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FiguresResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
             429: components["responses"]["TooManyRequests"];
         };
     };

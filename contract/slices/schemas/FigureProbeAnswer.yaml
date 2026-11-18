@@ -1,0 +1,32 @@
+FigureProbeAnswer:
+  type: object
+  description: 'EXACTLY three states per probed uuid. IN (`in_figure`): the memo is stored, active, not voided,
+    has at least one non-voided line and is dated from the 1st of the month up to `through_date`. VOIDED (`voided`):
+    the server holds it and it is gone for good (voided, superseded, admin data void, every line voided). NOT IN:
+    every other uuid, listed nowhere (never uploaded, in flight and not committed in the snapshot, held for review,
+    refused, or stored but dated after `through_date`); a uuid that is not the caller''s own is NOT IN and nothing
+    more.'
+  required:
+  - in_figure
+  - voided
+  additionalProperties: false
+  properties:
+    in_figure:
+      type: array
+      maxItems: 300
+      items:
+        $ref: '#/components/schemas/FigureInMemo'
+    voided:
+      type: array
+      maxItems: 300
+      items:
+        type: string
+        format: uuid
+    twin_ambiguous:
+      type: array
+      maxItems: 300
+      items:
+        type: string
+        format: uuid
+      description: Annotation on NOT IN, not a fourth state; present only when a memo number matched more than one
+        own paper memo (never a guess). Absent otherwise.

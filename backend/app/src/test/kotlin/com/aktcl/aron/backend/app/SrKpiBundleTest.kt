@@ -129,4 +129,31 @@ class SrKpiBundleTest {
         assertEquals(5000, cpr.long("target_bp")); assertEquals(600000, cpr.long("alloc_mtk")); assertEquals(null, cpr.bpOrNull("achieved_bp"))
         assertEquals(false, k["brands_truncated"]!!.jsonPrimitive.content.toBoolean())
     }
+
+    @Test
+    fun brandsTruncatedIsTrueAt201BrandRowsAndFalseAtExactly200() {
+        // the fixture has three brands with figures; add 197 brands (one variant, one cigarette SKU and a route target each) = 200, then one more = 201
+        x(
+            """
+            WITH b AS (INSERT INTO app.product_node (level, parent_id, code, name) SELECT 'brand', (SELECT id FROM app.product_node WHERE level = 'segment' ORDER BY id LIMIT 1), 'TB' || g, 'Trunc brand ' || g FROM generate_series(1, 198) g RETURNING id, code),
+                 v AS (INSERT INTO app.product_node (level, parent_id, code, name) SELECT 'variant', id, 'TV' || code, 'Trunc variant ' || code FROM b RETURNING id, code)
+            INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type, entry_unit_default)
+            SELECT 'TS' || v.code, v.id, t.category_code, 'Trunc sku ' || v.code, 'T' || v.code, t.base_unit, t.base_per_pack, t.pack_type, t.entry_unit_default
+              FROM v CROSS JOIN (SELECT * FROM app.sku WHERE category_code = 'cigarette' ORDER BY id LIMIT 1) t
+            """.trimIndent(),
+        )
+        val ids = fresh.db.jdbi.withHandle<List<Long>, Exception> { h -> h.createQuery("SELECT id FROM app.sku WHERE code LIKE 'TSTV%' ORDER BY id").mapTo(Long::class.java).list() }
+        assertEquals(198, ids.size)
+        fun target(skuIds: List<Long>) = skuIds.forEach { x("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($route, $it, DATE '2027-01-01', 1, '00000000-0000-4000-8000-00000000b002')") }
+        try {
+            target(ids.take(197))
+            val exact = kpi()
+            assertEquals(200, exact["brands"]!!.jsonArray.size, "exactly 200 brand rows")
+            assertEquals(false, exact["brands_truncated"]!!.jsonPrimitive.content.toBoolean(), "exactly 200: nothing cut, no flag")
+            target(ids.drop(197))
+            val over = kpi()
+            assertEquals(200, over["brands"]!!.jsonArray.size, "the section is cut at 200 rows")
+            assertEquals(true, over["brands_truncated"]!!.jsonPrimitive.content.toBoolean(), "201 brand rows: the flag says rows were cut")
+        } finally { x("DELETE FROM app.route_monthly_target WHERE route_id = $route AND sku_id IN (SELECT id FROM app.sku WHERE code LIKE 'TSTV%')") }
+    }
 }

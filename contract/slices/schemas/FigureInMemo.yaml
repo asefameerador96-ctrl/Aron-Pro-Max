@@ -1,0 +1,21 @@
+FigureInMemo:
+  type: object
+  required:
+  - memo_client_uuid
+  - lines
+  additionalProperties: false
+  properties:
+    memo_client_uuid:
+      type: string
+      format: uuid
+    lines:
+      type: integer
+      minimum: 1
+      description: The number of non-voided lines the server holds for the memo; fewer than the phone sent means
+        a line was refused for good.
+    stored_lines:
+      type: array
+      maxItems: 60
+      items:
+        $ref: '#/components/schemas/FigureStoredLine'
+      description: Only for a probe with `removed_locally`; what the figures counted for the memo, to subtract.

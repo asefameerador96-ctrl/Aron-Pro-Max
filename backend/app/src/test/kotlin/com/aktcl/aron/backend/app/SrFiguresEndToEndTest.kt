@@ -42,19 +42,17 @@ import java.util.UUID
 import java.util.zip.GZIPOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
- * The phone-would-show proof THROUGH THE REAL INGEST (lead review of c30c52c63): batches go through `POST /v1/sync/batch`, quarantine is released by the reviewer's
- * `POST /v1/admin/quarantine/{id}/resolve` (accept, accept_with_fix, discard) and by the waiting-children sweep, and the figure is read from the real
- * `GET /v1/sync/bundle`. The phone model is rule B of `docs/requests/sr-programmes-phone-rule-b.md` (no clock): it adds a local memo iff it is not acknowledged before the
- * bundle request and not held or refused, and it never adds a memo whose last answer is `quarantined`. Each test measures figures as a DELTA over what earlier tests left
- * in the shared database. Clock: Sunday 2027-01-03 10:00 Dhaka; the memos are dated that day and the bundle asked for is the next working day (through_date = the memos' day).
+ * THE IDENTITY RULE THROUGH THE REAL ENDPOINTS (D-TKPI-14): batches go through `POST /v1/sync/batch`, quarantine is released by the reviewer's `POST /v1/admin/quarantine/{id}/resolve`,
+ * the office voids a route-day through `POST /v1/admin/data-void` and keys a paper memo through `POST /v1/admin/data-entry`, and the figures and the identity answer are read from the real
+ * `POST /v1/sync/figures`. The phone is a model of `docs/requests/sr-programmes-phone-rule-b.md` (no acknowledgements, resolutions, quarantine states, clocks or single flight): it probes the
+ * uuids of its memos and applies IN / VOIDED / NOT IN. Each test measures figures as a DELTA over what earlier tests left in the shared database and COMPARES TOTALS. Clock: Sunday 2027-01-03
+ * 10:00 Dhaka; the memos are dated that day; `for` 2027-01-04 has through_date = the memos' day, `for` 2027-01-03 has the memos after through_date.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class SrPhoneWouldShowIngestTest {
+class SrFiguresEndToEndTest {
     private lateinit var fresh: FreshDb
     private lateinit var wiring: Wiring
     private lateinit var keyFile: File
@@ -150,11 +148,12 @@ class SrPhoneWouldShowIngestTest {
         dueMtk: Long = 0,
         provider: String = "fused",
         gnss: String? = null,
+        qty1: Int = 20, zeroSecond: Boolean = false, supersedes: String? = null,
     ): List<JsonObject> {
         val visit = uuid(); val memo = uuid()
         val (s1, p1x) = skus[0]; val (s2, p2x) = skus[1]
         val p1 = p1x + priceDelta; val p2 = p2x + priceDelta
-        val g1 = 20 * p1; val g2 = 10 * p2; val gross = g1 + g2 + headerGrossDelta
+        val g1 = qty1 * p1; val g2 = if (zeroSecond) 0L else 10 * p2; val gross = g1 + g2 + headerGrossDelta
         val visitPayload = Json.parseToJsonElement(
             """
             {"visit_kind":"sr_call","outlet_id":$outlet,"opened_at":"2027-01-03T03:41:00.120Z","sequence_no":1,"planned":true,
@@ -168,7 +167,7 @@ class SrPhoneWouldShowIngestTest {
             {"visit_client_uuid":"$visit","outlet_id":$outlet,"memo_no":"$memoNo","memo_kind":"sale","committed_at":"2027-01-03T03:43:00.120Z",
              "price_list_date":"$day","price_type":"outlet","gross_mtk":$gross,"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,
              "round_adj_mtk":0,"net_mtk":$gross,"paid_mtk":${gross - dueMtk},"due_mtk":$dueMtk,"is_credit":${dueMtk > 0},"line_count":2,"discount_line_count":0,"qc_line_count":0,
-             "offer_version_ids":[],"rounding_mode":"half_up_paisa"}
+             "offer_version_ids":[],"rounding_mode":"half_up_paisa"${supersedes?.let { ",\"supersedes_client_uuid\":\"$it\",\"edit_reason_code\":\"wrong_quantity\"" } ?: ""}}
             """.trimIndent(),
         ).jsonObject
         fun line(no: Int, sku: Long, qty: Int, price: Long, gross: Long) = Json.parseToJsonElement(
@@ -183,8 +182,8 @@ class SrPhoneWouldShowIngestTest {
         return listOf(
             envelope("visit", visit, visit, 0, visitPayload, outlet),
             envelope("memo", memo, visit, 1, memoPayload, outlet),
-            envelope("memo_line", uuid(), visit, 2, line(1, s1, 20, p1, g1)),
-            envelope("memo_line", uuid(), visit, 2, line(2, s2, 10, p2, g2)),
+            envelope("memo_line", uuid(), visit, 2, line(1, s1, qty1, p1, g1)),
+            envelope("memo_line", uuid(), visit, 2, line(2, s2, 10, if (zeroSecond) 0L else p2, g2)),
             envelope("visit_close", uuid(), visit, 1, close),
         ).map { JsonObject(it + ("captured_at" to at)) }.map { r ->
             // Each family is its own sale minute (s4.5 content fingerprint: outlet, lines and minute).
@@ -216,132 +215,162 @@ class SrPhoneWouldShowIngestTest {
             }.toString())
         }
 
-    // ---------------------------------------------------------------- the figure, read from the real bundle
+    // ---------------------------------------------------------------- the real /figures and the identity phone
 
-    private suspend fun HttpClient.bundleFigure(): Pair<Long, Long> {
-        val r = get("/v1/sync/bundle?for=2027-01-04") { bearerAuth(token()); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9"); header("Accept-Encoding", "identity") }
+    private class PM(val uuid: String, val date: String, val qty: Long = 20, val memoNo: String? = null) {
+        var removed = false; var confirmed = false; var dropped = false
+    }
+
+    private class FigureReply(val qty: Long, val memos: Long, val inFig: Map<String, Int>, val inLines: Map<String, List<Triple<Long, Long, String>>>, val voided: Set<String>, val raw: JsonObject)
+
+    private suspend fun HttpClient.figures(forDate: String, probe: List<PM>): FigureReply {
+        val body = buildJsonObject {
+            put("for", forDate)
+            put("probe", kotlinx.serialization.json.JsonArray(probe.map { m -> buildJsonObject { put("memo_client_uuid", m.uuid); m.memoNo?.let { put("memo_no", it) }; put("business_date", m.date); if (m.removed) put("removed_locally", true) } }))
+        }.toString()
+        val r = post("/v1/sync/figures") { bearerAuth(token()); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9"); contentType(ContentType.Application.Json); setBody(body) }
         assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
-        val route = json(r.bodyAsText())["routes"]!!.jsonArray.map { it.jsonObject }.single { it["route_id"]!!.jsonPrimitive.long == routeId }
+        val j = json(r.bodyAsText())
+        val route = j["routes"]!!.jsonArray.map { it.jsonObject }.single { it["route_id"]!!.jsonPrimitive.long == routeId }
         val row = route["achievement_mtd"]!!.jsonArray.map { it.jsonObject }.singleOrNull { it["product_id"]!!.jsonPrimitive.long == skus[0].first }
-        return (row?.get("achieved_qty_base")?.jsonPrimitive?.long ?: 0L) to (row?.get("memo_count")?.jsonPrimitive?.long ?: 0L)
+        val fp = j["figure_probe"]!!.jsonObject
+        val inMemos = fp["in_figure"]!!.jsonArray.map { it.jsonObject }
+        return FigureReply(
+            row?.get("achieved_qty_base")?.jsonPrimitive?.long ?: 0L, row?.get("memo_count")?.jsonPrimitive?.long ?: 0L,
+            inMemos.associate { it["memo_client_uuid"]!!.jsonPrimitive.content to it["lines"]!!.jsonPrimitive.int },
+            inMemos.filter { it["stored_lines"] != null }.associate { m -> m["memo_client_uuid"]!!.jsonPrimitive.content to m["stored_lines"]!!.jsonArray.map { l -> Triple(l.jsonObject["sku_id"]!!.jsonPrimitive.long, l.jsonObject["qty_base"]!!.jsonPrimitive.long, l.jsonObject["line_kind"]!!.jsonPrimitive.content) } },
+            fp["voided"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet(), j,
+        )
     }
 
-    /** The phone's view of ONE sale family: 20 sticks of the first SKU, dated the memos' day. */
-    private enum class St { NEW, ACKED, HELD, REFUSED }
-    private class PM(val memo: String, var st: St = St.NEW) { val qty = 20L }
-
-    /** What the phone shows for the SKU: the server figure plus its additions, by rule B, in (quantity, memo count). */
-    private fun shows(server: Pair<Long, Long>, base: Pair<Long, Long>, phone: List<PM>, inFlight: Boolean = false): Pair<Long, Long> {
-        check(!inFlight) { "single flight: no bundle request while a batch is in flight" }
-        val added = phone.filter { it.st == St.NEW }
-        return (server.first - base.first + added.sumOf { it.qty }) to (server.second - base.second + added.size)
+    /** What the phone shows for the first SKU (quantity, memo count) as a delta over [base], by the identity rule, and what is true. */
+    private suspend fun HttpClient.shows(base: FigureReply, forDate: String, phone: List<PM>): Pair<Long, Long> {
+        val through = java.time.LocalDate.parse(forDate).minusDays(1).toString()
+        val probes = phone.filter { !it.dropped && (!it.confirmed || it.removed) && !(it.removed && it.date > through) }
+        val a = figures(forDate, probes)
+        var qty = a.qty - base.qty; var memos = a.memos - base.memos
+        for (m in phone) {
+            if (m.dropped || (m.confirmed && !m.removed)) continue
+            val voided = m.uuid in a.voided; val inFig = m.uuid in a.inFig
+            if (!m.removed) {
+                if (voided) m.dropped = true
+                else if (m.date > through) { qty += m.qty; memos += 1 }
+                else if (inFig) m.confirmed = true
+                else { qty += m.qty; memos += 1 }
+            } else if (m.date <= through && inFig) {
+                val lines = a.inLines.getValue(m.uuid).filter { it.first == skus[0].first && it.third == "sale" }
+                qty -= lines.sumOf { it.second }; if (lines.isNotEmpty()) memos -= 1
+            }
+        }
+        return qty to memos
     }
-    private fun truth(phone: List<PM>) = phone.filter { it.st == St.NEW || it.st == St.ACKED }.let { l -> l.sumOf { it.qty } to l.size.toLong() }
-    private fun Pair<Long, Long>.minusBase(b: Pair<Long, Long>) = (first - b.first) to (second - b.second)
+    private fun truth(phone: List<PM>) = phone.filter { !it.removed && !it.dropped }.let { l -> l.sumOf { it.qty } to l.size.toLong() }
+    private suspend fun HttpClient.baseline(forDate: String = "2027-01-04") = figures(forDate, emptyList())
+    private suspend fun HttpClient.assertShows(base: FigureReply, forDate: String, phone: List<PM>, what: String) {
+        val shown = shows(base, forDate, phone); assertEquals(truth(phone), shown, "by identity the phone shows exactly the true total: $what")
+    }
+    private suspend fun HttpClient.sendOk(fam: List<JsonObject>, expect: String = "accepted"): List<String> =
+        statuses(json(send(token(), batch(fam)).bodyAsText())).also { st -> assertEquals(List(fam.size) { expect }, st) }
 
     @Test
-    fun anAcceptedFamilyWhoseResponseWasLostIsDoubleCountedWithoutSingleFlightAndExactAfterTheDuplicate() = testApplication {
+    fun aCommittedBatchWhoseResponseWasLostIsAnsweredInWithNoAcknowledgement() = testApplication {
         app()
-        val base = client.bundleFigure()
-        val fam = saleFamily()
-        val phone = listOf(PM(cu(fam[1])))
-        // the batch is committed by the server; the phone never gets the answer: it is still in flight
-        assertEquals(List(5) { "accepted" }, statuses(json(client.send(client.token(), batch(fam)).bodyAsText())))
-        assertFailsWith<IllegalStateException> { shows(client.bundleFigure(), base, phone, inFlight = true) }
-        val naive = shows(client.bundleFigure(), base, phone)   // what a phone that ignores the rule would show
-        assertNotEquals(truth(phone), naive, "a committed batch without an ack is counted twice if the phone asks anyway: $naive")
-        // the phone replays the batch until it is answered: `duplicate`; then it asks
-        assertEquals(List(5) { "duplicate" }, statuses(json(client.send(client.token(), batch(fam)).bodyAsText())))
-        phone.single().st = St.ACKED
-        assertEquals(truth(phone), shows(client.bundleFigure(), base, phone), "acknowledged: the figure holds it and the phone does not add it")
+        val base = client.baseline(); val fam = saleFamily(); val phone = listOf(PM(cu(fam[1]), day, memoNo = fam[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content))
+        client.assertShows(base, "2027-01-04", phone, "nothing uploaded yet: NOT IN, added")
+        client.send(client.token(), batch(fam))                  // committed; the phone never hears the answer
+        client.assertShows(base, "2027-01-04", phone, "committed and the response lost: IN, nothing added (no acknowledgement, no single flight)")
+        assertEquals(20L to 1L, client.figures("2027-01-04", emptyList()).let { (it.qty - base.qty) to (it.memos - base.memos) })
     }
 
     @Test
-    fun aQuarantinedFamilyIsNeverAddedByThePhoneBeforeDuringOrAfterTheReviewersRelease() = testApplication {
+    fun aHeldMemoReleasedByTheReviewerIsExactBeforeDuringAndAfterTheRelease() = testApplication {
         app()
-        val base = client.bundleFigure()
-        val fam = saleFamily(outlet = otherOutletId)
-        val (visit, memo) = fam.map { cu(it) }
+        val base = client.baseline(); val fam = saleFamily(outlet = otherOutletId); val (visit, memo) = fam.map { cu(it) }
+        val phone = listOf(PM(memo, day, memoNo = fam[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content))
         assertEquals(List(5) { "quarantined" }, statuses(json(client.send(client.token(), batch(fam)).bodyAsText())))
-        val phone = listOf(PM(memo, St.HELD))
-        assertEquals((0L to 0L), client.bundleFigure().minusBase(base), "held: the server figure lacks it")
-        assertEquals(truth(phone), shows(client.bundleFigure(), base, phone), "held: the phone does not add it, the screen says awaiting (it is not a counted sale yet)")
-        // the reviewer accepts the visit, then the memo; the held lines follow. The phone has not heard.
+        client.assertShows(base, "2027-01-04", phone, "held (not stored): NOT IN, the phone adds it")
         assertEquals(HttpStatusCode.OK, client.resolve(item(visit).first, "accept").status)
         assertEquals(HttpStatusCode.OK, client.resolve(item(memo).first, "accept").status)
         assertEquals(1L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
-        assertEquals(2L, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '$memo'"), "the memo's lines followed it")
-        assertEquals((20L to 1L), client.bundleFigure().minusBase(base), "released: the figure holds the memo")
-        // truth now: the memo is a counted sale. The phone has not heard, still holds it as HELD, does not add it: exact.
-        assertEquals((20L to 1L), shows(client.bundleFigure(), base, phone), "after the release and before the phone hears: the figure holds it, the phone does not add it")
-        // the phone hears (a replay of the family is `duplicate`): acknowledged
-        assertEquals(List(5) { "duplicate" }, statuses(json(client.send(client.token(), batch(fam)).bodyAsText())))
-        phone.single().st = St.ACKED
-        assertEquals((20L to 1L), shows(client.bundleFigure(), base, phone), "after the phone hears: still exact")
+        client.assertShows(base, "2027-01-04", phone, "released before the phone hears: IN, nothing added")
+        client.assertShows(base, "2027-01-03", listOf(PM(memo, day, memoNo = phone[0].memoNo)), "the same memo seen from today's bundle (after through_date): added, not in the figure")
     }
 
     @Test
-    fun anAcceptWithFixIsInTheFigureOnceAndThePhoneNeverAddsItsPreFixCopy() = testApplication {
+    fun anAcceptedEditAndAnAcceptedVoidAreNeverDoubleCountedOrLost() = testApplication {
         app()
-        val base = client.bundleFigure()
-        val fam = saleFamily(outlet = otherOutletId)
-        val (visit, memo) = fam.map { cu(it) }
-        assertEquals(List(5) { "quarantined" }, statuses(json(client.send(client.token(), batch(fam)).bodyAsText())))
-        val phone = listOf(PM(memo, St.HELD))
-        // a quantity fix on a line moves its money: the reviewer cannot override money (docs/24 s8.6), so it is refused and nothing changes
-        val line = fam[2]; val lp = line["payload"]!!.jsonObject
-        val cheaper = JsonObject(line + ("payload" to JsonObject(lp + mapOf("qty_entered" to JsonPrimitive(18), "qty_base" to JsonPrimitive(18), "gross_mtk" to JsonPrimitive(lp["base_price_mtk"]!!.jsonPrimitive.long * 18)))))
-        assertEquals(HttpStatusCode.OK, client.resolve(item(visit).first, "accept").status)
-        val tried = client.resolve(item(cu(line)).first, "accept_with_fix", cheaper)
-        note("accept_with_fix of a line quantity 20 -> 18: ${tried.status} ${tried.bodyAsText().take(160)}")
-        // a fix of a non-money field of the visit is the fix the reviewer can make (the memo keeps its quantities)
-        assertEquals((0L to 0L), client.bundleFigure().minusBase(base), "nothing is stored yet")
-        assertEquals(HttpStatusCode.OK, client.resolve(item(memo).first, "accept").status)
-        val figure = client.bundleFigure().minusBase(base)
-        assertEquals(1L, figure.second, "the memo is in the figure once")
-        assertEquals(figure, shows(client.bundleFigure(), base, phone), "the phone, still holding it as quarantined, adds nothing: it shows exactly the figure")
-        // after the resolution reaches the phone it takes the server's quantity, never its own pre-fix copy
-        assertEquals(figure, shows(client.bundleFigure(), base, listOf(PM(memo, St.ACKED))))
+        val base = client.baseline()
+        val f1 = saleFamily(); val m1 = PM(cu(f1[1]), day, 20, f1[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content)
+        client.sendOk(f1)
+        client.assertShows(base, "2027-01-04", listOf(m1), "M committed")
+        // the phone edits M (quantity 20 -> 15): the new memo E supersedes M; before the upload the phone subtracts M's stored lines and adds E
+        val f2 = saleFamily(qty1 = 15, supersedes = m1.uuid); val e = PM(cu(f2[1]), day, 15, f2[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content)
+        m1.removed = true
+        client.assertShows(base, "2027-01-04", listOf(m1, e), "edit not uploaded: M IN (stored lines subtracted), E NOT IN (added)")
+        client.sendOk(f2)
+        client.assertShows(base, "2027-01-04", listOf(m1, e), "edit committed: M VOIDED (superseded), E IN: nothing added, nothing subtracted")
+        // the phone voids E: before the upload E is IN and subtracted, after the upload it is VOIDED
+        val vu = uuid()
+        val voidRec = envelope("memo_void", vu, vu, 0, Json.parseToJsonElement(
+            """{"memo_client_uuid":"${e.uuid}","memo_no":"${e.memoNo}","reason_code":"retailer_cancelled","retailer_ack":true,"fix":{"purpose":"memo_void","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,"device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}}""",
+        ).jsonObject)
+        e.removed = true
+        client.assertShows(base, "2027-01-04", listOf(m1, e), "void not uploaded: E IN, its stored lines subtracted")
+        val voidAck = statuses(json(client.send(client.token(), batch(listOf(voidRec))).bodyAsText()))
+        assertEquals(listOf("accepted"), voidAck)
+        client.assertShows(base, "2027-01-04", listOf(m1, e), "void committed: E VOIDED, nothing subtracted a second time")
     }
 
     @Test
-    fun aDiscardedQuarantineIsNeverInTheFigureAndNeverAdded() = testApplication {
+    fun aLineRefusedForGoodSoTheMemoIsStoredWithFewerLinesIsInAndNeverAddedOnEveryBundle() = testApplication {
         app()
-        val base = client.bundleFigure()
-        val fam = saleFamily(outlet = otherOutletId)
-        val (visit, memo) = fam.map { cu(it) }
-        assertEquals(List(5) { "quarantined" }, statuses(json(client.send(client.token(), batch(fam)).bodyAsText())))
-        val phone = listOf(PM(memo, St.HELD))
-        assertEquals(HttpStatusCode.OK, client.resolve(item(memo).first, "discard").status)
-        phone.single().st = St.REFUSED   // the resolution `rejected` reached the phone
-        assertEquals(0L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
-        assertEquals((0L to 0L), shows(client.bundleFigure(), base, phone), "refused: not in the figure, never added")
-        assertEquals((0L to 0L), truth(phone))
-        assertTrue(visit.isNotEmpty())
+        val base = client.baseline()
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.sku_price SET amount_mtk = 0 WHERE sku_id = ? AND price_type = 'outlet'", skus[1].first) }
+        try {
+            val fam = saleFamily(zeroSecond = true)
+            val acks = statuses(json(client.send(client.token(), batch(fam)).bodyAsText()))
+            assertTrue("rejected" in acks && "accepted" in acks, "the zero-priced line is refused for good, the rest is stored: $acks")
+            val memo = cu(fam[1]); assertEquals(1L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
+            assertEquals(1L, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '$memo'"), "only the priced line is stored")
+            val phone = listOf(PM(memo, day, memoNo = fam[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content))
+            val a = client.figures("2027-01-04", phone)
+            assertEquals(1, a.inFig[memo], "IN with the stored line count 1 (the phone sent 2)")
+            repeat(2) { client.assertShows(base, "2027-01-04", phone, "bundle ${it + 1}: IN, the phone adds nothing: the total is the server's, never added on every bundle") }
+        } finally { fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.sku_price SET amount_mtk = ? WHERE sku_id = ? AND price_type = 'outlet'", skus[1].second, skus[1].first) } }
     }
 
     @Test
-    fun theWaitingSweepCannotReleaseAMemoWhoseVisitIsMissingSoNoMemoEntersTheFigureThatWay() = testApplication {
-        // Tried on purpose (review of c30c52c63): can the waiting-children sweep commit a MEMO without an upload ack? The sweep releases children that wait for a held or missing parent
-        // after a reviewer's accept (a TSO's collection against a held memo is the case in QuarantineAcceptTest). A memo whose own visit is missing is refused with `parent_missing` when
-        // the reviewer accepts it (409), and the sweep has nothing to release when the visit arrives later. So the memo reaches the figure only by the reviewer's accept (tested above)
-        // or by the phone's own re-upload; this test pins that and that the phone adds nothing meanwhile.
+    fun anAdminDataVoidOfTodaysRouteDayDropsTheMemosOnThePhone() = testApplication {
         app()
-        val base = client.bundleFigure()
-        val fam = saleFamily(outlet = otherOutletId)
-        val (visit, memo) = fam.map { cu(it) }
-        statuses(json(client.send(client.token(), batch(fam.filter { cu(it) != visit })).bodyAsText()))
-        val phone = listOf(PM(memo, St.HELD))
-        assertEquals(HttpStatusCode.Conflict, client.resolve(item(memo).first, "accept").status, "the memo cannot be accepted before its visit exists")
-        val job = waitingSweepJob(wiring, clock, fresh.url)
-        assertEquals(0, job.tick()!!.released)
-        val visitRec = fam[0]; val vp = visitRec["payload"]!!.jsonObject
-        val inScope = JsonObject(visitRec + ("payload" to JsonObject(vp + ("outlet_id" to JsonPrimitive(outletId)))))
-        assertEquals(listOf("accepted"), statuses(json(client.send(client.token(), batch(listOf(inScope))).bodyAsText())))
-        assertEquals(0, job.tick()!!.released, "nothing waits for the visit: the sweep releases no memo")
-        assertEquals(0L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
-        assertEquals((0L to 0L), shows(client.bundleFigure(), base, phone), "the figure lacks the memo and the phone does not add it")
+        val base = client.baseline("2027-01-03")
+        val f = saleFamily(); val m = PM(cu(f[1]), day, 20, f[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content)
+        client.sendOk(f)
+        client.assertShows(base, "2027-01-03", listOf(m), "today's memo committed: cut by through_date, added by the phone")
+        val admin = client.token("admin1001")
+        val v = client.post("/v1/admin/data-void") {
+            bearerAuth(admin); contentType(ContentType.Application.Json)
+            setBody("""{"client_uuid":"${uuid()}","route_id":$routeId,"business_date":"$day","scope":"all","reason":"Wrong day uploaded by mistake"}""")
+        }
+        assertEquals(HttpStatusCode.OK, v.status, v.bodyAsText())
+        client.assertShows(base, "2027-01-03", listOf(m), "the office voided today's route-day: VOIDED, the phone drops it (the total is no longer above the truth)")
+        assertTrue(m.dropped)
     }
 
-    private fun note(s: String) = println("NOTE SrPhoneWouldShowIngestTest: $s")
+    @Test
+    fun aPaperTwinOfAMemoThePhoneHasNotUploadedIsNotCountedTwiceBeforeOrAfterItsUpload() = testApplication {
+        app()
+        val base = client.baseline()
+        val srId = count("SELECT id FROM app.app_user WHERE username = 'sr1001'")
+        val no = "sr1001-270102-${memoSeq.incrementAndGet()}"
+        val paper = client.post("/v1/admin/data-entry") {
+            bearerAuth(client.token("admin1001")); contentType(ContentType.Application.Json)
+            setBody("""{"client_uuid":"${uuid()}","memo_no":"$no","business_date":"2027-01-02","user_id":$srId,"route_id":$routeId,"outlet_id":$outletId,"lines":[{"sku_id":${skus[0].first},"qty_base":20,"line_kind":"sale"}],"paid_mtk":0,"reason":"phone died, keyed from the printed memo"}""")
+        }
+        assertEquals(HttpStatusCode.OK, paper.status, paper.bodyAsText())
+        val phoneCopy = PM(uuid(), "2027-01-02", 20, no)
+        client.assertShows(base, "2027-01-04", listOf(phoneCopy), "the paper memo is in the figure and the phone's own copy (another uuid, not uploaded) is IN through the memo number: 20, not 40")
+        assertTrue(phoneCopy.confirmed)
+    }
+
+    private fun note(s: String) = println("NOTE SrFiguresEndToEndTest: $s")
 }

@@ -1,0 +1,41 @@
+path: /v1/sync/figures
+method: post
+operation:
+  tags:
+  - sync
+  operationId: postSyncFigures
+  summary: The SR programme figures of the caller's routes and the identity answer for the phone's memo probe, read
+    in one snapshot (D-TKPI-14).
+  description: 'Additive (contract number provisional, the lead sets it at landing). SR phone token only; own records
+    only. Read-only and idempotent: nothing is written, so a retry is always safe. The phone calls it after a sync
+    cycle and when a figures screen opens while online, NEVER on a timer. At most 300 probe entries (`400 ERR_VALIDATION`,
+    field `body.probe`, code `too_many`, above), a body of at most 64 KiB (`413`). The figure sections are the SAME
+    as the `targets`, `achievement_mtd`, `calendar`, `kpi`, `star` and `campaigns` members of the bundle''s `RouteSnapshot`
+    (the same loaders); the bundle keeps carrying them unchanged for old phones and for the first offline day, its
+    version and ETag are not affected by this call. Which of the two the phone uses and how it merges its own memos
+    is stated once in `RouteSnapshot` (the identity rule).'
+  parameters:
+  - $ref: '#/components/parameters/XDeviceIdRequired'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/FiguresRequest'
+  responses:
+    '200':
+      description: The figures and the identity answer.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FiguresResponse'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '413':
+      $ref: '#/components/responses/PayloadTooLarge'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

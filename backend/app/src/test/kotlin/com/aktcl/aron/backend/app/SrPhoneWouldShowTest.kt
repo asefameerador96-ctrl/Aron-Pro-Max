@@ -113,163 +113,146 @@ class SrPhoneWouldShowTest {
         ) to through
     }
 
-    // ---------------------------------------------------------------- the phone model (rule B, no clock)
+    // ---------------------------------------------------------------- the phone model: EXACT BY IDENTITY (D-TKPI-14), no acknowledgements, resolutions, quarantine states, clocks or single flight
 
-    /**
-     * A local memo: [qC] sticks of the cigarette SKU and [qM] of the match SKU (sale lines), [qFree] free sticks of the cigarette SKU, dated [date], on [routeId] at [outletId].
-     * Definitions as in the contract: quantities are sale lines; the SKU's memo count counts ANY line of the SKU; the brand and campaign memo counts need a sale line.
-     */
-    private inner class LocalMemo(val id: String, val date: String, val qC: Int, val qM: Int, val qFree: Int = 0, val routeId: Long = route, val outletId: Long = outlet) {
-        var acked = false          // an accepted/duplicate (or a resolution accepted/accepted_with_fix) for the memo has reached the phone
-        var held = false          // its last answer is `quarantined`: never added
-        var refused = false       // a resolution `rejected` / final refusal
-        var removed = false        // voided or superseded on the phone
-        var removalAcked = false   // that void or edit record has been acknowledged
-        var committed = false      // server side: the memo is committed (the phone cannot see this)
+    /** A local memo: [qC] sticks of the cigarette SKU and [qM] of the match SKU (sale lines), [qFree] free sticks of the cigarette SKU, dated [date], on [routeId] at [outletId]. */
+    private inner class IdMemo(val id: String, val date: String, val qC: Int, val qM: Int = 0, val memoNo: String? = null, val routeId: Long = route, val outletId: Long = outlet, val qFree: Int = 0) {
+        var removed = false          // voided or superseded on the phone
+        var confirmedIn = false      // an earlier answer said IN and the phone has not touched the memo since: not probed again
+        var droppedByServer = false  // the server said VOIDED: the phone drops it
         val fig get() = Fig(
             qC.toLong(), if (qC > 0 || qFree > 0) 1 else 0, qC.toLong(), if (qC > 0) 1 else 0, qM.toLong(), qM * 1000L, qC.toLong(), if (qC > 0) 1 else 0,
         )
-        val uuid get() = id
     }
 
-    private inner class Phone {
-        val memos = ArrayList<LocalMemo>()
-        var inFlight = 0   // upload batches sent and not yet answered
+    private inner class IdPhone {
+        val memos = ArrayList<IdMemo>()
+        fun sell(id: String, date: String, qC: Int, qM: Int = 0, memoNo: String? = null, routeId: Long = route, outletId: Long = outlet, qFree: Int = 0) = IdMemo(id, date, qC, qM, memoNo, routeId, outletId, qFree).also { memos += it }
+        /** The phone-intent total of a route and month: its live memos, minus those the server says are voided. */
+        fun truth(routeId: Long = route, month: String = "2027-01"): Fig = memos.filter { !it.removed && !it.droppedByServer && it.routeId == routeId && it.date.startsWith(month) }.fold(Fig()) { t, m -> t + m.fig }
 
-        fun sell(id: String, date: String, qC: Int, qM: Int = 0, qFree: Int = 0, routeId: Long = route, outletId: Long = outlet) = LocalMemo(id, date, qC, qM, qFree, routeId, outletId).also { memos += it }
-        /** The true total of a route for a month: every live memo that is not refused, wherever it is. A held memo is not a counted sale yet (it is shown as awaiting), so it is not in the truth. */
-        fun truth(routeId: Long = route, month: String = "2027-01"): Fig = memos.filter { !it.removed && !it.refused && !it.held && it.routeId == routeId && it.date.startsWith(month) }.fold(Fig()) { t, m -> t + m.fig }
-
-        /** The phone's own request moment R is the state of these flags at the moment it sends the request; rule 4: no bundle request while a batch is in flight. */
-        fun requestBundle(date: LocalDate = day, routeId: Long = route, outletId: Long = outlet): Fig {
-            check(inFlight == 0) { "rule 4: the phone sends no bundle request while an upload batch is in flight" }
+        /** One call of /figures (the service-level twin of the endpoint) and the merge by identity; returns what the phone shows for [routeId]. */
+        fun request(date: LocalDate = day, routeId: Long = route, outletId: Long = outlet): Fig {
             val through = date.minusDays(1).toString(); val month = date.toString().substring(0, 7)
-            val ackedAtR = memos.filter { it.acked }.toSet(); val removalAckedAtR = memos.filter { it.removalAcked }.toSet()
-            val (server, th) = serverFigures(date, routeId, outletId)
-            assertEquals(through, th)
-            var shown = server
-            for (m in memos.filter { it.routeId == routeId && it.date.startsWith(month) }) {
-                if (!m.removed && !m.held && !m.refused && (m !in ackedAtR || m.date > through)) shown += m.fig                 // rule: add
-                if (m.removed && m in ackedAtR && m !in removalAckedAtR && m.date <= through) shown -= m.fig                      // rule: subtract
+            val inMonth = memos.filter { it.date.startsWith(month) && !it.droppedByServer }
+            val probes = inMonth.filter { (!it.confirmedIn || it.removed) && !(it.removed && it.date > through) }
+                .map { SrFigureProbe.Probe(java.util.UUID.fromString(it.id), it.memoNo, LocalDate.parse(it.date), it.removed) }
+            val res = service.bundle(principal, date, "1.0.0+1", probe = probes)
+            val ans = res.probe!!
+            var shown = figuresOf(res, date, routeId, outletId).first
+            for (m in inMonth) {
+                val u = java.util.UUID.fromString(m.id)
+                if (m.confirmedIn && !m.removed) { continue }          // confirmed IN earlier and untouched: stays IN, not probed, nothing to do
+                val voided = u in ans.voided; val inFig = u in ans.inFigure
+                val mine = m.routeId == routeId
+                if (!m.removed) {
+                    if (voided) m.droppedByServer = true
+                    else if (m.date > through) { if (mine) shown += m.fig }
+                    else if (inFig) m.confirmedIn = true
+                    else if (mine) shown += m.fig
+                } else if (m.date <= through && inFig && mine) {
+                    val lines = ans.removedLines.getValue(u)
+                    val c = lines.filter { it.skuId == skuC && it.kind == "sale" }.sumOf { it.qtyBase }; val mm = lines.filter { it.skuId == skuM && it.kind == "sale" }.sumOf { it.qtyBase }
+                    shown -= Fig(c, if (lines.any { it.skuId == skuC }) 1 else 0, c, if (c > 0) 1 else 0, mm, mm * 1000, c, if (c > 0) 1 else 0)
+                }
             }
             return shown
         }
     }
 
-    // ---------------------------------------------------------------- server side: commit then acknowledge
-
-    private fun commit(m: LocalMemo, emit: Boolean = false, supersedes: LocalMemo? = null) {
-        val lines = listOfNotNull(
-            if (m.qC > 0) SrMemoFixture.L(skuC, m.qC) else null, if (m.qM > 0) SrMemoFixture.L(skuM, m.qM) else null, if (m.qFree > 0) SrMemoFixture.L(skuC, m.qFree, "promo_free") else null,
-        )
-        fx.memo(m.uuid, m.routeId, m.outletId, m.date, lines, "now()", supersedes = supersedes?.uuid, emit = emit); m.committed = true
-    }
-    private fun commitVoid(m: LocalMemo, emit: Boolean = false) = fx.void(m.uuid, m.date, emit)
-
     private fun uid(n: Int) = "00000000-0000-4000-8000-00000000%04x".format(0x1000 + n)
     private fun worker() = AggregationWorker(fresh.db, AronClock { Instant.now() })
 
-    private fun assertShowsTruth(p: Phone, what: String) = assertEquals(p.truth(), p.requestBundle(), "the phone shows exactly the true total: $what")
+    private fun commitId(m: IdMemo, supersedes: IdMemo? = null, lines: List<SrMemoFixture.L>? = null, manualBy: Long? = null, emit: Boolean = false) {
+        val l = lines ?: listOfNotNull(
+            if (m.qC > 0) SrMemoFixture.L(skuC, m.qC) else null, if (m.qM > 0) SrMemoFixture.L(skuM, m.qM) else null, if (m.qFree > 0) SrMemoFixture.L(skuC, m.qFree, "promo_free") else null,
+        )
+        fx.memo(m.id, m.routeId, m.outletId, m.date, l, "now()", supersedes = supersedes?.id, memoNo = m.memoNo, manualBy = manualBy, emit = emit)
+    }
+    private fun assertIdTruth(p: IdPhone, what: String, date: LocalDate = day, routeId: Long = route, outletId: Long = outlet) {
+        val shown = p.request(date, routeId, outletId)
+        assertEquals(p.truth(routeId, date.toString().substring(0, 7)), shown, "by identity the phone shows exactly the true total: $what")
+    }
 
     // ---------------------------------------------------------------- tests
 
     @Test
     fun twoOfflineDaysSyncedThenTheBundleAtEveryPointOfTheProjectionAndRebuild() {
-        val p = Phone()
-        val a = p.sell(uid(1), "2027-01-01", 100, 10); val b = p.sell(uid(2), "2027-01-02", 70, 5); val t = p.sell(uid(3), "2027-01-03", 33)   // t: today, local only
-        assertShowsTruth(p, "nothing synced: every memo is a local addition")
-        // batch 1 (day D-2) committed, then acknowledged
-        commit(a, emit = true); a.acked = true
-        assertShowsTruth(p, "batch 1 acknowledged, batch 2 (D-1) not yet uploaded: server holds A, phone adds B and today's memo")
-        // batch 2 in flight: the phone must not ask; committed but the ack lost: still in flight
-        p.inFlight = 1
-        assertFailsWith<IllegalStateException> { p.requestBundle() }
-        commit(b, emit = true)
-        assertFailsWith<IllegalStateException> { p.requestBundle() }
-        // rule 4 is needed: a bundle requested NOW (committed, ack lost) would count B twice
-        p.inFlight = 0
-        val doubled = p.requestBundle()
-        assertEquals(p.truth() + b.fig, doubled, "without the single-flight rule the committed-but-unacknowledged batch is counted twice")
-        // the phone retries the batch (idempotent): `duplicate`, then asks
-        b.acked = true
-        assertShowsTruth(p, "batch 2 committed and acknowledged, projection not run yet")
-        val w = worker()
-        w.project()
-        assertShowsTruth(p, "after the projection, before the rebuild (the aggregate may lag: the figure does not read it)")
+        val p = IdPhone()
+        val a = p.sell(uid(1), "2027-01-01", 100, 10); val b = p.sell(uid(2), "2027-01-02", 70, 5); val t = p.sell(uid(3), "2027-01-03", 33)
+        assertIdTruth(p, "nothing synced: every memo is NOT IN and added")
+        commitId(a, emit = true)
+        assertIdTruth(p, "batch 1 committed: A is IN, B and today's are added")
+        // batch 2 committed but the phone never heard (lost response): it simply asks, no acknowledgement and no single flight involved
+        commitId(b, emit = true)
+        assertIdTruth(p, "batch 2 committed, response lost, projection not run")
+        val w = worker(); w.project()
+        assertIdTruth(p, "after the projection, before the rebuild")
         w.drain()
-        assertShowsTruth(p, "after the rebuild")
-        // a dead aggregation key for the memos' day (a rebuild that keeps failing): the dashboards lag, the phone figure does not
+        assertIdTruth(p, "after the rebuild")
         x("INSERT INTO app.dirty_key (kind, subject_id, business_date, first_dirtied_at, last_dirtied_at, reason, dead_at) VALUES ('route_day_agg', $route, DATE '2027-01-02', TIMESTAMPTZ '2027-01-03T00:00:00Z', TIMESTAMPTZ '2027-01-03T00:00:01Z', 'memo', now()) ON CONFLICT DO NOTHING")
-        assertShowsTruth(p, "with a dead aggregation key for D-1")
-        // today's memo uploads later: it stays a local addition until acknowledged, and after its ack the server still never holds today
-        commit(t); t.acked = true
-        assertShowsTruth(p, "today's memo acknowledged: still not in a server figure (cut at through_date), still added by the phone")
+        assertIdTruth(p, "with a dead aggregation key for D-1")
+        commitId(t)
+        assertIdTruth(p, "today's memo committed: still cut by through_date, still added by the phone")
     }
 
     @Test
     fun theFigureNeverDependsOnTheAggregateOrItsTimestamps() {
-        val p = Phone()
+        val p = IdPhone()
         val a = p.sell(uid(1), "2027-01-01", 100, 10); val b = p.sell(uid(2), "2027-01-02", 70)
-        commit(a, emit = true); commit(b, emit = true); a.acked = true; b.acked = true
+        commitId(a, emit = true); commitId(b, emit = true)
         val before = serverFigures().first
-        // an aggregate row with wrong numbers and a future updated_at (what the lagging projector or a clock fight could leave) changes nothing
         x("INSERT INTO dw.agg_daily_route_sku (business_date, route_id, sku_id, sold_qty_base, memo_count, updated_at) VALUES (DATE '2027-01-02', $route, $skuC, 99999, 99, TIMESTAMPTZ '2030-01-01T00:00:00Z') ON CONFLICT (business_date, route_id, sku_id) DO UPDATE SET sold_qty_base = 99999, memo_count = 99, updated_at = TIMESTAMPTZ '2030-01-01T00:00:00Z'")
         assertEquals(before, serverFigures().first)
-        assertShowsTruth(p, "the aggregate is ignored")
+        assertIdTruth(p, "the aggregate is ignored")
     }
 
     @Test
     fun anEditWithIdenticalLines() {
-        val p = Phone()
-        val x1 = p.sell(uid(1), "2027-01-02", 80, 4); commit(x1); x1.acked = true
-        assertShowsTruth(p, "X synced")
-        // the phone edits X: X is superseded locally, Y (identical lines) is the new live memo; the edit is not uploaded yet
+        val p = IdPhone()
+        val x1 = p.sell(uid(1), "2027-01-02", 80, 4); commitId(x1)
+        assertIdTruth(p, "X synced")
         x1.removed = true; val y = p.sell(uid(2), "2027-01-02", 80, 4)
-        assertShowsTruth(p, "edit not uploaded: server still holds X, phone adds Y and subtracts X, the same lines give the same total")
-        // the edit batch commits: X superseded, Y active, then the ack arrives
-        commit(y, supersedes = x1); y.acked = true; x1.removalAcked = true
-        assertShowsTruth(p, "edit committed and acknowledged")
+        assertIdTruth(p, "edit not uploaded: Y NOT IN (added), X IN (subtracted with its stored lines)")
+        commitId(y, supersedes = x1)
+        assertIdTruth(p, "edit committed: X VOIDED, Y IN, nothing added or subtracted")
         val w = worker(); w.project(); w.drain()
-        assertShowsTruth(p, "after projection and rebuild")
+        assertIdTruth(p, "after projection and rebuild")
         assertEquals(1L, serverFigures().first.achMemos, "the superseded memo is out of the memo count, the edit is in: one memo, not two")
     }
 
     @Test
     fun aVoidFollowedByAReSale() {
-        val p = Phone()
-        val x1 = p.sell(uid(1), "2027-01-02", 50, 0); commit(x1); x1.acked = true
-        val other = p.sell(uid(9), "2027-01-01", 20, 0); commit(other); other.acked = true
-        assertShowsTruth(p, "two memos synced")
-        x1.removed = true; val z = p.sell(uid(2), "2027-01-02", 65, 0)     // void X, sell Z (same outlet), nothing uploaded
-        assertShowsTruth(p, "void and re-sale not uploaded: phone subtracts X (server holds it) and adds Z")
-        commitVoid(x1); x1.removalAcked = true                              // the void batch commits and is acknowledged; Z not uploaded yet
-        assertShowsTruth(p, "void acknowledged, re-sale not uploaded: the server no longer holds X, the phone adds Z and does not subtract X again")
-        commit(z); z.acked = true
-        assertShowsTruth(p, "re-sale acknowledged")
+        val p = IdPhone()
+        val x1 = p.sell(uid(1), "2027-01-02", 50, 0); commitId(x1)
+        val other = p.sell(uid(9), "2027-01-01", 20, 0); commitId(other)
+        assertIdTruth(p, "two memos synced")
+        x1.removed = true; val z = p.sell(uid(2), "2027-01-02", 65, 0)
+        assertIdTruth(p, "void and re-sale not uploaded: X is IN (subtracted), Z NOT IN (added)")
+        fx.void(x1.id, x1.date)
+        assertIdTruth(p, "void committed, re-sale not uploaded: X VOIDED (nothing subtracted again), Z added")
+        commitId(z)
+        assertIdTruth(p, "re-sale committed")
         val w = worker(); w.project(); w.drain()
-        assertShowsTruth(p, "after projection and rebuild")
+        assertIdTruth(p, "after projection and rebuild")
     }
 
     @Test
     fun aRebuildInFlightDuringTheBundleReadChangesNothing() {
-        val p = Phone()
+        val p = IdPhone()
         val a = p.sell(uid(1), "2027-01-01", 100, 10); val b = p.sell(uid(2), "2027-01-02", 70, 5)
-        commit(a, emit = true); commit(b, emit = true); a.acked = true; b.acked = true
+        commitId(a, emit = true); commitId(b, emit = true)
         val w = worker(); w.project(); w.drain()
-        // (1) a rebuild transaction open and uncommitted: it has deleted the aggregate rows of the route (what DELETE-then-INSERT does for a while)
         fresh.dataSource.connection.use { c ->
             c.autoCommit = false
-            c.createStatement().use { s ->
-                s.execute("DELETE FROM dw.agg_daily_route_sku WHERE route_id = $route"); s.execute("DELETE FROM dw.agg_daily_route_brand WHERE route_id = $route")
-            }
-            assertShowsTruth(p, "a rebuild is open (aggregate rows deleted, not committed)")
+            c.createStatement().use { s -> s.execute("DELETE FROM dw.agg_daily_route_sku WHERE route_id = $route"); s.execute("DELETE FROM dw.agg_daily_route_brand WHERE route_id = $route") }
+            assertIdTruth(p, "a rebuild is open (aggregate rows deleted, not committed)")
             c.rollback()
         }
-        // (2) the real rebuild running in another thread while bundles are read
         val stop = java.util.concurrent.atomic.AtomicBoolean(false)
         val t = Thread { while (!stop.get()) { runCatching { worker().also { w2 -> w2.requestRebuild(LocalDate.parse("2027-01-02")); w2.requestRebuild(LocalDate.parse("2027-01-01")); w2.runUntilIdle() } } } }
         t.start()
-        try { repeat(15) { assertShowsTruth(p, "bundle #$it while the aggregation rebuilds in another thread") } } finally { stop.set(true); t.join(30_000) }
+        try { repeat(15) { assertIdTruth(p, "bundle #$it while the aggregation rebuilds in another thread") } } finally { stop.set(true); t.join(30_000) }
     }
 
     @Test
@@ -296,9 +279,9 @@ class SrPhoneWouldShowTest {
 
     @Test
     fun onceTheWorkerHasCaughtUpTheDirectFigureEqualsTheDashboardAggregate() {
-        val p = Phone()
+        val p = IdPhone()
         val a = p.sell(uid(1), "2027-01-01", 100, 10); val b = p.sell(uid(2), "2027-01-02", 70, 5); val v = p.sell(uid(3), "2027-01-02", 40, 0)
-        commit(a, emit = true); commit(b, emit = true); commit(v, emit = true); commitVoid(v, emit = true)
+        commitId(a, emit = true); commitId(b, emit = true); commitId(v, emit = true); fx.void(v.id, v.date, emit = true)
         p.sell(uid(4), "2027-01-03", 999)   // today: in no server figure
         val w = worker(); w.runUntilIdle(); x("SELECT 1"); fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
         w.requestRebuild(LocalDate.parse("2027-01-01")); w.requestRebuild(LocalDate.parse("2027-01-02")); w.runUntilIdle()
@@ -321,7 +304,96 @@ class SrPhoneWouldShowTest {
         assertEquals(170L, r.achievement_mtd.map { it.jsonObject }.single { it.l("product_id") == skuC }.l("achieved_qty_base"), "the SKU figure itself does not move")
     }
 
-    // ---------------------------------------------------------------- the cases the lead's review asked for
+
+    @Test
+    fun aFreeOnlyMemoCountsInTheSkuMemoCountButNotInVolumeBrandOrCampaignCounts() {
+        val p = IdPhone()
+        val free = p.sell(uid(1), "2027-01-02", 0, qFree = 5); val sale = p.sell(uid(2), "2027-01-02", 40)
+        assertIdTruth(p, "both NOT IN: the phone adds the free-only memo to the SKU memo count only")
+        commitId(free)
+        assertIdTruth(p, "free-only memo committed")
+        val s1 = serverFigures().first
+        assertEquals(1L, s1.achMemos, "the SKU memo count counts any line of the SKU (free included)"); assertEquals(0L, s1.achQty); assertEquals(0L, s1.brandMemos); assertEquals(0L, s1.campMemos)
+        commitId(sale)
+        assertIdTruth(p, "sale memo committed too")
+        val s2 = serverFigures().first
+        assertEquals(2L, s2.achMemos); assertEquals(1L, s2.brandMemos, "brand and campaign memo counts need a sale line"); assertEquals(1L, s2.campMemos); assertEquals(40L, s2.achQty)
+    }
+
+    @Test
+    fun aBundleOnTheFirstOfTheMonthHasNoServerFigureAndLastMonthIsNeverAdded() {
+        val b = "'00000000-0000-4000-8000-00000000c101'"
+        x("UPDATE app.programme SET active_to = DATE '2027-02-28' WHERE code IN ('MBLS-P', 'SSL-P')")
+        x("INSERT INTO app.route_programme_target (programme_id, route_id, month, target_qty, batch_uuid) SELECT id, $route, DATE '2027-02-01', 20.000, $b FROM app.programme WHERE code = 'MBLS-P'")
+        x("INSERT INTO app.outlet_campaign_target (programme_id, month, outlet_id, std_target, memo_target, batch_uuid) SELECT id, DATE '2027-02-01', $outlet, 1000, 50, $b FROM app.programme WHERE code = 'SSL-P'")
+        x("INSERT INTO app.outlet_campaign_sku_target (programme_id, month, outlet_id, sku_id, qty_base, batch_uuid) SELECT id, DATE '2027-02-01', $outlet, $skuC, 1000, $b FROM app.programme WHERE code = 'SSL-P'")
+        val p = IdPhone()
+        val jan = p.sell(uid(1), "2027-01-31", 60, 5); commitId(jan)
+        val feb = p.sell(uid(2), "2027-02-01", 25, 3)
+        val first = LocalDate.parse("2027-02-01")
+        nowAt = Instant.parse("2027-02-01T02:00:00Z")
+        assertEquals(Fig(), serverFigures(first).first, "on the 1st the window is empty: no server figure, last month's memos are not in it")
+        assertIdTruth(p, "the phone adds today's memo and nothing of January", first)
+        commitId(feb)
+        nowAt = Instant.parse("2027-02-02T02:00:00Z")
+        assertIdTruth(p, "the next day the server holds the 1st's memo (IN) and the phone does not add it", LocalDate.parse("2027-02-02"))
+    }
+
+    @Test
+    fun aBundleBuiltAheadForTomorrowHoldsTodaysCommittedMemosAndStillGivesTheTrueTotal() {
+        val tomorrow = day.plusDays(1)
+        val p = IdPhone()
+        val y = p.sell(uid(1), "2027-01-02", 50, 3); val t = p.sell(uid(2), "2027-01-03", 70, 2)
+        commitId(y)
+        assertIdTruth(p, "today's memo is not committed yet: through_date of the prefetched bundle is today, NOT IN, added", tomorrow)
+        val v0 = service.bundle(principal, tomorrow, "1.0.0+1").version
+        commitId(t)
+        assertIdTruth(p, "today's memo is committed: IN the prefetched figure, not added", tomorrow)
+        assertNotEquals(v0, service.bundle(principal, tomorrow, "1.0.0+1").version, "the version of a bundle built ahead moves with today's commits (admitted churn)")
+        assertIdTruth(p, "a bundle for today never holds today's memos: the phone adds them", day)
+    }
+
+    @Test
+    fun anEditDatedTodayOfYesterdaysMemo() {
+        val p = IdPhone()
+        val x1 = p.sell(uid(1), "2027-01-02", 80, 4); commitId(x1)
+        x1.removed = true; val y = p.sell(uid(2), "2027-01-03", 80, 4)
+        assertIdTruth(p, "edit not uploaded: X IN (subtracted), Y added (after through_date)")
+        commitId(y, supersedes = x1)
+        assertIdTruth(p, "edit committed: X VOIDED, Y cut by through_date and added")
+        val dayNext = day.plusDays(1)
+        assertIdTruth(p, "tomorrow the server holds Y (IN) and the phone does not add it", dayNext)
+    }
+
+    @Test
+    fun anotherRoutesMemoAtTheCampaignOutletIsInTheOutletFigureAndTheRouteFigureIsStillOnlyOwn() {
+        val other = q("INSERT INTO app.route (code, name, display_label, zone_id, kind, visit_kind, visit_days_mask, sequence_no) SELECT 'T-OTHER', 'Other route', 'Daily', zone_id, 'sr', 'daily', 127, 99 FROM app.route WHERE id = $route RETURNING id")
+        val otherSr = q("SELECT id FROM app.app_user WHERE id <> $sr ORDER BY id LIMIT 1")
+        SrMemoFixture({ x(it) }, otherSr, 500).memo(uid(50), other, outlet, "2027-01-02", listOf(SrMemoFixture.L(skuC, 30)), "now()")
+        val p = IdPhone()
+        val a = p.sell(uid(1), "2027-01-02", 60); commitId(a)
+        val shownBefore = p.request()
+        val f = serverFigures().first
+        assertEquals(60L, f.achQty, "the route's own figures hold this route's memos only"); assertEquals(60L, f.brandQty)
+        assertEquals(90L, f.campStd, "the campaign figure is the OUTLET's: this route's 60 plus the other route's committed 30"); assertEquals(2L, f.campMemos)
+        assertEquals(f, shownBefore, "the phone adds nothing: its memo is IN")
+        p.sell(uid(2), "2027-01-02", 10)
+        val shown = p.request()
+        assertEquals(70L, shown.achQty); assertEquals(100L, shown.campStd, "outlet memos committed before the read + this phone's own local memo"); assertEquals(3L, shown.campMemos)
+    }
+
+    @Test
+    fun anSrWithTwoRoutesGetsEachRoutesOwnFiguresAndMergesEachSeparately() {
+        val (r2, o2) = secondRoute()
+        val p = IdPhone()
+        val a = p.sell(uid(1), "2027-01-02", 40, 2); commitId(a)
+        val b = p.sell(uid(2), "2027-01-02", 25, 0, routeId = r2, outletId = o2); commitId(b)
+        p.sell(uid(3), "2027-01-02", 15, 0, routeId = r2, outletId = o2)
+        assertIdTruth(p, "route 1: its own memo only", day, route, outlet)
+        assertIdTruth(p, "route 2: its committed memo from the server, its local memo added", day, r2, o2)
+        assertEquals(40L, serverFigures(day, route, outlet).first.achQty, "route 1's figure never holds route 2's memos")
+        assertEquals(25L, serverFigures(day, r2, o2).first.achQty)
+    }
 
     /** A second route of the SR (a cover) with an outlet, a Star target and a campaign at that outlet, so every merged figure exists for it too. */
     private fun secondRoute(): Pair<Long, Long> {
@@ -334,141 +406,6 @@ class SrPhoneWouldShowTest {
         x("INSERT INTO app.outlet_campaign_sku_target (programme_id, month, outlet_id, sku_id, qty_base, batch_uuid) SELECT id, DATE '2027-01-01', $o2, $skuC, 500, $b FROM app.programme WHERE code = 'SSL-P'")
         return r2 to o2
     }
-
-    @Test
-    fun aFreeOnlyMemoCountsInTheSkuMemoCountButNotInVolumeBrandOrCampaignCounts() {
-        val p = Phone()
-        val free = p.sell(uid(1), "2027-01-02", 0, qFree = 5); val sale = p.sell(uid(2), "2027-01-02", 40)
-        assertShowsTruth(p, "both unsynced: the phone adds the free-only memo to the SKU memo count only")
-        commit(free); free.acked = true
-        assertShowsTruth(p, "free-only memo committed and acknowledged")
-        val s1 = serverFigures().first
-        assertEquals(1L, s1.achMemos, "the SKU memo count counts any line of the SKU (free included)"); assertEquals(0L, s1.achQty); assertEquals(0L, s1.brandMemos); assertEquals(0L, s1.campMemos)
-        commit(sale); sale.acked = true
-        assertShowsTruth(p, "sale memo committed too")
-        val s2 = serverFigures().first
-        assertEquals(2L, s2.achMemos); assertEquals(1L, s2.brandMemos, "brand and campaign memo counts need a sale line"); assertEquals(1L, s2.campMemos); assertEquals(40L, s2.achQty)
-    }
-
-    @Test
-    fun aBundleOnTheFirstOfTheMonthHasNoServerFigureAndLastMonthIsNeverAdded() {
-        // Februrary targets and programmes so every figure exists in the new month
-        val b = "'00000000-0000-4000-8000-00000000c101'"
-        x("UPDATE app.programme SET active_to = DATE '2027-02-28' WHERE code IN ('MBLS-P', 'SSL-P')")
-        x("INSERT INTO app.route_programme_target (programme_id, route_id, month, target_qty, batch_uuid) SELECT id, $route, DATE '2027-02-01', 20.000, $b FROM app.programme WHERE code = 'MBLS-P'")
-        x("INSERT INTO app.outlet_campaign_target (programme_id, month, outlet_id, std_target, memo_target, batch_uuid) SELECT id, DATE '2027-02-01', $outlet, 1000, 50, $b FROM app.programme WHERE code = 'SSL-P'")
-        x("INSERT INTO app.outlet_campaign_sku_target (programme_id, month, outlet_id, sku_id, qty_base, batch_uuid) SELECT id, DATE '2027-02-01', $outlet, $skuC, 1000, $b FROM app.programme WHERE code = 'SSL-P'")
-        val p = Phone()
-        val jan = p.sell(uid(1), "2027-01-31", 60, 5); commit(jan); jan.acked = true
-        val feb = p.sell(uid(2), "2027-02-01", 25, 3)
-        val first = LocalDate.parse("2027-02-01")
-        nowAt = Instant.parse("2027-02-01T02:00:00Z")   // the server's today is the 1st (a bundle may be asked at most for the next working day)
-        assertEquals(Fig(), serverFigures(first).first, "on the 1st the window is empty: no server figure, last month's memos are not in it")
-        assertEquals(p.truth(month = "2027-02"), p.requestBundle(first), "the phone adds today's memo and nothing of January")
-        commit(feb); feb.acked = true
-        nowAt = Instant.parse("2027-02-02T02:00:00Z")
-        assertEquals(p.truth(month = "2027-02"), p.requestBundle(LocalDate.parse("2027-02-02")), "the next day the server holds the 1st's memo and the phone does not add it")
-    }
-
-    @Test
-    fun aBundleBuiltAheadForTomorrowHoldsTodaysCommittedMemosAndStillGivesTheTrueTotal() {
-        val tomorrow = day.plusDays(1)
-        val p = Phone()
-        val y = p.sell(uid(1), "2027-01-02", 50, 3); val t = p.sell(uid(2), "2027-01-03", 70, 2)
-        commit(y); y.acked = true
-        assertEquals(p.truth(), p.requestBundle(tomorrow), "today's memo is not committed yet: through_date of the prefetched bundle is today, the phone adds it")
-        val v0 = service.bundle(principal, tomorrow, "1.0.0+1").version
-        commit(t); t.acked = true
-        assertEquals(p.truth(), p.requestBundle(tomorrow), "today's memo is now committed and acknowledged: it IS in the prefetched figure and the phone does not add it")
-        assertNotEquals(v0, service.bundle(principal, tomorrow, "1.0.0+1").version, "the version of a bundle built ahead moves with today's commits (admitted churn)")
-        assertEquals(p.truth(), p.requestBundle(day), "a bundle for today never holds today's memos: the phone adds them")
-    }
-
-    @Test
-    fun anEditDatedTodayOfYesterdaysMemo() {
-        val p = Phone()
-        val x1 = p.sell(uid(1), "2027-01-02", 80, 4); commit(x1); x1.acked = true
-        x1.removed = true; val y = p.sell(uid(2), "2027-01-03", 80, 4)       // the edit is dated today, the edited memo yesterday
-        assertShowsTruth(p, "edit not uploaded: the phone adds Y (after through_date) and subtracts X (the server holds it)")
-        commit(y, supersedes = x1); y.acked = true; x1.removalAcked = true
-        assertShowsTruth(p, "edit committed and acknowledged: X is out of the figure, Y is cut by through_date and added by the phone")
-        assertEquals(p.truth(), p.requestBundle(day.plusDays(1)), "tomorrow the server holds Y and the phone does not add it")
-    }
-
-    @Test
-    fun anotherRoutesMemoAtTheCampaignOutletIsInTheOutletFigureAndTheRouteFigureIsStillOnlyOwn() {
-        val other = q("INSERT INTO app.route (code, name, display_label, zone_id, kind, visit_kind, visit_days_mask, sequence_no) SELECT 'T-OTHER', 'Other route', 'Daily', zone_id, 'sr', 'daily', 127, 99 FROM app.route WHERE id = $route RETURNING id")
-        val otherSr = q("SELECT id FROM app.app_user WHERE id <> $sr ORDER BY id LIMIT 1")
-        SrMemoFixture({ x(it) }, otherSr, 500).memo(uid(50), other, outlet, "2027-01-02", listOf(SrMemoFixture.L(skuC, 30)), "now()")
-        val p = Phone()
-        val a = p.sell(uid(1), "2027-01-02", 60); commit(a); a.acked = true
-        val f = serverFigures().first
-        assertEquals(60L, f.achQty, "the route's own figures hold this route's memos only"); assertEquals(60L, f.brandQty)
-        assertEquals(90L, f.campStd, "the campaign figure is the OUTLET's: this route's 60 plus the other route's committed 30"); assertEquals(2L, f.campMemos)
-        p.sell(uid(2), "2027-01-02", 10)
-        val shown = p.requestBundle()
-        assertEquals(70L, shown.achQty); assertEquals(100L, shown.campStd, "outlet memos committed before the read + this phone's own local memo"); assertEquals(3L, shown.campMemos)
-    }
-
-    @Test
-    fun anSrWithTwoRoutesGetsEachRoutesOwnFiguresAndMergesEachSeparately() {
-        val (r2, o2) = secondRoute()
-        val p = Phone()
-        val a = p.sell(uid(1), "2027-01-02", 40, 2); commit(a); a.acked = true
-        val b = p.sell(uid(2), "2027-01-02", 25, 0, routeId = r2, outletId = o2); commit(b); b.acked = true
-        p.sell(uid(3), "2027-01-02", 15, 0, routeId = r2, outletId = o2)
-        assertEquals(p.truth(route), p.requestBundle(day, route, outlet), "route 1: its own memo only")
-        assertEquals(p.truth(r2), p.requestBundle(day, r2, o2), "route 2: its acknowledged memo from the server, its local memo added")
-        assertEquals(40L, serverFigures(day, route, outlet).first.achQty, "route 1's figure never holds route 2's memos")
-        assertEquals(25L, serverFigures(day, r2, o2).first.achQty)
-    }
-
-    // ---------------------------------------------------------------- EXACT BY IDENTITY (spike, D-TKPI-14): the phone sends the uuids of its memos, the server answers IN / VOIDED / NOT IN in the figures' snapshot
-
-    private inner class IdMemo(val id: String, val date: String, val qC: Int, val qM: Int = 0, val memoNo: String? = null, val routeId: Long = route, val outletId: Long = outlet) {
-        var removed = false          // voided or superseded on the phone
-        var confirmedIn = false      // an earlier bundle answered IN and the phone has not touched the memo since: not probed again
-        var droppedByServer = false  // the server says VOIDED: the phone drops it
-        val fig get() = Fig(qC.toLong(), if (qC > 0) 1 else 0, qC.toLong(), if (qC > 0) 1 else 0, qM.toLong(), qM * 1000L, qC.toLong(), if (qC > 0) 1 else 0)
-    }
-
-    /** What the phone applies from the server's answer: no acknowledgements, resolutions, quarantine states, clocks or single flight. */
-    private inner class IdPhone {
-        val memos = ArrayList<IdMemo>()
-        fun sell(id: String, date: String, qC: Int, qM: Int = 0, memoNo: String? = null) = IdMemo(id, date, qC, qM, memoNo).also { memos += it }
-        fun truth(): Fig = memos.filter { !it.removed && !it.droppedByServer }.fold(Fig()) { t, m -> t + m.fig }
-
-        fun request(date: LocalDate = day): Fig {
-            val through = date.minusDays(1).toString()
-            val probes = memos.filter { !it.droppedByServer && (!it.confirmedIn || it.removed) && !(it.removed && it.date > through) }
-                .map { SrFigureProbe.Probe(java.util.UUID.fromString(it.id), it.memoNo, LocalDate.parse(it.date), it.removed) }
-            val res = service.bundle(principal, date, "1.0.0+1", probe = probes)
-            val ans = res.probe!!
-            var shown = figuresOf(res, date).first
-            for (m in memos) {
-                val u = java.util.UUID.fromString(m.id)
-                if (m.droppedByServer || (m.confirmedIn && !m.removed)) continue   // confirmed IN earlier and untouched: stays IN, not probed, nothing to do
-                val voided = u in ans.voided; val inFig = u in ans.inFigure
-                if (!m.removed) {
-                    if (m.date > through) { if (voided) m.droppedByServer = true else shown += m.fig }
-                    else if (voided) m.droppedByServer = true
-                    else if (inFig) m.confirmedIn = true
-                    else shown += m.fig
-                } else if (m.date <= through && inFig) {
-                    val lines = ans.removedLines.getValue(u)
-                    val c = lines.filter { it.skuId == skuC && it.kind == "sale" }.sumOf { it.qtyBase }; val mm = lines.filter { it.skuId == skuM && it.kind == "sale" }.sumOf { it.qtyBase }
-                    shown -= Fig(c, if (lines.any { it.skuId == skuC }) 1 else 0, c, if (c > 0) 1 else 0, mm, mm * 1000, c, if (c > 0) 1 else 0)
-                }
-            }
-            return shown
-        }
-    }
-
-    private fun commitId(m: IdMemo, supersedes: IdMemo? = null, lines: List<SrMemoFixture.L>? = null, manualBy: Long? = null) {
-        val l = lines ?: listOfNotNull(if (m.qC > 0) SrMemoFixture.L(skuC, m.qC) else null, if (m.qM > 0) SrMemoFixture.L(skuM, m.qM) else null)
-        fx.memo(m.id, m.routeId, m.outletId, m.date, l, "now()", supersedes = supersedes?.id, memoNo = m.memoNo, manualBy = manualBy)
-    }
-    private fun assertIdTruth(p: IdPhone, what: String) { val shown = p.request(); assertEquals(p.truth(), shown, "by identity the phone shows exactly the true total: $what") }
 
     @Test
     fun idHeldVoidReleasedIsNotSubtractedTwice() {
@@ -571,6 +508,7 @@ class SrPhoneWouldShowTest {
         } finally { stop.set(true); t.join(30_000) }
         assertTrue(builds >= 3)
     }
+
 
     private fun note(s: String) = println("NOTE SrPhoneWouldShowTest: $s")
 }
