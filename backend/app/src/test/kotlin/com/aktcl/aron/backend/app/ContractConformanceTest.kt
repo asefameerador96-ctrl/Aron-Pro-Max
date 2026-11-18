@@ -307,6 +307,11 @@ class ContractConformanceTest {
                 n.put("dry_run", true); n.remove("change_reason")
                 n.putArray("rows").addObject().put("route_code", "MIR-SR-D").put("sku_code", "MaxR-10S").put("month", FUTURE.substring(0, 7)).put("qty_base", 100)
             }),
+            // N-5: the KPI target upload previews one brand row of the throwaway month (dry run).
+            "PUT /v1/admin/route-kpi-targets" to Fx(body = { n, _, _ ->
+                n.put("dry_run", true); n.remove("change_reason"); n.remove("month_rows")
+                n.putArray("brand_rows").addObject().put("route_code", "MIR-SR-D").put("brand_code", "Maxim").put("month", FUTURE.substring(0, 7)).put("memo_target", 10).put("kpi_alloc_mtk", 1000)
+            }),
             "POST /v1/admin/outlets/import" to Fx(body = { n, _, x ->
                 val cluster = x.world.fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT c.name FROM app.cluster c JOIN app.zone z ON z.id = c.zone_id WHERE z.code = 'Z-MIR' ORDER BY c.id LIMIT 1").mapTo(String::class.java).one() }
                 n.put("dry_run", true); n.remove("change_reason")
