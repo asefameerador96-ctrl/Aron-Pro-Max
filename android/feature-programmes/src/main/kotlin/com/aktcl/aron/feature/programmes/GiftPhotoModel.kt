@@ -29,7 +29,11 @@ object GiftPhotoModel {
     }
 
     /** The client uuid of an Astha gift photo: fixed by its subject (the assignment and the quarter), so a retry, a kill or a second tap is the same record. */
-    fun asthaUuid(assignmentId: Long, quarter: String): String = com.aktcl.aron.core.common.ClientIds.derivedUuid("gift_photo", "astha", assignmentId.toString(), quarter)
+    fun asthaUuid(assignmentId: Long, quarter: String, attempt: Int = 0): String =
+        com.aktcl.aron.core.common.ClientIds.derivedUuid(*(listOf("gift_photo", "astha", assignmentId.toString(), quarter) + attemptPart(attempt)).toTypedArray())
+
+    /** Attempt 0 adds nothing (the key shape of records already held stays); a retake after the server refused attempt n is attempt n+1 (see ProgrammeStore.giftPhotoAttempt). */
+    internal fun attemptPart(attempt: Int): List<String> = if (attempt <= 0) emptyList() else listOf("attempt", attempt.toString())
 
     /** The Astha hand-over record the Submit button writes: own family, rank 0, [uuid] fixed when the page opens so a double tap is one record. [fix] is the contract GeoFix of the shutter. */
     fun planAstha(outletId: Long, giftId: Long, assignmentId: Long, photoUuid: String, fix: JsonObject, uuid: String): PlannedRecord =

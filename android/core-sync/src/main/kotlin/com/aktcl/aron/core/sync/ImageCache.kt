@@ -86,7 +86,7 @@ class ImageCache(
                             }
                         }
                     }
-                    if (sha256 != null && digest.digest().joinToString("") { "%02x".format(it) } != sha256.lowercase()) {
+                    if (sha256 != null && digest.digest().joinToString("") { "%02x".format(java.util.Locale.ROOT, it) } != sha256.lowercase()) {
                         tmp.delete(); failed += keyOf(key); return@withContext null
                     }
                     val target = fileFor(key)
@@ -158,7 +158,7 @@ class ImageCache(
     private fun keyOf(url: String): String = url.substringBefore('?')
 
     private fun fileFor(url: String): File {
-        val h = MessageDigest.getInstance("SHA-256").digest(keyOf(url).toByteArray()).joinToString("") { "%02x".format(it) }
+        val h = MessageDigest.getInstance("SHA-256").digest(keyOf(url).toByteArray()).joinToString("") { "%02x".format(java.util.Locale.ROOT, it) }
         return File(dir, h.take(40) + EXT)
     }
 

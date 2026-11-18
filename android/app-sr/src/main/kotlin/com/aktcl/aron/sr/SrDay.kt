@@ -968,7 +968,9 @@ class SrDay(
             val item = m.store.get(photoUuid) ?: throw IllegalStateException("the photo is no longer in the media queue")
             val owner = item.ref
             check(owner == null || owner.refClientUuid == recordUuid) { "the photo already belongs to another record" }
-            claimPhotoIo(m, photoUuid, "gift_photo", "gift_photo", recordUuid, fix)
+            // the record uuid is fixed by its subject: a claim left by a save that was cancelled or killed before its record committed must not upload beside this photo
+            val stamp = fix?.let { com.aktcl.aron.core.media.PhotoStamp(it.lat, it.lng, it.accuracyM, it.isMock, it.clientUuid) }
+            m.attachExclusive(photoUuid, com.aktcl.aron.core.media.MediaRef("gift_photo", "gift_photo", recordUuid), stamp)
         }
     }
 

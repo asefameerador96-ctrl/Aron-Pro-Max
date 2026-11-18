@@ -34,6 +34,10 @@ class MediaComponents(
     suspend fun attach(mediaUuid: String, ref: MediaRef, stamp: PhotoStamp?): MediaItem =
         capturer.attach(mediaUuid, ref, stamp).also { scheduler?.photoQueued(it) }
 
+    /** Claim the photo as the ONLY photo of its record (leftover claims of a cancelled or killed save are given back first, see [PhotoCapturer.attachExclusive]). */
+    suspend fun attachExclusive(mediaUuid: String, ref: MediaRef, stamp: PhotoStamp?): MediaItem =
+        capturer.attachExclusive(mediaUuid, ref, stamp).also { scheduler?.photoQueued(it) }
+
     /** Gives a claim back after the record's save was refused (see [PhotoCapturer.release]). */
     suspend fun release(mediaUuid: String, ref: MediaRef): Boolean = capturer.release(mediaUuid, ref)
 

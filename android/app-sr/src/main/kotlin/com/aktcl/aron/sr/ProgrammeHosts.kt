@@ -75,7 +75,9 @@ internal suspend fun readAsthaPage(day: SrDay, locale: UiLocale): AsthaLoad = wi
         // the server's Astha figures plus this phone's own memos that the server cannot hold yet (by memo UUID; recomputed on every read)
         val memos = date?.take(7)?.let { day.programmes.memosOfMonth(it) }.orEmpty()
         awaiting = AsthaLocal.awaiting(memos)
-        data = server?.let { d -> if (date == null) d else AsthaLocal.apply(d, memos, before) }
+        // by the phone's own order (the memos acknowledged before the request left), never by comparing times; without the recorded order the figure is the server's alone
+        val acked = day.programmes.ackedBeforeRequest()
+        data = server?.let { d -> if (date == null) d else AsthaLocal.apply(d, memos, acked, date.take(7)) }
         if (day.programmes.bundleRequestedAt() == before || ++attempts >= 3) break
     }
     val outlets = readShopOutlets(day)
@@ -239,7 +241,7 @@ fun GiftPhotoHost(day: SrDay, locale: UiLocale) {
             onSubmit = { outletId, giftId, assignmentId ->
                 val photo = cs.photo; val fix = cs.fix
                 if (photo == null || fix == null || !fix.isOk) return@GiftPhotoScreen SaveOutcome.REFUSED
-                val uuid = GiftPhotoModel.asthaUuid(assignmentId, page.quarter) // fixed by the subject: a retry, a kill or a second tap is one record
+                val uuid = day.programmes.giftPhotoAttempt { GiftPhotoModel.asthaUuid(assignmentId, page.quarter, it) }.uuid // fixed by the subject (a retry, a kill or a second tap is one record); a refused record is followed by a new attempt
                 val fixEntity = fix.toEntity(day.programmes.newUuid(), uuid, "gift_photo", 0)
                 val plan = GiftPhotoModel.planAstha(outletId, giftId, assignmentId, photo.photoUuid, day.programmes.fixJson(fixEntity), uuid)
                 val shop = page.shops.firstOrNull { it.outletId == outletId }
@@ -299,7 +301,7 @@ fun CampaignPhotoHost(day: SrDay, locale: UiLocale) {
                 for (u in g.openUnits) {
                     val cs = states[key(g, u)]; val photo = cs?.photo; val fix = cs?.fix
                     if (photo == null || fix == null || !fix.isOk) { result = SaveOutcome.REFUSED; break }
-                    val uuid = CampaignPhotoModel.unitUuid(g, u) // fixed by the subject (redemption, gift line, unit): a retry after a kill is the same record
+                    val uuid = day.programmes.giftPhotoAttempt { CampaignPhotoModel.unitUuid(g, u, it) }.uuid // fixed by the subject (redemption, gift line, unit): a retry after a kill is the same record; a refused one is followed by a new attempt
                     val fixEntity = fix.toEntity(day.programmes.newUuid(), uuid, "gift_photo", 0)
                     val plan = CampaignPhotoModel.planUnit(g, u, photo.photoUuid, day.programmes.fixJson(fixEntity), uuid)
                     val shop = page.shops.firstOrNull { it.outletId == g.outletId }

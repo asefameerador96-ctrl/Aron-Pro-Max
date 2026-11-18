@@ -98,6 +98,6 @@ object GiftChoiceModel {
         val y = businessDate.take(4).toInt(); val m = businessDate.substring(5, 7).toInt()
         val shifted = (m - startMonth + 12) % 12
         val year = if (m < startMonth) y - 1 else y
-        return "%04d-Q%d".format(year, shifted / 3 + 1)
+        return "%04d-Q%d".format(java.util.Locale.ROOT, year, shifted / 3 + 1)
     }
 }

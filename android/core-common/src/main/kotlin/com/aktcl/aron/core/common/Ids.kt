@@ -24,7 +24,7 @@ object ClientIds {
         val b = md.digest().copyOf(16)
         b[6] = ((b[6].toInt() and 0x0f) or 0x40).toByte()
         b[8] = ((b[8].toInt() and 0x3f) or 0x80).toByte()
-        val hex = b.joinToString("") { "%02x".format(it) }
+        val hex = b.joinToString("") { "%02x".format(java.util.Locale.ROOT, it) }
         return "${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}"
     }
 

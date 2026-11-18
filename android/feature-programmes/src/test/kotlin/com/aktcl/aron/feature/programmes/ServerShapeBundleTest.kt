@@ -39,6 +39,6 @@ class ServerShapeBundleTest {
         assertTrue(codeLists.isNotEmpty())
         // a local memo is added on top by the SKU's pack size
         val memo = LocalMemo("m", 10, "2026-11-18", null, "pending", null, listOf(LocalMemoLine(901, "sale", 40, 20, 400_000)), 7)
-        assertEquals(3_640_000L, AsthaLocal.apply(astha, listOf(memo), "2026-11-18T01:00:00Z").routeRows.first { it.brandId == 11L }.stdAchievedMilli)
+        assertEquals(3_640_000L, AsthaLocal.apply(astha, listOf(memo), emptySet(), "2026-11").routeRows.first { it.brandId == 11L }.stdAchievedMilli)
     }
 }

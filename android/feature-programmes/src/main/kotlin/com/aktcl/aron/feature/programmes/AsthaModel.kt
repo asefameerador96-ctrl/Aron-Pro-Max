@@ -69,7 +69,7 @@ data class AsthaData(val rows: List<AsthaRow>, val asOf: String?, val truncated:
         if (brandId == null) return AsthaModel.packLineOf(null, p)
         // the SKUs of this brand with this pack size decide the unit through the SHARED rule (EntryUnits.resolve, the one the Sale screens use); a brand or size with no SKU, or SKUs
         // that disagree, is unknown: a neutral number, never a unit word that may be wrong
-        val units = skuUnits.filter { (sku, _) -> skuBrand[sku] == brandId }.values.filter { it.basePerPack == p.packFactor }.map { it.entry() }.distinct()
+        val units = skuUnits.filter { (sku, _) -> skuBrand[sku] == brandId }.values.filter { it.basePerPack == p.packFactor }.mapNotNull { u -> runCatching { u.entry() }.getOrNull() }.distinct() // a base unit the shared rule does not know is neutral, never a crash in composition
         val one = units.singleOrNull() ?: return AsthaModel.packLineOf(null, p)
         return AsthaModel.packLineOf(one, p)
     }
@@ -274,6 +274,6 @@ object AsthaModel {
         val idx = (startMonth - 1) + (q - 1) * 3 + i
         val y = year + idx / 12
         val m = idx % 12 + 1
-        "%04d-%02d".format(y, m)
+        "%04d-%02d".format(java.util.Locale.ROOT, y, m)
     }
 }

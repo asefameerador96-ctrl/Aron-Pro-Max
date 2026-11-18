@@ -13,6 +13,7 @@ import com.aktcl.aron.feature.programmes.Basket
 import com.aktcl.aron.feature.programmes.LocalRedeemed
 import com.aktcl.aron.feature.programmes.LoyaltyGift
 import com.aktcl.aron.feature.programmes.SaveOutcome
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -93,10 +94,13 @@ class ProgrammeStoreTest {
     // ---- gift photo: gates before the claim, the claim before the commit, a gone photo saves nothing ----
     private val claims = ArrayList<Pair<String, Long>>() // photo uuid to the number of records the phone held for the record uuid WHEN claimed
     private var claimFails = false
+    private val releases = ArrayList<Pair<String, String>>() // photo uuid to the record uuid it was given back from
+    private var afterClaim: suspend () -> Unit = {}
     private fun photoStore(r: CaptureRepository = repo) = ProgrammeStore(db, r, meta, claimPhoto = { photo, rec, _ ->
         if (claimFails) throw IllegalStateException("gone")
         claims += photo to db.captureDao().amoRecordsOfFamily(rec).size.toLong()
-    }) { syncs++ }
+        afterClaim()
+    }, releasePhoto = { photo, rec -> releases += photo to rec; true }) { syncs++ }
     private val fixEntity = com.aktcl.aron.feature.outlet.FixReading("ok", 23.79, 90.40, 10.0, false).toEntity(ClientIds.newUuid(), "x", "gift_photo", 0)
     private fun photoPlan(uuid: String, photo: String, assignment: Long = 71) =
         com.aktcl.aron.feature.programmes.GiftPhotoModel.planAstha(10, 4, assignment, photo, kotlinx.serialization.json.buildJsonObject { put("lat", kotlinx.serialization.json.JsonPrimitive(23.79)) }, uuid)
@@ -201,5 +205,75 @@ class ProgrammeStoreTest {
             lines.firstOrNull()?.startsWith("com.aktcl.aron.core.common.ActionGate.requireOpen()") != true
         }.map { it.groupValues[1] }
         assertEquals("these writers do not call ActionGate.requireOpen() first: $bad", emptyList<String>(), bad)
+    }
+
+    // ---- a refused photo can be retaken (final pass, blocking 4) and a cancelled save gives its claim back (blocking 2) ----
+    private val gp = com.aktcl.aron.feature.programmes.GiftPhotoModel
+    private suspend fun refuse(uuid: String) { db.outboxDao().applyAck(uuid, "rejected", "schema_invalid", null, "2026-11-18T06:00:00.000Z") }
+    private suspend fun accept(uuid: String) { db.outboxDao().applyAck(uuid, "acked", null, 9L, "2026-11-18T06:00:00.000Z") }
+
+    @Test fun refusedThenRetakeThenAcceptedIsOneAcceptedPhotoUnderANewAttemptKey() = runTest {
+        val s = photoStore()
+        val a0 = s.giftPhotoAttempt { gp.asthaUuid(71, "2026-Q4", it) }
+        assertEquals(gp.asthaUuid(71, "2026-Q4"), a0.uuid); assertEquals(0, a0.attempt); assertTrue(!a0.alreadySaved) // attempt 0 keeps the key shape already held
+        assertEquals(SaveOutcome.SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(a0.uuid, ClientIds.newUuid()), ClientIds.newUuid(), fixEntity))
+        assertTrue(s.giftPhotoAttempt { gp.asthaUuid(71, "2026-Q4", it) }.alreadySaved) // waiting: THE photo of the subject
+        refuse(a0.uuid)
+        val a1 = s.giftPhotoAttempt { gp.asthaUuid(71, "2026-Q4", it) }
+        assertEquals(1, a1.attempt); assertTrue(a1.uuid != a0.uuid); assertTrue(!a1.alreadySaved) // the retake is a NEW record the server can accept
+        assertEquals(SaveOutcome.SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(a1.uuid, ClientIds.newUuid()), ClientIds.newUuid(), fixEntity))
+        accept(a1.uuid)
+        val again = s.giftPhotoAttempt { gp.asthaUuid(71, "2026-Q4", it) }
+        assertEquals(a1.uuid, again.uuid); assertTrue(again.alreadySaved) // never a third photo
+        assertEquals(1, s.giftPhotos().count { it.assignmentId == 71L && it.state != "rejected" }) // exactly one that is not refused
+    }
+
+    @Test fun refusedThenRetakeThenKillThenRetakeMakesOneRecord() = runTest {
+        val s = photoStore()
+        val a0 = s.giftPhotoAttempt { gp.asthaUuid(71, "2026-Q4", it) }
+        s.saveGiftPhoto(meta.meta(7), photoPlan(a0.uuid, ClientIds.newUuid()), ClientIds.newUuid(), fixEntity); refuse(a0.uuid)
+        val a1 = s.giftPhotoAttempt { gp.asthaUuid(71, "2026-Q4", it) }
+        claimFails = true // killed after the retake's capture and before its commit: nothing is held under attempt 1
+        assertEquals(SaveOutcome.REFUSED, s.saveGiftPhoto(meta.meta(7), photoPlan(a1.uuid, ClientIds.newUuid()), ClientIds.newUuid(), fixEntity))
+        claimFails = false
+        val relaunch = s.giftPhotoAttempt { gp.asthaUuid(71, "2026-Q4", it) }
+        assertEquals(a1.uuid, relaunch.uuid) // the same attempt key after the relaunch
+        assertEquals(SaveOutcome.SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(relaunch.uuid, ClientIds.newUuid()), ClientIds.newUuid(), fixEntity))
+        assertEquals(SaveOutcome.ALREADY_SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(relaunch.uuid, ClientIds.newUuid()), ClientIds.newUuid(), fixEntity))
+        assertEquals(1, s.giftPhotos().count { it.state != "rejected" })
+    }
+
+    @Test fun aCampaignUnitHasItsOwnAttemptKeysAndAnAttemptZeroKeyShapeIsUnchanged() {
+        val g = com.aktcl.aron.feature.programmes.CampaignGroup("r1", 10, 4, 3, emptySet()); val m = com.aktcl.aron.feature.programmes.CampaignPhotoModel
+        assertEquals(m.unitUuid(g, 1), m.unitUuid(g, 1, 0)); assertTrue(m.unitUuid(g, 1) != m.unitUuid(g, 1, 1)); assertTrue(m.unitUuid(g, 1, 1) != m.unitUuid(g, 2, 1))
+    }
+
+    @Test fun aSubjectRefusedManyTimesStopsAtTheBoundAndReadsAsAlreadySaved() = runTest {
+        val s = photoStore()
+        repeat(ProgrammeStore.MAX_PHOTO_ATTEMPTS) {
+            val a = s.giftPhotoAttempt { gp.asthaUuid(72, "2026-Q4", it) }
+            assertEquals(it, a.attempt)
+            s.saveGiftPhoto(meta.meta(7), photoPlan(a.uuid, ClientIds.newUuid(), 72), ClientIds.newUuid(), fixEntity); refuse(a.uuid)
+        }
+        assertTrue(s.giftPhotoAttempt { gp.asthaUuid(72, "2026-Q4", it) }.alreadySaved)
+    }
+
+    @Test fun aSaveCancelledBetweenTheClaimAndTheCommitGivesTheClaimBack() = runTest {
+        val s = photoStore(); val uuid = ClientIds.newUuid(); val photo = ClientIds.newUuid()
+        afterClaim = { kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]!!.cancel() } // Back pressed right after the claim
+        val job = launch { s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, photo), photo, fixEntity) }
+        job.join()
+        afterClaim = {}
+        assertEquals(0, db.outboxDao().countInState("pending")) // no record
+        assertEquals(listOf(photo to uuid), releases) // and the claim was handed back, not left attached to the fixed uuid
+        // the retake commits under the same uuid
+        val photo2 = ClientIds.newUuid()
+        assertEquals(SaveOutcome.SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, photo2), photo2, fixEntity))
+    }
+
+    @Test fun aCancelAfterTheCommitDoesNotReleaseTheClaimOfACommittedRecord() = runTest {
+        val s = photoStore(); val uuid = ClientIds.newUuid(); val photo = ClientIds.newUuid()
+        assertEquals(SaveOutcome.SAVED, s.saveGiftPhoto(meta.meta(7), photoPlan(uuid, photo), photo, fixEntity))
+        assertEquals(emptyList<Pair<String, String>>(), releases)
     }
 }

@@ -114,7 +114,7 @@
     <string name="pg_photo_saved">ছবি এই ফোনে সংরক্ষিত হয়েছে। সংকুচিত হয়ে, আগে ওয়াই-ফাইয়ে আপলোড হবে।</string>
     <string name="pg_photo_failed">ছবি সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।</string>
     <string name="pg_awaiting_memos">%1$sটি মেমো নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর হিসাব হালনাগাদ হবে।</string>
-    <string name="pg_awaiting_redemptions">%1$sটি রিডেম্পশন নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর পয়েন্ট হালনাগাদ হবে।</string>
+    <string name="pg_awaiting_redemptions">%1$sটি রিডিম্পশন নিশ্চিত হওয়ার অপেক্ষায়; পরের সিঙ্কের পর পয়েন্ট হালনাগাদ হবে।</string>
     <string name="pg_photo_locked">সার্ভার এই উপহারটি লক করেছে, ছবির প্রয়োজন নেই: %1$s</string>
     <string name="pg_campaign_none">ছবির অপেক্ষায় কোনো রিডিম করা ক্যাম্পেইন উপহার নেই।</string>
     <string name="pg_campaign_progress">%2$sটির মধ্যে %1$sটি ছবি তোলা হয়েছে</string>

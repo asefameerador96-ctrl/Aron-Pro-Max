@@ -121,10 +121,39 @@ class ProgrammeStore(
         // a kill or a second tap ends here as already saved and the new photo is not claimed; the host drops it.
         if (db.captureDao().amoRecordsOfFamily(plan.clientUuid).isNotEmpty()) return@withContext SaveOutcome.ALREADY_SAVED
         try { claimPhoto(photoUuid, plan.clientUuid, fix) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { return@withContext SaveOutcome.REFUSED }
-        val out = saveProgramme(meta, listOf(plan))
+        val out = try {
+            saveProgramme(meta, listOf(plan))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Back pressed (or the scope ended) between the claim and the commit: give the claim back unless the record did commit before the cancel took effect. A kill cannot run this; the
+            // next claim of the same record uuid gives every leftover claim back first (PhotoCapturer.attachExclusive).
+            withContext(kotlinx.coroutines.NonCancellable) {
+                runCatching { if (db.captureDao().amoRecordsOfFamily(plan.clientUuid).isEmpty()) releasePhoto(photoUuid, plan.clientUuid) }
+            }
+            throw e
+        }
         // a refusal after the claim (a gate that closed in between, a conflict race) gives the claim back, so the next record uuid can claim this photo
         if (out != SaveOutcome.SAVED && out != SaveOutcome.ALREADY_SAVED) runCatching { releasePhoto(photoUuid, plan.clientUuid) }
         out
+    }
+
+    /** Which record uuid the next photo of a subject is saved under: [uuid] and whether a photo of the subject already stands on this phone. */
+    data class PhotoAttempt(val uuid: String, val attempt: Int, val alreadySaved: Boolean)
+
+    /**
+     * The live attempt of a gift photo subject. Attempt 0 is the subject's fixed uuid (a retry after a kill or a second tap is the same record). When the server REFUSED the record held under
+     * attempt n (outbox state `rejected`), the next photo is attempt n+1, a new fixed uuid of the same subject, so the retake is a record the server can accept and a refused photo is never stuck;
+     * a record that is not refused (waiting, sent or acknowledged) is THE photo of the subject and nothing else is saved. At most one attempt is ever live, so one phone never sends two photos
+     * for a subject (and the server keeps the first by `captured_at` if two phones do).
+     */
+    suspend fun giftPhotoAttempt(uuidOf: (Int) -> String): PhotoAttempt = withContext(Dispatchers.IO) {
+        var n = 0
+        while (true) {
+            val uuid = uuidOf(n)
+            if (db.captureDao().amoRecordsOfFamily(uuid).isEmpty()) return@withContext PhotoAttempt(uuid, n, false)
+            if (db.outboxDao().byClientUuid(uuid)?.state != "rejected") return@withContext PhotoAttempt(uuid, n, true)
+            if (++n >= MAX_PHOTO_ATTEMPTS) return@withContext PhotoAttempt(uuid, n - 1, true) // a subject refused this often is left alone: the screen says it is refused
+        }
+        @Suppress("UNREACHABLE_CODE") error("unreachable")
     }
 
     /** The memos of a Dhaka month (`YYYY-MM`) on this phone with their lines and outbox state, for the Astha achievement (the phone's own memos on top of the server figure). */
@@ -208,6 +237,8 @@ class ProgrammeStore(
          * The state a memo or redemption is read in: `uncertain` when it was sent but unanswered when the held snapshot was requested (unless the server refused it since); a row put
          * back to `pending` by a restore or digest resync that keeps its first acknowledgement time ([restoredIsAcked], memos) reads as acknowledged then; else the outbox state, `pending` for no row.
          */
+        const val MAX_PHOTO_ATTEMPTS = 8
+
         internal fun readState(sentUnanswered: Boolean, outboxState: String?, ackedAt: String?, restoredIsAcked: Boolean): String = when {
             sentUnanswered && outboxState != "rejected" -> "uncertain"
             restoredIsAcked && outboxState == "pending" && ackedAt != null -> "acked"

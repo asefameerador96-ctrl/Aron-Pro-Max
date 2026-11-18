@@ -189,7 +189,7 @@ class AsthaFetchedTest {
     @Test fun theLocalMemosAreNotAddedToAFetchedMonth() {
         // the merge runs after AsthaLocal.apply: a fetched figure is the server's as of its read, whatever the phone holds
         val memo = LocalMemo("m1", 1, "2026-10-05", null, "pending", null, emptyList(), 7)
-        val base = AsthaLocal.apply(bundle(), listOf(memo), null)
+        val base = AsthaLocal.apply(bundle(), listOf(memo), emptySet(), "2026-11")
         val merged = AsthaFetched.merge(base, listOf(CachedMonth(7, "2026-10", "2026-11-18T06:00:00Z", arr(item(7, "2026-10", brand = null, memoTarget = 40)))))
         assertEquals(0L, merged.allBrandRow("2026-10")!!.memoAchieved)
     }

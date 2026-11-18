@@ -170,7 +170,7 @@ private fun ColumnScope.TargetBody(data: AsthaData?, locale: UiLocale, currentYe
         val y = year; val q = quarter
         if (y == null || q == null) { EmptyNote(stringResource(R.string.pg_no_data)); return }
         val months = AsthaModel.monthsOfQuarter(y, q)
-        val quarterKey = "%04d-Q%d".format(y, q)
+        val quarterKey = "%04d-Q%d".format(java.util.Locale.ROOT, y, q)
         // a quarter with a month the phone holds nothing of is read online when there is a connection (and kept); offline the page stays as the phone has it
         val lacking = data.missingMonths(months).isNotEmpty() || months.any { data.cutShort(it) }
         androidx.compose.runtime.LaunchedEffect(quarterKey, lacking) { if (lacking) onQuarter?.invoke(quarterKey) }

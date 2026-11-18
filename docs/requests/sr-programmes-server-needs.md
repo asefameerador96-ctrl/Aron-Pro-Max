@@ -17,3 +17,9 @@ Already asked as N-7: `loyalty[].tier_code` (and `gift_assignments[].tier_code`,
 ## S-3 Quarter months beyond the bundle's current month
 
 Already asked as N-1 (`astha_truncated_months`, the whole quarter within the 1,000-row bound). Until then the phone reads other months online with `listAsthaTargets`, keeps them in an app-private file cache, and shows "not downloaded, connect once" for a month never fetched.
+
+## S-4 A gift photo record uuid held by another user must not merge a second user's photo (lead final pass, low; for the server lane, no change to the key shape without the lead's word)
+
+The phone fixes the record uuid of a gift photo by its subject (Astha: assignment and quarter; campaign: redemption, gift line, unit) so that a retry or a kill makes one record, and, after the server REFUSES a record, a retake uses the same parts plus `attempt n` (the next attempt; attempt 0 keeps the old shape). The parts hold no user or install id. The server's generic insert treats a `client_uuid` held by ANOTHER user as already there, so two phones (or two logins on one phone) photographing the same subject before either syncs end with the second record acknowledged as a duplicate of the first user's, its photo blob uploaded under that uuid, and the rule "earliest `captured_at` wins, the rest flagged duplicate" (GiftPhotoRecords) bypassed by arrival order.
+
+Asked: either the gift photo ingest answers a record uuid held by another user as its own kind of conflict that the phone can show (and the phone then derives a per-user uuid), or the lead decides the phone adds the user id to the parts (that changes every photo key already held, so it needs a one-time rule for records already queued). Until then the phone sends one photo per subject per phone.
