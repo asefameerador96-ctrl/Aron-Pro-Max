@@ -270,7 +270,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
      */
     fun newMemoViewModel() = MemoViewModel(
         store,
-        VisitDueCollectionWriter(db, day.capture, { rid -> day.metaProvider.meta(rid ?: 0L) }, day::businessDate),
+        VisitDueCollectionWriter(db, day.capture, { rid -> day.metaProvider.meta(rid ?: 0L) }, day::businessDate, openCall = { day.visitSession.current.value?.visitUuid }),
         MemoPrintingReprinter(day.printing), ::names, day::businessDate,
     )
 

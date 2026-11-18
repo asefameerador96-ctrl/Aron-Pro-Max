@@ -167,6 +167,11 @@ class SrDay(
     fun visitDate(v: com.aktcl.aron.feature.outlet.OpenVisit): String =
         runCatching { BusinessDate.of(java.time.Instant.parse(v.openedAtIso).toEpochMilli()).toString() }.getOrElse { businessDate() }
 
+    /** D-LEAD-PREREQ-04 ruling 5: the meta of a record of the call [visitUuid] (content view, survey): the VISIT's date when that is the open call, else the clock's. */
+    fun callMetaOf(visitUuid: String?): CaptureMeta = metaProvider.meta(0L).let { m ->
+        visitSession.current.value?.takeIf { it.visitUuid == visitUuid }?.let { v -> visitDate(v).takeIf { it < m.businessDate }?.let { m.copy(businessDate = it) } } ?: m
+    }
+
     /** The capture meta of [v]'s route dated with the VISIT's date (never the clock's), for the route-day checks and the records of the call. */
     fun callMeta(v: com.aktcl.aron.feature.outlet.OpenVisit) = metaProvider.meta(v.routeId).copy(businessDate = visitDate(v))
 
@@ -626,7 +631,7 @@ class SrDay(
         runCatching {
             capture.recordContentView(
                 com.aktcl.aron.core.database.entity.ContentViewEntity(
-                    com.aktcl.aron.core.common.ClientIds.newUuid(), metaProvider.meta(0L), visitUuid, item.contentId, item.version, item.kind,
+                    com.aktcl.aron.core.common.ClientIds.newUuid(), callMetaOf(visitUuid), visitUuid, item.contentId, item.version, item.kind,
                     outcome.wire, sequenceNo.coerceIn(1, 20), startedAtMs?.let(::iso), durationMs,
                 ),
             )
@@ -650,13 +655,24 @@ class SrDay(
     suspend fun saveSurveyRefusal(
         visitUuid: String, survey: com.aktcl.aron.core.database.entity.SurveyEntity,
         rows: List<com.aktcl.aron.feature.outlet.SurveyResponseRow>,
-    ): DayRefusal? = try {
+    ): DayRefusal? = saveSurveyResult(visitUuid, survey, rows).dayRefusal
+
+    /** What a survey Save did: stored (both null), refused by the route-day ([dayRefusal]), or refused by the check-in gate ([attendance]: the answers were NOT stored and the rep is told). */
+    data class SurveySaveResult(val dayRefusal: DayRefusal? = null, val attendance: com.aktcl.aron.core.database.repo.AttendanceRefusal? = null)
+
+    /** D-LEAD-PREREQ-04 ruling 5: a refused survey is never reported as saved; the check-in gate's refusal comes back so the host can say so. */
+    suspend fun saveSurveyResult(
+        visitUuid: String, survey: com.aktcl.aron.core.database.entity.SurveyEntity,
+        rows: List<com.aktcl.aron.feature.outlet.SurveyResponseRow>,
+    ): SurveySaveResult = try {
         saveSurvey(visitUuid, survey, rows)
-        null
+        SurveySaveResult()
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
+    } catch (e: com.aktcl.aron.core.database.repo.AttendanceRefusedException) {
+        SurveySaveResult(attendance = e.why)
     } catch (e: Exception) {
-        DayRefusal.of(e)
+        SurveySaveResult(dayRefusal = DayRefusal.of(e))
     }
 
     /** Writes the confirmed answers (one per question per visit) and claims the photos for them. */
@@ -669,7 +685,7 @@ class SrDay(
             val a = r.answer
             capture.recordSurveyResponse(
                 com.aktcl.aron.core.database.entity.SurveyResponseEntity(
-                    r.clientUuid, metaProvider.meta(0L), visitUuid, survey.surveyId, survey.version, r.question.questionId,
+                    r.clientUuid, callMetaOf(visitUuid), visitUuid, survey.surveyId, survey.version, r.question.questionId,
                     r.question.answerType.name.lowercase(), a.bool, a.num, a.optionCode, a.text, a.photoUuid,
                 ),
             )

@@ -73,4 +73,14 @@ class AmoMidnightRestoreTest {
         assertEquals("ok", f.db.captureDao().fix(out.fixClientUuid)!!.fixStatus)
         assertEquals(listOf(d0), f.day.rolloverNotice.value.closedDates)
     }
+
+    /** D-LEAD-PREREQ-04 ruling 5 (step 3 S5): the AMO's joint-call assessment, survey, price and distribution records of a call across midnight take the VISIT's date. */
+    @Test fun theRecordsOfACallAcrossMidnightTakeTheVisitsDate() = runBlocking {
+        val v = f.controlCall(); f.day.visitSession.restore(v)
+        f.trustAt(at(next(), 0, 5))
+        val survey = com.aktcl.aron.core.database.entity.SurveyEntity(1, 1, "S", null)
+        val q = com.aktcl.aron.feature.outlet.SurveyQuestion(1, com.aktcl.aron.feature.outlet.AnswerType.BOOL, "q1", true, false)
+        f.day.saveSurvey(v.visitUuid, survey, listOf(com.aktcl.aron.feature.outlet.SurveyResponseRow(com.aktcl.aron.core.common.ClientIds.newUuid(), v.visitUuid, 1, 1, q, com.aktcl.aron.feature.outlet.SurveyAnswer(bool = true))))
+        assertEquals(d0, f.db.captureDao().surveyResponsesOf(v.visitUuid).single().meta.businessDate)
+    }
 }

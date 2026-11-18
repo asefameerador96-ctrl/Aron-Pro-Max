@@ -743,6 +743,7 @@ class AmoDay(
             db, capture, metaProvider, { visitSession.current.value?.routeId ?: 0L }, ::newUuid, { runCatching { requestSync() } },
             { purpose -> fixSource.readFix(purpose) }, { photo, purpose, refType, refUuid, fix -> claimPhoto(photo, purpose, refType, refUuid, fix) },
             { photo, requestUuid -> stampedFixUuid(photo, requestUuid) },
+            callDate = { uuid -> visitSession.current.value?.takeIf { it.visitUuid == uuid }?.let(::visitDate) },
         )
     }
 

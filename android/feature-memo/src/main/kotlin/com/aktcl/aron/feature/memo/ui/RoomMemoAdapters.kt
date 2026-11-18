@@ -84,19 +84,20 @@ class VisitDueCollectionWriter(
     private val metaFor: (routeId: Long?) -> CaptureMeta,
     private val businessDate: () -> String,
     private val newUuid: () -> String = ClientIds::newUuid,
+    /** The uuid of the visit of the call that is OPEN now (the session), or null: the only earlier-day visit a collection may attach to (D-LEAD-PREREQ-04 ruling 5). */
+    private val openCall: () -> String? = { null },
 ) : DueCollectionWriter {
-    /** The meta and the visit of a collection for [outletId]: the one rule [write] and [accepts] share. */
+    /**
+     * The meta and the visit of a collection for [outletId]: the one rule [write] and [accepts] share. D-LEAD-PREREQ-04 ruling 5: a collection made INSIDE a call carries
+     * the VISIT's date (the open call, whatever its date: also after two midnights); a collection outside a call belongs to TODAY and is never attached to an
+     * unclosed visit of an earlier day (a blocked visit or a call lost long ago must not lock a legitimate Mark Paid on a new day).
+     */
     private suspend fun target(outletId: Long): Pair<CaptureMeta, String?> {
         val dao = db.captureDao()
         val today = businessDate()
-        var visit = dao.visitsOn(today).lastOrNull { it.outletId == outletId }
-        if (visit == null) {
-            // a call opened before Dhaka midnight and still open: its collection carries the VISIT's date (ruling 2), never a midnight check-in's
-            val earlier = java.time.LocalDate.parse(today).minusDays(1).toString()
-            val closed = (dao.visitClosesOn(earlier) + dao.visitClosesOn(today)).map { it.visitClientUuid }.toSet()
-            visit = dao.visitsOn(earlier).lastOrNull { it.outletId == outletId && it.clientUuid !in closed }
-        }
-        val meta = metaFor(visit?.meta?.routeId).let { m -> if (visit != null && visit.meta.businessDate != m.businessDate) m.copy(businessDate = visit.meta.businessDate) else m }
+        val open = openCall()?.let { dao.visit(it) }?.takeIf { it.outletId == outletId }
+        val visit = open ?: dao.visitsOn(today).lastOrNull { it.outletId == outletId }
+        val meta = metaFor(visit?.meta?.routeId).let { m -> if (visit != null && visit.meta.businessDate < m.businessDate) m.copy(businessDate = visit.meta.businessDate) else m }
         return meta to visit?.clientUuid
     }
 

@@ -106,5 +106,30 @@ class SrMidnightRestoreTest {
         assertFalse("a check-out captured on its own date is the rep's, not marked", out.copy(meta = out.meta.copy(capturedAt = d0 + "T10:00:00.000Z")).closedByPhone())
     }
 
+    /**
+     * D-LEAD-PREREQ-04 ruling 5 (step 3 S5): the survey and the content view of a call that crosses midnight take the VISIT's date (they used the clock's date, were refused after
+     * midnight, and the survey was reported as saved). A Save the gate refuses is NOT reported as saved: the result says so and nothing is stored.
+     */
+    @Test fun aSurveyAndAContentViewOfACallAcrossMidnightTakeTheVisitsDateAndARefusalIsNeverReportedAsSaved() = runBlocking {
+        val v = f.openCall(); f.day.visitSession.restore(v)
+        f.trustAt(at(next(), 0, 5))
+        val survey = com.aktcl.aron.core.database.entity.SurveyEntity(1, 1, "S", null)
+        val q = com.aktcl.aron.feature.outlet.SurveyQuestion(1, com.aktcl.aron.feature.outlet.AnswerType.BOOL, "q1", true, false)
+        fun rows() = listOf(com.aktcl.aron.feature.outlet.SurveyResponseRow(com.aktcl.aron.core.common.ClientIds.newUuid(), v.visitUuid, 1, 1, q, com.aktcl.aron.feature.outlet.SurveyAnswer(bool = true)))
+        val ok = f.day.saveSurveyResult(v.visitUuid, survey, rows())
+        assertNull(ok.dayRefusal); assertNull("stored: no attendance refusal", ok.attendance)
+        assertEquals("the survey carries the visit's date", d0, f.db.captureDao().surveyResponsesOf(v.visitUuid).single().meta.businessDate)
+        val item = com.aktcl.aron.core.database.entity.ContentItemEntity(7, 1, "av", "t", null, "u", "s", 1, 5, d0, next(), 1, true)
+        f.day.logContentView(v.visitUuid, item, com.aktcl.aron.feature.outlet.ContentOutcome.VIEWED, null, 1000L, 1)
+        assertEquals("the content view carries the visit's date", d0, f.db.captureDao().contentViewsOf(v.visitUuid).single().meta.businessDate)
+        // the call ends and the phone closes D; a survey saved after that is refused by the gate and is NOT reported as saved
+        f.day.closeVisitAbandoned(); f.day.resumeDay()
+        assertEquals("D was closed by the phone", 1, checkOuts(d0).size)
+        val q2 = com.aktcl.aron.feature.outlet.SurveyQuestion(2, com.aktcl.aron.feature.outlet.AnswerType.BOOL, "q2", true, false) // a NEW question: an answered one is an idempotent replay
+        val refused = f.day.saveSurveyResult(v.visitUuid, survey, listOf(com.aktcl.aron.feature.outlet.SurveyResponseRow(com.aktcl.aron.core.common.ClientIds.newUuid(), v.visitUuid, 1, 1, q2, com.aktcl.aron.feature.outlet.SurveyAnswer(bool = true))))
+        assertNotNull("a refusal comes back, never silence", refused.attendance)
+        assertEquals("nothing more was stored", 1, f.db.captureDao().surveyResponsesOf(v.visitUuid).size)
+    }
+
     private fun day() = f.day
 }
