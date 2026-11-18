@@ -94,6 +94,8 @@
     <string name="pg_gift_on_phone">Chosen on this phone, not sent yet: %1$s</string>
     <string name="pg_gift_refused">The server did not accept this choice: %1$s. Choose again.</string>
     <string name="pg_gift_sent">Sent to the server: %1$s</string>
+    <string name="pg_gift_unconfirmed_other">Sent, not confirmed yet: %1$s. The server still has: %2$s. If it stays so, open Sales submit, find it under refused items and tap Send again.</string>
+    <string name="pg_gift_unconfirmed">Sent, not confirmed yet: %1$s. If it stays so, open Sales submit, find it under refused items and tap Send again.</string>
     <string name="pg_gift_tier_unknown">The server has not sent this outlet\'s category yet, so its gifts cannot be shown.</string>
     <string name="pg_gift_chosen">Chosen gift: %1$s</string>
     <string name="pg_gift_none_for_tier">No gift is offered to this outlet\'s category.</string>
@@ -135,6 +137,10 @@
     <plurals name="pg_awaiting_redemptions">
         <item quantity="one">%1$s redemption is awaiting confirmation; the points update after the next sync.</item>
         <item quantity="other">%1$s redemptions are awaiting confirmation; the points update after the next sync.</item>
+    </plurals>
+    <plurals name="pg_given_up_redemptions">
+        <item quantity="one">%1$s redemption was sent but not confirmed, and this phone stopped sending it. Open Sales submit, find it under refused items and tap Send again.</item>
+        <item quantity="other">%1$s redemptions were sent but not confirmed, and this phone stopped sending them. Open Sales submit, find them under refused items and tap Send again.</item>
     </plurals>
     <string name="pg_photo_locked">The server has locked this gift, no photo is needed: %1$s</string>
     <string name="pg_campaign_none">No redeemed campaign gift is waiting for a photo.</string>

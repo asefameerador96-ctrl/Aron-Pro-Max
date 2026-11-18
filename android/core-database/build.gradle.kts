@@ -53,3 +53,13 @@ dependencies {
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.kotlinx.coroutines.test)
 }
+
+// D-AGATE-29: EveryWriterIsGatedTest scans the writers of core-database, core-sync and the three apps. They read .kt/.xml SOURCE files at run time, which Gradle cannot see, so those files are declared as inputs of every unit test task of this module:
+// the up-to-date check and the build cache can never answer for a changed source file (a structural test that can pass from cache is not a gate).
+tasks.withType<Test>().configureEach {
+    inputs.files(
+        rootProject.fileTree("android") {
+            include("core-database/src/main/**", "core-sync/src/main/**", "app-sr/src/main/**", "app-amo/src/main/**", "app-tso/src/main/**")
+        },
+    ).withPropertyName("scannedSources").withPathSensitivity(PathSensitivity.RELATIVE)
+}

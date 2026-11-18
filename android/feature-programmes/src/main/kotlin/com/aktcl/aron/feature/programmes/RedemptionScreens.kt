@@ -41,6 +41,7 @@ import kotlinx.coroutines.launch
 
 object RedemptionTags {
     const val AWAITING = "redeem_awaiting"
+    const val GIVEN_UP = "redeem_given_up"
     const val HELD = "redeem_held"
     const val UNCONFIRMED = "redeem_unconfirmed"
     const val PICKER = "redeem_picker"
@@ -73,6 +74,7 @@ fun RedemptionScreen(
     modifier: Modifier = Modifier, initialOutlet: Long? = null, initialQty: Map<Long, Int> = emptyMap(),
     /** Redemptions sent but not yet answered when the balances were fetched: the balance may already hold them (the same line as the points page). */
     awaiting: Int = 0,
+    givenUp: Int = 0,
     /** The points of this phone's redemptions held for review or unanswered: already subtracted from the balance (see the points page). */
     heldPointsOf: (outletId: Long, programmeId: Long) -> Long = { _, _ -> 0L },
     /** The points of redemptions sent and not confirmed (already subtracted): its own line, never counted in the held line. */
@@ -98,6 +100,7 @@ fun RedemptionScreen(
             return@Column
         }
         if (awaiting > 0) Text(countText(R.plurals.pg_awaiting_redemptions, awaiting, locale), Modifier.testTag(RedemptionTags.AWAITING), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
+        if (givenUp > 0) Text(countText(R.plurals.pg_given_up_redemptions, givenUp, locale), Modifier.testTag(RedemptionTags.GIVEN_UP), style = TextStyle(fontSize = 14.sp, color = look.purple, fontWeight = FontWeight.Medium))
         val all = stringResource(R.string.pg_all)
         val letters = listOf(all) + withPoints.map { it.chip }.filter { it.isNotBlank() }.distinct().sorted()
         val shownLetter = letter.ifEmpty { all }

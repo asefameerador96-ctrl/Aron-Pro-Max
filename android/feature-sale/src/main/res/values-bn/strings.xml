@@ -187,6 +187,8 @@
     <string name="sale_amo_percent">%1$s%%</string>
     <string name="review_total_qty">পরিমাণ</string>
     <string name="qc_col_type">প্রকার</string>
+    <string name="qc_dropped_notice">আপনার টাইপ করা QC জমা দেওয়া হয়নি, তাই মুছে গেছে। আবার QC খুলে লিখুন।</string>
+    <string name="sale_change_refused">এই পরিবর্তন গ্রহণ করা হয়নি। কিছুই বদলায়নি।</string>
     <string name="qc_fault_mfc">MFC Fault</string>
     <string name="qc_fault_mkt">MKT Fault</string>
     <string name="review_problem_call_closed">এই কলটি আগেই শেষ হয়েছে, তাই বিক্রিটি সংরক্ষণ হয়নি। এর জন্য কিছুই লেখা হয়নি।</string>

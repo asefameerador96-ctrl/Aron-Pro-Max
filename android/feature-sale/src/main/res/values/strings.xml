@@ -188,6 +188,8 @@
     <string name="sale_amo_percent">%1$s%%</string>
     <string name="review_total_qty">Quantity</string>
     <string name="qc_col_type">Type</string>
+    <string name="qc_dropped_notice">QC you typed was not submitted, so it was cleared. Open QC again to enter it.</string>
+    <string name="sale_change_refused">That change was not accepted. Nothing was changed.</string>
     <string name="qc_fault_mfc">MFC Fault</string>
     <string name="qc_fault_mkt">MKT Fault</string>
     <string name="review_problem_call_closed">This call has already ended, so the sale was not saved. Nothing was recorded for it.</string>
