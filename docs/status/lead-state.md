@@ -178,3 +178,10 @@ A new cfg key needs four things or the Shared/db/backend job fails in SpecCrossC
 - Found by P-SR1b, confirmed by the lead in code: the SR app's Astha, Loyalty Point, Photo Capture and Match Program tiles open ComingSoonContent. D-OWNER-SR-PROGRAMMES-01 (2026-11-12) put these screens in scope; the server side partly landed (trains 112, 115), but no Android lane was ever assigned (the SR manual brief gave Android lanes S1, S3..S6 other rows). This is the lead's planning miss.
 - New build lane A-PROG1 (session_014mnioPwjnzZjvN6ZbTva5k, branch lane/android-sr-programmes): step 1 scoping file docs/status/android-sr-programmes.md and server needs docs/requests/sr-programmes-server-needs.md; step 2 screens whose data is on the wire. No Room bump until the lead gives a number (after gates 10 and integrity 11).
 - Owed to the owner: say this plainly with the new completion date.
+
+
+### 2026-11-18 05:52 update: programme screens scoped
+- A-PROG1 scoping (lane/android-sr-programmes, docs/status/android-sr-programmes.md): 11 screens (manual 48-58) can be built now from the bundle `programmes` section, no schema change; 4 screens (10 SKU target, 21 outlet target, 61 brand-wise KPI, 62 Match Box Lifting Star) have no data on the wire.
+- New server lane T-KPI1 (session_014mnioNUHWh5TpUbp7V4JwN, branch lane/sr-targets-server) for N-2, N-3, N-5, N-8; provisional contract 1.22.0, migrations from V0230, renumbered at landing; design file docs/status/sr-targets-server.md first, with owner questions (formulas for PADS, LMS, LMWD, EWD, LMADS, growth, slab projection).
+- N-1, N-4, N-6, N-7 routed to L-A11 after its fix round; answers to be passed to A-PROG1.
+- Room order: gates 10, integrity 11, programmes 12 (if needed), SR ADS consumer after that.
