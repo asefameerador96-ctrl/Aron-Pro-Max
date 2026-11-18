@@ -1,0 +1,16 @@
+LabExemptionRequest:
+  type: object
+  required:
+  - days
+  additionalProperties: false
+  properties:
+    days:
+      type: integer
+      minimum: 1
+      maximum: 14
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 300
+      description: Why the phone needs it (for example the walk it is for).

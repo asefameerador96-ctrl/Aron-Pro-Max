@@ -209,7 +209,7 @@ class VisitFlow(
         if (fix.status == "permission_denied" || fix.status == "location_off") {
             return VisitUiState.LocationBlocked(fix.status).also { ui.value = it }
         }
-        val policy = settings().policyBase.copy(refreshCount = refreshCount)
+        val policy = settings().policyBase.copy(refreshCount = refreshCount).refusingSpoofedFixes()
         val result = GeoVerdicts.verdict(
             fix = FixInput(fix.isOk, fix.lat ?: Double.NaN, fix.lng ?: Double.NaN, fix.accuracyM, fix.isMock),
             outlet = OutletGeo(o.locationUsable, o.lat ?: Double.NaN, o.lng ?: Double.NaN),

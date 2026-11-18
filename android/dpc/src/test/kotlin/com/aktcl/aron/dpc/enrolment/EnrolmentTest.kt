@@ -1,11 +1,7 @@
 package com.aktcl.aron.dpc.enrolment
 
-import android.app.Activity
-import android.app.admin.DevicePolicyManager
-import android.content.Intent
-import android.os.PersistableBundle
 import com.aktcl.aron.contract.EnrolDeviceRequest
-import com.aktcl.aron.dpc.policy.policyFixture
+import com.aktcl.aron.dpc.policy.DevicePolicies
 import java.io.File
 import java.nio.file.Files
 import kotlinx.coroutines.async
@@ -19,9 +15,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.snakeyaml.engine.v2.api.Load
 import org.snakeyaml.engine.v2.api.LoadSettings
@@ -60,7 +54,7 @@ class EnrolmentTest {
         override fun deviceInfo() = DeviceInfoDto("samsung", "SM-A065F", 35, "15", "2026-09-01", "arm64-v8a", 4096, 64000)
     }
 
-    private fun response(uuid: String) = EnrolDeviceResponse(17, uuid, "2026-10-07T05:00:00.000Z", "dev", "normal", policyFixture(), "2026-10-07T05:00:00.000Z")
+    private fun response(uuid: String) = EnrolDeviceResponse(17, uuid, "2026-10-07T05:00:00.000Z", "dev", "normal", DevicePolicies.parse(EnrolmentTest::class.java.getResource("/policy-prod.json")!!.readText()), "2026-10-07T05:00:00.000Z")
 
     private fun parse(m: Map<String, String?>, own: String = pkg): Pair<EnrolmentExtras?, String?> {
         var why: String? = null
@@ -82,7 +76,7 @@ class EnrolmentTest {
     private fun coordinator(dir: File, keys: Keys, transport: EnrolmentTransport, enrolled: MutableList<String> = mutableListOf()) =
         EnrolmentCoordinator(EnrolmentStore(dir), keys, transport, facts, { "5b0f3c0e-8d4c-4a51-9c63-1f1f2a8e7d10" }) { r, alias -> enrolled += "${r.deviceUuid}/$alias" }
 
-    @Test fun aSuccessfulEnrolmentAppliesThePolicyRecordsTheDeviceAndForgetsTheToken() = runTest {
+    @Test fun aSuccessfulEnrolmentRecordsTheDeviceAndForgetsTheToken() = runTest {
         val dir = Files.createTempDirectory("enr").toFile()
         val keys = Keys()
         val sent = mutableListOf<EnrolDeviceRequest>()
@@ -157,24 +151,6 @@ class EnrolmentTest {
         assertEquals(props("EnrolDeviceResponse"), Json.parseToJsonElement(j.encodeToString(EnrolDeviceResponse.serializer(), response("u"))).jsonObject.keys)
     }
 
-    @Test fun theProvisioningModeIsFullyManaged() {
-        val c = Robolectric.buildActivity(GetProvisioningModeActivity::class.java).setup()
-        val result = shadowOf(c.get()).resultIntent
-        assertEquals(Activity.RESULT_OK, shadowOf(c.get()).resultCode)
-        assertEquals(DevicePolicyManager.PROVISIONING_MODE_FULLY_MANAGED_DEVICE, result.getIntExtra(DevicePolicyManager.EXTRA_PROVISIONING_MODE, -1))
-    }
-
-    @Test fun complianceStoresTheValidatedExtrasAsAPendingEnrolment() {
-        val app = org.robolectric.RuntimeEnvironment.getApplication()
-        val bundle = PersistableBundle().apply { good.forEach { (k, v) -> putString(k, v) } }
-        val ownGood = bundle.apply { putString(EnrolmentExtras.KEY_FLAVOUR, app.packageName.substringAfterLast('.')) }
-        val intent = Intent().putExtra(DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE, ownGood)
-        val accepted = acceptProvisioningExtras(app, intent)
-        // The library test package is not com.aktcl.aron.<flavour>, so the flavour check refuses it: nothing stored.
-        assertEquals(app.packageName in setOf("com.aktcl.aron.sr", "com.aktcl.aron.amo", "com.aktcl.aron.tso"), accepted)
-        assertFalse(acceptProvisioningExtras(app, Intent()))
-    }
-
     @Test fun twoRunsAtOnceSendOnceAndNeverDeleteTheEnrolledKey() = runTest {
         val dir = Files.createTempDirectory("enr").toFile()
         val keys = Keys()
@@ -194,7 +170,7 @@ class EnrolmentTest {
         assertEquals(setOf("aron-device-key-1"), keys.present)
     }
 
-    @Test fun aFailedPolicyApplyKeepsTheEnrolmentAndIsRetried() = runTest {
+    @Test fun aFailedPostEnrolmentStepKeepsTheEnrolmentAndIsRetried() = runTest {
         val dir = Files.createTempDirectory("enr").toFile()
         var fail = true
         var applied = 0

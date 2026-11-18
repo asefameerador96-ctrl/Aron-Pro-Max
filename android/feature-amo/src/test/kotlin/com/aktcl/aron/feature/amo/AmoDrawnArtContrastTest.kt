@@ -27,6 +27,12 @@ class AmoDrawnArtContrastTest {
     @Test fun alphabetBarLetters() {
         assertTrue(contrast(Color.Black, AronLook.AmoPurple.goEnd) >= 7.0)
         assertTrue(contrast(Color.White, AronLook.AmoSunlight.goEnd) >= 7.0)
-        assertTrue(contrast(Color.White, Color(0xFF4F4F4F)) >= 7.0)
+        assertTrue(contrast(Color.White, AlphabetPanel) >= 7.0)
+    }
+
+    /** The error line under the description box (D-PAR-AMO-33): the deep red on the page of both looks. */
+    @Test fun descriptionErrorLine() {
+        assertTrue(contrast(DescriptionErrorInk, AronLook.AmoPurple.page) >= 7.0)
+        assertTrue(contrast(DescriptionErrorInk, AronLook.AmoSunlight.page) >= 7.0)
     }
 }
